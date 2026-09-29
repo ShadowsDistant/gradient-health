@@ -288,14 +288,15 @@
     },
     rep: ce('a', 'b', { holdB: 500 }), muscles: ['glutes', 'hamstrings'],
   };
+  // Both hands hold the weight on the hip crease in every frame.
   F.kbBridge = merge(F.bridge, { equip: [{ type: 'kb', hold: 'hip' }], equipBy: { db: [{ type: 'db', hands: 'N', orient: 'end' }] },
-    poses: { a: { aN: { s: 14, e: 100 } }, b: { aN: { s: 30, e: 100 } } } });
+    poses: { a: { ik: { hdN: 'lap' } }, b: { ik: { hdN: 'lap' } } } });
   F.thrust = {
     view: 'side', pin: { joint: 'neck', at: [-42, -52] }, key: 'b', props: [{ type: 'box', x: -104, w: 64, h: 45 }],
     equip: [{ type: 'kb', hold: 'hip' }],
     poses: {
-      a: { t: -42, n: 20, aN: { s: 10, e: 90 }, lN: { flat: true }, ik: { anN: [50, -8] } },
-      b: { t: -90, n: 34, aN: { s: 26, e: 90 }, lN: { flat: true }, ik: { anN: [50, -8] } },
+      a: { t: -42, n: 20, lN: { flat: true }, ik: { anN: [50, -8], hdN: 'lap' } },
+      b: { t: -90, n: 34, lN: { flat: true }, ik: { anN: [50, -8], hdN: 'lap' } },
     },
     rep: ce('a', 'b', { holdB: 500 }), muscles: ['glutes', 'hamstrings'],
   };

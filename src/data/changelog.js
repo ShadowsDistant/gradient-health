@@ -7,7 +7,7 @@
       version: '1.2.0', date: '2026-09-29', title: 'Gradient Health: gym, food and a coach you can see',
       items: [
         ['heart', 'A new name, Gradient Health, and a new icon.'],
-        ['person', 'A 3D figure shows every exercise: a realistic body, smooth motion at the right tempo, the working muscles lit up, and you can turn it to see it from any side.'],
+        ['person', 'A 3D figure shows every exercise: a realistic body, smooth motion at the right tempo, the working muscles lit up, and you can drag it to see it from any side. A strip under it shows how long to take on each half of a rep. Pick its skin tone and shirt in Settings.'],
         ['dumbbell', 'Gym mode: barbells, racks, cables and machines, 45 gym exercises, and weights that go up once you hit the top of your reps. Train at home, at a gym, or pick each day.'],
         ['food', 'Food tracking if you want it: calories and macros, a built-in food list, your own foods, quick add, saved meals, online search and barcode scanning. Or keep just the protein goal, or turn food off.'],
         ['sliders', 'Choose what the app tracks. Workouts, food, or both, and food and health without workouts works too.'],
