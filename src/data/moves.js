@@ -4,6 +4,10 @@
  * n neck, aN/aF arms {s shoulder, e elbow}, lN/lF legs {h hip, k knee, a ankle, flat, fd foot dir}.
  * rep steps: { to, ms, hold, ph: 'con' | 'ecc' | 'iso' | 'move' }.
  * req: equipment the move needs, e.g. ['db|kb', 'chair'] = (dumbbell or kettlebell) and a chair.
+ * sc: a limb's drawn length scale (foreshortening, e.g. arms out to the side in side view).
+ * Gym moves: gym: true; load 'bb' | 'ez' | 'db' | 'cable' | 'machine' | 'smith' (| alternatives);
+ * ratio = conservative starting load / body weight (per dumbbell for dumbbells); equipBy / propsBy
+ * swap the drawn equipment / props for the loading equipment the person has (see forPerson).
  */
 (function (G) {
   'use strict';
@@ -652,6 +656,412 @@
     rep: cyc(['b', 'c', 'd', 'a'], 420, 0), muscles: ['calves', 'glutes'],
   };
 
+  // Gym ---------------------------------------------------------------------------------------
+  // Props and held equipment are documented in engine/pose.js (gymGeom, machineGeom, equipment).
+  // Barbells draw end-on at the grip ('traps' / 'lap' holds put the bar on the back or the hips,
+  // and `ik: { hdN: 'traps' }` keeps the hands on it). r is the plate radius (0: a bare bar).
+  const BENCH_H = 45;
+  const ON_BENCH = { joint: 'hip', at: [0, -(BENCH_H + 11)] }; // lying on a flat bench
+  const FLAT_BENCH = { type: 'bench', x: -84, w: 118, h: BENCH_H };
+  const BENCH_FEET = { t: -90, n: 0, lN: { flat: true }, ik: { anN: [44, -8] } };
+  const onBench = (hand, ua, o) => merge(BENCH_FEET, merge({ sc: { uaN: ua, uaF: ua }, ik: { hdN: hand } }, o || {}));
+  const BB = (r, o) => [Object.assign({ type: 'bb', hands: 'both', r }, o || {})];
+  const EZ = (r) => [{ type: 'ez', hands: 'both', r }];
+  const ARMS = (ua, fa) => ({ uaN: ua, uaF: ua, faN: fa, faF: fa });
+
+  // Chest: presses on a flat bench, lowering to the lower chest.
+  F.benchBB = {
+    view: 'side', pin: ON_BENCH, key: 'b', equip: BB(22.5),
+    props: [FLAT_BENCH, { type: 'rack', x: -58, h: 104, d: 0, top: 128 }],
+    poses: { a: onBench([-47, -113.5], 1), b: onBench([-38, -71], 0.63) },
+    rep: ec('a', 'b'), muscles: ['chest', 'triceps', 'frontDelts'],
+  };
+  F.benchDB = {
+    view: 'side', pin: ON_BENCH, key: 'b', equip: DB2, props: [FLAT_BENCH],
+    poses: { a: onBench([-47, -113.5], 1), b: onBench([-40, -70], 0.6) },
+    rep: ec('a', 'b'), muscles: ['chest', 'triceps', 'frontDelts'],
+  };
+  F.benchSmith = {
+    view: 'side', pin: ON_BENCH, key: 'b', equip: BB(20), props: [FLAT_BENCH, { type: 'smith', x: -40, h: 106 }],
+    poses: { a: onBench([-40, -112.5], 1), b: onBench([-40, -71], 0.63) },
+    rep: ec('a', 'b'), muscles: ['chest', 'triceps', 'frontDelts'],
+  };
+  F.closeGrip = {
+    view: 'side', pin: ON_BENCH, key: 'b', equip: BB(22.5),
+    props: [FLAT_BENCH, { type: 'rack', x: -58, h: 104, d: 0, top: 128 }],
+    poses: { a: onBench([-47, -113.5], 1), b: onBench([-35, -70], 0.86) },
+    rep: ec('a', 'b'), muscles: ['triceps', 'chest', 'frontDelts'],
+  };
+  F.machinePress = {
+    view: 'side', pin: { joint: 'hip', at: [0, -55] }, key: 'b',
+    props: [{ type: 'machine', kind: 'chestPress', x: -10.1, h: 46, back: 80, seat: 40, pivot: [18, -168] }],
+    poses: {
+      a: { t: -10, lN: { flat: true }, sc: ARMS(0.62, 1), ik: { anN: [48, -8], hdN: [6, -93] } },
+      b: { t: -10, lN: { flat: true }, sc: ARMS(0.95, 1), ik: { anN: [48, -8], hdN: [47, -98] } },
+    },
+    rep: ce('a', 'b'), muscles: ['chest', 'triceps', 'frontDelts'],
+  };
+  // Adjustable bench at 40°: sitting on the seat, back on the pad (t = -50).
+  const INCLINE = { type: 'bench', x: -87.4, w: 116, h: BENCH_H, incline: 40, back: -1, seat: 36 };
+  const ON_INCLINE = { joint: 'hip', at: [0, -54] };
+  const inc = (hand, ua) => ({ t: -50, n: -6, lN: { flat: true }, sc: { uaN: ua, uaF: ua }, ik: { anN: [58, -8], hdN: hand } });
+  F.inclineDB = {
+    view: 'side', pin: ON_INCLINE, key: 'b', equip: DB2, props: [INCLINE],
+    poses: { a: inc([-37, -143.5], 1), b: inc([-26, -94], 0.72) },
+    rep: ec('a', 'b'), muscles: ['chest', 'frontDelts', 'triceps'],
+  };
+  F.inclineBB = {
+    view: 'side', pin: ON_INCLINE, key: 'b', equip: BB(20), props: [INCLINE, { type: 'rack', x: -52, h: 138, d: 0, top: 160 }],
+    poses: { a: inc([-37, -143.5], 1), b: inc([-24.5, -92], 0.72) },
+    rep: ec('a', 'b'), muscles: ['chest', 'frontDelts', 'triceps'],
+  };
+  F.inclineSmith = {
+    view: 'side', pin: ON_INCLINE, key: 'b', equip: BB(20), props: [INCLINE, { type: 'smith', x: -30, h: 138 }],
+    poses: { a: inc([-30, -143], 1), b: inc([-30, -97], 0.72) },
+    rep: ec('a', 'b'), muscles: ['chest', 'frontDelts', 'triceps'],
+  };
+  // Flyes: cable crossover (front view, high pulleys), pec deck (front view, seated), dumbbell fly
+  // on a flat bench (top view, like the floor fly).
+  const FRONT_CENTER = { joint: 'hip', at: [0, -92.7] }; // standing, front view, centred on x = 0 (legs h: 5)
+  F.cableFly = {
+    view: 'front', pin: FRONT_CENTER, key: 'b', armLayer: 'front',
+    props: [{ type: 'cable', x: 92, y: -190, to: 'hdN' }, { type: 'cable', x: -92, y: -190, to: 'hdF' }],
+    equip: [{ type: 'handle', hands: 'both' }],
+    poses: {
+      a: { ts: 0.96, lN: { h: 5 }, ik: { hdN: [72, -150], hdF: [-72, -150] } },
+      b: { ts: 0.96, lN: { h: 5 }, sc: ARMS(0.62, 0.62), ik: { hdN: [5, -110], hdF: [-5, -110] } },
+    },
+    bend: { hdN: 1, hdF: 1 },
+    rep: ce('a', 'b', { holdB: 500 }), muscles: ['chest', 'frontDelts'],
+  };
+  const PEC_DECK = { type: 'machine', kind: 'pecDeck', x: 0, h: 48, top: 168, py: 146, dx: 20, w: 50 };
+  const SEAT_FRONT = { lN: { h: 6, k: 6 }, sc: { thN: 0.15, thF: 0.15 } };
+  F.pecFly = {
+    view: 'front', pin: { joint: 'hip', at: [0, -57] }, key: 'b', armLayer: 'front', legLayer: 'front', props: [PEC_DECK],
+    poses: {
+      a: merge(SEAT_FRONT, { ik: { hdN: [70, -110], hdF: [-70, -110] } }),
+      b: merge(SEAT_FRONT, { sc: ARMS(0.5, 0.5), ik: { hdN: [6, -106], hdF: [-6, -106] } }),
+    },
+    bend: { hdN: 1, hdF: 1 },
+    rep: ce('a', 'b', { holdB: 500 }), muscles: ['chest', 'frontDelts'],
+  };
+  F.benchFly = {
+    view: 'top', pin: { joint: 'hip', at: [0, 0] }, equip: DB2S, key: 'b', props: [{ type: 'bench', x: -30, w: 116, h: BENCH_H }],
+    poses: {
+      a: { sc: { uaN: 0.22, uaF: 0.22, faN: 0.22, faF: 0.22, shN: 0.18, shF: 0.18 }, aN: { s: 60, e: 0 }, lN: { h: 9, k: 0 } },
+      b: { sc: { uaN: 1, uaF: 1, faN: 1, faF: 1, shN: 0.18, shF: 0.18 }, aN: { s: 90, e: 16 }, lN: { h: 9, k: 0 } },
+    },
+    rep: ec('a', 'b'), muscles: ['chest'],
+  };
+
+  // Legs.
+  F.squatBB = {
+    view: 'side', pin: { joint: 'traps' }, key: 'b', props: [{ type: 'rack', x: 44, h: 134 }],
+    equip: BB(22.5, { hold: 'traps' }),
+    poses: {
+      a: { at: [1.5, -140.5], t: 10, n: -6, sc: ARMS(0.8, 0.42), lN: { flat: true }, ik: { anN: [0, -8], hdN: 'traps' } },
+      b: { at: [3, -95], t: 42, n: -18, sc: ARMS(0.8, 0.42), lN: { flat: true }, ik: { anN: [0, -8], hdN: 'traps' } },
+    },
+    bend: { hdN: 1, hdF: 1 }, // elbows down and back under the bar
+    rep: ec('a', 'b'), muscles: ['quads', 'glutes'],
+  };
+  F.squatSmith = {
+    view: 'side', pin: { joint: 'traps' }, key: 'b', props: [{ type: 'smith', x: 0, h: 132 }],
+    equip: BB(20, { hold: 'traps' }),
+    poses: {
+      a: { at: [0, -140], t: 4, n: -2, sc: ARMS(0.8, 0.42), lN: { flat: true }, ik: { anN: [12, -8], hdN: 'traps' } },
+      b: { at: [0, -96], t: 25, n: -10, sc: ARMS(0.8, 0.42), lN: { flat: true }, ik: { anN: [12, -8], hdN: 'traps' } },
+    },
+    bend: { hdN: 1, hdF: 1 },
+    rep: ec('a', 'b'), muscles: ['quads', 'glutes'],
+  };
+  // 45° leg press: reclined seat, feet flat on the sled (foot square to the track).
+  const LP_FOOT = { fd: 225, flat: false };
+  F.legPress = {
+    view: 'side', pin: { joint: 'hip', at: [0, -44] }, key: 'b',
+    props: [{ type: 'machine', kind: 'legPress', x: -4.9, h: 33.6, back: 25, len: 80, seat: 30, track: [46.65, -119.13], angle: 45 }],
+    poses: {
+      a: { t: -65, n: 14, aN: { s: 20, e: 60 }, lN: LP_FOOT, ik: { anN: [47, -111] } },
+      b: { t: -65, n: 14, aN: { s: 20, e: 60 }, lN: LP_FOOT, ik: { anN: [31.44, -95.44] } },
+    },
+    rep: ec('a', 'b'), muscles: ['quads', 'glutes'],
+  };
+  // Hinges: hips pinned, feet planted, hands on the bar (IK), bar over the mid-foot.
+  const HINGE_FEET = { lN: { flat: true }, ik: { anN: [0, -8] } };
+  const hinge = (at, t, n, hand) => merge(HINGE_FEET, { at, t, n, ik: { hdN: hand } });
+  F.rdlBB = {
+    view: 'side', pin: { joint: 'hip' }, key: 'b', equip: BB(22.5),
+    poses: { a: hinge([1.5, -92.5], 4, 0, [10, -86]), b: hinge([-30, -85], 64, -18, [6, -50]) },
+    rep: ec('a', 'b'), muscles: ['hamstrings', 'glutes', 'lowerBack'],
+  };
+  F.rdlDB = merge(F.rdlBB, { equip: DB2S });
+  F.deadliftBB = {
+    view: 'side', pin: { joint: 'hip' }, key: 'a', equip: BB(22.5),
+    poses: { a: hinge([-34.1, -63.1], 70.3, -24, [9, -22.5]), b: hinge([1.5, -92.5], 0, 0, [10, -86]) },
+    rep: ce('a', 'b', { con: 1100, ecc: 1600, holdA: 500 }), muscles: ['glutes', 'hamstrings', 'quads', 'lowerBack'],
+  };
+  F.rowBB = {
+    view: 'side', pin: { joint: 'hip' }, key: 'b', equip: BB(22.5),
+    poses: { a: hinge([-24, -88], 50, -16, [12, -63]), b: hinge([-24, -88], 50, -16, [1.5, -92.5]) },
+    rep: ce('a', 'b'), muscles: ['lats', 'upperBack', 'rearDelts', 'biceps'],
+  };
+  // Hip thrust: the upper back pivots on the bench's edge (neck placed so the back is tangent to it).
+  F.thrustBB = {
+    view: 'side', pin: { joint: 'neck' }, key: 'b', props: [{ type: 'bench', x: -70, w: 30, h: BENCH_H, end: true }],
+    equip: BB(22.5, { hold: 'lap' }),
+    poses: {
+      a: { at: [-40.6, -60.1], t: -42, n: 20, lN: { flat: true }, ik: { anN: [50, -8], hdN: 'lap' } },
+      b: { at: [-56.5, -56.5], t: -90, n: 34, lN: { flat: true }, ik: { anN: [50, -8], hdN: 'lap' } },
+    },
+    rep: ce('a', 'b', { holdB: 500 }), muscles: ['glutes', 'hamstrings'],
+  };
+  // Seated leg curl and leg extension: lever pivot at the knee, pad at the lower shin.
+  F.legCurl = {
+    view: 'side', pin: { joint: 'hip', at: [0, -59] }, key: 'b',
+    props: [{ type: 'machine', kind: 'legCurl', x: -11.3, h: 50, back: 80, seat: 44, pivot: [43, -59] }],
+    poses: {
+      a: { t: -10, aN: { s: 10, e: 70 }, lN: { h: 80, k: 4, flat: false, a: 10 } },
+      b: { t: -10, aN: { s: 10, e: 70 }, lN: { h: 80, k: 100, flat: false, a: 10 } },
+    },
+    rep: ce('a', 'b'), muscles: ['hamstrings'],
+  };
+  F.legExt = {
+    view: 'side', pin: { joint: 'hip', at: [0, -59] }, key: 'b',
+    props: [{ type: 'machine', kind: 'legExt', x: -11.3, h: 50, back: 80, seat: 44, pivot: [43, -59] }],
+    poses: {
+      a: { t: -10, aN: { s: 12, e: 70 }, lN: { h: 80, k: 95, flat: false, a: 10 } },
+      b: { t: -10, aN: { s: 12, e: 70 }, lN: { h: 80, k: 4, flat: false, a: 10 } },
+    },
+    rep: ce('a', 'b', { holdB: 400 }), muscles: ['quads'],
+  };
+  // Calf raises: balls of the feet on a step, the body rises as the heels lift.
+  const STEP = { type: 'box', x: 10, w: 30, h: 10 };
+  const ON_STEP = { joint: 'toN', at: [18, -13.5] };
+  const calf = (fd) => ({ t: 0, lN: { h: 0, k: 0, fd }, aN: { s: 4, e: 6 } });
+  F.calfDB = {
+    view: 'side', pin: ON_STEP, key: 'b', props: [STEP], equip: DB2S,
+    poses: { a: calf(112), b: calf(58) },
+    rep: ce('a', 'b', { con: 900, holdB: 700, ecc: 1600 }), muscles: ['calves'],
+  };
+  F.calfSmith = {
+    view: 'side', pin: ON_STEP, key: 'b', props: [STEP, { type: 'smith', x: -8.7, h: 128 }],
+    equip: BB(20, { hold: 'traps' }),
+    poses: {
+      a: merge(calf(112), { sc: ARMS(0.8, 0.42), ik: { hdN: 'traps' } }),
+      b: merge(calf(58), { sc: ARMS(0.8, 0.42), ik: { hdN: 'traps' } }),
+    },
+    bend: { hdN: 1, hdF: 1 },
+    rep: ce('a', 'b', { con: 900, holdB: 700, ecc: 1600 }), muscles: ['calves'],
+  };
+
+  // Back.
+  F.pulldown = {
+    view: 'side', pin: { joint: 'hip', at: [0, -59] }, key: 'b', equip: [{ type: 'latbar', hands: 'both' }],
+    props: [{ type: 'machine', kind: 'pulldown', x: 22, h: 50, seat: 40, pad: [30, -75.5], pulley: [3, -200], col: 74 }],
+    poses: {
+      a: { t: -8, n: 4, lN: { flat: true }, sc: ARMS(0.84, 0.9), ik: { anN: [46, -8], hdN: [2, -155] } },
+      b: { t: -16, n: -4, lN: { flat: true }, sc: ARMS(0.8, 0.9), ik: { anN: [46, -8], hdN: [3, -107] } },
+    },
+    rep: ce('a', 'b'), muscles: ['lats', 'upperBack', 'biceps'],
+  };
+  F.rowCable = {
+    view: 'side', pin: { joint: 'hip', at: [0, -51] }, key: 'b', equip: [{ type: 'handle', hands: 'both', shared: true }],
+    props: [{ type: 'machine', kind: 'rowSeat', x: 15, h: 42, w: 60, foot: [81.9, -30.6], angle: 70 }, { type: 'cable', x: 104, y: -34, to: 'both' }],
+    poses: {
+      a: { t: 18, n: -6, lN: { fd: 160, flat: false }, sc: ARMS(0.95, 1), ik: { anN: [77, -26], hdN: [50, -79] } },
+      b: { t: -6, n: 0, lN: { fd: 160, flat: false }, sc: ARMS(0.95, 1), ik: { anN: [77, -26], hdN: [14, -72] } },
+    },
+    rep: ce('a', 'b', { holdB: 400 }), muscles: ['lats', 'upperBack', 'rearDelts', 'biceps'],
+  };
+  // Chest-supported row: chest on an incline bench at 40° (the backrest rises toward +x).
+  const CHEST_PAD = { type: 'bench', x: -43.9, w: 116, h: BENCH_H, incline: 40, back: 1, seat: 36 };
+  F.chestRow = {
+    view: 'side', pin: { joint: 'hip', at: [0, -66.7] }, key: 'b', equip: DB2S, props: [CHEST_PAD],
+    poses: {
+      a: { t: 50, n: -10, lN: { flat: true }, ik: { anN: [-40, -8], hdN: [38, -41.5] } },
+      b: { t: 50, n: -10, lN: { flat: true }, sc: ARMS(0.95, 1), ik: { anN: [-40, -8], hdN: [22, -79] } },
+    },
+    bend: { hdN: 1, hdF: 1 },
+    rep: ce('a', 'b', { holdB: 400 }), muscles: ['lats', 'upperBack', 'rearDelts', 'biceps'],
+  };
+  F.facePull = {
+    view: 'side', pin: { joint: 'hip', at: [0, -92.5] }, key: 'b', equip: [{ type: 'rope', hands: 'both' }],
+    props: [{ type: 'cable', x: 82, y: -170, to: 'both' }],
+    poses: {
+      a: { t: -6, lN: { flat: true }, sc: ARMS(0.95, 0.95), ik: { anN: [0, -8], hdN: [46, -159] } },
+      b: { t: -8, lN: { flat: true }, sc: ARMS(0.35, 0.78), ik: { anN: [0, -8], hdN: [-5, -161] } },
+    },
+    rep: ce('a', 'b', { holdB: 600 }), muscles: ['rearDelts', 'upperBack'],
+  };
+  // Reverse fly on the pec deck, seen from behind: facing the pad, so no backrest shows.
+  F.revFlyMachine = {
+    view: 'front', pin: { joint: 'hip', at: [0, -57] }, key: 'b', armLayer: 'front', legLayer: 'front', props: [merge(PEC_DECK, { rear: true })],
+    poses: {
+      a: merge(SEAT_FRONT, { sc: ARMS(0.3, 0.3), ik: { hdN: [7, -108], hdF: [-7, -108] } }),
+      b: merge(SEAT_FRONT, { ik: { hdN: [72, -108], hdF: [-72, -108] } }),
+    },
+    bend: { hdN: 1, hdF: 1 },
+    rep: ce('a', 'b', { holdB: 500 }), muscles: ['rearDelts', 'upperBack'],
+  };
+
+  // Shoulders.
+  const UPRIGHT = { type: 'bench', x: -90.75, w: 116, h: BENCH_H, incline: 85, back: -1, seat: 36 };
+  F.seatedPressDB = {
+    view: 'side', pin: ON_INCLINE, key: 'b', equip: DB2, props: [UPRIGHT],
+    poses: {
+      a: { t: -5, lN: { flat: true }, sc: { uaN: 0.69, uaF: 0.69 }, ik: { anN: [46, -8], hdN: [0, -113] } },
+      b: { t: -5, lN: { flat: true }, sc: { uaN: 1, uaF: 1 }, ik: { anN: [46, -8], hdN: [-2, -160] } },
+    },
+    rep: ce('a', 'b'), muscles: ['frontDelts', 'sideDelts', 'triceps'],
+  };
+  F.ohpBB = {
+    view: 'side', pin: FLOOR_ANKLE, key: 'b', equip: BB(17), props: [{ type: 'rack', x: 42, h: 133 }],
+    poses: {
+      a: st({ t: -2, n: -8, sc: { uaN: 0.9, uaF: 0.9 }, ik: { hdN: [13, -139] } }),
+      b: st({ t: 0, n: 2, sc: { uaN: 1, uaF: 1 }, ik: { hdN: [3, -199.5] } }),
+    },
+    rep: ce('a', 'b'), muscles: ['frontDelts', 'sideDelts', 'triceps'],
+  };
+  // The handles swing on levers from a pivot on the column, so the hands travel an arc (m).
+  F.machineShoulder = {
+    view: 'side', pin: { joint: 'hip', at: [0, -55] }, key: 'b',
+    props: [{ type: 'machine', kind: 'shoulderPress', x: -10.6, h: 46, back: 84, seat: 38, pivot: [-46, -135] }],
+    poses: {
+      a: { t: -6, lN: { flat: true }, sc: { uaN: 0.7, uaF: 0.7 }, ik: { anN: [46, -8], hdN: [2, -112] } },
+      m: { t: -6, lN: { flat: true }, sc: { uaN: 0.85, uaF: 0.85 }, ik: { anN: [46, -8], hdN: [5.5, -135] } },
+      b: { t: -6, lN: { flat: true }, sc: { uaN: 1, uaF: 1 }, ik: { anN: [46, -8], hdN: [-1, -158] } },
+    },
+    rep: [{ to: 'm', ms: 500, hold: 0, ph: 'con' }, { to: 'b', ms: 500, hold: 250, ph: 'con' }, { to: 'm', ms: 1000, hold: 0, ph: 'ecc' }, { to: 'a', ms: 1000, hold: 300, ph: 'ecc' }],
+    muscles: ['frontDelts', 'sideDelts', 'triceps'],
+  };
+  // Working arm by angles so it sweeps out in an arc; the other hand holds the tower.
+  F.cableRaise = {
+    view: 'front', pin: FRONT_CENTER, key: 'b', armLayer: 'front', equip: [{ type: 'handle', hands: 'N' }],
+    props: [{ type: 'cable', x: -64, y: -16, to: 'hdN', layer: 'front' }],
+    poses: {
+      a: { lN: { h: 5 }, aN: { s: -22, e: 8 }, ik: { hdF: [-56, -116] } },
+      b: { lN: { h: 5 }, aN: { s: 86, e: 12 }, ik: { hdF: [-56, -116] } },
+    },
+    rep: ce('a', 'b'), muscles: ['sideDelts'], uni: true, leadLimbs: ['aN'],
+  };
+
+  // Arms.
+  F.curlBar = merge(F.curl, { equip: EZ(12), equipBy: { bb: BB(14) }, poses: { a: { aN: { s: 8, e: 10 } }, b: { aN: { s: 16, e: 135 } } } });
+  F.curlCable = merge(F.curl, {
+    equip: EZ(0), props: [{ type: 'cable', x: 40, y: -14, to: 'both' }],
+    poses: { a: { t: -2, aN: { s: 8, e: 10 } }, b: { t: -2, aN: { s: 16, e: 135 } } },
+  });
+  const INCLINE_50 = { type: 'bench', x: -87.46, w: 116, h: BENCH_H, incline: 50, back: -1, seat: 36 };
+  F.inclineCurl = {
+    view: 'side', pin: { joint: 'hip', at: [0, -54] }, key: 'b', equip: DB2, props: [INCLINE_50],
+    poses: {
+      a: { t: -40, n: -4, aN: { s: -40, e: 6 }, lN: { flat: true }, ik: { anN: [56, -8] } },
+      b: { t: -40, n: -4, aN: { s: -36, e: 132 }, lN: { flat: true }, ik: { anN: [56, -8] } },
+    },
+    rep: ce('a', 'b'), muscles: ['biceps', 'forearms'],
+  };
+  F.pushdownCable = merge(F.pushdown, {
+    equip: [{ type: 'rope', hands: 'both' }], props: [{ type: 'cable', x: 36, y: -196, to: 'both' }],
+    poses: { a: { t: 8, aN: { s: 8, e: 100 }, lN: { h: 10, k: 12 } }, b: { t: 8, aN: { s: 6, e: 4 }, lN: { h: 10, k: 12 } } },
+  });
+  F.ohCable = {
+    view: 'side', pin: { joint: 'hip', at: [2, -86] }, key: 'b', equip: [{ type: 'rope', hands: 'both' }],
+    props: [{ type: 'cable', x: -52, y: -176, to: 'both' }],
+    poses: {
+      a: { t: 30, n: -6, aN: { s: 178, e: 125 }, lN: { flat: true }, lF: { flat: true }, ik: { anN: [30, -8], anF: [-30, -8] } },
+      b: { t: 30, n: -6, aN: { s: 170, e: 8 }, lN: { flat: true }, lF: { flat: true }, ik: { anN: [30, -8], anF: [-30, -8] } },
+    },
+    rep: ce('a', 'b'), muscles: ['triceps'],
+  };
+  F.skullEZ = {
+    view: 'side', pin: ON_BENCH, equip: EZ(12), equipBy: { bb: BB(14) }, key: 'b', props: [FLAT_BENCH],
+    poses: { a: merge(BENCH_FEET, { aN: { s: 96, e: 4 } }), b: merge(BENCH_FEET, { aN: { s: 102, e: 104 } }) },
+    rep: ec('a', 'b'), muscles: ['triceps'],
+  };
+  F.dipBars = {
+    view: 'side', pin: { joint: 'grip', at: [0, -115] }, key: 'b', props: [{ type: 'dip', x: 0, h: 115 }],
+    poses: {
+      a: { t: 12, aN: { s: 12, e: 4 }, lN: { h: -4, k: 80, flat: false, a: 20 } },
+      b: { t: 24, n: -4, aN: { s: -52, e: 76 }, lN: { h: -2, k: 84, flat: false, a: 20 } },
+    },
+    rep: ec('a', 'b'), muscles: ['triceps', 'chest', 'frontDelts'],
+  };
+
+  // Abs.
+  F.cableCrunch = {
+    view: 'side', pin: { joint: 'knN', at: [0, -6] }, key: 'b', equip: [{ type: 'rope', hands: 'both' }],
+    props: [{ type: 'cable', x: 64, y: -196, to: 'both' }],
+    poses: {
+      a: { t: 28, n: 6, aN: { s: 45, e: 150 }, lN: { h: 28, k: 90, flat: false, a: 90 } },
+      b: { t: 72, ts: 0.9, n: 24, aN: { s: 45, e: 150 }, lN: { h: 62, k: 90, flat: false, a: 90 } },
+    },
+    rep: ce('a', 'b', { holdB: 500 }), muscles: ['abs'],
+  };
+  F.hangKnee = {
+    view: 'side', pin: { joint: 'hdN', at: [0, -224] }, key: 'b', props: [BAR],
+    poses: {
+      a: { t: 0, aN: { s: 178, e: 2 }, lN: { h: 6, k: 14, flat: false, a: 30 } },
+      b: { t: -10, n: -6, aN: { s: 170, e: 4 }, lN: { h: 112, k: 108, flat: false, a: 30 } },
+    },
+    rep: ce('a', 'b', { con: 1000, ecc: 1800, holdB: 300 }), muscles: ['abs', 'hipFlexors'],
+  };
+  F.pallof = {
+    view: 'front', pin: FRONT_CENTER, key: 'b', armLayer: 'front', equip: [{ type: 'handle', hands: 'both', shared: true }],
+    props: [{ type: 'cable', x: -86, y: -118, to: 'both' }],
+    propsBy: { band: [{ type: 'door', x: -92 }] },
+    equipBy: { band: [{ type: 'band', hands: 'both', from: [-86, -118] }] },
+    poses: {
+      a: { lN: { h: 5 }, sc: { uaN: 0.85, uaF: 0.85, faN: 0.5, faF: 0.5 }, ik: { hdN: [3, -118], hdF: [-3, -118] } },
+      b: { lN: { h: 5 }, sc: ARMS(0.46, 0.46), ik: { hdN: [3, -122], hdF: [-3, -122] } },
+    },
+    bend: { hdN: 1, hdF: 1 }, // elbows down by the ribs
+    rep: ce('a', 'b', { holdB: 1500 }), muscles: ['obliques', 'abs'], uni: true, leadLimbs: [],
+  };
+
+  // Cardio machines (timed intervals).
+  F.rower = {
+    view: 'side', pin: { joint: 'hip' }, key: 'c', props: [{ type: 'rower', x: 62, h: 36, fy: -26 }],
+    poses: {
+      c: { at: [14, -45], t: 30, n: -6, lN: { fd: 135, flat: false }, ik: { anN: [55.6, -24], hdN: [84, -54] } },
+      d: { at: [-18, -45], t: 26, n: -6, lN: { fd: 135, flat: false }, ik: { anN: [55.6, -24], hdN: [49.4, -55] } },
+      f: { at: [-25, -45], t: -24, n: 4, lN: { fd: 135, flat: false }, ik: { anN: [55.6, -24], hdN: [-25, -78] } },
+      r: { at: [-25, -45], t: 22, n: -4, lN: { fd: 135, flat: false }, ik: { anN: [55.6, -24], hdN: [39.7, -56.4] } },
+    },
+    rep: [{ to: 'd', ms: 380, hold: 0, ph: 'con' }, { to: 'f', ms: 380, hold: 80, ph: 'con' }, { to: 'r', ms: 450, hold: 0, ph: 'move' }, { to: 'c', ms: 800, hold: 80, ph: 'move' }],
+    muscles: ['quads', 'glutes', 'lats', 'upperBack'],
+  };
+  // Pedals: 8 crank positions; the ankle sits behind and above the pedal (ball of the foot on it).
+  const BIKE = { type: 'bike', x: 0, y: -30, crank: 17, h: 88, sx: -22, bar: [42, -104] };
+  const pedal = (deg) => [17 * Math.sin(deg * Math.PI / 180) - 9.4, -30 - 17 * Math.cos(deg * Math.PI / 180) - 2.2];
+  const spin = (deg) => ({
+    t: 42, n: -14, lN: { fd: 98, flat: false }, lF: { fd: 98, flat: false },
+    ik: { hdN: [42, -104], anN: pedal(deg).map((v) => Math.round(v * 10) / 10), anF: pedal(deg + 180).map((v) => Math.round(v * 10) / 10) },
+  });
+  F.bike = {
+    view: 'side', pin: { joint: 'hip', at: [-22, -97] }, key: 'p2', props: [BIKE],
+    poses: { p0: spin(0), p1: spin(45), p2: spin(90), p3: spin(135), p4: spin(180), p5: spin(225), p6: spin(270), p7: spin(315) },
+    rep: cyc(['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p0'], 85, 0),
+    muscles: ['quads', 'glutes', 'calves'],
+  };
+  // Incline walk: the stance foot rides the belt back, the other swings through (8° belt). The foot
+  // line sits 5.5 above the belt (heel at strike, whole foot at mid-stance, toe at push-off).
+  const TREAD = { type: 'treadmill', x: -72, w: 150, h: 20, incline: 8 };
+  const walkUp = (nA, nFd, fA, fFd, arm) => ({
+    t: 8, n: -4, aN: { s: arm, e: 24 }, aF: { s: -arm, e: 24 },
+    lN: { fd: nFd, flat: false }, lF: { fd: fFd, flat: false }, ik: { anN: nA, anF: fA },
+  });
+  const STRIKE = [24, -39.8], MIDSTANCE = [0, -35.6], TOEOFF = [-25.9, -41.9], SWING = [1, -47];
+  F.inclineWalk = {
+    view: 'side', pin: { joint: 'hip', at: [0, -119] }, key: 'a', props: [TREAD],
+    poses: {
+      a: walkUp(STRIKE, 110, TOEOFF, 60, -24),
+      b: walkUp(MIDSTANCE, 98, SWING, 92, 0),
+      c: walkUp(TOEOFF, 60, STRIKE, 110, 24),
+      d: walkUp(SWING, 92, MIDSTANCE, 98, 0),
+    },
+    rep: cyc(['b', 'c', 'd', 'a'], 440, 0), muscles: ['glutes', 'calves', 'hamstrings'],
+  };
+
   /* ------------------------------------------------------------------ moves */
   const MOVES = {};
   // Variant transforms on a rep.
@@ -908,6 +1318,127 @@
   move('mob_child', 'childPose', { ...MOB, name: 'Child\'s pose', range: [30, 45], start: 45, cues: ['Knees wide, sit back on your heels.', 'Reach your arms long.', 'Let your forehead rest.'] });
   move('walk', 'walk', { ...MOB, name: 'Walk', range: [600, 900], start: 720, cues: ['Easy pace, you can talk.', 'Swing your arms.', '10 to 15 minutes.'], mistake: 'Skipping it because it feels too easy.' });
 
+  /* Gym. Every gym move has `gym: true`. Loaded ones carry `ratio`: a conservative novice starting
+     load as a fraction of body weight, for the whole bar or machine stack, per dumbbell for
+     dumbbell moves and per stack for two-handle cable moves. It only pre-fills the weight picker. */
+  const GYM = { gym: true };
+  const G_PRESS = { ...GYM, group: 'chest', joints: ['shoulder', 'elbow', 'wrist'], range: [6, 12], start: 8, mistake: 'Bouncing the weight off your chest.', breathe: 'Breathe in on the way down, out as you press.' };
+  move('bench_bb', 'benchBB', { ...G_PRESS, name: 'Barbell bench press', req: ['bb', 'bench', 'rack'], load: 'bb', ratio: 0.4,
+    cues: ['Shoulder blades pinched, feet planted.', 'Lower the bar to your lower chest.', 'Press up and back over your shoulders.'] });
+  move('bench_db', 'benchDB', { ...G_PRESS, name: 'Dumbbell bench press', req: ['db', 'bench'], load: 'db', ratio: 0.12,
+    cues: ['Dumbbells over your shoulders, palms forward.', 'Lower them to the sides of your chest.', 'Press up until they nearly touch.'], mistake: 'Flaring your elbows straight out to the sides.' });
+  move('press_machine', 'machinePress', { ...G_PRESS, name: 'Machine chest press', req: ['chestPress'], load: 'machine', ratio: 0.3,
+    cues: ['Handles level with your mid-chest.', 'Press out until your arms are straight.', 'Let the handles come back slowly.'], mistake: 'Shrugging your shoulders up as you press.' });
+  move('bench_smith', 'benchSmith', { ...G_PRESS, name: 'Smith machine bench press', req: ['smith', 'bench'], load: 'smith', ratio: 0.35,
+    cues: ['Bench set so the bar lands on your lower chest.', 'Turn the bar off the hooks, lower with control.', 'Press straight up.'] });
+  move('incline_db', 'inclineDB', { ...G_PRESS, name: 'Incline dumbbell press', req: ['db', 'incline'], load: 'db', ratio: 0.1,
+    cues: ['Bench at 30 to 45 degrees.', 'Lower the dumbbells to your upper chest.', 'Press up over your shoulders.'], mistake: 'Arching your back until the incline turns flat.' });
+  move('incline_bb', 'inclineBB', { ...G_PRESS, name: 'Incline barbell press', req: ['bb', 'incline', 'rack'], load: 'bb', ratio: 0.33,
+    cues: ['Bench at 30 to 45 degrees.', 'Lower the bar to just below your collarbones.', 'Press up over your shoulders.'] });
+  move('incline_smith', 'inclineSmith', { ...G_PRESS, name: 'Incline Smith press', req: ['smith', 'incline'], load: 'smith', ratio: 0.3,
+    cues: ['Bench set so the bar lands on your upper chest.', 'Lower with control, elbows under the bar.', 'Press straight up.'] });
+  const G_FLY = { ...GYM, group: 'chest', joints: ['shoulder'], range: [10, 20], start: 12, mistake: 'Bending your elbows more to turn it into a press.', breathe: 'Breathe out as you bring your arms together.' };
+  move('fly_cable', 'cableFly', { ...G_FLY, name: 'Cable fly', req: ['cable'], load: 'cable', ratio: 0.07,
+    cues: ['Pulleys high, one step forward, slight lean.', 'Hug the handles together in front of you.', 'Open wide until your chest stretches.'] });
+  move('fly_pec', 'pecFly', { ...G_FLY, name: 'Pec deck fly', req: ['pecDeck'], load: 'machine', ratio: 0.25,
+    cues: ['Seat set so the handles are at chest height.', 'Sweep the handles together in a wide arc.', 'Let them open until your chest stretches.'] });
+  move('fly_db', 'benchFly', { ...G_FLY, name: 'Dumbbell fly', req: ['db', 'bench'], load: 'db', ratio: 0.07,
+    cues: ['Palms facing, slight bend in your elbows.', 'Open wide until your chest stretches.', 'Hug the weights back up over your chest.'] });
+
+  const G_SQ = { ...GYM, group: 'legs', joints: ['knee', 'hip', 'back'], range: [6, 12], start: 8, mistake: 'Knees caving in on the way up.', breathe: 'Big breath in before you go down, out as you stand.' };
+  move('squat_bb', 'squatBB', { ...G_SQ, name: 'Barbell back squat', req: ['bb', 'rack'], load: 'bb', ratio: 0.45, complex: true,
+    cues: ['Bar on your upper back, brace your core.', 'Sit down between your heels to at least parallel.', 'Drive up, chest and hips rising together.'] });
+  move('squat_smith', 'squatSmith', { ...G_SQ, name: 'Smith machine squat', req: ['smith'], load: 'smith', ratio: 0.4,
+    cues: ['Feet a little in front of the bar.', 'Sit straight down, chest tall.', 'Push the floor away to stand.'] });
+  move('leg_press', 'legPress', { ...G_SQ, name: 'Leg press', req: ['legPress'], load: 'machine', ratio: 0.8, range: [8, 15], start: 10, joints: ['knee', 'hip'],
+    cues: ['Feet shoulder-width, flat on the plate.', 'Lower until your knees are bent to about 90 degrees.', 'Press back up without locking your knees.'],
+    mistake: 'Letting your lower back curl off the pad at the bottom.', breathe: 'Breathe in as you lower, out as you press.' });
+  const G_HG = { ...GYM, group: 'legs', joints: ['back', 'hip'], range: [6, 12], start: 8, mistake: 'Rounding your lower back.', breathe: 'Breathe in and brace before each rep, out at the top.' };
+  move('rdl_bb', 'rdlBB', { ...G_HG, name: 'Romanian deadlift', req: ['bb'], load: 'bb', ratio: 0.5,
+    cues: ['Soft knees, bar against your thighs.', 'Push your hips back, the bar slides down your legs.', 'Stop at a hamstring stretch, then stand tall.'] });
+  move('deadlift_bb', 'deadliftBB', { ...G_HG, name: 'Deadlift', req: ['bb'], load: 'bb', ratio: 0.6, joints: ['back', 'hip', 'knee'], complex: true,
+    cues: ['Bar over your mid-foot, shins touching it.', 'Flat back, push the floor away.', 'Stand tall, then lower it the same way.'] });
+  move('rdl_db', 'rdlDB', { ...G_HG, name: 'Dumbbell Romanian deadlift', req: ['db'], load: 'db', ratio: 0.15,
+    cues: ['Dumbbells at your sides, soft knees.', 'Push your hips back, weights close to your legs.', 'Stop at a hamstring stretch, then stand tall.'] });
+  move('thrust_bb', 'thrustBB', { ...GYM, group: 'legs', joints: ['hip'], name: 'Barbell hip thrust', req: ['bb', 'bench'], load: 'bb', ratio: 0.5, range: [8, 15], start: 10,
+    cues: ['Upper back on the bench, bar padded on your hips.', 'Drive through your heels until your thighs are flat.', 'Chin tucked, squeeze at the top.'],
+    mistake: 'Arching your lower back at the top.', breathe: 'Breathe out as you lift.' });
+  const G_LEG_ISO = { ...GYM, group: 'legs', joints: ['knee'], range: [10, 20], start: 12, load: 'machine' };
+  move('leg_curl', 'legCurl', { ...G_LEG_ISO, name: 'Leg curl', req: ['legCurl'], ratio: 0.2,
+    cues: ['Line your knees up with the machine\'s pivot.', 'Curl your heels down and back as far as they go.', 'Straighten slowly, don\'t let the stack slam.'],
+    mistake: 'Lifting your hips to finish the rep.', breathe: 'Breathe out as you curl.' });
+  move('leg_ext', 'legExt', { ...G_LEG_ISO, name: 'Leg extension', req: ['legExt'], ratio: 0.25,
+    cues: ['Line your knees up with the machine\'s pivot.', 'Straighten your legs and squeeze your thighs.', 'Lower slowly until your knees are bent.'],
+    mistake: 'Kicking the weight up with momentum.', breathe: 'Breathe out as you straighten.' });
+  const G_CALF = { ...GYM, group: 'legs', joints: ['ankle'], range: [10, 20], start: 12, mistake: 'Bouncing at the bottom instead of pausing.', breathe: 'Breathe out as you rise.' };
+  const CALF_CUES = ['Balls of your feet on a plate or step.', 'Rise as high as you can and hold.', 'Lower until your heels drop below the step.'];
+  move('calf_smith', 'calfSmith', { ...G_CALF, name: 'Smith machine calf raise', req: ['smith'], load: 'smith', ratio: 0.5, cues: CALF_CUES });
+  move('calf_db', 'calfDB', { ...G_CALF, name: 'Dumbbell calf raise', req: ['db'], load: 'db', ratio: 0.15, cues: CALF_CUES });
+
+  const G_PULL = { ...GYM, group: 'back', joints: ['shoulder', 'elbow'], range: [6, 12], start: 8, mistake: 'Leaning way back to yank the weight.', breathe: 'Breathe out as you pull.' };
+  move('pulldown', 'pulldown', { ...G_PULL, name: 'Lat pulldown', req: ['pulldown'], load: 'machine', ratio: 0.4,
+    cues: ['Thighs under the pad, hands a bit wider than your shoulders.', 'Pull the bar to your upper chest, elbows to your ribs.', 'Let it rise until your arms are straight.'] });
+  move('row_cable', 'rowCable', { ...G_PULL, name: 'Seated cable row', req: ['cable'], load: 'cable', ratio: 0.35, joints: ['back', 'elbow'],
+    cues: ['Sit tall, knees soft, feet on the plate.', 'Pull the handle to your belly, elbows close.', 'Reach forward until your shoulder blades spread.'], mistake: 'Rocking your whole body back and forth.' });
+  move('row_bb', 'rowBB', { ...G_PULL, name: 'Barbell row', req: ['bb'], load: 'bb', ratio: 0.35, joints: ['back', 'elbow'],
+    cues: ['Hinge until your back is at about 45 degrees.', 'Pull the bar to your lower chest.', 'Lower it with straight arms, back flat.'], mistake: 'Standing up a little more with every rep.' });
+  move('row_chest', 'chestRow', { ...G_PULL, name: 'Chest-supported dumbbell row', req: ['db', 'incline'], load: 'db', ratio: 0.12, joints: ['elbow', 'shoulder'],
+    cues: ['Chest on the incline pad, feet planted.', 'Row the dumbbells to your lower ribs.', 'Lower until your arms hang straight.'], mistake: 'Lifting your chest off the pad to heave the weight.' });
+  const G_REAR = { ...GYM, group: 'back', joints: ['shoulder'], range: [10, 20], start: 12, mistake: 'Shrugging instead of pulling back.', breathe: 'Breathe out as you pull your arms apart.' };
+  move('face_pull', 'facePull', { ...G_REAR, name: 'Face pull', req: ['cable'], load: 'cable', ratio: 0.15,
+    cues: ['Pulley at face height, rope in an overhand grip.', 'Pull to your forehead, hands apart, elbows high.', 'Pause, then let your arms reach forward.'] });
+  move('rev_fly_machine', 'revFlyMachine', { ...G_REAR, name: 'Reverse pec deck', req: ['pecDeck'], load: 'machine', ratio: 0.15,
+    cues: ['Face the pad, handles at shoulder height.', 'Sweep your arms out and back in a wide arc.', 'Bring them back together with control.'] });
+
+  const G_OHP = { ...GYM, group: 'shoulders', joints: ['shoulder', 'elbow'], range: [6, 12], start: 8, mistake: 'Arching your lower back to push the weight up.', breathe: 'Breathe out as you press.' };
+  move('ohp_db', 'seatedPressDB', { ...G_OHP, name: 'Seated dumbbell shoulder press', req: ['db', 'incline'], load: 'db', ratio: 0.1,
+    cues: ['Bench upright, back flat against it.', 'Press the dumbbells straight up overhead.', 'Lower to ear height, elbows under your wrists.'] });
+  move('ohp_bb', 'ohpBB', { ...G_OHP, name: 'Overhead press', req: ['bb', 'rack'], load: 'bb', ratio: 0.3, joints: ['shoulder', 'elbow', 'back'],
+    cues: ['Bar on your front shoulders, grip just outside them.', 'Press straight up, head back, then through.', 'Lock out overhead, glutes squeezed.'], mistake: 'Leaning back to push the bar up.' });
+  move('press_shoulder_machine', 'machineShoulder', { ...G_OHP, name: 'Machine shoulder press', req: ['shoulderPress'], load: 'machine', ratio: 0.25,
+    cues: ['Seat set so the handles start at shoulder height.', 'Press up until your arms are straight.', 'Lower slowly back to your shoulders.'] });
+  move('raise_cable', 'cableRaise', { ...GYM, group: 'shoulders', joints: ['shoulder'], name: 'Cable lateral raise', req: ['cable'], load: 'cable', ratio: 0.04, range: [10, 20], start: 12, uni: true,
+    cues: ['Pulley low, the cable crossing in front of you.', 'Raise your arm out to shoulder height.', 'Lower slowly, keep tension at the bottom.'], mistake: 'Swinging your body to lift the weight.', breathe: 'Breathe out as you raise.' });
+
+  const G_CURL = { ...GYM, group: 'biceps', joints: ['elbow', 'wrist'], mistake: 'Swinging the weight up with your back.', breathe: 'Breathe out as you curl.' };
+  move('curl_bb', 'curlBar', { ...G_CURL, name: 'Barbell curl', req: ['ez|bb'], load: 'ez|bb', ratio: 0.2, range: [8, 15], start: 10,
+    cues: ['Hands shoulder-width, palms up.', 'Curl the bar up, elbows pinned to your sides.', 'Lower until your arms are straight.'] });
+  move('curl_incline', 'inclineCurl', { ...G_CURL, name: 'Incline dumbbell curl', req: ['db', 'incline'], load: 'db', ratio: 0.07, range: [10, 20], start: 12,
+    cues: ['Lie back on a 45 to 60 degree incline.', 'Arms hang straight down, palms forward.', 'Curl up without moving your elbows forward.'], mistake: 'Letting your elbows swing forward.' });
+  move('curl_cable', 'curlCable', { ...G_CURL, name: 'Cable curl', req: ['cable'], load: 'cable', ratio: 0.15, range: [10, 20], start: 12,
+    cues: ['Pulley low, stand close to it.', 'Curl the bar up, elbows pinned to your sides.', 'Lower until your arms are straight.'] });
+  const G_TRI = { ...GYM, group: 'triceps', joints: ['elbow'], mistake: 'Letting your elbows drift forward or flare out.', breathe: 'Breathe out as you straighten your arms.' };
+  move('pushdown_cable', 'pushdownCable', { ...G_TRI, name: 'Rope pushdown', req: ['cable'], load: 'cable', ratio: 0.2, range: [10, 20], start: 12,
+    cues: ['Elbows pinned to your sides.', 'Push down and spread the rope at the bottom.', 'Let your forearms rise just past parallel.'] });
+  move('oh_ext_cable', 'ohCable', { ...G_TRI, name: 'Overhead cable extension', req: ['cable'], load: 'cable', ratio: 0.15, range: [10, 20], start: 12, joints: ['elbow', 'shoulder'],
+    cues: ['Face away from the cable, rope behind your head.', 'Upper arms by your ears, straighten your arms.', 'Let your hands come back until your triceps stretch.'] });
+  move('skull_ez', 'skullEZ', { ...G_TRI, name: 'Skull crusher', req: ['ez|bb', 'bench'], load: 'ez|bb', ratio: 0.15, range: [8, 15], start: 10,
+    cues: ['Upper arms still, tilted slightly back.', 'Bend your elbows to lower the bar to your forehead.', 'Straighten your arms without flaring your elbows.'] });
+  move('cg_bench', 'closeGrip', { ...G_TRI, name: 'Close-grip bench press', req: ['bb', 'bench', 'rack'], load: 'bb', ratio: 0.35, range: [6, 12], start: 8, joints: ['elbow', 'shoulder', 'wrist'],
+    cues: ['Hands shoulder-width on the bar.', 'Lower to your lower chest, elbows close to your sides.', 'Press up and lock out.'], mistake: 'Gripping so narrow your wrists bend.' });
+  move('dip_bar', 'dipBars', { ...G_TRI, name: 'Parallel bar dip', req: ['dip'], load: null, range: [4, 12], start: 6, joints: ['shoulder', 'elbow', 'wrist'],
+    cues: ['Lock your arms out, shoulders down.', 'Lower until your upper arms are level with the bars.', 'Press back up, leaning slightly forward.'],
+    mistake: 'Dropping so low your shoulders roll forward.', breathe: 'Breathe in on the way down, out as you push up.' });
+
+  const G_AB = { ...GYM, group: 'abs', joints: ['back'], range: [10, 20], start: 12, breathe: 'Breathe out as you crunch.' };
+  move('cable_crunch', 'cableCrunch', { ...G_AB, name: 'Cable crunch', req: ['cable'], load: 'cable', ratio: 0.3,
+    cues: ['Kneel facing the cable, rope beside your head.', 'Curl your ribs down toward your hips.', 'Hips stay still, roll back up slowly.'], mistake: 'Sitting back and pulling with your arms.' });
+  move('hang_knee', 'hangKnee', { ...G_AB, name: 'Hanging knee raise', req: ['bar'], load: null, range: [8, 15], start: 10, joints: ['shoulder', 'back'],
+    cues: ['Hang with straight arms, shoulders active.', 'Bring your knees up past your hips.', 'Lower slowly without swinging.'], mistake: 'Swinging your legs for momentum.', breathe: 'Breathe out as your knees come up.' });
+  move('pallof', 'pallof', { ...G_AB, name: 'Pallof press', req: ['cable|band'], load: 'cable|band', ratio: 0.1, range: [8, 15], start: 10, uni: true,
+    cues: ['Stand side-on, handle at your chest.', 'Press straight out and hold, don\'t let it turn you.', 'Bring it back to your chest with control.'],
+    mistake: 'Letting your hips and shoulders twist toward the cable.', breathe: 'Breathe out as you press, keep breathing in the hold.' });
+
+  const G_COND = { ...GYM, group: 'conditioning', joints: [], load: null, timed: true, range: [20, 40], start: 20, mistake: 'Going so hard in the first round that you fade.', breathe: 'Keep breathing, don\'t hold it.' };
+  move('rower_int', 'rower', { ...G_COND, name: 'Rower intervals', req: ['rower'], joints: ['back'],
+    cues: ['Legs, then lean back, then arms.', 'Arms, lean forward, then slide in.', 'Drive hard, recover slowly.'], mistake: 'Pulling with your arms before your legs finish.' });
+  move('bike_int', 'bike', { ...G_COND, name: 'Bike intervals', req: ['bike'], joints: ['knee'],
+    cues: ['Seat at hip height, knee slightly bent at the bottom.', 'Spin fast against real resistance.', 'Easy spin in the rest.'] });
+  move('incline_walk', 'inclineWalk', { ...G_COND, name: 'Incline walk', req: ['treadmill'], range: [30, 60], start: 30, joints: ['ankle'],
+    cues: ['Steep incline, brisk walking pace.', 'Stand tall and let your arms swing.', 'Hands off the rails.'], mistake: 'Holding the rails and leaning back.' });
+  // Starting loads for the home moves the gym pools reuse (per dumbbell or kettlebell).
+  for (const [id, r] of Object.entries({ sq_goblet: 0.2, gl_thrust: 0.2, row_db: 0.12, rear_fly: 0.05, raise: 0.06, curl_std: 0.08 })) MOVES[id].ratio = r;
+
   /* ------------------------------------------------------------------ ladders */
   // Rungs are listed easiest → hardest; each user only sees the rungs their equipment allows.
   const LADDERS = {
@@ -927,6 +1458,27 @@
     coreRot: { name: 'Rotation', group: 'abs', rungs: ['rot_russian', 'rot_chop', 'rot_russian_up', 'rot_kneel_chop', 'rot_slam', 'rot_toss'] },
     coreSide: { name: 'Side core', group: 'abs', rungs: ['side_knee', 'side_carry', 'side_plank', 'side_march', 'side_star'] },
     finisher: { name: 'Finishers', group: 'conditioning', rungs: ['fin_march', 'fin_pulse', 'fin_toss', 'fin_swing', 'fin_climbers', 'fin_jacks', 'fin_slam', 'fin_burpee', 'fin_swing1'] },
+    // Gym pools (gym: true): preference-ordered, not easiest → hardest. The first allowed move is
+    // used and its load progresses; a stall rotates to the next allowed one. Some reuse home moves,
+    // which keep their home `family`.
+    pressG: { name: 'Chest press', group: 'chest', gym: true, rungs: ['bench_bb', 'bench_db', 'press_machine', 'bench_smith'] },
+    inclineG: { name: 'Incline press', group: 'chest', gym: true, accessory: true, rungs: ['incline_db', 'incline_bb', 'incline_smith'] },
+    flyG: { name: 'Chest fly', group: 'chest', gym: true, iso: true, rungs: ['fly_cable', 'fly_pec', 'fly_db'] },
+    squatG: { name: 'Squat', group: 'legs', gym: true, rungs: ['squat_bb', 'squat_smith', 'leg_press', 'sq_goblet'] },
+    hingeG: { name: 'Hinge', group: 'legs', gym: true, rungs: ['rdl_bb', 'deadlift_bb', 'rdl_db'] },
+    gluteG: { name: 'Hip thrust', group: 'legs', gym: true, accessory: true, rungs: ['thrust_bb', 'gl_thrust'] },
+    legCurlG: { name: 'Leg curl', group: 'legs', gym: true, iso: true, rungs: ['leg_curl'] },
+    legExtG: { name: 'Leg extension', group: 'legs', gym: true, iso: true, rungs: ['leg_ext'] },
+    calfG: { name: 'Calves', group: 'legs', gym: true, iso: true, rungs: ['calf_smith', 'calf_db'] },
+    pullG: { name: 'Pulldown', group: 'back', gym: true, rungs: ['pulldown', 'pull_up', 'pull_neg'] },
+    rowG: { name: 'Row', group: 'back', gym: true, rungs: ['row_cable', 'row_bb', 'row_chest', 'row_db'] },
+    rearG: { name: 'Rear delts', group: 'back', gym: true, accessory: true, rungs: ['face_pull', 'rev_fly_machine', 'rear_fly'] },
+    ohpG: { name: 'Overhead press', group: 'shoulders', gym: true, rungs: ['ohp_db', 'ohp_bb', 'press_shoulder_machine'] },
+    raiseG: { name: 'Lateral raise', group: 'shoulders', gym: true, iso: true, rungs: ['raise_cable', 'raise'] },
+    curlG: { name: 'Biceps', group: 'biceps', gym: true, rungs: ['curl_bb', 'curl_incline', 'curl_cable', 'curl_std'] },
+    triG: { name: 'Triceps', group: 'triceps', gym: true, rungs: ['pushdown_cable', 'oh_ext_cable', 'skull_ez', 'cg_bench', 'dip_bar'] },
+    absG: { name: 'Core', group: 'abs', gym: true, rungs: ['cable_crunch', 'hang_knee', 'pallof'] },
+    cardioG: { name: 'Cardio', group: 'conditioning', gym: true, rungs: ['rower_int', 'bike_int', 'incline_walk'] },
   };
   // The rotation ladder ends in either a slam or a toss, never both for one person.
   LADDERS.coreRot.exclusive = [['rot_slam', 'rot_toss']];
@@ -958,6 +1510,25 @@
       case 'towel': return eq.towel !== false;
       case 'table': return !!eq.table;
       case 'door': return !!eq.door;
+      // Gym (simple booleans; gym dumbbells use the `db` list above).
+      case 'bb': return !!eq.bb;
+      case 'ez': return !!eq.ez;
+      case 'rack': return !!eq.rack;
+      case 'bench': return !!(eq.bench || eq.benchIncline); // an adjustable bench lies flat too
+      case 'incline': return !!eq.benchIncline;
+      case 'smith': return !!eq.smith;
+      case 'cable': return !!eq.cable;
+      case 'pulldown': return !!eq.pulldown;
+      case 'legPress': return !!eq.legPress;
+      case 'legCurl': return !!eq.legCurl;
+      case 'legExt': return !!eq.legExt;
+      case 'chestPress': return !!eq.chestPress;
+      case 'shoulderPress': return !!eq.shoulderPress;
+      case 'pecDeck': return !!eq.pecDeck;
+      case 'dip': return !!eq.dip;
+      case 'rower': return !!eq.rower;
+      case 'bike': return !!eq.bike;
+      case 'treadmill': return !!eq.treadmill;
       default: return false;
     }
   }
@@ -965,9 +1536,10 @@
     return (m.req || []).every((alt) => alt.split('|').some((k) => has(eq, k)));
   }
   // Which equipment actually loads this move for this person (heaviest available wins).
+  // 'machine' is the machine the move requires, so it loads whenever the move is allowed.
   function loadFor(m, eq) {
     if (!m.load) return null;
-    for (const k of m.load.split('|')) if (has(eq, k)) return k;
+    for (const k of m.load.split('|')) if (k === 'machine' ? allowed(m, eq) : has(eq, k)) return k;
     return null;
   }
   // The rungs of a ladder this person can do, in order (slam vs toss resolved by equipment).
@@ -984,11 +1556,14 @@
     if (o.avoidJoints && o.avoidJoints.length) rungs = rungs.filter((id) => !(MOVES[id].joints || []).some((j) => o.avoidJoints.includes(j)));
     return rungs;
   }
-  // A move with its drawn equipment switched to what this person has.
+  // A move with its drawn equipment (and props, e.g. a band on a door instead of a cable tower)
+  // switched to what this person has.
   function forPerson(m, eq) {
     const load = loadFor(m, eq);
-    if (!load || !m.equipBy || !m.equipBy[load]) return m;
-    return Object.assign({}, m, { equip: m.equipBy[load], $flat: undefined, $tl: undefined });
+    const equip = load && m.equipBy && m.equipBy[load];
+    const props = load && m.propsBy && m.propsBy[load];
+    if (!equip && !props) return m;
+    return Object.assign({}, m, equip ? { equip } : {}, props ? { props } : {}, { $flat: undefined, $tl: undefined });
   }
   // Seconds per rep from the animation timeline (unilateral moves double it in the brain).
   function secPerRep(m) {

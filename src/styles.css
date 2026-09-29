@@ -30,6 +30,24 @@
 .fig .eq-towel { stroke: var(--label-secondary); stroke-width: 4; }
 .fig .fig-ghost { opacity: .2; }
 [data-theme^="dark"] .fig { --fig-muscle: color-mix(in srgb, var(--hue-amber) 70%, #ffd9a8); }
+/* Gym equipment and machines (widths come from the shapes). */
+.fig { --fig-pad: color-mix(in srgb, var(--label) 16%, var(--fig-bg, var(--bg-raised))); }
+.fig .fig-frame { stroke: var(--label-secondary); }
+.fig .fig-pad-o { stroke: var(--label-secondary); }
+.fig .fig-pad-f { stroke: var(--fig-pad); }
+.fig .fig-padrect, .fig .fig-roller { fill: var(--fig-pad); stroke: var(--label-secondary); stroke-width: 1.3; }
+.fig .fig-cable { stroke: var(--label-secondary); }
+.fig .fig-pulley { fill: var(--fig-bg, var(--bg-raised)); stroke: var(--label-secondary); stroke-width: 1.6; }
+.fig .fig-stack { fill: color-mix(in srgb, var(--label) 24%, transparent); stroke: var(--label-secondary); stroke-width: 1.2; }
+.fig .fig-hook { fill: none; stroke: var(--label); stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
+.fig .eq-plate-disc { fill: color-mix(in srgb, var(--label) 10%, var(--fig-bg, var(--bg-raised))); stroke: var(--label); stroke-width: 2; }
+.fig .eq-plate-hub { fill: none; stroke: var(--label); stroke-width: 1.2; }
+.fig .eq-bar-end { fill: var(--label); stroke: var(--fig-bg, var(--bg-raised)); stroke-width: .9; }
+.fig .eq-rope { stroke: var(--label); stroke-width: 3; }
+.fig .eq-knob { fill: var(--label); }
+.fig .eq-dhandle { fill: none; stroke: var(--label); stroke-width: 2.2; stroke-linejoin: round; }
+.fig .eq-lever { stroke: var(--label-secondary); }
+.fig .eq-grip { stroke: var(--label); }
 /* @figure-end */
 
 /* ================================================================== app shell */
