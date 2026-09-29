@@ -36,7 +36,7 @@
 /* The gaps between muscles are the body's own colour, so the figure reads as one shape on any surface. */
 .bm-m path { fill: var(--f); stroke: var(--bm-body); stroke-width: 1.5; stroke-linejoin: round; transition: fill 560ms var(--ease-out-soft) calc(var(--y, 0) * 280ms); }
 /* The top step glows a little on a dark surface. */
-.bm-m[data-l="5"] path { filter: drop-shadow(0 0 3px var(--bm-glow)); }
+[data-theme^="dark"] .bm-m[data-l="5"] path { filter: drop-shadow(0 0 3px var(--bm-glow)); }
 .bm-m.is-focus path { stroke: var(--focus-ring); stroke-width: 2.4; }
 /* On the Progress screen the muscles fill in from the head down. */
 .bm-card .bm-m path { animation: bm-in 760ms var(--ease-out-soft) backwards; animation-delay: calc(80ms + var(--y, 0) * 460ms); }

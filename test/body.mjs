@@ -149,6 +149,22 @@ S.profile.units = 'lb';
 imp = Y.improved(S, D, 12);
 check('in pounds, to the pound', imp.lines.find((l) => l.kind === 'max').text === 'Barbell bench press 132 → 160 lb', imp.lines.map((l) => l.text));
 
+section('Level-ups that name their ladder');
+S = person();
+S.prog.push = { rung: 'push_std', reps: 12, best: {} };
+workout(S, D - 5, [item('push_knee', [12], { outcome: 'up' })], { celebrate: [{ kind: 'level', fam: 'push', text: 'Push-up ladder: level 4 of 8' }] });
+imp = Y.improved(S, D, 4);
+check('a celebration with its family is used as is', imp.lines.some((l) => l.kind === 'level' && l.text === 'Push-ups level 3 → 4'), imp.lines.map((l) => l.text));
+workout(S, D - 4, [item('push_std', [12], { outcome: 'up' })], { celebrate: [{ kind: 'level', text: 'Something else entirely' }, { kind: 'pr', text: 'New best: 12 push-up' }, null] });
+check('text it can\'t read is skipped, not guessed', Y.improved(S, D, 4).lines.filter((l) => l.kind === 'level').length === 1);
+
+section('Odd logs');
+S = person();
+S.log.push({ type: 'workout', day: D - 1, checkedIn: true }, { type: 'workout', day: D - 2, checkedIn: true, items: [null, { kind: 'move', moveId: 'no_such_move', sets: [{ set: 0, amount: 10 }] }, { kind: 'move', moveId: 'push_std' }] }, { type: 'light', day: D - 3, walk: true });
+let ok = true;
+try { Y.trained(S, D, 4); Y.improved(S, D, 4); Y.muscle(S, D, 4, 'chest'); } catch (e) { ok = false; console.log(e); }
+check('missing items, unknown moves and items without sets don\'t break anything', ok && Y.trained(S, D, 4).sum === 0);
+
 section('Empty and quiet');
 imp = Y.improved(person(), D, 4);
 check('no history: no lines, scores, most or least', !imp.lines.length && !Object.keys(imp.score).length && !imp.most.length && !imp.least.length && imp.max === 0);

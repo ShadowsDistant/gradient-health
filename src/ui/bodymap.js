@@ -92,26 +92,29 @@
     return d + 'Z';
   }
   const mirror = (pts) => pts.map((p) => [200 - p[0], p[1], p[2]]).reverse();
-  const both = (pts) => [smooth(pts), smooth(mirror(pts))];
 
-  // Path data, worked out once: the silhouette and each muscle's shapes per view, with the
-  // vertical middle of each muscle (0 top to 1 bottom) for the top-to-bottom fill sweep.
+  // Path data, worked out once: the silhouette and each muscle's shapes per view (each with its
+  // bounding box, so a crop only carries what it shows), and the vertical middle of each muscle
+  // (0 top to 1 bottom) for the top-to-bottom fill sweep.
+  const box = (pts) => { const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; };
+  const parts = (pts, mid) => (mid ? [pts] : [pts, mirror(pts)]).map((p) => ({ d: smooth(p), box: box(p) }));
   let GEO = null;
   function geometry() {
     if (GEO) return GEO;
-    const body = BODY.flatMap((s) => (s.mid ? [smooth(s.pts)] : both(s.pts)));
+    const body = BODY.flatMap((s) => parts(s.pts, s.mid));
     GEO = {};
     for (const [view, shapes] of Object.entries(VIEWS)) {
       GEO[view] = { body, muscles: [] };
       for (const [m, list] of Object.entries(shapes)) {
         const ys = list.flat().map((p) => p[1]);
         const y = ((Math.min(...ys) + Math.max(...ys)) / 2 - TOP) / HEIGHT;
-        GEO[view].muscles.push({ m, y: Math.round(y * 100) / 100, d: list.flatMap(both) });
+        GEO[view].muscles.push({ m, y: Math.round(y * 100) / 100, parts: list.flatMap((pts) => parts(pts)) });
       }
       GEO[view].muscles.sort((a, b) => a.y - b.y);
     }
     return GEO;
   }
+  const paths = (list, crop) => list.filter((p) => !crop || (p.box[2] > crop[0] && p.box[0] < crop[2] && p.box[3] > crop[1] && p.box[1] < crop[3])).map((p) => `<path d="${p.d}"/>`).join('');
 
   /* ---------------------------------------------------------------- markup */
   const NAMES = { chest: 'Chest', abs: 'Abs', obliques: 'Obliques', upperBack: 'Upper back', lats: 'Lats', lowerBack: 'Lower back', glutes: 'Glutes', hipFlexors: 'Hip flexors', quads: 'Quads', hamstrings: 'Hamstrings', calves: 'Calves', biceps: 'Biceps', triceps: 'Triceps', forearms: 'Forearms', frontDelts: 'Front delts', sideDelts: 'Side delts', rearDelts: 'Rear delts' };
@@ -130,8 +133,8 @@
     const act = o.act === false ? '' : ` data-act="${o.act || 'muscleOpen'}"`;
     return `<figure class="bm-view" data-view="${view}">
       <svg class="bm-fig" viewBox="${VIEWBOX}" aria-hidden="true" focusable="false">
-        <g class="bm-body">${g.body.map((d) => `<path d="${d}"/>`).join('')}</g>
-        ${g.muscles.map((x) => `<g class="bm-m" data-muscle="${x.m}" data-l="${levels[x.m] || 0}"${act} data-arg="${x.m}" style="--y:${x.y}">${x.d.map((d) => `<path d="${d}"/>`).join('')}</g>`).join('')}
+        <g class="bm-body">${paths(g.body)}</g>
+        ${g.muscles.map((x) => `<g class="bm-m" data-muscle="${x.m}" data-l="${levels[x.m] || 0}"${act} data-arg="${x.m}" style="--y:${x.y}">${paths(x.parts)}</g>`).join('')}
       </svg>
       ${o.captions === false ? '' : `<figcaption class="bm-cap t-caption">${view === 'front' ? 'Front' : 'Back'}</figcaption>`}
     </figure>`;
@@ -169,14 +172,15 @@
     const g = geometry()[view];
     const v = values || {};
     const max = Math.max(0, ...Object.values(v).filter((n) => isFinite(n)));
+    const crop = [x - 2, y - 2, x + s + 2, y + s + 2];
     return `<span class="bm bm-thumb rf-list-thumb" data-mode="${U.esc(mode || 'improved')}" aria-hidden="true"><svg viewBox="${x} ${y} ${s} ${s}" focusable="false">
-      <g class="bm-body">${g.body.map((d) => `<path d="${d}"/>`).join('')}</g>
-      ${g.muscles.map((m) => `<g class="bm-m" data-l="${levelOf(v[m.m], max)}">${m.d.map((d) => `<path d="${d}"/>`).join('')}</g>`).join('')}
+      <g class="bm-body">${paths(g.body, crop)}</g>
+      ${g.muscles.map((m) => { const d = paths(m.parts, crop); return d ? `<g class="bm-m" data-l="${levelOf(v[m.m], max)}">${d}</g>` : ''; }).join('')}
     </svg></span>`;
   };
 
   // A progress line for display: "4 → 5" and "20 reps" never break across lines.
-  U.progressText = (s) => U.esc(String(s || '').replace(/ → /g, ' → ').replace(/(\d) (reps?|lb|kg|s|levels?)\b/g, '$1 $2'));
+  U.progressText = (s) => U.esc(String(s || '').replace(/ → /g, '\u00a0→\u00a0').replace(/(\d) (reps?|lb|kg|s|levels?)\b/g, '$1\u00a0$2'));
 
   /* ---------------------------------------------------------------- interaction */
   // What the map shows, shared by the Progress screen and the muscle sheet.
@@ -243,11 +247,9 @@
   };
 
   function muscleBody(x, mode) {
-    const S = U.S;
     const view = viewOf(x.id);
     const lit = {}; lit[x.id] = 1;
     const range = rangeText(x.weeks);
-    const ups = x.lines.filter((l) => l.dir > 0);
     const sets = [setsText(x.sets).split(' ')[0], `${x.sets === 1 ? 'set' : 'sets'} in the ${range}`];
     const share = [x.sets ? `${Math.round(x.share * 100)}%` : '–', x.rank ? `of your training · ${x.rank === 1 ? 'the most' : `${ordinal(x.rank)} most`}` : 'of your training'];
     const went = [String(x.ups), x.ups === 1 ? 'time it went up' : 'times it went up'];
@@ -262,14 +264,14 @@
     return `<div class="ms" data-mode="${U.esc(mode)}">
       <div class="ms-hero">
         <span class="bm ms-fig" data-mode="${U.esc(mode)}" aria-hidden="true"><svg viewBox="${VIEWBOX}" focusable="false">
-          <g class="bm-body">${geometry()[view].body.map((d) => `<path d="${d}"/>`).join('')}</g>
-          ${geometry()[view].muscles.map((m) => `<g class="bm-m" data-l="${lit[m.m] ? 5 : 0}">${m.d.map((d) => `<path d="${d}"/>`).join('')}</g>`).join('')}
+          <g class="bm-body">${paths(geometry()[view].body)}</g>
+          ${geometry()[view].muscles.map((m) => `<g class="bm-m" data-l="${lit[m.m] ? 5 : 0}">${paths(m.parts)}</g>`).join('')}
         </svg></span>
         <dl class="ms-facts">${facts.map(([v, t]) => `<div class="ms-fact"><dt class="t-footnote rf-muted">${U.esc(t)}</dt><dd class="t-title-2 rf-num">${U.esc(v)}</dd></div>`).join('')}</dl>
       </div>
       ${weekBars(x)}
       ${lines ? `<h3 class="rf-list-header">Progress, ${U.esc(range)}</h3><ul class="rf-list">${lines}</ul>${counts ? `<p class="rf-list-footer">${U.esc(U.cap(counts))} for exercises that train it.</p>` : ''}`
-        : `<p class="ms-note t-callout rf-muted">${x.sets ? (ups.length ? '' : `No change to show in the ${range} yet. Progress shows up as your reps, weights and levels go up.`) : `Not trained in the ${range}.`}</p>`}
+        : `<p class="ms-note t-callout rf-muted">${x.sets ? `No change to show in the ${range} yet. Progress shows up as your reps, weights and levels go up.` : `Not trained in the ${range}.`}</p>`}
       ${moves ? `<h3 class="rf-list-header">What trained it</h3><ul class="rf-list">${moves}</ul>
         <p class="rf-list-footer">A set counts in full for the muscle an exercise works most and half for the ones that help. Warm-ups and stretches don't count.</p>` : ''}
       ${U.act.tailorPlan && !(GH.body.MINOR || []).includes(x.id) ? `<div class="ms-actions"><button type="button" class="rf-btn" data-variant="tinted" data-size="lg" data-act="tailorPlan" data-arg="${U.esc(x.id)}">${U.icon('plus-circle')}Train this more</button></div>` : ''}
@@ -278,6 +280,10 @@
   U.muscleSheet = (m) => {
     if (!GH.body || !U.S) return null;
     const x = GH.body.muscle(U.S, U.today(), U.bodyView.weeks, m);
-    return U.sheet({ title: x.name, size: 'auto', cls: 'ms-sheet', body: muscleBody(x, U.bodyView.mode) });
+    // "Train this more" closes the sheet first, so what Tailor my plan opens isn't underneath it.
+    return U.sheet({
+      title: x.name, size: 'auto', cls: 'ms-sheet', body: muscleBody(x, U.bodyView.mode),
+      after: (ctl) => ctl.el.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-act="tailorPlan"]')) ctl.close('ok'); }),
+    });
   };
 })(typeof window !== 'undefined' ? window : globalThis);

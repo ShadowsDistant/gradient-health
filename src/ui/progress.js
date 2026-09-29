@@ -47,6 +47,10 @@
       take = clause('Most', imp.most.slice(0, 2)) + SEP + clause('Least', imp.least.slice(0, 1));
       target = imp.least[0];
     } else take = t.sum ? `No progress to show in the ${rangeText(weeks)} yet. It shows up here as your reps, weights and levels go up.` : 'Progress shows up here as your reps, weights and levels go up.';
+    // Offer to train the least one more only when it's clearly behind, not in an even split.
+    const main = Y().MUSCLES.filter((m) => !Y().MINOR.includes(m));
+    const mean = main.reduce((a, m) => a + (t.sets[m] || 0), 0) / main.length;
+    if (target && (mode === 'trained' ? (t.sets[target] || 0) >= mean / 2 : (imp.score[target] || 0) > imp.max / 4)) target = null;
     const more = target && U.act.tailorPlan
       ? `<button type="button" class="rf-btn bm-more" data-variant="tinted" data-act="tailorPlan" data-arg="${U.esc(target)}">${U.icon('plus-circle')}Train ${U.esc(lower(target))} more</button>` : '';
     return `<div class="card bm-card" data-key="body" data-mode="${mode}">
