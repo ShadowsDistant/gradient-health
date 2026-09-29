@@ -724,6 +724,8 @@
       if (U.S.active && U.resumePrompt) U.resumePrompt();
       U.syncHealth('boot');
       if (U.afterBoot) safe(() => U.afterBoot());
+      // Warm up the 3D figure while the phone is idle, so the first workout doesn't wait for it.
+      if (U.S.profile.workouts !== false && U.preloadFigure) setTimeout(() => safe(() => U.preloadFigure()), 4000);
     }
     lastDay = U.today();
     setInterval(() => {

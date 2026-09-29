@@ -72,6 +72,7 @@
             ${pr.haptics !== false ? `<li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Haptic strength</span></span>${U.seg('setHaptic', [['light', 'Light'], ['medium', 'Medium'], ['strong', 'Strong']], pr.hapticStrength || 'medium', 'Haptic strength', ' data-on="setHapticStrength"')}</div></li>` : ''}
             ${U.sw('Supersets', pr.supersets !== false, 'data-on="setPref" data-k="supersets"', 'Pair exercises that don\'t share muscles')}
             <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Rest between sets</span><span class="rf-list-sub">Auto: 90 s after big moves, 60 s after small ones and in supersets</span></span>${U.seg('setRest', [['auto', 'Auto'], ['60', '60 s'], ['90', '90 s']], String(pr.rest), 'Rest between sets', ' data-on="setRest"')}</div></li>
+            ${workouts ? figureRows(pr) : ''}
           </ul>
           <h3 class="rf-list-header">Look</h3>
           <ul class="rf-list">
@@ -101,6 +102,42 @@
       if (el) setTimeout(() => el.scrollIntoView({ block: 'start', behavior: U.reduced() ? 'auto' : 'smooth' }), 60);
     },
   };
+
+  /* ---------------------------------------------------------------- exercise figure */
+  // Skin tones and shirt colours for the 3D figure (the names are for screen readers).
+  const SKINS = [['porcelain', '#efcfbc', 'Light'], ['sand', '#d9a982', 'Medium light'], ['olive', '#b17c4e', 'Medium'], ['umber', '#7d4c2d', 'Medium dark'], ['ebony', '#482c1c', 'Dark']];
+  const SHIRTS = [['#3b5bdb', 'Blue'], ['#0c8599', 'Teal'], ['#2b8a3e', 'Green'], ['#c92a2a', 'Red'], ['#343a40', 'Charcoal']];
+  function figureRows(pr) {
+    const can = !U.figure3dOk || U.figure3dOk() || pr.figure === 'flat';
+    const is3d = (pr.figure || '3d') === '3d' && can;
+    const sub = !can ? 'This phone can\'t draw 3D, so it uses the simple figure' : is3d ? 'A lifelike person. Drag it to turn it around.' : 'A flat outline that\'s lighter on the battery';
+    const swatches = (act, list, cur, label) => `<div class="swatches" role="group" aria-label="${label}">${list.map(([v, hex, name]) => `<button type="button" class="swatch" data-act="${act}" data-arg="${v}" aria-label="${U.esc(name || hex)}" aria-pressed="${v === cur ? 'true' : 'false'}" style="--sw:${hex}"></button>`).join('')}</div>`;
+    return `<li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Exercise figure</span><span class="rf-list-sub">${sub}</span></span>${can ? U.seg('setFigure', [['3d', '3D'], ['flat', 'Simple']], is3d ? '3d' : 'flat', 'Exercise figure', ' data-on="setFigure"') : ''}</div></li>
+      ${is3d ? `<li><div class="rf-list-row set-fig-row"><div class="set-fig" aria-hidden="true">${figPreview(pr)}</div><div class="set-fig-pick">
+        <span class="rf-list-title">Skin tone</span>${swatches('setFigSkin', SKINS.map(([v, hex, n]) => [v, hex, n]), pr.figSkin || 'sand', 'Skin tone')}
+        <span class="rf-list-title">Shirt</span>${swatches('setFigShirt', SHIRTS.map(([hex, n]) => [hex, hex, n]), pr.figShirt || SHIRTS[0][0], 'Shirt colour')}
+      </div></div></li>` : ''}`;
+  }
+  // A still of the figure in the chosen look, drawn once the 3D chunk is loaded.
+  let previewWait = false;
+  function figPreview(pr) {
+    const f = GH.figure3d;
+    const m = GH.moves.MOVES.curl_std || GH.moves.MOVES.sq_bw;
+    if (f && m) {
+      const dpr = Math.min(2, G.devicePixelRatio || 1);
+      const url = f.still(m, { width: 96 * dpr, height: 120 * dpr, dark: String(GH.platform.currentTheme()).startsWith('dark'), skin: pr.figSkin || 'sand', shirt: pr.figShirt || undefined });
+      if (url) return `<img src="${url}" alt="" width="96" height="120">`;
+      return '';
+    }
+    if (!previewWait && GH.lazy) {
+      previewWait = true;
+      GH.lazy('figure3d').then(() => { previewWait = false; if (U.route.view === 'settings') U.render(); }).catch(() => { previewWait = false; });
+    }
+    return '<span class="set-fig-wait"></span>';
+  }
+  U.on.setFigure = (el, ev, v) => { U.S.profile.prefs.figure = v; U.save(); U.render(); };
+  U.act.setFigSkin = (el) => { U.S.profile.prefs.figSkin = el.dataset.arg; U.save(); U.render(); };
+  U.act.setFigShirt = (el) => { U.S.profile.prefs.figShirt = el.dataset.arg; U.save(); U.render(); };
 
   /* ---------------------------------------------------------------- what you track */
   const FOOD_SUB = { off: 'Nothing about food', protein: 'A protein goal with one-tap logging', full: 'Calories, macros and meals, with a protein goal' };

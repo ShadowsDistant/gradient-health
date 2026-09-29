@@ -91,6 +91,99 @@
   U.act.plMin = () => U.playerBack();
 
   /* ---------------------------------------------------------------- figures */
+  // The 3D figure (a lazy three.js chunk) when the phone has WebGL and it's picked in Settings, else
+  // the flat one. Callers hold a controller that swaps its figure underneath: flat while the chunk
+  // loads the first time, 3D once it's there, and flat again if the GPU gives up.
+  const want3d = () => (U.S.profile.prefs.figure || '3d') === '3d';
+  function load3d() {
+    if (!want3d() || !GH.lazy) return Promise.resolve(null);
+    return GH.lazy('figure3d').catch(() => null);
+  }
+  U.preloadFigure = () => load3d().then((f) => (f && f.preload ? f.preload() : false));
+  // Whether 3D can be drawn here: asks the chunk once it's loaded, else checks for WebGL 2 itself.
+  let gl2 = null;
+  function hasGl2() {
+    if (GH.figure3d) return GH.figure3d.supported();
+    if (gl2 == null) {
+      try {
+        const g = document.createElement('canvas').getContext('webgl2');
+        gl2 = !!g;
+        const lose = g && g.getExtension('WEBGL_lose_context');
+        if (lose) lose.loseContext();
+      } catch (e) { gl2 = false; }
+    }
+    return gl2;
+  }
+  U.figure3dOk = () => want3d() && hasGl2();
+  function look() {
+    const pr = U.S.profile.prefs;
+    return { dark: String(P2().currentTheme()).startsWith('dark'), skin: pr.figSkin || 'sand', shirt: pr.figShirt || undefined };
+  }
+  const P2 = () => GH.platform;
+  function figure(host, m, o) {
+    let inner = null, at = host, playing = false, dead = false, is3d = false;
+    const ctl = {
+      get el() { return inner.el; },
+      get duration() { return inner.duration; },
+      get is3d() { return is3d; },
+      onPhase: null,
+      // Move the figure into another box (the player redraws its card between steps).
+      attach(el) { at = el; if (inner.el.parentNode !== el) el.appendChild(inner.el); },
+      play() { playing = true; inner.play(); },
+      pause() { playing = false; inner.pause(); },
+      playOnce() { if (inner.playOnce) inner.playOnce(); },
+      setView(v) { if (is3d && inner.setView) inner.setView(v); },
+      destroy() { dead = true; inner.destroy(); },
+    };
+    const flat = () => {
+      is3d = false;
+      inner = GH.pose.mount(at, m, o);
+      if (playing) inner.play();
+    };
+    const solid = (f) => {
+      is3d = true;
+      inner = f.mount(at, m, Object.assign({}, o, look(), {
+        onFallback: () => { if (dead) return; flat(); fadeIn(inner.el); if (ctl.onPhase) ctl.onPhase(null); },
+      }));
+      inner.onPhase = (p) => { if (!dead && ctl.onPhase) ctl.onPhase(p); };
+      if (playing) inner.play();
+    };
+    const f = GH.figure3d;
+    if (want3d() && f && f.supported()) solid(f);
+    else {
+      flat();
+      if (want3d() && !f) {
+        load3d().then((f2) => {
+          if (dead || !f2 || !f2.supported() || !inner.el.isConnected) return;
+          const old = inner;
+          solid(f2);
+          old.destroy();
+          fadeIn(inner.el);
+        });
+      }
+    }
+    return ctl;
+  }
+  // "Control 2 s · Drive 1 s": how long each half of a rep takes, in the order the move starts.
+  // Holds and flowing moves (jacks, crawls) have no tempo.
+  function tempoOf(m) {
+    const rep = (m && m.rep) || [];
+    if (rep.length < 2 || rep.some((x) => x.ph !== 'con' && x.ph !== 'ecc')) return null;
+    const secs = (ph) => Math.max(0.5, Math.round(rep.filter((x) => x.ph === ph).reduce((a, x) => a + x.ms, 0) / 500) / 2);
+    const parts = { ecc: ['ecc', 'Control', secs('ecc')], con: ['con', 'Drive', secs('con')] };
+    return rep[0].ph === 'ecc' ? [parts.ecc, parts.con] : [parts.con, parts.ecc];
+  }
+  U.tempoHtml = (m) => {
+    const t = tempoOf(m);
+    return t ? `<div class="fig-tempo" data-morph="keep" aria-hidden="true">${t.map(([ph, word, s]) => `<span data-ph="${ph}">${word} <b class="rf-num">${String(s).replace('.5', '½')} s</b></span>`).join('')}</div>` : '';
+  };
+  // Light up the half of the rep the figure is in (the 3D figure reports it; the flat one doesn't).
+  function tempoSync(ctl, box) {
+    ctl.onPhase = (p) => {
+      const strip = box && box.querySelector('.fig-tempo');
+      if (strip) strip.dataset.on = p && (p.ph === 'con' || p.ph === 'ecc') ? p.ph : '';
+    };
+  }
   function dropFig() { if (fig) { try { fig.ctl.destroy(); } catch (e) { /* ignore */ } fig = null; } }
   function leadSideFor(fam) { const c = U.S.catchup; return (LEG_FAMS.includes(fam) ? c.leg.side : c.arm.side) || 'L'; }
   function figOpts(st, m0) {
@@ -98,18 +191,20 @@
     const side = st.side || null;
     const o = { reducedMotion: U.reduced() };
     if (m.uni && side) { o.mirrored = M().mirrorFor(m, side); o.lead = side === leadSideFor(m0.family); }
-    return { m, o, key: `${m0.id}:${side}:${o.mirrored}` };
+    const lk = look();
+    return { m, o, key: `${m0.id}:${side}:${o.mirrored}:${want3d()}:${lk.dark}:${lk.skin}:${lk.shirt}` };
   }
   function mountFig(host, st, playing) {
     const m0 = st && st.item && M().MOVES[st.item.moveId];
     if (!host || !m0 || !GH.pose) return;
     const { m, o, key } = figOpts(st, m0);
-    if (fig && fig.key === key) { if (fig.ctl.el.parentNode !== host) host.appendChild(fig.ctl.el); } // same move: keep the running animation
+    if (fig && fig.key === key) fig.ctl.attach(host); // same move: keep the running animation
     else {
       dropFig();
-      try { fig = { key, ctl: GH.pose.mount(host, m, o) }; } catch (e) { fig = null; return; }
+      try { fig = { key, ctl: figure(host, m, o) }; } catch (e) { fig = null; return; }
       fadeIn(fig.ctl.el);
     }
+    tempoSync(fig.ctl, host.parentNode);
     if (playing) fig.ctl.play(); else fig.ctl.pause();
   }
   function fadeIn(el) { if (el && !U.reduced() && el.animate) el.animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)' }); }
@@ -117,8 +212,9 @@
     const m0 = M().MOVES[moveId];
     if (!m0 || !GH.pose) return null;
     const { m, o } = figOpts({ side, item: { moveId } }, m0);
-    const ctl = GH.pose.mount(host, m, o);
+    const ctl = figure(host, m, o);
     fadeIn(ctl.el);
+    tempoSync(ctl, host.parentNode);
     if (playing) ctl.play();
     return ctl;
   };
@@ -263,7 +359,7 @@
         <p class="pl-eyebrow t-footnote rf-muted">${U.esc(eyebrow(st))}</p>
         <h1 class="pl-name">${U.esc(it.name)}</h1>
         ${sideLine(st)}
-        <button type="button" class="pl-fig-card" data-act="plHowTo" aria-label="How to do ${U.esc(it.name)}"><div class="pl-fig" data-morph="keep"></div>${!U.seen('playerHint') && P.phase === 'step' ? '<span class="pl-fig-hint t-caption">Tap for how-to</span>' : ''}</button>
+        <button type="button" class="pl-fig-card" data-act="plHowTo" aria-label="How to do ${U.esc(it.name)}"><div class="pl-fig" data-morph="keep"></div>${U.tempoHtml(m)}${!U.seen('playerHint') && P.phase === 'step' ? '<span class="pl-fig-hint t-caption">Tap for how-to</span>' : ''}</button>
         ${target}
         ${hint}
         ${cue && P.phase === 'step' && st.kind !== 'test' ? `<p class="pl-cue t-callout">${U.esc(cue)}</p>` : ''}
