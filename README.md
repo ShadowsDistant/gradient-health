@@ -8,7 +8,7 @@ Gradient Health plans a workout for each day of your week around your goals, the
 
 <p align="center">
   <img src="docs/screenshots/today.png" width="200" alt="Today: a 35-day streak and today's workout">
-  <img src="docs/screenshots/workout.png" width="200" alt="The workout player with the 3D figure doing a push-up">
+  <img src="docs/screenshots/workout.png" width="200" alt="The workout player: the 3D figure doing a dumbbell curl, with the tempo strip lit">
   <img src="docs/screenshots/food.png" width="200" alt="Food: calories left today, macros and meals">
   <img src="docs/screenshots/health-dark.png" width="200" alt="Health, in dark mode: the weekly report from the built-in coach">
 </p>

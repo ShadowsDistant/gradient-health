@@ -74,6 +74,15 @@ async function run(dark) {
   await shot('workout');
   await page.click('.player [data-act="plDone"]');
   await page.waitForSelector('.player .pl-timer');
+  // Finish the exercise, so the rest screen asks how many more reps were left.
+  for (let i = 0; i < 6 && !(await page.$('.player .pl-rir')); i++) {
+    const skip = await page.$('.player [data-act="plSkipRest"]');
+    if (skip) { await skip.click(); await settle(500); }
+    const cont = await page.$('.player [data-act="plContinue"]');
+    if (cont) { await cont.click(); await settle(500); }
+    const done = await page.$('.player [data-act="plDone"]');
+    if (done) { await done.click(); await settle(500); }
+  }
   await shot('rest');
   await page.click('.player [data-act="plMin"]');
   await settle(500);
