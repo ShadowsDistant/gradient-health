@@ -546,7 +546,11 @@
   /* ---------------------------------------------------------------- sheets, dialogs, toasts */
   const openSheets = [];
   // U.sheet({ title, body, detent, action: {label, act}, onClose, cls }) → { el, close, body }
-  U.sheet = (o) => {
+  // o.size: 'fit' (as tall as its content), 'auto' (fits its content, swipe up for full height) or
+  // 'full'. Older calls pass detents/detent/fit instead.
+  const SIZES = { fit: { detents: 'medium', detent: 'medium', fit: true }, auto: { detents: 'medium large', detent: 'medium' }, full: { detents: 'large', detent: 'large' } };
+  U.sheet = (o0) => {
+    const o = o0.size && SIZES[o0.size] ? Object.assign({}, o0, SIZES[o0.size]) : o0;
     const el = doc.createElement('dialog');
     el.className = 'rf-sheet rf-glass' + (o.fit ? ' sheet-fit' : '') + (o.cls ? ' ' + o.cls : '');
     el.setAttribute('data-detents', o.detents || 'medium large');
