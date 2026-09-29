@@ -100,6 +100,16 @@
   U.editableSteps = () => STEPS.filter((s) => !s.modes && !s.when && s.id !== 'plan');
   // Every piece of equipment the person has ticked (each weight counts once).
   U.equipCount = (eq) => (eq.db || []).length + (eq.kb || []).length + ['ball', 'band', 'bar', 'table'].filter((k) => eq[k]).length;
+  // "Home · 5 items", "Gym · 14 items", "Home and gym": what the Equipment rows show.
+  U.equipSummary = (p) => {
+    const home = U.equipCount(p.equipment || {});
+    const g = p.gym || {};
+    const gymN = Object.entries(g).filter(([k, v]) => k !== 'dbMax' && k !== 'bar' && v === true).length + (g.dbMax > 0 ? 1 : 0);
+    const w = p.where || 'home';
+    if (w === 'gym') return gymN ? `Gym · ${U.plural(gymN, 'item')}` : 'Gym';
+    if (w === 'both') return 'Home and gym';
+    return home ? U.plural(home, 'item') : 'Bodyweight only';
+  };
   const EXP = { never: 'Never really trained', onoff: 'On and off', lt1: 'Under a year, steadily', '1to3': '1 to 3 years', '3plus': 'More than 3 years' };
   // A short line with the current answers on one set-up screen, for the "Your answers" list.
   U.answerSummary = (id, p) => {
@@ -111,7 +121,7 @@
       case 'goals': return (p.goals || []).map((g) => names[g] || g).join(', ') || 'Consistency';
       case 'experience': return EXP[p.experience] || 'How long you\'ve trained';
       case 'schedule': return `${p.days} days a week · ${p.minutes} min`;
-      case 'equipment': { const n = U.equipCount(eq); return n ? U.plural(n, 'item') : 'Bodyweight only'; }
+      case 'equipment': return U.equipSummary(p);
       case 'body': return (p.careful || []).length ? `Careful with ${(p.careful || []).map((j) => (JOINTS.find((x) => x[0] === j) || [j, j])[1].toLowerCase()).join(', ')}` : 'Injuries, stronger side, impact';
       case 'food': return `${p.weightGoal === 'lose' ? 'Lose' : p.weightGoal === 'gain' ? 'Gain' : 'Maintain'} weight · protein ${p.protein && p.protein.track === false ? 'off' : 'on'}`;
       case 'sleep': return p.sleepTypical ? `Usually ${p.sleepTypical.replace('<', 'under ')} h` : 'Your usual sleep';
@@ -350,7 +360,38 @@
     if (r && out) r.addEventListener('input', () => { out.textContent = `${r.value} min`; r.setAttribute('aria-valuetext', `${r.value} minutes`); });
   };
 
+  // Gym kit, grouped the way people think about a gym floor.
+  const GYM_KIT = [
+    ['Free weights', [['bb', 'Barbell and plates'], ['rack', 'Squat rack'], ['bench', 'Flat bench'], ['benchIncline', 'Adjustable bench'], ['ez', 'EZ curl bar'], ['dip', 'Dip bars'], ['bar', 'Pull-up bar']]],
+    ['Cables and machines', [['cable', 'Cable station'], ['pulldown', 'Lat pulldown'], ['legPress', 'Leg press'], ['legCurl', 'Leg curl'], ['legExt', 'Leg extension'], ['chestPress', 'Chest press'], ['shoulderPress', 'Shoulder press'], ['pecDeck', 'Pec deck'], ['smith', 'Smith machine']]],
+    ['Cardio', [['rower', 'Rowing machine'], ['bike', 'Exercise bike'], ['treadmill', 'Treadmill']]],
+  ];
+  const DB_MAX = { lb: [0, 30, 50, 75, 100, 120], kg: [0, 15, 25, 35, 50, 60] };
+  function gymGroups() {
+    const u = Q.units !== 'kg' ? 'lb' : 'kg';
+    const g = Q.gym;
+    return group('Your gym', `<div class="ob-chips">${Object.entries(B().GYM_PRESETS).map(([id, pr]) => `<button type="button" class="rf-chip" data-act="obGymPreset" data-arg="${id}">${U.esc(pr.name)}</button>`).join('')}</div>`, 'Start from one of these, then adjust below.')
+      + group('Dumbbells up to', `<div class="ob-chips">${DB_MAX[u].map((w) => U.chip(w ? `${w}${w === DB_MAX[u][DB_MAX[u].length - 1] ? '+' : ''} ${u}` : 'None', Number(g.dbMax || 0) === w, `data-act="obGymDb" data-arg="${w}"`)).join('')}</div>`)
+      + GYM_KIT.map(([title, items]) => group(title, `<ul class="rf-list">${items.map(([k, label]) => U.sw(label, k === 'bar' ? g.bar !== false : !!g[k], bind(`gym.${k}`))).join('')}</ul>`)).join('');
+  }
+  U.act.obGymPreset = (btn) => {
+    const pr = B().gymPreset(btn.dataset.arg, Q.units);
+    if (!pr) return;
+    Q.gym = pr;
+    U.haptic('select');
+    draw();
+  };
+  U.act.obGymDb = (btn) => { Q.gym.dbMax = Number(btn.dataset.arg) || 0; U.haptic('select'); draw(); };
+
   VIEW.equipment = () => {
+    const where = Q.where || 'home';
+    Q.gym = Object.assign(B().defaultGym(), Q.gym || {});
+    return lead(where === 'home' ? 'Pick everything you have. Exercises only use what\'s here, and you get told when it\'s time to buy heavier.' : 'Pick what your gym has. Exercises only use what\'s there, and the weights go up as you get stronger.')
+      + group('Where do you train?', `<div class="ob-pad">${U.seg('where', [['home', 'Home'], ['gym', 'Gym'], ['both', 'Both']], where, 'Where you train', ` ${bind('where', '', true)}`)}</div>`, where === 'both' ? 'Pick home or gym on the day. Each keeps its own progress.' : '')
+      + (where !== 'home' ? gymGroups() : '')
+      + (where !== 'gym' ? (where === 'both' ? '<h2 class="ob-section t-title-3">At home</h2>' : '') + homeEquipment() : '');
+  };
+  function homeEquipment() {
     const u = Q.units !== 'kg' ? 'lb' : 'kg';
     const eq = Q.equipment;
     const weights = (k) => {
@@ -358,8 +399,7 @@
       return `<div class="ob-chips">${list.map((w) => listChip(`equipment.${k}`, w, `${w} ${u}`, (eq[k] || []).includes(w), 'num')).join('')}</div>
         <div class="ob-add"><input class="rf-input" type="number" inputmode="decimal" id="add-${k}" placeholder="Other weight (${u})" aria-label="Other ${k === 'db' ? 'dumbbell' : 'kettlebell'} weight"><button type="button" class="rf-btn" data-size="sm" data-act="obAddWeight" data-arg="${k}">Add</button></div>`;
     };
-    return lead('Pick everything you have. Exercises only use what\'s here, and you get told when it\'s time to buy heavier.')
-      + group('Dumbbells', weights('db'), 'Tap each weight you own, pairs or singles.')
+    return group('Dumbbells', weights('db'), 'Tap each weight you own, pairs or singles.')
       + group('Kettlebells', weights('kb'))
       + group('Other equipment', `<ul class="rf-list">
           ${U.sw('Small ball or medicine ball', eq.ball, bind('equipment.ball', '', true))}

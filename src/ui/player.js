@@ -152,10 +152,19 @@
     if (st.kind !== 'set' || st.leadOnly || st.of <= 1) return '';
     return `<div class="pl-dots" aria-label="Set ${st.set + 1} of ${st.of}">${Array.from({ length: st.of }, (_, i) => `<i class="${i < st.set ? 'done' : i === st.set ? 'now' : ''}"></i>`).join('')}</div>`;
   }
+  // The weight for a gym exercise (what the person picked this session, else the planned load), or
+  // null for moves without a tracked weight.
+  function weightOf(it) {
+    if (!it || !it.load || it.load.kg == null || !B().isGymFam(it.fam)) return null;
+    const kg = it.curLoad != null ? it.curLoad : it.load.kg;
+    const m = M().MOVES[it.moveId];
+    return { kg, label: B().fmtLoad(U.S, kg, it.load.key, m), first: !!it.load.guess && it.curLoad == null };
+  }
   function upNext(st) {
     if (!st) return '<p class="t-callout rf-muted">Last one.</p>';
     const it = st.item;
-    const what = st.kind === 'set' ? U.target(it, B().currentTarget(A(), st)) : st.kind === 'interval' ? `${st.work} s` : st.kind === 'test' ? 'max reps' : isTimed(st) ? `${durationOf(st)} s` : U.target(it);
+    const w = st.kind === 'set' ? weightOf(it) : null;
+    const what = st.kind === 'set' ? U.target(it, B().currentTarget(A(), st)) + (w ? ` at ${w.label}` : '') : st.kind === 'interval' ? `${st.work} s` : st.kind === 'test' ? 'max reps' : isTimed(st) ? `${durationOf(st)} s` : U.target(it);
     return `<div class="pl-next"><span class="t-caption rf-muted">Up next</span><span class="t-headline">${U.esc(it.name)}</span><span class="t-footnote rf-muted">${U.esc(eyebrow(st))} · ${U.esc(what)}${st.side ? ` · ${U.side(st.side).toLowerCase()}` : ''}</span></div>`;
   }
 
@@ -237,8 +246,12 @@
     } else if (st.kind === 'set') {
       const t = B().currentTarget(A(), st);
       P.reps = t;
-      target = `<div class="pl-target"><span class="pl-big rf-num">${t}</span><span class="pl-unit">${t === 1 ? 'rep' : 'reps'}</span></div>`;
-      hint = `<p class="pl-hint t-callout rf-muted">${st.leadOnly ? 'One set on this side only.' : 'Stop with 1-3 reps left in the tank.'}${st.first === false ? ' Match the first side, never more.' : ''}</p>`;
+      const w = weightOf(it);
+      target = `<div class="pl-target"><span class="pl-big rf-num">${t}</span><span class="pl-unit">${t === 1 ? 'rep' : 'reps'}</span></div>
+        ${w ? `<button type="button" class="pl-load" data-act="plLoad" aria-label="Weight: ${U.esc(w.label)}. Change">${U.icon('dumbbell', 'sm')}<span class="rf-num">${U.esc(w.label)}</span>${U.icon('pencil', 'sm')}</button>` : ''}`;
+      hint = w && w.first
+        ? `<p class="pl-hint t-callout rf-muted">New exercise: pick a weight you could lift about ${t + 2} times. It's remembered for next time.</p>`
+        : `<p class="pl-hint t-callout rf-muted">${st.leadOnly ? 'One set on this side only.' : 'Stop with 1-3 reps left in the tank.'}${st.first === false ? ' Match the first side, never more.' : ''}</p>`;
       actions = `<div class="pl-adjust"><span class="t-footnote rf-muted">Did fewer?</span>${U.stepper('plReps', t, 0, t, 'Reps done', 'data-on="plReps"')}</div>
         <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plDone">${U.icon('check')}Done set</button>`;
     } else {
@@ -254,7 +267,7 @@
         ${target}
         ${hint}
         ${cue && P.phase === 'step' && st.kind !== 'test' ? `<p class="pl-cue t-callout">${U.esc(cue)}</p>` : ''}
-        <div class="pl-meta">${dots(st)}${it.load && it.load.label && st.kind !== 'test' ? `<span class="t-footnote rf-muted">${U.esc(it.load.label)}</span>` : ''}</div>
+        <div class="pl-meta">${dots(st)}${it.load && it.load.label && st.kind !== 'test' && !weightOf(it) ? `<span class="t-footnote rf-muted">${U.esc(it.load.label)}</span>` : ''}</div>
       </div>
       <div class="pl-actions">${actions}</div>`;
   }
@@ -288,7 +301,8 @@
     const log = A().logs[A().session.items.concat(A().session.extras).indexOf(st.item)];
     const last = log && log.sets[log.sets.length - 1];
     if (!last) return '';
-    return `<p class="pl-logged t-callout">Logged ${U.esc(U.target(st.item, last.amount))}${st.side ? ` (${U.side(st.side).toLowerCase()})` : ''} <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="plAmend">Change</button></p>`;
+    const at = last.load != null && st.item.load ? ` at ${B().fmtLoad(U.S, last.load, st.item.load.key, M().MOVES[st.item.moveId])}` : '';
+    return `<p class="pl-logged t-callout">Logged ${U.esc(U.target(st.item, last.amount) + at)}${st.side ? ` (${U.side(st.side).toLowerCase()})` : ''} <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="plAmend">Change</button></p>`;
   }
 
   /* ---------------------------------------------------------------- timing */
@@ -422,16 +436,63 @@
     const log = a.logs[a.session.items.concat(a.session.extras).indexOf(st.item)];
     const last = log && log.sets[log.sets.length - 1];
     if (!last) return;
+    const loaded = last.load != null && weightOf(st.item);
+    P.amendLoad = loaded ? last.load : null;
     U.sheet({
-      title: 'Change what you logged', detents: 'small medium', detent: 'small',
-      body: `<div class="sheet-pad"><p class="t-callout rf-muted">${U.esc(st.item.name)}${st.side ? `, ${U.side(st.side).toLowerCase()}` : ''}</p><div class="ob-center">${U.stepper('amendVal', last.amount, 0, Math.max(last.target, last.amount) + 20, st.item.timed ? 'Seconds' : 'Reps')}</div></div>`,
+      title: 'Change what you logged', detents: loaded ? 'medium large' : 'small medium', detent: loaded ? 'medium' : 'small',
+      body: `<div class="sheet-pad"><p class="t-callout rf-muted">${U.esc(st.item.name)}${st.side ? `, ${U.side(st.side).toLowerCase()}` : ''}</p><div class="ob-center">${U.stepper('amendVal', last.amount, 0, Math.max(last.target, last.amount) + 20, st.item.timed ? 'Seconds' : 'Reps')}</div>
+        ${loaded ? `<p class="t-footnote rf-muted load-label">Weight</p>${loadChips(st.item, last.load, 'plAmendLoad')}` : ''}</div>`,
       action: { label: 'Save', act: 'plAmendSave' },
     });
+  };
+  U.act.plAmendLoad = (el) => {
+    P.amendLoad = parseFloat(el.dataset.arg);
+    for (const c of el.parentNode.querySelectorAll('.rf-chip')) c.setAttribute('aria-pressed', String(c === el));
+    U.haptic('select');
   };
   U.act.plAmendSave = () => {
     const input = document.getElementById('amendVal');
     const v = parseInt(input && input.value, 10);
-    if (isFinite(v)) { B().amendLast(U.S, v); U.save(); }
+    B().amendLast(U.S, isFinite(v) ? v : null, P.amendLoad);
+    U.save();
+    P.amendLoad = null;
+    const top = U.topSheet(); if (top) top.close('ok');
+    draw();
+  };
+
+  // Weight choices around the current one, as chips, plus "Other" for anything else.
+  function loadChips(it, curKg, act) {
+    const choices = B().loadChoices(U.S, Object.assign({}, it, { curLoad: curKg }), A().day);
+    return `<div class="load-chips">${choices.map((c) => U.chip(c.label, Math.abs(c.kg - curKg) < 1e-6, `data-act="${act}" data-arg="${c.kg}"`)).join('')}</div>
+      <div class="ob-add"><input class="rf-input" type="number" inputmode="decimal" id="plLoadOther" placeholder="Other weight (${U.wUnit()})" aria-label="Other weight"><button type="button" class="rf-btn" data-size="sm" data-act="plLoadOther" data-arg="${act}">Use</button></div>`;
+  }
+  U.act.plLoad = () => {
+    const st = cur();
+    const w = st && weightOf(st.item);
+    if (!w) return;
+    U.sheet({
+      title: 'Weight', detents: 'medium large', detent: 'medium',
+      body: `<div class="sheet-pad"><p class="t-callout rf-muted">${U.esc(st.item.name)}. ${w.first ? `A first guess. Pick one you could lift about ${B().currentTarget(A(), st) + 2} times.` : 'For the rest of this exercise.'}</p>${loadChips(st.item, w.kg, 'plLoadPick')}</div>`,
+    });
+  };
+  U.act.plLoadPick = (el) => {
+    const st = cur();
+    if (!st) return;
+    B().setItemLoad(U.S, st.item, parseFloat(el.dataset.arg));
+    U.save();
+    U.haptic('select');
+    const top = U.topSheet(); if (top) top.close('ok');
+    draw();
+  };
+  U.act.plLoadOther = (el) => {
+    const input = document.getElementById('plLoadOther');
+    const v = parseFloat(input && input.value);
+    if (!(v > 0 && v < 1000)) { U.toast('Enter a weight like 60', 'caution'); return; }
+    const kg = B().fromUnit(v, U.wUnit());
+    if (el.dataset.arg === 'plAmendLoad') { P.amendLoad = kg; U.act.plAmendSave(); return; }
+    const st = cur();
+    if (st) B().setItemLoad(U.S, st.item, kg);
+    U.save();
     const top = U.topSheet(); if (top) top.close('ok');
     draw();
   };

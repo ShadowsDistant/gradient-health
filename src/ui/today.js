@@ -58,15 +58,18 @@
     const s = B().buildSession(S, day, plan.tpl, { short: isShort(day), cal });
     const budget = isShort(day) ? '12-15' : (S.profile.minutes || 25);
     const lines = (S.pendingLines || []).filter((l) => l && l.text).slice(0, 4);
+    const where = S.profile.where || 'home';
     return `<div class="card session" data-key="main">
-        <div class="session-head"><span class="rf-card-eyebrow">Workout · about ${U.roll(s.estimateMin)} min</span><span class="session-badges">${phaseBadges(plan.week, s)}</span></div>
+        <div class="session-head"><span class="rf-card-eyebrow">Workout · about ${U.roll(s.estimateMin)} min${where === 'gym' ? ' · gym' : ''}</span><span class="session-badges">${phaseBadges(plan.week, s)}</span></div>
         <h2 class="t-title-2">${U.esc(s.title)}</h2>
         <p class="t-footnote rf-muted session-groups">${s.groups.map((g) => U.esc(B().GROUP_NAME[g] || g)).join(' · ')}</p>
+        ${where === 'both' ? `<div class="place-row">${U.seg('place', [['home', 'At home'], ['gym', 'At the gym']], s.place, 'Where you train today', ' data-on="setPlace"')}</div>` : ''}
         ${sessionRows(S, s)}
         ${s.trimmed && s.trimmed.length ? `<p class="t-footnote rf-muted">Trimmed to fit ${U.esc(budget)} min: ${U.esc(s.trimmed.map((x) => x.toLowerCase()).join(', '))}.</p>` : ''}
       </div>
       ${lines.length ? `<div class="card lines" data-key="lines"><p class="t-headline">Since last time</p><ul class="plain-list">${lines.map((l) => `<li><span>${U.esc(l.text)}</span>${l.why ? `<span class="t-footnote rf-muted">${U.esc(U.cap(l.why))}</span>` : ''}</li>`).join('')}</ul>${U.whyLink ? U.whyLink('overload', 'How the plan adjusts') : ''}</div>` : ''}`;
   }
+  U.on.setPlace = (el, ev, v) => { B().setPlace(U.S, U.today(), v); U.save(); U.render(); };
   function activeCard(S, day) {
     const a = S.active;
     const doneN = a.steps.slice(0, a.idx).filter((x) => x.kind === 'set').length;
