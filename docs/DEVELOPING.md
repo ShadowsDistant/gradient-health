@@ -64,6 +64,35 @@ left alone. A few conventions:
 - A route change gets fresh content and an entrance (tabs slide toward the tab you picked, pushed
   views come in from the side); a re-render of the same route only patches.
 
+## 3D exercise figure
+
+`src/engine/figure3d.js` builds the lazy chunk `dist/lazy/figure3d.js` (three.js, about 620 KB
+minified), which `GH.lazy('figure3d')` loads when it's needed. It sets `GH.figure3d`:
+
+- `supported()`: whether WebGL works here (checked once).
+- `mount(el, move, opts)`: a controller shaped like `GH.pose.mount`'s, plus `setView(name)`,
+  `phase()` and an `onPhase` callback.
+- `still(move, opts)`: a cached thumbnail as a data URL, or `null` without WebGL.
+- `preload()`: warms the renderer, shaders and body meshes when the page is idle.
+
+The chunk authors no poses. Every frame it lifts the 2D joints from `GH.pose` into 3D. Side, front
+and top views each have their own rules, and segment lengths stay constant. A fix to a move's 2D
+data therefore fixes both figures. Everything is procedural: no textures, fonts or models.
+
+All figures share one WebGL renderer. It draws at most 30 frames a second and stops while a figure
+is off screen or the page is hidden. If WebGL is missing or the context is lost, the canvas is
+removed and `opts.onFallback(ctl)` is called asynchronously, so the player can mount the SVG figure
+instead.
+
+```sh
+npm run build && node test/figure3d.mjs [filter,…] [--dark] [--mirrored]
+```
+
+The test renders every move in Chromium (SwiftShader), plus gym fixtures for barbells, cables,
+benches, machines and cardio kit. It checks the frames, the API and the fallback, and writes
+contact sheets to `build/fig3d/`. For looking at details, use `--size=WxH`, `--cols=N`,
+`--view=side|front|three-quarter` and `--focus=head|hand|foot|trunk`.
+
 ## Android build
 
 `scripts/build-apk.sh` compiles against the Android 14 (API 34) framework jar from Maven Central
