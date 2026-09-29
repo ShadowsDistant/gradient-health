@@ -70,15 +70,27 @@ function problems() {
   const W = window.innerWidth;
   const out = [];
   const visible = (e) => { const r = e.getBoundingClientRect(); if (!r.width || !r.height) return false; const s = getComputedStyle(e); return s.visibility !== 'hidden' && s.display !== 'none' && +s.opacity !== 0; };
-  const scroller = (e) => { for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) { const ox = getComputedStyle(p).overflowX; if (ox === 'auto' || ox === 'scroll') return true; } return false; };
+  // Scroll containers: a deliberate sideways rail is marked data-hscroll, and what's in it may run
+  // past the screen. Anything in another scroll container (a page, a sheet's body) must fit inside
+  // its box, and the container itself mustn't scroll sideways.
+  const scrolls = (p) => { const ox = getComputedStyle(p).overflowX; return ox === 'auto' || ox === 'scroll'; };
+  const boxOf = (e) => { for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) { if (p.hasAttribute('data-hscroll')) return 'rail'; if (scrolls(p)) return p; } return null; };
   const name = (e) => `${e.tagName.toLowerCase()}${e.className && typeof e.className === 'string' ? '.' + e.className.trim().split(/\s+/).slice(0, 2).join('.') : ''} "${(e.textContent || '').trim().slice(0, 40)}"`;
   const roots = [document.getElementById('screen'), document.getElementById('float'), document.getElementById('tabbar'), document.getElementById('player'), document.getElementById('onboard'), ...document.querySelectorAll('dialog[open]')].filter((r) => r && !r.hidden);
   if (document.documentElement.scrollWidth > W + 1) out.push(`page scrolls sideways (${document.documentElement.scrollWidth} > ${W})`);
   for (const r of roots) {
+    for (const c of [r, ...r.querySelectorAll('*')]) {
+      if (c.hasAttribute('data-hscroll') || !scrolls(c) || !visible(c) || c.closest('[data-hscroll]')) continue;
+      if (c.scrollWidth > c.clientWidth + 1) out.push(`scrolls sideways: ${name(c)} (${c.scrollWidth} > ${c.clientWidth})`);
+    }
     for (const e of r.querySelectorAll('*')) {
-      if (e.closest('svg') || e.closest('[aria-hidden="true"]') || !visible(e) || scroller(e)) continue;
+      if (e.closest('svg') || e.closest('[aria-hidden="true"]') || !visible(e)) continue;
+      const box = boxOf(e);
+      if (box === 'rail') continue;
       const b = e.getBoundingClientRect();
-      if (b.right > W + 1.5 || b.left < -1.5) { out.push(`past the edge: ${name(e)} (${Math.round(b.left)}..${Math.round(b.right)})`); continue; }
+      const lim = box ? box.getBoundingClientRect() : { left: 0, right: W };
+      const right = Math.min(W, box ? lim.left + box.clientWidth + (box.clientLeft || 0) : W), left = Math.max(0, lim.left);
+      if (b.right > right + 1.5 || b.left < left - 1.5) { out.push(`past the edge${box ? ' of its scroller' : ''}: ${name(e)} (${Math.round(b.left)}..${Math.round(b.right)} in ${Math.round(left)}..${Math.round(right)})`); continue; }
       const s = getComputedStyle(e);
       const text = [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
       if (text && s.textOverflow === 'ellipsis' && e.scrollWidth > e.clientWidth + 1) out.push(`cut off: ${name(e)}`);
@@ -199,8 +211,12 @@ for (const [width, theme, zoom, h] of COMBOS) {
       check(`${id} (ran)`, false, e.message.split('\n')[0]);
     }
     if (id === 'player' || id === 'capsule') await page.evaluate(() => { const S = window.GH.ui.S; if (window.GH.ui.closePlayer) window.GH.ui.closePlayer(); S.active = null; window.GH.store.save(S); });
-    await page.reload();
-    await page.waitForSelector('#screen[data-view]');
+    // A slow machine can take a while to start the page again; a page that fails to start says why.
+    try { await page.reload(); await page.waitForSelector('#screen[data-view]'); } catch (e) {
+      check(`${id}: the page starts again`, false, `${e.message.split('\n')[0]} ${errors.slice(-3).join(' | ')}`);
+      await page.reload({ timeout: 60000 });
+      await page.waitForSelector('#screen[data-view]', { timeout: 60000 });
+    }
     await reset();
   }
   await ctx.close();
