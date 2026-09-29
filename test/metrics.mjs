@@ -27,7 +27,7 @@ check('distance in miles or km', H.format(lb, 'distanceM', 5400) === '3.4 mi' &&
 check('measurements in inches or cm', H.format(lb, 'waist', 81.3) === '32.0 in' && H.format(kg, 'waist', 81.3) === '81.3 cm', H.format(lb, 'waist', 81.3));
 check('calories and protein', H.format(lb, 'activeKcal', 412) === '412 kcal' && H.format(lb, 'kcalIn', 2150) === '2,150 kcal' && H.format(lb, 'protein', 118) === '118 g');
 check('nothing to show is a dash', H.format(lb, 'rhr', null) === '–' && H.format(lb, 'steps', NaN) === '–');
-check('the pieces mark units for smaller type', JSON.stringify(H.formatParts(lb, 'weightKg', 68)) === JSON.stringify([{ t: '149.9', u: false }, { t: 'lb', u: true }]) && H.formatParts(lb, 'sleepMin', 425).map((p) => p.t).join(' ') === '7 h 05');
+check('the pieces mark units for smaller type', JSON.stringify(H.formatParts(lb, 'weightKg', 68)) === JSON.stringify([{ t: '149.9', u: false }, { t: 'lb', u: true }]) && H.formatParts(lb, 'sleepMin', 425).map((p) => `${p.t}${p.u ? '*' : ''}`).join(' ') === '7 h* 05 min*');
 check('units follow the person', H.unitOf(lb, 'weightKg') === 'lb' && H.unitOf(kg, 'weightKg') === 'kg' && H.unitOf(lb, 'distanceM') === 'mi' && H.unitOf(kg, 'waist') === 'cm');
 check('typed values convert back to stored units', Math.abs(H.fromDisplay(lb, 'weightKg', 150) - 68.04) < 0.01 && H.fromDisplay(kg, 'weightKg', 70) === 70 && Math.abs(H.fromDisplay(lb, 'waist', 32) - 81.28) < 0.01);
 

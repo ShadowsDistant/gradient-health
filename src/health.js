@@ -443,7 +443,7 @@
     if (key === 'sleepMin' || key === 'activeMin') {
       const t = Math.max(0, Math.round(v));
       const h = Math.floor(t / 60), m = t % 60;
-      return h ? [{ t: String(h), u: false }, { t: 'h', u: true }, { t: String(m).padStart(2, '0'), u: false }] : [{ t: String(m), u: false }, { t: 'min', u: true }];
+      return h ? [{ t: String(h), u: false }, { t: 'h', u: true }, { t: String(m).padStart(2, '0'), u: false }, { t: 'min', u: true }] : [{ t: String(m), u: false }, { t: 'min', u: true }];
     }
     if (key === 'steps') return [{ t: num(Math.round(v)), u: false }];
     if (key === 'bodyFat') return [{ t: `${num(v, 1)}%`, u: false }];
@@ -453,6 +453,7 @@
   // "7 h 05", "8,234", "149.6 lb", "5.4 km". o.compact shortens big step counts ("8.2k").
   function format(S, key, v, o) {
     if (v == null || !isFinite(v)) return '–';
+    if (key === 'sleepMin' || key === 'activeMin') return hm(v);
     if (key === 'steps' && o && o.compact && v >= 1000) return `${num(v / 1000, v >= 100000 ? 0 : 1)}k`;
     if (o && o.unit === false) return formatParts(S, key, v).filter((p) => !p.u).map((p) => p.t).join(key === 'sleepMin' ? ':' : ' ');
     return formatParts(S, key, v).map((p) => p.t).join(' ');
@@ -534,17 +535,19 @@
   // first week's (last value minus first for a week or less).
   function rangeStats(S, key, from, to) {
     const list = history(S, key, from, to);
-    const out = { n: list.length, avg: null, min: null, max: null, minDay: null, maxDay: null, first: null, last: null, change: null, total: null, list };
+    const out = { n: list.length, avg: null, min: null, max: null, minDay: null, maxDay: null, first: null, last: null, change: null, changeRel: null, total: null, list };
     if (!list.length) return out;
     let lo = list[0], hi = list[0], sum = 0;
     for (const e of list) { sum += e.value; if (e.value < lo.value) lo = e; if (e.value > hi.value) hi = e; }
     Object.assign(out, { avg: sum / list.length, total: sum, min: lo.value, minDay: lo.day, max: hi.value, maxDay: hi.day, first: list[0], last: list[list.length - 1] });
-    if (to - from < 7) out.change = list.length >= 2 ? out.last.value - out.first.value : null;
+    let base = null;
+    if (to - from < 7) { if (list.length >= 2) { base = out.first.value; out.change = out.last.value - base; } }
     else {
       const mean = (a) => (a.length ? a.reduce((x, e) => x + e.value, 0) / a.length : null);
       const a = mean(list.filter((e) => e.day <= from + 6)), z = mean(list.filter((e) => e.day >= to - 6));
-      out.change = a != null && z != null ? z - a : null;
+      if (a != null && z != null && list.length >= 2) { base = a; out.change = z - a; }
     }
+    if (out.change != null && base) out.changeRel = out.change / base;
     return out;
   }
   // How a metric compares with the person's usual. mode 'week': the average of the last 7 days (the
