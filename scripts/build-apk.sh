@@ -105,6 +105,12 @@ dalvik-exchange --dex --output="$WORK/dex/classes.dex" "$WORK/classes"
 # ---------------------------------------------------------------- package
 step "Packaging resources + assets (versionName $VERSION_NAME, versionCode $VERSION_CODE)"
 cp "$APP_HTML" "$WORK/assets/index.html"
+# Load-on-demand parts (3D figure, on-device model runtime, barcode reader) built next to the page.
+LAZY_DIR="$(dirname "$APP_HTML")/lazy"
+if [[ -d "$LAZY_DIR" ]]; then
+  mkdir -p "$WORK/assets/lazy"
+  cp -R "$LAZY_DIR/." "$WORK/assets/lazy/"
+fi
 UNSIGNED="$WORK/unsigned.apk"
 # resources.arsc must be stored uncompressed (and 4-byte aligned) for targetSdk >= 30: -0 arsc.
 aapt package -f \

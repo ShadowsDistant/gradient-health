@@ -9,6 +9,26 @@
   const bridge = () => G.AndroidBridge || null;
   const doc = G.document;
 
+  /* ---------------------------------------------------------------- lazy parts */
+  // Heavy modules (the 3D figure, the on-device model runtime, the barcode reader) live in lazy/ next
+  // to the page and load the first time they're needed. Each one sets GH[name] when it runs.
+  const lazyLoads = {};
+  GH.lazy = (name) => {
+    if (GH[name]) return Promise.resolve(GH[name]);
+    if (!lazyLoads[name]) {
+      lazyLoads[name] = new Promise((resolve, reject) => {
+        if (!doc) { reject(new Error('no document')); return; }
+        const s = doc.createElement('script');
+        s.src = `lazy/${name}.js`;
+        s.async = true;
+        s.onload = () => (GH[name] ? resolve(GH[name]) : reject(new Error(`${name} did not load`)));
+        s.onerror = () => reject(new Error(`${name} could not be loaded`));
+        doc.head.appendChild(s);
+      }).catch((e) => { delete lazyLoads[name]; throw e; });
+    }
+    return lazyLoads[name];
+  };
+
   let prefs = { sound: true, vibrate: true, haptics: true };
   function setPrefs(p) { prefs = Object.assign({}, prefs, p || {}); }
 

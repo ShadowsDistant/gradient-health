@@ -771,6 +771,32 @@ public final class MainActivity extends Activity {
         createWebView(APP_URL);
     }
 
+    /** A file from assets/lazy/ (the page's load-on-demand parts), or a 404. */
+    WebResourceResponse assetResponse(String assetPath) {
+        if (assetPath.contains("..")) {
+            return emptyResponse(404, "Not Found");
+        }
+        try {
+            WebResourceResponse r = new WebResourceResponse(mimeFor(assetPath), null, getAssets().open(assetPath));
+            java.util.Map<String, String> headers = new java.util.HashMap<>();
+            headers.put("Cache-Control", "no-cache");
+            r.setResponseHeaders(headers);
+            return r;
+        } catch (Throwable t) {
+            return emptyResponse(404, "Not Found");
+        }
+    }
+
+    static String mimeFor(String path) {
+        String p = path.toLowerCase(java.util.Locale.ROOT);
+        if (p.endsWith(".js") || p.endsWith(".mjs")) return "text/javascript";
+        if (p.endsWith(".wasm")) return "application/wasm";
+        if (p.endsWith(".json")) return "application/json";
+        if (p.endsWith(".png")) return "image/png";
+        if (p.endsWith(".webp")) return "image/webp";
+        return "application/octet-stream";
+    }
+
     private final class AppWebViewClient extends WebViewClient {
         @Override
         public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
@@ -785,6 +811,9 @@ public final class MainActivity extends Activity {
                 } catch (Throwable t) {
                     return emptyResponse(500, "Internal Server Error");
                 }
+            }
+            if (path.startsWith("/lazy/")) {
+                return assetResponse(path.substring(1));
             }
             return emptyResponse(404, "Not Found");
         }

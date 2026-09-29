@@ -4,7 +4,7 @@
 //   tokens as JSON only), with its fonts inlined as data URIs so the APK works offline.
 // - Bundles src/ai.js (Claude coach, uses @anthropic-ai/sdk) into an IIFE with esbuild.
 // - Inlines Refract's bundle.css/bundle.js and the app's own CSS/JS into src/shell.html.
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
@@ -85,6 +85,34 @@ export const APP_SCRIPTS = [
   'src/ui/settings.js',
 ];
 
+// Heavy parts that load only when they're used (the 3D figure, the on-device model runtime, the
+// barcode reader). Each is bundled or copied into dist/lazy/, which the APK serves next to the page
+// and GH.lazy(name) loads on demand. Entries: { name, entry?, assets?: [[from, to]] }.
+export const LAZY = [];
+
+async function buildLazy() {
+  const dir = join(root, 'dist/lazy');
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  const sizes = [];
+  for (const c of LAZY) {
+    if (c.entry) {
+      const result = await build({
+        entryPoints: [join(root, c.entry)], bundle: true, write: false, format: 'iife', platform: 'browser',
+        target: ['chrome100'], minify: true, legalComments: 'eof', logLevel: 'silent',
+      });
+      writeFileSync(join(dir, `${c.name}.js`), result.outputFiles[0].text);
+      sizes.push(`${c.name}.js ${(result.outputFiles[0].text.length / 1024).toFixed(0)} KB`);
+    }
+    for (const [from, to] of c.assets || []) {
+      mkdirSync(dirname(join(dir, to)), { recursive: true });
+      copyFileSync(join(root, from), join(dir, to));
+      sizes.push(`${to} ${(statSync(join(dir, to)).size / 1024).toFixed(0)} KB`);
+    }
+  }
+  return sizes;
+}
+
 async function bundleAi() {
   const result = await build({
     entryPoints: [join(root, 'src/ai.js')],
@@ -123,6 +151,8 @@ async function main() {
   mkdirSync(join(root, 'dist'), { recursive: true });
   writeFileSync(join(root, 'dist/gradient-health.html'), html);
   console.log(`dist/gradient-health.html  ${(html.length / 1024).toFixed(0)} KB  (ai bundle ${(aiJs.length / 1024).toFixed(0)} KB)`);
+  const lazy = await buildLazy();
+  if (lazy.length) console.log(`dist/lazy/  ${lazy.join(', ')}`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
