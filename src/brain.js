@@ -48,6 +48,9 @@
       // what the gym has. dbMax is the heaviest dumbbell in the gym's rack, in the person's units.
       where: 'home',
       gym: defaultGym(),
+      // What the app is used for: workouts can be switched off (food and health only). Food tracking
+      // settings live in profile.food (see food.js).
+      workouts: true,
       careful: [], impactOk: true, gentle: false, lead: { arm: null, leg: null },
       weightGoal: 'maintain', protein: { track: true, perLb: 0.8, quickName: 'Shake', quickG: 26 },
       sleepTypical: '6-7', sleepIrregular: false,
@@ -1773,7 +1776,8 @@
     if (!kg) return null;
     return Math.round((S.profile.protein.perLb || 0.8) * kg * LB_PER_KG);
   }
-  function proteinToday(S, day) { return (S.protein[day] || []).reduce((a, b) => a + b, 0); }
+  // Quick protein adds, plus the protein in logged food when calorie tracking is on.
+  function proteinToday(S, day) { return (S.protein[day] || []).reduce((a, b) => a + b, 0) + (GH.food && GH.food.proteinOn ? GH.food.proteinOn(S, day) : 0); }
   function addProtein(S, day, g) { (S.protein[day] = S.protein[day] || []).push(Math.round(g)); }
   function undoProtein(S, day) { if (S.protein[day] && S.protein[day].length) S.protein[day].pop(); }
 

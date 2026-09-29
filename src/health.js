@@ -13,7 +13,7 @@
   const hooks = G.__gh || (G.__gh = {});
   const bridge = () => G.AndroidBridge || null;
   const KEEP_DAYS = 400;
-  const SCALARS = ['steps', 'sleepMin', 'bed', 'wake', 'stages', 'rhr', 'hrv', 'weightKg', 'bodyFat'];
+  const SCALARS = ['steps', 'sleepMin', 'bed', 'wake', 'stages', 'rhr', 'hrv', 'weightKg', 'bodyFat', 'rhrEst', 'activeKcal', 'distanceM'];
 
   /* ---------------------------------------------------------------- Health Connect */
   function status() {
@@ -31,16 +31,18 @@
     for (const f of permListeners) { try { f(String(st)); } catch (e) { /* ignore */ } }
   };
   function onPerms(fn) { permListeners.push(fn); }
-  // Shows the Health Connect permission dialog; resolves with the new status.
-  function request() {
+  // Shows the Health Connect permission dialog; resolves with the new status. withFood (or a state
+  // with calorie tracking on) adds the nutrition permissions.
+  function request(withFood) {
     const b = bridge();
     if (!b || !b.hcRequest) return Promise.resolve('unsupported');
+    const food = withFood === true || (withFood && typeof withFood === 'object' && GH.food && GH.food.full(withFood));
     return new Promise((resolve) => {
-      let settled = false;
-      const done = (st) => { if (!settled) { settled = true; resolve(st); } };
+      let settled = false, timer = 0;
+      const done = (st) => { if (!settled) { settled = true; clearTimeout(timer); resolve(st); } };
       permWaiters.push(done);
-      try { b.hcRequest(); } catch (e) { done('unavailable'); }
-      setTimeout(() => done(status()), 180000);
+      timer = setTimeout(() => done(status()), 180000);
+      try { if (food && b.hcRequestFood) b.hcRequestFood(); else b.hcRequest(); } catch (e) { done('unavailable'); }
     });
   }
   function openSettings() { try { const b = bridge(); if (b && b.hcOpenSettings) b.hcOpenSettings(); } catch (e) { /* ignore */ } }
@@ -131,6 +133,20 @@
     for (const [d, v] of Object.entries(lastOfDay(p.bodyFat, 'pct', 1))) day(d).bodyFat = v;
     for (const [d, v] of Object.entries(avgOfDay(p.restingHr, 'bpm', 0))) day(d).rhr = v;
     for (const [d, v] of Object.entries(avgOfDay(p.hrv, 'ms', 1))) day(d).hrv = v;
+    // Estimated resting heart rate for watches that record heart rate but don't share a resting
+    // value (Samsung Health, Garmin): the lowest half hour of each local day, which is deep sleep
+    // for people who wear the watch at night. A low in the daytime means the watch was off overnight,
+    // so it isn't a resting value and is skipped.
+    for (const x of p.heartRate || []) {
+      const t = ms(x.time);
+      if (t == null || !(x.bpm >= 25 && x.bpm <= 150)) continue;
+      const hour = new Date(t).getHours();
+      if (hour >= 10 && hour < 21) continue;
+      day(b.dayOf(t, 0)).rhrEst = Math.round(x.bpm);
+    }
+    // Daily totals from Health Connect, by local calendar day.
+    for (const x of p.activeKcal || []) if (x && x.date && x.kcal > 0 && x.kcal < 10000) day(b.dayFromStr(x.date)).activeKcal = Math.round(x.kcal);
+    for (const x of p.distance || []) if (x && x.date && x.m > 0 && x.m < 500000) day(b.dayFromStr(x.date)).distanceM = Math.round(x.m);
     // Workouts from other apps. One that overlaps a workout done in this app is that workout.
     const appSpans = S.log.filter((l) => l.type === 'workout' && l.startedAt && l.endedAt).map((l) => [l.startedAt, l.endedAt]);
     for (const x of p.exercise || []) {
@@ -145,6 +161,21 @@
     // Height fills the profile if it's empty.
     const heights = (p.height || []).filter((x) => x && x.m > 0.9 && x.m < 2.5).sort((a, c) => (ms(a.time) || 0) - (ms(c.time) || 0));
     if (heights.length && !S.profile.heightCm) S.profile.heightCm = Math.round(heights[heights.length - 1].m * 100);
+    // Food logged in other apps, as totals per day (this app's own records are left out by the bridge).
+    if (Array.isArray(p.nutrition) && GH.food) {
+      const eaten = {};
+      for (const x of p.nutrition) {
+        const t = ms(x && x.start);
+        if (t == null || !(x.kcal >= 0) || x.kcal > 20000) continue;
+        const d = b.dayOf(t, rh);
+        const o = eaten[d] = eaten[d] || { day: d, kcal: 0, p: 0, c: 0, f: 0, n: 0 };
+        o.kcal += x.kcal || 0; o.p += x.p || 0; o.c += x.c || 0; o.f += x.f || 0; o.n++;
+      }
+      // Whole days only: the read's first day is partial, so it keeps what earlier reads found.
+      const other = GH.food.data(S).other;
+      if (first != null) for (let d = first + 1; d <= last; d++) if (!eaten[d]) delete other[d];
+      GH.food.ingestOther(S, Object.values(eaten).filter((o) => first == null || o.day > first));
+    }
     // Replace every day the read covered (so deleted records go away), keep older days. The read
     // starts partway through its first day, so that day is merged instead: records from before the
     // start time weren't part of this read.
@@ -181,6 +212,8 @@
       if (man && man[k] != null) out[k] = man[k];
       else if (hc && hc[k] != null) out[k] = hc[k];
     }
+    // No resting heart rate shared: use the estimate from heart rate, and say so where it shows.
+    if (out.rhr == null && out.rhrEst != null) { out.rhr = out.rhrEst; out.rhrFromEst = true; }
     const ex = [].concat((hc && hc.exercise) || [], (man && man.exercise) || []);
     if (ex.length) out.exercise = ex;
     out.src = { hc: !!hc, manual: !!man };
@@ -282,9 +315,12 @@
   function today(S, day) {
     const r = S.health.days[day] || {};
     const ws = B().weightStats(S, day);
+    const rl = latest(S, 'rhr', day, 3);
     return {
+      rhrEstimated: !!(rl && S.health.days[rl.day] && S.health.days[rl.day].rhrFromEst),
       sleepMin: value(S, 'sleepMin', day), sleepFromChip: r.sleepMin == null && !!(S.sleepChip && S.sleepChip[day]),
-      sleepLast: latest(S, 'sleepMin', day, 1), rhrLast: latest(S, 'rhr', day, 3), hrvLast: latest(S, 'hrv', day, 3),
+      sleepLast: latest(S, 'sleepMin', day, 1), rhrLast: rl, hrvLast: latest(S, 'hrv', day, 3),
+      activeKcal: value(S, 'activeKcal', day), distanceM: value(S, 'distanceM', day),
       bed: r.bed || null, wake: r.wake || null, stages: r.stages || null,
       steps: r.steps != null ? r.steps : null, rhr: r.rhr != null ? r.rhr : null, hrv: r.hrv != null ? r.hrv : null,
       weightAvg7: ws.avg7, weightLast: ws.last, activeMin: activeMinutes(S, day, day),
@@ -331,6 +367,72 @@
     return n;
   }
 
+  /* ---------------------------------------------------------------- writing food */
+  // Meals logged here become nutrition records in Health Connect. The record id is the entry's id,
+  // so an edit replaces the earlier copy (higher version) and a deleted entry is deleted there too.
+  const FOOD_PREFIX = 'gradient-food-';
+  function canWriteFood() { try { const b = bridge(); return !!(b && b.hcCanWriteFood && b.hcCanWriteFood()); } catch (e) { return false; } }
+  const food = { S: null, busy: false, again: false, pending: 0, sent: {}, timer: null };
+  function foodDone(kind, res) {
+    if (typeof res === 'string') { try { res = JSON.parse(res); } catch (e) { res = null; } }
+    const S = food.S;
+    if (S && GH.food && res && res.ok) {
+      for (const id of res.ids || []) {
+        const entry = String(id).slice(FOOD_PREFIX.length);
+        if (kind === 'write') GH.food.markWritten(S, entry, true, food.sent[id]);
+        else GH.food.markRemoved(S, entry);
+      }
+    }
+    for (const id of (res && res.ids) || []) delete food.sent[id];
+    if (S && res && !res.ok) S.food.hcError = String(res.error || 'failed').slice(0, 120);
+    else if (S && S.food) delete S.food.hcError;
+    food.pending--;
+    if (food.pending <= 0) {
+      clearTimeout(food.timer);
+      food.busy = false;
+      if (S && GH.store && GH.store.saveSoon) { try { GH.store.saveSoon(S); } catch (e) { /* ignore */ } }
+      if (food.again) { food.again = false; writeFood(S); }
+    }
+  }
+  hooks.onFoodWrite = (res) => foodDone('write', res);
+  hooks.onFoodDelete = (res) => foodDone('delete', res);
+  // Sends whatever changed since the last write. Returns how many records went out.
+  function writeFood(S) {
+    if (!S || !GH.food || !GH.food.full(S) || !canWriteFood()) return 0;
+    if (food.busy) { food.again = true; return 0; }
+    const pw = GH.food.pendingWrites(S);
+    const up = pw.upsert.slice(0, 200), rm = pw.remove.slice(0, 200);
+    if (!up.length && !rm.length) return 0;
+    food.S = S; food.busy = true; food.pending = 0;
+    const b = bridge();
+    try {
+      if (up.length) {
+        for (const r of up) food.sent[r.id] = r.v;
+        food.pending++;
+        b.hcWriteFood(JSON.stringify(up.map((r) => ({ id: r.id, v: r.v, start: r.start, end: r.end, meal: r.meal, name: r.name, kcal: r.kcal, p: r.p, c: r.c, f: r.f, fib: r.fib }))));
+      }
+      if (rm.length) { food.pending++; b.hcDeleteFood(JSON.stringify(rm.map((r) => r.id))); }
+    } catch (e) { food.busy = false; return 0; }
+    // No answer in a minute (an old bridge, a stuck call): let the next change try again.
+    food.timer = setTimeout(() => { food.busy = false; food.pending = 0; }, 60000);
+    return up.length + rm.length;
+  }
+
+  // Data types added after 1.1: people who connected earlier are asked once to allow them.
+  const NEW_TYPES = ['heartRate', 'activeKcal', 'distance', 'nutrition'];
+  function granted() {
+    const b = bridge();
+    if (!b || !b.hcGranted) return null;
+    try { const v = JSON.parse(b.hcGranted() || '[]'); return Array.isArray(v) ? v : null; } catch (e) { return null; }
+  }
+  function missingTypes(S) {
+    const g = granted();
+    if (!g || !connected(status())) return [];
+    const want = NEW_TYPES.slice();
+    if (GH.food && GH.food.full(S)) want.push('writeNutrition');
+    return want.filter((t) => !g.includes(t));
+  }
+
   // Light days: a walk from Health Connect ticks itself.
   function afterSync(S, day) {
     const plan = B().todayPlan(S, day);
@@ -340,7 +442,7 @@
 
   GH.health = {
     status, connected, request, onPerms, openSettings, read, sync, syncDays, ingest, rebuild, logManual, removeManual, setFeel, setSleepChip,
-    canWrite, workoutRecord, writeWorkout, writeRecent, onWrite,
+    canWrite, workoutRecord, writeWorkout, writeRecent, onWrite, canWriteFood, writeFood, granted, missingTypes, NEW_TYPES,
     addMeasurement, measureDue, value, latest, series, stats, baseline, weightOn, activity, activeMinutes, appWorkouts, today, afterSync, prettyType, CHIP_MIN,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

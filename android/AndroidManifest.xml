@@ -9,7 +9,8 @@
         android:minSdkVersion="26"
         android:targetSdkVersion="36" />
 
-    <!-- Only used by the opt-in AI coach (requests to https://api.anthropic.com). -->
+    <!-- Only for optional features: the Claude coach (api.anthropic.com), the on-device model
+         download (huggingface.co) and online food search (openfoodfacts.org). -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
@@ -22,8 +23,21 @@
     <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" />
     <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY" />
     <uses-permission android:name="android.permission.health.READ_EXERCISE" />
+    <!-- 1.2: heart rate (an estimated resting heart rate when a watch app doesn't share one),
+         active calories and distance, and food logged in other apps (all optional). -->
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_DISTANCE" />
+    <uses-permission android:name="android.permission.health.READ_NUTRITION" />
     <!-- Optional: saves the app's own workouts to Health Connect so other apps see them. -->
     <uses-permission android:name="android.permission.health.WRITE_EXERCISE" />
+    <!-- Meals logged in the app, saved to Health Connect if the person allows it. -->
+    <uses-permission android:name="android.permission.health.WRITE_NUTRITION" />
+    <!-- Only for scanning food barcodes, and only when the person taps Scan. Not required, so
+         phones without a camera can still install the app. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <!-- "Ask in the Claude app" hands a prompt to the Claude app when it's installed. -->
     <queries>

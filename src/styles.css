@@ -534,3 +534,59 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 .co-day-label { margin: 0 0 var(--space-1); font-weight: 600; }
 .co-chat { width: 100%; }
 @media (max-width: 360px) { .co-watch { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------------------------------------------------------------- food */
+.fd-sum { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-4); }
+.fd-sum .rf-ring-label { display: grid; justify-items: center; line-height: 1.1; }
+.fd-ring-n { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+.fd-sum.is-compact .fd-ring-n { font-size: 17px; }
+.fd-macros { display: grid; gap: var(--space-2); min-width: 0; }
+.fd-macros > p { margin: 0; }
+.fd-macro { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); }
+.fd-macro .t-caption { min-width: 64px; text-align: end; }
+.fd-days { display: flex; align-items: center; gap: var(--space-2); }
+.fd-days .t-callout { min-width: 88px; text-align: center; font-weight: 600; }
+.fd-meal { gap: var(--space-1); }
+.fd-meal-head { display: flex; align-items: center; gap: var(--space-2); min-height: 32px; }
+.fd-list { margin: 0 calc(-1 * var(--space-4)) calc(-1 * var(--space-2)); background: none; box-shadow: none; }
+.fd-list .rf-list-detail { font-variant-numeric: tabular-nums; }
+.fd-tools { justify-content: center; }
+.fd-search { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-4); }
+.fd-q { flex: 1; min-width: 0; }
+.fd-sheet .rf-segmented { margin: var(--space-3) var(--space-4) 0; }
+.fd-results { padding: var(--space-3) 0 0; min-height: 120px; }
+.fd-results > .rf-list-header { padding-inline: var(--space-4); }
+.fd-empty { margin: var(--space-4); text-align: center; }
+.fd-online { display: flex; align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-4); }
+.fd-online-btn { display: flex; margin: var(--space-2) auto; }
+.fd-more { margin-top: var(--space-4); }
+.fd-portion { gap: var(--space-3); }
+.fd-big { display: flex; align-items: baseline; gap: var(--space-2); }
+.fd-pcf { margin: 0; color: var(--label-secondary); }
+.fd-qty { display: flex; align-items: center; gap: var(--space-3); }
+.fd-actions { margin-top: var(--space-2); align-items: center; }
+.fd-actions .rf-btn[data-size="lg"] { flex: 1; }
+.fd-form { gap: var(--space-3); }
+
+/* ---------------------------------------------------------------- barcode scanner */
+.sc-wrap { display: grid; gap: var(--space-3); padding: var(--space-2) var(--space-4) var(--space-4); }
+.sc-view { position: relative; border-radius: var(--radius-lg); overflow: hidden; background: #000; aspect-ratio: 3 / 4; max-height: 58vh; width: 100%; }
+.sc-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.sc-frame { position: absolute; inset: 30% 10%; border-radius: var(--radius-md); box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.38); }
+.sc-frame::before { content: ""; position: absolute; inset: 0; border: 3px solid rgb(255 255 255 / 0.9); border-radius: inherit; }
+.sc-frame i { position: absolute; left: 6%; right: 6%; top: 50%; height: 2px; background: var(--accent); box-shadow: 0 0 12px var(--accent); animation: sc-sweep 1.6s var(--ease-standard) infinite alternate; }
+@keyframes sc-sweep { from { transform: translateY(-38px); } to { transform: translateY(38px); } }
+@media (prefers-reduced-motion: reduce) { .sc-frame i { animation: none; } }
+.sc-msg { position: absolute; left: 0; right: 0; bottom: 0; margin: 0; padding: var(--space-3) var(--space-4); color: #fff; text-align: center; background: linear-gradient(transparent, rgb(0 0 0 / 0.6)); }
+.sc-tools { justify-content: center; }
+.sc-type { display: grid; gap: var(--space-3); }
+.sc-type[hidden] { display: none; }
+
+/* Today without workouts: steps ring and the day's lines. */
+.day-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-4); }
+.day-lines { display: grid; gap: 2px; min-width: 0; }
+.day-lines > p { margin: 0; }
+.day-card .rf-ring-label { display: grid; justify-items: center; line-height: 1.1; }
+/* Settings rows with a full-width control under the title. */
+.set-stack { flex-direction: column; align-items: stretch; gap: var(--space-2); padding-block: var(--space-3); }
+.set-stack .rf-segmented { width: 100%; }

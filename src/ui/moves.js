@@ -119,7 +119,9 @@
       }).join('');
       const wu = (S.profile.equipment.kb && S.profile.equipment.kb.length ? M().WARMUP.kb : M().WARMUP.none);
       const extra = wu.concat(M().MOBILITY, ['walk']).filter((id) => M().MOVES[id]).map((id) => U.row({ icon: M().MOBILITY.includes(id) ? 'leaf' : id === 'walk' ? 'navigate' : 'sun', tone: 'teal', title: U.esc(M().MOVES[id].name), act: 'moveInfo', arg: id, chevron: true })).join('');
-      return `${U.navbar('Moves')}
+      // A tab normally; a page (with a back button) when Food has the tab.
+      const asPage = U.route && U.route.view === 'moves';
+      return `${U.navbar('Moves', '', asPage ? U.glassBtn('chevron-left', 'Back', 'back') : '')}
         <h1 class="rf-large-title">Moves</h1>
         <div class="section moves-list">${U.tip ? U.tip('moves') : ''}${groups}
           <h3 class="rf-list-header">Warm-up and mobility</h3><ul class="rf-list">${extra}</ul>

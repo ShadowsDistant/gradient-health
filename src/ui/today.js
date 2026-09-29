@@ -129,12 +129,35 @@
       <div class="feel-row"><span class="t-subhead">Energy</span>${U.seg('feelEnergy', [['low', 'Low'], ['ok', 'OK'], ['good', 'Good']], f.energy || '', 'Energy', ' data-on="feelEnergy"')}</div>
       <div class="feel-row"><span class="t-subhead">Soreness</span>${U.seg('feelSore', [['none', 'None'], ['some', 'Some'], ['very', 'Very']], f.sore || '', 'Soreness', ' data-on="feelSore"')}</div>
       ${hasSleep ? '' : `<div class="feel-row"><span class="t-subhead">Sleep</span>${U.seg('sleepChip', [['<5', '<5 h'], ['5-6', '5-6'], ['6-7', '6-7'], ['7-8', '7-8'], ['8+', '8+']], chip || '', 'Sleep last night', ' data-on="sleepChip"')}</div>`}
-      <p class="t-footnote rf-muted">Very sore with low energy, or under 5 h of sleep, means one less set per exercise today.</p>
+      ${S.profile.workouts !== false ? '<p class="t-footnote rf-muted">Very sore with low energy, or under 5 h of sleep, means one less set per exercise today.</p>' : ''}
+    </div>`;
+  }
+  // With workouts off, Today leads with the day's movement and last night's sleep.
+  function dayCard(S, day) {
+    const H = GH.health;
+    const t = H.today(S, day);
+    const goal = B().stepsGoal(S, day).goal;
+    const steps = t.steps;
+    const sl = t.sleepLast;
+    const lines = [];
+    lines.push(sl ? `Slept ${U.fmtMin(sl.value)}${sl.day !== day ? ' the night before' : ''}` : 'No sleep logged yet');
+    if (t.activeMin) lines.push(`${t.activeMin} active min`);
+    if (t.weightAvg7 != null) lines.push(`Weight ${U.fmtW(t.weightAvg7)} (7-day average)`);
+    return `<div class="card day-card" data-key="main">
+      <span class="rf-card-eyebrow">Today</span>
+      <div class="day-row">
+        ${U.ring(steps != null ? steps / goal : 0, 'Steps today', `<span class="fd-ring-n rf-num">${steps != null ? U.roll(U.num(steps)) : '–'}</span><span class="t-caption rf-muted">steps</span>`, 'md', steps != null && steps >= goal ? 'positive' : 'accent')}
+        <div class="day-lines">
+          <p class="t-headline">Goal ${U.num(goal)} steps</p>
+          ${lines.map((l) => `<p class="t-footnote rf-muted">${U.esc(l)}</p>`).join('')}
+        </div>
+      </div>
+      ${sl ? '' : '<div class="btn-row"><button type="button" class="rf-btn" data-size="sm" data-act="logSleep">Log sleep</button></div>'}
     </div>`;
   }
   function proteinCard(S, day) {
     const pr = S.profile.protein || {};
-    if (pr.track === false) return '';
+    if (pr.track === false || (GH.food && GH.food.mode(S) === 'off')) return '';
     const goal = B().proteinGoal(S, day);
     const got = B().proteinToday(S, day);
     if (!goal) return `<div class="card protein" data-key="protein"><span class="t-headline">Protein</span><p class="t-callout rf-muted">Add your weight to get a daily protein goal.</p><button type="button" class="rf-btn" data-act="logWeight">Log weight</button></div>`;
@@ -156,12 +179,14 @@
       const plan = B().todayPlan(S, day, cal);
       const week = cal.weeks[B().weekStart(day)];
       const st = cal.streak;
+      const workouts = S.profile.workouts !== false;
       const sub = [U.fmtDay(day)];
-      if (week) sub.push(`week ${week.trainingWeek}`);
+      if (week && workouts) sub.push(`week ${week.trainingWeek}`);
       // Today's session, built once for the workout card and the coach card.
-      const session = !S.active && plan.type === 'workout' ? B().buildSession(S, day, plan.tpl, { short: isShort(day), cal }) : null;
+      const session = workouts && !S.active && plan.type === 'workout' ? B().buildSession(S, day, plan.tpl, { short: isShort(day), cal }) : null;
       let main;
       if (S.active) main = activeCard(S, day);
+      else if (!workouts) main = dayCard(S, day);
       else if (plan.type === 'done') main = doneCard(S, plan.log);
       else if (plan.type === 'workout') main = workoutCard(S, day, plan, cal, session);
       else if (plan.type === 'light') main = lightCard(S, day, plan);
@@ -173,18 +198,18 @@
         <h1 class="rf-large-title">${U.esc(greeting(S))}</h1>
         <p class="lt-sub t-callout rf-muted">${U.esc(sub.join(' · '))}</p>
         <div class="section">
-          <div class="card streak" data-key="streak">
+          ${workouts ? `<div class="card streak" data-key="streak">
             <div class="streak-main">
               <div class="streak-n">${U.roll(st.current, 't-large-title')}<span class="t-callout rf-muted">day streak</span></div>
               <div class="streak-tally">${tallies(st.current)}</div>
             </div>
             <p class="t-footnote rf-muted">${st.weekly ? `${U.plural(st.weekly, 'full week')} in a row · ` : ''}${st.freezeThisWeek ? 'Freeze used this week' : '1 freeze left this week'}${st.best > st.current ? ` · best ${st.best}` : ''}</p>
-          </div>
+          </div>` : ''}
           ${main}
-          ${plan.type !== 'done' && !S.active && U.coachCard ? U.coachCard(S, day, session) : ''}
+          ${workouts && plan.type !== 'done' && !S.active && U.coachCard ? U.coachCard(S, day, session) : ''}
           ${U.checklist ? U.checklist(S, day) : ''}
+          ${GH.food && GH.food.full(S) && U.foodCard ? U.foodCard(S, day) : proteinCard(S, day)}
           ${feelCard(S, day)}
-          ${proteinCard(S, day)}
           ${measure ? `<ul class="rf-list" data-key="measure">${U.row({ icon: 'pin', tone: 'violet', title: 'Time to measure', sub: 'Waist and arms, once a month', act: 'logMeasure', chevron: true })}</ul>` : ''}
           ${top ? `<button type="button" class="insight-line" data-key="insight" data-act="goHealth"><span class="rf-list-icon" data-tone="${top.tone === 'good' ? 'green' : top.tone === 'watch' ? 'amber' : top.tone === 'alert' ? 'rose' : 'sky'}">${U.icon(top.icon)}</span><span class="insight-text"><span class="t-subhead">${U.esc(top.title)}</span><span class="t-footnote rf-muted">${U.esc(top.evidence)}</span></span>${U.icon('chevron-right')}</button>` : ''}
         </div>`;
@@ -193,7 +218,7 @@
       const cal = B().calendar(S, day);
       const plan = B().todayPlan(S, day, cal);
       if (S.active && S.active.day === day) return `<button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg" data-lens data-act="resumeWorkout">${U.icon('play')}Resume workout</button>`;
-      if (S.active) return '';
+      if (S.active || S.profile.workouts === false) return '';
       if (plan.type === 'workout') {
         const on = isShort(day);
         return `<button type="button" class="rf-btn rf-glass" data-size="lg" data-lens data-act="toggleShort" aria-pressed="${on}">${U.icon('timer')}${on ? 'Full session' : 'Short on time'}</button>

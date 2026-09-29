@@ -53,18 +53,24 @@
   function checkItems(S, day) {
     const b = B();
     const items = [];
-    const doneWorkout = S.log.some((l) => l.type === 'workout' && b.isDone(l));
-    let sub = 'Tap Start workout when you\'re ready.';
-    if (!doneWorkout) {
-      const plan = b.todayPlan(S, day);
-      if (plan.type !== 'workout' && plan.next) sub = `Your first one is on ${b.fmtDay(plan.next.day)}.`;
+    const workouts = S.profile.workouts !== false;
+    const food = GH.food && GH.food.full(S);
+    if (workouts) {
+      const doneWorkout = S.log.some((l) => l.type === 'workout' && b.isDone(l));
+      let sub = 'Tap Start workout when you\'re ready.';
+      if (!doneWorkout) {
+        const plan = b.todayPlan(S, day);
+        if (plan.type !== 'workout' && plan.next) sub = `Your first one is on ${b.fmtDay(plan.next.day)}.`;
+      }
+      items.push({ id: 'workout', icon: 'play', title: 'Finish your first workout', sub, done: doneWorkout });
+      items.push({ id: 'howto', icon: 'eye', title: 'See how a move is done', sub: 'Tap any exercise name for an animated demo.', done: U.seen('moveSheet'), act: 'ckHowTo' });
     }
-    items.push({ id: 'workout', icon: 'play', title: 'Finish your first workout', sub, done: doneWorkout });
-    items.push({ id: 'howto', icon: 'eye', title: 'See how a move is done', sub: 'Tap any exercise name for an animated diagram.', done: U.seen('moveSheet'), act: 'ckHowTo' });
-    items.push({ id: 'feel', icon: 'sparkle', title: 'Do a feel check', sub: 'Energy and soreness shape today\'s session.', done: Object.keys(S.feel || {}).length > 0, act: 'logFeel' });
+    if (food) items.push({ id: 'food', icon: 'food', title: 'Log your first meal', sub: 'Search, scan or quick-add the calories.', done: Object.keys(GH.food.data(S).days).some((d) => (GH.food.data(S).days[d] || []).length), act: 'foodAdd' });
+    items.push({ id: 'feel', icon: 'sparkle', title: 'Do a feel check', sub: workouts ? 'Energy and soreness shape today\'s session.' : 'Two taps: energy and soreness.', done: Object.keys(S.feel || {}).length > 0, act: 'logFeel' });
     const st = H().status();
     if (GH.platform && GH.platform.isApp() && st !== 'unsupported' && st !== 'unavailable') items.push({ id: 'health', icon: 'heart', title: 'Connect Health Connect', sub: 'Sleep and steps fill in on their own.', done: H().connected(st), act: 'hcConnect' });
-    items.push({ id: 'plan', icon: 'calendar', title: 'Look at your week', sub: 'The Plan tab shows every day.', done: U.seen('tab_plan'), act: 'ckPlan' });
+    if (workouts) items.push({ id: 'plan', icon: 'calendar', title: 'Look at your week', sub: 'The Plan tab shows every day.', done: U.seen('tab_plan'), act: 'ckPlan' });
+    else items.push({ id: 'weight', icon: 'chart', title: 'Log your weight', sub: 'Your trend shows on the Health tab.', done: (S.weights || []).some((w) => w.src !== 'profile'), act: 'logWeight' });
     return items;
   }
   U.checklist = (S, day) => {

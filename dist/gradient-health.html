@@ -3192,6 +3192,62 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 .co-day-label { margin: 0 0 var(--space-1); font-weight: 600; }
 .co-chat { width: 100%; }
 @media (max-width: 360px) { .co-watch { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------------------------------------------------------------- food */
+.fd-sum { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-4); }
+.fd-sum .rf-ring-label { display: grid; justify-items: center; line-height: 1.1; }
+.fd-ring-n { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+.fd-sum.is-compact .fd-ring-n { font-size: 17px; }
+.fd-macros { display: grid; gap: var(--space-2); min-width: 0; }
+.fd-macros > p { margin: 0; }
+.fd-macro { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); }
+.fd-macro .t-caption { min-width: 64px; text-align: end; }
+.fd-days { display: flex; align-items: center; gap: var(--space-2); }
+.fd-days .t-callout { min-width: 88px; text-align: center; font-weight: 600; }
+.fd-meal { gap: var(--space-1); }
+.fd-meal-head { display: flex; align-items: center; gap: var(--space-2); min-height: 32px; }
+.fd-list { margin: 0 calc(-1 * var(--space-4)) calc(-1 * var(--space-2)); background: none; box-shadow: none; }
+.fd-list .rf-list-detail { font-variant-numeric: tabular-nums; }
+.fd-tools { justify-content: center; }
+.fd-search { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-4); }
+.fd-q { flex: 1; min-width: 0; }
+.fd-sheet .rf-segmented { margin: var(--space-3) var(--space-4) 0; }
+.fd-results { padding: var(--space-3) 0 0; min-height: 120px; }
+.fd-results > .rf-list-header { padding-inline: var(--space-4); }
+.fd-empty { margin: var(--space-4); text-align: center; }
+.fd-online { display: flex; align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-4); }
+.fd-online-btn { display: flex; margin: var(--space-2) auto; }
+.fd-more { margin-top: var(--space-4); }
+.fd-portion { gap: var(--space-3); }
+.fd-big { display: flex; align-items: baseline; gap: var(--space-2); }
+.fd-pcf { margin: 0; color: var(--label-secondary); }
+.fd-qty { display: flex; align-items: center; gap: var(--space-3); }
+.fd-actions { margin-top: var(--space-2); align-items: center; }
+.fd-actions .rf-btn[data-size="lg"] { flex: 1; }
+.fd-form { gap: var(--space-3); }
+
+/* ---------------------------------------------------------------- barcode scanner */
+.sc-wrap { display: grid; gap: var(--space-3); padding: var(--space-2) var(--space-4) var(--space-4); }
+.sc-view { position: relative; border-radius: var(--radius-lg); overflow: hidden; background: #000; aspect-ratio: 3 / 4; max-height: 58vh; width: 100%; }
+.sc-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.sc-frame { position: absolute; inset: 30% 10%; border-radius: var(--radius-md); box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.38); }
+.sc-frame::before { content: ""; position: absolute; inset: 0; border: 3px solid rgb(255 255 255 / 0.9); border-radius: inherit; }
+.sc-frame i { position: absolute; left: 6%; right: 6%; top: 50%; height: 2px; background: var(--accent); box-shadow: 0 0 12px var(--accent); animation: sc-sweep 1.6s var(--ease-standard) infinite alternate; }
+@keyframes sc-sweep { from { transform: translateY(-38px); } to { transform: translateY(38px); } }
+@media (prefers-reduced-motion: reduce) { .sc-frame i { animation: none; } }
+.sc-msg { position: absolute; left: 0; right: 0; bottom: 0; margin: 0; padding: var(--space-3) var(--space-4); color: #fff; text-align: center; background: linear-gradient(transparent, rgb(0 0 0 / 0.6)); }
+.sc-tools { justify-content: center; }
+.sc-type { display: grid; gap: var(--space-3); }
+.sc-type[hidden] { display: none; }
+
+/* Today without workouts: steps ring and the day's lines. */
+.day-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-4); }
+.day-lines { display: grid; gap: 2px; min-width: 0; }
+.day-lines > p { margin: 0; }
+.day-card .rf-ring-label { display: grid; justify-items: center; line-height: 1.1; }
+/* Settings rows with a full-width control under the title. */
+.set-stack { flex-direction: column; align-items: stretch; gap: var(--space-2); padding-block: var(--space-3); }
+.set-stack .rf-segmented { width: 100%; }
 </style>
 </head>
 <body>
@@ -9435,6 +9491,9 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
       // what the gym has. dbMax is the heaviest dumbbell in the gym's rack, in the person's units.
       where: 'home',
       gym: defaultGym(),
+      // What the app is used for: workouts can be switched off (food and health only). Food tracking
+      // settings live in profile.food (see food.js).
+      workouts: true,
       careful: [], impactOk: true, gentle: false, lead: { arm: null, leg: null },
       weightGoal: 'maintain', protein: { track: true, perLb: 0.8, quickName: 'Shake', quickG: 26 },
       sleepTypical: '6-7', sleepIrregular: false,
@@ -11160,7 +11219,8 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
     if (!kg) return null;
     return Math.round((S.profile.protein.perLb || 0.8) * kg * LB_PER_KG);
   }
-  function proteinToday(S, day) { return (S.protein[day] || []).reduce((a, b) => a + b, 0); }
+  // Quick protein adds, plus the protein in logged food when calorie tracking is on.
+  function proteinToday(S, day) { return (S.protein[day] || []).reduce((a, b) => a + b, 0) + (GH.food && GH.food.proteinOn ? GH.food.proteinOn(S, day) : 0); }
   function addProtein(S, day, g) { (S.protein[day] = S.protein[day] || []).push(Math.round(g)); }
   function undoProtein(S, day) { if (S.protein[day] && S.protein[day].length) S.protein[day].pop(); }
 
@@ -11673,7 +11733,7 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
   const hooks = G.__gh || (G.__gh = {});
   const bridge = () => G.AndroidBridge || null;
   const KEEP_DAYS = 400;
-  const SCALARS = ['steps', 'sleepMin', 'bed', 'wake', 'stages', 'rhr', 'hrv', 'weightKg', 'bodyFat'];
+  const SCALARS = ['steps', 'sleepMin', 'bed', 'wake', 'stages', 'rhr', 'hrv', 'weightKg', 'bodyFat', 'rhrEst', 'activeKcal', 'distanceM'];
 
   /* ---------------------------------------------------------------- Health Connect */
   function status() {
@@ -11691,16 +11751,18 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
     for (const f of permListeners) { try { f(String(st)); } catch (e) { /* ignore */ } }
   };
   function onPerms(fn) { permListeners.push(fn); }
-  // Shows the Health Connect permission dialog; resolves with the new status.
-  function request() {
+  // Shows the Health Connect permission dialog; resolves with the new status. withFood (or a state
+  // with calorie tracking on) adds the nutrition permissions.
+  function request(withFood) {
     const b = bridge();
     if (!b || !b.hcRequest) return Promise.resolve('unsupported');
+    const food = withFood === true || (withFood && typeof withFood === 'object' && GH.food && GH.food.full(withFood));
     return new Promise((resolve) => {
-      let settled = false;
-      const done = (st) => { if (!settled) { settled = true; resolve(st); } };
+      let settled = false, timer = 0;
+      const done = (st) => { if (!settled) { settled = true; clearTimeout(timer); resolve(st); } };
       permWaiters.push(done);
-      try { b.hcRequest(); } catch (e) { done('unavailable'); }
-      setTimeout(() => done(status()), 180000);
+      timer = setTimeout(() => done(status()), 180000);
+      try { if (food && b.hcRequestFood) b.hcRequestFood(); else b.hcRequest(); } catch (e) { done('unavailable'); }
     });
   }
   function openSettings() { try { const b = bridge(); if (b && b.hcOpenSettings) b.hcOpenSettings(); } catch (e) { /* ignore */ } }
@@ -11791,6 +11853,20 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
     for (const [d, v] of Object.entries(lastOfDay(p.bodyFat, 'pct', 1))) day(d).bodyFat = v;
     for (const [d, v] of Object.entries(avgOfDay(p.restingHr, 'bpm', 0))) day(d).rhr = v;
     for (const [d, v] of Object.entries(avgOfDay(p.hrv, 'ms', 1))) day(d).hrv = v;
+    // Estimated resting heart rate for watches that record heart rate but don't share a resting
+    // value (Samsung Health, Garmin): the lowest half hour of each local day, which is deep sleep
+    // for people who wear the watch at night. A low in the daytime means the watch was off overnight,
+    // so it isn't a resting value and is skipped.
+    for (const x of p.heartRate || []) {
+      const t = ms(x.time);
+      if (t == null || !(x.bpm >= 25 && x.bpm <= 150)) continue;
+      const hour = new Date(t).getHours();
+      if (hour >= 10 && hour < 21) continue;
+      day(b.dayOf(t, 0)).rhrEst = Math.round(x.bpm);
+    }
+    // Daily totals from Health Connect, by local calendar day.
+    for (const x of p.activeKcal || []) if (x && x.date && x.kcal > 0 && x.kcal < 10000) day(b.dayFromStr(x.date)).activeKcal = Math.round(x.kcal);
+    for (const x of p.distance || []) if (x && x.date && x.m > 0 && x.m < 500000) day(b.dayFromStr(x.date)).distanceM = Math.round(x.m);
     // Workouts from other apps. One that overlaps a workout done in this app is that workout.
     const appSpans = S.log.filter((l) => l.type === 'workout' && l.startedAt && l.endedAt).map((l) => [l.startedAt, l.endedAt]);
     for (const x of p.exercise || []) {
@@ -11805,6 +11881,21 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
     // Height fills the profile if it's empty.
     const heights = (p.height || []).filter((x) => x && x.m > 0.9 && x.m < 2.5).sort((a, c) => (ms(a.time) || 0) - (ms(c.time) || 0));
     if (heights.length && !S.profile.heightCm) S.profile.heightCm = Math.round(heights[heights.length - 1].m * 100);
+    // Food logged in other apps, as totals per day (this app's own records are left out by the bridge).
+    if (Array.isArray(p.nutrition) && GH.food) {
+      const eaten = {};
+      for (const x of p.nutrition) {
+        const t = ms(x && x.start);
+        if (t == null || !(x.kcal >= 0) || x.kcal > 20000) continue;
+        const d = b.dayOf(t, rh);
+        const o = eaten[d] = eaten[d] || { day: d, kcal: 0, p: 0, c: 0, f: 0, n: 0 };
+        o.kcal += x.kcal || 0; o.p += x.p || 0; o.c += x.c || 0; o.f += x.f || 0; o.n++;
+      }
+      // Whole days only: the read's first day is partial, so it keeps what earlier reads found.
+      const other = GH.food.data(S).other;
+      if (first != null) for (let d = first + 1; d <= last; d++) if (!eaten[d]) delete other[d];
+      GH.food.ingestOther(S, Object.values(eaten).filter((o) => first == null || o.day > first));
+    }
     // Replace every day the read covered (so deleted records go away), keep older days. The read
     // starts partway through its first day, so that day is merged instead: records from before the
     // start time weren't part of this read.
@@ -11841,6 +11932,8 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
       if (man && man[k] != null) out[k] = man[k];
       else if (hc && hc[k] != null) out[k] = hc[k];
     }
+    // No resting heart rate shared: use the estimate from heart rate, and say so where it shows.
+    if (out.rhr == null && out.rhrEst != null) { out.rhr = out.rhrEst; out.rhrFromEst = true; }
     const ex = [].concat((hc && hc.exercise) || [], (man && man.exercise) || []);
     if (ex.length) out.exercise = ex;
     out.src = { hc: !!hc, manual: !!man };
@@ -11942,9 +12035,12 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
   function today(S, day) {
     const r = S.health.days[day] || {};
     const ws = B().weightStats(S, day);
+    const rl = latest(S, 'rhr', day, 3);
     return {
+      rhrEstimated: !!(rl && S.health.days[rl.day] && S.health.days[rl.day].rhrFromEst),
       sleepMin: value(S, 'sleepMin', day), sleepFromChip: r.sleepMin == null && !!(S.sleepChip && S.sleepChip[day]),
-      sleepLast: latest(S, 'sleepMin', day, 1), rhrLast: latest(S, 'rhr', day, 3), hrvLast: latest(S, 'hrv', day, 3),
+      sleepLast: latest(S, 'sleepMin', day, 1), rhrLast: rl, hrvLast: latest(S, 'hrv', day, 3),
+      activeKcal: value(S, 'activeKcal', day), distanceM: value(S, 'distanceM', day),
       bed: r.bed || null, wake: r.wake || null, stages: r.stages || null,
       steps: r.steps != null ? r.steps : null, rhr: r.rhr != null ? r.rhr : null, hrv: r.hrv != null ? r.hrv : null,
       weightAvg7: ws.avg7, weightLast: ws.last, activeMin: activeMinutes(S, day, day),
@@ -11991,6 +12087,72 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
     return n;
   }
 
+  /* ---------------------------------------------------------------- writing food */
+  // Meals logged here become nutrition records in Health Connect. The record id is the entry's id,
+  // so an edit replaces the earlier copy (higher version) and a deleted entry is deleted there too.
+  const FOOD_PREFIX = 'gradient-food-';
+  function canWriteFood() { try { const b = bridge(); return !!(b && b.hcCanWriteFood && b.hcCanWriteFood()); } catch (e) { return false; } }
+  const food = { S: null, busy: false, again: false, pending: 0, sent: {}, timer: null };
+  function foodDone(kind, res) {
+    if (typeof res === 'string') { try { res = JSON.parse(res); } catch (e) { res = null; } }
+    const S = food.S;
+    if (S && GH.food && res && res.ok) {
+      for (const id of res.ids || []) {
+        const entry = String(id).slice(FOOD_PREFIX.length);
+        if (kind === 'write') GH.food.markWritten(S, entry, true, food.sent[id]);
+        else GH.food.markRemoved(S, entry);
+      }
+    }
+    for (const id of (res && res.ids) || []) delete food.sent[id];
+    if (S && res && !res.ok) S.food.hcError = String(res.error || 'failed').slice(0, 120);
+    else if (S && S.food) delete S.food.hcError;
+    food.pending--;
+    if (food.pending <= 0) {
+      clearTimeout(food.timer);
+      food.busy = false;
+      if (S && GH.store && GH.store.saveSoon) { try { GH.store.saveSoon(S); } catch (e) { /* ignore */ } }
+      if (food.again) { food.again = false; writeFood(S); }
+    }
+  }
+  hooks.onFoodWrite = (res) => foodDone('write', res);
+  hooks.onFoodDelete = (res) => foodDone('delete', res);
+  // Sends whatever changed since the last write. Returns how many records went out.
+  function writeFood(S) {
+    if (!S || !GH.food || !GH.food.full(S) || !canWriteFood()) return 0;
+    if (food.busy) { food.again = true; return 0; }
+    const pw = GH.food.pendingWrites(S);
+    const up = pw.upsert.slice(0, 200), rm = pw.remove.slice(0, 200);
+    if (!up.length && !rm.length) return 0;
+    food.S = S; food.busy = true; food.pending = 0;
+    const b = bridge();
+    try {
+      if (up.length) {
+        for (const r of up) food.sent[r.id] = r.v;
+        food.pending++;
+        b.hcWriteFood(JSON.stringify(up.map((r) => ({ id: r.id, v: r.v, start: r.start, end: r.end, meal: r.meal, name: r.name, kcal: r.kcal, p: r.p, c: r.c, f: r.f, fib: r.fib }))));
+      }
+      if (rm.length) { food.pending++; b.hcDeleteFood(JSON.stringify(rm.map((r) => r.id))); }
+    } catch (e) { food.busy = false; return 0; }
+    // No answer in a minute (an old bridge, a stuck call): let the next change try again.
+    food.timer = setTimeout(() => { food.busy = false; food.pending = 0; }, 60000);
+    return up.length + rm.length;
+  }
+
+  // Data types added after 1.1: people who connected earlier are asked once to allow them.
+  const NEW_TYPES = ['heartRate', 'activeKcal', 'distance', 'nutrition'];
+  function granted() {
+    const b = bridge();
+    if (!b || !b.hcGranted) return null;
+    try { const v = JSON.parse(b.hcGranted() || '[]'); return Array.isArray(v) ? v : null; } catch (e) { return null; }
+  }
+  function missingTypes(S) {
+    const g = granted();
+    if (!g || !connected(status())) return [];
+    const want = NEW_TYPES.slice();
+    if (GH.food && GH.food.full(S)) want.push('writeNutrition');
+    return want.filter((t) => !g.includes(t));
+  }
+
   // Light days: a walk from Health Connect ticks itself.
   function afterSync(S, day) {
     const plan = B().todayPlan(S, day);
@@ -12000,8 +12162,353 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 
   GH.health = {
     status, connected, request, onPerms, openSettings, read, sync, syncDays, ingest, rebuild, logManual, removeManual, setFeel, setSleepChip,
-    canWrite, workoutRecord, writeWorkout, writeRecent, onWrite,
+    canWrite, workoutRecord, writeWorkout, writeRecent, onWrite, canWriteFood, writeFood, granted, missingTypes, NEW_TYPES,
     addMeasurement, measureDue, value, latest, series, stats, baseline, weightOn, activity, activeMinutes, appWorkouts, today, afterSync, prettyType, CHIP_MIN,
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script>/* src/food.js */
+/* Food tracking (optional): what you ate, your calorie and macro targets, and a burn estimate that
+ * learns from your own intake and weight trend. Pure logic on the saved state; the Food tab and the
+ * Today card draw it. Modes: 'off', 'protein' (the quick protein counter) or 'full'.
+ *
+ * Targets. Resting burn from Mifflin-St Jeor (Mifflin et al. 1990; the most accurate common
+ * equation, Frankenfield et al. 2005) times an activity factor from your steps and workouts, in the
+ * FAO/WHO/UNU (2004) activity bands. Weight change: lose 0.5% of body weight a week by default
+ * (0.5-1% keeps muscle, Helms et al. 2014, Garthe et al. 2011), gain 0.25% (Iraki et al. 2019).
+ * Never under 1,200 kcal (1,500 for men), the floors in the AHA/ACC/TOS guideline (Jensen et al.
+ * 2014). After two weeks of logging with regular weigh-ins, the burn estimate learns from what you
+ * actually ate and how your weight moved (7,700 kcal per kg, a rule of thumb, Hall 2008), blended
+ * in slowly and never moved more than 150 kcal a week.
+ */
+(function (G) {
+  'use strict';
+  const GH = G.GH || (G.GH = {});
+  const B = () => GH.brain;
+  const KCAL_PER_KG = 7700;
+  const MEALS = [['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner'], ['snack', 'Snacks']];
+  const FLOOR = { female: 1200, male: 1500, '': 1350 };
+
+  /* ---------------------------------------------------------------- state */
+  function defaults() {
+    return { mode: 'protein', pace: 0.5, online: false, hcWrite: true, hcRead: true };
+  }
+  // The profile's food settings, with defaults; the food log lives in S.food.
+  function prefs(S) {
+    const p = S.profile;
+    p.food = Object.assign(defaults(), p.food || {});
+    return p.food;
+  }
+  function data(S) {
+    S.food = S.food || {};
+    const f = S.food;
+    f.days = f.days || {};
+    f.custom = f.custom || [];
+    f.saved = f.saved || [];
+    f.recent = f.recent || [];
+    f.favs = f.favs || [];
+    f.other = f.other || {}; // food logged in other apps, per day, from Health Connect
+    return f;
+  }
+  const mode = (S) => prefs(S).mode;
+  const full = (S) => mode(S) === 'full';
+  // Off, protein only or full; the protein counter follows (it's on unless food tracking is off).
+  function setMode(S, m) {
+    const next = ['off', 'protein', 'full'].includes(m) ? m : 'protein';
+    prefs(S).mode = next;
+    S.profile.protein = Object.assign({}, S.profile.protein || {}, { track: next !== 'off' });
+    if (next === 'full') data(S);
+    return next;
+  }
+
+  /* ---------------------------------------------------------------- targets */
+  function age(S) { return S.profile.age || 30; }
+  // Resting energy expenditure, kcal a day.
+  function ree(S, day) {
+    const p = S.profile;
+    const w = B().weightStats(S, day).current || p.weightKg;
+    if (!w) return null;
+    const h = p.heightCm || (p.sex === 'female' ? 163 : p.sex === 'male' ? 177 : 170);
+    const s = p.sex === 'male' ? 5 : p.sex === 'female' ? -161 : -78;
+    return 10 * w + 6.25 * h - 5 * age(S) + s;
+  }
+  // Physical activity level from your own steps and planned workouts (FAO/WHO/UNU bands 1.4-1.9+).
+  function activityFactor(S, day) {
+    const hd = (S.health && S.health.days) || {};
+    const steps = [];
+    for (let d = day - 28; d < day; d++) if (hd[d] && hd[d].steps != null) steps.push(hd[d].steps);
+    const med = steps.length >= 7 ? B().median(steps) : null;
+    let pal = med == null ? 1.45 : med < 5000 ? 1.4 : med < 7500 ? 1.5 : med < 10000 ? 1.6 : med < 12500 ? 1.7 : 1.8;
+    if (S.profile.workouts !== false) pal += Math.min(0.15, (S.profile.days || 0) * 0.025);
+    return { pal: Math.min(2, Math.round(pal * 100) / 100), steps: med };
+  }
+  // The daily change the goal asks for, kcal (negative = deficit).
+  function goalDelta(S, day) {
+    const p = S.profile;
+    const w = B().weightStats(S, day).current || p.weightKg || 70;
+    const pace = prefs(S).pace;
+    if (p.weightGoal === 'lose') return -Math.round(((w * Math.min(1, Math.max(0.25, pace))) / 100) * KCAL_PER_KG / 7);
+    if (p.weightGoal === 'gain') return Math.round(((w * 0.25) / 100) * KCAL_PER_KG / 7);
+    return 0;
+  }
+  function floorFor(S) { return FLOOR[S.profile.sex === 'male' ? 'male' : S.profile.sex === 'female' ? 'female' : '']; }
+
+  // What you burn in a day: the learned estimate when there is one, else the formula.
+  function burn(S, day) {
+    const r = ree(S, day);
+    if (r == null) return null;
+    const act = activityFactor(S, day);
+    const formula = Math.round(r * act.pal);
+    const learned = data(S).tdee;
+    const use = learned && learned.kcal && day - learned.day < 21 ? learned.kcal : formula;
+    return { kcal: Math.round(use), formula, ree: Math.round(r), pal: act.pal, learned: !!(learned && learned.kcal && day - learned.day < 21), weight: learned && learned.w };
+  }
+
+  // Today's targets: calories and grams of protein, carbs and fat.
+  function targets(S, day) {
+    const b = burn(S, day);
+    if (!b) return null;
+    const kcal = Math.max(floorFor(S), Math.round((b.kcal + goalDelta(S, day)) / 10) * 10);
+    const w = B().weightStats(S, day).current || S.profile.weightKg || 70;
+    const protein = B().proteinGoal(S, day) || Math.round(1.6 * w);
+    let fat = Math.max(Math.round(0.6 * w), Math.round((kcal * 0.27) / 9));
+    let carbs = Math.round((kcal - protein * 4 - fat * 9) / 4);
+    if (carbs < 50) { fat = Math.max(Math.round(0.5 * w), Math.round((kcal - protein * 4 - 50 * 4) / 9)); carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4)); }
+    return { kcal, protein, carbs, fat, burn: b.kcal, learned: b.learned, delta: goalDelta(S, day), floor: floorFor(S), pal: b.pal, ree: b.ree };
+  }
+
+  /* ---------------------------------------------------------------- logging */
+  const round1 = (x) => Math.round(x * 10) / 10;
+  // Nutrients for an amount of a food given per 100 g.
+  function scale(per100, grams) {
+    const k = grams / 100;
+    return { kcal: Math.round(per100.kcal * k), p: round1(per100.p * k), c: round1(per100.c * k), f: round1(per100.f * k), fib: round1((per100.fib || 0) * k) };
+  }
+  let seq = 0;
+  const newId = () => `${Date.now().toString(36)}${(seq++ % 1296).toString(36).padStart(2, '0')}`;
+  function mealFor(ts) {
+    const h = new Date(ts).getHours();
+    return h >= 4 && h < 11 ? 'breakfast' : h >= 11 && h < 16 ? 'lunch' : h >= 16 && h < 22 ? 'dinner' : 'snack';
+  }
+  // Adds an entry: { name, meal?, src, ref?, g?, kcal, p, c, f, fib? } → the entry.
+  function add(S, day, e, now) {
+    const f = data(S);
+    const t = now || Date.now();
+    const entry = {
+      id: newId(), t, meal: e.meal || mealFor(t), name: String(e.name || 'Food').slice(0, 80), detail: e.detail || null,
+      src: e.src || 'quick', ref: e.ref != null ? e.ref : null, g: e.g != null ? Math.round(e.g) : null, portion: e.portion || null,
+      kcal: Math.max(0, Math.round(e.kcal || 0)), p: round1(Math.max(0, e.p || 0)), c: round1(Math.max(0, e.c || 0)), f: round1(Math.max(0, e.f || 0)), fib: round1(Math.max(0, e.fib || 0)),
+    };
+    (f.days[day] = f.days[day] || []).push(entry);
+    if (entry.ref != null && entry.src !== 'quick') {
+      const key = `${entry.src}:${entry.ref}`;
+      f.recent = [key].concat(f.recent.filter((x) => x !== key)).slice(0, 40);
+    }
+    return entry;
+  }
+  function update(S, day, id, patch) {
+    const list = data(S).days[day] || [];
+    const e = list.find((x) => x.id === id);
+    if (!e) return null;
+    Object.assign(e, patch);
+    e.v = (e.v || 0) + 1; // a new version: Health Connect's copy gets updated
+    return e;
+  }
+  function remove(S, day, id) {
+    const f = data(S);
+    const list = f.days[day] || [];
+    const i = list.findIndex((x) => x.id === id);
+    if (i < 0) return null;
+    const [e] = list.splice(i, 1);
+    f.removed = (f.removed || []).concat({ id: e.id, day }).slice(-200); // so Health Connect copies get deleted
+    return e;
+  }
+  function entries(S, day) { return (data(S).days[day] || []).slice().sort((a, b) => a.t - b.t); }
+  // Totals for a day. includeOther adds food logged in other apps (from Health Connect).
+  function totals(S, day, includeOther) {
+    const t = { kcal: 0, p: 0, c: 0, f: 0, fib: 0, n: 0 };
+    for (const e of data(S).days[day] || []) { t.kcal += e.kcal; t.p += e.p; t.c += e.c; t.f += e.f; t.fib += e.fib || 0; t.n++; }
+    const o = includeOther !== false && prefs(S).hcRead !== false ? data(S).other[day] : null;
+    if (o) { t.kcal += o.kcal || 0; t.p += o.p || 0; t.c += o.c || 0; t.f += o.f || 0; t.other = o; }
+    for (const k of ['p', 'c', 'f', 'fib']) t[k] = round1(t[k]);
+    t.kcal = Math.round(t.kcal);
+    return t;
+  }
+  function byMeal(S, day) {
+    const out = {};
+    for (const [id] of MEALS) out[id] = [];
+    for (const e of entries(S, day)) (out[e.meal] || out.snack).push(e);
+    return out;
+  }
+  // Copies a meal (or the whole day) from another day.
+  function copyMeal(S, fromDay, toDay, meal, now) {
+    const src = entries(S, fromDay).filter((e) => !meal || e.meal === meal);
+    return src.map((e) => add(S, toDay, Object.assign({}, e, { meal: e.meal }), now));
+  }
+  // Saved meals: a named group of entries you can add in one tap.
+  function saveMeal(S, name, list) {
+    const f = data(S);
+    const meal = { id: newId(), name: String(name || 'Meal').slice(0, 40), items: list.map((e) => ({ name: e.name, detail: e.detail, src: e.src, ref: e.ref, g: e.g, portion: e.portion, kcal: e.kcal, p: e.p, c: e.c, f: e.f, fib: e.fib })) };
+    f.saved = f.saved.concat(meal).slice(-30);
+    return meal;
+  }
+  function addSaved(S, day, savedId, meal, now) {
+    const m = data(S).saved.find((x) => x.id === savedId);
+    if (!m) return [];
+    return m.items.map((it) => add(S, day, Object.assign({}, it, { meal }), now));
+  }
+  // Custom foods from a label: per serving → stored per 100 g when the serving size is known.
+  function addCustom(S, c) {
+    const f = data(S);
+    const g = c.servingG > 0 ? c.servingG : null;
+    const per = (x) => (g ? round1((x * 100) / g) : x);
+    const food = { id: `c${newId()}`, name: String(c.name || 'My food').slice(0, 60), servingG: g, servingLabel: c.servingLabel || (g ? `1 serving (${g} g)` : '1 serving'), per100: g ? { kcal: Math.round((c.kcal * 100) / g), p: per(c.p || 0), c: per(c.c || 0), f: per(c.f || 0), fib: per(c.fib || 0) } : null, perServing: { kcal: Math.round(c.kcal || 0), p: round1(c.p || 0), c: round1(c.c || 0), f: round1(c.f || 0), fib: round1(c.fib || 0) } };
+    f.custom = f.custom.filter((x) => x.name.toLowerCase() !== food.name.toLowerCase()).concat(food).slice(-100);
+    return food;
+  }
+  function toggleFav(S, key) {
+    const f = data(S);
+    f.favs = f.favs.includes(key) ? f.favs.filter((x) => x !== key) : [key].concat(f.favs).slice(0, 60);
+    return f.favs.includes(key);
+  }
+
+  /* ---------------------------------------------------------------- learning your burn */
+  // Smoothed weight (10% exponential moving average per day) over a window, for the trend.
+  function smoothWeights(S, from, to) {
+    const w = (S.weights || []).filter((x) => x.day >= from - 30 && x.day <= to).sort((a, b) => a.day - b.day);
+    if (!w.length) return [];
+    let ema = w[0].kg;
+    const out = [];
+    let i = 0;
+    for (let d = w[0].day; d <= to; d++) {
+      while (i < w.length && w[i].day === d) { ema = ema + 0.1 * (w[i].kg - ema); i++; }
+      if (d >= from) out.push({ day: d, kg: ema });
+    }
+    return out;
+  }
+  function slope(points) {
+    const n = points.length;
+    if (n < 2) return null;
+    const mx = points.reduce((a, p) => a + p.day, 0) / n, my = points.reduce((a, p) => a + p.kg, 0) / n;
+    let num = 0, den = 0;
+    for (const p of points) { num += (p.day - mx) * (p.kg - my); den += (p.day - mx) * (p.day - mx); }
+    return den ? num / den : null;
+  }
+  // Re-estimates what you burn from the last three weeks: mean intake on logged days minus
+  // 7,700 kcal per kg of smoothed weight change. Needs 10+ logged days and 6+ weigh-ins, is kept
+  // within 70-140% of the formula, blended in by how much data there is, and moves at most 150 kcal
+  // a week. Returns the saved estimate (or null when there isn't enough yet).
+  function learnBurn(S, day) {
+    const f = data(S);
+    const r = ree(S, day);
+    if (r == null || !full(S)) return f.tdee || null;
+    const formula = r * activityFactor(S, day).pal;
+    const from = day - 21;
+    const logged = [];
+    for (let d = from; d < day; d++) { const t = totals(S, d, true); if (t.kcal >= formula * 0.4) logged.push(t.kcal); }
+    const weighIns = (S.weights || []).filter((x) => x.day >= from && x.day < day).length;
+    if (logged.length < 10 || weighIns < 6) return f.tdee || null;
+    // The trend is a straight-line fit through the raw weigh-ins: day-to-day water swings average
+    // out, and unlike a moving average it doesn't lag when weighing only just started.
+    const trend = slope((S.weights || []).filter((x) => x.day >= from && x.day < day).map((x) => ({ day: x.day, kg: x.kg })));
+    if (trend == null) return f.tdee || null;
+    const intake = logged.reduce((a, x) => a + x, 0) / logged.length;
+    const observed = Math.max(formula * 0.7, Math.min(formula * 1.4, intake - trend * KCAL_PER_KG));
+    const weight = Math.min(0.8, ((logged.length - 9) / 12) * 0.8);
+    let est = (1 - weight) * formula + weight * observed;
+    const prev = f.tdee;
+    if (prev && prev.kcal) {
+      const weeks = Math.max(1, (day - prev.day) / 7);
+      est = Math.max(prev.kcal - 150 * weeks, Math.min(prev.kcal + 150 * weeks, est));
+    }
+    f.tdee = { kcal: Math.round(est), day, formula: Math.round(formula), observed: Math.round(observed), days: logged.length, w: Math.round(weight * 100) / 100 };
+    return f.tdee;
+  }
+
+  /* ---------------------------------------------------------------- coach hooks */
+  // A week eaten well under target (or weight dropping fast) holds weekly set increases.
+  function holdsVolume(S, ws) {
+    if (!full(S)) return false;
+    const t = targets(S, ws + 6);
+    if (!t) return false;
+    const days = [];
+    for (let d = ws; d <= ws + 6; d++) { const x = totals(S, d, true); if (x.kcal >= t.kcal * 0.4) days.push(x.kcal); }
+    const rate = B().weightStats(S, ws + 6).rate;
+    if (rate != null && rate < -0.01) return true;
+    if (days.length < 4) return false;
+    return days.reduce((a, x) => a + x, 0) / days.length < t.burn - 500;
+  }
+  function watchItem(S, day) {
+    if (!full(S)) return null;
+    const t = targets(S, day);
+    if (!t) return null;
+    const days = [];
+    for (let d = day - 7; d < day; d++) { const x = totals(S, d, true); if (x.kcal >= t.kcal * 0.4) days.push(x.kcal); }
+    if (days.length < 3) return null;
+    const avg = days.reduce((a, x) => a + x, 0) / days.length;
+    const off = avg - t.kcal;
+    return { icon: 'flame', label: 'Calories', value: `${Math.round(avg).toLocaleString('en-US')} a day`, status: Math.abs(off) <= t.kcal * 0.1 ? 'good' : 'info', note: `Target ${t.kcal.toLocaleString('en-US')}${t.learned ? ', learned from your logs' : ''}.` };
+  }
+  function suggestions(S, day) {
+    if (!full(S)) return [];
+    const out = [];
+    const ws = B().weightStats(S, day);
+    const goal = S.profile.weightGoal;
+    if (goal === 'lose' && ws.rate != null && ws.rate < -0.01) out.push({ id: `food-fast-${B().weekStart(day)}`, icon: 'flame', title: 'Eat a little more', body: `You're losing ${Math.round(-ws.rate * 1000) / 10}% a week. Under 1% keeps more muscle. About 150 kcal more a day would slow it down.` });
+    const t = targets(S, day);
+    if (t) {
+      let low = 0, n = 0;
+      for (let d = day - 7; d < day; d++) { const x = totals(S, d, true); if (x.kcal >= t.kcal * 0.4) { n++; if (x.p < t.protein * 0.8) low++; } }
+      if (n >= 4 && low >= n - 1) out.push({ id: `food-protein-${B().weekStart(day)}`, icon: 'check-circle', title: `Aim for ${t.protein} g of protein`, body: `You were under it on ${low} of the ${n} days you logged. A portion of meat, fish, tofu, eggs or Greek yogurt at each meal covers most of it.` });
+    }
+    return out;
+  }
+  function targetLine(S, day) {
+    if (!full(S)) return null;
+    const t = targets(S, day);
+    return t ? `${t.kcal.toLocaleString('en-US')} kcal a day` : null;
+  }
+  // Protein logged as food (full mode), for the protein goal and the coach.
+  function proteinOn(S, day) { return full(S) ? Math.round(totals(S, day, true).p) : 0; }
+
+  /* ---------------------------------------------------------------- Health Connect */
+  // Nutrition records for entries not yet written (or edited since), and ids removed since.
+  function pendingWrites(S) {
+    const f = data(S);
+    if (!full(S) || prefs(S).hcWrite === false) return { upsert: [], remove: [] };
+    const done = f.written || {};
+    const upsert = [];
+    for (const [dStr, list] of Object.entries(f.days)) {
+      const d = Number(dStr);
+      for (const e of list) if (done[e.id] == null || (e.v || 0) > done[e.id]) upsert.push({ id: `gradient-food-${e.id}`, entry: e.id, v: e.v || 0, day: d, start: e.t, end: e.t + 60000, meal: e.meal, name: e.name, kcal: e.kcal, p: e.p, c: e.c, f: e.f, fib: e.fib || 0 });
+    }
+    const remove = (f.removed || []).filter((x) => done[x.id] != null).map((x) => ({ id: `gradient-food-${x.id}`, entry: x.id }));
+    return { upsert, remove };
+  }
+  // Records which version of an entry Health Connect has.
+  function markWritten(S, entryId, ok, v) {
+    const f = data(S);
+    f.written = f.written || {};
+    if (!ok) return;
+    let ver = v;
+    if (ver == null) for (const list of Object.values(f.days)) { const e = list.find((x) => x.id === entryId); if (e) ver = e.v || 0; }
+    f.written[entryId] = ver || 0;
+  }
+  function markRemoved(S, entryId) {
+    const f = data(S);
+    f.removed = (f.removed || []).filter((x) => x.id !== entryId);
+    if (f.written) delete f.written[entryId];
+  }
+  // Food other apps logged in Health Connect, as per-day totals: [{ day, kcal, p, c, f }].
+  function ingestOther(S, days) {
+    const f = data(S);
+    for (const x of days || []) if (x && Number.isFinite(x.day)) f.other[x.day] = { kcal: Math.round(x.kcal || 0), p: round1(x.p || 0), c: round1(x.c || 0), f: round1(x.f || 0), n: x.n || 0 };
+  }
+
+  GH.food = {
+    MEALS, prefs, data, mode, full, setMode, ree, activityFactor, goalDelta, burn, targets, scale, add, update, remove, entries, totals, byMeal,
+    copyMeal, saveMeal, addSaved, addCustom, toggleFav, smoothWeights, slope, learnBurn, holdsVolume, watchItem, suggestions, targetLine,
+    proteinOn, pendingWrites, markWritten, markRemoved, ingestOther, mealFor, KCAL_PER_KG,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
@@ -12060,6 +12567,13 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
       S.profile.prefs = Object.assign(def.prefs, S.profile.prefs || {});
       S.profile.protein = Object.assign(def.protein, S.profile.protein || {});
       S.profile.lead = Object.assign({ arm: null, leg: null }, S.profile.lead || {});
+    }
+    // 1.2: food tracking. Its mode starts from the 1.1 protein switch, and the food log is empty.
+    if (S.profile && GH.food) {
+      const had = S.profile.food && S.profile.food.mode;
+      GH.food.prefs(S);
+      if (!had) S.profile.food.mode = S.profile.protein && S.profile.protein.track === false ? 'off' : 'protein';
+      GH.food.data(S);
     }
     if (GH.brain && GH.brain.relink) GH.brain.relink(S);
     S.v = SCHEMA;
@@ -12391,6 +12905,94 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
   const isApp = () => !!bridge();
 
   GH.platform = { setPrefs, hapticsSystemEnabled, keepAwake, haptic, vibrate, cue, unlockAudio, applyTheme, currentTheme, setDensity, onBack, on, emit, visible, copy, openUrl, share, claudeInstalled, appVersion, reducedMotion, isApp };
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script>/* src/foodnet.js */
+/* Online food lookups (only when you turn them on): Open Food Facts search and barcodes, asked for
+ * by the Android shell (it sets the User-Agent Open Food Facts requires) and returned here. Results
+ * are cleaned up before use: missing calories are worked out from kJ or from the macros, impossible
+ * values are dropped, and only products with usable numbers come back. Open Food Facts allows about
+ * 10 searches and 15 product reads a minute, so this never asks faster than that.
+ */
+(function (G) {
+  'use strict';
+  const GH = G.GH || (G.GH = {});
+  const hooks = G.__gh || (G.__gh = {});
+  const bridge = () => G.AndroidBridge || null;
+  const LIMIT = { search: 10, barcode: 15 }; // per minute
+  const sent = { search: [], barcode: [] };
+  const waiting = {};
+  let seq = 0;
+
+  const prev = hooks.onFoodResult;
+  hooks.onFoodResult = (res) => {
+    if (typeof res === 'string') { try { res = JSON.parse(res); } catch (e) { return; } }
+    const w = res && waiting[res.id];
+    if (w) { delete waiting[res.id]; clearTimeout(w.timer); w.done(res); }
+    if (prev) { try { prev(res); } catch (e) { /* ignore */ } }
+  };
+  function ask(kind, q) {
+    const b = bridge();
+    if (!b || !b.foodLookup) return Promise.reject(new Error('Online food search works in the Android app.'));
+    const now = Date.now();
+    sent[kind] = sent[kind].filter((t) => now - t < 60000);
+    if (sent[kind].length >= LIMIT[kind]) return Promise.reject(new Error('That\'s a lot of lookups in a minute. Try again shortly.'));
+    sent[kind].push(now);
+    const id = `f${++seq}`;
+    return new Promise((resolve, reject) => {
+      const done = (res) => {
+        if (!res.ok) { reject(new Error(res.status === 0 ? 'You\'re offline. The built-in foods still work.' : 'Open Food Facts didn\'t answer. Try again in a minute.')); return; }
+        try { resolve(JSON.parse(res.body)); } catch (e) { reject(new Error('Open Food Facts sent something unreadable.')); }
+      };
+      waiting[id] = { done, timer: setTimeout(() => { delete waiting[id]; reject(new Error('Open Food Facts took too long. Try again.')); }, 20000) };
+      try { b.foodLookup(kind, String(q), id); } catch (e) { delete waiting[id]; reject(new Error('Couldn\'t reach Open Food Facts.')); }
+    });
+  }
+
+  const num = (x) => { const n = typeof x === 'string' ? parseFloat(x.replace(',', '.')) : x; return Number.isFinite(n) ? n : null; };
+  const r1 = (x) => Math.round(x * 10) / 10;
+  // One Open Food Facts product → a food in the app's shape, or null when its numbers can't be used.
+  function parseProduct(p) {
+    if (!p || typeof p !== 'object') return null;
+    const n = p.nutriments || {};
+    let kcal = num(n['energy-kcal_100g']);
+    const kj = num(n['energy-kj_100g']) != null ? num(n['energy-kj_100g']) : num(n.energy_100g);
+    if (kcal == null && kj != null) kcal = kj / 4.184;
+    const pr = num(n.proteins_100g), c = num(n.carbohydrates_100g), f = num(n.fat_100g), fib = num(n.fiber_100g);
+    const macros = pr != null && c != null && f != null ? pr * 4 + c * 4 + f * 9 : null;
+    if (kcal == null && macros != null) kcal = macros;
+    if (kcal == null || kcal < 0 || kcal > 950) return null;
+    for (const x of [pr, c, f, fib]) if (x != null && (x < 0 || x > 100)) return null;
+    if ((pr || 0) + (c || 0) + (f || 0) > 105) return null;
+    // Energy that disagrees wildly with the macros is usually a unit mix-up: trust the macros.
+    if (macros != null && macros > 20 && Math.abs(kcal - macros) / macros > 0.35) kcal = macros;
+    const name = String(p.product_name || p.product_name_en || p.generic_name || '').trim();
+    if (!name) return null;
+    const brand = String(p.brands || '').split(',')[0].trim();
+    const sq = num(p.serving_quantity);
+    const portions = sq > 0 && sq < 2000 ? [[p.serving_size ? `1 serving (${String(p.serving_size).slice(0, 24)})` : `1 serving (${sq} g)`, Math.round(sq)]] : [];
+    const code = String(p.code || p._id || '').replace(/\D/g, '');
+    return { key: `off:${code || name}`, src: 'off', ref: code || name, name: name.slice(0, 80), brand: brand.slice(0, 40), detail: '', kcal: Math.round(kcal), p: r1(pr || 0), c: r1(c || 0), f: r1(f || 0), fib: r1(fib || 0), portions };
+  }
+  const cache = { search: new Map(), barcode: new Map() };
+  async function search(q) {
+    const key = q.trim().toLowerCase();
+    if (cache.search.has(key)) return cache.search.get(key);
+    const data = await ask('search', key);
+    const items = (data.products || []).map(parseProduct).filter(Boolean).slice(0, 20);
+    cache.search.set(key, items);
+    return items;
+  }
+  async function barcode(code) {
+    const c = String(code).replace(/\D/g, '');
+    if (!c) return null;
+    if (cache.barcode.has(c)) return cache.barcode.get(c);
+    const data = await ask('barcode', c);
+    const item = data && (data.status === 1 || data.status === 'success') ? parseProduct(Object.assign({ code: c }, data.product)) : null;
+    cache.barcode.set(c, item);
+    return item;
+  }
+  GH.foodNet = { search, barcode, parseProduct, LIMIT };
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
 <script>/* src/coach.js */
@@ -13105,8 +13707,32 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
 
   /* ---------------------------------------------------------------- layout */
   let root, topbar, screen, floatEl, playerEl, onboardEl, tabbar, accessory, ptrEl;
-  const TABS = [['today', 'home', 'Today'], ['plan', 'calendar', 'Plan'], ['health', 'heart', 'Health'], ['progress', 'chart', 'Progress'], ['moves', 'library', 'Moves']];
+  const ALL_TABS = { today: ['today', 'home', 'Today'], plan: ['plan', 'calendar', 'Plan'], food: ['food', 'food', 'Food'], health: ['health', 'heart', 'Health'], progress: ['progress', 'chart', 'Progress'], moves: ['moves', 'library', 'Moves'] };
+  // The tabs follow what you track. Food takes the Moves slot when calorie tracking is on (the moves
+  // are then in Plan and Profile); with workouts off, Plan, Progress and Moves go away.
+  function tabsFor(S) {
+    const workouts = !S || !S.profile || S.profile.workouts !== false;
+    const food = !!(S && S.profile && GH.food && GH.food.full(S));
+    const ids = workouts ? (food ? ['today', 'plan', 'food', 'health', 'progress'] : ['today', 'plan', 'health', 'progress', 'moves']) : (food ? ['today', 'food', 'health'] : ['today', 'health']);
+    return ids.map((id) => ALL_TABS[id]);
+  }
+  let TABS = tabsFor(null);
   U.tabList = () => TABS;
+  U.hasTab = (id) => TABS.some((t) => t[0] === id);
+  const tabsHtml = (cur) => TABS.map(([id, ic, label]) => `<button type="button" class="rf-tab" data-tab="${id}"${id === cur ? ' aria-current="page"' : ''}>${U.icon(ic)}<span class="rf-tab-label">${label}</span></button>`).join('');
+  // Call after a change to what's tracked. Returns true if the tabs changed.
+  U.refreshTabs = () => {
+    const next = tabsFor(U.S);
+    if (next.map((t) => t[0]).join() === TABS.map((t) => t[0]).join()) return false;
+    TABS = next;
+    if (!U.hasTab(U.route.tab)) U.route = { tab: 'today', view: U.route.view, arg: U.route.arg };
+    if (tabbar) {
+      U.morph(tabbar.querySelector('.rf-tabbar-bar'), tabsHtml(U.route.tab));
+      tabbar.style.setProperty('--tab-count', TABS.length);
+      if (R() && R().refresh) safe(() => R().refresh(tabbar));
+    }
+    return true;
+  };
   function layout() {
     root = doc.getElementById('app');
     root.innerHTML = `
@@ -13117,11 +13743,9 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
       </header>
       <div id="ptr" class="ptr" aria-hidden="true"><span class="ptr-dot">${U.icon('refresh')}</span></div>
       <div id="float" class="float-actions" hidden></div>
-      <nav class="rf-tabbar" data-position="bottom" aria-label="Main" id="tabbar">
+      <nav class="rf-tabbar" data-position="bottom" aria-label="Main" id="tabbar" style="--tab-count:${TABS.length}">
         <div class="rf-tabbar-accessory rf-glass" data-variant="thick" data-lens id="accessory" hidden></div>
-        <div class="rf-tabbar-bar rf-glass" data-lens>
-          ${TABS.map(([id, ic, label]) => `<button type="button" class="rf-tab" data-tab="${id}"${id === 'today' ? ' aria-current="page"' : ''}>${U.icon(ic)}<span class="rf-tab-label">${label}</span></button>`).join('')}
-        </div>
+        <div class="rf-tabbar-bar rf-glass" data-lens>${tabsHtml('today')}</div>
       </nav>
       <section id="player" class="player" hidden aria-label="Workout"></section>
       <section id="onboard" class="onboard" hidden aria-label="Set up"></section>`;
@@ -13210,6 +13834,7 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
   function render(motion) {
     if (!U.S || !U.S.profile.onboarded) { U.showOnboarding(); return; }
     onboardEl.hidden = true;
+    U.refreshTabs();
     const r = U.route;
     const key = r.view ? `${r.view}:${r.arg || ''}` : r.tab;
     const changed = key !== lastKey;
@@ -13260,6 +13885,11 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
 
   const tabIndex = (t) => TABS.findIndex((x) => x[0] === t);
   function go(tab) {
+    // A section that isn't a tab right now opens as a page (Moves with Food on), or Today.
+    if (!U.hasTab(tab)) {
+      if (tab === 'moves' || (tab === 'food' && GH.food && U.S && GH.food.full(U.S))) { U.open(tab); return; }
+      tab = 'today';
+    }
     if (U.route.tab === tab && !U.route.view) { screen.scrollTo({ top: 0, behavior: U.reduced() ? 'auto' : 'smooth' }); return; }
     const from = U.route.view ? null : tabIndex(U.route.tab);
     const to = tabIndex(tab);
@@ -13557,7 +14187,7 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
   function openRoute(route) {
     const ready = U.S && U.S.profile.onboarded;
     if (route === 'privacy') { if (ready) U.open('privacy'); else if (U.showPrivacySheet) U.showPrivacySheet(); }
-    else if (['health', 'plan', 'progress', 'moves', 'today'].includes(route)) { if (ready) go(route); }
+    else if (['health', 'plan', 'progress', 'moves', 'today', 'food'].includes(route)) { if (ready) go(route); }
     else if (['profile', 'settings', 'science', 'coach'].includes(route)) { if (ready) U.open(route); }
   }
   U.boot = boot;
@@ -13764,18 +14394,24 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
   function checkItems(S, day) {
     const b = B();
     const items = [];
-    const doneWorkout = S.log.some((l) => l.type === 'workout' && b.isDone(l));
-    let sub = 'Tap Start workout when you\'re ready.';
-    if (!doneWorkout) {
-      const plan = b.todayPlan(S, day);
-      if (plan.type !== 'workout' && plan.next) sub = `Your first one is on ${b.fmtDay(plan.next.day)}.`;
+    const workouts = S.profile.workouts !== false;
+    const food = GH.food && GH.food.full(S);
+    if (workouts) {
+      const doneWorkout = S.log.some((l) => l.type === 'workout' && b.isDone(l));
+      let sub = 'Tap Start workout when you\'re ready.';
+      if (!doneWorkout) {
+        const plan = b.todayPlan(S, day);
+        if (plan.type !== 'workout' && plan.next) sub = `Your first one is on ${b.fmtDay(plan.next.day)}.`;
+      }
+      items.push({ id: 'workout', icon: 'play', title: 'Finish your first workout', sub, done: doneWorkout });
+      items.push({ id: 'howto', icon: 'eye', title: 'See how a move is done', sub: 'Tap any exercise name for an animated demo.', done: U.seen('moveSheet'), act: 'ckHowTo' });
     }
-    items.push({ id: 'workout', icon: 'play', title: 'Finish your first workout', sub, done: doneWorkout });
-    items.push({ id: 'howto', icon: 'eye', title: 'See how a move is done', sub: 'Tap any exercise name for an animated diagram.', done: U.seen('moveSheet'), act: 'ckHowTo' });
-    items.push({ id: 'feel', icon: 'sparkle', title: 'Do a feel check', sub: 'Energy and soreness shape today\'s session.', done: Object.keys(S.feel || {}).length > 0, act: 'logFeel' });
+    if (food) items.push({ id: 'food', icon: 'food', title: 'Log your first meal', sub: 'Search, scan or quick-add the calories.', done: Object.keys(GH.food.data(S).days).some((d) => (GH.food.data(S).days[d] || []).length), act: 'foodAdd' });
+    items.push({ id: 'feel', icon: 'sparkle', title: 'Do a feel check', sub: workouts ? 'Energy and soreness shape today\'s session.' : 'Two taps: energy and soreness.', done: Object.keys(S.feel || {}).length > 0, act: 'logFeel' });
     const st = H().status();
     if (GH.platform && GH.platform.isApp() && st !== 'unsupported' && st !== 'unavailable') items.push({ id: 'health', icon: 'heart', title: 'Connect Health Connect', sub: 'Sleep and steps fill in on their own.', done: H().connected(st), act: 'hcConnect' });
-    items.push({ id: 'plan', icon: 'calendar', title: 'Look at your week', sub: 'The Plan tab shows every day.', done: U.seen('tab_plan'), act: 'ckPlan' });
+    if (workouts) items.push({ id: 'plan', icon: 'calendar', title: 'Look at your week', sub: 'The Plan tab shows every day.', done: U.seen('tab_plan'), act: 'ckPlan' });
+    else items.push({ id: 'weight', icon: 'chart', title: 'Log your weight', sub: 'Your trend shows on the Health tab.', done: (S.weights || []).some((w) => w.src !== 'profile'), act: 'logWeight' });
     return items;
   }
   U.checklist = (S, day) => {
@@ -13933,22 +14569,25 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
   const JOINTS = [['knee', 'Knees'], ['shoulder', 'Shoulders'], ['back', 'Lower back'], ['wrist', 'Wrists'], ['elbow', 'Elbows'], ['hip', 'Hips'], ['ankle', 'Ankles'], ['neck', 'Neck']];
   const WEIGHTS = { db: { lb: [2, 3, 5, 8, 10, 12, 15, 20, 25, 30, 35, 40, 45, 50], kg: [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 17.5, 20, 22.5, 25] }, kb: { lb: [10, 15, 18, 20, 26, 35, 44, 53], kg: [4, 6, 8, 10, 12, 16, 20, 24] } };
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  // workout: only asked when workouts are on (food-and-health people skip them).
   const STEPS = [
     { id: 'welcome', title: 'Gradient Health', modes: ['new'], bare: true },
+    { id: 'track', title: 'What to track', modes: ['new'] },
     { id: 'health', title: 'Health data', modes: ['new'] },
     { id: 'about', title: 'About you' },
-    { id: 'goals', title: 'Goals' },
-    { id: 'experience', title: 'Experience' },
-    { id: 'schedule', title: 'Schedule' },
-    { id: 'equipment', title: 'Equipment' },
-    { id: 'body', title: 'Body check' },
+    { id: 'goals', title: 'Goals', workout: true },
+    { id: 'experience', title: 'Experience', workout: true },
+    { id: 'schedule', title: 'Schedule', workout: true },
+    { id: 'equipment', title: 'Equipment', workout: true },
+    { id: 'body', title: 'Body check', workout: true },
     { id: 'food', title: 'Food' },
     { id: 'sleep', title: 'Sleep' },
-    { id: 'style', title: 'Style' },
-    { id: 'baseline', title: 'Baseline test', modes: ['new'] },
-    { id: 'abs', title: 'About abs', when: () => Q.goals.includes('abs') },
+    { id: 'style', title: 'Style', workout: true },
+    { id: 'baseline', title: 'Baseline test', modes: ['new'], workout: true },
+    { id: 'abs', title: 'About abs', when: () => Q.goals.includes('abs'), workout: true },
     { id: 'plan', title: 'Your plan' },
   ];
+  const workoutsOn = () => !Q || Q.workouts !== false;
 
   let Q = null;       // the draft answers
   let mode = 'new';   // 'new' set-up, 'edit' (every screen), 'one' (a single screen with Save)
@@ -13981,6 +14620,7 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
     p.lead = { arm: weaker(Q._strongArm), leg: weaker(Q._strongLeg) };
     p.weekdays = Q.weekdays.length === Q.days ? Q.weekdays.slice().sort((a, b) => a - b) : null;
     if (!p.goals.length) p.goals = ['consistency'];
+    if (p.food && p.food.mode) p.protein = Object.assign({}, p.protein, { track: p.food.mode !== 'off' });
     for (const k of Object.keys(p)) if (k[0] === '_') delete p[k];
     return p;
   }
@@ -14017,7 +14657,7 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
     dir = 1;
     open();
   };
-  U.editableSteps = () => STEPS.filter((s) => !s.modes && !s.when && s.id !== 'plan');
+  U.editableSteps = () => STEPS.filter((s) => !s.modes && !s.when && s.id !== 'plan' && (!s.workout || !U.S || U.S.profile.workouts !== false));
   // Every piece of equipment the person has ticked (each weight counts once).
   U.equipCount = (eq) => (eq.db || []).length + (eq.kb || []).length + ['ball', 'band', 'bar', 'table'].filter((k) => eq[k]).length;
   // "Home · 5 items", "Gym · 14 items", "Home and gym": what the Equipment rows show.
@@ -14043,7 +14683,7 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
       case 'schedule': return `${p.days} days a week · ${p.minutes} min`;
       case 'equipment': return U.equipSummary(p);
       case 'body': return (p.careful || []).length ? `Careful with ${(p.careful || []).map((j) => (JOINTS.find((x) => x[0] === j) || [j, j])[1].toLowerCase()).join(', ')}` : 'Injuries, stronger side, impact';
-      case 'food': return `${p.weightGoal === 'lose' ? 'Lose' : p.weightGoal === 'gain' ? 'Gain' : 'Maintain'} weight · protein ${p.protein && p.protein.track === false ? 'off' : 'on'}`;
+      case 'food': { const fm = (p.food && p.food.mode) || (p.protein && p.protein.track === false ? 'off' : 'protein'); return `${p.weightGoal === 'lose' ? 'Lose' : p.weightGoal === 'gain' ? 'Gain' : 'Maintain'} weight · ${fm === 'full' ? 'calories and macros' : fm === 'off' ? 'food tracking off' : 'protein goal'}`; }
       case 'sleep': return p.sleepTypical ? `Usually ${p.sleepTypical.replace('<', 'under ')} h` : 'Your usual sleep';
       case 'style': return `Supersets ${p.prefs && p.prefs.supersets === false ? 'off' : 'on'} · rest ${p.prefs && p.prefs.rest !== 'auto' ? `${p.prefs.rest} s` : 'auto'}`;
       default: return '';
@@ -14071,7 +14711,7 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
     if (mode === 'edit') { close(); return true; }
     return false;
   };
-  const visible = () => (mode === 'one' ? STEPS.filter((s) => s.id === only) : STEPS.filter((s) => (!s.modes || s.modes.includes(mode)) && (!s.when || s.when())));
+  const visible = () => (mode === 'one' ? STEPS.filter((s) => s.id === only) : STEPS.filter((s) => (!s.modes || s.modes.includes(mode)) && (!s.when || s.when()) && (!s.workout || workoutsOn())));
 
   let shownStep = null;
   let dir = 1;
@@ -14150,7 +14790,7 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
   const numInput = (k, value, placeholder, extra) => `<input class="rf-input" type="number" inputmode="decimal" value="${value == null ? '' : U.esc(value)}" placeholder="${U.esc(placeholder || '')}" ${bind(k, 'num')} ${extra || ''}>`;
   const group = (title, html, foot) => `<div class="ob-group">${title ? `<h3 class="rf-list-header">${U.esc(title)}</h3>` : ''}${html}${foot ? `<p class="rf-list-footer">${U.esc(foot)}</p>` : ''}</div>`;
   const lead = (text) => `<p class="t-body ob-lead">${text}</p>`;
-  const choice = (k, options, value, type) => `<ul class="rf-list ob-choice" role="radiogroup">${options.map(([v, t, sub]) => `<li><label class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(t)}</span>${sub ? `<span class="rf-list-sub">${U.esc(sub)}</span>` : ''}</span><input type="radio" class="ob-radio" name="${k}" value="${U.esc(v)}"${String(v) === String(value) ? ' checked' : ''} ${bind(k, type)}><span class="ob-check">${U.icon('check')}</span></label></li>`).join('')}</ul>`;
+  const choice = (k, options, value, type, redraw) => `<ul class="rf-list ob-choice" role="radiogroup">${options.map(([v, t, sub]) => `<li><label class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(t)}</span>${sub ? `<span class="rf-list-sub">${U.esc(sub)}</span>` : ''}</span><input type="radio" class="ob-radio" name="${k}" value="${U.esc(v)}"${String(v) === String(value) ? ' checked' : ''} ${bind(k, type, redraw)}><span class="ob-check">${U.icon('check')}</span></label></li>`).join('')}</ul>`;
 
   /* ---------------------------------------------------------------- screens */
   const VIEW = {};
@@ -14166,6 +14806,24 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
         <li>${U.icon('lock')}<span>No account and no ads. Your data stays on your phone.</span></li>
       </ul>
     </div>`;
+  // Workouts, food, or both. Changes which of the next screens are asked.
+  const foodModeOf = () => (Q.food && Q.food.mode) || (Q.protein && Q.protein.track === false ? 'off' : 'protein');
+  VIEW.track = () => {
+    const cur = !workoutsOn() ? 'food' : foodModeOf() === 'full' ? 'both' : 'workouts';
+    return lead('Pick what you want Gradient Health to do. You can change it any time in Settings.')
+      + `<ul class="rf-list ob-choice" role="radiogroup">${[
+        ['workouts', 'Workouts and health', 'A plan that adjusts to your sleep and activity, and a simple protein goal'],
+        ['both', 'Workouts, health and food', 'All of that, plus calories and macros for what you eat'],
+        ['food', 'Food and health', 'No workouts. Log meals and watch your calories, sleep, steps and weight.'],
+      ].map(([v, t, sub]) => `<li><label class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(t)}</span><span class="rf-list-sub">${U.esc(sub)}</span></span><input type="radio" class="ob-radio" name="obTrack" value="${v}"${v === cur ? ' checked' : ''} data-on="obTrack"><span class="ob-check">${U.icon('check')}</span></label></li>`).join('')}</ul>`;
+  };
+  U.on.obTrack = (el, ev, v) => {
+    if (!Q) return;
+    Q.workouts = v !== 'food';
+    const fm = foodModeOf();
+    Q.food = Object.assign({}, Q.food || {}, { mode: v === 'workouts' ? (fm === 'full' ? 'protein' : fm) : 'full' });
+    draw();
+  };
   VIEW.health = () => {
     const st = H().status();
     const app = GH.platform && GH.platform.isApp();
@@ -14184,7 +14842,7 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
   };
   U.act.obConnect = async (btn) => {
     btn.setAttribute('aria-busy', 'true');
-    const st = await H().request();
+    const st = await H().request(!!(Q.food && Q.food.mode === 'full'));
     if (H().connected(st)) {
       tmpS = tmpS || { profile: Q, health: { days: {}, hc: {}, manual: {}, lastSync: null, status: st }, weights: [], log: [], protein: {}, feel: {}, sleepChip: {} };
       const res = await H().sync(tmpS, Date.now(), 90);
@@ -14228,7 +14886,7 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
           ${lb ? `<div class="ob-row2">${field('Height (ft)', numInput('_hft', Q._hft, '5', 'min="3" max="8" inputmode="numeric"'))}${field('(in)', numInput('_hin', Q._hin, '9', 'min="0" max="11" inputmode="numeric"'))}</div>`
       : field('Height (cm)', numInput('_hcm', Q._hcm, 'e.g. 175', 'min="100" max="250" inputmode="numeric"'))}
         </div>`
-      + group('Sex (optional)', `<div class="ob-pad">${U.seg('sex', [['female', 'Female'], ['male', 'Male'], ['', 'Skip']], Q.sex || '', 'Sex', ` ${bind('sex')}`)}</div>`, 'Only used to read your health trends. Skip it if you like.');
+      + group('Sex (optional)', `<div class="ob-pad">${U.seg('sex', [['female', 'Female'], ['male', 'Male'], ['', 'Skip']], Q.sex || '', 'Sex', ` ${bind('sex')}`)}</div>`, foodModeOf() === 'full' ? 'Used for your calorie target. Skip it and an average is used.' : 'Only used to read your health trends. Skip it if you like.');
   };
   // Switching units converts the weights already picked.
   const unitsHandler = U.on.q;
@@ -14356,14 +15014,16 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
   VIEW.food = () => {
     const perKg = Q.units === 'kg';
     const opts = [[0.7, perKg ? '1.5 g/kg' : '0.7 g/lb'], [0.8, perKg ? '1.8 g/kg' : '0.8 g/lb'], [1, perKg ? '2.2 g/kg' : '1 g/lb']];
-    return lead('No meal plans. Just a protein number to hit and a trend to watch.')
-      + group('Weight goal', `<div class="ob-pad">${U.seg('weightGoal', [['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']], Q.weightGoal, 'Weight goal', ` ${bind('weightGoal')}`)}</div>`, 'You get a heads-up if you\'re losing more than 1% a week.')
-      + group('', `<ul class="rf-list">${U.sw('Track protein', Q.protein.track !== false, bind('protein.track', '', true))}</ul>`)
-      + (Q.protein.track !== false ? group('Your go-to protein', `<div class="ob-fields">
+    const fm = foodModeOf();
+    return lead(fm === 'full' ? 'Your calorie target comes from your size, your steps and your goal, and learns from your logs over time.' : 'No meal plans. Just a protein number to hit and a trend to watch.')
+      + group('Weight goal', `<div class="ob-pad">${U.seg('weightGoal', [['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']], Q.weightGoal, 'Weight goal', ` ${bind('weightGoal', '', true)}`)}</div>`, 'You get a heads-up if you\'re losing more than 1% a week.')
+      + group('Food tracking', choice('food.mode', [['off', 'Off'], ['protein', 'Protein only', 'One number to hit, one tap to log'], ['full', 'Calories and macros', 'Log meals: search, your own foods, quick add']], fm, '', true))
+      + (fm === 'full' && Q.weightGoal === 'lose' ? group('Pace', `<div class="ob-pad">${U.seg('pace', [['0.25', '0.25%'], ['0.5', '0.5%'], ['0.75', '0.75%'], ['1', '1%']], String((Q.food && Q.food.pace) || 0.5), 'Pace', ` ${bind('food.pace', 'num')}`)}</div>`, 'Of your body weight a week. Slower keeps more muscle.') : '')
+      + (fm === 'protein' ? group('Your go-to protein', `<div class="ob-fields">
           ${field('Name', `<input class="rf-input" type="text" maxlength="24" value="${U.esc(Q.protein.quickName)}" ${bind('protein.quickName')}>`)}
           ${field('Grams', numInput('protein.quickG', Q.protein.quickG, '26', 'min="1" max="100" inputmode="numeric"'))}
-        </div>`, 'One tap adds it on the Today screen.')
-        + group('Protein per body weight', `<div class="ob-pad">${U.seg('perLb', opts, Q.protein.perLb, 'Protein per body weight', ` ${bind('protein.perLb', 'num')}`)}</div>`) : '');
+        </div>`, 'One tap adds it on the Today screen.') : '')
+      + (fm !== 'off' ? group('Protein per body weight', `<div class="ob-pad">${U.seg('perLb', opts, Q.protein.perLb, 'Protein per body weight', ` ${bind('protein.perLb', 'num')}`)}</div>`) : '');
   };
 
   VIEW.sleep = () => lead('Sleep changes what today\'s session looks like: under 5 hours means one less set per exercise.')
@@ -14421,6 +15081,7 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
 
   VIEW.plan = () => {
     const p = draftProfile();
+    if (p.workouts === false) return summaryNoWorkouts(p);
     const prog = B().programFor(p);
     const tpl = B().templateFor(p, prog);
     const byFreq = {};
@@ -14444,6 +15105,26 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
       + group('Your week', `<ul class="rf-list">${rows.join('')}</ul>`)
       + `<div class="card ob-card"><ul class="ob-bullets">${notes.map((n) => `<li>${U.esc(n)}</li>`).join('')}</ul></div>`;
   };
+
+  // Food and health only: the targets instead of a week of workouts.
+  function summaryNoWorkouts(p) {
+    const day = B().dayOf(Date.now(), 4);
+    const tmp = { profile: p, weights: p.weightKg ? [{ day, kg: p.weightKg, src: 'profile' }] : [], health: (tmpS && tmpS.health) || { days: {} }, food: {}, log: [], protein: {} };
+    const t = GH.food && p.food && p.food.mode === 'full' ? GH.food.targets(tmp, day) : null;
+    const steps = B().stepsGoal(tmp, day).goal;
+    const kg = p.weightKg;
+    const proteinG = kg && p.protein.track !== false ? Math.round(p.protein.perLb * kg * B().LB_PER_KG) : null;
+    const rows = [];
+    if (t) rows.push(U.row({ icon: 'flame', tone: 'coral', title: 'Calories', detail: `${U.num(t.kcal)} a day` }));
+    if (proteinG) rows.push(U.row({ icon: 'check-circle', tone: 'green', title: 'Protein', detail: `${proteinG} g a day` }));
+    rows.push(U.row({ icon: 'navigate', tone: 'sky', title: 'Steps', detail: `${U.num(steps)} a day` }));
+    const notes = [];
+    if (t) notes.push('The calorie target is an estimate. After two weeks of logging and weighing in, it tunes itself to what your weight actually does.');
+    if (!kg) notes.push('Add your weight to get calorie and protein targets.');
+    notes.push('Workouts are off. You can turn them on any time in Settings.');
+    return group('Your daily targets', `<ul class="rf-list">${rows.join('')}</ul>`)
+      + `<div class="card ob-card"><ul class="ob-bullets">${notes.map((n) => `<li>${U.esc(n)}</li>`).join('')}</ul></div>`;
+  }
 
   /* ---------------------------------------------------------------- finish */
   U.act.obFinish = () => {
@@ -15283,12 +15964,35 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
       <div class="feel-row"><span class="t-subhead">Energy</span>${U.seg('feelEnergy', [['low', 'Low'], ['ok', 'OK'], ['good', 'Good']], f.energy || '', 'Energy', ' data-on="feelEnergy"')}</div>
       <div class="feel-row"><span class="t-subhead">Soreness</span>${U.seg('feelSore', [['none', 'None'], ['some', 'Some'], ['very', 'Very']], f.sore || '', 'Soreness', ' data-on="feelSore"')}</div>
       ${hasSleep ? '' : `<div class="feel-row"><span class="t-subhead">Sleep</span>${U.seg('sleepChip', [['<5', '<5 h'], ['5-6', '5-6'], ['6-7', '6-7'], ['7-8', '7-8'], ['8+', '8+']], chip || '', 'Sleep last night', ' data-on="sleepChip"')}</div>`}
-      <p class="t-footnote rf-muted">Very sore with low energy, or under 5 h of sleep, means one less set per exercise today.</p>
+      ${S.profile.workouts !== false ? '<p class="t-footnote rf-muted">Very sore with low energy, or under 5 h of sleep, means one less set per exercise today.</p>' : ''}
+    </div>`;
+  }
+  // With workouts off, Today leads with the day's movement and last night's sleep.
+  function dayCard(S, day) {
+    const H = GH.health;
+    const t = H.today(S, day);
+    const goal = B().stepsGoal(S, day).goal;
+    const steps = t.steps;
+    const sl = t.sleepLast;
+    const lines = [];
+    lines.push(sl ? `Slept ${U.fmtMin(sl.value)}${sl.day !== day ? ' the night before' : ''}` : 'No sleep logged yet');
+    if (t.activeMin) lines.push(`${t.activeMin} active min`);
+    if (t.weightAvg7 != null) lines.push(`Weight ${U.fmtW(t.weightAvg7)} (7-day average)`);
+    return `<div class="card day-card" data-key="main">
+      <span class="rf-card-eyebrow">Today</span>
+      <div class="day-row">
+        ${U.ring(steps != null ? steps / goal : 0, 'Steps today', `<span class="fd-ring-n rf-num">${steps != null ? U.roll(U.num(steps)) : '–'}</span><span class="t-caption rf-muted">steps</span>`, 'md', steps != null && steps >= goal ? 'positive' : 'accent')}
+        <div class="day-lines">
+          <p class="t-headline">Goal ${U.num(goal)} steps</p>
+          ${lines.map((l) => `<p class="t-footnote rf-muted">${U.esc(l)}</p>`).join('')}
+        </div>
+      </div>
+      ${sl ? '' : '<div class="btn-row"><button type="button" class="rf-btn" data-size="sm" data-act="logSleep">Log sleep</button></div>'}
     </div>`;
   }
   function proteinCard(S, day) {
     const pr = S.profile.protein || {};
-    if (pr.track === false) return '';
+    if (pr.track === false || (GH.food && GH.food.mode(S) === 'off')) return '';
     const goal = B().proteinGoal(S, day);
     const got = B().proteinToday(S, day);
     if (!goal) return `<div class="card protein" data-key="protein"><span class="t-headline">Protein</span><p class="t-callout rf-muted">Add your weight to get a daily protein goal.</p><button type="button" class="rf-btn" data-act="logWeight">Log weight</button></div>`;
@@ -15310,12 +16014,14 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
       const plan = B().todayPlan(S, day, cal);
       const week = cal.weeks[B().weekStart(day)];
       const st = cal.streak;
+      const workouts = S.profile.workouts !== false;
       const sub = [U.fmtDay(day)];
-      if (week) sub.push(`week ${week.trainingWeek}`);
+      if (week && workouts) sub.push(`week ${week.trainingWeek}`);
       // Today's session, built once for the workout card and the coach card.
-      const session = !S.active && plan.type === 'workout' ? B().buildSession(S, day, plan.tpl, { short: isShort(day), cal }) : null;
+      const session = workouts && !S.active && plan.type === 'workout' ? B().buildSession(S, day, plan.tpl, { short: isShort(day), cal }) : null;
       let main;
       if (S.active) main = activeCard(S, day);
+      else if (!workouts) main = dayCard(S, day);
       else if (plan.type === 'done') main = doneCard(S, plan.log);
       else if (plan.type === 'workout') main = workoutCard(S, day, plan, cal, session);
       else if (plan.type === 'light') main = lightCard(S, day, plan);
@@ -15327,18 +16033,18 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
         <h1 class="rf-large-title">${U.esc(greeting(S))}</h1>
         <p class="lt-sub t-callout rf-muted">${U.esc(sub.join(' · '))}</p>
         <div class="section">
-          <div class="card streak" data-key="streak">
+          ${workouts ? `<div class="card streak" data-key="streak">
             <div class="streak-main">
               <div class="streak-n">${U.roll(st.current, 't-large-title')}<span class="t-callout rf-muted">day streak</span></div>
               <div class="streak-tally">${tallies(st.current)}</div>
             </div>
             <p class="t-footnote rf-muted">${st.weekly ? `${U.plural(st.weekly, 'full week')} in a row · ` : ''}${st.freezeThisWeek ? 'Freeze used this week' : '1 freeze left this week'}${st.best > st.current ? ` · best ${st.best}` : ''}</p>
-          </div>
+          </div>` : ''}
           ${main}
-          ${plan.type !== 'done' && !S.active && U.coachCard ? U.coachCard(S, day, session) : ''}
+          ${workouts && plan.type !== 'done' && !S.active && U.coachCard ? U.coachCard(S, day, session) : ''}
           ${U.checklist ? U.checklist(S, day) : ''}
+          ${GH.food && GH.food.full(S) && U.foodCard ? U.foodCard(S, day) : proteinCard(S, day)}
           ${feelCard(S, day)}
-          ${proteinCard(S, day)}
           ${measure ? `<ul class="rf-list" data-key="measure">${U.row({ icon: 'pin', tone: 'violet', title: 'Time to measure', sub: 'Waist and arms, once a month', act: 'logMeasure', chevron: true })}</ul>` : ''}
           ${top ? `<button type="button" class="insight-line" data-key="insight" data-act="goHealth"><span class="rf-list-icon" data-tone="${top.tone === 'good' ? 'green' : top.tone === 'watch' ? 'amber' : top.tone === 'alert' ? 'rose' : 'sky'}">${U.icon(top.icon)}</span><span class="insight-text"><span class="t-subhead">${U.esc(top.title)}</span><span class="t-footnote rf-muted">${U.esc(top.evidence)}</span></span>${U.icon('chevron-right')}</button>` : ''}
         </div>`;
@@ -15347,7 +16053,7 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
       const cal = B().calendar(S, day);
       const plan = B().todayPlan(S, day, cal);
       if (S.active && S.active.day === day) return `<button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg" data-lens data-act="resumeWorkout">${U.icon('play')}Resume workout</button>`;
-      if (S.active) return '';
+      if (S.active || S.profile.workouts === false) return '';
       if (plan.type === 'workout') {
         const on = isShort(day);
         return `<button type="button" class="rf-btn rf-glass" data-size="lg" data-lens data-act="toggleShort" aria-pressed="${on}">${U.icon('timer')}${on ? 'Full session' : 'Short on time'}</button>
@@ -15485,10 +16191,12 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
         <h2 class="sec-title t-title-3">Next week</h2>
         <div class="section"><ul class="rf-list plan-list" data-key="next">${next.join('')}</ul>
           <button type="button" class="rf-btn" data-act="daysSheet">Change days and time</button>
-        </div>`;
+        </div>
+        ${U.hasTab && !U.hasTab('moves') ? `<div class="section"><ul class="rf-list" data-key="moves">${U.row({ icon: 'library', tone: 'indigo', title: 'All moves', sub: 'Every exercise, your level in each and how to do it', act: 'openMoves', chevron: true })}</ul></div>` : ''}`;
     },
   };
 
+  U.act.openMoves = () => U.go('moves');
   U.act.planDay = (el) => {
     const S = U.S;
     const day = U.today();
@@ -15607,6 +16315,12 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
       <p class="t-body">If your app shares heart rate while you sleep, Gradient Health works out an estimated resting heart rate from it. HRV can't be worked out from heart rate, so that tile stays empty.</p>
       <p class="t-body">To check what's shared, open Health Connect, then App permissions, pick your watch app and make sure it's allowed to write the data you want.</p>
       <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-act="hcManage">Open Health Connect</button>
+    </div>` });
+  U.act.whyEstimate = () => U.sheet({ title: 'Estimated resting heart rate', body: `<div class="sheet-prose">
+      <p class="t-body">Your watch app shares heart rate with Health Connect but not a resting value, so Gradient Health works one out.</p>
+      <p class="t-body">It averages your heart rate over each half hour and takes the lowest half hour of the day. For people who wear their watch in bed, that's deep sleep, which is close to what watches call resting heart rate.</p>
+      <p class="t-body">A day whose lowest half hour isn't at night is skipped, because it usually means the watch was off overnight.</p>
+      <p class="t-body">Use it to compare your own days with each other. It can sit a few beats off your watch app's number.</p>
     </div>` });
   U.act.dismissInsight = (el) => { GH.insights.dismiss(U.S, el.dataset.arg, U.today()); U.commit(); U.toast('Hidden for 30 days', 'neutral'); };
   U.act.insightGo = (el) => U.go(el.dataset.arg);
@@ -15737,6 +16451,17 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
   function tile(icon, tone, label, value, sub, act) {
     return `<${act ? `button type="button" data-act="${act}"` : 'div'} class="stat"><span class="stat-top"><span class="rf-list-icon" data-tone="${tone}">${U.icon(icon)}</span><span class="t-footnote rf-muted">${U.esc(label)}</span></span><span class="t-title-3 rf-num">${value}</span><span class="t-caption rf-muted">${sub || '&nbsp;'}</span></${act ? 'button' : 'div'}>`;
   }
+  // Calories eaten with calorie tracking on, the protein count with protein only, nothing when off.
+  function foodTile(S, day, t) {
+    const F = GH.food;
+    if (F && F.full(S)) {
+      const tot = F.totals(S, day);
+      const tg = F.targets(S, day);
+      return tile('food', 'green', 'Eaten', tg ? `${U.num(tot.kcal)} <small>of ${U.num(tg.kcal)}</small>` : `${U.num(tot.kcal)} <small>kcal</small>`, `protein ${Math.round(tot.p)} g`, 'goFood');
+    }
+    if (S.profile.protein.track === false || (F && F.mode(S) === 'off')) return '';
+    return tile('check-circle', 'green', 'Protein', t.proteinGoal ? `${t.protein} <small>of ${t.proteinGoal} g</small>` : `${t.protein} <small>g</small>`, 'today');
+  }
   function todayGrid(S, day) {
     const t = H().today(S, day);
     const base = (k) => H().baseline(S, k, day);
@@ -15750,11 +16475,13 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
     return `<div class="stat-grid">
       ${tile('moon', 'indigo', 'Sleep', sl ? U.esc(U.fmtMin(sl.value)) : '–', slSub, !sl ? 'logSleep' : null)}
       ${tile('navigate', 'green', 'Steps', t.steps != null ? U.num(t.steps) : '–', t.steps != null ? `goal ${U.num(B().stepsGoal(S, day).goal)}` : H().connected(H().status()) ? 'none synced yet today' : 'needs Health Connect')}
-      ${tile('heart', 'rose', 'Resting HR', rh ? `${Math.round(rh.value)} <small>bpm</small>` : '–', rh ? join(rh.day !== day ? ago(rh) : '', br.n >= 5 ? `usual ${Math.round(br.avg)}` : '') : 'not shared by your watch app', rh ? null : 'whyNoData')}
+      ${tile('heart', 'rose', 'Resting HR', rh ? `${Math.round(rh.value)} <small>bpm</small>` : '–', rh ? join(rh.day !== day ? ago(rh) : '', t.rhrEstimated ? 'estimated' : '', br.n >= 5 ? `usual ${Math.round(br.avg)}` : '') : 'not shared by your watch app', rh ? (t.rhrEstimated ? 'whyEstimate' : null) : 'whyNoData')}
       ${tile('wave', 'violet', 'HRV', hv ? `${Math.round(hv.value)} <small>ms</small>` : '–', hv ? join(hv.day !== day ? ago(hv) : '', bh.n >= 5 ? `usual ${Math.round(bh.avg)}` : '') : 'not shared by your watch app', hv ? null : 'whyNoData')}
       ${tile('chart', 'teal', 'Weight', t.weightAvg7 != null ? U.esc(U.fmtW(t.weightAvg7)) : '–', t.weightAvg7 != null ? '7-day average' : 'tap to log', t.weightAvg7 == null ? 'logWeight' : null)}
       ${tile('bolt', 'amber', 'Active', `${t.activeMin} <small>min</small>`, 'today')}
-      ${S.profile.protein.track !== false ? tile('check-circle', 'green', 'Protein', t.proteinGoal ? `${t.protein} <small>of ${t.proteinGoal} g</small>` : `${t.protein} <small>g</small>`, 'today') : ''}
+      ${t.activeKcal != null ? tile('flame', 'coral', 'Active calories', `${U.num(t.activeKcal)} <small>kcal</small>`, 'today') : ''}
+      ${t.distanceM != null ? tile('pin', 'sky', 'Distance', U.lb() ? `${U.num(t.distanceM / 1609.34, 1)} <small>mi</small>` : `${U.num(t.distanceM / 1000, 1)} <small>km</small>`, 'today') : ''}
+      ${foodTile(S, day, t)}
       ${tile('sparkle', 'sky', 'Feel', f.energy ? U.esc(`${U.cap(f.energy)} energy`) : '–', f.sore ? U.esc(`${f.sore} soreness`) : 'tap to check in', 'logFeel')}
     </div>`;
   }
@@ -15781,6 +16508,20 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
     const w = H().series(S, 'weightKg', from - 6, day).map((p) => ({ day: p.day, value: U.kgTo(p.value) }));
     out.push(U.chartCard({ title: 'Weight', value: w.length ? U.fmtW(B().weightStats(S, day).avg7 || B().weightStats(S, day).last) : '', fmt: (v) => `${U.num(v, 1)} ${U.wUnit()}`, from, to: day,
       series: [{ name: 'Weigh-ins', kind: 'dot', color: 'var(--hue-teal)', points: inRange(w) }, { name: '7-day average', kind: 'avg', color: 'var(--label)', points: U.rolling(w, from, day, 7) }] }));
+    if (GH.food && GH.food.full(S)) {
+      const eaten = [], target = [];
+      for (let d = from; d <= day; d++) {
+        const x = GH.food.totals(S, d);
+        if (x.n || (x.other && x.other.kcal)) eaten.push({ day: d, value: x.kcal });
+        const tg = GH.food.targets(S, d);
+        if (tg) target.push({ day: d, value: tg.kcal });
+      }
+      out.push(U.chartCard({ title: 'Calories eaten', value: eaten.length ? `${U.num(avg(eaten))} a day` : '', fmt: (v) => `${U.num(v)} kcal`, from, to: day, zero: true,
+        series: [{ name: 'Eaten', kind: 'bar', color: 'var(--hue-green)', points: eaten }, { name: 'Target', kind: 'line', color: 'var(--label)', points: target }] }));
+    }
+    const kcal = H().series(S, 'activeKcal', from, day);
+    if (kcal.length) out.push(U.chartCard({ title: 'Active calories', value: `${U.num(avg(kcal))} a day`, fmt: (v) => `${U.num(v)} kcal`, from, to: day, zero: true,
+      series: [{ name: 'Active calories', kind: 'bar', color: 'var(--hue-coral)', points: kcal }] }));
     const act = [];
     for (let d = from; d <= day; d++) { const m = H().activeMinutes(S, d, d); if (m) act.push({ day: d, value: m }); }
     out.push(U.chartCard({ title: 'Active minutes', value: act.length ? `${U.num(act.reduce((a, p) => a + p.value, 0) / Math.max(1, range / 7))} a week` : '', fmt: (v) => `${Math.round(v)} min`, from, to: day, zero: true,
@@ -15827,7 +16568,8 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
     return `<div class="card" data-key="sources">
       <div class="row-between"><span class="t-headline">Health Connect</span>${U.badge(on ? 'On' : 'Off', on ? 'positive' : 'neutral')}</div>
       <p class="t-callout rf-muted">${U.esc(text)}${on ? ` · ${sync.busy ? 'syncing now' : `updated <span data-ago="${last || 0}">${U.esc(U.ago(last))}</span>`}` : ''}</p>
-      <p class="t-footnote rf-muted">Reads sleep, steps, weight, height, body fat, resting heart rate, HRV and workouts. Syncs when you open the app and every 15 minutes while it's open. <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="openPrivacy">Privacy</button></p>
+      <p class="t-footnote rf-muted">Reads sleep, steps, weight, height, body fat, heart rate, resting heart rate, HRV, active calories, distance and workouts${GH.food && GH.food.full(S) ? ', plus meals from other apps' : ''}. Syncs when you open the app and every 15 minutes while it's open. <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="openPrivacy">Privacy</button></p>
+      ${on && H().missingTypes && H().missingTypes(S).length ? `<div class="notice" data-tone="info">${U.icon('info')}<span>This version can also read heart rate, active calories and distance${GH.food && GH.food.full(S) ? ', and share meals' : ''}. <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="hcConnect">Allow</button></span></div>` : ''}
       ${failed}${errs}${buttons}${writes}</div>`;
   }
   U.act.hcSync = async () => {
@@ -15839,7 +16581,7 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
   U.on.hcWriteToggle = async (el, ev, v) => {
     const S = U.S;
     if (v && !(H().canWrite && H().canWrite())) {
-      const st = await H().request();
+      const st = await H().request(S);
       if (!(H().canWrite && H().canWrite())) { el.checked = false; U.toast('Not allowed yet', 'caution', 'Turn on Exercise under Gradient Health in Health Connect.', { label: 'Open', onClick: () => H().openSettings() }); return; }
       S.health.status = st;
     }
@@ -15849,7 +16591,7 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
   };
   U.act.hcManage = () => H().openSettings();
   U.act.hcConnect = async () => {
-    const st = await H().request();
+    const st = await H().request(U.S);
     U.S.health.status = st;
     if (H().connected(st)) { await U.syncHealth('manual'); U.toast('Health Connect connected', 'positive'); if (U.checklistCheck) U.checklistCheck(); }
     else if (st === 'denied') U.toast('Not connected', 'caution', 'Allow access in Health Connect to use your data.', { label: 'Open', onClick: () => H().openSettings() });
@@ -15980,6 +16722,627 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
       if (AI() && AI().needsReport(S, day) && ai.tried !== day && !ai.busy) setTimeout(() => writeReport(true), 50);
     },
   };
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script>/* src/ui/food.js */
+/* Food (calorie and macro tracking, when it's on): the day's rings and meals, a search over the
+ * built-in foods (USDA, loaded on first use), recents, favourites, your own foods and saved meals,
+ * quick add, and (only if you turn it on) Open Food Facts search and barcode scanning.
+ */
+(function (G) {
+  'use strict';
+  const GH = G.GH || (G.GH = {});
+  const U = GH.ui = GH.ui || {};
+  U.act = U.act || {}; U.on = U.on || {}; U.screens = U.screens || {};
+  const B = () => GH.brain;
+  const F = () => GH.food;
+  const doc = G.document;
+
+  let foodDay = null; // the day the Food tab shows (today unless you step back)
+  const dayShown = () => (foodDay != null && foodDay <= U.today() && foodDay >= U.today() - 30 ? foodDay : U.today());
+  const kcal = (n) => `${U.num(Math.round(n))}`;
+  const g1 = (n) => (n >= 10 ? Math.round(n) : Math.round(n * 10) / 10);
+  const MEAL_NAME = Object.fromEntries([['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner'], ['snack', 'Snacks']]);
+
+  /* ---------------------------------------------------------------- the rings */
+  // Calories as a ring, macros as bars, against today's targets.
+  function summary(S, day, compact) {
+    const t = F().targets(S, day);
+    const tot = F().totals(S, day);
+    if (!t) return `<p class="t-callout rf-muted">Add your weight and height to get a calorie target.</p><button type="button" class="rf-btn" data-act="editStep" data-arg="about">Add them</button>`;
+    const left = t.kcal - tot.kcal;
+    const bar = (label, have, want, tone) => `<div class="fd-macro"><span class="t-footnote">${label}</span>${U.progress(want ? have / want : 0, label, have > want * 1.1 ? 'caution' : tone)}<span class="t-caption rf-muted rf-num">${g1(have)} / ${want} g</span></div>`;
+    return `<div class="fd-sum${compact ? ' is-compact' : ''}">
+        ${U.ring(Math.min(1, tot.kcal / t.kcal), 'Calories today', `<span class="fd-ring-n rf-num">${U.roll(kcal(Math.abs(left)))}</span><span class="fd-ring-l t-caption rf-muted">${left >= 0 ? 'left' : 'over'}</span>`, compact ? 'md' : 'lg', left < -t.kcal * 0.1 ? 'caution' : 'accent')}
+        <div class="fd-macros">
+          <p class="t-callout rf-num"><b>${U.roll(kcal(tot.kcal))}</b> of ${kcal(t.kcal)} kcal</p>
+          ${bar('Protein', tot.p, t.protein, 'positive')}${bar('Carbs', tot.c, t.carbs, 'accent')}${bar('Fat', tot.f, t.fat, 'accent')}
+        </div>
+      </div>`;
+  }
+
+  // Today's card (calorie mode). Protein-only mode keeps the protein card.
+  U.foodCard = (S, day) => {
+    if (!F() || !F().full(S)) return '';
+    return `<div class="card fd-card" data-key="food">
+      <div class="row-between"><span class="t-headline">Food</span><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="goFood">Open</button></div>
+      ${summary(S, day, true)}
+      <div class="btn-row"><button type="button" class="rf-btn" data-variant="soft" data-act="foodAdd">${U.icon('plus')}Log food</button>${GH.food.prefs(S).online ? `<button type="button" class="rf-btn" data-act="foodScan">${U.icon('scan')}Scan</button>` : ''}</div>
+    </div>`;
+  };
+  U.act.goFood = () => U.go('food');
+
+  /* ---------------------------------------------------------------- the screen */
+  function entryRow(e, day) {
+    const amount = e.portion ? e.portion : e.g ? `${e.g} g` : '';
+    return U.row({ title: U.esc(e.name), sub: U.esc([amount, `P ${g1(e.p)} · C ${g1(e.c)} · F ${g1(e.f)}`].filter(Boolean).join(' · ')), detail: `${kcal(e.kcal)}`, act: 'foodEdit', arg: `${day}:${e.id}`, key: `fe-${e.id}` });
+  }
+  U.screens.food = {
+    render(S) {
+      const today = U.today();
+      const day = dayShown();
+      const meals = F().byMeal(S, day);
+      const tot = F().totals(S, day);
+      const t = F().targets(S, day);
+      const label = day === today ? 'Today' : day === today - 1 ? 'Yesterday' : U.fmtDay(day);
+      const mealCards = F().MEALS.map(([id, name]) => {
+        const list = meals[id];
+        const sum = list.reduce((a, e) => a + e.kcal, 0);
+        return `<div class="card fd-meal" data-key="meal-${id}">
+          <div class="fd-meal-head"><span class="t-headline">${name}</span><span class="t-footnote rf-muted rf-num">${list.length ? `${kcal(sum)} kcal` : ''}</span><span class="rf-spacer"></span>
+            <button type="button" class="rf-btn" data-shape="circle" data-size="sm" aria-label="Add to ${name.toLowerCase()}" data-act="foodAdd" data-arg="${id}">${U.icon('plus')}</button></div>
+          ${list.length ? `<ul class="rf-list fd-list">${list.map((e) => entryRow(e, day)).join('')}</ul>` : ''}
+        </div>`;
+      }).join('');
+      const other = tot.other && tot.other.kcal ? `<div class="card" data-key="other"><div class="row-between"><span class="t-subhead">From other apps</span><span class="t-callout rf-num">${kcal(tot.other.kcal)} kcal</span></div><p class="t-footnote rf-muted">Logged in another app and shared through Health Connect. It counts toward today.</p></div>` : '';
+      const why = t ? `${t.learned ? `Your burn, learned from your logs and weight, is about ${kcal(t.burn)} kcal a day` : `Your estimated burn is about ${kcal(t.burn)} kcal a day`}${t.delta ? `, ${t.delta < 0 ? 'minus' : 'plus'} ${kcal(Math.abs(t.delta))} to ${t.delta < 0 ? 'lose' : 'gain'} steadily` : ''}.` : '';
+      return `${U.navbar('Food', U.glassBtn('plus', 'Log food', 'foodAdd'))}
+        <h1 class="rf-large-title">Food</h1>
+        <div class="lt-sub fd-days">
+          <button type="button" class="rf-btn" data-variant="plain" data-shape="circle" data-size="sm" aria-label="Day before" data-act="foodDayPrev"${day <= today - 30 ? ' aria-disabled="true"' : ''}>${U.icon('chevron-left')}</button>
+          <span class="t-callout">${U.esc(label)}</span>
+          <button type="button" class="rf-btn" data-variant="plain" data-shape="circle" data-size="sm" aria-label="Day after" data-act="foodDayNext"${day >= today ? ' aria-disabled="true"' : ''}>${U.icon('chevron-right')}</button>
+        </div>
+        <div class="section">
+          <div class="card" data-key="sum">${summary(S, day, false)}${why ? `<p class="t-footnote rf-muted">${U.esc(why)} ${U.whyLink ? U.whyLink('calories', 'How it\'s worked out') : ''}</p>` : ''}</div>
+          ${mealCards}
+          ${other}
+          <div class="btn-row fd-tools" data-key="tools">
+            <button type="button" class="rf-btn" data-variant="soft" data-size="sm" data-act="foodCopyYesterday">${U.icon('copy')}Copy yesterday</button>
+            <button type="button" class="rf-btn" data-variant="soft" data-size="sm" data-act="foodSavedMeals">${U.icon('bookmark')}Saved meals</button>
+            ${F().entries(S, day).length ? `<button type="button" class="rf-btn" data-variant="soft" data-size="sm" data-act="foodSaveDay">${U.icon('star')}Save as a meal</button>` : ''}
+          </div>
+          <p class="t-footnote rf-muted" data-key="src">Built-in foods from the USDA's nutrient database.${F().prefs(S).online ? ' Online results and barcodes from Open Food Facts (ODbL).' : ''}</p>
+        </div>`;
+    },
+    float() { return ''; },
+  };
+  U.act.foodDayPrev = () => { foodDay = Math.max(U.today() - 30, dayShown() - 1); U.haptic('select'); U.render(); };
+  U.act.foodDayNext = () => { foodDay = Math.min(U.today(), dayShown() + 1); U.haptic('select'); U.render(); };
+
+  /* ---------------------------------------------------------------- adding food */
+  // The meal a new entry goes into: the one you tapped, else by the time of day.
+  let addMeal = null;
+  const dbReady = () => GH.foods || null;
+  let dbFailed = false;
+  function loadDb() {
+    if (!GH.lazy) { dbFailed = true; return Promise.resolve(null); }
+    dbFailed = false;
+    return GH.lazy('foods').catch(() => { dbFailed = true; return null; });
+  }
+
+  function foodRow(item) {
+    const per = item.kcal != null ? `${kcal(item.kcal)} kcal per 100 g` : '';
+    return U.row({ title: U.esc(item.name), sub: U.esc([item.detail, item.brand, per].filter(Boolean).join(' · ')), act: 'foodPick', arg: item.key, chevron: true, key: `fr-${item.key}` });
+  }
+  // A food from any source, in one shape: { key, name, detail, brand?, kcal, p, c, f, fib, portions }.
+  const found = new Map(); // key → item, for the rows on screen
+  function fromDb(x) {
+    if (!x) return null;
+    return { key: `usda:${x.id}`, src: 'usda', ref: x.id, name: x.name, detail: x.detail || '', kcal: x.kcal, p: x.p, c: x.c, f: x.f, fib: x.fib || 0, portions: (x.portions || []).map(([l, gr]) => [l, gr]) };
+  }
+  function fromCustom(c) {
+    const per = c.per100 || null;
+    return { key: `custom:${c.id}`, src: 'custom', ref: c.id, name: c.name, detail: c.servingLabel, kcal: per ? per.kcal : null, p: per ? per.p : null, c: per ? per.c : null, f: per ? per.f : null, fib: per ? per.fib : 0, perServing: c.perServing, servingG: c.servingG, portions: c.servingG ? [[c.servingLabel, c.servingG]] : [] };
+  }
+  function lookup(key) {
+    if (found.has(key)) return found.get(key);
+    const [src, ref] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+    if (src === 'usda' && dbReady()) return fromDb(GH.foods.get(Number(ref)));
+    if (src === 'custom') { const c = F().data(U.S).custom.find((x) => x.id === ref); return c ? fromCustom(c) : null; }
+    if (src === 'off') { const c = (F().data(U.S).offCache || {})[ref]; return c || null; }
+    return null;
+  }
+  function remember(items) { for (const x of items) if (x) found.set(x.key, x); return items.filter(Boolean); }
+
+  function listFor(S, tab) {
+    const f = F().data(S);
+    if (tab === 'recent') return remember(f.recent.map(lookup)).slice(0, 25);
+    if (tab === 'favs') return remember(f.favs.map(lookup));
+    if (tab === 'mine') return remember(f.custom.slice().reverse().map(fromCustom));
+    return [];
+  }
+  let sheet = null;
+  let tab = 'recent';
+  let query = '';
+  let online = { busy: false, items: null, error: null, q: '' };
+  function addBody(S) {
+    const f = F().data(S);
+    const q = query.trim();
+    let results = '';
+    if (q) {
+      const db = dbReady();
+      const hits = db ? remember(db.search(q, { limit: 30 }).map(fromDb)) : [];
+      const mine = remember(f.custom.filter((c) => c.name.toLowerCase().includes(q.toLowerCase())).map(fromCustom));
+      const all = mine.concat(hits);
+      results = `${all.length ? `<ul class="rf-list">${all.map(foodRow).join('')}</ul>` : `<p class="t-callout rf-muted fd-empty">${db ? 'No built-in food matches that.' : dbFailed ? 'The built-in food list didn\'t load. Quick add and your own foods still work.' : 'Loading the food list…'}</p>`}
+        ${F().prefs(S).online ? onlineBlock(q) : ''}`;
+    } else {
+      const list = listFor(S, tab);
+      const empty = { recent: 'Foods you log show up here.', favs: 'Tap the star on a food to keep it here.', mine: 'Foods you create from a label show up here.' }[tab];
+      results = tab === 'meals'
+        ? (f.saved.length ? `<ul class="rf-list">${f.saved.slice().reverse().map((m) => U.row({ title: U.esc(m.name), sub: `${m.items.length} items · ${kcal(m.items.reduce((a, x) => a + x.kcal, 0))} kcal`, act: 'foodAddSaved', arg: m.id, chevron: true })).join('')}</ul>` : '<p class="t-callout rf-muted fd-empty">Save a day\'s food as a meal to add it again in one tap.</p>')
+        : list.length ? `<ul class="rf-list">${list.map(foodRow).join('')}</ul>` : `<p class="t-callout rf-muted fd-empty">${empty}</p>`;
+    }
+    return `<div class="fd-search">
+        <div class="rf-search fd-q"><input class="rf-input" type="search" id="foodQ" placeholder="Search foods" aria-label="Search foods" value="${U.esc(query)}" autocomplete="off" enterkeyhint="search"></div>
+        ${F().prefs(S).online ? `<button type="button" class="rf-btn" data-shape="circle" aria-label="Scan a barcode" data-act="foodScan">${U.icon('scan')}</button>` : ''}
+      </div>
+      ${q ? '' : U.seg('foodTab', [['recent', 'Recent'], ['favs', 'Favourites'], ['mine', 'My foods'], ['meals', 'Meals']], tab, 'Lists', ' data-on="foodTab" data-size="sm"')}
+      <div class="fd-results">${results}</div>
+      <ul class="rf-list fd-more">
+        ${U.row({ icon: 'flame', tone: 'coral', title: 'Quick add calories', sub: 'Just the numbers', act: 'foodQuick', chevron: true })}
+        ${U.row({ icon: 'pencil', tone: 'indigo', title: 'Create a food', sub: 'From a nutrition label', act: 'foodCreate', chevron: true })}
+      </ul>`;
+  }
+  function onlineBlock(q) {
+    if (online.busy) return '<div class="fd-online"><span class="rf-spinner" data-size="sm"><i></i></span><span class="t-footnote rf-muted">Searching Open Food Facts…</span></div>';
+    if (online.q === q && online.items) return online.items.length ? `<h3 class="rf-list-header">Open Food Facts</h3><ul class="rf-list">${remember(online.items).map(foodRow).join('')}</ul>` : '<p class="t-footnote rf-muted fd-empty">Nothing found online either.</p>';
+    if (online.q === q && online.error) return `<p class="t-footnote rf-muted fd-empty">${U.esc(online.error)}</p>`;
+    return `<button type="button" class="rf-btn fd-online-btn" data-variant="plain" data-size="sm" data-act="foodOnline">${U.icon('globe')}Search online for "${U.esc(q)}"</button>`;
+  }
+  function refresh() { if (sheet && !sheet.closed) sheet.update(addBody(U.S)); }
+  U.act.foodAdd = (el) => {
+    const S = U.S;
+    addMeal = el && el.dataset && el.dataset.arg && MEAL_NAME[el.dataset.arg] ? el.dataset.arg : null;
+    query = ''; online = { busy: false, items: null, error: null, q: '' };
+    tab = F().data(S).recent.length ? 'recent' : 'mine';
+    sheet = U.sheet({ title: addMeal ? `Add to ${MEAL_NAME[addMeal].toLowerCase()}` : 'Log food', detents: 'large', detent: 'large', cls: 'fd-sheet', body: addBody(S), onClose: () => { sheet = null; } });
+    const input = sheet.el.querySelector('#foodQ');
+    let timer = 0;
+    // Search as you type (built-in list only; online search waits for Enter or the button).
+    sheet.el.addEventListener('input', (e) => {
+      if (e.target.id !== 'foodQ') return;
+      query = e.target.value;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const pos = e.target.selectionStart;
+        refresh();
+        const again = sheet && sheet.el.querySelector('#foodQ');
+        if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch (err) { /* ignore */ } }
+      }, 120);
+    });
+    sheet.el.addEventListener('keydown', (e) => { if (e.target.id === 'foodQ' && e.key === 'Enter') { e.preventDefault(); if (F().prefs(U.S).online && query.trim()) U.act.foodOnline(); } });
+    if (!dbReady()) loadDb().then(() => refresh());
+    if (input && !F().data(S).recent.length) setTimeout(() => input.focus(), 350);
+  };
+  U.on.foodTab = (el, ev, v) => { tab = v; refresh(); };
+  U.act.foodOnline = async () => {
+    const q = query.trim();
+    if (!q || online.busy) return;
+    online = { busy: true, items: null, error: null, q };
+    refresh();
+    try {
+      const items = await GH.foodNet.search(q);
+      online = { busy: false, items, error: null, q };
+      rememberOff(items);
+    } catch (e) {
+      online = { busy: false, items: null, error: e.message || 'Online search didn\'t work. Try again in a minute.', q };
+    }
+    refresh();
+  };
+  function rememberOff(items) {
+    const f = F().data(U.S);
+    f.offCache = f.offCache || {};
+    for (const x of items) f.offCache[x.ref] = x;
+    const keys = Object.keys(f.offCache);
+    if (keys.length > 200) for (const k of keys.slice(0, keys.length - 200)) delete f.offCache[k];
+  }
+
+  /* ---------------------------------------------------------------- portions */
+  // How much: a portion (100 g, 1 cup, 1 serving…) times a quantity, or grams typed in.
+  let pick = null; // { item, portion: [label, grams], qty, meal, day, edit? }
+  function portionsOf(item) {
+    const list = [];
+    if (item.perServing && !item.servingG) list.push(['1 serving', null]);
+    for (const p of item.portions || []) if (p[1] > 0 && !list.some((x) => x[0] === p[0])) list.push(p);
+    list.push(['100 g', 100], ['1 g', 1]);
+    return list;
+  }
+  function nutrientsFor(item, portion, qty) {
+    if (portion[1] == null && item.perServing) {
+      const s = item.perServing;
+      return { kcal: Math.round(s.kcal * qty), p: s.p * qty, c: s.c * qty, f: s.f * qty, fib: (s.fib || 0) * qty, g: null };
+    }
+    const grams = portion[1] * qty;
+    return Object.assign(F().scale({ kcal: item.kcal || 0, p: item.p || 0, c: item.c || 0, f: item.f || 0, fib: item.fib || 0 }, grams), { g: grams });
+  }
+  function portionBody() {
+    const { item, portion, qty, meal } = pick;
+    const n = nutrientsFor(item, portion, qty);
+    const favKey = item.key;
+    const fav = F().data(U.S).favs.includes(favKey);
+    const qtyStep = portion[1] === 1 ? 10 : 0.25;
+    return `<div class="sheet-pad fd-portion">
+        <p class="t-callout rf-muted">${U.esc([item.detail, item.brand].filter(Boolean).join(' · '))}</p>
+        <div class="fd-big"><span class="t-large-title rf-num">${U.roll(kcal(n.kcal))}</span><span class="t-callout rf-muted">kcal</span></div>
+        <p class="t-footnote rf-num fd-pcf">Protein ${g1(n.p)} g · Carbs ${g1(n.c)} g · Fat ${g1(n.f)} g${n.fib ? ` · Fibre ${g1(n.fib)} g` : ''}</p>
+        <h3 class="rf-list-header">Portion</h3>
+        <div class="ob-chips">${portionsOf(item).map((p, i) => U.chip(p[1] === 1 ? 'Grams' : p[0], p[0] === portion[0], `data-act="foodPortion" data-arg="${i}"`)).join('')}</div>
+        <div class="fd-qty">${U.stepper('foodQty', portion[1] === 1 ? Math.round(qty) : qty, qtyStep, portion[1] === 1 ? 5000 : 50, portion[1] === 1 ? 'Grams' : 'Amount', 'data-on="foodQty"', qtyStep)}<span class="t-callout rf-muted">${U.esc(portion[1] === 1 ? 'g' : `× ${portion[0]}`)}</span></div>
+        <h3 class="rf-list-header">Meal</h3>
+        ${U.seg('foodMeal', F().MEALS.map(([id, name]) => [id, name]), meal, 'Meal', ' data-on="foodMeal" data-size="sm"')}
+        <div class="btn-row fd-actions">
+          <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="foodSave">${pick.edit ? 'Save' : 'Add'}</button>
+          ${item.src !== 'quick' ? `<button type="button" class="rf-btn" data-shape="circle" aria-label="${fav ? 'Remove from favourites' : 'Add to favourites'}" aria-pressed="${fav}" data-act="foodFav">${U.icon('star')}</button>` : ''}
+          ${pick.edit ? '<button type="button" class="rf-btn" data-tone="critical" data-act="foodDelete">Delete</button>' : ''}
+        </div>
+      </div>`;
+  }
+  let psheet = null;
+  function openPortion(item, opts) {
+    const o = opts || {};
+    const list = portionsOf(item);
+    const portion = o.portion || list[0];
+    pick = { item, portion, qty: o.qty || 1, meal: o.meal || addMeal || F().mealFor(Date.now()), day: o.day != null ? o.day : dayShown(), edit: o.edit || null };
+    psheet = U.sheet({ title: item.name, detents: 'large', detent: 'large', body: portionBody(), onClose: () => { psheet = null; } });
+  }
+  const repaint = () => { if (psheet && !psheet.closed) psheet.update(portionBody()); };
+  U.act.foodPick = (el) => {
+    const item = lookup(el.dataset.arg);
+    if (!item) { U.toast('That food isn\'t available right now', 'caution'); return; }
+    U.haptic('tap');
+    openPortion(item);
+  };
+  U.act.foodPortion = (el) => {
+    const list = portionsOf(pick.item);
+    const next = list[Number(el.dataset.arg)];
+    if (!next) return;
+    // Keep the same amount when switching to grams.
+    if (next[1] === 1 && pick.portion[1] > 1) pick.qty = Math.round(pick.portion[1] * pick.qty);
+    else if (next[1] !== 1 && pick.portion[1] === 1) pick.qty = 1;
+    pick.portion = next;
+    U.haptic('select');
+    repaint();
+  };
+  U.on.foodQty = (el, ev, v) => { const n = Number(v); if (n > 0) { pick.qty = n; repaint(); } };
+  U.on.foodMeal = (el, ev, v) => { pick.meal = v; };
+  U.act.foodFav = () => { F().toggleFav(U.S, pick.item.key); U.save(); U.haptic('toggleOn'); repaint(); };
+  U.act.foodSave = () => {
+    const S = U.S;
+    const { item, portion, qty, meal, day, edit } = pick;
+    const n = nutrientsFor(item, portion, qty);
+    const label = portion[1] === 1 ? `${Math.round(qty)} g` : `${qty === 1 ? '' : `${qty} × `}${portion[0]}`;
+    if (edit) F().update(S, day, edit, { meal, g: n.g != null ? Math.round(n.g) : null, portion: label, kcal: n.kcal, p: Math.round(n.p * 10) / 10, c: Math.round(n.c * 10) / 10, f: Math.round(n.f * 10) / 10, fib: Math.round(n.fib * 10) / 10 });
+    else F().add(S, day, { name: item.name, detail: item.detail, src: item.src, ref: item.ref, g: n.g, portion: label, meal, kcal: n.kcal, p: n.p, c: n.c, f: n.f, fib: n.fib }, day === U.today() ? Date.now() : day * B().DAY_MS + mealHour(meal) * 3600000 + 4 * 3600000);
+    U.commit();
+    U.haptic('success');
+    if (psheet) psheet.close('ok');
+    if (sheet && !edit) sheet.close('ok');
+    if (GH.health && GH.health.writeFood) GH.health.writeFood(S);
+    if (!edit) U.toast(`${item.name} added`, 'positive');
+  };
+  const mealHour = (meal) => ({ breakfast: 4, lunch: 9, dinner: 15, snack: 12 }[meal] || 8);
+  U.act.foodEdit = (el) => {
+    const [dStr, id] = el.dataset.arg.split(':');
+    const day = Number(dStr);
+    const e = F().entries(U.S, day).find((x) => x.id === id);
+    if (!e) return;
+    const item = e.ref != null ? lookup(`${e.src}:${e.ref}`) : null;
+    if (item && item.kcal != null && e.g) { openPortion(item, { portion: ['Grams', 1], qty: e.g, meal: e.meal, day, edit: id }); return; }
+    // Quick adds and servings: edit the numbers directly.
+    quickSheet({ day, edit: e });
+  };
+  U.act.foodDelete = () => {
+    F().remove(U.S, pick.day, pick.edit);
+    U.commit();
+    U.haptic('toggleOff');
+    if (psheet) psheet.close('ok');
+    if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S);
+  };
+
+  /* ---------------------------------------------------------------- quick add, create, saved */
+  const numField = (id, label, v, extra) => `<div class="rf-field"><label class="rf-field-label" for="${id}">${U.esc(label)}</label><div class="rf-field-control"><input class="rf-input" id="${id}" type="number" inputmode="decimal" min="0" step="any" value="${v == null ? '' : U.esc(v)}" ${extra || ''}></div></div>`;
+  const textField = (id, label, v, ph) => `<div class="rf-field"><label class="rf-field-label" for="${id}">${U.esc(label)}</label><div class="rf-field-control"><input class="rf-input" id="${id}" type="text" maxlength="60" value="${U.esc(v || '')}" placeholder="${U.esc(ph || '')}"></div></div>`;
+  function quickSheet(o) {
+    const e = o.edit;
+    const meal = e ? e.meal : addMeal || F().mealFor(Date.now());
+    U.sheet({
+      title: e ? 'Edit' : 'Quick add', detents: 'large', detent: 'large',
+      body: `<div class="sheet-pad fd-form">
+        ${textField('qName', 'Name (optional)', e ? e.name : '', 'Lunch out')}
+        ${numField('qKcal', 'Calories', e ? e.kcal : null, 'required')}
+        <div class="ob-row2">${numField('qP', 'Protein (g)', e ? e.p : null)}${numField('qC', 'Carbs (g)', e ? e.c : null)}</div>
+        ${numField('qF', 'Fat (g)', e ? e.f : null)}
+        ${U.seg('qMeal', F().MEALS.map(([id, name]) => [id, name]), meal, 'Meal', ' data-size="sm"')}
+        <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="foodQuickSave" data-arg="${e ? `${o.day}:${e.id}` : ''}">${e ? 'Save' : 'Add'}</button>
+        ${e ? `<button type="button" class="rf-btn" data-tone="critical" data-act="foodQuickDelete" data-arg="${o.day}:${e.id}">Delete</button>` : ''}</div>
+      </div>`,
+    });
+  }
+  const val = (id) => { const x = parseFloat((doc.getElementById(id) || {}).value); return Number.isFinite(x) && x >= 0 ? x : null; };
+  U.act.foodQuick = () => quickSheet({});
+  U.act.foodQuickSave = (el) => {
+    const k = val('qKcal');
+    if (!(k > 0 && k < 10000)) { U.toast('Enter the calories', 'caution'); return; }
+    const mealIn = doc.querySelector('.rf-sheet [name="qMeal"]:checked');
+    const x = { name: ((doc.getElementById('qName') || {}).value || '').trim() || 'Quick add', src: 'quick', kcal: k, p: val('qP') || 0, c: val('qC') || 0, f: val('qF') || 0, meal: mealIn ? mealIn.value : addMeal || undefined };
+    if (el.dataset.arg) { const [d, id] = el.dataset.arg.split(':'); F().update(U.S, Number(d), id, x); }
+    else F().add(U.S, dayShown(), x, dayShown() === U.today() ? Date.now() : dayShown() * B().DAY_MS + 12 * 3600000);
+    U.commit();
+    U.haptic('success');
+    U.closeSheets();
+    if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S);
+  };
+  U.act.foodQuickDelete = (el) => { const [d, id] = el.dataset.arg.split(':'); F().remove(U.S, Number(d), id); U.commit(); U.closeSheets(); if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S); };
+  // Create a food from its label (optionally for a barcode that wasn't found).
+  function createSheet(prefill) {
+    const p = prefill || {};
+    U.sheet({
+      title: 'Create a food', detents: 'large', detent: 'large',
+      body: `<div class="sheet-pad fd-form">
+        <p class="t-footnote rf-muted">Copy the numbers from the label, per serving.</p>
+        ${textField('cName', 'Name', p.name || '', 'Protein bar')}
+        ${numField('cG', 'Serving size (g, optional)', p.servingG || null)}
+        ${numField('cKcal', 'Calories per serving', null)}
+        <div class="ob-row2">${numField('cP', 'Protein (g)', null)}${numField('cC', 'Carbs (g)', null)}</div>
+        <div class="ob-row2">${numField('cF', 'Fat (g)', null)}${numField('cFib', 'Fibre (g)', null)}</div>
+        <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="foodCreateSave" data-arg="${U.esc(p.barcode || '')}">Save and add</button></div>
+      </div>`,
+    });
+  }
+  U.act.foodCreate = () => createSheet({ name: query.trim() });
+  U.act.foodCreateSave = (el) => {
+    const name = ((doc.getElementById('cName') || {}).value || '').trim();
+    const k = val('cKcal');
+    if (!name) { U.toast('Give it a name', 'caution'); return; }
+    if (!(k >= 0 && k < 5000)) { U.toast('Enter the calories per serving', 'caution'); return; }
+    const c = F().addCustom(U.S, { name, servingG: val('cG'), kcal: k, p: val('cP') || 0, c: val('cC') || 0, f: val('cF') || 0, fib: val('cFib') || 0 });
+    if (el.dataset.arg) { const f = F().data(U.S); f.barcodes = f.barcodes || {}; f.barcodes[el.dataset.arg] = c.id; }
+    U.save();
+    U.closeSheets();
+    openPortion(fromCustom(c));
+  };
+  U.act.foodAddSaved = (el) => {
+    const meal = addMeal || F().mealFor(Date.now());
+    const added = F().addSaved(U.S, dayShown(), el.dataset.arg, meal, dayShown() === U.today() ? Date.now() : dayShown() * B().DAY_MS + 12 * 3600000);
+    U.commit();
+    U.haptic('success');
+    U.closeSheets();
+    if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S);
+    U.toast(`${U.plural(added.length, 'item')} added`, 'positive');
+  };
+  U.act.foodSavedMeals = () => { tab = 'meals'; U.act.foodAdd({ dataset: {} }); tab = 'meals'; refresh(); };
+  U.act.foodSaveDay = () => {
+    if (!F().entries(U.S, dayShown()).length) return;
+    U.sheet({ title: 'Save as a meal', detents: 'medium', body: `<div class="sheet-pad fd-form">${textField('mName', 'Name', '', 'My usual breakfast')}<p class="t-footnote rf-muted">Everything logged ${dayShown() === U.today() ? 'today' : 'on this day'} is saved together. Add it again in one tap under Meals.</p>
+      <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="foodSaveDayOk">Save</button></div></div>` });
+  };
+  U.act.foodSaveDayOk = () => {
+    const name = ((doc.getElementById('mName') || {}).value || '').trim() || 'My meal';
+    F().saveMeal(U.S, name, F().entries(U.S, dayShown()));
+    U.save();
+    U.closeSheets();
+    U.toast('Saved. Find it under Meals when you log food.', 'positive');
+  };
+  U.act.foodCopyYesterday = async () => {
+    const day = dayShown();
+    const src = F().entries(U.S, day - 1);
+    if (!src.length) { U.toast('Nothing logged the day before', 'neutral'); return; }
+    const ok = await U.confirm('Copy the day before?', `${U.plural(src.length, 'item')}, ${kcal(src.reduce((a, e) => a + e.kcal, 0))} kcal, go into ${day === U.today() ? 'today' : 'this day'}.`, 'Copy');
+    if (!ok) return;
+    F().copyMeal(U.S, day - 1, day, null, day === U.today() ? Date.now() : day * B().DAY_MS + 12 * 3600000);
+    U.commit();
+    if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S);
+  };
+
+  /* ---------------------------------------------------------------- barcode */
+  U.act.foodScan = async () => {
+    if (!F().prefs(U.S).online) { U.open('settings', 'food'); return; }
+    if (!GH.scanner) { U.toast('Scanning isn\'t available here', 'caution'); return; }
+    try {
+      const code = await GH.scanner.scan();
+      if (!code) return;
+      U.haptic('success');
+      const f = F().data(U.S);
+      if (f.barcodes && f.barcodes[code]) { const c = f.custom.find((x) => x.id === f.barcodes[code]); if (c) { U.closeSheets(); openPortion(fromCustom(c)); return; } }
+      U.toast('Looking it up…', 'neutral');
+      const item = await GH.foodNet.barcode(code);
+      if (!item) {
+        const ok = await U.confirm('Not found', 'Open Food Facts doesn\'t know this barcode yet. Create it from the label? It\'s remembered for next time.', 'Create it');
+        if (ok) createSheet({ barcode: code });
+        return;
+      }
+      rememberOff([item]);
+      found.set(item.key, item);
+      U.closeSheets();
+      openPortion(item);
+    } catch (e) {
+      U.toast(e.message || 'Couldn\'t scan', 'caution');
+    }
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script>/* src/scanner.js */
+/* Barcode scanning for food: a sheet with the back camera, a framing box and a torch button. The
+ * reader (lazy/barcode.js, ZXing in WebAssembly) loads on first use. A code counts once it's read
+ * twice in a row and its check digit is right, so a half-seen barcode never looks up the wrong
+ * food. The camera stops the moment the sheet closes. You can always type the number instead.
+ * GH.scanner.scan() → Promise of the digits, or null if you closed it.
+ */
+(function (G) {
+  'use strict';
+  const GH = G.GH || (G.GH = {});
+  const doc = G.document;
+  const U = () => GH.ui;
+
+  // EAN-13, EAN-8, UPC-A (12) and UPC-E (8, expanded) all end in a mod-10 check digit.
+  function checksumOk(code) {
+    const s = String(code || '');
+    if (!/^\d+$/.test(s) || ![8, 12, 13, 14].includes(s.length)) return false;
+    const digits = s.split('').map(Number);
+    const check = digits.pop();
+    let sum = 0;
+    for (let i = digits.length - 1, w = 3; i >= 0; i--, w = w === 3 ? 1 : 3) sum += digits[i] * w;
+    return (10 - (sum % 10)) % 10 === check;
+  }
+  // UPC-E is a squeezed UPC-A; Open Food Facts knows the long form.
+  function expandUpcE(s) {
+    if (!/^[01]\d{7}$/.test(s)) return s;
+    const d = s.slice(1, 7), last = d[5];
+    let body;
+    if ('012'.includes(last)) body = `${d.slice(0, 2)}${last}0000${d.slice(2, 5)}`;
+    else if (last === '3') body = `${d.slice(0, 3)}00000${d.slice(3, 5)}`;
+    else if (last === '4') body = `${d.slice(0, 4)}00000${d[4]}`;
+    else body = `${d.slice(0, 5)}0000${last}`;
+    return `${s[0]}${body}${s[7]}`;
+  }
+  function normalise(raw, format) {
+    let s = String(raw || '').replace(/\D/g, '');
+    if (format === 'upc_e' && s.length === 8) s = expandUpcE(s);
+    return s;
+  }
+
+  let active = null; // the scan in progress: { stream, sheet, resolve, timer, stopped }
+  function stop() {
+    if (!active) return;
+    const a = active;
+    active = null;
+    a.stopped = true;
+    clearTimeout(a.timer);
+    if (a.stream) for (const t of a.stream.getTracks()) { try { t.stop(); } catch (e) { /* ignore */ } }
+    const v = a.sheet && a.sheet.el.querySelector('video');
+    if (v) { try { v.pause(); v.srcObject = null; } catch (e) { /* ignore */ } }
+  }
+
+  const body = (msg) => `<div class="sc-wrap">
+      <div class="sc-view"><video class="sc-video" playsinline muted autoplay></video><div class="sc-frame" aria-hidden="true"><i></i></div>
+        <p class="sc-msg t-callout" role="status">${msg}</p></div>
+      <div class="btn-row sc-tools">
+        <button type="button" class="rf-btn" data-act="scanTorch" hidden>${U().icon('bolt')}Light</button>
+        <button type="button" class="rf-btn" data-variant="plain" data-act="scanType">Type the number</button>
+      </div>
+      <form class="sc-type" hidden><div class="rf-field"><label class="rf-field-label" for="scCode">Barcode number</label>
+        <div class="rf-field-control"><input class="rf-input" id="scCode" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="14" autocomplete="off"></div></div>
+        <button type="submit" class="rf-btn rf-glass" data-variant="tinted">Look it up</button></form>
+    </div>`;
+  const say = (text) => { const el = active && active.sheet.el.querySelector('.sc-msg'); if (el) el.textContent = text; };
+
+  function scan() {
+    if (active) stop();
+    return new Promise((resolve) => {
+      const a = { stream: null, sheet: null, resolve, timer: 0, stopped: false, last: null, torch: false };
+      active = a;
+      let settled = false;
+      const finish = (code) => {
+        if (settled) return;
+        settled = true;
+        stop();
+        if (a.sheet && !a.sheet.closed) a.sheet.close('ok');
+        resolve(code || null);
+      };
+      a.finish = finish;
+      a.sheet = U().sheet({ title: 'Scan a barcode', detents: 'large', detent: 'large', cls: 'sc-sheet', body: body('Starting the camera…'), onClose: () => finish(null) });
+      const el = a.sheet.el;
+      el.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const s = normalise((el.querySelector('#scCode') || {}).value);
+        if (!checksumOk(s)) { U().toast('That number doesn\'t look right', 'caution', 'Barcodes are 8, 12 or 13 digits. Check the last one.'); return; }
+        finish(s);
+      });
+      start(a);
+    });
+  }
+
+  async function start(a) {
+    const nav = G.navigator;
+    if (!nav || !nav.mediaDevices || !nav.mediaDevices.getUserMedia) { say('The camera isn\'t available here. Type the number instead.'); showType(); return; }
+    const reader = GH.lazy('barcode').then((m) => m.ready.then(() => m.detector()));
+    try {
+      a.stream = await nav.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+    } catch (e) {
+      if (a.stopped) return;
+      const denied = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
+      say(denied ? 'Camera access is off. Allow it in the app\'s Android settings, or type the number.' : 'Couldn\'t start the camera. Type the number instead.');
+      showType();
+      return;
+    }
+    if (a.stopped) { stop(); return; }
+    const video = a.sheet.el.querySelector('video');
+    video.srcObject = a.stream;
+    try { await video.play(); } catch (e) { /* autoplay with muted is allowed; keep going */ }
+    const track = a.stream.getVideoTracks()[0];
+    const caps = track && track.getCapabilities ? track.getCapabilities() : {};
+    if (caps && caps.torch) { const t = a.sheet.el.querySelector('[data-act="scanTorch"]'); if (t) t.hidden = false; }
+    let detector;
+    try { detector = await reader; } catch (e) {
+      if (a.stopped) return;
+      say('The barcode reader didn\'t load. Type the number instead.');
+      showType();
+      return;
+    }
+    if (a.stopped) return;
+    say('Hold the barcode inside the box');
+    loop(a, video, detector);
+  }
+
+  function loop(a, video, detector) {
+    const tick = async () => {
+      if (a.stopped) return;
+      if (video.readyState >= 2 && video.videoWidth) {
+        try {
+          const found = await detector.detect(video);
+          if (a.stopped) return;
+          const hit = (found || []).map((b) => ({ code: normalise(b.rawValue, b.format) })).find((b) => checksumOk(b.code));
+          if (hit) {
+            if (a.last === hit.code) { if (U().haptic) U().haptic('success'); a.finish(hit.code); return; }
+            a.last = hit.code;
+          } else a.last = null;
+        } catch (e) { /* a frame that couldn't be read; try the next */ }
+      }
+      a.timer = setTimeout(tick, 120);
+    };
+    tick();
+  }
+
+  function showType() {
+    const f = active && active.sheet.el.querySelector('.sc-type');
+    if (!f) return;
+    f.hidden = false;
+    const input = f.querySelector('input');
+    if (input) setTimeout(() => input.focus(), 50);
+  }
+
+  GH.scanner = { scan, stop, checksumOk, expandUpcE, normalise };
+
+  if (doc) {
+    doc.addEventListener('visibilitychange', () => { if (doc.visibilityState === 'hidden' && active) { const f = active.finish; if (f) f(null); } });
+    const A = () => (GH.ui && GH.ui.act) || null;
+    const bind = () => {
+      const act = A();
+      if (!act) return false;
+      act.scanType = () => showType();
+      act.scanTorch = async (el) => {
+        const a = active;
+        const track = a && a.stream && a.stream.getVideoTracks()[0];
+        if (!track) return;
+        a.torch = !a.torch;
+        try { await track.applyConstraints({ advanced: [{ torch: a.torch }] }); el.setAttribute('aria-pressed', String(a.torch)); } catch (e) { a.torch = !a.torch; }
+      };
+      return true;
+    };
+    if (!bind()) doc.addEventListener('DOMContentLoaded', bind);
+  }
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
 <script>/* src/ui/progress.js */
@@ -16238,7 +17601,9 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
       }).join('');
       const wu = (S.profile.equipment.kb && S.profile.equipment.kb.length ? M().WARMUP.kb : M().WARMUP.none);
       const extra = wu.concat(M().MOBILITY, ['walk']).filter((id) => M().MOVES[id]).map((id) => U.row({ icon: M().MOBILITY.includes(id) ? 'leaf' : id === 'walk' ? 'navigate' : 'sun', tone: 'teal', title: U.esc(M().MOVES[id].name), act: 'moveInfo', arg: id, chevron: true })).join('');
-      return `${U.navbar('Moves')}
+      // A tab normally; a page (with a back button) when Food has the tab.
+      const asPage = U.route && U.route.view === 'moves';
+      return `${U.navbar('Moves', '', asPage ? U.glassBtn('chevron-left', 'Back', 'back') : '')}
         <h1 class="rf-large-title">Moves</h1>
         <div class="section moves-list">${U.tip ? U.tip('moves') : ''}${groups}
           <h3 class="rf-list-header">Warm-up and mobility</h3><ul class="rf-list">${extra}</ul>
@@ -16650,20 +18015,32 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
       const claude = S.ai.mode === 'api';
       const canWrite = on && H().canWrite && H().canWrite();
       const ver = (GH.platform && GH.platform.appVersion()) || GH.VERSION || 'web';
+      const workouts = p.workouts !== false;
+      const F = GH.food;
+      const fm = F ? F.mode(S) : 'protein';
+      const missing = on && H().missingTypes ? H().missingTypes(S) : [];
       return `${U.navbar('Settings', '', U.glassBtn('chevron-left', 'Back', 'back'))}
         <h1 class="rf-large-title">Settings</h1>
         <div class="section">
-          <h3 class="rf-list-header">Your plan</h3>
+          <h3 class="rf-list-header" id="track">What you track</h3>
+          <ul class="rf-list">
+            ${U.sw('Workouts', workouts, 'data-on="setWorkouts"', workouts ? 'Your plan, the workout player and progress' : 'Off. Today shows your health and food.')}
+            <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Food</span><span class="rf-list-sub">${FOOD_SUB[fm] || ''}</span></span>${U.seg('setFood', [['off', 'Off'], ['protein', 'Protein'], ['full', 'Calories']], fm, 'Food tracking', ' data-on="setFoodMode"')}</div></li>
+          </ul>
+          ${fm === 'full' ? foodSettings(S, on) : ''}
+          ${workouts ? `<h3 class="rf-list-header">Your plan</h3>
           <ul class="rf-list">
             ${U.row({ icon: 'pencil', tone: 'indigo', title: 'Your answers', sub: 'Change any of them, one at a time', act: 'editAnswers', chevron: true })}
             ${U.row({ icon: 'calendar', tone: 'sky', title: 'Days and time', detail: `${p.days} days · ${p.minutes} min`, act: 'daysSheet', chevron: true })}
             ${U.row({ icon: 'bag', tone: 'amber', title: 'Equipment', detail: U.esc(U.equipSummary(p)), act: 'editEquipment', chevron: true })}
             ${U.row({ icon: 'timer', tone: 'green', title: 'Retake the baseline test', sub: 'Push-ups, plank, curls', act: 'baselineSheet', chevron: true })}
-          </ul>
+          </ul>` : `<h3 class="rf-list-header">About you</h3>
+          <ul class="rf-list">${U.row({ icon: 'pencil', tone: 'indigo', title: 'Your answers', sub: 'Age, weight, height and more', act: 'editAnswers', chevron: true })}</ul>`}
           <h3 class="rf-list-header">Health data</h3>
           <ul class="rf-list">
             ${U.row({ icon: 'heart', tone: 'rose', title: 'Health Connect', detail: hcDetail, act: app && !['unsupported', 'unavailable'].includes(st) ? (on ? 'hcManage' : 'hcConnect') : null, chevron: app })}
-            ${on ? U.sw('Save workouts to Health Connect', !!(S.health.write !== false && canWrite), 'data-on="hcWriteToggle"', canWrite ? 'Other apps see your Gradient Health workouts' : 'Needs the Exercise permission') : ''}
+            ${missing.length ? U.row({ icon: 'plus', tone: 'rose', title: 'Allow the new data types', sub: U.esc(missingText(missing)), act: 'hcConnect', chevron: true }) : ''}
+            ${on && workouts ? U.sw('Save workouts to Health Connect', !!(S.health.write !== false && canWrite), 'data-on="hcWriteToggle"', canWrite ? 'Other apps see your Gradient Health workouts' : 'Needs the Exercise permission') : ''}
             <li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">Units</span></span>${U.seg('setUnits', [['lb', 'lb'], ['kg', 'kg']], p.units, 'Units', ' data-on="setUnits" data-size="sm"')}</div></li>
           </ul>
           <h3 class="rf-list-header" id="coach">Coach</h3>
@@ -16707,8 +18084,73 @@ ${Rc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Hd(r,s){return Pc(r,s).m
         </div>`;
     },
     focus(root, arg) {
-      if (arg === 'coach') { const el = root.querySelector('#coach'); if (el) setTimeout(() => el.scrollIntoView({ block: 'start', behavior: U.reduced() ? 'auto' : 'smooth' }), 60); }
+      const el = arg && ['coach', 'track', 'food'].includes(arg) ? root.querySelector(`#${arg}`) : null;
+      if (el) setTimeout(() => el.scrollIntoView({ block: 'start', behavior: U.reduced() ? 'auto' : 'smooth' }), 60);
     },
+  };
+
+  /* ---------------------------------------------------------------- what you track */
+  const FOOD_SUB = { off: 'Nothing about food', protein: 'A protein goal with one-tap logging', full: 'Calories, macros and meals, with a protein goal' };
+  const TYPE_NAMES = { heartRate: 'heart rate', activeKcal: 'active calories', distance: 'distance', nutrition: 'nutrition', writeNutrition: 'saving meals' };
+  function missingText(list) {
+    const names = list.map((t) => TYPE_NAMES[t] || t);
+    return U.cap(names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]);
+  }
+  function foodSettings(S, hcOn) {
+    const p = S.profile;
+    const fp = GH.food.prefs(S);
+    const t = GH.food.targets(S, U.today());
+    const canWriteFood = hcOn && H().canWriteFood && H().canWriteFood();
+    return `<h3 class="rf-list-header" id="food">Food</h3>
+      <ul class="rf-list">
+        <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Weight goal</span></span>${U.seg('setWGoal', [['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']], p.weightGoal || 'maintain', 'Weight goal', ' data-on="setWeightGoal"')}</div></li>
+        ${p.weightGoal === 'lose' ? `<li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Pace</span><span class="rf-list-sub">Of your body weight a week. Slower keeps more muscle.</span></span>${U.seg('setPace', [['0.25', '0.25%'], ['0.5', '0.5%'], ['0.75', '0.75%'], ['1', '1%']], String(fp.pace), 'Pace', ' data-on="setFoodPace"')}</div></li>` : ''}
+        <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Sex</span><span class="rf-list-sub">For the calorie estimate. Not saying uses an average.</span></span>${U.seg('setSex', [['female', 'Female'], ['male', 'Male'], ['', 'Not saying']], p.sex || '', 'Sex', ' data-on="setSex"')}</div></li>
+        ${U.sw('Online search and barcodes', !!fp.online, 'data-on="setFoodPref" data-k="online"', 'From Open Food Facts. Only the barcode or the words you search are sent.')}
+        ${hcOn ? U.sw('Save meals to Health Connect', fp.hcWrite !== false && canWriteFood, 'data-on="setFoodPref" data-k="hcWrite"', canWriteFood ? 'Other apps see what you log here' : 'Needs the Nutrition permission') : ''}
+        ${hcOn ? U.sw('Count food from other apps', fp.hcRead !== false, 'data-on="setFoodPref" data-k="hcRead"', 'Meals logged in other apps add to your day') : ''}
+      </ul>
+      <p class="rf-list-footer">${t ? `Your target is about ${U.num(t.kcal)} kcal a day${t.learned ? ', tuned to your own logs and weight' : ''}.` : 'Add your weight and height to get a calorie target.'} ${U.whyLink ? U.whyLink('calories', 'How it\'s worked out') : ''}</p>`;
+  }
+  U.on.setWorkouts = async (el, ev, v) => {
+    const S = U.S;
+    if (!v && S.active) { el.checked = true; U.toast('Finish or discard the workout in progress first', 'caution'); return; }
+    S.profile.workouts = !!v;
+    U.save();
+    U.render();
+    U.toast(v ? 'Workouts are back on' : 'Workouts are off', 'neutral', v ? 'Your plan picks up where it left off.' : 'Your plan and progress are kept if you turn them back on.');
+  };
+  U.on.setFoodMode = async (el, ev, v) => {
+    const S = U.S;
+    const before = GH.food.mode(S);
+    GH.food.setMode(S, v);
+    U.save();
+    U.render();
+    if (v === 'full' && before !== 'full') {
+      U.toast('Food is on', 'positive', 'It has its own tab now. Moves moved into Plan.');
+      // Saving meals to Health Connect needs the nutrition permissions.
+      if (H().connected(H().status()) && H().missingTypes && H().missingTypes(S).some((t) => t === 'nutrition' || t === 'writeNutrition')) {
+        const ok = await U.confirm('Share food with Health Connect?', 'Meals you log here can be saved to Health Connect, and meals from other apps can count toward your day.', 'Allow');
+        if (ok) { await H().request(true); U.render(); }
+      }
+    }
+  };
+  U.on.setWeightGoal = (el, ev, v) => { U.S.profile.weightGoal = v; U.save(); U.render(); };
+  U.on.setFoodPace = (el, ev, v) => { GH.food.prefs(U.S).pace = Number(v) || 0.5; U.save(); U.render(); };
+  U.on.setSex = (el, ev, v) => { U.S.profile.sex = v || null; U.save(); U.render(); };
+  U.on.setFoodPref = async (el, ev, v) => {
+    const S = U.S;
+    const k = el.dataset.k;
+    const fp = GH.food.prefs(S);
+    if (k === 'hcWrite' && v && !(H().canWriteFood && H().canWriteFood())) {
+      await H().request(true);
+      if (!(H().canWriteFood && H().canWriteFood())) { el.checked = false; U.toast('Not allowed yet', 'caution', 'Turn on Nutrition under Gradient Health in Health Connect.', { label: 'Open', onClick: () => H().openSettings() }); return; }
+    }
+    fp[k] = !!v;
+    U.save();
+    if (k === 'hcWrite' && v && H().writeFood) H().writeFood(S);
+    if (k === 'hcRead' && v) U.syncHealth('manual');
+    U.render();
   };
 
   // Each answer opens on its own screen with Save, so nothing else has to be gone through again.

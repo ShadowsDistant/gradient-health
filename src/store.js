@@ -53,6 +53,13 @@
       S.profile.protein = Object.assign(def.protein, S.profile.protein || {});
       S.profile.lead = Object.assign({ arm: null, leg: null }, S.profile.lead || {});
     }
+    // 1.2: food tracking. Its mode starts from the 1.1 protein switch, and the food log is empty.
+    if (S.profile && GH.food) {
+      const had = S.profile.food && S.profile.food.mode;
+      GH.food.prefs(S);
+      if (!had) S.profile.food.mode = S.profile.protein && S.profile.protein.track === false ? 'off' : 'protein';
+      GH.food.data(S);
+    }
     if (GH.brain && GH.brain.relink) GH.brain.relink(S);
     S.v = SCHEMA;
     return S;

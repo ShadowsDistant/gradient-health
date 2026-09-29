@@ -68,8 +68,10 @@ export const APP_SCRIPTS = [
   'src/brain.js',
   'src/insights.js',
   'src/health.js',
+  'src/food.js',
   'src/store.js',
   'src/platform.js',
+  'src/foodnet.js',
   'src/coach.js',
   // ai bundle is injected here
   'src/ui/core.js',
@@ -80,6 +82,8 @@ export const APP_SCRIPTS = [
   'src/ui/today.js',
   'src/ui/plan.js',
   'src/ui/healthtab.js',
+  'src/ui/food.js',
+  'src/scanner.js',
   'src/ui/progress.js',
   'src/ui/moves.js',
   'src/ui/profile.js',
@@ -91,7 +95,9 @@ export const APP_SCRIPTS = [
 // Heavy parts that load only when they're used (the 3D figure, the on-device model runtime, the
 // barcode reader). Each is bundled or copied into dist/lazy/, which the APK serves next to the page
 // and GH.lazy(name) loads on demand. Entries: { name, entry?, assets?: [[from, to]] }.
-export const LAZY = [];
+export const LAZY = [
+  { name: 'barcode', entry: 'src/barcode.js', assets: [['node_modules/zxing-wasm/dist/reader/zxing_reader.wasm', 'zxing_reader.wasm']] },
+];
 
 async function buildLazy() {
   const dir = join(root, 'dist/lazy');

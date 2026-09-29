@@ -368,13 +368,23 @@ public final class Bridge {
         }
     }
 
-    /** Asks for the read permissions; answers with window.__gh.onHealthPerms(status). */
+    /** Asks for the health permissions; answers with window.__gh.onHealthPerms(status). */
     @JavascriptInterface
     public void hcRequest() {
+        requestHealth(false);
+    }
+
+    /** The same, plus reading and writing nutrition (when food tracking is on). */
+    @JavascriptInterface
+    public void hcRequestFood() {
+        requestHealth(true);
+    }
+
+    private void requestHealth(final boolean withFood) {
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                activity.requestHealthPermissions();
+                activity.requestHealthPermissions(withFood);
             }
         });
     }
@@ -405,6 +415,65 @@ public final class Bridge {
         } catch (Throwable t) {
             deliverHealthFailure(t.getClass().getSimpleName() + ": " + t.getMessage());
         }
+    }
+
+    /** The Health Connect data types this app may read or write now (a JSON list of names). */
+    @JavascriptInterface
+    public String hcGranted() {
+        if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
+            return "[]";
+        }
+        try {
+            return HealthBridge.granted(activity);
+        } catch (Throwable t) {
+            return "[]";
+        }
+    }
+
+    /** True when the app may save logged meals to Health Connect. */
+    @JavascriptInterface
+    public boolean hcCanWriteFood() {
+        if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
+            return false;
+        }
+        try {
+            return HealthBridge.canWriteNutrition(activity);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** Saves meals as nutrition records; answers with window.__gh.onFoodWrite. */
+    @JavascriptInterface
+    public void hcWriteFood(String json) {
+        if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
+            return;
+        }
+        try {
+            HealthBridge.writeNutrition(activity, json);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** Deletes meals this app saved (by client id); answers with window.__gh.onFoodDelete. */
+    @JavascriptInterface
+    public void hcDeleteFood(String json) {
+        if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
+            return;
+        }
+        try {
+            HealthBridge.deleteNutrition(activity, json);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * Looks a food up on Open Food Facts ("barcode" or "search"). Only called when online food
+     * search is on; the answer comes back through window.__gh.onFoodResult with the same id.
+     */
+    @JavascriptInterface
+    public void foodLookup(String kind, String query, String id) {
+        FoodLookup.lookup(activity, kind, query, id);
     }
 
     /** True when the app may save its workouts to Health Connect. */

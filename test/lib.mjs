@@ -23,3 +23,24 @@ export function done() {
   console.log(`\n${passes} passed, ${failures} failed`);
   if (failures) process.exit(1);
 }
+
+// Serves dist/ over http on a free port, like the app's asset host (file:// can't fetch .wasm).
+export async function serveDist() {
+  const { createServer } = await import('node:http');
+  const { readFile } = await import('node:fs/promises');
+  const { extname, normalize } = await import('node:path');
+  const types = { '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json', '.png': 'image/png', '.webp': 'image/webp', '.gguf': 'application/octet-stream' };
+  const base = join(root, 'dist');
+  const server = createServer(async (req, res) => {
+    try {
+      const path = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname)).replace(/^([/\\])+/, '');
+      const file = join(base, path || 'gradient-health.html');
+      if (!file.startsWith(base)) { res.writeHead(403); res.end(); return; }
+      const body = await readFile(file);
+      res.writeHead(200, { 'Content-Type': types[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+      res.end(body);
+    } catch (e) { res.writeHead(404); res.end(); }
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  return { url: `http://127.0.0.1:${server.address().port}/gradient-health.html`, close: () => new Promise((r) => server.close(r)) };
+}

@@ -58,10 +58,12 @@
         <h2 class="sec-title t-title-3">Next week</h2>
         <div class="section"><ul class="rf-list plan-list" data-key="next">${next.join('')}</ul>
           <button type="button" class="rf-btn" data-act="daysSheet">Change days and time</button>
-        </div>`;
+        </div>
+        ${U.hasTab && !U.hasTab('moves') ? `<div class="section"><ul class="rf-list" data-key="moves">${U.row({ icon: 'library', tone: 'indigo', title: 'All moves', sub: 'Every exercise, your level in each and how to do it', act: 'openMoves', chevron: true })}</ul></div>` : ''}`;
     },
   };
 
+  U.act.openMoves = () => U.go('moves');
   U.act.planDay = (el) => {
     const S = U.S;
     const day = U.today();

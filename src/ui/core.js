@@ -245,8 +245,32 @@
 
   /* ---------------------------------------------------------------- layout */
   let root, topbar, screen, floatEl, playerEl, onboardEl, tabbar, accessory, ptrEl;
-  const TABS = [['today', 'home', 'Today'], ['plan', 'calendar', 'Plan'], ['health', 'heart', 'Health'], ['progress', 'chart', 'Progress'], ['moves', 'library', 'Moves']];
+  const ALL_TABS = { today: ['today', 'home', 'Today'], plan: ['plan', 'calendar', 'Plan'], food: ['food', 'food', 'Food'], health: ['health', 'heart', 'Health'], progress: ['progress', 'chart', 'Progress'], moves: ['moves', 'library', 'Moves'] };
+  // The tabs follow what you track. Food takes the Moves slot when calorie tracking is on (the moves
+  // are then in Plan and Profile); with workouts off, Plan, Progress and Moves go away.
+  function tabsFor(S) {
+    const workouts = !S || !S.profile || S.profile.workouts !== false;
+    const food = !!(S && S.profile && GH.food && GH.food.full(S));
+    const ids = workouts ? (food ? ['today', 'plan', 'food', 'health', 'progress'] : ['today', 'plan', 'health', 'progress', 'moves']) : (food ? ['today', 'food', 'health'] : ['today', 'health']);
+    return ids.map((id) => ALL_TABS[id]);
+  }
+  let TABS = tabsFor(null);
   U.tabList = () => TABS;
+  U.hasTab = (id) => TABS.some((t) => t[0] === id);
+  const tabsHtml = (cur) => TABS.map(([id, ic, label]) => `<button type="button" class="rf-tab" data-tab="${id}"${id === cur ? ' aria-current="page"' : ''}>${U.icon(ic)}<span class="rf-tab-label">${label}</span></button>`).join('');
+  // Call after a change to what's tracked. Returns true if the tabs changed.
+  U.refreshTabs = () => {
+    const next = tabsFor(U.S);
+    if (next.map((t) => t[0]).join() === TABS.map((t) => t[0]).join()) return false;
+    TABS = next;
+    if (!U.hasTab(U.route.tab)) U.route = { tab: 'today', view: U.route.view, arg: U.route.arg };
+    if (tabbar) {
+      U.morph(tabbar.querySelector('.rf-tabbar-bar'), tabsHtml(U.route.tab));
+      tabbar.style.setProperty('--tab-count', TABS.length);
+      if (R() && R().refresh) safe(() => R().refresh(tabbar));
+    }
+    return true;
+  };
   function layout() {
     root = doc.getElementById('app');
     root.innerHTML = `
@@ -257,11 +281,9 @@
       </header>
       <div id="ptr" class="ptr" aria-hidden="true"><span class="ptr-dot">${U.icon('refresh')}</span></div>
       <div id="float" class="float-actions" hidden></div>
-      <nav class="rf-tabbar" data-position="bottom" aria-label="Main" id="tabbar">
+      <nav class="rf-tabbar" data-position="bottom" aria-label="Main" id="tabbar" style="--tab-count:${TABS.length}">
         <div class="rf-tabbar-accessory rf-glass" data-variant="thick" data-lens id="accessory" hidden></div>
-        <div class="rf-tabbar-bar rf-glass" data-lens>
-          ${TABS.map(([id, ic, label]) => `<button type="button" class="rf-tab" data-tab="${id}"${id === 'today' ? ' aria-current="page"' : ''}>${U.icon(ic)}<span class="rf-tab-label">${label}</span></button>`).join('')}
-        </div>
+        <div class="rf-tabbar-bar rf-glass" data-lens>${tabsHtml('today')}</div>
       </nav>
       <section id="player" class="player" hidden aria-label="Workout"></section>
       <section id="onboard" class="onboard" hidden aria-label="Set up"></section>`;
@@ -350,6 +372,7 @@
   function render(motion) {
     if (!U.S || !U.S.profile.onboarded) { U.showOnboarding(); return; }
     onboardEl.hidden = true;
+    U.refreshTabs();
     const r = U.route;
     const key = r.view ? `${r.view}:${r.arg || ''}` : r.tab;
     const changed = key !== lastKey;
@@ -400,6 +423,11 @@
 
   const tabIndex = (t) => TABS.findIndex((x) => x[0] === t);
   function go(tab) {
+    // A section that isn't a tab right now opens as a page (Moves with Food on), or Today.
+    if (!U.hasTab(tab)) {
+      if (tab === 'moves' || (tab === 'food' && GH.food && U.S && GH.food.full(U.S))) { U.open(tab); return; }
+      tab = 'today';
+    }
     if (U.route.tab === tab && !U.route.view) { screen.scrollTo({ top: 0, behavior: U.reduced() ? 'auto' : 'smooth' }); return; }
     const from = U.route.view ? null : tabIndex(U.route.tab);
     const to = tabIndex(tab);
@@ -697,7 +725,7 @@
   function openRoute(route) {
     const ready = U.S && U.S.profile.onboarded;
     if (route === 'privacy') { if (ready) U.open('privacy'); else if (U.showPrivacySheet) U.showPrivacySheet(); }
-    else if (['health', 'plan', 'progress', 'moves', 'today'].includes(route)) { if (ready) go(route); }
+    else if (['health', 'plan', 'progress', 'moves', 'today', 'food'].includes(route)) { if (ready) go(route); }
     else if (['profile', 'settings', 'science', 'coach'].includes(route)) { if (ready) U.open(route); }
   }
   U.boot = boot;

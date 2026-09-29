@@ -13,22 +13,25 @@
   const JOINTS = [['knee', 'Knees'], ['shoulder', 'Shoulders'], ['back', 'Lower back'], ['wrist', 'Wrists'], ['elbow', 'Elbows'], ['hip', 'Hips'], ['ankle', 'Ankles'], ['neck', 'Neck']];
   const WEIGHTS = { db: { lb: [2, 3, 5, 8, 10, 12, 15, 20, 25, 30, 35, 40, 45, 50], kg: [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 17.5, 20, 22.5, 25] }, kb: { lb: [10, 15, 18, 20, 26, 35, 44, 53], kg: [4, 6, 8, 10, 12, 16, 20, 24] } };
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  // workout: only asked when workouts are on (food-and-health people skip them).
   const STEPS = [
     { id: 'welcome', title: 'Gradient Health', modes: ['new'], bare: true },
+    { id: 'track', title: 'What to track', modes: ['new'] },
     { id: 'health', title: 'Health data', modes: ['new'] },
     { id: 'about', title: 'About you' },
-    { id: 'goals', title: 'Goals' },
-    { id: 'experience', title: 'Experience' },
-    { id: 'schedule', title: 'Schedule' },
-    { id: 'equipment', title: 'Equipment' },
-    { id: 'body', title: 'Body check' },
+    { id: 'goals', title: 'Goals', workout: true },
+    { id: 'experience', title: 'Experience', workout: true },
+    { id: 'schedule', title: 'Schedule', workout: true },
+    { id: 'equipment', title: 'Equipment', workout: true },
+    { id: 'body', title: 'Body check', workout: true },
     { id: 'food', title: 'Food' },
     { id: 'sleep', title: 'Sleep' },
-    { id: 'style', title: 'Style' },
-    { id: 'baseline', title: 'Baseline test', modes: ['new'] },
-    { id: 'abs', title: 'About abs', when: () => Q.goals.includes('abs') },
+    { id: 'style', title: 'Style', workout: true },
+    { id: 'baseline', title: 'Baseline test', modes: ['new'], workout: true },
+    { id: 'abs', title: 'About abs', when: () => Q.goals.includes('abs'), workout: true },
     { id: 'plan', title: 'Your plan' },
   ];
+  const workoutsOn = () => !Q || Q.workouts !== false;
 
   let Q = null;       // the draft answers
   let mode = 'new';   // 'new' set-up, 'edit' (every screen), 'one' (a single screen with Save)
@@ -61,6 +64,7 @@
     p.lead = { arm: weaker(Q._strongArm), leg: weaker(Q._strongLeg) };
     p.weekdays = Q.weekdays.length === Q.days ? Q.weekdays.slice().sort((a, b) => a - b) : null;
     if (!p.goals.length) p.goals = ['consistency'];
+    if (p.food && p.food.mode) p.protein = Object.assign({}, p.protein, { track: p.food.mode !== 'off' });
     for (const k of Object.keys(p)) if (k[0] === '_') delete p[k];
     return p;
   }
@@ -97,7 +101,7 @@
     dir = 1;
     open();
   };
-  U.editableSteps = () => STEPS.filter((s) => !s.modes && !s.when && s.id !== 'plan');
+  U.editableSteps = () => STEPS.filter((s) => !s.modes && !s.when && s.id !== 'plan' && (!s.workout || !U.S || U.S.profile.workouts !== false));
   // Every piece of equipment the person has ticked (each weight counts once).
   U.equipCount = (eq) => (eq.db || []).length + (eq.kb || []).length + ['ball', 'band', 'bar', 'table'].filter((k) => eq[k]).length;
   // "Home · 5 items", "Gym · 14 items", "Home and gym": what the Equipment rows show.
@@ -123,7 +127,7 @@
       case 'schedule': return `${p.days} days a week · ${p.minutes} min`;
       case 'equipment': return U.equipSummary(p);
       case 'body': return (p.careful || []).length ? `Careful with ${(p.careful || []).map((j) => (JOINTS.find((x) => x[0] === j) || [j, j])[1].toLowerCase()).join(', ')}` : 'Injuries, stronger side, impact';
-      case 'food': return `${p.weightGoal === 'lose' ? 'Lose' : p.weightGoal === 'gain' ? 'Gain' : 'Maintain'} weight · protein ${p.protein && p.protein.track === false ? 'off' : 'on'}`;
+      case 'food': { const fm = (p.food && p.food.mode) || (p.protein && p.protein.track === false ? 'off' : 'protein'); return `${p.weightGoal === 'lose' ? 'Lose' : p.weightGoal === 'gain' ? 'Gain' : 'Maintain'} weight · ${fm === 'full' ? 'calories and macros' : fm === 'off' ? 'food tracking off' : 'protein goal'}`; }
       case 'sleep': return p.sleepTypical ? `Usually ${p.sleepTypical.replace('<', 'under ')} h` : 'Your usual sleep';
       case 'style': return `Supersets ${p.prefs && p.prefs.supersets === false ? 'off' : 'on'} · rest ${p.prefs && p.prefs.rest !== 'auto' ? `${p.prefs.rest} s` : 'auto'}`;
       default: return '';
@@ -151,7 +155,7 @@
     if (mode === 'edit') { close(); return true; }
     return false;
   };
-  const visible = () => (mode === 'one' ? STEPS.filter((s) => s.id === only) : STEPS.filter((s) => (!s.modes || s.modes.includes(mode)) && (!s.when || s.when())));
+  const visible = () => (mode === 'one' ? STEPS.filter((s) => s.id === only) : STEPS.filter((s) => (!s.modes || s.modes.includes(mode)) && (!s.when || s.when()) && (!s.workout || workoutsOn())));
 
   let shownStep = null;
   let dir = 1;
@@ -230,7 +234,7 @@
   const numInput = (k, value, placeholder, extra) => `<input class="rf-input" type="number" inputmode="decimal" value="${value == null ? '' : U.esc(value)}" placeholder="${U.esc(placeholder || '')}" ${bind(k, 'num')} ${extra || ''}>`;
   const group = (title, html, foot) => `<div class="ob-group">${title ? `<h3 class="rf-list-header">${U.esc(title)}</h3>` : ''}${html}${foot ? `<p class="rf-list-footer">${U.esc(foot)}</p>` : ''}</div>`;
   const lead = (text) => `<p class="t-body ob-lead">${text}</p>`;
-  const choice = (k, options, value, type) => `<ul class="rf-list ob-choice" role="radiogroup">${options.map(([v, t, sub]) => `<li><label class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(t)}</span>${sub ? `<span class="rf-list-sub">${U.esc(sub)}</span>` : ''}</span><input type="radio" class="ob-radio" name="${k}" value="${U.esc(v)}"${String(v) === String(value) ? ' checked' : ''} ${bind(k, type)}><span class="ob-check">${U.icon('check')}</span></label></li>`).join('')}</ul>`;
+  const choice = (k, options, value, type, redraw) => `<ul class="rf-list ob-choice" role="radiogroup">${options.map(([v, t, sub]) => `<li><label class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(t)}</span>${sub ? `<span class="rf-list-sub">${U.esc(sub)}</span>` : ''}</span><input type="radio" class="ob-radio" name="${k}" value="${U.esc(v)}"${String(v) === String(value) ? ' checked' : ''} ${bind(k, type, redraw)}><span class="ob-check">${U.icon('check')}</span></label></li>`).join('')}</ul>`;
 
   /* ---------------------------------------------------------------- screens */
   const VIEW = {};
@@ -246,6 +250,24 @@
         <li>${U.icon('lock')}<span>No account and no ads. Your data stays on your phone.</span></li>
       </ul>
     </div>`;
+  // Workouts, food, or both. Changes which of the next screens are asked.
+  const foodModeOf = () => (Q.food && Q.food.mode) || (Q.protein && Q.protein.track === false ? 'off' : 'protein');
+  VIEW.track = () => {
+    const cur = !workoutsOn() ? 'food' : foodModeOf() === 'full' ? 'both' : 'workouts';
+    return lead('Pick what you want Gradient Health to do. You can change it any time in Settings.')
+      + `<ul class="rf-list ob-choice" role="radiogroup">${[
+        ['workouts', 'Workouts and health', 'A plan that adjusts to your sleep and activity, and a simple protein goal'],
+        ['both', 'Workouts, health and food', 'All of that, plus calories and macros for what you eat'],
+        ['food', 'Food and health', 'No workouts. Log meals and watch your calories, sleep, steps and weight.'],
+      ].map(([v, t, sub]) => `<li><label class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(t)}</span><span class="rf-list-sub">${U.esc(sub)}</span></span><input type="radio" class="ob-radio" name="obTrack" value="${v}"${v === cur ? ' checked' : ''} data-on="obTrack"><span class="ob-check">${U.icon('check')}</span></label></li>`).join('')}</ul>`;
+  };
+  U.on.obTrack = (el, ev, v) => {
+    if (!Q) return;
+    Q.workouts = v !== 'food';
+    const fm = foodModeOf();
+    Q.food = Object.assign({}, Q.food || {}, { mode: v === 'workouts' ? (fm === 'full' ? 'protein' : fm) : 'full' });
+    draw();
+  };
   VIEW.health = () => {
     const st = H().status();
     const app = GH.platform && GH.platform.isApp();
@@ -264,7 +286,7 @@
   };
   U.act.obConnect = async (btn) => {
     btn.setAttribute('aria-busy', 'true');
-    const st = await H().request();
+    const st = await H().request(!!(Q.food && Q.food.mode === 'full'));
     if (H().connected(st)) {
       tmpS = tmpS || { profile: Q, health: { days: {}, hc: {}, manual: {}, lastSync: null, status: st }, weights: [], log: [], protein: {}, feel: {}, sleepChip: {} };
       const res = await H().sync(tmpS, Date.now(), 90);
@@ -308,7 +330,7 @@
           ${lb ? `<div class="ob-row2">${field('Height (ft)', numInput('_hft', Q._hft, '5', 'min="3" max="8" inputmode="numeric"'))}${field('(in)', numInput('_hin', Q._hin, '9', 'min="0" max="11" inputmode="numeric"'))}</div>`
       : field('Height (cm)', numInput('_hcm', Q._hcm, 'e.g. 175', 'min="100" max="250" inputmode="numeric"'))}
         </div>`
-      + group('Sex (optional)', `<div class="ob-pad">${U.seg('sex', [['female', 'Female'], ['male', 'Male'], ['', 'Skip']], Q.sex || '', 'Sex', ` ${bind('sex')}`)}</div>`, 'Only used to read your health trends. Skip it if you like.');
+      + group('Sex (optional)', `<div class="ob-pad">${U.seg('sex', [['female', 'Female'], ['male', 'Male'], ['', 'Skip']], Q.sex || '', 'Sex', ` ${bind('sex')}`)}</div>`, foodModeOf() === 'full' ? 'Used for your calorie target. Skip it and an average is used.' : 'Only used to read your health trends. Skip it if you like.');
   };
   // Switching units converts the weights already picked.
   const unitsHandler = U.on.q;
@@ -436,14 +458,16 @@
   VIEW.food = () => {
     const perKg = Q.units === 'kg';
     const opts = [[0.7, perKg ? '1.5 g/kg' : '0.7 g/lb'], [0.8, perKg ? '1.8 g/kg' : '0.8 g/lb'], [1, perKg ? '2.2 g/kg' : '1 g/lb']];
-    return lead('No meal plans. Just a protein number to hit and a trend to watch.')
-      + group('Weight goal', `<div class="ob-pad">${U.seg('weightGoal', [['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']], Q.weightGoal, 'Weight goal', ` ${bind('weightGoal')}`)}</div>`, 'You get a heads-up if you\'re losing more than 1% a week.')
-      + group('', `<ul class="rf-list">${U.sw('Track protein', Q.protein.track !== false, bind('protein.track', '', true))}</ul>`)
-      + (Q.protein.track !== false ? group('Your go-to protein', `<div class="ob-fields">
+    const fm = foodModeOf();
+    return lead(fm === 'full' ? 'Your calorie target comes from your size, your steps and your goal, and learns from your logs over time.' : 'No meal plans. Just a protein number to hit and a trend to watch.')
+      + group('Weight goal', `<div class="ob-pad">${U.seg('weightGoal', [['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']], Q.weightGoal, 'Weight goal', ` ${bind('weightGoal', '', true)}`)}</div>`, 'You get a heads-up if you\'re losing more than 1% a week.')
+      + group('Food tracking', choice('food.mode', [['off', 'Off'], ['protein', 'Protein only', 'One number to hit, one tap to log'], ['full', 'Calories and macros', 'Log meals: search, your own foods, quick add']], fm, '', true))
+      + (fm === 'full' && Q.weightGoal === 'lose' ? group('Pace', `<div class="ob-pad">${U.seg('pace', [['0.25', '0.25%'], ['0.5', '0.5%'], ['0.75', '0.75%'], ['1', '1%']], String((Q.food && Q.food.pace) || 0.5), 'Pace', ` ${bind('food.pace', 'num')}`)}</div>`, 'Of your body weight a week. Slower keeps more muscle.') : '')
+      + (fm === 'protein' ? group('Your go-to protein', `<div class="ob-fields">
           ${field('Name', `<input class="rf-input" type="text" maxlength="24" value="${U.esc(Q.protein.quickName)}" ${bind('protein.quickName')}>`)}
           ${field('Grams', numInput('protein.quickG', Q.protein.quickG, '26', 'min="1" max="100" inputmode="numeric"'))}
-        </div>`, 'One tap adds it on the Today screen.')
-        + group('Protein per body weight', `<div class="ob-pad">${U.seg('perLb', opts, Q.protein.perLb, 'Protein per body weight', ` ${bind('protein.perLb', 'num')}`)}</div>`) : '');
+        </div>`, 'One tap adds it on the Today screen.') : '')
+      + (fm !== 'off' ? group('Protein per body weight', `<div class="ob-pad">${U.seg('perLb', opts, Q.protein.perLb, 'Protein per body weight', ` ${bind('protein.perLb', 'num')}`)}</div>`) : '');
   };
 
   VIEW.sleep = () => lead('Sleep changes what today\'s session looks like: under 5 hours means one less set per exercise.')
@@ -501,6 +525,7 @@
 
   VIEW.plan = () => {
     const p = draftProfile();
+    if (p.workouts === false) return summaryNoWorkouts(p);
     const prog = B().programFor(p);
     const tpl = B().templateFor(p, prog);
     const byFreq = {};
@@ -524,6 +549,26 @@
       + group('Your week', `<ul class="rf-list">${rows.join('')}</ul>`)
       + `<div class="card ob-card"><ul class="ob-bullets">${notes.map((n) => `<li>${U.esc(n)}</li>`).join('')}</ul></div>`;
   };
+
+  // Food and health only: the targets instead of a week of workouts.
+  function summaryNoWorkouts(p) {
+    const day = B().dayOf(Date.now(), 4);
+    const tmp = { profile: p, weights: p.weightKg ? [{ day, kg: p.weightKg, src: 'profile' }] : [], health: (tmpS && tmpS.health) || { days: {} }, food: {}, log: [], protein: {} };
+    const t = GH.food && p.food && p.food.mode === 'full' ? GH.food.targets(tmp, day) : null;
+    const steps = B().stepsGoal(tmp, day).goal;
+    const kg = p.weightKg;
+    const proteinG = kg && p.protein.track !== false ? Math.round(p.protein.perLb * kg * B().LB_PER_KG) : null;
+    const rows = [];
+    if (t) rows.push(U.row({ icon: 'flame', tone: 'coral', title: 'Calories', detail: `${U.num(t.kcal)} a day` }));
+    if (proteinG) rows.push(U.row({ icon: 'check-circle', tone: 'green', title: 'Protein', detail: `${proteinG} g a day` }));
+    rows.push(U.row({ icon: 'navigate', tone: 'sky', title: 'Steps', detail: `${U.num(steps)} a day` }));
+    const notes = [];
+    if (t) notes.push('The calorie target is an estimate. After two weeks of logging and weighing in, it tunes itself to what your weight actually does.');
+    if (!kg) notes.push('Add your weight to get calorie and protein targets.');
+    notes.push('Workouts are off. You can turn them on any time in Settings.');
+    return group('Your daily targets', `<ul class="rf-list">${rows.join('')}</ul>`)
+      + `<div class="card ob-card"><ul class="ob-bullets">${notes.map((n) => `<li>${U.esc(n)}</li>`).join('')}</ul></div>`;
+  }
 
   /* ---------------------------------------------------------------- finish */
   U.act.obFinish = () => {

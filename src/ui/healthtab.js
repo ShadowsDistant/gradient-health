@@ -87,6 +87,12 @@
       <p class="t-body">To check what's shared, open Health Connect, then App permissions, pick your watch app and make sure it's allowed to write the data you want.</p>
       <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-act="hcManage">Open Health Connect</button>
     </div>` });
+  U.act.whyEstimate = () => U.sheet({ title: 'Estimated resting heart rate', body: `<div class="sheet-prose">
+      <p class="t-body">Your watch app shares heart rate with Health Connect but not a resting value, so Gradient Health works one out.</p>
+      <p class="t-body">It averages your heart rate over each half hour and takes the lowest half hour of the day. For people who wear their watch in bed, that's deep sleep, which is close to what watches call resting heart rate.</p>
+      <p class="t-body">A day whose lowest half hour isn't at night is skipped, because it usually means the watch was off overnight.</p>
+      <p class="t-body">Use it to compare your own days with each other. It can sit a few beats off your watch app's number.</p>
+    </div>` });
   U.act.dismissInsight = (el) => { GH.insights.dismiss(U.S, el.dataset.arg, U.today()); U.commit(); U.toast('Hidden for 30 days', 'neutral'); };
   U.act.insightGo = (el) => U.go(el.dataset.arg);
 
@@ -216,6 +222,17 @@
   function tile(icon, tone, label, value, sub, act) {
     return `<${act ? `button type="button" data-act="${act}"` : 'div'} class="stat"><span class="stat-top"><span class="rf-list-icon" data-tone="${tone}">${U.icon(icon)}</span><span class="t-footnote rf-muted">${U.esc(label)}</span></span><span class="t-title-3 rf-num">${value}</span><span class="t-caption rf-muted">${sub || '&nbsp;'}</span></${act ? 'button' : 'div'}>`;
   }
+  // Calories eaten with calorie tracking on, the protein count with protein only, nothing when off.
+  function foodTile(S, day, t) {
+    const F = GH.food;
+    if (F && F.full(S)) {
+      const tot = F.totals(S, day);
+      const tg = F.targets(S, day);
+      return tile('food', 'green', 'Eaten', tg ? `${U.num(tot.kcal)} <small>of ${U.num(tg.kcal)}</small>` : `${U.num(tot.kcal)} <small>kcal</small>`, `protein ${Math.round(tot.p)} g`, 'goFood');
+    }
+    if (S.profile.protein.track === false || (F && F.mode(S) === 'off')) return '';
+    return tile('check-circle', 'green', 'Protein', t.proteinGoal ? `${t.protein} <small>of ${t.proteinGoal} g</small>` : `${t.protein} <small>g</small>`, 'today');
+  }
   function todayGrid(S, day) {
     const t = H().today(S, day);
     const base = (k) => H().baseline(S, k, day);
@@ -229,11 +246,13 @@
     return `<div class="stat-grid">
       ${tile('moon', 'indigo', 'Sleep', sl ? U.esc(U.fmtMin(sl.value)) : '–', slSub, !sl ? 'logSleep' : null)}
       ${tile('navigate', 'green', 'Steps', t.steps != null ? U.num(t.steps) : '–', t.steps != null ? `goal ${U.num(B().stepsGoal(S, day).goal)}` : H().connected(H().status()) ? 'none synced yet today' : 'needs Health Connect')}
-      ${tile('heart', 'rose', 'Resting HR', rh ? `${Math.round(rh.value)} <small>bpm</small>` : '–', rh ? join(rh.day !== day ? ago(rh) : '', br.n >= 5 ? `usual ${Math.round(br.avg)}` : '') : 'not shared by your watch app', rh ? null : 'whyNoData')}
+      ${tile('heart', 'rose', 'Resting HR', rh ? `${Math.round(rh.value)} <small>bpm</small>` : '–', rh ? join(rh.day !== day ? ago(rh) : '', t.rhrEstimated ? 'estimated' : '', br.n >= 5 ? `usual ${Math.round(br.avg)}` : '') : 'not shared by your watch app', rh ? (t.rhrEstimated ? 'whyEstimate' : null) : 'whyNoData')}
       ${tile('wave', 'violet', 'HRV', hv ? `${Math.round(hv.value)} <small>ms</small>` : '–', hv ? join(hv.day !== day ? ago(hv) : '', bh.n >= 5 ? `usual ${Math.round(bh.avg)}` : '') : 'not shared by your watch app', hv ? null : 'whyNoData')}
       ${tile('chart', 'teal', 'Weight', t.weightAvg7 != null ? U.esc(U.fmtW(t.weightAvg7)) : '–', t.weightAvg7 != null ? '7-day average' : 'tap to log', t.weightAvg7 == null ? 'logWeight' : null)}
       ${tile('bolt', 'amber', 'Active', `${t.activeMin} <small>min</small>`, 'today')}
-      ${S.profile.protein.track !== false ? tile('check-circle', 'green', 'Protein', t.proteinGoal ? `${t.protein} <small>of ${t.proteinGoal} g</small>` : `${t.protein} <small>g</small>`, 'today') : ''}
+      ${t.activeKcal != null ? tile('flame', 'coral', 'Active calories', `${U.num(t.activeKcal)} <small>kcal</small>`, 'today') : ''}
+      ${t.distanceM != null ? tile('pin', 'sky', 'Distance', U.lb() ? `${U.num(t.distanceM / 1609.34, 1)} <small>mi</small>` : `${U.num(t.distanceM / 1000, 1)} <small>km</small>`, 'today') : ''}
+      ${foodTile(S, day, t)}
       ${tile('sparkle', 'sky', 'Feel', f.energy ? U.esc(`${U.cap(f.energy)} energy`) : '–', f.sore ? U.esc(`${f.sore} soreness`) : 'tap to check in', 'logFeel')}
     </div>`;
   }
@@ -260,6 +279,20 @@
     const w = H().series(S, 'weightKg', from - 6, day).map((p) => ({ day: p.day, value: U.kgTo(p.value) }));
     out.push(U.chartCard({ title: 'Weight', value: w.length ? U.fmtW(B().weightStats(S, day).avg7 || B().weightStats(S, day).last) : '', fmt: (v) => `${U.num(v, 1)} ${U.wUnit()}`, from, to: day,
       series: [{ name: 'Weigh-ins', kind: 'dot', color: 'var(--hue-teal)', points: inRange(w) }, { name: '7-day average', kind: 'avg', color: 'var(--label)', points: U.rolling(w, from, day, 7) }] }));
+    if (GH.food && GH.food.full(S)) {
+      const eaten = [], target = [];
+      for (let d = from; d <= day; d++) {
+        const x = GH.food.totals(S, d);
+        if (x.n || (x.other && x.other.kcal)) eaten.push({ day: d, value: x.kcal });
+        const tg = GH.food.targets(S, d);
+        if (tg) target.push({ day: d, value: tg.kcal });
+      }
+      out.push(U.chartCard({ title: 'Calories eaten', value: eaten.length ? `${U.num(avg(eaten))} a day` : '', fmt: (v) => `${U.num(v)} kcal`, from, to: day, zero: true,
+        series: [{ name: 'Eaten', kind: 'bar', color: 'var(--hue-green)', points: eaten }, { name: 'Target', kind: 'line', color: 'var(--label)', points: target }] }));
+    }
+    const kcal = H().series(S, 'activeKcal', from, day);
+    if (kcal.length) out.push(U.chartCard({ title: 'Active calories', value: `${U.num(avg(kcal))} a day`, fmt: (v) => `${U.num(v)} kcal`, from, to: day, zero: true,
+      series: [{ name: 'Active calories', kind: 'bar', color: 'var(--hue-coral)', points: kcal }] }));
     const act = [];
     for (let d = from; d <= day; d++) { const m = H().activeMinutes(S, d, d); if (m) act.push({ day: d, value: m }); }
     out.push(U.chartCard({ title: 'Active minutes', value: act.length ? `${U.num(act.reduce((a, p) => a + p.value, 0) / Math.max(1, range / 7))} a week` : '', fmt: (v) => `${Math.round(v)} min`, from, to: day, zero: true,
@@ -306,7 +339,8 @@
     return `<div class="card" data-key="sources">
       <div class="row-between"><span class="t-headline">Health Connect</span>${U.badge(on ? 'On' : 'Off', on ? 'positive' : 'neutral')}</div>
       <p class="t-callout rf-muted">${U.esc(text)}${on ? ` · ${sync.busy ? 'syncing now' : `updated <span data-ago="${last || 0}">${U.esc(U.ago(last))}</span>`}` : ''}</p>
-      <p class="t-footnote rf-muted">Reads sleep, steps, weight, height, body fat, resting heart rate, HRV and workouts. Syncs when you open the app and every 15 minutes while it's open. <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="openPrivacy">Privacy</button></p>
+      <p class="t-footnote rf-muted">Reads sleep, steps, weight, height, body fat, heart rate, resting heart rate, HRV, active calories, distance and workouts${GH.food && GH.food.full(S) ? ', plus meals from other apps' : ''}. Syncs when you open the app and every 15 minutes while it's open. <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="openPrivacy">Privacy</button></p>
+      ${on && H().missingTypes && H().missingTypes(S).length ? `<div class="notice" data-tone="info">${U.icon('info')}<span>This version can also read heart rate, active calories and distance${GH.food && GH.food.full(S) ? ', and share meals' : ''}. <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="hcConnect">Allow</button></span></div>` : ''}
       ${failed}${errs}${buttons}${writes}</div>`;
   }
   U.act.hcSync = async () => {
@@ -318,7 +352,7 @@
   U.on.hcWriteToggle = async (el, ev, v) => {
     const S = U.S;
     if (v && !(H().canWrite && H().canWrite())) {
-      const st = await H().request();
+      const st = await H().request(S);
       if (!(H().canWrite && H().canWrite())) { el.checked = false; U.toast('Not allowed yet', 'caution', 'Turn on Exercise under Gradient Health in Health Connect.', { label: 'Open', onClick: () => H().openSettings() }); return; }
       S.health.status = st;
     }
@@ -328,7 +362,7 @@
   };
   U.act.hcManage = () => H().openSettings();
   U.act.hcConnect = async () => {
-    const st = await H().request();
+    const st = await H().request(U.S);
     U.S.health.status = st;
     if (H().connected(st)) { await U.syncHealth('manual'); U.toast('Health Connect connected', 'positive'); if (U.checklistCheck) U.checklistCheck(); }
     else if (st === 'denied') U.toast('Not connected', 'caution', 'Allow access in Health Connect to use your data.', { label: 'Open', onClick: () => H().openSettings() });

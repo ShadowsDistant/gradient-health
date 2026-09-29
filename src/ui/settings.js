@@ -22,20 +22,32 @@
       const claude = S.ai.mode === 'api';
       const canWrite = on && H().canWrite && H().canWrite();
       const ver = (GH.platform && GH.platform.appVersion()) || GH.VERSION || 'web';
+      const workouts = p.workouts !== false;
+      const F = GH.food;
+      const fm = F ? F.mode(S) : 'protein';
+      const missing = on && H().missingTypes ? H().missingTypes(S) : [];
       return `${U.navbar('Settings', '', U.glassBtn('chevron-left', 'Back', 'back'))}
         <h1 class="rf-large-title">Settings</h1>
         <div class="section">
-          <h3 class="rf-list-header">Your plan</h3>
+          <h3 class="rf-list-header" id="track">What you track</h3>
+          <ul class="rf-list">
+            ${U.sw('Workouts', workouts, 'data-on="setWorkouts"', workouts ? 'Your plan, the workout player and progress' : 'Off. Today shows your health and food.')}
+            <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Food</span><span class="rf-list-sub">${FOOD_SUB[fm] || ''}</span></span>${U.seg('setFood', [['off', 'Off'], ['protein', 'Protein'], ['full', 'Calories']], fm, 'Food tracking', ' data-on="setFoodMode"')}</div></li>
+          </ul>
+          ${fm === 'full' ? foodSettings(S, on) : ''}
+          ${workouts ? `<h3 class="rf-list-header">Your plan</h3>
           <ul class="rf-list">
             ${U.row({ icon: 'pencil', tone: 'indigo', title: 'Your answers', sub: 'Change any of them, one at a time', act: 'editAnswers', chevron: true })}
             ${U.row({ icon: 'calendar', tone: 'sky', title: 'Days and time', detail: `${p.days} days · ${p.minutes} min`, act: 'daysSheet', chevron: true })}
             ${U.row({ icon: 'bag', tone: 'amber', title: 'Equipment', detail: U.esc(U.equipSummary(p)), act: 'editEquipment', chevron: true })}
             ${U.row({ icon: 'timer', tone: 'green', title: 'Retake the baseline test', sub: 'Push-ups, plank, curls', act: 'baselineSheet', chevron: true })}
-          </ul>
+          </ul>` : `<h3 class="rf-list-header">About you</h3>
+          <ul class="rf-list">${U.row({ icon: 'pencil', tone: 'indigo', title: 'Your answers', sub: 'Age, weight, height and more', act: 'editAnswers', chevron: true })}</ul>`}
           <h3 class="rf-list-header">Health data</h3>
           <ul class="rf-list">
             ${U.row({ icon: 'heart', tone: 'rose', title: 'Health Connect', detail: hcDetail, act: app && !['unsupported', 'unavailable'].includes(st) ? (on ? 'hcManage' : 'hcConnect') : null, chevron: app })}
-            ${on ? U.sw('Save workouts to Health Connect', !!(S.health.write !== false && canWrite), 'data-on="hcWriteToggle"', canWrite ? 'Other apps see your Gradient Health workouts' : 'Needs the Exercise permission') : ''}
+            ${missing.length ? U.row({ icon: 'plus', tone: 'rose', title: 'Allow the new data types', sub: U.esc(missingText(missing)), act: 'hcConnect', chevron: true }) : ''}
+            ${on && workouts ? U.sw('Save workouts to Health Connect', !!(S.health.write !== false && canWrite), 'data-on="hcWriteToggle"', canWrite ? 'Other apps see your Gradient Health workouts' : 'Needs the Exercise permission') : ''}
             <li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">Units</span></span>${U.seg('setUnits', [['lb', 'lb'], ['kg', 'kg']], p.units, 'Units', ' data-on="setUnits" data-size="sm"')}</div></li>
           </ul>
           <h3 class="rf-list-header" id="coach">Coach</h3>
@@ -79,8 +91,73 @@
         </div>`;
     },
     focus(root, arg) {
-      if (arg === 'coach') { const el = root.querySelector('#coach'); if (el) setTimeout(() => el.scrollIntoView({ block: 'start', behavior: U.reduced() ? 'auto' : 'smooth' }), 60); }
+      const el = arg && ['coach', 'track', 'food'].includes(arg) ? root.querySelector(`#${arg}`) : null;
+      if (el) setTimeout(() => el.scrollIntoView({ block: 'start', behavior: U.reduced() ? 'auto' : 'smooth' }), 60);
     },
+  };
+
+  /* ---------------------------------------------------------------- what you track */
+  const FOOD_SUB = { off: 'Nothing about food', protein: 'A protein goal with one-tap logging', full: 'Calories, macros and meals, with a protein goal' };
+  const TYPE_NAMES = { heartRate: 'heart rate', activeKcal: 'active calories', distance: 'distance', nutrition: 'nutrition', writeNutrition: 'saving meals' };
+  function missingText(list) {
+    const names = list.map((t) => TYPE_NAMES[t] || t);
+    return U.cap(names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]);
+  }
+  function foodSettings(S, hcOn) {
+    const p = S.profile;
+    const fp = GH.food.prefs(S);
+    const t = GH.food.targets(S, U.today());
+    const canWriteFood = hcOn && H().canWriteFood && H().canWriteFood();
+    return `<h3 class="rf-list-header" id="food">Food</h3>
+      <ul class="rf-list">
+        <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Weight goal</span></span>${U.seg('setWGoal', [['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']], p.weightGoal || 'maintain', 'Weight goal', ' data-on="setWeightGoal"')}</div></li>
+        ${p.weightGoal === 'lose' ? `<li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Pace</span><span class="rf-list-sub">Of your body weight a week. Slower keeps more muscle.</span></span>${U.seg('setPace', [['0.25', '0.25%'], ['0.5', '0.5%'], ['0.75', '0.75%'], ['1', '1%']], String(fp.pace), 'Pace', ' data-on="setFoodPace"')}</div></li>` : ''}
+        <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Sex</span><span class="rf-list-sub">For the calorie estimate. Not saying uses an average.</span></span>${U.seg('setSex', [['female', 'Female'], ['male', 'Male'], ['', 'Not saying']], p.sex || '', 'Sex', ' data-on="setSex"')}</div></li>
+        ${U.sw('Online search and barcodes', !!fp.online, 'data-on="setFoodPref" data-k="online"', 'From Open Food Facts. Only the barcode or the words you search are sent.')}
+        ${hcOn ? U.sw('Save meals to Health Connect', fp.hcWrite !== false && canWriteFood, 'data-on="setFoodPref" data-k="hcWrite"', canWriteFood ? 'Other apps see what you log here' : 'Needs the Nutrition permission') : ''}
+        ${hcOn ? U.sw('Count food from other apps', fp.hcRead !== false, 'data-on="setFoodPref" data-k="hcRead"', 'Meals logged in other apps add to your day') : ''}
+      </ul>
+      <p class="rf-list-footer">${t ? `Your target is about ${U.num(t.kcal)} kcal a day${t.learned ? ', tuned to your own logs and weight' : ''}.` : 'Add your weight and height to get a calorie target.'} ${U.whyLink ? U.whyLink('calories', 'How it\'s worked out') : ''}</p>`;
+  }
+  U.on.setWorkouts = async (el, ev, v) => {
+    const S = U.S;
+    if (!v && S.active) { el.checked = true; U.toast('Finish or discard the workout in progress first', 'caution'); return; }
+    S.profile.workouts = !!v;
+    U.save();
+    U.render();
+    U.toast(v ? 'Workouts are back on' : 'Workouts are off', 'neutral', v ? 'Your plan picks up where it left off.' : 'Your plan and progress are kept if you turn them back on.');
+  };
+  U.on.setFoodMode = async (el, ev, v) => {
+    const S = U.S;
+    const before = GH.food.mode(S);
+    GH.food.setMode(S, v);
+    U.save();
+    U.render();
+    if (v === 'full' && before !== 'full') {
+      U.toast('Food is on', 'positive', 'It has its own tab now. Moves moved into Plan.');
+      // Saving meals to Health Connect needs the nutrition permissions.
+      if (H().connected(H().status()) && H().missingTypes && H().missingTypes(S).some((t) => t === 'nutrition' || t === 'writeNutrition')) {
+        const ok = await U.confirm('Share food with Health Connect?', 'Meals you log here can be saved to Health Connect, and meals from other apps can count toward your day.', 'Allow');
+        if (ok) { await H().request(true); U.render(); }
+      }
+    }
+  };
+  U.on.setWeightGoal = (el, ev, v) => { U.S.profile.weightGoal = v; U.save(); U.render(); };
+  U.on.setFoodPace = (el, ev, v) => { GH.food.prefs(U.S).pace = Number(v) || 0.5; U.save(); U.render(); };
+  U.on.setSex = (el, ev, v) => { U.S.profile.sex = v || null; U.save(); U.render(); };
+  U.on.setFoodPref = async (el, ev, v) => {
+    const S = U.S;
+    const k = el.dataset.k;
+    const fp = GH.food.prefs(S);
+    if (k === 'hcWrite' && v && !(H().canWriteFood && H().canWriteFood())) {
+      await H().request(true);
+      if (!(H().canWriteFood && H().canWriteFood())) { el.checked = false; U.toast('Not allowed yet', 'caution', 'Turn on Nutrition under Gradient Health in Health Connect.', { label: 'Open', onClick: () => H().openSettings() }); return; }
+    }
+    fp[k] = !!v;
+    U.save();
+    if (k === 'hcWrite' && v && H().writeFood) H().writeFood(S);
+    if (k === 'hcRead' && v) U.syncHealth('manual');
+    U.render();
   };
 
   // Each answer opens on its own screen with Save, so nothing else has to be gone through again.

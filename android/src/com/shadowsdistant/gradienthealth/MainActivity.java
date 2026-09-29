@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
@@ -23,6 +24,7 @@ import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.ValueCallback;
+import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -53,6 +55,9 @@ public final class MainActivity extends Activity {
     static final String APP_HOST = "appassets.androidplatform.net";
     static final String APP_URL = "https://" + APP_HOST + "/index.html";
     static final int REQUEST_HEALTH_PERMISSIONS = 4201;
+    static final int REQUEST_CAMERA = 4202;
+    /** A camera request from the page, waiting on the runtime permission dialog. */
+    private PermissionRequest pendingCamera;
     static final String CLAUDE_PACKAGE = "com.anthropic.claude";
 
     private static final String ACTION_VIEW_PERMISSION_USAGE =
@@ -126,8 +131,9 @@ public final class MainActivity extends Activity {
             s.setAllowContentAccess(false);
             wv.setBackgroundColor(currentBackground());
             wv.setWebViewClient(new AppWebViewClient());
-            // A WebChromeClient is needed for alert()/confirm()/prompt() dialogs to show at all.
-            wv.setWebChromeClient(new WebChromeClient());
+            // A WebChromeClient is needed for alert()/confirm()/prompt() dialogs to show at all, and
+            // for the barcode scanner's camera.
+            wv.setWebChromeClient(new AppChromeClient());
             wv.addJavascriptInterface(bridge, BRIDGE_NAME);
             FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -306,20 +312,88 @@ public final class MainActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_HEALTH_PERMISSIONS) {
             notifyHealthPermissions();
+        } else if (requestCode == REQUEST_CAMERA) {
+            PermissionRequest request = pendingCamera;
+            pendingCamera = null;
+            if (request != null) {
+                boolean ok = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+                try {
+                    if (ok) {
+                        request.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+                    } else {
+                        request.deny();
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+    }
+
+    /** The app's versionName, e.g. "1.2.0". */
+    String versionName() {
+        try {
+            String v = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+            return v == null ? "" : v;
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    /**
+     * Lets the page's own barcode scanner use the camera (and nothing else): video capture only,
+     * only for the app's own page, and only after Android's camera permission is granted.
+     */
+    private final class AppChromeClient extends WebChromeClient {
+        @Override
+        public void onPermissionRequest(final PermissionRequest request) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        boolean onlyVideo = request.getResources().length == 1
+                                && PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(request.getResources()[0]);
+                        if (!onlyVideo || !isAppHost(request.getOrigin())) {
+                            request.deny();
+                            return;
+                        }
+                        if (checkSelfPermission(android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                            request.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+                            return;
+                        }
+                        if (pendingCamera != null) {
+                            pendingCamera.deny();
+                        }
+                        pendingCamera = request;
+                        requestPermissions(new String[]{android.Manifest.permission.CAMERA}, REQUEST_CAMERA);
+                    } catch (Throwable t) {
+                        try {
+                            request.deny();
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                }
+            });
+        }
+
+        @Override
+        public void onPermissionRequestCanceled(PermissionRequest request) {
+            if (pendingCamera == request) {
+                pendingCamera = null;
+            }
         }
     }
 
     // ---------------------------------------------------------------- called by Bridge (UI thread)
 
     /** Shows the Health Connect permission dialog; the result arrives via onHealthPerms. */
-    void requestHealthPermissions() {
+    void requestHealthPermissions(boolean withFood) {
         String status = bridge != null ? bridge.hcStatus() : "unavailable";
         if ("unsupported".equals(status) || "unavailable".equals(status)) {
             callJs(jsCall("onHealthPerms", jsString(status)));
             return;
         }
         try {
-            String[] missing = HealthBridge.missingPermissions(this);
+            String[] missing = HealthBridge.missingPermissions(this, withFood);
             if (missing.length == 0) {
                 callJs(jsCall("onHealthPerms", jsString(status)));
                 return;
