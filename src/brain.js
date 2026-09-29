@@ -47,7 +47,7 @@
       careful: [], impactOk: true, gentle: false, lead: { arm: null, leg: null },
       weightGoal: 'maintain', protein: { track: true, perLb: 0.8, quickName: 'Shake', quickG: 26 },
       sleepTypical: '6-7', sleepIrregular: false,
-      prefs: { supersets: true, rest: 'auto', sound: true, vibrate: true, theme: 'system', density: 0.5, rollHour: 4 },
+      prefs: { supersets: true, rest: 'auto', sound: true, vibrate: true, haptics: true, theme: 'system', density: 0.5, rollHour: 4 },
       startDay: null,
     };
   }
@@ -173,7 +173,7 @@
       events: [{ type: 'settings', day, days: p.days, weekdays: p.weekdays, minutes: p.minutes }],
       log: [], weights: [], protein: {}, health: { days: {}, hc: {}, manual: {}, lastSync: null, status: null },
       feel: {}, sleepChip: {}, measurements: [], active: null, celebrated: {}, pendingLines: [],
-      insightsDismissed: {}, insightsShown: {}, ai: { enabled: false, reports: [], chat: [], model: null }, volWeeksDone: [],
+      insightsDismissed: {}, insightsShown: {}, ai: { enabled: false, mode: 'local', reports: [], chat: [], model: null }, volWeeksDone: [], seen: {}, coachChat: [],
     };
     if (p.weightKg) S.weights.push({ day, kg: p.weightKg, src: 'profile' });
     initProgress(S, baseline, day);
@@ -611,10 +611,14 @@
   }
   const fmtNum = (x) => (x == null ? '' : Number.isInteger(x) ? String(x) : x.toFixed(1));
 
-  function restFor(S, group) {
+  // Auto rest: 90 s after big multi-joint moves, 60 s after small ones (and inside supersets, see
+  // pairSupersets). Resting over a minute gives a small extra benefit for muscle size, with nothing
+  // clear past about 90 s (Singer et al. 2024).
+  const COMPOUND = ['push', 'chestDb', 'squat', 'hinge', 'row', 'pull'];
+  function restFor(S, fam) {
     const pr = S.profile.prefs.rest;
     if (pr === 60 || pr === 90) return pr;
-    return group === 'legs' ? 90 : 60;
+    return COMPOUND.includes(fam) ? 90 : 60;
   }
 
   // The move for a slot today: the ladder's current rung, swapped away from painful joints.
@@ -657,7 +661,7 @@
     target = clampInt(target, m.range[0], m.range[1]);
     return {
       kind: 'move', fam, moveId: m.id, name: m.name, group: slot.group, sets: slot.sets, target,
-      timed: !!m.timed, uni: !!m.uni, rest: restFor(S, slot.group), load: loadInfo(S, m),
+      timed: !!m.timed, uni: !!m.uni, rest: restFor(S, fam), load: loadInfo(S, m),
       swappedFrom: pick.swappedFrom, superset: null,
     };
   }
@@ -682,7 +686,7 @@
     const side = S.catchup[kind].side || 'L';
     return {
       kind: 'extra', fam, moveId: id, name: m.name, group: m.group, sets: 1, target, timed: !!m.timed, uni: true,
-      leadOnly: side, rest: restFor(S, m.group), load: loadInfo(S, m), superset: null, extraKind: kind,
+      leadOnly: side, rest: restFor(S, fam), load: loadInfo(S, m), superset: null, extraKind: kind,
     };
   }
 
@@ -730,7 +734,10 @@
     const main = session.items.filter((it) => it.group !== 'abs');
     const free = new Set(main);
     let tag = 0;
-    const pairUp = (a, b) => { const k = 'ABCDEFG'[tag++]; a.superset = k + '1'; b.superset = k + '2'; free.delete(a); free.delete(b); };
+    // In a superset each muscle already rests through its partner's set, so auto rest stays at 60 s
+    // there: that still gives every muscle about 90 s or more between its own sets.
+    const auto = S.profile.prefs.rest !== 60 && S.profile.prefs.rest !== 90;
+    const pairUp = (a, b) => { const k = 'ABCDEFG'[tag++]; a.superset = k + '1'; b.superset = k + '2'; free.delete(a); free.delete(b); if (auto) { a.rest = 60; b.rest = 60; } };
     for (const [x, y] of PREFER) {
       const a = [...free].find((it) => it.fam === x);
       const b = [...free].find((it) => it.fam === y && it !== a);

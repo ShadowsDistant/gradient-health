@@ -30,15 +30,17 @@
     d('v', SCHEMA); d('vol', {}); d('complexity', 0); d('noStreak', 0); d('hardStreak', 0); d('pain', {}); d('excluded', []);
     d('weights', []); d('protein', {}); d('feel', {}); d('sleepChip', {}); d('measurements', []); d('active', null);
     d('celebrated', {}); d('pendingLines', []); d('insightsDismissed', {}); d('insightsShown', {}); d('volWeeksDone', []);
-    d('health', {}); d('ai', {});
+    d('health', {}); d('ai', {}); d('seen', {}); d('coachChat', []);
     const h = S.health;
     if (!h.days) h.days = {};
     if (!h.hc) h.hc = {};
     if (!h.manual) h.manual = {};
     if (h.lastSync === undefined) h.lastSync = null;
     if (h.status === undefined) h.status = null;
+    if (!h.written) h.written = {};
     const ai = S.ai;
     if (ai.enabled == null) ai.enabled = false;
+    if (ai.mode !== 'api' && ai.mode !== 'local') ai.mode = ai.enabled ? 'api' : 'local';
     if (!Array.isArray(ai.reports)) ai.reports = [];
     if (!Array.isArray(ai.chat)) ai.chat = [];
     stripSecrets(S);

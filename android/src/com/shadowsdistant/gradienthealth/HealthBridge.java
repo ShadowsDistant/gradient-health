@@ -6,14 +6,17 @@ import android.health.connect.AggregateRecordsGroupedByPeriodResponse;
 import android.health.connect.AggregateRecordsRequest;
 import android.health.connect.HealthConnectException;
 import android.health.connect.HealthConnectManager;
+import android.health.connect.InsertRecordsResponse;
 import android.health.connect.LocalTimeRangeFilter;
 import android.health.connect.ReadRecordsRequestUsingFilters;
 import android.health.connect.ReadRecordsResponse;
 import android.health.connect.TimeInstantRangeFilter;
 import android.health.connect.datatypes.BodyFatRecord;
+import android.health.connect.datatypes.Device;
 import android.health.connect.datatypes.ExerciseSessionRecord;
 import android.health.connect.datatypes.HeartRateVariabilityRmssdRecord;
 import android.health.connect.datatypes.HeightRecord;
+import android.health.connect.datatypes.Metadata;
 import android.health.connect.datatypes.Record;
 import android.health.connect.datatypes.RestingHeartRateRecord;
 import android.health.connect.datatypes.SleepSessionRecord;
@@ -31,7 +34,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.Period;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -92,18 +97,40 @@ final class HealthBridge {
             "stair_climbing_machine", "elliptical", "rowing_machine",
     };
 
+    /** Lets the app save its own workouts to Health Connect (optional, like every permission here). */
+    static final String WRITE_EXERCISE = "android.permission.health.WRITE_EXERCISE";
+
     private static ScheduledExecutorService executor;
 
-    /** The 8 read permissions, for Activity.requestPermissions. */
+    /** The 8 read permissions plus WRITE_EXERCISE, for Activity.requestPermissions. */
     static String[] permissions() {
-        String[] out = new String[TYPES.length];
+        String[] out = new String[TYPES.length + 1];
         for (int i = 0; i < TYPES.length; i++) {
             out[i] = TYPES[i][1];
         }
+        out[TYPES.length] = WRITE_EXERCISE;
         return out;
     }
 
-    /** "unavailable" | "denied" | "partial" | "granted" (the caller handles "unsupported"). */
+    /** The permissions from {@link #permissions()} that aren't granted yet. */
+    static String[] missingPermissions(Context context) {
+        List<String> missing = new ArrayList<String>();
+        for (String permission : permissions()) {
+            if (!isGranted(context, permission)) {
+                missing.add(permission);
+            }
+        }
+        return missing.toArray(new String[0]);
+    }
+
+    static boolean canWriteExercise(Context context) {
+        return isGranted(context, WRITE_EXERCISE);
+    }
+
+    /**
+     * "unavailable" | "denied" | "partial" | "granted" (the caller handles "unsupported"). Only the
+     * read permissions count; see {@link #canWriteExercise} for writing.
+     */
     static String status(Context context) {
         try {
             if (context.getSystemService(HealthConnectManager.class) == null) {
@@ -138,6 +165,105 @@ final class HealthBridge {
                 }
             }
         });
+    }
+
+    /**
+     * Saves one finished workout as an exercise session and answers once with
+     * window.__gh.onHealthWrite({id, ok, error?}). {@code json} is
+     * {id, start, end (epoch ms), type (an EXERCISE_NAMES entry), title, notes?}. The id becomes the
+     * record's clientRecordId, so saving the same workout again updates it instead of adding a copy.
+     */
+    static void writeWorkout(final MainActivity activity, final String json) {
+        executor().execute(new Runnable() {
+            @Override
+            public void run() {
+                String id = "";
+                try {
+                    JSONObject in = new JSONObject(json == null ? "{}" : json);
+                    id = in.optString("id", "");
+                    final String clientId = id;
+                    if (clientId.isEmpty()) {
+                        writeResult(activity, clientId, "no id");
+                        return;
+                    }
+                    if (!canWriteExercise(activity)) {
+                        writeResult(activity, clientId, "not granted");
+                        return;
+                    }
+                    HealthConnectManager manager = activity.getSystemService(HealthConnectManager.class);
+                    if (manager == null) {
+                        writeResult(activity, clientId, "unavailable");
+                        return;
+                    }
+                    Instant start = Instant.ofEpochMilli(in.getLong("start"));
+                    Instant end = Instant.ofEpochMilli(in.getLong("end"));
+                    if (!end.isAfter(start)) {
+                        writeResult(activity, clientId, "bad times");
+                        return;
+                    }
+                    Metadata metadata = new Metadata.Builder()
+                            .setClientRecordId(clientId)
+                            .setClientRecordVersion(in.optLong("version", 1L))
+                            .setRecordingMethod(Metadata.RECORDING_METHOD_ACTIVELY_RECORDED)
+                            .setDevice(new Device.Builder().setType(Device.DEVICE_TYPE_PHONE).build())
+                            .build();
+                    ZoneId zone = ZoneId.systemDefault();
+                    ZoneOffset startOffset = zone.getRules().getOffset(start);
+                    ZoneOffset endOffset = zone.getRules().getOffset(end);
+                    ExerciseSessionRecord.Builder builder = new ExerciseSessionRecord.Builder(
+                            metadata, start, end, exerciseType(in.optString("type", "")))
+                            .setStartZoneOffset(startOffset)
+                            .setEndZoneOffset(endOffset);
+                    String title = in.optString("title", "");
+                    if (!title.isEmpty()) {
+                        builder.setTitle(title);
+                    }
+                    String notes = in.optString("notes", "");
+                    if (!notes.isEmpty()) {
+                        builder.setNotes(notes);
+                    }
+                    List<Record> records = new ArrayList<Record>();
+                    records.add(builder.build());
+                    manager.insertRecords(records, executor(),
+                            new OutcomeReceiver<InsertRecordsResponse, HealthConnectException>() {
+                                @Override
+                                public void onResult(InsertRecordsResponse response) {
+                                    writeResult(activity, clientId, null);
+                                }
+
+                                @Override
+                                public void onError(HealthConnectException e) {
+                                    writeResult(activity, clientId, describe(e));
+                                }
+                            });
+                } catch (Throwable t) {
+                    writeResult(activity, id, describe(t));
+                }
+            }
+        });
+    }
+
+    private static void writeResult(MainActivity activity, String id, String error) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("id", id == null ? "" : id);
+            o.put("ok", error == null);
+            if (error != null) {
+                o.put("error", error);
+            }
+            activity.callJs(MainActivity.jsCall("onHealthWrite", o.toString()));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** An EXERCISE_NAMES entry → its ExerciseSessionType value; anything else → other workout. */
+    static int exerciseType(String name) {
+        for (int i = 1; i < EXERCISE_NAMES.length; i++) {
+            if (EXERCISE_NAMES[i].equals(name)) {
+                return i;
+            }
+        }
+        return 58; // EXERCISE_SESSION_TYPE_OTHER_WORKOUT
     }
 
     private static boolean isGranted(Context context, String permission) {
@@ -411,7 +537,17 @@ final class HealthBridge {
             }
         }
 
-        private static JSONObject toJson(int type, Record record) throws JSONException {
+        /** True for sessions this app wrote itself (they mirror workouts it already has). */
+        private boolean isOwn(Record record) {
+            try {
+                String origin = record.getMetadata().getDataOrigin().getPackageName();
+                return activity.getPackageName().equals(origin);
+            } catch (Throwable t) {
+                return false;
+            }
+        }
+
+        private JSONObject toJson(int type, Record record) throws JSONException {
             switch (type) {
                 case SLEEP:
                     return sleepJson((SleepSessionRecord) record);
@@ -442,6 +578,7 @@ final class HealthBridge {
                     o.put("end", r.getEndTime().toString());
                     o.put("type", r.getExerciseType());
                     o.put("typeName", exerciseName(r.getExerciseType()));
+                    o.put("mine", isOwn(r));
                     CharSequence title = r.getTitle();
                     o.put("title", title == null ? "" : title.toString());
                     return o;

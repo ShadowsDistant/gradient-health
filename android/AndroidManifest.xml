@@ -7,13 +7,13 @@
 
     <uses-sdk
         android:minSdkVersion="26"
-        android:targetSdkVersion="34" />
+        android:targetSdkVersion="36" />
 
     <!-- Only used by the opt-in AI coach (requests to https://api.anthropic.com). -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- Health Connect, read-only. The platform API needs Android 14 (API 34) or newer. -->
+    <!-- Health Connect. The platform API needs Android 14 (API 34) or newer. -->
     <uses-permission android:name="android.permission.health.READ_STEPS" />
     <uses-permission android:name="android.permission.health.READ_SLEEP" />
     <uses-permission android:name="android.permission.health.READ_WEIGHT" />
@@ -22,6 +22,17 @@
     <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" />
     <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY" />
     <uses-permission android:name="android.permission.health.READ_EXERCISE" />
+    <!-- Optional: saves the app's own workouts to Health Connect so other apps see them. -->
+    <uses-permission android:name="android.permission.health.WRITE_EXERCISE" />
+
+    <!-- "Ask in the Claude app" hands a prompt to the Claude app when it's installed. -->
+    <queries>
+        <package android:name="com.anthropic.claude" />
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/plain" />
+        </intent>
+    </queries>
 
     <application
         android:allowBackup="true"
@@ -29,6 +40,7 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="Gradient"
+        android:enableOnBackInvokedCallback="true"
         android:theme="@style/AppTheme">
 
         <activity

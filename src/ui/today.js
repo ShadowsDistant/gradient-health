@@ -11,7 +11,6 @@
 
   let shortDay = null;
   let feelOpen = false;
-  let shownStreak = null;
   const isShort = (day) => shortDay === day;
 
   /* ---------------------------------------------------------------- streak tallies */
@@ -59,32 +58,32 @@
     const s = B().buildSession(S, day, plan.tpl, { short: isShort(day), cal });
     const budget = isShort(day) ? '12-15' : (S.profile.minutes || 25);
     const lines = (S.pendingLines || []).filter((l) => l && l.text).slice(0, 4);
-    return `<div class="card session">
-        <div class="session-head"><span class="rf-card-eyebrow">Workout · about ${s.estimateMin} min</span><span class="session-badges">${phaseBadges(plan.week, s)}</span></div>
+    return `<div class="card session" data-key="main">
+        <div class="session-head"><span class="rf-card-eyebrow">Workout · about ${U.roll(s.estimateMin)} min</span><span class="session-badges">${phaseBadges(plan.week, s)}</span></div>
         <h2 class="t-title-2">${U.esc(s.title)}</h2>
         <p class="t-footnote rf-muted session-groups">${s.groups.map((g) => U.esc(B().GROUP_NAME[g] || g)).join(' · ')}</p>
         ${sessionRows(S, s)}
         ${s.trimmed && s.trimmed.length ? `<p class="t-footnote rf-muted">Trimmed to fit ${U.esc(budget)} min: ${U.esc(s.trimmed.map((x) => x.toLowerCase()).join(', '))}.</p>` : ''}
       </div>
-      ${lines.length ? `<div class="card lines"><p class="t-headline">Since last time</p><ul class="plain-list">${lines.map((l) => `<li><span>${U.esc(l.text)}</span>${l.why ? `<span class="t-footnote rf-muted">${U.esc(U.cap(l.why))}</span>` : ''}</li>`).join('')}</ul></div>` : ''}`;
+      ${lines.length ? `<div class="card lines" data-key="lines"><p class="t-headline">Since last time</p><ul class="plain-list">${lines.map((l) => `<li><span>${U.esc(l.text)}</span>${l.why ? `<span class="t-footnote rf-muted">${U.esc(U.cap(l.why))}</span>` : ''}</li>`).join('')}</ul>${U.whyLink ? U.whyLink('overload', 'How the plan adjusts') : ''}</div>` : ''}`;
   }
   function activeCard(S, day) {
     const a = S.active;
     const doneN = a.steps.slice(0, a.idx).filter((x) => x.kind === 'set').length;
     const total = a.steps.filter((x) => x.kind === 'set').length;
     if (a.day < day) {
-      return `<div class="card session"><span class="rf-card-eyebrow">Unfinished</span><h2 class="t-title-2">${U.esc(a.session.title)}</h2>
+      return `<div class="card session" data-key="main"><span class="rf-card-eyebrow">Unfinished</span><h2 class="t-title-2">${U.esc(a.session.title)}</h2>
         <p class="t-callout rf-muted">From ${U.esc(U.fmtDay(a.day))}: ${doneN} of ${total} sets. Check in to save it, or discard it.</p>
         <div class="btn-row"><button type="button" class="rf-btn" data-variant="filled" data-act="checkinStale">Check in</button><button type="button" class="rf-btn" data-tone="critical" data-act="discardStale">Discard</button></div></div>`;
     }
-    return `<div class="card session"><span class="rf-card-eyebrow">In progress</span><h2 class="t-title-2">${U.esc(a.session.title)}</h2>
+    return `<div class="card session" data-key="main"><span class="rf-card-eyebrow">In progress</span><h2 class="t-title-2">${U.esc(a.session.title)}</h2>
       ${U.progress(doneN / Math.max(1, total), 'Workout progress')}
       <p class="t-callout rf-muted">${doneN} of ${total} sets done.</p></div>`;
   }
   function doneCard(S, log) {
     const mins = log.startedAt && log.endedAt ? Math.round((log.endedAt - log.startedAt) / 60000) : null;
     const lines = (log.lines || []).filter((l) => l && l.text);
-    return `<div class="card session done">
+    return `<div class="card session done" data-key="main">
       <span class="rf-card-eyebrow done-eyebrow">${U.icon('check-circle', 'sm')} Done</span>
       <h2 class="t-title-2">${U.esc(log.title)}</h2>
       <p class="t-callout rf-muted">${log.doneSets} of ${log.planned} sets${mins ? ` · ${mins} min` : ''}${log.checkin && log.checkin.rating ? ` · ${log.checkin.rating === 'easy' ? 'too easy' : log.checkin.rating === 'hard' ? 'too hard' : 'about right'}` : ''}</p>
@@ -97,7 +96,7 @@
     const l = plan.light || {};
     const next = plan.next;
     const walkSub = l.walk ? (l.walkSrc === 'health-steps' ? 'Ticked from your steps' : l.walkSrc === 'health-walk' ? 'Ticked from Health Connect' : 'Logged') : h.steps != null ? `${U.num(h.steps)} steps so far today` : 'Any pace. Outside if you can.';
-    return `<div class="card light">
+    return `<div class="card light" data-key="main">
       <span class="rf-card-eyebrow">Light day</span>
       <h2 class="t-title-2">Walk and mobility</h2>
       <p class="t-callout rf-muted">Do both and today counts for your streak.</p>
@@ -110,7 +109,7 @@
   }
   function restCard(S, day, plan) {
     const next = plan.next;
-    return `<div class="card light"><span class="rf-card-eyebrow">Rest day</span><h2 class="t-title-2">Recover</h2>
+    return `<div class="card light" data-key="main"><span class="rf-card-eyebrow">Rest day</span><h2 class="t-title-2">Recover</h2>
       <p class="t-callout rf-muted">${next ? `Next: ${U.esc(B().templateTitle(next.units).toLowerCase())} on ${U.esc(U.fmtDay(next.day))}.` : 'Nothing planned for the rest of the week.'}</p></div>`;
   }
   function feelCard(S, day) {
@@ -121,9 +120,9 @@
     if (complete && !feelOpen) {
       const bits = [`Energy ${f.energy}`, `sore: ${f.sore}`];
       if (!hasSleep && chip) bits.push(`${chip} h sleep`);
-      return `<div class="card feel-done"><span class="t-callout">${U.esc(bits.join(' · '))}</span><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="feelEdit">Change</button></div>`;
+      return `<div class="card feel-done" data-key="feel"><span class="t-callout">${U.esc(bits.join(' · '))}</span><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="feelEdit">Change</button></div>`;
     }
-    return `<div class="card feel">
+    return `<div class="card feel" data-key="feel">
       <p class="t-headline">How are you today?</p>
       <div class="feel-row"><span class="t-subhead">Energy</span>${U.seg('feelEnergy', [['low', 'Low'], ['ok', 'OK'], ['good', 'Good']], f.energy || '', 'Energy', ' data-on="feelEnergy"')}</div>
       <div class="feel-row"><span class="t-subhead">Soreness</span>${U.seg('feelSore', [['none', 'None'], ['some', 'Some'], ['very', 'Very']], f.sore || '', 'Soreness', ' data-on="feelSore"')}</div>
@@ -136,9 +135,9 @@
     if (pr.track === false) return '';
     const goal = B().proteinGoal(S, day);
     const got = B().proteinToday(S, day);
-    if (!goal) return `<div class="card protein"><span class="t-headline">Protein</span><p class="t-callout rf-muted">Add your weight to get a daily protein goal.</p><button type="button" class="rf-btn" data-act="logWeight">Log weight</button></div>`;
-    return `<div class="card protein">
-      <div class="row-between"><span class="t-headline">Protein</span><span class="t-callout rf-num"><b>${got}</b> of ${goal} g</span></div>
+    if (!goal) return `<div class="card protein" data-key="protein"><span class="t-headline">Protein</span><p class="t-callout rf-muted">Add your weight to get a daily protein goal.</p><button type="button" class="rf-btn" data-act="logWeight">Log weight</button></div>`;
+    return `<div class="card protein" data-key="protein">
+      <div class="row-between"><span class="t-headline">Protein</span><span class="t-callout rf-num"><b>${U.roll(got)}</b> of ${goal} g</span></div>
       ${U.progress(got / goal, 'Protein today', got >= goal ? 'positive' : '')}
       <div class="btn-row">
         <button type="button" class="rf-btn" data-variant="soft" data-act="addQuick">${U.icon('plus')}${U.esc(pr.quickName || 'Shake')} ${pr.quickG || 26} g</button>
@@ -167,24 +166,25 @@
       const top = GH.insights ? GH.insights.top(S, day, 1)[0] : null;
       if (top && GH.insights.markShown) GH.insights.markShown(S, [top], day);
       const measure = GH.health && GH.health.measureDue(S, day);
-      const from = shownStreak == null ? st.current : shownStreak;
-      return `${U.navbar('Today', U.glassBtn('sliders', 'Settings', 'openSettings'))}
-        <h1 class="rf-large-title">Today</h1>
+      const whyKind = r.reasons.some((x) => x.kind === 'sleep') ? 'sleep' : r.reasons.some((x) => x.kind === 'rhr' || x.kind === 'hrv') ? 'hrv' : 'autoreg';
+      return `${U.navbar('Today', U.glassBtn('person', 'Profile', 'openProfile'))}
+        <h1 class="rf-large-title">${U.esc(greeting(S))}</h1>
         <p class="lt-sub t-callout rf-muted">${U.esc(sub.join(' · '))}</p>
         <div class="section">
-          <div class="card streak">
+          <div class="card streak" data-key="streak">
             <div class="streak-main">
-              <div class="streak-n"><span class="t-large-title rf-num" id="streakN" data-from="${from}">${st.current}</span><span class="t-callout rf-muted">day streak</span></div>
+              <div class="streak-n">${U.roll(st.current, 't-large-title')}<span class="t-callout rf-muted">day streak</span></div>
               <div class="streak-tally">${tallies(st.current)}</div>
             </div>
             <p class="t-footnote rf-muted">${st.weekly ? `${U.plural(st.weekly, 'full week')} in a row · ` : ''}${st.freezeThisWeek ? 'Freeze used this week' : '1 freeze left this week'}${st.best > st.current ? ` · best ${st.best}` : ''}</p>
           </div>
-          ${r.reasons.length && !(plan.type === 'done') ? `<div class="notice" data-tone="caution">${U.icon('bolt')}<span>${U.esc(r.reasons.map((x) => x.text).join(' '))}</span></div>` : ''}
+          ${r.reasons.length && !(plan.type === 'done') ? `<div class="notice" data-tone="caution" data-key="ready">${U.icon('bolt')}<span>${U.esc(r.reasons.map((x) => x.text).join(' '))} ${U.whyLink ? U.whyLink(whyKind) : ''}</span></div>` : ''}
           ${main}
+          ${U.checklist ? U.checklist(S, day) : ''}
           ${feelCard(S, day)}
           ${proteinCard(S, day)}
-          ${measure ? `<ul class="rf-list">${U.row({ icon: 'pin', tone: 'violet', title: 'Time to measure', sub: 'Waist and arms, once a month', act: 'logMeasure', chevron: true })}</ul>` : ''}
-          ${top ? `<button type="button" class="insight-line" data-act="goHealth"><span class="rf-list-icon" data-tone="${top.tone === 'good' ? 'green' : top.tone === 'watch' ? 'amber' : top.tone === 'alert' ? 'rose' : 'sky'}">${U.icon(top.icon)}</span><span class="insight-text"><span class="t-subhead">${U.esc(top.title)}</span><span class="t-footnote rf-muted">${U.esc(top.evidence)}</span></span>${U.icon('chevron-right')}</button>` : ''}
+          ${measure ? `<ul class="rf-list" data-key="measure">${U.row({ icon: 'pin', tone: 'violet', title: 'Time to measure', sub: 'Waist and arms, once a month', act: 'logMeasure', chevron: true })}</ul>` : ''}
+          ${top ? `<button type="button" class="insight-line" data-key="insight" data-act="goHealth"><span class="rf-list-icon" data-tone="${top.tone === 'good' ? 'green' : top.tone === 'watch' ? 'amber' : top.tone === 'alert' ? 'rose' : 'sky'}">${U.icon(top.icon)}</span><span class="insight-text"><span class="t-subhead">${U.esc(top.title)}</span><span class="t-footnote rf-muted">${U.esc(top.evidence)}</span></span>${U.icon('chevron-right')}</button>` : ''}
         </div>`;
     },
     float(S, day) {
@@ -200,18 +200,18 @@
       if (plan.type === 'light' && !(plan.light && plan.light.mobility)) return `<button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg" data-lens data-act="startMobility">${U.icon('play')}Start mobility</button>`;
       return '';
     },
-    after(root, S) {
-      const n = root.querySelector('#streakN');
-      const to = B().calendar(S, U.today()).streak.current;
-      if (n && shownStreak != null && shownStreak !== to && G.Refract && G.Refract.roll) { try { G.Refract.roll(n, String(to), { from: String(shownStreak), dir: to > shownStreak ? 1 : -1 }); } catch (e) { /* ignore */ } }
-      shownStreak = to;
-    },
   };
+  // "Good morning" until noon, and so on; with a name when there is one.
+  function greeting(S) {
+    const h = new Date().getHours();
+    const part = h < 4 ? 'Late night' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+    const name = (S.profile.name || '').trim().split(/\s+/)[0];
+    return name ? `${part}, ${name}` : part;
+  }
 
   /* ---------------------------------------------------------------- actions */
-  U.act.openSettings = () => U.open('settings');
   U.act.goHealth = () => U.go('health');
-  U.act.toggleShort = () => { const d = U.today(); shortDay = isShort(d) ? null : d; U.render(); };
+  U.act.toggleShort = () => { const d = U.today(); shortDay = isShort(d) ? null : d; U.haptic('select'); U.render(); };
   U.act.startWorkout = () => {
     const S = U.S;
     if (S.active) { U.openPlayer(); return; }
@@ -220,13 +220,14 @@
     if (r.error) { U.toast(r.error === 'done' ? 'Already done today' : 'Nothing left to train this week', 'neutral'); return; }
     shortDay = null;
     U.save(true);
+    U.haptic('go');
     U.openPlayer();
   };
   U.act.trainToday = async () => {
     const ok = await U.confirm('Train today instead?', 'The next workout moves to today and the rest of the week follows it.', 'Train today');
     if (ok) U.act.startWorkout();
   };
-  U.act.logWalk = () => { B().logLight(U.S, U.today(), 'walk', true); U.commit(); U.toast('Walk logged', 'positive'); };
+  U.act.logWalk = () => { B().logLight(U.S, U.today(), 'walk', true); U.commit(); U.toast('Walk logged', 'positive'); if (U.checklistCheck) U.checklistCheck(); };
   U.act.startMobility = () => U.openMobility();
   U.act.checkinStale = () => { if (U.openCheckin) U.openCheckin(); };
   U.act.discardStale = async () => {
@@ -240,8 +241,9 @@
     const S = U.S, d = U.today();
     const f = S.feel[d] || {};
     const hasSleep = (S.health.days[d] && S.health.days[d].sleepMin != null) || S.sleepChip[d];
-    if (f.energy && f.sore && hasSleep) { feelOpen = false; U.render(); }
-    else U.render();
+    if (f.energy && f.sore && hasSleep) feelOpen = false;
+    // Let the segmented thumb finish sliding before the card changes.
+    setTimeout(() => { U.render(); if (U.checklistCheck) U.checklistCheck(); }, f.energy && f.sore && hasSleep ? 260 : 0);
   }
   U.act.addQuick = () => {
     const S = U.S, d = U.today();

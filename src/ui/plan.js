@@ -49,13 +49,14 @@
       }
       return `${U.navbar('Plan')}
         <h1 class="rf-large-title">This week</h1>
-        <p class="lt-sub t-callout rf-muted">Week ${week ? week.trainingWeek : 1} · ${U.esc(phaseLine)}</p>
+        <p class="lt-sub t-callout rf-muted">Week ${week ? week.trainingWeek : 1} · ${U.esc(phaseLine)}${phase && phase.deload && U.whyLink ? ` ${U.whyLink('deload')}` : ''}</p>
         <div class="section">
-          <ul class="rf-list plan-list">${rows.join('')}</ul>
+          ${U.tip ? U.tip('plan') : ''}
+          <ul class="rf-list plan-list" data-key="week">${rows.join('')}</ul>
           ${notice ? `<p class="t-footnote rf-muted">${U.esc(notice.text)} Two workouts never land on the same day; anything past Sunday is dropped.</p>` : '<p class="t-footnote rf-muted">Tap an upcoming workout to preview it or move it to a free day.</p>'}
         </div>
         <h2 class="sec-title t-title-3">Next week</h2>
-        <div class="section"><ul class="rf-list plan-list">${next.join('')}</ul>
+        <div class="section"><ul class="rf-list plan-list" data-key="next">${next.join('')}</ul>
           <button type="button" class="rf-btn" data-act="daysSheet">Change days and time</button>
         </div>`;
     },

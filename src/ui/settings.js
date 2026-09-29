@@ -1,4 +1,4 @@
-/* Settings, the AI coach set-up, backups and the privacy page. */
+/* Settings, the coach set-up, backups and the privacy page. */
 (function (G) {
   'use strict';
   const GH = G.GH || (G.GH = {});
@@ -16,9 +16,13 @@
       const pr = p.prefs;
       const st = H().status();
       const app = GH.platform && GH.platform.isApp();
-      const hcDetail = !app ? 'Android app only' : H().connected(st) ? 'On' : st === 'unsupported' ? 'Needs Android 14' : st === 'unavailable' ? 'Unavailable' : 'Off';
+      const on = H().connected(st);
+      const hcDetail = !app ? 'Android app only' : on ? 'On' : st === 'unsupported' ? 'Needs Android 14' : st === 'unavailable' ? 'Unavailable' : 'Off';
       const hasKey = AI() && AI().hasKey();
+      const claude = S.ai.mode === 'api';
       const eqCount = (p.equipment.db || []).length + (p.equipment.kb || []).length + ['ball', 'band', 'bar', 'table'].filter((k) => p.equipment[k]).length;
+      const canWrite = on && H().canWrite && H().canWrite();
+      const ver = (GH.platform && GH.platform.appVersion()) || GH.VERSION || 'web';
       return `${U.navbar('Settings', '', U.glassBtn('chevron-left', 'Back', 'back'))}
         <h1 class="rf-large-title">Settings</h1>
         <div class="section">
@@ -31,23 +35,26 @@
           </ul>
           <h3 class="rf-list-header">Health data</h3>
           <ul class="rf-list">
-            ${U.row({ icon: 'heart', tone: 'rose', title: 'Health Connect', detail: hcDetail, act: app && !['unsupported', 'unavailable'].includes(st) ? (H().connected(st) ? 'hcManage' : 'hcConnect') : null, chevron: app })}
+            ${U.row({ icon: 'heart', tone: 'rose', title: 'Health Connect', detail: hcDetail, act: app && !['unsupported', 'unavailable'].includes(st) ? (on ? 'hcManage' : 'hcConnect') : null, chevron: app })}
+            ${on ? U.sw('Save workouts to Health Connect', !!(S.health.write !== false && canWrite), 'data-on="hcWriteToggle"', canWrite ? 'Other apps see your Gradient workouts' : 'Needs the Exercise permission') : ''}
             <li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">Units</span></span>${U.seg('setUnits', [['lb', 'lb'], ['kg', 'kg']], p.units, 'Units', ' data-on="setUnits" data-size="sm"')}</div></li>
           </ul>
-          <h3 class="rf-list-header" id="coach">AI coach</h3>
+          <h3 class="rf-list-header" id="coach">Coach</h3>
           <ul class="rf-list">
-            ${U.sw('AI coach', S.ai.enabled, 'data-on="setCoach"', 'A weekly report and answers about your data')}
-            ${S.ai.enabled ? `${hasKey ? U.row({ icon: 'lock', tone: 'green', title: 'API key saved on this phone', sub: S.ai.model && S.ai.model.name ? `Using ${U.esc(S.ai.model.name)}` : 'The model is picked on first use', act: 'keySheet', detail: 'Change', chevron: true }) : U.row({ icon: 'lock', tone: 'amber', title: 'Add your API key', sub: 'From the Claude Console, starts with sk-ant-', act: 'keySheet', chevron: true })}
-              ${U.row({ icon: 'eye', tone: 'sky', title: 'What gets sent', act: 'previewSheet', chevron: true })}
+            <li><div class="rf-list-row set-coach"><span class="rf-list-text"><span class="rf-list-title">Coach</span><span class="rf-list-subtitle">Weekly report and questions</span></span>${U.seg('setCoach', [['local', 'Built-in'], ['api', 'Claude']], claude ? 'api' : 'local', 'Coach', ' data-on="setCoachMode" data-size="sm"')}</div></li>
+            ${claude ? `${hasKey ? U.row({ icon: 'lock', tone: 'green', title: 'API key saved on this phone', sub: S.ai.model && S.ai.model.name ? `Using ${U.esc(S.ai.model.name)}` : 'The model is picked on first use', act: 'keySheet', detail: 'Change', chevron: true }) : U.row({ icon: 'lock', tone: 'amber', title: 'Add your API key', sub: 'From the Claude Console, starts with sk-ant-', act: 'keySheet', chevron: true })}
               ${hasKey ? U.row({ icon: 'trash', tone: 'rose', title: 'Delete key', act: 'deleteKey' }) : ''}` : ''}
+            ${U.row({ icon: 'share', tone: 'violet', title: 'Ask in the Claude app', sub: 'Uses your own Claude plan, no key needed', act: 'askClaudeApp', chevron: true })}
+            ${U.row({ icon: 'eye', tone: 'sky', title: 'What gets sent', sub: 'The exact summary Claude sees', act: 'previewSheet', chevron: true })}
           </ul>
-          <p class="rf-list-footer">Uses your own Anthropic account and its usage costs. Only a summary goes out (no name, dates or IDs), and only when you open the report or ask. The key stays on this phone and is never in backups.</p>
+          <p class="rf-list-footer">${claude ? 'Claude mode uses your own Anthropic API key and its usage costs. The key stays on this phone and is never in backups.' : 'The built-in coach works offline from your own numbers. It isn\'t an AI model, so it sticks to common questions.'} Anything sent to Claude is a summary with no name, dates or IDs, and only when you ask.</p>
           <h3 class="rf-list-header">Workout</h3>
           <ul class="rf-list">
             ${U.sw('Sound', pr.sound !== false, 'data-on="setPref" data-k="sound"')}
-            ${U.sw('Vibration', pr.vibrate !== false, 'data-on="setPref" data-k="vibrate"')}
+            ${U.sw('Vibration', pr.vibrate !== false, 'data-on="setPref" data-k="vibrate"', 'Buzzes for timers and the end of rest')}
+            ${U.sw('Haptic feedback', pr.haptics !== false, 'data-on="setPref" data-k="haptics"', 'Light taps when you press buttons and switches')}
             ${U.sw('Supersets', pr.supersets !== false, 'data-on="setPref" data-k="supersets"', 'Pair exercises that don\'t share muscles')}
-            <li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">Rest</span></span>${U.seg('setRest', [['auto', 'Auto'], ['60', '60 s'], ['90', '90 s']], String(pr.rest), 'Rest between sets', ' data-on="setRest" data-size="sm"')}</div></li>
+            <li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">Rest</span><span class="rf-list-subtitle">Auto: 90 s after big moves, 60 s after small ones and in supersets</span></span>${U.seg('setRest', [['auto', 'Auto'], ['60', '60 s'], ['90', '90 s']], String(pr.rest), 'Rest between sets', ' data-on="setRest" data-size="sm"')}</div></li>
           </ul>
           <h3 class="rf-list-header">Look</h3>
           <ul class="rf-list">
@@ -57,20 +64,22 @@
           </ul>
           <h3 class="rf-list-header">Your data</h3>
           <ul class="rf-list">
-            ${U.row({ icon: 'copy', tone: 'teal', title: 'Copy my data', sub: 'Everything except the AI key, as text to keep somewhere safe', act: 'exportData' })}
+            ${U.row({ icon: 'copy', tone: 'teal', title: 'Copy my data', sub: 'Everything except the API key, as text to keep somewhere safe', act: 'exportData' })}
             ${U.row({ icon: 'download', tone: 'indigo', title: 'Restore from a copy', act: 'restoreSheet', chevron: true })}
             ${U.row({ icon: 'trash', tone: 'rose', title: 'Reset everything', act: 'resetAll' })}
           </ul>
           <h3 class="rf-list-header">About</h3>
           <ul class="rf-list">
+            ${U.row({ icon: 'library', tone: 'violet', title: 'How it works', sub: 'The research behind every rule', act: 'openScience', chevron: true })}
+            ${U.row({ icon: 'sparkle', tone: 'amber', title: 'What\'s new', act: 'openWhatsNew', chevron: true })}
             ${U.row({ icon: 'lock', tone: 'green', title: 'Privacy', act: 'openPrivacyView', chevron: true })}
-            ${U.row({ icon: 'info', tone: 'sky', title: 'Version', detail: U.esc((GH.platform && GH.platform.appVersion()) || 'web') })}
+            ${U.row({ icon: 'info', tone: 'sky', title: 'Version', detail: U.esc(ver) })}
           </ul>
           <p class="rf-list-footer">Fonts: Host Grotesk and Geist Mono, SIL Open Font License. Not medical advice: check with a doctor before starting if you have a condition or an injury.</p>
         </div>`;
     },
-    after(root, S, day, arg) {
-      if (arg === 'coach') { const el = root.querySelector('#coach'); if (el) el.scrollIntoView({ block: 'start' }); }
+    focus(root, arg) {
+      if (arg === 'coach') { const el = root.querySelector('#coach'); if (el) setTimeout(() => el.scrollIntoView({ block: 'start', behavior: U.reduced() ? 'auto' : 'smooth' }), 60); }
     },
   };
 
@@ -82,6 +91,7 @@
     U.S.profile.prefs[k] = !!v;
     U.applyPrefs();
     U.save();
+    if (k === 'haptics' && v) U.haptic('toggleOn');
     if (k === 'supersets') U.render();
   };
   U.on.setRest = (el, ev, v) => { U.S.profile.prefs.rest = v === 'auto' ? 'auto' : Number(v); U.save(); };
@@ -160,12 +170,13 @@
     U.toast('Baseline saved', 'positive', 'Your starting levels are updated.');
   };
 
-  /* ---------------------------------------------------------------- AI coach */
-  U.on.setCoach = (el, ev, v) => {
-    U.S.ai.enabled = !!v;
+  /* ---------------------------------------------------------------- coach */
+  U.on.setCoachMode = (el, ev, v) => {
+    U.S.ai.mode = v === 'api' ? 'api' : 'local';
+    U.S.ai.enabled = U.S.ai.mode === 'api';
     U.save();
-    U.render();
-    if (v && AI() && !AI().hasKey()) setTimeout(() => U.act.keySheet(), 250);
+    setTimeout(() => U.render(), 220);
+    if (U.S.ai.mode === 'api' && AI() && !AI().hasKey()) setTimeout(() => U.act.keySheet(), 400);
   };
   U.act.keySheet = () => {
     U.sheet({
@@ -186,11 +197,12 @@
     if (!res.ok) { if (err) { err.hidden = false; err.textContent = res.error || 'Couldn\'t save the key.'; } return; }
     if (input) input.value = '';
     U.S.ai.enabled = true;
+    U.S.ai.mode = 'api';
     U.S.ai.model = null;
     U.save(true);
     const t = U.topSheet(); if (t) t.close('ok');
     U.render();
-    U.toast('Key saved', 'positive', 'Your weekly report is written when you open Health.');
+    U.toast('Key saved', 'positive', 'Claude writes your weekly report when you open Health.');
   };
   U.act.deleteKey = async () => {
     if (!(await U.confirm('Delete the API key?', 'The coach stops working until you add a key again. Reports you already have stay.', 'Delete', 'critical', 'trash'))) return;
@@ -200,7 +212,7 @@
   U.act.previewSheet = () => {
     U.sheet({
       title: 'What gets sent', detents: 'large', detent: 'large',
-      body: `<div class="sheet-pad"><p class="t-callout rf-muted">This exact text goes to Anthropic with each request, plus your question. No name, email, dates or device IDs.</p></div><pre class="preview">${U.esc(AI().preview(U.S, U.today()))}</pre>`,
+      body: `<div class="sheet-pad"><p class="t-callout rf-muted">When you ask Claude, this summary goes along with your question: through your API key in Claude mode, or into the Claude app when you ask there. No name, email, dates or device IDs. The built-in coach sends nothing.</p></div><pre class="preview">${U.esc(AI().preview(U.S, U.today()))}</pre>`,
     });
   };
 
@@ -254,16 +266,20 @@
   /* ---------------------------------------------------------------- privacy */
   U.privacyHtml = () => `
     <div class="card prose">
+      <h3 class="t-title-3">The short version</h3>
+      <p class="t-body">No account, no ads, no analytics. Your data stays on this phone. The only thing that ever leaves it is a summary you choose to send to Claude.</p>
       <h3 class="t-title-3">What Gradient reads</h3>
-      <p class="t-body">With your permission, from Health Connect: steps, sleep, weight, height, body fat, resting heart rate, heart rate variability and workouts from other apps. Read-only: Gradient never writes to Health Connect. You can turn any of these off in Health Connect at any time.</p>
+      <p class="t-body">With your permission, from Health Connect: steps, sleep, weight, height, body fat, resting heart rate, heart rate variability and workouts from other apps. You can turn any of these off in Health Connect at any time.</p>
+      <h3 class="t-title-3">What it writes</h3>
+      <p class="t-body">If you allow it, the workouts you finish in Gradient are saved to Health Connect as exercise sessions so your other health apps see them. Nothing else is written. Turn it off in Settings or in Health Connect.</p>
       <h3 class="t-title-3">Why</h3>
-      <p class="t-body">To fit each day's workout to how you slept and recovered, to tick off light-day walks from your steps, to track your weight trend and protein goal, and to show your trends and insights. Nothing is used for ads.</p>
+      <p class="t-body">To fit each day's workout to how you slept and recovered, to tick off light-day walks from your steps, to track your weight trend and protein goal, and to show your trends and insights.</p>
       <h3 class="t-title-3">Where it's kept</h3>
-      <p class="t-body">On this phone, in the app's private storage. Android's own device backup can include it (encrypted with your screen lock); the AI key is left out of that backup. Copy my data makes a text copy you control.</p>
-      <h3 class="t-title-3">The AI coach</h3>
-      <p class="t-body">Off unless you turn it on and add your own Anthropic API key. When it's on, a short summary (age range, goals, averages and trends, training numbers, no name, dates or IDs) is sent to Anthropic's API when a weekly report is written or you ask a question. Settings shows the exact text. The key stays on this phone.</p>
+      <p class="t-body">In the app's private storage on this phone. Android's own device backup can include it, encrypted with your screen lock; the API key is left out of that backup. Copy my data makes a text copy you control.</p>
+      <h3 class="t-title-3">Coaches</h3>
+      <p class="t-body">The built-in coach works on this phone and sends nothing. Claude is optional. In Claude mode, with your own Anthropic API key, a short summary (age range, goals, averages and trends, training numbers, but no name, dates or IDs) goes to Anthropic's API when a weekly report is written or you ask a question. Ask in the Claude app sends the same summary and your question to the Claude app, only when you press the button. Settings shows the exact text.</p>
       <h3 class="t-title-3">Deleting</h3>
-      <p class="t-body">Settings → Reset everything deletes it all from this phone. Uninstalling the app does too. To stop reading health data, remove Gradient's access in Health Connect.</p>
+      <p class="t-body">Settings, then Reset everything, deletes it all from this phone. Uninstalling the app does too. To stop Gradient reading or writing health data, remove its access in Health Connect.</p>
     </div>`;
   U.screens.privacy = {
     render() { return `${U.navbar('Privacy', '', U.glassBtn('chevron-left', 'Back', 'back'))}<h1 class="rf-large-title">Privacy</h1><div class="section">${U.privacyHtml()}</div>`; },

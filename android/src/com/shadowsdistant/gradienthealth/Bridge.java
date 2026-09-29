@@ -138,6 +138,57 @@ public final class Bridge {
         return activity.isDarkMode();
     }
 
+    /**
+     * A short haptic by name: tap, select, tick, toggleOn, toggleOff, success, error, heavy, go,
+     * done, celebrate. Follows the system's touch-feedback setting.
+     */
+    @JavascriptInterface
+    public void haptic(final String kind) {
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.haptic(kind);
+            }
+        });
+    }
+
+    /** The page's theme, so the status and navigation bar icons stay readable over it. */
+    @JavascriptInterface
+    public void setSystemBars(final boolean dark) {
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.setPageTheme(dark);
+            }
+        });
+    }
+
+    /** Safe-area insets in CSS pixels: {"top","bottom","left","right","keyboard"}. */
+    @JavascriptInterface
+    public String insets() {
+        return activity.insetsJson();
+    }
+
+    /**
+     * Hands text to another app. target "claude" sends it straight to the Claude app when it's
+     * installed; anything else (or no Claude app) opens the share sheet.
+     */
+    @JavascriptInterface
+    public void shareText(final String text, final String target) {
+        final String pkg = "claude".equals(target) ? MainActivity.CLAUDE_PACKAGE : null;
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.shareText(text, pkg);
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public boolean claudeInstalled() {
+        return activity.isInstalled(MainActivity.CLAUDE_PACKAGE);
+    }
+
     /** e.g. "1.0.0 (29830012)". */
     @SuppressWarnings("deprecation")
     @JavascriptInterface
@@ -341,6 +392,34 @@ public final class Bridge {
             HealthBridge.read(activity, days);
         } catch (Throwable t) {
             deliverHealthFailure(t.getClass().getSimpleName() + ": " + t.getMessage());
+        }
+    }
+
+    /** True when the app may save its workouts to Health Connect. */
+    @JavascriptInterface
+    public boolean hcCanWrite() {
+        if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
+            return false;
+        }
+        try {
+            return HealthBridge.canWriteExercise(activity);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * Saves a finished workout as an exercise session ({id, start, end, type, title, notes}; see
+     * HealthBridge.writeWorkout). Answers with window.__gh.onHealthWrite({id, ok, error?}).
+     */
+    @JavascriptInterface
+    public void hcWriteWorkout(String json) {
+        if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
+            return;
+        }
+        try {
+            HealthBridge.writeWorkout(activity, json);
+        } catch (Throwable ignored) {
         }
     }
 

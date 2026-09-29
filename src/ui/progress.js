@@ -35,8 +35,8 @@
       }
       cols.push(`<div class="hm-col">${cells.join('')}</div>`);
     }
-    return `<div class="card">
-      <div class="row-between"><span class="t-headline">Last 12 weeks</span><span class="t-footnote rf-muted">${U.esc(U.fmtDay(first, false))} – ${U.esc(U.fmtDay(last + 6, false))}</span></div>
+    return `<div class="card" data-key="heatmap">
+      <div class="row-between"><span class="t-headline">Last 12 weeks</span><span class="t-footnote rf-muted">${U.esc(U.fmtDay(first, false))} to ${U.esc(U.fmtDay(last + 6, false))}</span></div>
       <div class="hm" role="img" aria-label="Calendar of the last 12 weeks"><div class="hm-days t-caption rf-muted">${WD.map((d) => `<span>${d}</span>`).join('')}</div><div class="hm-grid">${cols.join('')}</div></div>
       <div class="hm-legend t-caption">${[['work', 'Workout'], ['light', 'Light day'], ['freeze', 'Freeze'], ['miss', 'Missed'], ['plan', 'Planned']].map(([k, t]) => `<span><i class="hm-cell hm-${k}"></i>${t}</span>`).join('')}</div>
     </div>`;
@@ -62,7 +62,7 @@
     const arm = ms.length ? ms[ms.length - 1] : null;
     const u = S.profile.units === 'kg' ? 'cm' : 'in';
     const conv = (v) => (u === 'cm' ? v : v / 2.54).toFixed(1);
-    return `<div class="card lr">
+    return `<div class="card lr" data-key="lr">
       <span class="t-headline">Left vs right</span>
       ${last ? `<div class="lr-row"><span class="lr-side is-lead"><span class="t-caption">${U.side(side)}</span><span class="t-title-2 rf-num">${side === 'L' ? last.left : last.right}</span></span>
         <span class="lr-side"><span class="t-caption rf-muted">${U.side(other)}</span><span class="t-title-2 rf-num">${side === 'L' ? last.right : last.left}</span></span>
@@ -78,7 +78,7 @@
     const ws = B().weeklySets(S, day);
     const rows = B().GROUPS.filter((g) => ws[g] && ws[g].target > 0).map((g) => ({ name: B().GROUP_NAME[g], done: ws[g].done, target: ws[g].target, planned: ws[g].planned }));
     const short = rows.filter((r) => r.planned < r.target);
-    return `<div class="card"><div class="row-between"><span class="t-headline">Sets this week</span><span class="t-footnote rf-muted">done of target</span></div>
+    return `<div class="card" data-key="sets"><div class="row-between"><span class="t-headline">Sets this week</span><span class="t-footnote rf-muted">done of target</span></div>
       ${U.meterRows(rows)}
       ${short.length ? `<p class="t-footnote rf-muted">Your time budget fits fewer sets than the target for ${U.esc(short.map((r) => r.name.toLowerCase()).join(', '))}. A few more minutes a session closes it.</p>` : ''}</div>`;
   }
@@ -113,10 +113,11 @@
       return `${U.navbar('Progress')}
         <h1 class="rf-large-title">Progress</h1>
         <div class="section">
-          <div class="stat-row">
-            <div class="stat"><span class="t-footnote rf-muted">Workouts</span><span class="t-title-2 rf-num">${done}</span></div>
-            <div class="stat"><span class="t-footnote rf-muted">Best streak</span><span class="t-title-2 rf-num">${cal.streak.best}</span></div>
-            <div class="stat"><span class="t-footnote rf-muted">Level-ups</span><span class="t-title-2 rf-num">${ups}</span></div>
+          ${U.tip ? U.tip('progress') : ''}
+          <div class="stat-row" data-key="stats">
+            <div class="stat"><span class="t-footnote rf-muted">Workouts</span><span class="t-title-2">${U.roll(done)}</span></div>
+            <div class="stat"><span class="t-footnote rf-muted">Best streak</span><span class="t-title-2">${U.roll(cal.streak.best)}</span></div>
+            <div class="stat"><span class="t-footnote rf-muted">Level-ups</span><span class="t-title-2">${U.roll(ups)}</span></div>
           </div>
           ${heatmap(S, day, cal)}
           ${leftRight(S, day)}

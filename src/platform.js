@@ -1,6 +1,6 @@
-/* Device glue: keep the screen awake, vibration, beeps, theme, the Android back button and the
- * hooks the Android shell calls on window.__gh. Everything works (or quietly does nothing) in a
- * plain browser too.
+/* Device glue: keep the screen awake, haptics, vibration, beeps, theme and system bars, safe-area
+ * insets, the Android back button and the hooks the Android shell calls on window.__gh. Everything
+ * works (or quietly does nothing) in a plain browser too.
  */
 (function (G) {
   'use strict';
@@ -9,7 +9,7 @@
   const bridge = () => G.AndroidBridge || null;
   const doc = G.document;
 
-  let prefs = { sound: true, vibrate: true };
+  let prefs = { sound: true, vibrate: true, haptics: true };
   function setPrefs(p) { prefs = Object.assign({}, prefs, p || {}); }
 
   /* ---------------------------------------------------------------- screen on */
@@ -40,6 +40,22 @@
       const b = bridge();
       if (b && b.vibratePattern) { b.vibratePattern(JSON.stringify([0].concat(arr))); return; } // [off, on, off, …]
       if (G.navigator && G.navigator.vibrate) G.navigator.vibrate(arr);
+    } catch (e) { /* ignore */ }
+  }
+
+  // Short haptics for UI events (see Haptics.java for what each one feels like). The Android app plays
+  // the phone's own tuned effects; a browser gets a short buzz where it can.
+  const BUZZ = { tap: 8, select: 6, tick: 5, toggleOn: 10, toggleOff: 7, success: [10, 60, 16], error: [22, 50, 22], heavy: 24, go: [8, 40, 18], done: [20, 70, 10], celebrate: [10, 60, 10, 60, 26] };
+  let lastHaptic = 0;
+  function haptic(kind) {
+    if (!prefs.haptics) return;
+    const now = Date.now();
+    if (now - lastHaptic < 35 && (kind === 'tick' || kind === 'select')) return; // don't stack ticks
+    lastHaptic = now;
+    try {
+      const b = bridge();
+      if (b && b.haptic) { b.haptic(String(kind)); return; }
+      if (G.navigator && G.navigator.vibrate && G.navigator.userActivation && G.navigator.userActivation.hasBeenActive) G.navigator.vibrate(BUZZ[kind] || 8);
     } catch (e) { /* ignore */ }
   }
 
@@ -112,10 +128,13 @@
       if (bridge() || themeContrast || !(R() && R().theme && R().theme.auto)) setThemeId((systemDark() ? 'dark' : 'light') + (hc ? '-contrast' : ''));
       else stopAuto = R().theme.auto();
     } else setThemeId((themePref === 'dark' ? 'dark' : 'light') + (hc ? '-contrast' : ''));
+    const dark = currentTheme().startsWith('dark');
     if (doc) {
       const meta = doc.querySelector('meta[name="theme-color"]');
-      if (meta) meta.setAttribute('content', currentTheme().startsWith('dark') ? '#0b0c10' : '#f1f2f6');
+      if (meta) meta.setAttribute('content', dark ? '#0b0c10' : '#f1f2f6');
     }
+    // Status and navigation bar icons follow the page, which can differ from the phone's theme.
+    try { const b = bridge(); if (b && b.setSystemBars) b.setSystemBars(dark); } catch (e) { /* ignore */ }
   }
   function currentTheme() {
     const r = R();
@@ -138,9 +157,25 @@
   const listeners = { resume: [], route: [] };
   function on(evt, fn) { (listeners[evt] = listeners[evt] || []).push(fn); }
   function emit(evt, arg) { for (const fn of listeners[evt] || []) { try { fn(arg); } catch (e) { /* ignore */ } } }
-  hooks.onResume = () => emit('resume');
+  let shown = true;
+  hooks.onResume = () => { shown = true; emit('resume'); };
+  hooks.onPause = () => { shown = false; emit('pause'); };
   hooks.openRoute = (route) => emit('route', route);
-  if (doc) doc.addEventListener('visibilitychange', () => { if (doc.visibilityState === 'visible' && !bridge()) emit('resume'); });
+  if (doc) doc.addEventListener('visibilitychange', () => { if (!bridge()) { shown = doc.visibilityState === 'visible'; if (shown) emit('resume'); } });
+  const visible = () => shown && (!doc || doc.visibilityState !== 'hidden');
+
+  /* ---------------------------------------------------------------- safe-area insets */
+  // The app draws behind the status and navigation bars. The shell reports their size in CSS pixels
+  // and the page pads itself with --sat/--sab/--sal/--sar (env() is the fallback in a browser).
+  hooks.setInsets = (o) => {
+    if (typeof o === 'string') { try { o = JSON.parse(o); } catch (e) { return; } }
+    if (!o || !doc) return;
+    const st = doc.documentElement.style;
+    for (const [k, v] of [['--sat', o.top], ['--sab', o.bottom], ['--sal', o.left], ['--sar', o.right]]) st.setProperty(k, `${Math.max(0, Number(v) || 0)}px`);
+    doc.documentElement.toggleAttribute('data-keyboard', !!o.keyboard);
+    emit('insets', o);
+  };
+  try { const b = bridge(); if (b && b.insets) hooks.setInsets(b.insets()); } catch (e) { /* ignore */ }
 
   /* ---------------------------------------------------------------- misc */
   async function copy(text) {
@@ -152,7 +187,15 @@
     try { const b = bridge(); if (b && b.openUrl) { b.openUrl(url); return; } } catch (e) { /* fall through */ }
     try { G.open(url, '_blank', 'noopener'); } catch (e) { /* ignore */ }
   }
-  function appVersion() { try { const b = bridge(); if (b && b.appVersion) return b.appVersion(); } catch (e) { /* ignore */ } return ''; }
+  // e.g. "1.1.0 (29844162)" in the app, "1.1.0" in a browser.
+  function appVersion() { try { const b = bridge(); if (b && b.appVersion) { const v = b.appVersion(); if (v) return v; } } catch (e) { /* ignore */ } return GH.VERSION || ''; }
+  // Sends text to another app: the Claude app when it's installed (target 'claude'), else the share sheet.
+  function share(text, target) {
+    try { const b = bridge(); if (b && b.shareText) { b.shareText(String(text), target || ''); return true; } } catch (e) { /* fall through */ }
+    try { if (G.navigator && G.navigator.share) { G.navigator.share({ text: String(text) }).catch(() => {}); return true; } } catch (e) { /* ignore */ }
+    return false;
+  }
+  function claudeInstalled() { try { const b = bridge(); return !!(b && b.claudeInstalled && b.claudeInstalled()); } catch (e) { return false; } }
   function reducedMotion() {
     const r = R();
     if (r && r.prefs) return r.prefs.reducedMotion;
@@ -160,5 +203,5 @@
   }
   const isApp = () => !!bridge();
 
-  GH.platform = { setPrefs, keepAwake, vibrate, cue, unlockAudio, applyTheme, currentTheme, setDensity, onBack, on, emit, copy, openUrl, appVersion, reducedMotion, isApp };
+  GH.platform = { setPrefs, keepAwake, haptic, vibrate, cue, unlockAudio, applyTheme, currentTheme, setDensity, onBack, on, emit, visible, copy, openUrl, share, claudeInstalled, appVersion, reducedMotion, isApp };
 })(typeof window !== 'undefined' ? window : globalThis);

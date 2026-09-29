@@ -2,6 +2,9 @@
  * one record per day in S.health.days (what the brain and the insights read). Raw Health Connect
  * days live in S.health.hc and hand logs in S.health.manual; a day is rebuilt from both, hand
  * logs winning, so a re-sync never duplicates or overwrites what was typed in.
+ *
+ * Finished workouts can also be written back to Health Connect as exercise sessions, keyed by day,
+ * so saving one again updates it instead of adding a copy.
  */
 (function (G) {
   'use strict';
@@ -56,12 +59,19 @@
     });
   }
 
-  // Reads what changed (90 days the first time, 14 after that) and folds it in.
+  // How far back to read: 90 days the first time, then the gap since the last sync plus two days
+  // (so late-arriving records from a watch still land), at least 3 and at most 30.
+  function syncDays(S, now) {
+    if (!S.health.lastSync) return 90;
+    const gap = Math.ceil(Math.max(0, now - S.health.lastSync) / 86400000);
+    return Math.max(3, Math.min(30, gap + 2));
+  }
+  // Reads what changed and folds it in.
   async function sync(S, now, days) {
     const st = status();
     S.health.status = st;
     if (!connected(st)) return { ok: false, status: st };
-    const payload = await read(days || (S.health.lastSync ? 14 : 90));
+    const payload = await read(days || syncDays(S, now));
     if (!payload || !payload.ok) return { ok: false, status: st, error: payload && payload.error };
     const res = ingest(S, payload, now);
     S.health.lastSync = now;
@@ -128,21 +138,31 @@
       if (s == null || e == null || e <= s) continue;
       const minutes = Math.round((e - s) / 60000);
       if (minutes < 5) continue;
-      const fromApp = appSpans.some(([a, c]) => s < c && e > a);
+      const fromApp = !!x.mine || appSpans.some(([a, c]) => s < c && e > a);
       const d = b.dayOf(s, rh);
       (day(d).exercise = day(d).exercise || []).push({ typeName: prettyType(x.typeName), minutes, start: s, title: x.title || '', fromApp, src: 'hc' });
     }
     // Height fills the profile if it's empty.
     const heights = (p.height || []).filter((x) => x && x.m > 0.9 && x.m < 2.5).sort((a, c) => (ms(a.time) || 0) - (ms(c.time) || 0));
     if (heights.length && !S.profile.heightCm) S.profile.heightCm = Math.round(heights[heights.length - 1].m * 100);
-    // Replace every day the read covered (so deleted records go away), keep older days.
+    // Replace every day the read covered (so deleted records go away), keep older days. The read
+    // starts partway through its first day, so that day is merged instead: records from before the
+    // start time weren't part of this read.
     const touched = new Set(Object.keys(fresh).map(Number));
     if (first != null) for (let d = first; d <= last; d++) touched.add(d);
     let newest = null;
     for (const d of touched) {
-      if (fresh[d]) h.hc[d] = fresh[d]; else delete h.hc[d];
+      const partial = first != null && d <= first;
+      if (partial) {
+        if (fresh[d]) {
+          const old = h.hc[d] || {};
+          const merged = Object.assign({}, old, fresh[d]);
+          if (old.exercise && fresh[d].exercise) { const have = new Set(fresh[d].exercise.map((x) => x.start)); merged.exercise = fresh[d].exercise.concat(old.exercise.filter((x) => !have.has(x.start))); }
+          h.hc[d] = merged;
+        }
+      } else if (fresh[d]) h.hc[d] = fresh[d]; else delete h.hc[d];
       if (fresh[d] && fresh[d].weightKg) { b.addWeight(S, d, fresh[d].weightKg, 'hc'); newest = d; }
-      else S.weights = S.weights.filter((w) => !(w.day === d && w.src === 'hc'));
+      else if (!partial) S.weights = S.weights.filter((w) => !(w.day === d && w.src === 'hc'));
       rebuild(S, d);
     }
     prune(S, last);
@@ -264,6 +284,45 @@
     };
   }
 
+  /* ---------------------------------------------------------------- writing workouts */
+  function canWrite() { try { const b = bridge(); return !!(b && b.hcCanWrite && b.hcCanWrite()); } catch (e) { return false; } }
+  const recordId = (day) => `gradient-${B().dayStr(day)}`;
+  // A finished workout as a Health Connect exercise session, or null if it can't be one.
+  function workoutRecord(S, l) {
+    if (!l || l.type !== 'workout' || !l.checkedIn || !l.startedAt || !l.endedAt) return null;
+    const start = l.startedAt, end = Math.max(l.endedAt, start + 60000);
+    if (end - start > 4 * 3600000) return null; // checked in much later: no honest end time
+    return { id: recordId(l.day), start, end, version: Math.round(l.endedAt / 1000), type: 'strength_training', title: l.title || 'Workout', notes: `${l.doneSets || 0} of ${l.planned || 0} sets in Gradient` };
+  }
+  const pendingWrites = {};
+  const writeListeners = [];
+  hooks.onHealthWrite = (res) => {
+    if (typeof res === 'string') { try { res = JSON.parse(res); } catch (e) { return; } }
+    if (!res || !res.id) return;
+    const S = pendingWrites[res.id];
+    delete pendingWrites[res.id];
+    if (S && res.ok) (S.health.written = S.health.written || {})[res.id] = Date.now();
+    for (const f of writeListeners) { try { f(res); } catch (e) { /* ignore */ } }
+  };
+  function onWrite(fn) { writeListeners.push(fn); }
+  // Saves one workout if writing is on and allowed. Returns true if it was sent.
+  function writeWorkout(S, l) {
+    if (S.health.write === false || !canWrite()) return false;
+    const rec = workoutRecord(S, l);
+    if (!rec) return false;
+    try { bridge().hcWriteWorkout(JSON.stringify(rec)); } catch (e) { return false; }
+    pendingWrites[rec.id] = S;
+    return true;
+  }
+  // Catches up on recent workouts that were never saved (e.g. writing was just turned on).
+  function writeRecent(S, days) {
+    const today = B().dayOf(Date.now(), roll(S));
+    const done = S.health.written || {};
+    let n = 0;
+    for (const l of S.log) if (l.type === 'workout' && l.day >= today - (days || 14) && !done[recordId(l.day)] && writeWorkout(S, l)) n++;
+    return n;
+  }
+
   // Light days: a walk from Health Connect ticks itself.
   function afterSync(S, day) {
     const plan = B().todayPlan(S, day);
@@ -272,7 +331,8 @@
   }
 
   GH.health = {
-    status, connected, request, onPerms, openSettings, read, sync, ingest, rebuild, logManual, removeManual, setFeel, setSleepChip,
+    status, connected, request, onPerms, openSettings, read, sync, syncDays, ingest, rebuild, logManual, removeManual, setFeel, setSleepChip,
+    canWrite, workoutRecord, writeWorkout, writeRecent, onWrite,
     addMeasurement, measureDue, value, series, stats, baseline, weightOn, activity, activeMinutes, appWorkouts, today, afterSync, prettyType, CHIP_MIN,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

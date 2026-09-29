@@ -48,21 +48,32 @@
   U.act.resumeWorkout = () => U.openPlayer();
   // An unfinished workout from an earlier day goes straight to its check-in.
   U.openCheckin = () => { if (!A()) return; P = { mode: 'workout', phase: 'checkin' }; show(); };
+  let scene = null; // what's on screen (phase + step), so a change of scene can animate in
+  let closing = null;
   function show() {
     const el = root();
+    const was = !el.hidden;
+    if (closing) { closing.cancel(); closing = null; }
     el.hidden = false;
     plat().keepAwake(true);
     if (!timer) timer = setInterval(loop, 200);
+    scene = null;
     draw();
     U.renderAccessory();
+    // The backdrop turns solid fast; the content rises in a little slower.
+    if (!was && !U.reduced() && el.animate) {
+      el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 140, easing: 'ease-out' });
+      for (const [i, c] of Array.from(el.children).entries()) c.animate([{ opacity: 0, transform: 'translateY(26px)' }, { opacity: 1, transform: 'none' }], { duration: 420, delay: 40 + i * 40, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)', fill: 'backwards' });
+    }
   }
   function hide() {
     const el = root();
-    el.hidden = true;
-    el.innerHTML = '';
-    dropFig();
     if (timer) { clearInterval(timer); timer = null; }
     plat().keepAwake(false);
+    const done = () => { closing = null; el.hidden = true; el.innerHTML = ''; dropFig(); scene = null; };
+    if (U.reduced() || !el.animate || el.hidden) { done(); return; }
+    closing = el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(22px)' }], { duration: 220, easing: 'cubic-bezier(0.3, 0, 0.8, 0.15)', fill: 'forwards' });
+    closing.onfinish = () => { if (closing) { closing.cancel(); done(); } };
   }
   // Minimize: the workout keeps going; Today and the tab bar show a way back.
   function minimize() {
@@ -70,7 +81,7 @@
     hide();
     U.render();
   }
-  function closeDone() { P = null; hide(); U.route = { tab: 'today', view: null, arg: null }; U.render(); }
+  function closeDone() { P = null; hide(); U.route = { tab: 'today', view: null, arg: null }; U.nextMotion('stagger'); U.render('stagger'); }
   U.playerBack = () => {
     if (P && (P.phase === 'next' || P.phase === 'mobdone')) { closeDone(); return true; }
     if (P && P.mode === 'mobility') { P = null; hide(); U.render(); return true; }
@@ -93,18 +104,21 @@
     const m0 = st && st.item && M().MOVES[st.item.moveId];
     if (!host || !m0 || !GH.pose) return;
     const { m, o, key } = figOpts(st, m0);
-    if (fig && fig.key === key) host.appendChild(fig.ctl.el); // same move: keep the running animation
+    if (fig && fig.key === key) { if (fig.ctl.el.parentNode !== host) host.appendChild(fig.ctl.el); } // same move: keep the running animation
     else {
       dropFig();
       try { fig = { key, ctl: GH.pose.mount(host, m, o) }; } catch (e) { fig = null; return; }
+      fadeIn(fig.ctl.el);
     }
     if (playing) fig.ctl.play(); else fig.ctl.pause();
   }
+  function fadeIn(el) { if (el && !U.reduced() && el.animate) el.animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)' }); }
   U.figureFor = (host, moveId, side, playing) => {
     const m0 = M().MOVES[moveId];
     if (!m0 || !GH.pose) return null;
     const { m, o } = figOpts({ side, item: { moveId } }, m0);
     const ctl = GH.pose.mount(host, m, o);
+    fadeIn(ctl.el);
     if (playing) ctl.play();
     return ctl;
   };
@@ -171,12 +185,29 @@
     else if (P.phase === 'rest') html = viewRest();
     else if (!st) { if (P.mode === 'mobility') { finishMobility(); return; } P.phase = 'checkin'; html = viewCheckin(); }
     else html = viewStep(st);
-    el.innerHTML = html;
-    U.enhance(el);
+    // Patch in place: the bar, buttons and diagram stay put while the content changes.
+    const phase = P.phase === 'countdown' || P.phase === 'running' ? 'step' : P.phase;
+    const next = `${phase}:${P.mode === 'mobility' ? P.mob.idx : A() ? A().idx : ''}`;
+    const changed = scene !== next;
+    // Each scene gets fresh content (so controls never carry over from the last one); within a
+    // scene, updates patch in place.
+    html = html.replace(/<div class="(pl-main|pl-scroll)/, (m) => m.replace('<div', `<div data-key="scene-${next}"`));
+    U.morph(el, html);
+    if (changed && scene != null) sceneIn(el, phase);
+    scene = next;
     const host = el.querySelector('.pl-fig');
     if (host && st && (P.phase === 'step' || P.phase === 'countdown' || P.phase === 'running')) mountFig(host, st, true);
     else if (host && P.phase === 'rest') { const nx = cur(); if (nx) mountFig(host, nx, false); }
     loop();
+  }
+
+  // A new step or phase slides in: the main block rises, the action row settles.
+  function sceneIn(el, phase) {
+    if (U.reduced()) return;
+    const main = el.querySelector('.pl-main, .pl-scroll');
+    const acts = el.querySelector('.pl-actions');
+    if (main && main.animate) main.animate([{ opacity: 0, transform: `translateY(${phase === 'rest' ? 18 : 24}px)` }, { opacity: 1, transform: 'none' }], { duration: 380, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)' });
+    if (acts && acts.animate) acts.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: 80, easing: 'ease-out', fill: 'backwards' });
   }
 
   function viewStep(st) {
@@ -219,7 +250,7 @@
         <p class="pl-eyebrow t-footnote rf-muted">${U.esc(eyebrow(st))}</p>
         <h1 class="pl-name">${U.esc(it.name)}</h1>
         ${sideLine(st)}
-        <button type="button" class="pl-fig-card" data-act="plHowTo" aria-label="How to do ${U.esc(it.name)}"><div class="pl-fig"></div></button>
+        <button type="button" class="pl-fig-card" data-act="plHowTo" aria-label="How to do ${U.esc(it.name)}"><div class="pl-fig" data-morph="keep"></div>${!U.seen('playerHint') && P.phase === 'step' ? '<span class="pl-fig-hint t-caption">Tap for how-to</span>' : ''}</button>
         ${target}
         ${hint}
         ${cue && P.phase === 'step' && st.kind !== 'test' ? `<p class="pl-cue t-callout">${U.esc(cue)}</p>` : ''}
@@ -235,7 +266,7 @@
     const rirQ = P.askRir ? `<div class="pl-rir">
         <p class="t-headline">How many more could you have done?</p>
         ${U.seg('plRir', [['0', '0'], ['12', '1-2'], ['3', '3+']], P.rirAnswered || '', 'Reps left in the tank', ' data-on="plRir"')}
-        <p class="t-footnote rf-muted">${P.askRir.kind === 'finisher' ? 'For the whole finisher.' : `For ${U.esc(P.askRir.name.toLowerCase())}. This sets next time.`}</p>
+        <p class="t-footnote rf-muted">${P.askRir.kind === 'finisher' ? 'For the whole finisher.' : `For ${U.esc(P.askRir.name.toLowerCase())}. This sets next time.`}${((U.S.seen || {}).rirCount || 0) < 3 ? ' Count the reps you could still have done with good form. A rough guess is fine.' : ''}</p>
       </div>` : '';
     const logged = done && done.kind === 'set' ? loggedLine(done) : '';
     const timerBlock = P.restEnd
@@ -249,7 +280,7 @@
         ${timerBlock}
         ${logged}
         ${rirQ}
-        ${next ? `<div class="pl-next-row"><div class="pl-fig pl-fig-sm"></div>${upNext(next)}</div>` : ''}
+        ${next ? `<div class="pl-next-row"><div class="pl-fig pl-fig-sm" data-morph="keep"></div>${upNext(next)}</div>` : ''}
       </div>
       <div class="pl-actions">${needCont || !next ? `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plContinue">${next ? 'Continue' : 'Finish'}</button>` : ''}</div>`;
   }
@@ -269,8 +300,8 @@
     const setRing = (v) => { const r = el.querySelector('.rf-ring'); if (r) { r.style.setProperty('--rf-value', Math.max(0, Math.min(1, v)).toFixed(3)); r.setAttribute('aria-valuenow', String(Math.round(v * 100))); } };
     if (P.phase === 'countdown') {
       const s = Math.ceil((P.goAt - now) / 1000);
-      if (s > 0 && s !== P.lastCue) { plat().cue('tick'); P.lastCue = s; }
-      if (now >= P.goAt) { plat().cue('go'); P.phase = 'running'; P.startAt = now; P.endAt = now + P.dur * 1000; P.lastCue = null; draw(); return; }
+      if (s > 0 && s !== P.lastCue) { plat().cue('tick'); U.haptic('tick'); P.lastCue = s; }
+      if (now >= P.goAt) { plat().cue('go'); U.haptic('go'); P.phase = 'running'; P.startAt = now; P.endAt = now + P.dur * 1000; P.lastCue = null; draw(); return; }
       setCount(String(Math.max(1, s)));
       setRing(1);
     } else if (P.phase === 'running') {
@@ -334,6 +365,7 @@
     const S = U.S;
     const a = A();
     const st = a.steps[a.idx];
+    U.haptic(st.kind === 'set' || st.kind === 'interval' ? 'done' : 'success');
     const linesBefore = (a.testLines || []).length;
     B().completeStep(S, result);
     U.save();
@@ -377,8 +409,11 @@
     if (!P || !P.askRir) return;
     B().setRir(U.S, P.askRir, String(v));
     P.rirAnswered = String(v);
+    U.S.seen = U.S.seen || {};
+    U.S.seen.rirCount = (U.S.seen.rirCount || 0) + 1;
     U.save();
-    if (!P.restEnd) { if (P.restTotal) endRest(); else draw(); }
+    // Let the thumb land before the screen moves on.
+    if (!P.restEnd) setTimeout(() => { if (P && P.rirAnswered === String(v)) { if (P.restTotal) endRest(); else draw(); } }, 280);
   };
   U.act.plAmend = () => {
     const st = P.justDone;
@@ -495,17 +530,23 @@
     const before = B().calendar(S, A().day).streak.current;
     const res = B().finishWorkout(S, { rating: ck.rating, complicated: ck.complicated, pain: ck.pain, weightKg: ck.weight ? U.toKg(ck.weight) : null, now: Date.now() });
     S.pendingLines = res ? res.lines : [];
+    if (U.markSeen) U.markSeen('playerHint');
+    const fresh = U.newAchievements ? U.newAchievements(S, U.today()) : [];
     U.save(true);
-    P.result = res; P.ck = null; P.streakFrom = before;
+    P.result = res; P.ck = null; P.streakFrom = before; P.ach = fresh;
     P.phase = 'next';
     plat().keepAwake(false);
     draw();
+    // Saved to Health Connect (when allowed), then a fresh read so today's numbers catch up.
+    if (res && res.entry && GH.health && GH.health.writeWorkout(S, res.entry)) setTimeout(() => U.syncHealth('manual'), 2500);
     const el = root();
-    if (res && res.celebrate.length && G.Refract && G.Refract.burst) {
+    const big = res && (res.celebrate.length || fresh.length);
+    U.haptic(big ? 'celebrate' : 'success');
+    if (big && G.Refract && G.Refract.burst && !U.reduced()) {
       setTimeout(() => { for (const c of el.querySelectorAll('.celebrate')) { try { G.Refract.burst(c, { count: 18 }); } catch (e) { /* ignore */ } } }, 350);
     }
     const n = el.querySelector('.streak-roll');
-    if (n && G.Refract && G.Refract.roll) setTimeout(() => { try { G.Refract.roll(n, n.dataset.to, { from: n.dataset.from, dir: 1 }); } catch (e) { /* ignore */ } }, 250);
+    if (n && G.Refract && G.Refract.roll && !U.reduced()) setTimeout(() => { try { G.Refract.roll(n, n.dataset.to, { from: n.dataset.from, dir: 1 }); } catch (e) { /* ignore */ } }, 250);
   };
 
   function viewNext() {
@@ -518,7 +559,9 @@
         <h1 class="rf-large-title">Next time</h1>
         ${res.done ? `<p class="t-callout pl-pad">Streak <span class="streak-roll rf-num t-headline" data-from="${P.streakFrom || 0}" data-to="${streak}">${streak}</span> ${streak === 1 ? 'day' : 'days'}</p>` : '<p class="t-callout rf-muted pl-pad">Saved. Under half the sets, so it doesn\'t count for the streak.</p>'}
         ${res.celebrate.map((c) => `<div class="card celebrate">${U.icon(c.kind === 'pr' ? 'star' : c.kind === 'weight' ? 'bolt' : 'sparkle')}<span class="t-headline">${U.esc(c.text)}</span></div>`).join('')}
+        ${(P.ach || []).map((a) => `<div class="card celebrate is-ach"><span class="rf-list-icon ach-badge" data-tone="${a.tone}">${U.icon(a.icon)}</span><span class="celebrate-text"><span class="t-footnote rf-muted">Achievement</span><span class="t-headline">${U.esc(a.title)}</span></span></div>`).join('')}
         ${lines.length ? `<ul class="rf-list next-lines">${lines.map((l) => U.row({ title: U.esc(l.text), sub: l.why ? U.esc(U.cap(l.why)) : '', icon: l.buy ? 'bag' : /Deload|less/.test(l.text) ? 'moon' : 'arrow-up-right', tone: l.buy ? 'amber' : /Deload|less|Eat/.test(l.text) ? 'indigo' : 'green' })).join('')}</ul>` : '<p class="t-callout rf-muted pl-pad">Same targets next time. Keep it up.</p>'}
+        ${lines.length && U.whyLink ? `<p class="pl-pad">${U.whyLink('overload', 'How the plan decides this')}</p>` : ''}
       </div>
       <div class="pl-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plClose">Done</button></div>`;
   }

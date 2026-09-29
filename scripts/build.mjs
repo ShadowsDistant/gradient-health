@@ -60,15 +60,19 @@ const safeCss = (css) => css.replace(/<\/style/gi, '<\\/style');
 
 export const APP_SCRIPTS = [
   'src/data/moves.js',
+  'src/data/science.js',
+  'src/data/changelog.js',
   'src/engine/pose.js',
   'src/brain.js',
   'src/insights.js',
   'src/health.js',
   'src/store.js',
   'src/platform.js',
+  'src/coach.js',
   // ai bundle is injected here
   'src/ui/core.js',
   'src/ui/charts.js',
+  'src/ui/guide.js',
   'src/ui/onboarding.js',
   'src/ui/player.js',
   'src/ui/today.js',
@@ -76,6 +80,8 @@ export const APP_SCRIPTS = [
   'src/ui/healthtab.js',
   'src/ui/progress.js',
   'src/ui/moves.js',
+  'src/ui/profile.js',
+  'src/ui/science.js',
   'src/ui/settings.js',
 ];
 
@@ -98,7 +104,9 @@ async function main() {
   const tokens = JSON.parse(read('vendor/refract/tokens.json'));
   const shell = read('src/shell.html');
   const aiJs = await bundleAi();
-  const scripts = [];
+  const version = JSON.parse(read('package.json')).version || '0.0.0';
+  // The app's version, for Profile, What's new and the web build (the APK also reports its own).
+  const scripts = [`<script>(window.GH = window.GH || {}).VERSION = ${JSON.stringify(version)};</script>`];
   for (const p of APP_SCRIPTS) {
     if (p === 'src/ui/core.js') scripts.push(`<script>/* ai (bundled) */\n${safeJs(aiJs)}</script>`);
     scripts.push(`<script>/* ${p} */\n${safeJs(read(p))}</script>`);

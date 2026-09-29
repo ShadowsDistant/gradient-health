@@ -24,7 +24,10 @@ ANDROID_ALL_VERSION="14-robolectric-10818077" # Android 14 / API 34
 ANDROID_ALL_SHA1="94b1490a891e9be559aa35c87cd8a0c163f32d83"
 ANDROID_ALL_URL="https://repo.maven.apache.org/maven2/org/robolectric/android-all/${ANDROID_ALL_VERSION}/android-all-${ANDROID_ALL_VERSION}.jar"
 MIN_SDK=26
-TARGET_SDK=34
+# Linked and compiled against API 34 (the newest framework jar aapt can read), but targeting 36:
+# the app only calls newer APIs behind SDK_INT checks.
+COMPILE_SDK=34
+TARGET_SDK=36
 KEYSTORE="$ROOT/android/gradient-health.keystore"
 KEY_ALIAS="gradient"
 KEY_PASS="gradient-health"
@@ -89,7 +92,7 @@ rm -rf "$WORK"
 mkdir -p "$WORK/classes" "$WORK/dex" "$WORK/assets" "$(dirname "$OUT")"
 rm -f "$OUT"
 
-step "Compiling Java (release 8, against API ${TARGET_SDK})"
+step "Compiling Java (release 8, against API ${COMPILE_SDK}, target ${TARGET_SDK})"
 mapfile -t SOURCES < <(find "$ROOT/android/src" -name '*.java' | sort)
 (( ${#SOURCES[@]} )) || die "no Java sources under android/src"
 # dx only understands Java 8 bytecode. The framework classes come from the jar, java.* from the JDK.

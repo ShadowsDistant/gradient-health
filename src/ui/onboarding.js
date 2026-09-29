@@ -64,65 +64,88 @@
   }
 
   /* ---------------------------------------------------------------- show / hide */
+  function open() {
+    const el = U.els().onboardEl;
+    const was = !el.hidden;
+    el.hidden = false;
+    shownStep = null;
+    draw();
+    if (!was && !U.reduced() && el.animate) {
+      el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 140, easing: 'ease-out' });
+      for (const [i, c] of Array.from(el.children).entries()) c.animate([{ opacity: 0, transform: 'translateY(22px)' }, { opacity: 1, transform: 'none' }], { duration: 400, delay: 40 + i * 40, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)', fill: 'backwards' });
+    }
+  }
   U.showOnboarding = () => {
     if (!Q) { Q = draftFrom(B().defaultProfile()); mode = 'new'; idx = 0; }
-    const el = U.els().onboardEl;
-    el.hidden = false;
-    draw();
+    open();
   };
   U.editAnswers = (stepId) => {
     Q = draftFrom(U.S.profile);
     mode = 'edit';
     idx = Math.max(0, stepId ? visible().findIndex((s) => s.id === stepId) : 0);
-    U.els().onboardEl.hidden = false;
-    draw();
+    open();
   };
+  // Slides the set-up away, then runs `after` (with the app already drawn underneath).
+  function dismiss(after) {
+    const el = U.els().onboardEl;
+    const done = () => { el.hidden = true; el.innerHTML = ''; shownStep = null; };
+    if (after) after();
+    if (U.reduced() || !el.animate) { done(); return; }
+    el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(24px)' }], { duration: 240, easing: 'cubic-bezier(0.3, 0, 0.8, 0.15)', fill: 'forwards' }).onfinish = done;
+  }
   function close() {
     stopPlank();
-    U.els().onboardEl.hidden = true;
-    U.els().onboardEl.innerHTML = '';
     Q = null;
-    U.render();
+    dismiss(() => U.render());
   }
   U.onboardBack = () => {
-    if (idx > 0) { idx--; draw(); return true; }
+    if (idx > 0) { idx--; dir = -1; draw(); return true; }
     if (mode === 'edit') { close(); return true; }
     return false;
   };
   const visible = () => STEPS.filter((s) => (!s.modes || s.modes.includes(mode)) && (!s.when || s.when()));
 
-  function draw(keepScroll) {
+  let shownStep = null;
+  let dir = 1;
+  function draw() {
     const el = U.els().onboardEl;
     const steps = visible();
     idx = Math.max(0, Math.min(idx, steps.length - 1));
     const st = steps[idx];
-    const old = el.querySelector('#obScroll');
-    const top = keepScroll && old ? old.scrollTop : 0;
     let body = '';
     try { body = VIEW[st.id](); } catch (e) { body = `<p class="t-body">${U.esc(e.message)}</p>`; }
     const last = st.id === 'plan';
-    el.innerHTML = `
+    const changed = shownStep !== st.id;
+    // Top bar and buttons stay put; each step's content is fresh and slides in from the side it
+    // comes from. Re-drawing the same step patches it in place, so scroll and focus stay.
+    U.morph(el, `
       <div class="ob-top">
         ${idx > 0 || mode === 'edit' ? U.glassBtn(idx > 0 ? 'chevron-left' : 'close', idx > 0 ? 'Back' : 'Close', 'obBack') : '<span class="ob-spacer"></span>'}
         <div class="ob-progress">${U.progress((idx + 1) / steps.length, 'Set-up progress')}<span class="t-caption rf-muted rf-num">${idx + 1} of ${steps.length}</span></div>
         <span class="ob-spacer"></span>
       </div>
       <div class="ob-scroll" id="obScroll">
-        <h1 class="rf-large-title">${U.esc(st.title)}</h1>
-        <div class="ob-body">${body}</div>
+        <div class="ob-page" data-key="step-${st.id}">
+          <h1 class="rf-large-title">${U.esc(st.title)}</h1>
+          <div class="ob-body">${body}</div>
+        </div>
       </div>
       <div class="ob-actions">
         ${st.id === 'health' && !H().connected(H().status()) ? '<button type="button" class="rf-btn rf-glass" data-size="lg" data-act="obNext">Not now</button>' : ''}
         ${st.id === 'baseline' ? '<button type="button" class="rf-btn rf-glass" data-size="lg" data-act="obSkipTest">Skip the test</button>' : ''}
         <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="${last ? 'obFinish' : 'obNext'}">${last ? (mode === 'edit' ? 'Save changes' : 'Start') : 'Continue'}</button>
-      </div>`;
-    U.enhance(el);
+      </div>`);
     const sc = el.querySelector('#obScroll');
-    if (sc) sc.scrollTop = top;
-    if (AFTER[st.id]) AFTER[st.id](el);
+    if (changed) {
+      if (sc) sc.scrollTop = 0;
+      const page = el.querySelector('.ob-page');
+      if (shownStep != null && page && !U.reduced() && page.animate) page.animate([{ opacity: 0, transform: `translateX(${dir * 44}px)` }, { opacity: 1, transform: 'none' }], { duration: 340, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)' });
+    }
+    shownStep = st.id;
+    if (AFTER[st.id] && changed) AFTER[st.id](el);
   }
-  U.act.obNext = () => { stopPlank(); idx++; draw(); };
-  U.act.obSkipTest = () => { stopPlank(); Q._base = { pushups: null, knees: false, plankSec: null, curlL: null, curlR: null }; idx++; draw(); };
+  U.act.obNext = () => { stopPlank(); idx++; dir = 1; U.haptic('tap'); draw(); };
+  U.act.obSkipTest = () => { stopPlank(); Q._base = { pushups: null, knees: false, plankSec: null, curlL: null, curlR: null }; idx++; dir = 1; draw(); };
   U.act.obBack = () => { stopPlank(); if (!U.onboardBack()) { /* first screen of a new set-up: nothing behind it */ } };
 
   /* ---------------------------------------------------------------- generic answer binding */
@@ -147,7 +170,7 @@
       setPath(Q, list, arr);
     } else setPath(Q, el.dataset.k, cast(el, v));
     if (el.dataset.k === 'prefs.theme' && GH.platform) GH.platform.applyTheme(Q.prefs.theme);
-    if (el.hasAttribute('data-redraw')) draw(true);
+    if (el.hasAttribute('data-redraw')) draw();
   };
   const bind = (k, type, redraw) => `data-on="q" data-k="${k}"${type ? ` data-type="${type}"` : ''}${redraw ? ' data-redraw' : ''}`;
   const listChip = (list, v, label, pressed, vt, redraw) => U.chip(label, pressed, `data-on="q" data-list="${list}" data-v="${U.esc(v)}"${vt ? ` data-vt="${vt}"` : ''}${redraw ? ' data-redraw' : ''}`);
@@ -170,10 +193,10 @@
     else if (st === 'unavailable') status = ['caution', 'Health Connect isn\'t available on this phone right now. You can connect it later in Settings.'];
     else if (H().connected(st)) status = ['positive', Q._hcNote ? `Connected. Read ${Q._hcNote}.` : 'Connected.'];
     else status = null;
-    const rows = [['moon', 'indigo', 'Sleep', 'Fewer sets after a short night'], ['navigate', 'green', 'Steps', 'Ticks off the walk on light days'], ['chart', 'teal', 'Weight and height', 'Trend, protein goal and warnings'], ['heart', 'coral', 'Resting heart rate and HRV', 'Spots when you need an easier day'], ['bolt', 'amber', 'Workouts from other apps', 'Easier on the legs after a long run']];
+    const rows = [['moon', 'indigo', 'Sleep', 'Fewer sets after a short night'], ['navigate', 'green', 'Steps', 'Ticks off the walk on light days'], ['chart', 'teal', 'Weight and height', 'Trend, protein goal and warnings'], ['heart', 'coral', 'Resting heart rate and HRV', 'Spots when you need an easier day'], ['bolt', 'amber', 'Workouts from other apps', 'Easier on the legs after a long run'], ['check-circle', 'sky', 'Your workouts here', 'Saved back, so your other apps see them']];
     return lead('Gradient can read your health data from Health Connect to fit each day\'s session to how you slept and moved.')
       + `<ul class="rf-list">${rows.map(([ic, tone, t, sub]) => U.row({ icon: ic, tone, title: t, sub })).join('')}</ul>`
-      + '<p class="t-footnote rf-muted ob-note">Read-only, and it stays on this phone. The AI coach is separate: it\'s off until you set it up in Settings.</p>'
+      + '<p class="t-footnote rf-muted ob-note">Everything stays on this phone, and you choose what to allow on the next screen. You can change it any time in Health Connect.</p>'
       + (status ? `<div class="ob-status" data-tone="${status[0]}">${U.icon(status[0] === 'positive' ? 'check-circle' : status[0] === 'caution' ? 'alert' : 'info')}<span>${U.esc(status[1])}</span></div>` : '')
       + (app && !['unsupported', 'unavailable'].includes(st) && !H().connected(st) ? '<button type="button" class="rf-btn ob-wide" data-variant="filled" data-size="lg" data-act="obConnect">Connect Health Connect</button>' : '');
   };
@@ -305,7 +328,7 @@
     if (!(v > 0 && v < 400)) { U.toast('Enter a weight like 12', 'caution'); return; }
     const r = Math.round(v * 2) / 2;
     if (!Q.equipment[k].includes(r)) Q.equipment[k] = Q.equipment[k].concat(r);
-    draw(true);
+    draw();
   };
 
   VIEW.body = () => lead('So nothing you do here makes an old injury worse.')
@@ -341,7 +364,7 @@
         ${U.sw('Sound', Q.prefs.sound !== false, bind('prefs.sound'))}
         ${U.sw('Vibration', Q.prefs.vibrate !== false, bind('prefs.vibrate'))}
       </ul>`)
-    + group('Rest between sets', `<div class="ob-pad">${U.seg('rest', [['auto', 'Auto'], ['60', '60 s'], ['90', '90 s']], String(Q.prefs.rest), 'Rest between sets', ` ${bind('prefs.rest', 'numstr')}`)}</div>`, 'Auto rests 90 s on legs and 60 s on everything else.')
+    + group('Rest between sets', `<div class="ob-pad">${U.seg('rest', [['auto', 'Auto'], ['60', '60 s'], ['90', '90 s']], String(Q.prefs.rest), 'Rest between sets', ` ${bind('prefs.rest', 'numstr')}`)}</div>`, 'Auto rests 90 s after big moves like squats and rows, and 60 s after smaller ones and in supersets.')
     + group('Look', `<div class="ob-pad">${U.seg('theme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], Q.prefs.theme, 'Theme', ` ${bind('prefs.theme')}`)}</div>`);
 
   function curlEquip() { const e = Q.equipment; return (e.db && e.db.length) || e.band; }
@@ -359,7 +382,7 @@
     + group('2. Plank', `<div class="ob-plank"><div class="t-title-1 rf-num" id="plankTime">${Q._base.plankSec ? U.fmtDur(Q._base.plankSec) : '0:00'}</div><button type="button" class="rf-btn" data-variant="filled" data-act="obPlank" id="plankBtn">${plank ? 'Stop' : Q._base.plankSec ? 'Try again' : 'Start plank timer'}</button></div>`, 'Forearms down, body straight. Stop when your hips sag.')
     + (curlEquip() ? group('3. Curls, one arm at a time', `<div class="ob-fields ob-row2">${field('Left arm', numInput('_base.curlL', Q._base.curlL, 'reps', 'min="0" max="100" inputmode="numeric"'))}${field('Right arm', numInput('_base.curlR', Q._base.curlR, 'reps', 'min="0" max="100" inputmode="numeric"'))}</div>`, 'Left first, same weight, as many clean reps as you can. This is also the first left vs right check.') : '');
   U.act.obPlank = () => {
-    if (plank) { Q._base.plankSec = Math.round((Date.now() - plank.start) / 1000); stopPlank(); if (GH.platform) GH.platform.cue('done'); draw(true); return; }
+    if (plank) { Q._base.plankSec = Math.round((Date.now() - plank.start) / 1000); stopPlank(); if (GH.platform) GH.platform.cue('done'); draw(); return; }
     plank = { start: Date.now() + 3000, timer: null };
     let lastShown = null;
     const tick = () => {
@@ -426,13 +449,12 @@
     GH.store.save(S);
     U.S = S;
     Q = null; tmpS = null;
-    U.els().onboardEl.hidden = true;
-    U.els().onboardEl.innerHTML = '';
     U.applyPrefs();
     U.route = { tab: 'today', view: null, arg: null };
-    U.render();
-    U.toast('Your plan is ready', 'positive');
-    U.syncHealth(true);
+    U.haptic('celebrate');
+    dismiss(() => U.render('stagger'));
+    U.syncHealth('manual');
+    if (U.afterOnboarding) U.afterOnboarding();
   };
   function saveEdit() {
     const S = U.S;

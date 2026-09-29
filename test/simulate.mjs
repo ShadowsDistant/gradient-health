@@ -173,10 +173,12 @@ section('Scenario A: your answers, 3 weeks from Mon Sep 28');
   check('knee break: no squat-family or knee-loading moves', squatFamily.length === 0 && kneeLoaded.length === 0, legsWeek3.items.map((x) => x.moveId));
   const progOf = (st) => JSON.stringify({ rung: st.rung, reps: st.reps, w: st.w });
   const before = progOf(S.prog.curl);
-  const extrasBefore = B.buildSession(S, D0 + 14, 0, {}).extras.length;
+  // Before the test the extra left set is still planned (untrimmed: on this deload + test day the
+  // 25-minute budget can squeeze it out).
+  const extrasBefore = B.buildSession(S, D0 + 14, 0, { noTrim: true }).extras.length;
   r = doWorkout(S, D0 + 14, { defaultRir: '3', test: { L: 17, R: 18 } });
   check('Mon week 3: left/right test ran (L17/R18 = 5.6%)', r.seen.some((x) => x.test === 'arm') && S.catchup.arm.tests.length === 2 && Math.abs(S.catchup.arm.tests[1].gap - 0.056) < 0.01, S.catchup.arm.tests);
-  check('gap under 10% → extra left set dropped, even from that session', extrasBefore === 1 && !r.seen.some((x) => x.extra) && !S.catchup.arm.active);
+  check('gap under 10% → extra left set dropped, even from that session', extrasBefore === 1 && !r.seen.some((x) => x.extra) && !S.catchup.arm.active, { extrasBefore, seenExtra: r.seen.some((x) => x.extra), active: S.catchup.arm.active });
   check('deload holds progression (3+ answers change nothing; bests still count)', progOf(S.prog.curl) === before, [before, S.prog.curl]);
   const tue3 = B.buildSession(S, D0 + 15, 1, {});
   check('no extra left set on the next arm day', tue3.extras.length === 0);

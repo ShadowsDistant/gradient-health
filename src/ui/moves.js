@@ -45,11 +45,12 @@
   U.moveSheet = (moveId, opts) => {
     const m = M().MOVES[moveId];
     if (!m) return null;
+    const first = U.markSeen ? U.markSeen('moveSheet') : false;
     return U.sheet({
       title: m.name, detents: 'medium large', detent: 'large',
       body: moveBody(m, opts),
       after: (ctl) => mountSheetFig(ctl, moveId, opts && opts.side),
-      onClose: dropSheetFig,
+      onClose: () => { dropSheetFig(); if (first && U.els().playerEl.hidden) { U.render(); if (U.checklistCheck) U.checklistCheck(); } },
     });
   };
   U.act.figOnce = () => { if (sheetFig && sheetFig.playOnce) sheetFig.playOnce(); };
@@ -81,10 +82,10 @@
     const ctl = U.sheet({ title: lad.name, detents: 'large', detent: 'large', body: body(), after: (c) => mountSheetFig(c, showing), onClose: dropSheetFig });
     U.act.ladderShow = (b) => {
       showing = b.dataset.arg;
-      ctl.body.innerHTML = body();
-      U.enhance(ctl.body);
+      U.haptic('select');
+      ctl.update(body());
       mountSheetFig(ctl, showing);
-      ctl.body.scrollTop = 0;
+      ctl.body.scrollTo({ top: 0, behavior: U.reduced() ? 'auto' : 'smooth' });
     };
   };
   U.act.unhide = (el) => {
@@ -120,8 +121,7 @@
       const extra = wu.concat(M().MOBILITY, ['walk']).filter((id) => M().MOVES[id]).map((id) => U.row({ icon: M().MOBILITY.includes(id) ? 'leaf' : id === 'walk' ? 'navigate' : 'sun', tone: 'teal', title: U.esc(M().MOVES[id].name), act: 'moveInfo', arg: id, chevron: true })).join('');
       return `${U.navbar('Moves')}
         <h1 class="rf-large-title">Moves</h1>
-        <p class="lt-sub t-callout rf-muted">Each ladder climbs from easiest to hardest. You move up when you have 3+ reps left at the top of the range.</p>
-        <div class="section moves-list">${groups}
+        <div class="section moves-list">${U.tip ? U.tip('moves') : ''}${groups}
           <h3 class="rf-list-header">Warm-up and mobility</h3><ul class="rf-list">${extra}</ul>
         </div>`;
     },
