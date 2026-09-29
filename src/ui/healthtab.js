@@ -38,7 +38,8 @@
     if (!S.log.some((l) => l.type === 'workout') && Object.keys(S.health.days || {}).length < 3) return '';
     const api = claudeMode(S) && AI() && AI().hasKey();
     let body, badge, meta = '';
-    const rep = api ? AI().reportFor(S, day) : null;
+    const rep0 = api ? AI().reportFor(S, day) : null;
+    const rep = rep0 && !rep0.flagged ? rep0 : null; // a reported one falls back to the built-in report
     if (api && ai.busy === 'report') {
       body = '<div class="ai-busy"><span class="rf-spinner" data-size="sm"><i></i></span><span class="t-callout rf-muted">Writing this week\'s report…</span></div>';
       badge = U.badge('Claude', 'accent');
@@ -52,11 +53,13 @@
       meta = api ? 'Claude hasn\'t written this week\'s report yet, so this is the built-in one.' : 'From the built-in coach, worked out on this phone. Not medical advice.';
     }
     const err = ai.error && api ? `<div class="notice" data-tone="critical">${U.icon('alert')}<span>${U.esc(ai.error)}</span></div>` : '';
+    const waiting = api && !S.ai.consentAt ? `<div class="notice" data-tone="info">${U.icon('info')}<span>Claude is waiting for your OK before it gets your data. <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="claudeReview">Review</button></span></div>` : '';
+    const byClaude = api && rep && ai.busy !== 'report';
     return `<div class="card ai-card" data-key="coach">
       <div class="ai-head">${U.icon('sparkle')}<span class="t-headline">Weekly report</span>${badge}<span class="rf-spacer"></span>
-        ${api ? `<button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="aiReport"${ai.busy ? ' aria-disabled="true"' : ''}>${rep ? 'Refresh' : 'Write it'}</button>` : ''}</div>
-      ${body}${err}
-      <p class="t-footnote rf-muted">${meta}</p>
+        ${api && S.ai.consentAt ? `<button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="aiReport"${ai.busy ? ' aria-disabled="true"' : ''}>${rep ? 'Refresh' : 'Write it'}</button>` : ''}</div>
+      ${body}${err}${waiting}
+      <p class="t-footnote rf-muted">${meta}${byClaude ? ` <button type="button" class="rf-btn ai-flag" data-variant="plain" data-size="sm" data-act="flagReport">${U.icon('flag', 'sm')}Report</button>` : ''}</p>
       <div class="btn-row"><button type="button" class="rf-btn" data-variant="soft" data-act="askCoach">${U.icon('chat')}Ask a question</button>
         ${canHandOff() ? `<button type="button" class="rf-btn" data-variant="plain" data-act="askClaudeApp">${U.icon('share')}Ask in the Claude app</button>` : ''}</div>
     </div>`;
@@ -65,6 +68,9 @@
   async function writeReport(auto) {
     const S = U.S, day = U.today();
     if (ai.busy || !AI() || !AI().hasKey() || !claudeMode(S)) return;
+    // The automatic weekly report only runs once the person has allowed Claude; asking by hand
+    // shows the consent screen first.
+    if (!S.ai.consentAt && (auto || !(await U.claudeConsent()))) return;
     ai.busy = 'report'; ai.error = null; ai.tried = day;
     if (U.route.tab === 'health' && !U.route.view) U.render();
     try {
@@ -120,8 +126,11 @@
   function logBody(S) {
     const e = engineOf(S);
     if (e === 'api' && !(AI() && AI().hasKey())) return `<div class="chat-setup card"><p class="t-headline">Add your API key</p><p class="t-callout rf-muted">Claude answers with your own Anthropic API key, which stays on this phone.</p><button type="button" class="rf-btn" data-variant="filled" data-act="keySheet">Add a key</button></div>`;
+    if (e === 'api' && !S.ai.consentAt) return `<div class="chat-setup card"><p class="t-headline">Claude needs your OK</p><p class="t-callout rf-muted">It gets a summary of your data with each question. See what's in it before you decide.</p><button type="button" class="rf-btn" data-variant="filled" data-act="chatConsent">Review</button></div>`;
     if (e === 'device') { const gate = deviceGate(); if (gate) return gate; }
-    const msgs = chatLog(S).slice(-12);
+    const all = chatLog(S);
+    const start = Math.max(0, all.length - 12);
+    const msgs = all.slice(start);
     if (!msgs.length) {
       const hint = e === 'api' ? 'Ask about your sleep, steps, training or what to focus on. Claude sees the same summary as the weekly report.'
         : e === 'device' ? 'Ask anything about your sleep, steps, training, weight or food. The model runs on your phone and sees a short summary of your numbers.'
@@ -129,8 +138,73 @@
       return `<p class="t-callout rf-muted chat-empty">${hint}</p>
         <div class="ob-chips chat-presets">${PRESETS.map((q) => `<button type="button" class="rf-chip" data-act="askQuick" data-arg="${U.esc(q)}">${U.esc(q)}</button>`).join('')}</div>`;
     }
-    return msgs.map((m) => `<div class="bubble ${m.role === 'user' ? 'me' : 'coach'}">${U.esc(m.text)}</div>`).join('');
+    // AI answers (on-device and Claude) can be reported; a reported one stays hidden.
+    const byAi = e !== 'local';
+    return msgs.map((m, i) => {
+      if (m.role === 'user') return `<div class="bubble me">${U.esc(m.text)}</div>`;
+      if (m.flagged) return '<div class="bubble coach is-flagged">You reported this answer, so it\'s hidden.</div>';
+      return `<div class="bubble coach">${U.esc(m.text)}${byAi && !m.safety ? flagBtn(start + i) : ''}</div>`;
+    }).join('');
   }
+  const flagBtn = (i) => `<button type="button" class="bubble-flag" data-act="flagAnswer" data-arg="${i}" aria-label="Report this answer">${U.icon('flag', 'sm')}Report</button>`;
+
+  /* ---------------------------------------------------------------- reporting AI answers */
+  // Anything an AI wrote (an on-device or Claude answer, Claude's report or suggestions) can be
+  // reported from where it's shown. It's hidden right away and kept in a local list; sending it to
+  // the developer opens a GitHub issue with the answer and the reason, to read before posting.
+  const REPORT_URL = 'https://github.com/ShadowsDistant/gradient-health/issues/new';
+  const REASONS = [['unsafe', 'Harmful or unsafe'], ['wrong', 'Wrong or misleading'], ['offensive', 'Offensive'], ['other', 'Something else']];
+  U.flagSheet = (o) => {
+    let reason = 'wrong';
+    const ctl = U.sheet({
+      title: 'Report this answer', detents: 'large', detent: 'large',
+      body: `<div class="sheet-pad">
+        <p class="t-callout rf-muted">AI can get things wrong. Reporting hides this ${U.esc(o.what || 'answer')} on your phone and helps fix the coach.</p>
+        <blockquote class="flag-quote t-footnote">${U.esc(String(o.text || '').slice(0, 400))}${String(o.text || '').length > 400 ? '…' : ''}</blockquote>
+        <p class="t-headline">What's wrong with it?</p>
+        <div class="ob-chips" data-on="flagReason">${REASONS.map(([v, t]) => `<button type="button" class="rf-chip" aria-pressed="${v === reason}" data-act="flagReason" data-arg="${v}">${U.esc(t)}</button>`).join('')}</div>
+        <div class="rf-field"><label class="rf-field-label" for="flagNote">Anything to add (optional)</label><div class="rf-field-control"><textarea class="rf-input" id="flagNote" rows="2" maxlength="500"></textarea></div></div>
+        <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="flagSend">Report</button><button type="button" class="rf-btn" data-size="lg" data-act="flagHide">Just hide it</button></div>
+        <p class="t-footnote rf-muted">Report hides it and opens a GitHub issue for the developer with the answer and your reason. You can read and edit it before posting, and nothing is sent until you do.</p>
+      </div>`,
+    });
+    const record = (send) => {
+      const S = U.S;
+      const note = ((ctl.el.querySelector('#flagNote') || {}).value || '').trim().slice(0, 500);
+      S.ai.flags = (S.ai.flags || []).concat([{ at: Date.now(), kind: o.kind, engine: o.engine, model: o.model || null, reason, note, text: String(o.text || '').slice(0, 2000) }]).slice(-50);
+      if (o.onHide) o.onHide();
+      U.save(true);
+      ctl.close('ok');
+      U.haptic('success');
+      if (send && GH.platform) {
+        const body = [`**What:** ${o.kind} from ${o.engine}${o.model ? ` (${o.model})` : ''}`, `**Reason:** ${(REASONS.find((r) => r[0] === reason) || [, reason])[1]}`, note ? `**Note:** ${note}` : '', '', '**The answer:**', '', String(o.text || '').slice(0, 1500), '', `_Gradient Health ${GH.VERSION || ''}_`].filter((x) => x !== null).join('\n');
+        GH.platform.openUrl(`${REPORT_URL}?${new URLSearchParams({ title: `AI answer report: ${(REASONS.find((r) => r[0] === reason) || [, reason])[1].toLowerCase()}`, body, labels: 'ai-report' }).toString()}`);
+      }
+      U.toast('Reported', 'positive', send ? 'It\'s hidden on your phone. Post the issue to send it to the developer.' : 'It\'s hidden on your phone.');
+    };
+    U.act.flagReason = (el) => { reason = el.dataset.arg; for (const c of ctl.el.querySelectorAll('[data-act="flagReason"]')) c.setAttribute('aria-pressed', String(c.dataset.arg === reason)); U.haptic('select'); };
+    U.act.flagSend = () => record(true);
+    U.act.flagHide = () => record(false);
+    return ctl;
+  };
+  U.act.flagAnswer = (el) => {
+    const S = U.S;
+    const i = Number(el.dataset.arg);
+    const log = chatLog(S);
+    const m = log[i];
+    if (!m) return;
+    const e = engineOf(S);
+    const q = log[i - 1] && log[i - 1].role === 'user' ? log[i - 1].text : '';
+    U.flagSheet({ kind: 'chat answer', what: 'answer', engine: e === 'api' ? 'Claude' : 'the on-device model', model: e === 'api' ? S.ai.model && S.ai.model.name : GH.llm && GH.llm.loaded() ? GH.llm.loaded().id : S.ai.deviceModel, text: q ? `Q: ${q}\nA: ${m.text}` : m.text, onHide: () => { m.flagged = true; refreshChat(); } });
+  };
+  U.act.flagReport = () => {
+    const S = U.S;
+    const rep = AI() && AI().reportFor(S, U.today());
+    if (!rep) return;
+    const d = rep.data || {};
+    const text = [d.headline].concat(d.wins || [], d.watch || [], d.focus || []).filter(Boolean).join('\n');
+    U.flagSheet({ kind: 'weekly report', what: 'report', engine: 'Claude', model: rep.model, text, onHide: () => { rep.flagged = true; U.render(); } });
+  };
   const FOOT = {
     local: 'The built-in coach isn\'t an AI model: it answers common questions from your data.',
     device: 'Runs on your phone and can be wrong.',
@@ -138,7 +212,7 @@
   };
   function chatBody(S) {
     const e = engineOf(S);
-    const ready = !(e === 'api' && !(AI() && AI().hasKey())) && !(e === 'device' && deviceGate());
+    const ready = !(e === 'api' && !(AI() && AI().hasKey() && S.ai.consentAt)) && !(e === 'device' && deviceGate());
     return `<div class="chat-engine">${U.seg('chatEngine', ENGINES, e, 'Who answers', ' data-on="setChatEngine" data-size="sm"')}</div>
       <div class="chat-log" id="chatLog">${logBody(S)}</div>
       <div class="chat-compose"${ready ? '' : ' hidden'}><textarea class="rf-input" id="askQ" rows="2" maxlength="600" placeholder="Ask a question" aria-label="Your question"></textarea>
@@ -173,9 +247,11 @@
       setTimeout(() => { const b = chat && chat.el.querySelector('[data-act="askSend"]'); if (b && !chat.el.querySelector('.chat-compose').hidden) U.act.askSend(b); }, 380);
     }
   };
-  U.on.setChatEngine = (el, ev, v) => {
+  U.on.setChatEngine = async (el, ev, v) => {
     const S = U.S;
     if (stopper) { stopper.abort(); stopper = null; }
+    // Claude with a key: only after the person has allowed it to get their data.
+    if (v === 'api' && AI() && AI().hasKey() && !S.ai.consentAt && !(await U.claudeConsent())) { refreshChat(); return; }
     S.ai.mode = v === 'api' || v === 'device' ? v : 'local';
     S.ai.enabled = S.ai.mode === 'api';
     U.save();
@@ -183,6 +259,7 @@
     if (S.ai.mode === 'device' && U.checkDevice) U.checkDevice().then(() => { refreshChat(); if (!deviceGate() && GH.deviceCoach) GH.deviceCoach.prime(U.S, U.today()); });
     if (U.route.view === 'settings' || U.route.tab === 'health') setTimeout(() => U.render(), 60);
   };
+  U.act.chatConsent = async () => { if (await U.claudeConsent()) { U.S.ai.enabled = true; U.save(true); } refreshChat(); };
   U.act.askPreset = (el) => U.act.askCoach(el, null, el.dataset.arg);
   U.act.askQuick = (el) => { const q = document.getElementById('askQ'); if (q) q.value = el.dataset.arg; U.act.askSend(document.querySelector('.chat-sheet [data-act="askSend"]')); };
   U.act.askClear = () => {
@@ -253,6 +330,7 @@
         if (!res.text) out.textContent = res.aborted ? 'Stopped.' : 'No answer came back. Try asking another way.';
         else out.textContent = res.text;
         if (res.aborted && res.text) out.classList.add('is-stopped');
+        if (res.text && !res.safety) out.insertAdjacentHTML('beforeend', flagBtn((S.ai.deviceChat || []).length - 1));
         U.save(true);
       } catch (err) {
         out.classList.remove('is-typing');
@@ -271,6 +349,7 @@
     try {
       await AI().ask(S, U.today(), text, (delta, snapshot) => { out.classList.remove('is-typing'); out.textContent = snapshot; log.scrollTop = log.scrollHeight; });
       out.classList.remove('is-typing');
+      out.insertAdjacentHTML('beforeend', flagBtn((S.ai.chat || []).length - 1));
       U.save(true);
     } catch (err) {
       out.classList.remove('is-typing');
@@ -420,6 +499,7 @@
       detail: a.minutes ? `${a.minutes} min` : '',
     })).join('')}</ul>`;
   }
+  const TYPE_LABEL = { steps: 'steps', sleep: 'sleep', weight: 'weight', height: 'height', bodyFat: 'body fat', restingHr: 'resting heart rate', hrv: 'HRV', exercise: 'workouts', heartRate: 'heart rate', activeKcal: 'active calories', distance: 'distance', nutrition: 'food' };
   const HC_TEXT = {
     granted: 'Connected', partial: 'Partly connected: some data types are off', denied: 'Not connected',
     unsupported: 'Needs Android 14 or newer', unavailable: 'Not available on this phone right now',
@@ -431,7 +511,7 @@
     const text = !app ? 'Health Connect works in the Android app' : HC_TEXT[st] || st;
     const sync = U.syncState();
     const last = S.health.lastSync;
-    const errs = (S.health.errors || []).length ? `<p class="t-footnote rf-muted">Couldn't read: ${U.esc(S.health.errors.join(', '))}.</p>` : '';
+    const errs = (S.health.errors || []).length ? `<p class="t-footnote rf-muted">Couldn't read: ${U.esc(S.health.errors.map((k) => TYPE_LABEL[k] || k).join(', '))}. It'll try again on the next sync.</p>` : '';
     const failed = sync.error && !sync.busy ? `<div class="notice" data-tone="caution">${U.icon('alert')}<span>The last sync didn't finish${sync.error === 'timeout' ? ' (it took too long)' : ''}. Pull down or tap Sync now to try again.</span></div>` : '';
     const buttons = !app || st === 'unsupported' || st === 'unavailable' ? ''
       : on ? `<div class="btn-row"><button type="button" class="rf-btn" data-act="hcSync" data-sync-spin${sync.busy ? ' data-spinning' : ''}>${U.icon('refresh')}Sync now</button><button type="button" class="rf-btn" data-variant="plain" data-act="hcManage">Permissions</button></div>`
@@ -442,7 +522,7 @@
       <div class="row-between"><span class="t-headline">Health Connect</span>${U.badge(on ? 'On' : 'Off', on ? 'positive' : 'neutral')}</div>
       <p class="t-callout rf-muted">${U.esc(text)}${on ? ` · ${sync.busy ? 'syncing now' : `updated <span data-ago="${last || 0}">${U.esc(U.ago(last))}</span>`}` : ''}</p>
       <p class="t-footnote rf-muted">Reads sleep, steps, weight, height, body fat, heart rate, resting heart rate, HRV, active calories, distance and workouts${GH.food && GH.food.full(S) ? ', plus meals from other apps' : ''}. Syncs when you open the app and every 15 minutes while it's open. <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="openPrivacy">Privacy</button></p>
-      ${on && H().missingTypes && H().missingTypes(S).length ? `<div class="notice" data-tone="info">${U.icon('info')}<span>This version can also read heart rate, active calories and distance${GH.food && GH.food.full(S) ? ', and share meals' : ''}. <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="hcConnect">Allow</button></span></div>` : ''}
+      ${on && !S.health.askedNew && H().missingTypes && H().missingTypes(S).length ? `<div class="notice" data-tone="info">${U.icon('info')}<span>This version can also read heart rate, active calories and distance${GH.food && GH.food.full(S) ? ', and share meals' : ''}. <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="hcAllowNew">Allow</button><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="hcSkipNew">Not now</button></span></div>` : ''}
       ${failed}${errs}${buttons}${writes}</div>`;
   }
   U.act.hcSync = async () => {
@@ -463,6 +543,9 @@
     if (v) { const n = H().writeRecent ? H().writeRecent(S) : 0; if (n) U.toast(`Saving ${U.plural(n, 'workout')} to Health Connect`, 'positive'); }
   };
   U.act.hcManage = () => H().openSettings();
+  // Asked once on the Health tab; Settings keeps a row for it until everything's allowed.
+  U.act.hcAllowNew = async () => { U.S.health.askedNew = Date.now(); await U.act.hcConnect(); };
+  U.act.hcSkipNew = () => { U.S.health.askedNew = Date.now(); U.commit(); };
   U.act.hcConnect = async () => {
     const st = await H().request(U.S);
     U.S.health.status = st;

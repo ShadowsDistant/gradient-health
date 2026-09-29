@@ -95,8 +95,9 @@
 
   // The conversation for the model: rules and data first (the same every turn, so it stays cached),
   // then the last few turns, then the question.
-  function messages(S, day, question) {
-    const past = (S.ai.deviceChat || []).filter((m) => !m.safety).slice(-6);
+  function messages(S, day, question, keep) {
+    const n = keep == null ? 4 : keep; // the last two turns by default
+    const past = n > 0 ? (S.ai.deviceChat || []).filter((m) => !m.safety && !m.flagged).slice(-n) : [];
     return [{ role: 'system', content: `${RULES}\n\nTHEIR DATA\n${brief(S, day)}` }]
       .concat(past.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })))
       .concat([{ role: 'user', content: question }]);
@@ -135,10 +136,13 @@
     }
     if (opt.signal && opt.signal.aborted) return { text: '', aborted: true };
     if (opt.onStatus) opt.onStatus('thinking');
-    const raw = await llm.chat(messages(S, day, q), {
+    const run = (keep) => llm.chat(messages(S, day, q, keep), {
       onToken: opt.onToken, signal: opt.signal, maxTokens: 256, temperature: 0.6,
       onLoadProgress: (p) => { if (opt.onStatus && p && p.total) opt.onStatus('loading', p.loaded / p.total); },
     });
+    let raw;
+    // A long conversation that no longer fits the model's memory: answer this one on its own.
+    try { raw = await run(); } catch (e) { if (e && e.code === 'too-long') raw = await run(0); else throw e; }
     const aborted = !!(llm.stats && llm.stats.aborted);
     const text = String(raw || '').trim();
     if (text) record(S, q, text, false);

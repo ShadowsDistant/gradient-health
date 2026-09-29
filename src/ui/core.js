@@ -374,6 +374,8 @@
     if (!U.S || !U.S.profile.onboarded) { U.showOnboarding(); return; }
     onboardEl.hidden = true;
     U.refreshTabs();
+    // Food: the burn estimate learns from the logs once a day (cheap after the first call).
+    if (GH.food && GH.food.refreshBurn) safe(() => GH.food.refreshBurn(U.S, U.today()));
     const r = U.route;
     const key = r.view ? `${r.view}:${r.arg || ''}` : r.tab;
     const changed = key !== lastKey;

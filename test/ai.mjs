@@ -84,8 +84,15 @@ check('no dates, day numbers or month names', !/\d{4}-\d{2}-\d{2}/.test(sum) && 
 check('age as a range, not the exact age', /18-24/.test(sum) && !/\b19\b/.test(sum));
 check('the preview is exactly the system text', AI.preview(S, D0).includes(sum) && AI.preview(S, D0).includes(AI.SYSTEM));
 
-section('Weekly report');
+section('Consent');
 S.ai.enabled = true;
+let blocked = null;
+try { await AI.report(S, D0); } catch (err) { blocked = err; }
+check('nothing is sent before the person allows it', blocked && blocked.code === 'consent' && calls.length === 0, blocked && blocked.code);
+check('and no automatic report either', AI.needsReport(S, D0) === false);
+S.ai.consentAt = Date.now();
+
+section('Weekly report');
 const rep = await AI.report(S, D0);
 const models = calls.filter((c) => c.url.includes('/v1/models'));
 const msg = calls.filter((c) => c.url.includes('/v1/messages')).pop();

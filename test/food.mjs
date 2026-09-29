@@ -52,8 +52,8 @@ F.update(S, D0, e1.id, { kcal: 350 });
 check('editing an entry changes the totals', F.totals(S, D0).kcal === 798);
 F.remove(S, D0, e1.id);
 check('removing one too', F.totals(S, D0).kcal === 448 && S.food.removed.some((x) => x.id === e1.id));
-F.copyMeal(S, D0, D0 + 1, 'lunch', at(24 + 13));
-check('copying a meal to another day', F.totals(S, D0 + 1).kcal === 248);
+F.copyMeal(S, D0, D0 + 1, 'lunch', (meal) => at(24 + (meal === 'lunch' ? 13 : 8)));
+check('copying a meal to another day', F.totals(S, D0 + 1).kcal === 248 && F.entries(S, D0 + 1)[0].t === at(37));
 const saved = F.saveMeal(S, 'Lunch box', F.entries(S, D0));
 F.addSaved(S, D0 + 2, saved.id, 'dinner', at(48 + 19));
 check('saved meals add in one tap', F.totals(S, D0 + 2).kcal === 448 && F.byMeal(S, D0 + 2).dinner.length === 2);
@@ -80,6 +80,14 @@ check('toward what the logs say, but blended with the formula', est.kcal > Math.
 check('what it observed is close to 2,550', Math.abs(est.observed - 2550) < 150, est.observed);
 const again = F.learnBurn(S, D0 + 7);
 check('it never moves more than 150 kcal a week', Math.abs(again.kcal - est.kcal) <= 150, [est.kcal, again.kcal]);
+const sameWeek = [F.learnBurn(S, D0 + 8), F.learnBurn(S, D0 + 9), F.learnBurn(S, D0 + 10)];
+check('and only updates once a week, however often it\'s asked', sameWeek.every((x) => x.kcal === again.kcal && x.day === D0 + 7), sameWeek.map((x) => [x.day, x.kcal]));
+const R = person();
+for (let d = D0 - 21; d < D0; d++) {
+  F.add(R, d, { name: 'Day', src: 'quick', kcal: 2000, p: 150, c: 200, f: 67 }, d * B.DAY_MS + 12 * 3600000);
+  if ((d - D0) % 2 === 0) R.weights.push({ day: d, kg: 80 - ((d - (D0 - 21)) / 7) * 0.5, src: 'manual' });
+}
+check('the app learns it by itself once a day', F.refreshBurn(R, D0) && F.data(R).tdee && F.data(R).burnChecked === D0 && F.refreshBurn(R, D0) === F.data(R).tdee);
 const few = person();
 for (let d = D0 - 5; d < D0; d++) F.add(few, d, { name: 'x', src: 'quick', kcal: 2000 }, d * B.DAY_MS);
 check('not enough data: nothing learned', F.learnBurn(few, D0) == null);

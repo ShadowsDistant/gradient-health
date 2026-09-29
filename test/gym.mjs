@@ -83,6 +83,10 @@ for (const d of workoutDays(S, D0, 8)) train(S, d, null, '12');
 check('a home plan never starts a gym pool', !Object.keys(S.prog).some((f) => (M.LADDERS[f] || {}).gym), Object.keys(S.prog).filter((f) => (M.LADDERS[f] || {}).gym));
 check('and never offers one as a swap', (() => { const d = workoutDays(S, D0 + 28, 1)[0]; const ss = B.buildSession(S, d, B.todayPlan(S, d).tpl, {}); return ss.items.every((it) => B.swapOptions(S, it, d).every((o) => !Object.values(M.LADDERS).some((l) => l.gym && l.rungs.includes(o.id) && !M.MOVES[o.id].family))); })());
 
+section('Dumbbell racks and units');
+check('a rack up to 15 kg includes 15', B.dbRack(15, 'kg').slice(-1)[0] === 15 && B.dbRack(50, 'kg').slice(-1)[0] === 50 && B.dbRack(75, 'lb').slice(-1)[0] === 75);
+check('switching units keeps the rack the same size', B.convertDbMax(100, 'kg') === 50 && B.convertDbMax(25, 'lb') === 50 && B.convertDbMax(0, 'kg') === 0);
+
 section('Equipment changes');
 S = person({ where: 'gym', gym: B.gymPreset('full', 'kg') });
 train(S, workoutDays(S, D0, 1)[0], null, '12');

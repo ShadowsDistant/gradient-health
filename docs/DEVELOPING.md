@@ -99,11 +99,15 @@ readable when the app's theme differs from the phone's.
 
 **Haptics.** `AndroidBridge.haptic(kind)` plays `tap`, `select`, `tick`, `toggleOn`, `toggleOff`,
 `success`, `error`, `heavy`, `go`, `done` or `celebrate` (see `Haptics.java`), using the phone's own
-tuned effects where it has them and following the system touch-feedback setting.
+tuned effects where it has them and following the system touch-feedback setting. Workout timer
+alerts (`vibrate`, `vibratePattern`) are alarm-class vibrations, so they still buzz when touch
+feedback is off.
 
 **Health Connect.** The platform API needs Android 14 or newer. Gradient Health reads steps, sleep, weight,
-height, body fat, resting heart rate, HRV and exercise, and can write exercise sessions for the
-workouts finished in the app (keyed by day, so a re-save updates instead of duplicating). It syncs
+height, body fat, resting heart rate, HRV and exercise, and since 1.2 heart rate (30-minute averages,
+for an estimated resting heart rate), active calories, distance and, with calorie tracking on,
+nutrition. It can write exercise sessions for the workouts finished in the app (keyed by day, so a
+re-save updates instead of duplicating) and nutrition records for logged meals. It syncs
 when the app opens or comes back (at most once a minute), every 15 minutes while open, after a
 workout and on pull-to-refresh. The first read covers 90 days; later reads cover the gap since the
 last one plus two days.
@@ -170,19 +174,34 @@ from logged intake and the weight trend (a regression on raw weigh-ins, blended 
 The app targets API 36 and handles edge-to-edge and predictive back. Before a Play release:
 
 1. **App bundle.** Play wants an `.aab`. Build one with `aapt2 link --proto-format` and
-   [bundletool](https://github.com/google/bundletool) `build-bundle`, then sign it with a private
-   upload key (not the committed keystore) and enroll in Play App Signing.
+   [bundletool](https://github.com/google/bundletool) `build-bundle`, then sign it with `jarsigner`
+   (apksigner can't sign bundles) using a private upload key, not the committed keystore, and enroll
+   in Play App Signing.
 2. **Health Connect declaration.** In Play Console, fill in the health permissions declaration for
    each permission, with the reasons the privacy page gives: reads of steps, sleep, weight, height,
    body fat, heart rate, resting heart rate, HRV, exercise, active calories burned, distance and
-   nutrition, and writes of exercise and nutrition.
+   nutrition, and writes of exercise and nutrition. Pick the matching health features (activity and
+   fitness, nutrition and weight management, sleep) and describe the optional Claude transfer: it
+   only happens after the person allows it on a screen that lists what's sent (`U.claudeConsent`).
 3. **Other permissions.** `CAMERA` (barcode scanning only, requested when Scan is tapped; the camera
    feature is declared not required), `INTERNET` (the optional Claude coach, Open Food Facts and the
    on-device model download) and `ACCESS_NETWORK_STATE` (so a model download can wait for Wi-Fi).
 4. **Privacy policy.** Play needs a public URL. [docs/PRIVACY.md](PRIVACY.md) has the text; host it
    somewhere public (GitHub Pages works) and link it in the listing.
-5. **Data safety form.** Health, fitness and food data stays on the device and is never shared. The
-   optional features send only what they need, only when the person uses them: a summary to Claude,
-   the search words or barcode to Open Food Facts, and a request for the model file to Hugging Face.
-6. **Store listing.** The README and `docs/screenshots/` are a starting point for the description
+5. **Data safety form.** Declare what the optional features send, as optional and for app
+   functionality, encrypted in transit, with in-app deletion (Reset everything):
+   - shared with Anthropic when Claude is on: health info and fitness info (averages and trends),
+     personal info (an age range, and sex if given) and app activity (the questions asked);
+   - shared with Open Food Facts when online food search is on: the search words and barcodes;
+   - nothing else leaves the phone. The on-device model is a download from Hugging Face.
+6. **AI-generated content.** Every AI answer (on-device or Claude), Claude's weekly report and its
+   suggestions have a Report action that hides the item and keeps a local record. Sending a report to
+   the developer opens a prefilled GitHub issue. If Play asks for reports to reach you without leaving
+   the app, point `REPORT_URL` in `src/ui/healthtab.js` at an endpoint you run instead.
+7. **App content forms.** Target audience 13 and over, no ads, a content rating questionnaire, and App
+   access notes: everything works without an account; Claude needs the person's own Anthropic API key
+   and the on-device model is an optional 0.5 to 1.1 GB download.
+8. **Store listing.** The README and `docs/screenshots/` are a starting point for the description
    and phone screenshots.
+9. **Large screens.** From target SDK 36, Android ignores the portrait lock on screens 600 dp and wider,
+   so tablets and foldables get landscape too. `node test/sweep.mjs` includes a landscape tablet size.

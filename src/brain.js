@@ -240,7 +240,7 @@
     S.place[day] = place;
     S.lastPlace = place;
   }
-  // A gym's dumbbell rack, lightest to heaviest, in the person's units.
+  // A gym's dumbbell rack, lightest to heaviest, in the person's units (always up to the heaviest).
   function dbRack(max, units) {
     const out = [];
     if (!(max > 0)) return out;
@@ -248,7 +248,16 @@
       for (let w = 2; w <= Math.min(max, 20); w += 2) out.push(w);
       for (let w = 22.5; w <= max; w += 2.5) out.push(w);
     } else for (let w = 5; w <= max; w += 5) out.push(w);
+    if (out[out.length - 1] !== max) out.push(max);
     return out;
+  }
+  // The "dumbbells up to" choices, and the nearest one after switching units (dbMax is stored in
+  // the person's units).
+  const DB_MAX_OPTIONS = { lb: [0, 30, 50, 75, 100, 120], kg: [0, 15, 25, 35, 50, 60] };
+  function convertDbMax(value, to) {
+    if (!(value > 0)) return 0;
+    const v = to === 'kg' ? value / LB_PER_KG : value * LB_PER_KG;
+    return DB_MAX_OPTIONS[to].filter((x) => x > 0).reduce((a, c) => (Math.abs(c - v) < Math.abs(a - v) ? c : a));
   }
   // Everything available at a place, in the shape moves.js checks. At a gym: its machines and
   // bars, a full dumbbell rack, benches that double as a chair, a wall and a towel.
@@ -1898,6 +1907,6 @@
     setRir, amendLast, swapItem, swapOptions, finishWorkout, progress, levelUp, nextWeight, weeklyVolumeUpdate, recordTest, testDue,
     logLight, autoWalk, addWeight, weightStats, proteinGoal, proteinToday, addProtein, undoProtein, weeklySets,
     updateSettings, scheduleSettings, settingsAt, moveSession, setEquipment, reprogram, ladderLevel, mobilityFlow, loadInfo, isDone, relink, median,
-    defaultGym, GYM_PRESETS, rangeFor, stepsGoal, outcomeOf, weekdaysFor, gymPreset, placeOf, setPlace, eqAt, eqFor, dbRack, snapLoad, suggestLoad, fmtLoad, loadChoices, setItemLoad, ensureProg, isGymFam, toUnit, fromUnit,
+    defaultGym, GYM_PRESETS, DB_MAX_OPTIONS, convertDbMax, rangeFor, stepsGoal, outcomeOf, weekdaysFor, gymPreset, placeOf, setPlace, eqAt, eqFor, dbRack, snapLoad, suggestLoad, fmtLoad, loadChoices, setItemLoad, ensureProg, isGymFam, toUnit, fromUnit,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

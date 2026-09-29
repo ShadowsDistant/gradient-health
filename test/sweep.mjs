@@ -14,11 +14,14 @@ let chromium;
 try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
 
 const quick = process.argv.includes('--quick');
+const tablet = process.argv.includes('--tablet');
 const shots = !process.argv.includes('--no-shots');
 const only = ((process.argv.find((a) => a.startsWith('--only=')) || '').split('=')[1] || '').split(',').filter(Boolean);
-const COMBOS = quick
+// [width, theme, text zoom, height]: phones, a small tablet, and a landscape tablet (from target
+// SDK 36 Android ignores the portrait lock on screens 600 dp and wider).
+const COMBOS = tablet ? [[1280, 'light', 1, 800]] : quick
   ? [[360, 'light', 1.3], [390, 'dark', 1]]
-  : [360, 390, 412, 600].flatMap((w) => ['light', 'dark'].flatMap((t) => [1, 1.3].map((z) => [w, t, z])));
+  : [360, 390, 412, 600].flatMap((w) => ['light', 'dark'].flatMap((t) => [1, 1.3].map((z) => [w, t, z]))).concat([[1280, 'light', 1, 800], [1024, 'dark', 1.3, 768]]);
 const OUT = join(root, 'build/sweep');
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
@@ -83,10 +86,10 @@ const server = await serveDist();
 const browser = await chromium.launch();
 const errors = [];
 let n = 0;
-for (const [width, theme, zoom] of COMBOS) {
-  const tag = `${width}-${theme}-${zoom === 1 ? '100' : '130'}`;
+for (const [width, theme, zoom, h] of COMBOS) {
+  const tag = `${width}${h ? `x${h}` : ''}-${theme}-${zoom === 1 ? '100' : '130'}`;
   section(tag);
-  const ctx = await browser.newContext({ viewport: { width, height: width >= 600 ? 960 : 844 }, deviceScaleFactor: 2, isMobile: width < 600, hasTouch: true, colorScheme: theme });
+  const ctx = await browser.newContext({ viewport: { width, height: h || (width >= 600 ? 960 : 844) }, deviceScaleFactor: h ? 1 : 2, isMobile: width < 600, hasTouch: true, colorScheme: theme });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`${tag}: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(`${tag}: ${m.text()}`); });

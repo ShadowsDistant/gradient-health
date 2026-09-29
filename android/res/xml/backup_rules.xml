@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android 11 and older: back up the app's data except the AI coach key. -->
+<!-- Android 11 and older. Only the app's saved state and settings, never the AI coach key. From
+     Android 9 they're only backed up when the backup is encrypted with the screen lock
+     (requireFlags); Android 8 has no such option. -->
 <full-backup-content>
+    <include domain="file" path="." requireFlags="clientSideEncryption" />
+    <include domain="sharedpref" path="." requireFlags="clientSideEncryption" />
     <exclude domain="sharedpref" path="secrets.xml" />
 </full-backup-content>

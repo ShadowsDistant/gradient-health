@@ -111,8 +111,7 @@ public final class MainActivity extends Activity {
         bridge = new Bridge(this);
         String url = APP_URL;
         if (isPrivacyIntent(getIntent())) {
-            pendingRoute = "privacy";
-            url = APP_URL + "#privacy";
+            url = APP_URL + "#privacy"; // the page opens it as it starts (only once)
         }
         createWebView(url);
     }

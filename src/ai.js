@@ -58,8 +58,11 @@ const MESSAGES = {
   cut: 'The answer was cut short. Try again.',
   nomodel: 'Couldn\'t find a model for this key. Check the key in the Claude Console.',
   aborted: 'Stopped.',
+  consent: 'Claude needs your OK before it gets any of your data. Allow it in Settings, under Coach.',
   other: 'Something went wrong reaching the coach. Try again.',
 };
+// Nothing goes to Anthropic until the person has seen what gets sent and allowed it.
+function needConsent(S) { if (!S || !S.ai || !S.ai.consentAt) throw coachError('consent'); }
 function coachError(code, detail) {
   const e = new Error(detail || MESSAGES[code] || MESSAGES.other);
   e.code = code;
@@ -121,6 +124,9 @@ const r0 = (x) => (x == null ? '–' : String(Math.round(x)));
 const r1 = (x) => (x == null ? '–' : (Math.round(x * 10) / 10).toFixed(1));
 const GOAL_NAMES = { abs: 'visible abs', arms: 'bigger arms', chest: 'bigger chest', legs: 'legs and glutes', back: 'back and posture', fat: 'lose fat', strength: 'overall strength', endurance: 'endurance', mobility: 'mobility', consistency: 'consistency' };
 const EXP_NAMES = { never: 'never trained', onoff: 'on and off', lt1: 'under 1 year', '1to3': '1-3 years', '3plus': '3+ years' };
+
+// Calendar dates that slip in through insight text ("Since Aug 26") become relative.
+const noDates = (t) => String(t).replace(/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), (?=(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d)/g, '').replace(/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}(?:, \d{4})?\b/g, 'an earlier date');
 
 // Everything the coach sees, as plain text: no names, no dates, no ids. Relative weeks only.
 function summary(S, day) {
@@ -229,7 +235,7 @@ function summary(S, day) {
     lines.push('ON-DEVICE INSIGHTS');
     for (const x of top) lines.push(`- ${x.title}: ${x.body} (${x.evidence})`);
   }
-  return lines.join('\n');
+  return noDates(lines.join('\n'));
 }
 
 const SYSTEM = [
@@ -290,6 +296,7 @@ function stop() { if (busy) { try { busy.abort(); } catch (e) { /* ignore */ } }
 
 // Weekly report (structured). Saved in S.ai.reports; resolves with the report object.
 async function report(S, day) {
+  needConsent(S);
   const c = client();
   try {
     const modelId = await model(S, c, day);
@@ -311,12 +318,13 @@ async function report(S, day) {
   } finally { busy = null; }
 }
 function reportFor(S, day) { const ws = B().weekStart(day); return (S.ai.reports || []).find((r) => r.week === ws) || null; }
-function needsReport(S, day) { return !!(S.ai.enabled && hasKey() && !reportFor(S, day) && S.log.some((l) => l.type === 'workout')); }
+function needsReport(S, day) { return !!(S.ai.enabled && S.ai.consentAt && hasKey() && !reportFor(S, day) && S.log.some((l) => l.type === 'workout')); }
 
 // Ask the coach: streamed. onText(delta, snapshot) as it arrives. Keeps the last few turns.
 async function ask(S, day, question, onText) {
   const q = String(question || '').trim().slice(0, 1000);
   if (!q) throw coachError('other', 'Type a question first.');
+  needConsent(S);
   const c = client();
   const history = (S.ai.chat || []).slice(-6).map((m) => ({ role: m.role, content: m.text }));
   try {
@@ -379,6 +387,7 @@ function suggestAsk(S) {
   ].join('\n');
 }
 async function suggest(S, day) {
+  needConsent(S);
   const c = client();
   try {
     const modelId = await model(S, c, day);

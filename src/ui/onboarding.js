@@ -322,7 +322,7 @@
 
   VIEW.about = () => {
     const lb = Q.units !== 'kg';
-    return lead('Used for your protein goal, weight trend and a few age tweaks. Nothing here leaves the phone.')
+    return lead('Used for your protein goal, weight trend and a few age tweaks. It stays on this phone unless you turn on Claude later, which gets an age range instead of your age.')
       + group('Units', `<div class="ob-pad">${U.seg('units', [['lb', 'lb, ft'], ['kg', 'kg, cm']], Q.units, 'Units', ` ${bind('units', '', true)}`)}</div>`)
       + `<div class="ob-fields">
           ${field('Age', numInput('age', Q.age, 'e.g. 25', 'min="13" max="100" inputmode="numeric"'))}
@@ -344,6 +344,7 @@
         Q.equipment[k] = [...new Set((Q.equipment[k] || []).map((x) => list.reduce((a, c) => (Math.abs(c - x * f) < Math.abs(a - x * f) ? c : a), list[0])))];
       }
       if (Q.equipment.ballLb) Q.equipment.ballLb = Math.round(Q.equipment.ballLb * f);
+      if (Q.gym) Q.gym.dbMax = B().convertDbMax(Q.gym.dbMax, toKg ? 'kg' : 'lb');
     }
     unitsHandler(el, ev, v);
   };
@@ -388,7 +389,7 @@
     ['Cables and machines', [['cable', 'Cable station'], ['pulldown', 'Lat pulldown'], ['legPress', 'Leg press'], ['legCurl', 'Leg curl'], ['legExt', 'Leg extension'], ['chestPress', 'Chest press'], ['shoulderPress', 'Shoulder press'], ['pecDeck', 'Pec deck'], ['smith', 'Smith machine']]],
     ['Cardio', [['rower', 'Rowing machine'], ['bike', 'Exercise bike'], ['treadmill', 'Treadmill']]],
   ];
-  const DB_MAX = { lb: [0, 30, 50, 75, 100, 120], kg: [0, 15, 25, 35, 50, 60] };
+  const DB_MAX = B().DB_MAX_OPTIONS;
   function gymGroups() {
     const u = Q.units !== 'kg' ? 'lb' : 'kg';
     const g = Q.gym;
@@ -581,6 +582,8 @@
     if (tmpS) {
       S.health = Object.assign(S.health, tmpS.health);
       S.weights = tmpS.weights.concat(S.weights).sort((a, b) => a.day - b.day);
+      // Food other apps logged, read along with the rest during set-up.
+      if (tmpS.food && tmpS.food.other && GH.food) Object.assign(GH.food.data(S).other, tmpS.food.other);
     }
     S.health.status = H().status();
     GH.store.save(S);

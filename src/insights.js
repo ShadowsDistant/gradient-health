@@ -192,7 +192,7 @@
       if (!info) continue;
       if (info.planned === 'workout' || info.missed) { planned++; if (info.done) doneN++; }
     }
-    if (planned >= 4) {
+    if (planned >= 4 && S.profile.workouts !== false) {
       const rate = doneN / planned;
       if (rate >= 0.9) out.push({ id: 'consistency:workouts:high', cat: 'consistency', metric: 'workouts', icon: 'calendar', tone: 'good', n: planned, full: 12, effect: 1.1,
         title: `${doneN} of ${planned} planned workouts done`, body: 'That consistency is what makes the rest work.', evidence: 'the last 4 weeks' });
@@ -308,7 +308,8 @@
       title: `${plural(ups.length, 'level-up')} in 4 weeks`, body: ups.slice(-3).map((c) => c.text).join('. ') + '.', evidence: 'your workout log' });
     // Weekly sets against target, last full week.
     const lastWeek = B().weekStart(day) - 7;
-    if (lastWeek >= B().weekStart(S.profile.startDay)) {
+    const workouts = S.profile.workouts !== false;
+    if (workouts && lastWeek >= B().weekStart(S.profile.startDay)) {
       const ws = B().weeklySets(S, lastWeek + 6);
       const prog = B().programFor(S.profile);
       const short = Object.entries(ws).filter(([grp, v]) => prog.tiers[grp] <= 2 && v.target >= 4 && v.done < v.target * 0.7);
@@ -320,6 +321,7 @@
       }
     }
     // Streaks.
+    if (!workouts) return;
     const cal = B().calendar(S, day);
     const cur = cal.streak.current;
     if (cur >= 7 && cur % 7 === 0) out.push({ id: `goal:streak:${cur}`, cat: 'goal', metric: 'streak', icon: 'star', tone: 'good', n: cur, full: 7, effect: 1.2, title: `${cur}-day streak`, body: 'Light days count, so keep them light.', evidence: 'your calendar' });
@@ -328,6 +330,7 @@
 
   /* ---------------------------------------------------------------- 6. recovery */
   function recovery(S, day, out) {
+    if (S.profile.workouts === false) return;
     const r = B().readiness(S, day);
     if (!r.minus && !r.legsMinus) return;
     out.push({ id: `recovery:${day}`, cat: 'recovery', metric: 'readiness', icon: 'bolt', tone: 'watch', n: 21, effect: r.minus && r.legsMinus ? 1.4 : 1,

@@ -8,6 +8,7 @@ import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync, statSync 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { createHash } from 'node:crypto';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(root, p), 'utf8');
@@ -127,6 +128,17 @@ async function buildLazy() {
   return sizes;
 }
 
+// The page's content security policy allows exactly the inline scripts the build put in (by their
+// SHA-256), not 'unsafe-inline': anything injected into the page later can't run.
+function allowOnlyOurScripts(html) {
+  const hashes = [];
+  for (const m of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) hashes.push(`'sha256-${createHash('sha256').update(m[1], 'utf8').digest('base64')}'`);
+  if (/<script\s[^>]*>(?!<\/script>)/.test(html)) throw new Error('build: inline scripts must be plain <script> tags so they can be hashed');
+  const csp = "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'";
+  if (!html.includes(csp)) throw new Error('build: the CSP in src/shell.html changed; update allowOnlyOurScripts');
+  return html.replace(csp, `script-src 'self' 'wasm-unsafe-eval' ${hashes.join(' ')}`);
+}
+
 async function bundleAi() {
   const result = await build({
     entryPoints: [join(root, 'src/ai.js')],
@@ -153,7 +165,7 @@ async function main() {
     if (p === 'src/ui/core.js') scripts.push(`<script>/* ai (bundled) */\n${safeJs(aiJs)}</script>`);
     scripts.push(`<script>/* ${p} */\n${safeJs(read(p))}</script>`);
   }
-  const html = shell
+  let html = shell
     .replace('<!--@TOKENS-->', () => `<style>${safeCss(tokensCss(tokens))}</style>`)
     .replace('<!--@REFRACT_CSS-->', () => `<style>${safeCss(read('vendor/refract/bundle.css'))}</style>`)
     .replace('<!--@APP_CSS-->', () => `<style>${safeCss(read('src/styles.css'))}</style>`)
@@ -162,6 +174,7 @@ async function main() {
   for (const marker of ['<!--@TOKENS-->', '<!--@REFRACT_CSS-->', '<!--@APP_CSS-->', '<!--@REFRACT_JS-->', '<!--@APP_JS-->']) {
     if (html.includes(marker)) throw new Error(`build: marker ${marker} was not replaced`);
   }
+  html = allowOnlyOurScripts(html);
   mkdirSync(join(root, 'dist'), { recursive: true });
   writeFileSync(join(root, 'dist/gradient-health.html'), html);
   console.log(`dist/gradient-health.html  ${(html.length / 1024).toFixed(0)} KB  (ai bundle ${(aiJs.length / 1024).toFixed(0)} KB)`);

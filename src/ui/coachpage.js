@@ -48,6 +48,7 @@
       <div class="btn-row">
         ${a ? `<button type="button" class="rf-btn" data-variant="filled" data-size="sm" data-act="coachApply" data-arg="${U.esc(x.id)}">${U.esc(a.label || 'Apply')}</button>` : ''}
         <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="coachDismiss" data-arg="${U.esc(x.id)}">${a ? 'Not now' : 'Got it'}</button>
+        ${x.fromClaude ? `<button type="button" class="rf-btn ai-flag" data-variant="plain" data-size="sm" data-act="coachFlag" data-arg="${U.esc(x.id)}">${U.icon('flag', 'sm')}Report</button>` : ''}
       </div>
     </div>`;
   }
@@ -133,8 +134,15 @@
     U.toast(line.text, 'positive');
   };
   U.act.coachDismiss = (el) => { C().dismiss(U.S, el.dataset.arg, U.today()); U.commit(); U.haptic('tap'); };
+  // A suggestion Claude wrote can be reported; it's dismissed right away.
+  U.act.coachFlag = (el) => {
+    const x = findSug(el.dataset.arg);
+    if (!x || !U.flagSheet) return;
+    U.flagSheet({ kind: 'suggestion', what: 'suggestion', engine: 'Claude', model: U.S.ai.model && U.S.ai.model.name, text: `${x.title}\n${x.body}`, onHide: () => { C().dismiss(U.S, x.id, U.today()); U.render(); } });
+  };
   U.act.coachAskClaude = async (btn) => {
     if (!GH.ai || !GH.ai.suggest) return;
+    if (!U.S.ai.consentAt && !(await U.claudeConsent())) return;
     btn.setAttribute('aria-busy', 'true');
     try {
       const n = await GH.ai.suggest(U.S, U.today());

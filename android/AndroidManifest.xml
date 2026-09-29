@@ -59,6 +59,9 @@
         android:enableOnBackInvokedCallback="true"
         android:theme="@style/AppTheme">
 
+        <!-- No usage or crash metrics from the WebView to Google: the app has no analytics. -->
+        <meta-data android:name="android.webkit.WebView.MetricsOptOut" android:value="true" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

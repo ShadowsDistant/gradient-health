@@ -14,6 +14,7 @@
   const bridge = () => G.AndroidBridge || null;
   const KEEP_DAYS = 400;
   const SCALARS = ['steps', 'sleepMin', 'bed', 'wake', 'stages', 'rhr', 'hrv', 'weightKg', 'bodyFat', 'rhrEst', 'activeKcal', 'distanceM'];
+  const DAILY = ['steps', 'activeKcal', 'distanceM']; // whole calendar days from Health Connect
 
   /* ---------------------------------------------------------------- Health Connect */
   function status() {
@@ -77,7 +78,10 @@
     if (!payload || !payload.ok) return { ok: false, status: st, error: payload && payload.error };
     const res = ingest(S, payload, now);
     S.health.lastSync = now;
-    S.health.errors = payload.errors && Object.keys(payload.errors).length ? Object.keys(payload.errors) : [];
+    // Real read failures only: types that aren't allowed show up as "partly connected" and the
+    // Allow prompt instead (and nutrition isn't asked for unless calorie tracking is on).
+    const errs = payload.errors || {};
+    S.health.errors = Object.keys(errs).filter((k) => errs[k] !== 'not granted');
     return Object.assign({ ok: true, status: st }, res);
   }
 
@@ -137,12 +141,19 @@
     // value (Samsung Health, Garmin): the lowest half hour of each local day, which is deep sleep
     // for people who wear the watch at night. A low in the daytime means the watch was off overnight,
     // so it isn't a resting value and is skipped.
+    // The read starts partway through its first calendar day, so that day's low is only the low of
+    // the part that was read: keep the lower of it and what earlier reads found.
+    const calFirst = fromMs != null ? b.dayOf(fromMs, 0) : null;
     for (const x of p.heartRate || []) {
       const t = ms(x.time);
       if (t == null || !(x.bpm >= 25 && x.bpm <= 150)) continue;
       const hour = new Date(t).getHours();
       if (hour >= 10 && hour < 21) continue;
-      day(b.dayOf(t, 0)).rhrEst = Math.round(x.bpm);
+      const d = b.dayOf(t, 0);
+      let v = Math.round(x.bpm);
+      const before = calFirst != null && d <= calFirst && h.hc[d] ? h.hc[d].rhrEst : null;
+      if (before != null && before < v) v = before;
+      day(d).rhrEst = v;
     }
     // Daily totals from Health Connect, by local calendar day.
     for (const x of p.activeKcal || []) if (x && x.date && x.kcal > 0 && x.kcal < 10000) day(b.dayFromStr(x.date)).activeKcal = Math.round(x.kcal);
@@ -181,9 +192,17 @@
     // start time weren't part of this read.
     const touched = new Set(Object.keys(fresh).map(Number));
     if (first != null) for (let d = first; d <= last; d++) touched.add(d);
+    // Daily totals (steps, active calories, distance) come as whole calendar days, starting a day
+    // later than the records; a day the records cover but the totals don't keeps its old totals
+    // (a sync between midnight and 4 am would otherwise wipe that day's steps).
+    const span = fromMs != null ? Math.round((toMs - fromMs) / 86400000) : 0;
+    const dailyFirst = span > 0 ? b.dayOf(toMs, 0) - (span - 1) : null;
     let newest = null;
     for (const d of touched) {
       const partial = first != null && d <= first;
+      if (!partial && dailyFirst != null && d < dailyFirst && h.hc[d]) {
+        for (const k of DAILY) if (h.hc[d][k] != null && !(fresh[d] && fresh[d][k] != null)) day(d)[k] = h.hc[d][k];
+      }
       if (partial) {
         if (fresh[d]) {
           const old = h.hc[d] || {};
@@ -383,7 +402,9 @@
         else GH.food.markRemoved(S, entry);
       }
     }
-    for (const id of (res && res.ids) || []) delete food.sent[id];
+    // Entries Health Connect can't take (bad values) aren't sent again and again.
+    if (S && GH.food && res && kind === 'write') for (const id of res.failed || []) GH.food.markWritten(S, String(id).slice(FOOD_PREFIX.length), true, food.sent[id]);
+    for (const id of ((res && res.ids) || []).concat((res && res.failed) || [])) delete food.sent[id];
     if (S && res && !res.ok) S.food.hcError = String(res.error || 'failed').slice(0, 120);
     else if (S && S.food) delete S.food.hcError;
     food.pending--;
@@ -419,7 +440,9 @@
   }
 
   // Data types added after 1.1: people who connected earlier are asked once to allow them.
-  const NEW_TYPES = ['heartRate', 'activeKcal', 'distance', 'nutrition'];
+  // Nutrition only counts with calorie tracking on: it's only asked for then.
+  const NEW_TYPES = ['heartRate', 'activeKcal', 'distance'];
+  const FOOD_TYPES = ['nutrition', 'writeNutrition'];
   function granted() {
     const b = bridge();
     if (!b || !b.hcGranted) return null;
@@ -428,8 +451,7 @@
   function missingTypes(S) {
     const g = granted();
     if (!g || !connected(status())) return [];
-    const want = NEW_TYPES.slice();
-    if (GH.food && GH.food.full(S)) want.push('writeNutrition');
+    const want = NEW_TYPES.concat(GH.food && GH.food.full(S) ? FOOD_TYPES : []);
     return want.filter((t) => !g.includes(t));
   }
 

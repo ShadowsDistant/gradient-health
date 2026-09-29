@@ -92,8 +92,9 @@
     const nav = G.navigator;
     if (!nav || !nav.mediaDevices || !nav.mediaDevices.getUserMedia) { say('The camera isn\'t available here. Type the number instead.'); showType(); return; }
     const reader = GH.lazy('barcode').then((m) => m.ready.then(() => m.detector()));
+    let stream;
     try {
-      a.stream = await nav.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+      stream = await nav.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
     } catch (e) {
       if (a.stopped) return;
       const denied = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
@@ -101,7 +102,9 @@
       showType();
       return;
     }
-    if (a.stopped) { stop(); return; }
+    // Closed while the camera was starting: turn it straight off again.
+    if (a.stopped) { for (const t of stream.getTracks()) { try { t.stop(); } catch (e) { /* ignore */ } } return; }
+    a.stream = stream;
     const video = a.sheet.el.querySelector('video');
     video.srcObject = a.stream;
     try { await video.play(); } catch (e) { /* autoplay with muted is allowed; keep going */ }

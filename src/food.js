@@ -170,10 +170,10 @@
     for (const e of entries(S, day)) (out[e.meal] || out.snack).push(e);
     return out;
   }
-  // Copies a meal (or the whole day) from another day.
+  // Copies a meal (or the whole day) from another day. now: a time, or a function of the meal.
   function copyMeal(S, fromDay, toDay, meal, now) {
     const src = entries(S, fromDay).filter((e) => !meal || e.meal === meal);
-    return src.map((e) => add(S, toDay, Object.assign({}, e, { meal: e.meal }), now));
+    return src.map((e) => add(S, toDay, Object.assign({}, e, { meal: e.meal }), typeof now === 'function' ? now(e.meal) : now));
   }
   // Saved meals: a named group of entries you can add in one tap.
   function saveMeal(S, name, list) {
@@ -248,11 +248,21 @@
     let est = (1 - weight) * formula + weight * observed;
     const prev = f.tdee;
     if (prev && prev.kcal) {
-      const weeks = Math.max(1, (day - prev.day) / 7);
+      // Once a week at most, and never more than 150 kcal for each week since the last update.
+      if (day - prev.day < 7) return prev;
+      const weeks = (day - prev.day) / 7;
       est = Math.max(prev.kcal - 150 * weeks, Math.min(prev.kcal + 150 * weeks, est));
     }
     f.tdee = { kcal: Math.round(est), day, formula: Math.round(formula), observed: Math.round(observed), days: logged.length, w: Math.round(weight * 100) / 100 };
     return f.tdee;
+  }
+  // Checks for a new burn estimate once per app day (the app calls it as it draws).
+  function refreshBurn(S, day) {
+    if (!full(S)) return null;
+    const f = data(S);
+    if (f.burnChecked === day) return f.tdee || null;
+    f.burnChecked = day;
+    return learnBurn(S, day);
   }
 
   /* ---------------------------------------------------------------- coach hooks */
@@ -337,7 +347,7 @@
 
   GH.food = {
     MEALS, prefs, data, mode, full, setMode, ree, activityFactor, goalDelta, burn, targets, scale, add, update, remove, entries, totals, byMeal,
-    copyMeal, saveMeal, addSaved, addCustom, toggleFav, smoothWeights, slope, learnBurn, holdsVolume, watchItem, suggestions, targetLine,
+    copyMeal, saveMeal, addSaved, addCustom, toggleFav, smoothWeights, slope, learnBurn, refreshBurn, holdsVolume, watchItem, suggestions, targetLine,
     proteinOn, pendingWrites, markWritten, markRemoved, ingestOther, mealFor, KCAL_PER_KG,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

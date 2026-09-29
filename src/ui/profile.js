@@ -72,6 +72,22 @@
   function tile(label, value, sub) {
     return `<div class="stat"><span class="t-footnote rf-muted">${U.esc(label)}</span><span class="t-title-2">${value}</span>${sub ? `<span class="t-caption rf-muted">${U.esc(sub)}</span>` : ''}</div>`;
   }
+  // Profile without workouts: what's been tracked instead.
+  function healthTiles(S, day) {
+    const H = GH.health, F = GH.food;
+    let foodDays = 0;
+    if (F && F.mode(S) === 'full') for (let d = day - 27; d <= day; d++) if (F.totals(S, d).n) foodDays++;
+    const weighIns = (S.weights || []).filter((w) => w.src !== 'profile').length;
+    const sleep = H.stats(S, 'sleepMin', day - 27, day);
+    const steps = H.stats(S, 'steps', day - 27, day);
+    return `<div class="stat-grid" data-key="stats">
+      ${F && F.mode(S) === 'full' ? tile('Food logged', `${U.roll(foodDays)} <small>days</small>`, 'In the last 4 weeks') : ''}
+      ${tile('Weigh-ins', U.roll(weighIns), weighIns ? 'All time' : 'Log one on Health')}
+      ${tile('Sleep', sleep.n ? U.esc(U.fmtMin(sleep.avg)) : '–', sleep.n ? `A night, ${U.plural(sleep.n, 'night')}` : 'None yet')}
+      ${tile('Steps', steps.n ? U.roll(U.num(steps.avg)) : '–', steps.n ? 'A day, last 4 weeks' : 'None yet')}
+    </div>`;
+  }
+  U.act.openTracking = () => U.open('settings', 'track');
   U.screens.profile = {
     render(S, day) {
       const x = stats(S, day);
@@ -85,36 +101,41 @@
       const eq = p.equipment || {};
       const ver = (GH.platform && GH.platform.appVersion()) || GH.VERSION || '';
       const verShort = String(ver).split(' ')[0];
+      const workouts = p.workouts !== false;
+      const fm = GH.food ? GH.food.mode(S) : 'protein';
+      const tracks = [workouts ? 'workouts' : null, 'health', fm === 'full' ? 'calories' : fm === 'protein' ? 'protein' : null].filter(Boolean);
       return `${U.navbar('Profile', U.glassBtn('sliders', 'Settings', 'openSettings'), U.glassBtn('chevron-left', 'Back', 'back'))}
         <h1 class="rf-large-title">Profile</h1>
         <div class="section">
           <button type="button" class="card me-card tap-card" data-key="me" data-act="editName">
             <span class="me-avatar" aria-hidden="true">${initials ? `<span>${U.esc(initials)}</span>` : U.icon('person')}</span>
-            <span class="me-text"><span class="t-title-3">${U.esc(name || 'Add your name')}</span><span class="t-footnote rf-muted">Training since ${U.esc(since)}${week ? ` · week ${week.trainingWeek}` : ''}</span></span>
+            <span class="me-text"><span class="t-title-3">${U.esc(name || 'Add your name')}</span><span class="t-footnote rf-muted">${workouts ? `Training since ${U.esc(since)}${week ? ` · week ${week.trainingWeek}` : ''}` : `Using Gradient Health since ${U.esc(since)}`}</span></span>
             ${U.icon('pencil', 'sm', 'me-edit')}
           </button>
-          <div class="stat-grid" data-key="stats">
+          ${workouts ? `<div class="stat-grid" data-key="stats">
             ${tile('Workouts', U.roll(x.workouts, 't-title-2'), x.weeks ? U.plural(x.weeks, 'week') + ' with training' : 'Your first is waiting')}
             ${tile('Streak', `${U.roll(x.current)} <small>days</small>`, x.best > x.current ? `Best ${x.best}` : x.current ? 'Your best so far' : 'Starts with the next one')}
             ${tile('Sets done', U.roll(U.num(x.sets)), 'Across every workout')}
             ${tile('Time trained', U.esc(x.minutes ? hours(x.minutes) : '0 min'), 'In the workout player')}
             ${tile('Level-ups', U.roll(x.ups), 'Harder moves and heavier weights')}
             ${tile('Personal bests', U.roll(x.prs), 'Best sets beaten')}
-          </div>
+          </div>` : healthTiles(S, day)}
         </div>
-        <h2 class="sec-title t-title-3">Achievements <span class="t-callout rf-muted">${earned} of ${ach.length}</span></h2>
+        ${workouts ? `<h2 class="sec-title t-title-3">Achievements <span class="t-callout rf-muted">${earned} of ${ach.length}</span></h2>
         <div class="section">
           <div class="ach-grid" data-key="ach">${ach.map((a) => `<div class="ach${a.earned ? ' is-earned' : ''}" data-key="ach-${a.id}">
             <span class="rf-list-icon ach-badge" data-tone="${a.earned ? a.tone : 'none'}">${U.icon(a.earned ? a.icon : 'lock')}</span>
             <span class="t-footnote ach-title">${U.esc(a.title)}</span>
             <span class="t-caption rf-muted">${a.earned ? 'Earned' : a.goal > 1 ? `${U.num(a.have)} of ${U.num(a.goal)}` : U.esc(a.need)}</span>
           </div>`).join('')}</div>
-        </div>
-        <h2 class="sec-title t-title-3">Your plan</h2>
+        </div>` : ''}
+        <h2 class="sec-title t-title-3">${workouts ? 'Your plan' : 'What you track'}</h2>
         <div class="section"><ul class="rf-list">
-          ${U.row({ icon: 'flag', tone: 'green', title: 'Goals', sub: U.esc(U.cap((p.goals || []).map((g) => (GOAL_NAMES[g] || g).toLowerCase()).join(', '))), act: 'editStep', arg: 'goals', chevron: true })}
+          ${workouts ? `${U.row({ icon: 'flag', tone: 'green', title: 'Goals', sub: U.esc(U.cap((p.goals || []).map((g) => (GOAL_NAMES[g] || g).toLowerCase()).join(', '))), act: 'editStep', arg: 'goals', chevron: true })}
           ${U.row({ icon: 'calendar', tone: 'sky', title: 'Days and time', detail: `${p.days} days · ${p.minutes} min`, act: 'daysSheet', chevron: true })}
           ${U.row({ icon: 'bag', tone: 'amber', title: 'Equipment', detail: U.esc(U.equipSummary(p)), act: 'editEquipment', chevron: true })}
+          ${U.hasTab && !U.hasTab('moves') ? U.row({ icon: 'library', tone: 'indigo', title: 'All moves', act: 'openMoves', chevron: true }) : ''}` : ''}
+          ${U.row({ icon: 'check-circle', tone: 'teal', title: workouts ? 'What you track' : 'Workouts, food and health', sub: U.esc(U.cap(tracks.join(', '))), act: 'openTracking', chevron: true })}
         </ul></div>
         <h2 class="sec-title t-title-3">The app</h2>
         <div class="section"><ul class="rf-list">

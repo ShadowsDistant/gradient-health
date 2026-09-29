@@ -57,11 +57,13 @@
             <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Who answers your questions</span><span class="rf-list-sub">${U.esc(ENGINE_SUB[engine])}</span></span>${U.seg('setCoach', [['local', 'Built-in'], ['device', 'On-device'], ['api', 'Claude']], engine, 'Coach', ' data-on="setCoachMode"')}</div></li>
             ${engine === 'device' ? U.modelRows(S) : ''}
             ${claude ? `${hasKey ? U.row({ icon: 'lock', tone: 'green', title: 'API key saved on this phone', sub: S.ai.model && S.ai.model.name ? `Using ${U.esc(S.ai.model.name)}` : 'The model is picked on first use', act: 'keySheet', detail: 'Change', chevron: true }) : U.row({ icon: 'lock', tone: 'amber', title: 'Add your API key', sub: 'From the Claude Console, starts with sk-ant-', act: 'keySheet', chevron: true })}
+              ${hasKey && !S.ai.consentAt ? U.row({ icon: 'alert', tone: 'amber', title: 'Claude is waiting for your OK', sub: 'Review what it gets before it turns on', act: 'claudeReview', chevron: true }) : ''}
+              ${hasKey && S.ai.consentAt ? U.row({ icon: 'check-circle', tone: 'green', title: 'You allowed Claude to get your summary', sub: 'Turn it off by picking another coach, or withdraw it', act: 'claudeWithdraw', chevron: true }) : ''}
               ${hasKey ? U.row({ icon: 'trash', tone: 'rose', title: 'Delete key', act: 'deleteKey' }) : ''}` : ''}
             ${U.row({ icon: 'share', tone: 'violet', title: 'Ask in the Claude app', sub: 'Uses your own Claude plan, no key needed', act: 'askClaudeApp', chevron: true })}
             ${U.row({ icon: 'eye', tone: 'sky', title: 'What gets sent', sub: 'The exact summary Claude sees', act: 'previewSheet', chevron: true })}
           </ul>
-          <p class="rf-list-footer">${claude ? 'Claude mode uses your own Anthropic API key and its usage costs. The key stays on this phone and is never in backups.' : engine === 'device' ? 'The on-device model is Qwen2.5 Instruct (Apache 2.0), run with llama.cpp on your phone. It works offline, nothing you ask leaves the phone, and it can be wrong.' : 'The built-in coach works offline from your own numbers. It isn\'t an AI model, so it sticks to common questions.'} Anything sent to Claude is a summary with no name, dates or IDs, and only when you ask.</p>
+          <p class="rf-list-footer">${claude ? 'Claude mode uses your own Anthropic API key and its usage costs. The key stays on this phone and is never in backups.' : engine === 'device' ? 'The on-device model is Qwen2.5 Instruct (Apache 2.0), run with llama.cpp on your phone. It works offline, nothing you ask leaves the phone, and it can be wrong.' : 'The built-in coach works offline from your own numbers. It isn\'t an AI model, so it sticks to common questions.'} Anything sent to Claude is a summary with no name, exact dates or IDs, and only after you've allowed it.</p>
           <h3 class="rf-list-header">Workout</h3>
           <ul class="rf-list">
             ${U.sw('Sound', pr.sound !== false, 'data-on="setPref" data-k="sound"')}
@@ -198,6 +200,7 @@
       S.profile.equipment[k] = [...new Set((S.profile.equipment[k] || []).map((x) => list.reduce((a, c) => (Math.abs(c - x * f) < Math.abs(a - x * f) ? c : a), list[0])))].sort((a, b) => a - b);
     }
     if (S.profile.equipment.ballLb) S.profile.equipment.ballLb = Math.round(S.profile.equipment.ballLb * f);
+    if (S.profile.gym) S.profile.gym.dbMax = B().convertDbMax(S.profile.gym.dbMax, to);
     S.profile.units = to;
   }
 
@@ -281,13 +284,61 @@
 
   /* ---------------------------------------------------------------- coach */
   const ENGINE_SUB = { local: 'Built-in: instant answers from your numbers', device: 'On-device: an AI model that runs on your phone', api: 'Claude: your own API key, the most capable' };
-  U.on.setCoachMode = (el, ev, v) => {
-    U.S.ai.mode = v === 'api' || v === 'device' ? v : 'local';
-    U.S.ai.enabled = U.S.ai.mode === 'api';
+  U.on.setCoachMode = async (el, ev, v) => {
+    const S = U.S;
+    const before = S.ai.mode;
+    if (v === 'api' && AI() && AI().hasKey() && !(await U.claudeConsent())) { S.ai.mode = before === 'api' ? 'local' : before; U.save(); U.render(); return; }
+    S.ai.mode = v === 'api' || v === 'device' ? v : 'local';
+    S.ai.enabled = S.ai.mode === 'api';
     U.save();
     setTimeout(() => U.render(), 220);
-    if (U.S.ai.mode === 'api' && AI() && !AI().hasKey()) setTimeout(() => U.act.keySheet(), 400);
-    if (U.S.ai.mode === 'device') checkDevice().then(() => U.render());
+    if (S.ai.mode === 'api' && AI() && !AI().hasKey()) setTimeout(() => U.act.keySheet(), 400);
+    if (S.ai.mode === 'device') checkDevice().then(() => U.render());
+  };
+
+  // Claude gets a summary of the person's health data, so it only turns on after they've seen what
+  // goes and said yes. Resolves true once allowed (remembered), false if they said no.
+  U.claudeConsent = () => new Promise((resolve) => {
+    const S = U.S;
+    if (S.ai.consentAt) { resolve(true); return; }
+    let answered = false;
+    const done = (ok) => {
+      if (answered) return;
+      answered = true;
+      if (ok) { S.ai.consentAt = Date.now(); U.save(true); }
+      resolve(ok);
+    };
+    const food = GH.food && GH.food.full(S);
+    const ctl = U.sheet({
+      title: 'Share your data with Claude?', detents: 'large', detent: 'large',
+      body: `<div class="sheet-prose">
+        <p class="t-body">Claude is an AI made by Anthropic. To answer you, Gradient Health sends Anthropic a summary of your data with each question, when you ask for suggestions, and once a week for your report.</p>
+        <p class="t-headline">The summary holds</p>
+        <ul class="plain-list">
+          <li>An age range (not your age), and your sex if you gave it</li>
+          <li>Your goals, experience, schedule and equipment, and joints you're careful with</li>
+          <li>Averages and trends of your sleep, steps, heart rate, HRV, active calories and weight</li>
+          <li>Your training: workouts done, sets, levels and how they felt</li>
+          ${food ? '<li>Your calorie target and what you ate on average (not the foods)</li>' : ''}
+        </ul>
+        <p class="t-body">Never your name, email, exact dates or device IDs. Anthropic's privacy policy covers what happens to it there. You can turn Claude off any time in Settings.</p>
+        <button type="button" class="rf-btn" data-variant="plain" data-act="previewSheet">${U.icon('eye')}See exactly what gets sent</button>
+        <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="claudeAllow">Allow</button><button type="button" class="rf-btn" data-size="lg" data-act="claudeDeny">Not now</button></div>
+      </div>`,
+      onClose: () => done(false),
+    });
+    U.act.claudeAllow = () => { done(true); U.haptic('success'); ctl.close('ok'); };
+    U.act.claudeDeny = () => { done(false); ctl.close('cancel'); };
+  });
+  U.act.claudeReview = async () => { if (await U.claudeConsent()) { U.S.ai.enabled = U.S.ai.mode === 'api'; U.save(true); U.render(); U.toast('Claude is on', 'positive'); } };
+  U.act.claudeWithdraw = async () => {
+    if (!(await U.confirm('Stop sending your data to Claude?', 'Claude turns off and the built-in coach takes over. Nothing more is sent. Reports and chats you already have stay on this phone.', 'Stop', 'critical'))) return;
+    const S = U.S;
+    S.ai.consentAt = null;
+    S.ai.enabled = false;
+    if (S.ai.mode === 'api') S.ai.mode = 'local';
+    U.save(true);
+    U.render();
   };
 
   /* ---------------------------------------------------------------- on-device model */
@@ -413,13 +464,19 @@
     const res = AI().setKey(input ? input.value : '');
     if (!res.ok) { if (err) { err.hidden = false; err.textContent = res.error || 'Couldn\'t save the key.'; } return; }
     if (input) input.value = '';
-    U.S.ai.enabled = true;
-    U.S.ai.mode = 'api';
     U.S.ai.model = null;
     U.save(true);
     const t = U.topSheet(); if (t) t.close('ok');
-    U.render();
-    U.toast('Key saved', 'positive', 'Claude writes your weekly report when you open Health.');
+    // Claude turns on only once the person has allowed it to get their data.
+    setTimeout(async () => {
+      const ok = await U.claudeConsent();
+      U.S.ai.enabled = ok;
+      U.S.ai.mode = ok ? 'api' : U.S.ai.mode === 'api' ? 'local' : U.S.ai.mode;
+      U.save(true);
+      U.render();
+      if (ok) U.toast('Key saved', 'positive', 'Claude writes your weekly report when you open Health.');
+      else U.toast('Key saved', 'neutral', 'Claude stays off until you allow it in Settings, under Coach.');
+    }, 350);
   };
   U.act.deleteKey = async () => {
     if (!(await U.confirm('Delete the API key?', 'The coach stops working until you add a key again. Reports you already have stay.', 'Delete', 'critical', 'trash'))) return;
@@ -429,7 +486,7 @@
   U.act.previewSheet = () => {
     U.sheet({
       title: 'What gets sent', detents: 'large', detent: 'large',
-      body: `<div class="sheet-pad"><p class="t-callout rf-muted">When you ask Claude, this summary goes along with your question: through your API key in Claude mode, or into the Claude app when you ask there. No name, email, dates or device IDs. The built-in coach sends nothing.</p></div><pre class="preview">${U.esc(AI().preview(U.S, U.today()))}</pre>`,
+      body: `<div class="sheet-pad"><p class="t-callout rf-muted">This summary goes to Claude with your questions, suggestion requests and weekly report once you've allowed it (through your API key), or into the Claude app when you ask there. No name, email, exact dates or device IDs. The built-in and on-device coaches send nothing.</p></div><pre class="preview">${U.esc(AI().preview(U.S, U.today()))}</pre>`,
     });
   };
 
@@ -464,7 +521,7 @@
     U.toast('Restored', 'positive');
   };
   U.act.resetAll = async () => {
-    const one = await U.confirm('Reset Gradient Health?', 'Your plan, history, health logs and the AI key are deleted from this phone.', 'Continue', 'critical', 'trash');
+    const one = await U.confirm('Reset Gradient Health?', 'Your plan, history, health and food logs, the AI key and the on-device model are deleted from this phone.', 'Continue', 'critical', 'trash');
     if (!one) return;
     const two = await U.dialog({
       title: 'This can\'t be undone', message: 'Copy your data first if you might want it back.', icon: 'alert', tone: 'critical',
@@ -473,6 +530,14 @@
     if (two === 'copy') { await U.act.exportData(); return; }
     if (two !== 'delete') return;
     if (AI()) AI().deleteKey(U.S);
+    // The on-device model too: stop any download and delete what's there.
+    if (GH.platform && GH.platform.isApp()) {
+      try {
+        const llm = await GH.lazy('llm');
+        for (const x of llm.status()) if (!['done', 'cancelled', 'error'].includes(x.state)) await llm.cancel(x.id);
+        for (const m of await llm.installed()) await llm.remove(m.id);
+      } catch (e) { /* nothing to delete */ }
+    }
     GH.store.clear();
     U.S = null;
     G.location.hash = '';

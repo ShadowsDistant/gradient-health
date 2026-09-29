@@ -627,3 +627,10 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 .mv-gym { display: inline-block; margin-inline-start: 6px; padding: 1px 7px; border-radius: var(--radius-full); background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; vertical-align: 2px; }
 .float-actions.is-tight .rf-btn:not(.btn-main) .btn-label { display: none; }
 .float-actions.is-tight .rf-btn:not(.btn-main) { aspect-ratio: 1; padding-inline: 0; min-inline-size: 48px; justify-content: center; }
+
+/* Reporting AI answers. */
+.bubble-flag { display: flex; align-items: center; gap: 4px; margin-top: 6px; padding: 0; border: 0; background: none; color: var(--label-secondary); font: inherit; font-size: 12px; cursor: pointer; }
+.bubble-flag svg { width: 13px; height: 13px; }
+.bubble.is-flagged { font-style: italic; color: var(--label-secondary); }
+.flag-quote { margin: 0; padding: var(--space-2) var(--space-3); border-inline-start: 3px solid var(--separator); border-radius: 6px; background: var(--fill-3, var(--bg-sunken)); white-space: pre-wrap; color: var(--label-secondary); }
+.ai-flag { color: var(--label-secondary); }

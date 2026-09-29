@@ -58,16 +58,23 @@ final class FoodLookup {
                                 + "&search_terms=" + URLEncoder.encode(q, "UTF-8");
                     }
                     HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-                    c.setConnectTimeout(10000);
-                    c.setReadTimeout(15000);
-                    c.setRequestProperty("User-Agent", "GradientHealth/" + activity.versionName()
-                            + " (Android; https://github.com/ShadowsDistant/gradient-health)");
-                    c.setRequestProperty("Accept", "application/json");
-                    status = c.getResponseCode();
-                    // A barcode that isn't known answers 404 with a JSON body; that's a normal "not found".
-                    InputStream in = status >= 400 ? c.getErrorStream() : c.getInputStream();
-                    body = in == null ? "" : read(in);
-                    c.disconnect();
+                    try {
+                        c.setConnectTimeout(10000);
+                        c.setReadTimeout(15000);
+                        c.setRequestProperty("User-Agent", "GradientHealth/" + activity.versionName()
+                                + " (Android; https://github.com/ShadowsDistant/gradient-health)");
+                        c.setRequestProperty("Accept", "application/json");
+                        status = c.getResponseCode();
+                        // A barcode that isn't known answers 404 with a JSON body; that's a normal "not found".
+                        InputStream in = status >= 400 ? c.getErrorStream() : c.getInputStream();
+                        body = in == null ? "" : read(in);
+                    } finally {
+                        c.disconnect();
+                    }
+                    if (body == null) { // too big to be a real answer
+                        deliver(activity, id, false, status, "");
+                        return;
+                    }
                     boolean ok = status == 200 || ("barcode".equals(kind) && status == 404);
                     if ("barcode".equals(kind) && status == 404 && body.isEmpty()) {
                         body = "{\"status\":0}";
@@ -80,20 +87,24 @@ final class FoodLookup {
         });
     }
 
+    /** The whole body, or null if it's over MAX_BYTES. Always closes the stream. */
     private static String read(InputStream in) throws java.io.IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buf = new byte[16384];
-        int n;
-        int total = 0;
-        while ((n = in.read(buf)) > 0) {
-            total += n;
-            if (total > MAX_BYTES) {
-                break;
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[16384];
+            int n;
+            int total = 0;
+            while ((n = in.read(buf)) > 0) {
+                total += n;
+                if (total > MAX_BYTES) {
+                    return null;
+                }
+                out.write(buf, 0, n);
             }
-            out.write(buf, 0, n);
+            return out.toString("UTF-8");
+        } finally {
+            in.close();
         }
-        in.close();
-        return out.toString("UTF-8");
     }
 
     private static void deliver(MainActivity activity, String id, boolean ok, int status, String body) {

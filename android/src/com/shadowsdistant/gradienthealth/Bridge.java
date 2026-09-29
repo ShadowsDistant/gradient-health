@@ -9,6 +9,9 @@ import android.content.pm.PackageInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.VibrationEffect;
+import android.os.VibrationAttributes;
+import android.os.PersistableBundle;
+import android.media.AudioAttributes;
 import android.os.Vibrator;
 import android.view.Window;
 import android.view.WindowManager;
@@ -72,7 +75,7 @@ public final class Bridge {
         });
     }
 
-    /** One vibration of {@code ms} milliseconds (capped at 10 s). */
+    /** One vibration of {@code ms} milliseconds (capped at 10 s): a workout timer alert. */
     @JavascriptInterface
     public void vibrate(int ms) {
         if (ms <= 0) {
@@ -81,10 +84,25 @@ public final class Bridge {
         try {
             Vibrator v = vibrator();
             if (v != null) {
-                v.vibrate(VibrationEffect.createOneShot(Math.min(ms, MAX_VIBRATION_MS),
+                alert(v, VibrationEffect.createOneShot(Math.min(ms, MAX_VIBRATION_MS),
                         VibrationEffect.DEFAULT_AMPLITUDE));
             }
         } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * Timer alerts vibrate as alarms, not touch feedback: Android drops touch-class vibrations when
+     * the phone's touch feedback is off, and short ones count as touch unless they say otherwise.
+     */
+    private static void alert(Vibrator v, VibrationEffect effect) {
+        if (Build.VERSION.SDK_INT >= 33) {
+            v.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM));
+        } else {
+            v.vibrate(effect, new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build());
         }
     }
 
@@ -106,7 +124,7 @@ public final class Bridge {
             }
             Vibrator v = vibrator();
             if (any && v != null) {
-                v.vibrate(VibrationEffect.createWaveform(timings, -1));
+                alert(v, VibrationEffect.createWaveform(timings, -1));
             }
         } catch (Throwable ignored) {
         }
@@ -126,8 +144,12 @@ public final class Bridge {
             if (!(service instanceof ClipboardManager)) {
                 return false;
             }
-            ((ClipboardManager) service).setPrimaryClip(
-                    ClipData.newPlainText("Gradient Health", text == null ? "" : text));
+            ClipData clip = ClipData.newPlainText("Gradient Health", text == null ? "" : text);
+            // It's health data: keep it out of the clipboard preview and suggestions.
+            PersistableBundle extras = new PersistableBundle();
+            extras.putBoolean("android.content.extra.IS_SENSITIVE", true);
+            clip.getDescription().setExtras(extras);
+            ((ClipboardManager) service).setPrimaryClip(clip);
             return true;
         } catch (Throwable t) {
             return false;

@@ -197,10 +197,19 @@ final class HealthBridge {
                 granted++;
             }
         }
-        if (granted == 0) {
-            return "denied";
+        if (granted == CORE_TYPES) {
+            return "granted";
         }
-        return granted == CORE_TYPES ? "granted" : "partial";
+        if (granted > 0) {
+            return "partial";
+        }
+        // None of the original types, but maybe some of the newer ones (heart rate, calories...).
+        for (int i = CORE_TYPES; i < TYPES.length; i++) {
+            if (isGranted(context, TYPES[i][1])) {
+                return "partial";
+            }
+        }
+        return "denied";
     }
 
     /** Starts an asynchronous read; the result is delivered to window.__gh.onHealth. */
@@ -332,53 +341,64 @@ final class HealthBridge {
                     }
                     ZoneId zone = ZoneId.systemDefault();
                     List<Record> records = new ArrayList<Record>();
+                    // Records Health Connect would refuse are reported back one by one, so one bad
+                    // entry never holds up the rest.
+                    final JSONArray failed = new JSONArray();
+                    long now = System.currentTimeMillis();
                     for (int i = 0; i < in.length() && i < 200; i++) {
                         JSONObject e = in.getJSONObject(i);
                         String id = e.optString("id", "");
                         if (id.isEmpty()) {
                             continue;
                         }
-                        Instant start = Instant.ofEpochMilli(e.getLong("start"));
-                        Instant end = Instant.ofEpochMilli(Math.max(e.getLong("end"), e.getLong("start") + 1000L));
-                        Metadata metadata = new Metadata.Builder()
-                                .setClientRecordId(id)
-                                .setClientRecordVersion(e.optLong("v", 0L) + 1L)
-                                .setRecordingMethod(Metadata.RECORDING_METHOD_MANUAL_ENTRY)
-                                .build();
-                        NutritionRecord.Builder b = new NutritionRecord.Builder(metadata, start, end)
-                                .setStartZoneOffset(zone.getRules().getOffset(start))
-                                .setEndZoneOffset(zone.getRules().getOffset(end))
-                                .setMealType(mealType(e.optString("meal", "")))
-                                // Energy is in small calories: 1 kcal = 1000 cal.
-                                .setEnergy(Energy.fromCalories(Math.max(0, e.optDouble("kcal", 0)) * 1000.0))
-                                .setProtein(Mass.fromGrams(Math.max(0, e.optDouble("p", 0))))
-                                .setTotalCarbohydrate(Mass.fromGrams(Math.max(0, e.optDouble("c", 0))))
-                                .setTotalFat(Mass.fromGrams(Math.max(0, e.optDouble("f", 0))));
-                        double fib = e.optDouble("fib", 0);
-                        if (fib > 0) {
-                            b.setDietaryFiber(Mass.fromGrams(fib));
+                        try {
+                            // Never in the future (Health Connect rejects that), at least a second long.
+                            long startMs = Math.min(e.getLong("start"), now - 60000L);
+                            long endMs = Math.min(Math.max(e.optLong("end", startMs), startMs + 1000L), now);
+                            Instant start = Instant.ofEpochMilli(startMs);
+                            Instant end = Instant.ofEpochMilli(Math.max(endMs, startMs + 1000L));
+                            Metadata metadata = new Metadata.Builder()
+                                    .setClientRecordId(id)
+                                    .setClientRecordVersion(e.optLong("v", 0L) + 1L)
+                                    .setRecordingMethod(Metadata.RECORDING_METHOD_MANUAL_ENTRY)
+                                    .build();
+                            NutritionRecord.Builder b = new NutritionRecord.Builder(metadata, start, end)
+                                    .setStartZoneOffset(zone.getRules().getOffset(start))
+                                    .setEndZoneOffset(zone.getRules().getOffset(end))
+                                    .setMealType(mealType(e.optString("meal", "")))
+                                    // Energy is in small calories: 1 kcal = 1000 cal.
+                                    .setEnergy(Energy.fromCalories(clamp(e.optDouble("kcal", 0), MAX_KCAL) * 1000.0))
+                                    .setProtein(Mass.fromGrams(clamp(e.optDouble("p", 0), MAX_GRAMS)))
+                                    .setTotalCarbohydrate(Mass.fromGrams(clamp(e.optDouble("c", 0), MAX_GRAMS)))
+                                    .setTotalFat(Mass.fromGrams(clamp(e.optDouble("f", 0), MAX_GRAMS)));
+                            double fib = clamp(e.optDouble("fib", 0), MAX_GRAMS);
+                            if (fib > 0) {
+                                b.setDietaryFiber(Mass.fromGrams(fib));
+                            }
+                            String name = e.optString("name", "");
+                            if (!name.isEmpty()) {
+                                b.setMealName(name.length() > 100 ? name.substring(0, 100) : name);
+                            }
+                            records.add(b.build());
+                            ids.put(id);
+                        } catch (Throwable t) {
+                            failed.put(id);
                         }
-                        String name = e.optString("name", "");
-                        if (!name.isEmpty()) {
-                            b.setMealName(name.length() > 100 ? name.substring(0, 100) : name);
-                        }
-                        records.add(b.build());
-                        ids.put(id);
                     }
                     if (records.isEmpty()) {
-                        foodResult(activity, "onFoodWrite", ids, null);
+                        foodResult(activity, "onFoodWrite", ids, failed, null);
                         return;
                     }
                     manager.insertRecords(records, executor(),
                             new OutcomeReceiver<InsertRecordsResponse, HealthConnectException>() {
                                 @Override
                                 public void onResult(InsertRecordsResponse response) {
-                                    foodResult(activity, "onFoodWrite", ids, null);
+                                    foodResult(activity, "onFoodWrite", ids, failed, null);
                                 }
 
                                 @Override
                                 public void onError(HealthConnectException e) {
-                                    foodResult(activity, "onFoodWrite", ids, describe(e));
+                                    foodResult(activity, "onFoodWrite", ids, failed, describe(e));
                                 }
                             });
                 } catch (Throwable t) {
@@ -431,11 +451,26 @@ final class HealthBridge {
         });
     }
 
+    // Health Connect's own limits for a nutrition record.
+    private static final double MAX_KCAL = 100000.0;
+    private static final double MAX_GRAMS = 100000.0;
+
+    private static double clamp(double v, double max) {
+        return Double.isNaN(v) ? 0 : Math.max(0, Math.min(max, v));
+    }
+
     private static void foodResult(MainActivity activity, String hook, JSONArray ids, String error) {
+        foodResult(activity, hook, ids, null, error);
+    }
+
+    private static void foodResult(MainActivity activity, String hook, JSONArray ids, JSONArray failed, String error) {
         try {
             JSONObject o = new JSONObject();
             o.put("ok", error == null);
             o.put("ids", ids);
+            if (failed != null && failed.length() > 0) {
+                o.put("failed", failed);
+            }
             if (error != null) {
                 o.put("error", error);
             }

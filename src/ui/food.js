@@ -229,7 +229,9 @@
     const list = [];
     if (item.perServing && !item.servingG) list.push(['1 serving', null]);
     for (const p of item.portions || []) if (p[1] > 0 && !list.some((x) => x[0] === p[0])) list.push(p);
-    list.push(['100 g', 100], ['1 g', 1]);
+    // By weight only when the food's numbers per 100 g are known (a label without a serving weight
+    // only gives them per serving).
+    if (item.kcal != null) list.push(['100 g', 100], ['1 g', 1]);
     return list;
   }
   function nutrientsFor(item, portion, qty) {
@@ -297,7 +299,7 @@
     const n = nutrientsFor(item, portion, qty);
     const label = portion[1] === 1 ? `${Math.round(qty)} g` : `${qty === 1 ? '' : `${qty} × `}${portion[0]}`;
     if (edit) F().update(S, day, edit, { meal, g: n.g != null ? Math.round(n.g) : null, portion: label, kcal: n.kcal, p: Math.round(n.p * 10) / 10, c: Math.round(n.c * 10) / 10, f: Math.round(n.f * 10) / 10, fib: Math.round(n.fib * 10) / 10 });
-    else F().add(S, day, { name: item.name, detail: item.detail, src: item.src, ref: item.ref, g: n.g, portion: label, meal, kcal: n.kcal, p: n.p, c: n.c, f: n.f, fib: n.fib }, day === U.today() ? Date.now() : day * B().DAY_MS + mealHour(meal) * 3600000 + 4 * 3600000);
+    else F().add(S, day, { name: item.name, detail: item.detail, src: item.src, ref: item.ref, g: n.g, portion: label, meal, kcal: n.kcal, p: n.p, c: n.c, f: n.f, fib: n.fib }, whenOn(day, meal));
     U.commit();
     U.haptic('success');
     if (psheet) psheet.close('ok');
@@ -305,12 +307,21 @@
     if (GH.health && GH.health.writeFood) GH.health.writeFood(S);
     if (!edit) U.toast(`${item.name} added`, 'positive');
   };
-  const mealHour = (meal) => ({ breakfast: 4, lunch: 9, dinner: 15, snack: 12 }[meal] || 8);
-  U.act.foodEdit = (el) => {
+  // When an entry for a day happened: now for today, else that day at a usual time for the meal,
+  // in local time, so its Health Connect copy lands on the right day and hour.
+  const MEAL_HOUR = { breakfast: 8, lunch: 13, dinner: 19, snack: 16 };
+  function whenOn(day, meal) {
+    if (day === U.today()) return Date.now();
+    const [y, m, d] = B().dayStr(day).split('-').map(Number);
+    return Math.min(Date.now(), new Date(y, m - 1, d, MEAL_HOUR[meal] || 12, 0).getTime());
+  }
+  U.act.foodEdit = async (el) => {
     const [dStr, id] = el.dataset.arg.split(':');
     const day = Number(dStr);
     const e = F().entries(U.S, day).find((x) => x.id === id);
     if (!e) return;
+    // A food from the built-in list edits by weight, which needs the list (it loads on first use).
+    if (e.src === 'usda' && !dbReady()) await loadDb();
     const item = e.ref != null ? lookup(`${e.src}:${e.ref}`) : null;
     if (item && item.kcal != null && e.g) { openPortion(item, { portion: ['Grams', 1], qty: e.g, meal: e.meal, day, edit: id }); return; }
     // Quick adds and servings: edit the numbers directly.
@@ -349,9 +360,10 @@
     const k = val('qKcal');
     if (!(k > 0 && k < 10000)) { U.toast('Enter the calories', 'caution'); return; }
     const mealIn = doc.querySelector('.rf-sheet [name="qMeal"]:checked');
-    const x = { name: ((doc.getElementById('qName') || {}).value || '').trim() || 'Quick add', src: 'quick', kcal: k, p: val('qP') || 0, c: val('qC') || 0, f: val('qF') || 0, meal: mealIn ? mealIn.value : addMeal || undefined };
-    if (el.dataset.arg) { const [d, id] = el.dataset.arg.split(':'); F().update(U.S, Number(d), id, x); }
-    else F().add(U.S, dayShown(), x, dayShown() === U.today() ? Date.now() : dayShown() * B().DAY_MS + 12 * 3600000);
+    const x = { name: ((doc.getElementById('qName') || {}).value || '').trim() || 'Quick add', kcal: k, p: val('qP') || 0, c: val('qC') || 0, f: val('qF') || 0, meal: mealIn ? mealIn.value : addMeal || undefined };
+    // Editing keeps where the entry came from (a food from the list stays that food).
+    if (el.dataset.arg) { const [d, id] = el.dataset.arg.split(':'); if (!x.meal) delete x.meal; F().update(U.S, Number(d), id, x); }
+    else F().add(U.S, dayShown(), Object.assign({ src: 'quick' }, x), whenOn(dayShown(), x.meal));
     U.commit();
     U.haptic('success');
     U.closeSheets();
@@ -388,7 +400,7 @@
   };
   U.act.foodAddSaved = (el) => {
     const meal = addMeal || F().mealFor(Date.now());
-    const added = F().addSaved(U.S, dayShown(), el.dataset.arg, meal, dayShown() === U.today() ? Date.now() : dayShown() * B().DAY_MS + 12 * 3600000);
+    const added = F().addSaved(U.S, dayShown(), el.dataset.arg, meal, whenOn(dayShown(), meal));
     U.commit();
     U.haptic('success');
     U.closeSheets();
@@ -414,7 +426,7 @@
     if (!src.length) { U.toast('Nothing logged the day before', 'neutral'); return; }
     const ok = await U.confirm('Copy the day before?', `${U.plural(src.length, 'item')}, ${kcal(src.reduce((a, e) => a + e.kcal, 0))} kcal, go into ${day === U.today() ? 'today' : 'this day'}.`, 'Copy');
     if (!ok) return;
-    F().copyMeal(U.S, day - 1, day, null, day === U.today() ? Date.now() : day * B().DAY_MS + 12 * 3600000);
+    F().copyMeal(U.S, day - 1, day, null, (meal) => whenOn(day, meal));
     U.commit();
     if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S);
   };
