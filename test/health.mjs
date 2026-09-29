@@ -146,6 +146,7 @@ check('yours win for that day', H.value(S, 'steps', d2) === 11000 && H.value(S, 
 const ew = H.entry(S, 'weightKg', d2);
 check('and say so, keeping what Health Connect had', ew.src === 'manual' && ew.mine === 79.2 && ew.hc === 80 && H.entry(S, 'steps', d2).src === 'manual' && H.entry(S, 'steps', d2).hc === 8000, ew);
 check('one weigh-in for the day in the weight list (yours)', S.weights.filter((w) => w.day === d2).length === 1 && S.weights.find((w) => w.day === d2).src === 'manual');
+check('every value names a source its metric allows', ['sleepMin', 'steps', 'rhr', 'weightKg'].every((k) => { const h = H.history(S, k, D0 - 6, D0); return h.length === 7 && h.every((e) => H.METRICS[k].from.includes(e.src)); }));
 check('the 7-day average uses yours', Math.abs(B.weightStats(S, D0).avg7 - (80 * 6 + 79.2) / 7) < 0.001, B.weightStats(S, D0).avg7);
 check('out-of-range values are turned away', !H.setManual(S, d2, 'rhr', 400) && !H.setManual(S, d2, 'weightKg', 5) && !H.setManual(S, d2, 'hrv', 60) && H.value(S, 'rhr', d2) === 55);
 H.ingest(S, week(last7, 81), local(D0, 13));

@@ -378,6 +378,8 @@
   /* ---------------------------------------------------------------- metrics */
   // Every number the Health tab shows. Values are stored in one unit (minutes, kg, metres, cm) and
   // shown in the person's (lb and miles unless they picked kg). Per metric:
+  //   unit (stored), from (where values come from, the first that has one winning: 'manual' is the
+  //   person's own, then Health Connect, then 'est' / 'chip' stand-ins; see SOURCE),
   //   label, short (tiles), icon, tone (hue), kind (chart: bar | line | dot), zero (axis from 0),
   //   better (up | down | goal: from the weight goal | null), edit (can be typed in), back (how old
   //   the latest value may be, days), daily (a whole-day total: today isn't over yet), per (a day,
@@ -388,22 +390,22 @@
   const CM_PER_IN = 2.54;
   const imperial = (S) => !(S && S.profile && S.profile.units === 'kg');
   const METRICS = {
-    sleepMin: { label: 'Sleep', icon: 'moon', tone: 'indigo', kind: 'bar', zero: true, better: 'up', edit: true, back: 1, per: 'a night', words: ['more than', 'less than'], near: { abs: 15 }, far: { abs: 45 }, watch: { below: 360 }, valid: [30, 1080] },
-    steps: { label: 'Steps', icon: 'navigate', tone: 'green', kind: 'bar', zero: true, better: 'up', edit: true, back: 0, daily: true, per: 'a day', near: { rel: 0.08 }, far: { rel: 0.2 }, valid: [0, 100000] },
-    rhr: { label: 'Resting heart rate', short: 'Resting HR', icon: 'heart', tone: 'rose', kind: 'line', better: 'down', edit: true, back: 3, near: { abs: 2 }, far: { abs: 5 }, watch: { above: 99 }, valid: [25, 150] },
-    hrv: { label: 'Heart rate variability', short: 'HRV', icon: 'wave', tone: 'violet', kind: 'line', better: 'up', edit: false, back: 3, near: { rel: 0.07 }, far: { rel: 0.15 } },
-    weightKg: { label: 'Weight', icon: 'scale', tone: 'teal', kind: 'dot', better: 'goal', edit: true, back: 60, words: ['higher than', 'lower than'], near: { abs: 0.2 }, far: { abs: 1 }, valid: [25, 350] },
-    bodyFat: { label: 'Body fat', icon: 'drop', tone: 'sky', kind: 'line', better: null, edit: false, back: 60, near: { abs: 0.5 }, far: { abs: 2 } },
-    activeKcal: { label: 'Active calories', icon: 'flame', tone: 'coral', kind: 'bar', zero: true, better: 'up', edit: false, back: 0, daily: true, per: 'a day', near: { rel: 0.1 }, far: { rel: 0.3 } },
-    distanceM: { label: 'Distance', icon: 'map', tone: 'sky', kind: 'bar', zero: true, better: 'up', edit: false, back: 0, daily: true, per: 'a day', near: { rel: 0.1 }, far: { rel: 0.3 } },
-    activeMin: { label: 'Active minutes', short: 'Active', icon: 'bolt', tone: 'amber', kind: 'bar', zero: true, better: 'up', edit: false, back: 0, daily: true, per: 'a day', near: { rel: 0.15 }, far: { rel: 0.4 } },
-    kcalIn: { label: 'Calories eaten', short: 'Eaten', icon: 'food', tone: 'green', kind: 'bar', zero: true, better: null, edit: false, back: 0, daily: true, per: 'a day', near: { rel: 0.08 }, far: { rel: 0.25 } },
-    protein: { label: 'Protein', icon: 'check-circle', tone: 'green', kind: 'bar', zero: true, better: 'up', edit: false, back: 0, daily: true, per: 'a day', near: { rel: 0.1 }, far: { rel: 0.3 } },
-    waist: { label: 'Waist', icon: 'pin', tone: 'violet', kind: 'line', group: 'measure', better: null, edit: true, back: 400, near: { abs: 0.5 }, far: { abs: 2 }, valid: [20, 250] },
-    armL: { label: 'Left arm', icon: 'pin', tone: 'violet', kind: 'line', group: 'measure', better: null, edit: true, back: 400, near: { abs: 0.3 }, far: { abs: 1.5 }, valid: [10, 80] },
-    armR: { label: 'Right arm', icon: 'pin', tone: 'violet', kind: 'line', group: 'measure', better: null, edit: true, back: 400, near: { abs: 0.3 }, far: { abs: 1.5 }, valid: [10, 80] },
-    chest: { label: 'Chest', icon: 'pin', tone: 'violet', kind: 'line', group: 'measure', better: null, edit: true, back: 400, near: { abs: 0.5 }, far: { abs: 2 }, valid: [40, 200] },
-    thigh: { label: 'Thigh', icon: 'pin', tone: 'violet', kind: 'line', group: 'measure', better: null, edit: true, back: 400, near: { abs: 0.5 }, far: { abs: 2 }, valid: [20, 120] },
+    sleepMin: { unit: 'min', from: ['manual', 'hc', 'chip'], label: 'Sleep', icon: 'moon', tone: 'indigo', kind: 'bar', zero: true, better: 'up', edit: true, back: 1, per: 'a night', words: ['more than', 'less than'], near: { abs: 15 }, far: { abs: 45 }, watch: { below: 360 }, valid: [30, 1080] },
+    steps: { unit: 'steps', from: ['manual', 'hc'], label: 'Steps', icon: 'navigate', tone: 'green', kind: 'bar', zero: true, better: 'up', edit: true, back: 0, daily: true, per: 'a day', near: { rel: 0.08 }, far: { rel: 0.2 }, valid: [0, 100000] },
+    rhr: { unit: 'bpm', from: ['manual', 'hc', 'est'], label: 'Resting heart rate', short: 'Resting HR', icon: 'heart', tone: 'rose', kind: 'line', better: 'down', edit: true, back: 3, near: { abs: 2 }, far: { abs: 5 }, watch: { above: 99 }, valid: [25, 150] },
+    hrv: { unit: 'ms', from: ['hc'], label: 'Heart rate variability', short: 'HRV', icon: 'wave', tone: 'violet', kind: 'line', better: 'up', edit: false, back: 3, near: { rel: 0.07 }, far: { rel: 0.15 } },
+    weightKg: { unit: 'kg', from: ['manual', 'hc'], label: 'Weight', icon: 'scale', tone: 'teal', kind: 'dot', better: 'goal', edit: true, back: 60, words: ['higher than', 'lower than'], near: { abs: 0.2 }, far: { abs: 1 }, valid: [25, 350] },
+    bodyFat: { unit: '%', from: ['hc'], label: 'Body fat', icon: 'drop', tone: 'sky', kind: 'line', better: null, edit: false, back: 60, near: { abs: 0.5 }, far: { abs: 2 } },
+    activeKcal: { unit: 'kcal', from: ['hc'], label: 'Active calories', icon: 'flame', tone: 'coral', kind: 'bar', zero: true, better: 'up', edit: false, back: 0, daily: true, per: 'a day', near: { rel: 0.1 }, far: { rel: 0.3 } },
+    distanceM: { unit: 'm', from: ['hc'], label: 'Distance', icon: 'map', tone: 'sky', kind: 'bar', zero: true, better: 'up', edit: false, back: 0, daily: true, per: 'a day', near: { rel: 0.1 }, far: { rel: 0.3 } },
+    activeMin: { unit: 'min', from: ['app', 'hc', 'manual'], label: 'Active minutes', short: 'Active', icon: 'bolt', tone: 'amber', kind: 'bar', zero: true, better: 'up', edit: false, back: 0, daily: true, per: 'a day', near: { rel: 0.15 }, far: { rel: 0.4 } },
+    kcalIn: { unit: 'kcal', from: ['food'], label: 'Calories eaten', short: 'Eaten', icon: 'food', tone: 'green', kind: 'bar', zero: true, better: null, edit: false, back: 0, daily: true, per: 'a day', near: { rel: 0.08 }, far: { rel: 0.25 } },
+    protein: { unit: 'g', from: ['food'], label: 'Protein', icon: 'check-circle', tone: 'green', kind: 'bar', zero: true, better: 'up', edit: false, back: 0, daily: true, per: 'a day', near: { rel: 0.1 }, far: { rel: 0.3 } },
+    waist: { unit: 'cm', from: ['manual'], label: 'Waist', icon: 'pin', tone: 'violet', kind: 'line', group: 'measure', better: null, edit: true, back: 400, near: { abs: 0.5 }, far: { abs: 2 }, valid: [20, 250] },
+    armL: { unit: 'cm', from: ['manual'], label: 'Left arm', icon: 'pin', tone: 'violet', kind: 'line', group: 'measure', better: null, edit: true, back: 400, near: { abs: 0.3 }, far: { abs: 1.5 }, valid: [10, 80] },
+    armR: { unit: 'cm', from: ['manual'], label: 'Right arm', icon: 'pin', tone: 'violet', kind: 'line', group: 'measure', better: null, edit: true, back: 400, near: { abs: 0.3 }, far: { abs: 1.5 }, valid: [10, 80] },
+    chest: { unit: 'cm', from: ['manual'], label: 'Chest', icon: 'pin', tone: 'violet', kind: 'line', group: 'measure', better: null, edit: true, back: 400, near: { abs: 0.5 }, far: { abs: 2 }, valid: [40, 200] },
+    thigh: { unit: 'cm', from: ['manual'], label: 'Thigh', icon: 'pin', tone: 'violet', kind: 'line', group: 'measure', better: null, edit: true, back: 400, near: { abs: 0.5 }, far: { abs: 2 }, valid: [20, 120] },
   };
   for (const [k, m] of Object.entries(METRICS)) { m.key = k; m.short = m.short || m.label; }
   const isMeasure = (key) => MEASURES.includes(key);

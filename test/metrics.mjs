@@ -14,6 +14,8 @@ const keys = Object.keys(M);
 check('the main metrics are all there', ['sleepMin', 'steps', 'rhr', 'hrv', 'weightKg', 'activeKcal', 'distanceM', 'activeMin', 'kcalIn', 'protein', 'waist', 'armL', 'armR'].every((k) => M[k]), keys);
 check('each has a label, a short label, an icon, a hue and a chart kind', keys.every((k) => M[k].key === k && M[k].label && M[k].short && M[k].icon && M[k].tone && ['bar', 'line', 'dot'].includes(M[k].kind)));
 check('each knows how much change counts as steady and as a lot', keys.every((k) => M[k].near && M[k].far && ((M[k].near.abs != null && M[k].far.abs != null) || (M[k].near.rel != null && M[k].far.rel != null))));
+check('each says its stored unit and where its values come from', keys.every((k) => M[k].unit && Array.isArray(M[k].from) && M[k].from.length && M[k].from.every((x) => H.SOURCE[x])));
+check('what can be typed in lists the person first (their value wins)', keys.filter((k) => M[k].edit).every((k) => M[k].from[0] === 'manual'));
 check('what can be typed in has a valid range', keys.filter((k) => M[k].edit).every((k) => Array.isArray(M[k].valid) && M[k].valid[0] < M[k].valid[1]));
 check('weight, sleep, resting HR, steps and measurements can be typed in; HRV and calories can\'t', ['weightKg', 'sleepMin', 'rhr', 'steps', 'waist'].every((k) => M[k].edit) && !M.hrv.edit && !M.activeKcal.edit);
 check('labels are sentence case, no dashes', keys.every((k) => /^[A-Z][a-z]/.test(M[k].label) && !/[—–]/.test(M[k].label)));
