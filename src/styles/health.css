@@ -126,7 +126,8 @@ button.hl-pill:active { scale: .97; transition-duration: var(--duration-instant)
 /* ---------------------------------------------------------------- trends */
 .hl-sec { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .hl-sec-aside { font-weight: 500; color: var(--label-secondary); }
-.hl-trends { box-shadow: var(--shadow-card); }
+.card.hl-trends { padding: 0; gap: 0; overflow: hidden; }
+.hl-trends > .rf-list { background: none; border-radius: 0; }
 .hl-tr { appearance: none; border: 0; margin: 0; background: none; color: inherit; font: inherit; text-align: start; width: 100%; box-sizing: border-box; min-height: 56px; padding: 8px 12px 8px var(--space-4); display: grid; grid-template-columns: minmax(min-content, 1fr) minmax(48px, 1.2fr) 4.8em 12px; align-items: center; gap: var(--space-3); cursor: pointer; transition: background-color var(--duration-fast); }
 .hl-tr:active { background: var(--fill-3); transition-duration: 0ms; }
 .hl-tr:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }

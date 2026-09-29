@@ -213,6 +213,7 @@
   /* ---------------------------------------------------------------- trends */
   // A sparkline row per metric over the last 28 days (measurements over a year), with the newest
   // value; each opens its metric sheet.
+  const TREND_LABEL = { activeMin: 'Active minutes', kcalIn: 'Calories eaten' };
   function trendRow(S, day, key, days) {
     const h = H(), m = M(key);
     let from = day - days + 1;
@@ -223,7 +224,7 @@
     const last = hist[hist.length - 1];
     const spark = U.spark(hist, { from, to: day, kind: m.kind === 'bar' ? 'bar' : 'line', gap: m.group === 'measure' ? 120 : 7 });
     return `<li data-key="tr-${key}"><button type="button" class="hl-tr" data-tone="${m.tone}" data-act="metricOpen" data-arg="${key}">
-      <span class="hl-tr-label">${U.esc(m.short)}${days > 28 && hist.length ? `<span class="hl-tr-sub">Since ${U.esc(U.fmtDay(hist[0].day, false))}</span>` : ''}</span>
+      <span class="hl-tr-label">${U.esc(TREND_LABEL[key] || m.short)}${days > 28 && hist.length ? `<span class="hl-tr-sub">Since ${U.esc(U.fmtDay(hist[0].day, false))}</span>` : ''}</span>
       <span class="hl-tr-spark">${spark || '<span class="hl-tr-none t-caption">Not enough yet</span>'}</span>
       <span class="hl-tr-value rf-num">${last ? U.esc(h.format(S, key, last.value)) : '–'}</span>
       <span class="hl-tr-chev">${U.icon('chevron-right', 'sm')}</span>
@@ -241,7 +242,7 @@
     if (GH.food && GH.food.full(S)) keys.push('kcalIn');
     const rows = keys.map((k) => trendRow(S, day, k, 28));
     if (h.history(S, 'waist', day - 364, day).length >= 2) rows.push(trendRow(S, day, 'waist', 365));
-    return `<ul class="rf-list hl-trends" data-key="trends">${rows.join('')}</ul>`;
+    return `<div class="card hl-trends" data-key="trends"><ul class="rf-list">${rows.join('')}</ul></div>`;
   }
 
   /* ---------------------------------------------------------------- activity + sources */
