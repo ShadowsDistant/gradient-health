@@ -4,7 +4,9 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.Build;
@@ -17,10 +19,12 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.ValueCallback;
+import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -29,6 +33,8 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.TextView;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 
 import org.json.JSONObject;
 
@@ -49,6 +55,10 @@ public final class MainActivity extends Activity {
     static final String APP_HOST = "appassets.androidplatform.net";
     static final String APP_URL = "https://" + APP_HOST + "/index.html";
     static final int REQUEST_HEALTH_PERMISSIONS = 4201;
+    static final int REQUEST_CAMERA = 4202;
+    /** A camera request from the page, waiting on the runtime permission dialog. */
+    private PermissionRequest pendingCamera;
+    static final String CLAUDE_PACKAGE = "com.anthropic.claude";
 
     private static final String ACTION_VIEW_PERMISSION_USAGE =
             "android.intent.action.VIEW_PERMISSION_USAGE";
@@ -74,13 +84,21 @@ public final class MainActivity extends Activity {
     private boolean destroyed;
     private int rendererCrashes;
     private long firstRendererCrashAt;
+    // Last system-bar insets in CSS pixels, as JSON, for the page to read (see Bridge.insets()).
+    private volatile String insetsJson = "{\"top\":0,\"bottom\":0,\"left\":0,\"right\":0,\"keyboard\":false}";
+    private int imeBottomPx;
+    // The page's own theme once it has reported one (it can differ from the system's).
+    private Boolean pageDark;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         root = new FrameLayout(this);
+        enableEdgeToEdge();
         applyTheme(getResources().getConfiguration());
         setContentView(root);
+        listenForInsets();
+        registerBackCallback();
 
         if ((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
             try {
@@ -93,8 +111,7 @@ public final class MainActivity extends Activity {
         bridge = new Bridge(this);
         String url = APP_URL;
         if (isPrivacyIntent(getIntent())) {
-            pendingRoute = "privacy";
-            url = APP_URL + "#privacy";
+            url = APP_URL + "#privacy"; // the page opens it as it starts (only once)
         }
         createWebView(url);
     }
@@ -108,16 +125,19 @@ public final class MainActivity extends Activity {
             s.setDomStorageEnabled(true);
             s.setDatabaseEnabled(true);
             s.setMediaPlaybackRequiresUserGesture(false);
-            s.setTextZoom(100);
+            s.setTextZoom(textZoomFor(getResources().getConfiguration()));
             s.setAllowFileAccess(false);
             s.setAllowContentAccess(false);
             wv.setBackgroundColor(currentBackground());
             wv.setWebViewClient(new AppWebViewClient());
-            // A WebChromeClient is needed for alert()/confirm()/prompt() dialogs to show at all.
-            wv.setWebChromeClient(new WebChromeClient());
+            // A WebChromeClient is needed for alert()/confirm()/prompt() dialogs to show at all, and
+            // for the barcode scanner's camera.
+            wv.setWebChromeClient(new AppChromeClient());
             wv.addJavascriptInterface(bridge, BRIDGE_NAME);
-            root.addView(wv, new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            lp.bottomMargin = imeBottomPx;
+            root.addView(wv, lp);
             webView = wv;
             pageLoaded = false;
             wv.loadUrl(url);
@@ -131,9 +151,17 @@ public final class MainActivity extends Activity {
                 } catch (Throwable ignored) {
                 }
             }
-            showMessage("Gradient needs Android System WebView.\n\n"
+            showMessage("Gradient Health needs Android System WebView.\n\n"
                     + "Update or enable it in the Play Store, then reopen the app.");
         }
+    }
+
+    /**
+     * Text follows the phone's font size setting, capped so the layout holds up: 85% to 130%.
+     */
+    static int textZoomFor(Configuration c) {
+        float scale = c == null || c.fontScale <= 0 ? 1f : c.fontScale;
+        return Math.round(Math.max(0.85f, Math.min(1.3f, scale)) * 100f);
     }
 
     private void showMessage(String message) {
@@ -172,6 +200,8 @@ public final class MainActivity extends Activity {
     protected void onPause() {
         // WebView.onPause() pauses animations/geolocation only. JS timers keep running on
         // purpose (no pauseTimers()): a workout in progress must keep counting in the background.
+        // The page is told, so it stops background work like the 15-minute health sync.
+        callJs(jsCall("onPause", ""));
         WebView wv = webView;
         if (wv != null) {
             try {
@@ -211,7 +241,14 @@ public final class MainActivity extends Activity {
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        boolean dark = applyTheme(newConfig);
+        if (webView != null) {
+            webView.getSettings().setTextZoom(textZoomFor(newConfig));
+        }
+        boolean dark = isDark(newConfig);
+        if (pageDark == null) {
+            applyBarAppearance(dark);
+        }
+        // The page answers with setSystemBars() once it has picked its theme.
         callJs(jsCall("setTheme", jsString(dark ? "dark" : "light")));
     }
 
@@ -224,6 +261,16 @@ public final class MainActivity extends Activity {
     @SuppressWarnings("deprecation")
     @Override
     public void onBackPressed() {
+        handleBack();
+    }
+
+    private void registerBackCallback() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            Api33.registerBack(this);
+        }
+    }
+
+    void handleBack() {
         final boolean[] answered = {false};
         final Runnable fallback = new Runnable() {
             @Override
@@ -264,21 +311,93 @@ public final class MainActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_HEALTH_PERMISSIONS) {
             notifyHealthPermissions();
+        } else if (requestCode == REQUEST_CAMERA) {
+            PermissionRequest request = pendingCamera;
+            pendingCamera = null;
+            if (request != null) {
+                boolean ok = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+                try {
+                    if (ok) {
+                        request.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+                    } else {
+                        request.deny();
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+    }
+
+    /** The app's versionName, e.g. "1.2.0". */
+    String versionName() {
+        try {
+            String v = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+            return v == null ? "" : v;
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    /**
+     * Lets the page's own barcode scanner use the camera (and nothing else): video capture only,
+     * only for the app's own page, and only after Android's camera permission is granted.
+     */
+    private final class AppChromeClient extends WebChromeClient {
+        @Override
+        public void onPermissionRequest(final PermissionRequest request) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        boolean onlyVideo = request.getResources().length == 1
+                                && PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(request.getResources()[0]);
+                        if (!onlyVideo || !isAppHost(request.getOrigin())) {
+                            request.deny();
+                            return;
+                        }
+                        if (checkSelfPermission(android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                            request.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+                            return;
+                        }
+                        if (pendingCamera != null) {
+                            pendingCamera.deny();
+                        }
+                        pendingCamera = request;
+                        requestPermissions(new String[]{android.Manifest.permission.CAMERA}, REQUEST_CAMERA);
+                    } catch (Throwable t) {
+                        try {
+                            request.deny();
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                }
+            });
+        }
+
+        @Override
+        public void onPermissionRequestCanceled(PermissionRequest request) {
+            if (pendingCamera == request) {
+                pendingCamera = null;
+            }
         }
     }
 
     // ---------------------------------------------------------------- called by Bridge (UI thread)
 
     /** Shows the Health Connect permission dialog; the result arrives via onHealthPerms. */
-    void requestHealthPermissions() {
+    void requestHealthPermissions(boolean withFood) {
         String status = bridge != null ? bridge.hcStatus() : "unavailable";
-        if (!"denied".equals(status) && !"partial".equals(status)) {
-            // unsupported / unavailable / already granted: nothing to ask, answer right away.
+        if ("unsupported".equals(status) || "unavailable".equals(status)) {
             callJs(jsCall("onHealthPerms", jsString(status)));
             return;
         }
         try {
-            requestPermissions(HealthBridge.permissions(), REQUEST_HEALTH_PERMISSIONS);
+            String[] missing = HealthBridge.missingPermissions(this, withFood);
+            if (missing.length == 0) {
+                callJs(jsCall("onHealthPerms", jsString(status)));
+                return;
+            }
+            requestPermissions(missing, REQUEST_HEALTH_PERMISSIONS);
         } catch (Throwable t) {
             notifyHealthPermissions();
         }
@@ -422,18 +541,55 @@ public final class MainActivity extends Activity {
         return isDarkMode() ? COLOR_DARK : COLOR_LIGHT;
     }
 
-    /** Colours the window, system bars and WebView background for the current mode. */
-    @SuppressWarnings("deprecation")
+    /** Follows the system night mode until the page reports its own theme (setSystemBars). */
     private boolean applyTheme(Configuration config) {
         boolean dark = isDark(config);
-        int color = dark ? COLOR_DARK : COLOR_LIGHT;
+        applyBarAppearance(dark);
+        return dark;
+    }
+
+    /**
+     * The app draws behind transparent status and navigation bars; the page pads itself using the
+     * insets from {@link #listenForInsets}. The navigation bar keeps the system's contrast scrim,
+     * which only appears with three-button navigation.
+     */
+    @SuppressWarnings("deprecation")
+    private void enableEdgeToEdge() {
         try {
             Window w = getWindow();
+            if (Build.VERSION.SDK_INT >= 30) {
+                w.setDecorFitsSystemWindows(false);
+            } else {
+                View decor = w.getDecorView();
+                decor.setSystemUiVisibility(decor.getSystemUiVisibility()
+                        | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+            }
             w.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS
                     | WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION);
             w.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-            w.setStatusBarColor(color);
-            w.setNavigationBarColor(color);
+            w.setStatusBarColor(Color.TRANSPARENT);
+            w.setNavigationBarColor(Color.TRANSPARENT);
+            if (Build.VERSION.SDK_INT >= 29) {
+                w.setStatusBarContrastEnforced(false);
+            }
+            if (Build.VERSION.SDK_INT >= 28) {
+                WindowManager.LayoutParams lp = w.getAttributes();
+                lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+                w.setAttributes(lp);
+            }
+        } catch (Throwable ignored) {
+            // The app still works with opaque bars.
+        }
+    }
+
+    /** Dark or light status/navigation bar icons, window and WebView background colour. */
+    @SuppressWarnings("deprecation")
+    void applyBarAppearance(boolean dark) {
+        int color = dark ? COLOR_DARK : COLOR_LIGHT;
+        try {
+            Window w = getWindow();
             w.setBackgroundDrawable(new ColorDrawable(color));
             View decor = w.getDecorView();
             int flags = decor.getSystemUiVisibility();
@@ -444,8 +600,8 @@ public final class MainActivity extends Activity {
             }
             decor.setSystemUiVisibility(flags);
             if (Build.VERSION.SDK_INT >= 30) {
-                // On 30+ the theme's windowLightStatusBar goes through WindowInsetsController,
-                // after which the legacy flags above no longer change the bar appearance.
+                // On 30+ the bar appearance goes through WindowInsetsController, after which the
+                // legacy flags above no longer change it.
                 Api30.setLightBars(w, !dark);
             }
         } catch (Throwable ignored) {
@@ -457,11 +613,135 @@ public final class MainActivity extends Activity {
         if (webView != null) {
             webView.setBackgroundColor(color);
         }
-        return dark;
+    }
+
+    // ---------------------------------------------------------------- insets
+
+    /** Passes system-bar insets to the page and keeps the WebView above the keyboard. */
+    private void listenForInsets() {
+        root.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+            @Override
+            public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
+                readInsets(insets);
+                return insets;
+            }
+        });
+        root.requestApplyInsets();
+    }
+
+    @SuppressWarnings("deprecation")
+    private void readInsets(WindowInsets insets) {
+        if (insets == null) {
+            return;
+        }
+        int top;
+        int bottom;
+        int left;
+        int right;
+        int ime;
+        if (Build.VERSION.SDK_INT >= 30) {
+            int[] v = Api30.insets(insets);
+            top = v[0];
+            bottom = v[1];
+            left = v[2];
+            right = v[3];
+            ime = v[4];
+        } else {
+            top = insets.getSystemWindowInsetTop();
+            bottom = insets.getSystemWindowInsetBottom();
+            left = insets.getSystemWindowInsetLeft();
+            right = insets.getSystemWindowInsetRight();
+            // Before Android 11 the keyboard only shows up as a tall bottom inset.
+            float density = getResources().getDisplayMetrics().density;
+            ime = bottom > 140 * density ? bottom : 0;
+        }
+        boolean keyboard = ime > 0;
+        setImeMargin(keyboard ? ime : 0);
+        float density = getResources().getDisplayMetrics().density;
+        try {
+            JSONObject o = new JSONObject();
+            o.put("top", Math.round(top / density * 10) / 10.0);
+            // With the keyboard up the WebView stops above it, so nothing needs padding below.
+            o.put("bottom", keyboard ? 0 : Math.round(bottom / density * 10) / 10.0);
+            o.put("left", Math.round(left / density * 10) / 10.0);
+            o.put("right", Math.round(right / density * 10) / 10.0);
+            o.put("keyboard", keyboard);
+            insetsJson = o.toString();
+        } catch (Throwable ignored) {
+            return;
+        }
+        if (pageLoaded) {
+            callJs(jsCall("setInsets", insetsJson));
+        }
+    }
+
+    private void setImeMargin(int px) {
+        if (px == imeBottomPx) {
+            return;
+        }
+        imeBottomPx = px;
+        WebView wv = webView;
+        if (wv == null) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = wv.getLayoutParams();
+        if (lp instanceof FrameLayout.LayoutParams) {
+            ((FrameLayout.LayoutParams) lp).bottomMargin = px;
+            wv.setLayoutParams(lp);
+        }
+    }
+
+    String insetsJson() {
+        return insetsJson;
+    }
+
+    /** The page's theme (light or dark), which decides the bar icon colour and the backdrop. */
+    void setPageTheme(boolean dark) {
+        pageDark = dark;
+        applyBarAppearance(dark);
+    }
+
+    // ---------------------------------------------------------------- sharing and haptics
+
+    /** Hands text to another app: the given package if it's installed, otherwise the share sheet. */
+    void shareText(String text, String targetPackage) {
+        Intent send = new Intent(Intent.ACTION_SEND);
+        send.setType("text/plain");
+        send.putExtra(Intent.EXTRA_TEXT, text == null ? "" : text);
+        if (targetPackage != null && !targetPackage.isEmpty()) {
+            Intent direct = new Intent(send);
+            direct.setPackage(targetPackage);
+            if (tryStartActivity(direct)) {
+                return;
+            }
+        }
+        tryStartActivity(Intent.createChooser(send, null));
+    }
+
+    boolean isInstalled(String pkg) {
+        try {
+            getPackageManager().getPackageInfo(pkg, 0);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    void haptic(String kind) {
+        View v = webView != null ? webView : root;
+        Haptics.play(this, v, kind);
     }
 
     /** API 30+ calls, isolated so older devices never load WindowInsetsController. */
     private static final class Api30 {
+        /** {top, bottom, left, right, imeBottom} in pixels. */
+        static int[] insets(WindowInsets w) {
+            android.graphics.Insets bars = w.getInsets(
+                    WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+            android.graphics.Insets ime = w.getInsets(WindowInsets.Type.ime());
+            return new int[]{bars.top, bars.bottom, bars.left, bars.right, ime.bottom};
+        }
+
         static void setLightBars(Window window, boolean light) {
             WindowInsetsController c = window.getInsetsController();
             if (c == null) {
@@ -470,6 +750,19 @@ public final class MainActivity extends Activity {
             int mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
                     | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
             c.setSystemBarsAppearance(light ? mask : 0, mask);
+        }
+    }
+
+    /** API 33+: back gestures arrive here (onBackPressed is not called on Android 16 for target 36). */
+    private static final class Api33 {
+        static void registerBack(final MainActivity activity) {
+            activity.getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_DEFAULT, new OnBackInvokedCallback() {
+                        @Override
+                        public void onBackInvoked() {
+                            activity.handleBack();
+                        }
+                    });
         }
     }
 
@@ -544,11 +837,37 @@ public final class MainActivity extends Activity {
         }
         rendererCrashes++;
         if (rendererCrashes > 3) {
-            showMessage("Gradient's page keeps crashing.\n\nPlease close and reopen the app.");
+            showMessage("Gradient Health's page keeps crashing.\n\nPlease close and reopen the app.");
             return;
         }
         // The page restores its state from AndroidBridge.load().
         createWebView(APP_URL);
+    }
+
+    /** A file from assets/lazy/ (the page's load-on-demand parts), or a 404. */
+    WebResourceResponse assetResponse(String assetPath) {
+        if (assetPath.contains("..")) {
+            return emptyResponse(404, "Not Found");
+        }
+        try {
+            WebResourceResponse r = new WebResourceResponse(mimeFor(assetPath), null, getAssets().open(assetPath));
+            java.util.Map<String, String> headers = new java.util.HashMap<>();
+            headers.put("Cache-Control", "no-cache");
+            r.setResponseHeaders(headers);
+            return r;
+        } catch (Throwable t) {
+            return emptyResponse(404, "Not Found");
+        }
+    }
+
+    static String mimeFor(String path) {
+        String p = path.toLowerCase(java.util.Locale.ROOT);
+        if (p.endsWith(".js") || p.endsWith(".mjs")) return "text/javascript";
+        if (p.endsWith(".wasm")) return "application/wasm";
+        if (p.endsWith(".json")) return "application/json";
+        if (p.endsWith(".png")) return "image/png";
+        if (p.endsWith(".webp")) return "image/webp";
+        return "application/octet-stream";
     }
 
     private final class AppWebViewClient extends WebViewClient {
@@ -565,6 +884,13 @@ public final class MainActivity extends Activity {
                 } catch (Throwable t) {
                     return emptyResponse(500, "Internal Server Error");
                 }
+            }
+            if (path.startsWith("/lazy/")) {
+                return assetResponse(path.substring(1));
+            }
+            if (path.startsWith("/models/")) {
+                // Downloaded on-device AI models, read in pieces with Range requests (ModelStore).
+                return ModelStore.get(MainActivity.this).serve(path.substring("/models/".length()), request);
             }
             return emptyResponse(404, "Not Found");
         }
@@ -584,6 +910,7 @@ public final class MainActivity extends Activity {
             }
             if (isAppHost(Uri.parse(url))) {
                 pageLoaded = true;
+                callJs(jsCall("setInsets", insetsJson));
                 flushPendingRoute();
             }
         }

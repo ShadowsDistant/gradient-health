@@ -1,5 +1,6 @@
 package com.shadowsdistant.gradienthealth;
 
+import android.app.ActivityManager;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -8,6 +9,9 @@ import android.content.pm.PackageInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.VibrationEffect;
+import android.os.VibrationAttributes;
+import android.os.PersistableBundle;
+import android.media.AudioAttributes;
 import android.os.Vibrator;
 import android.view.Window;
 import android.view.WindowManager;
@@ -71,7 +75,7 @@ public final class Bridge {
         });
     }
 
-    /** One vibration of {@code ms} milliseconds (capped at 10 s). */
+    /** One vibration of {@code ms} milliseconds (capped at 10 s): a workout timer alert. */
     @JavascriptInterface
     public void vibrate(int ms) {
         if (ms <= 0) {
@@ -80,10 +84,25 @@ public final class Bridge {
         try {
             Vibrator v = vibrator();
             if (v != null) {
-                v.vibrate(VibrationEffect.createOneShot(Math.min(ms, MAX_VIBRATION_MS),
+                alert(v, VibrationEffect.createOneShot(Math.min(ms, MAX_VIBRATION_MS),
                         VibrationEffect.DEFAULT_AMPLITUDE));
             }
         } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * Timer alerts vibrate as alarms, not touch feedback: Android drops touch-class vibrations when
+     * the phone's touch feedback is off, and short ones count as touch unless they say otherwise.
+     */
+    private static void alert(Vibrator v, VibrationEffect effect) {
+        if (Build.VERSION.SDK_INT >= 33) {
+            v.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM));
+        } else {
+            v.vibrate(effect, new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build());
         }
     }
 
@@ -105,7 +124,7 @@ public final class Bridge {
             }
             Vibrator v = vibrator();
             if (any && v != null) {
-                v.vibrate(VibrationEffect.createWaveform(timings, -1));
+                alert(v, VibrationEffect.createWaveform(timings, -1));
             }
         } catch (Throwable ignored) {
         }
@@ -125,8 +144,12 @@ public final class Bridge {
             if (!(service instanceof ClipboardManager)) {
                 return false;
             }
-            ((ClipboardManager) service).setPrimaryClip(
-                    ClipData.newPlainText("Gradient", text == null ? "" : text));
+            ClipData clip = ClipData.newPlainText("Gradient Health", text == null ? "" : text);
+            // It's health data: keep it out of the clipboard preview and suggestions.
+            PersistableBundle extras = new PersistableBundle();
+            extras.putBoolean("android.content.extra.IS_SENSITIVE", true);
+            clip.getDescription().setExtras(extras);
+            ((ClipboardManager) service).setPrimaryClip(clip);
             return true;
         } catch (Throwable t) {
             return false;
@@ -136,6 +159,69 @@ public final class Bridge {
     @JavascriptInterface
     public boolean isDark() {
         return activity.isDarkMode();
+    }
+
+    /** Haptic strength picked in Settings: light, medium or strong. */
+    @JavascriptInterface
+    public void hapticStrength(String level) {
+        Haptics.setLevel(level);
+    }
+
+    /** False when the phone's own touch feedback is switched off (UI taps are then skipped). */
+    @JavascriptInterface
+    public boolean hapticsSystemEnabled() {
+        return Haptics.systemTouchFeedback(activity);
+    }
+
+    /**
+     * A short haptic by name: tap, select, tick, toggleOn, toggleOff, success, error, heavy, go,
+     * done, celebrate. Follows the system's touch-feedback setting.
+     */
+    @JavascriptInterface
+    public void haptic(final String kind) {
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.haptic(kind);
+            }
+        });
+    }
+
+    /** The page's theme, so the status and navigation bar icons stay readable over it. */
+    @JavascriptInterface
+    public void setSystemBars(final boolean dark) {
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.setPageTheme(dark);
+            }
+        });
+    }
+
+    /** Safe-area insets in CSS pixels: {"top","bottom","left","right","keyboard"}. */
+    @JavascriptInterface
+    public String insets() {
+        return activity.insetsJson();
+    }
+
+    /**
+     * Hands text to another app. target "claude" sends it straight to the Claude app when it's
+     * installed; anything else (or no Claude app) opens the share sheet.
+     */
+    @JavascriptInterface
+    public void shareText(final String text, final String target) {
+        final String pkg = "claude".equals(target) ? MainActivity.CLAUDE_PACKAGE : null;
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.shareText(text, pkg);
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public boolean claudeInstalled() {
+        return activity.isInstalled(MainActivity.CLAUDE_PACKAGE);
     }
 
     /** e.g. "1.0.0 (29830012)". */
@@ -305,13 +391,23 @@ public final class Bridge {
         }
     }
 
-    /** Asks for the read permissions; answers with window.__gh.onHealthPerms(status). */
+    /** Asks for the health permissions; answers with window.__gh.onHealthPerms(status). */
     @JavascriptInterface
     public void hcRequest() {
+        requestHealth(false);
+    }
+
+    /** The same, plus reading and writing nutrition (when food tracking is on). */
+    @JavascriptInterface
+    public void hcRequestFood() {
+        requestHealth(true);
+    }
+
+    private void requestHealth(final boolean withFood) {
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                activity.requestHealthPermissions();
+                activity.requestHealthPermissions(withFood);
             }
         });
     }
@@ -342,6 +438,174 @@ public final class Bridge {
         } catch (Throwable t) {
             deliverHealthFailure(t.getClass().getSimpleName() + ": " + t.getMessage());
         }
+    }
+
+    /** The Health Connect data types this app may read or write now (a JSON list of names). */
+    @JavascriptInterface
+    public String hcGranted() {
+        if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
+            return "[]";
+        }
+        try {
+            return HealthBridge.granted(activity);
+        } catch (Throwable t) {
+            return "[]";
+        }
+    }
+
+    /** True when the app may save logged meals to Health Connect. */
+    @JavascriptInterface
+    public boolean hcCanWriteFood() {
+        if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
+            return false;
+        }
+        try {
+            return HealthBridge.canWriteNutrition(activity);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** Saves meals as nutrition records; answers with window.__gh.onFoodWrite. */
+    @JavascriptInterface
+    public void hcWriteFood(String json) {
+        if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
+            return;
+        }
+        try {
+            HealthBridge.writeNutrition(activity, json);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** Deletes meals this app saved (by client id); answers with window.__gh.onFoodDelete. */
+    @JavascriptInterface
+    public void hcDeleteFood(String json) {
+        if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
+            return;
+        }
+        try {
+            HealthBridge.deleteNutrition(activity, json);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * Looks a food up on Open Food Facts ("barcode" or "search"). Only called when online food
+     * search is on; the answer comes back through window.__gh.onFoodResult with the same id.
+     */
+    @JavascriptInterface
+    public void foodLookup(String kind, String query, String id) {
+        FoodLookup.lookup(activity, kind, query, id);
+    }
+
+    /** True when the app may save its workouts to Health Connect. */
+    @JavascriptInterface
+    public boolean hcCanWrite() {
+        if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
+            return false;
+        }
+        try {
+            return HealthBridge.canWriteExercise(activity);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * Saves a finished workout as an exercise session ({id, start, end, type, title, notes}; see
+     * HealthBridge.writeWorkout). Answers with window.__gh.onHealthWrite({id, ok, error?}).
+     */
+    @JavascriptInterface
+    public void hcWriteWorkout(String json) {
+        if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
+            return;
+        }
+        try {
+            HealthBridge.writeWorkout(activity, json);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    // ---------------------------------------------------------------- on-device AI models (ModelStore)
+
+    /** Installed models: [{"id","file","bytes"}]. */
+    @JavascriptInterface
+    public String modelList() {
+        try {
+            return models().listJson();
+        } catch (Throwable t) {
+            return "[]";
+        }
+    }
+
+    /** Downloads running, waiting, finished or failed this run, and paused ones from before. */
+    @JavascriptInterface
+    public String modelStatus() {
+        try {
+            return models().statusJson();
+        } catch (Throwable t) {
+            return "[]";
+        }
+    }
+
+    /**
+     * Downloads a model in the background ({"id","url","file","bytes","sha256"?,"wifiOnly"}); a
+     * partial one resumes. Progress arrives through window.__gh.onModelProgress. False if invalid.
+     */
+    @JavascriptInterface
+    public boolean modelDownload(String json) {
+        try {
+            return models().download(json);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** Stops a download and deletes the partial file (a paused one too). */
+    @JavascriptInterface
+    public void modelCancel(String id) {
+        try {
+            models().cancel(id == null ? "" : id);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** Deletes an installed model (and stops any download of it). */
+    @JavascriptInterface
+    public boolean modelDelete(String id) {
+        try {
+            return models().delete(id == null ? "" : id);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** Free bytes on the storage the models go to, or -1. */
+    @JavascriptInterface
+    public long modelFreeSpace() {
+        try {
+            return models().freeSpace();
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
+    /** The phone's total RAM in bytes (a little under what it was sold with), or 0. */
+    @JavascriptInterface
+    public long deviceMemory() {
+        try {
+            ActivityManager am = (ActivityManager) activity.getSystemService(Context.ACTIVITY_SERVICE);
+            ActivityManager.MemoryInfo info = new ActivityManager.MemoryInfo();
+            am.getMemoryInfo(info);
+            return info.totalMem;
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    private ModelStore models() {
+        return ModelStore.get(activity);
     }
 
     private void deliverHealthFailure(String error) {

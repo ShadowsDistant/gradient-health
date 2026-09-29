@@ -1,5 +1,6 @@
 /* Progress: the training picture. Heat map of the last 12 weeks, the left/right gap, this week's
- * sets against target, bests per ladder and the moments worth celebrating.
+ * sets against target, strength trends for gym lifts, bests per ladder and the moments worth
+ * celebrating.
  */
 (function (G) {
   'use strict';
@@ -35,8 +36,8 @@
       }
       cols.push(`<div class="hm-col">${cells.join('')}</div>`);
     }
-    return `<div class="card">
-      <div class="row-between"><span class="t-headline">Last 12 weeks</span><span class="t-footnote rf-muted">${U.esc(U.fmtDay(first, false))} – ${U.esc(U.fmtDay(last + 6, false))}</span></div>
+    return `<div class="card" data-key="heatmap">
+      <div class="row-between"><span class="t-headline">Last 12 weeks</span><span class="t-footnote rf-muted">${U.esc(U.fmtDay(first, false))} to ${U.esc(U.fmtDay(last + 6, false))}</span></div>
       <div class="hm" role="img" aria-label="Calendar of the last 12 weeks"><div class="hm-days t-caption rf-muted">${WD.map((d) => `<span>${d}</span>`).join('')}</div><div class="hm-grid">${cols.join('')}</div></div>
       <div class="hm-legend t-caption">${[['work', 'Workout'], ['light', 'Light day'], ['freeze', 'Freeze'], ['miss', 'Missed'], ['plan', 'Planned']].map(([k, t]) => `<span><i class="hm-cell hm-${k}"></i>${t}</span>`).join('')}</div>
     </div>`;
@@ -56,13 +57,13 @@
     if (tests.length >= 2) {
       const pts = tests.map((t) => ({ day: t.day, value: t.gap * 100 }));
       chart = U.chartCard({ title: 'Curl gap over time', value: `${Math.round(last.gap * 100)}%`, fmt: (v) => `${Math.round(v)}%`, from: tests[0].day, to: Math.max(day, last.day), zero: true,
-        series: [{ name: 'Gap', kind: 'line', color: 'var(--hue-coral)', points: pts }, { name: '10% target', kind: 'avg', color: 'var(--label-tertiary)', points: [{ day: tests[0].day, value: 10 }, { day: Math.max(day, last.day), value: 10 }] }] });
+        series: [{ name: 'Gap', kind: 'line', color: 'var(--hue-coral)', points: pts, gap: 35 }, { name: '10% target', kind: 'avg', color: 'var(--label-tertiary)', points: [{ day: tests[0].day, value: 10 }, { day: Math.max(day, last.day), value: 10 }] }] });
     }
     const ms = (S.measurements || []).filter((m) => m.armL != null && m.armR != null);
     const arm = ms.length ? ms[ms.length - 1] : null;
     const u = S.profile.units === 'kg' ? 'cm' : 'in';
     const conv = (v) => (u === 'cm' ? v : v / 2.54).toFixed(1);
-    return `<div class="card lr">
+    return `<div class="card lr" data-key="lr">
       <span class="t-headline">Left vs right</span>
       ${last ? `<div class="lr-row"><span class="lr-side is-lead"><span class="t-caption">${U.side(side)}</span><span class="t-title-2 rf-num">${side === 'L' ? last.left : last.right}</span></span>
         <span class="lr-side"><span class="t-caption rf-muted">${U.side(other)}</span><span class="t-title-2 rf-num">${side === 'L' ? last.right : last.left}</span></span>
@@ -78,9 +79,33 @@
     const ws = B().weeklySets(S, day);
     const rows = B().GROUPS.filter((g) => ws[g] && ws[g].target > 0).map((g) => ({ name: B().GROUP_NAME[g], done: ws[g].done, target: ws[g].target, planned: ws[g].planned }));
     const short = rows.filter((r) => r.planned < r.target);
-    return `<div class="card"><div class="row-between"><span class="t-headline">Sets this week</span><span class="t-footnote rf-muted">done of target</span></div>
+    return `<div class="card" data-key="sets"><div class="row-between"><span class="t-headline">Sets this week</span><span class="t-footnote rf-muted">done of target</span></div>
       ${U.meterRows(rows)}
       ${short.length ? `<p class="t-footnote rf-muted">Your time budget fits fewer sets than the target for ${U.esc(short.map((r) => r.name.toLowerCase()).join(', '))}. A few more minutes a session closes it.</p>` : ''}</div>`;
+  }
+
+  // Gym lifts: the estimated one-rep max over time, from the heaviest set and the reps left in the
+  // tank (Epley). Up to three lifts, the most recently trained first.
+  function strength(S, day) {
+    const lifts = [];
+    for (const st of Object.values(S.prog || {})) {
+      if (!st || !st.gym || !st.e1rm) continue;
+      for (const [id, e] of Object.entries(st.e1rm)) {
+        const m = M().MOVES[id];
+        if (m && e && (e.hist || []).length >= 2) lifts.push({ m, e });
+      }
+    }
+    if (!lifts.length) return '';
+    lifts.sort((a, b) => b.e.day - a.e.day || b.e.hist.length - a.e.hist.length);
+    const u = S.profile.units === 'kg' ? 'kg' : 'lb';
+    const cards = lifts.slice(0, 3).map(({ m, e }) => {
+      const pts = e.hist.map(([d, v]) => ({ day: d, value: B().toUnit(v, u) }));
+      const last = pts[pts.length - 1];
+      return U.chartCard({ title: m.name, value: `${Math.round(last.value)} ${u}`, fmt: (v) => `${Math.round(v)} ${u}`, from: pts[0].day, to: Math.max(day, last.day),
+        series: [{ name: 'Estimated max', kind: 'line', color: 'var(--hue-indigo)', points: pts, gap: 28 }] });
+    });
+    return `<h2 class="sec-title t-title-3">Strength</h2>
+      <div class="section">${cards.join('')}<p class="t-footnote rf-muted">Your estimated one-rep max, worked out from your heaviest set and the reps you had left. Watch the trend; there's no need to test it.</p></div>`;
   }
 
   function bests(S, day) {
@@ -113,15 +138,17 @@
       return `${U.navbar('Progress')}
         <h1 class="rf-large-title">Progress</h1>
         <div class="section">
-          <div class="stat-row">
-            <div class="stat"><span class="t-footnote rf-muted">Workouts</span><span class="t-title-2 rf-num">${done}</span></div>
-            <div class="stat"><span class="t-footnote rf-muted">Best streak</span><span class="t-title-2 rf-num">${cal.streak.best}</span></div>
-            <div class="stat"><span class="t-footnote rf-muted">Level-ups</span><span class="t-title-2 rf-num">${ups}</span></div>
+          ${U.tip ? U.tip('progress') : ''}
+          <div class="stat-row" data-key="stats">
+            <div class="stat"><span class="t-footnote rf-muted">Workouts</span><span class="t-title-2">${U.roll(done)}</span></div>
+            <div class="stat"><span class="t-footnote rf-muted">Best streak</span><span class="t-title-2">${U.roll(cal.streak.best)}</span></div>
+            <div class="stat"><span class="t-footnote rf-muted">Level-ups</span><span class="t-title-2">${U.roll(ups)}</span></div>
           </div>
           ${heatmap(S, day, cal)}
           ${leftRight(S, day)}
           ${weekSets(S, day)}
         </div>
+        ${strength(S, day)}
         <h2 class="sec-title t-title-3">Levels</h2>
         <div class="section">${bests(S, day)}</div>
         <h2 class="sec-title t-title-3">Moments</h2>

@@ -73,7 +73,7 @@ jobs:
         run: |
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest build/gradient-health.apk \
-            --title "Gradient (latest build)" \
+            --title "Gradient Health (latest build)" \
             --notes "Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}. Install over the previous version to keep your data." \
             --target "$GITHUB_SHA" \
             --latest

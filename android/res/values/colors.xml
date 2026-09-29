@@ -2,5 +2,5 @@
 <resources>
     <!-- Keep in sync with COLOR_LIGHT in MainActivity.java and the web app's light theme. -->
     <color name="window_bg">#f1f2f6</color>
-    <color name="icon_bg">#0957cf</color>
+    <color name="icon_bg">#7b72d9</color>
 </resources>

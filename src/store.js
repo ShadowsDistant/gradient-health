@@ -30,17 +30,20 @@
     d('v', SCHEMA); d('vol', {}); d('complexity', 0); d('noStreak', 0); d('hardStreak', 0); d('pain', {}); d('excluded', []);
     d('weights', []); d('protein', {}); d('feel', {}); d('sleepChip', {}); d('measurements', []); d('active', null);
     d('celebrated', {}); d('pendingLines', []); d('insightsDismissed', {}); d('insightsShown', {}); d('volWeeksDone', []);
-    d('health', {}); d('ai', {});
+    d('health', {}); d('ai', {}); d('seen', {}); d('coachChat', []);
     const h = S.health;
     if (!h.days) h.days = {};
     if (!h.hc) h.hc = {};
     if (!h.manual) h.manual = {};
     if (h.lastSync === undefined) h.lastSync = null;
     if (h.status === undefined) h.status = null;
+    if (!h.written) h.written = {};
     const ai = S.ai;
     if (ai.enabled == null) ai.enabled = false;
+    if (ai.mode !== 'api' && ai.mode !== 'local' && ai.mode !== 'device') ai.mode = ai.enabled ? 'api' : 'local';
     if (!Array.isArray(ai.reports)) ai.reports = [];
     if (!Array.isArray(ai.chat)) ai.chat = [];
+    if (!Array.isArray(ai.deviceChat)) ai.deviceChat = [];
     stripSecrets(S);
     if (!S.catchup) S.catchup = { arm: { side: 'L', active: false, tests: [] }, leg: { side: 'L', active: false, tests: [] } };
     if (S.profile && GH.brain) {
@@ -50,6 +53,13 @@
       S.profile.prefs = Object.assign(def.prefs, S.profile.prefs || {});
       S.profile.protein = Object.assign(def.protein, S.profile.protein || {});
       S.profile.lead = Object.assign({ arm: null, leg: null }, S.profile.lead || {});
+    }
+    // 1.2: food tracking. Its mode starts from the 1.1 protein switch, and the food log is empty.
+    if (S.profile && GH.food) {
+      const had = S.profile.food && S.profile.food.mode;
+      GH.food.prefs(S);
+      if (!had) S.profile.food.mode = S.profile.protein && S.profile.protein.track === false ? 'off' : 'protein';
+      GH.food.data(S);
     }
     if (GH.brain && GH.brain.relink) GH.brain.relink(S);
     S.v = SCHEMA;
@@ -106,10 +116,10 @@
   }
   function importJson(txt) {
     const o = parse(typeof txt === 'string' ? txt.trim() : '');
-    if (!o) return { ok: false, error: 'That isn\'t a Gradient backup. Paste the whole text from Copy my data.' };
+    if (!o) return { ok: false, error: 'That isn\'t a Gradient Health backup. Paste the whole text from Copy my data.' };
     const S = o.app === 'gradient-health' && o.state ? o.state : o;
     if (!valid(S)) return { ok: false, error: 'That backup is missing parts. Paste the whole text from Copy my data.' };
-    if ((o.schema || S.v || 1) > SCHEMA) return { ok: false, error: 'That backup is from a newer version of Gradient. Update the app first.' };
+    if ((o.schema || S.v || 1) > SCHEMA) return { ok: false, error: 'That backup is from a newer version of Gradient Health. Update the app first.' };
     return { ok: true, state: migrate(S), workouts: S.log.filter((l) => l.type === 'workout').length, since: S.profile.startDay };
   }
 

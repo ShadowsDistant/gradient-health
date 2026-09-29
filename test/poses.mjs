@@ -40,10 +40,16 @@ for (const id of ids) {
 check(`every move (${ids.length}) has a name, a rep, a sensible range and cues without exclamation marks`, !bad.length, bad.slice(0, 5));
 const ladderBad = [];
 for (const [fam, lad] of Object.entries(M.LADDERS)) {
-  if (lad.rungs.length < 4) ladderBad.push(`${fam}: fewer than 4 rungs`);
-  for (const id of lad.rungs) if (!M.MOVES[id] || M.MOVES[id].family !== fam) ladderBad.push(`${fam}: ${id}`);
+  if (!lad.gym && lad.rungs.length < 4) ladderBad.push(`${fam}: fewer than 4 rungs`);
+  if (lad.gym && !lad.rungs.length) ladderBad.push(`${fam}: empty pool`);
+  for (const id of lad.rungs) {
+    const m = M.MOVES[id];
+    // Gym pools may reuse home moves, which keep their home family.
+    const reused = lad.gym && m && !m.gym && M.LADDERS[m.family] && !M.LADDERS[m.family].gym;
+    if (!m || (m.family !== fam && !reused)) ladderBad.push(`${fam}: ${id}`);
+  }
 }
-check('every ladder has 4+ rungs, all known, all tagged with their family', !ladderBad.length, ladderBad);
+check('every ladder has 4+ rungs (gym pools 1+), all known, all tagged with their family', !ladderBad.length, ladderBad);
 const tempo = ids.filter((id) => { const s = M.secPerRep(M.MOVES[id]); return !(s >= 0.5 && s <= 14); });
 check('rep tempo is between 0.5 and 14 s', !tempo.length, tempo.map((id) => `${id}:${M.secPerRep(M.MOVES[id])}`));
 const eq0 = { db: [], kb: [], ball: false, band: false, bar: false, chair: false, wall: false, towel: false, table: false, door: false };
@@ -79,5 +85,179 @@ check('nothing goes through the floor (side and front views)', !problems.floor.l
 check('planted hands and feet are always reachable (IK)', !problems.reach.length, problems.reach.slice(0, 6));
 check('elbows and knees stay in a human range', !problems.joints.length, problems.joints.slice(0, 6));
 check('every move builds a draw list', !problems.draw.length, problems.draw.slice(0, 6));
+
+/* ------------------------------------------------------------------ gym */
+section('Gym library');
+const GYM_EQ = {
+  db: [5, 10, 20], kb: [], bar: true, band: true, bb: true, ez: true, rack: true, bench: true, benchIncline: true, smith: true, cable: true,
+  pulldown: true, legPress: true, legCurl: true, legExt: true, chestPress: true, shoulderPress: true, pecDeck: true, dip: true, rower: true, bike: true, treadmill: true,
+};
+const LOAD_KEYS = ['bb', 'ez', 'db', 'cable', 'machine', 'smith', 'band', 'kb', 'ball'];
+const MUSCLE_NAMES = Object.keys(P.MUSCLES_SIDE);
+const gymIds = ids.filter((id) => M.MOVES[id].gym);
+const pools = Object.entries(M.LADDERS).filter(([, l]) => l.gym);
+const pooled = new Set(pools.flatMap(([, l]) => l.rungs));
+const gymBad = [];
+for (const id of gymIds) {
+  const m = M.MOVES[id];
+  if (!pooled.has(id)) gymBad.push(`${id}: in no gym pool`);
+  if (m.load && m.load.split('|').some((k) => !LOAD_KEYS.includes(k))) gymBad.push(`${id}: load ${m.load}`);
+  if (m.cues.length !== 3 || [...m.cues, m.mistake, m.breathe].some((c) => typeof c !== 'string' || !c || /[\u2013\u2014]/.test(c))) gymBad.push(`${id}: three cues, a mistake and a breathing tip, no dashes`);
+  if (!m.muscles.length || m.muscles.some((x) => !MUSCLE_NAMES.includes(x))) gymBad.push(`${id}: muscles`);
+  if (m.start > (m.range[0] + m.range[1]) / 2) gymBad.push(`${id}: start above the middle of the range`);
+  if (!M.allowed(m, GYM_EQ)) gymBad.push(`${id}: req ${m.req} not satisfied by a full gym`);
+}
+// Loaded pool members (gym or reused home moves) carry a plausible starting ratio of body weight.
+for (const id of pooled) {
+  const m = M.MOVES[id];
+  if (!m.load) { if (m.ratio != null) gymBad.push(`${id}: ratio on a bodyweight move`); continue; }
+  const perDumbbell = /^(db|kb)/.test(m.load);
+  if (!(m.ratio > 0 && m.ratio <= (perDumbbell ? 0.25 : 1))) gymBad.push(`${id}: ratio ${m.ratio}`);
+  if (!M.loadFor(m, GYM_EQ)) gymBad.push(`${id}: no load key in a full gym`);
+}
+check(`${gymIds.length} gym moves: flagged, pooled, known load keys, cues, muscles, ranges, starting ratios`, !gymBad.length, gymBad.slice(0, 6));
+const poolOrder = M.rungsFor('pressG', { db: [10], bb: true, bench: true, rack: true, chestPress: true });
+check('gym pools keep their preference order through rungsFor', poolOrder.join() === 'bench_bb,bench_db,press_machine', poolOrder);
+check('an adjustable bench also counts as a flat bench; a flat bench is not an incline',
+  M.has({ benchIncline: true }, 'bench') && !M.has({ bench: true }, 'incline') && M.has({ bench: true }, 'bench'));
+check('machine moves load from their machine only when it is there',
+  M.loadFor(M.MOVES.leg_press, { legPress: true }) === 'machine' && M.loadFor(M.MOVES.leg_press, {}) === null);
+const bandPallof = M.forPerson(M.MOVES.pallof, { band: true, door: true });
+check('the Pallof press draws a band on a door when there is no cable',
+  bandPallof.props[0].type === 'door' && bandPallof.equip[0].type === 'band' && M.forPerson(M.MOVES.pallof, GYM_EQ).props[0].type === 'cable');
+const homeOnly = { db: [8], kb: [10], ball: true, band: true, bar: true, chair: true, wall: true, towel: true, table: true, door: true };
+const leaks = gymIds.filter((id) => M.allowed(M.MOVES[id], homeOnly) && !['calf_db', 'rdl_db', 'hang_knee', 'pallof'].includes(id));
+check('home equipment never unlocks a gym machine or barbell move', !leaks.length, leaks);
+
+section('Gym props');
+const segs2 = (m) => (m.view && m.view !== 'side' ? { torso: P.W.torsoFront / 2 } : { torso: P.W.torso / 2 });
+// Gap between a body capsule (a→b, radius r) and the pad under a support surface {a, b, n} (a capsule
+// 9 thick with rounded ends, so edges count too): negative means overlapping.
+const PAD_R = 4.5;
+function gap(a, b, r, s) {
+  const sl = Math.hypot(s.b[0] - s.a[0], s.b[1] - s.a[1]) || 1;
+  const u = [(s.b[0] - s.a[0]) / sl, (s.b[1] - s.a[1]) / sl]; // the pad's caps end flush with the surface
+  const c0 = [s.a[0] + (u[0] - s.n[0]) * PAD_R, s.a[1] + (u[1] - s.n[1]) * PAD_R], c1 = [s.b[0] - (u[0] + s.n[0]) * PAD_R, s.b[1] - (u[1] + s.n[1]) * PAD_R];
+  const d = [c1[0] - c0[0], c1[1] - c0[1]];
+  const l2 = d[0] * d[0] + d[1] * d[1] || 1;
+  let best = Infinity;
+  for (let i = 0; i <= 40; i++) {
+    const p = [a[0] + (b[0] - a[0]) * i / 40, a[1] + (b[1] - a[1]) * i / 40];
+    const t = Math.max(0, Math.min(1, ((p[0] - c0[0]) * d[0] + (p[1] - c0[1]) * d[1]) / l2));
+    best = Math.min(best, Math.hypot(p[0] - c0[0] - d[0] * t, p[1] - c0[1] - d[1] * t) - PAD_R - r);
+  }
+  return best;
+}
+const surfacesOf = (m) => (m.props || []).filter((p) => P.GYM_PROPS.includes(p.type)).flatMap((p) => P.gymGeom(p, m.view || 'side').surfaces.map((s) => Object.assign({ prop: p }, s)));
+// Which body part rests on which support, every frame: 'torso' on a pad (flat bench, backrest,
+// incline or chest pad), 'thigh' on a seat, 'hip' (front view and bikes) 9 above the seat.
+const REST = {
+  bench_bb: ['torso'], bench_db: ['torso'], bench_smith: ['torso'], cg_bench: ['torso'], skull_ez: ['torso'], thrust_bb: ['torso'],
+  incline_db: ['torso', 'thigh'], incline_bb: ['torso', 'thigh'], incline_smith: ['torso', 'thigh'], ohp_db: ['torso', 'thigh'], curl_incline: ['torso', 'thigh'],
+  press_machine: ['torso', 'thigh'], press_shoulder_machine: ['torso', 'thigh'], leg_curl: ['torso', 'thigh'], leg_ext: ['torso', 'thigh'],
+  leg_press: ['torso'], row_chest: ['torso'], pulldown: ['thigh'], row_cable: ['thigh'], fly_pec: ['hip'], rev_fly_machine: ['hip'], bike_int: ['hip'],
+};
+const gp = { rest: [], sink: [], sled: [], smith: [], rack: [], dip: [], held: [], rower: [], bike: [], belt: [], pivot: [], lever: [], cable: [] };
+const TOL = 3; // cm of air allowed between the body and what it rests on
+const SQUASH = 4; // cm a pad may compress under the body
+const touching = (g) => g >= -SQUASH && g <= TOL;
+for (const id of gymIds) {
+  const m = M.forPerson(M.MOVES[id], GYM_EQ);
+  const fr = frames(m);
+  const surf = surfacesOf(m);
+  const props = m.props || [];
+  const levers = [];
+  for (const { name, pts } of fr) {
+    const at = `${id}@${name}`;
+    const torso = [pts.neck, pts.hip, segs2(m).torso];
+    const thighs = ['N', 'F'].map((s) => [pts['hp' + s], pts['kn' + s], P.W.th / 2]);
+    // Rests on its supports, never sinks into one.
+    for (const part of REST[id] || []) {
+      const gaps = [];
+      if (part === 'torso') for (const s of surf) gaps.push(gap(torso[0], torso[1], torso[2], s));
+      if (part === 'thigh') for (const s of surf) for (const t of thighs) gaps.push(gap(t[0], t[1], t[2], s));
+      // Seated hips sit 9 above the seat top (positive: floating, negative: sunk in).
+      if (part === 'hip') for (const s of surf) if (s.n[1] < -0.9) gaps.push(s.a[1] - pts.hip[1] - 9);
+      if (!gaps.some(touching)) gp.rest.push(`${at}: ${part} ${gaps.map((g) => g.toFixed(1)).join('/')} from its supports`);
+    }
+    if ((m.view || 'side') === 'side') for (const s of surf) { const g = gap(torso[0], torso[1], torso[2], s); if (g < -SQUASH) gp.sink.push(`${at}: torso ${g.toFixed(1)} into the ${s.prop.type}`); }
+    for (const p of props) {
+      if (p.type === 'machine' && p.kind === 'legPress') {
+        // The foot plate (under the soles) slides on the track line.
+        const sole = P.dir(pts.footDirN - 90);
+        const pc = [(pts.heN[0] + pts.toN[0]) / 2 + sole[0] * 5.5, (pts.heN[1] + pts.toN[1]) / 2 + sole[1] * 5.5];
+        const u = P.dir(90 + (p.angle || 45));
+        const off = Math.abs((pc[0] - p.track[0]) * u[1] - (pc[1] - p.track[1]) * u[0]);
+        if (off > 1.5) gp.sled.push(`${at}: plate ${off.toFixed(1)} off the track`);
+      }
+      if (p.type === 'smith') {
+        const e = (m.equip || []).find((q) => q.type === 'bb');
+        const bar = e.hold ? P.pinPoint(pts, e.hold) : P.pinPoint(pts, 'grip');
+        if (Math.abs(bar[0] - p.x) > 2) gp.smith.push(`${at}: bar ${(bar[0] - p.x).toFixed(1)} off the rail`);
+      }
+      if (p.type === 'dip') {
+        const g = P.pinPoint(pts, 'grip');
+        if (Math.abs(g[1] + p.h) > TOL || Math.abs(g[0] - p.x) > (p.len || 56) / 2) gp.dip.push(`${at}: hands off the bars`);
+      }
+      if (p.type === 'rower') {
+        if (Math.abs(pts.hip[1] + (p.h || 36) + 9) > 2) gp.rower.push(`${at}: hip off the seat`);
+      }
+      if (p.type === 'bike') {
+        for (const s of ['N', 'F']) {
+          const fd = pts['footDir' + s];
+          const ball = [pts['an' + s][0] + P.dir(fd)[0] * 9 + P.dir(fd - 90)[0] * 3.5, pts['an' + s][1] + P.dir(fd)[1] * 9 + P.dir(fd - 90)[1] * 3.5];
+          const r = Math.hypot(ball[0] - p.x, ball[1] - (p.y == null ? -30 : p.y));
+          if (Math.abs(r - (p.crank || 17)) > 2) gp.bike.push(`${at}.${s}: pedal ${r.toFixed(1)} from the axle`);
+        }
+      }
+      if (p.type === 'treadmill') {
+        // The lower foot touches the belt (foot line 5.5 ± 3 above it) and nothing goes through it.
+        const inc = (p.incline || 0) * Math.PI / 180;
+        const above = (q) => (-(p.h || 20) - (q[0] - p.x) * Math.tan(inc)) - q[1];
+        const feet = ['N', 'F'].map((s) => Math.min(above(pts['he' + s]), above(pts['to' + s])));
+        const low = Math.min(...feet);
+        if (low < 5.5 - TOL || low > 5.5 + TOL) gp.belt.push(`${at}: lower foot ${low.toFixed(1)} above the belt`);
+      }
+      if (p.type === 'machine' && (p.kind === 'legCurl' || p.kind === 'legExt')) {
+        const d = Math.hypot(pts.knN[0] - p.pivot[0], pts.knN[1] - p.pivot[1]);
+        if (d > 2.5) gp.pivot.push(`${at}: knee ${d.toFixed(1)} from the pivot`);
+      }
+      if (p.type === 'machine' && (p.kind === 'chestPress' || p.kind === 'shoulderPress')) {
+        const g = P.pinPoint(pts, 'grip');
+        levers.push(Math.hypot(g[0] - p.pivot[0], g[1] - p.pivot[1]));
+      }
+    }
+    // A bar on the back or the hips stays in the hands.
+    for (const e of m.equip || []) if (e.hold) {
+      const bar = P.pinPoint(pts, e.hold), g = P.pinPoint(pts, 'grip');
+      if (Math.hypot(bar[0] - g[0], bar[1] - g[1]) > 2) gp.held.push(`${at}: hands ${Math.hypot(bar[0] - g[0], bar[1] - g[1]).toFixed(1)} off the bar`);
+    }
+    // Cables run from a pulley to a finite clip in the hands' attachment.
+    for (const r of P.cableRuns(m, pts)) if (![...r.clip, ...r.pulley].every(Number.isFinite) || r.clip[1] > 0) gp.cable.push(`${at}: cable`);
+  }
+  if (levers.length && (Math.max(...levers) - Math.min(...levers)) / Math.max(...levers) > 0.1) gp.lever.push(`${id}: lever stretches ${(Math.max(...levers) - Math.min(...levers)).toFixed(1)}`);
+  // The racked bar sits a little above the J-hooks when standing tall.
+  const rack = props.find((p) => p.type === 'rack');
+  if (rack && ['squat_bb', 'ohp_bb'].includes(id)) {
+    const e = m.equip.find((q) => q.type === 'bb');
+    const top = Math.min(...fr.map(({ pts }) => (e.hold ? P.pinPoint(pts, e.hold) : P.pinPoint(pts, 'grip'))[1]));
+    const low = Math.max(...fr.map(({ pts }) => (e.hold ? P.pinPoint(pts, e.hold) : P.pinPoint(pts, 'grip'))[1]));
+    const racked = id === 'squat_bb' ? top : low; // squat unracks standing tall; the press starts at the shoulders
+    if (!(-racked - rack.h >= 2 && -racked - rack.h <= 15)) gp.rack.push(`${id}: bar ${(-racked - rack.h).toFixed(1)} above the hooks`);
+  }
+}
+check('the body rests on its bench, seat, pad or saddle in every frame', !gp.rest.length, gp.rest.slice(0, 6));
+check('nobody sinks into a pad', !gp.sink.length, gp.sink.slice(0, 6));
+check('leg press: the foot plate slides along its track', !gp.sled.length, gp.sled.slice(0, 6));
+check('Smith machine: the bar stays on the rail', !gp.smith.length, gp.smith.slice(0, 6));
+check('rack: the bar starts just above the J-hooks', !gp.rack.length, gp.rack);
+check('dips: hands stay on the bars', !gp.dip.length, gp.dip.slice(0, 6));
+check('a bar on the back or hips stays in the hands', !gp.held.length, gp.held.slice(0, 6));
+check('rower: the hips ride the seat', !gp.rower.length, gp.rower.slice(0, 6));
+check('bike: the feet stay on the pedals', !gp.bike.length, gp.bike.slice(0, 6));
+check('treadmill: a foot is always on the belt', !gp.belt.length, gp.belt.slice(0, 6));
+check('leg curl and extension: knees on the machine pivot', !gp.pivot.length, gp.pivot.slice(0, 6));
+check('chest and shoulder press levers keep their length', !gp.lever.length, gp.lever);
+check('cables run from a pulley to the hands', !gp.cable.length, gp.cable.slice(0, 6));
 
 done();

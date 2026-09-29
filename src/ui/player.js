@@ -48,21 +48,32 @@
   U.act.resumeWorkout = () => U.openPlayer();
   // An unfinished workout from an earlier day goes straight to its check-in.
   U.openCheckin = () => { if (!A()) return; P = { mode: 'workout', phase: 'checkin' }; show(); };
+  let scene = null; // what's on screen (phase + step), so a change of scene can animate in
+  let closing = null;
   function show() {
     const el = root();
+    const was = !el.hidden;
+    if (closing) { closing.cancel(); closing = null; }
     el.hidden = false;
     plat().keepAwake(true);
     if (!timer) timer = setInterval(loop, 200);
+    scene = null;
     draw();
     U.renderAccessory();
+    // The backdrop turns solid fast; the content rises in a little slower.
+    if (!was && !U.reduced() && el.animate) {
+      el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 140, easing: 'ease-out' });
+      for (const [i, c] of Array.from(el.children).entries()) c.animate([{ opacity: 0, transform: 'translateY(26px)' }, { opacity: 1, transform: 'none' }], { duration: 420, delay: 40 + i * 40, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)', fill: 'backwards' });
+    }
   }
   function hide() {
     const el = root();
-    el.hidden = true;
-    el.innerHTML = '';
-    dropFig();
     if (timer) { clearInterval(timer); timer = null; }
     plat().keepAwake(false);
+    const done = () => { closing = null; el.hidden = true; el.innerHTML = ''; dropFig(); scene = null; };
+    if (U.reduced() || !el.animate || el.hidden) { done(); return; }
+    closing = el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(22px)' }], { duration: 220, easing: 'cubic-bezier(0.3, 0, 0.8, 0.15)', fill: 'forwards' });
+    closing.onfinish = () => { if (closing) { closing.cancel(); done(); } };
   }
   // Minimize: the workout keeps going; Today and the tab bar show a way back.
   function minimize() {
@@ -70,7 +81,7 @@
     hide();
     U.render();
   }
-  function closeDone() { P = null; hide(); U.route = { tab: 'today', view: null, arg: null }; U.render(); }
+  function closeDone() { P = null; hide(); U.route = { tab: 'today', view: null, arg: null }; U.nextMotion('stagger'); U.render('stagger'); }
   U.playerBack = () => {
     if (P && (P.phase === 'next' || P.phase === 'mobdone')) { closeDone(); return true; }
     if (P && P.mode === 'mobility') { P = null; hide(); U.render(); return true; }
@@ -80,31 +91,144 @@
   U.act.plMin = () => U.playerBack();
 
   /* ---------------------------------------------------------------- figures */
+  // The 3D figure (a lazy three.js chunk) when the phone has WebGL and it's picked in Settings, else
+  // the flat one. Callers hold a controller that swaps its figure underneath: flat while the chunk
+  // loads the first time, 3D once it's there, and flat again if the GPU gives up.
+  const want3d = () => ((U.S && U.S.profile.prefs.figure) || '3d') === '3d';
+  function load3d() {
+    if (!want3d() || !GH.lazy) return Promise.resolve(null);
+    return GH.lazy('figure3d').catch(() => null);
+  }
+  // Loading only fetches the chunk; preloading also warms up the GPU, in idle slices.
+  U.loadFigure = () => load3d();
+  U.preloadFigure = () => load3d().then((f) => (f && f.preload ? f.preload() : false));
+  // Whether 3D can be drawn here: asks the chunk once it's loaded, else checks for WebGL 2 itself.
+  let gl2 = null;
+  function hasGl2() {
+    if (GH.figure3d) return GH.figure3d.supported();
+    if (gl2 == null) {
+      try {
+        const g = document.createElement('canvas').getContext('webgl2');
+        gl2 = !!g;
+        const lose = g && g.getExtension('WEBGL_lose_context');
+        if (lose) lose.loseContext();
+      } catch (e) { gl2 = false; }
+    }
+    return gl2;
+  }
+  U.canDraw3d = hasGl2;
+  U.figure3dOk = () => want3d() && hasGl2();
+  function look() {
+    const pr = (U.S && U.S.profile.prefs) || {};
+    return { dark: String(P2().currentTheme()).startsWith('dark'), skin: pr.figSkin || 'sand', shirt: pr.figShirt || undefined };
+  }
+  const P2 = () => GH.platform;
+  function figure(host, m, o) {
+    let inner = null, at = host, playing = false, dead = false, is3d = false;
+    const ctl = {
+      get el() { return inner.el; },
+      get duration() { return inner.duration; },
+      get is3d() { return is3d; },
+      onPhase: null,
+      // Move the figure into another box (the player redraws its card between steps).
+      attach(el) { at = el; if (inner.el.parentNode !== el) el.appendChild(inner.el); },
+      play() { playing = true; inner.play(); },
+      pause() { playing = false; inner.pause(); },
+      playOnce() { if (inner.playOnce) inner.playOnce(); },
+      setView(v) { if (is3d && inner.setView) inner.setView(v); },
+      destroy() { dead = true; inner.destroy(); },
+    };
+    const flat = () => {
+      is3d = false;
+      inner = GH.pose.mount(at, m, o);
+      if (playing) inner.play();
+    };
+    const solid = (f) => {
+      is3d = true;
+      inner = f.mount(at, m, Object.assign({}, o, look(), {
+        onFallback: (failed) => {
+          try { failed.destroy(); } catch (e) { /* already gone */ }
+          if (dead) return;
+          flat();
+          fadeIn(inner.el);
+          if (ctl.onPhase) ctl.onPhase(null);
+        },
+      }));
+      inner.onPhase = (p) => { if (!dead && ctl.onPhase) ctl.onPhase(p); };
+      if (playing) inner.play();
+    };
+    const f = GH.figure3d;
+    if (want3d() && f && f.supported()) solid(f);
+    else {
+      flat();
+      if (want3d() && !f) {
+        load3d().then((f2) => {
+          if (dead || !f2 || !f2.supported() || !inner.el.isConnected) return;
+          const old = inner;
+          solid(f2);
+          old.destroy();
+          fadeIn(inner.el);
+        });
+      }
+    }
+    return ctl;
+  }
+  // "Control 2 s · Drive 1 s": how long each half of a rep takes, in the order the move starts.
+  // Holds and flowing moves (jacks, crawls) have no tempo.
+  function tempoOf(m) {
+    const rep = (m && m.rep) || [];
+    if (rep.length < 2 || rep.some((x) => x.ph !== 'con' && x.ph !== 'ecc') || !rep.some((x) => x.ph === 'con') || !rep.some((x) => x.ph === 'ecc')) return null;
+    const secs = (ph) => Math.max(0.5, Math.round(rep.filter((x) => x.ph === ph).reduce((a, x) => a + x.ms, 0) / 500) / 2);
+    const parts = { ecc: ['ecc', 'Control', secs('ecc')], con: ['con', 'Drive', secs('con')] };
+    return rep[0].ph === 'ecc' ? [parts.ecc, parts.con] : [parts.con, parts.ecc];
+  }
+  U.tempoHtml = (m) => {
+    const t = tempoOf(m);
+    // Keyed by move: a swap or another rung gets a fresh strip; the lit half (data-on) is set by
+    // code, and a re-render leaves attributes it didn't set alone.
+    return t ? `<div class="fig-tempo" data-key="tempo-${U.esc(m.id)}" aria-hidden="true">${t.map(([ph, word, s]) => `<span data-ph="${ph}">${word} <b class="rf-num">${String(s).replace('.5', '½')} s</b></span>`).join('')}</div>` : '';
+  };
+  // Light up the half of the rep the figure is in (the 3D figure reports it; the flat one doesn't).
+  function tempoSync(ctl, box) {
+    ctl.onPhase = (p) => {
+      const strip = box && box.querySelector('.fig-tempo');
+      if (strip) strip.dataset.on = p && (p.ph === 'con' || p.ph === 'ecc') ? p.ph : '';
+    };
+  }
+  let covered = false; // the how-to sheet is over the player
   function dropFig() { if (fig) { try { fig.ctl.destroy(); } catch (e) { /* ignore */ } fig = null; } }
   function leadSideFor(fam) { const c = U.S.catchup; return (LEG_FAMS.includes(fam) ? c.leg.side : c.arm.side) || 'L'; }
   function figOpts(st, m0) {
-    const m = M().forPerson(m0, U.S.profile.equipment);
+    // The kit where this workout happens: a goblet squat shows a dumbbell at the gym.
+    const S = U.S;
+    const m = M().forPerson(m0, B().eqFor(S, S.active ? S.active.day : U.today()));
     const side = st.side || null;
     const o = { reducedMotion: U.reduced() };
     if (m.uni && side) { o.mirrored = M().mirrorFor(m, side); o.lead = side === leadSideFor(m0.family); }
-    return { m, o, key: `${m0.id}:${side}:${o.mirrored}` };
+    const lk = look();
+    return { m, o, key: `${m0.id}:${side}:${o.mirrored}:${want3d()}:${lk.dark}:${lk.skin}:${lk.shirt}` };
   }
   function mountFig(host, st, playing) {
     const m0 = st && st.item && M().MOVES[st.item.moveId];
     if (!host || !m0 || !GH.pose) return;
     const { m, o, key } = figOpts(st, m0);
-    if (fig && fig.key === key) host.appendChild(fig.ctl.el); // same move: keep the running animation
+    if (fig && fig.key === key) fig.ctl.attach(host); // same move: keep the running animation
     else {
       dropFig();
-      try { fig = { key, ctl: GH.pose.mount(host, m, o) }; } catch (e) { fig = null; return; }
+      try { fig = { key, ctl: figure(host, m, o) }; } catch (e) { fig = null; return; }
+      fadeIn(fig.ctl.el);
     }
-    if (playing) fig.ctl.play(); else fig.ctl.pause();
+    tempoSync(fig.ctl, host.parentNode);
+    if (playing && !covered) fig.ctl.play(); else fig.ctl.pause();
   }
+  function fadeIn(el) { if (el && !U.reduced() && el.animate) el.animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)' }); }
   U.figureFor = (host, moveId, side, playing) => {
     const m0 = M().MOVES[moveId];
     if (!m0 || !GH.pose) return null;
     const { m, o } = figOpts({ side, item: { moveId } }, m0);
-    const ctl = GH.pose.mount(host, m, o);
+    const ctl = figure(host, m, o);
+    fadeIn(ctl.el);
+    tempoSync(ctl, host.parentNode);
     if (playing) ctl.play();
     return ctl;
   };
@@ -138,10 +262,19 @@
     if (st.kind !== 'set' || st.leadOnly || st.of <= 1) return '';
     return `<div class="pl-dots" aria-label="Set ${st.set + 1} of ${st.of}">${Array.from({ length: st.of }, (_, i) => `<i class="${i < st.set ? 'done' : i === st.set ? 'now' : ''}"></i>`).join('')}</div>`;
   }
+  // The weight for a gym exercise (what the person picked this session, else the planned load), or
+  // null for moves without a tracked weight.
+  function weightOf(it) {
+    if (!it || !it.load || it.load.kg == null || !B().isGymFam(it.fam)) return null;
+    const kg = it.curLoad != null ? it.curLoad : it.load.kg;
+    const m = M().MOVES[it.moveId];
+    return { kg, label: B().fmtLoad(U.S, kg, it.load.key, m), first: !!it.load.guess && it.curLoad == null };
+  }
   function upNext(st) {
     if (!st) return '<p class="t-callout rf-muted">Last one.</p>';
     const it = st.item;
-    const what = st.kind === 'set' ? U.target(it, B().currentTarget(A(), st)) : st.kind === 'interval' ? `${st.work} s` : st.kind === 'test' ? 'max reps' : isTimed(st) ? `${durationOf(st)} s` : U.target(it);
+    const w = st.kind === 'set' ? weightOf(it) : null;
+    const what = st.kind === 'set' ? U.target(it, B().currentTarget(A(), st)) + (w ? ` at ${w.label}` : '') : st.kind === 'interval' ? `${st.work} s` : st.kind === 'test' ? 'max reps' : isTimed(st) ? `${durationOf(st)} s` : U.target(it);
     return `<div class="pl-next"><span class="t-caption rf-muted">Up next</span><span class="t-headline">${U.esc(it.name)}</span><span class="t-footnote rf-muted">${U.esc(eyebrow(st))} · ${U.esc(what)}${st.side ? ` · ${U.side(st.side).toLowerCase()}` : ''}</span></div>`;
   }
 
@@ -171,12 +304,29 @@
     else if (P.phase === 'rest') html = viewRest();
     else if (!st) { if (P.mode === 'mobility') { finishMobility(); return; } P.phase = 'checkin'; html = viewCheckin(); }
     else html = viewStep(st);
-    el.innerHTML = html;
-    U.enhance(el);
+    // Patch in place: the bar, buttons and diagram stay put while the content changes.
+    const phase = P.phase === 'countdown' || P.phase === 'running' ? 'step' : P.phase;
+    const next = `${phase}:${P.mode === 'mobility' ? P.mob.idx : A() ? A().idx : ''}`;
+    const changed = scene !== next;
+    // Each scene gets fresh content (so controls never carry over from the last one); within a
+    // scene, updates patch in place.
+    html = html.replace(/<div class="(pl-main|pl-scroll)/, (m) => m.replace('<div', `<div data-key="scene-${next}"`));
+    U.morph(el, html);
+    if (changed && scene != null) sceneIn(el, phase);
+    scene = next;
     const host = el.querySelector('.pl-fig');
     if (host && st && (P.phase === 'step' || P.phase === 'countdown' || P.phase === 'running')) mountFig(host, st, true);
     else if (host && P.phase === 'rest') { const nx = cur(); if (nx) mountFig(host, nx, false); }
     loop();
+  }
+
+  // A new step or phase slides in: the main block rises, the action row settles.
+  function sceneIn(el, phase) {
+    if (U.reduced()) return;
+    const main = el.querySelector('.pl-main, .pl-scroll');
+    const acts = el.querySelector('.pl-actions');
+    if (main && main.animate) main.animate([{ opacity: 0, transform: `translateY(${phase === 'rest' ? 18 : 24}px)` }, { opacity: 1, transform: 'none' }], { duration: 380, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)' });
+    if (acts && acts.animate) acts.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: 80, easing: 'ease-out', fill: 'backwards' });
   }
 
   function viewStep(st) {
@@ -206,8 +356,12 @@
     } else if (st.kind === 'set') {
       const t = B().currentTarget(A(), st);
       P.reps = t;
-      target = `<div class="pl-target"><span class="pl-big rf-num">${t}</span><span class="pl-unit">${t === 1 ? 'rep' : 'reps'}</span></div>`;
-      hint = `<p class="pl-hint t-callout rf-muted">${st.leadOnly ? 'One set on this side only.' : 'Stop with 1-3 reps left in the tank.'}${st.first === false ? ' Match the first side, never more.' : ''}</p>`;
+      const w = weightOf(it);
+      target = `<div class="pl-target"><span class="pl-big rf-num">${t}</span><span class="pl-unit">${t === 1 ? 'rep' : 'reps'}</span></div>
+        ${w ? `<button type="button" class="pl-load" data-act="plLoad" aria-label="Weight: ${U.esc(w.label)}. Change">${U.icon('dumbbell', 'sm')}<span class="rf-num">${U.esc(w.label)}</span>${U.icon('pencil', 'sm')}</button>` : ''}`;
+      hint = w && w.first
+        ? `<p class="pl-hint t-callout rf-muted">New exercise: pick a weight you could lift about ${t + 2} times. It's remembered for next time.</p>`
+        : `<p class="pl-hint t-callout rf-muted">${st.leadOnly ? 'One set on this side only.' : 'Stop with 1-3 reps left in the tank.'}${st.first === false ? ' Match the first side, never more.' : ''}</p>`;
       actions = `<div class="pl-adjust"><span class="t-footnote rf-muted">Did fewer?</span>${U.stepper('plReps', t, 0, t, 'Reps done', 'data-on="plReps"')}</div>
         <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plDone">${U.icon('check')}Done set</button>`;
     } else {
@@ -219,11 +373,11 @@
         <p class="pl-eyebrow t-footnote rf-muted">${U.esc(eyebrow(st))}</p>
         <h1 class="pl-name">${U.esc(it.name)}</h1>
         ${sideLine(st)}
-        <button type="button" class="pl-fig-card" data-act="plHowTo" aria-label="How to do ${U.esc(it.name)}"><div class="pl-fig"></div></button>
+        <button type="button" class="pl-fig-card" data-act="plHowTo" aria-label="How to do ${U.esc(it.name)}"><div class="pl-fig" data-morph="keep"></div>${U.tempoHtml(m)}${!U.seen('playerHint') && P.phase === 'step' ? '<span class="pl-fig-hint t-caption">Tap for how-to</span>' : ''}</button>
         ${target}
         ${hint}
         ${cue && P.phase === 'step' && st.kind !== 'test' ? `<p class="pl-cue t-callout">${U.esc(cue)}</p>` : ''}
-        <div class="pl-meta">${dots(st)}${it.load && it.load.label && st.kind !== 'test' ? `<span class="t-footnote rf-muted">${U.esc(it.load.label)}</span>` : ''}</div>
+        <div class="pl-meta">${dots(st)}${it.load && it.load.label && st.kind !== 'test' && !weightOf(it) ? `<span class="t-footnote rf-muted">${U.esc(it.load.label)}</span>` : ''}</div>
       </div>
       <div class="pl-actions">${actions}</div>`;
   }
@@ -235,7 +389,7 @@
     const rirQ = P.askRir ? `<div class="pl-rir">
         <p class="t-headline">How many more could you have done?</p>
         ${U.seg('plRir', [['0', '0'], ['12', '1-2'], ['3', '3+']], P.rirAnswered || '', 'Reps left in the tank', ' data-on="plRir"')}
-        <p class="t-footnote rf-muted">${P.askRir.kind === 'finisher' ? 'For the whole finisher.' : `For ${U.esc(P.askRir.name.toLowerCase())}. This sets next time.`}</p>
+        <p class="t-footnote rf-muted">${P.askRir.kind === 'finisher' ? 'For the whole finisher.' : `For ${U.esc(P.askRir.name.toLowerCase())}. This sets next time.`}${((U.S.seen || {}).rirCount || 0) < 3 ? ' Count the reps you could still have done with good form. A rough guess is fine.' : ''}</p>
       </div>` : '';
     const logged = done && done.kind === 'set' ? loggedLine(done) : '';
     const timerBlock = P.restEnd
@@ -249,7 +403,7 @@
         ${timerBlock}
         ${logged}
         ${rirQ}
-        ${next ? `<div class="pl-next-row"><div class="pl-fig pl-fig-sm"></div>${upNext(next)}</div>` : ''}
+        ${next ? `<div class="pl-next-row"><div class="pl-fig pl-fig-sm" data-morph="keep"></div>${upNext(next)}</div>` : ''}
       </div>
       <div class="pl-actions">${needCont || !next ? `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plContinue">${next ? 'Continue' : 'Finish'}</button>` : ''}</div>`;
   }
@@ -257,7 +411,8 @@
     const log = A().logs[A().session.items.concat(A().session.extras).indexOf(st.item)];
     const last = log && log.sets[log.sets.length - 1];
     if (!last) return '';
-    return `<p class="pl-logged t-callout">Logged ${U.esc(U.target(st.item, last.amount))}${st.side ? ` (${U.side(st.side).toLowerCase()})` : ''} <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="plAmend">Change</button></p>`;
+    const at = last.load != null && st.item.load ? ` at ${B().fmtLoad(U.S, last.load, st.item.load.key, M().MOVES[st.item.moveId])}` : '';
+    return `<p class="pl-logged t-callout">Logged ${U.esc(U.target(st.item, last.amount) + at)}${st.side ? ` (${U.side(st.side).toLowerCase()})` : ''} <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="plAmend">Change</button></p>`;
   }
 
   /* ---------------------------------------------------------------- timing */
@@ -269,8 +424,8 @@
     const setRing = (v) => { const r = el.querySelector('.rf-ring'); if (r) { r.style.setProperty('--rf-value', Math.max(0, Math.min(1, v)).toFixed(3)); r.setAttribute('aria-valuenow', String(Math.round(v * 100))); } };
     if (P.phase === 'countdown') {
       const s = Math.ceil((P.goAt - now) / 1000);
-      if (s > 0 && s !== P.lastCue) { plat().cue('tick'); P.lastCue = s; }
-      if (now >= P.goAt) { plat().cue('go'); P.phase = 'running'; P.startAt = now; P.endAt = now + P.dur * 1000; P.lastCue = null; draw(); return; }
+      if (s > 0 && s !== P.lastCue) { plat().cue('tick'); U.haptic('tick'); P.lastCue = s; }
+      if (now >= P.goAt) { plat().cue('go'); U.haptic('go'); P.phase = 'running'; P.startAt = now; P.endAt = now + P.dur * 1000; P.lastCue = null; draw(); return; }
       setCount(String(Math.max(1, s)));
       setRing(1);
     } else if (P.phase === 'running') {
@@ -334,6 +489,7 @@
     const S = U.S;
     const a = A();
     const st = a.steps[a.idx];
+    U.haptic(st.kind === 'set' || st.kind === 'interval' ? 'done' : 'success');
     const linesBefore = (a.testLines || []).length;
     B().completeStep(S, result);
     U.save();
@@ -377,8 +533,11 @@
     if (!P || !P.askRir) return;
     B().setRir(U.S, P.askRir, String(v));
     P.rirAnswered = String(v);
+    U.S.seen = U.S.seen || {};
+    U.S.seen.rirCount = (U.S.seen.rirCount || 0) + 1;
     U.save();
-    if (!P.restEnd) { if (P.restTotal) endRest(); else draw(); }
+    // Let the thumb land before the screen moves on.
+    if (!P.restEnd) setTimeout(() => { if (P && P.rirAnswered === String(v)) { if (P.restTotal) endRest(); else draw(); } }, 280);
   };
   U.act.plAmend = () => {
     const st = P.justDone;
@@ -387,22 +546,75 @@
     const log = a.logs[a.session.items.concat(a.session.extras).indexOf(st.item)];
     const last = log && log.sets[log.sets.length - 1];
     if (!last) return;
+    const loaded = last.load != null && weightOf(st.item);
+    P.amendLoad = loaded ? last.load : null;
     U.sheet({
-      title: 'Change what you logged', detents: 'small medium', detent: 'small',
-      body: `<div class="sheet-pad"><p class="t-callout rf-muted">${U.esc(st.item.name)}${st.side ? `, ${U.side(st.side).toLowerCase()}` : ''}</p><div class="ob-center">${U.stepper('amendVal', last.amount, 0, Math.max(last.target, last.amount) + 20, st.item.timed ? 'Seconds' : 'Reps')}</div></div>`,
+      title: 'Change what you logged', detents: loaded ? 'medium large' : 'small medium', detent: loaded ? 'medium' : 'small',
+      body: `<div class="sheet-pad"><p class="t-callout rf-muted">${U.esc(st.item.name)}${st.side ? `, ${U.side(st.side).toLowerCase()}` : ''}</p><div class="ob-center">${U.stepper('amendVal', last.amount, 0, Math.max(last.target, last.amount) + 20, st.item.timed ? 'Seconds' : 'Reps')}</div>
+        ${loaded ? `<p class="t-footnote rf-muted load-label">Weight</p>${loadChips(st.item, last.load, 'plAmendLoad')}` : ''}</div>`,
       action: { label: 'Save', act: 'plAmendSave' },
     });
+  };
+  U.act.plAmendLoad = (el) => {
+    P.amendLoad = parseFloat(el.dataset.arg);
+    for (const c of el.parentNode.querySelectorAll('.rf-chip')) c.setAttribute('aria-pressed', String(c === el));
+    U.haptic('select');
   };
   U.act.plAmendSave = () => {
     const input = document.getElementById('amendVal');
     const v = parseInt(input && input.value, 10);
-    if (isFinite(v)) { B().amendLast(U.S, v); U.save(); }
+    B().amendLast(U.S, isFinite(v) ? v : null, P.amendLoad);
+    U.save();
+    P.amendLoad = null;
+    const top = U.topSheet(); if (top) top.close('ok');
+    draw();
+  };
+
+  // Weight choices around the current one, as chips, plus "Other" for anything else.
+  function loadChips(it, curKg, act) {
+    const choices = B().loadChoices(U.S, Object.assign({}, it, { curLoad: curKg }), A().day);
+    return `<div class="load-chips">${choices.map((c) => U.chip(c.label, Math.abs(c.kg - curKg) < 1e-6, `data-act="${act}" data-arg="${c.kg}"`)).join('')}</div>
+      <div class="ob-add"><input class="rf-input" type="number" inputmode="decimal" id="plLoadOther" placeholder="Other weight (${U.wUnit()})" aria-label="Other weight"><button type="button" class="rf-btn" data-size="sm" data-act="plLoadOther" data-arg="${act}">Use</button></div>`;
+  }
+  U.act.plLoad = () => {
+    const st = cur();
+    const w = st && weightOf(st.item);
+    if (!w) return;
+    U.sheet({
+      title: 'Weight', detents: 'medium large', detent: 'medium',
+      body: `<div class="sheet-pad"><p class="t-callout rf-muted">${U.esc(st.item.name)}. ${w.first ? `A first guess. Pick one you could lift about ${B().currentTarget(A(), st) + 2} times.` : 'For the rest of this exercise.'}</p>${loadChips(st.item, w.kg, 'plLoadPick')}</div>`,
+    });
+  };
+  U.act.plLoadPick = (el) => {
+    const st = cur();
+    if (!st) return;
+    B().setItemLoad(U.S, st.item, parseFloat(el.dataset.arg));
+    U.save();
+    U.haptic('select');
+    const top = U.topSheet(); if (top) top.close('ok');
+    draw();
+  };
+  U.act.plLoadOther = (el) => {
+    const input = document.getElementById('plLoadOther');
+    const v = parseFloat(input && input.value);
+    if (!(v > 0 && v < 1000)) { U.toast('Enter a weight like 60', 'caution'); return; }
+    const kg = B().fromUnit(v, U.wUnit());
+    if (el.dataset.arg === 'plAmendLoad') { P.amendLoad = kg; U.act.plAmendSave(); return; }
+    const st = cur();
+    if (st) B().setItemLoad(U.S, st.item, kg);
+    U.save();
     const top = U.topSheet(); if (top) top.close('ok');
     draw();
   };
 
   /* ---------------------------------------------------------------- options: how to, swap, skip, end */
-  U.act.plHowTo = () => { const st = cur(); if (st) U.moveSheet(st.item.moveId, { side: st.side }); };
+  U.act.plHowTo = () => {
+    const st = cur();
+    if (!st) return;
+    covered = true;
+    if (fig) fig.ctl.pause();
+    U.moveSheet(st.item.moveId, { side: st.side, onClose: () => { covered = false; if (P && !root().hidden) draw(); } });
+  };
   U.act.plMenu = () => {
     const st = cur();
     const canSwap = st && st.kind === 'set' && !st.leadOnly;
@@ -495,17 +707,23 @@
     const before = B().calendar(S, A().day).streak.current;
     const res = B().finishWorkout(S, { rating: ck.rating, complicated: ck.complicated, pain: ck.pain, weightKg: ck.weight ? U.toKg(ck.weight) : null, now: Date.now() });
     S.pendingLines = res ? res.lines : [];
+    if (U.markSeen) U.markSeen('playerHint');
+    const fresh = U.newAchievements ? U.newAchievements(S, U.today()) : [];
     U.save(true);
-    P.result = res; P.ck = null; P.streakFrom = before;
+    P.result = res; P.ck = null; P.streakFrom = before; P.ach = fresh;
     P.phase = 'next';
     plat().keepAwake(false);
     draw();
+    // Saved to Health Connect (when allowed), then a fresh read so today's numbers catch up.
+    if (res && res.entry && GH.health && GH.health.writeWorkout(S, res.entry)) setTimeout(() => U.syncHealth('manual'), 2500);
     const el = root();
-    if (res && res.celebrate.length && G.Refract && G.Refract.burst) {
+    const big = res && (res.celebrate.length || fresh.length);
+    U.haptic(big ? 'celebrate' : 'success');
+    if (big && G.Refract && G.Refract.burst && !U.reduced()) {
       setTimeout(() => { for (const c of el.querySelectorAll('.celebrate')) { try { G.Refract.burst(c, { count: 18 }); } catch (e) { /* ignore */ } } }, 350);
     }
     const n = el.querySelector('.streak-roll');
-    if (n && G.Refract && G.Refract.roll) setTimeout(() => { try { G.Refract.roll(n, n.dataset.to, { from: n.dataset.from, dir: 1 }); } catch (e) { /* ignore */ } }, 250);
+    if (n && G.Refract && G.Refract.roll && !U.reduced()) setTimeout(() => { try { G.Refract.roll(n, n.dataset.to, { from: n.dataset.from, dir: 1 }); } catch (e) { /* ignore */ } }, 250);
   };
 
   function viewNext() {
@@ -518,7 +736,9 @@
         <h1 class="rf-large-title">Next time</h1>
         ${res.done ? `<p class="t-callout pl-pad">Streak <span class="streak-roll rf-num t-headline" data-from="${P.streakFrom || 0}" data-to="${streak}">${streak}</span> ${streak === 1 ? 'day' : 'days'}</p>` : '<p class="t-callout rf-muted pl-pad">Saved. Under half the sets, so it doesn\'t count for the streak.</p>'}
         ${res.celebrate.map((c) => `<div class="card celebrate">${U.icon(c.kind === 'pr' ? 'star' : c.kind === 'weight' ? 'bolt' : 'sparkle')}<span class="t-headline">${U.esc(c.text)}</span></div>`).join('')}
+        ${(P.ach || []).map((a) => `<div class="card celebrate is-ach"><span class="rf-list-icon ach-badge" data-tone="${a.tone}">${U.icon(a.icon)}</span><span class="celebrate-text"><span class="t-footnote rf-muted">Achievement</span><span class="t-headline">${U.esc(a.title)}</span></span></div>`).join('')}
         ${lines.length ? `<ul class="rf-list next-lines">${lines.map((l) => U.row({ title: U.esc(l.text), sub: l.why ? U.esc(U.cap(l.why)) : '', icon: l.buy ? 'bag' : /Deload|less/.test(l.text) ? 'moon' : 'arrow-up-right', tone: l.buy ? 'amber' : /Deload|less|Eat/.test(l.text) ? 'indigo' : 'green' })).join('')}</ul>` : '<p class="t-callout rf-muted pl-pad">Same targets next time. Keep it up.</p>'}
+        ${lines.length && U.whyLink ? `<p class="pl-pad">${U.whyLink('overload', 'How the plan decides this')}</p>` : ''}
       </div>
       <div class="pl-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plClose">Done</button></div>`;
   }

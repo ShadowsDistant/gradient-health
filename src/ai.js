@@ -48,18 +48,21 @@ function client() {
 
 /* ------------------------------------------------------------------ errors */
 const MESSAGES = {
-  nokey: 'Add your Anthropic API key in Settings to use the coach.',
-  auth: 'That API key didn\'t work. Check it in Settings → AI coach.',
+  nokey: 'Add your Anthropic API key in Settings, under Coach, to use Claude.',
+  auth: 'That API key didn\'t work. Check it in Settings, under Coach.',
   permission: 'This API key can\'t use the coach. Check its permissions in the Claude Console.',
   rate: 'The coach is busy. Try again in a minute.',
-  offline: 'You\'re offline. On-device insights still work.',
+  offline: 'You\'re offline. The built-in coach and your insights still work.',
   overloaded: 'The coach is overloaded right now. Try again soon.',
   refusal: 'The coach couldn\'t help with that one. Try asking another way.',
   cut: 'The answer was cut short. Try again.',
   nomodel: 'Couldn\'t find a model for this key. Check the key in the Claude Console.',
   aborted: 'Stopped.',
+  consent: 'Claude needs your OK before it gets any of your data. Allow it in Settings, under Coach.',
   other: 'Something went wrong reaching the coach. Try again.',
 };
+// Nothing goes to Anthropic until the person has seen what gets sent and allowed it.
+function needConsent(S) { if (!S || !S.ai || !S.ai.consentAt) throw coachError('consent'); }
 function coachError(code, detail) {
   const e = new Error(detail || MESSAGES[code] || MESSAGES.other);
   e.code = code;
@@ -122,6 +125,9 @@ const r1 = (x) => (x == null ? '–' : (Math.round(x * 10) / 10).toFixed(1));
 const GOAL_NAMES = { abs: 'visible abs', arms: 'bigger arms', chest: 'bigger chest', legs: 'legs and glutes', back: 'back and posture', fat: 'lose fat', strength: 'overall strength', endurance: 'endurance', mobility: 'mobility', consistency: 'consistency' };
 const EXP_NAMES = { never: 'never trained', onoff: 'on and off', lt1: 'under 1 year', '1to3': '1-3 years', '3plus': '3+ years' };
 
+// Calendar dates that slip in through insight text ("Since Aug 26") become relative.
+const noDates = (t) => String(t).replace(/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), (?=(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d)/g, '').replace(/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}(?:, \d{4})?\b/g, 'an earlier date');
+
 // Everything the coach sees, as plain text: no names, no dates, no ids. Relative weeks only.
 function summary(S, day) {
   const b = B(), h = H();
@@ -151,6 +157,8 @@ function summary(S, day) {
   lines.push(`- Sleep: ${sl.n ? b.fmtMin(sl.avg) : '–'} a night (${sl.n} nights)`);
   lines.push(`- Steps: ${stp.n ? r0(stp.avg) : '–'} a day (${stp.n} days)`);
   lines.push(`- Resting heart rate: ${rhr.n ? `${r0(rhr.avg)} bpm` : '–'} (${rhr.n} days); HRV: ${hrv.n ? `${r0(hrv.avg)} ms` : '–'} (${hrv.n} days)`);
+  const act = st('activeKcal');
+  if (act.n) lines.push(`- Active calories: ${r0(act.avg)} kcal a day (${act.n} days)`);
   lines.push(`- Weight: 7-day average ${w(ws.avg7)}${ws.rate != null ? `, ${ws.rate >= 0 ? '+' : ''}${r1(ws.rate * 100)}% vs the week before` : ''}`);
 
   // Weekly series, oldest first.
@@ -176,6 +184,7 @@ function summary(S, day) {
   const rir = { '0': 0, '12': 0, '3': 0 };
   for (const l of logs) for (const it of l.items || []) if (it.rir && rir[it.rir] != null) rir[it.rir]++;
   lines.push('');
+  if (p.workouts === false) lines.push('TRAINING: workouts are turned off; they use the app for health and food.');
   lines.push('TRAINING (last 4 weeks)');
   lines.push(`- Workouts: ${doneN} of ${planned} planned done; streak ${cal.streak.current} days; full weeks in a row ${cal.streak.weekly}`);
   lines.push(`- Ratings: ${ratings.easy} too easy, ${ratings.right} about right, ${ratings.hard} too hard`);
@@ -202,6 +211,14 @@ function summary(S, day) {
   lines.push('');
   lines.push('FOOD AND BODY');
   lines.push(`- Protein goal ${goal ? `${goal} g` : '–'}; hit on ${logged.filter((g) => goal && g >= goal * 0.95).length} of ${logged.length} logged days (last 2 weeks)`);
+  const F = GH.food;
+  if (F && F.full(S)) {
+    const t = F.targets(S, day);
+    const eaten = [];
+    for (let d = day - 7; d < day; d++) { const x = F.totals(S, d); if (x.n || (x.other && x.other.kcal)) eaten.push(x); }
+    if (t) lines.push(`- Calorie tracking on: target ${t.kcal} kcal a day (protein ${t.protein} g, carbs ${t.carbs} g, fat ${t.fat} g); estimated burn ${t.burn} kcal${t.learned ? ', learned from their logs and weight' : ' from a formula'}`);
+    lines.push(`- Eaten: ${eaten.length ? `${r0(eaten.reduce((a, x) => a + x.kcal, 0) / eaten.length)} kcal and ${r0(eaten.reduce((a, x) => a + x.p, 0) / eaten.length)} g protein a day on ${eaten.length} logged days (last week)` : 'nothing logged last week'}`);
+  }
   const ms = S.measurements || [];
   if (ms.length >= 2) {
     const a = ms[0], z = ms[ms.length - 1];
@@ -218,16 +235,16 @@ function summary(S, day) {
     lines.push('ON-DEVICE INSIGHTS');
     for (const x of top) lines.push(`- ${x.title}: ${x.body} (${x.evidence})`);
   }
-  return lines.join('\n');
+  return noDates(lines.join('\n'));
 }
 
 const SYSTEM = [
-  'You are the coach inside Gradient, a home workout and health tracking app. You get a summary of one person\'s recent health and training data from their phone.',
+  'You are the coach inside Gradient Health, a home workout and health tracking app. You get a summary of one person\'s recent health and training data from their phone.',
   'How to coach:',
   '- Short, plain, specific and warm. Use their numbers. Talk to them as "you".',
   '- You are not a doctor. Never diagnose or name conditions. If something looks concerning (resting heart rate far above normal or over 100, fast weight loss they didn\'t plan, pain that lingers, chest pain, dizziness, fainting), say it\'s worth talking to a doctor.',
   '- No timelines or promises about results (never "abs in 8 weeks").',
-  '- No meal plans, calorie targets or diets. Food advice stays simple: protein, easy additions, habits. They may be a picky eater.',
+  '- No meal plans or diets. If they track calories, the app sets their calorie target from their size, activity and goal: explain it rather than set a different one. Food advice stays simple: protein, easy additions, habits. They may be a picky eater.',
   '- The app decides the training plan (sets, reps, levels, deloads, swaps). You can explain it and say what to focus on, but don\'t prescribe a different program or new exercises.',
   '- If the data is thin, say so and suggest what to track.',
   '- No emoji, no headings. Keep answers under 150 words unless asked for more.',
@@ -279,6 +296,7 @@ function stop() { if (busy) { try { busy.abort(); } catch (e) { /* ignore */ } }
 
 // Weekly report (structured). Saved in S.ai.reports; resolves with the report object.
 async function report(S, day) {
+  needConsent(S);
   const c = client();
   try {
     const modelId = await model(S, c, day);
@@ -300,12 +318,13 @@ async function report(S, day) {
   } finally { busy = null; }
 }
 function reportFor(S, day) { const ws = B().weekStart(day); return (S.ai.reports || []).find((r) => r.week === ws) || null; }
-function needsReport(S, day) { return !!(S.ai.enabled && hasKey() && !reportFor(S, day) && S.log.some((l) => l.type === 'workout')); }
+function needsReport(S, day) { return !!(S.ai.enabled && S.ai.consentAt && hasKey() && !reportFor(S, day) && S.log.some((l) => l.type === 'workout')); }
 
 // Ask the coach: streamed. onText(delta, snapshot) as it arrives. Keeps the last few turns.
 async function ask(S, day, question, onText) {
   const q = String(question || '').trim().slice(0, 1000);
   if (!q) throw coachError('other', 'Type a question first.');
+  needConsent(S);
   const c = client();
   const history = (S.ai.chat || []).slice(-6).map((m) => ({ role: m.role, content: m.text }));
   try {
@@ -326,4 +345,73 @@ async function ask(S, day, question, onText) {
 }
 function clearChat(S) { S.ai.chat = []; }
 
-GH.ai = { KEY_URL, hasKey, checkKey, setKey, deleteKey, summary, preview, report, reportFor, needsReport, ask, stop, clearChat, pickFrom, explain, MESSAGES, SYSTEM };
+// Suggestions: Claude may only propose the changes the app knows how to apply (checked again by
+// GH.coach.validAction before anything is shown), or plain tips. Nothing changes until the person
+// taps Apply.
+const WD = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const SUGGEST_SCHEMA = {
+  type: 'object',
+  properties: {
+    suggestions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          kind: { type: 'string', enum: ['minutes', 'weekday', 'deload', 'volume', 'tip'] },
+          title: { type: 'string' },
+          why: { type: 'string' },
+          minutes: { type: 'integer' },
+          from: { type: 'integer' },
+          to: { type: 'integer' },
+        },
+        required: ['kind', 'title', 'why'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['suggestions'],
+  additionalProperties: false,
+};
+function suggestAsk(S) {
+  const p = S.profile;
+  const on = B().weekdaysFor(p);
+  const free = [0, 1, 2, 3, 4, 5, 6].filter((d) => !on.includes(d));
+  return [
+    'Suggest up to 3 changes that would help this person with their goals, based on their data. Use only these kinds:',
+    `- minutes: planned workout length, 10-60 in steps of 5 (now ${p.minutes}). Put the value in "minutes".`,
+    `- weekday: move a workout day ("from") to a free day ("to"), 0 = Monday to 6 = Sunday. Workout days now: ${on.map((d) => `${d} (${WD[d]})`).join(', ')}. Free days: ${free.map((d) => `${d} (${WD[d]})`).join(', ') || 'none'}.`,
+    '- deload: a lighter week next week.',
+    '- volume: one more weekly set for their top-goal muscles.',
+    '- tip: advice that doesn\'t change the plan.',
+    'title: under 10 words. why: one sentence under 25 words using their numbers. Return an empty list if nothing needs changing.',
+  ].join('\n');
+}
+async function suggest(S, day) {
+  needConsent(S);
+  const c = client();
+  try {
+    const modelId = await model(S, c, day);
+    const stream = c.beta.messages.stream(Object.assign(baseParams(modelId, 8000, 'medium', S, day), {
+      output_config: { effort: 'medium', format: { type: 'json_schema', schema: SUGGEST_SCHEMA } },
+      messages: [{ role: 'user', content: suggestAsk(S) }],
+    }));
+    busy = stream;
+    const msg = await stream.finalMessage();
+    checkStop(msg);
+    let data;
+    try { data = JSON.parse(textOf(msg)); } catch (e) { throw coachError('other'); }
+    const items = (Array.isArray(data.suggestions) ? data.suggestions : []).slice(0, 3).map((x, i) => {
+      const action = x.kind === 'minutes' ? { kind: 'minutes', value: x.minutes, label: `Set ${x.minutes} min` }
+        : x.kind === 'weekday' ? { kind: 'weekday', from: x.from, to: x.to, label: `Move to ${WD[x.to] || ''}` }
+          : x.kind === 'deload' ? { kind: 'deload', label: 'Plan a lighter week' }
+            : x.kind === 'volume' ? { kind: 'volume', label: 'Add sets' } : null;
+      return { id: `ai-${day}-${i}`, icon: 'sparkle', title: String(x.title || '').trim().slice(0, 80), body: String(x.why || '').trim().slice(0, 240), action };
+    }).filter((x) => x.title && (!x.action || (GH.coach && GH.coach.validAction(S, x.action, day))));
+    S.ai.suggestions = { day, items };
+    return items.length;
+  } catch (err) {
+    throw explain(err);
+  } finally { busy = null; }
+}
+
+GH.ai = { KEY_URL, hasKey, checkKey, setKey, deleteKey, summary, preview, report, reportFor, needsReport, ask, suggest, stop, clearChat, pickFrom, explain, MESSAGES, SYSTEM };

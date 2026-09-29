@@ -2,23 +2,36 @@ package com.shadowsdistant.gradienthealth;
 
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.health.connect.AggregateRecordsGroupedByDurationResponse;
 import android.health.connect.AggregateRecordsGroupedByPeriodResponse;
 import android.health.connect.AggregateRecordsRequest;
 import android.health.connect.HealthConnectException;
 import android.health.connect.HealthConnectManager;
+import android.health.connect.InsertRecordsResponse;
 import android.health.connect.LocalTimeRangeFilter;
 import android.health.connect.ReadRecordsRequestUsingFilters;
 import android.health.connect.ReadRecordsResponse;
+import android.health.connect.RecordIdFilter;
 import android.health.connect.TimeInstantRangeFilter;
+import android.health.connect.datatypes.ActiveCaloriesBurnedRecord;
+import android.health.connect.datatypes.AggregationType;
 import android.health.connect.datatypes.BodyFatRecord;
+import android.health.connect.datatypes.Device;
+import android.health.connect.datatypes.DistanceRecord;
 import android.health.connect.datatypes.ExerciseSessionRecord;
+import android.health.connect.datatypes.HeartRateRecord;
 import android.health.connect.datatypes.HeartRateVariabilityRmssdRecord;
 import android.health.connect.datatypes.HeightRecord;
+import android.health.connect.datatypes.Metadata;
+import android.health.connect.datatypes.NutritionRecord;
 import android.health.connect.datatypes.Record;
 import android.health.connect.datatypes.RestingHeartRateRecord;
 import android.health.connect.datatypes.SleepSessionRecord;
 import android.health.connect.datatypes.StepsRecord;
 import android.health.connect.datatypes.WeightRecord;
+import android.health.connect.datatypes.units.Energy;
+import android.health.connect.datatypes.units.Length;
+import android.health.connect.datatypes.units.Mass;
 import android.os.OutcomeReceiver;
 
 import org.json.JSONArray;
@@ -31,8 +44,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.Period;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -60,6 +77,12 @@ final class HealthBridge {
     private static final int RESTING_HR = 5;
     private static final int HRV = 6;
     private static final int EXERCISE = 7;
+    // Added in 1.2, optional: they don't count toward the connection status.
+    private static final int HEART_RATE = 8;
+    private static final int ACTIVE_KCAL = 9;
+    private static final int DISTANCE = 10;
+    private static final int NUTRITION = 11;
+    private static final int CORE_TYPES = 8;
     private static final String[][] TYPES = {
             {"steps", "android.permission.health.READ_STEPS"},
             {"sleep", "android.permission.health.READ_SLEEP"},
@@ -69,7 +92,13 @@ final class HealthBridge {
             {"restingHr", "android.permission.health.READ_RESTING_HEART_RATE"},
             {"hrv", "android.permission.health.READ_HEART_RATE_VARIABILITY"},
             {"exercise", "android.permission.health.READ_EXERCISE"},
+            {"heartRate", "android.permission.health.READ_HEART_RATE"},
+            {"activeKcal", "android.permission.health.READ_ACTIVE_CALORIES_BURNED"},
+            {"distance", "android.permission.health.READ_DISTANCE"},
+            {"nutrition", "android.permission.health.READ_NUTRITION"},
     };
+    /** Heart rate is read as 30-minute averages, for at most this many days back. */
+    private static final int HEART_RATE_DAYS = 30;
 
     private static final int MIN_DAYS = 1;
     private static final int MAX_DAYS = 90;
@@ -92,18 +121,68 @@ final class HealthBridge {
             "stair_climbing_machine", "elliptical", "rowing_machine",
     };
 
+    /** Lets the app save its own workouts to Health Connect (optional, like every permission here). */
+    static final String WRITE_EXERCISE = "android.permission.health.WRITE_EXERCISE";
+    /** Lets the app save the meals logged in it (calorie tracking). */
+    static final String WRITE_NUTRITION = "android.permission.health.WRITE_NUTRITION";
+
     private static ScheduledExecutorService executor;
 
-    /** The 8 read permissions, for Activity.requestPermissions. */
+    /** Every read permission plus the two writes, for Activity.requestPermissions. */
     static String[] permissions() {
-        String[] out = new String[TYPES.length];
+        String[] out = new String[TYPES.length + 2];
         for (int i = 0; i < TYPES.length; i++) {
             out[i] = TYPES[i][1];
         }
+        out[TYPES.length] = WRITE_EXERCISE;
+        out[TYPES.length + 1] = WRITE_NUTRITION;
         return out;
     }
 
-    /** "unavailable" | "denied" | "partial" | "granted" (the caller handles "unsupported"). */
+    /** The data types this app may read or write right now, e.g. ["steps", "heartRate", "writeNutrition"]. */
+    static String granted(Context context) {
+        JSONArray out = new JSONArray();
+        for (String[] type : TYPES) {
+            if (isGranted(context, type[1])) {
+                out.put(type[0]);
+            }
+        }
+        if (isGranted(context, WRITE_EXERCISE)) {
+            out.put("writeExercise");
+        }
+        if (isGranted(context, WRITE_NUTRITION)) {
+            out.put("writeNutrition");
+        }
+        return out.toString();
+    }
+
+    static boolean canWriteNutrition(Context context) {
+        return isGranted(context, WRITE_NUTRITION);
+    }
+
+    /**
+     * The permissions from {@link #permissions()} that aren't granted yet. The nutrition ones are
+     * only asked for when food tracking is on, so people who just work out never see them.
+     */
+    static String[] missingPermissions(Context context, boolean withFood) {
+        List<String> missing = new ArrayList<String>();
+        for (String permission : permissions()) {
+            boolean food = permission.endsWith("_NUTRITION");
+            if ((withFood || !food) && !isGranted(context, permission)) {
+                missing.add(permission);
+            }
+        }
+        return missing.toArray(new String[0]);
+    }
+
+    static boolean canWriteExercise(Context context) {
+        return isGranted(context, WRITE_EXERCISE);
+    }
+
+    /**
+     * "unavailable" | "denied" | "partial" | "granted" (the caller handles "unsupported"). Only the
+     * read permissions count; see {@link #canWriteExercise} for writing.
+     */
     static String status(Context context) {
         try {
             if (context.getSystemService(HealthConnectManager.class) == null) {
@@ -113,15 +192,24 @@ final class HealthBridge {
             return "unavailable";
         }
         int granted = 0;
-        for (String[] type : TYPES) {
-            if (isGranted(context, type[1])) {
+        for (int i = 0; i < CORE_TYPES; i++) {
+            if (isGranted(context, TYPES[i][1])) {
                 granted++;
             }
         }
-        if (granted == 0) {
-            return "denied";
+        if (granted == CORE_TYPES) {
+            return "granted";
         }
-        return granted == TYPES.length ? "granted" : "partial";
+        if (granted > 0) {
+            return "partial";
+        }
+        // None of the original types, but maybe some of the newer ones (heart rate, calories...).
+        for (int i = CORE_TYPES; i < TYPES.length; i++) {
+            if (isGranted(context, TYPES[i][1])) {
+                return "partial";
+            }
+        }
+        return "denied";
     }
 
     /** Starts an asynchronous read; the result is delivered to window.__gh.onHealth. */
@@ -138,6 +226,295 @@ final class HealthBridge {
                 }
             }
         });
+    }
+
+    /**
+     * Saves one finished workout as an exercise session and answers once with
+     * window.__gh.onHealthWrite({id, ok, error?}). {@code json} is
+     * {id, start, end (epoch ms), type (an EXERCISE_NAMES entry), title, notes?}. The id becomes the
+     * record's clientRecordId, so saving the same workout again updates it instead of adding a copy.
+     */
+    static void writeWorkout(final MainActivity activity, final String json) {
+        executor().execute(new Runnable() {
+            @Override
+            public void run() {
+                String id = "";
+                try {
+                    JSONObject in = new JSONObject(json == null ? "{}" : json);
+                    id = in.optString("id", "");
+                    final String clientId = id;
+                    if (clientId.isEmpty()) {
+                        writeResult(activity, clientId, "no id");
+                        return;
+                    }
+                    if (!canWriteExercise(activity)) {
+                        writeResult(activity, clientId, "not granted");
+                        return;
+                    }
+                    HealthConnectManager manager = activity.getSystemService(HealthConnectManager.class);
+                    if (manager == null) {
+                        writeResult(activity, clientId, "unavailable");
+                        return;
+                    }
+                    Instant start = Instant.ofEpochMilli(in.getLong("start"));
+                    Instant end = Instant.ofEpochMilli(in.getLong("end"));
+                    if (!end.isAfter(start)) {
+                        writeResult(activity, clientId, "bad times");
+                        return;
+                    }
+                    Metadata metadata = new Metadata.Builder()
+                            .setClientRecordId(clientId)
+                            .setClientRecordVersion(in.optLong("version", 1L))
+                            .setRecordingMethod(Metadata.RECORDING_METHOD_ACTIVELY_RECORDED)
+                            .setDevice(new Device.Builder().setType(Device.DEVICE_TYPE_PHONE).build())
+                            .build();
+                    ZoneId zone = ZoneId.systemDefault();
+                    ZoneOffset startOffset = zone.getRules().getOffset(start);
+                    ZoneOffset endOffset = zone.getRules().getOffset(end);
+                    ExerciseSessionRecord.Builder builder = new ExerciseSessionRecord.Builder(
+                            metadata, start, end, exerciseType(in.optString("type", "")))
+                            .setStartZoneOffset(startOffset)
+                            .setEndZoneOffset(endOffset);
+                    String title = in.optString("title", "");
+                    if (!title.isEmpty()) {
+                        builder.setTitle(title);
+                    }
+                    String notes = in.optString("notes", "");
+                    if (!notes.isEmpty()) {
+                        builder.setNotes(notes);
+                    }
+                    List<Record> records = new ArrayList<Record>();
+                    records.add(builder.build());
+                    manager.insertRecords(records, executor(),
+                            new OutcomeReceiver<InsertRecordsResponse, HealthConnectException>() {
+                                @Override
+                                public void onResult(InsertRecordsResponse response) {
+                                    writeResult(activity, clientId, null);
+                                }
+
+                                @Override
+                                public void onError(HealthConnectException e) {
+                                    writeResult(activity, clientId, describe(e));
+                                }
+                            });
+                } catch (Throwable t) {
+                    writeResult(activity, id, describe(t));
+                }
+            }
+        });
+    }
+
+    private static void writeResult(MainActivity activity, String id, String error) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("id", id == null ? "" : id);
+            o.put("ok", error == null);
+            if (error != null) {
+                o.put("error", error);
+            }
+            activity.callJs(MainActivity.jsCall("onHealthWrite", o.toString()));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * Saves meals logged in the app as nutrition records and answers once with
+     * window.__gh.onFoodWrite({ok, ids, error?}). {@code json} is a list of
+     * {id, v, start, end (epoch ms), meal, name, kcal, p, c, f, fib}. The id is the record's
+     * clientRecordId and v its version, so an edited entry replaces its earlier copy.
+     */
+    static void writeNutrition(final MainActivity activity, final String json) {
+        executor().execute(new Runnable() {
+            @Override
+            public void run() {
+                final JSONArray ids = new JSONArray();
+                try {
+                    JSONArray in = new JSONArray(json == null ? "[]" : json);
+                    if (!canWriteNutrition(activity)) {
+                        foodResult(activity, "onFoodWrite", ids, "not granted");
+                        return;
+                    }
+                    HealthConnectManager manager = activity.getSystemService(HealthConnectManager.class);
+                    if (manager == null) {
+                        foodResult(activity, "onFoodWrite", ids, "unavailable");
+                        return;
+                    }
+                    ZoneId zone = ZoneId.systemDefault();
+                    List<Record> records = new ArrayList<Record>();
+                    // Records Health Connect would refuse are reported back one by one, so one bad
+                    // entry never holds up the rest.
+                    final JSONArray failed = new JSONArray();
+                    long now = System.currentTimeMillis();
+                    for (int i = 0; i < in.length() && i < 200; i++) {
+                        JSONObject e = in.getJSONObject(i);
+                        String id = e.optString("id", "");
+                        if (id.isEmpty()) {
+                            continue;
+                        }
+                        try {
+                            // Never in the future (Health Connect rejects that), at least a second long.
+                            long startMs = Math.min(e.getLong("start"), now - 60000L);
+                            long endMs = Math.min(Math.max(e.optLong("end", startMs), startMs + 1000L), now);
+                            Instant start = Instant.ofEpochMilli(startMs);
+                            Instant end = Instant.ofEpochMilli(Math.max(endMs, startMs + 1000L));
+                            Metadata metadata = new Metadata.Builder()
+                                    .setClientRecordId(id)
+                                    .setClientRecordVersion(e.optLong("v", 0L) + 1L)
+                                    .setRecordingMethod(Metadata.RECORDING_METHOD_MANUAL_ENTRY)
+                                    .build();
+                            NutritionRecord.Builder b = new NutritionRecord.Builder(metadata, start, end)
+                                    .setStartZoneOffset(zone.getRules().getOffset(start))
+                                    .setEndZoneOffset(zone.getRules().getOffset(end))
+                                    .setMealType(mealType(e.optString("meal", "")))
+                                    // Energy is in small calories: 1 kcal = 1000 cal.
+                                    .setEnergy(Energy.fromCalories(clamp(e.optDouble("kcal", 0), MAX_KCAL) * 1000.0))
+                                    .setProtein(Mass.fromGrams(clamp(e.optDouble("p", 0), MAX_GRAMS)))
+                                    .setTotalCarbohydrate(Mass.fromGrams(clamp(e.optDouble("c", 0), MAX_GRAMS)))
+                                    .setTotalFat(Mass.fromGrams(clamp(e.optDouble("f", 0), MAX_GRAMS)));
+                            double fib = clamp(e.optDouble("fib", 0), MAX_GRAMS);
+                            if (fib > 0) {
+                                b.setDietaryFiber(Mass.fromGrams(fib));
+                            }
+                            String name = e.optString("name", "");
+                            if (!name.isEmpty()) {
+                                b.setMealName(name.length() > 100 ? name.substring(0, 100) : name);
+                            }
+                            records.add(b.build());
+                            ids.put(id);
+                        } catch (Throwable t) {
+                            failed.put(id);
+                        }
+                    }
+                    if (records.isEmpty()) {
+                        foodResult(activity, "onFoodWrite", ids, failed, null);
+                        return;
+                    }
+                    manager.insertRecords(records, executor(),
+                            new OutcomeReceiver<InsertRecordsResponse, HealthConnectException>() {
+                                @Override
+                                public void onResult(InsertRecordsResponse response) {
+                                    foodResult(activity, "onFoodWrite", ids, failed, null);
+                                }
+
+                                @Override
+                                public void onError(HealthConnectException e) {
+                                    foodResult(activity, "onFoodWrite", ids, failed, describe(e));
+                                }
+                            });
+                } catch (Throwable t) {
+                    foodResult(activity, "onFoodWrite", ids, describe(t));
+                }
+            }
+        });
+    }
+
+    /** Deletes this app's nutrition records by client id; answers with onFoodDelete({ok, ids}). */
+    static void deleteNutrition(final MainActivity activity, final String json) {
+        executor().execute(new Runnable() {
+            @Override
+            public void run() {
+                final JSONArray ids = new JSONArray();
+                try {
+                    JSONArray in = new JSONArray(json == null ? "[]" : json);
+                    HealthConnectManager manager = activity.getSystemService(HealthConnectManager.class);
+                    if (manager == null || !canWriteNutrition(activity)) {
+                        foodResult(activity, "onFoodDelete", ids, "not granted");
+                        return;
+                    }
+                    List<RecordIdFilter> filters = new ArrayList<RecordIdFilter>();
+                    for (int i = 0; i < in.length() && i < 200; i++) {
+                        String id = in.optString(i, "");
+                        if (!id.isEmpty()) {
+                            filters.add(RecordIdFilter.fromClientRecordId(NutritionRecord.class, id));
+                            ids.put(id);
+                        }
+                    }
+                    if (filters.isEmpty()) {
+                        foodResult(activity, "onFoodDelete", ids, null);
+                        return;
+                    }
+                    manager.deleteRecords(filters, executor(), new OutcomeReceiver<Void, HealthConnectException>() {
+                        @Override
+                        public void onResult(Void v) {
+                            foodResult(activity, "onFoodDelete", ids, null);
+                        }
+
+                        @Override
+                        public void onError(HealthConnectException e) {
+                            foodResult(activity, "onFoodDelete", ids, describe(e));
+                        }
+                    });
+                } catch (Throwable t) {
+                    foodResult(activity, "onFoodDelete", ids, describe(t));
+                }
+            }
+        });
+    }
+
+    // Health Connect's own limits for a nutrition record.
+    private static final double MAX_KCAL = 100000.0;
+    private static final double MAX_GRAMS = 100000.0;
+
+    private static double clamp(double v, double max) {
+        return Double.isNaN(v) ? 0 : Math.max(0, Math.min(max, v));
+    }
+
+    private static void foodResult(MainActivity activity, String hook, JSONArray ids, String error) {
+        foodResult(activity, hook, ids, null, error);
+    }
+
+    private static void foodResult(MainActivity activity, String hook, JSONArray ids, JSONArray failed, String error) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("ok", error == null);
+            o.put("ids", ids);
+            if (failed != null && failed.length() > 0) {
+                o.put("failed", failed);
+            }
+            if (error != null) {
+                o.put("error", error);
+            }
+            activity.callJs(MainActivity.jsCall(hook, o.toString()));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static int mealType(String meal) {
+        if ("breakfast".equals(meal)) {
+            return 1;
+        }
+        if ("lunch".equals(meal)) {
+            return 2;
+        }
+        if ("dinner".equals(meal)) {
+            return 3;
+        }
+        return "snack".equals(meal) ? 4 : 0;
+    }
+
+    private static String mealName(int type) {
+        switch (type) {
+            case 1:
+                return "breakfast";
+            case 2:
+                return "lunch";
+            case 3:
+                return "dinner";
+            case 4:
+                return "snack";
+            default:
+                return "";
+        }
+    }
+
+    /** An EXERCISE_NAMES entry → its ExerciseSessionType value; anything else → other workout. */
+    static int exerciseType(String name) {
+        for (int i = 1; i < EXERCISE_NAMES.length; i++) {
+            if (EXERCISE_NAMES[i].equals(name)) {
+                return i;
+            }
+        }
+        return 58; // EXERCISE_SESSION_TYPE_OTHER_WORKOUT
     }
 
     private static boolean isGranted(Context context, String permission) {
@@ -312,6 +689,18 @@ final class HealthBridge {
                 case EXERCISE:
                     readPage(type, ExerciseSessionRecord.class, -1L, 0);
                     break;
+                case HEART_RATE:
+                    readRestingFromHeartRate();
+                    break;
+                case ACTIVE_KCAL:
+                    readDaily(type, ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL);
+                    break;
+                case DISTANCE:
+                    readDaily(type, DistanceRecord.DISTANCE_TOTAL);
+                    break;
+                case NUTRITION:
+                    readPage(type, NutritionRecord.class, -1L, 0);
+                    break;
                 default:
                     finish(type, new IllegalArgumentException("unknown type"));
             }
@@ -351,6 +740,112 @@ final class HealthBridge {
                         @Override
                         public void onError(HealthConnectException e) {
                             finish(STEPS, e);
+                        }
+                    });
+        }
+
+        /**
+         * Daily totals in local time for an energy or length aggregate: [{date, kcal}] for active
+         * calories, [{date, m}] for distance. Days without data are left out.
+         */
+        private <T> void readDaily(final int type, final AggregationType<T> aggregation) {
+            LocalTimeRangeFilter filter = new LocalTimeRangeFilter.Builder()
+                    .setStartTime(stepsStart).setEndTime(stepsEnd).build();
+            AggregateRecordsRequest<T> request = new AggregateRecordsRequest.Builder<T>(filter)
+                    .addAggregationType(aggregation).build();
+            manager.aggregateGroupByPeriod(request, Period.ofDays(1), exec,
+                    new OutcomeReceiver<List<AggregateRecordsGroupedByPeriodResponse<T>>, HealthConnectException>() {
+                        @Override
+                        public void onResult(List<AggregateRecordsGroupedByPeriodResponse<T>> days) {
+                            try {
+                                if (days != null) {
+                                    for (AggregateRecordsGroupedByPeriodResponse<T> day : days) {
+                                        T value = day == null ? null : day.get(aggregation);
+                                        LocalDateTime start = day == null ? null : day.getStartTime();
+                                        if (value == null || start == null) {
+                                            continue;
+                                        }
+                                        JSONObject o = new JSONObject();
+                                        o.put("date", start.toLocalDate().toString());
+                                        if (value instanceof Energy) {
+                                            o.put("kcal", Math.round(((Energy) value).getInCalories() / 1000.0));
+                                        } else if (value instanceof Length) {
+                                            o.put("m", Math.round(((Length) value).getInMeters()));
+                                        } else {
+                                            continue;
+                                        }
+                                        arrays[type].put(o);
+                                    }
+                                }
+                                finish(type, null);
+                            } catch (Throwable t) {
+                                finish(type, t);
+                            }
+                        }
+
+                        @Override
+                        public void onError(HealthConnectException e) {
+                            finish(type, e);
+                        }
+                    });
+        }
+
+        /**
+         * An estimated resting heart rate for apps that record heart rate but don't share resting
+         * heart rate (Samsung Health and Garmin, for instance): heart rate averaged over 30-minute
+         * windows, and for each local day the lowest window with at least 5 readings, which lands
+         * in deep sleep for people who wear their watch at night. Sends [{time, bpm}] per day, at
+         * most HEART_RATE_DAYS back.
+         */
+        private void readRestingFromHeartRate() {
+            Instant to = Instant.now().truncatedTo(ChronoUnit.MINUTES);
+            Instant from = to.minus(Duration.ofDays(Math.min(days, HEART_RATE_DAYS)));
+            TimeInstantRangeFilter filter = new TimeInstantRangeFilter.Builder().setStartTime(from).setEndTime(to).build();
+            AggregateRecordsRequest<Long> request = new AggregateRecordsRequest.Builder<Long>(filter)
+                    .addAggregationType(HeartRateRecord.BPM_AVG)
+                    .addAggregationType(HeartRateRecord.HEART_MEASUREMENTS_COUNT)
+                    .build();
+            manager.aggregateGroupByDuration(request, Duration.ofMinutes(30), exec,
+                    new OutcomeReceiver<List<AggregateRecordsGroupedByDurationResponse<Long>>, HealthConnectException>() {
+                        @Override
+                        public void onResult(List<AggregateRecordsGroupedByDurationResponse<Long>> windows) {
+                            try {
+                                ZoneId zone = ZoneId.systemDefault();
+                                Map<LocalDate, Instant> bestTime = new HashMap<LocalDate, Instant>();
+                                Map<LocalDate, Long> best = new HashMap<LocalDate, Long>();
+                                if (windows != null) {
+                                    for (AggregateRecordsGroupedByDurationResponse<Long> w : windows) {
+                                        if (w == null || w.getStartTime() == null) {
+                                            continue;
+                                        }
+                                        Long avg = w.get(HeartRateRecord.BPM_AVG);
+                                        Long n = w.get(HeartRateRecord.HEART_MEASUREMENTS_COUNT);
+                                        if (avg == null || n == null || n < 5 || avg < 25 || avg > 150) {
+                                            continue;
+                                        }
+                                        LocalDate date = w.getStartTime().atZone(zone).toLocalDate();
+                                        Long cur = best.get(date);
+                                        if (cur == null || avg < cur) {
+                                            best.put(date, avg);
+                                            bestTime.put(date, w.getStartTime());
+                                        }
+                                    }
+                                }
+                                for (Map.Entry<LocalDate, Long> e : best.entrySet()) {
+                                    JSONObject o = point(bestTime.get(e.getKey()), "bpm", e.getValue(), 0);
+                                    if (o != null) {
+                                        arrays[HEART_RATE].put(o);
+                                    }
+                                }
+                                finish(HEART_RATE, null);
+                            } catch (Throwable t) {
+                                finish(HEART_RATE, t);
+                            }
+                        }
+
+                        @Override
+                        public void onError(HealthConnectException e) {
+                            finish(HEART_RATE, e);
                         }
                     });
         }
@@ -411,7 +906,17 @@ final class HealthBridge {
             }
         }
 
-        private static JSONObject toJson(int type, Record record) throws JSONException {
+        /** True for sessions this app wrote itself (they mirror workouts it already has). */
+        private boolean isOwn(Record record) {
+            try {
+                String origin = record.getMetadata().getDataOrigin().getPackageName();
+                return activity.getPackageName().equals(origin);
+            } catch (Throwable t) {
+                return false;
+            }
+        }
+
+        private JSONObject toJson(int type, Record record) throws JSONException {
             switch (type) {
                 case SLEEP:
                     return sleepJson((SleepSessionRecord) record);
@@ -442,8 +947,25 @@ final class HealthBridge {
                     o.put("end", r.getEndTime().toString());
                     o.put("type", r.getExerciseType());
                     o.put("typeName", exerciseName(r.getExerciseType()));
+                    o.put("mine", isOwn(r));
                     CharSequence title = r.getTitle();
                     o.put("title", title == null ? "" : title.toString());
+                    return o;
+                }
+                case NUTRITION: {
+                    // Only food logged in other apps: the app already has its own entries.
+                    NutritionRecord r = (NutritionRecord) record;
+                    if (isOwn(r)) {
+                        return null;
+                    }
+                    JSONObject o = new JSONObject();
+                    o.put("start", r.getStartTime().toString());
+                    Energy energy = r.getEnergy();
+                    o.put("kcal", energy == null ? 0 : Math.round(energy.getInCalories() / 1000.0));
+                    o.put("p", grams(r.getProtein()));
+                    o.put("c", grams(r.getTotalCarbohydrate()));
+                    o.put("f", grams(r.getTotalFat()));
+                    o.put("meal", mealName(r.getMealType()));
                     return o;
                 }
                 default:
@@ -515,6 +1037,10 @@ final class HealthBridge {
             o.put("asleepMin", minutes(asleep));
             o.put("stages", stageMinutes);
             return o;
+        }
+
+        private static double grams(Mass m) {
+            return m == null ? 0 : Math.round(m.getInGrams() * 10.0) / 10.0;
         }
 
         private void putError(int type, String message) {

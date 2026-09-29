@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android 12 and newer: cloud backups and device-to-device transfers skip the AI coach key. -->
+<!-- Android 12 and newer. Cloud backups only happen when they're end-to-end encrypted with the
+     phone's screen lock. Only the app's saved state and settings are included; the AI coach key never
+     is, and the on-device model lives in no-backup storage. -->
 <data-extraction-rules>
-    <cloud-backup>
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <include domain="file" path="." />
+        <include domain="sharedpref" path="." />
         <exclude domain="sharedpref" path="secrets.xml" />
     </cloud-backup>
     <device-transfer>
+        <include domain="file" path="." />
+        <include domain="sharedpref" path="." />
         <exclude domain="sharedpref" path="secrets.xml" />
     </device-transfer>
 </data-extraction-rules>

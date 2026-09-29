@@ -8,7 +8,7 @@
   const U = GH.ui = GH.ui || {};
   U.act = U.act || {};
   const specs = {};
-  let seq = 0;
+  const openTables = new Set();
   const W = 10;   // x units per day
   const HT = 100; // plot height in y units
 
@@ -49,11 +49,13 @@
       } else if (s.kind === 'dot') {
         for (const p of pts) parts.push(`<line class="ch-dot" ${col} x1="${x(p.day)}" x2="${x(p.day)}" y1="${y(p.value)}" y2="${y(p.value)}"/>`);
       } else {
-        // Lines break over gaps longer than 3 days instead of drawing through missing data.
+        // Lines break over gaps longer than 3 days instead of drawing through missing data. Sparse
+        // series (tests, gym sessions) set their own gap.
+        const gap = s.gap != null ? s.gap : 3;
         let d = '';
         let prev = null;
         for (const p of pts) {
-          d += `${prev == null || p.day - prev > 3 ? 'M' : 'L'}${x(p.day)} ${y(p.value)}`;
+          d += `${prev == null || p.day - prev > gap ? 'M' : 'L'}${x(p.day)} ${y(p.value)}`;
           prev = p.day;
         }
         if (d) parts.push(`<path class="ch-line${s.kind === 'avg' ? ' ch-avg' : ''}" ${col} d="${d}"/>`);
@@ -61,12 +63,15 @@
       }
     }
     parts.push('<line class="ch-mark" x1="-10" x2="-10" y1="0" y2="100" visibility="hidden"/>');
-    return `<svg class="ch-svg" viewBox="0 0 ${w} ${HT}" preserveAspectRatio="none" aria-hidden="true">${parts.join('')}</svg>`;
+    // Keyed by its range: a new range draws in fresh, other re-renders leave it alone.
+    return `<svg class="ch-svg" data-key="svg-${spec.from}-${spec.to}" viewBox="0 0 ${w} ${HT}" preserveAspectRatio="none" aria-hidden="true">${parts.join('')}</svg>`;
   }
 
+  // Ids come from the title, so a chart keeps its identity (and its open table) across re-renders.
   U.chartCard = (spec) => {
-    const id = 'ch' + (++seq);
+    const id = 'ch-' + String(spec.title).toLowerCase().replace(/[^a-z0-9]+/g, '-');
     specs[id] = spec;
+    const open = openTables.has(id);
     const fmt = spec.fmt || ((v) => U.num(v));
     const ex = extent(spec);
     const legend = spec.series.length > 1 ? `<div class="ch-legend t-caption">${spec.series.map((s) => `<span class="ch-key"><i class="ch-swatch ch-swatch-${s.kind}" style="--c:${s.color || 'var(--label)'}"></i>${U.esc(s.name)}</span>`).join('')}</div>` : '';
@@ -78,10 +83,10 @@
         <div class="ch-x t-caption rf-num"><span>${U.esc(U.fmtDay(spec.from, false))}</span><span>${U.esc(U.fmtDay(spec.to, false))}</span></div>
         <div class="ch-tip t-footnote rf-num" aria-live="polite">Tap the chart for values.</div>`
       : '<p class="t-footnote rf-muted ch-empty">No data in this range yet.</p>';
-    return `<div class="card ch-card" data-chart="${id}">
+    return `<div class="card ch-card" data-chart="${id}" data-key="${id}">
       <div class="ch-head"><span class="t-headline">${U.esc(spec.title)}</span><span class="ch-value t-callout rf-num">${spec.value == null ? '' : U.esc(spec.value)}</span></div>
       ${legend}${body}
-      ${ex ? `<button type="button" class="rf-btn ch-toggle" data-variant="plain" data-size="sm" data-act="chartTable" data-arg="${id}" aria-expanded="false">Numbers</button><div class="ch-table" hidden></div>` : ''}
+      ${ex ? `<button type="button" class="rf-btn ch-toggle" data-variant="plain" data-size="sm" data-act="chartTable" data-arg="${id}" aria-expanded="${open}">${open ? 'Hide numbers' : 'Numbers'}</button><div class="ch-table"${open ? '' : ' hidden'}>${open ? table(spec) : ''}</div>` : ''}
     </div>`;
   };
 
@@ -106,18 +111,23 @@
     mark.setAttribute('x1', x); mark.setAttribute('x2', x); mark.setAttribute('visibility', 'visible');
   };
 
+  function table(spec) {
+    const fmt = spec.fmt || ((v) => U.num(v));
+    const days = [...new Set(spec.series.flatMap((s) => s.points.map((p) => p.day)))].filter((d) => d >= spec.from && d <= spec.to).sort((a, b) => b - a);
+    return `<table class="ch-tbl t-footnote rf-num"><thead><tr><th scope="col">Day</th>${spec.series.map((s) => `<th scope="col">${U.esc(s.name)}</th>`).join('')}</tr></thead><tbody>${days.map((d) => `<tr><th scope="row">${U.esc(U.fmtDay(d))}</th>${spec.series.map((s) => { const p = s.points.find((q) => q.day === d); return `<td>${p ? U.esc(fmt(p.value)) : '–'}</td>`; }).join('')}</tr>`).join('')}</tbody></table>`;
+  }
   U.act.chartTable = (btn) => {
-    const spec = specs[btn.dataset.arg];
+    const id = btn.dataset.arg;
+    const spec = specs[id];
     const box = btn.nextElementSibling;
     if (!spec || !box) return;
     const open = box.hidden;
+    if (open) openTables.add(id); else openTables.delete(id);
     box.hidden = !open;
     btn.setAttribute('aria-expanded', String(open));
     btn.textContent = open ? 'Hide numbers' : 'Numbers';
-    if (!open) return;
-    const fmt = spec.fmt || ((v) => U.num(v));
-    const days = [...new Set(spec.series.flatMap((s) => s.points.map((p) => p.day)))].filter((d) => d >= spec.from && d <= spec.to).sort((a, b) => b - a);
-    box.innerHTML = `<table class="ch-tbl t-footnote rf-num"><thead><tr><th scope="col">Day</th>${spec.series.map((s) => `<th scope="col">${U.esc(s.name)}</th>`).join('')}</tr></thead><tbody>${days.map((d) => `<tr><th scope="row">${U.esc(U.fmtDay(d))}</th>${spec.series.map((s) => { const p = s.points.find((q) => q.day === d); return `<td>${p ? U.esc(fmt(p.value)) : '–'}</td>`; }).join('')}</tr>`).join('')}</tbody></table>`;
+    box.innerHTML = open ? table(spec) : '';
+    if (open && !U.reduced() && box.animate) box.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: 'ease-out' });
   };
 
   // Horizontal "done of target" bars (weekly sets per muscle).
@@ -127,5 +137,5 @@
       <div class="meter-track" role="img" aria-label="${U.esc(r.name)}: ${r.done} of ${r.target} sets"><span class="meter-fill" style="width:${(Math.min(r.done, max) / max * 100).toFixed(1)}%"></span>${r.target ? `<span class="meter-target" style="left:${(r.target / max * 100).toFixed(1)}%"></span>` : ''}</div></div>`;
   }).join('')}</div>`;
 
-  U.clearCharts = () => { for (const k of Object.keys(specs)) delete specs[k]; };
+  U.clearCharts = () => { for (const k of Object.keys(specs)) delete specs[k]; openTables.clear(); };
 })(typeof window !== 'undefined' ? window : globalThis);
