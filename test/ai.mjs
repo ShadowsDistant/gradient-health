@@ -25,6 +25,12 @@ function caps(effort) {
   const yes = { supported: true };
   return { effort: { supported: effort, low: yes, medium: yes, high: yes, max: yes, xhigh: null }, structured_outputs: yes, thinking: { supported: true, types: { adaptive: yes, enabled: yes } } };
 }
+// Claude's suggestions: one fine, one out of range, one plain tip, one kind the app doesn't know.
+const SUGGEST = { suggestions: [
+  { kind: 'minutes', title: 'Plan 30-minute workouts', why: 'Your last three took about 31 minutes.', minutes: 30 },
+  { kind: 'minutes', title: 'Plan 7-minute workouts', why: 'Too short to be allowed.', minutes: 7 },
+  { kind: 'tip', title: 'Walk after dinner', why: 'Steps are 20% under your usual.' },
+] };
 const REPORT = { headline: 'A steady week.', wins: ['4 of 4 workouts.'], watch: ['Sleep dipped to 6 h 10.'], focus: ['Protein on rest days.'], ask_me: ['How do I sleep more?'] };
 const sse = (events) => events.map(([e, d]) => `event: ${e}\ndata: ${JSON.stringify(d)}\n\n`).join('');
 function stream(text, stop) {
@@ -48,7 +54,9 @@ globalThis.fetch = async (url, init = {}) => {
   if (mode === 'offline') throw new TypeError('fetch failed');
   if (mode === '401') return new Response(JSON.stringify({ type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }), { status: 401, headers: { 'content-type': 'application/json', 'request-id': 'req_1' } });
   if (u.includes('/v1/models')) return new Response(JSON.stringify({ data: MODELS, has_more: false, first_id: MODELS[0].id, last_id: MODELS[MODELS.length - 1].id }), { status: 200, headers: { 'content-type': 'application/json' } });
-  const text = mode === 'refusal' ? '' : body && body.output_config && body.output_config.format ? JSON.stringify(REPORT) : 'Aim for the same bedtime on weekends.';
+  const fmt = body && body.output_config && body.output_config.format;
+  const wantsSuggestions = !!(fmt && fmt.schema && fmt.schema.properties && fmt.schema.properties.suggestions);
+  const text = mode === 'refusal' ? '' : wantsSuggestions ? JSON.stringify(SUGGEST) : fmt ? JSON.stringify(REPORT) : 'Aim for the same bedtime on weekends.';
   return new Response(stream(text, mode === 'refusal' ? 'refusal' : 'end_turn'), { status: 200, headers: { 'content-type': 'text/event-stream' } });
 };
 
@@ -111,5 +119,16 @@ check('delete key removes it', !AI.hasKey());
 e = null;
 try { await AI.ask(S, D0, 'Hi'); } catch (err) { e = err; }
 check('no key → a clear message, no request made', e && e.code === 'nokey');
+
+section('Suggestions');
+{
+  mode = 'ok';
+  AI.setKey('sk-ant-test-0123456789abcdef');
+  globalThis.GH.coach = globalThis.GH.coach || { validAction: (S2, a) => a.kind !== 'minutes' || (a.value >= 10 && a.value <= 60 && a.value % 5 === 0) };
+  const n = await AI.suggest(S, D0);
+  const items = S.ai.suggestions.items;
+  check('asks with the suggestion schema', calls.some((c) => c.body && c.body.output_config && c.body.output_config.format && c.body.output_config.format.schema.properties.suggestions));
+  check('keeps only suggestions the app can apply (and tips)', n === 2 && items.some((x) => x.action && x.action.kind === 'minutes' && x.action.value === 30) && items.some((x) => !x.action) && !items.some((x) => x.action && x.action.value === 7), items);
+}
 
 done();
