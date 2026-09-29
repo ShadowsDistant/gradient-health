@@ -556,14 +556,16 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 /* ---------------------------------------------------------------- food */
 .fd-sum { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-4); }
 .fd-sum .rf-ring-label { display: grid; justify-items: center; line-height: 1.1; }
-.fd-ring-n { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
-.fd-sum.is-compact .fd-ring-n { font-size: 17px; }
+.fd-ring-n { font-size: 19px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; }
+.fd-sum.is-compact .fd-ring-n { font-size: 15px; }
+.fd-sum .rf-ring-label { padding-inline: 10px; text-align: center; }
 .fd-macros { display: grid; gap: var(--space-2); min-width: 0; }
 .fd-macros > p { margin: 0; }
 .fd-macro { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); }
 .fd-macro .t-caption { min-width: 64px; text-align: end; }
-.fd-days { display: flex; align-items: center; gap: var(--space-2); }
-.fd-days .t-callout { min-width: 88px; text-align: center; font-weight: 600; }
+.fd-days { display: flex; align-items: center; gap: var(--space-1); width: fit-content; margin-inline: var(--space-4); padding: 2px; border-radius: var(--radius-full); background: var(--bg-raised); box-shadow: var(--shadow-card); }
+.fd-days .t-callout { min-width: 96px; text-align: center; font-weight: 600; }
+.fd-days .rf-btn[aria-disabled="true"] { opacity: 0.35; }
 .fd-meal { gap: var(--space-1); }
 .fd-meal-head { display: flex; align-items: center; gap: var(--space-2); min-height: 32px; }
 .fd-list { margin: 0 calc(-1 * var(--space-4)) calc(-1 * var(--space-2)); background: none; box-shadow: none; }
@@ -622,3 +624,6 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 .model-row .rf-list-text { gap: 4px; }
 .model-row .rf-progress { margin-top: 4px; }
 .model-on { display: inline-flex; align-items: center; gap: 4px; color: var(--positive); white-space: nowrap; }
+.mv-gym { display: inline-block; margin-inline-start: 6px; padding: 1px 7px; border-radius: var(--radius-full); background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; vertical-align: 2px; }
+.float-actions.is-tight .rf-btn:not(.btn-main) .btn-label { display: none; }
+.float-actions.is-tight .rf-btn:not(.btn-main) { aspect-ratio: 1; padding-inline: 0; min-inline-size: 48px; justify-content: center; }

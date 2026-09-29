@@ -395,6 +395,7 @@
     const wasHidden = floatEl.hidden;
     U.morph(floatEl, fl || '');
     floatEl.hidden = !fl;
+    fitFloat();
     if (fl && (wasHidden || changed)) floatIn();
     if (scr.after) safe(() => scr.after(screen, U.S, day, r.arg, changed));
     if (changed) {
@@ -412,6 +413,16 @@
     renderAccessory();
   }
   U.render = render;
+  // The floating buttons share one row. When they don't fit (a narrow phone, large text), the
+  // secondary ones drop their words and keep their icon (their aria-label still says what they do).
+  function fitFloat() {
+    if (floatEl.hidden) return;
+    floatEl.classList.remove('is-tight');
+    const box = floatEl.getBoundingClientRect();
+    const over = [...floatEl.children].some((c) => { const b = c.getBoundingClientRect(); return b.left < box.left - 1 || b.right > box.right + 1; });
+    if (over) floatEl.classList.add('is-tight');
+  }
+  if (G.addEventListener) G.addEventListener('resize', () => { if (floatEl) fitFloat(); });
   // The next route change plays this entrance (e.g. 'stagger' after set-up).
   U.nextMotion = (kind) => { nextMotion = kind; };
   function safe(fn) { try { return fn(); } catch (e) { if (G.console) G.console.error(e); return ''; } }

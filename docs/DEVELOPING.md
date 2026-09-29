@@ -7,34 +7,43 @@ Android SDK: the APK is built with Ubuntu's packaged Android tools.
 ## Layout
 
 ```
-src/data/moves.js        exercises, ladders, equipment tags, cues
+src/data/moves.js        exercises (home and gym), ladders and gym pools, equipment tags, cues
 src/data/science.js      the rules behind the plan, with their research (the "How it works" page)
 src/data/changelog.js    What's new, newest first
-src/engine/pose.js       2D skeleton (FK + IK), timing from tempo, SVG figures
-src/brain.js             program, sessions, adaptation, calendar replay, streaks, readiness, rest
+src/data/privacy.js      the privacy policy (the in-app page and docs/PRIVACY.md come from it)
+src/data/brand.js        the logo as a data URI
+src/engine/pose.js       2D skeleton (FK + IK), timing from tempo, SVG figures, gym props
+src/brain.js             program, sessions, gym loads, adaptation, calendar replay, streaks, readiness
 src/health.js            Health Connect client (read and write), hand logs, per-day records
+src/food.js              food tracking: targets, logging, meals, the learned burn, Health Connect writes
+src/foodnet.js           Open Food Facts search and barcodes (through the Android shell)
+src/scanner.js           the barcode camera sheet; src/barcode.js is its lazy ZXing reader
 src/insights.js          on-device insights
-src/coach.js             the built-in coach (weekly report, answers) and the Claude app hand-off
+src/coach.js             the built-in coach: report, answers, today's decisions, suggestions
+src/devicecoach.js       the on-device model's prompt: rules, a compact data brief, safety routing
 src/ai.js                the Claude API coach (bundled with the Anthropic SDK by esbuild)
 src/llm.js               on-device AI runtime (llama.cpp in WebAssembly), a lazy chunk: GH.lazy('llm')
 src/store.js             local + file persistence, backup and restore, migrations
-src/platform.js          haptics, vibration, sounds, theme and system bars, insets, back button
-src/ui/core.js           layout, router, in-place rendering (U.morph), transitions, sync, events
+src/platform.js          haptics, vibration, sounds, theme and system bars, insets, back button, lazy chunks
+src/ui/core.js           layout, tabs, router, in-place rendering (U.morph), transitions, sync, events
 src/ui/guide.js          tour, first-week checklist, tab tips, What's new
-src/ui/*.js              screens: onboarding, player, today, plan, health, progress, moves,
-                         profile, science (How it works), settings
-scripts/build.mjs        inlines everything into dist/gradient-health.html
+src/ui/*.js              screens: onboarding, player, today, plan, health, food, progress, moves,
+                         coach page, profile, science (How it works), settings
+scripts/build.mjs        inlines everything into dist/gradient-health.html; lazy chunks go to dist/lazy/
 scripts/build-apk.sh     builds and signs the APK without Gradle
+scripts/make-icons.mjs   the launcher icons from art/logo.webp
 scripts/screenshots.mjs  renders docs/screenshots/ from the built page
 scripts/make-tiny-gguf.py  a tiny random-weight model for test/llm.mjs
 ```
 
 ```sh
 npm ci
-npm test          # simulations, insights, AI (mocked API), coach and sync, poses, persistence
-npm run build     # dist/gradient-health.html
+npm test          # simulations, insights, AI (mocked API), coach, poses, persistence, food, health, gym
+npm run build     # dist/gradient-health.html and dist/lazy/
 npm run smoke     # end-to-end run in Chromium (needs Playwright); add --dark for dark mode
+npm run test:ui   # layout regressions, food flows, the coach chat (Chromium)
 npm run test:llm  # on-device AI runtime in Chromium with a tiny model (see On-device AI)
+node test/sweep.mjs [--quick]   # every screen at 360-600 px, light/dark, 100%/130% text, overflow checks
 npm run apk       # build/gradient-health.apk (see below)
 node scripts/screenshots.mjs          # docs/screenshots/, light and dark
 node test/contact-sheet.mjs [filter,…] [--dark]   # every move's keyframes, to build/
@@ -135,6 +144,27 @@ Qwen's Hugging Face repos; the table at the top of `src/llm.js` pins each file's
   npm run build && npm run test:llm      # makes build/tiny.gguf on the first run
   ```
 
+## Food
+
+Food tracking is off until someone turns it on (Settings, What you track). `src/food.js` is pure logic
+on the saved state and is unit-tested (`test/food.mjs`): Mifflin-St Jeor times an activity factor from
+the person's steps and workouts, a pace from the goal, floors, macros, and a burn estimate that learns
+from logged intake and the weight trend (a regression on raw weigh-ins, blended in slowly).
+
+- **Built-in foods** load on demand from `dist/lazy/foods.js` (`GH.foods`), built from USDA data.
+- **Open Food Facts** (only with Online search and barcodes on): `FoodLookup.java` makes the request with
+  the User-Agent Open Food Facts asks for, so the page's CSP keeps every other host out. `src/foodnet.js`
+  keeps to their rate limits (10 searches and 15 products a minute) and sanity-checks every product.
+- **Barcodes**: `src/scanner.js` opens the back camera with `getUserMedia` (MainActivity grants the
+  WebView's video request after the runtime CAMERA permission) and reads frames with the MIT
+  `barcode-detector` ponyfill over ZXing in WebAssembly (`dist/lazy/barcode.js` and
+  `zxing_reader.wasm`), so no Play services are needed. A code counts once it's read twice in a row with
+  a valid check digit; typing the number always works too.
+- **Health Connect**: meals are written as `NutritionRecord`s with the entry id as the client record id
+  and a version that grows with each edit, so edits replace the record; deletes delete it. Food other
+  apps logged comes back as per-day totals. The nutrition permissions are only requested when calorie
+  tracking is on (`AndroidBridge.hcRequestFood`).
+
 ## Publishing on Google Play
 
 The app targets API 36 and handles edge-to-edge and predictive back. Before a Play release:
@@ -143,10 +173,16 @@ The app targets API 36 and handles edge-to-edge and predictive back. Before a Pl
    [bundletool](https://github.com/google/bundletool) `build-bundle`, then sign it with a private
    upload key (not the committed keystore) and enroll in Play App Signing.
 2. **Health Connect declaration.** In Play Console, fill in the health permissions declaration for
-   each read permission and `WRITE_EXERCISE`, with the reasons the privacy page gives.
-3. **Privacy policy.** Play needs a public URL. [docs/PRIVACY.md](PRIVACY.md) has the text; host it
+   each permission, with the reasons the privacy page gives: reads of steps, sleep, weight, height,
+   body fat, heart rate, resting heart rate, HRV, exercise, active calories burned, distance and
+   nutrition, and writes of exercise and nutrition.
+3. **Other permissions.** `CAMERA` (barcode scanning only, requested when Scan is tapped; the camera
+   feature is declared not required), `INTERNET` (the optional Claude coach, Open Food Facts and the
+   on-device model download) and `ACCESS_NETWORK_STATE` (so a model download can wait for Wi-Fi).
+4. **Privacy policy.** Play needs a public URL. [docs/PRIVACY.md](PRIVACY.md) has the text; host it
    somewhere public (GitHub Pages works) and link it in the listing.
-4. **Data safety form.** Health and fitness data is collected on the device only, never shared, and
-   the optional Claude features send a summary only when the person asks.
-5. **Store listing.** The README and `docs/screenshots/` are a starting point for the description
+5. **Data safety form.** Health, fitness and food data stays on the device and is never shared. The
+   optional features send only what they need, only when the person uses them: a summary to Claude,
+   the search words or barcode to Open Food Facts, and a request for the model file to Hugging Face.
+6. **Store listing.** The README and `docs/screenshots/` are a starting point for the description
    and phone screenshots.

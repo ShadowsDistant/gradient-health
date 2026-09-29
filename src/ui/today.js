@@ -221,7 +221,7 @@
       if (S.active || S.profile.workouts === false) return '';
       if (plan.type === 'workout') {
         const on = isShort(day);
-        return `<button type="button" class="rf-btn rf-glass" data-size="lg" data-lens data-act="toggleShort" aria-pressed="${on}">${U.icon('timer')}${on ? 'Full session' : 'Short on time'}</button>
+        return `<button type="button" class="rf-btn rf-glass" data-size="lg" data-lens data-act="toggleShort" aria-pressed="${on}" aria-label="${on ? 'Full session' : 'Short on time'}">${U.icon('timer')}<span class="btn-label">${on ? 'Full session' : 'Short on time'}</span></button>
           <button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg" data-lens data-act="startWorkout">${U.icon('play')}Start workout</button>`;
       }
       if (plan.type === 'light' && !(plan.light && plan.light.mobility)) return `<button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg" data-lens data-act="startMobility">${U.icon('play')}Start mobility</button>`;

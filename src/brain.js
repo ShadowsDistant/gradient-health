@@ -852,8 +852,9 @@
     const safe = list.filter((x) => !loads(x)).sort((a, b) => Math.abs(all.indexOf(a) - at) - Math.abs(all.indexOf(b) - at) || all.indexOf(a) - all.indexOf(b));
     if (safe.length) return { id: safe[0], swappedFrom: id };
     const group = M().LADDERS[fam].group;
+    const home = placeOf(S, day) === 'home';
     for (const [f2, lad] of Object.entries(M().LADDERS)) {
-      if (f2 === fam || lad.group !== group) continue;
+      if (f2 === fam || lad.group !== group || (home && lad.gym)) continue;
       const alt = rungs(S, f2, day).filter((x) => !loads(x));
       if (alt.length) return { id: alt[0], swappedFrom: id, family: f2 };
     }
@@ -1307,8 +1308,9 @@
     const list = rungs(S, fam, day);
     const at = list.indexOf(item.moveId);
     if (at > 0 && ok(list[at - 1])) out.push({ id: list[at - 1], why: 'Easier' });
+    const home = placeOf(S, day) === 'home';
     for (const [f2, lad] of Object.entries(M().LADDERS)) {
-      if (f2 === fam || lad.group !== group) continue;
+      if (f2 === fam || lad.group !== group || (home && lad.gym)) continue;
       const l2 = rungs(S, f2, day).filter(ok);
       if (!l2.length) continue;
       const cur = S.prog[f2] && l2.includes(S.prog[f2].rung) ? S.prog[f2].rung : l2[Math.min(l2.length - 1, Math.round((at / Math.max(1, list.length - 1)) * (l2.length - 1)))];

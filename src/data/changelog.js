@@ -4,6 +4,24 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.2.0', date: '2026-09-29', title: 'Gradient Health: gym, food and a coach you can see',
+      items: [
+        ['heart', 'A new name, Gradient Health, and a new icon.'],
+        ['person', 'A 3D figure shows every exercise: a realistic body, smooth motion at the right tempo, the working muscles lit up, and you can turn it to see it from any side.'],
+        ['dumbbell', 'Gym mode: barbells, racks, cables and machines, 45 gym exercises, and weights that go up once you hit the top of your reps. Train at home, at a gym, or pick each day.'],
+        ['food', 'Food tracking if you want it: calories and macros, a built-in food list, your own foods, quick add, saved meals, online search and barcode scanning. Or keep just the protein goal, or turn food off.'],
+        ['sliders', 'Choose what the app tracks. Workouts, food, or both, and food and health without workouts works too.'],
+        ['sparkle', 'Your coach shows its work: what it changed today and why, what it suggests, what it\'s keeping an eye on, and every change it made lately.'],
+        ['chip', 'Chat with an AI model that runs on your phone. It works offline and nothing you ask leaves the phone.'],
+        ['chart', 'Workouts fit your goals more closely: your top goals go first, rep ranges match the goal, sets per muscle follow how you recover, and the first session back after a break is lighter.'],
+        ['pencil', 'Change your equipment, goals or schedule on one screen, without going through the set-up again.'],
+        ['wave', 'More from Health Connect: heart rate, active calories and distance, an estimated resting heart rate when your watch app doesn\'t share one, and your latest numbers even before today\'s are in.'],
+        ['bolt', 'Stronger haptics, with a Light, Medium or Strong setting.'],
+        ['lock', 'A full privacy policy: every piece of data, where it\'s kept, who it\'s shared with, and how to delete it.'],
+        ['check-circle', 'Fixes: 7-day charts running off the card, cut-off titles, the Equipment screen freezing, sliders, the tour, the Resume button, the see-through workout bar and section spacing. Text now follows your phone\'s font size.'],
+      ],
+    },
+    {
       version: '1.1.0', date: '2026-09-29', title: 'Smoother, smarter, easier to start',
       items: [
         ['sparkle', 'Screens update in place instead of redrawing, tabs and pages slide in, and numbers roll when they change.'],
