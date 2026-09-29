@@ -89,9 +89,11 @@
     error: [40, 60, 40], heavy: [70], celebrate: [10, 30, 24, 70, 20, 60, 30, 20, 50],
   };
   const HAPTIC_STRENGTH = { light: 0.55, medium: 0.8, strong: 1 };
+  const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  const hapticKind = (kind) => (own(HAPTIC_PATTERNS, kind) ? kind : 'tap'); // an unknown name is a tap
   function hapticPattern(kind, strength) {
-    const k = HAPTIC_STRENGTH[strength] || HAPTIC_STRENGTH.medium;
-    return (HAPTIC_PATTERNS[kind] || HAPTIC_PATTERNS.tap).map((x, i) => (i % 2 ? x : Math.max(4, Math.round(x * k))));
+    const k = own(HAPTIC_STRENGTH, strength) ? HAPTIC_STRENGTH[strength] : HAPTIC_STRENGTH.medium;
+    return HAPTIC_PATTERNS[hapticKind(kind)].map((x, i) => (i % 2 ? x : Math.max(4, Math.round(x * k))));
   }
   // A phone plays one vibration at a time, and a new one cuts the last short. So a haptic doesn't cut
   // in on a bigger one that's still playing: UI kinds rank lowest, then the countdown, then events,
@@ -100,7 +102,7 @@
   let last = { kind: '', at: -1e9, until: 0, rank: 0 };
   function haptic(kind) {
     if (!prefs.haptics) return;
-    const k = HAPTIC_PATTERNS[kind] ? kind : 'tap';
+    const k = hapticKind(kind);
     const now = Date.now();
     const rank = HAPTIC_RANK[k] || 0;
     // Ticks (slider steps) don't stack; otherwise the same kind twice at once is one moment reported
@@ -160,7 +162,7 @@
     }
     if (!prefs.vibrate) return;
     const b = bridge();
-    if (prefs.haptics && b && b.haptic && CUE_HAPTIC[kind] && visible()) { haptic(CUE_HAPTIC[kind]); return; }
+    if (prefs.haptics && b && b.haptic && own(CUE_HAPTIC, kind) && visible()) { haptic(CUE_HAPTIC[kind]); return; }
     if (CUE_HAPTIC[kind] === 'countdown') vibrate(35);
     else if (kind === 'go') vibrate(140);
     else if (kind === 'done') vibrate([140, 90, 220]);

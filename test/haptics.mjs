@@ -47,6 +47,7 @@ for (const k of kinds) {
 }
 check('the pauses stay the same at every strength', kinds.every((k) => same(P.hapticPattern(k, 'light').filter((_, i) => i % 2), P.hapticPattern(k, 'strong').filter((_, i) => i % 2))));
 check('an unknown kind is a tap, and no strength is medium', same(P.hapticPattern('nope', 'strong'), P.hapticPattern('tap', 'strong')) && same(P.hapticPattern('success'), P.hapticPattern('success', 'medium')));
+check('names an object inherits aren\'t kinds or strengths', same(P.hapticPattern('constructor', 'toString'), P.hapticPattern('tap', 'medium')) && same(P.hapticPattern('__proto__', '__proto__'), P.hapticPattern('tap', 'medium')));
 check('events are longer than taps', ['success', 'warning', 'error', 'heavy', 'done', 'celebrate'].every((k) => total(P.hapticPattern(k, 'strong')) > total(P.hapticPattern('tap', 'strong'))));
 
 section('In a browser');
@@ -73,7 +74,7 @@ globalThis.AndroidBridge = { haptic: (k) => played.push(k), vibratePattern: (j) 
 const run = (fn) => { played.length = 0; alarms.length = 0; later(); fn(); return played.join(); };
 P.setPrefs({ hapticStrength: 'medium' });
 check('the bridge plays it by name, with no browser buzz', run(() => P.haptic('warning')) === 'warning' && buzzes.length === 0);
-check('an unknown name plays a tap', run(() => P.haptic('bogus')) === 'tap');
+check('an unknown name plays a tap', run(() => P.haptic('bogus')) === 'tap' && run(() => P.haptic('constructor')) === 'tap');
 check('a moment reported twice plays once', run(() => { P.haptic('success'); later(20); P.haptic('success'); }) === 'success');
 check('ticks don\'t stack', run(() => { P.haptic('tick'); later(10); P.haptic('tick'); later(10); P.haptic('select'); later(40); P.haptic('tick'); }) === 'tick,tick');
 check('a tap or a smaller event waits out celebrate', run(() => { P.haptic('celebrate'); later(100); P.haptic('tap'); P.haptic('success'); later(1000); P.haptic('tap'); }) === 'celebrate,tap');
