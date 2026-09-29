@@ -270,6 +270,12 @@ await wait(900);
 check('the coach setting has two choices', await page.evaluate(() => [...document.querySelectorAll('#screen [data-on="setCoachMode"] input')].map((i) => i.value).join() === 'device,api' && document.querySelector('#screen [data-on="setCoachMode"] input[value="device"]').checked));
 check('the model shows as in use, with its speed here', await page.evaluate(() => { const t = (document.querySelector('#screen [data-key="model-q35-2"]') || {}).textContent || ''; return /In use/.test(t) && /words a second here/.test(t); }));
 check('nothing is cut off', await page.evaluate(() => ![...document.querySelectorAll('#screen .rf-list-title')].some((e) => e.scrollWidth > e.clientWidth + 1)));
+await page.click('#screen [data-act="aiSelfTest"]');
+await page.waitForSelector('dialog[open] .selftest-log', { timeout: 90000 });
+const selfTest = await page.evaluate(() => document.querySelector('dialog[open] .sheet-pad').textContent);
+check('the on-device AI check starts the model, times an answer and says which engine ran', /Working/.test(selfTest) && /In the app/.test(selfTest) && /Start-up\s*\d/.test(selfTest) && /words a second/.test(selfTest), selfTest.slice(0, 300));
+await page.evaluate(() => window.GH.ui.topSheet().close('ok'));
+await wait(500);
 // A piece of an older model's download left from 1.2 (it's never downloaded again) can be cleared.
 await page.evaluate(() => {
   const d = window.GH.ui.deviceState();

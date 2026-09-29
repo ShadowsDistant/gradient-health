@@ -56,6 +56,7 @@
           <ul class="rf-list">
             <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Who answers your questions</span><span class="rf-list-sub">${U.esc(ENGINE_SUB[engine])}</span></span>${U.seg('setCoach', [['device', 'On-device'], ['api', 'Claude']], engine, 'Coach', ' data-on="setCoachMode"')}</div></li>
             ${engine === 'device' ? U.modelRows(S) : ''}
+            ${engine === 'device' && dev.installed.length ? U.row({ icon: 'bolt', tone: 'teal', title: 'Check the on-device AI', sub: 'Starts the model and times a short answer', act: 'aiSelfTest', chevron: true }) : ''}
             ${claude ? `${hasKey ? U.row({ icon: 'lock', tone: 'green', title: 'API key saved on this phone', sub: S.ai.model && S.ai.model.name ? `Using ${U.esc(S.ai.model.name)}` : 'The model is picked on first use', act: 'keySheet', detail: 'Change', chevron: true }) : U.row({ icon: 'lock', tone: 'amber', title: 'Add your API key', sub: 'From the Claude Console, starts with sk-ant-', act: 'keySheet', chevron: true })}
               ${hasKey && !S.ai.consentAt ? U.row({ icon: 'alert', tone: 'amber', title: 'Claude is waiting for your OK', sub: 'Review what it gets before it turns on', act: 'claudeReview', chevron: true }) : ''}
               ${hasKey && S.ai.consentAt ? U.row({ icon: 'check-circle', tone: 'green', title: 'You allowed Claude to get your summary', sub: 'Turn it off by picking another coach, or withdraw it', act: 'claudeWithdraw', chevron: true }) : ''}
@@ -520,6 +521,55 @@
     U.save();
     redraw();
   };
+  // The self-test: which engine runs here, how long the model takes to start and to answer, and the
+  // log, to copy or send with a report when the coach misbehaves.
+  U.act.aiSelfTest = async () => {
+    const S = U.S;
+    const id = GH.deviceCoach ? GH.deviceCoach.pick(S, dev.installed) : null;
+    if (!id) return;
+    let result = null;
+    const body = (step) => {
+      if (!result) return `<div class="sheet-pad"><div class="chat-setup"><span class="rf-spinner" data-size="sm"><i></i></span><span class="t-callout">${U.esc(step || 'Starting')}…</span></div><p class="t-footnote rf-muted">This takes up to a minute. Keep the app open.</p></div>`;
+      const r = result, st = r.stats || {};
+      const engine = r.engine === 'native' ? `On this phone's processor${r.threads ? `, ${r.threads} threads` : ''}` : r.engine === 'wasm' ? `In the app (slower${r.gpu ? ', on the GPU' : ', one thread'})` : 'Didn\'t start';
+      const sec = (ms) => (ms == null ? '–' : `${(ms / 1000).toFixed(1)} s`);
+      const rows = [
+        ['Result', r.ok ? 'Working' : 'Not working'],
+        ['Engine', engine],
+        ['Model', modelName(r.model) || r.model],
+        ['Start-up', sec(r.loadMs)],
+        ['First word after', sec(st.firstMs)],
+        ['Speed', st.tokensPerSec > 0 ? `about ${Math.max(1, Math.round(st.tokensPerSec * 0.75))} words a second` : '–'],
+        ['Memory', r.ram ? `${r.ram} GB` : '–'],
+        ['WebView', r.webview || '–'],
+      ];
+      return `<div class="sheet-pad">
+        <ul class="rf-list">${rows.map(([k, v]) => `<li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(k)}</span></span><span class="rf-list-detail">${U.esc(v)}</span></div></li>`).join('')}</ul>
+        ${r.error ? `<p class="t-callout">${U.esc(r.error)}</p>` : ''}
+        ${r.reply ? `<p class="t-footnote rf-muted">Its answer: “${U.esc(r.reply)}”</p>` : ''}
+        <details class="selftest-log"><summary class="t-footnote">The log</summary><pre class="preview">${U.esc((r.log || []).join('\n'))}</pre></details>
+        <div class="btn-row"><button type="button" class="rf-btn" data-variant="soft" data-act="selfTestCopy">${U.icon('copy')}Copy</button><button type="button" class="rf-btn" data-variant="soft" data-act="selfTestReport">${U.icon('flag')}Report a problem</button></div>
+      </div>`;
+    };
+    const ctl = U.sheet({ title: 'On-device AI check', size: 'auto', body: body() });
+    const text = () => JSON.stringify(Object.assign({}, result, { app: GH.VERSION || '' }), null, 1);
+    U.act.selfTestCopy = () => { if (result && GH.platform) { GH.platform.copy(text()); U.toast('Copied'); } };
+    U.act.selfTestReport = () => {
+      if (!result || !GH.platform) return;
+      const q = new URLSearchParams({ title: `On-device AI check: ${result.ok ? 'working but' : 'not working'}`, labels: 'ai-selftest', body: `What happened (fill in):\n\n\n**Check:**\n\n\`\`\`json\n${text().slice(0, 5500)}\n\`\`\`\n` });
+      GH.platform.openUrl(`https://github.com/ShadowsDistant/gradient-health/issues/new?${q.toString()}`);
+    };
+    try {
+      const llm = await GH.lazy('llm');
+      result = await llm.selfTest(id, (step) => { if (!ctl.closed) ctl.update(body(step)); });
+    } catch (e) {
+      result = { ok: false, error: e.message, log: [] };
+    }
+    if (!ctl.closed) ctl.update(body());
+    U.haptic(result.ok ? 'success' : 'error');
+    redraw();
+  };
+  const modelName = (id) => { const m = dev.all.find((x) => x.id === id); return m ? m.name : null; };
   U.act.keySheet = () => {
     U.sheet({
       title: 'Anthropic API key', detents: 'medium large', detent: 'medium',

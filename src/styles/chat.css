@@ -80,3 +80,8 @@ html[data-sheet-moving] .bubble.coach.is-typing, html[data-sheet-moving] .caret 
 .coach-btn[data-busy]::after { inset: -3px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--hue-violet); border-inline-end-color: var(--hue-violet); opacity: 1; animation: gh-spin 900ms linear infinite; }
 .coach-btn[data-unseen]::after { top: 4px; right: 4px; width: 9px; height: 9px; border-radius: 50%; background: var(--hue-rose); box-shadow: 0 0 0 2px var(--bg); opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .coach-btn[data-busy]::after { animation: none; border-color: var(--hue-violet); } }
+
+/* The on-device AI check (Settings). */
+.selftest-log { margin-top: var(--space-3); }
+.selftest-log summary { cursor: pointer; color: var(--label-secondary); }
+.selftest-log .preview { max-height: 40vh; overflow: auto; font-size: 11px; }
