@@ -161,7 +161,7 @@
         <div class="rf-search fd-q"><input class="rf-input" type="search" id="foodQ" placeholder="Search foods" aria-label="Search foods" value="${U.esc(query)}" autocomplete="off" enterkeyhint="search"></div>
         ${F().prefs(S).online ? `<button type="button" class="rf-btn" data-shape="circle" aria-label="Scan a barcode" data-act="foodScan">${U.icon('scan')}</button>` : ''}
       </div>
-      ${q ? '' : U.seg('foodTab', [['recent', 'Recent'], ['favs', 'Favourites'], ['mine', 'My foods'], ['meals', 'Meals']], tab, 'Lists', ' data-on="foodTab" data-size="sm"')}
+      ${q ? '' : `<div class="fd-tabs" data-hscroll>${U.seg('foodTab', [['recent', 'Recent'], ['favs', 'Favourites'], ['mine', 'My foods'], ['meals', 'Meals']], tab, 'Lists', ' data-on="foodTab" data-size="sm"')}</div>`}
       <div class="fd-results">${results}</div>
       <ul class="rf-list fd-more">
         ${U.row({ icon: 'flame', tone: 'coral', title: 'Quick add calories', sub: 'Just the numbers', act: 'foodQuick', chevron: true })}

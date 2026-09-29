@@ -1,0 +1,6 @@
+/* ---------------------------------------------------------------- food (src/ui/food.js) */
+/* The lists' switch fills the width, and scrolls sideways when big text makes it wider than the
+   screen rather than running off it. */
+.fd-tabs { overflow-x: auto; scrollbar-width: none; margin-inline: calc(-1 * var(--space-4)); padding-inline: var(--space-4); }
+.fd-tabs::-webkit-scrollbar { display: none; }
+.fd-tabs .rf-segmented { min-width: 100%; width: max-content; }
