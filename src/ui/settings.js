@@ -108,13 +108,13 @@
   const SKINS = [['porcelain', '#efcfbc', 'Light'], ['sand', '#d9a982', 'Medium light'], ['olive', '#b17c4e', 'Medium'], ['umber', '#7d4c2d', 'Medium dark'], ['ebony', '#482c1c', 'Dark']];
   const SHIRTS = [['#3b5bdb', 'Blue'], ['#0c8599', 'Teal'], ['#2b8a3e', 'Green'], ['#c92a2a', 'Red'], ['#343a40', 'Charcoal']];
   function figureRows(pr) {
-    const can = !U.figure3dOk || U.figure3dOk() || pr.figure === 'flat';
+    const can = !U.canDraw3d || U.canDraw3d();
     const is3d = (pr.figure || '3d') === '3d' && can;
     const sub = !can ? 'This phone can\'t draw 3D, so it uses the simple figure' : is3d ? 'A lifelike person. Drag it to turn it around.' : 'A flat outline that\'s lighter on the battery';
     const swatches = (act, list, cur, label) => `<div class="swatches" role="group" aria-label="${label}">${list.map(([v, hex, name]) => `<button type="button" class="swatch" data-act="${act}" data-arg="${v}" aria-label="${U.esc(name || hex)}" aria-pressed="${v === cur ? 'true' : 'false'}" style="--sw:${hex}"></button>`).join('')}</div>`;
     return `<li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Exercise figure</span><span class="rf-list-sub">${sub}</span></span>${can ? U.seg('setFigure', [['3d', '3D'], ['flat', 'Simple']], is3d ? '3d' : 'flat', 'Exercise figure', ' data-on="setFigure"') : ''}</div></li>
       ${is3d ? `<li><div class="rf-list-row set-fig-row"><div class="set-fig" aria-hidden="true">${figPreview(pr)}</div><div class="set-fig-pick">
-        <span class="rf-list-title">Skin tone</span>${swatches('setFigSkin', SKINS.map(([v, hex, n]) => [v, hex, n]), pr.figSkin || 'sand', 'Skin tone')}
+        <span class="rf-list-title">Skin tone</span>${swatches('setFigSkin', SKINS, pr.figSkin || 'sand', 'Skin tone')}
         <span class="rf-list-title">Shirt</span>${swatches('setFigShirt', SHIRTS.map(([hex, n]) => [hex, hex, n]), pr.figShirt || SHIRTS[0][0], 'Shirt colour')}
       </div></div></li>` : ''}`;
   }

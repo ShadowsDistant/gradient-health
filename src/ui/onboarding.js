@@ -90,6 +90,9 @@
   U.showOnboarding = () => {
     if (!Q) { Q = draftFrom(B().defaultProfile()); mode = 'new'; idx = 0; }
     open();
+    // Fetch the 3D figure while they answer, so the tour has it. The GPU warm-up waits: it would
+    // hold up their taps.
+    if (U.loadFigure) setTimeout(() => { U.loadFigure().catch(() => {}); }, 3000);
   };
   // With a step id, only that screen opens, with Save: changing your equipment doesn't mean walking
   // through the whole set-up again.

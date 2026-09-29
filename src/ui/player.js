@@ -94,11 +94,13 @@
   // The 3D figure (a lazy three.js chunk) when the phone has WebGL and it's picked in Settings, else
   // the flat one. Callers hold a controller that swaps its figure underneath: flat while the chunk
   // loads the first time, 3D once it's there, and flat again if the GPU gives up.
-  const want3d = () => (U.S.profile.prefs.figure || '3d') === '3d';
+  const want3d = () => ((U.S && U.S.profile.prefs.figure) || '3d') === '3d';
   function load3d() {
     if (!want3d() || !GH.lazy) return Promise.resolve(null);
     return GH.lazy('figure3d').catch(() => null);
   }
+  // Loading only fetches the chunk; preloading also warms up the GPU, in idle slices.
+  U.loadFigure = () => load3d();
   U.preloadFigure = () => load3d().then((f) => (f && f.preload ? f.preload() : false));
   // Whether 3D can be drawn here: asks the chunk once it's loaded, else checks for WebGL 2 itself.
   let gl2 = null;
@@ -114,9 +116,10 @@
     }
     return gl2;
   }
+  U.canDraw3d = hasGl2;
   U.figure3dOk = () => want3d() && hasGl2();
   function look() {
-    const pr = U.S.profile.prefs;
+    const pr = (U.S && U.S.profile.prefs) || {};
     return { dark: String(P2().currentTheme()).startsWith('dark'), skin: pr.figSkin || 'sand', shirt: pr.figShirt || undefined };
   }
   const P2 = () => GH.platform;
@@ -187,7 +190,9 @@
   function dropFig() { if (fig) { try { fig.ctl.destroy(); } catch (e) { /* ignore */ } fig = null; } }
   function leadSideFor(fam) { const c = U.S.catchup; return (LEG_FAMS.includes(fam) ? c.leg.side : c.arm.side) || 'L'; }
   function figOpts(st, m0) {
-    const m = M().forPerson(m0, U.S.profile.equipment);
+    // The kit where this workout happens: a goblet squat shows a dumbbell at the gym.
+    const S = U.S;
+    const m = M().forPerson(m0, B().eqFor(S, S.active ? S.active.day : U.today()));
     const side = st.side || null;
     const o = { reducedMotion: U.reduced() };
     if (m.uni && side) { o.mirrored = M().mirrorFor(m, side); o.lead = side === leadSideFor(m0.family); }

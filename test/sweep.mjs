@@ -86,6 +86,33 @@ function problems() {
       if ((e.tagName === 'BUTTON' || e.classList.contains('rf-chip') || e.classList.contains('rf-segment')) && e.scrollWidth > e.clientWidth + 2) out.push(`label wider than its control: ${name(e)}`);
     }
   }
+  // A page (not a sheet, the player or set-up): scrolled to the end, its last content must clear
+  // whatever covers the bottom (the tab bar, the workout capsule, Today's buttons, the system bar).
+  const pl = document.getElementById('player'), ob = document.getElementById('onboard');
+  const scr = document.getElementById('screen');
+  if (scr && !document.querySelector('dialog[open]') && (!pl || pl.hidden) && (!ob || ob.hidden)) {
+    const keep = scr.scrollTop;
+    scr.scrollTop = scr.scrollHeight;
+    const sab = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sab')) || 0;
+    let cover = window.innerHeight - sab;
+    const tb = document.getElementById('tabbar');
+    if (tb && !tb.hasAttribute('data-away')) {
+      cover = Math.min(cover, tb.querySelector('.rf-tabbar-bar').getBoundingClientRect().top);
+      const acc = document.getElementById('accessory');
+      if (acc && !acc.hidden) cover = Math.min(cover, acc.getBoundingClientRect().top);
+    }
+    const fl = document.getElementById('float');
+    if (fl && !fl.hidden) for (const c of fl.children) cover = Math.min(cover, c.getBoundingClientRect().top);
+    const clipped = (e, r) => { for (let p = e.parentElement; p && p !== scr; p = p.parentElement) { const st = getComputedStyle(p); if (st.overflowY !== 'visible' && r.bottom > p.getBoundingClientRect().bottom + 1) return true; } return false; };
+    let low = 0, who = null;
+    for (const e of scr.querySelectorAll('*')) {
+      if (e.closest('svg') || !visible(e)) continue;
+      const r = e.getBoundingClientRect();
+      if (r.bottom > low && !clipped(e, r)) { low = r.bottom; who = e; }
+    }
+    scr.scrollTop = keep;
+    if (who && low > cover - 8) out.push(`bottom cut off: ${name(who)} ends at ${Math.round(low)}, covered from ${Math.round(cover)}`);
+  }
   return [...new Set(out)].slice(0, 12);
 }
 
@@ -102,6 +129,8 @@ for (const [width, theme, zoom, h] of COMBOS) {
   page.on('console', (m) => { if (m.type() === 'error') errors.push(`${tag}: ${m.text()}`); });
   await page.clock.install({ time: new Date('2026-10-19T08:10:00') });
   await page.addInitScript(seedBridge);
+  // Small phones get a three-button navigation bar (48px); the rest a gesture bar.
+  if (width === 360) await page.addInitScript(() => { const t = setInterval(() => { if (window.AndroidBridge) { window.AndroidBridge.insets = () => JSON.stringify({ top: 30, bottom: 48, left: 0, right: 0, keyboard: false }); clearInterval(t); } }, 1); });
   await page.goto(server.url);
   await page.waitForSelector('.onboard:not([hidden])');
   await page.evaluate(seedState);
@@ -140,6 +169,7 @@ for (const [width, theme, zoom, h] of COMBOS) {
     ['edit-food', async () => { await page.evaluate(() => window.GH.ui.editAnswers('food')); }],
     ['tour-4', async () => { await act('showTour'); await settle(); for (let i = 0; i < 3; i++) { await page.evaluate(() => { const b = document.querySelector('dialog[open] [data-act="tourNext"], .tour [data-act="tourNext"]'); if (b) b.click(); }); await settle(600); } }],
     ['player', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('startWorkout'); await settle(2000); }],
+    ['capsule', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('startWorkout'); await settle(1200); await act('plMin'); await settle(); await page.evaluate(() => window.GH.ui.go('progress')); }],
   ].filter(([id]) => !only.length || only.some((o) => id.startsWith(o)));
   for (const [id, run] of scenes) {
     try {
@@ -154,7 +184,7 @@ for (const [width, theme, zoom, h] of COMBOS) {
     } catch (e) {
       check(`${id} (ran)`, false, e.message.split('\n')[0]);
     }
-    if (id === 'player') await page.evaluate(() => { const S = window.GH.ui.S; if (window.GH.ui.closePlayer) window.GH.ui.closePlayer(); S.active = null; window.GH.store.save(S); });
+    if (id === 'player' || id === 'capsule') await page.evaluate(() => { const S = window.GH.ui.S; if (window.GH.ui.closePlayer) window.GH.ui.closePlayer(); S.active = null; window.GH.store.save(S); });
     await page.reload();
     await page.waitForSelector('#screen[data-view]');
     await reset();

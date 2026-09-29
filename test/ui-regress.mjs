@@ -1,6 +1,7 @@
 // Layout regressions from real-phone reports, checked in Chromium at phone size with someone five
 // weeks in: chart bounds, tab and button type, cut-off titles, the set-up overlay, sliders, the tour's
-// tab bar, the Resume button, the workout capsule's glass and section spacing.
+// tab bar, the Resume button, the workout capsule's glass, section spacing, the current tab's glass
+// lens and page ends that clear the tab bar.
 // Usage: node test/ui-regress.mjs [--dark] [--width=360]
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
@@ -109,6 +110,46 @@ check('the page doesn\'t scroll sideways', tour.scroll <= 0, tour.scroll);
 check('its labels aren\'t cut off', tour.labels);
 await page.click('.tour-sheet [data-act="tourNext"]'); await settle(900);
 
+section('The current tab is glass');
+await tab('plan');
+await settle(900);
+const lens = () => page.evaluate(() => { const s = getComputedStyle(document.querySelector('#tabbar .rf-tabbar-lens')); return { bf: s.backdropFilter, shadow: s.boxShadow }; });
+let ln = await lens();
+check('at rest the current tab sits in a glass lens', ln.bf !== 'none' && /inset/.test(ln.shadow), JSON.stringify(ln));
+await page.evaluate(() => { window.GH.ui.S.profile.prefs.contrast = true; window.GH.ui.applyPrefs(); });
+await settle(600);
+ln = await lens();
+check('with increased contrast it stays a plain wash', ln.bf === 'none' && !/inset/.test(ln.shadow), JSON.stringify(ln));
+await page.evaluate(() => { window.GH.ui.S.profile.prefs.contrast = false; window.GH.ui.applyPrefs(); });
+await settle(600);
+
+// Scrolled to the end, how far the last content sits above whatever covers the bottom.
+const endGap = () => page.evaluate(() => {
+  const scr = document.getElementById('screen');
+  scr.scrollTop = scr.scrollHeight;
+  let cover = innerHeight - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sab')) || 0);
+  const tb = document.getElementById('tabbar');
+  if (!tb.hasAttribute('data-away')) cover = Math.min(cover, tb.querySelector('.rf-tabbar-bar').getBoundingClientRect().top);
+  for (const id of ['accessory', 'float']) { const el = document.getElementById(id); if (el && !el.hidden) for (const c of id === 'float' ? el.children : [el]) cover = Math.min(cover, c.getBoundingClientRect().top); }
+  let low = 0;
+  for (const e of scr.querySelectorAll('*')) {
+    const r = e.getBoundingClientRect();
+    if (!r.width || !r.height) continue;
+    let clip = false;
+    for (let q = e.parentElement; q && q !== scr; q = q.parentElement) if (getComputedStyle(q).overflowY !== 'visible' && r.bottom > q.getBoundingClientRect().bottom + 1) { clip = true; break; }
+    if (!clip) low = Math.max(low, r.bottom);
+  }
+  return Math.round(cover - low);
+});
+section('Page ends clear the bars');
+for (const t of ['today', 'plan', 'health', 'progress']) { await tab(t); const g = await endGap(); check(`${t}: the last card scrolls clear of the bars`, g >= 8, g); }
+await page.evaluate(() => window.GH.ui.open('settings'));
+await settle(900);
+let g = await endGap();
+check('settings: the last row clears the system bar', g >= 8, g);
+await page.click('#topbar [data-act="back"]'); await settle();
+await tab('today');
+
 section('A workout in progress');
 await page.click('#float [data-act="startWorkout"]');
 await page.waitForSelector('.player:not([hidden]) .pl-name');
@@ -121,6 +162,8 @@ for (const t of ['health', 'today', 'plan', 'health']) await tab(t);
 const cap = await page.evaluate(() => { const a = document.getElementById('accessory'); const layer = a.querySelector(':scope > .rf-lens-layer'); const cs = layer ? getComputedStyle(layer) : getComputedStyle(a); return { shown: !a.hidden, layer: !!layer, bg: cs.backgroundColor }; });
 check('the workout capsule shows on other tabs', cap.shown);
 check('its glass layer is still there after switching tabs', cap.layer, JSON.stringify(cap));
+g = await endGap();
+check('with the capsule showing, the last card still scrolls clear', g >= 8, g);
 
 section('Console');
 check('no console errors', errors.length === 0, errors.join(' | '));

@@ -391,12 +391,14 @@
     if (nb) nb.remove();
     applyNavbar(nb);
     screen.dataset.view = r.view || r.tab;
+    screen.toggleAttribute('data-pushed', !!r.view);
     if (changed) replace(screen, tpl.content);
     else { morphChildren(screen, tpl.content, !motion); enhance(screen); }
     const fl = scr.float ? safe(() => scr.float(U.S, day, r.arg)) : '';
     const wasHidden = floatEl.hidden;
     U.morph(floatEl, fl || '');
     floatEl.hidden = !fl;
+    screen.toggleAttribute('data-float', !!fl);
     fitFloat();
     if (fl && (wasHidden || changed)) floatIn();
     if (scr.after) safe(() => scr.after(screen, U.S, day, r.arg, changed));
@@ -477,6 +479,7 @@
     const show = !!A && playerEl.hidden && !(U.route.tab === 'today' && !U.route.view);
     const was = !accessory.hidden;
     accessory.hidden = !show;
+    screen.toggleAttribute('data-capsule', show);
     // Emptied with morph, not innerHTML: that keeps Refract's lens layer (the capsule's glass), which
     // Refract only puts back on a resize.
     if (!show) { U.morph(accessory, ''); return; }
@@ -485,9 +488,19 @@
     U.morph(accessory, `<span class="rf-activity-leading" data-tone="coral" style="width:36px;height:36px">${U.icon('timer', 'sm')}</span>
       <span class="acc-text"><b>${U.esc(A.session.title)}</b><span class="t-caption rf-secondary">${doneN} of ${total} sets</span></span>
       <span class="rf-spacer"></span>
-      <button type="button" class="rf-btn" data-size="sm" data-act="resumeWorkout">Resume</button>`);
+      <button type="button" class="rf-btn" data-size="sm" data-act="resumeWorkout" aria-label="Resume the workout, ${doneN} of ${total} sets done">Resume</button>`);
+    fitAccessory();
     if (!was && !U.reduced() && accessory.animate) accessory.animate([{ opacity: 0, transform: 'translateY(10px) scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 360, easing: EASE_ENTER });
   }
+  // A long workout title with large text: two lines for the title and no set count, rather than a
+  // title cut short.
+  function fitAccessory() {
+    if (accessory.hidden) return;
+    accessory.classList.remove('is-tight');
+    const b = accessory.querySelector('.acc-text b');
+    if (b && b.scrollWidth > b.clientWidth + 1) accessory.classList.add('is-tight');
+  }
+  if (G.addEventListener) G.addEventListener('resize', () => { if (accessory) fitAccessory(); });
   U.renderAccessory = renderAccessory;
 
   /* ---------------------------------------------------------------- haptics */

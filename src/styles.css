@@ -68,9 +68,14 @@ body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
    must not reach them: an unlayered `font` here would beat Refract's layered rules. */
 button:not([class*="rf-"]) { font: inherit; }
 .app { position: fixed; inset: 0; overflow: hidden; background: var(--bg); }
-.screen { position: absolute; inset: 0; overflow-x: hidden; overflow-y: auto; box-sizing: border-box; padding: var(--topbar-h) var(--sar) calc(var(--float-gap) + 96px) var(--sal); scrollbar-width: none; outline: none; }
+.screen { position: absolute; inset: 0; overflow-x: hidden; overflow-y: auto; box-sizing: border-box; padding: var(--topbar-h) var(--sar) calc(var(--float-gap) + var(--space-6)) var(--sal); scrollbar-width: none; outline: none; }
 .screen::-webkit-scrollbar { display: none; }
-.screen[data-view] { padding-bottom: calc(var(--sab) + var(--space-10)); }
+/* Room at the end of a page, so the last card clears whatever floats over the bottom: the tab bar,
+   Today's buttons or the workout capsule. Pushed pages hide the tab bar, so they only clear the
+   system bar. */
+.screen[data-float] { padding-bottom: calc(var(--float-gap) + 56px + var(--space-6)); }
+.screen[data-capsule] { padding-bottom: calc(var(--float-gap) + 52px + var(--space-2) + var(--space-6)); }
+.screen[data-pushed] { padding-bottom: calc(var(--sab) + var(--space-10)); }
 
 /* The one navigation bar: it stays put while screens change under it. Its frosted edge reaches up
    behind the status bar, so the top of the screen reads as one surface. */
@@ -134,11 +139,25 @@ button.stat:active, .insight-line:active, .pl-fig-card:active, .tap-card:active 
 .rf-tabbar[data-position="bottom"] { inset-block-end: var(--tabbar-bottom); transition: translate var(--duration-spring-smooth) var(--spring-smooth), opacity var(--duration-base) var(--ease-standard); }
 .rf-tabbar[data-away] { translate: 0 calc(100% + var(--tabbar-bottom)); opacity: 0; pointer-events: none; }
 .rf-tabbar-accessory[hidden] { display: none; }
+/* The current tab keeps a glass lens at rest, like the lens you drag, instead of Refract's flat wash.
+   Increased contrast and reduced transparency keep the wash. */
+:root:not([data-theme$="contrast"]):not([data-rf-transparency="reduced"]) .rf-tabbar:not([data-traveling]):not([data-dragging]) .rf-tabbar-lens {
+  background-color: color-mix(in oklab, var(--glass-fill-clear) 70%, transparent);
+  background-image: linear-gradient(180deg, rgb(255 255 255 / 0.16), rgb(255 255 255 / 0) 55%);
+  box-shadow: var(--rim-light), var(--shadow-glass);
+  -webkit-backdrop-filter: saturate(170%) brightness(1.06);
+  backdrop-filter: saturate(170%) brightness(1.06);
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root:not([data-theme$="contrast"]):not([data-rf-transparency="reduced"]) .rf-tabbar:not([data-traveling]):not([data-dragging]) .rf-tabbar-lens { background-color: var(--fill-selected); background-image: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
 /* The workout capsule must stay readable over any screen: if its lens layer is ever missing, it
    falls back to solid glass instead of going see-through. */
 .rf-tabbar-accessory.rf-glass[data-lens-ready]:not(:has(> .rf-lens-layer)) { background-color: var(--glass-fill-solid); -webkit-backdrop-filter: blur(24px) saturate(160%); backdrop-filter: blur(24px) saturate(160%); }
 .acc-text { display: grid; min-width: 0; line-height: 1.2; }
 .acc-text b { font-size: .875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rf-tabbar-accessory.is-tight .acc-text b { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.15; }
+.rf-tabbar-accessory.is-tight .acc-text .t-caption { display: none; }
 
 /* ---------------------------------------------------------------- today */
 .streak-main { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
