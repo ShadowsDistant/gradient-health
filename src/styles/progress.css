@@ -1,0 +1,57 @@
+/* Progress: the body map, its hero card, the muscle sheet and the most-improved list. */
+
+/* ---------------------------------------------------------------- body map */
+/* One sequential scale per mode: the mode's hue mixed into the empty-muscle grey, light to dark on a
+   light surface and dim to bright on a dark one (the mix follows the theme's surface). */
+.bm, .bm-legend {
+  --bm-body: color-mix(in oklab, var(--label) 8%, var(--bg-raised));
+  --bm-empty: color-mix(in oklab, var(--label) 14%, var(--bg-raised));
+  --bm-gap: var(--bg-raised);
+  --bm-hue: var(--accent);
+  --bm-1: color-mix(in oklab, var(--bm-hue) 28%, var(--bm-empty));
+  --bm-2: color-mix(in oklab, var(--bm-hue) 46%, var(--bm-empty));
+  --bm-3: color-mix(in oklab, var(--bm-hue) 63%, var(--bm-empty));
+  --bm-4: color-mix(in oklab, var(--bm-hue) 81%, var(--bm-empty));
+  --bm-5: var(--bm-hue);
+  --bm-glow: transparent;
+}
+[data-theme^="dark"] .bm { --bm-body: color-mix(in oklab, var(--label) 9%, var(--bg-raised)); --bm-empty: color-mix(in oklab, var(--label) 16%, var(--bg-raised)); --bm-glow: color-mix(in oklab, var(--bm-hue) 55%, transparent); }
+.bm[data-mode="improved"], .bm-legend[data-mode="improved"] { --bm-hue: var(--positive); }
+.rf-sheet .bm, .rf-sheet .bm-legend { --bm-gap: var(--bm-sheet-bg, var(--bg-raised)); }
+.bm { position: relative; min-width: 0; }
+.bm-stage { display: flex; justify-content: center; align-items: flex-start; gap: var(--space-4); }
+.bm-view { margin: 0; display: grid; justify-items: center; gap: var(--space-1); min-width: 0; flex: 0 1 auto; }
+.bm-fig { display: block; height: var(--bm-h, 300px); width: auto; aspect-ratio: 140 / 342; max-width: 100%; overflow: visible; -webkit-tap-highlight-color: transparent; filter: drop-shadow(0 8px 14px rgb(12 13 18 / 0.07)); }
+[data-theme^="dark"] .bm-fig { filter: none; }
+/* The top step glows a little on a dark surface. */
+.bm-m[data-l="5"] path { filter: drop-shadow(0 0 3px var(--bm-glow)); }
+.bm-cap { color: var(--label-secondary); }
+.bm-body path { fill: var(--bm-body); }
+.bm-m { cursor: pointer; --f: var(--bm-empty); }
+.bm-m[data-l="1"] { --f: var(--bm-1); }
+.bm-m[data-l="2"] { --f: var(--bm-2); }
+.bm-m[data-l="3"] { --f: var(--bm-3); }
+.bm-m[data-l="4"] { --f: var(--bm-4); }
+.bm-m[data-l="5"] { --f: var(--bm-5); }
+.bm-m path { fill: var(--f); stroke: var(--bm-gap); stroke-width: 1.3; stroke-linejoin: round; transition: fill 520ms var(--ease-out-soft) calc(var(--y, 0) * 260ms); }
+.bm-m.is-focus path { stroke: var(--focus-ring); stroke-width: 2.2; }
+/* The screen-reader list: there for assistive tech, out of sight. */
+.bm-sr { position: absolute; left: 0; top: 0; width: 1px; height: 1px; margin: 0; padding: 0; list-style: none; overflow: hidden; clip-path: inset(50%); white-space: normal; }
+.bm-sr button { display: block; width: 12rem; }
+
+/* Legend */
+.bm-legend { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--space-1) var(--space-4); color: var(--label-secondary); }
+.bm-key { display: inline-flex; align-items: center; gap: 4px; }
+.bm-key > span:first-child { margin-inline-end: 2px; }
+.bm-key > span:last-child:not(:first-child) { margin-inline-start: 2px; }
+.bm-sw { display: inline-block; width: 14px; height: 10px; border-radius: 3px; background: var(--bm-empty); }
+.bm-sw[data-l="1"] { background: var(--bm-1); }
+.bm-sw[data-l="2"] { background: var(--bm-2); }
+.bm-sw[data-l="3"] { background: var(--bm-3); }
+.bm-sw[data-l="4"] { background: var(--bm-4); }
+.bm-sw[data-l="5"] { background: var(--bm-5); }
+
+@media (prefers-reduced-motion: reduce) {
+  .bm-m path { transition: none; }
+}
+:root[data-rf-motion="reduced"] .bm-m path { transition: none; }
