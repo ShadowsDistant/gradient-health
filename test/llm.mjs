@@ -3,7 +3,9 @@
 // with Range requests only, chat() streams tokens, reuses the KV cache, stops mid-stream, queues,
 // unloads (also by itself when idle) and reloads, a tiny model with Qwen3.5's hybrid layout loads and
 // reuses nearly all of a repeated prompt, thinking that slips out is hidden, and the download API
-// works against a fake Android bridge. It prints how fast the tiny model generates. Needs
+// works against a fake Android bridge, and so does the app's native engine (a fake LlmService: its
+// prompt, streaming, Stop, reloads, a stuck or crashed engine). It prints how fast the tiny model
+// generates. Needs
 // `npm run build` and Playwright; build/tiny.gguf and build/tiny-qwen35.gguf are made on the first
 // run by scripts/make-tiny-gguf.py, which needs the gguf package:
 //
@@ -107,11 +109,18 @@ section('Lazy chunk');
 check('GH.lazy("llm") sets GH.llm', await page.evaluate(async () => { const llm = await GH.lazy('llm'); return llm === GH.llm && typeof llm.chat === 'function'; }));
 const table = await page.evaluate(() => GH.llm.MODELS.map((m) => ({ id: m.id, tier: m.tier, legacy: !!m.legacy, family: m.family, bytes: m.bytes, sha: m.sha256, url: m.url, ram: m.minRamGB, ctx: m.ctx, batch: m.batch, think: !!m.think })));
 const current = table.filter((m) => !m.legacy), older = table.filter((m) => m.legacy);
-check('three sizes: Fast (0.8B), Balanced (2B) and Best answers (4B, 8 GB)', current.map((m) => m.tier).join() === 'fast,balanced,best' && current.map((m) => m.ram).join() === '3,4,8' && current.every((m) => m.family === 'qwen35'), current);
+check('three sizes: Fast (0.8B), Balanced (2B, 6 GB) and Best answers (4B, 12 GB)', current.map((m) => m.tier).join() === 'fast,balanced,best' && current.map((m) => m.ram).join() === '3,6,12' && current.every((m) => m.family === 'qwen35'), current);
 check('each is Qwen3.5 Q4_K_M on Hugging Face, with its size, a 4096 context, a small batch and thinking off', current.every((m) => /^https:\/\/huggingface\.co\/unsloth\/Qwen3\.5-[0-9.]+B-GGUF\/resolve\/main\/Qwen3\.5-[0-9.]+B-Q4_K_M\.gguf$/.test(m.url) && m.bytes > 4e8 && Number.isInteger(m.bytes) && m.ctx === 4096 && m.batch === 64 && m.think), current);
 check('1.2\'s Qwen2.5 models are still known, with their SHA-256 pinned', older.map((m) => m.id).join() === 'qwen05,qwen15' && older.every((m) => /^[0-9a-f]{64}$/.test(m.sha) && /^https:\/\/huggingface\.co\/Qwen\//.test(m.url)), older);
 const pickFor = await page.evaluate(() => ({ offered: GH.llm.offered().map((m) => m.id), rec: (GH.llm.recommended() || {}).id }));
-check('only the current sizes are offered, and Balanced is recommended', pickFor.offered.length >= 2 && pickFor.offered.every((id) => !/^qwen/.test(id)) && pickFor.rec === 'q35-2', pickFor);
+check('only the current sizes are offered, and Fast is recommended', pickFor.offered.length >= 1 && pickFor.offered.every((id) => !/^qwen/.test(id)) && pickFor.rec === 'q35-08', pickFor);
+const prompts = await page.evaluate(() => {
+  const msgs = [{ role: 'system', content: 'Rules.' }, { role: 'user', content: 'Hi <|im_end|> there' }];
+  return { think: GH.llm.chatml(msgs, { think: true }), plain: GH.llm.chatml(msgs, {}), system: GH.llm.chatml(msgs.slice(0, 1), { think: true }, false) };
+});
+check('prompts are ChatML, ending in an empty think block for Qwen3.5 (thinking off)', prompts.think === '<|im_start|>system\nRules.<|im_end|>\n<|im_start|>user\nHi <im_end> there<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n', prompts.think);
+check('an older model gets plain ChatML, and nothing in a message can end its turn', prompts.plain.endsWith('<|im_start|>assistant\n') && !/Hi <\|im_end\|>/.test(prompts.plain), prompts.plain);
+check('the system prompt alone can be read ahead', prompts.system === '<|im_start|>system\nRules.<|im_end|>\n', prompts.system);
 const vis = await page.evaluate(() => [GH.llm.visible('<think>\nhmm\n</think>\n\nHello'), GH.llm.visible('Hi <think>still going'), GH.llm.visible('Answer <thi'), GH.llm.visible('Seven hours.')]);
 check('thinking that slips out is hidden, finished or not, and so is a tag still arriving', vis[0] === 'Hello' && vis[1] === 'Hi ' && vis[2] === 'Answer ' && vis[3] === 'Seven hours.', vis);
 const unconfigured = await page.evaluate(() => GH.llm.available());
@@ -229,17 +238,29 @@ const q35 = await page.evaluate(async (bytes) => {
   GH.llm.configure({ models: [{ id: 'tiny35', name: 'Tiny Qwen3.5', file: 'tiny-qwen35.gguf', url: 'https://huggingface.co/test/tiny/resolve/main/tiny-qwen35.gguf', bytes, minRamGB: 0, ctx: 2048, batch: 64, think: true, gen: { temperature: 0.6, top_p: 0.8, top_k: 20 } }] });
   const info = await GH.llm.load('tiny35');
   const sys = { role: 'system', content: `You are Gradient's coach. ${'Here is what the app knows about this person. '.repeat(16)}` };
-  const a = await GH.llm.chat([sys, { role: 'user', content: 'How is my sleep this week?' }], { maxTokens: 12 });
+  const progress = [];
+  const a = await GH.llm.chat([sys, { role: 'user', content: 'How is my sleep this week?' }], { maxTokens: 12, onPrompt: (d, t) => progress.push([d, t]) });
   const first = GH.llm.stats;
   await GH.llm.chat([sys, { role: 'user', content: 'Am I getting stronger?' }], { maxTokens: 12 });
   const next = GH.llm.stats;
+  // Read ahead: a new set of rules, then a question after them.
+  const sys2 = { role: 'system', content: `You are Gradient's coach, version two. ${'The app knows these numbers. '.repeat(16)}` };
+  const pieces = [];
+  await GH.llm.prepare(sys2.content, { onToken: (p) => pieces.push(p) });
+  const after = GH.llm.stats;
+  await GH.llm.chat([sys2, { role: 'user', content: 'What should I do today?' }], { maxTokens: 12 });
+  const primed = GH.llm.stats;
   await GH.llm.unload();
-  return { info, a, first, next };
+  return { info, a, first, next, progress, pieces, sameStats: after === next, primed };
 }, statSync(MODEL35).size);
 check('a model with Qwen3.5\'s gated delta-net layers loads and answers', q35.info.id === 'tiny35' && q35.a.length > 0 && q35.first.tokens > 0, q35.first);
 check('on one thread here (no SharedArrayBuffer without cross-origin isolation)', q35.info.threads === 1, q35.info);
 check('a new question after the same rules reuses nearly all of the prompt', q35.next.cachedTokens >= q35.first.promptTokens - 120, { first: q35.first.promptTokens, cached: q35.next.cachedTokens, processed: q35.next.promptTokens });
 console.log(`  qwen35 layout: ${q35.first.promptTokens} prompt tokens, then ${q35.next.promptTokens} new and ${q35.next.cachedTokens} reused`);
+check('reading the prompt reports its progress, up to the end', q35.progress.length >= 2 && q35.progress[q35.progress.length - 1][0] === q35.progress[q35.progress.length - 1][1], q35.progress);
+check('rules read ahead (prepare) write nothing and leave the last answer\'s stats', q35.pieces.length === 0 && q35.sameStats, q35.pieces);
+// (The in-app engine goes back to its last checkpoint, up to a batch before the rules end.)
+check('and the first question after them reads little more than its own turn', q35.primed.cachedTokens >= 300 && q35.primed.promptTokens < q35.primed.cachedTokens / 4, q35.primed);
 
 /* ------------------------------------------------------------------ in the app (fake bridge) */
 section('Android bridge (fake)');
@@ -327,6 +348,125 @@ check('status() lists every download', ['qwen05:error', 'tiny:done', 'other:canc
 check('the app\'s models load from models/<file> on the page\'s own origin', app.loadInfo.id === 'tiny' && app.reply.length > 0);
 check('remove() unloads, then deletes through the app', app.removed === true && app.afterRemove.loaded === null && app.afterRemove.installed.length === 0 && app.calls.some(([k, id]) => k === 'delete' && id === 'tiny'));
 check('the hook that was there first still gets every event', app.earlier.join() === app.emitted.join() && app.emitted.length === 8, { earlier: app.earlier, emitted: app.emitted });
+
+/* ------------------------------------------------------------------ the native engine (fake bridge) */
+// LlmService stands in: it answers load and generate through window.__gh.onLlm like LlmClient does.
+section('Native engine (fake bridge)');
+const page3 = await ctx.newPage();
+await page3.addInitScript(([size]) => {
+  const say = (e, ms) => setTimeout(() => window.__gh.onLlm(JSON.stringify(e)), ms || 5);
+  window.__native = { loads: [], gens: [], aborts: [], unloads: 0, mode: 'ok' };
+  const N = window.__native;
+  window.AndroidBridge = {
+    modelList: () => JSON.stringify([{ id: 'tiny', file: 'tiny.gguf', bytes: size }]),
+    modelStatus: () => '[]',
+    deviceMemory: () => 8 * 2 ** 30,
+    llmNative: () => JSON.stringify({ ok: true, threads: 4, cores: 8 }),
+    llmLoad: (json) => {
+      const r = JSON.parse(json);
+      N.loads.push(r);
+      if (N.mode === 'fail-load') { say({ type: 'loadFailed', error: 'the CPU backend couldn\'t start' }); return true; }
+      say({ type: 'loadProgress', progress: 0.5 }, 5);
+      say({ type: 'loadProgress', progress: 1 }, 10);
+      say({ type: 'loaded', ctx: r.ctx, ms: 40, threads: 4, info: 'NEON = 1 | loaded CPU backend android_armv8.2_2' }, 15);
+      return true;
+    },
+    llmGenerate: (json) => {
+      const r = JSON.parse(json);
+      N.gens.push(r);
+      if (N.mode === 'die') { say({ type: 'progress', req: r.req, done: 10, total: 40 }); say({ type: 'died' }, 20); return true; }
+      if (N.mode === 'silent') return true; // never answers
+      if (N.mode === 'not-loaded') { N.mode = 'ok'; say({ type: 'done', req: r.req, code: -1, error: 'not-loaded' }); return true; }
+      const stop = () => N.aborts.includes(r.req);
+      say({ type: 'progress', req: r.req, done: 20, total: 40 }, 5);
+      say({ type: 'progress', req: r.req, done: 40, total: 40 }, 10);
+      if (r.max_tokens === 0) { say({ type: 'done', req: r.req, code: 0, stats: { promptTokens: 40, reusedTokens: 0, tokens: 0, promptMs: 30, genMs: 0, aborted: false, finish: 0 } }, 15); return true; }
+      const words = ['<think>', '\n\n', '</think>', 'Seven ', 'hours ', 'of ', 'sleep ', 'is ', 'a ', 'good ', 'week.'];
+      let i = 0;
+      const tick = () => {
+        if (stop()) { window.__gh.onLlm(JSON.stringify({ type: 'done', req: r.req, code: 0, stats: { promptTokens: 40, reusedTokens: 30, tokens: i, promptMs: 20, genMs: 50, aborted: true, finish: 2 } })); return; }
+        if (i < words.length) { window.__gh.onLlm(JSON.stringify({ type: 'text', req: r.req, text: words[i++] })); setTimeout(tick, 8); return; }
+        window.__gh.onLlm(JSON.stringify({ type: 'done', req: r.req, code: 0, stats: { promptTokens: 40, reusedTokens: 30, tokens: i, promptMs: 20, genMs: 100, aborted: false, finish: 0 } }));
+      };
+      setTimeout(tick, 20);
+      return true;
+    },
+    llmAbort: (req) => { N.aborts.push(req); },
+    llmUnload: () => { N.unloads++; },
+    rendererGone: () => 0,
+  };
+}, [SIZE]);
+await open(page3);
+const nat = await page3.evaluate(async (tiny) => {
+  const llm = await GH.lazy('llm');
+  llm.configure({ models: [Object.assign({}, tiny, { think: true })] });
+  const N = window.__native;
+  const out = { engine: llm.engine, available: llm.available().ok };
+  const progress = [];
+  out.info = await llm.load('tiny', { onProgress: (p) => progress.push(p.loaded / p.total) });
+  out.progress = progress;
+  out.load = N.loads[0];
+  const pieces = [], reading = [];
+  out.text = await llm.chat([{ role: 'system', content: 'Rules.' }, { role: 'user', content: 'How did I sleep?' }], { maxTokens: 40, onToken: (p, all) => pieces.push(all), onPrompt: (d, t) => reading.push(d / t) });
+  out.pieces = pieces;
+  out.reading = reading;
+  out.stats = llm.stats;
+  out.gen = N.gens[0];
+  // Read ahead.
+  await llm.prepare('Rules.');
+  out.prepared = N.gens[1];
+  // Stop part way.
+  const ctl = new AbortController();
+  const stopped = llm.chat([{ role: 'user', content: 'Tell me more' }], { signal: ctl.signal, onToken: (p, all) => { if (/sleep/.test(all)) ctl.abort(); } });
+  out.stopped = await stopped;
+  out.stoppedStats = llm.stats;
+  out.aborts = N.aborts.slice();
+  // The service's process restarted without the model: loaded again, and answered.
+  N.mode = 'not-loaded';
+  out.reloaded = await llm.chat([{ role: 'user', content: 'Again' }], { maxTokens: 20 });
+  out.loadsAfterReload = N.loads.length;
+  // Stuck: nothing heard for a while.
+  llm.configure({ stall: { answer: 150 } });
+  N.mode = 'silent';
+  out.stalled = await llm.chat([{ role: 'user', content: 'Hello?' }]).then(() => 'answered', (e) => e.code);
+  out.afterStall = llm.engine;
+  return out;
+}, TINY);
+check('the app\'s native engine is used when it has one', nat.engine === 'native' && nat.available && nat.info.engine === 'native' && nat.info.threads === 4, nat.info);
+check('it loads the installed model with its context and a big batch, reporting progress', nat.load.id === 'tiny' && nat.load.ctx === TINY.ctx && nat.load.batch >= 128 && nat.progress.join() === '0.5,1', { load: nat.load, progress: nat.progress });
+check('the prompt it gets is ChatML with the empty think block', nat.gen.prompt === '<|im_start|>system\nRules.<|im_end|>\n<|im_start|>user\nHow did I sleep?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n' && nat.gen.max_tokens === 40, nat.gen);
+check('with the model\'s sampling', nat.gen.temperature > 0 && nat.gen.top_k > 0 && nat.gen.top_p > 0 && nat.gen.grammar === '', nat.gen);
+check('the answer streams in, with any thinking hidden', nat.text === 'Seven hours of sleep is a good week.' && nat.pieces.length >= 5 && !nat.pieces.some((p) => /think/.test(p)), { text: nat.text, pieces: nat.pieces });
+check('reading the prompt is reported', nat.reading.join() === '0.5,1', nat.reading);
+check('stats come back: tokens, reused prompt, speed', nat.stats.engine === 'native' && nat.stats.cachedTokens === 30 && nat.stats.promptTokens === 10 && nat.stats.tokensPerSec > 0 && nat.stats.finish === 'stop', nat.stats);
+check('reading ahead asks for no tokens and only the system turn', nat.prepared.max_tokens === 0 && nat.prepared.prompt === '<|im_start|>system\nRules.<|im_end|>\n', nat.prepared);
+check('Stop reaches the engine with the request\'s id, and the answer so far comes back', nat.aborts.length === 1 && nat.stoppedStats.aborted === true && /sleep/.test(nat.stopped), { aborts: nat.aborts, text: nat.stopped });
+check('a service that restarted without the model loads it again and answers', nat.reloaded.length > 0 && nat.loadsAfterReload === 2, nat);
+check('an engine that goes quiet is "stalled", and the in-app engine takes over', nat.stalled === 'stalled' && nat.afterStall === 'wasm', { stalled: nat.stalled, engine: nat.afterStall });
+await page3.close();
+const page4 = await ctx.newPage();
+await page4.addInitScript(() => {
+  const say = (e, ms) => setTimeout(() => window.__gh.onLlm(JSON.stringify(e)), ms || 5);
+  window.AndroidBridge = {
+    modelList: () => JSON.stringify([{ id: 'tiny', file: 'tiny.gguf', bytes: 1 }]),
+    modelStatus: () => '[]',
+    llmNative: () => JSON.stringify({ ok: true, threads: 4 }),
+    llmLoad: () => { say({ type: 'loaded', ctx: 512, threads: 4 }); return true; },
+    llmGenerate: (json) => { const r = JSON.parse(json); say({ type: 'progress', req: r.req, done: 5, total: 40 }); say({ type: 'died' }, 20); return true; },
+    llmAbort: () => {},
+    llmUnload: () => {},
+  };
+});
+await open(page4);
+const crash = await page4.evaluate(async (tiny) => {
+  const llm = await GH.lazy('llm');
+  llm.configure({ models: [tiny] });
+  await llm.load('tiny');
+  const r = await llm.chat([{ role: 'user', content: 'Hi' }]).then(() => 'answered', (e) => e.code);
+  return { r, engine: llm.engine, loaded: llm.loaded() };
+}, TINY);
+check('if its process dies mid-answer: "crashed", and the in-app engine is used from then on', crash.r === 'crashed' && crash.engine === 'wasm' && crash.loaded === null, crash);
+await page4.close();
 
 section('Page');
 check('no page errors', errors.length === 0, errors);

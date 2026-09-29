@@ -665,6 +665,15 @@ public final class Bridge {
         }
     }
 
+    /**
+     * How many times the page's renderer has crashed since the app started. The page uses it to tell
+     * an out-of-memory crash while the in-app model worked from the app simply being closed.
+     */
+    @JavascriptInterface
+    public int rendererGone() {
+        return MainActivity.rendererGoneCount;
+    }
+
     private void deliverHealthFailure(String error) {
         try {
             JSONObject result = new JSONObject();

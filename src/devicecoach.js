@@ -135,33 +135,45 @@
     const f = facts(S, day, question);
     return `${f.length ? `FACTS\n${f.map((x) => `- ${x}`).join('\n')}` : 'FACTS\n- None for this question.'}\n\nQUESTION\n${question}`;
   }
-  // The conversation for the model: rules and data first (the same every turn, so it stays cached),
-  // then the last exchange, then the question with its facts.
+  // The rules and a brief of their data: the same for every question (until the data changes), so
+  // the engines keep it cached and only read each new question.
+  const system = (S, day) => `${RULES}\n\nTHEIR DATA\n${brief(S, day)}`;
+  // The conversation for the model: rules and data first, then the last exchange, then the question
+  // with its facts.
   function messages(S, day, question, keep) {
     const n = keep == null ? 2 : keep; // the last exchange by default
     const past = n > 0 ? (S.ai.deviceChat || []).filter((m) => !m.safety && !m.flagged).slice(-n) : [];
-    return [{ role: 'system', content: `${RULES}\n\nTHEIR DATA\n${brief(S, day)}` }]
+    return [{ role: 'system', content: system(S, day) }]
       .concat(past.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })))
       .concat([{ role: 'user', content: turn(S, day, question) }]);
   }
 
   function err(message, code) { const e = new Error(message); e.code = code; return e; }
-  function record(S, q, text, safety, model) {
-    S.ai.deviceChat = (S.ai.deviceChat || []).concat([{ role: 'user', text: q, safety: !!safety }, Object.assign({ role: 'assistant', text, safety: !!safety }, model ? { model } : {})]).slice(-16);
+  // The exchange is kept for the next turn and the chat, with the facts the answer was given (the
+  // chat's "What it used").
+  function record(S, q, text, safety, model, facts) {
+    const answer = Object.assign({ role: 'assistant', text, safety: !!safety }, model ? { model } : {}, facts && facts.length ? { facts } : {});
+    S.ai.deviceChat = (S.ai.deviceChat || []).concat([{ role: 'user', text: q, safety: !!safety }, answer]).slice(-16);
   }
   // The model to use: the one picked in Settings if it's on the phone, else any that is.
-  // Without a pick, a current model (the bigger the better) comes before an older one.
+  // Without a pick, a current model (the bigger the better) comes before an older one, and one that
+  // ran this phone out of memory comes last.
   function pick(S, have) {
     const ids = (have || []).map((x) => x.id);
     if (S.ai.deviceModel && ids.includes(S.ai.deviceModel)) return S.ai.deviceModel;
     const models = (GH.llm && GH.llm.MODELS) || [];
-    const rank = (id) => { const i = models.findIndex((m) => m.id === id); const m = models[i]; return !m ? 99 : m.legacy ? 50 + i : 10 - (m.quality || 0); };
+    const big = S.ai.tooBig || {};
+    const rank = (id) => { const i = models.findIndex((m) => m.id === id); const m = models[i]; return (big[id] ? 100 : 0) + (!m ? 99 : m.legacy ? 50 + i : 10 - (m.quality || 0)); };
     return ids.slice().sort((a, b) => rank(a) - rank(b))[0] || null;
   }
 
-  // o: { onToken(piece, textSoFar), onStatus(state, fraction), signal }. Resolves { text, aborted, safety }.
+  // o: { onToken(piece, textSoFar), onStatus(state, fraction), signal }. The states, in order:
+  // 'loading' (the model starting, with a fraction), 'thinking' (waiting its turn), 'reading' (the
+  // model reading the question, with a fraction) and 'writing' (the first words are in).
+  // Resolves { text, aborted, safety, stats }.
   async function ask(S, day, question, o) {
     const opt = o || {};
+    const status = (st, f) => { if (opt.onStatus) { try { opt.onStatus(st, f); } catch (e) { /* a UI bug mustn't stop the answer */ } } };
     const q = String(question || '').trim().slice(0, 600);
     if (!q) throw err('Type a question first.', 'empty');
     if (GH.coach && GH.coach.topicOf(q) === 'redflag') {
@@ -174,16 +186,23 @@
     if (!av.ok) throw err(av.reason, 'unavailable');
     const id = pick(S, await llm.installed());
     if (!id) throw err('Download the on-device model first.', 'not-installed');
+    const loading = (p) => { if (p && p.total) status('loading', p.loaded / p.total); };
     const cur = llm.loaded();
     if (!cur || cur.id !== id) {
-      if (opt.onStatus) opt.onStatus('loading', 0);
-      await llm.load(id, { onProgress: (p) => { if (opt.onStatus && p && p.total) opt.onStatus('loading', p.loaded / p.total); } });
+      status('loading', 0);
+      await llm.load(id, { onProgress: loading });
     }
     if (opt.signal && opt.signal.aborted) return { text: '', aborted: true };
-    if (opt.onStatus) opt.onStatus('thinking');
+    status('thinking');
+    const f = facts(S, day, q);
+    let wrote = false;
     const run = (keep) => llm.chat(messages(S, day, q, keep), {
-      onToken: opt.onToken, signal: opt.signal, maxTokens: 320,
-      onLoadProgress: (p) => { if (opt.onStatus && p && p.total) opt.onStatus('loading', p.loaded / p.total); },
+      signal: opt.signal, maxTokens: 320, onLoadProgress: loading,
+      onPrompt: (done, total) => { if (!wrote) status('reading', total ? done / total : 0); },
+      onToken: (piece, soFar) => {
+        if (!wrote) { wrote = true; status('writing'); }
+        if (opt.onToken) opt.onToken(piece, soFar);
+      },
     });
     let raw;
     // A long conversation that no longer fits the model's memory: answer this one on its own.
@@ -192,9 +211,8 @@
     const st = llm.stats;
     const aborted = !!(opt.signal && opt.signal.aborted) || !!(st && st.aborted);
     const text = String(raw || '').trim();
-    if (text) record(S, q, text, false, id);
-    // How fast this model answers on this phone (for the model picker), smoothed over real answers
-    // (not the one-word warm-up).
+    if (text) record(S, q, text, false, id, f);
+    // How fast this model answers on this phone (for the model picker), smoothed over real answers.
     const tps = st && st.id === id && st.tokens >= 8 && text ? st.tokensPerSec : 0;
     if (tps > 0 && !aborted) {
       const sp = S.ai.speed || (S.ai.speed = {});
@@ -202,8 +220,9 @@
     }
     return { text, aborted, stats: st };
   }
-  // Loads the model and reads the rules and data ahead of the first question, so the first answer
-  // starts sooner. Quietly does nothing if the model isn't there.
+  // Loads the model and has it read the rules and data ahead of the first question, so the first
+  // answer starts sooner (a question asked meanwhile waits for it, then reads only its own turn).
+  // Quietly does nothing if the model isn't there.
   async function prime(S, day) {
     try {
       const llm = await GH.lazy('llm');
@@ -211,12 +230,11 @@
       const id = pick(S, await llm.installed());
       if (!id) return false;
       await llm.load(id);
-      const ctl = new AbortController();
-      await llm.chat(messages(S, day, 'Hi').slice(0, 1).concat([{ role: 'user', content: 'Hi' }]), { maxTokens: 1, signal: ctl.signal });
+      if (llm.prepare) await llm.prepare(system(S, day));
       return true;
     } catch (e) { return false; }
   }
   function clear(S) { S.ai.deviceChat = []; }
 
-  GH.deviceCoach = { RULES, brief, facts, messages, ask, prime, pick, clear };
+  GH.deviceCoach = { RULES, brief, facts, system, messages, ask, prime, pick, clear };
 })(typeof window !== 'undefined' ? window : globalThis);

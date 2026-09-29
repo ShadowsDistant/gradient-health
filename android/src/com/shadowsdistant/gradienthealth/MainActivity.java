@@ -844,7 +844,11 @@ public final class MainActivity extends Activity {
                 new HashMap<String, String>(), new ByteArrayInputStream(new byte[0]));
     }
 
+    /** How many times the page's renderer has died since the app started (the page asks, see Bridge). */
+    static volatile int rendererGoneCount;
+
     private void handleRendererGone(WebView gone) {
+        rendererGoneCount++;
         try {
             if (gone.getParent() instanceof ViewGroup) {
                 ((ViewGroup) gone.getParent()).removeView(gone);

@@ -330,7 +330,9 @@
   function applyNavbar(nb) {
     const part = (sel) => (nb ? nb.querySelector(sel) : null);
     const lead = part('.rf-navbar-leading'), title = part('.rf-navbar-title'), trail = part('.rf-navbar-trailing');
-    U.morph(topbar.querySelector('.rf-navbar-leading'), lead ? lead.innerHTML : '');
+    // Every tab's top left is the coach (a page opened on top has its Back button there instead).
+    const leading = lead && lead.innerHTML.trim() ? lead.innerHTML : !U.route.view && U.coachBtn ? U.coachBtn() : '';
+    U.morph(topbar.querySelector('.rf-navbar-leading'), leading);
     U.morph(topbar.querySelector('.rf-navbar-trailing'), trail ? trail.innerHTML : '');
     const t = topbar.querySelector('.rf-navbar-title');
     const text = title ? title.textContent : '';
