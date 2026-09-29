@@ -41,7 +41,7 @@ npm ci
 npm test          # simulations, insights, AI (mocked API), coach, poses, persistence, food, health, gym
 npm run build     # dist/gradient-health.html and dist/lazy/
 npm run smoke     # end-to-end run in Chromium (needs Playwright); add --dark for dark mode
-npm run test:ui   # layout regressions, food flows, the coach chat (Chromium)
+npm run test:ui   # layout regressions, food flows, the coach chat, the 3D figure (Chromium)
 npm run test:llm  # on-device AI runtime in Chromium with a tiny model (see On-device AI)
 node test/sweep.mjs [--quick]   # every screen at 360-600 px, light/dark, 100%/130% text, overflow checks
 npm run apk       # build/gradient-health.apk (see below)
@@ -72,20 +72,33 @@ minified), which `GH.lazy('figure3d')` loads when it's needed. It sets `GH.figur
 - `supported()`: whether WebGL works here (checked once).
 - `mount(el, move, opts)`: a controller shaped like `GH.pose.mount`'s, plus `setView(name)`,
   `phase()` and an `onPhase` callback.
-- `still(move, opts)`: a cached thumbnail as a data URL, or `null` without WebGL.
-- `preload()`: warms the renderer, shaders and body meshes when the page is idle.
+- `still(move, opts)`: a thumbnail as a data URL, or `null` without WebGL. `cachedStill()` returns
+  one only if it's already drawn, so a page render never waits on the GPU.
+- `preload()`: builds the renderer, the body, the equipment and the lighting, then compiles the
+  shaders with a view it keeps, one small piece per idle callback so taps never wait on it.
 
 The chunk authors no poses. Every frame it lifts the 2D joints from `GH.pose` into 3D. Side, front
 and top views each have their own rules, and segment lengths stay constant. A fix to a move's 2D
 data therefore fixes both figures. Everything is procedural: no textures, fonts or models.
 
-All figures share one WebGL renderer. It draws at most 30 frames a second and stops while a figure
-is off screen or the page is hidden. If WebGL is missing or the context is lost, the canvas is
-removed and `opts.onFallback(ctl)` is called asynchronously, so the player can mount the SVG figure
-instead.
+All figures share one WebGL renderer. It draws at most 30 frames a second (60 while you drag) and
+stops while a figure is off screen, covered by the how-to sheet or the page is hidden. With no figure
+on screen the shared canvas shrinks after 2 seconds, and the GPU context is handed back after three
+idle minutes, or 30 seconds after the app goes to the background. If WebGL is missing or the
+context is lost, the figure frees everything it held, its canvas is removed and
+`opts.onFallback(ctl)` is called asynchronously, so the player can mount the SVG figure instead.
+Two losses while figures are on screen keep that session on the flat figure.
+
+In the app, `figure()` in `src/ui/player.js` hands the player, move sheets and the tour one
+controller that swaps what's underneath it: the flat figure while the chunk is still loading, 3D once
+it's there, and flat again if `onFallback` fires. Set-up fetches the chunk; the GPU warm-up runs
+a few seconds after launch. Settings keeps the choice in `profile.prefs.figure` (`'3d'` or `'flat'`), with
+`figSkin` and `figShirt` for the look. The tempo strip under a figure comes from the move's `rep`
+steps and lights up from `onPhase`.
 
 ```sh
 npm run build && node test/figure3d.mjs [filter,…] [--dark] [--mirrored]
+node test/ui-figure.mjs [--dark] [--shots]   # the figure inside the app, and the no-WebGL fallback
 ```
 
 The test renders every move in Chromium (SwiftShader), plus gym fixtures for barbells, cables,

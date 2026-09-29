@@ -620,42 +620,58 @@ function hairGeo() {
   return radialGeo(headR, 64, 22, cut, (d, u) => 0.12 + (0.62 + 0.18 * Math.max(0, d.y) + clumps(d)) * (1 - smooth(0.72, 1, u)));
 }
 
-function bodyGeos() {
-  if (BODY) return BODY;
-  const sleeve = 11.8, shorts = 16.5, sock = 33.2;
-  const chest = solid(CHEST, {
-    seg: 56, step: 1, capLo: 1.4, capHi: 1.2, muscle: MAPS.chest, bumps: CHEST_BUMPS,
-  });
-  const pelvis = solid(PELVIS, { seg: 48, step: 1, capLo: 2.2, capHi: 1.2, muscle: MAPS.pelvis });
-  const uarm = solid(UARM, {
-    seg: 32, step: 0.9, capLo: 3.6, capHi: 3.4, muscle: MAPS.uarm, ys: [sleeve - 0.3, sleeve + 0.15],
-    off: (y) => 0.45 * (1 - smooth(sleeve - 0.2, sleeve + 0.1, y)) * smooth(-9, -4, y), group: (y) => (y < sleeve ? 0 : 1),
-  });
+// The body's shapes, built once. Each part is its own step, so preload() can spread the work over
+// idle time instead of freezing the page for one long task.
+const SLEEVE = 11.8, SHORTS = 16.5, SOCK = 33.2;
+const BODY_PARTS = [
+  ['chest', () => solid(CHEST, { seg: 56, step: 1, capLo: 1.4, capHi: 1.2, muscle: MAPS.chest, bumps: CHEST_BUMPS })],
+  ['pelvis', () => solid(PELVIS, { seg: 48, step: 1, capLo: 2.2, capHi: 1.2, muscle: MAPS.pelvis })],
+  ['uarm', () => solid(UARM, {
+    seg: 32, step: 0.9, capLo: 3.6, capHi: 3.4, muscle: MAPS.uarm, ys: [SLEEVE - 0.3, SLEEVE + 0.15],
+    off: (y) => 0.45 * (1 - smooth(SLEEVE - 0.2, SLEEVE + 0.1, y)) * smooth(-9, -4, y), group: (y) => (y < SLEEVE ? 0 : 1),
+  })],
   // A long dome at the wrist works as a ball joint under the heel of the hand at any wrist angle.
-  const farm = solid(FARM, { seg: 28, step: 0.9, capLo: 3.6, capHi: 2.7, muscle: MAPS.farm });
-  const thigh = solid(THIGH, {
-    seg: 36, step: 1, capLo: 6.5, capHi: 4.0, muscle: MAPS.thigh, ys: [shorts - 0.3, shorts + 0.15],
+  ['farm', () => solid(FARM, { seg: 28, step: 0.9, capLo: 3.6, capHi: 2.7, muscle: MAPS.farm })],
+  ['thigh', () => solid(THIGH, {
+    seg: 36, step: 1, capLo: 6.5, capHi: 4.0, muscle: MAPS.thigh, ys: [SHORTS - 0.3, SHORTS + 0.15],
     bumps: [{ y0: 29, y1: 42, th: Math.PI * 0.78, sw: 0.5, a: 0.75 }],
-    off: (y) => 0.6 * (1 - smooth(shorts - 0.2, shorts + 0.1, y)) * smooth(0, 6, y), group: (y) => (y < shorts ? 0 : 1),
-  });
-  const shin = solid(SHIN, {
-    seg: 32, step: 1, capLo: 4.2, capHi: 3.0, muscle: MAPS.shin, ys: [sock - 0.15, sock + 0.25],
+    off: (y) => 0.6 * (1 - smooth(SHORTS - 0.2, SHORTS + 0.1, y)) * smooth(0, 6, y), group: (y) => (y < SHORTS ? 0 : 1),
+  })],
+  ['shin', () => solid(SHIN, {
+    seg: 32, step: 1, capLo: 4.2, capHi: 3.0, muscle: MAPS.shin, ys: [SOCK - 0.15, SOCK + 0.25],
     bumps: [{ y0: 5, y1: 21, th: Math.PI * 1.28, sw: 0.45, a: 0.55 }, { y0: 37, y1: 44, th: 0, sw: 0.4, a: 0.35 }, { y0: 36.5, y1: 43.5, th: Math.PI, sw: 0.4, a: 0.35 }],
-    off: (y) => 0.22 * smooth(sock - 0.1, sock + 0.2, y), group: (y) => (y > sock ? 1 : 0),
-  });
-  const neck = solid(NECK, { seg: 28, capLo: 2, capHi: 2 });
-  const handO = handGeo('open');
-  const handR = handGeo('relaxed');
-  // Open ↔ relaxed share a topology, so one mesh morphs between them.
-  handO.morphAttributes.position = [handR.attributes.position.clone()];
-  handO.morphAttributes.normal = [handR.attributes.normal.clone()];
-  const fist = handGeo('fist');
-  BODY = {
-    chest, pelvis, neck, head: headGeo(), hair: hairGeo(), shoe: shoeGeo(),
-    uarm: { R: uarm, L: mirrorX(uarm) }, farm: { R: farm, L: mirrorX(farm) },
-    thigh: { R: thigh, L: mirrorX(thigh) }, shin: { R: shin, L: mirrorX(shin) },
-    hand: { R: handO, L: mirrorX(handO) }, fist: { R: fist, L: mirrorX(fist) },
-  };
+    off: (y) => 0.22 * smooth(SOCK - 0.1, SOCK + 0.2, y), group: (y) => (y > SOCK ? 1 : 0),
+  })],
+  ['neck', () => solid(NECK, { seg: 28, capLo: 2, capHi: 2 })],
+  ['hand', () => {
+    const open = handGeo('open');
+    const relaxed = handGeo('relaxed');
+    // Open ↔ relaxed share a topology, so one mesh morphs between them.
+    open.morphAttributes.position = [relaxed.attributes.position.clone()];
+    open.morphAttributes.normal = [relaxed.attributes.normal.clone()];
+    return open;
+  }],
+  ['fist', () => handGeo('fist')],
+  ['head', headGeo],
+  ['hair', hairGeo],
+  ['shoe', shoeGeo],
+];
+const MIRRORED = ['uarm', 'farm', 'thigh', 'shin', 'hand', 'fist'];
+let bodyParts = {};
+// Build the next missing part; true once the body is complete.
+function bodyStep() {
+  if (BODY) return true;
+  const next = BODY_PARTS.find(([k]) => !(k in bodyParts));
+  if (next) { bodyParts[next[0]] = next[1](); return false; }
+  const p = bodyParts;
+  const pair = (k) => ({ R: p[k], L: mirrorX(p[k]) });
+  BODY = { chest: p.chest, pelvis: p.pelvis, neck: p.neck, head: p.head, hair: p.hair, shoe: p.shoe };
+  for (const k of MIRRORED) BODY[k] = pair(k);
+  bodyParts = {};
+  return true;
+}
+function bodyGeos() {
+  while (!bodyStep()) { /* build what's left */ }
   return BODY;
 }
 
@@ -2455,46 +2471,74 @@ class View {
     this.hideForShadow = [disc];
   }
 
-  // Place the camera so the whole move fits at this angle.
+  // Place the camera so the whole move fits at this angle. The fit (where to aim and how far back)
+  // is worked out in 0.5° steps and cached, so the idle orbit and drags don't redo it every frame;
+  // the direction itself stays exact, so the camera still moves smoothly.
   frame(az, el, aspect) {
     const cam = this.camera;
     cam.aspect = aspect;
-    const dirv = V3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
-    const fwd = dirv.clone().negate();
-    const right = V3().crossVectors(fwd, Y_UP).normalize();
-    const up = V3().crossVectors(right, fwd).normalize();
-    const tY = Math.tan((cam.fov * D2R) / 2), tX = tY * aspect;
-    const bb = { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity, z0: Infinity, z1: -Infinity };
-    for (const s of this.spheres) {
-      bb.x0 = Math.min(bb.x0, s.c.x - s.r); bb.x1 = Math.max(bb.x1, s.c.x + s.r);
-      bb.y0 = Math.min(bb.y0, s.c.y - s.r); bb.y1 = Math.max(bb.y1, s.c.y + s.r);
-      bb.z0 = Math.min(bb.z0, s.c.z - s.r); bb.z1 = Math.max(bb.z1, s.c.z + s.r);
+    const f = this.fitFor(az, el, aspect);
+    const ce = Math.cos(el);
+    cam.position.set(f.tx + Math.sin(az) * ce * f.D, f.ty + Math.sin(el) * f.D, f.tz + Math.cos(az) * ce * f.D);
+    cam.up.set(0, 1, 0);
+    cam.lookAt(f.tx, f.ty, f.tz);
+    cam.near = f.near;
+    cam.far = f.far;
+    cam.updateProjectionMatrix();
+    this.fig.camPos = cam.position;
+  }
+
+  fitFor(az, el, aspect) {
+    const step = 0.5 * D2R;
+    const qa = Math.round(az / step), qe = Math.round(el / step);
+    const k = `${qa}:${qe}:${aspect.toFixed(3)}`;
+    const fits = this.fits || (this.fits = new Map());
+    let f = fits.get(k);
+    if (!f) {
+      f = this.solveFit(qa * step, qe * step, aspect);
+      if (fits.size >= 400) fits.delete(fits.keys().next().value);
+      fits.set(k, f);
     }
-    const T = V3((bb.x0 + bb.x1) / 2, (bb.y0 + bb.y1) / 2, (bb.z0 + bb.z1) / 2);
-    let D = Math.max(bb.x1 - bb.x0, bb.y1 - bb.y0, bb.z1 - bb.z0) / (2 * Math.min(tX, tY)) + 60;
+    return f;
+  }
+
+  // Target and distance that frame every sphere at this angle (no allocations in the loops).
+  solveFit(az, el, aspect) {
+    const tY = Math.tan((this.camera.fov * D2R) / 2), tX = tY * aspect;
+    const dx = Math.sin(az) * Math.cos(el), dy = Math.sin(el), dz = Math.cos(az) * Math.cos(el);
+    // fwd = -dir; right = normalize(fwd × up); up' = right × fwd.
+    const fx = -dx, fy = -dy, fz = -dz;
+    let rx = -fz, ry = 0, rz = fx;
+    const rl = Math.hypot(rx, rz) || 1; rx /= rl; rz /= rl;
+    const ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
+    let x0b = Infinity, x1b = -Infinity, y0b = Infinity, y1b = -Infinity, z0b = Infinity, z1b = -Infinity;
+    for (const s of this.spheres) {
+      const c = s.c, r = s.r;
+      if (c.x - r < x0b) x0b = c.x - r; if (c.x + r > x1b) x1b = c.x + r;
+      if (c.y - r < y0b) y0b = c.y - r; if (c.y + r > y1b) y1b = c.y + r;
+      if (c.z - r < z0b) z0b = c.z - r; if (c.z + r > z1b) z1b = c.z + r;
+    }
+    let tx = (x0b + x1b) / 2, ty = (y0b + y1b) / 2, tz = (z0b + z1b) / 2;
+    const span = Math.max(x1b - x0b, y1b - y0b, z1b - z0b);
+    let D = span / (2 * Math.min(tX, tY)) + 60;
     const pad = 0.06;
     for (let it = 0; it < 7; it++) {
-      const C = T.clone().addScaledVector(dirv, D);
+      const cx = tx + dx * D, cy = ty + dy * D, cz = tz + dz * D;
       let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
       for (const s of this.spheres) {
-        const v = s.c.clone().sub(C);
-        const z = Math.max(1, v.dot(fwd));
-        const x = v.dot(right) / (z * tX), y = v.dot(up) / (z * tY);
-        const rx = s.r / (z * tX), ry = s.r / (z * tY);
-        x0 = Math.min(x0, x - rx); x1 = Math.max(x1, x + rx); y0 = Math.min(y0, y - ry); y1 = Math.max(y1, y + ry);
+        const vx = s.c.x - cx, vy = s.c.y - cy, vz = s.c.z - cz;
+        const z = Math.max(1, vx * fx + vy * fy + vz * fz);
+        const x = (vx * rx + vy * ry + vz * rz) / (z * tX), y = (vx * ux + vy * uy + vz * uz) / (z * tY);
+        const px = s.r / (z * tX), py = s.r / (z * tY);
+        if (x - px < x0) x0 = x - px; if (x + px > x1) x1 = x + px;
+        if (y - py < y0) y0 = y - py; if (y + py > y1) y1 = y + py;
       }
-      T.addScaledVector(right, ((x0 + x1) / 2) * D * tX).addScaledVector(up, ((y0 + y1) / 2) * D * tY);
+      const sx = ((x0 + x1) / 2) * D * tX, sy = ((y0 + y1) / 2) * D * tY;
+      tx += rx * sx + ux * sy; ty += ry * sx + uy * sy; tz += rz * sx + uz * sy;
       const ext = Math.max((x1 - x0) / 2, (y1 - y0) / 2);
       D *= clamp(ext / (1 - pad), 0.5, 2);
     }
-    cam.position.copy(T.clone().addScaledVector(dirv, D));
-    cam.up.set(0, 1, 0);
-    cam.lookAt(T);
-    const R = Math.max(bb.x1 - bb.x0, bb.y1 - bb.y0, bb.z1 - bb.z0);
-    cam.near = Math.max(2, D - R * 1.5);
-    cam.far = D + R * 1.5 + 200;
-    cam.updateProjectionMatrix();
-    this.fig.camPos = cam.position;
+    return { tx, ty, tz, D, near: Math.max(2, D - span * 1.5), far: D + span * 1.5 + 200 };
   }
 
   render(r, w, h) {
@@ -2521,18 +2565,49 @@ class View {
 }
 
 /* ---------------------------------------------------------------- renderer */
-let R = null; // { r, canvas, w, h }
-let lostCount = 0;
+let R = null; // { r, canvas, w, h, released }
+let lostCount = 0; // contexts lost while figures were on screen
 let SUPPORTED = null;
 let ENV = null;
+let WARM = null; // a View kept alive after preload() so its shader programs stay compiled
+let preloading = null;
 const live = new Set();
+// With no figure on screen, the shared canvas shrinks after a moment (its buffers are most of the
+// memory) and the GPU context itself is handed back after a few idle minutes, or 30 s after the app
+// goes to the background. The compiled shaders stay warm until then.
+let releaseMs = 180000;
+let shrinkTimer = 0, releaseTimer = 0;
+function clearTimers() {
+  if (shrinkTimer) { clearTimeout(shrinkTimer); shrinkTimer = 0; }
+  if (releaseTimer) { clearTimeout(releaseTimer); releaseTimer = 0; }
+}
+function retain(self) {
+  live.add(self);
+  clearTimers();
+}
+function letGo(self) {
+  live.delete(self);
+  maybeRelease();
+}
+function maybeRelease() {
+  if (live.size || !R) return;
+  if (!shrinkTimer) {
+    shrinkTimer = setTimeout(() => {
+      shrinkTimer = 0;
+      if (live.size || !R) return;
+      R.w = R.h = 0;
+      try { R.r.setSize(1, 1, false); } catch (e) { /* ignore */ }
+    }, 2000);
+  }
+  if (!releaseTimer) releaseTimer = setTimeout(() => { releaseTimer = 0; if (!live.size) release(); }, document.hidden ? Math.min(releaseMs, 30000) : releaseMs);
+}
 
 function supported() {
   if (SUPPORTED != null) return SUPPORTED;
   try {
     const c = document.createElement('canvas');
     const gl = c.getContext('webgl2'); // three.js needs WebGL 2
-    SUPPORTED = !!gl && lostCount < 3;
+    SUPPORTED = !!gl;
     const lose = gl && gl.getExtension('WEBGL_lose_context');
     if (lose) lose.loseContext();
   } catch (e) { SUPPORTED = false; }
@@ -2554,17 +2629,43 @@ function renderer() {
   r.toneMappingExposure = 1.0;
   r.setClearColor(0x000000, 0);
   r.autoClear = false;
+  const me = { r, canvas, w: 0, h: 0, released: false };
   canvas.addEventListener('webglcontextlost', (e) => {
+    if (me.released) return; // we gave it back
     e.preventDefault();
-    lostCount++;
-    const was = R;
-    R = null; ENV = null;
+    // A loss while the page is hidden is the phone reclaiming memory; a loss while figures are on
+    // screen is the GPU giving up. Twice of those and this session stays with the flat figure.
+    if (live.size && !document.hidden) lostCount++;
     if (lostCount >= 2) SUPPORTED = false;
-    for (const m of [...live]) m.fail();
-    try { was.r.dispose(); } catch (err) { /* ignore */ }
+    for (const m of [...live]) m.fail(); // each figure frees its view while the renderer still exists
+    if (R === me) forget(me);
   });
-  R = { r, canvas, w: 0, h: 0 };
+  R = me;
   return R;
+}
+// Drop everything tied to a renderer: the warm-up view, the environment map and the GPU copies of
+// the shared shapes (the shapes themselves stay and are uploaded again next time).
+function forget(rr) {
+  R = null;
+  preloading = null;
+  if (WARM) { try { WARM.dispose(); } catch (e) { /* ignore */ } WARM = null; }
+  if (ENV) { try { ENV.dispose(); } catch (e) { /* ignore */ } ENV = null; }
+  const drop = (o) => {
+    if (!o || typeof o !== 'object') return;
+    if (o.isBufferGeometry || o.isTexture || o.isMaterial) { try { o.dispose(); } catch (e) { /* ignore */ } return; }
+    for (const v of Object.values(o)) drop(v);
+  };
+  drop(BODY); drop(EQ);
+  if (SHARED) drop({ disc: SHARED.disc, blurH: SHARED.blurH, blurV: SHARED.blurV, quad: SHARED.quad.geometry });
+  try { rr.r.dispose(); } catch (e) { /* ignore */ }
+  rr.canvas.width = rr.canvas.height = 1; // the backing store goes even if the browser restores it
+}
+function release() {
+  const rr = R;
+  if (!rr) return;
+  rr.released = true;
+  try { rr.r.forceContextLoss(); } catch (e) { /* ignore */ }
+  forget(rr);
 }
 function ensureSize(w, h) {
   const rr = R;
@@ -2636,7 +2737,10 @@ let visHooked = false;
 function hookVisibility() {
   if (visHooked || typeof document === 'undefined') return;
   visHooked = true;
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) for (const m of live) m.kick(); });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) { for (const m of live) m.kick(); return; }
+    if (!live.size && R) { if (releaseTimer) { clearTimeout(releaseTimer); releaseTimer = 0; } maybeRelease(); }
+  });
 }
 
 function mount(host, move, opts) {
@@ -2661,17 +2765,26 @@ function mount(host, move, opts) {
     destroy() { el.remove(); },
   };
   let failed = false;
-  let playing = false, raf = 0, clock = 0, lastNow = 0, lastDraw = 0, onceUntil = -1;
+  let playing = false, raf = 0, clock = 0, lastNow = 0, lastDraw = 0, onceUntil = -1, wake = 0;
   let visible = true, dirty = true, W = 0, H = 0;
   let lastPh = null;
-  const fallback = () => {
-    if (failed) return;
+  let view = null, ro = null, io = null, self = null;
+  // Everything this figure holds goes: its frame loop, observers, place in `live` and its view.
+  const teardown = () => {
     failed = true;
     stop();
+    if (wake) { clearTimeout(wake); wake = 0; }
+    if (ro) ro.disconnect();
+    if (io) io.disconnect();
     el.remove();
+    if (view) { try { view.dispose(); } catch (e) { /* ignore */ } view = null; }
+    if (self) { letGo(self); self = null; }
+  };
+  const fallback = () => {
+    if (failed) return;
+    teardown();
     if (o.onFallback) Promise.resolve().then(() => o.onFallback(ctl));
   };
-  let view = null;
   if (!supported() || !renderer()) { fallback(); return ctl; }
   try { view = new View(move, o); } catch (e) {
     if (G.console) G.console.error('figure3d:', e);
@@ -2685,13 +2798,12 @@ function mount(host, move, opts) {
   const cam = { yaw: 0, pitch: 0, tYaw: 0, tPitch: 0, drag: null, back: 0, orbit: 0, view: null, anim: null };
   const pr = () => Math.min(G.devicePixelRatio || 1, 2);
   const resize = () => {
-    const r = el.getBoundingClientRect();
-    const w = Math.max(1, Math.round(r.width * pr())), h = Math.max(1, Math.round(r.height * pr()));
+    const w = Math.max(1, Math.round(el.clientWidth * pr())), h = Math.max(1, Math.round(el.clientHeight * pr()));
     if (w !== W || h !== H) { W = w; H = h; canvas.width = w; canvas.height = h; dirty = true; kick(); }
   };
-  const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
+  ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
   if (ro) ro.observe(el);
-  const io = typeof IntersectionObserver !== 'undefined' ? new IntersectionObserver((es) => { visible = es[es.length - 1].isIntersecting; if (visible) kick(); }) : null;
+  io = typeof IntersectionObserver !== 'undefined' ? new IntersectionObserver((es) => { visible = es[es.length - 1].isIntersecting; if (visible) kick(); }) : null;
   if (io) io.observe(el);
 
   const poseAt = (t, T) => {
@@ -2723,7 +2835,7 @@ function mount(host, move, opts) {
     if (!onScreen()) { lastNow = 0; return; }
     const dt = lastNow ? Math.min(100, now - lastNow) : 0;
     lastNow = now;
-    let busy = false;
+    let busy = false; // something on screen changes this frame
     if (playing || onceUntil >= 0) {
       clock += dt;
       busy = true;
@@ -2731,25 +2843,25 @@ function mount(host, move, opts) {
     }
     // Camera: idle orbit while playing, drag, easing back, animated view changes.
     if (playing && !o.reducedMotion) { cam.orbit = Math.sin((now / 9000) * Math.PI * 2) * 7 * D2R; busy = true; }
+    let later = 0;
     if (cam.drag) busy = true;
     else if (Math.abs(cam.yaw) > 1e-4 || Math.abs(cam.pitch) > 1e-4) {
       if (now > cam.back) {
         const k = 1 - Math.exp(-dt / 700);
         cam.yaw -= cam.yaw * k; cam.pitch -= cam.pitch * k;
-        if (Math.abs(cam.yaw) < 1e-3 && Math.abs(cam.pitch) < 1e-3) { cam.yaw = 0; cam.pitch = 0; }
-        dirty = true;
-      }
-      busy = true;
+        if (Math.abs(cam.yaw) < 1e-3 && Math.abs(cam.pitch) < 1e-3) { cam.yaw = 0; cam.pitch = 0; dirty = true; }
+        busy = true;
+      } else later = cam.back - now; // held where it was dragged to: nothing to draw until then
     }
     if (cam.anim) {
       const a = cam.anim;
       const t = clamp((now - a.t0) / a.ms, 0, 1);
       const e = 0.5 - 0.5 * Math.cos(Math.PI * t);
       view.base.az = lerp(a.az0, a.az1, e); view.base.el = lerp(a.el0, a.el1, e);
-      if (t >= 1) cam.anim = null;
-      dirty = true; busy = true;
+      if (t >= 1) { cam.anim = null; dirty = true; }
+      busy = true;
     }
-    if ((busy && now - lastDraw >= frameMs) || dirty) {
+    if ((busy && now - lastDraw >= (cam.drag ? 15 : frameMs)) || dirty) {
       lastDraw = now;
       const T = now;
       poseAt(clock, T);
@@ -2757,11 +2869,12 @@ function mount(host, move, opts) {
       render();
     }
     if (busy) kick();
+    else if (later && !wake) wake = setTimeout(() => { wake = 0; kick(); }, later + 5);
   }
   function kick() { if (!raf && !failed) raf = G.requestAnimationFrame(tick); }
   function stop() { if (raf) G.cancelAnimationFrame(raf); raf = 0; }
-  const self = { kick, fail: fallback };
-  live.add(self);
+  self = { kick, fail: fallback };
+  retain(self);
 
   // Pointer: drag to turn (±70°), ease back after release, double-tap to reset.
   let lastTap = 0, moved = false;
@@ -2779,13 +2892,13 @@ function mount(host, move, opts) {
     const w = Math.max(120, el.clientWidth);
     cam.yaw = clamp(d.yaw - (dx / w) * Math.PI * 0.9, -70 * D2R, 70 * D2R);
     cam.pitch = clamp(d.pitch + (dy / w) * Math.PI * 0.5, -10 * D2R, 22 * D2R);
-    dirty = true;
     kick();
   });
   const end = (e) => {
     if (!cam.drag || cam.drag.id !== e.pointerId) return;
     cam.drag = null;
     cam.back = performanceNow() + 1400;
+    dirty = true; // show exactly where it was let go
     const now = performanceNow();
     if (!moved) {
       if (now - lastTap < 320) { cam.yaw = 0; cam.pitch = 0; cam.back = 0; lastTap = 0; dirty = true; }
@@ -2811,8 +2924,9 @@ function mount(host, move, opts) {
       const A = view.fig.A;
       const mir = o.mirrored ? -1 : 1;
       let az = view.base0.az, el3 = view.base0.el;
-      if (name === 'side') { az = mir * (A.view === 'side' ? 0 : 90) * D2R; el3 = (A.view === 'top' ? 30 : 6) * D2R; }
-      else if (name === 'front') { az = mir * (A.view === 'side' ? 90 : 0) * D2R; el3 = (A.view === 'top' ? 30 : 6) * D2R; }
+      // Side and top views are lifted with the body along the same axis; front views face the camera.
+      if (name === 'side') { az = mir * (A.view === 'front' ? 90 : 0) * D2R; el3 = (A.view === 'top' ? 30 : 6) * D2R; }
+      else if (name === 'front') { az = mir * (A.view === 'front' ? 0 : 90) * D2R; el3 = (A.view === 'top' ? 30 : 6) * D2R; }
       if (instant) { cam.anim = null; view.base.az = az; view.base.el = el3; dirty = true; }
       else cam.anim = { t0: performanceNow(), ms: 800, az0: view.base.az, el0: view.base.el, az1: az, el1: el3 };
       kick();
@@ -2827,16 +2941,7 @@ function mount(host, move, opts) {
       glowAt(t, 0, null);
       render();
     },
-    destroy() {
-      stop();
-      failed = true;
-      live.delete(self);
-      if (ro) ro.disconnect();
-      if (io) io.disconnect();
-      el.remove();
-      if (view) view.dispose();
-      view = null;
-    },
+    destroy() { teardown(); },
   });
   // First frame straight away (the key pose when still).
   resize();
@@ -2849,10 +2954,20 @@ const performanceNow = () => (G.performance ? G.performance.now() : Date.now());
 
 /* ---------------------------------------------------------------- stills */
 const stills = new Map();
+const stillKey = (move, w, h, o) => [move.id, JSON.stringify(move.equip || []), w, h, o.dark, o.skin, o.shirt, o.mirrored].join('|');
+function stillSize(opts) {
+  return [Math.max(16, Math.round((opts && opts.width) || 240)), Math.max(16, Math.round((opts && opts.height) || 200))];
+}
+// A still that's already been drawn, or null; never draws (safe inside a page render).
+function cachedStill(move, opts) {
+  const o = optsOf(Object.assign({ static: true }, opts));
+  const [w, h] = stillSize(opts);
+  return stills.get(stillKey(move, w, h, o)) || null;
+}
 function still(move, opts) {
   const o = optsOf(Object.assign({ static: true }, opts));
-  const w = Math.max(16, Math.round((opts && opts.width) || 240)), h = Math.max(16, Math.round((opts && opts.height) || 200));
-  const key = [move.id, JSON.stringify(move.equip || []), w, h, o.dark, o.skin, o.shirt, o.mirrored].join('|');
+  const [w, h] = stillSize(opts);
+  const key = stillKey(move, w, h, o);
   if (stills.has(key)) return stills.get(key);
   if (!supported() || !renderer()) return null;
   let view = null;
@@ -2874,28 +2989,82 @@ function still(move, opts) {
     if (G.console) G.console.error('figure3d:', e);
     return null;
   } finally {
+    // Disposing the view doesn't lose compiled shaders while the warm-up view holds them.
     if (view) view.dispose();
+    maybeRelease();
   }
 }
 
-// Build the shared renderer, geometry and shaders ahead of the first figure.
+/* ---------------------------------------------------------------- preload */
+function idle(fn) {
+  if (G.requestIdleCallback) G.requestIdleCallback(fn, { timeout: 2000 });
+  else setTimeout(() => fn(null), 16);
+}
+// A view that stays alive once its programs are compiled (so later figures reuse them), then one
+// small frame to compile the contact-shadow passes too.
+function warmUp() {
+  if (WARM || !R) return true;
+  const m = GH.moves && GH.moves.MOVES && (GH.moves.MOVES.push_std || Object.values(GH.moves.MOVES)[0]);
+  if (!m) return true;
+  const view = new View(m, optsOf({ static: true }));
+  view.fig.setPose(view.fig.A.key, null);
+  view.fig.setGlow(0.78, null);
+  view.camState = { az: view.base.az, el: view.base.el };
+  view.frame(view.base.az, view.base.el, 1);
+  WARM = view;
+  const r = R.r;
+  const compiled = r.compileAsync ? r.compileAsync(view.scene, view.camera) : Promise.resolve(r.compile(view.scene, view.camera));
+  return compiled.then(() => new Promise((done) => idle(() => {
+    if (R && WARM === view) { ensureSize(64, 64); view.render(R.r, 64, 64); }
+    done();
+  })));
+}
+// Build the renderer, the body, the equipment, the lighting and the shaders ahead of the first
+// figure, a small piece per idle moment so taps never wait on it. Resolves true when 3D is ready.
 function preload() {
-  return new Promise((resolve) => {
-    const run = () => {
+  if (preloading) return preloading;
+  const steps = [
+    () => (supported() && renderer() ? true : null), // null: no 3D here
+    bodyStep, // false until every body part is built
+    () => { eqGeos(); shared(); return true; },
+    () => { envMap(); return true; },
+    warmUp, // a promise
+  ];
+  const p = new Promise((resolve) => {
+    let i = 0;
+    const run = (deadline) => {
       try {
-        if (!supported() || !renderer()) { resolve(false); return; }
-        bodyGeos(); eqGeos(); envMap();
-        const m = GH.moves && GH.moves.MOVES && (GH.moves.MOVES.push_std || Object.values(GH.moves.MOVES)[0]);
-        if (m) still(m, { width: 64, height: 64 });
-        resolve(true);
-      } catch (e) { resolve(false); }
+        while (i < steps.length) {
+          const out = steps[i]();
+          if (out === null) { resolve(false); return; }
+          if (out && typeof out.then === 'function') {
+            i++;
+            out.then(() => idle(run), () => resolve(false));
+            return;
+          }
+          if (out) i++;
+          if (!deadline || deadline.timeRemaining() < 8) break;
+        }
+        if (i >= steps.length) { resolve(true); return; }
+        idle(run);
+      } catch (e) {
+        if (G.console) G.console.error('figure3d:', e);
+        resolve(false);
+      }
     };
-    if (G.requestIdleCallback) G.requestIdleCallback(run, { timeout: 1200 }); else setTimeout(run, 0);
-  });
+    idle(run);
+  }).then((ok) => { maybeRelease(); return ok; });
+  preloading = p;
+  // A failed or released warm-up can be tried again later.
+  p.then((ok) => { if (!ok && preloading === p) preloading = null; });
+  return p;
 }
 
 GH.figure3d = {
-  supported, mount, still, preload, phaseAt,
-  // Internal, for tests: drop the shared GL context as a phone might.
+  supported, mount, still, cachedStill, preload, phaseAt,
+  // Internal, for tests: drop the shared GL context as a phone might, look at what's held, and
+  // shorten the idle release.
   _loseContext() { if (R) R.r.forceContextLoss(); },
+  _stats() { return { live: live.size, renderer: !!R, warm: !!WARM, lost: lostCount, programs: R ? R.r.info.programs.length : 0, size: R ? [R.w, R.h] : null }; },
+  _releaseAfter(ms) { releaseMs = ms; },
 };

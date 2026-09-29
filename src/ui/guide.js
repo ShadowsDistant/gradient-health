@@ -159,7 +159,8 @@
     U.act.tourSkip = () => ctl.close('skip');
     // Swipe between pages.
     let x0 = null;
-    ctl.body.addEventListener('touchstart', (e) => { x0 = e.touches.length === 1 ? e.touches[0].clientX : null; }, { passive: true });
+    // Not when the swipe starts on the figure: that turns the figure instead.
+    ctl.body.addEventListener('touchstart', (e) => { x0 = e.touches.length === 1 && !(e.target.closest && e.target.closest('.tour-fig')) ? e.touches[0].clientX : null; }, { passive: true });
     ctl.body.addEventListener('touchend', (e) => {
       if (x0 == null) return;
       const dx = e.changedTouches[0].clientX - x0;

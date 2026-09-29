@@ -502,7 +502,8 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 /* Settings: the exercise figure's look. */
 .set-fig-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: var(--space-3); align-items: center; }
 .set-fig { width: 96px; height: 120px; border-radius: var(--radius-lg); background: var(--fill-3); display: grid; place-items: center; overflow: hidden; }
-.set-fig img { display: block; width: 96px; height: 120px; }
+.set-fig img { display: block; width: 96px; height: 120px; transition: opacity var(--duration-fast) ease; }
+.set-fig img.is-stale { opacity: 0.45; }
 .set-fig-wait { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--fill-2); border-top-color: var(--label-tertiary); animation: gh-spin 0.9s linear infinite; }
 .set-fig-pick { display: grid; gap: 6px; min-width: 0; }
 .set-fig-pick .rf-list-title { white-space: normal; }

@@ -146,7 +146,13 @@
     const solid = (f) => {
       is3d = true;
       inner = f.mount(at, m, Object.assign({}, o, look(), {
-        onFallback: () => { if (dead) return; flat(); fadeIn(inner.el); if (ctl.onPhase) ctl.onPhase(null); },
+        onFallback: (failed) => {
+          try { failed.destroy(); } catch (e) { /* already gone */ }
+          if (dead) return;
+          flat();
+          fadeIn(inner.el);
+          if (ctl.onPhase) ctl.onPhase(null);
+        },
       }));
       inner.onPhase = (p) => { if (!dead && ctl.onPhase) ctl.onPhase(p); };
       if (playing) inner.play();
@@ -171,14 +177,16 @@
   // Holds and flowing moves (jacks, crawls) have no tempo.
   function tempoOf(m) {
     const rep = (m && m.rep) || [];
-    if (rep.length < 2 || rep.some((x) => x.ph !== 'con' && x.ph !== 'ecc')) return null;
+    if (rep.length < 2 || rep.some((x) => x.ph !== 'con' && x.ph !== 'ecc') || !rep.some((x) => x.ph === 'con') || !rep.some((x) => x.ph === 'ecc')) return null;
     const secs = (ph) => Math.max(0.5, Math.round(rep.filter((x) => x.ph === ph).reduce((a, x) => a + x.ms, 0) / 500) / 2);
     const parts = { ecc: ['ecc', 'Control', secs('ecc')], con: ['con', 'Drive', secs('con')] };
     return rep[0].ph === 'ecc' ? [parts.ecc, parts.con] : [parts.con, parts.ecc];
   }
   U.tempoHtml = (m) => {
     const t = tempoOf(m);
-    return t ? `<div class="fig-tempo" data-morph="keep" aria-hidden="true">${t.map(([ph, word, s]) => `<span data-ph="${ph}">${word} <b class="rf-num">${String(s).replace('.5', '½')} s</b></span>`).join('')}</div>` : '';
+    // Keyed by move: a swap or another rung gets a fresh strip; the lit half (data-on) is set by
+    // code, and a re-render leaves attributes it didn't set alone.
+    return t ? `<div class="fig-tempo" data-key="tempo-${U.esc(m.id)}" aria-hidden="true">${t.map(([ph, word, s]) => `<span data-ph="${ph}">${word} <b class="rf-num">${String(s).replace('.5', '½')} s</b></span>`).join('')}</div>` : '';
   };
   // Light up the half of the rep the figure is in (the 3D figure reports it; the flat one doesn't).
   function tempoSync(ctl, box) {
@@ -187,6 +195,7 @@
       if (strip) strip.dataset.on = p && (p.ph === 'con' || p.ph === 'ecc') ? p.ph : '';
     };
   }
+  let covered = false; // the how-to sheet is over the player
   function dropFig() { if (fig) { try { fig.ctl.destroy(); } catch (e) { /* ignore */ } fig = null; } }
   function leadSideFor(fam) { const c = U.S.catchup; return (LEG_FAMS.includes(fam) ? c.leg.side : c.arm.side) || 'L'; }
   function figOpts(st, m0) {
@@ -210,7 +219,7 @@
       fadeIn(fig.ctl.el);
     }
     tempoSync(fig.ctl, host.parentNode);
-    if (playing) fig.ctl.play(); else fig.ctl.pause();
+    if (playing && !covered) fig.ctl.play(); else fig.ctl.pause();
   }
   function fadeIn(el) { if (el && !U.reduced() && el.animate) el.animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)' }); }
   U.figureFor = (host, moveId, side, playing) => {
@@ -599,7 +608,13 @@
   };
 
   /* ---------------------------------------------------------------- options: how to, swap, skip, end */
-  U.act.plHowTo = () => { const st = cur(); if (st) U.moveSheet(st.item.moveId, { side: st.side }); };
+  U.act.plHowTo = () => {
+    const st = cur();
+    if (!st) return;
+    covered = true;
+    if (fig) fig.ctl.pause();
+    U.moveSheet(st.item.moveId, { side: st.side, onClose: () => { covered = false; if (P && !root().hidden) draw(); } });
+  };
   U.act.plMenu = () => {
     const st = cur();
     const canSwap = st && st.kind === 'set' && !st.leadOnly;
