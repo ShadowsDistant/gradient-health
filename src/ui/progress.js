@@ -1,5 +1,6 @@
 /* Progress: the training picture. Heat map of the last 12 weeks, the left/right gap, this week's
- * sets against target, bests per ladder and the moments worth celebrating.
+ * sets against target, strength trends for gym lifts, bests per ladder and the moments worth
+ * celebrating.
  */
 (function (G) {
   'use strict';
@@ -56,7 +57,7 @@
     if (tests.length >= 2) {
       const pts = tests.map((t) => ({ day: t.day, value: t.gap * 100 }));
       chart = U.chartCard({ title: 'Curl gap over time', value: `${Math.round(last.gap * 100)}%`, fmt: (v) => `${Math.round(v)}%`, from: tests[0].day, to: Math.max(day, last.day), zero: true,
-        series: [{ name: 'Gap', kind: 'line', color: 'var(--hue-coral)', points: pts }, { name: '10% target', kind: 'avg', color: 'var(--label-tertiary)', points: [{ day: tests[0].day, value: 10 }, { day: Math.max(day, last.day), value: 10 }] }] });
+        series: [{ name: 'Gap', kind: 'line', color: 'var(--hue-coral)', points: pts, gap: 35 }, { name: '10% target', kind: 'avg', color: 'var(--label-tertiary)', points: [{ day: tests[0].day, value: 10 }, { day: Math.max(day, last.day), value: 10 }] }] });
     }
     const ms = (S.measurements || []).filter((m) => m.armL != null && m.armR != null);
     const arm = ms.length ? ms[ms.length - 1] : null;
@@ -81,6 +82,30 @@
     return `<div class="card" data-key="sets"><div class="row-between"><span class="t-headline">Sets this week</span><span class="t-footnote rf-muted">done of target</span></div>
       ${U.meterRows(rows)}
       ${short.length ? `<p class="t-footnote rf-muted">Your time budget fits fewer sets than the target for ${U.esc(short.map((r) => r.name.toLowerCase()).join(', '))}. A few more minutes a session closes it.</p>` : ''}</div>`;
+  }
+
+  // Gym lifts: the estimated one-rep max over time, from the heaviest set and the reps left in the
+  // tank (Epley). Up to three lifts, the most recently trained first.
+  function strength(S, day) {
+    const lifts = [];
+    for (const st of Object.values(S.prog || {})) {
+      if (!st || !st.gym || !st.e1rm) continue;
+      for (const [id, e] of Object.entries(st.e1rm)) {
+        const m = M().MOVES[id];
+        if (m && e && (e.hist || []).length >= 2) lifts.push({ m, e });
+      }
+    }
+    if (!lifts.length) return '';
+    lifts.sort((a, b) => b.e.day - a.e.day || b.e.hist.length - a.e.hist.length);
+    const u = S.profile.units === 'kg' ? 'kg' : 'lb';
+    const cards = lifts.slice(0, 3).map(({ m, e }) => {
+      const pts = e.hist.map(([d, v]) => ({ day: d, value: B().toUnit(v, u) }));
+      const last = pts[pts.length - 1];
+      return U.chartCard({ title: m.name, value: `${Math.round(last.value)} ${u}`, fmt: (v) => `${Math.round(v)} ${u}`, from: pts[0].day, to: Math.max(day, last.day),
+        series: [{ name: 'Estimated max', kind: 'line', color: 'var(--hue-indigo)', points: pts, gap: 28 }] });
+    });
+    return `<h2 class="sec-title t-title-3">Strength</h2>
+      <div class="section">${cards.join('')}<p class="t-footnote rf-muted">Your estimated one-rep max, worked out from your heaviest set and the reps you had left. Watch the trend; there's no need to test it.</p></div>`;
   }
 
   function bests(S, day) {
@@ -123,6 +148,7 @@
           ${leftRight(S, day)}
           ${weekSets(S, day)}
         </div>
+        ${strength(S, day)}
         <h2 class="sec-title t-title-3">Levels</h2>
         <div class="section">${bests(S, day)}</div>
         <h2 class="sec-title t-title-3">Moments</h2>

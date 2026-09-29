@@ -487,11 +487,12 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 .set-fig-wait { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--fill-2); border-top-color: var(--label-tertiary); animation: gh-spin 0.9s linear infinite; }
 .set-fig-pick { display: grid; gap: 6px; min-width: 0; }
 .set-fig-pick .rf-list-title { white-space: normal; }
-.swatches { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 4px; }
-.swatch { appearance: none; position: relative; flex: none; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--sw); box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.14); cursor: pointer; transition: scale var(--duration-spring-snappy) var(--spring-snappy); }
-.swatch::before { content: ''; position: absolute; inset: -4px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 2px; margin: -2px 0 2px -4px; }
+/* A 38px target around a 30px colour; the ring marks the one picked. */
+.swatch { appearance: none; position: relative; flex: none; width: 38px; height: 38px; padding: 4px; border: 0; border-radius: 50%; background: var(--sw) content-box; cursor: pointer; transition: scale var(--duration-spring-snappy) var(--spring-snappy); }
+.swatch::before { content: ''; position: absolute; inset: 4px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.14); }
 .swatch:active { scale: 0.92; }
-.swatch[aria-pressed="true"]::after { content: ''; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--label-primary); }
+.swatch[aria-pressed="true"] { outline: 2px solid var(--label-primary); outline-offset: -2px; }
 @media (max-width: 370px) { .set-fig-row { grid-template-columns: 84px minmax(0, 1fr); gap: var(--space-2); } .set-fig, .set-fig img { width: 84px; height: 106px; } }
 /* Tempo: each half of a rep; the half the 3D figure is in lights up. */
 .fig-tempo { display: flex; justify-content: center; gap: 6px; pointer-events: none; }

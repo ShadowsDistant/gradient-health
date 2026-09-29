@@ -482,7 +482,7 @@
     if (ms.length >= 2) {
       const cm = S.profile.units === 'kg';
       const conv = (v) => (cm ? v : v / 2.54);
-      const ser = (k, name, color) => ({ name, kind: 'line', color, points: ms.filter((m) => m[k] != null).map((m) => ({ day: m.day, value: conv(m[k]) })) });
+      const ser = (k, name, color) => ({ name, kind: 'line', color, gap: 60, points: ms.filter((m) => m[k] != null).map((m) => ({ day: m.day, value: conv(m[k]) })) });
       const series = [ser('waist', 'Waist', 'var(--hue-teal)'), ser('armL', 'Left arm', 'var(--hue-coral)'), ser('armR', 'Right arm', 'var(--hue-sky)')].filter((x) => x.points.length);
       if (series.length) out.push(U.chartCard({ title: 'Measurements', value: '', fmt: (v) => `${v.toFixed(1)} ${cm ? 'cm' : 'in'}`, from: Math.min(from, ms[0].day), to: day, series }));
     }

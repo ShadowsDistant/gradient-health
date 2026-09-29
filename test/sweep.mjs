@@ -43,6 +43,13 @@ function seedMore() {
     F.add(S, d, { name: 'Salmon, potatoes and a very long description of the side salad', src: 'quick', kcal: 710, p: 40, c: 55, f: 30, meal: 'dinner' }, at(d, 15));
     F.add(S, d, { name: 'Greek yogurt', src: 'quick', kcal: 150, p: 15, c: 10, f: 4, meal: 'snack' }, at(d, 12));
   }
+  // Gym lifts with five weeks of history, for the strength charts on Progress.
+  for (const [fam, id, start] of [['pressG', 'bench_bb', 60], ['squatG', 'squat_bb', 80], ['rowG', 'row_cable', 50]]) {
+    const st = S.prog[fam] || (S.prog[fam] = { rung: id, reps: 8, best: {}, loads: {}, e1rm: {}, short: 0, cooldown: 0, flat: 0, gym: true });
+    st.e1rm = st.e1rm || {};
+    const hist = [0, 1, 2, 3, 4, 5].map((i) => [day - 35 + i * 7, start + i * 2.5]);
+    st.e1rm[id] = { best: hist[5][1], last: hist[5][1], day: hist[5][0], hist };
+  }
   F.saveMeal(S, 'Usual breakfast', F.entries(S, day));
   F.addCustom(S, { name: 'Protein bar', servingG: 60, kcal: 220, p: 20, c: 22, f: 7 });
   S.ai.mode = 'device';

@@ -49,11 +49,13 @@
       } else if (s.kind === 'dot') {
         for (const p of pts) parts.push(`<line class="ch-dot" ${col} x1="${x(p.day)}" x2="${x(p.day)}" y1="${y(p.value)}" y2="${y(p.value)}"/>`);
       } else {
-        // Lines break over gaps longer than 3 days instead of drawing through missing data.
+        // Lines break over gaps longer than 3 days instead of drawing through missing data. Sparse
+        // series (tests, gym sessions) set their own gap.
+        const gap = s.gap != null ? s.gap : 3;
         let d = '';
         let prev = null;
         for (const p of pts) {
-          d += `${prev == null || p.day - prev > 3 ? 'M' : 'L'}${x(p.day)} ${y(p.value)}`;
+          d += `${prev == null || p.day - prev > gap ? 'M' : 'L'}${x(p.day)} ${y(p.value)}`;
           prev = p.day;
         }
         if (d) parts.push(`<path class="ch-line${s.kind === 'avg' ? ' ch-avg' : ''}" ${col} d="${d}"/>`);
