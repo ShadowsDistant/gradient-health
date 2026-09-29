@@ -12,6 +12,8 @@
     <!-- Only for optional features: the Claude coach (api.anthropic.com), the on-device model
          download (huggingface.co) and online food search (openfoodfacts.org). -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Lets a model download wait for Wi-Fi instead of using mobile data (a normal permission). -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- Health Connect. The platform API needs Android 14 (API 34) or newer. -->

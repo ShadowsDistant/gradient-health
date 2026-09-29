@@ -1,0 +1,309 @@
+// The on-device AI runtime (src/llm.js, lazy chunk "llm") in Chromium, with a tiny random-weight model
+// standing in for Qwen: the chunk loads under the page's CSP, the model is read with Range requests
+// only, chat() streams tokens, reuses the KV cache, stops mid-stream, queues, unloads (also by itself
+// when idle) and reloads, and the download API works against a fake Android bridge. It prints how
+// fast the tiny model generates. Needs `npm run build` and Playwright; build/tiny.gguf is made on the
+// first run by scripts/make-tiny-gguf.py, which needs the gguf package:
+//
+//   python3 -m venv build/venv && build/venv/bin/pip install gguf numpy
+//   npm run build && node test/llm.mjs
+import { createServer } from 'node:http';
+import { existsSync, statSync, createReadStream } from 'node:fs';
+import { join, extname, normalize, sep } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { root, check, section, done } from './lib.mjs';
+
+const require = createRequire(import.meta.url);
+let chromium;
+try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
+
+const DIST = join(root, 'dist');
+const MODEL = join(root, 'build/tiny.gguf');
+if (!existsSync(join(DIST, 'lazy/llm.js'))) { console.error('Missing dist/lazy/llm.js. Run: npm run build'); process.exit(1); }
+if (!existsSync(MODEL)) {
+  const venv = join(root, 'build/venv/bin/python');
+  const made = spawnSync(existsSync(venv) ? venv : 'python3', [join(root, 'scripts/make-tiny-gguf.py')], { stdio: 'inherit' });
+  if (made.status !== 0 || !existsSync(MODEL)) {
+    console.error('Couldn\'t make build/tiny.gguf. Run: python3 -m venv build/venv && build/venv/bin/pip install gguf numpy');
+    process.exit(1);
+  }
+}
+const SIZE = statSync(MODEL).size;
+const TINY = { id: 'tiny', name: 'Tiny test model', file: 'tiny.gguf', url: 'https://huggingface.co/test/tiny/resolve/main/tiny.gguf', bytes: SIZE, minRamGB: 0, ctx: 512 };
+const BIG = { id: 'big', name: 'Needs 8 GB', file: 'big.gguf', url: 'https://huggingface.co/test/big/resolve/main/big.gguf', bytes: 1e9, minRamGB: 8, ctx: 512 };
+
+/* ------------------------------------------------------------------ server: dist/ + /models/tiny.gguf, with Range */
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.wasm': 'application/wasm' };
+const modelReads = [];
+const missing = [];
+function send(req, res, file) {
+  const size = statSync(file).size;
+  const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+  let start = 0;
+  let end = size - 1;
+  let status = 200;
+  if (m && (m[1] || m[2])) {
+    if (m[1]) { start = Number(m[1]); end = m[2] ? Math.min(Number(m[2]), size - 1) : size - 1; } else start = Math.max(0, size - Number(m[2]));
+    if (start >= size || start > end) { res.writeHead(416, { 'content-range': `bytes */${size}` }); res.end(); return 0; }
+    status = 206;
+  }
+  const headers = { 'content-type': TYPES[extname(file)] || 'application/octet-stream', 'content-length': end - start + 1, 'accept-ranges': 'bytes', 'cache-control': 'no-store' };
+  if (status === 206) headers['content-range'] = `bytes ${start}-${end}/${size}`;
+  res.writeHead(status, headers);
+  if (req.method === 'HEAD') { res.end(); return 0; }
+  createReadStream(file, { start, end }).pipe(res);
+  return end - start + 1;
+}
+// A damaged model: the GGUF magic and then nonsense.
+const DAMAGED = Buffer.concat([Buffer.from('GGUF'), Buffer.alloc(64 * 1024, 0xab)]);
+const server = createServer((req, res) => {
+  const path = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+  if (path === '/models/tiny.gguf') { modelReads.push({ range: req.headers.range || null, bytes: send(req, res, MODEL) }); return; }
+  if (path === '/models/damaged.gguf') {
+    const m = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range || '');
+    const start = m ? Number(m[1]) : 0;
+    const end = m && m[2] ? Math.min(Number(m[2]), DAMAGED.length - 1) : DAMAGED.length - 1;
+    res.writeHead(m ? 206 : 200, { 'content-length': end - start + 1, 'content-range': `bytes ${start}-${end}/${DAMAGED.length}` });
+    res.end(DAMAGED.subarray(start, end + 1));
+    return;
+  }
+  const file = join(DIST, normalize(path === '/' ? 'gradient-health.html' : path).replace(/^[/\\]+/, ''));
+  if (!file.startsWith(DIST + sep) || !existsSync(file) || !statSync(file).isFile()) { missing.push(path); res.writeHead(404); res.end(); return; }
+  send(req, res, file);
+});
+await new Promise((r) => server.listen(0, '127.0.0.1', r));
+const base = `http://127.0.0.1:${server.address().port}`;
+
+// A software WebGPU adapter (SwiftShader, no shader-f16) is there, so the GPU self-test runs and says no.
+const browser = await chromium.launch({ args: ['--enable-unsafe-webgpu'] });
+const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+const errors = [];
+const watch = (page) => {
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => {
+    // Looking for a model that isn't there is a 404, which Chromium logs.
+    if (m.type() === 'error' && !/\/models\/big\.gguf$/.test((m.location() || {}).url || '')) errors.push(`console: ${m.text()}`);
+  });
+};
+const open = async (page) => {
+  watch(page);
+  await page.goto(`${base}/gradient-health.html`);
+  await page.waitForFunction(() => window.GH && typeof window.GH.lazy === 'function');
+};
+const SYSTEM = { role: 'system', content: 'You are Gradient\'s coach. Answer in one or two short sentences.' };
+const ASK = { role: 'user', content: 'How many push-ups should I do today?' };
+
+/* ------------------------------------------------------------------ in a plain browser */
+const page = await ctx.newPage();
+await open(page);
+
+section('Lazy chunk');
+check('GH.lazy("llm") sets GH.llm', await page.evaluate(async () => { const llm = await GH.lazy('llm'); return llm === GH.llm && typeof llm.chat === 'function'; }));
+const table = await page.evaluate(() => GH.llm.MODELS.map((m) => ({ id: m.id, name: m.name, bytes: m.bytes, sha: m.sha256, url: m.url, ram: m.minRamGB, ctx: m.ctx })));
+check('two models: Standard (0.5B) and Better answers (1.5B, 8 GB)', table.length === 2 && table[0].id === 'qwen05' && table[1].id === 'qwen15' && table[1].ram === 8 && table[0].ram === 3, table);
+check('each has a Hugging Face URL, size and SHA-256', table.every((m) => /^https:\/\/huggingface\.co\/Qwen\/.+\/resolve\/main\/.+\.gguf$/.test(m.url) && m.bytes > 4e8 && /^[0-9a-f]{64}$/.test(m.sha) && m.ctx === 2048));
+const unconfigured = await page.evaluate(() => GH.llm.available());
+check('without the app (or a base URL) it says why it isn\'t available', !unconfigured.ok && /app/i.test(unconfigured.reason), unconfigured);
+await page.evaluate(([tiny, big]) => GH.llm.configure({ baseUrl: 'models/', models: [tiny, big], idleMs: 60000 }), [TINY, BIG]);
+check('available once pointed at the test server', (await page.evaluate(() => GH.llm.available())).ok);
+const found = await page.evaluate(() => GH.llm.installed());
+check('installed() finds the tiny model and its size', found.length === 1 && found[0].id === 'tiny' && found[0].bytes === SIZE, found);
+
+section('Load');
+const loadInfo = await page.evaluate(async () => {
+  const progress = [];
+  const t0 = performance.now();
+  const info = await GH.llm.load('tiny', { onProgress: (p) => progress.push(p) });
+  return { info, ms: Math.round(performance.now() - t0), progress, loaded: GH.llm.loaded() };
+});
+check('load() resolves and loaded() reports the model', loadInfo.loaded && loadInfo.loaded.id === 'tiny' && loadInfo.info.ctx === 512, loadInfo);
+check('the WebGPU self-test turned down the software adapter: CPU', loadInfo.info.gpu === false);
+const last = loadInfo.progress[loadInfo.progress.length - 1];
+check('onProgress follows the file being read', loadInfo.progress.length >= 2 && last.loaded === SIZE && last.total === SIZE, loadInfo.progress.slice(-3));
+check('the model was read with Range requests only', modelReads.length >= 2 && modelReads.every((r) => /^bytes=\d+-\d+$/.test(r.range || '')), modelReads);
+// Once, plus wllama's fixed look-aheads: 128 KB to check for a vision projector, 1 MB blocks for small reads.
+const extra = modelReads.reduce((s, r) => s + r.bytes, 0) - SIZE;
+check('and read about once, not copied around', extra >= 0 && extra < 1.5 * 2 ** 20, extra);
+console.log(`  load: ${loadInfo.ms} ms (${(SIZE / 1024).toFixed(0)} KB model, ${modelReads.length} range reads)`);
+
+section('Chat');
+const first = await page.evaluate(async ([system, ask]) => {
+  const pieces = [];
+  const t0 = performance.now();
+  const text = await GH.llm.chat([system, ask], { maxTokens: 48, onToken: (piece, soFar) => pieces.push([piece, soFar.length]) });
+  return { text, pieces, ms: performance.now() - t0, stats: GH.llm.stats };
+}, [SYSTEM, ASK]);
+check('tokens stream through onToken', first.pieces.length >= 10, first.pieces.length);
+check('onToken gets each piece and the text so far', first.pieces.every(([p, n], i) => n === first.pieces.slice(0, i + 1).reduce((s, [q]) => s + q.length, 0)));
+check('chat() resolves with the streamed reply', first.text.length > 0 && first.text === first.pieces.map(([p]) => p).join(''), first.text);
+check('it stops at maxTokens', first.stats.tokens <= 48 && first.stats.finish === 'length', first.stats);
+console.log(`  reply: ${JSON.stringify(first.text.slice(0, 60))}...`);
+console.log(`  speed: ${first.stats.tokens} tokens in ${Math.round(first.ms)} ms, ${first.stats.tokensPerSec.toFixed(0)} tokens/s generating (${first.stats.promptTokens} prompt tokens)`);
+
+section('KV cache reuse');
+const second = await page.evaluate(async ([system, ask, reply]) => {
+  const text = await GH.llm.chat([system, ask, { role: 'assistant', content: reply }, { role: 'user', content: 'And tomorrow?' }], { maxTokens: 16 });
+  return { text, stats: GH.llm.stats };
+}, [SYSTEM, ASK, first.text]);
+check('the next turn reuses the cached prompt', second.stats.cachedTokens > 10 && second.stats.cachedTokens < second.stats.promptTokens + second.stats.cachedTokens, second.stats);
+
+section('Abort');
+const stopped = await page.evaluate(async ([system, ask]) => {
+  const ctrl = new AbortController();
+  let seen = 0;
+  const text = await GH.llm.chat([system, ask], { maxTokens: 200, signal: ctrl.signal, onToken: () => { if (++seen === 5) ctrl.abort(); } });
+  return { text, seen, stats: GH.llm.stats };
+}, [SYSTEM, ASK]);
+check('aborting resolves with the text so far', stopped.stats.aborted === true && stopped.text.length > 0, stopped.stats);
+check('generation stops right away', stopped.seen >= 5 && stopped.seen <= 8, stopped.seen);
+const already = await page.evaluate(async ([system, ask]) => { const c = new AbortController(); c.abort(); return GH.llm.chat([system, ask], { signal: c.signal }); }, [SYSTEM, ASK]);
+check('an already-aborted signal answers nothing', already === '');
+const after = await page.evaluate(async ([system, ask]) => GH.llm.chat([system, ask], { maxTokens: 8 }), [SYSTEM, ASK]);
+check('the next chat works after an abort', after.length > 0);
+
+section('One at a time');
+const both = await page.evaluate(async ([system, ask]) => {
+  const order = [];
+  const a = GH.llm.chat([system, ask], { maxTokens: 12, onToken: () => order.push('a') });
+  const b = GH.llm.chat([system, ask], { maxTokens: 12, onToken: () => order.push('b') });
+  const [ta, tb] = await Promise.all([a, b]);
+  return { ta, tb, order: order.join('') };
+}, [SYSTEM, ASK]);
+check('concurrent chats queue instead of mixing', both.ta.length > 0 && both.tb.length > 0 && /^a+b+$/.test(both.order), both.order);
+
+section('Unload');
+const unloaded = await page.evaluate(async () => { await GH.llm.unload(); return GH.llm.loaded(); });
+check('unload() frees the model', unloaded === null);
+const readsBefore = modelReads.length;
+const reloaded = await page.evaluate(async ([system, ask]) => { const text = await GH.llm.chat([system, ask], { maxTokens: 8 }); return { text, loaded: GH.llm.loaded() }; }, [SYSTEM, ASK]);
+check('chat() reloads the last model by itself', reloaded.text.length > 0 && reloaded.loaded && reloaded.loaded.id === 'tiny' && modelReads.length > readsBefore);
+const idle = await page.evaluate(async ([system, ask]) => {
+  GH.llm.configure({ idleMs: 700 });
+  await GH.llm.chat([system, ask], { maxTokens: 4 });
+  const right = GH.llm.loaded();
+  await new Promise((r) => setTimeout(r, 1400));
+  return { right, later: GH.llm.loaded() };
+}, [SYSTEM, ASK]);
+check('it unloads by itself when idle', idle.right && idle.right.id === 'tiny' && idle.later === null, idle);
+
+section('Errors');
+const errs = await page.evaluate(async ([system, tiny, big, damaged]) => {
+  GH.llm.configure({ models: [tiny, big, damaged] });
+  const code = (p) => p.then(() => 'resolved', (e) => `${e.code}: ${e.message}`);
+  const out = {
+    empty: await code(GH.llm.chat([system])),
+    unknown: await code(GH.llm.load('nope')),
+    web: await code(GH.llm.download('tiny')),
+    missing: await code(GH.llm.load('big')),
+    damaged: await code(GH.llm.load('damaged')),
+  };
+  out.afterDamaged = GH.llm.loaded();
+  await GH.llm.load('tiny');
+  out.tooLong = await code(GH.llm.chat([system, { role: 'user', content: 'x'.repeat(3000) }], { maxTokens: 16 }));
+  out.stillLoaded = GH.llm.loaded();
+  out.recovers = await GH.llm.chat([system, { role: 'user', content: 'Hi' }], { maxTokens: 4 });
+  return out;
+}, [SYSTEM, TINY, BIG, { ...TINY, id: 'damaged', file: 'damaged.gguf', bytes: DAMAGED.length }]);
+check('a chat with only a system prompt is refused', /^empty:/.test(errs.empty), errs.empty);
+check('an unknown model is refused', /^unknown:/.test(errs.unknown), errs.unknown);
+check('downloads need the app', /^web: .*Android app/.test(errs.web), errs.web);
+check('a model that isn\'t there can\'t load', /^not-installed:/.test(errs.missing), errs.missing);
+check('a damaged model fails to load (wllama alone would say it loaded)', /^load:/.test(errs.damaged) && errs.afterDamaged === null, errs);
+check('a message longer than the context: "too long", and the model stays loaded', /^too-long: This chat is too long/.test(errs.tooLong) && errs.stillLoaded && errs.stillLoaded.id === 'tiny', errs.tooLong);
+check('the next chat works', errs.recovers.length > 0);
+
+/* ------------------------------------------------------------------ in the app (fake bridge) */
+section('Android bridge (fake)');
+const page2 = await ctx.newPage();
+await page2.addInitScript(([size]) => {
+  const installed = [{ id: 'tiny', file: 'tiny.gguf', bytes: size }];
+  // Like ModelStore: the last state of each download, including one paused before the page loaded.
+  const status = { qwen05: { id: 'qwen05', state: 'paused', loaded: 1000, total: 4000 } };
+  window.__earlier = [];
+  window.__emitted = [];
+  window.__gh = { onModelProgress: (p) => window.__earlier.push(`${p.id}:${p.state}`) }; // a hook that was there first
+  window.__calls = [];
+  const emit = (list) => list.forEach((p, i) => setTimeout(() => {
+    status[p.id] = p;
+    window.__emitted.push(`${p.id}:${p.state}`);
+    window.__gh.onModelProgress(p);
+  }, 10 * (i + 1)));
+  window.AndroidBridge = {
+    modelList: () => JSON.stringify(installed),
+    modelStatus: () => JSON.stringify(Object.values(status)),
+    modelDownload: (json) => {
+      const r = JSON.parse(json);
+      window.__calls.push(['download', r]);
+      if (r.id === 'tiny') {
+        emit([{ id: 'tiny', state: 'queued', loaded: 0, total: size }, { id: 'tiny', state: 'waiting-wifi', loaded: 0, total: size },
+          { id: 'tiny', state: 'downloading', loaded: size / 2, total: size, bps: 1e6 }, { id: 'tiny', state: 'verifying', loaded: size, total: size },
+          { id: 'tiny', state: 'done', loaded: size, total: size }]);
+      } else if (r.id === 'qwen05') {
+        emit([{ id: 'qwen05', state: 'error', error: 'space', loaded: 0, total: r.bytes, needed: r.bytes + 314572800, free: 200 * 1048576 }]);
+      } else emit([{ id: r.id, state: 'downloading', loaded: 1, total: r.bytes }]);
+      return true;
+    },
+    modelCancel: (id) => { window.__calls.push(['cancel', id]); emit([{ id, state: 'cancelled', loaded: 0, total: 0 }]); },
+    modelDelete: (id) => { window.__calls.push(['delete', id]); installed.length = 0; return true; },
+    deviceMemory: () => Math.round(3.6 * 2 ** 30), // a "4 GB" phone
+    modelFreeSpace: () => 5e9,
+  };
+}, [SIZE]);
+await open(page2);
+const app = await page2.evaluate(async ([tiny, big, qwen, other]) => {
+  const llm = await GH.lazy('llm');
+  llm.configure({ models: [tiny, big, qwen, other] });
+  const seen = [];
+  llm.onProgress((p) => seen.push(p));
+  const out = { available: llm.available(), ram: llm.ramGB(), offered: llm.offered().map((m) => m.id), free: llm.freeSpace(), installed: await llm.installed() };
+  await new Promise((r) => setTimeout(r, 20));
+  out.replayed = seen.map((p) => `${p.id}:${p.state}`);
+  out.memory = await llm.download('big').then(() => 'resolved', (e) => e.code);
+  out.done = await llm.download('tiny', { wifiOnly: true });
+  out.states = seen.filter((p) => p.id === 'tiny').map((p) => p.state);
+  out.wifi = (seen.find((p) => p.state === 'waiting-wifi') || {}).message;
+  out.half = (seen.find((p) => p.state === 'downloading' && p.id === 'tiny') || {}).fraction;
+  out.space = await llm.download('qwen05').then(() => 'resolved', (e) => `${e.code}: ${e.message}`);
+  const pending = llm.download('other');
+  await new Promise((r) => setTimeout(r, 30));
+  llm.cancel('other');
+  out.cancelled = await pending.then(() => 'resolved', (e) => e.code);
+  out.status = llm.status().map((p) => `${p.id}:${p.state}`).sort();
+  out.loadInfo = await llm.load('tiny');
+  out.reply = await llm.chat([{ role: 'user', content: 'Hi' }], { maxTokens: 6 });
+  out.removed = await llm.remove('tiny');
+  out.afterRemove = { loaded: llm.loaded(), installed: await llm.installed() };
+  out.calls = window.__calls;
+  out.earlier = window.__earlier;
+  out.emitted = window.__emitted;
+  return out;
+}, [TINY, BIG, { ...TINY, id: 'qwen05', file: 'qwen.gguf', bytes: 491400032, minRamGB: 3 }, { ...TINY, id: 'other', file: 'other.gguf' }]);
+check('available in the app', app.available.ok, app.available);
+check('a phone that reports 3.6 GB counts as 4 GB', app.ram === 4, app.ram);
+check('the 8 GB model isn\'t offered on it', app.offered.join() === 'tiny,qwen05,other', app.offered);
+check('free space comes from the app', app.free === 5e9);
+check('installed() comes from the app', app.installed.length === 1 && app.installed[0].file === 'tiny.gguf');
+check('onProgress replays downloads the app already has (after a reload)', app.replayed.includes('qwen05:paused'), app.replayed);
+check('a model that needs more memory is refused before downloading', app.memory === 'memory' && !app.calls.some(([k, r]) => k === 'download' && r.id === 'big'));
+const request = (app.calls.find(([k, r]) => k === 'download' && r.id === 'tiny') || [])[1] || {};
+check('download() hands the app id, url, file, size, SHA-256 and Wi-Fi only', request.url === TINY.url && request.file === 'tiny.gguf' && request.bytes === SIZE && request.wifiOnly === true && 'sha256' in request, request);
+check('download() resolves when the app says done', app.done && app.done.id === 'tiny' && app.done.bytes === SIZE, app.done);
+check('progress goes through every state', app.states.join() === 'queued,waiting-wifi,downloading,verifying,done', app.states);
+check('waiting for Wi-Fi reads "Download paused: waiting for Wi-Fi"', app.wifi === 'Download paused: waiting for Wi-Fi', app.wifi);
+check('progress has a fraction', app.half === 0.5, app.half);
+// needs 491400032 + 300 MB margin, has 200 MB: 569 MB short
+check('no space: rejects with "Not enough free space" and how much to free', app.space === 'space: Not enough free space. Free up 569 MB and try again.', app.space);
+check('cancel() tells the app and rejects the download', app.cancelled === 'cancelled' && app.calls.some(([k, id]) => k === 'cancel' && id === 'other'));
+check('status() lists every download', ['qwen05:error', 'tiny:done', 'other:cancelled'].every((s) => app.status.includes(s)), app.status);
+check('the app\'s models load from models/<file> on the page\'s own origin', app.loadInfo.id === 'tiny' && app.reply.length > 0);
+check('remove() unloads, then deletes through the app', app.removed === true && app.afterRemove.loaded === null && app.afterRemove.installed.length === 0 && app.calls.some(([k, id]) => k === 'delete' && id === 'tiny'));
+check('the hook that was there first still gets every event', app.earlier.join() === app.emitted.join() && app.emitted.length === 8, { earlier: app.earlier, emitted: app.emitted });
+
+section('Page');
+check('no page errors', errors.length === 0, errors);
+check('the only missing files were the ones looked for on purpose', missing.every((p) => p === '/models/big.gguf'), missing);
+
+await browser.close();
+server.close();
+done();

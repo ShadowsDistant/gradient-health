@@ -97,6 +97,8 @@ export const APP_SCRIPTS = [
 // and GH.lazy(name) loads on demand. Entries: { name, entry?, assets?: [[from, to]] }.
 export const LAZY = [
   { name: 'barcode', entry: 'src/barcode.js', assets: [['node_modules/zxing-wasm/dist/reader/zxing_reader.wasm', 'zxing_reader.wasm']] },
+  // On-device AI: llama.cpp compiled to WebAssembly (@wllama/wllama). v3 ships one wasm for every mode.
+  { name: 'llm', entry: 'src/llm.js', assets: [['node_modules/@wllama/wllama/esm/wasm/wllama.wasm', 'wllama/wllama.wasm']] },
 ];
 
 async function buildLazy() {

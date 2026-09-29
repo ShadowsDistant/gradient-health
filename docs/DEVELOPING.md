@@ -16,6 +16,7 @@ src/health.js            Health Connect client (read and write), hand logs, per-
 src/insights.js          on-device insights
 src/coach.js             the built-in coach (weekly report, answers) and the Claude app hand-off
 src/ai.js                the Claude API coach (bundled with the Anthropic SDK by esbuild)
+src/llm.js               on-device AI runtime (llama.cpp in WebAssembly), a lazy chunk: GH.lazy('llm')
 src/store.js             local + file persistence, backup and restore, migrations
 src/platform.js          haptics, vibration, sounds, theme and system bars, insets, back button
 src/ui/core.js           layout, router, in-place rendering (U.morph), transitions, sync, events
@@ -25,6 +26,7 @@ src/ui/*.js              screens: onboarding, player, today, plan, health, progr
 scripts/build.mjs        inlines everything into dist/gradient-health.html
 scripts/build-apk.sh     builds and signs the APK without Gradle
 scripts/screenshots.mjs  renders docs/screenshots/ from the built page
+scripts/make-tiny-gguf.py  a tiny random-weight model for test/llm.mjs
 ```
 
 ```sh
@@ -32,6 +34,7 @@ npm ci
 npm test          # simulations, insights, AI (mocked API), coach and sync, poses, persistence
 npm run build     # dist/gradient-health.html
 npm run smoke     # end-to-end run in Chromium (needs Playwright); add --dark for dark mode
+npm run test:llm  # on-device AI runtime in Chromium with a tiny model (see On-device AI)
 npm run apk       # build/gradient-health.apk (see below)
 node scripts/screenshots.mjs          # docs/screenshots/, light and dark
 node test/contact-sheet.mjs [filter,…] [--dark]   # every move's keyframes, to build/
@@ -102,6 +105,35 @@ question plus the same privacy-safe summary the API coach uses (`GH.ai.summary`)
 
 **Privacy.** Health data stays on the phone. Android's device backup can include the app's data;
 `android/res/xml/*backup*` rules leave the API key out of it.
+
+## On-device AI
+
+`src/llm.js` runs a small open model on the phone: llama.cpp compiled to WebAssembly
+([@wllama/wllama](https://github.com/ngxson/wllama), whose one wasm is copied to `dist/lazy/wllama/`),
+single-threaded because Android WebView has no `SharedArrayBuffer`, and on WebGPU only when a quick
+f16 self-test passes. It's a lazy chunk: `await GH.lazy('llm')` sets `GH.llm`. The models are Qwen2.5
+0.5B ("Standard") and 1.5B ("Better answers", offered with 8 GB of RAM or more) Instruct in Q4_K_M from
+Qwen's Hugging Face repos; the table at the top of `src/llm.js` pins each file's size and SHA-256.
+
+- **Downloads** run in Java (`ModelStore.java`, started by `AndroidBridge.modelDownload`): one at a
+  time, only from Hugging Face, resumable from a `.part` file, optionally Wi-Fi only, after a free-space
+  check. A file counts as installed once its size, GGUF magic and SHA-256 check out. Progress goes to
+  `__gh.onModelProgress` at most 4 times a second; after a page reload `AndroidBridge.modelStatus()`
+  reports it again. Models live in `noBackupFilesDir/models/`, so they stay out of device backups.
+- **Loading.** `MainActivity` serves installed models at `https://appassets.androidplatform.net/models/`
+  with HTTP Range support, and wllama reads them through a Range-backed stand-in for a `Blob`, so a model
+  is never copied into browser storage. WebView applies a request's Range a second time to what
+  `shouldInterceptRequest` returns (it skips the range's start on the stream), so a ranged body starts
+  with that many skippable bytes (`ModelStore.Slice`).
+- **Tests.** The real models can't be downloaded in tests, so `scripts/make-tiny-gguf.py` writes a tiny
+  random-weight llama model with a ChatML template to `build/tiny.gguf` (it needs the `gguf` package).
+  `test/llm.mjs` serves it to the built page and checks loading, streaming, the KV cache, abort,
+  unloading and the download API (against a fake bridge), and prints the tiny model's speed:
+
+  ```sh
+  python3 -m venv build/venv && build/venv/bin/pip install gguf numpy
+  npm run build && npm run test:llm      # makes build/tiny.gguf on the first run
+  ```
 
 ## Publishing on Google Play
 

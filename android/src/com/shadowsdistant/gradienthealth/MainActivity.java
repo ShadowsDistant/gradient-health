@@ -889,6 +889,10 @@ public final class MainActivity extends Activity {
             if (path.startsWith("/lazy/")) {
                 return assetResponse(path.substring(1));
             }
+            if (path.startsWith("/models/")) {
+                // Downloaded on-device AI models, read in pieces with Range requests (ModelStore).
+                return ModelStore.get(MainActivity.this).serve(path.substring("/models/".length()), request);
+            }
             return emptyResponse(404, "Not Found");
         }
 

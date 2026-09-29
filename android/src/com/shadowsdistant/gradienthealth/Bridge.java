@@ -1,5 +1,6 @@
 package com.shadowsdistant.gradienthealth;
 
+import android.app.ActivityManager;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -502,6 +503,87 @@ public final class Bridge {
             HealthBridge.writeWorkout(activity, json);
         } catch (Throwable ignored) {
         }
+    }
+
+    // ---------------------------------------------------------------- on-device AI models (ModelStore)
+
+    /** Installed models: [{"id","file","bytes"}]. */
+    @JavascriptInterface
+    public String modelList() {
+        try {
+            return models().listJson();
+        } catch (Throwable t) {
+            return "[]";
+        }
+    }
+
+    /** Downloads running, waiting, finished or failed this run, and paused ones from before. */
+    @JavascriptInterface
+    public String modelStatus() {
+        try {
+            return models().statusJson();
+        } catch (Throwable t) {
+            return "[]";
+        }
+    }
+
+    /**
+     * Downloads a model in the background ({"id","url","file","bytes","sha256"?,"wifiOnly"}); a
+     * partial one resumes. Progress arrives through window.__gh.onModelProgress. False if invalid.
+     */
+    @JavascriptInterface
+    public boolean modelDownload(String json) {
+        try {
+            return models().download(json);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** Stops a download and deletes the partial file (a paused one too). */
+    @JavascriptInterface
+    public void modelCancel(String id) {
+        try {
+            models().cancel(id == null ? "" : id);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** Deletes an installed model (and stops any download of it). */
+    @JavascriptInterface
+    public boolean modelDelete(String id) {
+        try {
+            return models().delete(id == null ? "" : id);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** Free bytes on the storage the models go to, or -1. */
+    @JavascriptInterface
+    public long modelFreeSpace() {
+        try {
+            return models().freeSpace();
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
+    /** The phone's total RAM in bytes (a little under what it was sold with), or 0. */
+    @JavascriptInterface
+    public long deviceMemory() {
+        try {
+            ActivityManager am = (ActivityManager) activity.getSystemService(Context.ACTIVITY_SERVICE);
+            ActivityManager.MemoryInfo info = new ActivityManager.MemoryInfo();
+            am.getMemoryInfo(info);
+            return info.totalMem;
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    private ModelStore models() {
+        return ModelStore.get(activity);
     }
 
     private void deliverHealthFailure(String error) {
