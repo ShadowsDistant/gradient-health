@@ -147,7 +147,8 @@ for (const [width, theme, zoom, h] of COMBOS) {
     ['plan', async () => { await page.evaluate(() => window.GH.ui.go('plan')); }],
     ['plan-light', async () => { await page.evaluate(() => window.GH.ui.go('plan')); await settle(); await page.evaluate(() => { const b = document.querySelector('#screen .pw-page:not([aria-hidden]) .pw-day[data-kind="light"] .pw-pill'); if (b) b.click(); }); }],
     ['plan-move', async () => { await page.evaluate(() => window.GH.ui.go('plan')); await settle(); await page.evaluate(() => { const b = document.querySelector('#screen .pw-page:not([aria-hidden]) .pw-day[data-kind="workout"] .pw-pill'); if (b) b.click(); }); await settle(); await page.evaluate(() => { const b = document.querySelector('#screen .pw-card [data-act="planMoveOpen"]'); if (b) b.click(); }); await settle(); await page.evaluate(() => { const m = document.querySelector('#screen .pw-move'); if (m) m.scrollIntoView({ block: 'center' }); }); }],
-    ['plan-next', async () => { await page.evaluate(() => window.GH.ui.go('plan')); await settle(); await page.evaluate(() => { const b = document.querySelector('#screen [data-act="planWeek"][data-arg="1"]'); if (b) b.click(); }); }],
+    // The week slides with a CSS transition, which runs on real time rather than the test clock.
+    ['plan-next', async () => { await page.evaluate(() => window.GH.ui.go('plan')); await settle(); await page.evaluate(() => { const b = document.querySelector('#screen [data-act="planWeek"][data-arg="1"]'); if (b) b.click(); }); await page.waitForTimeout(900); }],
     ['plan-info', async () => { await page.evaluate(() => window.GH.ui.go('plan')); await settle(); await act('planPhase'); }],
     ['food', async () => { await page.evaluate(() => window.GH.ui.go('food')); }],
     ['health', async () => { await page.evaluate(() => window.GH.ui.go('health')); }],

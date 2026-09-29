@@ -120,7 +120,7 @@
       e.moveTo = (kind === 'today' || kind === 'workout') && !e.active ? free.filter((x) => x !== d) : [];
       e.canMove = e.moveTo.length > 0;
       // The next workout, when today is a light or rest day: it can be trained today instead.
-      e.next = !A && (plan.type === 'light' || plan.type === 'rest') && !!plan.next && plan.next.day === d;
+      e.canTrainToday = !A && (plan.type === 'light' || plan.type === 'rest') && !!plan.next && plan.next.day === d;
       // Today's session as Today shows it (with readiness); later ones without.
       sessionFields(e, kind === 'today' || kind === 'workout' ? () => (e.active ? A.session : b.buildSession(S, d, s.tpl, { cal, noReadiness: d !== day })) : null);
       days.push(e);
@@ -140,7 +140,7 @@
       e.tpl = t ? t.idx : null;
       e.units = t ? t.units.slice() : [];
       e.title = t ? b.templateTitle(t.units) : e.kind === 'light' ? 'Light day' : 'Rest day';
-      e.active = null; e.log = null; e.missed = null; e.movedFrom = null; e.moveTo = []; e.canMove = false; e.next = false;
+      e.active = null; e.log = null; e.missed = null; e.movedFrom = null; e.moveTo = []; e.canMove = false; e.canTrainToday = false;
       e.light = e.kind === 'light' ? { walk: false, mobility: false, walkSrc: null, walkMin: prog.walkMin, done: false } : null;
       sessionFields(e, t ? () => b.buildSession(S, d, t.idx, { cal, noReadiness: true }) : null);
       nextDays.push(e);

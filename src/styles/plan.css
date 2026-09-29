@@ -120,9 +120,9 @@ button.pw-ex-row:focus-visible { outline: 2px solid var(--focus-ring); outline-o
 
 /* Start, Move, Train today instead. */
 .pw-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.pw-go { flex: 1 1 11em; }
-.pw-mv { flex: 0 1 auto; }
-.pw-mv.pw-grow { flex: 1 1 auto; }
+/* Start takes most of the row; when the row wraps (narrow phone, large text), Move fills its own. */
+.pw-go { flex: 999 1 11em; }
+.pw-mv { flex: 1 1 auto; }
 .pw-train { justify-self: start; margin: calc(-1 * var(--space-1)) 0 0 calc(-1 * var(--space-3)); text-align: start; height: auto; min-block-size: var(--hit-min); white-space: normal; }
 .pw-move { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--fill-3); animation: pw-rise 380ms var(--ease-out-soft) both; }
 .pw-move > p { margin: 0; }

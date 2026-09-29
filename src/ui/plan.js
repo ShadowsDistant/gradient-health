@@ -67,22 +67,24 @@
   }
   const markHtml = (k) => `<span class="pw-mark" data-mark="${k}" data-key="m-${k}" aria-hidden="true">${markInner(k)}</span>`;
   const KIND_WORDS = { done: 'done', today: 'workout today', workout: 'workout', light: 'light day', rest: 'rest day', missed: 'missed', frozen: 'missed, freeze used', before: 'before you started' };
-  function pill(e, day) {
+  // Only one day per week is in the Tab order (the picked one); arrow keys move between days.
+  function pill(e, day, focusDay) {
     const sel = e.day === view.day;
     const k = markKind(e);
     const what = e.kind === 'light' && e.light && e.light.done ? 'light day, done' : e.kind === 'today' || e.kind === 'workout' || e.kind === 'done' ? `${KIND_WORDS[e.kind]}: ${e.title}` : KIND_WORDS[e.kind];
     const label = `${e.wdLong}, ${e.short}${e.isToday ? ', today' : ''}: ${what}`;
     return `<li class="pw-day" role="presentation" data-key="d${e.day}" data-kind="${e.kind}"${e.isToday ? ' data-today' : ''}${e.isPast ? ' data-past' : ''}>
-      <button type="button" class="pw-pill" role="tab" aria-selected="${sel}" data-act="planPick" data-arg="${e.day}"${e.canMove ? ' data-drag' : ''} aria-label="${U.esc(label)}">
+      <button type="button" class="pw-pill" role="tab" aria-selected="${sel}" tabindex="${e.day === focusDay ? 0 : -1}" data-act="planPick" data-arg="${e.day}"${e.canMove ? ' data-drag' : ''} aria-label="${U.esc(label)}">
         <span class="pw-wd">${U.esc(e.letter)}</span><span class="pw-num rf-num">${e.num}</span>${markHtml(k)}
       </button></li>`;
   }
   function strip(w, day, page) {
     const pageHtml = (list, idx) => {
       const at = list.findIndex((x) => x.day === view.day);
+      const focusDay = at >= 0 ? view.day : (list.find((x) => x.isToday) || list[0]).day;
       return `<div class="pw-page" data-key="p${idx}" style="--n:${idx}"${idx !== page ? ' aria-hidden="true" inert' : ''}>
         <span class="pw-sel${at < 0 ? ' is-off' : ''}" aria-hidden="true" style="--i:${Math.max(0, at)}"></span>
-        <ul class="plan-list pw-days" role="tablist" aria-label="${idx ? 'Next week' : 'This week'}">${list.map((e) => pill(e, day)).join('')}</ul>
+        <ul class="plan-list pw-days" role="tablist" aria-label="${idx ? 'Next week' : 'This week'}">${list.map((e) => pill(e, day, focusDay)).join('')}</ul>
       </div>`;
     };
     const first = page ? w.next.ws : w.ws;
@@ -152,9 +154,9 @@
     }
     if (e.canMove) {
       const open = view.moving === e.day;
-      out.push(`<button type="button" class="rf-btn pw-mv${e.kind === 'today' ? '' : ' pw-grow'}" data-variant="${e.kind === 'today' ? 'gray' : 'soft'}" data-size="lg" data-act="planMoveOpen" data-arg="${e.day}" aria-expanded="${open}">${U.icon(open ? 'close' : 'calendar')}${open ? 'Cancel' : e.kind === 'today' ? 'Move' : 'Move to another day'}</button>`);
+      out.push(`<button type="button" class="rf-btn pw-mv" data-variant="${e.kind === 'today' ? 'gray' : 'soft'}" data-size="lg" data-act="planMoveOpen" data-arg="${e.day}" aria-expanded="${open}">${U.icon(open ? 'close' : 'calendar')}${open ? 'Cancel' : e.kind === 'today' ? 'Move' : 'Move to another day'}</button>`);
     }
-    const train = e.next && w.trainToday ? `<button type="button" class="rf-btn pw-train" data-variant="plain" data-act="planTrainToday">${U.icon('bolt')}Train today instead</button>` : '';
+    const train = e.canTrainToday && w.trainToday ? `<button type="button" class="rf-btn pw-train" data-variant="plain" data-act="planTrainToday">${U.icon('bolt')}Train today instead</button>` : '';
     return (out.length ? `<div class="pw-actions">${out.join('')}</div>` : '') + train;
   }
   function movePanel(e, day) {
@@ -508,6 +510,21 @@
     vp.addEventListener('pointercancel', end);
     vp.addEventListener('click', (ev) => { if (Date.now() < blockClick) { ev.stopPropagation(); ev.preventDefault(); } }, true);
     vp.addEventListener('contextmenu', (ev) => ev.preventDefault());
+    // Keyboard: arrows move between the days of the week shown, Home and End go to either end.
+    vp.addEventListener('keydown', (ev) => {
+      const p = ev.target.closest && ev.target.closest('.pw-pill');
+      if (!p) return;
+      const list = Array.from(p.closest('.pw-days').querySelectorAll('.pw-pill'));
+      const i = list.indexOf(p);
+      const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: list.length - 1 }[ev.key];
+      if (to == null) return;
+      ev.preventDefault();
+      if (to < 0 || to >= list.length || to === i) return;
+      const d = list[to].dataset.arg;
+      U.act.planPick(list[to]);
+      const again = vp.querySelector(`.pw-pill[data-arg="${d}"]`);
+      if (again) again.focus();
+    });
     // While a workout is picked up, the finger moves it, not the page.
     vp.addEventListener('touchmove', (ev) => { if (drag && ev.cancelable) ev.preventDefault(); }, { passive: false });
 

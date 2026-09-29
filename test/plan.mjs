@@ -96,7 +96,7 @@ section('A first week, day by day');
   const ws = B.weeklySets(S, MON);
   check('sets by muscle is weeklySets', w.muscles.length > 0 && w.muscles.every((m) => ws[m.group].done === m.done && ws[m.group].target === m.target && ws[m.group].planned === m.planned));
   check('light days know the walk length', w.days[2].light && w.days[2].light.walkMin === B.programFor(S.profile).walkMin && !w.days[2].light.done);
-  check('nothing to train today instead on a workout day', !w.trainToday && !w.days.some((e) => e.next));
+  check('nothing to train today instead on a workout day', !w.trainToday && !w.days.some((e) => e.canTrainToday));
 
   doWorkout(S, MON);
   w = rules(S, MON + 1, 'Tuesday after Monday\'s workout');
@@ -141,7 +141,7 @@ section('Moving a workout');
   check('moving today\'s workout to Wednesday', B.moveSession(S, day, MON + 2, day));
   w = rules(S, day, 'after moving Tuesday to Wednesday');
   check('today is light, and Wednesday has Tuesday\'s workout', w.days[1].kind === 'light' && w.days[2].kind === 'workout' && w.days[2].title === tueTitle);
-  check('with the next workout offered for today', w.trainToday && w.trainToday.from === MON + 2 && w.days[2].next && w.days.filter((e) => e.next).length === 1);
+  check('with the next workout offered for today', w.trainToday && w.trainToday.from === MON + 2 && w.days[2].canTrainToday && w.days.filter((e) => e.canTrainToday).length === 1);
   // Undo = take the move event back out.
   S.events = S.events.filter((e) => !(e.type === 'move' && e.from === day && e.to === MON + 2));
   w = rules(S, day, 'after undoing that');
@@ -156,7 +156,7 @@ section('Light and rest days, a start mid-week');
   light(S, MON + 2);
   const w = rules(S, MON + 2, 'Wednesday, light day done');
   check('a done light day is light, done', w.days[2].kind === 'light' && w.days[2].isToday && w.days[2].light.done);
-  check('and the next workout could be trained today', w.trainToday && w.trainToday.from === MON + 3 && w.days[3].next);
+  check('and the next workout could be trained today', w.trainToday && w.trainToday.from === MON + 3 && w.days[3].canTrainToday);
   const R = fresh(MON + 2, { lightDays: false, days: 3 });
   const r = rules(R, MON + 2, 'a Wednesday start with light days off');
   check('Mon and Tue are before the start', r.days[0].kind === 'before' && r.days[1].kind === 'before' && !r.days[0].log && !r.days[0].canMove);
