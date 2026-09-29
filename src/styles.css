@@ -52,7 +52,7 @@ button:not([class*="rf-"]) { font: inherit; }
 .app { position: fixed; inset: 0; overflow: hidden; background: var(--bg); }
 .screen { position: absolute; inset: 0; overflow-x: hidden; overflow-y: auto; box-sizing: border-box; padding: var(--topbar-h) var(--sar) calc(var(--float-gap) + 96px) var(--sal); scrollbar-width: none; outline: none; }
 .screen::-webkit-scrollbar { display: none; }
-.screen[data-view="settings"], .screen[data-view="privacy"], .screen[data-view="profile"], .screen[data-view="science"], .screen[data-view="whatsnew"] { padding-bottom: calc(var(--sab) + var(--space-10)); }
+.screen[data-view] { padding-bottom: calc(var(--sab) + var(--space-10)); }
 
 /* The one navigation bar: it stays put while screens change under it. Its frosted edge reaches up
    behind the status bar, so the top of the screen reads as one surface. */
@@ -503,3 +503,34 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 .pl-load:active { scale: .97; }
 .load-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-3) 0; }
 .load-label { margin: var(--space-4) 0 0; }
+
+/* Coach: the Today card and the Coach page. */
+.co-card { gap: var(--space-3); cursor: pointer; }
+.co-head { display: flex; align-items: center; gap: var(--space-2); }
+.co-head > svg:first-child { color: var(--accent); }
+.co-more { display: inline-flex; align-items: center; gap: 2px; color: var(--accent); font-weight: 600; }
+.co-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.co-dec { display: grid; grid-template-columns: 30px 1fr; gap: var(--space-3); align-items: start; }
+.co-dec .co-ico { width: 30px; height: 30px; }
+.co-dec-text { display: grid; gap: 2px; min-width: 0; }
+.co-dec-text .why-link { justify-self: start; margin-inline-start: calc(-1 * var(--space-2)); }
+.co-sug { gap: var(--space-2); }
+.co-sug-head { display: flex; align-items: center; gap: var(--space-2); }
+.co-sug-head .rf-list-icon { width: 30px; height: 30px; }
+.co-ask-ai { justify-self: start; }
+.co-watch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.co-w { display: grid; gap: 4px; align-content: start; padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); min-width: 0; }
+.co-w-top { display: flex; align-items: center; gap: 6px; color: var(--label-secondary); min-width: 0; }
+.co-w-top .t-footnote { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.co-w-note { display: flex; gap: 6px; align-items: baseline; color: var(--label-secondary); line-height: 1.35; }
+.co-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-fill); transform: translateY(-1px); }
+.co-dot[data-tone="positive"] { background: var(--positive); }
+.co-dot[data-tone="caution"] { background: var(--caution); }
+.co-targets { list-style: none; margin: var(--space-1) 0; padding: 0; display: grid; gap: var(--space-2); }
+.co-t { display: grid; grid-template-columns: 7.5em 1fr auto; gap: var(--space-3); align-items: center; }
+.co-t-name { font-size: .9375rem; font-weight: 550; white-space: nowrap; }
+.co-goal { font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); margin-inline-start: 4px; }
+.co-time { gap: var(--space-3); }
+.co-day-label { margin: 0 0 var(--space-1); font-weight: 600; }
+.co-chat { width: 100%; }
+@media (max-width: 360px) { .co-watch { grid-template-columns: minmax(0, 1fr); } }

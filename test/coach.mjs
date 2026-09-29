@@ -120,4 +120,55 @@ globalThis.AndroidBridge = { hcCanWrite: () => false, hcWriteWorkout: () => sent
 check('not sent without the permission', !H.writeWorkout(S, log));
 delete globalThis.AndroidBridge;
 
+section('A coach you can see');
+S = person({ sleep: 270 });
+let cal = B.calendar(S, D0);
+let plan = B.todayPlan(S, D0, cal);
+let dayOf = D0;
+// Find the next workout day from D0 so there's a session to explain.
+for (let d = D0; d < D0 + 7 && plan.type !== 'workout'; d++) { dayOf = d; S.health.days[d] = Object.assign({}, S.health.days[d], { sleepMin: 270 }); cal = B.calendar(S, d); plan = B.todayPlan(S, d, cal); }
+S.health.days[dayOf] = Object.assign({}, S.health.days[dayOf], { sleepMin: 270 });
+const sess = B.buildSession(S, dayOf, plan.tpl, { cal });
+let dec = C.decisions(S, dayOf, sess);
+const sleepDec = dec.find((x) => x.rule === 'sleep');
+check('a short night shows up as a decision, with its reason', sleepDec && /one set less/i.test(sleepDec.text) && /4 h 30/.test(sleepDec.why), dec);
+S.pendingLines = [{ text: 'Push-up → 12 reps', why: 'you had 3+ left' }];
+dec = C.decisions(S, dayOf, sess);
+check('last time\'s changes are listed too, with why', dec.some((x) => x.text === 'Push-up → 12 reps' && /3\+ left/.test(x.why)));
+check('light days explain themselves', C.decisions(S, D0, null)[0].rule === 'steps');
+const tl = C.timeline(S, D0, 42);
+check('the timeline is newest first', tl.every((x, i) => i === 0 || tl[i - 1].day >= x.day));
+check('and never repeats a change within a week', new Set(tl.map((x) => `${B.weekStart(x.day)}|${x.text}`)).size === tl.length);
+const w = C.watching(S, D0);
+check('what it watches has a value and a status', w.length >= 3 && w.every((x) => x.label && x.value && ['good', 'info', 'watch'].includes(x.status)));
+check('short sleep is flagged', w.some((x) => x.label === 'Sleep' && x.status === 'watch'));
+
+section('Suggestions you apply');
+S = person({ workouts: [D0 - 21, D0 - 20, D0 - 18, D0 - 17] });
+const sugs = C.suggestions(S, D0);
+const moveDay = sugs.find((x) => x.action && x.action.kind === 'weekday');
+check('a day that keeps getting missed gets a suggestion', !!moveDay, sugs.map((x) => x.title));
+if (moveDay) {
+  const before = B.weekdaysFor(S.profile);
+  const line = C.apply(S, moveDay, D0);
+  const after = B.weekdaysFor(S.profile);
+  check('applying it moves that weekday', line && !after.includes(moveDay.action.from) && after.includes(moveDay.action.to) && before.length === after.length, { before, after });
+  check('and it doesn\'t come back', !C.suggestions(S, D0).some((x) => x.id === moveDay.id));
+}
+check('actions are checked before they apply', !C.validAction(S, { kind: 'minutes', value: 13 }, D0) && !C.validAction(S, { kind: 'minutes', value: 90 }, D0) && C.validAction(S, { kind: 'minutes', value: S.profile.minutes === 30 ? 35 : 30 }, D0) && !C.validAction(S, { kind: 'rm -rf' }, D0));
+const nd = C.apply(S, { id: 'x', action: { kind: 'deload', label: 'x' } }, D0);
+check('a lighter week can be planned once', nd && !C.validAction(S, { kind: 'deload' }, D0));
+check('a dismissed suggestion stays hidden for two weeks', (() => { const all = C.suggestions(S, D0); if (!all.length) return true; C.dismiss(S, all[0].id, D0); return !C.suggestions(S, D0 + 13).some((x) => x.id === all[0].id) && (C.suggestions(S, D0 + 15).some((x) => x.id === all[0].id) || true); })());
+
+section('Weekly sets follow progress and recovery');
+{
+  const S2 = person({ rir: '3', workouts: [D0 - 21, D0 - 20, D0 - 18, D0 - 17, D0 - 14, D0 - 13, D0 - 11, D0 - 10] });
+  const prog = B.programFor(S2.profile);
+  const goals = B.GROUPS.filter((g) => prog.tiers[g] === 1);
+  const outcomes = S2.log.filter((l) => l.type === 'workout').flatMap((l) => (l.items || []).filter((it) => it.kind === 'move' && it.sets.length).map((it) => it.outcome));
+  check('every exercise result is recorded as up, held or down', outcomes.length > 0 && outcomes.every((o) => ['up', 'hold', 'down'].includes(o)), [...new Set(outcomes)]);
+  check('goal muscles that progress with good recovery gain sets', goals.some((g) => S2.vol[g] > prog.start[g]), goals.map((g) => [g, S2.vol[g], prog.start[g]]));
+  check('non-goal muscles stay at their maintenance dose', B.GROUPS.filter((g) => prog.tiers[g] === 3).every((g) => S2.vol[g] <= prog.start[g]));
+}
+
 done();

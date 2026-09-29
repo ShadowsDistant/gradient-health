@@ -245,5 +245,190 @@
     ].join('\n');
   }
 
-  GH.coach = { report, ask, topicOf, facts, claudePrompt };
+  /* ---------------------------------------------------------------- what the coach is doing */
+  // Today's decisions, each with its reason and the How it works rule behind it, so the plan never
+  // changes without saying why. session: today's built session, or null on a light or rest day.
+  function decisions(S, day, session) {
+    const b = B();
+    const M = GH.moves;
+    const out = [];
+    const s = session;
+    if (!s) {
+      out.push({ icon: 'leaf', tone: 'teal', text: 'Light day: a walk and 5 minutes of mobility', why: 'Recovery between workouts. Doing both keeps your streak going.', rule: 'steps' });
+      return out;
+    }
+    const r = s.readiness || { reasons: [] };
+    const why = (kind) => (r.reasons || []).find((x) => x.kind === kind);
+    if (r.minus) {
+      const sl = why('sleep');
+      const body = (r.reasons || []).filter((x) => ['rhr', 'hrv', 'feel'].includes(x.kind)).map((x) => x.text);
+      const sleepMin = (S.health.days[day] || {}).sleepMin;
+      out.push({ icon: sl ? 'moon' : 'heart', tone: sl ? 'indigo' : 'rose', text: 'One set less on each exercise', why: sl ? (sleepMin != null ? `You slept ${hrs(sleepMin)}.` : 'Under 5 hours of sleep.') : body.join(' '), rule: sl ? 'sleep' : 'hrv' });
+    }
+    const ex = why('exercise');
+    if (ex) out.push({ icon: 'bolt', tone: 'amber', text: 'Easier on your legs, no finisher', why: `${ex.text.split(':')[0]}.`, rule: 'sleep' });
+    if (s.phase && s.phase.deload) out.push({ icon: 'moon', tone: 'indigo', text: 'Deload week: about 40% less volume', why: 'Every 5th week, or sooner when workouts feel too hard on poor recovery.', rule: 'deload' });
+    else if (s.phase && s.phase.onramp) out.push({ icon: 'sun', tone: 'amber', text: 'Easing in with fewer sets this week', why: s.phase.idle ? 'Coming back after time off.' : 'Your first weeks build up gradually.', rule: 'volume' });
+    if (s.comeback) out.push({ icon: 'refresh', tone: 'teal', text: `About ${Math.round((1 - s.comeback.mult) * 100)}% lighter weights today`, why: `${s.comeback.days} days since your last workout.`, rule: 'comeback' });
+    for (const it of s.items || []) if (it.swappedFrom && M && M.MOVES[it.swappedFrom]) out.push({ icon: 'shuffle', tone: 'coral', text: `${M.MOVES[it.swappedFrom].name} swapped for ${it.name}`, why: 'A joint you flagged is having a break.', rule: null });
+    const first = (s.units || [])[0];
+    const prog = b.programFor(S.profile);
+    if (first && first !== 'chest' && first !== 'abs' && Math.min(...(({ arms: ['biceps', 'triceps'] })[first] || [first]).map((g) => prog.tiers[g] || 3)) === 1) {
+      out.push({ icon: 'flag', tone: 'green', text: `${first[0].toUpperCase() + first.slice(1)} first while you're fresh`, why: 'It\'s one of your top goals.', rule: 'order' });
+    }
+    const top = (S.profile.goals || []).slice(0, 2);
+    if (s.place === 'gym' && top.includes('strength') && (s.items || []).some((it) => ['pressG', 'squatG', 'hingeG', 'pullG', 'rowG', 'ohpG'].includes(it.fam))) out.push({ icon: 'bolt', tone: 'amber', text: 'Heavier sets of 4-8 on the main lifts', why: 'Strength is one of your top goals.', rule: 'ranges' });
+    const guesses = (s.items || []).filter((it) => it.load && it.load.guess).length;
+    if (guesses) out.push({ icon: 'dumbbell', tone: 'sky', text: `Pick your weight on ${guesses === 1 ? 'one new exercise' : `${guesses} new exercises`}`, why: 'Start with one you could lift about 12 times. It\'s remembered after that.', rule: 'overload' });
+    if (s.trimmed && s.trimmed.length) out.push({ icon: 'clock', tone: 'sky', text: `Trimmed to fit ${s.short ? '12-15' : S.profile.minutes} minutes`, why: `Left out: ${s.trimmed.map((x) => x.toLowerCase()).join(', ')}.`, rule: null });
+    for (const l of (S.pendingLines || []).filter((x) => x && x.text).slice(0, 3)) out.push({ icon: 'arrow-up-right', tone: 'green', text: l.text, why: l.why ? `${l.why[0].toUpperCase()}${l.why.slice(1)}.` : '', rule: 'overload' });
+    return out;
+  }
+
+  // Everything the coach changed recently, newest first: [{ day, text, why }].
+  function timeline(S, day, span) {
+    const n = span || 42;
+    const items = [];
+    for (const l of S.log) {
+      if (l.type !== 'workout' || !l.checkedIn || l.day <= day - n) continue;
+      for (const x of l.lines || []) if (x && x.text) items.push({ day: l.day, text: x.text, why: x.why || '' });
+    }
+    for (const e of S.events || []) {
+      if (e.day <= day - n || e.day > day) continue;
+      if (e.type === 'deloadNext') items.push({ day: e.day, text: 'Lighter week planned for next week', why: 'you asked for it, or recovery has been poor' });
+      else if (e.type === 'settings' && e.day > (S.profile.startDay || 0)) items.push({ day: e.day, text: `Schedule: ${e.days} days a week, ${e.minutes} min`, why: 'you changed it' });
+    }
+    // The same change repeated within a week (a deload note after every workout) shows once.
+    const seen = new Set();
+    return items.sort((a, b) => b.day - a.day).filter((x) => {
+      const k = `${B().weekStart(x.day)}|${x.text}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }
+
+  // What the coach keeps an eye on, each with a status: good, info or watch.
+  function watching(S, day) {
+    const f = facts(S, day);
+    const b = B();
+    const out = [];
+    if (f.planned || f.done) out.push({ icon: 'calendar', label: 'Workouts this week', value: `${f.done} of ${Math.max(f.planned, f.done)}`, status: f.missed ? 'watch' : 'good', note: f.missed ? 'The plan moved forward, so nothing doubles up.' : 'On plan.' });
+    if (f.rirN >= 6) {
+      const zero = f.rir['0'] / f.rirN, lots = f.rir['3'] / f.rirN;
+      out.push(zero > 0.4 ? { icon: 'timer', label: 'Effort', value: 'Often to failure', status: 'watch', note: 'Stopping 1-2 reps short grows muscle about as well with less fatigue.' }
+        : lots > 0.5 ? { icon: 'timer', label: 'Effort', value: 'Lots left in the tank', status: 'info', note: 'Honest answers move you up faster.' }
+          : { icon: 'timer', label: 'Effort', value: '1-3 reps left', status: 'good', note: 'Right where it should be.' });
+    }
+    if (f.sleep7.n >= 3) out.push({ icon: 'moon', label: 'Sleep', value: `${hrs(f.sleep7.avg)} a night`, status: f.sleep7.avg < 360 ? 'watch' : f.sleep7.avg < 420 ? 'info' : 'good', note: f.sleep7.avg < 420 ? 'Under 7 hours. A night under 5 takes a set off the next day.' : 'Enough for good recovery.' });
+    if (f.rhr7.n >= 3 && f.rhrBase.n >= 7) { const d = f.rhr7.avg - f.rhrBase.avg; out.push({ icon: 'heart', label: 'Resting heart rate', value: `${Math.round(f.rhr7.avg)} bpm`, status: d >= 5 ? 'watch' : 'good', note: d >= 5 ? `${Math.round(d)} above your usual ${Math.round(f.rhrBase.avg)}.` : `Around your usual ${Math.round(f.rhrBase.avg)}.` }); }
+    if (f.hrv7.n >= 3 && f.hrvBase.n >= 7) { const d = f.hrv7.avg / f.hrvBase.avg - 1; out.push({ icon: 'wave', label: 'HRV', value: `${Math.round(f.hrv7.avg)} ms`, status: d <= -0.15 ? 'watch' : 'good', note: d <= -0.15 ? `${pct(d)} below your usual.` : 'Around your usual.' }); }
+    const sg = b.stepsGoal(S, day);
+    if (f.steps7.n >= 3) out.push({ icon: 'navigate', label: 'Steps', value: `${Math.round(f.steps7.avg).toLocaleString('en-US')} a day`, status: f.steps7.avg >= sg.goal ? 'good' : f.steps7.avg >= sg.goal * 0.75 ? 'info' : 'watch', note: `Goal ${sg.goal.toLocaleString('en-US')}.` });
+    const w = f.weight;
+    if (w.avg7 != null && w.rate != null) out.push({ icon: 'chart', label: 'Weight trend', value: `${Math.abs(w.rate) < 0.002 ? 'Steady' : `${w.rate < 0 ? 'Down' : 'Up'} ${pct(w.rate)} a week`}`, status: w.warn ? 'watch' : 'good', note: w.warn || `Goal: ${S.profile.weightGoal === 'lose' ? 'lose' : S.profile.weightGoal === 'gain' ? 'gain' : 'maintain'}.` });
+    if (f.goal && f.proteinDays >= 3) out.push({ icon: 'check-circle', label: 'Protein', value: `${f.proteinHit} of ${f.proteinDays} days`, status: f.proteinHit >= f.proteinDays - 1 ? 'good' : 'watch', note: `Goal ${f.goal} g a day.` });
+    if (GH.food && GH.food.watchItem) { const x = GH.food.watchItem(S, day); if (x) out.push(x); }
+    // Gym lifts that have gone flat (the next flat session swaps them).
+    for (const [fam, st] of Object.entries(S.prog || {})) {
+      if (!st || !st.gym || !st.e1rm || !st.e1rm[st.rung]) continue;
+      const hist = st.e1rm[st.rung].hist || [];
+      if (hist.length >= 3 && Math.max(hist[hist.length - 1][1], hist[hist.length - 2][1]) <= hist[hist.length - 3][1] * 1.005) {
+        const m = GH.moves && GH.moves.MOVES[st.rung];
+        if (m) out.push({ icon: 'shuffle', label: m.name, value: 'No gain in 2 sessions', status: 'info', note: 'One more and it switches to another option for that muscle.' });
+      }
+    }
+    return out;
+  }
+
+  /* ---------------------------------------------------------------- suggestions */
+  const WD = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  // Things the coach would change if you agree. Each one has an id (dismissals stick for two weeks),
+  // a title and reason, and an action the app can apply, or none for plain advice.
+  function suggestions(S, day) {
+    const b = B();
+    const out = [];
+    const p = S.profile;
+    const cal = b.calendar(S, day);
+    // 1. The same weekday keeps getting missed.
+    const misses = {};
+    for (let d = day - 28; d < day; d++) { const i = cal.days[d]; if (i && i.missed) { const wd = b.weekday(d); misses[wd] = (misses[wd] || 0) + 1; } }
+    const offsets = b.weekdaysFor(p);
+    for (const [wdStr, n] of Object.entries(misses)) {
+      const wd = Number(wdStr);
+      if (n < 2 || !offsets.includes(wd)) continue;
+      // The nearest free day, preferring later in the week.
+      const free = [1, -1, 2, -2, 3].map((k) => (wd + k + 7) % 7).find((x) => !offsets.includes(x));
+      if (free == null) continue;
+      out.push({ id: `wd-${wd}-${free}`, icon: 'calendar', title: `Move ${WD[wd]} workouts to ${WD[free]}?`, body: `${WD[wd]} got missed ${n} times in the last four weeks.`, action: { kind: 'weekday', from: wd, to: free, label: `Move to ${WD[free]}` } });
+      break;
+    }
+    // 2. Workouts keep running longer (or shorter) than the time you picked.
+    const recent = S.log.filter((l) => l.type === 'workout' && l.checkedIn && l.day > day - 21 && l.startedAt && l.endedAt && !l.short);
+    if (recent.length >= 3) {
+      const avg = recent.reduce((a, l) => a + (l.endedAt - l.startedAt) / 60000, 0) / recent.length;
+      const want = Math.max(10, Math.min(60, Math.round(avg / 5) * 5));
+      if (avg > p.minutes + 8 && want !== p.minutes) out.push({ id: `min-${want}`, icon: 'clock', title: `Plan for ${want} minutes?`, body: `Your workouts have been taking about ${Math.round(avg)} minutes, not ${p.minutes}.`, action: { kind: 'minutes', value: want, label: `Set ${want} min` } });
+    }
+    // 3. Too hard, twice lately, and no lighter week coming.
+    const lastLogs = S.log.filter((l) => l.type === 'workout' && l.checkedIn).slice(-3);
+    const hard = lastLogs.filter((l) => l.checkin && l.checkin.rating === 'hard').length;
+    const ws = b.weekStart(day);
+    const week = cal.weeks[ws];
+    if (hard >= 2 && !(week && week.phase.deload) && !(S.events || []).some((e) => e.type === 'deloadNext' && b.weekStart(e.day) === ws)) {
+      out.push({ id: `deload-${ws}`, icon: 'moon', title: 'Take a lighter week next week?', body: `${hard} of your last ${lastLogs.length} workouts felt too hard. A lighter week sheds the fatigue without losing muscle.`, action: { kind: 'deload', label: 'Plan a lighter week' } });
+    }
+    // 4. Too easy, again and again: more sets for the top goals.
+    const easy = S.log.filter((l) => l.type === 'workout' && l.checkedIn).slice(-4).filter((l) => l.checkin && l.checkin.rating === 'easy').length;
+    const prog = b.programFor(p);
+    const room = b.GROUPS.filter((g) => prog.tiers[g] === 1 && S.vol[g] < prog.cap[g]);
+    if (easy >= 3 && room.length) out.push({ id: `vol-${ws}`, icon: 'layers', title: 'Add a set a week to your top goals?', body: `${easy} of your last 4 workouts felt too easy.`, action: { kind: 'volume', label: 'Add sets' } });
+    // 5. Plain advice.
+    const f = facts(S, day);
+    if (f.sleep7.n >= 4 && f.sleep7.avg < 390) out.push({ id: `tip-sleep-${ws}`, icon: 'moon', title: 'Aim for an earlier, steadier bedtime', body: `You're averaging ${hrs(f.sleep7.avg)}. A regular bedtime, weekends included, helps more than catching up.` });
+    if (f.goal && f.proteinDays >= 3 && f.proteinHit < f.proteinDays / 2) out.push({ id: `tip-protein-${ws}`, icon: 'check-circle', title: `Get to ${f.goal} g of protein`, body: `You hit it on ${f.proteinHit} of ${f.proteinDays} days. One ${p.protein.quickName || 'shake'} on training days goes a long way.` });
+    const sg = b.stepsGoal(S, day);
+    if (f.steps7.n >= 4 && f.steps7.avg < sg.goal * 0.75) out.push({ id: `tip-steps-${ws}`, icon: 'navigate', title: 'A walk after one meal a day', body: `You're at ${Math.round(f.steps7.avg).toLocaleString('en-US')} steps against a goal of ${sg.goal.toLocaleString('en-US')}. Ten minutes after a meal adds about 1,000.` });
+    if (GH.food && GH.food.suggestions) for (const x of GH.food.suggestions(S, day)) out.push(x);
+    const gone = S.coachDismissed || {};
+    return out.filter((x) => !(gone[x.id] > day - 14)).concat(aiSuggestions(S, day).filter((x) => !(gone[x.id] > day - 14)));
+  }
+  // Suggestions Claude made (API mode), after validation: same shape as the built-in ones.
+  function aiSuggestions(S, day) {
+    const list = (S.ai && S.ai.suggestions && S.ai.suggestions.day > day - 7 ? S.ai.suggestions.items : []) || [];
+    return list.filter((x) => !x.action || validAction(S, x.action, day)).map((x) => Object.assign({ fromClaude: true }, x));
+  }
+  // Is an action one the app can safely apply right now?
+  function validAction(S, a, day) {
+    const b = B();
+    const p = S.profile;
+    if (!a || typeof a !== 'object') return false;
+    if (a.kind === 'minutes') return Number.isInteger(a.value) && a.value >= 10 && a.value <= 60 && a.value % 5 === 0 && a.value !== p.minutes;
+    if (a.kind === 'weekday') { const o = b.weekdaysFor(p); return Number.isInteger(a.from) && Number.isInteger(a.to) && o.includes(a.from) && !o.includes(a.to) && a.to >= 0 && a.to <= 6; }
+    if (a.kind === 'deload') return !(S.events || []).some((e) => e.type === 'deloadNext' && b.weekStart(e.day) === b.weekStart(day));
+    if (a.kind === 'volume') { const prog = b.programFor(p); return b.GROUPS.some((g) => prog.tiers[g] === 1 && S.vol[g] < prog.cap[g]); }
+    return false;
+  }
+  // Applies a suggestion's action; returns the lines to show (what changed).
+  function apply(S, sug, day) {
+    const b = B();
+    const a = sug && sug.action;
+    if (!validAction(S, a, day)) return null;
+    const p = S.profile;
+    let text;
+    if (a.kind === 'minutes') { b.reprogram(S, { minutes: a.value }, day); text = `Workouts planned for ${a.value} minutes`; }
+    else if (a.kind === 'weekday') { const w = b.weekdaysFor(p).map((x) => (x === a.from ? a.to : x)).sort((x, y) => x - y); b.reprogram(S, { weekdays: w }, day); text = `${WD[a.from]} workouts move to ${WD[a.to]}`; }
+    else if (a.kind === 'deload') { S.events.push({ type: 'deloadNext', day }); text = 'Next week is a lighter week'; }
+    else if (a.kind === 'volume') {
+      const prog = b.programFor(p);
+      const up = b.GROUPS.filter((g) => prog.tiers[g] === 1 && S.vol[g] < prog.cap[g]);
+      for (const g of up) S.vol[g]++;
+      text = `${list(up.map((g) => b.GROUP_NAME[g].toLowerCase()))} +1 set a week`;
+    }
+    dismiss(S, sug.id, day);
+    return { text: text[0].toUpperCase() + text.slice(1), why: sug.fromClaude ? 'suggested by Claude, applied by you' : 'you accepted the coach\'s suggestion' };
+  }
+  function dismiss(S, id, day) { S.coachDismissed = S.coachDismissed || {}; S.coachDismissed[id] = day; }
+
+  GH.coach = { report, ask, topicOf, facts, claudePrompt, decisions, timeline, watching, suggestions, validAction, apply, dismiss };
 })(typeof window !== 'undefined' ? window : globalThis);

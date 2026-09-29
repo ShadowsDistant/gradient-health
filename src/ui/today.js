@@ -54,10 +54,9 @@
   }
 
   /* ---------------------------------------------------------------- cards */
-  function workoutCard(S, day, plan, cal) {
-    const s = B().buildSession(S, day, plan.tpl, { short: isShort(day), cal });
+  function workoutCard(S, day, plan, cal, session) {
+    const s = session || B().buildSession(S, day, plan.tpl, { short: isShort(day), cal });
     const budget = isShort(day) ? '12-15' : (S.profile.minutes || 25);
-    const lines = (S.pendingLines || []).filter((l) => l && l.text).slice(0, 4);
     const where = S.profile.where || 'home';
     return `<div class="card session" data-key="main">
         <div class="session-head"><span class="rf-card-eyebrow">Workout · about ${U.roll(s.estimateMin)} min${where === 'gym' ? ' · gym' : ''}</span><span class="session-badges">${phaseBadges(plan.week, s)}</span></div>
@@ -67,7 +66,7 @@
         ${sessionRows(S, s)}
         ${s.trimmed && s.trimmed.length ? `<p class="t-footnote rf-muted">Trimmed to fit ${U.esc(budget)} min: ${U.esc(s.trimmed.map((x) => x.toLowerCase()).join(', '))}.</p>` : ''}
       </div>
-      ${lines.length ? `<div class="card lines" data-key="lines"><p class="t-headline">Since last time</p><ul class="plain-list">${lines.map((l) => `<li><span>${U.esc(l.text)}</span>${l.why ? `<span class="t-footnote rf-muted">${U.esc(U.cap(l.why))}</span>` : ''}</li>`).join('')}</ul>${U.whyLink ? U.whyLink('overload', 'How the plan adjusts') : ''}</div>` : ''}`;
+`;
   }
   U.on.setPlace = (el, ev, v) => { B().setPlace(U.S, U.today(), v); U.save(); U.render(); };
   function activeCard(S, day) {
@@ -157,19 +156,19 @@
       const plan = B().todayPlan(S, day, cal);
       const week = cal.weeks[B().weekStart(day)];
       const st = cal.streak;
-      const r = B().readiness(S, day);
       const sub = [U.fmtDay(day)];
       if (week) sub.push(`week ${week.trainingWeek}`);
+      // Today's session, built once for the workout card and the coach card.
+      const session = !S.active && plan.type === 'workout' ? B().buildSession(S, day, plan.tpl, { short: isShort(day), cal }) : null;
       let main;
       if (S.active) main = activeCard(S, day);
       else if (plan.type === 'done') main = doneCard(S, plan.log);
-      else if (plan.type === 'workout') main = workoutCard(S, day, plan, cal);
+      else if (plan.type === 'workout') main = workoutCard(S, day, plan, cal, session);
       else if (plan.type === 'light') main = lightCard(S, day, plan);
       else main = restCard(S, day, plan);
       const top = GH.insights ? GH.insights.top(S, day, 1)[0] : null;
       if (top && GH.insights.markShown) GH.insights.markShown(S, [top], day);
       const measure = GH.health && GH.health.measureDue(S, day);
-      const whyKind = r.reasons.some((x) => x.kind === 'sleep') ? 'sleep' : r.reasons.some((x) => x.kind === 'rhr' || x.kind === 'hrv') ? 'hrv' : 'autoreg';
       return `${U.navbar('Today', U.glassBtn('person', 'Profile', 'openProfile'))}
         <h1 class="rf-large-title">${U.esc(greeting(S))}</h1>
         <p class="lt-sub t-callout rf-muted">${U.esc(sub.join(' · '))}</p>
@@ -181,8 +180,8 @@
             </div>
             <p class="t-footnote rf-muted">${st.weekly ? `${U.plural(st.weekly, 'full week')} in a row · ` : ''}${st.freezeThisWeek ? 'Freeze used this week' : '1 freeze left this week'}${st.best > st.current ? ` · best ${st.best}` : ''}</p>
           </div>
-          ${r.reasons.length && !(plan.type === 'done') ? `<div class="notice" data-tone="caution" data-key="ready">${U.icon('bolt')}<span>${U.esc(r.reasons.map((x) => x.text).join(' '))} ${U.whyLink ? U.whyLink(whyKind) : ''}</span></div>` : ''}
           ${main}
+          ${plan.type !== 'done' && !S.active && U.coachCard ? U.coachCard(S, day, session) : ''}
           ${U.checklist ? U.checklist(S, day) : ''}
           ${feelCard(S, day)}
           ${proteinCard(S, day)}

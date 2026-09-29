@@ -83,6 +83,7 @@ export const APP_SCRIPTS = [
   'src/ui/progress.js',
   'src/ui/moves.js',
   'src/ui/profile.js',
+  'src/ui/coachpage.js',
   'src/ui/science.js',
   'src/ui/settings.js',
 ];

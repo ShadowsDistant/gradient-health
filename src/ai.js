@@ -326,4 +326,72 @@ async function ask(S, day, question, onText) {
 }
 function clearChat(S) { S.ai.chat = []; }
 
-GH.ai = { KEY_URL, hasKey, checkKey, setKey, deleteKey, summary, preview, report, reportFor, needsReport, ask, stop, clearChat, pickFrom, explain, MESSAGES, SYSTEM };
+// Suggestions: Claude may only propose the changes the app knows how to apply (checked again by
+// GH.coach.validAction before anything is shown), or plain tips. Nothing changes until the person
+// taps Apply.
+const WD = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const SUGGEST_SCHEMA = {
+  type: 'object',
+  properties: {
+    suggestions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          kind: { type: 'string', enum: ['minutes', 'weekday', 'deload', 'volume', 'tip'] },
+          title: { type: 'string' },
+          why: { type: 'string' },
+          minutes: { type: 'integer' },
+          from: { type: 'integer' },
+          to: { type: 'integer' },
+        },
+        required: ['kind', 'title', 'why'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['suggestions'],
+  additionalProperties: false,
+};
+function suggestAsk(S) {
+  const p = S.profile;
+  const on = B().weekdaysFor(p);
+  const free = [0, 1, 2, 3, 4, 5, 6].filter((d) => !on.includes(d));
+  return [
+    'Suggest up to 3 changes that would help this person with their goals, based on their data. Use only these kinds:',
+    `- minutes: planned workout length, 10-60 in steps of 5 (now ${p.minutes}). Put the value in "minutes".`,
+    `- weekday: move a workout day ("from") to a free day ("to"), 0 = Monday to 6 = Sunday. Workout days now: ${on.map((d) => `${d} (${WD[d]})`).join(', ')}. Free days: ${free.map((d) => `${d} (${WD[d]})`).join(', ') || 'none'}.`,
+    '- deload: a lighter week next week.',
+    '- volume: one more weekly set for their top-goal muscles.',
+    '- tip: advice that doesn\'t change the plan.',
+    'title: under 10 words. why: one sentence under 25 words using their numbers. Return an empty list if nothing needs changing.',
+  ].join('\n');
+}
+async function suggest(S, day) {
+  const c = client();
+  try {
+    const modelId = await model(S, c, day);
+    const stream = c.beta.messages.stream(Object.assign(baseParams(modelId, 8000, 'medium', S, day), {
+      output_config: { effort: 'medium', format: { type: 'json_schema', schema: SUGGEST_SCHEMA } },
+      messages: [{ role: 'user', content: suggestAsk(S) }],
+    }));
+    busy = stream;
+    const msg = await stream.finalMessage();
+    checkStop(msg);
+    let data;
+    try { data = JSON.parse(textOf(msg)); } catch (e) { throw coachError('other'); }
+    const items = (Array.isArray(data.suggestions) ? data.suggestions : []).slice(0, 3).map((x, i) => {
+      const action = x.kind === 'minutes' ? { kind: 'minutes', value: x.minutes, label: `Set ${x.minutes} min` }
+        : x.kind === 'weekday' ? { kind: 'weekday', from: x.from, to: x.to, label: `Move to ${WD[x.to] || ''}` }
+          : x.kind === 'deload' ? { kind: 'deload', label: 'Plan a lighter week' }
+            : x.kind === 'volume' ? { kind: 'volume', label: 'Add sets' } : null;
+      return { id: `ai-${day}-${i}`, icon: 'sparkle', title: String(x.title || '').trim().slice(0, 80), body: String(x.why || '').trim().slice(0, 240), action };
+    }).filter((x) => x.title && (!x.action || (GH.coach && GH.coach.validAction(S, x.action, day))));
+    S.ai.suggestions = { day, items };
+    return items.length;
+  } catch (err) {
+    throw explain(err);
+  } finally { busy = null; }
+}
+
+GH.ai = { KEY_URL, hasKey, checkKey, setKey, deleteKey, summary, preview, report, reportFor, needsReport, ask, suggest, stop, clearChat, pickFrom, explain, MESSAGES, SYSTEM };

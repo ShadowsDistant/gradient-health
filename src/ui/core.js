@@ -698,7 +698,7 @@
     const ready = U.S && U.S.profile.onboarded;
     if (route === 'privacy') { if (ready) U.open('privacy'); else if (U.showPrivacySheet) U.showPrivacySheet(); }
     else if (['health', 'plan', 'progress', 'moves', 'today'].includes(route)) { if (ready) go(route); }
-    else if (['profile', 'settings', 'science'].includes(route)) { if (ready) U.open(route); }
+    else if (['profile', 'settings', 'science', 'coach'].includes(route)) { if (ready) U.open(route); }
   }
   U.boot = boot;
   if (doc) {
