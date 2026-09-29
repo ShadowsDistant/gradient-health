@@ -1,0 +1,181 @@
+/* Plan tab: the week strip, the day card, sets by muscle and coming up (src/ui/plan.js). Movement is
+   transform and opacity only, and stops with reduced motion. */
+
+:root { --pw-teal: var(--hue-teal); --pw-sky: var(--hue-sky); --pw-indigo: var(--hue-indigo); --pw-lift: 0%; }
+:root[data-theme^="dark"] { --pw-teal: color-mix(in oklab, var(--hue-teal) 55%, #fff); --pw-sky: color-mix(in oklab, var(--hue-sky) 55%, #fff); --pw-indigo: color-mix(in oklab, var(--hue-indigo) 55%, #fff); --pw-lift: 22%; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) { --pw-teal: color-mix(in oklab, var(--hue-teal) 55%, #fff); --pw-sky: color-mix(in oklab, var(--hue-sky) 55%, #fff); --pw-indigo: color-mix(in oklab, var(--hue-indigo) 55%, #fff); --pw-lift: 22%; }
+}
+
+/* ---------------------------------------------------------------- navigation bar, summary */
+.pw-sched { gap: 6px; padding-inline: var(--space-3) var(--space-4); }
+.pw-sched > .rf-icon { --rf-icon-size: 18px; }
+.pw-sub { margin-bottom: var(--space-3); }
+.pw-info { appearance: none; border: 0; display: inline-grid; place-items: center; width: 34px; height: 34px; margin: -8px -6px -8px 0; padding: 0; vertical-align: middle; border-radius: 50%; background: none; color: var(--accent); cursor: pointer; --rf-icon-size: 18px; transition: scale var(--duration-spring-snappy) var(--spring-snappy); }
+.pw-info:active { scale: .88; transition-duration: var(--duration-instant); }
+.pw-info:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+
+/* ---------------------------------------------------------------- the week strip */
+.pw-strip { gap: var(--space-2); padding: var(--space-2) var(--space-2) var(--space-2); border-radius: var(--radius-xl); -webkit-user-select: none; user-select: none; }
+.pw-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 36px; padding-inline-start: var(--space-2); }
+.pw-head-text { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--space-2); min-width: 0; }
+.pw-wk { flex: none; gap: 2px; padding-inline: var(--space-2); }
+.pw-wk > .rf-icon { --rf-icon-size: 16px; }
+.pw-viewport { overflow: hidden; overflow: clip; touch-action: pan-y; border-radius: var(--radius-lg); }
+/* The two weeks sit on top of each other and slide together; the one out of view is hidden from
+   touch and screen readers. --drag is the finger's offset while swiping. */
+.pw-track { display: grid; }
+.pw-page { --gap: 4px; grid-area: 1 / 1; position: relative; min-width: 0; translate: calc((var(--n, 0) - var(--page, 0)) * 100% + var(--drag, 0px)) 0; transition: translate var(--duration-spring-smooth) var(--spring-smooth); }
+.pw-viewport[data-swiping] .pw-page { transition: none; will-change: translate; }
+.pw-days { list-style: none; margin: 0; padding: 0; position: relative; z-index: 1; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--gap); }
+.pw-day { min-width: 0; }
+.pw-pill { appearance: none; border: 0; margin: 0; font: inherit; color: var(--label); background: none; width: 100%; min-height: 78px; padding: 9px 0 8px; display: grid; justify-items: center; align-content: center; gap: 4px; border-radius: var(--radius-lg); cursor: pointer; -webkit-touch-callout: none; transition: scale var(--duration-spring-snappy) var(--spring-snappy), opacity var(--duration-base) var(--ease-standard); }
+.pw-pill:active { scale: .92; transition-duration: var(--duration-instant); }
+.pw-pill:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.pw-wd { font-size: .6875rem; font-weight: 650; line-height: 1.1; letter-spacing: .06em; color: var(--label-secondary); }
+.pw-num { display: grid; place-items: center; width: min(1.9em, 100%); aspect-ratio: 1; border-radius: 50%; font-size: 1.0625rem; font-weight: 650; line-height: 1; letter-spacing: -.01em; font-variant-numeric: tabular-nums; transition: color var(--duration-fast) var(--ease-standard); }
+.pw-day[data-past]:not([data-kind="done"]) .pw-num { color: var(--label-secondary); }
+.pw-day[data-kind="before"] .pw-pill { opacity: .4; }
+/* Today: a ring round the date. */
+.pw-day[data-today] .pw-num { color: var(--accent); box-shadow: inset 0 0 0 1.75px var(--accent); }
+.pw-pill[aria-selected="true"] .pw-wd, .pw-pill[aria-selected="true"] .pw-num { color: var(--accent); }
+
+/* The marks under each date. */
+.pw-mark { display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; --rf-icon-size: 11px; --rf-icon-stroke: 2.6; animation: pw-pop var(--duration-spring-bouncy) var(--spring-bouncy) both; }
+.pw-mark > .rf-icon { opacity: 1; }
+.pw-mark[data-mark="work"]::before, .pw-mark[data-mark="active"]::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--accent-fill); }
+.pw-mark[data-mark="active"]::before { box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent-fill) 28%, transparent); }
+.pw-mark[data-mark="done"] { background: var(--positive-fill); color: #fff; }
+.pw-mark[data-mark="light"] { color: var(--pw-teal); --rf-icon-size: 14px; --rf-icon-stroke: 2; }
+.pw-mark[data-mark="light-done"] { background: var(--hue-teal); color: #fff; }
+.pw-mark[data-mark="missed"] { background: var(--critical-soft); color: var(--critical); }
+.pw-mark[data-mark="frozen"] { background: color-mix(in oklab, var(--hue-sky) 18%, transparent); color: var(--pw-sky); --rf-icon-size: 10px; }
+.pw-mark[data-mark="rest"]::before { content: ''; width: 8px; height: 2px; border-radius: 1px; background: var(--label-tertiary); }
+
+/* The selection: a drop of tinted glass that slides to the picked day, stretching as it goes. */
+.pw-sel { position: absolute; inset-block: 0; inset-inline-start: 0; z-index: 0; width: calc((100% - 6 * var(--gap)) / 7); border-radius: var(--radius-lg); pointer-events: none;
+  background: color-mix(in oklab, var(--accent-fill) 12%, var(--bg-raised));
+  box-shadow: var(--rim-light), inset 0 0 0 1px color-mix(in oklab, var(--accent-fill) 22%, transparent), 0 8px 18px -10px color-mix(in oklab, var(--accent-fill) 70%, transparent);
+  translate: calc(var(--i, 0) * (100% + var(--gap))) 0;
+  transition: translate var(--duration-spring-snappy) var(--spring-snappy), scale var(--duration-spring-gel) var(--spring-gel), opacity var(--duration-base) var(--ease-standard); }
+.pw-sel.is-off { opacity: 0; scale: .8; }
+.pw-sel[data-traveling] { scale: 1.16 .9; transition: translate var(--duration-spring-snappy) var(--spring-snappy), scale var(--duration-fast) var(--ease-standard), opacity var(--duration-base) var(--ease-standard); }
+
+/* Long press on a workout: it lifts and follows the finger; free days wait for it. */
+.pw-day[data-lifted] { position: relative; z-index: 3; }
+.pw-day[data-lifted] .pw-pill { background: var(--bg-raised); box-shadow: var(--rim-light), var(--shadow-glass-lifted); }
+.pw-strip[data-dragging] .pw-day:not([data-lifted]):not([data-drop]) .pw-pill { opacity: .4; }
+.pw-day[data-drop] .pw-pill { outline: 1.5px dashed color-mix(in oklab, var(--accent) 55%, transparent); outline-offset: -3px; }
+.pw-day[data-over] .pw-pill { outline: 2px solid var(--accent); background: var(--accent-soft); scale: 1.04; }
+
+/* ---------------------------------------------------------------- the day card */
+.pw-card { padding: var(--space-4); border-radius: var(--radius-xl); overflow: hidden; overflow: clip; }
+.pw-card-in { display: grid; gap: var(--space-3); min-width: 0; }
+.pw-card-in > p { margin: 0; }
+.pw-top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 28px; }
+.pw-eyebrow { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: .8125rem; font-weight: 650; line-height: 1.25; color: var(--label-secondary); --rf-icon-size: 16px; --rf-icon-stroke: 2.1; }
+.pw-eyebrow > .rf-icon { opacity: 1; }
+.pw-eyebrow[data-tone="accent"] { color: var(--accent); }
+.pw-eyebrow[data-tone="positive"] { color: var(--positive); }
+.pw-eyebrow[data-tone="critical"] { color: var(--critical); }
+.pw-eyebrow[data-tone="sky"] { color: var(--pw-sky); }
+.pw-eyebrow[data-tone="teal"] { color: var(--pw-teal); }
+.pw-eyebrow[data-tone="indigo"] { color: var(--pw-indigo); }
+.pw-min { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px 4px 8px; border-radius: var(--radius-full); background: var(--fill-3); color: var(--label-secondary); font-size: .8125rem; font-weight: 600; line-height: 1.2; white-space: nowrap; --rf-icon-size: 14px; }
+.pw-title { margin: calc(-1 * var(--space-2)) 0 0; overflow-wrap: anywhere; }
+.pw-note { margin: 0; }
+.pw-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.pw-tag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 8px; border-radius: var(--radius-full); background: color-mix(in oklab, var(--c) 13%, transparent); color: var(--label); font-size: .8125rem; font-weight: 600; line-height: 1.2; }
+.pw-tag::before { content: ''; flex: none; width: 7px; height: 7px; border-radius: 50%; background: color-mix(in oklab, var(--c), #fff var(--pw-lift)); }
+.pw-prog { display: grid; gap: 6px; }
+
+/* Exercises, each with a still of the move. */
+.pw-ex-list { list-style: none; margin: 0 calc(-1 * var(--space-2)); padding: 0; display: grid; }
+.pw-ex { position: relative; }
+.pw-ex + .pw-ex::before { content: ''; position: absolute; top: 0; inset-inline: calc(var(--space-2) + 52px + var(--space-3)) var(--space-2); border-top: 1px solid var(--separator); }
+.pw-ex-row { appearance: none; border: 0; margin: 0; font: inherit; color: inherit; background: none; text-align: start; width: 100%; box-sizing: border-box; display: grid; grid-template-columns: 52px minmax(0, 1fr) auto auto; align-items: center; column-gap: var(--space-3); padding: 7px var(--space-2); border-radius: var(--radius-md); }
+button.pw-ex-row { cursor: pointer; transition: background-color var(--duration-fast); }
+button.pw-ex-row:active { background: var(--fill-selected); transition-duration: 0ms; }
+button.pw-ex-row:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.pw-thumb { --pw-thumb-bg: color-mix(in oklab, var(--label) 6%, var(--bg-raised)); --fig-bg: var(--pw-thumb-bg); width: 52px; height: 52px; border-radius: 14px; background: var(--pw-thumb-bg); display: grid; place-items: center; overflow: hidden; color: var(--label-secondary); --rf-icon-size: 22px; }
+.pw-thumb > svg { display: block; width: 44px; height: 44px; }
+.pw-thumb > svg.fig { animation: pw-fade var(--duration-base) var(--ease-standard) both; }
+.pw-ex-text { display: grid; gap: 1px; min-width: 0; }
+.pw-ex-name { font-size: 1rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.pw-ex-meta { font-size: .875rem; line-height: 1.3; color: var(--label-secondary); overflow-wrap: anywhere; }
+.pw-ex.is-muted .pw-ex-name { font-weight: 500; color: var(--label-secondary); }
+.pw-ex.is-lead .pw-ex-name, .pw-ex.is-lead .pw-ex-meta { color: var(--lead); }
+.pw-ex-go { display: inline-flex; color: var(--label-tertiary); --rf-icon-size: 18px; }
+.pw-ss { display: inline-block; padding: 1px 6px; border-radius: 6px; background: var(--fill-3); color: var(--label-secondary); font-size: .6875rem; font-weight: 700; letter-spacing: .02em; vertical-align: 1px; }
+.pw-up { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--positive-soft); color: var(--positive); --rf-icon-size: 15px; }
+
+/* Start, Move, Train today instead. */
+.pw-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.pw-go { flex: 1 1 11em; }
+.pw-mv { flex: 0 1 auto; }
+.pw-mv.pw-grow { flex: 1 1 auto; }
+.pw-train { justify-self: start; margin: calc(-1 * var(--space-1)) 0 0 calc(-1 * var(--space-3)); text-align: start; height: auto; min-block-size: var(--hit-min); white-space: normal; }
+.pw-move { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--fill-3); animation: pw-rise 380ms var(--ease-out-soft) both; }
+.pw-move > p { margin: 0; }
+.pw-move-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.pw-chip:not(.rf-glass) { min-height: 40px; padding-inline: var(--space-4); background-color: var(--bg-raised); color: var(--accent); box-shadow: var(--shadow-card); }
+
+/* Light day: the walk and the mobility flow. */
+.pw-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.pw-check { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: start; column-gap: var(--space-3); }
+.pw-check-mark { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in oklab, var(--hue-teal) 14%, transparent); color: var(--pw-teal); --rf-icon-size: 18px; }
+.pw-check.is-done .pw-check-mark { background: var(--positive-fill); color: #fff; --rf-icon-stroke: 2.4; animation: pw-pop var(--duration-spring-bouncy) var(--spring-bouncy) both; }
+.pw-check-text { display: grid; gap: 2px; min-width: 0; padding-top: 6px; }
+.pw-check > .rf-btn { align-self: center; }
+.pw-mob { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--space-2); }
+.pw-mob-btn { appearance: none; border: 0; margin: 0; padding: 0; background: none; border-radius: 12px; cursor: pointer; transition: scale var(--duration-spring-snappy) var(--spring-snappy); }
+.pw-mob-btn:active { scale: .92; transition-duration: var(--duration-instant); }
+.pw-mob-btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.pw-mob .pw-thumb { width: 44px; height: 44px; border-radius: 12px; }
+.pw-mob .pw-thumb > svg { width: 38px; height: 38px; }
+
+/* ---------------------------------------------------------------- sets by muscle */
+.pw-mus-card { gap: var(--space-3); }
+.pw-mus { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: max-content minmax(48px, 1fr) max-content; align-items: center; gap: 12px var(--space-3); }
+.pw-mu { display: contents; }
+.pw-mu-n { color: var(--label-secondary); text-align: end; white-space: nowrap; }
+.pw-mu-n b { color: var(--label); font-weight: 650; }
+.pw-bar { position: relative; height: 10px; border-radius: var(--radius-full); background: var(--fill-3); }
+.pw-bar-plan, .pw-bar-done { position: absolute; inset-block: 0; inset-inline-start: 0; border-radius: inherit; transform-origin: 0 50%; animation: pw-grow 900ms var(--ease-out-soft) both; }
+.pw-bar-plan { background: color-mix(in oklab, var(--c) 30%, transparent); }
+.pw-bar-done { background: color-mix(in oklab, var(--c), #fff var(--pw-lift)); animation-delay: 120ms; }
+.pw-bar-target { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-inline-start: -1px; border-radius: 1px; background: var(--label); opacity: .7; }
+.pw-legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: 0; }
+.pw-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.pw-sw { display: inline-block; width: 14px; height: 8px; border-radius: 4px; }
+.pw-sw.is-done { background: var(--label-secondary); }
+.pw-sw.is-plan { background: color-mix(in oklab, var(--label-secondary) 32%, transparent); }
+.pw-sw.is-target { width: 2px; height: 12px; border-radius: 1px; background: var(--label); opacity: .7; }
+
+/* ---------------------------------------------------------------- coming up */
+.pw-cu-row { min-block-size: 58px; }
+.pw-cu-date { flex: none; width: 40px; display: grid; justify-items: center; line-height: 1.1; }
+.pw-cu-date > span { font-size: .6875rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--accent); }
+.pw-cu-date > b { font-size: 1.25rem; font-weight: 650; letter-spacing: -.01em; }
+.pw-cu > li:not(:last-child)::after { inset-inline-start: calc(var(--space-4) + 40px + var(--space-3)); }
+
+/* ---------------------------------------------------------------- what the week means (sheet) */
+.pw-sheet { gap: var(--space-3); padding-bottom: var(--space-4); }
+.pw-sheet > p { margin: 0; }
+.pw-key-title { margin-top: var(--space-1) !important; }
+.pw-key { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.pw-key > li { display: flex; align-items: center; gap: var(--space-3); }
+.pw-key-mark { flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--fill-3); }
+.pw-why { display: flex; flex-wrap: wrap; gap: 0 var(--space-2); margin-inline-start: calc(-1 * var(--space-3)); }
+
+/* ---------------------------------------------------------------- motion */
+@keyframes pw-pop { from { opacity: 0; scale: .45; } to { opacity: 1; scale: 1; } }
+@keyframes pw-rise { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes pw-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pw-grow { from { transform: scaleX(0); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .pw-page, .pw-sel, .pw-pill, .pw-num, .pw-info, .pw-mob-btn { transition: none; }
+  .pw-mark, .pw-move, .pw-bar-plan, .pw-bar-done, .pw-check.is-done .pw-check-mark, .pw-thumb > svg.fig { animation: none; }
+}
+:root[data-rf-motion="reduced"] :is(.pw-page, .pw-sel, .pw-pill, .pw-num, .pw-info, .pw-mob-btn) { transition: none; }
+:root[data-rf-motion="reduced"] :is(.pw-mark, .pw-move, .pw-bar-plan, .pw-bar-done, .pw-check.is-done .pw-check-mark, .pw-thumb > svg.fig) { animation: none; }
