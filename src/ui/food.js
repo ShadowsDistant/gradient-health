@@ -292,7 +292,7 @@
   };
   U.on.foodQty = (el, ev, v) => { const n = Number(v); if (n > 0) { pick.qty = n; repaint(); } };
   U.on.foodMeal = (el, ev, v) => { pick.meal = v; };
-  U.act.foodFav = () => { F().toggleFav(U.S, pick.item.key); U.save(); U.haptic('toggleOn'); repaint(); };
+  U.act.foodFav = () => { const on = F().toggleFav(U.S, pick.item.key); U.save(); U.haptic(on ? 'toggleOn' : 'toggleOff'); repaint(); };
   U.act.foodSave = () => {
     const S = U.S;
     const { item, portion, qty, meal, day, edit } = pick;
@@ -369,7 +369,7 @@
     U.closeSheets();
     if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S);
   };
-  U.act.foodQuickDelete = (el) => { const [d, id] = el.dataset.arg.split(':'); F().remove(U.S, Number(d), id); U.commit(); U.closeSheets(); if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S); };
+  U.act.foodQuickDelete = (el) => { const [d, id] = el.dataset.arg.split(':'); F().remove(U.S, Number(d), id); U.commit(); U.haptic('toggleOff'); U.closeSheets(); if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S); };
   // Create a food from its label (optionally for a barcode that wasn't found).
   function createSheet(prefill) {
     const p = prefill || {};
@@ -428,6 +428,7 @@
     if (!ok) return;
     F().copyMeal(U.S, day - 1, day, null, (meal) => whenOn(day, meal));
     U.commit();
+    U.haptic('success');
     if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S);
   };
 

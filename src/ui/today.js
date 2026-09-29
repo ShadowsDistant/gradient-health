@@ -241,7 +241,7 @@
 
   /* ---------------------------------------------------------------- actions */
   U.act.goHealth = () => U.go('health');
-  U.act.toggleShort = () => { const d = U.today(); shortDay = isShort(d) ? null : d; U.haptic('select'); U.render(); };
+  U.act.toggleShort = () => { const d = U.today(); shortDay = isShort(d) ? null : d; U.haptic(shortDay != null ? 'toggleOn' : 'toggleOff'); U.render(); };
   U.act.startWorkout = () => {
     const S = U.S;
     if (S.active) { U.openPlayer(); return; }
@@ -279,10 +279,11 @@
     const S = U.S, d = U.today();
     B().addProtein(S, d, S.profile.protein.quickG || 26);
     U.commit();
+    U.haptic('success');
     const goal = B().proteinGoal(S, d);
     if (goal && B().proteinToday(S, d) >= goal && B().proteinToday(S, d) - (S.profile.protein.quickG || 26) < goal) U.toast('Protein goal hit', 'positive');
   };
-  U.act.undoProtein = () => { B().undoProtein(U.S, U.today()); U.commit(); };
+  U.act.undoProtein = () => { B().undoProtein(U.S, U.today()); U.commit(); U.haptic('toggleOff'); };
   U.act.addProtein = () => {
     U.sheet({
       title: 'Add protein', detents: 'small medium', detent: 'small',
@@ -292,7 +293,7 @@
   };
   U.act.addProteinSave = () => {
     const v = parseInt(document.getElementById('protG').value, 10);
-    if (v > 0) { B().addProtein(U.S, U.today(), v); U.commit(); }
+    if (v > 0) { B().addProtein(U.S, U.today(), v); U.commit(); U.haptic('success'); }
     const t = U.topSheet(); if (t) t.close('ok');
   };
   U.act.moveInfo = (el) => U.moveSheet(el.dataset.arg);
