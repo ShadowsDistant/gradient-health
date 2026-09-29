@@ -1,12 +1,15 @@
-// A real on-device model through the in-app (WebAssembly) engine, in Chromium: loads it, reads the
-// coach's system prompt ahead, answers two questions (checking no thinking shows) and one Tailor my
-// plan request under its grammar, and prints the timings. The tests can't download the real models,
-// so .github/workflows/model-check.yml runs this on GitHub with one it downloads.
+// A real on-device model through the in-app (WebAssembly) engine, in Chromium, the way the app uses
+// it: someone five weeks in (test/fixtures.mjs) asks the coach questions through GH.deviceCoach.ask,
+// with the app's own facts, prompt and sampling. It checks each answer arrives with no thinking
+// showing, prints the answers, their timings and any number an answer used that wasn't in what the
+// model was given, and runs one Tailor my plan request under its grammar. The tests can't download
+// the real models, so .github/workflows/model-check.yml runs this on GitHub with one it downloads.
 //   node test/model-check.mjs path/to/Qwen3.5-0.8B-Q4_K_M.gguf [model id, default q35-08]
 import { createRequire } from 'node:module';
 import { statSync, existsSync } from 'node:fs';
 import { basename } from 'node:path';
 import { check, section, done, serveDist } from './lib.mjs';
+import { seedBridge, seedState } from './fixtures.mjs';
 
 const require = createRequire(import.meta.url);
 let chromium;
@@ -16,45 +19,59 @@ const id = process.argv[3] || 'q35-08';
 if (!file || !existsSync(file)) { console.error('usage: node test/model-check.mjs model.gguf [id]'); process.exit(2); }
 const server = await serveDist({ [`/models/${basename(file)}`]: file });
 const browser = await chromium.launch();
-const page = await (await browser.newContext()).newPage();
+const page = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
+await page.addInitScript(seedBridge);
 await page.goto(server.url);
-await page.waitForFunction(() => window.GH && typeof window.GH.lazy === 'function');
-const out = await page.evaluate(async ([id, name, bytes]) => {
+await page.waitForSelector('.onboard:not([hidden])');
+await page.evaluate(seedState);
+await page.reload();
+await page.waitForSelector('#screen[data-view="today"] .session');
+
+const QUESTIONS = ['How is my sleep?', 'Am I doing enough steps?', 'Why is today lighter?', 'Am I getting stronger?'];
+const out = await page.evaluate(async ([id, name, bytes, questions]) => {
+  const GH = window.GH, S = GH.ui.S, day = GH.ui.today();
   const llm = await GH.lazy('llm');
   const m = Object.assign({}, llm.MODELS.find((x) => x.id === id), { file: name, bytes, minRamGB: 0 });
   llm.configure({ baseUrl: 'models/', models: [m], stall: { load: 300000, answer: 300000 } });
-  const r = { model: m.label };
+  S.ai.deviceModel = id;
+  const r = { model: m.label, answers: [] };
   let t = performance.now();
-  r.info = await llm.load(id);
-  r.loadMs = Math.round(performance.now() - t);
-  const system = 'You are the coach in Gradient Health, a workout and health app on this person\'s phone.\nAnswer their question in 2 to 4 short sentences, in plain words. Say "you". No lists, headings or emoji.\nBase the answer on FACTS and THEIR DATA below. Use their real numbers. Never make up a number.\n\nTHEIR DATA\nGoals: bigger arms, legs and glutes.\nSleep: 6 h 40 min on average this week (usually 7 h 10 min).\nSteps: 7400 steps on average this week; daily goal 8000.';
-  t = performance.now();
-  await llm.prepare(system);
-  r.prepareMs = Math.round(performance.now() - t);
-  r.answers = [];
-  for (const [q, f] of [['How is my sleep?', 'You averaged 6 h 40 min of sleep this week, 30 min less than usual.'], ['Am I doing enough steps?', '7400 steps a day this week, a little under your 8000 goal.']]) {
+  await GH.deviceCoach.prime(S, day); // loads the model and reads the rules and data ahead
+  r.primeMs = Math.round(performance.now() - t);
+  r.info = llm.loaded();
+  for (const q of questions) {
+    const given = GH.deviceCoach.messages(S, day, q).map((x) => x.content).join('\n');
     let first = 0;
     const t0 = performance.now();
-    const text = await llm.chat([{ role: 'system', content: system }, { role: 'user', content: `FACTS\n- What the app worked out: ${f}\n\nQUESTION\n${q}` }], { maxTokens: 200, onToken: () => { if (!first) first = performance.now(); } });
-    r.answers.push({ q, text, firstMs: Math.round(first - t0), stats: llm.stats });
+    const res = await GH.deviceCoach.ask(S, day, q, { onToken: () => { if (!first) first = performance.now(); } });
+    r.answers.push({ q, text: res.text, firstMs: first ? Math.round(first - t0) : null, stats: res.stats, facts: GH.deviceCoach.facts(S, day, q), given });
   }
   const raw = await llm.chat(GH.tailor.messages('More legs please, my knees hurt, and I only have 20 minutes'), { grammar: GH.tailor.GRAMMAR, maxTokens: 240, temperature: 0.2 });
   r.tailor = raw;
   r.tailorParsed = GH.tailor.read(raw);
   r.logs = llm.logs().slice(-20);
   return r;
-}, [id, basename(file), statSync(file).size]);
-console.log(`\n${out.model}: loaded in ${out.loadMs} ms (${out.info.engine}, ${out.info.threads} thread${out.info.threads === 1 ? '' : 's'}${out.info.gpu ? ', GPU' : ''}); system prompt read ahead in ${out.prepareMs} ms`);
-for (const a of out.answers) console.log(`\nQ: ${a.q}\nA: ${a.text}\n   first word after ${a.firstMs} ms; ${a.stats.promptTokens} new prompt tokens, ${a.stats.cachedTokens} reused; ${a.stats.tokens} tokens at ${a.stats.tokensPerSec.toFixed(1)}/s`);
+}, [id, basename(file), statSync(file).size, QUESTIONS]);
+
+// Numbers in an answer that appear nowhere in what the model was given (made up, or its own sums).
+const nums = (s) => (String(s).match(/\d+(?:[.,]\d+)?/g) || []).map((x) => x.replace(',', '.'));
+console.log(`\n${out.model}: ready in ${out.primeMs} ms, loading and reading the rules and data ahead (${out.info.engine}, ${out.info.threads} thread${out.info.threads === 1 ? '' : 's'})`);
+let invented = 0;
+for (const a of out.answers) {
+  const extra = nums(a.text).filter((n) => !nums(a.given).includes(n));
+  invented += extra.length;
+  console.log(`\nQ: ${a.q}\nFACTS: ${a.facts.join(' | ') || 'none'}\nA: ${a.text}\n   first word after ${a.firstMs} ms; ${a.stats.promptTokens} new prompt tokens, ${a.stats.cachedTokens} reused; ${a.stats.tokens} tokens at ${a.stats.tokensPerSec.toFixed(1)}/s${extra.length ? `\n   NUMBERS NOT GIVEN: ${extra.join(', ')}` : ''}`);
+}
 console.log(`\nTailor: ${out.tailor}\n`);
-section('Real model, in-app engine');
-check('it answers both questions', out.answers.every((a) => a.text.trim().length > 10), out.answers.map((a) => a.text));
+section('Real model, in-app engine, the coach\'s own path');
+check('it answers every question', out.answers.every((a) => a.text.trim().length > 10), out.answers.map((a) => a.text));
 check('without any thinking showing', out.answers.every((a) => !/<\/?think>/.test(a.text)));
-check('the second question reuses the system prompt', out.answers[1].stats.cachedTokens > 50, out.answers[1].stats);
+check('each question reuses the rules and data read ahead', out.answers.every((a) => a.stats.cachedTokens > 100), out.answers.map((a) => a.stats.cachedTokens));
 check('Tailor under the grammar is JSON the app reads', !!(out.tailorParsed && Array.isArray(out.tailorParsed.focus)), out.tailor);
 check('no page errors', errors.length === 0, errors);
+console.log(`\n${invented ? `${invented} number(s) in the answers weren't in what the model was given (see above).` : 'Every number in the answers was in what the model was given.'}`);
 if (errors.length || !out.answers.every((a) => a.text.trim())) console.log(out.logs.join('\n'));
 await browser.close();
 await server.close();

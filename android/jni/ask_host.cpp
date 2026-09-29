@@ -37,6 +37,7 @@ int main(int argc, char **argv) {
         return 2;
     }
     const int threads = argc > 2 ? std::atoi(argv[2]) : 4;
+    std::setvbuf(stdout, nullptr, _IONBF, 0);  // CI logs show each line as it happens
     ghllm_init(nullptr);
     char err[512] = {0};
     const auto t0 = std::chrono::steady_clock::now();

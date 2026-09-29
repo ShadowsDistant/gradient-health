@@ -33,6 +33,7 @@ permissions:
 jobs:
   in-app:
     runs-on: ubuntu-24.04
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -72,6 +73,7 @@ jobs:
       matrix:
         runner: ${{ fromJSON(inputs.arm && '["ubuntu-24.04", "ubuntu-24.04-arm"]' || '["ubuntu-24.04"]') }}
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -105,4 +107,5 @@ jobs:
       - name: Ask it
         run: |
           node -e "global.window=global;require('./src/tailor.js');require('fs').writeFileSync('build/tailor.gbnf', GH.tailor.GRAMMAR)"
-          build/native-host/ghllm_ask "${{ steps.model.outputs.file }}" 4 build/tailor.gbnf
+          # One thread per core: more than the runner has makes llama.cpp's threads wait on each other.
+          build/native-host/ghllm_ask "${{ steps.model.outputs.file }}" "$(nproc)" build/tailor.gbnf

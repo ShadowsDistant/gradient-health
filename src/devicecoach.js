@@ -18,8 +18,9 @@
   const RULES = [
     'You are the coach in Gradient Health, a workout and health app on this person\'s phone.',
     'Answer their question in 2 to 4 short sentences, in plain words. Say "you". No lists, headings or emoji.',
-    'Base the answer on FACTS (worked out by the app for this question) and THEIR DATA below. Use their real numbers. Never make up a number.',
-    'If neither covers the question, say you can\'t tell from their data and what they could track.',
+    'FACTS were worked out by the app for this question. Build the answer on them and copy their numbers exactly as written. Don\'t calculate anything yourself.',
+    'If FACTS say none, answer from THEIR DATA below, or say you can\'t tell from their data and what they could track. Never make up a number.',
+    'Say yes or no plainly when the question asks, and make sure it matches the numbers.',
     'You are not a doctor and never diagnose. Chest pain, fainting, a resting heart rate over 100, unplanned fast weight loss or pain that won\'t go away: tell them to see a doctor.',
     'The app plans the workouts and targets. Explain them; don\'t write new programs, diets or meal plans.',
   ].join('\n');
@@ -196,8 +197,9 @@
     status('thinking');
     const f = facts(S, day, q);
     let wrote = false;
+    // A low temperature: the answer rewords facts, and small models slip on numbers when it's higher.
     const run = (keep) => llm.chat(messages(S, day, q, keep), {
-      signal: opt.signal, maxTokens: 320, onLoadProgress: loading,
+      signal: opt.signal, maxTokens: 320, temperature: 0.3, onLoadProgress: loading,
       onPrompt: (done, total) => { if (!wrote) status('reading', total ? done / total : 0); },
       onToken: (piece, soFar) => {
         if (!wrote) { wrote = true; status('writing'); }
