@@ -1,0 +1,164 @@
+/* The on-device coach: a small open model running on the phone (GH.llm, loaded on demand) answers
+ * questions about the person's own numbers. It gets a few rules and a compact brief of their data
+ * (no name, no dates), and nothing leaves the phone. A small model answers faster with a short
+ * prompt, so the brief keeps to the numbers that matter. Questions that sound like an emergency get
+ * the built-in safety answer instead of the model's.
+ */
+(function (G) {
+  'use strict';
+  const GH = G.GH || (G.GH = {});
+  const B = () => GH.brain;
+  const H = () => GH.health;
+
+  const RULES = [
+    'You are the coach inside Gradient Health, a workout and health app on the user\'s phone. Answer their question using their data below.',
+    '- Answer in 2 to 5 short sentences, in plain words. Use their numbers. Say "you". No lists, headings or emoji.',
+    '- You are not a doctor. Never diagnose. If something sounds worrying (chest pain, fainting, a resting heart rate over 100, fast weight loss they didn\'t plan, pain that doesn\'t go away), tell them to see a doctor.',
+    '- The app plans the workouts and the calorie target. Explain them if asked, but don\'t write new programs, diets or meal plans.',
+    '- If the data doesn\'t answer the question, say so and say what to track.',
+  ].join('\n');
+
+  const r0 = (x) => String(Math.round(x));
+  const r1 = (x) => (Math.round(x * 10) / 10).toFixed(1);
+  const GOAL = { abs: 'visible abs', arms: 'bigger arms', chest: 'bigger chest', legs: 'legs and glutes', back: 'back and posture', fat: 'lose fat', strength: 'strength', endurance: 'endurance', mobility: 'mobility', consistency: 'consistency' };
+
+  // The numbers the model sees, one short line each.
+  function brief(S, day) {
+    const b = B(), h = H(), p = S.profile;
+    const lb = p.units !== 'kg';
+    const w = (kg) => (lb ? `${r1(kg * b.LB_PER_KG)} lb` : `${r1(kg)} kg`);
+    const workouts = p.workouts !== false;
+    const L = [];
+    const goals = (p.goals || []).map((g) => GOAL[g] || g).join(', ');
+    L.push(`Goals: ${goals || 'not set'}.${p.age ? ` Age ${p.age}.` : ''}`);
+    if (workouts) {
+      const where = p.where === 'gym' ? 'at a gym' : p.where === 'both' ? 'at home and at a gym' : 'at home';
+      L.push(`Plan: ${p.days} workouts a week, about ${p.minutes} min each, ${where}.`);
+      const plan = b.todayPlan(S, day);
+      const r = b.readiness(S, day);
+      const what = plan.type === 'workout' ? `a workout (${b.templateTitle(plan.units || []).toLowerCase()})` : plan.type === 'done' ? 'a workout, already done' : plan.type === 'light' ? 'a light day (a walk and mobility)' : 'a rest day';
+      L.push(`Today: ${what}.${r.reasons.length ? ` The app made it lighter: ${r.reasons.map((x) => x.text).join(' ')}` : ''}`);
+    } else L.push('They use the app for health and food, not workouts.');
+    const now = (k) => h.stats(S, k, day - 6, day);
+    const usual = (k) => h.stats(S, k, day - 34, day - 7);
+    const pair = (k, fmt, unit) => {
+      const a = now(k), u = usual(k);
+      if (!a.n) return null;
+      return `${fmt(a.avg)}${unit} on average this week${u.n >= 7 ? ` (usually ${fmt(u.avg)}${unit})` : ''}`;
+    };
+    const sleep = pair('sleepMin', (m) => b.fmtMin(Math.round(m)), '');
+    if (sleep) L.push(`Sleep: ${sleep}.`);
+    const steps = pair('steps', r0, ' steps');
+    if (steps) L.push(`Steps: ${steps}; daily goal ${b.stepsGoal(S, day).goal}.`);
+    const rhr = pair('rhr', r0, ' bpm');
+    if (rhr) L.push(`Resting heart rate: ${rhr}.`);
+    const hrv = pair('hrv', r0, ' ms');
+    if (hrv) L.push(`HRV: ${hrv}.`);
+    const kcal = pair('activeKcal', r0, ' kcal');
+    if (kcal) L.push(`Active calories: ${kcal}.`);
+    const ws = b.weightStats(S, day);
+    if (ws.avg7) L.push(`Weight: ${w(ws.avg7)} (7-day average)${ws.rate != null ? `, ${ws.rate >= 0 ? 'up' : 'down'} ${r1(Math.abs(ws.rate * 100))}% on the week before` : ''}. Goal: ${p.weightGoal === 'lose' ? 'lose weight' : p.weightGoal === 'gain' ? 'gain weight' : 'keep it steady'}.`);
+    if (workouts) {
+      const cal = b.calendar(S, day);
+      let planned = 0, done = 0;
+      for (let d = day - 28; d < day; d++) { const i = cal.days[d]; if (i && (i.planned === 'workout' || i.missed)) { planned++; if (i.done) done++; } }
+      if (planned) L.push(`Workouts: ${done} of ${planned} done in the last 4 weeks; streak ${cal.streak.current} days.`);
+      const ratings = { easy: 0, right: 0, hard: 0 };
+      for (const l of S.log) if (l.type === 'workout' && l.day > day - 28 && l.checkin && ratings[l.checkin.rating] != null) ratings[l.checkin.rating]++;
+      if (ratings.easy + ratings.right + ratings.hard) L.push(`How workouts felt: ${ratings.easy} too easy, ${ratings.right} about right, ${ratings.hard} too hard.`);
+      const lv = [];
+      for (const fam of ['push', 'squat', 'row', 'curl', 'hinge', 'abs']) {
+        const x = b.ladderLevel(S, fam, day);
+        if (x) lv.push(`${x.name} ${x.reps}${GH.moves && GH.moves.MOVES[x.rung] && GH.moves.MOVES[x.rung].timed ? ' s' : ' reps'} (level ${x.level} of ${x.of})`);
+        if (lv.length >= 4) break;
+      }
+      if (lv.length) L.push(`Current exercises: ${lv.join('; ')}.`);
+      const changes = GH.coach && GH.coach.timeline ? GH.coach.timeline(S, day, 7).slice(0, 3).map((x) => x.text) : [];
+      if (changes.length) L.push(`Recent changes by the app: ${changes.join(' ')}`);
+    }
+    const pg = b.proteinGoal(S, day);
+    const F = GH.food;
+    if (F && F.full(S)) {
+      const t = F.targets(S, day);
+      const eaten = [];
+      for (let d = day - 7; d < day; d++) { const x = F.totals(S, d); if (x.n) eaten.push(x); }
+      if (t) L.push(`Food: calorie target ${t.kcal} a day (protein ${t.protein} g, carbs ${t.carbs} g, fat ${t.fat} g).${eaten.length ? ` Ate ${r0(eaten.reduce((a, x) => a + x.kcal, 0) / eaten.length)} kcal and ${r0(eaten.reduce((a, x) => a + x.p, 0) / eaten.length)} g protein a day on ${eaten.length} logged days last week.` : ' Nothing logged last week.'}`);
+      const today = F.totals(S, day);
+      if (today.n) L.push(`Eaten today so far: ${today.kcal} kcal, ${Math.round(today.p)} g protein.`);
+    } else if (pg && p.protein && p.protein.track !== false) {
+      let hit = 0, logged = 0;
+      for (let d = day - 7; d < day; d++) { const g = b.proteinToday(S, d); if (g) { logged++; if (g >= pg * 0.95) hit++; } }
+      L.push(`Protein: goal ${pg} g a day${logged ? `; hit on ${hit} of ${logged} logged days last week` : ''}.`);
+    }
+    return L.join('\n');
+  }
+
+  // The conversation for the model: rules and data first (the same every turn, so it stays cached),
+  // then the last few turns, then the question.
+  function messages(S, day, question) {
+    const past = (S.ai.deviceChat || []).filter((m) => !m.safety).slice(-6);
+    return [{ role: 'system', content: `${RULES}\n\nTHEIR DATA\n${brief(S, day)}` }]
+      .concat(past.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })))
+      .concat([{ role: 'user', content: question }]);
+  }
+
+  function err(message, code) { const e = new Error(message); e.code = code; return e; }
+  function record(S, q, text, safety) {
+    S.ai.deviceChat = (S.ai.deviceChat || []).concat([{ role: 'user', text: q, safety: !!safety }, { role: 'assistant', text, safety: !!safety }]).slice(-16);
+  }
+  // The model to use: the one picked in Settings if it's on the phone, else any that is.
+  function pick(S, have) {
+    const ids = (have || []).map((x) => x.id);
+    if (S.ai.deviceModel && ids.includes(S.ai.deviceModel)) return S.ai.deviceModel;
+    return ids[0] || null;
+  }
+
+  // o: { onToken(piece, textSoFar), onStatus(state, fraction), signal }. Resolves { text, aborted, safety }.
+  async function ask(S, day, question, o) {
+    const opt = o || {};
+    const q = String(question || '').trim().slice(0, 600);
+    if (!q) throw err('Type a question first.', 'empty');
+    if (GH.coach && GH.coach.topicOf(q) === 'redflag') {
+      const text = GH.coach.ask(S, day, q).text;
+      record(S, q, text, true);
+      return { text, safety: true, aborted: false };
+    }
+    const llm = await GH.lazy('llm');
+    const av = llm.available();
+    if (!av.ok) throw err(av.reason, 'unavailable');
+    const id = pick(S, await llm.installed());
+    if (!id) throw err('Download the on-device model first.', 'not-installed');
+    const cur = llm.loaded();
+    if (!cur || cur.id !== id) {
+      if (opt.onStatus) opt.onStatus('loading', 0);
+      await llm.load(id, { onProgress: (p) => { if (opt.onStatus && p && p.total) opt.onStatus('loading', p.loaded / p.total); } });
+    }
+    if (opt.signal && opt.signal.aborted) return { text: '', aborted: true };
+    if (opt.onStatus) opt.onStatus('thinking');
+    const raw = await llm.chat(messages(S, day, q), {
+      onToken: opt.onToken, signal: opt.signal, maxTokens: 256, temperature: 0.6,
+      onLoadProgress: (p) => { if (opt.onStatus && p && p.total) opt.onStatus('loading', p.loaded / p.total); },
+    });
+    const aborted = !!(llm.stats && llm.stats.aborted);
+    const text = String(raw || '').trim();
+    if (text) record(S, q, text, false);
+    return { text, aborted, stats: llm.stats };
+  }
+  // Loads the model and reads the rules and data ahead of the first question, so the first answer
+  // starts sooner. Quietly does nothing if the model isn't there.
+  async function prime(S, day) {
+    try {
+      const llm = await GH.lazy('llm');
+      if (!llm.available().ok) return false;
+      const id = pick(S, await llm.installed());
+      if (!id) return false;
+      await llm.load(id);
+      const ctl = new AbortController();
+      await llm.chat(messages(S, day, 'Hi').slice(0, 1).concat([{ role: 'user', content: 'Hi' }]), { maxTokens: 1, signal: ctl.signal });
+      return true;
+    } catch (e) { return false; }
+  }
+  function clear(S) { S.ai.deviceChat = []; }
+
+  GH.deviceCoach = { RULES, brief, messages, ask, prime, pick, clear };
+})(typeof window !== 'undefined' ? window : globalThis);

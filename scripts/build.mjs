@@ -73,6 +73,7 @@ export const APP_SCRIPTS = [
   'src/platform.js',
   'src/foodnet.js',
   'src/coach.js',
+  'src/devicecoach.js',
   // ai bundle is injected here
   'src/ui/core.js',
   'src/ui/charts.js',

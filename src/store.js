@@ -40,9 +40,10 @@
     if (!h.written) h.written = {};
     const ai = S.ai;
     if (ai.enabled == null) ai.enabled = false;
-    if (ai.mode !== 'api' && ai.mode !== 'local') ai.mode = ai.enabled ? 'api' : 'local';
+    if (ai.mode !== 'api' && ai.mode !== 'local' && ai.mode !== 'device') ai.mode = ai.enabled ? 'api' : 'local';
     if (!Array.isArray(ai.reports)) ai.reports = [];
     if (!Array.isArray(ai.chat)) ai.chat = [];
+    if (!Array.isArray(ai.deviceChat)) ai.deviceChat = [];
     stripSecrets(S);
     if (!S.catchup) S.catchup = { arm: { side: 'L', active: false, tests: [] }, leg: { side: 'L', active: false, tests: [] } };
     if (S.profile && GH.brain) {

@@ -590,3 +590,17 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 /* Settings rows with a full-width control under the title. */
 .set-stack { flex-direction: column; align-items: stretch; gap: var(--space-2); padding-block: var(--space-3); }
 .set-stack .rf-segmented { width: 100%; }
+
+/* Chat: who answers, set-up cards, the on-device model rows. */
+.chat-engine { padding: 0 var(--space-4) var(--space-2); }
+.chat-engine .rf-segmented { width: 100%; }
+.chat-compose[hidden] { display: none; }
+.chat-setup { display: grid; gap: var(--space-2); margin: var(--space-2) 0; }
+.chat-setup > p { margin: 0; }
+.chat-setup:not(.card) { grid-auto-flow: column; justify-content: start; align-items: center; }
+.chat-setup .rf-list { margin: var(--space-1) calc(-1 * var(--space-4)) calc(-1 * var(--space-4)); background: none; box-shadow: none; }
+.bubble-status { display: block; margin-top: 4px; }
+.bubble.is-stopped::after { content: " (stopped)"; color: var(--label-secondary); }
+.model-row .rf-list-text { gap: 4px; }
+.model-row .rf-progress { margin-top: 4px; }
+.model-on { display: inline-flex; align-items: center; gap: 4px; color: var(--positive); white-space: nowrap; }

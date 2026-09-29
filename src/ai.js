@@ -151,6 +151,8 @@ function summary(S, day) {
   lines.push(`- Sleep: ${sl.n ? b.fmtMin(sl.avg) : '–'} a night (${sl.n} nights)`);
   lines.push(`- Steps: ${stp.n ? r0(stp.avg) : '–'} a day (${stp.n} days)`);
   lines.push(`- Resting heart rate: ${rhr.n ? `${r0(rhr.avg)} bpm` : '–'} (${rhr.n} days); HRV: ${hrv.n ? `${r0(hrv.avg)} ms` : '–'} (${hrv.n} days)`);
+  const act = st('activeKcal');
+  if (act.n) lines.push(`- Active calories: ${r0(act.avg)} kcal a day (${act.n} days)`);
   lines.push(`- Weight: 7-day average ${w(ws.avg7)}${ws.rate != null ? `, ${ws.rate >= 0 ? '+' : ''}${r1(ws.rate * 100)}% vs the week before` : ''}`);
 
   // Weekly series, oldest first.
@@ -176,6 +178,7 @@ function summary(S, day) {
   const rir = { '0': 0, '12': 0, '3': 0 };
   for (const l of logs) for (const it of l.items || []) if (it.rir && rir[it.rir] != null) rir[it.rir]++;
   lines.push('');
+  if (p.workouts === false) lines.push('TRAINING: workouts are turned off; they use the app for health and food.');
   lines.push('TRAINING (last 4 weeks)');
   lines.push(`- Workouts: ${doneN} of ${planned} planned done; streak ${cal.streak.current} days; full weeks in a row ${cal.streak.weekly}`);
   lines.push(`- Ratings: ${ratings.easy} too easy, ${ratings.right} about right, ${ratings.hard} too hard`);
@@ -202,6 +205,14 @@ function summary(S, day) {
   lines.push('');
   lines.push('FOOD AND BODY');
   lines.push(`- Protein goal ${goal ? `${goal} g` : '–'}; hit on ${logged.filter((g) => goal && g >= goal * 0.95).length} of ${logged.length} logged days (last 2 weeks)`);
+  const F = GH.food;
+  if (F && F.full(S)) {
+    const t = F.targets(S, day);
+    const eaten = [];
+    for (let d = day - 7; d < day; d++) { const x = F.totals(S, d); if (x.n || (x.other && x.other.kcal)) eaten.push(x); }
+    if (t) lines.push(`- Calorie tracking on: target ${t.kcal} kcal a day (protein ${t.protein} g, carbs ${t.carbs} g, fat ${t.fat} g); estimated burn ${t.burn} kcal${t.learned ? ', learned from their logs and weight' : ' from a formula'}`);
+    lines.push(`- Eaten: ${eaten.length ? `${r0(eaten.reduce((a, x) => a + x.kcal, 0) / eaten.length)} kcal and ${r0(eaten.reduce((a, x) => a + x.p, 0) / eaten.length)} g protein a day on ${eaten.length} logged days (last week)` : 'nothing logged last week'}`);
+  }
   const ms = S.measurements || [];
   if (ms.length >= 2) {
     const a = ms[0], z = ms[ms.length - 1];
@@ -227,7 +238,7 @@ const SYSTEM = [
   '- Short, plain, specific and warm. Use their numbers. Talk to them as "you".',
   '- You are not a doctor. Never diagnose or name conditions. If something looks concerning (resting heart rate far above normal or over 100, fast weight loss they didn\'t plan, pain that lingers, chest pain, dizziness, fainting), say it\'s worth talking to a doctor.',
   '- No timelines or promises about results (never "abs in 8 weeks").',
-  '- No meal plans, calorie targets or diets. Food advice stays simple: protein, easy additions, habits. They may be a picky eater.',
+  '- No meal plans or diets. If they track calories, the app sets their calorie target from their size, activity and goal: explain it rather than set a different one. Food advice stays simple: protein, easy additions, habits. They may be a picky eater.',
   '- The app decides the training plan (sets, reps, levels, deloads, swaps). You can explain it and say what to focus on, but don\'t prescribe a different program or new exercises.',
   '- If the data is thin, say so and suggest what to track.',
   '- No emoji, no headings. Keep answers under 150 words unless asked for more.',

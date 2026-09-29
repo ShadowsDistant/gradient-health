@@ -59,14 +59,14 @@ function configure(o = {}) {
 const DAMAGED = 'The download was damaged, so it was deleted. Try again.';
 const MESSAGES = {
   unavailable: 'On-device AI isn\'t available here.',
-  web: 'Model downloads need the Gradient Android app.',
+  web: 'Model downloads need the Gradient Health Android app.',
   unknown: 'That model isn\'t available.',
   invalid: 'The model request wasn\'t valid.',
   memory: 'This phone doesn\'t have enough memory for this model.',
   space: 'Not enough free space.',
   network: 'The download stopped. Check your connection and try again.',
   http: 'The model couldn\'t be downloaded right now. Try again later.',
-  changed: 'The model file on the server has changed. Update Gradient to download it.',
+  changed: 'The model file on the server has changed. Update Gradient Health to download it.',
   size: DAMAGED, format: DAMAGED, checksum: DAMAGED,
   io: 'The model couldn\'t be saved on this phone.',
   cancelled: 'Download cancelled.',
@@ -110,7 +110,7 @@ function wasmSupported() {
 function available() {
   if (!wasmSupported()) return { ok: false, reason: 'On-device AI needs a newer Android System WebView. Update it from the Play Store.' };
   const b = bridge();
-  if (!(b && b.modelList) && !cfg.served) return { ok: false, reason: 'On-device AI runs in the Gradient Android app.' };
+  if (!(b && b.modelList) && !cfg.served) return { ok: false, reason: 'On-device AI runs in the Gradient Health Android app.' };
   if (!offered().length) return { ok: false, reason: 'This phone doesn\'t have enough memory for on-device AI.' };
   return { ok: true, reason: '' };
 }

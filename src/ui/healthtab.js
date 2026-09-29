@@ -97,43 +97,102 @@
   U.act.insightGo = (el) => U.go(el.dataset.arg);
 
   /* ---------------------------------------------------------------- chat */
-  // Claude (API key) answers stream in; the built-in coach answers right away from your numbers.
-  // Either way, "Ask in the Claude app" hands the question to the Claude app instead.
+  // Three ways to get an answer, picked at the top of the chat: the built-in coach (instant, from
+  // your numbers, no AI model), the on-device model (runs on the phone, nothing leaves it) or Claude
+  // (your own API key; streams in). "Ask in the Claude app" hands the question to the Claude app.
   let chat = null;
+  let stopper = null; // the on-device answer in progress, so Stop can end it
   const PRESETS = ['Why is today lighter?', 'How is my sleep?', 'Am I getting stronger?', 'How is my weight trending?', 'What should I focus on?'];
-  function chatLog(S) { return claudeMode(S) && AI() && AI().hasKey() ? (S.ai.chat || []) : (S.coachChat || []); }
-  function bubbles(S) {
+  const ENGINES = [['local', 'Built-in'], ['device', 'On-device'], ['api', 'Claude']];
+  const engineOf = (S) => (S.ai.mode === 'api' || S.ai.mode === 'device' ? S.ai.mode : 'local');
+  function chatLog(S) {
+    const e = engineOf(S);
+    return e === 'api' ? (S.ai.chat || []) : e === 'device' ? (S.ai.deviceChat || []) : (S.coachChat || []);
+  }
+  // What the on-device model needs before it can answer, or null when it's ready.
+  function deviceGate() {
+    const d = U.deviceState ? U.deviceState() : null;
+    if (!d || !d.checked) return `<div class="chat-setup"><span class="rf-spinner" data-size="sm"><i></i></span><span class="t-callout rf-muted">Checking the on-device model…</span></div>`;
+    if (!d.available.ok) return `<div class="chat-setup card"><p class="t-callout">${U.esc(d.available.reason)}</p><p class="t-footnote rf-muted">The built-in coach and Claude still work.</p></div>`;
+    if (!d.installed.length) return `<div class="chat-setup card"><p class="t-headline">Download the on-device model</p><p class="t-callout rf-muted">It runs on your phone, so your questions and data never leave it, and it works offline. It's a one-time download.</p>${U.modelRows ? U.modelRows(U.S) : ''}</div>`;
+    return null;
+  }
+  function logBody(S) {
+    const e = engineOf(S);
+    if (e === 'api' && !(AI() && AI().hasKey())) return `<div class="chat-setup card"><p class="t-headline">Add your API key</p><p class="t-callout rf-muted">Claude answers with your own Anthropic API key, which stays on this phone.</p><button type="button" class="rf-btn" data-variant="filled" data-act="keySheet">Add a key</button></div>`;
+    if (e === 'device') { const gate = deviceGate(); if (gate) return gate; }
     const msgs = chatLog(S).slice(-12);
-    const api = claudeMode(S) && AI() && AI().hasKey();
     if (!msgs.length) {
-      return `<p class="t-callout rf-muted chat-empty">${api ? 'Ask about your sleep, steps, training or what to focus on. Claude sees the same summary as the weekly report.' : 'Ask about your sleep, steps, weight, protein, training or recovery. Answers come from your own numbers, worked out on this phone.'}</p>
+      const hint = e === 'api' ? 'Ask about your sleep, steps, training or what to focus on. Claude sees the same summary as the weekly report.'
+        : e === 'device' ? 'Ask anything about your sleep, steps, training, weight or food. The model runs on your phone and sees a short summary of your numbers.'
+          : 'Ask about your sleep, steps, weight, protein, training or recovery. Answers come from your own numbers, worked out on this phone.';
+      return `<p class="t-callout rf-muted chat-empty">${hint}</p>
         <div class="ob-chips chat-presets">${PRESETS.map((q) => `<button type="button" class="rf-chip" data-act="askQuick" data-arg="${U.esc(q)}">${U.esc(q)}</button>`).join('')}</div>`;
     }
     return msgs.map((m) => `<div class="bubble ${m.role === 'user' ? 'me' : 'coach'}">${U.esc(m.text)}</div>`).join('');
   }
+  const FOOT = {
+    local: 'The built-in coach isn\'t an AI model: it answers common questions from your data.',
+    device: 'Runs on your phone and can be wrong.',
+    api: 'Claude sees a summary without your name, not your raw data.',
+  };
+  function chatBody(S) {
+    const e = engineOf(S);
+    const ready = !(e === 'api' && !(AI() && AI().hasKey())) && !(e === 'device' && deviceGate());
+    return `<div class="chat-engine">${U.seg('chatEngine', ENGINES, e, 'Who answers', ' data-on="setChatEngine" data-size="sm"')}</div>
+      <div class="chat-log" id="chatLog">${logBody(S)}</div>
+      <div class="chat-compose"${ready ? '' : ' hidden'}><textarea class="rf-input" id="askQ" rows="2" maxlength="600" placeholder="Ask a question" aria-label="Your question"></textarea>
+        ${stopper ? `<button type="button" class="rf-btn rf-glass" data-shape="circle" aria-label="Stop" data-act="askStop">${U.icon('stop')}</button>` : `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-shape="circle" aria-label="Send" data-act="askSend">${U.icon('send')}</button>`}</div>
+      <p class="t-footnote rf-muted chat-foot">${FOOT[e]} Not medical advice.</p>
+      <div class="btn-row chat-btns">${canHandOff() ? `<button type="button" class="rf-btn" data-variant="soft" data-size="sm" data-act="askClaudeApp">${U.icon('share')}Ask in the Claude app</button>` : ''}${chatLog(S).length ? '<button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="askClear">Clear chat</button>' : ''}</div>`;
+  }
+  // Redraws the chat sheet (keeps what's typed and scrolls to the newest answer).
+  function refreshChat() {
+    if (!chat || chat.closed) return;
+    const q = chat.el.querySelector('#askQ');
+    const typed = q ? q.value : '';
+    chat.update(chatBody(U.S));
+    const q2 = chat.el.querySelector('#askQ');
+    if (q2 && typed) q2.value = typed;
+    const log = chat.el.querySelector('#chatLog');
+    if (log) log.scrollTop = log.scrollHeight;
+  }
+  U.refreshChat = refreshChat;
   U.act.askCoach = (el, ev, preset) => {
     const S = U.S;
-    const api = claudeMode(S);
-    if (api && (!AI() || !AI().hasKey())) { U.open('settings', 'coach'); return; }
     chat = U.sheet({
-      title: api ? 'Ask Claude' : 'Ask the coach', detents: 'large', detent: 'large', cls: 'chat-sheet',
-      body: `<div class="chat-log" id="chatLog">${bubbles(S)}</div>
-        <div class="chat-compose"><textarea class="rf-input" id="askQ" rows="2" maxlength="1000" placeholder="Ask a question" aria-label="Your question">${U.esc(preset || '')}</textarea>
-          <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-shape="circle" aria-label="Send" data-act="askSend">${U.icon('send')}</button></div>
-        <p class="t-footnote rf-muted chat-foot">${api ? 'Claude sees a summary without your name, not your raw data.' : 'The built-in coach isn\'t an AI model: it answers common questions from your data.'} Not medical advice.</p>
-        <div class="btn-row chat-btns">${canHandOff() ? `<button type="button" class="rf-btn" data-variant="soft" data-size="sm" data-act="askClaudeApp">${U.icon('share')}Ask in the Claude app</button>` : ''}<button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="askClear">Clear chat</button></div>`,
-      onClose: () => { if (AI()) AI().stop(); chat = null; },
+      title: 'Ask the coach', detents: 'large', detent: 'large', cls: 'chat-sheet',
+      body: chatBody(S),
+      onClose: () => { if (AI()) AI().stop(); if (stopper) stopper.abort(); stopper = null; chat = null; },
       after: (c) => { const log = c.el.querySelector('#chatLog'); if (log) log.scrollTop = log.scrollHeight; },
     });
-    if (preset) setTimeout(() => U.act.askSend(chat.el.querySelector('[data-act="askSend"]')), 380);
+    if (engineOf(S) === 'device' && U.checkDevice) U.checkDevice().then(() => { refreshChat(); if (!deviceGate() && GH.deviceCoach) GH.deviceCoach.prime(U.S, U.today()); });
+    if (preset) {
+      const q = chat.el.querySelector('#askQ');
+      if (q) q.value = preset;
+      setTimeout(() => { const b = chat && chat.el.querySelector('[data-act="askSend"]'); if (b && !chat.el.querySelector('.chat-compose').hidden) U.act.askSend(b); }, 380);
+    }
+  };
+  U.on.setChatEngine = (el, ev, v) => {
+    const S = U.S;
+    if (stopper) { stopper.abort(); stopper = null; }
+    S.ai.mode = v === 'api' || v === 'device' ? v : 'local';
+    S.ai.enabled = S.ai.mode === 'api';
+    U.save();
+    refreshChat();
+    if (S.ai.mode === 'device' && U.checkDevice) U.checkDevice().then(() => { refreshChat(); if (!deviceGate() && GH.deviceCoach) GH.deviceCoach.prime(U.S, U.today()); });
+    if (U.route.view === 'settings' || U.route.tab === 'health') setTimeout(() => U.render(), 60);
   };
   U.act.askPreset = (el) => U.act.askCoach(el, null, el.dataset.arg);
   U.act.askQuick = (el) => { const q = document.getElementById('askQ'); if (q) q.value = el.dataset.arg; U.act.askSend(document.querySelector('.chat-sheet [data-act="askSend"]')); };
   U.act.askClear = () => {
-    if (claudeMode(U.S) && AI()) AI().clearChat(U.S); else U.S.coachChat = [];
+    const S = U.S;
+    const e = engineOf(S);
+    if (e === 'api' && AI()) AI().clearChat(S); else if (e === 'device') { if (GH.deviceCoach) GH.deviceCoach.clear(S); } else S.coachChat = [];
     U.save();
-    const log = document.getElementById('chatLog'); if (log) U.morph(log, bubbles(U.S));
+    refreshChat();
   };
+  U.act.askStop = () => { if (stopper) stopper.abort(); };
   function addBubble(log, cls, text) {
     const empty = log.querySelectorAll('.chat-empty, .chat-presets'); for (const e of empty) e.remove();
     const b = document.createElement('div');
@@ -144,18 +203,27 @@
     log.scrollTop = log.scrollHeight;
     return b;
   }
+  function setBusyButton(on) {
+    const box = chat && chat.el.querySelector('.chat-compose');
+    if (!box) return;
+    const btn = box.querySelector('[data-act="askSend"], [data-act="askStop"]');
+    if (!btn) return;
+    if (on) { btn.setAttribute('data-act', 'askStop'); btn.setAttribute('aria-label', 'Stop'); btn.removeAttribute('data-variant'); btn.innerHTML = U.icon('stop'); }
+    else { btn.setAttribute('data-act', 'askSend'); btn.setAttribute('aria-label', 'Send'); btn.setAttribute('data-variant', 'tinted'); btn.innerHTML = U.icon('send'); }
+  }
   U.act.askSend = async (btn) => {
     const S = U.S;
     const q = document.getElementById('askQ');
     const log = document.getElementById('chatLog');
-    if (!q || !log || ai.busy) return;
+    if (!q || !log || ai.busy || stopper) return;
     const text = q.value.trim();
     if (!text) return;
     q.value = '';
     lastQuestion = text;
     addBubble(log, 'me', text);
     U.haptic('tap');
-    if (!(claudeMode(S) && AI() && AI().hasKey())) {
+    const e = engineOf(S);
+    if (e === 'local') {
       const res = GH.coach.ask(S, U.today(), text);
       S.coachChat = (S.coachChat || []).concat([{ role: 'user', text }, { role: 'coach', text: res.text }]).slice(-24);
       U.save();
@@ -164,16 +232,50 @@
     }
     const out = addBubble(log, 'coach is-typing');
     out.innerHTML = '<span class="rf-spinner" data-size="sm"><i></i></span>';
+    const status = document.createElement('span');
+    status.className = 't-footnote rf-muted bubble-status';
+    if (e === 'device') {
+      const ctl = new AbortController();
+      stopper = ctl;
+      setBusyButton(true);
+      let shown = false;
+      try {
+        const res = await GH.deviceCoach.ask(S, U.today(), text, {
+          signal: ctl.signal,
+          onStatus: (st, f) => {
+            if (shown) return;
+            status.textContent = st === 'loading' ? `Starting the model${f ? ` ${Math.round(f * 100)}%` : '…'}` : 'Thinking…';
+            if (!status.parentNode) out.appendChild(status);
+          },
+          onToken: (piece, soFar) => { shown = true; out.classList.remove('is-typing'); out.textContent = soFar; log.scrollTop = log.scrollHeight; },
+        });
+        out.classList.remove('is-typing');
+        if (!res.text) out.textContent = res.aborted ? 'Stopped.' : 'No answer came back. Try asking another way.';
+        else out.textContent = res.text;
+        if (res.aborted && res.text) out.classList.add('is-stopped');
+        U.save(true);
+      } catch (err) {
+        out.classList.remove('is-typing');
+        out.classList.add('is-error');
+        out.textContent = err.message || 'The on-device model couldn\'t answer that.';
+        U.haptic('error');
+        if (err.code === 'not-installed' && U.checkDevice) U.checkDevice().then(refreshChat);
+      } finally {
+        stopper = null;
+        setBusyButton(false);
+      }
+      return;
+    }
     if (btn) btn.setAttribute('aria-busy', 'true');
     ai.busy = 'chat';
     try {
       await AI().ask(S, U.today(), text, (delta, snapshot) => { out.classList.remove('is-typing'); out.textContent = snapshot; log.scrollTop = log.scrollHeight; });
       out.classList.remove('is-typing');
       U.save(true);
-    } catch (e) {
+    } catch (err) {
       out.classList.remove('is-typing');
       out.classList.add('is-error');
-      out.textContent = e.message || 'Something went wrong.';
+      out.textContent = err.message || 'Something went wrong.';
       U.haptic('error');
     } finally {
       ai.busy = false;

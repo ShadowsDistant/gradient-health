@@ -20,6 +20,8 @@
       const hcDetail = !app ? 'Android app only' : on ? 'On' : st === 'unsupported' ? 'Needs Android 14' : st === 'unavailable' ? 'Unavailable' : 'Off';
       const hasKey = AI() && AI().hasKey();
       const claude = S.ai.mode === 'api';
+      const engine = S.ai.mode === 'api' || S.ai.mode === 'device' ? S.ai.mode : 'local';
+      if (engine === 'device' && !dev.checked) checkDevice().then(() => { if (U.route.view === 'settings') U.render(); });
       const canWrite = on && H().canWrite && H().canWrite();
       const ver = (GH.platform && GH.platform.appVersion()) || GH.VERSION || 'web';
       const workouts = p.workouts !== false;
@@ -52,13 +54,14 @@
           </ul>
           <h3 class="rf-list-header" id="coach">Coach</h3>
           <ul class="rf-list">
-            <li><div class="rf-list-row set-coach"><span class="rf-list-text"><span class="rf-list-title">Coach</span><span class="rf-list-sub">Weekly report and questions</span></span>${U.seg('setCoach', [['local', 'Built-in'], ['api', 'Claude']], claude ? 'api' : 'local', 'Coach', ' data-on="setCoachMode" data-size="sm"')}</div></li>
+            <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Who answers your questions</span><span class="rf-list-sub">${U.esc(ENGINE_SUB[engine])}</span></span>${U.seg('setCoach', [['local', 'Built-in'], ['device', 'On-device'], ['api', 'Claude']], engine, 'Coach', ' data-on="setCoachMode"')}</div></li>
+            ${engine === 'device' ? U.modelRows(S) : ''}
             ${claude ? `${hasKey ? U.row({ icon: 'lock', tone: 'green', title: 'API key saved on this phone', sub: S.ai.model && S.ai.model.name ? `Using ${U.esc(S.ai.model.name)}` : 'The model is picked on first use', act: 'keySheet', detail: 'Change', chevron: true }) : U.row({ icon: 'lock', tone: 'amber', title: 'Add your API key', sub: 'From the Claude Console, starts with sk-ant-', act: 'keySheet', chevron: true })}
               ${hasKey ? U.row({ icon: 'trash', tone: 'rose', title: 'Delete key', act: 'deleteKey' }) : ''}` : ''}
             ${U.row({ icon: 'share', tone: 'violet', title: 'Ask in the Claude app', sub: 'Uses your own Claude plan, no key needed', act: 'askClaudeApp', chevron: true })}
             ${U.row({ icon: 'eye', tone: 'sky', title: 'What gets sent', sub: 'The exact summary Claude sees', act: 'previewSheet', chevron: true })}
           </ul>
-          <p class="rf-list-footer">${claude ? 'Claude mode uses your own Anthropic API key and its usage costs. The key stays on this phone and is never in backups.' : 'The built-in coach works offline from your own numbers. It isn\'t an AI model, so it sticks to common questions.'} Anything sent to Claude is a summary with no name, dates or IDs, and only when you ask.</p>
+          <p class="rf-list-footer">${claude ? 'Claude mode uses your own Anthropic API key and its usage costs. The key stays on this phone and is never in backups.' : engine === 'device' ? 'The on-device model is Qwen2.5 Instruct (Apache 2.0), run with llama.cpp on your phone. It works offline, nothing you ask leaves the phone, and it can be wrong.' : 'The built-in coach works offline from your own numbers. It isn\'t an AI model, so it sticks to common questions.'} Anything sent to Claude is a summary with no name, dates or IDs, and only when you ask.</p>
           <h3 class="rf-list-header">Workout</h3>
           <ul class="rf-list">
             ${U.sw('Sound', pr.sound !== false, 'data-on="setPref" data-k="sound"')}
@@ -257,12 +260,120 @@
   };
 
   /* ---------------------------------------------------------------- coach */
+  const ENGINE_SUB = { local: 'Built-in: instant answers from your numbers', device: 'On-device: an AI model that runs on your phone', api: 'Claude: your own API key, the most capable' };
   U.on.setCoachMode = (el, ev, v) => {
-    U.S.ai.mode = v === 'api' ? 'api' : 'local';
+    U.S.ai.mode = v === 'api' || v === 'device' ? v : 'local';
     U.S.ai.enabled = U.S.ai.mode === 'api';
     U.save();
     setTimeout(() => U.render(), 220);
     if (U.S.ai.mode === 'api' && AI() && !AI().hasKey()) setTimeout(() => U.act.keySheet(), 400);
+    if (U.S.ai.mode === 'device') checkDevice().then(() => U.render());
+  };
+
+  /* ---------------------------------------------------------------- on-device model */
+  // What's on the phone and what's downloading, from GH.llm (loaded on demand). Progress events
+  // redraw Settings and the chat sheet a few times a second at most.
+  const dev = { checked: false, available: { ok: false, reason: '' }, offered: [], installed: [], progress: {}, free: null };
+  let devLoading = null, unsub = null, redrawAt = 0, redrawTimer = 0;
+  U.deviceState = () => dev;
+  function redraw() {
+    const go = () => { redrawAt = Date.now(); redrawTimer = 0; if (U.route.view === 'settings') U.render(); if (U.refreshChat) U.refreshChat(); };
+    const wait = 250 - (Date.now() - redrawAt);
+    if (wait <= 0) go(); else if (!redrawTimer) redrawTimer = setTimeout(go, wait);
+  }
+  function checkDevice() {
+    if (devLoading) return devLoading;
+    devLoading = (async () => {
+      try {
+        const llm = await GH.lazy('llm');
+        dev.available = llm.available();
+        dev.offered = llm.offered();
+        dev.installed = dev.available.ok || (GH.platform && GH.platform.isApp()) ? await llm.installed() : [];
+        dev.free = llm.freeSpace ? llm.freeSpace() : null;
+        if (!unsub) {
+          unsub = llm.onProgress((p) => {
+            if (!p || !p.id) return;
+            if (p.state === 'done' || p.state === 'cancelled') {
+              delete dev.progress[p.id];
+              if (p.state === 'done') llm.installed().then((x) => { dev.installed = x; redraw(); if (U.S && !U.S.ai.deviceModel) { U.S.ai.deviceModel = p.id; U.save(); } U.toast('The on-device model is ready', 'positive', 'Ask it anything about your numbers.'); });
+            } else dev.progress[p.id] = p;
+            redraw();
+          });
+        }
+        for (const x of llm.status ? llm.status() : []) if (x && x.id && !['done', 'cancelled'].includes(x.state)) dev.progress[x.id] = x;
+      } catch (e) {
+        dev.available = { ok: false, reason: 'On-device AI couldn\'t be loaded here.' };
+      }
+      dev.checked = true;
+      devLoading = null;
+      return dev;
+    })();
+    return devLoading;
+  }
+  U.checkDevice = checkDevice;
+  const size = (bytes) => (bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`);
+  // One row per model this phone can run: download, progress, or installed (use or delete).
+  U.modelRows = (S) => {
+    if (!dev.checked) return `<li><div class="rf-list-row"><span class="rf-spinner" data-size="sm"><i></i></span><span class="rf-list-text"><span class="rf-list-sub">Checking this phone…</span></span></div></li>`;
+    if (!dev.available.ok) return `<li><div class="rf-list-row"><span class="rf-list-icon" data-tone="amber">${U.icon('info')}</span><span class="rf-list-text"><span class="rf-list-sub">${U.esc(dev.available.reason)}</span></span></div></li>`;
+    const inChat = !!(U.topSheet() && U.topSheet().el.classList.contains('chat-sheet'));
+    const use = S.ai.deviceModel;
+    const rows = dev.offered.map((m) => {
+      const have = dev.installed.find((x) => x.id === m.id);
+      const p = dev.progress[m.id];
+      const on = have && (use === m.id || (!use && dev.installed[0] && dev.installed[0].id === m.id));
+      let right, sub = `${m.label} · ${size(m.bytes)}`;
+      if (p && !have) {
+        const pct = p.total ? Math.round((p.loaded / p.total) * 100) : 0;
+        sub = p.state === 'error' ? p.message || 'The download stopped.' : p.state === 'waiting-wifi' || p.state === 'waiting-network' || p.state === 'paused' ? p.message || 'Paused' : p.state === 'verifying' ? 'Checking the download…' : `Downloading · ${pct}% of ${size(m.bytes)}`;
+        right = p.state === 'error' || p.state === 'paused'
+          ? `<button type="button" class="rf-btn" data-size="sm" data-act="modelDownload" data-arg="${m.id}">Retry</button>`
+          : `<button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="modelCancel" data-arg="${m.id}">Cancel</button>`;
+        return `<li data-key="model-${m.id}"><div class="rf-list-row model-row"><span class="rf-list-icon" data-tone="violet">${U.icon('chip')}</span><span class="rf-list-text"><span class="rf-list-title">${U.esc(m.name)}</span><span class="rf-list-sub">${U.esc(sub)}</span>${p.state === 'downloading' || p.state === 'verifying' ? U.progress(p.total ? p.loaded / p.total : 0, `${m.name} download`) : ''}</span>${right}</div></li>`;
+      }
+      if (have) {
+        right = on ? `<span class="t-footnote model-on">${U.icon('check-circle', 'sm')}In use</span>` : `<button type="button" class="rf-btn" data-size="sm" data-act="modelUse" data-arg="${m.id}">Use</button>`;
+        return `<li data-key="model-${m.id}"><div class="rf-list-row model-row"><span class="rf-list-icon" data-tone="violet">${U.icon('chip')}</span><span class="rf-list-text"><span class="rf-list-title">${U.esc(m.name)}</span><span class="rf-list-sub">${U.esc(`${m.label} · on this phone`)}</span></span>${right}${inChat ? '' : `<button type="button" class="rf-btn" data-variant="plain" data-shape="circle" data-size="sm" aria-label="Delete ${U.esc(m.name)}" data-act="modelDelete" data-arg="${m.id}">${U.icon('trash')}</button>`}</div></li>`;
+      }
+      right = `<button type="button" class="rf-btn" data-variant="${m.id === dev.offered[0].id ? 'filled' : 'soft'}" data-size="sm" data-act="modelDownload" data-arg="${m.id}">${U.icon('download')}Get</button>`;
+      return `<li data-key="model-${m.id}"><div class="rf-list-row model-row"><span class="rf-list-icon" data-tone="violet">${U.icon('chip')}</span><span class="rf-list-text"><span class="rf-list-title">${U.esc(m.name)}</span><span class="rf-list-sub">${U.esc(sub)}${m.minRamGB >= 8 ? ' · slower, better answers' : ' · quick answers'}</span></span>${right}</div></li>`;
+    }).join('');
+    const wifi = U.sw('Download on Wi-Fi only', S.ai.wifiOnly !== false, 'data-on="setWifiOnly"');
+    return inChat ? `<ul class="rf-list">${rows}${wifi}</ul>` : `${rows}${wifi}`;
+  };
+  U.on.setWifiOnly = (el, ev, v) => { U.S.ai.wifiOnly = !!v; U.save(); };
+  U.act.modelDownload = async (el) => {
+    const id = el.dataset.arg;
+    const m = dev.offered.find((x) => x.id === id);
+    if (!m) return;
+    const llm = await GH.lazy('llm');
+    if (dev.free != null && dev.free < m.bytes * 1.1) { U.toast('Not enough free space', 'caution', `It needs about ${size(m.bytes * 1.1)} free.`); return; }
+    dev.progress[id] = { id, state: 'queued', loaded: 0, total: m.bytes };
+    redraw();
+    U.haptic('tap');
+    llm.download(id, { wifiOnly: U.S.ai.wifiOnly !== false }).catch((e) => {
+      if (e && e.code === 'cancelled') return;
+      dev.progress[id] = { id, state: 'error', message: e && e.message ? e.message : 'The download stopped.' };
+      redraw();
+    });
+  };
+  U.act.modelCancel = async (el) => {
+    const llm = await GH.lazy('llm');
+    await llm.cancel(el.dataset.arg);
+    delete dev.progress[el.dataset.arg];
+    redraw();
+  };
+  U.act.modelUse = (el) => { U.S.ai.deviceModel = el.dataset.arg; U.save(); redraw(); U.haptic('select'); };
+  U.act.modelDelete = async (el) => {
+    const m = dev.offered.find((x) => x.id === el.dataset.arg);
+    if (!m) return;
+    if (!(await U.confirm(`Delete ${m.name}?`, `This frees ${size(m.bytes)}. You can download it again any time.`, 'Delete', 'critical', 'trash'))) return;
+    const llm = await GH.lazy('llm');
+    await llm.remove(m.id);
+    dev.installed = await llm.installed();
+    if (U.S.ai.deviceModel === m.id) U.S.ai.deviceModel = null;
+    U.save();
+    redraw();
   };
   U.act.keySheet = () => {
     U.sheet({
