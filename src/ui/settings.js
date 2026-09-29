@@ -8,6 +8,8 @@
   const H = () => GH.health;
   const AI = () => GH.ai;
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  // The Try it chips under Haptic strength: the everyday tap and three events.
+  const HAPTIC_TRY = [['tap', 'Tap'], ['success', 'Success'], ['warning', 'Warning'], ['celebrate', 'Celebrate']];
 
   /* ---------------------------------------------------------------- screen */
   U.screens.settings = {
@@ -69,8 +71,9 @@
           <ul class="rf-list">
             ${U.sw('Sound', pr.sound !== false, 'data-on="setPref" data-k="sound"')}
             ${U.sw('Vibration', pr.vibrate !== false, 'data-on="setPref" data-k="vibrate"', 'Buzzes for timers and the end of rest')}
-            ${U.sw('Haptic feedback', pr.haptics !== false, 'data-on="setPref" data-k="haptics"', GH.platform && GH.platform.hapticsSystemEnabled && !GH.platform.hapticsSystemEnabled() ? 'Touch feedback is off in your phone\'s settings, so taps won\'t buzz. Workout alerts still will.' : 'A tap when you press buttons and switches, a firmer one for finished sets')}
-            ${pr.haptics !== false ? `<li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Haptic strength</span></span>${U.seg('setHaptic', [['light', 'Light'], ['medium', 'Medium'], ['strong', 'Strong']], pr.hapticStrength || 'medium', 'Haptic strength', ' data-on="setHapticStrength"')}</div></li>` : ''}
+            ${U.sw('Haptic feedback', pr.haptics !== false, 'data-on="setPref" data-k="haptics"', GH.platform && GH.platform.hapticsSystemEnabled && !GH.platform.hapticsSystemEnabled() ? 'Touch feedback is off in your phone\'s settings, so taps won\'t buzz. Workout alerts still will.' : 'A click for buttons and switches, and a different feel for sets, timers and warnings')}
+            ${pr.haptics !== false ? `<li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Haptic strength</span></span>${U.seg('setHaptic', [['light', 'Light'], ['medium', 'Medium'], ['strong', 'Strong']], pr.hapticStrength || 'medium', 'Haptic strength', ' data-on="setHapticStrength"')}</div></li>
+            <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Try it</span><span class="rf-list-sub">Each one at this strength</span></span><div class="ob-chips">${HAPTIC_TRY.map(([k, t]) => `<button type="button" class="rf-chip" data-act="tryHaptic" data-arg="${k}">${t}</button>`).join('')}</div></div></li>` : ''}
             ${U.sw('Supersets', pr.supersets !== false, 'data-on="setPref" data-k="supersets"', 'Pair exercises that don\'t share muscles')}
             <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Rest between sets</span><span class="rf-list-sub">Auto: 90 s after big moves, 60 s after small ones and in supersets</span></span>${U.seg('setRest', [['auto', 'Auto'], ['60', '60 s'], ['90', '90 s']], String(pr.rest), 'Rest between sets', ' data-on="setRest"')}</div></li>
             ${workouts ? figureRows(pr) : ''}
@@ -236,7 +239,9 @@
     if (k === 'haptics') { if (v) U.haptic('toggleOn'); U.render(); }
     if (k === 'supersets') U.render();
   };
-  U.on.setHapticStrength = (el, ev, v) => { U.S.profile.prefs.hapticStrength = v; U.applyPrefs(); U.save(); U.haptic('toggleOn'); };
+  // A new strength plays a tap at it, the haptic felt most often. Try it has the bigger ones.
+  U.on.setHapticStrength = (el, ev, v) => { U.S.profile.prefs.hapticStrength = v; U.applyPrefs(); U.save(); U.haptic('tap'); };
+  U.act.tryHaptic = (el) => U.haptic(el.dataset.arg);
   U.on.setRest = (el, ev, v) => { U.S.profile.prefs.rest = v === 'auto' ? 'auto' : Number(v); U.save(); };
   U.on.setTheme = (el, ev, v) => { U.S.profile.prefs.theme = v; U.applyPrefs(); U.save(); };
   U.on.setDensity = (el, ev, v) => { U.S.profile.prefs.density = v; U.applyPrefs(); U.save(); };

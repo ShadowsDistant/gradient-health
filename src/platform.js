@@ -39,7 +39,8 @@
       if (b && b.hapticStrength) { try { b.hapticStrength(String(prefs.hapticStrength || 'medium')); } catch (e) { /* ignore */ } }
     }
   }
-  // False when the phone's own touch feedback is switched off (then taps don't buzz at all).
+  // False when the phone's own touch feedback is switched off (then the UI kinds of haptic don't buzz;
+  // events like the workout timer's still do).
   function hapticsSystemEnabled() {
     const b = bridge();
     try { return b && b.hapticsSystemEnabled ? !!b.hapticsSystemEnabled() : true; } catch (e) { return true; }
@@ -76,24 +77,43 @@
     } catch (e) { /* ignore */ }
   }
 
-  // Short haptics for UI events (see Haptics.java for what each one feels like). The Android app plays
-  // the phone's own tuned effects; a browser gets a short buzz where it can.
-  const BUZZ = { tap: 8, select: 6, tick: 5, toggleOn: 10, toggleOff: 7, success: [10, 60, 16], error: [22, 50, 22], heavy: 24, go: [8, 40, 18], done: [20, 70, 10], celebrate: [10, 60, 10, 60, 26] };
-  let lastHaptic = 0;
+  // Haptics, each kind with a feel of its own (Haptics.java has what each one is). UI kinds: tap, select,
+  // tick (slider steps), toggleOn, toggleOff, detent (a sheet snapping to a height). Events: countdown
+  // (the 3-2-1 before a timer ends), go, done (a hold or rest is over), success, warning, error, heavy
+  // (destructive confirmations), celebrate. The Android app plays its own compositions; a browser gets
+  // these on/off patterns with the same rhythm, [on, off, on, …] in ms at Strong. Light and Medium
+  // shorten the pulses by the same 0.55 and 0.8 the app scales its strength by.
+  const HAPTIC_PATTERNS = {
+    tap: [18], select: [11], tick: [8], toggleOn: [8, 24, 18], toggleOff: [16, 24, 8], detent: [22, 20, 8],
+    countdown: [26], go: [10, 30, 16, 30, 34], done: [22, 90, 22, 90, 50], success: [14, 70, 24], warning: [48],
+    error: [40, 60, 40], heavy: [70], celebrate: [10, 30, 24, 70, 20, 60, 30, 20, 50],
+  };
+  const HAPTIC_STRENGTH = { light: 0.55, medium: 0.8, strong: 1 };
+  const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  const hapticKind = (kind) => (own(HAPTIC_PATTERNS, kind) ? kind : 'tap'); // an unknown name is a tap
+  function hapticPattern(kind, strength) {
+    const k = own(HAPTIC_STRENGTH, strength) ? HAPTIC_STRENGTH[strength] : HAPTIC_STRENGTH.medium;
+    return HAPTIC_PATTERNS[hapticKind(kind)].map((x, i) => (i % 2 ? x : Math.max(4, Math.round(x * k))));
+  }
+  // A phone plays one vibration at a time, and a new one cuts the last short. So a haptic doesn't cut
+  // in on a bigger one that's still playing: UI kinds rank lowest, then the countdown, then events,
+  // with errors, heavy and celebrate on top.
+  const HAPTIC_RANK = { countdown: 1, go: 2, done: 2, success: 2, warning: 2, error: 3, heavy: 3, celebrate: 3 };
+  let last = { kind: '', at: -1e9, until: 0, rank: 0 };
   function haptic(kind) {
     if (!prefs.haptics) return;
+    const k = hapticKind(kind);
     const now = Date.now();
-    if (now - lastHaptic < 35 && (kind === 'tick' || kind === 'select')) return; // don't stack ticks
-    lastHaptic = now;
+    const rank = HAPTIC_RANK[k] || 0;
+    // Ticks (slider steps) don't stack; otherwise the same kind twice at once is one moment reported
+    // twice (a toast after its action's own haptic).
+    if (k === 'tick' || k === 'select' ? now - last.at < 35 : k === last.kind && now - last.at < 80) return;
+    if (rank < last.rank && now < last.until) return;
+    last = { kind: k, at: now, until: now + HAPTIC_PATTERNS[k].reduce((a, x) => a + x, 0) + 60, rank };
     try {
       const b = bridge();
-      if (b && b.haptic) { b.haptic(String(kind)); return; }
-      if (G.navigator && G.navigator.vibrate && G.navigator.userActivation && G.navigator.userActivation.hasBeenActive) {
-        // Browser fallback: scale the pulse lengths with the chosen strength.
-        const k = prefs.hapticStrength === 'light' ? 0.7 : prefs.hapticStrength === 'strong' ? 1.6 : 1.2;
-        const buzz = BUZZ[kind] || 8;
-        G.navigator.vibrate(Array.isArray(buzz) ? buzz.map((x, i) => (i % 2 ? x : Math.round(x * k))) : Math.round(buzz * k));
-      }
+      if (b && b.haptic) { b.haptic(k); return; }
+      if (G.navigator && G.navigator.vibrate && G.navigator.userActivation && G.navigator.userActivation.hasBeenActive) G.navigator.vibrate(hapticPattern(k, prefs.hapticStrength));
     } catch (e) { /* ignore */ }
   }
 
@@ -125,15 +145,25 @@
   }
   // Audio needs a user gesture before it may start.
   function unlockAudio() { if (prefs.sound) ctx(); }
-  // Cues for the player: a countdown tick, go, and the end of a timer.
+  // Cues for the player and the plank test: 'countdown' (each of the 3-2-1 before a timer starts or
+  // ends; 'tick' is the old name), 'go', and 'done' (the end of a timer or rest). The sound follows
+  // the Sound switch and the buzz the Vibration switch. In the app with haptics on, that buzz is the
+  // haptic for the moment instead of a plain one on top of it: Android plays one vibration at a time,
+  // so the two would cut each other short (and the plain one, an alarm-class buzz, would win). Not
+  // while the app is out of sight, though (a rest counting down under another app, or with the screen
+  // off): Android only lets alarm-class vibrations through then, so it's the plain buzz.
+  const CUE_HAPTIC = { countdown: 'countdown', tick: 'countdown', go: 'go', done: 'done' };
   function cue(kind) {
     if (prefs.sound) {
-      if (kind === 'tick') tone(880, 90);
+      if (CUE_HAPTIC[kind] === 'countdown') tone(880, 90);
       else if (kind === 'go') tone(1320, 240);
       else if (kind === 'done') { tone(988, 150); tone(1319, 280, 170); }
       else tone(1047, 160);
     }
-    if (kind === 'tick') vibrate(35);
+    if (!prefs.vibrate) return;
+    const b = bridge();
+    if (prefs.haptics && b && b.haptic && own(CUE_HAPTIC, kind) && visible()) { haptic(CUE_HAPTIC[kind]); return; }
+    if (CUE_HAPTIC[kind] === 'countdown') vibrate(35);
     else if (kind === 'go') vibrate(140);
     else if (kind === 'done') vibrate([140, 90, 220]);
     else vibrate(60);
@@ -241,5 +271,5 @@
   }
   const isApp = () => !!bridge();
 
-  GH.platform = { setPrefs, hapticsSystemEnabled, keepAwake, haptic, vibrate, cue, unlockAudio, applyTheme, currentTheme, setDensity, onBack, on, emit, visible, copy, openUrl, share, claudeInstalled, appVersion, reducedMotion, isApp };
+  GH.platform = { setPrefs, hapticsSystemEnabled, keepAwake, haptic, hapticPattern, hapticKinds: Object.keys(HAPTIC_PATTERNS), vibrate, cue, unlockAudio, applyTheme, currentTheme, setDensity, onBack, on, emit, visible, copy, openUrl, share, claudeInstalled, appVersion, reducedMotion, isApp };
 })(typeof window !== 'undefined' ? window : globalThis);

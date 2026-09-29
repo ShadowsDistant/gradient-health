@@ -757,6 +757,7 @@ public final class MainActivity extends Activity {
         }
     }
 
+    /** Plays a haptic by name (see Haptics). The view is only for phones without a vibrator to drive. */
     void haptic(String kind) {
         View v = webView != null ? webView : root;
         Haptics.play(this, v, kind);

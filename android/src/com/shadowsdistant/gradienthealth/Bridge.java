@@ -167,15 +167,19 @@ public final class Bridge {
         Haptics.setLevel(level);
     }
 
-    /** False when the phone's own touch feedback is switched off (UI taps are then skipped). */
+    /**
+     * False when the phone's own touch feedback is switched off: taps, ticks, toggles and detents are
+     * then skipped, and the other kinds (workout and other events) still play.
+     */
     @JavascriptInterface
     public boolean hapticsSystemEnabled() {
         return Haptics.systemTouchFeedback(activity);
     }
 
     /**
-     * A short haptic by name: tap, select, tick, toggleOn, toggleOff, success, error, heavy, go,
-     * done, celebrate. Follows the system's touch-feedback setting.
+     * A haptic by name, each with its own feel (see Haptics): tap, select, tick, toggleOn, toggleOff
+     * and detent for the UI; countdown, go, done, success, warning, error, heavy and celebrate for
+     * events. An unknown name plays a tap.
      */
     @JavascriptInterface
     public void haptic(final String kind) {
