@@ -25,10 +25,8 @@
   // Named muscles in the takeaway carry a swatch of their colour on the map.
   const named = (list, values, max) => list.map((m) => `<span class="bm-name"><i class="bm-sw" data-l="${U.bodyLevel(values[m], max)}"></i>${U.esc(lower(m))}</span>`).join(', ');
 
-  function bodyCard(S, day) {
+  function bodyCard(S, day, t, imp) {
     const { mode, weeks } = view();
-    const t = Y().trained(S, day, weeks);
-    const imp = mode === 'improved' ? Y().improved(S, day, weeks) : null;
     const values = {};
     for (const m of Y().MUSCLES) values[m] = mode === 'trained' ? t.sets[m] || 0 : Math.max(0, imp.score[m] || 0);
     const max = mode === 'trained' ? t.max : imp.max;
@@ -38,15 +36,15 @@
       const top = (imp.byMuscle[m] || []).find((l) => l.dir > 0);
       return imp.score[m] > 0 ? `${name}: went up ${U.plural(imp.ups[m] || 0, 'time')}${top ? `. ${top.text}` : ''}` : `${name}: ${t.sets[m] > 0 ? 'no progress yet' : 'not trained'}`;
     };
-    // "Most: chest, triceps · Least: calves": two halves that wrap as a whole when they must.
+    // "Most: chest, triceps · Least: calves", as two halves that wrap as a whole when they must.
     const clause = (label, list) => `<span class="bm-clause">${label}: ${named(list, values, max)}</span>`;
-    const both = (a, b) => a + b;
+    const SEP = '<span class="bm-vh"> · </span>';
     let take, target = null;
     if (mode === 'trained') {
-      if (t.sum) { take = both(clause('Most', t.most.slice(0, 2)), clause('Least', t.least.slice(0, 1))); target = t.least[0]; }
+      if (t.sum) { take = clause('Most', t.most.slice(0, 2)) + SEP + clause('Least', t.least.slice(0, 1)); target = t.least[0]; }
       else take = hasWorkouts(S) ? `No sets in the ${rangeText(weeks)}. Your next workout lights up the muscles it trains.` : 'Finish a workout and the muscles it trained light up here.';
     } else if (imp.max > 0) {
-      take = both(clause('Most', imp.most.slice(0, 2)), clause('Least', imp.least.slice(0, 1)));
+      take = clause('Most', imp.most.slice(0, 2)) + SEP + clause('Least', imp.least.slice(0, 1));
       target = imp.least[0];
     } else take = t.sum ? `No progress to show in the ${rangeText(weeks)} yet. It shows up here as your reps, weights and levels go up.` : 'Progress shows up here as your reps, weights and levels go up.';
     const more = target && U.act.tailorPlan
@@ -70,11 +68,10 @@
   };
 
   // What improved most, per muscle group: the group's best lines and how much.
-  function mostImproved(S, day) {
+  function mostImproved(S, imp) {
     const { weeks } = view();
-    const imp = Y().improved(S, day, weeks);
     const rows = B().GROUPS.map((g) => ({ g, x: imp.groups[g] })).filter((r) => r.x.score > 0).sort((a, b) => b.x.score - a.x.score).slice(0, 5);
-    if (!rows.length) return `<div class="card" data-key="mi-none"><p class="t-callout rf-muted">${hasWorkouts(S) ? `Nothing went up in the ${rangeText(weeks)} yet.` : 'After a few workouts,'} The muscle groups getting stronger show here, with what changed: levels, weights and reps.</p></div>`;
+    if (!rows.length) return `<div class="card" data-key="mi-none"><p class="t-callout rf-muted">${hasWorkouts(S) ? `Nothing went up in the ${rangeText(weeks)} yet. The muscle groups` : 'After a few workouts, the muscle groups'} getting stronger show here, with what changed: levels, weights and reps.</p></div>`;
     const vals = {};
     for (const m of Y().MUSCLES) vals[m] = Math.max(0, imp.score[m] || 0);
     return `<ul class="rf-list mi-list" data-key="mi">${rows.map(({ g, x }) => {
@@ -212,13 +209,15 @@
   U.screens.progress = {
     render(S, day) {
       const cal = B().calendar(S, day);
+      const trained = Y().trained(S, day, view().weeks);
+      const improved = Y().improved(S, day, view().weeks);
       const done = S.log.filter((l) => l.type === 'workout' && B().isDone(l)).length;
       const ups = S.log.reduce((a, l) => a + (l.celebrate || []).filter((c) => c.kind !== 'pr').length, 0);
       return `${U.navbar('Progress')}
         <h1 class="rf-large-title">Progress</h1>
         <div class="section">
           ${U.tip ? U.tip('progress') : ''}
-          ${bodyCard(S, day)}
+          ${bodyCard(S, day, trained, improved)}
           <div class="stat-row" data-key="stats">
             <div class="stat"><span class="t-footnote rf-muted">Workouts</span><span class="t-title-2">${U.roll(done)}</span></div>
             <div class="stat"><span class="t-footnote rf-muted">Best streak</span><span class="t-title-2">${U.roll(cal.streak.best)}</span></div>
@@ -226,7 +225,7 @@
           </div>
         </div>
         <h2 class="sec-title t-title-3">Most improved</h2>
-        <div class="section">${mostImproved(S, day)}</div>
+        <div class="section">${mostImproved(S, improved)}</div>
         <h2 class="sec-title t-title-3">Training</h2>
         <div class="section">
           ${weekSets(S, day)}

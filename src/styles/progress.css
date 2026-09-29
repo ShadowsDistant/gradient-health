@@ -72,6 +72,7 @@
 .bm-card .bm-stage::before { content: ''; position: absolute; inset: 4% 8% 10%; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in oklab, var(--bm-hue) 13%, transparent), transparent); pointer-events: none; }
 .bm-take { margin: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 2px var(--space-4); text-align: center; }
 .bm-clause { min-width: 0; }
+.bm-vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .bm-name { font-weight: 600; white-space: nowrap; }
 .bm-name .bm-sw { width: 10px; height: 10px; margin-inline-end: 5px; vertical-align: 0; }
 .bm-more { justify-self: center; max-width: 100%; }
