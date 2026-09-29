@@ -347,6 +347,24 @@ await page.evaluate(() => window.GH.ui.closeSheets());
 await settle(700);
 await ctx.close();
 
+/* ------------------------------------------------------------------ a deload week */
+section('A deload week');
+({ ctx, page, settle } = await openApp('2026-10-19T08:10:00', () => {
+  const GH = window.GH, B = GH.brain;
+  const S = GH.store.load();
+  S.events.push({ type: 'deloadNext', day: B.dayOf(Date.now(), 4) - 3 });
+  GH.store.save(S);
+}));
+await page.click('.rf-tab[data-tab="plan"]');
+await settle(900);
+check('the summary says so in plain words', /Week 6 · Deload week/.test((await page.locator('#screen .pw-sub').innerText()).replace(/\s+/g, ' ')));
+await page.click('#screen .pw-info');
+await settle(900);
+const deload = await page.evaluate(() => document.querySelector('dialog.rf-sheet[open]').textContent);
+check('and the info sheet explains it', /40% fewer sets/.test(deload) && /back to full volume/.test(deload), deload.slice(0, 160));
+await shot(page, '14-deload');
+await ctx.close();
+
 section('Console');
 check('no console errors', errors.length === 0, errors.slice(0, 6).join(' | '));
 await browser.close();

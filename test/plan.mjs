@@ -184,6 +184,18 @@ section('Next week');
   check('next week has 3, on Mon, Wed and Fri', w.next.workouts === 3 && w.next.newSchedule && w.next.days.filter((x) => x.kind === 'workout').map((x) => x.wd).join() === 'Mon,Wed,Fri');
 }
 
+/* ------------------------------------------------------------------ phases */
+section('Phases');
+{
+  const S = fresh();
+  for (let d = MON; d < MON + 28; d++) if (B.todayPlan(S, d).type === 'workout') doWorkout(S, d);
+  const w5 = PW(S, MON + 28);
+  check('after four weeks of training, a deload week at 60%', w5.phase.key === 'deload' && w5.phase.pct === 60 && w5.trainingWeek === 5, JSON.stringify(w5.phase));
+  const w6 = PW(S, MON + 35);
+  check('after more than a week off, easing back in', w6.phase.key === 'comeback' && w6.phase.idle && w6.phase.pct < 100, JSON.stringify(w6.phase));
+  check('matching the calendar', w6.phase.mult === B.calendar(S, MON + 35).weeks[MON + 35].phase.mult);
+}
+
 /* ------------------------------------------------------------------ a workout in progress */
 section('A workout in progress');
 {

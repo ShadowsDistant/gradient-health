@@ -566,8 +566,11 @@
       stripEl.removeAttribute('data-dragging');
       for (const c of dr.cells) { c.removeAttribute('data-over'); c.removeAttribute('data-drop'); }
       dr.li.removeAttribute('data-lifted');
+      const was = dr.li.style.transform;
       dr.li.style.transform = '';
       if (ev.type !== 'pointercancel' && dr.over != null) moveTo(dr.from, dr.over);
+      // Let go anywhere else and it glides back to its day.
+      else if (was && !U.reduced() && dr.li.animate) dr.li.animate([{ transform: was }, { transform: 'none' }], { duration: 320, easing: EASE });
     }
   }
 

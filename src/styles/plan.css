@@ -36,7 +36,7 @@
 .pw-pill:active { scale: .92; transition-duration: var(--duration-instant); }
 .pw-pill:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .pw-wd { font-size: .6875rem; font-weight: 650; line-height: 1.1; letter-spacing: .06em; color: var(--label-secondary); }
-.pw-num { display: grid; place-items: center; width: min(1.9em, 100%); aspect-ratio: 1; border-radius: 50%; font-size: 1.0625rem; font-weight: 650; line-height: 1; letter-spacing: -.01em; font-variant-numeric: tabular-nums; transition: color var(--duration-fast) var(--ease-standard); }
+.pw-num { display: grid; place-items: center; width: min(1.9em, 100%); aspect-ratio: 1; border-radius: 50%; font-size: 1.0625rem; font-weight: 650; line-height: 1; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
 .pw-day[data-past]:not([data-kind="done"]) .pw-num { color: var(--label-secondary); }
 .pw-day[data-kind="before"] .pw-pill { opacity: .4; }
 /* Today: a ring round the date. */
@@ -185,8 +185,8 @@ button.pw-ex-row:focus-visible { outline: 2px solid var(--focus-ring); outline-o
 @keyframes pw-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pw-grow { from { transform: scaleX(0); } to { transform: none; } }
 @media (prefers-reduced-motion: reduce) {
-  .pw-page, .pw-sel, .pw-pill, .pw-num, .pw-info, .pw-mob-btn { transition: none; }
+  .pw-page, .pw-sel, .pw-pill, .pw-info, .pw-mob-btn { transition: none; }
   .pw-mark, .pw-move, .pw-bar-plan, .pw-bar-done, .pw-check.is-done .pw-check-mark, .pw-thumb > svg.fig { animation: none; }
 }
-:root[data-rf-motion="reduced"] :is(.pw-page, .pw-sel, .pw-pill, .pw-num, .pw-info, .pw-mob-btn) { transition: none; }
+:root[data-rf-motion="reduced"] :is(.pw-page, .pw-sel, .pw-pill, .pw-info, .pw-mob-btn) { transition: none; }
 :root[data-rf-motion="reduced"] :is(.pw-mark, .pw-move, .pw-bar-plan, .pw-bar-done, .pw-check.is-done .pw-check-mark, .pw-thumb > svg.fig) { animation: none; }
