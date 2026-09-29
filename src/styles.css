@@ -233,8 +233,6 @@ html:has(#app[data-receded]), body:has(#app[data-receded]) { background: #08090c
 .insight-text { display: grid; flex: 1; min-width: 0; }
 
 /* ---------------------------------------------------------------- plan */
-.plan-wd { display: inline-block; min-width: 2.4em; font-weight: 650; color: var(--label-secondary); }
-.plan-wd.is-today { color: var(--accent); }
 
 /* ---------------------------------------------------------------- health */
 .insight .ins-head { display: flex; align-items: center; gap: var(--space-2); }

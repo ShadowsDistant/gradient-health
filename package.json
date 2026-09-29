@@ -7,7 +7,7 @@
     "build": "node scripts/build.mjs",
     "test": "node test/simulate.mjs && node test/insights.mjs && node test/ai.mjs && node test/coach.mjs && node test/poses.mjs && node test/store.mjs && node test/food.mjs && node test/health.mjs && node test/gym.mjs && node test/foods.mjs && node test/plan.mjs && node test/body.mjs && node test/metrics.mjs",
     "smoke": "node test/smoke.mjs",
-    "test:ui": "node test/ui-regress.mjs && node test/ui-food.mjs && node test/ui-chat.mjs && node test/ui-figure.mjs && node test/ui-sheet.mjs && node test/ui-progress.mjs",
+    "test:ui": "node test/ui-regress.mjs && node test/ui-food.mjs && node test/ui-chat.mjs && node test/ui-figure.mjs && node test/ui-sheet.mjs && node test/ui-progress.mjs && node test/ui-plan.mjs",
     "test:llm": "node test/llm.mjs",
     "apk": "bash scripts/build-apk.sh"
   },

@@ -34,7 +34,7 @@
 
   /* ---------------------------------------------------------------- tips */
   const TIPS = {
-    plan: ['calendar', 'sky', 'Your week at a glance. Tap an upcoming workout to preview it or move it to another day. Miss one and the rest of the week shifts forward, so nothing doubles up.'],
+    plan: ['calendar', 'sky', 'Your week at a glance. Tap any day to see it, move a workout to a free day, or swipe for next week. Miss one and the rest of the week shifts forward, so nothing doubles up.'],
     health: ['heart', 'rose', 'Your numbers from Health Connect plus anything you log by hand. Pull down to sync. Insights start showing up after a few days of data.'],
     progress: ['chart', 'green', 'How your training is going: which days you trained, your level on each exercise, and how your weaker side is catching up.'],
     moves: ['library', 'violet', 'Every exercise, grouped into ladders from easiest to hardest. You move up a level once you have 3 or more reps left at the top of the range.'],

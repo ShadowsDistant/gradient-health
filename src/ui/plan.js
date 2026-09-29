@@ -300,7 +300,7 @@
   function makeItYours(S) {
     const p = S.profile;
     const rows = [];
-    if (U.act.tailorPlan) rows.push(U.row({ icon: 'sparkle', tone: 'violet', title: 'Tailor my plan', act: 'tailorPlan', chevron: true }));
+    if (U.act.tailorPlan) rows.push(U.row({ icon: 'sparkle', tone: 'violet', title: 'Tailor my plan', sub: 'Tell the coach what you want more or less of', act: 'tailorPlan', chevron: true }));
     rows.push(U.row({ icon: 'calendar', tone: 'sky', title: 'Days and time', sub: U.esc(`${U.plural(p.days, 'workout')} a week · ${p.minutes} min each`), act: 'daysSheet', chevron: true }));
     if (U.editAnswers) rows.push(U.row({ icon: 'bag', tone: 'amber', title: 'Equipment', sub: U.equipSummary ? U.esc(U.equipSummary(p)) : '', act: 'planEquipment', chevron: true }));
     if (U.hasTab && !U.hasTab('moves')) rows.push(U.row({ icon: 'library', tone: 'indigo', title: 'All moves', sub: 'Every exercise, your level in each and how to do it', act: 'openMoves', chevron: true }));
