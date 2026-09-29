@@ -36,7 +36,7 @@
     const rep = rep0 && !rep0.flagged ? rep0 : null;
     const own = GH.coach.report(S, day);
     const d = rep ? Object.assign({}, rep.data) : own;
-    d.glance = d.glance && d.glance.length ? d.glance.map((g) => (g.key ? g : Object.assign({ key: keyOf(g.metric) }, g))) : own.glance;
+    d.glance = d.glance && d.glance.length >= 2 ? d.glance.map((g) => (g.key ? g : Object.assign({ key: keyOf(g.metric) }, g))) : own.glance;
     if (!d.focus_one) d.focus_one = firstPart((d.focus || [])[0]) || own.focus_one;
     return { api, rep, data: d };
   }
@@ -128,7 +128,6 @@
   // The four main numbers: the newest value, when it's from, and how it compares with the usual.
   function heroTile(S, day, key) {
     const h = H(), m = M(key);
-    const t = h.today(S, day);
     const connected = h.connected(h.status());
     let e, sub, chip = '', bar = '';
     if (key === 'steps') {
@@ -142,7 +141,7 @@
       // Only a real change gets a chip (or a value worth watching whatever the usual); steady stays quiet.
       if (v && v.usual != null && v.dir && (v.dir !== 'flat' || v.tone === 'watch')) chip = U.trendChip({ trend: v.dir === 'flat' ? 'steady' : h.formatDelta(S, key, v.delta, v.rel), dir: v.dir, tone: v.tone });
       if (!e) sub = key === 'rhr' && connected ? 'Not shared by your watch app' : 'Tap to add';
-      else if (key === 'sleepMin') sub = e.day !== day ? 'The night before' : e.src === 'chip' ? 'From your check-in' : t.bed && e.src === 'hc' ? `Asleep ${U.fmtClock(t.bed)}` : 'Last night';
+      else if (key === 'sleepMin') { const bed = e.src === 'hc' && (S.health.days[day] || {}).bed; sub = e.day !== day ? 'The night before' : e.src === 'chip' ? 'From your check-in' : bed ? `Asleep ${U.fmtClock(bed)}` : 'Last night'; }
       else if (key === 'rhr') sub = `${ago(e.day, day)}${e.src === 'est' ? ' · estimated' : !chip && v && v.usual != null ? ` · usual ${Math.round(v.usual)}` : ''}`;
       else if (key === 'weightKg') { const avg = B().weightStats(S, day).avg7; sub = `${ago(e.day, day)}${avg != null && !chip ? ` · avg ${U.num(h.toDisplay(S, key, avg), 1)}` : ''}`; }
       else sub = ago(e.day, day);
@@ -330,7 +329,7 @@
   U.act.logSleep = () => U.metricEdit('sleepMin', U.today());
   U.act.logFeel = () => U.metricSheet('feel');
   U.act.logActivity = () => U.sheet({
-    title: 'Log an activity', detents: 'medium large',
+    title: 'Log an activity', size: 'auto',
     body: `<div class="sheet-pad"><div class="ob-chips" id="actTypes">${['Walk', 'Run', 'Cycling', 'Sport', 'Gym', 'Swim', 'Yoga', 'Other'].map((t, i) => `<button type="button" class="rf-chip" aria-pressed="${i === 0}" data-on="actType" data-v="${t}">${t}</button>`).join('')}</div>
       <p class="t-callout rf-muted">Minutes</p><div class="ob-center">${U.stepper('actMin', 30, 5, 300, 'Minutes', '', 5)}</div>
       <p class="t-footnote rf-muted">45 min or more of hard exercise means easier legs and no finisher the next day.</p></div>`,
@@ -359,7 +358,7 @@
     const val = (k) => (last[k] == null ? '' : (u === 'cm' ? last[k] : last[k] / 2.54).toFixed(1));
     const f = (k, label) => `<div class="rf-field"><label class="rf-field-label" for="m-${k}">${label} (${u})</label><div class="rf-field-control"><input class="rf-input" id="m-${k}" type="number" inputmode="decimal" step="0.1" placeholder="${val(k)}"></div></div>`;
     U.sheet({
-      title: 'Measurements', detents: 'large', detent: 'large',
+      title: 'Measurements', size: 'full',
       body: `<div class="sheet-pad ob-fields">${f('waist', 'Waist, at the belly button')}<div class="ob-row2">${f('armL', 'Left arm, flexed')}${f('armR', 'Right arm, flexed')}</div>${f('chest', 'Chest')}${f('thigh', 'Thigh')}
         <p class="t-footnote rf-muted">Once a month, same time of day. Leave any blank. Arms show whether the left side is catching up.</p></div>`,
       action: { label: 'Save', act: 'logMeasureSave' },

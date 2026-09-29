@@ -150,12 +150,12 @@
   function heroFor(S, key, day) {
     const h = H(), m = M(key);
     const e = h.latestEntry(S, key, day, m.daily ? 7 : 400);
-    const t = h.today(S, day);
+    const bed = (S.health.days[day] || {}).bed;
     let when = e ? U.dayName(e.day, day, key) : 'No data yet';
     if (e && m.daily && e.day === day) when = 'Today so far';
     let src = e ? h.SOURCE[e.src] : '';
     if (e && key === 'steps' && e.day === day) src = `${src} · goal ${U.num(B().stepsGoal(S, day).goal)}`;
-    if (e && key === 'sleepMin' && e.day === day && t.bed && e.src === 'hc') src = `${src} · asleep ${U.fmtClock(t.bed)}`;
+    if (e && key === 'sleepMin' && e.day === day && bed && e.src === 'hc') src = `${src} · asleep ${U.fmtClock(bed)}`;
     if (e && key === 'protein') { const g = B().proteinGoal(S, day); if (g) src = `${src} · goal ${g} g`; }
     if (e && key === 'kcalIn' && GH.food && GH.food.targets) { const tg = GH.food.targets(S, day); if (tg) src = `${src} · target ${U.num(tg.kcal)} kcal`; }
     return `<div class="ms-hero" data-tone="${m.tone}">
