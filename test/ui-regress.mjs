@@ -173,6 +173,16 @@ check('its glass layer is still there after switching tabs', cap.layer, JSON.str
 g = await endGap();
 check('with the capsule showing, the last card still scrolls clear', g >= 8, g);
 
+section('Sheets');
+await page.evaluate(() => window.GH.ui.showWhatsNew());
+await settle(900);
+const sh = await page.evaluate(() => { const a = document.activeElement; return { cls: a && a.className, ring: !!(a && a.matches('.rf-sheet-grabber')), receded: document.getElementById('app').hasAttribute('data-receded') }; });
+check('a sheet the app opens by itself focuses its content, not the grabber (no blue ring)', /rf-sheet-body/.test(sh.cls || '') && !sh.ring, JSON.stringify(sh));
+check('a full-height sheet sets the page back', sh.receded);
+await page.evaluate(() => window.GH.ui.closeSheets());
+await settle(900);
+check('and closing it brings the page forward again', await page.evaluate(() => !document.getElementById('app').hasAttribute('data-receded')));
+
 section('Cancelling a workout');
 await tab('today');
 const toast = () => page.evaluate(() => [...document.querySelectorAll('.rf-toast')].map((t) => t.textContent).join(' | '));

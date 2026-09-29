@@ -84,7 +84,7 @@ async function run(dark) {
     if (done) { await done.click(); await settle(500); }
   }
   await shot('rest');
-  await page.click('.player [data-act="plMin"]');
+  await page.evaluate(() => window.GH.ui.act.plKeep());
   await settle(500);
   // Put the workout away so the other screens don't show it in progress.
   await page.evaluate(() => { window.GH.ui.S.active = null; window.GH.ui.render(); });

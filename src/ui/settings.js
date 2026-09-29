@@ -371,7 +371,7 @@
           ${food ? '<li>Your calorie target and what you ate on average (not the foods)</li>' : ''}
         </ul>
         <p class="t-body">Never your name, email, exact dates or device IDs. Anthropic's privacy policy covers what happens to it there. You can turn Claude off any time in Settings.</p>
-        <button type="button" class="rf-btn" data-variant="plain" data-act="previewSheet">${U.icon('eye')}See exactly what gets sent</button>
+        <div class="btn-row"><button type="button" class="rf-btn" data-variant="plain" data-act="previewSheet">${U.icon('eye')}See exactly what gets sent</button><button type="button" class="rf-btn" data-variant="plain" data-act="openPrivacy">${U.icon('lock')}Privacy policy</button></div>
         <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="claudeAllow">Allow</button><button type="button" class="rf-btn" data-size="lg" data-act="claudeDeny">Not now</button></div>
       </div>`,
       onClose: () => done(false),

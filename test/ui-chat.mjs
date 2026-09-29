@@ -23,7 +23,7 @@ if (!existsSync(MODEL)) {
   if (made.status !== 0 || !existsSync(MODEL)) { console.error('Couldn\'t make build/tiny-qwen35.gguf. Run: python3 -m venv build/venv && build/venv/bin/pip install gguf numpy'); process.exit(1); }
 }
 // Stands in for the Balanced size, with the same settings (template flags, batch, sampling).
-const TINY = { id: 'q35-2', tier: 'balanced', name: 'Balanced', label: 'Tiny test model', family: 'qwen35', file: 'tiny-qwen35.gguf', url: 'https://huggingface.co/test/tiny/resolve/main/tiny-qwen35.gguf', bytes: statSync(MODEL).size, minRamGB: 0, ctx: 2048, batch: 64, think: true, gen: { temperature: 0.6, top_p: 0.8, top_k: 20 } };
+const TINY = { id: 'q35-2', tier: 'balanced', name: 'Balanced', label: 'Tiny test model', family: 'qwen35', file: 'tiny-qwen35.gguf', url: 'https://huggingface.co/test/tiny/resolve/main/tiny-qwen35.gguf', bytes: statSync(MODEL).size, minRamGB: 0, ctx: 4096, batch: 64, think: true, gen: { temperature: 0.6, top_p: 0.8, top_k: 20 } };
 
 const dark = process.argv.includes('--dark');
 const width = Number((process.argv.find((a) => a.startsWith('--width=')) || '--width=390').split('=')[1]);

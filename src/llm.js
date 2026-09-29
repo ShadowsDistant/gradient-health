@@ -700,6 +700,12 @@ async function generate(c, msgs, opts) {
     };
     touch();
   }
+  // A reply that was all thinking (it never got to an answer before the token limit): better its
+  // words than nothing.
+  if (!text.trim() && raw.trim() && !aborted) {
+    text = raw.replace(/<\/?think>/g, '').trim();
+    if (text && onToken) { try { onToken(text, text); } catch (e) { /* ignore */ } }
+  }
   return text;
 }
 

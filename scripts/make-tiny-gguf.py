@@ -25,7 +25,7 @@ N_LAYER = 2
 N_HEAD = 4
 N_HEAD_KV = 2  # grouped-query attention, like Qwen2.5
 N_FF = 128
-N_CTX_TRAIN = 2048
+N_CTX_TRAIN = 32768  # llama.cpp caps a slot at the training context, and the real models have far more
 HEAD_DIM = N_EMBD // N_HEAD
 # Qwen3.5's hybrid layers (see --arch qwen35).
 FULL_ATTN_EVERY = 4
@@ -49,7 +49,7 @@ THINK_TEMPLATE = (
     "{% if enable_thinking is defined and enable_thinking is false %}{{ '<think>\\n\\n</think>\\n\\n' }}{% endif %}"
     "{% endif %}"
 )
-SPECIALS = ['<|endoftext|>', '<|im_start|>', '<|im_end|>', '<think>', '</think>']
+SPECIALS = ['<|endoftext|>', '<|im_start|>', '<|im_end|>']
 # A few merges so the tokenizer is real BPE; every merged token is in the vocab too.
 MERGES = [('Ġ', 't'), ('h', 'e'), ('i', 'n'), ('e', 'r'), ('a', 'n'), ('o', 'u'), ('Ġ', 'a'),
           ('r', 'e'), ('o', 'n'), ('Ġt', 'he'), ('Ġ', 's'), ('Ġ', 'w')]

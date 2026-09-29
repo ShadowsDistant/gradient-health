@@ -99,7 +99,7 @@
     const done = setsDone(a);
     const total = a.steps.filter((s) => s.kind === 'set').length;
     U.sheet({
-      title: 'Leave the workout?', detents: 'medium', cls: 'leave-sheet',
+      title: 'Leave the workout?', detents: 'medium', fit: true, cls: 'leave-sheet',
       body: `<div class="sheet-pad leave">
         <p class="t-callout rf-muted">${done ? `You've done ${done} of ${total} sets.` : 'You haven\'t done any sets yet.'}</p>
         <div class="leave-actions">
@@ -747,7 +747,7 @@
     const st = cur();
     const canSwap = st && st.kind === 'set' && !st.leadOnly;
     U.sheet({
-      title: 'Workout', detents: 'medium',
+      title: 'Workout', detents: 'medium', fit: true,
       body: `<ul class="rf-list">
         ${st ? U.row({ icon: 'info', tone: 'sky', title: 'How to do it', act: 'plHowTo', chevron: true }) : ''}
         ${canSwap ? U.row({ icon: 'shuffle', tone: 'indigo', title: 'Swap this exercise', act: 'plSwap', chevron: true }) : ''}

@@ -34,11 +34,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends aapt dalvik-exchange zipalign apksigner
 
-      - name: Cache Android framework jar
+      - name: Cache Android framework jar and bundletool
         uses: actions/cache@v4
         with:
           path: ~/.cache/gradient-health
-          key: android-all-14-robolectric-10818077
+          key: android-all-14-robolectric-10818077-bundletool-1.18.1
 
       - run: npm ci
 
@@ -58,22 +58,65 @@ jobs:
             exit 1
           fi
 
+      # One versionCode for the APK and the bundle (Play needs it to grow with every upload).
+      - name: Version code
+        run: echo "VERSION_CODE=$(( $(date +%s) / 60 ))" >> "$GITHUB_ENV"
+
+      # The release key lives in the repository's secrets (docs/DEVELOPING.md, Publishing). Without
+      # it the build is signed with the public test key, which is fine for trying it but not a store.
+      - name: Release signing key
+        env:
+          RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$RELEASE_KEYSTORE_B64" ]; then
+            umask 077
+            printf '%s' "$RELEASE_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "RELEASE_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "SIGNED_WITH=release" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No RELEASE_KEYSTORE_B64 secret: this build is signed with the public test key (not for a store)."
+            echo "SIGNED_WITH=test" >> "$GITHUB_ENV"
+          fi
+
       - name: Build APK
+        env:
+          RELEASE_KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASS }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASS: ${{ secrets.RELEASE_KEY_PASS }}
         run: bash scripts/build-apk.sh
+
+      - name: Build the Android App Bundle (for Google Play)
+        env:
+          RELEASE_KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASS }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASS: ${{ secrets.RELEASE_KEY_PASS }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/build-aab.sh
+
+      - name: Remove the key from the runner
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"
 
       - uses: actions/upload-artifact@v4
         with:
           name: gradient-health-apk
-          path: build/gradient-health.apk
+          path: |
+            build/gradient-health.apk
+            build/gradient-health.aab
           if-no-files-found: error
 
       - name: Publish the "latest" release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if [ "$SIGNED_WITH" = "release" ]; then
+            signed="Signed with the release key: the APK is the one for APKPure and direct installs, and the .aab is the upload for Google Play."
+          else
+            signed="Signed with the public test key, for trying it out only. A release-signed build won't install over this one."
+          fi
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest build/gradient-health.apk \
+          gh release create latest build/gradient-health.apk build/gradient-health.aab \
             --title "Gradient Health (latest build)" \
-            --notes "Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}. Install over the previous version to keep your data." \
+            --notes "Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME} (versionCode ${VERSION_CODE}). ${signed} Install over the previous version to keep your data." \
             --target "$GITHUB_SHA" \
             --latest

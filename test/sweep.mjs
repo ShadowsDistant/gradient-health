@@ -169,7 +169,7 @@ for (const [width, theme, zoom, h] of COMBOS) {
     ['edit-food', async () => { await page.evaluate(() => window.GH.ui.editAnswers('food')); }],
     ['tour-4', async () => { await act('showTour'); await settle(); for (let i = 0; i < 3; i++) { await page.evaluate(() => { const b = document.querySelector('dialog[open] [data-act="tourNext"], .tour [data-act="tourNext"]'); if (b) b.click(); }); await settle(600); } }],
     ['player', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('startWorkout'); await settle(2000); }],
-    ['capsule', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('startWorkout'); await settle(1200); await act('plMin'); await settle(); await page.evaluate(() => window.GH.ui.go('progress')); }],
+    ['capsule', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('startWorkout'); await settle(1200); await act('plKeep'); await settle(); await page.evaluate(() => window.GH.ui.go('progress')); }],
   ].filter(([id]) => !only.length || only.some((o) => id.startsWith(o)));
   for (const [id, run] of scenes) {
     try {

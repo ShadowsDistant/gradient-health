@@ -13,6 +13,13 @@
 #   OUT            signed APK                          (default: build/gradient-health.apk)
 #   CACHE_DIR      download cache                      (default: ~/.cache/gradient-health)
 #   ANDROID_ALL_JAR  path of the android-all jar       (default: $CACHE_DIR/android-all-<ver>.jar)
+# Signing, for a build to publish (CI gets these from the repository's secrets):
+#   RELEASE_KEYSTORE        the release keystore (.jks); without it the build is signed with the
+#                           test key in android/, whose password is public: fine for trying a build,
+#                           never for a store, and a store build won't install over it.
+#   RELEASE_KEYSTORE_PASS   its password (required with RELEASE_KEYSTORE)
+#   RELEASE_KEY_ALIAS       the key's alias             (default: gradienthealth)
+#   RELEASE_KEY_PASS        the key's password          (default: RELEASE_KEYSTORE_PASS)
 # Relative paths are taken from the directory you run the script in.
 set -euo pipefail
 
@@ -28,13 +35,25 @@ MIN_SDK=26
 # the app only calls newer APIs behind SDK_INT checks.
 COMPILE_SDK=34
 TARGET_SDK=36
-KEYSTORE="$ROOT/android/gradient-health.keystore"
-KEY_ALIAS="gradient"
-KEY_PASS="gradient-health"
 
 die() { echo "build-apk: error: $*" >&2; exit 1; }
 step() { echo "==> $*"; }
 abspath() { case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s\n' "$CALLER_PWD/$1" ;; esac; }
+
+# The passwords reach apksigner through the environment (env:NAME), never its command line.
+if [[ -n "${RELEASE_KEYSTORE:-}" ]]; then
+  KEYSTORE="$(abspath "$RELEASE_KEYSTORE")"
+  KEY_ALIAS="${RELEASE_KEY_ALIAS:-gradienthealth}"
+  [[ -n "${RELEASE_KEYSTORE_PASS:-}" ]] || die "RELEASE_KEYSTORE_PASS is required with RELEASE_KEYSTORE"
+  export GH_SIGN_STORE_PASS="$RELEASE_KEYSTORE_PASS"
+  export GH_SIGN_KEY_PASS="${RELEASE_KEY_PASS:-$RELEASE_KEYSTORE_PASS}"
+  SIGNED_WITH="the release key"
+else
+  KEYSTORE="$ROOT/android/gradient-health.keystore"
+  KEY_ALIAS="gradient"
+  export GH_SIGN_STORE_PASS="gradient-health" GH_SIGN_KEY_PASS="gradient-health"
+  SIGNED_WITH="the public test key (for testing only, not for a store)"
+fi
 
 CACHE_DIR="$(abspath "${CACHE_DIR:-$HOME/.cache/gradient-health}")"
 ANDROID_ALL_JAR="$(abspath "${ANDROID_ALL_JAR:-$CACHE_DIR/android-all-${ANDROID_ALL_VERSION}.jar}")"
@@ -55,6 +74,7 @@ WORK="$ROOT/build/apk-work"
   Build it first with 'npm run build', or point APP_HTML at an HTML file."
 [[ -f "$KEYSTORE" ]] || die "signing keystore missing: $KEYSTORE
   Do not generate a new one: updates only install over builds signed with the same key."
+[[ -r "$KEYSTORE" && -s "$KEYSTORE" ]] || die "signing keystore is empty or unreadable: $KEYSTORE"
 
 missing=()
 for tool in javac aapt dalvik-exchange zipalign apksigner unzip curl sha1sum; do
@@ -140,11 +160,11 @@ step "Aligning"
 ALIGNED="$WORK/aligned.apk"
 zipalign -f -p 4 "$UNSIGNED" "$ALIGNED"
 
-step "Signing with android/gradient-health.keystore"
+step "Signing with $SIGNED_WITH"
 # v1/v2/v3 follow minSdk (26 -> v2 + v3). No v4: its .idsig side file is only for adb incremental installs.
 apksigner sign \
   --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" \
-  --ks-pass "pass:$KEY_PASS" --key-pass "pass:$KEY_PASS" \
+  --ks-pass env:GH_SIGN_STORE_PASS --key-pass env:GH_SIGN_KEY_PASS \
   --v4-signing-enabled false \
   --out "$OUT" "$ALIGNED"
 rm -f "$OUT.idsig"
@@ -162,4 +182,7 @@ aapt dump badging "$OUT" \
 echo
 unzip -lv "$OUT" | awk 'NR <= 3 || $NF ~ /^(resources\.arsc|classes\.dex|assets\/index\.html|AndroidManifest\.xml)$/'
 echo
+# The certificate's SHA-256 is what Android developer verification and the stores know the app by.
+CERT_SHA256="$(apksigner verify --print-certs "$OUT" | awk -F': ' '/certificate SHA-256 digest/ { print $2; exit }')"
+echo "Signed with $SIGNED_WITH, certificate SHA-256: ${CERT_SHA256:-unknown}"
 step "Built $OUT ($(du -h "$OUT" | cut -f1))"
