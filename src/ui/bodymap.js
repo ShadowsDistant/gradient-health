@@ -160,4 +160,123 @@
       <span class="bm-key"><span>Less</span>${[1, 2, 3, 4, 5].map((l) => `<i class="bm-sw" data-l="${l}"></i>`).join('')}<span>More</span></span>
       <span class="bm-key"><i class="bm-sw" data-l="0"></i><span>${U.esc(none || 'None')}</span></span>
     </div>`;
+
+  // A small square cut of the figure around a muscle group, lit by values (the list icons for the
+  // most-improved groups). Crops are [view, x, y, size] in figure units.
+  const CROPS = { chest: ['front', 66, 54, 68], abs: ['front', 64, 104, 72], back: ['back', 58, 44, 84], shoulders: ['front', 106, 46, 60], biceps: ['front', 112, 70, 66], triceps: ['back', 112, 66, 66], legs: ['front', 60, 164, 80] };
+  U.bodyThumb = (group, values, mode) => {
+    const [view, x, y, s] = CROPS[group] || CROPS.chest;
+    const g = geometry()[view];
+    const v = values || {};
+    const max = Math.max(0, ...Object.values(v).filter((n) => isFinite(n)));
+    return `<span class="bm bm-thumb rf-list-thumb" data-mode="${U.esc(mode || 'improved')}" aria-hidden="true"><svg viewBox="${x} ${y} ${s} ${s}" focusable="false">
+      <g class="bm-body">${g.body.map((d) => `<path d="${d}"/>`).join('')}</g>
+      ${g.muscles.map((m) => `<g class="bm-m" data-l="${levelOf(v[m.m], max)}">${m.d.map((d) => `<path d="${d}"/>`).join('')}</g>`).join('')}
+    </svg></span>`;
+  };
+
+  // A progress line for display: "4 → 5" and "20 reps" never break across lines.
+  U.progressText = (s) => U.esc(String(s || '').replace(/ → /g, ' → ').replace(/(\d) (reps?|lb|kg|s|levels?)\b/g, '$1 $2'));
+
+  /* ---------------------------------------------------------------- interaction */
+  // What the map shows, shared by the Progress screen and the muscle sheet.
+  U.bodyView = U.bodyView || { mode: 'trained', weeks: 4 };
+  const reduced = () => (U.reduced ? U.reduced() : false);
+
+  // A tapped region gives a small spring, on both views.
+  function pop(el, m) {
+    const root = el.closest && el.closest('.bm');
+    if (!root || reduced()) return;
+    for (const g of root.querySelectorAll(`.bm-m[data-muscle="${m}"]`)) {
+      if (!g.animate) continue;
+      g.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.06)', filter: 'brightness(1.12)' }, { transform: 'scale(1)' }], { duration: 380, easing: 'cubic-bezier(0.34, 1.4, 0.64, 1)' });
+    }
+  }
+  U.act.muscleOpen = (el) => {
+    const m = el.getAttribute('data-arg');
+    if (!NAMES[m]) return;
+    U.haptic('select');
+    pop(el, m);
+    if (U.muscleSheet) U.muscleSheet(m);
+  };
+  // Keyboard focus on the hidden list outlines the region it stands for.
+  if (G.document) {
+    const mark = (e, on) => {
+      const b = e.target && e.target.closest && e.target.closest('.bm-sr [data-arg]');
+      const root = b && b.closest('.bm');
+      if (!root) return;
+      for (const g of root.querySelectorAll(`.bm-m[data-muscle="${b.getAttribute('data-arg')}"]`)) g.classList.toggle('is-focus', on && b.matches(':focus-visible'));
+    };
+    G.document.addEventListener('focusin', (e) => mark(e, true));
+    G.document.addEventListener('focusout', (e) => mark(e, false));
+  }
+
+  /* ---------------------------------------------------------------- the muscle sheet */
+  const VIEW_OF = { upperBack: 'back', calves: 'back', forearms: 'front', sideDelts: 'front' };
+  const viewOf = (m) => VIEW_OF[m] || (FRONT[m] ? 'front' : 'back');
+  const setsText = (v) => { const r = Math.round(v * 2) / 2; return `${U.num(r, r % 1 ? 1 : 0)} ${r === 1 ? 'set' : 'sets'}`; };
+  const rangeText = (w) => (w === 1 ? 'last 7 days' : `last ${w} weeks`);
+  const ordinal = (n) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th'}`;
+
+  // Weekly sets over 12 weeks: one bar a week, this week in the accent, a tap reads a week out.
+  function weekBars(x) {
+    const w = x.weekly;
+    const max = Math.max(...w.map((b) => b.sets));
+    const round = (v) => Math.round(v * 2) / 2;
+    const tip = (b, i) => `${i === w.length - 1 ? 'This week' : `Week of ${U.fmtDay(b.start, false)}`}: ${setsText(b.sets)}`;
+    const label = `${x.name}, sets a week for 12 weeks, oldest first: ${w.map((b) => U.num(round(b.sets), b.sets % 1 ? 1 : 0)).join(', ')}.`;
+    return `<div class="ms-bars" data-key="ms-bars">
+      <div class="ms-bars-head"><span class="t-headline">Sets a week</span><span class="t-footnote rf-muted rf-num">${max ? `up to ${U.esc(setsText(max))}` : 'none yet'}</span></div>
+      <div class="ms-plot" role="img" aria-label="${U.esc(label)}">
+        ${w.map((b, i) => `<button type="button" class="ms-bar${i === w.length - 1 ? ' is-now' : ''}${b.sets ? '' : ' is-zero'}" data-act="msBar" data-arg="${U.esc(tip(b, i))}" tabindex="-1" aria-hidden="true" style="--h:${max ? (b.sets / max).toFixed(3) : 0};--i:${i}"><i></i></button>`).join('')}
+      </div>
+      <div class="ms-x t-caption rf-num"><span>${U.esc(U.fmtDay(w[0].start, false))}</span><span>This week</span></div>
+      <p class="ms-tip t-footnote rf-muted rf-num" aria-live="polite">${U.esc(tip(w[w.length - 1], w.length - 1))}</p>
+    </div>`;
+  }
+  U.act.msBar = (el) => {
+    const box = el.closest('.ms-bars');
+    if (!box) return;
+    for (const b of box.querySelectorAll('.ms-bar')) b.classList.toggle('is-picked', b === el);
+    box.querySelector('.ms-tip').textContent = el.getAttribute('data-arg');
+    U.haptic('tick');
+  };
+
+  function muscleBody(x, mode) {
+    const S = U.S;
+    const view = viewOf(x.id);
+    const lit = {}; lit[x.id] = 1;
+    const range = rangeText(x.weeks);
+    const ups = x.lines.filter((l) => l.dir > 0);
+    const sets = [setsText(x.sets).split(' ')[0], `${x.sets === 1 ? 'set' : 'sets'} in the ${range}`];
+    const share = [x.sets ? `${Math.round(x.share * 100)}%` : '–', x.rank ? `of your training · ${x.rank === 1 ? 'the most' : `${ordinal(x.rank)} most`}` : 'of your training'];
+    const went = [String(x.ups), x.ups === 1 ? 'time it went up' : 'times it went up'];
+    const facts = mode === 'improved' ? [went, sets, share] : [sets, share, went];
+    const lines = x.lines.slice(0, 6).map((l) => U.row({
+      icon: l.dir > 0 ? 'arrow-up-right' : 'minus', tone: l.dir > 0 ? 'green' : 'amber',
+      title: U.progressText(l.text), sub: U.esc([l.note ? U.cap(l.note) : '', l.muscles[0][0] === x.id ? '' : `Mostly ${nameOf(l.muscles[0][0]).toLowerCase()}`].filter(Boolean).join(' · ')) || null,
+      detail: U.badge(l.delta, l.dir > 0 ? 'positive' : 'neutral'),
+    })).join('');
+    const moves = x.moves.slice(0, 5).map((mv) => U.row({ title: U.esc(mv.name), sub: mv.primary ? 'Works it most' : 'Helps', detail: U.esc(setsText(mv.sets)), act: 'moveInfo', arg: mv.id, chevron: true })).join('');
+    const counts = [x.bests ? U.plural(x.bests, 'new best') : '', x.levelUps ? U.plural(x.levelUps, 'level-up') : ''].filter(Boolean).join(', ');
+    return `<div class="ms" data-mode="${U.esc(mode)}">
+      <div class="ms-hero">
+        <span class="bm ms-fig" data-mode="${U.esc(mode)}" aria-hidden="true"><svg viewBox="${VIEWBOX}" focusable="false">
+          <g class="bm-body">${geometry()[view].body.map((d) => `<path d="${d}"/>`).join('')}</g>
+          ${geometry()[view].muscles.map((m) => `<g class="bm-m" data-l="${lit[m.m] ? 5 : 0}">${m.d.map((d) => `<path d="${d}"/>`).join('')}</g>`).join('')}
+        </svg></span>
+        <dl class="ms-facts">${facts.map(([v, t]) => `<div class="ms-fact"><dt class="t-footnote rf-muted">${U.esc(t)}</dt><dd class="t-title-2 rf-num">${U.esc(v)}</dd></div>`).join('')}</dl>
+      </div>
+      ${weekBars(x)}
+      ${lines ? `<h3 class="rf-list-header">Progress, ${U.esc(range)}</h3><ul class="rf-list">${lines}</ul>${counts ? `<p class="rf-list-footer">${U.esc(U.cap(counts))} for exercises that train it.</p>` : ''}`
+        : `<p class="ms-note t-callout rf-muted">${x.sets ? (ups.length ? '' : `No change to show in the ${range} yet. Progress shows up as your reps, weights and levels go up.`) : `Not trained in the ${range}.`}</p>`}
+      ${moves ? `<h3 class="rf-list-header">What trained it</h3><ul class="rf-list">${moves}</ul>` : ''}
+      ${U.act.tailorPlan && !(GH.body.MINOR || []).includes(x.id) ? `<div class="ms-actions"><button type="button" class="rf-btn" data-variant="tinted" data-size="lg" data-act="tailorPlan" data-arg="${U.esc(x.id)}">${U.icon('plus-circle')}Train this more</button></div>` : ''}
+    </div>`;
+  }
+  U.muscleSheet = (m) => {
+    if (!GH.body || !U.S) return null;
+    const x = GH.body.muscle(U.S, U.today(), U.bodyView.weeks, m);
+    return U.sheet({ title: x.name, size: 'auto', cls: 'ms-sheet', body: muscleBody(x, U.bodyView.mode) });
+  };
 })(typeof window !== 'undefined' ? window : globalThis);
