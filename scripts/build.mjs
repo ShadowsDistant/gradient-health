@@ -59,6 +59,8 @@ const safeJs = (js) => js.replace(/<\/script/gi, '<\\/script');
 const safeCss = (css) => css.replace(/<\/style/gi, '<\\/style');
 
 export const APP_SCRIPTS = [
+  'src/data/brand.js',
+  'src/data/privacy.js',
   'src/data/moves.js',
   'src/data/science.js',
   'src/data/changelog.js',
@@ -151,6 +153,10 @@ async function main() {
   mkdirSync(join(root, 'dist'), { recursive: true });
   writeFileSync(join(root, 'dist/gradient-health.html'), html);
   console.log(`dist/gradient-health.html  ${(html.length / 1024).toFixed(0)} KB  (ai bundle ${(aiJs.length / 1024).toFixed(0)} KB)`);
+  // The public privacy policy is generated from the same text the app shows.
+  globalThis.GH = globalThis.GH || {};
+  new Function(read('src/data/privacy.js'))();
+  writeFileSync(join(root, 'docs/PRIVACY.md'), globalThis.GH.PRIVACY.markdown());
   const lazy = await buildLazy();
   if (lazy.length) console.log(`dist/lazy/  ${lazy.join(', ')}`);
 }

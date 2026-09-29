@@ -236,7 +236,7 @@
   function claudePrompt(S, day, question) {
     const sum = GH.ai && GH.ai.summary ? GH.ai.summary(S, day) : '';
     return [
-      'I use Gradient, a home workout and health tracking app. Below is a summary of my recent data from the app, without my name or any dates.',
+      'I use Gradient Health, a home workout and health tracking app. Below is a summary of my recent data from the app, without my name or any dates.',
       'Please answer like a coach: short, plain and specific, using my numbers. You\'re not my doctor, so tell me if something is worth getting checked. The app sets my training plan, so explain it rather than replace it.',
       '',
       `My question: ${String(question || 'What should I focus on this week?').trim()}`,

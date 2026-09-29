@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Gradient: a WebView shell around the single-file web app (assets/index.html) plus a
+<!-- Gradient Health: a WebView shell around the single-file web app (assets/index.html) plus a
      Health Connect bridge. Built without Gradle by scripts/build-apk.sh, which also passes
      the SDK levels and versionCode/versionName to aapt. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -39,7 +39,7 @@
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
-        android:label="Gradient"
+        android:label="Gradient Health"
         android:enableOnBackInvokedCallback="true"
         android:theme="@style/AppTheme">
 

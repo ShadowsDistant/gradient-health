@@ -146,7 +146,7 @@ public final class MainActivity extends Activity {
                 } catch (Throwable ignored) {
                 }
             }
-            showMessage("Gradient needs Android System WebView.\n\n"
+            showMessage("Gradient Health needs Android System WebView.\n\n"
                     + "Update or enable it in the Play Store, then reopen the app.");
         }
     }
@@ -764,7 +764,7 @@ public final class MainActivity extends Activity {
         }
         rendererCrashes++;
         if (rendererCrashes > 3) {
-            showMessage("Gradient's page keeps crashing.\n\nPlease close and reopen the app.");
+            showMessage("Gradient Health's page keeps crashing.\n\nPlease close and reopen the app.");
             return;
         }
         // The page restores its state from AndroidBridge.load().

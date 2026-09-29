@@ -31,7 +31,7 @@
       const levels = SC().LEVELS;
       return `${U.navbar('How it works', '', U.glassBtn('chevron-left', 'Back', 'back'))}
         <h1 class="rf-large-title">How it works</h1>
-        <p class="lt-sub t-callout rf-muted">Every rule Gradient follows, what it's based on, and how sure the research is. Tap a rule to open it.</p>
+        <p class="lt-sub t-callout rf-muted">Every rule Gradient Health follows, what it's based on, and how sure the research is. Tap a rule to open it.</p>
         <div class="section">
           <div class="card sci-legend">${Object.keys(levels).map((k) => `<div class="sci-level">${levelBadge(k)}<span class="t-footnote rf-muted">${U.esc(levels[k].text)}</span></div>`).join('')}</div>
           ${SC().RULES.map(ruleCard).join('')}

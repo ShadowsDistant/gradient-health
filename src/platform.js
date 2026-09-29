@@ -30,7 +30,19 @@
   };
 
   let prefs = { sound: true, vibrate: true, haptics: true };
-  function setPrefs(p) { prefs = Object.assign({}, prefs, p || {}); }
+  function setPrefs(p) {
+    const before = prefs.hapticStrength;
+    prefs = Object.assign({}, prefs, p || {});
+    if (prefs.hapticStrength !== before) {
+      const b = bridge();
+      if (b && b.hapticStrength) { try { b.hapticStrength(String(prefs.hapticStrength || 'medium')); } catch (e) { /* ignore */ } }
+    }
+  }
+  // False when the phone's own touch feedback is switched off (then taps don't buzz at all).
+  function hapticsSystemEnabled() {
+    const b = bridge();
+    try { return b && b.hapticsSystemEnabled ? !!b.hapticsSystemEnabled() : true; } catch (e) { return true; }
+  }
 
   /* ---------------------------------------------------------------- screen on */
   let wakeLock = null;
@@ -75,7 +87,12 @@
     try {
       const b = bridge();
       if (b && b.haptic) { b.haptic(String(kind)); return; }
-      if (G.navigator && G.navigator.vibrate && G.navigator.userActivation && G.navigator.userActivation.hasBeenActive) G.navigator.vibrate(BUZZ[kind] || 8);
+      if (G.navigator && G.navigator.vibrate && G.navigator.userActivation && G.navigator.userActivation.hasBeenActive) {
+        // Browser fallback: scale the pulse lengths with the chosen strength.
+        const k = prefs.hapticStrength === 'light' ? 0.7 : prefs.hapticStrength === 'strong' ? 1.6 : 1.2;
+        const buzz = BUZZ[kind] || 8;
+        G.navigator.vibrate(Array.isArray(buzz) ? buzz.map((x, i) => (i % 2 ? x : Math.round(x * k))) : Math.round(buzz * k));
+      }
     } catch (e) { /* ignore */ }
   }
 
@@ -223,5 +240,5 @@
   }
   const isApp = () => !!bridge();
 
-  GH.platform = { setPrefs, keepAwake, haptic, vibrate, cue, unlockAudio, applyTheme, currentTheme, setDensity, onBack, on, emit, visible, copy, openUrl, share, claudeInstalled, appVersion, reducedMotion, isApp };
+  GH.platform = { setPrefs, hapticsSystemEnabled, keepAwake, haptic, vibrate, cue, unlockAudio, applyTheme, currentTheme, setDensity, onBack, on, emit, visible, copy, openUrl, share, claudeInstalled, appVersion, reducedMotion, isApp };
 })(typeof window !== 'undefined' ? window : globalThis);

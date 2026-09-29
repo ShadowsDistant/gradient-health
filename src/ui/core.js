@@ -651,7 +651,7 @@
   function applyPrefs() {
     const p = U.S ? U.S.profile.prefs : { theme: 'system', sound: true, vibrate: true, haptics: true, density: 0.5 };
     if (P()) {
-      P().setPrefs({ sound: p.sound !== false, vibrate: p.vibrate !== false, haptics: p.haptics !== false });
+      P().setPrefs({ sound: p.sound !== false, vibrate: p.vibrate !== false, haptics: p.haptics !== false, hapticStrength: p.hapticStrength || 'medium' });
       P().applyTheme(p.theme || 'system', !!p.contrast);
       if (p.density != null) P().setDensity(p.density);
     }

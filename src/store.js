@@ -108,10 +108,10 @@
   }
   function importJson(txt) {
     const o = parse(typeof txt === 'string' ? txt.trim() : '');
-    if (!o) return { ok: false, error: 'That isn\'t a Gradient backup. Paste the whole text from Copy my data.' };
+    if (!o) return { ok: false, error: 'That isn\'t a Gradient Health backup. Paste the whole text from Copy my data.' };
     const S = o.app === 'gradient-health' && o.state ? o.state : o;
     if (!valid(S)) return { ok: false, error: 'That backup is missing parts. Paste the whole text from Copy my data.' };
-    if ((o.schema || S.v || 1) > SCHEMA) return { ok: false, error: 'That backup is from a newer version of Gradient. Update the app first.' };
+    if ((o.schema || S.v || 1) > SCHEMA) return { ok: false, error: 'That backup is from a newer version of Gradient Health. Update the app first.' };
     return { ok: true, state: migrate(S), workouts: S.log.filter((l) => l.type === 'workout').length, since: S.profile.startDay };
   }
 

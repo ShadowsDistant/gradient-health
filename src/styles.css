@@ -1,4 +1,4 @@
-/* Gradient app styles. Refract (tokens.css + bundle.css) loads first; these rules are
+/* Gradient Health app styles. Refract (tokens.css + bundle.css) loads first; these rules are
    unlayered, so they win over Refract's layers where they overlap. */
 
 /* @figure-start */
@@ -267,6 +267,12 @@ button.stat { cursor: pointer; }
 .prose h3 { margin: var(--space-3) 0 0; }
 .prose h3:first-child { margin-top: 0; }
 .prose p { margin: 0; line-height: 1.45; }
+.prose a { color: var(--accent); text-decoration: none; overflow-wrap: anywhere; }
+/* Privacy: the data table stacks into one card per row on a phone. */
+.pv-table { display: grid; gap: var(--space-2); margin: var(--space-1) 0; }
+.pv-row { display: grid; gap: 3px; padding: var(--space-3); border-radius: var(--radius-md); background: var(--bg-sunken, var(--fill-3)); }
+.pv-row .t-footnote { line-height: 1.4; }
+.pv-list { margin: 0; padding-inline-start: 1.1em; display: grid; gap: var(--space-2); line-height: 1.45; }
 .preview { margin: 0 var(--space-4) var(--space-4); padding: var(--space-3); border-radius: var(--radius-md); background: var(--bg-sunken); font: 400 .8125rem/1.45 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--label); max-height: 60vh; overflow: auto; box-sizing: border-box; width: calc(100% - 2 * var(--space-4)); }
 textarea.preview { border: 0; resize: vertical; }
 .set-slider { flex-direction: column; align-items: stretch; gap: var(--space-2); padding-block: var(--space-3); }
@@ -480,3 +486,13 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 .sheet-prose p { margin: 0; }
 .sheet-prose > .rf-btn { justify-self: start; margin-top: var(--space-1); }
 .sheet-lead { margin: 0 0 var(--space-3); }
+
+/* Welcome (first set-up screen). */
+.ob-page.is-bare { padding-top: var(--space-6); }
+.ob-welcome { display: grid; justify-items: center; text-align: center; gap: var(--space-3); padding: var(--space-6) var(--space-2) 0; }
+.ob-logo { width: 104px; height: 104px; border-radius: 24px; box-shadow: 0 18px 44px -14px rgb(92 60 200 / 45%), 0 2px 6px rgb(0 0 0 / 8%); }
+.ob-welcome .rf-large-title { margin: var(--space-2) 0 0; padding: 0; }
+.ob-tagline { margin: 0; max-width: 24ch; font-weight: 500; }
+.ob-points { list-style: none; margin: var(--space-5) 0 0; padding: 0; display: grid; gap: var(--space-4); text-align: start; max-width: 34ch; }
+.ob-points li { display: grid; grid-template-columns: 28px 1fr; gap: var(--space-3); align-items: start; color: var(--label); font-size: .9375rem; line-height: 1.4; }
+.ob-points li > svg { color: var(--accent); width: 24px; height: 24px; }

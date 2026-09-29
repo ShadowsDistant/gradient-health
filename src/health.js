@@ -300,7 +300,7 @@
     if (!l || l.type !== 'workout' || !l.checkedIn || !l.startedAt || !l.endedAt) return null;
     const start = l.startedAt, end = Math.max(l.endedAt, start + 60000);
     if (end - start > 4 * 3600000) return null; // checked in much later: no honest end time
-    return { id: recordId(l.day), start, end, version: Math.round(l.endedAt / 1000), type: 'strength_training', title: l.title || 'Workout', notes: `${l.doneSets || 0} of ${l.planned || 0} sets in Gradient` };
+    return { id: recordId(l.day), start, end, version: Math.round(l.endedAt / 1000), type: 'strength_training', title: l.title || 'Workout', notes: `${l.doneSets || 0} of ${l.planned || 0} sets in Gradient Health` };
   }
   const pendingWrites = {};
   const writeListeners = [];

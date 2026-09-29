@@ -14,6 +14,7 @@
   const WEIGHTS = { db: { lb: [2, 3, 5, 8, 10, 12, 15, 20, 25, 30, 35, 40, 45, 50], kg: [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 17.5, 20, 22.5, 25] }, kb: { lb: [10, 15, 18, 20, 26, 35, 44, 53], kg: [4, 6, 8, 10, 12, 16, 20, 24] } };
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const STEPS = [
+    { id: 'welcome', title: 'Gradient Health', modes: ['new'], bare: true },
     { id: 'health', title: 'Health data', modes: ['new'] },
     { id: 'about', title: 'About you' },
     { id: 'goals', title: 'Goals' },
@@ -153,25 +154,28 @@
     try { body = VIEW[st.id](); } catch (e) { body = `<p class="t-body">${U.esc(e.message)}</p>`; }
     const one = mode === 'one';
     const last = st.id === 'plan' || one;
+    // The welcome screen isn't counted as a step.
+    const counted = steps.filter((x) => !x.bare);
+    const pos = counted.indexOf(st) + 1;
     const changed = shownStep !== st.id;
     // Top bar and buttons stay put; each step's content is fresh and slides in from the side it
     // comes from. Re-drawing the same step patches it in place, so scroll and focus stay.
     U.morph(el, `
       <div class="ob-top">
         ${idx > 0 && !one || mode !== 'new' ? U.glassBtn(idx > 0 && !one ? 'chevron-left' : 'close', idx > 0 && !one ? 'Back' : 'Close', 'obBack') : '<span class="ob-spacer"></span>'}
-        ${one ? '<span class="ob-progress"></span>' : `<div class="ob-progress">${U.progress((idx + 1) / steps.length, 'Set-up progress')}<span class="t-caption rf-muted rf-num">${idx + 1} of ${steps.length}</span></div>`}
+        ${one || st.bare ? '<span class="ob-progress"></span>' : `<div class="ob-progress">${U.progress(pos / counted.length, 'Set-up progress')}<span class="t-caption rf-muted rf-num">${pos} of ${counted.length}</span></div>`}
         <span class="ob-spacer"></span>
       </div>
       <div class="ob-scroll" id="obScroll">
-        <div class="ob-page" data-key="step-${st.id}">
-          <h1 class="rf-large-title">${U.esc(st.title)}</h1>
+        <div class="ob-page${st.bare ? ' is-bare' : ''}" data-key="step-${st.id}">
+          ${st.bare ? '' : `<h1 class="rf-large-title">${U.esc(st.title)}</h1>`}
           <div class="ob-body">${body}</div>
         </div>
       </div>
       <div class="ob-actions">
         ${st.id === 'health' && !H().connected(H().status()) ? '<button type="button" class="rf-btn rf-glass" data-size="lg" data-act="obNext">Not now</button>' : ''}
         ${st.id === 'baseline' ? '<button type="button" class="rf-btn rf-glass" data-size="lg" data-act="obSkipTest">Skip the test</button>' : ''}
-        <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="${last ? 'obFinish' : 'obNext'}">${last ? (one ? 'Save' : mode === 'edit' ? 'Save changes' : 'Start') : 'Continue'}</button>
+        <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="${last ? 'obFinish' : 'obNext'}">${last ? (one ? 'Save' : mode === 'edit' ? 'Save changes' : 'Start') : st.id === 'welcome' ? 'Get started' : 'Continue'}</button>
       </div>`);
     const sc = el.querySelector('#obScroll');
     if (changed) {
@@ -222,6 +226,16 @@
   const VIEW = {};
   const AFTER = {};
 
+  VIEW.welcome = () => `<div class="ob-welcome">
+      ${GH.LOGO ? `<img class="ob-logo" src="${GH.LOGO}" alt="" width="104" height="104">` : ''}
+      <h1 class="rf-large-title">Gradient Health</h1>
+      <p class="t-title-3 rf-muted ob-tagline">Workouts that adjust to you, every day.</p>
+      <ul class="ob-points">
+        <li>${U.icon('calendar')}<span>A plan built around your goals, your equipment and your time, at home or at the gym.</span></li>
+        <li>${U.icon('heart')}<span>Sleep, steps and heart rate from Health Connect decide how hard today should be.</span></li>
+        <li>${U.icon('lock')}<span>No account and no ads. Your data stays on your phone.</span></li>
+      </ul>
+    </div>`;
   VIEW.health = () => {
     const st = H().status();
     const app = GH.platform && GH.platform.isApp();
@@ -232,7 +246,7 @@
     else if (H().connected(st)) status = ['positive', Q._hcNote ? `Connected. Read ${Q._hcNote}.` : 'Connected.'];
     else status = null;
     const rows = [['moon', 'indigo', 'Sleep', 'Fewer sets after a short night'], ['navigate', 'green', 'Steps', 'Ticks off the walk on light days'], ['chart', 'teal', 'Weight and height', 'Trend, protein goal and warnings'], ['heart', 'coral', 'Resting heart rate and HRV', 'Spots when you need an easier day'], ['bolt', 'amber', 'Workouts from other apps', 'Easier on the legs after a long run'], ['check-circle', 'sky', 'Your workouts here', 'Saved back, so your other apps see them']];
-    return lead('Gradient can read your health data from Health Connect to fit each day\'s session to how you slept and moved.')
+    return lead('Gradient Health can read your health data from Health Connect to fit each day\'s session to how you slept and moved.')
       + `<ul class="rf-list">${rows.map(([ic, tone, t, sub]) => U.row({ icon: ic, tone, title: t, sub })).join('')}</ul>`
       + '<p class="t-footnote rf-muted ob-note">Everything stays on this phone, and you choose what to allow on the next screen. You can change it any time in Health Connect.</p>'
       + (status ? `<div class="ob-status" data-tone="${status[0]}">${U.icon(status[0] === 'positive' ? 'check-circle' : status[0] === 'caution' ? 'alert' : 'info')}<span>${U.esc(status[1])}</span></div>` : '')

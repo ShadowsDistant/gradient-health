@@ -36,7 +36,7 @@
           <h3 class="rf-list-header">Health data</h3>
           <ul class="rf-list">
             ${U.row({ icon: 'heart', tone: 'rose', title: 'Health Connect', detail: hcDetail, act: app && !['unsupported', 'unavailable'].includes(st) ? (on ? 'hcManage' : 'hcConnect') : null, chevron: app })}
-            ${on ? U.sw('Save workouts to Health Connect', !!(S.health.write !== false && canWrite), 'data-on="hcWriteToggle"', canWrite ? 'Other apps see your Gradient workouts' : 'Needs the Exercise permission') : ''}
+            ${on ? U.sw('Save workouts to Health Connect', !!(S.health.write !== false && canWrite), 'data-on="hcWriteToggle"', canWrite ? 'Other apps see your Gradient Health workouts' : 'Needs the Exercise permission') : ''}
             <li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">Units</span></span>${U.seg('setUnits', [['lb', 'lb'], ['kg', 'kg']], p.units, 'Units', ' data-on="setUnits" data-size="sm"')}</div></li>
           </ul>
           <h3 class="rf-list-header" id="coach">Coach</h3>
@@ -52,7 +52,8 @@
           <ul class="rf-list">
             ${U.sw('Sound', pr.sound !== false, 'data-on="setPref" data-k="sound"')}
             ${U.sw('Vibration', pr.vibrate !== false, 'data-on="setPref" data-k="vibrate"', 'Buzzes for timers and the end of rest')}
-            ${U.sw('Haptic feedback', pr.haptics !== false, 'data-on="setPref" data-k="haptics"', 'Light taps when you press buttons and switches')}
+            ${U.sw('Haptic feedback', pr.haptics !== false, 'data-on="setPref" data-k="haptics"', GH.platform && GH.platform.hapticsSystemEnabled && !GH.platform.hapticsSystemEnabled() ? 'Touch feedback is off in your phone\'s settings, so taps won\'t buzz. Workout alerts still will.' : 'A tap when you press buttons and switches, a firmer one for finished sets')}
+            ${pr.haptics !== false ? `<li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">Strength</span></span>${U.seg('setHaptic', [['light', 'Light'], ['medium', 'Medium'], ['strong', 'Strong']], pr.hapticStrength || 'medium', 'Haptic strength', ' data-on="setHapticStrength" data-size="sm"')}</div></li>` : ''}
             ${U.sw('Supersets', pr.supersets !== false, 'data-on="setPref" data-k="supersets"', 'Pair exercises that don\'t share muscles')}
             <li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">Rest</span><span class="rf-list-sub">Auto: 90 s after big moves, 60 s after small ones and in supersets</span></span>${U.seg('setRest', [['auto', 'Auto'], ['60', '60 s'], ['90', '90 s']], String(pr.rest), 'Rest between sets', ' data-on="setRest" data-size="sm"')}</div></li>
           </ul>
@@ -93,14 +94,16 @@
   U.act.editStep = (el) => { U.closeSheets(); U.editAnswers(el.dataset.arg); };
   U.act.editEquipment = () => U.editAnswers('equipment');
   U.act.openPrivacyView = () => U.open('privacy');
+  U.act.openLink = (el, ev) => { if (ev && ev.preventDefault) ev.preventDefault(); const url = el.dataset.arg; if (url && /^https:\/\//.test(url) && GH.platform) GH.platform.openUrl(url); };
   U.on.setPref = (el, ev, v) => {
     const k = el.dataset.k;
     U.S.profile.prefs[k] = !!v;
     U.applyPrefs();
     U.save();
-    if (k === 'haptics' && v) U.haptic('toggleOn');
+    if (k === 'haptics') { if (v) U.haptic('toggleOn'); U.render(); }
     if (k === 'supersets') U.render();
   };
+  U.on.setHapticStrength = (el, ev, v) => { U.S.profile.prefs.hapticStrength = v; U.applyPrefs(); U.save(); U.haptic('toggleOn'); };
   U.on.setRest = (el, ev, v) => { U.S.profile.prefs.rest = v === 'auto' ? 'auto' : Number(v); U.save(); };
   U.on.setTheme = (el, ev, v) => { U.S.profile.prefs.theme = v; U.applyPrefs(); U.save(); };
   U.on.setDensity = (el, ev, v) => { U.S.profile.prefs.density = v; U.applyPrefs(); U.save(); };
@@ -254,7 +257,7 @@
     U.toast('Restored', 'positive');
   };
   U.act.resetAll = async () => {
-    const one = await U.confirm('Reset Gradient?', 'Your plan, history, health logs and the AI key are deleted from this phone.', 'Continue', 'critical', 'trash');
+    const one = await U.confirm('Reset Gradient Health?', 'Your plan, history, health logs and the AI key are deleted from this phone.', 'Continue', 'critical', 'trash');
     if (!one) return;
     const two = await U.dialog({
       title: 'This can\'t be undone', message: 'Copy your data first if you might want it back.', icon: 'alert', tone: 'critical',
@@ -271,23 +274,7 @@
   };
 
   /* ---------------------------------------------------------------- privacy */
-  U.privacyHtml = () => `
-    <div class="card prose">
-      <h3 class="t-title-3">The short version</h3>
-      <p class="t-body">No account, no ads, no analytics. Your data stays on this phone. The only thing that ever leaves it is a summary you choose to send to Claude.</p>
-      <h3 class="t-title-3">What Gradient reads</h3>
-      <p class="t-body">With your permission, from Health Connect: steps, sleep, weight, height, body fat, resting heart rate, heart rate variability and workouts from other apps. You can turn any of these off in Health Connect at any time.</p>
-      <h3 class="t-title-3">What it writes</h3>
-      <p class="t-body">If you allow it, the workouts you finish in Gradient are saved to Health Connect as exercise sessions so your other health apps see them. Nothing else is written. Turn it off in Settings or in Health Connect.</p>
-      <h3 class="t-title-3">Why</h3>
-      <p class="t-body">To fit each day's workout to how you slept and recovered, to tick off light-day walks from your steps, to track your weight trend and protein goal, and to show your trends and insights.</p>
-      <h3 class="t-title-3">Where it's kept</h3>
-      <p class="t-body">In the app's private storage on this phone. Android's own device backup can include it, encrypted with your screen lock; the API key is left out of that backup. Copy my data makes a text copy you control.</p>
-      <h3 class="t-title-3">Coaches</h3>
-      <p class="t-body">The built-in coach works on this phone and sends nothing. Claude is optional. In Claude mode, with your own Anthropic API key, a short summary (age range, goals, averages and trends, training numbers, but no name, dates or IDs) goes to Anthropic's API when a weekly report is written or you ask a question. Ask in the Claude app sends the same summary and your question to the Claude app, only when you press the button. Settings shows the exact text.</p>
-      <h3 class="t-title-3">Deleting</h3>
-      <p class="t-body">Settings, then Reset everything, deletes it all from this phone. Uninstalling the app does too. To stop Gradient reading or writing health data, remove its access in Health Connect.</p>
-    </div>`;
+  U.privacyHtml = () => `<div class="card prose">${GH.PRIVACY.html()}</div>`;
   U.screens.privacy = {
     render() { return `${U.navbar('Privacy', '', U.glassBtn('chevron-left', 'Back', 'back'))}<h1 class="rf-large-title">Privacy</h1><div class="section">${U.privacyHtml()}</div>`; },
   };

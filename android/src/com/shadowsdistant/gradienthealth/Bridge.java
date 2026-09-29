@@ -126,7 +126,7 @@ public final class Bridge {
                 return false;
             }
             ((ClipboardManager) service).setPrimaryClip(
-                    ClipData.newPlainText("Gradient", text == null ? "" : text));
+                    ClipData.newPlainText("Gradient Health", text == null ? "" : text));
             return true;
         } catch (Throwable t) {
             return false;
@@ -136,6 +136,18 @@ public final class Bridge {
     @JavascriptInterface
     public boolean isDark() {
         return activity.isDarkMode();
+    }
+
+    /** Haptic strength picked in Settings: light, medium or strong. */
+    @JavascriptInterface
+    public void hapticStrength(String level) {
+        Haptics.setLevel(level);
+    }
+
+    /** False when the phone's own touch feedback is switched off (UI taps are then skipped). */
+    @JavascriptInterface
+    public boolean hapticsSystemEnabled() {
+        return Haptics.systemTouchFeedback(activity);
     }
 
     /**

@@ -3,3 +3,4 @@ build/
 *.log
 .DS_Store
 dist/lazy/
+.claude/worktrees/

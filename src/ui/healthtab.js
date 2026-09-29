@@ -281,7 +281,7 @@
     if (!list.length) return '<p class="t-callout rf-muted">No workouts in the last 4 weeks yet.</p>';
     return `<ul class="rf-list">${list.map((a) => U.row({
       icon: a.src === 'app' ? 'bolt' : a.src === 'manual' ? 'pencil' : 'heart', tone: a.src === 'app' ? 'indigo' : a.src === 'manual' ? 'amber' : 'rose',
-      title: U.esc(U.cap(a.name || 'Workout')), sub: `${U.esc(U.fmtDay(a.day))}${a.src === 'app' ? ' · Gradient' : a.src === 'manual' ? ' · logged by hand' : ' · Health Connect'}`,
+      title: U.esc(U.cap(a.name || 'Workout')), sub: `${U.esc(U.fmtDay(a.day))}${a.src === 'app' ? ' · Gradient Health' : a.src === 'manual' ? ' · logged by hand' : ' · Health Connect'}`,
       detail: a.minutes ? `${a.minutes} min` : '',
     })).join('')}</ul>`;
   }
@@ -302,7 +302,7 @@
       : on ? `<div class="btn-row"><button type="button" class="rf-btn" data-act="hcSync" data-sync-spin${sync.busy ? ' data-spinning' : ''}>${U.icon('refresh')}Sync now</button><button type="button" class="rf-btn" data-variant="plain" data-act="hcManage">Permissions</button></div>`
         : '<button type="button" class="rf-btn" data-variant="filled" data-act="hcConnect">Connect Health Connect</button>';
     const canWrite = on && H().canWrite && H().canWrite();
-    const writes = on ? `<ul class="rf-list sheet-gap">${U.sw('Save workouts to Health Connect', !!(S.health.write !== false && canWrite), 'data-on="hcWriteToggle"', canWrite ? 'Other apps see your Gradient workouts' : 'Needs the Exercise permission in Health Connect')}</ul>` : '';
+    const writes = on ? `<ul class="rf-list sheet-gap">${U.sw('Save workouts to Health Connect', !!(S.health.write !== false && canWrite), 'data-on="hcWriteToggle"', canWrite ? 'Other apps see your Gradient Health workouts' : 'Needs the Exercise permission in Health Connect')}</ul>` : '';
     return `<div class="card" data-key="sources">
       <div class="row-between"><span class="t-headline">Health Connect</span>${U.badge(on ? 'On' : 'Off', on ? 'positive' : 'neutral')}</div>
       <p class="t-callout rf-muted">${U.esc(text)}${on ? ` · ${sync.busy ? 'syncing now' : `updated <span data-ago="${last || 0}">${U.esc(U.ago(last))}</span>`}` : ''}</p>
@@ -319,7 +319,7 @@
     const S = U.S;
     if (v && !(H().canWrite && H().canWrite())) {
       const st = await H().request();
-      if (!(H().canWrite && H().canWrite())) { el.checked = false; U.toast('Not allowed yet', 'caution', 'Turn on Exercise under Gradient in Health Connect.', { label: 'Open', onClick: () => H().openSettings() }); return; }
+      if (!(H().canWrite && H().canWrite())) { el.checked = false; U.toast('Not allowed yet', 'caution', 'Turn on Exercise under Gradient Health in Health Connect.', { label: 'Open', onClick: () => H().openSettings() }); return; }
       S.health.status = st;
     }
     S.health.write = !!v;

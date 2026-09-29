@@ -125,7 +125,7 @@
           ${U.row({ icon: 'sparkle', tone: 'amber', title: 'What\'s new', detail: U.esc(verShort ? `Version ${verShort}` : ''), act: 'openWhatsNew', chevron: true })}
           ${U.row({ icon: 'lock', tone: 'green', title: 'Privacy', act: 'openPrivacyView', chevron: true })}
         </ul>
-        <p class="rf-list-footer">Gradient ${U.esc(ver || 'web')}. Not medical advice: check with a doctor before starting if you have a condition or an injury.</p></div>`;
+        <p class="rf-list-footer">Gradient Health ${U.esc(ver || 'web')}. Not medical advice: check with a doctor before starting if you have a condition or an injury.</p></div>`;
     },
     shown(S, day) {
       const fresh = U.newAchievements(S, day);

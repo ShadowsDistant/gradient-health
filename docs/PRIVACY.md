@@ -1,65 +1,76 @@
-# Gradient privacy policy
+# Gradient Health privacy policy
 
 Last updated September 29, 2026.
 
-Gradient is a home workout and health tracking app for Android. This policy explains what data it
-uses and where that data goes.
+Gradient Health is a workout, health and food tracking app for Android. This policy explains exactly what the app collects, where it keeps it, what (if anything) leaves your phone, and how to delete it.
 
 ## The short version
 
-Gradient has no account, no ads and no analytics. Your data stays on your phone. The only thing that
-ever leaves it is a summary you choose to send to Claude, and the app shows you that summary first.
+There's no account, no ads, no analytics and no tracking. Everything you enter, and everything the app reads from Health Connect, is stored on your phone and nowhere else.
 
-## What Gradient reads
+Data only leaves your phone when you use one of these optional features, and only what the feature needs: a summary sent to Claude when you ask it something, a food search or barcode sent to Open Food Facts when you look a food up online, and a one-time download of the on-device AI model. Each one is off until you use it.
 
-With your permission, Gradient reads these from Health Connect: steps, sleep, weight, height, body
-fat, resting heart rate, heart rate variability, and workouts recorded by other apps. You can turn
-any of these off in Health Connect at any time.
+Nobody is paid for your data, and it's never used for advertising.
 
-It also keeps what you enter in the app: your answers to the set-up questions, your workouts and
-check-ins, protein, measurements, and anything you log by hand.
+## What the app collects and why
 
-## What Gradient writes
+| Data | Where it comes from | What it's used for | Leaves the phone? |
+|---|---|---|---|
+| Set-up answers: age, sex (optional), height, weight, goals, experience, schedule, equipment, injuries to be careful with, sleep habits, preferences | You | Building your plan and adjusting it; protein and calorie targets | Only as part of the Claude summary, if you use Claude (see below) |
+| Workouts: exercises, sets, reps, weights, rest, how hard it felt, pain you report, left vs right tests | You, in the workout player | Deciding what you do next time; your stats, streaks and achievements | Only as totals and trends in the Claude summary, if you use Claude |
+| Health data you allow: steps, sleep, weight, height, body fat, resting heart rate, heart rate, heart rate variability, workouts from other apps, active calories, distance, nutrition logged in other apps | Health Connect, with your permission | Easier days after short sleep or poor recovery, light-day walks, weight trend, calorie burn estimate, trends and insights | Only as averages and trends in the Claude summary, if you use Claude |
+| Food log: foods, portions, calories, protein, carbs, fat, fibre, your custom foods and saved meals | You | Calorie and macro tracking, if you turn it on | No. Online food lookups send only the search words or the barcode number |
+| Manual logs: weight, sleep, body measurements, how you feel, protein, activities outside the app | You | Trends, readiness and insights | Only as averages in the Claude summary, if you use Claude |
+| Coach chats: questions you ask and the answers | You and the coach | Showing the conversation and answering follow-ups | Only questions you send to Claude. The built-in and on-device coaches run on your phone |
+| Anthropic API key (optional) | You | Letting the app call Claude on your behalf | Only to Anthropic, with each Claude request |
+| On-device AI model file (optional) | Downloaded from Hugging Face when you ask | Running the on-device coach | No. It's a download, nothing is uploaded |
 
-If you allow it, Gradient saves the workouts you finish in the app to Health Connect as exercise
-sessions, so your other health apps can see them. It doesn't write anything else. You can turn this
-off in the app's settings or in Health Connect.
+The app doesn't collect your name unless you type one in, and never collects your contacts, location, photos, files, device identifiers or advertising ID.
 
-## Why
+## Health Connect
 
-To fit each day's workout to how you slept and recovered, to tick off light-day walks from your
-steps, to track your weight trend and protein goal, and to show your trends and insights. Your data
-isn't used for advertising and isn't sold or shared.
+The app reads only the data types you allow on Health Connect's permission screen, and you can change that at any time in Health Connect. If you allow it, it also writes two things back: the workouts you finish in the app, as exercise sessions, and the meals you log, as nutrition records. That lets your other health apps see them. You can turn writing off in Settings or in Health Connect.
 
-## Where it's stored
+Gradient Health's use of information received from Health Connect adheres to the Health Connect Permissions policy, including the Limited Use requirements. Health Connect data is used only to provide the features described above, is never sold, never used for advertising, never used to decide credit or insurance, and never shared with anyone except when you choose to send a summary to Claude.
 
-In the app's private storage on your phone. Android's own device backup can include it, encrypted
-with your screen lock. An Anthropic API key, if you add one, is stored separately and left out of
-that backup. Copy my data, in Settings, makes a text copy that you control.
+## Outside services, only when you use them
 
-## Claude (optional)
+Any service you connect to sees your IP address, as with every internet request. The app adds no identifiers of its own.
 
-The built-in coach runs on your phone and sends nothing anywhere.
+- **Anthropic (Claude).** Optional. With your own API key, the app sends a short summary of your data plus your question to Anthropic's API when a weekly report is written or you ask something. The summary holds an age range, your goals, averages and trends, and training numbers. It never includes your name, email, exact dates or device IDs. "Ask in the Claude app" hands the same summary and your question to the Claude app on your phone, only when you press the button. Settings, Coach, "What gets sent" shows the exact text. Anthropic's own privacy policy covers what happens after that.
+- **Open Food Facts.** Optional. When you search online or scan a barcode, the search words or the barcode number are sent to Open Food Facts (openfoodfacts.org) to look the food up. Nothing else about you goes with it. Their data is published under the Open Database License.
+- **Hugging Face.** Optional. If you download the on-device AI model, the file comes from Hugging Face (huggingface.co), like any download. After that the model runs entirely on your phone.
 
-Claude features are optional and only run when you use them. In Claude mode, with your own
-Anthropic API key, a short summary is sent to Anthropic's API along with your question when a weekly
-report is written or you ask something. The summary holds an age range, your goals, averages and
-trends, and training numbers. It never includes your name, email, dates or device IDs.
+## Permissions the app asks for
 
-Ask in the Claude app opens the same summary and your question in the Claude app on your phone, only
-when you press the button. What happens after that is covered by your agreement with Anthropic.
+- **Health Connect (read).** Steps, sleep, weight, height, body fat, heart rate, resting heart rate, heart rate variability, exercise, active calories burned, distance and nutrition, for the features above. Each one is optional.
+- **Health Connect (write).** Exercise and nutrition, so your workouts and meals show up in your other health apps. Optional.
+- **Camera.** Only for scanning food barcodes, and only when you tap Scan. The image is read on your phone to find the barcode; no photo or video is saved or sent.
+- **Internet and network state.** For the optional features above, and to wait for Wi-Fi before a large model download.
+- **Vibration.** Haptic feedback and workout timer alerts.
 
-The app shows the exact summary under Settings, Coach, What gets sent.
+## Where it's kept and how it's protected
 
-## Deleting your data
+Everything is stored in the app's private storage on your phone, which other apps can't read. Connections to outside services use HTTPS. The app contains no third-party analytics, advertising or crash-reporting code.
 
-Settings, then Reset everything, deletes it all from your phone. Uninstalling the app does too. To
-stop Gradient reading or writing health data, remove its access in Health Connect.
+Android's own device backup can include the app's data, encrypted with your screen lock. Your API key is left out of that backup and out of Copy my data.
+
+## How long it's kept, and deleting it
+
+Your data stays on your phone until you delete it. Settings, Reset everything, deletes all of it, including the API key and the downloaded model. Uninstalling the app does the same. You can delete the model on its own in Settings.
+
+Records the app wrote to Health Connect stay there until you remove them in Health Connect. To stop the app reading or writing health data, remove its access in Health Connect.
+
+Settings, Copy my data, gives you a copy of everything (except the API key) as text you control.
 
 ## Children
 
-Gradient isn't directed at children under 13.
+Gradient Health isn't directed at children under 13, and the app doesn't knowingly collect data from them.
 
 ## Changes
 
-If this policy changes, the new version will be published here with a new date.
+If this policy changes, the new version is published here and in the app with a new date. The app won't start sending data anywhere new without asking you first.
+
+## Contact
+
+Questions or requests about privacy: open an issue at https://github.com/ShadowsDistant/gradient-health/issues.

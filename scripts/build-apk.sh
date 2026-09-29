@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds and signs the Gradient APK (android/ + the single-file web app) without Gradle or the
+# Builds and signs the Gradient Health APK (android/ + the single-file web app) without Gradle or the
 # Android SDK: javac against the API 34 framework jar (Robolectric's android-all from Maven
 # Central), dx (dalvik-exchange), aapt, zipalign and apksigner from Ubuntu/Debian packages.
 #

@@ -1,6 +1,6 @@
-# Developing Gradient
+# Developing Gradient Health
 
-Gradient is a single self-contained web app (`dist/gradient-health.html`, built from `src/`) inside a
+Gradient Health is a single self-contained web app (`dist/gradient-health.html`, built from `src/`) inside a
 thin Android WebView shell (`android/`) with a Health Connect bridge. There's no Gradle and no
 Android SDK: the APK is built with Ubuntu's packaged Android tools.
 
@@ -89,7 +89,7 @@ readable when the app's theme differs from the phone's.
 `success`, `error`, `heavy`, `go`, `done` or `celebrate` (see `Haptics.java`), using the phone's own
 tuned effects where it has them and following the system touch-feedback setting.
 
-**Health Connect.** The platform API needs Android 14 or newer. Gradient reads steps, sleep, weight,
+**Health Connect.** The platform API needs Android 14 or newer. Gradient Health reads steps, sleep, weight,
 height, body fat, resting heart rate, HRV and exercise, and can write exercise sessions for the
 workouts finished in the app (keyed by day, so a re-save updates instead of duplicating). It syncs
 when the app opens or comes back (at most once a minute), every 15 minutes while open, after a

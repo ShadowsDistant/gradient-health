@@ -77,7 +77,11 @@ const clickNext = async () => { await page.locator('.ob-actions [data-variant="t
 const title = () => page.locator('.onboard .rf-large-title').innerText();
 
 section('Questionnaire');
-check('starts on Health data', (await title()) === 'Health data');
+check('starts on the welcome screen', (await title()) === 'Gradient Health');
+check('with the logo', await page.locator('.ob-welcome .ob-logo').count() === 1);
+await shot(page, '00-welcome');
+await clickNext();
+check('then Health data', (await title()) === 'Health data');
 await page.click('[data-act="obConnect"]');
 await page.waitForSelector('.ob-status[data-tone="positive"]');
 check('Health Connect connects and prefills', /Read .*weight/.test(await page.locator('.ob-status').innerText()), await page.locator('.ob-status').innerText());
