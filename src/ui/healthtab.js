@@ -48,7 +48,7 @@
     const busy = w.api && ai.busy === 'report';
     const src = busy ? '<span class="hl-week-src is-busy"><span class="rf-spinner" data-size="sm"><i></i></span>Writing</span>'
       : `<span class="hl-week-src">${w.rep ? 'By Claude' : 'From your numbers'}</span>`;
-    const glance = (d.glance || []).slice(0, 4);
+    const glance = (d.glance || []).length >= 2 ? d.glance.slice(0, 4) : [];
     const wins = (d.wins || []).slice(0, 2);
     const err = ai.error && w.api ? `<div class="notice" data-tone="critical">${U.icon('alert')}<span>${U.esc(ai.error)}</span></div>` : '';
     const waiting = w.api && !S.ai.consentAt ? `<div class="notice" data-tone="info">${U.icon('info')}<span>Claude is waiting for your OK before it gets your data. <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="claudeReview">Review</button></span></div>` : '';
@@ -73,7 +73,7 @@
     const list = (title, arr, icon, state) => (arr && arr.length ? `<section class="rs-sec" data-state="${state}"><h3 class="rs-h">${U.icon(icon, 'sm')}<span>${title}</span></h3><ul class="rs-list">${arr.map((x) => `<li>${U.esc(x)}</li>`).join('')}</ul></section>` : '');
     const meta = w.rep ? `Written ${U.esc(U.fmtDay(w.rep.day))}${w.rep.model ? ` by ${U.esc(w.rep.model)}` : ''}. Not medical advice.`
       : w.api ? 'Claude hasn\'t written this week\'s report yet, so this one is worked out on this phone. Not medical advice.' : 'Worked out on this phone from your own numbers. Not medical advice.';
-    const glance = (d.glance || []).slice(0, 4);
+    const glance = (d.glance || []).length >= 2 ? d.glance.slice(0, 4) : [];
     return `<div class="rs">
       <div class="rs-top">${busy ? `<span class="rf-spinner" data-size="sm"><i></i></span><span class="t-footnote rf-muted">Claude is writing this week's report…</span>` : w.rep ? U.badge('Claude', 'accent') : U.badge('From your numbers', 'neutral')}</div>
       <h3 class="rs-title">${U.esc(d.headline)}</h3>

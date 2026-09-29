@@ -62,8 +62,9 @@
 
   /* ---------------------------------------------------------------- weekly report */
   // This week's key numbers, for the top of the report: up to four of sleep, steps, resting heart
-  // rate and weight (HRV, workouts or activity stand in for one that's missing), each as the week's
-  // average with its trend against the person's usual and a tone (good | watch | neutral).
+  // rate and weight (HRV, workouts or active calories stand in for one that's missing), each as the
+  // week's average with its trend against the person's usual and a tone (good | watch | neutral).
+  // Fewer than two means there isn't enough yet: none.
   // → [{ key, metric, value, trend: "+20 min" | "-9%" | "steady" | "", dir, tone }]
   function glance(S, day, f0) {
     const h = H();
@@ -71,7 +72,7 @@
     if (!h || !h.versus) return out;
     const f = f0 || facts(S, day);
     const workouts = S.profile.workouts !== false;
-    for (const key of ['sleepMin', 'steps', 'rhr', 'weightKg', 'hrv', 'workouts', 'activeMin', 'activeKcal']) {
+    for (const key of ['sleepMin', 'steps', 'rhr', 'weightKg', 'hrv', 'workouts', 'activeKcal']) {
       if (out.length >= 4) break;
       if (key === 'workouts') {
         if (!workouts || !(f.planned || f.done)) continue;
@@ -84,7 +85,7 @@
       const m = h.METRICS[key];
       out.push({ key, metric: m.short, value: h.format(S, key, v.value, { compact: true }), trend: v.usual == null ? '' : v.dir === 'flat' ? 'steady' : h.formatDelta(S, key, v.delta, v.rel), dir: v.dir, tone: v.tone });
     }
-    return out;
+    return out.length >= 2 ? out : [];
   }
   // Wins go on small badges: no closing full stop, no repeats (an insight often says the same).
   const winText = (t) => String(t || '').trim().replace(/\.$/, '');

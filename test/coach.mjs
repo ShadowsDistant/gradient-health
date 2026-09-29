@@ -69,7 +69,7 @@ check('glance numbers only use the phone\'s own data', rep.glance.every((g) => !
 S = person();
 S.health.days = {};
 rep = C.report(S, D0);
-check('no health data: workouts stand in, and nothing is made up', rep.glance.every((g) => g.key === 'workouts') && rep.glance.length <= 1, rep.glance);
+check('no health data: no numbers rather than a lone one, and nothing made up', rep.glance.length === 0, rep.glance);
 
 section('Short enough for a card');
 const scenarios = [person(), person({ sleep: 340 }), person({ rir: '0' }), person({ steps: 2000 }), fresh, B.newState({ goals: ['abs'], workouts: false }, null, D0 - 10)];
