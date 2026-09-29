@@ -149,6 +149,10 @@ for (const [width, theme, zoom, h] of COMBOS) {
     ['health', async () => { await page.evaluate(() => window.GH.ui.go('health')); }],
     ['health-7', async () => { await page.evaluate(() => window.GH.ui.go('health')); await settle(); await page.click('[data-on="healthRange"] input[value="7"]', { force: true }).catch(() => {}); }],
     ['progress', async () => { await page.evaluate(() => window.GH.ui.go('progress')); }],
+    // The body map at 12 weeks with its "Train … more" button (a stand-in action if Tailor my plan isn't there).
+    ['progress-12w', async () => { await page.evaluate(() => { const U = window.GH.ui; if (!U.act.tailorPlan) U.act.tailorPlan = () => {}; U.go('progress'); }); await settle(); await page.click('#screen .bm-range [data-arg="12"]'); }],
+    ['progress-improved', async () => { await page.evaluate(() => { const U = window.GH.ui; if (!U.act.tailorPlan) U.act.tailorPlan = () => {}; U.go('progress'); }); await settle(); await page.click('[data-on="bodyMode"] input[value="improved"]', { force: true }); }],
+    ['sheet-muscle', async () => { await page.evaluate(() => { const U = window.GH.ui; if (!U.act.tailorPlan) U.act.tailorPlan = () => {}; U.go('progress'); }); await settle(); await page.click('#screen .bm-view[data-view="front"] .bm-m[data-muscle="chest"] path'); await settle(1200); }],
     ['moves', async () => { await page.evaluate(() => window.GH.ui.go('moves')); }],
     ['profile', async () => { await page.evaluate(() => window.GH.ui.open('profile')); }],
     ['settings', async () => { await page.evaluate(() => window.GH.ui.open('settings')); }],
