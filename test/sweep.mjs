@@ -145,6 +145,11 @@ for (const [width, theme, zoom, h] of COMBOS) {
   const scenes = [
     ['today', async () => { await page.evaluate(() => window.GH.ui.go('today')); }],
     ['plan', async () => { await page.evaluate(() => window.GH.ui.go('plan')); }],
+    ['plan-light', async () => { await page.evaluate(() => window.GH.ui.go('plan')); await settle(); await page.evaluate(() => { const b = document.querySelector('#screen .pw-page:not([aria-hidden]) .pw-day[data-kind="light"] .pw-pill'); if (b) b.click(); }); }],
+    ['plan-move', async () => { await page.evaluate(() => window.GH.ui.go('plan')); await settle(); await page.evaluate(() => { const b = document.querySelector('#screen .pw-page:not([aria-hidden]) .pw-day[data-kind="workout"] .pw-pill'); if (b) b.click(); }); await settle(); await page.evaluate(() => { const b = document.querySelector('#screen .pw-card [data-act="planMoveOpen"]'); if (b) b.click(); }); await settle(); await page.evaluate(() => { const m = document.querySelector('#screen .pw-move'); if (m) m.scrollIntoView({ block: 'center' }); }); }],
+    // The week slides with a CSS transition, which runs on real time rather than the test clock.
+    ['plan-next', async () => { await page.evaluate(() => window.GH.ui.go('plan')); await settle(); await page.evaluate(() => { const b = document.querySelector('#screen [data-act="planWeek"][data-arg="1"]'); if (b) b.click(); }); await page.waitForTimeout(900); }],
+    ['plan-info', async () => { await page.evaluate(() => window.GH.ui.go('plan')); await settle(); await act('planPhase'); }],
     ['food', async () => { await page.evaluate(() => window.GH.ui.go('food')); }],
     ['health', async () => { await page.evaluate(() => window.GH.ui.go('health')); }],
     ['health-7', async () => { await page.evaluate(() => window.GH.ui.go('health')); await settle(); await page.click('[data-on="healthRange"] input[value="7"]', { force: true }).catch(() => {}); }],
@@ -177,6 +182,8 @@ for (const [width, theme, zoom, h] of COMBOS) {
     ['player', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('startWorkout'); await settle(2000); }],
     ['sheet-leave', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('startWorkout'); await settle(1200); await page.evaluate(() => window.__gh.back()); await settle(900); }],
     ['capsule', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('startWorkout'); await settle(1200); await act('plKeep'); await settle(); await page.evaluate(() => window.GH.ui.go('progress')); }],
+    // Last, since it changes the state: today's workout done (not saved, so a reload undoes it).
+    ['plan-done', async () => { await page.evaluate(() => { const GH = window.GH, U = GH.ui, B = GH.brain, S = U.S; GH.store.save = () => true; GH.store.saveSoon = () => {}; B.startWorkout(S, U.today(), { now: Date.now() - 26 * 60000 }); for (let g = 0; S.active && S.active.idx < S.active.steps.length && g < 400; g++) { const st = S.active.steps[S.active.idx]; B.completeStep(S, st.kind === 'test' ? { value: 12 } : {}); if (st.askRir) B.setRir(S, st.item, '12'); } B.finishWorkout(S, { rating: 'right', now: Date.now() }); U.go('plan'); }); }],
   ].filter(([id]) => !only.length || only.some((o) => id.startsWith(o)));
   for (const [id, run] of scenes) {
     try {
