@@ -12,6 +12,7 @@
   const SC = () => GH.science;
   const LEVEL_ORDER = ['strong', 'moderate', 'early'];
   let show = 'all'; // the group picked at the top
+  let focusTimer = 0;
 
   const firstSentence = (t) => String(t || '').trim().split(/(?<=[.!?])\s+/)[0];
   const dot = (level) => `<span class="sci-dot" data-level="${U.esc(level)}" aria-hidden="true"></span>`;
@@ -44,17 +45,23 @@
           <p class="rf-list-footer">General information, not medical advice. Research findings are averages across groups of people, so your results can differ.</p>
         </div>`;
     },
-    // U.open('science', ruleId): the rule's row is brought into view and its sheet opens.
+    // U.open('science', ruleId): the rule's row is brought into view and its sheet opens (once).
     focus(root, id) {
       if (!SC().RULES.some((r) => r.id === id)) return;
-      let el = root.querySelector(`#sci-${CSS.escape(id)}`);
-      if (!el && show !== 'all') { show = 'all'; U.render(); el = root.querySelector(`#sci-${CSS.escape(id)}`); }
-      if (el) {
-        el.scrollIntoView({ block: 'center', behavior: 'auto' });
-        el.classList.add('is-flash');
-        setTimeout(() => el.classList.remove('is-flash'), 1400);
-      }
-      setTimeout(() => openRule(id), 120);
+      clearTimeout(focusTimer);
+      const bring = () => {
+        const el = root.querySelector(`#sci-${CSS.escape(id)}`);
+        if (el) {
+          el.scrollIntoView({ block: 'center', behavior: 'auto' });
+          el.classList.add('is-flash');
+          setTimeout(() => el.classList.remove('is-flash'), 1400);
+        }
+        focusTimer = setTimeout(() => openRule(id), 120);
+      };
+      if (show === 'all' || root.querySelector(`#sci-${CSS.escape(id)}`)) { bring(); return; }
+      // A group picked earlier hides the rule: show them all, once the render that got here is done.
+      show = 'all';
+      focusTimer = setTimeout(() => { U.render(); bring(); }, 0);
     },
   };
 

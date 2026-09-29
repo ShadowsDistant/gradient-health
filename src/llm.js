@@ -482,6 +482,8 @@ async function stop() {
 // Frees the model's memory (it also goes by itself after two idle minutes).
 function unload() { return serial(stop); }
 
+// Whether wllama can run more than one thread here (it needs memory shared between workers).
+const threaded = () => typeof SharedArrayBuffer !== 'undefined' && globalThis.crossOriginIsolated === true;
 // threads: null lets wllama use half the cores when the WebView can share memory between workers
 // (SharedArrayBuffer), else one; 1 forces one.
 async function startWorker(m, file, bytes, gpu, onRead, threads) {
@@ -528,8 +530,14 @@ async function doLoad(m, opts) {
   try {
     w = await startWorker(m, file, bytes, gpu, onRead, null);
   } catch (e) {
-    // The GPU failed (don't try it again on this phone), or threads did: one thread on the CPU.
-    if (gpu) { log('warn', ['WebGPU load failed, using the CPU:', e]); markGpuBad(); } else log('warn', ['Load failed, trying one thread:', e]);
+    // The GPU failed (don't try it again on this phone): the CPU. Or threads did: one thread. A CPU
+    // load on one thread already (Android's WebView has no SharedArrayBuffer) or out of memory
+    // would only fail again the same way, after reading the whole file a second time.
+    if (gpu) { log('warn', ['WebGPU load failed, using the CPU:', e]); markGpuBad(); } else {
+      const why = explain(e, 'load');
+      if (!threaded() || why.code === 'memory') throw why;
+      log('warn', ['Load failed, trying one thread:', e]);
+    }
     gpu = false;
     read = 0;
     try { w = await startWorker(m, file, bytes, false, onRead, 1); } catch (e2) { throw explain(e2, 'load'); }

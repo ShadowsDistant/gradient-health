@@ -21,8 +21,16 @@
   }
 
   /* ---------------------------------------------------------------- figure sheets */
-  let sheetFig = null;
-  function dropSheetFig() { if (sheetFig) { try { sheetFig.destroy(); } catch (e) { /* ignore */ } sheetFig = null; } }
+  // Each sheet owns its figure, so a sheet that finishes closing after the next one has opened
+  // (easy on a slow phone) only ever takes its own figure with it, never the new one's.
+  const figs = new WeakMap(); // sheet element → figure
+  function dropSheetFig(ctl) {
+    const f = ctl && figs.get(ctl.el);
+    if (!f) return;
+    figs.delete(ctl.el);
+    try { f.destroy(); } catch (e) { /* ignore */ }
+  }
+  const figOf = (el) => { const d = el && el.closest ? el.closest('dialog') : null; return d ? figs.get(d) : null; };
   function moveBody(m, opts) {
     const S = U.S;
     const load = B().loadInfo(S, m);
@@ -42,29 +50,31 @@
       </div>`;
   }
   function mountSheetFig(ctl, moveId, side) {
-    dropSheetFig();
+    dropSheetFig(ctl);
     const host = ctl.el.querySelector('.sheet-fig');
-    if (host && U.figureFor) sheetFig = U.figureFor(host, moveId, side || ((M().MOVES[moveId] || {}).uni ? (U.S.catchup.arm.side || 'L') : null), true);
+    if (host && U.figureFor) figs.set(ctl.el, U.figureFor(host, moveId, side || ((M().MOVES[moveId] || {}).uni ? (U.S.catchup.arm.side || 'L') : null), true));
   }
   U.moveSheet = (moveId, opts) => {
     const m = M().MOVES[moveId];
     if (!m) return null;
     const first = U.markSeen ? U.markSeen('moveSheet') : false;
-    return U.sheet({
+    const ctl = U.sheet({
       title: m.name, detents: 'medium large', detent: 'large',
       body: moveBody(m, opts),
-      after: (ctl) => mountSheetFig(ctl, moveId, opts && opts.side),
-      onClose: () => { dropSheetFig(); if (opts && opts.onClose) opts.onClose(); if (first && U.els().playerEl.hidden) { U.render(); if (U.checklistCheck) U.checklistCheck(); } },
+      after: (c) => mountSheetFig(c, moveId, opts && opts.side),
+      onClose: () => { dropSheetFig(ctl); if (opts && opts.onClose) opts.onClose(); if (first && U.els().playerEl.hidden) { U.render(); if (U.checklistCheck) U.checklistCheck(); } },
     });
+    return ctl;
   };
   U.act.figPause = (el) => {
-    if (!sheetFig) return;
+    const f = figOf(el);
+    if (!f) return;
     const stop = el.getAttribute('aria-pressed') !== 'true';
-    if (stop) sheetFig.pause(); else sheetFig.play();
+    if (stop) f.pause(); else f.play();
     el.setAttribute('aria-pressed', String(stop));
     el.textContent = stop ? 'Play' : 'Pause';
   };
-  U.on.figView = (el, ev, v) => { if (sheetFig && sheetFig.setView) sheetFig.setView(v); };
+  U.on.figView = (el, ev, v) => { const f = figOf(el); if (f && f.setView) f.setView(v); };
 
   // A ladder: its rungs in order, the current one marked; tap a rung to see it.
   U.act.ladder = (el) => {
@@ -92,7 +102,7 @@
       return `${moveBody(m)}<h3 class="rf-list-header">${lad.gym ? 'Exercises, favourite first' : 'All levels, easiest first'}</h3><ul class="rf-list">${rows}</ul>
         ${hidden ? `<div class="sheet-pad"><button type="button" class="rf-btn" data-act="unhide" data-arg="${showing}">Show this move again</button></div>` : ''}`;
     };
-    const ctl = U.sheet({ title: lad.name, detents: 'large', detent: 'large', body: body(), after: (c) => mountSheetFig(c, showing), onClose: dropSheetFig });
+    const ctl = U.sheet({ title: lad.name, detents: 'large', detent: 'large', body: body(), after: (c) => mountSheetFig(c, showing), onClose: () => dropSheetFig(ctl) });
     U.act.ladderShow = (b) => {
       showing = b.dataset.arg;
       U.haptic('select');

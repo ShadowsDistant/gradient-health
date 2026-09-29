@@ -159,6 +159,7 @@ done
 step "Aligning"
 ALIGNED="$WORK/aligned.apk"
 zipalign -f -p 4 "$UNSIGNED" "$ALIGNED"
+echo "$VERSION_CODE" > "$WORK/version-code" # build-aab.sh gives the bundle the same one
 
 step "Signing with $SIGNED_WITH"
 # v1/v2/v3 follow minSdk (26 -> v2 + v3). No v4: its .idsig side file is only for adb incremental installs.

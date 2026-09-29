@@ -52,6 +52,9 @@ await settle();
 check('online search switched on', await page.evaluate(() => window.GH.food.prefs(window.GH.ui.S).online === true));
 
 section('Tab bar with Food');
+// Back from Settings first: the tab bar is out of sight on a pushed page.
+await page.evaluate(() => { while (window.GH.ui.back()) { /* back to the tab */ } });
+await settle();
 for (const t of ['today', 'plan', 'food', 'health', 'progress']) {
   await tab(t);
   const ok = await page.evaluate(() => { const l = document.querySelector('.rf-tab[aria-current="page"] .rf-tab-label').getBoundingClientRect(); const p = document.querySelector('.rf-tabbar-lens').getBoundingClientRect(); return l.left >= p.left - 0.5 && l.right <= p.right + 0.5 && p.width > 20; });
@@ -176,6 +179,8 @@ await openSettings();
 await page.evaluate(() => document.querySelector('#screen [data-on="setWorkouts"]').click());
 await settle(900);
 check('Plan, Progress and Moves go away', (await tabs()) === 'today,food,health', await tabs());
+await page.evaluate(() => { while (window.GH.ui.back()) { /* back to the tab */ } });
+await settle();
 await tab('today');
 check('Today leads with the day instead of a workout', await page.evaluate(() => !!document.querySelector('#screen .day-card') && !document.querySelector('#screen .session') && !document.querySelector('#screen .streak')));
 check('no Start workout button', await page.evaluate(() => document.getElementById('float').hidden));

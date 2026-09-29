@@ -120,17 +120,15 @@
     const done = setsDone(a);
     if (done && !(await U.confirm('Cancel this workout?', `The ${U.plural(done, 'set')} you did won't be saved, and it won't count for your streak.`, 'Cancel workout', 'critical', 'close', 'Keep it'))) return false;
     const S = U.S;
-    const undo = { active: JSON.parse(JSON.stringify(a)), events: S.events.slice() };
-    B().cancelWorkout(S);
+    const gone = B().cancelWorkout(S);
     U.save(true);
     if (P && P.mode === 'workout') closeDone(); else U.render();
     U.haptic('heavy');
     U.toast('Workout cancelled', 'neutral', 'Nothing from it was saved.', {
       label: 'Undo',
       onClick: () => {
-        if (U.S.active) return;
-        U.S.active = undo.active;
-        U.S.events = undo.events;
+        // Not over another workout, or into data restored from a copy meanwhile.
+        if (U.S !== S || !B().restoreWorkout(S, gone)) return;
         U.save(true);
         U.render();
         U.haptic('success');
@@ -181,6 +179,8 @@
   const whenShownFns = new Set();
   let whenShownHooked = false;
   function whenShown(fn) {
+    // Already back in front (a loss is often only reported then): just the moment's wait.
+    if (!document.hidden) { setTimeout(fn, 500); return; }
     whenShownFns.add(fn);
     if (whenShownHooked) return;
     whenShownHooked = true;
@@ -196,7 +196,7 @@
   let chunkFails = 0; // the chunk didn't load: tried again a couple of times, then left flat
   function figure(host, m, o) {
     let inner = null, pending = null, at = host, playing = false, dead = false, is3d = false;
-    let view = null, giveUp = 0, retries = 0, busy = false, flatShown = false;
+    let view = null, giveUp = 0, retries = 0, busy = false, flatShown = false, stayFlat = false;
     const ctl = {
       get el() { return inner.el; },
       get duration() { return inner.duration; },
@@ -216,7 +216,7 @@
       destroy() { dead = true; whenShownFns.delete(retry); dropPending(); inner.destroy(); },
     };
     const wake = () => { for (const f of [inner, pending]) if (f && f.wake) f.wake(); };
-    const retry = () => { if (!dead) upgrade(); };
+    const retry = () => { if (!dead) { stayFlat = false; upgrade(); } };
     const flat = () => {
       is3d = false;
       inner = GH.pose.mount(at, m, o);
@@ -262,7 +262,7 @@
     }
     // Mount the 3D figure out of sight once the chunk is here and the GPU is warm.
     function upgrade() {
-      if (dead || is3d || pending || busy || !want3d() || !GH.lazy) return;
+      if (dead || is3d || pending || busy || stayFlat || chunkFails >= 3 || !want3d() || !GH.lazy) return;
       if (!at || !at.isConnected) return; // tried again on the next attach() or play()
       busy = true;
       load3d().then((f) => {
@@ -286,7 +286,7 @@
           giveUp = 0;
           if (pending !== p) return;
           if (document.hidden) whenShown(() => { if (pending === p) giveUp = setTimeout(check, 3000); });
-          else dropPending();
+          else { dropPending(); stayFlat = true; } // this figure stays flat
         };
         giveUp = setTimeout(check, 3000);
       }).catch((e) => { busy = false; if (G.console) G.console.error('figure3d:', e); });
@@ -442,8 +442,10 @@
     if (changed && scene != null) sceneIn(el, phase);
     scene = next;
     const host = el.querySelector('.pl-fig');
+    const nx = P.phase === 'rest' ? cur() : null;
     if (host && st && (P.phase === 'step' || P.phase === 'countdown' || P.phase === 'running')) mountFig(host, st, true);
-    else if (host && P.phase === 'rest') { const nx = cur(); if (nx) mountFig(host, nx, false); }
+    else if (host && nx) mountFig(host, nx, false);
+    else if (fig) fig.ctl.pause(); // no figure on this view (the check-in, say): stop drawing it
     loop();
   }
 

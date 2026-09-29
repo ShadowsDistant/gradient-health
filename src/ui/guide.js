@@ -116,7 +116,6 @@
     { art: 'rir', title: 'It learns from one question', text: 'After each exercise: how many more reps could you have done? 0 holds you steady, 1-2 adds a little, 3+ moves you up. Honest answers make the plan fit you.' },
     { art: 'tabs', title: 'Everything else', text: 'Plan shows your week and lets you move a day. Health has sleep, steps and trends. Progress tracks levels and streaks. Your profile has stats and settings.' },
   ];
-  let tourFig = null;
   function tourArt(p) {
     if (p.art === 'fig') return '<div class="tour-fig" data-morph="keep"></div>';
     if (p.art === 'rir') return `<div class="tour-rir">${U.seg('tourRir', [['0', '0'], ['12', '1-2'], ['3', '3+']], '12', 'Reps left in the tank', '')}<p class="t-footnote rf-muted">Reps left in the tank</p></div>`;
@@ -139,8 +138,11 @@
         </div>
       </div>`;
     };
+    // This tour's own figure: a tour closing late never takes a newer one's with it.
+    let tourFig = null;
+    const dropFig = () => { if (tourFig) { try { tourFig.destroy(); } catch (e) { /* ignore */ } tourFig = null; } };
     const mountFig = (ctl) => {
-      if (tourFig) { try { tourFig.destroy(); } catch (e) { /* ignore */ } tourFig = null; }
+      dropFig();
       const host = ctl.el.querySelector('.tour-fig');
       if (host && U.figureFor) tourFig = U.figureFor(host, TOUR[i].move, null, true);
     };
@@ -153,7 +155,7 @@
     const ctl = U.sheet({
       title: 'Welcome', detents: 'large', detent: 'large', cls: 'tour-sheet', body: body(),
       after: (c) => mountFig(c),
-      onClose: () => { if (tourFig) { try { tourFig.destroy(); } catch (e) { /* ignore */ } tourFig = null; } U.markSeen('tour'); },
+      onClose: () => { dropFig(); U.markSeen('tour'); },
     });
     U.act.tourNext = () => { if (i >= last) { ctl.close('ok'); return; } i++; show(ctl, 1); };
     U.act.tourSkip = () => ctl.close('skip');

@@ -118,11 +118,15 @@
     if (rule) L.push(`How the app decides (${rule.title}): ${firstSentences(rule.does, 2)} ${firstSentences(rule.why, 1)}`.trim());
     if (topic === 'today' && C.decisions && S.profile.workouts !== false) {
       try {
+        // The workout in progress, else today's (as the Coach page shows it). A light day has its
+        // own line; a finished or rest day has nothing to explain.
         const b = B();
         const plan = b.todayPlan(S, day);
-        const session = plan.type === 'workout' ? b.buildSession(S, day, plan.tpl, {}) : null;
-        const list = C.decisions(S, day, session).slice(0, 4).map((d) => `${d.text}${d.why ? ` (${d.why.replace(/\.$/, '')})` : ''}`);
-        if (list.length) L.push(`Today's changes: ${list.join('; ')}.`);
+        const session = S.active && S.active.day === day ? S.active.session : plan.type === 'workout' ? b.buildSession(S, day, plan.tpl, {}) : null;
+        if (session || plan.type === 'light') {
+          const list = C.decisions(S, day, session).slice(0, 4).map((d) => `${d.text}${d.why ? ` (${d.why.replace(/\.$/, '')})` : ''}`);
+          if (list.length) L.push(`Today's changes: ${list.join('; ')}.`);
+        }
       } catch (e) { /* the plan isn't there to explain */ }
     }
     return L;
@@ -184,16 +188,19 @@
     let raw;
     // A long conversation that no longer fits the model's memory: answer this one on its own.
     try { raw = await run(); } catch (e) { if (e && e.code === 'too-long') raw = await run(0); else throw e; }
-    const aborted = !!(llm.stats && llm.stats.aborted);
+    // Stopped before it started (waiting behind the warm-up, say) leaves the last chat's stats.
+    const st = llm.stats;
+    const aborted = !!(opt.signal && opt.signal.aborted) || !!(st && st.aborted);
     const text = String(raw || '').trim();
     if (text) record(S, q, text, false, id);
-    // How fast this model answers on this phone (for the model picker), smoothed over answers.
-    const tps = llm.stats && llm.stats.tokensPerSec;
+    // How fast this model answers on this phone (for the model picker), smoothed over real answers
+    // (not the one-word warm-up).
+    const tps = st && st.id === id && st.tokens >= 8 && text ? st.tokensPerSec : 0;
     if (tps > 0 && !aborted) {
       const sp = S.ai.speed || (S.ai.speed = {});
       sp[id] = sp[id] ? Math.round((sp[id] * 0.7 + tps * 0.3) * 10) / 10 : Math.round(tps * 10) / 10;
     }
-    return { text, aborted, stats: llm.stats };
+    return { text, aborted, stats: st };
   }
   // Loads the model and reads the rules and data ahead of the first question, so the first answer
   // starts sooner. Quietly does nothing if the model isn't there.
