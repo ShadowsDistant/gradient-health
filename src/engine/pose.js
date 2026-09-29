@@ -481,7 +481,15 @@
         if (pts.kb) c = pts.kb;
         // Bottom up, held by the horns: the bell sits above the hands on its handle.
         else if (e.hold === 'horns') c = add(g, [0, -7]);
-        else if (e.hold === 'arm') {
+        // Racked (a one-arm press): at the shoulder the bell hangs on the outside of the forearm (in
+        // line with it from the side); pressed overhead it rests on the back of the forearm, behind
+        // and below the fist.
+        else if (e.hold === 'rack') {
+          const s = hands[0];
+          const u = dir(angOf(sub(pts['wr' + s], pts['el' + s])));
+          const up = clamp((pts['sh' + s][1] - pts['wr' + s][1] - 10) / 35, 0, 1);
+          c = add(g, add(mul([u[1], -u[0]], 6 * up), [0, 8.5 - 2 * up]));
+        } else if (e.hold === 'arm') {
           const s = hands[0];
           c = add(g, mul(dir(angOf(sub(pts['wr' + s], pts['el' + s]))), 9));
         } else if (e.hold === 'chest') {

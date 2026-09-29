@@ -803,6 +803,17 @@ const HINTS = {
   floorFly: { dbAxis: 'long' },
   skull: { handZ: { N: 9, F: 9 } },
   ohExt: { handZ: { N: 5, F: 5 } },
+  // Overhead presses: the hands start out over the elbows, wider than the shoulders.
+  seatedPressDB: { handZ: { N: 30, F: 30 }, flare: { N: 8, F: 8 } },
+  ohPress: { handZ: { N: 30, F: 30 }, flare: { N: 8, F: 8 } },
+  bandPress: { handZ: { N: 28, F: 28 }, flare: { N: 8, F: 8 } },
+  ohPress1: { handZ: { N: 30 }, flare: { N: 8 } },
+  // Face down: arms overhead in a Y, bent in a W, or pulling from one to the other.
+  proneY: { handZ: { N: 54, F: 54 } },
+  proneW: { handZ: { N: 32, F: 32 }, flare: { N: 18, F: 18 } },
+  supermanPull: { handZ: { N: 30, F: 30 }, flare: { N: 16, F: 16 } },
+  // Kettlebell high pull: elbows high and wide.
+  kbHighPull: { flare: { N: 30, F: 30 } },
 };
 
 function gripOf(move, s) {
@@ -1284,11 +1295,13 @@ function arms(A, J, pts, f, P2, P3, T) {
       else if (c.kind === 'floor') hz = lerp(hz, A.lying ? (A.prone ? 22 : 24) : 21, on);
       else if (c.kind === 'top') hz = lerp(hz, 21, on);
       else if (c.kind === 'wall') hz = lerp(hz, 21.5, c.w);
-      if (hint.handZ && hint.handZ[s] != null) hz = hint.handZ[s];
-      // Hands near the head (at the temples) sit at its sides, elbows wide.
+      const hinted = hint.handZ && hint.handZ[s] != null;
+      if (hinted) hz = hint.handZ[s];
+      // Hands near the head (at the temples) sit at its sides, elbows wide (unless the move says how
+      // wide its hands are: they only look near the head from the side).
       const hC = hd2.clone().lerp(wr2, 0.4);
       const onHandles = A.props.some((p) => p.type === 'machine' || p.type === 'cable');
-      const atHead = !g && !onHandles && J.headC ? (1 - smooth(11, 18, hC.distanceTo(V3(J.headC.x, J.headC.y, 0)))) * (1 - on) : 0;
+      const atHead = !g && !onHandles && !hinted && J.headC ? (1 - smooth(11, 18, hC.distanceTo(V3(J.headC.x, J.headC.y, 0)))) * (1 - on) : 0;
       hz = lerp(hz, 10.8, atHead);
       W = V3(wr2.x, wr2.y, sg * hz);
       pole = V3(el2.x, el2.y, sg * (SH_W + hz) * 0.5);
@@ -1365,11 +1378,13 @@ function arms(A, J, pts, f, P2, P3, T) {
       const need = clearThighs(J, clearTrunk(J, W.clone(), 3, lat), 3, lat).sub(W).dot(lat);
       W.addScaledVector(lat, settle(A, 'hand' + s, need, T, 0.15, 0.15).v);
     }
-    // Scapular give: reach a little further when a planted hand is just out of range.
+    // Scapular give: reach a little further when a planted hand is just out of range (fading out as
+    // the hand leaves the floor, so the shoulder doesn't jump back).
     const reach = L.ua + L.fa;
     let d = W.distanceTo(sh);
-    if (d > reach - 0.3 && (planted > 0.3 || c.kind === 'bar' || c.kind === 'wall')) {
-      const give = Math.min(4, d - reach + 0.3);
+    const grab = c.kind === 'bar' || c.kind === 'wall' ? 1 : smooth(0.1, 0.5, planted);
+    if (d > reach - 0.3 && grab > 0) {
+      const give = Math.min(4, d - reach + 0.3) * grab;
       sh.addScaledVector(W.clone().sub(sh).normalize(), give);
     }
     pole.addScaledVector(lat, flare);
@@ -1437,7 +1452,7 @@ function handFrame(A, J, s, sg, dirF, handDir, c, lat) {
         if (A.view !== 'side') axis = perp(axis, dirF).normalize();
       } else axis = A.view === 'side' ? J.lat.clone() : J.fwd.clone();
     } else if (t === 'kb' && e.hold === 'horns') axis = Y_UP.clone(); // a fist round an upright horn
-    else if (t === 'rope' || (t === 'kb' && !g.both && e.hold !== 'arm')) axis = dirF.clone().applyAxisAngle(J.lat, Math.PI / 2);
+    else if (t === 'rope' || (t === 'kb' && !g.both && e.hold !== 'arm' && e.hold !== 'rack')) axis = dirF.clone().applyAxisAngle(J.lat, Math.PI / 2);
     else axis = J.lat.clone();
     axis = perp(axis, Y);
     if (axis.lengthSq() < 1e-4) axis = perp(J.fwd, Y);
@@ -1835,6 +1850,13 @@ class Equipment {
           g.position.copy(grip);
           g.quaternion.copy(frameQ(hang.clone().negate(), V3().crossVectors(acr, hang.clone().negate())));
           continue;
+        } else if (e.hold === 'rack') {
+          // Racked for a one-arm press: the handle across the fist, the bell resting on the back of
+          // the forearm: on its outside at the shoulder, behind it once pressed overhead.
+          const s = hs[0];
+          grip = this.gripPoint(J, s);
+          const up = clamp((J.wr[s].y - J.sh[s].y - 10) / 35, 0, 1);
+          hang = V3(0, -0.8, 0).addScaledVector(J.lat, (s === 'N' ? 1 : -1) * 0.6 * (1 - up)).addScaledVector(J.fwd, -0.6 * up).normalize();
         } else {
           const gs = hs.map((s) => this.gripPoint(J, s));
           grip = gs.length === 2 ? gs[0].clone().add(gs[1]).multiplyScalar(0.5) : gs[0];
@@ -3215,6 +3237,9 @@ GH.figure3d = {
     for (const s of SIDES) {
       Object.assign(out, { ['sh' + s]: a(J.sh[s]), ['el' + s]: a(J.el[s]), ['wr' + s]: a(J.wr[s]), ['hd' + s]: a(fig.eq.gripPoint(J, s)), ['hp' + s]: a(J.hp[s]), ['kn' + s]: a(J.kn[s]), ['an' + s]: a(J.an[s]) });
     }
+    // Where a kettlebell's bell is (its centre).
+    const kb = fig.eq.items.find((it) => it.parts.kb);
+    if (kb) out.kb = a(V3(0, -12.8, 0).applyQuaternion(kb.parts.kb.quaternion).add(kb.parts.kb.position));
     return out;
   },
 };
