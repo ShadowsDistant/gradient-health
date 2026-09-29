@@ -18,7 +18,7 @@
         ['wave', 'More from Health Connect: heart rate, active calories and distance, an estimated resting heart rate when your watch app doesn\'t share one, and your latest numbers even before today\'s are in.'],
         ['bolt', 'Stronger haptics, with a Light, Medium or Strong setting.'],
         ['lock', 'A full privacy policy: every piece of data, where it\'s kept, who it\'s shared with, and how to delete it.'],
-        ['check-circle', 'Fixes: 7-day charts running off the card, cut-off titles, the Equipment screen freezing, sliders, the tour, the Resume button, the see-through workout bar and section spacing. Text now follows your phone\'s font size.'],
+        ['check-circle', 'Fixes: 7-day charts running off the card, cut-off titles, the Equipment screen freezing, sliders, the tour, the Resume button, the see-through workout bar, section spacing and the end of each page hiding under the tab bar. The tab you\'re on keeps its glass look, and text follows your phone\'s font size.'],
       ],
     },
     {
