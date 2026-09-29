@@ -8469,6 +8469,17 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
     lally2010: { cite: "Lally et al., 2010", title: "How are habits formed: Modelling habit formation in the real world", journal: "European Journal of Social Psychology 40(6):998-1009", doi: "10.1002/ejsp.674" },
     fradkin2010: { cite: "Fradkin, Zazryn & Smoliga, 2010", title: "Effects of warming-up on physical performance: a systematic review with meta-analysis", journal: "Journal of Strength and Conditioning Research 24(1):140-148", doi: "10.1519/JSC.0b013e3181c643a0" },
     vispute2011: { cite: "Vispute et al., 2011", title: "The effect of abdominal exercise on abdominal fat", journal: "Journal of Strength and Conditioning Research 25(9):2559-2564", doi: "10.1519/JSC.0b013e3181fb4a46" },
+    simao2012: { cite: "Simão et al., 2012", title: "Exercise Order in Resistance Training", journal: "Sports Medicine 42(3):251-265", doi: "10.2165/11597240-000000000-00000" },
+    kassiano2022: { cite: "Kassiano et al., 2022", title: "Does Varying Resistance Exercises Promote Superior Muscle Hypertrophy and Strength Gains? A Systematic Review", journal: "Journal of Strength and Conditioning Research 36(6):1753-1762", doi: "10.1519/JSC.0000000000004258" },
+    ogasawara2013: { cite: "Ogasawara et al., 2013", title: "Comparison of muscle hypertrophy following 6-month of continuous and periodic strength training", journal: "European Journal of Applied Physiology 113(4):975-985", doi: "10.1007/s00421-012-2511-9" },
+    murphy2022: { cite: "Murphy & Koehler, 2022", title: "Energy deficiency impairs resistance training gains in lean mass but not strength: A meta-analysis and meta-regression", journal: "Scandinavian Journal of Medicine & Science in Sports 32(1):125-137", doi: "10.1111/sms.14075" },
+    bull2020: { cite: "Bull et al., 2020", title: "World Health Organization 2020 guidelines on physical activity and sedentary behaviour", journal: "British Journal of Sports Medicine 54(24):1451-1462", doi: "10.1136/bjsports-2020-102955" },
+    mifflin1990: { cite: "Mifflin et al., 1990", title: "A new predictive equation for resting energy expenditure in healthy individuals", journal: "The American Journal of Clinical Nutrition 51(2):241-247", doi: "10.1093/ajcn/51.2.241" },
+    frankenfield2005: { cite: "Frankenfield, Roth-Yousey & Compher, 2005", title: "Comparison of predictive equations for resting metabolic rate in healthy nonobese and obese adults: a systematic review", journal: "Journal of the American Dietetic Association 105(5):775-789", doi: "10.1016/j.jada.2005.02.005" },
+    fao2004: { cite: "FAO/WHO/UNU, 2004", title: "Human energy requirements: report of a joint FAO/WHO/UNU expert consultation", journal: "FAO Food and Nutrition Technical Report Series 1", url: "https://www.fao.org/4/y5686e/y5686e00.htm" },
+    hall2008: { cite: "Hall, 2008", title: "What is the required energy deficit per unit weight loss?", journal: "International Journal of Obesity 32(3):573-576", doi: "10.1038/sj.ijo.0803720" },
+    jensen2014: { cite: "Jensen et al., 2014", title: "2013 AHA/ACC/TOS Guideline for the Management of Overweight and Obesity in Adults", journal: "Circulation 129(25 Suppl 2):S102-S138", doi: "10.1161/01.cir.0000437739.71477.ee" },
+    iraki2019: { cite: "Iraki et al., 2019", title: "Nutrition Recommendations for Bodybuilders in the Off-Season: A Narrative Review", journal: "Sports 7(7):154", doi: "10.3390/sports7070154" },
     foster2001: { cite: "Foster et al., 2001", title: "A new approach to monitoring exercise training", journal: "Journal of Strength and Conditioning Research 15(1):109-115", url: "https://pubmed.ncbi.nlm.nih.gov/11708692/" },
   };
 
@@ -8480,10 +8491,18 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 
   const RULES = [
     { id: 'volume', icon: 'layers', tone: 'indigo', title: 'How many sets you do', level: 'strong',
-      does: 'Your top two goals start at 8-12 hard sets per muscle a week and gain a set after each good week, up to 16-20. The next two start at 8-10, and everything else gets a few sets to keep it up.',
-      why: 'Across many studies, more weekly sets meant more muscle growth, with smaller returns at the high end. About 12-20 sets a week per muscle is a common recommendation for people who already train.',
+      does: 'Your top two goals start at 8-12 hard sets per muscle a week, the next two at 8-10, and everything else gets a few sets to keep it up. Once a week each goal muscle is checked: if it\'s progressing and you\'re recovering well, it gets a set more (up to 16-20). If it\'s going backwards while you\'re run down, it gets a set less.',
+      why: 'Across many studies, more weekly sets meant more muscle growth, with smaller returns at the high end. How much volume each person does best on varies, so the plan follows your own progress and recovery instead of a fixed number.',
       caveat: 'Starting lower and building up is a judgment call for newer lifters rather than something one study settled.',
       refs: ['schoenfeld2017vol', 'pelland2026', 'bazvalle2022'] },
+    { id: 'order', icon: 'list', tone: 'sky', title: 'Your goals go first', level: 'moderate',
+      does: 'Each workout starts with the muscles you ranked highest, while you\'re freshest. Big multi-joint lifts come before smaller ones when the priority is the same, and abs come last.',
+      why: 'Whatever you do first in a session, you get more reps on, and over weeks it tends to gain more strength and size than the same exercise done at the end.',
+      refs: ['simao2012', 'acsm2009'] },
+    { id: 'ranges', icon: 'bolt', tone: 'amber', title: 'Rep ranges that fit your goal', level: 'strong',
+      does: 'Most exercises use moderate ranges like 8-12 or 10-20. If strength is one of your top two goals, the main gym lifts (presses, squats, deadlifts, rows, pulldowns) switch to 4-8 heavier reps.',
+      why: 'Muscle grows about as well with light or heavy weights when sets end close to failure, but maximal strength improves most with heavier loads.',
+      refs: ['schoenfeld2017load'] },
     { id: 'frequency', icon: 'calendar', tone: 'sky', title: 'Each muscle two or three times a week', level: 'moderate',
       does: 'A muscle\'s weekly sets are split across two or three days instead of one long session.',
       why: 'With the same weekly sets, how often you train a muscle makes little difference to its size. Splitting the sets keeps each session short, and strength seems to benefit a little from practicing more often.',
@@ -8493,7 +8512,7 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
       why: 'Muscle growth improves as sets end closer to failure, while strength gains are similar across a wide range. People tend to guess about one rep too few when they estimate what\'s left, so aiming for 1-3 still lands close to failure without grinding every set.',
       refs: ['robinson2024', 'halperin2022', 'zourdos2016'] },
     { id: 'overload', icon: 'arrow-up-right', tone: 'green', title: 'Reps first, then weight, then a harder move', level: 'strong',
-      does: 'When you have 3 or more reps left at the top of the range, you get more reps next time. After that comes a heavier weight, then the next level of the exercise.',
+      does: 'When you have 3 or more reps left at the top of the range, you get more reps next time. After that comes a heavier weight, then the next level of the exercise. At the gym it\'s simpler: reps climb to the top of the range, then the weight goes up a step (5 lb or 2.5 kg on a bar) and reps start again at the bottom.',
       why: 'To keep improving, training has to keep getting a little harder. Adding reps and adding weight both work, and light weights build muscle about as well as heavy ones when sets end close to failure. That\'s what makes training at home with light dumbbells worth it.',
       refs: ['acsm2009', 'plotkin2022', 'schoenfeld2017load'] },
     { id: 'autoreg', icon: 'sliders', tone: 'violet', title: 'Adjusting to how each workout felt', level: 'moderate',
@@ -8501,6 +8520,15 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
       why: 'Setting the load from reps in reserve, instead of from a fixed script, gave bigger strength gains in a 12-week trial. Rating how hard a whole session felt is also a well-tested way to track training load.',
       caveat: 'That trial used trained men doing squats. Carrying it over to home workouts is an educated guess.',
       refs: ['grahamcleather2021', 'helms2016', 'foster2001'] },
+    { id: 'variation', icon: 'shuffle', tone: 'violet', title: 'A new angle when you stall', level: 'early',
+      does: 'At the gym, if an exercise hasn\'t improved in three sessions, it\'s swapped for the next option for that muscle, like dumbbells instead of a barbell. It happens at most once every three weeks for each slot.',
+      why: 'Some planned variation seems to help muscles grow more evenly, but switching exercises constantly can slow progress, since you keep relearning the movement.',
+      caveat: 'The studies are small and used young men. Swapping on a stall is a coaching habit this research supports rather than tests.',
+      refs: ['kassiano2022'] },
+    { id: 'comeback', icon: 'refresh', tone: 'teal', title: 'Coming back after a break', level: 'moderate',
+      does: 'After more than 10 days off, your first session back uses about 10% lighter weights (20% after four weeks), and the week eases back in with fewer sets.',
+      why: 'Muscle and strength come back fast once you start again: people who took three weeks off every six weeks ended up with the same gains as people who never stopped.',
+      refs: ['ogasawara2013'] },
     { id: 'rest', icon: 'clock', tone: 'sky', title: 'Rest between sets', level: 'moderate',
       does: 'Auto rest is 90 seconds after big moves like squats, push-ups and rows, and 60 seconds after smaller ones. Supersets pair moves that don\'t share muscles and rest 60 seconds, since each muscle also rests while you do the other move.',
       why: 'Resting longer than a minute gives a small extra benefit for muscle size, with no clear gain past about 90 seconds. Supersets roughly halve session time without cutting the number of sets, and each muscle still gets about 90 seconds or more between its own sets.',
@@ -8538,11 +8566,20 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
       does: 'You get a heads-up if your 7-day average drops more than 1% in a week.',
       why: 'Losing about 0.5-1% of body weight a week helps keep muscle. In a study of athletes, losing 0.7% a week added lean mass while losing 1.4% a week didn\'t.',
       refs: ['helms2014', 'garthe2011'] },
-    { id: 'steps', icon: 'navigate', tone: 'green', title: 'Walks on light days', level: 'moderate',
-      does: 'Light days are a walk plus 5 minutes of mobility, and your steps tick the walk off on their own.',
-      why: 'More daily steps went with a lower risk of dying early, leveling off around 8,000-10,000 steps a day for adults under 60 and 6,000-8,000 for those over 60.',
-      caveat: 'These studies show a link, not proof that the steps caused it.',
-      refs: ['paluch2022'] },
+    { id: 'steps', icon: 'navigate', tone: 'green', title: 'Your steps goal and light days', level: 'moderate',
+      does: 'Your daily steps goal is 10% above your own usual, between 5,000 and 10,000 (8,000 from age 60), so it grows with you. Light days are a walk plus 5 minutes of mobility, and your steps tick the walk off on their own.',
+      why: 'More daily steps went with a lower risk of dying early, leveling off around 8,000-10,000 steps a day for adults under 60 and 6,000-8,000 for those over 60. The WHO also recommends 150-300 minutes of moderate activity a week plus strength work on two or more days.',
+      caveat: 'The step studies show a link, not proof that the steps caused it.',
+      refs: ['paluch2022', 'bull2020'] },
+    { id: 'calories', icon: 'flame', tone: 'coral', title: 'Your calorie target', level: 'moderate',
+      does: 'If you track calories, your starting target is your resting burn (the Mifflin-St Jeor equation) times an activity factor from your steps and workouts. Losing aims for 0.5% of your body weight a week, gaining for 0.25%, and it never goes below 1,200 kcal (1,500 for men). After two weeks of logging and weighing in, it learns your real burn from your intake and weight trend.',
+      why: 'Mifflin-St Jeor is the most accurate of the common equations, within 10% for most people. Losing 0.5-1% a week helps keep muscle, and a slower gain keeps extra fat down. Equations miss for some people, which is why your own numbers take over.',
+      caveat: 'The 7,700 kcal per kg of weight change it uses to learn your burn is a rule of thumb; it runs a little high for leaner people. The learned number is blended in slowly and shown as an estimate.',
+      refs: ['mifflin1990', 'frankenfield2005', 'fao2004', 'hall2008', 'helms2014', 'iraki2019', 'jensen2014'] },
+    { id: 'deficit', icon: 'layers', tone: 'amber', title: 'Training while you diet', level: 'moderate',
+      does: 'In a week where you ate well under your target, weekly sets don\'t go up. Your weights and reps still progress as normal.',
+      why: 'Across trials, training in a calorie deficit still built strength as well as training without one, but gained noticeably less muscle. Piling on more sets then mostly adds fatigue.',
+      refs: ['murphy2022'] },
     { id: 'habits', icon: 'flag', tone: 'amber', title: 'Streaks that bend instead of break', level: 'early',
       does: 'You get one freeze a week, and a missed workout moves the week forward instead of doubling up.',
       why: 'New habits took anywhere from 18 to 254 days to become automatic, and missing a single day didn\'t set people back in any meaningful way.',
@@ -9468,9 +9505,12 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
       }
       for (const i of best) { days[i].units.push(x.u); days[i].load += per; }
     }
-    // Keep a stable, readable order inside each day.
+    // Order inside each day: your top goals first, while you're fresh (exercises done first get
+    // more reps and grow more, Simão et al. 2012), big multi-joint work before smaller muscles on
+    // ties, and abs last so a tired core doesn't undercut the heavier lifts.
     const ORDER = ['chest', 'legs', 'back', 'arms', 'shoulders', 'abs'];
-    for (const d of days) d.units.sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
+    const pri = (u) => (u === 'abs' ? 9 : Math.min(...UNIT_GROUPS[u].map((g) => prog.tiers[g] || 3)));
+    for (const d of days) d.units.sort((a, b) => pri(a) - pri(b) || ORDER.indexOf(a) - ORDER.indexOf(b));
     return days.map((d, i) => ({ idx: i, offset: offsets[i], units: d.units }));
   }
   function weekdaysFor(p) {
@@ -9979,6 +10019,18 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
       if (ready.legsMinus && s.group === 'legs') s.sets = Math.max(1, s.sets - 1);
     }
     const items = slots.map((s) => itemFor(S, s, day)).filter(Boolean);
+    // Back after a break: strength and size come back quickly when training restarts (Ogasawara
+    // et al. 2013), but the first session back is a little lighter so it doesn't flatten you.
+    const lastDone = workoutLogs(S).filter((l) => isDone(l) && l.day < day).reduce((a, l) => Math.max(a, l.day), -Infinity);
+    const gap = isFinite(lastDone) ? day - lastDone : 0;
+    const comeback = gap > 10 ? { days: gap, mult: gap > 28 ? 0.8 : 0.9 } : null;
+    if (comeback) {
+      for (const it of items) {
+        if (!it.load || it.load.kg == null || !isGymFam(it.fam) || it.load.guess) continue;
+        const kg = snapLoad(S, it.load.key, it.load.kg * comeback.mult, 0, day);
+        if (kg != null && kg < it.load.kg) it.load = Object.assign({}, it.load, { kg, value: Math.round(toUnit(kg, unitsOf(S)) * 10) / 10, label: fmtLoad(S, kg, it.load.key, M().MOVES[it.moveId]) });
+      }
+    }
     const extraLines = [];
     // Catch-up: one extra lead-side set on arm (and leg) days.
     const armDay = t.units.includes('arms');
@@ -10001,7 +10053,7 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
       day, tpl: t.idx, units: t.units, title: templateTitle(t.units), short: !!o.short,
       phase: week.phase, readiness: ready, warmup: warmupItems(S, day, o.short ? 1 : prog.warmupMin),
       tests, items, extras, finisher, notes: [], mobility: prog.mobilityPlus ? cooldownItems(S) : [],
-      place: placeOf(S, day),
+      place: placeOf(S, day), comeback,
     };
     pairSupersets(S, session);
     if (!o.noTrim) fitToBudget(S, session, o.short ? 13 : set.minutes || p.minutes);
@@ -10169,7 +10221,8 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
     const fam = pick.family || slot.fam;
     const st = S.prog[fam] || { reps: m.start };
     let target = st.rung === pick.id ? st.reps : m.start;
-    target = clampInt(target, m.range[0], m.range[1]);
+    const [lo, hi] = rangeFor(S, m, fam);
+    target = clampInt(target, lo, hi);
     return {
       kind: 'move', fam, moveId: m.id, name: m.name, group: slot.group, sets: slot.sets, target,
       timed: !!m.timed, uni: !!m.uni, rest: restFor(S, fam), load: loadInfo(S, m, day, fam),
@@ -10637,7 +10690,10 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
     for (let i = 0; i < A.logs.length; i++) {
       const log = A.logs[i];
       if (log.kind !== 'move' || !log.sets.length) continue;
+      const fam = log.fam && M().LADDERS[log.fam] ? log.fam : (M().MOVES[log.moveId] || {}).family;
+      const before = progSnap(S, fam, log.moveId);
       const res = progress(S, log, deload, A.day);
+      log.outcome = outcomeOf(before, progSnap(S, fam, log.moveId), isGymFam(fam));
       if (res.line) lines.push(res.line);
       for (const c2 of res.celebrate || []) celebrate.push(c2);
     }
@@ -10727,6 +10783,21 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
     return { entry, lines, celebrate, done: pct >= 0.5 };
   }
   function readinessAtStart(A) { return A.session && A.session.readiness; }
+  // Where an exercise stands, to tell whether a workout moved it up, held it or took it down.
+  function progSnap(S, fam, moveId) {
+    const st = S.prog[fam];
+    if (!st) return null;
+    const lad = M().LADDERS[fam];
+    return { rung: lad ? lad.rungs.indexOf(st.rung) : -1, reps: st.reps || 0, w: st.w || 0, load: st.loads && st.loads[moveId] != null ? st.loads[moveId] : null };
+  }
+  function outcomeOf(a, b, gym) {
+    if (!a || !b) return 'hold';
+    const cmp = (x, y) => (y > x + 1e-6 ? 1 : y < x - 1e-6 ? -1 : 0);
+    const steps = gym ? [cmp(a.load || 0, b.load || 0), cmp(a.reps, b.reps)] : [a.rung === b.rung ? 0 : cmp(a.rung, b.rung), cmp(a.w, b.w), cmp(a.reps, b.reps)];
+    // The first thing that changed decides it: a heavier weight with reps reset counts as up.
+    const d = steps.find((x) => x !== 0) || 0;
+    return d > 0 ? 'up' : d < 0 ? 'down' : 'hold';
+  }
   const cap = (s) => s[0].toUpperCase() + s.slice(1);
   function listNames(groups) {
     const n = groups.map((g) => GROUP_NAME[g].toLowerCase());
@@ -10756,7 +10827,7 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
     if (st.cooldown > 0) st.cooldown--;
     if (log.moveId !== st.rung) return res; // a swap: its own ladder is not moved
     if (deload) return res;
-    const [lo, hi] = m.range;
+    const [lo, hi] = rangeFor(S, m, fam);
     const target = log.target;
     const allHit = firstSide.every((x) => x.amount >= target) && firstSide.length > 0;
     const avg = firstSide.reduce((a, x) => a + x.amount, 0) / Math.max(1, firstSide.length);
@@ -10801,6 +10872,19 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
     return res;
   }
 
+  // Rep range for a move, by goal. Heavier sets build more maximal strength while muscle grows
+  // about as well across a wide range of loads (Schoenfeld et al. 2017), so a strength goal moves
+  // the main gym lifts to 4-8 reps; an endurance goal moves smaller exercises up a little.
+  const MAIN_LIFTS = ['pressG', 'squatG', 'hingeG', 'pullG', 'rowG', 'ohpG'];
+  function rangeFor(S, m, fam) {
+    const [lo, hi] = m.range;
+    if (m.timed) return [lo, hi];
+    const top = (S.profile.goals || []).slice(0, 2);
+    if (top.includes('strength') && MAIN_LIFTS.includes(fam) && m.load) return [Math.min(lo, 4), Math.max(Math.min(hi, 8), Math.min(lo, 4) + 3)];
+    if (top.includes('endurance') && (M().LADDERS[fam] || {}).iso) return [lo + 3, hi + 5];
+    return [lo, hi];
+  }
+
   // Gym moves: double progression. Reps climb to the top of the range, then the weight goes up one
   // step and reps start again at the bottom (Plotkin et al. 2022: adding reps or load both work).
   // Short of the range twice in a row means about 10% lighter. The best estimated one-rep max
@@ -10840,7 +10924,27 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
     }
     if (st.cooldown > 0) st.cooldown--;
     if (log.moveId !== st.rung || deload) return res;
-    const [lo, hi] = m.range;
+    // Three sessions in a row with no gain on this exercise: switch to the next option in the pool
+    // (a different bar, angle or machine). Some variation can help, rotating constantly doesn't
+    // (Kassiano et al. 2022), so it happens at most once every three weeks per muscle slot.
+    const hist = (st.e1rm[m.id] && st.e1rm[m.id].hist) || [];
+    if (hist.length >= 4 && !(st.rotatedAt > day - 21)) {
+      const recent = hist.slice(-3).map((x) => x[1]);
+      const before = hist[hist.length - 4][1];
+      if (Math.max(...recent) <= before * 1.005) {
+        const list = rungs(S, fam, day);
+        const at = list.indexOf(m.id);
+        const next = list.length > 1 ? list[(at + 1) % list.length] : null;
+        if (next && next !== m.id) {
+          const nm = M().MOVES[next];
+          const [nlo, nhi] = rangeFor(S, nm, fam);
+          st.rung = next; st.reps = clampInt(nm.start, nlo, nhi); st.short = 0; st.rotatedAt = day;
+          res.line = { text: `${m.name} → ${nm.name}`, why: 'no progress in three sessions: a different angle often gets things moving' };
+          return res;
+        }
+      }
+    }
+    const [lo, hi] = rangeFor(S, m, fam);
     const target = log.target;
     const allHit = firstSide.every((x) => x.amount >= target);
     const avg = firstSide.reduce((a, x) => a + x.amount, 0) / firstSide.length;
@@ -10925,23 +11029,57 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
     return sizes.find((s) => s >= cur * factor) || sizes[sizes.length - 1];
   }
 
-  // Completed, non-deload weeks with no "too hard": +1 weekly set for tier-1 groups.
+  // Weekly sets, adjusted per muscle once a week. More weekly sets build more muscle, with smaller
+  // returns at the top (Schoenfeld et al. 2017; Pelland et al. 2026), and how much each person
+  // tolerates varies, so the plan follows your own signals: a goal muscle that's progressing while
+  // you recover well gets a set more (up to its cap); one that's going backwards while you're run
+  // down (workouts rated too hard, very sore days) gets a set less (down to its floor). Muscles
+  // that aren't goals stay at their maintenance dose. A big calorie deficit holds increases, since
+  // a deficit blunts muscle gain (Murphy & Koehler 2022).
   function weeklyVolumeUpdate(S, day) {
     const lines = [];
     const cal = calendar(S, day);
     const prog = programFor(S.profile);
-    const tier1 = GROUPS.filter((g) => prog.tiers[g] === 1);
     for (const [wsStr, w] of Object.entries(cal.weeks)) {
       const ws = Number(wsStr);
       if (ws + 6 >= day || (S.volWeeksDone || []).includes(ws)) continue;
       S.volWeeksDone = (S.volWeeksDone || []).concat(ws);
-      if (w.phase.deload || !w.allDone) continue;
-      const hard = workoutLogs(S).some((l) => l.day >= ws && l.day <= ws + 6 && l.checkin && l.checkin.rating === 'hard');
-      if (hard) continue;
-      const bumped = tier1.filter((g) => { if (S.vol[g] < prog.cap[g]) { S.vol[g]++; return true; } return false; });
-      if (bumped.length) lines.push({ text: `${listNames(bumped)} +1 set a week`, why: 'a full week with no "too hard"' });
+      if (w.phase.deload) continue;
+      const logs = workoutLogs(S).filter((l) => l.day >= ws && l.day <= ws + 6 && isDone(l));
+      if (!logs.length) continue;
+      const hard = logs.filter((l) => l.checkin && l.checkin.rating === 'hard').length;
+      let sore = 0;
+      for (let d = ws; d <= ws + 6; d++) if (S.feel && S.feel[d] && S.feel[d].sore === 'very') sore++;
+      const recovering = hard === 0 && sore < 2;
+      const holdGrowth = !!(GH.food && GH.food.holdsVolume && GH.food.holdsVolume(S, ws));
+      const up = [], down = [];
+      for (const g of GROUPS) {
+        const items = [];
+        for (const l of logs) for (const it of l.items || []) if (it.group === g && it.kind === 'move' && it.sets && it.sets.length) items.push(it);
+        if (!items.length) continue;
+        const ups = items.filter((it) => it.outcome === 'up').length;
+        const downs = items.filter((it) => it.outcome === 'down').length;
+        if (prog.tiers[g] <= 2 && w.allDone && recovering && !holdGrowth && ups > 0 && downs === 0 && S.vol[g] < prog.cap[g]) { S.vol[g]++; up.push(g); }
+        else if (!recovering && downs > ups && S.vol[g] > prog.floor[g]) { S.vol[g]--; down.push(g); }
+      }
+      if (up.length) lines.push({ text: `${listNames(up)} +1 set a week`, why: 'progressing and recovering well' });
+      if (down.length) lines.push({ text: `${listNames(down)} one set less a week`, why: 'going backwards while run down' });
+      if (holdGrowth && !up.length) lines.push({ text: 'Weekly sets held where they are', why: 'a big calorie deficit this week' });
     }
     return lines;
+  }
+
+  // A daily steps target from your own normal: 10% above your 4-week median, in 500-step
+  // increments, between 5,000 and 10,000 (8,000 from 60). Benefits in the big step studies level
+  // off around 8,000-10,000 a day under 60 and 6,000-8,000 from 60 (Paluch et al. 2022).
+  function stepsGoal(S, day) {
+    const h = (S.health && S.health.days) || {};
+    const v = [];
+    for (let d = day - 28; d < day; d++) if (h[d] && h[d].steps != null) v.push(h[d].steps);
+    const cap = S.profile.age >= 60 ? 8000 : 10000;
+    if (v.length < 7) return { goal: Math.min(cap, 7000), usual: null, personal: false };
+    const med = median(v);
+    return { goal: Math.max(5000, Math.min(cap, Math.round((med * 1.1) / 500) * 500)), usual: Math.round(med), personal: true };
   }
 
   /* ================================================================== light days */
@@ -11110,7 +11248,7 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
     setRir, amendLast, swapItem, swapOptions, finishWorkout, progress, levelUp, nextWeight, weeklyVolumeUpdate, recordTest, testDue,
     logLight, autoWalk, addWeight, weightStats, proteinGoal, proteinToday, addProtein, undoProtein, weeklySets,
     updateSettings, scheduleSettings, settingsAt, moveSession, setEquipment, reprogram, ladderLevel, mobilityFlow, loadInfo, isDone, relink, median,
-    defaultGym, GYM_PRESETS, gymPreset, placeOf, setPlace, eqAt, eqFor, dbRack, snapLoad, suggestLoad, fmtLoad, loadChoices, setItemLoad, ensureProg, isGymFam, toUnit, fromUnit,
+    defaultGym, GYM_PRESETS, rangeFor, stepsGoal, outcomeOf, gymPreset, placeOf, setPlace, eqAt, eqFor, dbRack, snapLoad, suggestLoad, fmtLoad, loadChoices, setItemLoad, ensureProg, isGymFam, toUnit, fromUnit,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
@@ -15395,7 +15533,7 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
     const slSub = !sl ? 'tap to log' : sl.day === day && t.bed ? `asleep ${U.fmtClock(t.bed)}` : sl.day === day && t.sleepFromChip ? 'from your check-in' : ago(sl, true);
     return `<div class="stat-grid">
       ${tile('moon', 'indigo', 'Sleep', sl ? U.esc(U.fmtMin(sl.value)) : '–', slSub, !sl ? 'logSleep' : null)}
-      ${tile('navigate', 'green', 'Steps', t.steps != null ? U.num(t.steps) : '–', t.steps != null ? join(bs.n >= 5 ? `usual ${U.num(bs.avg)}` : '') : H().connected(H().status()) ? 'none synced yet today' : 'needs Health Connect')}
+      ${tile('navigate', 'green', 'Steps', t.steps != null ? U.num(t.steps) : '–', t.steps != null ? `goal ${U.num(B().stepsGoal(S, day).goal)}` : H().connected(H().status()) ? 'none synced yet today' : 'needs Health Connect')}
       ${tile('heart', 'rose', 'Resting HR', rh ? `${Math.round(rh.value)} <small>bpm</small>` : '–', rh ? join(rh.day !== day ? ago(rh) : '', br.n >= 5 ? `usual ${Math.round(br.avg)}` : '') : 'not shared by your watch app', rh ? null : 'whyNoData')}
       ${tile('wave', 'violet', 'HRV', hv ? `${Math.round(hv.value)} <small>ms</small>` : '–', hv ? join(hv.day !== day ? ago(hv) : '', bh.n >= 5 ? `usual ${Math.round(bh.avg)}` : '') : 'not shared by your watch app', hv ? null : 'whyNoData')}
       ${tile('chart', 'teal', 'Weight', t.weightAvg7 != null ? U.esc(U.fmtW(t.weightAvg7)) : '–', t.weightAvg7 != null ? '7-day average' : 'tap to log', t.weightAvg7 == null ? 'logWeight' : null)}

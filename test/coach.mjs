@@ -65,7 +65,8 @@ check('no name, dates or day numbers', !/Sam/.test(prompt) && !/\d{4}-\d{2}-\d{2
 
 section('How it works');
 check('every rule has what it does, why, a level and research', SC.RULES.every((r) => r.does && r.why && SC.LEVELS[r.level] && r.refs.length && r.refs.every((id) => SC.REFS[id])));
-check('every reference links to its DOI (or PubMed)', Object.values(SC.REFS).every((x) => /^https:\/\/(doi\.org\/10\.|pubmed\.ncbi\.nlm\.nih\.gov\/)/.test(SC.refUrl(x))));
+// Papers link to their DOI (or PubMed); the one official report links to its publisher (FAO).
+check('every reference links to its DOI, PubMed or the publishing agency', Object.values(SC.REFS).every((x) => /^https:\/\/(doi\.org\/10\.|pubmed\.ncbi\.nlm\.nih\.gov\/|www\.fao\.org\/)/.test(SC.refUrl(x))));
 check('no dashes used as punctuation in the copy', SC.RULES.every((r) => !/[—]| – /.test(r.does + r.why + (r.caveat || ''))));
 const restCheck = (supersets) => {
   const S2 = person();

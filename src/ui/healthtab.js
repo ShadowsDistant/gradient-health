@@ -228,7 +228,7 @@
     const slSub = !sl ? 'tap to log' : sl.day === day && t.bed ? `asleep ${U.fmtClock(t.bed)}` : sl.day === day && t.sleepFromChip ? 'from your check-in' : ago(sl, true);
     return `<div class="stat-grid">
       ${tile('moon', 'indigo', 'Sleep', sl ? U.esc(U.fmtMin(sl.value)) : '–', slSub, !sl ? 'logSleep' : null)}
-      ${tile('navigate', 'green', 'Steps', t.steps != null ? U.num(t.steps) : '–', t.steps != null ? join(bs.n >= 5 ? `usual ${U.num(bs.avg)}` : '') : H().connected(H().status()) ? 'none synced yet today' : 'needs Health Connect')}
+      ${tile('navigate', 'green', 'Steps', t.steps != null ? U.num(t.steps) : '–', t.steps != null ? `goal ${U.num(B().stepsGoal(S, day).goal)}` : H().connected(H().status()) ? 'none synced yet today' : 'needs Health Connect')}
       ${tile('heart', 'rose', 'Resting HR', rh ? `${Math.round(rh.value)} <small>bpm</small>` : '–', rh ? join(rh.day !== day ? ago(rh) : '', br.n >= 5 ? `usual ${Math.round(br.avg)}` : '') : 'not shared by your watch app', rh ? null : 'whyNoData')}
       ${tile('wave', 'violet', 'HRV', hv ? `${Math.round(hv.value)} <small>ms</small>` : '–', hv ? join(hv.day !== day ? ago(hv) : '', bh.n >= 5 ? `usual ${Math.round(bh.avg)}` : '') : 'not shared by your watch app', hv ? null : 'whyNoData')}
       ${tile('chart', 'teal', 'Weight', t.weightAvg7 != null ? U.esc(U.fmtW(t.weightAvg7)) : '–', t.weightAvg7 != null ? '7-day average' : 'tap to log', t.weightAvg7 == null ? 'logWeight' : null)}

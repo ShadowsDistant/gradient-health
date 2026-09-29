@@ -149,9 +149,12 @@
       }
       for (const i of best) { days[i].units.push(x.u); days[i].load += per; }
     }
-    // Keep a stable, readable order inside each day.
+    // Order inside each day: your top goals first, while you're fresh (exercises done first get
+    // more reps and grow more, Simão et al. 2012), big multi-joint work before smaller muscles on
+    // ties, and abs last so a tired core doesn't undercut the heavier lifts.
     const ORDER = ['chest', 'legs', 'back', 'arms', 'shoulders', 'abs'];
-    for (const d of days) d.units.sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
+    const pri = (u) => (u === 'abs' ? 9 : Math.min(...UNIT_GROUPS[u].map((g) => prog.tiers[g] || 3)));
+    for (const d of days) d.units.sort((a, b) => pri(a) - pri(b) || ORDER.indexOf(a) - ORDER.indexOf(b));
     return days.map((d, i) => ({ idx: i, offset: offsets[i], units: d.units }));
   }
   function weekdaysFor(p) {
@@ -660,6 +663,18 @@
       if (ready.legsMinus && s.group === 'legs') s.sets = Math.max(1, s.sets - 1);
     }
     const items = slots.map((s) => itemFor(S, s, day)).filter(Boolean);
+    // Back after a break: strength and size come back quickly when training restarts (Ogasawara
+    // et al. 2013), but the first session back is a little lighter so it doesn't flatten you.
+    const lastDone = workoutLogs(S).filter((l) => isDone(l) && l.day < day).reduce((a, l) => Math.max(a, l.day), -Infinity);
+    const gap = isFinite(lastDone) ? day - lastDone : 0;
+    const comeback = gap > 10 ? { days: gap, mult: gap > 28 ? 0.8 : 0.9 } : null;
+    if (comeback) {
+      for (const it of items) {
+        if (!it.load || it.load.kg == null || !isGymFam(it.fam) || it.load.guess) continue;
+        const kg = snapLoad(S, it.load.key, it.load.kg * comeback.mult, 0, day);
+        if (kg != null && kg < it.load.kg) it.load = Object.assign({}, it.load, { kg, value: Math.round(toUnit(kg, unitsOf(S)) * 10) / 10, label: fmtLoad(S, kg, it.load.key, M().MOVES[it.moveId]) });
+      }
+    }
     const extraLines = [];
     // Catch-up: one extra lead-side set on arm (and leg) days.
     const armDay = t.units.includes('arms');
@@ -682,7 +697,7 @@
       day, tpl: t.idx, units: t.units, title: templateTitle(t.units), short: !!o.short,
       phase: week.phase, readiness: ready, warmup: warmupItems(S, day, o.short ? 1 : prog.warmupMin),
       tests, items, extras, finisher, notes: [], mobility: prog.mobilityPlus ? cooldownItems(S) : [],
-      place: placeOf(S, day),
+      place: placeOf(S, day), comeback,
     };
     pairSupersets(S, session);
     if (!o.noTrim) fitToBudget(S, session, o.short ? 13 : set.minutes || p.minutes);
@@ -850,7 +865,8 @@
     const fam = pick.family || slot.fam;
     const st = S.prog[fam] || { reps: m.start };
     let target = st.rung === pick.id ? st.reps : m.start;
-    target = clampInt(target, m.range[0], m.range[1]);
+    const [lo, hi] = rangeFor(S, m, fam);
+    target = clampInt(target, lo, hi);
     return {
       kind: 'move', fam, moveId: m.id, name: m.name, group: slot.group, sets: slot.sets, target,
       timed: !!m.timed, uni: !!m.uni, rest: restFor(S, fam), load: loadInfo(S, m, day, fam),
@@ -1318,7 +1334,10 @@
     for (let i = 0; i < A.logs.length; i++) {
       const log = A.logs[i];
       if (log.kind !== 'move' || !log.sets.length) continue;
+      const fam = log.fam && M().LADDERS[log.fam] ? log.fam : (M().MOVES[log.moveId] || {}).family;
+      const before = progSnap(S, fam, log.moveId);
       const res = progress(S, log, deload, A.day);
+      log.outcome = outcomeOf(before, progSnap(S, fam, log.moveId), isGymFam(fam));
       if (res.line) lines.push(res.line);
       for (const c2 of res.celebrate || []) celebrate.push(c2);
     }
@@ -1408,6 +1427,21 @@
     return { entry, lines, celebrate, done: pct >= 0.5 };
   }
   function readinessAtStart(A) { return A.session && A.session.readiness; }
+  // Where an exercise stands, to tell whether a workout moved it up, held it or took it down.
+  function progSnap(S, fam, moveId) {
+    const st = S.prog[fam];
+    if (!st) return null;
+    const lad = M().LADDERS[fam];
+    return { rung: lad ? lad.rungs.indexOf(st.rung) : -1, reps: st.reps || 0, w: st.w || 0, load: st.loads && st.loads[moveId] != null ? st.loads[moveId] : null };
+  }
+  function outcomeOf(a, b, gym) {
+    if (!a || !b) return 'hold';
+    const cmp = (x, y) => (y > x + 1e-6 ? 1 : y < x - 1e-6 ? -1 : 0);
+    const steps = gym ? [cmp(a.load || 0, b.load || 0), cmp(a.reps, b.reps)] : [a.rung === b.rung ? 0 : cmp(a.rung, b.rung), cmp(a.w, b.w), cmp(a.reps, b.reps)];
+    // The first thing that changed decides it: a heavier weight with reps reset counts as up.
+    const d = steps.find((x) => x !== 0) || 0;
+    return d > 0 ? 'up' : d < 0 ? 'down' : 'hold';
+  }
   const cap = (s) => s[0].toUpperCase() + s.slice(1);
   function listNames(groups) {
     const n = groups.map((g) => GROUP_NAME[g].toLowerCase());
@@ -1437,7 +1471,7 @@
     if (st.cooldown > 0) st.cooldown--;
     if (log.moveId !== st.rung) return res; // a swap: its own ladder is not moved
     if (deload) return res;
-    const [lo, hi] = m.range;
+    const [lo, hi] = rangeFor(S, m, fam);
     const target = log.target;
     const allHit = firstSide.every((x) => x.amount >= target) && firstSide.length > 0;
     const avg = firstSide.reduce((a, x) => a + x.amount, 0) / Math.max(1, firstSide.length);
@@ -1482,6 +1516,19 @@
     return res;
   }
 
+  // Rep range for a move, by goal. Heavier sets build more maximal strength while muscle grows
+  // about as well across a wide range of loads (Schoenfeld et al. 2017), so a strength goal moves
+  // the main gym lifts to 4-8 reps; an endurance goal moves smaller exercises up a little.
+  const MAIN_LIFTS = ['pressG', 'squatG', 'hingeG', 'pullG', 'rowG', 'ohpG'];
+  function rangeFor(S, m, fam) {
+    const [lo, hi] = m.range;
+    if (m.timed) return [lo, hi];
+    const top = (S.profile.goals || []).slice(0, 2);
+    if (top.includes('strength') && MAIN_LIFTS.includes(fam) && m.load) return [Math.min(lo, 4), Math.max(Math.min(hi, 8), Math.min(lo, 4) + 3)];
+    if (top.includes('endurance') && (M().LADDERS[fam] || {}).iso) return [lo + 3, hi + 5];
+    return [lo, hi];
+  }
+
   // Gym moves: double progression. Reps climb to the top of the range, then the weight goes up one
   // step and reps start again at the bottom (Plotkin et al. 2022: adding reps or load both work).
   // Short of the range twice in a row means about 10% lighter. The best estimated one-rep max
@@ -1521,7 +1568,27 @@
     }
     if (st.cooldown > 0) st.cooldown--;
     if (log.moveId !== st.rung || deload) return res;
-    const [lo, hi] = m.range;
+    // Three sessions in a row with no gain on this exercise: switch to the next option in the pool
+    // (a different bar, angle or machine). Some variation can help, rotating constantly doesn't
+    // (Kassiano et al. 2022), so it happens at most once every three weeks per muscle slot.
+    const hist = (st.e1rm[m.id] && st.e1rm[m.id].hist) || [];
+    if (hist.length >= 4 && !(st.rotatedAt > day - 21)) {
+      const recent = hist.slice(-3).map((x) => x[1]);
+      const before = hist[hist.length - 4][1];
+      if (Math.max(...recent) <= before * 1.005) {
+        const list = rungs(S, fam, day);
+        const at = list.indexOf(m.id);
+        const next = list.length > 1 ? list[(at + 1) % list.length] : null;
+        if (next && next !== m.id) {
+          const nm = M().MOVES[next];
+          const [nlo, nhi] = rangeFor(S, nm, fam);
+          st.rung = next; st.reps = clampInt(nm.start, nlo, nhi); st.short = 0; st.rotatedAt = day;
+          res.line = { text: `${m.name} → ${nm.name}`, why: 'no progress in three sessions: a different angle often gets things moving' };
+          return res;
+        }
+      }
+    }
+    const [lo, hi] = rangeFor(S, m, fam);
     const target = log.target;
     const allHit = firstSide.every((x) => x.amount >= target);
     const avg = firstSide.reduce((a, x) => a + x.amount, 0) / firstSide.length;
@@ -1606,23 +1673,57 @@
     return sizes.find((s) => s >= cur * factor) || sizes[sizes.length - 1];
   }
 
-  // Completed, non-deload weeks with no "too hard": +1 weekly set for tier-1 groups.
+  // Weekly sets, adjusted per muscle once a week. More weekly sets build more muscle, with smaller
+  // returns at the top (Schoenfeld et al. 2017; Pelland et al. 2026), and how much each person
+  // tolerates varies, so the plan follows your own signals: a goal muscle that's progressing while
+  // you recover well gets a set more (up to its cap); one that's going backwards while you're run
+  // down (workouts rated too hard, very sore days) gets a set less (down to its floor). Muscles
+  // that aren't goals stay at their maintenance dose. A big calorie deficit holds increases, since
+  // a deficit blunts muscle gain (Murphy & Koehler 2022).
   function weeklyVolumeUpdate(S, day) {
     const lines = [];
     const cal = calendar(S, day);
     const prog = programFor(S.profile);
-    const tier1 = GROUPS.filter((g) => prog.tiers[g] === 1);
     for (const [wsStr, w] of Object.entries(cal.weeks)) {
       const ws = Number(wsStr);
       if (ws + 6 >= day || (S.volWeeksDone || []).includes(ws)) continue;
       S.volWeeksDone = (S.volWeeksDone || []).concat(ws);
-      if (w.phase.deload || !w.allDone) continue;
-      const hard = workoutLogs(S).some((l) => l.day >= ws && l.day <= ws + 6 && l.checkin && l.checkin.rating === 'hard');
-      if (hard) continue;
-      const bumped = tier1.filter((g) => { if (S.vol[g] < prog.cap[g]) { S.vol[g]++; return true; } return false; });
-      if (bumped.length) lines.push({ text: `${listNames(bumped)} +1 set a week`, why: 'a full week with no "too hard"' });
+      if (w.phase.deload) continue;
+      const logs = workoutLogs(S).filter((l) => l.day >= ws && l.day <= ws + 6 && isDone(l));
+      if (!logs.length) continue;
+      const hard = logs.filter((l) => l.checkin && l.checkin.rating === 'hard').length;
+      let sore = 0;
+      for (let d = ws; d <= ws + 6; d++) if (S.feel && S.feel[d] && S.feel[d].sore === 'very') sore++;
+      const recovering = hard === 0 && sore < 2;
+      const holdGrowth = !!(GH.food && GH.food.holdsVolume && GH.food.holdsVolume(S, ws));
+      const up = [], down = [];
+      for (const g of GROUPS) {
+        const items = [];
+        for (const l of logs) for (const it of l.items || []) if (it.group === g && it.kind === 'move' && it.sets && it.sets.length) items.push(it);
+        if (!items.length) continue;
+        const ups = items.filter((it) => it.outcome === 'up').length;
+        const downs = items.filter((it) => it.outcome === 'down').length;
+        if (prog.tiers[g] <= 2 && w.allDone && recovering && !holdGrowth && ups > 0 && downs === 0 && S.vol[g] < prog.cap[g]) { S.vol[g]++; up.push(g); }
+        else if (!recovering && downs > ups && S.vol[g] > prog.floor[g]) { S.vol[g]--; down.push(g); }
+      }
+      if (up.length) lines.push({ text: `${listNames(up)} +1 set a week`, why: 'progressing and recovering well' });
+      if (down.length) lines.push({ text: `${listNames(down)} one set less a week`, why: 'going backwards while run down' });
+      if (holdGrowth && !up.length) lines.push({ text: 'Weekly sets held where they are', why: 'a big calorie deficit this week' });
     }
     return lines;
+  }
+
+  // A daily steps target from your own normal: 10% above your 4-week median, in 500-step
+  // increments, between 5,000 and 10,000 (8,000 from 60). Benefits in the big step studies level
+  // off around 8,000-10,000 a day under 60 and 6,000-8,000 from 60 (Paluch et al. 2022).
+  function stepsGoal(S, day) {
+    const h = (S.health && S.health.days) || {};
+    const v = [];
+    for (let d = day - 28; d < day; d++) if (h[d] && h[d].steps != null) v.push(h[d].steps);
+    const cap = S.profile.age >= 60 ? 8000 : 10000;
+    if (v.length < 7) return { goal: Math.min(cap, 7000), usual: null, personal: false };
+    const med = median(v);
+    return { goal: Math.max(5000, Math.min(cap, Math.round((med * 1.1) / 500) * 500)), usual: Math.round(med), personal: true };
   }
 
   /* ================================================================== light days */
@@ -1791,6 +1892,6 @@
     setRir, amendLast, swapItem, swapOptions, finishWorkout, progress, levelUp, nextWeight, weeklyVolumeUpdate, recordTest, testDue,
     logLight, autoWalk, addWeight, weightStats, proteinGoal, proteinToday, addProtein, undoProtein, weeklySets,
     updateSettings, scheduleSettings, settingsAt, moveSession, setEquipment, reprogram, ladderLevel, mobilityFlow, loadInfo, isDone, relink, median,
-    defaultGym, GYM_PRESETS, gymPreset, placeOf, setPlace, eqAt, eqFor, dbRack, snapLoad, suggestLoad, fmtLoad, loadChoices, setItemLoad, ensureProg, isGymFam, toUnit, fromUnit,
+    defaultGym, GYM_PRESETS, rangeFor, stepsGoal, outcomeOf, gymPreset, placeOf, setPlace, eqAt, eqFor, dbRack, snapLoad, suggestLoad, fmtLoad, loadChoices, setItemLoad, ensureProg, isGymFam, toUnit, fromUnit,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
