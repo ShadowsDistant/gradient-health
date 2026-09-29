@@ -273,7 +273,8 @@ Every push to `main` or a `claude/` branch runs `.github/workflows/android.yml`:
 then the "latest" GitHub release with both files. The `.apk` is for APKPure and direct installs; the
 `.aab` (Android App Bundle) is the upload for Google Play, which doesn't take APKs for new apps.
 `build-aab.sh` needs the Android SDK's `aapt2` and a platform `android.jar`, which the CI runner has,
-plus `bundletool`, which it downloads and checks against GitHub's recorded SHA-256.
+plus `bundletool`, which it downloads from Google's GitHub release and checks against a pinned
+SHA-256.
 
 ### Google Play
 

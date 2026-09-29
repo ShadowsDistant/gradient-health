@@ -2,7 +2,8 @@
 # Builds the Android App Bundle (.aab) that Google Play needs for a new app, from the same code,
 # resources and assets as the APK. It runs where the Android SDK is installed (the GitHub Actions
 # runner has it): aapt2 from the SDK's build-tools and an android.jar from its platforms, plus
-# bundletool (downloaded from Google's Maven repository once, then cached).
+# bundletool (downloaded from Google's GitHub release once, checked against a pinned SHA-256, then
+# cached).
 #
 #   npm run build && bash scripts/build-apk.sh && bash scripts/build-aab.sh
 #
@@ -28,6 +29,8 @@ cd "$ROOT"
 BUNDLETOOL_VERSION="1.18.1"
 BUNDLETOOL_ASSET="bundletool-all-${BUNDLETOOL_VERSION}.jar"
 BUNDLETOOL_URL="https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/${BUNDLETOOL_ASSET}"
+# The SHA-256 of that file, as first downloaded from Google's GitHub release (CI, Sep 29, 2026).
+BUNDLETOOL_SHA256="675786493983787ffa11550bdb7c0715679a44e1643f3ff980a529e9c822595c"
 MIN_SDK=26
 TARGET_SDK=36
 
@@ -64,16 +67,7 @@ if [[ ! -s "$BUNDLETOOL" ]]; then
   mkdir -p "$CACHE_DIR"
   curl -fL --retry 5 --retry-delay 10 --retry-all-errors --connect-timeout 30 -o "$BUNDLETOOL.part" "$BUNDLETOOL_URL"
   got="$(sha256sum "$BUNDLETOOL.part" | cut -d' ' -f1)"
-  # GitHub records each release file's SHA-256: check the download against it when the API is at hand.
-  want=""
-  if command -v gh >/dev/null 2>&1 && [[ -n "${GH_TOKEN:-}" ]]; then
-    want="$(gh api "repos/google/bundletool/releases/tags/${BUNDLETOOL_VERSION}" --jq ".assets[] | select(.name == \"${BUNDLETOOL_ASSET}\") | .digest" 2>/dev/null | sed 's/^sha256://' || true)"
-  fi
-  if [[ -n "$want" ]]; then
-    [[ "$want" == "$got" ]] || { rm -f "$BUNDLETOOL.part"; die "bundletool SHA-256 mismatch (GitHub says $want, got $got)"; }
-  else
-    echo "build-aab: note: couldn't ask GitHub for bundletool's SHA-256; downloaded over HTTPS, SHA-256 $got" >&2
-  fi
+  [[ "$got" == "$BUNDLETOOL_SHA256" ]] || { rm -f "$BUNDLETOOL.part"; die "bundletool SHA-256 mismatch (expected $BUNDLETOOL_SHA256, got $got)"; }
   mv "$BUNDLETOOL.part" "$BUNDLETOOL"
 fi
 bundletool() { java -jar "$BUNDLETOOL" "$@"; }

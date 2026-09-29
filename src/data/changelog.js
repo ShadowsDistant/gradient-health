@@ -4,6 +4,17 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.3.0', date: '2026-09-29', title: 'A smarter coach, and workouts you can cancel',
+      items: [
+        ['chip', 'The on-device coach is much better: newer Qwen3.5 models in three sizes (Fast, Balanced and Best answers), and every answer starts from what the app has already worked out from your numbers and the research behind it. Follow-up questions start answering sooner. The chat is now the on-device coach or Claude.'],
+        ['close', 'Cancel a workout: go back and pick Cancel workout, or tap Cancel on Today. Nothing from it is saved or counts against your streak, and Undo brings it back.'],
+        ['person', 'Exercise animations always play, even with Battery Saver or reduced animations on, and the box never sits empty while the 3D figure loads. With reduced animations there\'s a Pause button.'],
+        ['library', 'How it works is redesigned: rules grouped by training, recovery, food and habits, a one-line summary for each, and the research a tap away.'],
+        ['sparkle', 'A more polished look: the app\'s colours glow softly behind each page, sheets have thicker glass and set the page back when pulled up, and the chat shimmers while the coach thinks.'],
+        ['check-circle', 'Fixes: a blue ring round the sheet handle, sheets taller than what\'s in them, and the how-to sheet leaving an exercise paused.'],
+      ],
+    },
+    {
       version: '1.2.0', date: '2026-09-29', title: 'Gradient Health: gym, food and a coach you can see',
       items: [
         ['heart', 'A new name, Gradient Health, and a new icon.'],

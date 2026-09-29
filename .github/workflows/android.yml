@@ -90,7 +90,6 @@ jobs:
           RELEASE_KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASS }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASS: ${{ secrets.RELEASE_KEY_PASS }}
-          GH_TOKEN: ${{ github.token }}
         run: bash scripts/build-aab.sh
 
       - name: Remove the key from the runner
