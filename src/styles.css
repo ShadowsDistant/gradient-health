@@ -67,7 +67,30 @@ body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
 /* Plain buttons take the surrounding font. Refract's controls (.rf-*) keep their own sizes, so this
    must not reach them: an unlayered `font` here would beat Refract's layered rules. */
 button:not([class*="rf-"]) { font: inherit; }
-.app { position: fixed; inset: 0; overflow: hidden; background: var(--bg); }
+.app { position: fixed; inset: 0; overflow: hidden; background: var(--bg); timeline-scope: --page; }
+:root { --glow-mint: rgb(111 227 200 / .55); --glow-sky: rgb(58 168 255 / .5); --glow-violet: rgb(155 92 255 / .42); --glow-pink: rgb(255 126 179 / .34); }
+:root[data-theme^="dark"] { --glow-mint: rgb(70 190 170 / .26); --glow-sky: rgb(60 130 255 / .5); --glow-violet: rgb(140 80 255 / .52); --glow-pink: rgb(240 100 170 / .3); }
+/* Ambient glow: the icon's colours (mint, sky, violet, pink) softly behind the top of each page, so
+   the glass bars, buttons and sheets have real colour to refract. It rises and fades as the page
+   scrolls (a scroll-linked animation: nothing runs while the page is still), and it's off with
+   increased contrast or reduced transparency. */
+.app::before {
+  content: ''; position: absolute; inset: -12% -25% auto; height: 62%; pointer-events: none;
+  background:
+    radial-gradient(34% 46% at 20% 34%, var(--glow-mint), transparent 72%),
+    radial-gradient(34% 44% at 80% 26%, var(--glow-sky), transparent 72%),
+    radial-gradient(38% 48% at 64% 66%, var(--glow-violet), transparent 74%),
+    radial-gradient(30% 40% at 34% 74%, var(--glow-pink), transparent 74%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 35%, transparent 95%); mask-image: linear-gradient(to bottom, #000 35%, transparent 95%);
+  opacity: .5;
+  animation: glow-scroll linear both; animation-timeline: --page; animation-range: 0 480px;
+}
+.screen { scroll-timeline: --page block; }
+@keyframes glow-scroll { from { opacity: .5; translate: 0 0; } to { opacity: .16; translate: 0 -80px; } }
+[data-theme^="dark"] .app::before { opacity: .6; animation-name: glow-scroll-dark; }
+@keyframes glow-scroll-dark { from { opacity: .6; translate: 0 0; } to { opacity: .22; translate: 0 -80px; } }
+:root[data-theme$="contrast"] .app::before, :root[data-rf-transparency="reduced"] .app::before { display: none; }
+@media (prefers-reduced-transparency: reduce) { .app::before { display: none; } }
 .screen { position: absolute; inset: 0; overflow-x: hidden; overflow-y: auto; box-sizing: border-box; padding: var(--topbar-h) var(--sar) calc(var(--float-gap) + var(--space-6)) var(--sal); scrollbar-width: none; outline: none; }
 .screen::-webkit-scrollbar { display: none; }
 /* Room at the end of a page, so the last card clears whatever floats over the bottom: the tab bar,
@@ -540,6 +563,9 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 .sci-ref:active { background: var(--fill-selected); }
 .sci-ref > span { font-weight: 400; }
 .sci-levels .sci-dot { margin-inline: 4px var(--space-2); }
+/* A small "Why" chip at the end of a row, into How it works. */
+.why-chip { appearance: none; border: 0; font: inherit; flex: none; align-self: center; display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: var(--radius-full); background: var(--fill-3); color: var(--accent); font-size: .75rem; font-weight: 600; cursor: pointer; transition: scale var(--duration-spring-snappy) var(--spring-snappy), background-color var(--duration-fast); }
+.why-chip:active { scale: .94; background: var(--fill-selected); transition-duration: 0ms; }
 .why-link { vertical-align: baseline; padding-inline: 4px; min-block-size: 0; height: auto; }
 
 /* ---------------------------------------------------------------- misc */
@@ -620,7 +646,7 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 .co-head > svg:first-child { color: var(--accent); }
 .co-more { display: inline-flex; align-items: center; gap: 2px; color: var(--accent); font-weight: 600; }
 .co-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
-.co-dec { display: grid; grid-template-columns: 30px 1fr; gap: var(--space-3); align-items: start; }
+.co-dec { display: grid; grid-template-columns: 30px 1fr auto; gap: var(--space-3); align-items: start; }
 .co-dec .co-ico { width: 30px; height: 30px; }
 .co-dec-text { display: grid; gap: 2px; min-width: 0; }
 .co-dec-text .why-link { justify-self: start; margin-inline-start: calc(-1 * var(--space-2)); }
@@ -714,6 +740,10 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 .chat-setup-ico { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; color: var(--hue-violet); background: color-mix(in oklab, var(--hue-violet) 16%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / .25); }
 .model-row .rf-list-title .rf-badge { margin-inline-start: 6px; vertical-align: 1px; }
 .bubble-status { display: block; margin-top: 4px; }
+/* While an answer is on its way: a soft light sweeps across the bubble. */
+.bubble.coach.is-typing { background-image: linear-gradient(100deg, transparent 20%, color-mix(in oklab, var(--accent-fill) 14%, transparent) 50%, transparent 80%); background-size: 220% 100%; background-repeat: no-repeat; animation: typing-sheen 1.6s ease-in-out infinite; }
+@keyframes typing-sheen { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+@media (prefers-reduced-motion: reduce) { .bubble.coach.is-typing { animation: none; background-image: none; } }
 .bubble.is-stopped::after { content: " (stopped)"; color: var(--label-secondary); }
 .model-row .rf-list-text { gap: 4px; }
 .model-row .rf-progress { margin-top: 4px; }

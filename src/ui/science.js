@@ -95,6 +95,8 @@
       <p class="sheet-pad t-footnote rf-muted">Each rule shows the strongest evidence behind it. Tap a rule for the papers.</p>`,
   });
   U.act.openRef = (el) => { const url = el.dataset.arg; if (url && GH.platform) GH.platform.openUrl(url); };
-  // "Why?" links elsewhere in the app.
+  // "Why?" links elsewhere in the app. The chip form is for lists where a link under every row
+  // would repeat (the Coach page).
   U.whyLink = (ruleId, label) => `<button type="button" class="rf-btn why-link" data-variant="plain" data-size="sm" data-act="openScience" data-arg="${U.esc(ruleId)}">${U.esc(label || 'Why?')}</button>`;
+  U.whyChip = (ruleId) => `<button type="button" class="why-chip" data-act="openScience" data-arg="${U.esc(ruleId)}" aria-label="Why: the research behind this">${U.icon('info', 'sm')}Why</button>`;
 })(typeof window !== 'undefined' ? window : globalThis);

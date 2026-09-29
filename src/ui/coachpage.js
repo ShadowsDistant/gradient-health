@@ -23,7 +23,7 @@
 
   function decisionRow(d, links) {
     return `<li class="co-dec"><span class="co-ico rf-list-icon" data-tone="${U.esc(d.tone || 'sky')}">${U.icon(d.icon || 'sparkle', 'sm')}</span>
-      <span class="co-dec-text"><span class="t-subhead">${U.esc(d.text)}</span>${d.why ? `<span class="t-footnote rf-muted">${U.esc(d.why)}</span>` : ''}${links && d.rule && U.whyLink ? U.whyLink(d.rule, 'Why this works') : ''}</span></li>`;
+      <span class="co-dec-text"><span class="t-subhead">${U.esc(d.text)}</span>${d.why ? `<span class="t-footnote rf-muted">${U.esc(d.why)}</span>` : ''}</span>${links && d.rule && U.whyChip ? U.whyChip(d.rule) : ''}</li>`;
   }
 
   // The card on Today: the first few decisions, or a line saying today runs as planned.
