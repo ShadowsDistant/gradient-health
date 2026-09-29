@@ -1,5 +1,6 @@
-/* Progress: the training picture. Heat map of the last 12 weeks, the left/right gap, this week's
- * sets against target, strength trends for gym lifts, bests per ladder and the moments worth
+/* Progress: the training picture. First your body: which muscles your training reaches and which
+ * are getting stronger, on a front and back figure. Then what improved most, this week's sets, the
+ * last 12 weeks, the left/right gap, strength trends for gym lifts, levels and the moments worth
  * celebrating.
  */
 (function (G) {
@@ -9,8 +10,87 @@
   U.act = U.act || {}; U.on = U.on || {}; U.screens = U.screens || {};
   const B = () => GH.brain;
   const M = () => GH.moves;
+  const Y = () => GH.body;
   const WD = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  const RANGES = [[1, '1 week'], [4, '4 weeks'], [12, '12 weeks']];
 
+  U.bodyView = U.bodyView || { mode: 'trained', weeks: 4 };
+  const view = () => U.bodyView;
+  const rangeText = (w) => (w === 1 ? 'last 7 days' : `last ${w} weeks`);
+  const lower = (m) => Y().NAME[m].toLowerCase();
+  const setsText = (v) => { const r = Math.round(v * 2) / 2; return `${U.num(r, r % 1 ? 1 : 0)} ${r === 1 ? 'set' : 'sets'}`; };
+  const hasWorkouts = (S) => S.log.some((l) => l.type === 'workout');
+
+  /* ---------------------------------------------------------------- your body */
+  // Named muscles in the takeaway carry a swatch of their colour on the map.
+  const named = (list, values, max) => list.map((m) => `<span class="bm-name"><i class="bm-sw" data-l="${U.bodyLevel(values[m], max)}"></i>${U.esc(lower(m))}</span>`).join(', ');
+
+  function bodyCard(S, day, t, imp) {
+    const { mode, weeks } = view();
+    const values = {};
+    for (const m of Y().MUSCLES) values[m] = mode === 'trained' ? t.sets[m] || 0 : Math.max(0, imp.score[m] || 0);
+    const max = mode === 'trained' ? t.max : imp.max;
+    const label = (m) => {
+      const name = Y().NAME[m];
+      if (mode === 'trained') return t.sets[m] > 0 ? `${name}: ${setsText(t.sets[m])}, ${Math.round(t.share[m] * 100)}% of your training` : `${name}: no sets`;
+      const top = (imp.byMuscle[m] || []).find((l) => l.dir > 0);
+      return imp.score[m] > 0 ? `${name}: went up ${U.plural(imp.ups[m] || 0, 'time')}${top ? `. ${top.text}` : ''}` : `${name}: ${t.sets[m] > 0 ? 'no progress yet' : 'not trained'}`;
+    };
+    // "Most: chest, triceps · Least: calves", as two halves that wrap as a whole when they must.
+    const clause = (label, list) => `<span class="bm-clause">${label}: ${named(list, values, max)}</span>`;
+    const SEP = '<span class="bm-vh"> · </span>';
+    let take, target = null;
+    if (mode === 'trained') {
+      if (t.sum) { take = clause('Most', t.most.slice(0, 2)) + SEP + clause('Least', t.least.slice(0, 1)); target = t.least[0]; }
+      else take = hasWorkouts(S) ? `No sets in the ${rangeText(weeks)}. Your next workout lights up the muscles it trains.` : 'Finish a workout and the muscles it trained light up here.';
+    } else if (imp.max > 0) {
+      take = clause('Most', imp.most.slice(0, 2)) + SEP + clause('Least', imp.least.slice(0, 1));
+      target = imp.least[0];
+    } else take = t.sum ? `No progress to show in the ${rangeText(weeks)} yet. It shows up here as your reps, weights and levels go up.` : 'Progress shows up here as your reps, weights and levels go up.';
+    // Offer to train the least one more only when it's clearly behind, not in an even split.
+    const main = Y().MUSCLES.filter((m) => !Y().MINOR.includes(m));
+    const mean = main.reduce((a, m) => a + (t.sets[m] || 0), 0) / main.length;
+    if (target && (mode === 'trained' ? (t.sets[target] || 0) >= mean / 2 : (imp.score[target] || 0) > imp.max / 4)) target = null;
+    const more = target && U.act.tailorPlan
+      ? `<button type="button" class="rf-btn bm-more" data-variant="soft" data-act="tailorPlan" data-arg="${U.esc(target)}">${U.icon('plus-circle')}Train ${U.esc(lower(target))} more</button>` : '';
+    return `<div class="card bm-card" data-key="body" data-mode="${mode}">
+      <div class="bm-head"><h2 class="t-title-3">Your body</h2><span class="t-footnote rf-muted">${mode === 'trained' ? 'Sets per muscle' : 'Progress per muscle'}, ${rangeText(weeks)}</span></div>
+      ${U.seg('bodyMode', [['trained', 'Trained'], ['improved', 'Improved']], mode, 'Show', ' data-on="bodyMode"')}
+      <div class="bm-range" role="group" aria-label="Range">${RANGES.map(([w, txt]) => `<button type="button" class="rf-chip" aria-pressed="${w === weeks}" data-act="bodyRange" data-arg="${w}">${txt}</button>`).join('')}</div>
+      ${U.bodyMap(values, { mode, max, label, key: 'bm', listLabel: `Muscles, ${mode === 'trained' ? 'sets' : 'progress'} in the ${rangeText(weeks)}` })}
+      ${U.bodyLegend(mode, mode === 'trained' ? 'No sets' : 'No progress')}
+      <p class="bm-take t-callout" data-key="take">${take}</p>
+      ${more}
+    </div>`;
+  }
+  U.on.bodyMode = (el, ev, v) => { view().mode = v === 'improved' ? 'improved' : 'trained'; U.render(); };
+  U.act.bodyRange = (el) => {
+    const w = Number(el.getAttribute('data-arg'));
+    if (!RANGES.some(([x]) => x === w)) return;
+    view().weeks = w;
+    U.render();
+  };
+
+  // What improved most, per muscle group: the group's best lines and how much.
+  function mostImproved(S, imp) {
+    const { weeks } = view();
+    const rows = B().GROUPS.map((g) => ({ g, x: imp.groups[g] })).filter((r) => r.x.score > 0).sort((a, b) => b.x.score - a.x.score).slice(0, 5);
+    if (!rows.length) return `<div class="card" data-key="mi-none"><p class="t-callout rf-muted">${hasWorkouts(S) ? `Nothing went up in the ${rangeText(weeks)} yet. The muscle groups` : 'After a few workouts, the muscle groups'} getting stronger show here, with what changed: levels, weights and reps.</p></div>`;
+    const vals = {};
+    for (const m of Y().MUSCLES) vals[m] = Math.max(0, imp.score[m] || 0);
+    return `<ul class="rf-list mi-list" data-key="mi">${rows.map(({ g, x }) => {
+      const ups = x.lines.filter((l) => l.dir > 0);
+      const top = ups[0];
+      const own = {};
+      for (const m of Y().MUSCLES) if (Y().GROUP_OF[m] === g) own[m] = vals[m];
+      return `<li data-key="mi-${g}"><div class="rf-list-row mi-row">${U.bodyThumb(g, own, 'improved')}
+        <span class="rf-list-text"><span class="rf-list-title">${U.esc(B().GROUP_NAME[g])}</span><span class="rf-list-sub">${ups.slice(0, 2).map((l) => U.progressText(l.text)).join(' · ') || U.esc(`Went up ${U.plural(x.ups, 'time')}`)}</span></span>
+        ${top ? `<span class="rf-list-detail">${U.badge(top.delta, 'positive')}</span>` : ''}</div></li>`;
+    }).join('')}</ul>
+    <p class="rf-list-footer">${U.esc(U.cap(rangeText(weeks)))}. Tap the figure above for each muscle.</p>`;
+  }
+
+  /* ---------------------------------------------------------------- the rest */
   function heatmap(S, day, cal) {
     const last = B().weekStart(day);
     const first = last - 7 * 11;
@@ -63,8 +143,8 @@
     const arm = ms.length ? ms[ms.length - 1] : null;
     const u = S.profile.units === 'kg' ? 'cm' : 'in';
     const conv = (v) => (u === 'cm' ? v : v / 2.54).toFixed(1);
-    return `<div class="card lr" data-key="lr">
-      <span class="t-headline">Left vs right</span>
+    return `<h2 class="sec-title t-title-3">Left vs right</h2>
+      <div class="section"><div class="card lr" data-key="lr">
       ${last ? `<div class="lr-row"><span class="lr-side is-lead"><span class="t-caption">${U.side(side)}</span><span class="t-title-2 rf-num">${side === 'L' ? last.left : last.right}</span></span>
         <span class="lr-side"><span class="t-caption rf-muted">${U.side(other)}</span><span class="t-title-2 rf-num">${side === 'L' ? last.right : last.left}</span></span>
         <span class="lr-gap"><span class="t-caption rf-muted">Gap</span><span class="t-title-2 rf-num">${Math.round(last.gap * 100)}%</span></span></div>
@@ -72,7 +152,7 @@
       ${arm ? `<p class="t-callout">Arms: ${U.side('L').toLowerCase()} ${conv(arm.armL)} ${u}, ${U.side('R').toLowerCase()} ${conv(arm.armR)} ${u}</p>` : ''}
       <p class="t-callout">${U.esc(status)}</p>
       <p class="t-footnote rf-muted">${due ? `Next test in ${U.plural(due, 'day')}, on an arm day.` : 'Next test: your next arm day.'}</p>
-    </div>${chart}`;
+    </div>${chart}</div>`;
   }
 
   function weekSets(S, day) {
@@ -133,22 +213,30 @@
   U.screens.progress = {
     render(S, day) {
       const cal = B().calendar(S, day);
+      const trained = Y().trained(S, day, view().weeks);
+      const improved = Y().improved(S, day, view().weeks);
       const done = S.log.filter((l) => l.type === 'workout' && B().isDone(l)).length;
       const ups = S.log.reduce((a, l) => a + (l.celebrate || []).filter((c) => c.kind !== 'pr').length, 0);
       return `${U.navbar('Progress')}
         <h1 class="rf-large-title">Progress</h1>
         <div class="section">
           ${U.tip ? U.tip('progress') : ''}
+          ${bodyCard(S, day, trained, improved)}
           <div class="stat-row" data-key="stats">
             <div class="stat"><span class="t-footnote rf-muted">Workouts</span><span class="t-title-2">${U.roll(done)}</span></div>
             <div class="stat"><span class="t-footnote rf-muted">Best streak</span><span class="t-title-2">${U.roll(cal.streak.best)}</span></div>
             <div class="stat"><span class="t-footnote rf-muted">Level-ups</span><span class="t-title-2">${U.roll(ups)}</span></div>
           </div>
-          ${heatmap(S, day, cal)}
-          ${leftRight(S, day)}
+        </div>
+        <h2 class="sec-title t-title-3">Most improved</h2>
+        <div class="section">${mostImproved(S, improved)}</div>
+        <h2 class="sec-title t-title-3">Training</h2>
+        <div class="section">
           ${weekSets(S, day)}
+          ${heatmap(S, day, cal)}
         </div>
         ${strength(S, day)}
+        ${leftRight(S, day)}
         <h2 class="sec-title t-title-3">Levels</h2>
         <div class="section">${bests(S, day)}</div>
         <h2 class="sec-title t-title-3">Moments</h2>
