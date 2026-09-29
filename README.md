@@ -10,7 +10,7 @@ Gradient Health plans a workout for each day of your week around your goals, the
   <img src="docs/screenshots/today.png" width="200" alt="Today: a 35-day streak and today's workout">
   <img src="docs/screenshots/workout.png" width="200" alt="The workout player: the 3D figure doing a dumbbell curl, with the tempo strip lit">
   <img src="docs/screenshots/food.png" width="200" alt="Food: calories left today, macros and meals">
-  <img src="docs/screenshots/health-dark.png" width="200" alt="Health, in dark mode: the weekly report from the built-in coach">
+  <img src="docs/screenshots/health-dark.png" width="200" alt="Health, in dark mode: the weekly report worked out from your numbers">
 </p>
 
 ## A plan that fits your life
@@ -21,7 +21,7 @@ Tell Gradient Health what you want (visible abs, bigger arms, stronger legs, jus
 
 Tell it what your gym has (barbells, a rack, cables, machines, a full dumbbell rack) and gym days use it: bench press, squats, pulldowns, cable work and 40-odd more, each with a starting weight that's on the light side. Hit the top of your reps with some left in the tank and the weight goes up next time. Train at both? Switch today's workout between home and gym with one tap, and each keeps its own progress. Changing your equipment later is one screen, not a new set-up.
 
-Miss a day and the rest of the week moves forward instead of doubling up. Short on time? One tap turns today's session into a real 12 to 15 minute version.
+Miss a day and the rest of the week moves forward instead of doubling up. Short on time? One tap turns today's session into a real 12 to 15 minute version. Started by mistake, or just not feeling it? Go back and cancel the workout: nothing from it is saved or counts against your streak, and Undo brings it back.
 
 ## One question makes it smarter
 
@@ -57,7 +57,7 @@ You get trends over 7, 28 and 90 days, and insights that only show up when there
 
 The coach never changes your plan quietly. Today's card says what it changed and why ("1 set off each exercise: 5 h 10 m of sleep"), and the Coach page shows its suggestions (you apply them or not), what it's keeping an eye on, and every change it made lately.
 
-Ask it anything about your numbers three ways. The built-in coach answers common questions instantly, offline. An AI model that runs on your phone answers anything, and nothing you ask leaves the phone. Or use Claude: tap Ask in the Claude app and your question plus a summary of your data (no name, no dates) opens there, or add an Anthropic API key and Claude answers in the app and writes your weekly report.
+Ask it anything about your numbers. An AI model that runs on your phone (Qwen3.5, in three sizes) answers offline, and nothing you ask leaves the phone. It doesn't guess from raw numbers: each question goes in with what the app has already worked out from your data and the research rule behind it, so answers stay specific and right. Or use Claude: tap Ask in the Claude app and your question plus a summary of your data (no name, no dates) opens there, or add an Anthropic API key and Claude answers in the app and writes your weekly report.
 
 ## Catch up a weaker side
 
@@ -65,7 +65,7 @@ If one arm or leg is weaker, it goes first, the other side never does more reps,
 
 ## Built on research, and honest about it
 
-Every rule Gradient Health follows, from how many sets you do to how long you rest, is listed in the app with the studies behind it and a plain rating of how strong that evidence is. Where the research is thin, it says so.
+Every rule Gradient Health follows, from how many sets you do to how long you rest, is listed in the app, grouped by training, recovery, food and habits, with a one-line summary, the studies behind it and a plain rating of how strong that evidence is. Where the research is thin, it says so.
 
 <p align="center">
   <img src="docs/screenshots/profile-dark.png" width="200" alt="Profile, in dark mode: stats and achievements">
@@ -79,6 +79,8 @@ No account, no ads and no analytics. Everything stays on your phone. The only th
 ## Get it
 
 Download `gradient-health.apk` from the [latest release](../../releases/latest) and open it on your phone. You may need to allow installs from your browser or file manager. Updates install over the old version and keep your data.
+
+From 1.3, builds are signed with the app's release key, the one the Play Store and APKPure versions use. A build signed with the earlier test key won't update to one of these: copy your data first (Settings, Copy my data), uninstall, install the new build, then use Settings, Restore from a copy.
 
 Gradient Health runs on Android 8.0 and newer. Health Connect needs Android 14 or newer; on older phones you can log sleep and weight by hand.
 

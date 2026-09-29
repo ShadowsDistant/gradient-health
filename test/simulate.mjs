@@ -274,4 +274,34 @@ section('Scenario E: advanced, dumbbells 10-50 lb, bar, band, 5 days, chest + ba
   check('maxed top rung at the only weight → next dumbbell to buy (12 lb)', up3 && /Next buy: 12 lb dumbbells/.test(up3.line.text), up3 && up3.line);
 }
 
+/* ------------------------------------------------------------------ cancelling */
+section('Cancelling a workout');
+{
+  const S = B.newState(USER, BASELINE, D0);
+  const workDay = B.calendar(S, D0).days[D0].planned === 'workout' ? D0 : D0 + 1;
+  B.startWorkout(S, workDay, { now: workDay * B.DAY_MS + 18 * 3600000 });
+  B.completeStep(S, {});
+  const logsBefore = S.log.length;
+  const gone = B.cancelWorkout(S);
+  check('cancel clears the workout in progress and returns it', gone && gone.day === workDay && S.active === null);
+  check('nothing from it is logged', S.log.length === logsBefore);
+  check('today\'s workout can be started again', B.todayPlan(S, workDay).type === 'workout' && !B.startWorkout(S, workDay, {}).error && !!S.active);
+  B.cancelWorkout(S);
+  // A light day (after the week's first two workouts): starting pulls the next session forward, and
+  // cancelling puts it back.
+  const S2 = B.newState(USER, BASELINE, D0);
+  const cal = B.calendar(S2, D0);
+  let light = D0;
+  while (cal.days[light].planned === 'workout') doWorkout(S2, light++);
+  const events = S2.events.length;
+  const plan = B.todayPlan(S2, light);
+  const next = plan.next;
+  check('a light day with a session later in the week', plan.type === 'light' && next, plan.type);
+  B.startWorkout(S2, light, {});
+  check('starting on a light day pulls the next session forward', S2.events.length === events + 1 && S2.active.pulled && S2.active.pulled.from === next.day);
+  B.cancelWorkout(S2);
+  check('cancelling puts it back where it was', S2.events.length === events && B.todayPlan(S2, light).type === 'light' && B.todayPlan(S2, light).next.day === next.day);
+  check('with nothing in progress, cancel does nothing', B.cancelWorkout(S2) === null);
+}
+
 done();

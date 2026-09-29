@@ -1,9 +1,11 @@
 // The on-device AI runtime (src/llm.js, lazy chunk "llm") in Chromium, with a tiny random-weight model
-// standing in for Qwen: the chunk loads under the page's CSP, the model is read with Range requests
-// only, chat() streams tokens, reuses the KV cache, stops mid-stream, queues, unloads (also by itself
-// when idle) and reloads, and the download API works against a fake Android bridge. It prints how
-// fast the tiny model generates. Needs `npm run build` and Playwright; build/tiny.gguf is made on the
-// first run by scripts/make-tiny-gguf.py, which needs the gguf package:
+// standing in for Qwen: the chunk loads under the page's CSP, the model catalog, the model is read
+// with Range requests only, chat() streams tokens, reuses the KV cache, stops mid-stream, queues,
+// unloads (also by itself when idle) and reloads, a tiny model with Qwen3.5's hybrid layout loads and
+// reuses nearly all of a repeated prompt, thinking that slips out is hidden, and the download API
+// works against a fake Android bridge. It prints how fast the tiny model generates. Needs
+// `npm run build` and Playwright; build/tiny.gguf and build/tiny-qwen35.gguf are made on the first
+// run by scripts/make-tiny-gguf.py, which needs the gguf package:
 //
 //   python3 -m venv build/venv && build/venv/bin/pip install gguf numpy
 //   npm run build && node test/llm.mjs
@@ -20,12 +22,14 @@ try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require(
 
 const DIST = join(root, 'dist');
 const MODEL = join(root, 'build/tiny.gguf');
+const MODEL35 = join(root, 'build/tiny-qwen35.gguf');
 if (!existsSync(join(DIST, 'lazy/llm.js'))) { console.error('Missing dist/lazy/llm.js. Run: npm run build'); process.exit(1); }
-if (!existsSync(MODEL)) {
+for (const [file, arch] of [[MODEL, 'llama'], [MODEL35, 'qwen35']]) {
+  if (existsSync(file)) continue;
   const venv = join(root, 'build/venv/bin/python');
-  const made = spawnSync(existsSync(venv) ? venv : 'python3', [join(root, 'scripts/make-tiny-gguf.py')], { stdio: 'inherit' });
-  if (made.status !== 0 || !existsSync(MODEL)) {
-    console.error('Couldn\'t make build/tiny.gguf. Run: python3 -m venv build/venv && build/venv/bin/pip install gguf numpy');
+  const made = spawnSync(existsSync(venv) ? venv : 'python3', [join(root, 'scripts/make-tiny-gguf.py'), '--arch', arch], { stdio: 'inherit' });
+  if (made.status !== 0 || !existsSync(file)) {
+    console.error(`Couldn't make ${file}. Run: python3 -m venv build/venv && build/venv/bin/pip install gguf numpy`);
     process.exit(1);
   }
 }
@@ -60,6 +64,7 @@ const DAMAGED = Buffer.concat([Buffer.from('GGUF'), Buffer.alloc(64 * 1024, 0xab
 const server = createServer((req, res) => {
   const path = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
   if (path === '/models/tiny.gguf') { modelReads.push({ range: req.headers.range || null, bytes: send(req, res, MODEL) }); return; }
+  if (path === '/models/tiny-qwen35.gguf') { send(req, res, MODEL35); return; }
   if (path === '/models/damaged.gguf') {
     const m = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range || '');
     const start = m ? Number(m[1]) : 0;
@@ -100,9 +105,15 @@ await open(page);
 
 section('Lazy chunk');
 check('GH.lazy("llm") sets GH.llm', await page.evaluate(async () => { const llm = await GH.lazy('llm'); return llm === GH.llm && typeof llm.chat === 'function'; }));
-const table = await page.evaluate(() => GH.llm.MODELS.map((m) => ({ id: m.id, name: m.name, bytes: m.bytes, sha: m.sha256, url: m.url, ram: m.minRamGB, ctx: m.ctx })));
-check('two models: Standard (0.5B) and Better answers (1.5B, 8 GB)', table.length === 2 && table[0].id === 'qwen05' && table[1].id === 'qwen15' && table[1].ram === 8 && table[0].ram === 3, table);
-check('each has a Hugging Face URL, size and SHA-256', table.every((m) => /^https:\/\/huggingface\.co\/Qwen\/.+\/resolve\/main\/.+\.gguf$/.test(m.url) && m.bytes > 4e8 && /^[0-9a-f]{64}$/.test(m.sha) && m.ctx === 2048));
+const table = await page.evaluate(() => GH.llm.MODELS.map((m) => ({ id: m.id, tier: m.tier, legacy: !!m.legacy, family: m.family, bytes: m.bytes, sha: m.sha256, url: m.url, ram: m.minRamGB, ctx: m.ctx, batch: m.batch, think: !!m.think })));
+const current = table.filter((m) => !m.legacy), older = table.filter((m) => m.legacy);
+check('three sizes: Fast (0.8B), Balanced (2B) and Best answers (4B, 8 GB)', current.map((m) => m.tier).join() === 'fast,balanced,best' && current.map((m) => m.ram).join() === '3,4,8' && current.every((m) => m.family === 'qwen35'), current);
+check('each is Qwen3.5 Q4_K_M on Hugging Face, with its size, a 4096 context, a small batch and thinking off', current.every((m) => /^https:\/\/huggingface\.co\/unsloth\/Qwen3\.5-[0-9.]+B-GGUF\/resolve\/main\/Qwen3\.5-[0-9.]+B-Q4_K_M\.gguf$/.test(m.url) && m.bytes > 4e8 && Number.isInteger(m.bytes) && m.ctx === 4096 && m.batch === 64 && m.think), current);
+check('1.2\'s Qwen2.5 models are still known, with their SHA-256 pinned', older.map((m) => m.id).join() === 'qwen05,qwen15' && older.every((m) => /^[0-9a-f]{64}$/.test(m.sha) && /^https:\/\/huggingface\.co\/Qwen\//.test(m.url)), older);
+const pickFor = await page.evaluate(() => ({ offered: GH.llm.offered().map((m) => m.id), rec: (GH.llm.recommended() || {}).id }));
+check('only the current sizes are offered, and Balanced is recommended', pickFor.offered.length >= 2 && pickFor.offered.every((id) => !/^qwen/.test(id)) && pickFor.rec === 'q35-2', pickFor);
+const vis = await page.evaluate(() => [GH.llm.visible('<think>\nhmm\n</think>\n\nHello'), GH.llm.visible('Hi <think>still going'), GH.llm.visible('Answer <thi'), GH.llm.visible('Seven hours.')]);
+check('thinking that slips out is hidden, finished or not, and so is a tag still arriving', vis[0] === 'Hello' && vis[1] === 'Hi ' && vis[2] === 'Answer ' && vis[3] === 'Seven hours.', vis);
 const unconfigured = await page.evaluate(() => GH.llm.available());
 check('without the app (or a base URL) it says why it isn\'t available', !unconfigured.ok && /app/i.test(unconfigured.reason), unconfigured);
 await page.evaluate(([tiny, big]) => GH.llm.configure({ baseUrl: 'models/', models: [tiny, big], idleMs: 60000 }), [TINY, BIG]);
@@ -212,6 +223,23 @@ check('a model that isn\'t there can\'t load', /^not-installed:/.test(errs.missi
 check('a damaged model fails to load (wllama alone would say it loaded)', /^load:/.test(errs.damaged) && errs.afterDamaged === null, errs);
 check('a message longer than the context: "too long", and the model stays loaded', /^too-long: This chat is too long/.test(errs.tooLong) && errs.stillLoaded && errs.stillLoaded.id === 'tiny', errs.tooLong);
 check('the next chat works', errs.recovers.length > 0);
+
+section('Qwen3.5 layout');
+const q35 = await page.evaluate(async (bytes) => {
+  GH.llm.configure({ models: [{ id: 'tiny35', name: 'Tiny Qwen3.5', file: 'tiny-qwen35.gguf', url: 'https://huggingface.co/test/tiny/resolve/main/tiny-qwen35.gguf', bytes, minRamGB: 0, ctx: 2048, batch: 64, think: true, gen: { temperature: 0.6, top_p: 0.8, top_k: 20 } }] });
+  const info = await GH.llm.load('tiny35');
+  const sys = { role: 'system', content: `You are Gradient's coach. ${'Here is what the app knows about this person. '.repeat(16)}` };
+  const a = await GH.llm.chat([sys, { role: 'user', content: 'How is my sleep this week?' }], { maxTokens: 12 });
+  const first = GH.llm.stats;
+  await GH.llm.chat([sys, { role: 'user', content: 'Am I getting stronger?' }], { maxTokens: 12 });
+  const next = GH.llm.stats;
+  await GH.llm.unload();
+  return { info, a, first, next };
+}, statSync(MODEL35).size);
+check('a model with Qwen3.5\'s gated delta-net layers loads and answers', q35.info.id === 'tiny35' && q35.a.length > 0 && q35.first.tokens > 0, q35.first);
+check('on one thread here (no SharedArrayBuffer without cross-origin isolation)', q35.info.threads === 1, q35.info);
+check('a new question after the same rules reuses nearly all of the prompt', q35.next.cachedTokens >= q35.first.promptTokens - 120, { first: q35.first.promptTokens, cached: q35.next.cachedTokens, processed: q35.next.promptTokens });
+console.log(`  qwen35 layout: ${q35.first.promptTokens} prompt tokens, then ${q35.next.promptTokens} new and ${q35.next.cachedTokens} reused`);
 
 /* ------------------------------------------------------------------ in the app (fake bridge) */
 section('Android bridge (fake)');

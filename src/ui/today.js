@@ -217,7 +217,10 @@
     float(S, day) {
       const cal = B().calendar(S, day);
       const plan = B().todayPlan(S, day, cal);
-      if (S.active && S.active.day === day) return `<button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg" data-lens data-act="resumeWorkout">${U.icon('play')}Resume workout</button>`;
+      if (S.active && S.active.day === day) {
+        return `<button type="button" class="rf-btn rf-glass" data-size="lg" data-lens data-act="cancelWorkout" aria-label="Cancel the workout">${U.icon('close')}<span class="btn-label">Cancel</span></button>
+          <button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg" data-lens data-act="resumeWorkout">${U.icon('play')}Resume workout</button>`;
+      }
       if (S.active || S.profile.workouts === false) return '';
       if (plan.type === 'workout') {
         const on = isShort(day);

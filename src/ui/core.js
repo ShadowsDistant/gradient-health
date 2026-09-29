@@ -548,7 +548,7 @@
   // U.sheet({ title, body, detent, action: {label, act}, onClose, cls }) → { el, close, body }
   U.sheet = (o) => {
     const el = doc.createElement('dialog');
-    el.className = 'rf-sheet rf-glass' + (o.cls ? ' ' + o.cls : '');
+    el.className = 'rf-sheet rf-glass' + (o.fit ? ' sheet-fit' : '') + (o.cls ? ' ' + o.cls : '');
     el.setAttribute('data-detents', o.detents || 'medium large');
     el.setAttribute('closedby', 'any');
     const tid = 'sh' + Math.random().toString(36).slice(2, 8);
@@ -559,7 +559,9 @@
         <h2 class="rf-sheet-title" id="${tid}">${U.esc(o.title || '')}</h2>
         ${o.action ? `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="sm" data-act="${U.esc(o.action.act)}"${o.action.arg != null ? ` data-arg="${U.esc(o.action.arg)}"` : ''}>${U.esc(o.action.label)}</button>` : '<span class="sheet-spacer"></span>'}
       </div>
-      <div class="rf-sheet-body">${o.body || ''}</div>`;
+      <div class="rf-sheet-body" tabindex="-1"${/\sautofocus\b/.test(o.body || '') ? '' : ' autofocus'}>${o.body || ''}</div>`;
+    // Opening focuses the content, not the grabber: Refract makes the grabber a button, and on a sheet
+    // the app opens by itself (not from a tap) Chrome drew its focus ring round it, a blue pill.
     doc.body.appendChild(el);
     enhance(el);
     const ctl = { el, body: el.querySelector('.rf-sheet-body'), closed: false };
@@ -569,6 +571,7 @@
       if (finished) return;
       finished = true; ctl.closed = true;
       const i = openSheets.indexOf(ctl); if (i >= 0) openSheets.splice(i, 1);
+      recede();
       if (o.onClose) safe(() => o.onClose(el.returnValue));
       setTimeout(() => { if (R() && R().destroy) safe(() => R().destroy(el)); el.remove(); }, 450);
     };
@@ -576,12 +579,21 @@
     el.addEventListener('close', finish);
     el.querySelector('[data-sheet-close]').addEventListener('click', () => ctl.close('cancel'));
     openSheets.push(ctl);
+    el.addEventListener('rf-detent', recede);
     const r = R();
     if (r && r.sheet) r.sheet.open(el, { detent: o.detent || 'medium' }).then(finish, finish);
     else { try { el.showModal(); } catch (e) { el.setAttribute('open', ''); } }
+    recede();
     if (o.after) safe(() => o.after(ctl));
     return ctl;
   };
+  // A sheet pulled up to full height sets the page back a little behind it, like a card (not with
+  // reduced motion).
+  function recede() {
+    if (!root) return;
+    const on = !U.reduced() && openSheets.some((s) => !s.closed && s.el.getAttribute('data-detent') === 'large');
+    root.toggleAttribute('data-receded', on);
+  }
   U.closeSheets = () => { for (const s of openSheets.slice()) s.close('cancel'); };
   U.topSheet = () => openSheets[openSheets.length - 1] || null;
 
@@ -591,11 +603,12 @@
     const labels = (o.actions || []).map((a) => a.label);
     return Promise.resolve(G.confirm(`${o.title}\n${o.message || ''}`) ? (o.actions || []).slice(-1)[0].value : 'cancel').then((v) => v || labels);
   };
-  U.confirm = (title, message, label, tone, icon) => {
+  // cancelLabel names the safe choice when "Cancel" would be confusing (cancelling a workout).
+  U.confirm = (title, message, label, tone, icon, cancelLabel) => {
     if (tone === 'critical') U.haptic('heavy');
     return U.dialog({
       title, message, icon, tone: tone === 'critical' ? 'critical' : undefined,
-      actions: [{ label: 'Cancel', value: 'cancel', variant: 'gray', autofocus: true }, { label, value: 'ok', variant: 'filled', tone: tone || 'accent' }],
+      actions: [{ label: cancelLabel || 'Cancel', value: 'cancel', variant: 'gray', autofocus: true }, { label, value: 'ok', variant: 'filled', tone: tone || 'accent' }],
     }).then((v) => v === 'ok');
   };
   U.toast = (title, tone, message, action) => {

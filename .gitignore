@@ -4,3 +4,11 @@ build/
 .DS_Store
 dist/lazy/
 .claude/worktrees/
+# Signing keys never go in the repository (the release key lives in GitHub's secrets and with its
+# owner). The only exception is the public test key used for test builds.
+*.jks
+*.keystore
+*.p12
+*.pem
+release-key*.txt
+!android/gradient-health.keystore

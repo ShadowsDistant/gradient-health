@@ -1,5 +1,8 @@
-/* How it works: every rule the app follows, what it does, why, how strong the research is, and the
- * papers behind it (tap one to open it). Opened from Profile, and from "Why?" links around the app.
+/* How it works: every rule the app follows, in four groups (training, recovery, food and body,
+ * habits), one line each: what it does in a sentence and a dot for how strong the research is. A rule
+ * opens in a sheet with the whole of what it does, why, any caveat, and the papers behind it (tap one
+ * to open it). Opened from Profile and Settings, and from "Why?" links around the app, which open
+ * that rule's sheet straight away.
  */
 (function (G) {
   'use strict';
@@ -7,46 +10,93 @@
   const U = GH.ui = GH.ui || {};
   U.act = U.act || {}; U.screens = U.screens || {};
   const SC = () => GH.science;
+  const LEVEL_ORDER = ['strong', 'moderate', 'early'];
+  let show = 'all'; // the group picked at the top
 
-  function levelBadge(level) {
-    const l = SC().LEVELS[level];
-    return l ? U.badge(l.label, l.tone) : '';
-  }
-  function ruleCard(r) {
-    const refs = r.refs.map((id) => SC().REFS[id]).filter(Boolean);
-    return `<details class="card sci" id="sci-${r.id}" data-key="sci-${r.id}">
-      <summary class="sci-head"><span class="rf-list-icon" data-tone="${r.tone}">${U.icon(r.icon)}</span><span class="sci-title"><span class="t-headline">${U.esc(r.title)}</span>${levelBadge(r.level)}</span>${U.icon('chevron-down', null, 'sci-chev')}</summary>
-      <div class="sci-body">
-        <p class="t-footnote sci-label">What the app does</p><p class="t-callout">${U.esc(r.does)}</p>
-        <p class="t-footnote sci-label">Why</p><p class="t-callout">${U.esc(r.why)}</p>
-        ${r.caveat ? `<p class="t-footnote rf-muted sci-caveat">${U.icon('info', 'sm')}<span>${U.esc(r.caveat)}</span></p>` : ''}
-        <p class="t-footnote sci-label">Research</p>
-        <ul class="sci-refs">${refs.map((x) => `<li><button type="button" class="sci-ref" data-act="openRef" data-arg="${U.esc(SC().refUrl(x))}"><span class="t-footnote"><b>${U.esc(x.cite)}.</b> ${U.esc(x.title)}.</span><span class="t-caption rf-muted">${U.esc(x.journal)}</span></button></li>`).join('')}</ul>
-      </div>
-    </details>`;
+  const firstSentence = (t) => String(t || '').trim().split(/(?<=[.!?])\s+/)[0];
+  const dot = (level) => `<span class="sci-dot" data-level="${U.esc(level)}" aria-hidden="true"></span>`;
+  const levelWord = (level) => (SC().LEVELS[level] || { label: '' }).label;
+  function row(r) {
+    return `<li data-key="sci-${r.id}"><button type="button" class="rf-list-row sci-row" id="sci-${r.id}" data-act="sciOpen" data-arg="${r.id}" aria-label="${U.esc(`${r.title}. ${levelWord(r.level)}.`)}">
+      <span class="rf-list-icon" data-tone="${r.tone}">${U.icon(r.icon)}</span>
+      <span class="rf-list-text"><span class="rf-list-title">${U.esc(r.title)}</span><span class="rf-list-sub sci-sum">${U.esc(firstSentence(r.does))}</span></span>
+      ${dot(r.level)}<span class="rf-list-chevron">${U.icon('chevron-right')}</span>
+    </button></li>`;
   }
 
   U.screens.science = {
     render() {
-      const levels = SC().LEVELS;
+      const sc = SC();
+      const groups = sc.GROUPS.filter(([k]) => show === 'all' || show === k);
       return `${U.navbar('How it works', '', U.glassBtn('chevron-left', 'Back', 'back'))}
         <h1 class="rf-large-title">How it works</h1>
-        <p class="lt-sub t-callout rf-muted">Every rule Gradient Health follows, what it's based on, and how sure the research is. Tap a rule to open it.</p>
-        <div class="section">
-          <div class="card sci-legend">${Object.keys(levels).map((k) => `<div class="sci-level">${levelBadge(k)}<span class="t-footnote rf-muted">${U.esc(levels[k].text)}</span></div>`).join('')}</div>
-          ${SC().RULES.map(ruleCard).join('')}
-          <p class="t-footnote rf-muted">General information, not medical advice. Research findings are averages across groups of people, so your results can differ.</p>
+        <p class="lt-sub t-callout rf-muted">The rules behind your plan, and how sure the research is.</p>
+        <div class="sci-top" data-key="sci-top">
+          <div class="sci-filter" role="group" aria-label="Show">${[['all', 'All']].concat(sc.GROUPS).map(([k, t]) => `<button type="button" class="rf-chip" aria-pressed="${show === k}" data-act="sciShow" data-arg="${k}">${U.esc(t)}</button>`).join('')}</div>
+          <button type="button" class="sci-key" data-act="sciKey">${LEVEL_ORDER.map((l) => `<span class="sci-key-item">${dot(l)}${U.esc(levelWord(l).replace(/ evidence$/, ''))}</span>`).join('')}<span class="sci-key-more t-footnote">${U.icon('info', 'sm')}What these mean</span></button>
+        </div>
+        <div class="section sci-groups">
+          ${groups.map(([k, t]) => {
+            const rules = sc.RULES.filter((r) => r.cat === k);
+            return `<h3 class="rf-list-header sci-head" data-key="sci-h-${k}">${U.esc(t)}<span class="sci-count t-footnote">${rules.length}</span></h3>
+              <ul class="rf-list sci-list" data-key="sci-l-${k}">${rules.map(row).join('')}</ul>`;
+          }).join('')}
+          <p class="rf-list-footer">General information, not medical advice. Research findings are averages across groups of people, so your results can differ.</p>
         </div>`;
     },
-    // U.open('science', ruleId) opens that rule and scrolls to it.
+    // U.open('science', ruleId): the rule's row is brought into view and its sheet opens.
     focus(root, id) {
-      const el = root.querySelector(`#sci-${CSS.escape(id)}`);
-      if (!el) return;
-      el.open = true;
-      setTimeout(() => el.scrollIntoView({ block: 'start', behavior: U.reduced() ? 'auto' : 'smooth' }), 60);
+      if (!SC().RULES.some((r) => r.id === id)) return;
+      let el = root.querySelector(`#sci-${CSS.escape(id)}`);
+      if (!el && show !== 'all') { show = 'all'; U.render(); el = root.querySelector(`#sci-${CSS.escape(id)}`); }
+      if (el) {
+        el.scrollIntoView({ block: 'center', behavior: 'auto' });
+        el.classList.add('is-flash');
+        setTimeout(() => el.classList.remove('is-flash'), 1400);
+      }
+      setTimeout(() => openRule(id), 120);
     },
   };
+
+  // One rule in full: its evidence, what the app does, why, the caveat, and the papers (folded away).
+  function openRule(id) {
+    const sc = SC();
+    const r = sc.RULES.find((x) => x.id === id);
+    if (!r) return null;
+    const l = sc.LEVELS[r.level] || { label: '', text: '' };
+    const refs = r.refs.map((k) => sc.REFS[k]).filter(Boolean);
+    return U.sheet({
+      title: r.title, detents: 'medium large', detent: 'large', cls: 'sci-sheet',
+      body: `<div class="sheet-pad sci-detail">
+        <div class="sci-hero">
+          <span class="rf-list-icon" data-tone="${r.tone}">${U.icon(r.icon)}</span>
+          <span class="sci-hero-text"><span class="sci-level">${dot(r.level)}<b class="t-subhead">${U.esc(l.label)}</b></span><span class="t-footnote rf-muted">${U.esc(l.text)}</span></span>
+        </div>
+        <section class="sci-block"><h3 class="sci-label">What the app does</h3><p class="t-body">${U.esc(r.does)}</p></section>
+        <section class="sci-block"><h3 class="sci-label">Why</h3><p class="t-body">${U.esc(r.why)}</p></section>
+        ${r.caveat ? `<p class="sci-caveat t-footnote">${U.icon('info', 'sm')}<span>${U.esc(r.caveat)}</span></p>` : ''}
+        ${refs.length ? `<details class="sci-studies">
+          <summary><span class="sci-label">The research</span><span class="t-footnote rf-muted">${U.plural(refs.length, 'source')}</span>${U.icon('chevron-down', 'sm', 'sci-chev')}</summary>
+          <ul class="sci-refs">${refs.map((x) => `<li><button type="button" class="sci-ref" data-act="openRef" data-arg="${U.esc(sc.refUrl(x))}"><b class="t-footnote">${U.esc(x.cite)}</b><span class="t-caption">${U.esc(x.title)}</span><span class="t-caption rf-muted">${U.esc(x.journal)}</span></button></li>`).join('')}</ul>
+        </details>` : ''}
+      </div>`,
+    });
+  }
+  U.openRule = openRule;
+  U.act.sciOpen = (el) => openRule(el.dataset.arg);
+  U.act.sciShow = (el) => {
+    show = el.dataset.arg || 'all';
+    U.haptic('select');
+    U.render();
+  };
+  U.act.sciKey = () => U.sheet({
+    title: 'Evidence', detents: 'medium', fit: true,
+    body: `<ul class="rf-list sci-levels">${LEVEL_ORDER.map((k) => { const l = SC().LEVELS[k]; return `<li><div class="rf-list-row">${dot(k)}<span class="rf-list-text"><span class="rf-list-title">${U.esc(l.label)}</span><span class="rf-list-sub">${U.esc(l.text)}</span></span></div></li>`; }).join('')}</ul>
+      <p class="sheet-pad t-footnote rf-muted">Each rule shows the strongest evidence behind it. Tap a rule for the papers.</p>`,
+  });
   U.act.openRef = (el) => { const url = el.dataset.arg; if (url && GH.platform) GH.platform.openUrl(url); };
-  // "Why?" links elsewhere in the app.
+  // "Why?" links elsewhere in the app. The chip form is for lists where a link under every row
+  // would repeat (the Coach page).
   U.whyLink = (ruleId, label) => `<button type="button" class="rf-btn why-link" data-variant="plain" data-size="sm" data-act="openScience" data-arg="${U.esc(ruleId)}">${U.esc(label || 'Why?')}</button>`;
+  U.whyChip = (ruleId) => `<button type="button" class="why-chip" data-act="openScience" data-arg="${U.esc(ruleId)}" aria-label="Why: the research behind this">${U.icon('info', 'sm')}Why</button>`;
 })(typeof window !== 'undefined' ? window : globalThis);

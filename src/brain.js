@@ -199,7 +199,7 @@
       events: [{ type: 'settings', day, days: p.days, weekdays: p.weekdays, minutes: p.minutes }],
       log: [], weights: [], protein: {}, health: { days: {}, hc: {}, manual: {}, lastSync: null, status: null },
       feel: {}, sleepChip: {}, measurements: [], active: null, celebrated: {}, pendingLines: [],
-      insightsDismissed: {}, insightsShown: {}, ai: { enabled: false, mode: 'local', reports: [], chat: [], model: null }, volWeeksDone: [], seen: {}, coachChat: [],
+      insightsDismissed: {}, insightsShown: {}, ai: { enabled: false, mode: 'device', reports: [], chat: [], model: null }, volWeeksDone: [], seen: {},
       place: {}, lastPlace: null,
     };
     if (p.weightKg) S.weights.push({ day, kg: p.weightKg, src: 'profile' });
@@ -1174,11 +1174,13 @@
     const plan = todayPlan(S, day, cal);
     if (plan.type === 'done') return { error: 'done' };
     let tplIdx = plan.type === 'workout' ? plan.tpl : null;
+    let pulled = null;
     if (tplIdx == null) {
       // Training on a light day pulls the next session forward.
       const next = plan.next;
       if (!next) return { error: 'none' };
-      S.events.push({ type: 'move', from: next.day, to: day, at: day });
+      pulled = { type: 'move', from: next.day, to: day, at: day };
+      S.events.push(pulled);
       tplIdx = next.tpl;
     }
     const session = buildSession(S, day, tplIdx, { short: o.short, cal: calendar(S, day) });
@@ -1189,7 +1191,24 @@
       finisher: session.finisher ? { moveId: session.finisher.moveId, rounds: 0, rir: null } : null,
       tests: {}, warmupDone: 0,
     };
+    if (pulled) S.active.pulled = Object.assign({}, pulled);
     return { session, steps: st };
+  }
+
+  // Cancels the workout in progress: nothing from it is kept, it doesn't count, and today's plan can
+  // be started again. A session pulled forward onto a light day to start it goes back where it was.
+  // Returns what was cancelled (or null).
+  function cancelWorkout(S) {
+    const a = S.active;
+    if (!a) return null;
+    if (a.pulled) {
+      for (let i = S.events.length - 1; i >= 0; i--) {
+        const e = S.events[i];
+        if (e.type === 'move' && e.from === a.pulled.from && e.to === a.pulled.to && e.at === a.pulled.at) { S.events.splice(i, 1); break; }
+      }
+    }
+    S.active = null;
+    return a;
   }
 
   function itemIndex(A, item) {
@@ -1903,7 +1922,7 @@
   GH.brain = {
     DAY_MS, dayOf, dayFromStr, dayStr, weekday, weekStart, fmtDay, fmtMin, GROUPS, GROUP_NAME, JOINTS, LB_PER_KG,
     defaultProfile, programFor, templateFor, templateTitle, newState, applyBaseline, rungs, filtersFor,
-    calendar, weekOf, todayPlan, readiness, buildSession, estimate, steps, startWorkout, completeStep, currentTarget,
+    calendar, weekOf, todayPlan, readiness, buildSession, estimate, steps, startWorkout, cancelWorkout, completeStep, currentTarget,
     setRir, amendLast, swapItem, swapOptions, finishWorkout, progress, levelUp, nextWeight, weeklyVolumeUpdate, recordTest, testDue,
     logLight, autoWalk, addWeight, weightStats, proteinGoal, proteinToday, addProtein, undoProtein, weeklySets,
     updateSettings, scheduleSettings, settingsAt, moveSession, setEquipment, reprogram, ladderLevel, mobilityFlow, loadInfo, isDone, relink, median,

@@ -28,8 +28,11 @@
     const load = B().loadInfo(S, m);
     const cues = (m.cues || []).slice(0, S.complexity > 0 ? 1 : 3);
     const muscles = (m.muscles || []).map(MUSCLE_NAME);
-    const views = U.figure3dOk && U.figure3dOk() && !U.reduced();
-    return `<div class="sheet-fig-card"><div class="sheet-fig"></div>${U.tempoHtml ? U.tempoHtml(m) : ''}${views ? `<div class="fig-view" data-key="figview">${U.seg('figView', [['three-quarter', 'Angle'], ['side', 'Side'], ['front', 'Front']], 'three-quarter', 'View', ' data-size="sm" data-on="figView"')}</div>` : ''}${U.reduced() ? '<button type="button" class="rf-btn" data-size="sm" data-act="figOnce">Play one rep</button>' : ''}</div>
+    const views = U.figure3dOk && U.figure3dOk();
+    // The figure always moves (the movement is the instruction); with reduced motion on there's a
+    // button to stop it.
+    const pause = U.reduced() ? '<button type="button" class="rf-btn fig-pause" data-size="sm" data-act="figPause" aria-pressed="false">Pause</button>' : '';
+    return `<div class="sheet-fig-card"><div class="sheet-fig"></div>${U.tempoHtml ? U.tempoHtml(m) : ''}${views || pause ? `<div class="fig-view" data-key="figview">${views ? U.seg('figView', [['three-quarter', 'Angle'], ['side', 'Side'], ['front', 'Front']], 'three-quarter', 'View', ' data-size="sm" data-on="figView"') : ''}${pause}</div>` : ''}</div>
       <div class="sheet-pad">
         <p class="t-footnote rf-muted">${U.esc([B().GROUP_NAME[m.group] || m.group].concat(muscles.length ? [muscles.join(', ')] : []).join(' · '))}${load && load.label ? ` · ${U.esc(load.label)}` : ''}${m.uni ? ' · one side at a time' : ''}</p>
         ${opts && opts.side ? `<p class="pl-side${opts.side === (S.catchup.arm.side || 'L') ? ' is-lead' : ''}">${U.side(opts.side)} side shown</p>` : ''}
@@ -54,7 +57,13 @@
       onClose: () => { dropSheetFig(); if (opts && opts.onClose) opts.onClose(); if (first && U.els().playerEl.hidden) { U.render(); if (U.checklistCheck) U.checklistCheck(); } },
     });
   };
-  U.act.figOnce = () => { if (sheetFig && sheetFig.playOnce) sheetFig.playOnce(); };
+  U.act.figPause = (el) => {
+    if (!sheetFig) return;
+    const stop = el.getAttribute('aria-pressed') !== 'true';
+    if (stop) sheetFig.pause(); else sheetFig.play();
+    el.setAttribute('aria-pressed', String(stop));
+    el.textContent = stop ? 'Play' : 'Pause';
+  };
   U.on.figView = (el, ev, v) => { if (sheetFig && sheetFig.setView) sheetFig.setView(v); };
 
   // A ladder: its rungs in order, the current one marked; tap a rung to see it.

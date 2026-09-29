@@ -30,7 +30,7 @@
     d('v', SCHEMA); d('vol', {}); d('complexity', 0); d('noStreak', 0); d('hardStreak', 0); d('pain', {}); d('excluded', []);
     d('weights', []); d('protein', {}); d('feel', {}); d('sleepChip', {}); d('measurements', []); d('active', null);
     d('celebrated', {}); d('pendingLines', []); d('insightsDismissed', {}); d('insightsShown', {}); d('volWeeksDone', []);
-    d('health', {}); d('ai', {}); d('seen', {}); d('coachChat', []);
+    d('health', {}); d('ai', {}); d('seen', {});
     const h = S.health;
     if (!h.days) h.days = {};
     if (!h.hc) h.hc = {};
@@ -40,7 +40,10 @@
     if (!h.written) h.written = {};
     const ai = S.ai;
     if (ai.enabled == null) ai.enabled = false;
-    if (ai.mode !== 'api' && ai.mode !== 'local' && ai.mode !== 'device') ai.mode = ai.enabled ? 'api' : 'local';
+    // 1.2 round 3: the chat is the on-device model or Claude. The built-in coach's chat ('local') is
+    // gone (it still writes the weekly report and grounds the on-device answers), and so is its log.
+    if (ai.mode !== 'api' && ai.mode !== 'device') ai.mode = ai.enabled ? 'api' : 'device';
+    delete S.coachChat;
     if (!Array.isArray(ai.reports)) ai.reports = [];
     if (!Array.isArray(ai.chat)) ai.chat = [];
     if (!Array.isArray(ai.deviceChat)) ai.deviceChat = [];

@@ -52,7 +52,7 @@ const MESSAGES = {
   auth: 'That API key didn\'t work. Check it in Settings, under Coach.',
   permission: 'This API key can\'t use the coach. Check its permissions in the Claude Console.',
   rate: 'The coach is busy. Try again in a minute.',
-  offline: 'You\'re offline. The built-in coach and your insights still work.',
+  offline: 'You\'re offline. The on-device coach and your insights still work.',
   overloaded: 'The coach is overloaded right now. Try again soon.',
   refusal: 'The coach couldn\'t help with that one. Try asking another way.',
   cut: 'The answer was cut short. Try again.',
