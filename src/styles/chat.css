@@ -6,7 +6,8 @@
 .chat-pill:active { scale: .97; }
 .chat-pill > svg { flex: none; color: var(--hue-violet); }
 .chat-pill > svg:last-child { color: var(--label-secondary); margin-inline-start: auto; }
-.chat-pill .pill-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Big text on a narrow phone wraps to a second line rather than cutting the words off. */
+.chat-pill .pill-text { min-width: 0; padding-block: 6px; line-height: 1.25; overflow-wrap: anywhere; }
 .chat-pill .pill-sub { color: var(--label-secondary); font-weight: 500; }
 .chat-pill .pill-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--label-tertiary); }
 .chat-pill .pill-dot[data-on] { background: var(--positive); box-shadow: 0 0 0 3px color-mix(in oklab, var(--positive) 22%, transparent); }

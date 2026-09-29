@@ -499,7 +499,7 @@
       const q = (ctl.el.querySelector('#handQ') || {}).value || '';
       const ok = GH.platform.share(GH.coach.claudePrompt(U.S, U.today(), q), 'claude');
       if (!ok) { U.toast('Couldn\'t open another app', 'caution'); return; }
-      U.haptic('go');
+      U.haptic('success');
       ctl.close('ok');
     };
     return ctl;

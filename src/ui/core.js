@@ -619,7 +619,8 @@
   };
   U.toast = (title, tone, message, action) => {
     if (tone === 'positive') U.haptic('success');
-    else if (tone === 'critical' || tone === 'caution') U.haptic('error');
+    else if (tone === 'critical') U.haptic('error');
+    else if (tone === 'caution') U.haptic('warning');
     const r = R();
     if (r && r.toast) { try { return r.toast({ title, message, tone: tone || 'neutral', action, position: 'top' }); } catch (e) { /* ignore */ } }
     return null;
@@ -702,7 +703,7 @@
       ptrEl.style.transform = `translateY(${d}px) rotate(${d * 3}deg)`;
       ptrEl.style.opacity = String(Math.min(1, d / 56));
       const armed = d >= 64;
-      if (armed !== pull.armed) { pull.armed = armed; ptrEl.classList.toggle('armed', armed); if (armed) U.haptic('tick'); }
+      if (armed !== pull.armed) { pull.armed = armed; ptrEl.classList.toggle('armed', armed); if (armed) U.haptic('detent'); }
     }, { passive: true });
     const end = () => {
       if (!pull) return;

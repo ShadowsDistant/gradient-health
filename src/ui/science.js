@@ -33,7 +33,7 @@
         <h1 class="rf-large-title">How it works</h1>
         <p class="lt-sub t-callout rf-muted">The rules behind your plan, and how sure the research is.</p>
         <div class="sci-top" data-key="sci-top">
-          <div class="sci-filter" role="group" aria-label="Show">${[['all', 'All']].concat(sc.GROUPS).map(([k, t]) => `<button type="button" class="rf-chip" aria-pressed="${show === k}" data-act="sciShow" data-arg="${k}">${U.esc(t)}</button>`).join('')}</div>
+          <div class="sci-filter" role="group" aria-label="Show" data-hscroll>${[['all', 'All']].concat(sc.GROUPS).map(([k, t]) => `<button type="button" class="rf-chip" aria-pressed="${show === k}" data-act="sciShow" data-arg="${k}">${U.esc(t)}</button>`).join('')}</div>
           <button type="button" class="sci-key" data-act="sciKey">${LEVEL_ORDER.map((l) => `<span class="sci-key-item">${dot(l)}${U.esc(levelWord(l).replace(/ evidence$/, ''))}</span>`).join('')}<span class="sci-key-more t-footnote">${U.icon('info', 'sm')}What these mean</span></button>
         </div>
         <div class="section sci-groups">
