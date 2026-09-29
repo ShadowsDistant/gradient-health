@@ -62,7 +62,8 @@ jobs:
           echo "file=build/$f" >> "$GITHUB_OUTPUT"
           echo "id=$id" >> "$GITHUB_OUTPUT"
           echo "$f: $(stat -c %s "build/$f") bytes, SHA-256 $(sha256sum "build/$f" | cut -d' ' -f1)"
-      - run: npx playwright install --with-deps chromium
+      - name: Playwright and Chromium
+        run: npm install --no-save playwright@1.56.1 && npx playwright install --with-deps chromium
       - run: node test/model-check.mjs "${{ steps.model.outputs.file }}" "${{ steps.model.outputs.id }}"
 
   native:
