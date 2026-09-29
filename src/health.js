@@ -238,6 +238,13 @@
     return r && r[key] != null ? r[key] : null;
   }
   const CHIP_MIN = { '<5': 270, '5-6': 330, '6-7': 390, '7-8': 450, '8+': 510 };
+  // The most recent value on or before `day`, looking back at most `back` days: { value, day } or null.
+  // Some watch apps sync late or skip days, and a night that ends before the 4 am rollover is filed
+  // under the day before, so "today only" would show a blank tile.
+  function latest(S, key, day, back) {
+    for (let d = day; d >= day - (back || 0); d--) { const v = value(S, key, d); if (v != null) return { value: v, day: d }; }
+    return null;
+  }
   function series(S, key, from, to) {
     const out = [];
     for (let d = from; d <= to; d++) { const v = key === 'weightKg' ? weightOn(S, d) : value(S, key, d); if (v != null) out.push({ day: d, value: v }); }
@@ -277,6 +284,7 @@
     const ws = B().weightStats(S, day);
     return {
       sleepMin: value(S, 'sleepMin', day), sleepFromChip: r.sleepMin == null && !!(S.sleepChip && S.sleepChip[day]),
+      sleepLast: latest(S, 'sleepMin', day, 1), rhrLast: latest(S, 'rhr', day, 3), hrvLast: latest(S, 'hrv', day, 3),
       bed: r.bed || null, wake: r.wake || null, stages: r.stages || null,
       steps: r.steps != null ? r.steps : null, rhr: r.rhr != null ? r.rhr : null, hrv: r.hrv != null ? r.hrv : null,
       weightAvg7: ws.avg7, weightLast: ws.last, activeMin: activeMinutes(S, day, day),
@@ -333,6 +341,6 @@
   GH.health = {
     status, connected, request, onPerms, openSettings, read, sync, syncDays, ingest, rebuild, logManual, removeManual, setFeel, setSleepChip,
     canWrite, workoutRecord, writeWorkout, writeRecent, onWrite,
-    addMeasurement, measureDue, value, series, stats, baseline, weightOn, activity, activeMinutes, appWorkouts, today, afterSync, prettyType, CHIP_MIN,
+    addMeasurement, measureDue, value, latest, series, stats, baseline, weightOn, activity, activeMinutes, appWorkouts, today, afterSync, prettyType, CHIP_MIN,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

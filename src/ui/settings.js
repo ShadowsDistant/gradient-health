@@ -20,7 +20,7 @@
       const hcDetail = !app ? 'Android app only' : on ? 'On' : st === 'unsupported' ? 'Needs Android 14' : st === 'unavailable' ? 'Unavailable' : 'Off';
       const hasKey = AI() && AI().hasKey();
       const claude = S.ai.mode === 'api';
-      const eqCount = (p.equipment.db || []).length + (p.equipment.kb || []).length + ['ball', 'band', 'bar', 'table'].filter((k) => p.equipment[k]).length;
+      const eqCount = U.equipCount(p.equipment);
       const canWrite = on && H().canWrite && H().canWrite();
       const ver = (GH.platform && GH.platform.appVersion()) || GH.VERSION || 'web';
       return `${U.navbar('Settings', '', U.glassBtn('chevron-left', 'Back', 'back'))}
@@ -28,7 +28,7 @@
         <div class="section">
           <h3 class="rf-list-header">Your plan</h3>
           <ul class="rf-list">
-            ${U.row({ icon: 'pencil', tone: 'indigo', title: 'Update my answers', sub: 'Goals, experience, body check, food, sleep', act: 'editAnswers', chevron: true })}
+            ${U.row({ icon: 'pencil', tone: 'indigo', title: 'Your answers', sub: 'Change any of them, one at a time', act: 'editAnswers', chevron: true })}
             ${U.row({ icon: 'calendar', tone: 'sky', title: 'Days and time', detail: `${p.days} days · ${p.minutes} min`, act: 'daysSheet', chevron: true })}
             ${U.row({ icon: 'bag', tone: 'amber', title: 'Equipment', detail: eqCount ? U.plural(eqCount, 'item') : 'Bodyweight', act: 'editEquipment', chevron: true })}
             ${U.row({ icon: 'timer', tone: 'green', title: 'Retake the baseline test', sub: 'Push-ups, plank, curls', act: 'baselineSheet', chevron: true })}
@@ -41,7 +41,7 @@
           </ul>
           <h3 class="rf-list-header" id="coach">Coach</h3>
           <ul class="rf-list">
-            <li><div class="rf-list-row set-coach"><span class="rf-list-text"><span class="rf-list-title">Coach</span><span class="rf-list-subtitle">Weekly report and questions</span></span>${U.seg('setCoach', [['local', 'Built-in'], ['api', 'Claude']], claude ? 'api' : 'local', 'Coach', ' data-on="setCoachMode" data-size="sm"')}</div></li>
+            <li><div class="rf-list-row set-coach"><span class="rf-list-text"><span class="rf-list-title">Coach</span><span class="rf-list-sub">Weekly report and questions</span></span>${U.seg('setCoach', [['local', 'Built-in'], ['api', 'Claude']], claude ? 'api' : 'local', 'Coach', ' data-on="setCoachMode" data-size="sm"')}</div></li>
             ${claude ? `${hasKey ? U.row({ icon: 'lock', tone: 'green', title: 'API key saved on this phone', sub: S.ai.model && S.ai.model.name ? `Using ${U.esc(S.ai.model.name)}` : 'The model is picked on first use', act: 'keySheet', detail: 'Change', chevron: true }) : U.row({ icon: 'lock', tone: 'amber', title: 'Add your API key', sub: 'From the Claude Console, starts with sk-ant-', act: 'keySheet', chevron: true })}
               ${hasKey ? U.row({ icon: 'trash', tone: 'rose', title: 'Delete key', act: 'deleteKey' }) : ''}` : ''}
             ${U.row({ icon: 'share', tone: 'violet', title: 'Ask in the Claude app', sub: 'Uses your own Claude plan, no key needed', act: 'askClaudeApp', chevron: true })}
@@ -54,13 +54,13 @@
             ${U.sw('Vibration', pr.vibrate !== false, 'data-on="setPref" data-k="vibrate"', 'Buzzes for timers and the end of rest')}
             ${U.sw('Haptic feedback', pr.haptics !== false, 'data-on="setPref" data-k="haptics"', 'Light taps when you press buttons and switches')}
             ${U.sw('Supersets', pr.supersets !== false, 'data-on="setPref" data-k="supersets"', 'Pair exercises that don\'t share muscles')}
-            <li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">Rest</span><span class="rf-list-subtitle">Auto: 90 s after big moves, 60 s after small ones and in supersets</span></span>${U.seg('setRest', [['auto', 'Auto'], ['60', '60 s'], ['90', '90 s']], String(pr.rest), 'Rest between sets', ' data-on="setRest" data-size="sm"')}</div></li>
+            <li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">Rest</span><span class="rf-list-sub">Auto: 90 s after big moves, 60 s after small ones and in supersets</span></span>${U.seg('setRest', [['auto', 'Auto'], ['60', '60 s'], ['90', '90 s']], String(pr.rest), 'Rest between sets', ' data-on="setRest" data-size="sm"')}</div></li>
           </ul>
           <h3 class="rf-list-header">Look</h3>
           <ul class="rf-list">
             <li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">Theme</span></span>${U.seg('setTheme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], pr.theme || 'system', 'Theme', ' data-on="setTheme" data-size="sm"')}</div></li>
             ${U.sw('Increase contrast', !!pr.contrast, 'data-on="setPref" data-k="contrast"')}
-            <li><div class="rf-list-row set-slider"><span class="rf-list-text"><span class="rf-list-title">Glass</span><span class="rf-list-subtitle">Clear to frosted</span></span><div class="rf-slider"><div class="rf-slider-control"><input class="rf-slider-input" type="range" min="0" max="1" step="0.05" value="${pr.density == null ? 0.5 : pr.density}" aria-label="Glass density" data-on="setDensity"></div></div></div></li>
+            <li><div class="rf-list-row set-slider"><span class="rf-list-text"><span class="rf-list-title">Glass</span><span class="rf-list-sub">Clear to frosted</span></span><div class="rf-slider"><div class="rf-slider-control"><input class="rf-slider-input" type="range" min="0" max="1" step="0.05" value="${pr.density == null ? 0.5 : pr.density}" aria-label="Glass density" data-on="setDensity"></div></div></div></li>
           </ul>
           <h3 class="rf-list-header">Your data</h3>
           <ul class="rf-list">
@@ -83,7 +83,14 @@
     },
   };
 
-  U.act.editAnswers = () => U.editAnswers();
+  // Each answer opens on its own screen with Save, so nothing else has to be gone through again.
+  const STEP_ICON = { about: ['person', 'sky'], goals: ['flag', 'green'], experience: ['chart', 'indigo'], schedule: ['calendar', 'teal'], equipment: ['bag', 'amber'], body: ['heart', 'rose'], food: ['food', 'green'], sleep: ['moon', 'indigo'], style: ['sliders', 'violet'] };
+  U.act.editAnswers = () => {
+    const p = U.S.profile;
+    U.sheet({ title: 'Your answers', body: `<p class="t-footnote rf-muted sheet-lead">Pick one to change. Your plan updates when you save.</p>
+      <ul class="rf-list">${U.editableSteps().map((st) => { const [ic, tone] = STEP_ICON[st.id] || ['pencil', 'sky']; return U.row({ icon: ic, tone, title: U.esc(st.title), sub: U.esc(U.answerSummary(st.id, p)), act: 'editStep', arg: st.id, chevron: true }); }).join('')}</ul>` });
+  };
+  U.act.editStep = (el) => { U.closeSheets(); U.editAnswers(el.dataset.arg); };
   U.act.editEquipment = () => U.editAnswers('equipment');
   U.act.openPrivacyView = () => U.open('privacy');
   U.on.setPref = (el, ev, v) => {

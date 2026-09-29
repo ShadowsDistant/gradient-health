@@ -83,7 +83,7 @@
       const ach = U.achievements(S, day);
       const earned = ach.filter((a) => a.earned).length;
       const eq = p.equipment || {};
-      const eqCount = (eq.db || []).length + (eq.kb || []).length + ['ball', 'band', 'bar', 'table'].filter((k) => eq[k]).length;
+      const eqCount = U.equipCount(eq);
       const ver = (GH.platform && GH.platform.appVersion()) || GH.VERSION || '';
       const verShort = String(ver).split(' ')[0];
       return `${U.navbar('Profile', U.glassBtn('sliders', 'Settings', 'openSettings'), U.glassBtn('chevron-left', 'Back', 'back'))}
@@ -113,7 +113,7 @@
         </div>
         <h2 class="sec-title t-title-3">Your plan</h2>
         <div class="section"><ul class="rf-list">
-          ${U.row({ icon: 'flag', tone: 'green', title: 'Goals', sub: U.esc(U.cap((p.goals || []).map((g) => (GOAL_NAMES[g] || g).toLowerCase()).join(', '))), act: 'editAnswers', chevron: true })}
+          ${U.row({ icon: 'flag', tone: 'green', title: 'Goals', sub: U.esc(U.cap((p.goals || []).map((g) => (GOAL_NAMES[g] || g).toLowerCase()).join(', '))), act: 'editStep', arg: 'goals', chevron: true })}
           ${U.row({ icon: 'calendar', tone: 'sky', title: 'Days and time', detail: `${p.days} days · ${p.minutes} min`, act: 'daysSheet', chevron: true })}
           ${U.row({ icon: 'bag', tone: 'amber', title: 'Equipment', detail: eqCount ? U.plural(eqCount, 'item') : 'Bodyweight', act: 'editEquipment', chevron: true })}
         </ul></div>

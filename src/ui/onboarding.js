@@ -30,7 +30,8 @@
   ];
 
   let Q = null;       // the draft answers
-  let mode = 'new';
+  let mode = 'new';   // 'new' set-up, 'edit' (every screen), 'one' (a single screen with Save)
+  let only = null;    // the screen 'one' mode edits
   let idx = 0;
   let tmpS = null;    // Health Connect data read during set-up, handed to the new state
   let plank = null;
@@ -64,8 +65,14 @@
   }
 
   /* ---------------------------------------------------------------- show / hide */
+  // The fade-out that's still running, if any. It holds its end state (fill: forwards) until it's
+  // cancelled, so it must be cancelled before the set-up is shown again, or the page would sit there
+  // invisible and catch every tap.
+  let closing = null;
+  function stopClosing() { if (closing) { const a = closing; closing = null; a.onfinish = null; a.cancel(); } }
   function open() {
     const el = U.els().onboardEl;
+    stopClosing();
     const was = !el.hidden;
     el.hidden = false;
     shownStep = null;
@@ -79,19 +86,48 @@
     if (!Q) { Q = draftFrom(B().defaultProfile()); mode = 'new'; idx = 0; }
     open();
   };
+  // With a step id, only that screen opens, with Save: changing your equipment doesn't mean walking
+  // through the whole set-up again.
   U.editAnswers = (stepId) => {
     Q = draftFrom(U.S.profile);
-    mode = 'edit';
-    idx = Math.max(0, stepId ? visible().findIndex((s) => s.id === stepId) : 0);
+    mode = stepId ? 'one' : 'edit';
+    only = stepId || null;
+    idx = 0;
+    dir = 1;
     open();
+  };
+  U.editableSteps = () => STEPS.filter((s) => !s.modes && !s.when && s.id !== 'plan');
+  // Every piece of equipment the person has ticked (each weight counts once).
+  U.equipCount = (eq) => (eq.db || []).length + (eq.kb || []).length + ['ball', 'band', 'bar', 'table'].filter((k) => eq[k]).length;
+  const EXP = { never: 'Never really trained', onoff: 'On and off', lt1: 'Under a year, steadily', '1to3': '1 to 3 years', '3plus': 'More than 3 years' };
+  // A short line with the current answers on one set-up screen, for the "Your answers" list.
+  U.answerSummary = (id, p) => {
+    const eq = p.equipment || {};
+    const w = p.weightKg ? U.fmtW(p.weightKg, 0) : null;
+    const names = Object.fromEntries(GOALS);
+    switch (id) {
+      case 'about': return [p.age ? `${p.age} years` : null, w, p.heightCm ? (U.lb() ? `${Math.floor(p.heightCm / 30.48)} ft ${Math.round(p.heightCm / 2.54 % 12)} in` : `${p.heightCm} cm`) : null].filter(Boolean).join(' · ') || 'Age, weight and height';
+      case 'goals': return (p.goals || []).map((g) => names[g] || g).join(', ') || 'Consistency';
+      case 'experience': return EXP[p.experience] || 'How long you\'ve trained';
+      case 'schedule': return `${p.days} days a week · ${p.minutes} min`;
+      case 'equipment': { const n = U.equipCount(eq); return n ? U.plural(n, 'item') : 'Bodyweight only'; }
+      case 'body': return (p.careful || []).length ? `Careful with ${(p.careful || []).map((j) => (JOINTS.find((x) => x[0] === j) || [j, j])[1].toLowerCase()).join(', ')}` : 'Injuries, stronger side, impact';
+      case 'food': return `${p.weightGoal === 'lose' ? 'Lose' : p.weightGoal === 'gain' ? 'Gain' : 'Maintain'} weight · protein ${p.protein && p.protein.track === false ? 'off' : 'on'}`;
+      case 'sleep': return p.sleepTypical ? `Usually ${p.sleepTypical.replace('<', 'under ')} h` : 'Your usual sleep';
+      case 'style': return `Supersets ${p.prefs && p.prefs.supersets === false ? 'off' : 'on'} · rest ${p.prefs && p.prefs.rest !== 'auto' ? `${p.prefs.rest} s` : 'auto'}`;
+      default: return '';
+    }
   };
   // Slides the set-up away, then runs `after` (with the app already drawn underneath).
   function dismiss(after) {
     const el = U.els().onboardEl;
     const done = () => { el.hidden = true; el.innerHTML = ''; shownStep = null; };
     if (after) after();
+    stopClosing();
     if (U.reduced() || !el.animate) { done(); return; }
-    el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(24px)' }], { duration: 240, easing: 'cubic-bezier(0.3, 0, 0.8, 0.15)', fill: 'forwards' }).onfinish = done;
+    const a = el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(24px)' }], { duration: 240, easing: 'cubic-bezier(0.3, 0, 0.8, 0.15)', fill: 'forwards' });
+    closing = a;
+    a.onfinish = () => { if (closing === a) closing = null; done(); a.cancel(); };
   }
   function close() {
     stopPlank();
@@ -99,11 +135,12 @@
     dismiss(() => U.render());
   }
   U.onboardBack = () => {
+    if (mode === 'one') { close(); return true; }
     if (idx > 0) { idx--; dir = -1; draw(); return true; }
     if (mode === 'edit') { close(); return true; }
     return false;
   };
-  const visible = () => STEPS.filter((s) => (!s.modes || s.modes.includes(mode)) && (!s.when || s.when()));
+  const visible = () => (mode === 'one' ? STEPS.filter((s) => s.id === only) : STEPS.filter((s) => (!s.modes || s.modes.includes(mode)) && (!s.when || s.when())));
 
   let shownStep = null;
   let dir = 1;
@@ -114,14 +151,15 @@
     const st = steps[idx];
     let body = '';
     try { body = VIEW[st.id](); } catch (e) { body = `<p class="t-body">${U.esc(e.message)}</p>`; }
-    const last = st.id === 'plan';
+    const one = mode === 'one';
+    const last = st.id === 'plan' || one;
     const changed = shownStep !== st.id;
     // Top bar and buttons stay put; each step's content is fresh and slides in from the side it
     // comes from. Re-drawing the same step patches it in place, so scroll and focus stay.
     U.morph(el, `
       <div class="ob-top">
-        ${idx > 0 || mode === 'edit' ? U.glassBtn(idx > 0 ? 'chevron-left' : 'close', idx > 0 ? 'Back' : 'Close', 'obBack') : '<span class="ob-spacer"></span>'}
-        <div class="ob-progress">${U.progress((idx + 1) / steps.length, 'Set-up progress')}<span class="t-caption rf-muted rf-num">${idx + 1} of ${steps.length}</span></div>
+        ${idx > 0 && !one || mode !== 'new' ? U.glassBtn(idx > 0 && !one ? 'chevron-left' : 'close', idx > 0 && !one ? 'Back' : 'Close', 'obBack') : '<span class="ob-spacer"></span>'}
+        ${one ? '<span class="ob-progress"></span>' : `<div class="ob-progress">${U.progress((idx + 1) / steps.length, 'Set-up progress')}<span class="t-caption rf-muted rf-num">${idx + 1} of ${steps.length}</span></div>`}
         <span class="ob-spacer"></span>
       </div>
       <div class="ob-scroll" id="obScroll">
@@ -133,7 +171,7 @@
       <div class="ob-actions">
         ${st.id === 'health' && !H().connected(H().status()) ? '<button type="button" class="rf-btn rf-glass" data-size="lg" data-act="obNext">Not now</button>' : ''}
         ${st.id === 'baseline' ? '<button type="button" class="rf-btn rf-glass" data-size="lg" data-act="obSkipTest">Skip the test</button>' : ''}
-        <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="${last ? 'obFinish' : 'obNext'}">${last ? (mode === 'edit' ? 'Save changes' : 'Start') : 'Continue'}</button>
+        <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="${last ? 'obFinish' : 'obNext'}">${last ? (one ? 'Save' : mode === 'edit' ? 'Save changes' : 'Start') : 'Continue'}</button>
       </div>`);
     const sc = el.querySelector('#obScroll');
     if (changed) {
@@ -178,7 +216,7 @@
   const numInput = (k, value, placeholder, extra) => `<input class="rf-input" type="number" inputmode="decimal" value="${value == null ? '' : U.esc(value)}" placeholder="${U.esc(placeholder || '')}" ${bind(k, 'num')} ${extra || ''}>`;
   const group = (title, html, foot) => `<div class="ob-group">${title ? `<h3 class="rf-list-header">${U.esc(title)}</h3>` : ''}${html}${foot ? `<p class="rf-list-footer">${U.esc(foot)}</p>` : ''}</div>`;
   const lead = (text) => `<p class="t-body ob-lead">${text}</p>`;
-  const choice = (k, options, value, type) => `<ul class="rf-list ob-choice" role="radiogroup">${options.map(([v, t, sub]) => `<li><label class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(t)}</span>${sub ? `<span class="rf-list-subtitle">${U.esc(sub)}</span>` : ''}</span><input type="radio" class="ob-radio" name="${k}" value="${U.esc(v)}"${String(v) === String(value) ? ' checked' : ''} ${bind(k, type)}><span class="ob-check">${U.icon('check')}</span></label></li>`).join('')}</ul>`;
+  const choice = (k, options, value, type) => `<ul class="rf-list ob-choice" role="radiogroup">${options.map(([v, t, sub]) => `<li><label class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(t)}</span>${sub ? `<span class="rf-list-sub">${U.esc(sub)}</span>` : ''}</span><input type="radio" class="ob-radio" name="${k}" value="${U.esc(v)}"${String(v) === String(value) ? ' checked' : ''} ${bind(k, type)}><span class="ob-check">${U.icon('check')}</span></label></li>`).join('')}</ul>`;
 
   /* ---------------------------------------------------------------- screens */
   const VIEW = {};
@@ -436,7 +474,7 @@
   /* ---------------------------------------------------------------- finish */
   U.act.obFinish = () => {
     stopPlank();
-    if (mode === 'edit') return saveEdit();
+    if (mode !== 'new') return saveEdit();
     const day = B().dayOf(Date.now(), 4);
     const p = draftProfile();
     const S = B().newState(p, baselineFrom(), day);

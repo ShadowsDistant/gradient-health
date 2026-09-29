@@ -2704,7 +2704,9 @@
 }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--label); font-family: var(--font-sans); -webkit-tap-highlight-color: transparent; }
 body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
-button { font: inherit; }
+/* Plain buttons take the surrounding font. Refract's controls (.rf-*) keep their own sizes, so this
+   must not reach them: an unlayered `font` here would beat Refract's layered rules. */
+button:not([class*="rf-"]) { font: inherit; }
 .app { position: fixed; inset: 0; overflow: hidden; background: var(--bg); }
 .screen { position: absolute; inset: 0; overflow-x: hidden; overflow-y: auto; box-sizing: border-box; padding: var(--topbar-h) var(--sar) calc(var(--float-gap) + 96px) var(--sal); scrollbar-width: none; outline: none; }
 .screen::-webkit-scrollbar { display: none; }
@@ -2738,7 +2740,17 @@ button.stat:active, .insight-line:active, .pl-fig-card:active, .tap-card:active 
 .rf-large-title { overflow-wrap: anywhere; }
 .lt-sub { margin: calc(-1 * var(--space-2)) 0 var(--space-4); padding: 0 var(--space-4); }
 .section { display: grid; gap: var(--space-3); padding: 0 var(--space-4); margin-bottom: var(--space-6); min-width: 0; }
-.sec-title { margin: 0 0 var(--space-2); padding: 0 var(--space-4); }
+/* Section titles sit close to what they label, with more room above (margins collapse with the
+   section before). */
+.sec-title { margin: calc(var(--space-6) + var(--space-1)) 0 var(--space-2); padding: 0 var(--space-4); }
+/* Grouped lists inside a section: a header sits right on its own list, with room above it; a
+   footer hugs the list it explains. */
+.section > .rf-list-header { padding-block-end: 0; margin-block: var(--space-4) calc(var(--space-2) - var(--space-3)); }
+.section > .rf-list-header:first-child { margin-block-start: 0; }
+.section > .rf-list-footer { padding-block-start: 0; margin-block-start: calc(var(--space-2) - var(--space-3)); }
+/* Long titles and descriptions wrap instead of being cut off. */
+.rf-list-title, .rf-list-sub { white-space: normal; overflow-wrap: anywhere; }
+.rf-list-sub { display: block; }
 .card { background: var(--bg-raised); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: var(--space-4); display: grid; gap: var(--space-2); min-width: 0; }
 .card > p, .card p { margin: 0; }
 .row-between { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
@@ -2757,9 +2769,14 @@ button.stat:active, .insight-line:active, .pl-fig-card:active, .tap-card:active 
 .float-actions > * { pointer-events: auto; }
 .float-actions .rf-btn { min-block-size: 48px; }
 .float-actions .btn-main { flex: 1 1 auto; max-width: 320px; }
+.float-actions:has(> .btn-main:only-child) { justify-content: center; }
+.float-actions > .btn-main:only-child { max-width: 420px; }
 .rf-tabbar[data-position="bottom"] { inset-block-end: var(--tabbar-bottom); transition: translate var(--duration-spring-smooth) var(--spring-smooth), opacity var(--duration-base) var(--ease-standard); }
 .rf-tabbar[data-away] { translate: 0 calc(100% + var(--tabbar-bottom)); opacity: 0; pointer-events: none; }
 .rf-tabbar-accessory[hidden] { display: none; }
+/* The workout capsule must stay readable over any screen: if its lens layer is ever missing, it
+   falls back to solid glass instead of going see-through. */
+.rf-tabbar-accessory.rf-glass[data-lens-ready]:not(:has(> .rf-lens-layer)) { background-color: var(--glass-fill-solid); -webkit-backdrop-filter: blur(24px) saturate(160%); backdrop-filter: blur(24px) saturate(160%); }
 .acc-text { display: grid; min-width: 0; line-height: 1.2; }
 .acc-text b { font-size: .875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -2833,9 +2850,9 @@ button.stat { cursor: pointer; }
 .ch-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; background: var(--c); }
 .ch-swatch-avg, .ch-swatch-line { height: 2px; border-radius: 1px; }
 .ch-swatch-dot { border-radius: 50%; width: 8px; height: 8px; }
-.ch-plot { position: relative; display: grid; grid-template-columns: auto 1fr; gap: var(--space-2); height: 120px; cursor: crosshair; }
+.ch-plot { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--space-2); height: 120px; cursor: crosshair; }
 .ch-y { display: flex; flex-direction: column; justify-content: space-between; color: var(--label-secondary); text-align: end; min-width: 3.2em; }
-.ch-svg { width: 100%; height: 100%; overflow: visible; }
+.ch-svg { display: block; width: 100%; height: 100%; min-height: 0; overflow: visible; }
 .ch-axis { stroke: var(--separator); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .ch-bar { fill: var(--c); opacity: .85; }
 .ch-line { fill: none; stroke: var(--c); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
@@ -3038,9 +3055,12 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 .tour-fig > svg { display: block; width: 100%; height: 100%; }
 .tour-rir { width: min(100%, 320px); display: grid; gap: var(--space-2); padding: var(--space-4); border-radius: var(--radius-xl); background: var(--bg-raised); box-shadow: var(--shadow-card); }
 .tour-rir .rf-segmented { width: 100%; }
-.tour-tabs { display: flex; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius-full); background: var(--bg-raised); box-shadow: var(--shadow-card); }
-.tour-tab { display: grid; justify-items: center; gap: 2px; padding: var(--space-2) var(--space-2); min-width: 48px; color: var(--label-secondary); }
-.tour-tab:first-child { color: var(--accent); }
+.tour, .tour-art, .tour-copy { min-width: 0; max-width: 100%; }
+/* The tab bar replica on the last page matches the real one (size, pill, label type). */
+.tour-tabs { display: flex; width: 100%; max-width: 360px; box-sizing: border-box; block-size: var(--bar-height); padding: 4px; border-radius: var(--radius-full); background: color-mix(in oklab, var(--bg-raised) 94%, transparent); box-shadow: var(--rim-light), var(--shadow-glass-lifted); }
+.tour-tab { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; border-radius: var(--radius-full); color: var(--label); font-size: .6875rem; font-weight: 600; line-height: 1.3; letter-spacing: .01em; --rf-icon-size: var(--icon-lg); }
+.tour-tab.is-on { color: var(--accent); background: var(--fill-selected); }
+.tour-tab-label { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .tour-copy { display: grid; gap: var(--space-2); max-width: 36ch; }
 .tour-copy h3, .tour-copy p { margin: 0; }
 .tour-dots { display: flex; gap: 6px; }
@@ -3112,6 +3132,12 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 @media (prefers-reduced-motion: reduce) {
   .screen { scroll-behavior: auto; }
 }
+
+/* Plain text sheets (explainers). */
+.sheet-prose { display: grid; gap: var(--space-3); align-content: start; }
+.sheet-prose p { margin: 0; }
+.sheet-prose > .rf-btn { justify-self: start; margin-top: var(--space-1); }
+.sheet-lead { margin: 0 0 var(--space-3); }
 </style>
 </head>
 <body>
@@ -11224,6 +11250,13 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
     return r && r[key] != null ? r[key] : null;
   }
   const CHIP_MIN = { '<5': 270, '5-6': 330, '6-7': 390, '7-8': 450, '8+': 510 };
+  // The most recent value on or before `day`, looking back at most `back` days: { value, day } or null.
+  // Some watch apps sync late or skip days, and a night that ends before the 4 am rollover is filed
+  // under the day before, so "today only" would show a blank tile.
+  function latest(S, key, day, back) {
+    for (let d = day; d >= day - (back || 0); d--) { const v = value(S, key, d); if (v != null) return { value: v, day: d }; }
+    return null;
+  }
   function series(S, key, from, to) {
     const out = [];
     for (let d = from; d <= to; d++) { const v = key === 'weightKg' ? weightOn(S, d) : value(S, key, d); if (v != null) out.push({ day: d, value: v }); }
@@ -11263,6 +11296,7 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
     const ws = B().weightStats(S, day);
     return {
       sleepMin: value(S, 'sleepMin', day), sleepFromChip: r.sleepMin == null && !!(S.sleepChip && S.sleepChip[day]),
+      sleepLast: latest(S, 'sleepMin', day, 1), rhrLast: latest(S, 'rhr', day, 3), hrvLast: latest(S, 'hrv', day, 3),
       bed: r.bed || null, wake: r.wake || null, stages: r.stages || null,
       steps: r.steps != null ? r.steps : null, rhr: r.rhr != null ? r.rhr : null, hrv: r.hrv != null ? r.hrv : null,
       weightAvg7: ws.avg7, weightLast: ws.last, activeMin: activeMinutes(S, day, day),
@@ -11319,7 +11353,7 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
   GH.health = {
     status, connected, request, onPerms, openSettings, read, sync, syncDays, ingest, rebuild, logManual, removeManual, setFeel, setSleepChip,
     canWrite, workoutRecord, writeWorkout, writeRecent, onWrite,
-    addMeasurement, measureDue, value, series, stats, baseline, weightOn, activity, activeMinutes, appWorkouts, today, afterSync, prettyType, CHIP_MIN,
+    addMeasurement, measureDue, value, latest, series, stats, baseline, weightOn, activity, activeMinutes, appWorkouts, today, afterSync, prettyType, CHIP_MIN,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
@@ -11980,8 +12014,18 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
   /* ---------------------------------------------------------------- formatting */
   const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' };
   U.esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ESC[c]);
+  // Glyphs Refract doesn't have, drawn on its grid (24 px, 1.75 stroke, round ends).
+  const EXTRA_ICONS = {
+    food: '<path d="M7 3.5v6a2 2 0 0 0 4 0v-6M9 3.5V21M17 21V3.5c-2 1-3.25 3.4-3.25 6.25V14H17"/>',
+    flame: '<path d="M12 20.75c3.5 0 5.75-2.4 5.75-5.5 0-3.4-2.5-5.4-3.75-8.6-.3-.8-1.35-.9-1.75-.15-.6 1.15-1.3 2.05-2.25 2.85C8.35 10.7 6.25 12.3 6.25 15.25c0 3.1 2.25 5.5 5.75 5.5z"/><path d="M12 20.75c-1.45 0-2.5-1-2.5-2.4 0-1.55 1.35-2.35 2.05-3.4a.55.55 0 0 1 .9 0c.7 1.05 2.05 1.85 2.05 3.4 0 1.4-1.05 2.4-2.5 2.4z"/>',
+    scan: '<path d="M4 8.5V6.25A2.25 2.25 0 0 1 6.25 4H8.5M15.5 4h2.25A2.25 2.25 0 0 1 20 6.25V8.5M20 15.5v2.25A2.25 2.25 0 0 1 17.75 20H15.5M8.5 20H6.25A2.25 2.25 0 0 1 4 17.75V15.5M8 8.5v7M11 8.5v7M13.5 8.5v7M16 8.5v7"/>',
+    dumbbell: '<path d="M4.25 9.5v5M7.25 7v10M16.75 7v10M19.75 9.5v5M7.25 12h9.5"/>',
+    chip: '<rect x="7" y="7" width="10" height="10" rx="2.25"/><path d="M9.75 4v3M14.25 4v3M9.75 17v3M14.25 17v3M4 9.75h3M4 14.25h3M17 9.75h3M17 14.25h3M10.25 12h3.5"/>',
+    scale: '<rect x="4" y="4" width="16" height="16" rx="4.5"/><path d="M8.75 10a4.6 4.6 0 0 1 6.5 0M12 10.25l1.25-1.75"/>',
+  };
   U.icon = (name, size, cls) => {
     const r = R();
+    if (r && r.icons && EXTRA_ICONS[name] && !r.icons[name]) r.icons[name] = EXTRA_ICONS[name];
     if (r && r.icon) { try { const svg = r.icon(name, { size: size || undefined, className: cls || '' }); if (svg) return svg; } catch (e) { /* unknown glyph */ } }
     return `<span class="${cls || ''}" data-icon="${U.esc(name)}" aria-hidden="true"></span>`;
   };
@@ -12022,14 +12066,14 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
   // A segmented control; `extra` adds attributes. Rows in lists pass data-size="sm" and stay compact.
   U.seg = (name, options, value, label, extra) => `<div class="rf-segmented"${/data-size="sm"/.test(extra || '') ? '' : ' data-block'} aria-label="${U.esc(label)}"${extra || ''}>${options.map(([v, t]) => `<label class="rf-segment"><input type="radio" name="${U.esc(name)}" value="${U.esc(v)}"${String(v) === String(value) ? ' checked' : ''}>${U.esc(t)}</label>`).join('')}</div>`;
   U.chip = (label, pressed, attrs) => `<button type="button" class="rf-chip" aria-pressed="${pressed ? 'true' : 'false'}" ${attrs || ''}>${U.icon('check', null, 'rf-chip-check')}${U.esc(label)}</button>`;
-  U.sw = (label, checked, attrs, sub) => `<label class="rf-list-row rf-switch" data-layout="row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(label)}</span>${sub ? `<span class="rf-list-subtitle">${U.esc(sub)}</span>` : ''}</span><span class="rf-switch-track"><input type="checkbox" role="switch"${checked ? ' checked' : ''} ${attrs || ''}><span class="rf-switch-thumb" aria-hidden="true"></span></span></label>`;
+  U.sw = (label, checked, attrs, sub) => `<label class="rf-list-row rf-switch" data-layout="row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(label)}</span>${sub ? `<span class="rf-list-sub">${U.esc(sub)}</span>` : ''}</span><span class="rf-switch-track"><input type="checkbox" role="switch"${checked ? ' checked' : ''} ${attrs || ''}><span class="rf-switch-thumb" aria-hidden="true"></span></span></label>`;
   U.stepper = (id, value, min, max, label, attrs, step) => `<div class="rf-stepper" role="group" aria-label="${U.esc(label)}"><button type="button" class="rf-stepper-btn" data-step="-${step || 1}" aria-label="Less ${U.esc(label.toLowerCase())}">${U.icon('minus')}</button><input class="rf-stepper-value" type="number" inputmode="numeric" id="${U.esc(id)}" value="${U.esc(value)}" min="${min}" max="${max}" step="${step || 1}" aria-label="${U.esc(label)}" ${attrs || ''}><button type="button" class="rf-stepper-btn" data-step="${step || 1}" aria-label="More ${U.esc(label.toLowerCase())}">${U.icon('plus')}</button></div>`;
   U.progress = (v, label, tone) => `<div class="rf-progress" role="progressbar" aria-label="${U.esc(label)}" aria-valuenow="${Math.round(Math.min(1, v) * 100)}" aria-valuemin="0" aria-valuemax="100" style="--rf-value:${Math.max(0, Math.min(1, v)).toFixed(3)}"${tone ? ` data-tone="${tone}"` : ''}><span class="rf-progress-fill"></span></div>`;
   U.ring = (v, label, inner, size, tone) => `<span class="rf-ring" data-size="${size || 'lg'}" style="--rf-value:${Math.max(0, Math.min(1, v)).toFixed(3)}" role="progressbar" aria-label="${U.esc(label)}" aria-valuenow="${Math.round(v * 100)}" aria-valuemin="0" aria-valuemax="100"${tone ? ` data-tone="${tone}"` : ''}><svg viewBox="0 0 72 72"><circle class="rf-ring-track" cx="36" cy="36" r="32" pathLength="100"/><circle class="rf-ring-fill" cx="36" cy="36" r="32" pathLength="100"/></svg><span class="rf-ring-label">${inner || ''}</span></span>`;
   U.row = (o) => {
     const tag = o.act ? 'button' : o.href ? 'a' : 'div';
     const attrs = o.act ? ` type="button" data-act="${U.esc(o.act)}"${o.arg != null ? ` data-arg="${U.esc(o.arg)}"` : ''}` : '';
-    return `<li${o.key ? ` data-key="${U.esc(o.key)}"` : ''}><${tag} class="rf-list-row${o.cls ? ' ' + o.cls : ''}"${attrs}>${o.icon ? `<span class="rf-list-icon" data-tone="${o.tone || 'sky'}">${U.icon(o.icon)}</span>` : ''}<span class="rf-list-text"><span class="rf-list-title">${o.title}</span>${o.sub ? `<span class="rf-list-subtitle">${o.sub}</span>` : ''}</span>${o.detail != null ? `<span class="rf-list-detail">${o.detail}</span>` : ''}${o.chevron ? `<span class="rf-list-chevron">${U.icon('chevron-right')}</span>` : ''}</${tag}></li>`;
+    return `<li${o.key ? ` data-key="${U.esc(o.key)}"` : ''}><${tag} class="rf-list-row${o.cls ? ' ' + o.cls : ''}"${attrs}>${o.icon ? `<span class="rf-list-icon" data-tone="${o.tone || 'sky'}">${U.icon(o.icon)}</span>` : ''}<span class="rf-list-text"><span class="rf-list-title">${o.title}</span>${o.sub ? `<span class="rf-list-sub">${o.sub}</span>` : ''}</span>${o.detail != null ? `<span class="rf-list-detail">${o.detail}</span>` : ''}${o.chevron ? `<span class="rf-list-chevron">${U.icon('chevron-right')}</span>` : ''}</${tag}></li>`;
   };
   U.navbar = (title, trailing, leading) => `<header class="rf-navbar"><div class="rf-navbar-leading">${leading || ''}</div><h2 class="rf-navbar-title">${U.esc(title)}</h2><div class="rf-navbar-trailing">${trailing || ''}</div></header>`;
   U.glassBtn = (iconName, label, act, extra) => `<button type="button" class="rf-btn rf-glass" data-shape="circle" data-lens aria-label="${U.esc(label)}" data-act="${act}" ${extra || ''}>${U.icon(iconName)}</button>`;
@@ -12038,7 +12082,7 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
 
   /* ---------------------------------------------------------------- morph */
   // Nodes Refract adds inside components. Re-renders leave them where they are.
-  const INJECTED = ['rf-lens-layer', 'rf-segmented-thumb', 'rf-tabbar-lens', 'rf-slider-ticks', 'rf-pagedots-worm', 'rf-glass-bridge', 'rf-burst-layer', 'rf-ghost', 'rf-bead', 'rf-bead-ring'];
+  const INJECTED = ['rf-lens-layer', 'rf-segmented-thumb', 'rf-tabbar-lens', 'rf-slider-ticks', 'rf-slider-track', 'rf-slider-fill', 'rf-slider-thumb', 'rf-pagedots-worm', 'rf-glass-bridge', 'rf-burst-layer', 'rf-ghost', 'rf-bead', 'rf-bead-ring'];
   // Classes that carry a Refract behavior: an element never turns into or out of one of these in
   // place, it's replaced instead (so no stale listeners or injected parts are left behind).
   const BEHAVIOR = ['rf-segmented', 'rf-switch', 'rf-slider', 'rf-stepper', 'rf-chip', 'rf-glass', 'rf-navbar', 'rf-scroll-edge', 'rf-search', 'rf-pagedots', 'rf-activity', 'rf-tabbar'];
@@ -12191,6 +12235,7 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
   /* ---------------------------------------------------------------- layout */
   let root, topbar, screen, floatEl, playerEl, onboardEl, tabbar, accessory, ptrEl;
   const TABS = [['today', 'home', 'Today'], ['plan', 'calendar', 'Plan'], ['health', 'heart', 'Health'], ['progress', 'chart', 'Progress'], ['moves', 'library', 'Moves']];
+  U.tabList = () => TABS;
   function layout() {
     root = doc.getElementById('app');
     root.innerHTML = `
@@ -12202,7 +12247,7 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
       <div id="ptr" class="ptr" aria-hidden="true"><span class="ptr-dot">${U.icon('refresh')}</span></div>
       <div id="float" class="float-actions" hidden></div>
       <nav class="rf-tabbar" data-position="bottom" aria-label="Main" id="tabbar">
-        <div class="rf-tabbar-accessory rf-glass" data-lens id="accessory" hidden></div>
+        <div class="rf-tabbar-accessory rf-glass" data-variant="thick" data-lens id="accessory" hidden></div>
         <div class="rf-tabbar-bar rf-glass" data-lens>
           ${TABS.map(([id, ic, label]) => `<button type="button" class="rf-tab" data-tab="${id}"${id === 'today' ? ' aria-current="page"' : ''}>${U.icon(ic)}<span class="rf-tab-label">${label}</span></button>`).join('')}
         </div>
@@ -12379,7 +12424,9 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
     const show = !!A && playerEl.hidden && !(U.route.tab === 'today' && !U.route.view);
     const was = !accessory.hidden;
     accessory.hidden = !show;
-    if (!show) { accessory.innerHTML = ''; return; }
+    // Emptied with morph, not innerHTML: that keeps Refract's lens layer (the capsule's glass), which
+    // Refract only puts back on a resize.
+    if (!show) { U.morph(accessory, ''); return; }
     const doneN = A.steps.slice(0, A.idx).filter((s) => s.kind === 'set').length;
     const total = A.steps.filter((s) => s.kind === 'set').length;
     U.morph(accessory, `<span class="rf-activity-leading" data-tone="coral" style="width:36px;height:36px">${U.icon('timer', 'sm')}</span>
@@ -12907,7 +12954,8 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
   function tourArt(p) {
     if (p.art === 'fig') return '<div class="tour-fig" data-morph="keep"></div>';
     if (p.art === 'rir') return `<div class="tour-rir">${U.seg('tourRir', [['0', '0'], ['12', '1-2'], ['3', '3+']], '12', 'Reps left in the tank', '')}<p class="t-footnote rf-muted">Reps left in the tank</p></div>`;
-    if (p.art === 'tabs') return `<div class="tour-tabs">${[['home', 'Today'], ['calendar', 'Plan'], ['heart', 'Health'], ['chart', 'Progress'], ['library', 'Moves']].map(([ic, l]) => `<span class="tour-tab">${U.icon(ic)}<span class="t-caption">${l}</span></span>`).join('')}</div>`;
+    // A small copy of the real tab bar: same capsule, same selection pill, same tabs.
+    if (p.art === 'tabs') return `<div class="tour-tabs" aria-hidden="true">${U.tabList().map(([id, ic, l], k) => `<span class="tour-tab${k === 0 ? ' is-on' : ''}">${U.icon(ic)}<span class="tour-tab-label">${U.esc(l)}</span></span>`).join('')}</div>`;
     return `<div class="tour-icon">${U.icon(p.art)}</div>`;
   }
   U.showTour = () => {
@@ -13031,7 +13079,8 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
   ];
 
   let Q = null;       // the draft answers
-  let mode = 'new';
+  let mode = 'new';   // 'new' set-up, 'edit' (every screen), 'one' (a single screen with Save)
+  let only = null;    // the screen 'one' mode edits
   let idx = 0;
   let tmpS = null;    // Health Connect data read during set-up, handed to the new state
   let plank = null;
@@ -13065,8 +13114,14 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
   }
 
   /* ---------------------------------------------------------------- show / hide */
+  // The fade-out that's still running, if any. It holds its end state (fill: forwards) until it's
+  // cancelled, so it must be cancelled before the set-up is shown again, or the page would sit there
+  // invisible and catch every tap.
+  let closing = null;
+  function stopClosing() { if (closing) { const a = closing; closing = null; a.onfinish = null; a.cancel(); } }
   function open() {
     const el = U.els().onboardEl;
+    stopClosing();
     const was = !el.hidden;
     el.hidden = false;
     shownStep = null;
@@ -13080,19 +13135,48 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
     if (!Q) { Q = draftFrom(B().defaultProfile()); mode = 'new'; idx = 0; }
     open();
   };
+  // With a step id, only that screen opens, with Save: changing your equipment doesn't mean walking
+  // through the whole set-up again.
   U.editAnswers = (stepId) => {
     Q = draftFrom(U.S.profile);
-    mode = 'edit';
-    idx = Math.max(0, stepId ? visible().findIndex((s) => s.id === stepId) : 0);
+    mode = stepId ? 'one' : 'edit';
+    only = stepId || null;
+    idx = 0;
+    dir = 1;
     open();
+  };
+  U.editableSteps = () => STEPS.filter((s) => !s.modes && !s.when && s.id !== 'plan');
+  // Every piece of equipment the person has ticked (each weight counts once).
+  U.equipCount = (eq) => (eq.db || []).length + (eq.kb || []).length + ['ball', 'band', 'bar', 'table'].filter((k) => eq[k]).length;
+  const EXP = { never: 'Never really trained', onoff: 'On and off', lt1: 'Under a year, steadily', '1to3': '1 to 3 years', '3plus': 'More than 3 years' };
+  // A short line with the current answers on one set-up screen, for the "Your answers" list.
+  U.answerSummary = (id, p) => {
+    const eq = p.equipment || {};
+    const w = p.weightKg ? U.fmtW(p.weightKg, 0) : null;
+    const names = Object.fromEntries(GOALS);
+    switch (id) {
+      case 'about': return [p.age ? `${p.age} years` : null, w, p.heightCm ? (U.lb() ? `${Math.floor(p.heightCm / 30.48)} ft ${Math.round(p.heightCm / 2.54 % 12)} in` : `${p.heightCm} cm`) : null].filter(Boolean).join(' · ') || 'Age, weight and height';
+      case 'goals': return (p.goals || []).map((g) => names[g] || g).join(', ') || 'Consistency';
+      case 'experience': return EXP[p.experience] || 'How long you\'ve trained';
+      case 'schedule': return `${p.days} days a week · ${p.minutes} min`;
+      case 'equipment': { const n = U.equipCount(eq); return n ? U.plural(n, 'item') : 'Bodyweight only'; }
+      case 'body': return (p.careful || []).length ? `Careful with ${(p.careful || []).map((j) => (JOINTS.find((x) => x[0] === j) || [j, j])[1].toLowerCase()).join(', ')}` : 'Injuries, stronger side, impact';
+      case 'food': return `${p.weightGoal === 'lose' ? 'Lose' : p.weightGoal === 'gain' ? 'Gain' : 'Maintain'} weight · protein ${p.protein && p.protein.track === false ? 'off' : 'on'}`;
+      case 'sleep': return p.sleepTypical ? `Usually ${p.sleepTypical.replace('<', 'under ')} h` : 'Your usual sleep';
+      case 'style': return `Supersets ${p.prefs && p.prefs.supersets === false ? 'off' : 'on'} · rest ${p.prefs && p.prefs.rest !== 'auto' ? `${p.prefs.rest} s` : 'auto'}`;
+      default: return '';
+    }
   };
   // Slides the set-up away, then runs `after` (with the app already drawn underneath).
   function dismiss(after) {
     const el = U.els().onboardEl;
     const done = () => { el.hidden = true; el.innerHTML = ''; shownStep = null; };
     if (after) after();
+    stopClosing();
     if (U.reduced() || !el.animate) { done(); return; }
-    el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(24px)' }], { duration: 240, easing: 'cubic-bezier(0.3, 0, 0.8, 0.15)', fill: 'forwards' }).onfinish = done;
+    const a = el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(24px)' }], { duration: 240, easing: 'cubic-bezier(0.3, 0, 0.8, 0.15)', fill: 'forwards' });
+    closing = a;
+    a.onfinish = () => { if (closing === a) closing = null; done(); a.cancel(); };
   }
   function close() {
     stopPlank();
@@ -13100,11 +13184,12 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
     dismiss(() => U.render());
   }
   U.onboardBack = () => {
+    if (mode === 'one') { close(); return true; }
     if (idx > 0) { idx--; dir = -1; draw(); return true; }
     if (mode === 'edit') { close(); return true; }
     return false;
   };
-  const visible = () => STEPS.filter((s) => (!s.modes || s.modes.includes(mode)) && (!s.when || s.when()));
+  const visible = () => (mode === 'one' ? STEPS.filter((s) => s.id === only) : STEPS.filter((s) => (!s.modes || s.modes.includes(mode)) && (!s.when || s.when())));
 
   let shownStep = null;
   let dir = 1;
@@ -13115,14 +13200,15 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
     const st = steps[idx];
     let body = '';
     try { body = VIEW[st.id](); } catch (e) { body = `<p class="t-body">${U.esc(e.message)}</p>`; }
-    const last = st.id === 'plan';
+    const one = mode === 'one';
+    const last = st.id === 'plan' || one;
     const changed = shownStep !== st.id;
     // Top bar and buttons stay put; each step's content is fresh and slides in from the side it
     // comes from. Re-drawing the same step patches it in place, so scroll and focus stay.
     U.morph(el, `
       <div class="ob-top">
-        ${idx > 0 || mode === 'edit' ? U.glassBtn(idx > 0 ? 'chevron-left' : 'close', idx > 0 ? 'Back' : 'Close', 'obBack') : '<span class="ob-spacer"></span>'}
-        <div class="ob-progress">${U.progress((idx + 1) / steps.length, 'Set-up progress')}<span class="t-caption rf-muted rf-num">${idx + 1} of ${steps.length}</span></div>
+        ${idx > 0 && !one || mode !== 'new' ? U.glassBtn(idx > 0 && !one ? 'chevron-left' : 'close', idx > 0 && !one ? 'Back' : 'Close', 'obBack') : '<span class="ob-spacer"></span>'}
+        ${one ? '<span class="ob-progress"></span>' : `<div class="ob-progress">${U.progress((idx + 1) / steps.length, 'Set-up progress')}<span class="t-caption rf-muted rf-num">${idx + 1} of ${steps.length}</span></div>`}
         <span class="ob-spacer"></span>
       </div>
       <div class="ob-scroll" id="obScroll">
@@ -13134,7 +13220,7 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
       <div class="ob-actions">
         ${st.id === 'health' && !H().connected(H().status()) ? '<button type="button" class="rf-btn rf-glass" data-size="lg" data-act="obNext">Not now</button>' : ''}
         ${st.id === 'baseline' ? '<button type="button" class="rf-btn rf-glass" data-size="lg" data-act="obSkipTest">Skip the test</button>' : ''}
-        <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="${last ? 'obFinish' : 'obNext'}">${last ? (mode === 'edit' ? 'Save changes' : 'Start') : 'Continue'}</button>
+        <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="${last ? 'obFinish' : 'obNext'}">${last ? (one ? 'Save' : mode === 'edit' ? 'Save changes' : 'Start') : 'Continue'}</button>
       </div>`);
     const sc = el.querySelector('#obScroll');
     if (changed) {
@@ -13179,7 +13265,7 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
   const numInput = (k, value, placeholder, extra) => `<input class="rf-input" type="number" inputmode="decimal" value="${value == null ? '' : U.esc(value)}" placeholder="${U.esc(placeholder || '')}" ${bind(k, 'num')} ${extra || ''}>`;
   const group = (title, html, foot) => `<div class="ob-group">${title ? `<h3 class="rf-list-header">${U.esc(title)}</h3>` : ''}${html}${foot ? `<p class="rf-list-footer">${U.esc(foot)}</p>` : ''}</div>`;
   const lead = (text) => `<p class="t-body ob-lead">${text}</p>`;
-  const choice = (k, options, value, type) => `<ul class="rf-list ob-choice" role="radiogroup">${options.map(([v, t, sub]) => `<li><label class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(t)}</span>${sub ? `<span class="rf-list-subtitle">${U.esc(sub)}</span>` : ''}</span><input type="radio" class="ob-radio" name="${k}" value="${U.esc(v)}"${String(v) === String(value) ? ' checked' : ''} ${bind(k, type)}><span class="ob-check">${U.icon('check')}</span></label></li>`).join('')}</ul>`;
+  const choice = (k, options, value, type) => `<ul class="rf-list ob-choice" role="radiogroup">${options.map(([v, t, sub]) => `<li><label class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(t)}</span>${sub ? `<span class="rf-list-sub">${U.esc(sub)}</span>` : ''}</span><input type="radio" class="ob-radio" name="${k}" value="${U.esc(v)}"${String(v) === String(value) ? ' checked' : ''} ${bind(k, type)}><span class="ob-check">${U.icon('check')}</span></label></li>`).join('')}</ul>`;
 
   /* ---------------------------------------------------------------- screens */
   const VIEW = {};
@@ -13437,7 +13523,7 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
   /* ---------------------------------------------------------------- finish */
   U.act.obFinish = () => {
     stopPlank();
-    if (mode === 'edit') return saveEdit();
+    if (mode !== 'new') return saveEdit();
     const day = B().dayOf(Date.now(), 4);
     const p = draftProfile();
     const S = B().newState(p, baselineFrom(), day);
@@ -14183,8 +14269,8 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
       <h2 class="t-title-2">Walk and mobility</h2>
       <p class="t-callout rf-muted">Do both and today counts for your streak.</p>
       <ul class="rf-list check-list">
-        <li><div class="rf-list-row"><span class="rf-list-icon" data-tone="green">${U.icon('navigate')}</span><span class="rf-list-text"><span class="rf-list-title">Walk ${prog.walkMin}+ min</span><span class="rf-list-subtitle">${U.esc(walkSub)}</span></span>${l.walk ? `<span class="check-done" aria-label="Done">${U.icon('check-circle')}</span>` : '<button type="button" class="rf-btn" data-size="sm" data-act="logWalk">Log walk</button>'}</div></li>
-        <li><div class="rf-list-row"><span class="rf-list-icon" data-tone="teal">${U.icon('leaf')}</span><span class="rf-list-text"><span class="rf-list-title">Mobility flow</span><span class="rf-list-subtitle">5 moves, about 5 min</span></span>${l.mobility ? `<span class="check-done" aria-label="Done">${U.icon('check-circle')}</span>` : '<button type="button" class="rf-btn" data-size="sm" data-act="startMobility">Start</button>'}</div></li>
+        <li><div class="rf-list-row"><span class="rf-list-icon" data-tone="green">${U.icon('navigate')}</span><span class="rf-list-text"><span class="rf-list-title">Walk ${prog.walkMin}+ min</span><span class="rf-list-sub">${U.esc(walkSub)}</span></span>${l.walk ? `<span class="check-done" aria-label="Done">${U.icon('check-circle')}</span>` : '<button type="button" class="rf-btn" data-size="sm" data-act="logWalk">Log walk</button>'}</div></li>
+        <li><div class="rf-list-row"><span class="rf-list-icon" data-tone="teal">${U.icon('leaf')}</span><span class="rf-list-text"><span class="rf-list-title">Mobility flow</span><span class="rf-list-sub">5 moves, about 5 min</span></span>${l.mobility ? `<span class="check-done" aria-label="Done">${U.icon('check-circle')}</span>` : '<button type="button" class="rf-btn" data-size="sm" data-act="startMobility">Start</button>'}</div></li>
       </ul>
       ${next ? `<button type="button" class="rf-btn light-train" data-variant="plain" data-act="trainToday">Train today instead: ${U.esc(B().templateTitle(next.units).toLowerCase())}</button>` : ''}
     </div>`;
@@ -14527,6 +14613,13 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
   }
   U.act.aiReport = () => writeReport(false);
   U.act.openCoachSettings = () => U.open('settings', 'coach');
+  U.act.whyNoData = () => U.sheet({ title: 'Missing numbers', body: `<div class="sheet-prose">
+      <p class="t-body">Gradient Health can only show what your watch or phone app shares with Health Connect.</p>
+      <p class="t-body">Some apps don't share resting heart rate or HRV at all. Samsung Health and Garmin Connect are two of them right now, even though they show those numbers in their own app.</p>
+      <p class="t-body">If your app shares heart rate while you sleep, Gradient Health works out an estimated resting heart rate from it. HRV can't be worked out from heart rate, so that tile stays empty.</p>
+      <p class="t-body">To check what's shared, open Health Connect, then App permissions, pick your watch app and make sure it's allowed to write the data you want.</p>
+      <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-act="hcManage">Open Health Connect</button>
+    </div>` });
   U.act.dismissInsight = (el) => { GH.insights.dismiss(U.S, el.dataset.arg, U.today()); U.commit(); U.toast('Hidden for 30 days', 'neutral'); };
   U.act.insightGo = (el) => U.go(el.dataset.arg);
 
@@ -14661,11 +14754,16 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
     const base = (k) => H().baseline(S, k, day);
     const br = base('rhr'), bh = base('hrv'), bs = base('steps');
     const f = t.feel || {};
+    // Latest reading with how old it is, instead of a blank tile when today's isn't in yet.
+    const ago = (x, night) => (!x ? '' : x.day === day ? (night ? 'last night' : 'today') : x.day === day - 1 ? (night ? 'the night before' : 'yesterday') : `${day - x.day} days ago`);
+    const join = (...parts) => parts.filter(Boolean).join(' · ') || '&nbsp;';
+    const sl = t.sleepLast, rh = t.rhrLast, hv = t.hrvLast;
+    const slSub = !sl ? 'tap to log' : sl.day === day && t.bed ? `asleep ${U.fmtClock(t.bed)}` : sl.day === day && t.sleepFromChip ? 'from your check-in' : ago(sl, true);
     return `<div class="stat-grid">
-      ${tile('moon', 'indigo', 'Sleep', t.sleepMin != null ? U.esc(U.fmtMin(t.sleepMin)) : '–', t.bed ? `asleep ${U.fmtClock(t.bed)}` : t.sleepFromChip ? 'from your check-in' : 'no data', t.sleepMin == null ? 'logSleep' : null)}
-      ${tile('navigate', 'green', 'Steps', t.steps != null ? U.num(t.steps) : '–', bs.n >= 5 ? `usual ${U.num(bs.avg)}` : '&nbsp;')}
-      ${tile('heart', 'rose', 'Resting HR', t.rhr != null ? `${Math.round(t.rhr)} <small>bpm</small>` : '–', br.n >= 5 ? `usual ${Math.round(br.avg)}` : 'no data')}
-      ${tile('wave', 'violet', 'HRV', t.hrv != null ? `${Math.round(t.hrv)} <small>ms</small>` : '–', bh.n >= 5 ? `usual ${Math.round(bh.avg)}` : 'no data')}
+      ${tile('moon', 'indigo', 'Sleep', sl ? U.esc(U.fmtMin(sl.value)) : '–', slSub, !sl ? 'logSleep' : null)}
+      ${tile('navigate', 'green', 'Steps', t.steps != null ? U.num(t.steps) : '–', t.steps != null ? join(bs.n >= 5 ? `usual ${U.num(bs.avg)}` : '') : H().connected(H().status()) ? 'none synced yet today' : 'needs Health Connect')}
+      ${tile('heart', 'rose', 'Resting HR', rh ? `${Math.round(rh.value)} <small>bpm</small>` : '–', rh ? join(rh.day !== day ? ago(rh) : '', br.n >= 5 ? `usual ${Math.round(br.avg)}` : '') : 'not shared by your watch app', rh ? null : 'whyNoData')}
+      ${tile('wave', 'violet', 'HRV', hv ? `${Math.round(hv.value)} <small>ms</small>` : '–', hv ? join(hv.day !== day ? ago(hv) : '', bh.n >= 5 ? `usual ${Math.round(bh.avg)}` : '') : 'not shared by your watch app', hv ? null : 'whyNoData')}
       ${tile('chart', 'teal', 'Weight', t.weightAvg7 != null ? U.esc(U.fmtW(t.weightAvg7)) : '–', t.weightAvg7 != null ? '7-day average' : 'tap to log', t.weightAvg7 == null ? 'logWeight' : null)}
       ${tile('bolt', 'amber', 'Active', `${t.activeMin} <small>min</small>`, 'today')}
       ${S.profile.protein.track !== false ? tile('check-circle', 'green', 'Protein', t.proteinGoal ? `${t.protein} <small>of ${t.proteinGoal} g</small>` : `${t.protein} <small>g</small>`, 'today') : ''}
@@ -15106,7 +15204,7 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
         const why = i >= 0 ? `Level ${i + 1} of ${avail.length}${cur ? ` · now: ${U.target(mv, st.reps)}` : ''}` : miss.length ? `Needs ${miss.join(', ')}` : S.excluded.includes(id) ? 'Hidden by you' : mv.impact ? 'Has jumping or slamming' : 'Not for now';
         return `<li><button type="button" class="rf-list-row${id === showing ? ' is-showing' : ''}${i < 0 ? ' is-muted' : ''}" data-act="ladderShow" data-arg="${id}">
           <span class="rf-list-icon" data-tone="${cur ? 'green' : i >= 0 ? 'sky' : 'indigo'}">${U.icon(cur ? 'star' : i >= 0 ? 'check' : 'lock')}</span>
-          <span class="rf-list-text"><span class="rf-list-title">${U.esc(mv.name)}</span><span class="rf-list-subtitle">${U.esc(why)}</span></span></button></li>`;
+          <span class="rf-list-text"><span class="rf-list-title">${U.esc(mv.name)}</span><span class="rf-list-sub">${U.esc(why)}</span></span></button></li>`;
       }).join('');
       const hidden = S.excluded.includes(showing);
       return `${moveBody(m)}<h3 class="rf-list-header">All levels, easiest first</h3><ul class="rf-list">${rows}</ul>
@@ -15247,7 +15345,7 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
       const ach = U.achievements(S, day);
       const earned = ach.filter((a) => a.earned).length;
       const eq = p.equipment || {};
-      const eqCount = (eq.db || []).length + (eq.kb || []).length + ['ball', 'band', 'bar', 'table'].filter((k) => eq[k]).length;
+      const eqCount = U.equipCount(eq);
       const ver = (GH.platform && GH.platform.appVersion()) || GH.VERSION || '';
       const verShort = String(ver).split(' ')[0];
       return `${U.navbar('Profile', U.glassBtn('sliders', 'Settings', 'openSettings'), U.glassBtn('chevron-left', 'Back', 'back'))}
@@ -15277,7 +15375,7 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
         </div>
         <h2 class="sec-title t-title-3">Your plan</h2>
         <div class="section"><ul class="rf-list">
-          ${U.row({ icon: 'flag', tone: 'green', title: 'Goals', sub: U.esc(U.cap((p.goals || []).map((g) => (GOAL_NAMES[g] || g).toLowerCase()).join(', '))), act: 'editAnswers', chevron: true })}
+          ${U.row({ icon: 'flag', tone: 'green', title: 'Goals', sub: U.esc(U.cap((p.goals || []).map((g) => (GOAL_NAMES[g] || g).toLowerCase()).join(', '))), act: 'editStep', arg: 'goals', chevron: true })}
           ${U.row({ icon: 'calendar', tone: 'sky', title: 'Days and time', detail: `${p.days} days · ${p.minutes} min`, act: 'daysSheet', chevron: true })}
           ${U.row({ icon: 'bag', tone: 'amber', title: 'Equipment', detail: eqCount ? U.plural(eqCount, 'item') : 'Bodyweight', act: 'editEquipment', chevron: true })}
         </ul></div>
@@ -15414,7 +15512,7 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
       const hcDetail = !app ? 'Android app only' : on ? 'On' : st === 'unsupported' ? 'Needs Android 14' : st === 'unavailable' ? 'Unavailable' : 'Off';
       const hasKey = AI() && AI().hasKey();
       const claude = S.ai.mode === 'api';
-      const eqCount = (p.equipment.db || []).length + (p.equipment.kb || []).length + ['ball', 'band', 'bar', 'table'].filter((k) => p.equipment[k]).length;
+      const eqCount = U.equipCount(p.equipment);
       const canWrite = on && H().canWrite && H().canWrite();
       const ver = (GH.platform && GH.platform.appVersion()) || GH.VERSION || 'web';
       return `${U.navbar('Settings', '', U.glassBtn('chevron-left', 'Back', 'back'))}
@@ -15422,7 +15520,7 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
         <div class="section">
           <h3 class="rf-list-header">Your plan</h3>
           <ul class="rf-list">
-            ${U.row({ icon: 'pencil', tone: 'indigo', title: 'Update my answers', sub: 'Goals, experience, body check, food, sleep', act: 'editAnswers', chevron: true })}
+            ${U.row({ icon: 'pencil', tone: 'indigo', title: 'Your answers', sub: 'Change any of them, one at a time', act: 'editAnswers', chevron: true })}
             ${U.row({ icon: 'calendar', tone: 'sky', title: 'Days and time', detail: `${p.days} days · ${p.minutes} min`, act: 'daysSheet', chevron: true })}
             ${U.row({ icon: 'bag', tone: 'amber', title: 'Equipment', detail: eqCount ? U.plural(eqCount, 'item') : 'Bodyweight', act: 'editEquipment', chevron: true })}
             ${U.row({ icon: 'timer', tone: 'green', title: 'Retake the baseline test', sub: 'Push-ups, plank, curls', act: 'baselineSheet', chevron: true })}
@@ -15435,7 +15533,7 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
           </ul>
           <h3 class="rf-list-header" id="coach">Coach</h3>
           <ul class="rf-list">
-            <li><div class="rf-list-row set-coach"><span class="rf-list-text"><span class="rf-list-title">Coach</span><span class="rf-list-subtitle">Weekly report and questions</span></span>${U.seg('setCoach', [['local', 'Built-in'], ['api', 'Claude']], claude ? 'api' : 'local', 'Coach', ' data-on="setCoachMode" data-size="sm"')}</div></li>
+            <li><div class="rf-list-row set-coach"><span class="rf-list-text"><span class="rf-list-title">Coach</span><span class="rf-list-sub">Weekly report and questions</span></span>${U.seg('setCoach', [['local', 'Built-in'], ['api', 'Claude']], claude ? 'api' : 'local', 'Coach', ' data-on="setCoachMode" data-size="sm"')}</div></li>
             ${claude ? `${hasKey ? U.row({ icon: 'lock', tone: 'green', title: 'API key saved on this phone', sub: S.ai.model && S.ai.model.name ? `Using ${U.esc(S.ai.model.name)}` : 'The model is picked on first use', act: 'keySheet', detail: 'Change', chevron: true }) : U.row({ icon: 'lock', tone: 'amber', title: 'Add your API key', sub: 'From the Claude Console, starts with sk-ant-', act: 'keySheet', chevron: true })}
               ${hasKey ? U.row({ icon: 'trash', tone: 'rose', title: 'Delete key', act: 'deleteKey' }) : ''}` : ''}
             ${U.row({ icon: 'share', tone: 'violet', title: 'Ask in the Claude app', sub: 'Uses your own Claude plan, no key needed', act: 'askClaudeApp', chevron: true })}
@@ -15448,13 +15546,13 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
             ${U.sw('Vibration', pr.vibrate !== false, 'data-on="setPref" data-k="vibrate"', 'Buzzes for timers and the end of rest')}
             ${U.sw('Haptic feedback', pr.haptics !== false, 'data-on="setPref" data-k="haptics"', 'Light taps when you press buttons and switches')}
             ${U.sw('Supersets', pr.supersets !== false, 'data-on="setPref" data-k="supersets"', 'Pair exercises that don\'t share muscles')}
-            <li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">Rest</span><span class="rf-list-subtitle">Auto: 90 s after big moves, 60 s after small ones and in supersets</span></span>${U.seg('setRest', [['auto', 'Auto'], ['60', '60 s'], ['90', '90 s']], String(pr.rest), 'Rest between sets', ' data-on="setRest" data-size="sm"')}</div></li>
+            <li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">Rest</span><span class="rf-list-sub">Auto: 90 s after big moves, 60 s after small ones and in supersets</span></span>${U.seg('setRest', [['auto', 'Auto'], ['60', '60 s'], ['90', '90 s']], String(pr.rest), 'Rest between sets', ' data-on="setRest" data-size="sm"')}</div></li>
           </ul>
           <h3 class="rf-list-header">Look</h3>
           <ul class="rf-list">
             <li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">Theme</span></span>${U.seg('setTheme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], pr.theme || 'system', 'Theme', ' data-on="setTheme" data-size="sm"')}</div></li>
             ${U.sw('Increase contrast', !!pr.contrast, 'data-on="setPref" data-k="contrast"')}
-            <li><div class="rf-list-row set-slider"><span class="rf-list-text"><span class="rf-list-title">Glass</span><span class="rf-list-subtitle">Clear to frosted</span></span><div class="rf-slider"><div class="rf-slider-control"><input class="rf-slider-input" type="range" min="0" max="1" step="0.05" value="${pr.density == null ? 0.5 : pr.density}" aria-label="Glass density" data-on="setDensity"></div></div></div></li>
+            <li><div class="rf-list-row set-slider"><span class="rf-list-text"><span class="rf-list-title">Glass</span><span class="rf-list-sub">Clear to frosted</span></span><div class="rf-slider"><div class="rf-slider-control"><input class="rf-slider-input" type="range" min="0" max="1" step="0.05" value="${pr.density == null ? 0.5 : pr.density}" aria-label="Glass density" data-on="setDensity"></div></div></div></li>
           </ul>
           <h3 class="rf-list-header">Your data</h3>
           <ul class="rf-list">
@@ -15477,7 +15575,14 @@ ${Sc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Bd(r,s){return vc(r,s).m
     },
   };
 
-  U.act.editAnswers = () => U.editAnswers();
+  // Each answer opens on its own screen with Save, so nothing else has to be gone through again.
+  const STEP_ICON = { about: ['person', 'sky'], goals: ['flag', 'green'], experience: ['chart', 'indigo'], schedule: ['calendar', 'teal'], equipment: ['bag', 'amber'], body: ['heart', 'rose'], food: ['food', 'green'], sleep: ['moon', 'indigo'], style: ['sliders', 'violet'] };
+  U.act.editAnswers = () => {
+    const p = U.S.profile;
+    U.sheet({ title: 'Your answers', body: `<p class="t-footnote rf-muted sheet-lead">Pick one to change. Your plan updates when you save.</p>
+      <ul class="rf-list">${U.editableSteps().map((st) => { const [ic, tone] = STEP_ICON[st.id] || ['pencil', 'sky']; return U.row({ icon: ic, tone, title: U.esc(st.title), sub: U.esc(U.answerSummary(st.id, p)), act: 'editStep', arg: st.id, chevron: true }); }).join('')}</ul>` });
+  };
+  U.act.editStep = (el) => { U.closeSheets(); U.editAnswers(el.dataset.arg); };
   U.act.editEquipment = () => U.editAnswers('equipment');
   U.act.openPrivacyView = () => U.open('privacy');
   U.on.setPref = (el, ev, v) => {

@@ -80,6 +80,13 @@
   }
   U.act.aiReport = () => writeReport(false);
   U.act.openCoachSettings = () => U.open('settings', 'coach');
+  U.act.whyNoData = () => U.sheet({ title: 'Missing numbers', body: `<div class="sheet-prose">
+      <p class="t-body">Gradient Health can only show what your watch or phone app shares with Health Connect.</p>
+      <p class="t-body">Some apps don't share resting heart rate or HRV at all. Samsung Health and Garmin Connect are two of them right now, even though they show those numbers in their own app.</p>
+      <p class="t-body">If your app shares heart rate while you sleep, Gradient Health works out an estimated resting heart rate from it. HRV can't be worked out from heart rate, so that tile stays empty.</p>
+      <p class="t-body">To check what's shared, open Health Connect, then App permissions, pick your watch app and make sure it's allowed to write the data you want.</p>
+      <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-act="hcManage">Open Health Connect</button>
+    </div>` });
   U.act.dismissInsight = (el) => { GH.insights.dismiss(U.S, el.dataset.arg, U.today()); U.commit(); U.toast('Hidden for 30 days', 'neutral'); };
   U.act.insightGo = (el) => U.go(el.dataset.arg);
 
@@ -214,11 +221,16 @@
     const base = (k) => H().baseline(S, k, day);
     const br = base('rhr'), bh = base('hrv'), bs = base('steps');
     const f = t.feel || {};
+    // Latest reading with how old it is, instead of a blank tile when today's isn't in yet.
+    const ago = (x, night) => (!x ? '' : x.day === day ? (night ? 'last night' : 'today') : x.day === day - 1 ? (night ? 'the night before' : 'yesterday') : `${day - x.day} days ago`);
+    const join = (...parts) => parts.filter(Boolean).join(' · ') || '&nbsp;';
+    const sl = t.sleepLast, rh = t.rhrLast, hv = t.hrvLast;
+    const slSub = !sl ? 'tap to log' : sl.day === day && t.bed ? `asleep ${U.fmtClock(t.bed)}` : sl.day === day && t.sleepFromChip ? 'from your check-in' : ago(sl, true);
     return `<div class="stat-grid">
-      ${tile('moon', 'indigo', 'Sleep', t.sleepMin != null ? U.esc(U.fmtMin(t.sleepMin)) : '–', t.bed ? `asleep ${U.fmtClock(t.bed)}` : t.sleepFromChip ? 'from your check-in' : 'no data', t.sleepMin == null ? 'logSleep' : null)}
-      ${tile('navigate', 'green', 'Steps', t.steps != null ? U.num(t.steps) : '–', bs.n >= 5 ? `usual ${U.num(bs.avg)}` : '&nbsp;')}
-      ${tile('heart', 'rose', 'Resting HR', t.rhr != null ? `${Math.round(t.rhr)} <small>bpm</small>` : '–', br.n >= 5 ? `usual ${Math.round(br.avg)}` : 'no data')}
-      ${tile('wave', 'violet', 'HRV', t.hrv != null ? `${Math.round(t.hrv)} <small>ms</small>` : '–', bh.n >= 5 ? `usual ${Math.round(bh.avg)}` : 'no data')}
+      ${tile('moon', 'indigo', 'Sleep', sl ? U.esc(U.fmtMin(sl.value)) : '–', slSub, !sl ? 'logSleep' : null)}
+      ${tile('navigate', 'green', 'Steps', t.steps != null ? U.num(t.steps) : '–', t.steps != null ? join(bs.n >= 5 ? `usual ${U.num(bs.avg)}` : '') : H().connected(H().status()) ? 'none synced yet today' : 'needs Health Connect')}
+      ${tile('heart', 'rose', 'Resting HR', rh ? `${Math.round(rh.value)} <small>bpm</small>` : '–', rh ? join(rh.day !== day ? ago(rh) : '', br.n >= 5 ? `usual ${Math.round(br.avg)}` : '') : 'not shared by your watch app', rh ? null : 'whyNoData')}
+      ${tile('wave', 'violet', 'HRV', hv ? `${Math.round(hv.value)} <small>ms</small>` : '–', hv ? join(hv.day !== day ? ago(hv) : '', bh.n >= 5 ? `usual ${Math.round(bh.avg)}` : '') : 'not shared by your watch app', hv ? null : 'whyNoData')}
       ${tile('chart', 'teal', 'Weight', t.weightAvg7 != null ? U.esc(U.fmtW(t.weightAvg7)) : '–', t.weightAvg7 != null ? '7-day average' : 'tap to log', t.weightAvg7 == null ? 'logWeight' : null)}
       ${tile('bolt', 'amber', 'Active', `${t.activeMin} <small>min</small>`, 'today')}
       ${S.profile.protein.track !== false ? tile('check-circle', 'green', 'Protein', t.proteinGoal ? `${t.protein} <small>of ${t.proteinGoal} g</small>` : `${t.protein} <small>g</small>`, 'today') : ''}

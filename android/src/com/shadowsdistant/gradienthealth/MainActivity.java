@@ -121,7 +121,7 @@ public final class MainActivity extends Activity {
             s.setDomStorageEnabled(true);
             s.setDatabaseEnabled(true);
             s.setMediaPlaybackRequiresUserGesture(false);
-            s.setTextZoom(100);
+            s.setTextZoom(textZoomFor(getResources().getConfiguration()));
             s.setAllowFileAccess(false);
             s.setAllowContentAccess(false);
             wv.setBackgroundColor(currentBackground());
@@ -149,6 +149,14 @@ public final class MainActivity extends Activity {
             showMessage("Gradient needs Android System WebView.\n\n"
                     + "Update or enable it in the Play Store, then reopen the app.");
         }
+    }
+
+    /**
+     * Text follows the phone's font size setting, capped so the layout holds up: 85% to 130%.
+     */
+    static int textZoomFor(Configuration c) {
+        float scale = c == null || c.fontScale <= 0 ? 1f : c.fontScale;
+        return Math.round(Math.max(0.85f, Math.min(1.3f, scale)) * 100f);
     }
 
     private void showMessage(String message) {
@@ -228,6 +236,9 @@ public final class MainActivity extends Activity {
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        if (webView != null) {
+            webView.getSettings().setTextZoom(textZoomFor(newConfig));
+        }
         boolean dark = isDark(newConfig);
         if (pageDark == null) {
             applyBarAppearance(dark);

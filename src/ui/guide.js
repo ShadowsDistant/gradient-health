@@ -114,7 +114,8 @@
   function tourArt(p) {
     if (p.art === 'fig') return '<div class="tour-fig" data-morph="keep"></div>';
     if (p.art === 'rir') return `<div class="tour-rir">${U.seg('tourRir', [['0', '0'], ['12', '1-2'], ['3', '3+']], '12', 'Reps left in the tank', '')}<p class="t-footnote rf-muted">Reps left in the tank</p></div>`;
-    if (p.art === 'tabs') return `<div class="tour-tabs">${[['home', 'Today'], ['calendar', 'Plan'], ['heart', 'Health'], ['chart', 'Progress'], ['library', 'Moves']].map(([ic, l]) => `<span class="tour-tab">${U.icon(ic)}<span class="t-caption">${l}</span></span>`).join('')}</div>`;
+    // A small copy of the real tab bar: same capsule, same selection pill, same tabs.
+    if (p.art === 'tabs') return `<div class="tour-tabs" aria-hidden="true">${U.tabList().map(([id, ic, l], k) => `<span class="tour-tab${k === 0 ? ' is-on' : ''}">${U.icon(ic)}<span class="tour-tab-label">${U.esc(l)}</span></span>`).join('')}</div>`;
     return `<div class="tour-icon">${U.icon(p.art)}</div>`;
   }
   U.showTour = () => {
