@@ -136,10 +136,11 @@
       const same = x.amounts.every((a) => a === x.amounts[0]);
       const amt = same ? `${x.sets} × ${x.amounts[0]} ${unit}` : `${x.amounts.join(', ')} ${unit}`;
       const meta = `${x.extra ? 'Extra set · ' : ''}${amt}${x.uni ? ' each side' : ''}${x.load != null ? ` · ${fmtLoad(x.load)}` : ''}`;
-      const badge = x.outcome === 'up' ? `<span class="pw-up" role="img" aria-label="Moved up">${U.icon('arrow-up-right')}</span>` : '';
+      const badge = x.outcome === 'up' ? `<span class="pw-up" role="img" aria-label="Goes up next time">${U.icon('arrow-up-right')}</span>` : '';
       return exRow({ key: `l${i}-${x.moveId}`, move: x.moveId, name: x.name, meta: U.esc(meta), badge, cls: x.extra ? 'is-lead' : '' });
     });
-    return rows.length ? `<ul class="pw-ex-list">${rows.join('')}</ul>` : '';
+    const up = l.items.some((x) => x.outcome === 'up');
+    return rows.length ? `<ul class="pw-ex-list">${rows.join('')}</ul>${up ? `<p class="t-footnote rf-muted pw-note pw-up-note"><span class="pw-up" aria-hidden="true">${U.icon('arrow-up-right')}</span>Goes up next time: more reps, more weight or a harder version.</p>` : ''}` : '';
   }
 
   function actions(w, e) {
@@ -168,7 +169,7 @@
   function workoutBody(S, w, e, day) {
     const s = e.session;
     const a = e.active;
-    const head = e.preview ? top('calendar', `Next week · ${e.date}`, '', minutes(e.estimateMin))
+    const head = e.preview ? top('calendar', e.date, '', minutes(e.estimateMin))
       : a ? top('timer', 'In progress', 'accent', minutes(e.estimateMin))
         : top('bolt', e.isToday ? 'Today' : when(e, day), e.isToday ? 'accent' : '', minutes(e.estimateMin));
     const moved = e.movedFrom != null ? `<p class="t-footnote rf-muted pw-note">Moved here from ${U.esc(B().fmtDay(e.movedFrom))}.</p>` : '';
@@ -177,9 +178,8 @@
       ${tags(e.groups)}
       ${a ? `<div class="pw-prog">${U.progress(a.done / Math.max(1, a.total), 'Workout progress')}<span class="t-footnote rf-muted rf-num">${a.done} of ${a.total} sets</span></div>` : ''}
       ${moved}
-      ${s ? sessionList(S, s) : ''}
-      ${e.preview ? '<p class="t-footnote rf-muted pw-note">A preview. Sets and exercises adjust to how this week goes.</p>' : ''}
-      ${e.preview ? '' : actions(w, e) + movePanel(e, day)}`;
+      ${e.preview ? '<p class="t-footnote rf-muted pw-note">A preview. Sets and exercises adjust to how this week goes.</p>' : actions(w, e) + movePanel(e, day)}
+      ${s ? sessionList(S, s) : ''}`;
   }
   function doneBody(e, day) {
     const l = e.log;
@@ -194,10 +194,10 @@
   function missedBody(w, e, day) {
     const frozen = e.kind === 'frozen';
     const l = e.log;
-    const moved = `The rest of the week moved a day${w.dropped ? ', and the last workout no longer fit' : ''}, so nothing doubles up.`;
+    const moved = `The rest of the week moved a day${w.dropped ? ' (the last workout no longer fit)' : ''}, so nothing doubles up.`;
     return `${top(frozen ? 'pause' : 'x-circle', `${frozen ? 'Freeze used' : 'Missed'} · ${when(e, day)}`, frozen ? 'sky' : 'critical')}
       <h2 class="t-title-2 pw-title">${frozen ? 'Missed, streak kept' : 'Missed workout'}</h2>
-      <p class="t-callout">${frozen ? 'Your weekly freeze covered it, so the streak goes on.' : 'Your streak started again from here.'} ${U.esc(moved)}</p>
+      <p class="t-callout">${frozen ? 'A freeze covered it.' : 'Your streak restarted.'} ${U.esc(moved)}</p>
       ${l && !l.counted ? `<p class="t-footnote rf-muted">You logged ${l.doneSets} of ${l.planned} sets. A workout counts once half of it is done.</p>` : ''}`;
   }
   function lightBody(S, w, e, day) {
@@ -210,12 +210,12 @@
     const mins = Math.max(1, Math.round(flow.reduce((a, m) => a + (m.target || 30) * (m.uni ? 2 : 1), 0) / 60));
     const check = (done, icon, title, sub, btn, extra, key) => `<li class="pw-check${done ? ' is-done' : ''}" data-key="${key}">
         <span class="pw-check-mark" data-key="${key}-${done ? 'y' : 'n'}"${done ? ' role="img" aria-label="Done"' : ' aria-hidden="true"'}>${U.icon(done ? 'check' : icon)}</span>
-        <span class="pw-check-text"><span class="t-subhead">${U.esc(title)}</span><span class="t-footnote rf-muted">${U.esc(sub)}</span>${extra || ''}</span>
-        ${done ? '' : btn || ''}</li>`;
+        <span class="pw-check-text"><span class="t-subhead">${U.esc(title)}</span><span class="t-footnote rf-muted">${U.esc(sub)}</span></span>
+        ${done ? '' : btn || ''}${extra || ''}</li>`;
     const mob = flow.length ? `<div class="pw-mob" aria-label="Mobility moves">${flow.map((m) => `<button type="button" class="pw-mob-btn" data-act="planMoveInfo" data-arg="${U.esc(m.moveId)}" aria-label="${U.esc(m.name)}: how to do it"><span class="pw-thumb" data-morph="keep" data-move="${U.esc(m.moveId)}" aria-hidden="true"></span></button>`).join('')}</div>` : '';
     const label = today ? 'Today · Light day' : `Light day · ${when(e, day)}`;
     const lead = e.preview || !e.isPast || L.done ? 'A walk and a short mobility flow. Do both and the day counts toward your streak.' : 'Not ticked off. Light days only add to your streak, so nothing is lost.';
-    return `${top(L.done ? 'check-circle' : 'leaf', e.preview ? `Next week · ${e.date}` : label, L.done ? 'positive' : 'teal')}
+    return `${top(L.done ? 'check-circle' : 'leaf', e.preview ? `Light day · ${e.date}` : label, L.done ? 'positive' : 'teal')}
       <h2 class="t-title-2 pw-title">Walk and mobility</h2>
       <p class="t-callout rf-muted">${U.esc(lead)}</p>
       <ul class="pw-checks">
@@ -226,7 +226,7 @@
   }
   function restBody(w, e, day) {
     const next = w.days.find((x) => x.day > e.day && (x.kind === 'today' || x.kind === 'workout'));
-    const label = e.preview ? `Next week · ${e.date}` : e.isToday ? 'Today · Rest day' : `Rest day · ${when(e, day)}`;
+    const label = e.preview ? `Rest day · ${e.date}` : e.isToday ? 'Today · Rest day' : `Rest day · ${when(e, day)}`;
     return `${top('moon', label, 'indigo')}
       <h2 class="t-title-2 pw-title">Rest and recover</h2>
       <p class="t-callout rf-muted">${next && !e.preview ? `Nothing planned. Next: ${U.esc(next.title.toLowerCase())} on ${U.esc(next.wdLong)}.` : 'Nothing planned. Muscles grow while you rest.'}</p>
@@ -252,10 +252,12 @@
   }
 
   /* ---------------------------------------------------------------- below the card */
+  // Each part stays on one line when the summary wraps.
+  const keep = (t) => U.esc(t).replace(/ /g, ' ');
   function summary(w) {
     const bits = [`Week ${w.trainingWeek}`, PHASE[w.phase.key]];
-    const done = w.planned ? ` · ${U.roll(w.done)} of ${w.planned} done` : '';
-    return `<p class="lt-sub t-callout rf-muted pw-sub">${U.esc(bits.join(' · '))}${done}<button type="button" class="pw-info" data-act="planPhase" aria-label="What ${U.esc(PHASE[w.phase.key].toLowerCase())} means, and how to read the week">${U.icon('info')}</button></p>`;
+    const done = w.planned ? ` · <span class="pw-nb">${U.roll(w.done)} of ${w.planned} done</span>` : '';
+    return `<p class="lt-sub t-callout rf-muted pw-sub">${bits.map(keep).join(' · ')}${done}<button type="button" class="pw-info" data-act="planPhase" aria-label="What ${U.esc(PHASE[w.phase.key].toLowerCase())} means, and how to read the week">${U.icon('info')}</button></p>`;
   }
   function muscles(w) {
     const rows = w.muscles;
@@ -274,7 +276,7 @@
       <div class="section"><div class="card pw-mus-card" data-key="mus">
         <ul class="pw-mus">${li}</ul>
         <p class="pw-legend t-caption rf-muted" aria-hidden="true"><span><i class="pw-sw is-done"></i>Sets done</span><span><i class="pw-sw is-plan"></i>In the plan</span><span><i class="pw-sw is-target"></i>Weekly target</span></p>
-        ${short.length ? `<p class="t-footnote rf-muted">Your time per workout fits fewer sets than the target for ${U.esc(listWords(short))}. A few more minutes closes the gap.</p>` : ''}
+        ${short.length ? `<p class="t-footnote rf-muted">${short.length > 3 ? 'Your time per workout fits fewer sets than your weekly targets.' : `Your time per workout fits fewer sets than the target for ${U.esc(listWords(short))}.`} A few more minutes a workout closes the gap.</p>` : ''}
       </div></div>`;
   }
   function comingUp(w) {
@@ -391,8 +393,33 @@
         svg.removeAttribute('aria-label');
         stills.set(key, svg);
       }
-      host.appendChild(svg.cloneNode(true));
+      const copy = svg.cloneNode(true);
+      host.appendChild(copy);
+      if (!svg.hasAttribute('data-tight')) {
+        const box = tightBox(copy);
+        svg.setAttribute('data-tight', box || '');
+        if (box) svg.setAttribute('viewBox', box);
+      }
+      const vb = svg.getAttribute('data-tight');
+      if (vb) copy.setAttribute('viewBox', vb);
     }
+  }
+  // The figure's own bounds (both poses and any bench or chair, not the floor line), with room for
+  // the strokes, so a small tile shows the body instead of empty space.
+  function tightBox(svg) {
+    try {
+      const parts = Array.from(svg.querySelectorAll('.fig-body')).concat(Array.from(svg.querySelectorAll('.fig-props > :not(.fig-floor)')));
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const p of parts) {
+        const b = p.getBBox();
+        if (!b.width && !b.height) continue;
+        x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y); x1 = Math.max(x1, b.x + b.width); y1 = Math.max(y1, b.y + b.height);
+      }
+      if (!isFinite(x0) || x1 - x0 < 1) return null;
+      const pad = Math.max(x1 - x0, y1 - y0) * 0.09;
+      y1 = Math.max(y1, 1.5);
+      return `${(x0 - pad).toFixed(1)} ${(y0 - pad).toFixed(1)} ${(x1 - x0 + 2 * pad).toFixed(1)} ${(y1 - y0 + 1.6 * pad).toFixed(1)}`;
+    } catch (e) { return null; }
   }
 
   /* ---------------------------------------------------------------- gestures */
