@@ -249,7 +249,7 @@
     'minutes ::= [1-6] [05]',
     'joints ::= "[" (joint ("," joint){0,2})? "]"',
     'joint ::= "\\"knee\\"" | "\\"shoulder\\"" | "\\"back\\"" | "\\"wrist\\"" | "\\"elbow\\"" | "\\"hip\\"" | "\\"ankle\\"" | "\\"neck\\""',
-    'note ::= "\\"" [a-zA-Z0-9 ,.\'!?-]{0,140} "\\""',
+    'note ::= "\\"" [a-zA-Z0-9 ,.\'!?-]{0,100} "\\""',
   ].join('\n');
   function messages(text) {
     const out = [{ role: 'system', content: SYSTEM }];
@@ -265,10 +265,17 @@
       const id = GH.deviceCoach.pick(S, await llm.installed());
       if (!id) return null;
       await llm.load(id);
-      const raw = await llm.chat(messages(text), { grammar: GRAMMAR, maxTokens: 160, temperature: 0.2, signal });
-      return JSON.parse(raw);
+      const raw = await llm.chat(messages(text), { grammar: GRAMMAR, maxTokens: 240, temperature: 0.2, signal });
+      return read(raw);
     } catch (e) { return null; }
   }
+  // The grammar's JSON, or null. The note comes last, so an answer cut off by the token limit can
+  // still be read: its note is closed off.
+  function read(raw) {
+    const s = String(raw || '').trim();
+    for (const tail of ['', '"}', '}']) { try { return JSON.parse(s + tail); } catch (e) { /* try the next */ } }
+    return null;
+  }
 
-  GH.tailor = { parse, valid, empty, merge, plan, apply, undo, last, ask, GRAMMAR, SYSTEM, messages };
+  GH.tailor = { parse, valid, empty, merge, plan, apply, undo, last, ask, read, GRAMMAR, SYSTEM, messages };
 })(typeof window !== 'undefined' ? window : globalThis);

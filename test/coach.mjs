@@ -218,6 +218,9 @@ section('Tailor my plan: checking and applying');
   const burpees = T.valid(S2, T.parse('no burpees'));
   T.apply(S2, D0, burpees);
   check('a move left out stays out', burpees.avoid_moves.length && burpees.avoid_moves.every((id) => S2.excluded.includes(id)));
+  const cut = T.read('{"focus":["legs"],"goals":[],"minutes":20,"days":null,"avoid_joints":["knee"],"no_jumping":null,"gentle":null,"note":"More legs and easy on');
+  check('an answer cut off in its note is still read', cut && cut.focus.join() === 'legs' && cut.minutes === 20 && /^More legs/.test(cut.note), cut);
+  check('and nonsense isn\'t', T.read('hello') === null && T.read('') === null);
   check('the on-device grammar only allows the fields and values the app reads', /focus/.test(T.GRAMMAR) && /shoulders/.test(T.GRAMMAR) && /avoid_joints/.test(T.GRAMMAR) && !/calves/.test(T.GRAMMAR));
 }
 

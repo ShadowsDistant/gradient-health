@@ -56,4 +56,7 @@ endif()
 if(GHLLM_HOST_TEST)
   add_executable(ghllm_test test_host.cpp)
   target_link_libraries(ghllm_test PRIVATE ghllm)
+  # Asks a real model a few questions (.github/workflows/model-check.yml).
+  add_executable(ghllm_ask ask_host.cpp)
+  target_link_libraries(ghllm_ask PRIVATE ghllm)
 endif()

@@ -267,7 +267,7 @@ const tailored = await page.evaluate(async (bytes) => {
   GH.llm.configure({ models: [{ id: 'tiny35', name: 'Tiny Qwen3.5', file: 'tiny-qwen35.gguf', url: 'https://huggingface.co/test/tiny/resolve/main/tiny-qwen35.gguf', bytes, minRamGB: 0, ctx: 2048, batch: 64, think: true, gen: { temperature: 0.8, top_p: 0.95, top_k: 40 } }] });
   await GH.llm.load('tiny35');
   const out = [];
-  for (const q of ['More legs and 20 minute workouts', 'My knee hurts']) out.push(await GH.llm.chat(GH.tailor.messages(q), { grammar: GH.tailor.GRAMMAR, maxTokens: 400 }));
+  for (const q of ['More legs and 20 minute workouts', 'My knee hurts']) out.push(await GH.llm.chat(GH.tailor.messages(q), { grammar: GH.tailor.GRAMMAR, maxTokens: 240 }));
   await GH.llm.unload();
   return out;
 }, statSync(MODEL35).size);
