@@ -100,6 +100,8 @@ export const LAZY = [
   { name: 'barcode', entry: 'src/barcode.js', assets: [['node_modules/zxing-wasm/dist/reader/zxing_reader.wasm', 'zxing_reader.wasm']] },
   // On-device AI: llama.cpp compiled to WebAssembly (@wllama/wllama). v3 ships one wasm for every mode.
   { name: 'llm', entry: 'src/llm.js', assets: [['node_modules/@wllama/wllama/esm/wasm/wllama.wasm', 'wllama/wllama.wasm']] },
+  // The built-in food list (USDA SR28), loaded the first time someone searches for a food.
+  { name: 'foods', entry: 'src/data/foods.js' },
 ];
 
 async function buildLazy() {
