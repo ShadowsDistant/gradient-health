@@ -85,3 +85,15 @@ html[data-sheet-moving] .bubble.coach.is-typing, html[data-sheet-moving] .caret 
 .selftest-log { margin-top: var(--space-3); }
 .selftest-log summary { cursor: pointer; color: var(--label-secondary); }
 .selftest-log .preview { max-height: 40vh; overflow: auto; font-size: 11px; }
+
+/* Tailor my plan (src/ui/tailor.js). */
+.tailor { display: grid; gap: var(--space-3); }
+.tailor > p { margin: 0; }
+.tailor-chips { margin: 0; }
+.tailor-asked { font-style: italic; }
+.tailor-lines { margin: 0; }
+.tailor-note, .tailor-none { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: start; padding: var(--space-3); border-radius: 16px; background: color-mix(in oklab, var(--hue-violet) 11%, var(--fill-3)); }
+.tailor-note svg { color: var(--hue-violet); margin-top: 2px; }
+.tailor-none { background: var(--fill-3); }
+.tailor-none svg { color: var(--label-secondary); margin-top: 2px; }
+.tailor-btns .rf-btn { flex: 1 1 0; }

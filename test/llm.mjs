@@ -262,6 +262,18 @@ check('rules read ahead (prepare) write nothing and leave the last answer\'s sta
 // (The in-app engine goes back to its last checkpoint, up to a batch before the rules end.)
 check('and the first question after them reads little more than its own turn', q35.primed.cachedTokens >= 300 && q35.primed.promptTokens < q35.primed.cachedTokens / 4, q35.primed);
 
+section('Held to a grammar (Tailor my plan)');
+const tailored = await page.evaluate(async (bytes) => {
+  GH.llm.configure({ models: [{ id: 'tiny35', name: 'Tiny Qwen3.5', file: 'tiny-qwen35.gguf', url: 'https://huggingface.co/test/tiny/resolve/main/tiny-qwen35.gguf', bytes, minRamGB: 0, ctx: 2048, batch: 64, think: true, gen: { temperature: 0.8, top_p: 0.95, top_k: 40 } }] });
+  await GH.llm.load('tiny35');
+  const out = [];
+  for (const q of ['More legs and 20 minute workouts', 'My knee hurts']) out.push(await GH.llm.chat(GH.tailor.messages(q), { grammar: GH.tailor.GRAMMAR, maxTokens: 400 }));
+  await GH.llm.unload();
+  return out;
+}, statSync(MODEL35).size);
+const parsed = tailored.map((x) => { try { return JSON.parse(x); } catch (e) { return null; } });
+check('random weights still write Tailor\'s JSON, field for field, under its grammar', parsed.every((o) => o && Array.isArray(o.focus) && Array.isArray(o.goals) && 'minutes' in o && Array.isArray(o.avoid_joints) && typeof o.note === 'string'), tailored);
+
 /* ------------------------------------------------------------------ in the app (fake bridge) */
 section('Android bridge (fake)');
 const page2 = await ctx.newPage();

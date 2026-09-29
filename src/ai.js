@@ -414,4 +414,47 @@ async function suggest(S, day) {
   } finally { busy = null; }
 }
 
-GH.ai = { KEY_URL, hasKey, checkKey, setKey, deleteKey, summary, preview, report, reportFor, needsReport, ask, suggest, stop, clearChat, pickFrom, explain, MESSAGES, SYSTEM };
+// Tailor my plan: Claude reads a request the app's own rules couldn't, into the same shape
+// (GH.tailor checks it before anything is shown).
+const nullable = (type) => ({ anyOf: [{ type }, { type: 'null' }] });
+const TAILOR_SCHEMA = {
+  type: 'object',
+  properties: {
+    focus: { type: 'array', items: { type: 'string', enum: ['biceps', 'triceps', 'abs', 'chest', 'legs', 'back', 'shoulders'] } },
+    goals: { type: 'array', items: { type: 'string', enum: ['fat', 'strength', 'endurance', 'mobility'] } },
+    minutes: nullable('integer'),
+    days: nullable('integer'),
+    avoid_joints: { type: 'array', items: { type: 'string', enum: ['knee', 'shoulder', 'back', 'wrist', 'elbow', 'hip', 'ankle', 'neck'] } },
+    no_jumping: nullable('boolean'),
+    gentle: nullable('boolean'),
+    note: { type: 'string' },
+  },
+  required: ['focus', 'goals', 'minutes', 'days', 'avoid_joints', 'no_jumping', 'gentle', 'note'],
+  additionalProperties: false,
+};
+async function tailor(S, day, text) {
+  needConsent(S);
+  const c = client();
+  const p = S.profile;
+  try {
+    const modelId = await model(S, c, day);
+    const stream = c.beta.messages.stream(Object.assign(baseParams(modelId, 2000, 'low', S, day), {
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: TAILOR_SCHEMA } },
+      messages: [{ role: 'user', content: [
+        'Turn this request about their workout plan into changes. Only include what they asked for; leave the rest empty or null.',
+        `focus: muscles to train more (at most 2). goals: goals to add. minutes: per workout, 10-60 (now ${p.minutes}). days: workouts a week, 2-6 (now ${p.days}).`,
+        'avoid_joints: joints to go easy on. no_jumping: true if they want no jumping. gentle: true for easier, false for harder.',
+        'note: one short, friendly sentence saying what will change, without numbers you weren\'t given.',
+        '', `Their request: ${String(text || '').slice(0, 400)}`,
+      ].join('\n') }],
+    }));
+    busy = stream;
+    const msg = await stream.finalMessage();
+    checkStop(msg);
+    return JSON.parse(textOf(msg));
+  } catch (err) {
+    throw explain(err);
+  } finally { busy = null; }
+}
+
+GH.ai = { KEY_URL, hasKey, checkKey, setKey, deleteKey, summary, preview, report, reportFor, needsReport, ask, suggest, tailor, stop, clearChat, pickFrom, explain, MESSAGES, SYSTEM };

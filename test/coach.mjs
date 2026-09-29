@@ -7,7 +7,7 @@ import { load, root, check, section, done } from './lib.mjs';
 
 const ls = new Map();
 globalThis.localStorage = { getItem: (k) => (ls.has(k) ? ls.get(k) : null), setItem: (k, v) => ls.set(k, String(v)), removeItem: (k) => ls.delete(k) };
-const GH = load('src/data/moves.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/insights.js', 'src/health.js', 'src/store.js', 'src/coach.js');
+const GH = load('src/data/moves.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/store.js', 'src/coach.js', 'src/tailor.js');
 const bundle = await build({ entryPoints: [join(root, 'src/ai.js')], bundle: true, write: false, format: 'iife', platform: 'browser', target: ['es2022'], logLevel: 'silent' });
 new Function(bundle.outputFiles[0].text)();
 const B = GH.brain, C = GH.coach, H = GH.health, SC = GH.science;
@@ -169,6 +169,56 @@ section('Weekly sets follow progress and recovery');
   check('every exercise result is recorded as up, held or down', outcomes.length > 0 && outcomes.every((o) => ['up', 'hold', 'down'].includes(o)), [...new Set(outcomes)]);
   check('goal muscles that progress with good recovery gain sets', goals.some((g) => S2.vol[g] > prog.start[g]), goals.map((g) => [g, S2.vol[g], prog.start[g]]));
   check('non-goal muscles stay at their maintenance dose', B.GROUPS.filter((g) => prog.tiers[g] === 3).every((g) => S2.vol[g] <= prog.start[g]));
+}
+/* ---------------------------------------------------------------- Tailor my plan */
+section('Tailor my plan: reading a request');
+{
+  const T = GH.tailor;
+  const P = (x) => T.parse(x);
+  check('"more legs, my knees hurt": legs first, easy on the knees', P('More legs please, my knees hurt').focus.join() === 'legs' && P('More legs please, my knees hurt').avoid_joints.join() === 'knee');
+  check('"my back hurts" is about the back as a joint, not training it', P('my back hurts').focus.length === 0 && P('my back hurts').avoid_joints.join() === 'back');
+  check('"focus on my back" is training it', P('focus on my back').focus.join() === 'back' && !P('focus on my back').avoid_joints.length);
+  check('minutes and days', P('20 minute workouts, 3 days a week').minutes === 20 && P('20 minute workouts, 3 days a week').days === 3);
+  check('"shorter workouts" and "fewer days" are steps from now', P('shorter workouts').minutes_by === -10 && P('I want fewer days').days_by === -1);
+  check('no jumping (and why: the neighbours)', P('no jumping please').no_jumping === true && P('my neighbours are downstairs so nothing noisy').no_jumping === true);
+  check('a move they hate is left out, by name', P('I hate burpees').avoid_moves.length > 0 && P('I hate burpees').avoid_moves.every((id) => /burpee/i.test(GH.moves.MOVES[id].name)) && !P('I hate burpees').no_jumping);
+  check('goals: losing fat, getting stronger', P('I want to lose fat and get stronger').goals.join() === 'fat,strength');
+  check('easier or harder', P('go easy on me, I\'m exhausted').gentle === true && P('it\'s too easy, push me').gentle === false);
+  check('new kit', P('I got a resistance band').add_equipment.join() === 'band');
+  check('"less arms, more legs" only asks for more legs', P('less arms more legs').focus.join() === 'legs');
+  check('small talk changes nothing', T.empty(T.valid(person(), P('hello, how are you?'))));
+}
+section('Tailor my plan: checking and applying');
+{
+  const T = GH.tailor;
+  const S = person();
+  const before = JSON.stringify({ goals: S.profile.goals, minutes: S.profile.minutes, careful: S.profile.careful, excl: S.excluded || [], vol: S.vol });
+  const v = T.valid(S, { focus: ['chest', 'biceps', 'triceps', 'legs'], minutes: 99, days: 9, avoid_joints: ['knee', 'toe'], avoid_moves: ['nope'], no_jumping: true, gentle: 'yes', add_equipment: ['band', 'jetpack'], note: 'x'.repeat(400) });
+  check('at most two goals come first (arms counts once for biceps and triceps)', v.focus.join() === 'chest,biceps,triceps', v.focus);
+  check('minutes and days are held to what the plan allows', v.minutes === 60 && v.days === 6, v);
+  check('unknown joints, moves and kit are dropped; a note is kept short', v.avoid_joints.join() === 'knee' && !v.avoid_moves.length && v.add_equipment.join() === 'band' && v.note.length === 200 && v.gentle == null);
+  check('muscle ids from the body map mean their group', T.valid(S, { focus: ['calves'] }).focus.join() === 'legs' && T.valid(S, { focus: ['upperBack'] }).focus.join() === 'back');
+  check('what already is isn\'t a change', T.empty(T.valid(S, { minutes: S.profile.minutes, days: S.profile.days, focus: [] })));
+  const t = T.valid(S, T.parse('More legs, my knees hurt, 30 minute workouts'));
+  const { lines } = T.plan(S, t);
+  check('the changes are said in plain words: more legs, knees, time', lines.some((l) => /^Legs: more each week/.test(l.text) && /days a week, building to \d+ sets \(was \d+, \d+\)/.test(l.sub)) && lines.some((l) => /Easy on your knees/.test(l.text)) && lines.some((l) => /about 30 minutes/.test(l.text)), lines.map((l) => l.text));
+  // Someone further along: putting legs first moves another muscle down, and that's said too.
+  const S3 = person();
+  S3.profile.experience = '3plus';
+  S3.profile.goals = ['abs', 'arms', 'chest'];
+  const less = T.plan(S3, T.valid(S3, T.parse('more legs and back'))).lines.map((l) => l.text);
+  check('when a muscle gets less to make room, that\'s said', less.some((x) => /^Legs: more/.test(x)) && less.some((x) => /a little less/.test(x)), less);
+  const applied = T.apply(S, D0, t);
+  const prog = B.programFor(S.profile);
+  check('applying puts legs first, goes easy on the knees and sets the time', applied && S.profile.goals[0] === 'legs' && prog.tiers.legs === 1 && S.profile.careful.includes('knee') && S.profile.minutes === 30);
+  check('the next workout follows it', (() => { const plan = B.todayPlan(S, D0 + 1); return plan.type !== 'workout' || B.buildSession(S, D0 + 1, plan.tpl, {}).items.every((it) => { const m = GH.moves.MOVES[it.id || it.move || it.rung]; return !m || !((m.impact || m.complex) && (m.joints || []).includes('knee')); }); })());
+  check('it shows in the Coach timeline', C.timeline(S, D0, 7).some((x) => /^Tailored: /.test(x.text)));
+  check('undo puts everything back', T.undo(S, D0) && JSON.stringify({ goals: S.profile.goals, minutes: S.profile.minutes, careful: S.profile.careful, excl: S.excluded || [], vol: S.vol }) === before && !C.timeline(S, D0, 7).some((x) => /^Tailored: /.test(x.text)));
+  const S2 = person();
+  const burpees = T.valid(S2, T.parse('no burpees'));
+  T.apply(S2, D0, burpees);
+  check('a move left out stays out', burpees.avoid_moves.length && burpees.avoid_moves.every((id) => S2.excluded.includes(id)));
+  check('the on-device grammar only allows the fields and values the app reads', /focus/.test(T.GRAMMAR) && /shoulders/.test(T.GRAMMAR) && /avoid_joints/.test(T.GRAMMAR) && !/calves/.test(T.GRAMMAR));
 }
 
 done();

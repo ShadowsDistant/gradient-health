@@ -80,6 +80,7 @@ export const APP_SCRIPTS = [
   'src/platform.js',
   'src/foodnet.js',
   'src/coach.js',
+  'src/tailor.js',
   'src/devicecoach.js',
   // ai bundle is injected here
   'src/ui/core.js',
@@ -93,6 +94,7 @@ export const APP_SCRIPTS = [
   'src/ui/healthtab.js',
   'src/ui/metric.js',
   'src/ui/chat.js',
+  'src/ui/tailor.js',
   'src/ui/food.js',
   'src/scanner.js',
   'src/ui/bodymap.js',
