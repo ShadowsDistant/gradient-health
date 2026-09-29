@@ -18,7 +18,7 @@ const ctx = await browser.newContext({ viewport: { width, height: 844 }, deviceS
 const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => { if (m.type() === 'error' && !/lazy\/foods\.js|Failed to load resource/.test(m.text())) errors.push(m.text()); });
+page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 await page.clock.install({ time: new Date('2026-10-19T08:10:00') });
 await page.addInitScript(seedBridge);
 const server = await serveDist();
@@ -83,6 +83,28 @@ check('and lands in breakfast', await page.evaluate(() => window.GH.food.byMeal(
 check('it was saved to Health Connect', await page.evaluate(() => window.__foodWrites.length === 1 && window.__foodWrites[0].kcal === 450));
 check('the ring shows what\'s left', await page.evaluate(() => /left/.test(document.querySelector('#screen .fd-sum').textContent)));
 
+section('The built-in food list');
+await closeSheets();
+await page.click('#screen [data-act="foodAdd"][data-arg="snack"]');
+await sheetOpen('.fd-search');
+await settle(600);
+await page.fill('#foodQ', 'banana');
+await page.waitForFunction(() => document.querySelector('dialog.rf-sheet[open] [data-act="foodPick"][data-arg^="usda:"]'), null, { timeout: 10000 });
+await settle(400);
+const first = await page.evaluate(() => { const b = document.querySelector('dialog.rf-sheet[open] [data-act="foodPick"][data-arg^="usda:"]'); return b && b.querySelector('.rf-list-title').textContent; });
+check('search as you type finds it first', first === 'Banana', first);
+await page.click('dialog.rf-sheet[open] [data-act="foodPick"][data-arg^="usda:"]');
+await sheetOpen('.fd-portion');
+await settle(700);
+const cup = await page.evaluate(() => { const c = [...document.querySelectorAll('dialog.rf-sheet[open] .fd-portion [data-act="foodPortion"]')].find((x) => /sliced/.test(x.textContent)); if (c) c.click(); return !!c; });
+await settle(400);
+check('with household portions', cup);
+const before = await kcalToday();
+await page.click('dialog.rf-sheet[open] [data-act="foodSave"]');
+await settle(900);
+check('a cup of sliced banana is 134 kcal', (await kcalToday()) - before === 134, (await kcalToday()) - before);
+check('and it shows up under Recent', await page.evaluate(() => window.GH.food.data(window.GH.ui.S).recent[0] === 'usda:9040'));
+
 section('A food from its label');
 await closeSheets();
 await page.click('#screen [data-act="foodAdd"][data-arg="lunch"]');
@@ -99,7 +121,7 @@ check('the portion sheet opens for it', await sheetOpen('.fd-portion'));
 await settle(700);
 await page.click('dialog.rf-sheet[open] [data-act="foodSave"]');
 await settle(900);
-check('one bar is 220 kcal', (await kcalToday()) === 670, await kcalToday());
+check('one bar is 220 kcal', (await kcalToday()) === 670 + 134, await kcalToday());
 check('it\'s kept under My foods', await page.evaluate(() => window.GH.food.data(window.GH.ui.S).custom.some((c) => c.name === 'Protein bar' && c.per100.kcal === 367)));
 
 section('Online search');
@@ -112,15 +134,15 @@ await settle(900);
 check('the online search button shows', await page.evaluate(() => !!document.querySelector('dialog.rf-sheet[open] [data-act="foodOnline"]')));
 await page.click('dialog.rf-sheet[open] [data-act="foodOnline"]');
 await settle(900);
-const found = await page.evaluate(() => [...document.querySelectorAll('dialog.rf-sheet[open] [data-act="foodPick"]')].map((b) => b.textContent));
+const found = await page.evaluate(() => [...document.querySelectorAll('dialog.rf-sheet[open] [data-act="foodPick"][data-arg^="off:"]')].map((b) => b.textContent));
 check('results come back, cleaned up', found.length === 1 && /Hazelnut spread/.test(found[0]), found);
-await page.click('dialog.rf-sheet[open] [data-act="foodPick"]');
+await page.click('dialog.rf-sheet[open] [data-act="foodPick"][data-arg^="off:"]');
 check('picking one opens its portions', await sheetOpen('.fd-portion'));
 await settle(700);
 check('with its serving size', await page.evaluate(() => /1 serving/.test(document.querySelector('dialog.rf-sheet[open] .fd-portion').textContent)));
 await page.click('dialog.rf-sheet[open] [data-act="foodSave"]');
 await settle(900);
-check('added (a serving is 15 g)', (await kcalToday()) === 670 + 81, await kcalToday());
+check('added (a serving is 15 g)', (await kcalToday()) === 670 + 134 + 81, await kcalToday());
 
 section('Barcode, typed in');
 await closeSheets();

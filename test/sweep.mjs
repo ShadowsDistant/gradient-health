@@ -89,7 +89,7 @@ for (const [width, theme, zoom] of COMBOS) {
   const ctx = await browser.newContext({ viewport: { width, height: width >= 600 ? 960 : 844 }, deviceScaleFactor: 2, isMobile: width < 600, hasTouch: true, colorScheme: theme });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`${tag}: ${e.message}`));
-  page.on('console', (m) => { if (m.type() === 'error' && !/lazy\/foods|Failed to load resource/.test(m.text())) errors.push(`${tag}: ${m.text()}`); });
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(`${tag}: ${m.text()}`); });
   await page.clock.install({ time: new Date('2026-10-19T08:10:00') });
   await page.addInitScript(seedBridge);
   await page.goto(server.url);

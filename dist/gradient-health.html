@@ -19556,9 +19556,10 @@ ${Pc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Wd(r,s){return Tc(r,s).m
             ${U.row({ icon: 'library', tone: 'violet', title: 'How it works', sub: 'The research behind every rule', act: 'openScience', chevron: true })}
             ${U.row({ icon: 'sparkle', tone: 'amber', title: 'What\'s new', act: 'openWhatsNew', chevron: true })}
             ${U.row({ icon: 'lock', tone: 'green', title: 'Privacy', act: 'openPrivacyView', chevron: true })}
+            ${U.row({ icon: 'doc', tone: 'indigo', title: 'Open-source licenses', act: 'licensesSheet', chevron: true })}
             ${U.row({ icon: 'info', tone: 'sky', title: 'Version', detail: U.esc(ver) })}
           </ul>
-          <p class="rf-list-footer">Fonts: Host Grotesk and Geist Mono, SIL Open Font License. Not medical advice: check with a doctor before starting if you have a condition or an injury.</p>
+          <p class="rf-list-footer">Built-in foods from the USDA's nutrient database. Not medical advice: check with a doctor before starting if you have a condition or an injury.</p>
         </div>`;
     },
     focus(root, arg) {
@@ -19667,6 +19668,25 @@ ${Pc(r,s)}`,cache_control:{type:"ephemeral"}}]}function Wd(r,s){return Tc(r,s).m
     if (S.profile.equipment.ballLb) S.profile.equipment.ballLb = Math.round(S.profile.equipment.ballLb * f);
     S.profile.units = to;
   }
+
+  /* ---------------------------------------------------------------- licenses */
+  // What ships in the app (or is downloaded or looked up by it) and under which license.
+  const LICENSES = [
+    ['Host Grotesk, Geist Mono', 'Fonts', 'SIL Open Font License 1.1'],
+    ['three.js', '3D figure', 'MIT'],
+    ['Anthropic TypeScript SDK', 'The Claude coach', 'MIT'],
+    ['wllama and llama.cpp', 'On-device AI runtime', 'MIT'],
+    ['Qwen2.5 Instruct', 'On-device AI model, downloaded on request', 'Apache 2.0'],
+    ['barcode-detector and zxing-wasm', 'Barcode reading', 'MIT'],
+    ['ZXing C++', 'Barcode reading', 'Apache 2.0'],
+    ['USDA SR28', 'Built-in food list', 'Public domain'],
+    ['Open Food Facts', 'Online food search, when it\'s on', 'Open Database License'],
+  ];
+  U.act.licensesSheet = () => U.sheet({
+    title: 'Open-source licenses', detents: 'large', detent: 'large',
+    body: `<ul class="rf-list">${LICENSES.map(([name, what, lic]) => U.row({ title: U.esc(name), sub: U.esc(`${what} · ${lic}`) })).join('')}</ul>
+      <p class="t-footnote rf-muted sheet-lead">Thanks to everyone who made these. Their full license texts ship with the source code.</p>`,
+  });
 
   /* ---------------------------------------------------------------- days and time */
   U.act.daysSheet = () => {
