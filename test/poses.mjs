@@ -62,6 +62,21 @@ check('unilateral moves draw mirrored for one side only', uni.every((id) => M.mi
 
 section('Poses');
 const problems = { finite: [], floor: [], reach: [], joints: [], draw: [] };
+// Elbow flexion in degrees (0 straight) from the solved points; with the move's depths when it gives
+// them (arms drawn foreshortened, e.g. round the head), so it's the real bend, not the picture's.
+const flexion = (pts, f, s) => {
+  const z = (k) => pts[`depth${k}${s}`] || 0;
+  const sh = [...pts['sh' + s], 0], el = [...pts['el' + s], z('el')], wr = [...pts['wr' + s], z('wr')];
+  const a = sh.map((v, i) => el[i] - v), b = el.map((v, i) => wr[i] - v);
+  // A segment drawn shorter than it is (a side-view arm reaching out sideways) goes out of the
+  // picture by what's missing, as the 3D figure takes it.
+  if (pts['depthel' + s] == null) {
+    a[2] = Math.sqrt(Math.max(0, P.L.ua ** 2 - a[0] ** 2 - a[1] ** 2));
+    b[2] = Math.sqrt(Math.max(0, P.L.fa ** 2 - b[0] ** 2 - b[1] ** 2));
+  }
+  const c = (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / ((Math.hypot(...a) * Math.hypot(...b)) || 1);
+  return Math.acos(Math.max(-1, Math.min(1, c))) * 180 / Math.PI;
+};
 for (const id of ids) {
   const m = M.MOVES[id];
   let fr;
@@ -74,8 +89,12 @@ for (const id of ids) {
     }
     for (const key of ['hdN', 'hdF', 'anN', 'anF']) if (pts['ikReach' + key] === false && (!planted || planted.includes(key))) problems.reach.push(`${id}@${name}.${key}`);
     for (const s of ['aN', 'aF', 'lN', 'lF']) {
-      const bend = s[0] === 'a' ? f[`${s}.e`] : f[`${s}.k`];
-      if (bend != null && (bend < -12 || bend > 178)) problems.joints.push(`${id}@${name}.${s}=${bend}`);
+      const side = s[1];
+      // Arms placed by IK or given depths: the real bend from the points (the angle in the pose
+      // isn't used for them); otherwise the pose's own angle.
+      const solved = s[0] === 'a' && (`ik.hd${side}.x` in f || (f.$.ikTo && f.$.ikTo['hd' + side]) || pts['depthel' + side] != null);
+      const bend = solved ? flexion(pts, f, side) : s[0] === 'a' ? f[`${s}.e`] : f[`${s}.k`];
+      if (bend != null && (bend < -12 || bend > (solved ? 162 : 178))) problems.joints.push(`${id}@${name}.${s}=${bend.toFixed(0)}`);
     }
   }
   try { const dl = P.drawList(m, fr[0].pts, {}); if (!dl || !dl.layers) problems.draw.push(id); } catch (e) { problems.draw.push(`${id}: ${e.message}`); }
@@ -83,8 +102,54 @@ for (const id of ids) {
 check('all joints finite in every keyframe and in-between frame', !problems.finite.length, problems.finite.slice(0, 6));
 check('nothing goes through the floor (side and front views)', !problems.floor.length, problems.floor.slice(0, 6));
 check('planted hands and feet are always reachable (IK)', !problems.reach.length, problems.reach.slice(0, 6));
-check('elbows and knees stay in a human range', !problems.joints.length, problems.joints.slice(0, 6));
+check('elbows and knees stay in a human range (IK and foreshortened arms by their real bend)', !problems.joints.length, problems.joints.slice(0, 6));
 check('every move builds a draw list', !problems.draw.length, problems.draw.slice(0, 6));
+
+/* ------------------------------------------------------------------ motion */
+section('Motion');
+// Every move played at 60 samples per rep step: no joint jumps between samples (a jump is a step
+// far bigger than its neighbours', or simply too big for any real movement), and in front and
+// top views no elbow or forearm crosses the face unless the move says the arm is in front of it
+// or behind the head (then it's drawn behind).
+const H = P.L.torso + P.L.neck + 2 * P.L.head + P.L.th + P.L.sh; // figure height, ~163
+const JOINTS = ['hip', 'neck', 'head', 'shN', 'shF', 'elN', 'elF', 'wrN', 'wrF', 'hdN', 'hdF', 'knN', 'knF', 'anN', 'anF', 'toN', 'toF', 'heN', 'heF'];
+const motion = { jump: [], head: [] };
+const segDist = (c, a, b) => {
+  const ab = [b[0] - a[0], b[1] - a[1]];
+  const t = Math.max(0, Math.min(1, ((c[0] - a[0]) * ab[0] + (c[1] - a[1]) * ab[1]) / ((ab[0] ** 2 + ab[1] ** 2) || 1)));
+  return Math.hypot(a[0] + ab[0] * t - c[0], a[1] + ab[1] * t - c[1]);
+};
+const seenForm = new Set();
+for (const id of ids) {
+  const m = M.MOVES[id];
+  const key = m.form + JSON.stringify(m.rep);
+  if (seenForm.has(key)) continue; // same animation as a move already checked
+  seenForm.add(key);
+  const tl = P.timeline(m);
+  const ts = [];
+  let t0 = 0;
+  for (const s of tl.steps) { for (let i = 0; i <= 60; i++) ts.push(t0 + (s.ms * i) / 60); t0 += s.ms + s.hold; }
+  const fr = ts.map((t) => ({ t, pts: P.frameAt(m, t), f: P.sampleAt(m, t) }));
+  for (const k of JOINTS) {
+    const d = fr.map((x, i) => (i ? Math.hypot(x.pts[k][0] - fr[i - 1].pts[k][0], x.pts[k][1] - fr[i - 1].pts[k][1]) : 0));
+    for (let i = 1; i < d.length; i++) {
+      const nb = Math.max(d[i - 1], i + 1 < d.length ? d[i + 1] : 0);
+      if (d[i] > 0.05 * H || (d[i] > 0.02 * H && d[i] > 3 * nb)) { motion.jump.push(`${id}.${k}@${Math.round(fr[i].t)}ms ${d[i].toFixed(1)} cm`); break; }
+    }
+  }
+  if ((m.view || 'side') === 'side') continue;
+  const crossing = fr.flatMap(({ t, pts, f }) => ['N', 'F'].map((s) => {
+    const inFront = (pts['depthel' + s] || 0) > 8 || (pts['depthhd' + s] || 0) > 8;
+    const behind = (pts['depthhd' + s] || 0) < -2;
+    if (inFront || behind) return null;
+    const de = Math.hypot(pts['el' + s][0] - pts.head[0], pts['el' + s][1] - pts.head[1]);
+    const dfa = segDist(pts.head, pts['el' + s], pts['wr' + s]);
+    return de < P.L.head + 4 || dfa < P.L.head * 0.6 ? `${id}.${s}@${Math.round(t)}ms elbow ${de.toFixed(1)} forearm ${dfa.toFixed(1)} cm from the head's centre` : null;
+  })).filter(Boolean);
+  if (crossing.length) motion.head.push(crossing[0]);
+}
+check(`joints move continuously at 60 samples per rep step (${seenForm.size} animations)`, !motion.jump.length, motion.jump.slice(0, 12));
+check('in front and top views no elbow or forearm crosses the face', !motion.head.length, motion.head.slice(0, 12));
 
 /* ------------------------------------------------------------------ gym */
 section('Gym library');

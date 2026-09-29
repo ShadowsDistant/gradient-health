@@ -47,6 +47,8 @@
   const st = (o) => merge(STAND, o);
   const sup = (o) => merge(SUPINE, o);
 
+  const r1 = (v) => Math.round(v * 10) / 10;
+
   const DB2 = [{ type: 'db', hands: 'both', orient: 'end' }];
   const DB2S = [{ type: 'db', hands: 'both', orient: 'side' }];
   const DBN = [{ type: 'db', hands: 'N', orient: 'end' }];
@@ -140,11 +142,12 @@
     },
     rep: ec('a', 'b'), muscles: ['chest', 'triceps', 'frontDelts'],
   };
+  // Feet about a metre from the wall: arms long at the top, the nose a hand's width off it at the bottom.
   F.wallPush = {
-    view: 'side', pin: FLOOR_ANKLE, key: 'b', props: [{ type: 'wall', x: 78, side: 1 }],
+    view: 'side', pin: FLOOR_ANKLE, key: 'b', props: [{ type: 'wall', x: 100, side: 1 }],
     poses: {
-      a: { t: 18, n: -5, lN: { h: 0, k: 0 }, ik: { hdN: [76, -128] } },
-      b: { t: 30, n: -5, lN: { h: 0, k: 0 }, ik: { hdN: [76, -128] } },
+      a: { t: 18, n: -5, lN: { h: 0, k: 0 }, ik: { hdN: [98, -128] } },
+      b: { t: 29, n: -5, lN: { h: 0, k: 0 }, ik: { hdN: [98, -128] } },
     },
     rep: ec('a', 'b'), muscles: ['chest', 'triceps', 'frontDelts'],
   };
@@ -467,31 +470,38 @@
 
   // Rotation (front view) ------------------------------------------------------------------
   const SEATED_FRONT = { joint: 'hip', at: [0, -12] };
-  const twist = (bx, tw, o) => merge({
-    ts: 0.84, ns: 0.9, tw, ball: [bx, -52], ik: { hdN: [bx + 5, -50], hdF: [bx - 5, -50] },
-    lN: { h: 160, k: 158 }, sc: { thN: 0.42, thF: 0.42, shN: 0.52, shF: 0.52 },
-  }, o || {});
+  // The ball is held out in front (depth 20), so the arms are drawn foreshortened, the one reaching
+  // across the body less so, elbows out and down.
+  const twist = (bx, tw, o) => {
+    const across = Math.abs(bx) / 26 * 0.22;
+    const arm = (s) => 0.5 + (s * bx < 0 ? across : 0);
+    return merge({
+      ts: 0.84, ns: 0.9, tw, ball: [bx, -52], ik: { hdN: [bx + 5, -50, 20], hdF: [bx - 5, -50, 20] },
+      lN: { h: 160, k: 158 }, sc: { thN: 0.42, thF: 0.42, shN: 0.52, shF: 0.52, uaN: arm(1), faN: arm(1), uaF: arm(-1), faF: arm(-1) },
+    }, o || {});
+  };
   F.russian = {
     view: 'front', pin: SEATED_FRONT, key: 'l', armLayer: 'front', legLayer: 'front', equip: [{ type: 'ball', hands: 'both' }],
-    poses: { m: twist(0, 0), l: twist(26, 34), r: twist(-26, -34) },
+    poses: { m: twist(0, 0), l: twist(26, 34), r: twist(-26, -34) }, bend: { hdN: [1, 1], hdF: [1, 1] },
     rep: [{ to: 'l', ms: 900, hold: 150, ph: 'con' }, { to: 'm', ms: 700, hold: 0, ph: 'move' }, { to: 'r', ms: 900, hold: 150, ph: 'con' }, { to: 'm', ms: 700, hold: 0, ph: 'move' }],
     muscles: ['obliques', 'abs'],
   };
   const FEET_UP = { lN: { h: 168, k: 120, flat: false }, sc: { thN: 0.42, thF: 0.42, shN: 0.4, shF: 0.4 } };
   F.russianUp = merge(F.russian, { poses: { m: FEET_UP, l: FEET_UP, r: FEET_UP } });
+  // The ball travels in front of the body (the third number: depth): the arm reaching across passes in front of the face.
   F.chop = {
     view: 'front', pin: { joint: 'anN', at: [22, -8] }, key: 'b', armLayer: 'front', equip: [{ type: 'ball', hands: 'both' }],
     poses: {
-      a: { tw: 36, ball: [34, -176], ik: { hdN: [38, -172], hdF: [30, -172] }, lN: { h: 9, k: 0 } },
-      b: { tw: -36, ball: [-18, -100], ik: { hdN: [-14, -104], hdF: [-22, -104] }, lN: { h: 9, k: 20 }, lF: { h: 9, k: 24 } },
+      a: { tw: 36, ball: [34, -176], ik: { hdN: [38, -172, 12], hdF: [30, -172, 12] }, lN: { h: 9, k: 0 } },
+      b: { tw: -36, ball: [-18, -100], ik: { hdN: [-14, -104, 10], hdF: [-22, -104, 12] }, lN: { h: 9, k: 20 }, lF: { h: 9, k: 24 } },
     },
     rep: ce('a', 'b', { con: 800, ecc: 1300 }), muscles: ['obliques', 'abs'], uni: true, leadLimbs: [],
   };
   F.kneelChop = {
     view: 'front', pin: { joint: 'knN', at: [12, -6] }, key: 'b', armLayer: 'front', legLayer: 'front', equip: [{ type: 'ball', hands: 'both' }],
     poses: {
-      a: { tw: 34, ball: [32, -142], ik: { hdN: [36, -138], hdF: [28, -138] }, lN: { h: 4, k: 0 }, lF: { h: 150, k: 150 }, sc: { shN: 0.02, ftN: 0.2, thF: 0.35 } },
-      b: { tw: -34, ball: [-26, -52], ik: { hdN: [-22, -56], hdF: [-30, -56] }, lN: { h: 4, k: 0 }, lF: { h: 150, k: 150 }, sc: { shN: 0.02, ftN: 0.2, thF: 0.35 } },
+      a: { tw: 34, ball: [32, -142], ik: { hdN: [36, -138, 12], hdF: [28, -138, 10] }, lN: { h: 4, k: 0 }, lF: { h: 150, k: 150 }, sc: { shN: 0.02, ftN: 0.2, thF: 0.35 } },
+      b: { tw: -34, ball: [-26, -52], ik: { hdN: [-22, -56, 10], hdF: [-30, -56, 12] }, lN: { h: 4, k: 0 }, lF: { h: 150, k: 150 }, sc: { shN: 0.02, ftN: 0.2, thF: 0.35 } },
     },
     rep: ce('a', 'b', { con: 800, ecc: 1300 }), muscles: ['obliques', 'abs'], uni: true, leadLimbs: [],
   };
@@ -570,9 +580,13 @@
       b: { at: [-10, -40], t: 72, n: -20, lN: { flat: true }, ik: { anN: [0, -8], hdN: [36, -3] } },
       c: { at: [-12, -42], t: 72, n: -10, lN: { flat: false, a: 0 }, ik: { anN: [-92, -16], hdN: [36, -3] } },
       j: { at: [-11, -41], t: 72, n: -15, lN: { flat: false, a: 20 }, ik: { anN: [-46, -26], hdN: [36, -3] } }, // feet in the air mid-jump
+      // Standing up, the arms swing forward and up in an arc (via points, passed through).
+      u1: { at: [-6, -66], t: 50, n: -14, lN: { flat: true }, ik: { anN: [0, -8], hdN: [70, -74] } },
+      u2: { at: [-2, -89], t: 10, n: -4, lN: { flat: true }, ik: { anN: [0, -8], hdN: [32, -183] } },
       d: { at: [0, -118], t: -2, lN: { flat: false, a: 40 }, ik: { anN: [0, -34], hdN: [12, -224] } },
     },
-    rep: [{ to: 'b', ms: 500, hold: 0, ph: 'move' }, { to: 'j', ms: 220, hold: 0, ph: 'move' }, { to: 'c', ms: 230, hold: 150, ph: 'move' }, { to: 'j', ms: 220, hold: 0, ph: 'move' }, { to: 'b', ms: 230, hold: 0, ph: 'move' }, { to: 'd', ms: 420, hold: 60, ph: 'con' }, { to: 'a', ms: 420, hold: 250, ph: 'move' }],
+    rep: [{ to: 'b', ms: 500, hold: 0, ph: 'move' }, { to: 'j', ms: 220, hold: 0, ph: 'move' }, { to: 'c', ms: 230, hold: 150, ph: 'move' }, { to: 'j', ms: 220, hold: 0, ph: 'move' }, { to: 'b', ms: 230, hold: 0, ph: 'move' },
+      { to: 'u1', ms: 140, hold: 0, ph: 'con', through: true }, { to: 'u2', ms: 140, hold: 0, ph: 'con', through: true }, { to: 'd', ms: 160, hold: 60, ph: 'con' }, { to: 'a', ms: 420, hold: 250, ph: 'move' }],
     muscles: ['quads', 'chest', 'abs'],
   };
   F.pulse = merge(F.squatBW, {
@@ -589,16 +603,46 @@
   };
 
   // Warm-up and mobility ---------------------------------------------------------------
+  // Kettlebell halo: the bell, bottom up and held by the horns in both hands, circles the head at a
+  // steady speed: out in front at the chest, beside the head at the sides, above and behind it at
+  // the back, elbows out. Each hand reaches its grip in 3D (a target with depth, + toward the
+  // viewer), so the arms foreshorten and pass behind the head in the flat figure and go round it in
+  // the 3D one. deg: 0 in front, 90 at the figure's left (the N side).
+  // Which way each elbow points, by where the bell is from that arm's side: 0 in front, 90 on its
+  // own side, 180 behind, 270 across the face ([out, down, forward], interpolated). Both arms have
+  // to pass over the head once a circle: the arm reaching across rises in front of the forehead,
+  // and both elbows point up as the bell goes behind.
+  const HALO_POLE = [[0, 1, 0.6, 0.5], [45, 1, 0.1, 0.5], [90, 1, -0.2, 0.2], [135, 0.8, -0.6, 0.3], [180, 0.5, -1, 0.4],
+    [225, 0.1, -1.5, 0.7], [270, -0.1, -0.8, 0.6], [315, 0.4, 0.5, 1], [360, 1, 0.6, 0.5]];
+  const haloPole = (al) => {
+    let i = 0;
+    while (i < HALO_POLE.length - 2 && al > HALO_POLE[i + 1][0]) i++;
+    const a = HALO_POLE[i], b = HALO_POLE[i + 1], t = (al - a[0]) / (b[0] - a[0]);
+    return [1, 2, 3].map((k) => Math.round((a[k] + (b[k] - a[k]) * t) * 100) / 100);
+  };
+  const halo = (deg) => {
+    const th = (deg * Math.PI) / 180, c = Math.cos(th), s = Math.sin(th);
+    // The grips circle the head's axis (x = 0, z = 1): far out in front at the chest, level with the
+    // crown at the sides and above it behind, where the forearms pass over the head.
+    const R = 20 + 10 * c + 9 * Math.sin(2 * th) ** 2;
+    const mid = [R * s, -165.75 + 17.5 * c + 5.25 * Math.cos(2 * th), 1 + R * c]; // -143 in front, -171 at the sides, -178 behind
+    // The handle turns with the bell, but only half as far as the circle (the wrists can't twist a
+    // full turn): across the body in front and behind, at an angle at the sides.
+    const psi = (-Math.PI / 4) * s;
+    // The head nods a little as the bell passes behind it.
+    const nod = 0.03 + 0.3 * Math.max(0, -c) ** 1.5;
+    const pose = { lN: { h: 5 }, ns: Math.round(Math.cos(nod) * 100) / 100, ik: {}, pole: {} };
+    for (const [side, sg] of [['N', 1], ['F', -1]]) {
+      pose.ik['hd' + side] = [r1(mid[0] + sg * 6.3 * Math.cos(psi)), r1(mid[1]), r1(mid[2] + sg * 6.3 * Math.sin(psi))];
+      pose.pole['hd' + side] = haloPole((((sg > 0 ? deg : -deg) % 360) + 360) % 360);
+    }
+    return pose;
+  };
   F.halo = {
-    view: 'front', pin: FRONT_STAND, key: 'l', armLayer: 'front', equip: [{ type: 'kb', hold: 'hang' }],
-    poses: {
-      l: { kb: [20, -164], ik: { hdN: [22, -168], hdF: [16, -168] } },
-      t: { kb: [0, -184], ik: { hdN: [4, -186], hdF: [-4, -186] } },
-      r: { kb: [-20, -164], ik: { hdN: [-16, -168], hdF: [-22, -168] } },
-      f: { kb: [0, -140], ik: { hdN: [4, -146], hdF: [-4, -146] } },
-    },
-    bend: { hdN: 1, hdF: 1 },
-    rep: cyc(['t', 'r', 'f', 'l'], 600, 0), muscles: ['sideDelts', 'upperBack'],
+    view: 'front', pin: { joint: 'hip', at: [0, -92.7] }, key: 'fl', armLayer: 'front', flow: true,
+    equip: [{ type: 'kb', hands: 'both', hold: 'horns' }],
+    poses: { f: halo(0), fl: halo(45), l: halo(90), bl: halo(135), b: halo(180), br: halo(225), r: halo(270), fr: halo(315) },
+    rep: cyc(['bl', 'b', 'br', 'r', 'fr', 'f', 'fl', 'l'], 320, 0), muscles: ['sideDelts', 'upperBack'],
   };
   F.armCircles = {
     view: 'front', pin: FRONT_STAND, key: 'a', armLayer: 'front',
@@ -724,27 +768,33 @@
   // Flyes: cable crossover (front view, high pulleys), pec deck (front view, seated), dumbbell fly
   // on a flat bench (top view, like the floor fly).
   const FRONT_CENTER = { joint: 'hip', at: [0, -92.7] }; // standing, front view, centred on x = 0 (legs h: 5)
+  // Flyes sweep the hands round a real arc (targets with depth, + in front), elbows softly bent and
+  // pointing out and back; `m` is a point on the arc the rep passes through.
+  const FLY_POLE = [1, 0.6, -0.5];
+  const fly = (h, o) => merge({ ik: { hdN: h, hdF: [-h[0], h[1], h[2]] }, pole: { hdN: FLY_POLE, hdF: FLY_POLE } }, o || {});
+  const flyRep = (open, closed, holdClosed) => [
+    { to: 'm', ms: 500, hold: 0, ph: open === 'a' ? 'con' : 'ecc', through: true }, { to: closed, ms: 500, hold: holdClosed, ph: 'con' },
+    { to: 'm', ms: 1000, hold: 0, ph: 'ecc', through: true }, { to: open, ms: 1000, hold: 300, ph: 'ecc' },
+  ];
   F.cableFly = {
     view: 'front', pin: FRONT_CENTER, key: 'b', armLayer: 'front',
     props: [{ type: 'cable', x: 92, y: -190, to: 'hdN' }, { type: 'cable', x: -92, y: -190, to: 'hdF' }],
     equip: [{ type: 'handle', hands: 'both' }],
     poses: {
-      a: { ts: 0.96, lN: { h: 5 }, ik: { hdN: [72, -150], hdF: [-72, -150] } },
-      b: { ts: 0.96, lN: { h: 5 }, sc: ARMS(0.62, 0.62), ik: { hdN: [5, -110], hdF: [-5, -110] } },
+      a: fly([72, -150, -5], { ts: 0.96, lN: { h: 5 } }),
+      m: fly([54, -122, 35], { ts: 0.96, lN: { h: 5 } }),
+      b: fly([6, -112, 42], { ts: 0.96, lN: { h: 5 } }),
     },
-    bend: { hdN: 1, hdF: 1 },
-    rep: ce('a', 'b', { holdB: 500 }), muscles: ['chest', 'frontDelts'],
+    rep: flyRep('a', 'b', 500), muscles: ['chest', 'frontDelts'],
   };
   const PEC_DECK = { type: 'machine', kind: 'pecDeck', x: 0, h: 48, top: 168, py: 146, dx: 20, w: 50 };
   const SEAT_FRONT = { lN: { h: 6, k: 6 }, sc: { thN: 0.15, thF: 0.15 } };
+  // Seated at the pec deck: the hands on an arc 55 from the shoulders, from out wide to together in front.
+  const DECK_OPEN = [71.8, -108, -4.8], DECK_MID = [52.4, -108, 42.1], DECK_SHUT = [7.4, -108, 54.2];
   F.pecFly = {
     view: 'front', pin: { joint: 'hip', at: [0, -57] }, key: 'b', armLayer: 'front', legLayer: 'front', props: [PEC_DECK],
-    poses: {
-      a: merge(SEAT_FRONT, { ik: { hdN: [70, -110], hdF: [-70, -110] } }),
-      b: merge(SEAT_FRONT, { sc: ARMS(0.5, 0.5), ik: { hdN: [6, -106], hdF: [-6, -106] } }),
-    },
-    bend: { hdN: 1, hdF: 1 },
-    rep: ce('a', 'b', { holdB: 500 }), muscles: ['chest', 'frontDelts'],
+    poses: { a: fly(DECK_OPEN, SEAT_FRONT), m: fly(DECK_MID, SEAT_FRONT), b: fly(DECK_SHUT, SEAT_FRONT) },
+    rep: flyRep('a', 'b', 500), muscles: ['chest', 'frontDelts'],
   };
   F.benchFly = {
     view: 'top', pin: { joint: 'hip', at: [0, 0] }, equip: DB2S, key: 'b', props: [{ type: 'bench', x: -30, w: 116, h: BENCH_H }],
@@ -897,12 +947,8 @@
   // Reverse fly on the pec deck, seen from behind: facing the pad, so no backrest shows.
   F.revFlyMachine = {
     view: 'front', pin: { joint: 'hip', at: [0, -57] }, key: 'b', armLayer: 'front', legLayer: 'front', props: [merge(PEC_DECK, { rear: true })],
-    poses: {
-      a: merge(SEAT_FRONT, { sc: ARMS(0.3, 0.3), ik: { hdN: [7, -108], hdF: [-7, -108] } }),
-      b: merge(SEAT_FRONT, { ik: { hdN: [72, -108], hdF: [-72, -108] } }),
-    },
-    bend: { hdN: 1, hdF: 1 },
-    rep: ce('a', 'b', { holdB: 500 }), muscles: ['rearDelts', 'upperBack'],
+    poses: { a: fly(DECK_SHUT, SEAT_FRONT), m: fly(DECK_MID, SEAT_FRONT), b: fly(DECK_OPEN, SEAT_FRONT) },
+    rep: flyRep('a', 'b', 500), muscles: ['rearDelts', 'upperBack'],
   };
 
   // Shoulders.
