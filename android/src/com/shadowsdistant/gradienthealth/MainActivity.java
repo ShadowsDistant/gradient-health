@@ -212,8 +212,38 @@ public final class MainActivity extends Activity {
         super.onPause();
     }
 
+    private LlmClient llm;
+
+    /** The native engine's client (it binds LlmService on first use). */
+    synchronized LlmClient llm() {
+        if (llm == null) {
+            llm = new LlmClient(this);
+        }
+        return llm;
+    }
+
+    /**
+     * The phone is short of memory: the page decides what to let go (an idle model), and the
+     * native engine frees its model at once when it's critical.
+     */
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        callJs(jsCall("onMemoryLow", String.valueOf(level)));
+        if (level >= TRIM_MEMORY_COMPLETE || level == TRIM_MEMORY_RUNNING_CRITICAL) {
+            LlmClient c = llm;
+            if (c != null) {
+                c.unload();
+            }
+        }
+    }
+
     @Override
     protected void onDestroy() {
+        LlmClient c = llm;
+        if (c != null) {
+            c.release();
+        }
         destroyed = true;
         mainHandler.removeCallbacksAndMessages(null);
         WebView wv = webView;

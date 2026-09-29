@@ -57,6 +57,7 @@
         android:icon="@mipmap/ic_launcher"
         android:label="Gradient Health"
         android:enableOnBackInvokedCallback="true"
+        android:extractNativeLibs="true"
         android:theme="@style/AppTheme">
 
         <!-- No usage or crash metrics from the WebView to Google: the app has no analytics. -->
@@ -74,6 +75,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- The on-device coach's native engine runs in its own process, so a crash or an
+             out-of-memory kill there can't take the app with it. Only the app can bind it. -->
+        <service
+            android:name=".LlmService"
+            android:process=":llm"
+            android:exported="false" />
 
         <!-- Health Connect privacy rationale (required on Android 14+ before the permission
              dialog is shown). Opens the app's privacy page (#privacy). -->

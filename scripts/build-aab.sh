@@ -126,6 +126,8 @@ mv "$WORK/linked/resources.pb" "$WORK/base/resources.pb"
 [[ -d "$WORK/linked/res" ]] && mv "$WORK/linked/res" "$WORK/base/res"
 cp "$APK_WORK/dex/classes.dex" "$WORK/base/dex/classes.dex"
 cp -R "$APK_WORK/assets" "$WORK/base/assets"
+# The native engine's libraries, when the APK build included them.
+if [[ -d "$APK_WORK/native/lib" ]]; then cp -R "$APK_WORK/native/lib" "$WORK/base/lib"; fi
 (cd "$WORK/base" && zip -q -r -X "$WORK/base.zip" .)
 
 step "Building the bundle (versionName $VERSION_NAME, versionCode $VERSION_CODE)"

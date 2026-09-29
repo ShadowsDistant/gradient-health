@@ -146,6 +146,17 @@ aapt package -f \
   -F "$UNSIGNED"
 # classes.dex has to sit at the root of the zip, so add it from its own directory.
 (cd "$WORK/dex" && aapt add "$UNSIGNED" classes.dex >/dev/null)
+# The on-device coach's native engine, when scripts/build-native.sh has built it (CI does; a build
+# without the NDK leaves it out and the app uses its in-app engine). Installed extracted
+# (extractNativeLibs), so the libraries can be compressed here.
+NATIVE_LIB_DIR="${NATIVE_LIB_DIR:-$ROOT/build/native/lib}"
+NATIVE_NOTE="without the native engine"
+if compgen -G "$NATIVE_LIB_DIR/arm64-v8a/*.so" >/dev/null; then
+  mkdir -p "$WORK/native/lib/arm64-v8a"
+  cp "$NATIVE_LIB_DIR"/arm64-v8a/*.so "$WORK/native/lib/arm64-v8a/"
+  (cd "$WORK/native" && aapt add "$UNSIGNED" lib/arm64-v8a/*.so >/dev/null)
+  NATIVE_NOTE="with the native engine ($(ls "$WORK/native/lib/arm64-v8a" | wc -l) libraries)"
+fi
 
 entry_method() { # prints the zip method (Stored/Defl:N) of an entry
   unzip -lv "$1" | awk -v name="$2" '$NF == name { print $2 }'
@@ -186,4 +197,4 @@ echo
 # The certificate's SHA-256 is what Android developer verification and the stores know the app by.
 CERT_SHA256="$(apksigner verify --print-certs "$OUT" | awk -F': ' '/certificate SHA-256 digest/ { print $2; exit }')"
 echo "Signed with $SIGNED_WITH, certificate SHA-256: ${CERT_SHA256:-unknown}"
-step "Built $OUT ($(du -h "$OUT" | cut -f1))"
+step "Built $OUT ($(du -h "$OUT" | cut -f1)), $NATIVE_NOTE"

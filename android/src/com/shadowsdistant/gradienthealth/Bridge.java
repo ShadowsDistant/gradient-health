@@ -608,6 +608,63 @@ public final class Bridge {
         return ModelStore.get(activity);
     }
 
+    // ---------------------------------------------------------------- the native engine (LlmService)
+
+    /** {"ok":true,"threads","cores"} when this install can run the native engine here, else {"ok":false}. */
+    @JavascriptInterface
+    public String llmNative() {
+        try {
+            return activity.llm().availableJson();
+        } catch (Throwable t) {
+            return "{\"ok\":false}";
+        }
+    }
+
+    /** Loads an installed model ({"id","ctx","batch"}); events arrive through window.__gh.onLlm. */
+    @JavascriptInterface
+    public boolean llmLoad(String json) {
+        try {
+            JSONObject o = new JSONObject(json);
+            File f = models().installedFile(o.optString("id", ""));
+            if (f == null) {
+                return false;
+            }
+            activity.llm().load(f, o.optInt("ctx", 2048), o.optInt("batch", 256));
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** Writes an answer ({"req","prompt",...sampling,"grammar"?}); see LlmClient for the events. */
+    @JavascriptInterface
+    public boolean llmGenerate(String json) {
+        try {
+            activity.llm().generate(new JSONObject(json));
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** Stops the answer for this request (or drops it if it hasn't started). */
+    @JavascriptInterface
+    public void llmAbort(String req) {
+        try {
+            activity.llm().abort(req == null ? "" : req);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** Frees the model's memory. */
+    @JavascriptInterface
+    public void llmUnload() {
+        try {
+            activity.llm().unload();
+        } catch (Throwable ignored) {
+        }
+    }
+
     private void deliverHealthFailure(String error) {
         try {
             JSONObject result = new JSONObject();

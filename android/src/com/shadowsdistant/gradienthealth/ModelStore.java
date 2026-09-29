@@ -172,6 +172,17 @@ final class ModelStore {
         return out.toString();
     }
 
+    /** An installed model's file, or null (for the native engine, which reads it directly). */
+    synchronized File installedFile(String id) {
+        for (JSONObject meta : installedMetas()) {
+            if (id != null && id.equals(meta.optString("id", null))) {
+                File f = new File(dir(), meta.optString("file", ""));
+                return f.isFile() && f.getParentFile() != null && f.getParentFile().equals(dir()) ? f : null;
+            }
+        }
+        return null;
+    }
+
     /**
      * Every download this run has seen (queued, running, waiting, done, failed or cancelled), plus
      * partial downloads left from an earlier run as "paused": [{"id","state","loaded","total",...}].

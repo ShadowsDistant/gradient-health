@@ -58,6 +58,31 @@ jobs:
             exit 1
           fi
 
+      # The on-device coach's native engine (android/jni on llama.cpp). When its code changes: the core
+      # is built for the runner and tested against a tiny random-weight model, then the arm64
+      # libraries are built for the app. Otherwise the cached libraries are used.
+      - name: NDK version
+        id: ndk
+        run: echo "name=$(basename "${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_HOME:-none}}")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the native engine
+        id: native-cache
+        uses: actions/cache@v4
+        with:
+          path: build/native
+          key: native-${{ hashFiles('android/jni/**', 'scripts/build-native.sh') }}-${{ steps.ndk.outputs.name }}
+
+      - name: Native engine, host test
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: |
+          python3 -m venv build/venv
+          build/venv/bin/pip install --quiet gguf==0.19.0 numpy==2.4.6
+          bash scripts/build-native.sh --host
+
+      - name: Build the native engine (arm64)
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: bash scripts/build-native.sh
+
       # One versionCode for the APK and the bundle (Play needs it to grow with every upload).
       - name: Version code
         run: echo "VERSION_CODE=$(( $(date +%s) / 60 ))" >> "$GITHUB_ENV"
