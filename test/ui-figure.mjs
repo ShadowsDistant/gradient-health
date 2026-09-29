@@ -120,6 +120,22 @@ await page.waitForTimeout(700);
 await shot(page, 'sheet-pushup');
 await page.evaluate(() => window.GH.ui.closeSheets());
 await page.waitForTimeout(600);
+// A sheet that finishes closing after the next one opened (a slow phone, a quick tap) takes only
+// its own figure with it.
+const both = await page.evaluate(async () => {
+  const U = window.GH.ui;
+  const a = U.moveSheet('sq_bw');
+  await new Promise((r) => setTimeout(r, 400));
+  const b = U.moveSheet('push_std');
+  await new Promise((r) => setTimeout(r, 400));
+  a.close('cancel');
+  await new Promise((r) => setTimeout(r, 800));
+  const host = b.el.querySelector('.sheet-fig');
+  return { kids: host ? [...host.children].map((e) => e.tagName.toLowerCase()) : null };
+});
+check('closing one move sheet never empties another', both.kids && both.kids.length >= 1, both);
+await page.evaluate(() => window.GH.ui.closeSheets());
+await page.waitForTimeout(600);
 
 section('Ladder sheet');
 const tempoText = (id) => page.evaluate((i) => { const d = document.createElement('div'); d.innerHTML = window.GH.ui.tempoHtml(window.GH.moves.MOVES[i]); return d.textContent; }, id);
@@ -292,6 +308,21 @@ await page.waitForTimeout(3600);
 const stuck = await page.evaluate(() => ({ kids: [...document.querySelector('dialog[open] .sheet-fig').children].map((e) => e.tagName.toLowerCase()), live: window.GH.figure3d._stats().live }));
 check('after 3 s without a frame, the 3D figure is dropped and the flat one stays', stuck.kids.join() === 'svg' && stuck.live <= 1, stuck);
 check('and it keeps moving', await moves(page, 'dialog[open] .sheet-fig'));
+// One that gave up stays flat when it's redrawn (it used to mount another hidden 3D figure each time).
+const redrawn = await page.evaluate(async () => {
+  const host = document.createElement('div');
+  host.style.cssText = 'position:fixed;left:0;top:0;width:160px;height:160px';
+  document.body.appendChild(host);
+  const ctl = window.GH.ui.figureFor(host, 'sq_bw', null, true);
+  await new Promise((r) => setTimeout(r, 3600));
+  const liveBefore = window.GH.figure3d._stats().live;
+  for (let i = 0; i < 3; i++) { ctl.attach(host); ctl.play(); await new Promise((r) => setTimeout(r, 250)); }
+  const out = { pending: !!host.querySelector('.fig-pending'), kids: host.children.length, liveBefore, liveAfter: window.GH.figure3d._stats().live };
+  ctl.destroy();
+  host.remove();
+  return out;
+});
+check('a figure that gave up stays flat when redrawn', !redrawn.pending && redrawn.kids === 1 && redrawn.liveAfter <= redrawn.liveBefore, redrawn);
 await page.evaluate(() => window.GH.figure3d._stall(false));
 await page.waitForTimeout(900);
 await page.evaluate(() => window.GH.ui.closeSheets());
@@ -325,6 +356,28 @@ await page.waitForFunction(() => !!document.querySelector('.player .pl-fig > .fi
 check('back in front, it\'s 3D again', await figKind(page, '.player .pl-fig') === '3d');
 const back = await page.evaluate(() => window.__fig);
 check('without an empty frame', back.frames > 5 && back.blank === 0, back);
+// Phones often report the loss only once the app is back in front. A move sheet (which, unlike the
+// player, isn't redrawn by anything else) gets its 3D figure back then too.
+await page.evaluate(() => window.GH.ui.act.plKeep());
+await page.waitForTimeout(500);
+await page.evaluate(() => window.GH.ui.moveSheet('push_std'));
+await page.waitForFunction(() => !!document.querySelector('dialog[open] .sheet-fig > .fig3d[data-ready]:not(.fig-pending)'), null, { timeout: 20000 }).catch(() => {});
+await page.evaluate(() => {
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+  document.dispatchEvent(new Event('visibilitychange'));
+  delete document.hidden;
+  delete document.visibilityState;
+  document.dispatchEvent(new Event('visibilitychange'));
+  if (window.__gh && window.__gh.onResume) window.__gh.onResume();
+  window.GH.figure3d._loseContext();
+});
+await page.waitForFunction(() => !!document.querySelector('dialog[open] .sheet-fig svg'), null, { timeout: 8000 }).catch(() => {});
+check('a loss reported just after coming back goes flat', await figKind(page, 'dialog[open] .sheet-fig') === 'flat');
+await page.waitForFunction(() => !!document.querySelector('dialog[open] .sheet-fig > .fig3d[data-ready]:not(.fig-pending)'), null, { timeout: 20000 }).catch(() => {});
+check('then 3D again, without another trip to the background', await figKind(page, 'dialog[open] .sheet-fig') === '3d');
+await page.evaluate(() => window.GH.ui.closeSheets());
+await page.waitForTimeout(600);
 check('no console errors', errors.length === 0, errors.join('\n'));
 await ctx.close();
 

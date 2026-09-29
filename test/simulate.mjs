@@ -302,6 +302,41 @@ section('Cancelling a workout');
   B.cancelWorkout(S2);
   check('cancelling puts it back where it was', S2.events.length === events && B.todayPlan(S2, light).type === 'light' && B.todayPlan(S2, light).next.day === next.day);
   check('with nothing in progress, cancel does nothing', B.cancelWorkout(S2) === null);
+
+  // Undo: the very same workout comes back, and sets can be logged in it again.
+  B.startWorkout(S2, light, {});
+  const A2 = S2.active;
+  while (A2.steps[A2.idx].kind !== 'set') B.completeStep(S2, {});
+  const gone2 = B.cancelWorkout(S2);
+  check('Undo puts the workout back, pulled session and all', B.restoreWorkout(S2, gone2) && S2.active === gone2 && S2.events.length === events + 1);
+  check('but never over another workout', !B.restoreWorkout(S2, gone2) && S2.events.length === events + 1);
+  const logged = () => S2.active.logs.reduce((n, l) => n + l.sets.length, 0);
+  let threw = null;
+  try { B.completeStep(S2, { reps: 8 }); } catch (e) { threw = e.message; }
+  check('a set can be logged after Undo', !threw && logged() === 1, threw);
+  // A copy (as a backup would hold) is relinked to its session.
+  const copy = JSON.parse(JSON.stringify(B.cancelWorkout(S2)));
+  B.restoreWorkout(S2, copy);
+  threw = null;
+  try { while (S2.active.steps[S2.active.idx].kind !== 'set') B.completeStep(S2, {}); B.completeStep(S2, { reps: 8 }); } catch (e) { threw = e.message; }
+  check('a restored copy works too', !threw && logged() === 2, threw);
+  B.cancelWorkout(S2);
+
+  // A left/right test done in a cancelled workout doesn't count either; Undo counts it again.
+  const S3 = B.newState(USER, BASELINE, D0);
+  B.startWorkout(S3, workDay, {});
+  const A3 = S3.active;
+  const test = { kind: 'test', test: 'arm', fam: 'curl', moveId: A3.session.items[0].moveId, name: 'Left vs right curl test', side: 'L' };
+  A3.steps.splice(A3.idx, 0, { kind: 'test', item: test, side: 'L' }, { kind: 'test', item: test, side: 'R' });
+  const was = JSON.stringify(S3.catchup.arm);
+  B.completeStep(S3, { value: 10 });
+  B.completeStep(S3, { value: 16 });
+  const after = JSON.stringify(S3.catchup.arm);
+  check('the test is recorded while the workout runs', after !== was && S3.catchup.arm.tests.length === JSON.parse(was).tests.length + 1);
+  const gone3 = B.cancelWorkout(S3);
+  check('cancelling forgets the test', JSON.stringify(S3.catchup.arm) === was);
+  B.restoreWorkout(S3, gone3);
+  check('and Undo records it again', JSON.stringify(S3.catchup.arm) === after);
 }
 
 done();

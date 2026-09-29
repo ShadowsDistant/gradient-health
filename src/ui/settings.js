@@ -371,7 +371,7 @@
           ${food ? '<li>Your calorie target and what you ate on average (not the foods)</li>' : ''}
         </ul>
         <p class="t-body">Never your name, email, exact dates or device IDs. Anthropic's privacy policy covers what happens to it there. You can turn Claude off any time in Settings.</p>
-        <div class="btn-row"><button type="button" class="rf-btn" data-variant="plain" data-act="previewSheet">${U.icon('eye')}See exactly what gets sent</button><button type="button" class="rf-btn" data-variant="plain" data-act="openPrivacy">${U.icon('lock')}Privacy policy</button></div>
+        <div class="btn-row"><button type="button" class="rf-btn" data-variant="plain" data-act="previewSheet">${U.icon('eye')}See exactly what gets sent</button><button type="button" class="rf-btn" data-variant="plain" data-act="privacySheet">${U.icon('lock')}Privacy policy</button></div>
         <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="claudeAllow">Allow</button><button type="button" class="rf-btn" data-size="lg" data-act="claudeDeny">Not now</button></div>
       </div>`,
       onClose: () => done(false),
@@ -417,7 +417,17 @@
             if (!p || !p.id) return;
             if (p.state === 'done' || p.state === 'cancelled') {
               delete dev.progress[p.id];
-              if (p.state === 'done') llm.installed().then((x) => { dev.installed = x; redraw(); if (U.S && !U.S.ai.deviceModel) { U.S.ai.deviceModel = p.id; U.save(); } U.toast('The on-device model is ready', 'positive', 'Ask it anything about your numbers.'); });
+              if (p.state === 'done') {
+                llm.installed().then((x) => {
+                  dev.installed = x;
+                  // The new model takes over from none, or from an older one picked (or set) in 1.2.
+                  const was = U.S && dev.all.find((m) => m.id === U.S.ai.deviceModel);
+                  const got = dev.all.find((m) => m.id === p.id);
+                  if (U.S && got && !got.legacy && (!U.S.ai.deviceModel || (was && was.legacy))) { U.S.ai.deviceModel = p.id; U.save(); }
+                  redraw();
+                  U.toast('The on-device model is ready', 'positive', 'Ask it anything about your numbers.');
+                });
+              }
             } else dev.progress[p.id] = p;
             redraw();
           });
@@ -447,13 +457,15 @@
     const use = S.ai.deviceModel;
     const haveIds = dev.installed.map((x) => x.id);
     const inUse = use && haveIds.includes(use) ? use : GH.deviceCoach ? GH.deviceCoach.pick(S, dev.installed) : haveIds[0];
-    const older = dev.all.filter((m) => m.legacy && haveIds.includes(m.id));
+    const older = dev.all.filter((m) => m.legacy && (haveIds.includes(m.id) || dev.progress[m.id]));
     const rows = dev.offered.concat(older).map((m) => {
       const have = haveIds.includes(m.id);
       const p = dev.progress[m.id];
       const rec = !have && m.id === dev.recommended;
       const title = `<span class="rf-list-title">${U.esc(m.name)}${rec ? ` ${U.badge('Recommended', 'accent')}` : ''}</span>`;
       const row = (sub, right, extra) => `<li data-key="model-${m.id}"><div class="rf-list-row model-row">${modelIcon(m)}<span class="rf-list-text">${title}<span class="rf-list-sub">${U.esc(sub)}</span>${extra || ''}</span>${right}</div></li>`;
+      // An older model is never downloaded again: a piece of one left from 1.2 can only go.
+      if (p && !have && m.legacy) return row(p.loaded > 0 ? `${size(p.loaded)} of an older model's unfinished download` : 'An older model\'s unfinished download', `<button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="modelCancel" data-arg="${m.id}">Discard</button>`);
       if (p && !have) {
         const pct = p.total ? Math.round((p.loaded / p.total) * 100) : 0;
         const sub = p.state === 'error' ? p.message || 'The download stopped.' : p.state === 'waiting-wifi' || p.state === 'waiting-network' || p.state === 'paused' ? p.message || 'Paused' : p.state === 'verifying' ? 'Checking the download…' : `Downloading · ${pct}% of ${size(m.bytes)}`;
@@ -612,5 +624,7 @@
   U.screens.privacy = {
     render() { return `${U.navbar('Privacy', '', U.glassBtn('chevron-left', 'Back', 'back'))}<h1 class="rf-large-title">Privacy</h1><div class="section">${U.privacyHtml()}</div>`; },
   };
+  // On top of a sheet that must stay open (closing the Claude consent sheet would decline it).
+  U.act.privacySheet = () => U.showPrivacySheet();
   U.showPrivacySheet = () => U.sheet({ title: 'Privacy', detents: 'large', detent: 'large', body: `<div class="sheet-pad">${U.privacyHtml()}</div>` });
 })(typeof window !== 'undefined' ? window : globalThis);

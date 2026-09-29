@@ -234,12 +234,27 @@
       onClose: () => { if (AI()) AI().stop(); if (stopper) stopper.abort(); stopper = null; chat = null; },
       after: (c) => { const log = c.el.querySelector('#chatLog'); if (log) log.scrollTop = log.scrollHeight; },
     });
-    if (engineOf(S) === 'device' && U.checkDevice) U.checkDevice().then(() => { refreshChat(); if (!deviceGate() && GH.deviceCoach) GH.deviceCoach.prime(U.S, U.today()); });
-    if (preset) {
+    // A suggested question goes in once the sheet is up and, for the on-device coach, once it's
+    // known whether the model is there (the box to type in waits for that).
+    const me = chat;
+    const send = () => {
+      if (!preset || chat !== me || !chat) return;
       const q = chat.el.querySelector('#askQ');
-      if (q) q.value = preset;
-      setTimeout(() => { const b = chat && chat.el.querySelector('[data-act="askSend"]'); if (b && !chat.el.querySelector('.chat-compose').hidden) U.act.askSend(b); }, 380);
-    }
+      const b = chat.el.querySelector('[data-act="askSend"]');
+      const box = chat.el.querySelector('.chat-compose');
+      if (q && !q.value) q.value = preset;
+      if (b && box && !box.hidden) U.act.askSend(b);
+    };
+    if (preset) { const q = chat.el.querySelector('#askQ'); if (q) q.value = preset; }
+    const wait = new Promise((r) => setTimeout(r, 380));
+    if (engineOf(S) === 'device' && U.checkDevice) {
+      U.checkDevice().then(() => {
+        if (chat !== me) return;
+        refreshChat();
+        if (!deviceGate() && GH.deviceCoach && !preset) GH.deviceCoach.prime(U.S, U.today());
+        return wait.then(send);
+      });
+    } else if (preset) wait.then(send);
   };
   U.on.setChatEngine = async (el, ev, v) => {
     const S = U.S;

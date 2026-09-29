@@ -211,6 +211,43 @@ check('cancelling with sets done asks first, with a clear way out', /Cancel this
 await page.evaluate(() => { const d = document.querySelector('dialog.rf-dialog[open]'); [...d.querySelectorAll('button')].find((b) => /Cancel workout/.test(b.textContent)).click(); });
 await settle(1200);
 check('then the workout is gone and the player closed', await page.evaluate(() => !window.GH.ui.S.active && document.querySelector('.player').hidden && !!document.querySelector('#float [data-act="startWorkout"]')));
+// Undo brings back the same workout (not a copy, which broke every set after it).
+await page.evaluate(() => { const t = [...document.querySelectorAll('.rf-toast')].pop(); t.querySelector('.rf-btn:not(.rf-toast-close)').click(); });
+await settle(900);
+await page.click('#float [data-act="resumeWorkout"]');
+await page.waitForSelector('.player:not([hidden]) .pl-name');
+await settle(600);
+const undone = await page.evaluate(() => {
+  const a = window.GH.ui.S.active;
+  if (!a) return { err: 'no workout' };
+  while (a.idx < a.steps.length && a.steps[a.idx].kind !== 'set') a.idx++;
+  const n = () => a.logs.reduce((k, l) => k + l.sets.length, 0);
+  const before = n();
+  try { window.GH.ui.act.plDone(); } catch (e) { return { err: e.message }; }
+  return { logged: n() - before };
+});
+check('after Undo, sets log as usual', undone && !undone.err && undone.logged === 1, JSON.stringify(undone));
+await page.evaluate(() => { const U = window.GH.ui; U.act.plKeep(); window.GH.brain.cancelWorkout(U.S); window.GH.store.save(U.S); U.render(); });
+await settle(700);
+
+section('How it works');
+await page.evaluate(() => window.GH.ui.open('science'));
+await settle(900);
+await page.click('#screen [data-act="sciShow"][data-arg="recovery"]');
+await settle(600);
+await page.evaluate(() => window.GH.ui.back());
+await settle(700);
+// A "Why" link to a training rule while Recovery is picked.
+await page.evaluate(() => window.GH.ui.open('science', 'volume'));
+await settle(1500);
+const sci = await page.evaluate(() => ({ sheets: document.querySelectorAll('dialog.sci-sheet[open]').length, row: !!document.querySelector('#screen #sci-volume'), shift: document.getElementById('app').scrollLeft }));
+check('a Why link opens its rule once, with the rule\'s group showing', sci.sheets === 1 && sci.row, JSON.stringify(sci));
+check('and nothing scrolls the page sideways', sci.shift === 0, JSON.stringify(sci));
+await page.evaluate(() => window.GH.ui.closeSheets());
+await settle(900);
+check('also after the sheet closes', await page.evaluate(() => document.getElementById('app').scrollLeft === 0 && document.querySelector('#screen h1').getBoundingClientRect().left >= 0));
+await page.evaluate(() => { while (window.GH.ui.back()) { /* back to the tab */ } });
+await settle(700);
 
 section('Console');
 check('no console errors', errors.length === 0, errors.join(' | '));

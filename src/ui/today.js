@@ -261,7 +261,7 @@
   U.act.startMobility = () => U.openMobility();
   U.act.checkinStale = () => { if (U.openCheckin) U.openCheckin(); };
   U.act.discardStale = async () => {
-    if (await U.confirm('Discard this workout?', 'Nothing from it is saved.', 'Discard', 'critical', 'trash')) { U.S.active = null; U.commit(); }
+    if (await U.confirm('Discard this workout?', 'Nothing from it is saved.', 'Discard', 'critical', 'trash')) { B().cancelWorkout(U.S); U.commit(); }
   };
   U.act.feelEdit = () => { feelOpen = true; U.render(); };
   U.on.feelEnergy = (el, ev, v) => { GH.health.setFeel(U.S, U.today(), { energy: v }); U.save(); maybeClose(); };

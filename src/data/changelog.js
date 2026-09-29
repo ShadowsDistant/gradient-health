@@ -4,6 +4,16 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.3.1', date: '2026-09-29', title: 'A round of fixes',
+      items: [
+        ['refresh', 'Undo after cancelling a workout brings it back properly. Before, logging a set afterwards could fail until the app restarted.'],
+        ['library', 'A "Why" link opens its rule once, and How it works no longer ends up shifted to one side.'],
+        ['person', 'Exercise animations no longer go missing when you open a move right after closing another, and the 3D figure comes back after the app has been in the background.'],
+        ['chip', 'The on-device coach no longer calls a finished workout day a light day, switches to a new model as soon as it has downloaded, and can clear an old unfinished download. Questions picked from the weekly report always get sent.'],
+        ['lock', 'The privacy policy link on the Claude screen opens on top instead of turning Claude down.'],
+      ],
+    },
+    {
       version: '1.3.0', date: '2026-09-29', title: 'A smarter coach, and workouts you can cancel',
       items: [
         ['chip', 'The on-device coach is much better: newer Qwen3.5 models in three sizes (Fast, Balanced and Best answers), and every answer starts from what the app has already worked out from your numbers and the research behind it. Follow-up questions start answering sooner. The chat is now the on-device coach or Claude.'],

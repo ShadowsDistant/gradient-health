@@ -92,6 +92,17 @@ check('and the How it works rule behind it', /How the app decides \(An easier da
 check('a question the app can\'t work out says so', /FACTS\n- None for this question\./.test(prompt.none), prompt.none);
 check('the rules and data stay the same from question to question (so they stay cached)', prompt.same);
 check('with the last exchange before the question', prompt.turns === 4, prompt.turns);
+const lighter = await page.evaluate(() => {
+  const B = window.GH.brain, D = window.GH.deviceCoach, S = window.GH.ui.S, day = window.GH.ui.today();
+  const real = B.todayPlan, out = {};
+  for (const type of ['done', 'rest', 'light']) {
+    B.todayPlan = () => ({ type, light: { walk: false, mobility: false } });
+    try { out[type] = D.facts(S, day, 'Why is today lighter?').join(' | '); } finally { B.todayPlan = real; }
+  }
+  return out;
+});
+check('a finished or rest day isn\'t explained to the model as a light day', !/Light day/.test(lighter.done) && !/Light day/.test(lighter.rest), lighter);
+check('a light day still is', /Today's changes: Light day/.test(lighter.light), lighter.light);
 
 section('Stop');
 await page.fill('#askQ', 'Write me a long answer about everything');
@@ -125,6 +136,33 @@ await page.click('dialog[open] [data-act="flagHide"]');
 await wait(900);
 check('a reported answer is hidden and kept in the list', await page.evaluate((n) => (window.GH.ui.S.ai.flags || []).length === n + 1 && /reported this answer/.test([...document.querySelectorAll('.chat-sheet .bubble.coach')].pop().textContent), nFlags));
 
+section('Stopped before its turn');
+const early = await page.evaluate(async () => {
+  const D = window.GH.deviceCoach, S = window.GH.ui.S, day = window.GH.ui.today();
+  await D.ask(S, day, 'How many steps did I do?', {});
+  const speed = (S.ai.speed || {})['q35-2'];
+  const ctl = new AbortController();
+  const r = await D.ask(S, day, 'And my sleep?', { signal: ctl.signal, onStatus: (st) => { if (st === 'thinking') ctl.abort(); } });
+  return { aborted: r.aborted, text: r.text, speedKept: (S.ai.speed || {})['q35-2'] === speed };
+});
+check('a question stopped before it starts comes back as stopped', early.aborted === true && !early.text, early);
+check('and the last answer\'s speed isn\'t counted again', early.speedKept, early);
+
+section('A suggested question');
+await page.evaluate(() => window.GH.ui.closeSheets());
+await wait(700);
+const asked = await page.evaluate(() => (window.GH.ui.S.ai.deviceChat || []).length);
+// The first open after starting the app, when the check for the model takes a while.
+await page.evaluate(() => {
+  const U = window.GH.ui, real = U.checkDevice;
+  U.deviceState().checked = false;
+  U.checkDevice = () => new Promise((r) => setTimeout(r, 1200)).then(real);
+  try { U.act.askCoach(null, null, 'Why is today lighter?'); } finally { U.checkDevice = real; }
+});
+await page.waitForFunction((n) => (window.GH.ui.S.ai.deviceChat || []).length >= n + 2, asked, { timeout: 60000 }).catch(() => {});
+check('is sent once the coach is ready', await page.evaluate((n) => { const c = window.GH.ui.S.ai.deviceChat || []; return c.length >= n + 2 && c[n].text === 'Why is today lighter?'; }, asked));
+await page.waitForSelector('.chat-sheet [data-act="askSend"]', { timeout: 20000 });
+
 section('Claude asks first');
 const anthropic = [];
 page.on('request', (r) => { if (/anthropic\.com/.test(r.url())) anthropic.push(r.url()); });
@@ -132,6 +170,13 @@ await page.evaluate(() => { window.AndroidBridge.loadSecret = () => 'sk-ant-api0
 await page.click('.chat-sheet [data-on="setChatEngine"] input[value="api"]', { force: true });
 await page.waitForSelector('dialog[open] [data-act="claudeAllow"]', { timeout: 5000 });
 check('turning Claude on shows what it would get', await page.evaluate(() => { const t = document.querySelector('dialog[open] .sheet-prose').textContent; return /age range/.test(t) && /sleep, steps, heart rate/.test(t) && /Never your name/.test(t); }));
+await page.click('dialog[open] [data-act="privacySheet"]');
+await wait(900);
+const policy = await page.evaluate(() => { const top = window.GH.ui.topSheet(); return { title: top && top.el.querySelector('.rf-sheet-title').textContent, asking: !!document.querySelector('dialog[open] [data-act="claudeAllow"]'), mode: window.GH.ui.S.ai.mode, consent: !!window.GH.ui.S.ai.consentAt }; });
+check('its privacy policy link opens the policy on top, without answering the question', policy.title === 'Privacy' && policy.asking && policy.mode !== 'api' && !policy.consent, policy);
+await page.evaluate(() => window.GH.ui.topSheet().close('ok'));
+await wait(800);
+check('closing the policy goes back to the question', await page.evaluate(() => !!window.GH.ui.topSheet().el.querySelector('[data-act="claudeAllow"]')));
 await page.click('dialog[open] [data-act="claudeDeny"]');
 await wait(800);
 check('saying no keeps it off, and nothing is sent', await page.evaluate(() => window.GH.ui.S.ai.mode !== 'api' && !window.GH.ui.S.ai.consentAt) && anthropic.length === 0);
@@ -150,6 +195,16 @@ await wait(900);
 check('the coach setting has two choices', await page.evaluate(() => [...document.querySelectorAll('#screen [data-on="setCoachMode"] input')].map((i) => i.value).join() === 'device,api' && document.querySelector('#screen [data-on="setCoachMode"] input[value="device"]').checked));
 check('the model shows as in use, with its speed here', await page.evaluate(() => { const t = (document.querySelector('#screen [data-key="model-q35-2"]') || {}).textContent || ''; return /In use/.test(t) && /words a second here/.test(t); }));
 check('nothing is cut off', await page.evaluate(() => ![...document.querySelectorAll('#screen .rf-list-title')].some((e) => e.scrollWidth > e.clientWidth + 1)));
+// A piece of an older model's download left from 1.2 (it's never downloaded again) can be cleared.
+await page.evaluate(() => {
+  const d = window.GH.ui.deviceState();
+  d.all = d.all.concat([{ id: 'qwen05', name: 'Qwen2.5 0.5B', label: 'Older, smaller', tier: 'fast', legacy: true, bytes: 491400032 }]);
+  d.progress.qwen05 = { id: 'qwen05', state: 'paused', loaded: 3e8, total: 491400032 };
+  window.GH.ui.render();
+});
+await wait(400);
+check('an older model\'s unfinished download can be discarded', await page.evaluate(() => { const r = document.querySelector('#screen [data-key="model-qwen05"]'); return !!(r && r.querySelector('[data-act="modelCancel"]') && /unfinished download/.test(r.textContent) && !r.querySelector('[data-act="modelDownload"]')); }));
+await page.evaluate(() => { const d = window.GH.ui.deviceState(); delete d.progress.qwen05; d.all = d.all.filter((m) => m.id !== 'qwen05'); window.GH.ui.render(); });
 
 section('Console');
 check('no console errors', errors.length === 0, errors.join('\n'));

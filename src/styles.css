@@ -67,7 +67,9 @@ body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
 /* Plain buttons take the surrounding font. Refract's controls (.rf-*) keep their own sizes, so this
    must not reach them: an unlayered `font` here would beat Refract's layered rules. */
 button:not([class*="rf-"]) { font: inherit; }
-.app { position: fixed; inset: 0; overflow: hidden; background: var(--bg); timeline-scope: --page; }
+/* clip, not hidden: a hidden box can still be scrolled by script, and the glow below is wider than
+   the screen, so scrollIntoView could shift the whole app sideways. */
+.app { position: fixed; inset: 0; overflow: hidden; overflow: clip; background: var(--bg); timeline-scope: --page; }
 :root { --glow-mint: rgb(111 227 200 / .55); --glow-sky: rgb(58 168 255 / .5); --glow-violet: rgb(155 92 255 / .42); --glow-pink: rgb(255 126 179 / .34); }
 :root[data-theme^="dark"] { --glow-mint: rgb(70 190 170 / .26); --glow-sky: rgb(60 130 255 / .5); --glow-violet: rgb(140 80 255 / .52); --glow-pink: rgb(240 100 170 / .3); }
 /* Ambient glow: the icon's colours (mint, sky, violet, pink) softly behind the top of each page, so
@@ -83,11 +85,15 @@ button:not([class*="rf-"]) { font: inherit; }
     radial-gradient(30% 40% at 34% 74%, var(--glow-pink), transparent 74%);
   -webkit-mask-image: linear-gradient(to bottom, #000 35%, transparent 95%); mask-image: linear-gradient(to bottom, #000 35%, transparent 95%);
   opacity: .5;
-  animation: glow-scroll linear both; animation-timeline: --page; animation-range: 0 480px;
 }
-.screen { scroll-timeline: --page block; }
+[data-theme^="dark"] .app::before { opacity: .6; }
+/* Where scroll-linked animations aren't supported (older WebViews) the glow just stays put. */
+@supports (animation-timeline: scroll()) {
+  .screen { scroll-timeline: --page block; }
+  .app::before { animation: glow-scroll linear both; animation-timeline: --page; animation-range: 0 480px; }
+  [data-theme^="dark"] .app::before { animation-name: glow-scroll-dark; }
+}
 @keyframes glow-scroll { from { opacity: .5; translate: 0 0; } to { opacity: .16; translate: 0 -80px; } }
-[data-theme^="dark"] .app::before { opacity: .6; animation-name: glow-scroll-dark; }
 @keyframes glow-scroll-dark { from { opacity: .6; translate: 0 0; } to { opacity: .22; translate: 0 -80px; } }
 :root[data-theme$="contrast"] .app::before, :root[data-rf-transparency="reduced"] .app::before { display: none; }
 @media (prefers-reduced-transparency: reduce) { .app::before { display: none; } }
@@ -132,7 +138,7 @@ button.stat:active, .insight-line:active, .pl-fig-card:active, .tap-card:active 
 .rf-sheet-grabber:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 /* A full-height sheet sets the page back behind it. */
 #app { transition: scale 460ms var(--spring-smooth), translate 460ms var(--spring-smooth), border-radius 460ms var(--spring-smooth); transform-origin: 50% 0; }
-#app[data-receded] { scale: .94; translate: 0 calc(var(--sat) + 6px); border-radius: 22px; overflow: hidden; }
+#app[data-receded] { scale: .94; translate: 0 calc(var(--sat) + 6px); border-radius: 22px; overflow: hidden; overflow: clip; }
 html:has(#app[data-receded]), body:has(#app[data-receded]) { background: #08090c; }
 @media (prefers-reduced-motion: reduce) { #app { transition: none; } }
 .rf-sheet[data-detent="large"] { --_h: calc(100dvh - var(--space-12) - var(--sat)); }

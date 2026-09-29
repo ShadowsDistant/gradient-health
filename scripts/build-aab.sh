@@ -16,7 +16,7 @@
 # Environment (all optional besides signing):
 #   ANDROID_HOME     Android SDK                     (default: $ANDROID_SDK_ROOT, else ~/Android/Sdk)
 #   VERSION_NAME     versionName                     (default: "version" in package.json)
-#   VERSION_CODE     versionCode                     (default: the one build-apk.sh used)
+#   VERSION_CODE     versionCode                     (default: the one build-apk.sh last used)
 #   OUT              the bundle                      (default: build/gradient-health.aab)
 #   CACHE_DIR        download cache                  (default: ~/.cache/gradient-health)
 #   BUNDLETOOL_JAR   a bundletool-all jar to use instead of downloading one
@@ -60,22 +60,30 @@ done
 for tool in java jarsigner unzip zip curl; do command -v "$tool" >/dev/null 2>&1 || die "missing tool: $tool"; done
 [[ -f "$APK_WORK/dex/classes.dex" && -f "$APK_WORK/assets/index.html" ]] || die "no compiled app in $APK_WORK. Run 'bash scripts/build-apk.sh' first."
 
-BUNDLETOOL="${BUNDLETOOL_JAR:+$(abspath "$BUNDLETOOL_JAR")}"
-BUNDLETOOL="${BUNDLETOOL:-$CACHE_DIR/$BUNDLETOOL_ASSET}"
-if [[ ! -s "$BUNDLETOOL" ]]; then
-  step "Downloading bundletool ${BUNDLETOOL_VERSION}"
-  mkdir -p "$CACHE_DIR"
-  curl -fL --retry 5 --retry-delay 10 --retry-all-errors --connect-timeout 30 -o "$BUNDLETOOL.part" "$BUNDLETOOL_URL"
-  got="$(sha256sum "$BUNDLETOOL.part" | cut -d' ' -f1)"
-  [[ "$got" == "$BUNDLETOOL_SHA256" ]] || { rm -f "$BUNDLETOOL.part"; die "bundletool SHA-256 mismatch (expected $BUNDLETOOL_SHA256, got $got)"; }
-  mv "$BUNDLETOOL.part" "$BUNDLETOOL"
+sha256() { sha256sum "$1" | cut -d' ' -f1; }
+if [[ -n "${BUNDLETOOL_JAR:-}" ]]; then
+  BUNDLETOOL="$(abspath "$BUNDLETOOL_JAR")"
+  [[ -s "$BUNDLETOOL" ]] || die "no bundletool jar at $BUNDLETOOL"
+else
+  # The cached copy is checked every time too (a CI cache restores it from outside this script).
+  BUNDLETOOL="$CACHE_DIR/$BUNDLETOOL_ASSET"
+  if [[ -s "$BUNDLETOOL" && "$(sha256 "$BUNDLETOOL")" != "$BUNDLETOOL_SHA256" ]]; then
+    echo "build-aab: the cached bundletool doesn't match its SHA-256; downloading it again" >&2
+    rm -f "$BUNDLETOOL"
+  fi
+  if [[ ! -s "$BUNDLETOOL" ]]; then
+    step "Downloading bundletool ${BUNDLETOOL_VERSION}"
+    mkdir -p "$CACHE_DIR"
+    curl -fL --retry 5 --retry-delay 10 --retry-all-errors --connect-timeout 30 -o "$BUNDLETOOL.part" "$BUNDLETOOL_URL"
+    got="$(sha256 "$BUNDLETOOL.part")"
+    [[ "$got" == "$BUNDLETOOL_SHA256" ]] || { rm -f "$BUNDLETOOL.part"; die "bundletool SHA-256 mismatch (expected $BUNDLETOOL_SHA256, got $got)"; }
+    mv "$BUNDLETOOL.part" "$BUNDLETOOL"
+  fi
 fi
 bundletool() { java -jar "$BUNDLETOOL" "$@"; }
 
 # The same versionCode as the APK built just before (Play needs it to grow with every upload).
-if [[ -z "${VERSION_CODE:-}" ]]; then
-  VERSION_CODE="$("$AAPT2" dump badging "$ROOT/build/gradient-health.apk" 2>/dev/null | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -n1 || true)"
-fi
+if [[ -z "${VERSION_CODE:-}" && -s "$APK_WORK/version-code" ]]; then VERSION_CODE="$(cat "$APK_WORK/version-code")"; fi
 [[ "${VERSION_CODE:-}" =~ ^[1-9][0-9]{0,9}$ ]] || die "set VERSION_CODE (the APK's), got '${VERSION_CODE:-}'"
 
 # ---------------------------------------------------------------- signing (as in build-apk.sh)
@@ -124,14 +132,16 @@ step "Building the bundle (versionName $VERSION_NAME, versionCode $VERSION_CODE)
 bundletool build-bundle --modules="$WORK/base.zip" --output="$OUT"
 
 step "Signing with $SIGNED_WITH"
+# jarsigner reports its errors (a wrong alias or password) on stdout, so that stays visible.
 jarsigner -sigalg SHA256withRSA -digestalg SHA-256 \
   -keystore "$KEYSTORE" -storepass:env GH_SIGN_STORE_PASS -keypass:env GH_SIGN_KEY_PASS \
-  "$OUT" "$KEY_ALIAS" >/dev/null
+  "$OUT" "$KEY_ALIAS" || die "couldn't sign the bundle with $SIGNED_WITH"
 
 # ---------------------------------------------------------------- checks
 step "Validating"
 bundletool validate --bundle="$OUT" >/dev/null
-jarsigner -verify "$OUT" >/dev/null || die "the bundle's signature doesn't verify"
+# -verify also succeeds on an unsigned jar ("jar is unsigned."), so look for the verdict.
+jarsigner -verify "$OUT" | grep -q '^jar verified' || die "the bundle's signature doesn't verify"
 # A universal APK from the bundle: proves it turns into something a phone installs. bundletool
 # takes passwords from a file (or the command line): a private file that's gone right after.
 PASSDIR="$(mktemp -d)"

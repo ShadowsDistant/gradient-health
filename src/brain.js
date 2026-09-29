@@ -1196,19 +1196,32 @@
   }
 
   // Cancels the workout in progress: nothing from it is kept, it doesn't count, and today's plan can
-  // be started again. A session pulled forward onto a light day to start it goes back where it was.
-  // Returns what was cancelled (or null).
+  // be started again. A session pulled forward onto a light day to start it goes back where it was,
+  // and a left/right test done in it is forgotten. Returns what was cancelled (or null), which
+  // restoreWorkout takes to undo it.
+  const isPulled = (a) => (e) => e.type === 'move' && e.from === a.pulled.from && e.to === a.pulled.to && e.at === a.pulled.at;
   function cancelWorkout(S) {
     const a = S.active;
     if (!a) return null;
     if (a.pulled) {
-      for (let i = S.events.length - 1; i >= 0; i--) {
-        const e = S.events[i];
-        if (e.type === 'move' && e.from === a.pulled.from && e.to === a.pulled.to && e.at === a.pulled.at) { S.events.splice(i, 1); break; }
-      }
+      const i = S.events.map(isPulled(a)).lastIndexOf(true);
+      if (i >= 0) S.events.splice(i, 1);
     }
+    for (const k of Object.keys(a.catchupWas || {})) if (S.catchup[k]) S.catchup[k] = JSON.parse(JSON.stringify(a.catchupWas[k]));
     S.active = null;
     return a;
+  }
+  // Undo for cancelWorkout: the same workout back where it was, with its pulled session and tests.
+  function restoreWorkout(S, a) {
+    if (!a || S.active) return false;
+    if (a.pulled && !S.events.some(isPulled(a))) S.events.push(Object.assign({}, a.pulled));
+    for (const k of Object.keys(a.catchupWas || {})) {
+      const t = a.tests && a.tests[k];
+      if (S.catchup[k] && t && t.L != null && t.R != null) recordTest(S, a.day, k, t.L, t.R);
+    }
+    S.active = a;
+    relink(S);
+    return true;
   }
 
   function itemIndex(A, item) {
@@ -1240,6 +1253,9 @@
       A.tests[st.item.test][st.side] = r.value || 0;
       const t = A.tests[st.item.test];
       if (t.L != null && t.R != null) {
+        // How the catch-up stood before, in case the workout is cancelled.
+        const was = A.catchupWas || (A.catchupWas = {});
+        if (!was[st.item.test]) was[st.item.test] = JSON.parse(JSON.stringify(S.catchup[st.item.test]));
         const res = recordTest(S, A.day, st.item.test, t.L, t.R);
         A.testLines = (A.testLines || []).concat(res.line);
         // A closed gap drops the extra lead set from this session too.
@@ -1922,7 +1938,7 @@
   GH.brain = {
     DAY_MS, dayOf, dayFromStr, dayStr, weekday, weekStart, fmtDay, fmtMin, GROUPS, GROUP_NAME, JOINTS, LB_PER_KG,
     defaultProfile, programFor, templateFor, templateTitle, newState, applyBaseline, rungs, filtersFor,
-    calendar, weekOf, todayPlan, readiness, buildSession, estimate, steps, startWorkout, cancelWorkout, completeStep, currentTarget,
+    calendar, weekOf, todayPlan, readiness, buildSession, estimate, steps, startWorkout, cancelWorkout, restoreWorkout, completeStep, currentTarget,
     setRir, amendLast, swapItem, swapOptions, finishWorkout, progress, levelUp, nextWeight, weeklyVolumeUpdate, recordTest, testDue,
     logLight, autoWalk, addWeight, weightStats, proteinGoal, proteinToday, addProtein, undoProtein, weeklySets,
     updateSettings, scheduleSettings, settingsAt, moveSession, setEquipment, reprogram, ladderLevel, mobilityFlow, loadInfo, isDone, relink, median,
