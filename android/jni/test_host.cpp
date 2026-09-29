@@ -26,6 +26,7 @@ struct Run {
     int last_done = 0, last_total = 0;
     int stop_after = -1;  // stop once this many pieces arrived
     bool bad_utf8 = false;
+    ghllm *stop_reading = nullptr;  // stops the engine after the first batch of the prompt
 };
 
 static bool valid_utf8(const char *s, int n) {
@@ -51,16 +52,16 @@ static void on_progress(void *ud, int done, int total) {
     r->progress_calls++;
     r->last_done = done;
     r->last_total = total;
+    if (r->stop_reading) ghllm_abort(r->stop_reading);
 }
 static int on_load(void *ud, float p) {
     *static_cast<float *>(ud) = p;
     return 1;
 }
 
-static const char *PROMPT =
-    "<|im_start|>system\nYou are a fitness coach. Be brief.<|im_end|>\n"
-    "<|im_start|>user\nHow is my sleep?<|im_end|>\n"
-    "<|im_start|>assistant\n<think>\n\n</think>\n\n";
+#define SYSTEM "<|im_start|>system\nYou are a fitness coach. Be brief. Their data: sleep 7 h 10 min, steps 8400.<|im_end|>\n"
+#define ASK(q) SYSTEM "<|im_start|>user\n" q "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+static const char *PROMPT = ASK("How is my sleep?");
 
 int main(int argc, char **argv) {
     const char *path = argc > 1 ? argv[1] : "build/tiny-qwen35.gguf";
@@ -133,6 +134,61 @@ int main(int argc, char **argv) {
     gen.max_tokens = 8;
     rc = ghllm_generate(g, PROMPT, &gen, on_piece, nullptr, &h, nullptr);
     check("still answers afterwards", rc == GHLLM_OK && !h.text.empty());
+
+    // The system prompt, read ahead of the first question (max_tokens 0), stays cached: each new
+    // question reads only its own turn, even on this model's recurrent layers (from a checkpoint).
+    ghllm_gen greedy = gen;
+    greedy.temperature = 0;
+    greedy.repeat_penalty = 1;
+    greedy.max_tokens = 0;
+    ghllm_stats p0{};
+    Run r0;
+    rc = ghllm_generate(g, "<|im_start|>system\nA different prompt, to start from nothing.<|im_end|>\n", &greedy, on_piece, nullptr, &r0, &p0);
+    ghllm_stats p1{};
+    Run r1;
+    rc = ghllm_generate(g, SYSTEM, &greedy, on_piece, on_progress, &r1, &p1);
+    const int sys = p1.prompt_tokens;
+    check("reads a prompt ahead without answering", rc == GHLLM_OK && p1.tokens == 0 && r1.text.empty() && r1.last_done == sys && p1.finish == 0,
+          "rc=" + std::to_string(rc) + " done=" + std::to_string(r1.last_done) + " of " + std::to_string(sys));
+    ghllm_stats p2{};
+    Run r2;
+    rc = ghllm_generate(g, SYSTEM, &greedy, on_piece, on_progress, &r2, &p2);
+    check("reading it again does nothing", rc == GHLLM_OK && p2.reused_tokens == sys && r2.progress_calls == 0);
+    greedy.max_tokens = 12;
+    ghllm_stats q1{};
+    Run a1;
+    rc = ghllm_generate(g, ASK("How is my sleep?"), &greedy, on_piece, nullptr, &a1, &q1);
+    check("the first question keeps the system prompt", rc == GHLLM_OK && q1.reused_tokens == sys && q1.tokens > 0,
+          std::to_string(q1.reused_tokens) + " of " + std::to_string(sys));
+    ghllm_stats q2{};
+    Run a2;
+    rc = ghllm_generate(g, ASK("Should I walk more today?"), &greedy, on_piece, nullptr, &a2, &q2);
+    check("so does the next, after the last answer filled the cache", rc == GHLLM_OK && q2.reused_tokens == sys && !a2.text.empty(),
+          std::to_string(q2.reused_tokens) + " of " + std::to_string(sys));
+    // Stopped while reading a long question: the system prompt is still there for the next one.
+    std::string longq = ASK("");
+    std::string words;
+    for (int i = 0; i < 12; i++) words += "Tell me about my steps and sleep. ";
+    longq.insert(longq.find("<|im_end|>\n<|im_start|>assistant"), words);
+    Run st;
+    st.stop_reading = g;
+    ghllm_stats q3{};
+    rc = ghllm_generate(g, longq.c_str(), &greedy, on_piece, on_progress, &st, &q3);
+    check("stops while reading the prompt", rc == GHLLM_OK && q3.aborted == 1 && q3.tokens == 0 && st.last_done < st.last_total,
+          "rc=" + std::to_string(rc) + " read " + std::to_string(st.last_done) + " of " + std::to_string(st.last_total));
+    ghllm_stats q4{};
+    Run a4;
+    rc = ghllm_generate(g, ASK("Should I walk more today?"), &greedy, on_piece, nullptr, &a4, &q4);
+    check("and keeps the system prompt after stopping", rc == GHLLM_OK && q4.reused_tokens == sys, std::to_string(q4.reused_tokens));
+    check("an answer from the checkpoint is the same as one read from scratch", a4.text == a2.text, a2.text + " | " + a4.text);
+    // From scratch (a different system prompt first), the same question gives the same answer.
+    greedy.max_tokens = 0;
+    rc = ghllm_generate(g, "<|im_start|>system\nSomething else entirely.<|im_end|>\n", &greedy, on_piece, nullptr, &r0, nullptr);
+    greedy.max_tokens = 12;
+    ghllm_stats q5{};
+    Run a5;
+    rc = ghllm_generate(g, ASK("Should I walk more today?"), &greedy, on_piece, nullptr, &a5, &q5);
+    check("(read from scratch this time)", rc == GHLLM_OK && q5.reused_tokens < sys && a5.text == a2.text, std::to_string(q5.reused_tokens) + ": " + a5.text);
 
     ghllm_free(g);
     char err2[256] = {0};

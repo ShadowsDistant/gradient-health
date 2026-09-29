@@ -26,14 +26,14 @@ typedef struct {
     float min_p;           // 0 = off
     int32_t top_k;         // 0 = off
     float repeat_penalty;  // 1 = off
-    int32_t max_tokens;
+    int32_t max_tokens;    // 0 = only read the prompt (to have it cached for the next question)
     uint32_t seed;
     const char *grammar;   // GBNF with a "root" rule, or NULL
 } ghllm_gen;
 
 typedef struct {
     int32_t prompt_tokens;
-    int32_t reused_tokens;  // prompt tokens kept from the last answer's cache
+    int32_t reused_tokens;  // prompt tokens kept from the cache (the last answer, or a checkpoint)
     int32_t tokens;         // generated
     double prompt_ms;
     double gen_ms;

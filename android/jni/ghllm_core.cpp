@@ -13,6 +13,12 @@
 #include <string>
 #include <vector>
 
+// A saved copy of the recurrent layers' state after the first n tokens of the cache.
+struct checkpoint {
+    size_t n;
+    std::vector<uint8_t> state;
+};
+
 struct ghllm {
     llama_model *model = nullptr;
     llama_context *ctx = nullptr;
@@ -21,6 +27,13 @@ struct ghllm {
     int32_t n_batch = 0;
     std::vector<llama_token> cached;  // what the context's memory holds (sequence 0)
     std::atomic<bool> stop{false};
+    // Models with recurrent layers (Qwen3.5's gated delta-net) can't rewind their state, only
+    // restore a copy of it, so one is kept at the end of the first turn (the system prompt, which is
+    // the same for every question) and the next question starts from there.
+    bool partial = false;
+    llama_token im_end = LLAMA_TOKEN_NULL;
+    llama_token newline = LLAMA_TOKEN_NULL;
+    std::vector<checkpoint> checkpoints;  // oldest first, each n smaller than the next
 };
 
 namespace {
@@ -66,6 +79,66 @@ size_t utf8_whole(const std::string &s) {
 void forget(ghllm *g) {
     llama_memory_clear(llama_get_memory(g->ctx), true);
     g->cached.clear();
+    g->checkpoints.clear();
+}
+
+// Cuts the memory back to its first n tokens. A model with recurrent layers goes back to the latest
+// checkpoint at or before n instead (or to nothing). Returns how many tokens are kept.
+size_t cut(ghllm *g, size_t n) {
+    llama_memory_t mem = llama_get_memory(g->ctx);
+    if (!g->partial) {
+        if (llama_memory_seq_rm(mem, 0, (llama_pos) n, -1)) {
+            g->cached.resize(std::min(n, g->cached.size()));
+            return g->cached.size();
+        }
+        forget(g);
+        return 0;
+    }
+    while (!g->checkpoints.empty() && g->checkpoints.back().n > n) g->checkpoints.pop_back();
+    if (!g->checkpoints.empty()) {
+        const checkpoint &cp = g->checkpoints.back();
+        // The attention layers keep their cache up to cp.n; the recurrent state comes from the copy.
+        if (llama_state_seq_set_data_ext(g->ctx, cp.state.data(), cp.state.size(), 0, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY) > 0 &&
+            llama_memory_seq_rm(mem, 0, (llama_pos) cp.n, -1)) {
+            g->cached.resize(cp.n);
+            return cp.n;
+        }
+    }
+    forget(g);
+    return 0;
+}
+
+// Saves the recurrent state as it is now (after every token in the cache).
+void save_checkpoint(ghllm *g) {
+    const size_t n = g->cached.size();
+    if (!g->partial || n == 0 || (!g->checkpoints.empty() && g->checkpoints.back().n >= n)) return;
+    checkpoint cp{n, {}};
+    cp.state.resize(llama_state_seq_get_size_ext(g->ctx, 0, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY));
+    if (cp.state.empty() ||
+        llama_state_seq_get_data_ext(g->ctx, cp.state.data(), cp.state.size(), 0, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY) != cp.state.size()) {
+        return;
+    }
+    if (g->checkpoints.size() >= 3) g->checkpoints.erase(g->checkpoints.begin());
+    g->checkpoints.push_back(std::move(cp));
+}
+
+// Where the first turn ends (after its <|im_end|> and line break), or 0 if the prompt has none.
+size_t first_turn_end(const ghllm *g, const std::vector<llama_token> &toks) {
+    if (g->im_end == LLAMA_TOKEN_NULL) return 0;
+    for (size_t i = 0; i < toks.size(); i++) {
+        if (toks[i] != g->im_end) continue;
+        size_t end = i + 1;
+        if (end < toks.size() && toks[end] == g->newline) end++;
+        return end;
+    }
+    return 0;
+}
+
+// The token a piece of text is, when it's exactly one (a special token such as <|im_end|>).
+llama_token one_token(const llama_vocab *vocab, const char *text) {
+    llama_token t[2];
+    const int32_t n = llama_tokenize(vocab, text, (int32_t) std::strlen(text), t, 2, false, true);
+    return n == 1 ? t[0] : LLAMA_TOKEN_NULL;
 }
 
 }  // namespace
@@ -130,6 +203,9 @@ ghllm *ghllm_load(const char *path, int32_t n_ctx, int32_t n_batch, int32_t n_th
     g->vocab = llama_model_get_vocab(model);
     g->n_ctx = (int32_t) llama_n_ctx(ctx);
     g->n_batch = n_batch;
+    g->partial = llama_model_is_recurrent(model) || llama_model_is_hybrid(model);
+    g->im_end = one_token(g->vocab, "<|im_end|>");
+    g->newline = one_token(g->vocab, "\n");
     llama_set_abort_callback(ctx, [](void *u) -> bool { return static_cast<ghllm *>(u)->stop.load(); }, g);
     return g;
 }
@@ -155,31 +231,35 @@ int ghllm_generate(ghllm *g, const char *prompt, const ghllm_gen *gen, ghllm_pie
     if (nt <= 0) return done(GHLLM_ERR_TOKENIZE);
     toks.resize((size_t) nt);
     s.prompt_tokens = nt;
+    const bool read_only = gen && gen->max_tokens == 0;
     int32_t max_tokens = gen && gen->max_tokens > 0 ? gen->max_tokens : 256;
-    if (nt + 16 > g->n_ctx) return done(GHLLM_ERR_TOO_LONG);
+    if (nt + (read_only ? 0 : 16) > g->n_ctx) return done(GHLLM_ERR_TOO_LONG);
     max_tokens = std::min(max_tokens, g->n_ctx - nt);
 
-    // Keep what the last answer left in memory when this prompt starts the same way (always
-    // reading at least the last token again, for fresh logits). Models with recurrent layers can't
-    // cut a sequence part way; they read the whole prompt again.
-    llama_memory_t mem = llama_get_memory(g->ctx);
+    // Keep what the memory already holds of this prompt: the last answer's prompt when this one
+    // starts the same way, or (with recurrent layers) the checkpoint at the end of the system prompt.
     size_t common = 0;
-    while (common < g->cached.size() && common + 1 < toks.size() && g->cached[common] == toks[common]) common++;
-    if (common < g->cached.size() && !llama_memory_seq_rm(mem, 0, (llama_pos) common, -1)) {
-        forget(g);
-        common = 0;
+    while (common < g->cached.size() && common < toks.size() && g->cached[common] == toks[common]) common++;
+    if (read_only && common == toks.size()) {
+        s.reused_tokens = nt;
+        s.finish = 0;
+        return done(GHLLM_OK);
     }
-    g->cached.resize(common);
+    if (common == toks.size()) common--;  // read the last token again, for fresh logits
+    if (common < g->cached.size()) common = cut(g, common);
     s.reused_tokens = (int32_t) common;
 
+    // The prompt, in batches, with a checkpoint where the first turn ends.
+    const size_t turn_end = first_turn_end(g, toks);
     const double t0 = now_ms();
     const int32_t total = nt - (int32_t) common;
     int32_t read = 0;
     for (size_t i = common; i < toks.size();) {
-        const int32_t chunk = std::min((int32_t) (toks.size() - i), g->n_batch);
+        int32_t chunk = std::min((int32_t) (toks.size() - i), g->n_batch);
+        if (i < turn_end && i + (size_t) chunk > turn_end) chunk = (int32_t) (turn_end - i);
         const int32_t rc = llama_decode(g->ctx, llama_batch_get_one(toks.data() + i, chunk));
         if (rc == 2 || g->stop.load()) {
-            forget(g);
+            cut(g, g->cached.size());  // back to what's whole (a stopped batch may be half written)
             s.aborted = 1;
             s.finish = 2;
             s.prompt_ms = now_ms() - t0;
@@ -192,9 +272,14 @@ int ghllm_generate(ghllm *g, const char *prompt, const ghllm_gen *gen, ghllm_pie
         g->cached.insert(g->cached.end(), toks.begin() + (long) i, toks.begin() + (long) i + chunk);
         i += (size_t) chunk;
         read += chunk;
+        if (i == turn_end) save_checkpoint(g);
         if (on_progress) on_progress(ud, read, total);
     }
     s.prompt_ms = now_ms() - t0;
+    if (read_only) {
+        s.finish = 0;
+        return done(GHLLM_OK);
+    }
 
     // Sampling: the grammar first (it rules tokens out), then the usual chain.
     llama_sampler *smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
@@ -246,7 +331,7 @@ int ghllm_generate(ghllm *g, const char *prompt, const ghllm_gen *gen, ghllm_pie
         s.tokens++;
         const int32_t rc = llama_decode(g->ctx, llama_batch_get_one(&tok, 1));
         if (rc == 2) {
-            forget(g);
+            cut(g, g->cached.size());
             s.aborted = 1;
             s.finish = 2;
             break;

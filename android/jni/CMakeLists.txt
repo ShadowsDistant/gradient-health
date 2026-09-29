@@ -35,7 +35,9 @@ if(ANDROID)
   set(GGML_CPU_KLEIDIAI OFF CACHE BOOL "" FORCE)
   set(GGML_LLAMAFILE OFF CACHE BOOL "" FORCE)
   # Android 15 phones can use 16 KB memory pages, and Google Play requires libraries that load there.
+  # The CPU variants are CMake modules (loaded with dlopen), which take their own linker flags.
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
+  set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
 endif()
 
 add_subdirectory("${LLAMA_SRC}" llama EXCLUDE_FROM_ALL)
