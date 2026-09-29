@@ -79,6 +79,7 @@
           <ul class="rf-list">
             <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Theme</span></span>${U.seg('setTheme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], pr.theme || 'system', 'Theme', ' data-on="setTheme"')}</div></li>
             ${U.sw('Increase contrast', !!pr.contrast, 'data-on="setPref" data-k="contrast"')}
+            ${U.sw('Moving background', pr.glowMove !== false, 'data-on="setPref" data-k="glowMove"', 'The colours behind each page drift slowly')}
             <li><div class="rf-list-row set-slider"><span class="rf-list-text"><span class="rf-list-title">Glass</span><span class="rf-list-sub">Clear to frosted</span></span><div class="rf-slider"><div class="rf-slider-control"><input class="rf-slider-input" type="range" min="0" max="1" step="0.05" value="${pr.density == null ? 0.5 : pr.density}" aria-label="Glass density" data-on="setDensity"></div></div></div></li>
           </ul>
           <h3 class="rf-list-header">Your data</h3>

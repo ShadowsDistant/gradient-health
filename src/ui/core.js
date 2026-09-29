@@ -729,6 +729,8 @@
       P().applyTheme(p.theme || 'system', !!p.contrast);
       if (p.density != null) P().setDensity(p.density);
     }
+    // The background glow drifts unless it's switched off (Settings, Look).
+    doc.documentElement.toggleAttribute('data-still-glow', p.glowMove === false);
   }
   U.applyPrefs = applyPrefs;
 

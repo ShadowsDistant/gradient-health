@@ -73,30 +73,59 @@ button:not([class*="rf-"]) { font: inherit; }
 :root { --glow-mint: rgb(111 227 200 / .55); --glow-sky: rgb(58 168 255 / .5); --glow-violet: rgb(155 92 255 / .42); --glow-pink: rgb(255 126 179 / .34); }
 :root[data-theme^="dark"] { --glow-mint: rgb(70 190 170 / .26); --glow-sky: rgb(60 130 255 / .5); --glow-violet: rgb(140 80 255 / .52); --glow-pink: rgb(240 100 170 / .3); }
 /* Ambient glow: the icon's colours (mint, sky, violet, pink) softly behind the top of each page, so
-   the glass bars, buttons and sheets have real colour to refract. It rises and fades as the page
-   scrolls (a scroll-linked animation: nothing runs while the page is still), and it's off with
+   the glass bars, buttons and sheets have real colour to refract. Two layers (mint and violet, sky and
+   pink) drift slowly on their own paths, 26 and 34 seconds round, moving only a few percent: transform
+   alone, so it's the compositor's work, never a repaint. The glow also rises and fades as the page
+   scrolls (a scroll-linked animation). The drift holds still with reduced motion, the "Moving
+   background" setting off, a full-height sheet up or a workout on screen; the glow is off with
    increased contrast or reduced transparency. */
-.app::before {
+.app::before, .app::after {
   content: ''; position: absolute; inset: -12% -25% auto; height: 62%; pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, #000 35%, transparent 95%); mask-image: linear-gradient(to bottom, #000 35%, transparent 95%);
+  opacity: .5; will-change: transform; transform-origin: 50% 40%;
+}
+.app::before {
   background:
     radial-gradient(34% 46% at 20% 34%, var(--glow-mint), transparent 72%),
-    radial-gradient(34% 44% at 80% 26%, var(--glow-sky), transparent 72%),
-    radial-gradient(38% 48% at 64% 66%, var(--glow-violet), transparent 74%),
-    radial-gradient(30% 40% at 34% 74%, var(--glow-pink), transparent 74%);
-  -webkit-mask-image: linear-gradient(to bottom, #000 35%, transparent 95%); mask-image: linear-gradient(to bottom, #000 35%, transparent 95%);
-  opacity: .5;
+    radial-gradient(38% 48% at 64% 66%, var(--glow-violet), transparent 74%);
+  animation: glow-drift-a 26s ease-in-out infinite alternate;
 }
-[data-theme^="dark"] .app::before { opacity: .6; }
-/* Where scroll-linked animations aren't supported (older WebViews) the glow just stays put. */
+.app::after {
+  background:
+    radial-gradient(34% 44% at 80% 26%, var(--glow-sky), transparent 72%),
+    radial-gradient(30% 40% at 34% 74%, var(--glow-pink), transparent 74%);
+  animation: glow-drift-b 34s ease-in-out -9s infinite alternate;
+}
+[data-theme^="dark"] .app::before, [data-theme^="dark"] .app::after { opacity: .6; }
+@keyframes glow-drift-a {
+  0% { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
+  35% { transform: translate3d(3%, 2.5%, 0) rotate(2.5deg) scale(1.04); }
+  70% { transform: translate3d(-2%, 3.5%, 0) rotate(-2deg) scale(1.02); }
+  100% { transform: translate3d(-4%, -1%, 0) rotate(1.5deg) scale(1.06); }
+}
+@keyframes glow-drift-b {
+  0% { transform: translate3d(0, 0, 0) rotate(0deg) scale(1.03); }
+  40% { transform: translate3d(-3.5%, 2%, 0) rotate(-3deg) scale(1); }
+  75% { transform: translate3d(2.5%, -2.5%, 0) rotate(2deg) scale(1.05); }
+  100% { transform: translate3d(4%, 1.5%, 0) rotate(4deg) scale(1.02); }
+}
+/* Where scroll-linked animations aren't supported (older WebViews) the glow only drifts. The drift
+   comes first in each list, so a single paused value still stops it there. */
 @supports (animation-timeline: scroll()) {
   .screen { scroll-timeline: --page block; }
-  .app::before { animation: glow-scroll linear both; animation-timeline: --page; animation-range: 0 480px; }
-  [data-theme^="dark"] .app::before { animation-name: glow-scroll-dark; }
+  .app::before, .app::after { animation-name: glow-drift-a, glow-scroll; animation-duration: 26s, auto; animation-timing-function: ease-in-out, linear; animation-delay: 0s, 0s; animation-iteration-count: infinite, 1; animation-direction: alternate, normal; animation-fill-mode: none, both; animation-timeline: auto, --page; animation-range: normal, 0 480px; }
+  .app::after { animation-name: glow-drift-b, glow-scroll; animation-duration: 34s, auto; animation-delay: -9s, 0s; }
+  [data-theme^="dark"] .app::before { animation-name: glow-drift-a, glow-scroll-dark; }
+  [data-theme^="dark"] .app::after { animation-name: glow-drift-b, glow-scroll-dark; }
 }
 @keyframes glow-scroll { from { opacity: .5; translate: 0 0; } to { opacity: .16; translate: 0 -80px; } }
 @keyframes glow-scroll-dark { from { opacity: .6; translate: 0 0; } to { opacity: .22; translate: 0 -80px; } }
-:root[data-theme$="contrast"] .app::before, :root[data-rf-transparency="reduced"] .app::before { display: none; }
-@media (prefers-reduced-transparency: reduce) { .app::before { display: none; } }
+/* The drift holds still; the scroll fade keeps working. */
+:root[data-still-glow] .app::before, :root[data-still-glow] .app::after, #app[data-receded]::before, #app[data-receded]::after,
+.app:has(> #player:not([hidden]))::before, .app:has(> #player:not([hidden]))::after { animation-play-state: paused, running; }
+@media (prefers-reduced-motion: reduce) { .app::before, .app::after { animation-play-state: paused, running; } }
+:root[data-theme$="contrast"] .app::before, :root[data-theme$="contrast"] .app::after, :root[data-rf-transparency="reduced"] .app::before, :root[data-rf-transparency="reduced"] .app::after { display: none; }
+@media (prefers-reduced-transparency: reduce) { .app::before, .app::after { display: none; } }
 .screen { position: absolute; inset: 0; overflow-x: hidden; overflow-y: auto; box-sizing: border-box; padding: var(--topbar-h) var(--sar) calc(var(--float-gap) + var(--space-6)) var(--sal); scrollbar-width: none; outline: none; }
 .screen::-webkit-scrollbar { display: none; }
 /* Room at the end of a page, so the last card clears whatever floats over the bottom: the tab bar,
