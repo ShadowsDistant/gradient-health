@@ -85,10 +85,61 @@
   U.playerBack = () => {
     if (P && (P.phase === 'next' || P.phase === 'mobdone')) { closeDone(); return true; }
     if (P && P.mode === 'mobility') { P = null; hide(); U.render(); return true; }
+    // Mid-workout, Back asks what to do with it: keep it for later, finish now or cancel it.
+    if (P && P.mode === 'workout' && A() && P.phase !== 'checkin') { leaveSheet(); return true; }
     minimize();
     return true;
   };
   U.act.plMin = () => U.playerBack();
+  const setsDone = (a) => a.steps.slice(0, a.idx).filter((s) => s.kind === 'set').length;
+  function leaveSheet() {
+    const a = A();
+    const top = U.topSheet();
+    if (!a || (top && top.el.classList.contains('leave-sheet'))) return;
+    const done = setsDone(a);
+    const total = a.steps.filter((s) => s.kind === 'set').length;
+    U.sheet({
+      title: 'Leave the workout?', detents: 'medium', cls: 'leave-sheet',
+      body: `<div class="sheet-pad leave">
+        <p class="t-callout rf-muted">${done ? `You've done ${done} of ${total} sets.` : 'You haven\'t done any sets yet.'}</p>
+        <div class="leave-actions">
+          <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="plKeep">${U.icon('pause')}Keep it for later</button>
+          ${done ? `<button type="button" class="rf-btn" data-variant="soft" data-size="lg" data-act="plFinishNow">${U.icon('flag')}Finish now and check in</button>` : ''}
+          <button type="button" class="rf-btn" data-variant="soft" data-tone="critical" data-size="lg" data-act="plCancel">${U.icon('close')}Cancel workout</button>
+        </div>
+        <p class="t-footnote rf-muted">Keep it for later and Today shows Resume. Cancel it and nothing from it is saved or counts toward your streak, so you can start it again today.</p>
+      </div>`,
+    });
+  }
+  U.act.plKeep = () => { const top = U.topSheet(); if (top) top.close('ok'); minimize(); };
+  // Cancel: nothing from the workout is kept and it doesn't count, so today's plan can be started
+  // again. Sets already done are worth a question first; either way the toast can put it all back.
+  async function cancelWorkout() {
+    const a = A();
+    if (!a) return false;
+    const done = setsDone(a);
+    if (done && !(await U.confirm('Cancel this workout?', `The ${U.plural(done, 'set')} you did won't be saved, and it won't count for your streak.`, 'Cancel workout', 'critical', 'close', 'Keep it'))) return false;
+    const S = U.S;
+    const undo = { active: JSON.parse(JSON.stringify(a)), events: S.events.slice() };
+    B().cancelWorkout(S);
+    U.save(true);
+    if (P && P.mode === 'workout') closeDone(); else U.render();
+    U.haptic('heavy');
+    U.toast('Workout cancelled', 'neutral', 'Nothing from it was saved.', {
+      label: 'Undo',
+      onClick: () => {
+        if (U.S.active) return;
+        U.S.active = undo.active;
+        U.S.events = undo.events;
+        U.save(true);
+        U.render();
+        U.haptic('success');
+      },
+    });
+    return true;
+  }
+  U.act.plCancel = () => { const top = U.topSheet(); if (top) top.close('ok'); cancelWorkout(); };
+  U.act.cancelWorkout = () => cancelWorkout();
 
   /* ---------------------------------------------------------------- figures */
   // The 3D figure (a lazy three.js chunk) when the phone has WebGL and it's picked in Settings, else
@@ -702,7 +753,7 @@
         ${canSwap ? U.row({ icon: 'shuffle', tone: 'indigo', title: 'Swap this exercise', act: 'plSwap', chevron: true }) : ''}
         ${st && st.kind === 'set' ? U.row({ icon: 'skip-forward', tone: 'amber', title: 'Skip the rest of this exercise', act: 'plSkipItem' }) : ''}
         ${U.row({ icon: 'flag', tone: 'green', title: 'Finish now and check in', act: 'plFinishNow' })}
-        ${U.row({ icon: 'trash', tone: 'rose', title: 'Discard this workout', act: 'plDiscard' })}
+        ${U.row({ icon: 'close', tone: 'rose', title: 'Cancel workout', sub: 'Nothing from it is saved', act: 'plCancel' })}
       </ul>`,
     });
   };
@@ -742,14 +793,7 @@
     draw();
   };
   U.act.plFinishNow = () => { const top = U.topSheet(); if (top) top.close('ok'); P.phase = 'checkin'; draw(); };
-  U.act.plDiscard = async () => {
-    const top = U.topSheet(); if (top) top.close('ok');
-    const ok = await U.confirm('Discard this workout?', 'Nothing from it is saved and it won\'t count for your streak.', 'Discard', 'critical', 'trash');
-    if (!ok) return;
-    U.S.active = null;
-    U.save(true);
-    closeDone();
-  };
+  U.act.plDiscard = U.act.plCancel; // 1.2's name for it
 
   /* ---------------------------------------------------------------- check-in */
   function counts() {

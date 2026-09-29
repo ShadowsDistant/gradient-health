@@ -591,11 +591,12 @@
     const labels = (o.actions || []).map((a) => a.label);
     return Promise.resolve(G.confirm(`${o.title}\n${o.message || ''}`) ? (o.actions || []).slice(-1)[0].value : 'cancel').then((v) => v || labels);
   };
-  U.confirm = (title, message, label, tone, icon) => {
+  // cancelLabel names the safe choice when "Cancel" would be confusing (cancelling a workout).
+  U.confirm = (title, message, label, tone, icon, cancelLabel) => {
     if (tone === 'critical') U.haptic('heavy');
     return U.dialog({
       title, message, icon, tone: tone === 'critical' ? 'critical' : undefined,
-      actions: [{ label: 'Cancel', value: 'cancel', variant: 'gray', autofocus: true }, { label, value: 'ok', variant: 'filled', tone: tone || 'accent' }],
+      actions: [{ label: cancelLabel || 'Cancel', value: 'cancel', variant: 'gray', autofocus: true }, { label, value: 'ok', variant: 'filled', tone: tone || 'accent' }],
     }).then((v) => v === 'ok');
   };
   U.toast = (title, tone, message, action) => {

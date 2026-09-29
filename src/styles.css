@@ -293,6 +293,9 @@ button.stat { cursor: pointer; }
 /* ---------------------------------------------------------------- moves + sheets */
 .moves-list .rf-list-header { margin-top: var(--space-2); }
 .sheet-pad { padding: var(--space-2) var(--space-4); display: grid; gap: var(--space-2); }
+/* Leaving a workout: three stacked choices, the safe one first. */
+.leave-actions { display: grid; gap: var(--space-2); margin: var(--space-1) 0; }
+.leave-actions .rf-btn { width: 100%; justify-content: center; }
 .sheet-pad > p { margin: 0; }
 .sheet-gap { margin-top: var(--space-3); }
 .sheet-spacer { width: 30px; }

@@ -1,7 +1,8 @@
 // Layout regressions from real-phone reports, checked in Chromium at phone size with someone five
 // weeks in: chart bounds, tab and button type, cut-off titles, the set-up overlay, sliders, the tour's
-// tab bar, the Resume button, the workout capsule's glass, section spacing, the current tab's glass
-// lens and page ends that clear the tab bar.
+// tab bar, the Resume and Cancel buttons, the workout capsule's glass, section spacing, the current
+// tab's glass lens, page ends that clear the tab bar, and cancelling a workout (from Back and from
+// Today, with Undo).
 // Usage: node test/ui-regress.mjs [--dark] [--width=360]
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
@@ -155,15 +156,51 @@ await page.click('#float [data-act="startWorkout"]');
 await page.waitForSelector('.player:not([hidden]) .pl-name');
 await settle(600);
 await page.click('.player [data-act="plMin"]').catch(async () => { await page.evaluate(() => window.__gh.back()); });
+await settle(700);
+check('leaving mid-workout asks first', await page.evaluate(() => !!document.querySelector('dialog.leave-sheet[open] [data-act="plKeep"]')));
+await page.click('dialog.leave-sheet [data-act="plKeep"]');
 await settle(900);
-const resume = await page.evaluate(() => { const b = document.querySelector('#float .btn-main'); if (!b) return null; const r = b.getBoundingClientRect(); return { off: Math.round((r.left + r.right) / 2 - innerWidth / 2), w: Math.round(r.width), text: b.textContent.trim() }; });
-check('Resume is centred on Today', resume && Math.abs(resume.off) <= 1, JSON.stringify(resume));
+const resume = await page.evaluate(() => {
+  const box = (b) => { if (!b) return null; const r = b.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right), text: b.textContent.trim() }; };
+  return { main: box(document.querySelector('#float .btn-main')), cancel: box(document.querySelector('#float [data-act="cancelWorkout"]')), w: innerWidth, player: !document.querySelector('.player').hidden };
+});
+check('Keep it for later goes back to Today', !resume.player && /Resume workout/.test((resume.main || {}).text || ''), JSON.stringify(resume));
+check('with Cancel beside Resume, both on screen', resume.cancel && resume.main && resume.cancel.l >= 0 && resume.main.r <= resume.w && resume.cancel.r <= resume.main.l, JSON.stringify(resume));
 for (const t of ['health', 'today', 'plan', 'health']) await tab(t);
 const cap = await page.evaluate(() => { const a = document.getElementById('accessory'); const layer = a.querySelector(':scope > .rf-lens-layer'); const cs = layer ? getComputedStyle(layer) : getComputedStyle(a); return { shown: !a.hidden, layer: !!layer, bg: cs.backgroundColor }; });
 check('the workout capsule shows on other tabs', cap.shown);
 check('its glass layer is still there after switching tabs', cap.layer, JSON.stringify(cap));
 g = await endGap();
 check('with the capsule showing, the last card still scrolls clear', g >= 8, g);
+
+section('Cancelling a workout');
+await tab('today');
+const toast = () => page.evaluate(() => [...document.querySelectorAll('.rf-toast')].map((t) => t.textContent).join(' | '));
+await page.click('#float [data-act="cancelWorkout"]');
+await settle(900);
+const c1 = await page.evaluate(() => ({ active: !!window.GH.ui.S.active, start: !!document.querySelector('#float [data-act="startWorkout"]'), dialog: !!document.querySelector('dialog.rf-dialog[open]') }));
+check('Today\'s Cancel ends a workout with nothing done, without asking', !c1.active && !c1.dialog, JSON.stringify(c1));
+check('and today\'s workout can be started again', c1.start);
+check('the toast says so and offers Undo', /Workout cancelled/.test(await toast()) && /Undo/.test(await toast()), await toast());
+await page.evaluate(() => { const t = [...document.querySelectorAll('.rf-toast')].pop(); t.querySelector('.rf-btn:not(.rf-toast-close)').click(); });
+await settle(900);
+check('Undo puts it back', await page.evaluate(() => !!window.GH.ui.S.active && !!document.querySelector('#float [data-act="resumeWorkout"]')));
+// With sets done: Back offers finishing too, and cancelling asks first.
+await page.click('#float [data-act="resumeWorkout"]');
+await page.waitForSelector('.player:not([hidden]) .pl-name');
+await settle(600);
+await page.evaluate(() => { const S = window.GH.ui.S; const a = S.active; while (a.idx < a.steps.length && a.steps[a.idx].kind !== 'set') a.idx++; a.idx++; window.GH.store.save(S); });
+await page.evaluate(() => window.__gh.back());
+await settle(700);
+const leave = await page.evaluate(() => { const d = document.querySelector('dialog.leave-sheet[open]'); return d ? { acts: [...d.querySelectorAll('[data-act]')].map((b) => b.dataset.act), text: d.textContent } : null; });
+check('Back with a set done offers keep, finish or cancel', leave && ['plKeep', 'plFinishNow', 'plCancel'].every((a) => leave.acts.includes(a)) && /done 1 of \d+ sets/.test(leave.text), JSON.stringify(leave && leave.acts));
+await page.click('dialog.leave-sheet [data-act="plCancel"]');
+await settle(900);
+const ask = await page.evaluate(() => { const d = document.querySelector('dialog.rf-dialog[open]'); return d ? d.textContent : ''; });
+check('cancelling with sets done asks first, with a clear way out', /Cancel this workout\?/.test(ask) && /Keep it/.test(ask) && /1 set you did/.test(ask), ask);
+await page.evaluate(() => { const d = document.querySelector('dialog.rf-dialog[open]'); [...d.querySelectorAll('button')].find((b) => /Cancel workout/.test(b.textContent)).click(); });
+await settle(1200);
+check('then the workout is gone and the player closed', await page.evaluate(() => !window.GH.ui.S.active && document.querySelector('.player').hidden && !!document.querySelector('#float [data-act="startWorkout"]')));
 
 section('Console');
 check('no console errors', errors.length === 0, errors.join(' | '));
