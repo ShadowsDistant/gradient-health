@@ -1,11 +1,14 @@
 // Renders the store screenshots in docs/screenshots/ from the built page: someone five weeks in,
-// with a streak, level-ups and a month of Health Connect data. Needs Playwright with Chromium.
+// with a streak, level-ups, a month of Health Connect data and a food log. Needs Playwright with
+// Chromium. The page is served over http like the app's asset host, so the lazy parts load.
 //
 //   npm run build && node scripts/screenshots.mjs
 import { mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { seedBridge, seedState } from '../test/fixtures.mjs';
+import { serveDist } from '../test/lib.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
@@ -13,80 +16,42 @@ let chromium;
 try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
 const out = join(root, 'docs/screenshots');
 mkdirSync(out, { recursive: true });
-const NOW = new Date('2026-10-19T08:10:00'); // a Monday, week 4
+const NOW = new Date('2026-10-19T08:10:00'); // a Monday, week 6
 
-// The Android bridge, with Health Connect granted and 40 days of believable data.
-function bridge() {
-  const DAY = 86400000, now = Date.now(), iso = (t) => new Date(t).toISOString();
-  const wave = (i, a, b) => Math.sin(i * 1.7) * a + Math.cos(i * 0.6) * b;
-  const days = []; for (let i = 40; i >= 0; i--) days.push(now - i * DAY);
-  const payload = () => ({
-    ok: true, tz: 'America/New_York', from: iso(now - 40 * DAY), to: iso(now),
-    steps: days.map((t, i) => ({ date: new Date(t - 5 * 3600000).toISOString().slice(0, 10), count: Math.round(7200 + wave(i, 1600, 900) + i * 25) })),
-    sleep: days.map((t, i) => ({ start: iso(t - 9.2 * 3600000 + wave(i, 1500000, 900000)), end: iso(t - 1.6 * 3600000), asleepMin: Math.round(425 + wave(i, 22, 14)) })),
-    weight: days.filter((_, i) => i % 2 === 0).map((t, i) => ({ time: iso(t - 3 * 3600000), kg: 68.4 - i * 0.03 + wave(i, 0.15, 0.1) })),
-    height: [{ time: iso(now - 60 * DAY), m: 1.76 }], bodyFat: [],
-    restingHr: days.map((t, i) => ({ time: iso(t - 3600000), bpm: Math.round(60 - i * 0.05 + wave(i, 1.5, 1)) })),
-    hrv: days.map((t, i) => ({ time: iso(t - 3600000), ms: Math.round(54 + i * 0.1 + wave(i, 4, 3)) })),
-    exercise: [{ start: iso(now - 5 * DAY - 2 * 3600000), end: iso(now - 5 * DAY - 2 * 3600000 + 42 * 60000), type: 33, typeName: 'running', title: '' }],
-    errors: {},
-  });
-  const store = { state: '', secrets: {} };
-  window.AndroidBridge = {
-    hcStatus: () => 'granted', hcRequest: () => {}, hcOpenSettings: () => {}, hcCanWrite: () => true, hcWriteWorkout: () => {},
-    hcRead: () => { setTimeout(() => window.__gh.onHealth(payload()), 30); },
-    save: (s) => { store.state = s; try { sessionStorage.setItem('shot-state', s); } catch (e) { /* ignore */ } return true; },
-    load: () => { try { return sessionStorage.getItem('shot-state') || store.state; } catch (e) { return store.state; } },
-    saveSecret: () => true, loadSecret: () => '', deleteSecret: () => true,
-    keepAwake: () => {}, vibrate: () => {}, vibratePattern: () => {}, copy: () => true, openUrl: () => {},
-    isDark: () => window.matchMedia('(prefers-color-scheme: dark)').matches, appVersion: () => '1.1.0',
-    haptic: () => {}, setSystemBars: () => {}, insets: () => JSON.stringify({ top: 30, bottom: 20, left: 0, right: 0, keyboard: false }),
-    shareText: () => {}, claudeInstalled: () => true,
-  };
-}
-
-// Five weeks of history, built with the app's own brain so every number is real.
-function seed() {
-  const B = window.GH.brain;
-  const today = B.dayOf(Date.now(), 4);
-  const start = today - 35;
-  const S = B.newState({ goals: ['abs', 'arms', 'chest', 'legs'], experience: 'onoff', days: 4, minutes: 25, age: 24, units: 'lb', weightKg: 68.4, weightGoal: 'maintain', equipment: { db: [10, 15], kb: [15], band: true, chair: true, wall: true, towel: true }, lead: { arm: 'L', leg: null }, name: 'Alex' }, { pushups: 18, plankSec: 55, curlL: 12, curlR: 15 }, start);
-  S.health.status = 'granted';
-  for (let d = start; d < today; d++) {
-    const plan = B.todayPlan(S, d);
-    if (plan.type === 'workout') {
-      const t0 = d * B.DAY_MS + (4 + 13 + (d % 3)) * 3600000;
-      B.startWorkout(S, d, { now: t0 });
-      let g = 0;
-      while (S.active && S.active.idx < S.active.steps.length && g++ < 400) {
-        const st = S.active.steps[S.active.idx];
-        B.completeStep(S, st.kind === 'test' ? { value: st.side === 'L' ? 14 : 15 } : {});
-        if (st.askRir) B.setRir(S, st.item, (d + S.active.idx) % 4 === 0 ? '3' : '12');
-      }
-      const res = B.finishWorkout(S, { rating: 'right', now: t0 + 24 * 60000 });
-      S.pendingLines = res.lines;
-    } else if (plan.type === 'light') { B.logLight(S, d, 'walk', true); B.logLight(S, d, 'mobility', true); }
-    if (d % 7 !== 3) { B.addProtein(S, d, 26); B.addProtein(S, d, 40); B.addProtein(S, d, 35); B.addProtein(S, d, 30); }
+// A week of meals on top of the training history, so the Food tab has something to show.
+function seedFood() {
+  const GH = window.GH, S = GH.ui.S, B = GH.brain, F = GH.food;
+  const day = GH.ui.today();
+  F.setMode(S, 'full');
+  const at = (d, h) => d * B.DAY_MS + (h + 4) * 3600000;
+  const meals = [
+    ['breakfast', 4, 'Greek yogurt with berries', '1 bowl', 260, 22, 30, 6],
+    ['breakfast', 4, 'Coffee with milk', '1 mug', 45, 3, 4, 2],
+    ['lunch', 9, 'Chicken rice bowl', '1 bowl', 610, 44, 68, 15],
+    ['snack', 12, 'Protein bar', '1 bar', 220, 20, 22, 7],
+    ['dinner', 15, 'Salmon, potatoes and greens', '1 plate', 690, 42, 52, 30],
+  ];
+  for (let d = day - 9; d <= day; d++) {
+    for (const [meal, h, name, portion, kcal, p, c, f] of meals) {
+      if (d === day && h > 5) continue;
+      F.add(S, d, { name, portion, src: 'quick', kcal, p, c, f, meal }, at(d, h));
+    }
   }
-  B.addProtein(S, today, 26); B.addProtein(S, today, 32);
-  S.feel[today] = { energy: 'good', sore: 'some' };
-  S.seen = { tour: true, checklistHidden: true, lastVersion: window.GH.VERSION, tip_plan: true, tip_health: true, tip_progress: true, tip_moves: true, playerHint: true, rirCount: 5, moveSheet: true };
-  S.measurements = [{ day: start + 1, waist: 81.5, armL: 30.4, armR: 31.6 }, { day: today - 1, waist: 80.6, armL: 31.1, armR: 31.8 }];
-  window.GH.store.save(S);
+  GH.store.save(S);
 }
 
 async function run(dark) {
+  const server = await serveDist();
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: dark ? 'dark' : 'light' });
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.clock.install({ time: NOW });
-  await page.addInitScript(bridge);
-  const url = 'file://' + join(root, 'dist/gradient-health.html');
-  await page.goto(url);
+  await page.addInitScript(seedBridge);
+  await page.goto(server.url);
   await page.waitForSelector('.onboard:not([hidden])');
-  await page.evaluate(seed);
+  await page.evaluate(seedState);
   await page.reload();
   await page.waitForSelector('#screen[data-view="today"] .session');
   const settle = async (ms = 900) => { await page.clock.runFor(ms); await page.waitForTimeout(ms); };
@@ -105,6 +70,7 @@ async function run(dark) {
     await page.evaluate(() => window.GH.ui.openPlayer());
   }
   await page.evaluate(() => window.GH.ui.openPlayer());
+  await settle(1800);
   await shot('workout');
   await page.click('.player [data-act="plDone"]');
   await page.waitForSelector('.player .pl-timer');
@@ -123,12 +89,27 @@ async function run(dark) {
   await tab('plan');
   await shot('plan');
   await tab('today');
+  await page.evaluate(() => window.GH.ui.open('coach'));
+  await shot('coach');
+  await page.evaluate(() => window.GH.ui.back());
   await page.click('#topbar [data-act="openProfile"]');
   await shot('profile');
   await page.evaluate(() => window.GH.ui.open('science', 'rir'));
   await shot('science');
+  // Food: calorie tracking on, a week of meals.
+  await page.evaluate(seedFood);
+  await page.evaluate(() => { while (window.GH.ui.back()) { /* to the tab */ } window.GH.ui.go('food'); });
+  await settle(900);
+  await top();
+  await shot('food');
+  // A gym day: the same person training at a gym.
+  await page.evaluate(() => { const S = window.GH.ui.S; S.profile.where = 'gym'; S.profile.gym = window.GH.brain.gymPreset('full', S.profile.units); window.GH.store.save(S); window.GH.ui.go('today'); });
+  await settle(900);
+  await page.evaluate(() => { const el = document.querySelector('#screen .session'); if (el) document.getElementById('screen').scrollTo(0, el.offsetTop - 110); });
+  await shot('gym');
   if (errors.length) console.log('page errors:', errors);
   await browser.close();
+  await server.close();
 }
 
 await run(false);
