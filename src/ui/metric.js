@@ -88,17 +88,21 @@
     const fmt = (v) => (key === 'sleepMin' || key === 'activeMin' ? h.hm(v) : `${U.num(v, key === 'weightKg' || key === 'distanceM' || m.group === 'measure' || key === 'bodyFat' ? 1 : 0)}${h.unitOf(S, key) && key !== 'bodyFat' ? ` ${h.unitOf(S, key)}` : key === 'bodyFat' ? '%' : ''}`);
     const color = `var(--hue-${m.tone})`;
     const avg7 = { name: '7-day average', kind: 'avg', color: 'var(--label)', points: U.rolling(pts, from, to, 7) };
+    // Active minutes come in sessions, with no value on rest days: weeks add up, and a running
+    // average of the active days alone would mislead.
+    const sessions = key === 'activeMin';
     let series, dayLabel = null;
     if (m.kind === 'bar' && range > 90) {
       // A year of daily bars is a blur: one bar per week, the average of the days with data.
       const weeks = [];
       for (let w = B().weekStart(from); w <= to; w += 7) {
         const v = inRange.filter((p) => p.day >= w && p.day < w + 7);
-        if (v.length) weeks.push({ day: Math.max(w, from), value: v.reduce((a, p) => a + p.value, 0) / v.length });
+        const sum = v.reduce((a, p) => a + p.value, 0);
+        if (v.length) weeks.push({ day: Math.max(w, from), value: sessions ? sum : sum / v.length });
       }
-      series = [{ name: `${m.label}, weekly average`, kind: 'bar', color, span: 7, points: weeks }];
+      series = [{ name: `${m.label}, ${sessions ? 'weekly total' : 'weekly average'}`, kind: 'bar', color, span: 7, points: weeks }];
       dayLabel = (d) => `Week of ${U.fmtDay(d, false)}`;
-    } else if (m.kind === 'bar') series = range > 7 ? [{ name: m.label, kind: 'bar', color, points: inRange }, avg7] : [{ name: m.label, kind: 'bar', color, points: inRange }];
+    } else if (m.kind === 'bar') series = range > 7 && !sessions ? [{ name: m.label, kind: 'bar', color, points: inRange }, avg7] : [{ name: m.label, kind: 'bar', color, points: inRange }];
     else if (m.kind === 'dot') series = [{ name: 'Weigh-ins', kind: 'dot', color, points: inRange }].concat(range > 7 ? [avg7] : []);
     else series = [{ name: m.label, kind: 'line', color, gap: m.group === 'measure' ? 120 : 3, points: inRange }];
     return U.chartCard({ key: `m-${key}`, title: m.label, label: `${m.label}, last ${range === 365 ? 'year' : `${range} days`}`, head: false, table: false, fmt, from, to, zero: m.zero, series, cls: 'ms-chart', dayLabel });
@@ -107,8 +111,8 @@
   function statsFor(S, key, from, to0) {
     const h = H(), m = M(key);
     // Today isn't over for whole-day totals (steps, calories): its count so far would drag the
-    // average down and show up as the lowest day.
-    const to = m.daily && to0 === U.today() ? to0 - 1 : to0;
+    // average down and show up as the lowest day. (Active minutes count sessions: today's are in.)
+    const to = m.daily && key !== 'activeMin' && to0 === U.today() ? to0 - 1 : to0;
     const s = h.rangeStats(S, key, from, to);
     if (!s.n) return '';
     const f = (v) => h.format(S, key, v);
@@ -211,7 +215,7 @@
     const app = GH.platform && GH.platform.isApp();
     const hcOn = H().connected(H().status());
     const shared = key === 'rhr' || key === 'hrv' || key === 'bodyFat';
-    const text = shared ? WHY_MISSING[0] : m.edit ? `Nothing yet. ${key === 'weightKg' ? 'Weigh in and add it here, or connect a scale through Health Connect.' : 'Add it here, or let Health Connect fill it in.'}` : key === 'kcalIn' ? 'Log food on the Food tab and it shows up here.' : key === 'protein' ? 'Add protein on Today or log food, and it shows up here.' : key === 'activeMin' ? 'Workouts and activities show up here.' : 'This comes from Health Connect. Nothing has come in yet.';
+    const text = shared ? WHY_MISSING[0] : m.group === 'measure' ? 'Nothing yet. Measure once a month and add it here.' : m.edit ? `Nothing yet. ${key === 'weightKg' ? 'Weigh in and add it here, or connect a scale through Health Connect.' : 'Add it here, or let Health Connect fill it in.'}` : key === 'kcalIn' ? 'Log food on the Food tab and it shows up here.' : key === 'protein' ? 'Add protein on Today or log food, and it shows up here.' : key === 'activeMin' ? 'Workouts and activities show up here.' : 'This comes from Health Connect. Nothing has come in yet.';
     return `<div class="ms-empty">
       <span class="ms-empty-ico" data-tone="${m.tone}">${U.icon(m.icon)}</span>
       <p class="t-headline">No ${U.esc(m.label.toLowerCase())} yet</p>
