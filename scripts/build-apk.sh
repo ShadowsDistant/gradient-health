@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+# Builds and signs the Gradient APK (android/ + the single-file web app) without Gradle or the
+# Android SDK: javac against the API 34 framework jar (Robolectric's android-all from Maven
+# Central), dx (dalvik-exchange), aapt, zipalign and apksigner from Ubuntu/Debian packages.
+#
+#   sudo apt-get install -y --no-install-recommends aapt dalvik-exchange zipalign apksigner
+#   npm run build && bash scripts/build-apk.sh
+#
+# Environment (all optional):
+#   APP_HTML       page to ship as assets/index.html   (default: dist/gradient-health.html)
+#   VERSION_NAME   versionName                         (default: "version" in package.json, else 1.0.0)
+#   VERSION_CODE   versionCode, must only ever grow     (default: minutes since the Unix epoch)
+#   OUT            signed APK                          (default: build/gradient-health.apk)
+#   CACHE_DIR      download cache                      (default: ~/.cache/gradient-health)
+#   ANDROID_ALL_JAR  path of the android-all jar       (default: $CACHE_DIR/android-all-<ver>.jar)
+# Relative paths are taken from the directory you run the script in.
+set -euo pipefail
+
+CALLER_PWD="$PWD"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+ANDROID_ALL_VERSION="14-robolectric-10818077" # Android 14 / API 34
+ANDROID_ALL_SHA1="94b1490a891e9be559aa35c87cd8a0c163f32d83"
+ANDROID_ALL_URL="https://repo.maven.apache.org/maven2/org/robolectric/android-all/${ANDROID_ALL_VERSION}/android-all-${ANDROID_ALL_VERSION}.jar"
+MIN_SDK=26
+TARGET_SDK=34
+KEYSTORE="$ROOT/android/gradient-health.keystore"
+KEY_ALIAS="gradient"
+KEY_PASS="gradient-health"
+
+die() { echo "build-apk: error: $*" >&2; exit 1; }
+step() { echo "==> $*"; }
+abspath() { case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s\n' "$CALLER_PWD/$1" ;; esac; }
+
+CACHE_DIR="$(abspath "${CACHE_DIR:-$HOME/.cache/gradient-health}")"
+ANDROID_ALL_JAR="$(abspath "${ANDROID_ALL_JAR:-$CACHE_DIR/android-all-${ANDROID_ALL_VERSION}.jar}")"
+APP_HTML="$(abspath "${APP_HTML:-$ROOT/dist/gradient-health.html}")"
+OUT="$(abspath "${OUT:-$ROOT/build/gradient-health.apk}")"
+if [[ -z "${VERSION_NAME:-}" ]]; then
+  VERSION_NAME="$(node -p "require('./package.json').version || ''" 2>/dev/null || true)"
+  VERSION_NAME="${VERSION_NAME:-1.0.0}"
+fi
+VERSION_CODE="${VERSION_CODE:-$(( $(date +%s) / 60 ))}"
+WORK="$ROOT/build/apk-work"
+
+# ---------------------------------------------------------------- checks
+[[ "$VERSION_CODE" =~ ^[1-9][0-9]{0,9}$ ]] && (( VERSION_CODE <= 2100000000 )) \
+  || die "VERSION_CODE must be a positive integer <= 2100000000 (got '$VERSION_CODE')"
+[[ "$VERSION_NAME" =~ ^[A-Za-z0-9._+-]+$ ]] || die "VERSION_NAME has unexpected characters: '$VERSION_NAME'"
+[[ -f "$APP_HTML" ]] || die "web app not found: $APP_HTML
+  Build it first with 'npm run build', or point APP_HTML at an HTML file."
+[[ -f "$KEYSTORE" ]] || die "signing keystore missing: $KEYSTORE
+  Do not generate a new one: updates only install over builds signed with the same key."
+
+missing=()
+for tool in javac aapt dalvik-exchange zipalign apksigner unzip curl sha1sum; do
+  command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
+done
+if (( ${#missing[@]} )); then
+  die "missing tools: ${missing[*]}
+  Install them with:
+    sudo apt-get install -y --no-install-recommends aapt dalvik-exchange zipalign apksigner openjdk-21-jdk-headless unzip curl"
+fi
+
+# ---------------------------------------------------------------- android-all (API 34 framework)
+sha1_ok() { [[ "$(sha1sum "$1" | cut -d' ' -f1)" == "$ANDROID_ALL_SHA1" ]]; }
+
+if [[ -f "$ANDROID_ALL_JAR" ]] && sha1_ok "$ANDROID_ALL_JAR"; then
+  step "Using cached $(basename "$ANDROID_ALL_JAR")"
+else
+  if [[ -f "$ANDROID_ALL_JAR" ]]; then
+    echo "Cached jar has the wrong SHA-1; downloading it again." >&2
+    rm -f "$ANDROID_ALL_JAR"
+  fi
+  step "Downloading android-all ${ANDROID_ALL_VERSION} (~137 MB, cached afterwards)"
+  mkdir -p "$(dirname "$ANDROID_ALL_JAR")"
+  curl -fL --retry 5 --retry-delay 10 --retry-all-errors --connect-timeout 30 \
+    -o "$ANDROID_ALL_JAR.part" "$ANDROID_ALL_URL"
+  if ! sha1_ok "$ANDROID_ALL_JAR.part"; then
+    rm -f "$ANDROID_ALL_JAR.part"
+    die "SHA-1 mismatch for $ANDROID_ALL_URL (expected $ANDROID_ALL_SHA1)"
+  fi
+  mv "$ANDROID_ALL_JAR.part" "$ANDROID_ALL_JAR"
+fi
+
+# ---------------------------------------------------------------- compile + dex
+rm -rf "$WORK"
+mkdir -p "$WORK/classes" "$WORK/dex" "$WORK/assets" "$(dirname "$OUT")"
+rm -f "$OUT"
+
+step "Compiling Java (release 8, against API ${TARGET_SDK})"
+mapfile -t SOURCES < <(find "$ROOT/android/src" -name '*.java' | sort)
+(( ${#SOURCES[@]} )) || die "no Java sources under android/src"
+# dx only understands Java 8 bytecode. The framework classes come from the jar, java.* from the JDK.
+javac --release 8 -Xlint:-options -proc:none -encoding UTF-8 \
+  -cp "$ANDROID_ALL_JAR" -d "$WORK/classes" "${SOURCES[@]}"
+
+step "Dexing"
+dalvik-exchange --dex --output="$WORK/dex/classes.dex" "$WORK/classes"
+
+# ---------------------------------------------------------------- package
+step "Packaging resources + assets (versionName $VERSION_NAME, versionCode $VERSION_CODE)"
+cp "$APP_HTML" "$WORK/assets/index.html"
+UNSIGNED="$WORK/unsigned.apk"
+# resources.arsc must be stored uncompressed (and 4-byte aligned) for targetSdk >= 30: -0 arsc.
+aapt package -f \
+  -M "$ROOT/android/AndroidManifest.xml" \
+  -S "$ROOT/android/res" \
+  -A "$WORK/assets" \
+  -I "$ANDROID_ALL_JAR" \
+  --min-sdk-version "$MIN_SDK" \
+  --target-sdk-version "$TARGET_SDK" \
+  --version-code "$VERSION_CODE" \
+  --version-name "$VERSION_NAME" \
+  -0 arsc \
+  -F "$UNSIGNED"
+# classes.dex has to sit at the root of the zip, so add it from its own directory.
+(cd "$WORK/dex" && aapt add "$UNSIGNED" classes.dex >/dev/null)
+
+entry_method() { # prints the zip method (Stored/Defl:N) of an entry
+  unzip -lv "$1" | awk -v name="$2" '$NF == name { print $2 }'
+}
+[[ "$(entry_method "$UNSIGNED" resources.arsc)" == "Stored" ]] \
+  || die "resources.arsc is compressed in $UNSIGNED; Android 11+ refuses to install that"
+for entry in classes.dex assets/index.html AndroidManifest.xml; do
+  [[ -n "$(entry_method "$UNSIGNED" "$entry")" ]] || die "$entry is missing from the APK"
+done
+
+step "Aligning"
+ALIGNED="$WORK/aligned.apk"
+zipalign -f -p 4 "$UNSIGNED" "$ALIGNED"
+
+step "Signing with android/gradient-health.keystore"
+# v1/v2/v3 follow minSdk (26 -> v2 + v3). No v4: its .idsig side file is only for adb incremental installs.
+apksigner sign \
+  --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" \
+  --ks-pass "pass:$KEY_PASS" --key-pass "pass:$KEY_PASS" \
+  --v4-signing-enabled false \
+  --out "$OUT" "$ALIGNED"
+rm -f "$OUT.idsig"
+
+# ---------------------------------------------------------------- verify
+step "Verifying"
+zipalign -c -p 4 "$OUT" || die "zipalign check failed for $OUT"
+apksigner verify --verbose "$OUT" || die "signature verification failed for $OUT"
+[[ "$(entry_method "$OUT" resources.arsc)" == "Stored" ]] || die "resources.arsc is compressed in $OUT"
+
+echo
+aapt dump badging "$OUT" \
+  | grep -E "^(package:|sdkVersion:|targetSdkVersion:|uses-permission:|application-label:|launchable-activity:)" \
+  || true
+echo
+unzip -lv "$OUT" | awk 'NR <= 3 || $NF ~ /^(resources\.arsc|classes\.dex|assets\/index\.html|AndroidManifest\.xml)$/'
+echo
+step "Built $OUT ($(du -h "$OUT" | cut -f1))"

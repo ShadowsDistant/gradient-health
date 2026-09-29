@@ -1,0 +1,356 @@
+package com.shadowsdistant.gradienthealth;
+
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
+import android.net.Uri;
+import android.os.Build;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.view.Window;
+import android.view.WindowManager;
+import android.webkit.JavascriptInterface;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+
+/**
+ * The object exposed to the page as window.AndroidBridge.
+ *
+ * The WebView calls these methods on its own background thread ("JavaBridge"), so anything that
+ * touches the window or starts activities hops to the UI thread. Every method is defensive: it
+ * never throws into the page. Nothing here logs its arguments (saveSecret carries the user's
+ * Anthropic API key).
+ *
+ * Health Connect needs Android 14 (API 34). The hc* methods check the SDK level before touching
+ * {@link HealthBridge}, which is the only class that references android.health.connect types.
+ */
+public final class Bridge {
+    static final int HEALTH_CONNECT_MIN_SDK = 34; // Android 14 (UPSIDE_DOWN_CAKE)
+
+    private static final String STATE_FILE = "state.json";
+    private static final String STATE_TMP_FILE = "state.json.tmp";
+    private static final String SECRETS_PREFS = "secrets";
+    private static final int MAX_VIBRATION_MS = 10000;
+
+    private final MainActivity activity;
+    private final Object stateLock = new Object();
+
+    Bridge(MainActivity activity) {
+        this.activity = activity;
+    }
+
+    // ---------------------------------------------------------------- device
+
+    /** Keeps the screen on while true (e.g. during a workout). */
+    @JavascriptInterface
+    public void keepAwake(final boolean on) {
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Window w = activity.getWindow();
+                    if (on) {
+                        w.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    } else {
+                        w.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+        });
+    }
+
+    /** One vibration of {@code ms} milliseconds (capped at 10 s). */
+    @JavascriptInterface
+    public void vibrate(int ms) {
+        if (ms <= 0) {
+            return;
+        }
+        try {
+            Vibrator v = vibrator();
+            if (v != null) {
+                v.vibrate(VibrationEffect.createOneShot(Math.min(ms, MAX_VIBRATION_MS),
+                        VibrationEffect.DEFAULT_AMPLITUDE));
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** "[off, on, off, on, ...]" in ms, like navigator.vibrate(); plays once. */
+    @JavascriptInterface
+    public void vibratePattern(String jsonArray) {
+        if (jsonArray == null) {
+            return;
+        }
+        try {
+            JSONArray arr = new JSONArray(jsonArray);
+            int n = Math.min(arr.length(), 64);
+            long[] timings = new long[n];
+            boolean any = false;
+            for (int i = 0; i < n; i++) {
+                long t = Math.max(0L, Math.min((long) MAX_VIBRATION_MS, arr.optLong(i, 0L)));
+                timings[i] = t;
+                any |= t > 0;
+            }
+            Vibrator v = vibrator();
+            if (any && v != null) {
+                v.vibrate(VibrationEffect.createWaveform(timings, -1));
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @SuppressWarnings("deprecation") // VibratorManager is API 31+; this works on all versions
+    private Vibrator vibrator() {
+        Object service = activity.getSystemService(Context.VIBRATOR_SERVICE);
+        return service instanceof Vibrator ? (Vibrator) service : null;
+    }
+
+    /** Copies plain text to the clipboard. Very large texts (~1 MB) can fail: returns false. */
+    @JavascriptInterface
+    public boolean copy(String text) {
+        try {
+            Object service = activity.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (!(service instanceof ClipboardManager)) {
+                return false;
+            }
+            ((ClipboardManager) service).setPrimaryClip(
+                    ClipData.newPlainText("Gradient", text == null ? "" : text));
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    @JavascriptInterface
+    public boolean isDark() {
+        return activity.isDarkMode();
+    }
+
+    /** e.g. "1.0.0 (29830012)". */
+    @SuppressWarnings("deprecation")
+    @JavascriptInterface
+    public String appVersion() {
+        try {
+            PackageInfo info = activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0);
+            String name = info.versionName == null ? "" : info.versionName;
+            return name + " (" + info.versionCode + ")";
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    /** Opens an http(s) URL outside the app; anything else is ignored. */
+    @JavascriptInterface
+    public void openUrl(String url) {
+        final Uri uri = MainActivity.httpUri(url);
+        if (uri == null) {
+            return;
+        }
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.openExternal(uri);
+            }
+        });
+    }
+
+    // ---------------------------------------------------------------- app state
+
+    /**
+     * Atomically replaces filesDir/state.json: writes state.json.tmp, fsyncs it, then renames it
+     * over the old file, so a crash or power loss leaves either the old or the new state.
+     */
+    @JavascriptInterface
+    public boolean save(String json) {
+        if (json == null) {
+            return false;
+        }
+        synchronized (stateLock) {
+            File dir = activity.getFilesDir();
+            File target = new File(dir, STATE_FILE);
+            File tmp = new File(dir, STATE_TMP_FILE);
+            FileOutputStream out = null;
+            try {
+                out = new FileOutputStream(tmp);
+                out.write(json.getBytes(StandardCharsets.UTF_8));
+                out.flush();
+                try {
+                    out.getFD().sync();
+                } catch (IOException ignored) {
+                    // Still better to save than to fail.
+                }
+                out.close();
+                out = null;
+                if (tmp.renameTo(target)) {
+                    return true;
+                }
+                // rename(2) replaces atomically, so this is unexpected; retry once without the old file.
+                //noinspection ResultOfMethodCallIgnored
+                target.delete();
+                return tmp.renameTo(target);
+            } catch (Throwable t) {
+                return false;
+            } finally {
+                if (out != null) {
+                    try {
+                        out.close();
+                    } catch (IOException ignored) {
+                    }
+                    //noinspection ResultOfMethodCallIgnored
+                    tmp.delete();
+                }
+            }
+        }
+    }
+
+    /** The last saved state, or "" if there is none (or it can't be read). */
+    @JavascriptInterface
+    public String load() {
+        synchronized (stateLock) {
+            File file = new File(activity.getFilesDir(), STATE_FILE);
+            if (!file.isFile()) {
+                return "";
+            }
+            InputStream in = null;
+            try {
+                in = new FileInputStream(file);
+                ByteArrayOutputStream buffer = new ByteArrayOutputStream((int) Math.min(file.length(), 1 << 24) + 16);
+                byte[] chunk = new byte[64 * 1024];
+                int n;
+                while ((n = in.read(chunk)) != -1) {
+                    buffer.write(chunk, 0, n);
+                }
+                return new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+            } catch (Throwable t) {
+                return "";
+            } finally {
+                if (in != null) {
+                    try {
+                        in.close();
+                    } catch (IOException ignored) {
+                    }
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- secrets (never logged)
+
+    private SharedPreferences secrets() {
+        return activity.getSharedPreferences(SECRETS_PREFS, Context.MODE_PRIVATE);
+    }
+
+    @JavascriptInterface
+    public boolean saveSecret(String name, String value) {
+        if (name == null || name.isEmpty()) {
+            return false;
+        }
+        try {
+            return secrets().edit().putString(name, value == null ? "" : value).commit();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** The stored value, or "" if none. */
+    @JavascriptInterface
+    public String loadSecret(String name) {
+        if (name == null || name.isEmpty()) {
+            return "";
+        }
+        try {
+            String value = secrets().getString(name, "");
+            return value == null ? "" : value;
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    @JavascriptInterface
+    public boolean deleteSecret(String name) {
+        if (name == null || name.isEmpty()) {
+            return false;
+        }
+        try {
+            return secrets().edit().remove(name).commit();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    // ---------------------------------------------------------------- Health Connect
+
+    /** "unsupported" (below Android 14) | "unavailable" | "denied" | "partial" | "granted". */
+    @JavascriptInterface
+    public String hcStatus() {
+        if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
+            return "unsupported";
+        }
+        try {
+            return HealthBridge.status(activity);
+        } catch (Throwable t) {
+            return "unavailable";
+        }
+    }
+
+    /** Asks for the read permissions; answers with window.__gh.onHealthPerms(status). */
+    @JavascriptInterface
+    public void hcRequest() {
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.requestHealthPermissions();
+            }
+        });
+    }
+
+    /** Opens Health Connect's permission screen for this app (to re-grant after denials). */
+    @JavascriptInterface
+    public void hcOpenSettings() {
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.openHealthSettings();
+            }
+        });
+    }
+
+    /**
+     * Reads the last {@code days} days (1..90) of every granted data type in the background and
+     * answers once with window.__gh.onHealth({...}).
+     */
+    @JavascriptInterface
+    public void hcRead(int days) {
+        if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
+            deliverHealthFailure("unsupported");
+            return;
+        }
+        try {
+            HealthBridge.read(activity, days);
+        } catch (Throwable t) {
+            deliverHealthFailure(t.getClass().getSimpleName() + ": " + t.getMessage());
+        }
+    }
+
+    private void deliverHealthFailure(String error) {
+        try {
+            JSONObject result = new JSONObject();
+            result.put("ok", false);
+            result.put("error", error);
+            activity.callJs(MainActivity.jsCall("onHealth", result.toString()));
+        } catch (Throwable ignored) {
+        }
+    }
+}

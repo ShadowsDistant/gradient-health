@@ -1,0 +1,79 @@
+name: Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Every run replaces the single "latest" release, so runs must not overlap.
+concurrency:
+  group: android-apk-latest-release
+  cancel-in-progress: false
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Android build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends aapt dalvik-exchange zipalign apksigner
+
+      - name: Cache Android framework jar
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/gradient-health
+          key: android-all-14-robolectric-10818077
+
+      - run: npm ci
+
+      - run: npm test
+
+      - run: npm run build
+
+      - name: Check the committed dist/ is up to date
+        run: |
+          if ! git diff --exit-code -- dist/; then
+            echo "::error::dist/ is stale. Run 'npm run build' and commit the result."
+            exit 1
+          fi
+          untracked="$(git ls-files --others --exclude-standard -- dist/)"
+          if [ -n "$untracked" ]; then
+            echo "::error::dist/ has files that are not committed: $untracked"
+            exit 1
+          fi
+
+      - name: Build APK
+        run: bash scripts/build-apk.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gradient-health-apk
+          path: build/gradient-health.apk
+          if-no-files-found: error
+
+      - name: Publish the "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest build/gradient-health.apk \
+            --title "Gradient (latest build)" \
+            --notes "Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}. Install over the previous version to keep your data." \
+            --target "$GITHUB_SHA" \
+            --latest
