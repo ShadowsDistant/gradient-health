@@ -201,7 +201,8 @@ check('and only days with a value', [7, 28, 90, 365].every((n) => rng(n).length 
 const st = H.rangeStats(S, 'rhr', D0 - 27, D0);
 const vals = rng(28).map((e) => e.value);
 check('average, lowest and highest', Math.abs(st.avg - vals.reduce((a, b) => a + b, 0) / vals.length) < 1e-9 && st.min === Math.min(...vals) && st.max === Math.max(...vals) && H.entry(S, 'rhr', st.minDay).value === st.min);
-check('change: the last week against the first', (() => { const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length; const h = rng(28); return Math.abs(st.change - (mean(h.filter((e) => e.day >= D0 - 6).map((e) => e.value)) - mean(h.filter((e) => e.day <= D0 - 21).map((e) => e.value)))) < 1e-9; })(), st.change);
+check('change: the last week against the first week with data', (() => { const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length; const h = rng(28); return Math.abs(st.change - (mean(h.filter((e) => e.day >= D0 - 6).map((e) => e.value)) - mean(h.filter((e) => e.day <= h[0].day + 6).map((e) => e.value)))) < 1e-9; })(), st.change);
+check('no change when there\'s only a week or so of data in the range', H.rangeStats(S, 'rhr', D0 - 364, D0).change != null && (() => { const S3 = person(); for (let d = D0 - 8; d <= D0; d++) S3.health.days[d] = { rhr: 60 + (d % 4) }; return H.rangeStats(S3, 'rhr', D0 - 89, D0).change == null; })());
 check('an empty range', H.rangeStats(S, 'hrv', D0 - 6, D0).n === 0 && H.rangeStats(S, 'hrv', D0 - 6, D0).avg == null);
 const newest = [D0, D0 - 1, D0 - 2].find((d) => d % 3 !== 0);
 check('the latest value looks back only as far as the metric allows', H.latestEntry(S, 'rhr', D0 + 1).day === newest && H.latestEntry(S, 'rhr', D0 + 9) == null && H.latestEntry(S, 'rhr', D0 + 9, 30).day === newest);

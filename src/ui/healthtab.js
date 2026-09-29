@@ -143,7 +143,8 @@
       if (v && v.usual != null && v.dir && (v.dir !== 'flat' || v.tone === 'watch')) chip = U.trendChip({ trend: v.dir === 'flat' ? 'steady' : h.formatDelta(S, key, v.delta, v.rel), dir: v.dir, tone: v.tone });
       if (!e) sub = key === 'rhr' && connected ? 'Not shared by your watch app' : 'Tap to add';
       else if (key === 'sleepMin') sub = e.day !== day ? 'The night before' : e.src === 'chip' ? 'From your check-in' : t.bed && e.src === 'hc' ? `Asleep ${U.fmtClock(t.bed)}` : 'Last night';
-      else if (key === 'rhr') sub = `${ago(e.day, day)}${e.src === 'est' ? ' · estimated' : ''}`;
+      else if (key === 'rhr') sub = `${ago(e.day, day)}${e.src === 'est' ? ' · estimated' : !chip && v && v.usual != null ? ` · usual ${Math.round(v.usual)}` : ''}`;
+      else if (key === 'weightKg') { const avg = B().weightStats(S, day).avg7; sub = `${ago(e.day, day)}${avg != null && !chip ? ` · avg ${U.num(h.toDisplay(S, key, avg), 1)}` : ''}`; }
       else sub = ago(e.day, day);
     }
     return `<button type="button" class="stat hl-tile hl-hero" data-tone="${m.tone}" data-act="metricOpen" data-arg="${key}" data-key="t-${key}">
@@ -214,12 +215,15 @@
   // value; each opens its metric sheet.
   function trendRow(S, day, key, days) {
     const h = H(), m = M(key);
-    const from = day - days + 1;
-    const hist = h.history(S, key, from, day);
+    let from = day - days + 1;
+    let hist = h.history(S, key, from, day);
+    // Measurements are monthly: the line starts at the first one this year rather than squeezing
+    // a few points into the last weeks of a year.
+    if (m.group === 'measure' && hist.length) { from = Math.max(from, hist[0].day - 2); hist = h.history(S, key, from, day); }
     const last = hist[hist.length - 1];
     const spark = U.spark(hist, { from, to: day, kind: m.kind === 'bar' ? 'bar' : 'line', gap: m.group === 'measure' ? 120 : 7 });
     return `<li data-key="tr-${key}"><button type="button" class="hl-tr" data-tone="${m.tone}" data-act="metricOpen" data-arg="${key}">
-      <span class="hl-tr-label">${U.esc(m.short)}${days > 28 ? '<span class="hl-tr-sub">Past year</span>' : ''}</span>
+      <span class="hl-tr-label">${U.esc(m.short)}${days > 28 && hist.length ? `<span class="hl-tr-sub">Since ${U.esc(U.fmtDay(hist[0].day, false))}</span>` : ''}</span>
       <span class="hl-tr-spark">${spark || '<span class="hl-tr-none t-caption">Not enough yet</span>'}</span>
       <span class="hl-tr-value rf-num">${last ? U.esc(h.format(S, key, last.value)) : '–'}</span>
       <span class="hl-tr-chev">${U.icon('chevron-right', 'sm')}</span>

@@ -532,7 +532,8 @@
     return null;
   }
   // Average, lowest, highest and change over a range. change: the last week's average minus the
-  // first week's (last value minus first for a week or less).
+  // first week's with data (last value minus first for a week or less); null when the two weeks
+  // would overlap.
   function rangeStats(S, key, from, to) {
     const list = history(S, key, from, to);
     const out = { n: list.length, avg: null, min: null, max: null, minDay: null, maxDay: null, first: null, last: null, change: null, changeRel: null, total: null, list };
@@ -544,8 +545,9 @@
     if (to - from < 7) { if (list.length >= 2) { base = out.first.value; out.change = out.last.value - base; } }
     else {
       const mean = (a) => (a.length ? a.reduce((x, e) => x + e.value, 0) / a.length : null);
-      const a = mean(list.filter((e) => e.day <= from + 6)), z = mean(list.filter((e) => e.day >= to - 6));
-      if (a != null && z != null && list.length >= 2) { base = a; out.change = z - a; }
+      const start = list[0].day;
+      const a = mean(list.filter((e) => e.day <= start + 6)), z = mean(list.filter((e) => e.day >= to - 6));
+      if (a != null && z != null && start + 6 < to - 6) { base = a; out.change = z - a; }
     }
     if (out.change != null && base) out.changeRel = out.change / base;
     return out;

@@ -104,8 +104,11 @@
     return U.chartCard({ key: `m-${key}`, title: m.label, label: `${m.label}, last ${range === 365 ? 'year' : `${range} days`}`, head: false, table: false, fmt, from, to, zero: m.zero, series, cls: 'ms-chart', dayLabel });
   }
 
-  function statsFor(S, key, from, to) {
+  function statsFor(S, key, from, to0) {
     const h = H(), m = M(key);
+    // Today isn't over for whole-day totals (steps, calories): its count so far would drag the
+    // average down and show up as the lowest day.
+    const to = m.daily && to0 === U.today() ? to0 - 1 : to0;
     const s = h.rangeStats(S, key, from, to);
     if (!s.n) return '';
     const f = (v) => h.format(S, key, v);
@@ -163,7 +166,7 @@
 
   function rowFor(S, key, e, day) {
     const h = H(), m = M(key);
-    const when = U.dayName(e.day, day, key);
+    const when = m.daily && e.day === day ? 'Today so far' : U.dayName(e.day, day, key);
     const val = U.esc(h.format(S, key, e.value));
     if (e.src === 'manual' && m.edit) {
       const sub = e.hc != null && Math.abs(e.hc - e.value) > 1e-9 ? `You · replaces ${h.format(S, key, e.hc)} from Health Connect` : 'You';
@@ -173,7 +176,9 @@
         <span class="ms-row-acts"><button type="button" class="rf-btn" data-variant="plain" data-shape="circle" data-size="sm" aria-label="Change ${U.esc(when)}" data-act="metricEdit" data-arg="${e.day}">${U.icon('pencil')}</button><button type="button" class="rf-btn ms-del" data-variant="plain" data-shape="circle" data-size="sm" aria-label="Remove ${U.esc(when)}" data-act="metricDelete" data-arg="${e.day}">${U.icon('trash')}</button></span>
       </div></li>`;
     }
-    return `<li data-key="h-${e.day}"><div class="rf-list-row ms-row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(when)}</span><span class="rf-list-sub">${U.esc(h.SOURCE[e.src] || '')}</span></span><span class="rf-list-detail rf-num">${val}</span></div></li>`;
+    // Health Connect is where most values come from: only other sources are named.
+    const sub = e.src === 'hc' ? '' : `<span class="rf-list-sub">${U.esc(h.SOURCE[e.src] || '')}</span>`;
+    return `<li data-key="h-${e.day}"><div class="rf-list-row ms-row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(when)}</span>${sub}</span><span class="rf-list-detail rf-num">${val}</span></div></li>`;
   }
   // Active minutes list the activities themselves; ones you logged can be removed.
   function activityRows(S, from, to, day) {
@@ -240,11 +245,11 @@
       ${picks}
       ${heroFor(S, key, day)}
       ${compareFor(S, key, day)}
-      <div class="ms-range">${U.seg('metricRange', RANGES, String(range), 'Range', ' data-on="metricRange"')}</div>
+      <div class="ms-range">${U.seg('metricRange', RANGES, String(range), 'Range', ' data-on="metricRange" data-size="sm"')}</div>
       ${chartFor(S, key, from, day, range)}
       ${statsFor(S, key, from, day)}
       ${actionsFor(S, key)}
-      <h3 class="ms-h t-footnote">${key === 'activeMin' ? 'Activities' : 'Every day'}, ${U.esc(rangeName)}</h3>
+      <h3 class="ms-h t-footnote">${key === 'activeMin' ? 'Activities' : 'Every day'}, ${U.esc(rangeName)}${key !== 'activeMin' && m.group !== 'measure' && key !== 'kcalIn' && key !== 'protein' ? '<span class="ms-h-note">From Health Connect unless marked</span>' : ''}</h3>
       ${list.length ? `<ul class="rf-list ms-hist">${shown.join('')}</ul>` : `<p class="t-callout rf-muted ms-none">Nothing in ${U.esc(rangeName)}.</p>`}
       ${list.length > shown.length ? `<button type="button" class="rf-btn ms-more" data-variant="plain" data-size="sm" data-act="metricMore">Show all ${list.length}</button>` : ''}
       ${aboutFor(S, key, est)}
