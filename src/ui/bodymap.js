@@ -274,7 +274,7 @@
         : `<p class="ms-note t-callout rf-muted">${x.sets ? `No change to show in the ${range} yet. Progress shows up as your reps, weights and levels go up.` : `Not trained in the ${range}.`}</p>`}
       ${moves ? `<h3 class="rf-list-header">What trained it</h3><ul class="rf-list">${moves}</ul>
         <p class="rf-list-footer">A set counts in full for the muscle an exercise works most and half for the ones that help. Warm-ups and stretches don't count.</p>` : ''}
-      ${U.act.tailorPlan && !(GH.body.MINOR || []).includes(x.id) ? `<div class="ms-actions"><button type="button" class="rf-btn" data-variant="tinted" data-size="lg" data-act="tailorPlan" data-arg="${U.esc(x.id)}">${U.icon('plus-circle')}Train this more</button></div>` : ''}
+      ${U.act.tailorPlan && !(GH.body.MINOR || []).includes(x.id) ? `<div class="ms-actions"><button type="button" class="rf-btn" data-variant="soft" data-size="lg" data-act="tailorPlan" data-arg="${U.esc(x.id)}">${U.icon('plus-circle')}Train this more</button></div>` : ''}
     </div>`;
   }
   U.muscleSheet = (m) => {

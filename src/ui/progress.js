@@ -52,7 +52,7 @@
     const mean = main.reduce((a, m) => a + (t.sets[m] || 0), 0) / main.length;
     if (target && (mode === 'trained' ? (t.sets[target] || 0) >= mean / 2 : (imp.score[target] || 0) > imp.max / 4)) target = null;
     const more = target && U.act.tailorPlan
-      ? `<button type="button" class="rf-btn bm-more" data-variant="tinted" data-act="tailorPlan" data-arg="${U.esc(target)}">${U.icon('plus-circle')}Train ${U.esc(lower(target))} more</button>` : '';
+      ? `<button type="button" class="rf-btn bm-more" data-variant="soft" data-act="tailorPlan" data-arg="${U.esc(target)}">${U.icon('plus-circle')}Train ${U.esc(lower(target))} more</button>` : '';
     return `<div class="card bm-card" data-key="body" data-mode="${mode}">
       <div class="bm-head"><h2 class="t-title-3">Your body</h2><span class="t-footnote rf-muted">${mode === 'trained' ? 'Sets per muscle' : 'Progress per muscle'}, ${rangeText(weeks)}</span></div>
       ${U.seg('bodyMode', [['trained', 'Trained'], ['improved', 'Improved']], mode, 'Show', ' data-on="bodyMode"')}
