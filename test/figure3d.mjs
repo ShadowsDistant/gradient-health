@@ -208,7 +208,8 @@ const results = await page.evaluate(async ({ filters, dark, mirrored, focus, vie
   return out;
 }, { filters, dark, mirrored, focus: FOCUS, view: VIEW });
 
-const bad = results.filter((r) => r.error || r.frames.length !== 3 || r.frames.some((f) => f.cover < 0.02 || f.sd < 6));
+// (A --focus close-up is framed on the key pose, so the part may leave it: only errors count then.)
+const bad = results.filter((r) => r.error || r.frames.length !== 3 || (!FOCUS && r.frames.some((f) => f.cover < 0.02 || f.sd < 6)));
 check(`every move (${results.length}) renders three frames with a visible, shaded figure`, !bad.length, bad.slice(0, 6).map((r) => `${r.id}: ${r.error || JSON.stringify(r.frames)}`).join('\n      '));
 const phases = new Set(results.flatMap((r) => r.frames.map((f) => f.ph)));
 check('phase() reports con/ecc/hold', [...phases].every((p) => ['con', 'ecc', 'hold'].includes(p)), [...phases]);
@@ -264,7 +265,9 @@ const live = await page.evaluate(async () => {
   a.ctl.onPhase = (p) => phases.push(p.ph);
   const p0 = px(a.ctl);
   a.ctl.play(); b.ctl.play(); c.ctl.play();
-  await wait(3200);
+  // Until a whole rep has gone by (slow software GL can take longer than the rep).
+  await wait(1500);
+  for (let i = 0; i < 80 && !(phases.includes('con') && phases.includes('ecc')); i++) await wait(100);
   const moved = diff(p0, px(a.ctl));
   // Reduced motion stays on the key pose until asked for one rep.
   const c0 = px(c.ctl);

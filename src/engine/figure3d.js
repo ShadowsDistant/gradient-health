@@ -608,11 +608,16 @@ function headGeo() {
   };
   return mergeGeos([head, ear(1), ear(-1)]);
 }
-// Short hair: a shell over the skull down to a hairline that is high at the forehead, above the
-// ears at the sides and low at the nape; it thins out toward the edge.
+// Short hair: a shell over the skull down to a hairline that is high at the forehead, comes down in
+// front of the ears (sideburns), arcs over them and is low at the nape. It thins out toward the edge
+// and has soft clumps on top, so it reads as hair rather than a cap.
 function hairGeo() {
-  const cut = (th) => { const z = Math.sin(th); return (81 - 26 * z + 11 * z * z) * D2R; };
-  return radialGeo(headR, 48, 18, cut, (d, u) => 0.12 + 0.62 * (1 - smooth(0.72, 1, u)) + 0.1 * Math.max(0, d.y));
+  const cut = (th) => {
+    const z = Math.sin(th);
+    return (81 - 26 * z + 11 * z * z + 10 * gauss(z - 0.38, 0.13) - 5 * gauss(z + 0.1, 0.16)) * D2R;
+  };
+  const clumps = (d) => 0.13 * Math.sin(8 * Math.atan2(d.z, d.x) + 6 * d.y) * Math.sin(7 * Math.acos(clamp(d.y, -1, 1)));
+  return radialGeo(headR, 64, 22, cut, (d, u) => 0.12 + (0.62 + 0.18 * Math.max(0, d.y) + clumps(d)) * (1 - smooth(0.72, 1, u)));
 }
 
 function bodyGeos() {
