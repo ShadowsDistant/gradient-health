@@ -1,0 +1,16 @@
+{
+  "name": "gradient-health",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Adaptive home workout app and health tracker for Android",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node test/simulate.mjs && node test/insights.mjs && node test/ai.mjs && node test/poses.mjs && node test/store.mjs",
+    "smoke": "node test/smoke.mjs",
+    "apk": "bash scripts/build-apk.sh"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.129.0",
+    "esbuild": "^0.28.2"
+  }
+}

@@ -1,0 +1,267 @@
+/* Today: streak tallies, readiness, the session (or light day), the feel check, protein and one
+ * insight. The main actions float in glass above the tab bar.
+ */
+(function (G) {
+  'use strict';
+  const GH = G.GH || (G.GH = {});
+  const U = GH.ui = GH.ui || {};
+  U.act = U.act || {}; U.on = U.on || {}; U.screens = U.screens || {};
+  const B = () => GH.brain;
+  const M = () => GH.moves;
+
+  let shortDay = null;
+  let feelOpen = false;
+  let shownStreak = null;
+  const isShort = (day) => shortDay === day;
+
+  /* ---------------------------------------------------------------- streak tallies */
+  function tallies(n) {
+    const shown = Math.min(n, 30);
+    const groups = Math.ceil(shown / 5);
+    const w = Math.max(1, groups) * 34;
+    let d = '';
+    for (let g = 0; g < groups; g++) {
+      const inGroup = Math.min(5, shown - g * 5);
+      const x0 = g * 34 + 4;
+      for (let k = 0; k < Math.min(4, inGroup); k++) d += `M${x0 + k * 6} 4V26`;
+      if (inGroup === 5) d += `M${x0 - 3} 22L${x0 + 21} 8`;
+    }
+    return `<svg class="tally" viewBox="0 0 ${w} 30" width="${w}" height="30" aria-hidden="true"><path d="${d || 'M0 0'}"/></svg>${n > 30 ? `<span class="t-footnote rf-muted">+${n - 30}</span>` : ''}`;
+  }
+
+  /* ---------------------------------------------------------------- session list */
+  function sessionRows(S, s) {
+    const rows = [];
+    const lead = S.catchup.arm.side || 'L';
+    if (s.warmup.length) rows.push(`<li class="ex ex-muted"><span class="ex-tag">${U.icon('sun', 'sm')}</span><span class="ex-name">Warm-up</span><span class="ex-meta">${s.warmup.map((w) => U.esc(w.name.toLowerCase())).join(', ')}</span></li>`);
+    for (const t of s.tests || []) rows.push(`<li class="ex is-lead"><span class="ex-tag">${U.icon('layers', 'sm')}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${t.moveId}">${U.esc(t.name)}</button><span class="ex-meta">${U.side(t.side)} first, max reps</span></li>`);
+    for (const it of s.items) {
+      rows.push(`<li class="ex"><span class="ex-tag rf-num">${it.superset ? U.esc(it.superset) : ''}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${it.moveId}">${U.esc(it.name)}${it.swappedFrom ? ` <span class="t-caption rf-muted">(swapped)</span>` : ''}</button><span class="ex-meta rf-num">${it.sets} × ${U.esc(U.target(it))}${it.uni ? ' each side' : ''}${it.load && it.load.label ? ` · ${U.esc(it.load.label.replace(/ (dumbbells?|kettlebell)$/, ''))}` : ''}</span></li>`);
+      for (const x of s.extras || []) if (x.fam === it.fam) rows.push(`<li class="ex is-lead"><span class="ex-tag">+1</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${x.moveId}">${U.esc(x.name)}</button><span class="ex-meta rf-num">${U.side(x.leadOnly || lead).toLowerCase()} only · ${U.esc(U.target(x))}</span></li>`);
+    }
+    for (const x of s.extras || []) if (!s.items.some((it) => it.fam === x.fam)) rows.push(`<li class="ex is-lead"><span class="ex-tag">+1</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${x.moveId}">${U.esc(x.name)}</button><span class="ex-meta rf-num">${U.side(x.leadOnly || lead).toLowerCase()} only · ${U.esc(U.target(x))}</span></li>`);
+    if (s.finisher) rows.push(`<li class="ex"><span class="ex-tag">${U.icon('bolt', 'sm')}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${s.finisher.moveId}">Finisher: ${U.esc(s.finisher.name.toLowerCase())}</button><span class="ex-meta rf-num">${s.finisher.rounds} × ${s.finisher.work} s on, ${s.finisher.rest} s off</span></li>`);
+    for (const mb of s.mobility || []) rows.push(`<li class="ex ex-muted"><span class="ex-tag">${U.icon('moon', 'sm')}</span><span class="ex-name">${U.esc(mb.name)}</span><span class="ex-meta">${mb.target} s</span></li>`);
+    return `<ul class="ex-list">${rows.join('')}</ul>`;
+  }
+  U.sessionRows = sessionRows;
+  function phaseBadges(week, s) {
+    const b = [];
+    if (week && week.phase.deload) b.push(U.badge('Deload week', 'accent'));
+    else if (week && week.phase.onramp) b.push(U.badge('Easing in', 'accent'));
+    if (s && s.short) b.push(U.badge('Short', 'neutral'));
+    if (s && s.readiness && (s.readiness.minus || s.readiness.legsMinus)) b.push(U.badge('Lighter today', 'caution'));
+    return b.join('');
+  }
+
+  /* ---------------------------------------------------------------- cards */
+  function workoutCard(S, day, plan, cal) {
+    const s = B().buildSession(S, day, plan.tpl, { short: isShort(day), cal });
+    const budget = isShort(day) ? '12-15' : (S.profile.minutes || 25);
+    const lines = (S.pendingLines || []).filter((l) => l && l.text).slice(0, 4);
+    return `<div class="card session">
+        <div class="session-head"><span class="rf-card-eyebrow">Workout · about ${s.estimateMin} min</span><span class="session-badges">${phaseBadges(plan.week, s)}</span></div>
+        <h2 class="t-title-2">${U.esc(s.title)}</h2>
+        <p class="t-footnote rf-muted session-groups">${s.groups.map((g) => U.esc(B().GROUP_NAME[g] || g)).join(' · ')}</p>
+        ${sessionRows(S, s)}
+        ${s.trimmed && s.trimmed.length ? `<p class="t-footnote rf-muted">Trimmed to fit ${U.esc(budget)} min: ${U.esc(s.trimmed.map((x) => x.toLowerCase()).join(', '))}.</p>` : ''}
+      </div>
+      ${lines.length ? `<div class="card lines"><p class="t-headline">Since last time</p><ul class="plain-list">${lines.map((l) => `<li><span>${U.esc(l.text)}</span>${l.why ? `<span class="t-footnote rf-muted">${U.esc(U.cap(l.why))}</span>` : ''}</li>`).join('')}</ul></div>` : ''}`;
+  }
+  function activeCard(S, day) {
+    const a = S.active;
+    const doneN = a.steps.slice(0, a.idx).filter((x) => x.kind === 'set').length;
+    const total = a.steps.filter((x) => x.kind === 'set').length;
+    if (a.day < day) {
+      return `<div class="card session"><span class="rf-card-eyebrow">Unfinished</span><h2 class="t-title-2">${U.esc(a.session.title)}</h2>
+        <p class="t-callout rf-muted">From ${U.esc(U.fmtDay(a.day))}: ${doneN} of ${total} sets. Check in to save it, or discard it.</p>
+        <div class="btn-row"><button type="button" class="rf-btn" data-variant="filled" data-act="checkinStale">Check in</button><button type="button" class="rf-btn" data-tone="critical" data-act="discardStale">Discard</button></div></div>`;
+    }
+    return `<div class="card session"><span class="rf-card-eyebrow">In progress</span><h2 class="t-title-2">${U.esc(a.session.title)}</h2>
+      ${U.progress(doneN / Math.max(1, total), 'Workout progress')}
+      <p class="t-callout rf-muted">${doneN} of ${total} sets done.</p></div>`;
+  }
+  function doneCard(S, log) {
+    const mins = log.startedAt && log.endedAt ? Math.round((log.endedAt - log.startedAt) / 60000) : null;
+    const lines = (log.lines || []).filter((l) => l && l.text);
+    return `<div class="card session done">
+      <span class="rf-card-eyebrow done-eyebrow">${U.icon('check-circle', 'sm')} Done</span>
+      <h2 class="t-title-2">${U.esc(log.title)}</h2>
+      <p class="t-callout rf-muted">${log.doneSets} of ${log.planned} sets${mins ? ` · ${mins} min` : ''}${log.checkin && log.checkin.rating ? ` · ${log.checkin.rating === 'easy' ? 'too easy' : log.checkin.rating === 'hard' ? 'too hard' : 'about right'}` : ''}</p>
+      ${lines.length ? `<p class="t-headline done-next">Next time</p><ul class="plain-list">${lines.map((l) => `<li><span>${U.esc(l.text)}</span>${l.why ? `<span class="t-footnote rf-muted">${U.esc(U.cap(l.why))}</span>` : ''}</li>`).join('')}</ul>` : ''}
+    </div>`;
+  }
+  function lightCard(S, day, plan) {
+    const prog = B().programFor(S.profile);
+    const h = S.health.days[day] || {};
+    const l = plan.light || {};
+    const next = plan.next;
+    const walkSub = l.walk ? (l.walkSrc === 'health-steps' ? 'Ticked from your steps' : l.walkSrc === 'health-walk' ? 'Ticked from Health Connect' : 'Logged') : h.steps != null ? `${U.num(h.steps)} steps so far today` : 'Any pace. Outside if you can.';
+    return `<div class="card light">
+      <span class="rf-card-eyebrow">Light day</span>
+      <h2 class="t-title-2">Walk and mobility</h2>
+      <p class="t-callout rf-muted">Do both and today counts for your streak.</p>
+      <ul class="rf-list check-list">
+        <li><div class="rf-list-row"><span class="rf-list-icon" data-tone="green">${U.icon('navigate')}</span><span class="rf-list-text"><span class="rf-list-title">Walk ${prog.walkMin}+ min</span><span class="rf-list-subtitle">${U.esc(walkSub)}</span></span>${l.walk ? `<span class="check-done" aria-label="Done">${U.icon('check-circle')}</span>` : '<button type="button" class="rf-btn" data-size="sm" data-act="logWalk">Log walk</button>'}</div></li>
+        <li><div class="rf-list-row"><span class="rf-list-icon" data-tone="teal">${U.icon('leaf')}</span><span class="rf-list-text"><span class="rf-list-title">Mobility flow</span><span class="rf-list-subtitle">5 moves, about 5 min</span></span>${l.mobility ? `<span class="check-done" aria-label="Done">${U.icon('check-circle')}</span>` : '<button type="button" class="rf-btn" data-size="sm" data-act="startMobility">Start</button>'}</div></li>
+      </ul>
+      ${next ? `<button type="button" class="rf-btn light-train" data-variant="plain" data-act="trainToday">Train today instead: ${U.esc(B().templateTitle(next.units).toLowerCase())}</button>` : ''}
+    </div>`;
+  }
+  function restCard(S, day, plan) {
+    const next = plan.next;
+    return `<div class="card light"><span class="rf-card-eyebrow">Rest day</span><h2 class="t-title-2">Recover</h2>
+      <p class="t-callout rf-muted">${next ? `Next: ${U.esc(B().templateTitle(next.units).toLowerCase())} on ${U.esc(U.fmtDay(next.day))}.` : 'Nothing planned for the rest of the week.'}</p></div>`;
+  }
+  function feelCard(S, day) {
+    const f = S.feel[day] || {};
+    const hasSleep = S.health.days[day] && S.health.days[day].sleepMin != null;
+    const chip = S.sleepChip[day];
+    const complete = f.energy && f.sore && (hasSleep || chip);
+    if (complete && !feelOpen) {
+      const bits = [`Energy ${f.energy}`, `sore: ${f.sore}`];
+      if (!hasSleep && chip) bits.push(`${chip} h sleep`);
+      return `<div class="card feel-done"><span class="t-callout">${U.esc(bits.join(' · '))}</span><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="feelEdit">Change</button></div>`;
+    }
+    return `<div class="card feel">
+      <p class="t-headline">How are you today?</p>
+      <div class="feel-row"><span class="t-subhead">Energy</span>${U.seg('feelEnergy', [['low', 'Low'], ['ok', 'OK'], ['good', 'Good']], f.energy || '', 'Energy', ' data-on="feelEnergy"')}</div>
+      <div class="feel-row"><span class="t-subhead">Soreness</span>${U.seg('feelSore', [['none', 'None'], ['some', 'Some'], ['very', 'Very']], f.sore || '', 'Soreness', ' data-on="feelSore"')}</div>
+      ${hasSleep ? '' : `<div class="feel-row"><span class="t-subhead">Sleep</span>${U.seg('sleepChip', [['<5', '<5 h'], ['5-6', '5-6'], ['6-7', '6-7'], ['7-8', '7-8'], ['8+', '8+']], chip || '', 'Sleep last night', ' data-on="sleepChip"')}</div>`}
+      <p class="t-footnote rf-muted">Very sore with low energy, or under 5 h of sleep, means one less set per exercise today.</p>
+    </div>`;
+  }
+  function proteinCard(S, day) {
+    const pr = S.profile.protein || {};
+    if (pr.track === false) return '';
+    const goal = B().proteinGoal(S, day);
+    const got = B().proteinToday(S, day);
+    if (!goal) return `<div class="card protein"><span class="t-headline">Protein</span><p class="t-callout rf-muted">Add your weight to get a daily protein goal.</p><button type="button" class="rf-btn" data-act="logWeight">Log weight</button></div>`;
+    return `<div class="card protein">
+      <div class="row-between"><span class="t-headline">Protein</span><span class="t-callout rf-num"><b>${got}</b> of ${goal} g</span></div>
+      ${U.progress(got / goal, 'Protein today', got >= goal ? 'positive' : '')}
+      <div class="btn-row">
+        <button type="button" class="rf-btn" data-variant="soft" data-act="addQuick">${U.icon('plus')}${U.esc(pr.quickName || 'Shake')} ${pr.quickG || 26} g</button>
+        <button type="button" class="rf-btn" data-act="addProtein">Other</button>
+        ${got ? '<button type="button" class="rf-btn" data-variant="plain" data-act="undoProtein">Undo</button>' : ''}
+      </div>
+    </div>`;
+  }
+
+  /* ---------------------------------------------------------------- the screen */
+  U.screens.today = {
+    render(S, day) {
+      const cal = B().calendar(S, day);
+      const plan = B().todayPlan(S, day, cal);
+      const week = cal.weeks[B().weekStart(day)];
+      const st = cal.streak;
+      const r = B().readiness(S, day);
+      const sub = [U.fmtDay(day)];
+      if (week) sub.push(`week ${week.trainingWeek}`);
+      let main;
+      if (S.active) main = activeCard(S, day);
+      else if (plan.type === 'done') main = doneCard(S, plan.log);
+      else if (plan.type === 'workout') main = workoutCard(S, day, plan, cal);
+      else if (plan.type === 'light') main = lightCard(S, day, plan);
+      else main = restCard(S, day, plan);
+      const top = GH.insights ? GH.insights.top(S, day, 1)[0] : null;
+      if (top && GH.insights.markShown) GH.insights.markShown(S, [top], day);
+      const measure = GH.health && GH.health.measureDue(S, day);
+      const from = shownStreak == null ? st.current : shownStreak;
+      return `${U.navbar('Today', U.glassBtn('sliders', 'Settings', 'openSettings'))}
+        <h1 class="rf-large-title">Today</h1>
+        <p class="lt-sub t-callout rf-muted">${U.esc(sub.join(' · '))}</p>
+        <div class="section">
+          <div class="card streak">
+            <div class="streak-main">
+              <div class="streak-n"><span class="t-large-title rf-num" id="streakN" data-from="${from}">${st.current}</span><span class="t-callout rf-muted">day streak</span></div>
+              <div class="streak-tally">${tallies(st.current)}</div>
+            </div>
+            <p class="t-footnote rf-muted">${st.weekly ? `${U.plural(st.weekly, 'full week')} in a row · ` : ''}${st.freezeThisWeek ? 'Freeze used this week' : '1 freeze left this week'}${st.best > st.current ? ` · best ${st.best}` : ''}</p>
+          </div>
+          ${r.reasons.length && !(plan.type === 'done') ? `<div class="notice" data-tone="caution">${U.icon('bolt')}<span>${U.esc(r.reasons.map((x) => x.text).join(' '))}</span></div>` : ''}
+          ${main}
+          ${feelCard(S, day)}
+          ${proteinCard(S, day)}
+          ${measure ? `<ul class="rf-list">${U.row({ icon: 'pin', tone: 'violet', title: 'Time to measure', sub: 'Waist and arms, once a month', act: 'logMeasure', chevron: true })}</ul>` : ''}
+          ${top ? `<button type="button" class="insight-line" data-act="goHealth"><span class="rf-list-icon" data-tone="${top.tone === 'good' ? 'green' : top.tone === 'watch' ? 'amber' : top.tone === 'alert' ? 'rose' : 'sky'}">${U.icon(top.icon)}</span><span class="insight-text"><span class="t-subhead">${U.esc(top.title)}</span><span class="t-footnote rf-muted">${U.esc(top.evidence)}</span></span>${U.icon('chevron-right')}</button>` : ''}
+        </div>`;
+    },
+    float(S, day) {
+      const cal = B().calendar(S, day);
+      const plan = B().todayPlan(S, day, cal);
+      if (S.active && S.active.day === day) return `<button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg" data-lens data-act="resumeWorkout">${U.icon('play')}Resume workout</button>`;
+      if (S.active) return '';
+      if (plan.type === 'workout') {
+        const on = isShort(day);
+        return `<button type="button" class="rf-btn rf-glass" data-size="lg" data-lens data-act="toggleShort" aria-pressed="${on}">${U.icon('timer')}${on ? 'Full session' : 'Short on time'}</button>
+          <button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg" data-lens data-act="startWorkout">${U.icon('play')}Start workout</button>`;
+      }
+      if (plan.type === 'light' && !(plan.light && plan.light.mobility)) return `<button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg" data-lens data-act="startMobility">${U.icon('play')}Start mobility</button>`;
+      return '';
+    },
+    after(root, S) {
+      const n = root.querySelector('#streakN');
+      const to = B().calendar(S, U.today()).streak.current;
+      if (n && shownStreak != null && shownStreak !== to && G.Refract && G.Refract.roll) { try { G.Refract.roll(n, String(to), { from: String(shownStreak), dir: to > shownStreak ? 1 : -1 }); } catch (e) { /* ignore */ } }
+      shownStreak = to;
+    },
+  };
+
+  /* ---------------------------------------------------------------- actions */
+  U.act.openSettings = () => U.open('settings');
+  U.act.goHealth = () => U.go('health');
+  U.act.toggleShort = () => { const d = U.today(); shortDay = isShort(d) ? null : d; U.render(); };
+  U.act.startWorkout = () => {
+    const S = U.S;
+    if (S.active) { U.openPlayer(); return; }
+    const day = U.today();
+    const r = B().startWorkout(S, day, { short: isShort(day), now: Date.now() });
+    if (r.error) { U.toast(r.error === 'done' ? 'Already done today' : 'Nothing left to train this week', 'neutral'); return; }
+    shortDay = null;
+    U.save(true);
+    U.openPlayer();
+  };
+  U.act.trainToday = async () => {
+    const ok = await U.confirm('Train today instead?', 'The next workout moves to today and the rest of the week follows it.', 'Train today');
+    if (ok) U.act.startWorkout();
+  };
+  U.act.logWalk = () => { B().logLight(U.S, U.today(), 'walk', true); U.commit(); U.toast('Walk logged', 'positive'); };
+  U.act.startMobility = () => U.openMobility();
+  U.act.checkinStale = () => { if (U.openCheckin) U.openCheckin(); };
+  U.act.discardStale = async () => {
+    if (await U.confirm('Discard this workout?', 'Nothing from it is saved.', 'Discard', 'critical', 'trash')) { U.S.active = null; U.commit(); }
+  };
+  U.act.feelEdit = () => { feelOpen = true; U.render(); };
+  U.on.feelEnergy = (el, ev, v) => { GH.health.setFeel(U.S, U.today(), { energy: v }); U.save(); maybeClose(); };
+  U.on.feelSore = (el, ev, v) => { GH.health.setFeel(U.S, U.today(), { sore: v }); U.save(); maybeClose(); };
+  U.on.sleepChip = (el, ev, v) => { GH.health.setSleepChip(U.S, U.today(), v); U.save(); maybeClose(); };
+  function maybeClose() {
+    const S = U.S, d = U.today();
+    const f = S.feel[d] || {};
+    const hasSleep = (S.health.days[d] && S.health.days[d].sleepMin != null) || S.sleepChip[d];
+    if (f.energy && f.sore && hasSleep) { feelOpen = false; U.render(); }
+    else U.render();
+  }
+  U.act.addQuick = () => {
+    const S = U.S, d = U.today();
+    B().addProtein(S, d, S.profile.protein.quickG || 26);
+    U.commit();
+    const goal = B().proteinGoal(S, d);
+    if (goal && B().proteinToday(S, d) >= goal && B().proteinToday(S, d) - (S.profile.protein.quickG || 26) < goal) U.toast('Protein goal hit', 'positive');
+  };
+  U.act.undoProtein = () => { B().undoProtein(U.S, U.today()); U.commit(); };
+  U.act.addProtein = () => {
+    U.sheet({
+      title: 'Add protein', detents: 'small medium', detent: 'small',
+      body: `<div class="sheet-pad"><div class="ob-center">${U.stepper('protG', 20, 1, 150, 'Grams of protein', '', 5)}</div><p class="t-footnote rf-muted">A palm of meat or fish is about 25 g, a cup of milk 8 g, an egg 6 g.</p></div>`,
+      action: { label: 'Add', act: 'addProteinSave' },
+    });
+  };
+  U.act.addProteinSave = () => {
+    const v = parseInt(document.getElementById('protG').value, 10);
+    if (v > 0) { B().addProtein(U.S, U.today(), v); U.commit(); }
+    const t = U.topSheet(); if (t) t.close('ok');
+  };
+  U.act.moveInfo = (el) => U.moveSheet(el.dataset.arg);
+})(typeof window !== 'undefined' ? window : globalThis);

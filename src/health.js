@@ -1,0 +1,278 @@
+/* Health data: Health Connect (through the Android bridge) plus anything logged by hand, kept as
+ * one record per day in S.health.days (what the brain and the insights read). Raw Health Connect
+ * days live in S.health.hc and hand logs in S.health.manual; a day is rebuilt from both, hand
+ * logs winning, so a re-sync never duplicates or overwrites what was typed in.
+ */
+(function (G) {
+  'use strict';
+  const GH = G.GH || (G.GH = {});
+  const B = () => GH.brain;
+  const hooks = G.__gh || (G.__gh = {});
+  const bridge = () => G.AndroidBridge || null;
+  const KEEP_DAYS = 400;
+  const SCALARS = ['steps', 'sleepMin', 'bed', 'wake', 'stages', 'rhr', 'hrv', 'weightKg', 'bodyFat'];
+
+  /* ---------------------------------------------------------------- Health Connect */
+  function status() {
+    const b = bridge();
+    if (!b || !b.hcStatus) return 'unsupported';
+    try { return String(b.hcStatus() || 'unavailable'); } catch (e) { return 'unavailable'; }
+  }
+  const connected = (st) => st === 'granted' || st === 'partial';
+
+  let permWaiters = [];
+  const permListeners = [];
+  hooks.onHealthPerms = (st) => {
+    const w = permWaiters; permWaiters = [];
+    for (const f of w) f(String(st));
+    for (const f of permListeners) { try { f(String(st)); } catch (e) { /* ignore */ } }
+  };
+  function onPerms(fn) { permListeners.push(fn); }
+  // Shows the Health Connect permission dialog; resolves with the new status.
+  function request() {
+    const b = bridge();
+    if (!b || !b.hcRequest) return Promise.resolve('unsupported');
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = (st) => { if (!settled) { settled = true; resolve(st); } };
+      permWaiters.push(done);
+      try { b.hcRequest(); } catch (e) { done('unavailable'); }
+      setTimeout(() => done(status()), 180000);
+    });
+  }
+  function openSettings() { try { const b = bridge(); if (b && b.hcOpenSettings) b.hcOpenSettings(); } catch (e) { /* ignore */ } }
+
+  let readWaiters = [];
+  hooks.onHealth = (payload) => { const w = readWaiters; readWaiters = []; for (const f of w) f(payload); };
+  function read(days) {
+    const b = bridge();
+    if (!b || !b.hcRead) return Promise.resolve({ ok: false, error: 'unsupported' });
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = (p) => { if (!settled) { settled = true; clearTimeout(timer); readWaiters = readWaiters.filter((f) => f !== done); resolve(p || { ok: false, error: 'empty' }); } };
+      const timer = setTimeout(() => done({ ok: false, error: 'timeout' }), 40000);
+      readWaiters.push(done);
+      try { b.hcRead(days); } catch (e) { done({ ok: false, error: 'bridge' }); }
+    });
+  }
+
+  // Reads what changed (90 days the first time, 14 after that) and folds it in.
+  async function sync(S, now, days) {
+    const st = status();
+    S.health.status = st;
+    if (!connected(st)) return { ok: false, status: st };
+    const payload = await read(days || (S.health.lastSync ? 14 : 90));
+    if (!payload || !payload.ok) return { ok: false, status: st, error: payload && payload.error };
+    const res = ingest(S, payload, now);
+    S.health.lastSync = now;
+    S.health.errors = payload.errors && Object.keys(payload.errors).length ? Object.keys(payload.errors) : [];
+    return Object.assign({ ok: true, status: st }, res);
+  }
+
+  /* ---------------------------------------------------------------- folding data in */
+  const roll = (S) => (S.profile && S.profile.prefs && S.profile.prefs.rollHour != null ? S.profile.prefs.rollHour : 4);
+  const ms = (iso) => { const t = Date.parse(iso); return isFinite(t) ? t : null; };
+
+  function ingest(S, p, now) {
+    const b = B();
+    const rh = roll(S);
+    const h = S.health;
+    h.hc = h.hc || {}; h.manual = h.manual || {}; h.days = h.days || {};
+    const fromMs = ms(p.from), toMs = ms(p.to) || now || Date.now();
+    const first = fromMs != null ? b.dayOf(fromMs, rh) : null;
+    const last = b.dayOf(toMs, rh);
+    const fresh = {};
+    const day = (d) => (fresh[d] = fresh[d] || {});
+    // Steps come as whole local calendar days.
+    for (const x of p.steps || []) {
+      if (!x || !x.date || !(x.count >= 0)) continue;
+      day(b.dayFromStr(x.date)).steps = Math.round(x.count);
+    }
+    // Sleep counts toward the morning you woke up; the longest session gives bed and wake times.
+    const sleepBy = {};
+    for (const x of p.sleep || []) {
+      const s = ms(x.start), e = ms(x.end);
+      if (s == null || e == null || e <= s) continue;
+      const d = b.dayOf(e, rh);
+      (sleepBy[d] = sleepBy[d] || []).push({ s, e, min: Math.max(0, Math.round(x.asleepMin != null ? x.asleepMin : (e - s) / 60000)), stages: x.stages || null });
+    }
+    for (const [d, list] of Object.entries(sleepBy)) {
+      const main = list.slice().sort((a, c) => (c.e - c.s) - (a.e - a.s))[0];
+      const r = day(d);
+      r.sleepMin = list.reduce((a, x) => a + x.min, 0);
+      r.bed = main.s; r.wake = main.e;
+      if (main.stages) r.stages = main.stages;
+    }
+    const lastOfDay = (list, key, digits) => {
+      const by = {};
+      for (const x of list || []) { const t = ms(x.time); if (t == null || !(x[key] > 0)) continue; const d = b.dayOf(t, rh); if (!by[d] || by[d].t < t) by[d] = { t, v: x[key] }; }
+      const out = {};
+      for (const [d, o] of Object.entries(by)) out[d] = round(o.v, digits);
+      return out;
+    };
+    const avgOfDay = (list, key, digits) => {
+      const by = {};
+      for (const x of list || []) { const t = ms(x.time); if (t == null || !(x[key] > 0)) continue; const d = b.dayOf(t, rh); (by[d] = by[d] || []).push(x[key]); }
+      const out = {};
+      for (const [d, v] of Object.entries(by)) out[d] = round(v.reduce((a, c) => a + c, 0) / v.length, digits);
+      return out;
+    };
+    for (const [d, v] of Object.entries(lastOfDay(p.weight, 'kg', 2))) day(d).weightKg = v;
+    for (const [d, v] of Object.entries(lastOfDay(p.bodyFat, 'pct', 1))) day(d).bodyFat = v;
+    for (const [d, v] of Object.entries(avgOfDay(p.restingHr, 'bpm', 0))) day(d).rhr = v;
+    for (const [d, v] of Object.entries(avgOfDay(p.hrv, 'ms', 1))) day(d).hrv = v;
+    // Workouts from other apps. One that overlaps a workout done in this app is that workout.
+    const appSpans = S.log.filter((l) => l.type === 'workout' && l.startedAt && l.endedAt).map((l) => [l.startedAt, l.endedAt]);
+    for (const x of p.exercise || []) {
+      const s = ms(x.start), e = ms(x.end);
+      if (s == null || e == null || e <= s) continue;
+      const minutes = Math.round((e - s) / 60000);
+      if (minutes < 5) continue;
+      const fromApp = appSpans.some(([a, c]) => s < c && e > a);
+      const d = b.dayOf(s, rh);
+      (day(d).exercise = day(d).exercise || []).push({ typeName: prettyType(x.typeName), minutes, start: s, title: x.title || '', fromApp, src: 'hc' });
+    }
+    // Height fills the profile if it's empty.
+    const heights = (p.height || []).filter((x) => x && x.m > 0.9 && x.m < 2.5).sort((a, c) => (ms(a.time) || 0) - (ms(c.time) || 0));
+    if (heights.length && !S.profile.heightCm) S.profile.heightCm = Math.round(heights[heights.length - 1].m * 100);
+    // Replace every day the read covered (so deleted records go away), keep older days.
+    const touched = new Set(Object.keys(fresh).map(Number));
+    if (first != null) for (let d = first; d <= last; d++) touched.add(d);
+    let newest = null;
+    for (const d of touched) {
+      if (fresh[d]) h.hc[d] = fresh[d]; else delete h.hc[d];
+      if (fresh[d] && fresh[d].weightKg) { b.addWeight(S, d, fresh[d].weightKg, 'hc'); newest = d; }
+      else S.weights = S.weights.filter((w) => !(w.day === d && w.src === 'hc'));
+      rebuild(S, d);
+    }
+    prune(S, last);
+    return { days: Object.keys(fresh).length, weight: newest };
+  }
+  const round = (v, digits) => { const f = Math.pow(10, digits || 0); return Math.round(v * f) / f; };
+  const TYPE_NAMES = { high_intensity_interval_training: 'HIIT', biking: 'cycling', biking_stationary: 'stationary bike', running_treadmill: 'treadmill run', strength_training: 'strength training', swimming_pool: 'swimming', swimming_open_water: 'open-water swim', football_american: 'American football', football_australian: 'Australian football', frisbee_disc: 'frisbee', stair_climbing_machine: 'stair machine', rowing_machine: 'rowing machine', other: 'workout' };
+  function prettyType(t) { const k = String(t || 'other'); return TYPE_NAMES[k] || k.replace(/_/g, ' '); }
+
+  function rebuild(S, d) {
+    const h = S.health;
+    const hc = h.hc[d], man = h.manual[d];
+    if (!hc && !man) { delete h.days[d]; return; }
+    const out = {};
+    for (const k of SCALARS) {
+      if (man && man[k] != null) out[k] = man[k];
+      else if (hc && hc[k] != null) out[k] = hc[k];
+    }
+    const ex = [].concat((hc && hc.exercise) || [], (man && man.exercise) || []);
+    if (ex.length) out.exercise = ex;
+    out.src = { hc: !!hc, manual: !!man };
+    h.days[d] = out;
+  }
+  function prune(S, today) {
+    const h = S.health;
+    for (const store of [h.hc, h.manual, h.days]) for (const k of Object.keys(store)) if (Number(k) < today - KEEP_DAYS) delete store[k];
+  }
+
+  /* ---------------------------------------------------------------- hand logs */
+  // patch: { sleepMin } | { steps } | { weightKg } | { exercise: { typeName, minutes } } | { rhr }
+  function logManual(S, day, patch) {
+    const m = S.health.manual[day] = S.health.manual[day] || {};
+    for (const k of SCALARS) if (patch[k] != null) m[k] = patch[k];
+    if (patch.exercise) m.exercise = (m.exercise || []).concat([{ typeName: String(patch.exercise.typeName || 'workout').slice(0, 40), minutes: Math.max(1, Math.round(patch.exercise.minutes || 0)), src: 'manual' }]);
+    if (patch.weightKg) B().addWeight(S, day, patch.weightKg, 'manual');
+    rebuild(S, day);
+    return S.health.days[day];
+  }
+  function removeManual(S, day, key, index) {
+    const m = S.health.manual[day];
+    if (!m) return;
+    if (key === 'exercise' && Array.isArray(m.exercise)) m.exercise.splice(index, 1);
+    else delete m[key];
+    if (key === 'weightKg') S.weights = S.weights.filter((w) => !(w.day === day && w.src === 'manual'));
+    if (!Object.keys(m).some((k) => (k === 'exercise' ? m.exercise.length : m[k] != null))) delete S.health.manual[day];
+    rebuild(S, day);
+  }
+  function setFeel(S, day, feel) { S.feel[day] = Object.assign({}, S.feel[day] || {}, feel); }
+  function setSleepChip(S, day, chip) { if (chip) S.sleepChip[day] = chip; else delete S.sleepChip[day]; }
+  // Body measurements in cm: waist, armL, armR, chest, thigh.
+  function addMeasurement(S, day, m) {
+    const clean = {};
+    for (const k of ['waist', 'armL', 'armR', 'chest', 'thigh']) if (m[k] > 0) clean[k] = round(m[k], 1);
+    if (!Object.keys(clean).length) return null;
+    S.measurements = S.measurements.filter((x) => x.day !== day);
+    S.measurements.push(Object.assign({ day }, clean));
+    S.measurements.sort((a, b) => a.day - b.day);
+    return clean;
+  }
+  function measureDue(S, day) {
+    const last = S.measurements.length ? S.measurements[S.measurements.length - 1].day : null;
+    if (last == null) return day - (S.profile.startDay || day) >= 7;
+    return day - last >= 28;
+  }
+
+  /* ---------------------------------------------------------------- reading it back */
+  function value(S, key, d) {
+    const r = S.health.days[d];
+    if (key === 'sleepMin' && (!r || r.sleepMin == null)) {
+      const chip = S.sleepChip && S.sleepChip[d];
+      return chip ? CHIP_MIN[chip] : null;
+    }
+    return r && r[key] != null ? r[key] : null;
+  }
+  const CHIP_MIN = { '<5': 270, '5-6': 330, '6-7': 390, '7-8': 450, '8+': 510 };
+  function series(S, key, from, to) {
+    const out = [];
+    for (let d = from; d <= to; d++) { const v = key === 'weightKg' ? weightOn(S, d) : value(S, key, d); if (v != null) out.push({ day: d, value: v }); }
+    return out;
+  }
+  function weightOn(S, d) {
+    const w = S.weights.filter((x) => x.day === d && x.src !== 'profile');
+    return w.length ? w[w.length - 1].kg : null;
+  }
+  function stats(S, key, from, to) {
+    const v = series(S, key, from, to).map((x) => x.value);
+    if (!v.length) return { n: 0, avg: null, median: null, sd: null, values: v };
+    const avg = v.reduce((a, b) => a + b, 0) / v.length;
+    const sd = v.length > 1 ? Math.sqrt(v.reduce((a, b) => a + (b - avg) * (b - avg), 0) / (v.length - 1)) : 0;
+    return { n: v.length, avg, median: B().median(v), sd, values: v };
+  }
+  // Your normal: the 28 days before `day`.
+  function baseline(S, key, day) { return stats(S, key, day - 28, day - 1); }
+
+  function appWorkouts(S, from, to) {
+    return S.log.filter((l) => l.type === 'workout' && l.day >= from && l.day <= to && l.checkedIn)
+      .map((l) => ({ day: l.day, name: l.title, minutes: l.startedAt && l.endedAt ? Math.max(1, Math.round((l.endedAt - l.startedAt) / 60000)) : null, src: 'app', pct: l.pct, rating: l.checkin && l.checkin.rating }));
+  }
+  function activity(S, from, to) {
+    const out = appWorkouts(S, from, to);
+    for (let d = from; d <= to; d++) {
+      const r = S.health.days[d];
+      for (const e of (r && r.exercise) || []) if (!e.fromApp) out.push({ day: d, name: e.typeName, minutes: e.minutes, src: e.src || 'hc', title: e.title || '' });
+    }
+    return out.sort((a, b) => b.day - a.day);
+  }
+  function activeMinutes(S, from, to) { return activity(S, from, to).reduce((a, x) => a + (x.minutes || 0), 0); }
+
+  // Everything the Health tab's Today card shows.
+  function today(S, day) {
+    const r = S.health.days[day] || {};
+    const ws = B().weightStats(S, day);
+    return {
+      sleepMin: value(S, 'sleepMin', day), sleepFromChip: r.sleepMin == null && !!(S.sleepChip && S.sleepChip[day]),
+      bed: r.bed || null, wake: r.wake || null, stages: r.stages || null,
+      steps: r.steps != null ? r.steps : null, rhr: r.rhr != null ? r.rhr : null, hrv: r.hrv != null ? r.hrv : null,
+      weightAvg7: ws.avg7, weightLast: ws.last, activeMin: activeMinutes(S, day, day),
+      protein: B().proteinToday(S, day), proteinGoal: B().proteinGoal(S, day), feel: S.feel[day] || null,
+    };
+  }
+
+  // Light days: a walk from Health Connect ticks itself.
+  function afterSync(S, day) {
+    const plan = B().todayPlan(S, day);
+    if (plan.type === 'light' && !(plan.light && plan.light.walk)) return B().autoWalk(S, day);
+    return false;
+  }
+
+  GH.health = {
+    status, connected, request, onPerms, openSettings, read, sync, ingest, rebuild, logManual, removeManual, setFeel, setSleepChip,
+    addMeasurement, measureDue, value, series, stats, baseline, weightOn, activity, activeMinutes, appWorkouts, today, afterSync, prettyType, CHIP_MIN,
+  };
+})(typeof window !== 'undefined' ? window : globalThis);

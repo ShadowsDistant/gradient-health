@@ -1,0 +1,553 @@
+/* The workout player: one step at a time (warm-up, tests, sets, finisher, cool-down), rest with a
+ * ring, the reps-in-reserve tap, swaps, then the check-in and the "Next time" lines. Everything is
+ * saved after each step, so a closed app resumes where it stopped. Also runs the mobility flow.
+ */
+(function (G) {
+  'use strict';
+  const GH = G.GH || (G.GH = {});
+  const U = GH.ui = GH.ui || {};
+  U.act = U.act || {}; U.on = U.on || {};
+  const B = () => GH.brain;
+  const M = () => GH.moves;
+  const plat = () => GH.platform || { cue() {}, keepAwake() {}, vibrate() {} };
+
+  let P = null;     // player state (not saved; the workout itself lives in S.active)
+  let fig = null;   // { key, ctl }
+  let timer = null;
+  const LEG_FAMS = ['squat', 'hinge', 'glute'];
+  const JOINTS = [['knee', 'Knees'], ['shoulder', 'Shoulders'], ['back', 'Lower back'], ['wrist', 'Wrists'], ['elbow', 'Elbows'], ['hip', 'Hips'], ['ankle', 'Ankles'], ['neck', 'Neck']];
+
+  const root = () => U.els().playerEl;
+  const A = () => U.S && U.S.active;
+  function cur() {
+    if (!P) return null;
+    if (P.mode === 'mobility') return P.mob.steps[P.mob.idx] || null;
+    return A() ? A().steps[A().idx] || null : null;
+  }
+  function stepsLeft() {
+    if (P.mode === 'mobility') return P.mob.steps.slice(P.mob.idx + 1);
+    return A().steps.slice(A().idx + 1);
+  }
+
+  /* ---------------------------------------------------------------- open / close */
+  U.openPlayer = () => {
+    if (!A()) return;
+    if (!P || P.mode !== 'workout') P = { mode: 'workout', phase: 'step' };
+    show();
+  };
+  U.openMobility = () => {
+    const flow = B().mobilityFlow(U.S);
+    const steps = [];
+    for (const it of flow) {
+      if (it.uni) { steps.push({ kind: 'cooldown', item: it, side: 'L', target: it.target }); steps.push({ kind: 'cooldown', item: it, side: 'R', target: it.target }); }
+      else steps.push({ kind: 'cooldown', item: it, target: it.target });
+    }
+    P = { mode: 'mobility', phase: 'step', mob: { steps, idx: 0 } };
+    show();
+  };
+  U.act.resumeWorkout = () => U.openPlayer();
+  // An unfinished workout from an earlier day goes straight to its check-in.
+  U.openCheckin = () => { if (!A()) return; P = { mode: 'workout', phase: 'checkin' }; show(); };
+  function show() {
+    const el = root();
+    el.hidden = false;
+    plat().keepAwake(true);
+    if (!timer) timer = setInterval(loop, 200);
+    draw();
+    U.renderAccessory();
+  }
+  function hide() {
+    const el = root();
+    el.hidden = true;
+    el.innerHTML = '';
+    dropFig();
+    if (timer) { clearInterval(timer); timer = null; }
+    plat().keepAwake(false);
+  }
+  // Minimize: the workout keeps going; Today and the tab bar show a way back.
+  function minimize() {
+    if (P && (P.phase === 'countdown' || P.phase === 'running')) { P.phase = 'step'; }
+    hide();
+    U.render();
+  }
+  function closeDone() { P = null; hide(); U.route = { tab: 'today', view: null, arg: null }; U.render(); }
+  U.playerBack = () => {
+    if (P && (P.phase === 'next' || P.phase === 'mobdone')) { closeDone(); return true; }
+    if (P && P.mode === 'mobility') { P = null; hide(); U.render(); return true; }
+    minimize();
+    return true;
+  };
+  U.act.plMin = () => U.playerBack();
+
+  /* ---------------------------------------------------------------- figures */
+  function dropFig() { if (fig) { try { fig.ctl.destroy(); } catch (e) { /* ignore */ } fig = null; } }
+  function leadSideFor(fam) { const c = U.S.catchup; return (LEG_FAMS.includes(fam) ? c.leg.side : c.arm.side) || 'L'; }
+  function figOpts(st, m0) {
+    const m = M().forPerson(m0, U.S.profile.equipment);
+    const side = st.side || null;
+    const o = { reducedMotion: U.reduced() };
+    if (m.uni && side) { o.mirrored = M().mirrorFor(m, side); o.lead = side === leadSideFor(m0.family); }
+    return { m, o, key: `${m0.id}:${side}:${o.mirrored}` };
+  }
+  function mountFig(host, st, playing) {
+    const m0 = st && st.item && M().MOVES[st.item.moveId];
+    if (!host || !m0 || !GH.pose) return;
+    const { m, o, key } = figOpts(st, m0);
+    if (fig && fig.key === key) host.appendChild(fig.ctl.el); // same move: keep the running animation
+    else {
+      dropFig();
+      try { fig = { key, ctl: GH.pose.mount(host, m, o) }; } catch (e) { fig = null; return; }
+    }
+    if (playing) fig.ctl.play(); else fig.ctl.pause();
+  }
+  U.figureFor = (host, moveId, side, playing) => {
+    const m0 = M().MOVES[moveId];
+    if (!m0 || !GH.pose) return null;
+    const { m, o } = figOpts({ side, item: { moveId } }, m0);
+    const ctl = GH.pose.mount(host, m, o);
+    if (playing) ctl.play();
+    return ctl;
+  };
+
+  /* ---------------------------------------------------------------- step facts */
+  function isTimed(st) { return st.kind === 'interval' || st.kind === 'cooldown' || (!!st.item.timed && st.kind !== 'test'); }
+  function durationOf(st) {
+    if (st.kind === 'interval') return st.work;
+    if (st.kind === 'set') return B().currentTarget(A(), st);
+    return st.target || st.item.target || 30;
+  }
+  function limbOf(st) { const fam = st.item.fam || (M().MOVES[st.item.moveId] || {}).family; return LEG_FAMS.includes(fam) ? 'leg' : 'arm'; }
+  function eyebrow(st) {
+    const it = st.item;
+    if (st.kind === 'warmup') return 'Warm-up';
+    if (st.kind === 'test') return 'Left vs right test';
+    if (st.kind === 'interval') return `Finisher · round ${st.round + 1} of ${st.of}`;
+    if (st.kind === 'cooldown') return P.mode === 'mobility' ? `Mobility · ${P.mob.idx + 1} of ${P.mob.steps.length}` : 'Cool-down';
+    if (st.leadOnly) return `Extra ${U.side(st.side).toLowerCase()} set`;
+    return `${it.superset ? it.superset + ' · ' : ''}${B().GROUP_NAME[it.group] || ''} · set ${st.set + 1} of ${st.of}`;
+  }
+  function sideLine(st) {
+    if (!st.side) return '';
+    const lead = leadSideFor(st.item.fam || (M().MOVES[st.item.moveId] || {}).family);
+    const isLead = st.side === lead;
+    const txt = st.kind === 'test' ? `${U.side(st.side)} arm: as many clean reps as you can`
+      : `${U.side(st.side)} ${st.kind === 'interval' || st.kind === 'cooldown' ? 'side' : limbOf(st)}${st.first === true && !st.leadOnly ? ' first' : ''}`;
+    return `<p class="pl-side${isLead ? ' is-lead' : ''}">${U.esc(txt)}</p>`;
+  }
+  function dots(st) {
+    if (st.kind !== 'set' || st.leadOnly || st.of <= 1) return '';
+    return `<div class="pl-dots" aria-label="Set ${st.set + 1} of ${st.of}">${Array.from({ length: st.of }, (_, i) => `<i class="${i < st.set ? 'done' : i === st.set ? 'now' : ''}"></i>`).join('')}</div>`;
+  }
+  function upNext(st) {
+    if (!st) return '<p class="t-callout rf-muted">Last one.</p>';
+    const it = st.item;
+    const what = st.kind === 'set' ? U.target(it, B().currentTarget(A(), st)) : st.kind === 'interval' ? `${st.work} s` : st.kind === 'test' ? 'max reps' : isTimed(st) ? `${durationOf(st)} s` : U.target(it);
+    return `<div class="pl-next"><span class="t-caption rf-muted">Up next</span><span class="t-headline">${U.esc(it.name)}</span><span class="t-footnote rf-muted">${U.esc(eyebrow(st))} · ${U.esc(what)}${st.side ? ` · ${U.side(st.side).toLowerCase()}` : ''}</span></div>`;
+  }
+
+  /* ---------------------------------------------------------------- drawing */
+  function progressBar() {
+    if (P.mode === 'mobility') return U.progress(P.mob.idx / Math.max(1, P.mob.steps.length), 'Mobility progress');
+    const a = A();
+    if (!a) return U.progress(1, 'Workout progress');
+    return U.progress(a.idx / Math.max(1, a.steps.length), 'Workout progress');
+  }
+  function top(title) {
+    return `<div class="pl-top">
+      ${U.glassBtn('chevron-down', P.mode === 'mobility' ? 'Close' : 'Minimize', 'plMin')}
+      <div class="pl-prog">${progressBar()}<span class="t-caption rf-muted">${U.esc(title || '')}</span></div>
+      ${P.mode === 'workout' ? U.glassBtn('more', 'Workout options', 'plMenu') : '<span class="ob-spacer"></span>'}
+    </div>`;
+  }
+  function draw() {
+    const el = root();
+    if (!P || el.hidden) return;
+    if (P.mode === 'workout' && !A() && !['next'].includes(P.phase)) { closeDone(); return; }
+    let html = '';
+    const st = cur();
+    if (P.phase === 'checkin') html = viewCheckin();
+    else if (P.phase === 'next') html = viewNext();
+    else if (P.phase === 'mobdone') html = viewMobDone();
+    else if (P.phase === 'rest') html = viewRest();
+    else if (!st) { if (P.mode === 'mobility') { finishMobility(); return; } P.phase = 'checkin'; html = viewCheckin(); }
+    else html = viewStep(st);
+    el.innerHTML = html;
+    U.enhance(el);
+    const host = el.querySelector('.pl-fig');
+    if (host && st && (P.phase === 'step' || P.phase === 'countdown' || P.phase === 'running')) mountFig(host, st, true);
+    else if (host && P.phase === 'rest') { const nx = cur(); if (nx) mountFig(host, nx, false); }
+    loop();
+  }
+
+  function viewStep(st) {
+    const it = st.item;
+    const timed = isTimed(st);
+    const m = M().MOVES[it.moveId] || {};
+    const cue = (m.cues || [])[0];
+    let target = '', actions = '', hint = '';
+    if (P.phase === 'countdown' || P.phase === 'running') {
+      const total = P.dur;
+      target = `<div class="pl-timer">${U.ring(1, 'Time left', `<span class="pl-count rf-num">${P.phase === 'countdown' ? 3 : U.fmtDur(total)}</span>`, 'lg')}</div>`;
+      actions = P.phase === 'countdown'
+        ? '<button type="button" class="rf-btn rf-glass" data-size="lg" data-act="plCancelTimer">Cancel</button>'
+        : `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plStopEarly">${st.kind === 'cooldown' || st.kind === 'interval' || st.kind === 'warmup' ? 'Skip' : 'Stop early'}</button>`;
+    } else if (st.kind === 'test') {
+      const prev = st.side && A().tests && A().tests[it.test] && A().tests[it.test][st.side === 'L' ? 'R' : 'L'];
+      const last = (U.S.catchup[it.test].tests || []).slice(-1)[0];
+      const def = prev || (last ? (st.side === 'L' ? last.left : last.right) : 10);
+      target = `<div class="pl-target"><span class="pl-unit">Max reps</span></div><div class="pl-adjust">${U.stepper('plTest', def, 0, 200, 'Reps done')}</div>`;
+      hint = `<p class="pl-hint t-callout rf-muted">${U.esc(it.load ? it.load.label + '. ' : '')}Same weight both sides, full range, stop when form breaks.</p>`;
+      actions = '<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plSaveTest">Save</button>';
+    } else if (timed) {
+      const d = durationOf(st);
+      target = `<div class="pl-target"><span class="pl-big rf-num">${d}</span><span class="pl-unit">seconds</span></div>`;
+      if (st.kind === 'set') hint = '<p class="pl-hint t-callout rf-muted">Hold with good form. Stop early if it breaks.</p>';
+      actions = `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plStartTimer">${U.icon('play')}Start</button>`;
+    } else if (st.kind === 'set') {
+      const t = B().currentTarget(A(), st);
+      P.reps = t;
+      target = `<div class="pl-target"><span class="pl-big rf-num">${t}</span><span class="pl-unit">${t === 1 ? 'rep' : 'reps'}</span></div>`;
+      hint = `<p class="pl-hint t-callout rf-muted">${st.leadOnly ? 'One set on this side only.' : 'Stop with 1-3 reps left in the tank.'}${st.first === false ? ' Match the first side, never more.' : ''}</p>`;
+      actions = `<div class="pl-adjust"><span class="t-footnote rf-muted">Did fewer?</span>${U.stepper('plReps', t, 0, t, 'Reps done', 'data-on="plReps"')}</div>
+        <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plDone">${U.icon('check')}Done set</button>`;
+    } else {
+      target = `<div class="pl-target"><span class="pl-big rf-num">${U.esc(st.target || it.target)}</span><span class="pl-unit">reps</span></div>`;
+      actions = '<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plDone">Done</button>';
+    }
+    return `${top(P.mode === 'workout' ? U.S.active.session.title : 'Mobility flow')}
+      <div class="pl-main">
+        <p class="pl-eyebrow t-footnote rf-muted">${U.esc(eyebrow(st))}</p>
+        <h1 class="pl-name">${U.esc(it.name)}</h1>
+        ${sideLine(st)}
+        <button type="button" class="pl-fig-card" data-act="plHowTo" aria-label="How to do ${U.esc(it.name)}"><div class="pl-fig"></div></button>
+        ${target}
+        ${hint}
+        ${cue && P.phase === 'step' && st.kind !== 'test' ? `<p class="pl-cue t-callout">${U.esc(cue)}</p>` : ''}
+        <div class="pl-meta">${dots(st)}${it.load && it.load.label && st.kind !== 'test' ? `<span class="t-footnote rf-muted">${U.esc(it.load.label)}</span>` : ''}</div>
+      </div>
+      <div class="pl-actions">${actions}</div>`;
+  }
+
+  function viewRest() {
+    const next = cur();
+    const done = P.justDone;
+    const left = P.restEnd ? Math.max(0, (P.restEnd - Date.now()) / 1000) : 0;
+    const rirQ = P.askRir ? `<div class="pl-rir">
+        <p class="t-headline">How many more could you have done?</p>
+        ${U.seg('plRir', [['0', '0'], ['12', '1-2'], ['3', '3+']], P.rirAnswered || '', 'Reps left in the tank', ' data-on="plRir"')}
+        <p class="t-footnote rf-muted">${P.askRir.kind === 'finisher' ? 'For the whole finisher.' : `For ${U.esc(P.askRir.name.toLowerCase())}. This sets next time.`}</p>
+      </div>` : '';
+    const logged = done && done.kind === 'set' ? loggedLine(done) : '';
+    const timerBlock = P.restEnd
+      ? `<div class="pl-timer">${U.ring(left / Math.max(1, P.restTotal), 'Rest left', `<span class="pl-count rf-num">${U.fmtDur(left)}</span>`, 'lg', 'sky')}</div>
+         <div class="pl-rest-btns"><button type="button" class="rf-btn" data-act="plMore">+15 s</button><button type="button" class="rf-btn" data-act="plSkipRest">Skip rest</button></div>`
+      : (P.restTotal ? '<p class="t-title-3 pl-rest-over">Rest over</p>' : '');
+    const needCont = !P.restEnd && (P.askRir || !P.restTotal);
+    return `${top(P.mode === 'workout' ? U.S.active.session.title : '')}
+      <div class="pl-main pl-rest">
+        <p class="pl-eyebrow t-footnote rf-muted">${P.restEnd || P.restTotal ? 'Rest' : 'Nice work'}</p>
+        ${timerBlock}
+        ${logged}
+        ${rirQ}
+        ${next ? `<div class="pl-next-row"><div class="pl-fig pl-fig-sm"></div>${upNext(next)}</div>` : ''}
+      </div>
+      <div class="pl-actions">${needCont || !next ? `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plContinue">${next ? 'Continue' : 'Finish'}</button>` : ''}</div>`;
+  }
+  function loggedLine(st) {
+    const log = A().logs[A().session.items.concat(A().session.extras).indexOf(st.item)];
+    const last = log && log.sets[log.sets.length - 1];
+    if (!last) return '';
+    return `<p class="pl-logged t-callout">Logged ${U.esc(U.target(st.item, last.amount))}${st.side ? ` (${U.side(st.side).toLowerCase()})` : ''} <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="plAmend">Change</button></p>`;
+  }
+
+  /* ---------------------------------------------------------------- timing */
+  function loop() {
+    if (!P || root().hidden) return;
+    const now = Date.now();
+    const el = root();
+    const setCount = (txt) => { const c = el.querySelector('.pl-count'); if (c && c.textContent !== txt) c.textContent = txt; };
+    const setRing = (v) => { const r = el.querySelector('.rf-ring'); if (r) { r.style.setProperty('--rf-value', Math.max(0, Math.min(1, v)).toFixed(3)); r.setAttribute('aria-valuenow', String(Math.round(v * 100))); } };
+    if (P.phase === 'countdown') {
+      const s = Math.ceil((P.goAt - now) / 1000);
+      if (s > 0 && s !== P.lastCue) { plat().cue('tick'); P.lastCue = s; }
+      if (now >= P.goAt) { plat().cue('go'); P.phase = 'running'; P.startAt = now; P.endAt = now + P.dur * 1000; P.lastCue = null; draw(); return; }
+      setCount(String(Math.max(1, s)));
+      setRing(1);
+    } else if (P.phase === 'running') {
+      const left = (P.endAt - now) / 1000;
+      const s = Math.ceil(left);
+      if (left > 0 && s <= 3 && s !== P.lastCue) { plat().cue('tick'); P.lastCue = s; }
+      if (left <= 0) { plat().cue('done'); finishTimed(P.dur); return; }
+      setCount(U.fmtDur(left));
+      setRing(left / P.dur);
+    } else if (P.phase === 'rest' && P.restEnd) {
+      const left = (P.restEnd - now) / 1000;
+      const s = Math.ceil(left);
+      if (left > 0 && s <= 3 && s !== P.lastCue) { plat().cue('tick'); P.lastCue = s; }
+      if (left <= 0) {
+        plat().cue('done');
+        P.restEnd = null; P.lastCue = null;
+        if (P.askRir && P.rirAnswered == null) { draw(); return; } // keep the question up
+        endRest();
+        return;
+      }
+      setCount(U.fmtDur(left));
+      setRing(left / Math.max(1, P.restTotal));
+    }
+  }
+  function startTimer() {
+    const st = cur();
+    if (!st) return;
+    P.dur = durationOf(st);
+    P.phase = 'countdown';
+    P.goAt = Date.now() + 3000;
+    P.lastCue = null;
+    draw();
+  }
+  function endRest() {
+    const next = cur();
+    const auto = P.autoStart && next && next.kind === 'interval';
+    P.phase = 'step'; P.askRir = null; P.rirAnswered = null; P.justDone = null; P.restTotal = 0; P.autoStart = false;
+    if (!next) { if (P.mode === 'mobility') finishMobility(); else { P.phase = 'checkin'; draw(); } return; }
+    if (auto) startTimer(); else draw();
+  }
+  function finishTimed(secs) {
+    const st = cur();
+    if (!st) return;
+    if (P.mode === 'mobility') { P.mob.idx++; P.phase = 'step'; if (P.mob.idx >= P.mob.steps.length) finishMobility(); else { plat().vibrate(60); startTimer(); } return; }
+    complete(st.kind === 'set' ? { secs: Math.round(secs) } : {});
+  }
+  U.act.plStartTimer = () => { plat().unlockAudio(); startTimer(); };
+  U.act.plCancelTimer = () => { P.phase = 'step'; draw(); };
+  U.act.plStopEarly = () => {
+    const st = cur();
+    const elapsed = P.phase === 'running' ? (Date.now() - P.startAt) / 1000 : 0;
+    if (st && st.kind === 'set') finishTimed(Math.max(1, Math.round(elapsed)));
+    else finishTimed(0);
+  };
+  U.act.plMore = () => { if (P.restEnd) { P.restEnd += 15000; P.restTotal += 15; loop(); } };
+  U.act.plSkipRest = () => { P.restEnd = null; if (P.askRir && P.rirAnswered == null) { draw(); return; } endRest(); };
+  U.act.plContinue = () => endRest();
+
+  /* ---------------------------------------------------------------- completing steps */
+  function complete(result) {
+    const S = U.S;
+    const a = A();
+    const st = a.steps[a.idx];
+    const linesBefore = (a.testLines || []).length;
+    B().completeStep(S, result);
+    U.save();
+    if ((a.testLines || []).length > linesBefore) U.toast(a.testLines[a.testLines.length - 1], 'neutral');
+    const next = a.steps[a.idx];
+    const rest = (st.kind === 'set' || st.kind === 'interval') ? (st.rest || 0) : 0;
+    P.justDone = st;
+    P.askRir = st.askRir ? st.item : null;
+    P.rirAnswered = null;
+    P.autoStart = st.kind === 'interval' && next && next.kind === 'interval';
+    if (rest > 0 && next) {
+      P.phase = 'rest'; P.restTotal = rest; P.restEnd = Date.now() + rest * 1000; P.lastCue = null;
+    } else if (P.askRir) {
+      P.phase = 'rest'; P.restTotal = 0; P.restEnd = null;
+    } else if (!next) {
+      P.phase = 'checkin';
+    } else {
+      P.phase = 'step';
+      if (next.side && st.side && next.item === st.item && next.side !== st.side) plat().vibrate(80); // switch sides
+      if (P.autoStart) { startTimer(); return; }
+    }
+    draw();
+  }
+  U.act.plDone = () => {
+    const st = cur();
+    if (!st) return;
+    if (P.mode === 'mobility') { finishTimed(0); return; }
+    if (st.kind === 'set' && !st.item.timed) {
+      const input = root().querySelector('#plReps');
+      const v = input ? parseInt(input.value, 10) : P.reps;
+      complete({ reps: isFinite(v) ? Math.max(0, v) : P.reps });
+    } else complete({});
+  };
+  U.on.plReps = (el, ev, v) => { P.reps = v; };
+  U.act.plSaveTest = () => {
+    const input = root().querySelector('#plTest');
+    const v = parseInt(input && input.value, 10);
+    complete({ value: isFinite(v) ? Math.max(0, v) : 0 });
+  };
+  U.on.plRir = (el, ev, v) => {
+    if (!P || !P.askRir) return;
+    B().setRir(U.S, P.askRir, String(v));
+    P.rirAnswered = String(v);
+    U.save();
+    if (!P.restEnd) { if (P.restTotal) endRest(); else draw(); }
+  };
+  U.act.plAmend = () => {
+    const st = P.justDone;
+    const a = A();
+    if (!st || !a) return;
+    const log = a.logs[a.session.items.concat(a.session.extras).indexOf(st.item)];
+    const last = log && log.sets[log.sets.length - 1];
+    if (!last) return;
+    U.sheet({
+      title: 'Change what you logged', detents: 'small medium', detent: 'small',
+      body: `<div class="sheet-pad"><p class="t-callout rf-muted">${U.esc(st.item.name)}${st.side ? `, ${U.side(st.side).toLowerCase()}` : ''}</p><div class="ob-center">${U.stepper('amendVal', last.amount, 0, Math.max(last.target, last.amount) + 20, st.item.timed ? 'Seconds' : 'Reps')}</div></div>`,
+      action: { label: 'Save', act: 'plAmendSave' },
+    });
+  };
+  U.act.plAmendSave = () => {
+    const input = document.getElementById('amendVal');
+    const v = parseInt(input && input.value, 10);
+    if (isFinite(v)) { B().amendLast(U.S, v); U.save(); }
+    const top = U.topSheet(); if (top) top.close('ok');
+    draw();
+  };
+
+  /* ---------------------------------------------------------------- options: how to, swap, skip, end */
+  U.act.plHowTo = () => { const st = cur(); if (st) U.moveSheet(st.item.moveId, { side: st.side }); };
+  U.act.plMenu = () => {
+    const st = cur();
+    const canSwap = st && st.kind === 'set' && !st.leadOnly;
+    U.sheet({
+      title: 'Workout', detents: 'medium',
+      body: `<ul class="rf-list">
+        ${st ? U.row({ icon: 'info', tone: 'sky', title: 'How to do it', act: 'plHowTo', chevron: true }) : ''}
+        ${canSwap ? U.row({ icon: 'shuffle', tone: 'indigo', title: 'Swap this exercise', act: 'plSwap', chevron: true }) : ''}
+        ${st && st.kind === 'set' ? U.row({ icon: 'skip-forward', tone: 'amber', title: 'Skip the rest of this exercise', act: 'plSkipItem' }) : ''}
+        ${U.row({ icon: 'flag', tone: 'green', title: 'Finish now and check in', act: 'plFinishNow' })}
+        ${U.row({ icon: 'trash', tone: 'rose', title: 'Discard this workout', act: 'plDiscard' })}
+      </ul>`,
+    });
+  };
+  U.act.plSwap = () => {
+    const st = cur();
+    if (!st) return;
+    const top = U.topSheet(); if (top) top.close('swap');
+    const opts = B().swapOptions(U.S, st.item, U.today());
+    U.sheet({
+      title: 'Swap exercise', detents: 'medium large',
+      body: opts.length ? `<ul class="rf-list">${opts.map((o) => U.row({ title: U.esc(o.name), sub: U.esc(o.why), act: 'plSwapTo', arg: o.id, chevron: true })).join('')}</ul>
+        <ul class="rf-list sheet-gap">${U.row({ icon: 'eye', tone: 'rose', title: 'Don\'t show this move again', sub: 'Swaps it out now and keeps it out of future plans', act: 'plExclude', arg: opts[0].id })}</ul>`
+        : '<p class="sheet-pad t-callout rf-muted">No other moves fit your equipment for this one.</p>',
+    });
+  };
+  function swapTo(id, exclude) {
+    const st = cur();
+    if (!st) return;
+    if (exclude && !U.S.excluded.includes(st.item.moveId)) U.S.excluded.push(st.item.moveId);
+    B().swapItem(U.S, st.item, id);
+    U.save();
+    const top = U.topSheet(); if (top) top.close('ok');
+    P.phase = 'step';
+    draw();
+    U.toast(`Swapped to ${M().MOVES[id].name.toLowerCase()}`, 'neutral');
+  }
+  U.act.plSwapTo = (el) => swapTo(el.dataset.arg, false);
+  U.act.plExclude = (el) => swapTo(el.dataset.arg, true);
+  U.act.plSkipItem = () => {
+    const st = cur();
+    const a = A();
+    if (!st || !a) return;
+    a.steps = a.steps.filter((s, k) => k < a.idx || s.item !== st.item);
+    U.save();
+    const top = U.topSheet(); if (top) top.close('ok');
+    P.phase = 'step';
+    draw();
+  };
+  U.act.plFinishNow = () => { const top = U.topSheet(); if (top) top.close('ok'); P.phase = 'checkin'; draw(); };
+  U.act.plDiscard = async () => {
+    const top = U.topSheet(); if (top) top.close('ok');
+    const ok = await U.confirm('Discard this workout?', 'Nothing from it is saved and it won\'t count for your streak.', 'Discard', 'critical', 'trash');
+    if (!ok) return;
+    U.S.active = null;
+    U.save(true);
+    closeDone();
+  };
+
+  /* ---------------------------------------------------------------- check-in */
+  function counts() {
+    const a = A();
+    const planned = a.session.items.reduce((x, it) => x + it.sets, 0) + a.session.extras.length;
+    const doneSets = a.logs.reduce((x, l) => x + new Set(l.sets.map((s) => s.set + (l.kind === 'extra' ? 'x' : ''))).size, 0);
+    return { planned, doneSets };
+  }
+  function viewCheckin() {
+    if (!P.ck) P.ck = { rating: 'right', complicated: false, pain: [], weight: null };
+    const { planned, doneSets } = counts();
+    const pct = planned ? doneSets / planned : 1;
+    const ck = P.ck;
+    return `${top('Check-in')}
+      <div class="pl-scroll">
+        <h1 class="rf-large-title">Check-in</h1>
+        <p class="t-callout rf-muted pl-pad">${doneSets} of ${planned} sets done.${pct < 0.5 ? ' Under half, so this one is saved but won\'t count for the streak.' : ''}</p>
+        <div class="ob-group"><h3 class="rf-list-header">How was it?</h3><div class="ob-pad">${U.seg('ckRating', [['easy', 'Too easy'], ['right', 'About right'], ['hard', 'Too hard']], ck.rating, 'How was it', ' data-on="ckRating"')}</div></div>
+        <div class="ob-group"><h3 class="rf-list-header">Too complicated?</h3><div class="ob-pad">${U.seg('ckComplicated', [['false', 'No'], ['true', 'Yes, simpler please']], String(ck.complicated), 'Too complicated', ' data-on="ckComplicated"')}</div></div>
+        <div class="ob-group"><h3 class="rf-list-header">Anything hurt?</h3><div class="ob-chips">${JOINTS.map(([id, t]) => U.chip(t, ck.pain.includes(id), `data-on="ckPain" data-v="${id}"`)).join('')}</div><p class="rf-list-footer">Moves that load it get swapped out for two weeks.</p></div>
+        <div class="ob-group"><h3 class="rf-list-header">Weight today (optional)</h3><div class="ob-fields"><div class="rf-field"><div class="rf-field-control"><input class="rf-input" type="number" inputmode="decimal" placeholder="${U.wUnit()}" aria-label="Weight in ${U.wUnit()}" data-on="ckWeight" value="${ck.weight == null ? '' : ck.weight}"></div></div></div></div>
+      </div>
+      <div class="pl-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plSaveCheckin">Save check-in</button></div>`;
+  }
+  U.on.ckRating = (el, ev, v) => { P.ck.rating = v; };
+  U.on.ckComplicated = (el, ev, v) => { P.ck.complicated = v === 'true'; };
+  U.on.ckPain = (el, ev, v) => { const id = el.dataset.v; P.ck.pain = P.ck.pain.filter((x) => x !== id); if (v) P.ck.pain.push(id); };
+  U.on.ckWeight = (el, ev, v) => { P.ck.weight = v > 0 ? v : null; };
+  U.act.plSaveCheckin = () => {
+    const S = U.S;
+    const ck = P.ck || {};
+    const before = B().calendar(S, A().day).streak.current;
+    const res = B().finishWorkout(S, { rating: ck.rating, complicated: ck.complicated, pain: ck.pain, weightKg: ck.weight ? U.toKg(ck.weight) : null, now: Date.now() });
+    S.pendingLines = res ? res.lines : [];
+    U.save(true);
+    P.result = res; P.ck = null; P.streakFrom = before;
+    P.phase = 'next';
+    plat().keepAwake(false);
+    draw();
+    const el = root();
+    if (res && res.celebrate.length && G.Refract && G.Refract.burst) {
+      setTimeout(() => { for (const c of el.querySelectorAll('.celebrate')) { try { G.Refract.burst(c, { count: 18 }); } catch (e) { /* ignore */ } } }, 350);
+    }
+    const n = el.querySelector('.streak-roll');
+    if (n && G.Refract && G.Refract.roll) setTimeout(() => { try { G.Refract.roll(n, n.dataset.to, { from: n.dataset.from, dir: 1 }); } catch (e) { /* ignore */ } }, 250);
+  };
+
+  function viewNext() {
+    const res = P.result || { lines: [], celebrate: [], done: true };
+    const S = U.S;
+    const streak = B().calendar(S, U.today()).streak.current;
+    const lines = res.lines.filter((l) => l && l.text);
+    return `${top('Done')}
+      <div class="pl-scroll">
+        <h1 class="rf-large-title">Next time</h1>
+        ${res.done ? `<p class="t-callout pl-pad">Streak <span class="streak-roll rf-num t-headline" data-from="${P.streakFrom || 0}" data-to="${streak}">${streak}</span> ${streak === 1 ? 'day' : 'days'}</p>` : '<p class="t-callout rf-muted pl-pad">Saved. Under half the sets, so it doesn\'t count for the streak.</p>'}
+        ${res.celebrate.map((c) => `<div class="card celebrate">${U.icon(c.kind === 'pr' ? 'star' : c.kind === 'weight' ? 'bolt' : 'sparkle')}<span class="t-headline">${U.esc(c.text)}</span></div>`).join('')}
+        ${lines.length ? `<ul class="rf-list next-lines">${lines.map((l) => U.row({ title: U.esc(l.text), sub: l.why ? U.esc(U.cap(l.why)) : '', icon: l.buy ? 'bag' : /Deload|less/.test(l.text) ? 'moon' : 'arrow-up-right', tone: l.buy ? 'amber' : /Deload|less|Eat/.test(l.text) ? 'indigo' : 'green' })).join('')}</ul>` : '<p class="t-callout rf-muted pl-pad">Same targets next time. Keep it up.</p>'}
+      </div>
+      <div class="pl-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plClose">Done</button></div>`;
+  }
+  U.act.plClose = () => closeDone();
+
+  /* ---------------------------------------------------------------- mobility */
+  function finishMobility() {
+    const S = U.S;
+    const day = U.today();
+    B().logLight(S, day, 'mobility', true);
+    U.save(true);
+    P.phase = 'mobdone';
+    const l = S.log.find((x) => x.type === 'light' && x.day === day);
+    P.lightDone = !!(l && l.walk && l.mobility);
+    plat().keepAwake(false);
+    dropFig();
+    draw();
+  }
+  function viewMobDone() {
+    return `${top('Mobility')}
+      <div class="pl-scroll"><h1 class="rf-large-title">Mobility done</h1>
+        <p class="t-callout pl-pad">${P.lightDone ? 'Walk and mobility both done: today counts for your streak.' : 'Add a walk to make today count for your streak.'}</p></div>
+      <div class="pl-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plClose">Done</button></div>`;
+  }
+
+  // Opening the app mid-workout.
+  U.resumePrompt = () => {
+    const a = A();
+    if (!a) return;
+    if (a.day === U.today()) U.toast('Workout in progress', 'neutral', `${a.session.title}`, { label: 'Resume', onClick: () => U.openPlayer() });
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
