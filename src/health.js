@@ -388,9 +388,9 @@
   const CM_PER_IN = 2.54;
   const imperial = (S) => !(S && S.profile && S.profile.units === 'kg');
   const METRICS = {
-    sleepMin: { label: 'Sleep', icon: 'moon', tone: 'indigo', kind: 'bar', zero: true, better: 'up', edit: true, back: 1, per: 'a night', words: ['more than', 'less than'], near: { abs: 15 }, far: { abs: 45 }, valid: [30, 1080] },
+    sleepMin: { label: 'Sleep', icon: 'moon', tone: 'indigo', kind: 'bar', zero: true, better: 'up', edit: true, back: 1, per: 'a night', words: ['more than', 'less than'], near: { abs: 15 }, far: { abs: 45 }, watch: { below: 360 }, valid: [30, 1080] },
     steps: { label: 'Steps', icon: 'navigate', tone: 'green', kind: 'bar', zero: true, better: 'up', edit: true, back: 0, daily: true, per: 'a day', near: { rel: 0.08 }, far: { rel: 0.2 }, valid: [0, 100000] },
-    rhr: { label: 'Resting heart rate', short: 'Resting HR', icon: 'heart', tone: 'rose', kind: 'line', better: 'down', edit: true, back: 3, near: { abs: 2 }, far: { abs: 5 }, valid: [25, 150] },
+    rhr: { label: 'Resting heart rate', short: 'Resting HR', icon: 'heart', tone: 'rose', kind: 'line', better: 'down', edit: true, back: 3, near: { abs: 2 }, far: { abs: 5 }, watch: { above: 99 }, valid: [25, 150] },
     hrv: { label: 'Heart rate variability', short: 'HRV', icon: 'wave', tone: 'violet', kind: 'line', better: 'up', edit: false, back: 3, near: { rel: 0.07 }, far: { rel: 0.15 } },
     weightKg: { label: 'Weight', icon: 'scale', tone: 'teal', kind: 'dot', better: 'goal', edit: true, back: 60, words: ['higher than', 'lower than'], near: { abs: 0.2 }, far: { abs: 1 }, valid: [25, 350] },
     bodyFat: { label: 'Body fat', icon: 'drop', tone: 'sky', kind: 'line', better: null, edit: false, back: 60, near: { abs: 0.5 }, far: { abs: 2 } },
@@ -576,7 +576,10 @@
       un = base.n; usual = base.n >= 5 ? base.avg : null;
     }
     const out = { key, value: cur, usual, delta: null, rel: null, dir: null, tone: 'neutral', n, un };
-    if (usual == null) return out;
+    // Some values are worth watching whatever the person's usual (under 6 hours of sleep, a resting
+    // heart rate of 100 or more).
+    const limit = m.watch && ((m.watch.below != null && cur < m.watch.below) || (m.watch.above != null && cur > m.watch.above));
+    if (usual == null) { if (limit) out.tone = 'watch'; return out; }
     out.delta = cur - usual;
     out.rel = usual ? out.delta / usual : null;
     const size = (t) => (t.rel != null ? Math.abs(out.rel || 0) : Math.abs(out.delta));
@@ -589,6 +592,7 @@
     if (out.dir === 'flat') out.tone = m.better === 'goal' && goal === 'maintain' ? 'good' : 'neutral';
     else if (better && out.dir === better) out.tone = 'good';
     else if (better || m.better === 'goal') out.tone = far ? 'watch' : 'neutral';
+    if (limit) out.tone = 'watch';
     return out;
   }
   // The person's own value for a day, in stored units (minutes, kg, cm...). It replaces Health

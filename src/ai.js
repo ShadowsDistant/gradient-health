@@ -277,19 +277,65 @@ function checkStop(msg) {
   if (msg.stop_reason === 'max_tokens') throw coachError('cut');
 }
 
+// glance: the week's key numbers for the card at the top of the Health tab; focus_one: its single
+// "Focus next" line. (Structured outputs don't take length or item-count limits: the ask says how
+// short, and readReport trims.)
+const GLANCE_TONES = ['good', 'watch', 'neutral'];
 const REPORT_SCHEMA = {
   type: 'object',
   properties: {
     headline: { type: 'string' },
+    glance: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          metric: { type: 'string' },
+          value: { type: 'string' },
+          trend: { type: 'string' },
+          tone: { type: 'string', enum: GLANCE_TONES },
+        },
+        required: ['metric', 'value', 'trend', 'tone'],
+        additionalProperties: false,
+      },
+    },
     wins: { type: 'array', items: { type: 'string' } },
     watch: { type: 'array', items: { type: 'string' } },
     focus: { type: 'array', items: { type: 'string' } },
+    focus_one: { type: 'string' },
     ask_me: { type: 'array', items: { type: 'string' } },
   },
-  required: ['headline', 'wins', 'watch', 'focus', 'ask_me'],
+  required: ['headline', 'glance', 'wins', 'watch', 'focus', 'focus_one', 'ask_me'],
   additionalProperties: false,
 };
-const REPORT_ASK = 'Write this week\'s report. headline: one sentence on how the week went. wins: 1-3 specific things that went well. watch: 0-3 things to keep an eye on (health or training). focus: 1-3 concrete things to do next week that fit the app\'s plan. ask_me: 2-3 short questions they might want to ask you next. Each item one sentence, under 25 words, using their numbers.';
+const REPORT_ASK = [
+  'Write this week\'s report. It\'s shown as a small card, so keep every part short and plain.',
+  'headline: one short sentence on how the week went, under 10 words.',
+  'glance: 2-4 of their key numbers this week, in this order when they have data: sleep, steps, resting heart rate, weight (HRV, workouts or activity if one is missing). metric: its name, 1-2 words ("Sleep", "Steps", "Resting HR", "Weight"). value: this week\'s average with its unit, as they\'d read it ("7 h 05", "8.2k", "58 bpm", "149.6 lb"). trend: the change against their usual, starting with + or - ("+20 min", "-9%", "-0.3 lb"), or "steady". tone: good, watch or neutral for that change.',
+  'wins: 1-3 specific things that went well, under 8 words each, no full stop ("New best: 30 kettlebell deadlift").',
+  'watch: 0-3 things to keep an eye on (health or training), one sentence each, under 25 words.',
+  'focus: 1-3 concrete things to do next week that fit the app\'s plan, one sentence each, under 25 words.',
+  'focus_one: the single most useful of those, under 8 words ("Keep a steady bedtime").',
+  'ask_me: 2-3 short questions they might want to ask you next.',
+  'Use their numbers.',
+].join('\n');
+// A report's content as the app shows it: strings trimmed and cut to length, glance items checked.
+// Reports saved before glance and focus_one existed come back without them (the card works them out
+// from the phone's own numbers).
+function readReport(data) {
+  const d = data && typeof data === 'object' ? data : {};
+  const str = (x, n) => (typeof x === 'string' ? x.trim().replace(/\s+/g, ' ').slice(0, n) : '');
+  const clean = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === 'string' && x.trim()).map((x) => str(x, 400)).slice(0, 4) : []);
+  const glance = (Array.isArray(d.glance) ? d.glance : [])
+    .filter((g) => g && typeof g === 'object' && str(g.metric, 24) && str(g.value, 18))
+    .slice(0, 4)
+    .map((g) => ({ metric: str(g.metric, 24), value: str(g.value, 18), trend: str(g.trend, 18), tone: GLANCE_TONES.includes(g.tone) ? g.tone : 'neutral' }));
+  const out = { headline: str(d.headline, 200), wins: clean(d.wins), watch: clean(d.watch), focus: clean(d.focus), ask_me: clean(d.ask_me) };
+  if (glance.length) out.glance = glance;
+  const one = str(d.focus_one, 90);
+  if (one) out.focus_one = one;
+  return out;
+}
 
 let busy = null;
 function stop() { if (busy) { try { busy.abort(); } catch (e) { /* ignore */ } } }
@@ -309,8 +355,7 @@ async function report(S, day) {
     checkStop(msg);
     let data;
     try { data = JSON.parse(textOf(msg)); } catch (e) { throw coachError('other'); }
-    const clean = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()).slice(0, 4) : []);
-    const rep = { week: B().weekStart(day), day, createdAt: Date.now(), model: S.ai.model && S.ai.model.name, data: { headline: String(data.headline || '').trim(), wins: clean(data.wins), watch: clean(data.watch), focus: clean(data.focus), ask_me: clean(data.ask_me) } };
+    const rep = { week: B().weekStart(day), day, createdAt: Date.now(), model: S.ai.model && S.ai.model.name, data: readReport(data) };
     S.ai.reports = (S.ai.reports || []).filter((r) => r.week !== rep.week).concat(rep).slice(-12);
     return rep;
   } catch (err) {
@@ -414,4 +459,4 @@ async function suggest(S, day) {
   } finally { busy = null; }
 }
 
-GH.ai = { KEY_URL, hasKey, checkKey, setKey, deleteKey, summary, preview, report, reportFor, needsReport, ask, suggest, stop, clearChat, pickFrom, explain, MESSAGES, SYSTEM };
+GH.ai = { KEY_URL, hasKey, checkKey, setKey, deleteKey, summary, preview, report, reportFor, readReport, needsReport, ask, suggest, stop, clearChat, pickFrom, explain, MESSAGES, SYSTEM, REPORT_SCHEMA };

@@ -65,6 +65,10 @@ S = person('lb');
 for (let d = D0 - 3; d <= D0; d++) S.health.days[d] = { rhr: 60 };
 v = H.versus(S, 'rhr', D0, 'latest');
 check('without enough history there\'s no usual yet (and no tone)', v && v.usual == null && v.dir == null && v.tone === 'neutral', v);
+S = withDays(person('lb'), 'sleepMin', 340, 340);
+check('short sleep every night is steady, but still worth watching', H.versus(S, 'sleepMin', D0, 'week').dir === 'flat' && H.versus(S, 'sleepMin', D0, 'week').tone === 'watch');
+S = withDays(person('lb'), 'rhr', 104, 104);
+check('so is a resting heart rate over 100', H.versus(S, 'rhr', D0, 'latest').tone === 'watch');
 check('no data at all → null', H.versus(person('lb'), 'hrv', D0, 'week') === null);
 
 section('Weight follows the goal');

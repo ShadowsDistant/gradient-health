@@ -61,56 +61,94 @@
   }
 
   /* ---------------------------------------------------------------- weekly report */
-  // Same shape as the API coach's report: headline, wins, watch, focus, ask_me.
+  // This week's key numbers, for the top of the report: up to four of sleep, steps, resting heart
+  // rate and weight (HRV, workouts or activity stand in for one that's missing), each as the week's
+  // average with its trend against the person's usual and a tone (good | watch | neutral).
+  // → [{ key, metric, value, trend: "+20 min" | "-9%" | "steady" | "", dir, tone }]
+  function glance(S, day, f0) {
+    const h = H();
+    const out = [];
+    if (!h || !h.versus) return out;
+    const f = f0 || facts(S, day);
+    const workouts = S.profile.workouts !== false;
+    for (const key of ['sleepMin', 'steps', 'rhr', 'weightKg', 'hrv', 'workouts', 'activeMin', 'activeKcal']) {
+      if (out.length >= 4) break;
+      if (key === 'workouts') {
+        if (!workouts || !(f.planned || f.done)) continue;
+        const of = Math.max(f.planned, f.done);
+        out.push({ key, metric: 'Workouts', value: `${f.done} of ${of}`, trend: f.missed ? `${f.missed} missed` : 'on plan', dir: null, tone: f.missed ? 'watch' : 'good' });
+        continue;
+      }
+      const v = h.versus(S, key, day, 'week');
+      if (!v || v.n < (key === 'weightKg' ? 1 : 3)) continue;
+      const m = h.METRICS[key];
+      out.push({ key, metric: m.short, value: h.format(S, key, v.value, { compact: true }), trend: v.usual == null ? '' : v.dir === 'flat' ? 'steady' : h.formatDelta(S, key, v.delta, v.rel), dir: v.dir, tone: v.tone });
+    }
+    return out;
+  }
+  // Wins go on small badges: no closing full stop, no repeats (an insight often says the same).
+  const winText = (t) => String(t || '').trim().replace(/\.$/, '');
+  const sameWin = (a, b) => winText(a).toLowerCase().replace(/[^a-z0-9]/g, '') === winText(b).toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  // Same shape as the API coach's report: headline, wins, watch, focus, ask_me, plus glance (the
+  // numbers above) and focus_one (the one thing to do next, short enough for a single line).
   function report(S, day) {
     const f = facts(S, day);
-    const wins = [], watch = [], focus = [];
+    const wins = [], watch = [], focus = [], focusShort = [];
+    const addFocus = (short, long) => { focusShort.push(short); focus.push(long); };
     let headline;
     const workouts = S.profile.workouts !== false;
     const F = GH.food && GH.food.full(S) ? GH.food : null;
     let foodDays = 0;
     if (F) for (let d = day - 7; d < day; d++) if (F.totals(S, d).n) foodDays++;
+    // One short sentence; anything more goes to the lists below.
     if (!workouts) {
       // Health (and food) only: the headline is about the week's numbers.
-      if (F && foodDays >= 3) headline = `Food logged on ${foodDays} of the last 7 days. The more days you log, the better your calorie target fits.`;
-      else if (f.sleep7.n >= 4) headline = `Sleep is averaging ${hrs(f.sleep7.avg)} a night this week.`;
+      if (F && foodDays >= 3) headline = `Food logged on ${foodDays} of the last 7 days.`;
+      else if (f.sleep7.n >= 4) headline = `Sleep is averaging ${hrs(f.sleep7.avg)} a night.`;
       else if (f.steps7.n >= 3) headline = `About ${Math.round(f.steps7.avg).toLocaleString('en-US')} steps a day this week.`;
-      else headline = 'A quiet week so far. Log your weight and sleep, or connect Health Connect, and this fills in.';
-    } else if (!f.logs.length) headline = 'Your first workout is the one that counts most. The plan starts easy on purpose.';
-    else if (f.week && f.week.phase.deload) headline = 'Deload week: less volume on purpose, so you come back fresher.';
-    else if (f.planned && f.done === f.planned) headline = f.done === 1 ? 'One workout in this week, right on plan.' : `Every workout so far this week: ${f.done} of ${f.done}.`;
-    else if (f.missed) headline = `${f.missed === 1 ? 'One workout' : `${f.missed} workouts`} missed this week. The plan moved forward, so the next one picks up where you left off.`;
+      else { headline = 'A quiet week so far.'; addFocus('Log your weight and sleep', 'Log your weight and sleep, or connect Health Connect, and this fills in.'); }
+    } else if (!f.logs.length) { headline = 'Your first workout counts most.'; addFocus('Do your first workout', 'Do your first workout. The plan starts easy on purpose.'); }
+    else if (f.week && f.week.phase.deload) headline = 'Deload week: lighter on purpose.';
+    else if (f.planned && f.done === f.planned) headline = f.done === 1 ? 'One workout in, right on plan.' : `Every workout so far: ${f.done} of ${f.done}.`;
+    else if (f.missed) headline = `${f.missed === 1 ? 'One workout' : `${f.missed} workouts`} missed this week.`;
     else if (f.streak.current >= 7) headline = `${f.streak.current} days in a row. That's a habit forming.`;
     else headline = 'A steady week so far.';
 
     // Wins.
+    const win = (t) => { if (wins.length < 3 && t && !wins.some((w) => sameWin(w, t))) wins.push(winText(t)); };
     if (workouts) {
-      for (const c of f.ups.slice(-2)) wins.push(c.text);
-      if (f.streak.weekly >= 2) wins.push(`${f.streak.weekly} full weeks in a row.`);
-      else if (f.streak.current >= 3) wins.push(`${f.streak.current}-day streak.`);
+      for (const c of f.ups.slice(-2)) win(c.text);
+      if (f.streak.weekly >= 2) win(`${f.streak.weekly} full weeks in a row`);
+      else if (f.streak.current >= 3) win(`${f.streak.current}-day streak`);
     }
-    if (f.goal && f.proteinDays >= 3 && f.proteinHit >= Math.max(3, f.proteinDays - 1)) wins.push(`Protein goal hit on ${f.proteinHit} of the last ${f.proteinDays} days you logged.`);
-    if (f.tests.length >= 2 && f.tests[f.tests.length - 1].gap < f.tests[0].gap - 0.02) wins.push(`Left/right curl gap down from ${pct(f.tests[0].gap)} to ${pct(f.tests[f.tests.length - 1].gap)}.`);
-    for (const x of f.insights) if (x.tone === 'good' && wins.length < 3) wins.push(x.title);
+    if (f.goal && f.proteinDays >= 3 && f.proteinHit >= Math.max(3, f.proteinDays - 1)) win(`Protein goal hit ${f.proteinHit} of ${f.proteinDays} days`);
+    if (f.tests.length >= 2 && f.tests[f.tests.length - 1].gap < f.tests[0].gap - 0.02) win(`Arm gap down from ${pct(f.tests[0].gap)} to ${pct(f.tests[f.tests.length - 1].gap)}`);
+    for (const x of f.insights) if (x.tone === 'good') win(x.title);
 
     // Things to keep an eye on.
-    for (const x of f.insights) if ((x.tone === 'watch' || x.tone === 'alert') && watch.length < 2) watch.push(`${x.title}. ${x.body}`);
+    if (workouts && f.week && f.week.phase.deload) watch.push('Less volume this week on purpose, so you come back fresher.');
+    if (workouts && f.missed) watch.push('The plan moved forward, so the next workout picks up where you left off.');
+    for (const x of f.insights) if ((x.tone === 'watch' || x.tone === 'alert') && watch.length < 3) watch.push(`${x.title}. ${x.body}`);
     if (workouts && f.ratings.hard >= 2 && watch.length < 3) watch.push(`${f.ratings.hard} of your last workouts felt too hard. The plan eases off after two of those in a row.`);
     if (f.sleep7.n >= 4 && f.sleep7.avg < 390 && !watch.some((w) => /sleep/i.test(w)) && watch.length < 3) watch.push(`Sleep is averaging ${hrs(f.sleep7.avg)} this week.`);
 
     // What to focus on, most useful first.
-    if (f.sleep7.n >= 4 && f.sleep7.avg < 420) focus.push('Protect your sleep: a steady bedtime helps more than catching up on weekends.');
-    if (f.goal && f.proteinDays >= 3 && f.proteinHit < f.proteinDays / 2) focus.push(`Get to ${f.goal} g of protein. One ${S.profile.protein.quickName || 'shake'} on training days goes a long way.`);
-    if (workouts && f.rirN >= 6 && f.rir['0'] / f.rirN > 0.4) focus.push('Stop most sets with 1-2 reps left. Going to failure every time makes recovery harder without much extra growth.');
-    else if (workouts && f.rirN >= 6 && f.rir['3'] / f.rirN > 0.5) focus.push('You had lots left in the tank. Keep answering honestly and the plan will keep moving you up.');
-    if (f.steps7.n >= 4 && f.stepsBase.n >= 7 && f.steps7.avg < f.stepsBase.avg * 0.8) focus.push('Steps are down on your usual. A 10-minute walk after a meal adds up.');
-    if (workouts && S.catchup.arm.active) focus.push(`Keep leading with your ${S.catchup.arm.side === 'R' ? 'right' : 'left'} arm and never let the other side do more reps.`);
-    if (F && foodDays < 4) focus.push('Log what you eat on most days. After two weeks with a few weigh-ins, your calorie target tunes itself to you.');
-    if (focus.length < 2) focus.push(workouts ? 'Show up for the next session. Consistency beats any single workout.' : 'Keep your sleep and steps steady. Small daily habits move the trends most.');
+    if (f.sleep7.n >= 4 && f.sleep7.avg < 420) addFocus('Keep a steady bedtime', 'Protect your sleep: a steady bedtime helps more than catching up on weekends.');
+    if (f.goal && f.proteinDays >= 3 && f.proteinHit < f.proteinDays / 2) addFocus(`Get to ${f.goal} g of protein a day`, `Get to ${f.goal} g of protein. One ${S.profile.protein.quickName || 'shake'} on training days goes a long way.`);
+    if (workouts && f.rirN >= 6 && f.rir['0'] / f.rirN > 0.4) addFocus('Stop sets with 1-2 reps left', 'Stop most sets with 1-2 reps left. Going to failure every time makes recovery harder without much extra growth.');
+    else if (workouts && f.rirN >= 6 && f.rir['3'] / f.rirN > 0.5) addFocus('Rate the reps you have left honestly', 'You had lots left in the tank. Keep answering honestly and the plan will keep moving you up.');
+    if (f.steps7.n >= 4 && f.stepsBase.n >= 7 && f.steps7.avg < f.stepsBase.avg * 0.8) addFocus('A 10-minute walk after a meal', 'Steps are down on your usual. A 10-minute walk after a meal adds up.');
+    if (workouts && S.catchup.arm.active) addFocus(`Lead with your ${S.catchup.arm.side === 'R' ? 'right' : 'left'} arm`, `Keep leading with your ${S.catchup.arm.side === 'R' ? 'right' : 'left'} arm and never let the other side do more reps.`);
+    if (F && foodDays < 4) addFocus('Log what you eat most days', 'Log what you eat on most days. After two weeks with a few weigh-ins, your calorie target tunes itself to you.');
+    if (focus.length < 2) {
+      if (workouts) addFocus('Show up for the next session', 'Show up for the next session. Consistency beats any single workout.');
+      else addFocus('Keep sleep and steps steady', 'Keep your sleep and steps steady. Small daily habits move the trends most.');
+    }
 
     const ask = ['How is my sleep?', workouts ? 'Am I getting stronger?' : 'How are my steps?', 'What should I focus on?'];
     if (f.weight.avg7 != null) ask[1] = 'How is my weight trending?';
-    return { headline, wins: wins.slice(0, 3), watch: watch.slice(0, 3), focus: focus.slice(0, 3), ask_me: ask };
+    return { headline, wins, watch: watch.slice(0, 3), focus: focus.slice(0, 3), ask_me: ask, glance: glance(S, day, f), focus_one: focusShort[0] };
   }
 
   /* ---------------------------------------------------------------- questions */
@@ -443,5 +481,5 @@
   }
   function dismiss(S, id, day) { S.coachDismissed = S.coachDismissed || {}; S.coachDismissed[id] = day; }
 
-  GH.coach = { report, ask, topicOf, facts, claudePrompt, decisions, timeline, watching, suggestions, validAction, apply, dismiss };
+  GH.coach = { report, glance, ask, topicOf, facts, claudePrompt, decisions, timeline, watching, suggestions, validAction, apply, dismiss };
 })(typeof window !== 'undefined' ? window : globalThis);
