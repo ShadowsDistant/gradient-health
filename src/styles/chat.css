@@ -1,0 +1,100 @@
+/* ---------------------------------------------------------------- the coach chat (src/ui/chat.js) */
+.chat-sheet .rf-sheet-body { display: flex; flex-direction: column; min-height: 0; padding: 0; }
+.chat-bar { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-4) var(--space-2); }
+/* Who answers: a pill that opens the choice. */
+.chat-pill { flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 8px; min-height: 38px; padding: 0 12px; border: 0; border-radius: var(--radius-full); background: var(--fill-3); color: var(--label); font: inherit; font-size: 14px; font-weight: 600; text-align: start; cursor: pointer; transition: scale var(--duration-fast) var(--ease-standard); }
+.chat-pill:active { scale: .97; }
+.chat-pill > svg { flex: none; color: var(--hue-violet); }
+.chat-pill > svg:last-child { color: var(--label-secondary); margin-inline-start: auto; }
+/* Big text on a narrow phone wraps to a second line rather than cutting the words off. */
+.chat-pill .pill-text { min-width: 0; padding-block: 6px; line-height: 1.25; overflow-wrap: anywhere; }
+.chat-pill .pill-sub { color: var(--label-secondary); font-weight: 500; }
+.chat-pill .pill-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--label-tertiary); }
+.chat-pill .pill-dot[data-on] { background: var(--positive); box-shadow: 0 0 0 3px color-mix(in oklab, var(--positive) 22%, transparent); }
+.chat-engine-row, .chat-menu-row { width: 100%; border: 0; background: none; font: inherit; color: inherit; text-align: start; cursor: pointer; }
+.chat-engine-on { color: var(--accent); display: inline-flex; }
+
+.chat-log { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-2) var(--space-4) var(--space-4); }
+.msg { display: flex; gap: 8px; min-width: 0; }
+.msg.me { justify-content: flex-end; }
+.msg-av { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-top: 2px; border-radius: 50%; color: #fff; background: linear-gradient(140deg, var(--hue-violet), var(--hue-indigo)); box-shadow: inset 0 1px 0 rgb(255 255 255 / .3), 0 2px 8px color-mix(in oklab, var(--hue-violet) 30%, transparent); }
+.msg-av svg { width: 15px; height: 15px; }
+.msg-main { min-width: 0; flex: 1 1 auto; display: grid; justify-items: start; align-content: start; gap: 4px; }
+.bubble { max-width: 100%; padding: 10px 14px; border-radius: 20px; font-size: 1rem; line-height: 1.45; overflow-wrap: anywhere; }
+.bubble.me { max-width: 82%; background: var(--accent-fill); color: var(--on-accent); border-end-end-radius: 6px; white-space: pre-wrap; }
+.bubble.coach { background: var(--fill-3); color: var(--label); border-start-start-radius: 6px; }
+.bubble.coach p { margin: 0 0 .6em; }
+.bubble.coach p:last-child { margin-bottom: 0; }
+.bubble.coach ul { margin: .15em 0 .6em; padding-inline-start: 1.15em; }
+.bubble.coach ul:last-child { margin-bottom: 0; }
+.bubble.coach li + li { margin-top: .25em; }
+.bubble.is-error { background: var(--critical-soft); }
+.bubble.is-flagged, .bubble.is-stopped { font-style: italic; color: var(--label-secondary); }
+.msg-note { margin: 0 0 0 4px; }
+/* While an answer is on its way: what the model is doing, a thin bar, and a soft light that sweeps
+   across the bubble (paused while a sheet moves). */
+.bubble-status { display: block; color: var(--label-secondary); font-size: 15px; font-variant-numeric: tabular-nums; }
+.chat-prog { display: block; width: 168px; max-width: 100%; height: 3px; margin-top: 8px; border-radius: 2px; background: var(--fill-2); overflow: hidden; }
+.chat-prog > i { display: block; height: 100%; transform-origin: 0 50%; transform: scaleX(var(--p, 0)); border-radius: inherit; background: linear-gradient(90deg, var(--hue-violet), var(--accent-fill)); transition: transform 280ms var(--ease-standard); }
+.bubble.coach.is-typing { background-image: linear-gradient(100deg, transparent 20%, color-mix(in oklab, var(--hue-violet) 12%, transparent) 50%, transparent 80%); background-size: 220% 100%; background-repeat: no-repeat; animation: typing-sheen 1.6s ease-in-out infinite; }
+@keyframes typing-sheen { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+.caret { display: inline-block; width: .5em; height: .5em; margin-inline-start: 4px; border-radius: 50%; background: var(--hue-violet); vertical-align: 1px; animation: caret-pulse 900ms ease-in-out infinite; }
+@keyframes caret-pulse { 50% { opacity: .3; scale: .7; } }
+html[data-sheet-moving] .bubble.coach.is-typing, html[data-sheet-moving] .caret { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .bubble.coach.is-typing, .caret { animation: none; background-image: none; } .chat-prog > i { transition: none; } }
+/* Under each answer: Copy, What it used, Report. */
+.msg-tools { display: flex; flex-wrap: wrap; gap: 2px; margin-inline-start: -4px; }
+.msg-tool { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 9px; border: 0; border-radius: var(--radius-full); background: none; color: var(--label-secondary); font: inherit; font-size: 13px; cursor: pointer; }
+.msg-tool svg { width: 14px; height: 14px; }
+.msg-tool:active { background: var(--fill-3); }
+
+/* A new chat: hello, and questions worth asking today. */
+.chat-hello { display: grid; justify-items: center; gap: 6px; padding: var(--space-4) var(--space-3) var(--space-3); text-align: center; }
+.chat-hello .msg-av { width: 52px; height: 52px; margin: 0 0 4px; }
+.chat-hello .msg-av svg { width: 26px; height: 26px; }
+.chat-hello p { margin: 0; }
+.chat-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.chat-card { display: grid; align-content: start; gap: 10px; min-height: 92px; padding: 12px 14px; border: 0; border-radius: 20px; background: var(--fill-3); color: var(--label); font: inherit; font-size: 15px; font-weight: 600; line-height: 1.3; text-align: start; cursor: pointer; transition: scale var(--duration-fast) var(--ease-standard); }
+.chat-card:active { scale: .97; }
+.chat-card > svg { width: 20px; height: 20px; color: var(--hue-violet); }
+.chat-card.is-wide { grid-column: 1 / -1; grid-template-columns: auto minmax(0, 1fr); align-items: center; min-height: 0; background: color-mix(in oklab, var(--hue-violet) 13%, var(--fill-3)); }
+.chat-card-sub { display: block; margin-top: 2px; color: var(--label-secondary); font-size: 13px; font-weight: 500; }
+.chat-note { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-2); align-items: start; color: var(--caution, var(--hue-amber)); }
+.chat-note p { margin: 0; color: var(--label); }
+.chat-setup { display: grid; gap: var(--space-2); margin: var(--space-2) 0; }
+.chat-setup > p { margin: 0; }
+.chat-setup:not(.card) { grid-auto-flow: column; justify-content: start; align-items: center; }
+.chat-setup .rf-list { margin: var(--space-1) calc(-1 * var(--space-4)) calc(-1 * var(--space-4)); background: none; box-shadow: none; }
+.chat-setup-ico { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; color: var(--hue-violet); background: color-mix(in oklab, var(--hue-violet) 16%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / .25); }
+.facts-list { display: grid; gap: var(--space-2); margin: var(--space-3) 0 0; padding-inline-start: 1.1em; }
+
+/* Typing a question. */
+.chat-compose { display: flex; gap: var(--space-2); align-items: flex-end; padding: var(--space-2) var(--space-4); border-top: .5px solid var(--separator); }
+.chat-compose[hidden] { display: none; }
+.chat-compose textarea { flex: 1 1 auto; min-height: 44px; max-height: 132px; padding: 11px 16px; border: 0; border-radius: 22px; background: var(--fill-3); color: var(--label); resize: none; line-height: 1.35; box-shadow: inset 0 0 0 .5px var(--separator); }
+.chat-compose textarea:focus-visible { outline: none; box-shadow: inset 0 0 0 1.5px var(--accent); }
+.chat-foot { margin: 0; padding: 0 var(--space-4) calc(var(--space-2) + var(--sab, 0px)); text-align: center; }
+
+/* The coach button, top left of every tab: a ring while an answer is on its way, a dot once it's in. */
+.coach-btn { position: relative; color: var(--hue-violet); }
+.coach-btn::after { content: ""; position: absolute; pointer-events: none; opacity: 0; transition: opacity var(--duration-fast); }
+.coach-btn[data-busy]::after { inset: -3px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--hue-violet); border-inline-end-color: var(--hue-violet); opacity: 1; animation: gh-spin 900ms linear infinite; }
+.coach-btn[data-unseen]::after { top: 4px; right: 4px; width: 9px; height: 9px; border-radius: 50%; background: var(--hue-rose); box-shadow: 0 0 0 2px var(--bg); opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .coach-btn[data-busy]::after { animation: none; border-color: var(--hue-violet); } }
+
+/* The on-device AI check (Settings). */
+.selftest-log { margin-top: var(--space-3); }
+.selftest-log summary { cursor: pointer; color: var(--label-secondary); }
+.selftest-log .preview { max-height: 40vh; overflow: auto; font-size: 11px; }
+
+/* Tailor my plan (src/ui/tailor.js). */
+.tailor { display: grid; gap: var(--space-3); }
+.tailor > p { margin: 0; }
+.tailor-chips { margin: 0; }
+.tailor-asked { font-style: italic; }
+.tailor-lines { margin: 0; }
+.tailor-note, .tailor-none { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: start; padding: var(--space-3); border-radius: 16px; background: color-mix(in oklab, var(--hue-violet) 11%, var(--fill-3)); }
+.tailor-note svg { color: var(--hue-violet); margin-top: 2px; }
+.tailor-none { background: var(--fill-3); }
+.tailor-none svg { color: var(--label-secondary); margin-top: 2px; }
+.tailor-btns .rf-btn { flex: 1 1 0; }

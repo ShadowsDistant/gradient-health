@@ -70,15 +70,27 @@ function problems() {
   const W = window.innerWidth;
   const out = [];
   const visible = (e) => { const r = e.getBoundingClientRect(); if (!r.width || !r.height) return false; const s = getComputedStyle(e); return s.visibility !== 'hidden' && s.display !== 'none' && +s.opacity !== 0; };
-  const scroller = (e) => { for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) { const ox = getComputedStyle(p).overflowX; if (ox === 'auto' || ox === 'scroll') return true; } return false; };
+  // Scroll containers: a deliberate sideways rail is marked data-hscroll, and what's in it may run
+  // past the screen. Anything in another scroll container (a page, a sheet's body) must fit inside
+  // its box, and the container itself mustn't scroll sideways.
+  const scrolls = (p) => { const ox = getComputedStyle(p).overflowX; return ox === 'auto' || ox === 'scroll'; };
+  const boxOf = (e) => { for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) { if (p.hasAttribute('data-hscroll')) return 'rail'; if (scrolls(p)) return p; } return null; };
   const name = (e) => `${e.tagName.toLowerCase()}${e.className && typeof e.className === 'string' ? '.' + e.className.trim().split(/\s+/).slice(0, 2).join('.') : ''} "${(e.textContent || '').trim().slice(0, 40)}"`;
   const roots = [document.getElementById('screen'), document.getElementById('float'), document.getElementById('tabbar'), document.getElementById('player'), document.getElementById('onboard'), ...document.querySelectorAll('dialog[open]')].filter((r) => r && !r.hidden);
   if (document.documentElement.scrollWidth > W + 1) out.push(`page scrolls sideways (${document.documentElement.scrollWidth} > ${W})`);
   for (const r of roots) {
+    for (const c of [r, ...r.querySelectorAll('*')]) {
+      if (c.hasAttribute('data-hscroll') || !scrolls(c) || !visible(c) || c.closest('[data-hscroll]')) continue;
+      if (c.scrollWidth > c.clientWidth + 1) out.push(`scrolls sideways: ${name(c)} (${c.scrollWidth} > ${c.clientWidth})`);
+    }
     for (const e of r.querySelectorAll('*')) {
-      if (e.closest('svg') || e.closest('[aria-hidden="true"]') || !visible(e) || scroller(e)) continue;
+      if (e.closest('svg') || e.closest('[aria-hidden="true"]') || !visible(e)) continue;
+      const box = boxOf(e);
+      if (box === 'rail') continue;
       const b = e.getBoundingClientRect();
-      if (b.right > W + 1.5 || b.left < -1.5) { out.push(`past the edge: ${name(e)} (${Math.round(b.left)}..${Math.round(b.right)})`); continue; }
+      const lim = box ? box.getBoundingClientRect() : { left: 0, right: W };
+      const right = Math.min(W, box ? lim.left + box.clientWidth + (box.clientLeft || 0) : W), left = Math.max(0, lim.left);
+      if (b.right > right + 1.5 || b.left < left - 1.5) { out.push(`past the edge${box ? ' of its scroller' : ''}: ${name(e)} (${Math.round(b.left)}..${Math.round(b.right)} in ${Math.round(left)}..${Math.round(right)})`); continue; }
       const s = getComputedStyle(e);
       const text = [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
       if (text && s.textOverflow === 'ellipsis' && e.scrollWidth > e.clientWidth + 1) out.push(`cut off: ${name(e)}`);
@@ -145,10 +157,19 @@ for (const [width, theme, zoom, h] of COMBOS) {
   const scenes = [
     ['today', async () => { await page.evaluate(() => window.GH.ui.go('today')); }],
     ['plan', async () => { await page.evaluate(() => window.GH.ui.go('plan')); }],
+    ['plan-light', async () => { await page.evaluate(() => window.GH.ui.go('plan')); await settle(); await page.evaluate(() => { const b = document.querySelector('#screen .pw-page:not([aria-hidden]) .pw-day[data-kind="light"] .pw-pill'); if (b) b.click(); }); }],
+    ['plan-move', async () => { await page.evaluate(() => window.GH.ui.go('plan')); await settle(); await page.evaluate(() => { const b = document.querySelector('#screen .pw-page:not([aria-hidden]) .pw-day[data-kind="workout"] .pw-pill'); if (b) b.click(); }); await settle(); await page.evaluate(() => { const b = document.querySelector('#screen .pw-card [data-act="planMoveOpen"]'); if (b) b.click(); }); await settle(); await page.evaluate(() => { const m = document.querySelector('#screen .pw-move'); if (m) m.scrollIntoView({ block: 'center' }); }); }],
+    // The week slides with a CSS transition, which runs on real time rather than the test clock.
+    ['plan-next', async () => { await page.evaluate(() => window.GH.ui.go('plan')); await settle(); await page.evaluate(() => { const b = document.querySelector('#screen [data-act="planWeek"][data-arg="1"]'); if (b) b.click(); }); await page.waitForTimeout(900); }],
+    ['plan-info', async () => { await page.evaluate(() => window.GH.ui.go('plan')); await settle(); await act('planPhase'); }],
     ['food', async () => { await page.evaluate(() => window.GH.ui.go('food')); }],
     ['health', async () => { await page.evaluate(() => window.GH.ui.go('health')); }],
     ['health-7', async () => { await page.evaluate(() => window.GH.ui.go('health')); await settle(); await page.click('[data-on="healthRange"] input[value="7"]', { force: true }).catch(() => {}); }],
     ['progress', async () => { await page.evaluate(() => window.GH.ui.go('progress')); }],
+    // The body map at 12 weeks with its "Train … more" button (a stand-in action if Tailor my plan isn't there).
+    ['progress-12w', async () => { await page.evaluate(() => { const U = window.GH.ui; if (!U.act.tailorPlan) U.act.tailorPlan = () => {}; U.go('progress'); }); await settle(); await page.click('#screen .bm-range [data-arg="12"]'); }],
+    ['progress-improved', async () => { await page.evaluate(() => { const U = window.GH.ui; if (!U.act.tailorPlan) U.act.tailorPlan = () => {}; U.go('progress'); }); await settle(); await page.click('[data-on="bodyMode"] input[value="improved"]', { force: true }); }],
+    ['sheet-muscle', async () => { await page.evaluate(() => { const U = window.GH.ui; if (!U.act.tailorPlan) U.act.tailorPlan = () => {}; U.go('progress'); }); await settle(); await page.click('#screen .bm-view[data-view="front"] .bm-m[data-muscle="chest"] path'); await settle(1200); }],
     ['moves', async () => { await page.evaluate(() => window.GH.ui.go('moves')); }],
     ['profile', async () => { await page.evaluate(() => window.GH.ui.open('profile')); }],
     ['settings', async () => { await page.evaluate(() => window.GH.ui.open('settings')); }],
@@ -173,6 +194,8 @@ for (const [width, theme, zoom, h] of COMBOS) {
     ['player', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('startWorkout'); await settle(2000); }],
     ['sheet-leave', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('startWorkout'); await settle(1200); await page.evaluate(() => window.__gh.back()); await settle(900); }],
     ['capsule', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('startWorkout'); await settle(1200); await act('plKeep'); await settle(); await page.evaluate(() => window.GH.ui.go('progress')); }],
+    // Last, since it changes the state: today's workout done (not saved, so a reload undoes it).
+    ['plan-done', async () => { await page.evaluate(() => { const GH = window.GH, U = GH.ui, B = GH.brain, S = U.S; GH.store.save = () => true; GH.store.saveSoon = () => {}; B.startWorkout(S, U.today(), { now: Date.now() - 26 * 60000 }); for (let g = 0; S.active && S.active.idx < S.active.steps.length && g < 400; g++) { const st = S.active.steps[S.active.idx]; B.completeStep(S, st.kind === 'test' ? { value: 12 } : {}); if (st.askRir) B.setRir(S, st.item, '12'); } B.finishWorkout(S, { rating: 'right', now: Date.now() }); U.go('plan'); }); }],
   ].filter(([id]) => !only.length || only.some((o) => id.startsWith(o)));
   for (const [id, run] of scenes) {
     try {
@@ -188,8 +211,12 @@ for (const [width, theme, zoom, h] of COMBOS) {
       check(`${id} (ran)`, false, e.message.split('\n')[0]);
     }
     if (id === 'player' || id === 'capsule') await page.evaluate(() => { const S = window.GH.ui.S; if (window.GH.ui.closePlayer) window.GH.ui.closePlayer(); S.active = null; window.GH.store.save(S); });
-    await page.reload();
-    await page.waitForSelector('#screen[data-view]');
+    // A slow machine can take a while to start the page again; a page that fails to start says why.
+    try { await page.reload(); await page.waitForSelector('#screen[data-view]'); } catch (e) {
+      check(`${id}: the page starts again`, false, `${e.message.split('\n')[0]} ${errors.slice(-3).join(' | ')}`);
+      await page.reload({ timeout: 60000 });
+      await page.waitForSelector('#screen[data-view]', { timeout: 60000 });
+    }
     await reset();
   }
   await ctx.close();

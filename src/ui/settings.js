@@ -8,6 +8,8 @@
   const H = () => GH.health;
   const AI = () => GH.ai;
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  // The Try it chips under Haptic strength: the everyday tap and three events.
+  const HAPTIC_TRY = [['tap', 'Tap'], ['success', 'Success'], ['warning', 'Warning'], ['celebrate', 'Celebrate']];
 
   /* ---------------------------------------------------------------- screen */
   U.screens.settings = {
@@ -56,6 +58,7 @@
           <ul class="rf-list">
             <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Who answers your questions</span><span class="rf-list-sub">${U.esc(ENGINE_SUB[engine])}</span></span>${U.seg('setCoach', [['device', 'On-device'], ['api', 'Claude']], engine, 'Coach', ' data-on="setCoachMode"')}</div></li>
             ${engine === 'device' ? U.modelRows(S) : ''}
+            ${engine === 'device' && dev.installed.length ? U.row({ icon: 'bolt', tone: 'teal', title: 'Check the on-device AI', sub: 'Starts the model and times a short answer', act: 'aiSelfTest', chevron: true }) : ''}
             ${claude ? `${hasKey ? U.row({ icon: 'lock', tone: 'green', title: 'API key saved on this phone', sub: S.ai.model && S.ai.model.name ? `Using ${U.esc(S.ai.model.name)}` : 'The model is picked on first use', act: 'keySheet', detail: 'Change', chevron: true }) : U.row({ icon: 'lock', tone: 'amber', title: 'Add your API key', sub: 'From the Claude Console, starts with sk-ant-', act: 'keySheet', chevron: true })}
               ${hasKey && !S.ai.consentAt ? U.row({ icon: 'alert', tone: 'amber', title: 'Claude is waiting for your OK', sub: 'Review what it gets before it turns on', act: 'claudeReview', chevron: true }) : ''}
               ${hasKey && S.ai.consentAt ? U.row({ icon: 'check-circle', tone: 'green', title: 'You allowed Claude to get your summary', sub: 'Turn it off by picking another coach, or withdraw it', act: 'claudeWithdraw', chevron: true }) : ''}
@@ -68,8 +71,9 @@
           <ul class="rf-list">
             ${U.sw('Sound', pr.sound !== false, 'data-on="setPref" data-k="sound"')}
             ${U.sw('Vibration', pr.vibrate !== false, 'data-on="setPref" data-k="vibrate"', 'Buzzes for timers and the end of rest')}
-            ${U.sw('Haptic feedback', pr.haptics !== false, 'data-on="setPref" data-k="haptics"', GH.platform && GH.platform.hapticsSystemEnabled && !GH.platform.hapticsSystemEnabled() ? 'Touch feedback is off in your phone\'s settings, so taps won\'t buzz. Workout alerts still will.' : 'A tap when you press buttons and switches, a firmer one for finished sets')}
-            ${pr.haptics !== false ? `<li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Haptic strength</span></span>${U.seg('setHaptic', [['light', 'Light'], ['medium', 'Medium'], ['strong', 'Strong']], pr.hapticStrength || 'medium', 'Haptic strength', ' data-on="setHapticStrength"')}</div></li>` : ''}
+            ${U.sw('Haptic feedback', pr.haptics !== false, 'data-on="setPref" data-k="haptics"', GH.platform && GH.platform.hapticsSystemEnabled && !GH.platform.hapticsSystemEnabled() ? 'Touch feedback is off in your phone\'s settings, so taps won\'t buzz. Workout alerts still will.' : 'A click for buttons and switches, and a different feel for sets, timers and warnings')}
+            ${pr.haptics !== false ? `<li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Haptic strength</span></span>${U.seg('setHaptic', [['light', 'Light'], ['medium', 'Medium'], ['strong', 'Strong']], pr.hapticStrength || 'medium', 'Haptic strength', ' data-on="setHapticStrength"')}</div></li>
+            <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Try it</span><span class="rf-list-sub">Each one at this strength</span></span><div class="ob-chips">${HAPTIC_TRY.map(([k, t]) => `<button type="button" class="rf-chip" data-act="tryHaptic" data-arg="${k}">${t}</button>`).join('')}</div></div></li>` : ''}
             ${U.sw('Supersets', pr.supersets !== false, 'data-on="setPref" data-k="supersets"', 'Pair exercises that don\'t share muscles')}
             <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Rest between sets</span><span class="rf-list-sub">Auto: 90 s after big moves, 60 s after small ones and in supersets</span></span>${U.seg('setRest', [['auto', 'Auto'], ['60', '60 s'], ['90', '90 s']], String(pr.rest), 'Rest between sets', ' data-on="setRest"')}</div></li>
             ${workouts ? figureRows(pr) : ''}
@@ -78,6 +82,7 @@
           <ul class="rf-list">
             <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Theme</span></span>${U.seg('setTheme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], pr.theme || 'system', 'Theme', ' data-on="setTheme"')}</div></li>
             ${U.sw('Increase contrast', !!pr.contrast, 'data-on="setPref" data-k="contrast"')}
+            ${U.sw('Moving background', pr.glowMove !== false, 'data-on="setPref" data-k="glowMove"', 'The colours behind each page drift slowly')}
             <li><div class="rf-list-row set-slider"><span class="rf-list-text"><span class="rf-list-title">Glass</span><span class="rf-list-sub">Clear to frosted</span></span><div class="rf-slider"><div class="rf-slider-control"><input class="rf-slider-input" type="range" min="0" max="1" step="0.05" value="${pr.density == null ? 0.5 : pr.density}" aria-label="Glass density" data-on="setDensity"></div></div></div></li>
           </ul>
           <h3 class="rf-list-header">Your data</h3>
@@ -234,7 +239,9 @@
     if (k === 'haptics') { if (v) U.haptic('toggleOn'); U.render(); }
     if (k === 'supersets') U.render();
   };
-  U.on.setHapticStrength = (el, ev, v) => { U.S.profile.prefs.hapticStrength = v; U.applyPrefs(); U.save(); U.haptic('toggleOn'); };
+  // A new strength plays a tap at it, the haptic felt most often. Try it has the bigger ones.
+  U.on.setHapticStrength = (el, ev, v) => { U.S.profile.prefs.hapticStrength = v; U.applyPrefs(); U.save(); U.haptic('tap'); };
+  U.act.tryHaptic = (el) => U.haptic(el.dataset.arg);
   U.on.setRest = (el, ev, v) => { U.S.profile.prefs.rest = v === 'auto' ? 'auto' : Number(v); U.save(); };
   U.on.setTheme = (el, ev, v) => { U.S.profile.prefs.theme = v; U.applyPrefs(); U.save(); };
   U.on.setDensity = (el, ev, v) => { U.S.profile.prefs.density = v; U.applyPrefs(); U.save(); };
@@ -520,6 +527,55 @@
     U.save();
     redraw();
   };
+  // The self-test: which engine runs here, how long the model takes to start and to answer, and the
+  // log, to copy or send with a report when the coach misbehaves.
+  U.act.aiSelfTest = async () => {
+    const S = U.S;
+    const id = GH.deviceCoach ? GH.deviceCoach.pick(S, dev.installed) : null;
+    if (!id) return;
+    let result = null;
+    const body = (step) => {
+      if (!result) return `<div class="sheet-pad"><div class="chat-setup"><span class="rf-spinner" data-size="sm"><i></i></span><span class="t-callout">${U.esc(step || 'Starting')}…</span></div><p class="t-footnote rf-muted">This takes up to a minute. Keep the app open.</p></div>`;
+      const r = result, st = r.stats || {};
+      const engine = r.engine === 'native' ? `On this phone's processor${r.threads ? `, ${r.threads} threads` : ''}` : r.engine === 'wasm' ? `In the app (slower${r.gpu ? ', on the GPU' : ', one thread'})` : 'Didn\'t start';
+      const sec = (ms) => (ms == null ? '–' : `${(ms / 1000).toFixed(1)} s`);
+      const rows = [
+        ['Result', r.ok ? 'Working' : 'Not working'],
+        ['Engine', engine],
+        ['Model', modelName(r.model) || r.model],
+        ['Start-up', sec(r.loadMs)],
+        ['First word after', sec(st.firstMs)],
+        ['Speed', st.tokensPerSec > 0 ? `about ${Math.max(1, Math.round(st.tokensPerSec * 0.75))} words a second` : '–'],
+        ['Memory', r.ram ? `${r.ram} GB` : '–'],
+        ['WebView', r.webview || '–'],
+      ];
+      return `<div class="sheet-pad">
+        <ul class="rf-list">${rows.map(([k, v]) => `<li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(k)}</span></span><span class="rf-list-detail">${U.esc(v)}</span></div></li>`).join('')}</ul>
+        ${r.error ? `<p class="t-callout">${U.esc(r.error)}</p>` : ''}
+        ${r.reply ? `<p class="t-footnote rf-muted">Its answer: “${U.esc(r.reply)}”</p>` : ''}
+        <details class="selftest-log"><summary class="t-footnote">The log</summary><pre class="preview">${U.esc((r.log || []).join('\n'))}</pre></details>
+        <div class="btn-row"><button type="button" class="rf-btn" data-variant="soft" data-act="selfTestCopy">${U.icon('copy')}Copy</button><button type="button" class="rf-btn" data-variant="soft" data-act="selfTestReport">${U.icon('flag')}Report a problem</button></div>
+      </div>`;
+    };
+    const ctl = U.sheet({ title: 'On-device AI check', size: 'auto', body: body() });
+    const text = () => JSON.stringify(Object.assign({}, result, { app: GH.VERSION || '' }), null, 1);
+    U.act.selfTestCopy = () => { if (result && GH.platform) { GH.platform.copy(text()); U.toast('Copied'); } };
+    U.act.selfTestReport = () => {
+      if (!result || !GH.platform) return;
+      const q = new URLSearchParams({ title: `On-device AI check: ${result.ok ? 'working but' : 'not working'}`, labels: 'ai-selftest', body: `What happened (fill in):\n\n\n**Check:**\n\n\`\`\`json\n${text().slice(0, 5500)}\n\`\`\`\n` });
+      GH.platform.openUrl(`https://github.com/ShadowsDistant/gradient-health/issues/new?${q.toString()}`);
+    };
+    try {
+      const llm = await GH.lazy('llm');
+      result = await llm.selfTest(id, (step) => { if (!ctl.closed) ctl.update(body(step)); });
+    } catch (e) {
+      result = { ok: false, error: e.message, log: [] };
+    }
+    if (!ctl.closed) ctl.update(body());
+    U.haptic(result.ok ? 'success' : 'error');
+    redraw();
+  };
+  const modelName = (id) => { const m = dev.all.find((x) => x.id === id); return m ? m.name : null; };
   U.act.keySheet = () => {
     U.sheet({
       title: 'Anthropic API key', detents: 'medium large', detent: 'medium',

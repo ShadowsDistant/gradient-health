@@ -545,6 +545,8 @@
   }
 
   /* ---------------------------------------------------------------- timing */
+  // Timer moments go through plat().cue: a beep (Sound) and a buzz (Vibration), which in the app with
+  // haptics on is that moment's own haptic: countdown for each of the 3-2-1, go, and done at the end.
   function loop() {
     if (!P || root().hidden) return;
     const now = Date.now();
@@ -553,21 +555,21 @@
     const setRing = (v) => { const r = el.querySelector('.rf-ring'); if (r) { r.style.setProperty('--rf-value', Math.max(0, Math.min(1, v)).toFixed(3)); r.setAttribute('aria-valuenow', String(Math.round(v * 100))); } };
     if (P.phase === 'countdown') {
       const s = Math.ceil((P.goAt - now) / 1000);
-      if (s > 0 && s !== P.lastCue) { plat().cue('tick'); U.haptic('tick'); P.lastCue = s; }
-      if (now >= P.goAt) { plat().cue('go'); U.haptic('go'); P.phase = 'running'; P.startAt = now; P.endAt = now + P.dur * 1000; P.lastCue = null; draw(); return; }
+      if (s > 0 && s !== P.lastCue) { plat().cue('countdown'); P.lastCue = s; }
+      if (now >= P.goAt) { plat().cue('go'); P.phase = 'running'; P.startAt = now; P.endAt = now + P.dur * 1000; P.lastCue = null; draw(); return; }
       setCount(String(Math.max(1, s)));
       setRing(1);
     } else if (P.phase === 'running') {
       const left = (P.endAt - now) / 1000;
       const s = Math.ceil(left);
-      if (left > 0 && s <= 3 && s !== P.lastCue) { plat().cue('tick'); P.lastCue = s; }
-      if (left <= 0) { plat().cue('done'); finishTimed(P.dur); return; }
+      if (left > 0 && s <= 3 && s !== P.lastCue) { plat().cue('countdown'); P.lastCue = s; }
+      if (left <= 0) { plat().cue('done'); finishTimed(P.dur, true); return; }
       setCount(U.fmtDur(left));
       setRing(left / P.dur);
     } else if (P.phase === 'rest' && P.restEnd) {
       const left = (P.restEnd - now) / 1000;
       const s = Math.ceil(left);
-      if (left > 0 && s <= 3 && s !== P.lastCue) { plat().cue('tick'); P.lastCue = s; }
+      if (left > 0 && s <= 3 && s !== P.lastCue) { plat().cue('countdown'); P.lastCue = s; }
       if (left <= 0) {
         plat().cue('done');
         P.restEnd = null; P.lastCue = null;
@@ -595,11 +597,17 @@
     if (!next) { if (P.mode === 'mobility') finishMobility(); else { P.phase = 'checkin'; draw(); } return; }
     if (auto) startTimer(); else draw();
   }
-  function finishTimed(secs) {
+  // byTimer: the timer ran out, and its cue already buzzed (so nothing more here to cut it short).
+  function finishTimed(secs, byTimer) {
     const st = cur();
     if (!st) return;
-    if (P.mode === 'mobility') { P.mob.idx++; P.phase = 'step'; if (P.mob.idx >= P.mob.steps.length) finishMobility(); else { plat().vibrate(60); startTimer(); } return; }
-    complete(st.kind === 'set' ? { secs: Math.round(secs) } : {});
+    if (P.mode === 'mobility') {
+      P.mob.idx++; P.phase = 'step';
+      if (P.mob.idx >= P.mob.steps.length) finishMobility(byTimer);
+      else { if (!byTimer) U.haptic('tap'); startTimer(); }
+      return;
+    }
+    complete(st.kind === 'set' ? { secs: Math.round(secs) } : {}, byTimer);
   }
   U.act.plStartTimer = () => { plat().unlockAudio(); startTimer(); };
   U.act.plCancelTimer = () => { P.phase = 'step'; draw(); };
@@ -614,11 +622,13 @@
   U.act.plContinue = () => endRest();
 
   /* ---------------------------------------------------------------- completing steps */
-  function complete(result) {
+  function complete(result, byTimer) {
     const S = U.S;
     const a = A();
     const st = a.steps[a.idx];
-    U.haptic(st.kind === 'set' || st.kind === 'interval' ? 'done' : 'success');
+    // A timer that ran out has had its done cue. A tap gets success for a set or test it logged, and a
+    // plain tap for moving past a warm-up, cool-down or finisher round.
+    if (!byTimer) U.haptic(st.kind === 'set' || st.kind === 'test' ? 'success' : 'tap');
     const linesBefore = (a.testLines || []).length;
     B().completeStep(S, result);
     U.save();
@@ -636,8 +646,9 @@
     } else if (!next) {
       P.phase = 'checkin';
     } else {
+      // Switching sides has no buzz of its own: one here landed on top of the done or success
+      // just played and cut it short. The screen says which side is next.
       P.phase = 'step';
-      if (next.side && st.side && next.item === st.item && next.side !== st.side) plat().vibrate(80); // switch sides
       if (P.autoStart) { startTimer(); return; }
     }
     draw();
@@ -694,6 +705,7 @@
     const v = parseInt(input && input.value, 10);
     B().amendLast(U.S, isFinite(v) ? v : null, P.amendLoad);
     U.save();
+    U.haptic('success');
     P.amendLoad = null;
     const top = U.topSheet(); if (top) top.close('ok');
     draw();
@@ -868,7 +880,7 @@
   U.act.plClose = () => closeDone();
 
   /* ---------------------------------------------------------------- mobility */
-  function finishMobility() {
+  function finishMobility(byTimer) {
     const S = U.S;
     const day = U.today();
     B().logLight(S, day, 'mobility', true);
@@ -879,6 +891,8 @@
     plat().keepAwake(false);
     dropFig();
     draw();
+    // After the last hold's done buzz when the timer ended it, so the two play one after the other.
+    if (byTimer) setTimeout(() => U.haptic('success'), 450); else U.haptic('success');
   }
   function viewMobDone() {
     return `${top('Mobility')}

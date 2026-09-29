@@ -73,30 +73,59 @@ button:not([class*="rf-"]) { font: inherit; }
 :root { --glow-mint: rgb(111 227 200 / .55); --glow-sky: rgb(58 168 255 / .5); --glow-violet: rgb(155 92 255 / .42); --glow-pink: rgb(255 126 179 / .34); }
 :root[data-theme^="dark"] { --glow-mint: rgb(70 190 170 / .26); --glow-sky: rgb(60 130 255 / .5); --glow-violet: rgb(140 80 255 / .52); --glow-pink: rgb(240 100 170 / .3); }
 /* Ambient glow: the icon's colours (mint, sky, violet, pink) softly behind the top of each page, so
-   the glass bars, buttons and sheets have real colour to refract. It rises and fades as the page
-   scrolls (a scroll-linked animation: nothing runs while the page is still), and it's off with
+   the glass bars, buttons and sheets have real colour to refract. Two layers (mint and violet, sky and
+   pink) drift slowly on their own paths, 26 and 34 seconds round, moving only a few percent: transform
+   alone, so it's the compositor's work, never a repaint. The glow also rises and fades as the page
+   scrolls (a scroll-linked animation). The drift holds still with reduced motion, the "Moving
+   background" setting off, a full-height sheet up or a workout on screen; the glow is off with
    increased contrast or reduced transparency. */
-.app::before {
+.app::before, .app::after {
   content: ''; position: absolute; inset: -12% -25% auto; height: 62%; pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, #000 35%, transparent 95%); mask-image: linear-gradient(to bottom, #000 35%, transparent 95%);
+  opacity: .5; will-change: transform; transform-origin: 50% 40%;
+}
+.app::before {
   background:
     radial-gradient(34% 46% at 20% 34%, var(--glow-mint), transparent 72%),
-    radial-gradient(34% 44% at 80% 26%, var(--glow-sky), transparent 72%),
-    radial-gradient(38% 48% at 64% 66%, var(--glow-violet), transparent 74%),
-    radial-gradient(30% 40% at 34% 74%, var(--glow-pink), transparent 74%);
-  -webkit-mask-image: linear-gradient(to bottom, #000 35%, transparent 95%); mask-image: linear-gradient(to bottom, #000 35%, transparent 95%);
-  opacity: .5;
+    radial-gradient(38% 48% at 64% 66%, var(--glow-violet), transparent 74%);
+  animation: glow-drift-a 26s ease-in-out infinite alternate;
 }
-[data-theme^="dark"] .app::before { opacity: .6; }
-/* Where scroll-linked animations aren't supported (older WebViews) the glow just stays put. */
+.app::after {
+  background:
+    radial-gradient(34% 44% at 80% 26%, var(--glow-sky), transparent 72%),
+    radial-gradient(30% 40% at 34% 74%, var(--glow-pink), transparent 74%);
+  animation: glow-drift-b 34s ease-in-out -9s infinite alternate;
+}
+[data-theme^="dark"] .app::before, [data-theme^="dark"] .app::after { opacity: .6; }
+@keyframes glow-drift-a {
+  0% { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
+  35% { transform: translate3d(3%, 2.5%, 0) rotate(2.5deg) scale(1.04); }
+  70% { transform: translate3d(-2%, 3.5%, 0) rotate(-2deg) scale(1.02); }
+  100% { transform: translate3d(-4%, -1%, 0) rotate(1.5deg) scale(1.06); }
+}
+@keyframes glow-drift-b {
+  0% { transform: translate3d(0, 0, 0) rotate(0deg) scale(1.03); }
+  40% { transform: translate3d(-3.5%, 2%, 0) rotate(-3deg) scale(1); }
+  75% { transform: translate3d(2.5%, -2.5%, 0) rotate(2deg) scale(1.05); }
+  100% { transform: translate3d(4%, 1.5%, 0) rotate(4deg) scale(1.02); }
+}
+/* Where scroll-linked animations aren't supported (older WebViews) the glow only drifts. The drift
+   comes first in each list, so a single paused value still stops it there. */
 @supports (animation-timeline: scroll()) {
   .screen { scroll-timeline: --page block; }
-  .app::before { animation: glow-scroll linear both; animation-timeline: --page; animation-range: 0 480px; }
-  [data-theme^="dark"] .app::before { animation-name: glow-scroll-dark; }
+  .app::before, .app::after { animation-name: glow-drift-a, glow-scroll; animation-duration: 26s, auto; animation-timing-function: ease-in-out, linear; animation-delay: 0s, 0s; animation-iteration-count: infinite, 1; animation-direction: alternate, normal; animation-fill-mode: none, both; animation-timeline: auto, --page; animation-range: normal, 0 480px; }
+  .app::after { animation-name: glow-drift-b, glow-scroll; animation-duration: 34s, auto; animation-delay: -9s, 0s; }
+  [data-theme^="dark"] .app::before { animation-name: glow-drift-a, glow-scroll-dark; }
+  [data-theme^="dark"] .app::after { animation-name: glow-drift-b, glow-scroll-dark; }
 }
 @keyframes glow-scroll { from { opacity: .5; translate: 0 0; } to { opacity: .16; translate: 0 -80px; } }
 @keyframes glow-scroll-dark { from { opacity: .6; translate: 0 0; } to { opacity: .22; translate: 0 -80px; } }
-:root[data-theme$="contrast"] .app::before, :root[data-rf-transparency="reduced"] .app::before { display: none; }
-@media (prefers-reduced-transparency: reduce) { .app::before { display: none; } }
+/* The drift holds still; the scroll fade keeps working. */
+:root[data-still-glow] .app::before, :root[data-still-glow] .app::after, #app[data-receded]::before, #app[data-receded]::after,
+.app:has(> #player:not([hidden]))::before, .app:has(> #player:not([hidden]))::after { animation-play-state: paused, running; }
+@media (prefers-reduced-motion: reduce) { .app::before, .app::after { animation-play-state: paused, running; } }
+:root[data-theme$="contrast"] .app::before, :root[data-theme$="contrast"] .app::after, :root[data-rf-transparency="reduced"] .app::before, :root[data-rf-transparency="reduced"] .app::after { display: none; }
+@media (prefers-reduced-transparency: reduce) { .app::before, .app::after { display: none; } }
 .screen { position: absolute; inset: 0; overflow-x: hidden; overflow-y: auto; box-sizing: border-box; padding: var(--topbar-h) var(--sar) calc(var(--float-gap) + var(--space-6)) var(--sal); scrollbar-width: none; outline: none; }
 .screen::-webkit-scrollbar { display: none; }
 /* Room at the end of a page, so the last card clears whatever floats over the bottom: the tab bar,
@@ -233,8 +262,6 @@ html:has(#app[data-receded]), body:has(#app[data-receded]) { background: #08090c
 .insight-text { display: grid; flex: 1; min-width: 0; }
 
 /* ---------------------------------------------------------------- plan */
-.plan-wd { display: inline-block; min-width: 2.4em; font-weight: 650; color: var(--label-secondary); }
-.plan-wd.is-today { color: var(--accent); }
 
 /* ---------------------------------------------------------------- health */
 .insight .ins-head { display: flex; align-items: center; gap: var(--space-2); }
@@ -298,19 +325,6 @@ button.stat { cursor: pointer; }
 .meter-track { position: relative; height: 8px; border-radius: var(--radius-full); background: var(--fill-1); }
 .meter-fill { position: absolute; inset-block: 0; inset-inline-start: 0; border-radius: inherit; background: var(--accent-fill); }
 .meter-target { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-inline-start: -1px; border-radius: 1px; background: var(--label); }
-
-/* chat */
-.chat-sheet .rf-sheet-body { display: flex; flex-direction: column; }
-.chat-log { flex: 1; min-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-4); }
-.chat-empty { margin: var(--space-4) 0; }
-.bubble { max-width: 86%; padding: var(--space-2) var(--space-3); border-radius: 18px; line-height: 1.4; font-size: 1rem; white-space: pre-wrap; overflow-wrap: anywhere; }
-.bubble.me { align-self: flex-end; background: var(--accent-fill); color: var(--on-accent); border-end-end-radius: 6px; }
-.bubble.coach { align-self: flex-start; background: var(--fill-3); color: var(--label); border-end-start-radius: 6px; }
-.bubble.is-error { background: var(--critical-soft); }
-.chat-compose { display: flex; gap: var(--space-2); align-items: flex-end; padding: var(--space-2) var(--space-4); }
-.chat-compose textarea { flex: 1; resize: none; min-height: 44px; }
-.chat-foot { padding: 0 var(--space-4) var(--space-2); margin: 0; }
-.chat-btns { padding: 0 var(--space-4) var(--space-3); }
 
 /* ---------------------------------------------------------------- progress */
 .hm { display: grid; grid-template-columns: auto 1fr; gap: var(--space-2); }
@@ -604,8 +618,6 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 .fig3d { -webkit-mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent), linear-gradient(to bottom, transparent, #000 10px, #000 calc(100% - 14px), transparent); -webkit-mask-composite: source-in; mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent), linear-gradient(to bottom, transparent, #000 10px, #000 calc(100% - 14px), transparent); mask-composite: intersect; }
 .pl-fig-hint { position: absolute; right: var(--space-2); top: var(--space-2); padding: 3px 8px; border-radius: var(--radius-full); background: var(--fill-2); color: var(--label-secondary); pointer-events: none; animation: hint-pulse 2.4s ease-in-out 3; }
 @keyframes hint-pulse { 50% { opacity: .55; } }
-.chat-presets { margin: 0 0 var(--space-2); }
-.chat-presets .rf-chip { height: auto; min-height: var(--control-sm); padding-block: 6px; white-space: normal; text-align: start; }
 .set-coach .rf-segmented { flex: none; }
 .streak { background: linear-gradient(160deg, color-mix(in oklab, var(--accent-soft) 60%, var(--bg-raised)) 0%, var(--bg-raised) 70%); }
 .ob-page { display: grid; gap: 0; }
@@ -735,22 +747,8 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 .set-stack { flex-direction: column; align-items: stretch; gap: var(--space-2); padding-block: var(--space-3); }
 .set-stack .rf-segmented { width: 100%; }
 
-/* Chat: who answers, set-up cards, the on-device model rows. */
-.chat-engine { padding: 0 var(--space-4) var(--space-2); }
-.chat-engine .rf-segmented { width: 100%; }
-.chat-compose[hidden] { display: none; }
-.chat-setup { display: grid; gap: var(--space-2); margin: var(--space-2) 0; }
-.chat-setup > p { margin: 0; }
-.chat-setup:not(.card) { grid-auto-flow: column; justify-content: start; align-items: center; }
-.chat-setup .rf-list { margin: var(--space-1) calc(-1 * var(--space-4)) calc(-1 * var(--space-4)); background: none; box-shadow: none; }
-.chat-setup-ico { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; color: var(--hue-violet); background: color-mix(in oklab, var(--hue-violet) 16%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / .25); }
+
 .model-row .rf-list-title .rf-badge { margin-inline-start: 6px; vertical-align: 1px; }
-.bubble-status { display: block; margin-top: 4px; }
-/* While an answer is on its way: a soft light sweeps across the bubble. */
-.bubble.coach.is-typing { background-image: linear-gradient(100deg, transparent 20%, color-mix(in oklab, var(--accent-fill) 14%, transparent) 50%, transparent 80%); background-size: 220% 100%; background-repeat: no-repeat; animation: typing-sheen 1.6s ease-in-out infinite; }
-@keyframes typing-sheen { from { background-position: 120% 0; } to { background-position: -120% 0; } }
-@media (prefers-reduced-motion: reduce) { .bubble.coach.is-typing { animation: none; background-image: none; } }
-.bubble.is-stopped::after { content: " (stopped)"; color: var(--label-secondary); }
 .model-row .rf-list-text { gap: 4px; }
 .model-row .rf-progress { margin-top: 4px; }
 .model-on { display: inline-flex; align-items: center; gap: 4px; color: var(--positive); white-space: nowrap; }
@@ -759,8 +757,5 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 .float-actions.is-tight .rf-btn:not(.btn-main) { aspect-ratio: 1; padding-inline: 0; min-inline-size: 48px; justify-content: center; }
 
 /* Reporting AI answers. */
-.bubble-flag { display: flex; align-items: center; gap: 4px; margin-top: 6px; padding: 0; border: 0; background: none; color: var(--label-secondary); font: inherit; font-size: 12px; cursor: pointer; }
-.bubble-flag svg { width: 13px; height: 13px; }
-.bubble.is-flagged { font-style: italic; color: var(--label-secondary); }
 .flag-quote { margin: 0; padding: var(--space-2) var(--space-3); border-inline-start: 3px solid var(--separator); border-radius: 6px; background: var(--fill-3, var(--bg-sunken)); white-space: pre-wrap; color: var(--label-secondary); }
 .ai-flag { color: var(--label-secondary); }

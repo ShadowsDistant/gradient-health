@@ -161,7 +161,7 @@
         <div class="rf-search fd-q"><input class="rf-input" type="search" id="foodQ" placeholder="Search foods" aria-label="Search foods" value="${U.esc(query)}" autocomplete="off" enterkeyhint="search"></div>
         ${F().prefs(S).online ? `<button type="button" class="rf-btn" data-shape="circle" aria-label="Scan a barcode" data-act="foodScan">${U.icon('scan')}</button>` : ''}
       </div>
-      ${q ? '' : U.seg('foodTab', [['recent', 'Recent'], ['favs', 'Favourites'], ['mine', 'My foods'], ['meals', 'Meals']], tab, 'Lists', ' data-on="foodTab" data-size="sm"')}
+      ${q ? '' : `<div class="fd-tabs" data-hscroll>${U.seg('foodTab', [['recent', 'Recent'], ['favs', 'Favourites'], ['mine', 'My foods'], ['meals', 'Meals']], tab, 'Lists', ' data-on="foodTab" data-size="sm"')}</div>`}
       <div class="fd-results">${results}</div>
       <ul class="rf-list fd-more">
         ${U.row({ icon: 'flame', tone: 'coral', title: 'Quick add calories', sub: 'Just the numbers', act: 'foodQuick', chevron: true })}
@@ -292,7 +292,7 @@
   };
   U.on.foodQty = (el, ev, v) => { const n = Number(v); if (n > 0) { pick.qty = n; repaint(); } };
   U.on.foodMeal = (el, ev, v) => { pick.meal = v; };
-  U.act.foodFav = () => { F().toggleFav(U.S, pick.item.key); U.save(); U.haptic('toggleOn'); repaint(); };
+  U.act.foodFav = () => { const on = F().toggleFav(U.S, pick.item.key); U.save(); U.haptic(on ? 'toggleOn' : 'toggleOff'); repaint(); };
   U.act.foodSave = () => {
     const S = U.S;
     const { item, portion, qty, meal, day, edit } = pick;
@@ -369,7 +369,7 @@
     U.closeSheets();
     if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S);
   };
-  U.act.foodQuickDelete = (el) => { const [d, id] = el.dataset.arg.split(':'); F().remove(U.S, Number(d), id); U.commit(); U.closeSheets(); if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S); };
+  U.act.foodQuickDelete = (el) => { const [d, id] = el.dataset.arg.split(':'); F().remove(U.S, Number(d), id); U.commit(); U.haptic('toggleOff'); U.closeSheets(); if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S); };
   // Create a food from its label (optionally for a barcode that wasn't found).
   function createSheet(prefill) {
     const p = prefill || {};
@@ -428,6 +428,7 @@
     if (!ok) return;
     F().copyMeal(U.S, day - 1, day, null, (meal) => whenOn(day, meal));
     U.commit();
+    U.haptic('success');
     if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S);
   };
 

@@ -212,8 +212,38 @@ public final class MainActivity extends Activity {
         super.onPause();
     }
 
+    private LlmClient llm;
+
+    /** The native engine's client (it binds LlmService on first use). */
+    synchronized LlmClient llm() {
+        if (llm == null) {
+            llm = new LlmClient(this);
+        }
+        return llm;
+    }
+
+    /**
+     * The phone is short of memory: the page decides what to let go (an idle model), and the
+     * native engine frees its model at once when it's critical.
+     */
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        callJs(jsCall("onMemoryLow", String.valueOf(level)));
+        if (level >= TRIM_MEMORY_COMPLETE || level == TRIM_MEMORY_RUNNING_CRITICAL) {
+            LlmClient c = llm;
+            if (c != null) {
+                c.unload();
+            }
+        }
+    }
+
     @Override
     protected void onDestroy() {
+        LlmClient c = llm;
+        if (c != null) {
+            c.release();
+        }
         destroyed = true;
         mainHandler.removeCallbacksAndMessages(null);
         WebView wv = webView;
@@ -727,6 +757,7 @@ public final class MainActivity extends Activity {
         }
     }
 
+    /** Plays a haptic by name (see Haptics). The view is only for phones without a vibrator to drive. */
     void haptic(String kind) {
         View v = webView != null ? webView : root;
         Haptics.play(this, v, kind);
@@ -814,7 +845,11 @@ public final class MainActivity extends Activity {
                 new HashMap<String, String>(), new ByteArrayInputStream(new byte[0]));
     }
 
+    /** How many times the page's renderer has died since the app started (the page asks, see Bridge). */
+    static volatile int rendererGoneCount;
+
     private void handleRendererGone(WebView gone) {
+        rendererGoneCount++;
         try {
             if (gone.getParent() instanceof ViewGroup) {
                 ((ViewGroup) gone.getParent()).removeView(gone);

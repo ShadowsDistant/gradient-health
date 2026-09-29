@@ -1,7 +1,11 @@
 /* On-device AI (loads on demand: GH.lazy('llm') sets GH.llm). A small open model runs entirely on the
- * phone with llama.cpp compiled to WebAssembly (@wllama/wllama): on the CPU, with threads where the
- * WebView allows them (Android WebView has no SharedArrayBuffer today, so one), and on the GPU through
- * WebGPU when a quick self-test passes.
+ * phone with llama.cpp, one of two ways:
+ * - native: the Android app's own build (LlmService, in its own process) on the phone's big cores.
+ *   The page asks for it through the bridge and hears back through window.__gh.onLlm.
+ * - in-app: llama.cpp compiled to WebAssembly (@wllama/wllama), on the CPU with threads where the
+ *   WebView allows them (Android's has no SharedArrayBuffer today, so one), and on the GPU through
+ *   WebGPU when a quick self-test passes. It's the fallback: several times slower than native.
+ * Both get the same prompt, built here (ChatML), and stream the same way.
  *
  * The Android shell downloads the model files (ModelStore.java: resumable, Wi-Fi only if asked, checked
  * against the size, the GGUF header and the SHA-256) into the app's private storage and serves them
@@ -47,13 +51,13 @@ const MODELS = [
     id: 'q35-2', tier: 'balanced', name: 'Balanced', label: 'Qwen3.5 2B', speed: 2, quality: 2,
     file: 'Qwen3.5-2B-Q4_K_M.gguf',
     url: 'https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/main/Qwen3.5-2B-Q4_K_M.gguf',
-    bytes: 1.28e9, minRamGB: 4,
+    bytes: 1.28e9, minRamGB: 6,
   }, QWEN35),
   Object.assign({
     id: 'q35-4', tier: 'best', name: 'Best answers', label: 'Qwen3.5 4B', speed: 1, quality: 3,
     file: 'Qwen3.5-4B-Q4_K_M.gguf',
     url: 'https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf',
-    bytes: 2.74e9, minRamGB: 8,
+    bytes: 2.74e9, minRamGB: 12,
   }, QWEN35),
   // 1.2's models (Qwen2.5 Instruct from Qwen's own GGUF repos): no longer offered, but one that's
   // already on the phone keeps working until it's deleted. Their SHA-256 is pinned.
@@ -76,15 +80,22 @@ const MODELS = [
 ];
 const DEFAULT_GEN = { temperature: 0.6, top_p: 0.8, top_k: 20, repeat_penalty: 1.05 };
 
-const IDLE_MS = 2 * 60 * 1000;
-const cfg = { models: MODELS, baseUrl: 'models/', served: false, idleMs: IDLE_MS, debug: false };
+// A loaded model stays ready for 10 minutes while the app is on screen and a minute once it isn't
+// (the phone wants the memory back), and goes at once when Android says memory is short.
+const IDLE_SHOWN = 10 * 60 * 1000;
+const IDLE_HIDDEN = 60 * 1000;
+// Nothing heard for this long means stuck: loading (no bytes read), answering (no progress or word).
+const STALL = { load: 45000, answer: 60000 };
+const cfg = { models: MODELS, baseUrl: 'models/', served: false, idleMs: 0, stall: Object.assign({}, STALL), debug: false };
 
 // Tests and plain browsers: configure({ baseUrl }) says where the model files are served (there's no
-// bridge to ask), { models } replaces the table, { idleMs } shortens the idle unload.
+// bridge to ask), { models } replaces the table, { idleMs } sets one idle unload time, { stall }
+// shortens the stuck timers.
 function configure(o = {}) {
   if (o.baseUrl != null) { cfg.baseUrl = String(o.baseUrl).replace(/\/?$/, '/'); cfg.served = true; }
   if (Array.isArray(o.models)) cfg.models = o.models.map((m) => Object.assign({ minRamGB: 0, ctx: 2048 }, m));
-  if (o.idleMs != null) cfg.idleMs = Math.max(100, Number(o.idleMs) || IDLE_MS);
+  if (o.idleMs != null) cfg.idleMs = Math.max(100, Number(o.idleMs) || 0);
+  if (o.stall) for (const k of Object.keys(STALL)) if (o.stall[k] > 0) cfg.stall[k] = Number(o.stall[k]);
   if (o.debug != null) cfg.debug = !!o.debug;
 }
 
@@ -107,6 +118,7 @@ const MESSAGES = {
   'not-loaded': 'Load a model first.',
   load: 'The model couldn\'t be started. Try again.',
   crashed: 'The on-device model stopped unexpectedly. Try again.',
+  stalled: 'The on-device model stopped responding. Try again.',
   failed: 'The on-device model couldn\'t answer that. Try again.',
   'too-long': 'This chat is too long for the on-device model. Start a new chat.',
   empty: 'There\'s nothing to answer yet.',
@@ -141,7 +153,7 @@ function wasmSupported() {
   return wasmOk;
 }
 function available() {
-  if (!wasmSupported()) return { ok: false, reason: 'On-device AI needs a newer Android System WebView. Update it from the Play Store.' };
+  if (!nativeOk() && !wasmSupported()) return { ok: false, reason: 'On-device AI needs a newer Android System WebView. Update it from the Play Store.' };
   const b = bridge();
   if (!(b && b.modelList) && !cfg.served) return { ok: false, reason: 'On-device AI runs in the Gradient Health Android app.' };
   if (!offered().length) return { ok: false, reason: 'This phone doesn\'t have enough memory for on-device AI.' };
@@ -166,17 +178,14 @@ function model(id) {
   return m;
 }
 function fits(m) { const ram = ramGB(); return ram == null || ram >= (m.minRamGB || 0); }
-// The models to offer on this phone: the current ones it has the memory for (Best answers only with
-// 8 GB or more). Older models only show up while they're installed.
+// The models to offer on this phone: the current ones it has the memory for (Balanced with 6 GB or
+// more, Best answers with 12). Older models only show up while they're installed.
 function offered() { return cfg.models.filter((m) => !m.legacy && fits(m)); }
-// The one to suggest: Balanced with 6 GB or more (or when the phone doesn't say), else the smallest
-// that fits. Best answers is never pushed: it's slow on most phones' CPUs.
+// The one to suggest: Fast, on every phone. It starts answering within a second or two; the bigger
+// sizes write better answers but take longer, so they're a choice rather than the default.
 function recommended() {
   const list = offered();
-  if (!list.length) return null;
-  const ram = ramGB();
-  const pick = (tier) => list.find((m) => m.tier === tier);
-  return (ram == null || ram >= 6 ? pick('balanced') : null) || pick('fast') || list[0];
+  return list.find((m) => m.tier === 'fast') || list[0] || null;
 }
 
 /* ------------------------------------------------------------------ downloads (ModelStore.java) */
@@ -329,9 +338,12 @@ class RangeFile {
     const n = this.end - this.start;
     if (n <= 0) return new ArrayBuffer(0);
     let last = null;
+    // Three tries, 30 s each: a read that hangs mustn't hang the load.
     for (let attempt = 0; attempt < 3; attempt++) {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 30000);
       try {
-        const res = await fetch(this.url, { headers: { Range: `bytes=${this.start}-${this.end - 1}` }, cache: 'no-store' });
+        const res = await fetch(this.url, { headers: { Range: `bytes=${this.start}-${this.end - 1}` }, cache: 'no-store', signal: ctl.signal });
         if (res.status !== 206 && !(res.status === 200 && this.start === 0 && this.end === this.total)) {
           try { if (res.body) await res.body.cancel(); } catch (e) { /* ignore */ }
           throw new Error(`model read failed: HTTP ${res.status}`);
@@ -340,7 +352,7 @@ class RangeFile {
         if (buf.byteLength !== n) throw new Error(`model read failed: ${buf.byteLength} of ${n} bytes`);
         if (this.onRead) this.onRead(n);
         return buf;
-      } catch (e) { last = e; }
+      } catch (e) { last = e; } finally { clearTimeout(timer); }
     }
     throw last;
   }
@@ -431,42 +443,63 @@ function log(level, args) {
   if (LOG.length > 80) LOG.shift();
   if (cfg.debug) (console[level] || console.log)('[llm]', ...args);
 }
-// wllama's own messages go to logs() (and the console with configure({ debug: true })).
+// wllama's own messages go to logs() (and the console with configure({ debug: true })). Its worker's
+// error event comes here too, and only here: that means the worker is gone.
+const isWorkerError = (a) => !!a && typeof a === 'object' && !(a instanceof Error) && 'filename' in a && 'lineno' in a;
 const LOGGER = {
   debug: (...a) => { if (cfg.debug) log('debug', a); },
   log: (...a) => log('log', a),
   warn: (...a) => log('warn', a),
-  error: (...a) => log('error', a),
+  error: (...a) => { log('error', a.map((x) => (isWorkerError(x) ? `worker error: ${x.message || 'unknown'}` : x))); if (a.some(isWorkerError)) workerDied(a.find(isWorkerError)); },
 };
 // Never used: models come from ModelStore, so wllama must not download or cache anything itself.
 const NO_STORE = Object.freeze({});
 const script = G.document && G.document.currentScript && G.document.currentScript.src;
 const wasmUrl = () => new URL('wllama/wllama.wasm', script || new URL('lazy/', G.document.baseURI)).href;
 
-let current = null;        // { id, w, gpu, ctx, file }
-let pending = null;        // { id, promise } while a model loads
+let current = null;        // { id, engine: 'native' | 'wasm', m, ctx, gpu, threads, w (wasm) }
+let pending = null;        // { id, promise, listeners } while a model loads
 let lastLoad = null;       // { id, preferGpu }: what chat() reloads after an idle unload
-let running = null;        // { stop, done } for the chat in flight
+let running = null;        // { stop, done } for the answer in flight
 let idleTimer = 0;
 let stats = null;
 let ops = Promise.resolve();
 const serial = (fn) => { const p = ops.then(fn); ops = p.then(() => {}, () => {}); return p; };
 
-function info() { return current ? { id: current.id, gpu: current.gpu, ctx: current.ctx, threads: current.threads } : null; }
-// Idle unload: skipped if a chat started meanwhile (chats don't queue behind it).
+function info() { return current ? { id: current.id, engine: current.engine, gpu: current.gpu, ctx: current.ctx, threads: current.threads } : null; }
+const hidden = () => !!(G.document && G.document.visibilityState === 'hidden');
+const idleMs = () => cfg.idleMs || (hidden() ? IDLE_HIDDEN : IDLE_SHOWN);
+// Idle unload: skipped if an answer started meanwhile (answers don't queue behind it).
 function touch() {
   clearTimeout(idleTimer);
-  if (current && !running) idleTimer = setTimeout(() => serial(() => (running || !current ? null : stop())), cfg.idleMs);
+  if (current && !running) idleTimer = setTimeout(() => serial(() => (running || !current ? null : stop())), idleMs());
+}
+if (G.document && G.document.addEventListener) G.document.addEventListener('visibilitychange', touch);
+// Android is short of memory (MainActivity.onTrimMemory): running critically low, or the app is in
+// the background and next in line to be killed. A loaded model is the biggest thing to let go.
+const earlierLow = hooks.onMemoryLow;
+hooks.onMemoryLow = function (level) {
+  if (typeof earlierLow === 'function') { try { earlierLow.apply(this, arguments); } catch (e) { /* ignore */ } }
+  const n = Number(level);
+  if ((n === 15 || n >= 60) && current && !running) { log('warn', [`memory low (${n}): unloading`]); unload(); }
+};
+
+// Calls onStall after ms without a poke().
+function watchdog(ms, onStall) {
+  let t = 0;
+  const poke = () => { clearTimeout(t); t = setTimeout(onStall, ms); };
+  poke();
+  return { poke, stop: () => clearTimeout(t) };
 }
 
 const isAbort = (e) => e instanceof WllamaAbortError || (e && e.name === 'AbortError');
-// wllama and llama.cpp errors → one of our codes. phase: 'load' or 'chat'.
+// wllama, llama.cpp and native engine errors → one of our codes. phase: 'load' or 'chat'.
 function explain(e, phase) {
   if (e && e.code && MESSAGES[e.code]) return e;
   const msg = String((e && e.message) || e || '');
   log('error', [`${phase}:`, msg]);
   if (phase === 'chat' && ((e && e.type === 'kv_cache_full') || /exceed|context size|kv.?cache/i.test(msg))) return llmError('too-long', msg);
-  if ((e && e.name === 'RangeError') || /out of memory|cannot allocate|failed to allocate|allocation failed|enlarge memory|\bOOM\b/i.test(msg)) return llmError('memory', msg);
+  if ((e && e.name === 'RangeError') || /out of memory|cannot allocate|failed to allocate|allocation failed|enlarge memory|not enough memory|\bOOM\b/i.test(msg)) return llmError('memory', msg);
   if (e && e.name === 'RuntimeError') return llmError('crashed', msg); // the wasm aborted: its worker is gone
   return llmError(phase === 'chat' ? 'failed' : 'load', msg);
 }
@@ -477,10 +510,133 @@ async function stop() {
   current = null;
   if (!c) return;
   if (running) { running.stop(); await running.done; }
+  if (c.engine === 'native') { try { bridge().llmUnload(); } catch (e) { /* the service may be gone already */ } return; }
   try { await c.w.exit(); } catch (e) { /* the worker may be gone already */ }
 }
-// Frees the model's memory (it also goes by itself after two idle minutes).
+// Frees the model's memory (it also goes by itself when idle).
 function unload() { return serial(stop); }
+
+/* ------------------------------------------------------------------ prompts */
+// Every model here speaks ChatML. Qwen3.5 thinks before it answers unless the prompt ends with an
+// empty think block (what its own template does with thinking off), so both engines get exactly this
+// text and neither depends on a template engine. Nothing in a message can open or close a turn.
+const TURN_TAGS = /<\|(im_start|im_end|endoftext)\|>/g;
+function chatml(msgs, m, open = true) {
+  let s = '';
+  for (const x of msgs) s += `<|im_start|>${x.role}\n${String(x.content).replace(TURN_TAGS, '<$1>')}<|im_end|>\n`;
+  return open ? `${s}<|im_start|>assistant\n${m && m.think ? '<think>\n\n</think>\n\n' : ''}` : s;
+}
+
+/* ------------------------------------------------------------------ the native engine */
+// LlmService runs llama.cpp in the app's ":llm" process. If it can't start a model, that model uses
+// the in-app engine; if its process dies while it's working (a crash, or Android reclaiming the
+// memory), the in-app engine takes over for the rest of the session.
+const NATIVE_BATCH = 256; // prompt tokens read per step: big batches suit the phone's CPU
+const nat = { about: null, off: false, bad: {}, load: null, reqs: new Map(), seq: 0 };
+function nativeAbout() {
+  if (!nat.about) {
+    let o = { ok: false };
+    try { const b = bridge(); if (b && b.llmNative) o = JSON.parse(b.llmNative() || '{}') || o; } catch (e) { o = { ok: false }; }
+    nat.about = o;
+  }
+  return nat.about;
+}
+const nativeOk = (m) => !nat.off && !!nativeAbout().ok && !(m && nat.bad[m.id]);
+function onLlm(e) {
+  if (typeof e === 'string') { try { e = JSON.parse(e); } catch (x) { return; } }
+  if (!e || !e.type) return;
+  if (e.type === 'died') { nativeDied(); return; }
+  if (/^load/.test(e.type)) { if (nat.load) nat.load(e); return; }
+  const r = nat.reqs.get(String(e.req || ''));
+  if (r) r(e);
+}
+const earlierLlm = hooks.onLlm;
+hooks.onLlm = function (e) {
+  if (typeof earlierLlm === 'function') { try { earlierLlm.apply(this, arguments); } catch (x) { /* ignore */ } }
+  onLlm(e);
+};
+function nativeDied() {
+  const busy = !!nat.load || nat.reqs.size > 0;
+  // Android can reclaim an idle service's process, or a busy one in the background; that isn't the
+  // engine's fault. Dying while it's working on screen is.
+  if (busy && !hidden()) nat.off = true;
+  log('warn', [`native engine stopped${busy ? ' while working' : ''}${nat.off ? ': the in-app engine takes over' : ''}`]);
+  if (current && current.engine === 'native') current = null;
+  const err = Object.assign(llmError('crashed', 'the native engine\'s process died'), { native: true });
+  if (nat.load) nat.load({ type: 'died', err });
+  for (const r of [...nat.reqs.values()]) r({ type: 'died', err });
+}
+function nativeLoad(m, report) {
+  return new Promise((resolve, reject) => {
+    const end = (err, e) => { dog.stop(); nat.load = null; if (err) reject(err); else resolve(e); };
+    const dog = watchdog(cfg.stall.load, () => { try { bridge().llmUnload(); } catch (x) { /* ignore */ } end(llmError('stalled', 'native load')); });
+    nat.load = (e) => {
+      if (e.type === 'loadProgress') { dog.poke(); report({ loaded: Math.round((Number(e.progress) || 0) * 1000), total: 1000 }); } else if (e.type === 'loaded') end(null, e);
+      else if (e.type === 'loadFailed') end(/memory|alloc/i.test(e.error || '') ? llmError('memory', e.error) : llmError('load', e.error));
+      else if (e.type === 'died') end(e.err);
+    };
+    let ok = false;
+    try { ok = !!bridge().llmLoad(JSON.stringify({ id: m.id, ctx: m.ctx, batch: NATIVE_BATCH })); } catch (x) { ok = false; }
+    if (!ok) end(llmError('not-installed'));
+  });
+}
+const FINISH = ['stop', 'length', null, 'error'];
+// One answer (or, with maxTokens 0, only reading the prompt). o: { prompt, gen, maxTokens, grammar,
+// signal, onRaw(text), onPrompt(done, total) }.
+function nativeRun(c, o) {
+  return new Promise((resolve, reject) => {
+    const req = `r${++nat.seq}`;
+    // Stopped, it answers within a batch or two. If it doesn't within 5 s, it's stuck: the in-app
+    // engine takes over for this session.
+    let late = 0;
+    const onAbort = () => {
+      try { bridge().llmAbort(req); } catch (x) { /* ignore */ }
+      late = setTimeout(() => { off(); nat.off = true; if (current === c) current = null; log('warn', ['native engine didn\'t stop']); reject(llmError('stalled', 'native engine didn\'t stop')); }, 5000);
+    };
+    const off = () => { clearTimeout(late); nat.reqs.delete(req); o.signal.removeEventListener('abort', onAbort); };
+    nat.reqs.set(req, (e) => {
+      if (e.type === 'text') o.onRaw(String(e.text || ''));
+      else if (e.type === 'progress') o.onPrompt(Number(e.done) || 0, Number(e.total) || 0);
+      else if (e.type === 'died') { off(); reject(e.err); } else if (e.type === 'done') {
+        off();
+        const s = e.stats || {};
+        const code = Number(e.code);
+        if (code === 0) {
+          resolve({ aborted: !!s.aborted, finish: FINISH[s.finish] === undefined ? null : FINISH[s.finish], tokens: s.tokens || 0, promptTokens: Math.max(0, (s.promptTokens || 0) - (s.reusedTokens || 0)), cachedTokens: s.reusedTokens || 0, tokensPerSec: s.genMs > 0 ? (s.tokens * 1000) / s.genMs : 0 });
+        } else if (code === 1) reject(llmError('too-long'));
+        else if (e.error === 'not-loaded') reject(Object.assign(llmError('not-loaded'), { reload: true }));
+        else reject(llmError('failed', `native engine code ${code}`));
+      }
+    });
+    o.signal.addEventListener('abort', onAbort, { once: true });
+    const g = o.gen;
+    let ok = false;
+    try {
+      ok = !!bridge().llmGenerate(JSON.stringify({
+        req, prompt: o.prompt, temperature: g.temperature, top_p: g.top_p, min_p: g.min_p || 0, top_k: g.top_k, repeat_penalty: g.repeat_penalty || 1, max_tokens: o.maxTokens, seed: 0, grammar: o.grammar || '',
+      }));
+    } catch (x) { ok = false; }
+    if (!ok) { off(); reject(llmError('failed', 'the app didn\'t take the request')); return; }
+    if (o.signal.aborted) onAbort();
+  });
+}
+
+/* ------------------------------------------------------------------ the in-app engine (wllama) */
+// wllama only logs its worker dying; whatever was waiting on it would wait forever. Everything that
+// waits on the worker goes through guard(), which rejects when that happens.
+const dying = new Set();
+function guard(p) {
+  let fail;
+  const died = new Promise((_, reject) => { fail = reject; });
+  dying.add(fail);
+  return Promise.race([p, died]).finally(() => dying.delete(fail));
+}
+function workerDied(ev) {
+  const err = llmError('crashed', (ev && ev.message) || 'worker error');
+  const c = current;
+  if (c && c.engine === 'wasm') { current = null; try { c.w.exit(); } catch (e) { /* ignore */ } }
+  for (const fail of [...dying]) fail(err);
+}
 
 // Whether wllama can run more than one thread here (it needs memory shared between workers).
 const threaded = () => typeof SharedArrayBuffer !== 'undefined' && globalThis.crossOriginIsolated === true;
@@ -489,26 +645,98 @@ const threaded = () => typeof SharedArrayBuffer !== 'undefined' && globalThis.cr
 async function startWorker(m, file, bytes, gpu, onRead, threads) {
   const w = new Wllama({ default: wasmUrl() }, { logger: LOGGER, cacheManager: NO_STORE, modelManager: NO_STORE });
   w.setCompat(null); // compat mode would fetch another worker and wasm from a CDN
+  let stuck = false;
+  const dog = watchdog(cfg.stall.load, () => { stuck = true; workerDied({ message: 'no progress loading the model' }); });
   try {
-    await w.loadModel([new RangeFile(fileUrl(file), bytes, onRead)], Object.assign({
-      n_ctx: m.ctx, n_parallel: 1, n_gpu_layers: gpu ? 999 : 0, jinja: true, log_level: LogLevel.WARN,
-    }, threads ? { n_threads: threads } : {}, m.batch ? { n_batch: m.batch, n_ubatch: m.batch } : {}));
+    await guard(w.loadModel([new RangeFile(fileUrl(file), bytes, (n) => { dog.poke(); onRead(n); })], Object.assign({
+      n_ctx: m.ctx, n_parallel: 1, n_gpu_layers: gpu ? 999 : 0, log_level: LogLevel.WARN,
+    }, threads ? { n_threads: threads } : {}, m.batch ? { n_batch: m.batch, n_ubatch: m.batch } : {})));
     // loadModel() resolves even when llama.cpp couldn't load the file (a damaged model, say).
     const loadedInfo = w.getLoadedContextInfo();
     if (loadedInfo.success === false || !(loadedInfo.n_vocab > 0)) throw new Error('llama.cpp could not load the model');
   } catch (e) {
     try { await w.exit(); } catch (x) { /* ignore */ }
-    throw e;
+    throw stuck ? llmError('stalled', 'loading') : e;
+  } finally {
+    dog.stop();
   }
   return w;
 }
+// Same contract as nativeRun. The prompt goes in as text (no template), so what the model reads is
+// exactly what the native engine reads.
+function wasmRun(c, o) {
+  let timings = null;
+  let finish = null;
+  const call = c.w.createCompletion(Object.assign({
+    prompt: o.prompt,
+    stream: true,
+    // 0 would still write one token; the caller ignores it.
+    max_tokens: Math.max(1, o.maxTokens),
+    // Keeps the unchanged start of the prompt (the rules, earlier turns) cached between answers.
+    cache_prompt: true,
+    return_progress: true,
+    stop: ['<|im_end|>', '<|endoftext|>'],
+    abortSignal: o.signal,
+    onData: (chunk) => {
+      if (!chunk) return;
+      if (chunk.timings) timings = chunk.timings;
+      const p = chunk.prompt_progress;
+      if (p && p.total > 0) o.onPrompt(Math.max(0, p.processed - p.cache), Math.max(1, p.total - p.cache));
+      const choice = chunk.choices && chunk.choices[0];
+      if (choice && choice.finish_reason) finish = choice.finish_reason;
+      if (choice && choice.text && o.maxTokens > 0) o.onRaw(choice.text);
+    },
+  }, o.gen, o.grammar ? { grammar: o.grammar } : {}));
+  // A worker that doesn't let go within 5 s of being stopped is shut down.
+  let late = 0;
+  const onAbort = () => { late = setTimeout(() => workerDied({ message: 'the worker didn\'t stop' }), 5000); };
+  o.signal.addEventListener('abort', onAbort, { once: true });
+  return guard(call).then(() => ({
+    finish, tokens: timings ? timings.predicted_n : 0, promptTokens: timings ? timings.prompt_n : null, cachedTokens: timings ? timings.cache_n : null, tokensPerSec: timings ? timings.predicted_per_second : 0,
+  })).finally(() => { clearTimeout(late); o.signal.removeEventListener('abort', onAbort); });
+}
 
+// A page that dies while the in-app engine works (the WebView ran out of memory, and the app
+// rebuilt it) leaves this mark; lastCrash() finds it on the next start.
+const ACTIVE = 'gh.llm.active';
+function mark(c) { if (c.engine === 'wasm') { try { G.localStorage.setItem(ACTIVE, JSON.stringify({ id: c.id, at: now() })); } catch (e) { /* ignore */ } } }
+function unmark() { try { G.localStorage.removeItem(ACTIVE); } catch (e) { /* ignore */ } }
+// { id, at } when the page crashed while the in-app engine was loading or answering (once).
+function lastCrash() {
+  let v = null;
+  try { v = JSON.parse(G.localStorage.getItem(ACTIVE) || 'null'); } catch (e) { v = null; }
+  unmark();
+  if (!v || !v.id || !(now() - v.at < 30 * 60000)) return null;
+  // The app counts renderer crashes; a page closed any other way (swiped away) isn't one.
+  try { const b = bridge(); if (b && b.rendererGone && !(Number(b.rendererGone()) > 0)) return null; } catch (e) { /* assume it was */ }
+  return v;
+}
+
+/* ------------------------------------------------------------------ loading */
 async function doLoad(m, opts) {
   if (current && current.id === m.id) { touch(); return info(); }
   const av = available();
   if (!av.ok) throw llmError('unavailable', av.reason);
   if (!fits(m)) throw llmError('memory');
   if (current) await stop();
+  const report = opts.report;
+  const t0 = now();
+  if (nativeOk(m)) {
+    try {
+      const e = await nativeLoad(m, report);
+      current = { id: m.id, engine: 'native', m, ctx: Number(e.ctx) || m.ctx, gpu: false, threads: Number(e.threads) || 0, about: String(e.info || '') };
+      log('log', [`loaded ${m.id} (native, ${current.threads} threads) in ${now() - t0} ms`]);
+      touch();
+      return Object.assign(info(), { ms: now() - t0 });
+    } catch (e) {
+      // Not installed, or not enough memory: the in-app engine would fail the same way (or take the
+      // page down with it).
+      if (e.code === 'not-installed' || e.code === 'memory') throw e;
+      nat.bad[m.id] = true;
+      log('warn', ['native load failed, using the in-app engine:', e.message, e.detail || '']);
+    }
+  }
+  if (!wasmSupported()) throw llmError('unavailable', 'On-device AI needs a newer Android System WebView. Update it from the Play Store.');
   let file = m.file;
   let bytes = 0;
   if (bridge() && bridge().modelList) {
@@ -518,46 +746,50 @@ async function doLoad(m, opts) {
     bytes = await probeSize(fileUrl(file)).catch(() => 0);
   }
   if (!(bytes > 0)) throw llmError('not-installed');
-  const report = typeof opts.onProgress === 'function' ? opts.onProgress : null;
   let read = 0;
-  const onRead = (n) => {
-    read += n;
-    if (report) { try { report({ loaded: Math.min(read, bytes), total: bytes }); } catch (e) { /* ignore */ } }
-  };
-  const t0 = now();
+  const onRead = (n) => { read += n; report({ loaded: Math.min(read, bytes), total: bytes }); };
   let gpu = opts.preferGpu !== false && await gpuUsable();
   let w;
+  mark({ id: m.id, engine: 'wasm' });
   try {
-    w = await startWorker(m, file, bytes, gpu, onRead, null);
-  } catch (e) {
-    // The GPU failed (don't try it again on this phone): the CPU. Or threads did: one thread. A CPU
-    // load on one thread already (Android's WebView has no SharedArrayBuffer) or out of memory
-    // would only fail again the same way, after reading the whole file a second time.
-    if (gpu) { log('warn', ['WebGPU load failed, using the CPU:', e]); markGpuBad(); } else {
-      const why = explain(e, 'load');
-      if (!threaded() || why.code === 'memory') throw why;
-      log('warn', ['Load failed, trying one thread:', e]);
+    try {
+      w = await startWorker(m, file, bytes, gpu, onRead, null);
+    } catch (e) {
+      // The GPU failed (don't try it again on this phone): the CPU. Or threads did: one thread. A CPU
+      // load on one thread already (Android's WebView has no SharedArrayBuffer) or out of memory
+      // would only fail again the same way, after reading the whole file a second time.
+      if (gpu) { log('warn', ['WebGPU load failed, using the CPU:', e]); markGpuBad(); } else {
+        const why = explain(e, 'load');
+        if (!threaded() || why.code === 'memory' || why.code === 'stalled') throw why;
+        log('warn', ['Load failed, trying one thread:', e]);
+      }
+      gpu = false;
+      read = 0;
+      try { w = await startWorker(m, file, bytes, false, onRead, 1); } catch (e2) { throw explain(e2, 'load'); }
     }
-    gpu = false;
-    read = 0;
-    try { w = await startWorker(m, file, bytes, false, onRead, 1); } catch (e2) { throw explain(e2, 'load'); }
+  } finally {
+    unmark();
   }
-  current = { id: m.id, w, gpu, ctx: m.ctx, file, m, threads: w.getNumThreads ? w.getNumThreads() : 1 };
-  log('log', [`loaded ${m.id} on the ${gpu ? 'GPU' : 'CPU'} in ${now() - t0} ms`]);
+  current = { id: m.id, engine: 'wasm', w, gpu, ctx: m.ctx, file, m, threads: w.getNumThreads ? w.getNumThreads() : 1 };
+  log('log', [`loaded ${m.id} (in-app, ${gpu ? 'GPU' : 'CPU'}) in ${now() - t0} ms`]);
   touch();
   return Object.assign(info(), { ms: now() - t0 });
 }
 
-// Loads a downloaded model: resolves with { id, gpu, ctx, ms }. onProgress({ loaded, total }) follows
-// the model file being read. preferGpu (default true) uses WebGPU when the self-test passes.
+// Loads a downloaded model: resolves with { id, engine, gpu, ctx, threads, ms }. onProgress({ loaded,
+// total }) follows the loading, including for a caller that joins a load already under way.
+// preferGpu (default true) lets the in-app engine use WebGPU when its self-test passes.
 function load(id, opts = {}) {
   let m;
   try { m = model(id); } catch (e) { return Promise.reject(e); }
   lastLoad = { id: m.id, preferGpu: opts.preferGpu };
+  const listen = typeof opts.onProgress === 'function' ? opts.onProgress : null;
   if (current && current.id === m.id && !pending) { touch(); return Promise.resolve(info()); }
-  if (pending && pending.id === m.id) return pending.promise;
-  const promise = serial(() => doLoad(m, opts));
-  pending = { id: m.id, promise };
+  if (pending && pending.id === m.id) { if (listen) pending.listeners.add(listen); return pending.promise; }
+  const listeners = new Set(listen ? [listen] : []);
+  const report = (p) => { for (const fn of [...listeners]) { try { fn(p); } catch (e) { /* one listener's bug mustn't stop the rest */ } } };
+  const promise = serial(() => doLoad(m, { preferGpu: opts.preferGpu, report }));
+  pending = { id: m.id, promise, listeners };
   const clear = () => { if (pending && pending.promise === promise) pending = null; };
   promise.then(clear, clear);
   return promise;
@@ -605,27 +837,45 @@ function visible(raw) {
 
 let chats = Promise.resolve();
 // Answers the conversation with the loaded model (reloading the last one if it went idle) and resolves
-// with the reply. onToken(piece, textSoFar) streams it. Aborting the signal stops generation cleanly
-// and resolves with the text so far (stats.aborted is true). One chat runs at a time; others wait.
+// with the reply. onToken(piece, textSoFar) streams it; onPrompt(done, total) follows the model
+// reading the prompt; onLoadProgress({ loaded, total }) a reload. grammar (GBNF) holds the reply to
+// a shape. Aborting the signal stops cleanly and resolves with the text so far (stats.aborted is
+// true). One chat runs at a time; others wait.
 function chat(messages, opts = {}) {
   const job = chats.then(() => runChat(messages, opts));
   chats = job.then(() => {}, () => {});
   return job;
 }
+// Reads the system prompt ahead of the first question, so the answer starts sooner (the question's
+// prompt begins the same way, and the engines keep it). Loads the model first if needed.
+function prepare(system, opts = {}) {
+  const job = chats.then(() => runChat([{ role: 'system', content: String(system || '') }], Object.assign({}, opts, { readOnly: true })));
+  chats = job.then(() => {}, () => {});
+  return job;
+}
 
 async function runChat(messages, opts) {
-  const msgs = clean(messages);
+  const msgs = opts.readOnly ? messages.filter((m) => m && m.role === 'system') : clean(messages);
+  if (!msgs.length) throw llmError('empty');
   const signal = opts.signal;
   if (signal && signal.aborted) return '';
-  if (!current || pending) {
+  const ensure = async () => {
+    if (current && !pending) return;
     const id = (pending && pending.id) || (lastLoad && lastLoad.id);
     if (!id) throw llmError('not-loaded');
     await load(id, { preferGpu: lastLoad && lastLoad.id === id ? lastLoad.preferGpu : undefined, onProgress: opts.onLoadProgress });
-    if (signal && signal.aborted) return '';
-  }
+  };
+  await ensure();
+  if (signal && signal.aborted) return '';
   try {
     return await generate(current, msgs, opts);
   } catch (e) {
+    if (e.reload) {
+      // The native engine's process was started again without the model: load it and carry on.
+      current = null;
+      await ensure();
+      return generate(current, msgs, opts);
+    }
     if (!e.retryOnCpu) throw e;
     // The GPU crashed before the first word: carry on with the CPU (and don't try the GPU again).
     await load(e.retryOnCpu, { preferGpu: false, onProgress: opts.onLoadProgress });
@@ -636,7 +886,11 @@ async function runChat(messages, opts) {
 async function generate(c, msgs, opts) {
   if (!c) throw llmError('not-loaded');
   const { onToken, signal } = opts;
-  const maxTokens = Math.max(1, Math.min(Number(opts.maxTokens) || 256, Math.floor(c.ctx / 2)));
+  const readOnly = !!opts.readOnly;
+  const maxTokens = readOnly ? 0 : Math.max(1, Math.min(Number(opts.maxTokens) || 256, Math.floor(c.ctx / 2)));
+  const m = c.m || {};
+  const gen = Object.assign({}, DEFAULT_GEN, m.gen || {}, opts.temperature != null ? { temperature: Number(opts.temperature) } : {});
+  const prompt = readOnly ? chatml(msgs, m, false) : chatml(fit(msgs, c.ctx, maxTokens), m);
   const ctrl = new AbortController();
   const abort = () => ctrl.abort();
   if (signal) signal.addEventListener('abort', abort, { once: true });
@@ -647,67 +901,62 @@ async function generate(c, msgs, opts) {
   let text = '';
   let pieces = 0;
   let first = 0;
-  let timings = null;
-  let finish = null;
+  let st = null;
   let aborted = false;
+  let stalled = false;
+  const dog = watchdog(cfg.stall.answer, () => { stalled = true; log('warn', ['answer stalled']); ctrl.abort(); });
   const t0 = now();
-  const m = c.m || {};
-  const gen = Object.assign({}, DEFAULT_GEN, m.gen || {});
+  const onRaw = (piece) => {
+    dog.poke();
+    pieces++;
+    raw += piece;
+    const next = visible(raw);
+    if (next === text) return;
+    // Only what's new since the last piece shown (a hidden tag can make it shorter: then resend).
+    const add = next.startsWith(text) ? next.slice(text.length) : next;
+    text = next;
+    if (!first) first = now();
+    if (onToken) { try { onToken(add, text); } catch (e) { /* a UI bug mustn't stop the answer */ } }
+  };
+  const onPrompt = (done, total) => {
+    dog.poke();
+    if (opts.onPrompt) { try { opts.onPrompt(done, total); } catch (e) { /* ignore */ } }
+  };
+  mark(c);
   try {
-    await c.w.createChatCompletion(Object.assign({
-      messages: fit(msgs, c.ctx, maxTokens),
-      stream: true,
-      max_tokens: maxTokens,
-      // cache_prompt keeps the unchanged start of the conversation (the system prompt, earlier turns)
-      // in the cache, so only the new part is processed each turn.
-      cache_prompt: true,
-      stop: ['<|im_end|>', '<|endoftext|>'],
-      abortSignal: ctrl.signal,
-      onData: (chunk) => {
-        const choice = chunk && chunk.choices && chunk.choices[0];
-        if (chunk && chunk.timings) timings = chunk.timings;
-        if (choice && choice.finish_reason) finish = choice.finish_reason;
-        const delta = choice && choice.delta && choice.delta.content;
-        if (!delta) return;
-        pieces++;
-        raw += delta;
-        const next = visible(raw);
-        if (next === text) return;
-        // Only what's new since the last piece shown (a hidden tag can make it shorter: then resend).
-        const piece = next.startsWith(text) ? next.slice(text.length) : next;
-        text = next;
-        if (!first) first = now();
-        if (onToken) { try { onToken(piece, text); } catch (e) { /* a UI bug mustn't stop the answer */ } }
-      },
-    }, gen, opts.temperature != null ? { temperature: Number(opts.temperature) } : {},
-    // Qwen3 and 3.5 templates think before answering unless told not to.
-    m.think ? { chat_template_kwargs: { enable_thinking: false } } : {}));
+    st = await (c.engine === 'native' ? nativeRun : wasmRun)(c, { prompt, gen, maxTokens, grammar: opts.grammar, signal: ctrl.signal, onRaw, onPrompt });
+    aborted = !!st.aborted || ctrl.signal.aborted;
   } catch (e) {
-    if (isAbort(e) || ctrl.signal.aborted) {
+    if (!stalled && (isAbort(e) || (ctrl.signal.aborted && !(e && e.code)))) {
       aborted = true;
     } else {
-      const err = explain(e, 'chat');
-      if (err.code === 'crashed' || err.code === 'memory') {
-        // The worker is gone (or short of memory): drop it, so the next chat starts a fresh one.
+      const err = stalled ? llmError('stalled', e && e.message) : explain(e, 'chat');
+      if (c.engine === 'wasm' && ['crashed', 'memory', 'stalled'].includes(err.code)) {
+        // The worker is gone, short of memory or stuck: drop it, so the next chat starts a fresh one.
         if (current === c) { current = null; try { await c.w.exit(); } catch (x) { /* ignore */ } }
-        if (c.gpu) { markGpuBad(); if (!text) err.retryOnCpu = c.id; }
+        if (c.gpu && err.code !== 'stalled') { markGpuBad(); if (!text) err.retryOnCpu = c.id; }
       }
       throw err;
     }
   } finally {
+    dog.stop();
+    unmark();
     if (signal) signal.removeEventListener('abort', abort);
     running = null;
     finished();
     const genMs = first ? now() - first : 0;
-    stats = {
-      id: c.id, gpu: c.gpu, aborted, finish, ms: now() - t0,
-      tokens: (timings && timings.predicted_n) || pieces,
-      promptTokens: timings ? timings.prompt_n : null,
-      cachedTokens: timings ? timings.cache_n : null,
-      tokensPerSec: timings && timings.predicted_per_second ? timings.predicted_per_second : genMs > 0 ? (pieces * 1000) / genMs : 0,
-    };
+    if (!readOnly) {
+      stats = {
+        id: c.id, engine: c.engine, gpu: c.gpu, aborted, finish: st ? st.finish : null, ms: now() - t0, firstMs: first ? first - t0 : null,
+        tokens: (st && st.tokens) || pieces,
+        promptTokens: st ? st.promptTokens : null,
+        cachedTokens: st ? st.cachedTokens : null,
+        tokensPerSec: st && st.tokensPerSec ? st.tokensPerSec : genMs > 0 ? (pieces * 1000) / genMs : 0,
+      };
+    }
     touch();
   }
+  if (stalled) throw llmError('stalled');
   // A reply that was all thinking (it never got to an answer before the token limit): better its
   // words than nothing.
   if (!text.trim() && raw.trim() && !aborted) {
@@ -717,12 +966,54 @@ async function generate(c, msgs, opts) {
   return text;
 }
 
+/* ------------------------------------------------------------------ self-test */
+// For Settings: which engine runs here, how long the model takes to load and to start answering,
+// how fast it writes, what the phone and WebView are, and the recent log. onStep(text) narrates.
+async function selfTest(id, onStep) {
+  const step = (t) => { if (onStep) { try { onStep(t); } catch (e) { /* ignore */ } } };
+  const ua = String((G.navigator && G.navigator.userAgent) || '');
+  const out = {
+    at: new Date().toISOString(),
+    native: Object.assign({}, nativeAbout(), { off: nat.off, failed: Object.keys(nat.bad) }),
+    webview: (/Chrome\/([\d.]+)/.exec(ua) || [])[1] || null,
+    wasm: wasmSupported(),
+    ram: ramGB(),
+    model: id,
+  };
+  try {
+    const m = model(id);
+    const have = (await installed()).find((x) => x.id === id);
+    out.file = have ? { bytes: have.bytes, expected: m.bytes, ok: Math.abs(have.bytes - m.bytes) <= m.bytes * 0.006 } : null;
+    if (!have) throw llmError('not-installed');
+    if (current && current.id === id) await unload();
+    step('Loading the model');
+    const t0 = now();
+    const loaded = await load(id, { onProgress: (p) => { if (p && p.total) step(`Loading the model ${Math.round((p.loaded / p.total) * 100)}%`); } });
+    out.loadMs = now() - t0;
+    out.engine = loaded.engine;
+    out.threads = loaded.threads;
+    out.gpu = loaded.gpu;
+    out.about = current && current.about ? current.about : null;
+    step('Writing a short answer');
+    const reply = await chat([{ role: 'system', content: 'You are a helpful assistant. Be brief.' }, { role: 'user', content: 'In one sentence, why does sleep help muscles recover?' }], { maxTokens: 48 });
+    out.reply = reply.slice(0, 200);
+    out.stats = stats;
+    out.ok = !!reply.trim();
+  } catch (e) {
+    out.ok = false;
+    out.error = `${e.code || 'error'}: ${e.message}${e.detail ? ` (${e.detail})` : ''}`;
+  }
+  out.log = LOG.slice(-40);
+  return out;
+}
+
 GH.llm = {
   get MODELS() { return cfg.models; },
-  configure, available, offered, recommended, ramGB, visible,
+  configure, available, offered, recommended, ramGB, visible, chatml,
   installed, freeSpace, download, cancel, remove, status, onProgress,
-  load, loaded: info, unload, chat,
+  load, loaded: info, unload, chat, prepare, selfTest, lastCrash,
   get stats() { return stats; },
+  get engine() { return nativeOk() ? 'native' : 'wasm'; },
   logs: () => LOG.slice(),
   MESSAGES,
 };

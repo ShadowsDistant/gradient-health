@@ -167,15 +167,19 @@ public final class Bridge {
         Haptics.setLevel(level);
     }
 
-    /** False when the phone's own touch feedback is switched off (UI taps are then skipped). */
+    /**
+     * False when the phone's own touch feedback is switched off: taps, ticks, toggles and detents are
+     * then skipped, and the other kinds (workout and other events) still play.
+     */
     @JavascriptInterface
     public boolean hapticsSystemEnabled() {
         return Haptics.systemTouchFeedback(activity);
     }
 
     /**
-     * A short haptic by name: tap, select, tick, toggleOn, toggleOff, success, error, heavy, go,
-     * done, celebrate. Follows the system's touch-feedback setting.
+     * A haptic by name, each with its own feel (see Haptics): tap, select, tick, toggleOn, toggleOff
+     * and detent for the UI; countdown, go, done, success, warning, error, heavy and celebrate for
+     * events. An unknown name plays a tap.
      */
     @JavascriptInterface
     public void haptic(final String kind) {
@@ -606,6 +610,72 @@ public final class Bridge {
 
     private ModelStore models() {
         return ModelStore.get(activity);
+    }
+
+    // ---------------------------------------------------------------- the native engine (LlmService)
+
+    /** {"ok":true,"threads","cores"} when this install can run the native engine here, else {"ok":false}. */
+    @JavascriptInterface
+    public String llmNative() {
+        try {
+            return activity.llm().availableJson();
+        } catch (Throwable t) {
+            return "{\"ok\":false}";
+        }
+    }
+
+    /** Loads an installed model ({"id","ctx","batch"}); events arrive through window.__gh.onLlm. */
+    @JavascriptInterface
+    public boolean llmLoad(String json) {
+        try {
+            JSONObject o = new JSONObject(json);
+            File f = models().installedFile(o.optString("id", ""));
+            if (f == null) {
+                return false;
+            }
+            activity.llm().load(f, o.optInt("ctx", 2048), o.optInt("batch", 256));
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** Writes an answer ({"req","prompt",...sampling,"grammar"?}); see LlmClient for the events. */
+    @JavascriptInterface
+    public boolean llmGenerate(String json) {
+        try {
+            activity.llm().generate(new JSONObject(json));
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** Stops the answer for this request (or drops it if it hasn't started). */
+    @JavascriptInterface
+    public void llmAbort(String req) {
+        try {
+            activity.llm().abort(req == null ? "" : req);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** Frees the model's memory. */
+    @JavascriptInterface
+    public void llmUnload() {
+        try {
+            activity.llm().unload();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * How many times the page's renderer has crashed since the app started. The page uses it to tell
+     * an out-of-memory crash while the in-app model worked from the app simply being closed.
+     */
+    @JavascriptInterface
+    public int rendererGone() {
+        return MainActivity.rendererGoneCount;
     }
 
     private void deliverHealthFailure(String error) {

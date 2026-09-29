@@ -1,0 +1,108 @@
+# Runs a real on-device model (downloaded from Hugging Face, which the tests can't do) through both of
+# the coach's engines: the in-app one (WebAssembly, in Chromium) and the native one (built for the
+# runner, and by hand also on an arm64 runner like a phone's CPU). Prints the answers, timings and the
+# file's size and SHA-256, to pin in src/llm.js. It runs when the coach's engine code changes (with the
+# Fast model), or by hand from the Actions tab with any size.
+name: Model check
+
+on:
+  push:
+    branches: [main, 'claude/**']
+    paths:
+      - src/llm.js
+      - src/devicecoach.js
+      - src/tailor.js
+      - android/jni/**
+      - test/model-check.mjs
+      - .github/workflows/model-check.yml
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Which size: fast (0.8B), balanced (2B) or best (4B)'
+        default: fast
+        type: choice
+        options: [fast, balanced, best]
+      arm:
+        description: 'Also on an arm64 runner (needs arm64 runners for this repository)'
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  in-app:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Which model
+        id: which
+        run: echo "file=$(case '${{ inputs.model }}' in balanced) echo Qwen3.5-2B-Q4_K_M.gguf ;; best) echo Qwen3.5-4B-Q4_K_M.gguf ;; *) echo Qwen3.5-0.8B-Q4_K_M.gguf ;; esac)" >> "$GITHUB_OUTPUT"
+      - name: Cache the model
+        uses: actions/cache@v4
+        with:
+          path: build/${{ steps.which.outputs.file }}
+          key: model-${{ steps.which.outputs.file }}
+      - name: Download the model
+        id: model
+        run: |
+          case "${{ inputs.model }}" in
+            balanced) f=Qwen3.5-2B-Q4_K_M.gguf; repo=unsloth/Qwen3.5-2B-GGUF; id=q35-2 ;;
+            best) f=Qwen3.5-4B-Q4_K_M.gguf; repo=unsloth/Qwen3.5-4B-GGUF; id=q35-4 ;;
+            *) f=Qwen3.5-0.8B-Q4_K_M.gguf; repo=unsloth/Qwen3.5-0.8B-GGUF; id=q35-08 ;;
+          esac
+          mkdir -p build
+          [ -s "build/$f" ] || curl -fsSL --retry 3 -o "build/$f" "https://huggingface.co/$repo/resolve/main/$f"
+          echo "file=build/$f" >> "$GITHUB_OUTPUT"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "$f: $(stat -c %s "build/$f") bytes, SHA-256 $(sha256sum "build/$f" | cut -d' ' -f1)"
+      - name: Playwright and Chromium
+        run: npm install --no-save playwright@1.56.1 && npx playwright install --with-deps chromium
+      - run: node test/model-check.mjs "${{ steps.model.outputs.file }}" "${{ steps.model.outputs.id }}"
+
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.arm && '["ubuntu-24.04", "ubuntu-24.04-arm"]' || '["ubuntu-24.04"]') }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Which model
+        id: which
+        run: echo "file=$(case '${{ inputs.model }}' in balanced) echo Qwen3.5-2B-Q4_K_M.gguf ;; best) echo Qwen3.5-4B-Q4_K_M.gguf ;; *) echo Qwen3.5-0.8B-Q4_K_M.gguf ;; esac)" >> "$GITHUB_OUTPUT"
+      - name: Cache the model
+        uses: actions/cache@v4
+        with:
+          path: build/${{ steps.which.outputs.file }}
+          key: model-${{ steps.which.outputs.file }}
+      - name: Download the model
+        id: model
+        run: |
+          case "${{ inputs.model }}" in
+            balanced) f=Qwen3.5-2B-Q4_K_M.gguf; repo=unsloth/Qwen3.5-2B-GGUF ;;
+            best) f=Qwen3.5-4B-Q4_K_M.gguf; repo=unsloth/Qwen3.5-4B-GGUF ;;
+            *) f=Qwen3.5-0.8B-Q4_K_M.gguf; repo=unsloth/Qwen3.5-0.8B-GGUF ;;
+          esac
+          mkdir -p build
+          [ -s "build/$f" ] || curl -fsSL --retry 3 -o "build/$f" "https://huggingface.co/$repo/resolve/main/$f"
+          echo "file=build/$f" >> "$GITHUB_OUTPUT"
+      - name: Build the native engine for this runner
+        run: |
+          git clone -q --depth 1 --branch b10663 https://github.com/ggml-org/llama.cpp build/llama.cpp
+          test "$(git -C build/llama.cpp rev-parse HEAD)" = 83d855c5a6d70487121edbf4020b25c96b7a04e7
+          cmake -S android/jni -B build/native-host -DLLAMA_SRC=build/llama.cpp -DGHLLM_HOST_TEST=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/native-host -j 4 --target ghllm_ask
+      - name: Ask it
+        run: |
+          node -e "global.window=global;require('./src/tailor.js');require('fs').writeFileSync('build/tailor.gbnf', GH.tailor.GRAMMAR)"
+          build/native-host/ghllm_ask "${{ steps.model.outputs.file }}" 4 build/tailor.gbnf

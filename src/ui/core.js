@@ -330,7 +330,9 @@
   function applyNavbar(nb) {
     const part = (sel) => (nb ? nb.querySelector(sel) : null);
     const lead = part('.rf-navbar-leading'), title = part('.rf-navbar-title'), trail = part('.rf-navbar-trailing');
-    U.morph(topbar.querySelector('.rf-navbar-leading'), lead ? lead.innerHTML : '');
+    // Every tab's top left is the coach (a page opened on top has its Back button there instead).
+    const leading = lead && lead.innerHTML.trim() ? lead.innerHTML : !U.route.view && U.coachBtn ? U.coachBtn() : '';
+    U.morph(topbar.querySelector('.rf-navbar-leading'), leading);
     U.morph(topbar.querySelector('.rf-navbar-trailing'), trail ? trail.innerHTML : '');
     const t = topbar.querySelector('.rf-navbar-title');
     const text = title ? title.textContent : '';
@@ -546,7 +548,11 @@
   /* ---------------------------------------------------------------- sheets, dialogs, toasts */
   const openSheets = [];
   // U.sheet({ title, body, detent, action: {label, act}, onClose, cls }) → { el, close, body }
-  U.sheet = (o) => {
+  // o.size: 'fit' (as tall as its content), 'auto' (fits its content, swipe up for full height) or
+  // 'full'. Older calls pass detents/detent/fit instead.
+  const SIZES = { fit: { detents: 'medium', detent: 'medium', fit: true }, auto: { detents: 'medium large', detent: 'medium' }, full: { detents: 'large', detent: 'large' } };
+  U.sheet = (o0) => {
+    const o = o0.size && SIZES[o0.size] ? Object.assign({}, o0, SIZES[o0.size]) : o0;
     const el = doc.createElement('dialog');
     el.className = 'rf-sheet rf-glass' + (o.fit ? ' sheet-fit' : '') + (o.cls ? ' ' + o.cls : '');
     el.setAttribute('data-detents', o.detents || 'medium large');
@@ -613,7 +619,8 @@
   };
   U.toast = (title, tone, message, action) => {
     if (tone === 'positive') U.haptic('success');
-    else if (tone === 'critical' || tone === 'caution') U.haptic('error');
+    else if (tone === 'critical') U.haptic('error');
+    else if (tone === 'caution') U.haptic('warning');
     const r = R();
     if (r && r.toast) { try { return r.toast({ title, message, tone: tone || 'neutral', action, position: 'top' }); } catch (e) { /* ignore */ } }
     return null;
@@ -696,7 +703,7 @@
       ptrEl.style.transform = `translateY(${d}px) rotate(${d * 3}deg)`;
       ptrEl.style.opacity = String(Math.min(1, d / 56));
       const armed = d >= 64;
-      if (armed !== pull.armed) { pull.armed = armed; ptrEl.classList.toggle('armed', armed); if (armed) U.haptic('tick'); }
+      if (armed !== pull.armed) { pull.armed = armed; ptrEl.classList.toggle('armed', armed); if (armed) U.haptic('detent'); }
     }, { passive: true });
     const end = () => {
       if (!pull) return;
@@ -723,6 +730,8 @@
       P().applyTheme(p.theme || 'system', !!p.contrast);
       if (p.density != null) P().setDensity(p.density);
     }
+    // The background glow drifts unless it's switched off (Settings, Look).
+    doc.documentElement.toggleAttribute('data-still-glow', p.glowMove === false);
   }
   U.applyPrefs = applyPrefs;
 

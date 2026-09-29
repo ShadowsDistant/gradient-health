@@ -4,7 +4,7 @@
 //   tokens as JSON only), with its fonts inlined as data URIs so the APK works offline.
 // - Bundles src/ai.js (Claude coach, uses @anthropic-ai/sdk) into an IIFE with esbuild.
 // - Inlines Refract's bundle.css/bundle.js and the app's own CSS/JS into src/shell.html.
-import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync, statSync, existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
@@ -12,6 +12,10 @@ import { createHash } from 'node:crypto';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(root, p), 'utf8');
+// The app's styles: src/styles.css, then each file in src/styles/ in name order (one per area).
+const appCss = () => [read('src/styles.css')].concat(existsSync(join(root, 'src/styles'))
+  ? readdirSync(join(root, 'src/styles')).filter((f) => f.endsWith('.css')).sort().map((f) => `/* src/styles/${f} */\n${read(`src/styles/${f}`)}`)
+  : []).join('\n');
 const THEMES = ['light', 'dark', 'light-contrast', 'dark-contrast'];
 
 export function tokensCss(tokens, { inlineFonts = true } = {}) {
@@ -67,16 +71,20 @@ export const APP_SCRIPTS = [
   'src/data/changelog.js',
   'src/engine/pose.js',
   'src/brain.js',
+  'src/planweek.js',
   'src/insights.js',
+  'src/body.js',
   'src/health.js',
   'src/food.js',
   'src/store.js',
   'src/platform.js',
   'src/foodnet.js',
   'src/coach.js',
+  'src/tailor.js',
   'src/devicecoach.js',
   // ai bundle is injected here
   'src/ui/core.js',
+  'src/ui/sheet.js',
   'src/ui/charts.js',
   'src/ui/guide.js',
   'src/ui/onboarding.js',
@@ -84,8 +92,12 @@ export const APP_SCRIPTS = [
   'src/ui/today.js',
   'src/ui/plan.js',
   'src/ui/healthtab.js',
+  'src/ui/metric.js',
+  'src/ui/chat.js',
+  'src/ui/tailor.js',
   'src/ui/food.js',
   'src/scanner.js',
+  'src/ui/bodymap.js',
   'src/ui/progress.js',
   'src/ui/moves.js',
   'src/ui/profile.js',
@@ -170,7 +182,7 @@ async function main() {
   let html = shell
     .replace('<!--@TOKENS-->', () => `<style>${safeCss(tokensCss(tokens))}</style>`)
     .replace('<!--@REFRACT_CSS-->', () => `<style>${safeCss(read('vendor/refract/bundle.css'))}</style>`)
-    .replace('<!--@APP_CSS-->', () => `<style>${safeCss(read('src/styles.css'))}</style>`)
+    .replace('<!--@APP_CSS-->', () => `<style>${safeCss(appCss())}</style>`)
     .replace('<!--@REFRACT_JS-->', () => `<script>${safeJs(read('vendor/refract/bundle.js'))}</script>`)
     .replace('<!--@APP_JS-->', () => scripts.join('\n'));
   for (const marker of ['<!--@TOKENS-->', '<!--@REFRACT_CSS-->', '<!--@APP_CSS-->', '<!--@REFRACT_JS-->', '<!--@APP_JS-->']) {

@@ -204,7 +204,7 @@
     if (AFTER[st.id] && changed) AFTER[st.id](el);
   }
   U.act.obNext = () => { stopPlank(); idx++; dir = 1; U.haptic('tap'); draw(); };
-  U.act.obSkipTest = () => { stopPlank(); Q._base = { pushups: null, knees: false, plankSec: null, curlL: null, curlR: null }; idx++; dir = 1; draw(); };
+  U.act.obSkipTest = () => { stopPlank(); Q._base = { pushups: null, knees: false, plankSec: null, curlL: null, curlR: null }; idx++; dir = 1; U.haptic('tap'); draw(); };
   U.act.obBack = () => { stopPlank(); if (!U.onboardBack()) { /* first screen of a new set-up: nothing behind it */ } };
 
   /* ---------------------------------------------------------------- generic answer binding */
@@ -510,7 +510,7 @@
       const btn = document.getElementById('plankBtn');
       if (!el || !plank) return;
       const ms = Date.now() - plank.start;
-      if (ms < 0) { const s = Math.ceil(-ms / 1000); el.textContent = String(s); if (s !== lastShown && GH.platform) GH.platform.cue('tick'); lastShown = s; }
+      if (ms < 0) { const s = Math.ceil(-ms / 1000); el.textContent = String(s); if (s !== lastShown && GH.platform) GH.platform.cue('countdown'); lastShown = s; }
       else { if (lastShown !== 0 && GH.platform) GH.platform.cue('go'); lastShown = 0; el.textContent = U.fmtDur(ms / 1000); }
       if (btn) btn.textContent = 'Stop';
     };
