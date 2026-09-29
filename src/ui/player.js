@@ -92,8 +92,10 @@
 
   /* ---------------------------------------------------------------- figures */
   // The 3D figure (a lazy three.js chunk) when the phone has WebGL and it's picked in Settings, else
-  // the flat one. Callers hold a controller that swaps its figure underneath: flat while the chunk
-  // loads the first time, 3D once it's there, and flat again if the GPU gives up.
+  // the flat one. Callers hold a controller that swaps its figure underneath. The flat figure shows
+  // and moves straight away; the 3D one mounts out of sight on top of it once the chunk is loaded and
+  // the GPU is warmed up, and takes over when its first frame is drawn, so the box is never empty.
+  // If 3D hasn't drawn within 3 s, or the GPU gives up, the flat figure stays.
   const want3d = () => ((U.S && U.S.profile.prefs.figure) || '3d') === '3d';
   function load3d() {
     if (!want3d() || !GH.lazy) return Promise.resolve(null);
@@ -123,54 +125,123 @@
     return { dark: String(P2().currentTheme()).startsWith('dark'), skin: pr.figSkin || 'sand', shirt: pr.figShirt || undefined };
   }
   const P2 = () => GH.platform;
+  // Figures that went flat because the phone took the GPU back while the app was in the background
+  // try 3D again once it's in front, after a moment so the app settles first.
+  const whenShownFns = new Set();
+  let whenShownHooked = false;
+  function whenShown(fn) {
+    whenShownFns.add(fn);
+    if (whenShownHooked) return;
+    whenShownHooked = true;
+    const go = () => {
+      if (document.hidden || !whenShownFns.size) return;
+      const fns = [...whenShownFns];
+      whenShownFns.clear();
+      setTimeout(() => { for (const f of fns) { try { f(); } catch (e) { /* one figure mustn't stop the rest */ } } }, 500);
+    };
+    document.addEventListener('visibilitychange', go);
+    if (P2() && P2().on) P2().on('resume', go);
+  }
+  let chunkFails = 0; // the chunk didn't load: tried again a couple of times, then left flat
   function figure(host, m, o) {
-    let inner = null, at = host, playing = false, dead = false, is3d = false;
+    let inner = null, pending = null, at = host, playing = false, dead = false, is3d = false;
+    let view = null, giveUp = 0, retries = 0, busy = false, flatShown = false;
     const ctl = {
       get el() { return inner.el; },
       get duration() { return inner.duration; },
       get is3d() { return is3d; },
       onPhase: null,
       // Move the figure into another box (the player redraws its card between steps).
-      attach(el) { at = el; if (inner.el.parentNode !== el) el.appendChild(inner.el); },
-      play() { playing = true; inner.play(); },
-      pause() { playing = false; inner.pause(); },
+      attach(el) {
+        at = el;
+        for (const f of [inner, pending]) if (f && f.el.parentNode !== el) el.appendChild(f.el);
+        wake();
+        upgrade();
+      },
+      play() { playing = true; inner.play(); if (pending) pending.play(); upgrade(); },
+      pause() { playing = false; inner.pause(); if (pending) pending.pause(); },
       playOnce() { if (inner.playOnce) inner.playOnce(); },
-      setView(v) { if (is3d && inner.setView) inner.setView(v); },
-      destroy() { dead = true; inner.destroy(); },
+      setView(v) { view = v; if (is3d && inner.setView) inner.setView(v); },
+      destroy() { dead = true; whenShownFns.delete(retry); dropPending(); inner.destroy(); },
     };
+    const wake = () => { for (const f of [inner, pending]) if (f && f.wake) f.wake(); };
+    const retry = () => { if (!dead) upgrade(); };
     const flat = () => {
       is3d = false;
       inner = GH.pose.mount(at, m, o);
       if (playing) inner.play();
+      flatShown = false;
+      G.requestAnimationFrame(() => { flatShown = true; }); // on screen from the next paint
     };
-    const solid = (f) => {
-      is3d = true;
-      inner = f.mount(at, m, Object.assign({}, o, look(), {
-        onFallback: (failed) => {
-          try { failed.destroy(); } catch (e) { /* already gone */ }
-          if (dead) return;
-          flat();
-          fadeIn(inner.el);
-          if (ctl.onPhase) ctl.onPhase(null);
-        },
-      }));
-      inner.onPhase = (p) => { if (!dead && ctl.onPhase) ctl.onPhase(p); };
-      if (playing) inner.play();
-    };
-    const f = GH.figure3d;
-    if (want3d() && f && f.supported()) solid(f);
-    else {
-      flat();
-      if (want3d() && !f) {
-        load3d().then((f2) => {
-          if (dead || !f2 || !f2.supported() || !inner.el.isConnected) return;
-          const old = inner;
-          solid(f2);
-          old.destroy();
-          fadeIn(inner.el);
-        });
-      }
+    function dropPending() {
+      if (giveUp) { clearTimeout(giveUp); giveUp = 0; }
+      const p = pending;
+      pending = null;
+      if (p) { try { p.destroy(); } catch (e) { /* already gone */ } }
     }
+    // The 3D figure has drawn a frame: it takes over at the same point in the rep. A flat figure that
+    // never reached the screen is simply swapped; one that did crossfades out.
+    function promote(p) {
+      if (giveUp) { clearTimeout(giveUp); giveUp = 0; }
+      pending = null;
+      const old = inner;
+      if (old.time && p.seek) p.seek(old.time());
+      inner = p;
+      is3d = true;
+      p.onPhase = (ph) => { if (!dead && ctl.onPhase) ctl.onPhase(ph); };
+      if (ctl.onPhase && p.phase) ctl.onPhase(p.phase());
+      if (view && p.setView) p.setView(view, true);
+      if (playing) p.play(); else p.pause();
+      p.el.removeAttribute('aria-hidden');
+      p.el.classList.remove('fig-pending');
+      if (!flatShown || U.reduced() || !p.el.animate) { old.destroy(); return; }
+      const a = p.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 240, easing: 'ease-out' });
+      a.onfinish = a.oncancel = () => old.destroy();
+    }
+    function onFail(p, info) {
+      try { p.destroy(); } catch (e) { /* already gone */ }
+      if (dead) return;
+      if (p === pending) dropPending(); // never shown: the flat figure just stays
+      else if (p === inner) { // it was showing: back to flat
+        flat();
+        fadeIn(inner.el);
+        if (ctl.onPhase) ctl.onPhase(null);
+      } else return;
+      if (info && info.reason === 'lost' && info.hidden && retries < 2) { retries++; whenShown(retry); }
+    }
+    // Mount the 3D figure out of sight once the chunk is here and the GPU is warm.
+    function upgrade() {
+      if (dead || is3d || pending || busy || !want3d() || !GH.lazy) return;
+      if (!at || !at.isConnected) return; // tried again on the next attach() or play()
+      busy = true;
+      load3d().then((f) => {
+        if (!f) { if (++chunkFails < 3) setTimeout(retry, 10000); return null; }
+        if (!f.supported()) return null;
+        return f.warm && !f.warm() && f.preload ? f.preload().then(() => f) : f;
+      }).then((f) => {
+        busy = false;
+        if (!f || dead || is3d || pending || !f.supported() || !at.isConnected) return;
+        if (document.hidden) { whenShown(retry); return; }
+        const p = f.mount(at, m, Object.assign({}, o, look(), {
+          onReady: (c) => { if (c === pending && !dead) promote(c); },
+          onFallback: (c, info) => onFail(c, info),
+        }));
+        pending = p;
+        p.el.classList.add('fig-pending');
+        p.el.setAttribute('aria-hidden', 'true');
+        if (playing) p.play();
+        // Only time in front counts: a hidden app gets a fresh 3 s once it's back.
+        const check = () => {
+          giveUp = 0;
+          if (pending !== p) return;
+          if (document.hidden) whenShown(() => { if (pending === p) giveUp = setTimeout(check, 3000); });
+          else dropPending();
+        };
+        giveUp = setTimeout(check, 3000);
+      }).catch((e) => { busy = false; if (G.console) G.console.error('figure3d:', e); });
+    }
+    flat();
+    upgrade();
     return ctl;
   }
   // "Control 2 s · Drive 1 s": how long each half of a rep takes, in the order the move starts.
@@ -215,8 +286,13 @@
     if (fig && fig.key === key) fig.ctl.attach(host); // same move: keep the running animation
     else {
       dropFig();
-      try { fig = { key, ctl: figure(host, m, o) }; } catch (e) { fig = null; return; }
-      fadeIn(fig.ctl.el);
+      try { fig = { key, ctl: figure(host, m, o) }; } catch (e) {
+        fig = null;
+        if (G.console) G.console.error('figure:', e);
+        try { host.textContent = ''; GH.pose.thumb(host, m, o); } catch (e2) { /* nothing to show */ }
+        return;
+      }
+      fadeIn(host);
     }
     tempoSync(fig.ctl, host.parentNode);
     if (playing && !covered) fig.ctl.play(); else fig.ctl.pause();
@@ -227,7 +303,7 @@
     if (!m0 || !GH.pose) return null;
     const { m, o } = figOpts({ side, item: { moveId } }, m0);
     const ctl = figure(host, m, o);
-    fadeIn(ctl.el);
+    fadeIn(host);
     tempoSync(ctl, host.parentNode);
     if (playing) ctl.play();
     return ctl;
@@ -613,7 +689,8 @@
     if (!st) return;
     covered = true;
     if (fig) fig.ctl.pause();
-    U.moveSheet(st.item.moveId, { side: st.side, onClose: () => { covered = false; if (P && !root().hidden) draw(); } });
+    const sh = U.moveSheet(st.item.moveId, { side: st.side, onClose: () => { covered = false; if (P && !root().hidden) draw(); } });
+    if (!sh) { covered = false; if (fig) fig.ctl.play(); } // no sheet opened: keep the figure going
   };
   U.act.plMenu = () => {
     const st = cur();

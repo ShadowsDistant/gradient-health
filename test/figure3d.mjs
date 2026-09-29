@@ -260,16 +260,19 @@ const live = await page.evaluate(async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const a = mk('sq_bw');
   const b = mk('push_std');
-  const c = mk('curl_std', { reducedMotion: true });
+  const c = mk('curl_std', { static: true });
+  const e = mk('curl_std', { reducedMotion: true });
   const phases = [];
   a.ctl.onPhase = (p) => phases.push(p.ph);
-  const p0 = px(a.ctl);
-  a.ctl.play(); b.ctl.play(); c.ctl.play();
+  const p0 = px(a.ctl), e0 = px(e.ctl);
+  a.ctl.play(); b.ctl.play(); c.ctl.play(); e.ctl.play();
   // Until a whole rep has gone by (slow software GL can take longer than the rep).
   await wait(1500);
   for (let i = 0; i < 80 && !(phases.includes('con') && phases.includes('ecc')); i++) await wait(100);
   const moved = diff(p0, px(a.ctl));
-  // Reduced motion stays on the key pose until asked for one rep.
+  // Reduced motion still shows the exercise moving (only the camera holds still).
+  const eMoved = diff(e0, px(e.ctl));
+  // A still stays on the key pose until asked for one rep.
   const c0 = px(c.ctl);
   await wait(200);
   const cStill = diff(c0, px(c.ctl)) === 0;
@@ -298,11 +301,12 @@ const live = await page.evaluate(async () => {
   await wait(100);
   GH.figure3d._loseContext();
   await wait(400);
-  for (const m of [a, b, c, d]) { m.ctl.destroy(); m.host.remove(); }
-  return { moved, cStill, cOnce, dragged, viewed, phases: [...new Set(phases)], lost, gone: !document.querySelector('.fig3d') };
+  for (const m of [a, b, c, d, e]) { m.ctl.destroy(); m.host.remove(); }
+  return { moved, eMoved, cStill, cOnce, dragged, viewed, phases: [...new Set(phases)], lost, gone: !document.querySelector('.fig3d') };
 });
 check('a playing figure animates', live.moved > 50, live);
-check('reduced motion holds the key pose, playOnce() plays a rep', live.cStill && live.cOnce, live);
+check('reduced motion still animates the exercise', live.eMoved > 50, live.eMoved);
+check('a still holds the key pose, playOnce() plays a rep', live.cStill && live.cOnce, live);
 check('dragging turns the camera', live.dragged > 50, live.dragged);
 check('setView() animates to another camera', live.viewed > 50, live.viewed);
 check('onPhase fires with lift and lower phases', live.phases.includes('con') && live.phases.includes('ecc'), live.phases);

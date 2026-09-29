@@ -21,8 +21,9 @@
         const s = doc.createElement('script');
         s.src = `lazy/${name}.js`;
         s.async = true;
-        s.onload = () => (GH[name] ? resolve(GH[name]) : reject(new Error(`${name} did not load`)));
-        s.onerror = () => reject(new Error(`${name} could not be loaded`));
+        // A failed script tag goes, so the next try adds a fresh one.
+        s.onload = () => { if (GH[name]) resolve(GH[name]); else { s.remove(); reject(new Error(`${name} did not load`)); } };
+        s.onerror = () => { s.remove(); reject(new Error(`${name} could not be loaded`)); };
         doc.head.appendChild(s);
       }).catch((e) => { delete lazyLoads[name]; throw e; });
     }

@@ -1192,17 +1192,18 @@
   }
 
   /* ---------------------------------------------------------------- animation controller */
-  // mount(container, move, { lead, mirrored, reducedMotion, fps, poseName }) → controller
+  // mount(container, move, { lead, mirrored, static, fps, poseName }) → controller. Only `static`
+  // holds a pose: reduced motion still animates exercises, since the movement is the instruction.
   function mount(container, move, opts) {
     const o = Object.assign({ fps: 30 }, opts);
     const nodes = createFigure(move, o);
     container.appendChild(nodes.svg);
     const tl = move.$tl || (move.$tl = timeline(move));
-    let raf = 0, t0 = 0, playing = false, last = -1, offset = 0;
+    let raf = 0, t0 = 0, playing = false, last = -1, offset = 0, shown = 0;
     const frameMs = 1000 / o.fps;
-    const draw = (t) => updateFigure(nodes, frameAt(move, t));
+    const draw = (t) => { shown = t; updateFigure(nodes, frameAt(move, t)); };
     const keyPose = move.key || tl.steps[0].to;
-    if (o.reducedMotion || o.static) {
+    if (o.static) {
       // Static: the end pose, with the start pose as a faint ghost behind it.
       addGhost(nodes, move, o);
       updateFigure(nodes, framePose(move, keyPose));
@@ -1215,10 +1216,12 @@
     }
     const ctl = {
       el: nodes.svg,
-      play() { if (playing || o.reducedMotion || o.static) return; playing = true; t0 = 0; raf = G.requestAnimationFrame(loop); },
+      play() { if (playing || o.static) return; playing = true; t0 = 0; offset = shown; raf = G.requestAnimationFrame(loop); },
       pause() { playing = false; if (raf) G.cancelAnimationFrame(raf); raf = 0; },
+      // Where in the rep it is (ms), so a figure that replaces this one can carry on from there.
+      time() { return shown % tl.total; },
       playOnce() {
-        // Reduced motion: one rep on request, then back to the key pose.
+        // One rep on request, then back to the key pose (for stills).
         let start = 0;
         const step = (now) => {
           if (!start) start = now;

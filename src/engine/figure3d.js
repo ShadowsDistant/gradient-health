@@ -5,8 +5,8 @@
  * its true segment lengths, so meshes never stretch and planted hands and feet stay put.
  *
  * Loaded on demand with GH.lazy('figure3d'); it sets GH.figure3d = { supported, mount, still,
- * preload }. One shared WebGLRenderer draws every mounted figure and copies each frame into that
- * figure's own 2D canvas, so any number of figures can be on screen with a single GL context.
+ * preload, warm }. One shared WebGLRenderer draws every mounted figure and copies each frame into
+ * that figure's own 2D canvas, so any number of figures can be on screen with a single GL context.
  *
  * Units are centimetres. World axes: +Y up, floor at Y = 0. Side-view moves face +X with the near
  * ("N") limbs at +Z; front-view moves face +Z with N (the figure's left) at +X.
@@ -2572,6 +2572,8 @@ let ENV = null;
 let WARM = null; // a View kept alive after preload() so its shader programs stay compiled
 let preloading = null;
 const live = new Set();
+let shownAt = -Infinity; // when the page last came to the front
+let stalled = false; // tests: figures never draw (a GPU that's stuck compiling)
 // With no figure on screen, the shared canvas shrinks after a moment (its buffers are most of the
 // memory) and the GPU context itself is handed back after a few idle minutes, or 30 s after the app
 // goes to the background. The compiled shaders stay warm until then.
@@ -2633,11 +2635,14 @@ function renderer() {
   canvas.addEventListener('webglcontextlost', (e) => {
     if (me.released) return; // we gave it back
     e.preventDefault();
-    // A loss while the page is hidden is the phone reclaiming memory; a loss while figures are on
-    // screen is the GPU giving up. Twice of those and this session stays with the flat figure.
-    if (live.size && !document.hidden) lostCount++;
+    // A loss while the page is hidden is the phone reclaiming memory (often only reported once the
+    // app is back in front); a loss while figures are on screen is the GPU giving up. Twice of those
+    // and this session stays with the flat figure.
+    const hidden = document.hidden || performanceNow() - shownAt < 2000;
+    if (live.size && !hidden) lostCount++;
     if (lostCount >= 2) SUPPORTED = false;
-    for (const m of [...live]) m.fail(); // each figure frees its view while the renderer still exists
+    // Each figure frees its view while the renderer still exists.
+    for (const m of [...live]) m.fail({ reason: 'lost', hidden });
     if (R === me) forget(me);
   });
   R = me;
@@ -2685,10 +2690,12 @@ function envMap() {
   return ENV;
 }
 
-// Draw a view into a 2D context (w×h device pixels).
+const isLost = (rr) => { try { return rr.r.getContext().isContextLost(); } catch (e) { return true; } };
+// Draw a view into a 2D context (w×h device pixels). A lost context draws nothing, so the figure's
+// canvas keeps its last frame until the loss is handled.
 function draw(view, ctx, w, h) {
   const rr = renderer();
-  if (!rr) return false;
+  if (!rr || isLost(rr)) return false;
   ensureSize(w, h);
   view.render(rr.r, w, h);
   ctx.globalCompositeOperation = 'copy';
@@ -2729,7 +2736,8 @@ function optsOf(o) {
   return {
     reducedMotion: !!o.reducedMotion, static: !!o.static, mirrored: !!o.mirrored, lead: !!o.lead,
     dark: !!o.dark, skin: o.skin || 'sand', shirt: o.shirt || DEFAULT_SHIRT, glow: o.glow || '#ff9f43',
-    onFallback: typeof o.onFallback === 'function' ? o.onFallback : null, fps: o.fps || 30, label: o.label, focus: o.focus,
+    onFallback: typeof o.onFallback === 'function' ? o.onFallback : null, onReady: typeof o.onReady === 'function' ? o.onReady : null,
+    fps: o.fps || 30, label: o.label, focus: o.focus,
   };
 }
 
@@ -2738,7 +2746,7 @@ function hookVisibility() {
   if (visHooked || typeof document === 'undefined') return;
   visHooked = true;
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) { for (const m of live) m.kick(); return; }
+    if (!document.hidden) { shownAt = performanceNow(); for (const m of live) m.kick(); return; }
     if (!live.size && R) { if (releaseTimer) { clearTimeout(releaseTimer); releaseTimer = 0; } maybeRelease(); }
   });
 }
@@ -2780,26 +2788,34 @@ function mount(host, move, opts) {
     if (view) { try { view.dispose(); } catch (e) { /* ignore */ } view = null; }
     if (self) { letGo(self); self = null; }
   };
-  const fallback = () => {
+  // onFallback(ctl, { reason, hidden }): 'unsupported', 'error', 'draw', or 'lost' (hidden: the phone
+  // took the GPU back while the app was in the background, so 3D can be tried again later).
+  const fallback = (info) => {
     if (failed) return;
     teardown();
-    if (o.onFallback) Promise.resolve().then(() => o.onFallback(ctl));
+    if (o.onFallback) Promise.resolve().then(() => o.onFallback(ctl, info || { reason: 'error', hidden: false }));
   };
-  if (!supported() || !renderer()) { fallback(); return ctl; }
+  if (!supported() || !renderer()) { fallback({ reason: 'unsupported', hidden: false }); return ctl; }
   try { view = new View(move, o); } catch (e) {
     if (G.console) G.console.error('figure3d:', e);
-    fallback();
+    fallback({ reason: 'error', hidden: false });
     return ctl;
   }
   hookVisibility();
   const keyPose = view.fig.A.key;
-  const still = o.reducedMotion || o.static;
+  // Only an explicit still holds the key pose. Reduced motion keeps the exercise moving (it's the
+  // content) and just stops the camera drifting and animating between views.
+  const still = o.static;
   const frameMs = 1000 / Math.max(1, Math.min(60, o.fps)) - 1;
   const cam = { yaw: 0, pitch: 0, tYaw: 0, tPitch: 0, drag: null, back: 0, orbit: 0, view: null, anim: null };
   const pr = () => Math.min(G.devicePixelRatio || 1, 2);
   const resize = () => {
     const w = Math.max(1, Math.round(el.clientWidth * pr())), h = Math.max(1, Math.round(el.clientHeight * pr()));
-    if (w !== W || h !== H) { W = w; H = h; canvas.width = w; canvas.height = h; dirty = true; kick(); }
+    if (w === W && h === H) return;
+    W = w; H = h; canvas.width = w; canvas.height = h; dirty = true;
+    // A resized canvas is blank until it's drawn again: draw now (ResizeObserver runs before paint).
+    if (view && !failed && onScreen()) render();
+    kick();
   };
   ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
   if (ro) ro.observe(el);
@@ -2820,13 +2836,22 @@ function mount(host, move, opts) {
       if (typeof ctl.onPhase === 'function') { try { ctl.onPhase(p); } catch (e) { /* app errors stay in the app */ } }
     }
   };
+  let ready = false;
   const render = () => {
     if (!W || !H) resize();
-    if (!W || !H || failed) return;
+    if (!W || !H || failed || stalled) return;
+    // A lost context keeps the last frame; its loss event swaps the figure out.
+    if (R && isLost(R)) return;
     const az = view.base.az + cam.yaw + cam.orbit, el2 = view.base.el + cam.pitch;
     view.camState.az = az; view.camState.el = el2;
-    if (!draw(view, ctx, W, H)) fallback();
+    if (!draw(view, ctx, W, H)) { fallback({ reason: 'draw', hidden: false }); return; }
     dirty = false;
+    // The first real frame is on the canvas: whoever mounted it can show it now.
+    if (!ready && W > 1 && H > 1) {
+      ready = true;
+      el.dataset.ready = '1';
+      if (o.onReady) Promise.resolve().then(() => { if (!failed) o.onReady(ctl); });
+    }
   };
   const onScreen = () => visible && el.isConnected && !(typeof document !== 'undefined' && document.hidden);
   function tick(now) {
@@ -2912,7 +2937,13 @@ function mount(host, move, opts) {
   el.addEventListener('click', (e) => { if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; } }, true);
 
   Object.assign(ctl, {
-    play() { if (still || failed || playing) return; playing = true; lastPh = null; kick(); },
+    play() {
+      if (still || failed) return;
+      if (!playing) { playing = true; lastPh = null; }
+      kick(); // also restarts a loop that stopped while the figure was off screen
+    },
+    // Check again whether it's on screen (after being moved into another box of the same size).
+    wake() { kick(); },
     pause() { playing = false; dirty = true; kick(); },
     playOnce() {
       if (failed) return;
@@ -2927,7 +2958,7 @@ function mount(host, move, opts) {
       // Side and top views are lifted with the body along the same axis; front views face the camera.
       if (name === 'side') { az = mir * (A.view === 'front' ? 90 : 0) * D2R; el3 = (A.view === 'top' ? 30 : 6) * D2R; }
       else if (name === 'front') { az = mir * (A.view === 'front' ? 0 : 90) * D2R; el3 = (A.view === 'top' ? 30 : 6) * D2R; }
-      if (instant) { cam.anim = null; view.base.az = az; view.base.el = el3; dirty = true; }
+      if (instant || o.reducedMotion) { cam.anim = null; view.base.az = az; view.base.el = el3; dirty = true; }
       else cam.anim = { t0: performanceNow(), ms: 800, az0: view.base.az, el0: view.base.el, az1: az, el1: el3 };
       kick();
     },
@@ -2944,8 +2975,9 @@ function mount(host, move, opts) {
     destroy() { teardown(); },
   });
   // First frame straight away (the key pose when still).
-  resize();
-  if (view) { poseAt(0, null); glowAt(0, 0, null); render(); }
+  poseAt(0, null); glowAt(0, 0, null);
+  resize(); // sizes the canvas, and draws when it's on screen
+  if (dirty) render();
   kick();
   return ctl;
 }
@@ -3015,7 +3047,7 @@ function warmUp() {
   const r = R.r;
   const compiled = r.compileAsync ? r.compileAsync(view.scene, view.camera) : Promise.resolve(r.compile(view.scene, view.camera));
   return compiled.then(() => new Promise((done) => idle(() => {
-    if (R && WARM === view) { ensureSize(64, 64); view.render(R.r, 64, 64); }
+    if (R && WARM === view && !isLost(R)) { ensureSize(64, 64); view.render(R.r, 64, 64); }
     done();
   })));
 }
@@ -3062,9 +3094,12 @@ function preload() {
 
 GH.figure3d = {
   supported, mount, still, cachedStill, preload, phaseAt,
-  // Internal, for tests: drop the shared GL context as a phone might, look at what's held, and
-  // shorten the idle release.
+  // Whether the renderer is up and its shaders compiled, so a new figure draws its first frame at once.
+  warm() { return !!(R && WARM && !isLost(R)); },
+  // Internal, for tests: drop the shared GL context as a phone might, look at what's held, shorten
+  // the idle release, and stop figures drawing (a GPU stuck compiling).
   _loseContext() { if (R) R.r.forceContextLoss(); },
+  _stall(on) { stalled = !!on; },
   _stats() { return { live: live.size, renderer: !!R, warm: !!WARM, lost: lostCount, programs: R ? R.r.info.programs.length : 0, size: R ? [R.w, R.h] : null }; },
   _releaseAfter(ms) { releaseMs = ms; },
 };
