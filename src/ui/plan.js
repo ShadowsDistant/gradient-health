@@ -72,7 +72,7 @@
     const k = markKind(e);
     const what = e.kind === 'light' && e.light && e.light.done ? 'light day, done' : e.kind === 'today' || e.kind === 'workout' || e.kind === 'done' ? `${KIND_WORDS[e.kind]}: ${e.title}` : KIND_WORDS[e.kind];
     const label = `${e.wdLong}, ${e.short}${e.isToday ? ', today' : ''}: ${what}`;
-    return `<li class="pw-day" data-key="d${e.day}" data-kind="${e.kind}"${e.isToday ? ' data-today' : ''}${e.isPast ? ' data-past' : ''}>
+    return `<li class="pw-day" role="presentation" data-key="d${e.day}" data-kind="${e.kind}"${e.isToday ? ' data-today' : ''}${e.isPast ? ' data-past' : ''}>
       <button type="button" class="pw-pill" role="tab" aria-selected="${sel}" data-act="planPick" data-arg="${e.day}"${e.canMove ? ' data-drag' : ''} aria-label="${U.esc(label)}">
         <span class="pw-wd">${U.esc(e.letter)}</span><span class="pw-num rf-num">${e.num}</span>${markHtml(k)}
       </button></li>`;
@@ -253,10 +253,10 @@
 
   /* ---------------------------------------------------------------- below the card */
   // Each part stays on one line when the summary wraps.
-  const keep = (t) => U.esc(t).replace(/ /g, ' ');
+  const keep = (t) => U.esc(t).replace(/ /g, '\u00a0');
   function summary(w) {
     const bits = [`Week ${w.trainingWeek}`, PHASE[w.phase.key]];
-    const done = w.planned ? ` · <span class="pw-nb">${U.roll(w.done)} of ${w.planned} done</span>` : '';
+    const done = w.planned ? ` · <span class="pw-nb">${U.roll(w.done)}\u00a0of\u00a0${w.planned}\u00a0done</span>` : '';
     return `<p class="lt-sub t-callout rf-muted pw-sub">${bits.map(keep).join(' · ')}${done}<button type="button" class="pw-info" data-act="planPhase" aria-label="What ${U.esc(PHASE[w.phase.key].toLowerCase())} means, and how to read the week">${U.icon('info')}</button></p>`;
   }
   function muscles(w) {
@@ -365,47 +365,71 @@
   }
 
   /* ---------------------------------------------------------------- still figures */
-  // One drawing per move (and place), cloned into each row that shows it.
-  const stills = new Map();
+  // Each move's key pose, drawn once and cloned into every tile that shows it. A figure is slow to
+  // draw the first time, so new ones are drawn while the phone is idle and fade into their tiles:
+  // the screen never waits for them.
+  const stills = new Map(); // `${moveId}|${place}` → svg, cropped to the figure
+  const queue = new Set(); // keys still to draw
+  let pending = 0;
+  let drawFor = null; // { S, day } the queued stills are for
+  function fill(host, svg) {
+    host.textContent = '';
+    host.appendChild(svg.cloneNode(true));
+    host.setAttribute('data-drawn', host.getAttribute('data-move'));
+  }
   function drawThumbs(root, S, day) {
-    const hosts = root.querySelectorAll('.pw-thumb[data-move]');
-    if (!hosts.length || !GH.pose || !M()) return;
+    if (!GH.pose || !M()) return;
     const place = B().placeOf ? B().placeOf(S, day) : 'home';
-    let eq = null;
-    for (const host of hosts) {
+    for (const host of root.querySelectorAll('.pw-thumb[data-move]')) {
       const id = host.getAttribute('data-move');
       if (host.getAttribute('data-drawn') === id && host.firstElementChild) continue;
-      host.textContent = '';
-      host.setAttribute('data-drawn', id);
-      const key = `${id}|${place}`;
-      let svg = stills.get(key);
-      if (!svg) {
-        const m0 = M().MOVES[id];
-        if (!m0) continue;
-        if (!eq) eq = B().eqFor ? B().eqFor(S, day) : S.profile.equipment;
-        const m = M().forPerson ? M().forPerson(m0, eq) : m0;
-        const tmp = doc.createElement('div');
-        try { GH.pose.thumb(tmp, m, {}); } catch (e) { continue; }
-        svg = tmp.querySelector('svg');
-        if (!svg) continue;
-        svg.setAttribute('aria-hidden', 'true');
-        svg.removeAttribute('role');
-        svg.removeAttribute('aria-label');
-        stills.set(key, svg);
-      }
-      const copy = svg.cloneNode(true);
-      host.appendChild(copy);
-      if (!svg.hasAttribute('data-tight')) {
-        const box = tightBox(copy);
-        svg.setAttribute('data-tight', box || '');
-        if (box) svg.setAttribute('viewBox', box);
-      }
-      const vb = svg.getAttribute('data-tight');
-      if (vb) copy.setAttribute('viewBox', vb);
+      const svg = stills.get(`${id}|${place}`);
+      if (svg) fill(host, svg);
+      else { if (host.firstElementChild) host.textContent = ''; queue.add(`${id}|${place}`); }
     }
+    drawFor = { S, day };
+    if (queue.size && !pending) pending = idle(drawSome);
   }
-  // The figure's own bounds (both poses and any bench or chair, not the floor line), with room for
-  // the strokes, so a small tile shows the body instead of empty space.
+  const idle = (fn) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: 150 }) : setTimeout(() => fn(null), 16));
+  function drawSome(deadline) {
+    pending = 0;
+    const t0 = Date.now();
+    for (const key of queue) {
+      queue.delete(key);
+      const svg = drawStill(key);
+      const id = key.split('|')[0];
+      if (svg) for (const host of doc.querySelectorAll('.pw-thumb[data-move]')) if (host.getAttribute('data-move') === id && !host.firstElementChild) fill(host, svg);
+      if (deadline ? deadline.timeRemaining() < 10 : Date.now() - t0 > 12) break;
+    }
+    if (queue.size) pending = idle(drawSome);
+  }
+  function drawStill(key) {
+    const id = key.split('|')[0];
+    const m0 = M().MOVES[id];
+    if (!m0 || !drawFor) return null;
+    const { S, day } = drawFor;
+    const m = M().forPerson ? M().forPerson(m0, B().eqFor ? B().eqFor(S, day) : S.profile.equipment) : m0;
+    // Drawn in a hidden box on the page, so the figure's size can be measured for the crop.
+    const box = doc.createElement('div');
+    box.className = 'pw-measure';
+    doc.body.appendChild(box);
+    let svg = null;
+    try {
+      const tl = m.$tl || (m.$tl = GH.pose.timeline(m));
+      svg = GH.pose.still(box, m, m.key || tl.steps[0].to, {});
+      const vb = svg && tightBox(svg);
+      if (vb) svg.setAttribute('viewBox', vb);
+    } catch (e) { svg = null; }
+    box.remove();
+    if (!svg) return null;
+    svg.setAttribute('aria-hidden', 'true');
+    svg.removeAttribute('role');
+    svg.removeAttribute('aria-label');
+    stills.set(key, svg);
+    return svg;
+  }
+  // The figure's own bounds (the body and any bench or chair, not the floor line), with room for the
+  // strokes, so a small tile shows the body instead of empty space.
   function tightBox(svg) {
     try {
       const parts = Array.from(svg.querySelectorAll('.fig-body')).concat(Array.from(svg.querySelectorAll('.fig-props > :not(.fig-floor)')));
