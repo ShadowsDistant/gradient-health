@@ -49,8 +49,8 @@
       meta = `Written ${U.esc(U.fmtDay(rep.day))}${rep.model ? ` by ${U.esc(rep.model)}` : ''}. Not medical advice.`;
     } else {
       body = reportBody(GH.coach.report(S, day));
-      badge = U.badge('Built-in', 'neutral');
-      meta = api ? 'Claude hasn\'t written this week\'s report yet, so this is the built-in one.' : 'From the built-in coach, worked out on this phone. Not medical advice.';
+      badge = U.badge('From your numbers', 'neutral');
+      meta = api ? 'Claude hasn\'t written this week\'s report yet, so this one is worked out on this phone.' : 'Worked out on this phone from your own numbers. Not medical advice.';
     }
     const err = ai.error && api ? `<div class="notice" data-tone="critical">${U.icon('alert')}<span>${U.esc(ai.error)}</span></div>` : '';
     const waiting = api && !S.ai.consentAt ? `<div class="notice" data-tone="info">${U.icon('info')}<span>Claude is waiting for your OK before it gets your data. <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="claudeReview">Review</button></span></div>` : '';
@@ -103,24 +103,21 @@
   U.act.insightGo = (el) => U.go(el.dataset.arg);
 
   /* ---------------------------------------------------------------- chat */
-  // Three ways to get an answer, picked at the top of the chat: the built-in coach (instant, from
-  // your numbers, no AI model), the on-device model (runs on the phone, nothing leaves it) or Claude
-  // (your own API key; streams in). "Ask in the Claude app" hands the question to the Claude app.
+  // Two ways to get an answer, picked at the top of the chat: the on-device model (runs on the phone,
+  // nothing leaves it, grounded in what the built-in coach works out) or Claude (your own API key;
+  // streams in). "Ask in the Claude app" hands the question to the Claude app.
   let chat = null;
   let stopper = null; // the on-device answer in progress, so Stop can end it
   const PRESETS = ['Why is today lighter?', 'How is my sleep?', 'Am I getting stronger?', 'How is my weight trending?', 'What should I focus on?'];
-  const ENGINES = [['local', 'Built-in'], ['device', 'On-device'], ['api', 'Claude']];
-  const engineOf = (S) => (S.ai.mode === 'api' || S.ai.mode === 'device' ? S.ai.mode : 'local');
-  function chatLog(S) {
-    const e = engineOf(S);
-    return e === 'api' ? (S.ai.chat || []) : e === 'device' ? (S.ai.deviceChat || []) : (S.coachChat || []);
-  }
+  const ENGINES = [['device', 'On-device'], ['api', 'Claude']];
+  const engineOf = (S) => (S.ai.mode === 'api' ? 'api' : 'device');
+  const chatLog = (S) => (engineOf(S) === 'api' ? (S.ai.chat || []) : (S.ai.deviceChat || []));
   // What the on-device model needs before it can answer, or null when it's ready.
   function deviceGate() {
     const d = U.deviceState ? U.deviceState() : null;
     if (!d || !d.checked) return `<div class="chat-setup"><span class="rf-spinner" data-size="sm"><i></i></span><span class="t-callout rf-muted">Checking the on-device model…</span></div>`;
-    if (!d.available.ok) return `<div class="chat-setup card"><p class="t-callout">${U.esc(d.available.reason)}</p><p class="t-footnote rf-muted">The built-in coach and Claude still work.</p></div>`;
-    if (!d.installed.length) return `<div class="chat-setup card"><p class="t-headline">Download the on-device model</p><p class="t-callout rf-muted">It runs on your phone, so your questions and data never leave it, and it works offline. It's a one-time download.</p>${U.modelRows ? U.modelRows(U.S) : ''}</div>`;
+    if (!d.available.ok) return `<div class="chat-setup card"><p class="t-callout">${U.esc(d.available.reason)}</p><p class="t-footnote rf-muted">Claude still works with your own API key, and so does asking in the Claude app.</p></div>`;
+    if (!d.installed.length) return `<div class="chat-setup card"><span class="chat-setup-ico" aria-hidden="true">${U.icon('chip')}</span><p class="t-headline">Get the on-device coach</p><p class="t-callout rf-muted">A small AI model that runs on your phone. Your questions and data never leave it, and it works offline. Pick a size once; you can change it later in Settings.</p>${U.modelRows ? `<ul class="rf-list">${U.modelRows(U.S, { compact: true })}</ul>` : ''}</div>`;
     return null;
   }
   function logBody(S) {
@@ -133,17 +130,15 @@
     const msgs = all.slice(start);
     if (!msgs.length) {
       const hint = e === 'api' ? 'Ask about your sleep, steps, training or what to focus on. Claude sees the same summary as the weekly report.'
-        : e === 'device' ? 'Ask anything about your sleep, steps, training, weight or food. The model runs on your phone and sees a short summary of your numbers.'
-          : 'Ask about your sleep, steps, weight, protein, training or recovery. Answers come from your own numbers, worked out on this phone.';
+        : 'Ask anything about your sleep, steps, training, weight or food. The model runs on your phone and answers from your own numbers.';
       return `<p class="t-callout rf-muted chat-empty">${hint}</p>
         <div class="ob-chips chat-presets">${PRESETS.map((q) => `<button type="button" class="rf-chip" data-act="askQuick" data-arg="${U.esc(q)}">${U.esc(q)}</button>`).join('')}</div>`;
     }
-    // AI answers (on-device and Claude) can be reported; a reported one stays hidden.
-    const byAi = e !== 'local';
+    // AI answers can be reported; a reported one stays hidden. Safety answers are the app's own.
     return msgs.map((m, i) => {
       if (m.role === 'user') return `<div class="bubble me">${U.esc(m.text)}</div>`;
       if (m.flagged) return '<div class="bubble coach is-flagged">You reported this answer, so it\'s hidden.</div>';
-      return `<div class="bubble coach">${U.esc(m.text)}${byAi && !m.safety ? flagBtn(start + i) : ''}</div>`;
+      return `<div class="bubble coach">${U.esc(m.text)}${!m.safety ? flagBtn(start + i) : ''}</div>`;
     }).join('');
   }
   const flagBtn = (i) => `<button type="button" class="bubble-flag" data-act="flagAnswer" data-arg="${i}" aria-label="Report this answer">${U.icon('flag', 'sm')}Report</button>`;
@@ -195,7 +190,7 @@
     if (!m) return;
     const e = engineOf(S);
     const q = log[i - 1] && log[i - 1].role === 'user' ? log[i - 1].text : '';
-    U.flagSheet({ kind: 'chat answer', what: 'answer', engine: e === 'api' ? 'Claude' : 'the on-device model', model: e === 'api' ? S.ai.model && S.ai.model.name : GH.llm && GH.llm.loaded() ? GH.llm.loaded().id : S.ai.deviceModel, text: q ? `Q: ${q}\nA: ${m.text}` : m.text, onHide: () => { m.flagged = true; refreshChat(); } });
+    U.flagSheet({ kind: 'chat answer', what: 'answer', engine: e === 'api' ? 'Claude' : 'the on-device model', model: e === 'api' ? S.ai.model && S.ai.model.name : m.model || (GH.llm && GH.llm.loaded() ? GH.llm.loaded().id : S.ai.deviceModel), text: q ? `Q: ${q}\nA: ${m.text}` : m.text, onHide: () => { m.flagged = true; refreshChat(); } });
   };
   U.act.flagReport = () => {
     const S = U.S;
@@ -206,7 +201,6 @@
     U.flagSheet({ kind: 'weekly report', what: 'report', engine: 'Claude', model: rep.model, text, onHide: () => { rep.flagged = true; U.render(); } });
   };
   const FOOT = {
-    local: 'The built-in coach isn\'t an AI model: it answers common questions from your data.',
     device: 'Runs on your phone and can be wrong.',
     api: 'Claude sees a summary without your name, not your raw data.',
   };
@@ -252,7 +246,7 @@
     if (stopper) { stopper.abort(); stopper = null; }
     // Claude with a key: only after the person has allowed it to get their data.
     if (v === 'api' && AI() && AI().hasKey() && !S.ai.consentAt && !(await U.claudeConsent())) { refreshChat(); return; }
-    S.ai.mode = v === 'api' || v === 'device' ? v : 'local';
+    S.ai.mode = v === 'api' ? 'api' : 'device';
     S.ai.enabled = S.ai.mode === 'api';
     U.save();
     refreshChat();
@@ -265,7 +259,7 @@
   U.act.askClear = () => {
     const S = U.S;
     const e = engineOf(S);
-    if (e === 'api' && AI()) AI().clearChat(S); else if (e === 'device') { if (GH.deviceCoach) GH.deviceCoach.clear(S); } else S.coachChat = [];
+    if (e === 'api') { if (AI()) AI().clearChat(S); } else if (GH.deviceCoach) GH.deviceCoach.clear(S);
     U.save();
     refreshChat();
   };
@@ -300,13 +294,6 @@
     addBubble(log, 'me', text);
     U.haptic('tap');
     const e = engineOf(S);
-    if (e === 'local') {
-      const res = GH.coach.ask(S, U.today(), text);
-      S.coachChat = (S.coachChat || []).concat([{ role: 'user', text }, { role: 'coach', text: res.text }]).slice(-24);
-      U.save();
-      setTimeout(() => addBubble(log, 'coach', res.text), 220);
-      return;
-    }
     const out = addBubble(log, 'coach is-typing');
     out.innerHTML = '<span class="rf-spinner" data-size="sm"><i></i></span>';
     const status = document.createElement('span');

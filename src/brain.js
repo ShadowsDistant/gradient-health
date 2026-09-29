@@ -199,7 +199,7 @@
       events: [{ type: 'settings', day, days: p.days, weekdays: p.weekdays, minutes: p.minutes }],
       log: [], weights: [], protein: {}, health: { days: {}, hc: {}, manual: {}, lastSync: null, status: null },
       feel: {}, sleepChip: {}, measurements: [], active: null, celebrated: {}, pendingLines: [],
-      insightsDismissed: {}, insightsShown: {}, ai: { enabled: false, mode: 'local', reports: [], chat: [], model: null }, volWeeksDone: [], seen: {}, coachChat: [],
+      insightsDismissed: {}, insightsShown: {}, ai: { enabled: false, mode: 'device', reports: [], chat: [], model: null }, volWeeksDone: [], seen: {},
       place: {}, lastPlace: null,
     };
     if (p.weightKg) S.weights.push({ day, kg: p.weightKg, src: 'profile' });

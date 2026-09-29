@@ -48,8 +48,9 @@ import java.util.regex.Pattern;
  * times a second. They only go to Hugging Face (and its CDN, which the resolve URL redirects to),
  * resume from a .part file with a Range request, can wait for an unmetered network, need the free
  * space for the file plus a margin, and must pass three checks before they count as installed: the
- * size, the GGUF magic, and the SHA-256 (the page's pinned value, or the X-Linked-Etag the Hub sends
- * with the redirect, computed while the file streams in).
+ * size (the Hub's exact size, close to the page's figure), the GGUF magic, and the SHA-256 (the page's
+ * pinned value, or the X-Linked-Etag the Hub sends with the redirect, computed while the file streams
+ * in).
  *
  * In noBackupFilesDir/models/: &lt;file&gt; with &lt;file&gt;.json ({id, file, bytes, sha256, url}) once
  * installed; &lt;file&gt;.part with &lt;file&gt;.part.json ({id, url, sha256, total}) while downloading or paused.
@@ -610,7 +611,7 @@ final class ModelStore {
             if (hop.code == 416 && have > 0) {
                 // Nothing left to send: the .part may be the whole file already, and verify() decides.
                 long t = totalOf(c.getHeaderField("Content-Range"));
-                if (t == have || (t < 0 && withinOnePercent(have, job.bytes))) {
+                if (t == have || (t < 0 && closeInSize(have, job.bytes))) {
                     job.remoteTotal = have;
                     expect(job, hop, have);
                     return;
@@ -766,7 +767,7 @@ final class ModelStore {
     /** A file on the Hub that doesn't match the page's description was replaced there: stop. */
     private static void expect(Job job, Hop hop, long total) throws Failure {
         long size = total > 0 ? total : hop.linkedSize;
-        if (size > 0 && !withinOnePercent(size, job.bytes)) {
+        if (size > 0 && !closeInSize(size, job.bytes)) {
             throw new Failure("changed", false, "size " + size).discard();
         }
         if (job.sha256 != null && hop.linkedSha != null && !job.sha256.equals(hop.linkedSha)) {
@@ -825,7 +826,7 @@ final class ModelStore {
     private void verify(Job job, File part) throws Failure {
         long length = part.length();
         setState(job, "verifying", length, length);
-        if ((job.remoteTotal > 0 && length != job.remoteTotal) || !withinOnePercent(length, job.bytes)) {
+        if ((job.remoteTotal > 0 && length != job.remoteTotal) || !closeInSize(length, job.bytes)) {
             throw new Failure("size", false, "size " + length).discard();
         }
         if (!isGguf(part)) {
@@ -1155,8 +1156,12 @@ final class ModelStore {
         }
     }
 
-    private static boolean withinOnePercent(long actual, long expected) {
-        return expected > 0 && Math.abs(actual - expected) <= expected / 100;
+    /**
+     * Whether a file is the size the page expects: within 3%, since the page may only know it to a few
+     * digits. Another quantization of a model differs by far more; the hash then checks every byte.
+     */
+    private static boolean closeInSize(long actual, long expected) {
+        return expected > 0 && Math.abs(actual - expected) <= expected * 3 / 100;
     }
 
     private static boolean isGguf(File file) {

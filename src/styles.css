@@ -673,6 +673,8 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 .chat-setup > p { margin: 0; }
 .chat-setup:not(.card) { grid-auto-flow: column; justify-content: start; align-items: center; }
 .chat-setup .rf-list { margin: var(--space-1) calc(-1 * var(--space-4)) calc(-1 * var(--space-4)); background: none; box-shadow: none; }
+.chat-setup-ico { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; color: var(--hue-violet); background: color-mix(in oklab, var(--hue-violet) 16%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / .25); }
+.model-row .rf-list-title .rf-badge { margin-inline-start: 6px; vertical-align: 1px; }
 .bubble-status { display: block; margin-top: 4px; }
 .bubble.is-stopped::after { content: " (stopped)"; color: var(--label-secondary); }
 .model-row .rf-list-text { gap: 4px; }

@@ -1,6 +1,7 @@
 /* On-device AI (loads on demand: GH.lazy('llm') sets GH.llm). A small open model runs entirely on the
- * phone with llama.cpp compiled to WebAssembly (@wllama/wllama), single-threaded because Android
- * WebView has no SharedArrayBuffer, and on the GPU through WebGPU when a quick self-test passes.
+ * phone with llama.cpp compiled to WebAssembly (@wllama/wllama): on the CPU, with threads where the
+ * WebView allows them (Android WebView has no SharedArrayBuffer today, so one), and on the GPU through
+ * WebGPU when a quick self-test passes.
  *
  * The Android shell downloads the model files (ModelStore.java: resumable, Wi-Fi only if asked, checked
  * against the size, the GGUF header and the SHA-256) into the app's private storage and serves them
@@ -19,29 +20,61 @@ const bridge = () => G.AndroidBridge || null;
 const now = () => Date.now();
 
 /* ------------------------------------------------------------------ models */
-// Qwen2.5 Instruct, Q4_K_M, from Qwen's official GGUF repos on Hugging Face (Apache-2.0, not gated).
-// Hugging Face was blocked from the machine this was written on, so the names, sizes and SHA-256 were
-// checked on 2026-09-29 through web search: each file's page on the Hub (its Git LFS details) and
-// projects that download the same files (one quotes the CDN's "content-range: bytes 0-1023/491400032").
-// The SHA-256 is what the resolve URL reports in X-Linked-Etag; ModelStore.java checks each download.
+// Qwen3.5 (March 2026, Apache-2.0, not gated), Q4_K_M, from unsloth's GGUF repos on Hugging Face, in
+// three sizes. Qwen3.5 mixes gated delta-net layers with full attention; the llama.cpp inside wllama
+// 3.6.1 runs it, which test/llm.mjs checks with a tiny model of the same layout. Hugging Face was
+// blocked from the machine this was written on, so the names and sizes come from each file's page on
+// the Hub (shown to 3 digits, well inside ModelStore's size check), and the SHA-256 checked on the
+// phone is the one the Hub reports for the file (X-Linked-Etag).
+//
+// Each model carries how to run it: ctx, batch (a small batch keeps a cache checkpoint close to the
+// end of each prompt, so a follow-up question reuses nearly all of it on a hybrid model like this),
+// think (the chat template can think first: asked not to, and any thinking that slips out is hidden)
+// and gen (sampling, from Qwen's recommended non-thinking settings, a little cooler for answers that
+// quote numbers).
+const QWEN35 = {
+  family: 'qwen35', license: 'Apache-2.0', ctx: 4096, batch: 64, think: true,
+  gen: { temperature: 0.6, top_p: 0.8, top_k: 20, min_p: 0, repeat_penalty: 1.05 },
+};
 const MODELS = [
+  Object.assign({
+    id: 'q35-08', tier: 'fast', name: 'Fast', label: 'Qwen3.5 0.8B', speed: 3, quality: 1,
+    file: 'Qwen3.5-0.8B-Q4_K_M.gguf',
+    url: 'https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf',
+    bytes: 533e6, minRamGB: 3,
+  }, QWEN35),
+  Object.assign({
+    id: 'q35-2', tier: 'balanced', name: 'Balanced', label: 'Qwen3.5 2B', speed: 2, quality: 2,
+    file: 'Qwen3.5-2B-Q4_K_M.gguf',
+    url: 'https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/main/Qwen3.5-2B-Q4_K_M.gguf',
+    bytes: 1.28e9, minRamGB: 4,
+  }, QWEN35),
+  Object.assign({
+    id: 'q35-4', tier: 'best', name: 'Best answers', label: 'Qwen3.5 4B', speed: 1, quality: 3,
+    file: 'Qwen3.5-4B-Q4_K_M.gguf',
+    url: 'https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf',
+    bytes: 2.74e9, minRamGB: 8,
+  }, QWEN35),
+  // 1.2's models (Qwen2.5 Instruct from Qwen's own GGUF repos): no longer offered, but one that's
+  // already on the phone keeps working until it's deleted. Their SHA-256 is pinned.
   {
-    id: 'qwen05', name: 'Standard', label: 'Qwen2.5 0.5B Instruct', license: 'Apache-2.0',
+    id: 'qwen05', legacy: true, name: 'Standard (older)', label: 'Qwen2.5 0.5B Instruct', license: 'Apache-2.0', family: 'qwen2',
     file: 'qwen2.5-0.5b-instruct-q4_k_m.gguf',
     url: 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf',
     bytes: 491400032,
     sha256: '74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db',
-    minRamGB: 3, ctx: 2048,
+    minRamGB: 3, ctx: 2048, gen: { temperature: 0.6, top_p: 0.8, top_k: 20, repeat_penalty: 1.05 },
   },
   {
-    id: 'qwen15', name: 'Better answers', label: 'Qwen2.5 1.5B Instruct', license: 'Apache-2.0',
+    id: 'qwen15', legacy: true, name: 'Better answers (older)', label: 'Qwen2.5 1.5B Instruct', license: 'Apache-2.0', family: 'qwen2',
     file: 'qwen2.5-1.5b-instruct-q4_k_m.gguf',
     url: 'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf',
     bytes: 1117320736,
     sha256: '6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e',
-    minRamGB: 8, ctx: 2048,
+    minRamGB: 8, ctx: 2048, gen: { temperature: 0.6, top_p: 0.8, top_k: 20, repeat_penalty: 1.05 },
   },
 ];
+const DEFAULT_GEN = { temperature: 0.6, top_p: 0.8, top_k: 20, repeat_penalty: 1.05 };
 
 const IDLE_MS = 2 * 60 * 1000;
 const cfg = { models: MODELS, baseUrl: 'models/', served: false, idleMs: IDLE_MS, debug: false };
@@ -133,8 +166,18 @@ function model(id) {
   return m;
 }
 function fits(m) { const ram = ramGB(); return ram == null || ram >= (m.minRamGB || 0); }
-// The models to offer on this phone ("Better answers" only with 8 GB of RAM or more).
-function offered() { return cfg.models.filter(fits); }
+// The models to offer on this phone: the current ones it has the memory for (Best answers only with
+// 8 GB or more). Older models only show up while they're installed.
+function offered() { return cfg.models.filter((m) => !m.legacy && fits(m)); }
+// The one to suggest: Balanced with 6 GB or more (or when the phone doesn't say), else the smallest
+// that fits. Best answers is never pushed: it's slow on most phones' CPUs.
+function recommended() {
+  const list = offered();
+  if (!list.length) return null;
+  const ram = ramGB();
+  const pick = (tier) => list.find((m) => m.tier === tier);
+  return (ram == null || ram >= 6 ? pick('balanced') : null) || pick('fast') || list[0];
+}
 
 /* ------------------------------------------------------------------ downloads (ModelStore.java) */
 const STATE_TEXT = {
@@ -409,7 +452,7 @@ let stats = null;
 let ops = Promise.resolve();
 const serial = (fn) => { const p = ops.then(fn); ops = p.then(() => {}, () => {}); return p; };
 
-function info() { return current ? { id: current.id, gpu: current.gpu, ctx: current.ctx } : null; }
+function info() { return current ? { id: current.id, gpu: current.gpu, ctx: current.ctx, threads: current.threads } : null; }
 // Idle unload: skipped if a chat started meanwhile (chats don't queue behind it).
 function touch() {
   clearTimeout(idleTimer);
@@ -439,13 +482,15 @@ async function stop() {
 // Frees the model's memory (it also goes by itself after two idle minutes).
 function unload() { return serial(stop); }
 
-async function startWorker(m, file, bytes, gpu, onRead) {
+// threads: null lets wllama use half the cores when the WebView can share memory between workers
+// (SharedArrayBuffer), else one; 1 forces one.
+async function startWorker(m, file, bytes, gpu, onRead, threads) {
   const w = new Wllama({ default: wasmUrl() }, { logger: LOGGER, cacheManager: NO_STORE, modelManager: NO_STORE });
   w.setCompat(null); // compat mode would fetch another worker and wasm from a CDN
   try {
-    await w.loadModel([new RangeFile(fileUrl(file), bytes, onRead)], {
-      n_ctx: m.ctx, n_threads: 1, n_parallel: 1, n_gpu_layers: gpu ? 999 : 0, jinja: true, log_level: LogLevel.WARN,
-    });
+    await w.loadModel([new RangeFile(fileUrl(file), bytes, onRead)], Object.assign({
+      n_ctx: m.ctx, n_parallel: 1, n_gpu_layers: gpu ? 999 : 0, jinja: true, log_level: LogLevel.WARN,
+    }, threads ? { n_threads: threads } : {}, m.batch ? { n_batch: m.batch, n_ubatch: m.batch } : {}));
     // loadModel() resolves even when llama.cpp couldn't load the file (a damaged model, say).
     const loadedInfo = w.getLoadedContextInfo();
     if (loadedInfo.success === false || !(loadedInfo.n_vocab > 0)) throw new Error('llama.cpp could not load the model');
@@ -481,16 +526,15 @@ async function doLoad(m, opts) {
   let gpu = opts.preferGpu !== false && await gpuUsable();
   let w;
   try {
-    w = await startWorker(m, file, bytes, gpu, onRead);
+    w = await startWorker(m, file, bytes, gpu, onRead, null);
   } catch (e) {
-    if (!gpu) throw explain(e, 'load');
-    log('warn', ['WebGPU load failed, using the CPU:', e]);
-    markGpuBad();
+    // The GPU failed (don't try it again on this phone), or threads did: one thread on the CPU.
+    if (gpu) { log('warn', ['WebGPU load failed, using the CPU:', e]); markGpuBad(); } else log('warn', ['Load failed, trying one thread:', e]);
     gpu = false;
     read = 0;
-    try { w = await startWorker(m, file, bytes, false, onRead); } catch (e2) { throw explain(e2, 'load'); }
+    try { w = await startWorker(m, file, bytes, false, onRead, 1); } catch (e2) { throw explain(e2, 'load'); }
   }
-  current = { id: m.id, w, gpu, ctx: m.ctx, file };
+  current = { id: m.id, w, gpu, ctx: m.ctx, file, m, threads: w.getNumThreads ? w.getNumThreads() : 1 };
   log('log', [`loaded ${m.id} on the ${gpu ? 'GPU' : 'CPU'} in ${now() - t0} ms`]);
   touch();
   return Object.assign(info(), { ms: now() - t0 });
@@ -540,6 +584,17 @@ function fit(msgs, ctx, maxTokens) {
   return sys.concat(kept);
 }
 
+// What to show of a reply so far. A model asked not to think sometimes does anyway: a <think> block
+// (finished or not) is hidden, and so is a tag still arriving at the end.
+function visible(raw) {
+  let s = String(raw || '').replace(/<think>[\s\S]*?<\/think>\s*/g, '');
+  const open = s.indexOf('<think>');
+  if (open >= 0) s = s.slice(0, open);
+  const partial = /<\/?t?h?i?n?k?$/.exec(s);
+  if (partial && partial[0].length) s = s.slice(0, partial.index);
+  return s.replace(/^\s+/, '');
+}
+
 let chats = Promise.resolve();
 // Answers the conversation with the loaded model (reloading the last one if it went idle) and resolves
 // with the reply. onToken(piece, textSoFar) streams it. Aborting the signal stops generation cleanly
@@ -580,6 +635,7 @@ async function generate(c, msgs, opts) {
   let finished;
   running = { stop: abort, done: new Promise((r) => { finished = r; }) };
   clearTimeout(idleTimer);
+  let raw = '';
   let text = '';
   let pieces = 0;
   let first = 0;
@@ -587,29 +643,37 @@ async function generate(c, msgs, opts) {
   let finish = null;
   let aborted = false;
   const t0 = now();
+  const m = c.m || {};
+  const gen = Object.assign({}, DEFAULT_GEN, m.gen || {});
   try {
-    await c.w.createChatCompletion({
+    await c.w.createChatCompletion(Object.assign({
       messages: fit(msgs, c.ctx, maxTokens),
       stream: true,
       max_tokens: maxTokens,
-      temperature: opts.temperature != null ? Number(opts.temperature) : 0.6,
-      // Qwen2.5's recommended sampling. cache_prompt keeps the unchanged start of the conversation (the
-      // system prompt, earlier turns) in the KV cache, so only the new part is processed each turn.
-      top_p: 0.8, top_k: 20, repeat_penalty: 1.05, cache_prompt: true,
+      // cache_prompt keeps the unchanged start of the conversation (the system prompt, earlier turns)
+      // in the cache, so only the new part is processed each turn.
+      cache_prompt: true,
       stop: ['<|im_end|>', '<|endoftext|>'],
       abortSignal: ctrl.signal,
       onData: (chunk) => {
         const choice = chunk && chunk.choices && chunk.choices[0];
         if (chunk && chunk.timings) timings = chunk.timings;
         if (choice && choice.finish_reason) finish = choice.finish_reason;
-        const piece = choice && choice.delta && choice.delta.content;
-        if (!piece) return;
-        if (!first) first = now();
-        text += piece;
+        const delta = choice && choice.delta && choice.delta.content;
+        if (!delta) return;
         pieces++;
+        raw += delta;
+        const next = visible(raw);
+        if (next === text) return;
+        // Only what's new since the last piece shown (a hidden tag can make it shorter: then resend).
+        const piece = next.startsWith(text) ? next.slice(text.length) : next;
+        text = next;
+        if (!first) first = now();
         if (onToken) { try { onToken(piece, text); } catch (e) { /* a UI bug mustn't stop the answer */ } }
       },
-    });
+    }, gen, opts.temperature != null ? { temperature: Number(opts.temperature) } : {},
+    // Qwen3 and 3.5 templates think before answering unless told not to.
+    m.think ? { chat_template_kwargs: { enable_thinking: false } } : {}));
   } catch (e) {
     if (isAbort(e) || ctrl.signal.aborted) {
       aborted = true;
@@ -641,7 +705,7 @@ async function generate(c, msgs, opts) {
 
 GH.llm = {
   get MODELS() { return cfg.models; },
-  configure, available, offered, ramGB,
+  configure, available, offered, recommended, ramGB, visible,
   installed, freeSpace, download, cancel, remove, status, onProgress,
   load, loaded: info, unload, chat,
   get stats() { return stats; },

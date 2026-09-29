@@ -1,8 +1,12 @@
 /* The on-device coach: a small open model running on the phone (GH.llm, loaded on demand) answers
- * questions about the person's own numbers. It gets a few rules and a compact brief of their data
- * (no name, no dates), and nothing leaves the phone. A small model answers faster with a short
- * prompt, so the brief keeps to the numbers that matter. Questions that sound like an emergency get
- * the built-in safety answer instead of the model's.
+ * questions about the person's own numbers, and nothing leaves the phone.
+ *
+ * Small models reason badly from raw numbers, so they don't have to: the app works out the answer's
+ * substance itself and hands it over as FACTS with each question (what the built-in coach concludes
+ * for that topic, the How it works rule behind it, today's changes), and the model's job is to put
+ * it in plain words. The rules and a compact brief of their data (no name, no dates) come first and
+ * are the same every turn, so they stay in the model's cache. Questions that sound like an emergency
+ * get the built-in safety answer instead of the model's.
  */
 (function (G) {
   'use strict';
@@ -10,12 +14,14 @@
   const B = () => GH.brain;
   const H = () => GH.health;
 
+  // Written for small models: short, concrete, one idea a line.
   const RULES = [
-    'You are the coach inside Gradient Health, a workout and health app on the user\'s phone. Answer their question using their data below.',
-    '- Answer in 2 to 5 short sentences, in plain words. Use their numbers. Say "you". No lists, headings or emoji.',
-    '- You are not a doctor. Never diagnose. If something sounds worrying (chest pain, fainting, a resting heart rate over 100, fast weight loss they didn\'t plan, pain that doesn\'t go away), tell them to see a doctor.',
-    '- The app plans the workouts and the calorie target. Explain them if asked, but don\'t write new programs, diets or meal plans.',
-    '- If the data doesn\'t answer the question, say so and say what to track.',
+    'You are the coach in Gradient Health, a workout and health app on this person\'s phone.',
+    'Answer their question in 2 to 4 short sentences, in plain words. Say "you". No lists, headings or emoji.',
+    'Base the answer on FACTS (worked out by the app for this question) and THEIR DATA below. Use their real numbers. Never make up a number.',
+    'If neither covers the question, say you can\'t tell from their data and what they could track.',
+    'You are not a doctor and never diagnose. Chest pain, fainting, a resting heart rate over 100, unplanned fast weight loss or pain that won\'t go away: tell them to see a doctor.',
+    'The app plans the workouts and targets. Explain them; don\'t write new programs, diets or meal plans.',
   ].join('\n');
 
   const r0 = (x) => String(Math.round(x));
@@ -74,7 +80,7 @@
       }
       if (lv.length) L.push(`Current exercises: ${lv.join('; ')}.`);
       const changes = GH.coach && GH.coach.timeline ? GH.coach.timeline(S, day, 7).slice(0, 3).map((x) => x.text) : [];
-      if (changes.length) L.push(`Recent changes by the app: ${changes.join(' ')}`);
+      if (changes.length) L.push(`Recent changes by the app: ${changes.map((x) => x.replace(/\.$/, '')).join('; ')}.`);
     }
     const pg = b.proteinGoal(S, day);
     const F = GH.food;
@@ -93,25 +99,60 @@
     return L.join('\n');
   }
 
+  // The How it works rule behind each of the built-in coach's topics.
+  const RULE_FOR = { today: 'sleep', sleep: 'sleep', steps: 'steps', weight: 'weightloss', protein: 'protein', strength: 'overload', streak: 'habits', heart: 'hrv', sides: 'sides', deload: 'deload', abs: 'abs' };
+  // The first n sentences ("7.5%" and "e.g. 12" don't end one: only a stop followed by a space does).
+  const firstSentences = (t, n) => String(t || '').trim().split(/(?<=[.!?])\s+/).slice(0, n).join(' ');
+  // What the app itself can say about this question, one line each: the built-in coach's answer for
+  // its topic, the rule behind it, and (for today) what the plan changed and why.
+  function facts(S, day, question) {
+    const C = GH.coach;
+    const L = [];
+    const topic = C && C.topicOf ? C.topicOf(question) : null;
+    if (!topic || topic === 'redflag') return L;
+    try {
+      const a = C.ask(S, day, question);
+      if (a && a.topic && a.text) L.push(`What the app worked out: ${a.text}`);
+    } catch (e) { /* no answer for this one */ }
+    const rule = GH.science && RULE_FOR[topic] ? GH.science.RULES.find((r) => r.id === RULE_FOR[topic]) : null;
+    if (rule) L.push(`How the app decides (${rule.title}): ${firstSentences(rule.does, 2)} ${firstSentences(rule.why, 1)}`.trim());
+    if (topic === 'today' && C.decisions && S.profile.workouts !== false) {
+      try {
+        const b = B();
+        const plan = b.todayPlan(S, day);
+        const session = plan.type === 'workout' ? b.buildSession(S, day, plan.tpl, {}) : null;
+        const list = C.decisions(S, day, session).slice(0, 4).map((d) => `${d.text}${d.why ? ` (${d.why.replace(/\.$/, '')})` : ''}`);
+        if (list.length) L.push(`Today's changes: ${list.join('; ')}.`);
+      } catch (e) { /* the plan isn't there to explain */ }
+    }
+    return L;
+  }
+  function turn(S, day, question) {
+    const f = facts(S, day, question);
+    return `${f.length ? `FACTS\n${f.map((x) => `- ${x}`).join('\n')}` : 'FACTS\n- None for this question.'}\n\nQUESTION\n${question}`;
+  }
   // The conversation for the model: rules and data first (the same every turn, so it stays cached),
-  // then the last few turns, then the question.
+  // then the last exchange, then the question with its facts.
   function messages(S, day, question, keep) {
-    const n = keep == null ? 4 : keep; // the last two turns by default
+    const n = keep == null ? 2 : keep; // the last exchange by default
     const past = n > 0 ? (S.ai.deviceChat || []).filter((m) => !m.safety && !m.flagged).slice(-n) : [];
     return [{ role: 'system', content: `${RULES}\n\nTHEIR DATA\n${brief(S, day)}` }]
       .concat(past.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })))
-      .concat([{ role: 'user', content: question }]);
+      .concat([{ role: 'user', content: turn(S, day, question) }]);
   }
 
   function err(message, code) { const e = new Error(message); e.code = code; return e; }
-  function record(S, q, text, safety) {
-    S.ai.deviceChat = (S.ai.deviceChat || []).concat([{ role: 'user', text: q, safety: !!safety }, { role: 'assistant', text, safety: !!safety }]).slice(-16);
+  function record(S, q, text, safety, model) {
+    S.ai.deviceChat = (S.ai.deviceChat || []).concat([{ role: 'user', text: q, safety: !!safety }, Object.assign({ role: 'assistant', text, safety: !!safety }, model ? { model } : {})]).slice(-16);
   }
   // The model to use: the one picked in Settings if it's on the phone, else any that is.
+  // Without a pick, a current model (the bigger the better) comes before an older one.
   function pick(S, have) {
     const ids = (have || []).map((x) => x.id);
     if (S.ai.deviceModel && ids.includes(S.ai.deviceModel)) return S.ai.deviceModel;
-    return ids[0] || null;
+    const models = (GH.llm && GH.llm.MODELS) || [];
+    const rank = (id) => { const i = models.findIndex((m) => m.id === id); const m = models[i]; return !m ? 99 : m.legacy ? 50 + i : 10 - (m.quality || 0); };
+    return ids.slice().sort((a, b) => rank(a) - rank(b))[0] || null;
   }
 
   // o: { onToken(piece, textSoFar), onStatus(state, fraction), signal }. Resolves { text, aborted, safety }.
@@ -137,7 +178,7 @@
     if (opt.signal && opt.signal.aborted) return { text: '', aborted: true };
     if (opt.onStatus) opt.onStatus('thinking');
     const run = (keep) => llm.chat(messages(S, day, q, keep), {
-      onToken: opt.onToken, signal: opt.signal, maxTokens: 256, temperature: 0.6,
+      onToken: opt.onToken, signal: opt.signal, maxTokens: 320,
       onLoadProgress: (p) => { if (opt.onStatus && p && p.total) opt.onStatus('loading', p.loaded / p.total); },
     });
     let raw;
@@ -145,7 +186,13 @@
     try { raw = await run(); } catch (e) { if (e && e.code === 'too-long') raw = await run(0); else throw e; }
     const aborted = !!(llm.stats && llm.stats.aborted);
     const text = String(raw || '').trim();
-    if (text) record(S, q, text, false);
+    if (text) record(S, q, text, false, id);
+    // How fast this model answers on this phone (for the model picker), smoothed over answers.
+    const tps = llm.stats && llm.stats.tokensPerSec;
+    if (tps > 0 && !aborted) {
+      const sp = S.ai.speed || (S.ai.speed = {});
+      sp[id] = sp[id] ? Math.round((sp[id] * 0.7 + tps * 0.3) * 10) / 10 : Math.round(tps * 10) / 10;
+    }
     return { text, aborted, stats: llm.stats };
   }
   // Loads the model and reads the rules and data ahead of the first question, so the first answer
@@ -164,5 +211,5 @@
   }
   function clear(S) { S.ai.deviceChat = []; }
 
-  GH.deviceCoach = { RULES, brief, messages, ask, prime, pick, clear };
+  GH.deviceCoach = { RULES, brief, facts, messages, ask, prime, pick, clear };
 })(typeof window !== 'undefined' ? window : globalThis);

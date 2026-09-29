@@ -20,7 +20,7 @@
       const hcDetail = !app ? 'Android app only' : on ? 'On' : st === 'unsupported' ? 'Needs Android 14' : st === 'unavailable' ? 'Unavailable' : 'Off';
       const hasKey = AI() && AI().hasKey();
       const claude = S.ai.mode === 'api';
-      const engine = S.ai.mode === 'api' || S.ai.mode === 'device' ? S.ai.mode : 'local';
+      const engine = S.ai.mode === 'api' ? 'api' : 'device';
       if (engine === 'device' && !dev.checked) checkDevice().then(() => { if (U.route.view === 'settings') U.render(); });
       const canWrite = on && H().canWrite && H().canWrite();
       const ver = (GH.platform && GH.platform.appVersion()) || GH.VERSION || 'web';
@@ -54,7 +54,7 @@
           </ul>
           <h3 class="rf-list-header" id="coach">Coach</h3>
           <ul class="rf-list">
-            <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Who answers your questions</span><span class="rf-list-sub">${U.esc(ENGINE_SUB[engine])}</span></span>${U.seg('setCoach', [['local', 'Built-in'], ['device', 'On-device'], ['api', 'Claude']], engine, 'Coach', ' data-on="setCoachMode"')}</div></li>
+            <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Who answers your questions</span><span class="rf-list-sub">${U.esc(ENGINE_SUB[engine])}</span></span>${U.seg('setCoach', [['device', 'On-device'], ['api', 'Claude']], engine, 'Coach', ' data-on="setCoachMode"')}</div></li>
             ${engine === 'device' ? U.modelRows(S) : ''}
             ${claude ? `${hasKey ? U.row({ icon: 'lock', tone: 'green', title: 'API key saved on this phone', sub: S.ai.model && S.ai.model.name ? `Using ${U.esc(S.ai.model.name)}` : 'The model is picked on first use', act: 'keySheet', detail: 'Change', chevron: true }) : U.row({ icon: 'lock', tone: 'amber', title: 'Add your API key', sub: 'From the Claude Console, starts with sk-ant-', act: 'keySheet', chevron: true })}
               ${hasKey && !S.ai.consentAt ? U.row({ icon: 'alert', tone: 'amber', title: 'Claude is waiting for your OK', sub: 'Review what it gets before it turns on', act: 'claudeReview', chevron: true }) : ''}
@@ -63,7 +63,7 @@
             ${U.row({ icon: 'share', tone: 'violet', title: 'Ask in the Claude app', sub: 'Uses your own Claude plan, no key needed', act: 'askClaudeApp', chevron: true })}
             ${U.row({ icon: 'eye', tone: 'sky', title: 'What gets sent', sub: 'The exact summary Claude sees', act: 'previewSheet', chevron: true })}
           </ul>
-          <p class="rf-list-footer">${claude ? 'Claude mode uses your own Anthropic API key and its usage costs. The key stays on this phone and is never in backups.' : engine === 'device' ? 'The on-device model is Qwen2.5 Instruct (Apache 2.0), run with llama.cpp on your phone. It works offline, nothing you ask leaves the phone, and it can be wrong.' : 'The built-in coach works offline from your own numbers. It isn\'t an AI model, so it sticks to common questions.'} Anything sent to Claude is a summary with no name, exact dates or IDs, and only after you've allowed it.</p>
+          <p class="rf-list-footer">${claude ? 'Claude mode uses your own Anthropic API key and its usage costs. The key stays on this phone and is never in backups.' : 'The on-device coach is Qwen3.5 (Apache 2.0), run with llama.cpp on your phone. It works offline, answers from what the app works out from your numbers, nothing you ask leaves the phone, and it can be wrong.'} Anything sent to Claude is a summary with no name, exact dates or IDs, and only after you've allowed it.</p>
           <h3 class="rf-list-header">Workout</h3>
           <ul class="rf-list">
             ${U.sw('Sound', pr.sound !== false, 'data-on="setPref" data-k="sound"')}
@@ -260,7 +260,7 @@
     ['three.js', '3D figure', 'MIT'],
     ['Anthropic TypeScript SDK', 'The Claude coach', 'MIT'],
     ['wllama and llama.cpp', 'On-device AI runtime', 'MIT'],
-    ['Qwen2.5 Instruct', 'On-device AI model, downloaded on request', 'Apache 2.0'],
+    ['Qwen3.5 (and Qwen2.5, if one is still on the phone)', 'On-device AI models, downloaded on request', 'Apache 2.0'],
     ['barcode-detector and zxing-wasm', 'Barcode reading', 'MIT'],
     ['ZXing C++', 'Barcode reading', 'Apache 2.0'],
     ['USDA SR28', 'Built-in food list', 'Public domain'],
@@ -332,12 +332,12 @@
   };
 
   /* ---------------------------------------------------------------- coach */
-  const ENGINE_SUB = { local: 'Built-in: instant answers from your numbers', device: 'On-device: an AI model that runs on your phone', api: 'Claude: your own API key, the most capable' };
+  const ENGINE_SUB = { device: 'On-device: an AI model that runs on your phone', api: 'Claude: your own API key, the most capable' };
   U.on.setCoachMode = async (el, ev, v) => {
     const S = U.S;
     const before = S.ai.mode;
-    if (v === 'api' && AI() && AI().hasKey() && !(await U.claudeConsent())) { S.ai.mode = before === 'api' ? 'local' : before; U.save(); U.render(); return; }
-    S.ai.mode = v === 'api' || v === 'device' ? v : 'local';
+    if (v === 'api' && AI() && AI().hasKey() && !(await U.claudeConsent())) { S.ai.mode = before === 'api' ? 'device' : before; U.save(); U.render(); return; }
+    S.ai.mode = v === 'api' ? 'api' : 'device';
     S.ai.enabled = S.ai.mode === 'api';
     U.save();
     setTimeout(() => U.render(), 220);
@@ -381,11 +381,11 @@
   });
   U.act.claudeReview = async () => { if (await U.claudeConsent()) { U.S.ai.enabled = U.S.ai.mode === 'api'; U.save(true); U.render(); U.toast('Claude is on', 'positive'); } };
   U.act.claudeWithdraw = async () => {
-    if (!(await U.confirm('Stop sending your data to Claude?', 'Claude turns off and the built-in coach takes over. Nothing more is sent. Reports and chats you already have stay on this phone.', 'Stop', 'critical'))) return;
+    if (!(await U.confirm('Stop sending your data to Claude?', 'Claude turns off and the on-device coach takes over. Nothing more is sent. Reports and chats you already have stay on this phone.', 'Stop', 'critical'))) return;
     const S = U.S;
     S.ai.consentAt = null;
     S.ai.enabled = false;
-    if (S.ai.mode === 'api') S.ai.mode = 'local';
+    if (S.ai.mode === 'api') S.ai.mode = 'device';
     U.save(true);
     U.render();
   };
@@ -393,7 +393,7 @@
   /* ---------------------------------------------------------------- on-device model */
   // What's on the phone and what's downloading, from GH.llm (loaded on demand). Progress events
   // redraw Settings and the chat sheet a few times a second at most.
-  const dev = { checked: false, available: { ok: false, reason: '' }, offered: [], installed: [], progress: {}, free: null };
+  const dev = { checked: false, available: { ok: false, reason: '' }, offered: [], all: [], recommended: null, installed: [], progress: {}, free: null };
   let devLoading = null, unsub = null, redrawAt = 0, redrawTimer = 0;
   U.deviceState = () => dev;
   function redraw() {
@@ -408,6 +408,8 @@
         const llm = await GH.lazy('llm');
         dev.available = llm.available();
         dev.offered = llm.offered();
+        dev.all = llm.MODELS.slice();
+        dev.recommended = llm.recommended ? (llm.recommended() || {}).id || null : null;
         dev.installed = dev.available.ok || (GH.platform && GH.platform.isApp()) ? await llm.installed() : [];
         dev.free = llm.freeSpace ? llm.freeSpace() : null;
         if (!unsub) {
@@ -432,34 +434,45 @@
   }
   U.checkDevice = checkDevice;
   const size = (bytes) => (bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`);
-  // One row per model this phone can run: download, progress, or installed (use or delete).
-  U.modelRows = (S) => {
+  const BLURB = { fast: 'Quickest, for simple questions', balanced: 'Good answers at a steady pace', best: 'The best answers, noticeably slower' };
+  // How fast a model answered on this phone, once it has: "about 9 words a second".
+  const pace = (S, id) => { const t = S.ai.speed && S.ai.speed[id]; return t > 0 ? `about ${Math.max(1, Math.round(t * 0.75))} words a second here` : ''; };
+  const modelIcon = (m) => `<span class="rf-list-icon" data-tone="${m.legacy ? 'neutral' : m.tier === 'best' ? 'indigo' : m.tier === 'fast' ? 'teal' : 'violet'}">${U.icon(m.tier === 'fast' ? 'bolt' : m.tier === 'best' ? 'sparkle' : 'chip')}</span>`;
+  // One row per model: the sizes this phone can run (download, progress, or use and delete), then any
+  // older model still on it. { compact } leaves out the delete buttons and the Wi-Fi switch's footnote.
+  U.modelRows = (S, o) => {
     if (!dev.checked) return `<li><div class="rf-list-row"><span class="rf-spinner" data-size="sm"><i></i></span><span class="rf-list-text"><span class="rf-list-sub">Checking this phone…</span></span></div></li>`;
     if (!dev.available.ok) return `<li><div class="rf-list-row"><span class="rf-list-icon" data-tone="amber">${U.icon('info')}</span><span class="rf-list-text"><span class="rf-list-sub">${U.esc(dev.available.reason)}</span></span></div></li>`;
-    const inChat = !!(U.topSheet() && U.topSheet().el.classList.contains('chat-sheet'));
+    const compact = !!(o && o.compact) || !!(U.topSheet() && U.topSheet().el.classList.contains('chat-sheet'));
     const use = S.ai.deviceModel;
-    const rows = dev.offered.map((m) => {
-      const have = dev.installed.find((x) => x.id === m.id);
+    const haveIds = dev.installed.map((x) => x.id);
+    const inUse = use && haveIds.includes(use) ? use : GH.deviceCoach ? GH.deviceCoach.pick(S, dev.installed) : haveIds[0];
+    const older = dev.all.filter((m) => m.legacy && haveIds.includes(m.id));
+    const rows = dev.offered.concat(older).map((m) => {
+      const have = haveIds.includes(m.id);
       const p = dev.progress[m.id];
-      const on = have && (use === m.id || (!use && dev.installed[0] && dev.installed[0].id === m.id));
-      let right, sub = `${m.label} · ${size(m.bytes)}`;
+      const rec = !have && m.id === dev.recommended;
+      const title = `<span class="rf-list-title">${U.esc(m.name)}${rec ? ` ${U.badge('Recommended', 'accent')}` : ''}</span>`;
+      const row = (sub, right, extra) => `<li data-key="model-${m.id}"><div class="rf-list-row model-row">${modelIcon(m)}<span class="rf-list-text">${title}<span class="rf-list-sub">${U.esc(sub)}</span>${extra || ''}</span>${right}</div></li>`;
       if (p && !have) {
         const pct = p.total ? Math.round((p.loaded / p.total) * 100) : 0;
-        sub = p.state === 'error' ? p.message || 'The download stopped.' : p.state === 'waiting-wifi' || p.state === 'waiting-network' || p.state === 'paused' ? p.message || 'Paused' : p.state === 'verifying' ? 'Checking the download…' : `Downloading · ${pct}% of ${size(m.bytes)}`;
-        right = p.state === 'error' || p.state === 'paused'
+        const sub = p.state === 'error' ? p.message || 'The download stopped.' : p.state === 'waiting-wifi' || p.state === 'waiting-network' || p.state === 'paused' ? p.message || 'Paused' : p.state === 'verifying' ? 'Checking the download…' : `Downloading · ${pct}% of ${size(m.bytes)}`;
+        const right = p.state === 'error' || p.state === 'paused'
           ? `<button type="button" class="rf-btn" data-size="sm" data-act="modelDownload" data-arg="${m.id}">Retry</button>`
           : `<button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="modelCancel" data-arg="${m.id}">Cancel</button>`;
-        return `<li data-key="model-${m.id}"><div class="rf-list-row model-row"><span class="rf-list-icon" data-tone="violet">${U.icon('chip')}</span><span class="rf-list-text"><span class="rf-list-title">${U.esc(m.name)}</span><span class="rf-list-sub">${U.esc(sub)}</span>${p.state === 'downloading' || p.state === 'verifying' ? U.progress(p.total ? p.loaded / p.total : 0, `${m.name} download`) : ''}</span>${right}</div></li>`;
+        return row(sub, right, p.state === 'downloading' || p.state === 'verifying' ? U.progress(p.total ? p.loaded / p.total : 0, `${m.name} download`) : '');
       }
       if (have) {
-        right = on ? `<span class="t-footnote model-on">${U.icon('check-circle', 'sm')}In use</span>` : `<button type="button" class="rf-btn" data-size="sm" data-act="modelUse" data-arg="${m.id}">Use</button>`;
-        return `<li data-key="model-${m.id}"><div class="rf-list-row model-row"><span class="rf-list-icon" data-tone="violet">${U.icon('chip')}</span><span class="rf-list-text"><span class="rf-list-title">${U.esc(m.name)}</span><span class="rf-list-sub">${U.esc(`${m.label} · on this phone`)}</span></span>${right}${inChat ? '' : `<button type="button" class="rf-btn" data-variant="plain" data-shape="circle" data-size="sm" aria-label="Delete ${U.esc(m.name)}" data-act="modelDelete" data-arg="${m.id}">${U.icon('trash')}</button>`}</div></li>`;
+        const sub = m.legacy ? `${m.label} · an older model. The new ones answer much better.` : [m.label, pace(S, m.id) || 'on this phone'].join(' · ');
+        const right = (inUse === m.id ? `<span class="t-footnote model-on">${U.icon('check-circle', 'sm')}In use</span>` : `<button type="button" class="rf-btn" data-size="sm" data-act="modelUse" data-arg="${m.id}">Use</button>`)
+          + (compact ? '' : `<button type="button" class="rf-btn" data-variant="plain" data-shape="circle" data-size="sm" aria-label="Delete ${U.esc(m.name)}" data-act="modelDelete" data-arg="${m.id}">${U.icon('trash')}</button>`);
+        return row(sub, right);
       }
-      right = `<button type="button" class="rf-btn" data-variant="${m.id === dev.offered[0].id ? 'filled' : 'soft'}" data-size="sm" data-act="modelDownload" data-arg="${m.id}">${U.icon('download')}Get</button>`;
-      return `<li data-key="model-${m.id}"><div class="rf-list-row model-row"><span class="rf-list-icon" data-tone="violet">${U.icon('chip')}</span><span class="rf-list-text"><span class="rf-list-title">${U.esc(m.name)}</span><span class="rf-list-sub">${U.esc(sub)}${m.minRamGB >= 8 ? ' · slower, better answers' : ' · quick answers'}</span></span>${right}</div></li>`;
+      const right = `<button type="button" class="rf-btn" data-variant="${rec ? 'filled' : 'soft'}" data-size="sm" data-act="modelDownload" data-arg="${m.id}">${U.icon('download')}Get</button>`;
+      return row(`${size(m.bytes)} · ${BLURB[m.tier] || m.label}`, right);
     }).join('');
     const wifi = U.sw('Download on Wi-Fi only', S.ai.wifiOnly !== false, 'data-on="setWifiOnly"');
-    return inChat ? `<ul class="rf-list">${rows}${wifi}</ul>` : `${rows}${wifi}`;
+    return `${rows}${wifi}`;
   };
   U.on.setWifiOnly = (el, ev, v) => { U.S.ai.wifiOnly = !!v; U.save(); };
   U.act.modelDownload = async (el) => {
@@ -485,7 +498,7 @@
   };
   U.act.modelUse = (el) => { U.S.ai.deviceModel = el.dataset.arg; U.save(); redraw(); U.haptic('select'); };
   U.act.modelDelete = async (el) => {
-    const m = dev.offered.find((x) => x.id === el.dataset.arg);
+    const m = dev.all.find((x) => x.id === el.dataset.arg);
     if (!m) return;
     if (!(await U.confirm(`Delete ${m.name}?`, `This frees ${size(m.bytes)}. You can download it again any time.`, 'Delete', 'critical', 'trash'))) return;
     const llm = await GH.lazy('llm');
@@ -520,7 +533,7 @@
     setTimeout(async () => {
       const ok = await U.claudeConsent();
       U.S.ai.enabled = ok;
-      U.S.ai.mode = ok ? 'api' : U.S.ai.mode === 'api' ? 'local' : U.S.ai.mode;
+      U.S.ai.mode = ok ? 'api' : 'device';
       U.save(true);
       U.render();
       if (ok) U.toast('Key saved', 'positive', 'Claude writes your weekly report when you open Health.');
@@ -535,7 +548,7 @@
   U.act.previewSheet = () => {
     U.sheet({
       title: 'What gets sent', detents: 'large', detent: 'large',
-      body: `<div class="sheet-pad"><p class="t-callout rf-muted">This summary goes to Claude with your questions, suggestion requests and weekly report once you've allowed it (through your API key), or into the Claude app when you ask there. No name, email, exact dates or device IDs. The built-in and on-device coaches send nothing.</p></div><pre class="preview">${U.esc(AI().preview(U.S, U.today()))}</pre>`,
+      body: `<div class="sheet-pad"><p class="t-callout rf-muted">This summary goes to Claude with your questions, suggestion requests and weekly report once you've allowed it (through your API key), or into the Claude app when you ask there. No name, email, exact dates or device IDs. The on-device coach and the weekly report worked out on this phone send nothing.</p></div><pre class="preview">${U.esc(AI().preview(U.S, U.today()))}</pre>`,
     });
   };
 

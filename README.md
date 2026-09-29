@@ -10,7 +10,7 @@ Gradient Health plans a workout for each day of your week around your goals, the
   <img src="docs/screenshots/today.png" width="200" alt="Today: a 35-day streak and today's workout">
   <img src="docs/screenshots/workout.png" width="200" alt="The workout player: the 3D figure doing a dumbbell curl, with the tempo strip lit">
   <img src="docs/screenshots/food.png" width="200" alt="Food: calories left today, macros and meals">
-  <img src="docs/screenshots/health-dark.png" width="200" alt="Health, in dark mode: the weekly report from the built-in coach">
+  <img src="docs/screenshots/health-dark.png" width="200" alt="Health, in dark mode: the weekly report worked out from your numbers">
 </p>
 
 ## A plan that fits your life
@@ -57,7 +57,7 @@ You get trends over 7, 28 and 90 days, and insights that only show up when there
 
 The coach never changes your plan quietly. Today's card says what it changed and why ("1 set off each exercise: 5 h 10 m of sleep"), and the Coach page shows its suggestions (you apply them or not), what it's keeping an eye on, and every change it made lately.
 
-Ask it anything about your numbers three ways. The built-in coach answers common questions instantly, offline. An AI model that runs on your phone answers anything, and nothing you ask leaves the phone. Or use Claude: tap Ask in the Claude app and your question plus a summary of your data (no name, no dates) opens there, or add an Anthropic API key and Claude answers in the app and writes your weekly report.
+Ask it anything about your numbers. An AI model that runs on your phone (Qwen3.5, in three sizes) answers offline, and nothing you ask leaves the phone. It doesn't guess from raw numbers: each question goes in with what the app has already worked out from your data and the research rule behind it, so answers stay specific and right. Or use Claude: tap Ask in the Claude app and your question plus a summary of your data (no name, no dates) opens there, or add an Anthropic API key and Claude answers in the app and writes your weekly report.
 
 ## Catch up a weaker side
 

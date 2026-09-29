@@ -165,14 +165,29 @@ question plus the same privacy-safe summary the API coach uses (`GH.ai.summary`)
 
 `src/llm.js` runs a small open model on the phone: llama.cpp compiled to WebAssembly
 ([@wllama/wllama](https://github.com/ngxson/wllama), whose one wasm is copied to `dist/lazy/wllama/`),
-single-threaded because Android WebView has no `SharedArrayBuffer`, and on WebGPU only when a quick
-f16 self-test passes. It's a lazy chunk: `await GH.lazy('llm')` sets `GH.llm`. The models are Qwen2.5
-0.5B ("Standard") and 1.5B ("Better answers", offered with 8 GB of RAM or more) Instruct in Q4_K_M from
-Qwen's Hugging Face repos; the table at the top of `src/llm.js` pins each file's size and SHA-256.
+on WebGPU only when a quick f16 self-test passes. wllama picks its own thread count; Android WebView is
+never cross-origin isolated, so it has no `SharedArrayBuffer` and runs on one thread (a load that
+fails with threads is retried on one). It's a lazy chunk: `await GH.lazy('llm')` sets `GH.llm`.
+
+- **Models.** Qwen3.5 in three sizes, Q4_K_M from unsloth's Hugging Face repos: Fast (0.8B, 533 MB),
+  Balanced (2B, 1.28 GB, recommended with 6 GB of RAM or more) and Best answers (4B, 2.74 GB, offered
+  with 8 GB or more). Qwen3.5 mixes gated delta-net layers with full attention. Each entry in the table
+  at the top of `src/llm.js` says how to run it: `ctx`, `batch` (64: llama.cpp keeps a cache checkpoint
+  one batch before the end of each prompt, so on a hybrid model a follow-up question reuses nearly all
+  of the prompt instead of reprocessing it), `think` (the template is told `enable_thinking: false`, and
+  `visible()` hides any `<think>` block that slips out) and `gen` (sampling). 1.2's Qwen2.5 models stay
+  in the table as `legacy`, with their SHA-256 pinned: they aren't offered, but one already on a phone
+  keeps working.
+- **Grounding.** `src/devicecoach.js` doesn't make a small model reason from raw numbers. Each question
+  goes in with FACTS: what the built-in coach (`src/coach.js`) works out for its topic, the How it works
+  rule behind it (`src/data/science.js`) and, for today, what the plan changed and why. The rules and a
+  brief of the person's data (no name, no dates) come first and are the same every turn, so they stay
+  cached. Emergencies get the built-in safety answer instead of the model's.
 
 - **Downloads** run in Java (`ModelStore.java`, started by `AndroidBridge.modelDownload`): one at a
   time, only from Hugging Face, resumable from a `.part` file, optionally Wi-Fi only, after a free-space
-  check. A file counts as installed once its size, GGUF magic and SHA-256 check out. Progress goes to
+  check. A file counts as installed once its size (the Hub's exact size, within 3% of the table's),
+  GGUF magic and SHA-256 (pinned, or the Hub's `X-Linked-Etag`) check out. Progress goes to
   `__gh.onModelProgress` at most 4 times a second; after a page reload `AndroidBridge.modelStatus()`
   reports it again. Models live in `noBackupFilesDir/models/`, so they stay out of device backups.
 - **Loading.** `MainActivity` serves installed models at `https://appassets.androidplatform.net/models/`
@@ -180,14 +195,17 @@ Qwen's Hugging Face repos; the table at the top of `src/llm.js` pins each file's
   is never copied into browser storage. WebView applies a request's Range a second time to what
   `shouldInterceptRequest` returns (it skips the range's start on the stream), so a ranged body starts
   with that many skippable bytes (`ModelStore.Slice`).
-- **Tests.** The real models can't be downloaded in tests, so `scripts/make-tiny-gguf.py` writes a tiny
-  random-weight llama model with a ChatML template to `build/tiny.gguf` (it needs the `gguf` package).
-  `test/llm.mjs` serves it to the built page and checks loading, streaming, the KV cache, abort,
-  unloading and the download API (against a fake bridge), and prints the tiny model's speed:
+- **Tests.** The real models can't be downloaded in tests, so `scripts/make-tiny-gguf.py` writes tiny
+  random-weight models (it needs the `gguf` package): `--arch llama` (the default, `build/tiny.gguf`),
+  `qwen3`, or `qwen35` (`build/tiny-qwen35.gguf`, Qwen3.5's hybrid layout). A model family goes into the
+  table only after its tiny model loads here, since the real files can't be tried. `test/llm.mjs`
+  serves them to the built page and checks the catalog, loading, streaming, the KV cache (and the
+  hybrid model's reuse), abort, unloading and the download API (against a fake bridge), and prints the
+  tiny model's speed. `test/ui-chat.mjs` runs the chat with the tiny Qwen3.5 model:
 
   ```sh
   python3 -m venv build/venv && build/venv/bin/pip install gguf numpy
-  npm run build && npm run test:llm      # makes build/tiny.gguf on the first run
+  npm run build && npm run test:llm      # makes the tiny models on the first run
   ```
 
 ## Food
@@ -242,7 +260,7 @@ The app targets API 36 and handles edge-to-edge and predictive back. Before a Pl
    the app, point `REPORT_URL` in `src/ui/healthtab.js` at an endpoint you run instead.
 7. **App content forms.** Target audience 13 and over, no ads, a content rating questionnaire, and App
    access notes: everything works without an account; Claude needs the person's own Anthropic API key
-   and the on-device model is an optional 0.5 to 1.1 GB download.
+   and the on-device model is an optional download of 0.5 to 2.7 GB.
 8. **Store listing.** The README and `docs/screenshots/` are a starting point for the description
    and phone screenshots.
 9. **Large screens.** From target SDK 36, Android ignores the portrait lock on screens 600 dp and wider,
