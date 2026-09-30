@@ -303,7 +303,7 @@ check('the tab bar steps aside on pushed pages', await page.evaluate(() => docum
 await shot(page, '14a-profile');
 await page.evaluate(() => window.GH.ui.open('science', 'rest'));
 await page.waitForTimeout(900);
-check('How it works lists every rule in its group', await page.evaluate(() => document.querySelectorAll('#screen .sci-list .sci-row').length === window.GH.science.RULES.length && document.querySelectorAll('#screen .sci-list').length === 4));
+check('How it works lists every rule in its group', await page.evaluate(() => document.querySelectorAll('#screen .sci-list .sci-row').length === window.GH.science.RULES.length && document.querySelectorAll('#screen .sci-list').length === window.GH.science.GROUPS.length));
 check('a "Why?" link opens that rule with its research', await page.evaluate(() => { const d = document.querySelector('dialog.sci-sheet[open]'); return !!(d && /Rest between sets/.test(d.textContent) && d.querySelector('.sci-ref') && d.querySelector('.sci-block')); }));
 await shot(page, '14b-science');
 await page.evaluate(() => window.GH.ui.closeSheets());

@@ -1,6 +1,7 @@
 /* The research behind the app's rules, for the "How it works" page. Each rule says what the app
  * does, why, and how strong the evidence is, and sits in a group (cat): training, recovery, food
- * and body, or habits. Titles, authors, years, journals and DOIs were checked against PubMed and
+ * and body, habits, or age and health (how the plan adapts to age and health conditions, see
+ * src/access.js). Titles, authors, years, journals and DOIs were checked against PubMed and
  * publisher records.
  *
  * Evidence levels:
@@ -59,6 +60,24 @@
     jensen2014: { cite: "Jensen et al., 2014", title: "2013 AHA/ACC/TOS Guideline for the Management of Overweight and Obesity in Adults", journal: "Circulation 129(25 Suppl 2):S102-S138", doi: "10.1161/01.cir.0000437739.71477.ee" },
     iraki2019: { cite: "Iraki et al., 2019", title: "Nutrition Recommendations for Bodybuilders in the Off-Season: A Narrative Review", journal: "Sports 7(7):154", doi: "10.3390/sports7070154" },
     foster2001: { cite: "Foster et al., 2001", title: "A new approach to monitoring exercise training", journal: "Journal of Strength and Conditioning Research 15(1):109-115", url: "https://pubmed.ncbi.nlm.nih.gov/11708692/" },
+    // Age and health.
+    fragala2019: { cite: "Fragala et al., 2019", title: "Resistance Training for Older Adults: Position Statement From the National Strength and Conditioning Association", journal: "Journal of Strength and Conditioning Research 33(8):2019-2052", doi: "10.1519/JSC.0000000000003230" },
+    chodzko2009: { cite: "Chodzko-Zajko et al., 2009", title: "American College of Sports Medicine position stand. Exercise and physical activity for older adults", journal: "Medicine and Science in Sports and Exercise 41(7):1510-1530", doi: "10.1249/MSS.0b013e3181a0c95c" },
+    sherrington2019: { cite: "Sherrington et al., 2019", title: "Exercise for preventing falls in older people living in the community", journal: "Cochrane Database of Systematic Reviews 2019, Issue 1, CD012424", doi: "10.1002/14651858.CD012424.pub2" },
+    lesinski2015: { cite: "Lesinski et al., 2015", title: "Effects of Balance Training on Balance Performance in Healthy Older Adults: A Systematic Review and Meta-analysis", journal: "Sports Medicine 45(12):1721-1738", doi: "10.1007/s40279-015-0375-y" },
+    straight2016: { cite: "Straight et al., 2016", title: "Effects of Resistance Training on Lower-Extremity Muscle Power in Middle-Aged and Older Adults: A Systematic Review and Meta-Analysis of Randomized Controlled Trials", journal: "Sports Medicine 46(3):353-364", doi: "10.1007/s40279-015-0418-4" },
+    hofmeyer2002: { cite: "Hofmeyer et al., 2002", title: "Floor-rise strategy training in older adults", journal: "Journal of the American Geriatrics Society 50(10):1702-1706", doi: "10.1046/j.1532-5415.2002.50463.x" },
+    rauschosthoff2018: { cite: "Rausch Osthoff et al., 2018", title: "2018 EULAR recommendations for physical activity in people with inflammatory arthritis and osteoarthritis", journal: "Annals of the Rheumatic Diseases 77(9):1251-1260", doi: "10.1136/annrheumdis-2018-213585" },
+    kolasinski2020: { cite: "Kolasinski et al., 2020", title: "2019 American College of Rheumatology/Arthritis Foundation Guideline for the Management of Osteoarthritis of the Hand, Hip, and Knee", journal: "Arthritis Care & Research 72(2):149-162", doi: "10.1002/acr.24131" },
+    hurkmans2009: { cite: "Hurkmans et al., 2009", title: "Dynamic exercise programs (aerobic capacity and/or muscle strength training) in patients with rheumatoid arthritis", journal: "Cochrane Database of Systematic Reviews 2009, Issue 4, CD006853", doi: "10.1002/14651858.CD006853.pub2" },
+    giangregorio2014: { cite: "Giangregorio et al., 2014", title: "Too Fit To Fracture: exercise recommendations for individuals with osteoporosis or osteoporotic vertebral fracture", journal: "Osteoporosis International 25(3):821-835", doi: "10.1007/s00198-013-2523-2" },
+    watson2018: { cite: "Watson et al., 2018", title: "High-Intensity Resistance and Impact Training Improves Bone Mineral Density and Physical Function in Postmenopausal Women With Osteopenia and Osteoporosis: The LIFTMOR Randomized Controlled Trial", journal: "Journal of Bone and Mineral Research 33(2):211-220", doi: "10.1002/jbmr.3284" },
+    hayden2021: { cite: "Hayden et al., 2021", title: "Exercise therapy for chronic low back pain", journal: "Cochrane Database of Systematic Reviews 2021, Issue 9, CD009790", doi: "10.1002/14651858.CD009790.pub2" },
+    edwards2023: { cite: "Edwards et al., 2023", title: "Exercise training and resting blood pressure: a large-scale pairwise and network meta-analysis of randomised controlled trials", journal: "British Journal of Sports Medicine 57(20):1317-1326", doi: "10.1136/bjsports-2022-106503" },
+    pescatello2004: { cite: "Pescatello et al., 2004", title: "American College of Sports Medicine position stand. Exercise and hypertension", journal: "Medicine and Science in Sports and Exercise 36(3):533-553", doi: "10.1249/01.MSS.0000115224.88514.3A" },
+    pelliccia2021: { cite: "Pelliccia et al., 2021", title: "2020 ESC Guidelines on sports cardiology and exercise in patients with cardiovascular disease", journal: "European Heart Journal 42(1):17-96", doi: "10.1093/eurheartj/ehaa605" },
+    martinginis2018: { cite: "Martin Ginis et al., 2018", title: "Evidence-based scientific exercise guidelines for adults with spinal cord injury: an update and a new guideline", journal: "Spinal Cord 56(4):308-321", doi: "10.1038/s41393-017-0017-3" },
+    acog2020: { cite: "American College of Obstetricians and Gynecologists, 2020", title: "Physical Activity and Exercise During Pregnancy and the Postpartum Period: ACOG Committee Opinion, Number 804", journal: "Obstetrics & Gynecology 135(4):e178-e188", doi: "10.1097/AOG.0000000000003772" },
   };
 
   const LEVELS = {
@@ -170,9 +189,56 @@
       does: 'Abs get trained like any other muscle, but the app never gives you a date for seeing them.',
       why: 'Six weeks of ab exercises alone didn\'t reduce belly fat in a controlled study. Seeing your abs depends on body fat, which comes down to food and activity over months.',
       refs: ['vispute2011'] },
+    // Age and health (src/access.js).
+    { id: 'age', cat: 'health', icon: 'calendar', tone: 'indigo', title: 'A plan that changes with your age', level: 'strong',
+      does: 'Under 30, an easy set adds a rep more and finishers change more often. From 50, warm-ups are longer and gentler, rest is 15 seconds longer, reps climb in smaller steps and jumping is off unless you turn it on. From 65, sit to stand and wall push-ups come first, rest is 30 seconds longer and every session ends with a cool-down. Strength keeps progressing at every age.',
+      why: 'Strength training builds strength, muscle and everyday function in older adults too, into very old age. The advice for them is to start gently and progress gradually, but keep progressing, so the gains keep coming.',
+      caveat: 'The cut-offs at 30, 50 and 65 are sensible defaults, not lines the research drew.',
+      refs: ['fragala2019', 'chodzko2009'] },
+    { id: 'balance', cat: 'health', icon: 'compass', tone: 'teal', title: 'Balance practice', level: 'strong',
+      does: 'From 65, and with balance problems, every session starts with a balance hold, from a hand on the wall to nothing to hold, and light days add one too. From 50, and with osteoporosis, it\'s twice a week. With balance problems it always keeps a hand on the wall.',
+      why: 'Exercise, especially balance and functional exercise, cut falls in older people living at home by about a quarter across 81 trials. Balance training also improved balance itself in healthy older adults.',
+      refs: ['sherrington2019', 'lesinski2015'] },
+    { id: 'power', cat: 'health', icon: 'bolt', tone: 'amber', title: 'Fast on the way up', level: 'moderate',
+      does: 'From 50, once a week your squat or sit to stand is done as fast as you can on the way up and slowly on the way down. It counts as your usual level, so progress carries on.',
+      why: 'Power, how quickly you can push, fades faster than strength with age, and it\'s what gets you out of a chair or catches a trip. Lifting fast on the way up improved leg power more than the usual steady pace.',
+      refs: ['straight2016', 'fragala2019'] },
+    { id: 'floor', cat: 'health', icon: 'arrow-up-right', tone: 'green', title: 'Getting down to the floor and up', level: 'early',
+      does: 'From 65, and with balance problems, you practise kneeling down and standing back up once a week, with a hand on a sturdy chair. It\'s left out if you said the floor is hard, you plan seated, or your knees would take it badly.',
+      why: 'Being able to get up from the floor matters after a fall. A short course of practice helped older adults rise from the floor more easily.',
+      caveat: 'That was one small study. The chair and the slow, step-by-step version are there to keep it safe.',
+      refs: ['hofmeyer2002'] },
+    { id: 'arthritis', cat: 'health', icon: 'refresh', tone: 'coral', title: 'Arthritis and painful hands', level: 'strong',
+      does: 'With rheumatoid arthritis: low impact, no weight on your hands, no hanging or hard gripping, and gentle range of motion for every joint in each session. With osteoarthritis: low impact, strength around the joint, and no deep loaded bending or kneeling for sore knees or hips. With hand or wrist pain, the moves that load your hands swap for self-resisted and band-loop versions. On a flare day, the session becomes a gentle range-of-motion flow that still counts.',
+      why: 'Exercise eases pain and improves function in rheumatoid arthritis and osteoarthritis, and guidelines recommend it for everyone with these conditions, adapted to each person. Strength and aerobic training in rheumatoid arthritis improved fitness without making the disease worse.',
+      caveat: 'Swapping a flare day for gentle range of motion follows common clinical advice to keep moving within comfort; it hasn\'t been tested as its own rule.',
+      refs: ['rauschosthoff2018', 'kolasinski2020', 'hurkmans2009'] },
+    { id: 'bones', cat: 'health', icon: 'layers', tone: 'violet', title: 'Osteoporosis', level: 'moderate',
+      does: 'Strength and balance training that keeps progressing, without bending or twisting your spine under load (sit-ups, woodchops, Russian twists), jumping, swings or slams.',
+      why: 'An expert consensus recommends resistance and balance training for people with osteoporosis, and avoiding loaded bending and twisting of the spine. In a trial, supervised heavy strength and impact training improved bone density and function in women with low bone mass.',
+      caveat: 'That trial had a coach at every session. At home the app keeps loads moderate, with no jumping.',
+      refs: ['giangregorio2014', 'watson2018'] },
+    { id: 'back', cat: 'health', icon: 'person', tone: 'sky', title: 'Ongoing low back pain', level: 'moderate',
+      does: 'Bird dogs and side planks build endurance around your spine, light days include a walk, and heavy loads on your back (deadlifts, bent-over rows) are left out for the first 8 weeks. After that they come back as a level to work up to.',
+      why: 'Exercise reduced pain in chronic low back pain compared with no treatment or usual care. No one type clearly beat the others, so the plan starts gentle and builds up.',
+      caveat: 'The 8 weeks without heavy spinal loading is a cautious default, not a tested rule.',
+      refs: ['hayden2021'] },
+    { id: 'pressure', cat: 'health', icon: 'heart', tone: 'rose', title: 'High blood pressure and heart conditions', level: 'moderate',
+      does: 'Every session reminds you to breathe out as you push and never hold your breath. There are no head-down positions and no all-out sets or tests. With a heart condition, the plan starts gentler, cardio stays easy, and the app asks you to check with your doctor first.',
+      why: 'Exercise lowers resting blood pressure, and holds like wall sits had the largest effect in a big analysis of 270 trials. Holding your breath while you strain makes blood pressure spike, so guidelines say to avoid it. For most people with heart disease, exercise is recommended after a check-up, at an intensity set for them.',
+      refs: ['edwards2023', 'pescatello2004', 'pelliccia2021'] },
+    { id: 'seated', cat: 'health', icon: 'people', tone: 'teal', title: 'A seated plan', level: 'moderate',
+      does: 'If you use a wheelchair or can\'t stand for long, every exercise is done sitting down: band and dumbbell moves, self-resisted holds, seated cardio, and leg moves if your legs can do them. Balance becomes a seated forward reach.',
+      why: 'Guidelines for adults with spinal cord injury recommend strength exercises for each working muscle group twice a week, plus aerobic exercise. The seated plan follows that pattern.',
+      caveat: 'Those guidelines are written for spinal cord injury. Using them for other reasons to sit is an educated extension.',
+      refs: ['martinginis2018'] },
+    { id: 'pregnancy', cat: 'health', icon: 'info', tone: 'indigo', title: 'Why pregnancy isn\'t on the list', level: 'moderate',
+      does: 'Pregnancy isn\'t one of the options the plan adapts to. The app suggests asking your midwife or doctor what\'s right for you.',
+      why: 'Exercise is encouraged in most pregnancies, but the guidance asks care providers to check each person first, especially with complications. An app can\'t do that check, so it doesn\'t pretend to.',
+      refs: ['acog2020'] },
   ];
 
   const refUrl = (r) => r.url || (r.doi ? `https://doi.org/${r.doi}` : '');
-  const GROUPS = [['training', 'Training'], ['recovery', 'Recovery'], ['food', 'Food and body'], ['habits', 'Habits']];
+  const GROUPS = [['training', 'Training'], ['recovery', 'Recovery'], ['food', 'Food and body'], ['habits', 'Habits'], ['health', 'Age and health']];
   GH.science = { REFS, LEVELS, RULES, GROUPS, refUrl };
 })(typeof window !== 'undefined' ? window : globalThis);
