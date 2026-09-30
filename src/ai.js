@@ -457,4 +457,26 @@ async function tailor(S, day, text) {
   } finally { busy = null; }
 }
 
-GH.ai = { KEY_URL, hasKey, checkKey, setKey, deleteKey, summary, preview, report, reportFor, needsReport, ask, suggest, tailor, stop, clearChat, pickFrom, explain, MESSAGES, SYSTEM };
+// Structured output for a feature that writes its own request and schema (Build me a plan in
+// src/customplan.js): the same consent, privacy summary and model as the rest. The caller checks
+// what comes back before anything is shown.
+async function json(S, day, prompt, schema, opts) {
+  needConsent(S);
+  const c = client();
+  const o = opts || {};
+  try {
+    const modelId = await model(S, c, day);
+    const stream = c.beta.messages.stream(Object.assign(baseParams(modelId, o.maxTokens || 4000, o.effort || 'low', S, day), {
+      output_config: { effort: o.effort || 'low', format: { type: 'json_schema', schema } },
+      messages: [{ role: 'user', content: String(prompt || '') }],
+    }));
+    busy = stream;
+    const msg = await stream.finalMessage();
+    checkStop(msg);
+    return JSON.parse(textOf(msg));
+  } catch (err) {
+    throw explain(err);
+  } finally { busy = null; }
+}
+
+GH.ai = { KEY_URL, hasKey, checkKey, setKey, deleteKey, summary, preview, report, reportFor, needsReport, ask, suggest, tailor, json, stop, clearChat, pickFrom, explain, MESSAGES, SYSTEM };

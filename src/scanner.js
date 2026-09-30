@@ -3,6 +3,8 @@
  * twice in a row and its check digit is right, so a half-seen barcode never looks up the wrong
  * food. The camera stops the moment the sheet closes. You can always type the number instead.
  * GH.scanner.scan() → Promise of the digits, or null if you closed it.
+ * GH.scanner.scan({ qr: true, accept(text) }) reads QR codes instead (a shared plan): the first read
+ * that accept() takes counts (QR codes carry their own error correction), and a link can be pasted.
  */
 (function (G) {
   'use strict';
@@ -49,23 +51,28 @@
     if (v) { try { v.pause(); v.srcObject = null; } catch (e) { /* ignore */ } }
   }
 
-  const body = (msg) => `<div class="sc-wrap">
+  const body = (msg, qr) => `<div class="sc-wrap${qr ? ' sc-qr' : ''}">
       <div class="sc-view"><video class="sc-video" playsinline muted autoplay></video><div class="sc-frame" aria-hidden="true"><i></i></div>
         <p class="sc-msg t-callout" role="status">${msg}</p></div>
       <div class="btn-row sc-tools">
         <button type="button" class="rf-btn" data-act="scanTorch" hidden>${U().icon('bolt')}Light</button>
-        <button type="button" class="rf-btn" data-variant="plain" data-act="scanType">Type the number</button>
+        <button type="button" class="rf-btn" data-variant="plain" data-act="scanType">${qr ? 'Paste a link instead' : 'Type the number'}</button>
       </div>
-      <form class="sc-type" hidden><div class="rf-field"><label class="rf-field-label" for="scCode">Barcode number</label>
+      <form class="sc-type" hidden>${qr
+    ? `<div class="rf-field"><label class="rf-field-label" for="scCode">Plan link</label>
+        <div class="rf-field-control"><input class="rf-input" id="scCode" type="url" inputmode="url" maxlength="4000" autocomplete="off" placeholder="https://…"></div></div>
+        <button type="submit" class="rf-btn rf-glass" data-variant="tinted">Open the plan</button>`
+    : `<div class="rf-field"><label class="rf-field-label" for="scCode">Barcode number</label>
         <div class="rf-field-control"><input class="rf-input" id="scCode" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="14" autocomplete="off"></div></div>
-        <button type="submit" class="rf-btn rf-glass" data-variant="tinted">Look it up</button></form>
+        <button type="submit" class="rf-btn rf-glass" data-variant="tinted">Look it up</button>`}</form>
     </div>`;
   const say = (text) => { const el = active && active.sheet.el.querySelector('.sc-msg'); if (el) el.textContent = text; };
 
-  function scan() {
+  function scan(opts) {
+    const o = opts || {};
     if (active) stop();
     return new Promise((resolve) => {
-      const a = { stream: null, sheet: null, resolve, timer: 0, stopped: false, last: null, torch: false };
+      const a = { stream: null, sheet: null, resolve, timer: 0, stopped: false, last: null, torch: false, qr: !!o.qr, accept: o.accept || null, notThis: o.notThis || '' };
       active = a;
       let settled = false;
       const finish = (code) => {
@@ -76,10 +83,16 @@
         resolve(code || null);
       };
       a.finish = finish;
-      a.sheet = U().sheet({ title: 'Scan a barcode', detents: 'large', detent: 'large', cls: 'sc-sheet', body: body('Starting the camera…'), onClose: () => finish(null) });
+      a.sheet = U().sheet({ title: o.title || (a.qr ? 'Scan a code' : 'Scan a barcode'), detents: 'large', detent: 'large', cls: 'sc-sheet', body: body('Starting the camera…', a.qr), onClose: () => finish(null) });
       const el = a.sheet.el;
       el.addEventListener('submit', (e) => {
         e.preventDefault();
+        if (a.qr) {
+          const text = String((el.querySelector('#scCode') || {}).value || '').trim();
+          if (!text || (a.accept && !a.accept(text))) { U().toast(o.badLink || 'That link doesn\'t hold a plan', 'caution', 'Copy the whole link and paste it again.'); return; }
+          finish(text);
+          return;
+        }
         const s = normalise((el.querySelector('#scCode') || {}).value);
         if (!checksumOk(s)) { U().toast('That number doesn\'t look right', 'caution', 'Barcodes are 8, 12 or 13 digits. Check the last one.'); return; }
         finish(s);
@@ -90,15 +103,15 @@
 
   async function start(a) {
     const nav = G.navigator;
-    if (!nav || !nav.mediaDevices || !nav.mediaDevices.getUserMedia) { say('The camera isn\'t available here. Type the number instead.'); showType(); return; }
-    const reader = GH.lazy('barcode').then((m) => m.ready.then(() => m.detector()));
+    if (!nav || !nav.mediaDevices || !nav.mediaDevices.getUserMedia) { say(`The camera isn't available here. ${a.qr ? 'Paste the link' : 'Type the number'} instead.`); showType(); return; }
+    const reader = GH.lazy('barcode').then((m) => m.ready.then(() => m.detector(a.qr ? ['qr_code'] : undefined)));
     let stream;
     try {
       stream = await nav.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
     } catch (e) {
       if (a.stopped) return;
       const denied = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
-      say(denied ? 'Camera access is off. Allow it in the app\'s Android settings, or type the number.' : 'Couldn\'t start the camera. Type the number instead.');
+      say(denied ? `Camera access is off. Allow it in the app's Android settings, or ${a.qr ? 'paste the link' : 'type the number'}.` : `Couldn't start the camera. ${a.qr ? 'Paste the link' : 'Type the number'} instead.`);
       showType();
       return;
     }
@@ -114,12 +127,12 @@
     let detector;
     try { detector = await reader; } catch (e) {
       if (a.stopped) return;
-      say('The barcode reader didn\'t load. Type the number instead.');
+      say(`The ${a.qr ? 'code' : 'barcode'} reader didn't load. ${a.qr ? 'Paste the link' : 'Type the number'} instead.`);
       showType();
       return;
     }
     if (a.stopped) return;
-    say('Hold the barcode inside the box');
+    say(a.qr ? 'Point the camera at the code' : 'Hold the barcode inside the box');
     loop(a, video, detector);
   }
 
@@ -130,6 +143,13 @@
         try {
           const found = await detector.detect(video);
           if (a.stopped) return;
+          if (a.qr) {
+            const text = (found || []).map((x) => String(x.rawValue || '')).find((t) => t && (!a.accept || a.accept(t)));
+            if (text) { if (U().haptic) U().haptic('success'); a.finish(text); return; }
+            if ((found || []).length && a.notThis) say(a.notThis);
+            a.timer = setTimeout(tick, 120);
+            return;
+          }
           const hit = (found || []).map((b) => ({ code: normalise(b.rawValue, b.format) })).find((b) => checksumOk(b.code));
           if (hit) {
             if (a.last === hit.code) { if (U().haptic) U().haptic('success'); a.finish(hit.code); return; }

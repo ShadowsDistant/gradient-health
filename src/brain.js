@@ -439,7 +439,9 @@
       const onramp = !deload && (trainingWeeks < prog.onramp.weeks || idle);
       const mult = deload ? 0.6 : onramp ? (idle && trainingWeeks >= prog.onramp.weeks ? 0.7 : prog.onramp.mult) : 1;
       // Sessions for the week.
-      let sessions = tpl.map((t) => ({ tpl: t.idx, units: t.units, day: ws + t.offset, planned: ws + t.offset }))
+      // [custom plans] Days a custom plan runs take their sessions from it (src/customplan.js).
+      const custom = GH.customPlan ? GH.customPlan.weekSessions(S, ws, tpl) : null;
+      let sessions = (custom || tpl.map((t) => ({ tpl: t.idx, units: t.units, day: ws + t.offset, planned: ws + t.offset })))
         .filter((s) => s.day >= start);
       // Moves (Plan tab, "Train today instead") replay on the day they were made, after any
       // earlier shifts; moves made before this week started apply up front.
@@ -475,10 +477,11 @@
           if (!freezeUsed) { freezeUsed = true; info.frozen = true; }
           else { streak = 0; info.broken = true; }
           info.missed = true;
-          const pending = sessions.filter((x) => !x.done && !x.dropped && x.day >= d);
+          // [custom plans] In a week that switches plans, only this plan's sessions move, up to its last day.
+          const pending = sessions.filter((x) => !x.done && !x.dropped && x.day >= d && x.regime === s.regime);
           for (let i = pending.length - 1; i >= 0; i--) {
             pending[i].day += 1;
-            if (pending[i].day > ws + 6) { pending[i].dropped = true; pending[i].day = null; }
+            if (pending[i].day > (pending[i].until != null ? pending[i].until : ws + 6)) { pending[i].dropped = true; pending[i].day = null; }
           }
           out.notices.push({ day: d, text: 'Moved your plan forward a day.' });
         } else if (!s && lightDone[d]) {
@@ -632,6 +635,8 @@
   // Build the session for a template on a day. opts: { short, sleepChip }
   function buildSession(S, day, tplIdx, opts) {
     const o = opts || {};
+    // [custom plans] A custom plan's day ('c:<plan>:<day>') is built by src/customplan.js.
+    if (GH.customPlan && GH.customPlan.owns(tplIdx)) return GH.customPlan.buildSession(S, day, tplIdx, o);
     const p = S.profile;
     const prog = programFor(p);
     const cal = o.cal || calendar(S, day);
@@ -1385,8 +1390,10 @@
       if (log.kind !== 'move' || !log.sets.length) continue;
       const fam = log.fam && M().LADDERS[log.fam] ? log.fam : (M().MOVES[log.moveId] || {}).family;
       const before = progSnap(S, fam, log.moveId);
-      const res = progress(S, log, deload, A.day);
-      log.outcome = outcomeOf(before, progSnap(S, fam, log.moveId), isGymFam(fam));
+      // [custom plans] Their exercises move on from the plan's own numbers (src/customplan.js).
+      const planItem = A.session.custom && GH.customPlan ? A.session.items.concat(A.session.extras)[i] : null;
+      const res = planItem ? GH.customPlan.progress(S, log, deload, A.day, planItem) : progress(S, log, deload, A.day);
+      log.outcome = planItem ? res.outcome || 'hold' : outcomeOf(before, progSnap(S, fam, log.moveId), isGymFam(fam));
       if (res.line) lines.push(res.line);
       for (const c2 of res.celebrate || []) celebrate.push(c2);
     }

@@ -1,7 +1,7 @@
 /* The barcode reader, loaded the first time someone scans (lazy/barcode.js). ZXing compiled to
  * WebAssembly through the barcode-detector ponyfill (both MIT), so it works on phones without Google
  * Play services. The .wasm file ships in the app next to this script; nothing is downloaded.
- * Sets GH.barcode = { ready, detector() }.
+ * Sets GH.barcode = { ready, detector(formats?) }: food barcodes by default, ['qr_code'] for plans.
  */
 import { BarcodeDetector, prepareZXingModule } from 'barcode-detector/ponyfill';
 
@@ -19,5 +19,5 @@ const ready = prepareZXingModule({
 GH.barcode = {
   FORMATS,
   ready,
-  detector: () => new BarcodeDetector({ formats: FORMATS }),
+  detector: (formats) => new BarcodeDetector({ formats: formats || FORMATS }),
 };
