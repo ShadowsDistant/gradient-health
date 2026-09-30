@@ -97,7 +97,7 @@
     const h = S.health.days[day] || {};
     const l = plan.light || {};
     const next = plan.next;
-    const walkSub = l.walk ? (l.walkSrc === 'health-steps' ? 'Ticked from your steps' : l.walkSrc === 'health-walk' ? 'Ticked from Health Connect' : 'Logged') : h.steps != null ? `${U.num(h.steps)} steps so far today` : 'Any pace. Outside if you can.';
+    const walkSub = l.walk ? (l.walkSrc === 'health-steps' ? 'Ticked from your steps' : l.walkSrc === 'health-walk' ? 'Ticked from Health Connect' : l.walkSrc === 'activity' ? 'Ticked from the activity you tracked' : 'Logged') : h.steps != null ? `${U.num(h.steps)} steps so far today` : 'Any pace. Outside if you can.';
     return `<div class="card light" data-key="main">
       <span class="rf-card-eyebrow">Light day</span>
       <h2 class="t-title-2">Walk and mobility</h2>
@@ -207,6 +207,7 @@
           </div>` : ''}
           ${main}
           ${workouts && plan.type !== 'done' && !S.active && U.coachCard ? U.coachCard(S, day, session) : ''}
+          ${U.actTodayCard ? U.actTodayCard(S, day, plan) : ''}
           ${U.checklist ? U.checklist(S, day) : ''}
           ${GH.food && GH.food.full(S) && U.foodCard ? U.foodCard(S, day) : proteinCard(S, day)}
           ${feelCard(S, day)}
@@ -215,6 +216,9 @@
         </div>`;
     },
     float(S, day) {
+      // An outdoor activity recording in the background: the way back to it (src/ui/actlive.js).
+      const act = U.actFloat ? U.actFloat(S, day) : '';
+      if (act) return act;
       const cal = B().calendar(S, day);
       const plan = B().todayPlan(S, day, cal);
       if (S.active && S.active.day === day) {

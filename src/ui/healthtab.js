@@ -195,8 +195,10 @@
   /* ---------------------------------------------------------------- activity + sources */
   function activity(S, day) {
     const list = H().activity(S, day - 27, day).slice(0, 10);
-    if (!list.length) return '<p class="t-callout rf-muted">No workouts in the last 4 weeks yet.</p>';
-    return `<ul class="rf-list">${list.map((a) => U.row({
+    // Starting an outdoor activity, and the ones recorded here open their summary (src/ui/activity.js).
+    const start = U.actHealthStart ? U.actHealthStart(S) : '';
+    if (!list.length) return `${start}<p class="t-callout rf-muted">No workouts in the last 4 weeks yet.</p>`;
+    return `${start}<ul class="rf-list">${list.map((a) => (a.src === 'activity' && U.actHealthRow && U.actHealthRow(a)) || U.row({
       icon: a.src === 'app' ? 'bolt' : a.src === 'manual' ? 'pencil' : 'heart', tone: a.src === 'app' ? 'indigo' : a.src === 'manual' ? 'amber' : 'rose',
       title: U.esc(U.cap(a.name || 'Workout')), sub: `${U.esc(U.fmtDay(a.day))}${a.src === 'app' ? ' · Gradient Health' : a.src === 'manual' ? ' · logged by hand' : ' · Health Connect'}`,
       detail: a.minutes ? `${a.minutes} min` : '',

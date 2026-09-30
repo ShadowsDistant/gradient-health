@@ -75,6 +75,7 @@ export const APP_SCRIPTS = [
   'src/insights.js',
   'src/body.js',
   'src/health.js',
+  'src/activity.js',
   'src/food.js',
   'src/store.js',
   'src/platform.js',
@@ -99,6 +100,8 @@ export const APP_SCRIPTS = [
   'src/scanner.js',
   'src/ui/bodymap.js',
   'src/ui/progress.js',
+  'src/ui/activity.js',
+  'src/ui/actlive.js',
   'src/ui/moves.js',
   'src/ui/profile.js',
   'src/ui/coachpage.js',
@@ -117,6 +120,10 @@ export const LAZY = [
   { name: 'foods', entry: 'src/data/foods.js' },
   // The 3D exercise figure (three.js), loaded the first time a figure is shown.
   { name: 'figure3d', entry: 'src/engine/figure3d.js' },
+  // Street maps behind an activity's route (MapLibre GL JS), loaded only when someone taps Show
+  // streets. Its web worker is a chunk of its own, started from the app's origin.
+  { name: 'actmap', entry: 'src/actmap.js' },
+  { name: 'actmap-worker', entry: 'node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs' },
 ];
 
 async function buildLazy() {
