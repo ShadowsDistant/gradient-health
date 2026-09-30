@@ -1020,7 +1020,7 @@
     for (const it of items || []) {
       const m = it && M().MOVES[it.moveId];
       if (!m) continue;
-      const sets = it.sets || (it.items ? 1 : 1);
+      const sets = it.sets || 1;
       (m.muscles || []).forEach((mu, i) => { w[mu] = (w[mu] || 0) + sets * (i < (m.prime || 1) ? 1 : 0.5); });
     }
     return w;
@@ -1052,18 +1052,20 @@
       return m && M().allowed(m, eq) && !(m.joints || []).some((j) => avoid.includes(j)) && (id !== 'wu_halo' || upper);
     });
     const w = musclesOf(items);
+    // (No exercises to go by: the usual whole-body three.)
     const moves = Object.keys(w).length ? pickFor(ids, w, 3, { wu_halo: 1000 })
-      : (eq.kb && eq.kb.length ? M().WARMUP.kb : M().WARMUP.none).filter((id) => ids.includes(id)).slice(0, 3);
+      : [eq.kb && eq.kb.length ? 'wu_halo' : 'wu_circles', 'wu_angels', 'wu_squat'].filter((id) => ids.includes(id));
     // Upper-body moves first, then the legs (the list's order).
     moves.sort((a, b) => ids.indexOf(a) - ids.indexOf(b));
     const pick = minutes <= 1 ? moves.slice(0, 2) : moves;
     return pick.map((id) => { const m = M().MOVES[id]; return { kind: 'warmup', moveId: id, name: m.name, timed: !!m.timed, target: minutes <= 1 ? Math.min(m.start, 20) : m.start, load: loadInfo(S, m) }; });
   }
-  // Mobility moves this person can do on a day (their kit, nothing for a sore joint).
-  function mobilityIds(S, day) {
-    const eq = day == null ? S.profile.equipment : eqFor(S, day);
-    const avoid = Object.entries(S.pain || {}).filter(([, until]) => day == null || until >= day).map(([j]) => j);
-    return M().MOBILITY.filter((id) => { const m = M().MOVES[id]; return m && M().allowed(m, eq) && !(m.joints || []).some((j) => avoid.includes(j)); });
+  // Mobility moves this person can do on a day (the day's kit unless one is given, nothing for a
+  // joint that's still sore then).
+  function mobilityIds(S, day, eq) {
+    const kit = eq || eqFor(S, day);
+    const avoid = Object.entries(S.pain || {}).filter(([, until]) => until >= day).map(([j]) => j);
+    return M().MOBILITY.filter((id) => { const m = M().MOVES[id]; return m && M().allowed(m, kit) && !(m.joints || []).some((j) => avoid.includes(j)); });
   }
   // The cool-down: two or three stretches for the muscles the day worked.
   function cooldownItems(S, day, items, short) {
@@ -1075,11 +1077,13 @@
   }
 
   // The light-day mobility flow (about 5 minutes): stretches for the muscles the last few workouts
-  // trained most (the latest counts most), in a floor-friendly order.
+  // trained most (the latest counts most), in a floor-friendly order. day defaults to today.
   const FLOW_DEFAULT = ['mob_catcow', 'mob_wgs', 'mob_hipflexor', 'mob_squat', 'mob_child'];
-  function mobilityFlow(S) {
+  function mobilityFlow(S, day) {
     const extra = programFor(S.profile).mobilityPlus;
-    const ids = mobilityIds(S);
+    const prefs = S.profile.prefs || {};
+    const d = day != null ? day : dayOf(Date.now(), prefs.rollHour != null ? prefs.rollHour : 4);
+    const ids = mobilityIds(S, d, S.profile.equipment);
     const recent = workoutLogs(S).filter(isDone).sort((a, b) => b.day - a.day).slice(0, 3);
     const w = {};
     recent.forEach((l, k) => {

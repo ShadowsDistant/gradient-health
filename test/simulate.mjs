@@ -421,9 +421,16 @@ section('Focus muscles, warm-ups and cool-downs');
   const S2 = B.newState(P, null, D0);
   const legs = B.templateFor(S2.profile, B.programFor(S2.profile)).filter((t) => t.units.includes('legs'));
   for (const t of legs) doWorkout(S2, D0 + t.offset, {});
-  const flow = B.mobilityFlow(S2).map((x) => x.moveId);
+  const flowOn = (day) => B.mobilityFlow(S2, day).map((x) => x.moveId);
+  const flow = flowOn(D0 + 7);
   const legStretch = flow.filter((id) => (M.MOVES[id].mobFor || []).some((mu) => ['glutes', 'quads', 'hamstrings', 'calves', 'hipFlexors'].includes(mu)));
   check('after leg days the mobility flow leans to leg stretches', flow.length >= 4 && legStretch.length >= 3, flow);
+  // A sore joint leaves its stretches out only while it's sore.
+  const later = flowOn(D0 + 12);
+  S2.pain = { ankle: D0 + 10, wrist: D0 + 10 };
+  const sore = flowOn(D0 + 7), healed = flowOn(D0 + 12);
+  const hurts = (id) => (M.MOVES[id].joints || []).some((j) => j === 'ankle' || j === 'wrist');
+  check('the flow skips stretches for a sore joint, and brings them back once it has healed', flow.some(hurts) && !sore.some(hurts) && sore.length >= 4 && healed.join() === later.join(), { flow, sore, healed, later });
 }
 
 done();
