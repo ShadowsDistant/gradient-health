@@ -862,7 +862,7 @@
         ${swaps.length ? `<p class="cp-swap is-box">${U.icon('shuffle')}<span>${U.esc(`${swaps.length === 1 ? 'One exercise needs' : `${swaps.length} exercises need`} something you don't have. The app swaps in the closest one you can do, shown below.`)}</span></p>` : ''}
         ${unknown ? `<p class="cp-swap is-box">${U.icon('alert')}<span>${U.esc(`${unknown === 1 ? 'One exercise needs' : `${unknown} exercises need`} a newer version of Gradient Health, so ${unknown === 1 ? 'it was' : 'they were'} left out.`)}</span></p>` : ''}
         ${done ? `<div class="cp-saved" data-key="saved"><p class="cp-eyebrow" data-tone="positive">${U.icon('check-circle')}<span>${st.existed ? 'Already in your plans' : 'Saved to your plans'}</span></p>
-            <div class="cp-imp-btns">${C().activeId(S) === done.id ? '' : `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="cpImpUse">${U.icon('play')}Use it now</button>`}<button type="button" class="rf-btn" data-size="lg" data-act="cpImpOpen">Open it</button></div></div>`
+            <div class="cp-imp-btns">${C().activeId(S) === done.id ? '' : `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="cpImpUse">${U.icon('play')}${S.profile.workouts === false ? 'Turn on workouts and use it' : 'Use it now'}</button>`}<button type="button" class="rf-btn" data-size="lg" data-act="cpImpOpen">Open it</button></div></div>`
     : `<div class="cp-imp-btns"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="cpImpSave">${U.icon('download')}Save to my plans</button></div>`}
         <div class="cp-imp-days">${dayRows}</div>
       </div>`;
@@ -881,11 +881,15 @@
       const id = st.saved && st.saved.id;
       const r = id ? C().use(U.S, id, U.today()) : null;
       if (!r) return;
+      // Someone who tracks only food and health turns workouts back on by choosing to use a plan.
+      const wasOff = U.S.profile.workouts === false;
+      if (wasOff) U.S.profile.workouts = true;
       U.save(true);
       ctl.close('ok');
       U.haptic('success');
+      if (wasOff) U.render();
       U.go('plan');
-      U.toast(`Using ${st.saved.name}`, 'positive', r.from > U.today() ? 'It starts tomorrow.' : 'Your week follows it from today.');
+      U.toast(`Using ${st.saved.name}`, 'positive', `${wasOff ? 'Workouts are on again. ' : ''}${r.from > U.today() ? 'It starts tomorrow.' : 'Your week follows it from today.'}`);
     };
     U.act.cpImpOpen = () => { const id = st.saved && st.saved.id; ctl.close('ok'); if (id) U.open('planEdit', id); };
   }
@@ -905,11 +909,19 @@
       if (url && C().isLink(url)) pendingLink = url;
     } catch (e) { /* no link */ }
   }
+  // After What's new or the tour (they open by themselves at start), so the plan isn't hidden
+  // behind them or they behind it.
   function flushPending(delay) {
     if (!pendingLink || !U.S || !U.S.profile.onboarded) return;
     const url = pendingLink;
     pendingLink = null;
-    setTimeout(() => openShared(url), delay);
+    let waits = 0;
+    const open = () => {
+      const top = U.topSheet && U.topSheet();
+      if (top && !top.closed && waits++ < 240) { setTimeout(open, 500); return; }
+      openShared(url);
+    };
+    setTimeout(open, delay);
   }
   const prevBoot = U.afterBoot;
   U.afterBoot = () => { if (prevBoot) prevBoot(); coldLink(); flushPending(900); };

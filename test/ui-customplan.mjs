@@ -25,7 +25,8 @@ const OUT = join(root, 'build/ui-customplan');
 if (!tag) rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 
-const server = await serveDist();
+// The share page (docs/p/, built with the app) is served where GitHub Pages would put it.
+const server = await serveDist({ '/p/index.html': join(root, 'docs/p/index.html'), '/icon-512.png': join(root, 'docs/icon-512.png') });
 const browser = await chromium.launch();
 const errors = [];
 const ctx = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: dark ? 'dark' : 'light' });
@@ -413,6 +414,118 @@ await settle(600);
 await page.evaluate(() => { const d = document.querySelector('dialog.rf-dialog[open]'); [...d.querySelectorAll('button')].find((x) => /^Delete$/.test(x.textContent.trim())).click(); });
 await settle(900);
 check('deleting a plan (with Undo)', await S(() => window.GH.customPlan.list(window.GH.ui.S).length) === 2 && /Plan deleted/.test(await toasts()), await toasts());
+
+/* ------------------------------------------------------------------ the share page */
+section('The share page (a link opened in a browser)');
+const pageUrl = `${server.url.replace('/gradient-health.html', '')}/p/index.html#${link.split('#')[1]}`;
+for (const [who, ua] of [['Android', 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36'], ['desktop', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36']]) {
+  const c2 = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 2, colorScheme: dark ? 'dark' : 'light', userAgent: ua });
+  const p2 = await c2.newPage();
+  const errs = [];
+  p2.on('pageerror', (e) => errs.push(e.message));
+  p2.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+  const outside = [];
+  p2.on('request', (r) => { if (!r.url().startsWith(server.url.replace('/gradient-health.html', ''))) outside.push(r.url()); });
+  await p2.goto(pageUrl);
+  await p2.waitForSelector('#plan:not([hidden])', { timeout: 5000 }).catch(() => {});
+  const info = await p2.evaluate(() => ({ name: document.getElementById('name').textContent, meta: document.getElementById('meta').textContent, days: [...document.querySelectorAll('.day h2')].map((h) => h.textContent), ex: [...document.querySelectorAll('.day .ex')].map((e) => e.firstChild.textContent), open: document.getElementById('open').hidden ? null : document.getElementById('open').getAttribute('href'), qr: !!document.querySelector('#scan:not([hidden]) svg path') }));
+  check(`${who}: the page shows the plan from the link`, info.name === 'Morning strength' && /2 days a week · 5 exercises/.test(info.meta) && info.days.length === 2 && /Arms/.test(info.days[1]) && info.ex.includes('Push-up'), info);
+  if (who === 'Android') check('Android: Open in Gradient Health goes to the app', !!info.open && info.open.startsWith(`intent://plan?d=${link.split('#')[1]}#Intent;scheme=gradienthealth;package=com.shadowsdistant.gradienthealth;`) && info.open.endsWith(';end'), info.open);
+  else check('elsewhere: a code to scan with the app instead', info.qr && info.open === null);
+  check(`${who}: no other requests, no errors (its policy allows only its own script)`, outside.length === 0 && errs.length === 0, { outside, errs });
+  await p2.screenshot({ path: join(OUT, `21-share-page-${who}${tag}.png`), fullPage: true });
+  await c2.close();
+}
+{
+  const c3 = await browser.newContext({ viewport: { width, height: 700 }, colorScheme: dark ? 'dark' : 'light' });
+  const p3 = await c3.newPage();
+  await p3.goto(`${server.url.replace('/gradient-health.html', '')}/p/index.html#AQnotaplan`);
+  await p3.waitForTimeout(300);
+  check('a broken link says so', await p3.evaluate(() => !document.getElementById('error').hidden && document.getElementById('plan').hidden));
+  await c3.close();
+}
+
+/* ------------------------------------------------------------------ a link that starts the app */
+section('A link that starts the app');
+const joLink = await S(async () => {
+  const C = window.GH.customPlan;
+  const plan = C.normalize({ name: 'Lunch break', days: [{ title: 'Quick one', items: [{ move: 'push_std', sets: 3, reps: 10 }, { move: 'sq_goblet', sets: 3, reps: 12 }] }] }).plan;
+  return C.link(await C.encode(plan, { from: 'Jo' }));
+});
+// The link MainActivity was started with, as AndroidBridge.pendingLink() gives it.
+const startedWith = (l) => {
+  try { sessionStorage.setItem('pending-link', l); } catch (e) { /* ignore */ }
+  if (window.AndroidBridge) window.AndroidBridge.pendingLink = () => { try { return sessionStorage.getItem('pending-link') || ''; } catch (e) { return ''; } };
+};
+const titles = (p) => p.evaluate(() => [...document.querySelectorAll('dialog[open] .rf-sheet-title')].map((e) => e.textContent));
+// Sheets animate in real time while timers run on the test's clock: step both until ok(titles).
+const sheetsUntil = async (p, ok) => {
+  let t = await titles(p);
+  for (let i = 0; i < 40 && !ok(t); i++) { await p.clock.runFor(250); await p.waitForTimeout(120); t = await titles(p); }
+  return t;
+};
+{
+  // Someone who just updated the app: What's new comes first, then the plan.
+  const c4 = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: dark ? 'dark' : 'light' });
+  const p4 = await c4.newPage();
+  p4.on('pageerror', (e) => errors.push(e.message));
+  p4.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  await p4.clock.install({ time: new Date('2026-10-19T08:10:00') });
+  await p4.addInitScript(seedBridge);
+  await p4.goto(server.url);
+  await p4.waitForSelector('.onboard:not([hidden])');
+  await p4.evaluate(seedState);
+  await p4.evaluate(() => { const GH = window.GH, S = GH.store.load(); S.seen.lastVersion = '1.0.0'; GH.store.save(S); });
+  await p4.addInitScript(startedWith, joLink);
+  await p4.reload();
+  await p4.waitForSelector('#screen[data-view="today"]');
+  const first = await sheetsUntil(p4, (t) => t.length > 0);
+  await p4.clock.runFor(2500); await p4.waitForTimeout(300);
+  first.push(...(await titles(p4)).slice(1));
+  check('What\'s new comes first, on its own', first.length === 1 && /What's new/.test(first[0]), first);
+  await p4.evaluate(() => window.GH.ui.closeSheets());
+  const then = await sheetsUntil(p4, (t) => t.length === 1 && !/What's new/.test(t[0]));
+  check('then the plan the app was opened with', then.length === 1 && then[0] === 'Jo\'s 1-day plan', then);
+  // Someone who turned workouts off (food and health only) can still take a plan and use it.
+  await p4.evaluate(() => window.GH.ui.closeSheets());
+  await sheetsUntil(p4, (t) => t.length === 0);
+  await p4.evaluate(() => { const U = window.GH.ui; U.S.profile.workouts = false; U.save(true); U.render(); });
+  await p4.clock.runFor(700); await p4.waitForTimeout(200);
+  await p4.evaluate((l) => window.__gh.onLink(l), joLink);
+  await sheetsUntil(p4, (t) => t.length === 1);
+  await p4.clock.runFor(600); await p4.waitForTimeout(300);
+  await p4.click('dialog[open] [data-act="cpImpSave"]');
+  await p4.clock.runFor(600); await p4.waitForTimeout(200);
+  check('with workouts off, the plan offers to turn them on', (await p4.locator('dialog[open] [data-act="cpImpUse"]').innerText()).trim() === 'Turn on workouts and use it');
+  await p4.click('dialog[open] [data-act="cpImpUse"]');
+  await p4.clock.runFor(900); await p4.waitForTimeout(300);
+  const on = await p4.evaluate(() => { const U = window.GH.ui, C = window.GH.customPlan; return { workouts: U.S.profile.workouts, plan: C.activeId(U.S) && C.get(U.S, C.activeId(U.S)).name, tab: U.route.tab, tabs: U.tabList().map((t) => t[0]).join(','), toast: [...document.querySelectorAll('.rf-toast')].map((t) => t.textContent).join(' ') }; });
+  check('and doing so turns workouts on and uses it, on the Plan tab', on.workouts === true && on.plan === 'Lunch break' && on.tab === 'plan' && /plan/.test(on.tabs) && /Workouts are on again/.test(on.toast), on);
+  await c4.close();
+}
+{
+  // A new install opened by a link: set-up first, then the tour, then the plan.
+  const c5 = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: dark ? 'dark' : 'light' });
+  const p5 = await c5.newPage();
+  p5.on('pageerror', (e) => errors.push(e.message));
+  p5.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  await p5.clock.install({ time: new Date('2026-10-19T08:10:00') });
+  await p5.addInitScript(seedBridge);
+  await p5.addInitScript(startedWith, joLink);
+  await p5.goto(server.url);
+  await p5.waitForSelector('.onboard:not([hidden])');
+  await p5.clock.runFor(2500); await p5.waitForTimeout(300);
+  check('a new install starts with set-up, not the plan', (await titles(p5)).length === 0);
+  await p5.evaluate(() => window.GH.ui.act.obFinish());
+  const tour = await sheetsUntil(p5, (t) => t.length > 0);
+  await p5.clock.runFor(2500); await p5.waitForTimeout(300);
+  tour.push(...(await titles(p5)).slice(1));
+  check('after set-up the tour comes first, on its own', tour.length === 1 && tour[0] === 'Welcome', tour);
+  await p5.evaluate(() => window.GH.ui.closeSheets());
+  const plan = await sheetsUntil(p5, (t) => t.length === 1 && t[0] !== 'Welcome');
+  check('then the plan the app was opened with', plan.length === 1 && plan[0] === 'Jo\'s 1-day plan', plan);
+  await c5.close();
+}
 
 section('Console');
 check('no console errors', errors.length === 0, errors.slice(0, 10).join('\n'));

@@ -11,7 +11,8 @@
  * S.planProg[planId][`${move}:${base}`] (the prescription it grew from), so editing the reps starts
  * that exercise afresh from what you wrote.
  *
- * GH.brain calls in at three marked places: calendar() takes a week's sessions from weekSessions(),
+ * GH.brain calls in at four places marked [custom plans]: calendar() takes a week's sessions from
+ * weekSessions() and moves a missed day only within one plan's stretch of the week (regime, until),
  * buildSession() hands custom sessions (their tpl is 'c:<plan id>:<day>') to buildSession() here, and
  * finishWorkout() moves their exercises on with progress() here.
  */

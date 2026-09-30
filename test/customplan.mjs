@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { load, check, section, done } from './lib.mjs';
 
-const GH = load('src/data/moves.js', 'src/engine/pose.js', 'src/brain.js', 'src/planweek.js', 'src/tailor.js', 'src/store.js', 'src/customplan.js', 'src/qr.js');
+const GH = load('src/data/moves.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/planweek.js', 'src/tailor.js', 'src/store.js', 'src/coach.js', 'src/customplan.js', 'src/qr.js');
 const B = GH.brain;
 const C = GH.customPlan;
 const require = createRequire(import.meta.url);
@@ -226,6 +226,8 @@ section('A plan in use');
   check('back to the coach\'s plan after today\'s workout starts tomorrow', back.from === MON + 1 && S.activePlan === null);
   const w3 = GH.planWeek(S, MON);
   check('today stays done, and the coach\'s plan takes the rest of the week', w3.days[0].kind === 'done' && w3.days.slice(1).some((d) => d.kind === 'workout' && d.tpl != null && typeof d.tpl === 'number'), kinds(w3));
+  const tl = GH.coach.timeline(S, MON + 1).map((x) => x.text);
+  check('the coach page lists both switches', tl.includes('Switched to Push Pull Legs') && tl.includes('Back to the coach\'s plan'), tl);
 }
 
 section('Switching part-way through a week');
