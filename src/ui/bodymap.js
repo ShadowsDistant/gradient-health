@@ -229,20 +229,20 @@
     const round = (v) => Math.round(v * 2) / 2;
     const tip = (b, i) => `${i === w.length - 1 ? 'This week' : `Week of ${U.fmtDay(b.start, false)}`}: ${setsText(b.sets)}`;
     const label = `${x.name}, sets a week for 12 weeks, oldest first: ${w.map((b) => U.num(round(b.sets), b.sets % 1 ? 1 : 0)).join(', ')}.`;
-    return `<div class="ms-bars" data-key="ms-bars">
-      <div class="ms-bars-head"><span class="t-headline">Sets a week</span><span class="t-footnote rf-muted rf-num">${max ? `up to ${U.esc(setsText(max))}` : 'none yet'}</span></div>
-      <div class="ms-plot" role="img" aria-label="${U.esc(label)}">
-        ${w.map((b, i) => `<button type="button" class="ms-bar${i === w.length - 1 ? ' is-now' : ''}${b.sets ? '' : ' is-zero'}" data-act="msBar" data-arg="${U.esc(tip(b, i))}" tabindex="-1" aria-hidden="true" style="--h:${max ? (b.sets / max).toFixed(3) : 0};--i:${i}"><i></i></button>`).join('')}
+    return `<div class="mu-bars" data-key="mu-bars">
+      <div class="mu-bars-head"><span class="t-headline">Sets a week</span><span class="t-footnote rf-muted rf-num">${max ? `up to ${U.esc(setsText(max))}` : 'none yet'}</span></div>
+      <div class="mu-plot" role="img" aria-label="${U.esc(label)}">
+        ${w.map((b, i) => `<button type="button" class="mu-bar${i === w.length - 1 ? ' is-now' : ''}${b.sets ? '' : ' is-zero'}" data-act="msBar" data-arg="${U.esc(tip(b, i))}" tabindex="-1" aria-hidden="true" style="--h:${max ? (b.sets / max).toFixed(3) : 0};--i:${i}"><i></i></button>`).join('')}
       </div>
-      <div class="ms-x t-caption rf-num"><span>${U.esc(U.fmtDay(w[0].start, false))}</span><span>This week</span></div>
-      <p class="ms-tip t-footnote rf-muted rf-num" aria-live="polite">${U.esc(tip(w[w.length - 1], w.length - 1))}</p>
+      <div class="mu-x t-caption rf-num"><span>${U.esc(U.fmtDay(w[0].start, false))}</span><span>This week</span></div>
+      <p class="mu-tip t-footnote rf-muted rf-num" aria-live="polite">${U.esc(tip(w[w.length - 1], w.length - 1))}</p>
     </div>`;
   }
   U.act.msBar = (el) => {
-    const box = el.closest('.ms-bars');
+    const box = el.closest('.mu-bars');
     if (!box) return;
-    for (const b of box.querySelectorAll('.ms-bar')) b.classList.toggle('is-picked', b === el);
-    box.querySelector('.ms-tip').textContent = el.getAttribute('data-arg');
+    for (const b of box.querySelectorAll('.mu-bar')) b.classList.toggle('is-picked', b === el);
+    box.querySelector('.mu-tip').textContent = el.getAttribute('data-arg');
     U.haptic('tick');
   };
 
@@ -262,19 +262,19 @@
     const moves = x.moves.slice(0, 5).map((mv) => U.row({ title: U.esc(mv.name), sub: mv.primary ? 'Works it most' : 'Helps', detail: U.esc(setsText(mv.sets)), act: 'moveInfo', arg: mv.id, chevron: true })).join('');
     const counts = [x.bests ? U.plural(x.bests, 'new best') : '', x.levelUps ? U.plural(x.levelUps, 'level-up') : ''].filter(Boolean).join(', ');
     return `<div class="ms" data-mode="${U.esc(mode)}">
-      <div class="ms-hero">
-        <span class="bm ms-fig" data-mode="${U.esc(mode)}" aria-hidden="true"><svg viewBox="${VIEWBOX}" focusable="false">
+      <div class="mu-hero">
+        <span class="bm mu-fig" data-mode="${U.esc(mode)}" aria-hidden="true"><svg viewBox="${VIEWBOX}" focusable="false">
           <g class="bm-body">${paths(geometry()[view].body)}</g>
           ${geometry()[view].muscles.map((m) => `<g class="bm-m" data-l="${lit[m.m] ? 5 : 0}">${paths(m.parts)}</g>`).join('')}
         </svg></span>
-        <dl class="ms-facts">${facts.map(([v, t]) => `<div class="ms-fact"><dt class="t-footnote rf-muted">${U.esc(t)}</dt><dd class="t-title-2 rf-num">${U.esc(v)}</dd></div>`).join('')}</dl>
+        <dl class="mu-facts">${facts.map(([v, t]) => `<div class="mu-fact"><dt class="t-footnote rf-muted">${U.esc(t)}</dt><dd class="t-title-2 rf-num">${U.esc(v)}</dd></div>`).join('')}</dl>
       </div>
       ${weekBars(x)}
       ${lines ? `<h3 class="rf-list-header">Progress, ${U.esc(range)}</h3><ul class="rf-list">${lines}</ul>${counts ? `<p class="rf-list-footer">${U.esc(U.cap(counts))} for exercises that train it.</p>` : ''}`
-        : `<p class="ms-note t-callout rf-muted">${x.sets ? `No change to show in the ${range} yet. Progress shows up as your reps, weights and levels go up.` : `Not trained in the ${range}.`}</p>`}
+        : `<p class="mu-note t-callout rf-muted">${x.sets ? `No change to show in the ${range} yet. Progress shows up as your reps, weights and levels go up.` : `Not trained in the ${range}.`}</p>`}
       ${moves ? `<h3 class="rf-list-header">What trained it</h3><ul class="rf-list">${moves}</ul>
         <p class="rf-list-footer">A set counts in full for the muscle an exercise works most and half for the ones that help. Warm-ups and stretches don't count.</p>` : ''}
-      ${U.act.tailorPlan && !(GH.body.MINOR || []).includes(x.id) ? `<div class="ms-actions"><button type="button" class="rf-btn" data-variant="soft" data-size="lg" data-act="tailorPlan" data-arg="${U.esc(x.id)}">${U.icon('plus-circle')}Train this more</button></div>` : ''}
+      ${U.act.tailorPlan && !(GH.body.MINOR || []).includes(x.id) ? `<div class="mu-actions"><button type="button" class="rf-btn" data-variant="soft" data-size="lg" data-act="tailorPlan" data-arg="${U.esc(x.id)}">${U.icon('plus-circle')}Train this more</button></div>` : ''}
     </div>`;
   }
   U.muscleSheet = (m) => {
@@ -282,7 +282,7 @@
     const x = GH.body.muscle(U.S, U.today(), U.bodyView.weeks, m);
     // "Train this more" closes the sheet first, so what Tailor my plan opens isn't underneath it.
     return U.sheet({
-      title: x.name, size: 'auto', cls: 'ms-sheet', body: muscleBody(x, U.bodyView.mode),
+      title: x.name, size: 'auto', cls: 'mu-sheet', body: muscleBody(x, U.bodyView.mode),
       after: (ctl) => ctl.el.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-act="tailorPlan"]')) ctl.close('ok'); }),
     });
   };

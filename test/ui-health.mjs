@@ -230,7 +230,7 @@ const spill = () => page.evaluate(() => {
 for (const key of ['rhr', 'weightKg', 'sleepMin', 'steps', 'activeMin', 'waist', 'feel']) {
   await page.evaluate((k) => window.GH.ui.metricSheet(k), key);
   await settle(700);
-  await page.evaluate(() => { const d = document.querySelector('dialog.ms-sheet[open]'); if (d && window.Refract) window.Refract.sheet.detent(d, 'large'); });
+  await page.evaluate(() => { const d = document.querySelector('dialog.ms-sheet[open]'); const top = window.GH.ui.topSheet(); if (top && top.detent) top.detent('large'); });
   await settle(700);
   await zoom('dialog.rf-sheet[open]');
   await page.waitForTimeout(150);
