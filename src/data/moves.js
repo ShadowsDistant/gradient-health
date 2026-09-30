@@ -1491,6 +1491,12 @@
 
   /* ------------------------------------------------------------------ moves */
   const MOVES = {};
+  // Forms whose first two muscles both drive the move (legs in squats and hinges, the back in rows).
+  const PRIME = {};
+  for (const f of ['squatBW', 'goblet', 'split', 'lunge', 'bulgarian', 'pistol', 'jumpSquat', 'kbDeadlift', 'swing', 'swing1', 'staggerRdl', 'sldl',
+    'row', 'row1', 'bandRow', 'towelRow', 'tableRow', 'pullApart', 'towelApart', 'ytw', 'revFly', 'wallAngel', 'pulse', 'stepUp', 'gobletLunge',
+    'bandGM', 'bandFacePull', 'squatBB', 'squatSmith', 'legPress', 'rdlBB', 'rdlDB', 'deadliftBB', 'rowBB', 'rowCable', 'chestRow', 'facePull',
+    'revFlyMachine', 'lungeDB', 'splitDB', 'seatedPressDB', 'ohpBB', 'machineShoulder', 'ohPress', 'bandPress', 'ohPress1']) PRIME[f] = 2;
   // Variant transforms on a rep.
   function slowEcc(rep, ms) { return rep.map((s) => (s.ph === 'ecc' ? Object.assign({}, s, { ms }) : s)); }
   function pauseAt(rep, ph, ms) { return rep.map((s) => (s.ph === ph ? Object.assign({}, s, { hold: ms }) : s)); }
@@ -1520,6 +1526,9 @@
       if (variant.uni) { m.uni = true; if (!m.leadLimbs) m.leadLimbs = ['aN']; }
     }
     if (!m.muscles) m.muscles = base.muscles;
+    // How many of the muscles, from the front of the list, are primary movers (the rest help).
+    if (meta.prime == null) m.prime = PRIME[form] || base.prime || 1;
+    m.prime = Math.max(1, Math.min(m.muscles.length, m.prime));
     MOVES[id] = m;
     return m;
   }
@@ -2029,8 +2038,15 @@
   // The single-arm version of a curl rung, for the extra lead-side set.
   const ONE_ARM = { curl_std: 'curl_1arm', curl_slow: 'curl_1arm', curl_half: 'curl_1arm', curl_hammer: 'hammer_1arm', curl_band: 'curl_towel' };
 
-  const WARMUP = { kb: ['wu_halo', 'wu_squat', 'wu_angels'], none: ['wu_circles', 'wu_squat', 'wu_angels'] };
-  const MOBILITY = ['mob_catcow', 'mob_wgs', 'mob_hipflexor', 'mob_squat', 'mob_child'];
+  // Warm-ups: `all` is every one (upper body first); the brain picks the ones that suit the day's
+  // muscles (mobFor). kb / none are the lists shown with and without a kettlebell.
+  const WARMUP = {
+    all: ['wu_halo', 'wu_circles', 'wu_scap', 'wu_pullapart', 'wu_angels', 'wu_squat', 'wu_legswing'],
+    kb: ['wu_halo', 'wu_circles', 'wu_scap', 'wu_angels', 'wu_squat', 'wu_legswing'],
+    none: ['wu_circles', 'wu_scap', 'wu_angels', 'wu_squat', 'wu_legswing'],
+  };
+  // Mobility moves in a floor-friendly flow order; cool-downs and light-day flows pick from them.
+  const MOBILITY = ['mob_catcow', 'mob_wgs', 'mob_hipflexor', 'mob_ankle', 'mob_squat', 'mob_calf', 'mob_chest', 'mob_hamfloss', 'mob_9090', 'mob_openbook', 'mob_child'];
 
   /* ------------------------------------------------------------------ queries */
   // Does the equipment profile satisfy a req list like ['db|kb', 'chair']?
