@@ -171,6 +171,25 @@ async function bundleAi() {
   return result.outputFiles[0].text;
 }
 
+// The page a shared plan's link opens in a browser (docs/p/index.html, served by GitHub Pages from
+// /docs): the plan from the link's #fragment, the move names and the QR encoder inline, and a
+// content security policy that allows exactly its one script. No other requests, no trackers.
+export function sharePage() {
+  globalThis.GH = globalThis.GH || {};
+  for (const p of APP_SCRIPTS.filter((x) => /^src\/data\/moves/.test(x))) new Function(read(p))();
+  const moves = {};
+  for (const [id, m] of Object.entries(globalThis.GH.moves.MOVES)) if (m && m.name) moves[id] = [m.name, m.group || '', m.timed ? 1 : 0];
+  let html = read('src/share-page.html')
+    .replace('/*@QR*/', () => safeJs(read('src/qr.js')))
+    .replace('/*@MOVES*/{}', () => safeJs(JSON.stringify(moves)));
+  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+  if (scripts.length !== 1 || !html.includes('@SCRIPT_HASH')) throw new Error('build: src/share-page.html needs exactly one inline script and the @SCRIPT_HASH marker');
+  html = html.replace('@SCRIPT_HASH', `'sha256-${createHash('sha256').update(scripts[0][1], 'utf8').digest('base64')}'`);
+  mkdirSync(join(root, 'docs/p'), { recursive: true });
+  writeFileSync(join(root, 'docs/p/index.html'), html);
+  return html.length;
+}
+
 async function main() {
   const tokens = JSON.parse(read('vendor/refract/tokens.json'));
   const shell = read('src/shell.html');
@@ -199,6 +218,7 @@ async function main() {
   globalThis.GH = globalThis.GH || {};
   new Function(read('src/data/privacy.js'))();
   writeFileSync(join(root, 'docs/PRIVACY.md'), globalThis.GH.PRIVACY.markdown());
+  console.log(`docs/p/index.html  ${(sharePage() / 1024).toFixed(0)} KB  (the share page)`);
   const lazy = await buildLazy();
   if (lazy.length) console.log(`dist/lazy/  ${lazy.join(', ')}`);
 }
