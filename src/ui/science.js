@@ -73,7 +73,7 @@
     const l = sc.LEVELS[r.level] || { label: '', text: '' };
     const refs = r.refs.map((k) => sc.REFS[k]).filter(Boolean);
     return U.sheet({
-      title: r.title, detents: 'medium large', detent: 'large', cls: 'sci-sheet',
+      title: r.title, size: 'auto', cls: 'sci-sheet',
       body: `<div class="sheet-pad sci-detail">
         <div class="sci-hero">
           <span class="rf-list-icon" data-tone="${r.tone}">${U.icon(r.icon)}</span>
@@ -97,7 +97,7 @@
     U.render();
   };
   U.act.sciKey = () => U.sheet({
-    title: 'Evidence', detents: 'medium', fit: true,
+    title: 'Evidence', size: 'fit',
     body: `<ul class="rf-list sci-levels">${LEVEL_ORDER.map((k) => { const l = SC().LEVELS[k]; return `<li><div class="rf-list-row">${dot(k)}<span class="rf-list-text"><span class="rf-list-title">${U.esc(l.label)}</span><span class="rf-list-sub">${U.esc(l.text)}</span></span></div></li>`; }).join('')}</ul>
       <p class="sheet-pad t-footnote rf-muted">Each rule shows the strongest evidence behind it. Tap a rule for the papers.</p>`,
   });

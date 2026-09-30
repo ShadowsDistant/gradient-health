@@ -180,7 +180,7 @@
     addMeal = el && el.dataset && el.dataset.arg && MEAL_NAME[el.dataset.arg] ? el.dataset.arg : null;
     query = ''; online = { busy: false, items: null, error: null, q: '' };
     tab = F().data(S).recent.length ? 'recent' : 'mine';
-    sheet = U.sheet({ title: addMeal ? `Add to ${MEAL_NAME[addMeal].toLowerCase()}` : 'Log food', detents: 'large', detent: 'large', cls: 'fd-sheet', body: addBody(S), onClose: () => { sheet = null; } });
+    sheet = U.sheet({ title: addMeal ? `Add to ${MEAL_NAME[addMeal].toLowerCase()}` : 'Log food', size: 'full', cls: 'fd-sheet', body: addBody(S), onClose: () => { sheet = null; } });
     const input = sheet.el.querySelector('#foodQ');
     let timer = 0;
     // Search as you type (built-in list only; online search waits for Enter or the button).
@@ -256,7 +256,7 @@
         <div class="ob-chips">${portionsOf(item).map((p, i) => U.chip(p[1] === 1 ? 'Grams' : p[0], p[0] === portion[0], `data-act="foodPortion" data-arg="${i}"`)).join('')}</div>
         <div class="fd-qty">${U.stepper('foodQty', portion[1] === 1 ? Math.round(qty) : qty, qtyStep, portion[1] === 1 ? 5000 : 50, portion[1] === 1 ? 'Grams' : 'Amount', 'data-on="foodQty"', qtyStep)}<span class="t-callout rf-muted">${U.esc(portion[1] === 1 ? 'g' : `× ${portion[0]}`)}</span></div>
         <h3 class="rf-list-header">Meal</h3>
-        ${U.seg('foodMeal', F().MEALS.map(([id, name]) => [id, name]), meal, 'Meal', ' data-on="foodMeal" data-size="sm"')}
+        ${U.seg('foodMeal', F().MEALS.map(([id, name]) => [id, name]), meal, 'Meal', ' data-on="foodMeal" data-size="sm" data-block')}
         <div class="btn-row fd-actions">
           <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="foodSave">${pick.edit ? 'Save' : 'Add'}</button>
           ${item.src !== 'quick' ? `<button type="button" class="rf-btn" data-shape="circle" aria-label="${fav ? 'Remove from favourites' : 'Add to favourites'}" aria-pressed="${fav}" data-act="foodFav">${U.icon('star')}</button>` : ''}
@@ -270,7 +270,7 @@
     const list = portionsOf(item);
     const portion = o.portion || list[0];
     pick = { item, portion, qty: o.qty || 1, meal: o.meal || addMeal || F().mealFor(Date.now()), day: o.day != null ? o.day : dayShown(), edit: o.edit || null };
-    psheet = U.sheet({ title: item.name, detents: 'large', detent: 'large', body: portionBody(), onClose: () => { psheet = null; } });
+    psheet = U.sheet({ title: item.name, size: 'auto', body: portionBody(), onClose: () => { psheet = null; } });
   }
   const repaint = () => { if (psheet && !psheet.closed) psheet.update(portionBody()); };
   U.act.foodPick = (el) => {
@@ -342,13 +342,13 @@
     const e = o.edit;
     const meal = e ? e.meal : addMeal || F().mealFor(Date.now());
     U.sheet({
-      title: e ? 'Edit' : 'Quick add', detents: 'large', detent: 'large',
+      title: e ? 'Edit' : 'Quick add', size: 'auto',
       body: `<div class="sheet-pad fd-form">
         ${textField('qName', 'Name (optional)', e ? e.name : '', 'Lunch out')}
         ${numField('qKcal', 'Calories', e ? e.kcal : null, 'required')}
         <div class="ob-row2">${numField('qP', 'Protein (g)', e ? e.p : null)}${numField('qC', 'Carbs (g)', e ? e.c : null)}</div>
         ${numField('qF', 'Fat (g)', e ? e.f : null)}
-        ${U.seg('qMeal', F().MEALS.map(([id, name]) => [id, name]), meal, 'Meal', ' data-size="sm"')}
+        ${U.seg('qMeal', F().MEALS.map(([id, name]) => [id, name]), meal, 'Meal', ' data-size="sm" data-block')}
         <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="foodQuickSave" data-arg="${e ? `${o.day}:${e.id}` : ''}">${e ? 'Save' : 'Add'}</button>
         ${e ? `<button type="button" class="rf-btn" data-tone="critical" data-act="foodQuickDelete" data-arg="${o.day}:${e.id}">Delete</button>` : ''}</div>
       </div>`,
@@ -374,7 +374,7 @@
   function createSheet(prefill) {
     const p = prefill || {};
     U.sheet({
-      title: 'Create a food', detents: 'large', detent: 'large',
+      title: 'Create a food', size: 'auto',
       body: `<div class="sheet-pad fd-form">
         <p class="t-footnote rf-muted">Copy the numbers from the label, per serving.</p>
         ${textField('cName', 'Name', p.name || '', 'Protein bar')}
@@ -410,7 +410,7 @@
   U.act.foodSavedMeals = () => { tab = 'meals'; U.act.foodAdd({ dataset: {} }); tab = 'meals'; refresh(); };
   U.act.foodSaveDay = () => {
     if (!F().entries(U.S, dayShown()).length) return;
-    U.sheet({ title: 'Save as a meal', detents: 'medium', body: `<div class="sheet-pad fd-form">${textField('mName', 'Name', '', 'My usual breakfast')}<p class="t-footnote rf-muted">Everything logged ${dayShown() === U.today() ? 'today' : 'on this day'} is saved together. Add it again in one tap under Meals.</p>
+    U.sheet({ title: 'Save as a meal', size: 'fit', body: `<div class="sheet-pad fd-form">${textField('mName', 'Name', '', 'My usual breakfast')}<p class="t-footnote rf-muted">Everything logged ${dayShown() === U.today() ? 'today' : 'on this day'} is saved together. Add it again in one tap under Meals.</p>
       <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="foodSaveDayOk">Save</button></div></div>` });
   };
   U.act.foodSaveDayOk = () => {

@@ -99,7 +99,7 @@
     const done = setsDone(a);
     const total = a.steps.filter((s) => s.kind === 'set').length;
     U.sheet({
-      title: 'Leave the workout?', detents: 'medium', fit: true, cls: 'leave-sheet',
+      title: 'Leave the workout?', size: 'fit', cls: 'leave-sheet',
       body: `<div class="sheet-pad leave">
         <p class="t-callout rf-muted">${done ? `You've done ${done} of ${total} sets.` : 'You haven\'t done any sets yet.'}</p>
         <div class="leave-actions">
@@ -678,7 +678,7 @@
     const loaded = last.load != null && weightOf(st.item);
     P.amendLoad = loaded ? last.load : null;
     U.sheet({
-      title: 'Change what you logged', detents: loaded ? 'medium large' : 'small medium', detent: loaded ? 'medium' : 'small',
+      title: 'Change what you logged', size: 'fit',
       body: `<div class="sheet-pad"><p class="t-callout rf-muted">${U.esc(st.item.name)}${st.side ? `, ${U.side(st.side).toLowerCase()}` : ''}</p><div class="ob-center">${U.stepper('amendVal', last.amount, 0, Math.max(last.target, last.amount) + 20, st.item.timed ? 'Seconds' : 'Reps')}</div>
         ${loaded ? `<p class="t-footnote rf-muted load-label">Weight</p>${loadChips(st.item, last.load, 'plAmendLoad')}` : ''}</div>`,
       action: { label: 'Save', act: 'plAmendSave' },
@@ -710,7 +710,7 @@
     const w = st && weightOf(st.item);
     if (!w) return;
     U.sheet({
-      title: 'Weight', detents: 'medium large', detent: 'medium',
+      title: 'Weight', size: 'auto',
       body: `<div class="sheet-pad"><p class="t-callout rf-muted">${U.esc(st.item.name)}. ${w.first ? `A first guess. Pick one you could lift about ${B().currentTarget(A(), st) + 2} times.` : 'For the rest of this exercise.'}</p>${loadChips(st.item, w.kg, 'plLoadPick')}</div>`,
     });
   };
@@ -749,7 +749,7 @@
     const st = cur();
     const canSwap = st && st.kind === 'set' && !st.leadOnly;
     U.sheet({
-      title: 'Workout', detents: 'medium', fit: true,
+      title: 'Workout', size: 'fit',
       body: `<ul class="rf-list">
         ${st ? U.row({ icon: 'info', tone: 'sky', title: 'How to do it', act: 'plHowTo', chevron: true }) : ''}
         ${canSwap ? U.row({ icon: 'shuffle', tone: 'indigo', title: 'Swap this exercise', act: 'plSwap', chevron: true }) : ''}
@@ -765,7 +765,7 @@
     const top = U.topSheet(); if (top) top.close('swap');
     const opts = B().swapOptions(U.S, st.item, U.today());
     U.sheet({
-      title: 'Swap exercise', detents: 'medium large',
+      title: 'Swap exercise', size: 'auto',
       body: opts.length ? `<ul class="rf-list">${opts.map((o) => U.row({ title: U.esc(o.name), sub: U.esc(o.why), act: 'plSwapTo', arg: o.id, chevron: true })).join('')}</ul>
         <ul class="rf-list sheet-gap">${U.row({ icon: 'eye', tone: 'rose', title: 'Don\'t show this move again', sub: 'Swaps it out now and keeps it out of future plans', act: 'plExclude', arg: opts[0].id })}</ul>`
         : '<p class="sheet-pad t-callout rf-muted">No other moves fit your equipment for this one.</p>',

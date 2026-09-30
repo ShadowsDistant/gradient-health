@@ -168,7 +168,7 @@
   U.act.openWhatsNew = () => U.open('whatsnew');
   U.act.editName = () => {
     const ctl = U.sheet({
-      title: 'Your name', detents: 'small medium', detent: 'small',
+      title: 'Your name', size: 'fit',
       body: `<div class="sheet-pad"><div class="rf-field"><div class="rf-field-control"><input class="rf-input" id="nameIn" type="text" maxlength="40" autocomplete="given-name" placeholder="First name" value="${U.esc(U.S.profile.name || '')}"></div><p class="rf-field-hint">Only shown here. It stays on this phone and is never sent to a coach.</p></div></div>`,
       action: { label: 'Save', act: 'nameSave' },
     });

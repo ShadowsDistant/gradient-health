@@ -285,7 +285,7 @@
   U.act.undoProtein = () => { B().undoProtein(U.S, U.today()); U.commit(); };
   U.act.addProtein = () => {
     U.sheet({
-      title: 'Add protein', detents: 'small medium', detent: 'small',
+      title: 'Add protein', size: 'fit',
       body: `<div class="sheet-pad"><div class="ob-center">${U.stepper('protG', 20, 1, 150, 'Grams of protein', '', 5)}</div><p class="t-footnote rf-muted">A palm of meat or fish is about 25 g, a cup of milk 8 g, an egg 6 g.</p></div>`,
       action: { label: 'Add', act: 'addProteinSave' },
     });
