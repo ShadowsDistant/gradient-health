@@ -153,7 +153,7 @@
       U.haptic('select');
     };
     const ctl = U.sheet({
-      title: 'Welcome', detents: 'large', detent: 'large', cls: 'tour-sheet', body: body(),
+      title: 'Welcome', size: 'full', cls: 'tour-sheet', body: body(),
       after: (c) => mountFig(c),
       onClose: () => { dropFig(); U.markSeen('tour'); },
     });
@@ -185,7 +185,7 @@
     const entry = (GH.CHANGELOG || [])[0];
     if (!entry) return null;
     return U.sheet({
-      title: `What's new in ${entry.version}`, detents: 'large', detent: 'large',
+      title: `What's new in ${entry.version}`, size: 'auto',
       body: `<div class="sheet-pad"><p class="t-title-3">${U.esc(entry.title)}</p></div>${U.changesHtml(entry)}`,
     });
   };

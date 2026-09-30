@@ -1382,10 +1382,19 @@
       addGhost(nodes, move, o);
       updateFigure(nodes, framePose(move, keyPose));
     } else draw(0);
+    // While a sheet is dragged or settling (<html data-sheet-moving>), the figure holds its pose and
+    // the rep carries on from there after: every frame goes to the sheet.
+    const doc = G.document;
+    let held = 0;
     function loop(now) {
       if (!playing) return;
       if (!t0) t0 = now - offset;
-      if (now - last >= frameMs - 1) { last = now; draw(now - t0); }
+      if (doc && doc.documentElement.hasAttribute('data-sheet-moving')) {
+        if (!held) held = now;
+      } else {
+        if (held) { t0 += now - held; held = 0; }
+        if (now - last >= frameMs - 1) { last = now; draw(now - t0); }
+      }
       raf = G.requestAnimationFrame(loop);
     }
     const ctl = {

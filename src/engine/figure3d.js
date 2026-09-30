@@ -2990,10 +2990,14 @@ function mount(host, move, opts) {
     }
   };
   const onScreen = () => visible && el.isConnected && !(typeof document !== 'undefined' && document.hidden);
+  // A sheet being dragged or settling (the sheet engine marks <html data-sheet-moving>): every frame
+  // goes to the sheet, so the figure holds its pose and the rep carries on from there after.
+  const sheetMoving = () => typeof document !== 'undefined' && document.documentElement.hasAttribute('data-sheet-moving');
   function tick(now) {
     raf = 0;
     if (failed) return;
     if (!onScreen()) { lastNow = 0; return; }
+    if (sheetMoving()) { lastNow = now; kick(); return; }
     const dt = lastNow ? Math.min(100, now - lastNow) : 0;
     lastNow = now;
     let busy = false; // something on screen changes this frame

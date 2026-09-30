@@ -76,7 +76,7 @@
         resolve(code || null);
       };
       a.finish = finish;
-      a.sheet = U().sheet({ title: 'Scan a barcode', detents: 'large', detent: 'large', cls: 'sc-sheet', body: body('Starting the camera…'), onClose: () => finish(null) });
+      a.sheet = U().sheet({ title: 'Scan a barcode', size: 'full', cls: 'sc-sheet', body: body('Starting the camera…'), onClose: () => finish(null) });
       const el = a.sheet.el;
       el.addEventListener('submit', (e) => {
         e.preventDefault();

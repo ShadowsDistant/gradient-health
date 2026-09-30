@@ -181,9 +181,12 @@ check('with the capsule showing, the last card still scrolls clear', g >= 8, g);
 section('Sheets');
 await page.evaluate(() => window.GH.ui.showWhatsNew());
 await settle(900);
-const sh = await page.evaluate(() => { const a = document.activeElement; return { cls: a && a.className, ring: !!(a && a.matches('.rf-sheet-grabber')), receded: document.getElementById('app').hasAttribute('data-receded') }; });
+const sh = await page.evaluate(() => { const a = document.activeElement; return { cls: a && a.className, ring: !!(a && a.matches('.rf-sheet-grabber')) }; });
 check('a sheet the app opens by itself focuses its content, not the grabber (no blue ring)', /rf-sheet-body/.test(sh.cls || '') && !sh.ring, JSON.stringify(sh));
-check('a full-height sheet sets the page back', sh.receded);
+// What's new opens at medium; pulled up to large, it sets the page back.
+await page.evaluate(() => window.GH.ui.topSheet().detent('large'));
+await settle(900);
+check('a sheet at full height sets the page back', await page.evaluate(() => document.getElementById('app').hasAttribute('data-receded')));
 await page.evaluate(() => window.GH.ui.closeSheets());
 await settle(900);
 check('and closing it brings the page forward again', await page.evaluate(() => !document.getElementById('app').hasAttribute('data-receded')));

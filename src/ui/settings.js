@@ -224,7 +224,7 @@
   const STEP_ICON = { about: ['person', 'sky'], goals: ['flag', 'green'], experience: ['chart', 'indigo'], schedule: ['calendar', 'teal'], equipment: ['bag', 'amber'], body: ['heart', 'rose'], food: ['food', 'green'], sleep: ['moon', 'indigo'], style: ['sliders', 'violet'] };
   U.act.editAnswers = () => {
     const p = U.S.profile;
-    U.sheet({ title: 'Your answers', body: `<p class="t-footnote rf-muted sheet-lead">Pick one to change. Your plan updates when you save.</p>
+    U.sheet({ title: 'Your answers', size: 'auto', body: `<p class="t-footnote rf-muted sheet-lead">Pick one to change. Your plan updates when you save.</p>
       <ul class="rf-list">${U.editableSteps().map((st) => { const [ic, tone] = STEP_ICON[st.id] || ['pencil', 'sky']; return U.row({ icon: ic, tone, title: U.esc(st.title), sub: U.esc(U.answerSummary(st.id, p)), act: 'editStep', arg: st.id, chevron: true }); }).join('')}</ul>` });
   };
   U.act.editStep = (el) => { U.closeSheets(); U.editAnswers(el.dataset.arg); };
@@ -274,7 +274,7 @@
     ['Open Food Facts', 'Online food search, when it\'s on', 'Open Database License'],
   ];
   U.act.licensesSheet = () => U.sheet({
-    title: 'Open-source licenses', detents: 'large', detent: 'large',
+    title: 'Open-source licenses', size: 'auto',
     body: `<ul class="rf-list">${LICENSES.map(([name, what, lic]) => U.row({ title: U.esc(name), sub: U.esc(`${what} · ${lic}`) })).join('')}</ul>
       <p class="t-footnote rf-muted sheet-lead">Thanks to everyone who made these. Their full license texts ship with the source code.</p>`,
   });
@@ -301,7 +301,7 @@
         <ul class="rf-list sheet-gap">${U.sw('Light days', d.lightDays, 'data-on="dsLight"', 'Walk and mobility on off days')}</ul>
         <p class="t-footnote rf-muted">If this week has started, new days begin next Monday. Time changes apply from today.</p>
       </div>`;
-    const ctl = U.sheet({ title: 'Days and time', detents: 'large', detent: 'large', body: body(), action: { label: 'Save', act: 'daysSave' } });
+    const ctl = U.sheet({ title: 'Days and time', size: 'auto', body: body(), action: { label: 'Save', act: 'daysSave' } });
     ctl.el.addEventListener('input', (e) => { if (e.target.id === 'dsMin') { const o = ctl.el.querySelector('#dsMinOut'); if (o) o.textContent = e.target.value; } });
     const redraw = () => { if (!ctl.closed) ctl.update(body()); };
     U.on.dsDays = (el, ev, v) => { Object.assign(d, B().setWorkoutDays(d.weekdays, Math.round(v))); redraw(); };
@@ -326,7 +326,7 @@
     const eq = U.S.profile.equipment;
     const curls = (eq.db && eq.db.length) || eq.band;
     U.sheet({
-      title: 'Baseline test', detents: 'large', detent: 'large',
+      title: 'Baseline test', size: 'full',
       body: `<div class="sheet-pad ob-fields">
         <div class="rf-field"><label class="rf-field-label" for="bPush">Push-ups in a row</label><div class="rf-field-control"><input class="rf-input" id="bPush" type="number" inputmode="numeric" placeholder="Leave blank to skip"></div></div>
         <ul class="rf-list">${U.sw('On my knees', false, 'id="bKnees"')}</ul>
@@ -380,7 +380,7 @@
     };
     const food = GH.food && GH.food.full(S);
     const ctl = U.sheet({
-      title: 'Share your data with Claude?', detents: 'large', detent: 'large',
+      title: 'Share your data with Claude?', size: 'full',
       body: `<div class="sheet-prose">
         <p class="t-body">Claude is an AI made by Anthropic. To answer you, Gradient Health sends Anthropic a summary of your data with each question, when you ask for suggestions, and once a week for your report.</p>
         <p class="t-headline">The summary holds</p>
@@ -592,7 +592,7 @@
   const modelName = (id) => { const m = dev.all.find((x) => x.id === id); return m ? m.name : null; };
   U.act.keySheet = () => {
     U.sheet({
-      title: 'Anthropic API key', detents: 'medium large', detent: 'medium',
+      title: 'Anthropic API key', size: 'auto',
       body: `<div class="sheet-pad">
         <div class="rf-field"><label class="rf-field-label" for="apiKey">API key</label><div class="rf-field-control"><input class="rf-input" id="apiKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…"></div>
           <p class="rf-field-hint">Stored only on this phone, never in backups, never shown again.</p><p class="rf-field-error" id="keyErr" hidden></p></div>
@@ -629,7 +629,7 @@
   };
   U.act.previewSheet = () => {
     U.sheet({
-      title: 'What gets sent', detents: 'large', detent: 'large',
+      title: 'What gets sent', size: 'auto',
       body: `<div class="sheet-pad"><p class="t-callout rf-muted">This summary goes to Claude with your questions, suggestion requests and weekly report once you've allowed it (through your API key), or into the Claude app when you ask there. No name, email, exact dates or device IDs. The on-device coach and the weekly report worked out on this phone send nothing.</p></div><pre class="preview">${U.esc(AI().preview(U.S, U.today()))}</pre>`,
     });
   };
@@ -639,10 +639,10 @@
     const txt = GH.store.exportJson(U.S);
     const ok = await GH.platform.copy(txt);
     if (ok) U.toast('Copied', 'positive', 'Paste it into a note or an email to yourself.');
-    else U.sheet({ title: 'Your data', detents: 'large', detent: 'large', body: `<div class="sheet-pad"><p class="t-callout rf-muted">Copying didn't work. Select all of this and copy it.</p></div><textarea class="rf-input preview" readonly>${U.esc(txt)}</textarea>` });
+    else U.sheet({ title: 'Your data', size: 'full', body: `<div class="sheet-pad"><p class="t-callout rf-muted">Copying didn't work. Select all of this and copy it.</p></div><textarea class="rf-input preview" readonly>${U.esc(txt)}</textarea>` });
   };
   U.act.restoreSheet = () => U.sheet({
-    title: 'Restore', detents: 'large', detent: 'large',
+    title: 'Restore', size: 'full',
     body: `<div class="sheet-pad"><p class="t-callout rf-muted">Paste the text from Copy my data. It replaces everything in the app now.</p></div>
       <div class="sheet-pad"><textarea class="rf-input preview" id="restoreTxt" rows="8" aria-label="Backup text" placeholder="{&quot;app&quot;:&quot;gradient-health&quot;, …}"></textarea><p class="rf-field-error" id="restoreErr" hidden></p></div>`,
     action: { label: 'Check', act: 'restoreCheck' },
@@ -696,5 +696,5 @@
   };
   // On top of a sheet that must stay open (closing the Claude consent sheet would decline it).
   U.act.privacySheet = () => U.showPrivacySheet();
-  U.showPrivacySheet = () => U.sheet({ title: 'Privacy', detents: 'large', detent: 'large', body: `<div class="sheet-pad">${U.privacyHtml()}</div>` });
+  U.showPrivacySheet = () => U.sheet({ title: 'Privacy', size: 'full', body: `<div class="sheet-pad">${U.privacyHtml()}</div>` });
 })(typeof window !== 'undefined' ? window : globalThis);
