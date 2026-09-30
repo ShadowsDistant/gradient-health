@@ -821,7 +821,10 @@ function eqGeos() {
 /* ---------------------------------------------------------------- per-move analysis */
 const hands = (e) => (e.hands === 'both' ? ['N', 'F'] : e.hands === 'N' || e.hands === 'F' ? [e.hands] : ['N']);
 const HELD = new Set(['db', 'kb', 'ball', 'band', 'towel', 'bb', 'ez', 'handle', 'rope', 'latbar']);
-// Per-form tweaks for the 3D lift where the 2D data can't say (e.g. an elbow braced inside a thigh).
+// Per-form tweaks for the 3D lift where the 2D data can't say (e.g. an elbow braced inside a thigh),
+// keyed by form name: stance (side view: half the ankles' spacing, cm), toeOut (degrees), kneeOut,
+// handZ { N, F } (a hand's distance from the midline, cm), flare { N, F } (elbow out, cm), grip
+// ('sup' | 'neutral' | 'pro'), dbAxis ('long').
 const HINTS = {
   concCurl: { stance: 24, kneeOut: 0.3, handZ: { N: 2.5 }, flare: { N: -6 } },
   deepSquat: { handZ: { N: 2.5, F: 2.5 }, flare: { N: -5, F: -5 } },
@@ -888,7 +891,10 @@ function analyze(move, o) {
   if (view === 'side') sideStance(A);
   else if (view === 'front') frontKind(A);
   else topKind(A);
-  if (A.hint.stance) A.stance.z = A.hint.stance;
+  // Per-form stance (side view): half the distance between the ankles (cm; 3 is heel to toe) and how
+  // far the toes turn out (degrees).
+  if (A.hint.stance != null) A.stance.z = A.hint.stance;
+  if (A.hint.toeOut != null) A.stance.toeOut = A.hint.toeOut * D2R;
   if (A.hint.kneeOut != null) A.stance.kneeOut = A.hint.kneeOut;
   return A;
 }
@@ -2834,15 +2840,26 @@ function blurMaterial(h) {
 }
 
 // Soft contact shadow: the figure rendered from below into a small texture, darker where it is
-// close to the floor, then blurred and laid on the floor.
+// close to the floor, then blurred and laid on the floor. Every figure draws its shadow right before
+// itself on the one renderer, so they all share the two render targets and the depth material
+// (a new figure allocates no GPU buffers for it).
+function shadowTargets(sh) {
+  if (sh.rt) return sh;
+  const res = 256;
+  sh.rt = new WebGLRenderTarget(res, res, { type: undefined, minFilter: LinearFilter, magFilter: LinearFilter, depthBuffer: true });
+  sh.rt2 = new WebGLRenderTarget(res, res, { minFilter: LinearFilter, magFilter: LinearFilter, depthBuffer: false });
+  sh.rt.texture.generateMipmaps = false; sh.rt2.texture.generateMipmaps = false;
+  sh.res = res;
+  sh.depth = new MeshDepthMaterial();
+  sh.depth.onBeforeCompile = (s2) => {
+    s2.fragmentShader = s2.fragmentShader.replace('gl_FragColor = vec4( vec3( 1.0 - fragCoordZ ), opacity );', 'gl_FragColor = vec4( vec3( 0.0 ), pow( 1.0 - fragCoordZ, 1.6 ) * 0.92 );');
+  };
+  return sh;
+}
 class ContactShadow {
   constructor(w, d, dark) {
-    const res = 256;
-    const opt = { type: undefined, minFilter: LinearFilter, magFilter: LinearFilter, depthBuffer: true };
-    this.rt = new WebGLRenderTarget(res, res, opt);
-    this.rt2 = new WebGLRenderTarget(res, res, { minFilter: LinearFilter, magFilter: LinearFilter, depthBuffer: false });
-    this.rt.texture.generateMipmaps = false; this.rt2.texture.generateMipmaps = false;
-    this.res = res;
+    const sh = shadowTargets(shared());
+    this.rt = sh.rt; this.rt2 = sh.rt2; this.res = sh.res; this.depth = sh.depth;
     this.g = new Group();
     this.plane = new Mesh(new PlaneGeometry(w, d).rotateX(Math.PI / 2), new MeshBasicMaterial({ map: this.rt.texture, transparent: true, opacity: dark ? 0.85 : 0.62, depthWrite: false, color: 0x000000 }));
     this.plane.renderOrder = 1;
@@ -2852,10 +2869,6 @@ class ContactShadow {
     this.cam = new OrthographicCamera(-w / 2, w / 2, d / 2, -d / 2, 0, 48);
     this.cam.rotation.x = Math.PI / 2;
     this.g.add(this.cam);
-    this.depth = new MeshDepthMaterial();
-    this.depth.onBeforeCompile = (sh) => {
-      sh.fragmentShader = sh.fragmentShader.replace('gl_FragColor = vec4( vec3( 1.0 - fragCoordZ ), opacity );', 'gl_FragColor = vec4( vec3( 0.0 ), pow( 1.0 - fragCoordZ, 1.6 ) * 0.92 );');
-    };
     this.w = w; this.d = d;
   }
   render(r, scene, hide) {
@@ -2878,7 +2891,7 @@ class ContactShadow {
     this.plane.visible = true;
     for (const o of hide) o.visible = true;
   }
-  dispose() { this.rt.dispose(); this.rt2.dispose(); this.plane.geometry.dispose(); this.plane.material.dispose(); this.depth.dispose(); }
+  dispose() { this.plane.geometry.dispose(); this.plane.material.dispose(); } // the targets are shared
 }
 
 /* ---------------------------------------------------------------- view: scene + camera */
@@ -3142,6 +3155,7 @@ function maybeRelease() {
 
 function supported() {
   if (SUPPORTED != null) return SUPPORTED;
+  if (R) return (SUPPORTED = true);
   try {
     const c = document.createElement('canvas');
     const gl = c.getContext('webgl2'); // three.js needs WebGL 2
@@ -3154,12 +3168,19 @@ function supported() {
 
 function renderer() {
   if (R) return R;
-  if (!supported()) return null;
+  if (SUPPORTED === false) return null;
+  // The renderer's own WebGL 2 context is the test for it (a throwaway test context first would
+  // cost a second context creation, which is slow on some phones).
   const canvas = document.createElement('canvas');
+  const attrs = { antialias: true, alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: false, powerPreference: 'default' };
+  let gl = null;
+  try { gl = canvas.getContext('webgl2', attrs); } catch (e) { gl = null; }
+  if (!gl) { SUPPORTED = false; return null; }
   let r;
   try {
-    r = new WebGLRenderer({ canvas, antialias: true, alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: false, powerPreference: 'default' });
+    r = new WebGLRenderer(Object.assign({ canvas, context: gl }, attrs));
   } catch (e) { SUPPORTED = false; return null; }
+  SUPPORTED = true;
   r.setPixelRatio(1);
   r.outputColorSpace = SRGBColorSpace;
   // ACES keeps skin warm and the glow saturated (AgX washed both out in comparisons).
@@ -3197,7 +3218,11 @@ function forget(rr) {
     for (const v of Object.values(o)) drop(v);
   };
   drop(BODY); drop(EQ);
-  if (SHARED) drop({ disc: SHARED.disc, blurH: SHARED.blurH, blurV: SHARED.blurV, quad: SHARED.quad.geometry });
+  if (SHARED) {
+    drop({ disc: SHARED.disc, blurH: SHARED.blurH, blurV: SHARED.blurV, quad: SHARED.quad.geometry, depth: SHARED.depth });
+    for (const k of ['rt', 'rt2']) if (SHARED[k]) { try { SHARED[k].dispose(); } catch (e) { /* ignore */ } }
+    SHARED.rt = SHARED.rt2 = SHARED.depth = null; // made again with the next renderer
+  }
   try { rr.r.dispose(); } catch (e) { /* ignore */ }
   rr.canvas.width = rr.canvas.height = 1; // the backing store goes even if the browser restores it
 }
@@ -3309,7 +3334,7 @@ function mount(host, move, opts) {
     destroy() { el.remove(); },
   };
   let failed = false;
-  let playing = false, raf = 0, clock = 0, lastNow = 0, lastDraw = 0, onceUntil = -1, wake = 0;
+  let playing = false, raf = 0, clock = 0, lastNow = 0, lastDraw = 0, onceUntil = -1, wake = 0, orbit0 = 0;
   let visible = true, dirty = true, W = 0, H = 0;
   let lastPh = null;
   let view = null, ro = null, io = null, self = null;
@@ -3331,7 +3356,7 @@ function mount(host, move, opts) {
     teardown();
     if (o.onFallback) Promise.resolve().then(() => o.onFallback(ctl, info || { reason: 'error', hidden: false }));
   };
-  if (!supported() || !renderer()) { fallback({ reason: 'unsupported', hidden: false }); return ctl; }
+  if (!renderer()) { fallback({ reason: 'unsupported', hidden: false }); return ctl; }
   try { view = new View(move, o); } catch (e) {
     if (G.console) G.console.error('figure3d:', e);
     fallback({ reason: 'error', hidden: false });
@@ -3391,8 +3416,16 @@ function mount(host, move, opts) {
   };
   const onScreen = () => visible && el.isConnected && !(typeof document !== 'undefined' && document.hidden);
   // A sheet being dragged or settling (the sheet engine marks <html data-sheet-moving>): every frame
-  // goes to the sheet, so the figure holds its pose and the rep carries on from there after.
-  const sheetMoving = () => typeof document !== 'undefined' && document.documentElement.hasAttribute('data-sheet-moving');
+  // goes to the sheet, so the figure holds its pose and the rep carries on from there after. A sheet
+  // settles well within a second and a half; a mark left on longer than that is stale.
+  let markSince = 0;
+  const sheetMoving = () => {
+    const on = typeof document !== 'undefined' && document.documentElement.hasAttribute('data-sheet-moving');
+    if (!on) { markSince = 0; return false; }
+    const now = performanceNow();
+    if (!markSince) markSince = now;
+    return now - markSince < 1500;
+  };
   function tick(now) {
     raf = 0;
     if (failed) return;
@@ -3407,7 +3440,12 @@ function mount(host, move, opts) {
       if (onceUntil >= 0 && clock >= onceUntil) { onceUntil = -1; playing = false; dirty = true; }
     }
     // Camera: idle orbit while playing, drag, easing back, animated view changes.
-    if (playing && !o.reducedMotion) { cam.orbit = Math.sin((now / 9000) * Math.PI * 2) * 7 * D2R; busy = true; }
+    // (From where it started playing, so its first frame matches a still of the same moment.)
+    if (playing && !o.reducedMotion) {
+      if (!orbit0) orbit0 = now;
+      cam.orbit = Math.sin(((now - orbit0) / 9000) * Math.PI * 2) * 7 * D2R;
+      busy = true;
+    }
     let later = 0;
     if (cam.drag) busy = true;
     else if (Math.abs(cam.yaw) > 1e-4 || Math.abs(cam.pitch) > 1e-4) {
@@ -3528,7 +3566,10 @@ const performanceNow = () => (G.performance ? G.performance.now() : Date.now());
 
 /* ---------------------------------------------------------------- stills */
 const stills = new Map();
-const stillKey = (move, w, h, o, crop) => [move.id, JSON.stringify(move.equip || []), w, h, o.dark, o.skin, o.shirt, o.mirrored, crop || 0].join('|');
+// opts.t: a still of time t ms into the rep (as a live figure's first frame shows it) instead of
+// the key pose.
+const timeOf = (opts) => (opts && typeof opts.t === 'number' && isFinite(opts.t) ? Math.max(0, opts.t) : null);
+const stillKey = (move, w, h, o, crop, t) => [move.id, JSON.stringify(move.equip || []), w, h, o.dark, o.skin, o.shirt, o.mirrored, crop || 0, t == null ? 'key' : Math.round(t)].join('|');
 function stillSize(opts) {
   return [Math.max(16, Math.round((opts && opts.width) || 240)), Math.max(16, Math.round((opts && opts.height) || 200))];
 }
@@ -3538,7 +3579,7 @@ const drawSize = (opts) => { const crop = cropOf(opts); return crop ? [crop * 2,
 function cachedStill(move, opts) {
   const o = optsOf(Object.assign({ static: true }, opts));
   const [w, h] = drawSize(opts);
-  return stills.get(stillKey(move, w, h, o, cropOf(opts))) || null;
+  return stills.get(stillKey(move, w, h, o, cropOf(opts), timeOf(opts))) || null;
 }
 // A square crop of a still around the figure (anything drawn more than faintly: the body, what it
 // holds, its shadow), side px across, so a small tile shows the body rather than the room the whole
@@ -3565,16 +3606,16 @@ function cropped(c, side) {
 // many px across, cropped to the figure) and the look (dark, skin, shirt, mirrored).
 function still(move, opts) {
   const o = optsOf(Object.assign({ static: true }, opts));
-  const crop = cropOf(opts);
+  const crop = cropOf(opts), t = timeOf(opts);
   const [w, h] = drawSize(opts);
-  const key = stillKey(move, w, h, o, crop);
+  const key = stillKey(move, w, h, o, crop, t);
   if (stills.has(key)) return stills.get(key);
-  if (!supported() || !renderer()) return null;
+  if (!renderer()) return null;
   let view = null;
   try {
     view = new View(move, o);
-    view.fig.setPose(view.fig.A.key, null);
-    view.fig.setGlow(0.78, null);
+    if (t == null) { view.fig.setPose(view.fig.A.key, null); view.fig.setGlow(0.78, null); }
+    else { view.fig.setTime(t, null); view.fig.setGlow(glowFor(phaseAt(move, t), 0), null); } // as a live figure's first frame
     const c = document.createElement('canvas');
     c.width = w; c.height = h;
     const ctx = c.getContext('2d');
@@ -3626,7 +3667,7 @@ function warmUp() {
 function preload() {
   if (preloading) return preloading;
   const steps = [
-    () => (supported() && renderer() ? true : null), // null: no 3D here
+    () => (renderer() ? true : null), // null: no 3D here
     bodyStep, // false until every body part is built
     () => { eqGeos(); shared(); return true; },
     () => { envMap(); return true; },

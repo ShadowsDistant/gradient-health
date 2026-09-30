@@ -1420,13 +1420,16 @@
       updateFigure(nodes, framePose(move, keyPose));
     } else draw(0);
     // While a sheet is dragged or settling (<html data-sheet-moving>), the figure holds its pose and
-    // the rep carries on from there after: every frame goes to the sheet.
+    // the rep carries on from there after: every frame goes to the sheet. A sheet settles well within
+    // a second and a half; a mark left on longer than that is stale, and the figure moves on.
     const doc = G.document;
-    let held = 0;
+    let held = 0, since = 0;
     function loop(now) {
       if (!playing) return;
       if (!t0) t0 = now - offset;
-      if (doc && doc.documentElement.hasAttribute('data-sheet-moving')) {
+      const mark = !!doc && doc.documentElement.hasAttribute('data-sheet-moving');
+      if (!mark) since = 0; else if (!since) since = now;
+      if (mark && now - since < 1500) {
         if (!held) held = now;
       } else {
         if (held) { t0 += now - held; held = 0; }
