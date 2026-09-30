@@ -31,6 +31,8 @@
     d('weights', []); d('protein', {}); d('feel', {}); d('sleepChip', {}); d('measurements', []); d('active', null);
     d('celebrated', {}); d('pendingLines', []); d('insightsDismissed', {}); d('insightsShown', {}); d('volWeeksDone', []);
     d('health', {}); d('ai', {}); d('seen', {});
+    // 1.4: outdoor activities (src/activity.js), newest first, and the one being recorded.
+    d('activities', []); d('actLive', null);
     const h = S.health;
     if (!h.days) h.days = {};
     if (!h.hc) h.hc = {};
