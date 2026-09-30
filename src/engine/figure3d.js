@@ -1378,7 +1378,7 @@ function arms(A, J, pts, f, P2, P3, T) {
     if (c.kind === 'wall' && c.w > 0) {
       const wx = c.wall.x;
       if (A.view === 'side') W.x = lerp(W.x, wx - c.wall.side * 5.5, c.w);
-      else W.x = lerp(W.x, wx + 5.5, c.w);
+      else W.x = lerp(W.x, wx - (c.wall.side || 1) * 5.5, c.w); // the wrist stays on the room side of the wall
     }
     if (!g && c.kind !== 'bar') {
       // Out of the trunk and thighs: pushed sideways, eased per figure so a fast hand sliding off
