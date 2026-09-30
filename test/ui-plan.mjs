@@ -384,6 +384,34 @@ check('and the info sheet explains it', /40% fewer sets/.test(deload) && /back t
 await shot(page, '14-deload');
 await ctx.close();
 
+section('Days picked set the workouts a week');
+({ ctx, page, settle } = await openApp('2026-10-21T08:10:00'));
+await page.click('.rf-tab[data-tab="plan"]');
+await settle(900);
+await page.click('#topbar [data-act="daysSheet"]');
+await settle(900);
+const daysSheet = () => page.evaluate(() => { const d = document.querySelector('dialog.rf-sheet[open]'); return { n: d.querySelector('#dsDays').value, note: d.querySelector('#dsDaysNote').textContent, pressed: [...d.querySelectorAll('[data-on="dsWd"]')].map((b) => b.getAttribute('aria-pressed') === 'true' ? 1 : 0).join('') }; });
+for (const i of [0, 1, 2, 3, 4]) { await page.click(`dialog.rf-sheet[open] [data-on="dsWd"][data-v="${i}"]`); await settle(300); }
+let dsx = await daysSheet();
+check('picking Monday to Friday sets 5 workouts a week', dsx.n === '5' && dsx.pressed === '1111100' && /Your 5 workouts/.test(dsx.note), dsx);
+await page.click('dialog.rf-sheet[open] [data-on="dsWd"][data-v="5"]');
+await settle(300);
+await page.click('dialog.rf-sheet[open] [data-on="dsWd"][data-v="6"]');
+await settle(300);
+dsx = await daysSheet();
+check('a seventh day is refused, and it says why', dsx.n === '6' && dsx.pressed === '1111110' && /one day stays for rest/.test(dsx.note), dsx);
+await page.click('dialog.rf-sheet[open] .rf-stepper-btn[data-step="-1"]');
+await settle(300);
+await page.click('dialog.rf-sheet[open] .rf-stepper-btn[data-step="-1"]');
+await settle(300);
+dsx = await daysSheet();
+check('minus drops the days picked last', dsx.n === '4' && dsx.pressed === '1111000', dsx);
+await page.click('dialog.rf-sheet[open] [data-act="daysSave"]');
+await settle(900);
+const saved = await page.evaluate(() => { const S = window.GH.ui.S; return { days: S.profile.days, weekdays: (S.profile.weekdays || []).join(), next: window.GH.planWeek(S, window.GH.ui.today()).next.days.map((d) => d.kind).join() }; });
+check('saved as 4 workouts, Monday to Thursday, and next week follows it', saved.days === 4 && saved.weekdays === '0,1,2,3' && /^workout,workout,workout,workout,(light|rest),(light|rest),(light|rest)$/.test(saved.next), saved);
+await ctx.close();
+
 section('Console');
 check('no console errors', errors.length === 0, errors.slice(0, 6).join(' | '));
 await browser.close();

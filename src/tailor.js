@@ -225,7 +225,12 @@
     const muscles = t.muscles || [];
     if (muscles.length) patch.focus = [...new Set(muscles.concat(had))].slice(0, 4);
     if (t.minutes != null) patch.minutes = t.minutes;
-    if (t.days != null) { patch.days = t.days; patch.weekdays = null; }
+    // A new count keeps the days picked, adding or dropping one (brain.setWorkoutDays).
+    if (t.days != null) {
+      patch.days = t.days;
+      const picked = Array.isArray(p.weekdays) && p.weekdays.length >= 2 && b.setWorkoutDays ? b.setWorkoutDays(p.weekdays, t.days).weekdays : [];
+      patch.weekdays = picked.length ? picked.slice().sort((x, y) => x - y) : null;
+    }
     if (t.avoid_joints.length) patch.careful = [...new Set((p.careful || []).concat(t.avoid_joints))];
     if (t.no_jumping) patch.impactOk = false;
     if (t.gentle != null) patch.gentle = t.gentle;

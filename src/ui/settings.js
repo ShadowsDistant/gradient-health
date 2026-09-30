@@ -280,13 +280,22 @@
   });
 
   /* ---------------------------------------------------------------- days and time */
+  // What the day chips mean right now.
+  function daysNote(d) {
+    if (d.note === 'max') return 'Six workout days is the most: one day stays for rest.';
+    if (d.weekdays.length >= 2) return `Your ${d.weekdays.length} workouts land on these days. + and − add or drop a day.`;
+    if (d.weekdays.length === 1) return 'Pick at least one more day, or none for a spread that suits your plan.';
+    return `Leave these empty for a spread that suits ${d.days} days, or pick your own.`;
+  }
+  U.daysNote = daysNote;
   U.act.daysSheet = () => {
     const p = U.S.profile;
-    const d = { days: p.days, weekdays: Array.isArray(p.weekdays) ? p.weekdays.slice() : [], minutes: p.minutes, lightDays: p.lightDays !== false };
+    // Workouts a week and the days picked stay in step (brain.pickWeekday / setWorkoutDays).
+    const d = { days: p.days, weekdays: Array.isArray(p.weekdays) ? p.weekdays.slice() : [], minutes: p.minutes, lightDays: p.lightDays !== false, note: null };
     const body = () => `<div class="sheet-pad">
         <p class="t-headline">Workouts a week</p><div class="ob-center">${U.stepper('dsDays', d.days, 2, 6, 'Workouts a week', 'data-on="dsDays"')}</div>
         <p class="t-headline">Which days (optional)</p><div class="ob-chips">${DAYS.map((n, i) => `<button type="button" class="rf-chip" aria-pressed="${d.weekdays.includes(i)}" data-on="dsWd" data-v="${i}"><span class="rf-chip-check" data-icon="check"></span>${n}</button>`).join('')}</div>
-        <p class="t-footnote rf-muted">Pick ${d.days} days to use your own, or none for the default spread.</p>
+        <p class="t-footnote rf-muted" id="dsDaysNote">${U.esc(daysNote(d))}</p>
         <p class="t-headline">Minutes per workout: <span id="dsMinOut" class="rf-num">${d.minutes}</span></p>
         <div class="rf-slider"><div class="rf-slider-control"><input class="rf-slider-input" type="range" min="10" max="60" step="5" value="${d.minutes}" aria-label="Minutes per workout" data-on="dsMin" id="dsMin"></div></div>
         <ul class="rf-list sheet-gap">${U.sw('Light days', d.lightDays, 'data-on="dsLight"', 'Walk and mobility on off days')}</ul>
@@ -294,13 +303,18 @@
       </div>`;
     const ctl = U.sheet({ title: 'Days and time', detents: 'large', detent: 'large', body: body(), action: { label: 'Save', act: 'daysSave' } });
     ctl.el.addEventListener('input', (e) => { if (e.target.id === 'dsMin') { const o = ctl.el.querySelector('#dsMinOut'); if (o) o.textContent = e.target.value; } });
-    U.on.dsDays = (el, ev, v) => { d.days = Math.max(2, Math.min(6, Math.round(v))); };
-    U.on.dsWd = (el, ev, v) => { const i = Number(el.dataset.v); d.weekdays = d.weekdays.filter((x) => x !== i); if (v) d.weekdays.push(i); };
+    const redraw = () => { if (!ctl.closed) ctl.update(body()); };
+    U.on.dsDays = (el, ev, v) => { Object.assign(d, B().setWorkoutDays(d.weekdays, Math.round(v))); redraw(); };
+    U.on.dsWd = (el, ev, v) => {
+      Object.assign(d, B().pickWeekday(d.days, d.weekdays, Number(el.dataset.v), !!v));
+      if (d.note === 'max') U.haptic('warning');
+      redraw();
+    };
     U.on.dsMin = (el, ev, v) => { d.minutes = v; };
     U.on.dsLight = (el, ev, v) => { d.lightDays = !!v; };
     U.act.daysSave = () => {
       const S = U.S;
-      const res = B().updateSettings(S, U.today(), { days: d.days, weekdays: d.weekdays.length === d.days ? d.weekdays.slice().sort((a, b) => a - b) : null, minutes: d.minutes, lightDays: d.lightDays });
+      const res = B().updateSettings(S, U.today(), { days: d.days, weekdays: d.weekdays.length >= 2 ? d.weekdays.slice().sort((a, b) => a - b) : null, minutes: d.minutes, lightDays: d.lightDays });
       ctl.close('ok');
       U.commit();
       U.toast('Saved', 'positive', res && res.shape && res.from > U.today() ? 'New days start next Monday.' : undefined);

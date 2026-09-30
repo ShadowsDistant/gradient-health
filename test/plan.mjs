@@ -185,6 +185,26 @@ section('Next week');
 }
 
 /* ------------------------------------------------------------------ phases */
+section('Workouts a week follow the days picked');
+{
+  let r = { days: 3, weekdays: [] };
+  for (const d of [0, 1, 2, 3, 4]) r = B.pickWeekday(r.days, r.weekdays, d, true);
+  check('picking Monday to Friday makes it 5 workouts a week', r.days === 5 && r.weekdays.join() === '0,1,2,3,4', r);
+  check('a seventh day is refused: one stays for rest', (() => { let x = B.pickWeekday(r.days, r.weekdays, 5, true); x = B.pickWeekday(x.days, x.weekdays, 6, true); return x.days === 6 && x.weekdays.length === 6 && x.note === 'max'; })());
+  check('one day picked keeps the count, and says so', (() => { const x = B.pickWeekday(3, [], 1, true); return x.days === 3 && x.note === 'one'; })());
+  check('unpicking a day lowers the count', B.pickWeekday(5, [0, 1, 2, 3, 4], 2, false).days === 4);
+  check('minus with days picked drops the last one picked', B.setWorkoutDays([0, 1, 2, 3, 4], 4).weekdays.join() === '0,1,2,3');
+  check('plus adds the day that spreads the week most', B.setWorkoutDays([0, 2], 3).weekdays.join() === '0,2,4');
+  check('with no days picked the count is just the count', (() => { const x = B.setWorkoutDays([], 4); return x.days === 4 && !x.weekdays.length; })());
+  // Saving: the days picked decide the count, whatever count came with them.
+  const S = fresh();
+  B.updateSettings(S, MON, { days: 3, weekdays: [0, 1, 2, 3, 4], minutes: 25 });
+  check('saving Monday to Friday with a stale count of 3 saves 5', S.profile.days === 5 && S.profile.weekdays.join() === '0,1,2,3,4', [S.profile.days, S.profile.weekdays]);
+  const w = PW(S, MON);
+  check('and the week has a workout Monday to Friday', w.days.slice(0, 5).every((d) => ['workout', 'today'].includes(d.kind) || d.session) && !w.days.slice(5).some((d) => d.kind === 'workout'), w.days.map((d) => d.kind).join());
+  check('B.weekdaysFor uses them', B.weekdaysFor(S.profile).join() === '0,1,2,3,4');
+}
+
 section('Phases');
 {
   const S = fresh();

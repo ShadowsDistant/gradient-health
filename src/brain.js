@@ -2002,7 +2002,38 @@
   }
 
   // Setting changes take effect from today; the replay uses the settings in force each week.
+  // Workouts a week and the days they're on stay in step. Picking days sets the count (2 to 6: a
+  // seventh is refused, one day stays for rest). A new count with days picked adds days where they
+  // spread the week most evenly, or drops the last ones picked. { days, weekdays, note }; weekdays is
+  // in the order picked, and [] means the default spread for the count.
+  const MAX_DAYS = 6;
+  function pickWeekday(days, picked, wd, on) {
+    let list = (Array.isArray(picked) ? picked : []).filter((x, i, a) => x >= 0 && x <= 6 && a.indexOf(x) === i);
+    if (on && !list.includes(wd)) {
+      if (list.length >= MAX_DAYS) return { days: clampInt(days, 2, MAX_DAYS), weekdays: list, note: 'max' };
+      list = list.concat([wd]);
+    } else if (!on) list = list.filter((x) => x !== wd);
+    return { days: list.length >= 2 ? list.length : clampInt(days, 2, MAX_DAYS), weekdays: list, note: list.length === 1 ? 'one' : null };
+  }
+  function setWorkoutDays(picked, n) {
+    const days = clampInt(n, 2, MAX_DAYS);
+    let list = (Array.isArray(picked) ? picked : []).filter((x, i, a) => x >= 0 && x <= 6 && a.indexOf(x) === i);
+    if (!list.length) return { days, weekdays: [], note: null };
+    while (list.length > days) list = list.slice(0, -1);
+    while (list.length < days) {
+      // The free day furthest (round the week) from the days already picked; the earliest on a tie.
+      const gap = (d) => Math.min(...list.map((x) => { const g = Math.abs(d - x); return Math.min(g, 7 - g); }));
+      const free = [0, 1, 2, 3, 4, 5, 6].filter((d) => !list.includes(d));
+      list = list.concat([free.reduce((a, d) => (gap(d) > gap(a) ? d : a), free[0])]);
+    }
+    return { days, weekdays: list, note: null };
+  }
   function updateSettings(S, day, patch) {
+    // Days picked decide the count, whatever count came with them.
+    if (Array.isArray(patch.weekdays) && patch.weekdays.length >= 2) {
+      const w = [...new Set(patch.weekdays.filter((x) => x >= 0 && x <= 6))].sort((a, b) => a - b).slice(0, MAX_DAYS);
+      patch = Object.assign({}, patch, { weekdays: w, days: w.length });
+    }
     Object.assign(S.profile, patch);
     return scheduleSettings(S, day, { days: S.profile.days, weekdays: S.profile.weekdays, minutes: S.profile.minutes });
   }
@@ -2085,7 +2116,7 @@
   }
 
   GH.brain = {
-    DAY_MS, dayOf, dayFromStr, dayStr, weekday, weekStart, fmtDay, fmtMin, GROUPS, GROUP_NAME, JOINTS, LB_PER_KG, MUSCLE_GROUP, focusOf,
+    DAY_MS, dayOf, dayFromStr, dayStr, weekday, weekStart, fmtDay, fmtMin, GROUPS, GROUP_NAME, JOINTS, LB_PER_KG, MUSCLE_GROUP, focusOf, pickWeekday, setWorkoutDays,
     defaultProfile, programFor, templateFor, templateTitle, newState, applyBaseline, rungs, filtersFor,
     calendar, weekOf, todayPlan, readiness, buildSession, estimate, steps, startWorkout, cancelWorkout, restoreWorkout, completeStep, currentTarget,
     setRir, amendLast, swapItem, swapOptions, finishWorkout, progress, levelUp, nextWeight, weeklyVolumeUpdate, recordTest, testDue,

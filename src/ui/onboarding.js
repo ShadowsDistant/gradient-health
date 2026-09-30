@@ -62,7 +62,8 @@
     p.heightCm = lb ? (Q._hft > 0 ? Math.round((Q._hft * 12 + (Q._hin || 0)) * 2.54) : null) : (Q._hcm > 0 ? Math.round(Q._hcm) : null);
     const weaker = (s) => (s === 'R' ? 'L' : s === 'L' ? 'R' : null);
     p.lead = { arm: weaker(Q._strongArm), leg: weaker(Q._strongLeg) };
-    p.weekdays = Q.weekdays.length === Q.days ? Q.weekdays.slice().sort((a, b) => a - b) : null;
+    p.weekdays = Q.weekdays.length >= 2 ? Q.weekdays.slice().sort((a, b) => a - b) : null;
+    if (p.weekdays) p.days = p.weekdays.length;
     if (!p.goals.length) p.goals = ['consistency'];
     if (p.food && p.food.mode) p.protein = Object.assign({}, p.protein, { track: p.food.mode !== 'off' });
     for (const k of Object.keys(p)) if (k[0] === '_') delete p[k];
@@ -371,9 +372,28 @@
     + group('', `<ul class="rf-list">${U.sw('Kept a routine for 2+ months before', Q.keptRoutine, bind('keptRoutine'))}</ul>`)
     + group('Last month', `<div class="ob-pad">${U.seg('recentActivity', [['none', 'Not active'], ['some', 'A little'], ['regular', 'Regularly']], Q.recentActivity, 'Activity last month', ` ${bind('recentActivity')}`)}</div>`, Q._hcNote ? 'Filled in from Health Connect.' : '');
 
+  // Workouts a week and the days picked stay in step: picking days sets the count, and + or − with
+  // days picked adds or drops one (brain.pickWeekday / setWorkoutDays).
+  let dayNote = null;
+  const scheduleHandler = U.on.q;
+  U.on.q = (el, ev, v) => {
+    if (Q && el.dataset && el.dataset.list === 'weekdays') {
+      const r = B().pickWeekday(Q.days, Q.weekdays, Number(el.dataset.v), !!v);
+      Q.days = r.days; Q.weekdays = r.weekdays; dayNote = r.note;
+      if (r.note === 'max') U.haptic('warning');
+      draw();
+      return;
+    }
+    if (Q && el.dataset && el.dataset.k === 'days' && Q.weekdays.length) {
+      const r = B().setWorkoutDays(Q.weekdays, Number(v));
+      Q.days = r.days; Q.weekdays = r.weekdays; dayNote = null;
+      draw();
+      return;
+    }
+    scheduleHandler(el, ev, v);
+  };
   VIEW.schedule = () => {
-    const picked = Q.weekdays.length;
-    const hint = !picked ? `Leave these empty for a spread that suits ${Q.days} days.` : picked === Q.days ? 'Your workouts land on these days.' : `Pick ${Q.days} days to use your own (${picked} picked), or none for the default spread.`;
+    const hint = U.daysNote ? U.daysNote({ days: Q.days, weekdays: Q.weekdays, note: dayNote }) : '';
     return lead('Missed a day? The plan shifts forward instead of doubling up.')
       + group('Workouts a week', `<div class="ob-pad ob-center">${U.stepper('obDays', Q.days, 2, 6, 'Workouts a week', bind('days', 'num', true))}</div>`)
       + group('Which days (optional)', `<div class="ob-chips">${DAYS.map((d, i) => listChip('weekdays', i, d, Q.weekdays.includes(i), 'num', true)).join('')}</div>`, hint)
