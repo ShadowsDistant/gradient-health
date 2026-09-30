@@ -143,14 +143,19 @@ for (const [width, theme, zoom, h] of COMBOS) {
   await page.addInitScript(seedBridge);
   // Small phones get a three-button navigation bar (48px); the rest a gesture bar.
   if (width === 360) await page.addInitScript(() => { const t = setInterval(() => { if (window.AndroidBridge) { window.AndroidBridge.insets = () => JSON.stringify({ top: 30, bottom: 48, left: 0, right: 0, keyboard: false }); clearInterval(t); } }, 1); });
+  // The app starts on a timer (setTimeout(boot, 0)), which under the test clock can wait for time to
+  // move on: if it hasn't started, move it on.
+  const booted = async (sel) => {
+    try { await page.waitForSelector(sel, { timeout: 15000 }); } catch (e) { await page.clock.runFor(1000).catch(() => {}); await page.waitForSelector(sel, { timeout: 30000 }); }
+  };
   await page.goto(server.url);
-  await page.waitForSelector('.onboard:not([hidden])');
+  await booted('.onboard:not([hidden])');
   await page.evaluate(seedState);
   await page.reload();
-  await page.waitForSelector('#screen[data-view="today"] .session');
+  await booted('#screen[data-view="today"] .session');
   await page.evaluate(seedMore);
   await page.reload();
-  await page.waitForSelector('#screen[data-view="today"]');
+  await booted('#screen[data-view="today"]');
   const settle = async (ms = 800) => { await page.clock.runFor(ms); await page.waitForTimeout(250); };
   const act = (name, arg) => page.evaluate(([a, b]) => { const f = window.GH.ui.act[a]; if (f) f({ dataset: { arg: b }, setAttribute() {}, removeAttribute() {}, closest: () => null }); }, [name, arg]);
   const reset = async () => { await page.evaluate(() => { window.GH.ui.closeSheets(); while (window.GH.ui.back()) { /* back to the tab */ } }); await settle(700); };
@@ -220,10 +225,10 @@ for (const [width, theme, zoom, h] of COMBOS) {
     }
     if (id === 'player' || id === 'capsule') await page.evaluate(() => { const S = window.GH.ui.S; if (window.GH.ui.closePlayer) window.GH.ui.closePlayer(); S.active = null; window.GH.store.save(S); });
     // A slow machine can take a while to start the page again; a page that fails to start says why.
-    try { await page.reload(); await page.waitForSelector('#screen[data-view]'); } catch (e) {
+    try { await page.reload(); await booted('#screen[data-view]'); } catch (e) {
       check(`${id}: the page starts again`, false, `${e.message.split('\n')[0]} ${errors.slice(-3).join(' | ')}`);
       await page.reload({ timeout: 60000 });
-      await page.waitForSelector('#screen[data-view]', { timeout: 60000 });
+      await booted('#screen[data-view]');
     }
     await reset();
   }
