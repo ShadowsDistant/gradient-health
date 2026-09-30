@@ -7,7 +7,7 @@ import { load, root, check, section, done } from './lib.mjs';
 
 const ls = new Map();
 globalThis.localStorage = { getItem: (k) => (ls.has(k) ? ls.get(k) : null), setItem: (k, v) => ls.set(k, String(v)), removeItem: (k) => ls.delete(k) };
-const GH = load('src/data/moves.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/store.js', 'src/coach.js', 'src/tailor.js');
+const GH = load('src/data/moves.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/store.js', 'src/coach.js', 'src/tailor.js', 'src/devicecoach.js');
 const bundle = await build({ entryPoints: [join(root, 'src/ai.js')], bundle: true, write: false, format: 'iife', platform: 'browser', target: ['es2022'], logLevel: 'silent' });
 new Function(bundle.outputFiles[0].text)();
 const B = GH.brain, C = GH.coach, H = GH.health, SC = GH.science;
@@ -267,6 +267,54 @@ section('Tailor my plan: checking and applying');
   check('an answer cut off in its note is still read', cut && cut.focus.join() === 'legs' && cut.minutes === 20 && /^More legs/.test(cut.note), cut);
   check('and nonsense isn\'t', T.read('hello') === null && T.read('') === null);
   check('the on-device grammar only allows the fields and values the app reads', /focus/.test(T.GRAMMAR) && /shoulders/.test(T.GRAMMAR) && /avoid_joints/.test(T.GRAMMAR) && !/calves/.test(T.GRAMMAR));
+}
+
+section('The on-device coach keeps to the app\'s numbers');
+{
+  const DC = GH.deviceCoach;
+  const walker = person({ steps: 9000 }), sitter = person({ steps: 3000 });
+  check('a yes-or-no question the numbers settle gets the app\'s own yes or no', C.verdict(walker, D0, 'Am I doing enough steps?') === 'Yes' && C.verdict(sitter, D0, 'Am I walking enough?') === 'Not quite');
+  check('the chat\'s own "Am I moving enough?" counts as a steps question', C.topicOf('Am I moving enough?') === 'steps' && C.verdict(walker, D0, 'Am I moving enough?') === 'Yes');
+  check('the same for sleep', C.verdict(person({ sleep: 480 }), D0, 'Am I sleeping enough?') === 'Yes' && C.verdict(person({ sleep: 340 }), D0, 'Do I get enough sleep?') === 'Not quite');
+  const S = person();
+  const strong = C.verdict(S, D0, 'Am I getting stronger?');
+  check('"Am I getting stronger?" agrees with the app\'s answer', strong === (/^Yes/.test(C.ask(S, D0, 'Am I getting stronger?').text) ? 'Yes' : 'Not yet'), strong);
+  check('a question asked the other way round, or not yes-or-no, gets none', [
+    C.verdict(S, D0, 'Am I getting weaker?'), C.verdict(walker, D0, 'Am I walking too much?'), C.verdict(walker, D0, 'Why aren\'t I doing enough steps?'),
+    C.verdict(walker, D0, 'How are my steps?'), C.verdict(S, D0, 'Is my heart rate OK?'),
+  ].every((x) => x === null));
+  check('the answer starts from it', DC.lead(walker, D0, 'Am I doing enough steps?') === 'Yes,' && DC.lead(walker, D0, 'How are my steps?') === '');
+
+  const given = 'Steps: 7675 steps on average this week (usually 7020 steps); daily goal 8000. Weight: 68.4 kg. Sleep 6 h 59.';
+  const k = DC.keepToGiven('You walk 7,675 steps a day. That\'s 655 more than usual. Your goal is 8,000.', given);
+  check('a sentence with a number it wasn\'t given is left out', k.cut === 1 && k.text === 'You walk 7,675 steps a day. Your goal is 8,000.', k);
+  check('numbers it was given, rounded or with commas, stay', DC.keepToGiven('You weigh about 68 kg and slept 6 h 59, against a goal of 8,000.', given).cut === 0);
+  check('an answer with nothing made up is kept exactly', DC.keepToGiven('Yes, you walk plenty.\nKeep it up.', given).text === 'Yes, you walk plenty.\nKeep it up.');
+  const q = 'Am I doing enough steps?';
+  const cut = DC.finish(walker, D0, q, 'Yes, you walk 7675 steps a day, which is great for your health. That puts you in the top 12% of people.', given);
+  check('a made-up line goes and a note says so', cut.cut === 1 && !/12%/.test(cut.text) && /7675/.test(cut.text) && /Left out a line/.test(cut.note), cut);
+  const bad = DC.finish(walker, D0, q, 'Yes, 12,000 steps.', given);
+  check('if too little is left, the app\'s own answer stands in', bad.replaced && bad.text === C.ask(walker, D0, q).text && /didn't match your numbers/.test(bad.note), bad);
+  const none = DC.finish(walker, D0, q, 'Yes,', given);
+  check('and when all it wrote was the yes or no', none.replaced && /didn't answer/.test(none.note), none);
+  const fine = DC.finish(walker, D0, q, 'Yes, you walk 7675 steps a day, above what most studies link to better health.', given);
+  check('a good answer goes through untouched, with no note', !fine.replaced && !fine.note && fine.text.startsWith('Yes, you walk 7675'), fine);
+
+  // ask() end to end, with a stand-in for the model.
+  let sent = null;
+  const reply = (text) => ({
+    MODELS: [], available: () => ({ ok: true }), installed: async () => [{ id: 'q35-08' }], loaded: () => ({ id: 'q35-08' }), load: async () => {},
+    stats: { id: 'q35-08', tokens: 20, tokensPerSec: 12 },
+    chat: async (msgs, o) => { sent = { msgs, o }; const t = (o.lead || '') + text; if (o.onToken) o.onToken(t, t); return t; },
+  });
+  const S2 = person({ steps: 9000 });
+  S2.ai = S2.ai || {};
+  GH.lazy = async () => reply(' you walk 1,234,567 steps a day.');
+  const res = await DC.ask(S2, D0, 'Am I doing enough steps?');
+  check('ask() sends the app\'s yes or no as the lead, at a low temperature', sent.o.lead === 'Yes,' && sent.o.temperature <= 0.3);
+  check('a made-up number never reaches the chat: the app\'s own answer does, with the note', res.replaced && res.text === C.ask(S2, D0, 'Am I doing enough steps?').text && res.raw.startsWith('Yes, you walk 1,234,567'));
+  const last = S2.ai.deviceChat[S2.ai.deviceChat.length - 1];
+  check('the chat keeps the checked answer and its note', last.text === res.text && /didn't match/.test(last.note) && last.facts && last.facts.length > 0);
 }
 
 done();

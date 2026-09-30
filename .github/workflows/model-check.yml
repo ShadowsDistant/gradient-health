@@ -11,9 +11,11 @@ on:
     paths:
       - src/llm.js
       - src/devicecoach.js
+      - src/coach.js
       - src/tailor.js
       - android/jni/**
       - test/model-check.mjs
+      - test/model-prompts.mjs
       - .github/workflows/model-check.yml
   workflow_dispatch:
     inputs:
@@ -79,6 +81,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+      - run: npm ci
       - name: Which model
         id: which
         run: echo "file=$(case '${{ inputs.model }}' in balanced) echo Qwen3.5-2B-Q4_K_M.gguf ;; best) echo Qwen3.5-4B-Q4_K_M.gguf ;; *) echo Qwen3.5-0.8B-Q4_K_M.gguf ;; esac)" >> "$GITHUB_OUTPUT"
@@ -91,21 +95,24 @@ jobs:
         id: model
         run: |
           case "${{ inputs.model }}" in
-            balanced) f=Qwen3.5-2B-Q4_K_M.gguf; repo=unsloth/Qwen3.5-2B-GGUF ;;
-            best) f=Qwen3.5-4B-Q4_K_M.gguf; repo=unsloth/Qwen3.5-4B-GGUF ;;
-            *) f=Qwen3.5-0.8B-Q4_K_M.gguf; repo=unsloth/Qwen3.5-0.8B-GGUF ;;
+            balanced) f=Qwen3.5-2B-Q4_K_M.gguf; repo=unsloth/Qwen3.5-2B-GGUF; id=q35-2 ;;
+            best) f=Qwen3.5-4B-Q4_K_M.gguf; repo=unsloth/Qwen3.5-4B-GGUF; id=q35-4 ;;
+            *) f=Qwen3.5-0.8B-Q4_K_M.gguf; repo=unsloth/Qwen3.5-0.8B-GGUF; id=q35-08 ;;
           esac
           mkdir -p build
           [ -s "build/$f" ] || curl -fsSL --retry 3 -o "build/$f" "https://huggingface.co/$repo/resolve/main/$f"
           echo "file=build/$f" >> "$GITHUB_OUTPUT"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
       - name: Build the native engine for this runner
         run: |
           git clone -q --depth 1 --branch b10663 https://github.com/ggml-org/llama.cpp build/llama.cpp
           test "$(git -C build/llama.cpp rev-parse HEAD)" = 83d855c5a6d70487121edbf4020b25c96b7a04e7
           cmake -S android/jni -B build/native-host -DLLAMA_SRC=build/llama.cpp -DGHLLM_HOST_TEST=ON -DCMAKE_BUILD_TYPE=Release
           cmake --build build/native-host -j 4 --target ghllm_ask
-      - name: Ask it
+      - name: Ask it the coach's questions, as the app asks them
         run: |
           node -e "global.window=global;require('./src/tailor.js');require('fs').writeFileSync('build/tailor.gbnf', GH.tailor.GRAMMAR)"
+          node test/model-prompts.mjs write build/prompts "${{ steps.model.outputs.id }}"
           # One thread per core: more than the runner has makes llama.cpp's threads wait on each other.
-          build/native-host/ghllm_ask "${{ steps.model.outputs.file }}" "$(nproc)" build/tailor.gbnf
+          build/native-host/ghllm_ask "${{ steps.model.outputs.file }}" "$(nproc)" build/tailor.gbnf build/prompts
+          node test/model-prompts.mjs read build/prompts "${{ steps.model.outputs.id }}"

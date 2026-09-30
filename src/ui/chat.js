@@ -95,7 +95,8 @@
   function coachMsg(m, i) {
     if (m.flagged) return `<div class="msg coach">${AVATAR}<div class="msg-main"><div class="bubble coach is-flagged">You reported this answer, so it's hidden.</div></div></div>`;
     const tools = m.safety ? '' : `<div class="msg-tools">${tool('copyAnswer', i, 'copy', 'Copy')}${m.facts && m.facts.length ? tool('answerFacts', i, 'info', 'What it used') : ''}${flagBtn(i)}</div>`;
-    return `<div class="msg coach">${AVATAR}<div class="msg-main"><div class="bubble coach${m.stopped ? ' is-stopped' : ''}">${fmt(m.text)}</div>${tools}</div></div>`;
+    const note = m.note ? `<p class="t-footnote rf-muted msg-note">${U.esc(m.note)}</p>` : '';
+    return `<div class="msg coach">${AVATAR}<div class="msg-main"><div class="bubble coach${m.stopped ? ' is-stopped' : ''}">${fmt(m.text)}</div>${note}${tools}</div></div>`;
   }
   const STATUS = { loading: 'Starting the model', thinking: 'Thinking', reading: 'Reading your numbers', writing: 'Writing' };
   function liveInner(l) {

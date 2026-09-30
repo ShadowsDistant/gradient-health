@@ -157,7 +157,7 @@
   const TOPICS = [
     { id: 'today', words: ['today', 'lighter', 'easier today', 'fewer sets', 'less sets', 'readiness', 'why is'] },
     { id: 'sleep', words: ['sleep', 'slept', 'tired', 'bedtime', 'insomnia', 'nap', 'rest well'] },
-    { id: 'steps', words: ['step', 'walk', 'walking', 'active', 'activity', 'cardio', 'move more'] },
+    { id: 'steps', words: ['step', 'walk', 'walking', 'active', 'activity', 'cardio', 'move more', 'moving enough', 'move enough'] },
     { id: 'weight', words: ['weight', 'weigh', 'scale', 'lose', 'losing', 'lost', 'gain', 'bulk', 'cut', 'fat', 'waist'] },
     { id: 'protein', words: ['protein', 'eat', 'food', 'diet', 'shake', 'meal', 'nutrition', 'calorie'] },
     { id: 'strength', words: ['stronger', 'strength', 'progress', 'level', 'improv', 'gains', 'muscle', 'grow', 'working'] },
@@ -273,6 +273,25 @@
     abs: (S, day, f) => 'Abs training builds the muscle, but it doesn\'t burn the fat over it: in a study where people only did ab work for 6 weeks, belly fat didn\'t change. Visible abs come from the muscle plus lower body fat over months, which is mostly food and daily movement. Watch your waist measurement and your ab levels in Progress instead of a date.',
     focus: (S, day, f) => report(S, day).focus.join(' '),
   };
+
+  // A plain yes or no for a yes-or-no question the numbers settle, read the way the answer above reads
+  // them. The on-device coach starts its answer with it: small models get yes or no wrong from the
+  // numbers alone. Only for a question asked the positive way round ("Am I getting stronger?", not
+  // "...weaker?"); anything else gets null.
+  const YES_NO = /^\s*(am|is|are|do|does|did|have|has|was|were|will|should)\b/i;
+  const TURNED = /\b(not|weaker|worse|less|lose|losing|too much|too many|too little)\b|n't\b/i;
+  const VERDICT = {
+    strength: { asks: /\b(stronger|progress(ing)?|improving|getting better|gains)\b/i, of: (S, day, f) => (f.logs.length ? (S.log.some((l) => l.type === 'workout' && l.day > day - 28 && (l.celebrate || []).length) ? 'Yes' : 'Not yet') : null) },
+    steps: { asks: /\benough\b/i, of: (S, day, f) => (f.steps7.n ? (f.steps7.avg >= 7000 ? 'Yes' : 'Not quite') : null) },
+    sleep: { asks: /\benough\b/i, of: (S, day, f) => (f.sleep7.n ? (f.sleep7.avg >= 420 ? 'Yes' : 'Not quite') : null) },
+    protein: { asks: /\benough\b|\bhitting\b/i, of: (S, day, f) => (S.profile.protein.track !== false && f.goal && f.proteinDays ? (f.proteinHit / f.proteinDays >= 0.7 ? 'Yes' : 'Not quite') : null) },
+  };
+  function verdict(S, day, question) {
+    const q = String(question || '');
+    if (!YES_NO.test(q) || TURNED.test(q)) return null;
+    const v = VERDICT[topicOf(q)];
+    return v && v.asks.test(q) ? v.of(S, day, facts(S, day)) : null;
+  }
 
   // Answers a question from the user's own numbers. { text, topic } (topic null = no match).
   function ask(S, day, question) {
@@ -483,5 +502,5 @@
   }
   function dismiss(S, id, day) { S.coachDismissed = S.coachDismissed || {}; S.coachDismissed[id] = day; }
 
-  GH.coach = { report, glance, ask, topicOf, facts, claudePrompt, decisions, timeline, watching, suggestions, validAction, apply, dismiss };
+  GH.coach = { report, glance, ask, verdict, topicOf, facts, claudePrompt, decisions, timeline, watching, suggestions, validAction, apply, dismiss };
 })(typeof window !== 'undefined' ? window : globalThis);

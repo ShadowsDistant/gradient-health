@@ -839,8 +839,9 @@ let chats = Promise.resolve();
 // Answers the conversation with the loaded model (reloading the last one if it went idle) and resolves
 // with the reply. onToken(piece, textSoFar) streams it; onPrompt(done, total) follows the model
 // reading the prompt; onLoadProgress({ loaded, total }) a reload. grammar (GBNF) holds the reply to
-// a shape. Aborting the signal stops cleanly and resolves with the text so far (stats.aborted is
-// true). One chat runs at a time; others wait.
+// a shape. lead is text the reply starts with: it goes into the prompt, so the model carries on from
+// it, and it's part of what's streamed and returned. Aborting the signal stops cleanly and resolves
+// with the text so far (stats.aborted is true). One chat runs at a time; others wait.
 function chat(messages, opts = {}) {
   const job = chats.then(() => runChat(messages, opts));
   chats = job.then(() => {}, () => {});
@@ -890,14 +891,15 @@ async function generate(c, msgs, opts) {
   const maxTokens = readOnly ? 0 : Math.max(1, Math.min(Number(opts.maxTokens) || 256, Math.floor(c.ctx / 2)));
   const m = c.m || {};
   const gen = Object.assign({}, DEFAULT_GEN, m.gen || {}, opts.temperature != null ? { temperature: Number(opts.temperature) } : {});
-  const prompt = readOnly ? chatml(msgs, m, false) : chatml(fit(msgs, c.ctx, maxTokens), m);
+  const lead = readOnly ? '' : String(opts.lead || '');
+  const prompt = readOnly ? chatml(msgs, m, false) : chatml(fit(msgs, c.ctx, maxTokens), m) + lead;
   const ctrl = new AbortController();
   const abort = () => ctrl.abort();
   if (signal) signal.addEventListener('abort', abort, { once: true });
   let finished;
   running = { stop: abort, done: new Promise((r) => { finished = r; }) };
   clearTimeout(idleTimer);
-  let raw = '';
+  let raw = lead;
   let text = '';
   let pieces = 0;
   let first = 0;

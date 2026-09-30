@@ -437,6 +437,11 @@ const nat = await page3.evaluate(async (tiny) => {
   N.mode = 'not-loaded';
   out.reloaded = await llm.chat([{ role: 'user', content: 'Again' }], { maxTokens: 20 });
   out.loadsAfterReload = N.loads.length;
+  // An answer that starts from given words (the coach's yes or no).
+  const led = [];
+  out.led = await llm.chat([{ role: 'user', content: 'Did I sleep enough?' }], { lead: 'Yes,', maxTokens: 20, onToken: (p, all) => led.push(all) });
+  out.ledFirst = led[0];
+  out.ledPrompt = N.gens[N.gens.length - 1].prompt;
   // Stuck: nothing heard for a while.
   llm.configure({ stall: { answer: 150 } });
   N.mode = 'silent';
@@ -454,6 +459,7 @@ check('stats come back: tokens, reused prompt, speed', nat.stats.engine === 'nat
 check('reading ahead asks for no tokens and only the system turn', nat.prepared.max_tokens === 0 && nat.prepared.prompt === '<|im_start|>system\nRules.<|im_end|>\n', nat.prepared);
 check('Stop reaches the engine with the request\'s id, and the answer so far comes back', nat.aborts.length === 1 && nat.stoppedStats.aborted === true && /sleep/.test(nat.stopped), { aborts: nat.aborts, text: nat.stopped });
 check('a service that restarted without the model loads it again and answers', nat.reloaded.length > 0 && nat.loadsAfterReload === 2, nat);
+check('a lead goes at the end of the prompt, and the answer starts with it from its first word', /<\/think>\n\nYes,$/.test(nat.ledPrompt) && nat.led.startsWith('Yes,') && /Seven hours/.test(nat.led) && /^Yes,/.test(nat.ledFirst || ''), { prompt: (nat.ledPrompt || '').slice(-40), led: nat.led, first: nat.ledFirst });
 check('an engine that goes quiet is "stalled", and the in-app engine takes over', nat.stalled === 'stalled' && nat.afterStall === 'wasm', { stalled: nat.stalled, engine: nat.afterStall });
 await page3.close();
 const page4 = await ctx.newPage();
