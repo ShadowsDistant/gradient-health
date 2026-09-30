@@ -126,23 +126,8 @@ button.stat:active, .insight-line:active, .pl-fig-card:active, .tap-card:active 
 .ex-name { transition: opacity var(--duration-fast); }
 .ex-name:active { opacity: .55; transition-duration: 0ms; }
 
-/* Sheets and toasts clear the system bars. */
-.rf-sheet:not([data-detent="large"]) { inset-block-end: calc(var(--_inset) + var(--sab)); }
-/* Sheets: thicker glass than bars and buttons, so a busy page behind reads as soft colour rather than
-   shapes; a light blur behind; focus on the content, with a ring on the grabber for keyboards only. */
-.rf-sheet.rf-glass { --rf-density: 0.9; }
-/* A short sheet (a question with a few choices) is as tall as what's in it. */
-.rf-sheet.sheet-fit:not([data-detent="large"]) { --_h: fit-content; max-block-size: 86dvh; }
-.rf-sheet[open]::backdrop { -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
-.rf-sheet-body:focus, .rf-sheet-grabber:focus { outline: none; }
-.rf-sheet-grabber:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-/* A full-height sheet sets the page back behind it. */
-#app { transition: scale 460ms var(--spring-smooth), translate 460ms var(--spring-smooth), border-radius 460ms var(--spring-smooth); transform-origin: 50% 0; }
-#app[data-receded] { scale: .94; translate: 0 calc(var(--sat) + 6px); border-radius: 22px; overflow: hidden; overflow: clip; }
-html:has(#app[data-receded]), body:has(#app[data-receded]) { background: #08090c; }
-@media (prefers-reduced-motion: reduce) { #app { transition: none; } }
-.rf-sheet[data-detent="large"] { --_h: calc(100dvh - var(--space-12) - var(--sat)); }
-.rf-sheet[data-detent="large"] > .rf-sheet-body { padding-bottom: calc(var(--space-5) + var(--sab)); }
+/* Sheets (and the page receding behind them) are styled in styles/sheet.css. Toasts clear the
+   status bar. */
 .rf-toaster:not([data-position="bottom"]) { inset-block-start: calc(var(--space-3) + var(--sat)); }
 .rf-large-title { overflow-wrap: anywhere; }
 .lt-sub { margin: calc(-1 * var(--space-2)) 0 var(--space-4); padding: 0 var(--space-4); }
