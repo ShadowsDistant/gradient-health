@@ -61,7 +61,7 @@
         ${d.focus_one ? `<span class="hl-focus"><span class="hl-focus-ico">${U.icon('flag', 'sm')}</span><span class="hl-focus-text"><span class="hl-focus-k">Focus next</span><span>${U.esc(winText(d.focus_one))}</span></span></span>` : ''}
       </button>
       ${err}${waiting}
-      ${d.ask_me && d.ask_me.length ? `<div class="hl-asks" role="group" aria-label="Ask the coach">${d.ask_me.slice(0, 3).map((q) => `<button type="button" class="rf-chip" data-act="askPreset" data-arg="${U.esc(q)}">${U.esc(q)}</button>`).join('')}</div>` : ''}
+      ${d.ask_me && d.ask_me.length ? `<div class="hl-asks" data-hscroll role="group" aria-label="Ask the coach">${d.ask_me.slice(0, 3).map((q) => `<button type="button" class="rf-chip" data-act="askPreset" data-arg="${U.esc(q)}">${U.esc(q)}</button>`).join('')}</div>` : ''}
     </div>`;
   }
 
@@ -81,7 +81,7 @@
       ${list('Wins', (d.wins || []).map(winText), 'star', 'good')}
       ${list('Keep an eye on', d.watch, 'alert', 'watch')}
       ${list('Focus next', d.focus, 'flag', 'focus')}
-      ${d.ask_me && d.ask_me.length ? `<div class="hl-asks rs-asks" role="group" aria-label="Ask the coach">${d.ask_me.map((q) => `<button type="button" class="rf-chip" data-act="askPreset" data-arg="${U.esc(q)}">${U.esc(q)}</button>`).join('')}</div>` : ''}
+      ${d.ask_me && d.ask_me.length ? `<div class="hl-asks rs-asks" data-hscroll role="group" aria-label="Ask the coach">${d.ask_me.map((q) => `<button type="button" class="rf-chip" data-act="askPreset" data-arg="${U.esc(q)}">${U.esc(q)}</button>`).join('')}</div>` : ''}
       <p class="t-footnote rf-muted rs-meta">${meta}</p>
       <div class="btn-row rs-btns">
         ${w.api && S.ai.consentAt ? `<button type="button" class="rf-btn" data-variant="soft" data-size="sm" data-act="aiReport"${ai.busy ? ' aria-disabled="true"' : ''}>${U.icon('refresh', 'sm')}${w.rep ? 'Write it again' : 'Write it with Claude'}</button>` : ''}

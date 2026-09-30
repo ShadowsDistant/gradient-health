@@ -367,32 +367,85 @@
   }
 
   /* ---------------------------------------------------------------- still figures */
-  // Each move's key pose, drawn once and cloned into every tile that shows it. A figure is slow to
-  // draw the first time, so new ones are drawn while the phone is idle and fade into their tiles:
-  // the screen never waits for them.
+  // Each move's key pose, drawn once and put in every tile that shows it: the 3D figure in the
+  // person's look when the phone draws it (Settings, Exercise figure), else the flat one. A figure is
+  // slow to draw the first time, so new ones are drawn while the phone is idle and fade into their
+  // tiles: the screen never waits for them. The flat one stands in until a 3D one is ready, and a 3D
+  // one is only drawn when the phone has nothing else to do, so it can't stutter a swipe or a sheet.
   const stills = new Map(); // `${moveId}|${place}` → svg, cropped to the figure
-  const queue = new Set(); // keys still to draw
+  const queue = new Set(); // flat stills still to draw
+  const queue3d = new Set(); // 3D stills still to draw
   let pending = 0;
   let drawFor = null; // { S, day } the queued stills are for
+  let loading3d = false;
+  const THUMB = 52; // the tile's size in CSS px
+  const f3d = () => (U.figure3dOk && U.figure3dOk() && GH.figure3d && GH.figure3d.supported() ? GH.figure3d : null);
+  function look3d() {
+    const pr = (U.S && U.S.profile.prefs) || {};
+    return { crop: Math.round(THUMB * Math.min(2, G.devicePixelRatio || 1)), dark: String(GH.platform.currentTheme()).startsWith('dark'), skin: pr.figSkin || 'sand', shirt: pr.figShirt || undefined };
+  }
+  const lookKey = (l) => `${l.dark ? 'd' : 'l'}|${l.skin}|${l.shirt || ''}|${l.crop}`;
+  // The move as this person does it (their equipment), as the workout shows it.
+  function personMove(key, S, day) {
+    const m0 = M().MOVES[key.split('|')[0]];
+    if (!m0) return null;
+    return M().forPerson ? M().forPerson(m0, B().eqFor ? B().eqFor(S, day) : S.profile.equipment) : m0;
+  }
   function fill(host, svg) {
     host.textContent = '';
     host.appendChild(svg.cloneNode(true));
     host.setAttribute('data-drawn', host.getAttribute('data-move'));
   }
+  function fill3d(host, url, lk) {
+    const img = doc.createElement('img');
+    img.alt = '';
+    img.decoding = 'async';
+    img.src = url;
+    host.textContent = '';
+    host.appendChild(img);
+    host.setAttribute('data-drawn', `3d:${host.getAttribute('data-move')}|${lk}`);
+  }
   function drawThumbs(root, S, day) {
     if (!GH.pose || !M()) return;
     const place = B().placeOf ? B().placeOf(S, day) : 'home';
+    drawFor = { S, day };
+    // The 3D chunk loads (and warms up) once, then the tiles on screen get their 3D stills.
+    if (U.figure3dOk && U.figure3dOk() && !GH.figure3d && !loading3d && U.preloadFigure) {
+      loading3d = true;
+      U.preloadFigure().then(() => {
+        loading3d = false;
+        const scr = doc.querySelector('#screen[data-view="plan"]');
+        if (scr && drawFor && f3d()) drawThumbs(scr, drawFor.S, drawFor.day);
+      }, () => { loading3d = false; });
+    }
+    const f3 = f3d();
+    const look = f3 ? look3d() : null;
+    const lk = look ? lookKey(look) : '';
     for (const host of root.querySelectorAll('.pw-thumb[data-move]')) {
       const id = host.getAttribute('data-move');
+      const key = `${id}|${place}`;
+      if (f3) {
+        if (host.getAttribute('data-drawn') === `3d:${id}|${lk}` && host.firstElementChild) continue;
+        const m = personMove(key, S, day);
+        const url = m && f3.cachedStill(m, look);
+        if (url) { fill3d(host, url, lk); continue; }
+        if (m) queue3d.add(key);
+        // Meanwhile the 3D still of another look, or else the flat one.
+        if (/^3d:/.test(host.getAttribute('data-drawn') || '') && host.firstElementChild) continue;
+      }
       if (host.getAttribute('data-drawn') === id && host.firstElementChild) continue;
-      const svg = stills.get(`${id}|${place}`);
+      const svg = stills.get(key);
       if (svg) fill(host, svg);
-      else { if (host.firstElementChild) host.textContent = ''; queue.add(`${id}|${place}`); }
+      else { if (host.firstElementChild) host.textContent = ''; queue.add(key); }
     }
-    drawFor = { S, day };
-    if (queue.size && !pending) pending = idle(drawSome);
+    schedule();
   }
-  const idle = (fn) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: 150 }) : setTimeout(() => fn(null), 16));
+  function schedule() {
+    if (pending || !(queue.size || queue3d.size)) return;
+    // Flat stills soon; 3D ones only once the phone is idle.
+    const soon = queue.size > 0;
+    pending = G.requestIdleCallback ? G.requestIdleCallback(drawSome, { timeout: soon ? 150 : 2000 }) : setTimeout(() => drawSome(null), soon ? 16 : 250);
+  }
   function drawSome(deadline) {
     pending = 0;
     const t0 = Date.now();
@@ -403,14 +456,27 @@
       if (svg) for (const host of doc.querySelectorAll('.pw-thumb[data-move]')) if (host.getAttribute('data-move') === id && !host.firstElementChild) fill(host, svg);
       if (deadline ? deadline.timeRemaining() < 10 : Date.now() - t0 > 12) break;
     }
-    if (queue.size) pending = idle(drawSome);
+    const f3 = f3d();
+    if (!f3) queue3d.clear();
+    // One 3D still at a time, and only with a good slice of idle time left (each takes a few frames'
+    // worth of work on a phone), never when the idle wait timed out because the phone was busy.
+    else if (!queue.size && drawFor && (!deadline || (!deadline.didTimeout && deadline.timeRemaining() >= 24))) {
+      const look = look3d(), lk = lookKey(look);
+      for (const key of queue3d) {
+        queue3d.delete(key);
+        const m = personMove(key, drawFor.S, drawFor.day);
+        const url = m && (f3.cachedStill(m, look) || f3.still(m, look));
+        const id = key.split('|')[0];
+        if (url) for (const host of doc.querySelectorAll('.pw-thumb[data-move]')) if (host.getAttribute('data-move') === id && host.getAttribute('data-drawn') !== `3d:${id}|${lk}`) fill3d(host, url, lk);
+        if (!deadline || deadline.timeRemaining() < 24) break;
+      }
+    }
+    schedule();
   }
   function drawStill(key) {
-    const id = key.split('|')[0];
-    const m0 = M().MOVES[id];
-    if (!m0 || !drawFor) return null;
-    const { S, day } = drawFor;
-    const m = M().forPerson ? M().forPerson(m0, B().eqFor ? B().eqFor(S, day) : S.profile.equipment) : m0;
+    if (!drawFor) return null;
+    const m = personMove(key, drawFor.S, drawFor.day);
+    if (!m) return null;
     // Drawn in a hidden box on the page, so the figure's size can be measured for the crop.
     const box = doc.createElement('div');
     box.className = 'pw-measure';

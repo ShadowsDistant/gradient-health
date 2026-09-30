@@ -2986,20 +2986,46 @@ const performanceNow = () => (G.performance ? G.performance.now() : Date.now());
 
 /* ---------------------------------------------------------------- stills */
 const stills = new Map();
-const stillKey = (move, w, h, o) => [move.id, JSON.stringify(move.equip || []), w, h, o.dark, o.skin, o.shirt, o.mirrored].join('|');
+const stillKey = (move, w, h, o, crop) => [move.id, JSON.stringify(move.equip || []), w, h, o.dark, o.skin, o.shirt, o.mirrored, crop || 0].join('|');
 function stillSize(opts) {
   return [Math.max(16, Math.round((opts && opts.width) || 240)), Math.max(16, Math.round((opts && opts.height) || 200))];
 }
 // A still that's already been drawn, or null; never draws (safe inside a page render).
+const cropOf = (opts) => (opts && opts.crop > 0 ? Math.round(opts.crop) : 0);
+const drawSize = (opts) => { const crop = cropOf(opts); return crop ? [crop * 2, crop * 2] : stillSize(opts); };
 function cachedStill(move, opts) {
   const o = optsOf(Object.assign({ static: true }, opts));
-  const [w, h] = stillSize(opts);
-  return stills.get(stillKey(move, w, h, o)) || null;
+  const [w, h] = drawSize(opts);
+  return stills.get(stillKey(move, w, h, o, cropOf(opts))) || null;
 }
+// A square crop of a still around the figure (anything drawn more than faintly: the body, what it
+// holds, its shadow), side px across, so a small tile shows the body rather than the room the whole
+// move needs. Drawn from a still twice the size, so it's scaled down and stays sharp.
+function cropped(c, side) {
+  const w = c.width, h = c.height;
+  const px = c.getContext('2d').getImageData(0, 0, w, h).data;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0, i = y * w * 4 + 3; x < w; x++, i += 4) {
+      if (px[i] > 40) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+  }
+  if (x1 < 0) return null;
+  const box = Math.max(x1 - x0 + 1, y1 - y0 + 1) * 1.1;
+  const out = document.createElement('canvas');
+  out.width = side; out.height = side;
+  const ctx = out.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(c, (x0 + x1 + 1) / 2 - box / 2, (y0 + y1 + 1) / 2 - box / 2, box, box, 0, 0, side, side);
+  return out;
+}
+// A still of the move's key pose as an image URL, cached. opts: width, height, crop (a square this
+// many px across, cropped to the figure) and the look (dark, skin, shirt, mirrored).
 function still(move, opts) {
   const o = optsOf(Object.assign({ static: true }, opts));
-  const [w, h] = stillSize(opts);
-  const key = stillKey(move, w, h, o);
+  const crop = cropOf(opts);
+  const [w, h] = drawSize(opts);
+  const key = stillKey(move, w, h, o, crop);
   if (stills.has(key)) return stills.get(key);
   if (!supported() || !renderer()) return null;
   let view = null;
@@ -3012,8 +3038,10 @@ function still(move, opts) {
     const ctx = c.getContext('2d');
     view.camState = { az: view.base.az, el: view.base.el };
     if (!draw(view, ctx, w, h)) return null;
-    let url = c.toDataURL('image/webp', 0.9);
-    if (!/^data:image\/webp/.test(url)) url = c.toDataURL('image/png');
+    const pic = crop ? cropped(c, crop) : c;
+    if (!pic) return null;
+    let url = pic.toDataURL('image/webp', 0.9);
+    if (!/^data:image\/webp/.test(url)) url = pic.toDataURL('image/png');
     if (stills.size > 160) stills.delete(stills.keys().next().value);
     stills.set(key, url);
     return url;
