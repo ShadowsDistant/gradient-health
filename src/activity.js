@@ -194,22 +194,26 @@
   }
   // The moving track: the fixes recorded while moving, cleaned, each with its distance from the start
   // (d) and its moving time (mt, pauses taken out), in runs that break at every pause.
-  // o: { type, start, end, pauses: [[a, b]] known from the page, pausedMs: what the recorder says was
+  // o: { type, start, end, pauses: [[a, b]] the page saw, pausedMs: what the recorder says was
   // paused after the start, movingMs: the recorder's clock }.
   function track(points, o) {
     const opt = o || {};
     const pts = (points || []).map(norm).filter(Boolean).sort((a, b) => a[0] - b[0]);
     const start = opt.start != null ? opt.start : pts.length ? pts[0][0] : 0;
     const end = opt.end != null ? opt.end : pts.length ? pts[pts.length - 1][0] : start;
-    // Pauses: runs of paused fixes, plus what the page saw (the pause and resume taps).
+    // Pauses: runs of paused fixes. A recorder that flags them is believed over the page, which only
+    // hears of a pause made from the notification when it's back in front (so its times can be late);
+    // the page's pauses count only when no fix is flagged. A run that began before the start is the
+    // wait for GPS and the 3-2-1, which ended at the start.
     const ivs = [];
-    let open = null;
+    let open = null, flagged = false;
     for (const p of pts) {
+      if (p[6]) flagged = true;
       if (p[6] && open == null) open = p[0];
-      else if (!p[6] && open != null) { ivs.push([open, p[0]]); open = null; }
+      else if (!p[6] && open != null) { if (open >= start) ivs.push([open, p[0]]); open = null; }
     }
-    if (open != null) ivs.push([open, Math.max(open, end)]);
-    let pauses = mergeIv(ivs.concat(opt.pauses || []).map(([a, b]) => [Math.max(a, start), Math.min(b == null ? end : b, end)]));
+    if (open != null) ivs.push([Math.max(open, start), Math.max(open, end)]);
+    let pauses = mergeIv(ivs.concat(flagged ? [] : opt.pauses || []).map(([a, b]) => [Math.max(a, start), Math.min(b == null ? end : b, end)]));
     const moving = pts.filter((p) => !p[6] && p[0] >= start - 2000 && p[0] <= end + 2000 && !inside(pauses, p[0]));
     // A recorder that doesn't log fixes while paused leaves a hole instead: when it says more time was
     // paused than the fixes show, the longest holes between fixes are those pauses.
@@ -701,14 +705,14 @@
       fn(x);
     };
   }
-  const EMPTY = { active: false, id: null, type: null, title: null, startedAt: null, paused: false, pausedMs: 0, elapsedMs: 0, distanceM: 0, steps: null, points: 0, lastFix: null, gps: 'off' };
+  const EMPTY = { active: false, id: null, type: null, title: null, startedAt: null, endedAt: null, paused: false, pausedMs: 0, elapsedMs: 0, distanceM: 0, steps: null, points: 0, lastFix: null, gps: 'off' };
   function normState(x) {
     const s = parse(x);
     if (!s || typeof s !== 'object') return Object.assign({}, EMPTY, { at: Date.now() });
     const fix = s.lastFix && num(s.lastFix.lat) != null && num(s.lastFix.lon) != null ? { lat: +s.lastFix.lat, lon: +s.lastFix.lon, acc: num(s.lastFix.acc), t: num(s.lastFix.t) } : null;
     return {
       active: !!s.active, id: s.id != null ? String(s.id) : null, type: s.type || null, title: s.title || null,
-      startedAt: num(s.startedAt), paused: !!s.paused, pausedMs: Math.max(0, num(s.pausedMs) || 0), elapsedMs: Math.max(0, num(s.elapsedMs) || 0),
+      startedAt: num(s.startedAt), endedAt: s.active ? null : num(s.endedAt), paused: !!s.paused, pausedMs: Math.max(0, num(s.pausedMs) || 0), elapsedMs: Math.max(0, num(s.elapsedMs) || 0),
       distanceM: Math.max(0, num(s.distanceM) || 0), steps: num(s.steps), points: Math.max(0, num(s.points) || 0), lastFix: fix,
       gps: s.gps === 'ok' || s.gps === 'searching' ? s.gps : 'off', at: Date.now(),
     };
@@ -728,16 +732,22 @@
   }
 
   const stateListeners = new Set();
-  function emit(st) { for (const f of [...stateListeners]) { try { f(st); } catch (e) { if (G.console) G.console.error(e); } } }
+  let quiet = false; // while everything is reset, the page isn't told
+  function emit(st) { if (quiet) return; for (const f of [...stateListeners]) { try { f(st); } catch (e) { if (G.console) G.console.error(e); } } }
   chain('onActivity', (x) => { const st = normState(x); emit(st); });
   let permWaiters = [];
   chain('onActPermissions', (x) => { const p = parse(x) || {}; const w = permWaiters; permWaiters = []; for (const f of w) f(p); });
 
-  // The Android shell's recorder.
+  // The Android shell's recorder. It only starts with precise location allowed (approximate is too
+  // rough for a route); support() says whether location is on (locationOn) and permissions() whether
+  // only approximate location was allowed (approximate).
   const native = {
     kind: 'android',
     support() { return Object.assign({ gps: false, steps: false, hc: false }, parse(call('actSupport')) || {}); },
     permissions() { return Promise.resolve(Object.assign({ location: 'ask', activity: 'ask', notifications: 'ask' }, parse(call('actPermissions')) || {})); },
+    // The app's page in Android's settings, for a permission Android won't ask for again.
+    canOpenSettings() { const b = bridge(); return !!(b && typeof b.actOpenSettings === 'function'); },
+    openSettings() { call('actOpenSettings'); },
     request() {
       return new Promise((resolve) => {
         let settled = false;
@@ -759,13 +769,17 @@
   };
 
   // A browser's recorder: navigator.geolocation, the same state shape, kept in localStorage so a
-  // reload picks it up. No step counter and no Health Connect.
+  // reload picks it up. No step counter and no Health Connect. On the phone it also records an
+  // activity without GPS when location isn't allowed (the shell's recorder won't start then): the
+  // clock only, with steps and heart rate from a watch afterwards.
   const web = (() => {
     const KEY = 'gh.act.rec';
-    let r = null, watch = null, tick = null, saveAt = 0, measured = { at: 0, n: -1, m: 0 };
+    let r = null, loaded = false, watch = null, tick = null, saveAt = 0, measured = { at: 0, n: -1, m: 0 };
     const geo = () => (G.navigator && G.navigator.geolocation) || null;
     const ls = () => { try { return G.localStorage || null; } catch (e) { return null; } };
     function load() { try { const s = ls(); const o = s ? JSON.parse(s.getItem(KEY) || 'null') : null; return o && o.id ? o : null; } catch (e) { return null; } }
+    // Whether it holds a recording, going or waiting to be saved (read from storage the first time).
+    function holds() { if (!loaded) { loaded = true; if (!r) r = load(); } return !!r; }
     function persist(force) {
       const t = Date.now();
       if (!force && t - saveAt < 5000) return;
@@ -779,10 +793,10 @@
       return measured.m;
     }
     function state() {
-      if (!r) return normState(null);
+      if (!holds()) return normState(null);
       const t = r.active ? Date.now() : r.endedAt;
       const pausedMs = r.pausedMs + (r.paused && r.pauseAt ? t - r.pauseAt : 0);
-      return normState({ active: r.active, id: r.id, type: r.type, title: r.title, startedAt: r.startedAt, paused: r.paused, pausedMs, elapsedMs: Math.max(0, t - r.startedAt - pausedMs), distanceM: distance(), steps: null, points: r.pts.length, lastFix: r.lastFix, gps: r.gps });
+      return normState({ active: r.active, id: r.id, type: r.type, title: r.title, startedAt: r.startedAt, endedAt: r.active ? null : r.endedAt, paused: r.paused, pausedMs, elapsedMs: Math.max(0, t - r.startedAt - pausedMs), distanceM: distance(), steps: null, points: r.pts.length, lastFix: r.lastFix, gps: r.noGps ? 'off' : r.gps });
     }
     function onFix(pos) {
       if (!r || !r.active || !pos || !pos.coords) return;
@@ -799,7 +813,7 @@
     function onErr(e) { if (r) r.gps = e && e.code === 1 ? 'off' : 'searching'; }
     function run() {
       const g = geo();
-      if (g && watch == null) { try { watch = g.watchPosition(onFix, onErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }); } catch (e) { watch = null; } }
+      if (g && watch == null && !r.noGps) { try { watch = g.watchPosition(onFix, onErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }); } catch (e) { watch = null; } }
       if (!tick) {
         tick = setInterval(() => {
           if (!r || !r.active) return;
@@ -833,9 +847,10 @@
             { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
         });
       },
+      // o: { id, type, title, noGps: the clock only }
       start(o) {
-        if (r && r.active) return false;
-        r = { id: String(o.id), type: o.type, title: o.title || '', startedAt: Date.now(), paused: false, pausedMs: 0, pauseAt: null, pts: [], lastFix: null, gps: 'searching', active: true };
+        if (holds() && r.active) return false;
+        r = { id: String(o.id), type: o.type, title: o.title || '', startedAt: Date.now(), paused: false, pausedMs: 0, pauseAt: null, pts: [], lastFix: null, gps: o.noGps ? 'off' : 'searching', noGps: !!o.noGps, active: true };
         measured = { at: 0, n: -1, m: 0 };
         persist(true);
         run();
@@ -852,15 +867,35 @@
         emit(state());
       },
       state,
-      points(from) { return r ? r.pts.slice(Math.max(0, from | 0)) : []; },
-      clear(id) { if (r && (id == null || String(id) === r.id) && !r.active) { r = null; persist(true); } },
+      points(from) { return holds() ? r.pts.slice(Math.max(0, from | 0)) : []; },
+      clear(id) { if (holds() && (id == null || String(id) === r.id) && !r.active) { r = null; persist(true); } },
+      holds,
       // After a reload: an activity still recording starts listening again.
-      wake() { if (!r) r = load(); if (r && r.active) run(); },
+      wake() { if (holds() && r.active) run(); },
     };
     return api;
   })();
-  const rec = () => (hasNative() ? native : web);
+  // The recorder for the activity going now: one the page is keeping (a browser, or no GPS on the
+  // phone) is finished by the page; otherwise the shell's. starter() is the one a new activity uses.
+  const starter = () => (hasNative() ? native : web);
+  const rec = () => (web.holds() ? web : starter());
   function onState(fn) { stateListeners.add(fn); return () => stateListeners.delete(fn); }
+  // "Reset everything": what's recording, or finished and waiting to be saved, is deleted too.
+  function reset() {
+    quiet = true;
+    try {
+      for (const R of hasNative() ? [web, native] : [web]) {
+        const seen = new Set();
+        for (let i = 0; i < 25; i++) {
+          const st = R.state();
+          if (!st.id || seen.has(st.id)) break;
+          seen.add(st.id);
+          if (st.active) R.stop();
+          R.clear(st.id);
+        }
+      }
+    } catch (e) { /* nothing to delete */ } finally { quiet = false; }
+  }
 
   /* ---------------------------------------------------------------- Health Connect */
   const waits = { session: new Map(), write: new Map() };
@@ -907,7 +942,7 @@
     spikeGate, smoothRun, track, elevation, splits, at, bestEffort, efforts, maxSpeed, kcalFor, kcalEstimate, hrMaxFor, zoneOf, hrStats,
     simplify, encodeRoute, decodeRoute, boundsOf, routeSegments, defaultTitle, build, withWatch, stepsOf, stepsSrc, kcalOf, kcalSrc,
     paceOf, speedOf, records, newRecords, list, get, add, remove, restore, trim, exerciseOn, spans, countLight, KEEP, KEEP_ROUTES,
-    rec, native, web, hasNative, onState, normState, clockMs, mergeIv, covered,
+    rec, starter, native, web, hasNative, onState, normState, clockMs, mergeIv, covered, reset,
     canSession, canWrite, hcSession, hcWrite, writeRecord,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -4,7 +4,9 @@
 // tucking it away (the pill on Today, the capsule on other tabs), a reload mid-activity, a tap asking
 // first and a hold finishing, the summary (the route, splits, heart rate from the watch, saved to
 // Health Connect without double counting), new records after a faster run, the street map loading
-// only when asked, deleting with Undo, and the browser's own recorder (navigator.geolocation).
+// only when asked, deleting with Undo, a finish on the notification while the app is away, precise
+// location (asking, Open settings, starting without GPS), and the browser's own recorder
+// (navigator.geolocation).
 // Usage: node test/ui-activity.mjs [--dark] [--width=390] [--shots]
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
@@ -57,6 +59,19 @@ const live = () => page.evaluate(() => {
 });
 const secs = (t) => { const p = String(t || '').split(':').map(Number); return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1]; };
 const S = () => page.evaluate(() => { const S = window.GH.ui.S; return { live: S.actLive, n: S.activities.length, ids: S.activities.map((a) => a.id) }; });
+const permText = () => page.evaluate(() => {
+  const d = document.querySelector('dialog[open] .at-perm');
+  return d ? { rows: [...d.querySelectorAll('.at-perm-row .t-subhead')].map((e) => e.textContent.trim()), note: ((d.querySelector('.notice') || {}).textContent || '').replace(/\s+/g, ' ').trim(), buttons: [...d.querySelectorAll('.at-perm-actions button')].map((b) => b.textContent.trim()) } : { rows: [], note: '', buttons: [] };
+});
+// Press and hold the finish button for a second.
+async function holdFinish() {
+  const b = await (await page.$('#actlive .al-finish .al-btn-disc')).boundingBox();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.down();
+  await settle(1200);
+  await page.mouse.up();
+  await settle(2500);
+}
 
 section('Ways in');
 const cta = await page.evaluate(() => { const c = document.querySelector('#screen .act-cta'); return c && c.textContent.replace(/\s+/g, ' ').trim(); });
@@ -81,10 +96,10 @@ await page.evaluate(() => { window.__act.searchMs = 9000; });
 await page.click('dialog[open] .at-tile[data-arg="run"]');
 await settle(900);
 const perm = await page.evaluate(() => { const d = document.querySelector('dialog[open] .at-perm'); return d && { rows: [...d.querySelectorAll('.at-perm-row .t-subhead')].map((e) => e.textContent.trim()), text: d.textContent.replace(/\s+/g, ' ') }; });
-check('it says what it asks for and why', perm && perm.rows[0] === 'Location' && /Physical activity, optional/.test(perm.rows[1]) && /Notifications, optional/.test(perm.rows[2]) && /stays on this phone/.test(perm.text), perm);
+check('it says what it asks for and why', perm && perm.rows[0] === 'Precise location' && /Physical activity, optional/.test(perm.rows[1]) && /Notifications, optional/.test(perm.rows[2]) && /stays on this phone/.test(perm.text), perm);
 await shot('02-permissions');
 await page.click('dialog[open] [data-act="actPerm"]');
-await settle(300);
+await settle(1300);
 let f = await fake();
 let L = await live();
 check('Continue asks Android, and the recording starts', f.calls.includes('actRequestPermissions') && f.calls.some((c) => /^actStart:.*"type":"run"/.test(c)));
@@ -113,9 +128,11 @@ check('then the clock starts', f.calls[f.calls.length - 1] === 'actResume' && !f
 section('Live numbers');
 await settle(5 * 60 * 1000);
 L = await live();
-check('the time', Math.abs(secs(L.time) - 300) <= 2, L.time);
+// The page's clock also runs in real time between steps, so a busy machine adds a few seconds.
+check('the time', secs(L.time) >= 299 && secs(L.time) <= 305, L.time);
 check('the distance, in miles (the person uses lb)', Math.abs(parseFloat(L.dist) - 0.62) <= 0.03, L.dist);
-check('the average pace and the pace now', /^8:0\d$/.test(L.avg) && /^Now 8:0\d$/.test(L.cur), [L.avg, L.cur]);
+// 5:00 per km is 8:03 per mile; the pace now is over the last 30 seconds, so GPS noise shows more.
+check('the average pace and the pace now', Math.abs(secs(L.avg) - 483) <= 8 && /^Now \d:\d\d$/.test(L.cur) && Math.abs(secs(L.cur.slice(4)) - 483) <= 15, [L.avg, L.cur]);
 check('steps from the phone', Number(L.steps.replace(/,/g, '')) > 1200, L.steps);
 check('the split it\'s in', L.splitl === 'Mile 1', L.splitl);
 check('the route so far', L.route >= 1);
@@ -271,9 +288,13 @@ await page.click('#screen [data-act="actStreets"]');
 await settle(1500);
 await page.waitForFunction(() => { const b = document.querySelector('#screen .am-box'); return b && /ready|failed/.test(b.getAttribute('data-streets') || ''); }, null, { timeout: 30000 }).catch(() => {});
 await settle(500);
-const streets = await page.evaluate(() => { const b = document.querySelector('#screen .am-box'); return { state: b.getAttribute('data-streets'), canvas: !!b.querySelector('.am-streets canvas'), attr: (b.querySelector('.am-attr') || {}).textContent, pref: window.GH.ui.S.profile.prefs.actStreets, chunk: !!window.GH.actmap }; });
+const streets = await page.evaluate(() => {
+  const b = document.querySelector('#screen .am-box');
+  const size = (e) => { if (!e) return null; const r = e.getBoundingClientRect(); return `${Math.round(r.width)}x${Math.round(r.height)}`; };
+  return { state: b.getAttribute('data-streets'), canvas: !!b.querySelector('.am-streets canvas'), box: size(b), map: size(b.querySelector('.am-streets')), cv: size(b.querySelector('.am-streets canvas')), attr: (b.querySelector('.am-attr') || {}).textContent, pref: window.GH.ui.S.profile.prefs.actStreets, chunk: !!window.GH.actmap };
+});
 check('Show streets loads the map chunk and asks OpenFreeMap', streets.chunk && tileRequests.some((u) => /tiles\.openfreemap\.org\/planet$/.test(u)), tileRequests.slice(0, 3));
-check('the street map draws, with its attribution', streets.state === 'ready' && streets.canvas && /© OpenMapTiles © OpenStreetMap contributors/.test(streets.attr || ''), streets);
+check('the street map draws over the whole box, with its attribution', streets.state === 'ready' && streets.canvas && streets.map === streets.box && streets.cv === streets.box && /© OpenMapTiles © OpenStreetMap contributors/.test(streets.attr || ''), streets);
 check('the choice is remembered', streets.pref === true);
 await shot('12-streets');
 await page.click('#screen [data-act="actStreets"]');
@@ -290,6 +311,96 @@ check('Delete takes it away and goes back', (await S()).n === n0 - 1 && (await p
 await page.evaluate(() => { const t = [...document.querySelectorAll('.rf-toast')].pop(); const b = t && [...t.querySelectorAll('button')].find((x) => /Undo/.test(x.textContent)); if (b) b.click(); });
 await settle(700);
 check('Undo puts it back', (await S()).n === n0);
+
+section('Finished on the notification while the app is away');
+await page.evaluate(() => { const U = window.GH.ui; while (U.back()) { /* back to the tab */ } U.go('today'); window.__act.searchMs = 0; window.__act.mps = 1.35; });
+await settle(900);
+await page.click('#screen .act-cta');
+await settle(900);
+await page.click('dialog[open] .at-tile[data-arg="walk"]');
+await settle(1500);
+await page.click('#actlive [data-act="alGo"]');
+await settle(3500);
+const walkId = (await S()).live.id;
+check('the recorder gets the units for its notification', (await fake()).calls.some((c) => c.startsWith('actStart:') && c.includes('"units":"mi"')));
+await settle(10 * 60 * 1000);
+await page.evaluate(() => window.__gh.back());
+await settle(900);
+await page.evaluate(() => window.__gh.openRoute('activity'));
+await settle(900);
+L = await live();
+check('the notification\'s tap opens the live screen', L && L.phase === 'live', L);
+await page.evaluate(() => window.__gh.back());
+await settle(900);
+// The app goes to the background, the walk is finished on the notification, and the app is opened
+// again 25 minutes later.
+await page.evaluate(() => window.__gh.onPause());
+const endedAt = await page.evaluate(() => window.__act.stopOutside());
+await settle(25 * 60 * 1000);
+await page.evaluate(() => window.__gh.onResume());
+await settle(1500);
+const fw = await page.evaluate((x) => {
+  const S = window.GH.ui.S; const a = S.activities.find((y) => y.id === x); const t = [...document.querySelectorAll('.rf-toast')].pop();
+  return { live: S.actLive, a: a && { end: a.end, elapsed: a.elapsedMs, moving: a.movingMs, type: a.type }, toast: t && t.textContent.replace(/\s+/g, ' ').trim() };
+}, walkId);
+check('it\'s saved when the app is back, and says so', fw.live === null && fw.a && fw.a.type === 'walk' && /Your walk was saved/.test(fw.toast || ''), fw);
+check('ending when it was finished, not when the app came back', fw.a && Math.abs(fw.a.end - endedAt) <= 1000 && fw.a.elapsed < 11 * 60 * 1000, fw.a && [fw.a.end - endedAt, fw.a.elapsed]);
+check('and the recording is cleared', (await fake()).calls.includes(`actClear:${walkId}`));
+await page.evaluate(() => window.__gh.openRoute('activity'));
+await settle(900);
+check('its notification then opens the summary', await page.evaluate((x) => window.GH.ui.route.view === 'activity' && window.GH.ui.route.arg === x, walkId));
+
+section('Precise location, or none');
+await page.evaluate(() => {
+  const U = window.GH.ui; while (U.back()) { /* back to the tab */ } U.go('today');
+  Object.assign(window.__act, { perms: { location: 'ask', approximate: true, activity: 'granted', notifications: 'granted' }, grant: { location: 'denied', approximate: true, activity: 'granted', notifications: 'granted' } });
+});
+await settle(900);
+await page.click('#screen .act-cta');
+await settle(900);
+await page.click('dialog[open] .at-tile[data-arg="run"]');
+await settle(900);
+let pb = await permText();
+check('approximate location only: it asks for precise, and says why', pb.rows[0] === 'Precise location' && /approximate location only/.test(pb.note) && /Choose Precise when Android asks/.test(pb.note) && pb.buttons.join() === 'Continue', pb);
+await shot('13-approximate');
+await page.click('dialog[open] [data-act="actPerm"]');
+await settle(600);
+pb = await permText();
+check('still approximate, and Android won\'t ask again: Open settings, or start without GPS', pb.buttons.join() === 'Open settings,Start without GPS' && /Choose Precise in Android's Settings/.test(pb.note), pb);
+await page.click('dialog[open] [data-act="actSettings"]');
+await settle(300);
+check('Open settings opens the app\'s page in Android\'s settings', (await fake()).calls.includes('actOpenSettings'));
+await page.evaluate(() => { window.__act.perms = { location: 'granted', approximate: false, activity: 'granted', notifications: 'granted' }; window.__gh.onResume(); });
+await settle(1500);
+L = await live();
+check('back with precise location allowed, it goes on to finding GPS', L && L.phase === 'search' && (await permText()).rows.length === 0, L);
+await page.click('#actlive [data-act="alDiscardNow"]');
+await settle(900);
+check('Cancel before the start keeps nothing', (await S()).live === null && !(await live()) && (await fake()).rec === null);
+await page.evaluate(() => { window.__act.perms = { location: 'denied', approximate: false, activity: 'granted', notifications: 'granted' }; });
+await page.click('#screen .act-cta');
+await settle(900);
+await page.click('dialog[open] .at-tile[data-arg="run"]');
+await settle(900);
+pb = await permText();
+check('location turned off for the app: Open settings, or start without GPS', pb.buttons.join() === 'Open settings,Start without GPS' && /Location is turned off for Gradient Health/.test(pb.note), pb);
+await shot('14-denied');
+const nBefore = (await S()).n;
+await page.click('dialog[open] [data-act="actNoGps"]');
+await settle(3600);
+L = await live();
+const pageRec = await page.evaluate(() => window.GH.activity.rec().kind === 'web' && !!localStorage.getItem('gh.act.rec'));
+check('without GPS it counts down, then the page keeps the clock (the phone\'s recorder needs location)', L && L.phase === 'live' && L.gps === 'off' && pageRec, L);
+await settle(12 * 60 * 1000);
+L = await live();
+check('its clock runs', Math.abs(secs(L.time) - 720) <= 3, L.time);
+await shot('15-nogps');
+await holdFinish();
+const ng = await page.evaluate(() => { const S = window.GH.ui.S; const a = S.activities[0]; return { n: S.activities.length, moving: a.movingMs, dist: a.distanceM, stored: !!localStorage.getItem('gh.act.rec'), view: window.GH.ui.route.view, hero: [...document.querySelectorAll('#screen .as-stat')].map((e) => e.innerText.replace(/\s+/g, ' ').trim()), map: (document.querySelector('#screen .am-empty') || {}).textContent }; });
+check('it\'s saved with its time, and the page\'s recording cleared', ng.n === nBefore + 1 && Math.abs(ng.moving - 720000) < 5000 && ng.dist === 0 && !ng.stored && ng.view === 'activity', ng);
+check('the watch\'s distance stands in for GPS', /^3\.13 ?mi Watch distance$/.test(ng.hero[0]) && /No route for this one/.test(ng.map || ''), ng);
+await shot('16-nogps-summary');
+await page.evaluate(() => { window.__act.perms = { location: 'granted', approximate: false, activity: 'granted', notifications: 'granted' }; });
 
 section('The browser\'s own recorder');
 const ctx2 = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, colorScheme: dark ? 'dark' : 'light' });

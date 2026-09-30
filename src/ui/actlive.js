@@ -49,7 +49,12 @@
     });
   }
   const pickSheet = () => { const t = U.topSheet(); return t && t.el.classList.contains('at-sheet') ? t : null; };
+  // The recorder a new activity would use (not one the page may still be finishing).
+  const NEW = () => A().starter();
+  // Location is only good enough when it's allowed and precise (approximate is too rough for a route).
+  const precise = (perm) => perm.location === 'granted' && !perm.approximate;
   let picking = null;
+  let asking = null; // the kind of activity whose permission step is showing (checked again on return)
   U.act.actPick = async (btn) => {
     const type = btn.dataset.arg;
     if (!A().TYPES[type] || picking) return;
@@ -57,33 +62,52 @@
     U.haptic('select');
     U.S.profile.prefs.actType = type;
     U.save();
-    try {
-      const sup = R().support();
-      const perm = await R().permissions();
-      const sheet = pickSheet();
-      const need = !sup.gps ? 'nogps' : perm.location !== 'granted' || (sup.steps && perm.activity === 'ask') || (A().hasNative() && perm.notifications === 'ask') ? 'ask' : null;
-      if (!need) { if (sheet) sheet.close('ok'); begin(type, false); return; }
-      if (sheet) sheet.update(need === 'nogps' ? noGpsBody(type) : permBody(type, perm, sup));
-      else begin(type, need === 'nogps');
-    } finally { picking = null; }
+    try { await check(type, false); } finally { picking = null; }
   };
+  // What's missing before this activity can start with GPS: nothing (it starts), GPS itself, location
+  // turned off on the phone, or a permission (asked with the reasons first).
+  async function check(type, again) {
+    const sup = NEW().support();
+    const perm = await NEW().permissions();
+    const sheet = pickSheet();
+    const need = !sup.gps ? 'nogps'
+      : !precise(perm) || (sup.steps && perm.activity === 'ask') || (A().hasNative() && perm.notifications === 'ask') ? 'ask'
+        : sup.locationOn === false ? 'off' : null;
+    if (!need) { asking = null; if (sheet) sheet.close('ok'); if (again) U.haptic('success'); begin(type, false); return; }
+    asking = need === 'nogps' ? null : type;
+    if (sheet) sheet.update(need === 'nogps' ? noGpsBody(type) : need === 'off' ? offBody(type) : permBody(type, perm, sup, again));
+    else begin(type, need === 'nogps');
+  }
   function permRow(icon, tone, title, text, state) {
     return `<li class="at-perm-row"><span class="rf-list-icon" data-tone="${tone}">${U.icon(icon)}</span><span class="at-perm-text"><span class="t-subhead">${U.esc(title)}${state === 'granted' ? ` <span class="at-ok" role="img" aria-label="allowed">${U.icon('check', 'sm')}</span>` : ''}</span><span class="t-footnote rf-muted">${U.esc(text)}</span></span></li>`;
   }
-  function permBody(type, perm, sup) {
+  const canSettings = () => !!(NEW().canOpenSettings && NEW().canOpenSettings());
+  // perm.location: granted, ask (Android can still ask) or denied (it won't ask again: the app's
+  // settings are the way). approximate: only approximate location is allowed. asked: Android was just
+  // asked, and location still isn't allowed. The optional ones only show while they're still to ask.
+  function permBody(type, perm, sup, asked) {
     const tp = A().typeOf(type);
-    const denied = perm.location === 'denied';
+    const app = A().hasNative();
+    const approx = !!perm.approximate && !precise(perm);
+    const blocked = perm.location === 'denied';
+    const refused = !!asked && !precise(perm);
+    const settings = blocked && canSettings();
+    const rough = 'Gradient Health has your approximate location only, which is too rough to measure a route.';
+    const note = approx ? `${rough} ${settings ? 'Choose Precise in Android\'s Settings, under Permissions, Location.' : 'Choose Precise when Android asks.'}`
+      : blocked ? `Location is turned off for Gradient Health. ${settings ? 'Allow it in Android\'s Settings, under Permissions.' : app ? 'Allow it in Android\'s Settings, under Apps, Gradient Health, Permissions.' : 'Allow it for this site in your browser\'s settings.'}`
+        : refused ? 'Without your location there\'s no distance or route. You can still start without GPS.' : '';
     return `<div class="sheet-pad at-perm">
-      <p class="t-callout">${U.esc(`To track your ${tp.noun}, Gradient Health asks Android for:`)}</p>
+      <p class="t-callout">${U.esc(`To track your ${tp.noun}, Gradient Health asks ${app ? 'Android' : 'your browser'} for:`)}</p>
       <ul class="at-perm-list">
-        ${permRow('pin', 'sky', 'Location', 'To measure distance and draw your route, while you record. It stays on this phone.', perm.location)}
-        ${sup.steps ? permRow('act-walk', 'green', 'Physical activity, optional', 'To count your steps with the phone. A watch in Health Connect counts them too.', perm.activity) : ''}
-        ${A().hasNative() ? permRow('bell', 'amber', 'Notifications, optional', 'To show the time and distance on your lock screen while you\'re out.', perm.notifications) : ''}
+        ${permRow('pin', 'sky', app ? 'Precise location' : 'Location', 'To measure distance and draw your route, while you record. It stays on this phone.', precise(perm) ? 'granted' : perm.location)}
+        ${sup.steps && perm.activity !== 'granted' ? permRow('act-walk', 'green', 'Physical activity, optional', 'To count your steps with the phone. A watch in Health Connect counts them too.', perm.activity) : ''}
+        ${app && perm.notifications !== 'granted' ? permRow('bell', 'amber', 'Notifications, optional', 'To show the time and distance on your lock screen while you\'re out.', perm.notifications) : ''}
       </ul>
-      ${denied ? `<div class="notice" data-tone="caution">${U.icon('alert')}<span>Location is turned off for Gradient Health. If no question appears, allow it in Android's Settings, under Apps, Gradient Health, Permissions.</span></div>` : ''}
+      ${note ? `<div class="notice" data-tone="caution">${U.icon('alert')}<span>${U.esc(note)}</span></div>` : ''}
       <div class="at-perm-actions">
-        <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="actPerm" data-arg="${type}">${denied ? 'Try again' : 'Continue'}</button>
-        ${denied ? `<button type="button" class="rf-btn" data-variant="plain" data-act="actNoGps" data-arg="${type}">Start without GPS</button>` : ''}
+        ${settings ? '<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="actSettings">Open settings</button>'
+    : `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="actPerm" data-arg="${type}">${refused || blocked ? 'Try again' : 'Continue'}</button>`}
+        ${refused || blocked ? `<button type="button" class="rf-btn" data-variant="plain" data-act="actNoGps" data-arg="${type}">Start without GPS</button>` : ''}
       </div>
     </div>`;
   }
@@ -93,16 +117,31 @@
       <div class="at-perm-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="actNoGps" data-arg="${type}">Start without GPS</button></div>
     </div>`;
   }
+  // Location is switched off for the whole phone (quick settings).
+  function offBody(type) {
+    return `<div class="sheet-pad at-perm">
+      <div class="notice" data-tone="caution">${U.icon('alert')}<span>Location is off on this phone. Swipe down from the top of the screen and turn it on, then try again.</span></div>
+      <div class="at-perm-actions">
+        <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="actRecheck" data-arg="${type}">Try again</button>
+        <button type="button" class="rf-btn" data-variant="plain" data-act="actNoGps" data-arg="${type}">Start without GPS</button>
+      </div>
+    </div>`;
+  }
   U.act.actPerm = async (btn) => {
     const type = btn.dataset.arg;
     btn.setAttribute('aria-disabled', 'true');
-    const p = await R().request();
+    const p = await NEW().request();
+    btn.removeAttribute('aria-disabled');
     const sheet = pickSheet();
-    if (p.location === 'granted') { if (sheet) sheet.close('ok'); U.haptic('success'); begin(type, false); return; }
-    if (sheet) sheet.update(permBody(type, Object.assign({}, p, { location: 'denied' }), R().support()));
+    if (precise(p)) { asking = null; if (sheet) sheet.close('ok'); U.haptic('success'); begin(type, false); return; }
+    if (sheet) sheet.update(permBody(type, p, NEW().support(), true));
     U.haptic('warning');
   };
-  U.act.actNoGps = (btn) => { const sheet = pickSheet(); if (sheet) sheet.close('ok'); begin(btn.dataset.arg, true); };
+  U.act.actRecheck = (btn) => { U.haptic('tap'); check(btn.dataset.arg, true); };
+  U.act.actSettings = () => { U.haptic('tap'); NEW().openSettings(); };
+  U.act.actNoGps = (btn) => { asking = null; const sheet = pickSheet(); if (sheet) sheet.close('ok'); begin(btn.dataset.arg, true); };
+  // Back from Android's settings (or the quick settings) with the permission step still showing: look again.
+  plat().on('resume', () => { if (asking && pickSheet() && !picking) { picking = asking; check(asking, true).finally(() => { picking = null; }); } });
 
   function begin(type, noGps) {
     const S = U.S;
@@ -110,7 +149,15 @@
     const now = Date.now();
     const id = `act-${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     const title = A().defaultTitle(type, now);
-    if (!R().start({ id, type, title })) { U.toast('Couldn\'t start', 'caution', 'Check that Gradient Health is allowed to use location.'); return; }
+    const o = { id, type, title, units: A().unitsOf(S) };
+    let ok = NEW().start(o);
+    // Without location allowed the phone's recorder won't start: the page keeps the clock instead.
+    if (!ok && noGps && A().hasNative()) ok = A().web.start(Object.assign({ noGps: true }, o));
+    if (!ok) {
+      const set = NEW().canOpenSettings && NEW().canOpenSettings();
+      U.toast('Couldn\'t start', 'caution', 'Gradient Health needs your precise location to record a route.', set ? { label: 'Settings', onClick: () => NEW().openSettings() } : undefined);
+      return;
+    }
     // The clock waits while GPS finds you and through the 3-2-1.
     R().pause();
     S.actLive = { id, type, title, startedAt: now, goAt: null, pauses: [], splits: 0, noGps: !!noGps };
@@ -224,9 +271,10 @@
     const was = L.st;
     L.st = st;
     L.lastState = Date.now();
-    // Paused or resumed from outside the app (the notification): kept in the pause log.
+    // Paused or resumed from outside the app (the notification): kept in the pause log. It's only the
+    // time the page heard of it (the recorder's flagged fixes say when it really happened).
     if (L.phase === 'live' && was && st.active && was.paused !== st.paused) logPause(st.paused, Date.now());
-    if (!st.active && L.phase === 'live' && a.goAt && !polled) { finish(true); return; }
+    if (!st.active && st.id === a.id && L.phase === 'live' && a.goAt && !polled) { finish(true); return; }
     if (shown()) update();
     else capsuleClock();
   }
@@ -356,10 +404,19 @@
     const route = L.tr && L.tr.pts.length > 1 ? A().simplify(L.tr.pts, 4).map((p, i, arr) => ({ lat: p.lat, lon: p.lon, gap: i > 0 && p.run !== arr[i - 1].run })) : [];
     const bn = L.splitBanner && L.splitBanner.until > now ? L.splitBanner : null;
     const kcal = n.steps == null ? liveKcal(n) : null;
-    return `<div class="al-clock">
+    const clock = `<div class="al-clock${a.noGps ? ' al-clock-solo' : ''}">
         <span class="al-time" data-live="time">${U.esc(U.actClock(n.ms / 1000))}</span>
         <span class="al-cap" data-live="cap">${paused() ? 'Paused' : 'Time'}</span>
-      </div>
+      </div>`;
+    // Without GPS there's no distance, pace or split to show: the time, the phone's steps if it
+    // counts them, and what comes later from a watch.
+    if (a.noGps) {
+      const watch = A().canSession() ? ' Steps, distance and heart rate from a watch are added when you finish.' : '';
+      return `${clock}
+      ${n.steps != null ? `<div class="al-grid"><div class="al-m al-m-wide"><span class="al-m-l">Steps</span><span class="al-m-v"><b data-live="steps">${U.num(n.steps)}</b></span><span class="al-m-s">from your phone</span></div></div>` : ''}
+      <div class="al-map al-map-none" data-type="${U.esc(a.type)}"><p class="al-map-wait t-footnote">${U.icon('pin', 'sm')}<span>${U.esc(`No GPS, so no distance or route this time.${watch}`)}</span></p></div>`;
+    }
+    return `${clock}
       ${bn ? `<div class="al-banner" data-key="bn-${bn.n}" role="status">${U.icon('flag', 'sm')}<span>${U.esc(U.cap(U.actUnitLong()))} ${bn.n} · ${U.esc(U.actClock(bn.ms / 1000))}</span></div>` : ''}
       <div class="al-grid">
         <div class="al-m"><span class="al-m-l">Distance</span><span class="al-m-v"><b data-live="dist">${U.esc(U.actDistNum(n.dist))}</b><small>${U.esc(unitShort())}</small></span><span class="al-m-s">&nbsp;</span></div>
@@ -512,19 +569,31 @@
     const a = S.actLive;
     if (!a.goAt) { discard(true); return; }
     L.phase = 'saving';
-    const endAt = Date.now();
+    const tapAt = Date.now();
     if (shown()) draw();
     if (!outside) R().stop();
     const st = await waitStopped(a.id, 4000);
-    if (U.S !== S) return;
-    save(st, endAt, true);
+    if (U.S !== S || S.actLive !== a) return; // saved meanwhile (the app coming back does that too)
+    save(st, endOf(a, st, tapAt), true);
+  }
+  // When the recording ended: the recorder's own time (finished from the notification, the page may
+  // only hear of it much later), else worked out from its clock, else `fallback`.
+  function endOf(a, st, fallback) {
+    let t = null;
+    if (st && st.id === a.id && !st.active) {
+      if (st.endedAt > 0) t = st.endedAt;
+      else if (st.startedAt) t = st.startedAt + (st.elapsedMs || 0) + (st.pausedMs || 0);
+    }
+    if (t == null) t = fallback;
+    return Math.max(a.goAt || a.startedAt || 0, Math.min(Date.now(), t));
   }
   // Turns the finished recording into a saved activity and shows it (open: go to its summary).
   function save(st0, endAt0, open) {
     const S = U.S;
     const a = S.actLive;
+    if (!a) return null;
     const st = st0 || R().state();
-    const endAt = endAt0 || (st.startedAt ? st.startedAt + (st.elapsedMs || 0) + (st.pausedMs || 0) : Date.now());
+    const endAt = endAt0 || endOf(a, st, Date.now());
     if (a.pauses.length && a.pauses[a.pauses.length - 1][1] == null) a.pauses[a.pauses.length - 1][1] = endAt;
     const points = R().points(0);
     const clockMs = st && st.id === a.id && st.startedAt ? A().clockMs(Object.assign({}, st, { active: false }), endAt) : null;
@@ -537,10 +606,10 @@
     R().clear(act.id);
     L = null;
     stopTimer();
+    if (el) { el.hidden = true; el.textContent = ''; }
+    if (offBack) { offBack(); offBack = null; }
+    plat().keepAwake(false);
     if (open) {
-      if (el) { el.hidden = true; el.textContent = ''; }
-      if (offBack) { offBack(); offBack = null; }
-      plat().keepAwake(false);
       U.open('activity', act.id);
       U.haptic(act.records.length ? 'celebrate' : 'success');
     } else U.render();
@@ -556,11 +625,13 @@
     const noun = A().typeOf(a.type).noun;
     if (!quiet && a.goAt && moving(Date.now()) > 60000 && !(await U.confirm(`Discard this ${noun}?`, 'Nothing from it is saved.', 'Discard', 'critical', 'trash', 'Keep it'))) return;
     const top = U.topSheet(); if (top) top.close('ok');
+    // Forgotten first: the recorder's news of its stop (the page's own recorder tells at once) isn't
+    // taken for a finish.
+    S.actLive = null;
+    L = null;
+    U.save(true);
     R().stop();
     R().clear(a.id);
-    S.actLive = null;
-    U.save(true);
-    L = null;
     stopTimer();
     hideLive(false);
     if (!quiet || a.goAt) { U.haptic('heavy'); U.toast(`${U.cap(noun)} discarded`, 'neutral', 'Nothing from it was saved.'); }
@@ -591,7 +662,7 @@
     const tp = A().typeOf(a.type);
     const dist = L && L.tr && L.tr.pts.length ? L.tr.distanceM : L && L.st ? L.st.distanceM : 0;
     return `<span class="rf-activity-leading act-cap-ic" data-tone="${tp.hue}" style="width:36px;height:36px">${U.actTypeIcon(a.type, 'sm')}</span>
-      <span class="acc-text"><b>${U.esc(tp.label)}${paused() ? ', paused' : ''}</b><span class="t-caption rf-secondary"><span class="rf-num" data-act-clock>${U.esc(clockText())}</span>${a.goAt ? ` · ${U.esc(U.actFmtDist(dist))}` : ''}</span></span>
+      <span class="acc-text"><b>${U.esc(tp.label)}${paused() ? ', paused' : ''}</b><span class="t-caption rf-secondary"><span class="rf-num" data-act-clock>${U.esc(clockText())}</span>${a.goAt && !a.noGps ? ` · ${U.esc(U.actFmtDist(dist))}` : ''}</span></span>
       <span class="rf-spacer"></span>
       <button type="button" class="rf-btn" data-size="sm" data-act="actOpenLive" aria-label="${U.esc(`Open the ${tp.noun}`)}">Open</button>`;
   };
@@ -603,39 +674,72 @@
   }
 
   /* ---------------------------------------------------------------- opening the app */
-  // An activity still recording opens straight away; one that stopped while the app was closed is
-  // saved (and says so).
-  function resume(fromBoot) {
+  // An activity still recording opens straight away; one that finished while the app was away (from
+  // the notification, or the app was closed) is saved, and says so or opens (open: go to its summary).
+  // Returns the activity it saved, if any.
+  function resume(fromBoot, open) {
     const S = U.S;
-    if (!S || !S.profile || !S.profile.onboarded) return;
-    if (fromBoot && !A().hasNative()) A().web.wake();
-    const st = R().state();
-    if (st.active) {
-      if (!S.actLive || S.actLive.id !== st.id) {
-        S.actLive = { id: st.id, type: A().TYPES[st.type] ? st.type : 'other', title: st.title || A().defaultTitle(st.type, st.startedAt || Date.now()), startedAt: st.startedAt || Date.now(), goAt: st.paused && !(st.elapsedMs > 1500) ? null : st.startedAt || Date.now(), pauses: [], splits: 0 };
-        U.save(true);
-        L = null;
-      }
-      if (!L) { L = fresh(S.actLive.goAt ? 'live' : 'search'); L.st = st; }
-      if (fromBoot || shown()) openLive();
-      else { onState(st, true); U.render(); }
-      return;
+    if (!S || !S.profile || !S.profile.onboarded) return null;
+    if (fromBoot) A().web.wake();
+    if (L && L.phase === 'saving') return null; // being saved already; that opens its summary
+    let saved = null;
+    const seen = new Set();
+    // The recorder keeps finished recordings until they're cleared, newest first: one at a time.
+    for (let i = 0; i < 5; i++) {
+      const st = R().state();
+      if (st.active) { adopt(st, fromBoot); return saved; }
+      if (!st.id || seen.has(st.id)) break;
+      seen.add(st.id);
+      const a = S.actLive;
+      if (a && a.id === st.id && a.goAt) {
+        const act = keep(st, open, saved);
+        saved = saved || act;
+      } else if (A().get(S, st.id) || (a && a.id === st.id)) {
+        // Saved already, or finished before its clock started: nothing to keep.
+        R().clear(st.id);
+        if (a && a.id === st.id) drop();
+      } else if (!a && (st.elapsedMs || 0) >= 60000) {
+        // Not one the page knows (a backup was restored while it recorded): kept all the same.
+        S.actLive = fromState(st);
+        const act = keep(st, open, saved);
+        saved = saved || act;
+      } else R().clear(st.id);
     }
-    if (st.id && S.actLive && S.actLive.id === st.id && S.actLive.goAt) {
-      if (!L) L = fresh('saving');
-      L.phase = 'saving';
-      const act = save(st, null, false);
-      if (act) U.toast(`Your ${A().typeOf(act.type).noun} was saved`, 'positive', `${U.actFmtDist(act.distanceM)} in ${U.actFmtTime(act.movingMs)}`, { label: 'View', onClick: () => U.open('activity', act.id) });
-      return;
-    }
-    if (st.id && A().get(S, st.id)) R().clear(st.id);
-    if (S.actLive) {
-      S.actLive = null;
-      L = null;
+    if (S.actLive && !(R().state().id === S.actLive.id)) drop();
+    return saved;
+  }
+  const fromState = (st) => ({ id: st.id, type: A().TYPES[st.type] ? st.type : 'other', title: st.title || A().defaultTitle(st.type, st.startedAt || Date.now()), startedAt: st.startedAt || Date.now(), goAt: st.paused && !(st.elapsedMs > 1500) ? null : st.startedAt || Date.now(), pauses: [], splits: 0 });
+  // Still recording: back to the live screen (or its pill and capsule).
+  function adopt(st, fromBoot) {
+    const S = U.S;
+    if (!S.actLive || S.actLive.id !== st.id) {
+      S.actLive = fromState(st);
       U.save(true);
-      if (el) { el.hidden = true; el.textContent = ''; }
-      U.render();
+      L = null;
     }
+    if (!L) { L = fresh(S.actLive.goAt ? 'live' : 'search'); L.st = st; }
+    if (fromBoot || shown()) openLive();
+    else { onState(st, true); U.render(); }
+  }
+  // Finished while the page wasn't there: saved, then its summary opens (asked to, or the live screen
+  // was showing) or a note says so.
+  function keep(st, open, earlier) {
+    const wasShown = shown();
+    if (!L) L = fresh('saving');
+    L.phase = 'saving';
+    const act = save(st, null, !earlier && (open || wasShown));
+    if (act && !earlier && !(open || wasShown)) U.toast(`Your ${A().typeOf(act.type).noun} was saved`, 'positive', `${act.distanceM > 0 ? `${U.actFmtDist(act.distanceM)} in ` : ''}${U.actFmtTime(act.movingMs)}`, { label: 'View', onClick: () => U.open('activity', act.id) });
+    return act;
+  }
+  // The page's activity has no recording behind it any more.
+  function drop() {
+    U.S.actLive = null;
+    L = null;
+    stopTimer();
+    U.save(true);
+    if (el) { el.hidden = true; el.textContent = ''; }
+    if (offBack) { offBack(); offBack = null; }
+    U.render();
   }
   U.actResume = resume;
   const earlierAfterBoot = U.afterBoot;
@@ -644,5 +748,17 @@
     if (U.actRecheck) setTimeout(() => U.actRecheck(), 2000);
     if (earlierAfterBoot) earlierAfterBoot();
   };
-  plat().on('resume', () => { try { if (live() || R().state().active) resume(false); } catch (e) { /* ignore */ } });
+  plat().on('resume', () => { try { if (live() || R().state().id) resume(false); } catch (e) { /* ignore */ } });
+  // The notification's tap: the live screen while recording, else the summary of the one that just
+  // finished (saving it first if the page hadn't yet).
+  plat().on('route', (route) => {
+    if (route !== 'activity' || !U.S || !U.S.profile || !U.S.profile.onboarded) return;
+    try {
+      if (R().state().active) { resume(false); openLive(); return; }
+      if (resume(false, true)) return;
+      if (L && L.phase === 'saving') return;
+      const last = A().list(U.S)[0];
+      if (last && Date.now() - last.end < 6 * 3600000) { const top = U.topSheet(); if (top) top.close('cancel'); U.open('activity', last.id); }
+    } catch (e) { if (G.console) G.console.error(e); }
+  });
 })(typeof window !== 'undefined' ? window : globalThis);

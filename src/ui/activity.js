@@ -236,11 +236,14 @@
     return `<${act ? `button type="button" data-act="${act}"` : 'div'} class="stat as-tile"><span class="t-footnote rf-muted">${U.esc(label)}</span><span class="as-val"><span class="t-title-3">${value}</span>${unit ? `<small>${U.esc(unit)}</small>` : ''}</span><span class="t-caption rf-muted">${sub || '&nbsp;'}</span></${act ? 'button' : 'div'}>`;
   }
   function hero(a) {
-    const [pv, pu, pl] = paceOrSpeed(a.type, a.distanceM, a.movingMs);
+    // Without GPS (a treadmill, say), the watch's distance when it has one.
+    const watch = !(a.distanceM > 0) && a.hc && a.hc.distanceM > 0 ? a.hc.distanceM : 0;
+    const dm = a.distanceM > 0 ? a.distanceM : watch;
+    const [pv, pu, pl] = paceOrSpeed(a.type, dm, a.movingMs);
     const tp = A().typeOf(a.type);
     return `<div class="card as-hero" data-key="hero" data-hue="${tp.hue}">
       <div class="as-stats">
-        <div class="as-stat"><span class="as-num">${a.distanceM > 0 ? U.esc(distNum(a.distanceM)) : '–'} <small>${U.esc(UNIT().short)}</small></span><span class="as-lab">Distance</span></div>
+        <div class="as-stat"><span class="as-num">${dm > 0 ? U.esc(distNum(dm)) : '–'} <small>${U.esc(UNIT().short)}</small></span><span class="as-lab">${watch ? 'Watch distance' : 'Distance'}</span></div>
         <div class="as-stat"><span class="as-num">${U.esc(fmtTime(a.movingMs))}</span><span class="as-lab">Time</span></div>
         <div class="as-stat"><span class="as-num">${U.esc(pv)} <small>${U.esc(pu)}</small></span><span class="as-lab">${U.esc(pl)}</span></div>
       </div>
@@ -578,7 +581,7 @@
     busy.save[a.id] = false;
     if (U.S !== S || !A().get(S, a.id)) return;
     a.saved = res && res.ok
-      ? { at: Date.now(), ok: true, route: res.route !== false, sentDistance: rec.distanceM != null, sentKcal: rec.activeKcal != null }
+      ? { at: Date.now(), ok: true, route: res.route !== false, sentDistance: typeof res.distance === 'boolean' ? res.distance : rec.distanceM != null, sentKcal: typeof res.activeKcal === 'boolean' ? res.activeKcal : rec.activeKcal != null }
       : { at: Date.now(), ok: false, error: String((res && res.error) || 'failed').slice(0, 60) };
     U.save();
     rerender(a.id);

@@ -131,6 +131,8 @@
   function clear() {
     lsDel(KEY);
     try { const b = bridge(); if (b && b.save) b.save(''); } catch (e) { /* nothing to clear */ }
+    // 1.4: an outdoor activity recording (or finished and not saved yet) goes too.
+    if (GH.activity && GH.activity.reset) GH.activity.reset();
   }
 
   // Secrets (the AI coach key). Never logged, never in the state or a backup.

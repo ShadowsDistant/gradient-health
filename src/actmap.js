@@ -89,8 +89,10 @@ function mount(el, o) {
   try {
     const b = new LngLatBounds();
     for (const p of o.route) b.extend([p.lon, p.lat]);
+    // The attribution line sits along the bottom (the page's own, as MapLibre's control is off): the
+    // route keeps clear of it.
     map = new MLMap({
-      container: el, style: style(o.dark), bounds: b, fitBoundsOptions: { padding: 28 }, interactive: false, attributionControl: false,
+      container: el, style: style(o.dark), bounds: b, fitBoundsOptions: { padding: { top: 28, right: 28, bottom: 46, left: 28 } }, interactive: false, attributionControl: false,
       fadeDuration: 0, maxZoom: 17.5, pixelRatio: Math.min(2, G.devicePixelRatio || 1), cancelPendingTileRequestsWhileZooming: true,
     });
   } catch (e) { setTimeout(() => fail(e), 0); return { destroy() {} }; }

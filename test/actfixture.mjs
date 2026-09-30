@@ -4,9 +4,11 @@
 
 // The Android shell's activity recorder, faked: it plays back a 5 km loop (one fix a second at about
 // 5:00 per km, with GPS noise and a hill) on the page's clock, through actState, actPoints and
-// window.__gh.onActivity, and answers the permission and Health Connect calls. Its recording lives in
-// sessionStorage, so a reload finds it still going. window.__act has the knobs and what was called.
-// Add after seedBridge (it extends window.AndroidBridge).
+// window.__gh.onActivity, and answers the permission and Health Connect calls. Like the real one it
+// only starts with precise location allowed, and after a finish reports the recording (with endedAt)
+// until it's cleared. Its recording lives in sessionStorage, so a reload finds it still going.
+// window.__act has the knobs, what was called, and stopOutside() (Finish on the notification while
+// the page hears nothing). Add after seedBridge (it extends window.AndroidBridge).
 export function actBridge() {
   const KEY = 'act-fake';
   const R5 = 5000 / (2 * Math.PI), LAT0 = 40.7812, LON0 = -73.9665, M = 111195, ML = M * Math.cos((LAT0 * Math.PI) / 180);
@@ -15,12 +17,12 @@ export function actBridge() {
   const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646 - 0.5; };
   const load = () => { try { return JSON.parse(sessionStorage.getItem(KEY) || 'null'); } catch (e) { return null; } };
   const F = window.__act = Object.assign({
-    perms: { location: 'ask', activity: 'ask', notifications: 'ask' },
-    support: { gps: true, steps: true, hc: true },
-    grant: { location: 'granted', activity: 'granted', notifications: 'granted' },
+    perms: { location: 'ask', activity: 'ask', notifications: 'ask', approximate: false },
+    support: { gps: true, steps: true, hc: true, locationOn: true },
+    grant: { location: 'granted', activity: 'granted', notifications: 'granted', approximate: false },
     searchMs: 4000, mps: 1000 / 300, calls: [], writes: [], sessions: [], watch: 'full', rec: null,
   }, load() || {});
-  const save = () => { try { sessionStorage.setItem(KEY, JSON.stringify({ perms: F.perms, rec: F.rec, watch: F.watch, calls: F.calls.slice(-80), writes: F.writes, sessions: F.sessions, searchMs: F.searchMs })); } catch (e) { /* ignore */ } };
+  const save = () => { try { sessionStorage.setItem(KEY, JSON.stringify({ perms: F.perms, support: F.support, rec: F.rec, watch: F.watch, calls: F.calls.slice(-80), writes: F.writes, sessions: F.sessions, searchMs: F.searchMs })); } catch (e) { /* ignore */ } };
   const hook = (name, v) => { if (window.__gh && window.__gh[name]) window.__gh[name](JSON.stringify(v)); };
   // Fixes up to now, one a second: standing still while paused (and flagged), running otherwise.
   function advance(now) {
@@ -36,13 +38,24 @@ export function actBridge() {
   }
   function state() {
     const r = F.rec;
-    if (!r) return { active: false, id: null, points: 0, gps: 'off' };
+    if (!r) return { active: false, id: null, points: 0, gps: 'off', endedAt: null };
     const now = r.active ? Date.now() : r.endedAt;
     advance(now);
     const pausedMs = r.pausedMs + (r.paused && r.pauseAt ? now - r.pauseAt : 0);
     const last = r.points[r.points.length - 1];
-    return { active: r.active, id: r.id, type: r.type, title: r.title, startedAt: r.startedAt, paused: r.paused, pausedMs, elapsedMs: Math.max(0, now - r.startedAt - pausedMs), distanceM: r.moved, steps: Math.round(r.moved * 1.32), points: r.points.length, lastFix: last ? { lat: last[1], lon: last[2], acc: last[4], t: last[0] } : null, gps: !last ? 'searching' : last[4] <= 20 ? 'ok' : 'searching' };
+    return { active: r.active, id: r.id, type: r.type, title: r.title, units: r.units, startedAt: r.startedAt, endedAt: r.active ? null : r.endedAt, paused: r.paused, pausedMs, elapsedMs: Math.max(0, now - r.startedAt - pausedMs), distanceM: r.moved, steps: Math.round(r.moved * 1.32), points: r.points.length, lastFix: last ? { lat: last[1], lon: last[2], acc: last[4], t: last[0] } : null, gps: !last ? 'searching' : last[4] <= 20 ? 'ok' : 'searching' };
   }
+  function stop() {
+    const r = F.rec;
+    if (!r || !r.active) return false;
+    advance(Date.now());
+    if (r.paused) { r.pausedMs += Date.now() - r.pauseAt; r.paused = false; r.pauseAt = null; }
+    r.active = false; r.endedAt = Date.now();
+    save();
+    return true;
+  }
+  // Finish on the notification while the app is away: the page isn't told.
+  F.stopOutside = () => { F.calls.push('notification:finish'); stop(); return F.rec && F.rec.endedAt; };
   let ticker = null;
   const tick = () => { if (!ticker) ticker = setInterval(() => { if (F.rec && F.rec.active) { hook('onActivity', state()); save(); } }, 1000); };
   if (F.rec && F.rec.active) tick();
@@ -54,11 +67,12 @@ export function actBridge() {
       actSupport: () => JSON.stringify(F.support),
       actPermissions: () => JSON.stringify(F.perms),
       actRequestPermissions: () => { call('actRequestPermissions'); setTimeout(() => { F.perms = Object.assign({}, F.grant); save(); hook('onActPermissions', F.perms); }, 60); },
+      actOpenSettings: () => call('actOpenSettings'),
       actStart: (json) => {
         call('actStart', json);
-        if (F.rec && F.rec.active) return false;
+        if ((F.rec && F.rec.active) || F.perms.location !== 'granted') return false;
         const o = JSON.parse(json);
-        F.rec = { id: o.id, type: o.type, title: o.title, startedAt: Date.now(), lastT: Date.now(), paused: false, pauseAt: null, pausedMs: 0, moved: 0, points: [], active: true };
+        F.rec = { id: o.id, type: o.type, title: o.title, units: o.units || 'km', startedAt: Date.now(), lastT: Date.now(), paused: false, pauseAt: null, pausedMs: 0, moved: 0, points: [], active: true };
         save(); tick();
         return true;
       },
@@ -66,12 +80,7 @@ export function actBridge() {
       actResume: () => { call('actResume'); const r = F.rec; if (r && r.active && r.paused) { advance(Date.now()); r.pausedMs += Date.now() - r.pauseAt; r.paused = false; r.pauseAt = null; save(); } },
       actStop: () => {
         call('actStop');
-        const r = F.rec;
-        if (!r || !r.active) return;
-        advance(Date.now());
-        if (r.paused) { r.pausedMs += Date.now() - r.pauseAt; r.paused = false; r.pauseAt = null; }
-        r.active = false; r.endedAt = Date.now();
-        save();
+        if (!stop()) return;
         setTimeout(() => hook('onActivity', state()), 50);
       },
       actState: () => JSON.stringify(state()),

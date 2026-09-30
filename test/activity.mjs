@@ -1,7 +1,8 @@
 // Outdoor activities (src/activity.js): distance with GPS noise and jitter, pauses (flagged fixes and
 // holes), moving time, splits, best efforts, elevation, calories, heart-rate zones, simplification,
 // the route encoding, records and new records, the watch's numbers, what goes to Health Connect,
-// the activity clock, history limits, and counting as exercise (readiness, the Health list).
+// the activity clock, the recorders (the shell's, the page's, Reset everything), history limits, and
+// counting as exercise (readiness, the Health list).
 import { load, check, section, done } from './lib.mjs';
 
 const GH = load('src/data/moves.js', 'src/engine/pose.js', 'src/brain.js', 'src/insights.js', 'src/health.js', 'src/activity.js');
@@ -91,6 +92,17 @@ check('a hole the recorder reports as paused is a pause', Math.abs(tr.movingMs -
 tr = A.track(holey, { type: 'run', start: r.t0, end: end1, pauses: [[pauseAt, resumeAt]] });
 check('so is a pause the page saw', Math.abs(tr.movingMs - (end1 - r.t0 - 120000)) < 1500 && new Set(tr.pts.map((p) => p.run)).size === 2);
 check('merging intervals', JSON.stringify(A.mergeIv([[5, 9], [1, 3], [2, 4], [9, 10]])) === '[[1,4],[5,10]]');
+// Paused and resumed from the notification while the app was away: the page only heard when it came
+// back, so the pause it logged is late and covers running. The recorder's flagged fixes win.
+tr = A.track(paused, { type: 'run', start: r.t0, end: end1, pauses: [[resumeAt + 30000, resumeAt + 150000]] });
+check('a pause the page heard of late doesn\'t hide real running', Math.abs(tr.distanceM - 1000) < 8 && Math.abs(tr.movingMs - (end1 - r.t0 - 120000)) < 1500, [tr.distanceM, tr.movingMs, tr.pauses]);
+// The wait for GPS and the 3-2-1 is recorded paused, before the start; the first fix after the start
+// can come a few seconds later (standing at the line).
+const waitFix = [];
+for (let t = r.t0 - 30000; t < r.t0; t += 1000) waitFix.push([t, LAT0, LON0, null, 12, 0, 1]);
+const offFix = r.pts.slice(0, 60).map((p) => [p[0] + 4000].concat(p.slice(1)));
+tr = A.track(waitFix.concat(offFix), { type: 'run', start: r.t0, end: offFix[59][0] });
+check('the wait for GPS before the start isn\'t a pause', tr.pauses.length === 0 && tr.pts[0].mt === 4000, [tr.pauses, tr.pts[0] && tr.pts[0].mt]);
 
 section('Splits and best efforts');
 // 5.2 km at 5:00 per km, except the third km at 4:30.
@@ -309,6 +321,44 @@ check('and holds still while paused', A.clockMs({ active: true, paused: true, st
 const st = A.normState('{"active":true,"id":7,"distanceM":"12.5","gps":"weird","lastFix":{"lat":1,"lon":2,"acc":5,"t":3}}');
 check('a state from the bridge is read defensively', st.active && st.id === '7' && st.distanceM === 12.5 && st.gps === 'off' && st.lastFix.lat === 1);
 check('an empty state', A.normState(null).active === false && A.normState('nope').points === 0);
+check('a finished state says when it ended', A.normState({ active: false, id: 'a', endedAt: 123 }).endedAt === 123 && A.normState({ active: true, id: 'a', endedAt: 123 }).endedAt === null);
+
+section('The recorders');
+// A phone: the shell's recorder (faked here) keeps finished recordings until they're cleared.
+const store = new Map();
+const watches = [];
+globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
+Object.defineProperty(globalThis, 'navigator', { configurable: true, writable: true, value: { geolocation: { watchPosition: (f) => { watches.push(f); return watches.length; }, clearWatch() {}, getCurrentPosition() {} } } });
+let shell = [];
+const nowRec = () => shell.find((x) => x.active) || shell.slice().sort((x, y) => y.endedAt - x.endedAt)[0] || null;
+globalThis.AndroidBridge = {
+  actStart: (json) => { const o = JSON.parse(json); if (shell.some((x) => x.active)) return false; shell.push({ id: o.id, active: true, startedAt: Date.now(), units: o.units }); return true; },
+  actStop: () => { const x = shell.find((y) => y.active); if (x) { x.active = false; x.endedAt = Date.now(); } },
+  actState: () => { const x = nowRec(); return JSON.stringify(x ? { active: x.active, id: x.id, startedAt: x.startedAt, endedAt: x.active ? null : x.endedAt, elapsedMs: 1000 } : { active: false }); },
+  actClear: (id) => { shell = shell.filter((x) => x.active || x.id !== id); },
+  actOpenSettings: () => {},
+};
+check('a new activity uses the shell\'s recorder', A.starter().kind === 'android' && A.rec().kind === 'android' && A.starter().canOpenSettings());
+check('without location allowed, the page can keep the clock itself (no GPS asked for)', A.web.start({ id: 'w1', type: 'run', title: 'Treadmill', noGps: true }) && watches.length === 0 && A.web.state().gps === 'off');
+check('and while it does, that\'s the recorder the page talks to', A.rec().kind === 'web' && A.rec().state().id === 'w1' && !!store.get('gh.act.rec'));
+A.web.stop();
+const wst = A.web.state();
+check('stopped, it says when', !wst.active && wst.endedAt > 0 && wst.id === 'w1');
+A.web.clear('w1');
+check('cleared, the shell\'s recorder is back', A.rec().kind === 'android' && !A.web.holds() && !store.get('gh.act.rec'));
+A.native.start({ id: 'n1', type: 'walk', title: 'Walk' });
+A.native.stop();
+A.native.start({ id: 'n2', type: 'run', title: 'Run', units: 'mi' });
+A.web.start({ id: 'w2', type: 'run', title: 'x', noGps: true });
+check('the units go to the shell for its notification', shell.find((x) => x.id === 'n2').units === 'mi');
+let heard = 0;
+const offHeard = A.onState(() => { heard++; });
+A.reset();
+offHeard();
+check('Reset everything stops and deletes every recording, going or finished', shell.length === 0 && !A.web.holds() && !store.get('gh.act.rec'));
+check('without telling the page', heard === 0);
+delete globalThis.AndroidBridge;
+check('a browser uses the page\'s recorder', A.starter().kind === 'web' && A.rec().kind === 'web');
 
 section('Units and titles');
 check('kg means kilometres, lb miles', A.unitsOf({ profile: { units: 'kg' } }) === 'km' && A.unitsOf({ profile: { units: 'lb' } }) === 'mi');

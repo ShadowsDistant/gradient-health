@@ -52,9 +52,10 @@
 .am-box[data-type="cycle"] { --act-hue: var(--hue-sky); }
 .am-box[data-type="other"] { --act-hue: var(--hue-violet); }
 .am-box > .rt { position: absolute; inset: 0; transition: opacity 320ms var(--ease-standard); }
-.am-streets { position: absolute; inset: 0; opacity: 0; transition: opacity 420ms var(--ease-standard); }
-.am-streets:empty { display: none; }
+/* The street map fills the box from the start, so MapLibre sizes its canvas (and fits the route) to it. */
+.am-streets { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity 420ms var(--ease-standard); }
 .am-box[data-streets="ready"] .am-streets { opacity: 1; }
+.am-box[data-streets="failed"] .am-attr { display: none; }
 .am-box[data-streets="ready"] > .rt { opacity: 0; }
 .am-box[data-streets="loading"]::after { content: ''; position: absolute; right: 12px; top: 12px; width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid color-mix(in oklab, var(--label) 18%, transparent); border-top-color: var(--label-secondary); animation: gh-spin .9s linear infinite; }
 .am-attr { position: absolute; right: 6px; bottom: 4px; margin: 0; z-index: 2; }
@@ -75,8 +76,9 @@
 .am-empty { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-4); }
 .am-empty p { margin: 0; }
 
-/* The street map itself (MapLibre's own stylesheet isn't loaded; these are the parts it needs). */
-.maplibregl-map { position: relative; overflow: hidden; -webkit-tap-highlight-color: transparent; }
+/* The street map itself (MapLibre's own stylesheet isn't loaded; these are the parts it needs). Its
+   container, .am-streets, is placed above: MapLibre's usual position: relative would collapse it. */
+.maplibregl-map { overflow: hidden; -webkit-tap-highlight-color: transparent; }
 .maplibregl-canvas-container, .maplibregl-canvas { position: absolute; left: 0; top: 0; }
 .maplibregl-canvas { outline: none; }
 .maplibregl-control-container, .maplibregl-ctrl { display: none; }
@@ -299,6 +301,13 @@
 .rt-here-pulse { fill: var(--accent); opacity: .35; transform-box: fill-box; transform-origin: center; animation: al-here 1.8s ease-out infinite; }
 @keyframes al-here { from { transform: scale(.6); opacity: .5; } to { transform: scale(2.2); opacity: 0; } }
 .al-map-wait { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: var(--space-4); text-align: center; color: var(--label-secondary); }
+/* Without GPS: the time in the middle, the steps across the width, and a note at the foot. */
+.al-clock-solo { margin-block: auto; }
+.al-m-wide { grid-column: 1 / -1; }
+.al-map-none { flex: none; min-height: 0; background-image: none; }
+.al-map-none .al-map-wait { position: static; display: flex; align-items: flex-start; gap: var(--space-3); text-align: start; line-height: 1.45; }
+.al-map-none .al-map-wait > svg { color: var(--act-hue); flex: none; margin-top: 2px; }
+[data-theme^="dark"] .al-map-none .al-map-wait > svg { color: color-mix(in oklab, var(--act-hue) 65%, #fff); }
 
 /* The controls: big round buttons with their words under them. */
 .al-actions { display: flex; justify-content: center; align-items: flex-start; gap: var(--space-8, 40px); padding: var(--space-3) var(--space-4) calc(var(--space-4) + var(--sab)); }

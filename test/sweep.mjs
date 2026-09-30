@@ -214,6 +214,8 @@ for (const [width, theme, zoom, h] of COMBOS) {
     // Outdoor activities: starting, recording, tucked away, the summary, history and records.
     ['act-sheet', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('actStart'); }],
     ['act-perm', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('actStart'); await settle(900); await page.click('dialog[open] .at-tile[data-arg="hike"]'); }],
+    ['act-perm-denied', async () => { await page.evaluate(() => { window.__act.perms = { location: 'denied', approximate: false, activity: 'granted', notifications: 'granted' }; window.GH.ui.go('today'); }); await settle(); await act('actStart'); await settle(900); await page.click('dialog[open] .at-tile[data-arg="walk"]'); }],
+    ['act-nogps', async () => { await page.evaluate(() => { window.__act.perms = { location: 'denied', approximate: false, activity: 'granted', notifications: 'granted' }; window.GH.ui.go('today'); }); await settle(); await act('actStart'); await settle(900); await page.click('dialog[open] .at-tile[data-arg="run"]'); await settle(900); await page.click('dialog[open] [data-act="actNoGps"]'); await settle(3600); await settle(3 * 60 * 1000); }],
     ['act-search', async () => { await startAct('run', { searchMs: 60000 }); }],
     ['act-live', async () => { await startAct('run', { go: 6 * 60 * 1000 }); }],
     ['act-paused', async () => { await startAct('cycle', { go: 4 * 60 * 1000 }); await page.evaluate(() => window.GH.ui.act.alPause()); }],
@@ -246,7 +248,7 @@ for (const [width, theme, zoom, h] of COMBOS) {
     if (id === 'player' || id === 'capsule') await page.evaluate(() => { const S = window.GH.ui.S; if (window.GH.ui.closePlayer) window.GH.ui.closePlayer(); S.active = null; window.GH.store.save(S); });
     // An activity still recording would open again after the reload: stop it and forget it.
     if (id.startsWith('act-') || id.startsWith('activities') || id.endsWith('-records') || id === 'health-activity') {
-      await page.evaluate(() => { const S = window.GH.ui.S; const B = window.AndroidBridge; if (S.actLive) { B.actStop(); B.actClear(S.actLive.id); S.actLive = null; } S.activities = []; window.GH.store.save(S); sessionStorage.removeItem('act-fake'); });
+      await page.evaluate(() => { const S = window.GH.ui.S; window.GH.activity.reset(); S.actLive = null; S.activities = []; window.GH.store.save(S); sessionStorage.removeItem('act-fake'); });
     }
     // A slow machine can take a while to start the page again; a page that fails to start says why.
     try { await page.reload(); await page.waitForSelector('#screen[data-view]'); } catch (e) {
