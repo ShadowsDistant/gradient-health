@@ -35,8 +35,8 @@
   /* ---------------------------------------------------------------- tips */
   const TIPS = {
     plan: ['calendar', 'sky', 'Your week at a glance. Tap any day to see it, move a workout to a free day, or swipe for next week. Miss one and the rest of the week shifts forward, so nothing doubles up.'],
-    health: ['heart', 'rose', 'Your numbers from Health Connect plus anything you log by hand. Pull down to sync. Insights start showing up after a few days of data.'],
-    progress: ['chart', 'green', 'How your training is going: which days you trained, your level on each exercise, and how your weaker side is catching up.'],
+    health: ['heart', 'rose', 'Your numbers from Health Connect plus anything you log by hand. Tap any number for its history, or to add or fix a value. Pull down to sync.'],
+    progress: ['chart', 'green', 'How your training is going. The body map shows which muscles you\'ve trained and where you\'ve got stronger: tap one for its story. Your levels and your weaker side are below.'],
     moves: ['library', 'violet', 'Every exercise, grouped into ladders from easiest to hardest. You move up a level once you have 3 or more reps left at the top of the range.'],
   };
   U.tip = (id) => {
