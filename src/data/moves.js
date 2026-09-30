@@ -111,6 +111,8 @@
     rep: ec('a', 'b'), muscles: ['triceps'],
   };
   F.ohExt1 = merge(F.ohExt, { equip: [{ type: 'db', hands: 'N', orient: 'side' }], poses: { a: { aF: { s: 4, e: 10 } }, b: { aF: { s: 4, e: 10 } } }, uni: true, leadLimbs: ['aN'] });
+  // The band runs from under the heels up the back to the hands behind the head.
+  F.bandOhExt = merge(F.ohExt, { equip: [{ type: 'band', hands: 'both', from: 'heN', layer: 'back' }], equipBy: null });
   F.pushdown = {
     view: 'side', pin: FLOOR_ANKLE, key: 'b', props: [{ type: 'door', x: 52 }],
     equip: [{ type: 'band', hands: 'both', from: [52, -196] }],
@@ -258,6 +260,22 @@
     muscles: ['quads', 'glutes', 'calves'],
   };
 
+  // Step-up onto a sturdy step (a low chair or the second stair): the working foot stays up, the
+  // other pushes off its toes below and hangs behind at the top.
+  F.stepUp = {
+    view: 'side', pin: { joint: 'hip' }, key: 'b', props: [{ type: 'box', x: -20, w: 46, h: 40 }],
+    poses: {
+      a: { at: [-14, -93], t: 18, n: -6, aN: { s: 16, e: 20 }, lN: { flat: true }, lF: { flat: false, a: 30 }, ik: { anN: [0, -48], anF: [-30, -11] } },
+      b: { at: [-2, -131], t: 2, aN: { s: 4, e: 14 }, lN: { flat: true }, lF: { flat: false, a: 30 }, ik: { anN: [0, -48], anF: [-22, -55] } },
+    },
+    rep: ce('a', 'b', { con: 1100, ecc: 1500 }), muscles: ['quads', 'glutes'], uni: true, leadLimbs: ['lN'],
+  };
+  const GOBLET_ARMS = { aN: { s: 22, e: 128 } };
+  F.gobletLunge = merge(F.lunge, {
+    equip: [{ type: 'kb', hands: 'both', hold: 'hang' }], equipBy: { db: [{ type: 'db', hands: 'both', orient: 'side', tilt: 90 }] },
+    poses: { a: GOBLET_ARMS, step: GOBLET_ARMS, b: GOBLET_ARMS },
+  });
+
   // Hinges -------------------------------------------------------------------------------
   F.kbDeadlift = {
     view: 'side', pin: FLOOR_ANKLE, key: 'b', equip: KB2, equipBy: { db: DB2S },
@@ -337,6 +355,63 @@
     equip: KB2, equipBy: { db: DB2S },
     poses: { a: { aN: { s: 4, e: 6 } }, b: { aN: { s: 4, e: 6 } } },
   });
+
+  // Hamstring curls -----------------------------------------------------------------------
+  // Bridge walkout: from a bridge the heels walk out in small steps until the legs are nearly
+  // straight (hips still up), then walk back in.
+  const walkout = (t, n, f) => sup({ t, aN: { s: 86 + t, e: 0 }, lN: { flat: true }, lF: { flat: true }, ik: { anN: [n, -8], anF: [f, -8] } });
+  F.hamWalk = {
+    view: 'side', pin: { joint: 'neck', at: [-50, -11] }, key: 'o',
+    poses: {
+      a: walkout(-108, 45, 45), s1: walkout(-106, 63, 45), s2: walkout(-104, 63, 63), s3: walkout(-102, 81, 63),
+      o: walkout(-100, 81, 81), r1: walkout(-102, 63, 81), r3: walkout(-106, 45, 63),
+    },
+    rep: [
+      { to: 's1', ms: 380, hold: 60, ph: 'ecc' }, { to: 's2', ms: 380, hold: 60, ph: 'ecc' }, { to: 's3', ms: 380, hold: 60, ph: 'ecc' }, { to: 'o', ms: 380, hold: 300, ph: 'ecc' },
+      { to: 'r1', ms: 380, hold: 60, ph: 'con' }, { to: 's2', ms: 380, hold: 60, ph: 'con' }, { to: 'r3', ms: 380, hold: 60, ph: 'con' }, { to: 'a', ms: 380, hold: 400, ph: 'con' },
+    ],
+    muscles: ['hamstrings', 'glutes'],
+  };
+  // Towel slide curl: heels on a towel (toes up), hips up; the heels slide out, then curl back in.
+  const SLIDE_FEET = { flat: false, fd: 172 };
+  F.hamSlide = {
+    view: 'side', pin: { joint: 'neck', at: [-50, -11] }, key: 'b',
+    poses: {
+      a: sup({ t: -108, aN: { s: -22, e: 0 }, lN: SLIDE_FEET, ik: { anN: [45, -7] } }),
+      b: sup({ t: -97, aN: { s: -11, e: 0 }, lN: SLIDE_FEET, ik: { anN: [83, -7] } }),
+    },
+    rep: ec('a', 'b', { ecc: 2000, con: 1200 }), muscles: ['hamstrings', 'glutes'],
+  };
+  // One leg: the other points at the ceiling.
+  F.hamSlide1 = merge(F.hamSlide, {
+    poses: { a: { lF: { h: 67, k: 0, flat: false, a: 10, fd: null } }, b: { lF: { h: 78, k: 0, flat: false, a: 10, fd: null } } },
+    uni: true, leadLimbs: ['lN'],
+  });
+  // Nordic curl negative: kneeling, heels hooked under a heavy chair or couch; the body tips forward
+  // in one straight line from the knees as slowly as possible, the hands catch, then push back up.
+  const NORDIC_LEGS = (k) => ({ h: 0, k, flat: false, a: 64 });
+  F.nordic = {
+    view: 'side', pin: { joint: 'knN', at: [0, -6] }, key: 'b', props: [{ type: 'chair', x: -72, w: 46, h: 45, back: -1 }],
+    poses: {
+      a: { t: 0, n: 0, lN: NORDIC_LEGS(90), ik: { hdN: [16, -88] } },
+      b: { t: 62, n: -12, lN: NORDIC_LEGS(28), ik: { hdN: [95, -13] } },
+      c: { t: 74, n: -16, lN: NORDIC_LEGS(16), ik: { hdN: [95, -3] } },
+    },
+    rep: [{ to: 'b', ms: 3000, hold: 0, ph: 'ecc', through: true }, { to: 'c', ms: 600, hold: 250, ph: 'ecc' }, { to: 'a', ms: 1100, hold: 400, ph: 'con' }],
+    muscles: ['hamstrings', 'glutes'],
+  };
+  // Band good morning: the band under the feet and across the upper back (hands holding it there);
+  // a hip hinge with a flat back.
+  const GM_ARMS = { uaN: 0.8, uaF: 0.8, faN: 0.42, faF: 0.42 };
+  F.bandGM = {
+    view: 'side', pin: FLOOR_ANKLE, key: 'b', equip: [{ type: 'band', hands: 'both', from: 'anN', layer: 'back' }],
+    poses: {
+      a: { t: 0, sc: GM_ARMS, lN: { h: 0, k: 6 }, ik: { hdN: 'traps' } },
+      b: { t: 72, n: -16, sc: GM_ARMS, lN: { h: 84, k: 18 }, ik: { hdN: 'traps' } },
+    },
+    bend: { hdN: 1, hdF: 1 },
+    rep: ec('a', 'b'), muscles: ['hamstrings', 'glutes', 'lowerBack'],
+  };
 
   // Rows and pulls ---------------------------------------------------------------------
   const HINGE_ROW = { t: 60, n: -18, lN: { h: 85, k: 35 } };
@@ -769,6 +844,40 @@
     rep: cyc(['b', 'a'], 420, 60), muscles: ['hipFlexors', 'quads'],
   };
 
+  // Step jacks: one foot steps out to the side as the arms sweep up, then back in, then the other.
+  F.stepJack = {
+    view: 'front', pin: { joint: 'hip' }, key: 'b', armLayer: 'front',
+    poses: {
+      a: { at: [0, -92.7], aN: { s: 8, e: 6 }, lN: { flat: true }, ik: { anN: [16, -8], anF: [-16, -8] } },
+      b: { at: [6, -88], aN: { s: 160, e: 6 }, lN: { flat: true }, ik: { anN: [40, -8], anF: [-16, -8] } },
+      c: { at: [-6, -88], aN: { s: 160, e: 6 }, lN: { flat: true }, ik: { anN: [16, -8], anF: [-40, -8] } },
+    },
+    rep: cyc(['b', 'a', 'c', 'a'], 380, 40), muscles: ['sideDelts', 'glutes', 'calves'],
+  };
+  // Squat thrust, stepping: hands down, step back to a plank one foot at a time, step in, stand.
+  F.squatThrust = {
+    view: 'side', pin: { joint: 'hip' }, key: 'c',
+    poses: {
+      a: { at: [0, -93], t: 0, lN: { flat: true }, ik: { anN: [0, -8], hdN: [8, -86] } },
+      b: { at: [-10, -40], t: 76, n: -20, lN: { flat: true }, ik: { anN: [0, -8], hdN: [36, -3] } },
+      // Half way down (and up): the hands reaching for the floor, passed through.
+      d: { at: [-8, -52], t: 55, n: -16, lN: { flat: true }, ik: { anN: [0, -8], hdN: [36, -26] } },
+      u: { at: [-4, -80], t: 25, n: -8, lN: { flat: true }, ik: { anN: [0, -8], hdN: [22, -72] } },
+      // A foot in the air on its way back (or in): passed through, so the knee clears the floor.
+      k1: { at: [-10.5, -41], t: 72, n: -17, lN: { flat: false, a: 10 }, lF: { flat: true }, ik: { anN: [-46, -30], anF: [0, -8], hdN: [36, -3] } },
+      s: { at: [-11, -41], t: 72, n: -15, lN: { flat: false, a: 0 }, lF: { flat: true }, ik: { anN: [-92, -16], anF: [0, -8], hdN: [36, -3] } },
+      k2: { at: [-11.5, -41.5], t: 72, n: -12, lN: { flat: false, a: 0 }, lF: { flat: false, a: 10 }, ik: { anN: [-92, -16], anF: [-46, -30], hdN: [36, -3] } },
+      c: { at: [-12, -42], t: 72, n: -10, lN: { flat: false, a: 0 }, ik: { anN: [-92, -16], hdN: [36, -3] } },
+    },
+    rep: [
+      { to: 'd', ms: 350, hold: 0, ph: 'move', through: true }, { to: 'b', ms: 350, hold: 0, ph: 'move' }, { to: 'k1', ms: 220, hold: 0, ph: 'move', through: true }, { to: 's', ms: 220, hold: 0, ph: 'move' },
+      { to: 'k2', ms: 220, hold: 0, ph: 'move', through: true }, { to: 'c', ms: 220, hold: 150, ph: 'move' }, { to: 'k2', ms: 220, hold: 0, ph: 'move', through: true },
+      { to: 's', ms: 220, hold: 0, ph: 'move' }, { to: 'k1', ms: 220, hold: 0, ph: 'move', through: true }, { to: 'b', ms: 220, hold: 0, ph: 'move' },
+      { to: 'd', ms: 450, hold: 0, ph: 'move', through: true }, { to: 'u', ms: 300, hold: 0, ph: 'move', through: true }, { to: 'a', ms: 400, hold: 200, ph: 'move' },
+    ],
+    muscles: ['quads', 'abs', 'frontDelts'],
+  };
+
   // Warm-up and mobility ---------------------------------------------------------------
   // Kettlebell halo: the bell, bottom up and held by the horns in both hands, circles the head at a
   // steady speed: out in front at the chest, beside the head at the sides, above and behind it at
@@ -854,6 +963,84 @@
       a2: { t: 108, n: 22, lN: { h: 158, k: 141, flat: false, a: 90 }, aN: { s: 198, e: 0 } },
     },
     rep: iso('a', 'a2', 2600), muscles: ['lowerBack', 'lats'],
+  };
+  // Open book (front view): lying on the left side, knees bent toward you (thighs drawn short), the
+  // bottom arm out in front; the top arm sweeps from in front of the chest up over the body to
+  // behind it as the chest turns open (seen from the front the arm only ever points up, so it
+  // lengthens then shortens; its depth says where it is). The head rests low.
+  const book = (sc, z, tw) => ({
+    t: 90, n: 25, tw, lN: { h: 0, k: 0 }, aN: { s: 0, e: 0 }, aF: { s: 90, e: 12 },
+    sc: { thN: 0.25, thF: 0.25, uaN: 0.15, faN: 0.15, uaF: sc, faF: sc }, depth: { elN: 12, wrN: 40, elF: r1(z * 0.45), wrF: z },
+  });
+  F.openBook = {
+    view: 'front', pin: { joint: 'hip', at: [0, -19] }, key: 'b', armLayer: 'front', legLayer: 'back',
+    poses: { a: book(0.12, 48, 0), m: book(1, 0, 15), b: book(0.12, -48, 30) },
+    rep: [{ to: 'm', ms: 1300, hold: 0, ph: 'iso', through: true }, { to: 'b', ms: 1300, hold: 900, ph: 'iso' }, { to: 'm', ms: 1300, hold: 0, ph: 'iso', through: true }, { to: 'a', ms: 1300, hold: 500, ph: 'iso' }],
+    muscles: ['upperBack', 'chest', 'obliques'], uni: true, leadLimbs: ['aF'],
+  };
+  // 90/90 switches (front view): sitting tall, hands on the floor behind, feet planted wide; both
+  // knees drop to one side into a 90/90 (front shin across, back shin behind), then up and over.
+  const legs9090 = (thN, shN, thF, shF) => ({ sc: { thN, shN, thF, shF } });
+  F.hips9090 = {
+    view: 'front', pin: SEATED_FRONT, key: 'l', armLayer: 'back', legLayer: 'front',
+    poses: {
+      m: merge(legs9090(0.8, 0.9, 0.8, 0.9), { t: 0, ts: 0.92, ns: 0.95, aN: { s: 22, e: 10 }, depth: { elN: -8, wrN: -20, elF: -8, wrF: -20 }, lN: { flat: true }, ik: { anN: [30, -8], anF: [-30, -8] } }),
+      l: merge(legs9090(0.86, 0.36, 0.3, 0.83), { t: 6, ts: 0.92, ns: 0.95, aN: { s: 22, e: 10 }, depth: { elN: -8, wrN: -20, elF: -8, wrF: -20 }, lN: { flat: true }, ik: { anN: [30, -8], anF: [-30, -8] } }),
+      r: merge(legs9090(0.3, 0.83, 0.86, 0.36), { t: -6, ts: 0.92, ns: 0.95, aN: { s: 22, e: 10 }, depth: { elN: -8, wrN: -20, elF: -8, wrF: -20 }, lN: { flat: true }, ik: { anN: [30, -8], anF: [-30, -8] } }),
+    },
+    bend: { anN: [1, 0], anF: [1, 0] },
+    rep: [{ to: 'm', ms: 1100, hold: 0, ph: 'iso', through: true }, { to: 'r', ms: 1100, hold: 900, ph: 'iso' }, { to: 'm', ms: 1100, hold: 0, ph: 'iso', through: true }, { to: 'l', ms: 1100, hold: 900, ph: 'iso' }],
+    muscles: ['glutes', 'hipFlexors'],
+  };
+  // Hamstring floss: on the back, hands behind one thigh held upright; the knee straightens (toes
+  // pulled back), then bends again.
+  F.hamFloss = {
+    view: 'side', pin: SUPINE_HIP, key: 'b',
+    poses: {
+      a: sup({ n: 8, lN: { h: 90, k: 95, flat: false, a: 40 }, lF: { h: 0, k: 0, flat: false, a: 30 }, ik: { hdN: [-4, -42] } }),
+      b: sup({ n: 8, lN: { h: 90, k: 6, flat: false, a: 0 }, lF: { h: 0, k: 0, flat: false, a: 30 }, ik: { hdN: [-4, -42] } }),
+    },
+    rep: cyc(['b', 'a'], 1300, 500, 'iso'), muscles: ['hamstrings', 'calves'], uni: true, leadLimbs: ['lN'],
+  };
+  // Wall calf stretch: hands on the wall, the back leg straight with its heel down; the hips ease in.
+  F.wallCalf = {
+    view: 'side', pin: { joint: 'hip' }, key: 'a', props: [{ type: 'wall', x: 66, side: 1 }],
+    poses: {
+      a: { at: [2, -82], t: 12, n: -4, lN: { flat: true }, lF: { flat: true }, ik: { anN: [-39.5, -8], anF: [22, -8], hdN: [63, -135] } },
+      a2: { at: [4, -81.5], t: 14, n: -4, lN: { flat: true }, lF: { flat: true }, ik: { anN: [-39.5, -8], anF: [22, -8], hdN: [63, -135] } },
+    },
+    rep: iso('a', 'a2', 2600), muscles: ['calves'], uni: true, leadLimbs: ['lN'],
+  };
+  // Ankle rocks: half kneeling, the front foot flat; the knee rocks forward over the toes, heel down.
+  F.ankleRock = {
+    view: 'side', pin: { joint: 'anN', at: [34, -8] }, key: 'b',
+    poses: {
+      a: { t: 2, aN: { s: 30, e: 70 }, lN: { h: 93.5, k: 91.5, flat: true }, lF: { flat: false, a: 80 }, ik: { anF: [-44, -7] } },
+      b: { t: 4, aN: { s: 30, e: 70 }, lN: { h: 91, k: 112, flat: true }, lF: { flat: false, a: 80 }, ik: { anF: [-44, -7] } },
+    },
+    rep: cyc(['b', 'a'], 1300, 500, 'iso'), muscles: ['calves'], uni: true, leadLimbs: ['lN'],
+  };
+  // Chest opener: hands clasped behind the back, shoulder blades squeezed, the hands lift.
+  F.chestOpen = {
+    view: 'side', pin: FLOOR_ANKLE, key: 'b',
+    poses: { a: st({ t: -2, ik: { hdN: [-20, -89] } }), b: st({ t: -4, n: -4, ik: { hdN: [-36, -96] } }) },
+    rep: cyc(['b', 'a'], 1600, 800, 'iso'), muscles: ['chest', 'frontDelts'],
+  };
+  // Leg swings: standing on one leg (a hand on a wall or chair), the other swings forward and back.
+  F.legSwing = {
+    view: 'side', pin: { joint: 'anF', at: [0, -8] }, key: 'f',
+    poses: {
+      f: { t: -2, aN: { s: 20, e: 20 }, aF: { s: 40, e: 30 }, lN: { h: 58, k: 8, flat: false, a: 20 }, lF: { h: 0, k: 2, flat: true } },
+      b: { t: 4, aN: { s: -20, e: 20 }, aF: { s: 40, e: 30 }, lN: { h: -28, k: 12, flat: false, a: 30 }, lF: { h: 0, k: 2, flat: true } },
+    },
+    rep: [{ to: 'f', ms: 520, hold: 0, ph: 'move' }, { to: 'b', ms: 520, hold: 0, ph: 'move' }],
+    muscles: ['hamstrings', 'hipFlexors', 'glutes'], uni: true, leadLimbs: ['lN'],
+  };
+  // Scap push-up: arms straight in a plank, the chest sinks between the shoulder blades, then the
+  // floor is pushed away.
+  F.scapPush = {
+    view: 'side', pin: TOES, key: 'b', poses: { a: plank(71, [124, -3]), b: plank(72.5, [124, -3]) },
+    rep: ec('a', 'b', { ecc: 900, con: 700, holdA: 250, holdB: 150 }), muscles: ['chest', 'upperBack'],
   };
   F.walk = {
     view: 'side', pin: { joint: 'hip', at: [0, -91] }, key: 'a',
@@ -1002,6 +1189,9 @@
     },
     rep: ec('a', 'b'), muscles: ['quads', 'glutes'],
   };
+  // Dumbbell lunge and split squat: the home forms with a dumbbell in each hand.
+  F.lungeDB = merge(F.lunge, { equip: DB2S });
+  F.splitDB = merge(F.split, { equip: DB2S });
   // Hinges: hips pinned, feet planted, hands on the bar (IK), bar over the mid-foot.
   const HINGE_FEET = { lN: { flat: true }, ik: { anN: [0, -8] } };
   const hinge = (at, t, n, hand) => merge(HINGE_FEET, { at, t, n, ik: { hdN: hand } });
@@ -1050,6 +1240,17 @@
     },
     rep: ce('a', 'b', { holdB: 400 }), muscles: ['quads'],
   };
+  // Lying dumbbell leg curl: face down on a flat bench, knees just off its end, a dumbbell held
+  // between the feet; hands hold the far end of the bench.
+  F.legCurlDB = {
+    view: 'side', pin: { joint: 'hip', at: [0, -55] }, key: 'b', props: [{ type: 'bench', x: -38, w: 118, h: BENCH_H }],
+    equip: [{ type: 'db', hold: 'feet' }],
+    poses: {
+      a: { t: 90, n: 4, lN: { h: 0, k: 0, flat: false, a: 0 }, ik: { hdN: [58, -22] } },
+      b: { t: 90, n: 4, lN: { h: 0, k: 105, flat: false, a: 0 }, ik: { hdN: [58, -22] } },
+    },
+    rep: ce('a', 'b', { holdB: 300 }), muscles: ['hamstrings'],
+  };
   // Calf raises: balls of the feet on a step, the body rises as the heels lift.
   const STEP = { type: 'box', x: 10, w: 30, h: 10 };
   const ON_STEP = { joint: 'toN', at: [18, -13.5] };
@@ -1068,6 +1269,18 @@
     },
     bend: { hdN: 1, hdF: 1 },
     rep: ce('a', 'b', { con: 900, holdB: 700, ecc: 1600 }), muscles: ['calves'],
+  };
+
+  // Leg press calf raise: legs straight, the balls of the feet on the plate's bottom edge; the
+  // ankles push the plate up the track (the prop's `calf` keeps it square to the track).
+  F.calfPress = {
+    view: 'side', pin: { joint: 'hip', at: [0, -44] }, key: 'b',
+    props: [{ type: 'machine', kind: 'legPress', x: -4.9, h: 33.6, back: 25, len: 80, seat: 30, track: [28.7, -134.1], angle: 45, calf: true }],
+    poses: {
+      a: { t: -65, n: 14, aN: { s: 20, e: 60 }, lN: { flat: false, fd: 246 }, ik: { anN: [48.5, -112.6] } },
+      b: { t: -65, n: 14, aN: { s: 20, e: 60 }, lN: { flat: false, fd: 200 }, ik: { anN: [48.5, -112.6] } },
+    },
+    rep: ce('a', 'b', { con: 900, holdB: 600, ecc: 1500 }), muscles: ['calves'],
   };
 
   // Back.
@@ -1342,6 +1555,8 @@
     cues: ['Elbows point up, close to your head.', 'Lower the weight behind your head.', 'Ribs down, no arching.'] });
   move('tri_band', 'pushdown', { ...TRI, name: 'Band pushdown', req: ['band', 'door'], load: 'band', range: [12, 30], start: 15, joints: ['elbow'],
     cues: ['Elbows glued to your sides.', 'Push down until your arms are straight.', 'Let it back up slowly.'] });
+  move('tri_band_oh', 'bandOhExt', { ...TRI, name: 'Band overhead extension', req: ['band'], load: 'band', range: [12, 30], start: 15,
+    cues: ['Stand on the band, hands behind your head.', 'Elbows point up, close to your head.', 'Straighten your arms, then lower slowly.'] });
   move('tri_dip_bent', 'dipBent', { ...TRI, name: 'Chair dip, knees bent', req: ['chair'], load: null, range: [6, 20], start: 8, joints: ['shoulder', 'elbow', 'wrist'],
     cues: ['Hands on the edge, fingers forward.', 'Lower until elbows reach 90.', 'Keep your hips close to the chair.'], mistake: 'Dropping so low your shoulders roll forward.' });
   move('tri_oh_slow', 'ohExt', { ...TRI, name: 'Overhead extension, 3-sec lowering', req: ['kb|db'], load: 'kb|db', range: [8, 20], start: 10,
@@ -1379,6 +1594,10 @@
   move('sq_goblet', 'goblet', { ...SQ, name: 'Goblet squat', req: ['kb|db'], load: 'kb|db', range: [10, 30], start: 15, cues: ['Hold the weight at your chest.', 'Sit between your heels, chest tall.', 'Push the floor away to stand.'] });
   move('sq_goblet_pause', 'goblet', { ...SQ, name: 'Paused goblet squat', req: ['kb|db'], load: 'kb|db', range: [8, 20], start: 10, cues: ['Hold the weight at your chest.', PAUSE_BOTTOM, 'Drive up without bouncing.'] }, { pause: ['ecc', 1500] });
   const UNI_LEG = { mistake: 'Front knee drifting inward.', breathe: 'Breathe in as you lower, out as you rise.' };
+  move('sq_stepup', 'stepUp', { ...SQ, ...UNI_LEG, name: 'Step-up', req: ['chair'], load: null, range: [8, 20], start: 10, uni: true,
+    cues: ['One foot flat on a sturdy low chair or stair.', 'Drive through that heel and stand up tall.', 'Step down slowly, the same leg leads.'], mistake: 'Pushing off the floor with your back foot.' });
+  move('sq_goblet_lunge', 'gobletLunge', { ...SQ, ...UNI_LEG, name: 'Goblet reverse lunge', req: ['kb|db'], load: 'kb|db', range: [8, 20], start: 10, uni: true,
+    cues: ['Hold the weight at your chest.', 'Step back and lower straight down.', 'Push through your front heel to come back up.'] });
   move('sq_split', 'split', { ...SQ, ...UNI_LEG, name: 'Split squat', req: [], load: null, range: [8, 20], start: 10, uni: true,
     cues: ['Long stance, both feet pointing forward.', 'Drop the back knee toward the floor.', 'Front heel stays down.'] });
   move('sq_lunge', 'lunge', { ...SQ, ...UNI_LEG, name: 'Reverse lunge', req: [], load: null, range: [8, 20], start: 10, uni: true,
@@ -1429,6 +1648,19 @@
     cues: ['Hold the weight with long arms.', 'Rise as high as you can.', 'Lower your heels all the way down.'] });
   move('calf_1leg', 'calf1', { ...CALF, name: 'One-leg calf raise', req: ['wall'], range: [8, 20], start: 10, uni: true,
     cues: ['Stand on one foot, fingertips on the wall.', 'Rise as high as you can.', 'Lower slowly all the way down.'], mistake: 'Pushing off the wall with your hands.' });
+
+  /* Legs: hamstring curls */
+  const HAM = { group: 'legs', joints: ['knee', 'hip'], load: null, mistake: 'Letting your hips sag as your legs straighten.', breathe: 'Breathe out as you curl your heels in.' };
+  move('ham_walkout', 'hamWalk', { ...HAM, name: 'Bridge walkout', req: [], range: [4, 12], start: 6,
+    cues: ['Lift into a glute bridge.', 'Walk your heels out in small steps, hips up.', 'Walk them back in, then lower.'], breathe: 'Keep breathing as you walk.' });
+  move('ham_slide', 'hamSlide', { ...HAM, name: 'Towel slide leg curl', req: ['towel'], range: [6, 15], start: 8,
+    cues: ['Heels on a towel on a smooth floor.', 'Hips up, slide your heels out slowly.', 'Curl them back in without dropping your hips.'] });
+  move('ham_band_gm', 'bandGM', { ...HAM, name: 'Band good morning', req: ['band'], load: 'band', range: [10, 25], start: 12, joints: ['back', 'hip'],
+    cues: ['Band under your feet and across your upper back.', 'Soft knees, push your hips back.', 'Flat back, then stand tall and squeeze your glutes.'], mistake: 'Rounding your back as you bend.', breathe: 'Breathe in as you bend, out as you stand.' });
+  move('ham_slide1', 'hamSlide1', { ...HAM, name: 'One-leg slide curl', req: ['towel'], range: [5, 12], start: 6, uni: true,
+    cues: ['One heel on the towel, the other leg up.', 'Hips up, slide out slowly.', 'Curl back in with your hips level.'] });
+  move('ham_nordic', 'nordic', { ...HAM, name: 'Nordic curl negative', req: ['chair', 'towel'], range: [3, 8], start: 3, complex: true, joints: ['knee'],
+    cues: ['Kneel on a folded towel, heels hooked under a couch.', 'Lower forward as slowly as you can, hips straight.', 'Catch yourself with your hands, push back up.'], mistake: 'Bending at the hips to make it easier.', breathe: 'Breathe steadily as you lower.' });
 
   /* Back: rows */
   const ROW = { group: 'back', joints: ['back', 'elbow'], mistake: 'Shrugging your shoulders up to your ears.', breathe: 'Breathe out as you pull.' };
@@ -1573,19 +1805,39 @@
   move('fin_pulse', 'pulse', { ...COND, name: 'Squat pulses', joints: ['knee'], cues: ['Stay low, small pulses.', 'Chest up.', 'Weight in your heels.'] });
   move('fin_jacks', 'jacks', { ...COND, name: 'Jumping jacks', impact: true, joints: ['knee', 'ankle'], cues: ['Light on your feet.', 'Arms all the way up.', 'Steady rhythm.'] });
   move('fin_climbers', 'climbers', { ...COND, name: 'Mountain climbers', joints: ['wrist', 'shoulder'], cues: ['Hands under shoulders.', 'Drive your knees toward your chest.', 'Hips stay low.'] });
+  move('fin_step_jacks', 'stepJack', { ...COND, name: 'Step jacks', joints: ['hip'], cues: ['Step one foot out as your arms go up.', 'Step back in, then the other side.', 'Quick, light steps.'] });
+  move('fin_squat_thrust', 'squatThrust', { ...COND, name: 'Squat thrusts', joints: ['wrist', 'knee', 'shoulder'], cues: ['Squat down and put your hands on the floor.', 'Step back to a plank, one foot at a time.', 'Step in and stand tall.'] });
   move('fin_burpee', 'burpee', { ...COND, name: 'Burpees', impact: true, joints: ['wrist', 'knee', 'shoulder'], complex: true, cues: ['Hands down, jump back.', 'Jump in, then jump up.', 'Land soft.'] });
 
   /* Warm-up, mobility, walk */
   const MOB = { group: 'mobility', joints: [], load: null, req: [], timed: true, range: [30, 60], start: 45, mistake: 'Forcing the range.', breathe: 'Slow breaths through your nose.' };
-  move('wu_halo', 'halo', { ...MOB, name: 'Kettlebell halo', req: ['kb'], load: 'kb', range: [30, 40], start: 30, joints: ['shoulder'], cues: ['Hold the bell upside down by the horns.', 'Circle it close around your head.', 'Switch direction halfway.'] });
-  move('wu_circles', 'armCircles', { ...MOB, name: 'Arm circles', range: [30, 40], start: 30, cues: ['Arms out to the sides.', 'Small circles, growing bigger.', 'Switch direction halfway.'] });
-  move('wu_squat', 'squatBW', { ...MOB, name: 'Bodyweight squats', timed: false, range: [10, 10], start: 10, cues: SQ_CUES });
-  move('wu_angels', 'wallAngel', { ...MOB, name: 'Wall angels', req: ['wall'], range: [30, 40], start: 30, cues: ['Back and head against the wall.', 'Slide your arms up and down.', 'Keep your wrists touching the wall.'] });
-  move('mob_catcow', 'catCow', { ...MOB, name: 'Cat-cow', range: [45, 60], start: 60, joints: ['wrist'], cues: ['Hands under shoulders, knees under hips.', 'Round up, then let your belly drop.', 'Move with your breath.'] });
-  move('mob_wgs', 'wgs', { ...MOB, name: 'World\'s greatest stretch', range: [30, 30], start: 30, uni: true, cues: ['Lunge with your back knee down.', 'Elbow to your front instep.', 'Rotate and reach to the ceiling.'] });
-  move('mob_hipflexor', 'hipFlexor', { ...MOB, name: 'Hip flexor stretch', range: [30, 30], start: 30, uni: true, cues: ['Back knee down on a towel.', 'Tuck your hips and shift forward.', 'Reach the same-side arm up.'] });
-  move('mob_squat', 'deepSquat', { ...MOB, name: 'Deep squat hold', range: [30, 45], start: 45, cues: ['Sit as low as you comfortably can.', 'Elbows push your knees out.', 'Heels down if you can.'] });
-  move('mob_child', 'childPose', { ...MOB, name: 'Child\'s pose', range: [30, 45], start: 45, cues: ['Knees wide, sit back on your heels.', 'Reach your arms long.', 'Let your forehead rest.'] });
+  move('wu_halo', 'halo', { ...MOB, name: 'Kettlebell halo', req: ['kb'], load: 'kb', range: [30, 40], start: 30, joints: ['shoulder'], mobFor: ['sideDelts', 'upperBack', 'frontDelts'], cues: ['Hold the bell upside down by the horns.', 'Circle it close around your head.', 'Switch direction halfway.'] });
+  move('wu_circles', 'armCircles', { ...MOB, name: 'Arm circles', range: [30, 40], start: 30, mobFor: ['sideDelts', 'frontDelts', 'chest'], cues: ['Arms out to the sides.', 'Small circles, growing bigger.', 'Switch direction halfway.'] });
+  move('wu_squat', 'squatBW', { ...MOB, name: 'Bodyweight squats', timed: false, range: [10, 10], start: 10, mobFor: ['quads', 'glutes'], cues: SQ_CUES });
+  move('wu_angels', 'wallAngel', { ...MOB, name: 'Wall angels', req: ['wall'], range: [30, 40], start: 30, mobFor: ['upperBack', 'rearDelts', 'chest'], cues: ['Back and head against the wall.', 'Slide your arms up and down.', 'Keep your wrists touching the wall.'] });
+  move('wu_legswing', 'legSwing', { ...MOB, name: 'Leg swings', range: [30, 40], start: 30, uni: true, joints: ['hip'], mobFor: ['hamstrings', 'hipFlexors', 'glutes'],
+    cues: ['Hold a wall or chair for balance.', 'Swing one leg forward and back, easy.', 'Let the swings grow bigger.'], mistake: 'Leaning back to kick higher.' });
+  move('wu_scap', 'scapPush', { ...MOB, name: 'Scap push-ups', timed: false, range: [10, 10], start: 10, joints: ['wrist', 'shoulder'], mobFor: ['chest', 'upperBack', 'triceps'],
+    cues: ['Plank on straight arms.', 'Let your chest sink between your shoulder blades.', 'Push the floor away to round your upper back.'], mistake: 'Bending your elbows.' });
+  move('wu_pullapart', 'pullApart', { ...MOB, name: 'Band pull-aparts', req: ['band'], load: 'band', range: [30, 40], start: 30, joints: ['shoulder'], mobFor: ['rearDelts', 'upperBack'],
+    cues: ['Arms straight at shoulder height.', 'Pull the band to your chest.', 'Easy pace, shoulders down.'] });
+  move('mob_catcow', 'catCow', { ...MOB, name: 'Cat-cow', range: [45, 60], start: 60, joints: ['wrist'], mobFor: ['lowerBack', 'upperBack', 'abs'], cues: ['Hands under shoulders, knees under hips.', 'Round up, then let your belly drop.', 'Move with your breath.'] });
+  move('mob_wgs', 'wgs', { ...MOB, name: 'World\'s greatest stretch', range: [30, 30], start: 30, uni: true, mobFor: ['hipFlexors', 'hamstrings', 'glutes', 'upperBack'], cues: ['Lunge with your back knee down.', 'Elbow to your front instep.', 'Rotate and reach to the ceiling.'] });
+  move('mob_hipflexor', 'hipFlexor', { ...MOB, name: 'Hip flexor stretch', range: [30, 30], start: 30, uni: true, mobFor: ['hipFlexors', 'quads'], cues: ['Back knee down on a towel.', 'Tuck your hips and shift forward.', 'Reach the same-side arm up.'] });
+  move('mob_squat', 'deepSquat', { ...MOB, name: 'Deep squat hold', range: [30, 45], start: 45, mobFor: ['glutes', 'quads', 'calves'], cues: ['Sit as low as you comfortably can.', 'Elbows push your knees out.', 'Heels down if you can.'] });
+  move('mob_child', 'childPose', { ...MOB, name: 'Child\'s pose', range: [30, 45], start: 45, mobFor: ['lowerBack', 'lats', 'upperBack'], cues: ['Knees wide, sit back on your heels.', 'Reach your arms long.', 'Let your forehead rest.'] });
+  move('mob_openbook', 'openBook', { ...MOB, name: 'Open book', range: [30, 45], start: 30, uni: true, mobFor: ['upperBack', 'chest', 'obliques'],
+    cues: ['Lie on your side, knees bent, arms out in front.', 'Sweep your top arm over and open your chest.', 'Follow your hand with your eyes, then come back.'] });
+  move('mob_9090', 'hips9090', { ...MOB, name: '90/90 switches', range: [30, 45], start: 30, joints: ['hip'], mobFor: ['glutes', 'hipFlexors'],
+    cues: ['Sit tall, hands behind you, feet wide.', 'Drop both knees to one side.', 'Lift them up and over to the other side.'], mistake: 'Slumping back onto your hands.' });
+  move('mob_hamfloss', 'hamFloss', { ...MOB, name: 'Hamstring floss', range: [30, 45], start: 30, uni: true, mobFor: ['hamstrings', 'calves'],
+    cues: ['Lie on your back, hold behind one thigh.', 'Straighten the knee, toes toward you.', 'Bend it again, slow and easy.'] });
+  move('mob_calf', 'wallCalf', { ...MOB, name: 'Wall calf stretch', req: ['wall'], range: [30, 45], start: 30, uni: true, joints: ['ankle'], mobFor: ['calves'],
+    cues: ['Hands on the wall, one foot stepped back.', 'Back heel down, back knee straight.', 'Lean in until you feel your calf.'] });
+  move('mob_chest', 'chestOpen', { ...MOB, name: 'Chest opener', range: [30, 45], start: 30, joints: ['shoulder'], mobFor: ['chest', 'frontDelts', 'biceps'],
+    cues: ['Clasp your hands behind your back.', 'Squeeze your shoulder blades and lift your hands.', 'Chest up, chin level.'], mistake: 'Leaning forward instead of lifting your hands.' });
+  move('mob_ankle', 'ankleRock', { ...MOB, name: 'Ankle rocks', range: [30, 45], start: 30, uni: true, joints: ['ankle'], mobFor: ['calves', 'quads'],
+    cues: ['Half kneel, front foot flat.', 'Rock your knee forward over your toes.', 'Heel stays down, then rock back.'] });
   move('walk', 'walk', { ...MOB, name: 'Walk', range: [600, 900], start: 720, cues: ['Easy pace, you can talk.', 'Swing your arms.', '10 to 15 minutes.'], mistake: 'Skipping it because it feels too easy.' });
 
   /* Gym. Every gym move has `gym: true`. Loaded ones carry `ratio`: a conservative novice starting
@@ -1640,10 +1892,20 @@
   move('leg_ext', 'legExt', { ...G_LEG_ISO, name: 'Leg extension', req: ['legExt'], ratio: 0.25,
     cues: ['Line your knees up with the machine\'s pivot.', 'Straighten your legs and squeeze your thighs.', 'Lower slowly until your knees are bent.'],
     mistake: 'Kicking the weight up with momentum.', breathe: 'Breathe out as you straighten.' });
+  const G_LUNGE = { ...GYM, group: 'legs', joints: ['knee', 'hip'], load: 'db', range: [8, 15], start: 10, uni: true, mistake: 'Front knee drifting inward.', breathe: 'Breathe in as you lower, out as you rise.' };
+  move('lunge_db', 'lungeDB', { ...G_LUNGE, name: 'Dumbbell reverse lunge', req: ['db'], ratio: 0.1,
+    cues: ['A dumbbell in each hand, stand tall.', 'Step back and lower straight down.', 'Push through your front heel to come back up.'] });
+  move('split_db', 'splitDB', { ...G_LUNGE, name: 'Dumbbell split squat', req: ['db'], ratio: 0.12,
+    cues: ['Long stance, a dumbbell in each hand.', 'Drop your back knee toward the floor.', 'Front heel stays down as you rise.'] });
+  move('leg_curl_db', 'legCurlDB', { ...G_LEG_ISO, name: 'Lying dumbbell leg curl', req: ['db', 'bench'], load: 'db', ratio: 0.06,
+    cues: ['Lie face down on a bench, knees just off the end.', 'Squeeze a dumbbell between your feet.', 'Curl your heels up, then lower slowly.'],
+    mistake: 'Lifting your hips off the bench.', breathe: 'Breathe out as you curl.' });
   const G_CALF = { ...GYM, group: 'legs', joints: ['ankle'], range: [10, 20], start: 12, mistake: 'Bouncing at the bottom instead of pausing.', breathe: 'Breathe out as you rise.' };
   const CALF_CUES = ['Balls of your feet on a plate or step.', 'Rise as high as you can and hold.', 'Lower until your heels drop below the step.'];
   move('calf_smith', 'calfSmith', { ...G_CALF, name: 'Smith machine calf raise', req: ['smith'], load: 'smith', ratio: 0.5, cues: CALF_CUES });
   move('calf_db', 'calfDB', { ...G_CALF, name: 'Dumbbell calf raise', req: ['db'], load: 'db', ratio: 0.15, cues: CALF_CUES });
+  move('calf_press', 'calfPress', { ...G_CALF, name: 'Leg press calf raise', req: ['legPress'], load: 'machine', ratio: 0.6,
+    cues: ['Balls of your feet on the bottom edge of the plate.', 'Legs straight but not locked, push through your toes.', 'Let your heels sink back for a stretch.'] });
 
   const G_PULL = { ...GYM, group: 'back', joints: ['shoulder', 'elbow'], range: [6, 12], start: 8, mistake: 'Leaning way back to yank the weight.', breathe: 'Breathe out as you pull.' };
   move('pulldown', 'pulldown', { ...G_PULL, name: 'Lat pulldown', req: ['pulldown'], load: 'machine', ratio: 0.4,
@@ -1713,12 +1975,13 @@
   // Rungs are listed easiest → hardest; each user only sees the rungs their equipment allows.
   const LADDERS = {
     curl: { name: 'Curls', group: 'biceps', rungs: ['curl_towel', 'curl_band', 'curl_hammer', 'curl_std', 'curl_slow', 'curl_half', 'curl_conc'] },
-    triceps: { name: 'Triceps', group: 'triceps', rungs: ['tri_skull', 'tri_oh', 'tri_band', 'tri_dip_bent', 'tri_oh_slow', 'tri_dip', 'tri_diamond', 'tri_oh1'] },
+    triceps: { name: 'Triceps', group: 'triceps', rungs: ['tri_skull', 'tri_oh', 'tri_band', 'tri_band_oh', 'tri_dip_bent', 'tri_oh_slow', 'tri_dip', 'tri_diamond', 'tri_oh1'] },
     push: { name: 'Push-ups', group: 'chest', rungs: ['push_wall', 'push_incline', 'push_knee', 'push_std', 'push_slow', 'push_pause', 'push_decline', 'push_archer'] },
     chestDb: { name: 'Floor press', group: 'chest', accessory: true, rungs: ['chest_press', 'chest_press_slow', 'chest_fly', 'chest_press1', 'chest_press_half'] },
-    squat: { name: 'Squats and lunges', group: 'legs', rungs: ['sq_bw', 'sq_goblet', 'sq_goblet_pause', 'sq_split', 'sq_lunge', 'sq_bulgarian', 'sq_pistol'] },
+    squat: { name: 'Squats and lunges', group: 'legs', rungs: ['sq_bw', 'sq_goblet', 'sq_goblet_pause', 'sq_stepup', 'sq_split', 'sq_lunge', 'sq_goblet_lunge', 'sq_bulgarian', 'sq_pistol'] },
     hinge: { name: 'Hinges', group: 'legs', rungs: ['hg_bridge', 'hg_deadlift', 'hg_swing', 'hg_rdl', 'hg_bridge1', 'hg_sldl', 'hg_sldl_slow', 'hg_swing1'] },
     glute: { name: 'Glute bridges', group: 'legs', accessory: true, rungs: ['gl_bridge', 'gl_kbbridge', 'gl_thrust', 'gl_thrust_pause', 'gl_bridge1', 'gl_thrust1'] },
+    hamCurl: { name: 'Hamstring curls', group: 'legs', accessory: true, rungs: ['ham_walkout', 'ham_slide', 'ham_band_gm', 'ham_slide1', 'ham_nordic'] },
     calf: { name: 'Calves', group: 'legs', accessory: true, rungs: ['calf_bw', 'calf_wall_slow', 'calf_load', 'calf_1leg'] },
     row: { name: 'Rows', group: 'back', rungs: ['row_prone_w', 'row_superman', 'row_towel', 'row_door', 'row_table', 'row_band', 'row_band_high', 'row_db', 'row_chair', 'row_slow', 'row_pause', 'row_half', 'row_chair_half'] },
     pull: { name: 'Pull-ups', group: 'back', rungs: ['pull_hang', 'pull_scap', 'pull_neg', 'pull_chin', 'pull_up', 'pull_slow'] },
@@ -1730,7 +1993,7 @@
     absLoad: { name: 'Crunches', group: 'abs', rungs: ['abl_crunch', 'abl_kb', 'abl_kb_slow', 'abl_kb_arms', 'abl_situp'] },
     coreRot: { name: 'Rotation', group: 'abs', rungs: ['rot_russian', 'rot_chop', 'rot_russian_up', 'rot_kneel_chop', 'rot_slam', 'rot_toss'] },
     coreSide: { name: 'Side core', group: 'abs', rungs: ['side_knee', 'side_carry', 'side_plank', 'side_march', 'side_star'] },
-    finisher: { name: 'Finishers', group: 'conditioning', rungs: ['fin_march', 'fin_pulse', 'fin_toss', 'fin_swing', 'fin_climbers', 'fin_jacks', 'fin_slam', 'fin_burpee', 'fin_swing1'] },
+    finisher: { name: 'Finishers', group: 'conditioning', rungs: ['fin_march', 'fin_step_jacks', 'fin_pulse', 'fin_toss', 'fin_swing', 'fin_climbers', 'fin_squat_thrust', 'fin_jacks', 'fin_slam', 'fin_burpee', 'fin_swing1'] },
     // Gym pools (gym: true): preference-ordered, not easiest → hardest. The first allowed move is
     // used and its load progresses; a stall rotates to the next allowed one. Some reuse home moves,
     // which keep their home `family`.
@@ -1740,9 +2003,10 @@
     squatG: { name: 'Squat', group: 'legs', gym: true, rungs: ['squat_bb', 'squat_smith', 'leg_press', 'sq_goblet'] },
     hingeG: { name: 'Hinge', group: 'legs', gym: true, rungs: ['rdl_bb', 'deadlift_bb', 'rdl_db'] },
     gluteG: { name: 'Hip thrust', group: 'legs', gym: true, accessory: true, rungs: ['thrust_bb', 'gl_thrust'] },
-    legCurlG: { name: 'Leg curl', group: 'legs', gym: true, iso: true, rungs: ['leg_curl'] },
+    lungeG: { name: 'Lunges', group: 'legs', gym: true, accessory: true, rungs: ['lunge_db', 'split_db'] },
+    legCurlG: { name: 'Leg curl', group: 'legs', gym: true, iso: true, rungs: ['leg_curl', 'leg_curl_db'] },
     legExtG: { name: 'Leg extension', group: 'legs', gym: true, iso: true, rungs: ['leg_ext'] },
-    calfG: { name: 'Calves', group: 'legs', gym: true, iso: true, rungs: ['calf_smith', 'calf_db'] },
+    calfG: { name: 'Calves', group: 'legs', gym: true, iso: true, rungs: ['calf_smith', 'calf_press', 'calf_db'] },
     pullG: { name: 'Pulldown', group: 'back', gym: true, rungs: ['pulldown', 'pull_up', 'pull_neg'] },
     rowG: { name: 'Row', group: 'back', gym: true, rungs: ['row_cable', 'row_bb', 'row_chest', 'row_db'] },
     rearG: { name: 'Rear delts', group: 'back', gym: true, accessory: true, rungs: ['face_pull', 'rev_fly_machine', 'rear_fly'] },

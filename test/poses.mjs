@@ -191,7 +191,7 @@ const bandPallof = M.forPerson(M.MOVES.pallof, { band: true, door: true });
 check('the Pallof press draws a band on a door when there is no cable',
   bandPallof.props[0].type === 'door' && bandPallof.equip[0].type === 'band' && M.forPerson(M.MOVES.pallof, GYM_EQ).props[0].type === 'cable');
 const homeOnly = { db: [8], kb: [10], ball: true, band: true, bar: true, chair: true, wall: true, towel: true, table: true, door: true };
-const leaks = gymIds.filter((id) => M.allowed(M.MOVES[id], homeOnly) && !['calf_db', 'rdl_db', 'hang_knee', 'pallof'].includes(id));
+const leaks = gymIds.filter((id) => M.allowed(M.MOVES[id], homeOnly) && !['calf_db', 'rdl_db', 'hang_knee', 'pallof', 'lunge_db', 'split_db'].includes(id));
 check('home equipment never unlocks a gym machine or barbell move', !leaks.length, leaks);
 
 section('Gym props');
@@ -249,8 +249,7 @@ for (const id of gymIds) {
     for (const p of props) {
       if (p.type === 'machine' && p.kind === 'legPress') {
         // The foot plate (under the soles) slides on the track line.
-        const sole = P.dir(pts.footDirN - 90);
-        const pc = [(pts.heN[0] + pts.toN[0]) / 2 + sole[0] * 5.5, (pts.heN[1] + pts.toN[1]) / 2 + sole[1] * 5.5];
+        const pc = P.sledCentre(p, pts);
         const u = P.dir(90 + (p.angle || 45));
         const off = Math.abs((pc[0] - p.track[0]) * u[1] - (pc[1] - p.track[1]) * u[0]);
         if (off > 1.5) gp.sled.push(`${at}: plate ${off.toFixed(1)} off the track`);
@@ -293,7 +292,7 @@ for (const id of gymIds) {
       }
     }
     // A bar on the back or the hips stays in the hands.
-    for (const e of m.equip || []) if (e.hold) {
+    for (const e of m.equip || []) if (e.hold === 'traps' || e.hold === 'lap') {
       const bar = P.pinPoint(pts, e.hold), g = P.pinPoint(pts, 'grip');
       if (Math.hypot(bar[0] - g[0], bar[1] - g[1]) > 2) gp.held.push(`${at}: hands ${Math.hypot(bar[0] - g[0], bar[1] - g[1]).toFixed(1)} off the bar`);
     }

@@ -460,7 +460,11 @@
     const out = [];
     for (const e of move.equip || []) {
       const hands = e.hands === 'both' ? ['N', 'F'] : e.hands === 'N' || e.hands === 'F' ? [e.hands] : ['N'];
-      if (e.type === 'db') {
+      if (e.type === 'db' && e.hold === 'feet') {
+        // Squeezed between the feet (a lying leg curl): end-on across the arches.
+        const arch = (s) => [lerp(pts['an' + s][0], pts['to' + s][0], 0.45), lerp(pts['an' + s][1], pts['to' + s][1], 0.45)];
+        out.push({ k: 'dbEnd', c: mid(arch('N'), arch('F')), r: 5.2, layer: 'front' });
+      } else if (e.type === 'db') {
         for (const s of hands) {
           const g = equipGrip(pts, s);
           const fa = angOf(sub(pts['wr' + s], pts['el' + s]));
@@ -901,6 +905,18 @@
   }
   const GYM_PROPS = ['bench', 'rack', 'smith', 'cable', 'dip', 'machine', 'rower', 'bike', 'treadmill'];
 
+  // The leg press foot plate's centre (it slides on the line through p.track): under the middle of
+  // the soles, or for a calf raise (p.calf) square to the track with the balls of the feet near its
+  // bottom edge and the heels hanging off it.
+  function sledCentre(p, pts) {
+    if (!p.calf) return add(mid(pts.heN, pts.toN), mul(dir(pts.footDirN - 90), 5.5));
+    const ang = p.angle || 45;
+    const u = dir(90 + ang), pd = dir(180 + ang);
+    const ball = [lerp(pts.anN[0], pts.toN[0], 0.75), lerp(pts.anN[1], pts.toN[1], 0.75)];
+    const c = add(add(ball, mul(u, 5.5)), mul(pd, 18));
+    return add(p.track, mul(u, (c[0] - p.track[0]) * u[0] + (c[1] - p.track[1]) * u[1]));
+  }
+
   // Moving parts, per frame: cables, sleds, pads, levers, seats and cranks that follow the joints.
   function movingParts(move, pts) {
     const out = [];
@@ -912,8 +928,7 @@
         if (p.kind === 'legPress') {
           const ang = p.angle || 45;
           const u = dir(90 + ang), pd = dir(180 + ang);
-          const sole = dir(pts.footDirN - 90);
-          const pc = add(mid(pts.heN, pts.toN), mul(sole, 5.5));
+          const pc = sledCentre(p, pts);
           out.push({ k: 'plate', c: add(pc, mul(u, 14)), r: 19, layer: 'back' });
           out.push({ k: 'poly', pts: [add(pc, mul(pd, -27)), add(pc, mul(pd, 27)), add(add(pc, mul(pd, 27)), mul(u, 12)), add(add(pc, mul(pd, -27)), mul(u, 12))], cls: 'fig-prop', layer: 'back' });
           out.push({ k: 'tube', a: add(pc, mul(pd, -27)), b: add(pc, mul(pd, 27)), w: 4.4, cls: 'eq-lever', layer: 'back' });
@@ -1421,6 +1436,6 @@
 
   GH.pose = {
     L, W, SEAT_H, dir, flatten, mix, solve, timeline, sampleAt, frameAt, framePose, poseByName, bounds, equipment, drawList, segments, mount, thumb, still, MUSCLES_SIDE, MUSCLES_FRONT,
-    gymGeom, movingParts, cableRuns, pinPoint, equipGrip, GYM_PROPS,
+    gymGeom, movingParts, cableRuns, pinPoint, equipGrip, sledCentre, GYM_PROPS,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

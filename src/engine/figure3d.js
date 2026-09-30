@@ -814,12 +814,15 @@ const HINTS = {
   supermanPull: { handZ: { N: 30, F: 30 }, flare: { N: 16, F: 16 } },
   // Kettlebell high pull: elbows high and wide.
   kbHighPull: { flare: { N: 30, F: 30 } },
+  // Chest opener: hands clasped behind the back.
+  chestOpen: { handZ: { N: 3.5, F: 3.5 } },
 };
 
 function gripOf(move, s) {
   for (const e of move.equip || []) {
     if (!HELD.has(e.type)) continue;
     if (e.type === 'kb' && (e.hold === 'hip' || e.hold === 'chest') && !e.hands) continue;
+    if (e.hold === 'feet') continue; // squeezed between the feet, not held
     const hs = hands(e);
     if (hs.includes(s)) return { type: e.type, e, both: hs.length === 2 };
   }
@@ -1268,6 +1271,20 @@ function motion(A, J, T, hip, neck) {
   }
 }
 
+// A nearly straight arm: its slight bend in the picture says little about where the elbow points
+// (the pole then sits on the arm, and the elbow can flip from side to side), so it points where a
+// relaxed elbow does, behind the arm and a little out.
+function relaxedPole(pts, s, sh, W, J, lat, flare, pole) {
+  const u2 = [pts['el' + s][0] - pts['sh' + s][0], pts['el' + s][1] - pts['sh' + s][1]];
+  const f2 = [pts['wr' + s][0] - pts['el' + s][0], pts['wr' + s][1] - pts['el' + s][1]];
+  const cb = (u2[0] * f2[0] + u2[1] * f2[1]) / ((Math.hypot(u2[0], u2[1]) * Math.hypot(f2[0], f2[1])) || 1);
+  const bent = smooth(10, 28, Math.acos(clamp(cb, -1, 1)) / D2R);
+  if (bent >= 1) return;
+  const ua = W.clone().sub(sh).normalize();
+  const nat = sh.clone().lerp(W, 0.5).addScaledVector(armFront(ua, J.up, J.fwd), -12).addScaledVector(lat, 4 - flare);
+  pole.lerp(nat, 1 - bent);
+}
+
 // Arms for the side and front lifts.
 function arms(A, J, pts, f, P2, P3, T) {
   const L = PZ().L;
@@ -1344,28 +1361,19 @@ function arms(A, J, pts, f, P2, P3, T) {
         W.z = sh.z + Math.sqrt(Math.max(0, reach * reach - d * d)) * 0.85;
         pole.z = (W.z + sh.z) / 2 - 4;
       }
-      if (!(held && g && g.both) && dz == null) {
-        // A nearly straight arm: its slight bend in the picture says little about where the elbow
-        // points (and can cancel the flare and flip it), so it points where a relaxed elbow does,
-        // behind the arm and a little out.
-        const u2 = [pts['el' + s][0] - pts['sh' + s][0], pts['el' + s][1] - pts['sh' + s][1]];
-        const f2 = [pts['wr' + s][0] - pts['el' + s][0], pts['wr' + s][1] - pts['el' + s][1]];
-        const cb = (u2[0] * f2[0] + u2[1] * f2[1]) / ((Math.hypot(u2[0], u2[1]) * Math.hypot(f2[0], f2[1])) || 1);
-        const bent = smooth(10, 28, Math.acos(clamp(cb, -1, 1)) / D2R);
-        if (bent < 1) {
-          const ua = W.clone().sub(sh).normalize();
-          const nat = sh.clone().lerp(W, 0.5).addScaledVector(armFront(ua, J.up, J.fwd), -12).addScaledVector(lat, 4 - flare);
-          pole.lerp(nat, 1 - bent);
-        }
-      }
+      if (!(held && g && g.both) && dz == null) relaxedPole(pts, s, sh, W, J, lat, flare, pole);
     }
     if (hint.flare && hint.flare[s] != null) flare = hint.flare[s];
-    // Planted hands put the palm on the surface; bars put the fist around the bar.
-    const planted = (c.kind === 'floor' || c.kind === 'top') ? c.w : 0;
+    // Planted hands put the palm on the surface, eased per figure as a hand lands or lifts (the flat
+    // palm puts the wrist lower than the flat figure's, so an arm landing fast would straighten with a
+    // flick); bars put the fist around the bar.
+    const onSurf = (c.kind === 'floor' || c.kind === 'top') ? c.w : 0;
+    const surfs = A.surfY || (A.surfY = {});
+    if (onSurf > 0) surfs[s] = c.kind === 'floor' ? 0 : c.y;
+    const planted = surfs[s] != null ? settle(A, 'plant' + s, onSurf, T, 0.006, 0.008).v : 0;
     if (planted > 0 && A.view !== 'top') {
       // The wrist sits just above the palm, which lies flat on the surface.
-      const surfY = c.kind === 'floor' ? 0 : c.y;
-      W.y = lerp(W.y, surfY + 2.05, planted);
+      W.y = lerp(W.y, surfs[s] + 2.05, planted);
     }
     if (c.kind === 'wall' && c.w > 0) {
       const wx = c.wall.x;
@@ -1815,7 +1823,13 @@ class Equipment {
     for (const it of this.items) {
       const e = it.e;
       const hs = hands(e);
-      if (e.type === 'db') {
+      if (e.type === 'db' && e.hold === 'feet') {
+        // Squeezed between the feet: across the arches, its bar along the hips.
+        const g = it.parts[hs[0]];
+        const arch = (s) => J.an[s].clone().addScaledVector(J.foot[s] ? J.foot[s].a : J.fwd, 7);
+        g.position.copy(arch('N').lerp(arch('F'), 0.5));
+        g.quaternion.copy(frameQ(V3(0, 1, 0), V3().crossVectors(J.lat, V3(0, 1, 0))));
+      } else if (e.type === 'db') {
         for (const s of hs) {
           const g = it.parts[s];
           g.position.copy(this.gripPoint(J, s));
@@ -2203,7 +2217,7 @@ class Props {
         roll.rotation.x = Math.PI / 2; roll.position.set(kn.x - 4, kn.y + 12, 0);
       }
     }
-    this.dyn.push({ kind: 'machine', mk: kind, parts, J0 });
+    this.dyn.push({ kind: 'machine', mk: kind, parts, J0, p });
   }
 
   rower(p, M, g, A) {
@@ -2281,7 +2295,7 @@ class Props {
         d.line.quaternion.copy(frameQ(dd, V3(0, 0, 1)));
         d.line.scale.set(0.35, dd.length(), 0.35);
       } else if (d.kind === 'machine') {
-        this.machineUpdate(d, J);
+        this.machineUpdate(d, J, pts);
       } else if (d.kind === 'rower') {
         d.seat.position.set(J.hip.x - 1, J.hip.y - 11, 0);
         const h = J.wr.N.clone().lerp(J.wr.F, 0.5);
@@ -2316,7 +2330,7 @@ class Props {
     }
   }
 
-  machineUpdate(d, J) {
+  machineUpdate(d, J, pts) {
     const P = d.parts, k = d.mk;
     const lever = (m, a, b) => {
       const dd = b.clone().sub(a);
@@ -2324,7 +2338,14 @@ class Props {
       m.quaternion.copy(frameQ(dd, V3(0, 0, 1)));
       m.scale.set(1, Math.max(1, dd.length()), 1);
     };
-    if (k === 'legPress') {
+    if (k === 'legPress' && d.p && d.p.calf && pts) {
+      // A calf raise: the plate stays square to the track under the balls of the feet.
+      const c2 = PZ().sledCentre(d.p, pts);
+      const u = dir2(90 + (d.p.angle || 45));
+      const n = V3(u[0], -u[1], 0).normalize();
+      P.plate.position.set(c2[0], -c2[1] + this.fig.A.raise, 0).addScaledVector(n, -4);
+      P.plate.quaternion.copy(frameQ(V3(0, 0, 1).cross(n), n));
+    } else if (k === 'legPress') {
       const soles = SIDES.map((s) => V3(0, 6, -8.5).applyQuaternion(this.fig.P['ft' + s].quaternion).add(this.fig.P['ft' + s].position));
       const c = soles[0].clone().add(soles[1]).multiplyScalar(0.5); c.z = 0;
       const n = V3(0, 0, 1).applyQuaternion(this.fig.P.ftN.quaternion).negate();
@@ -3240,6 +3261,9 @@ GH.figure3d = {
     // Where a kettlebell's bell is (its centre).
     const kb = fig.eq.items.find((it) => it.parts.kb);
     if (kb) out.kb = a(V3(0, -12.8, 0).applyQuaternion(kb.parts.kb.quaternion).add(kb.parts.kb.position));
+    // And a dumbbell squeezed between the feet.
+    const feet = fig.eq.items.find((it) => it.e.type === 'db' && it.e.hold === 'feet');
+    if (feet) out.dbFeet = a(feet.parts.N.position);
     return out;
   },
 };
