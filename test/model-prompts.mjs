@@ -53,7 +53,7 @@ if (mode === 'write') {
   const answers = index.map((x, i) => {
     const file = join(dir, `${String(i + 1).padStart(2, '0')}.out`);
     const raw = existsSync(file) ? x.lead + readFileSync(file, 'utf8') : '';
-    return Object.assign({ raw }, x, GH.deviceCoach.finish(S, day, x.q, raw, x.given));
+    return Object.assign({ raw }, x, GH.deviceCoach.finish(S, day, x.q, raw, x.given, x.lead));
   });
   for (const a of answers) {
     console.log(`\nQ: ${a.q}\nFACTS: ${a.facts.join(' | ') || 'none'}${a.lead ? `\nSTARTS WITH: ${a.lead}` : ''}\nMODEL: ${a.raw.trim()}`);

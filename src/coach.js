@@ -293,6 +293,17 @@
     return v && v.asks.test(q) ? v.of(S, day, facts(S, day)) : null;
   }
 
+  // A question built on something that isn't so ("Why is today lighter?" on a full day) starts from
+  // the app's correction, so a model can't make up a reason for it. null when there's nothing to fix.
+  function correction(S, day, question) {
+    const q = String(question || '');
+    if (topicOf(q) !== 'today' || !/\b(lighter|easier|shorter|smaller|less|fewer|cut|reduced)\b/i.test(q) || S.profile.workouts === false) return null;
+    const b = B();
+    const plan = b.todayPlan(S, day);
+    if (plan.type !== 'workout') return null; // a light, rest or finished day has its own answer
+    return b.readiness(S, day).reasons.length ? null : 'Today isn\'t lighter:';
+  }
+
   // Answers a question from the user's own numbers. { text, topic } (topic null = no match).
   function ask(S, day, question) {
     const topic = topicOf(question);
@@ -502,5 +513,5 @@
   }
   function dismiss(S, id, day) { S.coachDismissed = S.coachDismissed || {}; S.coachDismissed[id] = day; }
 
-  GH.coach = { report, glance, ask, verdict, topicOf, facts, claudePrompt, decisions, timeline, watching, suggestions, validAction, apply, dismiss };
+  GH.coach = { report, glance, ask, verdict, correction, topicOf, facts, claudePrompt, decisions, timeline, watching, suggestions, validAction, apply, dismiss };
 })(typeof window !== 'undefined' ? window : globalThis);

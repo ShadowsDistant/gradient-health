@@ -118,8 +118,9 @@ const restCheck = (supersets) => {
   S2.profile.prefs.supersets = supersets;
   const items = [0, 1, 2, 3].flatMap((i) => B.buildSession(S2, D0 + i, i % 2, {}).items);
   const solo = items.filter((it) => !it.superset);
-  const big = solo.filter((it) => ['push', 'row', 'squat', 'hinge', 'pull', 'chestDb'].includes(it.fam));
-  const small = solo.filter((it) => !['push', 'row', 'squat', 'hinge', 'pull', 'chestDb'].includes(it.fam));
+  const BIG = ['push', 'press', 'row', 'squat', 'hinge', 'pull', 'chestDb'];
+  const big = solo.filter((it) => BIG.includes(it.fam));
+  const small = solo.filter((it) => !BIG.includes(it.fam));
   return { ok: big.every((it) => it.rest === 90) && small.every((it) => it.rest === 60) && items.filter((it) => it.superset).every((it) => it.rest === 60), big: big.length, paired: items.filter((it) => it.superset).length };
 };
 const rc1 = restCheck(false), rc2 = restCheck(true);
@@ -232,6 +233,10 @@ section('Tailor my plan: reading a request');
   check('new kit', P('I got a resistance band').add_equipment.join() === 'band');
   check('"less arms, more legs" only asks for more legs', P('less arms more legs').focus.join() === 'legs');
   check('small talk changes nothing', T.empty(T.valid(person(), P('hello, how are you?'))));
+  check('a single muscle is a muscle to lean toward, not its whole group', P('Train my calves more').muscles.join() === 'calves' && !P('Train my calves more').focus.length);
+  check('"more legs and glutes": legs first, and glutes leaned toward', P('More legs and glutes').focus.join() === 'legs' && P('More legs and glutes').muscles.join() === 'glutes');
+  check('"upper back" and "rear delts" aren\'t the whole back or shoulders', P('more upper back and rear delts').muscles.sort().join() === 'rearDelts,upperBack' && !P('more upper back and rear delts').focus.length);
+  check('"my lower back hurts" is a joint, "strengthen my lower back" a muscle', !P('my lower back hurts').muscles.length && P('my lower back hurts').avoid_joints.join() === 'back' && P('strengthen my lower back').muscles.join() === 'lowerBack');
 }
 section('Tailor my plan: checking and applying');
 {
@@ -242,7 +247,7 @@ section('Tailor my plan: checking and applying');
   check('at most two goals come first (arms counts once for biceps and triceps)', v.focus.join() === 'chest,biceps,triceps', v.focus);
   check('minutes and days are held to what the plan allows', v.minutes === 60 && v.days === 6, v);
   check('unknown joints, moves and kit are dropped; a note is kept short', v.avoid_joints.join() === 'knee' && !v.avoid_moves.length && v.add_equipment.join() === 'band' && v.note.length === 200 && v.gentle == null);
-  check('muscle ids from the body map mean their group', T.valid(S, { focus: ['calves'] }).focus.join() === 'legs' && T.valid(S, { focus: ['upperBack'] }).focus.join() === 'back');
+  check('muscle ids from the body map are muscles to lean toward', T.valid(S, { focus: ['calves'] }).muscles.join() === 'calves' && T.valid(S, { muscles: ['upperBack'] }).muscles.join() === 'upperBack' && !T.valid(S, { focus: ['calves'] }).focus.length);
   check('what already is isn\'t a change', T.empty(T.valid(S, { minutes: S.profile.minutes, days: S.profile.days, focus: [] })));
   const t = T.valid(S, T.parse('More legs, my knees hurt, 30 minute workouts'));
   const { lines } = T.plan(S, t);
@@ -266,7 +271,19 @@ section('Tailor my plan: checking and applying');
   const cut = T.read('{"focus":["legs"],"goals":[],"minutes":20,"days":null,"avoid_joints":["knee"],"no_jumping":null,"gentle":null,"note":"More legs and easy on');
   check('an answer cut off in its note is still read', cut && cut.focus.join() === 'legs' && cut.minutes === 20 && /^More legs/.test(cut.note), cut);
   check('and nonsense isn\'t', T.read('hello') === null && T.read('') === null);
-  check('the on-device grammar only allows the fields and values the app reads', /focus/.test(T.GRAMMAR) && /shoulders/.test(T.GRAMMAR) && /avoid_joints/.test(T.GRAMMAR) && !/calves/.test(T.GRAMMAR));
+  // A single muscle: the plan leans toward it (profile.focus), and Undo takes it off again.
+  const S4 = person();
+  const calves = T.valid(S4, T.parse('Train my calves more'));
+  const said = T.plan(S4, calves).lines.map((l) => l.text);
+  check('"Train my calves more" says calves get more of the work', calves.muscles.join() === 'calves' && said.some((x) => /^Calves: more of the work/.test(x)), said);
+  const legsBefore = B.programFor(S4.profile).tiers.legs;
+  T.apply(S4, D0, calves);
+  check('applying makes calves a focus, and lifts legs a tier', (S4.profile.focus || []).join() === 'calves' && B.programFor(S4.profile).tiers.legs === Math.max(1, legsBefore - 1), [S4.profile.focus, legsBefore, B.programFor(S4.profile).tiers.legs]);
+  check('a model naming a muscle in focus counts it as a muscle', T.valid(person(), { focus: ['hamstrings', 'chest'] }).muscles.join() === 'hamstrings' && T.valid(person(), { focus: ['hamstrings', 'chest'] }).focus.join() === 'chest');
+  check('a muscle already a focus isn\'t asked again', T.empty(T.valid(S4, T.parse('more calves'))));
+  T.undo(S4, D0);
+  check('undo takes the focus off', !(S4.profile.focus || []).length);
+  check('the on-device grammar only allows the fields and values the app reads', /focus/.test(T.GRAMMAR) && /shoulders/.test(T.GRAMMAR) && /avoid_joints/.test(T.GRAMMAR) && /calves/.test(T.GRAMMAR) && !/obliques|rearDelts/.test(T.GRAMMAR));
 }
 
 section('The on-device coach keeps to the app\'s numbers');
@@ -291,14 +308,22 @@ section('The on-device coach keeps to the app\'s numbers');
   check('numbers it was given, rounded or with commas, stay', DC.keepToGiven('You weigh about 68 kg and slept 6 h 59, against a goal of 8,000.', given).cut === 0);
   check('an answer with nothing made up is kept exactly', DC.keepToGiven('Yes, you walk plenty.\nKeep it up.', given).text === 'Yes, you walk plenty.\nKeep it up.');
   const q = 'Am I doing enough steps?';
-  const cut = DC.finish(walker, D0, q, 'Yes, you walk 7675 steps a day, which is great for your health. That puts you in the top 12% of people.', given);
+  const cut = DC.finish(walker, D0, q, 'Yes, you walk 7675 steps a day, which is great for your health. That puts you in the top 12% of people.', given, 'Yes,');
   check('a made-up line goes and a note says so', cut.cut === 1 && !/12%/.test(cut.text) && /7675/.test(cut.text) && /Left out a line/.test(cut.note), cut);
-  const bad = DC.finish(walker, D0, q, 'Yes, 12,000 steps.', given);
+  const bad = DC.finish(walker, D0, q, 'Yes, 12,000 steps.', given, 'Yes,');
   check('if too little is left, the app\'s own answer stands in', bad.replaced && bad.text === C.ask(walker, D0, q).text && /didn't match your numbers/.test(bad.note), bad);
-  const none = DC.finish(walker, D0, q, 'Yes,', given);
+  const none = DC.finish(walker, D0, q, 'Yes,', given, 'Yes,');
   check('and when all it wrote was the yes or no', none.replaced && /didn't answer/.test(none.note), none);
-  const fine = DC.finish(walker, D0, q, 'Yes, you walk 7675 steps a day, above what most studies link to better health.', given);
+  const fine = DC.finish(walker, D0, q, 'Yes, you walk 7675 steps a day, above what most studies link to better health.', given, 'Yes,');
   check('a good answer goes through untouched, with no note', !fine.replaced && !fine.note && fine.text.startsWith('Yes, you walk 7675'), fine);
+
+  // A question built on something that isn't so starts from the app's correction.
+  const full = person(), tired = person({ sleep: 270 });
+  const fullDay = B.todayPlan(full, D0).type === 'workout' && !B.readiness(full, D0).reasons.length;
+  check('"Why is today lighter?" on a full day starts from "Today isn\'t lighter:"', !fullDay || (C.correction(full, D0, 'Why is today lighter?') === 'Today isn\'t lighter:' && DC.lead(full, D0, 'Why is today lighter?') === 'Today isn\'t lighter:'), { fullDay });
+  check('but not when today really is lighter, or for other questions', C.correction(tired, D0, 'Why is today lighter?') === null && C.correction(full, D0, 'How is my sleep?') === null);
+  const corrected = DC.finish(full, D0, 'Why is today lighter?', 'Today isn\'t lighter:', 'Today isn\'t lighter:', 'Today isn\'t lighter:');
+  check('a correction with nothing after it counts as no answer', corrected.replaced && /didn't answer/.test(corrected.note), corrected);
 
   // ask() end to end, with a stand-in for the model.
   let sent = null;

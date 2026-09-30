@@ -203,9 +203,10 @@ way for both:
 
 Both are the same llama.cpp release (b10663). Details:
 
-- **Models.** Qwen3.5 in three sizes, Q4_K_M from unsloth's Hugging Face repos: Fast (0.8B, 533 MB,
-  recommended on every phone), Balanced (2B, 1.28 GB, offered with 6 GB of RAM or more) and Best answers
-  (4B, 2.74 GB, 12 GB or more). Qwen3.5 mixes gated delta-net (recurrent) layers with full attention.
+- **Models.** Qwen3.5 in three sizes, Q4_K_M from unsloth's Hugging Face repos: Fast (0.8B, 533 MB),
+  Balanced (2B, 1.28 GB, offered with 6 GB of RAM or more) and Best answers (4B, 2.74 GB, 12 GB or more).
+  Balanced is the one suggested on phones with the native engine and 8 GB or more (on the model check's
+  prompts it reads the facts clearly better than Fast, at about half the speed); Fast everywhere else. Qwen3.5 mixes gated delta-net (recurrent) layers with full attention.
   1.2's Qwen2.5 models stay in the table as `legacy`, with their SHA-256 pinned: not offered, but one
   already on a phone keeps working.
 - **Prompts** are built in JS (`chatml()`), so neither engine depends on a template engine: ChatML, and
@@ -224,6 +225,13 @@ Both are the same llama.cpp release (b10663). Details:
   goes in with FACTS: what the built-in coach (`src/coach.js`) works out for its topic, the How it works
   rule behind it (`src/data/science.js`) and, for today, what the plan changed and why. The chat shows
   them under each answer ("What it used"). Emergencies get the built-in safety answer instead.
+- **Checked answers.** Small models still slip, so `GH.deviceCoach` holds them to the app's reading. A
+  yes-or-no question the numbers settle (`GH.coach.verdict`: "Am I getting stronger?") and a question
+  built on something that isn't so (`GH.coach.correction`: "Why is today lighter?" on a full day) start
+  from the app's own words, passed to `GH.llm.chat` as `lead` (written into the prompt, so the model
+  carries on from it). Afterwards `keepToGiven` leaves out any sentence with a number that wasn't in the
+  prompt (a rounded one counts), and `finish` puts the app's own answer in its place if too little is
+  left, with a note under the answer saying so.
 - **Nothing hangs silently.** Range reads time out after 30 s (three tries); a load with no progress
   for 45 s and an answer with nothing new for 60 s are "stalled"; a wllama worker that dies (wllama only
   logs that) or won't stop within 5 s of Stop is shut down, and everything waiting on it is rejected.
@@ -237,7 +245,9 @@ Both are the same llama.cpp release (b10663). Details:
 - **Tailor my plan** (`src/tailor.js`, `src/ui/tailor.js`) turns a request into a proposal with rules
   first; what they miss goes to Claude (structured output) or the on-device model, held to a GBNF
   grammar (`GH.tailor.GRAMMAR`, passed as `grammar` to either engine) so it can only write the fields and
-  values the app reads.
+  values the app reads. A muscle group ("more legs") puts that goal first; a single muscle ("calves",
+  "rear delts") goes into `profile.focus` (up to 4), which lifts its group a tier and leans that group's
+  days toward it.
 - **Downloads** run in Java (`ModelStore.java`, started by `AndroidBridge.modelDownload`): one at a
   time, only from Hugging Face, resumable from a `.part` file, optionally Wi-Fi only, after a free-space
   check. A file counts as installed once its size (the Hub's exact size, within 3% of the table's),
@@ -262,7 +272,11 @@ Both are the same llama.cpp release (b10663). Details:
   them to the built page and checks the catalog, prompts, loading, streaming, the cache, reading ahead,
   abort, unloading, the Tailor grammar and the download API, and runs the native adapter against a fake
   `LlmService` (streaming, Stop, a restarted service, a stuck or crashed engine). `test/ui-chat.mjs`
-  runs the chat and Tailor with the tiny Qwen3.5 model:
+  runs the chat and Tailor with the tiny Qwen3.5 model. On GitHub, `.github/workflows/model-check.yml`
+  (on pushes to the AI code, or by hand) downloads the real models: `test/model-check.mjs` asks the
+  in-app engine through `GH.deviceCoach.ask`, and `test/model-prompts.mjs` writes the app's exact
+  prompts for `ghllm_ask` (the native core built for the runner) to answer with Fast and Balanced, then
+  prints each answer as the chat would show it:
 
   ```sh
   python3 -m venv build/venv && build/venv/bin/pip install gguf numpy

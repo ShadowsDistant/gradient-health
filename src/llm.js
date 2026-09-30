@@ -181,11 +181,13 @@ function fits(m) { const ram = ramGB(); return ram == null || ram >= (m.minRamGB
 // The models to offer on this phone: the current ones it has the memory for (Balanced with 6 GB or
 // more, Best answers with 12). Older models only show up while they're installed.
 function offered() { return cfg.models.filter((m) => !m.legacy && fits(m)); }
-// The one to suggest: Fast, on every phone. It starts answering within a second or two; the bigger
-// sizes write better answers but take longer, so they're a choice rather than the default.
+// The one to suggest. With the native engine and 8 GB or more, Balanced: it reads the facts clearly
+// better and still writes faster than you read (about half Fast's speed). Otherwise Fast, which
+// starts answering soonest; the bigger sizes stay a choice.
 function recommended() {
   const list = offered();
-  return list.find((m) => m.tier === 'fast') || list[0] || null;
+  const roomy = nativeOk() && (ramGB() || 0) >= 8;
+  return (roomy && list.find((m) => m.tier === 'balanced')) || list.find((m) => m.tier === 'fast') || list[0] || null;
 }
 
 /* ------------------------------------------------------------------ downloads (ModelStore.java) */

@@ -157,11 +157,14 @@
     S.ai.deviceChat = (S.ai.deviceChat || []).concat([{ role: 'user', text: q, safety: !!safety }, answer]).slice(-16);
   }
   // A yes-or-no question the numbers settle starts with the app's own yes or no (GH.coach.verdict),
-  // written into the prompt so the model carries on from it: it explains the answer instead of
+  // and one built on something that isn't so with the app's correction (GH.coach.correction), both
+  // written into the prompt so the model carries on from them: it explains the answer instead of
   // guessing it.
   function lead(S, day, question) {
-    const v = GH.coach && GH.coach.verdict ? GH.coach.verdict(S, day, question) : null;
-    return v ? `${v},` : '';
+    const C = GH.coach;
+    const v = C && C.verdict ? C.verdict(S, day, question) : null;
+    if (v) return `${v},`;
+    return (C && C.correction && C.correction(S, day, question)) || '';
   }
   // Every number in an answer should be one the model was given, or that number rounded: small models
   // sometimes make one up or do their own sums. Sentences with any other number are left out.
@@ -178,13 +181,15 @@
   // The answer as shown: the model's, less any sentence with a number it wasn't given. If that leaves
   // next to nothing (or it only got as far as the yes or no), the app's own answer stands in, and a
   // note says so. { text, note, cut, replaced }.
-  function finish(S, day, question, raw, given) {
+  // (start: what the answer was started with, which isn't the model's own words.)
+  function finish(S, day, question, raw, given, start) {
     const text = String(raw || '').trim();
     const k = keepToGiven(text, given);
-    const words = k.text.replace(/^(yes|no|not yet|not quite)\b,?\s*/i, '');
+    const after = (x) => { const lead0 = String(start || '').trim(); return (lead0 && x.startsWith(lead0) ? x.slice(lead0.length) : x).trim(); };
+    const words = after(k.text);
     if (words.length >= (k.cut ? 30 : 8)) return { text: k.text, note: k.cut ? 'Left out a line with a number that isn\'t in your data.' : null, cut: k.cut, replaced: false };
     const own = GH.coach ? GH.coach.ask(S, day, question).text : '';
-    const why = text.replace(/^(yes|no|not yet|not quite)\b,?\s*/i, '') ? 'The model\'s answer didn\'t match your numbers' : 'The model didn\'t answer';
+    const why = after(text) ? 'The model\'s answer didn\'t match your numbers' : 'The model didn\'t answer';
     return { text: own || text, note: own ? `${why}, so this is the app's own.` : null, cut: k.cut, replaced: !!own };
   }
 
@@ -251,7 +256,7 @@
     const st = llm.stats;
     const aborted = !!(opt.signal && opt.signal.aborted) || !!(st && st.aborted);
     // Stopped part way: what it wrote so far, as it is.
-    const out = aborted ? { text: String(raw || '').trim(), note: null, cut: 0, replaced: false } : finish(S, day, q, raw, `${given}\n${start}`);
+    const out = aborted ? { text: String(raw || '').trim(), note: null, cut: 0, replaced: false } : finish(S, day, q, raw, `${given}\n${start}`, start);
     const text = out.text;
     if (text) record(S, q, text, false, id, f, out.note);
     // How fast this model answers on this phone (for the model picker), smoothed over real answers.
