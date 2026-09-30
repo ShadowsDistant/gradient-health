@@ -23,6 +23,12 @@ Tell it what your gym has (barbells, a rack, cables, machines, a full dumbbell r
 
 Miss a day and the rest of the week moves forward instead of doubling up. Short on time? One tap turns today's session into a real 12 to 15 minute version. Started by mistake, or just not feeling it? Go back and cancel the workout: nothing from it is saved or counts against your streak, and Undo brings it back.
 
+## Your own plan, or a friend's
+
+Rather pick the exercises yourself? Build a plan like a playlist: add moves from the library (each with a picture, filtered by muscle and by what you have), set the sets and reps with a tap, drag them into order, and pick your days. Or tell the coach "3 days, 30 minutes, bigger arms, easy on my knees" and it builds one from what it already knows about you. Either way it runs like the coach's plan, with the same player, rest timer and question after each exercise, and your reps and weights go up as you get stronger.
+
+Share a plan with a QR code or a link. Your friend scans it or taps it, sees the whole plan and saves it. If it needs something they don't have, like a barbell, or a move that's hard on a joint they're careful with, the app swaps in the closest exercise they can do and says so.
+
 ## One question makes it smarter
 
 After each exercise you get asked how many more reps you could have done. That's it. Answer 0 and it holds you steady, 1 or 2 and it adds a little, 3 or more and it moves you up: more reps first, then a heavier weight, then a harder version of the move. When you've outgrown your heaviest dumbbell, it tells you what to buy next.
@@ -74,7 +80,7 @@ Every rule Gradient Health follows, from how many sets you do to how long you re
 
 ## Private by design
 
-No account, no ads and no analytics. Everything stays on your phone. The only things that ever leave it are ones you choose: a summary you send to Claude (the app shows you exactly what it says first), the words or barcode of a food you look up online, and the one-time download of the on-device model. The [privacy policy](docs/PRIVACY.md) lists every piece of data and where it goes.
+No account, no ads and no analytics. Everything stays on your phone. The only things that ever leave it are ones you choose: a summary you send to Claude (the app shows you exactly what it says first), the words or barcode of a food you look up online, the one-time download of the on-device model, and a workout plan you share with someone. The [privacy policy](docs/PRIVACY.md) lists every piece of data and where it goes.
 
 ## Get it
 

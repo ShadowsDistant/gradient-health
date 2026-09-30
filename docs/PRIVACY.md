@@ -1,6 +1,6 @@
 # Gradient Health privacy policy
 
-Last updated September 29, 2026.
+Last updated September 30, 2026.
 
 Gradient Health is a workout, health and food tracking app for Android. This policy explains exactly what the app collects, where it keeps it, what (if anything) leaves your phone, and how to delete it.
 
@@ -8,7 +8,7 @@ Gradient Health is a workout, health and food tracking app for Android. This pol
 
 There's no account, no ads, no analytics and no tracking. Everything you enter, and everything the app reads from Health Connect, is stored on your phone. Android's own device backup can keep a copy if you have backup turned on (see below).
 
-Data only leaves your phone when you use one of these optional features, and only what the feature needs: a summary sent to Claude, once you've allowed it, when you ask it something and for your weekly report; a food search or barcode sent to Open Food Facts when you look a food up online; and a one-time download of the on-device AI model. Each one is off until you turn it on.
+Data only leaves your phone when you use one of these optional features, and only what the feature needs: a summary sent to Claude, once you've allowed it, when you ask it something and for your weekly report; a food search or barcode sent to Open Food Facts when you look a food up online; a one-time download of the on-device AI model; and a workout plan you choose to share, which goes only to the people you send it to. Each one is off until you turn it on.
 
 Nobody is paid for your data, and it's never used for advertising.
 
@@ -20,6 +20,7 @@ Nobody is paid for your data, and it's never used for advertising.
 | Workouts: exercises, sets, reps, weights, rest, how hard it felt, pain you report, left vs right tests | You, in the workout player | Deciding what you do next time; your stats, streaks and achievements | Only as totals and trends in the Claude summary, if you use Claude |
 | Health data you allow: steps, sleep, weight, height, body fat, resting heart rate, heart rate, heart rate variability, workouts from other apps, active calories, distance, nutrition logged in other apps | Health Connect, with your permission | Easier days after short sleep or poor recovery, light-day walks, weight trend, calorie burn estimate, trends and insights | Only as averages and trends in the Claude summary, if you use Claude |
 | Food log: foods, portions, calories, protein, carbs, fat, fibre, your custom foods and saved meals | You | Calorie and macro tracking, if you turn it on | Only as averages in the Claude summary, if you use Claude: your calorie target and what you ate on average, not the foods. Online food lookups send only the search words or the barcode number |
+| Your workout plans: their names, notes, days, exercises, sets and reps, how each exercise has progressed, and who shared a plan with you (a first name, if they included it) | You, the coach, or a plan someone shared with you | Running the plan you pick instead of the coach's | Only a plan you share yourself: the code or link holds that plan (not your workouts or health data) and your first name if you leave it on. If you ask Claude to build a plan, your request and the moves you can do go with the Claude summary |
 | Manual logs: weight, sleep, body measurements, how you feel, protein, activities outside the app | You | Trends, readiness and insights | Only as averages in the Claude summary, if you use Claude |
 | Coach chats: questions you ask and the answers | You and the coach | Showing the conversation and answering follow-ups | Only questions you send to Claude. The built-in and on-device coaches run on your phone |
 | Reports about AI answers: the answer you flag and the reason you pick | You | Hiding that answer, and telling the developer if you choose to | Only if you choose to send it: it opens as a GitHub issue that you can read and edit before posting |
@@ -41,12 +42,13 @@ Any service you connect to sees your IP address, as with every internet request.
 - **Anthropic (Claude).** Optional, and only after you allow it on a screen that lists what gets sent. With your own API key, the app sends a short summary of your data plus your question to Anthropic's API when you ask something, when you ask for suggestions, and for your weekly report (written when you open Health, at most once a week). The summary holds an age range, sex if you gave it, your goals, experience, schedule and equipment, joints you're careful with, averages and trends of your health data, your training numbers, and food averages if you track calories. It never includes your name, email, exact dates or device IDs. "Ask in the Claude app" hands the same summary and your question to the Claude app on your phone, only when you press the button. Settings, Coach, "What gets sent" shows the exact text. Anthropic's own privacy policy covers what happens after that.
 - **Open Food Facts.** Optional. When you search online or scan a barcode, the search words or the barcode number are sent to Open Food Facts (openfoodfacts.org) to look the food up. Nothing else about you goes with it. Their data is published under the Open Database License.
 - **Hugging Face.** Optional. If you download the on-device AI model, the file comes from Hugging Face (huggingface.co), like any download. After that the model runs entirely on your phone.
+- **Sharing a plan (GitHub Pages).** Optional, and only when you share one. Send a link hands the text to the app you pick on Android's share sheet; a QR code is read straight from your screen. Nothing goes through a server of ours. A link opened in a browser loads a small page from GitHub Pages (shadowsdistant.github.io), which sees the visit like any website but not the plan: the plan is in the part of the link after the #, which browsers keep to themselves, and the page reads it on the device and makes no other requests.
 
 ## Permissions the app asks for
 
 - **Health Connect (read).** Steps, sleep, weight, height, body fat, heart rate, resting heart rate, heart rate variability, exercise, active calories burned, distance and nutrition, for the features above. Each one is optional.
 - **Health Connect (write).** Exercise and nutrition, so your workouts and meals show up in your other health apps. Optional.
-- **Camera.** Only for scanning food barcodes, and only when you tap Scan. The image is read on your phone to find the barcode; no photo or video is saved or sent.
+- **Camera.** Only for scanning food barcodes and shared plan codes, and only when you tap Scan or Add a shared plan. The image is read on your phone to find the code; no photo or video is saved or sent.
 - **Internet and network state.** For the optional features above, and to wait for Wi-Fi before a large model download.
 - **Vibration.** Haptic feedback and workout timer alerts.
 

@@ -23,6 +23,10 @@ src/scanner.js           the barcode camera sheet; src/barcode.js is its lazy ZX
 src/insights.js          on-device insights
 src/coach.js             the built-in coach: report, answers, today's decisions, suggestions
 src/tailor.js            Tailor my plan: a request into a proposal, applied and undone (GH.tailor)
+src/customplan.js        your own plans: checks, running them, swaps, progression, the share code and
+                         Build me a plan (GH.customPlan)
+src/qr.js                a QR code encoder that draws SVG (GH.qr), for sharing plans
+src/share-page.html      the page a shared plan's link opens in a browser (built to docs/p/index.html)
 src/devicecoach.js       the on-device model's prompt: rules, a compact data brief, safety routing
 src/ai.js                the Claude API coach (bundled with the Anthropic SDK by esbuild)
 src/llm.js               on-device AI runtime (native engine or llama.cpp in WebAssembly), a lazy
@@ -33,6 +37,8 @@ src/ui/core.js           layout, tabs, router, in-place rendering (U.morph), tra
 src/ui/sheet.js          the bottom sheets: detents, dragging, springs (U.sheet in core.js wraps it)
 src/ui/chat.js           the coach chat and the coach button on every tab
 src/ui/tailor.js         the Tailor my plan sheet
+src/ui/customplan.js     Your plans: the list, the editor and exercise picker, sharing, a shared plan's
+                         preview, Build me a plan
 src/ui/metric.js         a health number's sheet: its history, chart, and adding or changing it
 src/ui/bodymap.js        Progress's body map (front and back, 17 muscles) and the muscle sheet
 src/ui/guide.js          tour, first-week checklist, tab tips, What's new
@@ -50,10 +56,11 @@ scripts/make-tiny-gguf.py  a tiny random-weight model for test/llm.mjs
 
 ```sh
 npm ci
-npm test          # simulations, insights, AI (mocked API), coach, poses, persistence, food, health, gym
-npm run build     # dist/gradient-health.html and dist/lazy/
+npm test          # simulations, insights, AI (mocked API), coach, poses, persistence, food, health, gym,
+                  # your plans
+npm run build     # dist/gradient-health.html, dist/lazy/, docs/PRIVACY.md and docs/p/index.html
 npm run smoke     # end-to-end run in Chromium (needs Playwright); add --dark for dark mode
-npm run test:ui   # layout regressions, food flows, the coach chat, the 3D figure (Chromium)
+npm run test:ui   # layout regressions, food flows, the coach chat, the 3D figure, your plans (Chromium)
 npm run test:llm  # on-device AI runtime in Chromium with a tiny model (see On-device AI)
 node test/sweep.mjs [--quick]   # every screen at 360-600 px, light/dark, 100%/130% text, overflow checks
 npm run apk       # build/gradient-health.apk (see below)
@@ -292,6 +299,52 @@ from logged intake and the weight trend (a regression on raw weigh-ins, blended 
   apps logged comes back as per-day totals. The nutrition permissions are only requested when calorie
   tracking is on (`AndroidBridge.hcRequestFood`).
 
+## Your plans
+
+People can build their own plans, ask the coach to build one, or add one someone shared, and run it
+with the app's own player, progression and readiness. `src/customplan.js` is pure logic on the saved
+state (`test/customplan.mjs`); `src/ui/customplan.js` is the screens (`test/ui-customplan.mjs`).
+
+- **A plan** is `{ v, id, name, note, days: [{ title, items: [{ move, sets, reps | secs, rest? }] }],
+  weekdays, source: 'you' | 'coach' | 'shared', from?, createdAt, updatedAt }`, kept in `S.customPlans`;
+  `S.activePlan` is the one in use (null: the coach's plan). `normalize()` brings anything plan-like (an
+  older save, a shared code, a model's answer) to what this version runs: known move ids, 1 to 6 days,
+  1 to 12 exercises a day, 1 to 10 sets, 1 to 100 reps or 5 to 600 seconds.
+- **Running one.** Switching is an event (`{ type: 'plan', day, id, n, wd }` in `S.events`), so the
+  calendar replays each week with the plan that was in force and past days keep their meaning. Four
+  hooks in `src/brain.js`, marked `[custom plans]`: `calendar()` takes a week's sessions from
+  `weekSessions()`, a missed day only moves sessions within the same plan's stretch of the week
+  (`regime`, `until`), `buildSession()` hands custom sessions (tpl `c:<plan id>:<day>`) to
+  `GH.customPlan.buildSession()`, and `finishWorkout()` moves their exercises on with `progress()`.
+  Readiness, lighter weeks and short-time trims apply as usual. Progress is kept per plan in
+  `S.planProg` (more reps or seconds, then more weight, back down when well short twice). A move someone
+  can't do (equipment, a joint in `profile.careful` or `S.pain`, no jumping, a hidden move, anything the
+  brain's rules leave out) is swapped for the most similar one they can do, and the plan says why.
+- **The share code.** `encode()` packs a plan as compact JSON (`[name, note, from, weekdays | 0,
+  [[title, [move, sets, amount, rest?], …], …]]`), compresses it with `deflate-raw` when that's smaller,
+  and writes a version byte (top bit: compressed) and the body in base64url. The link is
+  `https://shadowsdistant.github.io/gradient-health/p/#<data>`; `decode()` also takes
+  `gradienthealth://plan?d=<data>`, `intent://plan?d=<data>#Intent;…` and the bare data. A typical
+  3-day plan's link is about 350 characters, a version 12 QR code. `src/qr.js` draws the code as SVG;
+  `test/customplan.mjs` reads it back with ZXing. Scanning is the barcode sheet with `{ qr: true }`.
+- **Links into the app.** The shell calls `window.__gh.onLink(url)` when a link opens the running app
+  (it returns true when it took the link; other handlers stay chained), and `AndroidBridge.pendingLink()`
+  returns the link the app was started with. A new install shows the plan after set-up, and What's new
+  or the tour, which open by themselves, go first.
+- **The share page.** `src/share-page.html` is built to `docs/p/index.html` with the QR encoder and the
+  move names inlined, so it makes no requests (its CSP allows only its own script, by hash). It reads the
+  plan from the part after `#`, which browsers never send, and shows it. On Android it offers "Open in
+  Gradient Health" (an `intent://plan?d=…` link with the releases page as the fallback); elsewhere it
+  shows the code to scan. **GitHub Pages must be on** for links to open in a browser (the repository's
+  Settings, Pages, Deploy from a branch, `main`, `/docs`). QR codes, and links opened straight in the
+  app, work without it.
+- **Build me a plan.** `generate()` reads the request with Tailor's rules plus the split and the time,
+  has the brain plan a week for a copy of the person with those wishes, and turns it into a plan, so it
+  only holds moves they can do. With Claude on (`GH.ai.json`, a JSON schema) or an on-device model (a
+  GBNF grammar of the allowed move ids and exactly the days asked for), a model then renames, regroups
+  and re-picks from `allowedMoves()`. `accept()` keeps its answer only if it's a valid plan of moves this
+  person can do; otherwise the app's own plan stands.
+
 ## Publishing (Google Play and APKPure)
 
 The app targets API 36 (what Play requires for new apps and updates from Aug 31, 2026) and handles
@@ -353,8 +406,8 @@ SHA-256.
    privacy page gives: reads of steps, sleep, weight, height, body fat, heart rate, resting heart
    rate, HRV, exercise, active calories burned, distance and nutrition, and writes of exercise and
    nutrition. Google reviews this separately; allow a few days.
-6. **Other permissions.** `CAMERA` (barcode scanning only, asked when Scan is tapped; the camera
-   feature is declared not required), `INTERNET` (the optional Claude coach, Open Food Facts and the
+6. **Other permissions.** `CAMERA` (scanning food barcodes and shared plan codes only, asked when Scan
+   or Add a shared plan is tapped; the camera feature is declared not required), `INTERNET` (the optional Claude coach, Open Food Facts and the
    on-device model download) and `ACCESS_NETWORK_STATE` (so a model download can wait for Wi-Fi).
 7. **Privacy policy.** Play needs a public URL. [docs/PRIVACY.md](PRIVACY.md) has the text; host it
    somewhere public (GitHub Pages works) and link it in the listing and the Console.
@@ -363,6 +416,8 @@ SHA-256.
    - shared with Anthropic when Claude is on: health info and fitness info (averages and trends),
      personal info (an age range, and sex if given) and app activity (the questions asked);
    - shared with Open Food Facts when online food search is on: the search words and barcodes;
+   - a workout plan someone shares goes only where they send it themselves (Android's share sheet, or
+     a QR code on their screen), never through a server;
    - nothing else leaves the phone. The on-device model is a download from Hugging Face.
 9. **AI-generated content.** Every AI answer (on-device or Claude), Claude's weekly report and its
    suggestions have a Report action that hides the item and keeps a local record. Sending a report to
