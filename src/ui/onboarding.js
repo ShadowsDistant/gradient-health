@@ -24,7 +24,7 @@
     { id: 'track', title: 'What to track', modes: ['new'], section: 'Start' },
     { id: 'health', title: 'Health data', modes: ['new'], section: 'Start', when: () => hcOffered() },
     { id: 'about', title: 'About you', section: 'About you' },
-    { id: 'conditions', title: 'Anything to plan around?', section: 'About you', workout: true },
+    { id: 'conditions', title: 'Anything we should plan around?', section: 'About you', workout: true },
     { id: 'goals', title: 'Goals', section: 'Training', workout: true },
     { id: 'experience', title: 'Experience', section: 'Training', workout: true },
     { id: 'schedule', title: 'Schedule', section: 'Training', workout: true },

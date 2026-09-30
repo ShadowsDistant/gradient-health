@@ -1,6 +1,6 @@
 // The set-up in Chromium at phone size: which screens show for each "what to track" choice (never a
 // food tracking question on "Workouts and health"), with and without Health Connect, the "Anything
-// to plan around?" screen and what it changes, kind validation messages, Back (the button and
+// we should plan around?" screen and what it changes, kind validation messages, Back (the button and
 // Android Back), finishing onto Today, "Update my answers" (every screen, Save changes) and one
 // screen with Save from Settings, and no console errors. Screenshots go to build/ui-onboarding/.
 // Usage: node test/ui-onboarding.mjs [--dark] [--width=390]
@@ -65,7 +65,7 @@ section('Which screens show');
   const { ctx, page } = await fresh('app');
   let food = false;
   const seen = await walk(page, async (t) => { if (await foodQuestion(page)) food = true; if (t === 'What to track') check('"Workouts and health" is picked by default', await page.locator('input[name="obTrack"][value="workouts"]').isChecked()); });
-  check('Workouts and health: every step in order, Weight and protein instead of Food', seen.join(' > ') === W.concat(['Health data', 'About you', 'Anything to plan around?'], TRAINING, ['Baseline test', 'Weight and protein', 'Your plan']).join(' > '), seen.join(' > '));
+  check('Workouts and health: every step in order, Weight and protein instead of Food', seen.join(' > ') === W.concat(['Health data', 'About you', 'Anything we should plan around?'], TRAINING, ['Baseline test', 'Weight and protein', 'Your plan']).join(' > '), seen.join(' > '));
   check('Workouts and health never asks about food tracking', !food);
   await shot(page, '01-plan-workouts');
   await ctx.close();
@@ -73,7 +73,7 @@ section('Which screens show');
 {
   const { ctx, page } = await fresh('app');
   const seen = await walk(page, async (t) => { if (t === 'What to track') await track(page, 'both'); if (t === 'Food') await shot(page, '02-food-calories'); });
-  check('Workouts, health and food: the calorie set-up instead of Weight and protein', seen.join(' > ') === W.concat(['Health data', 'About you', 'Anything to plan around?'], TRAINING, ['Baseline test', 'Food', 'Your plan']).join(' > '), seen.join(' > '));
+  check('Workouts, health and food: the calorie set-up instead of Weight and protein', seen.join(' > ') === W.concat(['Health data', 'About you', 'Anything we should plan around?'], TRAINING, ['Baseline test', 'Food', 'Your plan']).join(' > '), seen.join(' > '));
   await ctx.close();
 }
 {
@@ -115,18 +115,18 @@ section('About you: kind checks, units, Enter');
   await page.keyboard.press('Enter');
   check('Enter moves to the next field', await page.evaluate(() => document.activeElement && document.activeElement.dataset.k === '_w'));
   await next(page);
-  check('valid answers move on', (await title(page)) === 'Anything to plan around?');
+  check('valid answers move on', (await title(page)) === 'Anything we should plan around?');
   await ctx.close();
 }
 
-section('Anything to plan around?');
+section('Anything we should plan around?');
 {
   const { ctx, page } = await fresh('web');
   await next(page); await next(page);
   await fill(page, 'age', 72);
   check('the age says what changes from 65', /From 65: balance practice every session/.test(await page.locator('.onboard').innerText()));
   await next(page);
-  check('conditions come right after About you', (await title(page)) === 'Anything to plan around?');
+  check('conditions come right after About you', (await title(page)) === 'Anything we should plan around?');
   check('from 60, it asks about getting down to the floor', await page.locator('.onboard .rf-segmented[aria-label="Getting down to the floor"]').count() === 1);
   check('pregnancy is explained, not offered', /Pregnant\? This plan isn't built for pregnancy/.test(await page.locator('.onboard').innerText()) && await page.locator('.onboard [data-list="conditions"][data-v="pregnancy"]').count() === 0);
   await page.click('.onboard .rf-chip[data-list="conditions"][data-v="balance"]'); await page.waitForTimeout(120);
@@ -142,7 +142,7 @@ section('Anything to plan around?');
   await next(page);
   check('then Goals', (await title(page)) === 'Goals');
   await page.click('.onboard [data-act="obBack"]'); await page.waitForTimeout(150);
-  check('the Back button goes to the screen before, answers kept', (await title(page)) === 'Anything to plan around?' && await page.locator('.onboard .rf-chip[data-v="balance"][aria-pressed="true"]').count() === 1);
+  check('the Back button goes to the screen before, answers kept', (await title(page)) === 'Anything we should plan around?' && await page.locator('.onboard .rf-chip[data-v="balance"][aria-pressed="true"]').count() === 1);
   await page.evaluate(() => window.__gh.back()); await page.waitForTimeout(150);
   check('Android Back does the same', (await title(page)) === 'About you' && (await page.locator('.onboard input[data-k="age"]').inputValue()) === '72');
   await next(page); await next(page);
@@ -169,7 +169,7 @@ section('Anything to plan around?');
   check('the weight shown is your latest one (70 kg = 154.3 lb)', (await page.locator('.onboard input[data-k="_w"]').inputValue()) === '154.3');
   const edits = [];
   for (let i = 0; i < 12; i++) { const t = await title(page); edits.push(t); if (t === 'Your plan') break; await next(page); }
-  check('every screen but the welcome, what to track, health data and the test', edits.join(' > ') === ['About you', 'Anything to plan around?'].concat(TRAINING, ['Weight and protein', 'Your plan']).join(' > '), edits.join(' > '));
+  check('every screen but the welcome, what to track, health data and the test', edits.join(' > ') === ['About you', 'Anything we should plan around?'].concat(TRAINING, ['Weight and protein', 'Your plan']).join(' > '), edits.join(' > '));
   check('ending in Save changes', /Save changes/.test(await page.locator('.ob-actions').innerText()));
   await next(page);
   await page.waitForTimeout(400);
@@ -183,10 +183,10 @@ section('Anything to plan around?');
   await page.evaluate(() => window.GH.ui.act.editAnswers());
   await page.waitForTimeout(500);
   const rows = await page.locator('dialog[open] .rf-list').innerText();
-  check('Your answers lists the new screens with their answers', /Anything to plan around\?/.test(rows) && /Balance problems or falls/.test(rows) && /Joints and sides/.test(rows) && /Weight and protein/.test(rows) && !/Sleep|Style/.test(rows), rows);
+  check('Your answers lists the new screens with their answers', /Anything we should plan around\?/.test(rows) && /Balance problems or falls/.test(rows) && /Joints and sides/.test(rows) && /Weight and protein/.test(rows) && !/Sleep|Style/.test(rows), rows);
   await page.evaluate(() => { window.GH.ui.closeSheets(); window.GH.ui.editAnswers('conditions'); });
   await page.waitForTimeout(400);
-  check('one screen: no progress bar, Save', (await title(page)) === 'Anything to plan around?' && await page.locator('.onboard .ob-progress .rf-progress').count() === 0 && (await page.locator('.ob-actions').innerText()).trim() === 'Save');
+  check('one screen: no progress bar, Save', (await title(page)) === 'Anything we should plan around?' && await page.locator('.onboard .ob-progress .rf-progress').count() === 0 && (await page.locator('.ob-actions').innerText()).trim() === 'Save');
   await page.click('.onboard .rf-chip[data-list="conditions"][data-v="hands"]'); await page.waitForTimeout(100);
   await next(page);
   await page.waitForTimeout(400);

@@ -94,7 +94,7 @@ check('About you shows prefilled weight', (await title()) === 'About you' && (aw
 await page.fill('input[data-k="age"]', '19'); await page.locator('input[data-k="age"]').dispatchEvent('change');
 await page.fill('input[data-k="_w"]', '148.8'); await page.locator('input[data-k="_w"]').dispatchEvent('change');
 await clickNext();
-check('then Anything to plan around?, optional', (await title()) === 'Anything to plan around?' && await page.locator('.rf-chip[data-list="conditions"][aria-pressed="true"]').count() === 0);
+check('then Anything we should plan around?, optional', (await title()) === 'Anything we should plan around?' && await page.locator('.rf-chip[data-list="conditions"][aria-pressed="true"]').count() === 0);
 await clickNext();
 for (const g of ['abs', 'arms', 'chest', 'legs', 'consistency']) { await page.click(`.rf-chip[data-v="${g}"]`); await page.waitForTimeout(60); }
 check('goals are numbered in tap order', /1\. Visible abs/.test(await page.locator('.ob-chips').innerText()) && /5\. Consistency/.test(await page.locator('.ob-chips').innerText()));

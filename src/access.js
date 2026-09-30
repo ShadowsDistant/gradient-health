@@ -441,7 +441,7 @@
     const lines = planLines(p).map((l) => l.text);
     const around = plannedAround(p);
     const doc = doctorLines(p);
-    if (!lines.length) return 'Your plan isn\'t shaped around any health condition right now. If something applies, like arthritis, low back pain, balance problems or high blood pressure, add it under Settings, Your answers, Anything to plan around, and the plan works around it.';
+    if (!lines.length) return 'Your plan isn\'t shaped around any health condition right now. If something applies, like arthritis, low back pain, balance problems or high blood pressure, add it under Settings, Your answers, Anything we should plan around, and the plan works around it.';
     return `${around}. ${lines.join(' ')}${doc.length ? ` ${doc.join(' ')}` : ''} If a move hurts, stop, and say so after your workout: moves that load that joint are swapped out.`;
   }
 
