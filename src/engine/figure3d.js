@@ -96,12 +96,16 @@ function frameQ(y, z, out) {
 const yaw = (v, ang) => v.clone().applyAxisAngle(Y_UP, ang);
 
 // Two-bone IK from root R to target T with lengths a, b. The bend goes toward pole point P, turned
-// by `swing` radians about the root→target axis toward the direction `out`.
-function ik2(R, T, a, b, P, out, swing) {
+// by `swing` radians about the root→target axis toward the direction `out` (or the way `sign`
+// says, +1 or -1, when given: the side it's turning to already). soft: near full stretch the limb
+// straightens gradually instead of snapping straight (the end may stop a little short), for a
+// hand that isn't planted on anything.
+function ik2(R, T, a, b, P, out, swing, sign, soft) {
   const d = T.clone().sub(R);
   let dist = d.length();
   const dn = dist > 1e-6 ? d.divideScalar(dist) : V3(0, -1, 0);
   const reach = dist <= a + b + 0.05;
+  if (soft) { const s0 = (a + b) * 0.96; if (dist > s0) dist = s0 + (a + b - s0) * (1 - Math.exp(-(dist - s0) / (a + b - s0))); }
   dist = clamp(dist, Math.abs(a - b) + 1e-3, a + b - 1e-4);
   const x = (a * a - b * b + dist * dist) / (2 * dist);
   const h = Math.sqrt(Math.max(0, a * a - x * x));
@@ -109,12 +113,13 @@ function ik2(R, T, a, b, P, out, swing) {
   if (pv.lengthSq() < 1e-6) pv = out ? perp(out, dn) : anyPerp(dn);
   if (pv.lengthSq() < 1e-6) pv = anyPerp(dn);
   pv.normalize();
-  if (swing && out) {
+  let s = 0;
+  if (out) {
     const b2 = V3().crossVectors(dn, pv);
-    const s = b2.dot(out) >= 0 ? 1 : -1;
-    pv.multiplyScalar(Math.cos(swing)).addScaledVector(b2, s * Math.sin(swing)).normalize();
+    s = sign || (b2.dot(out) >= 0 ? 1 : -1);
+    if (swing) pv.multiplyScalar(Math.cos(swing)).addScaledVector(b2, s * Math.sin(swing)).normalize();
   }
-  return { mid: R.clone().addScaledVector(dn, x).addScaledVector(pv, h), end: R.clone().addScaledVector(dn, dist), reach, dn, pv };
+  return { mid: R.clone().addScaledVector(dn, x).addScaledVector(pv, h), end: R.clone().addScaledVector(dn, dist), reach, dn, pv, sign: s };
 }
 
 /* ---------------------------------------------------------------- geometry builders */
@@ -798,12 +803,26 @@ const HINTS = {
   floorFly: { dbAxis: 'long' },
   skull: { handZ: { N: 9, F: 9 } },
   ohExt: { handZ: { N: 5, F: 5 } },
+  // Overhead presses: the hands start out over the elbows, wider than the shoulders.
+  seatedPressDB: { handZ: { N: 30, F: 30 }, flare: { N: 8, F: 8 } },
+  ohPress: { handZ: { N: 30, F: 30 }, flare: { N: 8, F: 8 } },
+  bandPress: { handZ: { N: 28, F: 28 }, flare: { N: 8, F: 8 } },
+  ohPress1: { handZ: { N: 30 }, flare: { N: 8 } },
+  // Face down: arms overhead in a Y, bent in a W, or pulling from one to the other.
+  proneY: { handZ: { N: 54, F: 54 } },
+  proneW: { handZ: { N: 32, F: 32 }, flare: { N: 18, F: 18 } },
+  supermanPull: { handZ: { N: 30, F: 30 }, flare: { N: 16, F: 16 } },
+  // Kettlebell high pull: elbows high and wide.
+  kbHighPull: { flare: { N: 30, F: 30 } },
+  // Chest opener: hands clasped behind the back.
+  chestOpen: { handZ: { N: 3.5, F: 3.5 } },
 };
 
 function gripOf(move, s) {
   for (const e of move.equip || []) {
     if (!HELD.has(e.type)) continue;
     if (e.type === 'kb' && (e.hold === 'hip' || e.hold === 'chest') && !e.hands) continue;
+    if (e.hold === 'feet') continue; // squeezed between the feet, not held
     const hs = hands(e);
     if (hs.includes(s)) return { type: e.type, e, both: hs.length === 2 };
   }
@@ -965,34 +984,49 @@ function newRig() {
 }
 
 // Keep a point (radius r) outside the trunk and the head by moving it along `lat` (unit, pointing
-// to this limb's side). Returns the pushed point.
+// to this limb's side). Returns the pushed point. Both shapes fade out at their edges (the trunk
+// tapers past its ends, the head is an ellipsoid), so a point moving smoothly is pushed smoothly.
 function clearTrunk(J, p, r, lat) {
   const d = p.clone().sub(J.hip);
   const u = d.dot(J.up), v = d.dot(J.fwd);
   let w = d.dot(lat);
-  const s = trunkAt(u);
+  const lo = TRUNK[0][0], hi = TRUNK[TRUNK.length - 1][0];
+  const fade = smooth(lo - 3, lo, u) * (1 - smooth(hi, hi + 3, u));
+  const s = fade > 0 ? trunkAt(clamp(u, lo, hi)) : null;
   if (s) {
     const dv = v - s.oz;
     const dd = (dv >= 0 ? s.f : s.b) + r;
     if (Math.abs(dv) < dd) {
-      const wmin = (s.w + r) * Math.sqrt(1 - (dv / dd) ** 2);
+      const wmin = (s.w + r) * Math.sqrt(1 - (dv / dd) ** 2) * fade;
       if (w < wmin) { p = p.clone().addScaledVector(lat, wmin - w); w = wmin; }
     }
   }
   if (J.headC) {
     const dh = p.clone().sub(J.headC);
     const hv = dh.dot(J.headUp);
-    if (Math.abs(hv) < 11) {
-      const rr = 8.2 + r;
-      const inPlane = perp(dh, lat).length();
-      if (inPlane < rr) {
-        const wmin = Math.sqrt(rr * rr - inPlane * inPlane);
-        const wh = dh.dot(lat);
-        if (wh < wmin) p = p.clone().addScaledVector(lat, wmin - wh);
-      }
+    const wh = dh.dot(lat);
+    const fv = dh.clone().addScaledVector(J.headUp, -hv).addScaledVector(lat, -wh).dot(J.headFwd || J.fwd);
+    const a = (hv > 0 ? 11 : 10.6) + r, bf = (fv > 0 ? 10 : 10.3) + r, bw = 8.2 + r;
+    const q = 1 - (hv / a) ** 2 - (fv / bf) ** 2;
+    if (q > 0) {
+      const wmin = bw * Math.sqrt(q);
+      if (wh < wmin) p = p.clone().addScaledVector(lat, wmin - wh);
     }
   }
   return p;
+}
+// A correction kept per figure (an elbow swung out, a hand pushed clear), by key: while the figure
+// animates (T in ms) it follows what's needed at a limited speed (up, down: per ms), so it can
+// never snap between frames; stills and seeks (T null, or a jump in time) take it straight away.
+function settle(A, key, need, T, up, down) {
+  const st = A.swing || (A.swing = {});
+  const o = st[key];
+  if (T == null) return { v: need, sign: o && o.v > 0.01 ? o.sign : 0 };
+  if (!o || !(T > o.T) || T - o.T > 250) { st[key] = { v: need, T, sign: o ? o.sign : 0 }; return st[key]; }
+  const dt = T - o.T;
+  const v = need > o.v ? Math.min(need, o.v + up * dt) : Math.max(need, o.v - down * dt);
+  st[key] = { v, T, sign: o.sign };
+  return st[key];
 }
 // Distance from point p to the segment ab.
 function segDist(p, a, b) {
@@ -1074,7 +1108,7 @@ function liftSide(A, pts, f, T) {
       J.foot[s] = { a: fa, up: fd.negate() };
     },
   });
-  arms(A, J, pts, f, P3);
+  arms(A, J, pts, f, P3, null, T);
   return J;
 }
 
@@ -1161,7 +1195,7 @@ function liftFront(A, pts, f, T) {
     if (key === 'wr') return w3;
     return w3.clone().add(V3(hd2b[0] - wr2[0], -(hd2b[1] - wr2[1]), depth(wr2, hd2b, L.hand)));
   };
-  arms(A, J, pts, f, P2, P3);
+  arms(A, J, pts, f, P2, P3, T);
   return J;
 }
 
@@ -1237,8 +1271,22 @@ function motion(A, J, T, hip, neck) {
   }
 }
 
+// A nearly straight arm: its slight bend in the picture says little about where the elbow points
+// (the pole then sits on the arm, and the elbow can flip from side to side), so it points where a
+// relaxed elbow does, behind the arm and a little out.
+function relaxedPole(pts, s, sh, W, J, lat, flare, pole) {
+  const u2 = [pts['el' + s][0] - pts['sh' + s][0], pts['el' + s][1] - pts['sh' + s][1]];
+  const f2 = [pts['wr' + s][0] - pts['el' + s][0], pts['wr' + s][1] - pts['el' + s][1]];
+  const cb = (u2[0] * f2[0] + u2[1] * f2[1]) / ((Math.hypot(u2[0], u2[1]) * Math.hypot(f2[0], f2[1])) || 1);
+  const bent = smooth(10, 28, Math.acos(clamp(cb, -1, 1)) / D2R);
+  if (bent >= 1) return;
+  const ua = W.clone().sub(sh).normalize();
+  const nat = sh.clone().lerp(W, 0.5).addScaledVector(armFront(ua, J.up, J.fwd), -12).addScaledVector(lat, 4 - flare);
+  pole.lerp(nat, 1 - bent);
+}
+
 // Arms for the side and front lifts.
-function arms(A, J, pts, f, P2, P3) {
+function arms(A, J, pts, f, P2, P3, T) {
   const L = PZ().L;
   for (const s of SIDES) {
     const sg = s === 'N' ? 1 : -1;
@@ -1253,25 +1301,30 @@ function arms(A, J, pts, f, P2, P3) {
     const hd2 = P3 ? P3(null, 'hd', s) : P2(pts['hd' + s]);
     if (J.shift && !(c.kind !== 'free' && c.w > 0.5)) { wr2.add(J.shift); el2.add(J.shift); hd2.add(J.shift); }
     if (A.view === 'side') {
-      // Hand width: the shoulder's, unless both hands share one object or the hand rests somewhere.
+      // Hand width: the shoulder's, unless both hands share one object or the hand rests somewhere
+      // (blended by how firmly it rests there, so a hand arriving on the floor doesn't jump).
       let hz = SH_W + 2;
+      const on = smooth(0.1, 0.45, c.w);
       if (g && g.both) {
         const r = g.e.r || 8;
         hz = { bb: 24, ez: 15.5, latbar: 36, kb: 5.2, ball: r * 1.25 + 2.2, towel: g.e.between ? 16 : SH_W + 1, band: g.e.between ? 18 : SH_W + 1.5, rope: 9, handle: 4.2 }[g.type] || hz;
-      } else if (c.kind === 'bar') hz = c.bar.dip ? 25 : /chin/.test(A.move.id || '') ? 18.5 : 23;
-      else if (c.kind === 'floor' && c.w > 0.3) hz = A.lying ? (A.prone ? 22 : 24) : 21;
-      else if (c.kind === 'top' && c.w > 0.3) hz = 21;
-      else if (c.kind === 'wall') hz = 21.5;
-      if (hint.handZ && hint.handZ[s] != null) hz = hint.handZ[s];
-      // Hands near the head (at the temples) sit at its sides.
+      } else if (c.kind === 'bar') hz = lerp(hz, c.bar.dip ? 25 : /chin/.test(A.move.id || '') ? 18.5 : 23, on);
+      else if (c.kind === 'floor') hz = lerp(hz, A.lying ? (A.prone ? 22 : 24) : 21, on);
+      else if (c.kind === 'top') hz = lerp(hz, 21, on);
+      else if (c.kind === 'wall') hz = lerp(hz, 21.5, c.w);
+      const hinted = hint.handZ && hint.handZ[s] != null;
+      if (hinted) hz = hint.handZ[s];
+      // Hands near the head (at the temples) sit at its sides, elbows wide (unless the move says how
+      // wide its hands are: they only look near the head from the side).
       const hC = hd2.clone().lerp(wr2, 0.4);
-      const atHead = !g && J.headC && hC.distanceTo(V3(J.headC.x, J.headC.y, 0)) < 14 && c.kind === 'free';
-      if (atHead) hz = 10.8;
+      const onHandles = A.props.some((p) => p.type === 'machine' || p.type === 'cable');
+      const atHead = !g && !onHandles && !hinted && J.headC ? (1 - smooth(11, 18, hC.distanceTo(V3(J.headC.x, J.headC.y, 0)))) * (1 - on) : 0;
+      hz = lerp(hz, 10.8, atHead);
       W = V3(wr2.x, wr2.y, sg * hz);
       pole = V3(el2.x, el2.y, sg * (SH_W + hz) * 0.5);
       if (c.kind === 'floor' || c.kind === 'top') flare = lerp(2.5, 9, c.w);
-      if (c.kind === 'bar') flare = 7;
-      if (atHead) flare = 26; // hands at the temples, elbows wide
+      if (c.kind === 'bar') flare = lerp(2.5, 7, on);
+      flare = lerp(flare, 26, atHead);
     } else {
       W = wr2.clone();
       pole = el2.clone();
@@ -1279,49 +1332,98 @@ function arms(A, J, pts, f, P2, P3) {
       // 2D arms lie flat in the picture plane, which would put the ball inside the chest.
       const ikd = (`ik.hd${s}.x` in f) && c.kind !== 'floor' && c.kind !== 'wall';
       const held = J.held;
+      // Depths the pose gives its arm (a reach to a target with depth, or `depth` for arms drawn
+      // by angle): the 3D figure puts the wrist and elbow there.
+      const dz = pts['depthwr' + s] != null ? pts['depthwr' + s] : null;
       if (held && g && g.both) {
         W = held.c.clone().addScaledVector(J.latC, sg * (held.r + 1.8)).add(V3(0, -1.5, -2));
         // Elbows hang below the arms and a little out.
         pole = sh.clone().lerp(W, 0.5).add(V3(0, -22, 0)).addScaledVector(J.latC, sg * 12);
+      } else if (dz != null) {
+        const oz = J.shift ? J.shift.z : 0;
+        const ez = pts['depthel' + s];
+        W.z = dz + oz;
+        pole.z = (ez != null ? ez : (W.z + sh.z) / 2 + 6) + oz;
+        flare = 0;
+        // Reaching a target: the fist, not the wrist, lands on it, so what it holds is where the
+        // pose puts it.
+        if (`ik.hd${s}.z` in f) {
+          const T3 = V3(f[`ik.hd${s}.x`], -f[`ik.hd${s}.y`] + A.raise, f[`ik.hd${s}.z`]);
+          if (J.shift) T3.add(J.shift);
+          for (let k = 0; k < 2; k++) {
+            const e = ik2(sh, W, L.ua, L.fa, pole, null, 0).mid;
+            W = T3.clone().addScaledVector(T3.clone().sub(e).normalize(), -8.9);
+          }
+        }
       } else if (ikd) {
         const d = Math.hypot(W.x - sh.x, W.y - sh.y);
         const reach = 0.84 * (L.ua + L.fa);
         W.z = sh.z + Math.sqrt(Math.max(0, reach * reach - d * d)) * 0.85;
         pole.z = (W.z + sh.z) / 2 - 4;
       }
+      if (!(held && g && g.both) && dz == null) relaxedPole(pts, s, sh, W, J, lat, flare, pole);
     }
     if (hint.flare && hint.flare[s] != null) flare = hint.flare[s];
-    // Planted hands put the palm on the surface; bars put the fist around the bar.
-    const planted = (c.kind === 'floor' || c.kind === 'top') ? c.w : 0;
+    // Planted hands put the palm on the surface, eased per figure as a hand lands or lifts (the flat
+    // palm puts the wrist lower than the flat figure's, so an arm landing fast would straighten with a
+    // flick); bars put the fist around the bar.
+    const onSurf = (c.kind === 'floor' || c.kind === 'top') ? c.w : 0;
+    const surfs = A.surfY || (A.surfY = {});
+    if (onSurf > 0) surfs[s] = c.kind === 'floor' ? 0 : c.y;
+    const planted = surfs[s] != null ? settle(A, 'plant' + s, onSurf, T, 0.006, 0.008).v : 0;
     if (planted > 0 && A.view !== 'top') {
       // The wrist sits just above the palm, which lies flat on the surface.
-      const surfY = c.kind === 'floor' ? 0 : c.y;
-      W.y = lerp(W.y, surfY + 2.05, planted);
+      W.y = lerp(W.y, surfs[s] + 2.05, planted);
     }
     if (c.kind === 'wall' && c.w > 0) {
       const wx = c.wall.x;
       if (A.view === 'side') W.x = lerp(W.x, wx - c.wall.side * 5.5, c.w);
-      else W.x = lerp(W.x, wx + 5.5, c.w);
+      else W.x = lerp(W.x, wx - (c.wall.side || 1) * 5.5, c.w); // the wrist stays on the room side of the wall
     }
     if (!g && c.kind !== 'bar') {
-      W = clearThighs(J, clearTrunk(J, W, 3, lat), 3, lat);
+      // Out of the trunk and thighs: pushed sideways, eased per figure so a fast hand sliding off
+      // a knee doesn't snap back.
+      const need = clearThighs(J, clearTrunk(J, W.clone(), 3, lat), 3, lat).sub(W).dot(lat);
+      W.addScaledVector(lat, settle(A, 'hand' + s, need, T, 0.15, 0.15).v);
     }
-    // Scapular give: reach a little further when a planted hand is just out of range.
+    // Scapular give: reach a little further when a planted hand is just out of range (fading out as
+    // the hand leaves the floor, so the shoulder doesn't jump back).
     const reach = L.ua + L.fa;
     let d = W.distanceTo(sh);
-    if (d > reach - 0.3 && (planted > 0.3 || c.kind === 'bar' || c.kind === 'wall')) {
-      const give = Math.min(4, d - reach + 0.3);
+    const grab = c.kind === 'bar' || c.kind === 'wall' ? 1 : smooth(0.1, 0.5, planted);
+    if (d > reach - 0.3 && grab > 0) {
+      const give = Math.min(4, d - reach + 0.3) * grab;
       sh.addScaledVector(W.clone().sub(sh).normalize(), give);
     }
     pole.addScaledVector(lat, flare);
-    let r = ik2(sh, W, L.ua, L.fa, pole, lat, 0);
-    // Elbow outside the trunk: swing it outward about the shoulder–wrist axis until clear.
-    for (let k = 0, sw = 0; k < 8; k++) {
-      const e2 = clearTrunk(J, r.mid, 4.3, lat);
-      if (e2.distanceToSquared(r.mid) < 0.04) break;
-      sw += 0.14;
-      r = ik2(sh, W, L.ua, L.fa, pole, lat, sw);
+    const soft = !!g || c.kind === 'free';
+    let r = ik2(sh, W, L.ua, L.fa, pole, lat, 0, 0, soft);
+    // Elbow outside the trunk and head: the smallest swing outward about the shoulder–wrist axis
+    // that clears them, found finely so it changes smoothly with the pose, then eased per figure.
+    // Which way it swings stays put while it's swung out (the geometry alone could flip it).
+    const prev = A.swing && A.swing[s];
+    const sign = prev && prev.v > 0.01 && prev.sign ? prev.sign : r.sign;
+    const swung = (a) => ik2(sh, W, L.ua, L.fa, pole, lat, a, sign, soft);
+    const into = (rr) => clearTrunk(J, rr.mid, 4.3, lat).distanceTo(rr.mid);
+    let need = 0;
+    if (into(r) >= 0.2) {
+      let lo = 0, hi = -1, best = 0, bestIn = Infinity;
+      for (let a = 0.08; a <= 1.37; a += 0.08) {
+        const p = into(swung(a));
+        if (p < bestIn) { bestIn = p; best = a; }
+        if (p < 0.2) { hi = a; break; }
+        lo = a;
+      }
+      if (hi < 0) need = best;
+      else {
+        for (let i = 0; i < 5; i++) { const m = (lo + hi) / 2; if (into(swung(m)) < 0.2) hi = m; else lo = m; }
+        need = hi;
+      }
     }
+    const sw = settle(A, s, need, T, 0.0045, 0.003);
+    sw.sign = sign;
+    if (sw.v > 1e-4) r = swung(sw.v);
+    (J.swing || (J.swing = {}))[s] = { need, v: sw.v, sign };
     J.sh[s] = sh;
     J.el[s] = r.mid; J.wr[s] = r.end;
     const dirF = r.end.clone().sub(r.mid).normalize();
@@ -1357,13 +1459,14 @@ function handFrame(A, J, s, sg, dirF, handDir, c, lat) {
         axis = dirF.clone().applyAxisAngle(A.view === 'side' ? V3(0, 0, 1) : J.fwd, (90 + (e.tilt || 0)) * D2R);
         if (A.view !== 'side') axis = perp(axis, dirF).normalize();
       } else axis = A.view === 'side' ? J.lat.clone() : J.fwd.clone();
-    } else if (t === 'rope' || (t === 'kb' && !g.both && e.hold !== 'arm')) axis = dirF.clone().applyAxisAngle(J.lat, Math.PI / 2);
+    } else if (t === 'kb' && e.hold === 'horns') axis = Y_UP.clone(); // a fist round an upright horn
+    else if (t === 'rope' || (t === 'kb' && !g.both && e.hold !== 'arm' && e.hold !== 'rack')) axis = dirF.clone().applyAxisAngle(J.lat, Math.PI / 2);
     else axis = J.lat.clone();
     axis = perp(axis, Y);
     if (axis.lengthSq() < 1e-4) axis = perp(J.fwd, Y);
     axis.normalize();
     // Thumb direction: supinated for curls, neutral for side-held bells, pronated otherwise.
-    const neutral = (t === 'db' && e.orient === 'side') || t === 'rope' || (A.view === 'top') || A.hint.dbAxis === 'long' || (A.view === 'front' && t === 'db');
+    const neutral = (t === 'db' && e.orient === 'side') || t === 'rope' || (A.view === 'top') || A.hint.dbAxis === 'long' || (A.view === 'front' && t === 'db') || (t === 'kb' && e.hold === 'horns');
     const supin = (A.move.muscles || [])[0] === 'biceps' || /chin/.test(A.move.id || '');
     let T;
     if (neutral) {
@@ -1720,7 +1823,13 @@ class Equipment {
     for (const it of this.items) {
       const e = it.e;
       const hs = hands(e);
-      if (e.type === 'db') {
+      if (e.type === 'db' && e.hold === 'feet') {
+        // Squeezed between the feet: across the arches, its bar along the hips.
+        const g = it.parts[hs[0]];
+        const arch = (s) => J.an[s].clone().addScaledVector(J.foot[s] ? J.foot[s].a : J.fwd, 7);
+        g.position.copy(arch('N').lerp(arch('F'), 0.5));
+        g.quaternion.copy(frameQ(V3(0, 1, 0), V3().crossVectors(J.lat, V3(0, 1, 0))));
+      } else if (e.type === 'db') {
         for (const s of hs) {
           const g = it.parts[s];
           g.position.copy(this.gripPoint(J, s));
@@ -1742,6 +1851,26 @@ class Equipment {
           const c = J.neck.clone().lerp(J.hip, t).addScaledVector(J.fwd, e.hold === 'hip' ? 12.5 : 14);
           hang = J.up.clone().negate();
           grip = c.clone().addScaledVector(hang, -12.8);
+        } else if (e.hold === 'horns') {
+          // Bottom up, a fist round each horn: the handle runs between the grips and the bell stands
+          // on it (its horns are 12.6 apart, 7 below the handle's top toward the bell).
+          const gs = hs.map((s) => this.gripPoint(J, s));
+          const m = gs.length === 2 ? gs[0].clone().add(gs[1]).multiplyScalar(0.5) : gs[0];
+          const acr = gs.length === 2 ? gs[0].clone().sub(gs[1]) : J.lat.clone();
+          hang = perp(Y_UP, acr.clone().normalize());
+          if (hang.lengthSq() < 1e-4) hang = J.up.clone();
+          hang.normalize();
+          grip = m.clone().addScaledVector(hang, -7);
+          g.position.copy(grip);
+          g.quaternion.copy(frameQ(hang.clone().negate(), V3().crossVectors(acr, hang.clone().negate())));
+          continue;
+        } else if (e.hold === 'rack') {
+          // Racked for a one-arm press: the handle across the fist, the bell resting on the back of
+          // the forearm: on its outside at the shoulder, behind it once pressed overhead.
+          const s = hs[0];
+          grip = this.gripPoint(J, s);
+          const up = clamp((J.wr[s].y - J.sh[s].y - 10) / 35, 0, 1);
+          hang = V3(0, -0.8, 0).addScaledVector(J.lat, (s === 'N' ? 1 : -1) * 0.6 * (1 - up)).addScaledVector(J.fwd, -0.6 * up).normalize();
         } else {
           const gs = hs.map((s) => this.gripPoint(J, s));
           grip = gs.length === 2 ? gs[0].clone().add(gs[1]).multiplyScalar(0.5) : gs[0];
@@ -2088,7 +2217,7 @@ class Props {
         roll.rotation.x = Math.PI / 2; roll.position.set(kn.x - 4, kn.y + 12, 0);
       }
     }
-    this.dyn.push({ kind: 'machine', mk: kind, parts, J0 });
+    this.dyn.push({ kind: 'machine', mk: kind, parts, J0, p });
   }
 
   rower(p, M, g, A) {
@@ -2166,7 +2295,7 @@ class Props {
         d.line.quaternion.copy(frameQ(dd, V3(0, 0, 1)));
         d.line.scale.set(0.35, dd.length(), 0.35);
       } else if (d.kind === 'machine') {
-        this.machineUpdate(d, J);
+        this.machineUpdate(d, J, pts);
       } else if (d.kind === 'rower') {
         d.seat.position.set(J.hip.x - 1, J.hip.y - 11, 0);
         const h = J.wr.N.clone().lerp(J.wr.F, 0.5);
@@ -2201,7 +2330,7 @@ class Props {
     }
   }
 
-  machineUpdate(d, J) {
+  machineUpdate(d, J, pts) {
     const P = d.parts, k = d.mk;
     const lever = (m, a, b) => {
       const dd = b.clone().sub(a);
@@ -2209,7 +2338,14 @@ class Props {
       m.quaternion.copy(frameQ(dd, V3(0, 0, 1)));
       m.scale.set(1, Math.max(1, dd.length()), 1);
     };
-    if (k === 'legPress') {
+    if (k === 'legPress' && d.p && d.p.calf && pts) {
+      // A calf raise: the plate stays square to the track under the balls of the feet.
+      const c2 = PZ().sledCentre(d.p, pts);
+      const u = dir2(90 + (d.p.angle || 45));
+      const n = V3(u[0], -u[1], 0).normalize();
+      P.plate.position.set(c2[0], -c2[1] + this.fig.A.raise, 0).addScaledVector(n, -4);
+      P.plate.quaternion.copy(frameQ(V3(0, 0, 1).cross(n), n));
+    } else if (k === 'legPress') {
       const soles = SIDES.map((s) => V3(0, 6, -8.5).applyQuaternion(this.fig.P['ft' + s].quaternion).add(this.fig.P['ft' + s].position));
       const c = soles[0].clone().add(soles[1]).multiplyScalar(0.5); c.z = 0;
       const n = V3(0, 0, 1).applyQuaternion(this.fig.P.ftN.quaternion).negate();
@@ -3130,4 +3266,33 @@ GH.figure3d = {
   _stall(on) { stalled = !!on; },
   _stats() { return { live: live.size, renderer: !!R, warm: !!WARM, lost: lostCount, programs: R ? R.r.info.programs.length : 0, size: R ? [R.w, R.h] : null }; },
   _releaseAfter(ms) { releaseMs = ms; },
+  // The 3D joints of a move (id or move) at time t ms into the rep, without drawing anything (no
+  // WebGL needed): [x, y, z] for the head centre, shoulders, elbows, wrists, hands (grip point),
+  // hips, knees and ankles. It keeps one figure per move, so asking frame after frame in time
+  // order plays the move as the app does (eased elbow swings included); T is the clock (default t).
+  _joints(move, t, T) {
+    const m = typeof move === 'string' ? GH.moves.MOVES[move] : move;
+    if (!m) return null;
+    let fig = jointFigs.get(m);
+    if (!fig) {
+      if (jointFigs.size > 40) { const [k, v] = jointFigs.entries().next().value; v.dispose(); jointFigs.delete(k); }
+      fig = new Figure(m, optsOf({}));
+      jointFigs.set(m, fig);
+    }
+    fig.setTime(t, T === undefined ? t : T);
+    const J = fig.J;
+    const a = (v) => [v.x, v.y, v.z];
+    const out = { head: a(J.headC), headUp: a(J.headUp), neck: a(J.neck), hip: a(J.hip), swing: J.swing };
+    for (const s of SIDES) {
+      Object.assign(out, { ['sh' + s]: a(J.sh[s]), ['el' + s]: a(J.el[s]), ['wr' + s]: a(J.wr[s]), ['hd' + s]: a(fig.eq.gripPoint(J, s)), ['hp' + s]: a(J.hp[s]), ['kn' + s]: a(J.kn[s]), ['an' + s]: a(J.an[s]) });
+    }
+    // Where a kettlebell's bell is (its centre).
+    const kb = fig.eq.items.find((it) => it.parts.kb);
+    if (kb) out.kb = a(V3(0, -12.8, 0).applyQuaternion(kb.parts.kb.quaternion).add(kb.parts.kb.position));
+    // And a dumbbell squeezed between the feet.
+    const feet = fig.eq.items.find((it) => it.e.type === 'db' && it.e.hold === 'feet');
+    if (feet) out.dbFeet = a(feet.parts.N.position);
+    return out;
+  },
 };
+const jointFigs = new Map();

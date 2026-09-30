@@ -40,7 +40,9 @@ M.MOVES.push_std.prime = 2;
 r = Y.sets(S, D - 6, D);
 check('a move with prime: 2 counts its first two muscles as primary', near(r.sets.chest, 3) && near(r.sets.triceps, 3) && near(r.sets.frontDelts, 1.5), r.sets);
 delete M.MOVES.push_std.prime;
-check('roles() lists each muscle once with its weight', JSON.stringify(Y.roles(M.MOVES.row_db)) === JSON.stringify([['lats', 1], ['upperBack', 0.5], ['rearDelts', 0.5], ['biceps', 0.5]]), Y.roles(M.MOVES.row_db));
+// Weights follow each move's own data: its first `prime` muscles (1 unless it says) count 1, the rest 0.5.
+const weightOf = (id, i) => (i < (M.MOVES[id].prime || 1) ? 1 : 0.5);
+check('roles() lists each muscle once with its weight', JSON.stringify(Y.roles(M.MOVES.row_db)) === JSON.stringify(M.MOVES.row_db.muscles.map((m, i) => [m, weightOf('row_db', i)])), Y.roles(M.MOVES.row_db));
 
 section('Sides and what counts');
 S = person();
@@ -57,7 +59,8 @@ workout(S, D - 3, [item('raise', [15, 15])], { checkedIn: false });
 r = Y.sets(S, D - 6, D);
 check('a set done on each side counts once, the extra one-side set once', near(r.sets.biceps, 3), r.sets.biceps);
 check('warm-ups, tests, mobility and conditioning don\'t count', r.sets.calves == null && r.sets.lowerBack == null && near(r.sets.quads, 1), r.sets);
-check('a set logged as zero doesn\'t count', near(r.sets.quads, 1) && near(r.sets.glutes, 0.5), r.sets);
+const gobletGlutes = weightOf('sq_goblet', M.MOVES.sq_goblet.muscles.indexOf('glutes'));
+check('a set logged as zero doesn\'t count', near(r.sets.quads, 1) && near(r.sets.glutes, gobletGlutes), r.sets);
 check('a workout that wasn\'t checked in doesn\'t count', r.sets.sideDelts == null);
 check('setsDone counts distinct sets', Y.setsDone(item('curl_1arm', [8, 8, 8], { sides: ['L', 'R'] })) === 3);
 
@@ -85,7 +88,7 @@ const shareSum = Y.MUSCLES.reduce((a, m) => a + t.share[m], 0);
 check('shares add up to 1', near(shareSum, 1), shareSum);
 check('chest is most trained, then triceps and front delts', t.most[0] === 'chest' && t.most.length === 3 && near(t.max, 4), t.most);
 check('the least trained skips muscles that only come along (hip flexors, forearms, lower back)', t.least.length === 3 && !t.least.some((m) => Y.MINOR.includes(m)) && t.least.every((m) => !(t.sets[m] > 0)), t.least);
-check('groups add up: chest 4, biceps 2 + forearms 1 → 3, legs 1.5', near(t.groups.chest.sets, 4) && near(t.groups.biceps.sets, 3) && near(t.groups.legs.sets, 1.5), t.groups);
+check('groups add up: chest 4, biceps 2 + forearms 1 → 3, legs as the goblet squat\'s muscles', near(t.groups.chest.sets, 4) && near(t.groups.biceps.sets, 3) && near(t.groups.legs.sets, M.MOVES.sq_goblet.muscles.reduce((a, m, i) => a + (['quads', 'glutes', 'hamstrings', 'calves', 'hipFlexors'].includes(m) ? weightOf('sq_goblet', i) : 0), 0)), t.groups);
 check('range: 1 week is the last 7 days', t.from === D - 6 && t.to === D && t.weeks === 1);
 t = Y.trained(S, D, 40);
 check('weeks are clamped to 12', t.weeks === 12);

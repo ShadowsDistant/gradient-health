@@ -339,4 +339,98 @@ section('Cancelling a workout');
   check('and Undo records it again', JSON.stringify(S3.catchup.arm) === after);
 }
 
+/* ------------------------------------------------------------------ twelve weeks, six people */
+// Every workout done as planned for 12 weeks: each muscle group trained every week, the weekly
+// volume inside the program's floor and cap, nothing that needs kit they don't have, no jumping or
+// slamming when impact is off, and the new ladders (presses, lower back, calves, hamstring curls)
+// in use where they fit.
+section('Twelve weeks for six people');
+{
+  const HOME = { db: [], kb: [], ball: false, ballLb: null, ballSlam: false, band: false, bar: false, chair: true, wall: true, towel: true, table: false, door: false };
+  const base = { experience: 'onoff', recentActivity: 'some', days: 4, minutes: 45, age: 30, units: 'lb', weightKg: 75 };
+  const people = [
+    ['default home kit', { goals: ['abs', 'arms', 'chest', 'legs'], equipment: HOME }],
+    ['band only', { goals: ['back', 'shoulders', 'legs'], equipment: Object.assign({}, HOME, { band: true, door: true }) }],
+    ['kettlebell only', { goals: ['legs', 'abs'], equipment: Object.assign({}, HOME, { kb: [12] }), focus: ['hamstrings', 'calves'] }],
+    ['basic gym', { goals: ['chest', 'back', 'legs'], where: 'gym', gym: B.gymPreset('basic', 'lb'), equipment: HOME }],
+    ['careful knees', { goals: ['legs', 'arms'], equipment: Object.assign({}, HOME, { db: [10, 15] }), careful: ['knee'] }],
+    ['gentle mode', { goals: ['abs', 'arms'], equipment: Object.assign({}, HOME, { db: [8], kb: [10] }), gentle: true }],
+  ];
+  const cov = {};
+  for (const [label, extra] of people) {
+    const S = B.newState(Object.assign({}, base, extra), null, D0);
+    const prog = B.programFor(S.profile);
+    const tpl = B.templateFor(S.profile, prog);
+    const eq = B.eqAt(S, S.profile.where === 'gym' ? 'gym' : 'home');
+    const bad = { untrained: [], vol: [], over: [], under: [], kit: [], impact: [], knee: [] };
+    const fams = new Set();
+    for (let w = 0; w < 12; w++) {
+      const sets = {};
+      for (const t of tpl) {
+        const r = doWorkout(S, D0 + w * 7 + t.offset, { defaultRir: '12' });
+        const s = r.session;
+        const moves = s.items.concat(s.extras, s.warmup, s.mobility || [], s.finisher ? [s.finisher] : []);
+        for (const it of s.items.concat(s.extras)) { sets[it.group] = (sets[it.group] || 0) + it.sets; fams.add(it.fam); }
+        for (const it of moves) {
+          const m = M.MOVES[it.moveId];
+          if (!M.allowed(m, eq)) bad.kit.push(`w${w + 1} ${it.moveId}`);
+          if (!prog.impactOk && m.impact) bad.impact.push(`w${w + 1} ${it.moveId}`);
+          if ((S.profile.careful || []).includes('knee') && (m.impact || m.complex) && (m.joints || []).includes('knee')) bad.knee.push(`w${w + 1} ${it.moveId}`);
+        }
+      }
+      const phase = B.calendar(S, D0 + w * 7).weeks[D0 + w * 7].phase;
+      const full = phase.mult === 1 && !phase.deload && !phase.onramp;
+      for (const g of B.GROUPS) {
+        if (!(sets[g] > 0)) bad.untrained.push(`w${w + 1} ${g}`);
+        if (!(S.vol[g] >= prog.floor[g] && S.vol[g] <= prog.cap[g])) bad.vol.push(`w${w + 1} ${g} ${S.vol[g]}`);
+        if (sets[g] > prog.cap[g]) bad.over.push(`w${w + 1} ${g} ${sets[g]} > ${prog.cap[g]}`);
+        if (full && sets[g] < prog.floor[g]) bad.under.push(`w${w + 1} ${g} ${sets[g]} < ${prog.floor[g]}`);
+      }
+    }
+    cov[label] = fams;
+    check(`${label}: every group trained every week for 12 weeks`, !bad.untrained.length, bad.untrained.slice(0, 6));
+    check(`${label}: weekly volume stays inside the floor and cap`, !bad.vol.length && !bad.over.length && !bad.under.length, bad.vol.concat(bad.over, bad.under).slice(0, 6));
+    check(`${label}: only moves their kit allows`, !bad.kit.length, bad.kit.slice(0, 6));
+    if (!prog.impactOk) check(`${label}: impact off, so no jumping or slamming`, !bad.impact.length, bad.impact.slice(0, 6));
+    if ((S.profile.careful || []).includes('knee')) check(`${label}: no complex or impact moves on the careful knee`, !bad.knee.length, bad.knee.slice(0, 6));
+  }
+  check('with just a chair, wall and towel: overhead presses, raises, rows and the lower back', ['press', 'raise', 'row', 'backExt'].every((f) => cov['default home kit'].has(f)), [...cov['default home kit']]);
+  check('legs rotate through hinges, glute bridges and hamstring curls', ['hinge', 'glute', 'hamCurl'].every((f) => cov['default home kit'].has(f)), [...cov['default home kit']]);
+  check('a calf focus adds calf raises', cov['kettlebell only'].has('calf'), [...cov['kettlebell only']]);
+  check('the gym rotates hinges, hip thrusts and lunges', ['hingeG', 'gluteG', 'lungeG'].every((f) => cov['basic gym'].has(f)), [...cov['basic gym']]);
+}
+
+/* ------------------------------------------------------------------ focus, warm-ups, cool-downs */
+section('Focus muscles, warm-ups and cool-downs');
+{
+  const P = { goals: ['abs', 'arms'], experience: 'onoff', days: 4, minutes: 45, weightKg: 70, equipment: { db: [8], kb: [10], chair: true, wall: true, towel: true } };
+  const plain = B.programFor(Object.assign(B.defaultProfile(), P));
+  const focused = B.programFor(Object.assign(B.defaultProfile(), P, { focus: ['sideDelts', 'glutes', 'quads', 'nonsense', 'calves', 'lats'] }));
+  check('focus muscles lift their group one tier (up to 4 muscles, unknown names ignored)', focused.tiers.shoulders === plain.tiers.shoulders - 1 && focused.tiers.legs === plain.tiers.legs - 1 && focused.tiers.back === plain.tiers.back && focused.focus.length === 4, { plain: plain.tiers, focused: focused.tiers, focus: focused.focus });
+  check('MUSCLE_GROUP maps all 17 muscles to one of the 7 groups', Object.keys(B.MUSCLE_GROUP).length === 17 && Object.values(B.MUSCLE_GROUP).every((g) => B.GROUPS.includes(g)));
+  check('every move lists known muscles, with 1 or more primary movers', Object.values(M.MOVES).every((m) => m.muscles.every((x) => B.MUSCLE_GROUP[x]) && m.prime >= 1 && m.prime <= m.muscles.length));
+  const S = B.newState(Object.assign({}, P, { goals: ['abs', 'arms', 'mobility'] }), null, D0);
+  const tpl = B.templateFor(S.profile, B.programFor(S.profile));
+  const days = tpl.map((t) => B.buildSession(S, D0 + t.offset, t.idx, {}));
+  const upper = (s) => s.items.some((it) => ['biceps', 'triceps', 'chest', 'back', 'shoulders'].includes(it.group));
+  check('the kettlebell halo only on upper-body days', days.every((s) => s.warmup.some((w) => w.moveId === 'wu_halo') === upper(s)), days.map((s) => `${s.title}: ${s.warmup.map((w) => w.moveId)}`));
+  const legDay = days.find((s) => s.units.includes('legs'));
+  check('leg days warm up the legs', legDay && legDay.warmup.some((w) => ['wu_squat', 'wu_legswing'].includes(w.moveId)), legDay && legDay.warmup.map((w) => w.moveId));
+  check('the cool-down is 2 or 3 stretches for the day\'s muscles', days.every((s) => s.mobility.length >= 2 && s.mobility.length <= 3 && s.mobility.every((it) => M.MOBILITY.includes(it.moveId))), days.map((s) => s.mobility.map((x) => x.moveId)));
+  // The light-day flow follows what was trained: after leg days, leg stretches.
+  const S2 = B.newState(P, null, D0);
+  const legs = B.templateFor(S2.profile, B.programFor(S2.profile)).filter((t) => t.units.includes('legs'));
+  for (const t of legs) doWorkout(S2, D0 + t.offset, {});
+  const flowOn = (day) => B.mobilityFlow(S2, day).map((x) => x.moveId);
+  const flow = flowOn(D0 + 7);
+  const legStretch = flow.filter((id) => (M.MOVES[id].mobFor || []).some((mu) => ['glutes', 'quads', 'hamstrings', 'calves', 'hipFlexors'].includes(mu)));
+  check('after leg days the mobility flow leans to leg stretches', flow.length >= 4 && legStretch.length >= 3, flow);
+  // A sore joint leaves its stretches out only while it's sore.
+  const later = flowOn(D0 + 12);
+  S2.pain = { ankle: D0 + 10, wrist: D0 + 10 };
+  const sore = flowOn(D0 + 7), healed = flowOn(D0 + 12);
+  const hurts = (id) => (M.MOVES[id].joints || []).some((j) => j === 'ankle' || j === 'wrist');
+  check('the flow skips stretches for a sore joint, and brings them back once it has healed', flow.some(hurts) && !sore.some(hurts) && sore.length >= 4 && healed.join() === later.join(), { flow, sore, healed, later });
+}
+
 done();

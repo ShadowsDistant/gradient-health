@@ -57,6 +57,8 @@
     const lF = Object.assign({}, lN, p.lF);
     const limbs = { aN, aF, lN, lF };
     for (const k of LIMBS) for (const [j, v] of Object.entries(limbs[k])) if (typeof v === 'number') f[k + '.' + j] = v;
+    // A flat foot as a number, so a foot rolls between flat and pointed instead of snapping.
+    f['lN.fl'] = lN.flat !== false ? 1 : 0; f['lF.fl'] = lF.flat !== false ? 1 : 0;
     for (const [k, v] of Object.entries(p.sc || {})) f['sc.' + k] = v;
     const ikT = Object.assign({}, p.ik);
     // In side view both limbs overlap: unless the far limb is posed on its own, it follows the
@@ -67,11 +69,25 @@
     }
     // A target can also name a body point ('traps', 'lap': a bar on the back or across the hips),
     // so the hands stay on the bar in every in-between frame.
+    // A third number is the target's depth (front view: toward the viewer; side view: toward the
+    // near side). The flat figure ignores it; the 3D figure reaches there, and a front-view hand
+    // behind the body is drawn behind it.
     const ikTo = {};
     for (const [k, v] of Object.entries(ikT)) {
       if (typeof v === 'string') { ikTo[k] = v; continue; }
       f['ik.' + k + '.x'] = v[0]; f['ik.' + k + '.y'] = v[1];
+      if (typeof v[2] === 'number') f['ik.' + k + '.z'] = v[2];
     }
+    // Per-pose pole: which way an IK elbow or knee points in this pose ([x, y] as for move.bend, or
+    // [out, down, forward] for a hand reaching a target with depth), tweened between poses so the
+    // joint turns smoothly as the reach changes.
+    for (const [k, v] of Object.entries(p.pole || {})) {
+      f['pole.' + k + '.x'] = v[0]; f['pole.' + k + '.y'] = v[1];
+      if (typeof v[2] === 'number') f['pole.' + k + '.z'] = v[2];
+    }
+    // Depth of arm joints drawn by angle (front view: + toward the viewer), e.g. { elN, wrN }: the 3D
+    // figure puts them there, and the flat one draws a hand behind the body behind it.
+    for (const [k, v] of Object.entries(p.depth || {})) if (typeof v === 'number') f['depth.' + k] = v;
     for (const k of ['ball', 'kb', 'db', 'at']) if (p[k]) { f[k + '.x'] = p[k][0]; f[k + '.y'] = p[k][1]; }
     // Non-numeric flags travel along unchanged.
     f.$ = { flatN: lN.flat !== false, flatF: lF.flat !== false, pin: p.pin, view };
@@ -136,7 +152,7 @@
       const thSH = thTH - mirror * l('k');
       const an = add(kn, mul(dir(thSH), L.sh * sc('sh' + side)));
       pts['kn' + side] = kn; pts['an' + side] = an;
-      footFrom(pts, side, thSH, l('a'), f.$['flat' + side], view, mirror, sc('ft' + side), l('fd'));
+      footFrom(pts, side, thSH, l('a'), flatOf(f, side), view, mirror, sc('ft' + side), l('fd'));
     }
     // Pin one joint to its surface.
     const pin = f.$.pin || move.pin || { joint: 'anN', at: [0, -8] };
@@ -148,21 +164,38 @@
     const ikTo = f.$.ikTo || {};
     for (const [key, bend] of [['hdN', -1], ['hdF', -1], ['anN', 1], ['anF', 1]]) {
       const tk = 'ik.' + key;
-      const bd = move.bend && move.bend[key] != null ? move.bend[key] : bend;
+      const pk = 'pole.' + key;
+      const bd = (pk + '.x') in f ? [f[pk + '.x'], f[pk + '.y']] : move.bend && move.bend[key] != null ? move.bend[key] : bend;
       if (ikTo[key]) ik(pts, key, pinPoint(pts, ikTo[key]), bd, view, f, sc);
-      else if ((tk + '.x') in f) ik(pts, key, [f[tk + '.x'], f[tk + '.y']], bd, view, f, sc);
+      else if ((tk + '.z') in f && view === 'front' && key[0] === 'h') {
+        const pole = (pk + '.z') in f ? [f[pk + '.x'], f[pk + '.y'], f[pk + '.z']] : null;
+        reach3(pts, key, [f[tk + '.x'], f[tk + '.y'], f[tk + '.z']], pole);
+      } else if ((tk + '.x') in f) ik(pts, key, [f[tk + '.x'], f[tk + '.y']], bd, view, f, sc);
+    }
+    // Arms drawn by angle with the depths the pose gives (+ toward the viewer).
+    for (const s of ['N', 'F']) {
+      if (!(('depthhd' + s) in pts) && ('depth.wr' + s) in f) {
+        pts['depthwr' + s] = pts['depthhd' + s] = f['depth.wr' + s];
+        if (('depth.el' + s) in f) pts['depthel' + s] = f['depth.el' + s];
+      }
     }
     // Free objects (a ball in flight, a bell around the head).
     for (const k of ['ball', 'kb', 'db']) if ((k + '.x') in f) pts[k] = [f[k + '.x'], f[k + '.y']];
     return pts;
   }
 
+  // How flat a foot is (1 flat, 0 pointed), tweened between poses.
+  const flatOf = (f, side) => ('l' + side + '.fl' in f ? clamp(f['l' + side + '.fl'], 0, 1) : f.$['flat' + side] ? 1 : 0);
+  // Blend two directions in degrees the short way round.
+  const blendDeg = (a, b, t) => a + (((((b - a) % 360) + 540) % 360) - 180) * t;
+
   function footFrom(pts, side, thSH, ankle, flat, view, mirror, scale, fixedDir) {
     const an = pts['an' + side];
     let thFoot;
+    const w = typeof flat === 'number' ? flat : flat ? 1 : 0;
     if (typeof fixedDir === 'number') thFoot = fixedDir;
-    else if (view === 'side') thFoot = flat ? 90 : thSH + 90 - ankle;
-    else thFoot = flat ? 0 : thSH - mirror * ankle * 0.2;
+    else if (view === 'side') thFoot = blendDeg(thSH + 90 - ankle, 90, w);
+    else thFoot = blendDeg(thSH - mirror * ankle * 0.2, 0, w);
     const footLen = view === 'side' ? L.foot : 6;
     pts['to' + side] = add(an, mul(dir(thFoot), footLen * scale));
     pts['he' + side] = add(an, mul(dir(thFoot), view === 'side' ? -L.heel : 0));
@@ -187,6 +220,9 @@
   const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
 
   // Solve the limb ending at `key` (hdN/hdF: hand; anN/anF: ankle) so its end reaches `target`.
+  // bend: which way the middle joint goes, 1 or -1 (the side of the root → target line), or a
+  // direction [x, y] to point it toward (x outward from the body in front and top views, forward in
+  // side view; y down), which picks whichever of the two solutions lies more that way.
   function ik(pts, key, target, bend, view, f, sc) {
     const side = key.slice(-1);
     const isArm = key.startsWith('hd');
@@ -200,7 +236,13 @@
     const cosA = (L1 * L1 + dist * dist - L2 * L2) / (2 * L1 * dist);
     const A = Math.acos(clamp(cosA, -1, 1)) / D2R;
     const flip = view !== 'side' && side === 'F' ? -1 : 1;
-    const thU = base + bend * flip * A;
+    let b = bend;
+    if (Array.isArray(bend)) {
+      const pole = [bend[0] * flip, bend[1]];
+      const toward = (th) => { const u = dir(th); return u[0] * pole[0] + u[1] * pole[1]; };
+      b = toward(base + A) >= toward(base - A) ? 1 : -1;
+    } else b = bend * flip;
+    const thU = base + b * A;
     const joint = add(root, mul(dir(thU), L1));
     const end = add(joint, mul(dir(angOf(sub(target, joint))), L2));
     if (isArm) {
@@ -212,16 +254,49 @@
       pts['kn' + side] = joint;
       pts['an' + side] = end;
       const thSH = angOf(sub(end, joint));
-      footFrom(pts, side, thSH, f['l' + side + '.a'] || 0, f.$['flat' + side], view, 1, sc('ft' + side), f['l' + side + '.fd']);
+      footFrom(pts, side, thSH, f['l' + side + '.a'] || 0, flatOf(f, side), view, 1, sc('ft' + side), f['l' + side + '.fd']);
     }
     pts['ikReach' + key] = len(sub(target, root)) <= L1 + L2 + 0.5;
   }
 
+  // A front-view hand reaching a target with depth T = [x, y, z] (z toward the viewer): a real 3D
+  // two-bone reach from the shoulder, the elbow toward `pole` ([out, down, forward]; default out,
+  // down and a little forward), drawn as its projection. The arm foreshortens as it comes toward
+  // the viewer and, unlike a flat reach, its elbow can't flip when the hand passes the shoulder.
+  // The joints' depths go to pts.depth{el,wr,hd}N/F for the 3D figure and the draw order.
+  function reach3(pts, key, T, pole) {
+    const side = key.slice(-1);
+    const sg = side === 'N' ? 1 : -1;
+    const S = [pts['sh' + side][0], pts['sh' + side][1], 0];
+    const p = pole || [1, 0.5, 0.4];
+    const P = [sg * p[0], p[1], p[2]];
+    const L1 = L.ua, L2 = L.fa + L.hand * 0.55;
+    const d = [T[0] - S[0], T[1] - S[1], T[2] - S[2]];
+    const l = Math.hypot(d[0], d[1], d[2]) || 1;
+    const dist = clamp(l, Math.abs(L1 - L2) + 0.01, L1 + L2 - 0.01);
+    const dn = d.map((v) => v / l);
+    const x = (L1 * L1 - L2 * L2 + dist * dist) / (2 * dist), h = Math.sqrt(Math.max(0, L1 * L1 - x * x));
+    const pd = P[0] * dn[0] + P[1] * dn[1] + P[2] * dn[2];
+    let pv = P.map((v, i) => v - pd * dn[i]);
+    let pl = Math.hypot(pv[0], pv[1], pv[2]);
+    if (pl < 1e-6) { pv = [dn[1], -dn[0], 0]; pl = Math.hypot(pv[0], pv[1]) || 1; }
+    const E = S.map((v, i) => v + dn[i] * x + (pv[i] / pl) * h);
+    const e = [T[0] - E[0], T[1] - E[1], T[2] - E[2]];
+    const el = Math.hypot(e[0], e[1], e[2]) || 1;
+    const Wr = E.map((v, i) => v + (e[i] / el) * L.fa);
+    const Hd = Wr.map((v, i) => v + (e[i] / el) * L.hand);
+    pts['el' + side] = [E[0], E[1]]; pts['wr' + side] = [Wr[0], Wr[1]]; pts['hd' + side] = [Hd[0], Hd[1]];
+    pts['depthel' + side] = E[2]; pts['depthwr' + side] = Wr[2]; pts['depthhd' + side] = T[2];
+    pts['ikReach' + key] = l <= L1 + L2 + 0.5;
+  }
+
   /* ---------------------------------------------------------------- timeline */
-  // A rep is a list of steps: { to: poseName, ms: travel time, hold: ms at the pose }.
+  // A rep is a list of steps: { to: poseName, ms: travel time, hold: ms at the pose, through }.
+  // Each step eases to a stop at its pose, unless `through` (a via point on a curved path: the
+  // motion carries on through it, as with move.flow) and it has no hold.
   // The loop starts at the last step's pose, so it cycles without a jump.
   function timeline(move) {
-    const steps = move.rep.map((s) => ({ to: s.to, ms: s.ms, hold: s.hold || 0 }));
+    const steps = move.rep.map((s) => ({ to: s.to, ms: s.ms, hold: s.hold || 0, through: !!s.through }));
     const total = steps.reduce((a, s) => a + s.ms + s.hold, 0);
     return { steps, total, start: steps[steps.length - 1].to };
   }
@@ -232,6 +307,19 @@
     if (!move.$flat) {
       move.$flat = {};
       for (const [k, p] of Object.entries(move.poses)) move.$flat[k] = flatten(p, move.view || 'side');
+      // A drawn scale or a pin offset that only some poses name holds its default in the others,
+      // so it tweens on the way to a pose that doesn't name it instead of jumping when it arrives.
+      const all = Object.values(move.$flat);
+      const pinAt = move.pin && move.pin.at;
+      for (const f of all) {
+        for (const g of all) {
+          for (const k of Object.keys(g)) {
+            if (k in f) continue;
+            if (k.startsWith('sc.')) f[k] = 1;
+            else if ((k === 'at.x' || k === 'at.y') && pinAt) f[k] = pinAt[k === 'at.x' ? 0 : 1];
+          }
+        }
+      }
     }
     return move.$flat;
   }
@@ -246,19 +334,60 @@
     return fp[name];
   }
 
+  // move.flow: the rep is one continuous path through its keyframes (a spline timed by each step)
+  // instead of easing to a stop at every one; a keyframe with a hold still stops there. For circles
+  // and other motions that never pause, like a halo.
   function sampleAt(move, tMs) {
     const tl = move.$tl || (move.$tl = timeline(move));
     const fp = new Proxy({}, { get: (_, k) => poseByName(move, k) });
     let t = ((tMs % tl.total) + tl.total) % tl.total;
     let from = tl.start;
-    for (const s of tl.steps) {
-      if (t < s.ms) return mix(fp[from], fp[s.to], ease(s.ms ? t / s.ms : 1));
+    const n = tl.steps.length;
+    for (let i = 0; i < n; i++) {
+      const s = tl.steps[i];
+      if (t < s.ms) {
+        const u = s.ms ? t / s.ms : 1;
+        const before = tl.steps[(i - 1 + n) % n];
+        const glideIn = (move.flow || before.through) && !before.hold, glideOut = (move.flow || s.through) && !s.hold;
+        return glideIn || glideOut ? flowMix(move, tl, i, u, glideIn, glideOut) : mix(fp[from], fp[s.to], ease(u));
+      }
       t -= s.ms;
       if (t < s.hold) return fp[s.to];
       t -= s.hold;
       from = s.to;
     }
     return fp[tl.start];
+  }
+
+  // Step i of a flowing rep at u (0..1): a cubic Hermite spline through the keyframes whose
+  // tangents are Catmull-Rom's, measured in time, so the speed carries smoothly through each one.
+  // Angles go the short way round between neighbouring keyframes (a limb can circle all the way).
+  const ANGLE_KEY = /^(t|n|tw|[al][NF]\.(s|e|w|h|k|a|fd))$/;
+  const nearDeg = (ref, a) => ref + (((((a - ref) % 360) + 540) % 360) - 180);
+  function flowMix(move, tl, i, u, glideIn = true, glideOut = true) {
+    const st = tl.steps, n = st.length;
+    const at = (j) => st[((j % n) + n) % n];
+    const pose = (j) => poseByName(move, at(j).to);
+    const p0 = pose(i - 2), p1 = pose(i - 1), p2 = pose(i), p3 = pose(i + 1);
+    const d0 = at(i - 1).ms || 1, d1 = at(i).ms || 1, d2 = at(i + 1).ms || 1;
+    // Tangent (per ms) at the start and end keyframes; zero where the rep stops there.
+    const k1 = !glideIn || at(i - 1).hold > 0 ? 0 : 1 / (d0 + d1);
+    const k2 = !glideOut || at(i).hold > 0 ? 0 : 1 / (d1 + d2);
+    const u2 = u * u, u3 = u2 * u;
+    const h00 = 2 * u3 - 3 * u2 + 1, h10 = u3 - 2 * u2 + u, h01 = -2 * u3 + 3 * u2, h11 = u3 - u2;
+    const out = {};
+    for (const k of Object.keys(p1)) {
+      if (k === '$') continue;
+      const a = p1[k];
+      if (!(k in p0) || !(k in p3) || !(k in p2)) { out[k] = lerp(a, k in p2 ? p2[k] : a, ease(u)); continue; }
+      let q0 = p0[k], b = p2[k], q3 = p3[k];
+      if (ANGLE_KEY.test(k)) { q0 = nearDeg(a, q0); b = nearDeg(a, b); q3 = nearDeg(b, q3); }
+      const m1 = (b - q0) * k1 * d1, m2 = (q3 - a) * k2 * d1;
+      out[k] = h00 * a + h10 * m1 + h01 * b + h11 * m2;
+    }
+    for (const k of Object.keys(p2)) if (!(k in out) && k !== '$') out[k] = p2[k];
+    out.$ = Object.assign({}, u < 0.5 ? p1.$ : p2.$, { pin: p1.$.pin || p2.$.pin });
+    return out;
   }
 
   function frameAt(move, tMs) {
@@ -331,7 +460,11 @@
     const out = [];
     for (const e of move.equip || []) {
       const hands = e.hands === 'both' ? ['N', 'F'] : e.hands === 'N' || e.hands === 'F' ? [e.hands] : ['N'];
-      if (e.type === 'db') {
+      if (e.type === 'db' && e.hold === 'feet') {
+        // Squeezed between the feet (a lying leg curl): end-on across the arches.
+        const arch = (s) => [lerp(pts['an' + s][0], pts['to' + s][0], 0.45), lerp(pts['an' + s][1], pts['to' + s][1], 0.45)];
+        out.push({ k: 'dbEnd', c: mid(arch('N'), arch('F')), r: 5.2, layer: 'front' });
+      } else if (e.type === 'db') {
         for (const s of hands) {
           const g = equipGrip(pts, s);
           const fa = angOf(sub(pts['wr' + s], pts['el' + s]));
@@ -350,7 +483,17 @@
         else g = equipGrip(pts, hands[0]);
         let c;
         if (pts.kb) c = pts.kb;
-        else if (e.hold === 'arm') {
+        // Bottom up, held by the horns: the bell sits above the hands on its handle.
+        else if (e.hold === 'horns') c = add(g, [0, -7]);
+        // Racked (a one-arm press): at the shoulder the bell hangs on the outside of the forearm (in
+        // line with it from the side); pressed overhead it rests on the back of the forearm, behind
+        // and below the fist.
+        else if (e.hold === 'rack') {
+          const s = hands[0];
+          const u = dir(angOf(sub(pts['wr' + s], pts['el' + s])));
+          const up = clamp((pts['sh' + s][1] - pts['wr' + s][1] - 10) / 35, 0, 1);
+          c = add(g, add(mul([u[1], -u[0]], 6 * up), [0, 8.5 - 2 * up]));
+        } else if (e.hold === 'arm') {
           const s = hands[0];
           c = add(g, mul(dir(angOf(sub(pts['wr' + s], pts['el' + s]))), 9));
         } else if (e.hold === 'chest') {
@@ -363,7 +506,7 @@
           c = add(add(pts.neck, mul(sub(pts.hip, pts.neck), 0.95)), mul(front, 12));
         } else c = add(g, [0, 9]);
         const handle = e.hold === 'chest' || e.hold === 'hip' ? add(c, mul(dir(angOf(sub(pts.neck, pts.hip))), 8)) : g;
-        out.push({ k: 'kb', c, r: 6.6, h: handle, layer: e.layer || 'front' });
+        out.push({ k: 'kb', c, r: 6.6, h: handle, layer: behind(move, pts, hands) ? 'far' : e.layer || 'front' });
       } else if (e.type === 'ball') {
         let c = pts.ball;
         if (!c) {
@@ -393,6 +536,14 @@
 
   function props(move) {
     return move.props || [];
+  }
+
+  // Front and top views: hands whose targets name a depth behind the body (a bell passing behind
+  // the head) draw behind the head and torso, with what they hold.
+  function behind(move, pts, sides) {
+    if ((move.view || 'side') === 'side') return false;
+    const z = sides.map((s) => pts['depthhd' + s]).filter((v) => v != null);
+    return z.length > 0 && z.reduce((a, b) => a + b, 0) / z.length < -2;
   }
 
   /* ---------------------------------------------------------------- gym: cables and attachments */
@@ -754,6 +905,18 @@
   }
   const GYM_PROPS = ['bench', 'rack', 'smith', 'cable', 'dip', 'machine', 'rower', 'bike', 'treadmill'];
 
+  // The leg press foot plate's centre (it slides on the line through p.track): under the middle of
+  // the soles, or for a calf raise (p.calf) square to the track with the balls of the feet near its
+  // bottom edge and the heels hanging off it.
+  function sledCentre(p, pts) {
+    if (!p.calf) return add(mid(pts.heN, pts.toN), mul(dir(pts.footDirN - 90), 5.5));
+    const ang = p.angle || 45;
+    const u = dir(90 + ang), pd = dir(180 + ang);
+    const ball = [lerp(pts.anN[0], pts.toN[0], 0.75), lerp(pts.anN[1], pts.toN[1], 0.75)];
+    const c = add(add(ball, mul(u, 5.5)), mul(pd, 18));
+    return add(p.track, mul(u, (c[0] - p.track[0]) * u[0] + (c[1] - p.track[1]) * u[1]));
+  }
+
   // Moving parts, per frame: cables, sleds, pads, levers, seats and cranks that follow the joints.
   function movingParts(move, pts) {
     const out = [];
@@ -765,8 +928,7 @@
         if (p.kind === 'legPress') {
           const ang = p.angle || 45;
           const u = dir(90 + ang), pd = dir(180 + ang);
-          const sole = dir(pts.footDirN - 90);
-          const pc = add(mid(pts.heN, pts.toN), mul(sole, 5.5));
+          const pc = sledCentre(p, pts);
           out.push({ k: 'plate', c: add(pc, mul(u, 14)), r: 19, layer: 'back' });
           out.push({ k: 'poly', pts: [add(pc, mul(pd, -27)), add(pc, mul(pd, 27)), add(add(pc, mul(pd, 27)), mul(u, 12)), add(add(pc, mul(pd, -27)), mul(u, 12))], cls: 'fig-prop', layer: 'back' });
           out.push({ k: 'tube', a: add(pc, mul(pd, -27)), b: add(pc, mul(pd, 27)), w: 4.4, cls: 'eq-lever', layer: 'back' });
@@ -898,9 +1060,10 @@
     const working = new Set(move.muscles || []);
     const layers = { back: [], far: [], core: [], near: [], front: [] };
     const leadLimbs = new Set(o.lead ? move.leadLimbs || ['aN', 'lN'] : []);
-    for (const [id, j0, j1, w, layer, limb] of segs) {
+    for (const [id, j0, j1, w, layer0, limb] of segs) {
       const a = P[j0], b = P[j1];
       if (!a || !b) continue;
+      const layer = limb && limb[0] === 'a' && behind(move, pts, [limb.slice(-1)]) ? 'far' : layer0;
       const item = { id, a: mx(a, mirrored), b: mx(b, mirrored), w, lead: limb && leadLimbs.has(limb), bands: [] };
       const baseId = id.replace(/[NF]$/, '');
       const sideLetter = /[NF]$/.test(id) ? id.slice(-1) : null;
@@ -1070,6 +1233,7 @@
     const { move, o, mirrored } = nodes;
     const dl = drawList(move, pts, { mirrored, lead: o.lead });
     if (!nodes.built) {
+      nodes.lg = {};
       for (const [ly, items] of Object.entries(dl.layers)) {
         const g = nodes.groups[ly];
         const outline = el('g', { class: 'fig-outline' }, g);
@@ -1078,11 +1242,12 @@
         g.insertBefore(outline, g.firstChild);
         g.insertBefore(fill, outline.nextSibling);
         g.insertBefore(bands, fill.nextSibling);
+        nodes.lg[ly] = { outline, fill, bands };
         for (const it of items) {
           const lo = el('line', { 'stroke-width': it.w, class: it.lead ? 'lead' : '' }, outline);
           const lf = el('line', { 'stroke-width': Math.max(0.5, it.w - 2 * OUTLINE) }, fill);
           const bl = it.bands.map((bd) => el('line', { 'stroke-width': f1(bd.w) }, bands));
-          nodes.items[it.id] = { lo, lf, bl };
+          nodes.items[it.id] = { lo, lf, bl, layer: ly };
         }
         if (ly === 'core') {
           nodes.head = {
@@ -1093,8 +1258,7 @@
         }
       }
       for (const e of dl.eq) {
-        const parent = e.layer === 'back' ? nodes.gEqBack : e.layer === 'far' ? nodes.gEqFar : e.layer === 'near' ? nodes.gEqNear : nodes.gEqFront;
-        const g = el('g', { class: 'fig-' + e.k }, parent);
+        const g = el('g', { class: 'fig-' + e.k }, eqParent(nodes, e.layer));
         if (e.k === 'db') {
           e.$ = { bar: el('line', { class: 'eq-handle' }, g), p1: el('line', { class: 'eq-plate' }, g), p2: el('line', { class: 'eq-plate' }, g) };
         } else if (e.k === 'dbEnd') {
@@ -1116,6 +1280,7 @@
         } else {
           e.$ = { gym: gymShape(g, e) };
         }
+        e.$.g = g; e.$.layer = e.layer;
         nodes.eq.push(e.$);
       }
       // Move equipment groups to the top of their layers so they draw over the limbs.
@@ -1126,10 +1291,17 @@
       }
       nodes.built = true;
     }
-    for (const items of Object.values(dl.layers)) {
+    for (const [ly, items] of Object.entries(dl.layers)) {
       for (const it of items) {
         const n = nodes.items[it.id];
         if (!n) continue;
+        if (n.layer !== ly && nodes.lg[ly]) {
+          // A hand passing behind the body: its limb moves to the layer behind the torso and head.
+          const to = nodes.lg[ly];
+          to.outline.appendChild(n.lo); to.fill.appendChild(n.lf);
+          for (const b of n.bl) to.bands.appendChild(b);
+          n.layer = ly;
+        }
         setLine(n.lo, it.a, it.b);
         setLine(n.lf, it.a, it.b);
         it.bands.forEach((bd, i) => n.bl[i] && setLine(n.bl[i], bd.a, bd.b));
@@ -1151,6 +1323,7 @@
     dl.eq.forEach((e, i) => {
       const $ = nodes.eq[i];
       if (!$) return;
+      if ($.layer !== e.layer && $.g) { eqParent(nodes, e.layer).appendChild($.g); $.layer = e.layer; }
       if (e.k === 'db') {
         setLine($.bar, e.a, e.b);
         const u = sub(e.b, e.a); const l = len(u) || 1; const n = mul(u, 1 / l);
@@ -1190,6 +1363,7 @@
     n.setAttribute('x1', f1(a[0])); n.setAttribute('y1', f1(a[1]));
     n.setAttribute('x2', f1(b[0])); n.setAttribute('y2', f1(b[1]));
   }
+  const eqParent = (nodes, layer) => (layer === 'back' ? nodes.gEqBack : layer === 'far' ? nodes.gEqFar : layer === 'near' ? nodes.gEqNear : nodes.gEqFront);
 
   /* ---------------------------------------------------------------- animation controller */
   // mount(container, move, { lead, mirrored, static, fps, poseName }) → controller. Only `static`
@@ -1262,6 +1436,6 @@
 
   GH.pose = {
     L, W, SEAT_H, dir, flatten, mix, solve, timeline, sampleAt, frameAt, framePose, poseByName, bounds, equipment, drawList, segments, mount, thumb, still, MUSCLES_SIDE, MUSCLES_FRONT,
-    gymGeom, movingParts, cableRuns, pinPoint, equipGrip, GYM_PROPS,
+    gymGeom, movingParts, cableRuns, pinPoint, equipGrip, sledCentre, GYM_PROPS,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

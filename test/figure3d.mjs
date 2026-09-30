@@ -1,11 +1,17 @@
 // The 3D exercise figure in Chromium (WebGL through SwiftShader): for every move (or the filter) it
-// mounts the figure, renders three frames through the rep, checks each frame drew a figure (not
+// mounts the figure, renders frames through the rep (three by default), checks each frame drew a figure (not
 // empty, not one flat colour) and that nothing threw, then writes contact sheets to build/fig3d/.
 // Also checks the fallback (no WebGL → onFallback), still() thumbnails, and loading the chunk with
 // GH.lazy inside the real app page.
 //
+// Motion (also run by default): every move played at 60 frames a second through the test hook
+// GH.figure3d._joints, which poses the 3D figure without drawing it. Elbows and wrists move less than
+// 3 cm a frame (or no more than the flat figure moves them there, for fast moves), and elbows stay
+// outside the head, in every frame.
+//
 // Usage: node test/figure3d.mjs [filter,filter…] [--dark] [--mirrored] [--size=240x200] [--cols=6]
-//        [--focus=head|hand|foot|trunk] [--view=side|front|three-quarter] (for checking details)
+//        [--frames=3] [--focus=head|hand|foot|trunk] [--view=side|front|three-quarter] (for checking details)
+//        [--motion] (the motion checks only) [--no-motion]
 // Build first (npm run build): the figure is served from dist/lazy/ as in the app.
 import http from 'node:http';
 import { readFileSync, readdirSync, existsSync, mkdirSync, rmSync } from 'node:fs';
@@ -26,6 +32,9 @@ const [CW, CH] = opt('size', '240x200').split('x').map(Number);
 const COLS = Number(opt('cols', '6'));
 const FOCUS = opt('focus', ''); // debugging close-ups: head, hand, foot, trunk
 const VIEW = opt('view', ''); // side | front | three-quarter
+const FRAMES = Math.max(1, Number(opt('frames', '3')));
+const MOTION_ONLY = args.includes('--motion');
+const MOTION = MOTION_ONLY || !args.includes('--no-motion');
 const dist = join(root, 'dist');
 const out = join(root, 'build/fig3d');
 
@@ -154,7 +163,63 @@ const loaded = await page.evaluate(async () => { try { await window.GH.lazy('fig
 check('GH.lazy("figure3d") loads the chunk under the app CSP', loaded === true, loaded);
 check('supported() is true with WebGL', await page.evaluate(() => window.GH.figure3d.supported()));
 
-const results = await page.evaluate(async ({ filters, dark, mirrored, focus, view }) => {
+if (MOTION) {
+  section('Motion at 60 fps');
+  // Each move twice through (the first pass settles the eased corrections), then every frame of
+  // the second compared with the one before: elbows and wrists within 3 cm, or within half again
+  // what the flat figure moves that joint around then (plus 1 cm) for moves that are simply fast;
+  // elbows at least 12.5 cm from the head's centre (the head's radius plus the elbow's).
+  const mo = await page.evaluate(({ filters }) => {
+    const GH = window.GH;
+    const eq = { db: [8], kb: [10], ball: true, ballSlam: true, band: true, bar: true, table: true, door: true, chair: true, wall: true, towel: true };
+    const d3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    const out = { moves: 0, frames: 0, jumps: [], head: [], worst: { d: 0 } };
+    for (const [id, m0] of Object.entries(GH.moves.MOVES)) {
+      if (filters.length && !filters.some((f) => id.includes(f))) continue;
+      const m = GH.moves.forPerson(m0, eq);
+      const total = GH.pose.timeline(m).total;
+      const dt = 1000 / 60, n = Math.ceil(total / dt);
+      const J = [], F = [];
+      for (let pass = 0; pass < 2; pass++) {
+        for (let i = 0; i <= n; i++) {
+          const t = i * dt, j = GH.figure3d._joints(m, t, 1000 + pass * (n + 1) * dt + t);
+          if (pass) { J.push(j); F.push(GH.pose.frameAt(m, t)); }
+        }
+      }
+      out.moves++; out.frames += J.length;
+      let headWorst = null;
+      for (const s of ['N', 'F']) {
+        for (let i = 0; i < J.length; i++) {
+          const h = d3(J[i]['el' + s], J[i].head);
+          if (h < 12.5 && (!headWorst || h < headWorst.h)) headWorst = { h, at: `${id}.el${s}@${Math.round(i * dt)}ms ${h.toFixed(1)} cm from the head's centre` };
+        }
+        for (const k of ['el', 'wr']) {
+          const d2 = F.map((f, i) => (i ? Math.hypot(f[k + s][0] - F[i - 1][k + s][0], f[k + s][1] - F[i - 1][k + s][1]) : 0));
+          for (let i = 1; i < J.length; i++) {
+            const d = d3(J[i][k + s], J[i - 1][k + s]);
+            let win = 0;
+            for (let q = Math.max(1, i - 4); q <= Math.min(J.length - 1, i + 4); q++) win = Math.max(win, d2[q]);
+            if (d > out.worst.d) out.worst = { d, at: `${id}.${k}${s}@${Math.round(i * dt)}ms` };
+            if (d > Math.max(3, 1.5 * win + 1)) { out.jumps.push(`${id}.${k}${s}@${Math.round(i * dt)}ms ${d.toFixed(1)} cm (flat figure ${win.toFixed(1)})`); break; }
+          }
+        }
+      }
+      if (headWorst) out.head.push(headWorst.at);
+    }
+    return out;
+  }, { filters });
+  check(`${mo.moves} moves, ${mo.frames} frames: elbows and wrists never jump (under 3 cm a frame, or as fast as the flat figure moves; fastest ${mo.worst.d.toFixed(1)} cm at ${mo.worst.at})`, !mo.jumps.length, mo.jumps.slice(0, 8).join('\n      '));
+  check('3D elbows stay outside the head in every frame', !mo.head.length, mo.head.slice(0, 8).join('\n      '));
+}
+if (MOTION_ONLY) {
+  await browser.close();
+  server.close();
+  check('no page errors or console errors', !errors.length, errors.slice(0, 8).join('\n      '));
+  done();
+  process.exit(0);
+}
+
+const results = await page.evaluate(async ({ filters, dark, mirrored, focus, view, frames }) => {
   const GH = window.GH;
   const eq = { db: [8], kb: [10], ball: true, ballSlam: true, band: true, bar: true, table: true, door: true, chair: true, wall: true, towel: true };
   const grid = document.getElementById('grid');
@@ -171,8 +236,8 @@ const results = await page.evaluate(async ({ filters, dark, mirrored, focus, vie
       if (view) ctl.setView(view, true);
       const canvas = ctl.el.querySelector('canvas');
       const total = ctl.duration;
-      for (const k of [0, 1, 2]) {
-        const t = Math.round((total * k) / 3);
+      for (let k = 0; k < frames; k++) {
+        const t = Math.round((total * k) / frames);
         ctl.seek(t);
         const c2 = canvas.getContext('2d');
         const d = c2.getImageData(0, 0, canvas.width, canvas.height).data;
@@ -206,11 +271,11 @@ const results = await page.evaluate(async ({ filters, dark, mirrored, focus, vie
   }
   await Promise.all([...document.images].map((i) => (i.complete ? null : new Promise((res) => { i.onload = i.onerror = res; }))));
   return out;
-}, { filters, dark, mirrored, focus: FOCUS, view: VIEW });
+}, { filters, dark, mirrored, focus: FOCUS, view: VIEW, frames: FRAMES });
 
 // (A --focus close-up is framed on the key pose, so the part may leave it: only errors count then.)
-const bad = results.filter((r) => r.error || r.frames.length !== 3 || (!FOCUS && r.frames.some((f) => f.cover < 0.02 || f.sd < 6)));
-check(`every move (${results.length}) renders three frames with a visible, shaded figure`, !bad.length, bad.slice(0, 6).map((r) => `${r.id}: ${r.error || JSON.stringify(r.frames)}`).join('\n      '));
+const bad = results.filter((r) => r.error || r.frames.length !== FRAMES || (!FOCUS && r.frames.some((f) => f.cover < 0.02 || f.sd < 6)));
+check(`every move (${results.length}) renders ${FRAMES} frames with a visible, shaded figure`, !bad.length, bad.slice(0, 6).map((r) => `${r.id}: ${r.error || JSON.stringify(r.frames)}`).join('\n      '));
 const phases = new Set(results.flatMap((r) => r.frames.map((f) => f.ph)));
 check('phase() reports con/ecc/hold', [...phases].every((p) => ['con', 'ecc', 'hold'].includes(p)), [...phases]);
 
