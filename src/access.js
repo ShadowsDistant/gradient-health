@@ -408,10 +408,47 @@
     return bits.length ? bits.join('; ') : null;
   }
 
+  // What today's session does because of age or health, for the coach's list of decisions (same
+  // shape as GH.coach.decisions: icon, tone, text, why, and the How it works rule behind it).
+  function decisions(S, s) {
+    const p = S.profile;
+    const out = [];
+    if (!s) return out;
+    if (s.flare) return [{ icon: 'refresh', tone: 'coral', text: 'Flare day: gentle range of motion instead', why: 'You said your joints are flaring. The plan picks up again tomorrow.', rule: 'arthritis' }];
+    const items = s.items || [];
+    if (items.some((it) => it.fam === 'balance')) out.push({ icon: 'compass', tone: 'teal', text: 'Balance practice first', why: rulesOf(p).c.has('balance') ? 'You said balance is a problem, so it starts every session, with a hand on the wall.' : band(p) === 'senior' ? 'From 65 it starts every session.' : 'From 50 it comes twice a week.', rule: 'balance' });
+    if (items.some((it) => it.fam === 'getup')) out.push({ icon: 'arrow-up-right', tone: 'green', text: 'Down to the floor and up, with a chair', why: 'Once a week, so getting up after a fall is practised.', rule: 'floor' });
+    if (items.some((it) => it.power)) out.push({ icon: 'bolt', tone: 'amber', text: 'Squats fast on the way up today', why: 'Power fades faster than strength from 50. Up fast, down slow.', rule: 'power' });
+    const stand = items.filter((it) => { const m = M().MOVES[it.moveId]; return m && M().LADDERS[m.family] && M().LADDERS[m.family].alt && m.family !== 'balance' && m.family !== 'getup'; });
+    if (stand.length) out.push({ icon: 'shuffle', tone: 'coral', text: stand.length === 1 ? `${stand[0].name} in place of the usual move` : `${stand.length} moves swapped for versions that suit you`, why: plannedAround(p) ? `${plannedAround(p)}.` : 'Your answers rule the usual moves out.', rule: rulesOf(p).seated ? 'seated' : 'arthritis' });
+    if ((s.notes || []).some((n) => n.kind === 'breathe')) out.push({ icon: 'heart', tone: 'rose', text: 'Breathe out on every effort', why: 'Holding your breath while you strain makes blood pressure spike.', rule: 'pressure' });
+    else if (band(p) !== 'mid' && band(p) !== 'young' && s.warmup && s.warmup.length >= 3) out.push({ icon: 'sun', tone: 'amber', text: 'A longer, gentler warm-up', why: `From ${band(p) === 'senior' ? '65' : '50'}, with a little more rest between sets too.`, rule: 'age' });
+    return out;
+  }
+  // The line under a set in the workout player, when age or health changes how to do it.
+  function setHint(p, it, timed) {
+    const c = rulesOf(p).c;
+    if (it && it.power) return 'Up as fast as you can, then lower slowly.';
+    if (timed) return c.has('bp') || c.has('heart') ? 'Hold with good form, and keep breathing the whole time.' : null;
+    if (c.has('heart')) return 'Stop with 2 or 3 reps left. Breathe out as you push.';
+    if (c.has('bp')) return 'Breathe out as you push, and never hold your breath. Stop with 1-3 reps left.';
+    return null;
+  }
+  // The on-device coach's answer to "is this OK with my arthritis?" and the like.
+  function answer(p, q) {
+    const t = String(q || '').toLowerCase();
+    if (/pregnan/.test(t)) return 'This plan isn\'t built for pregnancy. Exercise is encouraged in most pregnancies, but your midwife or doctor should say what\'s right for you first.';
+    const lines = planLines(p).map((l) => l.text);
+    const around = plannedAround(p);
+    const doc = doctorLines(p);
+    if (!lines.length) return 'Your plan isn\'t shaped around any health condition right now. If something applies, like arthritis, low back pain, balance problems or high blood pressure, add it under Settings, Your answers, Anything to plan around, and the plan works around it.';
+    return `${around}. ${lines.join(' ')}${doc.length ? ` ${doc.join(' ')}` : ''} If a move hurts, stop, and say so after your workout: moves that load that joint are swapped out.`;
+  }
+
   GH.access = {
     BANDS, CONDITIONS, OA_JOINTS, STAND_IN, BACK_WEEKS,
     band, conditions, rulesOf, why, moveOk, program, filterRungs, famFor, startRung, repStep, testsOk,
-    balancePerWeek, getupOn, powerOn, restPlus, mobilityEvery, flareOk, flareOn, mobilityIds, adjustSession,
-    plannedAround, planLines, doctorLines, briefLine,
+    balancePerWeek, getupOn, powerOn, restPlus, mobilityEvery, flareOk, flareOn, mobilityIds, warmupIds, adjustSession,
+    plannedAround, planLines, doctorLines, briefLine, decisions, setHint, answer,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

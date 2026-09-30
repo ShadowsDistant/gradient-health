@@ -1407,7 +1407,9 @@
   function finishWorkout(S, checkin, day) {
     const A = S.active;
     if (!A) return null;
-    const c = checkin || {};
+    const c = Object.assign({}, checkin || {});
+    // A flare day's gentle range of motion (src/access.js) says nothing about training volume.
+    if (A.session && A.session.flare) { c.rating = null; c.complicated = null; }
     const cal = calendar(S, A.day);
     const week = cal.weeks[weekStart(A.day)];
     const deload = !!(week && week.phase.deload);

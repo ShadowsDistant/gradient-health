@@ -9,9 +9,9 @@
   const B = () => GH.brain;
   const M = () => GH.moves;
 
-  const GROUP_TONE = { biceps: 'amber', triceps: 'rose', chest: 'indigo', legs: 'green', back: 'teal', shoulders: 'sky', abs: 'violet', conditioning: 'amber' };
-  const GROUP_ICON = { biceps: 'bolt', triceps: 'bolt', chest: 'layers', legs: 'mountain', back: 'arrow-left', shoulders: 'sun', abs: 'grid', conditioning: 'wave' };
-  const ORDER = ['biceps', 'triceps', 'chest', 'legs', 'back', 'shoulders', 'abs', 'conditioning'];
+  const GROUP_TONE = { biceps: 'amber', triceps: 'rose', chest: 'indigo', legs: 'green', back: 'teal', shoulders: 'sky', abs: 'violet', conditioning: 'amber', balance: 'teal' };
+  const GROUP_ICON = { biceps: 'bolt', triceps: 'bolt', chest: 'layers', legs: 'mountain', back: 'arrow-left', shoulders: 'sun', abs: 'grid', conditioning: 'wave', balance: 'compass' };
+  const ORDER = ['balance', 'biceps', 'triceps', 'chest', 'legs', 'back', 'shoulders', 'abs', 'conditioning'];
   const EQ_NAME = { db: 'dumbbells', kb: 'a kettlebell', ball: 'a ball', slam: 'a ball you can slam', band: 'a band', bar: 'a pull-up bar', chair: 'a chair', wall: 'a wall', towel: 'a towel', table: 'a sturdy table', door: 'a door anchor', bb: 'a barbell', ez: 'an EZ bar', rack: 'a squat rack', bench: 'a bench', incline: 'an adjustable bench', smith: 'a Smith machine', cable: 'a cable machine', pulldown: 'a lat pulldown', legPress: 'a leg press', legCurl: 'a leg curl machine', legExt: 'a leg extension machine', chestPress: 'a chest press machine', shoulderPress: 'a shoulder press machine', pecDeck: 'a pec deck', dip: 'dip bars', rower: 'a rower', bike: 'an exercise bike', treadmill: 'a treadmill' };
   const MUSCLE_NAME = (m) => String(m).replace(/([A-Z])/g, ' $1').toLowerCase();
 
@@ -93,7 +93,7 @@
         const miss = needs(mv, lad.gym ? B().eqAt(S, 'gym') : S.profile.equipment);
         const why = lad.gym
           ? (i >= 0 ? (cur ? `Now: ${U.target(mv, st.reps)}${st.loads && st.loads[id] != null ? ` at ${B().fmtLoad(S, st.loads[id], String(mv.load || '').split('|')[0], mv)}` : ''}` : i === 0 ? 'First pick at your gym' : 'Also at your gym') : miss.length ? `Needs ${miss.join(', ')}` : S.excluded.includes(id) ? 'Hidden by you' : 'Not for now')
-          : i >= 0 ? `Level ${i + 1} of ${avail.length}${cur ? ` · now: ${U.target(mv, st.reps)}` : ''}` : miss.length ? `Needs ${miss.join(', ')}` : S.excluded.includes(id) ? 'Hidden by you' : mv.impact ? 'Has jumping or slamming' : 'Not for now';
+          : i >= 0 ? `Level ${i + 1} of ${avail.length}${cur ? ` · now: ${U.target(mv, st.reps)}` : ''}` : miss.length ? `Needs ${miss.join(', ')}` : S.excluded.includes(id) ? 'Hidden by you' : (GH.access && GH.access.why(S.profile, mv, U.today())) || (mv.impact ? 'Has jumping or slamming' : 'Not for now');
         return `<li><button type="button" class="rf-list-row${id === showing ? ' is-showing' : ''}${i < 0 ? ' is-muted' : ''}" data-act="ladderShow" data-arg="${id}">
           <span class="rf-list-icon" data-tone="${cur ? 'green' : i >= 0 ? 'sky' : 'indigo'}">${U.icon(cur ? 'star' : i >= 0 ? 'check' : 'lock')}</span>
           <span class="rf-list-text"><span class="rf-list-title">${U.esc(mv.name)}</span><span class="rf-list-sub">${U.esc(why)}</span></span></button></li>`;
@@ -157,8 +157,9 @@
         }).join('');
         return `<h3 class="rf-list-header">${U.esc(B().GROUP_NAME[g] || g)}</h3><ul class="rf-list">${rows}</ul>`;
       }).join('');
-      const wu = (S.profile.equipment.kb && S.profile.equipment.kb.length ? M().WARMUP.kb : M().WARMUP.none);
-      const extra = wu.concat(M().MOBILITY, ['walk']).filter((id) => M().MOVES[id]).map((id) => U.row({ icon: M().MOBILITY.includes(id) ? 'leaf' : id === 'walk' ? 'navigate' : 'sun', tone: 'teal', title: U.esc(M().MOVES[id].name), act: 'moveInfo', arg: id, chevron: true })).join('');
+      const wu = (GH.access && GH.access.warmupIds(S.profile)) || (S.profile.equipment.kb && S.profile.equipment.kb.length ? M().WARMUP.kb : M().WARMUP.none);
+      const flow = B().mobilityFlow(S).map((x) => x.moveId);
+      const extra = [...new Set(wu.concat(flow, ['walk']))].filter((id) => M().MOVES[id]).map((id) => U.row({ icon: flow.includes(id) ? 'leaf' : id === 'walk' ? 'navigate' : 'sun', tone: 'teal', title: U.esc(M().MOVES[id].name), act: 'moveInfo', arg: id, chevron: true })).join('');
       // A tab normally; a page (with a back button) when Food has the tab.
       const asPage = U.route && U.route.view === 'moves';
       return `${U.navbar('Moves', '', asPage ? U.glassBtn('chevron-left', 'Back', 'back') : '')}

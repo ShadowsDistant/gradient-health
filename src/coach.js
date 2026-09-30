@@ -128,6 +128,7 @@
     { id: 'sides', words: ['left', 'right', 'weaker', 'side', 'imbalance', 'uneven', 'one arm'] },
     { id: 'deload', words: ['deload', 'light week', 'easy week', 'rest week'] },
     { id: 'abs', words: ['abs', 'six pack', 'six-pack', 'belly', 'stomach', 'core'] },
+    { id: 'bodies', words: ['arthritis', 'rheumat', 'osteopor', 'bone density', 'back pain', 'blood pressure', 'hypertension', 'balance', 'wheelchair', 'seated', 'wrist pain', 'hand pain', 'heart condition', 'heart disease', 'health condition', 'pregnan', 'flare', 'my age', 'too old', 'older'] },
     { id: 'focus', words: ['focus', 'improve', 'what should', 'next', 'advice', 'tip', 'help me', 'better'] },
   ];
   function topicOf(q) {
@@ -142,6 +143,7 @@
   }
 
   const ANSWER = {
+    bodies: (S, day, f, q) => (GH.access ? GH.access.answer(S.profile, q) : 'Tell the app about anything to plan around under Settings, Your answers.'),
     redflag: () => 'That could be serious, and it\'s not something an app should judge. Stop exercising and talk to a doctor. If it\'s happening right now or getting worse, call emergency services.',
     today: (S, day, f) => {
       const r = f.readiness;
@@ -241,7 +243,7 @@
     if (!topic) {
       return { topic: null, text: 'I can answer questions about your sleep, steps, weight, protein, training, streak, recovery and your left and right sides. For anything else, try Ask in the Claude app.' };
     }
-    return { topic, text: ANSWER[topic](S, day, facts(S, day)) };
+    return { topic, text: ANSWER[topic](S, day, facts(S, day), question) };
   }
 
   /* ---------------------------------------------------------------- Claude app hand-off */
@@ -270,6 +272,8 @@
       out.push({ icon: 'leaf', tone: 'teal', text: 'Light day: a walk and 5 minutes of mobility', why: 'Recovery between workouts. Doing both keeps your streak going.', rule: 'steps' });
       return out;
     }
+    // A flare day (src/access.js) is gentle range of motion only: that's the one thing to say.
+    if (s.flare && GH.access) return GH.access.decisions(S, s);
     const r = s.readiness || { reasons: [] };
     const why = (kind) => (r.reasons || []).find((x) => x.kind === kind);
     if (r.minus) {
@@ -295,6 +299,8 @@
     if (guesses) out.push({ icon: 'dumbbell', tone: 'sky', text: `Pick your weight on ${guesses === 1 ? 'one new exercise' : `${guesses} new exercises`}`, why: 'Start with one you could lift about 12 times. It\'s remembered after that.', rule: 'overload' });
     if (s.trimmed && s.trimmed.length) out.push({ icon: 'clock', tone: 'sky', text: `Trimmed to fit ${s.short ? '12-15' : S.profile.minutes} minutes`, why: `Left out: ${s.trimmed.map((x) => x.toLowerCase()).join(', ')}.`, rule: null });
     for (const l of (S.pendingLines || []).filter((x) => x && x.text).slice(0, 3)) out.push({ icon: 'arrow-up-right', tone: 'green', text: l.text, why: l.why ? `${l.why[0].toUpperCase()}${l.why.slice(1)}.` : '', rule: 'overload' });
+    // Age and health (src/access.js): balance, power, stand-ins, breathing, a flare day.
+    if (GH.access) for (const d of GH.access.decisions(S, s)) out.push(d);
     return out;
   }
 

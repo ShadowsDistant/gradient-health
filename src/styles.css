@@ -254,6 +254,16 @@ html:has(#app[data-receded]), body:has(#app[data-receded]) { background: #08090c
 .check-done { color: var(--positive); display: inline-flex; }
 .light-train { justify-self: start; }
 .feel-row { display: grid; gap: var(--space-1); }
+.feel-flare { margin-top: var(--space-1); }
+.feel-done.has-flare { display: grid; gap: var(--space-2); }
+.feel-done-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+/* "Planned around ..." on the workout card: taps through to what's built around you. */
+.around-line { appearance: none; border: 0; background: none; padding: 0; margin: 0; display: flex; align-items: center; gap: 6px; color: var(--label-secondary); font: inherit; text-align: start; cursor: pointer; min-height: 32px; }
+.around-line > svg:first-child { color: var(--hue-rose, var(--accent)); flex: none; }
+.around-line > span { flex: 1; min-width: 0; }
+.around-line > svg:last-child { flex: none; opacity: .6; }
+.session-note { margin: 0; color: var(--label-secondary); }
+.around-list { margin: 0 0 var(--space-2); }
 .feel-row .rf-segmented { width: 100%; }
 /* Nothing picked yet (the reps-left question): no thumb, instead of Refract's default on the first option. */
 .rf-segmented:not(:has(input:checked)) .rf-segmented-thumb { opacity: 0; }
