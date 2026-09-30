@@ -4,6 +4,22 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.4.0', date: '2026-09-30', title: 'A coach that answers, and a new Plan, Health and Progress',
+      items: [
+        ['chip', 'The on-device coach answers now. It runs on your phone\'s fast cores in its own engine, several times quicker than before, reads your data ahead so answers start in seconds, and checks each one against your numbers. Phones with 8 GB or more get the Balanced size suggested, for better answers.'],
+        ['sparkle', 'Ask the coach from any tab with the sparkle at the top left. The chat suggests questions from your data, shows what each answer used, and keeps answering when you close it.'],
+        ['sliders', 'Tailor my plan: say what you want ("more legs, my knees hurt, 20 minutes", "train my calves more") and the coach shows the changes before anything changes. Undo is always there.'],
+        ['calendar', 'A new Plan tab: your week as a strip of days, any day a tap away with its exercises shown in 3D, workouts you can move by tapping or dragging, and sets per muscle against their targets.'],
+        ['heart', 'Health is redesigned: your week at a glance, and every number opens its history, with a chart, where each value came from, and a way to add or fix your own.'],
+        ['person', 'Progress shows your body: a map of the muscles you\'ve trained and where you\'ve got stronger, with each muscle\'s story a tap away.'],
+        ['dumbbell', '46 new exercises (212 in all) that fit your kit: overhead presses, rows, calf raises and hamstring curls with just a chair, a wall and a towel. Warm-ups and cool-downs follow the day\'s muscles, and the kettlebell halo circles your head properly now.'],
+        ['layers', 'Sheets slide up from the bottom and follow your finger: swipe up for the full view or down to close, with a springy settle and no more stutter.'],
+        ['bolt', 'Haptics you can feel: stronger, with a different feel for taps, toggles, timers, finished sets and new bests. Try them in Settings.'],
+        ['wave', 'The colours behind each page drift slowly. Turn it off in Settings, Appearance.'],
+        ['check-circle', 'Fixes: picking your workout days sets how many a week (Monday to Friday means five), and food sheets no longer run off the edge.'],
+      ],
+    },
+    {
       version: '1.3.1', date: '2026-09-29', title: 'A round of fixes',
       items: [
         ['refresh', 'Undo after cancelling a workout brings it back properly. Before, logging a set afterwards could fail until the app restarted.'],
