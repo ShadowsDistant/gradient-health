@@ -72,6 +72,7 @@ export const APP_SCRIPTS = [
   'src/data/changelog.js',
   'src/engine/pose.js',
   'src/brain.js',
+  'src/access.js',
   'src/planweek.js',
   'src/insights.js',
   'src/body.js',

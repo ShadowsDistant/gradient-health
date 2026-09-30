@@ -27,7 +27,7 @@
 
   /* ================================================================== constants */
   const GROUPS = ['biceps', 'triceps', 'abs', 'chest', 'legs', 'back', 'shoulders'];
-  const GROUP_NAME = { biceps: 'Biceps', triceps: 'Triceps', abs: 'Abs', chest: 'Chest', legs: 'Legs', back: 'Back', shoulders: 'Shoulders', conditioning: 'Conditioning', mobility: 'Mobility' };
+  const GROUP_NAME = { biceps: 'Biceps', triceps: 'Triceps', abs: 'Abs', chest: 'Chest', legs: 'Legs', back: 'Back', shoulders: 'Shoulders', conditioning: 'Conditioning', mobility: 'Mobility', balance: 'Balance' };
   const GOAL_GROUPS = { abs: ['abs'], arms: ['biceps', 'triceps'], chest: ['chest'], legs: ['legs'], back: ['back'], shoulders: ['shoulders'] };
   const UNIT_OF = { biceps: 'arms', triceps: 'arms', abs: 'abs', chest: 'chest', legs: 'legs', back: 'back', shoulders: 'shoulders' };
   const UNIT_GROUPS = { arms: ['biceps', 'triceps'], abs: ['abs'], chest: ['chest'], legs: ['legs'], back: ['back'], shoulders: ['shoulders'] };
@@ -113,12 +113,15 @@
       : lvl === 0 || p.recentActivity === 'none' ? { weeks: 2, mult: 0.7 }
       : p.experience === 'lt1' ? { weeks: 1, mult: 0.8 }
       : p.experience === '1to3' ? { weeks: 1, mult: 0.9 } : { weeks: 0, mult: 1 };
-    return {
+    const out = {
       tiers, freq, start, cap, floor, level: lvl, D,
       finisherPerWeek: cond ? 7 : 2, walkMin: cond ? 20 : 12, mobilityPlus: goals.includes('mobility'),
       onramp, impactOk: p.impactOk !== false && !(p.age >= 60) && !p.gentle,
       warmupMin: p.age >= 40 ? 4 : 2.5,
     };
+    // Age and health conditions shift these defaults (src/access.js): impact, warm-up length, a
+    // gentler start with a heart condition.
+    return GH.access ? GH.access.program(p, out) : out;
   }
   const clampInt = (x, lo, hi) => Math.max(lo, Math.min(hi, Math.round(Number(x) || lo)));
 
@@ -284,15 +287,32 @@
     let list = M().rungsFor(family, f.eq, { noImpact: o.noImpact, simple: o.simple });
     if (f.careful.length) list = list.filter((id) => { const m = M().MOVES[id]; return !((m.impact || m.complex) && (m.joints || []).some((j) => f.careful.includes(j))); });
     list = list.filter((id) => !(S.excluded || []).includes(id));
+    // Age and health rules (src/access.js): moves a condition rules out go, and the stand-in
+    // ladders stay closed until a plan needs them. opts.noRules skips this (to tell a ladder ruled
+    // out by the body from one ruled out by the equipment).
+    if (GH.access && !o.noRules) list = GH.access.filterRungs(S, family, list, day);
     return list;
+  }
+  // The ladder for a slot: the usual one, or its stand-in when a health condition rules every rung
+  // of it out (seated band presses for push-ups with painful wrists), or a gentler one that suits
+  // the person better (src/access.js).
+  function famFor(S, fam, day) {
+    return GH.access ? GH.access.famFor(S, fam, day) : fam;
   }
 
   const isGymFam = (fam) => !!(M().LADDERS[fam] && M().LADDERS[fam].gym);
   // Gym families start the first time they're used (at the gym, where their moves exist).
   function ensureProg(S, fam, day) {
-    if (S.prog[fam] || !isGymFam(fam)) return S.prog[fam] || null;
+    const lad = M().LADDERS[fam];
+    if (S.prog[fam] || !lad || !(lad.gym || lad.alt)) return S.prog[fam] || null;
     const list = rungs(S, fam, day);
     if (!list.length) return null;
+    // Stand-in ladders (src/access.js) also start the first time a plan uses them, like a home ladder.
+    if (lad.alt) {
+      const id = (GH.access && GH.access.startRung(S, fam, list)) || list[0];
+      S.prog[fam] = { rung: id, reps: M().MOVES[id].start, w: 0, best: {}, short: 0, cooldown: 0, maxed: false };
+      return S.prog[fam];
+    }
     const m = M().MOVES[list[0]];
     S.prog[fam] = { rung: list[0], reps: m.start, best: {}, loads: {}, e1rm: {}, short: 0, cooldown: 0, flat: 0, gym: true };
     return S.prog[fam];
@@ -305,7 +325,7 @@
       const list = rungs(S, fam, day, { place: 'home' });
       if (!list.length) continue;
       const prefs = (DEFAULT_START[fam] || [[]])[lvl] || [];
-      const id = prefs.find((x) => list.includes(x)) || list[0];
+      const id = (GH.access && GH.access.startRung(S, fam, list)) || prefs.find((x) => list.includes(x)) || list[0];
       S.prog[fam] = { rung: id, reps: M().MOVES[id].start, w: 0, best: {}, short: 0, cooldown: 0, maxed: false };
     }
     if (baseline) applyBaseline(S, baseline, day);
@@ -374,6 +394,7 @@
     return { gap, active: c.active, line };
   }
   function testDue(S, day, kind) {
+    if (GH.access && !GH.access.testsOk(S, kind)) return false;
     const c = S.catchup[kind];
     if (!c || (!c.active && !c.tests.length && !S.profile.lead[kind])) return false;
     const last = c.tests.length ? c.tests[c.tests.length - 1].day : S.profile.startDay;
@@ -565,7 +586,7 @@
 
   /* ================================================================== session build */
   function slotsForUnit(unit, sets, S, dayIdx, day) {
-    const has = (fam) => rungs(S, fam, day).length > 0;
+    const has = (fam) => rungs(S, famFor(S, fam, day), day).length > 0;
     if (placeOf(S, day) === 'gym') { const g = gymSlots(unit, sets, dayIdx, has); if (g) return g; }
     const out = [];
     const split = (a, b, n, bias) => {
@@ -583,7 +604,14 @@
       if (has('pull') && sets >= 3) { const pr = Math.round(sets * 0.4); out.push(['pull', pr]); split('row', 'rear', sets - pr, true); }
       else split('row', 'rear', sets, true);
     } else if (unit === 'shoulders') out.push(['raise', sets]);
-    return out.filter(([f, n]) => n > 0 && has(f));
+    // Stand-ins can fill two slots with the same ladder: those merge into one.
+    const merged = [];
+    for (const [f, n] of out) {
+      const fam = famFor(S, f, day);
+      const same = merged.find((x) => x[0] === fam);
+      if (same) same[1] += n; else merged.push([fam, n]);
+    }
+    return merged.filter(([f, n]) => n > 0 && rungs(S, f, day).length > 0);
   }
 
   // At the gym: a main lift for the unit, then a second angle or an isolation move, so a muscle gets
@@ -649,7 +677,7 @@
       const groups = UNIT_GROUPS[unit];
       if (unit === 'abs') {
         const n = perSession(Math.round(S.vol.abs * mult), prog.freq.abs, occurrence('abs'));
-        let pair = CORE_ROTATION[t.idx % CORE_ROTATION.length].filter((f) => rungs(S, f, day).length);
+        let pair = [...new Set(CORE_ROTATION[t.idx % CORE_ROTATION.length].map((f) => famFor(S, f, day)))].filter((f) => rungs(S, f, day).length);
         // At the gym, one of the two ab slots is a cable or hanging move.
         if (atGym && rungs(S, 'absG', day).length) pair = ['absG'].concat(pair.filter((f) => f !== 'absLoad' && f !== 'abs')).slice(0, 2);
         if (n <= 2 || pair.length < 2) { if (pair.length) slots.push({ fam: pair[0], sets: n, group: 'abs' }); }
@@ -660,7 +688,7 @@
         for (const g of groups) {
           const n = perSession(Math.round(S.vol[g] * mult), prog.freq.arms, occurrence('arms'));
           const gymFam = g === 'biceps' ? 'curlG' : 'triG';
-          const fam = atGym && rungs(S, gymFam, day).length ? gymFam : g === 'biceps' ? 'curl' : 'triceps';
+          const fam = atGym && rungs(S, gymFam, day).length ? gymFam : famFor(S, g === 'biceps' ? 'curl' : 'triceps', day);
           if (n > 0 && rungs(S, fam, day).length) slots.push({ fam, sets: n, group: g });
         }
         continue;
@@ -712,6 +740,9 @@
       place: placeOf(S, day), comeback,
     };
     pairSupersets(S, session);
+    // Age and health (src/access.js): warm-up, balance and floor practice, power, rest, cool-down,
+    // and a flare day's gentle range-of-motion session.
+    if (GH.access) GH.access.adjustSession(S, session, day, { tplIdx: t.idx, days: tpl.length, legIdx: (tpl.find((x) => x.units.includes('legs')) || {}).idx });
     if (!o.noTrim) fitToBudget(S, session, o.short ? 13 : set.minutes || p.minutes);
     if (S.complexity > 0) limitExercises(session, S.complexity === 1 ? 5 : 4);
     session.estimateMin = Math.round(estimate(S, session));
@@ -921,7 +952,7 @@
 
   function finisherItem(S, day) {
     // At the gym, the finisher is rowing, cycling or an incline walk when those are there.
-    const fam = placeOf(S, day) === 'gym' && rungs(S, 'cardioG', day).length ? 'cardioG' : 'finisher';
+    const fam = placeOf(S, day) === 'gym' && rungs(S, famFor(S, 'cardioG', day), day).length ? famFor(S, 'cardioG', day) : famFor(S, 'finisher', day);
     const list = rungs(S, fam, day);
     if (!list.length) return null;
     const st = S.prog[fam] || {};
@@ -945,7 +976,8 @@
 
   function mobilityFlow(S) {
     const extra = programFor(S.profile).mobilityPlus;
-    return M().MOBILITY.map((id) => { const m = M().MOVES[id]; return { kind: 'mobility', moveId: id, name: m.name, timed: true, target: extra ? m.range[1] : m.start, uni: !!m.uni }; });
+    const ids = GH.access ? GH.access.mobilityIds(S) : M().MOBILITY;
+    return ids.map((id) => { const m = M().MOVES[id]; return { kind: 'mobility', moveId: id, name: m.name, timed: true, target: extra ? m.range[1] : m.start, uni: !!m.uni }; });
   }
 
   /* ---------------- supersets */
@@ -1018,13 +1050,16 @@
     return sec / 60;
   }
 
-  function tierOf(S, group) { return programFor(S.profile).tiers[group] || 3; }
+  function tierOf(S, group) { return group === 'balance' ? 1 : programFor(S.profile).tiers[group] || 3; }
   // For trimming, back counts as tier 2 whenever chest is trained hard (it balances the pushing).
   function trimTier(S, group) {
     const t = programFor(S.profile).tiers;
+    if (group === 'balance') return 1; // balance practice (src/access.js) is trimmed last
     return group === 'back' && t.chest <= 2 ? Math.min(t.back || 3, 2) : t[group] || 3;
   }
-  // Trim order: mobility → finisher → shoulders → second core slot → tier 3 → tier 2 → tier 1.
+  // Trim order: mobility → finisher → shoulders down to one set → second core slot → tier 3 → tier 2
+  // → tier 1, and only then the last shoulder set. Pressing works the shoulders too, so they shrink
+  // first, but one direct set stays so no muscle group drops out for weeks because sessions are full.
   // With a conditioning goal the finisher is part of the point: it shrinks late instead of going first.
   function fitToBudget(S, s, budget) {
     const cond = programFor(S.profile).finisherPerWeek >= 7;
@@ -1041,15 +1076,17 @@
         c.sets--;
       }
     };
-    if (over() && s.mobility && s.mobility.length) s.mobility = [];
+    if (over() && s.mobility && s.mobility.length && !s.keepMobility) s.mobility = [];
     if (over() && !cond) dropFinisher();
-    if (over()) dropSlot((it) => it.group === 'shoulders');
+    const shoulders = () => s.items.find((it) => it.group === 'shoulders');
+    if (over() && shoulders()) shoulders().sets = 1;
     if (over() && tierOf(S, 'abs') > 1) dropSecondCore();
     setsDown(3, 1);
-    while (over() && dropSlot((it) => trimTier(S, it.group) === 3)) { /* drop whole slots */ }
+    while (over() && dropSlot((it) => trimTier(S, it.group) === 3 && it.group !== 'shoulders')) { /* drop whole slots */ }
     if (cond) while (over() && s.finisher && s.finisher.rounds > 3) s.finisher.rounds--;
     setsDown(2, 2);
     setsDown(1, 2);
+    if (over()) dropSlot((it) => it.group === 'shoulders');
     if (over()) dropFinisher();
     if (over() && s.extras.length) s.extras = [];
     if (over() && s.warmup.length > 2) s.warmup = s.warmup.slice(0, 2);
@@ -1069,7 +1106,7 @@
   }
   // Short on time: priority work only, then fill back up to at least 12 minutes.
   function shortMode(S, s) {
-    s.finisher = null; s.mobility = []; s.tests = [];
+    s.finisher = null; s.mobility = s.keepMobility ? s.mobility.slice(0, 2) : []; s.tests = [];
     const tier1 = s.items.filter((it) => tierOf(S, it.group) === 1);
     const main = s.items.find((it) => tierOf(S, it.group) === 2);
     const keep = new Set(tier1.concat(main ? [main] : []));
@@ -1518,7 +1555,8 @@
       if (prevBest > 0 && !S.celebrated[key]) { S.celebrated[key] = day; res.celebrate.push({ kind: 'pr', text: `New best: ${best}${log.timed ? ' s' : ''} ${m.name.toLowerCase()}` }); }
     }
     if (st.cooldown > 0) st.cooldown--;
-    if (log.moveId !== st.rung) return res; // a swap: its own ladder is not moved
+    // A swap doesn't move its own ladder; a fast-up version (src/access.js) counts as its base rung.
+    if (log.moveId !== st.rung && m.powerOf !== st.rung) return res;
     if (deload) return res;
     const [lo, hi] = rangeFor(S, m, fam);
     const target = log.target;
@@ -1531,12 +1569,12 @@
         const up = levelUp(S, fam, day);
         if (up) { res.line = up.line; if (up.celebrate) res.celebrate.push(up.celebrate); }
       } else if (allHit) {
-        const next = Math.min(hi, st.reps + (log.timed ? 10 : 2));
+        const next = Math.min(hi, st.reps + stepFor(S, log.timed ? 10 : 2, log.timed, '3'));
         if (next !== st.reps) { st.reps = next; res.line = { text: `${name} → ${next}${unit}`, why: 'you had 3+ left' }; }
       }
     } else if (log.rir === '12') {
       if (allHit) {
-        const next = Math.min(hi, st.reps + (log.timed ? 5 : st.reps < 12 ? 1 : 2));
+        const next = Math.min(hi, st.reps + stepFor(S, log.timed ? 5 : st.reps < 12 ? 1 : 2, log.timed, '12'));
         if (next !== st.reps) { st.reps = next; res.line = { text: `${name} → ${next}${unit}`, why: 'you had 1-2 left' }; }
       }
     }
@@ -1564,6 +1602,10 @@
     } else st.short = 0;
     return res;
   }
+
+  // How many reps (or seconds) a good set adds: src/access.js makes the steps a little bigger under
+  // 30 and smaller from 50.
+  function stepFor(S, base, timed, rir) { return GH.access ? GH.access.repStep(S.profile, base, timed, rir) : base; }
 
   // Rep range for a move, by goal. Heavier sets build more maximal strength while muscle grows
   // about as well across a wide range of loads (Schoenfeld et al. 2017), so a strength goal moves
@@ -1657,7 +1699,7 @@
             : { text: `${m.name}: top of the rep range. Hold a dumbbell to keep progressing.`, why: 'you had reps to spare' };
         }
       } else {
-        const next = Math.min(hi, st.reps + (log.rir === '3' ? 2 : 1));
+        const next = Math.min(hi, st.reps + stepFor(S, log.rir === '3' ? 2 : 1, false, log.rir));
         if (next !== st.reps) { st.reps = next; res.line = { text: `${m.name} → ${next}${unit}`, why: log.rir === '3' ? 'you had 3+ left' : 'you had 1-2 left' }; }
       }
     } else if (!allHit) {
@@ -1944,4 +1986,6 @@
     updateSettings, scheduleSettings, settingsAt, moveSession, setEquipment, reprogram, ladderLevel, mobilityFlow, loadInfo, isDone, relink, median,
     defaultGym, GYM_PRESETS, DB_MAX_OPTIONS, convertDbMax, rangeFor, stepsGoal, outcomeOf, weekdaysFor, gymPreset, placeOf, setPlace, eqAt, eqFor, dbRack, snapLoad, suggestLoad, fmtLoad, loadChoices, setItemLoad, ensureProg, isGymFam, toUnit, fromUnit,
   };
+  // For src/access.js, which builds balance and floor-practice slots like any other.
+  Object.assign(GH.brain, { itemFor, famFor, restFor, tierOf });
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -5,7 +5,7 @@
 // training check the same rules every day.
 import { load, check, section, done } from './lib.mjs';
 
-const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js', 'src/brain.js', 'src/planweek.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/planweek.js');
 const B = GH.brain;
 const PW = GH.planWeek;
 

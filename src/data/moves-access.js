@@ -20,6 +20,7 @@
  *   support   a hand stays on a chair or a wall the whole time
  *   deep      deep bending of the knee or hip under load (deep squats, lunges)
  *   overhead  arms overhead, with a load or hanging
+ *   ballistic fast, jerky loading (swings, slams, throws)
  *   powerOf   a fast-up version of another move (the same rung for progression)
  *   alt       (ladders) used only when a person's plan needs it: seated plans, painful hands, no floor
  */
@@ -100,6 +101,7 @@
     support: 'push_wall raise_lean sq_wallsit wu_angels',
     deep: 'sq_goblet sq_goblet_pause sq_split sq_lunge sq_bulgarian sq_pistol sq_jump mob_squat squat_bb squat_smith leg_press',
     overhead: 'tri_oh tri_oh_slow tri_oh1 oh_ext_cable ohp_db ohp_bb press_shoulder_machine pull_hang pull_scap pull_neg pull_chin pull_up pull_slow hang_knee rot_toss fin_toss wu_halo rot_chop',
+    ballistic: 'hg_swing hg_swing1 fin_swing fin_swing1 rot_slam fin_slam rot_toss fin_toss',
   };
   const words = (s) => s.split(/\s+/).filter(Boolean);
   function tag(list, key, value) {
@@ -113,7 +115,7 @@
   for (const [pos, list] of Object.entries(TAGS.pos)) tag(list, 'pos', pos);
   for (const [g, list] of Object.entries(TAGS.grip)) tag(list, 'grip', g);
   for (const [s, list] of Object.entries(TAGS.spine)) tag(list, 'spine', [s]);
-  for (const k of ['hands', 'headDown', 'quick', 'oneLeg', 'support', 'deep', 'overhead']) tag(TAGS[k], k, true);
+  for (const k of ['hands', 'headDown', 'quick', 'oneLeg', 'support', 'deep', 'overhead', 'ballistic']) tag(TAGS[k], k, true);
 
   /* ------------------------------------------------------------------ seated, side view */
   // Sitting tall on a chair: hips 9 above the seat, feet flat on the floor in front of it. Planted
