@@ -2,6 +2,7 @@ package com.shadowsdistant.gradienthealth;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
@@ -39,8 +40,10 @@ import android.window.OnBackInvokedDispatcher;
 import org.json.JSONObject;
 
 import java.io.ByteArrayInputStream;
+import java.lang.ref.WeakReference;
 import java.util.HashMap;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Hosts the single-file web app (assets/index.html) in a full-window WebView.
@@ -56,9 +59,25 @@ public final class MainActivity extends Activity {
     static final String APP_URL = "https://" + APP_HOST + "/index.html";
     static final int REQUEST_HEALTH_PERMISSIONS = 4201;
     static final int REQUEST_CAMERA = 4202;
+    static final int REQUEST_ACTIVITY_PERMISSIONS = 4203;
     /** A camera request from the page, waiting on the runtime permission dialog. */
     private PermissionRequest pendingCamera;
     static final String CLAUDE_PACKAGE = "com.anthropic.claude";
+    /** The activity notification's tap: opens the app, and the page gets the route "activity". */
+    static final String ACTION_OPEN_ACTIVITY = "com.shadowsdistant.gradienthealth.OPEN_ACTIVITY";
+    /** Plan links: longer ones aren't passed on. */
+    private static final int MAX_LINK = 64 * 1024;
+
+    // The activity showing the page, for services and jobs with news for it (see live()).
+    private static volatile WeakReference<MainActivity> current = new WeakReference<MainActivity>(null);
+    private static volatile boolean front;
+    /** A plan link the app was opened with, until the page takes it (pendingLink) or gets it (onLink). */
+    private final AtomicReference<String> pendingLink = new AtomicReference<String>();
+    private volatile String lastBackgroundJson;
+    private long backgroundCheckedAt;
+    // The activity permission request in flight: when it went out, and what Android would explain then.
+    private long actRequestAt;
+    private boolean[] actRationale;
 
     private static final String ACTION_VIEW_PERMISSION_USAGE =
             "android.intent.action.VIEW_PERMISSION_USAGE";
@@ -81,7 +100,7 @@ public final class MainActivity extends Activity {
     private Bridge bridge;
     private boolean pageLoaded;
     private String pendingRoute;
-    private boolean destroyed;
+    private volatile boolean destroyed;
     private int rendererCrashes;
     private long firstRendererCrashAt;
     // Last system-bar insets in CSS pixels, as JSON, for the page to read (see Bridge.insets()).
@@ -109,11 +128,31 @@ public final class MainActivity extends Activity {
         }
 
         bridge = new Bridge(this);
+        current = new WeakReference<MainActivity>(this);
         String url = APP_URL;
-        if (isPrivacyIntent(getIntent())) {
+        Intent intent = getIntent();
+        if (isPrivacyIntent(intent)) {
             url = APP_URL + "#privacy"; // the page opens it as it starts (only once)
         }
+        String link = linkFrom(intent);
+        if (link != null) {
+            pendingLink.set(link); // the page asks for it (pendingLink) or gets it once loaded (onLink)
+        }
+        if (isOpenActivityIntent(intent)) {
+            pendingRoute = "activity";
+        }
         createWebView(url);
+    }
+
+    /** The activity showing the page, if there is one: for services and jobs with news for the page. */
+    static MainActivity live() {
+        MainActivity a = current.get();
+        return a == null || a.destroyed ? null : a;
+    }
+
+    /** The same, only while the app is in front. */
+    static MainActivity inFront() {
+        return front ? live() : null;
     }
 
     private void createWebView(String url) {
@@ -186,6 +225,7 @@ public final class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        front = true;
         WebView wv = webView;
         if (wv != null) {
             try {
@@ -194,10 +234,19 @@ public final class MainActivity extends Activity {
             }
         }
         callJs(jsCall("onResume", ""));
+        // An activity recording whose service Android stopped records again now the app is in front.
+        ActivityService.pageResumed(this);
+        // Background sync: scheduled while it can run (permissions can change in Health Connect).
+        long now = SystemClock.elapsedRealtime();
+        if (backgroundCheckedAt == 0L || now - backgroundCheckedAt > 5 * 60000L) {
+            backgroundCheckedAt = now;
+            HealthSync.updateLater(this);
+        }
     }
 
     @Override
     protected void onPause() {
+        front = false;
         // WebView.onPause() pauses animations/geolocation only. JS timers keep running on
         // purpose (no pauseTimers()): a workout in progress must keep counting in the background.
         // The page is told, so it stops background work like the 15-minute health sync.
@@ -245,6 +294,10 @@ public final class MainActivity extends Activity {
             c.release();
         }
         destroyed = true;
+        if (current.get() == this) {
+            current = new WeakReference<MainActivity>(null);
+            front = false;
+        }
         mainHandler.removeCallbacksAndMessages(null);
         WebView wv = webView;
         webView = null;
@@ -265,6 +318,17 @@ public final class MainActivity extends Activity {
         setIntent(intent);
         if (isPrivacyIntent(intent)) {
             openRoute("privacy");
+        }
+        if (isOpenActivityIntent(intent)) {
+            openRoute("activity");
+        }
+        String link = linkFrom(intent);
+        if (link != null) {
+            if (pageLoaded && webView != null) {
+                deliverLink(link);
+            } else {
+                pendingLink.set(link);
+            }
         }
     }
 
@@ -341,6 +405,11 @@ public final class MainActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_HEALTH_PERMISSIONS) {
             notifyHealthPermissions();
+        } else if (requestCode == REQUEST_ACTIVITY_PERMISSIONS) {
+            ActivityPermissions.onResult(this, permissions, grantResults, actRationale,
+                    SystemClock.elapsedRealtime() - actRequestAt);
+            actRationale = null;
+            notifyActivityPermissions();
         } else if (requestCode == REQUEST_CAMERA) {
             PermissionRequest request = pendingCamera;
             pendingCamera = null;
@@ -436,6 +505,71 @@ public final class MainActivity extends Activity {
     void notifyHealthPermissions() {
         String status = bridge != null ? bridge.hcStatus() : "unavailable";
         callJs(jsCall("onHealthPerms", jsString(status)));
+        backgroundChanged(true);
+    }
+
+    /**
+     * Asks for reading Health Connect in the background. The answer comes like any Health Connect
+     * permission's (onHealthPerms), plus onHealthBackground with the new state.
+     */
+    void requestBackgroundPermission() {
+        try {
+            if (Build.VERSION.SDK_INT < Bridge.HEALTH_CONNECT_MIN_SDK || !HealthSync.supported(this)
+                    || HealthSync.granted(this)) {
+                notifyHealthPermissions();
+                return;
+            }
+            requestPermissions(new String[]{HealthSync.PERMISSION}, REQUEST_HEALTH_PERMISSIONS);
+        } catch (Throwable t) {
+            notifyHealthPermissions();
+        }
+    }
+
+    /**
+     * Reschedules (or cancels) the background sync to match, off the UI thread, and tells the page
+     * the new state with window.__gh.onHealthBackground: always, or when {@code onlyIfChanged}, only
+     * when it differs from what the page last got.
+     */
+    void backgroundChanged(final boolean onlyIfChanged) {
+        final Context app = getApplicationContext();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                HealthSync.update(app);
+                String json = HealthSync.stateJson(app);
+                if (onlyIfChanged && json.equals(lastBackgroundJson)) {
+                    return;
+                }
+                lastBackgroundJson = json;
+                callJs(jsCall("onHealthBackground", json));
+            }
+        }, "gradient-health-sync").start();
+    }
+
+    /** Asks for what an outdoor activity uses; answers with window.__gh.onActPermissions. */
+    void requestActivityPermissions() {
+        try {
+            String[] missing = ActivityPermissions.missing(this);
+            if (missing.length == 0) {
+                notifyActivityPermissions();
+                return;
+            }
+            actRationale = ActivityPermissions.rationale(this, missing);
+            actRequestAt = SystemClock.elapsedRealtime();
+            requestPermissions(missing, REQUEST_ACTIVITY_PERMISSIONS);
+        } catch (Throwable t) {
+            notifyActivityPermissions();
+        }
+    }
+
+    private void notifyActivityPermissions() {
+        callJs(jsCall("onActPermissions", ActivityPermissions.json(this)));
+    }
+
+    /** The app's page in the phone's settings, to allow a permission Android no longer asks for. */
+    void openAppSettings() {
+        tryStartActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", getPackageName(), null)));
     }
 
     /** Health Connect's per-app permission screen, falling back to its home screen. */
@@ -550,6 +684,60 @@ public final class MainActivity extends Activity {
 
     private static boolean isPrivacyIntent(Intent intent) {
         return intent != null && ACTION_VIEW_PERMISSION_USAGE.equals(intent.getAction());
+    }
+
+    private static boolean isOpenActivityIntent(Intent intent) {
+        return intent != null && ACTION_OPEN_ACTIVITY.equals(intent.getAction());
+    }
+
+    // ---------------------------------------------------------------- plan links
+
+    /**
+     * A shared plan's link the app was opened with, or null: gradienthealth://plan?d=… or
+     * https://shadowsdistant.github.io/gradient-health/p/… (the manifest's intent filters).
+     */
+    static String linkFrom(Intent intent) {
+        if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction()) || intent.getData() == null) {
+            return null;
+        }
+        try {
+            Uri uri = intent.getData();
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+            String path = uri.getPath() == null ? "" : uri.getPath();
+            boolean ok = ("gradienthealth".equals(scheme) && "plan".equals(host))
+                    || ("https".equals(scheme) && "shadowsdistant.github.io".equals(host)
+                    && ("/gradient-health/p".equals(path) || path.startsWith("/gradient-health/p/")));
+            String url = uri.toString();
+            return ok && url.length() <= MAX_LINK ? url : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** AndroidBridge.pendingLink(): the link the app was opened with, once. */
+    String takePendingLink() {
+        return pendingLink.getAndSet(null);
+    }
+
+    /** Hands a link to window.__gh.onLink; if the page has no such hook yet, it waits for pendingLink(). */
+    private void deliverLink(final String url) {
+        evalJs("(window.__gh&&window.__gh.onLink)?(window.__gh.onLink(" + jsSafe(jsString(url)) + "),true):false",
+                new ValueCallback<String>() {
+                    @Override
+                    public void onReceiveValue(String value) {
+                        if (!"true".equals(value)) {
+                            pendingLink.compareAndSet(null, url);
+                        }
+                    }
+                });
+    }
+
+    private void flushPendingLink() {
+        String url = pendingLink.getAndSet(null);
+        if (url != null) {
+            deliverLink(url);
+        }
     }
 
     // ---------------------------------------------------------------- theme
@@ -947,6 +1135,7 @@ public final class MainActivity extends Activity {
                 pageLoaded = true;
                 callJs(jsCall("setInsets", insetsJson));
                 flushPendingRoute();
+                flushPendingLink(); // unless the page already took it with pendingLink()
             }
         }
 

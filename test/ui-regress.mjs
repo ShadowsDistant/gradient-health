@@ -23,6 +23,13 @@ page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 await page.clock.install({ time: new Date('2026-10-19T08:10:00') });
 await page.addInitScript(seedBridge);
+// A read the background sync saved while the app was closed: 50 days back, older than what the
+// foreground read covers (40 days), so only folding it in can fill that day.
+await page.addInitScript(() => {
+  const t = Date.now() - 50 * 86400000;
+  window.__pendingDate = new Date(t).toISOString().slice(0, 10);
+  window.__pending = [{ id: `${t}.json`, payload: { ok: true, tz: 'UTC', from: new Date(t - 2 * 86400000).toISOString(), to: new Date(t).toISOString(), steps: [{ date: window.__pendingDate, count: 4321 }], errors: {} } }];
+});
 await page.goto('file://' + join(root, 'dist/gradient-health.html'));
 await page.waitForSelector('.onboard:not([hidden])');
 await page.evaluate(seedState);
@@ -256,6 +263,59 @@ await settle(900);
 check('also after the sheet closes', await page.evaluate(() => document.getElementById('app').scrollLeft === 0 && document.querySelector('#screen h1').getBoundingClientRect().left >= 0));
 await page.evaluate(() => { while (window.GH.ui.back()) { /* back to the tab */ } });
 await settle(700);
+
+section('Background sync');
+const bgBoot = await page.evaluate(() => { const d = window.GH.brain.dayFromStr(window.__pendingDate); const day = window.GH.ui.S.health.days[d]; return { steps: day && day.steps, done: window.__pendingDone.length, left: window.__pending.length }; });
+check('a read saved while the app was closed is folded in when it starts', bgBoot.steps === 4321, JSON.stringify(bgBoot));
+check('and marked done', bgBoot.done >= 1 && bgBoot.left === 0, JSON.stringify(bgBoot));
+await page.evaluate(() => window.GH.ui.open('settings'));
+await settle(900);
+const bgRow = () => page.evaluate(() => {
+  const title = [...document.querySelectorAll('#screen .rf-list-title')].find((e) => e.textContent === 'Sync in the background');
+  if (!title) return null;
+  const row = title.closest('.rf-list-row');
+  const sw = row.querySelector('input[role="switch"]');
+  return { sub: (row.querySelector('.rf-list-sub') || {}).textContent || '', sw: !!sw, on: !!(sw && sw.checked), allow: !!row.querySelector('[data-act="hcBgAllow"]') };
+});
+let bgr = await bgRow();
+check('Settings shows background sync on, with when it last read', bgr && bgr.sw && bgr.on && /^Every 15 minutes · last at \d{1,2}:\d{2} (am|pm)$/.test(bgr.sub), JSON.stringify(bgr));
+await page.evaluate(() => document.querySelector('#screen [data-on="hcBgToggle"]').click());
+await settle(600);
+bgr = await bgRow();
+check('switching it off stops the job and says so', bgr && !bgr.on && /^Off\. /.test(bgr.sub) && await page.evaluate(() => !window.__bg.on && !window.__bg.scheduled), JSON.stringify(bgr));
+await page.evaluate(() => document.querySelector('#screen [data-on="hcBgToggle"]').click());
+await settle(600);
+check('and back on', await page.evaluate(() => window.__bg.on && window.__bg.scheduled) && (await bgRow()).on);
+await page.evaluate(() => { window.__bg.granted = false; window.GH.ui.render(); });
+await settle(600);
+bgr = await bgRow();
+check('without the permission it says so, with Allow', bgr && !bgr.sw && bgr.sub === 'Needs permission' && bgr.allow, JSON.stringify(bgr));
+await page.click('#screen [data-act="hcBgAllow"]');
+await settle(900);
+bgr = await bgRow();
+check('Allow asks for it, and the switch comes back', bgr && bgr.sw && bgr.on && await page.evaluate(() => window.__bg.granted), JSON.stringify(bgr));
+await page.evaluate(() => { window.__bg.error = 'HealthConnectException(2)'; window.__bg.lastRun = Date.now(); window.GH.ui.render(); });
+await settle(600);
+check('a failed read says so', (await bgRow()).sub === 'Every 15 minutes · the last try didn\'t work', (await bgRow()).sub);
+await page.evaluate(() => { window.__bg.supported = false; window.GH.ui.render(); });
+await settle(600);
+bgr = await bgRow();
+check('with an older Health Connect it says what it needs', bgr && !bgr.sw && bgr.sub === 'Needs Android 15 or a newer Health Connect', JSON.stringify(bgr));
+// A background read that finishes while the app is open (newer than the last sync) is folded in
+// right away.
+const late = await page.evaluate(() => {
+  Object.assign(window.__bg, { supported: true, error: null, lastRun: Date.now(), lastOk: Date.now() });
+  const t = Date.now();
+  const date = new Date(t).toISOString().slice(0, 10);
+  window.__pending.push({ id: `${t}.json`, payload: { ok: true, tz: 'UTC', from: new Date(t - 2 * 86400000).toISOString(), to: new Date(t).toISOString(), steps: [{ date, count: 5432 }], errors: {} } });
+  window.__gh.onHealthBackground(window.AndroidBridge.hcBackground());
+  const day = window.GH.ui.S.health.days[window.GH.brain.dayFromStr(date)];
+  return { steps: day && day.steps, left: window.__pending.length };
+});
+check('a read finishing while the app is open is folded in', late.steps === 5432 && late.left === 0, JSON.stringify(late));
+await settle(600);
+check('and the row shows it', /^Every 15 minutes · last at /.test((await bgRow()).sub), (await bgRow()).sub);
+await page.click('#topbar [data-act="back"]'); await settle();
 
 section('Console');
 check('no console errors', errors.length === 0, errors.join(' | '));

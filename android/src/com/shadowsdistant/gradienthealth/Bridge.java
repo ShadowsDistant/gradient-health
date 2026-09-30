@@ -531,6 +531,243 @@ public final class Bridge {
         }
     }
 
+    // ---------------------------------------------------------------- background sync (HealthSync)
+
+    /**
+     * {"supported", "granted", "on", "scheduled", "lastRun", "lastOk", "error", "pending"}: whether
+     * this phone's Health Connect can read in the background, whether that's allowed, the Settings
+     * switch, whether the job is scheduled, the last run and the last good one (epoch ms or null), why
+     * the last run failed (or null) and how many reads wait for the page.
+     */
+    @JavascriptInterface
+    public String hcBackground() {
+        try {
+            return HealthSync.stateJson(activity);
+        } catch (Throwable t) {
+            return "{\"supported\":false,\"granted\":false,\"on\":false,\"scheduled\":false,"
+                    + "\"lastRun\":null,\"lastOk\":null,\"error\":null,\"pending\":0}";
+        }
+    }
+
+    /**
+     * Asks for Health Connect's background-read permission. Answers like hcRequest (onHealthPerms),
+     * and window.__gh.onHealthBackground gets the new hcBackground() state.
+     */
+    @JavascriptInterface
+    public void hcBackgroundRequest() {
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.requestBackgroundPermission();
+            }
+        });
+    }
+
+    /** The Settings switch: schedules or cancels the background sync; onHealthBackground follows. */
+    @JavascriptInterface
+    public void hcBackgroundSet(boolean on) {
+        try {
+            HealthSync.setOn(activity, on);
+        } catch (Throwable ignored) {
+        }
+        activity.backgroundChanged(false);
+    }
+
+    /**
+     * Up to 50 background reads waiting for the page, oldest first:
+     * [{"id": "&lt;file name&gt;", "payload": &lt;what onHealth gets&gt;}].
+     */
+    @JavascriptInterface
+    public String hcPending() {
+        try {
+            return HealthSync.pendingJson(activity);
+        } catch (Throwable t) {
+            return "[]";
+        }
+    }
+
+    /** Deletes the background reads the page has folded in (a JSON list of their ids). */
+    @JavascriptInterface
+    public void hcPendingDone(String jsonArrayOfIds) {
+        try {
+            HealthSync.done(activity, jsonArrayOfIds);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    // ---------------------------------------------------------------- outdoor activities (ActivityService)
+
+    /** {"gps", "steps", "hc", "locationOn"}: what this phone can record with. */
+    @JavascriptInterface
+    public String actSupport() {
+        try {
+            return ActivityService.support(activity);
+        } catch (Throwable t) {
+            return "{\"gps\":false,\"steps\":false,\"hc\":false,\"locationOn\":false}";
+        }
+    }
+
+    /** {"location", "activity", "notifications": "granted"|"denied"|"ask", "approximate"}. */
+    @JavascriptInterface
+    public String actPermissions() {
+        try {
+            return ActivityPermissions.json(activity);
+        } catch (Throwable t) {
+            return "{\"location\":\"ask\",\"activity\":\"ask\",\"notifications\":\"ask\",\"approximate\":false}";
+        }
+    }
+
+    /** Asks for location, physical activity and notifications; answers with window.__gh.onActPermissions. */
+    @JavascriptInterface
+    public void actRequestPermissions() {
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.requestActivityPermissions();
+            }
+        });
+    }
+
+    /** Opens the app's page in the phone's settings (for a permission Android won't ask for again). */
+    @JavascriptInterface
+    public void actOpenSettings() {
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.openAppSettings();
+            }
+        });
+    }
+
+    /**
+     * Starts recording ({"id", "type": walk|run|hike|cycle|other, "title", "units"?: km|mi}). False
+     * without precise location permission, or while another activity is recording.
+     */
+    @JavascriptInterface
+    public boolean actStart(String json) {
+        try {
+            return ActivityService.start(activity, json);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    @JavascriptInterface
+    public void actPause() {
+        try {
+            ActivityService.pause(activity);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @JavascriptInterface
+    public void actResume() {
+        try {
+            ActivityService.resume(activity);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** Finishes the recording; window.__gh.onActivity gets its final state (active false). */
+    @JavascriptInterface
+    public void actStop() {
+        try {
+            ActivityService.stop(activity);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** The recording in progress, else the newest finished one not cleared yet (see ActivityTrack.stateJson). */
+    @JavascriptInterface
+    public String actState() {
+        try {
+            return ActivityService.state(activity);
+        } catch (Throwable t) {
+            return "{\"active\":false}";
+        }
+    }
+
+    /** The recording's points from index {@code from}: [[t, lat, lon, alt|null, acc, speed|null, paused], ...]. */
+    @JavascriptInterface
+    public String actPoints(int from) {
+        try {
+            return ActivityService.points(activity, from);
+        } catch (Throwable t) {
+            return "[]";
+        }
+    }
+
+    /** Deletes a finished recording's files once the page has saved it. */
+    @JavascriptInterface
+    public void actClear(String id) {
+        try {
+            ActivityService.clear(activity, id);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * An activity's window in Health Connect ({"id", "start", "end"}): steps, distance, calories and
+     * heart rate from other apps and watches. Answers with window.__gh.onHcSession.
+     */
+    @JavascriptInterface
+    public void hcSession(String json) {
+        if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
+            answer("onHcSession", json, "{\"steps\":null,\"distanceM\":null,\"activeKcal\":null,"
+                    + "\"totalKcal\":null,\"hr\":[],\"sources\":[]}");
+            return;
+        }
+        try {
+            HealthBridge.session(activity, json, HealthBridge.page(activity, "onHcSession"));
+        } catch (Throwable t) {
+            answer("onHcSession", json, "{\"steps\":null,\"distanceM\":null,\"activeKcal\":null,"
+                    + "\"totalKcal\":null,\"hr\":[],\"sources\":[]}");
+        }
+    }
+
+    /**
+     * Saves a recorded activity to Health Connect (see HealthBridge.writeActivity). Answers with
+     * window.__gh.onHcActivityWrite({"id", "ok", "error"?, "route"}).
+     */
+    @JavascriptInterface
+    public void hcWriteActivity(String json) {
+        if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
+            answer("onHcActivityWrite", json, "{\"route\":false}");
+            return;
+        }
+        try {
+            HealthBridge.writeActivity(activity, json, HealthBridge.page(activity, "onHcActivityWrite"));
+        } catch (Throwable t) {
+            answer("onHcActivityWrite", json, "{\"route\":false}");
+        }
+    }
+
+    /** A failure answer ({"id" from the request, "ok": false, "error": "unsupported"} plus {@code rest}). */
+    private void answer(String hook, String request, String rest) {
+        try {
+            JSONObject o = new JSONObject(rest);
+            String id = "";
+            try {
+                id = new JSONObject(request == null ? "{}" : request).optString("id", "");
+            } catch (Throwable ignored) {
+            }
+            o.put("id", id);
+            o.put("ok", false);
+            o.put("error", Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK ? "unsupported" : "failed");
+            activity.callJs(MainActivity.jsCall(hook, o.toString()));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    // ---------------------------------------------------------------- plan links
+
+    /** The plan link the app was opened with (gradienthealth://plan?d=… or a /gradient-health/p/ URL), once; else "". */
+    @JavascriptInterface
+    public String pendingLink() {
+        String link = activity.takePendingLink();
+        return link == null ? "" : link;
+    }
+
     // ---------------------------------------------------------------- on-device AI models (ModelStore)
 
     /** Installed models: [{"id","file","bytes"}]. */

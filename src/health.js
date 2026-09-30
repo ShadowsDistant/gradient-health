@@ -8,6 +8,9 @@
  * better, whether it can be typed in); history() and versus() read them back per day, with where
  * each value came from and how it compares with the person's usual.
  *
+ * The Android app also reads Health Connect every 15 minutes while it's closed and keeps each read
+ * on the phone; sync() folds those in first, oldest first, so days the app wasn't opened fill in.
+ *
  * Finished workouts can also be written back to Health Connect as exercise sessions, keyed by day,
  * so saving one again updates it instead of adding a copy.
  */
@@ -74,25 +77,143 @@
     const gap = Math.ceil(Math.max(0, now - S.health.lastSync) / 86400000);
     return Math.max(3, Math.min(30, gap + 2));
   }
-  // Reads what changed and folds it in.
+  // Reads what changed and folds it in, after the reads the background sync saved meanwhile (which
+  // can make this read shorter: see ingestPending).
   async function sync(S, now, days) {
     const st = status();
     S.health.status = st;
     if (!connected(st)) return { ok: false, status: st };
+    const bg = drainPending(S, now);
     const payload = await read(days || syncDays(S, now));
-    if (!payload || !payload.ok) return { ok: false, status: st, error: payload && payload.error };
+    if (!payload || !payload.ok) return { ok: false, status: st, error: payload && payload.error, bg };
     const res = ingest(S, payload, now);
     S.health.lastSync = now;
+    drainPending(S, now); // reads saved while this one ran: already covered, just marked done
     // Real read failures only: types that aren't allowed show up as "partly connected" and the
     // Allow prompt instead (and nutrition isn't asked for unless calorie tracking is on).
     const errs = payload.errors || {};
     S.health.errors = Object.keys(errs).filter((k) => errs[k] !== 'not granted');
-    return Object.assign({ ok: true, status: st }, res);
+    return Object.assign({ ok: true, status: st, bg }, res);
+  }
+
+  /* ---------------------------------------------------------------- background sync */
+  // The Android app reads the last two days every 15 minutes while it's closed (HealthSyncJob.java)
+  // and keeps each read, the same object onHealth gets, as a file. hcBackground() says how that's
+  // going: { supported, granted, on, scheduled, lastRun, lastOk, error, pending }.
+  const BG_OFF = { supported: false, granted: false, on: false, scheduled: false, lastRun: null, lastOk: null, error: null, pending: 0 };
+  const bgState = (v) => Object.assign({}, BG_OFF, v && typeof v === 'object' ? v : {});
+  function background() {
+    const b = bridge();
+    if (!b || !b.hcBackground) return bgState(null);
+    try { return bgState(JSON.parse(b.hcBackground() || '{}')); } catch (e) { return bgState(null); }
+  }
+  // The Settings switch. Returns the new state.
+  function setBackground(on) {
+    const b = bridge();
+    if (b && b.hcBackgroundSet) { try { b.hcBackgroundSet(!!on); } catch (e) { /* ignore */ } }
+    return background();
+  }
+  let bgWaiters = [];
+  const bgListeners = [];
+  // The app says the state changed: a permission answer, the switch, or a background read that just
+  // finished (then there's something to fold in).
+  hooks.onHealthBackground = (st) => {
+    if (typeof st === 'string') { try { st = JSON.parse(st); } catch (e) { st = null; } }
+    const v = bgState(st);
+    const w = bgWaiters; bgWaiters = [];
+    for (const f of w) f(v);
+    for (const f of bgListeners) { try { f(v); } catch (e) { /* ignore */ } }
+  };
+  function onBackground(fn) { bgListeners.push(fn); }
+  // Asks for Health Connect's background-read permission; resolves with the new state.
+  function requestBackground() {
+    const b = bridge();
+    if (!b || !b.hcBackgroundRequest) return Promise.resolve(background());
+    return new Promise((resolve) => {
+      let settled = false, timer = 0;
+      const done = () => {
+        if (settled) return;
+        settled = true; clearTimeout(timer);
+        bgWaiters = bgWaiters.filter((f) => f !== done); permWaiters = permWaiters.filter((f) => f !== done);
+        resolve(background());
+      };
+      bgWaiters.push(done); permWaiters.push(done);
+      timer = setTimeout(done, 180000);
+      try { b.hcBackgroundRequest(); } catch (e) { done(); }
+    });
+  }
+  // The saved reads, as [{ id, payload }] (at most 50, oldest first), or [].
+  function pending() {
+    const b = bridge();
+    if (!b || !b.hcPending) return [];
+    try { const v = JSON.parse(b.hcPending() || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+  }
+  // Folds saved reads in, oldest first. One that ends before what the app already has (the last
+  // sync, or a newer background read) is skipped: something newer covered its days. A read that
+  // starts before the last sync leaves no gap, so the last sync moves up to it, and the next
+  // foreground read can be shorter. Returns { ids (everything handled, to mark done), n (folded in) }.
+  function ingestPending(S, list, now) {
+    const h = S.health;
+    const items = [];
+    const ids = [];
+    for (const x of Array.isArray(list) ? list : []) {
+      if (!x || x.id == null) continue;
+      ids.push(String(x.id));
+      const p = x.payload;
+      if (!p || typeof p !== 'object' || !p.ok) continue;
+      const to = ms(p.to);
+      if (to == null) continue;
+      items.push({ id: String(x.id), p, to, from: ms(p.from) });
+    }
+    items.sort((a, c) => a.to - c.to || (a.id < c.id ? -1 : a.id > c.id ? 1 : 0));
+    let newest = Math.max(h.lastSync || 0, h.bgTo || 0);
+    let n = 0;
+    for (const x of items) {
+      if (x.to <= newest) continue;
+      ingest(S, x.p, now);
+      n++;
+      newest = h.bgTo = x.to;
+      if (h.lastSync && x.from != null && x.from <= h.lastSync) h.lastSync = x.to;
+    }
+    return { ids, n };
+  }
+  // Takes the saved reads from the app, folds them in and marks them done. Returns how many were
+  // folded in (and saves the state if any were).
+  function drainPending(S, now) {
+    const b = bridge();
+    if (!S || !b || !b.hcPending || !b.hcPendingDone) return 0;
+    let total = 0;
+    for (let round = 0; round < 20; round++) {
+      const list = pending();
+      if (!list.length) break;
+      const res = ingestPending(S, list, now || Date.now());
+      total += res.n;
+      if (!res.ids.length) break;
+      try { b.hcPendingDone(JSON.stringify(res.ids)); } catch (e) { break; }
+      if (list.length < 50) break;
+    }
+    if (total && GH.store && GH.store.saveSoon) { try { GH.store.saveSoon(S); } catch (e) { /* ignore */ } }
+    return total;
+  }
+  // Deletes the saved reads without folding them in (Reset everything). Returns how many went.
+  function clearPending() {
+    const b = bridge();
+    if (!b || !b.hcPending || !b.hcPendingDone) return 0;
+    let n = 0;
+    for (let round = 0; round < 20; round++) {
+      const ids = pending().filter((x) => x && x.id != null).map((x) => String(x.id));
+      if (!ids.length) break;
+      try { b.hcPendingDone(JSON.stringify(ids)); } catch (e) { break; }
+      n += ids.length;
+    }
+    return n;
   }
 
   /* ---------------------------------------------------------------- folding data in */
   const roll = (S) => (S.profile && S.profile.prefs && S.profile.prefs.rollHour != null ? S.profile.prefs.rollHour : 4);
   const ms = (iso) => { const t = Date.parse(iso); return isFinite(t) ? t : null; };
+  // What each data type of a read fills in on a day.
+  const TYPE_KEYS = { steps: ['steps'], sleep: ['sleepMin', 'bed', 'wake', 'stages'], weight: ['weightKg'], bodyFat: ['bodyFat'], restingHr: ['rhr'], hrv: ['hrv'], heartRate: ['rhrEst'], activeKcal: ['activeKcal'], distance: ['distanceM'], exercise: ['exercise'] };
 
   function ingest(S, p, now) {
     const b = B();
@@ -104,6 +225,11 @@
     const last = b.dayOf(toMs, rh);
     const fresh = {};
     const day = (d) => (fresh[d] = fresh[d] || {});
+    // A type whose read failed (it timed out, Health Connect was busy) keeps what earlier reads found
+    // on the days this one covers, instead of losing it. Types that aren't allowed are cleared as usual.
+    const errs = p.errors || {};
+    const failed = (k) => errs[k] != null && errs[k] !== 'not granted' && !/^truncated/.test(String(errs[k]));
+    const keep = [].concat(...Object.keys(TYPE_KEYS).filter(failed).map((k) => TYPE_KEYS[k]));
     // Steps come as whole local calendar days.
     for (const x of p.steps || []) {
       if (!x || !x.date || !(x.count >= 0)) continue;
@@ -178,7 +304,7 @@
     const heights = (p.height || []).filter((x) => x && x.m > 0.9 && x.m < 2.5).sort((a, c) => (ms(a.time) || 0) - (ms(c.time) || 0));
     if (heights.length && !S.profile.heightCm) S.profile.heightCm = Math.round(heights[heights.length - 1].m * 100);
     // Food logged in other apps, as totals per day (this app's own records are left out by the bridge).
-    if (Array.isArray(p.nutrition) && GH.food) {
+    if (Array.isArray(p.nutrition) && GH.food && !failed('nutrition')) {
       const eaten = {};
       for (const x of p.nutrition) {
         const t = ms(x && x.start);
@@ -203,10 +329,14 @@
     const span = fromMs != null ? Math.round((toMs - fromMs) / 86400000) : 0;
     const dailyFirst = span > 0 ? b.dayOf(toMs, 0) - (span - 1) : null;
     let newest = null;
+    const weightFailed = failed('weight');
     for (const d of touched) {
       const partial = first != null && d <= first;
       if (!partial && dailyFirst != null && d < dailyFirst && h.hc[d]) {
         for (const k of DAILY) if (h.hc[d][k] != null && !(fresh[d] && fresh[d][k] != null)) day(d)[k] = h.hc[d][k];
+      }
+      if (!partial && keep.length && h.hc[d]) {
+        for (const k of keep) if (h.hc[d][k] != null && !(fresh[d] && fresh[d][k] != null)) day(d)[k] = h.hc[d][k];
       }
       if (partial) {
         if (fresh[d]) {
@@ -216,9 +346,12 @@
           h.hc[d] = merged;
         }
       } else if (fresh[d]) h.hc[d] = fresh[d]; else delete h.hc[d];
-      if (fresh[d] && fresh[d].weightKg) newest = d;
-      // A partial day without a weigh-in in this read keeps the one found before.
-      if (!partial || (fresh[d] && fresh[d].weightKg)) syncWeight(S, d);
+      // A partial day without a weigh-in in this read keeps the one found before, and a failed
+      // weight read leaves the weights list as it was.
+      if (!weightFailed) {
+        if (fresh[d] && fresh[d].weightKg) newest = d;
+        if (!partial || (fresh[d] && fresh[d].weightKg)) syncWeight(S, d);
+      }
       rebuild(S, d);
     }
     prune(S, last);
@@ -743,6 +876,7 @@
 
   GH.health = {
     status, connected, request, onPerms, openSettings, read, sync, syncDays, ingest, rebuild, logManual, removeManual, setFeel, setSleepChip,
+    background, setBackground, requestBackground, onBackground, pending, ingestPending, drainPending, clearPending,
     canWrite, workoutRecord, writeWorkout, writeRecent, onWrite, canWriteFood, writeFood, granted, missingTypes, NEW_TYPES,
     addMeasurement, removeMeasurement, measureDue, value, latest, series, stats, baseline, weightOn, activity, activeMinutes, appWorkouts, today, afterSync, prettyType, CHIP_MIN,
     METRICS, MEASURES, SOURCE, unitOf, toDisplay, fromDisplay, format, formatParts, formatDelta, hm, entry, history, latestEntry, rangeStats, versus, setManual, clearManual, hasManual,

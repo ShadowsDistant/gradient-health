@@ -30,9 +30,22 @@ export function seedBridge() {
   window.__foodWrites = [];
   const store = { state: '', secrets: {} };
   window.__haptics = [];
+  // Background sync: allowed and on, the last read five minutes ago. A test can put reads the app
+  // saved meanwhile in window.__pending ([{ id, payload }]) before the page loads; the ids the page
+  // marks done collect in window.__pendingDone.
+  window.__bg = { supported: true, granted: true, on: true, scheduled: true, lastRun: now - 5 * 60000, lastOk: now - 5 * 60000, error: null };
+  window.__pending = window.__pending || [];
+  window.__pendingDone = [];
+  const bgJson = () => JSON.stringify(Object.assign({}, window.__bg, { pending: window.__pending.length }));
   window.AndroidBridge = {
     hcStatus: () => 'granted', hcRequest: () => {}, hcRequestFood: () => {}, hcOpenSettings: () => {}, hcCanWrite: () => true, hcWriteWorkout: () => {},
-    hcGranted: () => JSON.stringify(['steps', 'sleep', 'weight', 'height', 'bodyFat', 'restingHr', 'hrv', 'exercise', 'heartRate', 'activeKcal', 'distance', 'nutrition', 'writeExercise', 'writeNutrition']),
+    hcGranted: () => JSON.stringify(['steps', 'sleep', 'weight', 'height', 'bodyFat', 'restingHr', 'hrv', 'exercise', 'heartRate', 'activeKcal', 'distance', 'nutrition', 'writeExercise', 'writeNutrition', 'background']),
+    hcBackground: bgJson,
+    hcBackgroundRequest: () => { window.__bg.granted = true; window.__bg.scheduled = window.__bg.on; setTimeout(() => { window.__gh.onHealthPerms('granted'); window.__gh.onHealthBackground(bgJson()); }, 30); },
+    hcBackgroundSet: (on) => { window.__bg.on = !!on; window.__bg.scheduled = !!on && window.__bg.granted; },
+    hcPending: () => JSON.stringify(window.__pending.slice(0, 50)),
+    hcPendingDone: (json) => { const ids = JSON.parse(json); window.__pendingDone.push(...ids); window.__pending = window.__pending.filter((p) => !ids.includes(p.id)); },
+    pendingLink: () => '',
     hcCanWriteFood: () => true,
     hcWriteFood: (json) => { const list = JSON.parse(json); window.__foodWrites.push(...list); setTimeout(() => window.__gh.onFoodWrite({ ok: true, ids: list.map((x) => x.id) }), 20); },
     hcDeleteFood: (json) => { const ids = JSON.parse(json); setTimeout(() => window.__gh.onFoodDelete({ ok: true, ids }), 20); },

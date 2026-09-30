@@ -51,6 +51,7 @@
           <ul class="rf-list">
             ${U.row({ icon: 'heart', tone: 'rose', title: 'Health Connect', detail: hcDetail, act: app && !['unsupported', 'unavailable'].includes(st) ? (on ? 'hcManage' : 'hcConnect') : null, chevron: app })}
             ${missing.length ? U.row({ icon: 'plus', tone: 'rose', title: 'Allow the new data types', sub: U.esc(missingText(missing)), act: 'hcConnect', chevron: true }) : ''}
+            ${on && app ? bgRow() : ''}
             ${on && workouts ? U.sw('Save workouts to Health Connect', !!(S.health.write !== false && canWrite), 'data-on="hcWriteToggle"', canWrite ? 'Other apps see your Gradient Health workouts' : 'Needs the Exercise permission') : ''}
             <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Units</span></span>${U.seg('setUnits', [['lb', 'lb, ft, in'], ['kg', 'kg, cm']], p.units, 'Units', ' data-on="setUnits"')}</div></li>
           </ul>
@@ -155,6 +156,45 @@
   U.on.setFigure = (el, ev, v) => { U.S.profile.prefs.figure = v; U.save(); U.render(); };
   U.act.setFigSkin = (el) => { U.S.profile.prefs.figSkin = el.dataset.arg; U.save(); U.render(); };
   U.act.setFigShirt = (el) => { U.S.profile.prefs.figShirt = el.dataset.arg; U.save(); U.render(); };
+
+  /* ---------------------------------------------------------------- background sync */
+  // Health Connect read every 15 minutes with the app closed (see GH.health.background): its switch
+  // and what it's doing, or why it can't.
+  const BG_TITLE = 'Sync in the background';
+  function bgRow() {
+    const bg = H().background ? H().background() : null;
+    if (!bg) return '';
+    if (!bg.supported) return U.row({ key: 'hc-bg', title: BG_TITLE, sub: 'Needs Android 15 or a newer Health Connect' });
+    if (!bg.granted) return `<li data-key="hc-bg"><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">${BG_TITLE}</span><span class="rf-list-sub">Needs permission</span></span><button type="button" class="rf-btn" data-size="sm" data-act="hcBgAllow">Allow</button></div></li>`;
+    return U.sw(BG_TITLE, !!bg.on, 'data-on="hcBgToggle"', bgSub(bg));
+  }
+  function bgSub(bg, now) {
+    if (!bg.on) return 'Off. The app reads Health Connect while it\'s open.';
+    const at = bg.lastOk;
+    if (bg.error && bg.lastRun && (!at || bg.lastRun > at)) return 'Every 15 minutes · the last try didn\'t work';
+    if (!at) return 'Every 15 minutes';
+    const today = new Date(now || Date.now()).toDateString() === new Date(at).toDateString();
+    return `Every 15 minutes · last ${today ? `at ${U.fmtClock(at)}` : U.ago(at, now)}`;
+  }
+  U.on.hcBgToggle = (el, ev, v) => {
+    H().setBackground(!!v);
+    U.render();
+  };
+  U.act.hcBgAllow = async () => {
+    const bg = await H().requestBackground();
+    U.render();
+    if (bg.granted) U.toast('Background sync is on', 'positive', 'Health Connect is read every 15 minutes, even with the app closed.');
+    else U.toast('Not allowed yet', 'caution', 'Turn on background access for Gradient Health in Health Connect.', { label: 'Open', onClick: () => H().openSettings() });
+  };
+  // A background read just finished (or its state changed): fold the reads in while the app is open,
+  // and keep this row current.
+  if (H() && H().onBackground) {
+    H().onBackground(() => {
+      const S = U.S;
+      if (S && S.profile && S.profile.onboarded && H().drainPending(S, Date.now())) { H().afterSync(S, U.today()); U.save(); }
+      if (U.route && U.route.view === 'settings' && U.render) U.render();
+    });
+  }
 
   /* ---------------------------------------------------------------- what you track */
   const FOOD_SUB = { off: 'Nothing about food', protein: 'A protein goal with one-tap logging', full: 'Calories, macros and meals, with a protein goal' };
@@ -682,6 +722,8 @@
         for (const m of await llm.installed()) await llm.remove(m.id);
       } catch (e) { /* nothing to delete */ }
     }
+    // Health Connect reads saved in the background and not added yet go too.
+    try { if (GH.health && GH.health.clearPending) GH.health.clearPending(); } catch (e) { /* none waiting */ }
     GH.store.clear();
     U.S = null;
     G.location.hash = '';
