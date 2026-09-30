@@ -8,6 +8,7 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { root, check, section, done, serveDist } from './lib.mjs';
 import { seedBridge, seedState } from './fixtures.mjs';
+import { actBridge, seedActivities } from './actfixture.mjs';
 
 const require = createRequire(import.meta.url);
 let chromium;
@@ -76,7 +77,7 @@ function problems() {
   const scrolls = (p) => { const ox = getComputedStyle(p).overflowX; return ox === 'auto' || ox === 'scroll'; };
   const boxOf = (e) => { for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) { if (p.hasAttribute('data-hscroll')) return 'rail'; if (scrolls(p)) return p; } return null; };
   const name = (e) => `${e.tagName.toLowerCase()}${e.className && typeof e.className === 'string' ? '.' + e.className.trim().split(/\s+/).slice(0, 2).join('.') : ''} "${(e.textContent || '').trim().slice(0, 40)}"`;
-  const roots = [document.getElementById('screen'), document.getElementById('float'), document.getElementById('tabbar'), document.getElementById('player'), document.getElementById('onboard'), ...document.querySelectorAll('dialog[open]')].filter((r) => r && !r.hidden);
+  const roots = [document.getElementById('screen'), document.getElementById('float'), document.getElementById('tabbar'), document.getElementById('player'), document.getElementById('onboard'), document.getElementById('actlive'), ...document.querySelectorAll('dialog[open]')].filter((r) => r && !r.hidden);
   if (document.documentElement.scrollWidth > W + 1) out.push(`page scrolls sideways (${document.documentElement.scrollWidth} > ${W})`);
   for (const r of roots) {
     for (const c of [r, ...r.querySelectorAll('*')]) {
@@ -100,9 +101,9 @@ function problems() {
   }
   // A page (not a sheet, the player or set-up): scrolled to the end, its last content must clear
   // whatever covers the bottom (the tab bar, the workout capsule, Today's buttons, the system bar).
-  const pl = document.getElementById('player'), ob = document.getElementById('onboard');
+  const pl = document.getElementById('player'), ob = document.getElementById('onboard'), al = document.getElementById('actlive');
   const scr = document.getElementById('screen');
-  if (scr && !document.querySelector('dialog[open]') && (!pl || pl.hidden) && (!ob || ob.hidden)) {
+  if (scr && !document.querySelector('dialog[open]') && (!pl || pl.hidden) && (!ob || ob.hidden) && (!al || al.hidden)) {
     const keep = scr.scrollTop;
     scr.scrollTop = scr.scrollHeight;
     const sab = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sab')) || 0;
@@ -141,6 +142,7 @@ for (const [width, theme, zoom, h] of COMBOS) {
   page.on('console', (m) => { if (m.type() === 'error') errors.push(`${tag}: ${m.text()}`); });
   await page.clock.install({ time: new Date('2026-10-19T08:10:00') });
   await page.addInitScript(seedBridge);
+  await page.addInitScript(actBridge);
   // Small phones get a three-button navigation bar (48px); the rest a gesture bar.
   if (width === 360) await page.addInitScript(() => { const t = setInterval(() => { if (window.AndroidBridge) { window.AndroidBridge.insets = () => JSON.stringify({ top: 30, bottom: 48, left: 0, right: 0, keyboard: false }); clearInterval(t); } }, 1); });
   await page.goto(server.url);
@@ -154,6 +156,21 @@ for (const [width, theme, zoom, h] of COMBOS) {
   const settle = async (ms = 800) => { await page.clock.runFor(ms); await page.waitForTimeout(250); };
   const act = (name, arg) => page.evaluate(([a, b]) => { const f = window.GH.ui.act[a]; if (f) f({ dataset: { arg: b }, setAttribute() {}, removeAttribute() {}, closest: () => null }); }, [name, arg]);
   const reset = async () => { await page.evaluate(() => { window.GH.ui.closeSheets(); while (window.GH.ui.back()) { /* back to the tab */ } }); await settle(700); };
+  // Outdoor activities: start one against the fake recorder (permissions allowed, GPS found after
+  // searchMs), optionally through the 3-2-1 and a few minutes of running.
+  const startAct = async (type, o = {}) => {
+    await page.evaluate(([s]) => { window.__act.perms = { location: 'granted', activity: 'granted', notifications: 'granted' }; window.__act.searchMs = s; window.GH.ui.go('today'); }, [o.searchMs == null ? 0 : o.searchMs]);
+    await settle();
+    await act('actStart');
+    await settle(900);
+    await page.click(`dialog[open] .at-tile[data-arg="${type}"]`);
+    await settle(1500);
+    if (!o.go) return;
+    await page.evaluate(() => window.GH.ui.act.alGo());
+    await settle(3500);
+    await settle(o.go);
+  };
+  const seedActs = async () => { await page.evaluate(seedActivities); await settle(); };
   const scenes = [
     ['today', async () => { await page.evaluate(() => window.GH.ui.go('today')); }],
     ['plan', async () => { await page.evaluate(() => window.GH.ui.go('plan')); }],
@@ -194,6 +211,22 @@ for (const [width, theme, zoom, h] of COMBOS) {
     ['player', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('startWorkout'); await settle(2000); }],
     ['sheet-leave', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('startWorkout'); await settle(1200); await page.evaluate(() => window.__gh.back()); await settle(900); }],
     ['capsule', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('startWorkout'); await settle(1200); await act('plKeep'); await settle(); await page.evaluate(() => window.GH.ui.go('progress')); }],
+    // Outdoor activities: starting, recording, tucked away, the summary, history and records.
+    ['act-sheet', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('actStart'); }],
+    ['act-perm', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('actStart'); await settle(900); await page.click('dialog[open] .at-tile[data-arg="hike"]'); }],
+    ['act-search', async () => { await startAct('run', { searchMs: 60000 }); }],
+    ['act-live', async () => { await startAct('run', { go: 6 * 60 * 1000 }); }],
+    ['act-paused', async () => { await startAct('cycle', { go: 4 * 60 * 1000 }); await page.evaluate(() => window.GH.ui.act.alPause()); }],
+    ['act-pill', async () => { await startAct('walk', { go: 2 * 60 * 1000 }); await page.evaluate(() => window.__gh.back()); }],
+    ['act-capsule', async () => { await startAct('run', { go: 2 * 60 * 1000 }); await page.evaluate(() => window.__gh.back()); await settle(); await page.evaluate(() => window.GH.ui.go('health')); }],
+    ['act-summary', async () => { await seedActs(); await page.evaluate(() => window.GH.ui.open('activity', 'seed-r3')); }],
+    ['act-summary-end', async () => { await seedActs(); await page.evaluate(() => window.GH.ui.open('activity', 'seed-r3')); await settle(); await page.evaluate(() => { const s = document.getElementById('screen'); s.scrollTop = s.scrollHeight; }); }],
+    ['act-ride', async () => { await seedActs(); await page.evaluate(() => window.GH.ui.open('activity', 'seed-c1')); }],
+    ['act-rename', async () => { await seedActs(); await page.evaluate(() => window.GH.ui.open('activity', 'seed-w1')); await settle(); await act('actRename', 'seed-w1'); }],
+    ['activities', async () => { await seedActs(); await page.evaluate(() => window.GH.ui.open('activities')); }],
+    ['activities-records', async () => { await seedActs(); await page.evaluate(() => window.GH.ui.open('activities')); await settle(); await page.evaluate(() => { const s = document.getElementById('screen'); s.scrollTop = s.scrollHeight; }); }],
+    ['progress-records', async () => { await seedActs(); await page.evaluate(() => window.GH.ui.go('progress')); await settle(1200); await page.evaluate(() => { const r = document.querySelector('#screen .act-records'); if (r) r.scrollIntoView({ block: 'center' }); }); }],
+    ['health-activity', async () => { await seedActs(); await page.evaluate(() => window.GH.ui.go('health')); await settle(1200); await page.evaluate(() => { const r = document.querySelector('#screen [data-key="act-start"]'); if (r) r.scrollIntoView({ block: 'center' }); }); }],
     // Last, since it changes the state: today's workout done (not saved, so a reload undoes it).
     ['plan-done', async () => { await page.evaluate(() => { const GH = window.GH, U = GH.ui, B = GH.brain, S = U.S; GH.store.save = () => true; GH.store.saveSoon = () => {}; B.startWorkout(S, U.today(), { now: Date.now() - 26 * 60000 }); for (let g = 0; S.active && S.active.idx < S.active.steps.length && g < 400; g++) { const st = S.active.steps[S.active.idx]; B.completeStep(S, st.kind === 'test' ? { value: 12 } : {}); if (st.askRir) B.setRir(S, st.item, '12'); } B.finishWorkout(S, { rating: 'right', now: Date.now() }); U.go('plan'); }); }],
   ].filter(([id]) => !only.length || only.some((o) => id.startsWith(o)));
@@ -211,6 +244,10 @@ for (const [width, theme, zoom, h] of COMBOS) {
       check(`${id} (ran)`, false, e.message.split('\n')[0]);
     }
     if (id === 'player' || id === 'capsule') await page.evaluate(() => { const S = window.GH.ui.S; if (window.GH.ui.closePlayer) window.GH.ui.closePlayer(); S.active = null; window.GH.store.save(S); });
+    // An activity still recording would open again after the reload: stop it and forget it.
+    if (id.startsWith('act-') || id.startsWith('activities') || id.endsWith('-records') || id === 'health-activity') {
+      await page.evaluate(() => { const S = window.GH.ui.S; const B = window.AndroidBridge; if (S.actLive) { B.actStop(); B.actClear(S.actLive.id); S.actLive = null; } S.activities = []; window.GH.store.save(S); sessionStorage.removeItem('act-fake'); });
+    }
     // A slow machine can take a while to start the page again; a page that fails to start says why.
     try { await page.reload(); await page.waitForSelector('#screen[data-view]'); } catch (e) {
       check(`${id}: the page starts again`, false, `${e.message.split('\n')[0]} ${errors.slice(-3).join(' | ')}`);
