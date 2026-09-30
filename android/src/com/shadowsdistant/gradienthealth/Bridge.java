@@ -531,6 +531,70 @@ public final class Bridge {
         }
     }
 
+    // ---------------------------------------------------------------- background sync (HealthSync)
+
+    /**
+     * {"supported", "granted", "on", "scheduled", "lastRun", "lastOk", "error", "pending"}: whether
+     * this phone's Health Connect can read in the background, whether that's allowed, the Settings
+     * switch, whether the job is scheduled, the last run and the last good one (epoch ms or null), why
+     * the last run failed (or null) and how many reads wait for the page.
+     */
+    @JavascriptInterface
+    public String hcBackground() {
+        try {
+            return HealthSync.stateJson(activity);
+        } catch (Throwable t) {
+            return "{\"supported\":false,\"granted\":false,\"on\":false,\"scheduled\":false,"
+                    + "\"lastRun\":null,\"lastOk\":null,\"error\":null,\"pending\":0}";
+        }
+    }
+
+    /**
+     * Asks for Health Connect's background-read permission. Answers like hcRequest (onHealthPerms),
+     * and window.__gh.onHealthBackground gets the new hcBackground() state.
+     */
+    @JavascriptInterface
+    public void hcBackgroundRequest() {
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.requestBackgroundPermission();
+            }
+        });
+    }
+
+    /** The Settings switch: schedules or cancels the background sync; onHealthBackground follows. */
+    @JavascriptInterface
+    public void hcBackgroundSet(boolean on) {
+        try {
+            HealthSync.setOn(activity, on);
+        } catch (Throwable ignored) {
+        }
+        activity.backgroundChanged(false);
+    }
+
+    /**
+     * Up to 50 background reads waiting for the page, oldest first:
+     * [{"id": "&lt;file name&gt;", "payload": &lt;what onHealth gets&gt;}].
+     */
+    @JavascriptInterface
+    public String hcPending() {
+        try {
+            return HealthSync.pendingJson(activity);
+        } catch (Throwable t) {
+            return "[]";
+        }
+    }
+
+    /** Deletes the background reads the page has folded in (a JSON list of their ids). */
+    @JavascriptInterface
+    public void hcPendingDone(String jsonArrayOfIds) {
+        try {
+            HealthSync.done(activity, jsonArrayOfIds);
+        } catch (Throwable ignored) {
+        }
+    }
+
     // ---------------------------------------------------------------- on-device AI models (ModelStore)
 
     /** Installed models: [{"id","file","bytes"}]. */

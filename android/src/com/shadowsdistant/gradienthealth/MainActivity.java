@@ -2,6 +2,7 @@ package com.shadowsdistant.gradienthealth;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
@@ -39,6 +40,7 @@ import android.window.OnBackInvokedDispatcher;
 import org.json.JSONObject;
 
 import java.io.ByteArrayInputStream;
+import java.lang.ref.WeakReference;
 import java.util.HashMap;
 import java.util.Locale;
 
@@ -59,6 +61,12 @@ public final class MainActivity extends Activity {
     /** A camera request from the page, waiting on the runtime permission dialog. */
     private PermissionRequest pendingCamera;
     static final String CLAUDE_PACKAGE = "com.anthropic.claude";
+
+    // The activity showing the page, for services and jobs with news for it (see live()).
+    private static volatile WeakReference<MainActivity> current = new WeakReference<MainActivity>(null);
+    private static volatile boolean front;
+    private volatile String lastBackgroundJson;
+    private long backgroundCheckedAt;
 
     private static final String ACTION_VIEW_PERMISSION_USAGE =
             "android.intent.action.VIEW_PERMISSION_USAGE";
@@ -81,7 +89,7 @@ public final class MainActivity extends Activity {
     private Bridge bridge;
     private boolean pageLoaded;
     private String pendingRoute;
-    private boolean destroyed;
+    private volatile boolean destroyed;
     private int rendererCrashes;
     private long firstRendererCrashAt;
     // Last system-bar insets in CSS pixels, as JSON, for the page to read (see Bridge.insets()).
@@ -109,11 +117,24 @@ public final class MainActivity extends Activity {
         }
 
         bridge = new Bridge(this);
+        current = new WeakReference<MainActivity>(this);
         String url = APP_URL;
-        if (isPrivacyIntent(getIntent())) {
+        Intent intent = getIntent();
+        if (isPrivacyIntent(intent)) {
             url = APP_URL + "#privacy"; // the page opens it as it starts (only once)
         }
         createWebView(url);
+    }
+
+    /** The activity showing the page, if there is one: for services and jobs with news for the page. */
+    static MainActivity live() {
+        MainActivity a = current.get();
+        return a == null || a.destroyed ? null : a;
+    }
+
+    /** The same, only while the app is in front. */
+    static MainActivity inFront() {
+        return front ? live() : null;
     }
 
     private void createWebView(String url) {
@@ -186,6 +207,7 @@ public final class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        front = true;
         WebView wv = webView;
         if (wv != null) {
             try {
@@ -194,10 +216,17 @@ public final class MainActivity extends Activity {
             }
         }
         callJs(jsCall("onResume", ""));
+        // Background sync: scheduled while it can run (permissions can change in Health Connect).
+        long now = SystemClock.elapsedRealtime();
+        if (backgroundCheckedAt == 0L || now - backgroundCheckedAt > 5 * 60000L) {
+            backgroundCheckedAt = now;
+            HealthSync.updateLater(this);
+        }
     }
 
     @Override
     protected void onPause() {
+        front = false;
         // WebView.onPause() pauses animations/geolocation only. JS timers keep running on
         // purpose (no pauseTimers()): a workout in progress must keep counting in the background.
         // The page is told, so it stops background work like the 15-minute health sync.
@@ -245,6 +274,10 @@ public final class MainActivity extends Activity {
             c.release();
         }
         destroyed = true;
+        if (current.get() == this) {
+            current = new WeakReference<MainActivity>(null);
+            front = false;
+        }
         mainHandler.removeCallbacksAndMessages(null);
         WebView wv = webView;
         webView = null;
@@ -436,6 +469,45 @@ public final class MainActivity extends Activity {
     void notifyHealthPermissions() {
         String status = bridge != null ? bridge.hcStatus() : "unavailable";
         callJs(jsCall("onHealthPerms", jsString(status)));
+        backgroundChanged(true);
+    }
+
+    /**
+     * Asks for reading Health Connect in the background. The answer comes like any Health Connect
+     * permission's (onHealthPerms), plus onHealthBackground with the new state.
+     */
+    void requestBackgroundPermission() {
+        try {
+            if (Build.VERSION.SDK_INT < Bridge.HEALTH_CONNECT_MIN_SDK || !HealthSync.supported(this)
+                    || HealthSync.granted(this)) {
+                notifyHealthPermissions();
+                return;
+            }
+            requestPermissions(new String[]{HealthSync.PERMISSION}, REQUEST_HEALTH_PERMISSIONS);
+        } catch (Throwable t) {
+            notifyHealthPermissions();
+        }
+    }
+
+    /**
+     * Reschedules (or cancels) the background sync to match, off the UI thread, and tells the page
+     * the new state with window.__gh.onHealthBackground: always, or when {@code onlyIfChanged}, only
+     * when it differs from what the page last got.
+     */
+    void backgroundChanged(final boolean onlyIfChanged) {
+        final Context app = getApplicationContext();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                HealthSync.update(app);
+                String json = HealthSync.stateJson(app);
+                if (onlyIfChanged && json.equals(lastBackgroundJson)) {
+                    return;
+                }
+                lastBackgroundJson = json;
+                callJs(jsCall("onHealthBackground", json));
+            }
+        }, "gradient-health-sync").start();
     }
 
     /** Health Connect's per-app permission screen, falling back to its home screen. */

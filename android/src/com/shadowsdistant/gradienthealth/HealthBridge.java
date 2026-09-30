@@ -62,10 +62,29 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * ONLY call into this class after checking Build.VERSION.SDK_INT >= 34: it and its inner classes
  * reference types (HealthConnectManager, OutcomeReceiver, record classes) that older devices
- * don't have. {@link Bridge} and {@link MainActivity} do that check.
+ * don't have. {@link Bridge}, {@link MainActivity}, {@link HealthSync} and {@link HealthSyncJob}
+ * do that check.
+ *
+ * Reads answer through a {@link Callback}: the page's (window.__gh.onHealth) or the
+ * background sync's, which saves the same JSON to a file (see HealthSync).
  */
 final class HealthBridge {
     private HealthBridge() {
+    }
+
+    /** Where an answer goes. Called once, on the Health Connect thread. */
+    interface Callback {
+        void done(String json);
+    }
+
+    /** A callback that hands the JSON to window.__gh.{@code hook} in the page. */
+    static Callback page(final MainActivity activity, final String hook) {
+        return new Callback() {
+            @Override
+            public void done(String json) {
+                activity.callJs(MainActivity.jsCall(hook, json));
+            }
+        };
     }
 
     // Data types: index = type id, {key in the onHealth JSON, read permission}.
@@ -125,21 +144,44 @@ final class HealthBridge {
     static final String WRITE_EXERCISE = "android.permission.health.WRITE_EXERCISE";
     /** Lets the app save the meals logged in it (calorie tracking). */
     static final String WRITE_NUTRITION = "android.permission.health.WRITE_NUTRITION";
+    private static final String[][] EXTRA = {
+            {"writeExercise", WRITE_EXERCISE},
+            {"writeNutrition", WRITE_NUTRITION},
+    };
 
     private static ScheduledExecutorService executor;
 
-    /** Every read permission plus the two writes, for Activity.requestPermissions. */
-    static String[] permissions() {
-        String[] out = new String[TYPES.length + 2];
-        for (int i = 0; i < TYPES.length; i++) {
-            out[i] = TYPES[i][1];
+    /**
+     * Every read permission, the writes, and reading in the background where this phone's Health
+     * Connect has it (see {@link HealthSync#supported}), for Activity.requestPermissions.
+     */
+    static String[] permissions(Context context) {
+        List<String> out = new ArrayList<String>();
+        for (String[] type : TYPES) {
+            out.add(type[1]);
         }
-        out[TYPES.length] = WRITE_EXERCISE;
-        out[TYPES.length + 1] = WRITE_NUTRITION;
-        return out;
+        for (String[] extra : EXTRA) {
+            out.add(extra[1]);
+        }
+        if (HealthSync.supported(context)) {
+            out.add(HealthSync.PERMISSION);
+        }
+        return out.toArray(new String[0]);
     }
 
-    /** The data types this app may read or write right now, e.g. ["steps", "heartRate", "writeNutrition"]. */
+    /** True when Health Connect is there to talk to. */
+    static boolean available(Context context) {
+        try {
+            return context.getSystemService(HealthConnectManager.class) != null;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * The data types this app may read or write right now, e.g. ["steps", "heartRate", "writeNutrition",
+     * "background"].
+     */
     static String granted(Context context) {
         JSONArray out = new JSONArray();
         for (String[] type : TYPES) {
@@ -147,11 +189,13 @@ final class HealthBridge {
                 out.put(type[0]);
             }
         }
-        if (isGranted(context, WRITE_EXERCISE)) {
-            out.put("writeExercise");
+        for (String[] extra : EXTRA) {
+            if (isGranted(context, extra[1])) {
+                out.put(extra[0]);
+            }
         }
-        if (isGranted(context, WRITE_NUTRITION)) {
-            out.put("writeNutrition");
+        if (isGranted(context, HealthSync.PERMISSION)) {
+            out.put("background");
         }
         return out.toString();
     }
@@ -161,12 +205,12 @@ final class HealthBridge {
     }
 
     /**
-     * The permissions from {@link #permissions()} that aren't granted yet. The nutrition ones are
+     * The permissions from {@link #permissions} that aren't granted yet. The nutrition ones are
      * only asked for when food tracking is on, so people who just work out never see them.
      */
     static String[] missingPermissions(Context context, boolean withFood) {
         List<String> missing = new ArrayList<String>();
-        for (String permission : permissions()) {
+        for (String permission : permissions(context)) {
             boolean food = permission.endsWith("_NUTRITION");
             if ((withFood || !food) && !isGranted(context, permission)) {
                 missing.add(permission);
@@ -214,11 +258,19 @@ final class HealthBridge {
 
     /** Starts an asynchronous read; the result is delivered to window.__gh.onHealth. */
     static void read(final MainActivity activity, int days) {
+        read(activity, days, page(activity, "onHealth"));
+    }
+
+    /**
+     * The same read for anyone: {@code callback} gets the JSON window.__gh.onHealth would, once. The
+     * background sync uses it with no page around.
+     */
+    static void read(final Context context, int days, final Callback callback) {
         final int span = Math.max(MIN_DAYS, Math.min(MAX_DAYS, days));
         executor().execute(new Runnable() {
             @Override
             public void run() {
-                ReadJob job = new ReadJob(activity, span);
+                ReadJob job = new ReadJob(context, span, callback);
                 try {
                     job.start();
                 } catch (Throwable t) {
@@ -580,9 +632,10 @@ final class HealthBridge {
         return o;
     }
 
-    /** One hcRead() call. All methods run on the executor() thread. */
+    /** One read (hcRead() or a background sync). All methods run on the executor() thread. */
     private static final class ReadJob {
-        private final MainActivity activity;
+        private final Context context;
+        private final Callback callback;
         private final int days;
         private final ScheduledExecutorService exec = executor();
         private final JSONObject result = new JSONObject();
@@ -598,8 +651,9 @@ final class HealthBridge {
         private LocalDateTime stepsStart;
         private LocalDateTime stepsEnd;
 
-        ReadJob(MainActivity activity, int days) {
-            this.activity = activity;
+        ReadJob(Context context, int days, Callback callback) {
+            this.context = context;
+            this.callback = callback;
             this.days = days;
             for (int i = 0; i < arrays.length; i++) {
                 arrays[i] = new JSONArray();
@@ -608,7 +662,7 @@ final class HealthBridge {
 
         void start() {
             try {
-                manager = activity.getSystemService(HealthConnectManager.class);
+                manager = context.getSystemService(HealthConnectManager.class);
             } catch (Throwable t) {
                 manager = null;
             }
@@ -648,7 +702,7 @@ final class HealthBridge {
             }, TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
             for (int i = 0; i < TYPES.length; i++) {
-                if (!isGranted(activity, TYPES[i][1])) {
+                if (!isGranted(context, TYPES[i][1])) {
                     putError(i, "not granted");
                     continue;
                 }
@@ -908,12 +962,7 @@ final class HealthBridge {
 
         /** True for sessions this app wrote itself (they mirror workouts it already has). */
         private boolean isOwn(Record record) {
-            try {
-                String origin = record.getMetadata().getDataOrigin().getPackageName();
-                return activity.getPackageName().equals(origin);
-            } catch (Throwable t) {
-                return false;
-            }
+            return HealthBridge.isOwn(context, record);
         }
 
         private JSONObject toJson(int type, Record record) throws JSONException {
@@ -1099,7 +1148,20 @@ final class HealthBridge {
         }
 
         private void send(String json) {
-            activity.callJs(MainActivity.jsCall("onHealth", json));
+            try {
+                callback.done(json);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    /** True for records this app wrote itself. */
+    private static boolean isOwn(Context context, Record record) {
+        try {
+            String origin = record.getMetadata().getDataOrigin().getPackageName();
+            return context.getPackageName().equals(origin);
+        } catch (Throwable t) {
+            return false;
         }
     }
 }
