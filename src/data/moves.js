@@ -93,8 +93,8 @@
     view: 'side', pin: { joint: 'hip', at: [0, -54] }, key: 'b',
     props: [{ type: 'chair', x: -30, w: 42, h: 45, back: -1 }], equip: DBN,
     poses: {
-      a: { t: 32, aN: { s: 33, e: 8 }, aF: { s: 70, e: 45 }, lN: { h: 122, k: 90 } },
-      b: { t: 32, aN: { s: 37, e: 132 }, aF: { s: 70, e: 45 }, lN: { h: 122, k: 90 } },
+      a: { t: 32, aN: { s: 33, e: 8 }, lN: { h: 122, k: 90 }, ik: { hdF: [38, -58] } },
+      b: { t: 32, aN: { s: 37, e: 132 }, lN: { h: 122, k: 90 }, ik: { hdF: [38, -58] } },
     },
     rep: ce('a', 'b'), muscles: ['biceps', 'forearms'], uni: true, leadLimbs: ['aN'],
   };
@@ -110,9 +110,9 @@
     poses: { a: st({ aN: { s: 172, e: 6 } }), b: st({ aN: { s: 166, e: 128 } }) },
     rep: ec('a', 'b'), muscles: ['triceps'],
   };
-  F.ohExt1 = merge(F.ohExt, { equip: [{ type: 'db', hands: 'N', orient: 'side' }], poses: { a: { aF: { s: 4, e: 10 } }, b: { aF: { s: 4, e: 10 } } }, uni: true, leadLimbs: ['aN'] });
+  F.ohExt1 = merge(F.ohExt, { equip: [{ type: 'db', hands: 'N', orient: 'side' }], equipBy: null, poses: { a: { aF: { s: 4, e: 10 } }, b: { aF: { s: 4, e: 10 } } }, uni: true, leadLimbs: ['aN'] });
   // The band runs from under the heels up the back to the hands behind the head.
-  F.bandOhExt = merge(F.ohExt, { equip: [{ type: 'band', hands: 'both', from: 'heN', layer: 'back' }], equipBy: null });
+  F.bandOhExt = merge(F.ohExt, { equip: [{ type: 'band', hands: 'both', from: 'heN', layer: 'back', route: 'back' }], equipBy: null });
   F.pushdown = {
     view: 'side', pin: FLOOR_ANKLE, key: 'b', props: [{ type: 'door', x: 52 }],
     equip: [{ type: 'band', hands: 'both', from: [52, -196] }],
@@ -144,6 +144,7 @@
     poses: { a: plank(71, [124, -3]), b: plank(87, [124, -3]) },
     rep: ec('a', 'b'), muscles: ['chest', 'triceps', 'frontDelts'],
   };
+  F.diamond = merge(F.pushup, {});
   F.kneePush = {
     view: 'side', pin: { joint: 'knN', at: [0, -6] }, key: 'b',
     poses: {
@@ -241,7 +242,7 @@
     view: 'side', pin: FLOOR_ANKLE, key: 'b', props: [{ type: 'chair', x: -62, w: 46, h: 45, back: -1 }],
     poses: {
       a: { t: 0, aN: { s: 90, e: 0 }, lN: { h: 0, k: 2 }, lF: { h: 32, k: 6, flat: false, a: 10 } },
-      b: { t: 36, n: -10, aN: { s: 124, e: 0 }, lN: { h: 110, k: 115 }, lF: { h: 128, k: 4, flat: false, a: 10 } },
+      b: { t: 36, n: -10, aN: { s: 124, e: 0 }, lN: { h: 104, k: 106 }, lF: { h: 128, k: 4, flat: false, a: 10 } },
     },
     rep: ec('a', 'b'), muscles: ['quads', 'glutes'], uni: true, leadLimbs: ['lN'],
   };
@@ -313,7 +314,7 @@
     view: 'side', pin: { joint: 'neck', at: [-50, -11] }, key: 'b',
     poses: {
       a: sup({ aN: { s: 0, e: 0 }, lN: { flat: true }, ik: { anN: [45, -8] } }),
-      b: sup({ t: -108, aN: { s: -18, e: 0 }, lN: { flat: true }, ik: { anN: [45, -8] } }),
+      b: sup({ t: -114, aN: { s: -18, e: 0 }, lN: { flat: true }, ik: { anN: [45, -8] } }), // shoulders, hips, knees in line
     },
     rep: ce('a', 'b', { holdB: 500 }), muscles: ['glutes', 'hamstrings'],
   };
@@ -360,15 +361,20 @@
   // Bridge walkout: from a bridge the heels walk out in small steps until the legs are nearly
   // straight (hips still up), then walk back in.
   const walkout = (t, n, f) => sup({ t, aN: { s: 86 + t, e: 0 }, lN: { flat: true }, lF: { flat: true }, ik: { anN: [n, -8], anF: [f, -8] } });
+  // Half way through a step: the stepping heel (side s) lifted off the floor, passed through.
+  const walkStep = (t, n, f, s) => merge(walkout(t, n, f), { ['l' + s]: { flat: false }, ik: { ['an' + s]: [s === 'N' ? n : f, -14] } });
+  const walkRep = (ph, list) => list.flatMap(([via, to, hold]) => [{ to: via, ms: 190, hold: 0, ph, through: true }, { to, ms: 190, hold, ph }]);
   F.hamWalk = {
     view: 'side', pin: { joint: 'neck', at: [-50, -11] }, key: 'o',
     poses: {
       a: walkout(-108, 45, 45), s1: walkout(-106, 63, 45), s2: walkout(-104, 63, 63), s3: walkout(-102, 81, 63),
       o: walkout(-100, 81, 81), r1: walkout(-102, 63, 81), r3: walkout(-106, 45, 63),
+      v1: walkStep(-107, 54, 45, 'N'), v2: walkStep(-105, 63, 54, 'F'), v3: walkStep(-103, 72, 63, 'N'), v4: walkStep(-101, 81, 72, 'F'),
+      w1: walkStep(-101, 72, 81, 'N'), w2: walkStep(-103, 63, 72, 'F'), w3: walkStep(-105, 54, 63, 'N'), w4: walkStep(-107, 45, 54, 'F'),
     },
     rep: [
-      { to: 's1', ms: 380, hold: 60, ph: 'ecc' }, { to: 's2', ms: 380, hold: 60, ph: 'ecc' }, { to: 's3', ms: 380, hold: 60, ph: 'ecc' }, { to: 'o', ms: 380, hold: 300, ph: 'ecc' },
-      { to: 'r1', ms: 380, hold: 60, ph: 'con' }, { to: 's2', ms: 380, hold: 60, ph: 'con' }, { to: 'r3', ms: 380, hold: 60, ph: 'con' }, { to: 'a', ms: 380, hold: 400, ph: 'con' },
+      ...walkRep('ecc', [['v1', 's1', 60], ['v2', 's2', 60], ['v3', 's3', 60], ['v4', 'o', 300]]),
+      ...walkRep('con', [['w1', 'r1', 60], ['w2', 's2', 60], ['w3', 'r3', 60], ['w4', 'a', 400]]),
     ],
     muscles: ['hamstrings', 'glutes'],
   };
@@ -443,11 +449,14 @@
     },
     rep: ce('a', 'b'), muscles: ['lats', 'upperBack', 'biceps'],
   };
+  // Under a sturdy table, its edge over the chest (the head out past it, so the face never meets
+  // the top): pull the chest up to the edge, elbows driving back toward the feet.
   F.tableRow = {
-    view: 'side', pin: { joint: 'heN', at: [62, -3] }, key: 'b', props: [{ type: 'table', x: -152, w: 82, h: 72 }],
+    view: 'side', pin: { joint: 'heN', at: [46, -3] }, key: 'b', props: [{ type: 'table', x: -70, w: 82, h: 72 }],
+    bend: { hdN: [1, 1], hdF: [1, 1] },
     poses: {
-      a: { t: -86, n: 6, lN: { h: 0, k: 0, flat: false, a: -10 }, ik: { hdN: [-74, -70] } },
-      b: { t: -64, n: 14, lN: { h: 0, k: 0, flat: false, a: -10 }, ik: { hdN: [-74, -70] } },
+      a: { t: -86, n: 6, lN: { h: 0, k: 0, flat: false, a: -10 }, ik: { hdN: [-73, -70] } },
+      b: { t: -70, n: 12, lN: { h: 0, k: 0, flat: false, a: -10 }, ik: { hdN: [-73, -70] } },
     },
     rep: ce('a', 'b'), muscles: ['lats', 'upperBack', 'biceps'],
   };
@@ -731,36 +740,42 @@
   const FEET_UP = { lN: { h: 168, k: 120, flat: false }, sc: { thN: 0.42, thF: 0.42, shN: 0.4, shF: 0.4 } };
   F.russianUp = merge(F.russian, { poses: { m: FEET_UP, l: FEET_UP, r: FEET_UP } });
   // The ball travels in front of the body (the third number: depth): the arm reaching across passes in front of the face.
+  // Elbows point down and out all the way ([out, down, forward]), so the far one doesn't swing round
+  // as the hands cross the face.
+  const CHOP_HIGH = { hdN: [1, 1, 0.4], hdF: [0.5, 1, 0.4] }, CHOP_LOW = { hdN: [1, 1, 0.4], hdF: [1, 1, 0.4] };
   F.chop = {
     view: 'front', pin: { joint: 'anN', at: [22, -8] }, key: 'b', armLayer: 'front', equip: [{ type: 'ball', hands: 'both' }],
     poses: {
-      a: { tw: 36, ball: [34, -176], ik: { hdN: [38, -172, 12], hdF: [30, -172, 12] }, lN: { h: 9, k: 0 } },
-      b: { tw: -36, ball: [-18, -100], ik: { hdN: [-14, -104, 10], hdF: [-22, -104, 12] }, lN: { h: 9, k: 20 }, lF: { h: 9, k: 24 } },
+      a: { tw: 36, ball: [34, -176], ik: { hdN: [38, -172, 12], hdF: [30, -172, 12] }, pole: CHOP_HIGH, lN: { h: 9, k: 0 } },
+      b: { tw: -36, ball: [-18, -100], ik: { hdN: [-14, -104, 10], hdF: [-22, -104, 12] }, pole: CHOP_LOW, lN: { h: 9, k: 0 }, sc: { thN: 0.95, shN: 0.95, thF: 0.95, shF: 0.95 } },
     },
     rep: ce('a', 'b', { con: 800, ecc: 1300 }), muscles: ['obliques', 'abs'], uni: true, leadLimbs: [],
   };
   F.kneelChop = {
     view: 'front', pin: { joint: 'knN', at: [12, -6] }, key: 'b', armLayer: 'front', legLayer: 'front', equip: [{ type: 'ball', hands: 'both' }],
     poses: {
-      a: { tw: 34, ball: [32, -142], ik: { hdN: [36, -138, 12], hdF: [28, -138, 10] }, lN: { h: 4, k: 0 }, lF: { h: 150, k: 150 }, sc: { shN: 0.02, ftN: 0.2, thF: 0.35 } },
-      b: { tw: -34, ball: [-26, -52], ik: { hdN: [-22, -56, 10], hdF: [-30, -56, 12] }, lN: { h: 4, k: 0 }, lF: { h: 150, k: 150 }, sc: { shN: 0.02, ftN: 0.2, thF: 0.35 } },
+      a: { tw: 34, ball: [32, -142], ik: { hdN: [36, -138, 12], hdF: [28, -138, 10] }, pole: CHOP_HIGH, lN: { h: 4, k: 0 }, lF: { h: 150, k: 150 }, sc: { shN: 0.02, ftN: 0.2, thF: 0.35 } },
+      b: { tw: -34, ball: [-26, -52], ik: { hdN: [-22, -56, 10], hdF: [-30, -56, 12] }, pole: CHOP_LOW, lN: { h: 4, k: 0 }, lF: { h: 150, k: 150 }, sc: { shN: 0.02, ftN: 0.2, thF: 0.35 } },
     },
     rep: ce('a', 'b', { con: 800, ecc: 1300 }), muscles: ['obliques', 'abs'], uni: true, leadLimbs: [],
   };
+  // Slam: the ball held overhead (free 0: in the hands) is thrown down, leading the hands to the
+  // floor (r: in the air), and picked up again from a deep squat, hands on its sides.
   F.slam = {
     view: 'side', pin: FLOOR_ANKLE, key: 'b', equip: [{ type: 'ball', hands: 'both' }],
     poses: {
-      a: { t: -4, aN: { s: 176, e: 12 }, lN: { h: 0, k: 0, flat: false, a: 18 }, ball: [4, -212] },
-      b: { t: 52, n: -20, aN: { s: 74, e: 6 }, lN: { h: 88, k: 50 }, ball: [48, -8] },
+      a: { t: -4, aN: { s: 176, e: 12 }, lN: { h: 0, k: 0, flat: false, a: 18 }, ball: [4, -212], free: 0 },
+      r: { t: 30, n: -12, aN: { s: 70, e: 6 }, lN: { h: 50, k: 46 }, ball: [56, -52] },
+      b: { t: 66, n: -28, aN: { s: 69, e: 3 }, lN: { h: 131, k: 124 }, ball: [46, -10], free: 0 },
     },
-    rep: [{ to: 'b', ms: 420, hold: 250, ph: 'con' }, { to: 'a', ms: 900, hold: 250, ph: 'move' }],
+    rep: [{ to: 'r', ms: 220, hold: 0, ph: 'con' }, { to: 'b', ms: 200, hold: 250, ph: 'con' }, { to: 'a', ms: 900, hold: 250, ph: 'move' }],
     muscles: ['abs', 'lats'],
   };
   F.toss = {
     view: 'side', pin: FLOOR_ANKLE, key: 'b', equip: [{ type: 'ball', hands: 'both' }],
     poses: {
-      a: { t: 0, aN: { s: 32, e: 118 }, lN: { h: 18, k: 30 }, ball: [22, -126] },
-      b: { t: -2, aN: { s: 172, e: 8 }, lN: { h: 0, k: 0 }, ball: [6, -214] },
+      a: { t: 0, aN: { s: 32, e: 118 }, lN: { h: 18, k: 30 }, ball: [22, -126], free: 0 },
+      b: { t: -2, aN: { s: 172, e: 8 }, lN: { h: 0, k: 0 }, ball: [6, -214], free: 0 },
       c: { t: -2, aN: { s: 172, e: 8 }, lN: { h: 0, k: 0 }, ball: [8, -262] },
     },
     rep: [{ to: 'b', ms: 450, hold: 0, ph: 'con' }, { to: 'c', ms: 450, hold: 100, ph: 'move' }, { to: 'b', ms: 450, hold: 0, ph: 'move' }, { to: 'a', ms: 650, hold: 300, ph: 'ecc' }],
@@ -788,13 +803,13 @@
     equipBy: { db: [{ type: 'db', hands: 'N', orient: 'end' }] },
     poses: {
       a: { aN: { s: 6, e: 4 }, aF: { s: 12, e: 12 }, lN: { h: 3, k: 0 }, lF: { h: 3, k: 0 } },
-      b: { aN: { s: 6, e: 4 }, aF: { s: 12, e: 12 }, lN: { h: 3, k: 26 }, lF: { h: 3, k: 0 }, sc: { thN: 0.86 } },
-      c: { aN: { s: 6, e: 4 }, aF: { s: 12, e: 12 }, lN: { h: 3, k: 0 }, lF: { h: 3, k: 26 }, sc: { thF: 0.86 } },
+      b: { aN: { s: 6, e: 4 }, aF: { s: 12, e: 12 }, lN: { h: 3, k: 3, flat: false }, lF: { h: 3, k: 0, flat: true }, sc: { thN: 0.95, shN: 0.84 } },
+      c: { aN: { s: 6, e: 4 }, aF: { s: 12, e: 12 }, lN: { h: 3, k: 0, flat: true }, lF: { h: 3, k: 3, flat: false }, sc: { thF: 0.95, shF: 0.84 } },
     },
     rep: cyc(['b', 'a', 'c', 'a'], 380, 40), muscles: ['obliques', 'forearms'], uni: true, leadLimbs: ['aN'],
   };
   F.march = merge(F.carry, {
-    poses: { b: { lN: { k: 80 }, sc: { thN: 0.5 } }, c: { lF: { k: 80 }, sc: { thF: 0.5 } } },
+    poses: { b: { lN: { k: 4 }, sc: { thN: 0.5, shN: 0.92 } }, c: { lF: { k: 4 }, sc: { thF: 0.5, shF: 0.92 } } },
     rep: cyc(['b', 'a', 'c', 'a'], 650, 250),
   });
 
@@ -826,9 +841,11 @@
       u1: { at: [-6, -66], t: 50, n: -14, lN: { flat: true }, ik: { anN: [0, -8], hdN: [70, -74] } },
       u2: { at: [-2, -89], t: 10, n: -4, lN: { flat: true }, ik: { anN: [0, -8], hdN: [32, -183] } },
       d: { at: [0, -118], t: -2, lN: { flat: false, a: 40 }, ik: { anN: [0, -34], hdN: [12, -224] } },
+      l: { at: [-2, -84], t: 14, n: -6, lN: { flat: true }, ik: { anN: [0, -8], hdN: [46, -112] } },
     },
     rep: [{ to: 'b', ms: 500, hold: 0, ph: 'move' }, { to: 'j', ms: 220, hold: 0, ph: 'move' }, { to: 'c', ms: 230, hold: 150, ph: 'move' }, { to: 'j', ms: 220, hold: 0, ph: 'move' }, { to: 'b', ms: 230, hold: 0, ph: 'move' },
-      { to: 'u1', ms: 140, hold: 0, ph: 'con', through: true }, { to: 'u2', ms: 140, hold: 0, ph: 'con', through: true }, { to: 'd', ms: 160, hold: 60, ph: 'con' }, { to: 'a', ms: 420, hold: 250, ph: 'move' }],
+      { to: 'u1', ms: 140, hold: 0, ph: 'con', through: true }, { to: 'u2', ms: 140, hold: 0, ph: 'con', through: true }, { to: 'd', ms: 160, hold: 60, ph: 'con' },
+      { to: 'l', ms: 220, hold: 0, ph: 'move', through: true }, { to: 'a', ms: 260, hold: 190, ph: 'move' }],
     muscles: ['quads', 'chest', 'abs'],
   };
   F.pulse = merge(F.squatBW, {
@@ -840,8 +857,13 @@
     poses: {
       a: { t: 0, aN: { s: 30, e: 80 }, aF: { s: -30, e: 80 }, lN: { h: 80, k: 90, flat: false, a: 20 }, lF: { h: 0, k: 4 } },
       b: { t: 0, aN: { s: -30, e: 80 }, aF: { s: 30, e: 80 }, lN: { h: 0, k: 4 }, lF: { h: 80, k: 90, flat: false, a: 20 } },
+      // Passed through: the foot leaving the floor heel first (the knee bends before it drives up)
+      // as the other comes down.
+      ua: { t: 0, aN: { s: 0, e: 80 }, aF: { s: 0, e: 80 }, lN: { h: 28, k: 62, flat: false, a: 20 }, lF: { h: 36, k: 80, flat: false, a: 10 } },
+      ub: { t: 0, aN: { s: 0, e: 80 }, aF: { s: 0, e: 80 }, lN: { h: 36, k: 80, flat: false, a: 10 }, lF: { h: 28, k: 62, flat: false, a: 20 } },
     },
-    rep: cyc(['b', 'a'], 420, 60), muscles: ['hipFlexors', 'quads'],
+    rep: [{ to: 'ub', ms: 210, hold: 0, ph: 'move', through: true }, { to: 'b', ms: 210, hold: 60, ph: 'move' }, { to: 'ua', ms: 210, hold: 0, ph: 'move', through: true }, { to: 'a', ms: 210, hold: 60, ph: 'move' }],
+    muscles: ['hipFlexors', 'quads'],
   };
 
   // Step jacks: one foot steps out to the side as the arms sweep up, then back in, then the other.
@@ -851,8 +873,12 @@
       a: { at: [0, -92.7], aN: { s: 8, e: 6 }, lN: { flat: true }, ik: { anN: [16, -8], anF: [-16, -8] } },
       b: { at: [6, -88], aN: { s: 160, e: 6 }, lN: { flat: true }, ik: { anN: [40, -8], anF: [-16, -8] } },
       c: { at: [-6, -88], aN: { s: 160, e: 6 }, lN: { flat: true }, ik: { anN: [16, -8], anF: [-40, -8] } },
+      // Half way through a step (passed through): the stepping foot lifted.
+      bs: { at: [3, -91], aN: { s: 84, e: 6 }, lN: { flat: false }, lF: { flat: true }, ik: { anN: [28, -15], anF: [-16, -8] } },
+      cs: { at: [-3, -91], aN: { s: 84, e: 6 }, lN: { flat: true }, lF: { flat: false }, ik: { anN: [16, -8], anF: [-28, -15] } },
     },
-    rep: cyc(['b', 'a', 'c', 'a'], 380, 40), muscles: ['sideDelts', 'glutes', 'calves'],
+    rep: [['bs', 'b'], ['bs', 'a'], ['cs', 'c'], ['cs', 'a']].flatMap(([via, to]) => [{ to: via, ms: 190, hold: 0, ph: 'move', through: true }, { to, ms: 190, hold: 40, ph: 'move' }]),
+    muscles: ['sideDelts', 'glutes', 'calves'],
   };
   // Squat thrust, stepping: hands down, step back to a plank one foot at a time, step in, stand.
   F.squatThrust = {
@@ -1031,9 +1057,10 @@
     view: 'side', pin: { joint: 'anF', at: [0, -8] }, key: 'f',
     poses: {
       f: { t: -2, aN: { s: 20, e: 20 }, aF: { s: 40, e: 30 }, lN: { h: 58, k: 8, flat: false, a: 20 }, lF: { h: 0, k: 2, flat: true } },
+      m: { t: 1, aN: { s: 0, e: 20 }, aF: { s: 40, e: 30 }, lN: { h: 20, k: 55, flat: false, a: 0 }, lF: { h: 0, k: 2, flat: true } },
       b: { t: 4, aN: { s: -20, e: 20 }, aF: { s: 40, e: 30 }, lN: { h: -28, k: 12, flat: false, a: 30 }, lF: { h: 0, k: 2, flat: true } },
     },
-    rep: [{ to: 'f', ms: 520, hold: 0, ph: 'move' }, { to: 'b', ms: 520, hold: 0, ph: 'move' }],
+    rep: [{ to: 'm', ms: 260, hold: 0, ph: 'move', through: true }, { to: 'f', ms: 260, hold: 0, ph: 'move' }, { to: 'm', ms: 260, hold: 0, ph: 'move', through: true }, { to: 'b', ms: 260, hold: 0, ph: 'move' }],
     muscles: ['hamstrings', 'hipFlexors', 'glutes'], uni: true, leadLimbs: ['lN'],
   };
   // Scap push-up: arms straight in a plank, the chest sinks between the shoulder blades, then the
@@ -1298,7 +1325,7 @@
     props: [{ type: 'machine', kind: 'rowSeat', x: 15, h: 42, w: 60, foot: [81.9, -30.6], angle: 70 }, { type: 'cable', x: 104, y: -34, to: 'both' }],
     poses: {
       a: { t: 18, n: -6, lN: { fd: 160, flat: false }, sc: ARMS(0.95, 1), ik: { anN: [77, -26], hdN: [50, -79] } },
-      b: { t: -6, n: 0, lN: { fd: 160, flat: false }, sc: ARMS(0.95, 1), ik: { anN: [77, -26], hdN: [14, -72] } },
+      b: { t: -6, n: 0, lN: { fd: 160, flat: false }, sc: ARMS(0.95, 1), ik: { anN: [77, -26], hdN: [21, -75] } }, // handle to the belly, not into it
     },
     rep: ce('a', 'b', { holdB: 400 }), muscles: ['lats', 'upperBack', 'rearDelts', 'biceps'],
   };
@@ -1306,11 +1333,11 @@
   const CHEST_PAD = { type: 'bench', x: -43.9, w: 116, h: BENCH_H, incline: 40, back: 1, seat: 36 };
   F.chestRow = {
     view: 'side', pin: { joint: 'hip', at: [0, -66.7] }, key: 'b', equip: DB2S, props: [CHEST_PAD],
+    bend: { hdN: [-1, -1], hdF: [-1, -1] }, // elbows drive up and back past the ribs
     poses: {
       a: { t: 50, n: -10, lN: { flat: true }, ik: { anN: [-40, -8], hdN: [38, -41.5] } },
       b: { t: 50, n: -10, lN: { flat: true }, sc: ARMS(0.95, 1), ik: { anN: [-40, -8], hdN: [22, -79] } },
     },
-    bend: { hdN: 1, hdF: 1 },
     rep: ce('a', 'b', { holdB: 400 }), muscles: ['lats', 'upperBack', 'rearDelts', 'biceps'],
   };
   F.facePull = {
@@ -1366,8 +1393,8 @@
     view: 'front', pin: FRONT_CENTER, key: 'b', armLayer: 'front', equip: [{ type: 'handle', hands: 'N' }],
     props: [{ type: 'cable', x: -64, y: -16, to: 'hdN', layer: 'front' }],
     poses: {
-      a: { lN: { h: 5 }, aN: { s: -22, e: 8 }, ik: { hdF: [-56, -116] } },
-      b: { lN: { h: 5 }, aN: { s: 86, e: 12 }, ik: { hdF: [-56, -116] } },
+      a: { lN: { h: 5 }, aN: { s: -16, e: 8 }, depth: { elN: 9, wrN: 16 }, ik: { hdF: [-56, -116] } }, // in front of the body, across to the other hip
+      b: { lN: { h: 5 }, aN: { s: 86, e: 12 }, depth: { elN: 3, wrN: 6 }, ik: { hdF: [-56, -116] } },
     },
     rep: ce('a', 'b'), muscles: ['sideDelts'], uni: true, leadLimbs: ['aN'],
   };
@@ -1572,7 +1599,7 @@
     cues: [SLOW, 'Elbows point up, close to your head.', 'Ribs down, no arching.'] }, { ecc: 3000 });
   move('tri_dip', 'dipStraight', { ...TRI, name: 'Chair dip, legs straight', req: ['chair'], load: null, range: [6, 20], start: 8, joints: ['shoulder', 'elbow', 'wrist'],
     cues: ['Legs long, heels on the floor.', 'Lower until elbows reach 90.', 'Push back up through your palms.'], mistake: 'Dropping so low your shoulders roll forward.' });
-  move('tri_diamond', 'pushup', { ...TRI, name: 'Diamond push-up', req: [], load: null, range: [4, 15], start: 6, muscles: ['triceps', 'chest'], joints: ['wrist', 'elbow', 'shoulder'],
+  move('tri_diamond', 'diamond', { ...TRI, name: 'Diamond push-up', req: [], load: null, range: [4, 15], start: 6, muscles: ['triceps', 'chest'], joints: ['wrist', 'elbow', 'shoulder'],
     cues: ['Hands close, thumbs and fingers touching.', 'Elbows brush your ribs on the way down.', 'Body in one straight line.'], mistake: 'Hips sagging toward the floor.' });
   move('tri_oh1', 'ohExt1', { ...TRI, name: 'Single-arm overhead extension, paused', req: ['db'], load: 'db', range: [6, 16], start: 8, uni: true,
     cues: ['Elbow points straight up.', PAUSE_BOTTOM, 'Other hand braces the working elbow.'] }, { pause: ['ecc', 1000] });
