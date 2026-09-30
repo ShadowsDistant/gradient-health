@@ -169,13 +169,18 @@
   // Every number in an answer should be one the model was given, or that number rounded: small models
   // sometimes make one up or do their own sums. Sentences with any other number are left out.
   // { text, cut } (cut: how many sentences went).
+  // A percentage has to be one of the given percentages exactly: a small model works out its own ("8%
+  // above your usual" for 1%), and neither some other 8 in the prompt nor a 7.6% rounded up may let it
+  // through.
   const NUM = /\d+(?:,\d{3})*(?:\.\d+)?/g;
+  const PCT = /(\d+(?:\.\d+)?)\s*(?:%|percent\b|per cent\b)/g;
   const numbers = (s) => (String(s || '').match(NUM) || []).map((x) => Number(x.replace(/,/g, '')));
+  const percents = (s) => [...String(s || '').matchAll(PCT)].map((m) => Number(m[1]));
+  const near = (list) => (n) => list.some((g) => g === n || (Number.isInteger(n) && (Math.round(g) === n || Math.trunc(g) === n)));
   function keepToGiven(text, given) {
-    const have = numbers(given);
-    const known = (n) => have.some((g) => g === n || (Number.isInteger(n) && (Math.round(g) === n || Math.trunc(g) === n)));
+    const known = near(numbers(given)), givenPct = percents(given), knownPct = (n) => givenPct.includes(n);
     const all = String(text || '').trim().split(/(?<=[.!?])\s+/).filter(Boolean);
-    const kept = all.filter((x) => numbers(x).every(known));
+    const kept = all.filter((x) => numbers(x).every(known) && percents(x).every(knownPct));
     return { text: kept.length === all.length ? String(text || '').trim() : kept.join(' '), cut: all.length - kept.length };
   }
   // The answer as shown: the model's, less any sentence with a number it wasn't given. If that leaves

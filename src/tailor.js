@@ -167,6 +167,35 @@
     out.note = String(t.note || '').replace(/\s+/g, ' ').trim().slice(0, 200);
     return out;
   }
+  // What a model read into a request, kept only where the request says something about it: a small
+  // model sometimes fills a field nobody asked about ("2 workouts a week" for "I only have 20
+  // minutes"). Muscles aren't filtered (reading "chicken legs" as legs is what the model is for), and
+  // the person still sees every change before it's made.
+  const ABOUT = {
+    minutes: /\b(mins?|minutes?|hours?|time|short|shorter|long|longer|quick|quicker|busy)\b/,
+    days: /\b(days?|week|weekly|times|sessions?|often|workouts)\b/,
+    no_jumping: /\b(jump\w*|impact|hop\w*|plyo\w*|noise|noisy|quiet|downstairs|neighbou?rs?|apartment|loud)\b/,
+    gentle: /\b(easy|easier|gentle|gentler|hard|harder|tired|exhausted|intense|push|challenge|recover\w*|burn\w* out|out of shape|too much)\b/,
+  };
+  const GOAL_ABOUT = { fat: /\b(fat|weight|lean\w*|lose|slim\w*|belly|cut)\b/, strength: /\b(strong\w*|strength|heav\w*|lift\w*)\b/, endurance: /\b(endurance|stamina|cardio|run\w*|fit\w*|breath\w*)\b/, mobility: /\b(flexib\w*|mobil\w*|stretch\w*|stiff|tight)\b/ };
+  function ground(t, text) {
+    if (!t || typeof t !== 'object') return t;
+    const s = ` ${String(text || '').toLowerCase()} `;
+    const out = Object.assign({}, t);
+    if (out.minutes != null && !ABOUT.minutes.test(s)) out.minutes = null;
+    if (out.days != null && !ABOUT.days.test(s)) out.days = null;
+    if (out.no_jumping != null && !ABOUT.no_jumping.test(s)) out.no_jumping = null;
+    if (out.gentle != null && !ABOUT.gentle.test(s)) out.gentle = null;
+    // Kit only when it's named ("band", "door anchor").
+    if (Array.isArray(out.add_equipment)) out.add_equipment = out.add_equipment.filter((k) => new RegExp(`\\b${k}s?\\b`).test(s));
+    if (Array.isArray(out.goals)) out.goals = out.goals.filter((g) => GOAL_ABOUT[g] && GOAL_ABOUT[g].test(s));
+    // The joints it names; if it names none but something hurts ("my leg hurts"), the model's reading.
+    if (Array.isArray(out.avoid_joints) && out.avoid_joints.length) {
+      const named = out.avoid_joints.filter((j) => Object.keys(JOINT_WORDS).some((w) => JOINT_WORDS[w] === j && s.includes(` ${w}`)));
+      out.avoid_joints = named.length ? named : new RegExp(`\\b${HURT}\\b`).test(s) ? out.avoid_joints : [];
+    }
+    return out;
+  }
   const empty = (t) => !t || (!t.focus.length && !(t.muscles || []).length && !t.goals.length && t.minutes == null && t.days == null && !t.avoid_joints.length && !t.avoid_moves.length && t.no_jumping == null && t.gentle == null && !t.add_equipment.length);
   // A model's reading adds to the rules' (the rules win where both say something).
   function merge(a, b) {
@@ -314,5 +343,5 @@
     return null;
   }
 
-  GH.tailor = { parse, valid, empty, merge, plan, apply, undo, last, ask, read, GRAMMAR, SYSTEM, messages };
+  GH.tailor = { parse, valid, empty, merge, plan, apply, undo, last, ask, read, GRAMMAR, SYSTEM, messages, ground };
 })(typeof window !== 'undefined' ? window : globalThis);

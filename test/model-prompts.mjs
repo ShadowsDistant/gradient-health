@@ -64,7 +64,7 @@ if (mode === 'write') {
   check('without any thinking showing', answers.every((a) => !/<\/?think>/.test(a.raw)));
   check('no number anyone sees is one it wasn\'t given', answers.every((a) => a.replaced || GH.deviceCoach.keepToGiven(a.text, a.given).cut === 0));
   const tailor = existsSync(join(dir, 'tailor.out')) ? readFileSync(join(dir, 'tailor.out'), 'utf8') : '';
-  const plan = GH.tailor.read(tailor);
+  const plan = GH.tailor.read(tailor) && GH.tailor.ground(GH.tailor.read(tailor), TAILOR);
   console.log(`\nTailor: "${TAILOR}"\n${tailor}\n${plan ? GH.tailor.plan(S, GH.tailor.valid(S, plan)).lines.map((l) => `- ${l.text}`).join('\n') : ''}`);
   check('Tailor under the grammar is JSON the app reads', !!(plan && Array.isArray(plan.focus)), tailor);
   const own = answers.filter((a) => a.replaced).length, trimmed = answers.filter((a) => !a.replaced && a.cut).length;

@@ -71,7 +71,7 @@
       if (S.ai.mode === 'api' && AI() && AI().hasKey() && S.ai.consentAt && AI().tailor) got = await AI().tailor(S, day, text).catch(() => null);
       else got = await T().ask(S, text, me.ctrl.signal);
       if (st !== me) return;
-      if (got) { t = T().valid(S, T().merge(t, got)); note = String(got.note || '').trim(); }
+      if (got) { t = T().valid(S, T().merge(t, T().ground ? T().ground(got, text) : got)); note = String(got.note || '').trim(); }
     }
     if (T().empty(t)) { st.step = 'nothing'; draw(); U.haptic('error'); return; }
     const { lines } = T().plan(S, t);

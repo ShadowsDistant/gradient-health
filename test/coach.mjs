@@ -283,6 +283,9 @@ section('Tailor my plan: checking and applying');
   check('a muscle already a focus isn\'t asked again', T.empty(T.valid(S4, T.parse('more calves'))));
   T.undo(S4, D0);
   check('undo takes the focus off', !(S4.profile.focus || []).length);
+  const read = T.ground({ focus: ['quads'], goals: ['strength'], minutes: 20, days: 2, avoid_joints: ['knee', 'ankle'], no_jumping: true, gentle: true, add_equipment: ['band'] }, 'More legs please, my knees hurt, and I only have 20 minutes');
+  check('a model\'s reading keeps only what the request talks about', read.minutes === 20 && read.days === null && read.avoid_joints.join() === 'knee' && read.no_jumping === null && read.gentle === null && !read.goals.length && !read.add_equipment.length && read.focus.join() === 'quads', read);
+  check('and a joint it doesn\'t name when something still hurts', T.ground({ avoid_joints: ['knee'] }, 'my leg hurts when I squat').avoid_joints.join() === 'knee' && !T.ground({ avoid_joints: ['knee'] }, 'more arms please').avoid_joints.length);
   check('the on-device grammar only allows the fields and values the app reads', /focus/.test(T.GRAMMAR) && /shoulders/.test(T.GRAMMAR) && /avoid_joints/.test(T.GRAMMAR) && /calves/.test(T.GRAMMAR) && !/obliques|rearDelts/.test(T.GRAMMAR));
 }
 
@@ -306,6 +309,9 @@ section('The on-device coach keeps to the app\'s numbers');
   const k = DC.keepToGiven('You walk 7,675 steps a day. That\'s 655 more than usual. Your goal is 8,000.', given);
   check('a sentence with a number it wasn\'t given is left out', k.cut === 1 && k.text === 'You walk 7,675 steps a day. Your goal is 8,000.', k);
   check('numbers it was given, rounded or with commas, stay', DC.keepToGiven('You weigh about 68 kg and slept 6 h 59, against a goal of 8,000.', given).cut === 0);
+  const pg = 'Your goal is 10% above your usual 7675, and a short night cut performance by about 7.6%. Level 5 of 8.';
+  check('a percentage it worked out itself goes, even when the number is elsewhere in the prompt', DC.keepToGiven('You walk 7,751 steps, which is 8% above your usual. Keep it up.', `${pg} 7751`).text === 'Keep it up.');
+  check('a percentage it was given stays', DC.keepToGiven('Your goal is 10% above your usual, and a short night costs about 7.6 percent.', pg).cut === 0);
   check('an answer with nothing made up is kept exactly', DC.keepToGiven('Yes, you walk plenty.\nKeep it up.', given).text === 'Yes, you walk plenty.\nKeep it up.');
   const q = 'Am I doing enough steps?';
   const cut = DC.finish(walker, D0, q, 'Yes, you walk 7675 steps a day, which is great for your health. That puts you in the top 12% of people.', given, 'Yes,');
