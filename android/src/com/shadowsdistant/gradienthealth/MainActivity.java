@@ -58,15 +58,21 @@ public final class MainActivity extends Activity {
     static final String APP_URL = "https://" + APP_HOST + "/index.html";
     static final int REQUEST_HEALTH_PERMISSIONS = 4201;
     static final int REQUEST_CAMERA = 4202;
+    static final int REQUEST_ACTIVITY_PERMISSIONS = 4203;
     /** A camera request from the page, waiting on the runtime permission dialog. */
     private PermissionRequest pendingCamera;
     static final String CLAUDE_PACKAGE = "com.anthropic.claude";
+    /** The activity notification's tap: opens the app, and the page gets the route "activity". */
+    static final String ACTION_OPEN_ACTIVITY = "com.shadowsdistant.gradienthealth.OPEN_ACTIVITY";
 
     // The activity showing the page, for services and jobs with news for it (see live()).
     private static volatile WeakReference<MainActivity> current = new WeakReference<MainActivity>(null);
     private static volatile boolean front;
     private volatile String lastBackgroundJson;
     private long backgroundCheckedAt;
+    // The activity permission request in flight: when it went out, and what Android would explain then.
+    private long actRequestAt;
+    private boolean[] actRationale;
 
     private static final String ACTION_VIEW_PERMISSION_USAGE =
             "android.intent.action.VIEW_PERMISSION_USAGE";
@@ -122,6 +128,9 @@ public final class MainActivity extends Activity {
         Intent intent = getIntent();
         if (isPrivacyIntent(intent)) {
             url = APP_URL + "#privacy"; // the page opens it as it starts (only once)
+        }
+        if (isOpenActivityIntent(intent)) {
+            pendingRoute = "activity";
         }
         createWebView(url);
     }
@@ -216,6 +225,8 @@ public final class MainActivity extends Activity {
             }
         }
         callJs(jsCall("onResume", ""));
+        // An activity recording whose service Android stopped records again now the app is in front.
+        ActivityService.pageResumed(this);
         // Background sync: scheduled while it can run (permissions can change in Health Connect).
         long now = SystemClock.elapsedRealtime();
         if (backgroundCheckedAt == 0L || now - backgroundCheckedAt > 5 * 60000L) {
@@ -299,6 +310,9 @@ public final class MainActivity extends Activity {
         if (isPrivacyIntent(intent)) {
             openRoute("privacy");
         }
+        if (isOpenActivityIntent(intent)) {
+            openRoute("activity");
+        }
     }
 
     @Override
@@ -374,6 +388,11 @@ public final class MainActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_HEALTH_PERMISSIONS) {
             notifyHealthPermissions();
+        } else if (requestCode == REQUEST_ACTIVITY_PERMISSIONS) {
+            ActivityPermissions.onResult(this, permissions, grantResults, actRationale,
+                    SystemClock.elapsedRealtime() - actRequestAt);
+            actRationale = null;
+            notifyActivityPermissions();
         } else if (requestCode == REQUEST_CAMERA) {
             PermissionRequest request = pendingCamera;
             pendingCamera = null;
@@ -510,6 +529,32 @@ public final class MainActivity extends Activity {
         }, "gradient-health-sync").start();
     }
 
+    /** Asks for what an outdoor activity uses; answers with window.__gh.onActPermissions. */
+    void requestActivityPermissions() {
+        try {
+            String[] missing = ActivityPermissions.missing(this);
+            if (missing.length == 0) {
+                notifyActivityPermissions();
+                return;
+            }
+            actRationale = ActivityPermissions.rationale(this, missing);
+            actRequestAt = SystemClock.elapsedRealtime();
+            requestPermissions(missing, REQUEST_ACTIVITY_PERMISSIONS);
+        } catch (Throwable t) {
+            notifyActivityPermissions();
+        }
+    }
+
+    private void notifyActivityPermissions() {
+        callJs(jsCall("onActPermissions", ActivityPermissions.json(this)));
+    }
+
+    /** The app's page in the phone's settings, to allow a permission Android no longer asks for. */
+    void openAppSettings() {
+        tryStartActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", getPackageName(), null)));
+    }
+
     /** Health Connect's per-app permission screen, falling back to its home screen. */
     void openHealthSettings() {
         Intent manage = new Intent("android.health.connect.action.MANAGE_HEALTH_PERMISSIONS");
@@ -622,6 +667,10 @@ public final class MainActivity extends Activity {
 
     private static boolean isPrivacyIntent(Intent intent) {
         return intent != null && ACTION_VIEW_PERMISSION_USAGE.equals(intent.getAction());
+    }
+
+    private static boolean isOpenActivityIntent(Intent intent) {
+        return intent != null && ACTION_OPEN_ACTIVITY.equals(intent.getAction());
     }
 
     // ---------------------------------------------------------------- theme

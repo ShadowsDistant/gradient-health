@@ -35,6 +35,13 @@
     <uses-permission android:name="android.permission.health.WRITE_EXERCISE" />
     <!-- Meals logged in the app, saved to Health Connect if the person allows it. -->
     <uses-permission android:name="android.permission.health.WRITE_NUTRITION" />
+    <!-- 1.4, outdoor activities (all optional): total calories for an activity's summary, and saving
+         a recorded run, walk, hike or ride with its route, plus its distance and active calories
+         when no watch recorded them. -->
+    <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.WRITE_EXERCISE_ROUTE" />
+    <uses-permission android:name="android.permission.health.WRITE_DISTANCE" />
+    <uses-permission android:name="android.permission.health.WRITE_ACTIVE_CALORIES_BURNED" />
     <!-- 1.4, background sync: reading Health Connect every 15 minutes with the app closed (a
          platform permission from Android 15; asked for only where Health Connect knows it). -->
     <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
@@ -45,6 +52,19 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <!-- Outdoor activities: the route (precise location, only while an activity the person started
+         is recording, in a foreground service; no background location), steps from the phone's
+         step counter, and the ongoing notification with time and distance. None is required. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.location.network" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.stepcounter" android:required="false" />
 
     <!-- "Ask in the Claude app" hands a prompt to the Claude app when it's installed. -->
     <queries>
@@ -52,6 +72,15 @@
         <intent>
             <action android:name="android.intent.action.SEND" />
             <data android:mimeType="text/plain" />
+        </intent>
+        <!-- Apps that use Health Connect, so an activity's summary can name the app or watch that
+             recorded its heart rate and steps (they all declare one of these). -->
+        <intent>
+            <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+            <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+        </intent>
+        <intent>
+            <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
         </intent>
     </queries>
 
@@ -93,6 +122,13 @@
             android:name=".HealthSyncJob"
             android:permission="android.permission.BIND_JOB_SERVICE"
             android:exported="true" />
+
+        <!-- Records an outdoor activity the person started in the app (GPS and steps), with an
+             ongoing notification. Started only while the app is in front. -->
+        <service
+            android:name=".ActivityService"
+            android:foregroundServiceType="location"
+            android:exported="false" />
 
         <!-- Health Connect privacy rationale (required on Android 14+ before the permission
              dialog is shown). Opens the app's privacy page (#privacy). -->

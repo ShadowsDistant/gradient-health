@@ -1,10 +1,12 @@
 package com.shadowsdistant.gradienthealth;
 
 import android.content.Context;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.health.connect.AggregateRecordsGroupedByDurationResponse;
 import android.health.connect.AggregateRecordsGroupedByPeriodResponse;
 import android.health.connect.AggregateRecordsRequest;
+import android.health.connect.AggregateRecordsResponse;
 import android.health.connect.HealthConnectException;
 import android.health.connect.HealthConnectManager;
 import android.health.connect.InsertRecordsResponse;
@@ -16,9 +18,12 @@ import android.health.connect.TimeInstantRangeFilter;
 import android.health.connect.datatypes.ActiveCaloriesBurnedRecord;
 import android.health.connect.datatypes.AggregationType;
 import android.health.connect.datatypes.BodyFatRecord;
+import android.health.connect.datatypes.DataOrigin;
 import android.health.connect.datatypes.Device;
 import android.health.connect.datatypes.DistanceRecord;
+import android.health.connect.datatypes.ExerciseRoute;
 import android.health.connect.datatypes.ExerciseSessionRecord;
+import android.health.connect.datatypes.ExerciseSessionType;
 import android.health.connect.datatypes.HeartRateRecord;
 import android.health.connect.datatypes.HeartRateVariabilityRmssdRecord;
 import android.health.connect.datatypes.HeightRecord;
@@ -28,6 +33,7 @@ import android.health.connect.datatypes.Record;
 import android.health.connect.datatypes.RestingHeartRateRecord;
 import android.health.connect.datatypes.SleepSessionRecord;
 import android.health.connect.datatypes.StepsRecord;
+import android.health.connect.datatypes.TotalCaloriesBurnedRecord;
 import android.health.connect.datatypes.WeightRecord;
 import android.health.connect.datatypes.units.Energy;
 import android.health.connect.datatypes.units.Length;
@@ -47,9 +53,13 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -65,7 +75,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * don't have. {@link Bridge}, {@link MainActivity}, {@link HealthSync} and {@link HealthSyncJob}
  * do that check.
  *
- * Reads answer through a {@link Callback}: the page's (window.__gh.onHealth) or the
+ * Reads answer through a {@link Callback}: the page's (window.__gh.onHealth, onHcSession...) or the
  * background sync's, which saves the same JSON to a file (see HealthSync).
  */
 final class HealthBridge {
@@ -144,9 +154,19 @@ final class HealthBridge {
     static final String WRITE_EXERCISE = "android.permission.health.WRITE_EXERCISE";
     /** Lets the app save the meals logged in it (calorie tracking). */
     static final String WRITE_NUTRITION = "android.permission.health.WRITE_NUTRITION";
+    // For recorded activities (runs, walks...): total calories for the summary, and saving the
+    // activity with its route, distance and active calories (the last two only without a watch).
+    static final String READ_TOTAL_CALORIES = "android.permission.health.READ_TOTAL_CALORIES_BURNED";
+    static final String WRITE_ROUTE = "android.permission.health.WRITE_EXERCISE_ROUTE";
+    static final String WRITE_DISTANCE = "android.permission.health.WRITE_DISTANCE";
+    static final String WRITE_ACTIVE_CALORIES = "android.permission.health.WRITE_ACTIVE_CALORIES_BURNED";
     private static final String[][] EXTRA = {
             {"writeExercise", WRITE_EXERCISE},
             {"writeNutrition", WRITE_NUTRITION},
+            {"totalKcal", READ_TOTAL_CALORIES},
+            {"writeRoute", WRITE_ROUTE},
+            {"writeDistance", WRITE_DISTANCE},
+            {"writeActiveKcal", WRITE_ACTIVE_CALORIES},
     };
 
     private static ScheduledExecutorService executor;
@@ -180,7 +200,7 @@ final class HealthBridge {
 
     /**
      * The data types this app may read or write right now, e.g. ["steps", "heartRate", "writeNutrition",
-     * "background"].
+     * "writeRoute", "background"].
      */
     static String granted(Context context) {
         JSONArray out = new JSONArray();
@@ -501,6 +521,618 @@ final class HealthBridge {
                 }
             }
         });
+    }
+
+    // ---------------------------------------------------------------- recorded activities
+
+    private static final String ACTIVITY_ID_PREFIX = "gradient-activity-";
+    /** A route this long is a point a second for five and a half hours; longer ones are thinned. */
+    private static final int MAX_ROUTE_POINTS = 20000;
+    private static final double MAX_ACTIVITY_DISTANCE_M = 1000000.0; // Health Connect's limit
+    private static final double MAX_ACTIVITY_KCAL = 20000.0;
+    private static final int MAX_HR_SAMPLES = 50000;
+
+    /**
+     * Saves an activity recorded in the app (a run, walk, hike or ride) as an exercise session, with
+     * its route when the route permission is granted, plus a distance and an active-calories record
+     * when the page passes them (it only does when no watch recorded them). {@code json} is
+     * {id, type (walk, run, hike, cycle, other), title, start, end (epoch ms), distanceM|null,
+     * activeKcal|null, route: [[t, lat, lon, alt|null], ...]}. The record ids come from the id, so
+     * saving again updates the records instead of adding copies, and a distance or calorie record from
+     * an earlier save is deleted when a later save leaves it out (a watch's data arrived since).
+     * Answers once with {id, ok, error?, route, distance, activeKcal}: the last three say what was written.
+     */
+    static void writeActivity(final Context context, final String json, final Callback callback) {
+        executor().execute(new Runnable() {
+            @Override
+            public void run() {
+                String id = "";
+                try {
+                    JSONObject in = new JSONObject(json == null ? "{}" : json);
+                    id = in.optString("id", "");
+                    if (id.isEmpty() || id.length() > 200) {
+                        activityResult(callback, id, "no id", false, false, false);
+                        return;
+                    }
+                    if (!isGranted(context, WRITE_EXERCISE)) {
+                        activityResult(callback, id, "not granted", false, false, false);
+                        return;
+                    }
+                    final HealthConnectManager manager = context.getSystemService(HealthConnectManager.class);
+                    if (manager == null) {
+                        activityResult(callback, id, "unavailable", false, false, false);
+                        return;
+                    }
+                    long now = System.currentTimeMillis();
+                    long startMs = in.optLong("start", 0L);
+                    long endMs = Math.min(in.optLong("end", 0L), now); // never in the future
+                    if (startMs <= 0L || endMs <= startMs) {
+                        activityResult(callback, id, "bad times", false, false, false);
+                        return;
+                    }
+                    Instant start = Instant.ofEpochMilli(startMs);
+                    Instant end = Instant.ofEpochMilli(endMs);
+                    ZoneId zone = ZoneId.systemDefault();
+                    ZoneOffset startOffset = zone.getRules().getOffset(start);
+                    ZoneOffset endOffset = zone.getRules().getOffset(end);
+                    String base = ACTIVITY_ID_PREFIX + id;
+
+                    ExerciseSessionRecord.Builder session = new ExerciseSessionRecord.Builder(
+                            activityMetadata(base, now), start, end, activityType(in.optString("type", "")))
+                            .setStartZoneOffset(startOffset)
+                            .setEndZoneOffset(endOffset);
+                    String title = in.optString("title", "").trim();
+                    if (!title.isEmpty()) {
+                        session.setTitle(title.length() > 100 ? title.substring(0, 100) : title);
+                    }
+                    boolean withRoute = false;
+                    if (isGranted(context, WRITE_ROUTE)) {
+                        ExerciseRoute route = route(in.optJSONArray("route"), startMs, endMs);
+                        if (route != null) {
+                            session.setRoute(route);
+                            withRoute = true;
+                        }
+                    }
+                    List<Record> records = new ArrayList<Record>();
+                    records.add(session.build());
+
+                    final List<RecordIdFilter> stale = new ArrayList<RecordIdFilter>();
+                    double distance = number(in, "distanceM");
+                    boolean canDistance = isGranted(context, WRITE_DISTANCE);
+                    final boolean withDistance = canDistance && distance > 0;
+                    if (withDistance) {
+                        records.add(new DistanceRecord.Builder(activityMetadata(base + "-distance", now), start, end,
+                                Length.fromMeters(Math.min(distance, MAX_ACTIVITY_DISTANCE_M)))
+                                .setStartZoneOffset(startOffset).setEndZoneOffset(endOffset).build());
+                    } else if (canDistance) {
+                        stale.add(RecordIdFilter.fromClientRecordId(DistanceRecord.class, base + "-distance"));
+                    }
+                    double kcal = number(in, "activeKcal");
+                    boolean canKcal = isGranted(context, WRITE_ACTIVE_CALORIES);
+                    final boolean withKcal = canKcal && kcal > 0;
+                    if (withKcal) {
+                        // Energy is in small calories: 1 kcal = 1000 cal.
+                        records.add(new ActiveCaloriesBurnedRecord.Builder(activityMetadata(base + "-kcal", now), start, end,
+                                Energy.fromCalories(Math.min(kcal, MAX_ACTIVITY_KCAL) * 1000.0))
+                                .setStartZoneOffset(startOffset).setEndZoneOffset(endOffset).build());
+                    } else if (canKcal) {
+                        stale.add(RecordIdFilter.fromClientRecordId(ActiveCaloriesBurnedRecord.class, base + "-kcal"));
+                    }
+
+                    final String clientId = id;
+                    final boolean routeWritten = withRoute;
+                    manager.insertRecords(records, executor(),
+                            new OutcomeReceiver<InsertRecordsResponse, HealthConnectException>() {
+                                @Override
+                                public void onResult(InsertRecordsResponse response) {
+                                    if (stale.isEmpty()) {
+                                        activityResult(callback, clientId, null, routeWritten, withDistance, withKcal);
+                                        return;
+                                    }
+                                    // Usually there's nothing to delete; either way the save worked.
+                                    try {
+                                        manager.deleteRecords(stale, executor(), new OutcomeReceiver<Void, HealthConnectException>() {
+                                            @Override
+                                            public void onResult(Void v) {
+                                                activityResult(callback, clientId, null, routeWritten, withDistance, withKcal);
+                                            }
+
+                                            @Override
+                                            public void onError(HealthConnectException e) {
+                                                activityResult(callback, clientId, null, routeWritten, withDistance, withKcal);
+                                            }
+                                        });
+                                    } catch (Throwable t) {
+                                        activityResult(callback, clientId, null, routeWritten, withDistance, withKcal);
+                                    }
+                                }
+
+                                @Override
+                                public void onError(HealthConnectException e) {
+                                    activityResult(callback, clientId, describe(e), false, false, false);
+                                }
+                            });
+                } catch (Throwable t) {
+                    activityResult(callback, id, describe(t), false, false, false);
+                }
+            }
+        });
+    }
+
+    private static void activityResult(Callback callback, String id, String error, boolean route,
+                                       boolean distance, boolean kcal) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("id", id == null ? "" : id);
+            o.put("ok", error == null);
+            if (error != null) {
+                o.put("error", error);
+            }
+            o.put("route", route);
+            o.put("distance", distance);
+            o.put("activeKcal", kcal);
+            callback.done(o.toString());
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** Actively recorded on this phone, with a client id and a version that grows with every save. */
+    private static Metadata activityMetadata(String clientId, long version) {
+        return new Metadata.Builder()
+                .setClientRecordId(clientId)
+                .setClientRecordVersion(version)
+                .setRecordingMethod(Metadata.RECORDING_METHOD_ACTIVELY_RECORDED)
+                .setDevice(new Device.Builder().setType(Device.DEVICE_TYPE_PHONE).build())
+                .build();
+    }
+
+    /** walk, run, hike, cycle → Health Connect's type; its own names work too; anything else is "other". */
+    static int activityType(String type) {
+        if ("run".equals(type)) {
+            return ExerciseSessionType.EXERCISE_SESSION_TYPE_RUNNING;
+        }
+        if ("walk".equals(type)) {
+            return ExerciseSessionType.EXERCISE_SESSION_TYPE_WALKING;
+        }
+        if ("hike".equals(type)) {
+            return ExerciseSessionType.EXERCISE_SESSION_TYPE_HIKING;
+        }
+        if ("cycle".equals(type)) {
+            return ExerciseSessionType.EXERCISE_SESSION_TYPE_BIKING;
+        }
+        return exerciseType(type);
+    }
+
+    /** A number field, or NaN when it's missing, null or not a finite number. */
+    private static double number(JSONObject o, String key) {
+        if (o == null || !o.has(key) || o.isNull(key)) {
+            return Double.NaN;
+        }
+        double v = o.optDouble(key, Double.NaN);
+        return Double.isInfinite(v) ? Double.NaN : v;
+    }
+
+    /**
+     * The route Health Connect gets: points inside the session, in time order, one per millisecond,
+     * at most MAX_ROUTE_POINTS (evenly thinned, keeping the ends). Null when none are usable.
+     */
+    private static ExerciseRoute route(JSONArray in, long startMs, long endMs) {
+        if (in == null || in.length() == 0) {
+            return null;
+        }
+        List<double[]> points = new ArrayList<double[]>();
+        for (int i = 0; i < in.length(); i++) {
+            JSONArray p = in.optJSONArray(i);
+            if (p == null || p.length() < 3) {
+                continue;
+            }
+            double t = p.optDouble(0, Double.NaN);
+            double lat = p.optDouble(1, Double.NaN);
+            double lon = p.optDouble(2, Double.NaN);
+            double alt = p.length() > 3 && !p.isNull(3) ? p.optDouble(3, Double.NaN) : Double.NaN;
+            if (!(t >= startMs && t <= endMs) || !(lat >= -90 && lat <= 90) || !(lon >= -180 && lon <= 180)) {
+                continue;
+            }
+            points.add(new double[]{Math.floor(t), lat, lon, alt});
+        }
+        Collections.sort(points, new Comparator<double[]>() {
+            @Override
+            public int compare(double[] a, double[] b) {
+                return Double.compare(a[0], b[0]);
+            }
+        });
+        List<double[]> unique = new ArrayList<double[]>();
+        for (double[] p : points) {
+            if (unique.isEmpty() || unique.get(unique.size() - 1)[0] < p[0]) {
+                unique.add(p);
+            }
+        }
+        if (unique.size() > MAX_ROUTE_POINTS) {
+            List<double[]> thin = new ArrayList<double[]>();
+            double step = (unique.size() - 1) / (double) (MAX_ROUTE_POINTS - 1);
+            for (int i = 0; i < MAX_ROUTE_POINTS; i++) {
+                thin.add(unique.get((int) Math.round(i * step)));
+            }
+            unique = thin;
+        }
+        List<ExerciseRoute.Location> locations = new ArrayList<ExerciseRoute.Location>();
+        for (double[] p : unique) {
+            try {
+                ExerciseRoute.Location.Builder b = new ExerciseRoute.Location.Builder(
+                        Instant.ofEpochMilli((long) p[0]), p[1], p[2]);
+                if (p[3] >= -1000 && p[3] <= 10000) {
+                    b.setAltitude(Length.fromMeters(p[3]));
+                }
+                locations.add(b.build());
+            } catch (Throwable ignored) {
+                // A point Health Connect won't take is left out.
+            }
+        }
+        return locations.isEmpty() ? null : new ExerciseRoute(locations);
+    }
+
+    /**
+     * What Health Connect has for one activity's time window, for its summary: steps, distance, and
+     * active and total calories from other apps and watches (this app's own records are left out, so
+     * an activity it saved doesn't count itself), every heart rate sample in the window, and the apps
+     * that wrote them (their names when Android shows them, else package names). {@code json} is
+     * {id, start, end} (epoch ms). Answers once with {id, ok, error?, steps, distanceM, activeKcal,
+     * totalKcal, hr: [[t, bpm], ...], sources, errors}; a value is null when nothing recorded it or it
+     * isn't allowed, and errors says which reads failed or weren't allowed.
+     */
+    static void session(final Context context, final String json, final Callback callback) {
+        executor().execute(new Runnable() {
+            @Override
+            public void run() {
+                String id = "";
+                long start = 0L;
+                long end = 0L;
+                try {
+                    JSONObject in = new JSONObject(json == null ? "{}" : json);
+                    id = in.optString("id", "");
+                    start = in.optLong("start", 0L);
+                    end = in.optLong("end", 0L);
+                } catch (Throwable ignored) {
+                    // Answered below as bad input.
+                }
+                SessionJob job = new SessionJob(context, id, start, end, callback);
+                try {
+                    job.start();
+                } catch (Throwable t) {
+                    job.fail(describe(t)); // no-op if it already answered
+                }
+            }
+        });
+    }
+
+    /** An app's name as the phone shows it, or its package name. */
+    @SuppressWarnings("deprecation") // getApplicationInfo(String, int): the flags overload is API 33+
+    static String appName(Context context, String pkg) {
+        try {
+            PackageManager pm = context.getPackageManager();
+            ApplicationInfo info = pm.getApplicationInfo(pkg, 0);
+            CharSequence label = pm.getApplicationLabel(info);
+            if (label != null && label.length() > 0) {
+                return label.toString();
+            }
+        } catch (Throwable ignored) {
+            // Not installed, or not visible to this app.
+        }
+        return pkg;
+    }
+
+    private static double round(double v, int decimals) {
+        double scale = Math.pow(10, decimals);
+        return Math.round(v * scale) / scale;
+    }
+
+    /** One hcSession() call. All methods run on the executor() thread. */
+    private static final class SessionJob {
+        private final Context context;
+        private final String id;
+        private final long startMs;
+        private final long endMs;
+        private final Callback callback;
+        private final ScheduledExecutorService exec = executor();
+        private final Map<String, Object> values = new HashMap<String, Object>();
+        private final JSONObject errors = new JSONObject();
+        private final Set<String> origins = new LinkedHashSet<String>();
+        private final List<long[]> hr = new ArrayList<long[]>();
+        // Reads still out, plus "start" until every read has been launched.
+        private final Set<String> running = new LinkedHashSet<String>();
+        private boolean delivered;
+        private ScheduledFuture<?> timeout;
+        private HealthConnectManager manager;
+        private TimeInstantRangeFilter range;
+
+        SessionJob(Context context, String id, long startMs, long endMs, Callback callback) {
+            this.context = context;
+            this.id = id == null ? "" : id;
+            this.startMs = startMs;
+            this.endMs = endMs;
+            this.callback = callback;
+        }
+
+        void start() {
+            try {
+                manager = context.getSystemService(HealthConnectManager.class);
+            } catch (Throwable t) {
+                manager = null;
+            }
+            if (manager == null) {
+                fail("unavailable");
+                return;
+            }
+            if (id.isEmpty() || startMs <= 0L || endMs <= startMs) {
+                fail("bad input");
+                return;
+            }
+            range = new TimeInstantRangeFilter.Builder()
+                    .setStartTime(Instant.ofEpochMilli(startMs))
+                    .setEndTime(Instant.ofEpochMilli(endMs))
+                    .build();
+            timeout = exec.schedule(new Runnable() {
+                @Override
+                public void run() {
+                    deliver();
+                }
+            }, TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            running.add("start");
+            aggregate("steps", TYPES[STEPS][1], StepsRecord.STEPS_COUNT_TOTAL);
+            aggregate("distanceM", TYPES[DISTANCE][1], DistanceRecord.DISTANCE_TOTAL);
+            aggregate("activeKcal", TYPES[ACTIVE_KCAL][1], ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL);
+            aggregate("totalKcal", READ_TOTAL_CALORIES, TotalCaloriesBurnedRecord.ENERGY_TOTAL);
+            if (isGranted(context, TYPES[HEART_RATE][1])) {
+                running.add("hr");
+                try {
+                    readHeartRate(-1L, 0);
+                } catch (Throwable t) {
+                    finish("hr", t);
+                }
+            } else {
+                putError("hr", "not granted");
+            }
+            finish("start", null);
+        }
+
+        private <T> void aggregate(String key, String permission, AggregationType<T> type) {
+            if (!isGranted(context, permission)) {
+                putError(key, "not granted");
+                return;
+            }
+            running.add(key);
+            try {
+                aggregateFrom(key, type, null);
+            } catch (Throwable t) {
+                finish(key, t);
+            }
+        }
+
+        /** Totals {@code type} from every app, or only from the packages in {@code only}. */
+        private <T> void aggregateFrom(final String key, final AggregationType<T> type, final Set<String> only) {
+            AggregateRecordsRequest.Builder<T> b = new AggregateRecordsRequest.Builder<T>(range).addAggregationType(type);
+            if (only != null) {
+                for (String pkg : only) {
+                    b.addDataOriginsFilter(new DataOrigin.Builder().setPackageName(pkg).build());
+                }
+            }
+            manager.aggregate(b.build(), exec,
+                    new OutcomeReceiver<AggregateRecordsResponse<T>, HealthConnectException>() {
+                        @Override
+                        public void onResult(AggregateRecordsResponse<T> response) {
+                            try {
+                                Set<String> from = packages(response == null ? null : response.getDataOrigins(type));
+                                if (from.remove(context.getPackageName()) && only == null) {
+                                    // Part of it is this app's own saved activity: total the others only.
+                                    if (!from.isEmpty() && !delivered) {
+                                        aggregateFrom(key, type, from);
+                                        return;
+                                    }
+                                    finish(key, null);
+                                    return;
+                                }
+                                T value = response == null ? null : response.get(type);
+                                if (value != null) {
+                                    values.put(key, value);
+                                    origins.addAll(from);
+                                }
+                                finish(key, null);
+                            } catch (Throwable t) {
+                                finish(key, t);
+                            }
+                        }
+
+                        @Override
+                        public void onError(HealthConnectException e) {
+                            finish(key, e);
+                        }
+                    });
+        }
+
+        private void readHeartRate(long pageToken, final int page) {
+            ReadRecordsRequestUsingFilters.Builder<HeartRateRecord> builder =
+                    new ReadRecordsRequestUsingFilters.Builder<HeartRateRecord>(HeartRateRecord.class)
+                            .setTimeRangeFilter(range)
+                            .setPageSize(PAGE_SIZE);
+            if (pageToken != -1L) {
+                builder.setPageToken(pageToken);
+            }
+            manager.readRecords(builder.build(), exec,
+                    new OutcomeReceiver<ReadRecordsResponse<HeartRateRecord>, HealthConnectException>() {
+                        @Override
+                        public void onResult(ReadRecordsResponse<HeartRateRecord> response) {
+                            try {
+                                List<HeartRateRecord> records = response == null ? null : response.getRecords();
+                                if (records != null) {
+                                    for (HeartRateRecord r : records) {
+                                        addHeartRate(r);
+                                    }
+                                }
+                                long next = response == null ? -1L : response.getNextPageToken();
+                                if (next != -1L && !delivered && page + 1 < MAX_PAGES) {
+                                    readHeartRate(next, page + 1);
+                                    return;
+                                }
+                                finish("hr", null);
+                            } catch (Throwable t) {
+                                finish("hr", t); // keeps the pages that did arrive
+                            }
+                        }
+
+                        @Override
+                        public void onError(HealthConnectException e) {
+                            finish("hr", e);
+                        }
+                    });
+        }
+
+        /** The record's samples inside the window (a record can start before it or end after it). */
+        private void addHeartRate(HeartRateRecord r) {
+            if (r == null || isOwn(context, r) || r.getSamples() == null) {
+                return;
+            }
+            boolean any = false;
+            for (HeartRateRecord.HeartRateSample s : r.getSamples()) {
+                if (s == null || s.getTime() == null || hr.size() >= MAX_HR_SAMPLES) {
+                    continue;
+                }
+                long t = s.getTime().toEpochMilli();
+                long bpm = s.getBeatsPerMinute();
+                if (t < startMs || t > endMs || bpm < 20 || bpm > 250) {
+                    continue;
+                }
+                hr.add(new long[]{t, bpm});
+                any = true;
+            }
+            if (any) {
+                try {
+                    origins.add(r.getMetadata().getDataOrigin().getPackageName());
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+
+        private Set<String> packages(Set<DataOrigin> in) {
+            Set<String> out = new LinkedHashSet<String>();
+            if (in != null) {
+                for (DataOrigin o : in) {
+                    String pkg = o == null ? null : o.getPackageName();
+                    if (pkg != null && !pkg.isEmpty()) {
+                        out.add(pkg);
+                    }
+                }
+            }
+            return out;
+        }
+
+        private void putError(String key, String message) {
+            try {
+                errors.put(key, message);
+            } catch (Throwable ignored) {
+            }
+        }
+
+        private void finish(String key, Throwable error) {
+            if (!running.remove(key)) {
+                return; // already finished
+            }
+            if (error != null) {
+                putError(key, describe(error));
+            }
+            if (running.isEmpty()) {
+                deliver();
+            }
+        }
+
+        private Object kcal(Object v) {
+            return v instanceof Energy ? round(((Energy) v).getInCalories() / 1000.0, 1) : JSONObject.NULL;
+        }
+
+        /** Sends whatever has arrived. Runs once: when every read finished, or at the timeout. */
+        private void deliver() {
+            if (delivered) {
+                return;
+            }
+            delivered = true;
+            if (timeout != null) {
+                timeout.cancel(false);
+            }
+            for (String key : running) {
+                if (!"start".equals(key)) {
+                    putError(key, "timed out");
+                }
+            }
+            try {
+                JSONObject o = new JSONObject();
+                o.put("id", id);
+                o.put("ok", true);
+                Object steps = values.get("steps");
+                o.put("steps", steps instanceof Long ? steps : JSONObject.NULL);
+                Object distance = values.get("distanceM");
+                o.put("distanceM", distance instanceof Length ? round(((Length) distance).getInMeters(), 1) : JSONObject.NULL);
+                o.put("activeKcal", kcal(values.get("activeKcal")));
+                o.put("totalKcal", kcal(values.get("totalKcal")));
+                Collections.sort(hr, new Comparator<long[]>() {
+                    @Override
+                    public int compare(long[] a, long[] b) {
+                        return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : Long.compare(a[1], b[1]);
+                    }
+                });
+                JSONArray samples = new JSONArray();
+                long lastT = Long.MIN_VALUE;
+                for (long[] s : hr) {
+                    if (s[0] == lastT) {
+                        continue; // two sources at the same moment: one is enough
+                    }
+                    lastT = s[0];
+                    samples.put(new JSONArray().put(s[0]).put(s[1]));
+                }
+                o.put("hr", samples);
+                Set<String> names = new LinkedHashSet<String>();
+                for (String pkg : origins) {
+                    if (!context.getPackageName().equals(pkg)) {
+                        names.add(appName(context, pkg));
+                    }
+                }
+                o.put("sources", new JSONArray(names));
+                o.put("errors", errors);
+                send(o.toString());
+            } catch (Throwable t) {
+                delivered = false;
+                fail(describe(t));
+            }
+        }
+
+        void fail(String error) {
+            if (delivered) {
+                return;
+            }
+            delivered = true;
+            if (timeout != null) {
+                timeout.cancel(false);
+            }
+            try {
+                JSONObject o = new JSONObject();
+                o.put("id", id);
+                o.put("ok", false);
+                o.put("error", error);
+                o.put("steps", JSONObject.NULL);
+                o.put("distanceM", JSONObject.NULL);
+                o.put("activeKcal", JSONObject.NULL);
+                o.put("totalKcal", JSONObject.NULL);
+                o.put("hr", new JSONArray());
+                o.put("sources", new JSONArray());
+                send(o.toString());
+            } catch (Throwable ignored) {
+            }
+        }
+
+        private void send(String json) {
+            try {
+                callback.done(json);
+            } catch (Throwable ignored) {
+            }
+        }
     }
 
     // Health Connect's own limits for a nutrition record.
