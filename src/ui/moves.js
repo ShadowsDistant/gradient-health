@@ -35,14 +35,17 @@
     const S = U.S;
     const load = B().loadInfo(S, m);
     const cues = (m.cues || []).slice(0, S.complexity > 0 ? 1 : 3);
+    // The muscles doing the work (the move's first `prime`), then the ones helping.
     const muscles = (m.muscles || []).map(MUSCLE_NAME);
+    const and = (l) => (l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l[l.length - 1]}` : l[0] || '');
+    const works = muscles.length ? `${U.cap(and(muscles.slice(0, m.prime || 1)))}${muscles.length > (m.prime || 1) ? `, with ${and(muscles.slice(m.prime || 1))} helping` : ''}` : '';
     const views = U.figure3dOk && U.figure3dOk();
     // The figure always moves (the movement is the instruction); with reduced motion on there's a
     // button to stop it.
     const pause = U.reduced() ? '<button type="button" class="rf-btn fig-pause" data-size="sm" data-act="figPause" aria-pressed="false">Pause</button>' : '';
     return `<div class="sheet-fig-card"><div class="sheet-fig"></div>${U.tempoHtml ? U.tempoHtml(m) : ''}${views || pause ? `<div class="fig-view" data-key="figview">${views ? U.seg('figView', [['three-quarter', 'Angle'], ['side', 'Side'], ['front', 'Front']], 'three-quarter', 'View', ' data-size="sm" data-on="figView"') : ''}${pause}</div>` : ''}</div>
       <div class="sheet-pad">
-        <p class="t-footnote rf-muted">${U.esc([B().GROUP_NAME[m.group] || m.group].concat(muscles.length ? [muscles.join(', ')] : []).join(' · '))}${load && load.label ? ` · ${U.esc(load.label)}` : ''}${m.uni ? ' · one side at a time' : ''}</p>
+        <p class="t-footnote rf-muted">${U.esc([B().GROUP_NAME[m.group] || m.group].concat(works ? [works] : []).join(' · '))}${load && load.label ? ` · ${U.esc(load.label)}` : ''}${m.uni ? ' · one side at a time' : ''}</p>
         ${opts && opts.side ? `<p class="pl-side${opts.side === (S.catchup.arm.side || 'L') ? ' is-lead' : ''}">${U.side(opts.side)} side shown</p>` : ''}
         <ol class="cue-list">${cues.map((c) => `<li class="t-body">${U.esc(c)}</li>`).join('')}</ol>
         ${m.mistake ? `<p class="t-callout"><b>Watch out:</b> ${U.esc(m.mistake)}</p>` : ''}

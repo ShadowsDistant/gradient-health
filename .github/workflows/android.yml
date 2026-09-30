@@ -139,9 +139,18 @@ jobs:
           else
             signed="Signed with the public test key, for trying it out only. A release-signed build won't install over this one."
           fi
-          gh release delete latest --yes --cleanup-tag || true
-          gh release create latest build/gradient-health.apk build/gradient-health.aab \
-            --title "Gradient Health (latest build)" \
-            --notes "Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME} (versionCode ${VERSION_CODE}). ${signed} Install over the previous version to keep your data." \
-            --target "$GITHUB_SHA" \
-            --latest
+          # GitHub's API now and then turns a release request down for a moment (an HTTP 403 once, with
+          # the next run fine), so each step gets three tries.
+          for i in 1 2 3; do
+            gh release delete latest --yes --cleanup-tag 2>/dev/null || true
+            if gh release create latest build/gradient-health.apk build/gradient-health.aab \
+              --title "Gradient Health (latest build)" \
+              --notes "Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME} (versionCode ${VERSION_CODE}). ${signed} Install over the previous version to keep your data." \
+              --target "$GITHUB_SHA" \
+              --latest; then
+              exit 0
+            fi
+            echo "Publishing the release didn't work (try $i of 3)"
+            sleep $((i * 15))
+          done
+          exit 1

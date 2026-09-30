@@ -91,11 +91,19 @@ async function run(dark) {
   await tab('health');
   await top();
   await shot('health');
-  await page.evaluate(() => { const el = document.querySelector('#screen [data-key="ch-sleep"]') || document.querySelector('#screen .ch-card'); document.getElementById('screen').scrollTo(0, el.offsetTop - 120); });
+  await page.evaluate(() => { const el = document.querySelector('#screen .hl-trends'); document.getElementById('screen').scrollTo(0, el.offsetTop - 120); });
   await shot('trends');
+  // A number's own sheet: resting heart rate, its chart, where each value came from and its history.
+  await page.evaluate(() => window.GH.ui.metricSheet('rhr'));
+  await settle(1200);
+  await shot('metric');
+  await page.evaluate(() => window.GH.ui.closeSheets());
+  await settle(600);
   await tab('progress');
   await shot('progress');
   await tab('plan');
+  // The exercise tiles turn into stills of the 3D figure while the phone is idle.
+  for (let i = 0; i < 20 && await page.evaluate(() => document.querySelectorAll('#screen .pw-card .pw-thumb[data-move] > svg').length > 0); i++) await settle(700);
   await shot('plan');
   await tab('today');
   await page.evaluate(() => window.GH.ui.open('coach'));

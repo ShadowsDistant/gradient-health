@@ -144,9 +144,15 @@ for (const [width, theme, zoom, h] of COMBOS) {
   // Small phones get a three-button navigation bar (48px); the rest a gesture bar.
   if (width === 360) await page.addInitScript(() => { const t = setInterval(() => { if (window.AndroidBridge) { window.AndroidBridge.insets = () => JSON.stringify({ top: 30, bottom: 48, left: 0, right: 0, keyboard: false }); clearInterval(t); } }, 1); });
   // The app starts on a timer (setTimeout(boot, 0)), which under the test clock can wait for time to
-  // move on: if it hasn't started, move it on.
+  // move on: if it hasn't started, move the clock on, and if that doesn't do it, start it by hand
+  // (and say what the page looked like, in case it's the app).
   const booted = async (sel) => {
-    try { await page.waitForSelector(sel, { timeout: 15000 }); } catch (e) { await page.clock.runFor(1000).catch(() => {}); await page.waitForSelector(sel, { timeout: 30000 }); }
+    try { await page.waitForSelector(sel, { timeout: 15000 }); return; } catch (e) { /* below */ }
+    await page.clock.runFor(1000).catch(() => {});
+    try { await page.waitForSelector(sel, { timeout: 5000 }); return; } catch (e) { /* below */ }
+    const was = await page.evaluate(() => { const ui = window.GH && window.GH.ui; const w = { ready: document.readyState, ui: !!ui, S: !!(ui && ui.S), view: (document.querySelector('#screen') || {}).dataset }; if (ui && ui.boot && !ui.S) ui.boot(); return JSON.stringify(w); }).catch((e) => e.message);
+    if (!/"S":false/.test(was)) errors.push(`${tag}: the page didn't show a screen after a reload: ${was}`);
+    await page.waitForSelector(sel, { timeout: 30000 });
   };
   await page.goto(server.url);
   await booted('.onboard:not([hidden])');
