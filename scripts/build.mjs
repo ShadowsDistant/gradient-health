@@ -97,6 +97,7 @@ export const APP_SCRIPTS = [
   'src/ui/metric.js',
   'src/ui/chat.js',
   'src/ui/tailor.js',
+  'src/ui/customplan.js',
   'src/ui/food.js',
   'src/scanner.js',
   'src/ui/bodymap.js',

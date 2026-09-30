@@ -42,6 +42,7 @@
           ${workouts ? `<h3 class="rf-list-header">Your plan</h3>
           <ul class="rf-list">
             ${U.row({ icon: 'pencil', tone: 'indigo', title: 'Your answers', sub: 'Change any of them, one at a time', act: 'editAnswers', chevron: true })}
+            ${U.act.openPlans ? U.row({ icon: 'list', tone: 'violet', title: 'Your plans', sub: 'Build your own, ask the coach, share one', act: 'openPlans', chevron: true }) : ''}
             ${U.row({ icon: 'calendar', tone: 'sky', title: 'Days and time', detail: `${p.days} days · ${p.minutes} min`, act: 'daysSheet', chevron: true })}
             ${U.row({ icon: 'bag', tone: 'amber', title: 'Equipment', detail: U.esc(U.equipSummary(p)), act: 'editEquipment', chevron: true })}
             ${U.row({ icon: 'timer', tone: 'green', title: 'Retake the baseline test', sub: 'Push-ups, plank, curls', act: 'baselineSheet', chevron: true })}
