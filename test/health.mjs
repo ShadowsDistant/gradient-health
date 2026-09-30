@@ -112,6 +112,85 @@ H.request(false);
 check('the nutrition permissions are only asked for with food on', calls.request.join() === 'food,food,core', calls.request);
 hooks.onHealthPerms('granted');
 
+section('Background sync: reads saved while the app was closed');
+{
+  // The app's saved reads (HealthSync.java): each is what onHealth gets, from a two-day read.
+  let saved = [];
+  const doneIds = [];
+  const bridge = globalThis.AndroidBridge;
+  bridge.hcPending = () => JSON.stringify(saved.slice(0, 50));
+  bridge.hcPendingDone = (json) => { const ids = JSON.parse(json); doneIds.push(...ids); saved = saved.filter((x) => !ids.includes(x.id)); };
+  // A background read ending at `end`: records from two days before, daily totals for its last two
+  // calendar days (like HealthBridge.read with 2 days).
+  const bgRead = (end, daily, extra) => ({ id: `${end}.json`, payload: Object.assign({ ok: true, tz: 'UTC', from: iso(end - 2 * 86400000), to: iso(end), steps: stepList(daily), errors: {} }, extra || {}) });
+  const stepList = (list) => list.map(([d, n]) => ({ date: B.dayStr(d), count: n }));
+
+  S = person();
+  // The app last synced yesterday evening, three days back.
+  H.ingest(S, { ok: true, from: iso(local(D0 - 4, 20)), to: iso(local(D0 - 1, 20)), steps: stepList([[D0 - 3, 6000], [D0 - 2, 7000], [D0 - 1, 5000]]) }, local(D0 - 1, 20));
+  S.health.lastSync = local(D0 - 1, 20);
+  H.logManual(S, D0, { steps: 3000 });
+  const late = bgRead(local(D0 - 1, 23), [[D0 - 2, 7000], [D0 - 1, 8000]]);
+  const morning = bgRead(local(D0, 9), [[D0 - 1, 8200], [D0, 1500]]);
+  saved = [morning, late, morning]; // handed over out of order, one twice
+  const n = H.drainPending(S, local(D0, 9, 30));
+  check('each read is folded in once', n === 2, n);
+  check('and every one is marked done', doneIds.length === 3 && saved.length === 0, doneIds);
+  check('oldest first: the newest read wins', H.value(S, 'steps', D0 - 1) === 8200, H.value(S, 'steps', D0 - 1));
+  check('a day that already had data gets the newer numbers', S.health.hc[D0 - 1].steps === 8200 && S.health.days[D0 - 1].src.hc);
+  check('a read\'s partial first day keeps what was there', H.value(S, 'steps', D0 - 2) === 7000);
+  check('days no read covers are untouched', H.value(S, 'steps', D0 - 3) === 6000);
+  check('what you logged by hand still wins', H.value(S, 'steps', D0) === 3000 && S.health.hc[D0].steps === 1500, S.health.days[D0]);
+  check('the last sync moves up to the newest read (they left no gap)', S.health.lastSync === local(D0, 9), new Date(S.health.lastSync).toISOString());
+  check('so the next foreground read is short', H.syncDays(S, local(D0, 9, 30)) === 3);
+
+  doneIds.length = 0;
+  saved = [morning, bgRead(local(D0 - 1, 19), [[D0 - 1, 1]])];
+  check('a read the app already has, or an older one, is only marked done', H.drainPending(S, local(D0, 10)) === 0 && doneIds.length === 2 && H.value(S, 'steps', D0 - 1) === 8200, doneIds);
+
+  saved = [bgRead(local(D0, 10), [[D0 - 1, 8300], [D0, 2000]], { errors: { steps: 'timed out' }, steps: [] }), bgRead(local(D0, 10, 15), [], { ok: false, error: 'unavailable' }), { id: 'x.json' }];
+  check('a read whose steps timed out keeps the steps there were', H.drainPending(S, local(D0, 10, 30)) === 1 && H.value(S, 'steps', D0 - 1) === 8200 && S.health.hc[D0].steps === 1500, S.health.hc[D0 - 1]);
+  check('failed and broken reads are marked done too', saved.length === 0);
+  saved = [bgRead(local(D0, 11), [[D0 - 1, 1], [D0, 1]]), bgRead(local(D0, 12), [[D0 - 1, 2], [D0, 2]])];
+  check('Reset everything can drop saved reads without folding them in', H.clearPending() === 2 && saved.length === 0 && H.value(S, 'steps', D0 - 1) === 8200);
+
+  // The phone was off for days: the read leaves a gap after the last sync.
+  const S2 = person();
+  S2.health.lastSync = local(D0 - 6, 20);
+  saved = [bgRead(local(D0, 9), [[D0 - 1, 9000], [D0, 800]])];
+  H.drainPending(S2, local(D0, 9, 30));
+  check('a read after a gap still fills its days', H.value(S2, 'steps', D0 - 1) === 9000);
+  check('but the last sync stays, so the next read covers the gap', S2.health.lastSync === local(D0 - 6, 20) && H.syncDays(S2, local(D0, 9, 30)) === 8, H.syncDays(S2, local(D0, 9, 30)));
+
+  // sync() folds the saved reads in before it reads, so the read starts from them.
+  const S3 = person();
+  S3.health.lastSync = local(D0 - 1, 20);
+  saved = [bgRead(local(D0, 8), [[D0 - 1, 9100], [D0, 400]])];
+  let askedDays = null;
+  const hcRead = bridge.hcRead;
+  bridge.hcRead = (days) => { askedDays = days; setTimeout(() => hooks.onHealth({ ok: true, from: iso(local(D0, 9) - days * 86400000), to: iso(local(D0, 9)), steps: stepList([[D0, 600]]), errors: {} }), 1); };
+  const res = await H.sync(S3, local(D0, 9));
+  check('sync folds saved reads in first', res.ok && res.bg === 1 && saved.length === 0, res);
+  check('then reads only from there', askedDays === 3, askedDays);
+  check('and the foreground read is the newest word', H.value(S3, 'steps', D0) === 600 && S3.health.lastSync === local(D0, 9));
+  bridge.hcRead = hcRead;
+
+  // The state and the switch.
+  let bg = { supported: true, granted: false, on: true, scheduled: false, lastRun: null, lastOk: null, error: null, pending: 0 };
+  bridge.hcBackground = () => JSON.stringify(bg);
+  bridge.hcBackgroundSet = (on) => { bg = Object.assign({}, bg, { on, scheduled: on && bg.granted }); };
+  bridge.hcBackgroundRequest = () => setTimeout(() => { bg = Object.assign({}, bg, { granted: true, scheduled: true }); hooks.onHealthBackground(JSON.stringify(bg)); }, 1);
+  check('the state comes from the app', H.background().supported === true && H.background().granted === false);
+  let heard = null;
+  H.onBackground((v) => { heard = v; });
+  const after = await H.requestBackground();
+  check('asking for the permission resolves with the new state', after.granted === true && after.scheduled === true, after);
+  check('and listeners hear about it', heard && heard.granted === true);
+  check('the switch turns it off', H.setBackground(false).on === false && H.setBackground(true).on === true);
+  delete bridge.hcBackground;
+  check('without the app it\'s simply unsupported', H.background().supported === false && H.background().pending === 0);
+}
+
 section('1.1 → 1.2');
 const old = person();
 delete old.profile.food; delete old.profile.workouts; delete old.food;
