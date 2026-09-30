@@ -113,7 +113,20 @@ section('Motion');
 // or behind the head (then it's drawn behind).
 const H = P.L.torso + P.L.neck + 2 * P.L.head + P.L.th + P.L.sh; // figure height, ~163
 const JOINTS = ['hip', 'neck', 'head', 'shN', 'shF', 'elN', 'elF', 'wrN', 'wrF', 'hdN', 'hdF', 'knN', 'knF', 'anN', 'anF', 'toN', 'toF', 'heN', 'heF'];
-const motion = { jump: [], head: [] };
+// Segments whose direction must turn smoothly: a limb flipping to its other IK solution, or a pose
+// snapping onto a target, turns a segment tens of degrees between two samples.
+const SEGS = [['hip', 'neck'], ['neck', 'head'], ...['N', 'F'].flatMap((s) => [['sh' + s, 'el' + s], ['el' + s, 'wr' + s], ['hp' + s, 'kn' + s], ['kn' + s, 'an' + s]])];
+const motion = { jump: [], head: [], turn: [], bend: [] };
+const angDiff = (a, b) => Math.abs((((a - b) % 360) + 540) % 360 - 180);
+const segAng = (pts, [a, b]) => Math.atan2(pts[b][1] - pts[a][1], pts[b][0] - pts[a][0]) * 180 / Math.PI;
+// Signed bend at a middle joint in the picture (side view, figure facing +x, y down): knees bend
+// back (positive), elbows forward (negative); a segment drawn much shorter than it is lies out of
+// the picture (reaching sideways), where the picture can't say which way it bends.
+const signedBend = (pts, a, b, c) => {
+  const u = [pts[b][0] - pts[a][0], pts[b][1] - pts[a][1]], v = [pts[c][0] - pts[b][0], pts[c][1] - pts[b][1]];
+  return Math.atan2(u[0] * v[1] - u[1] * v[0], u[0] * v[0] + u[1] * v[1]) * 180 / Math.PI;
+};
+const inPlane = (pts, a, b, full) => Math.hypot(pts[b][0] - pts[a][0], pts[b][1] - pts[a][1]) >= 0.93 * full;
 const segDist = (c, a, b) => {
   const ab = [b[0] - a[0], b[1] - a[1]];
   const t = Math.max(0, Math.min(1, ((c[0] - a[0]) * ab[0] + (c[1] - a[1]) * ab[1]) / ((ab[0] ** 2 + ab[1] ** 2) || 1)));
@@ -137,7 +150,34 @@ for (const id of ids) {
       if (d[i] > 0.05 * H || (d[i] > 0.02 * H && d[i] > 3 * nb)) { motion.jump.push(`${id}.${k}@${Math.round(fr[i].t)}ms ${d[i].toFixed(1)} cm`); break; }
     }
   }
-  if ((m.view || 'side') === 'side') continue;
+  for (const sg of SEGS) {
+    const a = fr.map((x) => segAng(x.pts, sg));
+    for (let i = 1; i < a.length; i++) {
+      // Samples 0 and 60 of consecutive steps can be a hold apart; a segment shorter than a quarter
+      // of its length (seen end-on) has no direction worth tracking.
+      const l = Math.hypot(fr[i].pts[sg[1]][0] - fr[i].pts[sg[0]][0], fr[i].pts[sg[1]][1] - fr[i].pts[sg[0]][1]);
+      if (l < 6) continue;
+      const d = angDiff(a[i], a[i - 1]);
+      if (d > 10) { motion.turn.push(`${id} ${sg.join('→')}@${Math.round(fr[i].t)}ms turns ${d.toFixed(1)}° in a sample`); break; }
+    }
+  }
+  if ((m.view || 'side') === 'side') {
+    for (const { t, pts } of fr) {
+      const bad = ['N', 'F'].flatMap((s) => {
+        const out = [];
+        const knee = signedBend(pts, 'hp' + s, 'kn' + s, 'an' + s);
+        if (inPlane(pts, 'hp' + s, 'kn' + s, P.L.th) && inPlane(pts, 'kn' + s, 'an' + s, P.L.sh) && knee < -12) out.push(`knee${s} ${knee.toFixed(0)}°`);
+        const elbow = signedBend(pts, 'sh' + s, 'el' + s, 'wr' + s);
+        // An arm turning out of the picture (abducting) can look bent backward a little on the way:
+        // a clear bend counts at nearly full drawn length, a big one at 93%.
+        const full = Math.min(Math.hypot(pts['el' + s][0] - pts['sh' + s][0], pts['el' + s][1] - pts['sh' + s][1]) / P.L.ua, Math.hypot(pts['wr' + s][0] - pts['el' + s][0], pts['wr' + s][1] - pts['el' + s][1]) / P.L.fa);
+        if (full >= 0.93 && elbow > (full >= 0.99 ? 25 : 45)) out.push(`elbow${s} ${elbow.toFixed(0)}°`);
+        return out;
+      });
+      if (bad.length) { motion.bend.push(`${id}@${Math.round(t)}ms ${bad.join(', ')} the wrong way`); break; }
+    }
+    continue;
+  }
   const crossing = fr.flatMap(({ t, pts, f }) => ['N', 'F'].map((s) => {
     const inFront = (pts['depthel' + s] || 0) > 8 || (pts['depthhd' + s] || 0) > 8;
     const behind = (pts['depthhd' + s] || 0) < -2;
@@ -149,7 +189,14 @@ for (const id of ids) {
   if (crossing.length) motion.head.push(crossing[0]);
 }
 check(`joints move continuously at 60 samples per rep step (${seenForm.size} animations)`, !motion.jump.length, motion.jump.slice(0, 12));
+check('no limb flips: every segment turns under 10° between samples', !motion.turn.length, motion.turn.slice(0, 12));
+check('side view: knees and elbows in the picture never bend the wrong way', !motion.bend.length, motion.bend.slice(0, 12));
 check('in front and top views no elbow or forearm crosses the face', !motion.head.length, motion.head.slice(0, 12));
+// The kit a move switches to for what a person owns is held in the same hands as the drawn kit (a
+// one-arm move doesn't gain a dumbbell held in both hands).
+const handsOf = (list) => (list || []).map((e) => e.hands || 'N').sort().join(',');
+const kitHands = ids.flatMap((id) => Object.entries(M.MOVES[id].equipBy || {}).filter(([, v]) => v && handsOf(v) !== handsOf(M.MOVES[id].equip)).map(([k]) => `${id} (${k})`));
+check('equipment swapped for what a person owns is held in the same hands', !kitHands.length, kitHands);
 
 /* ------------------------------------------------------------------ gym */
 section('Gym library');
