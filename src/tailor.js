@@ -252,7 +252,8 @@
       if (t.focus.length && !up.length && !muscles.length) lines.push({ icon: 'check-circle', tone: 'neutral', text: `${[...new Set(t.focus.map(unitOf))].map(name).join(' and ')} already get the most work`, sub: 'Nothing to move' });
     }
     const muscleName = (mu) => (GH.body && GH.body.NAME && GH.body.NAME[mu]) || mu;
-    for (const mu of muscles) lines.push({ icon: 'plus-circle', tone: 'positive', text: `${muscleName(mu)}: more of the work`, sub: `${b.GROUP_NAME[b.MUSCLE_GROUP[mu]]} days lean toward them` });
+    const DAY_OF = { legs: 'Leg', chest: 'Chest', back: 'Back', shoulders: 'Shoulder', biceps: 'Arm', triceps: 'Arm', abs: 'Core' };
+    for (const mu of muscles) lines.push({ icon: 'plus-circle', tone: 'positive', text: `${muscleName(mu)}: more of the work`, sub: `${DAY_OF[b.MUSCLE_GROUP[mu]] || b.GROUP_NAME[b.MUSCLE_GROUP[mu]]} days lean toward them` });
     if (patch.focus) for (const mu of had.filter((x) => !patch.focus.includes(x))) lines.push({ icon: 'minus', tone: 'neutral', text: `${muscleName(mu)}: back to the usual`, sub: 'Four muscles can be a focus at a time' });
     for (const g of t.goals) lines.push({ icon: 'star', tone: 'accent', text: GOAL_TEXT[g] });
     if (t.minutes != null) lines.push({ icon: 'timer', tone: 'accent', text: `Workouts of about ${t.minutes} minutes`, sub: `Now ${p.minutes}` });
