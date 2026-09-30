@@ -154,6 +154,15 @@ for (const [width, theme, zoom, h] of COMBOS) {
   const settle = async (ms = 800) => { await page.clock.runFor(ms); await page.waitForTimeout(250); };
   const act = (name, arg) => page.evaluate(([a, b]) => { const f = window.GH.ui.act[a]; if (f) f({ dataset: { arg: b }, setAttribute() {}, removeAttribute() {}, closest: () => null }); }, [name, arg]);
   const reset = async () => { await page.evaluate(() => { window.GH.ui.closeSheets(); while (window.GH.ui.back()) { /* back to the tab */ } }); await settle(700); };
+  // The set-up from the start (over the seeded app, never finished), n screens in; `pick` runs on
+  // the last one.
+  const setup = async (n, pick) => {
+    await page.evaluate(() => window.GH.ui.showOnboarding());
+    await settle(600);
+    for (let i = 0; i < n; i++) { await page.locator('.ob-actions [data-variant="tinted"]').click(); await settle(400); }
+    if (pick) await pick();
+  };
+  const chips = async (sel) => { for (const s of sel) { await page.click(s); await settle(200); } };
   const scenes = [
     ['today', async () => { await page.evaluate(() => window.GH.ui.go('today')); }],
     ['plan', async () => { await page.evaluate(() => window.GH.ui.go('plan')); }],
@@ -187,6 +196,18 @@ for (const [width, theme, zoom, h] of COMBOS) {
     ['sheet-answers', async () => { await act('editAnswers'); }],
     ['sheet-move', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await page.evaluate(() => { const b = document.querySelector('#screen .ex-name[data-act="moveInfo"]'); if (b) b.click(); }); await settle(1500); }],
     ['edit-equipment', async () => { await page.evaluate(() => window.GH.ui.editAnswers('equipment')); }],
+    ['setup-welcome', async () => { await setup(0); }],
+    ['setup-track', async () => { await setup(1); }],
+    ['setup-about', async () => { await setup(3, async () => { await page.fill('.onboard input[data-k="age"]', '150'); await page.locator('.onboard input[data-k="age"]').dispatchEvent('change'); await page.locator('.ob-actions [data-variant="tinted"]').click(); }); }],
+    ['setup-conditions', async () => { await setup(4, async () => { await chips(['.onboard .rf-chip[data-v="ra"]', '.onboard .rf-chip[data-v="oa"]', '.onboard .rf-chip[data-v="heart"]', '.onboard .rf-chip[data-v="seated"]']); }); }],
+    ['setup-goals', async () => { await setup(5); }],
+    ['setup-body', async () => { await setup(9); }],
+    ['setup-baseline', async () => { await setup(10); }],
+    ['setup-nutrition', async () => { await setup(11); }],
+    ['setup-plan', async () => { await setup(4, async () => { await chips(['.onboard .rf-chip[data-v="balance"]', '.onboard .rf-chip[data-v="bp"]']); for (let i = 0; i < 7; i++) { await page.locator('.ob-actions [data-variant="tinted"]').click(); await settle(300); } }); }],
+    ['setup-food', async () => { await setup(1, async () => { await page.click('.onboard input[name="obTrack"][value="both"]', { force: true }); await settle(200); for (let i = 0; i < 10; i++) { await page.locator('.ob-actions [data-variant="tinted"]').click(); await settle(300); } }); }],
+    ['edit-conditions', async () => { await page.evaluate(() => window.GH.ui.editAnswers('conditions')); }],
+    ['sheet-around', async () => { await page.evaluate(() => { window.GH.ui.S.profile.conditions = ['ra', 'bp']; window.GH.ui.S.profile.age = 67; window.GH.ui.act.planAround(); }); }],
     ['edit-food', async () => { await page.evaluate(() => window.GH.ui.editAnswers('food')); }],
     ['tour-4', async () => { await act('showTour'); await settle(); for (let i = 0; i < 3; i++) { await page.evaluate(() => { const b = document.querySelector('dialog[open] [data-act="tourNext"], .tour [data-act="tourNext"]'); if (b) b.click(); }); await settle(600); } }],
     ['sheet-rule', async () => { await page.evaluate(() => window.GH.ui.open('science', 'volume')); await settle(1200); }],
