@@ -78,7 +78,8 @@ const state = (page) => page.evaluate(() => {
     cardTitle: card && (card.querySelector('.pw-title') || {}).textContent,
     cardText: card ? card.textContent.replace(/\s+/g, ' ').trim() : '',
     thumbs: card ? card.querySelectorAll('.pw-thumb[data-move]').length : 0,
-    drawn: card ? card.querySelectorAll('.pw-thumb[data-move] > svg').length : 0,
+    drawn: card ? card.querySelectorAll('.pw-thumb[data-move] > :is(svg, img)').length : 0,
+    drawn3d: card ? card.querySelectorAll('.pw-thumb[data-move] > img').length : 0,
     moves: U.S.events.filter((e) => e.type === 'move').length,
   };
 });
@@ -105,6 +106,24 @@ check('Make it yours has days and time and equipment', await page.locator('#scre
 check('sets by muscle has a bar for each muscle with a target', await page.locator('#screen .pw-mu').count() >= 5);
 await shotFull(page, '01-week');
 
+section('Stills in 3D');
+{
+  // The 3D figure is on by default: once the phone is idle, each tile's flat still turns into a 3D
+  // one, in the person's look, cropped square and drawn at the screen's pixel density.
+  let s3 = s;
+  for (let i = 0; i < 20 && s3.drawn3d < s3.thumbs; i++) { await settle(1500); s3 = await state(page); }
+  check('every exercise tile turns into a still of the 3D figure', s3.thumbs > 0 && s3.drawn3d === s3.thumbs, `${s3.drawn3d} of ${s3.thumbs}`);
+  const img = await page.evaluate(() => { const i = document.querySelector('#screen .pw-card .pw-thumb > img'); return i && { w: i.naturalWidth, h: i.naturalHeight, src: i.src.slice(0, 16), look: i.parentElement.getAttribute('data-drawn') }; });
+  check('square, at twice the tile\'s size on a 2x screen, in the person\'s look', img && img.w === 104 && img.h === 104 && /^data:image\//.test(img.src) && /\|sand\|/.test(img.look), img);
+  await shot(page, '01b-stills-3d');
+  await page.evaluate(() => { const U = window.GH.ui; U.S.profile.prefs.figure = '2d'; U.render(); });
+  await settle(900);
+  s3 = await state(page);
+  check('with the flat figure picked in Settings, the tiles show the flat still', s3.drawn3d === 0 && s3.drawn === s3.thumbs, `${s3.drawn} flat of ${s3.thumbs}`);
+  await page.evaluate(() => { const U = window.GH.ui; U.S.profile.prefs.figure = '3d'; U.render(); });
+  await settle(900);
+}
+
 section('Picking a day');
 const hits0 = await page.evaluate(() => window.GH.planWeek.stats.misses);
 await page.click(pill(1));
@@ -121,7 +140,7 @@ await page.click(pill(2));
 await settle();
 s = await state(page);
 check('Wednesday is a light day: walk and mobility', s.cardKind === 'light' && /Walk and mobility/.test(s.cardText) && /Mobility flow/.test(s.cardText), s.cardText.slice(0, 120));
-check('with the five mobility moves drawn', await page.locator('#screen .pw-mob .pw-thumb > svg').count() === 5);
+check('with the five mobility moves drawn', await page.locator('#screen .pw-mob .pw-thumb > :is(svg, img)').count() === 5);
 await shot(page, '02-light');
 await page.click('#screen .pw-mob .pw-mob-btn');
 await settle(1200);

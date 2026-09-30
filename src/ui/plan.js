@@ -440,11 +440,15 @@
     }
     schedule();
   }
+  // When the person last touched or scrolled: a 3D still waits until they've stopped for a moment
+  // (and for a sheet to stop moving), since drawing one takes a few frames' worth of work.
+  let lastInput = 0;
+  if (doc) for (const ev of ['touchstart', 'touchmove', 'pointerdown', 'wheel', 'scroll']) doc.addEventListener(ev, () => { lastInput = Date.now(); }, { passive: true, capture: true });
+  const calm = () => Date.now() - lastInput > 400 && !doc.documentElement.hasAttribute('data-sheet-moving');
   function schedule() {
     if (pending || !(queue.size || queue3d.size)) return;
-    // Flat stills soon; 3D ones only once the phone is idle.
     const soon = queue.size > 0;
-    pending = G.requestIdleCallback ? G.requestIdleCallback(drawSome, { timeout: soon ? 150 : 2000 }) : setTimeout(() => drawSome(null), soon ? 16 : 250);
+    pending = G.requestIdleCallback ? G.requestIdleCallback(drawSome, { timeout: soon ? 150 : 600 }) : setTimeout(() => drawSome(null), soon ? 16 : 250);
   }
   function drawSome(deadline) {
     pending = 0;
@@ -458,9 +462,8 @@
     }
     const f3 = f3d();
     if (!f3) queue3d.clear();
-    // One 3D still at a time, and only with a good slice of idle time left (each takes a few frames'
-    // worth of work on a phone), never when the idle wait timed out because the phone was busy.
-    else if (!queue.size && drawFor && (!deadline || (!deadline.didTimeout && deadline.timeRemaining() >= 24))) {
+    // Then one 3D still per idle moment, once the flat ones are in and nobody's touching the screen.
+    else if (!queue.size && drawFor && calm()) {
       const look = look3d(), lk = lookKey(look);
       for (const key of queue3d) {
         queue3d.delete(key);
@@ -468,7 +471,7 @@
         const url = m && (f3.cachedStill(m, look) || f3.still(m, look));
         const id = key.split('|')[0];
         if (url) for (const host of doc.querySelectorAll('.pw-thumb[data-move]')) if (host.getAttribute('data-move') === id && host.getAttribute('data-drawn') !== `3d:${id}|${lk}`) fill3d(host, url, lk);
-        if (!deadline || deadline.timeRemaining() < 24) break;
+        break;
       }
     }
     schedule();
