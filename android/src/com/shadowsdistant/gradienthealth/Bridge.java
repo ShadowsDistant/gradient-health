@@ -759,6 +759,15 @@ public final class Bridge {
         }
     }
 
+    // ---------------------------------------------------------------- plan links
+
+    /** The plan link the app was opened with (gradienthealth://plan?d=… or a /gradient-health/p/ URL), once; else "". */
+    @JavascriptInterface
+    public String pendingLink() {
+        String link = activity.takePendingLink();
+        return link == null ? "" : link;
+    }
+
     // ---------------------------------------------------------------- on-device AI models (ModelStore)
 
     /** Installed models: [{"id","file","bytes"}]. */

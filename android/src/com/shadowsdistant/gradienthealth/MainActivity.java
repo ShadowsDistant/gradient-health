@@ -43,6 +43,7 @@ import java.io.ByteArrayInputStream;
 import java.lang.ref.WeakReference;
 import java.util.HashMap;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Hosts the single-file web app (assets/index.html) in a full-window WebView.
@@ -64,10 +65,14 @@ public final class MainActivity extends Activity {
     static final String CLAUDE_PACKAGE = "com.anthropic.claude";
     /** The activity notification's tap: opens the app, and the page gets the route "activity". */
     static final String ACTION_OPEN_ACTIVITY = "com.shadowsdistant.gradienthealth.OPEN_ACTIVITY";
+    /** Plan links: longer ones aren't passed on. */
+    private static final int MAX_LINK = 64 * 1024;
 
     // The activity showing the page, for services and jobs with news for it (see live()).
     private static volatile WeakReference<MainActivity> current = new WeakReference<MainActivity>(null);
     private static volatile boolean front;
+    /** A plan link the app was opened with, until the page takes it (pendingLink) or gets it (onLink). */
+    private final AtomicReference<String> pendingLink = new AtomicReference<String>();
     private volatile String lastBackgroundJson;
     private long backgroundCheckedAt;
     // The activity permission request in flight: when it went out, and what Android would explain then.
@@ -128,6 +133,10 @@ public final class MainActivity extends Activity {
         Intent intent = getIntent();
         if (isPrivacyIntent(intent)) {
             url = APP_URL + "#privacy"; // the page opens it as it starts (only once)
+        }
+        String link = linkFrom(intent);
+        if (link != null) {
+            pendingLink.set(link); // the page asks for it (pendingLink) or gets it once loaded (onLink)
         }
         if (isOpenActivityIntent(intent)) {
             pendingRoute = "activity";
@@ -312,6 +321,14 @@ public final class MainActivity extends Activity {
         }
         if (isOpenActivityIntent(intent)) {
             openRoute("activity");
+        }
+        String link = linkFrom(intent);
+        if (link != null) {
+            if (pageLoaded && webView != null) {
+                deliverLink(link);
+            } else {
+                pendingLink.set(link);
+            }
         }
     }
 
@@ -671,6 +688,56 @@ public final class MainActivity extends Activity {
 
     private static boolean isOpenActivityIntent(Intent intent) {
         return intent != null && ACTION_OPEN_ACTIVITY.equals(intent.getAction());
+    }
+
+    // ---------------------------------------------------------------- plan links
+
+    /**
+     * A shared plan's link the app was opened with, or null: gradienthealth://plan?d=… or
+     * https://shadowsdistant.github.io/gradient-health/p/… (the manifest's intent filters).
+     */
+    static String linkFrom(Intent intent) {
+        if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction()) || intent.getData() == null) {
+            return null;
+        }
+        try {
+            Uri uri = intent.getData();
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+            String path = uri.getPath() == null ? "" : uri.getPath();
+            boolean ok = ("gradienthealth".equals(scheme) && "plan".equals(host))
+                    || ("https".equals(scheme) && "shadowsdistant.github.io".equals(host)
+                    && ("/gradient-health/p".equals(path) || path.startsWith("/gradient-health/p/")));
+            String url = uri.toString();
+            return ok && url.length() <= MAX_LINK ? url : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** AndroidBridge.pendingLink(): the link the app was opened with, once. */
+    String takePendingLink() {
+        return pendingLink.getAndSet(null);
+    }
+
+    /** Hands a link to window.__gh.onLink; if the page has no such hook yet, it waits for pendingLink(). */
+    private void deliverLink(final String url) {
+        evalJs("(window.__gh&&window.__gh.onLink)?(window.__gh.onLink(" + jsSafe(jsString(url)) + "),true):false",
+                new ValueCallback<String>() {
+                    @Override
+                    public void onReceiveValue(String value) {
+                        if (!"true".equals(value)) {
+                            pendingLink.compareAndSet(null, url);
+                        }
+                    }
+                });
+    }
+
+    private void flushPendingLink() {
+        String url = pendingLink.getAndSet(null);
+        if (url != null) {
+            deliverLink(url);
+        }
     }
 
     // ---------------------------------------------------------------- theme
@@ -1068,6 +1135,7 @@ public final class MainActivity extends Activity {
                 pageLoaded = true;
                 callJs(jsCall("setInsets", insetsJson));
                 flushPendingRoute();
+                flushPendingLink(); // unless the page already took it with pendingLink()
             }
         }
 

@@ -108,6 +108,24 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Shared plans: gradienthealth://plan?d=… and, unverified (the browser keeps them
+                 unless the person picks the app), https://shadowsdistant.github.io/gradient-health/p/….
+                 The page gets them through __gh.onLink and AndroidBridge.pendingLink(). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="gradienthealth" android:host="plan" />
+            </intent-filter>
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="shadowsdistant.github.io" />
+                <!-- /gradient-health/p and what's under it, not other pages starting with "p". -->
+                <data android:path="/gradient-health/p" />
+                <data android:pathPrefix="/gradient-health/p/" />
+            </intent-filter>
         </activity>
 
         <!-- The on-device coach's native engine runs in its own process, so a crash or an
