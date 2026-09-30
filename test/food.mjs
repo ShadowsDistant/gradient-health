@@ -3,7 +3,7 @@
 // Health Connect bookkeeping.
 import { load, check, section, done } from './lib.mjs';
 
-const GH = load('src/data/moves.js', 'src/engine/pose.js', 'src/brain.js', 'src/insights.js', 'src/health.js', 'src/food.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js', 'src/brain.js', 'src/insights.js', 'src/health.js', 'src/food.js');
 const B = GH.brain, F = GH.food;
 const D0 = B.dayFromStr('2026-09-28');
 function person(p) {

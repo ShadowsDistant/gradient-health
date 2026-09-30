@@ -122,6 +122,7 @@ body{margin:0;background:${dark ? '#0b0c10' : '#f1f2f6'};font:12px system-ui,san
 #stage{position:fixed;left:-10000px;top:0;width:${CW}px;height:${CH}px}
 </style></head><body><div id="grid"></div><div id="stage"></div>
 <script>${readFileSync(join(root, 'src/data/moves.js'), 'utf8').replace(/<\/script/gi, '<\\/script')}</script>
+<script>${readFileSync(join(root, 'src/data/moves-access.js'), 'utf8').replace(/<\/script/gi, '<\\/script')}</script>
 <script>${readFileSync(join(root, 'src/engine/pose.js'), 'utf8').replace(/<\/script/gi, '<\\/script')}</script>
 <script>${readFileSync(join(root, 'src/platform.js'), 'utf8').replace(/<\/script/gi, '<\\/script')}</script>
 <script>window.GYM = ${GYM};</script>

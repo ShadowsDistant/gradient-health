@@ -67,6 +67,7 @@ export const APP_SCRIPTS = [
   'src/data/brand.js',
   'src/data/privacy.js',
   'src/data/moves.js',
+  'src/data/moves-access.js',
   'src/data/science.js',
   'src/data/changelog.js',
   'src/engine/pose.js',

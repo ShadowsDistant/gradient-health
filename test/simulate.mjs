@@ -2,7 +2,7 @@
 // deloads, the left-arm extra set, readiness and scheduling. Exits non-zero on any failure.
 import { load, check, section, done } from './lib.mjs';
 
-const GH = load('src/data/moves.js', 'src/engine/pose.js', 'src/brain.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js', 'src/brain.js');
 const B = GH.brain;
 const M = GH.moves;
 const LB = B.LB_PER_KG;

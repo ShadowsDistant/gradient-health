@@ -5,7 +5,7 @@
 // empty history, and a real five-week simulation end to end.
 import { load, check, section, done } from './lib.mjs';
 
-const GH = load('src/data/moves.js', 'src/engine/pose.js', 'src/brain.js', 'src/body.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js', 'src/brain.js', 'src/body.js');
 const B = GH.brain, M = GH.moves, Y = GH.body;
 const D = B.dayFromStr('2026-10-19'); // a Monday
 const near = (a, b) => Math.abs(a - b) < 1e-9;
