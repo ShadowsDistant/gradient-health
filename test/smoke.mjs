@@ -242,17 +242,21 @@ check('the workout was saved to Health Connect once, keyed by day', writes.lengt
 
 section('Health, Progress, Plan, Moves');
 await page.click('.rf-tab[data-tab="health"]');
-await page.waitForSelector('#screen[data-view="health"] .ch-card', { timeout: 5000 }).catch(async (e) => { console.log('errors so far:', errors); await shot(page, 'fail-health'); throw e; });
+await page.waitForSelector('#screen[data-view="health"] .hl-tr', { timeout: 5000 }).catch(async (e) => { console.log('errors so far:', errors); await shot(page, 'fail-health'); throw e; });
 await page.waitForTimeout(300);
 const healthText = await page.locator('#screen').innerText();
 check('Health shows today\'s numbers from Health Connect', /Resting HR/.test(healthText) && /\d+ bpm/.test(healthText));
-check('trend charts drew', (await page.locator('#screen .ch-svg').count()) >= 4);
-await page.locator('#screen .ch-plot').first().click();
-check('tapping a chart shows a value', /:/.test(await page.locator('#screen .ch-tip').first().innerText()));
-await page.locator('#screen [data-act="chartTable"]').first().click();
-check('Numbers table opens', await page.locator('#screen .ch-tbl').first().isVisible());
+check('trend sparklines drew', (await page.locator('#screen .hl-tr .sp-svg').count()) >= 4);
 await shot(page, '10-health');
-check('a weekly report worked out on the phone', /Weekly report/.test(healthText) && /From your numbers/.test(healthText));
+await page.locator('#screen .hl-tr').first().click();
+await page.waitForSelector('dialog.ms-sheet[open] .ch-plot');
+await page.waitForTimeout(600);
+await page.locator('dialog.ms-sheet .ch-plot').click();
+check('a number opens its sheet; tapping its chart shows a value', /:/.test(await page.locator('dialog.ms-sheet .ch-tip').innerText()));
+check('with every day listed', (await page.locator('dialog.ms-sheet .ms-hist li').count()) >= 7);
+await page.evaluate(() => window.GH.ui.closeSheets());
+await page.waitForTimeout(500);
+check('a weekly report worked out on the phone', /This week/.test(healthText) && /From your numbers/.test(healthText));
 check('sync status shows when it last synced', /Synced (just now|\d+ min ago)/.test(healthText));
 check('the coach button sits at the top left', await page.locator('#topbar .rf-navbar-leading .coach-btn').count() === 1);
 await page.click('#topbar .coach-btn');

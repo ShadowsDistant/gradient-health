@@ -33,12 +33,17 @@ const tab = async (t) => { await page.click(`.rf-tab[data-tab="${t}"]`); await s
 
 section('Charts');
 await tab('health');
-await page.click('[data-on="healthRange"] input[value="7"]', { force: true });
+// Trend charts live in each number's sheet now: Steps over 7 days.
+await page.evaluate(() => window.GH.ui.metricSheet('steps'));
 await settle();
-check('the range is 7 days', await page.evaluate(() => document.querySelector('[data-on="healthRange"] input[value="7"]').checked));
-const charts = await page.evaluate(() => [...document.querySelectorAll('#screen .ch-plot')].map((p) => { const s = p.querySelector('.ch-svg'); const a = p.getBoundingClientRect(), b = s.getBoundingClientRect(); return { plot: Math.round(a.height), svg: Math.round(b.height), bottom: Math.round(b.bottom - a.bottom) }; }));
-check('the Health tab has charts', charts.length >= 4, charts.length);
+await page.click('dialog.ms-sheet [data-on="metricRange"] input[value="7"]', { force: true });
+await settle();
+check('the range is 7 days', await page.evaluate(() => document.querySelector('dialog.ms-sheet [data-on="metricRange"] input[value="7"]').checked));
+const charts = await page.evaluate(() => [...document.querySelectorAll('dialog.ms-sheet .ch-plot')].map((p) => { const s = p.querySelector('.ch-svg'); const a = p.getBoundingClientRect(), b = s.getBoundingClientRect(); return { plot: Math.round(a.height), svg: Math.round(b.height), bottom: Math.round(b.bottom - a.bottom) }; }));
+check('the metric sheet has its chart', charts.length === 1, charts.length);
 check('7-day charts stay inside their plot', charts.every((c) => c.svg <= c.plot + 1 && c.bottom <= 1), JSON.stringify(charts));
+await page.evaluate(() => window.GH.ui.closeSheets());
+await settle(900);
 
 section('Type in the tab bar, buttons and chips');
 const type = await page.evaluate(() => {

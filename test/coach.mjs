@@ -44,6 +44,51 @@ const fresh = B.newState({ goals: ['abs'] }, null, D0);
 check('before any workout → a first-workout headline', /first workout/i.test(C.report(fresh, D0).headline));
 check('no exclamation marks or emoji', !/[!\u{1F300}-\u{1FAFF}]/u.test(JSON.stringify(C.report(person(), D0))));
 
+section('This week at a glance');
+S = person();
+rep = C.report(S, D0);
+const TONES = ['good', 'watch', 'neutral'];
+check('two to four numbers, each with a name, a value, a trend and a tone', rep.glance.length >= 2 && rep.glance.length <= 4 && rep.glance.every((g) => g.metric && g.value && typeof g.trend === 'string' && TONES.includes(g.tone)), rep.glance);
+check('sleep, steps and resting heart rate lead (HRV stands in for weight with no weigh-ins)', rep.glance.map((g) => g.metric).join() === 'Sleep,Steps,Resting HR,HRV', rep.glance.map((g) => g.metric));
+check('values are this week\'s averages in the person\'s units', rep.glance[0].value === H.format(S, 'sleepMin', H.versus(S, 'sleepMin', D0, 'week').value, { compact: true }) && / bpm$/.test(rep.glance[2].value), rep.glance);
+check('a week like the usual reads steady', rep.glance.every((g) => g.trend === 'steady' && g.dir === 'flat'), rep.glance.map((g) => g.trend));
+// A short week of sleep against the usual: sleep falls and gets flagged.
+S = person();
+for (let d = D0 - 6; d <= D0; d++) S.health.days[d].sleepMin = 330;
+rep = C.report(S, D0);
+const sl = rep.glance.find((g) => g.key === 'sleepMin');
+check('a week of short nights: sleep is down and worth watching', sl && sl.dir === 'down' && sl.tone === 'watch' && /^-1 h \d\d$/.test(sl.trend), sl);
+check('focus_one: one short line from the first focus', typeof rep.focus_one === 'string' && rep.focus_one.length <= 40 && /bedtime/i.test(rep.focus_one) && /sleep/i.test(rep.focus[0]), rep.focus_one);
+// Weigh-ins: weight takes its place, compared with the week before.
+S = person();
+for (let d = D0 - 13; d <= D0; d++) B.addWeight(S, d, d > D0 - 7 ? 67.6 : 68, 'hc');
+rep = C.report(S, D0);
+const wt = rep.glance.find((g) => g.key === 'weightKg');
+check('with weigh-ins, weight is on the card with its weekly change', rep.glance.length === 4 && wt && /lb$/.test(wt.value) && /^-0\.\d lb$/.test(wt.trend), rep.glance);
+check('glance numbers only use the phone\'s own data', rep.glance.every((g) => !/NaN|undefined|null/.test(`${g.value} ${g.trend}`)));
+S = person();
+S.health.days = {};
+rep = C.report(S, D0);
+check('no health data: no numbers rather than a lone one, and nothing made up', rep.glance.length === 0, rep.glance);
+
+section('Short enough for a card');
+const scenarios = [person(), person({ sleep: 340 }), person({ rir: '0' }), person({ steps: 2000 }), fresh, B.newState({ goals: ['abs'], workouts: false }, null, D0 - 10)];
+scenarios[5].profile.workouts = false;
+const reps = scenarios.map((P) => C.report(P, D0));
+check('headlines are one short sentence', reps.every((r) => r.headline.length <= 50 && (r.headline.match(/\. /g) || []).length <= 1), reps.map((r) => r.headline));
+check('wins are badges: short, no full stop, no repeats', reps.every((r) => r.wins.every((w) => w.length <= 48 && !/\.$/.test(w)) && new Set(r.wins.map((w) => w.toLowerCase())).size === r.wins.length), reps.map((r) => r.wins));
+check('every report has a focus line', reps.every((r) => r.focus_one && r.focus_one.length <= 40 && r.focus.length >= 1), reps.map((r) => r.focus_one));
+check('no dashes as punctuation', reps.every((r) => !/[—]| – /.test(JSON.stringify(r))));
+
+section('Reading Claude\'s report');
+const AIr = GH.ai.readReport;
+const old = AIr({ headline: ' A steady week. ', wins: ['4 of 4 workouts.'], watch: [], focus: ['Protein on rest days.'], ask_me: ['How do I sleep more?'] });
+check('a report saved before glance and focus_one still reads', old.headline === 'A steady week.' && old.wins.length === 1 && old.glance === undefined && old.focus_one === undefined);
+const odd = AIr({ headline: 'x', glance: [{ metric: 'Sleep', value: '7 h 05', trend: '+20 min', tone: 'good' }, { metric: 'Steps', value: '8.2k', trend: '-9%', tone: 'great' }, { metric: '', value: '1' }, { metric: 'HRV', value: '55 ms', trend: 'steady', tone: 'neutral' }, { metric: 'Weight', value: '149.6 lb', trend: '-0.3 lb', tone: 'good' }, { metric: 'Extra', value: '1', trend: '', tone: 'good' }], focus_one: '  Keep a steady bedtime  ', wins: [], watch: [], focus: [], ask_me: [] });
+check('glance items are checked: unknown tones become neutral, empty ones dropped, at most four', odd.glance.length === 4 && odd.glance[1].tone === 'neutral' && odd.glance.every((g) => g.metric && g.value), odd.glance);
+check('focus_one is trimmed', odd.focus_one === 'Keep a steady bedtime');
+check('the schema asks for glance and focus_one, with the tones as an enum', GH.ai.REPORT_SCHEMA.required.includes('glance') && GH.ai.REPORT_SCHEMA.required.includes('focus_one') && GH.ai.REPORT_SCHEMA.properties.glance.items.properties.tone.enum.join() === 'good,watch,neutral' && GH.ai.REPORT_SCHEMA.properties.glance.items.additionalProperties === false);
+
 section('Questions');
 S = person();
 const a = (q) => C.ask(S, D0, q);
