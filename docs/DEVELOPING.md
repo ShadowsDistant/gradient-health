@@ -39,6 +39,8 @@ src/ui/guide.js          tour, first-week checklist, tab tips, What's new
 src/ui/*.js              screens: onboarding, player, today, plan, health, food, progress, moves,
                          coach page, profile, science (How it works), settings
 src/styles.css, src/styles/*.css   the app's styles (the per-area files are appended in order)
+android/src/…/HealthSync*.java     background Health Connect sync (a JobScheduler job every 15 minutes)
+android/src/…/Activity*.java       outdoor activity recording (a location foreground service, the track)
 android/jni/             the on-device coach's native engine (C++ over llama.cpp) and its host test
 scripts/build-native.sh  builds android/jni for arm64 (or --host, and tests it)
 scripts/build.mjs        inlines everything into dist/gradient-health.html; lazy chunks go to dist/lazy/
@@ -172,14 +174,83 @@ nutrition. It can write exercise sessions for the workouts finished in the app (
 re-save updates instead of duplicating) and nutrition records for logged meals. It syncs
 when the app opens or comes back (at most once a minute), every 15 minutes while open, after a
 workout and on pull-to-refresh. The first read covers 90 days; later reads cover the gap since the
-last one plus two days.
+last one plus two days. With the app closed, the background sync below reads every 15 minutes.
+1.4 adds, for outdoor activities, reading total calories and writing exercise routes, distance and
+active calories; the permission request asks for them along with the rest.
+
+**Background sync.** `HealthSyncJob` is a periodic JobScheduler job (15 minutes, Android's minimum,
+with 5 minutes of flex; Doze can space runs out), persisted across reboots (`RECEIVE_BOOT_COMPLETED`)
+and needing no network. `HealthSync` schedules it on app start and resume, after every Health Connect
+permission answer and from the Settings switch, while four things hold: the switch is on (the
+default), Health Connect is connected, this phone's Health Connect can read in the background, and
+the person allowed `READ_HEALTH_DATA_IN_BACKGROUND`. That permission is part of the platform from
+Android 15; on Android 14 it's there only with a Health Connect update, so the app checks
+`PackageManager.getPermissionInfo` (and the Android 14 SDK extension 13 that brought it) and only
+then asks for it, together with the other Health Connect permissions or on its own
+(`hcBackgroundRequest`). A run that finds one of them missing records why and cancels the job.
+
+Each run reads the last two days through the same `HealthBridge.read` the page uses (it takes a
+`Context` and a callback, so no Activity is needed) and saves the JSON `onHealth` would get as
+`noBackupFilesDir/health-sync/<epoch ms>.json` (no-backup storage: it's a queue, not data to restore).
+A read with the same records as the last one saved isn't saved again, and one where every allowed
+type failed isn't saved at all. The folder keeps reads older than a day at one per 6 hours (each
+covers two days), then at most 300 files and 3 MB, dropping the oldest. `lastRun`, `lastOk` and
+`error` go to the `health_sync` SharedPreferences.
+
+The page asks with `hcPending()` (up to 50, oldest first) and deletes what it handled with
+`hcPendingDone(ids)`. `GH.health.sync` folds them in before each foreground read, and again after it,
+and so on boot and resume; so does the page when the app says a read finished
+(`__gh.onHealthBackground`). They're folded in oldest first with the same `ingest`; one ending before
+the last sync (or a newer background read) is only marked done. A read that starts before the last
+sync leaves no gap, so the last sync moves up to it and the next foreground read is shorter. A type
+whose read failed (timed out, rate-limited) keeps what earlier reads found instead of being wiped.
+`hcBackground()` gives `{supported, granted, on, scheduled, lastRun, lastOk, error, pending}`;
+Settings, Health data, shows the switch and "Every 15 minutes · last at 3:15 pm", or why it's off.
+
+**Outdoor activities.** The page records runs, walks, hikes and rides through `ActivityService`, a
+foreground service of type `location` that the page starts while it's in front (so no background
+location permission is needed). It asks for precise location, physical activity (the step counter,
+Android 10+) and notifications (13+) with `actRequestPermissions()` (answer:
+`__gh.onActPermissions`), then `actStart({id, type, title, units?})`. The service takes a GPS fix
+about once a second from the GPS provider (else the fused provider on Android 12+, else the network),
+counts steps from the phone's step counter, and shows an ongoing, quiet notification,
+"Run · 12:34 · 2.14 km" with the average pace, Pause or Resume and Finish; tapping it opens the app
+(the page gets the route `activity`). Finish there ends the activity and leaves a note that opens the
+summary. While the page is in front it gets `__gh.onActivity(state)` about once a second.
+
+`ActivityTrack` keeps the recording in `noBackupFilesDir/activity/`: `<key>.json` with its details
+(replaced atomically on every change and every 20 seconds) and `<key>.track`, one point a line,
+`[t, lat, lon, alt|null, acc, speed|null, paused]`, appended as fixes come in. A fix is stored when
+it's 3 m from the last one, 10 s after it, the first good one after bad ones or the first after a
+pause. The distance leaves out points worse than 50 m, pauses (a pause ends the line), GPS jumps
+(faster than 12 m/s from the last good point on a walk or hike, 25 m/s otherwise; three in a row
+restart the line there) and standing still (the anchor only moves once the position has moved more
+than the accuracy, and not while the GPS speed is under 0.4 m/s). Loading a recording runs the same
+filter over its points, so a page reload, a crash or a restart gives the same numbers; if Android
+stops the service mid-activity, it starts again the next time the app comes to the front. A finished
+recording stays (actState reports it with `active: false`) until the page saves it and calls
+`actClear(id)`; at most 20 finished ones are kept.
+
+The page reads `actState()` and `actPoints(from)`; `actSupport()` says whether the phone has GPS, a
+step counter and Health Connect. For the summary, `hcSession({id, start, end})` answers
+`__gh.onHcSession` with steps, distance, active and total calories and every heart rate sample in the
+window from other apps and watches (the app's own records are left out, so a saved activity doesn't
+count itself), plus which apps wrote them. `hcWriteActivity(...)` saves it as an exercise session
+with its route (when routes are allowed), and distance and active calories only when the page
+passes them, with client record ids from the activity's id so saving again updates it.
+
+**Plan links.** `gradienthealth://plan?d=…` and `https://shadowsdistant.github.io/gradient-health/p/…`
+(not verified, so Android opens the browser unless the person picks the app) open the app, which
+hands the URL to `__gh.onLink(url)`. The link a cold start came with also waits for
+`AndroidBridge.pendingLink()`, which returns it once.
 
 **Claude app hand-off.** "Ask in the Claude app" sends an `ACTION_SEND` text intent to the Claude app
 (`com.anthropic.claude`) when it's installed, and the share sheet otherwise. The text is the
 question plus the same privacy-safe summary the API coach uses (`GH.ai.summary`).
 
 **Privacy.** Health data stays on the phone. Android's device backup can include the app's data;
-`android/res/xml/*backup*` rules leave the API key out of it.
+`android/res/xml/*backup*` rules leave the API key out of it. Background reads and activity tracks
+are in `noBackupFilesDir`, so backups never include them.
 
 ## On-device AI
 
@@ -351,31 +422,50 @@ SHA-256.
    allows it on a screen that lists what's sent (`U.claudeConsent`).
 5. **Health Connect permissions declaration.** One justification per data type, with the reasons the
    privacy page gives: reads of steps, sleep, weight, height, body fat, heart rate, resting heart
-   rate, HRV, exercise, active calories burned, distance and nutrition, and writes of exercise and
-   nutrition. Google reviews this separately; allow a few days.
+   rate, HRV, exercise, active and total calories burned, distance and nutrition, and writes of
+   exercise, exercise routes, distance, active calories and nutrition. Total calories, routes,
+   distance and active calories are for outdoor activities: the summary shows total calories, and a
+   saved run, walk, hike or ride goes to Health Connect with its route, plus distance and calories
+   when no watch recorded them. **Background reads** (`READ_HEALTH_DATA_IN_BACKGROUND`) have their
+   own justification: the app reads the last two days every 15 minutes while it's closed so the
+   history and the plan's readiness have no gaps on days it isn't opened; the data stays on the
+   phone, and the person can turn it off in Settings. Google reviews this separately; allow a few
+   days.
 6. **Other permissions.** `CAMERA` (barcode scanning only, asked when Scan is tapped; the camera
    feature is declared not required), `INTERNET` (the optional Claude coach, Open Food Facts and the
-   on-device model download) and `ACCESS_NETWORK_STATE` (so a model download can wait for Wi-Fi).
-7. **Privacy policy.** Play needs a public URL. [docs/PRIVACY.md](PRIVACY.md) has the text; host it
+   on-device model download), `ACCESS_NETWORK_STATE` (so a model download can wait for Wi-Fi),
+   `ACCESS_FINE_LOCATION` and `ACCESS_COARSE_LOCATION` (an activity's route, only while one the person
+   started records; no `ACCESS_BACKGROUND_LOCATION`, so no location declaration form),
+   `ACTIVITY_RECOGNITION` (steps during an activity), `POST_NOTIFICATIONS` (the recording's
+   notification) and `RECEIVE_BOOT_COMPLETED` (keeps the background sync's job after a restart).
+7. **Foreground service declaration** (App content, Foreground service permissions).
+   `FOREGROUND_SERVICE_LOCATION` for `ActivityService`: the use case is fitness tracking the person
+   starts ("Record a run, walk, hike or ride: the route, distance and pace with the screen off"). It
+   runs only while an activity records, shows an ongoing notification with Pause and Finish, and
+   stops when the person finishes. Play asks for a short video of the flow: start an activity, lock
+   the phone, show the notification, finish it.
+8. **Privacy policy.** Play needs a public URL. [docs/PRIVACY.md](PRIVACY.md) has the text; host it
    somewhere public (GitHub Pages works) and link it in the listing and the Console.
-8. **Data safety form.** Declare what the optional features send, as optional and for app
+9. **Data safety form.** Declare what the optional features send, as optional and for app
    functionality, encrypted in transit, with in-app deletion (Reset everything):
    - shared with Anthropic when Claude is on: health info and fitness info (averages and trends),
      personal info (an age range, and sex if given) and app activity (the questions asked);
    - shared with Open Food Facts when online food search is on: the search words and barcodes;
-   - nothing else leaves the phone. The on-device model is a download from Hugging Face.
-9. **AI-generated content.** Every AI answer (on-device or Claude), Claude's weekly report and its
-   suggestions have a Report action that hides the item and keeps a local record. Sending a report to
-   the developer opens a prefilled GitHub issue in the browser. Play's policy asks that people can
-   report without leaving the app, so a reviewer may flag this. The fix is an endpoint you run: point
-   `REPORT_URL` in `src/ui/healthtab.js` at it and send the report from the app.
-10. **App content forms.** Target audience 13 and over (18 and over avoids the teen-specific
+   - nothing else leaves the phone. The on-device model is a download from Hugging Face. Location
+     (an activity's route) and the background Health Connect reads are processed only on the phone
+     (Health Connect is on the phone too), so the form doesn't list them as collected.
+10. **AI-generated content.** Every AI answer (on-device or Claude), Claude's weekly report and its
+    suggestions have a Report action that hides the item and keeps a local record. Sending a report to
+    the developer opens a prefilled GitHub issue in the browser. Play's policy asks that people can
+    report without leaving the app, so a reviewer may flag this. The fix is an endpoint you run: point
+    `REPORT_URL` in `src/ui/healthtab.js` at it and send the report from the app.
+11. **App content forms.** Target audience 13 and over (18 and over avoids the teen-specific
     questions), no ads, the content rating questionnaire, and App access notes: everything works
     without an account; Claude needs the person's own Anthropic API key, and the on-device model is
     an optional download of 0.5 to 2.7 GB.
-11. **Store listing.** The README and `docs/screenshots/` are a starting point for the description
+12. **Store listing.** The README and `docs/screenshots/` are a starting point for the description
     and phone screenshots.
-12. **Release.** Upload `gradient-health.aab` from the latest CI release to internal testing, then the
+13. **Release.** Upload `gradient-health.aab` from the latest CI release to internal testing, then the
     closed test, then production.
 
 ### APKPure
