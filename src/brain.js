@@ -912,8 +912,7 @@
   // Auto rest: 90 s after big multi-joint moves, 60 s after small ones (and inside supersets, see
   // pairSupersets). Resting over a minute gives a small extra benefit for muscle size, with nothing
   // clear past about 90 s (Singer et al. 2024).
-  // (The overhead press would fit here too; test/coach.mjs pins this list to the coach's rest rule.)
-  const COMPOUND = ['push', 'chestDb', 'squat', 'hinge', 'row', 'pull'];
+  const COMPOUND = ['push', 'chestDb', 'press', 'squat', 'hinge', 'row', 'pull'];
   function restFor(S, fam) {
     const pr = S.profile.prefs.rest;
     if (pr === 60 || pr === 90) return pr;

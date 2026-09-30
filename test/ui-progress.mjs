@@ -53,7 +53,12 @@ check('the legend reads less to more, with no sets', /Less\s*More\s*No sets/.tes
 check('a list of the same 17 muscles for screen readers', m.list.length === 17 && m.list.some((t) => /^Chest: [\d.]+ sets?, \d+% of your training$/.test(t)) && m.list.includes('Calves: no sets'), m.list.slice(0, 4));
 const svgHidden = await page.evaluate(() => [...document.querySelectorAll('#screen .bm-fig')].every((s) => s.getAttribute('aria-hidden') === 'true'));
 check('the drawing itself is hidden from screen readers', svgHidden);
-check('no "Train … more" button while Tailor my plan isn\'t there', !(await page.evaluate(() => !!document.querySelector('#screen [data-act="tailorPlan"]'))));
+check('the least trained muscle has a "Train … more" link', (await page.evaluate(() => { const b = document.querySelector('#screen .bm-card [data-act="tailorPlan"]'); return b && b.getAttribute('data-arg'); })) === 'calves');
+await page.click('#screen .bm-card [data-act="tailorPlan"]');
+await settle(900);
+check('which opens Tailor my plan asking for that muscle', (await page.evaluate(() => { const q = document.querySelector('dialog[open] #tailorQ'); return q && q.value; })) === 'Train my calves more');
+await page.evaluate(() => window.GH.ui.closeSheets());
+await settle(700);
 
 section('A region opens its muscle sheet');
 await page.evaluate(() => { window.__haptics.length = 0; });

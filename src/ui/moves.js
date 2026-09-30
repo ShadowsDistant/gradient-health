@@ -157,7 +157,8 @@
         }).join('');
         return `<h3 class="rf-list-header">${U.esc(B().GROUP_NAME[g] || g)}</h3><ul class="rf-list">${rows}</ul>`;
       }).join('');
-      const wu = (S.profile.equipment.kb && S.profile.equipment.kb.length ? M().WARMUP.kb : M().WARMUP.none);
+      // The warm-ups this person's kit allows (the halo needs a kettlebell, the pull-apart a band).
+      const wu = (M().WARMUP.all || M().WARMUP.kb).filter((id) => M().MOVES[id] && (!M().allowed || M().allowed(M().MOVES[id], S.profile.equipment)));
       const extra = wu.concat(M().MOBILITY, ['walk']).filter((id) => M().MOVES[id]).map((id) => U.row({ icon: M().MOBILITY.includes(id) ? 'leaf' : id === 'walk' ? 'navigate' : 'sun', tone: 'teal', title: U.esc(M().MOVES[id].name), act: 'moveInfo', arg: id, chevron: true })).join('');
       // A tab normally; a page (with a back button) when Food has the tab.
       const asPage = U.route && U.route.view === 'moves';

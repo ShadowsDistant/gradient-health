@@ -4,8 +4,10 @@
  * (held to a JSON grammar) or Claude read what they miss. Changes go through the same levers as the
  * questionnaire (brain.reprogram), are listed in the Coach timeline, and can be undone.
  *
- * A proposal: { focus: [groups], goals: [goal ids], minutes, days, avoid_joints: [joints],
- * avoid_moves: [move ids], no_jumping, gentle, add_equipment: [kit], note }. Missing is "no change".
+ * A proposal: { focus: [groups], muscles: [muscles], goals: [goal ids], minutes, days,
+ * avoid_joints: [joints], avoid_moves: [move ids], no_jumping, gentle, add_equipment: [kit], note }.
+ * Missing is "no change". focus puts a group's goal first ("more legs"); muscles leans the plan
+ * toward single muscles ("calves", "rear delts": profile.focus, up to 4 at a time).
  */
 (function (G) {
   'use strict';
@@ -27,20 +29,37 @@
   const HURT = '(?:hurts?|hurting|pain|painful|sore|injur(?:ed|y)|bad|aches?|aching|tweak(?:ed)?|twinge|problem|issues?|careful|weak|surgery)';
   const JOINT_RE = '(knees?|shoulders?|lower back|back|wrists?|elbows?|hips?|ankles?|neck)';
   const GROUP_WORDS = [
-    ['legs', /\b(legs?|glutes?|butt|booty|quads?|hamstrings?|thighs?|calf|calves|lower body|leg day)\b/],
+    ['legs', /\b(legs?|thighs?|lower body|leg day)\b/],
     ['chest', /\b(chest|pecs?|pectorals?)\b/],
-    ['back', /\b(back|lats?|posture|upper back|pull-?ups?)\b/],
+    ['back', /\b(back|posture|pull-?ups?)\b/],
     ['shoulders', /\b(shoulders?|delts?|deltoids?)\b/],
     ['biceps', /\b(biceps?|arms?|guns)\b/],
     ['triceps', /\b(triceps?|arms?)\b/],
-    ['abs', /\b(abs|core|stomach|belly|six.?pack|obliques?|waist)\b/],
+    ['abs', /\b(abs|core|stomach|belly|six.?pack|waist)\b/],
   ];
-  const MORE = /\b(more|bigger|stronger|grow|build|focus|work on|train|prioriti[sz]e|improve|extra|tone|sculpt|want)\b/;
+  // Single muscles, looked for before the groups (so "upper back" or "rear delts" isn't also the
+  // whole back or shoulders).
+  const MUSCLE_WORDS = [
+    ['calves', /\b(calf|calves)\b/],
+    ['hamstrings', /\b(hamstrings?|hammies)\b/],
+    ['glutes', /\b(glutes?|butt|booty|bum)\b/],
+    ['quads', /\b(quads?|quadriceps)\b/],
+    ['rearDelts', /\b(rear delts?|back of (?:my )?shoulders?)\b/],
+    ['sideDelts', /\b(side delts?|wider shoulders|shoulder width)\b/],
+    ['obliques', /\b(obliques?|love handles)\b/],
+    ['forearms', /\b(forearms?|grip)\b/],
+    ['lats', /\b(lats?|wider back|v-?taper)\b/],
+    ['upperBack', /\b(upper back|traps?)\b/],
+    ['lowerBack', /\blower back\b/],
+  ];
+  // What the models may name in focus besides the groups: the muscles people ask for most.
+  const MODEL_MUSCLES = ['glutes', 'hamstrings', 'quads', 'calves'];
+  const MORE = /\b(more|bigger|stronger|strengthen|grow|build|focus|work on|train|prioriti[sz]e|improve|extra|tone|sculpt|want)\b/;
 
   // What the rules make of a request. Only what's clearly asked for is filled in.
   function parse(text) {
     let t = ` ${String(text || '').toLowerCase().replace(/[’']/g, '\'').replace(/\s+/g, ' ')} `;
-    const out = { focus: [], goals: [], minutes: null, days: null, avoid_joints: [], avoid_moves: [], no_jumping: null, gentle: null, add_equipment: [], note: '' };
+    const out = { focus: [], muscles: [], goals: [], minutes: null, days: null, avoid_joints: [], avoid_moves: [], no_jumping: null, gentle: null, add_equipment: [], note: '' };
     // Joints first ("my back hurts" is about the back, not training it), then take them out.
     const hurt = new RegExp(`\\b${JOINT_RE}\\b[^.,;!?]{0,40}?\\b${HURT}|\\b${HURT}\\b[^.,;!?]{0,30}?\\b(?:my |in my |on my )?${JOINT_RE}\\b|\\b(?:easy|gentle|careful) on (?:my )?${JOINT_RE}\\b|\\b(?:bad|weak|injured|sore|dodgy) ${JOINT_RE}\\b`, 'g');
     t = t.replace(hurt, (m, a, b, c, d) => {
@@ -86,12 +105,18 @@
     // Muscles to train more ("more legs", "bigger arms", "focus on my back").
     const wantsMore = MORE.test(t) || /^\s*[a-z]+(?: and [a-z]+)?\s*$/.test(t);
     if (wantsMore) {
+      // "less arms", "no leg day" aren't asks for more.
+      const asked = (m) => !/\b(less|fewer|no|not|skip|without|stop)\b[^a-z]*(?:[a-z]+ )?$/.test(t.slice(Math.max(0, m.index - 14), m.index));
+      const taken = [];
+      for (const [mu, re] of MUSCLE_WORDS) {
+        const m = re.exec(t);
+        if (!m || !asked(m)) continue;
+        taken.push([m.index, m.index + m[0].length]);
+        if (!out.muscles.includes(mu)) out.muscles.push(mu);
+      }
       for (const [g, re] of GROUP_WORDS) {
         const m = re.exec(t);
-        if (!m) continue;
-        // "less arms", "no leg day" aren't asks for more.
-        const before = t.slice(Math.max(0, m.index - 14), m.index);
-        if (/\b(less|fewer|no|not|skip|without|stop)\b[^a-z]*(?:[a-z]+ )?$/.test(before)) continue;
+        if (!m || !asked(m) || taken.some(([a, b]) => m.index >= a && m.index < b)) continue;
         if (!out.focus.includes(g)) out.focus.push(g);
       }
     }
@@ -106,16 +131,20 @@
     const b = B(), p = S.profile;
     const t = raw && typeof raw === 'object' ? raw : {};
     const list = (x) => (Array.isArray(x) ? x : x == null || x === '' ? [] : [x]).map((v) => String(v).trim()).filter(Boolean);
-    const out = { focus: [], goals: [], minutes: null, days: null, avoid_joints: [], avoid_moves: [], no_jumping: null, gentle: null, add_equipment: [], note: '' };
-    // Body-map muscles ("calves", "upperBack") mean their group.
-    const toGroup = (x) => (b.GROUPS.includes(x) ? x : GH.body && GH.body.GROUP_OF && GH.body.GROUP_OF[x] ? GH.body.GROUP_OF[x] : x === 'arms' ? 'biceps' : null);
+    const out = { focus: [], muscles: [], goals: [], minutes: null, days: null, avoid_joints: [], avoid_moves: [], no_jumping: null, gentle: null, add_equipment: [], note: '' };
+    // A group name is a group; any other of the plan's 17 muscles ("calves", "upperBack"), named in
+    // focus by a model or in muscles, is a muscle to lean toward.
+    const MG = b.MUSCLE_GROUP || {};
+    const had = b.focusOf ? b.focusOf(p) : [];
+    const asMuscle = list(t.muscles).concat(list(t.focus).filter((x) => !b.GROUPS.includes(x) && MG[x]));
+    for (const mu of asMuscle) if (MG[mu] && !had.includes(mu) && !out.muscles.includes(mu) && out.muscles.length < 2) out.muscles.push(mu);
     // Two goals can come first (arms counts once, for biceps and triceps).
-    for (const g of list(t.focus).map(toGroup)) {
+    for (const g of list(t.focus).map((x) => (b.GROUPS.includes(x) ? x : x === 'arms' ? 'biceps' : null))) {
       if (!g || out.focus.includes(g)) continue;
       const goals = new Set(out.focus.concat([g]).map((x) => GROUP_GOAL[x]));
       if (goals.size <= 2) out.focus.push(g);
     }
-    if (p.workouts === false) out.focus = [];
+    if (p.workouts === false) { out.focus = []; out.muscles = []; }
     for (const g of list(t.goals)) if (EXTRA_GOALS.includes(g) && !(p.goals || []).includes(g) && !out.goals.includes(g)) out.goals.push(g);
     // Minutes and days: a number, or a step from now ("shorter" is minutes_by -10).
     const mins = t.minutes != null ? Number(t.minutes) : t.minutes_by ? p.minutes + Number(t.minutes_by) : NaN;
@@ -138,13 +167,13 @@
     out.note = String(t.note || '').replace(/\s+/g, ' ').trim().slice(0, 200);
     return out;
   }
-  const empty = (t) => !t || (!t.focus.length && !t.goals.length && t.minutes == null && t.days == null && !t.avoid_joints.length && !t.avoid_moves.length && t.no_jumping == null && t.gentle == null && !t.add_equipment.length);
+  const empty = (t) => !t || (!t.focus.length && !(t.muscles || []).length && !t.goals.length && t.minutes == null && t.days == null && !t.avoid_joints.length && !t.avoid_moves.length && t.no_jumping == null && t.gentle == null && !t.add_equipment.length);
   // A model's reading adds to the rules' (the rules win where both say something).
   function merge(a, b) {
     if (!b) return a;
     const u = (x, y) => [...new Set((x || []).concat(y || []))];
     return {
-      focus: u(a.focus, b.focus), goals: u(a.goals, b.goals), minutes: a.minutes != null ? a.minutes : b.minutes, days: a.days != null ? a.days : b.days,
+      focus: u(a.focus, b.focus), muscles: u(a.muscles, b.muscles), goals: u(a.goals, b.goals), minutes: a.minutes != null ? a.minutes : b.minutes, days: a.days != null ? a.days : b.days,
       avoid_joints: u(a.avoid_joints, b.avoid_joints), avoid_moves: u(a.avoid_moves, b.avoid_moves), no_jumping: a.no_jumping != null ? a.no_jumping : b.no_jumping,
       gentle: a.gentle != null ? a.gentle : b.gentle, add_equipment: u(a.add_equipment, b.add_equipment), note: a.note || b.note || '',
     };
@@ -162,6 +191,10 @@
       patch.goals = first.concat((p.goals || []).filter((g) => !first.includes(g)));
     }
     if (t.goals.length) patch.goals = (patch.goals || p.goals || []).filter((g) => g !== 'consistency').concat(t.goals);
+    // Muscles to lean toward, newest first, four at most.
+    const had = b.focusOf ? b.focusOf(p) : [];
+    const muscles = t.muscles || [];
+    if (muscles.length) patch.focus = [...new Set(muscles.concat(had))].slice(0, 4);
     if (t.minutes != null) patch.minutes = t.minutes;
     if (t.days != null) { patch.days = t.days; patch.weekdays = null; }
     if (t.avoid_joints.length) patch.careful = [...new Set((p.careful || []).concat(t.avoid_joints))];
@@ -170,7 +203,7 @@
     if (t.add_equipment.length) patch.equipment = Object.assign({}, p.equipment, Object.fromEntries(t.add_equipment.map((k) => [k, true])));
     // What moving a muscle up (or another down to make room) means: how often it's trained and how
     // many weekly sets it builds to. Arms (biceps and triceps) move together.
-    if (patch.goals || patch.gentle != null) {
+    if (patch.goals || patch.gentle != null || patch.focus) {
       const before = b.programFor(p), after = b.programFor(Object.assign({}, p, patch));
       const unitOf = (g) => (g === 'biceps' || g === 'triceps' ? 'arms' : g);
       const units = [...new Set(b.GROUPS.map(unitOf))];
@@ -182,8 +215,11 @@
       const down = units.filter((u) => tier(after, u) > tier(before, u));
       for (const u of up) lines.push({ icon: 'plus-circle', tone: 'positive', text: `${name(u)}: more each week`, sub: sub(u) });
       for (const u of down) lines.push({ icon: 'minus', tone: 'neutral', text: `${name(u)}: a little less, to make room`, sub: sub(u) });
-      if (t.focus.length && !up.length) lines.push({ icon: 'check-circle', tone: 'neutral', text: `${[...new Set(t.focus.map(unitOf))].map(name).join(' and ')} already get the most work`, sub: 'Nothing to move' });
+      if (t.focus.length && !up.length && !muscles.length) lines.push({ icon: 'check-circle', tone: 'neutral', text: `${[...new Set(t.focus.map(unitOf))].map(name).join(' and ')} already get the most work`, sub: 'Nothing to move' });
     }
+    const muscleName = (mu) => (GH.body && GH.body.NAME && GH.body.NAME[mu]) || mu;
+    for (const mu of muscles) lines.push({ icon: 'plus-circle', tone: 'positive', text: `${muscleName(mu)}: more of the work`, sub: `${b.GROUP_NAME[b.MUSCLE_GROUP[mu]]} days lean toward them` });
+    if (patch.focus) for (const mu of had.filter((x) => !patch.focus.includes(x))) lines.push({ icon: 'minus', tone: 'neutral', text: `${muscleName(mu)}: back to the usual`, sub: 'Four muscles can be a focus at a time' });
     for (const g of t.goals) lines.push({ icon: 'star', tone: 'accent', text: GOAL_TEXT[g] });
     if (t.minutes != null) lines.push({ icon: 'timer', tone: 'accent', text: `Workouts of about ${t.minutes} minutes`, sub: `Now ${p.minutes}` });
     if (t.days != null) lines.push({ icon: 'calendar', tone: 'accent', text: `${t.days} workouts a week`, sub: `Now ${p.days}` });
@@ -199,14 +235,15 @@
     return { patch, lines };
   }
 
-  const KEEP = ['goals', 'minutes', 'days', 'weekdays', 'careful', 'impactOk', 'gentle', 'equipment'];
+  const KEEP = ['goals', 'focus', 'minutes', 'days', 'weekdays', 'careful', 'impactOk', 'gentle', 'equipment'];
   const copy = (x) => JSON.parse(JSON.stringify(x));
   // Makes the changes: the plan is rebuilt around them, and the old settings are kept for Undo.
   function apply(S, day, t) {
     const b = B();
     const { patch, lines } = plan(S, t);
     if (!lines.length) return null;
-    const before = { profile: copy(Object.fromEntries(KEEP.map((k) => [k, S.profile[k]]))), excluded: (S.excluded || []).slice(), vol: Object.assign({}, S.vol) };
+    // (focus is kept as a list, even when it wasn't set, so Undo clears one that was added.)
+    const before = { profile: copy(Object.fromEntries(KEEP.map((k) => [k, k === 'focus' ? S.profile.focus || [] : S.profile[k]]))), excluded: (S.excluded || []).slice(), vol: Object.assign({}, S.vol) };
     if (Object.keys(patch).length) b.reprogram(S, patch, day);
     if (t.avoid_moves.length) S.excluded = [...new Set((S.excluded || []).concat(t.avoid_moves))];
     S.events = S.events || [];
@@ -229,7 +266,7 @@
   // The on-device model's instructions, examples and a grammar holding its answer to this shape.
   const SYSTEM = [
     'You turn a request about a workout plan into JSON. Only include what the person asked for.',
-    'focus: muscles to train more, at most 2, from: biceps, triceps, abs, chest, legs, back, shoulders.',
+    'focus: muscles to train more, at most 2, from: biceps, triceps, abs, chest, legs, back, shoulders, glutes, hamstrings, quads, calves.',
     'goals: goals to add, from: fat, strength, endurance, mobility.',
     'minutes: minutes per workout (10 to 60), or null. days: workouts a week (2 to 6), or null.',
     'avoid_joints: joints to go easy on, from: knee, shoulder, back, wrist, elbow, hip, ankle, neck.',
@@ -243,7 +280,7 @@
   const GRAMMAR = [
     'root ::= "{\\"focus\\":" groups ",\\"goals\\":" goals ",\\"minutes\\":" (minutes | "null") ",\\"days\\":" ([2-6] | "null") ",\\"avoid_joints\\":" joints ",\\"no_jumping\\":" ("true" | "null") ",\\"gentle\\":" ("true" | "false" | "null") ",\\"note\\":" note "}"',
     'groups ::= "[" (group ("," group)?)? "]"',
-    'group ::= "\\"biceps\\"" | "\\"triceps\\"" | "\\"abs\\"" | "\\"chest\\"" | "\\"legs\\"" | "\\"back\\"" | "\\"shoulders\\""',
+    `group ::= ${['biceps', 'triceps', 'abs', 'chest', 'legs', 'back', 'shoulders'].concat(MODEL_MUSCLES).map((g) => `"\\"${g}\\""`).join(' | ')}`,
     'goals ::= "[" (goal ("," goal){0,2})? "]"',
     'goal ::= "\\"fat\\"" | "\\"strength\\"" | "\\"endurance\\"" | "\\"mobility\\""',
     'minutes ::= [1-6] [05]',

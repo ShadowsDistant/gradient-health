@@ -466,6 +466,7 @@ const TAILOR_SCHEMA = {
   type: 'object',
   properties: {
     focus: { type: 'array', items: { type: 'string', enum: ['biceps', 'triceps', 'abs', 'chest', 'legs', 'back', 'shoulders'] } },
+    muscles: { type: 'array', items: { type: 'string', enum: ['glutes', 'quads', 'hamstrings', 'calves', 'obliques', 'forearms', 'lats', 'upperBack', 'lowerBack', 'rearDelts', 'sideDelts', 'frontDelts', 'hipFlexors'] } },
     goals: { type: 'array', items: { type: 'string', enum: ['fat', 'strength', 'endurance', 'mobility'] } },
     minutes: nullable('integer'),
     days: nullable('integer'),
@@ -474,7 +475,7 @@ const TAILOR_SCHEMA = {
     gentle: nullable('boolean'),
     note: { type: 'string' },
   },
-  required: ['focus', 'goals', 'minutes', 'days', 'avoid_joints', 'no_jumping', 'gentle', 'note'],
+  required: ['focus', 'muscles', 'goals', 'minutes', 'days', 'avoid_joints', 'no_jumping', 'gentle', 'note'],
   additionalProperties: false,
 };
 async function tailor(S, day, text) {
@@ -487,7 +488,7 @@ async function tailor(S, day, text) {
       output_config: { effort: 'low', format: { type: 'json_schema', schema: TAILOR_SCHEMA } },
       messages: [{ role: 'user', content: [
         'Turn this request about their workout plan into changes. Only include what they asked for; leave the rest empty or null.',
-        `focus: muscles to train more (at most 2). goals: goals to add. minutes: per workout, 10-60 (now ${p.minutes}). days: workouts a week, 2-6 (now ${p.days}).`,
+        `focus: muscle groups to train more (at most 2). muscles: single muscles to lean toward, when they name one (calves, rear delts; at most 2). goals: goals to add. minutes: per workout, 10-60 (now ${p.minutes}). days: workouts a week, 2-6 (now ${p.days}).`,
         'avoid_joints: joints to go easy on. no_jumping: true if they want no jumping. gentle: true for easier, false for harder.',
         'note: one short, friendly sentence saying what will change, without numbers you weren\'t given.',
         '', `Their request: ${String(text || '').slice(0, 400)}`,
