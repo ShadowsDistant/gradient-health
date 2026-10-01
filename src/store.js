@@ -31,6 +31,8 @@
     d('weights', []); d('protein', {}); d('feel', {}); d('sleepChip', {}); d('measurements', []); d('active', null);
     d('celebrated', {}); d('pendingLines', []); d('insightsDismissed', {}); d('insightsShown', {}); d('volWeeksDone', []);
     d('health', {}); d('ai', {}); d('seen', {});
+    // 1.4: outdoor activities (src/activity.js), newest first, and the one being recorded.
+    d('activities', []); d('actLive', null);
     const h = S.health;
     if (!h.days) h.days = {};
     if (!h.hc) h.hc = {};
@@ -131,6 +133,8 @@
   function clear() {
     lsDel(KEY);
     try { const b = bridge(); if (b && b.save) b.save(''); } catch (e) { /* nothing to clear */ }
+    // 1.4: an outdoor activity recording (or finished and not saved yet) goes too.
+    if (GH.activity && GH.activity.reset) GH.activity.reset();
   }
 
   // Secrets (the AI coach key). Never logged, never in the state or a backup.

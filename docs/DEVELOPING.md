@@ -522,7 +522,10 @@ SHA-256.
      a QR code on their screen), never through a server;
    - nothing else leaves the phone. The on-device model is a download from Hugging Face. Location
      (an activity's route) and the background Health Connect reads are processed only on the phone
-     (Health Connect is on the phone too), so the form doesn't list them as collected.
+     (Health Connect is on the phone too). One exception to weigh: Show streets on an activity
+     downloads map tiles for the route's area from OpenFreeMap, which hints at roughly where it was.
+     Declaring "Approximate location, shared, optional, for app functionality" is the cautious
+     answer.
 10. **AI-generated content.** Every AI answer (on-device or Claude), Claude's weekly report and its
     suggestions have a Report action that hides the item and keeps a local record. Sending a report to
     the developer opens a prefilled GitHub issue in the browser. Play's policy asks that people can

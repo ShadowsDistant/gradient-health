@@ -478,19 +478,24 @@
   // A workout in progress rides above the tab bar on other tabs.
   function renderAccessory() {
     const A = U.S && U.S.active;
-    const show = !!A && playerEl.hidden && !(U.route.tab === 'today' && !U.route.view);
+    // An outdoor activity recording in the background takes the capsule (src/ui/actlive.js).
+    const act = U.actAccessory ? safe(() => U.actAccessory()) : '';
+    const show = (!!A || !!act) && playerEl.hidden && !(U.route.tab === 'today' && !U.route.view);
     const was = !accessory.hidden;
     accessory.hidden = !show;
     screen.toggleAttribute('data-capsule', show);
     // Emptied with morph, not innerHTML: that keeps Refract's lens layer (the capsule's glass), which
     // Refract only puts back on a resize.
     if (!show) { U.morph(accessory, ''); return; }
-    const doneN = A.steps.slice(0, A.idx).filter((s) => s.kind === 'set').length;
-    const total = A.steps.filter((s) => s.kind === 'set').length;
-    U.morph(accessory, `<span class="rf-activity-leading" data-tone="coral" style="width:36px;height:36px">${U.icon('timer', 'sm')}</span>
+    if (act) U.morph(accessory, act);
+    else {
+      const doneN = A.steps.slice(0, A.idx).filter((s) => s.kind === 'set').length;
+      const total = A.steps.filter((s) => s.kind === 'set').length;
+      U.morph(accessory, `<span class="rf-activity-leading" data-tone="coral" style="width:36px;height:36px">${U.icon('timer', 'sm')}</span>
       <span class="acc-text"><b>${U.esc(A.session.title)}</b><span class="t-caption rf-secondary">${doneN} of ${total} sets</span></span>
       <span class="rf-spacer"></span>
       <button type="button" class="rf-btn" data-size="sm" data-act="resumeWorkout" aria-label="Resume the workout, ${doneN} of ${total} sets done">Resume</button>`);
+    }
     fitAccessory();
     if (!was && !U.reduced() && accessory.animate) accessory.animate([{ opacity: 0, transform: 'translateY(10px) scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 360, easing: EASE_ENTER });
   }

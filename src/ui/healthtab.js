@@ -247,14 +247,16 @@
   /* ---------------------------------------------------------------- activity + sources */
   function activity(S, day) {
     const list = H().activity(S, day - 27, day);
-    if (!list.length) return '<div class="card hl-note" data-key="noact"><p class="t-callout rf-muted">No workouts in the last 4 weeks yet. Log one with the + button, or connect Health Connect.</p></div>';
-    const rows = list.slice(0, 4).map((a) => U.row({
+    // Starting an outdoor activity; the ones recorded here open their summary (src/ui/activity.js).
+    const start = U.actHealthStart ? U.actHealthStart(S) : '';
+    if (!list.length) return `${start}<div class="card hl-note" data-key="noact"><p class="t-callout rf-muted">No workouts in the last 4 weeks yet. Start an activity, log one with the + button, or connect Health Connect.</p></div>`;
+    const rows = list.slice(0, 4).map((a) => (a.src === 'activity' && U.actHealthRow && U.actHealthRow(a)) || U.row({
       icon: a.src === 'app' ? 'bolt' : a.src === 'manual' ? 'pencil' : 'heart', tone: a.src === 'app' ? 'indigo' : a.src === 'manual' ? 'amber' : 'rose',
       title: U.esc(U.cap(a.name || 'Workout')), sub: `${U.esc(U.fmtDay(a.day))}${a.src === 'app' ? ' · Gradient Health' : a.src === 'manual' ? ' · logged by you' : ' · Health Connect'}`,
       detail: a.minutes ? `${a.minutes} min` : '',
     }));
     if (list.length > 4) rows.push(U.row({ title: `See all ${list.length}`, act: 'metricOpen', arg: 'activeMin', chevron: true, cls: 'hl-seeall' }));
-    return `<ul class="rf-list hl-act" data-key="act">${rows.join('')}</ul>`;
+    return `${start}<ul class="rf-list hl-act" data-key="act">${rows.join('')}</ul>`;
   }
   const TYPE_LABEL = { steps: 'steps', sleep: 'sleep', weight: 'weight', height: 'height', bodyFat: 'body fat', restingHr: 'resting heart rate', hrv: 'HRV', exercise: 'workouts', heartRate: 'heart rate', activeKcal: 'active calories', distance: 'distance', nutrition: 'food' };
   const HC_TEXT = {

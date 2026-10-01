@@ -289,8 +289,11 @@
     // Daily totals from Health Connect, by local calendar day.
     for (const x of p.activeKcal || []) if (x && x.date && x.kcal > 0 && x.kcal < 10000) day(b.dayFromStr(x.date)).activeKcal = Math.round(x.kcal);
     for (const x of p.distance || []) if (x && x.date && x.m > 0 && x.m < 500000) day(b.dayFromStr(x.date)).distanceM = Math.round(x.m);
-    // Workouts from other apps. One that overlaps a workout done in this app is that workout.
-    const appSpans = S.log.filter((l) => l.type === 'workout' && l.startedAt && l.endedAt).map((l) => [l.startedAt, l.endedAt]);
+    // Workouts from other apps. One that overlaps a workout done in this app is that workout, and one
+    // that overlaps an activity recorded here (src/activity.js: its saved copy, or the watch's own
+    // recording of the same run) is that activity.
+    const appSpans = S.log.filter((l) => l.type === 'workout' && l.startedAt && l.endedAt).map((l) => [l.startedAt, l.endedAt])
+      .concat(GH.activity ? GH.activity.spans(S) : []);
     for (const x of p.exercise || []) {
       const s = ms(x.start), e = ms(x.end);
       if (s == null || e == null || e <= s) continue;
@@ -364,7 +367,9 @@
   function rebuild(S, d) {
     const h = S.health;
     const hc = h.hc[d], man = h.manual[d];
-    if (!hc && !man) { delete h.days[d]; return; }
+    // Activities recorded in the app count as that day's exercise, like a session from Health Connect.
+    const acts = GH.activity ? GH.activity.exerciseOn(S, Number(d)) : [];
+    if (!hc && !man && !acts.length) { delete h.days[d]; return; }
     const out = {};
     for (const k of SCALARS) {
       if (man && man[k] != null) out[k] = man[k];
@@ -372,9 +377,10 @@
     }
     // No resting heart rate shared: use the estimate from heart rate, and say so where it shows.
     if (out.rhr == null && out.rhrEst != null) { out.rhr = out.rhrEst; out.rhrFromEst = true; }
-    const ex = [].concat((hc && hc.exercise) || [], (man && man.exercise) || []);
+    const ex = [].concat((hc && hc.exercise) || [], (man && man.exercise) || [], acts);
     if (ex.length) out.exercise = ex;
     out.src = { hc: !!hc, manual: !!man };
+    if (acts.length) out.src.activity = true;
     h.days[d] = out;
   }
   function prune(S, today) {
@@ -485,7 +491,7 @@
     const out = appWorkouts(S, from, to);
     for (let d = from; d <= to; d++) {
       const r = S.health.days[d];
-      for (const e of (r && r.exercise) || []) if (!e.fromApp) out.push({ day: d, name: e.typeName, minutes: e.minutes, src: e.src || 'hc', title: e.title || '' });
+      for (const e of (r && r.exercise) || []) if (!e.fromApp) out.push({ day: d, name: e.typeName, minutes: e.minutes, src: e.src || 'hc', title: e.title || '', id: e.id, start: e.start });
     }
     return out.sort((a, b) => b.day - a.day);
   }

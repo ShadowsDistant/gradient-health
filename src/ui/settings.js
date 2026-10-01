@@ -313,6 +313,8 @@
     ['ZXing C++', 'Barcode reading', 'Apache 2.0'],
     ['USDA SR28', 'Built-in food list', 'Public domain'],
     ['Open Food Facts', 'Online food search, when it\'s on', 'Open Database License'],
+    ['MapLibre GL JS', 'Street maps behind an activity\'s route', 'BSD 3-Clause'],
+    ['OpenStreetMap contributors and OpenMapTiles, served by OpenFreeMap', 'Street map data, when you show streets', 'Open Database License and CC BY 4.0'],
   ];
   U.act.licensesSheet = () => U.sheet({
     title: 'Open-source licenses', size: 'auto',
