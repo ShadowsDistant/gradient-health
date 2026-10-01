@@ -4,8 +4,9 @@
 // build/sweep/ for a visual pass.
 // Usage: node test/sweep.mjs [--quick] [--no-shots] [--only=food,settings]
 import { createRequire } from 'node:module';
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { root, check, section, done, serveDist } from './lib.mjs';
 import { seedBridge, seedState } from './fixtures.mjs';
 import { actBridge, seedActivities } from './actfixture.mjs';
@@ -284,6 +285,13 @@ for (const [width, theme, zoom, h] of COMBOS) {
     // Last, since it changes the state: today's workout done (not saved, so a reload undoes it).
     ['plan-done', async () => { await page.evaluate(() => { const GH = window.GH, U = GH.ui, B = GH.brain, S = U.S; GH.store.save = () => true; GH.store.saveSoon = () => {}; B.startWorkout(S, U.today(), { now: Date.now() - 26 * 60000 }); for (let g = 0; S.active && S.active.idx < S.active.steps.length && g < 400; g++) { const st = S.active.steps[S.active.idx]; B.completeStep(S, st.kind === 'test' ? { value: 12 } : {}); if (st.askRir) B.setRir(S, st.item, '12'); } B.finishWorkout(S, { rating: 'right', now: Date.now() }); U.go('plan'); }); }],
   ].filter(([id]) => !only.length || only.some((o) => id.startsWith(o)));
+  // Screens added per area in test/sweep.d/ (see its README), so areas don't all edit this list.
+  if (existsSync(join(root, 'test/sweep.d'))) {
+    for (const f of readdirSync(join(root, 'test/sweep.d')).filter((x) => x.endsWith('.mjs')).sort()) {
+      const mod = await import(pathToFileURL(join(root, 'test/sweep.d', f)).href);
+      scenes.push(...await mod.screens({ page, settle, act, reset, setup, chips, startAct, seedActs }));
+    }
+  }
   for (const [id, run] of scenes) {
     try {
       await run();

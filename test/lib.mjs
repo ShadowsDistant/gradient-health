@@ -7,7 +7,11 @@ export const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 
 export function load(...files) {
-  for (const f of files) require(join(root, f));
+  for (const f of files) {
+    require(join(root, f));
+    // The plan engine's optimizer goes with the brain, so tests that load brain.js get both.
+    if (f === 'src/brain.js') require(join(root, 'src/optimizer.js'));
+  }
   return globalThis.GH;
 }
 

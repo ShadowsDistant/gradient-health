@@ -576,7 +576,13 @@
   };
 
   /* ---------------------------------------------------------------- persistence */
-  U.save = (now) => { if (!U.S) return; if (now) GH.store.save(U.S); else GH.store.saveSoon(U.S); };
+  // Every saved change also fires 'gh-change' on the document, for anything that follows the state
+  // (badges, for one) without each action having to call it.
+  U.save = (now) => {
+    if (!U.S) return;
+    if (now) GH.store.save(U.S); else GH.store.saveSoon(U.S);
+    document.dispatchEvent(new CustomEvent('gh-change'));
+  };
   U.commit = () => { U.save(); render(); };
 
   /* ---------------------------------------------------------------- back button */

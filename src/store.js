@@ -69,6 +69,8 @@
     // Custom plans (src/customplan.js): the list, the plan in use and progress on its exercises.
     if (GH.customPlan) GH.customPlan.migrate(S);
     if (GH.brain && GH.brain.relink) GH.brain.relink(S);
+    // Later modules add their own steps here (GH.migrations.push(fn)), each safe to run every load.
+    for (const fn of GH.migrations || []) fn(S);
     S.v = SCHEMA;
     return S;
   }
