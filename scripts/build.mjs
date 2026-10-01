@@ -2,10 +2,11 @@
 //
 // - Generates Refract's tokens.css from vendor/refract/tokens.json (the design system ships
 //   tokens as JSON only), with its fonts inlined as data URIs so the APK works offline.
-// - Bundles src/ai.js (Claude coach, uses @anthropic-ai/sdk) into an IIFE with esbuild.
 // - Inlines Refract's bundle.css/bundle.js and the app's own CSS/JS into src/shell.html.
 // - Minifies every inline script and style sheet on the way (MINIFY=0 turns that off, to debug
 //   with readable code). Names are kept (keepNames), so a function's .name is what the source says.
+// - Bundles the parts that load on demand into dist/lazy/ with esbuild (see LAZY): the Claude
+//   requests with the Anthropic SDK, the 3D figure, the on-device model runtime and more.
 import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync, statSync, existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -119,7 +120,7 @@ export const APP_SCRIPTS = [
   'src/customplan.js',
   'src/planreview.js',
   'src/devicecoach.js',
-  // ai bundle is injected here
+  'src/ai.js', // the Claude coach's inline part; its requests are the lazy 'claude' chunk
   'src/ui/core.js',
   'src/ui/controls.js',
   'src/ui/motion.js',
@@ -157,6 +158,9 @@ export const APP_SCRIPTS = [
 // barcode reader). Each is bundled or copied into dist/lazy/, which the APK serves next to the page
 // and GH.lazy(name) loads on demand. Entries: { name, entry?, assets?: [[from, to]] }.
 export const LAZY = [
+  // The Claude coach's requests and the Anthropic SDK (src/claude.js), loaded the first time someone
+  // who allowed Claude asks it something. Its small inline part is src/ai.js.
+  { name: 'claude', entry: 'src/claude.js' },
   { name: 'barcode', entry: 'src/barcode.js', assets: [['node_modules/zxing-wasm/dist/reader/zxing_reader.wasm', 'zxing_reader.wasm']] },
   // On-device AI: llama.cpp compiled to WebAssembly (@wllama/wllama). v3 ships one wasm for every mode.
   { name: 'llm', entry: 'src/llm.js', assets: [['node_modules/@wllama/wllama/esm/wasm/wllama.wasm', 'wllama/wllama.wasm']] },
@@ -204,21 +208,6 @@ function allowOnlyOurScripts(html) {
   return html.replace(csp, `script-src 'self' 'wasm-unsafe-eval' ${hashes.join(' ')}`);
 }
 
-async function bundleAi() {
-  const result = await build({
-    entryPoints: [join(root, 'src/ai.js')],
-    bundle: true,
-    write: false,
-    format: 'iife',
-    platform: 'browser',
-    target: ['chrome100'],
-    minify: true,
-    legalComments: 'none',
-    logLevel: 'silent',
-  });
-  return result.outputFiles[0].text;
-}
-
 // The page a shared plan's link opens in a browser (docs/p/index.html, served by GitHub Pages from
 // /docs): the plan from the link's #fragment, the move names and the QR encoder inline, and a
 // content security policy that allows exactly its one script. No other requests, no trackers.
@@ -241,15 +230,11 @@ export function sharePage() {
 async function main() {
   const tokens = JSON.parse(read('vendor/refract/tokens.json'));
   const shell = read('src/shell.html');
-  const aiJs = await bundleAi();
   const version = JSON.parse(read('package.json')).version || '0.0.0';
   // The app's version, for Profile, What's new and the web build (the APK also reports its own).
   const scripts = [`<script>(window.GH = window.GH || {}).VERSION = ${JSON.stringify(version)};</script>`];
   const appJs = await Promise.all(APP_SCRIPTS.map((p) => minJs(read(p), p)));
-  APP_SCRIPTS.forEach((p, i) => {
-    if (p === 'src/ui/core.js') scripts.push(`<script>/* ai (bundled) */\n${safeJs(aiJs)}</script>`);
-    scripts.push(`<script>/* ${p} */\n${safeJs(appJs[i])}</script>`);
-  });
+  APP_SCRIPTS.forEach((p, i) => scripts.push(`<script>/* ${p} */\n${safeJs(appJs[i])}</script>`));
   const [tokensMin, refractCss, appCssMin, refractMin] = await Promise.all([
     minCss(tokensCss(tokens), 'tokens.css'), minCss(read('vendor/refract/bundle.css'), 'vendor/refract/bundle.css'), minCss(appCss(), 'src/styles.css'), refractJs(),
   ]);
@@ -267,7 +252,7 @@ async function main() {
   mkdirSync(join(root, 'dist'), { recursive: true });
   writeFileSync(join(root, 'dist/gradient-health.html'), html);
   const bytes = Buffer.byteLength(html, 'utf8');
-  console.log(`dist/gradient-health.html  ${(bytes / 1024).toFixed(0)} KB${MINIFY ? '' : ' (not minified: MINIFY=0)'}  (ai bundle ${(aiJs.length / 1024).toFixed(0)} KB)`);
+  console.log(`dist/gradient-health.html  ${bytes} bytes (${(bytes / 1024).toFixed(0)} KB)${MINIFY ? '' : ', not minified (MINIFY=0)'}`);
   // The public privacy policy is generated from the same text the app shows.
   globalThis.GH = globalThis.GH || {};
   new Function(read('src/data/privacy.js'))();

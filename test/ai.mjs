@@ -1,6 +1,8 @@
 // The AI coach against a mocked Anthropic API: model choice, request shape (streaming, adaptive
 // thinking, effort, structured output, server-side fallback), what the summary leaves out, the key
-// never leaking, and the error paths (bad key, refusal, offline).
+// never leaking, and the error paths (bad key, refusal, offline). Both parts: src/ai.js (inline in
+// the page) and src/claude.js (the requests and the SDK, a lazy chunk), bundled here like the build
+// does and loaded through GH.lazy the first time it's needed.
 import { build } from 'esbuild';
 import { join } from 'node:path';
 import { load, root, check, section, done } from './lib.mjs';
@@ -8,9 +10,14 @@ import { load, root, check, section, done } from './lib.mjs';
 // Browser-ish globals the modules expect.
 const ls = new Map();
 globalThis.localStorage = { getItem: (k) => (ls.has(k) ? ls.get(k) : null), setItem: (k, v) => ls.set(k, String(v)), removeItem: (k) => ls.delete(k) };
-const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/health.js', 'src/store.js');
-const bundle = await build({ entryPoints: [join(root, 'src/ai.js')], bundle: true, write: false, format: 'iife', platform: 'browser', target: ['es2022'], logLevel: 'silent' });
-new Function(bundle.outputFiles[0].text)();
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/health.js', 'src/store.js', 'src/ai.js');
+const bundle = await build({ entryPoints: [join(root, 'src/claude.js')], bundle: true, write: false, format: 'iife', platform: 'browser', target: ['es2022'], logLevel: 'silent' });
+let chunkLoads = 0;
+GH.lazy = async (name) => {
+  if (name !== 'claude') throw new Error(`no chunk ${name}`);
+  if (!GH.claude) { chunkLoads++; new Function(bundle.outputFiles[0].text)(); }
+  return GH.claude;
+};
 const AI = GH.ai;
 const B = GH.brain;
 
@@ -90,6 +97,8 @@ let blocked = null;
 try { await AI.report(S, D0); } catch (err) { blocked = err; }
 check('nothing is sent before the person allows it', blocked && blocked.code === 'consent' && calls.length === 0, blocked && blocked.code);
 check('and no automatic report either', AI.needsReport(S, D0) === false);
+check('the Claude chunk isn\'t even loaded yet (the SDK isn\'t parsed for nothing)', chunkLoads === 0 && !GH.claude);
+check('Stop and the error lines work without it', (() => { AI.stop(); const e = AI.explain(new Error('x')); return e.code === 'other' && AI.explain(blocked) === blocked; })());
 S.ai.consentAt = Date.now();
 
 section('Weekly report');
@@ -103,6 +112,7 @@ check('server-side fallback on (beta header + fallbacks)', (msg.headers.get('ant
 check('the key goes only in its header, browser access flagged', msg.headers.get('x-api-key') === KEY && msg.headers.get('anthropic-dangerous-direct-browser-access') === 'true' && !JSON.stringify(msg.body).includes('TESTKEY'));
 check('the data summary is a cached system block', msg.body.system[1].cache_control && msg.body.system[1].cache_control.type === 'ephemeral' && msg.body.system[1].text.includes('DATA SUMMARY'));
 check('the report is parsed and saved for the week', rep.data.headline === REPORT.headline && AI.reportFor(S, D0) && !AI.needsReport(S, D0));
+check('the first request loaded the chunk, once', chunkLoads === 1 && !!GH.claude);
 
 section('Ask the coach');
 const deltas = [];
