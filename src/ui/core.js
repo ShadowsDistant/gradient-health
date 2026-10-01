@@ -754,6 +754,33 @@
   }
   U.applyPrefs = applyPrefs;
 
+  /* The 3D figure warms up (loads its chunk and compiles its shaders: seconds of work on a slow
+   * phone) only when today's workout will want it: workouts on, today's not done yet, a phone with
+   * 3 GB of memory or more and the app on screen, about 8 s after launch once the page is idle.
+   * Otherwise it starts loading the first time a figure is about to show: a press on Start or on a
+   * move. Set-up warms it for its own reveal (src/ui/onboarding.js). */
+  const FIGURE_ACTS = ['startWorkout', 'planStart', 'resumeWorkout', 'startMobility', 'moveInfo', 'planMoveInfo', 'cpHowTo', 'ladder'].map((a) => `[data-act="${a}"]`).join(',');
+  const idle = (fn, ms) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: ms }) : setTimeout(fn, 1));
+  function warmFigure() { safe(() => { const w = U.warmFigure || U.preloadFigure; if (w) w(); }); }
+  function warmFigureLater() {
+    const onDown = (e) => {
+      if (!e.target.closest || !e.target.closest(FIGURE_ACTS)) return;
+      doc.removeEventListener('pointerdown', onDown, true);
+      warmFigure();
+    };
+    doc.addEventListener('pointerdown', onDown, true);
+    const wanted = () => {
+      const S = U.S, nav = G.navigator || {};
+      return !!(S && S.profile.onboarded && S.profile.workouts !== false && nav.deviceMemory >= 3 && B().todayPlan(S, U.today()).type === 'workout');
+    };
+    const later = () => {
+      if (!wanted()) return;
+      if (doc.hidden) { doc.addEventListener('visibilitychange', later, { once: true }); return; }
+      warmFigure();
+    };
+    setTimeout(() => idle(later, 4000), 8000);
+  }
+
   let lastDay = null;
   function boot() {
     layout();
@@ -779,9 +806,8 @@
       if (U.S.active && U.resumePrompt) U.resumePrompt();
       U.syncHealth('boot');
       if (U.afterBoot) safe(() => U.afterBoot());
-      // Warm up the 3D figure while the phone is idle, so the first workout doesn't wait for it.
-      if (U.S.profile.workouts !== false && U.preloadFigure) setTimeout(() => safe(() => U.preloadFigure()), 4000);
     }
+    warmFigureLater();
     lastDay = U.today();
     setInterval(() => {
       const d = U.today();
