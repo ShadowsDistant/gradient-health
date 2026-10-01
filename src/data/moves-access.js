@@ -50,9 +50,15 @@
     }
     return out;
   };
-  const slowEcc = (rep, ms) => rep.map((s) => (s.ph === 'ecc' ? Object.assign({}, s, { ms }) : s));
-  const fastCon = (rep, ms) => rep.map((s) => (s.ph === 'con' ? Object.assign({}, s, { ms }) : s));
-  const pauseAt = (rep, ph, ms) => rep.map((s) => (s.ph === ph ? Object.assign({}, s, { hold: ms }) : s));
+  // A variant's tempo is the whole phase's: a via point (a `through` step) and the pose it leads on
+  // to share the new time in proportion, and a pause holds where the phase ends, not at the via.
+  const phaseMs = (rep, ph, ms) => {
+    const all = rep.reduce((a, s) => a + (s.ph === ph ? s.ms : 0), 0);
+    return rep.map((s) => (s.ph === ph ? Object.assign({}, s, { ms: Math.round((s.ms * ms) / all) }) : s));
+  };
+  const slowEcc = (rep, ms) => phaseMs(rep, 'ecc', ms);
+  const fastCon = (rep, ms) => phaseMs(rep, 'con', ms);
+  const pauseAt = (rep, ph, ms) => rep.map((s) => (s.ph === ph && !s.through ? Object.assign({}, s, { hold: ms }) : s));
 
   function move(id, form, meta, variant) {
     const base = F[form];
@@ -136,7 +142,17 @@
   const sitWork = (o) => merge({ t: -2, n: 0, aN: { s: 6, e: 14 }, lF: { flat: true }, ik: { anF: FOOT } }, o || {});
   const DB2 = [{ type: 'db', hands: 'both', orient: 'end' }];
   const DB2S = [{ type: 'db', hands: 'both', orient: 'side' }];
-  const ON_BELLY = [15, -77];
+  // A point u up the trunk from the hip and v in front of it, the trunk leaning t degrees forward
+  // (as a pose's t), so a hand resting on the body moves with it.
+  const onTrunk = (hip, t, u, v) => {
+    const r = (t * Math.PI) / 180;
+    return [+(hip[0] + u * Math.sin(r) + v * Math.cos(r)).toFixed(1), +(hip[1] - u * Math.cos(r) + v * Math.sin(r)).toFixed(1)];
+  };
+  // Arms crossed in front of the lower chest: the upper arms hang a little forward and the forearms
+  // run across the body, so from the side they're seen end-on (drawn short). The 3D figure's hint
+  // puts each hand on the other side; the far hand sits a little higher and further out, so the
+  // forearms lie one over the other.
+  const crossed = (hip, t, u = 27) => ({ sc: { faN: 0.2, faF: 0.2 }, ik: { hdN: onTrunk(hip, t, u, 18), hdF: onTrunk(hip, t, u + 3, 19) } });
 
   // Legs.
   F.seatMarch = {
@@ -148,19 +164,27 @@
     },
     rep: cyc(['l', 'a', 'r', 'a'], 520, 60), muscles: ['hipFlexors', 'quads', 'abs'], prime: 2,
   };
+  // The foot starts flat beside the other one. The thigh lifts it off the floor first (a knee
+  // straightening from a shin straight up and down would push the foot along the floor), then the
+  // knee straightens; on the way down the foot comes back over its spot and sets down.
   F.seatKneeExt = {
     view: 'side', pin: SIT, key: 'b', props: [CHAIR],
     poses: {
-      a: sitWork({ lN: { h: 81, k: 84, flat: false, a: 0 }, ik: { hdN: ON_THIGH } }),
+      a: sitWork({ lN: { h: 82.5, k: 85.5, flat: false, a: 0 }, ik: { hdN: ON_THIGH } }),
+      u: sitWork({ lN: { h: 88, k: 88, flat: false, a: 2 }, ik: { hdN: ON_THIGH } }),
       b: sitWork({ lN: { h: 88, k: 4, flat: false, a: 8 }, ik: { hdN: ON_THIGH } }),
     },
-    rep: ce('a', 'b', { holdB: 600 }), muscles: ['quads'], uni: true, leadLimbs: ['lN'],
+    rep: [{ to: 'u', ms: 280, hold: 0, ph: 'con', through: true }, { to: 'b', ms: 720, hold: 600, ph: 'con' },
+      { to: 'u', ms: 1500, hold: 0, ph: 'ecc', through: true }, { to: 'a', ms: 500, hold: 300, ph: 'ecc' }],
+    muscles: ['quads'], uni: true, leadLimbs: ['lN'],
   };
+  // The straight leg rests on its heel (the ankle a shoe's height off the floor) and lifts a few
+  // inches.
   F.seatLegLift = {
     view: 'side', pin: SIT, key: 'b', props: [CHAIR],
     poses: {
-      a: sitWork({ aN: { s: 8, e: 20 }, lN: { h: 52, k: 3, flat: false, a: 12 } }),
-      b: sitWork({ aN: { s: 8, e: 20 }, lN: { h: 80, k: 3, flat: false, a: 12 } }),
+      a: sitWork({ aN: { s: 8, e: 20 }, lN: { h: 57, k: 3, flat: false, a: 12 } }),
+      b: sitWork({ aN: { s: 8, e: 20 }, lN: { h: 66, k: 3, flat: false, a: 12 } }),
     },
     rep: ce('a', 'b', { holdB: 500 }), muscles: ['quads', 'hipFlexors'], uni: true, leadLimbs: ['lN'],
   };
@@ -180,9 +204,13 @@
     },
     rep: ce('a', 'b', { holdB: 400 }), muscles: ['quads', 'glutes'], uni: true, leadLimbs: ['lN'],
   };
+  // Arms crossed on the chest, tipping forward with the trunk.
   F.seatHinge = {
     view: 'side', pin: SIT, key: 'b', props: [CHAIR],
-    poses: { a: sit({ t: -2, ik: { anN: FOOT, hdN: [22, -61] } }), b: sit({ t: 40, n: -10, ik: { anN: FOOT, hdN: [38, -58] } }) },
+    poses: {
+      a: sit(merge({ t: -2 }, crossed(SIT.at, -2))),
+      b: sit(merge({ t: 40, n: -10 }, crossed(SIT.at, 40))),
+    },
     rep: ce('a', 'b', { holdB: 500, con: 1400, ecc: 1400 }), muscles: ['lowerBack', 'glutes', 'hamstrings'],
   };
 
@@ -199,9 +227,11 @@
     poses: { a: sit({ aN: { s: 172, e: 6 } }), b: sit({ aN: { s: 166, e: 128 } }) },
     rep: [{ to: 'b', ms: 2000, hold: 250, ph: 'ecc' }, { to: 'a', ms: 1000, hold: 300, ph: 'con' }], muscles: ['triceps'],
   };
+  // From the shoulders (the upper arms out to the sides, so drawn shorter) to straight overhead, as
+  // in the standing press (moves.js ohPress); the 3D figure's hint puts the hands out over the elbows.
   F.seatPress = {
     view: 'side', pin: SIT, key: 'b', props: [CHAIR], equip: DB2,
-    poses: { a: sit({ aN: { s: 26, e: 146 } }), b: sit({ aN: { s: 168, e: 8 } }) },
+    poses: { a: sit({ sc: { uaN: 0.69, uaF: 0.69 }, ik: { hdN: [3, -114] } }), b: sit({ ik: { hdN: [-1.7, -161] } }) },
     rep: ce('a', 'b'), muscles: ['frontDelts', 'sideDelts', 'triceps'],
   };
   // Leaning forward from the hips, upper arm along the body, the forearm straightens back.
@@ -263,8 +293,9 @@
   F.seatHamStretch = {
     view: 'side', pin: SIT, key: 'b', props: [CHAIR],
     poses: {
-      a: sitWork({ t: -2, aN: { s: 34, e: 40 }, lN: { h: 52, k: 3, flat: false, a: 16 } }),
-      b: sitWork({ t: 30, n: -8, aN: { s: 46, e: 30 }, lN: { h: 84, k: 3, flat: false, a: 16 } }),
+      // The straight leg's heel stays where it rests as the body tips forward over it.
+      a: sitWork({ t: -2, aN: { s: 34, e: 40 }, lN: { h: 57, k: 3, flat: false, a: 16 } }),
+      b: sitWork({ t: 30, n: -8, aN: { s: 46, e: 30 }, lN: { h: 89, k: 3, flat: false, a: 16 } }),
     },
     rep: iso('a', 'b', 2600), muscles: ['hamstrings'], uni: true, leadLimbs: ['lN'],
   };
@@ -275,15 +306,21 @@
   };
 
   // Core.
+  // Arms crossed over the belly.
   F.seatBrace = {
     view: 'side', pin: SIT, key: 'a', props: [CHAIR],
-    poses: { a: sit({ t: -2, ik: { anN: FOOT, hdN: ON_BELLY } }), a2: sit({ t: -3, ik: { anN: FOOT, hdN: ON_BELLY } }) },
+    poses: { a: sit(merge({ t: -2 }, crossed(SIT.at, -2))), a2: sit(merge({ t: -3 }, crossed(SIT.at, -3))) },
     rep: iso('a', 'a2', 2400), muscles: ['abs', 'obliques'],
   };
-  // Sitting forward on the seat, away from the backrest, feet a little further out.
+  // Sitting forward on the seat, away from the backrest, feet a little further out, arms crossed on
+  // the chest.
+  const LEAN_HIP = [8, -54];
   F.seatLean = {
-    view: 'side', pin: { joint: 'hip', at: [8, -54] }, key: 'b', props: [merge(CHAIR, { x: -40 })],
-    poses: { a: sit({ t: -2, ik: { anN: [52, -8], hdN: [34, -61] } }), b: sit({ t: -24, n: 12, ik: { anN: [52, -8], hdN: [30, -62] } }) },
+    view: 'side', pin: { joint: 'hip', at: LEAN_HIP }, key: 'b', props: [merge(CHAIR, { x: -40 })],
+    poses: {
+      a: sit(merge({ t: -2, ik: { anN: [52, -8] } }, crossed(LEAN_HIP, -2))),
+      b: sit(merge({ t: -24, n: 12, ik: { anN: [52, -8] } }, crossed(LEAN_HIP, -24))),
+    },
     rep: ce('a', 'b', { holdB: 2500, con: 1600, ecc: 1600 }), muscles: ['abs', 'hipFlexors'],
   };
 
@@ -319,13 +356,21 @@
     poses: { a: sitF({ aN: { s: 84, e: 0 } }), b: sitF({ aN: { s: 94, e: 0 } }) },
     rep: cyc(['b', 'a'], 350, 0), muscles: ['sideDelts'],
   };
-  // Arms crossed, hands on the opposite shoulders, turning from the ribs.
+  // Arms crossed, hands on the opposite shoulders, turning from the ribs. Each hand rests on the
+  // front of the other shoulder (12 out from the middle, 13 in front of the chest's centre, at
+  // y -99), turned with the chest: in depth, so the elbows come forward instead of folding flat
+  // in the picture (which buries them in the chest).
+  const onShoulders = (tw) => {
+    const c = Math.cos((tw * Math.PI) / 180), s = Math.sin((tw * Math.PI) / 180);
+    const at = (w) => [+(w * c + 13 * s).toFixed(1), -99, +(-w * s + 13 * c).toFixed(1)];
+    return { ik: { hdN: at(-12), hdF: at(12) }, pole: { hdN: [0.25, 1, 1.2], hdF: [0.25, 1, 1.2] } };
+  };
   F.seatTwist = {
     view: 'front', pin: SIT_F, key: 'l', armLayer: 'front', legLayer: 'front', props: [CHAIR_F], bend: FRONT_HANDS,
     poses: {
-      m: sitF({ tw: 0, ik: { hdN: 'shF', hdF: 'shN' } }),
-      l: sitF({ tw: 30, ik: { hdN: 'shF', hdF: 'shN' } }),
-      r: sitF({ tw: -30, ik: { hdN: 'shF', hdF: 'shN' } }),
+      m: sitF(merge({ tw: 0 }, onShoulders(0))),
+      l: sitF(merge({ tw: 30 }, onShoulders(30))),
+      r: sitF(merge({ tw: -30 }, onShoulders(-30))),
     },
     rep: [{ to: 'l', ms: 1400, hold: 600, ph: 'iso' }, { to: 'm', ms: 1000, hold: 0, ph: 'move' }, { to: 'r', ms: 1400, hold: 600, ph: 'iso' }, { to: 'm', ms: 1000, hold: 0, ph: 'move' }],
     muscles: ['obliques', 'upperBack'],
@@ -339,43 +384,56 @@
     },
     rep: iso('a', 'a2', 2400), muscles: ['chest', 'frontDelts'],
   };
-  // One elbow bent to a right angle, forearm pointing forward (drawn short, it points at you),
-  // the other hand on that wrist: pressing against your own hand. Seated, the shoulders are at
-  // y -104 and a hanging elbow at about -75.
-  const SELF_SC = { thN: 0.15, thF: 0.15, faN: 0.25, faF: 0.7 };
+  // One elbow bent to a right angle at the side, the forearm pointing forward (at you), the other
+  // hand on that wrist: pressing against your own hand. Seated, the shoulders are at y -104 and a
+  // hanging elbow at about -75. The hands reach targets in depth (the fist 34 in front of the
+  // elbow), so the arm across the body passes in front of it, not through it.
+  const SELF_ELBOW = [19.5, -75.5];
+  const selfPose = (dy, other) => ({
+    ik: { hdN: [SELF_ELBOW[0], SELF_ELBOW[1] + dy, 34], hdF: [other[0], other[1] + dy, other[2]] },
+    pole: { hdN: [0.1, 1, -0.1], hdF: [0.4, 1, 0.6] },
+  });
   F.seatSelfCurl = {
     view: 'front', pin: SIT_F, key: 'a', armLayer: 'front', legLayer: 'front', props: [CHAIR_F], bend: FRONT_HANDS,
     poses: {
-      a: sitF({ sc: SELF_SC, ik: { hdN: [19, -72], hdF: [17, -77] } }),
-      a2: sitF({ sc: SELF_SC, ik: { hdN: [19, -73.5], hdF: [17, -78.5] } }),
+      // The other hand on top of the wrist, pressing down as the forearm pushes up.
+      a: sitF(selfPose(0, [17.5, -80.5, 25])),
+      a2: sitF(selfPose(-1.5, [17.5, -80.5, 25])),
     },
     rep: iso('a', 'a2', 1800), muscles: ['biceps', 'forearms'], uni: true, leadLimbs: ['aN'],
   };
   F.seatSelfPress = merge(F.seatSelfCurl, {
     muscles: ['triceps'],
-    poses: { a: { sc: { faF: 0.85 }, ik: { hdN: [19, -74], hdF: [16, -69.5] } }, a2: { sc: { faF: 0.85 }, ik: { hdN: [19, -72.5], hdF: [16, -68] } } },
+    // The other hand under the wrist, pushing up as the forearm presses down.
+    poses: { a: sitF(selfPose(0, [17.5, -71, 24.5])), a2: sitF(selfPose(1.5, [17.5, -71, 24.5])) },
   });
-  // Upper arms forward at chest height, forearms up and pressed together in front of you.
+  // Upper arms forward at chest height, elbows together, forearms straight up and pressed together
+  // in front of the face. The fists reach targets in depth (26 in front, 34 above the elbows), so
+  // the elbows come in front of the chest and the forearms stand side by side.
+  const squeeze = (x, y) => ({ ik: { hdN: [x, y, 25.5], hdF: [-x, y, 25.5] }, pole: { hdN: [-0.35, 1, 0.2], hdF: [-0.35, 1, 0.2] } });
   F.seatSqueeze = {
     view: 'front', pin: SIT_F, key: 'a', armLayer: 'front', legLayer: 'front', props: [CHAIR_F], bend: FRONT_HANDS,
     poses: {
-      a: sitF({ sc: { uaN: 0.4, uaF: 0.4 }, ik: { hdN: [4, -118], hdF: [-4, -118] } }),
-      a2: sitF({ sc: { uaN: 0.4, uaF: 0.4 }, ik: { hdN: [3, -119], hdF: [-3, -119] } }),
+      a: sitF(squeeze(4.5, -130)),
+      a2: sitF(squeeze(3.75, -130.5)),
     },
     rep: iso('a', 'a2', 2000), muscles: ['chest', 'frontDelts'],
   };
   F.seatPallof = {
     view: 'front', pin: SIT_F, key: 'b', armLayer: 'front', legLayer: 'front', bend: FRONT_HANDS,
     props: [CHAIR_F, { type: 'door', x: -92 }], equip: [{ type: 'band', hands: 'both', from: [-86, -96] }],
+    // The hands, together on the band, reach targets in depth: at the breastbone, then pressed
+    // straight out in front of it (so the 3D figure presses toward you, not just the flat one).
     poses: {
-      a: sitF({ sc: { uaN: 0.85, uaF: 0.85, faN: 0.5, faF: 0.5 }, ik: { hdN: [3, -92], hdF: [-3, -92] } }),
-      b: sitF({ sc: { uaN: 0.46, uaF: 0.46, faN: 0.46, faF: 0.46 }, ik: { hdN: [3, -96], hdF: [-3, -96] } }),
+      a: sitF({ ik: { hdN: [3, -94, 16], hdF: [-3, -94, 16] }, pole: { hdN: [0.2, 1, 0.1], hdF: [0.2, 1, 0.1] } }),
+      b: sitF({ ik: { hdN: [3, -96, 50], hdF: [-3, -96, 50] }, pole: { hdN: [0.2, 1, 0.1], hdF: [0.2, 1, 0.1] } }),
     },
     rep: ce('a', 'b', { holdB: 1500 }), muscles: ['obliques', 'abs'], uni: true, leadLimbs: [],
   };
-  // Side view: a band round the chair back, pressed forward from the chest.
+  // Side view: a band round the chair back, pressed forward from the chest. Its ends come from the
+  // backrest's two sides (19 out) and forward under the arms.
   F.seatBandPress = {
-    view: 'side', pin: SIT, key: 'b', props: [CHAIR], equip: [{ type: 'band', hands: 'both', from: [-22, -84] }],
+    view: 'side', pin: SIT, key: 'b', props: [CHAIR], equip: [{ type: 'band', hands: 'both', from: [-22, -84, 19], route: 'arms' }],
     poses: { a: sit({ aN: { s: -8, e: 116 } }), b: sit({ aN: { s: 84, e: 4 } }) },
     rep: ce('a', 'b', { holdB: 300 }), muscles: ['chest', 'triceps', 'frontDelts'],
   };
@@ -398,15 +456,19 @@
     rep: [{ to: 'b', ms: 700, hold: 0, ph: 'move' }, { to: 'c', ms: 1100, hold: 300, ph: 'con' }, { to: 'b', ms: 1600, hold: 0, ph: 'ecc' }, { to: 'a', ms: 600, hold: 300, ph: 'move' }],
     muscles: ['quads', 'glutes'],
   };
-  // Pushing up with the hands on the seat, then letting go.
+  // Pushing up with the hands on the seat, then letting go. On the way down the hands reach back
+  // for the seat early (r: the hips still above it, the hands just over it, arms nearly straight),
+  // so they settle onto it while the hips lower instead of in the last instant.
   F.sitStandHands = {
     view: 'side', pin: { joint: 'hip' }, key: 'c', props: [STS_CHAIR],
     poses: {
       a: sts([-24, -54], 4, { ik: { anN: STS_FEET, hdN: [-14, -47] } }),
       b: sts([-20, -54], 34, { n: -12, ik: { anN: STS_FEET, hdN: [-10, -47] } }),
+      r: sts([-12, -63], 32, { n: -12, ik: { anN: STS_FEET, hdN: [-9.5, -54] } }),
       c: sts([8, -91], 2, { ik: { anN: STS_FEET, hdN: [12, -88] } }),
     },
-    rep: [{ to: 'b', ms: 700, hold: 0, ph: 'move' }, { to: 'c', ms: 1200, hold: 300, ph: 'con' }, { to: 'b', ms: 1600, hold: 0, ph: 'ecc' }, { to: 'a', ms: 600, hold: 300, ph: 'move' }],
+    rep: [{ to: 'b', ms: 700, hold: 0, ph: 'move' }, { to: 'c', ms: 1200, hold: 300, ph: 'con' },
+      { to: 'r', ms: 900, hold: 0, ph: 'ecc', through: true }, { to: 'b', ms: 700, hold: 0, ph: 'ecc' }, { to: 'a', ms: 600, hold: 300, ph: 'move' }],
     muscles: ['quads', 'glutes', 'triceps'], prime: 2,
   };
   F.sitStandWeight = merge(F.sitStand, {
@@ -422,21 +484,32 @@
     rep: ce('a', 'b', { con: 900, holdB: 700, ecc: 1500 }), muscles: ['calves'],
   };
   const CHAIR_AHEAD = { type: 'chair', x: 22, w: 42, h: 45, back: -1 };
+  // A leg lifting from a straight stance first bends at the knee a little (u) so the foot comes
+  // straight up off the floor (a straight leg swinging away would drag the foot along it before
+  // it rises), then swings out straight; on the way back it sets down the same way.
+  // The standing foot stays flat (a leg without its own `flat` takes the working leg's).
   F.hipExtChair = {
     view: 'side', pin: { joint: 'anF', at: [0, -8] }, key: 'b', props: [CHAIR_AHEAD],
     poses: {
-      a: { t: 14, lN: { h: 14, k: 2 }, lF: { h: 14, k: 2 }, ik: { hdN: [26, -90] } },
-      b: { t: 12, n: -4, lN: { h: -10, k: 8, flat: false, a: 20 }, lF: { h: 12, k: 2 }, ik: { hdN: [26, -90] } },
+      a: { t: 14, lN: { h: 14, k: 2 }, lF: { h: 14, k: 2, flat: true }, ik: { hdN: [26, -90] } },
+      u: { t: 13.5, n: -1, lN: { h: 23, k: 22, flat: false, a: -12 }, lF: { h: 13.5, k: 2, flat: true }, ik: { hdN: [26, -90] } },
+      // The working foot flexed, off the floor behind.
+      b: { t: 12, n: -4, lN: { h: -16, k: 4, flat: false, a: -4 }, lF: { h: 12, k: 2, flat: true }, ik: { hdN: [26, -90] } },
     },
-    rep: ce('a', 'b', { holdB: 600 }), muscles: ['glutes', 'hamstrings'], uni: true, leadLimbs: ['lN'],
+    rep: [{ to: 'u', ms: 300, hold: 0, ph: 'con', through: true }, { to: 'b', ms: 700, hold: 600, ph: 'con' },
+      { to: 'u', ms: 1500, hold: 0, ph: 'ecc', through: true }, { to: 'a', ms: 500, hold: 300, ph: 'ecc' }],
+    muscles: ['glutes', 'hamstrings'], uni: true, leadLimbs: ['lN'],
   };
   F.hipAbdWall = {
     view: 'front', pin: { joint: 'anF', at: [-9, -8] }, key: 'b', armLayer: 'front', props: [{ type: 'wall', x: -58, side: -1 }],
     poses: {
       a: { t: 0, aN: { s: 10, e: 10 }, lN: { h: 4, k: 0 }, lF: { h: 4, k: 0 }, ik: { hdF: [-54, -122] } },
+      u: { t: 0.5, aN: { s: 10.5, e: 10 }, lN: { h: 15, k: 22 }, lF: { h: 4, k: 0 }, ik: { hdF: [-54, -122] } },
       b: { t: 2, aN: { s: 12, e: 10 }, lN: { h: 30, k: 2 }, lF: { h: 4, k: 0 }, ik: { hdF: [-54, -122] } },
     },
-    rep: ce('a', 'b', { holdB: 500 }), muscles: ['glutes'], uni: true, leadLimbs: ['lN'],
+    rep: [{ to: 'u', ms: 300, hold: 0, ph: 'con', through: true }, { to: 'b', ms: 700, hold: 500, ph: 'con' },
+      { to: 'u', ms: 1500, hold: 0, ph: 'ecc', through: true }, { to: 'a', ms: 500, hold: 300, ph: 'ecc' }],
+    muscles: ['glutes'], uni: true, leadLimbs: ['lN'],
   };
   // Forearms on the wall, body straight: a plank at a slant.
   F.wallPlank = {
@@ -494,17 +567,34 @@
     },
     rep: iso('a', 'a2', 2400), muscles: ['glutes', 'calves'], uni: true, leadLimbs: ['lN'],
   };
-  // Walking a line in place: each heel lands just in front of the other foot's toes.
-  const HT_ARMS = { sc: { uaN: 0.75, uaF: 0.75 } };
+  // Heel-to-toe along a line: two steps forward, then two back the same way, so the loop ends where
+  // it started and no planted foot ever slides. Both feet are placed by IK: the planted one stays
+  // put while the hips travel over it, the other lifts, passes beside it and lands with its heel
+  // just in front of the planted toes (ankles 20 apart: 16 to the toes, 4 behind the ankle to the
+  // heel). The third number places the foot across (3D: + toward the near side): the feet in one
+  // line, the swinging one a little out to pass the other. The hips ride highest over the
+  // standing foot, as in walking.
+  const HT_ARMS = { t: 1, aN: { s: 24, e: 16 }, sc: { uaN: 0.75, uaF: 0.75 } };
+  const ht = (hipX, hipY, n, f, o) => merge(merge(HT_ARMS, { at: [hipX, hipY], lN: { flat: true }, lF: { flat: true }, ik: { anN: n, anF: f } }), o || {});
+  const SWING = { flat: false, a: 4 };
   F.heelToe = {
-    view: 'side', pin: { joint: 'hip', at: [0, -92] }, key: 'a',
+    view: 'side', pin: { joint: 'hip', at: [0, -91.5] }, key: 'a',
     poses: {
-      a: merge(HT_ARMS, { t: 1, aN: { s: 24, e: 16 }, lN: { h: 8, k: 1, flat: false, a: -10 }, lF: { h: -7, k: 5, flat: false, a: 22 } }),
-      b: merge(HT_ARMS, { t: 1, aN: { s: 24, e: 16 }, lN: { h: 1, k: 3 }, lF: { h: 12, k: 42, flat: false, a: 12 } }),
-      c: merge(HT_ARMS, { t: 1, aN: { s: 24, e: 16 }, lN: { h: -7, k: 5, flat: false, a: 22 }, lF: { h: 8, k: 1, flat: false, a: -10 } }),
-      d: merge(HT_ARMS, { t: 1, aN: { s: 24, e: 16 }, lN: { h: 12, k: 42, flat: false, a: 12 }, lF: { h: 1, k: 3 } }),
+      a: ht(0, -91.5, [10, -8, 3], [-10, -8, -3]),
+      f1: ht(9, -92.5, [10, -8, 3], [9, -15, -8.5], { lF: SWING }),
+      b: ht(20, -91.5, [10, -8, 3], [30, -8, -3]),
+      n1: ht(29, -92.5, [29, -15, 8.5], [30, -8, -3], { lN: SWING }),
+      c: ht(40, -91.5, [50, -8, 3], [30, -8, -3]),
+      n2: ht(31, -92.5, [31, -15, 8.5], [30, -8, -3], { lN: SWING }),
+      f2: ht(11, -92.5, [10, -8, 3], [11, -15, -8.5], { lF: SWING }),
     },
-    rep: cyc(['b', 'c', 'd', 'a'], 650, 150), muscles: ['calves', 'glutes'],
+    rep: [
+      { to: 'f1', ms: 320, hold: 0, ph: 'move', through: true }, { to: 'b', ms: 320, hold: 160, ph: 'move' },
+      { to: 'n1', ms: 320, hold: 0, ph: 'move', through: true }, { to: 'c', ms: 320, hold: 160, ph: 'move' },
+      { to: 'n2', ms: 320, hold: 0, ph: 'move', through: true }, { to: 'b', ms: 320, hold: 160, ph: 'move' },
+      { to: 'f2', ms: 320, hold: 0, ph: 'move', through: true }, { to: 'a', ms: 320, hold: 160, ph: 'move' },
+    ],
+    muscles: ['calves', 'glutes'],
   };
   // Standing on one leg, one arm reaches forward, then up, then back behind you.
   F.clockReach = {
@@ -517,26 +607,55 @@
     rep: [{ to: 'u', ms: 1200, hold: 500, ph: 'move' }, { to: 'o', ms: 1200, hold: 500, ph: 'move' }, { to: 'f', ms: 1200, hold: 500, ph: 'move' }],
     muscles: ['glutes', 'calves', 'abs'], uni: true, leadLimbs: ['lN', 'aN'],
   };
-  // A high step forward over a line and back.
+  // A high step forward over a line and back. The stepping foot is placed by IK along an arc: up off
+  // the floor (u), knee high over the line (b), down over where it lands (d), onto the floor ahead
+  // (c), and back the same way. The standing foot stays flat.
+  const STEP_STAND = (h, k) => ({ h, k, flat: true });
   F.stepOver = {
     view: 'side', pin: { joint: 'anF', at: [0, -8] }, key: 'b',
     poses: {
-      a: { t: 1, aN: { s: 10, e: 20 }, lN: { h: 0, k: 2 }, lF: { h: 0, k: 2 } },
-      b: { t: 3, aN: { s: -10, e: 40 }, aF: { s: 24, e: 40 }, lN: { h: 72, k: 90, flat: false, a: 10 }, lF: { h: 0, k: 4 } },
-      c: { t: 4, aN: { s: -14, e: 30 }, aF: { s: 22, e: 30 }, lN: { h: 30, k: 10, flat: false, a: 0 }, lF: { h: -4, k: 8 } },
+      a: { t: 1, aN: { s: 10, e: 20 }, lN: { flat: true }, lF: STEP_STAND(0, 2), ik: { anN: [0, -8] } },
+      u: { t: 2, aN: { s: 3, e: 27 }, aF: { s: 15, e: 27 }, lN: { flat: false, a: 12 }, lF: STEP_STAND(0, 2.5), ik: { anN: [3, -16] } },
+      b: { t: 3, aN: { s: -10, e: 40 }, aF: { s: 24, e: 40 }, lN: { flat: false, a: 10 }, lF: STEP_STAND(0, 4), ik: { anN: [31, -38] } },
+      // Landing, the hips move forward between the feet.
+      d: { t: 3.5, aN: { s: -12, e: 35 }, aF: { s: 23, e: 35 }, lN: { flat: false, a: -6 }, lF: STEP_STAND(-5, 8), ik: { anN: [45, -16] } },
+      c: { t: 4, aN: { s: -14, e: 30 }, aF: { s: 22, e: 30 }, lN: { flat: true }, lF: STEP_STAND(-8, 10), ik: { anN: [47, -8] } },
     },
-    rep: [{ to: 'b', ms: 700, hold: 0, ph: 'move' }, { to: 'c', ms: 700, hold: 250, ph: 'move' }, { to: 'b', ms: 700, hold: 0, ph: 'move' }, { to: 'a', ms: 700, hold: 250, ph: 'move' }],
+    rep: [
+      { to: 'u', ms: 220, hold: 0, ph: 'move', through: true }, { to: 'b', ms: 450, hold: 0, ph: 'move', through: true },
+      { to: 'd', ms: 450, hold: 0, ph: 'move', through: true }, { to: 'c', ms: 280, hold: 250, ph: 'move' },
+      { to: 'd', ms: 280, hold: 0, ph: 'move', through: true }, { to: 'b', ms: 450, hold: 0, ph: 'move', through: true },
+      { to: 'u', ms: 450, hold: 0, ph: 'move', through: true }, { to: 'a', ms: 220, hold: 250, ph: 'move' },
+    ],
     muscles: ['hipFlexors', 'glutes', 'calves'], uni: true, leadLimbs: ['lN'],
   };
 
   /* ------------------------------------------------------------------ gentle cardio, standing */
-  F.marchEasy = merge(F.highKnees, {
+  // Marching in place: one knee comes up while the other foot stays flat, and the foot comes back
+  // down beside it (m) before the other knee lifts. A foot peels off heel first and lands toes
+  // first (pa, pb: the heel up, the toes still down), so it never slides along the floor. Each arm
+  // swings forward with the other leg.
+  const MARCH_UP = { h: 52, k: 62, flat: false, a: 16 };
+  const MARCH_PEEL = { h: 17, k: 37, flat: false, a: -4 };
+  const MARCH_STAND = { h: 0, k: 3, flat: true };
+  const marchArms = (n, f) => ({ t: 0, aN: { s: n, e: 70 }, aF: { s: f, e: 70 } });
+  F.marchEasy = {
+    view: 'side', pin: { joint: 'hip', at: [0, -93] }, key: 'b',
     poses: {
-      a: { aN: { s: 22, e: 70 }, aF: { s: -18, e: 70 }, lN: { h: 52, k: 62, flat: false, a: 16 }, lF: { h: 0, k: 3 } },
-      b: { aN: { s: -18, e: 70 }, aF: { s: 22, e: 70 }, lN: { h: 0, k: 3 }, lF: { h: 52, k: 62, flat: false, a: 16 } },
+      m: merge(marchArms(2, 2), { lN: MARCH_STAND, lF: MARCH_STAND }),
+      pa: merge(marchArms(-8, 12), { lN: MARCH_PEEL, lF: MARCH_STAND }),
+      a: merge(marchArms(-18, 22), { lN: MARCH_UP, lF: MARCH_STAND }),
+      pb: merge(marchArms(12, -8), { lN: MARCH_STAND, lF: MARCH_PEEL }),
+      b: merge(marchArms(22, -18), { lN: MARCH_STAND, lF: MARCH_UP }),
     },
-    rep: cyc(['b', 'a'], 560, 90),
-  });
+    rep: [
+      { to: 'pa', ms: 120, hold: 0, ph: 'move', through: true }, { to: 'a', ms: 180, hold: 50, ph: 'move' },
+      { to: 'pa', ms: 180, hold: 0, ph: 'move', through: true }, { to: 'm', ms: 120, hold: 0, ph: 'move' },
+      { to: 'pb', ms: 120, hold: 0, ph: 'move', through: true }, { to: 'b', ms: 180, hold: 50, ph: 'move' },
+      { to: 'pb', ms: 180, hold: 0, ph: 'move', through: true }, { to: 'm', ms: 120, hold: 0, ph: 'move' },
+    ],
+    muscles: ['hipFlexors', 'quads'],
+  };
   // Side taps: step out, tap, step back, then the other side (front view).
   const TAP = (at, n, f, arms) => merge({ at, aN: { s: arms, e: 30 }, lN: { flat: true }, lF: { flat: true }, ik: { anN: n, anF: f } }, {});
   F.stepTouch = {
@@ -553,8 +672,8 @@
   };
 
   /* ------------------------------------------------------------------ getting down and up */
-  // One hand on a chair seat, step back and lower the back knee to the floor, then stand.
-  // A hand on the top of a sturdy chair's backrest the whole way down and up.
+  // Step back and lower the back knee to the floor, then stand, a hand on the top of a sturdy
+  // chair's backrest the whole way down and up.
   const KNEEL_CHAIR = { type: 'chair', x: 54, w: 42, h: 45, back: -1 };
   const ON_BACKREST = [57, -86];
   F.halfKneel = {
@@ -646,7 +765,7 @@
   move('cu_seat_slow', 'seatCurl', { ...CU, name: 'Seated curl, 3-sec lowering', req: ['chair', 'db'], load: 'db', grip: 'hold', range: [6, 20], start: 10, cues: [SLOW, CU_CUES[0], CU_CUES[2]] }, { ecc: 3000 });
   const TR = { ...SEAT, group: 'triceps', joints: ['elbow', 'shoulder'], mistake: 'Letting your elbows flare wide.', breathe: 'Breathe out as you straighten your arms.' };
   move('tr_seat_oh', 'seatOhExt', { ...TR, name: 'Seated overhead extension', req: ['chair', 'db'], load: 'db', grip: 'hold', overhead: true, range: [10, 25], start: 12,
-    cues: ['One dumbbell in both hands, overhead.', 'Lower it behind your head, elbows pointing up.', 'Straighten your arms, ribs down.'] });
+    cues: ['A dumbbell in each hand, arms overhead.', 'Lower them behind your head, elbows pointing up.', 'Straighten your arms, ribs down.'] });
   move('tr_seat_oh_slow', 'seatOhExt', { ...TR, name: 'Seated overhead extension, 3-sec lowering', req: ['chair', 'db'], load: 'db', grip: 'hold', overhead: true, range: [8, 20], start: 10,
     cues: [SLOW, 'Elbows point up, close to your head.', 'Ribs down, no arching.'] }, { ecc: 3000 });
   move('tr_seat_kick', 'seatKickback', { ...TR, name: 'Seated kickback', req: ['chair', 'db'], load: 'db', grip: 'hold', range: [10, 25], start: 12, joints: ['elbow'],
@@ -777,9 +896,9 @@
   /* ------------------------------------------------------------------ getting down and up */
   const GET = { group: 'balance', load: null, req: ['chair'], pos: 'kneel', support: true, joints: ['knee', 'hip'], mistake: 'Rushing the way down.', breathe: 'Breathe out as you rise.' };
   move('get_halfkneel', 'halfKneel', { ...GET, name: 'Half-kneel with a chair', range: [3, 8], start: 3, uni: true,
-    cues: ['A sturdy chair beside you, one hand on the seat.', 'Step back and lower one knee to a cushion.', 'Push through your front foot to stand.'] });
+    cues: ['A sturdy chair in front of you, one hand on top of its backrest.', 'Step back and lower one knee to a cushion.', 'Push through your front foot to stand.'] });
   move('get_kneel', 'tallKneel', { ...GET, name: 'Down to both knees and up', range: [2, 6], start: 2,
-    cues: ['A hand on a sturdy chair seat, a cushion under your knees.', 'Lower one knee, then the other.', 'Come back up one leg at a time.'] });
+    cues: ['A hand on top of a sturdy chair\'s backrest, a cushion under your knees.', 'Lower one knee, then the other.', 'Come back up one leg at a time.'] });
 
   /* ------------------------------------------------------------------ gentle cardio and warm-ups, standing */
   const GCS = { ...GC, pos: 'stand', req: [] };
