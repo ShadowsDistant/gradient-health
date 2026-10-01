@@ -220,10 +220,16 @@
   }
   // The left vs right tests are all-out sets: not with a heart condition or high blood pressure,
   // and the leg test (split squats) not seated, with balance problems, sore knees or from 65.
-  function testsOk(S, kind) {
+  // Neither runs while a joint it loads is on a break (S.pain, on `day`) or marked careful: the leg
+  // test loads knees, hips and ankles, the arm test elbows, wrists and shoulders.
+  const TEST_JOINTS = { leg: ['knee', 'hip', 'ankle'], arm: ['elbow', 'wrist', 'shoulder'] };
+  function testsOk(S, kind, day) {
     const p = S.profile;
     const r = rulesOf(p);
     if (r.c.has('heart') || r.c.has('bp') || r.seated) return false;
+    const joints = TEST_JOINTS[kind] || [];
+    if ((p.careful || []).some((j) => joints.includes(j))) return false;
+    if (day != null && Object.entries(S.pain || {}).some(([j, until]) => until >= day && joints.includes(j))) return false;
     if (kind === 'arm') return !r.c.has('hands') && !r.c.has('ra');
     return !r.c.has('balance') && !r.oa.has('knee') && !r.oa.has('hip') && r.band !== 'senior';
   }
@@ -272,16 +278,19 @@
   function mobilityIds(S, picks, day) {
     const p = S.profile;
     const r = rulesOf(p);
+    // Light days are at home: what the home kit allows, nothing for a joint on a break.
+    const avoid = sore(S, day);
+    const fits = (id) => M().MOVES[id] && moveOk(p, id, day) && M().allowed(M().MOVES[id], p.equipment || {}) && spares(M().MOVES[id], avoid);
     let ids;
     if (r.seated) ids = FLOW('mobilitySeat');
     else {
-      ids = (picks || M().MOBILITY).filter((id) => moveOk(p, id, day));
+      ids = (picks || M().MOBILITY).filter(fits);
       if (ids.length < 4) ids = FLOW('mobilityStand');
     }
-    ids = ids.filter((id) => moveOk(p, id, day));
+    ids = ids.filter(fits);
     // Balance most days: from 65 and with balance problems, a light day has a balance hold too.
     if (balancePerWeek(p) >= 7 && !r.seated) {
-      const bal = B().rungs(S, 'balance', p.startDay || 0);
+      const bal = B().rungs(S, 'balance', p.startDay || 0).filter((x) => spares(M().MOVES[x], avoid));
       const st = S.prog && S.prog.balance;
       const id = st && bal.includes(st.rung) && M().MOVES[st.rung].timed ? st.rung : bal.find((x) => M().MOVES[x].timed);
       if (id && !ids.includes(id)) ids = ids.concat(id);
@@ -289,10 +298,14 @@
     return ids;
   }
 
+  // Joints on a break today (a sore joint ticked after a workout, or Tailor's "my knee hurts").
+  const sore = (S, day) => Object.entries(S.pain || {}).filter(([, until]) => until >= day).map(([j]) => j);
+  const spares = (m, joints) => !(m.joints || []).some((j) => joints.includes(j));
   function flowItems(S, kind, ids, day, o) {
     const opt = o || {};
     const eq = B().eqFor(S, day);
-    return ids.filter((id) => M().MOVES[id] && M().allowed(M().MOVES[id], eq) && moveOk(S.profile, id, day)).map((id) => {
+    const avoid = sore(S, day);
+    return ids.filter((id) => M().MOVES[id] && M().allowed(M().MOVES[id], eq) && moveOk(S.profile, id, day) && spares(M().MOVES[id], avoid)).map((id) => {
       const m = M().MOVES[id];
       const target = opt.short ? Math.min(m.start, 20) : opt.long && m.timed ? m.range[1] : m.start;
       return { kind, moveId: id, name: m.name, timed: !!m.timed, target, uni: !!m.uni, load: B().loadInfo(S, m, day) };
@@ -331,7 +344,8 @@
       if (it) first.push(it);
     }
     for (const it of first) { it.skill = true; it.rest = 45; }
-    s.items = first.concat(s.items);
+    // (A sore joint can swap the floor practice into the balance ladder: one of a move is enough.)
+    s.items = first.filter((it, i) => !first.slice(0, i).some((x) => x.moveId === it.moveId) && !s.items.some((x) => x.moveId === it.moveId)).concat(s.items);
     // Power: on the first leg day of the week, the squat is fast on the way up.
     if (!c.custom && powerOn(p) && c.tplIdx === c.legIdx) {
       for (const it of s.items) {
@@ -355,7 +369,8 @@
     if (s.finisher && (r.c.has('heart') || r.c.has('bp'))) { s.finisher.work = Math.min(s.finisher.work, 30); s.finisher.rest = Math.max(s.finisher.rest, 30); }
     // Under 30, the finisher changes more often: a different one of the rungs you've reached.
     if (s.finisher && r.band === 'young' && s.finisher.fam === 'finisher') {
-      const list = B().rungs(S, 'finisher', day);
+      const avoid = sore(S, day);
+      const list = B().rungs(S, 'finisher', day).filter((x) => spares(M().MOVES[x], avoid));
       const top = Math.min(list.length, Math.max(1, list.indexOf(s.finisher.moveId) + 2));
       const id = list.slice(0, top)[(day + (c.tplIdx || 0)) % top];
       if (id && id !== s.finisher.moveId) { const m = M().MOVES[id]; Object.assign(s.finisher, { moveId: id, name: m.name, uni: !!m.uni, load: B().loadInfo(S, m, day, 'finisher') }); }

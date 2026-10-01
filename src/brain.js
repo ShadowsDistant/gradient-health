@@ -186,7 +186,18 @@
     for (const d of days) d.units.sort((a, b) => pri(a) - pri(b) || ORDER.indexOf(a) - ORDER.indexOf(b));
     return days.map((d, i) => ({ idx: i, offset: offsets[i], units: d.units }));
   }
+  // The weekdays a week's workouts fall on: the days picked (whole days 0-6, each once), or the usual
+  // spread for the count. Days picked that don't match the count (a backup from another version,
+  // a day listed twice) keep the ones there are and spread the rest (setWorkoutDays).
   function weekdaysFor(p) {
+    const D = clampInt(p.days, 2, 6);
+    const w = Array.isArray(p.weekdays) ? [...new Set(p.weekdays.map(Number).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6))] : [];
+    if (w.length === D) return w.sort((a, b) => a - b);
+    if (w.length) return setWorkoutDays(w, D).weekdays.slice().sort((a, b) => a - b);
+    return PATTERNS[D].slice();
+  }
+  // 1.5's reading, kept so weeks planned before 1.6 replay exactly as they were (see engineFrom).
+  function weekdaysV1(p) {
     const D = clampInt(p.days, 2, 6);
     const w = Array.isArray(p.weekdays) ? p.weekdays.filter((x) => x >= 0 && x <= 6) : null;
     if (w && w.length === D) return w.slice().sort((a, b) => a - b);
@@ -425,7 +436,7 @@
     return { gap, active: c.active, line };
   }
   function testDue(S, day, kind) {
-    if (GH.access && !GH.access.testsOk(S, kind)) return false;
+    if (GH.access && !GH.access.testsOk(S, kind, day)) return false;
     const c = S.catchup[kind];
     if (!c || (!c.active && !c.tests.length && !S.profile.lead[kind])) return false;
     const last = c.tests.length ? c.tests[c.tests.length - 1].day : S.profile.startDay;
@@ -788,7 +799,7 @@
       if (ready.minus) s.sets = Math.max(1, s.sets - 1);
       if (ready.legsMinus && s.group === 'legs') s.sets = Math.max(1, s.sets - 1);
     }
-    const items = slots.map((s) => itemFor(S, s, day)).filter(Boolean);
+    const items = mergeSame(slots.map((s) => itemFor(S, s, day)).filter(Boolean));
     // Back after a break: strength and size come back quickly when training restarts (Ogasawara
     // et al. 2013), but the first session back is a little lighter so it doesn't flatten you.
     const lastDone = workoutLogs(S).filter((l) => isDone(l) && l.day < day).reduce((a, l) => Math.max(a, l.day), -Infinity);
@@ -810,8 +821,10 @@
     if (legDay && S.catchup.leg.active) { const x = extraItem(S, 'squat', 'leg', day); if (x) extras.push(x); }
     // Tests (every 14 days, at the start of the first matching day).
     const tests = [];
-    if (armDay && testDue(S, day, 'arm') && M().rungsFor('curl', p.equipment).some((id) => M().MOVES[id].load)) tests.push(testItem(S, 'arm', day));
-    if (legDay && testDue(S, day, 'leg')) tests.push(testItem(S, 'leg', day));
+    for (const [kind, on] of [['arm', armDay], ['leg', legDay]]) {
+      const t = on && testDue(S, day, kind) ? testItem(S, kind, day) : null;
+      if (t) tests.push(t);
+    }
     // A test is a max-effort set for each side, so it stands in for one set of that ladder.
     for (const t of tests) { const it = items.find((x) => x.fam === t.fam); if (it && it.sets > 1) it.sets--; }
     // Finisher.
@@ -831,10 +844,32 @@
     if (GH.access) GH.access.adjustSession(S, session, day, { tplIdx: t.idx, days: tpl.length, legIdx: (tpl.find((x) => x.units.includes('legs')) || {}).idx });
     if (!o.noTrim) fitToBudget(S, session, o.short ? 13 : set.minutes || p.minutes);
     if (S.complexity > 0) limitExercises(session, S.complexity === 1 ? 5 : 4);
+    if (!session.items.length && !session.flare) lightInstead(S, session, day);
     session.estimateMin = Math.round(estimate(S, session));
     session.groups = groupsOf(session);
     assignUids(session);
     return session;
+  }
+  // Two slots can end up with the same exercise: a stand-in ladder shared by two units (a supported
+  // hip hinge for the legs and the lower back), or a sore joint's swap into another ladder. They
+  // become one exercise with both slots' sets (up to 5), counted for both groups (`also`).
+  function mergeSame(items) {
+    const out = [];
+    for (const it of items) {
+      const same = out.find((x) => x.moveId === it.moveId || x.fam === it.fam);
+      if (!same) { out.push(it); continue; }
+      same.sets = Math.max(same.sets, Math.min(MERGE_MAX, same.sets + it.sets));
+      if (it.group !== same.group && !(same.also || []).includes(it.group)) same.also = (same.also || []).concat(it.group);
+    }
+    return out;
+  }
+  // Nothing in the day's plan can be done today (every move ruled out): it's a light day instead, a
+  // walk and the mobility flow, not an empty workout. Finished anyway, it doesn't count as one.
+  function lightInstead(S, s, day) {
+    Object.assign(s, { light: true, title: 'Light day', warmup: [], tests: [], extras: [], finisher: null, keepMobility: true });
+    const eq = eqFor(S, day);
+    s.mobility = mobilityFlow(S, day).filter((it) => M().allowed(M().MOVES[it.moveId], eq));
+    s.notes = (s.notes || []).concat({ kind: 'light', text: 'Nothing in today\'s plan suits you right now, so today is a light day: a walk and some easy mobility.' });
   }
   // Stable ids so a saved workout can point its steps back at the session's items after a reload.
   function assignUids(s) {
@@ -1014,7 +1049,7 @@
     const uni = list.filter((x) => M().MOVES[x].uni);
     let id = cur;
     const oneArm = M().ONE_ARM[cur];
-    if (!M().MOVES[cur].uni && oneArm && M().allowed(M().MOVES[oneArm], S.profile.equipment)) id = oneArm;
+    if (!M().MOVES[cur].uni && oneArm && M().allowed(M().MOVES[oneArm], eqFor(S, day)) && (!GH.access || GH.access.moveOk(S.profile, oneArm, day))) id = oneArm;
     else if (!M().MOVES[cur].uni && uni.length) id = uni.sort((a, b) => Math.abs(all.indexOf(a) - all.indexOf(cur)) - Math.abs(all.indexOf(b) - all.indexOf(cur)))[0];
     const avoid = filtersFor(S, day).avoidJoints;
     if ((M().MOVES[id].joints || []).some((j) => avoid.includes(j))) return null;
@@ -1024,25 +1059,34 @@
     const side = S.catchup[kind].side || 'L';
     return {
       kind: 'extra', fam, moveId: id, name: m.name, group: m.group, sets: 1, target, timed: !!m.timed, uni: true,
-      leadOnly: side, rest: restFor(S, fam), load: loadInfo(S, m), superset: null, extraKind: kind,
+      leadOnly: side, rest: restFor(S, fam), load: loadInfo(S, m, day), superset: null, extraKind: kind,
     };
   }
 
+  // The left vs right test's move: from the rungs this person can do today (kit at today's place,
+  // their health rules, careful joints), never one that loads a joint on a break. The arm test needs
+  // a loaded curl. null: no fair test today.
   function testItem(S, kind, day) {
     const fam = kind === 'arm' ? 'curl' : 'squat';
-    const list = M().rungsFor(fam, S.profile.equipment).filter((id) => !M().MOVES[id].timed);
-    const id = kind === 'arm' ? (list.includes('curl_std') ? 'curl_std' : list.find((x) => M().MOVES[x].load) || list[0]) : (list.includes('sq_split') ? 'sq_split' : list[0]);
+    const avoid = filtersFor(S, day).avoidJoints;
+    const list = rungs(S, fam, day).filter((id) => !M().MOVES[id].timed && !(M().MOVES[id].joints || []).some((j) => avoid.includes(j)));
+    const id = kind === 'arm' ? (list.includes('curl_std') ? 'curl_std' : list.find((x) => M().MOVES[x].load)) : (list.includes('sq_split') ? 'sq_split' : list[0]);
+    if (!id) return null;
     const m = M().MOVES[id];
-    return { kind: 'test', test: kind, fam, moveId: id, name: kind === 'arm' ? 'Left vs right curl test' : 'Left vs right leg test', load: loadInfo(S, m), side: S.catchup[kind].side || 'L' };
+    return { kind: 'test', test: kind, fam, moveId: id, name: kind === 'arm' ? 'Left vs right curl test' : 'Left vs right leg test', load: loadInfo(S, m, day), side: S.catchup[kind].side || 'L' };
   }
 
   function finisherItem(S, day) {
     // At the gym, the finisher is rowing, cycling or an incline walk when those are there.
     const fam = placeOf(S, day) === 'gym' && rungs(S, famFor(S, 'cardioG', day), day).length ? famFor(S, 'cardioG', day) : famFor(S, 'finisher', day);
-    const list = rungs(S, fam, day);
+    // Nothing that loads a joint on a break: the nearest easier interval, else none today.
+    const avoid = filtersFor(S, day).avoidJoints;
+    const all = rungs(S, fam, day);
+    const list = all.filter((x) => !(M().MOVES[x].joints || []).some((j) => avoid.includes(j)));
     if (!list.length) return null;
     const st = S.prog[fam] || {};
-    const id = list.includes(st.rung) ? st.rung : list[0];
+    const at = all.indexOf(st.rung);
+    const id = list.includes(st.rung) ? st.rung : list.filter((x) => all.indexOf(x) <= at).pop() || list[0];
     const m = M().MOVES[id];
     const lvl = list.indexOf(id);
     const formats = [[20, 40, 4], [30, 30, 4], [30, 30, 5], [40, 20, 4], [40, 20, 5]];
@@ -1094,7 +1138,7 @@
     // Upper-body moves first, then the legs (the list's order).
     moves.sort((a, b) => ids.indexOf(a) - ids.indexOf(b));
     const pick = minutes <= 1 ? moves.slice(0, 2) : moves;
-    return pick.map((id) => { const m = M().MOVES[id]; return { kind: 'warmup', moveId: id, name: m.name, timed: !!m.timed, target: minutes <= 1 ? Math.min(m.start, 20) : m.start, load: loadInfo(S, m) }; });
+    return pick.map((id) => { const m = M().MOVES[id]; return { kind: 'warmup', moveId: id, name: m.name, timed: !!m.timed, target: minutes <= 1 ? Math.min(m.start, 20) : m.start, load: loadInfo(S, m, day) }; });
   }
   // Mobility moves this person can do on a day (the day's kit unless one is given, nothing for a
   // joint that's still sore then).
@@ -1298,14 +1342,19 @@
       if (estimate(S, s) > 15) { s.items.pop(); break; }
     }
   }
+  // Simpler sessions (complexity 1 or 2): fewer exercises. The lowest-priority ones merge into an
+  // exercise for the same muscles where there is one (up to 5 sets: more of one move gets dull and
+  // sloppy), otherwise they're cut; what doesn't fit is listed in `trimmed`.
+  const MERGE_MAX = 5;
   function limitExercises(s, max) {
-    const main = s.items;
-    if (main.length <= max) return;
-    // Merge the lowest-priority slots into same-group slots where possible, then cut.
+    if (s.items.length <= max) return;
+    s.trimmed = s.trimmed || [];
     while (s.items.length > max) {
       const last = s.items[s.items.length - 1];
       const same = s.items.find((it) => it !== last && it.group === last.group);
-      if (same) same.sets += last.sets;
+      const add = same ? Math.max(0, Math.min(last.sets, MERGE_MAX - same.sets)) : 0;
+      if (add) same.sets += add;
+      if (add < last.sets) s.trimmed.push(last.name);
       unpair(s, last);
       s.items.pop();
     }
@@ -1582,7 +1631,9 @@
     const celebrate = [];
     const planned = A.session.items.reduce((a, it) => a + it.sets, 0) + A.session.extras.length;
     const doneSets = A.logs.reduce((a, l) => a + new Set(l.sets.map((x) => x.set + (l.kind === 'extra' ? 'x' : ''))).size, 0);
-    const pct = planned ? Math.min(1, doneSets / planned) : 1;
+    // A session with no sets counts only when gentle range of motion was the point (a flare day);
+    // an empty workout (a light day in its place, see lightInstead) isn't a workout done.
+    const pct = planned ? Math.min(1, doneSets / planned) : A.session.flare ? 1 : 0;
     // 1. Reps and rungs from the per-exercise answers.
     for (let i = 0; i < A.logs.length; i++) {
       const log = A.logs[i];
@@ -1778,13 +1829,16 @@
 
   // Rep range for a move, by goal. Heavier sets build more maximal strength while muscle grows
   // about as well across a wide range of loads (Schoenfeld et al. 2017), so a strength goal moves
-  // the main gym lifts to 4-8 reps; an endurance goal moves smaller exercises up a little.
+  // the main gym lifts to 4-8 reps, and the big home moves to 5-10: a harder version comes sooner
+  // instead of ever more reps. An endurance goal moves smaller exercises up a little.
   const MAIN_LIFTS = ['pressG', 'squatG', 'hingeG', 'pullG', 'rowG', 'ohpG'];
+  const HOME_COMPOUND = ['push', 'chestDb', 'squat', 'hinge', 'row', 'pull', 'press'];
   function rangeFor(S, m, fam) {
     const [lo, hi] = m.range;
     if (m.timed) return [lo, hi];
     const top = (S.profile.goals || []).slice(0, 2);
     if (top.includes('strength') && MAIN_LIFTS.includes(fam) && m.load) return [Math.min(lo, 4), Math.max(Math.min(hi, 8), Math.min(lo, 4) + 3)];
+    if (top.includes('strength') && HOME_COMPOUND.includes(fam)) return [5, 10];
     if (top.includes('endurance') && (M().LADDERS[fam] || {}).iso) return [lo + 3, hi + 5];
     return [lo, hi];
   }
