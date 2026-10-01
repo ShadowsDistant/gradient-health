@@ -18,8 +18,10 @@ Gradient Health plans a workout for each day of your week around your goals, the
 |---|---|
 | **[Today](#today)** | Today's workout, with what the coach changed and why |
 | **[Plan](#plan)** | Your week at a glance: move a workout, see any day, peek at next week |
-| **[Workouts](#workouts)** | A 3D figure for every move, one question after each exercise, and easier days when you need them |
-| **[Moves](#moves)** | 212 exercises, at home or at the gym, each with a how-to |
+| **[Your plans](#your-plans)** | Build your own plan, or ask the coach for one, and share it with a QR code |
+| **[Workouts](#workouts)** | A 3D figure for every move, one question after each exercise, and a plan that fits your age and your body |
+| **[Moves](#moves)** | 282 exercises, at home or at the gym, seated or standing, each with a how-to |
+| **[Activities](#activities)** | Runs, walks, hikes and rides with GPS, a map, and your watch's heart rate |
 | **[Food](#food)** | Calories and macros, or just protein, or nothing |
 | **[Health](#health)** | Sleep, steps, heart rate, weight and more at a glance, with the history behind each number |
 | **[Progress](#progress)** | A body map of what you've trained and what's improved |
@@ -41,6 +43,17 @@ Miss a day and the rest of the week moves forward instead of doubling up. Every 
   <img src="docs/screenshots/gym.png" width="200" alt="A gym day: barbell curls, rope pushdowns, bench press and pulldowns with starting weights">
 </p>
 
+## Your plans
+
+Rather pick the exercises yourself? Build a plan like a playlist: add moves from the library (each shown by the 3D figure, filtered by muscle and by what you have), set the sets and reps with a tap, drag them into order and pick your days. Or tell the coach "3 days, 30 minutes, bigger arms, easy on my knees" and it builds one from what it already knows about you, then shows it to you before anything changes. Either way it runs like the coach's plan, with the same lighter weeks and easier days, and each exercise moves on from the reps and weights you log. Back to the coach's plan is one tap.
+
+Share a plan with a QR code or a link. Your friend scans it or taps it, sees the whole plan and saves it. If it needs something they don't have, like a barbell, or a move that's hard on a joint they're careful with, the app swaps in the closest exercise they can do and says why.
+
+<p align="center">
+  <img src="docs/screenshots/plans.png" width="200" alt="Your plans: a plan's days, made from the coach's week">
+  <img src="docs/screenshots/share-dark.png" width="200" alt="Sharing a plan as a QR code, in dark mode">
+</p>
+
 ## Workouts
 
 **It fits your life.** Tell it what you want (visible abs, bigger arms, stronger legs, just showing up more), how many days you can train and for how long. Your top goals are trained most and done first, while you're fresh. Ten minutes or an hour, two days a week or six, a pair of dumbbells or nothing at all.
@@ -53,13 +66,29 @@ Miss a day and the rest of the week moves forward instead of doubling up. Every 
 
 **At home or at the gym.** Tell it what your gym has (barbells, a rack, cables, machines, a full dumbbell rack) and gym days use it, each exercise with a starting weight on the light side. Hit the top of your reps with some left in the tank and the weight goes up next time. Train at both? Switch today between home and gym with one tap, and each keeps its own progress.
 
+**It fits your body.** Your age shapes the plan: a little more variety and faster progress under 30, a longer, gentler warm-up, balance practice and one fast-up set a week from 50, and from 65 balance every session, supported moves like sit to stand, and practice getting down to the floor and up. Tell it about a health condition and the plan works around it: no weight on painful hands with rheumatoid arthritis (and a flare-day switch that turns the day into gentle range of motion), no spine bending with osteoporosis, back-friendly core work with back pain, no head-down positions with high blood pressure, supported balance work with balance problems, and every move seated for a wheelchair user. Your conditions stay on your phone and are never sent to Claude.
+
 **Catch up a weaker side.** If one arm or leg is weaker, it goes first, the other side never does more reps, and it gets one extra set. A quick left vs right test every two weeks shows the gap closing.
 
 Started by mistake? Go back and cancel the workout: nothing from it is saved or counts against your streak.
 
+<p align="center">
+  <img src="docs/screenshots/around.png" width="200" alt="Built around you: a plan for a 68-year-old with balance problems and a sore knee">
+  <img src="docs/screenshots/setup-dark.png" width="200" alt="Set-up, in dark mode: anything the plan should work around">
+</p>
+
 ## Moves
 
-212 exercises, each with a how-to: the figure, the cues that matter and the muscles it works. Home moves climb in ladders from easy to hard (push-ups from the wall to the floor and beyond), so there's always a next step, even with no equipment: a chair, a wall and a towel give you rows, overhead presses, calf raises and hamstring curls. Warm-ups follow the day's muscles, and with the mobility goal a short cool-down stretches what you trained. Don't like a move? Swap it, or tell the coach to leave it out.
+282 exercises, each with a how-to: the figure, the cues that matter and the muscles it works. Home moves climb in ladders from easy to hard (push-ups from the wall to the floor and beyond), so there's always a next step, even with no equipment: a chair, a wall and a towel give you rows, overhead presses, calf raises and hamstring curls. Warm-ups follow the day's muscles, and with the mobility goal a short cool-down stretches what you trained. 71 of them are seated, supported, balance and floor-friendly moves for the plans that need them. Don't like a move? Swap it, or tell the coach to leave it out.
+
+## Activities
+
+Going for a run with the dog? Start a run, walk, hike or ride from Today or Health. The app records your route with GPS and counts your steps, even with the screen off, and a notification shows your time and distance with Pause and Finish. Afterwards you get a summary: the map of where you went, distance, pace and splits, elevation, steps, and heart rate and calories from your watch through Health Connect. Save it to Health Connect with its route. Your history and personal records (fastest mile, longest ride and more) live next to it.
+
+<p align="center">
+  <img src="docs/screenshots/activity.png" width="200" alt="A run's summary: distance, time, pace and five new personal records">
+  <img src="docs/screenshots/activity-dark.png" width="200" alt="The same run in dark mode: its route on the map, coloured by pace">
+</p>
 
 ## Food
 
@@ -71,7 +100,7 @@ Connect Health Connect and your sleep, steps, weight, heart rate, HRV, active ca
 
 Tap any number (weight, resting heart rate, sleep, steps) to see its history over a week, a month, three months or a year, with its average, low and high, where each day's value came from, and a plain explanation of what it means. Add a value or change one: your entry takes over from Health Connect's for that day, and you can remove it again.
 
-It syncs every time you open the app and every 15 minutes while it's open, and it can save your workouts and meals back to Health Connect. Insights only show up when there's enough data to back them: a week of short sleep, a resting heart rate creeping up, a weight trend moving faster than it should.
+It syncs every time you open the app, and every 15 minutes in the background if you allow it, so your history has no gaps on days you don't open the app. It can save your workouts, activities and meals back to Health Connect. Insights only show up when there's enough data to back them: a week of short sleep, a resting heart rate creeping up, a weight trend moving faster than it should.
 
 <p align="center">
   <img src="docs/screenshots/health.png" width="200" alt="Health: the week at a glance and trends">
@@ -111,7 +140,7 @@ Pick a size in the chat or in Settings: Fast (0.8B, 533 MB) starts answering soo
 
 ## Made to feel good
 
-Glass bars and buttons over soft colours that drift slowly behind each page. Sheets that slide up from the bottom and follow your finger, from a quick glance up to full height. Haptics with a feel of their own for each thing you do (a tap, a toggle, a timer counting down, a finished set, a new best) in Light, Medium or Strong, with a Try it row to feel them. Light and dark themes, bigger text, reduced motion and increased contrast are all respected.
+Glass bars and buttons over soft colours that drift slowly behind each page. Sheets that slide up from the bottom and follow your finger, from a quick glance up to full height. Haptics with a feel of their own for each thing you do (a tap, a toggle, a timer counting down, a finished set, a new best) in Light, Medium or Strong, with a Try it row to feel them. 3D figures appear right away, with a picture of the move until it starts. Light and dark themes, bigger text, reduced motion and increased contrast are all respected.
 
 ## Built on research, and honest about it
 
@@ -125,7 +154,7 @@ Every rule Gradient Health follows, from how many sets you do to how long you re
 
 ## Private by design
 
-No account, no ads and no analytics. Everything stays on your phone. The only things that ever leave it are ones you choose: a summary you send to Claude (the app shows you exactly what it says first), the words or barcode of a food you look up online, the one-time download of the on-device model, and a workout plan you share with someone. The [privacy policy](docs/PRIVACY.md) lists every piece of data and where it goes.
+No account, no ads and no analytics. Everything stays on your phone. The only things that ever leave it are ones you choose: a summary you send to Claude (the app shows you exactly what it says first), the words or barcode of a food you look up online, the one-time download of the on-device model, a workout plan you share with someone, and street map pieces for an activity's area when you tap Show streets. The [privacy policy](docs/PRIVACY.md) lists every piece of data and where it goes.
 
 ## Get it
 
