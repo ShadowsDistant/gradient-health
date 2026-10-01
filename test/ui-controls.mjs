@@ -236,7 +236,7 @@ await repeat('a drag the page cancels doesn\'t toggle, and the knob goes back', 
   await clear();
   await gesture(line(x0, y, x0 + dir * 26, y, 5), { hold: 20, cancel: true });
   const o = await outcome(SND, 'sound', b.checked, 120);
-  const knob = await page.evaluate(async (s) => { const i = document.querySelector(s); await window.GH.ui.controlSettled(i); await new Promise((res) => setTimeout(res, 50)); const th = i.closest('.rf-switch').querySelector('.rf-switch-thumb'); return { drag: th.style.getPropertyValue('--_drag'), dragging: i.closest('.rf-switch-track').hasAttribute('data-dragging'), x: Math.round(th.getBoundingClientRect().x + th.getBoundingClientRect().width / 2) }; }, SND);
+  const knob = await page.evaluate(async (s) => { const i = document.querySelector(s); await window.GH.ui.controlSettled(i); await new Promise((res) => setTimeout(res, 50)); const th = i.closest('.rf-switch').querySelector('.rf-switch-thumb'); return { drag: i.closest('.rf-switch-track').style.getPropertyValue('--_drag'), dragging: i.closest('.rf-switch-track').hasAttribute('data-dragging'), x: Math.round(th.getBoundingClientRect().x + th.getBoundingClientRect().width / 2) }; }, SND);
   const home = Math.abs(knob.x - b.kx) <= 2;
   return never(o) || knob.drag || knob.dragging || !home ? { o, knob, kx: b.kx } : null;
 });

@@ -114,25 +114,77 @@
   const LENS_FADE = 180; // ms; matches the lens's opacity transition in controls.css
   const STATES = ['data-pressed', 'data-dragging', 'data-traveling'];
 
-  // Lens filters, one per size and shape, shared by every control of that size (a page of switches
-  // needs one, not one each). They stay: an app has only a handful of control sizes.
+  // The lens over a thumb or a knob is a drop of glass: what's under it is drawn larger in the middle
+  // and squeezed toward the rim. Refract's own lens maps only push pixels inward along the rim, which
+  // suits a glass bar over a background; over text, any depth that shows mirrors and tears the glyphs.
+  // This map pulls each point toward the centre by k·(1 - e²)² of its distance (e: 0 in the middle, 1
+  // at the rim), which never folds over (k < 1) and fades to nothing at the rim, so the lens meets
+  // what's around it without a seam.
+  //
+  // The filter is laid out in the element's own (unscaled) box, and scales with it when a held control
+  // swells. One per size and strength, shared by every control that size, and kept: an app has only a
+  // handful of control sizes. (An element carrying one must cast no outer shadow, nor anything in it:
+  // Chrome then applies the filter to the wrong box. See the switch's knob in controls.css.)
+  const NS = 'http://www.w3.org/2000/svg';
+  let defsEl = null;
+  const defs = () => {
+    if (defsEl && defsEl.isConnected) return defsEl;
+    const svg = doc.createElementNS(NS, 'svg');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    svg.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;pointer-events:none';
+    defsEl = doc.createElementNS(NS, 'defs');
+    svg.appendChild(defsEl);
+    (doc.body || doc.documentElement).appendChild(svg);
+    return defsEl;
+  };
+  let lensN = 0;
   const LENSES = new Map();
   function lensFor(w, h, kind) {
     const r = R();
-    if (!r || !r.lensFilter || !r.supports || !r.supports.lens) return '';
+    if (!r || !r.supports || !r.supports.lens) return '';
     w = Math.round(w); h = Math.round(h);
     if (w < 4 || h < 4) return '';
     const key = `${kind}:${w}x${h}`;
-    if (!LENSES.has(key)) {
-      let f = null;
-      try {
-        f = kind === 'knob'
-          ? r.lensFilter(w, h, { radius: h / 2, bezel: h / 2, depth: Math.round(h * 0.9), profile: 'circle' })
-          : r.lensFilter(w, h, { radius: h / 2, bezel: Math.min(h / 2, 22), depth: Math.round(h * 0.7), profile: 'squircle' });
-      } catch (e) { f = null; }
-      LENSES.set(key, f ? f.url : '');
-    }
-    return LENSES.get(key);
+    if (LENSES.has(key)) return LENSES.get(key);
+    let url = '';
+    try {
+      const k = kind === 'knob' ? 0.26 : 0.18; // the middle looks 1 / (1 - k) times larger
+      const a = w / 2, b = h / 2;
+      // The farthest any point moves (u(1 - u²)² peaks at 0.286) sets the filter's scale; the map holds
+      // each move as a fraction of it.
+      const scale = Math.ceil(2 * 0.3 * k * Math.max(a, b));
+      const cv = doc.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d');
+      const img = ctx.createImageData(w, h);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const px = x + 0.5 - a, py = y + 0.5 - b;
+          const e2 = (px / a) ** 2 + (py / b) ** 2;
+          const pull = e2 < 1 ? k * (1 - e2) ** 2 : 0;
+          const ox = -px * pull, oy = -py * pull;
+          const i = (y * w + x) * 4;
+          img.data[i] = Math.round(127.5 + (ox / scale) * 255);
+          img.data[i + 1] = Math.round(127.5 + (oy / scale) * 255);
+          img.data[i + 2] = 128;
+          img.data[i + 3] = 255;
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      const id = `gh-lens-${++lensN}`;
+      const f = doc.createElementNS(NS, 'filter');
+      for (const [a, v] of [['id', id], ['x', 0], ['y', 0], ['width', w], ['height', h], ['filterUnits', 'userSpaceOnUse'], ['primitiveUnits', 'userSpaceOnUse'], ['color-interpolation-filters', 'sRGB']]) f.setAttribute(a, String(v));
+      const im = doc.createElementNS(NS, 'feImage');
+      for (const [a, v] of [['href', cv.toDataURL('image/png')], ['x', 0], ['y', 0], ['width', w], ['height', h], ['preserveAspectRatio', 'none'], ['result', 'map']]) im.setAttribute(a, String(v));
+      const dm = doc.createElementNS(NS, 'feDisplacementMap');
+      for (const [a, v] of [['in', 'SourceGraphic'], ['in2', 'map'], ['scale', scale], ['xChannelSelector', 'R'], ['yChannelSelector', 'G']]) dm.setAttribute(a, String(v));
+      f.append(im, dm);
+      defs().appendChild(f);
+      url = `url(#${id})`;
+    } catch (e) { url = ''; }
+    LENSES.set(key, url);
+    return url;
   }
 
   // A control's settling: busy() while it's held or moving, then the promise U.controlSettled hands
@@ -227,18 +279,25 @@
     if (!track || !input || !thumb) return undefined;
     if (!input.hasAttribute('role')) input.setAttribute('role', 'switch');
     const T = tracker();
-    const st = stretcher(thumb);
+    const st = stretcher(track); // the track carries the knob's stretch and drag, for its shadow too
     const gl = glass(track);
     let liftTimer = 0, rescueTimer = 0, frame = 0, endMove = null;
     let base = 0, len = 0, side = false, pos = 0;
     const travelLen = () => track.clientWidth - thumb.offsetWidth - 6;
 
-    // Held: the knob swells into a clear lens (sized once per knob size, shared).
+    // The knob's lens (one per knob size, shared), set the first time the knob turns to glass.
+    let lensSet = false;
+    const knobLens = () => {
+      if (lensSet) return;
+      lensSet = true;
+      const url = lensFor(thumb.offsetWidth, thumb.offsetHeight, 'knob');
+      if (url) root.style.setProperty('--_knob-lens', url);
+    };
+    // Held: the knob swells into a clear lens.
     const lift = () => {
       clearTimeout(liftTimer); liftTimer = 0;
       if (track.hasAttribute('data-pressed')) return;
-      const url = lensFor(thumb.offsetWidth, thumb.offsetHeight, 'knob');
-      if (url) root.style.setProperty('--_knob-lens', url);
+      knobLens();
       gl.on();
       track.setAttribute('data-pressed', '');
       haptic('press');
@@ -246,7 +305,7 @@
     const drop = () => { clearTimeout(liftTimer); liftTimer = 0; track.removeAttribute('data-pressed'); };
     const endDrag = () => {
       if (frame) { G.cancelAnimationFrame(frame); frame = 0; }
-      thumb.style.removeProperty('--_drag');
+      track.style.removeProperty('--_drag');
       track.removeAttribute('data-dragging');
       track.removeAttribute('data-drag-on');
       st.release();
@@ -256,6 +315,7 @@
     // started.
     const travel = () => {
       drop();
+      knobLens();
       gl.on();
       if (!reduced()) st.kick(0.7);
       track.setAttribute('data-traveling', '');
@@ -275,7 +335,7 @@
     const flushRescue = () => { if (rescueTimer) { clearTimeout(rescueTimer); rescue(); } };
     const follow = (x) => {
       pos = clamp(base + (x - T.get().x0), 0, len);
-      if (!frame) frame = G.requestAnimationFrame(() => { frame = 0; thumb.style.setProperty('--_drag', `${(pos - base).toFixed(1)}px`); });
+      if (!frame) frame = G.requestAnimationFrame(() => { frame = 0; track.style.setProperty('--_drag', `${(pos - base).toFixed(1)}px`); });
       const on = pos > len / 2;
       // The on colour follows the knob across, with a detent at the middle.
       if (on !== side) { side = on; track.toggleAttribute('data-drag-on', on); haptic('detent'); }
