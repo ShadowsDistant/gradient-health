@@ -90,13 +90,15 @@
   // are a segmented control; more, longer ones, or a sideways rail (data-hscroll) are a row of chips
   // with a glass indicator that slides to the one picked (role=radiogroup, arrow keys included).
   // Either way a pick fires a radio-style change whose value is the option's, so a data-on handler on
-  // the control gets it, and each option carries data-arg.
+  // the control gets it, and each option carries data-arg. data-repick in `extra` is for a choice that
+  // acts on every pick (a sheet that closes on it): always chips, and a tap on the option already
+  // picked fires its change too.
   U.choice = (name, opts, value, label, extra) => {
     const { cls, rest } = splitClass(extra);
     const len = opts.map(([, t]) => String(t).length);
     const total = len.reduce((a, b) => a + b, 0);
     const short = opts.length >= 2 && opts.length <= 4 && Math.max(...len) <= 10 && total <= (opts.length === 4 ? 22 : 26);
-    if (short && !/\sdata-hscroll\b/.test(rest)) return U.seg(name, opts, value, label, `${cls ? ` class="${cls.trim()}"` : ''}${/\sdata-size=/.test(rest) ? '' : ' data-size="sm"'} data-block data-choice${rest}`);
+    if (short && !/\sdata-(hscroll|repick)\b/.test(rest)) return U.seg(name, opts, value, label, `${cls ? ` class="${cls.trim()}"` : ''}${/\sdata-size=/.test(rest) ? '' : ' data-size="sm"'} data-block data-choice${rest}`);
     const sel = opts.findIndex(([v]) => String(v) === String(value));
     return `<div class="gh-chipseg${cls}" role="radiogroup" aria-label="${U.esc(label)}" data-rf="chipseg"${rest}${/\sdata-key=/.test(rest) ? '' : ` data-key="choice:${U.esc(name)}"`}>${opts.map(([v, t], i) => `<button type="button" class="rf-chip gh-chip" role="radio" aria-checked="${i === sel}" tabindex="${i === sel || (sel < 0 && i === 0) ? 0 : -1}" value="${U.esc(v)}" data-arg="${U.esc(v)}"><span class="rf-chip-text">${U.esc(t)}</span></button>`).join('')}</div>`;
   };

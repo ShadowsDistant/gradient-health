@@ -518,7 +518,8 @@ const look = (s) => page.evaluate((sel) => {
   const el = document.querySelector(sel);
   const th = el.querySelector(':scope > .rf-segmented-thumb, :scope > .gh-chipseg-thumb'), lens = el.querySelector(':scope > .gh-seg-lens');
   const cs = getComputedStyle(th), ls = lens && getComputedStyle(lens);
-  const alpha = (c) => { const m = /rgba?\(([^)]+)\)/.exec(c) || /color\(srgb ([^)]+)\)/.exec(c); if (!m) return 1; const p = m[1].split(/[\s,/]+/).filter(Boolean); return p.length > 3 ? parseFloat(p[3]) : 1; };
+  // A computed colour's alpha, whatever its form: rgba(r, g, b, a), or a / a at the end (oklab, color()).
+  const alpha = (c) => { let m = /\/\s*([\d.]+)\s*\)\s*$/.exec(c); if (m) return parseFloat(m[1]); m = /rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\)/.exec(c); return m ? parseFloat(m[1]) : 1; };
   return {
     fill: alpha(cs.backgroundColor), sheen: cs.backgroundImage !== 'none', rim: /inset/.test(cs.boxShadow),
     lens: ls ? { display: ls.display, opacity: parseFloat(ls.opacity), filter: ls.backdropFilter } : null,
@@ -592,7 +593,7 @@ if (reducedMotion) {
 {
   await page.evaluate(() => window.GH.ui.act.daysSheet());
   await wait(900);
-  const w = () => page.evaluate(() => [...document.querySelectorAll('dialog[open] [data-on="dsWd"]')].map((c) => Math.round(c.getBoundingClientRect().width * 10) / 10));
+  const w = () => page.evaluate(() => [...document.querySelectorAll('dialog[open] [data-on="dsWd"]')].map((c) => c.offsetWidth));
   const w0 = await w();
   await page.click('dialog[open] [data-on="dsWd"][aria-pressed="false"]');
   await wait(500);

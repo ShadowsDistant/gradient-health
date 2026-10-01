@@ -56,7 +56,7 @@
     return `<div class="card bm-card" data-key="body" data-mode="${mode}">
       <div class="bm-head"><h2 class="t-title-3">Your body</h2><span class="t-footnote rf-muted">${mode === 'trained' ? 'Sets per muscle' : 'Progress per muscle'}, ${rangeText(weeks)}</span></div>
       ${U.seg('bodyMode', [['trained', 'Trained'], ['improved', 'Improved']], mode, 'Show', ' data-on="bodyMode"')}
-      <div class="bm-range" role="group" aria-label="Range">${RANGES.map(([w, txt]) => `<button type="button" class="rf-chip" aria-pressed="${w === weeks}" data-act="bodyRange" data-arg="${w}">${txt}</button>`).join('')}</div>
+      <div class="bm-range">${U.choice('bodyRange', RANGES, weeks, 'Range', ' data-on="bodyRange"')}</div>
       ${U.bodyMap(values, { mode, max, label, key: 'bm', listLabel: `Muscles, ${mode === 'trained' ? 'sets' : 'progress'} in the ${rangeText(weeks)}` })}
       ${U.bodyLegend(mode, mode === 'trained' ? 'No sets' : 'No progress')}
       <p class="bm-take t-callout" data-key="take">${take}</p>
@@ -64,8 +64,8 @@
     </div>`;
   }
   U.on.bodyMode = (el, ev, v) => { view().mode = v === 'improved' ? 'improved' : 'trained'; U.render(); };
-  U.act.bodyRange = (el) => {
-    const w = Number(el.getAttribute('data-arg'));
+  U.on.bodyRange = (el, ev, v) => {
+    const w = Number(v);
     if (!RANGES.some(([x]) => x === w)) return;
     view().weeks = w;
     U.render();

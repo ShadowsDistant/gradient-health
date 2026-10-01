@@ -313,10 +313,10 @@ check('a "Why?" link opens that rule with its research', await page.evaluate(() 
 await shot(page, '14b-science');
 await page.evaluate(() => window.GH.ui.closeSheets());
 await page.waitForTimeout(500);
-await page.click('#screen [data-act="sciShow"][data-arg="food"]');
+await page.click('#screen [data-on="sciShow"] [data-arg="food"]');
 await page.waitForTimeout(300);
 check('the group chips narrow the list', await page.evaluate(() => document.querySelectorAll('#screen .sci-list').length === 1 && [...document.querySelectorAll('#screen .sci-row')].every((r) => window.GH.science.RULES.find((x) => x.id === r.dataset.arg).cat === 'food')));
-await page.click('#screen [data-act="sciShow"][data-arg="all"]');
+await page.click('#screen [data-on="sciShow"] [data-arg="all"]');
 await page.waitForTimeout(200);
 await page.click('#topbar [data-act="back"]');
 await page.waitForTimeout(400);

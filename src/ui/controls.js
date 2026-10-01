@@ -237,26 +237,22 @@
     };
   }
 
-  // Runs fn once el's `prop` transition ends, or after ms at most (one cut short still ends). A move
-  // that never starts (a dragged knob let go where it lands) ends a moment later instead: by the
-  // second frame its transition would have reported itself running. Returns a function that calls
-  // it off.
+  // Runs fn once el's `prop` transition has finished, or after ms at most. Call it right after the
+  // change that starts the move: getAnimations() brings the style up to date and hands back the
+  // transition itself (its events can come frames late when it runs on the compositor). A move that
+  // doesn't start (a dragged knob let go where it lands) ends after a short hold instead, and one cut
+  // short by a new move waits for that one. Returns a function that calls it off.
   function afterMove(el, prop, ms, fn) {
-    let live = true, ran = false, hold = 0;
-    const mine = (e) => e.target === el && e.propertyName === prop;
-    const onRun = (e) => { if (mine(e)) ran = true; };
-    const onEnd = (e) => { if (mine(e)) finish(); };
+    let live = true, hold = 0;
     const t = setTimeout(() => finish(), ms);
-    const off = () => {
-      live = false;
-      clearTimeout(t); clearTimeout(hold);
-      el.removeEventListener('transitionrun', onRun);
-      el.removeEventListener('transitionend', onEnd);
-    };
+    const off = () => { live = false; clearTimeout(t); clearTimeout(hold); };
     function finish() { if (!live) return; off(); fn(); }
-    el.addEventListener('transitionrun', onRun);
-    el.addEventListener('transitionend', onEnd);
-    G.requestAnimationFrame(() => G.requestAnimationFrame(() => { if (live && !ran) hold = setTimeout(finish, 140); }));
+    const watch = () => {
+      const a = el.getAnimations ? el.getAnimations().find((x) => x.transitionProperty === prop && x.playState !== 'finished') : null;
+      if (!a) { hold = setTimeout(finish, 140); return; }
+      a.finished.then(finish, () => { if (live) watch(); });
+    };
+    watch();
     return off;
   }
 
@@ -513,8 +509,9 @@
       root.toggleAttribute('data-empty', !o);
       if (!o) { last = -1; return; }
       const i = opts().indexOf(o);
-      if (kick && last !== -1 && i !== last && !d) travel(Math.abs(i - last));
+      const moved = kick && last !== -1 && i !== last && !d;
       place(o);
+      if (moved) travel(Math.abs(i - last)); // after the move starts, so it can wait for its end
       last = i;
     };
     refreshers.set(root, () => position(true));
@@ -644,10 +641,12 @@
     on(root, 'lostpointercapture', (e) => { if (e.target === root) cancel(e); });
     on(root, 'click', arbiter(T, () => { clearTimeout(rescueTimer); rescueTimer = 0; unpress(); }), true);
     if (!K.drag) {
-      // A chip choice picks on its click (a tap, the rescue, Enter or Space).
+      // A chip choice picks on its click (a tap, the rescue, Enter or Space). One marked data-repick
+      // acts on every pick, so the option already picked fires its change again.
       on(root, 'click', (e) => {
         const o = K.optOf(e.target);
-        if (o && o.parentNode === root && !K.disabled(o)) K.pick(root, o);
+        if (!o || o.parentNode !== root || K.disabled(o)) return;
+        if (!K.pick(root, o) && root.hasAttribute('data-repick') && K.on(o)) { haptic('select'); o.dispatchEvent(new Event('change', { bubbles: true })); }
       });
       // Arrows move to the next option and pick it, like radio buttons; Home and End too.
       on(root, 'keydown', (e) => {
