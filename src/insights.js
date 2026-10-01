@@ -355,19 +355,84 @@
   }
 
   /* ---------------------------------------------------------------- all together */
-  function all(S, day) {
-    const raw = [];
-    for (const gen of [safety, recovery, anomalies, goals, weightTrend, trends, relationships, consistency]) {
-      try { gen(S, day, raw); } catch (e) { /* one broken generator never hides the rest */ }
-    }
+  const GENERATORS = [safety, recovery, anomalies, goals, weightTrend, trends, relationships, consistency];
+  // Sorted, one insight per metric (an anomaly beats the trend it's part of), dismissed ones out.
+  function finish(S, day, raw) {
     const dismissed = S.insightsDismissed || {};
     const list = raw.filter((x) => !(dismissed[x.id] != null && day - dismissed[x.id] < 30)).map((x) => make(x, S, day));
     list.sort((a, b) => b.score - a.score);
-    // One insight per metric (an anomaly beats the trend it's part of).
     const seen = new Set();
     return list.filter((x) => { if (seen.has(x.metric)) return false; seen.add(x.metric); return true; });
   }
-  function top(S, day, n) { return all(S, day).slice(0, n || 5); }
+  function all(S, day) {
+    const raw = [];
+    for (const gen of GENERATORS) {
+      try { gen(S, day, raw); } catch (e) { /* one broken generator never hides the rest */ }
+    }
+    return finish(S, day, raw);
+  }
+
+  /* ---------------------------------------------------------------- kept answers */
+  // top() is asked for on every render of Today and Health, and by the coach, and the generators run
+  // over weeks of data. What each generator found is kept per state and day until something it
+  // reads changes, which two stamps tell far more cheaply than running it:
+  // - the feel check and the sleep chips, read by the four generators in FEEL (straight away, or
+  //   through readiness or a night's sleep): a feel tap redoes only those
+  // - everything else: every top-level field as JSON, except the ones insights never read (or read
+  //   through others, or only when sorting: shown and dismissed); the health days, each record
+  //   stringified once (a sync or a hand log replaces a day's record rather than editing it); the
+  //   hand logs, which are small; the log, one short line per entry (what changes after the fact:
+  //   the check-in, the rating, what it celebrated); the workout in progress; and food only as the
+  //   protein of the days the goals read.
+  // A generator that starts reading something new adds it here.
+  const FEEL = new Set([recovery, anomalies, trends, relationships]);
+  const SKIP = new Set(['log', 'health', 'food', 'active', 'feel', 'sleepChip', 'insightsShown', 'insightsDismissed', 'ai', 'seen', 'activities', 'actLive', 'achievements', 'pendingLines', 'updatedAt', 'createdAt']);
+  const dayJson = new WeakMap(); // health day record → its JSON
+  const js = (v) => (v === undefined ? '' : JSON.stringify(v));
+  function stamp(S, day) {
+    const out = [day];
+    for (const k of Object.keys(S)) if (!SKIP.has(k)) out.push(k, js(S[k]));
+    const h = S.health || {};
+    out.push(h.lastSync || '', js(h.manual));
+    const days = h.days || {};
+    for (const d of Object.keys(days)) {
+      const r = days[d];
+      let t = r && typeof r === 'object' ? dayJson.get(r) : js(r);
+      if (t == null) { t = js(r); dayJson.set(r, t); }
+      out.push(d, t);
+    }
+    let lg = '';
+    for (const l of S.log || []) lg += `${l.type}.${l.day}.${l.checkedIn ? 1 : 0}.${l.pct == null ? '' : l.pct}.${l.walk ? 1 : 0}${l.mobility ? 1 : 0}.${l.walkSrc || ''}.${l.endedAt || ''}.${(l.checkin && l.checkin.rating) || ''}.${(l.celebrate || []).length}.${(l.items || []).length};`;
+    out.push(lg);
+    const a = S.active;
+    out.push(a ? `${a.day}.${a.idx}.${a.steps ? a.steps.length : 0}.${a.startedAt || ''}` : '');
+    if (S.food && S.protein && GH.brain) for (let d = day - 14; d < day; d++) out.push(B().proteinToday(S, d));
+    return out.join('\u0001');
+  }
+  const feelStamp = (S) => js([S.feel, S.sleepChip]);
+  let memo = new WeakMap(); // S → { key, feel, found: Map(generator → what it found) }
+  const stats = { hits: 0, misses: 0 };
+  function top(S, day, n) {
+    const key = stamp(S, day), feel = feelStamp(S);
+    let m = memo.get(S);
+    if (!m || m.key !== key) { m = { key, feel, found: new Map() }; memo.set(S, m); }
+    const raw = [];
+    for (const gen of GENERATORS) {
+      let found = m.found.get(gen);
+      if (found && (m.feel === feel || !FEEL.has(gen))) stats.hits++;
+      else {
+        stats.misses++;
+        found = [];
+        try { gen(S, day, found); } catch (e) { /* one broken generator never hides the rest */ }
+        m.found.set(gen, found);
+      }
+      for (const x of found) raw.push(x);
+    }
+    m.feel = feel;
+    return finish(S, day, raw).slice(0, n || 5);
+  }
+  top.clear = () => { memo = new WeakMap(); };
+  top.stats = stats;
   function dismiss(S, id, day) { S.insightsDismissed = S.insightsDismissed || {}; S.insightsDismissed[id] = day; }
   function markShown(S, list, day) { S.insightsShown = S.insightsShown || {}; for (const x of list) if (S.insightsShown[x.id] == null) S.insightsShown[x.id] = day; }
 

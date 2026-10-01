@@ -584,6 +584,17 @@
     document.dispatchEvent(new CustomEvent('gh-change'));
   };
   U.commit = () => { U.save(); render(); };
+  // For background triggers (a sync that ended, the day rolling over, the app coming back): one
+  // render at the next frame however many ask, none while the page is hidden (it runs once it's
+  // shown again), and none under the player or set-up.
+  let renderFrame = 0;
+  U.renderSoon = () => {
+    if (renderFrame || !G.requestAnimationFrame) return;
+    renderFrame = G.requestAnimationFrame(() => {
+      renderFrame = 0;
+      if (U.S && U.S.profile.onboarded && playerEl.hidden && onboardEl.hidden) render();
+    });
+  };
 
   /* ---------------------------------------------------------------- back button */
   function onBack() {
@@ -611,16 +622,18 @@
     if (!S || !GH.health) return Promise.resolve(null);
     const manual = reason === true || reason === 'manual';
     const st = GH.health.status();
+    const stChanged = S.health.status !== st;
     S.health.status = st;
     if (!GH.health.connected(st)) return Promise.resolve(null);
     if (syncing) return syncing;
     if (!manual && Date.now() - lastTry < SYNC_GAP) return Promise.resolve(null);
     lastTry = Date.now();
+    const before = { last: S.health.lastSync, error: syncError };
     syncing = (async () => {
       try {
         const res = await GH.health.sync(S, Date.now());
         syncError = res && !res.ok ? res.error || 'failed' : null;
-        if (res && res.ok) { GH.health.afterSync(S, U.today()); U.save(); }
+        if (res && res.ok) { if (GH.health.afterSync(S, U.today())) res.changed = true; U.save(); }
         return res;
       } catch (e) {
         syncError = 'failed';
@@ -628,13 +641,21 @@
       }
     })();
     syncChanged();
-    return syncing.finally(() => { syncing = null; syncChanged(); });
+    return syncing.then((res) => { syncing = null; syncChanged(res, before, stChanged); return res; });
   };
-  // Anything showing sync state re-renders; screens mark it with data-sync.
-  function syncChanged() {
+  // Spinners follow the sync. When it ends, the screen re-renders if the sync changed something it
+  // shows (new data, a different status or error) or if it shows the sync itself (the Health tab,
+  // Settings: their data-sync-spin buttons); otherwise the "Synced 3 min ago" labels just move on to
+  // the new time, and a sync that brought nothing new costs no render.
+  function syncChanged(res, before, stChanged) {
     const busy = !!syncing;
     for (const el of doc.querySelectorAll('[data-sync-spin]')) el.toggleAttribute('data-spinning', busy);
-    if (!busy && U.S && U.S.profile.onboarded && playerEl.hidden && onboardEl.hidden) render();
+    if (busy || !before || !U.S) return;
+    const quiet = res && res.ok && res.changed === false && !stChanged && syncError === before.error && !doc.querySelector('[data-sync-spin]');
+    if (!quiet) { U.renderSoon(); return; }
+    const last = U.S.health.lastSync;
+    if (before.last && last !== before.last) for (const el of doc.querySelectorAll(`[data-ago="${before.last}"]`)) el.dataset.ago = last;
+    tickAgo();
   }
   // "Updated 3 min ago" labels stay current without a re-render.
   function tickAgo() { for (const el of doc.querySelectorAll('[data-ago]')) { const t = U.ago(Number(el.dataset.ago)); if (el.textContent !== t) el.textContent = t; } }
@@ -699,8 +720,10 @@
       P().on('resume', () => {
         if (!U.S || !U.S.profile.onboarded) return;
         U.syncHealth('resume');
-        if (U.today() !== lastDay) { lastDay = U.today(); if (playerEl.hidden) render(); }
+        if (U.today() !== lastDay) { lastDay = U.today(); U.renderSoon(); }
       });
+      // The app is going to the background: a save still waiting is written now.
+      P().on('pause', () => GH.store.flush());
       // The app is going to the background: a save still waiting is written now.
       P().on('pause', () => GH.store.flush());
       P().on('route', (route) => openRoute(route));
@@ -722,7 +745,7 @@
     lastDay = U.today();
     setInterval(() => {
       const d = U.today();
-      if (d !== lastDay) { lastDay = d; if (U.S && U.S.profile.onboarded && playerEl.hidden) render(); }
+      if (d !== lastDay) { lastDay = d; U.renderSoon(); }
       if (U.S && U.S.profile.onboarded && (!P() || P().visible()) && Date.now() - (U.S.health.lastSync || 0) >= SYNC_EVERY) U.syncHealth('interval');
       tickAgo();
     }, 30000);
