@@ -737,11 +737,11 @@ async function doLoad(m, opts) {
   const av = available();
   if (!av.ok) throw llmError('unavailable', av.reason);
   if (!fits(m)) throw llmError('memory');
+  // A file that isn't the pinned one (installed() leaves it out) doesn't load either engine.
+  if (bridge() && bridge().modelList && !(await installed()).some((x) => x.id === m.id)) throw llmError('not-installed');
   if (current) await stop();
   const report = opts.report;
   const t0 = now();
-  // A file that isn't the pinned one (installed() leaves it out) doesn't load either engine.
-  if (bridge() && bridge().modelList && !(await installed()).some((x) => x.id === m.id)) throw llmError('not-installed');
   if (nativeOk(m)) {
     try {
       const e = await nativeLoad(m, report);
