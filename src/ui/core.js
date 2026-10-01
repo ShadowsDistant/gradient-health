@@ -325,7 +325,15 @@
     const s = lt ? lt.offsetTop + lt.offsetHeight - 8 - screen.scrollTop < barH : screen.scrollTop > 2;
     if (s !== scrolled) { scrolled = s; topbar.toggleAttribute('data-scrolled', s); }
   }
-  function onScroll() { if (!scrollFrame) scrollFrame = G.requestAnimationFrame(updateScrolled); }
+  // While the page scrolls, the glow behind it holds still (src/styles/perf.css): one moving layer
+  // less for every frame of a fling. It drifts on 150 ms after the last scroll.
+  let scrollIdle = 0;
+  function onScroll() {
+    if (!scrollFrame) scrollFrame = G.requestAnimationFrame(updateScrolled);
+    if (scrollIdle) clearTimeout(scrollIdle);
+    else root.setAttribute('data-scrolling', '');
+    scrollIdle = setTimeout(() => { scrollIdle = 0; root.removeAttribute('data-scrolling'); }, 150);
+  }
 
   function applyNavbar(nb) {
     const part = (sel) => (nb ? nb.querySelector(sel) : null);
