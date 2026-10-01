@@ -551,8 +551,11 @@
     };
     el.addEventListener('pointerup', pointerEnd);
     el.addEventListener('pointercancel', pointerEnd);
-    // A drag that started on a button doesn't also press it.
-    el.addEventListener('click', (e) => { if (now() - s.dragEnd < 350) { e.preventDefault(); e.stopPropagation(); } }, true);
+    // A drag that started on a button doesn't also press it. Only that gesture's click is swallowed:
+    // a tap that starts after the drag ended (a switch right after a pull) goes through.
+    let downAt = -1e9;
+    el.addEventListener('pointerdown', () => { downAt = now(); }, true);
+    el.addEventListener('click', (e) => { if (e.detail && downAt <= s.dragEnd && now() - s.dragEnd < 350) { e.preventDefault(); e.stopPropagation(); } }, true);
 
     /* ---------- closing */
     let finished = false;

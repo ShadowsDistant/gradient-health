@@ -222,7 +222,7 @@
   }
   U.on.setWorkouts = async (el, ev, v) => {
     const S = U.S;
-    if (!v && S.active) { el.checked = true; U.toast('Finish or discard the workout in progress first', 'caution'); return; }
+    if (!v && S.active) { U.revertSwitch(el); U.toast('Finish or discard the workout in progress first', 'caution'); return; }
     S.profile.workouts = !!v;
     U.save();
     U.render();
@@ -252,7 +252,7 @@
     const fp = GH.food.prefs(S);
     if (k === 'hcWrite' && v && !(H().canWriteFood && H().canWriteFood())) {
       await H().request(true);
-      if (!(H().canWriteFood && H().canWriteFood())) { el.checked = false; U.toast('Not allowed yet', 'caution', 'Turn on Nutrition under Gradient Health in Health Connect.', { label: 'Open', onClick: () => H().openSettings() }); return; }
+      if (!(H().canWriteFood && H().canWriteFood())) { U.revertSwitch(el); U.toast('Not allowed yet', 'caution', 'Turn on Nutrition under Gradient Health in Health Connect.', { label: 'Open', onClick: () => H().openSettings() }); return; }
     }
     fp[k] = !!v;
     U.save();

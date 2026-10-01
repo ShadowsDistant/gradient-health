@@ -294,7 +294,7 @@
     const S = U.S;
     if (v && !(H().canWrite && H().canWrite())) {
       const st = await H().request(S);
-      if (!(H().canWrite && H().canWrite())) { el.checked = false; U.toast('Not allowed yet', 'caution', 'Turn on Exercise under Gradient Health in Health Connect.', { label: 'Open', onClick: () => H().openSettings() }); return; }
+      if (!(H().canWrite && H().canWrite())) { U.revertSwitch(el); U.toast('Not allowed yet', 'caution', 'Turn on Exercise under Gradient Health in Health Connect.', { label: 'Open', onClick: () => H().openSettings() }); return; }
       S.health.status = st;
     }
     S.health.write = !!v;
