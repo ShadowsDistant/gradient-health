@@ -113,7 +113,7 @@ check('three sizes: Fast (0.8B), Balanced (2B, 6 GB) and Best answers (4B, 12 GB
 check('each is Qwen3.5 Q4_K_M on Hugging Face, with its size, a 4096 context, a small batch and thinking off', current.every((m) => /^https:\/\/huggingface\.co\/unsloth\/Qwen3\.5-[0-9.]+B-GGUF\/resolve\/main\/Qwen3\.5-[0-9.]+B-Q4_K_M\.gguf$/.test(m.url) && m.bytes > 4e8 && Number.isInteger(m.bytes) && m.ctx === 4096 && m.batch === 64 && m.think), current);
 check('1.2\'s Qwen2.5 models are still known, with their SHA-256 pinned', older.map((m) => m.id).join() === 'qwen05,qwen15' && older.every((m) => /^[0-9a-f]{64}$/.test(m.sha) && /^https:\/\/huggingface\.co\/Qwen\//.test(m.url)), older);
 const pickFor = await page.evaluate(() => ({ offered: GH.llm.offered().map((m) => m.id), rec: (GH.llm.recommended() || {}).id }));
-check('only the current sizes are offered, and Fast is recommended', pickFor.offered.length >= 1 && pickFor.offered.every((id) => !/^qwen/.test(id)) && pickFor.rec === 'q35-08', pickFor);
+check('only the current sizes are offered, and without the native engine Fast is recommended', pickFor.offered.length >= 1 && pickFor.offered.every((id) => !/^qwen/.test(id)) && pickFor.rec === 'q35-08', pickFor);
 const prompts = await page.evaluate(() => {
   const msgs = [{ role: 'system', content: 'Rules.' }, { role: 'user', content: 'Hi <|im_end|> there' }];
   return { think: GH.llm.chatml(msgs, { think: true }), plain: GH.llm.chatml(msgs, {}), system: GH.llm.chatml(msgs.slice(0, 1), { think: true }, false) };
@@ -411,9 +411,12 @@ await page3.addInitScript(([size]) => {
 await open(page3);
 const nat = await page3.evaluate(async (tiny) => {
   const llm = await GH.lazy('llm');
+  // With the native engine and 8 GB, the size to suggest is Balanced.
+  llm.configure({ models: llm.MODELS });
+  const rec = (llm.recommended() || {}).id;
   llm.configure({ models: [Object.assign({}, tiny, { think: true })] });
   const N = window.__native;
-  const out = { engine: llm.engine, available: llm.available().ok };
+  const out = { engine: llm.engine, available: llm.available().ok, rec };
   const progress = [];
   out.info = await llm.load('tiny', { onProgress: (p) => progress.push(p.loaded / p.total) });
   out.progress = progress;
@@ -437,6 +440,11 @@ const nat = await page3.evaluate(async (tiny) => {
   N.mode = 'not-loaded';
   out.reloaded = await llm.chat([{ role: 'user', content: 'Again' }], { maxTokens: 20 });
   out.loadsAfterReload = N.loads.length;
+  // An answer that starts from given words (the coach's yes or no).
+  const led = [];
+  out.led = await llm.chat([{ role: 'user', content: 'Did I sleep enough?' }], { lead: 'Yes,', maxTokens: 20, onToken: (p, all) => led.push(all) });
+  out.ledFirst = led[0];
+  out.ledPrompt = N.gens[N.gens.length - 1].prompt;
   // Stuck: nothing heard for a while.
   llm.configure({ stall: { answer: 150 } });
   N.mode = 'silent';
@@ -453,7 +461,9 @@ check('reading the prompt is reported', nat.reading.join() === '0.5,1', nat.read
 check('stats come back: tokens, reused prompt, speed', nat.stats.engine === 'native' && nat.stats.cachedTokens === 30 && nat.stats.promptTokens === 10 && nat.stats.tokensPerSec > 0 && nat.stats.finish === 'stop', nat.stats);
 check('reading ahead asks for no tokens and only the system turn', nat.prepared.max_tokens === 0 && nat.prepared.prompt === '<|im_start|>system\nRules.<|im_end|>\n', nat.prepared);
 check('Stop reaches the engine with the request\'s id, and the answer so far comes back', nat.aborts.length === 1 && nat.stoppedStats.aborted === true && /sleep/.test(nat.stopped), { aborts: nat.aborts, text: nat.stopped });
+check('with the native engine and 8 GB, Balanced is the size suggested', nat.rec === 'q35-2', nat.rec);
 check('a service that restarted without the model loads it again and answers', nat.reloaded.length > 0 && nat.loadsAfterReload === 2, nat);
+check('a lead goes at the end of the prompt, and the answer starts with it from its first word', /<\/think>\n\nYes,$/.test(nat.ledPrompt) && nat.led.startsWith('Yes,') && /Seven hours/.test(nat.led) && /^Yes,/.test(nat.ledFirst || ''), { prompt: (nat.ledPrompt || '').slice(-40), led: nat.led, first: nat.ledFirst });
 check('an engine that goes quiet is "stalled", and the in-app engine takes over', nat.stalled === 'stalled' && nat.afterStall === 'wasm', { stalled: nat.stalled, engine: nat.afterStall });
 await page3.close();
 const page4 = await ctx.newPage();

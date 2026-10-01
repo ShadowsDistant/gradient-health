@@ -99,7 +99,7 @@
     const done = setsDone(a);
     const total = a.steps.filter((s) => s.kind === 'set').length;
     U.sheet({
-      title: 'Leave the workout?', detents: 'medium', fit: true, cls: 'leave-sheet',
+      title: 'Leave the workout?', size: 'fit', cls: 'leave-sheet',
       body: `<div class="sheet-pad leave">
         <p class="t-callout rf-muted">${done ? `You've done ${done} of ${total} sets.` : 'You haven\'t done any sets yet.'}</p>
         <div class="leave-actions">
@@ -141,10 +141,12 @@
 
   /* ---------------------------------------------------------------- figures */
   // The 3D figure (a lazy three.js chunk) when the phone has WebGL and it's picked in Settings, else
-  // the flat one. Callers hold a controller that swaps its figure underneath. The flat figure shows
-  // and moves straight away; the 3D one mounts out of sight on top of it once the chunk is loaded and
-  // the GPU is warmed up, and takes over when its first frame is drawn, so the box is never empty.
-  // If 3D hasn't drawn within 3 s, or the GPU gives up, the flat figure stays.
+  // the flat one. Callers hold a controller that swaps its figure underneath. Once 3D is warm a new
+  // figure is 3D from its first frame. Until then the box shows a 3D still of the figure's first
+  // frame if one was drawn before (kept across launches for the day's moves), else the flat figure;
+  // the 3D one mounts out of sight on top once the chunk is loaded and the GPU is warmed up, and
+  // takes over when its first frame is drawn, so the box is never empty. If 3D hasn't drawn within
+  // 3 s, or the GPU gives up, the flat figure takes over.
   const want3d = () => ((U.S && U.S.profile.prefs.figure) || '3d') === '3d';
   function load3d() {
     if (!want3d() || !GH.lazy) return Promise.resolve(null);
@@ -153,17 +155,28 @@
   // Loading only fetches the chunk; preloading also warms up the GPU, in idle slices.
   U.loadFigure = () => load3d();
   U.preloadFigure = () => load3d().then((f) => (f && f.preload ? f.preload() : false));
-  // Whether 3D can be drawn here: asks the chunk once it's loaded, else checks for WebGL 2 itself.
+  // Whether 3D can be drawn here: asks the chunk once it's loaded, else checks for WebGL 2 itself
+  // (once per app version on this phone: the answer is kept with the stills, since making a test
+  // context can take a noticeable moment right when a sheet opens).
   let gl2 = null;
   function hasGl2() {
-    if (GH.figure3d) return GH.figure3d.supported();
+    const ua = (G.navigator && G.navigator.userAgent) || '';
+    if (GH.figure3d) {
+      const ok = GH.figure3d.supported();
+      const d = stills();
+      if (d.gl2 !== ok || d.ua !== ua) { d.gl2 = ok; d.ua = ua; stillsSave(); }
+      return ok;
+    }
     if (gl2 == null) {
+      const d = stills();
+      if (typeof d.gl2 === 'boolean' && d.ua === ua) return (gl2 = d.gl2);
       try {
         const g = document.createElement('canvas').getContext('webgl2');
         gl2 = !!g;
         const lose = g && g.getExtension('WEBGL_lose_context');
         if (lose) lose.loseContext();
       } catch (e) { gl2 = false; }
+      d.gl2 = gl2; d.ua = ua; stillsSave();
     }
     return gl2;
   }
@@ -193,6 +206,169 @@
     document.addEventListener('visibilitychange', go);
     if (P2() && P2().on) P2().on('resume', go);
   }
+  const idleCall = (fn) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 32));
+
+  // Stills of figures' first frames, for the boxes a 3D figure isn't ready for yet. Drawn in idle
+  // time for the moves on screen today (both boxes: move sheet and player) at the sizes those boxes
+  // last had, and kept across launches in this browser's storage, so a sheet or workout opened right
+  // after launch shows a 3D picture at once, before the 3D chunk has even loaded.
+  const STILLS_KEY = 'gh.figStills';
+  const STILLS_CHARS = 700000; // data URLs kept across launches, at most (about as many bytes)
+  const stillsVersion = () => (GH.VERSION || 'dev') + ':1'; // a new app (or look) draws them afresh
+  let stillsMem = null; // { v, sizes: { sheet, player: [w, h] }, items: [{ k, w, h, url, at }] }
+  function stills() {
+    if (stillsMem) return stillsMem;
+    let d = null;
+    try { d = JSON.parse(G.localStorage.getItem(STILLS_KEY) || 'null'); } catch (e) { d = null; }
+    if (!d || d.v !== stillsVersion() || !Array.isArray(d.items)) d = { v: stillsVersion(), sizes: {}, items: [] };
+    return (stillsMem = d);
+  }
+  let stillsTimer = 0;
+  function stillsSave() {
+    if (stillsTimer) return;
+    stillsTimer = setTimeout(() => {
+      stillsTimer = 0;
+      idleCall(() => { try { G.localStorage.setItem(STILLS_KEY, JSON.stringify(stills())); } catch (e) { /* full or private: kept for this launch */ } });
+    }, 800);
+  }
+  // Which box a figure is in: its still is drawn at that box's shape.
+  const boxKind = (host) => (!host || !host.classList ? null : host.classList.contains('sheet-fig') ? 'sheet' : host.classList.contains('pl-fig') ? 'player' : null);
+  const stillKey = (m, o, lk) => [m.id, JSON.stringify(m.equip || []), !!o.mirrored, lk.dark, lk.skin, lk.shirt || ''].join('|');
+  // A kept still for this figure in a w×h box: the same move, kit, side and look, drawn at the same
+  // shape (the camera frames the move by the box's shape, so it lines up with the live figure).
+  function stillFor(m, o, w, h) {
+    if (!(w > 16 && h > 16)) return null;
+    const k = stillKey(m, o, look()), a = w / h;
+    let best = null;
+    for (const it of stills().items) {
+      if (it.k !== k || Math.abs(it.w / it.h - a) > a * 0.03) continue;
+      if (!best || Math.abs(it.w - w) < Math.abs(best.w - w)) best = it;
+    }
+    return best;
+  }
+  function keepStill(m, o, w, h, url) {
+    const d = stills(), k = stillKey(m, o, look());
+    d.items = d.items.filter((it) => !(it.k === k && it.w === w && it.h === h));
+    d.items.push({ k, w, h, url, at: Date.now() });
+    // Newest first, within the budget.
+    let chars = 0;
+    d.items.sort((x, y) => y.at - x.at);
+    d.items = d.items.filter((it) => (chars += it.url.length) <= STILLS_CHARS);
+    stillsSave();
+  }
+  // Moves whose figures were opened lately get stills too (they tend to be opened again).
+  let recentTimer = 0;
+  function noteRecent(id) {
+    const d = stills();
+    const r = Array.isArray(d.recent) ? d.recent : [];
+    if (r[0] === id) return;
+    d.recent = [id].concat(r.filter((x) => x !== id)).slice(0, 8);
+    stillsSave();
+    // Its stills for next time, once the app is idle again (after the figure's box closes).
+    if (recentTimer) clearTimeout(recentTimer);
+    recentTimer = setTimeout(() => { recentTimer = 0; stillsForToday(); }, 3000);
+  }
+  function rememberBox(host) {
+    const kind = boxKind(host);
+    if (!kind) return;
+    const w = Math.round(host.clientWidth), h = Math.round(host.clientHeight);
+    if (!(w > 16 && h > 16)) return;
+    const d = stills(), was = d.sizes[kind];
+    if (was && was[0] === w && was[1] === h) return;
+    d.sizes[kind] = [w, h];
+    stillsSave();
+  }
+  // The shape a box usually has on this screen, before it's ever been seen.
+  function boxGuess(kind) {
+    const vw = G.innerWidth || 390, vh = G.innerHeight || 800;
+    return kind === 'sheet' ? [Math.round(Math.min(vw, 640) - 56), 220] : [Math.round(Math.min(vw - 32, 520) - 24), Math.round(Math.max(170, Math.min(vh * 0.38, 420)) - 44)];
+  }
+  // Draw what's missing for moves opened lately, the moves on screen (today's session) and the
+  // workout in progress, once 3D is warm: one still per idle moment, a second apart, only while no
+  // figure is on screen (a still never takes time from one), a dozen a launch at most, and none
+  // more on a phone slow enough that one took long (it gets the few it has).
+  let stillsRun = null; // the queue being drawn
+  let stillsDrawn = 0, stillsSlow = false;
+  function stillsForToday() {
+    const f = GH.figure3d;
+    if (!f || !f.warm || !f.warm() || !f.still || !want3d() || !U.S || stillsSlow || stillsDrawn >= 12) return;
+    const ids = new Set(stills().recent || []);
+    for (const b of document.querySelectorAll('[data-act="moveInfo"][data-arg]')) ids.add(b.dataset.arg);
+    const act = U.S.active;
+    if (act && act.steps) for (const st of act.steps.slice(act.idx || 0, (act.idx || 0) + 6)) if (st.item && st.item.moveId) ids.add(st.item.moveId);
+    const jobs = [];
+    for (const id of ids) {
+      const m0 = M().MOVES[id];
+      if (!m0) continue;
+      for (const kind of ['sheet', 'player']) {
+        // A one-sided move is drawn for each side in the player; the sheet shows the catch-up side.
+        const sides = m0.uni ? (kind === 'player' ? ['L', 'R'] : [(U.S.catchup && U.S.catchup.arm && U.S.catchup.arm.side) || 'L']) : [null];
+        for (const side of sides) jobs.push({ id, kind, side });
+      }
+    }
+    if (stillsRun) {
+      // Already drawing: what's new goes first (a move just opened).
+      const have = new Set(stillsRun.map((j) => `${j.id}|${j.kind}|${j.side}`));
+      stillsRun.unshift(...jobs.filter((j) => !have.has(`${j.id}|${j.kind}|${j.side}`)));
+      return;
+    }
+    stillsRun = jobs;
+    const later = () => setTimeout(() => idleCall(step), 1000);
+    const step = () => {
+      if (!GH.figure3d || !GH.figure3d.warm() || stillsSlow || stillsDrawn >= 12) { stillsRun = null; return; }
+      // Not while any figure box is showing (one may be getting its live figure ready) or a 3D figure
+      // runs anywhere: stills are for later, and never take time from a figure on screen.
+      const busyNow = document.hidden || document.querySelector('.fig3d[data-ready]') || [...document.querySelectorAll('.pl-fig, .sheet-fig, .tour-fig')].some((h) => h.offsetParent);
+      if (busyNow) { setTimeout(() => idleCall(step), 1500); return; }
+      while (jobs.length) {
+        const j = jobs.shift();
+        const m0 = M().MOVES[j.id];
+        const { m, o } = figOpts({ side: j.side, item: { moveId: j.id } }, m0);
+        const [w, h] = stills().sizes[j.kind] || boxGuess(j.kind);
+        if (stillFor(m, o, w, h)) continue;
+        // 1.5 pixels a point: sharp enough for the moment it shows, small enough to keep.
+        const t0 = Date.now();
+        const url = GH.figure3d.still(m, Object.assign({ width: Math.round(w * 1.5), height: Math.round(h * 1.5), t: 0, mirrored: !!o.mirrored }, look()));
+        if (url) keepStill(m, o, w, h, url);
+        stillsDrawn++;
+        if (Date.now() - t0 > 400) stillsSlow = true;
+        break; // one per idle moment
+      }
+      if (jobs.length && !stillsSlow) later();
+      else stillsRun = null;
+    };
+    idleCall(step);
+  }
+  // Tests: draw the stills now (again after a slow one, too).
+  U.figureStills = (again) => { if (again) { stillsSlow = false; stillsDrawn = 0; } stillsForToday(); };
+  // A still standing in for a figure: the figure's first frame (the live figure takes over from the
+  // start of the rep, so the two line up).
+  function stillFig(at, m, url, o) {
+    const el = document.createElement('div');
+    el.className = 'fig3d fig-still';
+    el.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden';
+    const img = document.createElement('img');
+    img.alt = (o && o.label) || m.name || 'Exercise diagram';
+    img.decoding = 'sync';
+    img.src = url;
+    img.style.cssText = 'display:block;width:100%;height:100%;object-fit:contain';
+    el.appendChild(img);
+    if (at) at.appendChild(el);
+    return { el, still: true, duration: (m.$tl || GH.pose.timeline(m)).total, play() {}, pause() {}, time: () => 0, destroy() { el.remove(); } };
+  }
+
+  // Warm 3D up right after the app's first paint, a small piece per idle moment (the app asks again
+  // a few seconds later; asking twice is free), then draw stills of today's moves for next time.
+  function warmSoon(tries) {
+    const S = U.S;
+    if (!S) { if (tries < 40) setTimeout(() => warmSoon(tries + 1), 250); return; }
+    if (!S.profile.onboarded || S.profile.workouts === false || !want3d() || !GH.lazy) return;
+    G.requestAnimationFrame(() => G.requestAnimationFrame(() => idleCall(() => {
+      U.preloadFigure().then((ok) => { if (ok) setTimeout(stillsForToday, 600); }, () => {});
+    })));
+  }
+  if (G.document && G.requestAnimationFrame) setTimeout(() => warmSoon(0), 0);
+
   let chunkFails = 0; // the chunk didn't load: tried again a couple of times, then left flat
   function figure(host, m, o) {
     let inner = null, pending = null, at = host, playing = false, dead = false, is3d = false;
@@ -224,6 +400,32 @@
       flatShown = false;
       G.requestAnimationFrame(() => { flatShown = true; }); // on screen from the next paint
     };
+    // A still standing in, and 3D isn't coming after all: the flat figure takes its place.
+    const stillToFlat = () => {
+      if (!inner || !inner.still) return;
+      const old = inner;
+      flat();
+      old.destroy();
+      fadeIn(inner.el);
+    };
+    // The first figure: a kept 3D still of it while 3D isn't warm yet, else the flat one (which a warm
+    // 3D figure replaces before it's ever painted).
+    const first = () => {
+      rememberBox(host);
+      if (boxKind(host) && m.id) noteRecent(m.id);
+      const f = GH.figure3d;
+      if (want3d() && GH.lazy && chunkFails < 3 && !(f && f.warm && f.warm()) && !(f && !f.supported())) {
+        const st = stillFor(m, o, host.clientWidth, host.clientHeight);
+        if (st) {
+          is3d = false;
+          inner = stillFig(at, m, st.url, o);
+          flatShown = false;
+          G.requestAnimationFrame(() => { flatShown = true; });
+          return;
+        }
+      }
+      flat();
+    };
     function dropPending() {
       if (giveUp) { clearTimeout(giveUp); giveUp = 0; }
       const p = pending;
@@ -252,7 +454,7 @@
     function onFail(p, info) {
       try { p.destroy(); } catch (e) { /* already gone */ }
       if (dead) return;
-      if (p === pending) dropPending(); // never shown: the flat figure just stays
+      if (p === pending) { dropPending(); stillToFlat(); } // never shown: the flat figure stays, or takes over from a still
       else if (p === inner) { // it was showing: back to flat
         flat();
         fadeIn(inner.el);
@@ -271,6 +473,7 @@
         return f.warm && !f.warm() && f.preload ? f.preload().then(() => f) : f;
       }).then((f) => {
         busy = false;
+        if (!dead && (!f || !f.supported())) stillToFlat(); // no 3D coming: a still gives way to the flat figure
         if (!f || dead || is3d || pending || !f.supported() || !at.isConnected) return;
         if (document.hidden) { whenShown(retry); return; }
         const p = f.mount(at, m, Object.assign({}, o, look(), {
@@ -286,12 +489,12 @@
           giveUp = 0;
           if (pending !== p) return;
           if (document.hidden) whenShown(() => { if (pending === p) giveUp = setTimeout(check, 3000); });
-          else { dropPending(); stayFlat = true; } // this figure stays flat
+          else { dropPending(); stayFlat = true; stillToFlat(); } // this figure stays flat
         };
         giveUp = setTimeout(check, 3000);
       }).catch((e) => { busy = false; if (G.console) G.console.error('figure3d:', e); });
     }
-    flat();
+    first();
     upgrade();
     return ctl;
   }
@@ -480,7 +683,7 @@
     } else if (timed) {
       const d = durationOf(st);
       target = `<div class="pl-target"><span class="pl-big rf-num">${d}</span><span class="pl-unit">seconds</span></div>`;
-      if (st.kind === 'set') hint = '<p class="pl-hint t-callout rf-muted">Hold with good form. Stop early if it breaks.</p>';
+      if (st.kind === 'set') hint = `<p class="pl-hint t-callout rf-muted">${U.esc((GH.access && GH.access.setHint(U.S.profile, it, true)) || 'Hold with good form. Stop early if it breaks.')}</p>`;
       actions = `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plStartTimer">${U.icon('play')}Start</button>`;
     } else if (st.kind === 'set') {
       const t = B().currentTarget(A(), st);
@@ -490,7 +693,7 @@
         ${w ? `<button type="button" class="pl-load" data-act="plLoad" aria-label="Weight: ${U.esc(w.label)}. Change">${U.icon('dumbbell', 'sm')}<span class="rf-num">${U.esc(w.label)}</span>${U.icon('pencil', 'sm')}</button>` : ''}`;
       hint = w && w.first
         ? `<p class="pl-hint t-callout rf-muted">New exercise: pick a weight you could lift about ${t + 2} times. It's remembered for next time.</p>`
-        : `<p class="pl-hint t-callout rf-muted">${st.leadOnly ? 'One set on this side only.' : 'Stop with 1-3 reps left in the tank.'}${st.first === false ? ' Match the first side, never more.' : ''}</p>`;
+        : `<p class="pl-hint t-callout rf-muted">${st.leadOnly ? 'One set on this side only.' : U.esc((GH.access && GH.access.setHint(U.S.profile, it)) || 'Stop with 1-3 reps left in the tank.')}${st.first === false ? ' Match the first side, never more.' : ''}</p>`;
       actions = `<div class="pl-adjust"><span class="t-footnote rf-muted">Did fewer?</span>${U.stepper('plReps', t, 0, t, 'Reps done', 'data-on="plReps"')}</div>
         <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plDone">${U.icon('check')}Done set</button>`;
     } else {
@@ -689,7 +892,7 @@
     const loaded = last.load != null && weightOf(st.item);
     P.amendLoad = loaded ? last.load : null;
     U.sheet({
-      title: 'Change what you logged', detents: loaded ? 'medium large' : 'small medium', detent: loaded ? 'medium' : 'small',
+      title: 'Change what you logged', size: 'fit',
       body: `<div class="sheet-pad"><p class="t-callout rf-muted">${U.esc(st.item.name)}${st.side ? `, ${U.side(st.side).toLowerCase()}` : ''}</p><div class="ob-center">${U.stepper('amendVal', last.amount, 0, Math.max(last.target, last.amount) + 20, st.item.timed ? 'Seconds' : 'Reps')}</div>
         ${loaded ? `<p class="t-footnote rf-muted load-label">Weight</p>${loadChips(st.item, last.load, 'plAmendLoad')}` : ''}</div>`,
       action: { label: 'Save', act: 'plAmendSave' },
@@ -722,7 +925,7 @@
     const w = st && weightOf(st.item);
     if (!w) return;
     U.sheet({
-      title: 'Weight', detents: 'medium large', detent: 'medium',
+      title: 'Weight', size: 'auto',
       body: `<div class="sheet-pad"><p class="t-callout rf-muted">${U.esc(st.item.name)}. ${w.first ? `A first guess. Pick one you could lift about ${B().currentTarget(A(), st) + 2} times.` : 'For the rest of this exercise.'}</p>${loadChips(st.item, w.kg, 'plLoadPick')}</div>`,
     });
   };
@@ -761,7 +964,7 @@
     const st = cur();
     const canSwap = st && st.kind === 'set' && !st.leadOnly;
     U.sheet({
-      title: 'Workout', detents: 'medium', fit: true,
+      title: 'Workout', size: 'fit',
       body: `<ul class="rf-list">
         ${st ? U.row({ icon: 'info', tone: 'sky', title: 'How to do it', act: 'plHowTo', chevron: true }) : ''}
         ${canSwap ? U.row({ icon: 'shuffle', tone: 'indigo', title: 'Swap this exercise', act: 'plSwap', chevron: true }) : ''}
@@ -777,7 +980,7 @@
     const top = U.topSheet(); if (top) top.close('swap');
     const opts = B().swapOptions(U.S, st.item, U.today());
     U.sheet({
-      title: 'Swap exercise', detents: 'medium large',
+      title: 'Swap exercise', size: 'auto',
       body: opts.length ? `<ul class="rf-list">${opts.map((o) => U.row({ title: U.esc(o.name), sub: U.esc(o.why), act: 'plSwapTo', arg: o.id, chevron: true })).join('')}</ul>
         <ul class="rf-list sheet-gap">${U.row({ icon: 'eye', tone: 'rose', title: 'Don\'t show this move again', sub: 'Swaps it out now and keeps it out of future plans', act: 'plExclude', arg: opts[0].id })}</ul>`
         : '<p class="sheet-pad t-callout rf-muted">No other moves fit your equipment for this one.</p>',
@@ -821,12 +1024,14 @@
     const { planned, doneSets } = counts();
     const pct = planned ? doneSets / planned : 1;
     const ck = P.ck;
+    // A flare day (gentle range of motion only) has no sets to rate.
+    const flare = !!(A() && A().session && A().session.flare);
     return `${top('Check-in')}
       <div class="pl-scroll">
         <h1 class="rf-large-title">Check-in</h1>
-        <p class="t-callout rf-muted pl-pad">${doneSets} of ${planned} sets done.${pct < 0.5 ? ' Under half, so this one is saved but won\'t count for the streak.' : ''}</p>
-        <div class="ob-group"><h3 class="rf-list-header">How was it?</h3><div class="ob-pad">${U.seg('ckRating', [['easy', 'Too easy'], ['right', 'About right'], ['hard', 'Too hard']], ck.rating, 'How was it', ' data-on="ckRating"')}</div></div>
-        <div class="ob-group"><h3 class="rf-list-header">Too complicated?</h3><div class="ob-pad">${U.seg('ckComplicated', [['false', 'No'], ['true', 'Yes, simpler please']], String(ck.complicated), 'Too complicated', ' data-on="ckComplicated"')}</div></div>
+        <p class="t-callout rf-muted pl-pad">${flare ? 'A gentle day done. It counts for your streak.' : `${doneSets} of ${planned} sets done.${pct < 0.5 ? ' Under half, so this one is saved but won\'t count for the streak.' : ''}`}</p>
+        ${flare ? '' : `<div class="ob-group"><h3 class="rf-list-header">How was it?</h3><div class="ob-pad">${U.seg('ckRating', [['easy', 'Too easy'], ['right', 'About right'], ['hard', 'Too hard']], ck.rating, 'How was it', ' data-on="ckRating"')}</div></div>
+        <div class="ob-group"><h3 class="rf-list-header">Too complicated?</h3><div class="ob-pad">${U.seg('ckComplicated', [['false', 'No'], ['true', 'Yes, simpler please']], String(ck.complicated), 'Too complicated', ' data-on="ckComplicated"')}</div></div>`}
         <div class="ob-group"><h3 class="rf-list-header">Anything hurt?</h3><div class="ob-chips">${JOINTS.map(([id, t]) => U.chip(t, ck.pain.includes(id), `data-on="ckPain" data-v="${id}"`)).join('')}</div><p class="rf-list-footer">Moves that load it get swapped out for two weeks.</p></div>
         <div class="ob-group"><h3 class="rf-list-header">Weight today (optional)</h3><div class="ob-fields"><div class="rf-field"><div class="rf-field-control"><input class="rf-input" type="number" inputmode="decimal" placeholder="${U.wUnit()}" aria-label="Weight in ${U.wUnit()}" data-on="ckWeight" value="${ck.weight == null ? '' : ck.weight}"></div></div></div></div>
       </div>

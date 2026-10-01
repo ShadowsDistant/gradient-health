@@ -8,6 +8,7 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { root, check, section, done, serveDist } from './lib.mjs';
 import { seedBridge, seedState } from './fixtures.mjs';
+import { actBridge, seedActivities } from './actfixture.mjs';
 
 const require = createRequire(import.meta.url);
 let chromium;
@@ -76,7 +77,7 @@ function problems() {
   const scrolls = (p) => { const ox = getComputedStyle(p).overflowX; return ox === 'auto' || ox === 'scroll'; };
   const boxOf = (e) => { for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) { if (p.hasAttribute('data-hscroll')) return 'rail'; if (scrolls(p)) return p; } return null; };
   const name = (e) => `${e.tagName.toLowerCase()}${e.className && typeof e.className === 'string' ? '.' + e.className.trim().split(/\s+/).slice(0, 2).join('.') : ''} "${(e.textContent || '').trim().slice(0, 40)}"`;
-  const roots = [document.getElementById('screen'), document.getElementById('float'), document.getElementById('tabbar'), document.getElementById('player'), document.getElementById('onboard'), ...document.querySelectorAll('dialog[open]')].filter((r) => r && !r.hidden);
+  const roots = [document.getElementById('screen'), document.getElementById('float'), document.getElementById('tabbar'), document.getElementById('player'), document.getElementById('onboard'), document.getElementById('actlive'), ...document.querySelectorAll('dialog[open]')].filter((r) => r && !r.hidden);
   if (document.documentElement.scrollWidth > W + 1) out.push(`page scrolls sideways (${document.documentElement.scrollWidth} > ${W})`);
   for (const r of roots) {
     for (const c of [r, ...r.querySelectorAll('*')]) {
@@ -100,9 +101,9 @@ function problems() {
   }
   // A page (not a sheet, the player or set-up): scrolled to the end, its last content must clear
   // whatever covers the bottom (the tab bar, the workout capsule, Today's buttons, the system bar).
-  const pl = document.getElementById('player'), ob = document.getElementById('onboard');
+  const pl = document.getElementById('player'), ob = document.getElementById('onboard'), al = document.getElementById('actlive');
   const scr = document.getElementById('screen');
-  if (scr && !document.querySelector('dialog[open]') && (!pl || pl.hidden) && (!ob || ob.hidden)) {
+  if (scr && !document.querySelector('dialog[open]') && (!pl || pl.hidden) && (!ob || ob.hidden) && (!al || al.hidden)) {
     const keep = scr.scrollTop;
     scr.scrollTop = scr.scrollHeight;
     const sab = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sab')) || 0;
@@ -141,19 +142,55 @@ for (const [width, theme, zoom, h] of COMBOS) {
   page.on('console', (m) => { if (m.type() === 'error') errors.push(`${tag}: ${m.text()}`); });
   await page.clock.install({ time: new Date('2026-10-19T08:10:00') });
   await page.addInitScript(seedBridge);
+  await page.addInitScript(actBridge);
   // Small phones get a three-button navigation bar (48px); the rest a gesture bar.
   if (width === 360) await page.addInitScript(() => { const t = setInterval(() => { if (window.AndroidBridge) { window.AndroidBridge.insets = () => JSON.stringify({ top: 30, bottom: 48, left: 0, right: 0, keyboard: false }); clearInterval(t); } }, 1); });
+  // The app starts on a timer (setTimeout(boot, 0)), which under the test clock can wait for time to
+  // move on: if it hasn't started, move the clock on, and if that doesn't do it, start it by hand
+  // (and say what the page looked like, in case it's the app).
+  const booted = async (sel) => {
+    try { await page.waitForSelector(sel, { timeout: 15000 }); return; } catch (e) { /* below */ }
+    await page.clock.runFor(1000).catch(() => {});
+    try { await page.waitForSelector(sel, { timeout: 5000 }); return; } catch (e) { /* below */ }
+    const was = await page.evaluate(() => { const ui = window.GH && window.GH.ui; const w = { ready: document.readyState, ui: !!ui, S: !!(ui && ui.S), view: (document.querySelector('#screen') || {}).dataset }; if (ui && ui.boot && !ui.S) ui.boot(); return JSON.stringify(w); }).catch((e) => e.message);
+    if (!/"S":false/.test(was)) errors.push(`${tag}: the page didn't show a screen after a reload: ${was}`);
+    await page.waitForSelector(sel, { timeout: 30000 });
+  };
   await page.goto(server.url);
-  await page.waitForSelector('.onboard:not([hidden])');
+  await booted('.onboard:not([hidden])');
   await page.evaluate(seedState);
   await page.reload();
-  await page.waitForSelector('#screen[data-view="today"] .session');
+  await booted('#screen[data-view="today"] .session');
   await page.evaluate(seedMore);
   await page.reload();
-  await page.waitForSelector('#screen[data-view="today"]');
+  await booted('#screen[data-view="today"]');
   const settle = async (ms = 800) => { await page.clock.runFor(ms); await page.waitForTimeout(250); };
   const act = (name, arg) => page.evaluate(([a, b]) => { const f = window.GH.ui.act[a]; if (f) f({ dataset: { arg: b }, setAttribute() {}, removeAttribute() {}, closest: () => null }); }, [name, arg]);
   const reset = async () => { await page.evaluate(() => { window.GH.ui.closeSheets(); while (window.GH.ui.back()) { /* back to the tab */ } }); await settle(700); };
+  // The set-up from the start (over the seeded app, never finished), n screens in; `pick` runs on
+  // the last one.
+  const setup = async (n, pick) => {
+    await page.evaluate(() => window.GH.ui.showOnboarding());
+    await settle(600);
+    for (let i = 0; i < n; i++) { await page.locator('.ob-actions [data-variant="tinted"]').click(); await settle(400); }
+    if (pick) await pick();
+  };
+  const chips = async (sel) => { for (const s of sel) { await page.click(s); await settle(200); } };
+  // Outdoor activities: start one against the fake recorder (permissions allowed, GPS found after
+  // searchMs), optionally through the 3-2-1 and a few minutes of running.
+  const startAct = async (type, o = {}) => {
+    await page.evaluate(([s]) => { window.__act.perms = { location: 'granted', activity: 'granted', notifications: 'granted' }; window.__act.searchMs = s; window.GH.ui.go('today'); }, [o.searchMs == null ? 0 : o.searchMs]);
+    await settle();
+    await act('actStart');
+    await settle(900);
+    await page.click(`dialog[open] .at-tile[data-arg="${type}"]`);
+    await settle(1500);
+    if (!o.go) return;
+    await page.evaluate(() => window.GH.ui.act.alGo());
+    await settle(3500);
+    await settle(o.go);
+  };
+  const seedActs = async () => { await page.evaluate(seedActivities); await settle(); };
   const scenes = [
     ['today', async () => { await page.evaluate(() => window.GH.ui.go('today')); }],
     ['plan', async () => { await page.evaluate(() => window.GH.ui.go('plan')); }],
@@ -164,7 +201,15 @@ for (const [width, theme, zoom, h] of COMBOS) {
     ['plan-info', async () => { await page.evaluate(() => window.GH.ui.go('plan')); await settle(); await act('planPhase'); }],
     ['food', async () => { await page.evaluate(() => window.GH.ui.go('food')); }],
     ['health', async () => { await page.evaluate(() => window.GH.ui.go('health')); }],
-    ['health-7', async () => { await page.evaluate(() => window.GH.ui.go('health')); await settle(); await page.click('[data-on="healthRange"] input[value="7"]', { force: true }).catch(() => {}); }],
+    ['health-lower', async () => { await page.evaluate(() => window.GH.ui.go('health')); await settle(); await page.evaluate(() => { const s = document.getElementById('screen'); const t = s.querySelector('.hl-trends'); if (t) s.scrollTop = t.getBoundingClientRect().top + s.scrollTop - 180; }); }],
+    ['health-insight', async () => { await page.evaluate(() => window.GH.ui.go('health')); await settle(); await page.evaluate(() => { const d = document.querySelector('#screen .hl-ins'); if (d) { d.open = true; const s = document.getElementById('screen'); s.scrollTop = d.getBoundingClientRect().top + s.scrollTop - 200; } }); }],
+    ['health-menu', async () => { await page.evaluate(() => window.GH.ui.go('health')); await settle(); await page.click('#topbar [popovertarget="hlLog"]'); }],
+    ['sheet-metric-weight', async () => { await page.evaluate(() => window.GH.ui.go('health')); await settle(); await page.evaluate(() => window.GH.ui.metricSheet('weightKg')); }],
+    ['sheet-metric-rhr', async () => { await page.evaluate(() => window.GH.ui.go('health')); await settle(); await page.evaluate(() => window.GH.ui.metricSheet('rhr')); await settle(); await page.evaluate(() => { const d = document.querySelector('dialog.ms-sheet[open]'); const top = window.GH.ui.topSheet(); if (top && top.detent) top.detent('large'); }); }],
+    ['sheet-metric-sleep', async () => { await page.evaluate(() => window.GH.ui.go('health')); await settle(); await page.evaluate(() => window.GH.ui.metricSheet('sleepMin', { range: 365 })); await settle(); await page.evaluate(() => { const d = document.querySelector('dialog.ms-sheet[open]'); const top = window.GH.ui.topSheet(); if (top && top.detent) top.detent('large'); const b = d && d.querySelector('.ms-hist'); if (b) b.scrollIntoView(); }); }],
+    ['sheet-metric-edit', async () => { await page.evaluate(() => window.GH.ui.go('health')); await settle(); await page.evaluate(() => { window.GH.ui.metricSheet('rhr'); }); await settle(); await page.evaluate(() => window.GH.ui.metricEdit('rhr', window.GH.ui.today() - 1)); }],
+    ['sheet-metric-feel', async () => { await page.evaluate(() => window.GH.ui.go('health')); await settle(); await page.evaluate(() => window.GH.ui.metricSheet('feel')); }],
+    ['sheet-report', async () => { await page.evaluate(() => window.GH.ui.go('health')); await settle(); await act('healthReport'); await settle(); await page.evaluate(() => { const d = document.querySelector('dialog.rs-sheet[open]'); const top = window.GH.ui.topSheet(); if (top && top.detent) top.detent('large'); }); }],
     ['progress', async () => { await page.evaluate(() => window.GH.ui.go('progress')); }],
     // The body map at 12 weeks with its "Train … more" button (a stand-in action if Tailor my plan isn't there).
     ['progress-12w', async () => { await page.evaluate(() => { const U = window.GH.ui; if (!U.act.tailorPlan) U.act.tailorPlan = () => {}; U.go('progress'); }); await settle(); await page.click('#screen .bm-range [data-arg="12"]'); }],
@@ -187,6 +232,18 @@ for (const [width, theme, zoom, h] of COMBOS) {
     ['sheet-answers', async () => { await act('editAnswers'); }],
     ['sheet-move', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await page.evaluate(() => { const b = document.querySelector('#screen .ex-name[data-act="moveInfo"]'); if (b) b.click(); }); await settle(1500); }],
     ['edit-equipment', async () => { await page.evaluate(() => window.GH.ui.editAnswers('equipment')); }],
+    ['setup-welcome', async () => { await setup(0); }],
+    ['setup-track', async () => { await setup(1); }],
+    ['setup-about', async () => { await setup(3, async () => { await page.fill('.onboard input[data-k="age"]', '150'); await page.locator('.onboard input[data-k="age"]').dispatchEvent('change'); await page.locator('.ob-actions [data-variant="tinted"]').click(); }); }],
+    ['setup-conditions', async () => { await setup(4, async () => { await chips(['.onboard .rf-chip[data-v="ra"]', '.onboard .rf-chip[data-v="oa"]', '.onboard .rf-chip[data-v="heart"]', '.onboard .rf-chip[data-v="seated"]']); }); }],
+    ['setup-goals', async () => { await setup(5); }],
+    ['setup-body', async () => { await setup(9); }],
+    ['setup-baseline', async () => { await setup(10); }],
+    ['setup-nutrition', async () => { await setup(11); }],
+    ['setup-plan', async () => { await setup(4, async () => { await chips(['.onboard .rf-chip[data-v="balance"]', '.onboard .rf-chip[data-v="bp"]']); for (let i = 0; i < 7; i++) { await page.locator('.ob-actions [data-variant="tinted"]').click(); await settle(300); } }); }],
+    ['setup-food', async () => { await setup(1, async () => { await page.click('.onboard input[name="obTrack"][value="both"]', { force: true }); await settle(200); for (let i = 0; i < 10; i++) { await page.locator('.ob-actions [data-variant="tinted"]').click(); await settle(300); } }); }],
+    ['edit-conditions', async () => { await page.evaluate(() => window.GH.ui.editAnswers('conditions')); }],
+    ['sheet-around', async () => { await page.evaluate(() => { window.GH.ui.S.profile.conditions = ['ra', 'bp']; window.GH.ui.S.profile.age = 67; window.GH.ui.act.planAround(); }); }],
     ['edit-food', async () => { await page.evaluate(() => window.GH.ui.editAnswers('food')); }],
     ['tour-4', async () => { await act('showTour'); await settle(); for (let i = 0; i < 3; i++) { await page.evaluate(() => { const b = document.querySelector('dialog[open] [data-act="tourNext"], .tour [data-act="tourNext"]'); if (b) b.click(); }); await settle(600); } }],
     ['sheet-rule', async () => { await page.evaluate(() => window.GH.ui.open('science', 'volume')); await settle(1200); }],
@@ -194,6 +251,36 @@ for (const [width, theme, zoom, h] of COMBOS) {
     ['player', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('startWorkout'); await settle(2000); }],
     ['sheet-leave', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('startWorkout'); await settle(1200); await page.evaluate(() => window.__gh.back()); await settle(900); }],
     ['capsule', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('startWorkout'); await settle(1200); await act('plKeep'); await settle(); await page.evaluate(() => window.GH.ui.go('progress')); }],
+    // Your plans: the page, a plan's page (the coach's week copied), the picker, one exercise,
+    // sharing, a shared plan's preview, Build me a plan, and the Plan tab with a plan in use.
+    ['plans', async () => { await page.evaluate(() => window.GH.ui.open('plans')); }],
+    ['plans-edit', async () => { await page.evaluate(() => { const U = window.GH.ui; U.open('plans'); U.act.cpNew(); U.act.cpNewCopy(); }); await settle(1500); }],
+    ['plans-days', async () => { await page.evaluate(() => { const U = window.GH.ui, C = window.GH.customPlan; const p = C.list(U.S)[0]; U.open('planEdit', p.id); }); await settle(); await page.evaluate(() => { const s = document.getElementById('screen'); s.scrollTop = s.scrollHeight / 2; }); }],
+    ['plans-picker', async () => { await page.evaluate(() => { const U = window.GH.ui, C = window.GH.customPlan; U.open('planEdit', C.list(U.S)[0].id); U.act.cpAdd({ dataset: { arg: '0' } }); }); await settle(1500); }],
+    ['plans-item', async () => { await page.evaluate(() => { const U = window.GH.ui, C = window.GH.customPlan; U.open('planEdit', C.list(U.S)[0].id); U.act.cpItem({ dataset: { arg: '0:0' } }); }); await settle(1200); }],
+    ['plans-share', async () => { await page.evaluate(() => { const U = window.GH.ui, C = window.GH.customPlan; const id = C.list(U.S)[0].id; U.open('planEdit', id); U.act.cpShare({ dataset: { arg: id } }); }); await settle(1200); }],
+    ['plans-import', async () => { await page.evaluate(async () => { const C = window.GH.customPlan; const p = C.normalize({ name: 'Sam\'s gym split with a long name', note: 'Heavy first, then the rest.', days: [{ title: 'Upper body and a long title', items: [{ move: 'bench_bb', sets: 4, reps: 6 }, { move: 'row_cable', sets: 3, reps: 10 }, { move: 'side_plank', sets: 2, secs: 30 }] }, { title: 'Lower', items: [{ move: 'squat_bb', sets: 4, reps: 6 }, { move: 'hg_rdl', sets: 3, reps: 10 }] }] }).plan; window.__gh.onLink(C.link(await C.encode(p, { from: 'Samantha' }))); }); await settle(1500); }],
+    ['plans-build', async () => { await act('cpBuild'); }],
+    ['plans-build-plan', async () => { await act('cpBuild'); await settle(); await page.evaluate(() => { document.getElementById('cpAskQ').value = '3 days, 30 minutes, bigger arms, bad knees'; window.GH.ui.act.cpBuildGo(); }); await settle(2500); }],
+    ['plan-custom', async () => { await page.evaluate(() => { const GH = window.GH, U = GH.ui, C = GH.customPlan, S = U.S; GH.store.save = () => true; GH.store.saveSoon = () => {}; const p = C.list(S)[0] || C.add(S, C.fromCoach(S, U.today())).plan; C.use(S, p.id, U.today()); U.go('plan'); }); }],
+    // Outdoor activities: starting, recording, tucked away, the summary, history and records.
+    ['act-sheet', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('actStart'); }],
+    ['act-perm', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('actStart'); await settle(900); await page.click('dialog[open] .at-tile[data-arg="hike"]'); }],
+    ['act-perm-denied', async () => { await page.evaluate(() => { window.__act.perms = { location: 'denied', approximate: false, activity: 'granted', notifications: 'granted' }; window.GH.ui.go('today'); }); await settle(); await act('actStart'); await settle(900); await page.click('dialog[open] .at-tile[data-arg="walk"]'); }],
+    ['act-nogps', async () => { await page.evaluate(() => { window.__act.perms = { location: 'denied', approximate: false, activity: 'granted', notifications: 'granted' }; window.GH.ui.go('today'); }); await settle(); await act('actStart'); await settle(900); await page.click('dialog[open] .at-tile[data-arg="run"]'); await settle(900); await page.click('dialog[open] [data-act="actNoGps"]'); await settle(3600); await settle(3 * 60 * 1000); }],
+    ['act-search', async () => { await startAct('run', { searchMs: 60000 }); }],
+    ['act-live', async () => { await startAct('run', { go: 6 * 60 * 1000 }); }],
+    ['act-paused', async () => { await startAct('cycle', { go: 4 * 60 * 1000 }); await page.evaluate(() => window.GH.ui.act.alPause()); }],
+    ['act-pill', async () => { await startAct('walk', { go: 2 * 60 * 1000 }); await page.evaluate(() => window.__gh.back()); }],
+    ['act-capsule', async () => { await startAct('run', { go: 2 * 60 * 1000 }); await page.evaluate(() => window.__gh.back()); await settle(); await page.evaluate(() => window.GH.ui.go('health')); }],
+    ['act-summary', async () => { await seedActs(); await page.evaluate(() => window.GH.ui.open('activity', 'seed-r3')); }],
+    ['act-summary-end', async () => { await seedActs(); await page.evaluate(() => window.GH.ui.open('activity', 'seed-r3')); await settle(); await page.evaluate(() => { const s = document.getElementById('screen'); s.scrollTop = s.scrollHeight; }); }],
+    ['act-ride', async () => { await seedActs(); await page.evaluate(() => window.GH.ui.open('activity', 'seed-c1')); }],
+    ['act-rename', async () => { await seedActs(); await page.evaluate(() => window.GH.ui.open('activity', 'seed-w1')); await settle(); await act('actRename', 'seed-w1'); }],
+    ['activities', async () => { await seedActs(); await page.evaluate(() => window.GH.ui.open('activities')); }],
+    ['activities-records', async () => { await seedActs(); await page.evaluate(() => window.GH.ui.open('activities')); await settle(); await page.evaluate(() => { const s = document.getElementById('screen'); s.scrollTop = s.scrollHeight; }); }],
+    ['progress-records', async () => { await seedActs(); await page.evaluate(() => window.GH.ui.go('progress')); await settle(1200); await page.evaluate(() => { const r = document.querySelector('#screen .act-records'); if (r) r.scrollIntoView({ block: 'center' }); }); }],
+    ['health-activity', async () => { await seedActs(); await page.evaluate(() => window.GH.ui.go('health')); await settle(1200); await page.evaluate(() => { const r = document.querySelector('#screen [data-key="act-start"]'); if (r) r.scrollIntoView({ block: 'center' }); }); }],
     // Last, since it changes the state: today's workout done (not saved, so a reload undoes it).
     ['plan-done', async () => { await page.evaluate(() => { const GH = window.GH, U = GH.ui, B = GH.brain, S = U.S; GH.store.save = () => true; GH.store.saveSoon = () => {}; B.startWorkout(S, U.today(), { now: Date.now() - 26 * 60000 }); for (let g = 0; S.active && S.active.idx < S.active.steps.length && g < 400; g++) { const st = S.active.steps[S.active.idx]; B.completeStep(S, st.kind === 'test' ? { value: 12 } : {}); if (st.askRir) B.setRir(S, st.item, '12'); } B.finishWorkout(S, { rating: 'right', now: Date.now() }); U.go('plan'); }); }],
   ].filter(([id]) => !only.length || only.some((o) => id.startsWith(o)));
@@ -211,11 +298,15 @@ for (const [width, theme, zoom, h] of COMBOS) {
       check(`${id} (ran)`, false, e.message.split('\n')[0]);
     }
     if (id === 'player' || id === 'capsule') await page.evaluate(() => { const S = window.GH.ui.S; if (window.GH.ui.closePlayer) window.GH.ui.closePlayer(); S.active = null; window.GH.store.save(S); });
+    // An activity still recording would open again after the reload: stop it and forget it.
+    if (id.startsWith('act-') || id.startsWith('activities') || id.endsWith('-records') || id === 'health-activity') {
+      await page.evaluate(() => { const S = window.GH.ui.S; window.GH.activity.reset(); S.actLive = null; S.activities = []; window.GH.store.save(S); sessionStorage.removeItem('act-fake'); });
+    }
     // A slow machine can take a while to start the page again; a page that fails to start says why.
-    try { await page.reload(); await page.waitForSelector('#screen[data-view]'); } catch (e) {
+    try { await page.reload(); await booted('#screen[data-view]'); } catch (e) {
       check(`${id}: the page starts again`, false, `${e.message.split('\n')[0]} ${errors.slice(-3).join(' | ')}`);
       await page.reload({ timeout: 60000 });
-      await page.waitForSelector('#screen[data-view]', { timeout: 60000 });
+      await booted('#screen[data-view]');
     }
     await reset();
   }

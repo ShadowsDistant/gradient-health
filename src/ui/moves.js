@@ -9,9 +9,9 @@
   const B = () => GH.brain;
   const M = () => GH.moves;
 
-  const GROUP_TONE = { biceps: 'amber', triceps: 'rose', chest: 'indigo', legs: 'green', back: 'teal', shoulders: 'sky', abs: 'violet', conditioning: 'amber' };
-  const GROUP_ICON = { biceps: 'bolt', triceps: 'bolt', chest: 'layers', legs: 'mountain', back: 'arrow-left', shoulders: 'sun', abs: 'grid', conditioning: 'wave' };
-  const ORDER = ['biceps', 'triceps', 'chest', 'legs', 'back', 'shoulders', 'abs', 'conditioning'];
+  const GROUP_TONE = { biceps: 'amber', triceps: 'rose', chest: 'indigo', legs: 'green', back: 'teal', shoulders: 'sky', abs: 'violet', conditioning: 'amber', balance: 'teal' };
+  const GROUP_ICON = { biceps: 'bolt', triceps: 'bolt', chest: 'layers', legs: 'mountain', back: 'arrow-left', shoulders: 'sun', abs: 'grid', conditioning: 'wave', balance: 'compass' };
+  const ORDER = ['balance', 'biceps', 'triceps', 'chest', 'legs', 'back', 'shoulders', 'abs', 'conditioning'];
   const EQ_NAME = { db: 'dumbbells', kb: 'a kettlebell', ball: 'a ball', slam: 'a ball you can slam', band: 'a band', bar: 'a pull-up bar', chair: 'a chair', wall: 'a wall', towel: 'a towel', table: 'a sturdy table', door: 'a door anchor', bb: 'a barbell', ez: 'an EZ bar', rack: 'a squat rack', bench: 'a bench', incline: 'an adjustable bench', smith: 'a Smith machine', cable: 'a cable machine', pulldown: 'a lat pulldown', legPress: 'a leg press', legCurl: 'a leg curl machine', legExt: 'a leg extension machine', chestPress: 'a chest press machine', shoulderPress: 'a shoulder press machine', pecDeck: 'a pec deck', dip: 'dip bars', rower: 'a rower', bike: 'an exercise bike', treadmill: 'a treadmill' };
   const MUSCLE_NAME = (m) => String(m).replace(/([A-Z])/g, ' $1').toLowerCase();
 
@@ -35,14 +35,17 @@
     const S = U.S;
     const load = B().loadInfo(S, m);
     const cues = (m.cues || []).slice(0, S.complexity > 0 ? 1 : 3);
+    // The muscles doing the work (the move's first `prime`), then the ones helping.
     const muscles = (m.muscles || []).map(MUSCLE_NAME);
+    const and = (l) => (l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l[l.length - 1]}` : l[0] || '');
+    const works = muscles.length ? `${U.cap(and(muscles.slice(0, m.prime || 1)))}${muscles.length > (m.prime || 1) ? `, with ${and(muscles.slice(m.prime || 1))} helping` : ''}` : '';
     const views = U.figure3dOk && U.figure3dOk();
     // The figure always moves (the movement is the instruction); with reduced motion on there's a
     // button to stop it.
     const pause = U.reduced() ? '<button type="button" class="rf-btn fig-pause" data-size="sm" data-act="figPause" aria-pressed="false">Pause</button>' : '';
     return `<div class="sheet-fig-card"><div class="sheet-fig"></div>${U.tempoHtml ? U.tempoHtml(m) : ''}${views || pause ? `<div class="fig-view" data-key="figview">${views ? U.seg('figView', [['three-quarter', 'Angle'], ['side', 'Side'], ['front', 'Front']], 'three-quarter', 'View', ' data-size="sm" data-on="figView"') : ''}${pause}</div>` : ''}</div>
       <div class="sheet-pad">
-        <p class="t-footnote rf-muted">${U.esc([B().GROUP_NAME[m.group] || m.group].concat(muscles.length ? [muscles.join(', ')] : []).join(' · '))}${load && load.label ? ` · ${U.esc(load.label)}` : ''}${m.uni ? ' · one side at a time' : ''}</p>
+        <p class="t-footnote rf-muted">${U.esc([B().GROUP_NAME[m.group] || m.group].concat(works ? [works] : []).join(' · '))}${load && load.label ? ` · ${U.esc(load.label)}` : ''}${m.uni ? ' · one side at a time' : ''}</p>
         ${opts && opts.side ? `<p class="pl-side${opts.side === (S.catchup.arm.side || 'L') ? ' is-lead' : ''}">${U.side(opts.side)} side shown</p>` : ''}
         <ol class="cue-list">${cues.map((c) => `<li class="t-body">${U.esc(c)}</li>`).join('')}</ol>
         ${m.mistake ? `<p class="t-callout"><b>Watch out:</b> ${U.esc(m.mistake)}</p>` : ''}
@@ -59,7 +62,7 @@
     if (!m) return null;
     const first = U.markSeen ? U.markSeen('moveSheet') : false;
     const ctl = U.sheet({
-      title: m.name, detents: 'medium large', detent: 'large',
+      title: m.name, size: 'auto', detent: 'large',
       body: moveBody(m, opts),
       after: (c) => mountSheetFig(c, moveId, opts && opts.side),
       onClose: () => { dropSheetFig(ctl); if (opts && opts.onClose) opts.onClose(); if (first && U.els().playerEl.hidden) { U.render(); if (U.checklistCheck) U.checklistCheck(); } },
@@ -93,7 +96,7 @@
         const miss = needs(mv, lad.gym ? B().eqAt(S, 'gym') : S.profile.equipment);
         const why = lad.gym
           ? (i >= 0 ? (cur ? `Now: ${U.target(mv, st.reps)}${st.loads && st.loads[id] != null ? ` at ${B().fmtLoad(S, st.loads[id], String(mv.load || '').split('|')[0], mv)}` : ''}` : i === 0 ? 'First pick at your gym' : 'Also at your gym') : miss.length ? `Needs ${miss.join(', ')}` : S.excluded.includes(id) ? 'Hidden by you' : 'Not for now')
-          : i >= 0 ? `Level ${i + 1} of ${avail.length}${cur ? ` · now: ${U.target(mv, st.reps)}` : ''}` : miss.length ? `Needs ${miss.join(', ')}` : S.excluded.includes(id) ? 'Hidden by you' : mv.impact ? 'Has jumping or slamming' : 'Not for now';
+          : i >= 0 ? `Level ${i + 1} of ${avail.length}${cur ? ` · now: ${U.target(mv, st.reps)}` : ''}` : miss.length ? `Needs ${miss.join(', ')}` : S.excluded.includes(id) ? 'Hidden by you' : (GH.access && GH.access.why(S.profile, mv, U.today())) || (mv.impact ? 'Has jumping or slamming' : 'Not for now');
         return `<li><button type="button" class="rf-list-row${id === showing ? ' is-showing' : ''}${i < 0 ? ' is-muted' : ''}" data-act="ladderShow" data-arg="${id}">
           <span class="rf-list-icon" data-tone="${cur ? 'green' : i >= 0 ? 'sky' : 'indigo'}">${U.icon(cur ? 'star' : i >= 0 ? 'check' : 'lock')}</span>
           <span class="rf-list-text"><span class="rf-list-title">${U.esc(mv.name)}</span><span class="rf-list-sub">${U.esc(why)}</span></span></button></li>`;
@@ -102,7 +105,7 @@
       return `${moveBody(m)}<h3 class="rf-list-header">${lad.gym ? 'Exercises, favourite first' : 'All levels, easiest first'}</h3><ul class="rf-list">${rows}</ul>
         ${hidden ? `<div class="sheet-pad"><button type="button" class="rf-btn" data-act="unhide" data-arg="${showing}">Show this move again</button></div>` : ''}`;
     };
-    const ctl = U.sheet({ title: lad.name, detents: 'large', detent: 'large', body: body(), after: (c) => mountSheetFig(c, showing), onClose: () => dropSheetFig(ctl) });
+    const ctl = U.sheet({ title: lad.name, size: 'auto', body: body(), after: (c) => mountSheetFig(c, showing), onClose: () => dropSheetFig(ctl) });
     U.act.ladderShow = (b) => {
       showing = b.dataset.arg;
       U.haptic('select');
@@ -157,8 +160,12 @@
         }).join('');
         return `<h3 class="rf-list-header">${U.esc(B().GROUP_NAME[g] || g)}</h3><ul class="rf-list">${rows}</ul>`;
       }).join('');
-      const wu = (S.profile.equipment.kb && S.profile.equipment.kb.length ? M().WARMUP.kb : M().WARMUP.none);
-      const extra = wu.concat(M().MOBILITY, ['walk']).filter((id) => M().MOVES[id]).map((id) => U.row({ icon: M().MOBILITY.includes(id) ? 'leaf' : id === 'walk' ? 'navigate' : 'sun', tone: 'teal', title: U.esc(M().MOVES[id].name), act: 'moveInfo', arg: id, chevron: true })).join('');
+      // The warm-ups and stretches this person's kit and body allow (the halo needs a kettlebell, the
+      // pull-apart a band; plans built around age or a health condition add gentler and seated ones).
+      const ok = (id) => M().MOVES[id] && (!M().allowed || M().allowed(M().MOVES[id], S.profile.equipment)) && (!GH.access || GH.access.moveOk(S.profile, id));
+      const wu = [...new Set(((GH.access && GH.access.warmupIds(S.profile)) || []).concat(M().WARMUP.all || M().WARMUP.kb))].filter(ok);
+      const mob = [...new Set(M().MOBILITY.concat(B().mobilityFlow(S).map((x) => x.moveId)))].filter(ok);
+      const extra = wu.concat(mob, ['walk']).filter((id) => M().MOVES[id]).map((id) => U.row({ icon: mob.includes(id) ? 'leaf' : id === 'walk' ? 'navigate' : 'sun', tone: 'teal', title: U.esc(M().MOVES[id].name), act: 'moveInfo', arg: id, chevron: true })).join('');
       // A tab normally; a page (with a back button) when Food has the tab.
       const asPage = U.route && U.route.view === 'moves';
       return `${U.navbar('Moves', '', asPage ? U.glassBtn('chevron-left', 'Back', 'back') : '')}

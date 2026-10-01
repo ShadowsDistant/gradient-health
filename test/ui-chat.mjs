@@ -313,10 +313,13 @@ check('and Undo puts it back', await page.evaluate((b) => { const p = window.GH.
 await page.evaluate(() => window.GH.ui.act.tailorPlan({ getAttribute: () => 'calves' }));
 await page.waitForSelector('dialog[open] #tailorQ');
 check('from a muscle on the body map, the request is written for you', await page.evaluate(() => document.querySelector('dialog[open] #tailorQ').value === 'Train my calves more'));
+// The tiny test model writes random (if well-formed) JSON, so here the model's reading is "nothing".
+await page.evaluate(() => { window.__tailorAsk = window.GH.tailor.ask; window.GH.tailor.ask = async () => ({ focus: [], goals: [], minutes: null, days: null, avoid_joints: [], no_jumping: null, gentle: null, note: '' }); });
 await page.fill('dialog[open] #tailorQ', 'hello there');
 await page.click('dialog[open] [data-act="tailorSuggest"]');
 await page.waitForSelector('dialog[open] .tailor-none', { timeout: 60000 });
 check('a request with nothing to change says so', true);
+await page.evaluate(() => { window.GH.tailor.ask = window.__tailorAsk; });
 await page.evaluate(() => window.GH.ui.closeSheets());
 await wait(600);
 

@@ -8,6 +8,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { seedBridge, seedState } from '../test/fixtures.mjs';
+import { actBridge, seedActivities } from '../test/actfixture.mjs';
 import { serveDist } from '../test/lib.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -49,6 +50,7 @@ async function run(dark) {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.clock.install({ time: NOW });
   await page.addInitScript(seedBridge);
+  await page.addInitScript(actBridge);
   await page.goto(server.url);
   await page.waitForSelector('.onboard:not([hidden])');
   await page.evaluate(seedState);
@@ -91,12 +93,46 @@ async function run(dark) {
   await tab('health');
   await top();
   await shot('health');
-  await page.evaluate(() => { const el = document.querySelector('#screen [data-key="ch-sleep"]') || document.querySelector('#screen .ch-card'); document.getElementById('screen').scrollTo(0, el.offsetTop - 120); });
+  await page.evaluate(() => { const el = document.querySelector('#screen .hl-trends'); document.getElementById('screen').scrollTo(0, el.offsetTop - 120); });
   await shot('trends');
+  // A number's own sheet: resting heart rate, its chart, where each value came from and its history.
+  await page.evaluate(() => window.GH.ui.metricSheet('rhr'));
+  await settle(1200);
+  await shot('metric');
+  await page.evaluate(() => window.GH.ui.closeSheets());
+  await settle(600);
   await tab('progress');
   await shot('progress');
   await tab('plan');
+  // The exercise tiles turn into stills of the 3D figure while the phone is idle.
+  for (let i = 0; i < 20 && await page.evaluate(() => document.querySelectorAll('#screen .pw-card .pw-thumb[data-move] > svg').length > 0); i++) await settle(700);
   await shot('plan');
+  // An outdoor activity's summary: the route, pace, splits and the watch's heart rate.
+  await page.evaluate(seedActivities);
+  await page.evaluate(() => { const a = window.GH.activity.get(window.GH.ui.S, 'seed-r3'); a.title = 'Tempo run'; });
+  await settle();
+  await page.evaluate(() => window.GH.ui.open('activity', 'seed-r3'));
+  await settle(1500);
+  // Light: the numbers and new records; dark: the route on its map, with the splits under it.
+  if (dark) await page.evaluate(() => { const el = document.querySelector('#screen [data-key="map"]'); if (el) document.getElementById('screen').scrollTo(0, el.offsetTop - 110); });
+  else await top();
+  await shot('activity');
+  // Your plans: one made from the coach's week, its days, and sharing it as a QR code.
+  await page.evaluate(() => { const U = window.GH.ui, C = window.GH.customPlan; const p = C.list(U.S)[0] || C.add(U.S, C.fromCoach(U.S, U.today())).plan; U.open('planEdit', p.id); });
+  await settle(1200);
+  await top();
+  await shot('plans');
+  await page.evaluate(() => { const U = window.GH.ui, C = window.GH.customPlan; U.act.cpShare({ dataset: { arg: C.list(U.S)[0].id } }); });
+  await settle(1500);
+  await shot('share');
+  await page.evaluate(() => { const U = window.GH.ui; U.closeSheets(); while (U.back()) { /* to the tab */ } });
+  await settle(600);
+  // A plan built around a 68-year-old body with balance problems and a sore knee.
+  await page.evaluate(() => { const U = window.GH.ui, p = U.S.profile; Object.assign(p, { age: 68, conditions: ['balance', 'oa'], oaJoints: ['knee'] }); U.act.planAround(); });
+  await settle(1200);
+  await shot('around');
+  await page.evaluate(() => { const U = window.GH.ui, p = U.S.profile; U.closeSheets(); Object.assign(p, { age: 24, conditions: [], oaJoints: [] }); U.render(); });
+  await settle(600);
   await tab('today');
   await page.evaluate(() => window.GH.ui.open('coach'));
   await shot('coach');
@@ -149,6 +185,12 @@ async function run(dark) {
   await settle(900);
   await page.evaluate(() => { const el = document.querySelector('#screen .session'); if (el) document.getElementById('screen').scrollTo(0, el.offsetTop - 110); });
   await shot('gym');
+  // Set-up, from the start: the step that asks what to plan around.
+  await page.evaluate(() => { window.GH.ui.closeSheets(); window.GH.ui.showOnboarding(); });
+  await settle(600);
+  for (let i = 0; i < 4; i++) { await page.locator('.ob-actions [data-variant="tinted"]').click(); await settle(400); }
+  for (const v of ['balance', 'oa']) { await page.click(`.onboard .rf-chip[data-v="${v}"]`); await settle(200); }
+  await shot('setup');
   if (errors.length) console.log('page errors:', errors);
   await browser.close();
   await server.close();

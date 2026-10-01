@@ -30,9 +30,22 @@ export function seedBridge() {
   window.__foodWrites = [];
   const store = { state: '', secrets: {} };
   window.__haptics = [];
+  // Background sync: allowed and on, the last read five minutes ago. A test can put reads the app
+  // saved meanwhile in window.__pending ([{ id, payload }]) before the page loads; the ids the page
+  // marks done collect in window.__pendingDone.
+  window.__bg = { supported: true, granted: true, on: true, scheduled: true, lastRun: now - 5 * 60000, lastOk: now - 5 * 60000, error: null };
+  window.__pending = window.__pending || [];
+  window.__pendingDone = [];
+  const bgJson = () => JSON.stringify(Object.assign({}, window.__bg, { pending: window.__pending.length }));
   window.AndroidBridge = {
     hcStatus: () => 'granted', hcRequest: () => {}, hcRequestFood: () => {}, hcOpenSettings: () => {}, hcCanWrite: () => true, hcWriteWorkout: () => {},
-    hcGranted: () => JSON.stringify(['steps', 'sleep', 'weight', 'height', 'bodyFat', 'restingHr', 'hrv', 'exercise', 'heartRate', 'activeKcal', 'distance', 'nutrition', 'writeExercise', 'writeNutrition']),
+    hcGranted: () => JSON.stringify(['steps', 'sleep', 'weight', 'height', 'bodyFat', 'restingHr', 'hrv', 'exercise', 'heartRate', 'activeKcal', 'distance', 'nutrition', 'writeExercise', 'writeNutrition', 'background']),
+    hcBackground: bgJson,
+    hcBackgroundRequest: () => { window.__bg.granted = true; window.__bg.scheduled = window.__bg.on; setTimeout(() => { window.__gh.onHealthPerms('granted'); window.__gh.onHealthBackground(bgJson()); }, 30); },
+    hcBackgroundSet: (on) => { window.__bg.on = !!on; window.__bg.scheduled = !!on && window.__bg.granted; },
+    hcPending: () => JSON.stringify(window.__pending.slice(0, 50)),
+    hcPendingDone: (json) => { const ids = JSON.parse(json); window.__pendingDone.push(...ids); window.__pending = window.__pending.filter((p) => !ids.includes(p.id)); },
+    pendingLink: () => '',
     hcCanWriteFood: () => true,
     hcWriteFood: (json) => { const list = JSON.parse(json); window.__foodWrites.push(...list); setTimeout(() => window.__gh.onFoodWrite({ ok: true, ids: list.map((x) => x.id) }), 20); },
     hcDeleteFood: (json) => { const ids = JSON.parse(json); setTimeout(() => window.__gh.onFoodDelete({ ok: true, ids }), 20); },
@@ -49,11 +62,19 @@ export function seedBridge() {
 }
 
 // Five weeks of history, built with the app's own brain so every number is real.
-export function seedState() {
+// o.usualWeek keeps the usual Mon, Tue, Thu, Fri even when today is another day (for a suite that
+// sets the clock to a day it wants as it is, like a Wednesday light day).
+export function seedState(o) {
   const B = window.GH.brain;
   const today = B.dayOf(Date.now(), 4);
   const start = today - 35;
-  const S = B.newState({ goals: ['abs', 'arms', 'chest', 'legs'], experience: 'onoff', days: 4, minutes: 25, age: 24, units: 'lb', weightKg: 68.4, weightGoal: 'maintain', equipment: { db: [10, 15], kb: [15], band: true, chair: true, wall: true, towel: true }, lead: { arm: 'L', leg: null }, name: 'Alex' }, { pushups: 18, plankSec: 55, curlL: 12, curlR: 15 }, start);
+  // Four workouts a week on the usual Mon, Tue, Thu, Fri, moved along the week when today falls on
+  // one of the other days, so today is always a workout day whatever the date.
+  const wd = today - B.weekStart(today);
+  let shift = 0;
+  while (!(o && o.usualWeek) && ![0, 1, 3, 4].map((x) => (x + shift) % 7).includes(wd)) shift++;
+  const weekdays = shift ? [0, 1, 3, 4].map((x) => (x + shift) % 7).sort((a, b) => a - b) : null;
+  const S = B.newState({ goals: ['abs', 'arms', 'chest', 'legs'], experience: 'onoff', days: 4, weekdays, minutes: 25, age: 24, units: 'lb', weightKg: 68.4, weightGoal: 'maintain', equipment: { db: [10, 15], kb: [15], band: true, chair: true, wall: true, towel: true }, lead: { arm: 'L', leg: null }, name: 'Alex' }, { pushups: 18, plankSec: 55, curlL: 12, curlR: 15 }, start);
   S.health.status = 'granted';
   for (let d = start; d < today; d++) {
     const plan = B.todayPlan(S, d);

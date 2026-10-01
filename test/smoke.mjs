@@ -94,6 +94,8 @@ check('About you shows prefilled weight', (await title()) === 'About you' && (aw
 await page.fill('input[data-k="age"]', '19'); await page.locator('input[data-k="age"]').dispatchEvent('change');
 await page.fill('input[data-k="_w"]', '148.8'); await page.locator('input[data-k="_w"]').dispatchEvent('change');
 await clickNext();
+check('then Anything we should plan around?, optional', (await title()) === 'Anything we should plan around?' && await page.locator('.rf-chip[data-list="conditions"][aria-pressed="true"]').count() === 0);
+await clickNext();
 for (const g of ['abs', 'arms', 'chest', 'legs', 'consistency']) { await page.click(`.rf-chip[data-v="${g}"]`); await page.waitForTimeout(60); }
 check('goals are numbered in tap order', /1\. Visible abs/.test(await page.locator('.ob-chips').innerText()) && /5\. Consistency/.test(await page.locator('.ob-chips').innerText()));
 await shot(page, '02-goals');
@@ -107,18 +109,17 @@ await page.click('.rf-chip[data-list="equipment.kb"][data-v="10"]');
 await page.locator('input[data-k="equipment.ball"]').check();
 await page.waitForTimeout(100);
 await shot(page, '03-equipment');
-await clickNext(); // → body check
+await clickNext(); // → joints and sides
+check('Joints and sides screen', (await title()) === 'Joints and sides');
 await page.click('.rf-segmented[aria-label="Stronger arm"] input[value="R"]', { force: true });
-await clickNext(); // → food
-await clickNext(); // → sleep
-await clickNext(); // → style
 await clickNext(); // → baseline
 check('Baseline test screen', (await title()) === 'Baseline test');
 for (const [k, v] of [['_base.pushups', '24'], ['_base.curlL', '14'], ['_base.curlR', '18']]) { await page.fill(`input[data-k="${k}"]`, v); await page.locator(`input[data-k="${k}"]`).dispatchEvent('change'); }
-await clickNext();
-check('abs note shows with the abs goal', (await title()) === 'About abs');
+await clickNext(); // → weight and protein
+check('Weight and protein, with no food tracking question', (await title()) === 'Weight and protein' && !/Food tracking|Protein only/.test(await page.locator('.onboard').innerText()));
 await clickNext();
 check('Your plan summary', (await title()) === 'Your plan' && /4 days · ~25 min/.test(await page.locator('.onboard').innerText()));
+check('the abs note is part of the plan with the abs goal', /About abs/.test(await page.locator('.onboard').innerText()));
 check('plan: abs + arms 3×', /abs \+ arms 3×/.test(await page.locator('.onboard').innerText()), await page.locator('.onboard .ob-card').first().innerText());
 await shot(page, '04-plan');
 await clickNext(); // Start
@@ -242,17 +243,21 @@ check('the workout was saved to Health Connect once, keyed by day', writes.lengt
 
 section('Health, Progress, Plan, Moves');
 await page.click('.rf-tab[data-tab="health"]');
-await page.waitForSelector('#screen[data-view="health"] .ch-card', { timeout: 5000 }).catch(async (e) => { console.log('errors so far:', errors); await shot(page, 'fail-health'); throw e; });
+await page.waitForSelector('#screen[data-view="health"] .hl-tr', { timeout: 5000 }).catch(async (e) => { console.log('errors so far:', errors); await shot(page, 'fail-health'); throw e; });
 await page.waitForTimeout(300);
 const healthText = await page.locator('#screen').innerText();
 check('Health shows today\'s numbers from Health Connect', /Resting HR/.test(healthText) && /\d+ bpm/.test(healthText));
-check('trend charts drew', (await page.locator('#screen .ch-svg').count()) >= 4);
-await page.locator('#screen .ch-plot').first().click();
-check('tapping a chart shows a value', /:/.test(await page.locator('#screen .ch-tip').first().innerText()));
-await page.locator('#screen [data-act="chartTable"]').first().click();
-check('Numbers table opens', await page.locator('#screen .ch-tbl').first().isVisible());
+check('trend sparklines drew', (await page.locator('#screen .hl-tr .sp-svg').count()) >= 4);
 await shot(page, '10-health');
-check('a weekly report worked out on the phone', /Weekly report/.test(healthText) && /From your numbers/.test(healthText));
+await page.locator('#screen .hl-tr').first().click();
+await page.waitForSelector('dialog.ms-sheet[open] .ch-plot');
+await page.waitForTimeout(600);
+await page.locator('dialog.ms-sheet .ch-plot').click();
+check('a number opens its sheet; tapping its chart shows a value', /:/.test(await page.locator('dialog.ms-sheet .ch-tip').innerText()));
+check('with every day listed', (await page.locator('dialog.ms-sheet .ms-hist li').count()) >= 7);
+await page.evaluate(() => window.GH.ui.closeSheets());
+await page.waitForTimeout(500);
+check('a weekly report worked out on the phone', /This week/.test(healthText) && /From your numbers/.test(healthText));
 check('sync status shows when it last synced', /Synced (just now|\d+ min ago)/.test(healthText));
 check('the coach button sits at the top left', await page.locator('#topbar .rf-navbar-leading .coach-btn').count() === 1);
 await page.click('#topbar .coach-btn');
@@ -303,7 +308,7 @@ check('the tab bar steps aside on pushed pages', await page.evaluate(() => docum
 await shot(page, '14a-profile');
 await page.evaluate(() => window.GH.ui.open('science', 'rest'));
 await page.waitForTimeout(900);
-check('How it works lists every rule in its group', await page.evaluate(() => document.querySelectorAll('#screen .sci-list .sci-row').length === window.GH.science.RULES.length && document.querySelectorAll('#screen .sci-list').length === 4));
+check('How it works lists every rule in its group', await page.evaluate(() => document.querySelectorAll('#screen .sci-list .sci-row').length === window.GH.science.RULES.length && document.querySelectorAll('#screen .sci-list').length === window.GH.science.GROUPS.length));
 check('a "Why?" link opens that rule with its research', await page.evaluate(() => { const d = document.querySelector('dialog.sci-sheet[open]'); return !!(d && /Rest between sets/.test(d.textContent) && d.querySelector('.sci-ref') && d.querySelector('.sci-block')); }));
 await shot(page, '14b-science');
 await page.evaluate(() => window.GH.ui.closeSheets());

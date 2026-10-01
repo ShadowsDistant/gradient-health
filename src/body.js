@@ -29,7 +29,7 @@
   // How much each kind of progress adds to a muscle's score (times the muscle's weight in the move).
   const UP = 1, BEST = 0.5, LEVEL = 1;
   const SKIP_KIND = { warmup: 1, test: 1, mobility: 1, cooldown: 1, finisher: 1, interval: 1 };
-  const SKIP_GROUP = { mobility: 1, conditioning: 1 };
+  const SKIP_GROUP = { mobility: 1, conditioning: 1, balance: 1 };
 
   const clampWeeks = (w) => Math.max(1, Math.min(MAX_WEEKS, Math.round(Number(w) || 4)));
   const byOrder = (a, b) => MUSCLES.indexOf(a) - MUSCLES.indexOf(b);

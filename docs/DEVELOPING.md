@@ -23,6 +23,10 @@ src/scanner.js           the barcode camera sheet; src/barcode.js is its lazy ZX
 src/insights.js          on-device insights
 src/coach.js             the built-in coach: report, answers, today's decisions, suggestions
 src/tailor.js            Tailor my plan: a request into a proposal, applied and undone (GH.tailor)
+src/customplan.js        your own plans: checks, running them, swaps, progression, the share code and
+                         Build me a plan (GH.customPlan)
+src/qr.js                a QR code encoder that draws SVG (GH.qr), for sharing plans
+src/share-page.html      the page a shared plan's link opens in a browser (built to docs/p/index.html)
 src/devicecoach.js       the on-device model's prompt: rules, a compact data brief, safety routing
 src/ai.js                the Claude API coach (bundled with the Anthropic SDK by esbuild)
 src/llm.js               on-device AI runtime (native engine or llama.cpp in WebAssembly), a lazy
@@ -33,27 +37,34 @@ src/ui/core.js           layout, tabs, router, in-place rendering (U.morph), tra
 src/ui/sheet.js          the bottom sheets: detents, dragging, springs (U.sheet in core.js wraps it)
 src/ui/chat.js           the coach chat and the coach button on every tab
 src/ui/tailor.js         the Tailor my plan sheet
+src/ui/customplan.js     Your plans: the list, the editor and exercise picker, sharing, a shared plan's
+                         preview, Build me a plan
 src/ui/metric.js         a health number's sheet: its history, chart, and adding or changing it
 src/ui/bodymap.js        Progress's body map (front and back, 17 muscles) and the muscle sheet
 src/ui/guide.js          tour, first-week checklist, tab tips, What's new
 src/ui/*.js              screens: onboarding, player, today, plan, health, food, progress, moves,
                          coach page, profile, science (How it works), settings
 src/styles.css, src/styles/*.css   the app's styles (the per-area files are appended in order)
+android/src/…/HealthSync*.java     background Health Connect sync (a JobScheduler job every 15 minutes)
+android/src/…/Activity*.java       outdoor activity recording (a location foreground service, the track)
 android/jni/             the on-device coach's native engine (C++ over llama.cpp) and its host test
 scripts/build-native.sh  builds android/jni for arm64 (or --host, and tests it)
 scripts/build.mjs        inlines everything into dist/gradient-health.html; lazy chunks go to dist/lazy/
 scripts/build-apk.sh     builds and signs the APK without Gradle
 scripts/make-icons.mjs   the launcher icons from art/logo.webp
 scripts/screenshots.mjs  renders docs/screenshots/ from the built page
+scripts/store-assets.mjs   the store images in docs/store/ from docs/screenshots/
+scripts/release-notes.mjs  What's new for a version, for its GitHub release and the stores
 scripts/make-tiny-gguf.py  a tiny random-weight model for test/llm.mjs
 ```
 
 ```sh
 npm ci
-npm test          # simulations, insights, AI (mocked API), coach, poses, persistence, food, health, gym
-npm run build     # dist/gradient-health.html and dist/lazy/
+npm test          # simulations, insights, AI (mocked API), coach, poses, persistence, food, health, gym,
+                  # your plans, activities, release notes
+npm run build     # dist/gradient-health.html, dist/lazy/, docs/PRIVACY.md and docs/p/index.html
 npm run smoke     # end-to-end run in Chromium (needs Playwright); add --dark for dark mode
-npm run test:ui   # layout regressions, food flows, the coach chat, the 3D figure (Chromium)
+npm run test:ui   # layout regressions, food flows, the coach chat, the 3D figure, your plans (Chromium)
 npm run test:llm  # on-device AI runtime in Chromium with a tiny model (see On-device AI)
 node test/sweep.mjs [--quick]   # every screen at 360-600 px, light/dark, 100%/130% text, overflow checks
 npm run apk       # build/gradient-health.apk (see below)
@@ -172,14 +183,83 @@ nutrition. It can write exercise sessions for the workouts finished in the app (
 re-save updates instead of duplicating) and nutrition records for logged meals. It syncs
 when the app opens or comes back (at most once a minute), every 15 minutes while open, after a
 workout and on pull-to-refresh. The first read covers 90 days; later reads cover the gap since the
-last one plus two days.
+last one plus two days. With the app closed, the background sync below reads every 15 minutes.
+1.4 adds, for outdoor activities, reading total calories and writing exercise routes, distance and
+active calories; the permission request asks for them along with the rest.
+
+**Background sync.** `HealthSyncJob` is a periodic JobScheduler job (15 minutes, Android's minimum,
+with 5 minutes of flex; Doze can space runs out), persisted across reboots (`RECEIVE_BOOT_COMPLETED`)
+and needing no network. `HealthSync` schedules it on app start and resume, after every Health Connect
+permission answer and from the Settings switch, while four things hold: the switch is on (the
+default), Health Connect is connected, this phone's Health Connect can read in the background, and
+the person allowed `READ_HEALTH_DATA_IN_BACKGROUND`. That permission is part of the platform from
+Android 15; on Android 14 it's there only with a Health Connect update, so the app checks
+`PackageManager.getPermissionInfo` (and the Android 14 SDK extension 13 that brought it) and only
+then asks for it, together with the other Health Connect permissions or on its own
+(`hcBackgroundRequest`). A run that finds one of them missing records why and cancels the job.
+
+Each run reads the last two days through the same `HealthBridge.read` the page uses (it takes a
+`Context` and a callback, so no Activity is needed) and saves the JSON `onHealth` would get as
+`noBackupFilesDir/health-sync/<epoch ms>.json` (no-backup storage: it's a queue, not data to restore).
+A read with the same records as the last one saved isn't saved again, and one where every allowed
+type failed isn't saved at all. The folder keeps reads older than a day at one per 6 hours (each
+covers two days), then at most 300 files and 3 MB, dropping the oldest. `lastRun`, `lastOk` and
+`error` go to the `health_sync` SharedPreferences.
+
+The page asks with `hcPending()` (up to 50, oldest first) and deletes what it handled with
+`hcPendingDone(ids)`. `GH.health.sync` folds them in before each foreground read, and again after it,
+and so on boot and resume; so does the page when the app says a read finished
+(`__gh.onHealthBackground`). They're folded in oldest first with the same `ingest`; one ending before
+the last sync (or a newer background read) is only marked done. A read that starts before the last
+sync leaves no gap, so the last sync moves up to it and the next foreground read is shorter. A type
+whose read failed (timed out, rate-limited) keeps what earlier reads found instead of being wiped.
+`hcBackground()` gives `{supported, granted, on, scheduled, lastRun, lastOk, error, pending}`;
+Settings, Health data, shows the switch and "Every 15 minutes · last at 3:15 pm", or why it's off.
+
+**Outdoor activities.** The page records runs, walks, hikes and rides through `ActivityService`, a
+foreground service of type `location` that the page starts while it's in front (so no background
+location permission is needed). It asks for precise location, physical activity (the step counter,
+Android 10+) and notifications (13+) with `actRequestPermissions()` (answer:
+`__gh.onActPermissions`), then `actStart({id, type, title, units?})`. The service takes a GPS fix
+about once a second from the GPS provider (else the fused provider on Android 12+, else the network),
+counts steps from the phone's step counter, and shows an ongoing, quiet notification,
+"Run · 12:34 · 2.14 km" with the average pace, Pause or Resume and Finish; tapping it opens the app
+(the page gets the route `activity`). Finish there ends the activity and leaves a note that opens the
+summary. While the page is in front it gets `__gh.onActivity(state)` about once a second.
+
+`ActivityTrack` keeps the recording in `noBackupFilesDir/activity/`: `<key>.json` with its details
+(replaced atomically on every change and every 20 seconds) and `<key>.track`, one point a line,
+`[t, lat, lon, alt|null, acc, speed|null, paused]`, appended as fixes come in. A fix is stored when
+it's 3 m from the last one, 10 s after it, the first good one after bad ones or the first after a
+pause. The distance leaves out points worse than 50 m, pauses (a pause ends the line), GPS jumps
+(faster than 12 m/s from the last good point on a walk or hike, 25 m/s otherwise; three in a row
+restart the line there) and standing still (the anchor only moves once the position has moved more
+than the accuracy, and not while the GPS speed is under 0.4 m/s). Loading a recording runs the same
+filter over its points, so a page reload, a crash or a restart gives the same numbers; if Android
+stops the service mid-activity, it starts again the next time the app comes to the front. A finished
+recording stays (actState reports it with `active: false`) until the page saves it and calls
+`actClear(id)`; at most 20 finished ones are kept.
+
+The page reads `actState()` and `actPoints(from)`; `actSupport()` says whether the phone has GPS, a
+step counter and Health Connect. For the summary, `hcSession({id, start, end})` answers
+`__gh.onHcSession` with steps, distance, active and total calories and every heart rate sample in the
+window from other apps and watches (the app's own records are left out, so a saved activity doesn't
+count itself), plus which apps wrote them. `hcWriteActivity(...)` saves it as an exercise session
+with its route (when routes are allowed), and distance and active calories only when the page
+passes them, with client record ids from the activity's id so saving again updates it.
+
+**Plan links.** `gradienthealth://plan?d=…` and `https://shadowsdistant.github.io/gradient-health/p/…`
+(not verified, so Android opens the browser unless the person picks the app) open the app, which
+hands the URL to `__gh.onLink(url)`. The link a cold start came with also waits for
+`AndroidBridge.pendingLink()`, which returns it once.
 
 **Claude app hand-off.** "Ask in the Claude app" sends an `ACTION_SEND` text intent to the Claude app
 (`com.anthropic.claude`) when it's installed, and the share sheet otherwise. The text is the
 question plus the same privacy-safe summary the API coach uses (`GH.ai.summary`).
 
 **Privacy.** Health data stays on the phone. Android's device backup can include the app's data;
-`android/res/xml/*backup*` rules leave the API key out of it.
+`android/res/xml/*backup*` rules leave the API key out of it. Background reads and activity tracks
+are in `noBackupFilesDir`, so backups never include them.
 
 ## On-device AI
 
@@ -203,9 +283,10 @@ way for both:
 
 Both are the same llama.cpp release (b10663). Details:
 
-- **Models.** Qwen3.5 in three sizes, Q4_K_M from unsloth's Hugging Face repos: Fast (0.8B, 533 MB,
-  recommended on every phone), Balanced (2B, 1.28 GB, offered with 6 GB of RAM or more) and Best answers
-  (4B, 2.74 GB, 12 GB or more). Qwen3.5 mixes gated delta-net (recurrent) layers with full attention.
+- **Models.** Qwen3.5 in three sizes, Q4_K_M from unsloth's Hugging Face repos: Fast (0.8B, 533 MB),
+  Balanced (2B, 1.28 GB, offered with 6 GB of RAM or more) and Best answers (4B, 2.74 GB, 12 GB or more).
+  Balanced is the one suggested on phones with the native engine and 8 GB or more (on the model check's
+  prompts it reads the facts clearly better than Fast, at about half the speed); Fast everywhere else. Qwen3.5 mixes gated delta-net (recurrent) layers with full attention.
   1.2's Qwen2.5 models stay in the table as `legacy`, with their SHA-256 pinned: not offered, but one
   already on a phone keeps working.
 - **Prompts** are built in JS (`chatml()`), so neither engine depends on a template engine: ChatML, and
@@ -224,6 +305,13 @@ Both are the same llama.cpp release (b10663). Details:
   goes in with FACTS: what the built-in coach (`src/coach.js`) works out for its topic, the How it works
   rule behind it (`src/data/science.js`) and, for today, what the plan changed and why. The chat shows
   them under each answer ("What it used"). Emergencies get the built-in safety answer instead.
+- **Checked answers.** Small models still slip, so `GH.deviceCoach` holds them to the app's reading. A
+  yes-or-no question the numbers settle (`GH.coach.verdict`: "Am I getting stronger?") and a question
+  built on something that isn't so (`GH.coach.correction`: "Why is today lighter?" on a full day) start
+  from the app's own words, passed to `GH.llm.chat` as `lead` (written into the prompt, so the model
+  carries on from it). Afterwards `keepToGiven` leaves out any sentence with a number that wasn't in the
+  prompt (a rounded one counts), and `finish` puts the app's own answer in its place if too little is
+  left, with a note under the answer saying so.
 - **Nothing hangs silently.** Range reads time out after 30 s (three tries); a load with no progress
   for 45 s and an answer with nothing new for 60 s are "stalled"; a wllama worker that dies (wllama only
   logs that) or won't stop within 5 s of Stop is shut down, and everything waiting on it is rejected.
@@ -237,7 +325,9 @@ Both are the same llama.cpp release (b10663). Details:
 - **Tailor my plan** (`src/tailor.js`, `src/ui/tailor.js`) turns a request into a proposal with rules
   first; what they miss goes to Claude (structured output) or the on-device model, held to a GBNF
   grammar (`GH.tailor.GRAMMAR`, passed as `grammar` to either engine) so it can only write the fields and
-  values the app reads.
+  values the app reads. A muscle group ("more legs") puts that goal first; a single muscle ("calves",
+  "rear delts") goes into `profile.focus` (up to 4), which lifts its group a tier and leans that group's
+  days toward it.
 - **Downloads** run in Java (`ModelStore.java`, started by `AndroidBridge.modelDownload`): one at a
   time, only from Hugging Face, resumable from a `.part` file, optionally Wi-Fi only, after a free-space
   check. A file counts as installed once its size (the Hub's exact size, within 3% of the table's),
@@ -262,7 +352,11 @@ Both are the same llama.cpp release (b10663). Details:
   them to the built page and checks the catalog, prompts, loading, streaming, the cache, reading ahead,
   abort, unloading, the Tailor grammar and the download API, and runs the native adapter against a fake
   `LlmService` (streaming, Stop, a restarted service, a stuck or crashed engine). `test/ui-chat.mjs`
-  runs the chat and Tailor with the tiny Qwen3.5 model:
+  runs the chat and Tailor with the tiny Qwen3.5 model. On GitHub, `.github/workflows/model-check.yml`
+  (on pushes to the AI code, or by hand) downloads the real models: `test/model-check.mjs` asks the
+  in-app engine through `GH.deviceCoach.ask`, and `test/model-prompts.mjs` writes the app's exact
+  prompts for `ghllm_ask` (the native core built for the runner) to answer with Fast and Balanced, then
+  prints each answer as the chat would show it:
 
   ```sh
   python3 -m venv build/venv && build/venv/bin/pip install gguf numpy
@@ -292,6 +386,52 @@ from logged intake and the weight trend (a regression on raw weigh-ins, blended 
   apps logged comes back as per-day totals. The nutrition permissions are only requested when calorie
   tracking is on (`AndroidBridge.hcRequestFood`).
 
+## Your plans
+
+People can build their own plans, ask the coach to build one, or add one someone shared, and run it
+with the app's own player, progression and readiness. `src/customplan.js` is pure logic on the saved
+state (`test/customplan.mjs`); `src/ui/customplan.js` is the screens (`test/ui-customplan.mjs`).
+
+- **A plan** is `{ v, id, name, note, days: [{ title, items: [{ move, sets, reps | secs, rest? }] }],
+  weekdays, source: 'you' | 'coach' | 'shared', from?, createdAt, updatedAt }`, kept in `S.customPlans`;
+  `S.activePlan` is the one in use (null: the coach's plan). `normalize()` brings anything plan-like (an
+  older save, a shared code, a model's answer) to what this version runs: known move ids, 1 to 6 days,
+  1 to 12 exercises a day, 1 to 10 sets, 1 to 100 reps or 5 to 600 seconds.
+- **Running one.** Switching is an event (`{ type: 'plan', day, id, n, wd }` in `S.events`), so the
+  calendar replays each week with the plan that was in force and past days keep their meaning. Four
+  hooks in `src/brain.js`, marked `[custom plans]`: `calendar()` takes a week's sessions from
+  `weekSessions()`, a missed day only moves sessions within the same plan's stretch of the week
+  (`regime`, `until`), `buildSession()` hands custom sessions (tpl `c:<plan id>:<day>`) to
+  `GH.customPlan.buildSession()`, and `finishWorkout()` moves their exercises on with `progress()`.
+  Readiness, lighter weeks and short-time trims apply as usual. Progress is kept per plan in
+  `S.planProg` (more reps or seconds, then more weight, back down when well short twice). A move someone
+  can't do (equipment, a joint in `profile.careful` or `S.pain`, no jumping, a hidden move, anything the
+  brain's rules leave out) is swapped for the most similar one they can do, and the plan says why.
+- **The share code.** `encode()` packs a plan as compact JSON (`[name, note, from, weekdays | 0,
+  [[title, [move, sets, amount, rest?], …], …]]`), compresses it with `deflate-raw` when that's smaller,
+  and writes a version byte (top bit: compressed) and the body in base64url. The link is
+  `https://shadowsdistant.github.io/gradient-health/p/#<data>`; `decode()` also takes
+  `gradienthealth://plan?d=<data>`, `intent://plan?d=<data>#Intent;…` and the bare data. A typical
+  3-day plan's link is about 350 characters, a version 12 QR code. `src/qr.js` draws the code as SVG;
+  `test/customplan.mjs` reads it back with ZXing. Scanning is the barcode sheet with `{ qr: true }`.
+- **Links into the app.** The shell calls `window.__gh.onLink(url)` when a link opens the running app
+  (it returns true when it took the link; other handlers stay chained), and `AndroidBridge.pendingLink()`
+  returns the link the app was started with. A new install shows the plan after set-up, and What's new
+  or the tour, which open by themselves, go first.
+- **The share page.** `src/share-page.html` is built to `docs/p/index.html` with the QR encoder and the
+  move names inlined, so it makes no requests (its CSP allows only its own script, by hash). It reads the
+  plan from the part after `#`, which browsers never send, and shows it. On Android it offers "Open in
+  Gradient Health" (an `intent://plan?d=…` link with the releases page as the fallback); elsewhere it
+  shows the code to scan. **GitHub Pages must be on** for links to open in a browser (the repository's
+  Settings, Pages, Deploy from a branch, `main`, `/docs`). QR codes, and links opened straight in the
+  app, work without it.
+- **Build me a plan.** `generate()` reads the request with Tailor's rules plus the split and the time,
+  has the brain plan a week for a copy of the person with those wishes, and turns it into a plan, so it
+  only holds moves they can do. With Claude on (`GH.ai.json`, a JSON schema) or an on-device model (a
+  GBNF grammar of the allowed move ids and exactly the days asked for), a model then renames, regroups
+  and re-picks from `allowedMoves()`. `accept()` keeps its answer only if it's a valid plan of moves this
+  person can do; otherwise the app's own plan stands.
+
 ## Publishing (Google Play and APKPure)
 
 The app targets API 36 (what Play requires for new apps and updates from Aug 31, 2026) and handles
@@ -307,7 +447,9 @@ the package name to that key's certificate.
 
 - **The release key** is a PKCS12 keystore (RSA 4096, valid to 2056, alias `gradienthealth`) kept by
   the owner and in the repository's GitHub secrets, never in the repository. Keep two copies of it
-  and its password somewhere safe: a lost key means publishing a new app under a new name.
+  and its password somewhere safe: a lost key means publishing a new app under a new name. Its
+  certificate's SHA-256 is in `android/release-cert.sha256`, and `build-apk.sh` stops a release build
+  signed with any other key, so a wrong secret can't publish an APK that won't update.
 - **CI signs with it** when these repository secrets exist (Settings, Secrets and variables, Actions):
 
   | Secret | Value |
@@ -333,6 +475,10 @@ Every push to `main` or a `claude/` branch runs `.github/workflows/android.yml`:
 `build-apk.sh` and `build-aab.sh` with one shared versionCode (minutes since 1970, so it only grows),
 then the "latest" GitHub release with both files. The `.apk` is for APKPure and direct installs; the
 `.aab` (Android App Bundle) is the upload for Google Play, which doesn't take APKs for new apps.
+The release's notes start with What's new in the version, from its entry in `src/data/changelog.js`
+(`scripts/release-notes.mjs`), with the entry's `store` text folded underneath for a store's What's
+new field, then the commit, versionCode and signing key. So a new version needs a changelog entry
+with a `store` text of 500 characters at most (Play's limit); `test/release.mjs` checks both.
 `build-aab.sh` needs the Android SDK's `aapt2` and a platform `android.jar`, which the CI runner has,
 plus `bundletool`, which it downloads from Google's GitHub release and checks against a pinned
 SHA-256.
@@ -351,32 +497,57 @@ SHA-256.
    allows it on a screen that lists what's sent (`U.claudeConsent`).
 5. **Health Connect permissions declaration.** One justification per data type, with the reasons the
    privacy page gives: reads of steps, sleep, weight, height, body fat, heart rate, resting heart
-   rate, HRV, exercise, active calories burned, distance and nutrition, and writes of exercise and
-   nutrition. Google reviews this separately; allow a few days.
-6. **Other permissions.** `CAMERA` (barcode scanning only, asked when Scan is tapped; the camera
-   feature is declared not required), `INTERNET` (the optional Claude coach, Open Food Facts and the
-   on-device model download) and `ACCESS_NETWORK_STATE` (so a model download can wait for Wi-Fi).
-7. **Privacy policy.** Play needs a public URL. [docs/PRIVACY.md](PRIVACY.md) has the text; host it
+   rate, HRV, exercise, active and total calories burned, distance and nutrition, and writes of
+   exercise, exercise routes, distance, active calories and nutrition. Total calories, routes,
+   distance and active calories are for outdoor activities: the summary shows total calories, and a
+   saved run, walk, hike or ride goes to Health Connect with its route, plus distance and calories
+   when no watch recorded them. **Background reads** (`READ_HEALTH_DATA_IN_BACKGROUND`) have their
+   own justification: the app reads the last two days every 15 minutes while it's closed so the
+   history and the plan's readiness have no gaps on days it isn't opened; the data stays on the
+   phone, and the person can turn it off in Settings. Google reviews this separately; allow a few
+   days.
+6. **Other permissions.** `CAMERA` (scanning food barcodes and shared plan codes only, asked when
+   Scan or Add a shared plan is tapped; the camera feature is declared not required), `INTERNET` (the optional Claude coach, Open Food Facts and the
+   on-device model download), `ACCESS_NETWORK_STATE` (so a model download can wait for Wi-Fi),
+   `ACCESS_FINE_LOCATION` and `ACCESS_COARSE_LOCATION` (an activity's route, only while one the person
+   started records; no `ACCESS_BACKGROUND_LOCATION`, so no location declaration form),
+   `ACTIVITY_RECOGNITION` (steps during an activity), `POST_NOTIFICATIONS` (the recording's
+   notification) and `RECEIVE_BOOT_COMPLETED` (keeps the background sync's job after a restart).
+7. **Foreground service declaration** (App content, Foreground service permissions).
+   `FOREGROUND_SERVICE_LOCATION` for `ActivityService`: the use case is fitness tracking the person
+   starts ("Record a run, walk, hike or ride: the route, distance and pace with the screen off"). It
+   runs only while an activity records, shows an ongoing notification with Pause and Finish, and
+   stops when the person finishes. Play asks for a short video of the flow: start an activity, lock
+   the phone, show the notification, finish it.
+8. **Privacy policy.** Play needs a public URL. [docs/PRIVACY.md](PRIVACY.md) has the text; host it
    somewhere public (GitHub Pages works) and link it in the listing and the Console.
-8. **Data safety form.** Declare what the optional features send, as optional and for app
+9. **Data safety form.** Declare what the optional features send, as optional and for app
    functionality, encrypted in transit, with in-app deletion (Reset everything):
    - shared with Anthropic when Claude is on: health info and fitness info (averages and trends),
      personal info (an age range, and sex if given) and app activity (the questions asked);
    - shared with Open Food Facts when online food search is on: the search words and barcodes;
-   - nothing else leaves the phone. The on-device model is a download from Hugging Face.
-9. **AI-generated content.** Every AI answer (on-device or Claude), Claude's weekly report and its
-   suggestions have a Report action that hides the item and keeps a local record. Sending a report to
-   the developer opens a prefilled GitHub issue in the browser. Play's policy asks that people can
-   report without leaving the app, so a reviewer may flag this. The fix is an endpoint you run: point
-   `REPORT_URL` in `src/ui/healthtab.js` at it and send the report from the app.
-10. **App content forms.** Target audience 13 and over (18 and over avoids the teen-specific
+   - a workout plan someone shares goes only where they send it themselves (Android's share sheet, or
+     a QR code on their screen), never through a server;
+   - nothing else leaves the phone. The on-device model is a download from Hugging Face. Location
+     (an activity's route) and the background Health Connect reads are processed only on the phone
+     (Health Connect is on the phone too). One exception to weigh: Show streets on an activity
+     downloads map tiles for the route's area from OpenFreeMap, which hints at roughly where it was.
+     Declaring "Approximate location, shared, optional, for app functionality" is the cautious
+     answer.
+10. **AI-generated content.** Every AI answer (on-device or Claude), Claude's weekly report and its
+    suggestions have a Report action that hides the item and keeps a local record. Sending a report to
+    the developer opens a prefilled GitHub issue in the browser. Play's policy asks that people can
+    report without leaving the app, so a reviewer may flag this. The fix is an endpoint you run: point
+    `REPORT_URL` in `src/ui/healthtab.js` at it and send the report from the app.
+11. **App content forms.** Target audience 13 and over (18 and over avoids the teen-specific
     questions), no ads, the content rating questionnaire, and App access notes: everything works
     without an account; Claude needs the person's own Anthropic API key, and the on-device model is
     an optional download of 0.5 to 2.7 GB.
-11. **Store listing.** The README and `docs/screenshots/` are a starting point for the description
-    and phone screenshots.
-12. **Release.** Upload `gradient-health.aab` from the latest CI release to internal testing, then the
-    closed test, then production.
+12. **Store listing.** `docs/store/LISTING.md` has the short and full description, and `docs/store/`
+    the feature graphic, icon and phone screenshots (`node scripts/store-assets.mjs` renders them).
+13. **Release.** Upload `gradient-health.aab` from the latest CI release to internal testing, then the
+    closed test, then production. For the release notes, paste the short What's new from the end of
+    the CI release's What's new between `<en-US>` and `</en-US>`.
 
 ### APKPure
 
@@ -386,6 +557,8 @@ SHA-256.
    hours.
 3. Every update must keep the package name and the signing key, or APKPure rejects it and phones
    won't install it over the old one.
+4. With each update, paste the short What's new from the end of the CI release's What's new (or
+   `node scripts/release-notes.mjs --store`) into APKPure's What's new field.
 
 ### Android developer verification
 

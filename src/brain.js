@@ -27,7 +27,7 @@
 
   /* ================================================================== constants */
   const GROUPS = ['biceps', 'triceps', 'abs', 'chest', 'legs', 'back', 'shoulders'];
-  const GROUP_NAME = { biceps: 'Biceps', triceps: 'Triceps', abs: 'Abs', chest: 'Chest', legs: 'Legs', back: 'Back', shoulders: 'Shoulders', conditioning: 'Conditioning', mobility: 'Mobility' };
+  const GROUP_NAME = { biceps: 'Biceps', triceps: 'Triceps', abs: 'Abs', chest: 'Chest', legs: 'Legs', back: 'Back', shoulders: 'Shoulders', conditioning: 'Conditioning', mobility: 'Mobility', balance: 'Balance' };
   const GOAL_GROUPS = { abs: ['abs'], arms: ['biceps', 'triceps'], chest: ['chest'], legs: ['legs'], back: ['back'], shoulders: ['shoulders'] };
   const UNIT_OF = { biceps: 'arms', triceps: 'arms', abs: 'abs', chest: 'chest', legs: 'legs', back: 'back', shoulders: 'shoulders' };
   const UNIT_GROUPS = { arms: ['biceps', 'triceps'], abs: ['abs'], chest: ['chest'], legs: ['legs'], back: ['back'], shoulders: ['shoulders'] };
@@ -35,6 +35,26 @@
   const LEVEL = { never: 0, onoff: 0, lt1: 1, '1to3': 1, '3plus': 2 };
   const JOINTS = ['knee', 'shoulder', 'back', 'wrist', 'elbow', 'hip', 'ankle', 'neck'];
   const CORE_ROTATION = [['abs', 'coreRot'], ['absLoad', 'coreSide'], ['abs', 'coreSide'], ['absLoad', 'coreRot']];
+  // Which of the 7 groups each of the 17 muscles counts toward: where its sets come from in the
+  // plan (rear delts are trained with the back, forearms with curls, hip flexors with abs).
+  const MUSCLE_GROUP = {
+    chest: 'chest', abs: 'abs', obliques: 'abs', hipFlexors: 'abs', upperBack: 'back', lats: 'back', lowerBack: 'back', rearDelts: 'back',
+    glutes: 'legs', quads: 'legs', hamstrings: 'legs', calves: 'legs', biceps: 'biceps', forearms: 'biceps', triceps: 'triceps',
+    frontDelts: 'shoulders', sideDelts: 'shoulders',
+  };
+  // Muscles the person asked to focus on (profile.focus: up to 4 of the 17; may be missing).
+  const focusOf = (p) => (p && Array.isArray(p.focus) ? p.focus.filter((m) => MUSCLE_GROUP[m]).slice(0, 4) : []);
+  // The muscles each family mainly trains, for leaning a day's sets toward a focus.
+  const FAM_FOCUS = {
+    push: ['chest', 'triceps'], chestDb: ['chest'], squat: ['quads', 'glutes'], hinge: ['glutes', 'hamstrings', 'lowerBack'], glute: ['glutes'],
+    hamCurl: ['hamstrings'], calf: ['calves'], row: ['lats', 'upperBack'], pull: ['lats', 'biceps'], rear: ['rearDelts', 'upperBack'],
+    backExt: ['lowerBack'], press: ['frontDelts', 'triceps'], raise: ['sideDelts'], abs: ['abs', 'hipFlexors'], absLoad: ['abs'],
+    coreRot: ['obliques'], coreSide: ['obliques'], curl: ['biceps', 'forearms'], triceps: ['triceps'],
+    pressG: ['chest', 'triceps'], inclineG: ['chest', 'frontDelts'], flyG: ['chest'], squatG: ['quads', 'glutes'], hingeG: ['hamstrings', 'glutes', 'lowerBack'],
+    gluteG: ['glutes'], lungeG: ['quads', 'glutes'], legCurlG: ['hamstrings'], legExtG: ['quads'], calfG: ['calves'], pullG: ['lats'],
+    rowG: ['lats', 'upperBack'], rearG: ['rearDelts', 'upperBack'], ohpG: ['frontDelts', 'sideDelts'], raiseG: ['sideDelts'], curlG: ['biceps'], triG: ['triceps'], absG: ['abs'],
+  };
+  const focusScore = (fam, focus) => (FAM_FOCUS[fam] || []).filter((m) => focus.includes(m)).length;
   const LB_PER_KG = 2.20462;
 
   /* ================================================================== profile + program */
@@ -89,6 +109,9 @@
     }
     if (goals.includes('strength') || muscleRank === 0) for (const grp of GROUPS) if (!tiers[grp] && grp !== 'shoulders') tiers[grp] = 2;
     for (const grp of GROUPS) if (!tiers[grp]) tiers[grp] = 3;
+    // Focus muscles lift the group they belong to one tier (once per group).
+    const focus = focusOf(p);
+    for (const grp of new Set(focus.map((m) => MUSCLE_GROUP[m]))) if (tiers[grp] > 1) tiers[grp]--;
     const D = clampInt(p.days, 2, 6);
     const freq = {};
     for (const [unit, groups] of Object.entries(UNIT_GROUPS)) {
@@ -113,12 +136,15 @@
       : lvl === 0 || p.recentActivity === 'none' ? { weeks: 2, mult: 0.7 }
       : p.experience === 'lt1' ? { weeks: 1, mult: 0.8 }
       : p.experience === '1to3' ? { weeks: 1, mult: 0.9 } : { weeks: 0, mult: 1 };
-    return {
-      tiers, freq, start, cap, floor, level: lvl, D,
+    const out = {
+      tiers, freq, start, cap, floor, level: lvl, D, focus,
       finisherPerWeek: cond ? 7 : 2, walkMin: cond ? 20 : 12, mobilityPlus: goals.includes('mobility'),
       onramp, impactOk: p.impactOk !== false && !(p.age >= 60) && !p.gentle,
       warmupMin: p.age >= 40 ? 4 : 2.5,
     };
+    // Age and health conditions shift these defaults (src/access.js): impact, warm-up length, a
+    // gentler start with a heart condition.
+    return GH.access ? GH.access.program(p, out) : out;
   }
   const clampInt = (x, lo, hi) => Math.max(lo, Math.min(hi, Math.round(Number(x) || lo)));
 
@@ -215,15 +241,19 @@
     squat: [['sq_goblet', 'sq_bw'], ['sq_goblet', 'sq_split'], ['sq_split', 'sq_lunge']],
     hinge: [['hg_deadlift', 'hg_bridge'], ['hg_rdl', 'hg_deadlift', 'hg_bridge1'], ['hg_sldl', 'hg_bridge1']],
     glute: [['gl_bridge'], ['gl_kbbridge', 'gl_bridge'], ['gl_thrust', 'gl_bridge1']],
-    row: [['row_db', 'row_band', 'row_towel', 'row_table'], ['row_db', 'row_band', 'row_table'], ['row_chair', 'row_table']],
+    row: [['row_db', 'row_band', 'row_towel', 'row_table', 'row_door'], ['row_db', 'row_band', 'row_table', 'row_door'], ['row_chair', 'row_table', 'row_door']],
     pull: [['pull_hang'], ['pull_neg'], ['pull_chin']],
     rear: [['rear_towel', 'rear_band', 'rear_ytw'], ['rear_fly', 'rear_band', 'rear_ytw'], ['rear_fly_slow', 'rear_ytw_hold']],
-    raise: [['raise', 'raise_band'], ['raise'], ['raise_slow']],
+    raise: [['raise', 'raise_band', 'raise_wall_iso'], ['raise', 'raise_prone_y'], ['raise_slow', 'raise_prone_y']],
+    press: [['press_db', 'press_band', 'press_pike_incline'], ['press_db', 'press_band', 'press_pike'], ['press_db_slow', 'press_1arm', 'press_pike']],
+    backExt: [['back_birddog'], ['back_superman', 'back_birddog'], ['back_ext', 'back_superman']],
+    calf: [['calf_bw'], ['calf_wall_slow', 'calf_bw'], ['calf_load', 'calf_1leg']],
+    hamCurl: [['ham_walkout'], ['ham_slide', 'ham_walkout'], ['ham_slide1', 'ham_band_gm', 'ham_slide']],
     abs: [['ab_deadbug'], ['ab_revcrunch'], ['ab_legraise']],
     absLoad: [['abl_crunch'], ['abl_kb', 'abl_crunch'], ['abl_kb_slow', 'abl_crunch']],
     coreRot: [['rot_russian'], ['rot_russian', 'rot_chop'], ['rot_chop', 'rot_russian_up']],
     coreSide: [['side_knee'], ['side_carry', 'side_plank'], ['side_plank']],
-    finisher: [['fin_march', 'fin_pulse'], ['fin_swing', 'fin_pulse', 'fin_climbers'], ['fin_swing', 'fin_climbers', 'fin_burpee']],
+    finisher: [['fin_march', 'fin_pulse', 'fin_step_jacks'], ['fin_swing', 'fin_pulse', 'fin_climbers'], ['fin_swing', 'fin_climbers', 'fin_burpee']],
   };
 
   /* ---------------------------------------------------------------- home and gym */
@@ -284,15 +314,36 @@
     let list = M().rungsFor(family, f.eq, { noImpact: o.noImpact, simple: o.simple });
     if (f.careful.length) list = list.filter((id) => { const m = M().MOVES[id]; return !((m.impact || m.complex) && (m.joints || []).some((j) => f.careful.includes(j))); });
     list = list.filter((id) => !(S.excluded || []).includes(id));
+    // Age and health rules (src/access.js): moves a condition rules out go, and the stand-in
+    // ladders stay closed until a plan needs them. opts.noRules skips this (to tell a ladder ruled
+    // out by the body from one ruled out by the equipment).
+    if (GH.access && !o.noRules) list = GH.access.filterRungs(S, family, list, day);
     return list;
+  }
+  // The ladder for a slot: the usual one, or its stand-in when a health condition rules every rung
+  // of it out (seated band presses for push-ups with painful wrists), or a gentler one that suits
+  // the person better (src/access.js).
+  function famFor(S, fam, day) {
+    return GH.access ? GH.access.famFor(S, fam, day) : fam;
   }
 
   const isGymFam = (fam) => !!(M().LADDERS[fam] && M().LADDERS[fam].gym);
-  // Gym families start the first time they're used (at the gym, where their moves exist).
+  // Gym families start the first time they're used (at the gym, where their moves exist); so does a
+  // home family a saved state doesn't have yet (added in an update, or newly possible with new kit),
+  // at the usual starting rung for the person's level.
   function ensureProg(S, fam, day) {
-    if (S.prog[fam] || !isGymFam(fam)) return S.prog[fam] || null;
+    if (S.prog[fam]) return S.prog[fam];
+    if (!M().LADDERS[fam]) return null;
     const list = rungs(S, fam, day);
     if (!list.length) return null;
+    if (!isGymFam(fam)) {
+      // Where this body starts (src/access.js; stand-in ladders start the first time a plan uses
+      // them), else the usual starting rung for the person's level, as initProgress does.
+      const prefs = (DEFAULT_START[fam] || [[]])[programFor(S.profile).level] || [];
+      const id = (GH.access && GH.access.startRung(S, fam, list)) || prefs.find((x) => list.includes(x)) || list[0];
+      S.prog[fam] = { rung: id, reps: M().MOVES[id].start, w: 0, best: {}, short: 0, cooldown: 0, maxed: false };
+      return S.prog[fam];
+    }
     const m = M().MOVES[list[0]];
     S.prog[fam] = { rung: list[0], reps: m.start, best: {}, loads: {}, e1rm: {}, short: 0, cooldown: 0, flat: 0, gym: true };
     return S.prog[fam];
@@ -305,7 +356,7 @@
       const list = rungs(S, fam, day, { place: 'home' });
       if (!list.length) continue;
       const prefs = (DEFAULT_START[fam] || [[]])[lvl] || [];
-      const id = prefs.find((x) => list.includes(x)) || list[0];
+      const id = (GH.access && GH.access.startRung(S, fam, list)) || prefs.find((x) => list.includes(x)) || list[0];
       S.prog[fam] = { rung: id, reps: M().MOVES[id].start, w: 0, best: {}, short: 0, cooldown: 0, maxed: false };
     }
     if (baseline) applyBaseline(S, baseline, day);
@@ -374,6 +425,7 @@
     return { gap, active: c.active, line };
   }
   function testDue(S, day, kind) {
+    if (GH.access && !GH.access.testsOk(S, kind)) return false;
     const c = S.catchup[kind];
     if (!c || (!c.active && !c.tests.length && !S.profile.lead[kind])) return false;
     const last = c.tests.length ? c.tests[c.tests.length - 1].day : S.profile.startDay;
@@ -439,7 +491,9 @@
       const onramp = !deload && (trainingWeeks < prog.onramp.weeks || idle);
       const mult = deload ? 0.6 : onramp ? (idle && trainingWeeks >= prog.onramp.weeks ? 0.7 : prog.onramp.mult) : 1;
       // Sessions for the week.
-      let sessions = tpl.map((t) => ({ tpl: t.idx, units: t.units, day: ws + t.offset, planned: ws + t.offset }))
+      // [custom plans] Days a custom plan runs take their sessions from it (src/customplan.js).
+      const custom = GH.customPlan ? GH.customPlan.weekSessions(S, ws, tpl) : null;
+      let sessions = (custom || tpl.map((t) => ({ tpl: t.idx, units: t.units, day: ws + t.offset, planned: ws + t.offset })))
         .filter((s) => s.day >= start);
       // Moves (Plan tab, "Train today instead") replay on the day they were made, after any
       // earlier shifts; moves made before this week started apply up front.
@@ -475,10 +529,11 @@
           if (!freezeUsed) { freezeUsed = true; info.frozen = true; }
           else { streak = 0; info.broken = true; }
           info.missed = true;
-          const pending = sessions.filter((x) => !x.done && !x.dropped && x.day >= d);
+          // [custom plans] In a week that switches plans, only this plan's sessions move, up to its last day.
+          const pending = sessions.filter((x) => !x.done && !x.dropped && x.day >= d && x.regime === s.regime);
           for (let i = pending.length - 1; i >= 0; i--) {
             pending[i].day += 1;
-            if (pending[i].day > ws + 6) { pending[i].dropped = true; pending[i].day = null; }
+            if (pending[i].day > (pending[i].until != null ? pending[i].until : ws + 6)) { pending[i].dropped = true; pending[i].day = null; }
           }
           out.notices.push({ day: d, text: 'Moved your plan forward a day.' });
         } else if (!s && lightDone[d]) {
@@ -564,9 +619,20 @@
   function fmtMin(min) { const h = Math.floor(min / 60), m = Math.round(min % 60); return m ? `${h} h ${m}` : `${h} h`; }
 
   /* ================================================================== session build */
-  function slotsForUnit(unit, sets, S, dayIdx, day) {
-    const has = (fam) => rungs(S, fam, day).length > 0;
-    if (placeOf(S, day) === 'gym') { const g = gymSlots(unit, sets, dayIdx, has); if (g) return g; }
+  // ctx: { occ: which of the week's sessions with this unit it is, prog }.
+  function slotsForUnit(unit, sets, S, dayIdx, day, ctx) {
+    const c = ctx || {};
+    // A ladder counts when it, or the stand-in a health condition swaps in for it (src/access.js),
+    // has rungs today.
+    const has = (fam) => rungs(S, famFor(S, fam, day), day).length > 0;
+    const focus = focusOf(S.profile);
+    const prog = c.prog || programFor(S.profile);
+    // Rotations advance by session and by week, so every option comes round.
+    const rot = (c.occ || 0) + Math.floor(weekStart(day) / 7);
+    // Calves get sets of their own when they're a focus or legs are a top goal.
+    const calfFocus = focus.includes('calves');
+    const calfSets = (fam) => (has(fam) && ((calfFocus && sets >= 3) || (prog.tiers.legs === 1 && sets >= 4)) ? (calfFocus && sets >= 7 ? 2 : 1) : 0);
+    if (placeOf(S, day) === 'gym') { const g = gymSlots(unit, sets, dayIdx, has, { rot, focus, calfSets }); if (g) return leanToFocus(standIns(S, g, day), focus); }
     const out = [];
     const split = (a, b, n, bias) => {
       if (n <= 0) return;
@@ -578,18 +644,61 @@
     };
     if (unit === 'chest') {
       if (sets > 4 && has('chestDb')) { out.push(['push', 4]); out.push(['chestDb', sets - 4]); } else out.push(['push', sets]);
-    } else if (unit === 'legs') split('squat', has('hinge') ? 'hinge' : 'glute', sets, dayIdx % 2 === 0);
-    else if (unit === 'back') {
+    } else if (unit === 'legs') {
+      // The second exercise rotates hinge → glute bridge → hamstring curl (a focus on their muscles
+      // keeps it to the ones that train them).
+      const calf = calfSets('calf');
+      split('squat', rotatePick(['hinge', 'glute', 'hamCurl'], has, focus, rot) || 'hinge', sets - calf, dayIdx % 2 === 0);
+      if (calf) out.push(['calf', calf]);
+    } else if (unit === 'back') {
       if (has('pull') && sets >= 3) { const pr = Math.round(sets * 0.4); out.push(['pull', pr]); split('row', 'rear', sets - pr, true); }
-      else split('row', 'rear', sets, true);
-    } else if (unit === 'shoulders') out.push(['raise', sets]);
-    return out.filter(([f, n]) => n > 0 && has(f));
+      else if (has('backExt') && sets >= 3) {
+        // No pull-up bar: the lower back gets an exercise of its own.
+        const be = Math.max(1, Math.round(sets * 0.25));
+        split('row', 'rear', sets - be, true);
+        out.push(['backExt', be]);
+      } else split('row', 'rear', sets, true);
+    } else if (unit === 'shoulders') split('press', 'raise', sets, true); // an overhead press, then raises
+    return leanToFocus(standIns(S, out, day), focus);
+  }
+  // A slot whose ladder a health condition rules out takes its stand-in (src/access.js). Stand-ins
+  // can fill two slots with the same ladder (a press and a raise both seated): those merge into one.
+  function standIns(S, slots, day) {
+    const merged = [];
+    for (const [f, n] of slots) {
+      const fam = famFor(S, f, day);
+      const same = merged.find((x) => x[0] === fam);
+      if (same) same[1] += n; else merged.push([fam, n]);
+    }
+    return merged.filter(([f, n]) => n > 0 && rungs(S, f, day).length > 0);
+  }
+  // The first of `fams` available today, going round them with `rot`; with a focus, only the ones
+  // that train a focus muscle take turns.
+  function rotatePick(fams, has, focus, rot) {
+    const avail = fams.filter(has);
+    if (!avail.length) return null;
+    const best = Math.max(...avail.map((f) => focusScore(f, focus)));
+    const pool = best > 0 ? avail.filter((f) => focusScore(f, focus) === best) : avail;
+    return pool[((rot % pool.length) + pool.length) % pool.length];
+  }
+  // A day's slots for a unit lean one set toward the exercise that trains a focus muscle most.
+  function leanToFocus(slots, focus) {
+    if (!focus.length || slots.length < 2) return slots;
+    const sc = slots.map(([f]) => focusScore(f, focus));
+    const hi = sc.indexOf(Math.max(...sc));
+    let lo = -1;
+    slots.forEach(([, n], i) => { if (sc[i] < sc[hi] && n >= 2 && (lo < 0 || sc[i] < sc[lo] || (sc[i] === sc[lo] && n > slots[lo][1]))) lo = i; });
+    if (lo < 0) return slots;
+    const out = slots.map((x) => x.slice());
+    out[lo][1]--; out[hi][1]++;
+    return out;
   }
 
   // At the gym: a main lift for the unit, then a second angle or an isolation move, so a muscle gets
   // a compound and an isolation exercise across the week. null = nothing gym-specific is available
   // (the home families, which also work with gym dumbbells, take over).
-  function gymSlots(unit, sets, dayIdx, has) {
+  function gymSlots(unit, sets, dayIdx, has, ctx) {
+    const c = ctx || { rot: dayIdx, focus: [], calfSets: () => 0 };
     const out = [];
     const pick = (...fams) => fams.find((f) => has(f)) || null;
     const put = (fam, n) => { if (fam && n > 0) out.push([fam, n]); };
@@ -602,8 +711,10 @@
     } else if (unit === 'legs') {
       const main = pick('squatG');
       if (!main) return null;
-      const hinge = even ? pick('hingeG', 'gluteG') : pick('gluteG', 'hingeG');
-      const iso = even ? pick('legCurlG', 'legExtG', 'calfG') : pick('legExtG', 'legCurlG', 'calfG');
+      // Second: a hinge, hip thrust or lunge in turn; third: an isolation move (calves when they're
+      // a focus or legs are a top goal).
+      const hinge = rotatePick(['hingeG', 'gluteG', 'lungeG'], has, c.focus, c.rot);
+      const iso = c.calfSets('calfG') ? pick('calfG') : rotatePick(even ? ['legCurlG', 'legExtG', 'calfG'] : ['legExtG', 'legCurlG', 'calfG'], has, c.focus, 0);
       if (sets >= 6 && hinge && iso) {
         const a = Math.ceil(sets * 0.4), b = Math.ceil((sets - a) * 0.6);
         put(main, a); put(hinge, b); put(iso, sets - a - b);
@@ -620,7 +731,8 @@
     } else if (unit === 'shoulders') {
       const press = pick('ohpG'), raise = pick('raiseG');
       if (!press && !raise) return null;
-      if (press && raise && sets >= 3) { const a = Math.ceil(sets / 2); put(press, a); put(raise, sets - a); } else put(raise || press, sets);
+      // An overhead press, then raises.
+      if (press && raise && sets >= 2) { const a = Math.ceil(sets / 2); put(press, a); put(raise, sets - a); } else put(press || raise, sets);
     } else return null;
     const res = out.filter(([, n]) => n > 0);
     return res.length ? res : null;
@@ -632,6 +744,8 @@
   // Build the session for a template on a day. opts: { short, sleepChip }
   function buildSession(S, day, tplIdx, opts) {
     const o = opts || {};
+    // [custom plans] A custom plan's day ('c:<plan>:<day>') is built by src/customplan.js.
+    if (GH.customPlan && GH.customPlan.owns(tplIdx)) return GH.customPlan.buildSession(S, day, tplIdx, o);
     const p = S.profile;
     const prog = programFor(p);
     const cal = o.cal || calendar(S, day);
@@ -649,7 +763,7 @@
       const groups = UNIT_GROUPS[unit];
       if (unit === 'abs') {
         const n = perSession(Math.round(S.vol.abs * mult), prog.freq.abs, occurrence('abs'));
-        let pair = CORE_ROTATION[t.idx % CORE_ROTATION.length].filter((f) => rungs(S, f, day).length);
+        let pair = [...new Set(CORE_ROTATION[t.idx % CORE_ROTATION.length].map((f) => famFor(S, f, day)))].filter((f) => rungs(S, f, day).length);
         // At the gym, one of the two ab slots is a cable or hanging move.
         if (atGym && rungs(S, 'absG', day).length) pair = ['absG'].concat(pair.filter((f) => f !== 'absLoad' && f !== 'abs')).slice(0, 2);
         if (n <= 2 || pair.length < 2) { if (pair.length) slots.push({ fam: pair[0], sets: n, group: 'abs' }); }
@@ -660,14 +774,14 @@
         for (const g of groups) {
           const n = perSession(Math.round(S.vol[g] * mult), prog.freq.arms, occurrence('arms'));
           const gymFam = g === 'biceps' ? 'curlG' : 'triG';
-          const fam = atGym && rungs(S, gymFam, day).length ? gymFam : g === 'biceps' ? 'curl' : 'triceps';
+          const fam = atGym && rungs(S, gymFam, day).length ? gymFam : famFor(S, g === 'biceps' ? 'curl' : 'triceps', day);
           if (n > 0 && rungs(S, fam, day).length) slots.push({ fam, sets: n, group: g });
         }
         continue;
       }
       const g = groups[0];
       const n = perSession(Math.round(S.vol[g] * mult), prog.freq[unit], occurrence(unit));
-      for (const [fam, k] of slotsForUnit(unit, n, S, t.idx, day)) slots.push({ fam, sets: k, group: g });
+      for (const [fam, k] of slotsForUnit(unit, n, S, t.idx, day, { occ: occurrence(unit), prog })) slots.push({ fam, sets: k, group: g });
     }
     // Readiness: one less set per exercise (never below 1); leg trim after another hard session.
     for (const s of slots) {
@@ -707,11 +821,14 @@
     if (!ready.noFinisher && finIdx.includes(t.idx) && !week.phase.deload && S.complexity < 2) finisher = finisherItem(S, day);
     const session = {
       day, tpl: t.idx, units: t.units, title: templateTitle(t.units), short: !!o.short,
-      phase: week.phase, readiness: ready, warmup: warmupItems(S, day, o.short ? 1 : prog.warmupMin),
-      tests, items, extras, finisher, notes: [], mobility: prog.mobilityPlus ? cooldownItems(S) : [],
+      phase: week.phase, readiness: ready, warmup: warmupItems(S, day, o.short ? 1 : prog.warmupMin, items),
+      tests, items, extras, finisher, notes: [], mobility: prog.mobilityPlus ? cooldownItems(S, day, items, o.short) : [],
       place: placeOf(S, day), comeback,
     };
     pairSupersets(S, session);
+    // Age and health (src/access.js): warm-up, balance and floor practice, power, rest, cool-down,
+    // and a flare day's gentle range-of-motion session.
+    if (GH.access) GH.access.adjustSession(S, session, day, { tplIdx: t.idx, days: tpl.length, legIdx: (tpl.find((x) => x.units.includes('legs')) || {}).idx });
     if (!o.noTrim) fitToBudget(S, session, o.short ? 13 : set.minutes || p.minutes);
     if (S.complexity > 0) limitExercises(session, S.complexity === 1 ? 5 : 4);
     session.estimateMin = Math.round(estimate(S, session));
@@ -832,7 +949,7 @@
   // Auto rest: 90 s after big multi-joint moves, 60 s after small ones (and inside supersets, see
   // pairSupersets). Resting over a minute gives a small extra benefit for muscle size, with nothing
   // clear past about 90 s (Singer et al. 2024).
-  const COMPOUND = ['push', 'chestDb', 'squat', 'hinge', 'row', 'pull'];
+  const COMPOUND = ['push', 'chestDb', 'press', 'squat', 'hinge', 'row', 'pull'];
   function restFor(S, fam) {
     const pr = S.profile.prefs.rest;
     if (pr === 60 || pr === 90) return pr;
@@ -921,7 +1038,7 @@
 
   function finisherItem(S, day) {
     // At the gym, the finisher is rowing, cycling or an incline walk when those are there.
-    const fam = placeOf(S, day) === 'gym' && rungs(S, 'cardioG', day).length ? 'cardioG' : 'finisher';
+    const fam = placeOf(S, day) === 'gym' && rungs(S, famFor(S, 'cardioG', day), day).length ? famFor(S, 'cardioG', day) : famFor(S, 'finisher', day);
     const list = rungs(S, fam, day);
     if (!list.length) return null;
     const st = S.prog[fam] || {};
@@ -933,24 +1050,98 @@
     return { kind: 'finisher', fam, moveId: id, name: m.name, group: 'conditioning', work, rest, rounds, load: loadInfo(S, m, day, fam), uni: !!m.uni, level: lvl };
   }
 
-  function warmupItems(S, day, minutes) {
+  // How much each muscle works in a list of items (a primary mover counts fully, a helper half).
+  function musclesOf(items) {
+    const w = {};
+    for (const it of items || []) {
+      const m = it && M().MOVES[it.moveId];
+      if (!m) continue;
+      const sets = it.sets || 1;
+      (m.muscles || []).forEach((mu, i) => { w[mu] = (w[mu] || 0) + sets * (i < (m.prime || 1) ? 1 : 0.5); });
+    }
+    return w;
+  }
+  // Up to n of the candidate moves that best suit the weighted muscles (by their mobFor), each pick
+  // halving the pull of the muscles it covers so the rest spread out; ties keep the list order.
+  function pickFor(ids, w, n, bonus) {
+    const left = Object.assign({}, w);
+    const out = [];
+    const pool = ids.slice();
+    while (out.length < n && pool.length) {
+      const score = (id) => (M().MOVES[id].mobFor || []).reduce((a, mu) => a + (left[mu] || 0), 0) + ((bonus && bonus[id]) || 0);
+      let best = 0;
+      for (let i = 1; i < pool.length; i++) if (score(pool[i]) > score(pool[best])) best = i;
+      const [id] = pool.splice(best, 1);
+      out.push(id);
+      for (const mu of M().MOVES[id].mobFor || []) if (left[mu]) left[mu] /= 2;
+    }
+    return out;
+  }
+  const UPPER = ['biceps', 'triceps', 'chest', 'back', 'shoulders'];
+  // Warm-ups for the day's muscles: the kettlebell halo leads on upper-body days (and only then).
+  function warmupItems(S, day, minutes, items) {
     const eq = eqFor(S, day);
-    const list = (eq.kb && eq.kb.length ? M().WARMUP.kb : M().WARMUP.none).filter((id) => M().allowed(M().MOVES[id], eq));
     const avoid = filtersFor(S, day).avoidJoints;
-    const moves = list.filter((id) => !(M().MOVES[id].joints || []).some((j) => avoid.includes(j)));
+    const upper = !items || !items.length || items.some((it) => UPPER.includes(it.group));
+    const ids = (M().WARMUP.all || M().WARMUP.kb).filter((id) => {
+      const m = M().MOVES[id];
+      return m && M().allowed(m, eq) && !(m.joints || []).some((j) => avoid.includes(j)) && (id !== 'wu_halo' || upper);
+    });
+    const w = musclesOf(items);
+    // (No exercises to go by: the usual whole-body three.)
+    const moves = Object.keys(w).length ? pickFor(ids, w, 3, { wu_halo: 1000 })
+      : [eq.kb && eq.kb.length ? 'wu_halo' : 'wu_circles', 'wu_angels', 'wu_squat'].filter((id) => ids.includes(id));
+    // Upper-body moves first, then the legs (the list's order).
+    moves.sort((a, b) => ids.indexOf(a) - ids.indexOf(b));
     const pick = minutes <= 1 ? moves.slice(0, 2) : moves;
     return pick.map((id) => { const m = M().MOVES[id]; return { kind: 'warmup', moveId: id, name: m.name, timed: !!m.timed, target: minutes <= 1 ? Math.min(m.start, 20) : m.start, load: loadInfo(S, m) }; });
   }
-  function cooldownItems() { return [{ kind: 'mobility', moveId: 'mob_child', name: 'Child\'s pose', timed: true, target: 45 }]; }
+  // Mobility moves this person can do on a day (the day's kit unless one is given, nothing for a
+  // joint that's still sore then).
+  function mobilityIds(S, day, eq) {
+    const kit = eq || eqFor(S, day);
+    const avoid = Object.entries(S.pain || {}).filter(([, until]) => until >= day).map(([j]) => j);
+    return M().MOBILITY.filter((id) => { const m = M().MOVES[id]; return m && M().allowed(m, kit) && !(m.joints || []).some((j) => avoid.includes(j)); });
+  }
+  // The cool-down: two or three stretches for the muscles the day worked.
+  function cooldownItems(S, day, items, short) {
+    const ids = mobilityIds(S, day);
+    const w = musclesOf(items);
+    const picks = Object.keys(w).length ? pickFor(ids, w, short ? 2 : 3) : ['mob_child'];
+    picks.sort((a, b) => ids.indexOf(a) - ids.indexOf(b));
+    return picks.map((id) => { const m = M().MOVES[id]; return { kind: 'mobility', moveId: id, name: m.name, timed: true, target: m.start, uni: !!m.uni }; });
+  }
 
-  function mobilityFlow(S) {
+  // The light-day mobility flow (about 5 minutes): stretches for the muscles the last few workouts
+  // trained most (the latest counts most), in a floor-friendly order. day defaults to today.
+  const FLOW_DEFAULT = ['mob_catcow', 'mob_wgs', 'mob_hipflexor', 'mob_squat', 'mob_child'];
+  function mobilityFlow(S, day) {
     const extra = programFor(S.profile).mobilityPlus;
-    return M().MOBILITY.map((id) => { const m = M().MOVES[id]; return { kind: 'mobility', moveId: id, name: m.name, timed: true, target: extra ? m.range[1] : m.start, uni: !!m.uni }; });
+    const prefs = S.profile.prefs || {};
+    const d = day != null ? day : dayOf(Date.now(), prefs.rollHour != null ? prefs.rollHour : 4);
+    // Moves a health condition rules out (src/access.js) never make the list.
+    const A = GH.access;
+    const ids = mobilityIds(S, d, S.profile.equipment).filter((id) => !A || A.moveOk(S.profile, id, d));
+    const recent = workoutLogs(S).filter(isDone).sort((a, b) => b.day - a.day).slice(0, 3);
+    const w = {};
+    recent.forEach((l, k) => {
+      const done = (l.items || []).filter((it) => it.sets && it.sets.length).map((it) => ({ moveId: it.moveId, sets: new Set(it.sets.map((x) => x.set)).size }));
+      for (const [mu, v] of Object.entries(musclesOf(done))) w[mu] = (w[mu] || 0) + v * [1, 0.6, 0.35][k];
+    });
+    let picks = Object.keys(w).length ? pickFor(ids, w, 5) : FLOW_DEFAULT.filter((id) => ids.includes(id));
+    if (!picks.length) picks = ids.slice(0, 5);
+    picks.sort((a, b) => ids.indexOf(a) - ids.indexOf(b));
+    // A seated plan has a seated flow, too few moves left get a standing one, and from 65 or with
+    // balance problems a balance hold joins (src/access.js).
+    if (A) picks = A.mobilityIds(S, picks, d);
+    return picks.map((id) => { const m = M().MOVES[id]; return { kind: 'mobility', moveId: id, name: m.name, timed: true, target: extra ? m.range[1] : m.start, uni: !!m.uni }; });
   }
 
   /* ---------------- supersets */
-  const CONFLICT = [['push', 'triceps'], ['row', 'curl'], ['pull', 'curl'], ['push', 'raise'], ['chestDb', 'triceps'], ['pull', 'row'], ['row', 'rear'], ['pull', 'rear'], ['chestDb', 'push'], ['squat', 'hinge'], ['squat', 'glute'], ['hinge', 'glute']];
-  const PREFER = [['squat', 'curl'], ['push', 'row'], ['hinge', 'triceps'], ['push', 'curl'], ['squat', 'row'], ['hinge', 'curl'], ['row', 'triceps'], ['squat', 'triceps'], ['curl', 'triceps'], ['pull', 'push'], ['rear', 'push'], ['raise', 'squat'], ['raise', 'hinge'], ['chestDb', 'row'], ['push', 'squat'], ['push', 'hinge']];
+  const CONFLICT = [['push', 'triceps'], ['row', 'curl'], ['pull', 'curl'], ['push', 'raise'], ['chestDb', 'triceps'], ['pull', 'row'], ['row', 'rear'], ['pull', 'rear'], ['chestDb', 'push'], ['squat', 'hinge'], ['squat', 'glute'], ['hinge', 'glute'],
+    ['press', 'push'], ['press', 'chestDb'], ['press', 'triceps'], ['press', 'raise'], ['backExt', 'hinge'], ['backExt', 'row'], ['hamCurl', 'hinge'], ['hamCurl', 'glute'], ['calf', 'squat']];
+  const PREFER = [['squat', 'curl'], ['push', 'row'], ['hinge', 'triceps'], ['push', 'curl'], ['squat', 'row'], ['hinge', 'curl'], ['row', 'triceps'], ['squat', 'triceps'], ['curl', 'triceps'], ['pull', 'push'], ['rear', 'push'], ['raise', 'squat'], ['raise', 'hinge'], ['chestDb', 'row'], ['push', 'squat'], ['push', 'hinge'],
+    ['press', 'row'], ['press', 'squat'], ['press', 'hinge'], ['hamCurl', 'push'], ['hamCurl', 'curl'], ['calf', 'row'], ['calf', 'curl'], ['backExt', 'push'], ['raise', 'hamCurl']];
   const conflicts = (a, b) => a.group === b.group || CONFLICT.some(([x, y]) => (x === a.fam && y === b.fam) || (x === b.fam && y === a.fam));
   function pairSupersets(S, session) {
     if (!S.profile.prefs.supersets || S.complexity > 0) return;
@@ -1018,13 +1209,16 @@
     return sec / 60;
   }
 
-  function tierOf(S, group) { return programFor(S.profile).tiers[group] || 3; }
+  function tierOf(S, group) { return group === 'balance' ? 1 : programFor(S.profile).tiers[group] || 3; }
   // For trimming, back counts as tier 2 whenever chest is trained hard (it balances the pushing).
   function trimTier(S, group) {
     const t = programFor(S.profile).tiers;
+    if (group === 'balance') return 1; // balance practice (src/access.js) is trimmed last
     return group === 'back' && t.chest <= 2 ? Math.min(t.back || 3, 2) : t[group] || 3;
   }
-  // Trim order: mobility → finisher → shoulders → second core slot → tier 3 → tier 2 → tier 1.
+  // Trim order: mobility → finisher → shoulders down to one set → second core slot → tier 3 → tier 2
+  // → tier 1, and only then the last shoulder set. Pressing works the shoulders too, so they shrink
+  // first, but one direct set stays so no muscle group drops out for weeks because sessions are full.
   // With a conditioning goal the finisher is part of the point: it shrinks late instead of going first.
   function fitToBudget(S, s, budget) {
     const cond = programFor(S.profile).finisherPerWeek >= 7;
@@ -1041,15 +1235,23 @@
         c.sets--;
       }
     };
-    if (over() && s.mobility && s.mobility.length) s.mobility = [];
+    if (over() && s.mobility && s.mobility.length && !s.keepMobility) s.mobility = [];
     if (over() && !cond) dropFinisher();
-    if (over()) dropSlot((it) => it.group === 'shoulders');
+    // A gentle warm-up's extra move for the day's muscles (src/access.js) goes before any sets do.
+    if (over() && s.warmup.some((w) => w.extra)) s.warmup = s.warmup.filter((w) => !w.extra);
+    // Two shoulder slots (a press and raises): the raises go. One left: it shrinks to a set.
+    if (over()) {
+      const sh = s.items.filter((it) => it.group === 'shoulders');
+      if (sh.length > 1) dropSlot((it) => it === sh[sh.length - 1]);
+      else if (sh.length) sh[0].sets = 1;
+    }
     if (over() && tierOf(S, 'abs') > 1) dropSecondCore();
     setsDown(3, 1);
-    while (over() && dropSlot((it) => trimTier(S, it.group) === 3)) { /* drop whole slots */ }
+    while (over() && dropSlot((it) => trimTier(S, it.group) === 3 && it.group !== 'shoulders')) { /* drop whole slots */ }
     if (cond) while (over() && s.finisher && s.finisher.rounds > 3) s.finisher.rounds--;
     setsDown(2, 2);
     setsDown(1, 2);
+    if (over()) dropSlot((it) => it.group === 'shoulders');
     if (over()) dropFinisher();
     if (over() && s.extras.length) s.extras = [];
     if (over() && s.warmup.length > 2) s.warmup = s.warmup.slice(0, 2);
@@ -1069,7 +1271,7 @@
   }
   // Short on time: priority work only, then fill back up to at least 12 minutes.
   function shortMode(S, s) {
-    s.finisher = null; s.mobility = []; s.tests = [];
+    s.finisher = null; s.mobility = s.keepMobility ? s.mobility.slice(0, 2) : []; s.tests = [];
     const tier1 = s.items.filter((it) => tierOf(S, it.group) === 1);
     const main = s.items.find((it) => tierOf(S, it.group) === 2);
     const keep = new Set(tier1.concat(main ? [main] : []));
@@ -1370,7 +1572,9 @@
   function finishWorkout(S, checkin, day) {
     const A = S.active;
     if (!A) return null;
-    const c = checkin || {};
+    const c = Object.assign({}, checkin || {});
+    // A flare day's gentle range of motion (src/access.js) says nothing about training volume.
+    if (A.session && A.session.flare) { c.rating = null; c.complicated = null; }
     const cal = calendar(S, A.day);
     const week = cal.weeks[weekStart(A.day)];
     const deload = !!(week && week.phase.deload);
@@ -1385,8 +1589,10 @@
       if (log.kind !== 'move' || !log.sets.length) continue;
       const fam = log.fam && M().LADDERS[log.fam] ? log.fam : (M().MOVES[log.moveId] || {}).family;
       const before = progSnap(S, fam, log.moveId);
-      const res = progress(S, log, deload, A.day);
-      log.outcome = outcomeOf(before, progSnap(S, fam, log.moveId), isGymFam(fam));
+      // [custom plans] Their exercises move on from the plan's own numbers (src/customplan.js).
+      const planItem = A.session.custom && GH.customPlan ? A.session.items.concat(A.session.extras)[i] : null;
+      const res = planItem ? GH.customPlan.progress(S, log, deload, A.day, planItem) : progress(S, log, deload, A.day);
+      log.outcome = planItem ? res.outcome || 'hold' : outcomeOf(before, progSnap(S, fam, log.moveId), isGymFam(fam));
       if (res.line) lines.push(res.line);
       for (const c2 of res.celebrate || []) celebrate.push(c2);
     }
@@ -1518,7 +1724,8 @@
       if (prevBest > 0 && !S.celebrated[key]) { S.celebrated[key] = day; res.celebrate.push({ kind: 'pr', text: `New best: ${best}${log.timed ? ' s' : ''} ${m.name.toLowerCase()}` }); }
     }
     if (st.cooldown > 0) st.cooldown--;
-    if (log.moveId !== st.rung) return res; // a swap: its own ladder is not moved
+    // A swap doesn't move its own ladder; a fast-up version (src/access.js) counts as its base rung.
+    if (log.moveId !== st.rung && m.powerOf !== st.rung) return res;
     if (deload) return res;
     const [lo, hi] = rangeFor(S, m, fam);
     const target = log.target;
@@ -1531,12 +1738,12 @@
         const up = levelUp(S, fam, day);
         if (up) { res.line = up.line; if (up.celebrate) res.celebrate.push(up.celebrate); }
       } else if (allHit) {
-        const next = Math.min(hi, st.reps + (log.timed ? 10 : 2));
+        const next = Math.min(hi, st.reps + stepFor(S, log.timed ? 10 : 2, log.timed, '3'));
         if (next !== st.reps) { st.reps = next; res.line = { text: `${name} → ${next}${unit}`, why: 'you had 3+ left' }; }
       }
     } else if (log.rir === '12') {
       if (allHit) {
-        const next = Math.min(hi, st.reps + (log.timed ? 5 : st.reps < 12 ? 1 : 2));
+        const next = Math.min(hi, st.reps + stepFor(S, log.timed ? 5 : st.reps < 12 ? 1 : 2, log.timed, '12'));
         if (next !== st.reps) { st.reps = next; res.line = { text: `${name} → ${next}${unit}`, why: 'you had 1-2 left' }; }
       }
     }
@@ -1564,6 +1771,10 @@
     } else st.short = 0;
     return res;
   }
+
+  // How many reps (or seconds) a good set adds: src/access.js makes the steps a little bigger under
+  // 30 and smaller from 50.
+  function stepFor(S, base, timed, rir) { return GH.access ? GH.access.repStep(S.profile, base, timed, rir) : base; }
 
   // Rep range for a move, by goal. Heavier sets build more maximal strength while muscle grows
   // about as well across a wide range of loads (Schoenfeld et al. 2017), so a strength goal moves
@@ -1657,7 +1868,7 @@
             : { text: `${m.name}: top of the rep range. Hold a dumbbell to keep progressing.`, why: 'you had reps to spare' };
         }
       } else {
-        const next = Math.min(hi, st.reps + (log.rir === '3' ? 2 : 1));
+        const next = Math.min(hi, st.reps + stepFor(S, log.rir === '3' ? 2 : 1, false, log.rir));
         if (next !== st.reps) { st.reps = next; res.line = { text: `${m.name} → ${next}${unit}`, why: log.rir === '3' ? 'you had 3+ left' : 'you had 1-2 left' }; }
       }
     } else if (!allHit) {
@@ -1853,7 +2064,38 @@
   }
 
   // Setting changes take effect from today; the replay uses the settings in force each week.
+  // Workouts a week and the days they're on stay in step. Picking days sets the count (2 to 6: a
+  // seventh is refused, one day stays for rest). A new count with days picked adds days where they
+  // spread the week most evenly, or drops the last ones picked. { days, weekdays, note }; weekdays is
+  // in the order picked, and [] means the default spread for the count.
+  const MAX_DAYS = 6;
+  function pickWeekday(days, picked, wd, on) {
+    let list = (Array.isArray(picked) ? picked : []).filter((x, i, a) => x >= 0 && x <= 6 && a.indexOf(x) === i);
+    if (on && !list.includes(wd)) {
+      if (list.length >= MAX_DAYS) return { days: clampInt(days, 2, MAX_DAYS), weekdays: list, note: 'max' };
+      list = list.concat([wd]);
+    } else if (!on) list = list.filter((x) => x !== wd);
+    return { days: list.length >= 2 ? list.length : clampInt(days, 2, MAX_DAYS), weekdays: list, note: list.length === 1 ? 'one' : null };
+  }
+  function setWorkoutDays(picked, n) {
+    const days = clampInt(n, 2, MAX_DAYS);
+    let list = (Array.isArray(picked) ? picked : []).filter((x, i, a) => x >= 0 && x <= 6 && a.indexOf(x) === i);
+    if (!list.length) return { days, weekdays: [], note: null };
+    while (list.length > days) list = list.slice(0, -1);
+    while (list.length < days) {
+      // The free day furthest (round the week) from the days already picked; the earliest on a tie.
+      const gap = (d) => Math.min(...list.map((x) => { const g = Math.abs(d - x); return Math.min(g, 7 - g); }));
+      const free = [0, 1, 2, 3, 4, 5, 6].filter((d) => !list.includes(d));
+      list = list.concat([free.reduce((a, d) => (gap(d) > gap(a) ? d : a), free[0])]);
+    }
+    return { days, weekdays: list, note: null };
+  }
   function updateSettings(S, day, patch) {
+    // Days picked decide the count, whatever count came with them.
+    if (Array.isArray(patch.weekdays) && patch.weekdays.length >= 2) {
+      const w = [...new Set(patch.weekdays.filter((x) => x >= 0 && x <= 6))].sort((a, b) => a - b).slice(0, MAX_DAYS);
+      patch = Object.assign({}, patch, { weekdays: w, days: w.length });
+    }
     Object.assign(S.profile, patch);
     return scheduleSettings(S, day, { days: S.profile.days, weekdays: S.profile.weekdays, minutes: S.profile.minutes });
   }
@@ -1936,7 +2178,7 @@
   }
 
   GH.brain = {
-    DAY_MS, dayOf, dayFromStr, dayStr, weekday, weekStart, fmtDay, fmtMin, GROUPS, GROUP_NAME, JOINTS, LB_PER_KG,
+    DAY_MS, dayOf, dayFromStr, dayStr, weekday, weekStart, fmtDay, fmtMin, GROUPS, GROUP_NAME, JOINTS, LB_PER_KG, MUSCLE_GROUP, focusOf, pickWeekday, setWorkoutDays,
     defaultProfile, programFor, templateFor, templateTitle, newState, applyBaseline, rungs, filtersFor,
     calendar, weekOf, todayPlan, readiness, buildSession, estimate, steps, startWorkout, cancelWorkout, restoreWorkout, completeStep, currentTarget,
     setRir, amendLast, swapItem, swapOptions, finishWorkout, progress, levelUp, nextWeight, weeklyVolumeUpdate, recordTest, testDue,
@@ -1944,4 +2186,6 @@
     updateSettings, scheduleSettings, settingsAt, moveSession, setEquipment, reprogram, ladderLevel, mobilityFlow, loadInfo, isDone, relink, median,
     defaultGym, GYM_PRESETS, DB_MAX_OPTIONS, convertDbMax, rangeFor, stepsGoal, outcomeOf, weekdaysFor, gymPreset, placeOf, setPlace, eqAt, eqFor, dbRack, snapLoad, suggestLoad, fmtLoad, loadChoices, setItemLoad, ensureProg, isGymFam, toUnit, fromUnit,
   };
+  // For src/access.js, which builds balance and floor-practice slots like any other.
+  Object.assign(GH.brain, { itemFor, famFor, restFor, tierOf, cooldownItems });
 })(typeof window !== 'undefined' ? window : globalThis);

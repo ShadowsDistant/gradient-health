@@ -18,8 +18,9 @@
   const RULES = [
     'You are the coach in Gradient Health, a workout and health app on this person\'s phone.',
     'Answer their question in 2 to 4 short sentences, in plain words. Say "you". No lists, headings or emoji.',
-    'Base the answer on FACTS (worked out by the app for this question) and THEIR DATA below. Use their real numbers. Never make up a number.',
-    'If neither covers the question, say you can\'t tell from their data and what they could track.',
+    'FACTS were worked out by the app for this question. Build the answer on them and copy their numbers exactly as written. Don\'t calculate anything yourself.',
+    'If FACTS say none, answer from THEIR DATA below, or say you can\'t tell from their data and what they could track. Never make up a number.',
+    'Say yes or no plainly when the question asks, and make sure it matches the numbers.',
     'You are not a doctor and never diagnose. Chest pain, fainting, a resting heart rate over 100, unplanned fast weight loss or pain that won\'t go away: tell them to see a doctor.',
     'The app plans the workouts and targets. Explain them; don\'t write new programs, diets or meal plans.',
   ].join('\n');
@@ -37,6 +38,9 @@
     const L = [];
     const goals = (p.goals || []).map((g) => GOAL[g] || g).join(', ');
     L.push(`Goals: ${goals || 'not set'}.${p.age ? ` Age ${p.age}.` : ''}`);
+    // What the plan works around (age band, health conditions). Only this on-device model sees it.
+    const around = GH.access && GH.access.briefLine(p);
+    if (around) L.push(`The plan is adapted for ${around}. Never give medical advice; suggest a doctor for anything medical.`);
     if (workouts) {
       const where = p.where === 'gym' ? 'at a gym' : p.where === 'both' ? 'at home and at a gym' : 'at home';
       L.push(`Plan: ${p.days} workouts a week, about ${p.minutes} min each, ${where}.`);
@@ -63,7 +67,7 @@
     const kcal = pair('activeKcal', r0, ' kcal');
     if (kcal) L.push(`Active calories: ${kcal}.`);
     const ws = b.weightStats(S, day);
-    if (ws.avg7) L.push(`Weight: ${w(ws.avg7)} (7-day average)${ws.rate != null ? `, ${ws.rate >= 0 ? 'up' : 'down'} ${r1(Math.abs(ws.rate * 100))}% on the week before` : ''}. Goal: ${p.weightGoal === 'lose' ? 'lose weight' : p.weightGoal === 'gain' ? 'gain weight' : 'keep it steady'}.`);
+    if (ws.avg7) L.push(`Weight: ${w(ws.avg7)} (7-day average)${ws.rate == null ? '' : Math.abs(ws.rate) < 0.002 ? ', steady on the week before' : `, ${ws.rate >= 0 ? 'up' : 'down'} ${r1(Math.abs(ws.rate * 100))}% on the week before`}. Goal: ${p.weightGoal === 'lose' ? 'lose weight' : p.weightGoal === 'gain' ? 'gain weight' : 'keep it steady'}.`);
     if (workouts) {
       const cal = b.calendar(S, day);
       let planned = 0, done = 0;
@@ -151,10 +155,52 @@
   function err(message, code) { const e = new Error(message); e.code = code; return e; }
   // The exchange is kept for the next turn and the chat, with the facts the answer was given (the
   // chat's "What it used").
-  function record(S, q, text, safety, model, facts) {
-    const answer = Object.assign({ role: 'assistant', text, safety: !!safety }, model ? { model } : {}, facts && facts.length ? { facts } : {});
+  function record(S, q, text, safety, model, facts, note) {
+    const answer = Object.assign({ role: 'assistant', text, safety: !!safety }, model ? { model } : {}, facts && facts.length ? { facts } : {}, note ? { note } : {});
     S.ai.deviceChat = (S.ai.deviceChat || []).concat([{ role: 'user', text: q, safety: !!safety }, answer]).slice(-16);
   }
+  // A yes-or-no question the numbers settle starts with the app's own yes or no (GH.coach.verdict),
+  // and one built on something that isn't so with the app's correction (GH.coach.correction), both
+  // written into the prompt so the model carries on from them: it explains the answer instead of
+  // guessing it.
+  function lead(S, day, question) {
+    const C = GH.coach;
+    const v = C && C.verdict ? C.verdict(S, day, question) : null;
+    if (v) return `${v},`;
+    return (C && C.correction && C.correction(S, day, question)) || '';
+  }
+  // Every number in an answer should be one the model was given, or that number rounded: small models
+  // sometimes make one up or do their own sums. Sentences with any other number are left out.
+  // { text, cut } (cut: how many sentences went).
+  // A percentage has to be one of the given percentages exactly: a small model works out its own ("8%
+  // above your usual" for 1%), and neither some other 8 in the prompt nor a 7.6% rounded up may let it
+  // through.
+  const NUM = /\d+(?:,\d{3})*(?:\.\d+)?/g;
+  const PCT = /(\d+(?:\.\d+)?)\s*(?:%|percent\b|per cent\b)/g;
+  const numbers = (s) => (String(s || '').match(NUM) || []).map((x) => Number(x.replace(/,/g, '')));
+  const percents = (s) => [...String(s || '').matchAll(PCT)].map((m) => Number(m[1]));
+  const near = (list) => (n) => list.some((g) => g === n || (Number.isInteger(n) && (Math.round(g) === n || Math.trunc(g) === n)));
+  function keepToGiven(text, given) {
+    const known = near(numbers(given)), givenPct = percents(given), knownPct = (n) => givenPct.includes(n);
+    const all = String(text || '').trim().split(/(?<=[.!?])\s+/).filter(Boolean);
+    const kept = all.filter((x) => numbers(x).every(known) && percents(x).every(knownPct));
+    return { text: kept.length === all.length ? String(text || '').trim() : kept.join(' '), cut: all.length - kept.length };
+  }
+  // The answer as shown: the model's, less any sentence with a number it wasn't given. If that leaves
+  // next to nothing (or it only got as far as the yes or no), the app's own answer stands in, and a
+  // note says so. { text, note, cut, replaced }.
+  // (start: what the answer was started with, which isn't the model's own words.)
+  function finish(S, day, question, raw, given, start) {
+    const text = String(raw || '').trim();
+    const k = keepToGiven(text, given);
+    const after = (x) => { const lead0 = String(start || '').trim(); return (lead0 && x.startsWith(lead0) ? x.slice(lead0.length) : x).trim(); };
+    const words = after(k.text);
+    if (words.length >= (k.cut ? 30 : 8)) return { text: k.text, note: k.cut ? 'Left out a line with a number that isn\'t in your data.' : null, cut: k.cut, replaced: false };
+    const own = GH.coach ? GH.coach.ask(S, day, question).text : '';
+    const why = after(text) ? 'The model\'s answer didn\'t match your numbers' : 'The model didn\'t answer';
+    return { text: own || text, note: own ? `${why}, so this is the app's own.` : null, cut: k.cut, replaced: !!own };
+  }
+
   // The model to use: the one picked in Settings if it's on the phone, else any that is.
   // Without a pick, a current model (the bigger the better) comes before an older one, and one that
   // ran this phone out of memory comes last.
@@ -195,30 +241,39 @@
     if (opt.signal && opt.signal.aborted) return { text: '', aborted: true };
     status('thinking');
     const f = facts(S, day, q);
+    const start = lead(S, day, q);
     let wrote = false;
-    const run = (keep) => llm.chat(messages(S, day, q, keep), {
-      signal: opt.signal, maxTokens: 320, onLoadProgress: loading,
-      onPrompt: (done, total) => { if (!wrote) status('reading', total ? done / total : 0); },
-      onToken: (piece, soFar) => {
-        if (!wrote) { wrote = true; status('writing'); }
-        if (opt.onToken) opt.onToken(piece, soFar);
-      },
-    });
+    let given = '';
+    // A low temperature: the answer rewords facts, and small models slip on numbers when it's higher.
+    const run = (keep) => {
+      const msgs = messages(S, day, q, keep);
+      given = msgs.map((m) => m.content).join('\n');
+      return llm.chat(msgs, {
+        signal: opt.signal, maxTokens: 320, temperature: 0.3, lead: start, onLoadProgress: loading,
+        onPrompt: (done, total) => { if (!wrote) status('reading', total ? done / total : 0); },
+        onToken: (piece, soFar) => {
+          if (!wrote) { wrote = true; status('writing'); }
+          if (opt.onToken) opt.onToken(piece, soFar);
+        },
+      });
+    };
     let raw;
     // A long conversation that no longer fits the model's memory: answer this one on its own.
     try { raw = await run(); } catch (e) { if (e && e.code === 'too-long') raw = await run(0); else throw e; }
     // Stopped before it started (waiting behind the warm-up, say) leaves the last chat's stats.
     const st = llm.stats;
     const aborted = !!(opt.signal && opt.signal.aborted) || !!(st && st.aborted);
-    const text = String(raw || '').trim();
-    if (text) record(S, q, text, false, id, f);
+    // Stopped part way: what it wrote so far, as it is.
+    const out = aborted ? { text: String(raw || '').trim(), note: null, cut: 0, replaced: false } : finish(S, day, q, raw, `${given}\n${start}`, start);
+    const text = out.text;
+    if (text) record(S, q, text, false, id, f, out.note);
     // How fast this model answers on this phone (for the model picker), smoothed over real answers.
     const tps = st && st.id === id && st.tokens >= 8 && text ? st.tokensPerSec : 0;
     if (tps > 0 && !aborted) {
       const sp = S.ai.speed || (S.ai.speed = {});
       sp[id] = sp[id] ? Math.round((sp[id] * 0.7 + tps * 0.3) * 10) / 10 : Math.round(tps * 10) / 10;
     }
-    return { text, aborted, stats: st };
+    return { text, aborted, stats: st, raw: String(raw || '').trim(), lead: start, note: out.note, cut: out.cut, replaced: out.replaced };
   }
   // Loads the model and has it read the rules and data ahead of the first question, so the first
   // answer starts sooner (a question asked meanwhile waits for it, then reads only its own turn).
@@ -236,5 +291,5 @@
   }
   function clear(S) { S.ai.deviceChat = []; }
 
-  GH.deviceCoach = { RULES, brief, facts, system, messages, ask, prime, pick, clear };
+  GH.deviceCoach = { RULES, brief, facts, system, messages, lead, keepToGiven, finish, ask, prime, pick, clear };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -1,8 +1,46 @@
-/* What's new, newest first. Shown once after an update and any time from Profile. */
+/* What's new, newest first. Shown once after an update and any time from Profile. Each version's
+   entry also goes in its GitHub release's notes (scripts/release-notes.mjs), and its `store` text is
+   the same news in 500 characters at most, for a store's What's new field (test/release.mjs checks). */
 (function (G) {
   'use strict';
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
+    {
+      version: '1.5.0', date: '2026-10-01', title: 'Runs with GPS, plans for every body, and plans of your own',
+      store: [
+        '• GPS for runs, walks, hikes and rides: a route map, splits, and heart rate from your watch',
+        '• Plans that adapt to your age and to arthritis, back pain, balance problems and more, with 71 new seated and supported moves',
+        '• Make your own plan, or have the coach build one, and share it with a QR code or a link',
+        '• Health Connect syncs in the background every 15 minutes',
+        '• A clearer set-up, smoother exercise animations, and 3D figures that show at once',
+      ].join('\n'),
+      items: [
+        ['navigate', 'Record a run, walk, hike or ride from Today or Health. You see your route, distance, pace and steps as you go, with a notification to pause or finish from. Afterwards there\'s a summary with your map, splits and elevation, heart rate and calories from your watch through Health Connect, and your personal records.'],
+        ['refresh', 'Health Connect can sync in the background every 15 minutes, so your history has no gaps on days you don\'t open the app. Turn it on in Settings.'],
+        ['people', 'Plans for every body. Your plan adapts to your age: livelier under 30, gentler warm-ups and balance work from 50, and supported moves from 65. It also adapts to arthritis (with a flare-day switch), osteoporosis, back pain, blood pressure, balance, painful wrists or a wheelchair. There are 71 new seated, supported and balance moves.'],
+        ['compose', 'Make your own plan like a playlist from the move library, or describe what you want and let the coach build one. It runs like the coach\'s plan, and anything you can\'t do is swapped for the closest move you can.'],
+        ['share', 'Share a plan with a QR code or a link. Your friend scans or taps it, sees the whole plan and saves it, with swaps for anything their kit or body rules out.'],
+        ['sparkle', 'A clearer set-up: fewer steps in named sections, gentle checks as you type, and a summary of your plan at the end. "Workouts and health" no longer asks about food.'],
+        ['person', 'Every exercise animation is checked frame by frame. The triceps moves no longer spin, hands and dumbbells don\'t flip, feet stay planted, arms swing against the legs, and a dozen moves show better technique.'],
+        ['bolt', '3D figures appear at once: they warm up right after launch, and a picture of the figure shows until it starts moving.'],
+      ],
+    },
+    {
+      version: '1.4.0', date: '2026-09-30', title: 'A coach that answers, and a new Plan, Health and Progress',
+      items: [
+        ['chip', 'The on-device coach answers now. It runs on your phone\'s fast cores in its own engine, several times quicker than before, reads your data ahead so answers start in seconds, and checks each one against your numbers. Phones with 8 GB or more get the Balanced size suggested, for better answers.'],
+        ['sparkle', 'Ask the coach from any tab with the sparkle at the top left. The chat suggests questions from your data, shows what each answer used, and keeps answering when you close it.'],
+        ['sliders', 'Tailor my plan: say what you want ("more legs, my knees hurt, 20 minutes", "train my calves more") and the coach shows the changes before anything changes. Undo is always there.'],
+        ['calendar', 'A new Plan tab: your week as a strip of days, any day a tap away with its exercises shown in 3D, workouts you can move by tapping or dragging, and sets per muscle against their targets.'],
+        ['heart', 'Health is redesigned: your week at a glance, and every number opens its history, with a chart, where each value came from, and a way to add or fix your own.'],
+        ['person', 'Progress shows your body: a map of the muscles you\'ve trained and where you\'ve got stronger, with each muscle\'s story a tap away.'],
+        ['dumbbell', '46 new exercises (212 in all) that fit your kit: overhead presses, rows, calf raises and hamstring curls with just a chair, a wall and a towel. Warm-ups and cool-downs follow the day\'s muscles, and the kettlebell halo circles your head properly now.'],
+        ['layers', 'Sheets slide up from the bottom and follow your finger: swipe up for the full view or down to close, with a springy settle and no more stutter.'],
+        ['bolt', 'Haptics you can feel: stronger, with a different feel for taps, toggles, timers, finished sets and new bests. Try them in Settings.'],
+        ['wave', 'The colours behind each page drift slowly. Turn it off in Settings, Appearance.'],
+        ['check-circle', 'Fixes: picking your workout days sets how many a week (Monday to Friday means five), and food sheets no longer run off the edge.'],
+      ],
+    },
     {
       version: '1.3.1', date: '2026-09-29', title: 'A round of fixes',
       items: [

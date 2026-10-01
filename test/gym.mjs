@@ -3,7 +3,7 @@
 // after two short sessions, home and gym progress kept apart, and "both" switching per day.
 import { load, check, section, done } from './lib.mjs';
 
-const GH = load('src/data/moves.js', 'src/engine/pose.js', 'src/brain.js', 'src/insights.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js');
 const B = GH.brain, M = GH.moves;
 const D0 = B.dayFromStr('2026-09-28'); // a Monday
 

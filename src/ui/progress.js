@@ -235,6 +235,7 @@
           ${weekSets(S, day)}
           ${heatmap(S, day, cal)}
         </div>
+        ${U.actRecordsSection ? U.actRecordsSection(S, true) : ''}
         ${strength(S, day)}
         ${leftRight(S, day)}
         <h2 class="sec-title t-title-3">Levels</h2>

@@ -23,6 +23,13 @@ page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 await page.clock.install({ time: new Date('2026-10-19T08:10:00') });
 await page.addInitScript(seedBridge);
+// A read the background sync saved while the app was closed: 50 days back, older than what the
+// foreground read covers (40 days), so only folding it in can fill that day.
+await page.addInitScript(() => {
+  const t = Date.now() - 50 * 86400000;
+  window.__pendingDate = new Date(t).toISOString().slice(0, 10);
+  window.__pending = [{ id: `${t}.json`, payload: { ok: true, tz: 'UTC', from: new Date(t - 2 * 86400000).toISOString(), to: new Date(t).toISOString(), steps: [{ date: window.__pendingDate, count: 4321 }], errors: {} } }];
+});
 await page.goto('file://' + join(root, 'dist/gradient-health.html'));
 await page.waitForSelector('.onboard:not([hidden])');
 await page.evaluate(seedState);
@@ -33,12 +40,17 @@ const tab = async (t) => { await page.click(`.rf-tab[data-tab="${t}"]`); await s
 
 section('Charts');
 await tab('health');
-await page.click('[data-on="healthRange"] input[value="7"]', { force: true });
+// Trend charts live in each number's sheet now: Steps over 7 days.
+await page.evaluate(() => window.GH.ui.metricSheet('steps'));
 await settle();
-check('the range is 7 days', await page.evaluate(() => document.querySelector('[data-on="healthRange"] input[value="7"]').checked));
-const charts = await page.evaluate(() => [...document.querySelectorAll('#screen .ch-plot')].map((p) => { const s = p.querySelector('.ch-svg'); const a = p.getBoundingClientRect(), b = s.getBoundingClientRect(); return { plot: Math.round(a.height), svg: Math.round(b.height), bottom: Math.round(b.bottom - a.bottom) }; }));
-check('the Health tab has charts', charts.length >= 4, charts.length);
+await page.click('dialog.ms-sheet [data-on="metricRange"] input[value="7"]', { force: true });
+await settle();
+check('the range is 7 days', await page.evaluate(() => document.querySelector('dialog.ms-sheet [data-on="metricRange"] input[value="7"]').checked));
+const charts = await page.evaluate(() => [...document.querySelectorAll('dialog.ms-sheet .ch-plot')].map((p) => { const s = p.querySelector('.ch-svg'); const a = p.getBoundingClientRect(), b = s.getBoundingClientRect(); return { plot: Math.round(a.height), svg: Math.round(b.height), bottom: Math.round(b.bottom - a.bottom) }; }));
+check('the metric sheet has its chart', charts.length === 1, charts.length);
 check('7-day charts stay inside their plot', charts.every((c) => c.svg <= c.plot + 1 && c.bottom <= 1), JSON.stringify(charts));
+await page.evaluate(() => window.GH.ui.closeSheets());
+await settle(900);
 
 section('Type in the tab bar, buttons and chips');
 const type = await page.evaluate(() => {
@@ -176,9 +188,12 @@ check('with the capsule showing, the last card still scrolls clear', g >= 8, g);
 section('Sheets');
 await page.evaluate(() => window.GH.ui.showWhatsNew());
 await settle(900);
-const sh = await page.evaluate(() => { const a = document.activeElement; return { cls: a && a.className, ring: !!(a && a.matches('.rf-sheet-grabber')), receded: document.getElementById('app').hasAttribute('data-receded') }; });
+const sh = await page.evaluate(() => { const a = document.activeElement; return { cls: a && a.className, ring: !!(a && a.matches('.rf-sheet-grabber')) }; });
 check('a sheet the app opens by itself focuses its content, not the grabber (no blue ring)', /rf-sheet-body/.test(sh.cls || '') && !sh.ring, JSON.stringify(sh));
-check('a full-height sheet sets the page back', sh.receded);
+// What's new opens at medium; pulled up to large, it sets the page back.
+await page.evaluate(() => window.GH.ui.topSheet().detent('large'));
+await settle(900);
+check('a sheet at full height sets the page back', await page.evaluate(() => document.getElementById('app').hasAttribute('data-receded')));
 await page.evaluate(() => window.GH.ui.closeSheets());
 await settle(900);
 check('and closing it brings the page forward again', await page.evaluate(() => !document.getElementById('app').hasAttribute('data-receded')));
@@ -248,6 +263,59 @@ await settle(900);
 check('also after the sheet closes', await page.evaluate(() => document.getElementById('app').scrollLeft === 0 && document.querySelector('#screen h1').getBoundingClientRect().left >= 0));
 await page.evaluate(() => { while (window.GH.ui.back()) { /* back to the tab */ } });
 await settle(700);
+
+section('Background sync');
+const bgBoot = await page.evaluate(() => { const d = window.GH.brain.dayFromStr(window.__pendingDate); const day = window.GH.ui.S.health.days[d]; return { steps: day && day.steps, done: window.__pendingDone.length, left: window.__pending.length }; });
+check('a read saved while the app was closed is folded in when it starts', bgBoot.steps === 4321, JSON.stringify(bgBoot));
+check('and marked done', bgBoot.done >= 1 && bgBoot.left === 0, JSON.stringify(bgBoot));
+await page.evaluate(() => window.GH.ui.open('settings'));
+await settle(900);
+const bgRow = () => page.evaluate(() => {
+  const title = [...document.querySelectorAll('#screen .rf-list-title')].find((e) => e.textContent === 'Sync in the background');
+  if (!title) return null;
+  const row = title.closest('.rf-list-row');
+  const sw = row.querySelector('input[role="switch"]');
+  return { sub: (row.querySelector('.rf-list-sub') || {}).textContent || '', sw: !!sw, on: !!(sw && sw.checked), allow: !!row.querySelector('[data-act="hcBgAllow"]') };
+});
+let bgr = await bgRow();
+check('Settings shows background sync on, with when it last read', bgr && bgr.sw && bgr.on && /^Every 15 minutes · last at \d{1,2}:\d{2} (am|pm)$/.test(bgr.sub), JSON.stringify(bgr));
+await page.evaluate(() => document.querySelector('#screen [data-on="hcBgToggle"]').click());
+await settle(600);
+bgr = await bgRow();
+check('switching it off stops the job and says so', bgr && !bgr.on && /^Off\. /.test(bgr.sub) && await page.evaluate(() => !window.__bg.on && !window.__bg.scheduled), JSON.stringify(bgr));
+await page.evaluate(() => document.querySelector('#screen [data-on="hcBgToggle"]').click());
+await settle(600);
+check('and back on', await page.evaluate(() => window.__bg.on && window.__bg.scheduled) && (await bgRow()).on);
+await page.evaluate(() => { window.__bg.granted = false; window.GH.ui.render(); });
+await settle(600);
+bgr = await bgRow();
+check('without the permission it says so, with Allow', bgr && !bgr.sw && bgr.sub === 'Needs permission' && bgr.allow, JSON.stringify(bgr));
+await page.click('#screen [data-act="hcBgAllow"]');
+await settle(900);
+bgr = await bgRow();
+check('Allow asks for it, and the switch comes back', bgr && bgr.sw && bgr.on && await page.evaluate(() => window.__bg.granted), JSON.stringify(bgr));
+await page.evaluate(() => { window.__bg.error = 'HealthConnectException(2)'; window.__bg.lastRun = Date.now(); window.GH.ui.render(); });
+await settle(600);
+check('a failed read says so', (await bgRow()).sub === 'Every 15 minutes · the last try didn\'t work', (await bgRow()).sub);
+await page.evaluate(() => { window.__bg.supported = false; window.GH.ui.render(); });
+await settle(600);
+bgr = await bgRow();
+check('with an older Health Connect it says what it needs', bgr && !bgr.sw && bgr.sub === 'Needs Android 15 or a newer Health Connect', JSON.stringify(bgr));
+// A background read that finishes while the app is open (newer than the last sync) is folded in
+// right away.
+const late = await page.evaluate(() => {
+  Object.assign(window.__bg, { supported: true, error: null, lastRun: Date.now(), lastOk: Date.now() });
+  const t = Date.now();
+  const date = new Date(t).toISOString().slice(0, 10);
+  window.__pending.push({ id: `${t}.json`, payload: { ok: true, tz: 'UTC', from: new Date(t - 2 * 86400000).toISOString(), to: new Date(t).toISOString(), steps: [{ date, count: 5432 }], errors: {} } });
+  window.__gh.onHealthBackground(window.AndroidBridge.hcBackground());
+  const day = window.GH.ui.S.health.days[window.GH.brain.dayFromStr(date)];
+  return { steps: day && day.steps, left: window.__pending.length };
+});
+check('a read finishing while the app is open is folded in', late.steps === 5432 && late.left === 0, JSON.stringify(late));
+await settle(600);
+check('and the row shows it', /^Every 15 minutes · last at /.test((await bgRow()).sub), (await bgRow()).sub);
+await page.click('#topbar [data-act="back"]'); await settle();
 
 section('Console');
 check('no console errors', errors.length === 0, errors.join(' | '));

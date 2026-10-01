@@ -35,7 +35,7 @@ async function openApp(time, mutate) {
   await page.addInitScript(seedBridge);
   await page.goto(server.url);
   await page.waitForSelector('.onboard:not([hidden])');
-  await page.evaluate(seedState);
+  await page.evaluate(seedState, { usualWeek: true });
   if (mutate) await page.evaluate(mutate);
   await page.reload();
   await page.waitForSelector('#screen[data-view="today"]');
@@ -78,7 +78,8 @@ const state = (page) => page.evaluate(() => {
     cardTitle: card && (card.querySelector('.pw-title') || {}).textContent,
     cardText: card ? card.textContent.replace(/\s+/g, ' ').trim() : '',
     thumbs: card ? card.querySelectorAll('.pw-thumb[data-move]').length : 0,
-    drawn: card ? card.querySelectorAll('.pw-thumb[data-move] > svg').length : 0,
+    drawn: card ? card.querySelectorAll('.pw-thumb[data-move] > :is(svg, img)').length : 0,
+    drawn3d: card ? card.querySelectorAll('.pw-thumb[data-move] > img').length : 0,
     moves: U.S.events.filter((e) => e.type === 'move').length,
   };
 });
@@ -105,6 +106,24 @@ check('Make it yours has days and time and equipment', await page.locator('#scre
 check('sets by muscle has a bar for each muscle with a target', await page.locator('#screen .pw-mu').count() >= 5);
 await shotFull(page, '01-week');
 
+section('Stills in 3D');
+{
+  // The 3D figure is on by default: once the phone is idle, each tile's flat still turns into a 3D
+  // one, in the person's look, cropped square and drawn at the screen's pixel density.
+  let s3 = s;
+  for (let i = 0; i < 20 && s3.drawn3d < s3.thumbs; i++) { await settle(1500); s3 = await state(page); }
+  check('every exercise tile turns into a still of the 3D figure', s3.thumbs > 0 && s3.drawn3d === s3.thumbs, `${s3.drawn3d} of ${s3.thumbs}`);
+  const img = await page.evaluate(() => { const i = document.querySelector('#screen .pw-card .pw-thumb > img'); return i && { w: i.naturalWidth, h: i.naturalHeight, src: i.src.slice(0, 16), look: i.parentElement.getAttribute('data-drawn') }; });
+  check('square, at twice the tile\'s size on a 2x screen, in the person\'s look', img && img.w === 104 && img.h === 104 && /^data:image\//.test(img.src) && /\|sand\|/.test(img.look), img);
+  await shot(page, '01b-stills-3d');
+  await page.evaluate(() => { const U = window.GH.ui; U.S.profile.prefs.figure = '2d'; U.render(); });
+  await settle(900);
+  s3 = await state(page);
+  check('with the flat figure picked in Settings, the tiles show the flat still', s3.drawn3d === 0 && s3.drawn === s3.thumbs, `${s3.drawn} flat of ${s3.thumbs}`);
+  await page.evaluate(() => { const U = window.GH.ui; U.S.profile.prefs.figure = '3d'; U.render(); });
+  await settle(900);
+}
+
 section('Picking a day');
 const hits0 = await page.evaluate(() => window.GH.planWeek.stats.misses);
 await page.click(pill(1));
@@ -121,7 +140,7 @@ await page.click(pill(2));
 await settle();
 s = await state(page);
 check('Wednesday is a light day: walk and mobility', s.cardKind === 'light' && /Walk and mobility/.test(s.cardText) && /Mobility flow/.test(s.cardText), s.cardText.slice(0, 120));
-check('with the five mobility moves drawn', await page.locator('#screen .pw-mob .pw-thumb > svg').count() === 5);
+check('with the five mobility moves drawn', await page.locator('#screen .pw-mob .pw-thumb > :is(svg, img)').count() === 5);
 await shot(page, '02-light');
 await page.click('#screen .pw-mob .pw-mob-btn');
 await settle(1200);
@@ -363,6 +382,34 @@ await settle(900);
 const deload = await page.evaluate(() => document.querySelector('dialog.rf-sheet[open]').textContent);
 check('and the info sheet explains it', /40% fewer sets/.test(deload) && /back to full volume/.test(deload), deload.slice(0, 160));
 await shot(page, '14-deload');
+await ctx.close();
+
+section('Days picked set the workouts a week');
+({ ctx, page, settle } = await openApp('2026-10-21T08:10:00'));
+await page.click('.rf-tab[data-tab="plan"]');
+await settle(900);
+await page.click('#topbar [data-act="daysSheet"]');
+await settle(900);
+const daysSheet = () => page.evaluate(() => { const d = document.querySelector('dialog.rf-sheet[open]'); return { n: d.querySelector('#dsDays').value, note: d.querySelector('#dsDaysNote').textContent, pressed: [...d.querySelectorAll('[data-on="dsWd"]')].map((b) => b.getAttribute('aria-pressed') === 'true' ? 1 : 0).join('') }; });
+for (const i of [0, 1, 2, 3, 4]) { await page.click(`dialog.rf-sheet[open] [data-on="dsWd"][data-v="${i}"]`); await settle(300); }
+let dsx = await daysSheet();
+check('picking Monday to Friday sets 5 workouts a week', dsx.n === '5' && dsx.pressed === '1111100' && /Your 5 workouts/.test(dsx.note), dsx);
+await page.click('dialog.rf-sheet[open] [data-on="dsWd"][data-v="5"]');
+await settle(300);
+await page.click('dialog.rf-sheet[open] [data-on="dsWd"][data-v="6"]');
+await settle(300);
+dsx = await daysSheet();
+check('a seventh day is refused, and it says why', dsx.n === '6' && dsx.pressed === '1111110' && /one day stays for rest/.test(dsx.note), dsx);
+await page.click('dialog.rf-sheet[open] .rf-stepper-btn[data-step="-1"]');
+await settle(300);
+await page.click('dialog.rf-sheet[open] .rf-stepper-btn[data-step="-1"]');
+await settle(300);
+dsx = await daysSheet();
+check('minus drops the days picked last', dsx.n === '4' && dsx.pressed === '1111000', dsx);
+await page.click('dialog.rf-sheet[open] [data-act="daysSave"]');
+await settle(900);
+const saved = await page.evaluate(() => { const S = window.GH.ui.S; return { days: S.profile.days, weekdays: (S.profile.weekdays || []).join(), next: window.GH.planWeek(S, window.GH.ui.today()).next.days.map((d) => d.kind).join() }; });
+check('saved as 4 workouts, Monday to Thursday, and next week follows it', saved.days === 4 && saved.weekdays === '0,1,2,3' && /^workout,workout,workout,workout,(light|rest),(light|rest),(light|rest)$/.test(saved.next), saved);
 await ctx.close();
 
 section('Console');

@@ -10,7 +10,7 @@ globalThis.AndroidBridge = {
   save: (s) => { file.state = s; return true; }, load: () => file.state,
   saveSecret: (k, v) => { file.secrets[k] = v; return true; }, loadSecret: (k) => file.secrets[k] || '', deleteSecret: (k) => { delete file.secrets[k]; return true; },
 };
-const GH = load('src/data/moves.js', 'src/engine/pose.js', 'src/brain.js', 'src/store.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/store.js');
 const B = GH.brain;
 const store = GH.store;
 const D0 = B.dayFromStr('2026-09-28');

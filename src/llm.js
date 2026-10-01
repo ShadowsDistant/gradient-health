@@ -181,11 +181,13 @@ function fits(m) { const ram = ramGB(); return ram == null || ram >= (m.minRamGB
 // The models to offer on this phone: the current ones it has the memory for (Balanced with 6 GB or
 // more, Best answers with 12). Older models only show up while they're installed.
 function offered() { return cfg.models.filter((m) => !m.legacy && fits(m)); }
-// The one to suggest: Fast, on every phone. It starts answering within a second or two; the bigger
-// sizes write better answers but take longer, so they're a choice rather than the default.
+// The one to suggest. With the native engine and 8 GB or more, Balanced: it reads the facts clearly
+// better and still writes faster than you read (about half Fast's speed). Otherwise Fast, which
+// starts answering soonest; the bigger sizes stay a choice.
 function recommended() {
   const list = offered();
-  return list.find((m) => m.tier === 'fast') || list[0] || null;
+  const roomy = nativeOk() && (ramGB() || 0) >= 8;
+  return (roomy && list.find((m) => m.tier === 'balanced')) || list.find((m) => m.tier === 'fast') || list[0] || null;
 }
 
 /* ------------------------------------------------------------------ downloads (ModelStore.java) */
@@ -839,8 +841,9 @@ let chats = Promise.resolve();
 // Answers the conversation with the loaded model (reloading the last one if it went idle) and resolves
 // with the reply. onToken(piece, textSoFar) streams it; onPrompt(done, total) follows the model
 // reading the prompt; onLoadProgress({ loaded, total }) a reload. grammar (GBNF) holds the reply to
-// a shape. Aborting the signal stops cleanly and resolves with the text so far (stats.aborted is
-// true). One chat runs at a time; others wait.
+// a shape. lead is text the reply starts with: it goes into the prompt, so the model carries on from
+// it, and it's part of what's streamed and returned. Aborting the signal stops cleanly and resolves
+// with the text so far (stats.aborted is true). One chat runs at a time; others wait.
 function chat(messages, opts = {}) {
   const job = chats.then(() => runChat(messages, opts));
   chats = job.then(() => {}, () => {});
@@ -890,14 +893,15 @@ async function generate(c, msgs, opts) {
   const maxTokens = readOnly ? 0 : Math.max(1, Math.min(Number(opts.maxTokens) || 256, Math.floor(c.ctx / 2)));
   const m = c.m || {};
   const gen = Object.assign({}, DEFAULT_GEN, m.gen || {}, opts.temperature != null ? { temperature: Number(opts.temperature) } : {});
-  const prompt = readOnly ? chatml(msgs, m, false) : chatml(fit(msgs, c.ctx, maxTokens), m);
+  const lead = readOnly ? '' : String(opts.lead || '');
+  const prompt = readOnly ? chatml(msgs, m, false) : chatml(fit(msgs, c.ctx, maxTokens), m) + lead;
   const ctrl = new AbortController();
   const abort = () => ctrl.abort();
   if (signal) signal.addEventListener('abort', abort, { once: true });
   let finished;
   running = { stop: abort, done: new Promise((r) => { finished = r; }) };
   clearTimeout(idleTimer);
-  let raw = '';
+  let raw = lead;
   let text = '';
   let pieces = 0;
   let first = 0;

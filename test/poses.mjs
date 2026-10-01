@@ -2,7 +2,7 @@
 // on or above the floor, reach their planted hands/feet, keep joints in human ranges, and draw.
 import { load, check, section, done } from './lib.mjs';
 
-const GH = load('src/data/moves.js', 'src/engine/pose.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js');
 const M = GH.moves;
 const P = GH.pose;
 const ids = Object.keys(M.MOVES);
@@ -40,7 +40,8 @@ for (const id of ids) {
 check(`every move (${ids.length}) has a name, a rep, a sensible range and cues without exclamation marks`, !bad.length, bad.slice(0, 5));
 const ladderBad = [];
 for (const [fam, lad] of Object.entries(M.LADDERS)) {
-  if (!lad.gym && lad.rungs.length < 4) ladderBad.push(`${fam}: fewer than 4 rungs`);
+  // Stand-in ladders for particular bodies (alt) only need room for one step up.
+  if (!lad.gym && lad.rungs.length < (lad.alt ? 2 : 4)) ladderBad.push(`${fam}: fewer than ${lad.alt ? 2 : 4} rungs`);
   if (lad.gym && !lad.rungs.length) ladderBad.push(`${fam}: empty pool`);
   for (const id of lad.rungs) {
     const m = M.MOVES[id];
@@ -49,7 +50,7 @@ for (const [fam, lad] of Object.entries(M.LADDERS)) {
     if (!m || (m.family !== fam && !reused)) ladderBad.push(`${fam}: ${id}`);
   }
 }
-check('every ladder has 4+ rungs (gym pools 1+), all known, all tagged with their family', !ladderBad.length, ladderBad);
+check('every ladder has 4+ rungs (stand-ins 2+, gym pools 1+), all known, all tagged with their family', !ladderBad.length, ladderBad);
 const tempo = ids.filter((id) => { const s = M.secPerRep(M.MOVES[id]); return !(s >= 0.5 && s <= 14); });
 check('rep tempo is between 0.5 and 14 s', !tempo.length, tempo.map((id) => `${id}:${M.secPerRep(M.MOVES[id])}`));
 const eq0 = { db: [], kb: [], ball: false, band: false, bar: false, chair: false, wall: false, towel: false, table: false, door: false };
@@ -60,8 +61,58 @@ check('the rotation ladder ends in a slam or a toss, never both', slamToss.lengt
 const uni = ids.filter((id) => M.MOVES[id].uni);
 check('unilateral moves draw mirrored for one side only', uni.every((id) => M.mirrorFor(M.MOVES[id], 'L') !== M.mirrorFor(M.MOVES[id], 'R')));
 
+section('Moves for every body');
+// src/data/moves-access.js tags every move with what it asks of the body, so a plan can leave out
+// what a health condition rules out (src/access.js).
+const POS = ['stand', 'seat', 'floor', 'kneel', 'low', 'bench', 'hang'];
+const GRIPS = ['hang', 'pull', 'hold', 'loop'];
+const SPINE = ['flex', 'flexLoad', 'twist', 'twistLoad', 'load'];
+const tagBad = [];
+for (const id of ids) {
+  const m = M.MOVES[id];
+  if (!POS.includes(m.pos)) tagBad.push(`${id}: pos ${m.pos}`);
+  if (m.grip != null && !GRIPS.includes(m.grip)) tagBad.push(`${id}: grip ${m.grip}`);
+  if (m.spine != null && (!Array.isArray(m.spine) || m.spine.some((x) => !SPINE.includes(x)))) tagBad.push(`${id}: spine ${m.spine}`);
+  // Anything held or strapped on needs a grip tag, so painful hands can skip it.
+  const holds = (m.load && /db|kb|ball|band|bb|ez|cable|machine/.test(m.load)) && !m.grip && !['leg_press', 'leg_curl', 'leg_ext', 'bike_int', 'incline_walk', 'calf_smith', 'calf_press', 'leg_curl_db'].includes(id);
+  if (holds && !/^(sq_|lg_|ls_)/.test(id)) tagBad.push(`${id}: loaded but no grip tag`);
+}
+check(`every move says where the body is and what it grips (${ids.length} moves)`, !tagBad.length, tagBad.slice(0, 8));
+const accessIds = ids.filter((id) => M.MOVES[id].family && M.LADDERS[M.MOVES[id].family] && M.LADDERS[M.MOVES[id].family].alt);
+const copyBad = [];
+for (const id of accessIds.concat(ids.filter((id) => M.MOVES[id].powerOf))) {
+  const m = M.MOVES[id];
+  if (m.cues.length !== 3 || [...m.cues, m.mistake, m.breathe].some((c) => typeof c !== 'string' || !c || /[\u2013\u2014]/.test(c))) copyBad.push(id);
+}
+check(`${accessIds.length} stand-in, balance and floor moves: three cues, a mistake and a breathing tip, no dashes`, !copyBad.length, copyBad);
+const powerBad = ids.filter((id) => M.MOVES[id].powerOf).filter((id) => { const m = M.MOVES[id], b = M.MOVES[m.powerOf]; return !b || m.family !== b.family || !(M.secPerRep(m) < M.secPerRep(b)); });
+check('fast-up versions count as their base move\'s rung and are quicker on the way up', !powerBad.length, powerBad);
+const flowBad = Object.entries(M.FLOWS || {}).flatMap(([k, list]) => list.filter((id) => !M.MOVES[id]).map((id) => `${k}: ${id}`));
+check('warm-up, cool-down and range-of-motion flows name known moves', M.FLOWS && Object.keys(M.FLOWS).length >= 5 && !flowBad.length, flowBad);
+const seatedOnly = ['pushAlt', 'rowAlt', 'raiseAlt', 'curlAlt', 'triAlt', 'legSeat', 'coreAlt', 'finGentle'].every((f) => M.LADDERS[f].rungs.some((id) => M.MOVES[id].pos === 'seat' && !M.MOVES[id].load));
+check('every stand-in ladder starts with something you can do sitting down with no equipment', seatedOnly);
+const handsFree = ['pushAlt', 'rowAlt', 'raiseAlt', 'curlAlt', 'triAlt', 'coreAlt'].every((f) => M.LADDERS[f].rungs.some((id) => !M.MOVES[id].hands && (!M.MOVES[id].grip || M.MOVES[id].grip === 'loop')));
+check('and each one has a move with no weight on the hands and no tight grip', handsFree);
+const sts = M.LADDERS.squat.rungs.slice(0, 3);
+check('sit to stand comes first on the squat ladder', sts.join() === 'sq_sts_hands,sq_sts,sq_sts_slow' && sts.every((id) => M.MOVES[id].family === 'squat'), sts);
+
 section('Poses');
 const problems = { finite: [], floor: [], reach: [], joints: [], draw: [] };
+// Elbow flexion in degrees (0 straight) from the solved points; with the move's depths when it gives
+// them (arms drawn foreshortened, e.g. round the head), so it's the real bend, not the picture's.
+const flexion = (pts, f, s) => {
+  const z = (k) => pts[`depth${k}${s}`] || 0;
+  const sh = [...pts['sh' + s], 0], el = [...pts['el' + s], z('el')], wr = [...pts['wr' + s], z('wr')];
+  const a = sh.map((v, i) => el[i] - v), b = el.map((v, i) => wr[i] - v);
+  // A segment drawn shorter than it is (a side-view arm reaching out sideways) goes out of the
+  // picture by what's missing, as the 3D figure takes it.
+  if (pts['depthel' + s] == null) {
+    a[2] = Math.sqrt(Math.max(0, P.L.ua ** 2 - a[0] ** 2 - a[1] ** 2));
+    b[2] = Math.sqrt(Math.max(0, P.L.fa ** 2 - b[0] ** 2 - b[1] ** 2));
+  }
+  const c = (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / ((Math.hypot(...a) * Math.hypot(...b)) || 1);
+  return Math.acos(Math.max(-1, Math.min(1, c))) * 180 / Math.PI;
+};
 for (const id of ids) {
   const m = M.MOVES[id];
   let fr;
@@ -74,8 +125,12 @@ for (const id of ids) {
     }
     for (const key of ['hdN', 'hdF', 'anN', 'anF']) if (pts['ikReach' + key] === false && (!planted || planted.includes(key))) problems.reach.push(`${id}@${name}.${key}`);
     for (const s of ['aN', 'aF', 'lN', 'lF']) {
-      const bend = s[0] === 'a' ? f[`${s}.e`] : f[`${s}.k`];
-      if (bend != null && (bend < -12 || bend > 178)) problems.joints.push(`${id}@${name}.${s}=${bend}`);
+      const side = s[1];
+      // Arms placed by IK or given depths: the real bend from the points (the angle in the pose
+      // isn't used for them); otherwise the pose's own angle.
+      const solved = s[0] === 'a' && (`ik.hd${side}.x` in f || (f.$.ikTo && f.$.ikTo['hd' + side]) || pts['depthel' + side] != null);
+      const bend = solved ? flexion(pts, f, side) : s[0] === 'a' ? f[`${s}.e`] : f[`${s}.k`];
+      if (bend != null && (bend < -12 || bend > (solved ? 162 : 178))) problems.joints.push(`${id}@${name}.${s}=${bend.toFixed(0)}`);
     }
   }
   try { const dl = P.drawList(m, fr[0].pts, {}); if (!dl || !dl.layers) problems.draw.push(id); } catch (e) { problems.draw.push(`${id}: ${e.message}`); }
@@ -83,8 +138,125 @@ for (const id of ids) {
 check('all joints finite in every keyframe and in-between frame', !problems.finite.length, problems.finite.slice(0, 6));
 check('nothing goes through the floor (side and front views)', !problems.floor.length, problems.floor.slice(0, 6));
 check('planted hands and feet are always reachable (IK)', !problems.reach.length, problems.reach.slice(0, 6));
-check('elbows and knees stay in a human range', !problems.joints.length, problems.joints.slice(0, 6));
+check('elbows and knees stay in a human range (IK and foreshortened arms by their real bend)', !problems.joints.length, problems.joints.slice(0, 6));
 check('every move builds a draw list', !problems.draw.length, problems.draw.slice(0, 6));
+
+/* ------------------------------------------------------------------ motion */
+section('Motion');
+// Every move played at 60 samples per rep step: no joint jumps between samples (a jump is a step
+// far bigger than its neighbours', or simply too big for any real movement), and in front and
+// top views no elbow or forearm crosses the face unless the move says the arm is in front of it
+// or behind the head (then it's drawn behind).
+const H = P.L.torso + P.L.neck + 2 * P.L.head + P.L.th + P.L.sh; // figure height, ~163
+const JOINTS = ['hip', 'neck', 'head', 'shN', 'shF', 'elN', 'elF', 'wrN', 'wrF', 'hdN', 'hdF', 'knN', 'knF', 'anN', 'anF', 'toN', 'toF', 'heN', 'heF'];
+// Segments whose direction must turn smoothly: a limb flipping to its other IK solution, or a pose
+// snapping onto a target, turns a segment tens of degrees between two samples.
+const SEGS = [['hip', 'neck'], ['neck', 'head'], ...['N', 'F'].flatMap((s) => [['sh' + s, 'el' + s], ['el' + s, 'wr' + s], ['hp' + s, 'kn' + s], ['kn' + s, 'an' + s]])];
+const motion = { jump: [], head: [], turn: [], bend: [] };
+const angDiff = (a, b) => Math.abs((((a - b) % 360) + 540) % 360 - 180);
+const segAng = (pts, [a, b]) => Math.atan2(pts[b][1] - pts[a][1], pts[b][0] - pts[a][0]) * 180 / Math.PI;
+// Signed bend at a middle joint in the picture (side view, figure facing +x, y down): knees bend
+// back (positive), elbows forward (negative); a segment drawn much shorter than it is lies out of
+// the picture (reaching sideways), where the picture can't say which way it bends.
+const signedBend = (pts, a, b, c) => {
+  const u = [pts[b][0] - pts[a][0], pts[b][1] - pts[a][1]], v = [pts[c][0] - pts[b][0], pts[c][1] - pts[b][1]];
+  return Math.atan2(u[0] * v[1] - u[1] * v[0], u[0] * v[0] + u[1] * v[1]) * 180 / Math.PI;
+};
+const inPlane = (pts, a, b, full) => Math.hypot(pts[b][0] - pts[a][0], pts[b][1] - pts[a][1]) >= 0.93 * full;
+const segDist = (c, a, b) => {
+  const ab = [b[0] - a[0], b[1] - a[1]];
+  const t = Math.max(0, Math.min(1, ((c[0] - a[0]) * ab[0] + (c[1] - a[1]) * ab[1]) / ((ab[0] ** 2 + ab[1] ** 2) || 1)));
+  return Math.hypot(a[0] + ab[0] * t - c[0], a[1] + ab[1] * t - c[1]);
+};
+const seenForm = new Set();
+for (const id of ids) {
+  const m = M.MOVES[id];
+  const key = m.form + JSON.stringify(m.rep);
+  if (seenForm.has(key)) continue; // same animation as a move already checked
+  seenForm.add(key);
+  const tl = P.timeline(m);
+  const ts = [];
+  let t0 = 0;
+  for (const s of tl.steps) { for (let i = 0; i <= 60; i++) ts.push(t0 + (s.ms * i) / 60); t0 += s.ms + s.hold; }
+  const fr = ts.map((t) => ({ t, pts: P.frameAt(m, t), f: P.sampleAt(m, t) }));
+  for (const k of JOINTS) {
+    const d = fr.map((x, i) => (i ? Math.hypot(x.pts[k][0] - fr[i - 1].pts[k][0], x.pts[k][1] - fr[i - 1].pts[k][1]) : 0));
+    for (let i = 1; i < d.length; i++) {
+      const nb = Math.max(d[i - 1], i + 1 < d.length ? d[i + 1] : 0);
+      if (d[i] > 0.05 * H || (d[i] > 0.02 * H && d[i] > 3 * nb)) { motion.jump.push(`${id}.${k}@${Math.round(fr[i].t)}ms ${d[i].toFixed(1)} cm`); break; }
+    }
+  }
+  for (const sg of SEGS) {
+    const a = fr.map((x) => segAng(x.pts, sg));
+    for (let i = 1; i < a.length; i++) {
+      // Samples 0 and 60 of consecutive steps can be a hold apart; a segment shorter than a quarter
+      // of its length (seen end-on) has no direction worth tracking.
+      const l = Math.hypot(fr[i].pts[sg[1]][0] - fr[i].pts[sg[0]][0], fr[i].pts[sg[1]][1] - fr[i].pts[sg[0]][1]);
+      if (l < 6) continue;
+      const d = angDiff(a[i], a[i - 1]);
+      if (d > 10) { motion.turn.push(`${id} ${sg.join('→')}@${Math.round(fr[i].t)}ms turns ${d.toFixed(1)}° in a sample`); break; }
+    }
+  }
+  if ((m.view || 'side') === 'side') {
+    for (const { t, pts } of fr) {
+      const bad = ['N', 'F'].flatMap((s) => {
+        const out = [];
+        const knee = signedBend(pts, 'hp' + s, 'kn' + s, 'an' + s);
+        if (inPlane(pts, 'hp' + s, 'kn' + s, P.L.th) && inPlane(pts, 'kn' + s, 'an' + s, P.L.sh) && knee < -12) out.push(`knee${s} ${knee.toFixed(0)}°`);
+        const elbow = signedBend(pts, 'sh' + s, 'el' + s, 'wr' + s);
+        // An arm turning out of the picture (abducting) can look bent backward a little on the way:
+        // a clear bend counts at nearly full drawn length, a big one at 93%.
+        const full = Math.min(Math.hypot(pts['el' + s][0] - pts['sh' + s][0], pts['el' + s][1] - pts['sh' + s][1]) / P.L.ua, Math.hypot(pts['wr' + s][0] - pts['el' + s][0], pts['wr' + s][1] - pts['el' + s][1]) / P.L.fa);
+        if (full >= 0.93 && elbow > (full >= 0.99 ? 25 : 45)) out.push(`elbow${s} ${elbow.toFixed(0)}°`);
+        return out;
+      });
+      if (bad.length) { motion.bend.push(`${id}@${Math.round(t)}ms ${bad.join(', ')} the wrong way`); break; }
+    }
+    continue;
+  }
+  const crossing = fr.flatMap(({ t, pts, f }) => ['N', 'F'].map((s) => {
+    const inFront = (pts['depthel' + s] || 0) > 8 || (pts['depthhd' + s] || 0) > 8;
+    const behind = (pts['depthhd' + s] || 0) < -2;
+    if (inFront || behind) return null;
+    const de = Math.hypot(pts['el' + s][0] - pts.head[0], pts['el' + s][1] - pts.head[1]);
+    const dfa = segDist(pts.head, pts['el' + s], pts['wr' + s]);
+    return de < P.L.head + 4 || dfa < P.L.head * 0.6 ? `${id}.${s}@${Math.round(t)}ms elbow ${de.toFixed(1)} forearm ${dfa.toFixed(1)} cm from the head's centre` : null;
+  })).filter(Boolean);
+  if (crossing.length) motion.head.push(crossing[0]);
+}
+check(`joints move continuously at 60 samples per rep step (${seenForm.size} animations)`, !motion.jump.length, motion.jump.slice(0, 12));
+check('no limb flips: every segment turns under 10° between samples', !motion.turn.length, motion.turn.slice(0, 12));
+check('side view: knees and elbows in the picture never bend the wrong way', !motion.bend.length, motion.bend.slice(0, 12));
+check('in front and top views no elbow or forearm crosses the face', !motion.head.length, motion.head.slice(0, 12));
+// The kit a move switches to for what a person owns is held in the same hands as the drawn kit (a
+// one-arm move doesn't gain a dumbbell held in both hands).
+const handsOf = (list) => (list || []).map((e) => e.hands || 'N').sort().join(',');
+const kitHands = ids.flatMap((id) => Object.entries(M.MOVES[id].equipBy || {}).filter(([, v]) => v && handsOf(v) !== handsOf(M.MOVES[id].equip)).map(([k]) => `${id} (${k})`));
+check('equipment swapped for what a person owns is held in the same hands', !kitHands.length, kitHands);
+// Walking, marching, running and stepping (side view): each arm swings forward as its own leg goes
+// back, as in walking, never with it. Over a rep, an upper arm's angle forward of straight down and
+// its own thigh's move against each other (an arm that stays put, like a hand on a wall, is left out).
+const GAIT = ['walk', 'inclineWalk', 'highKnees', 'legSwing', 'marchEasy', 'seatMarch', 'stepOver', 'heelToe'];
+const fwdAng = (pts, a, b) => Math.atan2(pts[b][0] - pts[a][0], pts[b][1] - pts[a][1]) * 180 / Math.PI;
+const gaitBad = [];
+for (const form of GAIT) {
+  const gm = Object.values(M.MOVES).filter((x) => x.form === form);
+  if (!gm.length) { gaitBad.push(`${form}: no move uses it`); continue; }
+  for (const m of gm) {
+    const tl = P.timeline(m);
+    const fr = Array.from({ length: 48 }, (_, i) => P.frameAt(m, (tl.total * i) / 48));
+    for (const s of ['N', 'F']) {
+      const leg = fr.map((p) => fwdAng(p, 'hp' + s, 'kn' + s)), arm = fr.map((p) => fwdAng(p, 'sh' + s, 'el' + s));
+      const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+      const ml = mean(leg), ma = mean(arm);
+      const sl = Math.sqrt(mean(leg.map((v) => (v - ml) ** 2))), sa = Math.sqrt(mean(arm.map((v) => (v - ma) ** 2)));
+      if (sl < 3 || sa < 3) continue;
+      const r = mean(leg.map((v, i) => (v - ml) * (arm[i] - ma))) / (sl * sa);
+      if (r > -0.3) gaitBad.push(`${m.id}: the ${s} arm swings with its own leg (r ${r.toFixed(2)})`);
+    }
+  }
+}
+check(`walking, marching and stepping: each arm swings against its own leg (${GAIT.length} forms)`, !gaitBad.length, gaitBad);
 
 /* ------------------------------------------------------------------ gym */
 section('Gym library');
@@ -126,7 +298,7 @@ const bandPallof = M.forPerson(M.MOVES.pallof, { band: true, door: true });
 check('the Pallof press draws a band on a door when there is no cable',
   bandPallof.props[0].type === 'door' && bandPallof.equip[0].type === 'band' && M.forPerson(M.MOVES.pallof, GYM_EQ).props[0].type === 'cable');
 const homeOnly = { db: [8], kb: [10], ball: true, band: true, bar: true, chair: true, wall: true, towel: true, table: true, door: true };
-const leaks = gymIds.filter((id) => M.allowed(M.MOVES[id], homeOnly) && !['calf_db', 'rdl_db', 'hang_knee', 'pallof'].includes(id));
+const leaks = gymIds.filter((id) => M.allowed(M.MOVES[id], homeOnly) && !['calf_db', 'rdl_db', 'hang_knee', 'pallof', 'lunge_db', 'split_db'].includes(id));
 check('home equipment never unlocks a gym machine or barbell move', !leaks.length, leaks);
 
 section('Gym props');
@@ -184,8 +356,7 @@ for (const id of gymIds) {
     for (const p of props) {
       if (p.type === 'machine' && p.kind === 'legPress') {
         // The foot plate (under the soles) slides on the track line.
-        const sole = P.dir(pts.footDirN - 90);
-        const pc = [(pts.heN[0] + pts.toN[0]) / 2 + sole[0] * 5.5, (pts.heN[1] + pts.toN[1]) / 2 + sole[1] * 5.5];
+        const pc = P.sledCentre(p, pts);
         const u = P.dir(90 + (p.angle || 45));
         const off = Math.abs((pc[0] - p.track[0]) * u[1] - (pc[1] - p.track[1]) * u[0]);
         if (off > 1.5) gp.sled.push(`${at}: plate ${off.toFixed(1)} off the track`);
@@ -228,7 +399,7 @@ for (const id of gymIds) {
       }
     }
     // A bar on the back or the hips stays in the hands.
-    for (const e of m.equip || []) if (e.hold) {
+    for (const e of m.equip || []) if (e.hold === 'traps' || e.hold === 'lap') {
       const bar = P.pinPoint(pts, e.hold), g = P.pinPoint(pts, 'grip');
       if (Math.hypot(bar[0] - g[0], bar[1] - g[1]) > 2) gp.held.push(`${at}: hands ${Math.hypot(bar[0] - g[0], bar[1] - g[1]).toFixed(1)} off the bar`);
     }

@@ -53,16 +53,21 @@ check('the legend reads less to more, with no sets', /Less\s*More\s*No sets/.tes
 check('a list of the same 17 muscles for screen readers', m.list.length === 17 && m.list.some((t) => /^Chest: [\d.]+ sets?, \d+% of your training$/.test(t)) && m.list.includes('Calves: no sets'), m.list.slice(0, 4));
 const svgHidden = await page.evaluate(() => [...document.querySelectorAll('#screen .bm-fig')].every((s) => s.getAttribute('aria-hidden') === 'true'));
 check('the drawing itself is hidden from screen readers', svgHidden);
-check('no "Train … more" button while Tailor my plan isn\'t there', !(await page.evaluate(() => !!document.querySelector('#screen [data-act="tailorPlan"]'))));
+check('the least trained muscle has a "Train … more" link', (await page.evaluate(() => { const b = document.querySelector('#screen .bm-card [data-act="tailorPlan"]'); return b && b.getAttribute('data-arg'); })) === 'calves');
+await page.click('#screen .bm-card [data-act="tailorPlan"]');
+await settle(900);
+check('which opens Tailor my plan asking for that muscle', (await page.evaluate(() => { const q = document.querySelector('dialog[open] #tailorQ'); return q && q.value; })) === 'Train my calves more');
+await page.evaluate(() => window.GH.ui.closeSheets());
+await settle(700);
 
 section('A region opens its muscle sheet');
 await page.evaluate(() => { window.__haptics.length = 0; });
 await page.click('#screen .bm-view[data-view="front"] .bm-m[data-muscle="chest"] path');
 await settle(900);
 const sheet = await page.evaluate(() => {
-  const d = document.querySelector('dialog.ms-sheet[open]');
+  const d = document.querySelector('dialog.mu-sheet[open]');
   if (!d) return null;
-  return { title: d.querySelector('.rf-sheet-title').textContent, facts: [...d.querySelectorAll('.ms-fact')].map((f) => f.textContent.replace(/\s+/g, ' ').trim()), bars: d.querySelectorAll('.ms-bar').length, tip: d.querySelector('.ms-tip').textContent, moves: [...d.querySelectorAll('[data-act="moveInfo"] .rf-list-title')].map((e) => e.textContent), lines: [...d.querySelectorAll('.rf-list-row .rf-badge')].map((e) => e.textContent), lit: [...d.querySelectorAll('.ms-fig .bm-m')].filter((g) => g.dataset.l === '5').length, haptic: window.__haptics.includes('select') };
+  return { title: d.querySelector('.rf-sheet-title').textContent, facts: [...d.querySelectorAll('.mu-fact')].map((f) => f.textContent.replace(/\s+/g, ' ').trim()), bars: d.querySelectorAll('.mu-bar').length, tip: d.querySelector('.mu-tip').textContent, moves: [...d.querySelectorAll('[data-act="moveInfo"] .rf-list-title')].map((e) => e.textContent), lines: [...d.querySelectorAll('.rf-list-row .rf-badge')].map((e) => e.textContent), lit: [...d.querySelectorAll('.mu-fig .bm-m')].filter((g) => g.dataset.l === '5').length, haptic: window.__haptics.includes('select') };
 });
 check('tapping the chest opens the Chest sheet', sheet && sheet.title === 'Chest', sheet);
 check('with its sets, share of training and times it went up', sheet && sheet.facts.length === 3 && /sets in the last 4 weeks/.test(sheet.facts[0]) && /of your training/.test(sheet.facts[1]) && /went up/.test(sheet.facts[2]), sheet && sheet.facts);
@@ -71,13 +76,13 @@ check('the exercises that trained it, push-ups first', sheet && sheet.moves.leng
 check('progress lines with how much', sheet && sheet.lines.length >= 1 && sheet.lines.every((t) => /^[+−]/.test(t)), sheet && sheet.lines);
 check('its figure lights just that muscle', sheet && sheet.lit === 1);
 check('the tap gives a selection haptic', sheet && sheet.haptic);
-await page.click('dialog.ms-sheet .ms-bar:nth-child(11)');
-check('tapping a bar reads that week out', /^Week of \w{3} \d+: /.test(await page.evaluate(() => document.querySelector('dialog.ms-sheet .ms-tip').textContent)));
+await page.click('dialog.mu-sheet .mu-bar:nth-child(11)');
+check('tapping a bar reads that week out', /^Week of \w{3} \d+: /.test(await page.evaluate(() => document.querySelector('dialog.mu-sheet .mu-tip').textContent)));
 await page.evaluate(() => window.GH.ui.closeSheets());
 await settle(900);
 await page.click('#screen .bm-view[data-view="back"] .bm-m[data-muscle="lats"] path');
 await settle(900);
-check('a back region opens its own sheet', await page.evaluate(() => { const d = [...document.querySelectorAll('dialog.ms-sheet[open]')].pop(); return d && d.querySelector('.rf-sheet-title').textContent === 'Lats'; }));
+check('a back region opens its own sheet', await page.evaluate(() => { const d = [...document.querySelectorAll('dialog.mu-sheet[open]')].pop(); return d && d.querySelector('.rf-sheet-title').textContent === 'Lats'; }));
 await page.evaluate(() => window.GH.ui.closeSheets());
 await settle(900);
 
@@ -123,7 +128,7 @@ await page.click('#screen .bm-card [data-act="tailorPlan"]');
 check('and hands it the muscle', await page.evaluate(() => window.__tailor === 'calves'));
 await page.click('#screen .bm-view[data-view="back"] .bm-m[data-muscle="glutes"] path');
 await settle(900);
-await page.click('dialog.ms-sheet [data-act="tailorPlan"]');
+await page.click('dialog.mu-sheet [data-act="tailorPlan"]');
 check('the sheet\'s "Train this more" hands over its muscle', await page.evaluate(() => window.__tailor === 'glutes'));
 await page.evaluate(() => window.GH.ui.closeSheets());
 await settle(900);
@@ -136,7 +141,7 @@ const focus = await page.evaluate(() => [...document.querySelectorAll('#screen .
 check('focusing a muscle in the hidden list outlines its region', focus.length >= 1 && focus.every((x) => x === 'quads'), focus);
 await page.keyboard.press('Enter');
 await settle(900);
-check('and Enter opens its sheet', await page.evaluate(() => { const d = [...document.querySelectorAll('dialog.ms-sheet[open]')].pop(); return d && d.querySelector('.rf-sheet-title').textContent === 'Quads'; }));
+check('and Enter opens its sheet', await page.evaluate(() => { const d = [...document.querySelectorAll('dialog.mu-sheet[open]')].pop(); return d && d.querySelector('.rf-sheet-title').textContent === 'Quads'; }));
 await page.evaluate(() => window.GH.ui.closeSheets());
 await settle(900);
 

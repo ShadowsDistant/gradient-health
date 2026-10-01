@@ -1,6 +1,7 @@
 // The exercise figure in the app, in Chromium (SwiftShader): the 3D figure in the player with its
 // tempo strip, the move sheet's views, a ladder's rungs, pausing under the how-to sheet, the Settings
-// look (3D or simple, skin tone, shirt), the warm-up and frame rate, losing and handing back the GPU,
+// look (3D or simple, skin tone, shirt), the warm-up and frame rate, how soon a figure is 3D (warm,
+// and on a fresh launch with the stills kept from the one before), losing and handing back the GPU,
 // figures that keep moving with reduced motion, a box that's never empty while 3D gets ready (and
 // gives up on a stuck GPU), 3D coming back after the phone took the GPU in the background, a chunk
 // that fails to load, and the fallback to the flat figure on a phone without WebGL 2.
@@ -41,6 +42,19 @@ async function open(noGl, setup) {
   await page.waitForSelector('.onboard:not([hidden])');
   await page.evaluate(seedState);
   await page.reload();
+  await page.waitForSelector('#screen[data-view="today"]');
+  // The fixture's today is a training day most days; on a light day the page's clock goes back a
+  // day at a time until it is one (these tests start workouts). The app saves soon after it starts
+  // (a health read), and now and then a reload flushes that save over the fresh seed, so the state
+  // seeded for the day before comes back with that day's workout already done: then seed again.
+  const session = () => page.$('#screen[data-view="today"] .session');
+  const ready = async () => !!(await session()) && page.evaluate(() => { const U = window.GH.ui; return window.GH.brain.todayPlan(U.S, U.today()).type !== 'done'; });
+  for (let back = 0, tries = 0; tries < 10 && !(await ready()); tries++) {
+    if (!(await session()) && back < 6) await page.clock.setSystemTime(new Date(Date.now() - ++back * 86400000));
+    await page.evaluate(seedState);
+    await page.reload();
+    await page.waitForSelector('#screen[data-view="today"]');
+  }
   await page.waitForSelector('#screen[data-view="today"] .session');
   return { ctx, page, errors };
 }
@@ -53,15 +67,15 @@ const figSig = (page, sel) => page.evaluate((s) => {
   return svg ? svg.innerHTML : null;
 }, sel);
 const moves = async (page, sel, ms = 700) => { const a = await figSig(page, sel); await page.waitForTimeout(ms); const b = await figSig(page, sel); return !!(a && b && a !== b); };
-// Counts animation frames where a figure box shows nothing: neither the flat figure nor a 3D one
-// that has drawn.
+// Counts animation frames where a figure box shows nothing: neither the flat figure, nor a 3D one
+// that has drawn, nor a 3D still standing in for one.
 const watchBlank = (page, sel) => page.evaluate((s) => {
   window.__fig = { frames: 0, blank: 0 };
   const tick = () => {
     const h = document.querySelector(s);
     if (h && h.offsetParent) {
       window.__fig.frames++;
-      if (!h.querySelector(':scope > svg') && !h.querySelector(':scope > .fig3d[data-ready]:not(.fig-pending)')) window.__fig.blank++;
+      if (!h.querySelector(':scope > svg') && !h.querySelector(':scope > .fig3d[data-ready]:not(.fig-pending)') && !h.querySelector(':scope > .fig-still')) window.__fig.blank++;
     }
     requestAnimationFrame(tick);
   };
@@ -75,8 +89,9 @@ await page.click('#float [data-act="startWorkout"]');
 await page.waitForSelector('.player .pl-fig');
 await page.waitForFunction(() => !!document.querySelector('.player .pl-fig .fig3d:not(.fig-pending) canvas'), null, { timeout: 30000 });
 check('the workout shows the 3D figure', await figKind(page, '.player .pl-fig') === '3d');
-// The flat figure crossfades out once the 3D one has drawn.
-check('one figure, not two', await page.waitForFunction(() => document.querySelector('.player .pl-fig').children.length === 1, null, { timeout: 3000 }).then(() => true, () => false));
+// The flat figure crossfades out once the 3D one has drawn (a quarter second, given a busy machine).
+check('one figure, not two', await page.waitForFunction(() => document.querySelector('.player .pl-fig').children.length === 1, null, { timeout: 6000, polling: 100 }).then(() => true, () => false),
+  await page.evaluate(() => { const h = document.querySelector('.player .pl-fig'); return [...h.children].map((e) => `${e.tagName}.${e.getAttribute('class')}${e.dataset && e.dataset.ready ? '[ready]' : ''}`).join(' | ') + ' · animations: ' + h.getAnimations({ subtree: true }).map((a) => `${a.playState}@${Math.round(a.currentTime || 0)}`).join(','); }));
 const tempo = await page.evaluate(() => { const t = document.querySelector('.player .fig-tempo'); return t ? t.textContent : ''; });
 if (tempo) {
   check('the tempo strip says how long each half takes', /Control \d/.test(tempo) && /Drive \d/.test(tempo), tempo);
@@ -222,6 +237,65 @@ check('held still after a drag, nothing new is drawn', warm.held <= 2, warm);
 check('no console errors', errors.length === 0, errors.join('\n'));
 await ctx.close();
 
+section('Load times');
+// From opening a move sheet (the call) to its figure box holding a 3D picture: the live figure, or a
+// still of its first frame standing in; and to the live figure itself. Frames with nothing in the
+// box are counted too.
+const sheetTimes = (page, id) => page.evaluate((mid) => new Promise((res) => {
+  const t0 = performance.now();
+  const out = { look3d: null, live: null, blank: 0, frames: 0 };
+  window.GH.ui.moveSheet(mid);
+  const tick = () => {
+    const h = document.querySelector('dialog[open] .sheet-fig');
+    const t = Math.round(performance.now() - t0);
+    if (h) {
+      const live = h.querySelector(':scope > .fig3d[data-ready]:not(.fig-pending)');
+      const still = h.querySelector(':scope > .fig-still');
+      out.frames++;
+      if (!live && !still && !h.querySelector(':scope > svg')) out.blank++;
+      if (out.look3d == null && (live || still)) out.look3d = t;
+      if (out.live == null && live) out.live = t;
+    }
+    if (out.live != null || t > 30000) { res(out); return; }
+    requestAnimationFrame(tick);
+  };
+  tick();
+}), id);
+const keptStill = (page, id) => page.evaluate((mid) => { try { return (JSON.parse(localStorage.getItem('gh.figStills') || '{}').items || []).some((it) => it.k.startsWith(mid + '|')); } catch (e) { return false; } }, id);
+({ ctx, page, errors } = await open(false));
+// The app starts warming 3D up right after its first paint, in idle moments.
+const tWarm = await page.evaluate(() => new Promise((res) => {
+  const t0 = performance.now();
+  const poll = () => (window.GH.figure3d && window.GH.figure3d._stats().warm ? res(Math.round(performance.now() - t0)) : setTimeout(poll, 50));
+  poll();
+}));
+check(`the app warms 3D up soon after launch, without being asked (${tWarm} ms more here)`, tWarm < 20000, tWarm);
+await page.waitForTimeout(600);
+let lt = await sheetTimes(page, 'push_std');
+check(`once warm, a move sheet's figure is 3D within 150 ms of opening it (${lt.look3d} ms)`, lt.look3d != null && lt.look3d <= 150, lt);
+await page.waitForTimeout(900);
+await page.evaluate(() => window.GH.ui.closeSheets());
+await page.waitForTimeout(600);
+// Stills of today's figures, and of moves opened lately, are drawn in idle time and kept.
+await page.evaluate(() => window.GH.ui.figureStills(true));
+await page.waitForFunction(() => { try { return (JSON.parse(localStorage.getItem('gh.figStills') || '{}').items || []).some((it) => it.k.startsWith('push_std|')); } catch (e) { return false; } }, null, { timeout: 60000 }).catch(() => {});
+check('stills of figures opened lately are kept for the next launch', await keptStill(page, 'push_std'));
+await page.waitForTimeout(1500); // written out in an idle moment
+// A fresh launch: 3D isn't loaded, let alone warm; the kept still stands in, then the live figure.
+await page.reload();
+await page.waitForSelector('#screen[data-view="today"] .session');
+lt = await sheetTimes(page, 'push_std');
+check(`on a fresh launch, a move sheet shows a 3D picture within 300 ms (${lt.look3d} ms)`, lt.look3d != null && lt.look3d <= 300, lt);
+check(`and the live 3D figure soon after (${lt.live} ms)`, lt.live != null && lt.live <= 20000, lt);
+check('with the box never empty on the way', lt.frames > 2 && lt.blank === 0, lt);
+await page.waitForFunction(() => document.querySelector('dialog[open] .sheet-fig').children.length === 1, null, { timeout: 3000 }).catch(() => {});
+check('the still crossfades out, leaving one figure', await page.evaluate(() => { const h = document.querySelector('dialog[open] .sheet-fig'); return h.children.length === 1 && !!h.querySelector(':scope > .fig3d[data-ready]'); }));
+await page.waitForTimeout(600);
+await page.evaluate(() => window.GH.ui.closeSheets());
+await page.waitForTimeout(600);
+check('no console errors', errors.length === 0, errors.join('\n'));
+await ctx.close();
+
 section('Losing and handing back the GPU');
 ({ ctx, page, errors } = await open(false));
 await page.evaluate(() => window.GH.lazy('figure3d').then((f) => f._releaseAfter(400)));
@@ -304,9 +378,13 @@ section('A stuck GPU');
 await page.evaluate(() => window.GH.figure3d._stall(true));
 await page.evaluate(() => window.GH.ui.moveSheet('sq_bw'));
 await page.waitForSelector('dialog[open] .sheet-fig svg');
-await page.waitForTimeout(3600);
+// The 3D figure is mounted beside the flat one (a moment after it shows, on a busy machine) and is
+// given 3 s to draw a frame.
+const mountedAt = await page.waitForSelector('dialog[open] .sheet-fig > .fig3d', { timeout: 4000 }).then(() => Date.now(), () => 0);
+await page.waitForFunction(() => [...document.querySelector('dialog[open] .sheet-fig').children].every((e) => e.tagName.toLowerCase() === 'svg'), null, { timeout: 7000 }).catch(() => {});
 const stuck = await page.evaluate(() => ({ kids: [...document.querySelector('dialog[open] .sheet-fig').children].map((e) => e.tagName.toLowerCase()), live: window.GH.figure3d._stats().live }));
-check('after 3 s without a frame, the 3D figure is dropped and the flat one stays', stuck.kids.join() === 'svg' && stuck.live <= 1, stuck);
+stuck.held = mountedAt ? Date.now() - mountedAt : null;
+check('after 3 s without a frame, the 3D figure is dropped and the flat one stays', stuck.kids.join() === 'svg' && stuck.live <= 1 && mountedAt > 0 && stuck.held >= 2500, stuck);
 check('and it keeps moving', await moves(page, 'dialog[open] .sheet-fig'));
 // One that gave up stays flat when it's redrawn (it used to mount another hidden 3D figure each time).
 const redrawn = await page.evaluate(async () => {

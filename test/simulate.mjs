@@ -2,7 +2,7 @@
 // deloads, the left-arm extra set, readiness and scheduling. Exits non-zero on any failure.
 import { load, check, section, done } from './lib.mjs';
 
-const GH = load('src/data/moves.js', 'src/engine/pose.js', 'src/brain.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js');
 const B = GH.brain;
 const M = GH.moves;
 const LB = B.LB_PER_KG;
@@ -337,6 +337,270 @@ section('Cancelling a workout');
   check('cancelling forgets the test', JSON.stringify(S3.catchup.arm) === was);
   B.restoreWorkout(S3, gone3);
   check('and Undo records it again', JSON.stringify(S3.catchup.arm) === after);
+}
+
+/* ------------------------------------------------------------------ twelve weeks, six people */
+// Every workout done as planned for 12 weeks: each muscle group trained every week, the weekly
+// volume inside the program's floor and cap, nothing that needs kit they don't have, no jumping or
+// slamming when impact is off, and the new ladders (presses, lower back, calves, hamstring curls)
+// in use where they fit.
+section('Twelve weeks for six people');
+{
+  const HOME = { db: [], kb: [], ball: false, ballLb: null, ballSlam: false, band: false, bar: false, chair: true, wall: true, towel: true, table: false, door: false };
+  const base = { experience: 'onoff', recentActivity: 'some', days: 4, minutes: 45, age: 30, units: 'lb', weightKg: 75 };
+  const people = [
+    ['default home kit', { goals: ['abs', 'arms', 'chest', 'legs'], equipment: HOME }],
+    ['band only', { goals: ['back', 'shoulders', 'legs'], equipment: Object.assign({}, HOME, { band: true, door: true }) }],
+    ['kettlebell only', { goals: ['legs', 'abs'], equipment: Object.assign({}, HOME, { kb: [12] }), focus: ['hamstrings', 'calves'] }],
+    ['basic gym', { goals: ['chest', 'back', 'legs'], where: 'gym', gym: B.gymPreset('basic', 'lb'), equipment: HOME }],
+    ['careful knees', { goals: ['legs', 'arms'], equipment: Object.assign({}, HOME, { db: [10, 15] }), careful: ['knee'] }],
+    ['gentle mode', { goals: ['abs', 'arms'], equipment: Object.assign({}, HOME, { db: [8], kb: [10] }), gentle: true }],
+  ];
+  const cov = {};
+  for (const [label, extra] of people) {
+    const S = B.newState(Object.assign({}, base, extra), null, D0);
+    const prog = B.programFor(S.profile);
+    const tpl = B.templateFor(S.profile, prog);
+    const eq = B.eqAt(S, S.profile.where === 'gym' ? 'gym' : 'home');
+    const bad = { untrained: [], vol: [], over: [], under: [], kit: [], impact: [], knee: [] };
+    const fams = new Set();
+    for (let w = 0; w < 12; w++) {
+      const sets = {};
+      for (const t of tpl) {
+        const r = doWorkout(S, D0 + w * 7 + t.offset, { defaultRir: '12' });
+        const s = r.session;
+        const moves = s.items.concat(s.extras, s.warmup, s.mobility || [], s.finisher ? [s.finisher] : []);
+        for (const it of s.items.concat(s.extras)) { sets[it.group] = (sets[it.group] || 0) + it.sets; fams.add(it.fam); }
+        for (const it of moves) {
+          const m = M.MOVES[it.moveId];
+          if (!M.allowed(m, eq)) bad.kit.push(`w${w + 1} ${it.moveId}`);
+          if (!prog.impactOk && m.impact) bad.impact.push(`w${w + 1} ${it.moveId}`);
+          if ((S.profile.careful || []).includes('knee') && (m.impact || m.complex) && (m.joints || []).includes('knee')) bad.knee.push(`w${w + 1} ${it.moveId}`);
+        }
+      }
+      const phase = B.calendar(S, D0 + w * 7).weeks[D0 + w * 7].phase;
+      const full = phase.mult === 1 && !phase.deload && !phase.onramp;
+      for (const g of B.GROUPS) {
+        if (!(sets[g] > 0)) bad.untrained.push(`w${w + 1} ${g}`);
+        if (!(S.vol[g] >= prog.floor[g] && S.vol[g] <= prog.cap[g])) bad.vol.push(`w${w + 1} ${g} ${S.vol[g]}`);
+        if (sets[g] > prog.cap[g]) bad.over.push(`w${w + 1} ${g} ${sets[g]} > ${prog.cap[g]}`);
+        if (full && sets[g] < prog.floor[g]) bad.under.push(`w${w + 1} ${g} ${sets[g]} < ${prog.floor[g]}`);
+      }
+    }
+    cov[label] = fams;
+    check(`${label}: every group trained every week for 12 weeks`, !bad.untrained.length, bad.untrained.slice(0, 6));
+    check(`${label}: weekly volume stays inside the floor and cap`, !bad.vol.length && !bad.over.length && !bad.under.length, bad.vol.concat(bad.over, bad.under).slice(0, 6));
+    check(`${label}: only moves their kit allows`, !bad.kit.length, bad.kit.slice(0, 6));
+    if (!prog.impactOk) check(`${label}: impact off, so no jumping or slamming`, !bad.impact.length, bad.impact.slice(0, 6));
+    if ((S.profile.careful || []).includes('knee')) check(`${label}: no complex or impact moves on the careful knee`, !bad.knee.length, bad.knee.slice(0, 6));
+  }
+  check('with just a chair, wall and towel: overhead presses, raises, rows and the lower back', ['press', 'raise', 'row', 'backExt'].every((f) => cov['default home kit'].has(f)), [...cov['default home kit']]);
+  check('legs rotate through hinges, glute bridges and hamstring curls', ['hinge', 'glute', 'hamCurl'].every((f) => cov['default home kit'].has(f)), [...cov['default home kit']]);
+  check('a calf focus adds calf raises', cov['kettlebell only'].has('calf'), [...cov['kettlebell only']]);
+  check('the gym rotates hinges, hip thrusts and lunges', ['hingeG', 'gluteG', 'lungeG'].every((f) => cov['basic gym'].has(f)), [...cov['basic gym']]);
+}
+
+/* ------------------------------------------------------------------ focus, warm-ups, cool-downs */
+section('Focus muscles, warm-ups and cool-downs');
+{
+  const P = { goals: ['abs', 'arms'], experience: 'onoff', days: 4, minutes: 45, weightKg: 70, equipment: { db: [8], kb: [10], chair: true, wall: true, towel: true } };
+  const plain = B.programFor(Object.assign(B.defaultProfile(), P));
+  const focused = B.programFor(Object.assign(B.defaultProfile(), P, { focus: ['sideDelts', 'glutes', 'quads', 'nonsense', 'calves', 'lats'] }));
+  check('focus muscles lift their group one tier (up to 4 muscles, unknown names ignored)', focused.tiers.shoulders === plain.tiers.shoulders - 1 && focused.tiers.legs === plain.tiers.legs - 1 && focused.tiers.back === plain.tiers.back && focused.focus.length === 4, { plain: plain.tiers, focused: focused.tiers, focus: focused.focus });
+  check('MUSCLE_GROUP maps all 17 muscles to one of the 7 groups', Object.keys(B.MUSCLE_GROUP).length === 17 && Object.values(B.MUSCLE_GROUP).every((g) => B.GROUPS.includes(g)));
+  check('every move lists known muscles, with 1 or more primary movers', Object.values(M.MOVES).every((m) => m.muscles.every((x) => B.MUSCLE_GROUP[x]) && m.prime >= 1 && m.prime <= m.muscles.length));
+  const S = B.newState(Object.assign({}, P, { goals: ['abs', 'arms', 'mobility'] }), null, D0);
+  const tpl = B.templateFor(S.profile, B.programFor(S.profile));
+  const days = tpl.map((t) => B.buildSession(S, D0 + t.offset, t.idx, {}));
+  const upper = (s) => s.items.some((it) => ['biceps', 'triceps', 'chest', 'back', 'shoulders'].includes(it.group));
+  check('the kettlebell halo only on upper-body days', days.every((s) => s.warmup.some((w) => w.moveId === 'wu_halo') === upper(s)), days.map((s) => `${s.title}: ${s.warmup.map((w) => w.moveId)}`));
+  const legDay = days.find((s) => s.units.includes('legs'));
+  check('leg days warm up the legs', legDay && legDay.warmup.some((w) => ['wu_squat', 'wu_legswing'].includes(w.moveId)), legDay && legDay.warmup.map((w) => w.moveId));
+  check('the cool-down is 2 or 3 stretches for the day\'s muscles', days.every((s) => s.mobility.length >= 2 && s.mobility.length <= 3 && s.mobility.every((it) => M.MOBILITY.includes(it.moveId))), days.map((s) => s.mobility.map((x) => x.moveId)));
+  // The light-day flow follows what was trained: after leg days, leg stretches.
+  const S2 = B.newState(P, null, D0);
+  const legs = B.templateFor(S2.profile, B.programFor(S2.profile)).filter((t) => t.units.includes('legs'));
+  for (const t of legs) doWorkout(S2, D0 + t.offset, {});
+  const flowOn = (day) => B.mobilityFlow(S2, day).map((x) => x.moveId);
+  const flow = flowOn(D0 + 7);
+  const legStretch = flow.filter((id) => (M.MOVES[id].mobFor || []).some((mu) => ['glutes', 'quads', 'hamstrings', 'calves', 'hipFlexors'].includes(mu)));
+  check('after leg days the mobility flow leans to leg stretches', flow.length >= 4 && legStretch.length >= 3, flow);
+  // A sore joint leaves its stretches out only while it's sore.
+  const later = flowOn(D0 + 12);
+  S2.pain = { ankle: D0 + 10, wrist: D0 + 10 };
+  const sore = flowOn(D0 + 7), healed = flowOn(D0 + 12);
+  const hurts = (id) => (M.MOVES[id].joints || []).some((j) => j === 'ankle' || j === 'wrist');
+  check('the flow skips stretches for a sore joint, and brings them back once it has healed', flow.some(hurts) && !sore.some(hurts) && sore.length >= 4 && healed.join() === later.join(), { flow, sore, healed, later });
+}
+
+/* ------------------------------------------------------------------ different bodies */
+// Twelve weeks for each of eight people, every workout done as planned (reps hit, 1-2 left, 3+ left
+// every third day) and every light day done. For each: every muscle group trained, sets within
+// their limits, and not one move their age and health rules leave out (src/access.js).
+const AC = GH.access;
+const BODY = {
+  goals: ['strength', 'consistency'], experience: 'onoff', recentActivity: 'some', days: 3, minutes: 40, units: 'lb', weightKg: 75,
+  equipment: { db: [5, 10, 15], kb: [], ball: false, band: true, door: true, chair: true, wall: true, towel: true },
+};
+function twelveWeeks(extra, o = {}) {
+  const S = B.newState(Object.assign({}, BODY, extra), null, D0);
+  const sessions = [];
+  for (let d = D0; d < D0 + 84; d++) {
+    if (o.onDay) o.onDay(S, d);
+    const plan = B.todayPlan(S, d);
+    if (plan.type === 'workout') sessions.push(doWorkout(S, d, { defaultRir: (d - D0) % 3 === 0 ? '3' : '12' }).session);
+    else if (plan.type === 'light') lightDay(S, d);
+  }
+  return { S, sessions };
+}
+const movesOf = (s) => [].concat(s.warmup, s.items, s.extras || [], s.tests || [], s.finisher ? [s.finisher] : [], s.mobility || []);
+function ruleBreaks(S, sessions) {
+  const out = [];
+  const impactOk = B.programFor(S.profile).impactOk;
+  for (const s of sessions) {
+    for (const it of movesOf(s)) {
+      const m = M.MOVES[it.moveId];
+      const why = AC.why(S.profile, m, s.day);
+      if (why) out.push(`${it.moveId}: ${why}`);
+      if (!M.allowed(m, S.profile.equipment)) out.push(`${it.moveId}: needs equipment`);
+      if (m.impact && !impactOk) out.push(`${it.moveId}: impact`);
+    }
+  }
+  return [...new Set(out)];
+}
+function setsByGroup(S) {
+  const out = {};
+  for (const l of S.log) if (l.type === 'workout') for (const it of l.items) if (it.kind === 'move' && it.sets.length) out[it.group] = (out[it.group] || 0) + new Set(it.sets.map((x) => x.set)).size;
+  return out;
+}
+function bodyChecks(name, run) {
+  const { S, sessions } = run;
+  const groups = setsByGroup(S);
+  const untrained = B.GROUPS.filter((g) => !(groups[g] >= 6));
+  check(`${name}: ${sessions.length} workouts in 12 weeks, every muscle group trained`, sessions.length >= 30 && !untrained.length, { untrained, groups });
+  const pr = B.programFor(S.profile);
+  const volBad = B.GROUPS.filter((g) => S.vol[g] < pr.floor[g] || S.vol[g] > pr.cap[g]);
+  const setBad = sessions.flatMap((s) => s.items.filter((it) => !(it.sets >= 1 && it.sets <= 6)).map((it) => `${it.moveId}×${it.sets}`));
+  const long = sessions.filter((s) => s.estimateMin > S.profile.minutes + 5).map((s) => s.estimateMin);
+  check(`${name}: weekly sets within limits, 1-6 sets a move, sessions fit the time`, !volBad.length && !setBad.length && !long.length, { volBad, setBad, long });
+  const breaks = ruleBreaks(S, sessions);
+  check(`${name}: no move breaks this body's rules`, !breaks.length, breaks.slice(0, 6));
+}
+const used = (sessions, pick) => sessions.flatMap((s) => movesOf(s)).filter(pick || (() => true)).map((it) => it.moveId);
+const perWeek = (sessions, pred) => { const w = {}; for (const s of sessions) if (pred(s)) w[B.weekStart(s.day)] = (w[B.weekStart(s.day)] || 0) + 1; return w; };
+const score = (S) => Object.entries(S.prog).filter(([f]) => M.LADDERS[f] && !M.LADDERS[f].gym && !M.LADDERS[f].alt).reduce((a, [f, st]) => a + M.LADDERS[f].rungs.indexOf(st.rung) * 40 + (st.w || 0) * 20 + (st.reps || 0), 0);
+
+section('Different bodies: age bands');
+{
+  check('age bands: 29 under 30, 30 and 49 the baseline, 50 and 64 from 50, 65 on; no age = baseline',
+    AC.band({ age: 29 }) === 'young' && AC.band({ age: 30 }) === 'mid' && AC.band({ age: 49 }) === 'mid' && AC.band({ age: 50 }) === 'older' && AC.band({ age: 64 }) === 'older' && AC.band({ age: 65 }) === 'senior' && AC.band({ age: null }) === 'mid');
+  const prog = (x) => B.programFor(Object.assign(B.defaultProfile(), BODY, x));
+  check('jumping: on under 50, opt-in from 50, off with arthritis, osteoporosis, balance problems or a heart condition',
+    prog({ age: 22 }).impactOk && !prog({ age: 55 }).impactOk && prog({ age: 55, jumpsOk: true }).impactOk && !prog({ age: 72 }).impactOk && prog({ age: 72, jumpsOk: true }).impactOk
+    && ['ra', 'oa', 'osteo', 'balance', 'heart', 'seated'].every((c) => !prog({ age: 30, conditions: [c] }).impactOk) && !prog({ age: 22, impactOk: false }).impactOk);
+  check('warm-ups get longer with age (2.5, 4, 5, 6 min)', prog({ age: 22 }).warmupMin === 2.5 && prog({ age: 45 }).warmupMin === 4 && prog({ age: 55 }).warmupMin === 5 && prog({ age: 70 }).warmupMin === 6);
+  check('a good set adds a little more under 30 and a little less from 50', AC.repStep({ age: 22 }, 2, false, '3') === 3 && AC.repStep({ age: 40 }, 2, false, '3') === 2 && AC.repStep({ age: 58 }, 2, false, '3') === 1 && AC.repStep({ age: 70 }, 10, true, '3') === 5 && AC.repStep({ age: 22 }, 1, false, '12') === 1);
+  const heart = prog({ age: 40, conditions: ['heart'] }), same = prog({ age: 40 });
+  check('a heart condition starts gentler: lower volume, two eased-in weeks', B.GROUPS.every((g) => heart.start[g] <= same.start[g]) && heart.onramp.weeks === 2 && heart.onramp.mult === 0.7);
+  check('nothing changes for 30 to 49 with no conditions', AC.plannedAround({ age: 40 }) === null && AC.planLines({ age: 40 }).length === 0);
+  check('"Planned around" names age and conditions', AC.plannedAround({ age: 72, conditions: ['balance', 'ra'] }) === 'Planned around age 72, balance and rheumatoid arthritis', AC.plannedAround({ age: 72, conditions: ['balance', 'ra'] }));
+
+  const young = twelveWeeks({ age: 22 });
+  bodyChecks('22-year-old', young);
+  const mid = twelveWeeks({ age: 40 });
+  const older = twelveWeeks({ age: 55 });
+  bodyChecks('55-year-old', older);
+  check(`with the same answers, progress is fastest at 22 and slowest at 55 (${score(young.S)} > ${score(mid.S)} > ${score(older.S)})`, score(young.S) > score(mid.S) && score(mid.S) > score(older.S));
+  check('22: jumps allowed, the usual warm-up for the day\'s muscles, finishers that change', B.programFor(young.S.profile).impactOk && young.sessions.every((s) => s.warmup.length === 3 && !s.warmup.some((w) => (M.FLOWS.warmGentle || []).includes(w.moveId) && w.moveId !== 'wu_circles' && w.moveId !== 'wu_squat')) && new Set(young.sessions.filter((s) => s.finisher).map((s) => s.finisher.moveId)).size >= 2);
+  const bal55 = perWeek(older.sessions, (s) => s.items.some((it) => it.group === 'balance'));
+  check('55: balance practice twice a week, first thing in the session', Object.values(bal55).every((n) => n === 2) && older.sessions.every((s) => !s.items.some((it) => it.group === 'balance') || s.items[0].group === 'balance'), bal55);
+  const power55 = perWeek(older.sessions, (s) => s.items.some((it) => it.power));
+  check('55: once a week the squat is fast on the way up (power)', Object.values(power55).length >= 11 && Object.values(power55).every((n) => n === 1) && used(older.sessions, (it) => M.MOVES[it.moveId].powerOf).length >= 11, power55);
+  check('55: a longer, gentler warm-up (plus one move for the day\'s muscles) and 15 s more rest', older.sessions.every((s) => s.warmup.slice(0, 4).map((w) => w.moveId).join() === M.FLOWS.warmGentle.join() && s.warmup.length <= 5) && older.sessions.every((s) => s.items.filter((it) => !it.skill && !it.superset).every((it) => it.rest === 75 || it.rest === 105)));
+  const powerLog = older.S.log.find((l) => l.type === 'workout' && l.items.some((it) => M.MOVES[it.moveId].powerOf));
+  check('55: a fast-up set moves its base rung on like any other', !!powerLog && older.S.prog.squat && (older.S.prog.squat.reps > M.MOVES[older.S.prog.squat.rung].start || M.LADDERS.squat.rungs.indexOf(older.S.prog.squat.rung) > M.LADDERS.squat.rungs.indexOf('sq_goblet')), older.S.prog.squat);
+  check('under 65, no left vs right test is skipped for age', B.testDue({ catchup: { arm: { active: true, tests: [], side: 'L' } }, profile: Object.assign(B.defaultProfile(), { age: 55, startDay: D0, lead: { arm: 'L' } }) }, D0 + 20, 'arm'));
+}
+
+section('Different bodies: 72 with balance problems');
+{
+  const run = twelveWeeks({ age: 72, conditions: ['balance'] });
+  const { S, sessions } = run;
+  bodyChecks('72, balance problems', run);
+  check('balance practice starts every session, always with a hand on the wall', sessions.every((s) => s.items[0].group === 'balance' && s.items[0].fam === 'balance' && M.MOVES[s.items[0].moveId].support), sessions.map((s) => s.items[0].moveId).slice(0, 4));
+  check('no one-leg balance with nothing to hold, no quick footwork, no jumping', !used(sessions, (it) => { const m = M.MOVES[it.moveId]; return (m.oneLeg && !m.support) || m.quick || m.impact; }).length);
+  check('squats start from the chair: sit to stand with the hands', S.log.find((l) => l.type === 'workout' && l.items.some((it) => it.fam === 'squat')).items.find((it) => it.fam === 'squat').moveId === 'sq_sts_hands');
+  const getup = perWeek(sessions, (s) => s.items.some((it) => it.fam === 'getup'));
+  check('once a week: down to the floor and up, holding a chair', Object.values(getup).length >= 11 && Object.values(getup).every((n) => n === 1), getup);
+  check('a cool-down every session, kept even when time is short', sessions.every((s) => s.mobility.length >= 2) && B.buildSession(S, D0 + 91, 0, { short: true }).mobility.length >= 1);
+  check('light days have a balance hold too (balance most days)', B.mobilityFlow(S).some((m) => M.MOVES[m.moveId].group === 'balance'));
+  check('balance and sit to stand move up over 12 weeks', M.LADDERS.balance.rungs.indexOf(S.prog.balance.rung) > M.LADDERS.balance.rungs.indexOf('bal_tandem_wall') || S.prog.balance.reps > M.MOVES.bal_tandem_wall.start, S.prog.balance);
+  check('no all-out left vs right leg test', !sessions.some((s) => (s.tests || []).some((t) => t.test === 'leg')));
+  const flat = twelveWeeks({ age: 72, conditions: ['balance'], floorOk: false });
+  check('with the floor hard: nothing on the floor and no floor practice', !used(flat.sessions, (it) => ['floor', 'kneel', 'low'].includes(M.MOVES[it.moveId].pos)).length && !flat.sessions.some((s) => s.items.some((it) => it.fam === 'getup')));
+  bodyChecks('72, balance problems, floor hard', flat);
+}
+
+section('Different bodies: 60 with rheumatoid arthritis');
+{
+  // A flare on two workout days (week 3 and week 8), ticked in the feel check-in.
+  const flares = [];
+  const run = twelveWeeks({ age: 60, conditions: ['ra'] }, {
+    onDay(S, d) {
+      const w = Math.floor((d - D0) / 7);
+      if ((w === 2 || w === 7) && B.todayPlan(S, d).type === 'workout' && !flares.some((f) => Math.floor((f - D0) / 7) === w)) { S.feel[d] = { flare: true }; flares.push(d); }
+    },
+  });
+  const { S, sessions } = run;
+  bodyChecks('60, rheumatoid arthritis', run);
+  const flareS = sessions.filter((s) => s.flare);
+  check('flare days: a gentle range-of-motion session instead', flareS.length === 2 && flareS.every((s) => !s.items.length && !s.warmup.length && !s.finisher && s.mobility.length >= 5 && s.mobility.every((mb) => M.MOVES[mb.moveId].group === 'mobility')), flareS.map((s) => s.mobility.map((m) => m.moveId)));
+  check('a flare-day session counts as done', flares.every((d) => S.log.some((l) => l.type === 'workout' && l.day === d && B.isDone(l))));
+  check('range of motion every session (wrists included)', sessions.every((s) => s.mobility.some((mb) => mb.moveId === 'mob_wrist')));
+  check('no weight on the hands, no hanging or hard pulling grips', !used(sessions, (it) => { const m = M.MOVES[it.moveId]; return (m.hands && !m.support) || m.grip === 'hang' || m.grip === 'pull'; }).length);
+  check('a flare is only offered with arthritis', AC.flareOk(S.profile) && AC.flareOk({ conditions: ['oa'] }) && !AC.flareOk({ conditions: ['back'] }));
+}
+
+section('Different bodies: osteoporosis, low back pain');
+{
+  const run = twelveWeeks({ age: 58, sex: 'female', conditions: ['osteo'] });
+  bodyChecks('58 with osteoporosis', run);
+  check('osteoporosis: no bending or twisting the spine, no jumping, no swings or slams', !used(run.sessions, (it) => { const m = M.MOVES[it.moveId]; return (m.spine || []).some((x) => /flex|twist/.test(x)) || m.impact || m.ballistic; }).length);
+  check('osteoporosis: balance twice a week and strength that keeps progressing', Object.values(perWeek(run.sessions, (s) => s.items.some((it) => it.group === 'balance'))).every((n) => n === 2) && score(run.S) > score(B.newState(Object.assign({}, BODY, { age: 58, conditions: ['osteo'] }), null, D0)));
+
+  const back = twelveWeeks({ age: 45, conditions: ['back'] });
+  bodyChecks('45 with low back pain', back);
+  check('back pain: bird dogs and side planks', used(back.sessions).includes('co_birddog') && used(back.sessions).some((id) => M.MOVES[id].family === 'coreSide'));
+  check('back pain: no heavy spinal loading in the first 8 weeks', !back.sessions.filter((s) => s.day < D0 + 56).some((s) => movesOf(s).some((it) => (M.MOVES[it.moveId].spine || []).includes('load'))));
+  check('then deadlifts come back as a rung to climb to', AC.why(back.S.profile, M.MOVES.hg_deadlift, D0 + 30) && !AC.why(back.S.profile, M.MOVES.hg_deadlift, D0 + 60) && B.rungs(back.S, 'hinge', D0 + 60).includes('hg_deadlift'));
+  check('back pain: never loaded bending or twisting (weighted sit-ups, woodchops)', !used(back.sessions, (it) => (M.MOVES[it.moveId].spine || []).some((x) => x === 'flexLoad' || x === 'twistLoad')).length);
+}
+
+section('Different bodies: a wheelchair user, painful wrists');
+{
+  const run = twelveWeeks({ age: 50, conditions: ['seated'] });
+  const { S, sessions } = run;
+  bodyChecks('seated plan', run);
+  check('every move is done sitting down: warm-up, sets, finisher and cool-down', !used(sessions, (it) => M.MOVES[it.moveId].pos !== 'seat').length, [...new Set(used(sessions, (it) => M.MOVES[it.moveId].pos !== 'seat'))]);
+  check('seated stand-ins cover chest, back, shoulders, arms, legs and core', ['pushAlt', 'rowAlt', 'legSeat', 'coreAlt'].every((f) => sessions.some((s) => s.items.some((it) => it.fam === f))));
+  check('no all-out tests seated, and a seated light day', sessions.every((s) => !(s.tests || []).length) && B.mobilityFlow(S).every((m) => M.MOVES[m.moveId].pos === 'seat'));
+
+  const wrist = twelveWeeks({ age: 35, conditions: ['hands'] });
+  bodyChecks('hand and wrist pain', wrist);
+  check('wrists: no weight on the hands and nothing gripped tight (band loops are fine)', !used(wrist.sessions, (it) => { const m = M.MOVES[it.moveId]; return m.hands || (m.grip && m.grip !== 'loop'); }).length);
+  check('wrists: push-ups and curls are replaced, not dropped', wrist.sessions.some((s) => s.items.some((it) => it.fam === 'pushAlt')) && wrist.sessions.some((s) => s.items.some((it) => it.fam === 'curlAlt')));
+  const plain = B.newState(Object.assign({}, BODY, { age: 35 }), null, D0);
+  check('stand-in ladders stay closed for everyone else', ['pushAlt', 'rowAlt', 'curlAlt', 'legSeat', 'balance', 'getup', 'finGentle'].every((f) => !B.rungs(plain, f, D0).length && !plain.prog[f]));
+}
+
+section('Different bodies: heart and blood pressure');
+{
+  const run = twelveWeeks({ age: 58, conditions: ['heart', 'bp'] });
+  bodyChecks('heart condition and high blood pressure', run);
+  check('no head-down positions and no all-out tests', !used(run.sessions, (it) => M.MOVES[it.moveId].headDown).length && run.sessions.every((s) => !(s.tests || []).length));
+  check('easy cardio only, never more than 30 s hard', run.sessions.filter((s) => s.finisher).every((s) => s.finisher.fam === 'finGentle' && s.finisher.work <= 30));
+  check('every session reminds you to breathe out on the effort', run.sessions.every((s) => s.notes.some((n) => n.kind === 'breathe')));
+  check('heart and blood pressure say to check with a doctor; pregnancy is not offered', AC.doctorLines({ conditions: ['heart', 'bp'] }).length === 2 && !AC.CONDITIONS.some((c) => /pregnan/i.test(c.name)));
 }
 
 done();

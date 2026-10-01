@@ -478,19 +478,24 @@
   // A workout in progress rides above the tab bar on other tabs.
   function renderAccessory() {
     const A = U.S && U.S.active;
-    const show = !!A && playerEl.hidden && !(U.route.tab === 'today' && !U.route.view);
+    // An outdoor activity recording in the background takes the capsule (src/ui/actlive.js).
+    const act = U.actAccessory ? safe(() => U.actAccessory()) : '';
+    const show = (!!A || !!act) && playerEl.hidden && !(U.route.tab === 'today' && !U.route.view);
     const was = !accessory.hidden;
     accessory.hidden = !show;
     screen.toggleAttribute('data-capsule', show);
     // Emptied with morph, not innerHTML: that keeps Refract's lens layer (the capsule's glass), which
     // Refract only puts back on a resize.
     if (!show) { U.morph(accessory, ''); return; }
-    const doneN = A.steps.slice(0, A.idx).filter((s) => s.kind === 'set').length;
-    const total = A.steps.filter((s) => s.kind === 'set').length;
-    U.morph(accessory, `<span class="rf-activity-leading" data-tone="coral" style="width:36px;height:36px">${U.icon('timer', 'sm')}</span>
+    if (act) U.morph(accessory, act);
+    else {
+      const doneN = A.steps.slice(0, A.idx).filter((s) => s.kind === 'set').length;
+      const total = A.steps.filter((s) => s.kind === 'set').length;
+      U.morph(accessory, `<span class="rf-activity-leading" data-tone="coral" style="width:36px;height:36px">${U.icon('timer', 'sm')}</span>
       <span class="acc-text"><b>${U.esc(A.session.title)}</b><span class="t-caption rf-secondary">${doneN} of ${total} sets</span></span>
       <span class="rf-spacer"></span>
       <button type="button" class="rf-btn" data-size="sm" data-act="resumeWorkout" aria-label="Resume the workout, ${doneN} of ${total} sets done">Resume</button>`);
+    }
     fitAccessory();
     if (!was && !U.reduced() && accessory.animate) accessory.animate([{ opacity: 0, transform: 'translateY(10px) scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 360, easing: EASE_ENTER });
   }
@@ -545,64 +550,8 @@
     });
   }
 
-  /* ---------------------------------------------------------------- sheets, dialogs, toasts */
-  const openSheets = [];
-  // U.sheet({ title, body, detent, action: {label, act}, onClose, cls }) → { el, close, body }
-  // o.size: 'fit' (as tall as its content), 'auto' (fits its content, swipe up for full height) or
-  // 'full'. Older calls pass detents/detent/fit instead.
-  const SIZES = { fit: { detents: 'medium', detent: 'medium', fit: true }, auto: { detents: 'medium large', detent: 'medium' }, full: { detents: 'large', detent: 'large' } };
-  U.sheet = (o0) => {
-    const o = o0.size && SIZES[o0.size] ? Object.assign({}, o0, SIZES[o0.size]) : o0;
-    const el = doc.createElement('dialog');
-    el.className = 'rf-sheet rf-glass' + (o.fit ? ' sheet-fit' : '') + (o.cls ? ' ' + o.cls : '');
-    el.setAttribute('data-detents', o.detents || 'medium large');
-    el.setAttribute('closedby', 'any');
-    const tid = 'sh' + Math.random().toString(36).slice(2, 8);
-    el.setAttribute('aria-labelledby', tid);
-    el.innerHTML = `<div class="rf-sheet-grabber"></div>
-      <div class="rf-sheet-header">
-        <button type="button" class="rf-btn" data-shape="circle" data-size="sm" aria-label="Close" data-sheet-close>${U.icon('close')}</button>
-        <h2 class="rf-sheet-title" id="${tid}">${U.esc(o.title || '')}</h2>
-        ${o.action ? `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="sm" data-act="${U.esc(o.action.act)}"${o.action.arg != null ? ` data-arg="${U.esc(o.action.arg)}"` : ''}>${U.esc(o.action.label)}</button>` : '<span class="sheet-spacer"></span>'}
-      </div>
-      <div class="rf-sheet-body" tabindex="-1"${/\sautofocus\b/.test(o.body || '') ? '' : ' autofocus'}>${o.body || ''}</div>`;
-    // Opening focuses the content, not the grabber: Refract makes the grabber a button, and on a sheet
-    // the app opens by itself (not from a tap) Chrome drew its focus ring round it, a blue pill.
-    doc.body.appendChild(el);
-    enhance(el);
-    const ctl = { el, body: el.querySelector('.rf-sheet-body'), closed: false };
-    ctl.update = (html) => { U.morph(ctl.body, html); };
-    let finished = false;
-    const finish = () => {
-      if (finished) return;
-      finished = true; ctl.closed = true;
-      const i = openSheets.indexOf(ctl); if (i >= 0) openSheets.splice(i, 1);
-      recede();
-      if (o.onClose) safe(() => o.onClose(el.returnValue));
-      setTimeout(() => { if (R() && R().destroy) safe(() => R().destroy(el)); el.remove(); }, 450);
-    };
-    ctl.close = (v) => { if (ctl.closed) return; const r = R(); if (r && r.sheet) r.sheet.close(el, v); else { try { el.close(v); } catch (e) { /* ignore */ } } };
-    el.addEventListener('close', finish);
-    el.querySelector('[data-sheet-close]').addEventListener('click', () => ctl.close('cancel'));
-    openSheets.push(ctl);
-    el.addEventListener('rf-detent', recede);
-    const r = R();
-    if (r && r.sheet) r.sheet.open(el, { detent: o.detent || 'medium' }).then(finish, finish);
-    else { try { el.showModal(); } catch (e) { el.setAttribute('open', ''); } }
-    recede();
-    if (o.after) safe(() => o.after(ctl));
-    return ctl;
-  };
-  // A sheet pulled up to full height sets the page back a little behind it, like a card (not with
-  // reduced motion).
-  function recede() {
-    if (!root) return;
-    const on = !U.reduced() && openSheets.some((s) => !s.closed && s.el.getAttribute('data-detent') === 'large');
-    root.toggleAttribute('data-receded', on);
-  }
-  U.closeSheets = () => { for (const s of openSheets.slice()) s.close('cancel'); };
-  U.topSheet = () => openSheets[openSheets.length - 1] || null;
-
+  /* ---------------------------------------------------------------- dialogs, toasts */
+  // Sheets (U.sheet, U.topSheet, U.closeSheets) live in sheet.js.
   U.dialog = (o) => {
     const r = R();
     if (r && r.dialog) return r.dialog.open(o);

@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src @SCRIPT_HASH; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
+<title>A workout plan for Gradient Health</title>
+<link rel="icon" href="../icon-512.png">
+<style>
+  :root { --bg: #f1f2f6; --card: #fff; --label: #111318; --muted: #5d6270; --line: rgb(17 19 24 / .09); --accent: #0a5ad4; --on-accent: #fff; --soft: rgb(10 90 212 / .1); --warn: #8a5a00; --glow1: #b9e6d8; --glow2: #cdd8ff; --glow3: #e8d6ff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0b0c10; --card: #17181d; --label: #f2f3f7; --muted: #a2a6b3; --line: rgb(255 255 255 / .09); --accent: #4d8dff; --soft: rgb(77 141 255 / .16); --warn: #f2b84b; --glow1: #0f3a33; --glow2: #1b2450; --glow3: #2c1a45; } }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--label); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  body::before { content: ""; position: fixed; inset: -20% -20% auto; height: 70vh; z-index: -1; filter: blur(60px); opacity: .8;
+    background: radial-gradient(40% 50% at 15% 30%, var(--glow1), transparent 70%), radial-gradient(40% 50% at 85% 20%, var(--glow2), transparent 70%), radial-gradient(40% 45% at 55% 60%, var(--glow3), transparent 70%); }
+  .wrap { max-width: 560px; margin: 0 auto; padding: max(24px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom)); display: grid; gap: 16px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: -.01em; }
+  .brand img { width: 40px; height: 40px; border-radius: 11px; box-shadow: 0 4px 14px rgb(0 0 0 / .12); }
+  .card { background: var(--card); border-radius: 24px; padding: 20px; box-shadow: 0 1px 2px rgb(0 0 0 / .04), 0 10px 30px -18px rgb(0 0 0 / .35); }
+  .from { display: inline-block; margin: 0 0 8px; padding: 3px 10px; border-radius: 99px; background: var(--soft); color: var(--accent); font-size: 13px; font-weight: 650; }
+  h1 { margin: 0; font-size: 30px; line-height: 1.15; letter-spacing: -.02em; overflow-wrap: anywhere; }
+  .meta { margin: 6px 0 0; color: var(--muted); }
+  .note { margin: 14px 0 0; padding: 12px 14px; border-radius: 14px; background: var(--line); overflow-wrap: anywhere; }
+  .day { margin-top: 20px; }
+  .day h2 { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; margin: 0 0 6px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .day h2 b { color: var(--accent); }
+  .day h2 span.t { color: var(--label); font-size: 16px; letter-spacing: 0; text-transform: none; overflow-wrap: anywhere; }
+  .day ol { list-style: none; margin: 0; padding: 0; }
+  .day li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .day li:first-child { border-top: 0; }
+  .ex { font-weight: 600; overflow-wrap: anywhere; }
+  .ex small { display: block; font-weight: 400; font-size: 13px; color: var(--muted); }
+  .amt { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .actions { display: grid; gap: 10px; }
+  .btn { display: flex; align-items: center; justify-content: center; min-height: 52px; padding: 12px 20px; border-radius: 99px; background: var(--card); color: var(--label); font-weight: 650; text-decoration: none; text-align: center; box-shadow: inset 0 0 0 1px var(--line); }
+  .btn.primary { background: var(--accent); color: var(--on-accent); box-shadow: 0 10px 24px -12px var(--accent); }
+  .btn:active { transform: scale(.98); }
+  .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .scan { display: grid; justify-items: center; gap: 12px; text-align: center; }
+  .scan p { margin: 0; color: var(--muted); }
+  .qr { width: min(100%, 280px); aspect-ratio: 1; padding: 10px; border-radius: 22px; background: #fff; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .08); }
+  .qr svg { display: block; width: 100%; height: 100%; }
+  .fine { margin: 0 4px; font-size: 13px; color: var(--muted); text-align: center; }
+  .error h1 { font-size: 24px; }
+  .error p { margin: 8px 0 0; color: var(--muted); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <div class="brand"><img src="../icon-512.png" alt="" width="40" height="40"><span>Gradient Health</span></div>
+  <section class="card" id="plan" hidden aria-live="polite">
+    <p class="from" id="from" hidden></p>
+    <h1 id="name"></h1>
+    <p class="meta" id="meta"></p>
+    <p class="note" id="note" hidden></p>
+    <div id="days"></div>
+  </section>
+  <section class="card error" id="error" hidden>
+    <h1 id="errTitle">This link doesn't hold a plan</h1>
+    <p id="errText">Ask for the link again, or scan the code in Gradient Health.</p>
+  </section>
+  <div class="actions">
+    <a class="btn primary" id="open" href="https://github.com/ShadowsDistant/gradient-health/releases/latest" hidden>Open in Gradient Health</a>
+    <a class="btn" id="get" href="https://github.com/ShadowsDistant/gradient-health/releases/latest" rel="noopener">Get the app</a>
+  </div>
+  <section class="card scan" id="scan" hidden>
+    <div class="qr" id="qr"></div>
+    <p>Gradient Health is an Android app. On your phone, open it, go to Your plans, then Add a shared plan, and scan this code.</p>
+  </section>
+  <p class="fine">This page reads the plan from the link itself, on your device. Nothing is sent anywhere, and there are no trackers.</p>
+</main>
+<script>
+/*@QR*/
+(function () {
+  'use strict';
+  var MOVES = /*@MOVES*/{};
+  var GROUPS = { biceps: 'Biceps', triceps: 'Triceps', chest: 'Chest', legs: 'Legs', back: 'Back', shoulders: 'Shoulders', abs: 'Abs', conditioning: 'Cardio', mobility: 'Stretching' };
+  var WD = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  var SPREAD = { 1: [0], 2: [0, 3], 3: [0, 2, 4], 4: [0, 1, 3, 4], 5: [0, 1, 2, 4, 5], 6: [0, 1, 2, 3, 4, 5] };
+  var APP = 'com.shadowsdistant.gradienthealth';
+  var GET = 'https://github.com/ShadowsDistant/gradient-health/releases/latest';
+  var $ = function (id) { return document.getElementById(id); };
+  var el = function (tag, text, cls) { var e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
+  var clean = function (s, n) { return String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n); };
+
+  function fail(title, text) {
+    $('errTitle').textContent = title;
+    $('errText').textContent = text;
+    $('error').hidden = false;
+  }
+  function bytesOf(data) {
+    var s = data.replace(/-/g, '+').replace(/_/g, '/');
+    var bin = atob(s + '==='.slice((s.length + 3) % 4));
+    var out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  function inflate(body) {
+    var stream = new Blob([body]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Response(stream).arrayBuffer().then(function (b) { return new Uint8Array(b); });
+  }
+  function show(a) {
+    if (!Array.isArray(a) || !Array.isArray(a[4])) throw new Error('broken');
+    var name = clean(a[0], 40) || 'A workout plan';
+    var from = clean(a[2], 24);
+    var days = a[4].filter(Array.isArray).slice(0, 6);
+    var wd = Array.isArray(a[3]) && a[3].length === days.length ? a[3].slice().sort(function (x, y) { return x - y; }) : SPREAD[days.length] || [];
+    var count = 0;
+    document.title = name + ' · Gradient Health';
+    $('name').textContent = name;
+    if (from) { $('from').textContent = 'From ' + from; $('from').hidden = false; }
+    if (clean(a[1], 200)) { $('note').textContent = clean(a[1], 200); $('note').hidden = false; }
+    var box = $('days');
+    days.forEach(function (d, i) {
+      var sec = el('section', null, 'day');
+      var h = el('h2');
+      h.appendChild(el('b', 'Day ' + (i + 1)));
+      if (wd[i] != null) h.appendChild(el('span', WD[wd[i]].slice(0, 3)));
+      if (clean(d[0], 30)) h.appendChild(el('span', clean(d[0], 30), 't'));
+      sec.appendChild(h);
+      var ol = el('ol');
+      d.slice(1, 13).forEach(function (x) {
+        if (!Array.isArray(x)) return;
+        var m = MOVES[x[0]];
+        var li = el('li');
+        var ex = el('span', m ? m[0] : 'An exercise from a newer version of the app', 'ex');
+        if (m && GROUPS[m[1]]) ex.appendChild(el('small', GROUPS[m[1]]));
+        var sets = Math.max(1, Math.min(10, Math.round(Number(x[1]) || 3)));
+        var amt = Math.max(1, Math.min(600, Math.round(Number(x[2]) || 10)));
+        li.appendChild(ex);
+        li.appendChild(el('span', sets + ' × ' + amt + (m && m[2] ? ' s' : ' reps'), 'amt'));
+        ol.appendChild(li);
+        count++;
+      });
+      sec.appendChild(ol);
+      box.appendChild(sec);
+    });
+    $('meta').textContent = days.length + (days.length === 1 ? ' day' : ' days') + ' a week · ' + count + (count === 1 ? ' exercise' : ' exercises');
+    $('plan').hidden = false;
+  }
+
+  var data = (location.hash || '').replace(/^#(d=)?/, '');
+  if (!/^[A-Za-z0-9_-]{8,12000}$/.test(data)) { fail('This link doesn\'t hold a plan', 'Ask for the link again, or scan the code in Gradient Health.'); return; }
+  var android = /Android/i.test(navigator.userAgent || '');
+  var open = $('open');
+  if (android) {
+    open.href = 'intent://plan?d=' + data + '#Intent;scheme=gradienthealth;package=' + APP + ';S.browser_fallback_url=' + encodeURIComponent(GET) + ';end';
+    open.hidden = false;
+  } else {
+    try { $('qr').innerHTML = window.GH.qr.svg(location.href.split('#')[0] + '#' + data, { label: 'A QR code for this plan', cls: 'qr-code' }); $('scan').hidden = false; } catch (e) { /* no code */ }
+  }
+  var bytes;
+  try { bytes = bytesOf(data); } catch (e) { fail('This link doesn\'t hold a plan', 'Part of it may be missing. Ask for the link again.'); return; }
+  var v = bytes[0] & 0x7f;
+  if (v > 1) { fail('This plan needs a newer Gradient Health', 'Update the app, then open the link again.'); return; }
+  var body = bytes.subarray(1);
+  var ready = bytes[0] & 0x80 ? (typeof DecompressionStream === 'function' ? inflate(body) : Promise.reject(new Error('old'))) : Promise.resolve(body);
+  ready.then(function (b) { show(JSON.parse(new TextDecoder().decode(b))); }).catch(function (e) {
+    if (e && e.message === 'old') fail('This browser can\'t show the plan', 'Open the link in Gradient Health, or in an up-to-date browser.');
+    else fail('This link doesn\'t hold a plan', 'Part of it may be missing. Ask for the link again.');
+  });
+})();
+</script>
+</body>
+</html>

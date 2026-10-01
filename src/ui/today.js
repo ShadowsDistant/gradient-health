@@ -35,7 +35,7 @@
     if (s.warmup.length) rows.push(`<li class="ex ex-muted"><span class="ex-tag">${U.icon('sun', 'sm')}</span><span class="ex-name">Warm-up</span><span class="ex-meta">${s.warmup.map((w) => U.esc(w.name.toLowerCase())).join(', ')}</span></li>`);
     for (const t of s.tests || []) rows.push(`<li class="ex is-lead"><span class="ex-tag">${U.icon('layers', 'sm')}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${t.moveId}">${U.esc(t.name)}</button><span class="ex-meta">${U.side(t.side)} first, max reps</span></li>`);
     for (const it of s.items) {
-      rows.push(`<li class="ex"><span class="ex-tag rf-num">${it.superset ? U.esc(it.superset) : ''}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${it.moveId}">${U.esc(it.name)}${it.swappedFrom ? ` <span class="t-caption rf-muted">(swapped)</span>` : ''}</button><span class="ex-meta rf-num">${it.sets} × ${U.esc(U.target(it))}${it.uni ? ' each side' : ''}${it.load && it.load.label ? ` · ${U.esc(it.load.label.replace(/ (dumbbells?|kettlebell)$/, ''))}` : ''}</span></li>`);
+      rows.push(`<li class="ex"><span class="ex-tag rf-num">${it.superset ? U.esc(it.superset) : ''}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${it.moveId}">${U.esc(it.name)}${it.swappedFrom ? ` <span class="t-caption rf-muted">(swapped)</span>` : ''}</button><span class="ex-meta rf-num">${it.sets} × ${U.esc(U.target(it))}${it.uni ? ' each side' : ''}${it.power ? ' · fast up' : ''}${it.load && it.load.label ? ` · ${U.esc(it.load.label.replace(/ (dumbbells?|kettlebell)$/, ''))}` : ''}</span></li>`);
       for (const x of s.extras || []) if (x.fam === it.fam) rows.push(`<li class="ex is-lead"><span class="ex-tag">+1</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${x.moveId}">${U.esc(x.name)}</button><span class="ex-meta rf-num">${U.side(x.leadOnly || lead).toLowerCase()} only · ${U.esc(U.target(x))}</span></li>`);
     }
     for (const x of s.extras || []) if (!s.items.some((it) => it.fam === x.fam)) rows.push(`<li class="ex is-lead"><span class="ex-tag">+1</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${x.moveId}">${U.esc(x.name)}</button><span class="ex-meta rf-num">${U.side(x.leadOnly || lead).toLowerCase()} only · ${U.esc(U.target(x))}</span></li>`);
@@ -58,12 +58,18 @@
     const s = session || B().buildSession(S, day, plan.tpl, { short: isShort(day), cal });
     const budget = isShort(day) ? '12-15' : (S.profile.minutes || 25);
     const where = S.profile.where || 'home';
+    // Age and health (src/access.js): what the plan works around, and any reminders for today.
+    const around = GH.access ? GH.access.plannedAround(S.profile) : null;
+    const notes = (s.notes || []).filter((n) => n && n.text);
     return `<div class="card session" data-key="main">
-        <div class="session-head"><span class="rf-card-eyebrow">Workout · about ${U.roll(s.estimateMin)} min${where === 'gym' ? ' · gym' : ''}</span><span class="session-badges">${phaseBadges(plan.week, s)}</span></div>
+        <div class="session-head"><span class="rf-card-eyebrow">${s.flare ? 'Flare day' : 'Workout'} · about ${U.roll(s.estimateMin)} min${where === 'gym' ? ' · gym' : ''}</span><span class="session-badges">${phaseBadges(plan.week, s)}</span></div>
         <h2 class="t-title-2">${U.esc(s.title)}</h2>
-        <p class="t-footnote rf-muted session-groups">${s.groups.map((g) => U.esc(B().GROUP_NAME[g] || g)).join(' · ')}</p>
+        ${s.groups.length || (s.custom && s.custom.name) ? `<p class="t-footnote rf-muted session-groups">${s.custom && s.custom.name ? `${U.esc(s.custom.name)} · ` : ''}${s.groups.map((g) => U.esc(B().GROUP_NAME[g] || g)).join(' · ')}</p>` : ''}
+        ${around ? `<button type="button" class="around-line t-footnote" data-act="planAround">${U.icon('heart', 'sm')}<span>${U.esc(around)}</span>${U.icon('chevron-right', 'sm')}</button>` : ''}
+        ${notes.map((n) => `<p class="t-footnote session-note">${U.esc(n.text)}</p>`).join('')}
         ${where === 'both' ? `<div class="place-row">${U.seg('place', [['home', 'At home'], ['gym', 'At the gym']], s.place, 'Where you train today', ' data-on="setPlace"')}</div>` : ''}
         ${sessionRows(S, s)}
+        ${s.custom && U.customSwapNote ? U.customSwapNote(s) : ''}
         ${s.trimmed && s.trimmed.length ? `<p class="t-footnote rf-muted">Trimmed to fit ${U.esc(budget)} min: ${U.esc(s.trimmed.map((x) => x.toLowerCase()).join(', '))}.</p>` : ''}
       </div>
 `;
@@ -97,7 +103,7 @@
     const h = S.health.days[day] || {};
     const l = plan.light || {};
     const next = plan.next;
-    const walkSub = l.walk ? (l.walkSrc === 'health-steps' ? 'Ticked from your steps' : l.walkSrc === 'health-walk' ? 'Ticked from Health Connect' : 'Logged') : h.steps != null ? `${U.num(h.steps)} steps so far today` : 'Any pace. Outside if you can.';
+    const walkSub = l.walk ? (l.walkSrc === 'health-steps' ? 'Ticked from your steps' : l.walkSrc === 'health-walk' ? 'Ticked from Health Connect' : l.walkSrc === 'activity' ? 'Ticked from the activity you tracked' : 'Logged') : h.steps != null ? `${U.num(h.steps)} steps so far today` : 'Any pace. Outside if you can.';
     return `<div class="card light" data-key="main">
       <span class="rf-card-eyebrow">Light day</span>
       <h2 class="t-title-2">Walk and mobility</h2>
@@ -106,15 +112,21 @@
         <li><div class="rf-list-row"><span class="rf-list-icon" data-tone="green">${U.icon('navigate')}</span><span class="rf-list-text"><span class="rf-list-title">Walk ${prog.walkMin}+ min</span><span class="rf-list-sub">${U.esc(walkSub)}</span></span>${l.walk ? `<span class="check-done" aria-label="Done">${U.icon('check-circle')}</span>` : '<button type="button" class="rf-btn" data-size="sm" data-act="logWalk">Log walk</button>'}</div></li>
         <li><div class="rf-list-row"><span class="rf-list-icon" data-tone="teal">${U.icon('leaf')}</span><span class="rf-list-text"><span class="rf-list-title">Mobility flow</span><span class="rf-list-sub">5 moves, about 5 min</span></span>${l.mobility ? `<span class="check-done" aria-label="Done">${U.icon('check-circle')}</span>` : '<button type="button" class="rf-btn" data-size="sm" data-act="startMobility">Start</button>'}</div></li>
       </ul>
-      ${next ? `<button type="button" class="rf-btn light-train" data-variant="plain" data-act="trainToday">Train today instead: ${U.esc(B().templateTitle(next.units).toLowerCase())}</button>` : ''}
+      ${next ? `<button type="button" class="rf-btn light-train" data-variant="plain" data-act="trainToday">Train today instead: ${U.esc((next.title || B().templateTitle(next.units)).toLowerCase())}</button>` : ''}
     </div>`;
   }
   function restCard(S, day, plan) {
     const next = plan.next;
     return `<div class="card light" data-key="main"><span class="rf-card-eyebrow">Rest day</span><h2 class="t-title-2">Recover</h2>
-      <p class="t-callout rf-muted">${next ? `Next: ${U.esc(B().templateTitle(next.units).toLowerCase())} on ${U.esc(U.fmtDay(next.day))}.` : 'Nothing planned for the rest of the week.'}</p></div>`;
+      <p class="t-callout rf-muted">${next ? `Next: ${U.esc((next.title || B().templateTitle(next.units)).toLowerCase())} on ${U.esc(U.fmtDay(next.day))}.` : 'Nothing planned for the rest of the week.'}</p></div>`;
   }
-  function feelCard(S, day) {
+  // With arthritis, a flare swaps a workout day's session for gentle range of motion (src/access.js).
+  function flareRow(S, day, plan) {
+    if (!GH.access || !GH.access.flareOk(S.profile) || S.profile.workouts === false || S.active || !plan || plan.type !== 'workout') return '';
+    const on = !!(S.feel[day] && S.feel[day].flare);
+    return `<ul class="rf-list feel-flare">${U.sw('Joints flaring today', on, 'data-on="feelFlare"', on ? 'Today is gentle range of motion instead. It still counts.' : 'Swaps today\'s workout for gentle range of motion.')}</ul>`;
+  }
+  function feelCard(S, day, plan) {
     const f = S.feel[day] || {};
     const hasSleep = S.health.days[day] && S.health.days[day].sleepMin != null;
     const chip = S.sleepChip[day];
@@ -122,13 +134,15 @@
     if (complete && !feelOpen) {
       const bits = [`Energy ${f.energy}`, `sore: ${f.sore}`];
       if (!hasSleep && chip) bits.push(`${chip} h sleep`);
-      return `<div class="card feel-done" data-key="feel"><span class="t-callout">${U.esc(bits.join(' · '))}</span><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="feelEdit">Change</button></div>`;
+      const flare = flareRow(S, day, plan);
+      return `<div class="card feel-done${flare ? ' has-flare' : ''}" data-key="feel"><div class="feel-done-row"><span class="t-callout">${U.esc(bits.join(' · '))}</span><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="feelEdit">Change</button></div>${flare}</div>`;
     }
     return `<div class="card feel" data-key="feel">
       <p class="t-headline">How are you today?</p>
       <div class="feel-row"><span class="t-subhead">Energy</span>${U.seg('feelEnergy', [['low', 'Low'], ['ok', 'OK'], ['good', 'Good']], f.energy || '', 'Energy', ' data-on="feelEnergy"')}</div>
       <div class="feel-row"><span class="t-subhead">Soreness</span>${U.seg('feelSore', [['none', 'None'], ['some', 'Some'], ['very', 'Very']], f.sore || '', 'Soreness', ' data-on="feelSore"')}</div>
       ${hasSleep ? '' : `<div class="feel-row"><span class="t-subhead">Sleep</span>${U.seg('sleepChip', [['<5', '<5 h'], ['5-6', '5-6'], ['6-7', '6-7'], ['7-8', '7-8'], ['8+', '8+']], chip || '', 'Sleep last night', ' data-on="sleepChip"')}</div>`}
+      ${flareRow(S, day, plan)}
       ${S.profile.workouts !== false ? '<p class="t-footnote rf-muted">Very sore with low energy, or under 5 h of sleep, means one less set per exercise today.</p>' : ''}
     </div>`;
   }
@@ -207,14 +221,18 @@
           </div>` : ''}
           ${main}
           ${workouts && plan.type !== 'done' && !S.active && U.coachCard ? U.coachCard(S, day, session) : ''}
+          ${U.actTodayCard ? U.actTodayCard(S, day, plan) : ''}
           ${U.checklist ? U.checklist(S, day) : ''}
           ${GH.food && GH.food.full(S) && U.foodCard ? U.foodCard(S, day) : proteinCard(S, day)}
-          ${feelCard(S, day)}
+          ${feelCard(S, day, plan)}
           ${measure ? `<ul class="rf-list" data-key="measure">${U.row({ icon: 'pin', tone: 'violet', title: 'Time to measure', sub: 'Waist and arms, once a month', act: 'logMeasure', chevron: true })}</ul>` : ''}
           ${top ? `<button type="button" class="insight-line" data-key="insight" data-act="goHealth"><span class="rf-list-icon" data-tone="${top.tone === 'good' ? 'green' : top.tone === 'watch' ? 'amber' : top.tone === 'alert' ? 'rose' : 'sky'}">${U.icon(top.icon)}</span><span class="insight-text"><span class="t-subhead">${U.esc(top.title)}</span><span class="t-footnote rf-muted">${U.esc(top.evidence)}</span></span>${U.icon('chevron-right')}</button>` : ''}
         </div>`;
     },
     float(S, day) {
+      // An outdoor activity recording in the background: the way back to it (src/ui/actlive.js).
+      const act = U.actFloat ? U.actFloat(S, day) : '';
+      if (act) return act;
       const cal = B().calendar(S, day);
       const plan = B().todayPlan(S, day, cal);
       if (S.active && S.active.day === day) {
@@ -224,6 +242,8 @@
       if (S.active || S.profile.workouts === false) return '';
       if (plan.type === 'workout') {
         const on = isShort(day);
+        // A flare day is one gentle flow: no short version, and the button says what it starts.
+        if (GH.access && GH.access.flareOn(S, day)) return `<button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg" data-lens data-act="startWorkout">${U.icon('play')}Start gentle session</button>`;
         return `<button type="button" class="rf-btn rf-glass" data-size="lg" data-lens data-act="toggleShort" aria-pressed="${on}" aria-label="${on ? 'Full session' : 'Short on time'}">${U.icon('timer')}<span class="btn-label">${on ? 'Full session' : 'Short on time'}</span></button>
           <button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg" data-lens data-act="startWorkout">${U.icon('play')}Start workout</button>`;
       }
@@ -267,6 +287,12 @@
   U.on.feelEnergy = (el, ev, v) => { GH.health.setFeel(U.S, U.today(), { energy: v }); U.save(); maybeClose(); };
   U.on.feelSore = (el, ev, v) => { GH.health.setFeel(U.S, U.today(), { sore: v }); U.save(); maybeClose(); };
   U.on.sleepChip = (el, ev, v) => { GH.health.setSleepChip(U.S, U.today(), v); U.save(); maybeClose(); };
+  U.on.feelFlare = (el, ev, v) => {
+    GH.health.setFeel(U.S, U.today(), { flare: !!v });
+    U.save();
+    setTimeout(() => U.render(), 200);
+    U.toast(v ? 'A gentle day' : 'Back to today\'s workout', v ? 'neutral' : 'positive', v ? 'Today is range of motion for every joint, done seated. It counts for your streak.' : undefined);
+  };
   function maybeClose() {
     const S = U.S, d = U.today();
     const f = S.feel[d] || {};
@@ -286,7 +312,7 @@
   U.act.undoProtein = () => { B().undoProtein(U.S, U.today()); U.commit(); U.haptic('toggleOff'); };
   U.act.addProtein = () => {
     U.sheet({
-      title: 'Add protein', detents: 'small medium', detent: 'small',
+      title: 'Add protein', size: 'fit',
       body: `<div class="sheet-pad"><div class="ob-center">${U.stepper('protG', 20, 1, 150, 'Grams of protein', '', 5)}</div><p class="t-footnote rf-muted">A palm of meat or fish is about 25 g, a cup of milk 8 g, an egg 6 g.</p></div>`,
       action: { label: 'Add', act: 'addProteinSave' },
     });

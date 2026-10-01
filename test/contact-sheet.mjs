@@ -27,6 +27,7 @@ body{margin:0;background:var(--bg);font:12px system-ui;color:var(--label)}
 ${css}
 </style></head><body><div class="grid" id="g"></div>
 <script>${readFileSync(join(root, 'src/data/moves.js'), 'utf8')}</script>
+<script>${readFileSync(join(root, 'src/data/moves-access.js'), 'utf8')}</script>
 <script>${readFileSync(join(root, 'src/engine/pose.js'), 'utf8')}</script>
 <script>
 const g=document.getElementById('g');const seen=new Set();

@@ -155,23 +155,8 @@ button.stat:active, .insight-line:active, .pl-fig-card:active, .tap-card:active 
 .ex-name { transition: opacity var(--duration-fast); }
 .ex-name:active { opacity: .55; transition-duration: 0ms; }
 
-/* Sheets and toasts clear the system bars. */
-.rf-sheet:not([data-detent="large"]) { inset-block-end: calc(var(--_inset) + var(--sab)); }
-/* Sheets: thicker glass than bars and buttons, so a busy page behind reads as soft colour rather than
-   shapes; a light blur behind; focus on the content, with a ring on the grabber for keyboards only. */
-.rf-sheet.rf-glass { --rf-density: 0.9; }
-/* A short sheet (a question with a few choices) is as tall as what's in it. */
-.rf-sheet.sheet-fit:not([data-detent="large"]) { --_h: fit-content; max-block-size: 86dvh; }
-.rf-sheet[open]::backdrop { -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
-.rf-sheet-body:focus, .rf-sheet-grabber:focus { outline: none; }
-.rf-sheet-grabber:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-/* A full-height sheet sets the page back behind it. */
-#app { transition: scale 460ms var(--spring-smooth), translate 460ms var(--spring-smooth), border-radius 460ms var(--spring-smooth); transform-origin: 50% 0; }
-#app[data-receded] { scale: .94; translate: 0 calc(var(--sat) + 6px); border-radius: 22px; overflow: hidden; overflow: clip; }
-html:has(#app[data-receded]), body:has(#app[data-receded]) { background: #08090c; }
-@media (prefers-reduced-motion: reduce) { #app { transition: none; } }
-.rf-sheet[data-detent="large"] { --_h: calc(100dvh - var(--space-12) - var(--sat)); }
-.rf-sheet[data-detent="large"] > .rf-sheet-body { padding-bottom: calc(var(--space-5) + var(--sab)); }
+/* Sheets (and the page receding behind them) are styled in styles/sheet.css. Toasts clear the
+   status bar. */
 .rf-toaster:not([data-position="bottom"]) { inset-block-start: calc(var(--space-3) + var(--sat)); }
 .rf-large-title { overflow-wrap: anywhere; }
 .lt-sub { margin: calc(-1 * var(--space-2)) 0 var(--space-4); padding: 0 var(--space-4); }
@@ -254,6 +239,16 @@ html:has(#app[data-receded]), body:has(#app[data-receded]) { background: #08090c
 .check-done { color: var(--positive); display: inline-flex; }
 .light-train { justify-self: start; }
 .feel-row { display: grid; gap: var(--space-1); }
+.feel-flare { margin-top: var(--space-1); }
+.feel-done.has-flare { display: grid; gap: var(--space-2); }
+.feel-done-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+/* "Planned around ..." on the workout card: taps through to what's built around you. */
+.around-line { appearance: none; border: 0; background: none; padding: 0; margin: 0; display: flex; align-items: center; gap: 6px; color: var(--label-secondary); font: inherit; text-align: start; cursor: pointer; min-height: 32px; }
+.around-line > svg:first-child { color: var(--hue-rose, var(--accent)); flex: none; }
+.around-line > span { flex: 1; min-width: 0; }
+.around-line > svg:last-child { flex: none; opacity: .6; }
+.session-note { margin: 0; color: var(--label-secondary); }
+.around-list { margin: 0 0 var(--space-2); }
 .feel-row .rf-segmented { width: 100%; }
 /* Nothing picked yet (the reps-left question): no thumb, instead of Refract's default on the first option. */
 .rf-segmented:not(:has(input:checked)) .rf-segmented-thumb { opacity: 0; }
@@ -264,30 +259,10 @@ html:has(#app[data-receded]), body:has(#app[data-receded]) { background: #08090c
 /* ---------------------------------------------------------------- plan */
 
 /* ---------------------------------------------------------------- health */
-.insight .ins-head { display: flex; align-items: center; gap: var(--space-2); }
-.ins-word { display: inline-flex; gap: 4px; align-items: center; font-weight: 600; }
-.ins-word[data-tone="positive"] { color: var(--positive); }
-.ins-word[data-tone="caution"] { color: var(--caution); }
-.ins-word[data-tone="critical"] { color: var(--critical); }
-.ins-word[data-tone="accent"] { color: var(--accent); }
-.ins-x { margin-inline-start: auto; color: var(--label-secondary); }
-.insight .rf-btn[data-size="sm"]:not(.ins-x) { justify-self: start; }
-.ai-head { display: flex; align-items: center; gap: var(--space-2); color: var(--accent); }
-.ai-head .t-headline { color: var(--label); }
-.ai-busy { display: flex; gap: var(--space-2); align-items: center; }
-.ai-sub { margin-top: var(--space-2) !important; font-weight: 600; }
-.ai-sub[data-tone="positive"] { color: var(--positive); }
-.ai-sub[data-tone="caution"] { color: var(--caution); }
-.ai-sub[data-tone="accent"] { color: var(--accent); }
-.ai-asks { margin-top: var(--space-2); }
-.ai-asks .rf-chip { height: auto; min-height: var(--control-sm); padding-block: 6px; white-space: normal; text-align: start; line-height: 1.25; }
-.ai-ask { justify-self: start; margin-top: var(--space-1); }
 .stat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
 .stat { appearance: none; border: 0; text-align: start; display: grid; gap: 2px; padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); color: var(--label); min-width: 0; }
 button.stat { cursor: pointer; }
 .stat small { font-size: .75rem; font-weight: 500; color: var(--label-secondary); }
-.stat-top { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1); }
-.stat-top .rf-list-icon { --_s: 26px; }
 .stat-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
 .stat-row .stat { padding: var(--space-3); }
 
@@ -378,7 +353,35 @@ textarea.preview { border: 0; resize: vertical; }
 .rf-list-row .rf-segmented[data-size="sm"] { flex: none; }
 
 /* ---------------------------------------------------------------- onboarding */
-.onboard { position: fixed; inset: 0; z-index: var(--z-overlay); background: var(--bg); display: flex; flex-direction: column; padding: var(--sat) var(--sar) 0 var(--sal); }
+.onboard { position: fixed; inset: 0; z-index: var(--z-overlay); background: var(--bg); display: flex; flex-direction: column; padding: var(--sat) var(--sar) var(--ob-kb, 0px) var(--sal); overflow: hidden; overflow: clip; isolation: isolate; }
+/* Set-up sits on the app's glow (see .app::before), with glass lists and cards on top. */
+.onboard::before, .onboard::after {
+  content: ''; position: absolute; inset: -12% -25% auto; height: 64%; pointer-events: none; z-index: -1;
+  -webkit-mask-image: linear-gradient(to bottom, #000 35%, transparent 95%); mask-image: linear-gradient(to bottom, #000 35%, transparent 95%);
+  opacity: .55; will-change: transform; transform-origin: 50% 40%;
+}
+.onboard::before { background: radial-gradient(34% 46% at 20% 34%, var(--glow-mint), transparent 72%), radial-gradient(38% 48% at 64% 66%, var(--glow-violet), transparent 74%); animation: glow-drift-a 26s ease-in-out infinite alternate; }
+.onboard::after { background: radial-gradient(34% 44% at 80% 26%, var(--glow-sky), transparent 72%), radial-gradient(30% 40% at 34% 74%, var(--glow-pink), transparent 74%); animation: glow-drift-b 34s ease-in-out -9s infinite alternate; }
+[data-theme^="dark"] .onboard::before, [data-theme^="dark"] .onboard::after { opacity: .65; }
+:root[data-still-glow] .onboard::before, :root[data-still-glow] .onboard::after { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .onboard::before, .onboard::after { animation: none; } }
+:root[data-theme$="contrast"] .onboard::before, :root[data-theme$="contrast"] .onboard::after, :root[data-rf-transparency="reduced"] .onboard::before, :root[data-rf-transparency="reduced"] .onboard::after { display: none; }
+@media (prefers-reduced-transparency: reduce) { .onboard::before, .onboard::after { display: none; } }
+.onboard { --ob-glass: color-mix(in srgb, var(--bg-raised) 72%, transparent); }
+[data-theme^="dark"] .onboard { --ob-glass: color-mix(in srgb, var(--bg-raised) 64%, transparent); }
+.onboard .rf-list, .onboard .card, .onboard .ob-plank { background-color: var(--ob-glass); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); box-shadow: inset 0 0 0 .5px var(--separator), var(--shadow-card); }
+:root[data-theme$="contrast"] .onboard .rf-list, :root[data-theme$="contrast"] .onboard .card, :root[data-rf-transparency="reduced"] .onboard .rf-list, :root[data-rf-transparency="reduced"] .onboard .card { background-color: var(--bg-raised); -webkit-backdrop-filter: none; backdrop-filter: none; }
+@media (prefers-reduced-transparency: reduce) { .onboard .rf-list, .onboard .card, .onboard .ob-plank { background-color: var(--bg-raised); -webkit-backdrop-filter: none; backdrop-filter: none; } }
+/* Above the keyboard there's no navigation bar to clear. */
+:root[data-keyboard] .ob-actions { padding-bottom: var(--space-3); }
+.ob-where { display: flex; gap: 6px; justify-content: center; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ob-where > span:first-child { font-weight: 600; color: var(--label-secondary); }
+.ob-where > span:first-child:empty { display: none; }
+.ob-where > span:first-child:not(:empty)::after { content: '·'; margin-left: 6px; font-weight: 400; }
+.ob-hero-card { gap: var(--space-1); }
+.ob-hero-num { margin: 0; font-size: 2rem; font-weight: 700; line-height: 1.15; letter-spacing: -0.01em; }
+.ob-around .t-headline { margin: 0; }
+.ob-card p { margin: 0; }
 .onboard[hidden], .player[hidden] { display: none; }
 .ob-top, .pl-top { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-4); }
 .ob-progress, .pl-prog { flex: 1; display: grid; gap: 4px; justify-items: center; min-width: 0; }
@@ -646,9 +649,10 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 .ob-welcome { display: grid; justify-items: center; text-align: center; gap: var(--space-3); padding: var(--space-6) var(--space-2) 0; }
 .ob-logo { width: 104px; height: 104px; border-radius: 24px; box-shadow: 0 18px 44px -14px rgb(92 60 200 / 45%), 0 2px 6px rgb(0 0 0 / 8%); }
 .ob-welcome .rf-large-title { margin: var(--space-2) 0 0; padding: 0; }
+.ob-welcome .ob-hero-title { font-size: clamp(2.25rem, 10vw, 3.25rem); line-height: 1.05; letter-spacing: -0.02em; overflow-wrap: anywhere; }
 .ob-tagline { margin: 0; max-width: 24ch; font-weight: 500; }
 .ob-points { list-style: none; margin: var(--space-5) 0 0; padding: 0; display: grid; gap: var(--space-4); text-align: start; max-width: 34ch; }
-.ob-points li { display: grid; grid-template-columns: 28px 1fr; gap: var(--space-3); align-items: start; color: var(--label); font-size: .9375rem; line-height: 1.4; }
+.ob-points li { display: grid; grid-template-columns: 28px 1fr; gap: var(--space-3); align-items: start; color: var(--label); font-size: 1rem; line-height: 1.4; }
 .ob-points li > svg { color: var(--accent); width: 24px; height: 24px; }
 
 /* Gym weight on the set screen, and the weight picker. */

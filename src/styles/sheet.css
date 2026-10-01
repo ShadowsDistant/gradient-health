@@ -1,0 +1,133 @@
+/* Bottom sheets (src/ui/sheet.js). The <dialog> is a see-through layer over the whole screen holding
+   a scrim and a panel anchored to the bottom edge. The panel only ever moves with a transform, so a
+   drag or a settle never lays anything out, and nothing about a sheet transitions its size, inset or
+   corners. Refract's .rf-sheet rules are all overridden here (these rules are unlayered, so they win
+   whatever Refract's specificity). */
+:root { --sheet-bg: #f7f8fb; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) { --sheet-bg: #1b1c22; } }
+:root[data-theme="dark"] { --sheet-bg: #1b1c22; }
+:root[data-theme="light-contrast"] { --sheet-bg: #ffffff; }
+:root[data-theme="dark-contrast"] { --sheet-bg: #0e0f13; }
+
+dialog.gh-sheet {
+  position: fixed; inset: 0; box-sizing: border-box;
+  width: 100%; height: 100%; inline-size: 100%; block-size: 100%; max-width: none; max-height: none; max-inline-size: none; max-block-size: none;
+  margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent;
+  color: var(--label); font-family: var(--font-sans);
+  translate: none; transform: none; outline: none;
+  /* hidden, not clip: something that scrolls it (focus, scrollIntoView) is how the engine learns
+     that content below the fold wants to be seen; it scrolls straight back and expands the sheet. */
+  overflow: hidden;
+  /* On close the dialog stays on screen (and in the top layer) while the panel slides out; the
+     engine sets the duration to the slide's. */
+  transition: display .4s allow-discrete, overlay .4s allow-discrete;
+}
+dialog.gh-sheet[open] { display: block; }
+dialog.gh-sheet:not([open]) { display: none; }
+dialog.gh-sheet::backdrop { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; transition: none; }
+dialog.gh-sheet[data-closing] { pointer-events: none; }
+
+.gh-sheet-scrim { position: absolute; inset: 0; background: var(--scrim, rgb(12 13 18 / .32)); opacity: 0; will-change: opacity; }
+
+.gh-sheet-panel {
+  position: absolute; left: 0; right: 0; bottom: var(--kb, 0px); margin-inline: auto; box-sizing: border-box;
+  width: 100%; max-width: 640px;
+  /* Full height less the status bar and a sliver of page (a browser's keyboard shrinks --vvh). */
+  height: calc(var(--vvh, 100dvh) - var(--sat) - 12px);
+  display: flex; flex-direction: column;
+  padding-inline: var(--sal) var(--sar);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  box-shadow: var(--shadow-sheet);
+  color: var(--glass-label, var(--label));
+  touch-action: none;
+  will-change: transform;
+}
+.gh-sheet[data-size="fit"] .gh-sheet-panel { height: auto; max-height: calc(var(--vvh, 100dvh) * .86); }
+/* The material, on a layer of its own under the content (the shadow is the panel's), so switching it
+   repaints one flat rounded rectangle, not everything in the sheet. It reaches below the panel so a
+   stretch past the top, or a spring's overshoot, never shows a gap at the bottom. At rest: a 92% fill
+   with a light blur. While the sheet moves or its content scrolls: solid, no blur (a blur under
+   anything that moves is redrawn every frame). */
+.gh-sheet-panel::before {
+  content: ''; position: absolute; inset: 0 0 -200px; z-index: -1; pointer-events: none;
+  border-radius: inherit;
+  background: color-mix(in oklab, var(--sheet-bg) 92%, transparent);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .08);
+  will-change: transform;
+}
+.gh-sheet:is([data-moving], [data-scrolling]) .gh-sheet-panel::before { background: var(--sheet-bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
+:root[data-theme$="contrast"] .gh-sheet-panel::before, :root[data-rf-transparency="reduced"] .gh-sheet-panel::before { background: var(--sheet-bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
+@media (prefers-reduced-transparency: reduce) { .gh-sheet-panel::before { background: var(--sheet-bg); -webkit-backdrop-filter: none; backdrop-filter: none; } }
+
+.gh-sheet .rf-sheet-grabber { flex: none; margin: 7px auto 0; touch-action: none; cursor: grab; }
+.gh-sheet .rf-sheet-header { animation: none; touch-action: none; }
+.gh-sheet .rf-sheet-grabber:focus { outline: none; }
+.gh-sheet .rf-sheet-grabber:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* One 16 px inset: the body has none of its own; each block in it brings its own (like a page's
+   sections). The bottom clears the system bar. */
+.gh-sheet .rf-sheet-body {
+  flex: 0 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain;
+  padding: 0 0 calc(var(--space-4) + var(--sab)); outline: none; animation: none;
+  touch-action: pan-x pan-y;
+}
+.gh-sheet[data-size="full"] .rf-sheet-body { flex: 1 1 auto; }
+/* Below its top detent the content doesn't scroll: a swipe anywhere moves the sheet. */
+.gh-sheet:not([data-at-top]) .rf-sheet-body { overflow: hidden; touch-action: none; }
+.gh-sheet .rf-sheet-body > :is(.rf-list, .sheet-prose, .sheet-lead) { margin-inline: var(--space-4); }
+.gh-sheet .rf-sheet-body > :is(.rf-list-header, .rf-list-footer) { padding-inline: calc(var(--space-4) * 2); }
+.gh-sheet .fd-results > .rf-list { margin-inline: var(--space-4); }
+.gh-sheet .fd-results > .rf-list-header { padding-inline: calc(var(--space-4) * 2); }
+.tour-sheet .rf-sheet-body { padding-bottom: 0; }
+/* A form's fields share the width they're given instead of growing to fit their inputs (a number
+   input is 20 characters wide on its own, which pushed the second of two fields off the edge). */
+.sheet-pad { grid-template-columns: minmax(0, 1fr); }
+.gh-sheet .rf-field { grid-template-columns: minmax(0, 1fr); }
+/* A full-width segmented control (like the four meals) keeps equal segments while they fit; on a small
+   phone with large text the labels keep a smaller margin instead of pushing the last one off the edge. */
+.gh-sheet .rf-segmented[data-block] > .rf-segment { padding-inline: var(--space-2); }
+
+/* Controls inside keep the look they had when the sheet itself was glass. Refract styles them by their
+   glass ancestor, so these copies go in Refract's own layers, where its hover, pressed and focus
+   states still win as before. No glass on glass: glass controls are flat fills, without a blur or
+   lens of their own. */
+@layer rf.material {
+  .gh-sheet .rf-glass:not([data-allow-nested]) { --_fill: var(--fill-3); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; text-shadow: none; }
+  .gh-sheet .rf-glass:not([data-allow-nested])::before { display: none; }
+  .gh-sheet .rf-glass[data-variant="tinted"] { --_fill: var(--accent-fill); }
+  .gh-sheet .rf-glass > .rf-lens-layer { display: none; }
+  .gh-sheet .rf-glass[data-lens-ready] { background-color: var(--_fill); }
+  .gh-sheet :where(.rf-secondary) { color: var(--glass-label-secondary); }
+}
+@layer rf.components {
+  .gh-sheet .rf-btn:not(.rf-glass):not([data-variant]), .gh-sheet .rf-btn:not(.rf-glass)[data-variant="plain"] { background-color: transparent; color: inherit; }
+  .gh-sheet .rf-segmented { --thumb: var(--fill-selected); }
+  .gh-sheet .rf-segmented .rf-segmented-thumb { box-shadow: none; }
+  .gh-sheet .rf-segment { color: inherit; }
+  .gh-sheet .rf-field-control { background-color: var(--fill-3); box-shadow: none; color: var(--glass-label-secondary); }
+  .gh-sheet .rf-field-control:focus-within { box-shadow: inset 0 0 0 2px var(--focus-ring); }
+  .gh-sheet .rf-input { color: var(--glass-label); }
+  .gh-sheet .rf-input::placeholder { color: var(--glass-label-secondary); }
+}
+
+/* Anything that animates in a moving sheet waits, so the moving layer isn't repainted every frame.
+   The progress bars' shimmer on the page behind waits while a sheet is open at all: it restyles and
+   repaints every frame on the main thread, and redraws the blur of the sheet above it, for something
+   dimmed behind a sheet. Each rule ends in a class, so starting or stopping restyles only those few
+   elements, not every icon on the page. */
+.gh-sheet[data-moving] :is(.bubble.coach.is-typing, .rf-spinner, .sc-frame > i, .rf-spinner > i) { animation-play-state: paused; }
+html:is([data-sheet-open], [data-sheet-moving]) .rf-progress-fill::after { animation-play-state: paused; }
+
+/* The page behind: a sheet at large sets it back a little, like a card. Once it first recedes it gets
+   a layer of its own until the last sheet closes, and its corners (it's always clipped, see .app)
+   until it's back at full size: at full size they can't be seen, and a rounded clip on the whole page
+   costs the compositor every frame a sheet moves. Receding is a transform written by the engine;
+   nothing about it transitions. */
+#app { transform-origin: 50% 0; }
+#app[data-sheeted] { will-change: transform; }
+#app[data-set-back] { border-radius: 22px; }
+html:has(#app[data-set-back]), body:has(#app[data-set-back]) { background: #08090c; }
+/* Under a sheet at rest, the page's bottom glass is out of sight: hidden, the compositor doesn't
+   redraw its blur and lens every frame the scrim changes (the engine uncovers it before a drag or a
+   close would show it). */
+#app[data-covered] :is(#tabbar, #float) { visibility: hidden; }

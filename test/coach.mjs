@@ -7,7 +7,7 @@ import { load, root, check, section, done } from './lib.mjs';
 
 const ls = new Map();
 globalThis.localStorage = { getItem: (k) => (ls.has(k) ? ls.get(k) : null), setItem: (k, v) => ls.set(k, String(v)), removeItem: (k) => ls.delete(k) };
-const GH = load('src/data/moves.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/store.js', 'src/coach.js', 'src/tailor.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/store.js', 'src/coach.js', 'src/tailor.js', 'src/devicecoach.js');
 const bundle = await build({ entryPoints: [join(root, 'src/ai.js')], bundle: true, write: false, format: 'iife', platform: 'browser', target: ['es2022'], logLevel: 'silent' });
 new Function(bundle.outputFiles[0].text)();
 const B = GH.brain, C = GH.coach, H = GH.health, SC = GH.science;
@@ -44,6 +44,51 @@ const fresh = B.newState({ goals: ['abs'] }, null, D0);
 check('before any workout → a first-workout headline', /first workout/i.test(C.report(fresh, D0).headline));
 check('no exclamation marks or emoji', !/[!\u{1F300}-\u{1FAFF}]/u.test(JSON.stringify(C.report(person(), D0))));
 
+section('This week at a glance');
+S = person();
+rep = C.report(S, D0);
+const TONES = ['good', 'watch', 'neutral'];
+check('two to four numbers, each with a name, a value, a trend and a tone', rep.glance.length >= 2 && rep.glance.length <= 4 && rep.glance.every((g) => g.metric && g.value && typeof g.trend === 'string' && TONES.includes(g.tone)), rep.glance);
+check('sleep, steps and resting heart rate lead (HRV stands in for weight with no weigh-ins)', rep.glance.map((g) => g.metric).join() === 'Sleep,Steps,Resting HR,HRV', rep.glance.map((g) => g.metric));
+check('values are this week\'s averages in the person\'s units', rep.glance[0].value === H.format(S, 'sleepMin', H.versus(S, 'sleepMin', D0, 'week').value, { compact: true }) && / bpm$/.test(rep.glance[2].value), rep.glance);
+check('a week like the usual reads steady', rep.glance.every((g) => g.trend === 'steady' && g.dir === 'flat'), rep.glance.map((g) => g.trend));
+// A short week of sleep against the usual: sleep falls and gets flagged.
+S = person();
+for (let d = D0 - 6; d <= D0; d++) S.health.days[d].sleepMin = 330;
+rep = C.report(S, D0);
+const sl = rep.glance.find((g) => g.key === 'sleepMin');
+check('a week of short nights: sleep is down and worth watching', sl && sl.dir === 'down' && sl.tone === 'watch' && /^-1 h \d\d$/.test(sl.trend), sl);
+check('focus_one: one short line from the first focus', typeof rep.focus_one === 'string' && rep.focus_one.length <= 40 && /bedtime/i.test(rep.focus_one) && /sleep/i.test(rep.focus[0]), rep.focus_one);
+// Weigh-ins: weight takes its place, compared with the week before.
+S = person();
+for (let d = D0 - 13; d <= D0; d++) B.addWeight(S, d, d > D0 - 7 ? 67.6 : 68, 'hc');
+rep = C.report(S, D0);
+const wt = rep.glance.find((g) => g.key === 'weightKg');
+check('with weigh-ins, weight is on the card with its weekly change', rep.glance.length === 4 && wt && /lb$/.test(wt.value) && /^-0\.\d lb$/.test(wt.trend), rep.glance);
+check('glance numbers only use the phone\'s own data', rep.glance.every((g) => !/NaN|undefined|null/.test(`${g.value} ${g.trend}`)));
+S = person();
+S.health.days = {};
+rep = C.report(S, D0);
+check('no health data: no numbers rather than a lone one, and nothing made up', rep.glance.length === 0, rep.glance);
+
+section('Short enough for a card');
+const scenarios = [person(), person({ sleep: 340 }), person({ rir: '0' }), person({ steps: 2000 }), fresh, B.newState({ goals: ['abs'], workouts: false }, null, D0 - 10)];
+scenarios[5].profile.workouts = false;
+const reps = scenarios.map((P) => C.report(P, D0));
+check('headlines are one short sentence', reps.every((r) => r.headline.length <= 50 && (r.headline.match(/\. /g) || []).length <= 1), reps.map((r) => r.headline));
+check('wins are badges: short, no full stop, no repeats', reps.every((r) => r.wins.every((w) => w.length <= 48 && !/\.$/.test(w)) && new Set(r.wins.map((w) => w.toLowerCase())).size === r.wins.length), reps.map((r) => r.wins));
+check('every report has a focus line', reps.every((r) => r.focus_one && r.focus_one.length <= 40 && r.focus.length >= 1), reps.map((r) => r.focus_one));
+check('no dashes as punctuation', reps.every((r) => !/[—]| – /.test(JSON.stringify(r))));
+
+section('Reading Claude\'s report');
+const AIr = GH.ai.readReport;
+const old = AIr({ headline: ' A steady week. ', wins: ['4 of 4 workouts.'], watch: [], focus: ['Protein on rest days.'], ask_me: ['How do I sleep more?'] });
+check('a report saved before glance and focus_one still reads', old.headline === 'A steady week.' && old.wins.length === 1 && old.glance === undefined && old.focus_one === undefined);
+const odd = AIr({ headline: 'x', glance: [{ metric: 'Sleep', value: '7 h 05', trend: '+20 min', tone: 'good' }, { metric: 'Steps', value: '8.2k', trend: '-9%', tone: 'great' }, { metric: '', value: '1' }, { metric: 'HRV', value: '55 ms', trend: 'steady', tone: 'neutral' }, { metric: 'Weight', value: '149.6 lb', trend: '-0.3 lb', tone: 'good' }, { metric: 'Extra', value: '1', trend: '', tone: 'good' }], focus_one: '  Keep a steady bedtime  ', wins: [], watch: [], focus: [], ask_me: [] });
+check('glance items are checked: unknown tones become neutral, empty ones dropped, at most four', odd.glance.length === 4 && odd.glance[1].tone === 'neutral' && odd.glance.every((g) => g.metric && g.value), odd.glance);
+check('focus_one is trimmed', odd.focus_one === 'Keep a steady bedtime');
+check('the schema asks for glance and focus_one, with the tones as an enum', GH.ai.REPORT_SCHEMA.required.includes('glance') && GH.ai.REPORT_SCHEMA.required.includes('focus_one') && GH.ai.REPORT_SCHEMA.properties.glance.items.properties.tone.enum.join() === 'good,watch,neutral' && GH.ai.REPORT_SCHEMA.properties.glance.items.additionalProperties === false);
+
 section('Questions');
 S = person();
 const a = (q) => C.ask(S, D0, q);
@@ -73,8 +118,9 @@ const restCheck = (supersets) => {
   S2.profile.prefs.supersets = supersets;
   const items = [0, 1, 2, 3].flatMap((i) => B.buildSession(S2, D0 + i, i % 2, {}).items);
   const solo = items.filter((it) => !it.superset);
-  const big = solo.filter((it) => ['push', 'row', 'squat', 'hinge', 'pull', 'chestDb'].includes(it.fam));
-  const small = solo.filter((it) => !['push', 'row', 'squat', 'hinge', 'pull', 'chestDb'].includes(it.fam));
+  const BIG = ['push', 'press', 'row', 'squat', 'hinge', 'pull', 'chestDb'];
+  const big = solo.filter((it) => BIG.includes(it.fam));
+  const small = solo.filter((it) => !BIG.includes(it.fam));
   return { ok: big.every((it) => it.rest === 90) && small.every((it) => it.rest === 60) && items.filter((it) => it.superset).every((it) => it.rest === 60), big: big.length, paired: items.filter((it) => it.superset).length };
 };
 const rc1 = restCheck(false), rc2 = restCheck(true);
@@ -143,6 +189,24 @@ const w = C.watching(S, D0);
 check('what it watches has a value and a status', w.length >= 3 && w.every((x) => x.label && x.value && ['good', 'info', 'watch'].includes(x.status)));
 check('short sleep is flagged', w.some((x) => x.label === 'Sleep' && x.status === 'watch'));
 
+section('Plans for different bodies');
+{
+  const S3 = B.newState({ goals: ['strength'], age: 72, conditions: ['balance', 'ra'], equipment: { db: [5], band: true } }, null, D0);
+  const ask3 = (q) => C.ask(S3, D0, q);
+  check('a question about a condition gets what the plan does about it', ask3('is this ok with my arthritis?').topic === 'bodies' && /rheumatoid arthritis/.test(ask3('is this ok with my arthritis?').text) && /Balance practice/.test(ask3('is this ok with my arthritis?').text));
+  check('pregnancy: ask a midwife or doctor', /midwife or doctor/.test(ask3('can I train while pregnant').text));
+  check('heart rate questions still go to heart, chest pain is still a red flag', ask3('what is my resting heart rate').topic === 'heart' && ask3('chest pain when I train with arthritis').topic === 'redflag');
+  const pl = B.todayPlan(S3, D0);
+  const sess3 = B.buildSession(S3, D0, pl.tpl != null ? pl.tpl : 0, {});
+  const dec3 = C.decisions(S3, D0, sess3);
+  check('the coach says why balance comes first', dec3.some((x) => x.rule === 'balance' && /Balance practice first/.test(x.text)), dec3.map((x) => x.text));
+  S3.feel[D0] = { flare: true };
+  const flare = B.buildSession(S3, D0, pl.tpl != null ? pl.tpl : 0, {});
+  check('and explains a flare day', flare.flare && C.decisions(S3, D0, flare)[0].rule === 'arthritis');
+  const brief = GH.deviceCoach.brief(S3, D0);
+  check('the on-device coach knows what the plan works around; Claude\'s summary doesn\'t', (/adapted for age band 65 and over; planned around balance and rheumatoid arthritis/.test(brief)) && !/arthritis|balance/i.test(GH.ai.summary ? GH.ai.summary(S3, D0) : ''), brief);
+}
+
 section('Suggestions you apply');
 S = person({ workouts: [D0 - 21, D0 - 20, D0 - 18, D0 - 17] });
 const sugs = C.suggestions(S, D0);
@@ -187,6 +251,10 @@ section('Tailor my plan: reading a request');
   check('new kit', P('I got a resistance band').add_equipment.join() === 'band');
   check('"less arms, more legs" only asks for more legs', P('less arms more legs').focus.join() === 'legs');
   check('small talk changes nothing', T.empty(T.valid(person(), P('hello, how are you?'))));
+  check('a single muscle is a muscle to lean toward, not its whole group', P('Train my calves more').muscles.join() === 'calves' && !P('Train my calves more').focus.length);
+  check('"more legs and glutes": legs first, and glutes leaned toward', P('More legs and glutes').focus.join() === 'legs' && P('More legs and glutes').muscles.join() === 'glutes');
+  check('"upper back" and "rear delts" aren\'t the whole back or shoulders', P('more upper back and rear delts').muscles.sort().join() === 'rearDelts,upperBack' && !P('more upper back and rear delts').focus.length);
+  check('"my lower back hurts" is a joint, "strengthen my lower back" a muscle', !P('my lower back hurts').muscles.length && P('my lower back hurts').avoid_joints.join() === 'back' && P('strengthen my lower back').muscles.join() === 'lowerBack');
 }
 section('Tailor my plan: checking and applying');
 {
@@ -197,7 +265,7 @@ section('Tailor my plan: checking and applying');
   check('at most two goals come first (arms counts once for biceps and triceps)', v.focus.join() === 'chest,biceps,triceps', v.focus);
   check('minutes and days are held to what the plan allows', v.minutes === 60 && v.days === 6, v);
   check('unknown joints, moves and kit are dropped; a note is kept short', v.avoid_joints.join() === 'knee' && !v.avoid_moves.length && v.add_equipment.join() === 'band' && v.note.length === 200 && v.gentle == null);
-  check('muscle ids from the body map mean their group', T.valid(S, { focus: ['calves'] }).focus.join() === 'legs' && T.valid(S, { focus: ['upperBack'] }).focus.join() === 'back');
+  check('muscle ids from the body map are muscles to lean toward', T.valid(S, { focus: ['calves'] }).muscles.join() === 'calves' && T.valid(S, { muscles: ['upperBack'] }).muscles.join() === 'upperBack' && !T.valid(S, { focus: ['calves'] }).focus.length);
   check('what already is isn\'t a change', T.empty(T.valid(S, { minutes: S.profile.minutes, days: S.profile.days, focus: [] })));
   const t = T.valid(S, T.parse('More legs, my knees hurt, 30 minute workouts'));
   const { lines } = T.plan(S, t);
@@ -221,7 +289,81 @@ section('Tailor my plan: checking and applying');
   const cut = T.read('{"focus":["legs"],"goals":[],"minutes":20,"days":null,"avoid_joints":["knee"],"no_jumping":null,"gentle":null,"note":"More legs and easy on');
   check('an answer cut off in its note is still read', cut && cut.focus.join() === 'legs' && cut.minutes === 20 && /^More legs/.test(cut.note), cut);
   check('and nonsense isn\'t', T.read('hello') === null && T.read('') === null);
-  check('the on-device grammar only allows the fields and values the app reads', /focus/.test(T.GRAMMAR) && /shoulders/.test(T.GRAMMAR) && /avoid_joints/.test(T.GRAMMAR) && !/calves/.test(T.GRAMMAR));
+  // A single muscle: the plan leans toward it (profile.focus), and Undo takes it off again.
+  const S4 = person();
+  const calves = T.valid(S4, T.parse('Train my calves more'));
+  const said = T.plan(S4, calves).lines.map((l) => l.text);
+  check('"Train my calves more" says calves get more of the work', calves.muscles.join() === 'calves' && said.some((x) => /^Calves: more of the work/.test(x)), said);
+  const legsBefore = B.programFor(S4.profile).tiers.legs;
+  T.apply(S4, D0, calves);
+  check('applying makes calves a focus, and lifts legs a tier', (S4.profile.focus || []).join() === 'calves' && B.programFor(S4.profile).tiers.legs === Math.max(1, legsBefore - 1), [S4.profile.focus, legsBefore, B.programFor(S4.profile).tiers.legs]);
+  check('a model naming a muscle in focus counts it as a muscle', T.valid(person(), { focus: ['hamstrings', 'chest'] }).muscles.join() === 'hamstrings' && T.valid(person(), { focus: ['hamstrings', 'chest'] }).focus.join() === 'chest');
+  check('a muscle already a focus isn\'t asked again', T.empty(T.valid(S4, T.parse('more calves'))));
+  T.undo(S4, D0);
+  check('undo takes the focus off', !(S4.profile.focus || []).length);
+  const read = T.ground({ focus: ['quads'], goals: ['strength'], minutes: 20, days: 2, avoid_joints: ['knee', 'ankle'], no_jumping: true, gentle: true, add_equipment: ['band'] }, 'More legs please, my knees hurt, and I only have 20 minutes');
+  check('a model\'s reading keeps only what the request talks about', read.minutes === 20 && read.days === null && read.avoid_joints.join() === 'knee' && read.no_jumping === null && read.gentle === null && !read.goals.length && !read.add_equipment.length && read.focus.join() === 'quads', read);
+  check('and a joint it doesn\'t name when something still hurts', T.ground({ avoid_joints: ['knee'] }, 'my leg hurts when I squat').avoid_joints.join() === 'knee' && !T.ground({ avoid_joints: ['knee'] }, 'more arms please').avoid_joints.length);
+  check('the on-device grammar only allows the fields and values the app reads', /focus/.test(T.GRAMMAR) && /shoulders/.test(T.GRAMMAR) && /avoid_joints/.test(T.GRAMMAR) && /calves/.test(T.GRAMMAR) && !/obliques|rearDelts/.test(T.GRAMMAR));
+}
+
+section('The on-device coach keeps to the app\'s numbers');
+{
+  const DC = GH.deviceCoach;
+  const walker = person({ steps: 9000 }), sitter = person({ steps: 3000 });
+  check('a yes-or-no question the numbers settle gets the app\'s own yes or no', C.verdict(walker, D0, 'Am I doing enough steps?') === 'Yes' && C.verdict(sitter, D0, 'Am I walking enough?') === 'Not quite');
+  check('the chat\'s own "Am I moving enough?" counts as a steps question', C.topicOf('Am I moving enough?') === 'steps' && C.verdict(walker, D0, 'Am I moving enough?') === 'Yes');
+  check('the same for sleep', C.verdict(person({ sleep: 480 }), D0, 'Am I sleeping enough?') === 'Yes' && C.verdict(person({ sleep: 340 }), D0, 'Do I get enough sleep?') === 'Not quite');
+  const S = person();
+  const strong = C.verdict(S, D0, 'Am I getting stronger?');
+  check('"Am I getting stronger?" agrees with the app\'s answer', strong === (/^Yes/.test(C.ask(S, D0, 'Am I getting stronger?').text) ? 'Yes' : 'Not yet'), strong);
+  check('a question asked the other way round, or not yes-or-no, gets none', [
+    C.verdict(S, D0, 'Am I getting weaker?'), C.verdict(walker, D0, 'Am I walking too much?'), C.verdict(walker, D0, 'Why aren\'t I doing enough steps?'),
+    C.verdict(walker, D0, 'How are my steps?'), C.verdict(S, D0, 'Is my heart rate OK?'),
+  ].every((x) => x === null));
+  check('the answer starts from it', DC.lead(walker, D0, 'Am I doing enough steps?') === 'Yes,' && DC.lead(walker, D0, 'How are my steps?') === '');
+
+  const given = 'Steps: 7675 steps on average this week (usually 7020 steps); daily goal 8000. Weight: 68.4 kg. Sleep 6 h 59.';
+  const k = DC.keepToGiven('You walk 7,675 steps a day. That\'s 655 more than usual. Your goal is 8,000.', given);
+  check('a sentence with a number it wasn\'t given is left out', k.cut === 1 && k.text === 'You walk 7,675 steps a day. Your goal is 8,000.', k);
+  check('numbers it was given, rounded or with commas, stay', DC.keepToGiven('You weigh about 68 kg and slept 6 h 59, against a goal of 8,000.', given).cut === 0);
+  const pg = 'Your goal is 10% above your usual 7675, and a short night cut performance by about 7.6%. Level 5 of 8.';
+  check('a percentage it worked out itself goes, even when the number is elsewhere in the prompt', DC.keepToGiven('You walk 7,751 steps, which is 8% above your usual. Keep it up.', `${pg} 7751`).text === 'Keep it up.');
+  check('a percentage it was given stays', DC.keepToGiven('Your goal is 10% above your usual, and a short night costs about 7.6 percent.', pg).cut === 0);
+  check('an answer with nothing made up is kept exactly', DC.keepToGiven('Yes, you walk plenty.\nKeep it up.', given).text === 'Yes, you walk plenty.\nKeep it up.');
+  const q = 'Am I doing enough steps?';
+  const cut = DC.finish(walker, D0, q, 'Yes, you walk 7675 steps a day, which is great for your health. That puts you in the top 12% of people.', given, 'Yes,');
+  check('a made-up line goes and a note says so', cut.cut === 1 && !/12%/.test(cut.text) && /7675/.test(cut.text) && /Left out a line/.test(cut.note), cut);
+  const bad = DC.finish(walker, D0, q, 'Yes, 12,000 steps.', given, 'Yes,');
+  check('if too little is left, the app\'s own answer stands in', bad.replaced && bad.text === C.ask(walker, D0, q).text && /didn't match your numbers/.test(bad.note), bad);
+  const none = DC.finish(walker, D0, q, 'Yes,', given, 'Yes,');
+  check('and when all it wrote was the yes or no', none.replaced && /didn't answer/.test(none.note), none);
+  const fine = DC.finish(walker, D0, q, 'Yes, you walk 7675 steps a day, above what most studies link to better health.', given, 'Yes,');
+  check('a good answer goes through untouched, with no note', !fine.replaced && !fine.note && fine.text.startsWith('Yes, you walk 7675'), fine);
+
+  // A question built on something that isn't so starts from the app's correction.
+  const full = person(), tired = person({ sleep: 270 });
+  const fullDay = B.todayPlan(full, D0).type === 'workout' && !B.readiness(full, D0).reasons.length;
+  check('"Why is today lighter?" on a full day starts from "Today isn\'t lighter:"', !fullDay || (C.correction(full, D0, 'Why is today lighter?') === 'Today isn\'t lighter:' && DC.lead(full, D0, 'Why is today lighter?') === 'Today isn\'t lighter:'), { fullDay });
+  check('but not when today really is lighter, or for other questions', C.correction(tired, D0, 'Why is today lighter?') === null && C.correction(full, D0, 'How is my sleep?') === null);
+  const corrected = DC.finish(full, D0, 'Why is today lighter?', 'Today isn\'t lighter:', 'Today isn\'t lighter:', 'Today isn\'t lighter:');
+  check('a correction with nothing after it counts as no answer', corrected.replaced && /didn't answer/.test(corrected.note), corrected);
+
+  // ask() end to end, with a stand-in for the model.
+  let sent = null;
+  const reply = (text) => ({
+    MODELS: [], available: () => ({ ok: true }), installed: async () => [{ id: 'q35-08' }], loaded: () => ({ id: 'q35-08' }), load: async () => {},
+    stats: { id: 'q35-08', tokens: 20, tokensPerSec: 12 },
+    chat: async (msgs, o) => { sent = { msgs, o }; const t = (o.lead || '') + text; if (o.onToken) o.onToken(t, t); return t; },
+  });
+  const S2 = person({ steps: 9000 });
+  S2.ai = S2.ai || {};
+  GH.lazy = async () => reply(' you walk 1,234,567 steps a day.');
+  const res = await DC.ask(S2, D0, 'Am I doing enough steps?');
+  check('ask() sends the app\'s yes or no as the lead, at a low temperature', sent.o.lead === 'Yes,' && sent.o.temperature <= 0.3);
+  check('a made-up number never reaches the chat: the app\'s own answer does, with the note', res.replaced && res.text === C.ask(S2, D0, 'Am I doing enough steps?').text && res.raw.startsWith('Yes, you walk 1,234,567'));
+  const last = S2.ai.deviceChat[S2.ai.deviceChat.length - 1];
+  check('the chat keeps the checked answer and its note', last.text === res.text && /didn't match/.test(last.note) && last.facts && last.facts.length > 0);
 }
 
 done();

@@ -181,7 +181,8 @@
       ${a ? `<div class="pw-prog">${U.progress(a.done / Math.max(1, a.total), 'Workout progress')}<span class="t-footnote rf-muted rf-num">${a.done} of ${a.total} sets</span></div>` : ''}
       ${moved}
       ${e.preview ? '<p class="t-footnote rf-muted pw-note">A preview. Sets and exercises adjust to how this week goes.</p>' : actions(w, e) + movePanel(e, day)}
-      ${s ? sessionList(S, s) : ''}`;
+      ${s ? sessionList(S, s) : ''}
+      ${s && s.custom && U.customSwapNote ? U.customSwapNote(s) : ''}`;
   }
   function doneBody(e, day) {
     const l = e.log;
@@ -262,22 +263,24 @@
     return `<p class="lt-sub t-callout rf-muted pw-sub">${bits.map(keep).join(' · ')}${done}<button type="button" class="pw-info" data-act="planPhase" aria-label="What ${U.esc(PHASE[w.phase.key].toLowerCase())} means, and how to read the week">${U.icon('info')}</button></p>`;
   }
   function muscles(w) {
-    const rows = w.muscles;
+    // A week run by your own plan has its sets, not the coach's weekly targets.
+    const own = !!GH.customPlan && w.days.some((e) => GH.customPlan.owns(e.tpl));
+    const rows = own ? w.muscles.map((r) => Object.assign({}, r, { target: Math.max(r.planned, r.done) })).filter((r) => r.target > 0) : w.muscles;
     if (!rows.length) return '';
-    const short = rows.filter((r) => r.planned < r.target).map((r) => r.name.toLowerCase());
+    const short = own ? [] : rows.filter((r) => r.planned < r.target).map((r) => r.name.toLowerCase());
     const li = rows.map((r) => {
       const max = Math.max(r.target, r.planned, r.done, 1);
       const pct = (v) => `${(Math.min(v, max) / max * 100).toFixed(1)}%`;
       return `<li class="pw-mu" data-key="mu-${r.group}" style="--c:${hue(r.group)}">
         <span class="pw-mu-name t-subhead">${U.esc(r.name)}</span>
-        <span class="pw-bar" role="img" aria-label="${U.esc(`${r.name}: ${r.done} of ${r.target} sets done, ${r.planned} in this week's plan`)}"><span class="pw-bar-plan" style="width:${pct(r.planned)}"></span><span class="pw-bar-done" style="width:${pct(r.done)}"></span><span class="pw-bar-target" style="left:${pct(r.target)}"></span></span>
+        <span class="pw-bar" role="img" aria-label="${U.esc(own ? `${r.name}: ${r.done} of ${r.planned} sets done` : `${r.name}: ${r.done} of ${r.target} sets done, ${r.planned} in this week's plan`)}"><span class="pw-bar-plan" style="width:${pct(r.planned)}"></span><span class="pw-bar-done" style="width:${pct(r.done)}"></span>${own ? '' : `<span class="pw-bar-target" style="left:${pct(r.target)}"></span>`}</span>
         <span class="pw-mu-n t-footnote rf-num"><b>${U.roll(r.done)}</b> of ${r.target}</span>
       </li>`;
     }).join('');
     return `<h2 class="sec-title t-title-3">This week by muscle</h2>
       <div class="section"><div class="card pw-mus-card" data-key="mus">
         <ul class="pw-mus">${li}</ul>
-        <p class="pw-legend t-caption rf-muted" aria-hidden="true"><span><i class="pw-sw is-done"></i>Sets done</span><span><i class="pw-sw is-plan"></i>In the plan</span><span><i class="pw-sw is-target"></i>Weekly target</span></p>
+        <p class="pw-legend t-caption rf-muted" aria-hidden="true"><span><i class="pw-sw is-done"></i>Sets done</span><span><i class="pw-sw is-plan"></i>In the plan</span>${own ? '' : '<span><i class="pw-sw is-target"></i>Weekly target</span>'}</p>
         ${short.length ? `<p class="t-footnote rf-muted">${short.length > 3 ? 'Your time per workout fits fewer sets than your weekly targets.' : `Your time per workout fits fewer sets than the target for ${U.esc(listWords(short))}.`} A few more minutes a workout closes the gap.</p>` : ''}
       </div></div>`;
   }
@@ -300,8 +303,14 @@
   function makeItYours(S) {
     const p = S.profile;
     const rows = [];
+    const cp = GH.customPlan;
+    if (cp && U.act.openPlans) {
+      const mine = cp.activeId(S) ? cp.get(S, cp.activeId(S)) : null;
+      rows.push(U.row({ icon: 'list', tone: 'violet', title: 'Your plans', sub: U.esc(mine ? `Using ${mine.name}` : 'Build your own, ask the coach, or add a shared one'), act: 'openPlans', chevron: true }));
+    }
     if (U.act.tailorPlan) rows.push(U.row({ icon: 'sparkle', tone: 'violet', title: 'Tailor my plan', sub: 'Tell the coach what you want more or less of', act: 'tailorPlan', chevron: true }));
     rows.push(U.row({ icon: 'calendar', tone: 'sky', title: 'Days and time', sub: U.esc(`${U.plural(p.days, 'workout')} a week · ${p.minutes} min each`), act: 'daysSheet', chevron: true }));
+    if (U.act.planAround) rows.push(U.row({ icon: 'heart', tone: 'rose', title: 'Built around you', sub: U.esc((GH.access && GH.access.plannedAround(p)) || 'Age, joints and health'), act: 'planAround', chevron: true }));
     if (U.editAnswers) rows.push(U.row({ icon: 'bag', tone: 'amber', title: 'Equipment', sub: U.equipSummary ? U.esc(U.equipSummary(p)) : '', act: 'planEquipment', chevron: true }));
     if (U.hasTab && !U.hasTab('moves')) rows.push(U.row({ icon: 'library', tone: 'indigo', title: 'All moves', sub: 'Every exercise, your level in each and how to do it', act: 'openMoves', chevron: true }));
     return `<h2 class="sec-title t-title-3">Make it yours</h2>
@@ -319,6 +328,7 @@
         ${summary(w)}
         <div class="section pw-main">
           ${U.tip ? U.tip('plan') : ''}
+          ${U.customPlanBanner ? U.customPlanBanner(S, day) : ''}
           ${strip(w, day, page)}
           ${dayCard(S, w, findDay(w, view.day), day)}
         </div>
@@ -331,6 +341,7 @@
       if (st) wireStrip(st);
       travel(screen);
       drawThumbs(screen, S, day);
+      if (U.drawPlanThumbs) U.drawPlanThumbs(screen);
     },
   };
 
@@ -367,32 +378,89 @@
   }
 
   /* ---------------------------------------------------------------- still figures */
-  // Each move's key pose, drawn once and cloned into every tile that shows it. A figure is slow to
-  // draw the first time, so new ones are drawn while the phone is idle and fade into their tiles:
-  // the screen never waits for them.
+  // Each move's key pose, drawn once and put in every tile that shows it: the 3D figure in the
+  // person's look when the phone draws it (Settings, Exercise figure), else the flat one. A figure is
+  // slow to draw the first time, so new ones are drawn while the phone is idle and fade into their
+  // tiles: the screen never waits for them. The flat one stands in until a 3D one is ready, and a 3D
+  // one is only drawn when the phone has nothing else to do, so it can't stutter a swipe or a sheet.
   const stills = new Map(); // `${moveId}|${place}` → svg, cropped to the figure
-  const queue = new Set(); // keys still to draw
+  const queue = new Set(); // flat stills still to draw
+  const queue3d = new Set(); // 3D stills still to draw
   let pending = 0;
   let drawFor = null; // { S, day } the queued stills are for
+  let loading3d = false;
+  const THUMB = 52; // the tile's size in CSS px
+  const f3d = () => (U.figure3dOk && U.figure3dOk() && GH.figure3d && GH.figure3d.supported() ? GH.figure3d : null);
+  function look3d() {
+    const pr = (U.S && U.S.profile.prefs) || {};
+    return { crop: Math.round(THUMB * Math.min(2, G.devicePixelRatio || 1)), dark: String(GH.platform.currentTheme()).startsWith('dark'), skin: pr.figSkin || 'sand', shirt: pr.figShirt || undefined };
+  }
+  const lookKey = (l) => `${l.dark ? 'd' : 'l'}|${l.skin}|${l.shirt || ''}|${l.crop}`;
+  // The move as this person does it (their equipment), as the workout shows it.
+  function personMove(key, S, day) {
+    const m0 = M().MOVES[key.split('|')[0]];
+    if (!m0) return null;
+    return M().forPerson ? M().forPerson(m0, B().eqFor ? B().eqFor(S, day) : S.profile.equipment) : m0;
+  }
   function fill(host, svg) {
     host.textContent = '';
     host.appendChild(svg.cloneNode(true));
     host.setAttribute('data-drawn', host.getAttribute('data-move'));
   }
+  function fill3d(host, url, lk) {
+    const img = doc.createElement('img');
+    img.alt = '';
+    img.decoding = 'async';
+    img.src = url;
+    host.textContent = '';
+    host.appendChild(img);
+    host.setAttribute('data-drawn', `3d:${host.getAttribute('data-move')}|${lk}`);
+  }
   function drawThumbs(root, S, day) {
     if (!GH.pose || !M()) return;
     const place = B().placeOf ? B().placeOf(S, day) : 'home';
+    drawFor = { S, day };
+    // The 3D chunk loads (and warms up) once, then the tiles on screen get their 3D stills.
+    if (U.figure3dOk && U.figure3dOk() && !GH.figure3d && !loading3d && U.preloadFigure) {
+      loading3d = true;
+      U.preloadFigure().then(() => {
+        loading3d = false;
+        const scr = doc.querySelector('#screen[data-view="plan"]');
+        if (scr && drawFor && f3d()) drawThumbs(scr, drawFor.S, drawFor.day);
+      }, () => { loading3d = false; });
+    }
+    const f3 = f3d();
+    const look = f3 ? look3d() : null;
+    const lk = look ? lookKey(look) : '';
     for (const host of root.querySelectorAll('.pw-thumb[data-move]')) {
       const id = host.getAttribute('data-move');
+      const key = `${id}|${place}`;
+      if (f3) {
+        if (host.getAttribute('data-drawn') === `3d:${id}|${lk}` && host.firstElementChild) continue;
+        const m = personMove(key, S, day);
+        const url = m && f3.cachedStill(m, look);
+        if (url) { fill3d(host, url, lk); continue; }
+        if (m) queue3d.add(key);
+        // Meanwhile the 3D still of another look, or else the flat one.
+        if (/^3d:/.test(host.getAttribute('data-drawn') || '') && host.firstElementChild) continue;
+      }
       if (host.getAttribute('data-drawn') === id && host.firstElementChild) continue;
-      const svg = stills.get(`${id}|${place}`);
+      const svg = stills.get(key);
       if (svg) fill(host, svg);
-      else { if (host.firstElementChild) host.textContent = ''; queue.add(`${id}|${place}`); }
+      else { if (host.firstElementChild) host.textContent = ''; queue.add(key); }
     }
-    drawFor = { S, day };
-    if (queue.size && !pending) pending = idle(drawSome);
+    schedule();
   }
-  const idle = (fn) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: 150 }) : setTimeout(() => fn(null), 16));
+  // When the person last touched or scrolled: a 3D still waits until they've stopped for a moment
+  // (and for a sheet to stop moving), since drawing one takes a few frames' worth of work.
+  let lastInput = 0;
+  if (doc) for (const ev of ['touchstart', 'touchmove', 'pointerdown', 'wheel', 'scroll']) doc.addEventListener(ev, () => { lastInput = Date.now(); }, { passive: true, capture: true });
+  const calm = () => Date.now() - lastInput > 400 && !doc.documentElement.hasAttribute('data-sheet-moving');
+  function schedule() {
+    if (pending || !(queue.size || queue3d.size)) return;
+    const soon = queue.size > 0;
+    pending = G.requestIdleCallback ? G.requestIdleCallback(drawSome, { timeout: soon ? 150 : 600 }) : setTimeout(() => drawSome(null), soon ? 16 : 250);
+  }
   function drawSome(deadline) {
     pending = 0;
     const t0 = Date.now();
@@ -403,14 +471,26 @@
       if (svg) for (const host of doc.querySelectorAll('.pw-thumb[data-move]')) if (host.getAttribute('data-move') === id && !host.firstElementChild) fill(host, svg);
       if (deadline ? deadline.timeRemaining() < 10 : Date.now() - t0 > 12) break;
     }
-    if (queue.size) pending = idle(drawSome);
+    const f3 = f3d();
+    if (!f3) queue3d.clear();
+    // Then one 3D still per idle moment, once the flat ones are in and nobody's touching the screen.
+    else if (!queue.size && drawFor && calm()) {
+      const look = look3d(), lk = lookKey(look);
+      for (const key of queue3d) {
+        queue3d.delete(key);
+        const m = personMove(key, drawFor.S, drawFor.day);
+        const url = m && (f3.cachedStill(m, look) || f3.still(m, look));
+        const id = key.split('|')[0];
+        if (url) for (const host of doc.querySelectorAll('.pw-thumb[data-move]')) if (host.getAttribute('data-move') === id && host.getAttribute('data-drawn') !== `3d:${id}|${lk}`) fill3d(host, url, lk);
+        break;
+      }
+    }
+    schedule();
   }
   function drawStill(key) {
-    const id = key.split('|')[0];
-    const m0 = M().MOVES[id];
-    if (!m0 || !drawFor) return null;
-    const { S, day } = drawFor;
-    const m = M().forPerson ? M().forPerson(m0, B().eqFor ? B().eqFor(S, day) : S.profile.equipment) : m0;
+    if (!drawFor) return null;
+    const m = personMove(key, drawFor.S, drawFor.day);
+    if (!m) return null;
     // Drawn in a hidden box on the page, so the figure's size can be measured for the crop.
     const box = doc.createElement('div');
     box.className = 'pw-measure';
