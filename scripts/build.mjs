@@ -4,14 +4,43 @@
 //   tokens as JSON only), with its fonts inlined as data URIs so the APK works offline.
 // - Bundles src/ai.js (Claude coach, uses @anthropic-ai/sdk) into an IIFE with esbuild.
 // - Inlines Refract's bundle.css/bundle.js and the app's own CSS/JS into src/shell.html.
+// - Minifies every inline script and style sheet on the way (MINIFY=0 turns that off, to debug
+//   with readable code). Names are kept (keepNames), so a function's .name is what the source says.
 import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync, statSync, existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { build } from 'esbuild';
+import { build, transform } from 'esbuild';
 import { createHash } from 'node:crypto';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(root, p), 'utf8');
+export const MINIFY = process.env.MINIFY !== '0';
+
+// One file at a time, so the page keeps one <script> per source file (an error names its file).
+// The target is the lazy chunks' (Chrome 100): esbuild only rewrites syntax newer than that.
+// Each script is wrapped in an IIFE of its own (format), because keepNames adds two helpers at the
+// top: unwrapped, they'd be globals with minified names, and every script would overwrite the last
+// one's. (Every app script is an IIFE already and declares no globals of its own.)
+const MIN_JS = { loader: 'js', format: 'iife', minify: true, keepNames: true, target: 'chrome100', legalComments: 'none', charset: 'utf8', logLevel: 'silent' };
+// Style sheets lose only whitespace and comments. Full minifying also rewrites values (160ms to
+// .16s, 0.5 to .5), custom properties included, and scripts read those (Refract's durations and
+// easings, the lens sizes): this way they read exactly what's written, for about 1 KB more.
+const MIN_CSS = { loader: 'css', minifyWhitespace: true, target: 'chrome100', legalComments: 'none', charset: 'utf8', logLevel: 'silent' };
+export async function minJs(code, file) {
+  if (!MINIFY) return code;
+  return (await transform(code, Object.assign({ sourcefile: file }, MIN_JS))).code.trim();
+}
+export async function minCss(code, file) {
+  if (!MINIFY) return code;
+  return (await transform(code, Object.assign({ sourcefile: file }, MIN_CSS))).code.trim();
+}
+// Refract's bundle starts with its manifest comment (@ds-bundle: the components it has), kept as is.
+async function refractJs() {
+  const src = read('vendor/refract/bundle.js');
+  const head = /^\/\* @ds-bundle:[^\n]*?\*\//.exec(src);
+  const code = await minJs(src, 'vendor/refract/bundle.js');
+  return MINIFY && head ? `${head[0]}\n${code}` : code;
+}
 // The app's styles: src/styles.css, then each file in src/styles/ in name order (one per area).
 const appCss = () => [read('src/styles.css')].concat(existsSync(join(root, 'src/styles'))
   ? readdirSync(join(root, 'src/styles')).filter((f) => f.endsWith('.css')).sort().map((f) => `/* src/styles/${f} */\n${read(`src/styles/${f}`)}`)
@@ -150,7 +179,7 @@ async function buildLazy() {
     if (c.entry) {
       const result = await build({
         entryPoints: [join(root, c.entry)], bundle: true, write: false, format: 'iife', platform: 'browser',
-        target: ['chrome100'], minify: true, legalComments: 'eof', logLevel: 'silent',
+        target: ['chrome100'], minify: MINIFY, legalComments: 'eof', logLevel: 'silent',
       });
       writeFileSync(join(dir, `${c.name}.js`), result.outputFiles[0].text);
       sizes.push(`${c.name}.js ${(result.outputFiles[0].text.length / 1024).toFixed(0)} KB`);
@@ -216,23 +245,29 @@ async function main() {
   const version = JSON.parse(read('package.json')).version || '0.0.0';
   // The app's version, for Profile, What's new and the web build (the APK also reports its own).
   const scripts = [`<script>(window.GH = window.GH || {}).VERSION = ${JSON.stringify(version)};</script>`];
-  for (const p of APP_SCRIPTS) {
+  const appJs = await Promise.all(APP_SCRIPTS.map((p) => minJs(read(p), p)));
+  APP_SCRIPTS.forEach((p, i) => {
     if (p === 'src/ui/core.js') scripts.push(`<script>/* ai (bundled) */\n${safeJs(aiJs)}</script>`);
-    scripts.push(`<script>/* ${p} */\n${safeJs(read(p))}</script>`);
-  }
+    scripts.push(`<script>/* ${p} */\n${safeJs(appJs[i])}</script>`);
+  });
+  const [tokensMin, refractCss, appCssMin, refractMin] = await Promise.all([
+    minCss(tokensCss(tokens), 'tokens.css'), minCss(read('vendor/refract/bundle.css'), 'vendor/refract/bundle.css'), minCss(appCss(), 'src/styles.css'), refractJs(),
+  ]);
   let html = shell
-    .replace('<!--@TOKENS-->', () => `<style>${safeCss(tokensCss(tokens))}</style>`)
-    .replace('<!--@REFRACT_CSS-->', () => `<style>${safeCss(read('vendor/refract/bundle.css'))}</style>`)
-    .replace('<!--@APP_CSS-->', () => `<style>${safeCss(appCss())}</style>`)
-    .replace('<!--@REFRACT_JS-->', () => `<script>${safeJs(read('vendor/refract/bundle.js'))}</script>`)
+    .replace('<!--@TOKENS-->', () => `<style>${safeCss(tokensMin)}</style>`)
+    .replace('<!--@REFRACT_CSS-->', () => `<style>${safeCss(refractCss)}</style>`)
+    .replace('<!--@APP_CSS-->', () => `<style>${safeCss(appCssMin)}</style>`)
+    .replace('<!--@REFRACT_JS-->', () => `<script>${safeJs(refractMin)}</script>`)
     .replace('<!--@APP_JS-->', () => scripts.join('\n'));
   for (const marker of ['<!--@TOKENS-->', '<!--@REFRACT_CSS-->', '<!--@APP_CSS-->', '<!--@REFRACT_JS-->', '<!--@APP_JS-->']) {
     if (html.includes(marker)) throw new Error(`build: marker ${marker} was not replaced`);
   }
+  // The scripts' hashes go into the CSP here, after minifying: they're of the exact text shipped.
   html = allowOnlyOurScripts(html);
   mkdirSync(join(root, 'dist'), { recursive: true });
   writeFileSync(join(root, 'dist/gradient-health.html'), html);
-  console.log(`dist/gradient-health.html  ${(html.length / 1024).toFixed(0)} KB  (ai bundle ${(aiJs.length / 1024).toFixed(0)} KB)`);
+  const bytes = Buffer.byteLength(html, 'utf8');
+  console.log(`dist/gradient-health.html  ${(bytes / 1024).toFixed(0)} KB${MINIFY ? '' : ' (not minified: MINIFY=0)'}  (ai bundle ${(aiJs.length / 1024).toFixed(0)} KB)`);
   // The public privacy policy is generated from the same text the app shows.
   globalThis.GH = globalThis.GH || {};
   new Function(read('src/data/privacy.js'))();
