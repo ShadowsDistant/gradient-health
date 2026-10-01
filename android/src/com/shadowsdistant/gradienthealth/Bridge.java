@@ -34,7 +34,7 @@ import java.nio.charset.StandardCharsets;
  * The WebView calls these methods on its own background thread ("JavaBridge"), so anything that
  * touches the window or starts activities hops to the UI thread. Every method is defensive: it
  * never throws into the page. Nothing here logs its arguments (saveSecret carries the user's
- * Anthropic API key).
+ * Anthropic API key). Methods with side effects answer only the app's own page ({@link #trusted}).
  *
  * Health Connect needs Android 14 (API 34). The hc* methods check the SDK level before touching
  * {@link HealthBridge}, which is the only class that references android.health.connect types.
@@ -52,6 +52,15 @@ public final class Bridge {
 
     Bridge(MainActivity activity) {
         this.activity = activity;
+    }
+
+    /**
+     * Whether the page calling in is the app's own (MainActivity.pageTrusted). Every method here that
+     * reads or changes the person's data, reaches the network or another app, or runs a model checks
+     * it first: a page that isn't the app's gets nothing from it.
+     */
+    private boolean trusted() {
+        return activity.pageTrusted();
     }
 
     // ---------------------------------------------------------------- device
@@ -139,6 +148,9 @@ public final class Bridge {
     /** Copies plain text to the clipboard. Very large texts (~1 MB) can fail: returns false. */
     @JavascriptInterface
     public boolean copy(String text) {
+        if (!trusted()) {
+            return false;
+        }
         try {
             Object service = activity.getSystemService(Context.CLIPBOARD_SERVICE);
             if (!(service instanceof ClipboardManager)) {
@@ -214,6 +226,9 @@ public final class Bridge {
      */
     @JavascriptInterface
     public void shareText(final String text, final String target) {
+        if (!trusted()) {
+            return;
+        }
         final String pkg = "claude".equals(target) ? MainActivity.CLAUDE_PACKAGE : null;
         activity.runOnUiThread(new Runnable() {
             @Override
@@ -244,6 +259,9 @@ public final class Bridge {
     /** Opens an http(s) URL outside the app; anything else is ignored. */
     @JavascriptInterface
     public void openUrl(String url) {
+        if (!trusted()) {
+            return;
+        }
         final Uri uri = MainActivity.httpUri(url);
         if (uri == null) {
             return;
@@ -264,6 +282,9 @@ public final class Bridge {
      */
     @JavascriptInterface
     public boolean save(String json) {
+        if (!trusted()) {
+            return false;
+        }
         if (json == null) {
             return false;
         }
@@ -308,6 +329,9 @@ public final class Bridge {
     /** The last saved state, or "" if there is none (or it can't be read). */
     @JavascriptInterface
     public String load() {
+        if (!trusted()) {
+            return "";
+        }
         synchronized (stateLock) {
             File file = new File(activity.getFilesDir(), STATE_FILE);
             if (!file.isFile()) {
@@ -344,6 +368,9 @@ public final class Bridge {
 
     @JavascriptInterface
     public boolean saveSecret(String name, String value) {
+        if (!trusted()) {
+            return false;
+        }
         if (name == null || name.isEmpty()) {
             return false;
         }
@@ -357,6 +384,9 @@ public final class Bridge {
     /** The stored value, or "" if none. */
     @JavascriptInterface
     public String loadSecret(String name) {
+        if (!trusted()) {
+            return "";
+        }
         if (name == null || name.isEmpty()) {
             return "";
         }
@@ -370,6 +400,9 @@ public final class Bridge {
 
     @JavascriptInterface
     public boolean deleteSecret(String name) {
+        if (!trusted()) {
+            return false;
+        }
         if (name == null || name.isEmpty()) {
             return false;
         }
@@ -385,6 +418,9 @@ public final class Bridge {
     /** "unsupported" (below Android 14) | "unavailable" | "denied" | "partial" | "granted". */
     @JavascriptInterface
     public String hcStatus() {
+        if (!trusted()) {
+            return "unavailable";
+        }
         if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
             return "unsupported";
         }
@@ -398,12 +434,18 @@ public final class Bridge {
     /** Asks for the health permissions; answers with window.__gh.onHealthPerms(status). */
     @JavascriptInterface
     public void hcRequest() {
+        if (!trusted()) {
+            return;
+        }
         requestHealth(false);
     }
 
     /** The same, plus reading and writing nutrition (when food tracking is on). */
     @JavascriptInterface
     public void hcRequestFood() {
+        if (!trusted()) {
+            return;
+        }
         requestHealth(true);
     }
 
@@ -419,6 +461,9 @@ public final class Bridge {
     /** Opens Health Connect's permission screen for this app (to re-grant after denials). */
     @JavascriptInterface
     public void hcOpenSettings() {
+        if (!trusted()) {
+            return;
+        }
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -433,6 +478,9 @@ public final class Bridge {
      */
     @JavascriptInterface
     public void hcRead(int days) {
+        if (!trusted()) {
+            return;
+        }
         if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
             deliverHealthFailure("unsupported");
             return;
@@ -447,6 +495,9 @@ public final class Bridge {
     /** The Health Connect data types this app may read or write now (a JSON list of names). */
     @JavascriptInterface
     public String hcGranted() {
+        if (!trusted()) {
+            return "[]";
+        }
         if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
             return "[]";
         }
@@ -460,6 +511,9 @@ public final class Bridge {
     /** True when the app may save logged meals to Health Connect. */
     @JavascriptInterface
     public boolean hcCanWriteFood() {
+        if (!trusted()) {
+            return false;
+        }
         if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
             return false;
         }
@@ -473,6 +527,9 @@ public final class Bridge {
     /** Saves meals as nutrition records; answers with window.__gh.onFoodWrite. */
     @JavascriptInterface
     public void hcWriteFood(String json) {
+        if (!trusted()) {
+            return;
+        }
         if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
             return;
         }
@@ -485,6 +542,9 @@ public final class Bridge {
     /** Deletes meals this app saved (by client id); answers with window.__gh.onFoodDelete. */
     @JavascriptInterface
     public void hcDeleteFood(String json) {
+        if (!trusted()) {
+            return;
+        }
         if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
             return;
         }
@@ -500,12 +560,18 @@ public final class Bridge {
      */
     @JavascriptInterface
     public void foodLookup(String kind, String query, String id) {
+        if (!trusted()) {
+            return;
+        }
         FoodLookup.lookup(activity, kind, query, id);
     }
 
     /** True when the app may save its workouts to Health Connect. */
     @JavascriptInterface
     public boolean hcCanWrite() {
+        if (!trusted()) {
+            return false;
+        }
         if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
             return false;
         }
@@ -522,6 +588,9 @@ public final class Bridge {
      */
     @JavascriptInterface
     public void hcWriteWorkout(String json) {
+        if (!trusted()) {
+            return;
+        }
         if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
             return;
         }
@@ -541,6 +610,9 @@ public final class Bridge {
      */
     @JavascriptInterface
     public String hcBackground() {
+        if (!trusted()) {
+            return "{}";
+        }
         try {
             return HealthSync.stateJson(activity);
         } catch (Throwable t) {
@@ -555,6 +627,9 @@ public final class Bridge {
      */
     @JavascriptInterface
     public void hcBackgroundRequest() {
+        if (!trusted()) {
+            return;
+        }
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -566,6 +641,9 @@ public final class Bridge {
     /** The Settings switch: schedules or cancels the background sync; onHealthBackground follows. */
     @JavascriptInterface
     public void hcBackgroundSet(boolean on) {
+        if (!trusted()) {
+            return;
+        }
         try {
             HealthSync.setOn(activity, on);
         } catch (Throwable ignored) {
@@ -579,6 +657,9 @@ public final class Bridge {
      */
     @JavascriptInterface
     public String hcPending() {
+        if (!trusted()) {
+            return "[]";
+        }
         try {
             return HealthSync.pendingJson(activity);
         } catch (Throwable t) {
@@ -589,6 +670,9 @@ public final class Bridge {
     /** Deletes the background reads the page has folded in (a JSON list of their ids). */
     @JavascriptInterface
     public void hcPendingDone(String jsonArrayOfIds) {
+        if (!trusted()) {
+            return;
+        }
         try {
             HealthSync.done(activity, jsonArrayOfIds);
         } catch (Throwable ignored) {
@@ -600,6 +684,9 @@ public final class Bridge {
     /** {"gps", "steps", "hc", "locationOn"}: what this phone can record with. */
     @JavascriptInterface
     public String actSupport() {
+        if (!trusted()) {
+            return "{}";
+        }
         try {
             return ActivityService.support(activity);
         } catch (Throwable t) {
@@ -610,6 +697,9 @@ public final class Bridge {
     /** {"location", "activity", "notifications": "granted"|"denied"|"ask", "approximate"}. */
     @JavascriptInterface
     public String actPermissions() {
+        if (!trusted()) {
+            return "{}";
+        }
         try {
             return ActivityPermissions.json(activity);
         } catch (Throwable t) {
@@ -620,6 +710,9 @@ public final class Bridge {
     /** Asks for location, physical activity and notifications; answers with window.__gh.onActPermissions. */
     @JavascriptInterface
     public void actRequestPermissions() {
+        if (!trusted()) {
+            return;
+        }
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -631,6 +724,9 @@ public final class Bridge {
     /** Opens the app's page in the phone's settings (for a permission Android won't ask for again). */
     @JavascriptInterface
     public void actOpenSettings() {
+        if (!trusted()) {
+            return;
+        }
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -645,6 +741,9 @@ public final class Bridge {
      */
     @JavascriptInterface
     public boolean actStart(String json) {
+        if (!trusted()) {
+            return false;
+        }
         try {
             return ActivityService.start(activity, json);
         } catch (Throwable t) {
@@ -654,6 +753,9 @@ public final class Bridge {
 
     @JavascriptInterface
     public void actPause() {
+        if (!trusted()) {
+            return;
+        }
         try {
             ActivityService.pause(activity);
         } catch (Throwable ignored) {
@@ -662,6 +764,9 @@ public final class Bridge {
 
     @JavascriptInterface
     public void actResume() {
+        if (!trusted()) {
+            return;
+        }
         try {
             ActivityService.resume(activity);
         } catch (Throwable ignored) {
@@ -671,6 +776,9 @@ public final class Bridge {
     /** Finishes the recording; window.__gh.onActivity gets its final state (active false). */
     @JavascriptInterface
     public void actStop() {
+        if (!trusted()) {
+            return;
+        }
         try {
             ActivityService.stop(activity);
         } catch (Throwable ignored) {
@@ -680,6 +788,9 @@ public final class Bridge {
     /** The recording in progress, else the newest finished one not cleared yet (see ActivityTrack.stateJson). */
     @JavascriptInterface
     public String actState() {
+        if (!trusted()) {
+            return "{\"active\":false}";
+        }
         try {
             return ActivityService.state(activity);
         } catch (Throwable t) {
@@ -690,6 +801,9 @@ public final class Bridge {
     /** The recording's points from index {@code from}: [[t, lat, lon, alt|null, acc, speed|null, paused], ...]. */
     @JavascriptInterface
     public String actPoints(int from) {
+        if (!trusted()) {
+            return "[]";
+        }
         try {
             return ActivityService.points(activity, from);
         } catch (Throwable t) {
@@ -700,6 +814,9 @@ public final class Bridge {
     /** Deletes a finished recording's files once the page has saved it. */
     @JavascriptInterface
     public void actClear(String id) {
+        if (!trusted()) {
+            return;
+        }
         try {
             ActivityService.clear(activity, id);
         } catch (Throwable ignored) {
@@ -712,6 +829,9 @@ public final class Bridge {
      */
     @JavascriptInterface
     public void hcSession(String json) {
+        if (!trusted()) {
+            return;
+        }
         if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
             answer("onHcSession", json, "{\"steps\":null,\"distanceM\":null,\"activeKcal\":null,"
                     + "\"totalKcal\":null,\"hr\":[],\"sources\":[]}");
@@ -731,6 +851,9 @@ public final class Bridge {
      */
     @JavascriptInterface
     public void hcWriteActivity(String json) {
+        if (!trusted()) {
+            return;
+        }
         if (Build.VERSION.SDK_INT < HEALTH_CONNECT_MIN_SDK) {
             answer("onHcActivityWrite", json, "{\"route\":false}");
             return;
@@ -764,6 +887,9 @@ public final class Bridge {
     /** The plan link the app was opened with (gradienthealth://plan?d=… or a /gradient-health/p/ URL), once; else "". */
     @JavascriptInterface
     public String pendingLink() {
+        if (!trusted()) {
+            return "";
+        }
         String link = activity.takePendingLink();
         return link == null ? "" : link;
     }
@@ -773,6 +899,9 @@ public final class Bridge {
     /** Installed models: [{"id","file","bytes"}]. */
     @JavascriptInterface
     public String modelList() {
+        if (!trusted()) {
+            return "[]";
+        }
         try {
             return models().listJson();
         } catch (Throwable t) {
@@ -783,6 +912,9 @@ public final class Bridge {
     /** Downloads running, waiting, finished or failed this run, and paused ones from before. */
     @JavascriptInterface
     public String modelStatus() {
+        if (!trusted()) {
+            return "[]";
+        }
         try {
             return models().statusJson();
         } catch (Throwable t) {
@@ -796,6 +928,9 @@ public final class Bridge {
      */
     @JavascriptInterface
     public boolean modelDownload(String json) {
+        if (!trusted()) {
+            return false;
+        }
         try {
             return models().download(json);
         } catch (Throwable t) {
@@ -806,6 +941,9 @@ public final class Bridge {
     /** Stops a download and deletes the partial file (a paused one too). */
     @JavascriptInterface
     public void modelCancel(String id) {
+        if (!trusted()) {
+            return;
+        }
         try {
             models().cancel(id == null ? "" : id);
         } catch (Throwable ignored) {
@@ -815,6 +953,9 @@ public final class Bridge {
     /** Deletes an installed model (and stops any download of it). */
     @JavascriptInterface
     public boolean modelDelete(String id) {
+        if (!trusted()) {
+            return false;
+        }
         try {
             return models().delete(id == null ? "" : id);
         } catch (Throwable t) {
@@ -825,6 +966,9 @@ public final class Bridge {
     /** Free bytes on the storage the models go to, or -1. */
     @JavascriptInterface
     public long modelFreeSpace() {
+        if (!trusted()) {
+            return -1;
+        }
         try {
             return models().freeSpace();
         } catch (Throwable t) {
@@ -854,6 +998,9 @@ public final class Bridge {
     /** {"ok":true,"threads","cores"} when this install can run the native engine here, else {"ok":false}. */
     @JavascriptInterface
     public String llmNative() {
+        if (!trusted()) {
+            return "{\"ok\":false}";
+        }
         try {
             return activity.llm().availableJson();
         } catch (Throwable t) {
@@ -864,6 +1011,9 @@ public final class Bridge {
     /** Loads an installed model ({"id","ctx","batch"}); events arrive through window.__gh.onLlm. */
     @JavascriptInterface
     public boolean llmLoad(String json) {
+        if (!trusted()) {
+            return false;
+        }
         try {
             JSONObject o = new JSONObject(json);
             File f = models().installedFile(o.optString("id", ""));
@@ -880,6 +1030,9 @@ public final class Bridge {
     /** Writes an answer ({"req","prompt",...sampling,"grammar"?}); see LlmClient for the events. */
     @JavascriptInterface
     public boolean llmGenerate(String json) {
+        if (!trusted()) {
+            return false;
+        }
         try {
             activity.llm().generate(new JSONObject(json));
             return true;
@@ -891,6 +1044,9 @@ public final class Bridge {
     /** Stops the answer for this request (or drops it if it hasn't started). */
     @JavascriptInterface
     public void llmAbort(String req) {
+        if (!trusted()) {
+            return;
+        }
         try {
             activity.llm().abort(req == null ? "" : req);
         } catch (Throwable ignored) {
@@ -900,6 +1056,9 @@ public final class Bridge {
     /** Frees the model's memory. */
     @JavascriptInterface
     public void llmUnload() {
+        if (!trusted()) {
+            return;
+        }
         try {
             activity.llm().unload();
         } catch (Throwable ignored) {

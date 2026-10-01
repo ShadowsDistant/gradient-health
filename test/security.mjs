@@ -2,7 +2,9 @@
 // that can't be built, malicious and huge backups, the model pins, CI release gating, the manifest
 // and backup rules, and the WebView's navigation and bridge guards in the Java source.
 // Usage: node test/security.mjs
-import { load, check, section, done } from './lib.mjs';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { load, root, check, section, done } from './lib.mjs';
 
 const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/planweek.js', 'src/tailor.js', 'src/store.js', 'src/coach.js', 'src/customplan.js');
 const B = GH.brain;
@@ -225,6 +227,52 @@ section('Huge backups');
   check('a branch nested too deep is cut, without overflowing the stack', s.ok && X.newerThing.ok === true && depth > 0 && depth < 40, depth);
   const extras = Object.keys(X).filter((k) => /^extra\d+$/.test(k));
   check('fields this version doesn\'t know stay only as small plain JSON, and not too many of them', s.ok && X.achievements && X.achievements.earned.first.at === 1 && extras.length < 64 && !('hugeThing' in X), { extras: extras.length, huge: 'hugeThing' in X });
+}
+
+/* ------------------------------------------------------------------ the Android shell (source) */
+const read = (f) => readFileSync(join(root, f), 'utf8');
+const JAVA = 'android/src/com/shadowsdistant/gradienthealth/';
+// The body of the first method whose declaration contains `sig`, braces matched.
+function body(src, sig) {
+  const i = src.indexOf(sig);
+  if (i < 0) return '';
+  let j = src.indexOf('{', i), depth = 0;
+  const start = j;
+  for (; j < src.length; j++) { if (src[j] === '{') depth++; else if (src[j] === '}' && --depth === 0) break; }
+  return src.slice(start, j + 1);
+}
+
+section('The WebView: only the app\'s own page, over https');
+{
+  const MA = read(`${JAVA}MainActivity.java`);
+  check('the app\'s host counts only over https, on the usual port', /"https"\.equalsIgnoreCase\(uri\.getScheme\(\)\)/.test(body(MA, 'static boolean isAppHost(')) && /getPort\(\) == -1/.test(body(MA, 'static boolean isAppHost(')));
+  const intercept = body(MA, 'public WebResourceResponse shouldInterceptRequest(');
+  check('the app\'s host over http (or another port) gets a 403, not the network', /namesAppHost\(uri\)\)\s*\{[^}]*emptyResponse\(403/.test(intercept), intercept.slice(0, 300));
+  const nav = body(MA, 'private boolean handleNavigation(');
+  check('navigation: the app\'s pages stay in, about:blank is allowed, a foreign frame is blocked', /if \(isAppHost\(uri\)\) \{\s*return false;/.test(nav) && /"about:blank"/.test(nav) && /if \(!mainFrame\b[^{]*\{\s*return true;/.test(nav), nav);
+  check('javascript:, data: and blob: pages are never let through', !/"(javascript|data|blob)"/.test(nav) && /return true;\s*\}$/.test(nav.trim()), nav);
+  check('no pop-up windows, and never http content on the page', /setSupportMultipleWindows\(false\)/.test(MA) && /setJavaScriptCanOpenWindowsAutomatically\(false\)/.test(MA) && /setMixedContentMode\(WebSettings\.MIXED_CONTENT_NEVER_ALLOW\)/.test(MA) && !/MIXED_CONTENT_(ALWAYS_ALLOW|COMPATIBILITY_MODE)/.test(MA));
+  check('no file or content access, and nothing opened up for file pages', /setAllowFileAccess\(false\)/.test(MA) && /setAllowContentAccess\(false\)/.test(MA) && !/setAllow(Universal|File)AccessFromFileURLs\(true\)/.test(MA));
+  check('one bridge, and debugging only in a debug build', (MA.match(/addJavascriptInterface\(/g) || []).length === 1 && /FLAG_DEBUGGABLE\) != 0\) \{\s*try \{\s*WebView\.setWebContentsDebuggingEnabled\(true\)/.test(MA));
+  const track = body(MA, 'private void trackPage(');
+  check('pageTrusted is volatile, follows each page start and address change, and is true only for the app', /private volatile boolean pageTrusted;/.test(MA) && /onPageStarted\(WebView view, String url, Bitmap favicon\) \{\s*trackPage\(view, url\);/.test(MA) && /doUpdateVisitedHistory\(WebView view, String url, boolean isReload\) \{\s*trackPage\(view, url\);/.test(MA) && /isAppHost\(Uri\.parse\(url\)\)/.test(track) && /pageTrusted = trusted;/.test(track), track);
+  check('the app\'s page is trusted before it loads (its first bridge call can\'t race the flag)', /pageTrusted = isAppHost\(Uri\.parse\(url\)\);\s*wv\.loadUrl\(url\);/.test(MA));
+  check('the camera only for the app\'s own page', /!isAppHost\(request\.getOrigin\(\)\)/.test(MA));
+}
+
+section('The bridge answers only the app\'s page');
+{
+  const BR = read(`${JAVA}Bridge.java`);
+  // Everything that reads or changes data, reaches the network or another app, or runs a model.
+  const GATED = /^(save\w*|load\w*|deleteSecret|hc\w+|model\w+|share\w+|openUrl|act\w+|llm\w+|foodLookup|copy|pendingLink)$/;
+  // The rest: the screen, haptics and harmless facts about the phone.
+  const OPEN = /^(keepAwake|vibrate\w*|haptic\w*|isDark|setSystemBars|insets|claudeInstalled|appVersion|deviceMemory|rendererGone)$/;
+  const methods = [...BR.matchAll(/@JavascriptInterface\n(?:\s*@\w+(?:\([^)]*\))?\n)?\s*public [\w<>[\]]+ (\w+)\(([^)]*)\) \{\n([^\n]*)/g)].map((m) => ({ name: m[1], first: m[3].trim() }));
+  const ungated = methods.filter((m) => GATED.test(m.name) && m.first !== 'if (!trusted()) {');
+  const unknown = methods.filter((m) => !GATED.test(m.name) && !OPEN.test(m.name)).map((m) => m.name);
+  check(`all ${methods.filter((m) => GATED.test(m.name)).length} bridge methods with side effects check trusted() first (secrets, save and load, hc*, model*, share*, openUrl, act*, llm*)`, methods.length > 40 && ungated.length === 0, ungated.map((m) => m.name));
+  check('every other bridge method is one of the harmless kinds (a new one has to be sorted into a list here)', unknown.length === 0, unknown);
+  check('trusted() asks MainActivity whether the page is the app\'s', /private boolean trusted\(\) \{\s*return activity\.pageTrusted\(\);/.test(BR));
 }
 
 done();

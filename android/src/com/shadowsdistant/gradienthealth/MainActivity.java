@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
@@ -99,6 +100,12 @@ public final class MainActivity extends Activity {
     private WebView webView;
     private Bridge bridge;
     private boolean pageLoaded;
+    /**
+     * True while the WebView shows the app's own page (https://appassets.androidplatform.net). Set
+     * on the UI thread as each page starts and as its address changes; Bridge reads it on its own
+     * thread before anything that reads or changes data, or reaches the network or another app.
+     */
+    private volatile boolean pageTrusted;
     private String pendingRoute;
     private volatile boolean destroyed;
     private int rendererCrashes;
@@ -167,6 +174,11 @@ public final class MainActivity extends Activity {
             s.setTextZoom(textZoomFor(getResources().getConfiguration()));
             s.setAllowFileAccess(false);
             s.setAllowContentAccess(false);
+            // One page in one window: no pop-ups (window.open stays a navigation, which
+            // handleNavigation sends to the browser), and nothing over http on the https page.
+            s.setSupportMultipleWindows(false);
+            s.setJavaScriptCanOpenWindowsAutomatically(false);
+            s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
             wv.setBackgroundColor(currentBackground());
             wv.setWebViewClient(new AppWebViewClient());
             // A WebChromeClient is needed for alert()/confirm()/prompt() dialogs to show at all, and
@@ -179,6 +191,9 @@ public final class MainActivity extends Activity {
             root.addView(wv, lp);
             webView = wv;
             pageLoaded = false;
+            // Trusted from the start, so the page's first bridge calls (load, as it boots) never
+            // race onPageStarted; the WebViewClient keeps it in step from here on.
+            pageTrusted = isAppHost(Uri.parse(url));
             wv.loadUrl(url);
         } catch (Throwable t) {
             // Android System WebView missing, disabled or mid-update: explain instead of crashing.
@@ -987,8 +1002,37 @@ public final class MainActivity extends Activity {
 
     // ---------------------------------------------------------------- navigation
 
+    /** The app's own origin: https://appassets.androidplatform.net, never over http or on another port. */
     static boolean isAppHost(Uri uri) {
+        return uri != null && "https".equalsIgnoreCase(uri.getScheme()) && APP_HOST.equalsIgnoreCase(uri.getHost())
+                && (uri.getPort() == -1 || uri.getPort() == 443);
+    }
+
+    /** The app's host name under any scheme or port: only https on the usual port is the app. */
+    private static boolean namesAppHost(Uri uri) {
         return uri != null && APP_HOST.equalsIgnoreCase(uri.getHost());
+    }
+
+    /** Bridge's check: whether the page calling in is the app's own. */
+    boolean pageTrusted() {
+        return pageTrusted;
+    }
+
+    /**
+     * Follows the main frame's address (onPageStarted, doUpdateVisitedHistory). about:blank keeps the
+     * flag as it was: it takes the origin of the page that opened it.
+     */
+    private void trackPage(WebView view, String url) {
+        if (view != webView || url == null || "about:blank".equalsIgnoreCase(url)) {
+            return;
+        }
+        boolean trusted;
+        try {
+            trusted = isAppHost(Uri.parse(url));
+        } catch (Throwable t) {
+            trusted = false;
+        }
+        pageTrusted = trusted;
     }
 
     /** Parses an absolute http(s) URL with a host, or returns null. */
@@ -1008,24 +1052,30 @@ public final class MainActivity extends Activity {
         return null;
     }
 
-    /** @return true to cancel the WebView navigation. */
+    /**
+     * @return true to cancel the WebView navigation. Only the app's own pages load in the WebView (the
+     * page and any frame in it), plus about:blank. Another http(s) page the page links to opens in
+     * the browser; a frame never loads one. javascript:, data: and blob: pages are blocked, as are
+     * intent:, file:, content:, market: and the rest: nothing but the app's page runs with the bridge.
+     */
     private boolean handleNavigation(Uri uri, boolean mainFrame) {
         if (uri == null) {
             return true;
         }
+        if (isAppHost(uri)) {
+            return false; // our own page stays inside
+        }
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+        if ("about".equals(scheme)) {
+            return !"about:blank".equalsIgnoreCase(uri.toString());
+        }
+        if (!mainFrame || namesAppHost(uri)) {
+            return true; // a foreign frame, or the app's host over http: neither is the app
+        }
         if ("http".equals(scheme) || "https".equals(scheme)) {
-            if (isAppHost(uri) || !mainFrame) {
-                return false; // our own page stays inside
-            }
             openExternal(uri);
-            return true;
         }
-        if ("about".equals(scheme) || "blob".equals(scheme) || "data".equals(scheme)
-                || "javascript".equals(scheme)) {
-            return false;
-        }
-        return true; // intent:, file:, content:, market: and friends are blocked
+        return true;
     }
 
     private static WebResourceResponse emptyResponse(int status, String reason) {
@@ -1098,6 +1148,11 @@ public final class MainActivity extends Activity {
         public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
             Uri uri = request != null ? request.getUrl() : null;
             if (!isAppHost(uri)) {
+                if (namesAppHost(uri)) {
+                    // http://appassets.androidplatform.net (or another port) is never the app, and
+                    // must not reach the network as if it were.
+                    return emptyResponse(403, "Forbidden");
+                }
                 return null; // real network, e.g. https://api.anthropic.com for the AI coach
             }
             String path = uri.getPath();
@@ -1124,6 +1179,16 @@ public final class MainActivity extends Activity {
                 return false;
             }
             return handleNavigation(request.getUrl(), request.isForMainFrame());
+        }
+
+        @Override
+        public void onPageStarted(WebView view, String url, Bitmap favicon) {
+            trackPage(view, url);
+        }
+
+        @Override
+        public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
+            trackPage(view, url);
         }
 
         @Override
