@@ -852,11 +852,12 @@
     poses: { a: { t: 20, aN: { s: 110, e: 4 }, lN: { h: 70, k: 72 } } },
     rep: cyc(['b', 'a'], 450, 40),
   });
+  // High knees: each arm drives forward with the other knee, as in running.
   F.highKnees = {
     view: 'side', pin: { joint: 'hip', at: [0, -92] }, key: 'b',
     poses: {
-      a: { t: 0, aN: { s: 30, e: 80 }, aF: { s: -30, e: 80 }, lN: { h: 80, k: 90, flat: false, a: 20 }, lF: { h: 0, k: 4 } },
-      b: { t: 0, aN: { s: -30, e: 80 }, aF: { s: 30, e: 80 }, lN: { h: 0, k: 4 }, lF: { h: 80, k: 90, flat: false, a: 20 } },
+      a: { t: 0, aN: { s: -30, e: 80 }, aF: { s: 30, e: 80 }, lN: { h: 80, k: 90, flat: false, a: 20 }, lF: { h: 0, k: 4 } },
+      b: { t: 0, aN: { s: 30, e: 80 }, aF: { s: -30, e: 80 }, lN: { h: 0, k: 4 }, lF: { h: 80, k: 90, flat: false, a: 20 } },
       // Passed through: the foot leaving the floor heel first (the knee bends before it drives up)
       // as the other comes down.
       ua: { t: 0, aN: { s: 0, e: 80 }, aF: { s: 0, e: 80 }, lN: { h: 28, k: 62, flat: false, a: 20 }, lF: { h: 36, k: 80, flat: false, a: 10 } },
@@ -1052,13 +1053,14 @@
     poses: { a: st({ t: -2, ik: { hdN: [-20, -89] } }), b: st({ t: -4, n: -4, ik: { hdN: [-36, -96] } }) },
     rep: cyc(['b', 'a'], 1600, 800, 'iso'), muscles: ['chest', 'frontDelts'],
   };
-  // Leg swings: standing on one leg (a hand on a wall or chair), the other swings forward and back.
+  // Leg swings: standing on one leg (a hand on a wall or chair), the other swings forward and back,
+  // the free arm against it (back as the leg swings forward), as in walking.
   F.legSwing = {
     view: 'side', pin: { joint: 'anF', at: [0, -8] }, key: 'f',
     poses: {
-      f: { t: -2, aN: { s: 20, e: 20 }, aF: { s: 40, e: 30 }, lN: { h: 58, k: 8, flat: false, a: 20 }, lF: { h: 0, k: 2, flat: true } },
+      f: { t: -2, aN: { s: -20, e: 20 }, aF: { s: 40, e: 30 }, lN: { h: 58, k: 8, flat: false, a: 20 }, lF: { h: 0, k: 2, flat: true } },
       m: { t: 1, aN: { s: 0, e: 20 }, aF: { s: 40, e: 30 }, lN: { h: 20, k: 55, flat: false, a: 0 }, lF: { h: 0, k: 2, flat: true } },
-      b: { t: 4, aN: { s: -20, e: 20 }, aF: { s: 40, e: 30 }, lN: { h: -28, k: 12, flat: false, a: 30 }, lF: { h: 0, k: 2, flat: true } },
+      b: { t: 4, aN: { s: 20, e: 20 }, aF: { s: 40, e: 30 }, lN: { h: -28, k: 12, flat: false, a: 30 }, lF: { h: 0, k: 2, flat: true } },
     },
     rep: [{ to: 'm', ms: 260, hold: 0, ph: 'move', through: true }, { to: 'f', ms: 260, hold: 0, ph: 'move' }, { to: 'm', ms: 260, hold: 0, ph: 'move', through: true }, { to: 'b', ms: 260, hold: 0, ph: 'move' }],
     muscles: ['hamstrings', 'hipFlexors', 'glutes'], uni: true, leadLimbs: ['lN'],

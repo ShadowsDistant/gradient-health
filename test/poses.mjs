@@ -233,6 +233,30 @@ check('in front and top views no elbow or forearm crosses the face', !motion.hea
 const handsOf = (list) => (list || []).map((e) => e.hands || 'N').sort().join(',');
 const kitHands = ids.flatMap((id) => Object.entries(M.MOVES[id].equipBy || {}).filter(([, v]) => v && handsOf(v) !== handsOf(M.MOVES[id].equip)).map(([k]) => `${id} (${k})`));
 check('equipment swapped for what a person owns is held in the same hands', !kitHands.length, kitHands);
+// Walking, marching, running and stepping (side view): each arm swings forward as its own leg goes
+// back, as in walking, never with it. Over a rep, an upper arm's angle forward of straight down and
+// its own thigh's move against each other (an arm that stays put, like a hand on a wall, is left out).
+const GAIT = ['walk', 'inclineWalk', 'highKnees', 'legSwing', 'marchEasy', 'seatMarch', 'stepOver', 'heelToe'];
+const fwdAng = (pts, a, b) => Math.atan2(pts[b][0] - pts[a][0], pts[b][1] - pts[a][1]) * 180 / Math.PI;
+const gaitBad = [];
+for (const form of GAIT) {
+  const gm = Object.values(M.MOVES).filter((x) => x.form === form);
+  if (!gm.length) { gaitBad.push(`${form}: no move uses it`); continue; }
+  for (const m of gm) {
+    const tl = P.timeline(m);
+    const fr = Array.from({ length: 48 }, (_, i) => P.frameAt(m, (tl.total * i) / 48));
+    for (const s of ['N', 'F']) {
+      const leg = fr.map((p) => fwdAng(p, 'hp' + s, 'kn' + s)), arm = fr.map((p) => fwdAng(p, 'sh' + s, 'el' + s));
+      const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+      const ml = mean(leg), ma = mean(arm);
+      const sl = Math.sqrt(mean(leg.map((v) => (v - ml) ** 2))), sa = Math.sqrt(mean(arm.map((v) => (v - ma) ** 2)));
+      if (sl < 3 || sa < 3) continue;
+      const r = mean(leg.map((v, i) => (v - ml) * (arm[i] - ma))) / (sl * sa);
+      if (r > -0.3) gaitBad.push(`${m.id}: the ${s} arm swings with its own leg (r ${r.toFixed(2)})`);
+    }
+  }
+}
+check(`walking, marching and stepping: each arm swings against its own leg (${GAIT.length} forms)`, !gaitBad.length, gaitBad);
 
 /* ------------------------------------------------------------------ gym */
 section('Gym library');
