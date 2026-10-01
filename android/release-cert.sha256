@@ -1,0 +1,5 @@
+# The release key's certificate SHA-256 (docs/DEVELOPING.md, Signing). scripts/build-apk.sh stops a
+# release build signed with any other key: an update only installs over the same key, so a wrong
+# keystore secret would publish an APK that no one with the app can update to. Change this only to
+# move to a new key on purpose, which makes it a new app as far as phones and stores are concerned.
+f32f5e8302cb9ec6f470254af7f9c894b6ac105a9f173988edf5ed536dc3f55f

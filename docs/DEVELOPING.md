@@ -447,7 +447,9 @@ the package name to that key's certificate.
 
 - **The release key** is a PKCS12 keystore (RSA 4096, valid to 2056, alias `gradienthealth`) kept by
   the owner and in the repository's GitHub secrets, never in the repository. Keep two copies of it
-  and its password somewhere safe: a lost key means publishing a new app under a new name.
+  and its password somewhere safe: a lost key means publishing a new app under a new name. Its
+  certificate's SHA-256 is in `android/release-cert.sha256`, and `build-apk.sh` stops a release build
+  signed with any other key, so a wrong secret can't publish an APK that won't update.
 - **CI signs with it** when these repository secrets exist (Settings, Secrets and variables, Actions):
 
   | Secret | Value |

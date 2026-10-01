@@ -162,6 +162,8 @@ Download `gradient-health.apk` from the [latest release](../../releases/latest) 
 
 Builds are signed with the app's release key, the one the Play Store and APKPure versions use. A build signed with the earlier test key won't update to one of these: copy your data first (Settings, Copy my data), uninstall, install the new build, then use Settings, Restore from a copy.
 
+A genuine download's signing certificate has the SHA-256 `f32f5e8302cb9ec6f470254af7f9c894b6ac105a9f173988edf5ed536dc3f55f`. `apksigner verify --print-certs gradient-health.apk` shows it.
+
 Gradient Health runs on Android 8.0 and newer. Health Connect needs Android 14 or newer; on older phones you can log sleep and weight by hand. The on-device AI's fast engine needs a 64-bit phone, which is nearly all of them since 2017.
 
 Gradient Health isn't medical advice. If you have a condition or an injury, check with a doctor before you start.

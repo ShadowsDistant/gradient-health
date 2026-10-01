@@ -20,6 +20,7 @@
 #   RELEASE_KEYSTORE_PASS   its password (required with RELEASE_KEYSTORE)
 #   RELEASE_KEY_ALIAS       the key's alias             (default: gradienthealth)
 #   RELEASE_KEY_PASS        the key's password          (default: RELEASE_KEYSTORE_PASS)
+#   A release build has to come out with the certificate in android/release-cert.sha256, or it stops.
 # Relative paths are taken from the directory you run the script in.
 set -euo pipefail
 
@@ -197,4 +198,13 @@ echo
 # The certificate's SHA-256 is what Android developer verification and the stores know the app by.
 CERT_SHA256="$(apksigner verify --print-certs "$OUT" | awk -F': ' '/certificate SHA-256 digest/ { print $2; exit }')"
 echo "Signed with $SIGNED_WITH, certificate SHA-256: ${CERT_SHA256:-unknown}"
+# The release key never changes, so a release build with another certificate means the wrong keystore.
+if [[ -n "${RELEASE_KEYSTORE:-}" ]]; then
+  [[ -f "$ROOT/android/release-cert.sha256" ]] || die "android/release-cert.sha256 is missing"
+  WANT_SHA256="$(grep -v '^#' "$ROOT/android/release-cert.sha256" | tr -d '[:space:]')"
+  if [[ "$CERT_SHA256" != "$WANT_SHA256" ]]; then
+    rm -f "$OUT"
+    die "signed with certificate ${CERT_SHA256:-unknown}, not the release key's ($WANT_SHA256, android/release-cert.sha256). Check RELEASE_KEYSTORE (in CI, the RELEASE_KEYSTORE_B64 secret)."
+  fi
+fi
 step "Built $OUT ($(du -h "$OUT" | cut -f1)), $NATIVE_NOTE"
