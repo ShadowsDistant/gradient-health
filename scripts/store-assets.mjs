@@ -1,6 +1,8 @@
 // Renders the store listing images in docs/store/ from the app screenshots in docs/screenshots/:
-// the 1024 x 500 banner (a JPEG, so it has no alpha channel) and eight captioned screenshots, at
-// 1080 x 1800 and at 480 x 800 (the same 3:5 shape, for stores that want that exact size).
+// the 1024 x 500 banner, the 512 x 512 icon and eight captioned screenshots, at 1080 x 1800 and at
+// 480 x 800 (the same 3:5 shape, for stores that want that exact size). Stores want JPEG or 24-bit
+// PNG with no alpha channel: every image is drawn on an opaque page, so none has one (the app's own
+// docs/icon-512.png does), and the screenshots come as JPEG too.
 // Needs Playwright with Chromium. Run scripts/screenshots.mjs first if the screens changed.
 //
 //   node scripts/store-assets.mjs
@@ -16,7 +18,7 @@ let chromium;
 try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
 
 const out = join(root, 'docs/store');
-for (const d of ['', 'screenshots/1080x1800', 'screenshots/480x800']) mkdirSync(join(out, d), { recursive: true });
+for (const d of ['', 'screenshots/1080x1800', 'screenshots/480x800', 'screenshots/jpg']) mkdirSync(join(out, d), { recursive: true });
 const tmp = mkdtempSync(join(tmpdir(), 'gh-store-'));
 const url = (p) => pathToFileURL(join(root, p)).href;
 
@@ -102,9 +104,14 @@ async function render(html, name, width, height, opts = {}) {
 }
 
 await render(banner, 'banner-1024x500.jpg', 1024, 500, { jpeg: true });
+// The icon without its alpha channel (it's opaque anyway: a full-bleed square).
+const icon = `<!doctype html><html><head><meta charset="utf-8"><style>${BASE} body { width: 512px; height: 512px; background: #7c3cf0; } img { display: block; width: 512px; height: 512px; }</style></head><body><img src="${url('docs/icon-512.png')}" alt=""></body></html>`;
+await render(icon, 'icon-512.png', 512, 512);
+await render(icon, 'icon-512.jpg', 512, 512, { jpeg: true });
 for (const [name, img, title, sub] of SHOTS) {
   const html = shotHtml(img, title, sub);
   await render(html, `screenshots/1080x1800/${name}.png`, 1080, 1800);
+  await render(html, `screenshots/jpg/${name}.jpg`, 1080, 1800, { jpeg: true });
   // The same picture drawn at 480 x 800 (text drawn at that size, not a blurry downscale).
   await render(html, `screenshots/480x800/${name}.png`, 480, 800, { zoom: 480 / 1080 });
 }

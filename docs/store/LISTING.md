@@ -62,7 +62,10 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 | File | Size | Use |
 |---|---|---|
-| `banner-1024x500.jpg` | 1024 × 500, JPEG (no alpha) | Banner / feature graphic |
-| `screenshots/1080x1800/01-today.png` … `08-health.png` | 1080 × 1800 | Screenshots, in this order |
-| `screenshots/480x800/` | 480 × 800 | The same eight, for a store that wants exactly 480 × 800 |
-| `../icon-512.png` | 512 × 512 | App icon |
+| `banner-1024x500.jpg` | 1024 × 500, JPEG | Banner / feature graphic |
+| `icon-512.png` (or `.jpg`) | 512 × 512, 24-bit PNG / JPEG | App icon (the app's own `docs/icon-512.png` has an alpha channel, which stores turn down) |
+| `screenshots/jpg/01-today.jpg` … `08-health.jpg` | 1080 × 1800, JPEG | Screenshots, in this order |
+| `screenshots/1080x1800/` | 1080 × 1800, 24-bit PNG | The same eight as PNG |
+| `screenshots/480x800/` | 480 × 800, 24-bit PNG | The same eight, for a store that wants exactly 480 × 800 |
+
+None of these has an alpha channel.
