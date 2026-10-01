@@ -671,6 +671,74 @@
     muscles: ['glutes', 'calves'],
   };
 
+  /* ------------------------------------------------------------------ standing, nothing needed */
+  // For a room with no kit and no floor to get down on: the seated forms stood up, with no chair,
+  // the legs straight under the hips and each hand target raised with the shoulders (38 higher
+  // standing than sitting); a blade squeeze, a knee crunch and a side bend standing. The lateral
+  // raise and overhead press come empty-handed from moves.js's own forms.
+  const STAND_HIP = { joint: 'hip', at: [0, -92] };
+  const UP = -38;
+  const standF = (o) => merge({ aN: { s: 10, e: 10 }, lN: { h: 3, k: 0 } }, o || {});
+  const standUp = (form, poses) => { const f = merge(form, {}); delete f.legLayer; return Object.assign(f, { pin: STAND_HIP, props: [], poses }); };
+  F.standSelfCurl = standUp(F.seatSelfCurl, { a: standF(selfPose(UP, [17.5, -80.5, 25])), a2: standF(selfPose(UP - 1.5, [17.5, -80.5, 25])) });
+  F.standSelfPress = standUp(F.seatSelfPress, { a: standF(selfPose(UP, [17.5, -71, 24.5])), a2: standF(selfPose(UP + 1.5, [17.5, -71, 24.5])) });
+  // Palms pressed together in front of the chest, elbows out to the sides: each hand pushes into
+  // the other. The hands reach targets in depth (21 in front of the chest), like the squeeze.
+  const palms = (x) => ({ ik: { hdN: [x, -118, 21], hdF: [-x, -118, 21] }, pole: { hdN: [1, 0.55, -0.15], hdF: [1, 0.55, -0.15] } });
+  F.standPalmPress = {
+    view: 'front', pin: STAND_HIP, key: 'a', armLayer: 'front', bend: FRONT_HANDS,
+    poses: { a: standF(palms(3)), a2: standF(palms(2.2)) },
+    rep: iso('a', 'a2', 2000), muscles: ['chest', 'frontDelts', 'triceps'],
+  };
+  // The seated blade squeeze, standing: elbows bent at the sides draw back and the shoulder blades
+  // squeeze together.
+  const standS = (o) => merge({ t: 0, aN: { s: 4, e: 10 }, lN: { h: 0, k: 2 } }, o || {});
+  F.standBladeSqueeze = Object.assign(merge(F.bladeSqueeze, {}), {
+    pin: { joint: 'anN', at: [0, -8] }, props: [],
+    poses: { a: standS({ aN: { s: 4, e: 88 } }), b: standS({ t: -4, aN: { s: -28, e: 116 } }) },
+  });
+  // Standing knee crunch: arms crossed on the chest, one knee drives up as the ribs curl down to
+  // meet it, then the other. The feet peel off and set down as in the march (no sliding).
+  const KNEE_HIGH = { h: 80, k: 92, flat: false, a: 18 };
+  // Leg angles are taken from the trunk's line, so as the trunk curls forward by t each leg turns
+  // by t too: the standing leg stays upright over its foot.
+  const crunch = (t, n, lN, lF) => merge(merge({ t, n }, crossed([0, -93], t)), { lN: Object.assign({}, lN, { h: lN.h + t }), lF: Object.assign({}, lF, { h: lF.h + t }) });
+  F.standKneeCrunch = {
+    view: 'side', pin: { joint: 'hip', at: [0, -93] }, key: 'a',
+    poses: {
+      m: crunch(0, 0, MARCH_STAND, MARCH_STAND),
+      pa: crunch(5, -3, MARCH_PEEL, MARCH_STAND),
+      a: crunch(16, -9, KNEE_HIGH, MARCH_STAND),
+      pb: crunch(5, -3, MARCH_STAND, MARCH_PEEL),
+      b: crunch(16, -9, MARCH_STAND, KNEE_HIGH),
+    },
+    rep: [
+      { to: 'pa', ms: 250, hold: 0, ph: 'con', through: true }, { to: 'a', ms: 650, hold: 350, ph: 'con' },
+      { to: 'pa', ms: 650, hold: 0, ph: 'ecc', through: true }, { to: 'm', ms: 250, hold: 150, ph: 'ecc' },
+      { to: 'pb', ms: 250, hold: 0, ph: 'con', through: true }, { to: 'b', ms: 650, hold: 350, ph: 'con' },
+      { to: 'pb', ms: 650, hold: 0, ph: 'ecc', through: true }, { to: 'm', ms: 250, hold: 150, ph: 'ecc' },
+    ],
+    muscles: ['abs', 'hipFlexors', 'obliques'],
+  };
+  // Standing side bend (front view): the ribs bend down toward one hip, that hand sliding down the
+  // outside of the thigh, then the other way. This figure's pelvis tips with the trunk, so each leg's
+  // angle takes the tilt back out (the legs stay upright) and the thigh on the low side is drawn a
+  // little shorter, a softer knee, keeping both feet on the floor.
+  const SIDE = 12;
+  const SOFT = +((43 - 2 * 8.5 * Math.sin((SIDE * Math.PI) / 180)) / 43).toFixed(3);
+  const sideBend = (k) => ({
+    at: [0, k ? -91.1 : -92.9], t: SIDE * k, n: 4 * k,
+    aN: { s: k > 0 ? 17 : 6, e: 4 }, aF: { s: k < 0 ? 17 : 6, e: 4 },
+    lN: { h: SIDE * k + 3, k: 0 }, lF: { h: -SIDE * k + 3, k: 0 },
+    sc: k > 0 ? { thN: SOFT } : k < 0 ? { thF: SOFT } : {},
+  });
+  F.standSideBend = {
+    view: 'front', pin: { joint: 'hip' }, key: 'l', armLayer: 'front',
+    poses: { m: sideBend(0), l: sideBend(1), r: sideBend(-1) },
+    rep: [{ to: 'l', ms: 1300, hold: 400, ph: 'con' }, { to: 'm', ms: 1000, hold: 0, ph: 'ecc' }, { to: 'r', ms: 1300, hold: 400, ph: 'con' }, { to: 'm', ms: 1000, hold: 0, ph: 'ecc' }],
+    muscles: ['obliques', 'abs'],
+  };
+
   /* ------------------------------------------------------------------ getting down and up */
   // Step back and lower the back knee to the floor, then stand, a hand on the top of a sturdy
   // chair's backrest the whole way down and up.
@@ -914,6 +982,28 @@
   move('mob_quad', 'quadStretchWall', { ...MBS, name: 'Standing thigh stretch', req: ['wall'], support: true, range: [30, 45], start: 30, uni: true, joints: ['knee'],
     cues: ['One hand on the wall.', 'Hold your other foot behind you, knees together.', 'Stand tall. Use a towel round the foot if it\'s hard to reach.'] });
 
+  /* ------------------------------------------------------------------ standing, nothing needed */
+  // Every muscle group has something with no kit at all and no getting down to the floor: these
+  // stand in when nothing else of a group is left (src/access.js famFor), and sit beside the seated
+  // stand-ins in their ladders.
+  const NOKIT = { req: [], load: null, pos: 'stand' };
+  move('curl_self', 'standSelfCurl', { ...CU, ...SELF, ...NOKIT, name: 'Standing self-resisted curl',
+    cues: ['Stand tall, one elbow bent to a right angle, palm up.', 'Rest your other hand on that wrist.', 'Push up into it, firm and steady.'] });
+  move('tri_self', 'standSelfPress', { ...TR, ...SELF, ...NOKIT, name: 'Standing self-resisted triceps press',
+    cues: ['Stand tall, one elbow bent to a right angle, palm down.', 'Put your other hand under that wrist.', 'Push down into it, firm and steady.'] });
+  move('chest_palm', 'standPalmPress', { ...CH, ...NOKIT, name: 'Palm press', timed: true, range: [15, 45], start: 20, joints: ['shoulder'],
+    cues: ['Stand tall, palms together in front of your chest.', 'Elbows out, press your hands into each other.', 'Keep pressing while you breathe.'], mistake: 'Letting your shoulders creep up.', breathe: HOLD_BREATHE });
+  move('raise_bw', 'latRaise', { ...SH, ...NOKIT, name: 'Slow lateral raise, no weights', equip: [], range: [10, 25], start: 12,
+    cues: ['Stand tall, arms by your sides, fists light.', 'Raise them out to shoulder height.', 'Lower for a slow 3 count.'], mistake: 'Shrugging as your arms go up.', breathe: 'Breathe out as you raise.' }, { ecc: 3000 });
+  move('press_reach', 'ohPress', { ...SH, ...NOKIT, group: 'shoulders', name: 'Overhead reach press', equip: [], range: [10, 25], start: 12, joints: ['shoulder', 'elbow'], muscles: ['frontDelts', 'sideDelts', 'triceps'], prime: 2, overhead: true,
+    cues: ['Fists at your shoulders, elbows under them.', 'Press straight up as if pushing the ceiling away.', 'Lower for a slow 3 count, squeezing.'], mistake: 'Arching your back as your arms go up.', breathe: 'Breathe out as you press.' }, { ecc: 3000 });
+  move('bk_stand_squeeze', 'standBladeSqueeze', { ...BK, ...NOKIT, name: 'Standing shoulder blade squeeze', range: [8, 20], start: 10, joints: [],
+    cues: ['Stand tall, elbows bent at your sides.', 'Draw your elbows back and squeeze your shoulder blades together.', 'Hold two seconds, then relax.'] });
+  move('ab_stand_crunch', 'standKneeCrunch', { ...CO, ...NOKIT, name: 'Standing knee crunch', range: [8, 20], start: 10, joints: ['hip'], spine: ['flex'], oneLeg: true,
+    cues: ['Stand tall, arms crossed on your chest.', 'Drive one knee up as your ribs curl down to it.', 'Stand tall again, then the other knee.'], mistake: 'Leaning back to lift the knee higher.', breathe: 'Breathe out as the knee comes up.' });
+  move('side_stand', 'standSideBend', { ...CO, ...NOKIT, name: 'Standing side bend', range: [8, 20], start: 10, joints: ['back'],
+    cues: ['Stand tall, feet hip-width, arms by your sides.', 'Bend sideways, one hand sliding down your thigh.', 'Pull back up with your side, then the other way.'], mistake: 'Leaning forward instead of to the side.', breathe: 'Breathe out as you bend.' });
+
   /* ------------------------------------------------------------------ fast on the way up (power) */
   // From about 50, power (how quickly you can push) fades faster than strength, and it matters
   // for getting out of a chair or catching a trip. These are the same rung as their base move,
@@ -939,14 +1029,14 @@
   const NEW_LADDERS = {
     balance: { name: 'Balance', group: 'balance', alt: true, rungs: ['bal_seat_reach', 'bal_tandem_wall', 'bal_tandem', 'bal_one_wall', 'bal_walk', 'bal_step', 'bal_one', 'bal_clock'] },
     getup: { name: 'Down to the floor and up', group: 'balance', alt: true, rungs: ['get_halfkneel', 'get_kneel'] },
-    pushAlt: { name: 'Chest, seated', group: 'chest', alt: true, rungs: ['ch_seat_squeeze', 'ch_seat_band', 'ch_seat_band_slow'] },
-    rowAlt: { name: 'Back, seated', group: 'back', alt: true, rungs: ['bk_squeeze', 'bk_seat_row', 'bk_seat_pulldown', 'bk_seat_apart', 'bk_seat_db_row'] },
-    raiseAlt: { name: 'Shoulders, seated', group: 'shoulders', alt: true, rungs: ['sh_seat_arm', 'sh_seat_hold', 'sh_seat_raise', 'sh_seat_press'] },
-    curlAlt: { name: 'Biceps, seated', group: 'biceps', alt: true, rungs: ['cu_self', 'cu_seat_band', 'cu_seat_hammer', 'cu_seat', 'cu_seat_slow'] },
-    triAlt: { name: 'Triceps, seated', group: 'triceps', alt: true, rungs: ['tr_self', 'tr_seat_oh', 'tr_seat_kick', 'tr_seat_oh_slow'] },
+    pushAlt: { name: 'Chest, seated', group: 'chest', alt: true, rungs: ['ch_seat_squeeze', 'chest_palm', 'ch_seat_band', 'ch_seat_band_slow'] },
+    rowAlt: { name: 'Back, seated', group: 'back', alt: true, rungs: ['bk_squeeze', 'bk_stand_squeeze', 'bk_seat_row', 'bk_seat_pulldown', 'bk_seat_apart', 'bk_seat_db_row'] },
+    raiseAlt: { name: 'Shoulders, seated', group: 'shoulders', alt: true, rungs: ['sh_seat_arm', 'raise_bw', 'sh_seat_hold', 'press_reach', 'sh_seat_raise', 'sh_seat_press'] },
+    curlAlt: { name: 'Biceps, seated', group: 'biceps', alt: true, rungs: ['cu_self', 'curl_self', 'cu_seat_band', 'cu_seat_hammer', 'cu_seat', 'cu_seat_slow'] },
+    triAlt: { name: 'Triceps, seated', group: 'triceps', alt: true, rungs: ['tr_self', 'tri_self', 'tr_seat_oh', 'tr_seat_kick', 'tr_seat_oh_slow'] },
     legSeat: { name: 'Legs, seated', group: 'legs', alt: true, rungs: ['ls_march', 'ls_heel', 'ls_ext', 'ls_lift', 'ls_ext_hold', 'ls_press'] },
     hipAlt: { name: 'Hips, supported', group: 'legs', alt: true, rungs: ['hp_seat_hinge', 'hp_ext_chair', 'hp_abd_wall', 'lg_heel_wall', 'hp_side_lift'] },
-    coreAlt: { name: 'Core, gentle', group: 'abs', alt: true, rungs: ['co_seat_brace', 'co_pelvic', 'co_wall_plank', 'co_birddog', 'co_seat_lean', 'co_prone_lift', 'co_seat_pallof'] },
+    coreAlt: { name: 'Core, gentle', group: 'abs', alt: true, rungs: ['co_seat_brace', 'co_pelvic', 'co_wall_plank', 'side_stand', 'ab_stand_crunch', 'co_birddog', 'co_seat_lean', 'co_prone_lift', 'co_seat_pallof'] },
     finGentle: { name: 'Gentle cardio', group: 'conditioning', alt: true, rungs: ['fin_seat_march', 'fin_seat_box', 'fin_march_easy', 'fin_step'] },
   };
   for (const [fam, lad] of Object.entries(NEW_LADDERS)) {

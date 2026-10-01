@@ -171,12 +171,23 @@
     const gym = B().placeOf(S, day) === 'gym';
     for (const [main, alt] of Object.entries(STAND_IN)) {
       if (alt !== fam || !M().LADDERS[main] || (M().LADDERS[main].gym && !gym)) continue;
-      if (ruledOut(S, main, day)) return true;
+      if (ruledOut(S, main, day) || bare(S, main, day)) return true;
     }
     return false;
   }
   // A ladder the person's body rules out, as opposed to one their equipment does.
   const ruledOut = (S, fam, day) => !B().rungs(S, fam, day).length && B().rungs(S, fam, day, { noRules: true }).length > 0;
+  // A home ladder whose whole muscle group has nothing left here, for any reason (no kit, no
+  // floor, the body's rules): the group's stand-in takes over, so no group goes untrained because
+  // of what's in the room. (Stand-ins themselves aren't asked, which would ask this again.)
+  function bare(S, fam, day) {
+    const lad = M().LADDERS[fam];
+    if (!lad || lad.gym || lad.alt || B().rungs(S, fam, day).length) return false;
+    for (const [f, l] of Object.entries(M().LADDERS)) {
+      if (l.group === lad.group && !l.gym && !l.alt && B().rungs(S, f, day).length) return false;
+    }
+    return true;
+  }
   function filterRungs(S, fam, list, day) {
     const lad = M().LADDERS[fam];
     if (lad && lad.alt && !altOpen(S, fam, day)) return [];
@@ -188,7 +199,7 @@
     const p = S.profile;
     const pref = prefer(p)[fam];
     if (pref && B().rungs(S, pref, day).length) return pref;
-    if (!ruledOut(S, fam, day)) return fam;
+    if (!ruledOut(S, fam, day) && !bare(S, fam, day)) return fam;
     const alt = STAND_IN[fam];
     return alt && B().rungs(S, alt, day).length ? alt : fam;
   }
@@ -280,7 +291,7 @@
     const r = rulesOf(p);
     // Light days are at home: what the home kit allows, nothing for a joint on a break.
     const avoid = sore(S, day);
-    const fits = (id) => M().MOVES[id] && moveOk(p, id, day) && M().allowed(M().MOVES[id], p.equipment || {}) && spares(M().MOVES[id], avoid);
+    const fits = (id) => M().MOVES[id] && moveOk(p, id, day) && M().allowed(M().MOVES[id], B().eqAt(S, 'home')) && spares(M().MOVES[id], avoid);
     let ids;
     if (r.seated) ids = FLOW('mobilitySeat');
     else {

@@ -304,7 +304,9 @@
   // bars, a full dumbbell rack, benches that double as a chair, a wall and a towel.
   function eqAt(S, place) {
     const p = S.profile;
-    if (place !== 'gym') return p.equipment;
+    // A seated plan always has a seat: the wheelchair, or the chair someone who can't stand for long
+    // sits on, whatever the chair box in their kit says.
+    if (place !== 'gym') return Array.isArray(p.conditions) && p.conditions.includes('seated') && p.equipment && p.equipment.chair === false ? Object.assign({}, p.equipment, { chair: true }) : p.equipment;
     const g = Object.assign(defaultGym(), p.gym || {});
     const eq = Object.assign({}, g, { db: dbRack(g.dbMax, p.units), kb: [], ball: false, ballLb: null, ballSlam: false, band: false, chair: true, wall: true, towel: true, table: false, door: false, bar: g.bar !== false });
     delete eq.dbMax;
@@ -1165,7 +1167,7 @@
     const d = day != null ? day : dayOf(Date.now(), prefs.rollHour != null ? prefs.rollHour : 4);
     // Moves a health condition rules out (src/access.js) never make the list.
     const A = GH.access;
-    const ids = mobilityIds(S, d, S.profile.equipment).filter((id) => !A || A.moveOk(S.profile, id, d));
+    const ids = mobilityIds(S, d, eqAt(S, 'home')).filter((id) => !A || A.moveOk(S.profile, id, d));
     const recent = workoutLogs(S).filter(isDone).sort((a, b) => b.day - a.day).slice(0, 3);
     const w = {};
     recent.forEach((l, k) => {
