@@ -89,6 +89,9 @@
     // figure puts them there, and the flat one draws a hand behind the body behind it.
     for (const [k, v] of Object.entries(p.depth || {})) if (typeof v === 'number') f['depth.' + k] = v;
     for (const k of ['ball', 'kb', 'db', 'at']) if (p[k]) { f[k + '.x'] = p[k][0]; f[k + '.y'] = p[k][1]; }
+    // How far a ball given by position has left the hands (0: held between them, 1: where `ball`
+    // says, e.g. in the air or on the floor), tweened so it leaves and returns to the hands smoothly.
+    if (p.ball) f.free = typeof p.free === 'number' ? p.free : 1;
     // Non-numeric flags travel along unchanged.
     f.$ = { flatN: lN.flat !== false, flatF: lF.flat !== false, pin: p.pin, view };
     if (Object.keys(ikTo).length) f.$.ikTo = ikTo;
@@ -181,6 +184,10 @@
     }
     // Free objects (a ball in flight, a bell around the head).
     for (const k of ['ball', 'kb', 'db']) if ((k + '.x') in f) pts[k] = [f[k + '.x'], f[k + '.y']];
+    if (pts.ball && 'free' in f && f.free < 1) {
+      const g = mid(equipGrip(pts, 'N'), equipGrip(pts, 'F')), w = clamp(f.free, 0, 1);
+      pts.ball = [lerp(g[0], pts.ball[0], w), lerp(g[1], pts.ball[1], w)];
+    }
     return pts;
   }
 
@@ -320,8 +327,38 @@
           }
         }
       }
+      completeIk(move, move.$flat);
     }
     return move.$flat;
+  }
+
+  // A limb reaching an IK target in some poses and posed by angles in others: the angle poses get
+  // the target their own angles reach (a hand's grip, an ankle), and every pose the pole its elbow
+  // or knee points along, so the hand or foot travels from one to the other instead of holding the
+  // one pose's target through the whole transition and snapping when the next pose arrives.
+  function completeIk(move, fp) {
+    const view = move.view || 'side';
+    const all = Object.values(fp);
+    for (const key of ['hdN', 'hdF', 'anN', 'anF']) {
+      const tk = 'ik.' + key, pk = 'pole.' + key;
+      const n = all.filter((f) => (tk + '.x') in f).length;
+      if (!n || n === all.length) continue;
+      if (all.some((f) => (tk + '.z') in f || (f.$.ikTo && f.$.ikTo[key]))) continue;
+      const side = key.slice(-1), arm = key[0] === 'h';
+      const flip = view !== 'side' && side === 'F' ? -1 : 1;
+      const solved = all.map((f) => solve(move, f));
+      all.forEach((f, i) => {
+        const pts = solved[i];
+        if (!((tk + '.x') in f)) {
+          const end = arm ? add(pts['wr' + side], mul(sub(pts['hd' + side], pts['wr' + side]), 0.55)) : pts['an' + side];
+          f[tk + '.x'] = end[0]; f[tk + '.y'] = end[1];
+        }
+        if (!((pk + '.x') in f)) {
+          const u = sub(pts[(arm ? 'el' : 'kn') + side], pts[(arm ? 'sh' : 'hp') + side]), l = len(u) || 1;
+          f[pk + '.x'] = (u[0] / l) * flip; f[pk + '.y'] = u[1] / l;
+        }
+      });
+    }
   }
 
   // Pose lookup; "a~b~0.5" names a pose halfway between a and b (used for 1.5 reps).
@@ -1383,13 +1420,16 @@
       updateFigure(nodes, framePose(move, keyPose));
     } else draw(0);
     // While a sheet is dragged or settling (<html data-sheet-moving>), the figure holds its pose and
-    // the rep carries on from there after: every frame goes to the sheet.
+    // the rep carries on from there after: every frame goes to the sheet. A sheet settles well within
+    // a second and a half; a mark left on longer than that is stale, and the figure moves on.
     const doc = G.document;
-    let held = 0;
+    let held = 0, since = 0;
     function loop(now) {
       if (!playing) return;
       if (!t0) t0 = now - offset;
-      if (doc && doc.documentElement.hasAttribute('data-sheet-moving')) {
+      const mark = !!doc && doc.documentElement.hasAttribute('data-sheet-moving');
+      if (!mark) since = 0; else if (!since) since = now;
+      if (mark && now - since < 1500) {
         if (!held) held = now;
       } else {
         if (held) { t0 += now - held; held = 0; }
@@ -1403,6 +1443,8 @@
       pause() { playing = false; if (raf) G.cancelAnimationFrame(raf); raf = 0; },
       // Where in the rep it is (ms), so a figure that replaces this one can carry on from there.
       time() { return shown % tl.total; },
+      // Show time t (ms into the rep) now (tests, filmstrips); playing carries on from there.
+      seek(t) { draw(t); if (playing) { t0 = 0; offset = t; } },
       playOnce() {
         // One rep on request, then back to the key pose (for stills).
         let start = 0;
