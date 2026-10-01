@@ -436,8 +436,51 @@
     if (G.console) G.console.error(e);
     return `<div class="section"><div class="card"><p class="t-headline">Something went wrong drawing this screen.</p><p class="t-footnote rf-muted">${U.esc(e && e.message)}</p><button class="rf-btn" data-act="goToday">Back to Today</button></div></div>`;
   }
-  function enhance(el) { const r = R(); if (r && r.init) safe(() => r.init(el)); }
-  U.enhance = enhance;
+  /* Refract's init() wires up its controls (switches, segments, steppers, chips, glass and lenses,
+   * icons) in an element, looking through it once for each kind. A patch only needs that for the
+   * nodes it inserted, so instead of Refract's own observer (which looked through every inserted
+   * node again, after the whole screen had been looked through) one observer here collects the
+   * inserted nodes. enhance() initializes the ones a patch just inserted, and only those that carry
+   * something Refract handles; nodes inserted any other way (sheets, dialogs, toasts, a part added
+   * by hand) are initialized when the observer reports them, as before. */
+  // What init() handles: the `auto` list in vendor/refract/bundle.js, plus glass, data-rf
+  // behaviours and icon placeholders.
+  const RF_SEL = '.rf-glass, [data-rf], [data-icon]:not(svg), .rf-switch, .rf-slider, .rf-stepper, .rf-search, .rf-chip, .rf-playpause, .rf-tabbar, .rf-segmented, .rf-pagedots, .rf-navbar, .rf-scroll-edge[data-watch], .rf-sidebar, .rf-toolbar, .rf-menu[popover], .rf-popover[popover], .rf-menu[id], .rf-popover[id], dialog.rf-dialog, .rf-sheet, .rf-activity, [data-rf-tooltip], [data-reveal], .rf-loupe, .rf-droplets, [data-rf-morph], [data-rf-tone], [data-rf-adapt]';
+  let rfObserver = null;
+  function initAdded(records) {
+    const r = R();
+    if (!r || !r.init || !records.length) return;
+    const done = new Set();
+    for (const rec of records) {
+      for (const n of rec.addedNodes) {
+        if (n.nodeType !== 1 || !n.isConnected || !(n.matches(RF_SEL) || n.querySelector(RF_SEL))) continue;
+        let inDone = false;
+        for (let p = n.parentElement; p && !inDone; p = p.parentElement) inDone = done.has(p);
+        if (inDone) continue; // inside a node initialized just now
+        done.add(n);
+        safe(() => r.init(n));
+      }
+    }
+  }
+  function enhance(el) {
+    const r = R();
+    if (!r || !r.init) return;
+    if (rfObserver) initAdded(rfObserver.takeRecords());
+    else safe(() => r.init(el)); // before boot() starts the observer
+  }
+  // For other code: el is looked through as a whole when nothing was inserted in it since the last
+  // pass (it was changed some other way).
+  U.enhance = (el) => {
+    const recs = rfObserver ? rfObserver.takeRecords() : [];
+    initAdded(recs);
+    const touched = recs.some((x) => el.contains(x.target) || Array.prototype.includes.call(x.addedNodes, el));
+    if (!touched) { const r = R(); if (r && r.init) safe(() => r.init(el)); }
+  };
+  function observeInserts() {
+    if (!G.MutationObserver || rfObserver) return;
+    rfObserver = new G.MutationObserver(initAdded);
+    rfObserver.observe(doc.body, { childList: true, subtree: true });
+  }
 
   const tabIndex = (t) => TABS.findIndex((x) => x[0] === t);
   function go(tab) {
@@ -724,15 +767,12 @@
       });
       // The app is going to the background: a save still waiting is written now.
       P().on('pause', () => GH.store.flush());
-      // The app is going to the background: a save still waiting is written now.
-      P().on('pause', () => GH.store.flush());
       P().on('route', (route) => openRoute(route));
       P().on('insets', () => { updateScrolled(); });
     }
     U.S = GH.store.load();
     applyPrefs();
-    const r = R();
-    if (r && r.observe) safe(() => r.observe(doc.body));
+    observeInserts();
     if (!U.S || !U.S.profile.onboarded) U.showOnboarding();
     else {
       render('stagger');
