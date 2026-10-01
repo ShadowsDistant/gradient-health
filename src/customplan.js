@@ -42,12 +42,15 @@
   const copy = (x) => JSON.parse(JSON.stringify(x));
 
   /* ================================================================== the shape of a plan */
+  // Only the library's own entries count as moves: a shared code or a backup naming "constructor" or
+  // "toString" must not find Object.prototype's (which crashed Today and Plan).
+  const hasOwn = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
   // One exercise, clamped to what the app can run; null for a move this version doesn't know.
   function normItem(raw, report) {
     const r = raw && typeof raw === 'object' ? raw : {};
     const id = String(r.move || '');
-    const m = M().MOVES[id];
-    if (!m || !m.name) { if (report && id) report.unknown.push(id); return null; }
+    const m = hasOwn(M().MOVES, id) ? M().MOVES[id] : null;
+    if (!m || typeof m !== 'object' || !m.name) { if (report && id) report.unknown.push(id.slice(0, 60)); return null; }
     const it = { move: id, sets: clampInt(r.sets, LIMITS.sets[0], LIMITS.sets[1], 3) };
     if (m.timed) it.secs = clampInt(r.secs != null ? r.secs : r.reps, LIMITS.secs[0], LIMITS.secs[1], m.start || 30);
     else it.reps = clampInt(r.reps != null ? r.reps : r.secs, LIMITS.reps[0], LIMITS.reps[1], m.start || 10);
@@ -257,8 +260,12 @@
   // null, and the coach's template stands). Days under the coach's plan keep its sessions; a plan
   // switched on part-way through the week starts at its first day (or, with set weekdays, on them).
   // Each session knows its plan's stretch of the week (regime, until), so a missed day only moves
-  // that plan's sessions, and never past its last day.
+  // that plan's sessions, and never past its last day. A week that can't be worked out (a plan switch
+  // a backup mangled) keeps the coach's template rather than breaking the calendar.
   function weekSessions(S, ws, tpl) {
+    try { return planWeek(S, ws, tpl); } catch (e) { return null; }
+  }
+  function planWeek(S, ws, tpl) {
     const evs = planEvents(S);
     if (!evs.length) return null;
     const at = [];
@@ -439,10 +446,30 @@
     const pick = short ? list.slice(0, 2) : list;
     return pick.map((id) => { const m = mv.MOVES[id]; return { kind: 'warmup', moveId: id, name: m.name, timed: !!m.timed, target: short ? Math.min(m.start, 20) : m.start, load: b.loadInfo(S, m, day) }; });
   }
+  // A plan's day that can't be built (a shared code or backup that got past the checks, or a bug)
+  // never takes Today or Plan down: that day runs the coach's session instead, with a note saying
+  // so, and the plan is flagged (plan.broken, until it's edited or the app restarts).
+  function buildSession(S, day, tpl, opts) {
+    try { return planSession(S, day, tpl, opts); } catch (e) { return coachInstead(S, day, tpl, opts); }
+  }
+  function coachInstead(S, day, tpl, opts) {
+    const b = B();
+    const ref = parseTpl(tpl);
+    const plan = ref ? get(S, ref.id) : null;
+    if (plan) plan.broken = true;
+    const set = b.settingsAt(S, day);
+    const T = b.templateFor(Object.assign({}, S.profile, { days: set.days, weekdays: set.weekdays }), b.programFor(Object.assign({}, S.profile, { days: set.days })));
+    const off = day - b.weekStart(day);
+    const t = T.find((x) => x.offset === off) || T[(ref ? ref.idx : 0) % Math.max(1, T.length)] || T[0];
+    const s = b.buildSession(S, day, t ? t.idx : 0, opts);
+    s.planBroken = { id: plan ? plan.id : ref ? ref.id : null, name: plan ? plan.name : '' };
+    s.notes = (s.notes || []).concat({ kind: 'plan', text: `${plan && plan.name ? `Your plan "${plan.name}"` : 'Your plan'} couldn't be used today, so this is the coach's workout.` });
+    return s;
+  }
   // The session for a custom plan's day, shaped like the brain's: the plan's exercises with today's
   // swaps, sets scaled for a lighter week and trimmed for a short night (never below one), targets
   // and weights from how each one has gone, and the usual warm-up. opts as brain.buildSession.
-  function buildSession(S, day, tpl, opts) {
+  function planSession(S, day, tpl, opts) {
     const o = opts || {};
     const b = B();
     const ref = parseTpl(tpl) || { id: null, idx: 0 };
