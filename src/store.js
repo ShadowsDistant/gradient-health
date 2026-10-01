@@ -1,7 +1,8 @@
 /* Persistence. The state lives in localStorage ("gh.v1") and, inside the app, in an atomic file
  * through the Android bridge; on load the copy with the newer updatedAt wins. Backups are the
  * state as JSON. The AI coach key is not part of the state: it sits in the bridge's private
- * preferences (or its own localStorage entry in a plain browser) and never reaches a backup.
+ * preferences, encrypted with an Android Keystore key (or in its own localStorage entry in a plain
+ * browser), and never reaches a backup.
  */
 (function (G) {
   'use strict';
@@ -425,16 +426,31 @@
     if (GH.activity && GH.activity.reset) GH.activity.reset();
   }
 
-  // Secrets (the AI coach key). Never logged, never in the state or a backup.
+  // Secrets (the AI coach key). Never logged, never in the state or a backup. In the app they live
+  // only in its private preferences, encrypted with a key in the Android Keystore (Bridge.saveSecret,
+  // SecretBox.java): if that store can't take one, it isn't kept anywhere, and the app asks for the
+  // key again. A plain browser has no such store, so there the key sits in this site's localStorage.
   function loadSecret(name) {
-    try { const b = bridge(); if (b && b.loadSecret) { const v = b.loadSecret(name); if (v) return String(v); } } catch (e) { /* fall through */ }
-    return lsGet(SECRET_PREFIX + name) || '';
+    const b = bridge();
+    if (!(b && b.loadSecret)) return lsGet(SECRET_PREFIX + name) || '';
+    let v = '';
+    try { v = String(b.loadSecret(name) || ''); } catch (e) { v = ''; }
+    // A copy an older version left in localStorage (when the app's store turned it down) moves into
+    // the encrypted store, and leaves localStorage whatever happens.
+    const old = lsGet(SECRET_PREFIX + name);
+    if (old) {
+      lsDel(SECRET_PREFIX + name);
+      if (!v && saveSecret(name, old)) v = old;
+    }
+    return v;
   }
   function saveSecret(name, value) {
+    const b = bridge();
+    if (!(b && b.saveSecret)) return lsSet(SECRET_PREFIX + name, value);
     let ok = false;
-    try { const b = bridge(); if (b && b.saveSecret) ok = !!b.saveSecret(name, value); } catch (e) { ok = false; }
-    if (ok) { lsDel(SECRET_PREFIX + name); return true; } // one copy, in the app's private preferences
-    return lsSet(SECRET_PREFIX + name, value);
+    try { ok = !!b.saveSecret(name, value); } catch (e) { ok = false; }
+    lsDel(SECRET_PREFIX + name); // one copy at most, the encrypted one
+    return ok;
   }
   function deleteSecret(name) {
     try { const b = bridge(); if (b && b.deleteSecret) b.deleteSecret(name); } catch (e) { /* ignore */ }

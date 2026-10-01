@@ -37,7 +37,7 @@
             ['Manual logs: weight, sleep, body measurements, how you feel, protein, activities outside the app', 'You', 'Trends, readiness and insights', 'Only as averages in the Claude summary, if you use Claude'],
             ['Coach chats: questions you ask and the answers', 'You and the coach', 'Showing the conversation and answering follow-ups', 'Only questions you send to Claude. The built-in and on-device coaches run on your phone'],
             ['Reports about AI answers: the answer you flag and the reason you pick', 'You', 'Hiding that answer, and telling the developer if you choose to', 'Only if you choose to send it: it opens as a GitHub issue that you can read and edit before posting'],
-            ['Anthropic API key (optional)', 'You', 'Letting the app call Claude on your behalf', 'Only to Anthropic, with each Claude request'],
+            ['Anthropic API key (optional)', 'You', 'Letting the app call Claude on your behalf. It\'s stored encrypted on your phone, with a key Android keeps for the app that never leaves the phone', 'Only to Anthropic, with each Claude request. Never in a backup or in Copy my data'],
             ['On-device AI model file (optional)', 'Downloaded from Hugging Face when you ask', 'Running the on-device coach', 'No. It\'s a download, nothing is uploaded'],
           ],
         },

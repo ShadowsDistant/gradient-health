@@ -60,6 +60,25 @@ check('loadSecret reads it back', store.loadSecret('anthropic_api_key') === 'fak
 store.deleteSecret('anthropic_api_key');
 check('delete removes it', store.loadSecret('anthropic_api_key') === '');
 
+section('In the app the key is only ever in its encrypted store');
+// The app's store seals the key with an Android Keystore key (SecretBox.java). When it can't take
+// a key, the page must not keep a plain copy of its own instead.
+const bridgeSave = globalThis.AndroidBridge.saveSecret;
+globalThis.AndroidBridge.saveSecret = () => false;
+check('a key the app\'s store turns down isn\'t kept anywhere', store.saveSecret('anthropic_api_key', 'fakekey-refused-0123456789') === false && !ls.has('gh.secret.anthropic_api_key') && store.loadSecret('anthropic_api_key') === '');
+// 1.5 kept a plain copy in localStorage when the app's store turned a key down.
+ls.set('gh.secret.anthropic_api_key', 'fakekey-left-0123456789abcd');
+check('a plain copy an older version left in localStorage goes, even when it can\'t move', store.loadSecret('anthropic_api_key') === '' && !ls.has('gh.secret.anthropic_api_key'));
+globalThis.AndroidBridge.saveSecret = bridgeSave;
+ls.set('gh.secret.anthropic_api_key', 'fakekey-left-0123456789abcd');
+check('and moves into the app\'s store when it can', store.loadSecret('anthropic_api_key') === 'fakekey-left-0123456789abcd' && file.secrets.anthropic_api_key === 'fakekey-left-0123456789abcd' && !ls.has('gh.secret.anthropic_api_key'));
+store.deleteSecret('anthropic_api_key');
+const appBridge = globalThis.AndroidBridge;
+globalThis.AndroidBridge = undefined;
+check('a plain browser (no app) keeps it in localStorage, as documented', store.saveSecret('anthropic_api_key', 'fakekey-web-0123456789abcd') && ls.get('gh.secret.anthropic_api_key') === 'fakekey-web-0123456789abcd' && store.loadSecret('anthropic_api_key') === 'fakekey-web-0123456789abcd');
+store.deleteSecret('anthropic_api_key');
+globalThis.AndroidBridge = appBridge;
+
 section('Restore');
 check('rejects text that isn\'t a backup', !store.importJson('hello').ok && !store.importJson('{"a":1}').ok);
 const newer = JSON.parse(exported); newer.schema = 99;

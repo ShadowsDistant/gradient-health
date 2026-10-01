@@ -27,6 +27,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * The object exposed to the page as window.AndroidBridge.
@@ -362,10 +364,19 @@ public final class Bridge {
 
     // ---------------------------------------------------------------- secrets (never logged)
 
+    // Values are sealed with the app's Android Keystore key (SecretBox) in the "secrets" preferences,
+    // which backups leave out. Opened ones are kept in memory for this run, so a screen asking whether
+    // there's a key doesn't go to the Keystore every time it draws.
+    private final Map<String, String> openedSecrets = new HashMap<String, String>();
+
     private SharedPreferences secrets() {
         return activity.getSharedPreferences(SECRETS_PREFS, Context.MODE_PRIVATE);
     }
 
+    /**
+     * Stores a secret sealed (SecretBox); an empty value removes it. False when it can't be sealed:
+     * then nothing new is stored, anywhere.
+     */
     @JavascriptInterface
     public boolean saveSecret(String name, String value) {
         if (!trusted()) {
@@ -374,14 +385,33 @@ public final class Bridge {
         if (name == null || name.isEmpty()) {
             return false;
         }
-        try {
-            return secrets().edit().putString(name, value == null ? "" : value).commit();
-        } catch (Throwable t) {
-            return false;
+        synchronized (openedSecrets) {
+            openedSecrets.remove(name);
+            try {
+                boolean empty = value == null || value.isEmpty();
+                SharedPreferences.Editor edit = secrets().edit();
+                if (empty) {
+                    edit.remove(name);
+                } else {
+                    edit.putString(name, SecretBox.seal(value));
+                }
+                boolean ok = edit.commit();
+                if (ok && !empty) {
+                    openedSecrets.put(name, value);
+                }
+                return ok;
+            } catch (Throwable t) {
+                return false;
+            }
         }
     }
 
-    /** The stored value, or "" if none. */
+    /**
+     * The stored value, or "" if there's none. One saved as plain text before 1.6 is sealed in place
+     * the first time it's read. One that can't be opened (its Keystore key is gone, after a restore
+     * onto another phone, or it was changed), or a plain one that can't be sealed, is deleted: ""
+     * makes the app ask for the key again rather than keep or use a value it can't protect.
+     */
     @JavascriptInterface
     public String loadSecret(String name) {
         if (!trusted()) {
@@ -390,11 +420,41 @@ public final class Bridge {
         if (name == null || name.isEmpty()) {
             return "";
         }
-        try {
-            String value = secrets().getString(name, "");
-            return value == null ? "" : value;
-        } catch (Throwable t) {
-            return "";
+        synchronized (openedSecrets) {
+            String opened = openedSecrets.get(name);
+            if (opened != null) {
+                return opened;
+            }
+            SharedPreferences prefs;
+            String stored;
+            try {
+                prefs = secrets();
+                stored = prefs.getString(name, "");
+            } catch (Throwable t) {
+                return "";
+            }
+            if (stored == null || stored.isEmpty()) {
+                return "";
+            }
+            try {
+                String value;
+                if (SecretBox.isSealed(stored)) {
+                    value = SecretBox.open(stored);
+                } else {
+                    value = stored;
+                    if (!prefs.edit().putString(name, SecretBox.seal(value)).commit()) {
+                        throw new IllegalStateException("not saved");
+                    }
+                }
+                openedSecrets.put(name, value);
+                return value;
+            } catch (Throwable t) {
+                try {
+                    prefs.edit().remove(name).commit();
+                } catch (Throwable ignored) {
+                }
+                return "";
+            }
         }
     }
 
@@ -406,10 +466,13 @@ public final class Bridge {
         if (name == null || name.isEmpty()) {
             return false;
         }
-        try {
-            return secrets().edit().remove(name).commit();
-        } catch (Throwable t) {
-            return false;
+        synchronized (openedSecrets) {
+            openedSecrets.remove(name);
+            try {
+                return secrets().edit().remove(name).commit();
+            } catch (Throwable t) {
+                return false;
+            }
         }
     }
 

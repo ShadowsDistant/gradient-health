@@ -275,4 +275,17 @@ section('The bridge answers only the app\'s page');
   check('trusted() asks MainActivity whether the page is the app\'s', /private boolean trusted\(\) \{\s*return activity\.pageTrusted\(\);/.test(BR));
 }
 
+section('The API key is encrypted on the phone (SecretBox)');
+{
+  const SB = read(`${JAVA}SecretBox.java`);
+  const BR = read(`${JAVA}Bridge.java`);
+  check('AES-256-GCM with a 128-bit tag, under an Android Keystore key (alias gh-secrets-1)', /"AndroidKeyStore"/.test(SB) && /ALIAS = "gh-secrets-1"/.test(SB) && /"AES\/GCM\/NoPadding"/.test(SB) && /TAG_BITS = 128/.test(SB) && /new GCMParameterSpec\(TAG_BITS, iv\)/.test(SB));
+  check('the key is made with KeyGenParameterSpec: GCM only, 256 bits, a fresh IV each time', /new KeyGenParameterSpec\.Builder\(ALIAS,\s*KeyProperties\.PURPOSE_ENCRYPT \| KeyProperties\.PURPOSE_DECRYPT\)/.test(SB) && /setBlockModes\(KeyProperties\.BLOCK_MODE_GCM\)/.test(SB) && /setKeySize\(256\)/.test(SB) && /setRandomizedEncryptionRequired\(true\)/.test(SB) && !/cipher\.init\(Cipher\.ENCRYPT_MODE[^;]*GCMParameterSpec/.test(SB));
+  check('stored as v2:<base64 IV>:<base64 ciphertext>', /VERSION = "v2"/.test(SB) && /VERSION \+ ":" \+ Base64\.encodeToString\(iv, Base64\.NO_WRAP\) \+ ":"/.test(SB) && /parts\.length != 3 \|\| !VERSION\.equals\(parts\[0\]\)/.test(SB));
+  const save = body(BR, 'public boolean saveSecret('), loadS = body(BR, 'public String loadSecret(');
+  check('saveSecret stores only the sealed value', /SecretBox\.seal\(value\)/.test(save) && !/putString\(name, value/.test(save));
+  check('loadSecret opens it, seals a plain value from before 1.6, and deletes what it can\'t open', /SecretBox\.open\(stored\)/.test(loadS) && /putString\(name, SecretBox\.seal\(value\)\)/.test(loadS) && /catch \(Throwable t\) \{\s*try \{\s*prefs\.edit\(\)\.remove\(name\)\.commit\(\);/.test(loadS) && /return "";\s*\}\s*\}\s*\}$/.test(loadS.trim()));
+  check('nothing about secrets is ever logged', ![SB, BR].some((s) => /\bLog\.[a-z]+\(|System\.(out|err)|printStackTrace/.test(s)));
+}
+
 done();
