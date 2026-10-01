@@ -288,4 +288,44 @@ section('The API key is encrypted on the phone (SecretBox)');
   check('nothing about secrets is ever logged', ![SB, BR].some((s) => /\bLog\.[a-z]+\(|System\.(out|err)|printStackTrace/.test(s)));
 }
 
+section('Backups: none on Android 8, encrypted only from Android 9, never the key');
+{
+  const v26 = read('android/res/xml/backup_rules.xml'), v28 = read('android/res/xml-v28/backup_rules.xml'), v31 = read('android/res/xml/data_extraction_rules.xml');
+  const domains = ['root', 'file', 'database', 'sharedpref', 'external'];
+  check('Android 8 (res/xml/) backs up nothing: no includes, and every domain excluded', !/<include\b/.test(v26.replace(/<!--[\s\S]*?-->/g, '')) && domains.every((d) => new RegExp(`<exclude domain="${d}" path="\\." />`).test(v26)));
+  const inc28 = v28.replace(/<!--[\s\S]*?-->/g, '').match(/<include\b[^>]*>/g) || [];
+  check('Android 9 to 11 (res/xml-v28/): only end-to-end encrypted backups, without the key', inc28.length >= 1 && inc28.every((t) => /requireFlags="clientSideEncryption"/.test(t)) && /<exclude domain="sharedpref" path="secrets\.xml" \/>/.test(v28));
+  check('Android 12 and newer: cloud backups only with encryption, the key never in one or in a device transfer', /<cloud-backup disableIfNoEncryptionCapabilities="true">/.test(v31) && (v31.match(/<exclude domain="sharedpref" path="secrets\.xml" \/>/g) || []).length === 2);
+  const { readdirSync, existsSync } = await import('node:fs');
+  const dirs = readdirSync(join(root, 'android/res')).filter((d) => existsSync(join(root, 'android/res', d, 'backup_rules.xml')));
+  check('no other copy of the rules applies to Android 8', dirs.sort().join() === 'xml,xml-v28', dirs);
+  const MS = read(`${JAVA}ModelStore.java`);
+  check('model files live in no-backup storage', /new File\(context\.getNoBackupFilesDir\(\), DIR\)/.test(MS));
+}
+
+section('The manifest');
+{
+  const M = read('android/AndroidManifest.xml').replace(/<!--[\s\S]*?-->/g, '');
+  const app = (M.match(/<application\b[^>]*>/) || [''])[0];
+  check('the application: backups by the rules above, no plain http, not debuggable', /android:allowBackup="true"/.test(app) && /android:fullBackupContent="@xml\/backup_rules"/.test(app) && /android:dataExtractionRules="@xml\/data_extraction_rules"/.test(app) && /android:usesCleartextTraffic="false"/.test(app) && !/android:debuggable="true"/.test(M), app);
+  const tags = [...M.matchAll(/<(activity|activity-alias|service|receiver|provider)\b[^>]*>/g)].map((m) => ({ kind: m[1], tag: m[0], name: (/android:name="([^"]+)"/.exec(m[0]) || [])[1] }));
+  const open = tags.filter((t) => /android:exported="true"/.test(t.tag) && !/android:permission="/.test(t.tag) && t.name !== '.MainActivity');
+  check('every exported component but the launcher activity needs a permission (and no provider is exported)', open.length === 0 && tags.filter((t) => t.kind === 'provider').every((t) => /android:exported="false"/.test(t.tag)), open.map((t) => t.name));
+}
+
+section('CI: only main is signed with the release key and published');
+{
+  const yml = read('.github/workflows/android.yml').replace(/^\s*#.*\n/gm, '');
+  const jobs = {};
+  const parts = yml.slice(yml.indexOf('\njobs:')).split(/\n {2}([\w-]+):\n/);
+  for (let i = 1; i < parts.length; i += 2) jobs[parts[i]] = `\n${parts[i + 1]}`;
+  check('read-only by default', /\npermissions:\n {2}contents: read\n/.test(yml));
+  check('the build job never sees a release secret, writes nothing and publishes nothing', jobs.build && !/RELEASE_|contents: write|gh release/.test(jobs.build) && /upload-artifact/.test(jobs.build));
+  check('the release job runs on main only, after the build, in the release environment', jobs.release && /\n {4}needs: build\n/.test(jobs.release) && /\n {4}if: github\.ref == 'refs\/heads\/main'/.test(jobs.release) && /\n {4}environment: release\n/.test(jobs.release) && /\n {6}contents: write\n/.test(jobs.release));
+  check('and refuses to publish without the release key', jobs.release && /if \[ -z "\$RELEASE_KEYSTORE_B64" \]; then[\s\S]*?exit 1/.test(jobs.release));
+  check('no other job or workflow can write to the repository', Object.entries(jobs).every(([k, v]) => k === 'release' || !/contents: write/.test(v)) && !/contents: write/.test(read('.github/workflows/model-check.yml')));
+  const unpinned = [...new Set([...yml.matchAll(/uses: ([\w./-]+@[\w.-]+)/g)].map((m) => m[1]).filter((u) => !/@[0-9a-f]{40}$/.test(u)))];
+  if (unpinned.length) console.log(`  ! warning: actions not pinned to a commit SHA in android.yml: ${unpinned.join(', ')}`);
+}
+
 done();

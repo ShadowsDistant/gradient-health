@@ -8,7 +8,7 @@
   const CONTACT = 'https://github.com/ShadowsDistant/gradient-health/issues';
 
   GH.PRIVACY = {
-    updated: '2026-09-30',
+    updated: '2026-10-01',
     contact: CONTACT,
     intro: [
       'Gradient Health is a workout, health and food tracking app for Android. This policy explains exactly what the app collects, where it keeps it, what (if anything) leaves your phone, and how to delete it.',
@@ -83,7 +83,7 @@
         paras: [
           'Everything is stored in the app\'s private storage on your phone, which other apps can\'t read. Connections to outside services use HTTPS. The app contains no third-party analytics, advertising or crash-reporting code.',
           'Background reads wait in the app\'s private storage until the app adds them to your history, and an activity\'s route is kept there while it records. Neither is in device backups. Once you save an activity, it\'s part of the app\'s saved data like everything else.',
-          'If you have Android\'s device backup turned on, it can keep a copy of the app\'s saved data. On Android 9 and newer the app only allows that when the backup is end-to-end encrypted with your screen lock (a PIN, pattern or password); Android 8 backs up without that encryption. Your API key and the on-device model are never in a backup, and the key is never in Copy my data.',
+          'If you have Android\'s device backup turned on, it can keep a copy of the app\'s saved data, but only when the backup is end-to-end encrypted with your screen lock (a PIN, pattern or password). That needs Android 9 or newer: on Android 8, the app\'s data isn\'t backed up at all. Your API key and the on-device model are never in a backup, and the key is never in Copy my data.',
         ],
       },
       {
