@@ -13,7 +13,7 @@ globalThis.AndroidBridge = {
   hcRequest: () => calls.request.push('core'),
   hcRequestFood: () => calls.request.push('food'),
 };
-const GH = load('src/data/moves.js', 'src/engine/pose.js', 'src/brain.js', 'src/insights.js', 'src/health.js', 'src/food.js', 'src/store.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/health.js', 'src/food.js', 'src/store.js');
 const B = GH.brain, H = GH.health, F = GH.food;
 const hooks = globalThis.__gh;
 const D0 = B.dayFromStr('2026-09-28');

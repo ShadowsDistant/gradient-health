@@ -480,7 +480,7 @@
     } else if (timed) {
       const d = durationOf(st);
       target = `<div class="pl-target"><span class="pl-big rf-num">${d}</span><span class="pl-unit">seconds</span></div>`;
-      if (st.kind === 'set') hint = '<p class="pl-hint t-callout rf-muted">Hold with good form. Stop early if it breaks.</p>';
+      if (st.kind === 'set') hint = `<p class="pl-hint t-callout rf-muted">${U.esc((GH.access && GH.access.setHint(U.S.profile, it, true)) || 'Hold with good form. Stop early if it breaks.')}</p>`;
       actions = `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plStartTimer">${U.icon('play')}Start</button>`;
     } else if (st.kind === 'set') {
       const t = B().currentTarget(A(), st);
@@ -490,7 +490,7 @@
         ${w ? `<button type="button" class="pl-load" data-act="plLoad" aria-label="Weight: ${U.esc(w.label)}. Change">${U.icon('dumbbell', 'sm')}<span class="rf-num">${U.esc(w.label)}</span>${U.icon('pencil', 'sm')}</button>` : ''}`;
       hint = w && w.first
         ? `<p class="pl-hint t-callout rf-muted">New exercise: pick a weight you could lift about ${t + 2} times. It's remembered for next time.</p>`
-        : `<p class="pl-hint t-callout rf-muted">${st.leadOnly ? 'One set on this side only.' : 'Stop with 1-3 reps left in the tank.'}${st.first === false ? ' Match the first side, never more.' : ''}</p>`;
+        : `<p class="pl-hint t-callout rf-muted">${st.leadOnly ? 'One set on this side only.' : U.esc((GH.access && GH.access.setHint(U.S.profile, it)) || 'Stop with 1-3 reps left in the tank.')}${st.first === false ? ' Match the first side, never more.' : ''}</p>`;
       actions = `<div class="pl-adjust"><span class="t-footnote rf-muted">Did fewer?</span>${U.stepper('plReps', t, 0, t, 'Reps done', 'data-on="plReps"')}</div>
         <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plDone">${U.icon('check')}Done set</button>`;
     } else {
@@ -821,12 +821,14 @@
     const { planned, doneSets } = counts();
     const pct = planned ? doneSets / planned : 1;
     const ck = P.ck;
+    // A flare day (gentle range of motion only) has no sets to rate.
+    const flare = !!(A() && A().session && A().session.flare);
     return `${top('Check-in')}
       <div class="pl-scroll">
         <h1 class="rf-large-title">Check-in</h1>
-        <p class="t-callout rf-muted pl-pad">${doneSets} of ${planned} sets done.${pct < 0.5 ? ' Under half, so this one is saved but won\'t count for the streak.' : ''}</p>
-        <div class="ob-group"><h3 class="rf-list-header">How was it?</h3><div class="ob-pad">${U.seg('ckRating', [['easy', 'Too easy'], ['right', 'About right'], ['hard', 'Too hard']], ck.rating, 'How was it', ' data-on="ckRating"')}</div></div>
-        <div class="ob-group"><h3 class="rf-list-header">Too complicated?</h3><div class="ob-pad">${U.seg('ckComplicated', [['false', 'No'], ['true', 'Yes, simpler please']], String(ck.complicated), 'Too complicated', ' data-on="ckComplicated"')}</div></div>
+        <p class="t-callout rf-muted pl-pad">${flare ? 'A gentle day done. It counts for your streak.' : `${doneSets} of ${planned} sets done.${pct < 0.5 ? ' Under half, so this one is saved but won\'t count for the streak.' : ''}`}</p>
+        ${flare ? '' : `<div class="ob-group"><h3 class="rf-list-header">How was it?</h3><div class="ob-pad">${U.seg('ckRating', [['easy', 'Too easy'], ['right', 'About right'], ['hard', 'Too hard']], ck.rating, 'How was it', ' data-on="ckRating"')}</div></div>
+        <div class="ob-group"><h3 class="rf-list-header">Too complicated?</h3><div class="ob-pad">${U.seg('ckComplicated', [['false', 'No'], ['true', 'Yes, simpler please']], String(ck.complicated), 'Too complicated', ' data-on="ckComplicated"')}</div></div>`}
         <div class="ob-group"><h3 class="rf-list-header">Anything hurt?</h3><div class="ob-chips">${JOINTS.map(([id, t]) => U.chip(t, ck.pain.includes(id), `data-on="ckPain" data-v="${id}"`)).join('')}</div><p class="rf-list-footer">Moves that load it get swapped out for two weeks.</p></div>
         <div class="ob-group"><h3 class="rf-list-header">Weight today (optional)</h3><div class="ob-fields"><div class="rf-field"><div class="rf-field-control"><input class="rf-input" type="number" inputmode="decimal" placeholder="${U.wUnit()}" aria-label="Weight in ${U.wUnit()}" data-on="ckWeight" value="${ck.weight == null ? '' : ck.weight}"></div></div></div></div>
       </div>

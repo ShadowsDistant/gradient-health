@@ -2,7 +2,7 @@
 // on or above the floor, reach their planted hands/feet, keep joints in human ranges, and draw.
 import { load, check, section, done } from './lib.mjs';
 
-const GH = load('src/data/moves.js', 'src/engine/pose.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js');
 const M = GH.moves;
 const P = GH.pose;
 const ids = Object.keys(M.MOVES);
@@ -40,7 +40,8 @@ for (const id of ids) {
 check(`every move (${ids.length}) has a name, a rep, a sensible range and cues without exclamation marks`, !bad.length, bad.slice(0, 5));
 const ladderBad = [];
 for (const [fam, lad] of Object.entries(M.LADDERS)) {
-  if (!lad.gym && lad.rungs.length < 4) ladderBad.push(`${fam}: fewer than 4 rungs`);
+  // Stand-in ladders for particular bodies (alt) only need room for one step up.
+  if (!lad.gym && lad.rungs.length < (lad.alt ? 2 : 4)) ladderBad.push(`${fam}: fewer than ${lad.alt ? 2 : 4} rungs`);
   if (lad.gym && !lad.rungs.length) ladderBad.push(`${fam}: empty pool`);
   for (const id of lad.rungs) {
     const m = M.MOVES[id];
@@ -49,7 +50,7 @@ for (const [fam, lad] of Object.entries(M.LADDERS)) {
     if (!m || (m.family !== fam && !reused)) ladderBad.push(`${fam}: ${id}`);
   }
 }
-check('every ladder has 4+ rungs (gym pools 1+), all known, all tagged with their family', !ladderBad.length, ladderBad);
+check('every ladder has 4+ rungs (stand-ins 2+, gym pools 1+), all known, all tagged with their family', !ladderBad.length, ladderBad);
 const tempo = ids.filter((id) => { const s = M.secPerRep(M.MOVES[id]); return !(s >= 0.5 && s <= 14); });
 check('rep tempo is between 0.5 and 14 s', !tempo.length, tempo.map((id) => `${id}:${M.secPerRep(M.MOVES[id])}`));
 const eq0 = { db: [], kb: [], ball: false, band: false, bar: false, chair: false, wall: false, towel: false, table: false, door: false };
@@ -59,6 +60,41 @@ const slamToss = M.rungsFor('coreRot', { db: [], kb: [], ball: true, ballSlam: t
 check('the rotation ladder ends in a slam or a toss, never both', slamToss.length === 1, slamToss);
 const uni = ids.filter((id) => M.MOVES[id].uni);
 check('unilateral moves draw mirrored for one side only', uni.every((id) => M.mirrorFor(M.MOVES[id], 'L') !== M.mirrorFor(M.MOVES[id], 'R')));
+
+section('Moves for every body');
+// src/data/moves-access.js tags every move with what it asks of the body, so a plan can leave out
+// what a health condition rules out (src/access.js).
+const POS = ['stand', 'seat', 'floor', 'kneel', 'low', 'bench', 'hang'];
+const GRIPS = ['hang', 'pull', 'hold', 'loop'];
+const SPINE = ['flex', 'flexLoad', 'twist', 'twistLoad', 'load'];
+const tagBad = [];
+for (const id of ids) {
+  const m = M.MOVES[id];
+  if (!POS.includes(m.pos)) tagBad.push(`${id}: pos ${m.pos}`);
+  if (m.grip != null && !GRIPS.includes(m.grip)) tagBad.push(`${id}: grip ${m.grip}`);
+  if (m.spine != null && (!Array.isArray(m.spine) || m.spine.some((x) => !SPINE.includes(x)))) tagBad.push(`${id}: spine ${m.spine}`);
+  // Anything held or strapped on needs a grip tag, so painful hands can skip it.
+  const holds = (m.load && /db|kb|ball|band|bb|ez|cable|machine/.test(m.load)) && !m.grip && !['leg_press', 'leg_curl', 'leg_ext', 'bike_int', 'incline_walk', 'calf_smith', 'calf_press', 'leg_curl_db'].includes(id);
+  if (holds && !/^(sq_|lg_|ls_)/.test(id)) tagBad.push(`${id}: loaded but no grip tag`);
+}
+check(`every move says where the body is and what it grips (${ids.length} moves)`, !tagBad.length, tagBad.slice(0, 8));
+const accessIds = ids.filter((id) => M.MOVES[id].family && M.LADDERS[M.MOVES[id].family] && M.LADDERS[M.MOVES[id].family].alt);
+const copyBad = [];
+for (const id of accessIds.concat(ids.filter((id) => M.MOVES[id].powerOf))) {
+  const m = M.MOVES[id];
+  if (m.cues.length !== 3 || [...m.cues, m.mistake, m.breathe].some((c) => typeof c !== 'string' || !c || /[\u2013\u2014]/.test(c))) copyBad.push(id);
+}
+check(`${accessIds.length} stand-in, balance and floor moves: three cues, a mistake and a breathing tip, no dashes`, !copyBad.length, copyBad);
+const powerBad = ids.filter((id) => M.MOVES[id].powerOf).filter((id) => { const m = M.MOVES[id], b = M.MOVES[m.powerOf]; return !b || m.family !== b.family || !(M.secPerRep(m) < M.secPerRep(b)); });
+check('fast-up versions count as their base move\'s rung and are quicker on the way up', !powerBad.length, powerBad);
+const flowBad = Object.entries(M.FLOWS || {}).flatMap(([k, list]) => list.filter((id) => !M.MOVES[id]).map((id) => `${k}: ${id}`));
+check('warm-up, cool-down and range-of-motion flows name known moves', M.FLOWS && Object.keys(M.FLOWS).length >= 5 && !flowBad.length, flowBad);
+const seatedOnly = ['pushAlt', 'rowAlt', 'raiseAlt', 'curlAlt', 'triAlt', 'legSeat', 'coreAlt', 'finGentle'].every((f) => M.LADDERS[f].rungs.some((id) => M.MOVES[id].pos === 'seat' && !M.MOVES[id].load));
+check('every stand-in ladder starts with something you can do sitting down with no equipment', seatedOnly);
+const handsFree = ['pushAlt', 'rowAlt', 'raiseAlt', 'curlAlt', 'triAlt', 'coreAlt'].every((f) => M.LADDERS[f].rungs.some((id) => !M.MOVES[id].hands && (!M.MOVES[id].grip || M.MOVES[id].grip === 'loop')));
+check('and each one has a move with no weight on the hands and no tight grip', handsFree);
+const sts = M.LADDERS.squat.rungs.slice(0, 3);
+check('sit to stand comes first on the squat ladder', sts.join() === 'sq_sts_hands,sq_sts,sq_sts_slow' && sts.every((id) => M.MOVES[id].family === 'squat'), sts);
 
 section('Poses');
 const problems = { finite: [], floor: [], reach: [], joints: [], draw: [] };

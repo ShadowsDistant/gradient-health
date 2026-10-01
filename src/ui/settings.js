@@ -261,7 +261,7 @@
   };
 
   // Each answer opens on its own screen with Save, so nothing else has to be gone through again.
-  const STEP_ICON = { about: ['person', 'sky'], goals: ['flag', 'green'], experience: ['chart', 'indigo'], schedule: ['calendar', 'teal'], equipment: ['bag', 'amber'], body: ['heart', 'rose'], food: ['food', 'green'], sleep: ['moon', 'indigo'], style: ['sliders', 'violet'] };
+  const STEP_ICON = { about: ['person', 'sky'], conditions: ['heart', 'rose'], goals: ['flag', 'green'], experience: ['chart', 'indigo'], schedule: ['calendar', 'teal'], equipment: ['bag', 'amber'], body: ['shuffle', 'coral'], nutrition: ['food', 'green'], food: ['food', 'green'] };
   U.act.editAnswers = () => {
     const p = U.S.profile;
     U.sheet({ title: 'Your answers', size: 'auto', body: `<p class="t-footnote rf-muted sheet-lead">Pick one to change. Your plan updates when you save.</p>

@@ -7,7 +7,7 @@ import { load, root, check, section, done } from './lib.mjs';
 
 const ls = new Map();
 globalThis.localStorage = { getItem: (k) => (ls.has(k) ? ls.get(k) : null), setItem: (k, v) => ls.set(k, String(v)), removeItem: (k) => ls.delete(k) };
-const GH = load('src/data/moves.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/store.js', 'src/coach.js', 'src/tailor.js', 'src/devicecoach.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/store.js', 'src/coach.js', 'src/tailor.js', 'src/devicecoach.js');
 const bundle = await build({ entryPoints: [join(root, 'src/ai.js')], bundle: true, write: false, format: 'iife', platform: 'browser', target: ['es2022'], logLevel: 'silent' });
 new Function(bundle.outputFiles[0].text)();
 const B = GH.brain, C = GH.coach, H = GH.health, SC = GH.science;
@@ -188,6 +188,24 @@ check('and never repeats a change within a week', new Set(tl.map((x) => `${B.wee
 const w = C.watching(S, D0);
 check('what it watches has a value and a status', w.length >= 3 && w.every((x) => x.label && x.value && ['good', 'info', 'watch'].includes(x.status)));
 check('short sleep is flagged', w.some((x) => x.label === 'Sleep' && x.status === 'watch'));
+
+section('Plans for different bodies');
+{
+  const S3 = B.newState({ goals: ['strength'], age: 72, conditions: ['balance', 'ra'], equipment: { db: [5], band: true } }, null, D0);
+  const ask3 = (q) => C.ask(S3, D0, q);
+  check('a question about a condition gets what the plan does about it', ask3('is this ok with my arthritis?').topic === 'bodies' && /rheumatoid arthritis/.test(ask3('is this ok with my arthritis?').text) && /Balance practice/.test(ask3('is this ok with my arthritis?').text));
+  check('pregnancy: ask a midwife or doctor', /midwife or doctor/.test(ask3('can I train while pregnant').text));
+  check('heart rate questions still go to heart, chest pain is still a red flag', ask3('what is my resting heart rate').topic === 'heart' && ask3('chest pain when I train with arthritis').topic === 'redflag');
+  const pl = B.todayPlan(S3, D0);
+  const sess3 = B.buildSession(S3, D0, pl.tpl != null ? pl.tpl : 0, {});
+  const dec3 = C.decisions(S3, D0, sess3);
+  check('the coach says why balance comes first', dec3.some((x) => x.rule === 'balance' && /Balance practice first/.test(x.text)), dec3.map((x) => x.text));
+  S3.feel[D0] = { flare: true };
+  const flare = B.buildSession(S3, D0, pl.tpl != null ? pl.tpl : 0, {});
+  check('and explains a flare day', flare.flare && C.decisions(S3, D0, flare)[0].rule === 'arthritis');
+  const brief = GH.deviceCoach.brief(S3, D0);
+  check('the on-device coach knows what the plan works around; Claude\'s summary doesn\'t', (/adapted for age band 65 and over; planned around balance and rheumatoid arthritis/.test(brief)) && !/arthritis|balance/i.test(GH.ai.summary ? GH.ai.summary(S3, D0) : ''), brief);
+}
 
 section('Suggestions you apply');
 S = person({ workouts: [D0 - 21, D0 - 20, D0 - 18, D0 - 17] });

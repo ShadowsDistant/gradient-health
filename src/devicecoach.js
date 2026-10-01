@@ -38,6 +38,9 @@
     const L = [];
     const goals = (p.goals || []).map((g) => GOAL[g] || g).join(', ');
     L.push(`Goals: ${goals || 'not set'}.${p.age ? ` Age ${p.age}.` : ''}`);
+    // What the plan works around (age band, health conditions). Only this on-device model sees it.
+    const around = GH.access && GH.access.briefLine(p);
+    if (around) L.push(`The plan is adapted for ${around}. Never give medical advice; suggest a doctor for anything medical.`);
     if (workouts) {
       const where = p.where === 'gym' ? 'at a gym' : p.where === 'both' ? 'at home and at a gym' : 'at home';
       L.push(`Plan: ${p.days} workouts a week, about ${p.minutes} min each, ${where}.`);

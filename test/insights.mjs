@@ -2,7 +2,7 @@
 // effects under the thresholds don't, relationships need enough pairs, and safety wins the ranking.
 import { load, check, section, done } from './lib.mjs';
 
-const GH = load('src/data/moves.js', 'src/engine/pose.js', 'src/brain.js', 'src/insights.js', 'src/health.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/health.js');
 const B = GH.brain;
 const I = GH.insights;
 const D = B.dayFromStr('2026-09-28');
