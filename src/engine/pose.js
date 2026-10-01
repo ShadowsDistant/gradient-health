@@ -493,6 +493,10 @@
   //           (V-bar row, Pallof press). Its clip is 8 from the grip, toward the pulley.
   //   rope    Cable rope in both hands; clip 15 from the grips toward the pulley, knobs past them.
   //   latbar  Wide pulldown bar, centred between the grips (end-on in side view).
+  //   band, towel { from, between, route } From a joint ('toN', 'heN') or a point [x, y] to each
+  //           hand, or between the hands. A point's third number (side view, 3D only) anchors each
+  //           end that far out on its own side. route 'arms': under the arms on the way (a band
+  //           round a chair's back); 'back' (3D only): up behind the seat.
   function equipment(move, pts) {
     const out = [];
     for (const e of move.equip || []) {
@@ -556,7 +560,14 @@
         const from = e.from ? (typeof e.from === 'string' ? pts[e.from] : e.from) : null;
         const grips = hands.map((s) => equipGrip(pts, s));
         if (e.between) out.push({ k: e.type, a: grips[0], b: grips[1] || grips[0], layer: e.layer || 'front' });
-        else for (const g of grips) out.push({ k: e.type, a: from || g, b: g, layer: e.layer || 'front' });
+        else if (e.route === 'arms' && from) {
+          // Round a chair's back and under the arms: past the side of the chest below the armpit.
+          const down = mul(sub(pts.hip, pts.neck), 12 / (len(sub(pts.hip, pts.neck)) || 1));
+          hands.forEach((s, i) => {
+            const via = add(pts['sh' + s], down);
+            out.push({ k: e.type, a: from, b: via, layer: e.layer || 'front' }, { k: e.type, a: via, b: grips[i], layer: e.layer || 'front' });
+          });
+        } else for (const g of grips) out.push({ k: e.type, a: from || g, b: g, layer: e.layer || 'front' });
       } else if (e.type === 'bb' || e.type === 'ez') {
         // Barbell or EZ bar, seen end-on in side view: the plate behind the body, the bar end at
         // the grip (or at the body point named by `hold`: 'traps' on the back, 'lap' on the hips).

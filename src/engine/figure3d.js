@@ -823,11 +823,25 @@ const hands = (e) => (e.hands === 'both' ? ['N', 'F'] : e.hands === 'N' || e.han
 const HELD = new Set(['db', 'kb', 'ball', 'band', 'towel', 'bb', 'ez', 'handle', 'rope', 'latbar']);
 // Per-form tweaks for the 3D lift where the 2D data can't say (e.g. an elbow braced inside a thigh),
 // keyed by form name: stance (side view: half the ankles' spacing, cm), toeOut (degrees), kneeOut,
-// handZ { N, F } (a hand's distance from the midline, cm), flare { N, F } (elbow out, cm), grip
-// ('sup' | 'neutral' | 'pro'), dbAxis ('long').
+// handZ { N, F } (a hand's distance from the midline, cm; below 0 across the body), flare { N, F }
+// (elbow out, cm), grip ('sup' | 'neutral' | 'pro'), palm { N, F } (a free hand's palm: 'up',
+// 'down' or degrees as for a grip), palmIn (ms a landing hand takes to turn flat), dbAxis ('long').
 const HINTS = {
   // Heel-to-toe stands and walks (src/data/moves-access.js): the feet in one line, not hip-width.
   tandemWall: { stance: 3 }, tandem: { stance: 3 }, heelToe: { stance: 3 },
+  // Seated versions of the moves below (src/data/moves-access.js) hold the weights the same way.
+  seatPress: { handZ: { N: 30, F: 30 }, flare: { N: 8, F: 8 } },
+  seatOhExt: { handZ: { N: 5, F: 5 } },
+  seatPullApart: { grip: 'pro' }, seatRow: { grip: 'neutral' },
+  // Arms crossed: each hand on the other side of the trunk, the elbows at its sides.
+  seatBrace: { handZ: { N: -7, F: -7 }, flare: { N: 12, F: 12 } },
+  seatLean: { handZ: { N: -8, F: -8 }, flare: { N: 12, F: 12 } }, seatHinge: { handZ: { N: -8, F: -8 }, flare: { N: 12, F: 12 } },
+  // Pushing against your own hand: the working palm up for a curl (the other hand on top of the
+  // wrist), down for a triceps press (the other hand under it).
+  seatSelfCurl: { palm: { N: 'up', F: 'down' } }, seatSelfPress: { palm: { N: 'down', F: 'up' } },
+  // Reaching back for the seat: the hand turns from hanging at the side to flat on the seat, so it
+  // turns over the last half second of the reach, not in a blink as it lands.
+  sitStandHands: { palmIn: 450 },
   concCurl: { stance: 24, kneeOut: 0.3, handZ: { N: 2.5 }, flare: { N: -6 } },
   deepSquat: { handZ: { N: 2.5, F: 2.5 }, flare: { N: -5, F: -5 } },
   goblet: { handZ: { N: 6, F: 6 } },
@@ -1192,8 +1206,11 @@ function liftSide(A, pts, f, T, t) {
   const get3 = (k, s) => {
     const v = P3(pts[k]);
     const sg = s === 'N' ? 1 : -1;
-    if (k.startsWith('an')) v.z = sg * A.stance.z;
-    else if (k.startsWith('kn')) v.z = sg * (HIP_W + A.stance.z) * 0.5;
+    // An ankle's IK target can say how far across it is (+Z toward the near side): a foot placed
+    // in line with the other, or swinging out to pass it.
+    const az = f[`ik.an${s}.z`];
+    if (k.startsWith('an')) v.z = typeof az === 'number' ? az : sg * A.stance.z;
+    else if (k.startsWith('kn')) v.z = (typeof az === 'number' ? az + sg * HIP_W : sg * (HIP_W + A.stance.z)) * 0.5;
     if (J.shift && !k.startsWith('an')) shift(v);
     return v;
   };
@@ -1623,8 +1640,9 @@ function arms(A, J, pts, f, P2, P3, T, t) {
     if (onSurf > 0) surfs[s] = { y: c.kind === 'floor' ? 0 : c.y, floor: c.kind === 'floor' };
     const planted = surfs[s] != null ? settle(A, 'plant' + s, onSurf, T, 0.006, 0.008).v : 0;
     // The palm turns flat, the hand widens and the elbow flares a little slower (a quarter second to
-    // let go), so a hand pushing off the floor doesn't flip over at the wrist.
-    const palm = surfs[s] != null ? settle(A, 'palm' + s, onSurf, T, 0.006, 0.004).v : 0;
+    // let go), so a hand pushing off the floor doesn't flip over at the wrist. A form's hint can
+    // slow the landing too (palmIn, ms), for a hand coming down a long way round onto a seat.
+    const palm = surfs[s] != null ? settle(A, 'palm' + s, onSurf, T, hint.palmIn ? 1 / hint.palmIn : 0.006, 0.004).v : 0;
     let sh = J.sh[s].clone();
     let W, pole, flare = 2.5;
     const wr2 = P3 ? P3(null, 'wr', s) : P2(pts['wr' + s]);
@@ -1835,8 +1853,10 @@ function handFrame(A, J, s, sg, dirF, handDir, c, lat, fr, planted) {
     const T0 = c.bar.dip ? axis : (/chin/.test(A.move.id || '') ? lat.clone() : lat.clone().negate());
     Z = thumbTo(perp(T0, Y).normalize());
   } else {
-    // Relaxed: the palm to the side, toward the body's midline when the arm hangs.
-    Z = palmOf(90);
+    // Relaxed: the palm to the side, toward the body's midline when the arm hangs. A form's hint can
+    // turn it (palm { N, F }: 'up', 'down', or degrees as for a grip, 0 supinated to 180 pronated).
+    const hp = A.hint.palm && A.hint.palm[s];
+    Z = hp === 'up' ? V3(0, 1, 0) : hp === 'down' ? V3(0, -1, 0) : palmOf(typeof hp === 'number' ? hp : 90);
     if (Z.lengthSq() < 1e-4) Z = anyPerp(Y);
     Z.normalize();
     const pw = planted != null ? planted : (c.kind === 'floor' || c.kind === 'top') ? c.w : 0;
@@ -2081,7 +2101,7 @@ class Equipment {
         const seam2 = mesh(E.ballSeam, M.ballSeam, b); seam2.scale.setScalar(r); seam2.rotation.x = Math.PI / 2;
         it.parts.ball = this.add(b); it.r = r;
       } else if (e.type === 'band' || e.type === 'towel') {
-        const n = e.between ? 1 : hs.length * (e.route === 'back' ? 2 : 1);
+        const n = e.between ? 1 : hs.length * (e.route === 'back' || e.route === 'arms' ? 2 : 1);
         it.parts.strands = [];
         for (let i = 0; i < n; i++) {
           const m = mesh(e.type === 'band' ? E.strand : E.strip, e.type === 'band' ? M.band : M.towel, this.g);
@@ -2278,11 +2298,19 @@ class Equipment {
                 const ft = this.fig.P['ft' + side];
                 from = V3(0, 5, -7.6).applyQuaternion(ft.quaternion).add(ft.position);
               } else from = J[k] && J[k][side] ? J[k][side].clone() : grips[i].clone().add(V3(0, -60, 0));
-            } else if (Array.isArray(e.from)) from = A.view === 'top' ? V3(-e.from[1], 5, e.from[0]) : V3(e.from[0], -e.from[1] + A.raise, 0);
-            else from = grips[i].clone().add(V3(0, -40, 0));
+            } else if (Array.isArray(e.from)) {
+              // A third number (side view) anchors each end that far out on its own side: a band
+              // round a chair's back comes from both of its posts, not from one point behind the back.
+              from = A.view === 'top' ? V3(-e.from[1], 5, e.from[0]) : V3(e.from[0], -e.from[1] + A.raise, 0);
+              if (A.view === 'side' && typeof e.from[2] === 'number') from.z = (s === 'N' ? 1 : -1) * e.from[2];
+            } else from = grips[i].clone().add(V3(0, -40, 0));
             if (e.route === 'back') {
               // Up the back: from the foot, around behind the seat, to the hand.
               const via = J.hip.clone().addScaledVector(J.fwdP, -16).addScaledVector(J.latL || J.lat, (s === 'N' ? 1 : -1) * 8);
+              segs.push([from, via], [via, grips[i]]);
+            } else if (e.route === 'arms') {
+              // Under the arm: from behind, past the side of the chest just below the armpit, to the hand.
+              const via = J.sh[s].clone().addScaledVector(J.up, -12).addScaledVector(J.fwd, -2);
               segs.push([from, via], [via, grips[i]]);
             } else segs.push([from, grips[i]]);
           });
@@ -3268,14 +3296,24 @@ function draw(view, ctx, w, h) {
 }
 
 /* ---------------------------------------------------------------- phases */
-// Where time t sits in the rep: ph is 'con' (lifting), 'ecc' (lowering) or 'hold'.
+// Where time t sits in the rep: ph is 'con' (lifting), 'ecc' (lowering) or 'hold'. A via point (a
+// `through` step with no hold) and the step it leads on to in the same phase are one stretch of it:
+// t runs over both and i names the step it ends at, so the glow doesn't start over at the via.
 function phaseAt(move, t) {
   const tl = move.$tl || PZ().timeline(move);
   let r = ((t % tl.total) + tl.total) % tl.total;
-  for (let i = 0; i < tl.steps.length; i++) {
+  const n = tl.steps.length;
+  const phOf = (i) => (move.rep[i] && move.rep[i].ph) || 'move';
+  const joined = (i) => i + 1 < n && tl.steps[i].through && !tl.steps[i].hold && phOf(i + 1) === phOf(i);
+  for (let i = 0; i < n; i++) {
     const s = tl.steps[i];
-    const raw = (move.rep[i] && move.rep[i].ph) || 'move';
-    if (r < s.ms) return { ph: raw === 'ecc' ? 'ecc' : raw === 'iso' ? 'hold' : 'con', step: raw, i, t: s.ms ? r / s.ms : 1 };
+    const raw = phOf(i);
+    if (r < s.ms) {
+      let j = i, before = 0, all = s.ms;
+      for (let q = i - 1; q >= 0 && joined(q); q--) { before += tl.steps[q].ms; all += tl.steps[q].ms; }
+      while (joined(j)) { j++; all += tl.steps[j].ms; }
+      return { ph: raw === 'ecc' ? 'ecc' : raw === 'iso' ? 'hold' : 'con', step: raw, i: j, t: all ? (before + r) / all : 1 };
+    }
     r -= s.ms;
     if (r < s.hold) return { ph: 'hold', step: raw, i, t: s.hold ? r / s.hold : 1, after: raw };
     r -= s.hold;
