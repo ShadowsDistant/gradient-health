@@ -35,7 +35,7 @@ async function openApp(time, mutate) {
   await page.addInitScript(seedBridge);
   await page.goto(server.url);
   await page.waitForSelector('.onboard:not([hidden])');
-  await page.evaluate(seedState);
+  await page.evaluate(seedState, { usualWeek: true });
   if (mutate) await page.evaluate(mutate);
   await page.reload();
   await page.waitForSelector('#screen[data-view="today"]');

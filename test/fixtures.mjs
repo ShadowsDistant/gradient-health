@@ -62,7 +62,9 @@ export function seedBridge() {
 }
 
 // Five weeks of history, built with the app's own brain so every number is real.
-export function seedState() {
+// o.usualWeek keeps the usual Mon, Tue, Thu, Fri even when today is another day (for a suite that
+// sets the clock to a day it wants as it is, like a Wednesday light day).
+export function seedState(o) {
   const B = window.GH.brain;
   const today = B.dayOf(Date.now(), 4);
   const start = today - 35;
@@ -70,7 +72,7 @@ export function seedState() {
   // one of the other days, so today is always a workout day whatever the date.
   const wd = today - B.weekStart(today);
   let shift = 0;
-  while (![0, 1, 3, 4].map((x) => (x + shift) % 7).includes(wd)) shift++;
+  while (!(o && o.usualWeek) && ![0, 1, 3, 4].map((x) => (x + shift) % 7).includes(wd)) shift++;
   const weekdays = shift ? [0, 1, 3, 4].map((x) => (x + shift) % 7).sort((a, b) => a - b) : null;
   const S = B.newState({ goals: ['abs', 'arms', 'chest', 'legs'], experience: 'onoff', days: 4, weekdays, minutes: 25, age: 24, units: 'lb', weightKg: 68.4, weightGoal: 'maintain', equipment: { db: [10, 15], kb: [15], band: true, chair: true, wall: true, towel: true }, lead: { arm: 'L', leg: null }, name: 'Alex' }, { pushups: 18, plankSec: 55, curlL: 12, curlR: 15 }, start);
   S.health.status = 'granted';
