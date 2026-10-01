@@ -7,18 +7,21 @@ on:
       - 'claude/**'
   workflow_dispatch:
 
+# Read-only by default. Only the release job, which runs for main alone, may write (to publish the
+# "latest" release).
 permissions:
-  contents: write
-
-# Every run replaces the single "latest" release, so runs must not overlap.
-concurrency:
-  group: android-apk-latest-release
-  cancel-in-progress: false
+  contents: read
 
 jobs:
-  apk:
+  # Every push: the tests, the web build, and an APK and bundle signed with the public test key,
+  # attached to the run as an artifact. This job never sees the release key and publishes nothing,
+  # so code that hasn't been merged can't reach anyone's phone as a release-signed update.
+  build:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    concurrency:
+      group: android-build-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,34 +87,99 @@ jobs:
         if: steps.native-cache.outputs.cache-hit != 'true'
         run: bash scripts/build-native.sh
 
+      # Signed with the public test key: for trying a change out, never for a store.
+      - name: Build APK (test key)
+        run: bash scripts/build-apk.sh
+
+      - name: Build the Android App Bundle (test key)
+        run: bash scripts/build-aab.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gradient-health-test-${{ github.sha }}
+          path: |
+            build/gradient-health.apk
+            build/gradient-health.aab
+          if-no-files-found: error
+          retention-days: 14
+
+  # Only main (reviewed, merged code) is signed with the release key and published as "latest". The
+  # release environment is where the RELEASE_* secrets belong (docs/DEVELOPING.md, Signing).
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: write
+    # Every run replaces the single "latest" release, so runs must not overlap.
+    concurrency:
+      group: android-apk-latest-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Android build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends aapt dalvik-exchange zipalign apksigner
+
+      - name: Cache Android framework jar and bundletool
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/gradient-health
+          key: android-all-14-robolectric-10818077-bundletool-1.18.1
+
+      - name: NDK version
+        id: ndk
+        run: echo "name=$(basename "${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME:-none}}")" >> "$GITHUB_OUTPUT"
+
+      # The build job has just saved these under the same key.
+      - name: Cache the native engine
+        id: native-cache
+        uses: actions/cache@v4
+        with:
+          path: build/native
+          key: native-${{ hashFiles('android/jni/**', 'scripts/build-native.sh') }}-${{ steps.ndk.outputs.name }}
+
+      - name: Build the native engine (arm64)
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: bash scripts/build-native.sh
+
       # One versionCode for the APK and the bundle (Play needs it to grow with every upload).
       - name: Version code
         run: echo "VERSION_CODE=$(( $(date +%s) / 60 ))" >> "$GITHUB_ENV"
 
-      # The release key lives in the repository's secrets (docs/DEVELOPING.md, Publishing). Without
-      # it the build is signed with the public test key, which is fine for trying it but not a store.
+      # A "latest" signed with anything but the release key would be a download no one can update
+      # from, so without the key there is no release at all.
       - name: Release signing key
         env:
           RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
         run: |
-          if [ -n "$RELEASE_KEYSTORE_B64" ]; then
-            umask 077
-            printf '%s' "$RELEASE_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
-            echo "RELEASE_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-            echo "SIGNED_WITH=release" >> "$GITHUB_ENV"
-          else
-            echo "::warning::No RELEASE_KEYSTORE_B64 secret: this build is signed with the public test key (not for a store)."
-            echo "SIGNED_WITH=test" >> "$GITHUB_ENV"
+          if [ -z "$RELEASE_KEYSTORE_B64" ]; then
+            echo "::error::No RELEASE_KEYSTORE_B64 secret: refusing to publish a build that isn't signed with the release key."
+            exit 1
           fi
+          umask 077
+          printf '%s' "$RELEASE_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "RELEASE_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
-      - name: Build APK
+      # build-apk.sh stops if the certificate isn't the one in android/release-cert.sha256.
+      - name: Build APK (release key)
         env:
           RELEASE_KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASS }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASS: ${{ secrets.RELEASE_KEY_PASS }}
         run: bash scripts/build-apk.sh
 
-      - name: Build the Android App Bundle (for Google Play)
+      - name: Build the Android App Bundle (release key, for Google Play)
         env:
           RELEASE_KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASS }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
@@ -122,23 +190,11 @@ jobs:
         if: always()
         run: rm -f "$RUNNER_TEMP/release.jks"
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gradient-health-apk
-          path: |
-            build/gradient-health.apk
-            build/gradient-health.aab
-          if-no-files-found: error
-
       - name: Publish the "latest" release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "$SIGNED_WITH" = "release" ]; then
-            signed="Signed with the release key: the APK is the one for APKPure and direct installs, and the .aab is the upload for Google Play."
-          else
-            signed="Signed with the public test key, for trying it out only. A release-signed build won't install over this one."
-          fi
+          signed="Signed with the release key: the APK is the one for APKPure and direct installs, and the .aab is the upload for Google Play."
           # What's new in this version from src/data/changelog.js, with the short store text to paste
           # into APKPure's or Play's What's new field, then how this build was made.
           version="$(node -p "require('./package.json').version")"

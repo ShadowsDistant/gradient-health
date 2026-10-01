@@ -450,7 +450,9 @@ the package name to that key's certificate.
   and its password somewhere safe: a lost key means publishing a new app under a new name. Its
   certificate's SHA-256 is in `android/release-cert.sha256`, and `build-apk.sh` stops a release build
   signed with any other key, so a wrong secret can't publish an APK that won't update.
-- **CI signs with it** when these repository secrets exist (Settings, Secrets and variables, Actions):
+- **CI signs with it only on `main`**, in the `release` job, with these secrets. They belong in a
+  GitHub environment named `release` that only `main` may use (Settings, Environments, New
+  environment, Deployment branches: `main`), so a workflow edited on another branch can't read them:
 
   | Secret | Value |
   |---|---|
@@ -459,7 +461,7 @@ the package name to that key's certificate.
   | `RELEASE_KEY_ALIAS` | `gradienthealth` |
   | `RELEASE_KEY_PASS` | the same password (PKCS12 keys share the keystore's) |
 
-  Without them CI still builds, signed with the public test key, and says so in the release notes.
+  Without them the `release` job stops: CI never publishes a "latest" that isn't release-signed.
 - **Locally**, `scripts/build-apk.sh` and `scripts/build-aab.sh` read the same values from
   `RELEASE_KEYSTORE` (a path), `RELEASE_KEYSTORE_PASS`, `RELEASE_KEY_ALIAS` and `RELEASE_KEY_PASS`.
   The passwords reach the signing tools through the environment or a private temporary file, never a
@@ -471,10 +473,13 @@ the package name to that key's certificate.
 
 ### Builds
 
-Every push to `main` or a `claude/` branch runs `.github/workflows/android.yml`: tests, the web build,
-`build-apk.sh` and `build-aab.sh` with one shared versionCode (minutes since 1970, so it only grows),
-then the "latest" GitHub release with both files. The `.apk` is for APKPure and direct installs; the
-`.aab` (Android App Bundle) is the upload for Google Play, which doesn't take APKs for new apps.
+Every push to `main` or a `claude/` branch runs `.github/workflows/android.yml`. Its `build` job runs
+the tests and the web build, then `build-apk.sh` and `build-aab.sh` signed with the public test key,
+and attaches both to the run as an artifact (kept 14 days) without publishing anything. Only on
+`main`, the `release` job then builds both again with the release key and one shared versionCode
+(minutes since 1970, so it only grows) and replaces the "latest" GitHub release. So only merged,
+reviewed code is ever release-signed. The `.apk` is for APKPure and direct installs; the `.aab`
+(Android App Bundle) is the upload for Google Play, which doesn't take APKs for new apps.
 The release's notes start with What's new in the version, from its entry in `src/data/changelog.js`
 (`scripts/release-notes.mjs`), with the entry's `store` text folded underneath for a store's What's
 new field, then the commit, versionCode and signing key. So a new version needs a changelog entry
