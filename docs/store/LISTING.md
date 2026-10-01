@@ -58,6 +58,21 @@ Gradient Health gives general fitness guidance, not medical advice. If a move hu
 Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 ```
 
+## What's new (500 characters at most)
+
+Paste this into the What's new field with each update. This is 1.5.0's. Each GitHub release carries
+its own version's text at the end of its What's new, under "Short version, for a store's What's new
+field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
+(`node scripts/release-notes.mjs --store` prints it).
+
+```text
+• GPS for runs, walks, hikes and rides: a route map, splits, and heart rate from your watch
+• Plans that adapt to your age and to arthritis, back pain, balance problems and more, with 71 new seated and supported moves
+• Make your own plan, or have the coach build one, and share it with a QR code or a link
+• Health Connect syncs in the background every 15 minutes
+• A clearer set-up, smoother exercise animations, and 3D figures that show at once
+```
+
 ## Images
 
 | File | Size | Use |

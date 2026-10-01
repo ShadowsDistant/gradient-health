@@ -53,13 +53,15 @@ scripts/build.mjs        inlines everything into dist/gradient-health.html; lazy
 scripts/build-apk.sh     builds and signs the APK without Gradle
 scripts/make-icons.mjs   the launcher icons from art/logo.webp
 scripts/screenshots.mjs  renders docs/screenshots/ from the built page
+scripts/store-assets.mjs   the store images in docs/store/ from docs/screenshots/
+scripts/release-notes.mjs  What's new for a version, for its GitHub release and the stores
 scripts/make-tiny-gguf.py  a tiny random-weight model for test/llm.mjs
 ```
 
 ```sh
 npm ci
 npm test          # simulations, insights, AI (mocked API), coach, poses, persistence, food, health, gym,
-                  # your plans
+                  # your plans, activities, release notes
 npm run build     # dist/gradient-health.html, dist/lazy/, docs/PRIVACY.md and docs/p/index.html
 npm run smoke     # end-to-end run in Chromium (needs Playwright); add --dark for dark mode
 npm run test:ui   # layout regressions, food flows, the coach chat, the 3D figure, your plans (Chromium)
@@ -471,6 +473,10 @@ Every push to `main` or a `claude/` branch runs `.github/workflows/android.yml`:
 `build-apk.sh` and `build-aab.sh` with one shared versionCode (minutes since 1970, so it only grows),
 then the "latest" GitHub release with both files. The `.apk` is for APKPure and direct installs; the
 `.aab` (Android App Bundle) is the upload for Google Play, which doesn't take APKs for new apps.
+The release's notes start with What's new in the version, from its entry in `src/data/changelog.js`
+(`scripts/release-notes.mjs`), with the entry's `store` text folded underneath for a store's What's
+new field, then the commit, versionCode and signing key. So a new version needs a changelog entry
+with a `store` text of 500 characters at most (Play's limit); `test/release.mjs` checks both.
 `build-aab.sh` needs the Android SDK's `aapt2` and a platform `android.jar`, which the CI runner has,
 plus `bundletool`, which it downloads from Google's GitHub release and checks against a pinned
 SHA-256.
@@ -535,10 +541,11 @@ SHA-256.
     questions), no ads, the content rating questionnaire, and App access notes: everything works
     without an account; Claude needs the person's own Anthropic API key, and the on-device model is
     an optional download of 0.5 to 2.7 GB.
-12. **Store listing.** The README and `docs/screenshots/` are a starting point for the description
-    and phone screenshots.
+12. **Store listing.** `docs/store/LISTING.md` has the short and full description, and `docs/store/`
+    the feature graphic, icon and phone screenshots (`node scripts/store-assets.mjs` renders them).
 13. **Release.** Upload `gradient-health.aab` from the latest CI release to internal testing, then the
-    closed test, then production.
+    closed test, then production. For the release notes, paste the short What's new from the end of
+    the CI release's What's new between `<en-US>` and `</en-US>`.
 
 ### APKPure
 
@@ -548,6 +555,8 @@ SHA-256.
    hours.
 3. Every update must keep the package name and the signing key, or APKPure rejects it and phones
    won't install it over the old one.
+4. With each update, paste the short What's new from the end of the CI release's What's new (or
+   `node scripts/release-notes.mjs --store`) into APKPure's What's new field.
 
 ### Android developer verification
 

@@ -1,10 +1,19 @@
-/* What's new, newest first. Shown once after an update and any time from Profile. */
+/* What's new, newest first. Shown once after an update and any time from Profile. Each version's
+   entry also goes in its GitHub release's notes (scripts/release-notes.mjs), and its `store` text is
+   the same news in 500 characters at most, for a store's What's new field (test/release.mjs checks). */
 (function (G) {
   'use strict';
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
       version: '1.5.0', date: '2026-10-01', title: 'Runs with GPS, plans for every body, and plans of your own',
+      store: [
+        '• GPS for runs, walks, hikes and rides: a route map, splits, and heart rate from your watch',
+        '• Plans that adapt to your age and to arthritis, back pain, balance problems and more, with 71 new seated and supported moves',
+        '• Make your own plan, or have the coach build one, and share it with a QR code or a link',
+        '• Health Connect syncs in the background every 15 minutes',
+        '• A clearer set-up, smoother exercise animations, and 3D figures that show at once',
+      ].join('\n'),
       items: [
         ['navigate', 'Record a run, walk, hike or ride from Today or Health. You see your route, distance, pace and steps as you go, with a notification to pause or finish from. Afterwards there\'s a summary with your map, splits and elevation, heart rate and calories from your watch through Health Connect, and your personal records.'],
         ['refresh', 'Health Connect can sync in the background every 15 minutes, so your history has no gaps on days you don\'t open the app. Turn it on in Settings.'],
