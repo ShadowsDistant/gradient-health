@@ -701,6 +701,8 @@
         U.syncHealth('resume');
         if (U.today() !== lastDay) { lastDay = U.today(); if (playerEl.hidden) render(); }
       });
+      // The app is going to the background: a save still waiting is written now.
+      P().on('pause', () => GH.store.flush());
       P().on('route', (route) => openRoute(route));
       P().on('insets', () => { updateScrolled(); });
     }

@@ -27,6 +27,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 
 /**
  * The object exposed to the page as window.AndroidBridge.
@@ -48,7 +51,8 @@ public final class Bridge {
     private static final int MAX_VIBRATION_MS = 10000;
 
     private final MainActivity activity;
-    private final Object stateLock = new Object();
+    // Static, like the queue below: a new activity's Bridge writes the same file as the old one's.
+    private static final Object stateLock = new Object();
 
     Bridge(MainActivity activity) {
         this.activity = activity;
@@ -260,7 +264,8 @@ public final class Bridge {
 
     /**
      * Atomically replaces filesDir/state.json: writes state.json.tmp, fsyncs it, then renames it
-     * over the old file, so a crash or power loss leaves either the old or the new state.
+     * over the old file, so a crash or power loss leaves either the old or the new state. Returns
+     * once it's written: the page calls it as it's hidden, and saveAsync otherwise.
      */
     @JavascriptInterface
     public boolean save(String json) {
@@ -268,39 +273,148 @@ public final class Bridge {
             return false;
         }
         synchronized (stateLock) {
-            File dir = activity.getFilesDir();
-            File target = new File(dir, STATE_FILE);
-            File tmp = new File(dir, STATE_TMP_FILE);
-            FileOutputStream out = null;
-            try {
-                out = new FileOutputStream(tmp);
-                out.write(json.getBytes(StandardCharsets.UTF_8));
-                out.flush();
-                try {
-                    out.getFD().sync();
-                } catch (IOException ignored) {
-                    // Still better to save than to fail.
+            supersedeQueued();
+            boolean ok = writeStateFile(json);
+            if (ok) {
+                asyncFailed = false;
+            }
+            return ok;
+        }
+    }
+
+    /*
+     * saveAsync hands the state to one background thread and returns at once, so a save never
+     * holds up the page. While a write runs, only the newest state waits for the next one (an older
+     * one waiting is dropped), so a burst of saves is two writes at most. Every save takes the next
+     * number, and a state is only written if nothing newer was: a waiting state never lands after
+     * a newer save(), and load() writes a waiting state before it reads. All static, so a write an
+     * old activity queued is ordered with the new one's. If a background write fails, saveAsync
+     * says no until a save() works, so the page saves the way that reports failure (and keeps a
+     * copy of its own when it does).
+     */
+    private static final Object queueLock = new Object();
+    private static String queuedState; // the newest state waiting to be written, or null
+    private static long queuedSeq;
+    private static long stateSeq; // the last number handed out
+    private static long writtenSeq; // the newest number written (or superseded by save())
+    private static volatile boolean asyncFailed;
+    private static ExecutorService saveThread;
+
+    /** Saves the state on a background thread and returns at once: true if it was taken. */
+    @JavascriptInterface
+    public boolean saveAsync(String json) {
+        if (json == null || asyncFailed) {
+            return false;
+        }
+        boolean queued;
+        synchronized (queueLock) {
+            queued = queuedState != null; // a task is waiting already: it writes this one instead
+            queuedState = json;
+            queuedSeq = ++stateSeq;
+        }
+        if (queued) {
+            return true;
+        }
+        try {
+            saveExecutor().execute(new Runnable() {
+                @Override
+                public void run() {
+                    writeQueued();
                 }
-                out.close();
-                out = null;
-                if (tmp.renameTo(target)) {
+            });
+            return true;
+        } catch (Throwable t) {
+            return writeQueued(); // no thread for it: write it now
+        }
+    }
+
+    private static ExecutorService saveExecutor() {
+        synchronized (queueLock) {
+            if (saveThread == null) {
+                saveThread = Executors.newSingleThreadExecutor(new ThreadFactory() {
+                    @Override
+                    public Thread newThread(Runnable r) {
+                        Thread t = new Thread(r, "gh-state-save");
+                        t.setDaemon(true);
+                        return t;
+                    }
+                });
+            }
+            return saveThread;
+        }
+    }
+
+    /** Writes the waiting state, unless something newer was written meanwhile. */
+    private boolean writeQueued() {
+        String json;
+        long seq;
+        synchronized (queueLock) {
+            json = queuedState;
+            seq = queuedSeq;
+            queuedState = null;
+        }
+        if (json == null) {
+            return true;
+        }
+        synchronized (stateLock) {
+            synchronized (queueLock) {
+                if (seq <= writtenSeq) {
                     return true;
                 }
-                // rename(2) replaces atomically, so this is unexpected; retry once without the old file.
-                //noinspection ResultOfMethodCallIgnored
-                target.delete();
-                return tmp.renameTo(target);
-            } catch (Throwable t) {
-                return false;
-            } finally {
-                if (out != null) {
-                    try {
-                        out.close();
-                    } catch (IOException ignored) {
-                    }
-                    //noinspection ResultOfMethodCallIgnored
-                    tmp.delete();
+            }
+            boolean ok = writeStateFile(json);
+            if (ok) {
+                synchronized (queueLock) {
+                    writtenSeq = Math.max(writtenSeq, seq);
                 }
+            } else {
+                asyncFailed = true;
+            }
+            return ok;
+        }
+    }
+
+    /** A save() is newer than any state still waiting: those are never written after it. */
+    private static void supersedeQueued() {
+        synchronized (queueLock) {
+            writtenSeq = ++stateSeq;
+        }
+    }
+
+    /** The atomic write itself; callers hold stateLock. */
+    private boolean writeStateFile(String json) {
+        File dir = activity.getFilesDir();
+        File target = new File(dir, STATE_FILE);
+        File tmp = new File(dir, STATE_TMP_FILE);
+        FileOutputStream out = null;
+        try {
+            out = new FileOutputStream(tmp);
+            out.write(json.getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            try {
+                out.getFD().sync();
+            } catch (IOException ignored) {
+                // Still better to save than to fail.
+            }
+            out.close();
+            out = null;
+            if (tmp.renameTo(target)) {
+                return true;
+            }
+            // rename(2) replaces atomically, so this is unexpected; retry once without the old file.
+            //noinspection ResultOfMethodCallIgnored
+            target.delete();
+            return tmp.renameTo(target);
+        } catch (Throwable t) {
+            return false;
+        } finally {
+            if (out != null) {
+                try {
+                    out.close();
+                } catch (IOException ignored) {
+                }
+                //noinspection ResultOfMethodCallIgnored
+                tmp.delete();
             }
         }
     }
@@ -309,6 +423,7 @@ public final class Bridge {
     @JavascriptInterface
     public String load() {
         synchronized (stateLock) {
+            writeQueued(); // a state still waiting (from a page before this one) goes first
             File file = new File(activity.getFilesDir(), STATE_FILE);
             if (!file.isFile()) {
                 return "";

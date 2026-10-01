@@ -1,7 +1,8 @@
-/* Persistence. The state lives in localStorage ("gh.v1") and, inside the app, in an atomic file
- * through the Android bridge; on load the copy with the newer updatedAt wins. Backups are the
- * state as JSON. The AI coach key is not part of the state: it sits in the bridge's private
- * preferences (or its own localStorage entry in a plain browser) and never reaches a backup.
+/* Persistence. Inside the app the state lives in an atomic file through the Android bridge; in a
+ * plain browser (and with an app older than 1.6) it's in localStorage ("gh.v1") too. On load the
+ * copy with the newer updatedAt wins. Backups are the state as JSON. The AI coach key is not part
+ * of the state: it sits in the bridge's private preferences (or its own localStorage entry in a
+ * plain browser) and never reaches a backup.
  */
 (function (G) {
   'use strict';
@@ -82,37 +83,83 @@
   }
 
   function load() {
-    const local = parse(lsGet(KEY));
-    let file = null;
-    try { const b = bridge(); if (b && b.load) file = parse(b.load()); } catch (e) { file = null; }
+    flush(); // a save still waiting is written first, so this reads it
+    const localTxt = lsGet(KEY);
+    let fileTxt = null;
+    try { const b = bridge(); if (b && b.load) fileTxt = b.load(); } catch (e) { fileTxt = null; }
+    localCopy = !!localTxt;
+    // Usually there's one copy (the app's file, or localStorage in a browser) or two with the same
+    // text, and only that one is parsed. Two different ones (a write that failed, an older app)
+    // are both read, and the newer valid one wins.
+    if (!(localTxt && fileTxt) || localTxt === fileTxt) {
+      const one = parse(fileTxt || localTxt);
+      return valid(one) ? migrate(one) : null;
+    }
+    const local = parse(localTxt), file = parse(fileTxt);
     const a = valid(local) ? local : null;
     const b = valid(file) ? file : null;
     const pick = !a ? b : !b ? a : (b.updatedAt || 0) > (a.updatedAt || 0) ? b : a;
     return pick ? migrate(pick) : null;
   }
 
-  let pending = null;
-  let lastSaved = null;
+  // Saving never runs in the tap that changed something: the state waits for the page to be idle
+  // (a second at most), then its JSON goes to the app's bridge, which writes it on a thread of its
+  // own (saveAsync). Changes made meanwhile ride along, so a burst of taps is one write. Inside the
+  // app that file is the only copy; in a plain browser, the tests or an app too old for saveAsync,
+  // it's written to localStorage and the bridge's file at once, as before 1.6. When the page is
+  // hidden or goes away, a waiting save is written right away (flush), and the bridge's save()
+  // returns only once the file is on disk. Without idle callbacks (node), save() writes at once.
+  let waiting = null; // the state to write next
+  let job = 0; // its idle callback or timer
+  let localCopy = true; // whether localStorage may hold a full copy (dropped once the app has the file)
+  const canWait = !!(G.requestIdleCallback && G.document);
   function save(S) {
-    if (pending) { clearTimeout(pending); pending = null; }
     if (!S) return false;
+    if (!canWait) { cancelWaiting(); return write(S, true); }
+    schedule(S, 1000);
+    return true;
+  }
+  function saveSoon(S, ms) {
+    if (!S) return;
+    schedule(S, ms != null ? ms : canWait ? 1000 : 300);
+  }
+  function schedule(S, ms) {
+    waiting = S;
+    if (job) return;
+    const run = () => { job = 0; const s = waiting; waiting = null; if (s) write(s, false); };
+    job = canWait ? G.requestIdleCallback(run, { timeout: ms }) : setTimeout(run, ms);
+  }
+  function cancelWaiting() {
+    if (job) { if (canWait) G.cancelIdleCallback(job); else clearTimeout(job); job = 0; }
+    waiting = null;
+  }
+  function flush() {
+    if (!waiting) return;
+    const S = waiting;
+    cancelWaiting();
+    write(S, true);
+  }
+  function write(S, now) {
     S.updatedAt = Date.now();
     stripSecrets(S);
     let txt;
     try { txt = JSON.stringify(S); } catch (e) { return false; }
-    const ok1 = lsSet(KEY, txt);
-    let ok2 = false;
-    try { const b = bridge(); if (b && b.save) ok2 = !!b.save(txt); } catch (e) { ok2 = false; }
-    lastSaved = S;
-    return ok1 || ok2;
+    const b = bridge();
+    const app = !!(b && b.saveAsync);
+    if (app && !now) {
+      let ok = false;
+      try { ok = !!b.saveAsync(txt); } catch (e) { ok = false; }
+      if (ok) { dropLocal(); return true; }
+    }
+    let okFile = false;
+    try { if (b && b.save) okFile = !!b.save(txt); } catch (e) { okFile = false; }
+    if (app && okFile) { dropLocal(); return true; }
+    // A plain browser, or the app's file couldn't be written: localStorage keeps a copy.
+    const okLocal = lsSet(KEY, txt);
+    if (okLocal) localCopy = true;
+    return okLocal || okFile;
   }
-  // Coalesces bursts of changes (taps during a workout) into one write.
-  function saveSoon(S, ms) {
-    lastSaved = S;
-    if (pending) clearTimeout(pending);
-    pending = setTimeout(() => { pending = null; save(S); }, ms == null ? 300 : ms);
-  }
-  function flush() { if (pending && lastSaved) save(lastSaved); }
+  function dropLocal() { if (localCopy) { lsDel(KEY); localCopy = false; } }
   if (G.addEventListener) {
     G.addEventListener('pagehide', flush);
     if (G.document) G.document.addEventListener('visibilitychange', () => { if (G.document.visibilityState === 'hidden') flush(); });
@@ -133,6 +180,7 @@
   }
 
   function clear() {
+    cancelWaiting(); // a save still waiting would bring the old state back
     lsDel(KEY);
     try { const b = bridge(); if (b && b.save) b.save(''); } catch (e) { /* nothing to clear */ }
     // 1.4: an outdoor activity recording (or finished and not saved yet) goes too.
