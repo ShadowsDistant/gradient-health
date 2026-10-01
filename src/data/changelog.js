@@ -4,6 +4,19 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.5.0', date: '2026-10-01', title: 'Runs with GPS, plans for every body, and plans of your own',
+      items: [
+        ['navigate', 'Record a run, walk, hike or ride from Today or Health. You see your route, distance, pace and steps as you go, with a notification to pause or finish from. Afterwards there\'s a summary with your map, splits and elevation, heart rate and calories from your watch through Health Connect, and your personal records.'],
+        ['refresh', 'Health Connect can sync in the background every 15 minutes, so your history has no gaps on days you don\'t open the app. Turn it on in Settings.'],
+        ['people', 'Plans for every body. Your plan adapts to your age: livelier under 30, gentler warm-ups and balance work from 50, and supported moves from 65. It also adapts to arthritis (with a flare-day switch), osteoporosis, back pain, blood pressure, balance, painful wrists or a wheelchair. There are 71 new seated, supported and balance moves.'],
+        ['compose', 'Make your own plan like a playlist from the move library, or describe what you want and let the coach build one. It runs like the coach\'s plan, and anything you can\'t do is swapped for the closest move you can.'],
+        ['share', 'Share a plan with a QR code or a link. Your friend scans or taps it, sees the whole plan and saves it, with swaps for anything their kit or body rules out.'],
+        ['sparkle', 'A clearer set-up: fewer steps in named sections, gentle checks as you type, and a summary of your plan at the end. "Workouts and health" no longer asks about food.'],
+        ['person', 'Every exercise animation is checked frame by frame. The triceps moves no longer spin, hands and dumbbells don\'t flip, feet stay planted, arms swing against the legs, and a dozen moves show better technique.'],
+        ['bolt', '3D figures appear at once: they warm up right after launch, and a picture of the figure shows until it starts moving.'],
+      ],
+    },
+    {
       version: '1.4.0', date: '2026-09-30', title: 'A coach that answers, and a new Plan, Health and Progress',
       items: [
         ['chip', 'The on-device coach answers now. It runs on your phone\'s fast cores in its own engine, several times quicker than before, reads your data ahead so answers start in seconds, and checks each one against your numbers. Phones with 8 GB or more get the Balanced size suggested, for better answers.'],
