@@ -44,9 +44,13 @@ async function open(noGl, setup) {
   await page.reload();
   await page.waitForSelector('#screen[data-view="today"]');
   // The fixture's today is a training day most days; on a light day the page's clock goes back a
-  // day at a time until it is one (these tests start workouts).
-  for (let back = 1; back <= 6 && !(await page.$('#screen[data-view="today"] .session')); back++) {
-    await page.clock.setSystemTime(new Date(Date.now() - back * 86400000));
+  // day at a time until it is one (these tests start workouts). The app saves soon after it starts
+  // (a health read), and now and then a reload flushes that save over the fresh seed, so the state
+  // seeded for the day before comes back with that day's workout already done: then seed again.
+  const session = () => page.$('#screen[data-view="today"] .session');
+  const ready = async () => !!(await session()) && page.evaluate(() => { const U = window.GH.ui; return window.GH.brain.todayPlan(U.S, U.today()).type !== 'done'; });
+  for (let back = 0, tries = 0; tries < 10 && !(await ready()); tries++) {
+    if (!(await session()) && back < 6) await page.clock.setSystemTime(new Date(Date.now() - ++back * 86400000));
     await page.evaluate(seedState);
     await page.reload();
     await page.waitForSelector('#screen[data-view="today"]');
@@ -374,9 +378,13 @@ section('A stuck GPU');
 await page.evaluate(() => window.GH.figure3d._stall(true));
 await page.evaluate(() => window.GH.ui.moveSheet('sq_bw'));
 await page.waitForSelector('dialog[open] .sheet-fig svg');
-await page.waitForTimeout(3600);
+// The 3D figure is mounted beside the flat one (a moment after it shows, on a busy machine) and is
+// given 3 s to draw a frame.
+const mountedAt = await page.waitForSelector('dialog[open] .sheet-fig > .fig3d', { timeout: 4000 }).then(() => Date.now(), () => 0);
+await page.waitForFunction(() => [...document.querySelector('dialog[open] .sheet-fig').children].every((e) => e.tagName.toLowerCase() === 'svg'), null, { timeout: 7000 }).catch(() => {});
 const stuck = await page.evaluate(() => ({ kids: [...document.querySelector('dialog[open] .sheet-fig').children].map((e) => e.tagName.toLowerCase()), live: window.GH.figure3d._stats().live }));
-check('after 3 s without a frame, the 3D figure is dropped and the flat one stays', stuck.kids.join() === 'svg' && stuck.live <= 1, stuck);
+stuck.held = mountedAt ? Date.now() - mountedAt : null;
+check('after 3 s without a frame, the 3D figure is dropped and the flat one stays', stuck.kids.join() === 'svg' && stuck.live <= 1 && mountedAt > 0 && stuck.held >= 2500, stuck);
 check('and it keeps moving', await moves(page, 'dialog[open] .sheet-fig'));
 // One that gave up stays flat when it's redrawn (it used to mount another hidden 3D figure each time).
 const redrawn = await page.evaluate(async () => {
