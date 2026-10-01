@@ -300,7 +300,9 @@
   }
 
   // One pass over a built session (before it's fitted to the time budget).
-  // ctx: { tplIdx, days (sessions a week), legIdx (the first leg day's template index) }
+  // ctx: { tplIdx, days (sessions a week), legIdx (the first leg day's template index), custom (a
+  // plan the person wrote, src/customplan.js: its exercises, sets and rests stay as written, so it
+  // only gets the warm-up, cool-down, flare days and notes) }
   function adjustSession(S, s, day, ctx) {
     const p = S.profile;
     const r = rulesOf(p);
@@ -317,21 +319,21 @@
     } else s.warmup = s.warmup.filter((w) => moveOk(p, w.moveId, day));
     // Balance and floor practice come first, while you're fresh.
     const first = [];
-    const per = balancePerWeek(p);
+    const per = c.custom ? 0 : balancePerWeek(p);
     const D = c.days || 3;
     const balanceDays = per >= 7 ? null : [0, Math.floor(D / 2)];
     if (per > 0 && (!balanceDays || balanceDays.includes(c.tplIdx))) {
       const it = B().itemFor(S, { fam: 'balance', sets: s.short ? 1 : 2, group: 'balance' }, day);
       if (it) first.push(it);
     }
-    if (getupOn(p) && c.tplIdx === D - 1 && !s.short) {
+    if (!c.custom && getupOn(p) && c.tplIdx === D - 1 && !s.short) {
       const it = B().itemFor(S, { fam: 'getup', sets: 1, group: 'balance' }, day);
       if (it) first.push(it);
     }
     for (const it of first) { it.skill = true; it.rest = 45; }
     s.items = first.concat(s.items);
     // Power: on the first leg day of the week, the squat is fast on the way up.
-    if (powerOn(p) && c.tplIdx === c.legIdx) {
+    if (!c.custom && powerOn(p) && c.tplIdx === c.legIdx) {
       for (const it of s.items) {
         if (it.fam !== 'squat') continue;
         const pw = Object.values(M().MOVES).find((m) => m.powerOf === it.moveId);
@@ -340,10 +342,10 @@
     }
     // A little more rest from 50 (auto rest only).
     const plus = restPlus(p);
-    if (plus && p.prefs && (p.prefs.rest === 'auto' || p.prefs.rest == null)) for (const it of s.items.concat(s.extras || [])) if (!it.skill) it.rest += plus;
-    // Cool-down: every session from 65, seated, and with rheumatoid arthritis (range of motion).
-    // The cool-down is stretches for the muscles the day worked when at least two suit this body;
-    // seated plans and rheumatoid arthritis (range of motion, wrists included) have one of their own.
+    if (plus && !c.custom && p.prefs && (p.prefs.rest === 'auto' || p.prefs.rest == null)) for (const it of s.items.concat(s.extras || [])) if (!it.skill) it.rest += plus;
+    // Cool-down: every session from 65, seated, and with rheumatoid arthritis. It's stretches for the
+    // muscles the day worked when at least two suit this body; seated plans and rheumatoid arthritis
+    // (range of motion, wrists included) have one of their own.
     if (mobilityEvery(p) || (s.mobility && s.mobility.length)) {
       const own = (s.mobility && s.mobility.length ? s.mobility : B().cooldownItems(S, day, s.items, s.short)).filter((mb) => moveOk(p, mb.moveId, day));
       s.mobility = r.seated || r.c.has('ra') || own.length < 2 ? flowItems(S, 'mobility', cooldownIds(p), day) : own;

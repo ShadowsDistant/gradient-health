@@ -64,11 +64,12 @@
     return `<div class="card session" data-key="main">
         <div class="session-head"><span class="rf-card-eyebrow">${s.flare ? 'Flare day' : 'Workout'} · about ${U.roll(s.estimateMin)} min${where === 'gym' ? ' · gym' : ''}</span><span class="session-badges">${phaseBadges(plan.week, s)}</span></div>
         <h2 class="t-title-2">${U.esc(s.title)}</h2>
-        ${s.groups.length ? `<p class="t-footnote rf-muted session-groups">${s.groups.map((g) => U.esc(B().GROUP_NAME[g] || g)).join(' · ')}</p>` : ''}
+        ${s.groups.length || (s.custom && s.custom.name) ? `<p class="t-footnote rf-muted session-groups">${s.custom && s.custom.name ? `${U.esc(s.custom.name)} · ` : ''}${s.groups.map((g) => U.esc(B().GROUP_NAME[g] || g)).join(' · ')}</p>` : ''}
         ${around ? `<button type="button" class="around-line t-footnote" data-act="planAround">${U.icon('heart', 'sm')}<span>${U.esc(around)}</span>${U.icon('chevron-right', 'sm')}</button>` : ''}
         ${notes.map((n) => `<p class="t-footnote session-note">${U.esc(n.text)}</p>`).join('')}
         ${where === 'both' ? `<div class="place-row">${U.seg('place', [['home', 'At home'], ['gym', 'At the gym']], s.place, 'Where you train today', ' data-on="setPlace"')}</div>` : ''}
         ${sessionRows(S, s)}
+        ${s.custom && U.customSwapNote ? U.customSwapNote(s) : ''}
         ${s.trimmed && s.trimmed.length ? `<p class="t-footnote rf-muted">Trimmed to fit ${U.esc(budget)} min: ${U.esc(s.trimmed.map((x) => x.toLowerCase()).join(', '))}.</p>` : ''}
       </div>
 `;
@@ -111,13 +112,13 @@
         <li><div class="rf-list-row"><span class="rf-list-icon" data-tone="green">${U.icon('navigate')}</span><span class="rf-list-text"><span class="rf-list-title">Walk ${prog.walkMin}+ min</span><span class="rf-list-sub">${U.esc(walkSub)}</span></span>${l.walk ? `<span class="check-done" aria-label="Done">${U.icon('check-circle')}</span>` : '<button type="button" class="rf-btn" data-size="sm" data-act="logWalk">Log walk</button>'}</div></li>
         <li><div class="rf-list-row"><span class="rf-list-icon" data-tone="teal">${U.icon('leaf')}</span><span class="rf-list-text"><span class="rf-list-title">Mobility flow</span><span class="rf-list-sub">5 moves, about 5 min</span></span>${l.mobility ? `<span class="check-done" aria-label="Done">${U.icon('check-circle')}</span>` : '<button type="button" class="rf-btn" data-size="sm" data-act="startMobility">Start</button>'}</div></li>
       </ul>
-      ${next ? `<button type="button" class="rf-btn light-train" data-variant="plain" data-act="trainToday">Train today instead: ${U.esc(B().templateTitle(next.units).toLowerCase())}</button>` : ''}
+      ${next ? `<button type="button" class="rf-btn light-train" data-variant="plain" data-act="trainToday">Train today instead: ${U.esc((next.title || B().templateTitle(next.units)).toLowerCase())}</button>` : ''}
     </div>`;
   }
   function restCard(S, day, plan) {
     const next = plan.next;
     return `<div class="card light" data-key="main"><span class="rf-card-eyebrow">Rest day</span><h2 class="t-title-2">Recover</h2>
-      <p class="t-callout rf-muted">${next ? `Next: ${U.esc(B().templateTitle(next.units).toLowerCase())} on ${U.esc(U.fmtDay(next.day))}.` : 'Nothing planned for the rest of the week.'}</p></div>`;
+      <p class="t-callout rf-muted">${next ? `Next: ${U.esc((next.title || B().templateTitle(next.units)).toLowerCase())} on ${U.esc(U.fmtDay(next.day))}.` : 'Nothing planned for the rest of the week.'}</p></div>`;
   }
   // With arthritis, a flare swaps a workout day's session for gentle range of motion (src/access.js).
   function flareRow(S, day, plan) {

@@ -125,7 +125,7 @@ Every rule Gradient Health follows, from how many sets you do to how long you re
 
 ## Private by design
 
-No account, no ads and no analytics. Everything stays on your phone. The only things that ever leave it are ones you choose: a summary you send to Claude (the app shows you exactly what it says first), the words or barcode of a food you look up online, and the one-time download of the on-device model. The [privacy policy](docs/PRIVACY.md) lists every piece of data and where it goes.
+No account, no ads and no analytics. Everything stays on your phone. The only things that ever leave it are ones you choose: a summary you send to Claude (the app shows you exactly what it says first), the words or barcode of a food you look up online, the one-time download of the on-device model, and a workout plan you share with someone. The [privacy policy](docs/PRIVACY.md) lists every piece of data and where it goes.
 
 ## Get it
 

@@ -386,6 +386,7 @@
       if (e.type === 'deloadNext') items.push({ day: e.day, text: 'Lighter week planned for next week', why: 'you asked for it, or recovery has been poor' });
       else if (e.type === 'settings' && e.day > (S.profile.startDay || 0)) items.push({ day: e.day, text: `Schedule: ${e.days} days a week, ${e.minutes} min`, why: 'you changed it' });
       else if (e.type === 'tailor' && !e.undone) items.push({ day: e.day, text: `Tailored: ${(e.lines || []).map((x) => x.replace(/\.$/, '')).join('; ')}`, why: 'you asked for it' });
+      else if (e.type === 'plan') { const p = e.id && GH.customPlan ? GH.customPlan.get(S, e.id) : null; items.push({ day: e.day, text: e.id ? `Switched to ${p ? p.name : 'your own plan'}` : 'Back to the coach\'s plan', why: 'you chose it' }); }
     }
     // The same change repeated within a week (a deload note after every workout) shows once.
     const seen = new Set();

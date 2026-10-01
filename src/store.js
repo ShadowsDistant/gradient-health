@@ -64,6 +64,8 @@
       if (!had) S.profile.food.mode = S.profile.protein && S.profile.protein.track === false ? 'off' : 'protein';
       GH.food.data(S);
     }
+    // Custom plans (src/customplan.js): the list, the plan in use and progress on its exercises.
+    if (GH.customPlan) GH.customPlan.migrate(S);
     if (GH.brain && GH.brain.relink) GH.brain.relink(S);
     S.v = SCHEMA;
     return S;

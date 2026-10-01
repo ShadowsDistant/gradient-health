@@ -181,7 +181,8 @@
       ${a ? `<div class="pw-prog">${U.progress(a.done / Math.max(1, a.total), 'Workout progress')}<span class="t-footnote rf-muted rf-num">${a.done} of ${a.total} sets</span></div>` : ''}
       ${moved}
       ${e.preview ? '<p class="t-footnote rf-muted pw-note">A preview. Sets and exercises adjust to how this week goes.</p>' : actions(w, e) + movePanel(e, day)}
-      ${s ? sessionList(S, s) : ''}`;
+      ${s ? sessionList(S, s) : ''}
+      ${s && s.custom && U.customSwapNote ? U.customSwapNote(s) : ''}`;
   }
   function doneBody(e, day) {
     const l = e.log;
@@ -262,22 +263,24 @@
     return `<p class="lt-sub t-callout rf-muted pw-sub">${bits.map(keep).join(' · ')}${done}<button type="button" class="pw-info" data-act="planPhase" aria-label="What ${U.esc(PHASE[w.phase.key].toLowerCase())} means, and how to read the week">${U.icon('info')}</button></p>`;
   }
   function muscles(w) {
-    const rows = w.muscles;
+    // A week run by your own plan has its sets, not the coach's weekly targets.
+    const own = !!GH.customPlan && w.days.some((e) => GH.customPlan.owns(e.tpl));
+    const rows = own ? w.muscles.map((r) => Object.assign({}, r, { target: Math.max(r.planned, r.done) })).filter((r) => r.target > 0) : w.muscles;
     if (!rows.length) return '';
-    const short = rows.filter((r) => r.planned < r.target).map((r) => r.name.toLowerCase());
+    const short = own ? [] : rows.filter((r) => r.planned < r.target).map((r) => r.name.toLowerCase());
     const li = rows.map((r) => {
       const max = Math.max(r.target, r.planned, r.done, 1);
       const pct = (v) => `${(Math.min(v, max) / max * 100).toFixed(1)}%`;
       return `<li class="pw-mu" data-key="mu-${r.group}" style="--c:${hue(r.group)}">
         <span class="pw-mu-name t-subhead">${U.esc(r.name)}</span>
-        <span class="pw-bar" role="img" aria-label="${U.esc(`${r.name}: ${r.done} of ${r.target} sets done, ${r.planned} in this week's plan`)}"><span class="pw-bar-plan" style="width:${pct(r.planned)}"></span><span class="pw-bar-done" style="width:${pct(r.done)}"></span><span class="pw-bar-target" style="left:${pct(r.target)}"></span></span>
+        <span class="pw-bar" role="img" aria-label="${U.esc(own ? `${r.name}: ${r.done} of ${r.planned} sets done` : `${r.name}: ${r.done} of ${r.target} sets done, ${r.planned} in this week's plan`)}"><span class="pw-bar-plan" style="width:${pct(r.planned)}"></span><span class="pw-bar-done" style="width:${pct(r.done)}"></span>${own ? '' : `<span class="pw-bar-target" style="left:${pct(r.target)}"></span>`}</span>
         <span class="pw-mu-n t-footnote rf-num"><b>${U.roll(r.done)}</b> of ${r.target}</span>
       </li>`;
     }).join('');
     return `<h2 class="sec-title t-title-3">This week by muscle</h2>
       <div class="section"><div class="card pw-mus-card" data-key="mus">
         <ul class="pw-mus">${li}</ul>
-        <p class="pw-legend t-caption rf-muted" aria-hidden="true"><span><i class="pw-sw is-done"></i>Sets done</span><span><i class="pw-sw is-plan"></i>In the plan</span><span><i class="pw-sw is-target"></i>Weekly target</span></p>
+        <p class="pw-legend t-caption rf-muted" aria-hidden="true"><span><i class="pw-sw is-done"></i>Sets done</span><span><i class="pw-sw is-plan"></i>In the plan</span>${own ? '' : '<span><i class="pw-sw is-target"></i>Weekly target</span>'}</p>
         ${short.length ? `<p class="t-footnote rf-muted">${short.length > 3 ? 'Your time per workout fits fewer sets than your weekly targets.' : `Your time per workout fits fewer sets than the target for ${U.esc(listWords(short))}.`} A few more minutes a workout closes the gap.</p>` : ''}
       </div></div>`;
   }
@@ -300,6 +303,11 @@
   function makeItYours(S) {
     const p = S.profile;
     const rows = [];
+    const cp = GH.customPlan;
+    if (cp && U.act.openPlans) {
+      const mine = cp.activeId(S) ? cp.get(S, cp.activeId(S)) : null;
+      rows.push(U.row({ icon: 'list', tone: 'violet', title: 'Your plans', sub: U.esc(mine ? `Using ${mine.name}` : 'Build your own, ask the coach, or add a shared one'), act: 'openPlans', chevron: true }));
+    }
     if (U.act.tailorPlan) rows.push(U.row({ icon: 'sparkle', tone: 'violet', title: 'Tailor my plan', sub: 'Tell the coach what you want more or less of', act: 'tailorPlan', chevron: true }));
     rows.push(U.row({ icon: 'calendar', tone: 'sky', title: 'Days and time', sub: U.esc(`${U.plural(p.days, 'workout')} a week · ${p.minutes} min each`), act: 'daysSheet', chevron: true }));
     if (U.act.planAround) rows.push(U.row({ icon: 'heart', tone: 'rose', title: 'Built around you', sub: U.esc((GH.access && GH.access.plannedAround(p)) || 'Age, joints and health'), act: 'planAround', chevron: true }));
@@ -320,6 +328,7 @@
         ${summary(w)}
         <div class="section pw-main">
           ${U.tip ? U.tip('plan') : ''}
+          ${U.customPlanBanner ? U.customPlanBanner(S, day) : ''}
           ${strip(w, day, page)}
           ${dayCard(S, w, findDay(w, view.day), day)}
         </div>
@@ -332,6 +341,7 @@
       if (st) wireStrip(st);
       travel(screen);
       drawThumbs(screen, S, day);
+      if (U.drawPlanThumbs) U.drawPlanThumbs(screen);
     },
   };
 

@@ -104,7 +104,7 @@
       e.kind = kind;
       e.tpl = s ? s.tpl : doneLog && doneLog.tpl != null ? doneLog.tpl : null;
       e.units = s ? s.units.slice() : [];
-      e.title = kind === 'done' ? doneLog.title || b.templateTitle(e.units) : s ? b.templateTitle(s.units)
+      e.title = kind === 'done' ? doneLog.title || b.templateTitle(e.units) : s ? s.title || b.templateTitle(s.units)
         : kind === 'light' ? 'Light day' : kind === 'rest' ? 'Rest day' : kind === 'before' ? 'Before you started' : 'Missed';
       e.active = A && A.day === d ? activeSummary(A) : null;
       e.log = lastLog && kind !== 'before' ? logSummary(lastLog) : null;
@@ -131,15 +131,22 @@
     const set = b.settingsAt(S, nws);
     const cur = b.settingsAt(S, ws);
     const tpl = b.templateFor(Object.assign({}, p, { days: set.days, weekdays: set.weekdays }), b.programFor(Object.assign({}, p, { days: set.days })));
+    // A custom plan in force next week shapes it instead (src/customplan.js).
+    const custom = GH.customPlan ? GH.customPlan.weekSessions(S, nws, tpl) : null;
+    const slot = (d) => {
+      if (!custom) return tpl.find((x) => x.offset === b.weekday(d)) || null;
+      const x = custom.find((c) => c.day === d);
+      return x ? { idx: x.tpl, units: x.units, title: x.title } : null;
+    };
     const nextDays = [];
     for (let d = nws; d < nws + 7; d++) {
-      const t = tpl.find((x) => x.offset === b.weekday(d));
+      const t = slot(d);
       const e = dateParts(d);
       e.isToday = false; e.isPast = false; e.preview = true;
       e.kind = t ? 'workout' : p.lightDays === false ? 'rest' : 'light';
       e.tpl = t ? t.idx : null;
       e.units = t ? t.units.slice() : [];
-      e.title = t ? b.templateTitle(t.units) : e.kind === 'light' ? 'Light day' : 'Rest day';
+      e.title = t ? t.title || b.templateTitle(t.units) : e.kind === 'light' ? 'Light day' : 'Rest day';
       e.active = null; e.log = null; e.missed = null; e.movedFrom = null; e.moveTo = []; e.canMove = false; e.canTrainToday = false;
       e.light = e.kind === 'light' ? { walk: false, mobility: false, walkSrc: null, walkMin: prog.walkMin, done: false } : null;
       sessionFields(e, t ? () => b.buildSession(S, d, t.idx, { cal, noReadiness: true }) : null);
@@ -149,7 +156,7 @@
 
     const ph = (week && week.phase) || { deload: false, onramp: false, idle: false, mult: 1 };
     const key = ph.deload ? 'deload' : ph.onramp ? (ph.idle ? 'comeback' : 'onramp') : 'full';
-    const trainToday = !A && (plan.type === 'light' || plan.type === 'rest') && plan.next ? { from: plan.next.day, title: b.templateTitle(plan.next.units) } : null;
+    const trainToday = !A && (plan.type === 'light' || plan.type === 'rest') && plan.next ? { from: plan.next.day, title: plan.next.title || b.templateTitle(plan.next.units) } : null;
     const out = {
       day, ws, last: ws + 6,
       trainingWeek: week ? week.trainingWeek : 1,
