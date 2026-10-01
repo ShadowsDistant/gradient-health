@@ -110,7 +110,8 @@ check('GH.lazy("llm") sets GH.llm', await page.evaluate(async () => { const llm 
 const table = await page.evaluate(() => GH.llm.MODELS.map((m) => ({ id: m.id, tier: m.tier, legacy: !!m.legacy, family: m.family, bytes: m.bytes, sha: m.sha256, url: m.url, ram: m.minRamGB, ctx: m.ctx, batch: m.batch, think: !!m.think })));
 const current = table.filter((m) => !m.legacy), older = table.filter((m) => m.legacy);
 check('three sizes: Fast (0.8B), Balanced (2B, 6 GB) and Best answers (4B, 12 GB)', current.map((m) => m.tier).join() === 'fast,balanced,best' && current.map((m) => m.ram).join() === '3,6,12' && current.every((m) => m.family === 'qwen35'), current);
-check('each is Qwen3.5 Q4_K_M on Hugging Face, with its size, a 4096 context, a small batch and thinking off', current.every((m) => /^https:\/\/huggingface\.co\/unsloth\/Qwen3\.5-[0-9.]+B-GGUF\/resolve\/main\/Qwen3\.5-[0-9.]+B-Q4_K_M\.gguf$/.test(m.url) && m.bytes > 4e8 && Number.isInteger(m.bytes) && m.ctx === 4096 && m.batch === 64 && m.think), current);
+check('each is Qwen3.5 Q4_K_M on Hugging Face, with its size, a 4096 context, a small batch and thinking off', current.every((m) => /^https:\/\/huggingface\.co\/unsloth\/Qwen3\.5-[0-9.]+B-GGUF\/resolve\/(main|[0-9a-f]{40})\/Qwen3\.5-[0-9.]+B-Q4_K_M\.gguf$/.test(m.url) && m.bytes > 4e8 && Number.isInteger(m.bytes) && m.ctx === 4096 && m.batch === 64 && m.think), current);
+check('a pinned size is at a commit with its SHA-256; one not pinned yet is on main without one', current.every((m) => (m.sha ? /^[0-9a-f]{64}$/.test(m.sha) && /\/resolve\/[0-9a-f]{40}\//.test(m.url) : /\/resolve\/main\//.test(m.url))), current);
 check('1.2\'s Qwen2.5 models are still known, with their SHA-256 pinned', older.map((m) => m.id).join() === 'qwen05,qwen15' && older.every((m) => /^[0-9a-f]{64}$/.test(m.sha) && /^https:\/\/huggingface\.co\/Qwen\//.test(m.url)), older);
 const pickFor = await page.evaluate(() => ({ offered: GH.llm.offered().map((m) => m.id), rec: (GH.llm.recommended() || {}).id }));
 check('only the current sizes are offered, and without the native engine Fast is recommended', pickFor.offered.length >= 1 && pickFor.offered.every((id) => !/^qwen/.test(id)) && pickFor.rec === 'q35-08', pickFor);
@@ -360,6 +361,53 @@ check('status() lists every download', ['qwen05:error', 'tiny:done', 'other:canc
 check('the app\'s models load from models/<file> on the page\'s own origin', app.loadInfo.id === 'tiny' && app.reply.length > 0);
 check('remove() unloads, then deletes through the app', app.removed === true && app.afterRemove.loaded === null && app.afterRemove.installed.length === 0 && app.calls.some(([k, id]) => k === 'delete' && id === 'tiny'));
 check('the hook that was there first still gets every event', app.earlier.join() === app.emitted.join() && app.emitted.length === 8, { earlier: app.earlier, emitted: app.emitted });
+
+section('Pinned downloads and re-checked installs (fake bridge)');
+// Like ModelStore: a download pinned by the page (a commit URL, a SHA-256 and the size) goes ahead,
+// one that isn't fails as "unpinned". The installed list carries each file's recorded hash: what it
+// was checked against when downloaded, or (rehashed) its own, worked out later for an older install.
+const SHA_OK = 'a'.repeat(64), SHA_OTHER = 'b'.repeat(64), COMMIT = 'c'.repeat(40);
+const pinPage = await ctx.newPage();
+await pinPage.addInitScript(([size, ok, other]) => {
+  const installed = [
+    { id: 'pinnedok', file: 'tiny.gguf', bytes: size, sha256: ok, rehashed: true },
+    { id: 'pinnedbad', file: 'bad.gguf', bytes: size, sha256: other, rehashed: true },
+    { id: 'pinnedold', file: 'old.gguf', bytes: size, sha256: other, rehashed: false },
+    { id: 'pinnedwait', file: 'wait.gguf', bytes: size, sha256: '', rehashed: false },
+  ];
+  window.__requests = [];
+  window.AndroidBridge = {
+    modelList: () => JSON.stringify(installed),
+    modelStatus: () => '[]',
+    modelDownload: (json) => {
+      const r = JSON.parse(json);
+      window.__requests.push(r);
+      const pinned = /\/resolve\/[0-9a-f]{40}\//.test(r.url) && /^[0-9a-f]{64}$/.test(r.sha256) && r.bytes > 0;
+      setTimeout(() => window.__gh.onModelProgress(pinned ? { id: r.id, state: 'done', loaded: r.bytes, total: r.bytes } : { id: r.id, state: 'error', error: 'unpinned', loaded: 0, total: r.bytes }), 10);
+      return true;
+    },
+    deviceMemory: () => 8 * 2 ** 30,
+    modelFreeSpace: () => 5e9,
+  };
+}, [SIZE, SHA_OK, SHA_OTHER]);
+await open(pinPage);
+const pins = await pinPage.evaluate(async ([tiny, ok, commit]) => {
+  const llm = await GH.lazy('llm');
+  const at = (id, file) => ({ ...tiny, id, file, sha256: ok, url: `https://huggingface.co/test/tiny/resolve/${commit}/${file}` });
+  llm.configure({ models: [at('pinnedok', 'tiny.gguf'), at('pinnedbad', 'bad.gguf'), at('pinnedold', 'old.gguf'), at('pinnedwait', 'wait.gguf'), { ...tiny, id: 'loose', file: 'loose.gguf' }] });
+  const out = { installed: (await llm.installed()).map((x) => x.id) };
+  out.load = await llm.load('pinnedbad').then(() => 'loaded', (e) => e.code);
+  out.pinned = await llm.download('pinnedbad').then((r) => `done ${r.bytes}`, (e) => `${e.code}: ${e.message}`);
+  out.unpinned = await llm.download('loose').then(() => 'resolved', (e) => `${e.code}: ${e.message}`);
+  out.requests = window.__requests;
+  return out;
+}, [TINY, SHA_OK, COMMIT]);
+check('installed() leaves out a file the app re-hashed that isn\'t the pinned one (and keeps the rest)', pins.installed.join() === 'pinnedok,pinnedold,pinnedwait', pins.installed);
+check('which doesn\'t load either', pins.load === 'not-installed', pins.load);
+const again = pins.requests.find((r) => r.id === 'pinnedbad') || {};
+check('so it\'s offered again, and downloaded pinned: the commit URL, the SHA-256 and the exact size', pins.pinned === `done ${SIZE}` && again.sha256 === SHA_OK && again.url.includes(`/resolve/${COMMIT}/`) && again.bytes === SIZE, { result: pins.pinned, request: again });
+check('a model without a pin isn\'t downloaded, with a plain reason', pins.unpinned === 'unpinned: This version of Gradient Health can\'t download this model. Update the app to get it.', pins.unpinned);
+await pinPage.close();
 
 /* ------------------------------------------------------------------ the native engine (fake bridge) */
 // LlmService stands in: it answers load and generate through window.__gh.onLlm like LlmClient does.

@@ -328,4 +328,39 @@ section('CI: only main is signed with the release key and published');
   if (unpinned.length) console.log(`  ! warning: actions not pinned to a commit SHA in android.yml: ${unpinned.join(', ')}`);
 }
 
+section('Model files are pinned: a repo commit, an exact size and a SHA-256');
+{
+  // src/llm.js as the app loads it, with wllama stubbed out (only the catalog is needed here).
+  const esbuild = (await import('esbuild')).default;
+  const stub = { name: 'no-wllama', setup(b) { b.onResolve({ filter: /^@wllama\// }, (a) => ({ path: a.path, namespace: 'stub' })); b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export class Wllama {}\nexport class WllamaAbortError extends Error {}\nexport const LogLevel = {};', loader: 'js' })); } };
+  const built = await esbuild.build({ entryPoints: [join(root, 'src/llm.js')], bundle: true, write: false, format: 'iife', platform: 'browser', logLevel: 'silent', plugins: [stub] });
+  new Function(built.outputFiles[0].text)();
+  const MODELS = GH.llm.MODELS;
+  const current = MODELS.filter((m) => !m.legacy);
+  const COMMIT_URL = /^https:\/\/huggingface\.co\/[\w.-]+\/[\w.-]+\/resolve\/([0-9a-f]{40})\/([\w.-]+\.gguf)$/;
+  const pinnedOk = (m) => COMMIT_URL.test(m.url) && COMMIT_URL.exec(m.url)[2] === m.file && /^[0-9a-f]{64}$/.test(m.sha256) && Number.isSafeInteger(m.bytes) && m.bytes > 0;
+  const pinned = current.filter((m) => m.sha256);
+  check(`every pin in src/llm.js is a commit URL for its own file, a SHA-256 and an exact size (${pinned.length} of ${current.length} pinned)`, current.length === 3 && pinned.every(pinnedOk), pinned.filter((m) => !pinnedOk(m)).map((m) => m.id));
+  const src = read('src/llm.js');
+  const table = /const PINS = \{([\s\S]*?)\n\};/.exec(src);
+  const entries = table ? [...table[1].matchAll(/^\s*'([^']+)': \{ commit: '([^']*)', sha256: '([^']*)', bytes: (\d+) \},$/gm)] : [];
+  const lines = table ? table[1].split('\n').filter((l) => l.trim() && !l.trim().startsWith('//')) : [];
+  check('the PINS table holds only well-formed lines for files the catalog has', !!table && entries.length === lines.length && entries.every(([, file, commit, sha]) => current.some((m) => m.file === file) && /^[0-9a-f]{40}$/.test(commit) && /^[0-9a-f]{64}$/.test(sha)), lines.filter((l) => !entries.some((e) => e[0].trim() === l.trim())));
+  check('a size that isn\'t pinned yet stays on the main branch without a hash (so the app won\'t download it)', current.filter((m) => !m.sha256).every((m) => /\/resolve\/main\//.test(m.url)));
+  check('1.2\'s models keep their SHA-256 (they\'re never downloaded again)', MODELS.filter((m) => m.legacy).every((m) => /^[0-9a-f]{64}$/.test(m.sha256)));
+  const waiting = current.filter((m) => !m.sha256).map((m) => `${m.id} (${m.file})`);
+  if (waiting.length) console.log(`  ! warning: not pinned yet, so not downloadable: ${waiting.join(', ')}. Run the "pins" job in .github/workflows/model-check.yml and paste its PINS into src/llm.js.`);
+  check('a model without a pin fails with a plain reason', /can't download this model/.test(GH.llm.MESSAGES.unpinned));
+  // The self-test's report can go to GitHub: engine lines (which can quote a model's output) only
+  // from its own run, whose question is a general one.
+  check('the self-test\'s log keeps the engine\'s lines from its own run only', /const since = logSeq;/.test(src) && /out\.log = LOG\.filter\(\(e\) => !e\.engine \|\| e\.n > since\)/.test(src) && /log: \(\.\.\.a\) => log\('log', a, true\)/.test(src));
+
+  const MS = read(`${JAVA}ModelStore.java`);
+  check('ModelStore turns down a download without a commit URL for its file, a SHA-256 and a size ("unpinned")', /resolve\/\[0-9a-f\]\{40\}\/\(/.test(MS) && /private static boolean pinned\(Job job\)[\s\S]*?job\.file\.equals\(m\.group\(1\)\) && job\.sha256 != null && SHA256\.matcher\(job\.sha256\)\.matches\(\)\s*&& job\.bytes > 0/.test(MS) && /if \(!pinned\(job\)\) \{\s*throw new Failure\("unpinned"/.test(MS));
+  const expect = body(MS, 'private static void expect('), verify = body(MS, 'private void verify(');
+  check('the Hub\'s headers only ever stop a download early; the file is checked against the pin', /job\.expectedSha = job\.sha256;/.test(expect) && !/expectedSha = [^;]*linkedSha/.test(MS) && !/getHeaderField\("ETag"\)/.test(MS));
+  check('the size must be exact, and the SHA-256 is always checked', /length != job\.bytes/.test(verify) && !/closeInSize/.test(MS) && /if \(job\.expectedSha == null\) \{\s*throw new Failure\("unpinned"/.test(verify) && /throw new Failure\("checksum"/.test(verify));
+  check('an older install without a hash is hashed once in the background and marked rehashed', /private synchronized void recheck\(\)/.test(MS) && /if \(rechecked\) \{\s*return;/.test(MS) && /put\("sha256", sha\)\.put\("rehashed", true\)/.test(MS) && /\.put\("rehashed", meta\.optBoolean\("rehashed", false\)\)/.test(MS));
+}
+
 done();
