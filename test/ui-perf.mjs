@@ -254,6 +254,140 @@ for (let i = 0; i < RUNS; i++) {
 }
 const saveMs = best(saveRuns.map((r) => Math.max(r.call, r.longest)));
 
+/* ---------------------------------------------------------------- what the speed-ups must keep */
+// At normal speed: saves still land, caches give the same answers, and Claude works from its chunk.
+if (!measureOnly) {
+  await live.cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+
+  section('Saves');
+  const saves = await page.evaluate(async () => {
+    const U = window.GH.ui, br = window.AndroidBridge;
+    const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+    await wait(1500);
+    let syncWrites = 0, written = '';
+    const save = br.save;
+    br.save = (s) => { syncWrites++; written = s; return save(s); };
+    const before = window.__asyncSaves;
+    U.S.seen.perfMark = 'a';
+    U.save();
+    const inTap = window.__asyncSaves !== before || syncWrites > 0;
+    await wait(1500);
+    const later = window.__asyncSaves > before && syncWrites === 0;
+    const noCopy = localStorage.getItem('gh.v1') === null;
+    U.S.seen.perfMark = 'b';
+    U.save();
+    window.dispatchEvent(new Event('pagehide'));
+    const flushed = syncWrites === 1 && JSON.parse(written).seen.perfMark === 'b';
+    br.save = save;
+    return { inTap, later, noCopy, flushed };
+  });
+  check('a save writes nothing in the tap that made it', !saves.inTap);
+  check('it reaches the bridge\'s saveAsync once the page is idle', saves.later);
+  check('inside the app, localStorage keeps no copy of the state', saves.noCopy);
+  check('when the page is hidden, a waiting save is written at once, the synchronous way', saves.flushed);
+
+  section('Health sync');
+  const sync = await page.evaluate(async () => {
+    const U = window.GH.ui, scr = U.screens.today;
+    const frames = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(res, 50))));
+    U.go('today');
+    await frames();
+    let n = 0;
+    const orig = scr.render;
+    scr.render = function (...a) { n++; return orig.apply(this, a); };
+    const r1 = await U.syncHealth('manual'); // the same data as the last read
+    await frames();
+    const quiet = n;
+    delete U.S.health.days[U.today()]; // today's record lost: this read brings it back
+    n = 0;
+    const r2 = await U.syncHealth('manual');
+    await frames();
+    const changed = n;
+    scr.render = orig;
+    return { quiet, changed, r1: r1 && r1.changed, r2: r2 && r2.changed };
+  });
+  check('a sync that brought nothing new says so, and Today isn\'t drawn again', sync.r1 === false && sync.quiet === 0, sync);
+  check('one that changed the data redraws it, once', sync.r2 === true && sync.changed === 1, sync);
+
+  section('Kept answers');
+  const same = await page.evaluate(async () => {
+    const GH = window.GH, U = GH.ui, S = U.S, day = U.today();
+    const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+    const eq = () => JSON.stringify(GH.insights.top(S, day, 10)) === JSON.stringify(GH.insights.all(S, day).slice(0, 10));
+    const out = [eq()];
+    GH.health.setFeel(S, day, { energy: 'low', sore: 'very' }); U.commit(); await wait(50); out.push(eq());
+    GH.health.setSleepChip(S, day - 1, '<5'); U.commit(); await wait(50); out.push(eq());
+    GH.brain.addProtein(S, day - 1, 80); U.commit(); await wait(50); out.push(eq());
+    GH.brain.addWeight(S, day, 60, 'manual'); U.commit(); await wait(50); out.push(eq());
+    const first = GH.insights.all(S, day)[0];
+    if (first) { GH.insights.dismiss(S, first.id, day); U.commit(); await wait(50); }
+    out.push(eq());
+    U.go('health'); await wait(300); out.push(eq());
+    U.go('today'); await wait(300);
+    return out;
+  });
+  check('insights kept between renders are the ones worked out afresh, after each kind of change', same.every(Boolean), same);
+
+  section('Claude, loaded the first time it\'s asked');
+  const MODELS = [{ type: 'model', id: 'opus-test-2', display_name: 'Opus Test 2', created_at: '2026-07-01T00:00:00Z', capabilities: { effort: { supported: true }, structured_outputs: { supported: true }, thinking: { supported: true, types: { adaptive: { supported: true } } } } }];
+  const REPORT = { headline: 'A steady week.', glance: [], wins: ['4 of 4 workouts'], watch: [], focus: ['Protein on rest days.'], focus_one: 'Protein on rest days', ask_me: ['How do I sleep more?'] };
+  const TAILOR = { focus: ['legs'], muscles: [], goals: [], minutes: null, days: null, avoid_joints: [], no_jumping: null, gentle: null, note: 'More leg work each week.' };
+  const sse = (events) => events.map(([e, d]) => `event: ${e}\ndata: ${JSON.stringify(d)}\n\n`).join('');
+  const stream = (text) => sse([
+    ['message_start', { type: 'message_start', message: { id: 'msg_perf', type: 'message', role: 'assistant', model: 'opus-test-2', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 1 } } }],
+    ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }],
+    ...text.match(/[\s\S]{1,12}/g).map((c) => ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: c } }]),
+    ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+    ['message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 20 } }],
+    ['message_stop', { type: 'message_stop' }],
+  ]);
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS' };
+  const sent = [];
+  await live.ctx.route('https://api.anthropic.com/**', async (route) => {
+    const req = route.request();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+    sent.push(req.url());
+    if (req.url().includes('/v1/models')) return route.fulfill({ status: 200, headers: Object.assign({ 'content-type': 'application/json' }, cors), body: JSON.stringify({ data: MODELS, has_more: false, first_id: MODELS[0].id, last_id: MODELS[0].id }) });
+    const body = JSON.parse(req.postData() || '{}');
+    const props = (body.output_config && body.output_config.format && body.output_config.format.schema && body.output_config.format.schema.properties) || null;
+    const text = !props ? 'Keep the same bedtime on weekends.' : props.headline ? JSON.stringify(REPORT) : props.no_jumping ? JSON.stringify(TAILOR) : JSON.stringify({ days: ['Push', 'Pull'] });
+    return route.fulfill({ status: 200, headers: Object.assign({ 'content-type': 'text/event-stream' }, cors), body: stream(text) });
+  });
+  const before = await page.evaluate(() => ({ loaded: !!window.GH.claude, tags: [...document.scripts].filter((s) => /lazy\/claude\.js/.test(s.src)).length }));
+  check('it isn\'t loaded at launch', !before.loaded && before.tags === 0, before);
+  const ai = await page.evaluate(async () => {
+    const GH = window.GH, U = GH.ui, S = U.S, day = U.today();
+    window.AndroidBridge.loadSecret = () => 'sk-ant-api03-' + 'a'.repeat(60);
+    S.ai.mode = 'api'; S.ai.enabled = true; S.ai.consentAt = Date.now();
+    const fail = (e) => `error: ${e && e.message}`;
+    const deltas = [];
+    const out = {};
+    out.ask = await GH.ai.ask(S, day, 'How do I sleep more?', (d, snap) => deltas.push(snap)).then((x) => x.text, fail);
+    out.streamed = deltas.length;
+    out.tags = [...document.scripts].filter((s) => /lazy\/claude\.js/.test(s.src)).length;
+    out.tailor = await GH.ai.tailor(S, day, 'More legs').then((x) => x && x.note, fail);
+    out.json = await GH.ai.json(S, day, 'Build me a plan', { type: 'object', properties: { days: { type: 'array', items: { type: 'string' } } }, required: ['days'], additionalProperties: false }).then((x) => x && x.days && x.days.join(), fail);
+    out.report = await GH.ai.report(S, day).then((x) => x && x.data && x.data.headline, fail);
+    out.saved = !!GH.ai.reportFor(S, day);
+    return out;
+  });
+  check('a question loads it, once, and the answer streams in', ai.ask === 'Keep the same bedtime on weekends.' && ai.streamed > 1 && ai.tags === 1, ai);
+  check('Tailor my plan works through it', ai.tailor === TAILOR.note, ai.tailor);
+  check('Build me a plan works through it', ai.json === 'Push,Pull', ai.json);
+  check('the weekly report works through it, and is kept for the week', ai.report === REPORT.headline && ai.saved, ai);
+  check('every request went to the API, and only there', sent.length >= 5 && sent.every((u) => u.startsWith('https://api.anthropic.com/')), sent);
+  // The chat on screen, end to end.
+  await page.evaluate(() => { window.GH.ui.S.ai.chat = []; window.GH.ui.go('today'); });
+  await pause(500);
+  await page.click('#topbar .coach-btn');
+  await page.waitForSelector('dialog.chat-sheet[open] #askQ', { timeout: 15000 });
+  await page.fill('#askQ', 'Should I train today?');
+  await page.click('.chat-sheet [data-act="askSend"]');
+  const answered = await page.waitForFunction(() => { const x = [...document.querySelectorAll('.chat-sheet .bubble.coach')].pop(); return x && /same bedtime/.test(x.textContent) && !x.classList.contains('is-typing'); }, null, { timeout: 20000 }).then(() => true, () => false);
+  check('the chat answers on screen through it', answered, await page.evaluate(() => [...document.querySelectorAll('.chat-sheet .bubble')].map((b) => b.textContent.slice(0, 80))));
+  await page.evaluate(() => window.GH.ui.closeSheets());
+}
+
 const distBytes = statSync(arg('dist', '') ? join(resolve(arg('dist', '')), 'gradient-health.html') : join(root, 'dist/gradient-health.html')).size;
 console.log(`\n  boot ${r1(bootMs)} ms · longest task after it ${longMs} ms · tab p95 ${r1(tabP95)} ms · feel re-render ${r1(feelMs)} ms · save ${r1(saveMs)} ms · dist ${distBytes} bytes`);
 if (BASE.bootMs) console.log(`  against the baseline: boot ${r1(bootMs / BASE.bootMs * 100)}%, tab p95 ${r1(tabP95 / BASE.tabP95Ms * 100)}%, feel ${r1(feelMs / BASE.feelMs * 100)}%, save ${r1(saveMs / BASE.saveMs * 100)}%, dist ${r1(distBytes / BASE.distBytes * 100)}%`);
