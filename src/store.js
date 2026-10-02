@@ -301,8 +301,10 @@
     return S;
   }
 
-  // Older or partial states get every field the app expects.
-  function migrate(S) {
+  // Older or partial states get every field the app expects. o.later: a list that the migrations
+  // marked `later` go into instead of running (nothing reads what they change before the first
+  // frame, so a launch runs them once it's drawn).
+  function migrate(S, o) {
     // The quick checks first (sanitize above), so a state saved before them, or bent by a bug, can't
     // crash what follows.
     sanitize(S, { deep: false });
@@ -354,7 +356,7 @@
     if (GH.customPlan) GH.customPlan.migrate(S);
     if (GH.brain && GH.brain.relink) GH.brain.relink(S);
     // Later modules add their own steps here (GH.migrations.push(fn)), each safe to run every load.
-    for (const fn of GH.migrations || []) fn(S);
+    for (const fn of GH.migrations || []) { if (o && o.later && fn.later) o.later.push(fn); else fn(S); }
     S.v = SCHEMA;
     return S;
   }
@@ -365,7 +367,8 @@
     return S;
   }
 
-  function load() {
+  // o.later: see migrate.
+  function load(o) {
     flush(); // a save still waiting is written first, so this reads it
     const localTxt = lsGet(KEY);
     let fileTxt = null;
@@ -376,13 +379,13 @@
     // are both read, and the newer valid one wins.
     if (!(localTxt && fileTxt) || localTxt === fileTxt) {
       const one = parse(fileTxt || localTxt);
-      return valid(one) ? migrate(one) : null;
+      return valid(one) ? migrate(one, o) : null;
     }
     const local = parse(localTxt), file = parse(fileTxt);
     const a = valid(local) ? local : null;
     const b = valid(file) ? file : null;
     const pick = !a ? b : !b ? a : (b.updatedAt || 0) > (a.updatedAt || 0) ? b : a;
-    return pick ? migrate(pick) : null;
+    return pick ? migrate(pick, o) : null;
   }
 
   // Saving never runs in the tap that changed something: the state waits for the page to be idle

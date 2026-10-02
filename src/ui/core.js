@@ -41,7 +41,15 @@
     if (r && r.icon) { try { const svg = r.icon(name, { size: size || undefined, className: cls || '' }); if (svg) return svg; } catch (e) { /* unknown glyph */ } }
     return `<span class="${cls || ''}" data-icon="${U.esc(name)}" aria-hidden="true"></span>`;
   };
-  U.num = (n, d) => (n == null || !isFinite(n) ? '–' : Number(n).toLocaleString('en-US', { maximumFractionDigits: d == null ? 0 : d, minimumFractionDigits: d || 0 }));
+  // (Each formatter is made once: toLocaleString makes a new one on every call.)
+  const NUMF = new Map();
+  U.num = (n, d) => {
+    if (n == null || !isFinite(n)) return '–';
+    const max = d == null ? 0 : d, min = d || 0, k = `${max}|${min}`;
+    let f = NUMF.get(k);
+    if (!f) NUMF.set(k, (f = new Intl.NumberFormat('en-US', { maximumFractionDigits: max, minimumFractionDigits: min })));
+    return f.format(Number(n));
+  };
   // A number that rolls to its new value when a re-render changes it.
   U.roll = (v, cls) => `<span class="rf-num${cls ? ' ' + cls : ''}" data-roll="${U.esc(v)}">${U.esc(v)}</span>`;
   U.lb = () => !U.S || U.S.profile.units !== 'kg';
@@ -137,7 +145,15 @@
   const KEEP_ATTR = /^(data-(ready|lens-ready|lens-idle|scrolled|active|pressed|glow|magnet|dragging|drag-on|over|empty|bump|leaving|traveling|open|expanded|detent|entering|animate|minimized|revealed|hover|merged|tilting|fading|rf-.*)|role|tabindex|style|aria-(checked|selected|expanded|controls|describedby|valuetext))$/;
   const owned = new WeakMap(); // element → { attrs, style } the markup set, so only those get removed
 
-  const isInjected = (n) => n.nodeType === 1 && INJECTED.some((c) => n.classList.contains(c));
+  // (A node's own few classes are looked up, rather than asking for each of these in turn: a patch
+  // asks this of every node it passes.)
+  const INJECTED_SET = new Set(INJECTED);
+  const isInjected = (n) => {
+    if (n.nodeType !== 1) return false;
+    const cl = n.classList;
+    for (let i = 0; i < cl.length; i++) if (INJECTED_SET.has(cl[i])) return true;
+    return false;
+  };
   // Nodes on their way out: a removed card src/ui/motion.js pins where it was while it fades. A patch
   // passes over them as it does Refract's parts.
   const leaving = new WeakSet();
@@ -147,12 +163,18 @@
   // choice's) data-on and data-k. So a patch never hands one control's node, mid-move, to another
   // that happens to sit where it was, keyed or not.
   const CONTROLS = ['rf-segmented', 'rf-switch', 'gh-chipseg'];
+  // The behaviour classes a node has, as one number (a bit each), from its own classes.
+  const BEHAVIOR_BIT = new Map(BEHAVIOR.map((c, i) => [c, 1 << i]));
+  const CONTROL_BITS = CONTROLS.reduce((m, c) => m | BEHAVIOR_BIT.get(c), 0);
   function sig(n) {
     if (n.nodeType !== 1) return String(n.nodeType);
     let s = n.nodeName;
     if (n.nodeName === 'INPUT') s += ':' + (n.getAttribute('type') || 'text');
-    let control = false;
-    for (const b of BEHAVIOR) if (n.classList.contains(b)) { s += '.' + b; if (CONTROLS.includes(b)) control = true; }
+    let bits = 0;
+    const cl = n.classList;
+    for (let i = 0; i < cl.length; i++) bits |= BEHAVIOR_BIT.get(cl[i]) || 0;
+    if (bits) s += '.' + bits;
+    const control = !!(bits & CONTROL_BITS);
     if (n.hasAttribute('data-lens')) s += '[lens]';
     if (control) {
       const i = n.querySelector('input');
@@ -173,37 +195,45 @@
     return out;
   }
   function record(el) {
-    owned.set(el, { attrs: new Set(Array.from(el.attributes, (a) => a.name)), style: new Set(styleProps(el.getAttribute('style')).keys()) });
+    const names = new Set();
+    const list = el.attributes;
+    for (let i = 0; i < list.length; i++) names.add(list[i].name);
+    const text = el.getAttribute('style');
+    owned.set(el, { attrs: names, style: text ? new Set(styleProps(text).keys()) : NO_STYLE });
     for (let c = el.firstElementChild; c; c = c.nextElementSibling) record(c);
   }
+  const NO_STYLE = new Set(); // (shared, never changed)
   function morphAttrs(from, to) {
     const rec = owned.get(from);
     const next = new Set();
-    for (const a of Array.from(to.attributes)) {
+    const list = to.attributes;
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i];
       next.add(a.name);
       if (a.name !== 'style' && from.getAttribute(a.name) !== a.value) from.setAttribute(a.name, a.value);
     }
     const had = rec ? rec.attrs : Array.from(from.attributes, (a) => a.name).filter((n) => !KEEP_ATTR.test(n));
     for (const name of had) if (!next.has(name) && name !== 'style') from.removeAttribute(name);
-    const want = styleProps(to.getAttribute('style'));
-    if (rec) for (const k of rec.style) if (!want.has(k)) from.style.removeProperty(k);
-    for (const [k, v] of want) if (from.style.getPropertyValue(k).trim() !== v) from.style.setProperty(k, v);
-    owned.set(from, { attrs: next, style: new Set(want.keys()) });
+    const text = to.getAttribute('style');
+    const want = text ? styleProps(text) : null;
+    if (rec) for (const k of rec.style) if (!want || !want.has(k)) from.style.removeProperty(k);
+    if (want) for (const [k, v] of want) if (from.style.getPropertyValue(k).trim() !== v) from.style.setProperty(k, v);
+    owned.set(from, { attrs: next, style: want && want.size ? new Set(want.keys()) : NO_STYLE });
   }
   // Some parts are positioned from JS (the segmented thumb, the slider fill). When a re-render changes
   // their input, they're asked to re-measure once the patch is done: controls.js's own controls
   // first, Refract's for the rest.
+  // (At the next frame's read pass, once the render that changed them is done.)
   const toRefresh = new Set();
   function queueRefresh(el) {
     if (!el) return;
-    if (!toRefresh.size) {
-      Promise.resolve().then(() => {
-        const r = R();
-        for (const x of toRefresh) if (x.isConnected) safe(() => { if (!(U.refreshControl && U.refreshControl(x)) && r && r.refresh) r.refresh(x); });
-        toRefresh.clear();
-      });
-    }
     toRefresh.add(el);
+    readSoon('refresh', refreshNow);
+  }
+  function refreshNow() {
+    const r = R();
+    for (const x of toRefresh) if (x.isConnected) safe(() => { if (!(U.refreshControl && U.refreshControl(x)) && r && r.refresh) r.refresh(x); });
+    toRefresh.clear();
   }
   function morphForm(from, to) {
     if (from.nodeName === 'INPUT') {
@@ -387,12 +417,16 @@
       if (h && hover && h !== hover) U.haptic('tick');
       hover = h;
     }).observe(tabbar.querySelector('.rf-tabbar-bar'), { subtree: true, attributes: true, attributeFilter: ['data-hover'] });
-    enhance(tabbar);
-    enhance(topbar);
-    // The bar's height feeds the screen's top padding.
+    // Refract sets up both bars in the first frame's read pass, with the first page in: its tab bar
+    // measures where its glass goes as it's set up, which laid out the empty page once more.
+    readSoon('bars', () => {
+      const r = R();
+      if (r && r.init) U.morphKit.aside(() => { safe(() => r.init(tabbar)); safe(() => r.init(topbar)); });
+    });
+    // The bar's height feeds the screen's top padding (its observer reports before the first frame
+    // is drawn).
     const measure = () => { const h = topbar.offsetHeight; if (h) doc.documentElement.style.setProperty('--topbar-h', h + 'px'); };
-    measure();
-    if (G.ResizeObserver) new G.ResizeObserver(measure).observe(topbar);
+    if (G.ResizeObserver) new G.ResizeObserver(measure).observe(topbar); else measure();
     screen.addEventListener('scroll', onScroll, { passive: true });
     pullToRefresh();
   }
@@ -405,8 +439,9 @@
     const lt = screen.querySelector(':scope > .rf-large-title');
     const barH = topbar.offsetHeight;
     const s = lt ? lt.offsetTop + lt.offsetHeight - 8 - screen.scrollTop < barH : screen.scrollTop > 2;
-    if (s !== scrolled) { scrolled = s; topbar.toggleAttribute('data-scrolled', s); }
+    markScrolled(s);
   }
+  function markScrolled(s) { if (s !== scrolled) { scrolled = s; topbar.toggleAttribute('data-scrolled', s); } }
   // While the page scrolls, the glow behind it holds still (src/styles/perf.css): one moving layer
   // less for every frame of a fling. It drifts on 150 ms after the last scroll.
   let scrollIdle = 0;
@@ -462,6 +497,50 @@
     else floatEl.animate(frames, o);
   }
 
+  /* ---------------------------------------------------------------- reading the layout back */
+  // A render only writes. What it then reads back from the layout (whether the floating buttons fit,
+  // the bar's frosted edge, where the tab bar's glass goes, a control's thumb) and the page's scroll
+  // position (which needs the layout too) wait for the next frame, and are done there in one pass
+  // after every write is in. Done mid-render, each read laid the page out again: a tab change paid
+  // for three or four layouts where its frame needs one. Core's own reads go first, in a fixed order
+  // (the scroll, then what depends on it); U.readSoon(fn) adds others (src/ui/controls.js), and
+  // U.readNow() does the pass at once. A hidden page draws no frames, so a timer stands in.
+  const READ_FIRST = ['bars', 'scroll', 'float', 'scrolled'], READ_LAST = ['refresh', 'tabbar', 'accessory'];
+  const reads = new Map(); // one of those → fn
+  const readsAfter = []; // U.readSoon's, between the two
+  let readFrame = 0, readTimer = 0, pendingScroll = null;
+  function readNow() {
+    if (readFrame && G.cancelAnimationFrame) G.cancelAnimationFrame(readFrame);
+    if (readTimer) clearTimeout(readTimer);
+    readFrame = readTimer = 0;
+    // (One that asks for another pass while this one runs gets it at the next frame.)
+    const pick = (keys) => keys.filter((k) => reads.has(k)).map((k) => reads.get(k));
+    const list = pick(READ_FIRST).concat(readsAfter.splice(0), pick(READ_LAST));
+    reads.clear();
+    for (const fn of list) safe(fn);
+  }
+  function readSoon(key, fn) {
+    if (key) reads.set(key, fn); else readsAfter.push(fn);
+    if (readFrame || readTimer) return;
+    if (G.requestAnimationFrame) readFrame = G.requestAnimationFrame(readNow);
+    readTimer = setTimeout(readNow, 100);
+  }
+  U.readSoon = (fn) => readSoon(null, fn);
+  U.readNow = readNow;
+  // The page's scroll position, as the next pass sets it (a route change), or as it is.
+  const scrollNow = () => (pendingScroll != null ? pendingScroll : screen.scrollTop);
+  function applyScroll() {
+    if (pendingScroll == null) return;
+    const top = pendingScroll;
+    pendingScroll = null;
+    reads.delete('scroll');
+    screen.scrollTop = top;
+  }
+  function scrollSoon(top) {
+    pendingScroll = top;
+    readSoon('scroll', applyScroll);
+  }
+
   /* ---------------------------------------------------------------- rendering */
   const cleanups = [];
   U.onCleanup = (fn) => cleanups.push(fn);
@@ -469,16 +548,24 @@
   let lastKey = null;
   let nextMotion = null;
   const scrollMemo = {};
+  const scrolledMemo = {}; // the bar's frosted edge as each tab was left (with its scroll)
+  let floatEnter = false; // the floating buttons rise in at the next read pass
   function render(motion) {
     if (!U.S || !U.S.profile.onboarded) { U.showOnboarding(); return; }
-    onboardEl.hidden = true;
+    if (!onboardEl.hidden) onboardEl.hidden = true;
     U.refreshTabs();
     // Food: the burn estimate learns from the logs once a day (cheap after the first call).
     if (GH.food && GH.food.refreshBurn) safe(() => GH.food.refreshBurn(U.S, U.today()));
     const r = U.route;
     const key = r.view ? `${r.view}:${r.arg || ''}` : r.tab;
     const changed = key !== lastKey;
-    if (changed && lastKey && !lastKey.includes(':')) scrollMemo[lastKey] = screen.scrollTop;
+    // On a route change, whether the floating buttons show, read before anything changes (asked once
+    // they go, it would bring the new page's style up to date): only then does a copy fade.
+    const floatSeen = changed && !floatEl.hidden ? !floatEl.checkVisibility || floatEl.checkVisibility({ visibilityProperty: true, opacityProperty: true }) : undefined;
+    // Two route changes before a frame: the first one's scroll is set now, so the page leaving
+    // starts from where it is.
+    if (changed) applyScroll();
+    if (changed && lastKey && !lastKey.includes(':')) { scrollMemo[lastKey] = screen.scrollTop; scrolledMemo[lastKey] = !!scrolled; }
     const M = U.motion || {};
     const kind = changed ? motion || nextMotion : motion;
     // A re-render of the same page: where everything is, measured before the patch changes it, so
@@ -505,29 +592,43 @@
     const wasHidden = floatEl.hidden;
     // Floating buttons that go (Today's, on the way to another page) fade and sink where they were,
     // gone with the old page on a route change.
-    if (!wasHidden && !fl && M.fadeAway) safe(() => M.fadeAway(floatEl, changed ? 140 : 220));
+    if (!wasHidden && !fl && M.fadeAway) safe(() => M.fadeAway(floatEl, changed ? 140 : 220, floatSeen));
     U.morph(floatEl, fl || '');
     floatEl.hidden = !fl;
     screen.toggleAttribute('data-float', !!fl);
-    fitFloat();
-    if (fl && (wasHidden || changed)) floatIn();
+    // Whether they fit is read at the next frame, and then they rise in (measured before they move).
+    if (fl && (wasHidden || changed)) floatEnter = true;
+    readSoon('float', floatPass);
     if (scr.after) safe(() => scr.after(screen, U.S, day, r.arg, changed));
     if (changed) {
-      screen.scrollTop = r.view ? 0 : scrollMemo[key] || 0;
+      scrollSoon(r.view ? 0 : scrollMemo[key] || 0);
+      // The bar's frosted edge for where the page will be: off at its top (the screen is padded by
+      // the bar's height, so a large title there is all below it), else as it was when the page was
+      // left there. The read pass checks it against the layout; the bar's cross-fade needs it now.
+      markScrolled(pendingScroll ? !!scrolledMemo[key] : false);
       nextMotion = null;
       if (kind === 'stagger') routeIn(kind);
-      if (r.view && r.arg && scr.focus) safe(() => scr.focus(screen, r.arg));
+      if (r.view && r.arg && scr.focus) { applyScroll(); safe(() => scr.focus(screen, r.arg)); }
     } else if (motion) routeIn(motion);
     if (fx) safe(() => fx.play());
     lastKey = key;
-    updateScrolled();
+    readSoon('scrolled', updateScrolled);
     if (bar) safe(() => bar(kind));
     tabbar.toggleAttribute('data-away', !!r.view);
-    for (const t of tabbar.querySelectorAll('.rf-tab')) { if (t.dataset.tab === r.tab) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current'); }
-    if (R() && R().refresh) safe(() => R().refresh(tabbar));
+    // Only a real change: Refract's tab bar moves its glass on every one it hears of.
+    for (const t of tabbar.querySelectorAll('.rf-tab')) {
+      if (t.dataset.tab === r.tab) { if (t.getAttribute('aria-current') !== 'page') t.setAttribute('aria-current', 'page'); } else if (t.hasAttribute('aria-current')) t.removeAttribute('aria-current');
+    }
+    // (Its glass also follows a change of tab by itself, from Refract's own observer.)
+    readSoon('tabbar', () => { if (R() && R().refresh) R().refresh(tabbar); });
     renderAccessory();
   }
   U.render = render;
+  function floatPass() {
+    fitFloat();
+    if (floatEnter && !floatEl.hidden) floatIn();
+    floatEnter = false;
+  }
   // The floating buttons share one row. When they don't fit (a narrow phone, large text), the
   // secondary ones drop their words and keep their icon (their aria-label still says what they do).
   function fitFloat() {
@@ -636,7 +737,7 @@
   U.open = (view, arg) => {
     // Profile became the You tab: old links to it land there.
     if (view === 'profile') { go('you'); return; }
-    if (U.route.view) viewStack.push({ view: U.route.view, arg: U.route.arg, scroll: screen.scrollTop });
+    if (U.route.view) viewStack.push({ view: U.route.view, arg: U.route.arg, scroll: scrollNow() });
     U.route = { tab: U.route.tab, view, arg: arg == null ? null : arg };
     U.haptic('nav');
     render('push');
@@ -649,7 +750,7 @@
     U.route = { tab: U.route.tab, view: prev ? prev.view : null, arg: prev ? prev.arg : null };
     U.haptic('back');
     render('pop');
-    if (prev) screen.scrollTop = prev.scroll || 0;
+    if (prev) scrollSoon(prev.scroll || 0);
     return true;
   };
   U.act.goToday = () => go('today');
@@ -678,7 +779,7 @@
       <span class="rf-spacer"></span>
       <button type="button" class="rf-btn" data-size="sm" data-act="resumeWorkout" aria-label="Resume the workout, ${doneN} of ${total} sets done">Resume</button>`);
     }
-    fitAccessory();
+    readSoon('accessory', fitAccessory);
     // Coming in: it rises into place, its glass fading by itself (U.motion.show).
     if (!was && !U.reduced() && accessory.animate) {
       const frames = [{ opacity: 0, transform: 'translateY(10px) scale(.96)' }, { opacity: 1, transform: 'none' }];
@@ -990,11 +1091,18 @@
       P().on('route', (route) => openRoute(route));
       P().on('insets', () => { updateScrolled(); });
     }
-    U.S = GH.store.load();
+    // Migrations that can wait (the badges' first look at history) run once the first frame is drawn.
+    const later = [];
+    U.S = GH.store.load({ later });
+    if (later.length) { const S0 = U.S; afterFrame(() => { for (const fn of later) safe(() => fn(S0)); }); }
     applyPrefs();
     observeInserts();
     if (!U.S || !U.S.profile.onboarded) U.showOnboarding();
     else {
+      // Until the first frame is drawn, screens leave out what can come a moment later (Today's
+      // insight line, when it has to be worked out).
+      U.firstFrame = true;
+      afterFrame(() => { U.firstFrame = false; });
       render('stagger');
       if (U.S.active && U.resumePrompt) U.resumePrompt();
       U.syncHealth('boot');

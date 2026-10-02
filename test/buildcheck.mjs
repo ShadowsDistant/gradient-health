@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 import { transform } from 'esbuild';
 import { root, check, section, done } from './lib.mjs';
-import { APP_SCRIPTS, LAZY, asciiRegexps } from '../scripts/build.mjs';
+import { APP_SCRIPTS, APP_CHUNKS, LAZY, asciiRegexps } from '../scripts/build.mjs';
 
 // The page was 2,551,794 bytes before 1.6.0. The target was 1.6 MB; minifying and moving the
 // Anthropic SDK to its own chunk brought it to 1,645,383 bytes (inline JS is most of it, and
@@ -103,6 +103,25 @@ check('every chunk is in dist/lazy/', missing.length === 0, missing);
 const claude = existsSync(join(root, 'dist/lazy/claude.js')) ? readFileSync(join(root, 'dist/lazy/claude.js'), 'utf8') : '';
 check('the Anthropic SDK is in the claude chunk', /anthropic-dangerous-direct-browser-access/.test(claude) && /GH\.claude|\.claude=/.test(claude));
 check('and not in the page', !/anthropic-dangerous-direct-browser-access/.test(html));
+
+// The app's own parts (APP_CHUNKS: set-up, the plan review, How it works, the share card): each in
+// dist/lazy/ as its scripts minified, which compiles, is all ASCII and sets its mark for GH.lazy; and
+// none of that code is in the page any more (src/ui/lazy.js stands in for it there).
+const inPage = APP_SCRIPTS.filter((p) => APP_CHUNKS.some((c) => c.scripts.includes(p)));
+check('no script of an app part is also inline in the page', inPage.length === 0, inPage);
+for (const c of APP_CHUNKS) {
+  const f = join(root, 'dist/lazy', `${c.name}.js`);
+  const text = existsSync(f) ? readFileSync(f, 'utf8') : '';
+  let compiles = true;
+  try { new vm.Script(text, { filename: `${c.name}.js` }); } catch (e) { compiles = false; }
+  const mark = `(window.GH = window.GH || {})[${JSON.stringify(c.name)}]`;
+  const ok = !!text && compiles && !/[^\x00-\x7f]/.test(text) && c.scripts.every((p) => text.includes(`/* ${p} */\n(()=>{`)) && text.includes(mark);
+  check(`the ${c.name} part (${c.scripts.join(', ')}) is in dist/lazy/${c.name}.js, minified, all ASCII, and compiles`, ok, { exists: !!text, compiles });
+  const bodies = text.split(/\n\/\* src\/\S+ \*\/\n/).map((s) => s.replace(/^\/\* src\/\S+ \*\/\n/, '').trim()).filter((s) => s.startsWith('(()=>{'));
+  const kept = bodies.filter((b) => html.includes(b.slice(0, 2000)));
+  check(`and none of its code is in the page`, bodies.length === c.scripts.length && kept.length === 0, `${kept.length} of ${bodies.length} still inline`);
+}
+check('the stand-ins for them are in the page (src/ui/lazy.js)', scripts.some((s) => s.startsWith('/* src/ui/lazy.js */')));
 
 section('Patches to Refract');
 // Edits to vendor/refract/bundle.js are fenced: // gh-patch(<id>) ... // gh-patch-end(<id>), one

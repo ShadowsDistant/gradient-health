@@ -6,8 +6,9 @@ export async function screens({ page, settle, act }) {
     ['why-plan', async () => { await act('whyPlan'); await large(); }],
     ['review-none', async () => { await act('reviewPlan'); await settle(1500); }],
     ['review-cards', async () => {
-      await page.evaluate(() => {
+      await page.evaluate(async () => {
         const GH = window.GH, U = GH.ui;
+        await GH.lazy('review'); // the plan review is a part of its own (src/ui/lazy.js)
         const ctx = GH.planReview.context(U.S, U.today(), 'device');
         const sw = ctx.swaps[0];
         GH.planReview.open('why', { engine: 'app', note: 'Two changes the planner checked, and one it turned down.', suggestions: [

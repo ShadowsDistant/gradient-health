@@ -33,6 +33,7 @@ const QUESTIONS = ['How is my sleep?', 'Am I doing enough steps?', 'Why is today
 const out = await page.evaluate(async ([id, name, bytes, questions]) => {
   const GH = window.GH, S = GH.ui.S, day = GH.ui.today();
   const llm = await GH.lazy('llm');
+  await GH.lazy('science'); // the rules the facts quote (a part of its own, src/ui/lazy.js)
   const m = Object.assign({}, llm.MODELS.find((x) => x.id === id), { file: name, bytes, minRamGB: 0 });
   llm.configure({ baseUrl: 'models/', models: [m], stall: { load: 300000, answer: 300000 } });
   S.ai.deviceModel = id;

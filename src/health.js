@@ -575,7 +575,15 @@
     return x;
   }
   const digitsOf = (key) => (key === 'weightKg' || key === 'distanceM' || key === 'bodyFat' || isMeasure(key) ? 1 : 0);
-  const num = (v, d) => Number(v).toLocaleString('en-US', { maximumFractionDigits: d || 0, minimumFractionDigits: d || 0 });
+  // One formatter for each number of decimals, made once (toLocaleString makes one on every call,
+  // which was a good part of what Health's render cost).
+  const NF = new Map();
+  const num = (v, d) => {
+    const k = d || 0;
+    let f = NF.get(k);
+    if (!f) NF.set(k, (f = new Intl.NumberFormat('en-US', { maximumFractionDigits: k, minimumFractionDigits: k })));
+    return f.format(Number(v));
+  };
   // Minutes as "7 h 05", or "45 min" under an hour.
   function hm(min) {
     const t = Math.max(0, Math.round(min));

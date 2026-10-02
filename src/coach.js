@@ -14,6 +14,9 @@
 
   const hrs = (min) => B().fmtMin(Math.round(min));
   const pct = (x) => `${Math.round(Math.abs(x) * 100)}%`;
+  // Made once, on first use (toLocaleString makes a formatter every call).
+  let INT = null;
+  const int = (n) => (INT || (INT = new Intl.NumberFormat('en-US'))).format(n);
   const round = (v, d) => { const f = Math.pow(10, d || 0); return Math.round(v * f) / f; };
   function weightText(S, kg) {
     if (kg == null) return '–';
@@ -107,7 +110,7 @@
       // Health (and food) only: the headline is about the week's numbers.
       if (F && foodDays >= 3) headline = `Food logged on ${foodDays} of the last 7 days.`;
       else if (f.sleep7.n >= 4) headline = `Sleep is averaging ${hrs(f.sleep7.avg)} a night.`;
-      else if (f.steps7.n >= 3) headline = `About ${Math.round(f.steps7.avg).toLocaleString('en-US')} steps a day this week.`;
+      else if (f.steps7.n >= 3) headline = `About ${int(Math.round(f.steps7.avg))} steps a day this week.`;
       else { headline = 'A quiet week so far.'; addFocus('Log your weight and sleep', 'Log your weight and sleep, or connect Health Connect, and this fills in.'); }
     } else if (!f.logs.length) { headline = 'Your first workout counts most.'; addFocus('Do your first workout', 'Do your first workout. The plan starts easy on purpose.'); }
     else if (f.week && f.week.phase.deload) headline = 'Deload week: lighter on purpose.';
@@ -200,8 +203,8 @@
     },
     steps: (S, day, f) => {
       if (!f.steps7.n) return 'No steps from this week yet. With Health Connect on, steps come in on their own.';
-      let a = `You're averaging ${Math.round(f.steps7.avg).toLocaleString('en-US')} steps a day this week`;
-      a += f.stepsBase.n >= 7 ? `, against your usual ${Math.round(f.stepsBase.avg).toLocaleString('en-US')}.` : '.';
+      let a = `You're averaging ${int(Math.round(f.steps7.avg))} steps a day this week`;
+      a += f.stepsBase.n >= 7 ? `, against your usual ${int(Math.round(f.stepsBase.avg))}.` : '.';
       a += f.steps7.avg < 7000 ? ' In large step-count studies, the risk of dying early kept falling up to about 8,000-10,000 steps a day for adults under 60 (6,000-8,000 over 60). A short walk after meals is the easiest way to add some.' : ' That\'s a healthy amount for most adults.';
       return a;
     },
@@ -452,7 +455,7 @@
     if (f.rhr7.n >= 3 && f.rhrBase.n >= 7) { const d = f.rhr7.avg - f.rhrBase.avg; out.push({ icon: 'heart', label: 'Resting heart rate', value: `${Math.round(f.rhr7.avg)} bpm`, status: d >= 5 ? 'watch' : 'good', note: d >= 5 ? `${Math.round(d)} above your usual ${Math.round(f.rhrBase.avg)}.` : `Around your usual ${Math.round(f.rhrBase.avg)}.` }); }
     if (f.hrv7.n >= 3 && f.hrvBase.n >= 7) { const d = f.hrv7.avg / f.hrvBase.avg - 1; out.push({ icon: 'wave', label: 'HRV', value: `${Math.round(f.hrv7.avg)} ms`, status: d <= -0.15 ? 'watch' : 'good', note: d <= -0.15 ? `${pct(d)} below your usual.` : 'Around your usual.' }); }
     const sg = b.stepsGoal(S, day);
-    if (f.steps7.n >= 3) out.push({ icon: 'navigate', label: 'Steps', value: `${Math.round(f.steps7.avg).toLocaleString('en-US')} a day`, status: f.steps7.avg >= sg.goal ? 'good' : f.steps7.avg >= sg.goal * 0.75 ? 'info' : 'watch', note: `Goal ${sg.goal.toLocaleString('en-US')}.` });
+    if (f.steps7.n >= 3) out.push({ icon: 'navigate', label: 'Steps', value: `${int(Math.round(f.steps7.avg))} a day`, status: f.steps7.avg >= sg.goal ? 'good' : f.steps7.avg >= sg.goal * 0.75 ? 'info' : 'watch', note: `Goal ${int(sg.goal)}.` });
     const w = f.weight;
     if (w.avg7 != null && w.rate != null) out.push({ icon: 'chart', label: 'Weight trend', value: `${Math.abs(w.rate) < 0.002 ? 'Steady' : `${w.rate < 0 ? 'Down' : 'Up'} ${pct(w.rate)} a week`}`, status: w.warn ? 'watch' : 'good', note: w.warn || `Goal: ${S.profile.weightGoal === 'lose' ? 'lose' : S.profile.weightGoal === 'gain' ? 'gain' : 'maintain'}.` });
     if (f.goal && f.proteinDays >= 3) out.push({ icon: 'check-circle', label: 'Protein', value: `${f.proteinHit} of ${f.proteinDays} days`, status: f.proteinHit >= f.proteinDays - 1 ? 'good' : 'watch', note: `Goal ${f.goal} g a day.` });
@@ -516,7 +519,7 @@
     if (f.sleep7.n >= 4 && f.sleep7.avg < 390) out.push({ id: `tip-sleep-${ws}`, icon: 'moon', title: 'Aim for an earlier, steadier bedtime', body: `You're averaging ${hrs(f.sleep7.avg)}. A regular bedtime, weekends included, helps more than catching up.` });
     if (f.goal && f.proteinDays >= 3 && f.proteinHit < f.proteinDays / 2) out.push({ id: `tip-protein-${ws}`, icon: 'check-circle', title: `Get to ${f.goal} g of protein`, body: `You hit it on ${f.proteinHit} of ${f.proteinDays} days. One ${p.protein.quickName || 'shake'} on training days goes a long way.` });
     const sg = b.stepsGoal(S, day);
-    if (f.steps7.n >= 4 && f.steps7.avg < sg.goal * 0.75) out.push({ id: `tip-steps-${ws}`, icon: 'navigate', title: 'A walk after one meal a day', body: `You're at ${Math.round(f.steps7.avg).toLocaleString('en-US')} steps against a goal of ${sg.goal.toLocaleString('en-US')}. Ten minutes after a meal adds about 1,000.` });
+    if (f.steps7.n >= 4 && f.steps7.avg < sg.goal * 0.75) out.push({ id: `tip-steps-${ws}`, icon: 'navigate', title: 'A walk after one meal a day', body: `You're at ${int(Math.round(f.steps7.avg))} steps against a goal of ${int(sg.goal)}. Ten minutes after a meal adds about 1,000.` });
     if (GH.food && GH.food.suggestions) for (const x of GH.food.suggestions(S, day)) out.push(x);
     const gone = S.coachDismissed || {};
     return out.filter((x) => !(gone[x.id] > day - 14)).concat(aiSuggestions(S, day).filter((x) => !(gone[x.id] > day - 14)));

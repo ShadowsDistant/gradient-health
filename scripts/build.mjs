@@ -174,7 +174,6 @@ export const APP_SCRIPTS = [
   'src/data/privacy.js',
   'src/data/moves.js',
   'src/data/moves-access.js',
-  'src/data/science.js',
   'src/data/changelog.js',
   'src/engine/pose.js',
   'src/brain.js',
@@ -194,17 +193,17 @@ export const APP_SCRIPTS = [
   'src/tailor.js',
   'src/qr.js',
   'src/customplan.js',
-  'src/planreview.js',
   'src/devicecoach.js',
   'src/ai.js', // the Claude coach's inline part; its requests are the lazy 'claude' chunk
   'src/ui/core.js',
+  'src/ui/lazy.js', // stand-ins for the parts in APP_CHUNKS below
   'src/ui/controls.js',
   'src/ui/motion.js',
   'src/ui/sheet.js',
   'src/ui/hapticsui.js',
   'src/ui/charts.js',
   'src/ui/guide.js',
-  'src/ui/onboarding.js',
+  'src/ui/answers.js', // set-up's answers as You, Plan and Settings list them
   'src/ui/player.js',
   'src/ui/today.js',
   'src/ui/plan.js',
@@ -213,7 +212,6 @@ export const APP_SCRIPTS = [
   'src/ui/chat.js',
   'src/ui/tailor.js',
   'src/ui/customplan.js',
-  'src/ui/review.js',
   'src/ui/food.js',
   'src/scanner.js',
   'src/ui/bodymap.js',
@@ -224,10 +222,24 @@ export const APP_SCRIPTS = [
   'src/ui/profile.js',
   'src/ui/you.js',
   'src/ui/badges.js',
-  'src/ui/sharecard.js',
   'src/ui/coachpage.js',
-  'src/ui/science.js',
   'src/ui/settings.js',
+];
+
+// Parts of the app itself that the first screen doesn't need, each a chunk of its own in dist/lazy/:
+// the files' scripts minified as the page's are, one after another, then GH[name] set (to what the
+// part set there itself, or true) so GH.lazy(name) knows it's in. Their style sheets stay in the
+// page (other screens share their classes). src/ui/lazy.js has the small stand-ins that load a part
+// the first time it's used, and warms the likely ones once the first frame is drawn.
+export const APP_CHUNKS = [
+  // Set-up: only someone who isn't set up yet, or who edits their answers, needs it.
+  { name: 'setup', scripts: ['src/ui/onboarding.js'] },
+  // The AI check of the plan, and Why this plan.
+  { name: 'review', scripts: ['src/planreview.js', 'src/ui/review.js'] },
+  // How it works: the rules behind the plan and their research.
+  { name: 'science', scripts: ['src/data/science.js', 'src/ui/science.js'] },
+  // A badge's share image.
+  { name: 'shareCard', scripts: ['src/ui/sharecard.js'] },
 ];
 
 // Heavy parts that load only when they're used (the 3D figure, the on-device model runtime, the
@@ -250,11 +262,23 @@ export const LAZY = [
   { name: 'actmap-worker', entry: 'node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs' },
 ];
 
-async function buildLazy() {
+// An app chunk's file: its scripts (each minified, so each its own wrapper), then the mark GH.lazy
+// waits for.
+export async function appChunk(c) {
+  const parts = await Promise.all(c.scripts.map((p) => minJs(read(p), p)));
+  const key = JSON.stringify(c.name);
+  return `${parts.map((code, i) => `/* ${c.scripts[i]} */\n${code}`).join('\n')}\n(window.GH = window.GH || {})[${key}] = window.GH[${key}] || true;\n`;
+}
+
+async function buildLazy(chunks) {
   const dir = join(root, 'dist/lazy');
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   const sizes = [];
+  APP_CHUNKS.forEach((c, i) => {
+    writeFileSync(join(dir, `${c.name}.js`), chunks[i]);
+    sizes.push(`${c.name}.js ${(chunks[i].length / 1024).toFixed(0)} KB`);
+  });
   for (const c of LAZY) {
     if (c.entry) {
       const result = await build({
@@ -308,9 +332,11 @@ async function main() {
   const shell = read('src/shell.html');
   const version = JSON.parse(read('package.json')).version || '0.0.0';
   const appJs = await Promise.all(APP_SCRIPTS.map((p) => minJs(read(p), p)));
+  const chunks = await Promise.all(APP_CHUNKS.map(appChunk));
   // The app's version, for Profile, What's new and the web build (the APK also reports its own), and
-  // an id of this build's code, for things kept across launches that a code change should drop.
-  const buildId = createHash('sha256').update(appJs.join('\n')).digest('hex').slice(0, 12);
+  // an id of this build's code (its chunks' too), for things kept across launches that a code change
+  // should drop.
+  const buildId = createHash('sha256').update(appJs.concat(chunks).join('\n')).digest('hex').slice(0, 12);
   const scripts = [`<script>(window.GH = window.GH || {}).VERSION = ${JSON.stringify(version)}; window.GH.BUILD = ${JSON.stringify(buildId)};</script>`];
   APP_SCRIPTS.forEach((p, i) => scripts.push(`<script>/* ${p} */\n${safeJs(appJs[i])}</script>`));
   const [tokensMin, refractCss, appCssMin, refractMin] = await Promise.all([
@@ -336,7 +362,7 @@ async function main() {
   new Function(read('src/data/privacy.js'))();
   writeFileSync(join(root, 'docs/PRIVACY.md'), globalThis.GH.PRIVACY.markdown());
   console.log(`docs/p/index.html  ${(sharePage() / 1024).toFixed(0)} KB  (the share page)`);
-  const lazy = await buildLazy();
+  const lazy = await buildLazy(chunks);
   if (lazy.length) console.log(`dist/lazy/  ${lazy.join(', ')}`);
 }
 
