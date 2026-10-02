@@ -173,8 +173,8 @@
   };
   function tourPages() {
     const tabs = U.tabList().map((t) => t[0]);
-    const pages = [{ tab: 'today', icon: 'home', title: 'Today is home base', text: tabs.includes('plan') ? 'Each day starts here: your workout, sized to your time, and a quick feel check that tunes it to how you slept and how sore you are.' : 'Each day starts here: what to eat and what\'s left, how you slept and how you feel.' }];
-    if (tabs.includes('plan')) pages.push({ tab: 'plan', icon: 'calendar', title: 'Your week, your way', text: 'Plan shows every day ahead. Hold a workout to move it to a free day, and Moves has every exercise, from easiest to hardest.' });
+    const pages = [{ tab: 'today', icon: 'home', title: 'Today is home base', text: tabs.includes('plan') ? 'Each day starts here: your workout, sized to your time, and a quick feel check. Your energy and soreness shape the session.' : 'Each day starts here: what to eat and what\'s left, how you slept and how you feel.' }];
+    if (tabs.includes('plan')) pages.push({ tab: 'plan', icon: 'calendar', title: 'Your week, your way', text: 'Plan shows every day ahead. Tap a day to see it or move it to a free one, and Moves has every exercise, from easiest to hardest.' });
     else if (tabs.includes('food')) pages.push({ tab: 'food', icon: 'food', title: 'Log what you eat', text: 'Search, scan a barcode or just add the calories. Your target learns from your logs and your weight.' });
     const rest = tabs.filter((t) => t !== 'today' && !pages.some((p) => p.tab === t));
     pages.push({ tab: rest.includes('you') ? 'you' : rest[rest.length - 1], lit: rest, icon: 'compass', title: 'Everything else', text: rest.map((t) => TAB_WORDS[t]).filter(Boolean).join(' ') });

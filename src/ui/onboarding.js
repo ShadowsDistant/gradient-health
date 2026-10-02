@@ -429,7 +429,8 @@
     const copy = page.cloneNode(true);
     copy.removeAttribute('data-key');
     for (const n of copy.querySelectorAll('[id]')) n.removeAttribute('id');
-    return { copy, top: box.top - host.top, left: box.left - host.left, width: box.width, height: box.height, scroll: sc.scrollTop };
+    // Where the page sits in its scroller: scrolled up, or centred (the welcome).
+    return { copy, top: box.top - host.top, left: box.left - host.left, width: box.width, height: box.height, shift: page.getBoundingClientRect().top - box.top };
   }
   // The screen changing: the old one slides out the way the person is going while the new one's
   // parts come in from the other side a beat apart, with a little spring. Transform and opacity only.
@@ -443,7 +444,7 @@
       exit.setAttribute('aria-hidden', 'true');
       exit.inert = true;
       exit.style.cssText = `top:${leaving.top}px;left:${leaving.left}px;width:${leaving.width}px;height:${leaving.height}px`;
-      leaving.copy.style.transform = `translateY(${-leaving.scroll}px)`;
+      leaving.copy.style.transform = `translateY(${leaving.shift}px)`;
       exit.appendChild(leaving.copy);
       el.appendChild(exit);
       const drop = () => { if (exit.isConnected) exit.remove(); };
@@ -545,6 +546,9 @@
         : field('Height (cm, optional)', numInput('_hcm', Q._hcm, 'e.g. 175', 'min="100" max="250" inputmode="numeric"'), '', '_hcm'));
   };
   const sexGroup = () => group('Sex (optional)', `<div class="ob-pad">${U.seg('sex', [['female', 'Female'], ['male', 'Male'], ['', 'Skip']], Q.sex || '', 'Sex', ` ${bind('sex')}`)}</div>`, foodModeOf() === 'full' ? 'Used for your calorie target. Skip it and an average is used.' : 'Only used to read your health trends. Skip it if you like.');
+
+  // A weight that isn't in the list: typed in a field of its own, with Add beside it.
+  const addRow = (k, u) => `<div class="ob-add"><div class="rf-field-control"><input class="rf-input" type="number" inputmode="decimal" id="add-${k}" placeholder="Other weight (${u})" aria-label="Other ${k === 'db' ? 'dumbbell' : 'kettlebell'} weight"></div><button type="button" class="rf-btn" data-size="sm" data-act="obAddWeight" data-arg="${k}">Add</button></div>`;
 
   /* ---------------------------------------------------------------- checks */
   const CHECK = {};
@@ -833,7 +837,7 @@
     const weights = (k, name) => {
       const list = [...new Set(WEIGHTS[k][u].concat(eq[k] || []))].sort((a, b) => a - b);
       return `<p class="ob-more-label">${name}</p><div class="ob-chips">${list.map((w) => listChip(`equipment.${k}`, w, `${w} ${u}`, (eq[k] || []).includes(w), 'num', true)).join('')}</div>
-        <div class="ob-add"><input class="rf-input" type="number" inputmode="decimal" id="add-${k}" placeholder="Other weight (${u})" aria-label="Other ${k === 'db' ? 'dumbbell' : 'kettlebell'} weight"><button type="button" class="rf-btn" data-size="sm" data-act="obAddWeight" data-arg="${k}">Add</button></div>`;
+        ${addRow(k, u)}`;
     };
     const exact = has.db || has.kb ? more('weights', 'Exact weights', `${unitsSeg()}${has.db ? weights('db', 'Dumbbells') : ''}${has.kb ? weights('kb', 'Kettlebells') : ''}`, false, [has.db ? `Dumbbells: ${eq.db.slice().sort((a, b) => a - b).join(', ')} ${u}` : '', has.kb ? `Kettlebells: ${eq.kb.slice().sort((a, b) => a - b).join(', ')} ${u}` : ''].filter(Boolean).join(' · ')) : '';
     const house = more('house', 'Around the house', `<ul class="rf-list">
@@ -1045,8 +1049,7 @@
       // Nothing left this week (days picked that skip today, late in the week): next week's first.
       if (!first) { const d = days.find((z) => z.kind === 'work'); if (d) first = GH.optimizer.explain(S0, d.day).today; }
       const around = A() ? A().plannedAround(p) : null;
-      const reasons = (x.reasons || []).slice(1).filter((r) => !around || r.indexOf(around) !== 0).slice(0, 3)
-        .map((r) => r.replace(/about (\d+) of sets/, 'about $1 minutes of sets'));
+      const reasons = (x.reasons || []).slice(1).filter((r) => !around || r.indexOf(around) !== 0).slice(0, 3).map(tidy);
       const plan = B().todayPlan(S0, day);
       // The coach's review, when there's a coach to ask (GH.planReview says; a promise counts as no).
       const can = GH.planReview && GH.planReview.available ? GH.planReview.available(S0) : false;
@@ -1056,6 +1059,17 @@
       if (G.console) G.console.error(e);
       return { key, day, p, error: true, days: [], reasons: [] };
     }
+  }
+  // The engine's reasons, tidied for reading aloud: "about 13 of sets" gets its minutes, and
+  // "arms 12 and legs 6 sets this week" reads "12 sets for arms and 6 for legs this week". Words it
+  // doesn't recognise pass through as they are.
+  function tidy(r) {
+    return r.replace(/about (\d+) of sets/, 'about $1 minutes of sets')
+      .replace(/^(Your top goals get the most work): (.+) sets this week\.$/, (m, head, list) => {
+        const items = list.split(/, | and /).map((x) => /^(.+) (\d+)$/.exec(x));
+        if (!items.length || items.some((x) => !x)) return m;
+        return `${head}: ${joinWords(items.map(([, name, n], i) => (i ? `${n} for ${name}` : `${n} sets for ${name}`)))} this week.`;
+      });
   }
   function revealHtml(r) {
     const p = r.p;
@@ -1155,7 +1169,7 @@
       const m = personMove(h.getAttribute('data-move'), eq);
       if (!m) continue;
       const url = f3 && f3.cachedStill ? f3.cachedStill(m, look) : null;
-      if (url) { fillImg(h, url); continue; }
+      if (url) { const shown = h.querySelector('img'); if (!shown || shown.getAttribute('src') !== url) fillImg(h, url); continue; }
       if (!h.firstElementChild) { const svg = flatStill(m); if (svg) h.appendChild(svg.cloneNode(true)); }
       if (f3 && f3.warm && f3.warm() && f3.still) todo.push([h, m]);
     }
@@ -1172,13 +1186,23 @@
     if (!m0) return null;
     try { return M().forPerson ? M().forPerson(m0, eq) : m0; } catch (e) { return m0; }
   }
+  // A 3D still in an empty tile goes straight in. Over a flat figure it goes in once it's loaded and
+  // fades in on top (they share the tile's one grid cell), and the flat one goes once it's covered:
+  // the tile is never empty on the way, and a still that fails leaves the flat figure.
   function fillImg(h, url) {
     const img = doc().createElement('img');
     img.alt = '';
     img.decoding = 'async';
+    const old = Array.from(h.childNodes);
+    if (!old.length) { img.src = url; h.appendChild(img); return; }
+    img.addEventListener('load', () => {
+      if (!h.isConnected) return;
+      h.appendChild(img);
+      const drop = () => { for (const n of old) if (n.parentNode === h) n.remove(); };
+      img.addEventListener('animationend', drop, { once: true });
+      setTimeout(drop, 900);
+    }, { once: true });
     img.src = url;
-    h.textContent = '';
-    h.appendChild(img);
   }
   function flatStill(m) {
     if (!GH.pose) return null;
@@ -1506,7 +1530,7 @@
     const weights = (k) => {
       const list = [...new Set(WEIGHTS[k][u].concat(eq[k] || []))].sort((a, b) => a - b);
       return `<div class="ob-chips">${list.map((w) => listChip(`equipment.${k}`, w, `${w} ${u}`, (eq[k] || []).includes(w), 'num')).join('')}</div>
-        <div class="ob-add"><input class="rf-input" type="number" inputmode="decimal" id="add-${k}" placeholder="Other weight (${u})" aria-label="Other ${k === 'db' ? 'dumbbell' : 'kettlebell'} weight"><button type="button" class="rf-btn" data-size="sm" data-act="obAddWeight" data-arg="${k}">Add</button></div>`;
+        ${addRow(k, u)}`;
     };
     return group('Dumbbells', weights('db'), 'Tap each weight you own, pairs or singles.')
       + group('Kettlebells', weights('kb'))

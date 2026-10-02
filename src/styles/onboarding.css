@@ -119,9 +119,14 @@
 .ob-more[open] .ob-more-body { animation: ob-drop 340ms var(--ease-out-soft); }
 .ob-more .rf-list { background-color: color-mix(in srgb, var(--bg-raised) 55%, transparent); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: var(--ob-line); }
 .ob-more-label { margin: var(--space-1) var(--space-1) -4px; font-size: .8125rem; font-weight: 650; color: var(--label-secondary); }
+/* Another weight: its own field (the box is the field's), with Add beside it. */
+.ob-add .rf-field-control { flex: 1; min-width: 0; min-block-size: 40px; }
 @keyframes ob-drop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 
 /* ================================================================== the welcome */
+/* In the middle of a tall screen rather than at its top (when it fits; otherwise it scrolls). */
+.onboard[data-step="welcome"] .ob-scroll { display: flex; flex-direction: column; }
+.onboard[data-step="welcome"] .ob-page { margin-block: auto; }
 .ob-hello { display: grid; justify-items: center; text-align: center; gap: var(--space-3); padding: var(--space-5) var(--space-1) var(--space-2); }
 .ob-mark { position: relative; width: 104px; height: 104px; margin-bottom: var(--space-2); }
 /* The halo: the logo's colours, turning slowly behind it (one painted layer, transform only). */
@@ -235,6 +240,8 @@
 .rv-more { margin: 0; font-size: .875rem; color: var(--label-secondary); }
 /* A move's key pose: the flat figure, then the 3D one's still (the same look as Plan's tiles). */
 .ob-thumb { --ob-thumb-bg: color-mix(in oklab, var(--label) 6%, var(--bg-raised)); --fig-bg: var(--ob-thumb-bg); flex: none; width: 52px; height: 52px; border-radius: 14px; background: var(--ob-thumb-bg); display: grid; place-items: center; overflow: hidden; color: var(--label-secondary); --rf-icon-size: 22px; }
+/* One cell: the 3D still fades in over the flat figure. */
+.ob-thumb > * { grid-area: 1 / 1; }
 .ob-thumb > svg { display: block; width: 46px; height: 46px; }
 .ob-thumb > img { display: block; width: 100%; height: 100%; object-fit: contain; animation: ob-fade var(--duration-slow) var(--ease-standard) both; }
 .ob-thumb.is-icon { color: var(--hue-rose); }

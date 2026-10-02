@@ -183,6 +183,7 @@ section('The first run: six screens, one decision each');
   check('the next seven days, today first and a workout day', plan.days === 7 && plan.first && plan.todayWork, plan);
   check('today\'s workout with its moves and their pictures', plan.tag === 'Today' && plan.moves >= 2 && plan.thumbs >= 2, plan);
   check('why this plan: the weekly plans compared and two or three reasons', plan.n > 100 && plan.reasons >= 2 && plan.reasons <= 3 && /weekly plans compared/.test(plan.why), plan);
+  check('in words that read well ("12 sets for arms", "minutes of sets")', !/\b(?:[a-z]+ \d+ and [a-z]+ \d+ sets|about \d+ of sets)\b/.test(plan.why) && (!/most work/.test(plan.why) || /\d+ sets for /.test(plan.why)), plan.why);
   check('nothing "built around you" for an age and a sore knee that change nothing there', !plan.around);
   check('Start my first workout, or Look around first', (await page.locator('.ob-actions [data-variant="tinted"]').innerText()).trim() === 'Start my first workout' && await page.locator('.ob-actions [data-act="obLook"]').count() === 1);
   check('six screens from the welcome to the plan', seen.join(' > ') === ['Gradient Health', 'What do you want most?', 'How much time do you have?', 'Where do you train?', 'A little about you', 'Your plan'].join(' > '), seen.join(' > '));
