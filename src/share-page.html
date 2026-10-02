@@ -126,7 +126,7 @@
       var ol = el('ol');
       d.slice(1, 13).forEach(function (x) {
         if (!Array.isArray(x)) return;
-        var m = MOVES[x[0]];
+        var m = Object.prototype.hasOwnProperty.call(MOVES, x[0]) ? MOVES[x[0]] : null;
         var li = el('li');
         var ex = el('span', m ? m[0] : 'An exercise from a newer version of the app', 'ex');
         if (m && GROUPS[m[1]]) ex.appendChild(el('small', GROUPS[m[1]]));

@@ -458,7 +458,7 @@
     const plan = ref ? get(S, ref.id) : null;
     if (plan) plan.broken = true;
     const set = b.settingsAt(S, day);
-    const T = b.templateFor(Object.assign({}, S.profile, { days: set.days, weekdays: set.weekdays }), b.programFor(Object.assign({}, S.profile, { days: set.days })));
+    const T = b.templateOf ? b.templateOf(S, b.weekStart(day), set) : b.templateFor(Object.assign({}, S.profile, { days: set.days, weekdays: set.weekdays }), b.programFor(Object.assign({}, S.profile, { days: set.days })));
     const off = day - b.weekStart(day);
     const t = T.find((x) => x.offset === off) || T[(ref ? ref.idx : 0) % Math.max(1, T.length)] || T[0];
     const s = b.buildSession(S, day, t ? t.idx : 0, opts);
@@ -671,8 +671,9 @@
     const b = B();
     const p = S.profile;
     const set = b.settingsAt(S, day);
-    const tpl = b.templateFor(Object.assign({}, p, { days: set.days, weekdays: set.weekdays }), b.programFor(Object.assign({}, p, { days: set.days })));
     const ws = b.weekStart(day);
+    // The coach's week as the engine builds it (the same split Plan shows).
+    const tpl = b.templateOf ? b.templateOf(S, ws, set) : b.templateFor(Object.assign({}, p, { days: set.days, weekdays: set.weekdays }), b.programFor(Object.assign({}, p, { days: set.days })));
     const days = tpl.map((t) => {
       const s = b.buildSession(S, ws + t.offset, t.idx, { cal: { weeks: {} }, noReadiness: true, forceMult: 1 });
       return { title: s.title, items: itemsOf(s) };
