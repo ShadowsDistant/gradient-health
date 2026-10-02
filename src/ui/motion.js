@@ -26,7 +26,7 @@
  * looks for it to be gone waits for settled()); play() then glides whatever moved, every glide
  * starting in the same frame. barSwap(bar)
  * cross-fades the navigation bar's title and buttons across a route change. show(el, frames, o)
- * plays frames on a part with glass in it without the glass losing its frost, and fadeAway(el, ms)
+ * plays frames on a part with glass in it without the glass losing its frost, and fadeAway(el, ms, seen)
  * lets a part that hides at once (the workout capsule, the floating buttons) fade where it was.
  */
 (function (G) {
@@ -134,9 +134,11 @@
   // old page). One that wasn't showing (under a sheet that covers the app) just goes. The copy goes
   // last in the parent: being positioned, it's drawn in the same place, and nothing after it is
   // styled again for a node put in before it.
-  M.fadeAway = (el, ms) => {
+  // seen: whether it was showing, when the caller read that before changing anything (asked here,
+  // after the change, it brings the page's style up to date).
+  M.fadeAway = (el, ms, seen) => {
     if (reduced() || !can(el) || !el.parentNode) return Promise.resolve();
-    if (el.checkVisibility && !el.checkVisibility({ visibilityProperty: true, opacityProperty: true })) return Promise.resolve();
+    if (seen === false || (seen == null && el.checkVisibility && !el.checkVisibility({ visibilityProperty: true, opacityProperty: true }))) return Promise.resolve();
     const c = el.cloneNode(true);
     c.classList.add('motion-copy');
     c.hidden = false;
@@ -328,6 +330,18 @@
   // go in a stand-in for the bar laid over it (its classes, none of its content or its id), so the
   // bar itself only ever holds what it shows now.
   const BAR = [['.rf-navbar-leading', false], ['.rf-navbar-title', true], ['.rf-navbar-trailing', false]];
+  // A title whose page is at its top goes at once, its fade off until the change has been drawn.
+  // (Finishing the fade after the change instead meant asking for its transitions, which brings the
+  // whole page's style up to date in the middle of the render that drew the new page.) Its own
+  // transition comes back two frames later, unless another change has asked again meanwhile.
+  const noFades = new WeakMap(); // title → the latest ask
+  function noFade(el) {
+    const ask = (noFades.get(el) || 0) + 1;
+    noFades.set(el, ask);
+    el.style.transition = 'none';
+    const back = () => { if (noFades.get(el) === ask) { noFades.delete(el); el.style.removeProperty('transition'); } };
+    if (G.requestAnimationFrame) G.requestAnimationFrame(() => G.requestAnimationFrame(back)); else setTimeout(back, 50);
+  }
   // What a part shows: the title's words, or which buttons (by what they do and say, so a button
   // whose state alone changed isn't taken for a new one).
   const showing = (el, title) => (title ? el.textContent.trim() : Array.from(el.children, (c) => `${c.getAttribute('data-act') || c.tagName}|${c.getAttribute('aria-label') || ''}`).join());
@@ -375,9 +389,7 @@
           if (p.title && !p.copy) continue;
           const from = p.title ? `translateX(${-dir * 10}px)` : 'scale(.8)';
           for (const x of pieces(p.el, p.title)) show(x, [{ opacity: 0, transform: from }, { opacity: 1, transform: 'none' }], { duration: p.title ? 260 : 360, delay: 60, easing: p.title ? t.enter : t.snappy, fill: 'backwards' });
-        } else if (p.title) {
-          for (const a of p.el.getAnimations()) if (a.transitionProperty) a.finish();
-        }
+        } else if (p.title) noFade(p.el);
       }
       if (holder) { const h = holder; track(Promise.all(leaving.map(ended)).then(() => h.remove())); }
     };

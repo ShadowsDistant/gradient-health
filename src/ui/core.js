@@ -552,13 +552,16 @@
   let floatEnter = false; // the floating buttons rise in at the next read pass
   function render(motion) {
     if (!U.S || !U.S.profile.onboarded) { U.showOnboarding(); return; }
-    onboardEl.hidden = true;
+    if (!onboardEl.hidden) onboardEl.hidden = true;
     U.refreshTabs();
     // Food: the burn estimate learns from the logs once a day (cheap after the first call).
     if (GH.food && GH.food.refreshBurn) safe(() => GH.food.refreshBurn(U.S, U.today()));
     const r = U.route;
     const key = r.view ? `${r.view}:${r.arg || ''}` : r.tab;
     const changed = key !== lastKey;
+    // On a route change, whether the floating buttons show, read before anything changes (asked once
+    // they go, it would bring the new page's style up to date): only then does a copy fade.
+    const floatSeen = changed && !floatEl.hidden ? !floatEl.checkVisibility || floatEl.checkVisibility({ visibilityProperty: true, opacityProperty: true }) : undefined;
     // Two route changes before a frame: the first one's scroll is set now, so the page leaving
     // starts from where it is.
     if (changed) applyScroll();
@@ -589,7 +592,7 @@
     const wasHidden = floatEl.hidden;
     // Floating buttons that go (Today's, on the way to another page) fade and sink where they were,
     // gone with the old page on a route change.
-    if (!wasHidden && !fl && M.fadeAway) safe(() => M.fadeAway(floatEl, changed ? 140 : 220));
+    if (!wasHidden && !fl && M.fadeAway) safe(() => M.fadeAway(floatEl, changed ? 140 : 220, floatSeen));
     U.morph(floatEl, fl || '');
     floatEl.hidden = !fl;
     screen.toggleAttribute('data-float', !!fl);
