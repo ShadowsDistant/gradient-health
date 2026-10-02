@@ -294,7 +294,7 @@
     const S = U.S;
     if (v && !(H().canWrite && H().canWrite())) {
       const st = await H().request(S);
-      if (!(H().canWrite && H().canWrite())) { el.checked = false; U.toast('Not allowed yet', 'caution', 'Turn on Exercise under Gradient Health in Health Connect.', { label: 'Open', onClick: () => H().openSettings() }); return; }
+      if (!(H().canWrite && H().canWrite())) { U.revertSwitch(el); U.toast('Not allowed yet', 'caution', 'Turn on Exercise under Gradient Health in Health Connect.', { label: 'Open', onClick: () => H().openSettings() }); return; }
       S.health.status = st;
     }
     S.health.write = !!v;
@@ -330,19 +330,19 @@
   U.act.logWeight = () => U.metricEdit('weightKg', U.today());
   U.act.logSleep = () => U.metricEdit('sleepMin', U.today());
   U.act.logFeel = () => U.metricSheet('feel');
-  U.act.logActivity = () => U.sheet({
-    title: 'Log an activity', size: 'auto',
-    body: `<div class="sheet-pad"><div class="ob-chips" id="actTypes">${['Walk', 'Run', 'Cycling', 'Sport', 'Gym', 'Swim', 'Yoga', 'Other'].map((t, i) => `<button type="button" class="rf-chip" aria-pressed="${i === 0}" data-on="actType" data-v="${t}">${t}</button>`).join('')}</div>
-      <p class="t-callout rf-muted">Minutes</p><div class="ob-center">${U.stepper('actMin', 30, 5, 300, 'Minutes', '', 5)}</div>
-      <p class="t-footnote rf-muted">45 min or more of hard exercise means easier legs and no finisher the next day.</p></div>`,
-    action: { label: 'Save', act: 'logActivitySave' },
-  });
-  let actType = 'Walk';
-  U.on.actType = (el, ev, v) => {
-    if (!v) { el.setAttribute('aria-pressed', 'true'); return; }
-    actType = el.dataset.v;
-    for (const c of document.querySelectorAll('#actTypes .rf-chip')) if (c !== el) c.setAttribute('aria-pressed', 'false');
+  // Each time it opens the type starts at Walk, as its picked chip does.
+  U.act.logActivity = () => {
+    actType = 'Walk';
+    return U.sheet({
+      title: 'Log an activity', size: 'auto',
+      body: `<div class="sheet-pad">${U.choice('actType', ['Walk', 'Run', 'Cycling', 'Sport', 'Gym', 'Swim', 'Yoga', 'Other'].map((t) => [t, t]), 'Walk', 'Activity', ' class="ob-chips" id="actTypes" data-on="actType"')}
+        <p class="t-callout rf-muted">Minutes</p><div class="ob-center">${U.stepper('actMin', 30, 5, 300, 'Minutes', '', 5)}</div>
+        <p class="t-footnote rf-muted">45 min or more of hard exercise means easier legs and no finisher the next day.</p></div>`,
+      action: { label: 'Save', act: 'logActivitySave' },
+    });
   };
+  let actType = 'Walk';
+  U.on.actType = (el, ev, v) => { if (v) actType = v; };
   U.act.logActivitySave = () => {
     const m = parseInt(document.getElementById('actMin').value, 10);
     if (m > 0) {

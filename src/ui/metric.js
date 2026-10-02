@@ -240,7 +240,7 @@
     const any = h.latestEntry(S, key, day, 400);
     const lr = key === 'rhr' ? h.latestEntry(S, 'rhr', day, 7) : null;
     const est = !!(lr && lr.src === 'est');
-    const picks = m.group === 'measure' ? `<div class="ms-picks" role="group" aria-label="Measurement">${h.MEASURES.filter((k) => k === 'waist' || k === key || h.latestEntry(S, k, day, 400)).map((k) => `<button type="button" class="rf-chip" aria-pressed="${k === key}" data-act="metricPick" data-arg="${k}">${U.esc(M(k).label)}</button>`).join('')}</div>` : '';
+    const picks = m.group === 'measure' ? `<div class="ms-picks">${U.choice('metricPick', h.MEASURES.filter((k) => k === 'waist' || k === key || h.latestEntry(S, k, day, 400)).map((k) => [k, M(k).label]), key, 'Measurement', ' data-on="metricPick"')}</div>` : '';
     if (!any) return `<div class="ms" data-tone="${m.tone}">${picks}${emptyFor(S, key)}${actionsFor(S, key)}${aboutFor(S, key, est)}</div>`;
     const list = key === 'activeMin' ? activityRows(S, from, day, day) : h.history(S, key, from, day).reverse().map((e) => rowFor(S, key, e, day));
     const shown = st.more ? list : list.slice(0, LIST_MAX);
@@ -308,7 +308,7 @@
   U.act.metricOpen = (el) => U.metricSheet(el.dataset.arg);
   U.on.metricRange = (el, ev, v) => { st.range = Number(v) || 28; st.more = false; setTimeout(refresh, 200); };
   U.act.metricMore = () => { st.more = true; refresh(); };
-  U.act.metricPick = (el) => { if (el.dataset.arg === st.key) { el.setAttribute('aria-pressed', 'true'); return; } st.key = el.dataset.arg; st.more = false; U.haptic('select'); refresh(); };
+  U.on.metricPick = (el, ev, v) => { if (!v || v === st.key) return; st.key = v; st.more = false; refresh(); };
   U.act.metricGo = (el) => { U.closeSheets(); U.go(el.dataset.arg); };
 
   /* ---------------------------------------------------------------- add or change */

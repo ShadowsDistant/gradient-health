@@ -188,6 +188,15 @@
   }
   // pref: system | light | dark; contrast: the Increase contrast setting on top of it.
   function applyTheme(pref, contrast) {
+    // Nothing to do when it comes out the same: Settings applies the prefs after every change, and a
+    // theme change makes every glass lens on the page re-measure.
+    const nextPref = pref || 'system', nextContrast = contrast != null ? !!contrast : themeContrast;
+    if (nextPref === themePref && nextContrast === themeContrast && doc && doc.documentElement.hasAttribute('data-theme')) {
+      const hc = nextContrast || contrastWanted();
+      const following = nextPref === 'system' && !(bridge() || nextContrast) && R() && R().theme && R().theme.auto;
+      const want = (nextPref === 'system' ? (systemDark() ? 'dark' : 'light') : nextPref === 'dark' ? 'dark' : 'light') + (hc ? '-contrast' : '');
+      if (following ? !!stopAuto : !stopAuto && doc.documentElement.getAttribute('data-theme') === want) return;
+    }
     themePref = pref || 'system';
     if (contrast != null) themeContrast = !!contrast;
     if (stopAuto) { try { stopAuto(); } catch (e) { /* ignore */ } stopAuto = null; }
@@ -209,7 +218,9 @@
     if (r && r.theme && r.theme.get) return r.theme.get();
     return (doc && doc.documentElement.getAttribute('data-theme')) || 'light';
   }
-  function setDensity(v) { const r = R(); if (r && r.setDensity) r.setDensity(v); }
+  // The same density again is no change (and setting it makes every lens re-measure).
+  let density = null;
+  function setDensity(v) { if (v === density) return; const r = R(); if (r && r.setDensity) { r.setDensity(v); density = v; } }
   hooks.setTheme = (mode) => { osDark = mode === 'dark'; if (themePref === 'system') applyTheme('system'); };
 
   /* ---------------------------------------------------------------- back button + shell hooks */

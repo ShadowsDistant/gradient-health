@@ -248,7 +248,7 @@ await settle(700);
 section('How it works');
 await page.evaluate(() => window.GH.ui.open('science'));
 await settle(900);
-await page.click('#screen [data-act="sciShow"][data-arg="recovery"]');
+await page.click('#screen [data-on="sciShow"] [data-arg="recovery"]');
 await settle(600);
 await page.evaluate(() => window.GH.ui.back());
 await settle(700);

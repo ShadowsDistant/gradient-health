@@ -695,7 +695,7 @@
   }
   U.actRow = actRow;
   U.act.actHistory = () => U.open('activities');
-  U.act.actFilter = (el) => { filter = el.dataset.arg || 'all'; U.haptic('select'); U.render(); };
+  U.on.actFilter = (el, ev, v) => { filter = v || 'all'; U.render(); };
   U.screens.activities = {
     render(S, day) {
       const all = A().list(S);
@@ -724,7 +724,7 @@
             <div class="stat"><span class="t-footnote rf-muted">This month</span><span class="t-title-3 rf-num">${U.esc(distNum(mo.m))} <small>${U.esc(UNIT().short)}</small></span><span class="t-caption rf-muted">${U.esc(fmtTime(mo.ms))}</span></div>
             <div class="stat"><span class="t-footnote rf-muted">All time</span><span class="t-title-3 rf-num">${U.num(list.length)}</span><span class="t-caption rf-muted">${U.esc(fmtDist(list.reduce((s, a) => s + (a.distanceM || 0), 0)))}</span></div>
           </div>
-          ${types.length > 1 ? `<div class="ah-filter" role="group" aria-label="Show" data-hscroll>${[['all', 'All']].concat(types.map((t) => [t, A().typeOf(t).label])).map(([id, label]) => `<button type="button" class="rf-chip" aria-pressed="${id === filter}" data-act="actFilter" data-arg="${id}">${U.esc(label)}</button>`).join('')}</div>` : ''}
+          ${types.length > 1 ? U.choice('actFilter', [['all', 'All']].concat(types.map((t) => [t, A().typeOf(t).label])), filter, 'Show', ' class="ah-filter" data-hscroll data-on="actFilter"') : ''}
           ${groups.length ? groups.map((g) => `<h3 class="rf-list-header">${U.esc(g.m)}</h3><ul class="rf-list">${g.rows.join('')}</ul>`).join('') : `<div class="card" data-key="none"><p class="t-callout rf-muted">No activities yet. Start one from Today when you head out for a walk, run, hike or ride.</p><div class="btn-row"><button type="button" class="rf-btn" data-variant="filled" data-size="sm" data-act="actStart">${U.icon('navigate')}Start an activity</button></div></div>`}
         </div>
         ${all.length ? U.actRecordsSection(S, false) : ''}`;

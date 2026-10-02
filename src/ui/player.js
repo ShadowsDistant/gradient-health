@@ -899,11 +899,7 @@
       action: { label: 'Save', act: 'plAmendSave' },
     });
   };
-  U.act.plAmendLoad = (el) => {
-    P.amendLoad = parseFloat(el.dataset.arg);
-    for (const c of el.parentNode.querySelectorAll('.rf-chip')) c.setAttribute('aria-pressed', String(c === el));
-    U.haptic('select');
-  };
+  U.on.plAmendLoad = (el, ev, v) => { if (isFinite(parseFloat(v))) P.amendLoad = parseFloat(v); };
   U.act.plAmendSave = () => {
     const input = document.getElementById('amendVal');
     const v = parseInt(input && input.value, 10);
@@ -918,7 +914,9 @@
   // Weight choices around the current one, as chips, plus "Other" for anything else.
   function loadChips(it, curKg, act) {
     const choices = B().loadChoices(U.S, Object.assign({}, it, { curLoad: curKg }), A().day);
-    return `<div class="load-chips">${choices.map((c) => U.chip(c.label, Math.abs(c.kg - curKg) < 1e-6, `data-act="${act}" data-arg="${c.kg}"`)).join('')}</div>
+    // Picking a weight to use closes its sheet, the one it's on too (data-repick).
+    const now = choices.find((c) => Math.abs(c.kg - curKg) < 1e-6);
+    return `<div class="load-chips">${U.choice(act, choices.map((c) => [c.kg, c.label]), now ? now.kg : '', 'Weight', ` data-on="${act}"${act === 'plLoadPick' ? ' data-repick' : ''}`)}</div>
       <div class="ob-add"><input class="rf-input" type="number" inputmode="decimal" id="plLoadOther" placeholder="Other weight (${U.wUnit()})" aria-label="Other weight"><button type="button" class="rf-btn" data-size="sm" data-act="plLoadOther" data-arg="${act}">Use</button></div>`;
   }
   U.act.plLoad = () => {
@@ -930,12 +928,11 @@
       body: `<div class="sheet-pad"><p class="t-callout rf-muted">${U.esc(st.item.name)}. ${w.first ? `A first guess. Pick one you could lift about ${B().currentTarget(A(), st) + 2} times.` : 'For the rest of this exercise.'}</p>${loadChips(st.item, w.kg, 'plLoadPick')}</div>`,
     });
   };
-  U.act.plLoadPick = (el) => {
+  U.on.plLoadPick = (el, ev, v) => {
     const st = cur();
-    if (!st) return;
-    B().setItemLoad(U.S, st.item, parseFloat(el.dataset.arg));
+    if (!st || !isFinite(parseFloat(v))) return;
+    B().setItemLoad(U.S, st.item, parseFloat(v));
     U.save();
-    U.haptic('select');
     const top = U.topSheet(); if (top) top.close('ok');
     draw();
   };

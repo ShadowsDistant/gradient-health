@@ -506,7 +506,7 @@
           <div class="cp-step"><span class="t-subhead">${m.timed ? 'Seconds' : m.uni ? 'Reps each side' : 'Reps'}</span>${U.stepper('cpAmt', amt, m.timed ? 5 : 1, m.timed ? 600 : 100, m.timed ? 'Seconds' : 'Reps', 'data-on="cpAmt"', m.timed ? 5 : 1)}</div>
         </div>
         <p class="t-subhead cp-rest-label">Rest between sets</p>
-        <div class="ob-chips cp-rest" role="group" aria-label="Rest between sets">${restOpts.map(([v, t]) => U.chip(t, v === rest, `data-act="cpRestPick" data-arg="${v}"`)).join('')}</div>
+        ${U.choice('cpRest', restOpts, rest, 'Rest between sets', ' class="ob-chips cp-rest" data-on="cpRestPick"')}
         <p class="t-footnote rf-muted">${m.timed ? 'Hold for this long each set.' : 'Your reps go up from here as it gets easier, then the weight, when there is one.'}${rest === 'auto' ? ' Auto rest is 90 s after big moves, 60 s after small ones.' : ''}</p>
         <div class="cp-item-acts">
           <button type="button" class="rf-btn" data-act="cpItemMove" data-arg="-1"${k === 0 ? ' disabled' : ''}>${U.icon('chevron-up')}Up</button>
@@ -523,12 +523,7 @@
     };
     U.on.cpSets = (el, ev, v) => change((it) => { it.sets = Math.max(1, Math.min(10, Math.round(v) || 1)); });
     U.on.cpAmt = (el, ev, v) => change((it) => { const m = M().MOVES[it.move]; if (m.timed) it.secs = Math.max(5, Math.min(600, Math.round(v) || 5)); else it.reps = Math.max(1, Math.min(100, Math.round(v) || 1)); });
-    U.act.cpRestPick = (b) => {
-      const v = b.dataset.arg;
-      change((it) => { if (v === 'auto') delete it.rest; else it.rest = Number(v); });
-      for (const c of b.parentNode.querySelectorAll('.rf-chip')) c.setAttribute('aria-pressed', String(c === b));
-      U.haptic('select');
-    };
+    U.on.cpRestPick = (el, ev, v) => { change((it) => { if (v === 'auto') delete it.rest; else it.rest = Number(v); }); };
     U.act.cpItemMove = (b) => {
       const dir = Number(b.dataset.arg);
       const plan = C().get(S, planId);
@@ -661,7 +656,7 @@
     const body = () => `<div class="cp-pick">
         <div class="cp-pick-top">
           <div class="rf-search cp-q">${U.icon('search')}<input class="rf-input rf-search-input" type="search" id="cpQ" placeholder="Search exercises" aria-label="Search exercises" value="${U.esc(st.q)}" autocomplete="off" enterkeyhint="search"></div>
-          <div class="cp-filters" data-hscroll role="group" aria-label="Muscle group">${FILTERS.map(([g, t]) => `<button type="button" class="rf-chip cp-filter" aria-pressed="${st.group === g}" data-act="cpGroup" data-arg="${g}">${U.esc(t)}</button>`).join('')}</div>
+          ${U.choice('cpGroup', FILTERS, st.group, 'Muscle group', ' class="cp-filters" data-hscroll data-on="cpGroup"')}
           <ul class="rf-list cp-mine">${U.sw('Only what I can do', st.mine, 'data-on="cpMine"', 'With your equipment, today')}</ul>
         </div>
         <div class="cp-results" data-key="res">${tiles()}</div>
@@ -682,7 +677,7 @@
         if (res) { U.morph(res, tiles()); drawThumbs(res); }
       }, 110);
     });
-    U.act.cpGroup = (b) => { st.group = b.dataset.arg; U.haptic('select'); refresh(); };
+    U.on.cpGroup = (el, ev, v) => { st.group = v; refresh(); };
     U.on.cpMine = (el, ev, v) => { st.mine = !!v; refresh(); };
     U.act.cpPickDone = () => ctl.close('ok');
     U.act.cpPick = (b) => {

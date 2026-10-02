@@ -75,10 +75,44 @@
   };
 
   /* ---------------------------------------------------------------- small markup builders */
-  // A segmented control; `extra` adds attributes. Rows in lists pass data-size="sm" and stay compact.
-  U.seg = (name, options, value, label, extra) => `<div class="rf-segmented"${/data-size="sm"/.test(extra || '') ? '' : ' data-block'} aria-label="${U.esc(label)}"${extra || ''}>${options.map(([v, t]) => `<label class="rf-segment"><input type="radio" name="${U.esc(name)}" value="${U.esc(v)}"${String(v) === String(value) ? ' checked' : ''}>${U.esc(t)}</label>`).join('')}</div>`;
-  U.chip = (label, pressed, attrs) => `<button type="button" class="rf-chip" aria-pressed="${pressed ? 'true' : 'false'}" ${attrs || ''}>${U.icon('check', null, 'rf-chip-check')}${U.esc(label)}</button>`;
-  U.sw = (label, checked, attrs, sub) => `<label class="rf-list-row rf-switch" data-layout="row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(label)}</span>${sub ? `<span class="rf-list-sub">${U.esc(sub)}</span>` : ''}</span><span class="rf-switch-track"><input type="checkbox" role="switch"${checked ? ' checked' : ''} ${attrs || ''}><span class="rf-switch-thumb" aria-hidden="true"></span></span></label>`;
+  // `extra` on a control is a string of attributes for it; a class in it joins the control's own.
+  const splitClass = (extra) => {
+    const m = /\sclass="([^"]*)"/.exec(extra || '');
+    return m ? { cls: ` ${m[1]}`, rest: (extra || '').replace(m[0], '') } : { cls: '', rest: extra || '' };
+  };
+  // A segmented control. Rows in lists pass data-size="sm" and stay compact. Its key comes from the
+  // name, so a re-render never hands its node to another control; each option carries data-arg.
+  U.seg = (name, options, value, label, extra) => {
+    const { cls, rest } = splitClass(extra);
+    return `<div class="rf-segmented${cls}"${/data-size="sm"/.test(rest) ? '' : ' data-block'} aria-label="${U.esc(label)}"${rest}${/\sdata-key=/.test(rest) ? '' : ` data-key="seg:${U.esc(name)}"`}>${options.map(([v, t]) => `<label class="rf-segment" data-arg="${U.esc(v)}"><input type="radio" name="${U.esc(name)}" value="${U.esc(v)}"${String(v) === String(value) ? ' checked' : ''}>${U.esc(t)}</label>`).join('')}</div>`;
+  };
+  // A single choice (contract: U.choice(name, opts, value, label, extra)). Up to four short options
+  // are a segmented control; more, longer ones, or a sideways rail (data-hscroll) are a row of chips
+  // with a glass indicator that slides to the one picked (role=radiogroup, arrow keys included).
+  // Either way a pick fires a radio-style change whose value is the option's, so a data-on handler on
+  // the control gets it, and each option carries data-arg. data-repick in `extra` is for a choice that
+  // acts on every pick (a sheet that closes on it): always chips, and a tap on the option already
+  // picked fires its change too.
+  U.choice = (name, opts, value, label, extra) => {
+    const { cls, rest } = splitClass(extra);
+    const len = opts.map(([, t]) => String(t).length);
+    const total = len.reduce((a, b) => a + b, 0);
+    const short = opts.length >= 2 && opts.length <= 4 && Math.max(...len) <= 10 && total <= (opts.length === 4 ? 22 : 26);
+    if (short && !/\sdata-(hscroll|repick)\b/.test(rest)) return U.seg(name, opts, value, label, `${cls ? ` class="${cls.trim()}"` : ''}${/\sdata-size=/.test(rest) ? '' : ' data-size="sm"'} data-block data-choice${rest}`);
+    const sel = opts.findIndex(([v]) => String(v) === String(value));
+    return `<div class="gh-chipseg${cls}" role="radiogroup" aria-label="${U.esc(label)}" data-rf="chipseg"${rest}${/\sdata-key=/.test(rest) ? '' : ` data-key="choice:${U.esc(name)}"`}>${opts.map(([v, t], i) => `<button type="button" class="rf-chip gh-chip" role="radio" aria-checked="${i === sel}" tabindex="${i === sel || (sel < 0 && i === 0) ? 0 : -1}" value="${U.esc(v)}" data-arg="${U.esc(v)}"><span class="rf-chip-text">${U.esc(t)}</span></button>`).join('')}</div>`;
+  };
+  // A chip that toggles. The check is always laid out (it fades and scales in), so pressing a chip
+  // never changes its width or reflows the row around it.
+  U.chip = (label, pressed, attrs) => `<button type="button" class="rf-chip" aria-pressed="${pressed ? 'true' : 'false'}" ${attrs || ''}>${U.icon('check', null, 'rf-chip-check')}<span class="rf-chip-text">${U.esc(label)}</span></button>`;
+  // A switch row. Its key comes from what it sets (data-on and data-k, or its id, or its label), so a
+  // re-render that adds a row above never hands its node, mid-move, to another switch.
+  U.sw = (label, checked, attrs, sub) => {
+    const a = attrs || '';
+    const at = (n) => { const m = new RegExp(`(?:^|\\s)${n}="([^"]*)"`).exec(a); return m ? m[1] : ''; };
+    const key = `sw:${at('data-on')}:${at('data-k') || at('id') || label}`;
+    return `<label class="rf-list-row rf-switch" data-layout="row" data-key="${U.esc(key)}"><span class="rf-list-text"><span class="rf-list-title">${U.esc(label)}</span>${sub ? `<span class="rf-list-sub">${U.esc(sub)}</span>` : ''}</span><span class="rf-switch-track"><input type="checkbox" role="switch"${checked ? ' checked' : ''} ${a}><span class="rf-switch-thumb" aria-hidden="true"></span></span></label>`;
+  };
   U.stepper = (id, value, min, max, label, attrs, step) => `<div class="rf-stepper" role="group" aria-label="${U.esc(label)}"><button type="button" class="rf-stepper-btn" data-step="-${step || 1}" aria-label="Less ${U.esc(label.toLowerCase())}">${U.icon('minus')}</button><input class="rf-stepper-value" type="number" inputmode="numeric" id="${U.esc(id)}" value="${U.esc(value)}" min="${min}" max="${max}" step="${step || 1}" aria-label="${U.esc(label)}" ${attrs || ''}><button type="button" class="rf-stepper-btn" data-step="${step || 1}" aria-label="More ${U.esc(label.toLowerCase())}">${U.icon('plus')}</button></div>`;
   U.progress = (v, label, tone) => `<div class="rf-progress" role="progressbar" aria-label="${U.esc(label)}" aria-valuenow="${Math.round(Math.min(1, v) * 100)}" aria-valuemin="0" aria-valuemax="100" style="--rf-value:${Math.max(0, Math.min(1, v)).toFixed(3)}"${tone ? ` data-tone="${tone}"` : ''}><span class="rf-progress-fill"></span></div>`;
   U.ring = (v, label, inner, size, tone) => `<span class="rf-ring" data-size="${size || 'lg'}" style="--rf-value:${Math.max(0, Math.min(1, v)).toFixed(3)}" role="progressbar" aria-label="${U.esc(label)}" aria-valuenow="${Math.round(v * 100)}" aria-valuemin="0" aria-valuemax="100"${tone ? ` data-tone="${tone}"` : ''}><svg viewBox="0 0 72 72"><circle class="rf-ring-track" cx="36" cy="36" r="32" pathLength="100"/><circle class="rf-ring-fill" cx="36" cy="36" r="32" pathLength="100"/></svg><span class="rf-ring-label">${inner || ''}</span></span>`;
@@ -93,14 +127,14 @@
   U.toneWord = { good: ['positive', 'check-circle', 'Good'], watch: ['caution', 'alert', 'Watch'], info: ['accent', 'info', 'Note'], alert: ['critical', 'alert', 'Check'] };
 
   /* ---------------------------------------------------------------- morph */
-  // Nodes Refract adds inside components. Re-renders leave them where they are.
-  const INJECTED = ['rf-lens-layer', 'rf-segmented-thumb', 'rf-tabbar-lens', 'rf-slider-ticks', 'rf-slider-track', 'rf-slider-fill', 'rf-slider-thumb', 'rf-pagedots-worm', 'rf-glass-bridge', 'rf-burst-layer', 'rf-ghost', 'rf-bead', 'rf-bead-ring'];
-  // Classes that carry a Refract behavior: an element never turns into or out of one of these in
-  // place, it's replaced instead (so no stale listeners or injected parts are left behind).
-  const BEHAVIOR = ['rf-segmented', 'rf-switch', 'rf-slider', 'rf-stepper', 'rf-chip', 'rf-glass', 'rf-navbar', 'rf-scroll-edge', 'rf-search', 'rf-pagedots', 'rf-activity', 'rf-tabbar'];
+  // Nodes Refract (or controls.js) adds inside components. Re-renders leave them where they are.
+  const INJECTED = ['rf-lens-layer', 'rf-segmented-thumb', 'rf-tabbar-lens', 'rf-slider-ticks', 'rf-slider-track', 'rf-slider-fill', 'rf-slider-thumb', 'rf-pagedots-worm', 'rf-glass-bridge', 'rf-burst-layer', 'rf-ghost', 'rf-bead', 'rf-bead-ring', 'gh-seg-lens', 'gh-chipseg-thumb'];
+  // Classes that carry a behavior: an element never turns into or out of one of these in place, it's
+  // replaced instead (so no stale listeners or injected parts are left behind).
+  const BEHAVIOR = ['rf-segmented', 'rf-switch', 'rf-slider', 'rf-stepper', 'rf-chip', 'rf-glass', 'rf-navbar', 'rf-scroll-edge', 'rf-search', 'rf-pagedots', 'rf-activity', 'rf-tabbar', 'gh-chipseg'];
   const BEHAVIOR_SEL = BEHAVIOR.map((c) => '.' + c).join(',');
-  // Attributes Refract sets on our elements. Only matters for nodes the markup didn't create.
-  const KEEP_ATTR = /^(data-(ready|lens-ready|scrolled|active|pressed|glow|magnet|dragging|bump|leaving|traveling|open|expanded|detent|entering|animate|minimized|revealed|hover|merged|tilting|rf-.*)|role|tabindex|style|aria-(checked|selected|expanded|controls|describedby|valuetext))$/;
+  // Attributes behaviors set on our elements. Only matters for nodes the markup didn't create.
+  const KEEP_ATTR = /^(data-(ready|lens-ready|lens-idle|scrolled|active|pressed|glow|magnet|dragging|drag-on|over|empty|bump|leaving|traveling|open|expanded|detent|entering|animate|minimized|revealed|hover|merged|tilting|rf-.*)|role|tabindex|style|aria-(checked|selected|expanded|controls|describedby|valuetext))$/;
   const owned = new WeakMap(); // element → { attrs, style } the markup set, so only those get removed
 
   const isInjected = (n) => n.nodeType === 1 && INJECTED.some((c) => n.classList.contains(c));
@@ -142,12 +176,19 @@
     for (const [k, v] of want) if (from.style.getPropertyValue(k).trim() !== v) from.style.setProperty(k, v);
     owned.set(from, { attrs: next, style: new Set(want.keys()) });
   }
-  // Refract positions some parts from JS (the segmented thumb, the slider fill). When a re-render
-  // changes their input, they're asked to re-measure once the patch is done.
+  // Some parts are positioned from JS (the segmented thumb, the slider fill). When a re-render changes
+  // their input, they're asked to re-measure once the patch is done: controls.js's own controls
+  // first, Refract's for the rest.
   const toRefresh = new Set();
   function queueRefresh(el) {
     if (!el) return;
-    if (!toRefresh.size) Promise.resolve().then(() => { const r = R(); for (const x of toRefresh) if (r && r.refresh && x.isConnected) safe(() => r.refresh(x)); toRefresh.clear(); });
+    if (!toRefresh.size) {
+      Promise.resolve().then(() => {
+        const r = R();
+        for (const x of toRefresh) if (x.isConnected) safe(() => { if (!(U.refreshControl && U.refreshControl(x)) && r && r.refresh) r.refresh(x); });
+        toRefresh.clear();
+      });
+    }
     toRefresh.add(el);
   }
   function morphForm(from, to) {
@@ -305,6 +346,14 @@
       if (!t || Date.now() - selected < 400) return;
       go(t.dataset.tab);
     });
+    // Dragging the lens along the bar ticks each time it passes onto another tab (Refract marks the
+    // tab under the finger with data-hover while it's dragged).
+    let hover = null;
+    new G.MutationObserver(() => {
+      const h = tabbar.querySelector('.rf-tab[data-hover]');
+      if (h && hover && h !== hover) U.haptic('tick');
+      hover = h;
+    }).observe(tabbar.querySelector('.rf-tabbar-bar'), { subtree: true, attributes: true, attributeFilter: ['data-hover'] });
     enhance(tabbar);
     enhance(topbar);
     // The bar's height feeds the screen's top padding.
