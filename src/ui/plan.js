@@ -16,7 +16,7 @@
   const week = (S, day) => GH.planWeek(S, day);
   const EASE = 'cubic-bezier(0.05, 0.7, 0.1, 1)';
 
-  // Each muscle group's colour (the hues the Moves tab uses).
+  // Each muscle group's colour (the hues the moves use).
   const GROUP_HUE = { biceps: 'amber', triceps: 'rose', chest: 'indigo', legs: 'green', back: 'teal', shoulders: 'sky', abs: 'violet', conditioning: 'coral', mobility: 'teal' };
   const hue = (g) => `var(--hue-${GROUP_HUE[g] || 'sky'})`;
   const PHASE = { full: 'Full volume', deload: 'Deload week', onramp: 'Easing in', comeback: 'Easing back in' };
