@@ -623,7 +623,7 @@
       li.setAttribute('data-lifted', '');
       stripEl.setAttribute('data-dragging', '');
       for (const c of cells) if (drag.ok.has(Number(c.querySelector('.pw-pill').dataset.arg))) c.setAttribute('data-drop', '');
-      U.haptic('heavy');
+      U.haptic('grab');
     }
     function moveDrag(ev) {
       if (!drag) return;
@@ -634,7 +634,7 @@
       const over = d != null && drag.ok.has(d) ? d : null;
       if (over !== drag.over) {
         for (const c of drag.cells) c.removeAttribute('data-over');
-        if (over != null) { drag.cells[i].setAttribute('data-over', ''); U.haptic('select'); }
+        if (over != null) { drag.cells[i].setAttribute('data-over', ''); U.haptic('tick'); }
         drag.over = over;
       }
     }
@@ -648,7 +648,7 @@
       dr.li.removeAttribute('data-lifted');
       const was = dr.li.style.transform;
       dr.li.style.transform = '';
-      if (ev.type !== 'pointercancel' && dr.over != null) moveTo(dr.from, dr.over);
+      if (ev.type !== 'pointercancel' && dr.over != null) { U.haptic('drop'); moveTo(dr.from, dr.over); }
       // Let go anywhere else and it glides back to its day.
       else if (was && !U.reduced() && dr.li.animate) dr.li.animate([{ transform: was }, { transform: 'none' }], { duration: 320, easing: EASE });
     }
@@ -704,7 +704,7 @@
     if (i < 0) return;
     S.events.splice(i, 1);
     if (view.day === to) view.day = from;
-    U.haptic('select');
+    U.haptic('undo');
     U.commit();
   }
   U.act.planMoveTo = (el) => {

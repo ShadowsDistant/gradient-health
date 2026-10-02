@@ -90,8 +90,8 @@
     },
     float() { return ''; },
   };
-  U.act.foodDayPrev = () => { foodDay = Math.max(U.today() - 30, dayShown() - 1); U.haptic('select'); U.render(); };
-  U.act.foodDayNext = () => { foodDay = Math.min(U.today(), dayShown() + 1); U.haptic('select'); U.render(); };
+  U.act.foodDayPrev = () => { foodDay = Math.max(U.today() - 30, dayShown() - 1); U.haptic('tick'); U.render(); };
+  U.act.foodDayNext = () => { foodDay = Math.min(U.today(), dayShown() + 1); U.haptic('tick'); U.render(); };
 
   /* ---------------------------------------------------------------- adding food */
   // The meal a new entry goes into: the one you tapped, else by the time of day.
@@ -276,8 +276,7 @@
   U.act.foodPick = (el) => {
     const item = lookup(el.dataset.arg);
     if (!item) { U.toast('That food isn\'t available right now', 'caution'); return; }
-    U.haptic('tap');
-    openPortion(item);
+    openPortion(item); // its sheet's opening has the haptic
   };
   U.act.foodPortion = (el) => {
     const list = portionsOf(pick.item);
@@ -301,7 +300,7 @@
     if (edit) F().update(S, day, edit, { meal, g: n.g != null ? Math.round(n.g) : null, portion: label, kcal: n.kcal, p: Math.round(n.p * 10) / 10, c: Math.round(n.c * 10) / 10, f: Math.round(n.f * 10) / 10, fib: Math.round(n.fib * 10) / 10 });
     else F().add(S, day, { name: item.name, detail: item.detail, src: item.src, ref: item.ref, g: n.g, portion: label, meal, kcal: n.kcal, p: n.p, c: n.c, f: n.f, fib: n.fib }, whenOn(day, meal));
     U.commit();
-    U.haptic('success');
+    U.haptic(edit ? 'success' : 'log');
     if (psheet) psheet.close('ok');
     if (sheet && !edit) sheet.close('ok');
     if (GH.health && GH.health.writeFood) GH.health.writeFood(S);
@@ -358,14 +357,14 @@
   U.act.foodQuick = () => quickSheet({});
   U.act.foodQuickSave = (el) => {
     const k = val('qKcal');
-    if (!(k > 0 && k < 10000)) { U.toast('Enter the calories', 'caution'); return; }
+    if (!(k > 0 && k < 10000)) { U.haptic('deny'); U.toast('Enter the calories', 'caution'); return; }
     const mealIn = doc.querySelector('.rf-sheet [name="qMeal"]:checked');
     const x = { name: ((doc.getElementById('qName') || {}).value || '').trim() || 'Quick add', kcal: k, p: val('qP') || 0, c: val('qC') || 0, f: val('qF') || 0, meal: mealIn ? mealIn.value : addMeal || undefined };
     // Editing keeps where the entry came from (a food from the list stays that food).
     if (el.dataset.arg) { const [d, id] = el.dataset.arg.split(':'); if (!x.meal) delete x.meal; F().update(U.S, Number(d), id, x); }
     else F().add(U.S, dayShown(), Object.assign({ src: 'quick' }, x), whenOn(dayShown(), x.meal));
     U.commit();
-    U.haptic('success');
+    U.haptic(el.dataset.arg ? 'success' : 'log');
     U.closeSheets();
     if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S);
   };
@@ -390,8 +389,8 @@
   U.act.foodCreateSave = (el) => {
     const name = ((doc.getElementById('cName') || {}).value || '').trim();
     const k = val('cKcal');
-    if (!name) { U.toast('Give it a name', 'caution'); return; }
-    if (!(k >= 0 && k < 5000)) { U.toast('Enter the calories per serving', 'caution'); return; }
+    if (!name) { U.haptic('deny'); U.toast('Give it a name', 'caution'); return; }
+    if (!(k >= 0 && k < 5000)) { U.haptic('deny'); U.toast('Enter the calories per serving', 'caution'); return; }
     const c = F().addCustom(U.S, { name, servingG: val('cG'), kcal: k, p: val('cP') || 0, c: val('cC') || 0, f: val('cF') || 0, fib: val('cFib') || 0 });
     if (el.dataset.arg) { const f = F().data(U.S); f.barcodes = f.barcodes || {}; f.barcodes[el.dataset.arg] = c.id; }
     U.save();
@@ -402,7 +401,7 @@
     const meal = addMeal || F().mealFor(Date.now());
     const added = F().addSaved(U.S, dayShown(), el.dataset.arg, meal, whenOn(dayShown(), meal));
     U.commit();
-    U.haptic('success');
+    U.haptic('log');
     U.closeSheets();
     if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S);
     U.toast(`${U.plural(added.length, 'item')} added`, 'positive');
@@ -428,7 +427,7 @@
     if (!ok) return;
     F().copyMeal(U.S, day - 1, day, null, (meal) => whenOn(day, meal));
     U.commit();
-    U.haptic('success');
+    U.haptic('log');
     if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S);
   };
 
@@ -438,8 +437,7 @@
     if (!GH.scanner) { U.toast('Scanning isn\'t available here', 'caution'); return; }
     try {
       const code = await GH.scanner.scan();
-      if (!code) return;
-      U.haptic('success');
+      if (!code) return; // the scanner played its detent as it caught the code; logging it has its own
       const f = F().data(U.S);
       if (f.barcodes && f.barcodes[code]) { const c = f.custom.find((x) => x.id === f.barcodes[code]); if (c) { U.closeSheets(); openPortion(fromCustom(c)); return; } }
       U.toast('Looking it up…', 'neutral');

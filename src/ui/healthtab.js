@@ -93,7 +93,6 @@
   let reportCtl = null;
   const refreshReport = () => { if (reportCtl && !reportCtl.closed) reportCtl.update(reportBody(U.S, U.today())); };
   U.act.healthReport = () => {
-    U.haptic('tap');
     const ctl = U.sheet({ title: 'This week', size: 'auto', cls: 'rs-sheet', body: reportBody(U.S, U.today()), onClose: () => { if (reportCtl === ctl) reportCtl = null; } });
     reportCtl = ctl;
   };

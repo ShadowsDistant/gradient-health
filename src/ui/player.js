@@ -131,7 +131,7 @@
         if (U.S !== S || !B().restoreWorkout(S, gone)) return;
         U.save(true);
         U.render();
-        U.haptic('success');
+        U.haptic('undo');
       },
     });
     return true;
@@ -808,7 +808,7 @@
     if (P.mode === 'mobility') {
       P.mob.idx++; P.phase = 'step';
       if (P.mob.idx >= P.mob.steps.length) finishMobility(byTimer);
-      else { if (!byTimer) U.haptic('tap'); startTimer(); }
+      else { if (!byTimer) U.haptic('nav'); startTimer(); }
       return;
     }
     complete(st.kind === 'set' ? { secs: Math.round(secs) } : {}, byTimer);
@@ -830,9 +830,9 @@
     const S = U.S;
     const a = A();
     const st = a.steps[a.idx];
-    // A timer that ran out has had its done cue. A tap gets success for a set or test it logged, and a
-    // plain tap for moving past a warm-up, cool-down or finisher round.
-    if (!byTimer) U.haptic(st.kind === 'set' || st.kind === 'test' ? 'success' : 'tap');
+    // A timer that ran out has had its done cue. A tap gets setDone for a set or test it logged, and
+    // nav for moving on past a warm-up, cool-down or finisher round.
+    if (!byTimer) U.haptic(st.kind === 'set' || st.kind === 'test' ? 'setDone' : 'nav');
     const linesBefore = (a.testLines || []).length;
     B().completeStep(S, result);
     U.save();

@@ -86,7 +86,7 @@
   const HAPTICS = {
     // Touch
     tap: [0, [20]], // a button
-    press: [0, [8]], // a finger down on a knob, a thumb or a lens; a hold starting
+    press: [0, [6]], // a finger down on a knob, a thumb or a lens; a hold starting (softer than a tick)
     select: [0, [12]], // a segment, a radio, a single-choice chip, a picker
     tick: [0, [8]], // a slider or stepper step (held down too), passing items while dragging
     edge: [0, [30, 40, 12]], // a slider or stepper reaching its end
@@ -137,15 +137,17 @@
   //   higher one cuts in. The same rank cuts in for the UI (a touch is about now) and waits its turn
   //   for an event: one place in the queue, and the newest waits.
   // - A consequence ({ consequence: true }: a toast after its action) leaves the action its feel. A
-  //   success or a log within 200 ms of the action's own haptic is part of it and isn't played; a
-  //   warning, an error or a deny waits until the action's haptic is over.
+  //   success or a log within 200 ms of the action's own haptic is part of it and isn't played, and
+  //   so is a warning or a deny after the action's own deny, warning or error (a refusal says so
+  //   once); otherwise a warning, an error or a deny waits until the action's haptic is over.
   // { force: true } (the Feel each one gallery) plays at once, whatever is playing.
   const TAIL = 40; // ms a haptic still counts as playing after its pattern ends
   const QUEUE_GAP = 20; // ms between a haptic and the one waiting for it
+  const NEGATIVE = { deny: true, warning: true, error: true };
   let last = { kind: '', at: -1e9, end: -1e9, rank: 0, consequence: false };
   let queued = null; // { kind, after: the haptic it waits for, timer }
   function unqueue() { if (queued) { clearTimeout(queued.timer); queued = null; } }
-  function enqueue(k) {
+  function enqueue(k, consequence) {
     unqueue();
     const after = last;
     const q = queued = {
@@ -157,9 +159,9 @@
         // Something else started meanwhile: a bigger one isn't cut short, and an equal one is waited for too.
         if (last !== after && Date.now() < last.end + TAIL) {
           if (hapticRank(k) < last.rank) return;
-          if (hapticRank(k) === last.rank) { enqueue(k); return; }
+          if (hapticRank(k) === last.rank) { enqueue(k, consequence); return; }
         }
-        play(k, Date.now(), false);
+        play(k, Date.now(), consequence);
       }, Math.max(0, after.end + QUEUE_GAP - Date.now())),
     };
   }
@@ -179,11 +181,15 @@
     const consequence = !!(o && o.consequence);
     if (k === 'tick' || k === 'select' || k === 'press' ? now - last.at < 35 : k === last.kind && now - last.at < 80) return;
     const busy = now < last.end + TAIL;
-    if (consequence && (k === 'success' || k === 'log') && !last.consequence && now - last.at < 200) return;
-    if (consequence && (k === 'warning' || k === 'error' || k === 'deny') && busy) { enqueue(k); return; }
+    const bad = own(NEGATIVE, k);
+    if (consequence && !last.consequence && now - last.at < 200) {
+      if (k === 'success' || k === 'log') return;
+      if (bad && own(NEGATIVE, last.kind) && hapticRank(k) <= last.rank) return;
+    }
+    if (consequence && bad && busy) { enqueue(k, true); return; }
     const rank = hapticRank(k);
     if (busy && rank < last.rank) return;
-    if (busy && rank === last.rank && rank > 0) { enqueue(k); return; }
+    if (busy && rank === last.rank && rank > 0) { enqueue(k, consequence); return; }
     play(k, now, consequence);
   }
 
