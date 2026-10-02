@@ -7,6 +7,9 @@
  * it in plain words. The rules and a compact brief of their data (no name, no dates) come first and
  * are the same every turn, so they stay in the model's cache. Questions that sound like an emergency
  * get the built-in safety answer instead of the model's.
+ *
+ * It also runs the plan review on the phone (structured(): an answer held to a grammar, with how far
+ * along it is), and its answers go through the coach's number check (GH.coach.keepToGiven).
  */
 (function (G) {
   'use strict';

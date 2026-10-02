@@ -30,7 +30,7 @@ const sse = (events) => events.map(([e, d]) => `event: ${e}\ndata: ${JSON.string
 function stream(text) {
   const chunks = text.match(/[\s\S]{1,12}/g) || [];
   return sse([
-    ['message_start', { type: 'message_start', message: { id: 'msg_t', type: 'message', role: 'assistant', model: 'opus-test', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 1 } } }],
+    ['message_start', { type: 'message_start', message: { id: 'msg_t', type: 'message', role: 'assistant', model: 'test-model', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 1 } } }],
     ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }],
     ...chunks.map((c) => ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: c } }]),
     ['content_block_stop', { type: 'content_block_stop', index: 0 }],
@@ -44,7 +44,7 @@ await ctx.route('https://api.anthropic.com/**', async (route) => {
   const body = req.postData() ? JSON.parse(req.postData()) : null;
   anthropic.push({ url, body });
   if (url.includes('/v1/models')) {
-    const m = { type: 'model', id: 'opus-test', display_name: 'Opus Test', created_at: '2026-09-01T00:00:00Z', capabilities: { effort: { supported: true }, structured_outputs: { supported: true }, thinking: { supported: true, types: { adaptive: { supported: true } } } } };
+    const m = { type: 'model', id: 'test-model', display_name: 'Test Model', created_at: '2026-09-01T00:00:00Z', capabilities: { effort: { supported: true }, structured_outputs: { supported: true }, thinking: { supported: true, types: { adaptive: { supported: true } } } } };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [m], has_more: false, first_id: m.id, last_id: m.id }) });
   }
   const fmt = body && body.output_config && body.output_config.format;
