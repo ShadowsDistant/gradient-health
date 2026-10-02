@@ -75,8 +75,9 @@
     const base = F[form];
     if (!base) throw new Error('moves-access: unknown form ' + form);
     if (MOVES[id]) throw new Error('moves-access: move ' + id + ' already exists');
-    const m = merge(base, {});
-    Object.assign(m, clone(meta));
+    // (An object of its own sharing its form's data, as in moves.js.)
+    const m = Object.assign({}, base);
+    for (const k of Object.keys(meta)) { const v = meta[k]; if (v !== undefined && typeof v !== 'function') m[k] = v; }
     m.id = id; m.form = form;
     if (variant) {
       if (variant.ecc) m.rep = slowEcc(m.rep, variant.ecc);

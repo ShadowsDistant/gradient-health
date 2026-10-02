@@ -1560,8 +1560,13 @@
   function move(id, form, meta, variant) {
     const base = F[form];
     if (!base) throw new Error('moves: unknown form ' + form);
-    const m = merge(base, {});
-    Object.assign(m, clone(meta));
+    // Each move is an object of its own (the pose engine keeps its timeline and flattened poses on
+    // it) that shares its form's poses and steps, and any list its details share with other moves
+    // (cues, joints): nothing changes those once the library is built, and copying them for every
+    // move took a good part of the time the page spends loading. (Details left undefined stay out,
+    // as they did from a copy.)
+    const m = Object.assign({}, base);
+    for (const k of Object.keys(meta)) { const v = meta[k]; if (v !== undefined && typeof v !== 'function') m[k] = v; }
     m.id = id; m.form = form;
     if (variant) {
       if (variant.ecc) m.rep = slowEcc(m.rep, variant.ecc);
