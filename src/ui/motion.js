@@ -135,9 +135,7 @@
     shield(c);
     aside(() => el.after(c));
     const a = show(c, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(10px) scale(.94)' }], { duration: 220, easing: tok().standard, fill: 'forwards' });
-    const gone = () => c.remove();
-    setTimeout(gone, 600);
-    return Promise.all(a.map(ended)).then(gone);
+    return Promise.all(a.map(ended)).then(() => c.remove());
   };
 
   /* ---------------------------------------------------------------- parts on their way out */
@@ -296,9 +294,9 @@
       x.anims = slide(layer, out, [[from ? from.opacity : 1], [0, f.gone], [0]], f.ms, 'forwards');
       Promise.all(x.anims.map(ended)).then(() => x.done()).then(resolve);
     }));
+    // (A page sent to the background meanwhile draws no frames: its motion ends, and the old page
+    // goes, as soon as it's back.)
     track(shown);
-    // A page in the background draws no frames: the old one goes anyway.
-    setTimeout(() => x.done(), f.ms + 400);
   };
 
   // The navigation bar across a route change. Before: what each part (title, leading and trailing
@@ -339,9 +337,7 @@
           aside(() => bar.appendChild(c));
           const a = [];
           for (const x of pieces(c, p.title)) a.push(...show(x, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: look(p.title) }], { duration: 180, easing: t.standard, fill: 'forwards' }));
-          const gone = () => c.remove();
-          Promise.all(a.map(ended)).then(gone);
-          setTimeout(gone, 600);
+          Promise.all(a.map(ended)).then(() => c.remove());
         }
         if (isShown(bar, p.el, p.title)) {
           // The title's own fade (data-scrolled) already brings it in when it wasn't showing.

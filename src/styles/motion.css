@@ -7,6 +7,12 @@
    one would leave the glow's scroll fade with none). Its blocks don't play their entrances again:
    moving them here restarts their CSS animations, which a page on its way out mustn't show. */
 .screen.screen-exit { bottom: auto; overflow: clip; scroll-timeline: none; pointer-events: none; contain: layout style; }
+/* The page that arrives is in front, so while both show, the one leaving only shows through the
+   gaps between the new page's cards instead of over them. Under the screen means between the two
+   glows, exactly where the screen sits: the back glow goes one step further back to make room (it
+   was already the first thing drawn in the app, so it looks the same). */
+.app::before { z-index: -2; }
+.screen-exit { z-index: -1; }
 .screen-exit *, .motion-leaving, .motion-leaving * { animation: none !important; }
 .screen-exit, .motion-copy, .motion-leaving { pointer-events: none !important; }
 
