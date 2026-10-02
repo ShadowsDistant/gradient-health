@@ -351,11 +351,11 @@
     const r = raw && typeof raw === 'object' ? raw : {};
     const list = Array.isArray(r.suggestions) ? r.suggestions : [];
     const items = [], dropped = [];
-    for (const x of list) {
+    for (const [at, x] of list.entries()) {
       if (items.length + dropped.length >= MAX + 2 || items.length >= MAX) break;
       if (!x || typeof x !== 'object') continue;
       const kind = KINDS.includes(x.kind) ? x.kind : null;
-      const s = { kind, title: clean(x.title, 80), why: clean(x.why, 300) };
+      const s = { kind, title: clean(x.title, 80), why: clean(x.why, 300), at };
       let bad = null;
       if (!kind) bad = 'It asked for a kind of change the app can\'t make.';
       else if (kind === 'more_sets' || kind === 'fewer_sets') {
@@ -386,7 +386,7 @@
         s.focus = focusList().includes(x.focus) ? x.focus : null;
         if (!s.focus) bad = 'It named a muscle the plan doesn\'t know.';
       }
-      if (bad) dropped.push({ kind, title: s.title || (kind ? ownTitle(s) : 'A suggestion'), reason: bad });
+      if (bad) dropped.push({ kind, title: s.title || (kind ? ownTitle(s) : 'A suggestion'), reason: bad, at });
       else items.push(s);
     }
     return { items, dropped, note: clean(r.note, 300) };
@@ -596,22 +596,25 @@
     const ctx = opt.ctx || context(S, day, 'device');
     const given = opt.given === undefined ? '' : opt.given;
     const n = normalize(raw, ctx);
-    const out = { items: [], tips: [], rejected: n.dropped.map((x) => ({ kind: x.kind, title: x.title, reason: x.reason })), note: '', cut: 0 };
+    const out = { items: [], tips: [], rejected: n.dropped.map((x) => ({ kind: x.kind, title: x.title, reason: x.reason, at: x.at })), note: '', cut: 0 };
     const keys = new Set();
     let id = 0;
     for (const s of n.items) {
       const w = wordsOf(s, given);
       out.cut += w.cut;
+      const no = (reason) => out.rejected.push({ kind: s.kind, title: w.title, reason, at: s.at });
       if (s.kind === 'tip') { if (w.why || s.title) out.tips.push({ title: w.title, why: w.why }); continue; }
       const prep = prepare(S, s, ctx);
-      if (prep.reason) { out.rejected.push({ kind: s.kind, title: w.title, reason: prep.reason }); continue; }
-      if (keys.has(prep.key)) { out.rejected.push({ kind: s.kind, title: w.title, reason: 'Another suggestion already changes that.' }); continue; }
+      if (prep.reason) { no(prep.reason); continue; }
+      if (keys.has(prep.key)) { no('Another suggestion already changes that.'); continue; }
       keys.add(prep.key);
       const res = trial(S, prep.change, day);
-      if (!res.ok) { out.rejected.push({ kind: s.kind, title: w.title, reason: res.reason }); continue; }
+      if (!res.ok) { no(res.reason); continue; }
       const [icon, tone] = LOOK[s.kind];
       out.items.push({ id: `s${id++}`, kind: s.kind, title: w.title, why: w.why, change: prep.change, diff: res.diff, from: res.before.score, to: res.after.score, score: scoreWords(res.before, res.after), icon, tone, raw: s });
     }
+    // In the order the model gave them.
+    out.rejected.sort((a, b) => a.at - b.at);
     if (n.note) {
       const k = given != null && GH.coach && GH.coach.keepToGiven ? GH.coach.keepToGiven(n.note, given) : { text: n.note, cut: 0 };
       out.note = k.text;

@@ -1068,10 +1068,10 @@
   }
   // A model's answer, kept only if it's a plan this person can do with the days they asked for, and
   // it passes the checks the plan review makes on the coach's plan (src/planreview.js):
-  //  - time: each day fits the time asked for (sets come off the last moves first, down to 2 each and
-  //    then to 1, as the coach's own days have them; moves for the groups they asked to focus on keep
-  //    their sets longer, and the move the day leads with longest), or at least runs no longer than
-  //    the draft's day;
+  //  - time: each day fits the time asked for, or runs no longer than the draft's own day (a set
+  //    comes off the move with the most to spare until it fits, down to 1 as the coach's own days
+  //    have them; the move the day leads with and the groups they asked to focus on count as having
+  //    fewer, so they keep theirs longer);
   //  - coverage: every muscle group the draft trains keeps at least half of its weekly sets;
   //  - focus: the groups they asked to focus on keep at least two thirds of the draft's sets;
   //  - balance: pulling still balances pushing about as well as in the draft.
@@ -1098,9 +1098,14 @@
     for (let i = 0; i < plan.days.length; i++) {
       const d = plan.days[i];
       const limit = Math.max(budget, minutes(S, draft, i, day)) + 2;
-      const later = d.items.slice(1).reverse();
-      const turns = [later.filter((it) => !focus(it)), later.filter(focus), d.items.slice(0, 1)];
-      for (const list of turns) for (const least of [2, 1]) for (const it of list) while (it.sets > least && minutes(S, plan, i, day) > budget + 2) it.sets--;
+      // (On a tie, the later move gives a set first.)
+      const spare = (it, k) => it.sets - (focus(it) ? 1 : 0) - (k === 0 ? 2 : 0) + k / 100;
+      for (let guard = 0; guard < 200 && minutes(S, plan, i, day) > limit; guard++) {
+        let pick = -1;
+        d.items.forEach((it, k) => { if (it.sets > 1 && (pick < 0 || spare(it, k) > spare(d.items[pick], pick))) pick = k; });
+        if (pick < 0) break;
+        d.items[pick].sets--;
+      }
       if (minutes(S, plan, i, day) > limit) return null;
     }
     const setsOf = (p) => {
