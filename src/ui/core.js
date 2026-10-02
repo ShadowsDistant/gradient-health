@@ -503,6 +503,9 @@
     if (!changed) { morphChildren(screen, tpl.content, fx); enhance(screen); }
     const fl = scr.float ? safe(() => scr.float(U.S, day, r.arg)) : '';
     const wasHidden = floatEl.hidden;
+    // Floating buttons that go (Today's, on the way to another page) fade and sink where they were,
+    // gone with the old page on a route change.
+    if (!wasHidden && !fl && M.fadeAway) safe(() => M.fadeAway(floatEl, changed ? 140 : 220));
     U.morph(floatEl, fl || '');
     floatEl.hidden = !fl;
     screen.toggleAttribute('data-float', !!fl);

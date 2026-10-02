@@ -23,7 +23,9 @@
  * For src/ui/core.js: snap(root) measures a page before a re-render patches it; the patch reports
  * each container it changes (patched), so new blocks rise in and removed ones leave from where they
  * were; play() then glides whatever moved, every glide starting in the same frame. barSwap(bar)
- * cross-fades the navigation bar's title and buttons across a route change.
+ * cross-fades the navigation bar's title and buttons across a route change. show(el, frames, o)
+ * plays frames on a part with glass in it without the glass losing its frost, and fadeAway(el, ms)
+ * lets a part that hides at once (the workout capsule, the floating buttons) fade where it was.
  */
 (function (G) {
   'use strict';
@@ -125,17 +127,21 @@
     return out;
   }
   M.show = show;
-  // A part positioned on its own (the workout capsule) that hides at once: a copy of it fades and
-  // sinks where it was.
-  M.fadeAway = (el) => {
+  // A part positioned on its own (the workout capsule, the floating buttons) that hides at once: a
+  // copy of it fades and sinks where it was, over ms (shorter on a route change, so it's gone with the
+  // old page). One that wasn't showing (under a sheet that covers the app) just goes. The copy goes
+  // last in the parent: being positioned, it's drawn in the same place, and nothing after it is
+  // styled again for a node put in before it.
+  M.fadeAway = (el, ms) => {
     if (reduced() || !can(el) || !el.parentNode) return Promise.resolve();
+    if (el.checkVisibility && !el.checkVisibility({ visibilityProperty: true, opacityProperty: true })) return Promise.resolve();
     const c = el.cloneNode(true);
     c.classList.add('motion-copy');
     c.hidden = false;
     shield(c);
-    aside(() => el.after(c));
-    const a = show(c, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(10px) scale(.94)' }], { duration: 220, easing: tok().standard, fill: 'forwards' });
-    return Promise.all(a.map(ended)).then(() => c.remove());
+    aside(() => el.parentNode.appendChild(c));
+    const a = show(c, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(10px) scale(.94)' }], { duration: ms || 220, easing: tok().standard, fill: 'forwards' });
+    return track(Promise.all(a.map(ended)).then(() => c.remove()));
   };
 
   /* ---------------------------------------------------------------- parts on their way out */
@@ -221,17 +227,29 @@
   }
 
   // What's below the bottom of the screen never shows while the old page leaves (it moves sideways),
-  // so it goes at once: the layer has that much less to lay out and draw. Only from the end of the
-  // page, and into the section or list that crosses the bottom edge, so nothing that stays moves.
+  // so it goes at once: the old page is styled, laid out and drawn again in its layer, and this is
+  // that much less of it. From the end of the page, and on into each block that crosses the bottom
+  // edge (a section, a card, a list) whose children stack one under another by themselves, so
+  // dropping the last ones moves none of the others. Hidden parts (no box) are passed over.
   // Measured before anything changes (reads only, so one layout at most), dropped after.
+  function stacks(el, r) {
+    if (el.matches('.section, .rf-list')) return true;
+    if (r.height < 200) return false; // a small part: little to gain
+    const cs = G.getComputedStyle(el);
+    if (cs.minHeight !== 'auto' && cs.minHeight !== '0px') return false; // room it would spread out to fill
+    if (cs.display === 'flex') return cs.flexDirection === 'column' && cs.flexWrap === 'nowrap';
+    if (cs.display === 'grid') return cs.gridAutoFlow.indexOf('row') === 0;
+    return cs.display === 'block' || cs.display === 'flow-root' || cs.display === 'list-item';
+  }
   function belowSight(screen) {
     const out = [];
     const bottom = (G.innerHeight || doc.documentElement.clientHeight) + 40;
     const walk = (parent) => {
       for (let c = parent.lastElementChild; c; c = c.previousElementSibling) {
         const r = c.getBoundingClientRect();
+        if (!r.width && !r.height) continue;
         if (r.top > bottom) { out.push(c); continue; }
-        if (r.bottom > bottom && c.matches('.section, .rf-list')) walk(c);
+        if (r.bottom > bottom && stacks(c, r)) walk(c);
         return;
       }
     };
@@ -286,10 +304,12 @@
     entering = slide(screen, f.in, [[0], [0, f.show], [1]], f.ms);
     entering.forEach(track);
     // The old page goes on the page once the render that called this is done (before the next
-    // frame): the layout that render does for the new page then doesn't lay the old one out too.
+    // frame): the layout that render does for the new page then doesn't lay the old one out too. It
+    // goes last in the app (it's drawn under the screen whatever its place, by its z-index), so the
+    // bars and buttons after the screen aren't styled again for a node put in before them.
     const shown = new Promise((resolve) => Promise.resolve().then(() => {
       if (finished) { resolve(); return; }
-      aside(() => screen.after(layer));
+      aside(() => screen.parentNode.appendChild(layer));
       const out = from ? [from.transform, f.out[1]] : f.out;
       x.anims = slide(layer, out, [[from ? from.opacity : 1], [0, f.gone], [0]], f.ms, 'forwards');
       Promise.all(x.anims.map(ended)).then(() => x.done()).then(resolve);
@@ -337,7 +357,7 @@
           aside(() => bar.appendChild(c));
           const a = [];
           for (const x of pieces(c, p.title)) a.push(...show(x, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: look(p.title) }], { duration: 180, easing: t.standard, fill: 'forwards' }));
-          Promise.all(a.map(ended)).then(() => c.remove());
+          track(Promise.all(a.map(ended)).then(() => c.remove()));
         }
         if (isShown(bar, p.el, p.title)) {
           // The title's own fade (data-scrolled) already brings it in when it wasn't showing.

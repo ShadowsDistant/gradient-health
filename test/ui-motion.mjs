@@ -152,15 +152,24 @@ section('A tab change');
     const destroyed = new Set();
     const R = window.Refract, d0 = R.destroy;
     R.destroy = (el) => { destroyed.add(el); return d0(el); };
+    const hadFloat = !document.getElementById('float').hidden;
     U.go('plan');
     const sync = { view: screen.dataset.view, newIn: !!screen.querySelector('.rf-large-title') && screen.querySelector('.rf-large-title').textContent.trim(), oldOut: !screen.contains(old) };
     await Promise.resolve();
     await new Promise((res) => setTimeout(res, 0));
     const layer = document.querySelector('.screen-exit');
     const out = { sync, layer: !!layer };
+    // Today's floating buttons (Plan has none): a copy fades where they were, gone with the old page.
+    const fc = document.querySelector('.float-actions.motion-copy');
+    out.float = { had: hadFloat, hidden: document.getElementById('float').hidden, copy: !!fc && fc.inert && fc.getAttribute('aria-hidden') === 'true' };
+    if (fc) {
+      const fa = [fc, ...fc.querySelectorAll('*')].flatMap((el) => m.anims(el));
+      out.float.props = Array.from(new Set(fa.flatMap(m.props))).sort().join();
+      out.float.ms = Math.max(0, ...fa.map((a) => a.effect.getTiming().duration));
+    }
     if (layer) {
       const la = m.anims(layer), sa = m.anims(screen);
-      out.sibling = screen.nextElementSibling === layer;
+      out.sibling = layer.parentNode === screen.parentNode;
       out.holdsOld = layer.contains(old);
       out.inert = layer.inert && layer.getAttribute('aria-hidden') === 'true';
       out.shared = Array.from(layer.querySelectorAll('[id]')).filter((el) => document.querySelectorAll(`[id="${CSS.escape(el.id)}"]`).length > 1).map((el) => el.id);
@@ -191,6 +200,7 @@ section('A tab change');
   check('a tab to the right: the old page shifts 12 px left, the new one comes from 12 px right', /translateX\(-12px\)/.test(r.layerTo) && /translateX\(12px\)/.test(r.screenFrom), `${r.layerTo} / ${r.screenFrom}`);
   check('a tab change takes about 240 ms', r.ms >= 200 && r.ms <= 280, r.ms);
   check('the bar has the new title', r.title === 'Plan', r.title);
+  check('the floating buttons go with the old page: a copy of them fades where they were', r.float.had && r.float.hidden && r.float.copy && r.float.props === 'opacity,transform' && r.float.ms <= 160, r.float);
   check('when it ends the layer is gone, with nothing left over', r.after.exit === 0 && r.after.copies === 0 && r.after.fading === 0 && r.oldGone, r.after);
   check('Refract cleans up the old page\'s controls', r.behaviours === 0 || r.cleaned === 1, `${Math.round(r.cleaned * 100)}% of ${r.behaviours}`);
   check('the new page rests in place', r.rest);
