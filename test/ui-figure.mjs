@@ -110,7 +110,10 @@ await page.click('.player [data-act="plHowTo"]');
 await page.waitForSelector('dialog[open] .sheet-fig');
 await page.waitForFunction(() => !!document.querySelector('dialog[open] .sheet-fig .fig3d:not(.fig-pending) canvas'), null, { timeout: 15000 });
 check('the how-to sheet has the 3D figure', true);
-await page.waitForTimeout(1200); // the frame in flight when the sheet opened lands
+// Paused, the figure draws one last frame where it stopped, held back while the sheet is still
+// moving (<html data-sheet-moving>, at most 1.5 s): wait for that frame to land before comparing.
+await page.waitForFunction(() => !document.documentElement.hasAttribute('data-sheet-moving'), null, { timeout: 5000 }).catch(() => {});
+await page.waitForTimeout(1200);
 const s1 = await sig(); await page.waitForTimeout(700); const s2 = await sig();
 check('the player\'s figure stops while the sheet covers it', s1 && s1 === s2);
 check('with Angle, Side and Front views', await page.evaluate(() => document.querySelectorAll('dialog[open] [data-on="figView"] input').length === 3));
