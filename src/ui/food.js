@@ -77,6 +77,7 @@
           <button type="button" class="rf-btn" data-variant="plain" data-shape="circle" data-size="sm" aria-label="Day after" data-act="foodDayNext"${day >= today ? ' aria-disabled="true"' : ''}>${U.icon('chevron-right')}</button>
         </div>
         <div class="section">
+          ${U.tip ? U.tip('food') : ''}
           <div class="card" data-key="sum">${summary(S, day, false)}${why ? `<p class="t-footnote rf-muted">${U.esc(why)} ${U.whyLink ? U.whyLink('calories', 'How it\'s worked out') : ''}</p>` : ''}</div>
           ${mealCards}
           ${other}

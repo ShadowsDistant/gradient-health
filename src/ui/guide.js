@@ -33,11 +33,16 @@
   }
 
   /* ---------------------------------------------------------------- tips */
+  // One per tab (and Plan's Moves), shown until Got it. Today's waits while the Getting started
+  // checklist is up (src/ui/today.js), so a new person sees one thing at a time.
   const TIPS = {
-    plan: ['calendar', 'sky', 'Your week at a glance. Tap any day to see it, move a workout to a free day, or swipe for next week. Miss one and the rest of the week shifts forward, so nothing doubles up.'],
+    today: ['home', 'accent', 'Your day at a glance: the workout, sized to your time, a quick feel check, and food or protein. Tap the streak for your progress, and the sparkle at the top left to ask the coach.'],
+    plan: ['calendar', 'sky', 'Your week at a glance. Tap any day to see it, move a workout to a free day, or swipe for next week. Miss one and the rest of the week shifts forward, so nothing doubles up. Moves, at the top, has every exercise.'],
+    moves: ['library', 'violet', 'Every exercise, grouped into ladders from easiest to hardest. You move up a level once you have 3 or more reps left at the top of the range. Tap one to see how it\'s done.'],
+    food: ['food', 'green', 'Log what you eat by meal: search, scan a barcode, or just add the calories. The ring shows what\'s left for today, and your target learns from your logs and your weight.'],
     health: ['heart', 'rose', 'Your numbers from Health Connect plus anything you log by hand. Tap any number for its history, or to add or fix a value. Pull down to sync.'],
-    progress: ['chart', 'green', 'How your training is going. The body map shows which muscles you\'ve trained and where you\'ve got stronger: tap one for its story. Your levels and your weaker side are below.'],
-    moves: ['library', 'violet', 'Every exercise, grouped into ladders from easiest to hardest. You move up a level once you have 3 or more reps left at the top of the range.'],
+    progress: ['chart', 'green', 'How your training is going. The body map shows which muscles you\'ve trained and where you\'ve got stronger: tap one for its story. Your totals, levels and your weaker side are below.'],
+    you: ['person', 'indigo', 'Everything about you in one place: your badges, your plans and your answers. Settings, help and What\'s new are at the bottom, and Settings is at the top right too.'],
   };
   U.tip = (id) => {
     const t = TIPS[id];
@@ -47,6 +52,12 @@
   U.act.tipDone = (el) => {
     const card = el.closest('.tip');
     collapse(card).then(() => { U.markSeen(`tip_${el.dataset.arg}`); U.render(); });
+  };
+  // Help, Show the tips again: every tab's tip comes back.
+  U.resetTips = () => {
+    const s = seen();
+    for (const id of Object.keys(TIPS)) delete s[`tip_${id}`];
+    U.save();
   };
 
   /* ---------------------------------------------------------------- first-week checklist */

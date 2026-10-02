@@ -1,7 +1,7 @@
 // End-to-end smoke run of the built page in Chromium at phone size, with a fake Android bridge
 // and a controlled clock: questionnaire → tour → Today → a workout with rest, a side switch, a
-// timer and a swap → check-in → Next time → Health (coach, Claude hand-off) → Progress, Plan, Moves
-// → Profile, How it works, Settings → reload (persistence, What's new). Screenshots go to build/smoke/.
+// timer and a swap → check-in → Next time → Health (coach, Claude hand-off) → Progress, Plan and its
+// Moves → You, How it works, Settings → reload (persistence, What's new). Screenshots go to build/smoke/.
 // Usage: node test/smoke.mjs [--dark] [--keep]
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -144,7 +144,7 @@ check('Today shows the session with a time estimate', /Workout · about \d+ min/
 check('the extra left curl set is on the list', /left only/.test(todayText));
 check('Start workout floats in glass', await page.locator('#float [data-act="startWorkout"]').isVisible());
 check('a getting-started checklist for the first week', /Getting started/.test(todayText) && /Finish your first workout/.test(todayText));
-check('the profile button sits in the shared top bar', await page.locator('#topbar [data-act="openProfile"]').count() === 1);
+check('no profile button on Today: You is a tab', await page.locator('#topbar [data-act="openProfile"]').count() === 0 && await page.locator('.rf-tab[data-tab="you"]').count() === 1);
 await shot(page, '05-today');
 // Re-renders patch the page in place: the bar and the cards are the same nodes afterwards.
 await page.evaluate(() => { window.__nodes = [document.getElementById('topbar'), document.querySelector('#topbar .rf-scroll-edge'), document.querySelector('#screen [data-key="streak"]'), document.querySelector('#screen [data-key="main"]')]; });
@@ -241,7 +241,7 @@ check('haptics: start, finished sets and a finish', hx.includes('go') && hx.incl
 const writes = await page.evaluate(() => window.__writes);
 check('the workout was saved to Health Connect once, keyed by day', writes.length === 1 && writes[0].id === 'gradient-2026-09-28' && writes[0].type === 'strength_training' && writes[0].end > writes[0].start, writes);
 
-section('Health, Progress, Plan, Moves');
+section('Health, Progress, Plan and its Moves');
 await page.click('.rf-tab[data-tab="health"]');
 await page.waitForSelector('#screen[data-view="health"] .hl-tr', { timeout: 5000 }).catch(async (e) => { console.log('errors so far:', errors); await shot(page, 'fail-health'); throw e; });
 await page.waitForTimeout(300);
@@ -288,8 +288,8 @@ await page.click('.rf-tab[data-tab="plan"]');
 await page.waitForSelector('#screen[data-view="plan"] .plan-list');
 check('Plan lists seven days', (await page.locator('#screen .plan-list').first().locator('li').count()) === 7);
 await shot(page, '12-plan');
-await page.click('.rf-tab[data-tab="moves"]');
-await page.waitForSelector('#screen[data-view="moves"] .moves-list');
+await page.click('#screen [data-on="planSection"] input[value="moves"]', { force: true });
+await page.waitForSelector('#screen[data-view="plan"] .moves-list');
 await page.locator('#screen [data-act="ladder"]').first().click();
 await page.waitForSelector('dialog.rf-sheet .sheet-fig svg, dialog.rf-sheet .sheet-fig .fig3d canvas');
 check('a ladder sheet shows an animated diagram', await page.locator('dialog.rf-sheet .sheet-fig svg, dialog.rf-sheet .sheet-fig .fig3d canvas').count() >= 1);
@@ -297,15 +297,15 @@ await shot(page, '13-ladder');
 await page.keyboard.press('Escape');
 await page.waitForTimeout(500);
 
-section('Profile, How it works, Settings');
-await page.click('.rf-tab[data-tab="today"]');
-await page.click('#topbar [data-act="openProfile"]');
-await page.waitForSelector('#screen[data-view="profile"] .ach-grid');
+section('You, How it works, Settings');
+await page.click('.rf-tab[data-tab="you"]');
+await page.waitForSelector('#screen[data-view="you"] .you-card');
 await page.waitForTimeout(500);
 const prof = await page.locator('#screen').innerText();
-check('Profile shows stats and the first achievement', /Workouts\s+1/.test(prof) && (await page.locator('#screen [data-key="ach-first"].is-earned').count()) === 1, prof.slice(0, 160));
-check('the tab bar steps aside on pushed pages', await page.evaluate(() => document.getElementById('tabbar').hasAttribute('data-away')));
-await shot(page, '14a-profile');
+// The first badge: the badges' own tile when they're in, else the achievement from before them.
+const firstBadge = (await page.locator('#screen [data-badge="first"].is-earned').count()) || (await page.locator('#screen [data-key="ach-first"].is-earned').count());
+check('You shows your numbers and the first badge', /\b1\s+Workout\b/.test(prof) && firstBadge === 1, prof.slice(0, 160));
+await shot(page, '14a-you');
 await page.evaluate(() => window.GH.ui.open('science', 'rest'));
 await page.waitForTimeout(900);
 check('How it works lists every rule in its group', await page.evaluate(() => document.querySelectorAll('#screen .sci-list .sci-row').length === window.GH.science.RULES.length && document.querySelectorAll('#screen .sci-list').length === window.GH.science.GROUPS.length));
@@ -320,9 +320,10 @@ await page.click('#screen [data-on="sciShow"] [data-arg="all"]');
 await page.waitForTimeout(200);
 await page.click('#topbar [data-act="back"]');
 await page.waitForTimeout(400);
-check('back returns to Profile', await page.evaluate(() => document.getElementById('screen').dataset.view === 'profile'));
+check('back returns to You', await page.evaluate(() => document.getElementById('screen').dataset.view === 'you'));
 await page.click('#topbar [data-act="openSettings"]');
 await page.waitForSelector('#screen[data-view="settings"]');
+check('the tab bar steps aside on pushed pages', await page.evaluate(() => document.getElementById('tabbar').hasAttribute('data-away')));
 await page.click('#screen [data-act="exportData"]');
 await page.waitForTimeout(200);
 const copied = await page.evaluate(() => window.__copied || '');

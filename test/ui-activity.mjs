@@ -75,7 +75,7 @@ async function holdFinish() {
 
 section('Ways in');
 const cta = await page.evaluate(() => { const c = document.querySelector('#screen .act-cta'); return c && c.textContent.replace(/\s+/g, ' ').trim(); });
-check('Today has a card to start an activity', /Start an activity/.test(cta || '') && /Walk, run, hike or ride/.test(cta), cta);
+check('Today has a card to record a walk, run or ride', /Record a walk, run or ride/.test(cta || '') && /with GPS/.test(cta), cta);
 await page.evaluate(() => window.GH.ui.go('health'));
 await settle();
 check('Health\'s Activity section starts one too', await page.evaluate(() => !!document.querySelector('#screen [data-key="act-start"] [data-act="actStart"]')));

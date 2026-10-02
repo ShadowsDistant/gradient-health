@@ -672,7 +672,7 @@
   // Progress: the highlights and a way into everything. The history page: every record.
   U.actRecordsSection = (S, compact) => {
     const n = A().list(S).length;
-    const empty = `<div class="card" data-key="rec-none"><p class="t-callout rf-muted">Your bests show up here: fastest 1 km, mile, 5 km and 10 km, your longest walk, run and ride, and the most steps in one go.</p><div class="btn-row"><button type="button" class="rf-btn" data-size="sm" data-act="actStart">${U.icon('navigate')}Start an activity</button></div></div>`;
+    const empty = `<div class="card" data-key="rec-none"><p class="t-callout rf-muted">Your bests show up here: fastest 1 km, mile, 5 km and 10 km, your longest walk, run and ride, and the most steps in one go.</p><div class="btn-row"><button type="button" class="rf-btn" data-size="sm" data-act="actStart">${U.icon('navigate')}Record a walk, run or ride</button></div></div>`;
     if (compact) {
       return `<h2 class="sec-title t-title-3">Personal records</h2>
         <div class="section act-records">
@@ -716,7 +716,7 @@
         if (m !== month) { groups.push({ m, rows: [] }); month = m; }
         groups[groups.length - 1].rows.push(actRow(a));
       }
-      return `${U.navbar('Activities', U.glassBtn('plus', 'Start an activity', 'actStart'), U.glassBtn('chevron-left', 'Back', 'back'))}
+      return `${U.navbar('Activities', U.glassBtn('plus', 'Record a walk, run or ride', 'actStart'), U.glassBtn('chevron-left', 'Back', 'back'))}
         <h1 class="rf-large-title">Activities</h1>
         <div class="section">
           <div class="stat-row ah-totals" data-key="totals">
@@ -725,7 +725,7 @@
             <div class="stat"><span class="t-footnote rf-muted">All time</span><span class="t-title-3 rf-num">${U.num(list.length)}</span><span class="t-caption rf-muted">${U.esc(fmtDist(list.reduce((s, a) => s + (a.distanceM || 0), 0)))}</span></div>
           </div>
           ${types.length > 1 ? U.choice('actFilter', [['all', 'All']].concat(types.map((t) => [t, A().typeOf(t).label])), filter, 'Show', ' class="ah-filter" data-hscroll data-on="actFilter"') : ''}
-          ${groups.length ? groups.map((g) => `<h3 class="rf-list-header">${U.esc(g.m)}</h3><ul class="rf-list">${g.rows.join('')}</ul>`).join('') : `<div class="card" data-key="none"><p class="t-callout rf-muted">No activities yet. Start one from Today when you head out for a walk, run, hike or ride.</p><div class="btn-row"><button type="button" class="rf-btn" data-variant="filled" data-size="sm" data-act="actStart">${U.icon('navigate')}Start an activity</button></div></div>`}
+          ${groups.length ? groups.map((g) => `<h3 class="rf-list-header">${U.esc(g.m)}</h3><ul class="rf-list">${g.rows.join('')}</ul>`).join('') : `<div class="card" data-key="none"><p class="t-callout rf-muted">No activities yet. Start one from Today when you head out for a walk, run, hike or ride.</p><div class="btn-row"><button type="button" class="rf-btn" data-variant="filled" data-size="sm" data-act="actStart">${U.icon('navigate')}Record a walk, run or ride</button></div></div>`}
         </div>
         ${all.length ? U.actRecordsSection(S, false) : ''}`;
     },
@@ -737,8 +737,8 @@
     if (U.actIsLive && U.actIsLive()) return '';
     const last = A().list(S)[0];
     const lightWalk = plan && plan.type === 'light' && !(plan.light && plan.light.walk);
-    const title = lightWalk ? 'Track today\'s walk' : 'Start an activity';
-    const sub = lightWalk ? 'With GPS. It ticks off the walk when you finish.' : last ? `Last: ${last.distanceM > 0 ? `${fmtDist(last.distanceM)} ` : ''}${A().typeOf(last.type).noun}, ${U.ago(last.end)}` : 'Walk, run, hike or ride, tracked with GPS';
+    const title = lightWalk ? 'Track today\'s walk' : 'Record a walk, run or ride';
+    const sub = lightWalk ? 'With GPS. It ticks off the walk when you finish.' : last ? `Last: ${last.distanceM > 0 ? `${fmtDist(last.distanceM)} ` : ''}${A().typeOf(last.type).noun}, ${U.ago(last.end)}` : 'Time, distance and your route, with GPS';
     return `<button type="button" class="card act-cta tap-card" data-key="act-cta" data-act="actStart"${lightWalk ? ' data-arg="walk"' : ''}>
       <span class="act-cta-art" aria-hidden="true"><span data-tone="green">${U.icon('act-walk')}</span><span data-tone="coral">${U.icon('act-run')}</span><span data-tone="sky">${U.icon('act-cycle')}</span></span>
       <span class="act-cta-text"><span class="t-headline">${U.esc(title)}</span><span class="t-footnote rf-muted">${U.esc(sub)}</span></span>
@@ -746,7 +746,7 @@
     </button>`;
   };
   // Health: start one, and the activity list's rows for them.
-  U.actHealthStart = (S) => `<ul class="rf-list" data-key="act-start">${U.row({ icon: 'navigate', tone: 'green', title: 'Start an activity', sub: 'Walk, run, hike or ride, tracked with GPS', act: 'actStart', chevron: true })}${A().list(S).length ? U.row({ icon: 'list', tone: 'sky', title: 'All activities and records', act: 'actHistory', chevron: true }) : ''}</ul>`;
+  U.actHealthStart = (S) => `<ul class="rf-list" data-key="act-start">${U.row({ icon: 'navigate', tone: 'green', title: 'Record a walk, run or ride', sub: 'Time, distance and your route, with GPS', act: 'actStart', chevron: true })}${A().list(S).length ? U.row({ icon: 'list', tone: 'sky', title: 'All activities and records', act: 'actHistory', chevron: true }) : ''}</ul>`;
   U.actHealthRow = (x) => {
     const a = A().get(U.S, x.id);
     if (!a) return null;

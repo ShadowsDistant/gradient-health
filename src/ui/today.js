@@ -1,5 +1,5 @@
-/* Today: streak tallies, readiness, the session (or light day), the feel check, protein and one
- * insight. The main actions float in glass above the tab bar.
+/* Today: streak tallies (a tap opens Progress), readiness, the session (or light day), the feel
+ * check, protein and one insight. The main actions float in glass above the tab bar.
  */
 (function (G) {
   'use strict';
@@ -40,7 +40,13 @@
     }
     for (const x of s.extras || []) if (!s.items.some((it) => it.fam === x.fam)) rows.push(`<li class="ex is-lead"><span class="ex-tag">+1</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${x.moveId}">${U.esc(x.name)}</button><span class="ex-meta rf-num">${U.side(x.leadOnly || lead).toLowerCase()} only · ${U.esc(U.target(x))}</span></li>`);
     if (s.finisher) rows.push(`<li class="ex"><span class="ex-tag">${U.icon('bolt', 'sm')}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${s.finisher.moveId}">Finisher: ${U.esc(s.finisher.name.toLowerCase())}</button><span class="ex-meta rf-num">${s.finisher.rounds} × ${s.finisher.work} s on, ${s.finisher.rest} s off</span></li>`);
-    for (const mb of s.mobility || []) rows.push(`<li class="ex ex-muted"><span class="ex-tag">${U.icon('moon', 'sm')}</span><span class="ex-name">${U.esc(mb.name)}</span><span class="ex-meta">${mb.target} s</span></li>`);
+    // The cool-down: stretches held for seconds, and the easy cardio block (its target is in seconds
+    // too, but it runs for minutes), which is a move to look up like the others.
+    for (const mb of s.mobility || []) {
+      rows.push(mb.cardio
+        ? `<li class="ex"><span class="ex-tag">${U.icon('heart', 'sm')}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${U.esc(mb.moveId)}">${U.esc(mb.name)}</button><span class="ex-meta rf-num">Easy cardio · ${Math.max(1, Math.round(mb.target / 60))} min</span></li>`
+        : `<li class="ex ex-muted"><span class="ex-tag">${U.icon('moon', 'sm')}</span><span class="ex-name">${U.esc(mb.name)}</span><span class="ex-meta">${mb.target} s</span></li>`);
+    }
     return `<ul class="ex-list">${rows.join('')}</ul>`;
   }
   U.sessionRows = sessionRows;
@@ -208,21 +214,24 @@
       const top = GH.insights ? GH.insights.top(S, day, 1)[0] : null;
       if (top && GH.insights.markShown) GH.insights.markShown(S, [top], day);
       const measure = GH.health && GH.health.measureDue(S, day);
-      return `${U.navbar('Today', U.glassBtn('person', 'Profile', 'openProfile'))}
+      // Today's tip waits while the Getting started checklist is up: one thing at a time.
+      const ck = U.checklist ? U.checklist(S, day) : '';
+      return `${U.navbar('Today')}
         <h1 class="rf-large-title">${U.esc(greeting(S))}</h1>
         <p class="lt-sub t-callout rf-muted">${U.esc(sub.join(' · '))}</p>
         <div class="section">
-          ${workouts ? `<div class="card streak" data-key="streak">
-            <div class="streak-main">
-              <div class="streak-n">${U.roll(st.current, 't-large-title')}<span class="t-callout rf-muted">day streak</span></div>
-              <div class="streak-tally">${tallies(st.current)}</div>
-            </div>
-            <p class="t-footnote rf-muted">${st.weekly ? `${U.plural(st.weekly, 'full week')} in a row · ` : ''}${st.freezeThisWeek ? 'Freeze used this week' : '1 freeze left this week'}${st.best > st.current ? ` · best ${st.best}` : ''}</p>
-          </div>` : ''}
+          ${!ck && U.tip ? U.tip('today') : ''}
+          ${workouts ? `<button type="button" class="card streak tap-card" data-key="streak" data-act="openProgress">
+            <span class="streak-main">
+              <span class="streak-n">${U.roll(st.current, 't-large-title')}<span class="t-callout rf-muted">day streak</span></span>
+              <span class="streak-tally">${tallies(st.current)}</span>
+            </span>
+            <span class="streak-foot"><span class="t-footnote rf-muted">${st.weekly ? `${U.plural(st.weekly, 'full week')} in a row · ` : ''}${st.freezeThisWeek ? 'Freeze used this week' : '1 freeze left this week'}${st.best > st.current ? ` · best ${st.best}` : ''}</span><span class="streak-go t-footnote">Progress${U.icon('chevron-right', 'sm')}</span></span>
+          </button>` : ''}
           ${main}
           ${workouts && plan.type !== 'done' && !S.active && U.coachCard ? U.coachCard(S, day, session) : ''}
           ${U.actTodayCard ? U.actTodayCard(S, day, plan) : ''}
-          ${U.checklist ? U.checklist(S, day) : ''}
+          ${ck}
           ${GH.food && GH.food.full(S) && U.foodCard ? U.foodCard(S, day) : proteinCard(S, day)}
           ${feelCard(S, day, plan)}
           ${measure ? `<ul class="rf-list" data-key="measure">${U.row({ icon: 'pin', tone: 'violet', title: 'Time to measure', sub: 'Waist and arms, once a month', act: 'logMeasure', chevron: true })}</ul>` : ''}

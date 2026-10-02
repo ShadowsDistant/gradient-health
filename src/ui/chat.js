@@ -216,7 +216,7 @@
     unseen = false;
     if (chat && !chat.closed) { syncButtons(); return; }
     chat = U.sheet({
-      title: 'Coach', size: 'full', cls: 'chat-sheet',
+      title: 'Ask the coach', size: 'full', cls: 'chat-sheet',
       body: chatBody(S),
       // Closing doesn't stop an answer: it carries on, and the coach button shows when it's there.
       onClose: () => { chat = null; syncButtons(); },
@@ -302,7 +302,7 @@
     const item = (act, icon, title) => `<li><button type="button" class="rf-list-row chat-menu-row" data-act="chatMenuPick" data-arg="${act}"><span class="rf-list-icon" data-tone="neutral">${U.icon(icon)}</span><span class="rf-list-text"><span class="rf-list-title">${title}</span></span></button></li>`;
     const rows = (chatLog(S).length || live ? item('askClear', 'trash', 'Clear this chat') : '')
       + (canHandOff() ? item('askClaudeApp', 'share', 'Ask in the Claude app') : '')
-      + item('chatSettings', 'sliders', 'Coach settings');
+      + item('chatSettings', 'sliders', 'AI coach settings');
     U.sheet({ title: 'Chat', size: 'fit', body: `<div class="sheet-pad"><ul class="rf-list">${rows}</ul></div>` });
   };
   // A pick closes the menu first, then does its thing.

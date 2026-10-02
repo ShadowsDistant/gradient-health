@@ -41,8 +41,8 @@
 
   /* ------------------------------------------------------------------ errors */
   const MESSAGES = {
-    nokey: 'Add your Anthropic API key in Settings, under Coach, to use Claude.',
-    auth: 'That API key didn\'t work. Check it in Settings, under Coach.',
+    nokey: 'Add your Anthropic API key in Settings, under AI coach, to use Claude.',
+    auth: 'That API key didn\'t work. Check it in Settings, under AI coach.',
     permission: 'This API key can\'t use the coach. Check its permissions in the Claude Console.',
     rate: 'The coach is busy. Try again in a minute.',
     offline: 'You\'re offline. The on-device coach and your insights still work.',
@@ -51,7 +51,7 @@
     cut: 'The answer was cut short. Try again.',
     nomodel: 'Couldn\'t find a model for this key. Check the key in the Claude Console.',
     aborted: 'Stopped.',
-    consent: 'Claude needs your OK before it gets any of your data. Allow it in Settings, under Coach.',
+    consent: 'Claude needs your OK before it gets any of your data. Allow it in Settings, under AI coach.',
     other: 'Something went wrong reaching the coach. Try again.',
   };
   // Nothing goes to Anthropic until the person has seen what gets sent and allowed it.

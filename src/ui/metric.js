@@ -204,7 +204,7 @@
   function actionsFor(S, key) {
     const m = M(key);
     if (m.edit) return `<button type="button" class="rf-btn ms-add" data-variant="soft" data-act="metricAdd">${U.icon('plus')}${m.group === 'measure' ? 'Add a measurement' : 'Add or change'}</button>`;
-    if (key === 'activeMin') return `<button type="button" class="rf-btn ms-add" data-variant="soft" data-act="logActivity">${U.icon('plus')}Log an activity</button>`;
+    if (key === 'activeMin') return `<button type="button" class="rf-btn ms-add" data-variant="soft" data-act="logActivity">${U.icon('plus')}Log other exercise</button>`;
     if (key === 'kcalIn' && U.hasTab && U.hasTab('food')) return `<button type="button" class="rf-btn ms-add" data-variant="soft" data-act="metricGo" data-arg="food">${U.icon('food')}Open Food</button>`;
     if (key === 'protein') return `<button type="button" class="rf-btn ms-add" data-variant="soft" data-act="addProtein">${U.icon('plus')}Add protein</button>`;
     return '';

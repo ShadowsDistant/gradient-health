@@ -64,15 +64,14 @@ check('tab labels use the tab bar size', type.tabSize === '11px', type.tabSize);
 check('the selected label sits inside its pill', type.inside);
 check('buttons keep Refract\'s size', type.btn === null || type.btn !== '16px', type.btn);
 check('chips keep Refract\'s size', type.chip === null || type.chip === '13px', type.chip);
-for (const t of ['today', 'plan', 'health', 'progress']) {
+for (const t of ['today', 'plan', 'health', 'progress', 'you']) {
   await tab(t);
   const ok = await page.evaluate(() => { const l = document.querySelector('.rf-tab[aria-current="page"] .rf-tab-label').getBoundingClientRect(); const p = document.querySelector('.rf-tabbar-lens').getBoundingClientRect(); return l.left >= p.left - 0.5 && l.right <= p.right + 0.5; });
   check(`"${t}" label fits its pill`, ok);
 }
 
 section('Titles that used to be cut off');
-await tab('today');
-await page.click('#topbar [data-act="openProfile"]'); await settle();
+await tab('you');
 await page.click('#screen [data-act="openSettings"]'); await settle();
 const cut = await page.evaluate(() => [...document.querySelectorAll('#screen .rf-list-title, #screen .rf-list-sub')].filter((e) => e.scrollWidth > e.clientWidth + 1 || getComputedStyle(e).textOverflow === 'ellipsis' && e.scrollWidth > e.clientWidth).map((e) => e.textContent.trim()));
 check('no row title or description is cut off in Settings', cut.length === 0, cut.join(' | '));
@@ -93,9 +92,11 @@ check('still drawn after a setting changes', await hasSlider());
 await page.evaluate(() => { const sw = document.querySelector('#screen [data-k="supersets"]'); sw.click(); });
 await settle();
 
-section('Profile → Equipment');
+section('You → Your answers → Equipment');
 await page.click('#topbar [data-act="back"]'); await settle();
-await page.click('#screen [data-act="editEquipment"]'); await settle(900);
+const equipment = '#screen [data-act="editStep"][data-arg="equipment"]';
+await page.evaluate((sel) => document.querySelector(sel).scrollIntoView({ block: 'center' }), equipment); await settle(300);
+await page.click(equipment); await settle(900);
 const ob = await page.evaluate(() => { const el = document.getElementById('onboard'); const cs = getComputedStyle(el); return { hidden: el.hidden, opacity: Number(cs.opacity) }; });
 check('the equipment editor is visible', !ob.hidden && ob.opacity > 0.95, JSON.stringify(ob));
 const one = await page.evaluate(() => ({ title: document.querySelector('.onboard .rf-large-title').textContent, btn: document.querySelector('.ob-actions [data-variant="tinted"]').textContent.trim(), close: !!document.querySelector('.ob-top [aria-label="Close"]') }));
@@ -103,15 +104,15 @@ check('it opens just the Equipment screen, with Save and Close', one.title === '
 await page.evaluate(() => window.__gh.back());
 await settle(900);
 const back = await page.evaluate(() => ({ hidden: document.getElementById('onboard').hidden, view: document.getElementById('screen').dataset.view }));
-check('back closes it and returns to Profile', back.hidden && back.view === 'profile', JSON.stringify(back));
-await page.click('#screen [data-act="editEquipment"]'); await settle(900);
+check('back closes it and returns to You', back.hidden && back.view === 'you', JSON.stringify(back));
+await page.click(equipment); await settle(900);
 const again = await page.evaluate(() => { const el = document.getElementById('onboard'); return !el.hidden && Number(getComputedStyle(el).opacity) > 0.95; });
 check('it opens again after closing (no invisible overlay)', again);
 await page.evaluate(() => window.__gh.back()); await settle(900);
 await page.click('#screen [data-act="openSettings"]'); await settle();
 check('taps reach the page afterwards', await page.evaluate(() => document.getElementById('screen').dataset.view === 'settings'));
 await page.click('#topbar [data-act="back"]'); await settle();
-await page.click('#topbar [data-act="back"]'); await settle();
+await tab('today');
 
 section('Tour, last page');
 await page.evaluate(() => window.GH.ui.showTour());
@@ -155,7 +156,7 @@ const endGap = () => page.evaluate(() => {
   return Math.round(cover - low);
 });
 section('Page ends clear the bars');
-for (const t of ['today', 'plan', 'health', 'progress']) { await tab(t); const g = await endGap(); check(`${t}: the last card scrolls clear of the bars`, g >= 8, g); }
+for (const t of ['today', 'plan', 'health', 'progress', 'you']) { await tab(t); const g = await endGap(); check(`${t}: the last card scrolls clear of the bars`, g >= 8, g); }
 await page.evaluate(() => window.GH.ui.open('settings'));
 await settle(900);
 let g = await endGap();
