@@ -186,8 +186,9 @@ public final class Bridge {
     }
 
     /**
-     * False when the phone's own touch feedback is switched off: taps, ticks, toggles and detents are
-     * then skipped, and the other kinds (workout and other events) still play.
+     * False when the phone's own touch feedback is switched off: the touch and navigation kinds (taps,
+     * ticks, toggles, tabs, ...) are then skipped, and the others (feedback, workout and moments) still
+     * play.
      */
     @JavascriptInterface
     public boolean hapticsSystemEnabled() {
@@ -195,12 +196,16 @@ public final class Bridge {
     }
 
     /**
-     * A haptic by name, each with its own feel (see Haptics): tap, select, tick, toggleOn, toggleOff
-     * and detent for the UI; countdown, go, done, success, warning, error, heavy and celebrate for
-     * events. An unknown name plays a tap.
+     * A haptic by name, each of the 31 kinds with its own feel (see Haptics). An unknown name plays a
+     * tap. It plays from this thread: the vibrator takes calls from any thread, and waiting for the UI
+     * thread (busy drawing the change the touch made) would make it land late. Only a phone without a
+     * vibrator to drive needs the UI thread, for the view's own touch feedback.
      */
     @JavascriptInterface
     public void haptic(final String kind) {
+        if (Haptics.play(activity, kind)) {
+            return;
+        }
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
