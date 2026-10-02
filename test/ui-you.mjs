@@ -75,7 +75,14 @@ check('your card: initials, name, since when and the week', card.name === 'Alex'
 check('and workouts, streak and badges in a row', card.stats.length === 3 && /Workouts$/.test(card.stats[0]) && /Day streak$/.test(card.stats[1]) && /Badges?$/.test(card.stats[2]), JSON.stringify(card.stats));
 const app = await ev(() => [...document.querySelectorAll('#screen ul[data-key="app"] > li')].map((li) => li.dataset.key).join());
 check('last: Settings, Help and tour, What\'s new, Privacy', app === 'settings,help,news,privacy', app);
-check('a badge earned shows as earned', await ev(() => !!(document.querySelector('#screen [data-badge="first"].is-earned') || document.querySelector('#screen [data-key="ach-first"].is-earned'))));
+// The strip shows the latest badges earned (the first workout's may be older than those), and the
+// gallery behind it shows them all.
+check('a badge earned shows as earned', await ev(() => !!document.querySelector('#screen .you-badges [data-badge].is-earned')));
+await ev(() => window.GH.ui.open('badges'));
+await settle();
+check('and the first workout\'s badge is earned in the gallery', await ev(() => !!document.querySelector('#screen [data-badge="first"].is-earned')));
+await ev(() => window.GH.ui.back());
+await settle();
 check('your answers are each set-up screen, with its answer', await ev(() => { const rows = [...document.querySelectorAll('#screen ul[data-key="answers"] [data-act="editStep"]')]; return rows.length >= 6 && rows.some((r) => r.dataset.arg === 'schedule') && rows.some((r) => r.dataset.arg === 'equipment') && rows.every((r) => r.querySelector('.rf-list-sub').textContent.trim()); }));
 const review = async () => ev(() => ({ you: !!document.querySelector('#screen [data-act="reviewPlan"]'), real: !!(window.GH.planReview && window.GH.ui.act.reviewPlan) }));
 let rv = await review();

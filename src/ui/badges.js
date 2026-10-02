@@ -557,5 +557,14 @@
     U.save();
     return ids.map((id) => items.find((i) => i.id === id)).filter(Boolean).map(oldShape);
   };
-  U.celebrateAchievements = (items) => U.badgeReveal((items || []).map((x) => x.id));
+  // Badges earned since they were last seen are celebrated where they are, on the You tab: each new
+  // tile bursts, with one badge haptic. A sheet that opened by itself on arrival would get in the
+  // way; the toast's See it, the workout's card and a tap on a badge open the reveal when asked.
+  U.celebrateAchievements = (items) => {
+    const tiles = (items || []).map((x) => document.querySelector(`#screen [data-badge="${x.id}"]`)).filter(Boolean);
+    if (!tiles.length) return;
+    U.haptic('badge');
+    if (!G.Refract || !G.Refract.burst || U.reduced()) return;
+    for (const t of tiles) { try { G.Refract.burst(t, { count: 14 }); } catch (e) { /* ignore */ } }
+  };
 })(typeof window !== 'undefined' ? window : globalThis);
