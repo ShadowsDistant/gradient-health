@@ -270,18 +270,8 @@ check('the report\'s one request asks for plan ideas too', sent.length === 1 && 
 await ev(() => window.GH.ui.act.healthReport());
 await page.waitForSelector('dialog.rs-sheet[open] .rs-meta', { timeout: 10000 });
 await wait(500);
-// The report shows the section through one line in src/ui/healthtab.js's reportBody, which is outside
-// this workstream (`${U.planIdeas && w.rep ? U.planIdeas(S, day, w.rep) : ''}` after Focus next).
-// Until it's there, the section goes into the report here, where that line puts it.
-if (!(await ev(() => !!document.querySelector('dialog.rs-sheet[open] .rv-ideas')))) {
-  console.log('  (the report\'s line in src/ui/healthtab.js isn\'t in yet: the section is placed here as it would place it)');
-  await ev(() => {
-    const U = window.GH.ui, S = U.S, day = U.today();
-    const at = document.querySelector('dialog.rs-sheet[open] .rs-asks') || document.querySelector('dialog.rs-sheet[open] .rs-meta');
-    at.insertAdjacentHTML('beforebegin', U.planIdeas(S, day, window.GH.ai.reportFor(S, day)));
-  });
-}
-const ideas = await ev(() => { const el = document.querySelector('dialog.rs-sheet[open] .rv-ideas'); return { titles: [...el.querySelectorAll('.rs-list li')].map((l) => l.textContent), go: !!el.querySelector('[data-act="reviewPlanIdeas"]') }; });
+// The report's sheet (reportBody in src/ui/healthtab.js) places the section after Focus next.
+const ideas = await ev(() => { const el = document.querySelector('dialog.rs-sheet[open] .rv-ideas'); return el ? { titles: [...el.querySelectorAll('.rs-list li')].map((l) => l.textContent), go: !!el.querySelector('[data-act="reviewPlanIdeas"]') } : { titles: [], go: false }; });
 check('the report shows its Plan ideas, with a way to look them over', ideas.titles.join('|') === 'A new move to try|Move your last workout' && ideas.go, ideas);
 await page.click('dialog.rs-sheet[open] [data-act="reviewPlanIdeas"]');
 await page.waitForSelector('dialog.rv-sheet[open] .rv-result', { timeout: 10000 });

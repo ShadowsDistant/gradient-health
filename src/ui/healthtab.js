@@ -81,6 +81,7 @@
       ${list('Wins', (d.wins || []).map(winText), 'star', 'good')}
       ${list('Keep an eye on', d.watch, 'alert', 'watch')}
       ${list('Focus next', d.focus, 'flag', 'focus')}
+      ${U.planIdeas && w.rep ? U.planIdeas(S, day, w.rep) : ''}
       ${d.ask_me && d.ask_me.length ? `<div class="hl-asks rs-asks" data-hscroll role="group" aria-label="Ask the coach">${d.ask_me.map((q) => `<button type="button" class="rf-chip" data-act="askPreset" data-arg="${U.esc(q)}">${U.esc(q)}</button>`).join('')}</div>` : ''}
       <p class="t-footnote rf-muted rs-meta">${meta}</p>
       <div class="btn-row rs-btns">
