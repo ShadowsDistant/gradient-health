@@ -1949,9 +1949,11 @@
       for (const g of top) {
         if (both && g === 'triceps') continue;
         const sets = both && g === 'biceps' ? pg.biceps.aim + pg.triceps.aim : pg[g].aim;
-        parts.push(`${both && g === 'biceps' ? 'arms' : b.GROUP_NAME[g].toLowerCase()} ${sets}`);
+        const name = both && g === 'biceps' ? 'arms' : b.GROUP_NAME[g].toLowerCase();
+        // "12 sets for arms and 6 for legs".
+        parts.push(parts.length ? `${sets} for ${name}` : `${setsWord(sets)} for ${name}`);
       }
-      out.push(`Your top goals get the most work: ${joinList(parts)} sets this week.`);
+      out.push(`Your top goals get the most work: ${joinList(parts)} this week.`);
     }
     // Recovery.
     const units = wp.days.map((d) => d.units);
@@ -1966,7 +1968,7 @@
     const setMin = wp.days.length ? Math.round(wp.days.reduce((a, d) => a + d.planned - d.fixed, 0) / wp.days.length) : 0;
     const fin = sessions.some((s) => s.finisher), cool = sessions.some((s) => (s.mobility || []).some((mb) => !mb.cardio)), walk = sessions.some((s) => (s.mobility || []).some((mb) => mb.cardio));
     const extras = ['a warm-up'].concat(fin ? ['a finisher'] : [], walk ? ['an easy cardio block'] : [], cool ? ['a cool-down'] : []);
-    if (setMin > 0) out.push(`Each session fits your ${minutes} minutes: about ${setMin} of sets, then ${joinList(extras)}.`);
+    if (setMin > 0) out.push(`Each session fits your ${minutes} minutes: about ${setMin} minutes of sets, then ${joinList(extras)}.`);
     // Coverage, or groups taking turns.
     if (wp.parity) out.push('There isn\'t time for every muscle group each week, so they take turns: what misses out this week comes first next week.');
     else if (GROUPS.every((g) => !pg[g].trainable || pg[g].effective >= pg[g].floor - 1e-9)) out.push('Every muscle group gets at least its weekly minimum, counting the help bigger moves give.');

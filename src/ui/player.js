@@ -318,7 +318,7 @@
       if (!GH.figure3d || !GH.figure3d.warm() || stillsSlow || stillsDrawn >= 12) { stillsRun = null; return; }
       // Not while any figure box is showing (one may be getting its live figure ready) or a 3D figure
       // runs anywhere: stills are for later, and never take time from a figure on screen.
-      const busyNow = document.hidden || document.querySelector('.fig3d[data-ready]') || [...document.querySelectorAll('.pl-fig, .sheet-fig, .tour-fig')].some((h) => h.offsetParent);
+      const busyNow = document.hidden || document.querySelector('.fig3d[data-ready]') || [...document.querySelectorAll('.pl-fig, .sheet-fig')].some((h) => h.offsetParent);
       if (busyNow) { setTimeout(() => idleCall(step), 1500); return; }
       while (jobs.length) {
         const j = jobs.shift();

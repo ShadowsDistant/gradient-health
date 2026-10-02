@@ -252,6 +252,21 @@ section('Today is a workout day, every weekday');
   await ctx.close();
 }
 
+section('Ask the coach to check it, when there\'s a coach');
+{
+  const { ctx, page } = await fresh('web');
+  // As if an on-device model or Claude were ready (src/planreview.js says, as the plan is built).
+  await page.evaluate(() => { window.GH.planReview.available = () => true; });
+  for (let i = 0; i < 4; i++) await next(page);
+  await toPlan(page);
+  check('the plan offers the coach\'s review', await page.locator('.onboard [data-act="obReview"]').count() === 1);
+  await page.click('.onboard [data-act="obReview"]');
+  await page.clock.runFor(900); await page.waitForTimeout(900);
+  const r = await page.evaluate(() => ({ sheet: !!document.querySelector('dialog.rv-sheet[open]'), onboard: document.getElementById('onboard').hidden, view: document.getElementById('screen').dataset.view, saved: !!(window.GH.ui.S && window.GH.ui.S.profile.onboarded) }));
+  check('it saves the answers and opens the Coach\'s review over Today', r.sheet && r.onboard && r.view === 'today' && r.saved, r);
+  await ctx.close();
+}
+
 section('Restore from a backup, on the welcome');
 {
   const { ctx, page } = await fresh('web');

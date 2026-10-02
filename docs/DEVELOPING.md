@@ -24,7 +24,10 @@ src/food.js              food tracking: targets, logging, meals, the learned bur
 src/foodnet.js           Open Food Facts search and barcodes (through the Android shell)
 src/scanner.js           the barcode camera sheet; src/barcode.js is its lazy ZXing reader
 src/insights.js          on-device insights
-src/coach.js             the built-in coach: report, answers, today's decisions, suggestions
+src/coach.js             the built-in coach: report, answers, today's decisions, suggestions, and the
+                         number check every AI answer goes through (keepToGiven, grounded)
+src/planreview.js        the AI check of the plan (GH.planReview): what's sent, the schema and grammar,
+                         and every suggestion tried on a copy before it's offered
 src/tailor.js            Tailor my plan: a request into a proposal, applied and undone (GH.tailor)
 src/customplan.js        your own plans: checks, running them, swaps, progression, the share code and
                          Build me a plan (GH.customPlan)
@@ -51,7 +54,10 @@ src/ui/customplan.js     Your plans: the list, the editor and exercise picker, s
                          preview, Build me a plan
 src/ui/metric.js         a health number's sheet: its history, chart, and adding or changing it
 src/ui/bodymap.js        Progress's body map (front and back, 17 muscles) and the muscle sheet
-src/ui/guide.js          tour, first-week checklist, tab tips, What's new
+src/ui/guide.js          tour (cards over Today after the first workout), first-week checklist, tab
+                         tips, What's new
+src/ui/motion.js         route changes, glides, collapse and expand (U.motion)
+src/ui/review.js         Why this plan, the Coach's review sheet and the weekly report's plan ideas
 src/ui/*.js              screens: onboarding, player, today, plan, health, food, progress, moves,
                          coach page, profile, science (How it works), settings
 src/styles.css, src/styles/*.css   the app's styles (the per-area files are appended in order)
@@ -98,8 +104,12 @@ left alone. A few conventions:
 - `data-morph="keep"` on a container whose children are drawn by code (the exercise figures).
 - `U.roll(value)` for numbers that should roll when they change.
 - The navigation bar is shared: a screen's `<header class="rf-navbar">` is lifted into it.
-- A route change gets fresh content and an entrance (tabs slide toward the tab you picked, pushed
-  views come in from the side); a re-render of the same route only patches.
+- A route change gets fresh content: the old page leaves in a layer of its own while the new one
+  comes in (`U.motion.routeSwap` in `src/ui/motion.js`; pushes and pops slide, tabs cross-fade, the
+  bar's title and buttons cross-fade with them). A re-render of the same route patches in place and
+  glides what moved (FLIP): new blocks rise in, and removed ones fade from where they were for 200 ms
+  before they go, so a test that checks one is gone waits for `U.motion.settled()`. Animate
+  transform and opacity only; `test/ui-motion.mjs` checks for layout properties.
 
 **Saving.** `U.save()` never writes in the tap that changed something. `GH.store` waits for the page
 to be idle (a second at most) and hands the JSON to `AndroidBridge.saveAsync`, which writes it on its
@@ -134,7 +144,7 @@ context is lost, the figure frees everything it held, its canvas is removed and
 `opts.onFallback(ctl)` is called asynchronously, so the player can mount the SVG figure instead.
 Two losses while figures are on screen keep that session on the flat figure.
 
-In the app, `figure()` in `src/ui/player.js` hands the player, move sheets and the tour one
+In the app, `figure()` in `src/ui/player.js` hands the player and move sheets one
 controller that swaps what's underneath it: the flat figure while the chunk is still loading, 3D once
 it's there, and flat again if `onFallback` fires. Set-up fetches the chunk. The GPU warm-up
 (`U.warmFigure`) runs about 8 seconds after launch only when today is a workout day, or at once when a
@@ -434,6 +444,35 @@ from logged intake and the weight trend (a regression on raw weigh-ins, blended 
   apps logged comes back as per-day totals. The nutrition permissions are only requested when calorie
   tracking is on (`AndroidBridge.hcRequestFood`).
 
+## The plan engine, its AI check, and set-up
+
+`src/optimizer.js` (`GH.optimizer`) plans each week for the person. `split` searches every way to
+share the six muscle units over the training days (an exact branch and bound over the usual weekly
+frequencies and their one-step variants) and picks the best; `weekPlan` gives each day its sets (every
+group's weekly floor first, then by what a minute is worth toward the goals); `fit` fills each session
+to about 92% of the time set and never more than 30 seconds over it. `score` weighs goal fit,
+coverage, time, recovery, balance and variety, `explain` gives the "Why this plan" lines and
+`alternatives` scores the classic splits. Weeks before `S.engineFrom` replay 1.5's templates, so
+history doesn't shift. Plans are cached, and kept in `S.planCache` for the next launch.
+`test/optimizer.mjs` checks the engine; `test/combos.mjs` plans about 2,400 combinations of answers
+(`--full`: 3-wise, with 12-week runs, before a release) and checks that every session fits its time,
+every group gets its week, only allowed moves appear and the same answers give the same plan.
+
+`src/planreview.js` (`GH.planReview`) is the AI check. It sends next week's plan as built (each day's
+groups and moves, weekly sets against targets, minutes against the time set, the score and the
+planner's reasons, and up to 60 moves to swap in) to Claude, held to a JSON schema, or to the
+on-device model, held to a GBNF grammar from the same spec. Health conditions and the exact age only
+ever go to the on-device model. Each suggestion becomes a plan tweak and is tried with
+`GH.optimizer.applyTweaks` on a copy: a broken rule, or a score more than 0.03 lower, turns it down
+with the reason in plain words, and its text goes through the number check. The person picks which
+to apply (`S.profile.planTweaks`), with Undo. Claude's weekly report asks for plan ideas in the same
+request. `test/ai.mjs` and `test/ui-review.mjs` cover it.
+
+Set-up (`src/ui/onboarding.js`) is six screens with one decision each, ending on the plan the engine
+built (`GH.optimizer.explainProfile`) with its first workout a tap away. With no weekdays picked, the
+usual pattern is turned so today is a workout day. Health Connect is offered after the first workout
+(`U.hcInvite`), never before the plan. `test/ui-onboarding.mjs` covers it.
+
 ## Your plans
 
 People can build their own plans, ask the coach to build one, or add one someone shared, and run it
@@ -464,8 +503,8 @@ state (`test/customplan.mjs`); `src/ui/customplan.js` is the screens (`test/ui-c
   `test/customplan.mjs` reads it back with ZXing. Scanning is the barcode sheet with `{ qr: true }`.
 - **Links into the app.** The shell calls `window.__gh.onLink(url)` when a link opens the running app
   (it returns true when it took the link; other handlers stay chained), and `AndroidBridge.pendingLink()`
-  returns the link the app was started with. A new install shows the plan after set-up, and What's new
-  or the tour, which open by themselves, go first.
+  returns the link the app was started with. A link that arrives during set-up is offered on its
+  welcome (`U.peekSharedPlan`): three screens into that plan instead of six.
 - **The share page.** `src/share-page.html` is built to `docs/p/index.html` with the QR encoder and the
   move names inlined, so it makes no requests (its CSP allows only its own script, by hash). It reads the
   plan from the part after `#`, which browsers never send, and shows it. On Android it offers "Open in
@@ -478,7 +517,10 @@ state (`test/customplan.mjs`); `src/ui/customplan.js` is the screens (`test/ui-c
   only holds moves they can do. With Claude on (`GH.ai.json`, a JSON schema) or an on-device model (a
   GBNF grammar of the allowed move ids and exactly the days asked for), a model then renames, regroups
   and re-picks from `allowedMoves()`. `accept()` keeps its answer only if it's a valid plan of moves this
-  person can do; otherwise the app's own plan stands.
+  person can do that passes the plan review's checks: each day fits the time asked for (sets come off
+  the move with the most to spare until it does), every muscle group keeps at least half its weekly
+  sets, the focus groups keep two thirds, and pulling still balances pushing. Otherwise the app's own
+  plan stands.
 
 ## Publishing (Google Play and APKPure)
 

@@ -1049,7 +1049,7 @@
       // Nothing left this week (days picked that skip today, late in the week): next week's first.
       if (!first) { const d = days.find((z) => z.kind === 'work'); if (d) first = GH.optimizer.explain(S0, d.day).today; }
       const around = A() ? A().plannedAround(p) : null;
-      const reasons = (x.reasons || []).slice(1).filter((r) => !around || r.indexOf(around) !== 0).slice(0, 3).map(tidy);
+      const reasons = (x.reasons || []).slice(1).filter((r) => !around || r.indexOf(around) !== 0).slice(0, 3);
       const plan = B().todayPlan(S0, day);
       // The coach's review, when there's a coach to ask (GH.planReview says; a promise counts as no).
       const can = GH.planReview && GH.planReview.available ? GH.planReview.available(S0) : false;
@@ -1059,17 +1059,6 @@
       if (G.console) G.console.error(e);
       return { key, day, p, error: true, days: [], reasons: [] };
     }
-  }
-  // The engine's reasons, tidied for reading aloud: "about 13 of sets" gets its minutes, and
-  // "arms 12 and legs 6 sets this week" reads "12 sets for arms and 6 for legs this week". Words it
-  // doesn't recognise pass through as they are.
-  function tidy(r) {
-    return r.replace(/about (\d+) of sets/, 'about $1 minutes of sets')
-      .replace(/^(Your top goals get the most work): (.+) sets this week\.$/, (m, head, list) => {
-        const items = list.split(/, | and /).map((x) => /^(.+) (\d+)$/.exec(x));
-        if (!items.length || items.some((x) => !x)) return m;
-        return `${head}: ${joinWords(items.map(([, name, n], i) => (i ? `${n} for ${name}` : `${n} sets for ${name}`)))} this week.`;
-      });
   }
   function revealHtml(r) {
     const p = r.p;

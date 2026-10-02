@@ -188,6 +188,8 @@ await shot(page, 'settings');
 check('nothing in the figure rows is cut off', await page.evaluate(() => ![...document.querySelectorAll('#screen .set-fig-row .rf-list-title, #screen .swatches')].some((e) => e.scrollWidth > e.clientWidth + 1 || e.getBoundingClientRect().right > innerWidth)));
 await page.evaluate(() => document.querySelector('#screen [data-on="setFigure"] input[value="flat"]').click());
 await page.waitForTimeout(400);
+// A removed row fades from where it was before it goes (src/ui/motion.js), later under load.
+await page.evaluate(() => window.GH.ui.motion && window.GH.ui.motion.settled());
 check('Simple hides the look options', await page.evaluate(() => window.GH.ui.S.profile.prefs.figure === 'flat' && !document.querySelector('#screen .set-fig-row')));
 await page.evaluate(() => window.GH.ui.act.back ? window.GH.ui.act.back() : history.back());
 await page.waitForTimeout(500);
