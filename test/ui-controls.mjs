@@ -14,7 +14,7 @@
 // The wobbly cases run three ways: with the native click, with the phone's slop (the click is dropped
 // before the page sees it, so the tap must be rescued), and with the click arriving 200 ms late (a
 // busy phone: the rescue goes first and the late click must be swallowed).
-// Usage: node test/ui-controls.mjs [--dark] [--reduced-motion] [--contrast] [--reps=20]
+// Usage: node test/ui-controls.mjs [--dark] [--reduced-motion] [--contrast] [--reduced-transparency] [--reps=20]
 import { createRequire } from 'node:module';
 import { check, section, done, serveDist, load } from './lib.mjs';
 import { seedBridge, seedState } from './fixtures.mjs';
@@ -26,6 +26,9 @@ try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require(
 const dark = process.argv.includes('--dark');
 const reducedMotion = process.argv.includes('--reduced-motion');
 const contrast = process.argv.includes('--contrast');
+const reducedTransparency = process.argv.includes('--reduced-transparency');
+// With increased contrast or reduced transparency there's no glass: solid thumbs, no lens.
+const solid = contrast || reducedTransparency;
 const REPS = Number((process.argv.find((a) => a.startsWith('--reps=')) || '--reps=20').split('=')[1]);
 
 /* ---------------------------------------------------------------- the rules, in node */
@@ -68,6 +71,8 @@ const ctx = await browser.newContext({
   colorScheme: dark ? 'dark' : 'light', reducedMotion: reducedMotion ? 'reduce' : 'no-preference', contrast: contrast ? 'more' : 'no-preference',
 });
 const page = await ctx.newPage();
+// Reduced transparency is the system's setting (the app has none of its own), emulated for the page.
+if (reducedTransparency) await (await ctx.newCDPSession(page)).send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }] });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -180,7 +185,8 @@ const never = (o) => (!o.flipped && o.changes === 0 && o.toggles === 0 && o.play
 const SUP = '#screen input[data-on="setPref"][data-k="supersets"]';
 const SND = '#screen input[data-on="setPref"][data-k="sound"]';
 
-section(`Switches, ${dark ? 'dark' : 'light'}${contrast ? ', increased contrast' : ''}${reducedMotion ? ', reduced motion' : ''}`);
+section(`Switches, ${dark ? 'dark' : 'light'}${contrast ? ', increased contrast' : ''}${reducedTransparency ? ', reduced transparency' : ''}${reducedMotion ? ', reduced motion' : ''}`);
+if (reducedTransparency) check('reduced transparency is on, for the page and for Refract', await page.evaluate(() => matchMedia('(prefers-reduced-transparency: reduce)').matches && window.Refract.prefs.reducedTransparency));
 await settings();
 // A tap on the knob or the track, `px` of wobble, in each of the three click modes.
 async function tapCase(name, seed, px, sel, key, m, settle) {
@@ -533,8 +539,8 @@ const look = (s) => page.evaluate((sel) => {
   };
 }, s);
 const rest = await look(REST);
-if (contrast) {
-  check('increased contrast: the thumb is solid, with no lens and no backdrop filter', rest.fill === 1 && !rest.sheen && rest.lens && rest.lens.display === 'none', rest);
+if (solid) {
+  check(`${contrast ? 'increased contrast' : 'reduced transparency'}: the thumb is solid, with no lens and no backdrop filter`, rest.fill === 1 && !rest.sheen && rest.lens && rest.lens.display === 'none', rest);
 } else {
   check('at rest the thumb is glass: a clear fill, a sheen and a rim', rest.fill > 0.2 && rest.fill < 0.9 && rest.sheen && rest.rim, rest);
   check('at rest the lens is off: transparent, no backdrop filter', rest.idle && rest.lens.opacity === 0 && rest.lens.filter === 'none', rest.lens);
@@ -552,7 +558,7 @@ if (contrast) {
   const dragged = await look(REST);
   await touch('touchCancel', cur.x + 24, cur.y, clock + 0.3);
   clock += 0.3;
-  if (!contrast) {
+  if (!solid) {
     check('held, the thumb lifts and its lens fades in, with a backdrop filter', held.lens.opacity > 0.9 && held.lens.filter !== 'none' && !held.idle, held.lens);
     check('dragged, the lens bends the labels it passes', dragged.lens.opacity > 0.9 && /url\(|saturate/.test(dragged.lens.filter), dragged.lens);
   } else check('held and dragged, still no lens', held.lens.display === 'none' && dragged.lens.display === 'none');
@@ -590,8 +596,8 @@ if (reducedMotion) {
   clock += 0.3;
   await wait(500);
   check('a knob at rest is solid, its lens off', k0.coat === 1 && k0.filter === 'none' && k0.idle, k0);
-  if (!contrast) check('held, its coat fades and the lens shows', k1.coat < 0.1 && k1.filter !== 'none', k1);
-  else check('held, with increased contrast it stays solid', k1.coat === 1 && k1.filter === 'none', k1);
+  if (!solid) check('held, its coat fades and the lens shows', k1.coat < 0.1 && k1.filter !== 'none', k1);
+  else check('held, with no glass it stays solid', k1.coat === 1 && k1.filter === 'none', k1);
 }
 // Toggle chips keep their width: the Days sheet's weekdays.
 {
