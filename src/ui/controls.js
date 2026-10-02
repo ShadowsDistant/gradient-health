@@ -474,20 +474,25 @@
     const opts = () => K.opts(root);
     const current = () => opts().find(K.on) || null;
 
-    // The thumb goes where the option is (with its size, for chips of any width on any line).
+    // The thumb goes where the option is (with its size, for chips of any width on any line). Every
+    // size is read before anything is written (a read after a write restyles the page again), and a
+    // value that's already there isn't written again.
+    const put = (name, v) => { if (root.style.getPropertyValue(name) !== v) root.style.setProperty(name, v); };
     const place = (o) => {
-      root.style.setProperty('--_tx', `${o.offsetLeft}px`);
-      root.style.setProperty('--_tw', `${o.offsetWidth}px`);
+      const x = o.offsetLeft, y = o.offsetTop, w = o.offsetWidth, h = o.offsetHeight;
+      const lensH = K.drag ? thumb.offsetHeight : h;
+      put('--_tx', `${x}px`);
+      put('--_tw', `${w}px`);
       if (!K.drag) {
-        root.style.setProperty('--_ty', `${o.offsetTop}px`);
-        root.style.setProperty('--_th', `${o.offsetHeight}px`);
+        put('--_ty', `${y}px`);
+        put('--_th', `${h}px`);
       }
       // The lens filter for the thumb's size, rebuilt only when the size changes (a resize, another
       // chip's width), from a cache shared by every control.
-      const k = `${o.offsetWidth}x${K.drag ? thumb.offsetHeight : o.offsetHeight}`;
+      const k = `${w}x${lensH}`;
       if (k !== lensKey) {
         lensKey = k;
-        const url = lensFor(o.offsetWidth, K.drag ? thumb.offsetHeight : o.offsetHeight, 'thumb');
+        const url = lensFor(w, lensH, 'thumb');
         if (url) root.style.setProperty('--_drag-lens', url); else root.style.removeProperty('--_drag-lens');
       }
     };

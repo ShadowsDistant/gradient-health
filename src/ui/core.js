@@ -424,8 +424,12 @@
       if (r && r.init) U.morphKit.aside(() => { safe(() => r.init(tabbar)); safe(() => r.init(topbar)); });
     });
     // The bar's height feeds the screen's top padding (its observer reports before the first frame
-    // is drawn).
-    const measure = () => { const h = topbar.offsetHeight; if (h) doc.documentElement.style.setProperty('--topbar-h', h + 'px'); };
+    // is drawn). It's written only when the padding isn't that already (the style sheet's own value,
+    // the safe area and 60 px, usually is): a change on the root restyles every element on the page.
+    const measure = () => {
+      const h = topbar.offsetHeight;
+      if (h && parseFloat(G.getComputedStyle(screen).paddingTop) !== h) doc.documentElement.style.setProperty('--topbar-h', h + 'px');
+    };
     if (G.ResizeObserver) new G.ResizeObserver(measure).observe(topbar); else measure();
     screen.addEventListener('scroll', onScroll, { passive: true });
     pullToRefresh();
