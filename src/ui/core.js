@@ -134,7 +134,7 @@
   const BEHAVIOR = ['rf-segmented', 'rf-switch', 'rf-slider', 'rf-stepper', 'rf-chip', 'rf-glass', 'rf-navbar', 'rf-scroll-edge', 'rf-search', 'rf-pagedots', 'rf-activity', 'rf-tabbar', 'gh-chipseg'];
   const BEHAVIOR_SEL = BEHAVIOR.map((c) => '.' + c).join(',');
   // Attributes behaviors set on our elements. Only matters for nodes the markup didn't create.
-  const KEEP_ATTR = /^(data-(ready|lens-ready|lens-idle|scrolled|active|pressed|glow|magnet|dragging|drag-on|over|empty|bump|leaving|traveling|open|expanded|detent|entering|animate|minimized|revealed|hover|merged|tilting|rf-.*)|role|tabindex|style|aria-(checked|selected|expanded|controls|describedby|valuetext))$/;
+  const KEEP_ATTR = /^(data-(ready|lens-ready|lens-idle|scrolled|active|pressed|glow|magnet|dragging|drag-on|over|empty|bump|leaving|traveling|open|expanded|detent|entering|animate|minimized|revealed|hover|merged|tilting|fading|rf-.*)|role|tabindex|style|aria-(checked|selected|expanded|controls|describedby|valuetext))$/;
   const owned = new WeakMap(); // element → { attrs, style } the markup set, so only those get removed
 
   const isInjected = (n) => n.nodeType === 1 && INJECTED.some((c) => n.classList.contains(c));
@@ -452,9 +452,14 @@
     const x = { push: 36, pop: -36, right: 18, left: -18 }[kind] || 0;
     screen.animate([{ opacity: 0, transform: `translateX(${x}px)` }, { opacity: 1, transform: 'none' }], { duration: kind === 'push' || kind === 'pop' ? 320 : 260, easing: EASE_ENTER });
   }
+  // The floating buttons rise in over the tab bar. They're glass: the row moves, and each button
+  // fades by itself (U.motion.show), so none of them shows the page behind it sharp until the end.
   function floatIn() {
     if (U.reduced() || !floatEl.animate) return;
-    floatEl.animate([{ opacity: 0, transform: 'translateY(18px) scale(.94)' }, { opacity: 1, transform: 'none' }], { duration: 420, easing: 'cubic-bezier(0.34, 1.3, 0.64, 1)' });
+    const frames = [{ opacity: 0, transform: 'translateY(18px) scale(.94)' }, { opacity: 1, transform: 'none' }];
+    const o = { duration: 420, easing: 'cubic-bezier(0.34, 1.3, 0.64, 1)' };
+    if (U.motion && U.motion.show) U.motion.show(floatEl, frames, o);
+    else floatEl.animate(frames, o);
   }
 
   /* ---------------------------------------------------------------- rendering */
@@ -654,6 +659,8 @@
     const act = U.actAccessory ? safe(() => U.actAccessory()) : '';
     const show = (!!A || !!act) && playerEl.hidden && !(U.route.tab === 'today' && !U.route.view);
     const was = !accessory.hidden;
+    // Going away: a copy of the capsule fades and sinks where it was (it hides at once).
+    if (was && !show && U.motion && U.motion.fadeAway) safe(() => U.motion.fadeAway(accessory));
     accessory.hidden = !show;
     screen.toggleAttribute('data-capsule', show);
     // Emptied with morph, not innerHTML: that keeps Refract's lens layer (the capsule's glass), which
@@ -669,7 +676,13 @@
       <button type="button" class="rf-btn" data-size="sm" data-act="resumeWorkout" aria-label="Resume the workout, ${doneN} of ${total} sets done">Resume</button>`);
     }
     fitAccessory();
-    if (!was && !U.reduced() && accessory.animate) accessory.animate([{ opacity: 0, transform: 'translateY(10px) scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 360, easing: EASE_ENTER });
+    // Coming in: it rises into place, its glass fading by itself (U.motion.show).
+    if (!was && !U.reduced() && accessory.animate) {
+      const frames = [{ opacity: 0, transform: 'translateY(10px) scale(.96)' }, { opacity: 1, transform: 'none' }];
+      const o = { duration: 360, easing: EASE_ENTER };
+      if (U.motion && U.motion.show) U.motion.show(accessory, frames, o);
+      else accessory.animate(frames, o);
+    }
   }
   // A long workout title with large text: two lines for the title and no set count, rather than a
   // title cut short.

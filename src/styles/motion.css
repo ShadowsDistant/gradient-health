@@ -9,3 +9,19 @@
 .screen.screen-exit { bottom: auto; overflow: clip; scroll-timeline: none; pointer-events: none; contain: layout style; }
 .screen-exit *, .motion-leaving, .motion-leaving * { animation: none !important; }
 .screen-exit, .motion-copy, .motion-leaving { pointer-events: none !important; }
+
+/* Glass fading in or out (data-fading, set by U.motion.show for as long as the fade lasts). Its frost
+   normally lives on its lens layer, a child; but the glass's own opacity cuts that child off from the
+   page behind it, which would then show through sharp. So meanwhile the body carries the fill and the
+   lens layer's frost itself (an element's own opacity leaves its own backdrop alone), without the
+   lens's bend at the rim. Increased contrast and reduced transparency have no lens layer to stand in
+   for. */
+:root:not([data-theme$="contrast"]):not([data-rf-transparency="reduced"]) .rf-glass[data-lens-ready][data-fading] {
+  background-color: var(--_fill);
+  -webkit-backdrop-filter: blur(calc(var(--_blur) * 0.3 * var(--rf-mat, 1))) saturate(var(--_sat)) brightness(var(--rf-glass-bright));
+  backdrop-filter: blur(calc(var(--_blur) * 0.3 * var(--rf-mat, 1))) saturate(var(--_sat)) brightness(var(--rf-glass-bright));
+}
+:root:not([data-theme$="contrast"]):not([data-rf-transparency="reduced"]) .rf-glass[data-lens-ready][data-fading] > .rf-lens-layer { display: none; }
+@media (prefers-reduced-transparency: reduce) {
+  .rf-glass[data-lens-ready][data-fading] { -webkit-backdrop-filter: var(--_backdrop); backdrop-filter: var(--_backdrop); }
+}

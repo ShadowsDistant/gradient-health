@@ -86,6 +86,60 @@
     return m[1] ? { x: v[12] || 0, y: v[13] || 0, t } : { x: v[4] || 0, y: v[5] || 0, t };
   }
 
+  /* ---------------------------------------------------------------- glass that fades */
+  // Glass shows what's behind it, frosted; but an element fading by opacity is where the backdrop of
+  // everything inside it stops. Glass inside a fading part shows the page behind it sharp until the
+  // fade ends, then frosts over at once. An element's own opacity doesn't cut off its own backdrop,
+  // though, so glass fades by itself, carrying its frost on its own body meanwhile (data-fading: the
+  // lens layer, a child, is off until the fade ends; src/styles/motion.css), and a part with glass in
+  // it only moves, while its glass and its other parts fade each by themselves.
+  const fadingNow = new WeakMap(); // glass → how many fades it's in
+  function fadingGlass(el, a) {
+    if (!a) return a;
+    fadingNow.set(el, (fadingNow.get(el) || 0) + 1);
+    el.setAttribute('data-fading', '');
+    ended(a).then(() => {
+      const n = (fadingNow.get(el) || 1) - 1;
+      if (n) fadingNow.set(el, n);
+      else { fadingNow.delete(el); el.removeAttribute('data-fading'); }
+    });
+    return a;
+  }
+  const only = (frames, prop) => frames.map((k) => { const f = {}; for (const p of Object.keys(k)) if (p === prop || p === 'offset' || p === 'easing') f[p] = k[p]; return f; });
+  function show(el, frames, o) {
+    const out = [];
+    const walk = (n, kf) => {
+      const glass = n.classList.contains('rf-glass');
+      if (glass || !n.querySelector('.rf-glass')) {
+        const a = run(n, kf, o);
+        if (glass) fadingGlass(n, a);
+        out.push(a);
+        return;
+      }
+      if (kf.some((k) => 'transform' in k)) out.push(run(n, only(kf, 'transform'), o));
+      const fade = only(kf, 'opacity');
+      for (const c of n.children) walk(c, fade);
+    };
+    if (el && el.nodeType === 1) walk(el, frames);
+    out.forEach(track);
+    return out;
+  }
+  M.show = show;
+  // A part positioned on its own (the workout capsule) that hides at once: a copy of it fades and
+  // sinks where it was.
+  M.fadeAway = (el) => {
+    if (reduced() || !can(el) || !el.parentNode) return Promise.resolve();
+    const c = el.cloneNode(true);
+    c.classList.add('motion-copy');
+    c.hidden = false;
+    shield(c);
+    aside(() => el.after(c));
+    const a = show(c, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(10px) scale(.94)' }], { duration: 220, easing: tok().standard, fill: 'forwards' });
+    const gone = () => c.remove();
+    setTimeout(gone, 600);
+    return Promise.all(a.map(ended)).then(gone);
+  };
+
   /* ---------------------------------------------------------------- parts on their way out */
   // A part that's leaving (the old page, a removed card, a copy of a bar button) takes no taps, isn't
   // read out and leaves its radio groups (a page coming in with the same names would uncheck it).
@@ -150,6 +204,10 @@
   // there).
   function hurry() {
     for (const x of Array.from(swaps)) {
+      // One already hurried away (route changes in quick succession) just goes: two old pages on
+      // screen at most.
+      if (x.hurried || !x.layer.isConnected) { x.done(); continue; }
+      x.hurried = true;
       const at = drawnAt(x.layer);
       for (const a of x.anims) if (a) a.cancel();
       const a = run(x.layer, [{ transform: at.transform, opacity: at.opacity }, { transform: at.transform, opacity: 0 }], { duration: 90, easing: 'linear', fill: 'forwards' });
@@ -164,7 +222,31 @@
     return at;
   }
 
+  // What's below the bottom of the screen never shows while the old page leaves (it moves sideways),
+  // so it goes at once: the layer has that much less to lay out and draw. Only from the end of the
+  // page, and into the section or list that crosses the bottom edge, so nothing that stays moves.
+  // Measured before anything changes (reads only, so one layout at most), dropped after.
+  function belowSight(screen) {
+    const out = [];
+    const bottom = (G.innerHeight || doc.documentElement.clientHeight) + 40;
+    const walk = (parent) => {
+      for (let c = parent.lastElementChild; c; c = c.previousElementSibling) {
+        const r = c.getBoundingClientRect();
+        if (r.top > bottom) { out.push(c); continue; }
+        if (r.bottom > bottom && c.matches('.section, .rf-list')) walk(c);
+        return;
+      }
+    };
+    if (screen.firstElementChild) walk(screen);
+    return out;
+  }
+  // barSwap measures it on its way (the bar is measured in the same layout, before the render
+  // changes anything); routeSwap uses that, or measures it itself.
+  let below = null;
+
   M.routeSwap = (screen, frag, kind) => {
+    const pre = below;
+    below = null;
     hurry();
     const from = stopEntrance(screen);
     const moving = !!SLIDES[kind] && !!screen.firstElementChild && can(screen);
@@ -177,6 +259,9 @@
       return;
     }
     const f = routeSpec(kind);
+    // Out of the page now; Refract's cleanup for them runs when the old page goes.
+    const gone = (pre && pre.screen === screen ? pre.list : belowSight(screen)).filter((c) => screen.contains(c));
+    for (const c of gone) c.remove();
     // The old page, in a layer with the screen's look (its class and attributes), moved up by as far
     // as it was scrolled, so it starts exactly where it was. Its nodes are set aside (Refract keeps
     // what it set up on them, for the cleanup when they go).
@@ -184,11 +269,9 @@
     layer.className = 'screen screen-exit';
     for (const a of ['data-view', 'data-pushed', 'data-float', 'data-capsule']) if (screen.hasAttribute(a)) layer.setAttribute(a, screen.getAttribute(a));
     layer.setAttribute('data-kind', kind);
-    if (screen.scrollTop) layer.style.translate = `0 ${-screen.scrollTop}px`;
-    aside(() => {
-      while (screen.firstChild) layer.appendChild(screen.firstChild);
-      screen.after(layer);
-    });
+    const top = pre && pre.screen === screen ? pre.scroll : screen.scrollTop;
+    if (top) layer.style.translate = `0 ${-top}px`;
+    aside(() => { while (screen.firstChild) layer.appendChild(screen.firstChild); });
     shield(layer);
     screen.appendChild(frag);
     const x = { layer, anims: [] };
@@ -199,13 +282,21 @@
       swaps.delete(x);
       for (const a of x.anims) if (a) a.cancel();
       drop(layer);
+      for (const c of gone) drop(c);
     };
     swaps.add(x);
-    const out = from ? [from.transform, f.out[1]] : f.out;
-    x.anims = slide(layer, out, [[from ? from.opacity : 1], [0, f.gone], [0]], f.ms, 'forwards');
     entering = slide(screen, f.in, [[0], [0, f.show], [1]], f.ms);
-    track(Promise.all(x.anims.map(ended)).then(() => x.done()));
     entering.forEach(track);
+    // The old page goes on the page once the render that called this is done (before the next
+    // frame): the layout that render does for the new page then doesn't lay the old one out too.
+    const shown = new Promise((resolve) => Promise.resolve().then(() => {
+      if (finished) { resolve(); return; }
+      aside(() => screen.after(layer));
+      const out = from ? [from.transform, f.out[1]] : f.out;
+      x.anims = slide(layer, out, [[from ? from.opacity : 1], [0, f.gone], [0]], f.ms, 'forwards');
+      Promise.all(x.anims.map(ended)).then(() => x.done()).then(resolve);
+    }));
+    track(shown);
     // A page in the background draws no frames: the old one goes anyway.
     setTimeout(() => x.done(), f.ms + 400);
   };
@@ -229,10 +320,15 @@
       const shown = isShown(bar, el, title);
       parts.push({ el, title, was: showing(el, title), r: shown ? el.getBoundingClientRect() : null, copy: shown ? el.cloneNode(true) : null });
     }
+    const screen = doc.getElementById('screen');
+    if (screen) below = { screen, list: belowSight(screen), scroll: screen.scrollTop };
     return (kind) => {
       const t = tok();
       // The way the old page moves (left on a push or a tab to the right).
       const dir = kind === 'push' || kind === 'right' ? -1 : kind === 'pop' || kind === 'left' ? 1 : 0;
+      // A title slides a little; buttons shrink or grow in place, each by itself.
+      const pieces = (el, title) => (title ? [el] : Array.from(el.children));
+      const look = (title) => `translateX(${dir * 10}px)${title ? '' : ' scale(.8)'}`;
       for (const p of parts) {
         if (!p.el.isConnected || showing(p.el, p.title) === p.was) continue;
         if (p.copy) {
@@ -241,14 +337,17 @@
           Object.assign(c.style, { position: 'absolute', margin: '0', left: `${p.r.left - box.left}px`, top: `${p.r.top - box.top}px`, width: `${p.r.width}px`, height: `${p.r.height}px`, opacity: '1', translate: 'none', transition: 'none' });
           shield(c);
           aside(() => bar.appendChild(c));
-          const a = run(c, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${dir * 10}px)${p.title ? '' : ' scale(.86)'}` }], { duration: 180, easing: t.standard, fill: 'forwards' });
-          track(ended(a).then(() => c.remove()));
-          if (!a) c.remove();
+          const a = [];
+          for (const x of pieces(c, p.title)) a.push(...show(x, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: look(p.title) }], { duration: 180, easing: t.standard, fill: 'forwards' }));
+          const gone = () => c.remove();
+          Promise.all(a.map(ended)).then(gone);
+          setTimeout(gone, 600);
         }
         if (isShown(bar, p.el, p.title)) {
           // The title's own fade (data-scrolled) already brings it in when it wasn't showing.
           if (p.title && !p.copy) continue;
-          track(run(p.el, [{ opacity: 0, transform: `translateX(${-dir * 10}px)${p.title ? '' : ' scale(.86)'}` }, { opacity: 1, transform: 'none' }], { duration: 260, delay: 60, easing: t.enter, fill: 'backwards' }));
+          const from = p.title ? `translateX(${-dir * 10}px)` : 'scale(.8)';
+          for (const x of pieces(p.el, p.title)) show(x, [{ opacity: 0, transform: from }, { opacity: 1, transform: 'none' }], { duration: p.title ? 260 : 360, delay: 60, easing: p.title ? t.enter : t.snappy, fill: 'backwards' });
         } else if (p.title) {
           for (const a of p.el.getAnimations()) if (a.transitionProperty) a.finish();
         }
@@ -296,17 +395,18 @@
     ended(a).then(() => { if (glides.get(el) === a) glides.delete(el); });
     return track(a);
   }
+  const all = (list) => Promise.all(list.map(ended)).then(() => {});
   // A block new to a list or a page rises into place, a beat after its neighbours start to make room.
   function rise(el, delay) {
     if (el.nodeType !== 1 || !el.animate) return null;
-    return track(run(el, [{ opacity: 0, transform: 'translateY(8px) scale(.985)' }, { opacity: 1, transform: 'none' }], { duration: 320, delay: delay || 0, easing: tok().enter, fill: 'backwards' }));
+    return all(show(el, [{ opacity: 0, transform: 'translateY(8px) scale(.985)' }, { opacity: 1, transform: 'none' }], { duration: 320, delay: delay || 0, easing: tok().enter, fill: 'backwards' }));
   }
   // A pinned block fades and shrinks where it's drawn, then goes.
   function vanish(el, at) {
-    const a = run(el, [{ opacity: 1, transform: at || 'none' }, { opacity: 0, transform: `${at && at !== 'none' ? at + ' ' : ''}scale(.96)` }], { duration: 200, easing: tok().standard, fill: 'forwards' });
+    const list = show(el, [{ opacity: 1, transform: at || 'none' }, { opacity: 0, transform: `${at && at !== 'none' ? at + ' ' : ''}scale(.96)` }], { duration: 200, easing: tok().standard, fill: 'forwards' });
     const gone = () => { const k = kit(); if (k) k.leaving.delete(el); drop(el); };
-    if (!a) { gone(); return Promise.resolve(); }
-    return track(ended(a).then(gone));
+    if (!list.some(Boolean)) { gone(); return Promise.resolve(); }
+    return track(all(list).then(gone));
   }
 
   function session() {
@@ -349,16 +449,16 @@
           }
         }
         const outs = pins.map((n) => [n, glides.has(n) ? offsetNow(n).t : null]);
-        const all = [];
+        const done = [];
         // Short moves on the snappy spring; a long one (the page's end coming up after a card folds
         // at the bottom) on the smooth one, which takes its time.
         const t = tok();
         const far = moves.some(([, dx, dy]) => Math.abs(dx) > 120 || Math.abs(dy) > 120);
         const time = far ? { duration: t.smoothMs, easing: t.smooth } : { duration: t.snappyMs, easing: t.snappy };
-        for (const [el, dx, dy, now] of moves) all.push(glide(el, dx + (now ? now.x : 0), dy + (now ? now.y : 0), time));
-        for (const [n, at] of outs) { glides.delete(n); all.push(vanish(n, at)); }
-        for (const n of added) all.push(rise(n, moves.length ? 70 : 0));
-        return Promise.all(all).then(() => {});
+        for (const [el, dx, dy, now] of moves) done.push(glide(el, dx + (now ? now.x : 0), dy + (now ? now.y : 0), time));
+        for (const [n, at] of outs) { glides.delete(n); done.push(vanish(n, at)); }
+        for (const n of added) done.push(rise(n, moves.length ? 70 : 0));
+        return Promise.all(done).then(() => {});
       },
     };
     return s;
@@ -419,18 +519,18 @@
     if (!parent || !can(el)) { swap(); return Promise.resolve(); }
     if (reduced()) {
       // Reduced motion: a short fade, then it changes or goes.
-      const a = run(el, [{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: 'linear', fill: 'forwards' });
-      return track(ended(a).then(() => { swap(); if (a) a.cancel(); }));
+      const a = show(el, [{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: 'linear', fill: 'forwards' });
+      return track(all(a).then(() => { swap(); for (const x of a) if (x) x.cancel(); }));
     }
     const t = tok();
-    const a = run(el, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.96)' }], { duration: 180, easing: t.standard, fill: 'forwards' });
-    return track(ended(a).then(() => {
+    const a = show(el, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.96)' }], { duration: 180, easing: t.standard, fill: 'forwards' });
+    return track(all(a).then(() => {
       if (change) {
         // A re-render folds it into something smaller (it keeps its node, and the re-render glides
         // what's after it): that fades in where it was.
         change();
-        if (el.isConnected) run(el, [{ opacity: 0, transform: 'scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: t.enter });
-        if (a) a.cancel();
+        if (el.isConnected) show(el, [{ opacity: 0, transform: 'scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: t.enter });
+        for (const x of a) if (x) x.cancel();
         return;
       }
       if (!el.parentNode) return;
@@ -446,12 +546,12 @@
     const put = () => parent.insertBefore(el, before && before.parentNode === parent ? before : null);
     if (!can(parent) || reduced()) {
       put();
-      if (reduced() && can(el)) return track(run(el, [{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: 'linear' }));
+      if (reduced() && can(el)) return all(show(el, [{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: 'linear' }));
       return Promise.resolve();
     }
     const s = around(parent);
     put();
     s.play();
-    return track(run(el, [{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 260, delay: 90, easing: tok().enter, fill: 'backwards' }));
+    return all(show(el, [{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 260, delay: 90, easing: tok().enter, fill: 'backwards' }));
   };
 })(typeof window !== 'undefined' ? window : globalThis);
