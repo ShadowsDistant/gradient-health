@@ -276,6 +276,18 @@
     if (one) out.focus_one = one;
     return out;
   }
+  // The report's schema and ask, with the plan review folded in when there's a plan to check
+  // (src/planreview.js): plan_suggestions and plan_note, which the report keeps as its plan ideas
+  // (rep.plan) for the person to look over. { schema, ask (added to the report's), plan }.
+  function reportParts(S, day) {
+    const R = GH.planReview && GH.planReview.forReport ? GH.planReview.forReport(S, day) : null;
+    if (!R) return { schema: REPORT_SCHEMA, ask: '', plan: null };
+    const schema = Object.assign({}, REPORT_SCHEMA, {
+      properties: Object.assign({}, REPORT_SCHEMA.properties, { plan_suggestions: R.schema, plan_note: { type: 'string' } }),
+      required: REPORT_SCHEMA.required.concat(['plan_suggestions', 'plan_note']),
+    });
+    return { schema, ask: R.ask, plan: R };
+  }
   function reportFor(S, day) { const ws = B().weekStart(day); return (S.ai.reports || []).find((r) => r.week === ws) || null; }
   function needsReport(S, day) { return !!(S.ai.enabled && S.ai.consentAt && hasKey() && !reportFor(S, day) && S.log.some((l) => l.type === 'workout')); }
   function clearChat(S) { S.ai.chat = []; }
@@ -289,8 +301,17 @@
     try { return await GH.lazy('claude'); } catch (e) { throw coachError('other'); }
   }
   async function report(S, day) { return (await claude(S)).report(S, day); }
+  // A question that sounds like an emergency gets the app's own safety answer, as the on-device
+  // coach does: nothing is sent, and the exchange is kept marked safety (it isn't sent with later
+  // questions either).
   async function ask(S, day, question, onText) {
-    if (!String(question || '').trim()) throw coachError('other', 'Type a question first.');
+    const q = String(question || '').trim().slice(0, 1000);
+    if (!q) throw coachError('other', 'Type a question first.');
+    if (GH.coach && GH.coach.topicOf(q) === 'redflag') {
+      const text = GH.coach.ask(S, day, q).text;
+      S.ai.chat = (S.ai.chat || []).concat([{ role: 'user', text: q, day, safety: true }, { role: 'assistant', text, day, safety: true }]).slice(-20);
+      return { text, safety: true };
+    }
     return (await claude(S)).ask(S, day, question, onText);
   }
   async function suggest(S, day) { return (await claude(S)).suggest(S, day); }
@@ -300,7 +321,7 @@
   function stop() { if (GH.claude) GH.claude.stop(); }
 
   GH.ai = {
-    KEY_URL, hasKey, checkKey, setKey, deleteKey, summary, preview, report, reportFor, readReport, needsReport, ask, suggest, tailor, json, stop, clearChat, pickFrom, explain, MESSAGES, SYSTEM, REPORT_SCHEMA,
+    KEY_URL, hasKey, checkKey, setKey, deleteKey, summary, preview, report, reportFor, readReport, reportParts, needsReport, ask, suggest, tailor, json, stop, clearChat, pickFrom, explain, MESSAGES, SYSTEM, REPORT_SCHEMA,
     // For src/claude.js.
     getKey, needConsent, coachError, systemBlocks,
   };
