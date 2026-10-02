@@ -390,10 +390,13 @@
     return { parent, box: box || parent.getBoundingClientRect(), kids, off: false };
   }
   // A child that's going: out of the flow at once, pinned where it was (what's after it closes up
-  // under it), then it fades and shrinks there and is dropped. False when it can't be (core drops it).
+  // under it), then it fades and shrinks there and is dropped. False when it can't be, or when it
+  // wasn't in sight anyway (core drops it at once).
   function pin(el, f) {
     const k = kit();
     if (!k || !el.style || !f || !f.w || !f.h || !f.op || f.op === doc.body) return false;
+    const h = G.innerHeight || doc.documentElement.clientHeight;
+    if (f.r.bottom < 0 || f.r.top > h) return false;
     k.leaving.add(el);
     shield(el);
     el.classList.add('motion-leaving');

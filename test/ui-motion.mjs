@@ -643,8 +643,11 @@ section('Frames while route changes play (CPU 4x slower, best of 3)');
     clearInterval(touching);
     return { motion, first };
   }, steps);
-  // Light stand-ins for Today and Plan (and two pages to push), with bars that differ.
+  // Light stand-ins for Today and Plan (and two pages to push), with bars that differ. And no mouse
+  // over the page, as on a phone: the clicks above left one there, and Refract's light on glass
+  // follows a mouse (never a finger), measuring every glass part each frame while any of them moves.
   await page.evaluate(async () => {
+    document.dispatchEvent(new PointerEvent('pointerleave'));
     const U = window.GH.ui;
     const cards = (n, tag) => Array.from({ length: n }, (_, i) => `<div class="card" data-key="${tag}${i}"><p class="t-headline">${tag} ${i}</p><p class="t-footnote rf-muted">Two lines of words to lay out and paint, as a card on a phone this wide has.</p></div>`).join('');
     window.__real = {};
