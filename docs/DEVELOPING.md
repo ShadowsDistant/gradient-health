@@ -57,6 +57,8 @@ src/ui/bodymap.js        Progress's body map (front and back, 17 muscles) and th
 src/ui/guide.js          tour (cards over Today after the first workout), first-week checklist, tab
                          tips, What's new
 src/ui/motion.js         route changes, glides, collapse and expand (U.motion)
+src/ui/lazy.js           stand-ins for the parts that load when they're needed (APP_CHUNKS)
+src/ui/answers.js        set-up's answers as You, Plan and Settings list them
 src/ui/review.js         Why this plan, the Coach's review sheet and the weekly report's plan ideas
 src/ui/*.js              screens: onboarding, player, today, plan, health, food, progress, moves,
                          coach page, profile, science (How it works), settings
@@ -110,6 +112,17 @@ left alone. A few conventions:
   glides what moved (FLIP): new blocks rise in, and removed ones fade from where they were for 200 ms
   before they go, so a test that checks one is gone waits for `U.motion.settled()`. Animate
   transform and opacity only; `test/ui-motion.mjs` checks for layout properties.
+
+**Parts that load when they're needed.** Set-up (`src/ui/onboarding.js`), the plan review with
+Why this plan (`src/planreview.js`, `src/ui/review.js`), How it works (`src/data/science.js`,
+`src/ui/science.js`) and a badge's share card (`src/ui/sharecard.js`) aren't in the page: they're
+`APP_CHUNKS` in `scripts/build.mjs`, built into `dist/lazy/` and loaded with `GH.lazy(name)`.
+`src/ui/lazy.js` puts small stand-ins in their place: an action loads its part and then runs the
+real one, a screen draws its bar and title until its part is in, and `GH.planReview.available`
+answers at once. A couple of seconds after launch the likely parts load while the phone is idle,
+so a tap rarely waits. A new module that the first frame of Today doesn't need belongs in a chunk.
+`test/ui-perf.mjs` holds the launch, tab and save budgets (4× CPU), and `test/buildcheck.mjs` the
+page's size.
 
 **Saving.** `U.save()` never writes in the tap that changed something. `GH.store` waits for the page
 to be idle (a second at most) and hands the JSON to `AndroidBridge.saveAsync`, which writes it on its
