@@ -582,15 +582,18 @@
   }
   const PARTS = () => O().PARTS;
   const partMoved = (before, after, sign) => Object.keys(PARTS()).sort((x, y) => sign * ((after.parts[y] - before.parts[y]) * PARTS()[y] - (after.parts[x] - before.parts[x]) * PARTS()[x]))[0];
+  // A change is told in points, never as a second score: it's weighed on next week's sessions as
+  // built, which can sit a point or two from the plan score Why this plan shows.
+  const points = (n) => `${n} point${n === 1 ? '' : 's'}`;
   function worse(before, after) {
-    return `It would make your plan a worse fit (${pct(before.score)} down to ${pct(after.score)} out of 100), mostly on ${PART_INFO[partMoved(before, after, -1)][2]}.`;
+    return `It would make your plan a worse fit (${points(pct(before.score) - pct(after.score))} lower), mostly on ${PART_INFO[partMoved(before, after, -1)][2]}.`;
   }
   // The score's change in words: { dir: 'up' | 'same' | 'down', text }.
   function scoreWords(before, after) {
     const a = pct(before.score), z = pct(after.score);
-    if (z > a) return { dir: 'up', text: `A better fit: ${z} out of 100, up from ${a}, mostly on ${PART_INFO[partMoved(before, after, 1)][2]}.` };
-    if (z < a) return { dir: 'down', text: `Scores ${z} out of 100, down from ${a} (mostly ${PART_INFO[partMoved(before, after, -1)][2]}), within what the planner allows.` };
-    return { dir: 'same', text: `About as good a fit: ${z} out of 100.` };
+    if (z > a) return { dir: 'up', text: `A better fit: ${points(z - a)} higher, mostly on ${PART_INFO[partMoved(before, after, 1)][2]}.` };
+    if (z < a) return { dir: 'down', text: `Scores ${points(a - z)} lower (mostly ${PART_INFO[partMoved(before, after, -1)][2]}), within what the planner allows.` };
+    return { dir: 'same', text: 'About as good a fit as your plan now.' };
   }
 
   // A model's answer, checked: { items (the changes that pass, as cards), tips, rejected: [{ title,

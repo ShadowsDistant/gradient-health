@@ -241,7 +241,10 @@ section('The plan review: checking suggestions');
   ], note: 'Looks good.' };
   const v = R.validate(P, raw, D0, { ctx, given });
   const swap = v.items.find((x) => x.kind === 'swap_move');
-  check('a good swap is a card with what it changes and the score in words', swap && swap.diff.some((l) => / from now on\.$/.test(l)) && /out of 100/.test(swap.score.text) && swap.change.tweaks.swaps[sw.family] === sw.options[0], swap);
+  check('a good swap is a card with what it changes and the score in words', swap && swap.diff.some((l) => / from now on\.$/.test(l)) && /^(A better fit: \d+ points? higher, mostly on |Scores \d+ points? lower \(mostly |About as good a fit as your plan now\.$)/.test(swap.score.text) && swap.change.tweaks.swaps[sw.family] === sw.options[0], swap);
+  // In points, never a second score: Why this plan scores the plan as designed, a card next week's
+  // sessions as built, and two numbers out of 100 that differ would only confuse.
+  check('the change is told in points, not as a score out of 100', v.items.every((x) => !/out of 100/.test(x.score.text)), v.items.map((x) => x.score.text));
   check('a sentence with a number it wasn\'t given is left out of the why', swap && swap.why === 'It keeps the work fresh.' && v.cut >= 1, swap && swap.why);
   const day = v.items.find((x) => x.kind === 'move_day');
   check('a title with a made-up number gets the app\'s own', day && !/37/.test(day.title) && /workout to/.test(day.title), day && day.title);
@@ -270,7 +273,7 @@ section('The plan review: checking suggestions');
   const worse = ['full_body', 'ppl', 'upper_lower'].map((s) => ({ s, t: GH.optimizer.applyTweaks(P, { split: s }, D0) })).find((x) => !x.t.ok);
   if (worse) {
     const w = R.validate(P, { suggestions: [{ kind: 'split', split: worse.s, title: 'Change the split', why: 'Variety.' }] }, D0, { ctx, given: null });
-    check('a split that scores more than 3 points lower is turned down', w.items.length === 0 && /worse fit \(\d+ down to \d+ out of 100\), mostly on /.test(w.rejected[0].reason), w.rejected);
+    check('a split that scores more than 3 points lower is turned down', w.items.length === 0 && /worse fit \(\d+ points lower\), mostly on /.test(w.rejected[0].reason), w.rejected);
   }
   // Applying: together, with one undo.
   const keep = JSON.stringify({ t: P.profile.planTweaks || null, m: P.profile.minutes, w: P.profile.weekdays, v: P.vol });

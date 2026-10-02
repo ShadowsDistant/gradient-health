@@ -202,7 +202,7 @@ const res = await ev(() => {
   };
 });
 check('it says who checked it, and its note', /Checked by the on-device coach/.test(res.by) && res.note === 'Your plan fits your goals.', res);
-check('a card for each change that passed, with its title, why, what it changes and the score in words', res.cards.length >= 1 && res.cards.every((c) => c.title && c.why && c.diff.length && /out of 100/.test(c.score)), res.cards);
+check('a card for each change that passed, with its title, why, what it changes and the score in words', res.cards.length >= 1 && res.cards.every((c) => c.title && c.why && c.diff.length && /(\d+ points? (higher|lower)|About as good a fit)/.test(c.score) && !/out of 100/.test(c.score)), res.cards);
 check('each switch starts on', res.cards.every((c) => c.on) && /^Apply (this change|all \d)/.test(res.apply), res.apply);
 check('what wasn\'t applied, and why: the split it already has', res.not.some((x) => x.title === 'Keep the planner\'s split' && /already picks your split/.test(x.why)), res.not);
 check('the sheet matches the checked review the app kept', res.stored && res.stored.items.join('|') === res.cards.map((c) => c.title).join('|') && res.stored.rejected.length === res.not.length);
