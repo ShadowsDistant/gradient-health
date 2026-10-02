@@ -169,7 +169,7 @@
     if (item.day === day - 1) return 'Earned yesterday';
     return `Earned ${fmtDate(item.day, B().dayStr(item.day).slice(0, 4) !== B().dayStr(day).slice(0, 4))}`;
   }
-  // Progress in words: "4 of 10", "3.2 of 5 km", "Sep 28".
+  // Progress in words: "4 of 10", "3.2 of 5 km"; a one-off badge is just Locked (or Secret).
   function progressText(item) {
     const u = item.def.unit;
     const n = (v) => (Math.round(v * 10) / 10).toLocaleString('en-US');
@@ -444,7 +444,7 @@
     setTimeout(() => {
       if (U.S !== S) return;
       const one = defs.length === 1;
-      const t = U.toast(one ? 'New badge' : `${defs.length} new badges`, 'neutral', one ? defs[0].title : defs.map((d) => d.title).join(', '), { label: one ? 'See it' : 'See them', onClick: () => U.badgeReveal() });
+      const t = U.toast(one ? 'New badge' : `${defs.length} new badges`, 'neutral', one ? defs[0].title : defs.map((d) => d.title).join(', '), { label: one ? 'See it' : 'See them', onClick: () => U.badgeReveal(defs.map((d) => d.id)) });
       const ic = t && t.el && t.el.querySelector('.rf-toast-icon');
       if (ic) { ic.innerHTML = badgeSvg(defs[defs.length - 1], { earned: true, size: 30 }); ic.classList.add('bdg-toast-medal'); }
       U.haptic('badge');
@@ -471,7 +471,9 @@
     let fresh = [];
     try { fresh = run(reason || 'manual'); } catch (e) { if (G.console) G.console.error(e); return []; }
     if (reason === 'workout') return forPlayer();
-    if (fresh.length) { U.save(); announce(fresh); }
+    // At launch only the badges time itself brings (a year in) are told; anything else found then
+    // came with data from before, and waits as New.
+    if (fresh.length) { U.save(); announce(reason === 'boot' ? fresh.filter((id) => A().byId[id].cat === 'moments') : fresh); }
     return fresh.map((id) => A().byId[id]);
   };
   U.badgeEvent = (name) => {
