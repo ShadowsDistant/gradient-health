@@ -182,6 +182,8 @@
   function clear() {
     cancelWaiting(); // a save still waiting would bring the old state back
     lsDel(KEY);
+    // What's kept next to the state (gh.v1.*, like the insights a launch reuses) goes with it.
+    try { for (let i = G.localStorage ? G.localStorage.length - 1 : -1; i >= 0; i--) { const k = G.localStorage.key(i); if (k && k.startsWith(KEY + '.')) lsDel(k); } } catch (e) { /* private mode */ }
     try { const b = bridge(); if (b && b.save) b.save(''); } catch (e) { /* nothing to clear */ }
     // 1.4: an outdoor activity recording (or finished and not saved yet) goes too.
     if (GH.activity && GH.activity.reset) GH.activity.reset();

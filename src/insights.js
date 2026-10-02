@@ -380,8 +380,9 @@
   //   through readiness or a night's sleep): a feel tap redoes only those
   // - everything else: every top-level field as JSON, except the ones insights never read (or read
   //   through others, or only when sorting: shown and dismissed); the health days, each record
-  //   stringified once (a sync or a hand log replaces a day's record rather than editing it); the
-  //   hand logs, which are small; the log, one short line per entry (what changes after the fact:
+  //   stringified once (a sync or a hand log replaces a day's record rather than editing it, so
+  //   when the sync ran doesn't matter); the hand logs, which are small; the log, one short line per
+  //   entry (what changes after the fact:
   //   the check-in, the rating, what it celebrated); the workout in progress; and food only as the
   //   protein of the days the goals read.
   // A generator that starts reading something new adds it here.
@@ -393,7 +394,7 @@
     const out = [day];
     for (const k of Object.keys(S)) if (!SKIP.has(k)) out.push(k, js(S[k]));
     const h = S.health || {};
-    out.push(h.lastSync || '', js(h.manual));
+    out.push(js(h.manual));
     const days = h.days || {};
     for (const d of Object.keys(days)) {
       const r = days[d];
@@ -410,18 +411,20 @@
     return out.join('\u0001');
   }
   const feelStamp = (S) => js([S.feel, S.sleepChip]);
-  let memo = new WeakMap(); // S → { key, feel, found: Map(generator → what it found) }
-  const stats = { hits: 0, misses: 0 };
+  let memo = new WeakMap(); // S → { key, feel, day, found: Map(generator → what it found) }
+  const stats = { hits: 0, misses: 0, kept: 0 };
   function top(S, day, n) {
     const key = stamp(S, day), feel = feelStamp(S);
     let m = memo.get(S);
-    if (!m || m.key !== key) { m = { key, feel, found: new Map() }; memo.set(S, m); }
+    if (!m || m.key !== key) { m = { key, feel, day, found: (!m && kept(day, key, feel)) || new Map() }; memo.set(S, m); }
+    let ran = false;
     const raw = [];
     for (const gen of GENERATORS) {
       let found = m.found.get(gen);
       if (found && (m.feel === feel || !FEEL.has(gen))) stats.hits++;
       else {
         stats.misses++;
+        ran = true;
         found = [];
         try { gen(S, day, found); } catch (e) { /* one broken generator never hides the rest */ }
         m.found.set(gen, found);
@@ -429,9 +432,71 @@
       for (const x of found) raw.push(x);
     }
     m.feel = feel;
+    if (ran) keepSoon(S);
     return finish(S, day, raw).slice(0, n || 5);
   }
-  top.clear = () => { memo = new WeakMap(); };
+
+  /* ---------------------------------------------------------------- kept across launches */
+  // A launch usually finds the state as it was left, and the first render would otherwise run every
+  // generator on code that isn't compiled yet, a good part of the time Today takes to appear. So what
+  // they found is also kept in localStorage ('gh.v1.insights', which a reset deletes with the state),
+  // and only the same build of the app reuses it, on the same day, in the same time zone, for the
+  // same two stamps (as hashes). It holds no more than the insights show.
+  const KEEP = 'gh.v1.insights';
+  function ls() { try { return G.localStorage || null; } catch (e) { return null; } }
+  // cyrb53, a quick 53-bit string hash; with the length, plenty to tell two states apart.
+  function hash(str) {
+    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (let i = 0; i < str.length; i++) {
+      const c = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ c, 2654435761);
+      h2 = Math.imul(h2 ^ c, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return `${(4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)}.${str.length.toString(36)}`;
+  }
+  // The night-time numbers (bedtimes) read the clock in the phone's time zone.
+  const zone = () => new Date().getTimezoneOffset();
+  // What a launch can reuse for this state: generator → what it found, or null.
+  function kept(day, key, feel) {
+    const store = GH.BUILD ? ls() : null;
+    if (!store) return null;
+    let o = null;
+    try { o = JSON.parse(store.getItem(KEEP)); } catch (e) { o = null; }
+    if (!o || o.build !== GH.BUILD || o.day !== day || o.zone !== zone() || !Array.isArray(o.found) || o.found.length !== GENERATORS.length || o.key !== hash(key)) return null;
+    const sameFeel = o.feel === hash(feel);
+    const found = new Map();
+    GENERATORS.forEach((gen, i) => { if (Array.isArray(o.found[i]) && (sameFeel || !FEEL.has(gen))) { found.set(gen, o.found[i]); stats.kept++; } });
+    return found;
+  }
+  // After a call that ran generators, the page's next idle moment writes down what they found.
+  let keepJob = 0, keepFor = null, keptTxt = '';
+  function keepSoon(S) {
+    keepFor = S;
+    if (keepJob || !GH.BUILD || !G.requestIdleCallback || !ls()) return;
+    keepJob = G.requestIdleCallback(() => {
+      keepJob = 0;
+      const m = memo.get(keepFor);
+      keepFor = null;
+      if (!m) return;
+      // A generator's finds are kept only if JSON gives them back as they are (no undefined, no NaN).
+      const found = GENERATORS.map((gen) => {
+        const f = m.found.get(gen);
+        let exact = !!f;
+        const txt = f ? JSON.stringify(f, (k, v) => { if (v === undefined || typeof v === 'function' || (typeof v === 'number' && !isFinite(v))) exact = false; return v; }) : '';
+        return exact ? txt : 'null';
+      });
+      const txt = `{"build":${js(GH.BUILD)},"day":${Number(m.day) || 0},"zone":${zone()},"key":${js(hash(m.key))},"feel":${js(hash(m.feel))},"found":[${found.join(',')}]}`;
+      if (txt === keptTxt) return;
+      try { ls().setItem(KEEP, txt); keptTxt = txt; } catch (e) { /* storage full or blocked: the next launch works it out */ }
+    }, { timeout: 5000 });
+  }
+  top.clear = () => {
+    memo = new WeakMap();
+    keptTxt = '';
+    try { const store = ls(); if (store) store.removeItem(KEEP); } catch (e) { /* nothing kept */ }
+  };
   top.stats = stats;
   function dismiss(S, id, day) { S.insightsDismissed = S.insightsDismissed || {}; S.insightsDismissed[id] = day; }
   function markShown(S, list, day) { S.insightsShown = S.insightsShown || {}; for (const x of list) if (S.insightsShown[x.id] == null) S.insightsShown[x.id] = day; }

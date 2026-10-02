@@ -3,16 +3,20 @@
 // machine makes a run slower but rarely all three.
 //
 // - boot: from navigation start to the first frame that shows Today's session, each run in a fresh
-//   browser context (its own renderer, so nothing compiled earlier is reused)
-// - long tasks: none over the budget in the 10 s after that first frame
+//   browser context (its own renderer, so nothing compiled earlier is reused): the first launch of a
+//   day, and a launch later the same day (which reuses the insights the one before kept)
+// - long tasks: none over the budget in the 10 s after that first frame (with the flat figure; the
+//   3D figure's warm-up is reported on its own, see flatJson)
 // - tab render: switching tabs, the time U.go() takes (the render), p95 over every tab
 // - a feel tap on Today: the re-render it causes
 // - a save: U.save() itself, and the longest task any timer or idle callback runs in the 1.5 s after
 //   (where the write happens)
 //
-// Usage: node test/ui-perf.mjs [--measure] [--dist=<dir>] [--runs=3]
+// Usage: node test/ui-perf.mjs [--measure] [--dist=<dir>] [--runs=3] [--boot-only]
 //   --measure  print the numbers only, no checks (how the baselines below were taken)
 //   --dist     a built page somewhere else (a copy of an older dist/), to compare on the same machine
+//   --boot-only  just the launches (with --runs=N), to compare boot times quickly; this also times
+//              the same-day launch without the kept insights
 import { createRequire } from 'node:module';
 import { readdirSync, statSync, existsSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
@@ -31,8 +35,9 @@ const CPU = 4;
 /* ---------------------------------------------------------------- baselines and budgets */
 // Measured on the 1.5.0 page plus the 1.6.0 scaffolding (commit c3d1851, not minified), with this
 // file's --measure on the same machine as the rest of the 1.6.0 work: 4 CPUs, headless Chromium
-// (WebGL in software), 390 x 844 at 2x, CPU slowed 4x, best of 3. Then the longest task after the
-// first frame was 2.6 s: the 3D figure's warm-up, which started right after the first paint.
+// (WebGL in software), 390 x 844 at 2x, CPU slowed 4x, best of 3, with the 3D figure. Then the
+// longest task after the first frame was 2.6 s: the 3D figure's warm-up, which started right after
+// the first paint (the first frame itself doesn't depend on the figure).
 const BASE = {
   bootMs: 954, // navigation start to the first frame with Today's session
   tabP95Ms: 152, // U.go() between tabs, p95 (to the next frame: 191)
@@ -72,6 +77,11 @@ function probe() {
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
+  // When the 3D figure's chunk is asked for (GH.lazy adds its script to <head>).
+  P.fig3d = 0;
+  document.addEventListener('DOMContentLoaded', () => new MutationObserver((recs) => {
+    for (const r of recs) for (const n of r.addedNodes) if (!P.fig3d && n.tagName === 'SCRIPT' && /figure3d/.test(n.src || '')) P.fig3d = performance.now();
+  }).observe(document.head, { childList: true }));
   // Every timer and idle callback, timed while __watch is on (to find what a save costs).
   P.tasks = []; P.watch = false;
   const wrap = (name) => {
@@ -126,12 +136,19 @@ let stateJson;
 }
 if (!stateJson || stateJson.length < 1000) { console.error('Couldn\'t seed the state.'); process.exit(1); }
 
-// One launch, in a fresh context: the bridge and the state are there before the page loads.
-async function launch() {
+// The measured launches use the flat exercise figure. The 3D one warms up after the first paint (so
+// boot is the same either way), but here WebGL is software, which turns its warm-up into seconds of
+// main-thread work a phone's GPU doesn't have: it's measured on its own, at the end.
+const flatJson = (() => { const S = JSON.parse(stateJson); S.profile.prefs.figure = 'flat'; return JSON.stringify(S); })();
+
+// One launch, in a fresh context: the bridge and the state are there before the page loads, and
+// with `kept`, the insights an earlier launch that day left next to it (src/insights.js).
+async function launch(json = flatJson, kept = null) {
   const ctx = await browser.newContext(ctxOpts);
   await ctx.addInitScript(seedBridge);
   await ctx.addInitScript(asyncBridge);
-  await ctx.addInitScript((json) => { try { if (!sessionStorage.getItem('shot-state')) sessionStorage.setItem('shot-state', json); } catch (e) { /* ignore */ } }, stateJson);
+  await ctx.addInitScript((j) => { try { if (!sessionStorage.getItem('shot-state')) sessionStorage.setItem('shot-state', j); } catch (e) { /* ignore */ } }, json);
+  if (kept) await ctx.addInitScript((k) => { try { if (!localStorage.getItem('gh.v1.insights')) localStorage.setItem('gh.v1.insights', k); } catch (e) { /* ignore */ } }, kept);
   await ctx.addInitScript(probe);
   const page = await ctx.newPage();
   watch(page);
@@ -142,15 +159,26 @@ async function launch() {
   return { ctx, page, cdp };
 }
 
+// What a launch leaves for the next one the same day, once its health sync and the idle writes after
+// it are done: the state, and the insights it worked out (null with a build that doesn't keep them).
+async function leftAfter(json) {
+  const { ctx, page } = await launch(json);
+  await page.waitForFunction(() => localStorage.getItem('gh.v1.insights'), null, { timeout: 8000, polling: 100 }).catch(() => null);
+  await pause(3000);
+  const left = await page.evaluate(() => ({ state: JSON.stringify(window.GH.ui.S), kept: localStorage.getItem('gh.v1.insights') }));
+  await ctx.close();
+  return left;
+}
+
 /* ---------------------------------------------------------------- boot */
-section(`Boot (CPU ${CPU}x slower, best of ${RUNS})`);
+section(`Boot, the first launch of the day (CPU ${CPU}x slower, best of ${RUNS})`);
 const boots = [];
 let live = null;
 for (let i = 0; i < RUNS; i++) {
   const run = await launch();
   // Ten seconds after the first frame: the health sync, What's new, the 3D figure's warm-up.
   const t = await run.page.evaluate(() => window.__perf.firstRender);
-  await run.page.waitForFunction((t0) => performance.now() > t0 + 10000, t, { timeout: 120000, polling: 250 });
+  if (!process.argv.includes('--boot-only')) await run.page.waitForFunction((t0) => performance.now() > t0 + 10000, t, { timeout: 120000, polling: 250 });
   const r = await run.page.evaluate(() => {
     const P = window.__perf;
     const nav = performance.getEntriesByType('navigation')[0] || {};
@@ -163,6 +191,36 @@ for (let i = 0; i < RUNS; i++) {
 }
 const bootMs = best(boots.map((b) => b.firstRender));
 const longMs = best(boots.map((b) => b.longest));
+
+// Again the same day, nothing changed since: the state the last launch saved, and the insights it
+// kept (src/insights.js), which this launch reuses.
+const left = await leftAfter(flatJson);
+async function relaunch(label, kept) {
+  section(`Boot, again the same day${label} (best of ${RUNS})`);
+  const out = [];
+  for (let i = 0; i < RUNS; i++) {
+    const run = await launch(left.state, kept);
+    const r = await run.page.evaluate(() => ({ firstRender: window.__perf.firstRender, fcp: window.__perf.fcp, kept: (window.GH.insights.top.stats || {}).kept || 0 }));
+    out.push(r);
+    console.log(`  run ${i + 1}: first render ${r1(r.firstRender)} ms (FCP ${r1(r.fcp)}); generators whose insights were reused: ${r.kept}`);
+    await run.ctx.close();
+  }
+  return out;
+}
+const again = await relaunch('', left.kept);
+const againMs = best(again.map((b) => b.firstRender));
+if (process.argv.includes('--boot-only')) {
+  // The same relaunch without what the last one kept, to see what reusing it saves.
+  const fresh = await relaunch(', without the kept insights', null);
+  const sum = (label, list) => { const xs = list.map((b) => b.firstRender).sort((a, b) => a - b); console.log(`  ${label}: best ${r1(xs[0])} ms, median ${r1(xs[xs.length >> 1])} ms over ${xs.length} runs`); };
+  console.log('');
+  sum('boot, first of the day', boots);
+  sum('boot, again the same day', again);
+  sum('boot, again, insights worked out afresh', fresh);
+  await browser.close();
+  await server.close();
+  process.exit(0);
+}
 
 /* ---------------------------------------------------------------- tabs */
 const { page } = live;
@@ -328,6 +386,40 @@ if (!measureOnly) {
   });
   check('insights kept between renders are the ones worked out afresh, after each kind of change', same.every(Boolean), same);
 
+  // Across launches: what a launch kept is reused only for the same state, day and feel, and a reset
+  // deletes it with the state.
+  const again1 = await launch(left.state, left.kept);
+  await again1.cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+  const across = await again1.page.evaluate(async () => {
+    const GH = window.GH, I = GH.insights, U = GH.ui, day = U.today();
+    const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+    const st = I.top.stats;
+    const out = { atLaunch: st.kept };
+    const same = (S) => JSON.stringify(I.top(S, day, 10)) === JSON.stringify(I.all(S, day).slice(0, 10));
+    out.launchSame = same(U.S);
+    // Kept afresh for the state as it is now, then tried on copies of it.
+    I.top.clear();
+    I.top(U.S, day, 10);
+    for (let i = 0; i < 60 && !localStorage.getItem('gh.v1.insights'); i++) await wait(100);
+    out.written = !!localStorage.getItem('gh.v1.insights');
+    const copy = () => JSON.parse(JSON.stringify(U.S));
+    let k = st.kept;
+    const S1 = copy(); out.copySame = same(S1); out.copyKept = st.kept - k; k = st.kept;
+    const S2 = copy(); GH.health.setFeel(S2, day, { energy: 'low', sore: 'very' }); out.feelSame = same(S2); out.feelKept = st.kept - k; k = st.kept;
+    const S3 = copy(); const d3 = Object.keys(S3.health.days).map(Number).sort((a, b) => b - a)[1];
+    S3.health.days[d3] = Object.assign({}, S3.health.days[d3], { steps: 1234, sleepMin: 200 });
+    out.dataSame = same(S3); out.dataKept = st.kept - k;
+    GH.store.clear();
+    out.cleared = localStorage.getItem('gh.v1.insights') === null;
+    return out;
+  });
+  await again1.ctx.close();
+  check('a relaunch the same day reuses what the last launch kept, and shows the same insights', across.atLaunch > 0 && across.launchSame, across);
+  check('a copy of the same state reuses all of it', across.written && across.copyKept === across.atLaunch && across.copySame, across);
+  check('after a feel tap, only what doesn\'t read the feel check is reused', across.feelKept > 0 && across.feelKept < across.atLaunch && across.feelSame, across);
+  check('with other health data, none of it is reused', across.dataKept === 0 && across.dataSame, across);
+  check('a reset deletes it with the state', across.cleared, across);
+
   section('Claude, loaded the first time it\'s asked');
   const MODELS = [{ type: 'model', id: 'opus-test-2', display_name: 'Opus Test 2', created_at: '2026-07-01T00:00:00Z', capabilities: { effort: { supported: true }, structured_outputs: { supported: true }, thinking: { supported: true, types: { adaptive: { supported: true } } } } }];
   const REPORT = { headline: 'A steady week.', glance: [], wins: ['4 of 4 workouts'], watch: [], focus: ['Protein on rest days.'], focus_one: 'Protein on rest days', ask_me: ['How do I sleep more?'] };
@@ -388,8 +480,25 @@ if (!measureOnly) {
   await page.evaluate(() => window.GH.ui.closeSheets());
 }
 
+/* ---------------------------------------------------------------- the 3D figure's warm-up */
+// With the 3D figure, as most people have it: when its warm-up starts after the first render, and
+// the longest task from then on. Reported, not budgeted: WebGL is software here.
+section('The 3D figure\'s warm-up (software WebGL here: reported, not budgeted)');
+await live.ctx.close();
+const w3d = await launch(stateJson);
+const fr = await w3d.page.evaluate(() => window.__perf.firstRender);
+await w3d.page.waitForFunction((t0) => performance.now() > t0 + 14000, fr, { timeout: 120000, polling: 250 });
+const warm = await w3d.page.evaluate(() => {
+  const P = window.__perf;
+  const before = P.longtasks.filter(([s]) => s >= P.firstRender && (!P.fig3d || s < P.fig3d));
+  const after = P.fig3d ? P.longtasks.filter(([s]) => s >= P.fig3d) : [];
+  return { start: P.fig3d ? P.fig3d - P.firstRender : null, before: before.reduce((m, x) => Math.max(m, x[1]), 0), longest: after.reduce((m, x) => Math.max(m, x[1]), 0) };
+});
+await w3d.ctx.close();
+console.log(`  it started ${warm.start == null ? 'later than 14 s' : `${Math.round(warm.start)} ms`} after the first render (longest task before it ${warm.before} ms); its longest task ${warm.longest} ms`);
+
 const distBytes = statSync(arg('dist', '') ? join(resolve(arg('dist', '')), 'gradient-health.html') : join(root, 'dist/gradient-health.html')).size;
-console.log(`\n  boot ${r1(bootMs)} ms · longest task after it ${longMs} ms · tab p95 ${r1(tabP95)} ms · feel re-render ${r1(feelMs)} ms · save ${r1(saveMs)} ms · dist ${distBytes} bytes`);
+console.log(`\n  boot ${r1(bootMs)} ms · longest task after it ${longMs} ms · tab p95 ${r1(tabP95)} ms · feel re-render ${r1(feelMs)} ms · save ${r1(saveMs)} ms · dist ${distBytes} bytes · 3D warm-up from +${warm.start == null ? '-' : Math.round(warm.start)} ms, its longest task ${warm.longest} ms`);
 if (BASE.bootMs) console.log(`  against the baseline: boot ${r1(bootMs / BASE.bootMs * 100)}%, tab p95 ${r1(tabP95 / BASE.tabP95Ms * 100)}%, feel ${r1(feelMs / BASE.feelMs * 100)}%, save ${r1(saveMs / BASE.saveMs * 100)}%, dist ${r1(distBytes / BASE.distBytes * 100)}%`);
 
 if (!measureOnly) {

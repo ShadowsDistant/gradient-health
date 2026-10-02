@@ -231,9 +231,11 @@ async function main() {
   const tokens = JSON.parse(read('vendor/refract/tokens.json'));
   const shell = read('src/shell.html');
   const version = JSON.parse(read('package.json')).version || '0.0.0';
-  // The app's version, for Profile, What's new and the web build (the APK also reports its own).
-  const scripts = [`<script>(window.GH = window.GH || {}).VERSION = ${JSON.stringify(version)};</script>`];
   const appJs = await Promise.all(APP_SCRIPTS.map((p) => minJs(read(p), p)));
+  // The app's version, for Profile, What's new and the web build (the APK also reports its own), and
+  // an id of this build's code, for things kept across launches that a code change should drop.
+  const buildId = createHash('sha256').update(appJs.join('\n')).digest('hex').slice(0, 12);
+  const scripts = [`<script>(window.GH = window.GH || {}).VERSION = ${JSON.stringify(version)}; window.GH.BUILD = ${JSON.stringify(buildId)};</script>`];
   APP_SCRIPTS.forEach((p, i) => scripts.push(`<script>/* ${p} */\n${safeJs(appJs[i])}</script>`));
   const [tokensMin, refractCss, appCssMin, refractMin] = await Promise.all([
     minCss(tokensCss(tokens), 'tokens.css'), minCss(read('vendor/refract/bundle.css'), 'vendor/refract/bundle.css'), minCss(appCss(), 'src/styles.css'), refractJs(),
