@@ -592,7 +592,8 @@
   }
   function stateStamp(S) {
     let lg = '';
-    for (const l of S.log || []) if (l && (l.type === 'workout' || l.type === 'light')) lg += `${l.type[0]}${l.day}.${l.checkedIn ? 1 : 0}${(l.pct || 0) >= 0.5 ? 1 : 0}${l.walk ? 1 : 0}${l.mobility ? 1 : 0};`;
+    // (A workout's sets count too: the next week's plan reads what the last one trained.)
+    for (const l of S.log || []) if (l && (l.type === 'workout' || l.type === 'light')) lg += `${l.type[0]}${l.day}.${l.checkedIn ? 1 : 0}${(l.pct || 0) >= 0.5 ? 1 : 0}${l.walk ? 1 : 0}${l.mobility ? 1 : 0}${l.doneSets || 0};`;
     const ev = (S.events || []).filter((e) => e && (e.type === 'settings' || e.type === 'move' || e.type === 'deloadNext' || e.type === 'plan'));
     return JSON.stringify([S.profile, S.vol, S.complexity, S.pain, S.excluded, S.catchup, S.place, S.lastPlace, S.engineFrom, ev, S.customPlans, S.activePlan]) + progStamp(S) + lg;
   }
@@ -1062,9 +1063,10 @@
         if (kg != null && kg < it.load.kg) it.load = Object.assign({}, it.load, { kg, value: Math.round(toUnit(kg, unitsOf(S)) * 10) / 10, label: fmtLoad(S, kg, it.load.key, M().MOVES[it.moveId]) });
       }
     }
-    // Catch-up: one extra lead-side set on arm (and leg) days.
-    const armDay = dp.units.includes('arms');
-    const legDay = dp.units.includes('legs');
+    // Catch-up: one extra lead-side set on arm (and leg) days (the days the plan made for them, not
+    // a day another group joins for its weekly minimum).
+    const armDay = (dp.planUnits || dp.units).includes('arms');
+    const legDay = (dp.planUnits || dp.units).includes('legs');
     const extras = [];
     if (armDay && S.catchup.arm.active) { const x = extraItem(S, 'curl', 'arm', day); if (x) extras.push(x); }
     if (legDay && S.catchup.leg.active) { const x = extraItem(S, 'squat', 'leg', day); if (x) extras.push(x); }

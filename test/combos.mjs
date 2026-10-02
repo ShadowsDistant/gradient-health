@@ -8,6 +8,8 @@
 // Usage: node test/combos.mjs [--full] [--seed=N] [--json=path]
 //   --full   a 3-wise covering array instead of pairwise, and 12-week simulations (before a release)
 //   --only=3,17,40-60  just those profiles, with --trace to print their weeks and sessions
+//   --examples=N  keep N examples of each broken rule (4 by default)
+//   --dump=path  with --only, each profile's starting state as JSON (to look into one closely)
 import { writeFileSync } from 'node:fs';
 import { load, check, section, done } from './lib.mjs';
 
@@ -20,6 +22,9 @@ const JSON_OUT = (args.find((a) => a.startsWith('--json=')) || '').split('=')[1]
 const ONLY = ((args.find((a) => a.startsWith('--only=')) || '').split('=')[1] || '').split(',').filter(Boolean)
   .flatMap((x) => { const [lo, hi] = x.split('-').map(Number); return hi >= lo ? Array.from({ length: hi - lo + 1 }, (_, i) => lo + i) : [lo]; });
 const TRACE = args.includes('--trace');
+const DUMP = (args.find((a) => a.startsWith('--dump=')) || '').split('=')[1] || null;
+const dumped = {};
+const EXAMPLES = Number((args.find((a) => a.startsWith('--examples=')) || '--examples=4').split('=')[1]) || 4;
 const T0 = Date.now();
 const D0 = B.dayFromStr('2026-09-28'); // a Monday
 
@@ -235,7 +240,7 @@ const budgetOf = (S, s, o) => (s.budget != null ? s.budget : o && o.short ? 13 :
 
 /* ------------------------------------------------------------------ bookkeeping */
 const viol = {};
-function bad(name, detail) { const v = viol[name] || (viol[name] = { n: 0, ex: [] }); v.n++; if (v.ex.length < 4) v.ex.push(detail); }
+function bad(name, detail) { const v = viol[name] || (viol[name] = { n: 0, ex: [] }); v.n++; if (v.ex.length < EXAMPLES) v.ex.push(detail); }
 const times = [], planTimes = [];
 const fills = []; // { budget, ratio, phase }
 const weeks = { n: 0, zero: 0, zeroEff: 0, belowFloor: 0 };
@@ -343,6 +348,11 @@ function checkWeek(S, ws, label, o) {
     if (TRACE) console.log(`  ${label} ${B.dayStr(x.day)} ${s.title} ${B.estimate(S, s).toFixed(1)}/${budgetOf(S, s, {})} min: ${s.items.map((it) => `${it.moveId}×${it.sets}${it.superset ? `/${it.superset}` : ''}`).join(' ')}${s.finisher ? ` fin ${s.finisher.moveId}×${s.finisher.rounds}` : ''}${(s.mobility || []).length ? ` cool ${s.mobility.map((m) => `${m.moveId}:${m.target}`).join(',')}` : ''}`);
     built.push(s);
   }
+  if (TRACE && GH.optimizer) {
+    const wp = GH.optimizer.weekPlan(S, ws, { phase: week.phase });
+    for (const d of wp.days) console.log(`    plan ${d.tpl} ${d.units.join('+')} ${JSON.stringify(d.groupSets)} ${d.planned}/${d.budget} min, fixed ${d.fixed}, a set ${JSON.stringify(d.per)}`);
+    console.log(`    plan ${wp.split.label}${wp.parity ? ' (taking turns)' : ''}: ${Object.entries(wp.perGroup).filter(([, v]) => v.trainable).map(([g, v]) => `${g} ${v.aim}/${v.target} floor ${v.floor} eff ${v.effective}`).join(', ')}`);
+  }
   if (!built.length) return null;
   weeks.n++;
   const prog = B.programFor(S.profile);
@@ -357,26 +367,62 @@ function checkWeek(S, ws, label, o) {
   if (below.length) weeks.belowFloor++;
   for (const g of GROUPS) if (direct[g] > prog.cap[g]) bad('weekly sets stay under each group\'s cap', `${label}: ${g} ${direct[g]} > ${prog.cap[g]}`);
   // Coverage: every group it can train reaches its floor (scaled for a lighter week), or, when
-  // the time is used up, at least 2 effective sets; with under half an hour a week for sets, groups
-  // may take turns week by week (checked over two weeks by the caller). The time for sets is the
-  // week's time less what every session holds anyway for this person: the warm-up, balance and
-  // floor practice, a cool-down every session from 65 (and with some conditions), and the finisher
-  // when conditioning is a goal.
+  // the time is used up, at least 2 effective sets; when the week's sessions can't hold 2 sets of
+  // each group, groups may take turns week by week (checked over two weeks by the caller). The
+  // time for sets is the week's time less what every session holds anyway for this person: the
+  // warm-up, balance and floor practice, a cool-down every session from 65 (and with some
+  // conditions), the finisher when conditioning is a goal, and the lead side's catch-up sets and
+  // left vs right tests the plan keeps time for. It holds whole sets only: what's
+  // left of a session after its last whole set holds none (a set's minutes, its rest and setting
+  // up included, are this person's average this week), and 2 sets of each group take each group's
+  // own time a set (a squat takes longer than a curl). Simpler sessions hold a set number of
+  // exercises, one a group (balance and floor practice count among them), so a week of them may
+  // not have room for every group either.
   const full = built.every((s) => B.estimate(S, s) >= 0.85 * budgetOf(S, s, {}));
   const cond = prog.finisherPerWeek >= 7;
-  const setTime = built.reduce((a, s) => a + budgetOf(S, s, {}) - B.estimate(S, Object.assign({}, s, {
-    items: s.items.filter((it) => it.skill), extras: [], tests: [], finisher: cond ? s.finisher : null,
+  const setTimes = built.map((s) => budgetOf(S, s, {}) - B.estimate(S, Object.assign({}, s, {
+    items: s.items.filter((it) => it.skill), finisher: cond ? s.finisher : null,
     mobility: s.keepMobility ? (s.mobility || []).filter((m) => !m.cardio) : [],
-  })), 0);
-  for (const g of below) {
-    if (setTime < 30 && o.pairWith) continue;
-    if (!full) { bad('every group reaches its weekly floor while there is time left', `${label}: ${g} ${eff[g]} < ${Math.max(2, Math.round(prog.floor[g] * mult))} (${built.map((s) => `${B.estimate(S, s).toFixed(0)}/${budgetOf(S, s, {})}`).join(' ')})`); break; }
-    if (eff[g] < 2 && setTime >= 30) { bad('every group gets at least 2 sets a week', `${label}: ${g} ${eff[g]} (${setTime.toFixed(0)} min for sets)`); break; }
+  })));
+  const setTime = setTimes.reduce((a, t) => a + t, 0);
+  const setsIn = built.reduce((a, s) => a + s.items.filter((it) => !it.skill).reduce((n, it) => n + it.sets, 0), 0);
+  const setsMin = built.reduce((a, s) => a + B.estimate(S, s) - B.estimate(S, Object.assign({}, s, { items: s.items.filter((it) => it.skill) })), 0);
+  const perSet = setsIn ? setsMin / setsIn : 2;
+  const wholeSets = setTimes.reduce((a, t) => a + Math.max(0, Math.floor(t / perSet + 1e-9)), 0);
+  const gTime = {}, gSets = {};
+  for (const s of built) {
+    const all = B.estimate(S, s);
+    for (const it of s.items) {
+      if (it.skill || !GROUPS.includes(it.group)) continue;
+      gTime[it.group] = (gTime[it.group] || 0) + all - B.estimate(S, Object.assign({}, s, { items: s.items.filter((x) => x !== it) }));
+      gSets[it.group] = (gSets[it.group] || 0) + it.sets;
+    }
   }
-  return { eff, can, setTime };
+  const need2 = GROUPS.filter((g) => can.has(g)).reduce((a, g) => a + 2 * (gSets[g] ? gTime[g] / gSets[g] : perSet), 0);
+  const holds = wholeSets * perSet;
+  const maxItems = S.complexity > 0 ? (S.complexity === 1 ? 5 : 4) : 0;
+  const slots = maxItems ? built.reduce((a, s) => a + Math.max(0, maxItems - s.items.filter((it) => it.skill).length), 0) : Infinity;
+  const nCan = GROUPS.filter((g) => can.has(g)).length;
+  const turns = holds < need2 - 1e-9 || slots < nCan;
+  for (const g of below) {
+    if (turns && o.pairWith) continue;
+    if (!full) { bad('every group reaches its weekly floor while there is time left', `${label}: ${g} ${eff[g]} < ${Math.max(2, Math.round(prog.floor[g] * mult))} (${built.map((s) => `${B.estimate(S, s).toFixed(0)}/${budgetOf(S, s, {})}`).join(' ')})`); break; }
+    if (eff[g] < 2 && !turns) { bad('every group gets at least 2 sets a week', `${label}: ${g} ${eff[g]} (${setTime.toFixed(0)} min for sets, ${wholeSets} whole sets${Number.isFinite(slots) ? `, ${slots} exercises` : ''})`); break; }
+  }
+  return { eff, can, setTime, perSet, wholeSets, holds, need2, slots, turns, built };
 }
 
 // Done workouts (one a week, on Sunday) so later weeks count as training weeks.
+// A week's sessions logged as done, every set as planned (as finishing each workout would).
+function logWeek(S, built) {
+  for (const s of built) {
+    const items = s.items.concat(s.extras || []).map((it) => ({ fam: it.fam, moveId: it.moveId, kind: it.kind, target: it.target, group: it.group,
+      sets: Array.from({ length: it.sets || 1 }, (_, i) => ({ set: i + 1, amount: it.target, target: it.target })) }));
+    const n = items.reduce((a, it) => a + it.sets.length, 0);
+    S.log.push({ type: 'workout', day: s.day, tpl: s.tpl, title: s.title, items, checkedIn: true, pct: 1, planned: n, doneSets: n });
+  }
+}
+
 function trained(S, weeksDone) {
   for (let w = 0; w < weeksDone; w++) S.log.push({ type: 'workout', day: D0 + w * 7 + 6, tpl: 0, title: 'Workout', items: [], checkedIn: true, pct: 1, planned: 1, doneSets: 1 });
 }
@@ -386,17 +432,30 @@ function runProfile(spec, n, extra) {
   const label = `#${n}`;
   try { S = person(spec, n); } catch (e) { bad('no crash', `${label} newState: ${e.message}`); return; }
   const clean = JSON.stringify(S);
+  if (DUMP) dumped[n] = JSON.parse(clean);
   try {
     // Week 1: the on-ramp for most people.
     const w1 = checkWeek(S, D0, `${label} w1`, { phase: 'onramp' });
     // Week 3: a full week.
     trained(S, 2);
     const w3 = checkWeek(S, D0 + 14, `${label} w3`, { phase: 'full', pairWith: true });
-    if (w3 && w3.setTime < 30) {
-      // Under half an hour a week for sets: groups may take turns, so weeks 3 and 4 together train
-      // them all.
-      const w4 = checkWeek(S, D0 + 21, `${label} w4`, { phase: 'full', pairWith: true });
-      if (w4) for (const g of GROUPS) if (w3.can.has(g) && w3.eff[g] + w4.eff[g] < 2) bad('with under half an hour a week, every group is trained over two weeks', `${label}: ${g}`);
+    if (w3 && w3.turns) {
+      // Too little time for 2 sets of each group a week: groups may take turns, so weeks 3 and 4
+      // together train them all (week 3 done as planned first).
+      const S4 = JSON.parse(JSON.stringify(S));
+      logWeek(S4, w3.built);
+      const w4 = checkWeek(S4, D0 + 21, `${label} w4`, { phase: 'full', pairWith: true });
+      // Every group, when the two weeks' sessions hold 2 whole sets of each (and an exercise for
+      // each); with less than that, as many groups as they hold, less one (the most important
+      // groups keep their 2 sets every week, so they take more than their share).
+      if (w4) {
+        const groups = GROUPS.filter((g) => w3.can.has(g));
+        const missed = groups.filter((g) => w3.eff[g] + w4.eff[g] < 2);
+        const sets = w3.wholeSets + w4.wholeSets;
+        const slots = w3.slots + w4.slots;
+        const need = w3.holds + w4.holds >= w3.need2 - 1e-9 && slots >= groups.length ? groups.length : Math.max(0, Math.min(Math.floor(sets / 2), slots) - 1);
+        if (groups.length - missed.length < need) for (const g of missed) bad('with too little time for 2 sets of each group a week, every group is trained over two weeks', `${label}: ${g} (${w3.setTime.toFixed(0)} + ${w4.setTime.toFixed(0)} min for sets, ${sets} whole sets${Number.isFinite(slots) ? ` and ${slots} exercises` : ''} for ${groups.length} groups, ${groups.length - missed.length} trained)`);
+      }
     }
     if (w1 && w3) { /* both built */ }
     // Deterministic: the same answers build the same session.
@@ -572,7 +631,7 @@ if (OS) console.log(`  week plans: ${OS.weeks}, mean ${(OS.weekMs / Math.max(1, 
 section('Invariants');
 const NAMED = [
   'no crash', 'every session has work (or is turned into a light day)', 'at least 2 main exercises from 15 min (1 at 10 min)', 'no session runs over its time by more than 30 s',
-  'every group reaches its weekly floor while there is time left', 'every group gets at least 2 sets a week', 'with under half an hour a week, every group is trained over two weeks',
+  'every group reaches its weekly floor while there is time left', 'every group gets at least 2 sets a week', 'with too little time for 2 sets of each group a week, every group is trained over two weeks',
   'no move twice in a session', 'never two workouts on one day', 'at most 6 sets an exercise', 'at most 10 sets a muscle group a session', 'weekly sets stay under each group\'s cap',
   'merged exercises keep at most 5 sets', 'priority order', 'no supersets when they\'re off', 'supersets pair two exercises that don\'t clash', 'superset partners side by side',
   'left vs right tests only when allowed', 'a strength goal works home compounds in 5 to 10 reps', 'the same answers build the same session', 'a deload comes after four training weeks', 'every week has a plan',
@@ -587,5 +646,6 @@ check(`at least 90% of sessions with 20 min or more reach 0.8 of their time (${(
 check(`buildSession p95 is 3 ms or less (${p95.toFixed(2)} ms)`, p95 <= 3);
 check(`a new week's plan p95 is 50 ms or less (${wp95.toFixed(2)} ms)`, wp95 <= 50);
 console.log(`\n  ran in ${((Date.now() - T0) / 1000).toFixed(1)} s`);
+if (DUMP) writeFileSync(DUMP, JSON.stringify(dumped));
 if (JSON_OUT) writeFileSync(JSON_OUT, JSON.stringify({ profiles: all.length, rows: specs.length, sessions: sessionsSeen, weeks, hist, buckets: BUCKETS, byBudget: Object.fromEntries(Object.entries(byBudget).map(([b, r]) => [b, { n: r.length, median: q(r, 0.5), ge08: r.filter((x) => x >= 0.8).length / r.length, ge092: r.filter((x) => x >= 0.92).length / r.length }])), reach, p50, p95, wp95, viol }, null, 1));
 done();

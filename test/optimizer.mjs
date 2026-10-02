@@ -104,6 +104,45 @@ section('Week plan: sets given out by what they are worth');
   R.log.push({ type: 'workout', day: D0 + first.offset, tpl: first.tpl, checkedIn: true, pct: 1, items: [{ kind: 'move', group: 'biceps', fam: 'curl', moveId: 'curl_std', sets: [0, 1, 2, 3, 4, 5].map((k) => ({ set: k, amount: 10 })) }] });
   const after = O.weekPlan(R, D0);
   check('a workout done counts as done: the week plans the rest round its sets', after.days[0].groupSets.biceps === 6 && after.perGroup.biceps.aim <= Math.max(after.perGroup.biceps.boosted, 6), { done: after.days[0].groupSets, aim: after.perGroup.biceps });
+  // The plan's times are the sessions' own: a day's sets are measured on the session they make (two
+  // sets of legs can be two exercises, each with its setting up), so the fit has no need to cut the
+  // floor's share. Ten-minute days at the gym, six a week.
+  const G10 = person({ goals: ['arms', 'chest', 'legs', 'abs'], experience: '3plus', days: 6, minutes: 10, where: 'gym', gym: Object.assign(B.gymPreset('basic', 'kg'), { dbMax: 0 }), careful: ['elbow'], gentle: true, age: 13, conditions: ['ra'], floorOk: false, focus: ['rearDelts', 'glutes'] });
+  for (let w = 0; w < 2; w++) G10.log.push({ type: 'workout', day: D0 + w * 7 + 6, tpl: 0, title: 'Workout', items: [], checkedIn: true, pct: 1, planned: 1, doneSets: 1 });
+  const gcal = B.calendar(G10, D0 + 14);
+  const gwp = O.weekPlan(G10, D0 + 14, { phase: gcal.weeks[D0 + 14].phase });
+  const cut = [];
+  for (const x of gcal.weeks[D0 + 14].sessions) {
+    const sx = B.buildSession(G10, x.day, x.tpl, { cal: gcal, noReadiness: true });
+    const dp = gwp.days.find((d) => d.tpl === x.tpl);
+    for (const [g, n] of Object.entries(dp.protect)) { const got = sx.items.filter((it) => !it.skill && it.group === g).reduce((q, it) => q + it.sets, 0); if (got < n) cut.push(`${B.dayStr(x.day)} ${g} ${got} < ${n}`); }
+  }
+  check('ten-minute sessions keep the floor\'s share of their planned sets', !cut.length, cut);
+  // Too little time for 2 sets of every group: they take turns, what last week's workouts left
+  // short coming first, so two weeks in a row train them all.
+  const Tn = person({ goals: ['abs', 'arms', 'chest', 'legs', 'back'], days: 2, minutes: 10, equipment: Object.assign({}, HOUSE, { db: [10, 20] }) });
+  for (let w = 0; w < 2; w++) Tn.log.push({ type: 'workout', day: D0 + w * 7 + 6, tpl: 0, title: 'Workout', items: [], checkedIn: true, pct: 1, planned: 1, doneSets: 1 });
+  const effOf = (sessions) => { const e = Object.fromEntries(B.GROUPS.map((g) => [g, 0])); for (const sx of sessions) for (const it of sx.items.concat(sx.extras || [])) { if (it.skill || !B.GROUPS.includes(it.group)) continue; e[it.group] += it.sets; for (const h of new Set((M.MOVES[it.moveId].muscles || []).map((mu) => B.MUSCLE_GROUP[mu]).filter((h2) => h2 && h2 !== it.group))) e[h] += 0.5 * it.sets; } return e; };
+  const weekOf = (S, ws) => { const c = B.calendar(S, ws); return c.weeks[ws].sessions.filter((x) => !x.dropped && x.day != null).map((x) => B.buildSession(S, x.day, x.tpl, { cal: c, noReadiness: true })); };
+  const w3 = weekOf(Tn, D0 + 14);
+  const turnPlan = O.weekPlan(Tn, D0 + 14);
+  for (const sx of w3) {
+    const items = sx.items.concat(sx.extras || []).map((it) => ({ fam: it.fam, moveId: it.moveId, kind: it.kind, group: it.group, sets: Array.from({ length: it.sets || 1 }, (_, i) => ({ set: i + 1, amount: it.target })) }));
+    Tn.log.push({ type: 'workout', day: sx.day, tpl: sx.tpl, title: sx.title, items, checkedIn: true, pct: 1, planned: 1, doneSets: items.reduce((q, it) => q + it.sets.length, 0) });
+  }
+  const e3 = effOf(w3), e4 = effOf(weekOf(Tn, D0 + 21));
+  const left3 = B.GROUPS.filter((g) => turnPlan.perGroup[g].trainable && e3[g] < 2);
+  check('too little time for every group: next week trains first what this week left short', turnPlan.parity && left3.length > 0 && left3.filter((g) => e3[g] + e4[g] >= 2).length >= Math.min(left3.length, 2), { left3, e3, e4 });
+  // No planned day goes without sets because of what's round them: a left vs right test waits for
+  // another day, the parts round the sets shrink, then a planned finisher goes.
+  const empty = [];
+  for (const minutes of [10, 15]) {
+    for (const goals of [['fat', 'consistency'], ['endurance', 'strength', 'mobility', 'fat'], ['abs', 'arms']]) {
+      const S = person({ goals, days: 5, minutes, age: 25, conditions: ['hands'], lead: { arm: 'L', leg: 'R' }, where: 'gym', gym: B.gymPreset('small', 'lb') });
+      for (const ws of [D0, D0 + 14]) for (const d of O.weekPlan(S, ws).days) if (!Object.keys(d.groupSets).length) empty.push(`${minutes} min ${goals.join('+')} ${B.dayStr(d.day)}`);
+    }
+  }
+  check('no planned day is left without sets by its test, warm-up or finisher', !empty.length, empty.slice(0, 4));
 }
 
 /* ------------------------------------------------------------------ fitting sessions */

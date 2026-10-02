@@ -524,16 +524,21 @@ section('Different bodies: age bands');
   const mid = twelveWeeks({ age: 40 });
   const older = twelveWeeks({ age: 55 });
   bodyChecks('55-year-old', older);
-  check(`with the same answers, progress is fastest at 22 and slowest at 55 (${score(young.S)} > ${score(mid.S)} > ${score(older.S)})`, score(young.S) > score(mid.S) && score(mid.S) > score(older.S));
+  // 1.6: the plan is built for each age (power work, balance practice and a longer warm-up from 50
+  // change which exercises get the time, and the rungs climbed differ), so 40 and 55 no longer
+  // train alike and their totals aren't compared; the rule itself (a good set adds a little less
+  // from 50) is checked above.
+  check(`with the same answers, progress is fastest at 22 (${score(young.S)} > ${score(mid.S)}, ${score(older.S)})`, score(young.S) > score(mid.S) && score(young.S) > score(older.S));
   check('22: jumps allowed, the usual warm-up for the day\'s muscles, finishers that change', B.programFor(young.S.profile).impactOk && young.sessions.every((s) => s.warmup.length === 3 && !s.warmup.some((w) => (M.FLOWS.warmGentle || []).includes(w.moveId) && w.moveId !== 'wu_circles' && w.moveId !== 'wu_squat')) && new Set(young.sessions.filter((s) => s.finisher).map((s) => s.finisher.moveId)).size >= 2);
   const bal55 = perWeek(older.sessions, (s) => s.items.some((it) => it.group === 'balance'));
   check('55: balance practice twice a week, first thing in the session', Object.values(bal55).every((n) => n === 2) && older.sessions.every((s) => !s.items.some((it) => it.group === 'balance') || s.items[0].group === 'balance'), bal55);
   const power55 = perWeek(older.sessions, (s) => s.items.some((it) => it.power));
   // A strength goal works the home squat in 5 to 10 reps (1.6), so it climbs past the rungs with a
-  // fast-up version (goblet squats) within a few weeks: power runs once a week while it has one.
+  // fast-up version (goblet squats) within the 12 weeks (how soon depends on the week's plan): power
+  // runs once a week while it has one.
   const powerWeeks = Object.keys(perWeek(older.sessions, (s) => s.items.some((it) => it.fam === 'squat' && M.MOVES[it.moveId].powerOf)));
   const canPower = Object.keys(perWeek(older.sessions, (s) => s.items.some((it) => it.fam === 'squat' && Object.values(M.MOVES).some((m) => m.powerOf === it.moveId || m.id === it.moveId && m.powerOf))));
-  check('55: once a week the squat is fast on the way up (power), every week it has a fast-up version', Object.values(power55).length >= 4 && Object.values(power55).every((n) => n === 1) && canPower.every((w) => powerWeeks.includes(w)), { power55, canPower });
+  check('55: once a week the squat is fast on the way up (power), every week it has a fast-up version', Object.values(power55).length >= 2 && Object.values(power55).every((n) => n === 1) && canPower.every((w) => powerWeeks.includes(w)), { power55, canPower });
   // 1.6: with a strength goal and time to spare the main lifts rest longer (about 2.5 minutes, or
   // 2), the 15 s from 50 on top.
   const strengthMain = (it) => B.HOME_COMPOUND.includes(it.fam) || B.MAIN_LIFTS.includes(it.fam);
