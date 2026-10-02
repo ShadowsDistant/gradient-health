@@ -577,7 +577,7 @@
     if (st.kind === 'warmup') return 'Warm-up';
     if (st.kind === 'test') return 'Left vs right test';
     if (st.kind === 'interval') return `Finisher · round ${st.round + 1} of ${st.of}`;
-    if (st.kind === 'cooldown') return P.mode === 'mobility' ? `Mobility · ${P.mob.idx + 1} of ${P.mob.steps.length}` : 'Cool-down';
+    if (st.kind === 'cooldown') return P.mode === 'mobility' ? `Mobility · ${P.mob.idx + 1} of ${P.mob.steps.length}` : it.cardio ? 'Easy cardio' : 'Cool-down';
     if (st.leadOnly) return `Extra ${U.side(st.side).toLowerCase()} set`;
     return `${it.superset ? it.superset + ' · ' : ''}${B().GROUP_NAME[it.group] || ''} · set ${st.set + 1} of ${st.of}`;
   }
@@ -605,7 +605,7 @@
     if (!st) return '<p class="t-callout rf-muted">Last one.</p>';
     const it = st.item;
     const w = st.kind === 'set' ? weightOf(it) : null;
-    const what = st.kind === 'set' ? U.target(it, B().currentTarget(A(), st)) + (w ? ` at ${w.label}` : '') : st.kind === 'interval' ? `${st.work} s` : st.kind === 'test' ? 'max reps' : isTimed(st) ? `${durationOf(st)} s` : U.target(it);
+    const what = st.kind === 'set' ? U.target(it, B().currentTarget(A(), st)) + (w ? ` at ${w.label}` : '') : st.kind === 'interval' ? `${st.work} s` : st.kind === 'test' ? 'max reps' : isTimed(st) ? (it.cardio ? `${Math.max(1, Math.round(durationOf(st) / 60))} min` : `${durationOf(st)} s`) : U.target(it);
     return `<div class="pl-next"><span class="t-caption rf-muted">Up next</span><span class="t-headline">${U.esc(it.name)}</span><span class="t-footnote rf-muted">${U.esc(eyebrow(st))} · ${U.esc(what)}${st.side ? ` · ${U.side(st.side).toLowerCase()}` : ''}</span></div>`;
   }
 
@@ -1057,7 +1057,12 @@
     if (res && res.entry && GH.health && GH.health.writeWorkout(S, res.entry)) setTimeout(() => U.syncHealth('manual'), 2500);
     const el = root();
     const big = res && (res.celebrate.length || fresh.length);
-    U.haptic(big ? 'celebrate' : 'success');
+    // The workout's own finish, then, once it's over, the biggest thing it brought: a personal
+    // best, or a harder move or heavier weight. New badges play their own as their card springs.
+    U.haptic('workoutDone');
+    const kinds = res && res.celebrate ? res.celebrate.map((c) => c.kind) : [];
+    const then = kinds.includes('pr') ? 'pr' : kinds.includes('level') || kinds.includes('weight') ? 'levelUp' : null;
+    if (then) setTimeout(() => U.haptic(then), 700);
     if (big && G.Refract && G.Refract.burst && !U.reduced()) {
       setTimeout(() => { for (const c of el.querySelectorAll('.celebrate')) { try { G.Refract.burst(c, { count: 18 }); } catch (e) { /* ignore */ } } }, 350);
     }
@@ -1097,7 +1102,7 @@
     dropFig();
     draw();
     // After the last hold's done buzz when the timer ended it, so the two play one after the other.
-    if (byTimer) setTimeout(() => U.haptic('success'), 450); else U.haptic('success');
+    if (byTimer) setTimeout(() => U.haptic('workoutDone'), 450); else U.haptic('workoutDone');
     // Badges it earned (ten sessions, a streak kept going), told once that buzz is over.
     if (U.badgeCheck) setTimeout(() => U.badgeCheck('mobility'), 900);
   }

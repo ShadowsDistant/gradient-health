@@ -365,8 +365,9 @@
       done.add(i);
       spring(el.querySelectorAll('.bdg-page')[i].querySelector('.bdg-stage'), pages[i].def, { buzz: true, burst: true });
     };
+    // quiet: the medal's own badge haptic is the moment, not the sheet opening.
     const ctl = U.sheet({
-      title: many ? `${pages.length} new badges` : 'New badge', size: 'fit', cls: 'bdg-sheet bdg-reveal-sheet', body,
+      title: many ? `${pages.length} new badges` : 'New badge', size: 'fit', cls: 'bdg-sheet bdg-reveal-sheet', body, quiet: true,
       after: (c) => {
         const el = c.el;
         const box = el.querySelector('.bdg-pages');

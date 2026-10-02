@@ -611,7 +611,7 @@
     plat().keepAwake(false);
     if (open) {
       U.open('activity', act.id);
-      U.haptic(act.records.length ? 'celebrate' : 'success');
+      U.haptic(act.records.length ? 'pr' : 'workoutDone');
     } else U.render();
     if (U.checklistCheck) U.checklistCheck();
     if (U.actAfterFinish) U.actAfterFinish(act);

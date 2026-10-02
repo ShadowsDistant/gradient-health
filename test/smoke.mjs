@@ -237,7 +237,7 @@ await page.waitForSelector('#screen .session.done');
 check('Today shows the workout as done', /Done/.test(await page.locator('#screen .session.done').innerText()));
 check('screen no longer kept awake', await page.evaluate(() => window.__awake === false));
 const hx = await page.evaluate(() => window.__haptics);
-check('haptics: start, finished sets and a finish', hx.includes('go') && hx.includes('done') && (hx.includes('celebrate') || hx.includes('success')), hx.slice(-12));
+check('haptics: start, finished sets and a finish', hx.includes('go') && hx.includes('done') && hx.includes('workoutDone'), hx.slice(-12));
 const writes = await page.evaluate(() => window.__writes);
 check('the workout was saved to Health Connect once, keyed by day', writes.length === 1 && writes[0].id === 'gradient-2026-09-28' && writes[0].type === 'strength_training' && writes[0].end > writes[0].start, writes);
 
