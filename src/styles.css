@@ -342,34 +342,8 @@ textarea.preview { border: 0; resize: vertical; }
 .rf-list-row .rf-segmented[data-size="sm"] { flex: none; }
 
 /* ---------------------------------------------------------------- onboarding */
-.onboard { position: fixed; inset: 0; z-index: var(--z-overlay); background: var(--bg); display: flex; flex-direction: column; padding: var(--sat) var(--sar) var(--ob-kb, 0px) var(--sal); overflow: hidden; overflow: clip; isolation: isolate; }
-/* Set-up sits on the app's glow (see .app::before), with glass lists and cards on top. */
-.onboard::before, .onboard::after {
-  content: ''; position: absolute; inset: -12% -25% auto; height: 64%; pointer-events: none; z-index: -1;
-  -webkit-mask-image: linear-gradient(to bottom, #000 35%, transparent 95%); mask-image: linear-gradient(to bottom, #000 35%, transparent 95%);
-  opacity: .55; will-change: transform; transform-origin: 50% 40%;
-}
-.onboard::before { background: radial-gradient(34% 46% at 20% 34%, var(--glow-mint), transparent 72%), radial-gradient(38% 48% at 64% 66%, var(--glow-violet), transparent 74%); animation: glow-drift-a 26s ease-in-out infinite alternate; }
-.onboard::after { background: radial-gradient(34% 44% at 80% 26%, var(--glow-sky), transparent 72%), radial-gradient(30% 40% at 34% 74%, var(--glow-pink), transparent 74%); animation: glow-drift-b 34s ease-in-out -9s infinite alternate; }
-[data-theme^="dark"] .onboard::before, [data-theme^="dark"] .onboard::after { opacity: .65; }
-:root[data-still-glow] .onboard::before, :root[data-still-glow] .onboard::after { animation-play-state: paused; }
-@media (prefers-reduced-motion: reduce) { .onboard::before, .onboard::after { animation: none; } }
-:root[data-theme$="contrast"] .onboard::before, :root[data-theme$="contrast"] .onboard::after, :root[data-rf-transparency="reduced"] .onboard::before, :root[data-rf-transparency="reduced"] .onboard::after { display: none; }
-@media (prefers-reduced-transparency: reduce) { .onboard::before, .onboard::after { display: none; } }
-.onboard { --ob-glass: color-mix(in srgb, var(--bg-raised) 72%, transparent); }
-[data-theme^="dark"] .onboard { --ob-glass: color-mix(in srgb, var(--bg-raised) 64%, transparent); }
-.onboard .rf-list, .onboard .card, .onboard .ob-plank { background-color: var(--ob-glass); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); box-shadow: inset 0 0 0 .5px var(--separator), var(--shadow-card); }
-:root[data-theme$="contrast"] .onboard .rf-list, :root[data-theme$="contrast"] .onboard .card, :root[data-rf-transparency="reduced"] .onboard .rf-list, :root[data-rf-transparency="reduced"] .onboard .card { background-color: var(--bg-raised); -webkit-backdrop-filter: none; backdrop-filter: none; }
-@media (prefers-reduced-transparency: reduce) { .onboard .rf-list, .onboard .card, .onboard .ob-plank { background-color: var(--bg-raised); -webkit-backdrop-filter: none; backdrop-filter: none; } }
-/* Above the keyboard there's no navigation bar to clear. */
-:root[data-keyboard] .ob-actions { padding-bottom: var(--space-3); }
-.ob-where { display: flex; gap: 6px; justify-content: center; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ob-where > span:first-child { font-weight: 600; color: var(--label-secondary); }
-.ob-where > span:first-child:empty { display: none; }
-.ob-where > span:first-child:not(:empty)::after { content: '·'; margin-left: 6px; font-weight: 400; }
-.ob-hero-card { gap: var(--space-1); }
-.ob-hero-num { margin: 0; font-size: 2rem; font-weight: 700; line-height: 1.15; letter-spacing: -0.01em; }
-.ob-around .t-headline { margin: 0; }
+/* Set-up's own look is in src/styles/onboarding.css. These parts other screens use too: the top bar
+   and the buttons (the player's), groups of fields and chips, and the bullets in Built around you. */
 .ob-card p { margin: 0; }
 .onboard[hidden], .player[hidden] { display: none; }
 .ob-top, .pl-top { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-4); }
@@ -377,11 +351,6 @@ textarea.preview { border: 0; resize: vertical; }
 .ob-progress .rf-progress, .pl-prog .rf-progress { width: 100%; }
 .pl-prog .t-caption { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ob-spacer { width: 44px; flex: none; }
-.ob-scroll { flex: 1; overflow-y: auto; padding-bottom: var(--space-8); }
-.ob-body { display: grid; gap: var(--space-4); padding: 0 var(--space-4); }
-.ob-body .rf-list-header { padding-inline: var(--space-2); }
-.ob-lead { margin: 0; color: var(--label-secondary); }
-.ob-note { margin: 0; }
 .ob-group { display: grid; gap: var(--space-2); }
 .ob-group > .rf-list-header, .ob-group > .rf-list-footer { margin: 0; }
 .ob-pad { padding: 0; }
@@ -406,7 +375,6 @@ textarea.preview { border: 0; resize: vertical; }
 .ob-choice .rf-list-row:has(.ob-radio:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .ob-card { gap: var(--space-2); }
 .ob-bullets { margin: 0; padding-inline-start: 1.2em; display: grid; gap: var(--space-2); line-height: 1.4; }
-.ob-plank { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); }
 .ob-add { display: flex; gap: var(--space-2); align-items: center; }
 .ob-add .rf-input { flex: 1; min-width: 0; }
 .ob-inline { gap: var(--space-3); }
@@ -470,48 +438,12 @@ textarea.preview { border: 0; resize: vertical; }
 .ch-svg { animation: ch-wipe 700ms var(--ease-out-soft) both; }
 @keyframes ch-wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 
-/* ---------------------------------------------------------------- getting started, tips */
+/* ---------------------------------------------------------------- tips */
+/* (The Getting started checklist and the tour are in src/styles/onboarding.css.) */
 .tip { gap: var(--space-1); padding-block: var(--space-3); background: color-mix(in oklab, var(--accent-soft) 70%, var(--bg-raised)); overflow: hidden; }
 .tip-row { display: flex; gap: var(--space-3); align-items: flex-start; }
 .tip-row .rf-list-icon { margin-top: 2px; }
 .tip .rf-btn { justify-self: end; }
-.checklist { gap: var(--space-2); overflow: hidden; }
-.check-items { list-style: none; margin: var(--space-1) 0 0; padding: 0; display: grid; gap: 2px; }
-.ck { appearance: none; border: 0; background: none; color: inherit; font: inherit; width: 100%; text-align: start; display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-radius: var(--radius-md); cursor: pointer; transition: background-color var(--duration-fast); }
-button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
-.ck-mark { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--fill-2); color: var(--label-secondary); --rf-icon-size: 16px; transition: background-color var(--duration-base), color var(--duration-base), scale var(--duration-spring-bouncy) var(--spring-bouncy); }
-.ck.is-done .ck-mark { background: var(--positive-fill, var(--positive)); color: #fff; animation: ck-pop var(--duration-spring-bouncy) var(--spring-bouncy); }
-.ck.is-done .t-subhead { color: var(--label-secondary); text-decoration: line-through; text-decoration-color: color-mix(in oklab, var(--label-secondary) 55%, transparent); }
-@keyframes ck-pop { from { scale: .6; } to { scale: 1; } }
-.ck-text { display: grid; gap: 1px; flex: 1; min-width: 0; }
-.ck-go { color: var(--label-tertiary); flex: none; }
-.ck-hide { justify-self: start; }
-
-/* ---------------------------------------------------------------- tour */
-.tour-sheet .rf-sheet-body { display: flex; }
-.tour { flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-4); padding: var(--space-2) var(--space-4) calc(var(--space-4) + var(--sab)); min-height: 100%; box-sizing: border-box; }
-.tour-art { flex: 1; min-height: 220px; width: 100%; display: grid; place-items: center; }
-.tour-icon { width: 128px; height: 128px; border-radius: 36px; display: grid; place-items: center; color: #fff; --rf-icon-size: 56px; background: linear-gradient(145deg, color-mix(in oklab, var(--accent-fill) 80%, #fff), var(--accent-fill)); box-shadow: 0 18px 40px -12px color-mix(in oklab, var(--accent-fill) 60%, transparent); }
-.tour-icon svg { width: 56px; height: 56px; }
-.tour-fig { width: min(100%, 320px); height: 240px; border-radius: var(--radius-xl); background: var(--bg-raised); box-shadow: var(--shadow-card); padding: var(--space-3); box-sizing: border-box; }
-.tour-fig > svg { display: block; width: 100%; height: 100%; }
-.tour-rir { width: min(100%, 320px); display: grid; gap: var(--space-2); padding: var(--space-4); border-radius: var(--radius-xl); background: var(--bg-raised); box-shadow: var(--shadow-card); }
-.tour-rir .rf-segmented { width: 100%; }
-.tour, .tour-art, .tour-copy { min-width: 0; max-width: 100%; }
-/* The tab bar replica on the last page matches the real one (size, pill, label type). */
-.tour-tabs { display: flex; width: 100%; max-width: 360px; box-sizing: border-box; block-size: var(--bar-height); padding: 4px; border-radius: var(--radius-full); background: color-mix(in oklab, var(--bg-raised) 94%, transparent); box-shadow: var(--rim-light), var(--shadow-glass-lifted); }
-.tour-tab { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; border-radius: var(--radius-full); color: var(--label); font-size: .6875rem; font-weight: 600; line-height: 1.3; letter-spacing: .01em; --rf-icon-size: var(--icon-lg); }
-/* The picked tab sits in a glass lens, like the real bar's. */
-.tour-tab.is-on { color: var(--accent); background-color: color-mix(in oklab, var(--glass-fill-clear) 70%, transparent); background-image: linear-gradient(180deg, rgb(255 255 255 / 0.16), rgb(255 255 255 / 0) 55%); box-shadow: var(--rim-light), var(--shadow-glass); }
-:root[data-theme$="contrast"] .tour-tab.is-on { background: var(--fill-selected); box-shadow: none; }
-.tour-tab-label { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-.tour-copy { display: grid; gap: var(--space-2); max-width: 36ch; }
-.tour-copy h3, .tour-copy p { margin: 0; }
-.tour-dots { display: flex; gap: 6px; }
-.tour-dots i { width: 7px; height: 7px; border-radius: 4px; background: var(--fill-1); transition: width var(--duration-spring-snappy) var(--spring-snappy), background-color var(--duration-base); }
-.tour-dots i.on { width: 22px; background: var(--accent-fill); }
-.tour-btns { width: 100%; max-width: 420px; display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
-.tour-btns .rf-glass { min-width: 140px; }
 
 /* ---------------------------------------------------------------- profile */
 .me-card { appearance: none; border: 0; font: inherit; color: inherit; text-align: start; display: flex; align-items: center; gap: var(--space-3); cursor: pointer; }
@@ -612,9 +544,8 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 @keyframes hint-pulse { 50% { opacity: .55; } }
 .set-coach .rf-segmented { flex: none; }
 .streak { background: linear-gradient(160deg, color-mix(in oklab, var(--accent-soft) 60%, var(--bg-raised)) 0%, var(--bg-raised) 70%); }
-.ob-page { display: grid; gap: 0; }
 @media (prefers-reduced-motion: reduce) {
-  .ch-svg, .ck.is-done .ck-mark, .sci-studies[open] .sci-refs, .sci-row.is-flash, .pl-fig-hint { animation: none; }
+  .ch-svg, .sci-studies[open] .sci-refs, .sci-row.is-flash, .pl-fig-hint { animation: none; }
 }
 
 @media (min-width: 700px) {
@@ -632,17 +563,6 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 .sheet-prose p { margin: 0; }
 .sheet-prose > .rf-btn { justify-self: start; margin-top: var(--space-1); }
 .sheet-lead { margin: 0 0 var(--space-3); }
-
-/* Welcome (first set-up screen). */
-.ob-page.is-bare { padding-top: var(--space-6); }
-.ob-welcome { display: grid; justify-items: center; text-align: center; gap: var(--space-3); padding: var(--space-6) var(--space-2) 0; }
-.ob-logo { width: 104px; height: 104px; border-radius: 24px; box-shadow: 0 18px 44px -14px rgb(92 60 200 / 45%), 0 2px 6px rgb(0 0 0 / 8%); }
-.ob-welcome .rf-large-title { margin: var(--space-2) 0 0; padding: 0; }
-.ob-welcome .ob-hero-title { font-size: clamp(2.25rem, 10vw, 3.25rem); line-height: 1.05; letter-spacing: -0.02em; overflow-wrap: anywhere; }
-.ob-tagline { margin: 0; max-width: 24ch; font-weight: 500; }
-.ob-points { list-style: none; margin: var(--space-5) 0 0; padding: 0; display: grid; gap: var(--space-4); text-align: start; max-width: 34ch; }
-.ob-points li { display: grid; grid-template-columns: 28px 1fr; gap: var(--space-3); align-items: start; color: var(--label); font-size: 1rem; line-height: 1.4; }
-.ob-points li > svg { color: var(--accent); width: 24px; height: 24px; }
 
 /* Gym weight on the set screen, and the weight picker. */
 .pl-load { appearance: none; border: 0; display: inline-flex; align-items: center; gap: 6px; margin: calc(-1 * var(--space-1)) auto 0; padding: 6px 12px; border-radius: var(--radius-full); background: var(--fill-3); color: var(--label); font: inherit; font-weight: 600; font-size: 1.0625rem; cursor: pointer; }
