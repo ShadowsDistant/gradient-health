@@ -176,6 +176,21 @@
     }
     return out.filter((x) => x.options.length);
   }
+  // The plan for a model with a short memory (an older on-device size, 2,048 tokens): two moves to
+  // swap to for each family and 16 in all, and no reasons line. The answer is checked against these
+  // shorter lists.
+  const COMPACT_MOVES = 16;
+  function compact(ctx) {
+    const swaps = ctx.swaps.map((x) => Object.assign({}, x, { options: x.options.slice(0, 2) }));
+    for (let total = swaps.reduce((a, x) => a + x.options.length, 0); total > COMPACT_MOVES; total--) {
+      const most = swaps.reduce((a, x) => (x.options.length > a.options.length ? x : a), swaps[0]);
+      most.options.pop();
+    }
+    const out = Object.assign({}, ctx, { compact: true, swaps: swaps.filter((x) => x.options.length) });
+    out.allowed = [].concat(...out.swaps.map((x) => x.options));
+    out.kinds = kindsOf(out);
+    return out;
+  }
 
   // The plan in words, the same for both models (only what each may know differs).
   function planLines(S, ctx) {
@@ -211,7 +226,7 @@
     // age, so it stays on the phone.
     const around = GH.access && GH.access.plannedAround ? GH.access.plannedAround(p) : null;
     const reasons = (ex.reasons || []).filter((r) => !(ctx.target === 'claude' && around && String(r).startsWith(around)));
-    if (reasons.length) L.push(`- Why the planner picked it: ${reasons.join(' ')}`);
+    if (reasons.length && !ctx.compact) L.push(`- Why the planner picked it: ${reasons.join(' ')}`);
     return L;
   }
   function movesLines(ctx) {
@@ -632,6 +647,9 @@
   }
 
   /* ================================================================== asking */
+  // How long an on-device answer may run, in tokens: room for 3 suggestions and the note (for the
+  // shorter plan, which has less room around it, a little less).
+  const DEVICE_TOKENS = 560, COMPACT_TOKENS = 420;
   // One review: the model reads the plan and answers in the schema or grammar. o: { engine, signal,
   // onStatus(state, value) } (the on-device states: 'loading', 'reading', 'writing'; Claude's:
   // 'asking'). Resolves { raw, given, ctx, engine, model } or { aborted: true }.
@@ -649,16 +667,26 @@
       const raw = await GH.ai.json(S, day, prompt, schema(ctx), { effort: 'medium', maxTokens: 8000 });
       return { raw, given, ctx, engine: 'claude', model: (S.ai.model && S.ai.model.name) || null };
     }
-    const msgs = deviceMessages(S, day, ctx);
-    let res;
-    try {
-      res = await GH.deviceCoach.structured(S, msgs, { grammar: grammar(ctx), maxTokens: 560, temperature: 0.3, signal: opt.signal, onStatus: opt.onStatus });
-    } catch (e) {
-      if (e && e.code === 'too-long') throw err('Your plan is too long for this on-device model. A newer size in Settings can read it, or Claude can.', 'too-long');
-      throw e;
+    // A model with a short memory gets the shorter plan when the whole one won't fit (counted at 3
+    // characters a token, as llm.js does), and should it still say the plan is too long, the shorter
+    // one is tried before giving up.
+    const tooLong = () => err('Your plan is too long for this on-device model. A newer size in Settings can read it, or Claude can.', 'too-long');
+    const room = GH.deviceCoach.room ? await GH.deviceCoach.room(S) : null;
+    const needs = (c) => Math.ceil(deviceMessages(S, day, c).reduce((a, m) => a + m.content.length + 18, 0) / 3) + 64 + DEVICE_TOKENS;
+    const once = async (c) => {
+      const msgs = deviceMessages(S, day, c);
+      const res = await GH.deviceCoach.structured(S, msgs, { grammar: grammar(c), maxTokens: c.compact ? COMPACT_TOKENS : DEVICE_TOKENS, temperature: 0.3, signal: opt.signal, onStatus: opt.onStatus });
+      return { res, msgs, c };
+    };
+    let out;
+    const first = room && needs(ctx) > room ? compact(ctx) : ctx;
+    try { out = await once(first); } catch (e) {
+      if (!(e && e.code === 'too-long')) throw e;
+      if (first.compact) throw tooLong();
+      try { out = await once(compact(ctx)); } catch (e2) { throw e2 && e2.code === 'too-long' ? tooLong() : e2; }
     }
-    if (res.aborted) return { aborted: true, ctx, engine: 'device' };
-    return { raw: readJson(res.raw), text: res.raw, given: msgs.map((m) => m.content).join('\n'), ctx, engine: 'device', model: res.model };
+    if (out.res.aborted) return { aborted: true, ctx: out.c, engine: 'device' };
+    return { raw: readJson(out.res.raw), text: out.res.raw, given: out.msgs.map((m) => m.content).join('\n'), ctx: out.c, engine: 'device', model: out.res.model };
   }
   // The plan's shape, to tell whether a review still fits it.
   function stamp(S, day) {
@@ -818,7 +846,7 @@
 
   GH.planReview = {
     KINDS, SPEC, VALUES, GROUPS, SPLITS, RESTS, MINUTES, MAX, MAX_MOVES, LOOK, PART_INFO, WD,
-    available, engine, open, context, planLines, personLines, claudeAsk, deviceMessages, listSchema, schema, grammar, readJson,
+    available, engine, open, context, compact, planLines, personLines, claudeAsk, deviceMessages, listSchema, schema, grammar, readJson,
     normalize, prepare, trial, validate, ownTitle, ask, run, current, stamp, apply, last, undo, forReport, fromReport, why, dayLabel,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

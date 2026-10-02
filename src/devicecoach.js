@@ -191,6 +191,16 @@
     const rank = (id) => { const i = models.findIndex((m) => m.id === id); const m = models[i]; return (big[id] ? 100 : 0) + (!m ? 99 : m.legacy ? 50 + i : 10 - (m.quality || 0)); };
     return ids.slice().sort((a, b) => rank(a) - rank(b))[0] || null;
   }
+  // How much the model that would answer can hold (its context, in tokens), or null when there's none
+  // on the phone. The plan review sends a shorter plan to a model with a short memory.
+  async function room(S) {
+    try {
+      const llm = await GH.lazy('llm');
+      const id = pick(S, await llm.installed());
+      const m = id ? (llm.MODELS || []).find((x) => x.id === id) : null;
+      return m && m.ctx ? m.ctx : null;
+    } catch (e) { return null; }
+  }
 
   // o: { onToken(piece, textSoFar), onStatus(state, fraction), signal }. The states, in order:
   // 'loading' (the model starting, with a fraction), 'thinking' (waiting its turn), 'reading' (the
@@ -301,5 +311,5 @@
   }
   function clear(S) { S.ai.deviceChat = []; }
 
-  GH.deviceCoach = { RULES, brief, facts, system, messages, lead, keepToGiven, finish, ask, structured, prime, pick, clear };
+  GH.deviceCoach = { RULES, brief, facts, system, messages, lead, keepToGiven, finish, ask, structured, room, prime, pick, clear };
 })(typeof window !== 'undefined' ? window : globalThis);

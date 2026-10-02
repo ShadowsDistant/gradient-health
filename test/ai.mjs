@@ -229,6 +229,53 @@ section('The plan review: asking Claude');
   check('it stays while the plan is as it was', R.current(P, D0) === review);
 }
 
+section('The plan review: an on-device model with a short memory');
+{
+  // A stand-in for the model on the phone: it takes up to `limit` characters, like a context window.
+  const DC = GH.deviceCoach;
+  const keep = { room: DC.room, structured: DC.structured };
+  const seen = [];
+  let limit = Infinity;
+  DC.structured = async (S1, msgs, o) => {
+    const chars = msgs.reduce((a, m) => a + m.content.length, 0);
+    seen.push({ chars, maxTokens: o.maxTokens, grammar: o.grammar, text: msgs.map((m) => m.content).join('\n') });
+    if (chars > limit) { const e = new Error('too long'); e.code = 'too-long'; throw e; }
+    return { raw: JSON.stringify({ suggestions: [], note: 'It fits.' }), aborted: false, model: 'test', stats: null };
+  };
+  const quoted = (gram, id) => gram.includes(`"\\"${id}\\""`);
+  try {
+    const full = R.context(P, D0, 'device');
+    const small = R.compact(full);
+    const reasonsLine = (lines) => lines.some((l) => /^- Why the planner picked it/.test(l));
+    check('the shorter plan: two moves to swap to for each family, 16 in all, and no reasons line', small.compact && small.allowed.length <= 16 && small.allowed.length < full.allowed.length && small.swaps.every((x) => x.options.length <= 2 && x.options.every((id) => full.allowed.includes(id))) && !reasonsLine(R.planLines(P, small)) && reasonsLine(R.planLines(P, full)), { full: full.allowed.length, small: small.allowed.length });
+    DC.room = async () => 4096;
+    const roomy = await R.ask(P, D0, { engine: 'device' });
+    check('a model with room gets the whole plan', !roomy.ctx.compact && seen.length === 1 && seen[0].maxTokens === 560 && /Why the planner picked it/.test(seen[0].text));
+    seen.length = 0;
+    DC.room = async () => 2048;
+    const short = await R.ask(P, D0, { engine: 'device' });
+    const gone = full.allowed.filter((id) => !short.ctx.allowed.includes(id));
+    check('one with 2,048 tokens gets the shorter plan straight away, its grammar held to the shorter lists', short.ctx.compact && seen.length === 1 && seen[0].maxTokens === 420 && !/Why the planner picked it/.test(seen[0].text) && short.ctx.allowed.every((id) => quoted(seen[0].grammar, id)) && gone.length > 0 && !gone.some((id) => quoted(seen[0].grammar, id)), seen.map((x) => x.chars));
+    check('and the shorter plan fits it, counted the way the engine counts (3 characters a token)', Math.ceil(seen[0].chars / 3) + 2 * 6 + 64 + 420 <= 2048, seen[0].chars);
+    const fam = full.swaps.find((x) => x.options.includes(gone[0]));
+    const offered = R.validate(P, { suggestions: [{ kind: 'swap_move', family: fam.family, move: gone[0], title: 'A move it wasn\'t offered', why: 'Fresh.' }] }, D0, { ctx: short.ctx, given: null });
+    check('its answer is checked against the same lists', offered.items.length === 0 && /isn't in your plan/.test(offered.rejected[0].reason), offered.rejected);
+    // A model that turns the whole plan down anyway (the count is an estimate): the shorter one next.
+    seen.length = 0;
+    DC.room = async () => 4096;
+    const fullChars = R.deviceMessages(P, D0, full).reduce((a, m) => a + m.content.length, 0);
+    const smallChars = R.deviceMessages(P, D0, small).reduce((a, m) => a + m.content.length, 0);
+    limit = Math.floor((fullChars + smallChars) / 2);
+    const retried = await R.ask(P, D0, { engine: 'device' });
+    check('should a model still say the whole plan is too long, the shorter one is tried', retried.ctx.compact && seen.length === 2 && seen[0].chars === fullChars && seen[1].chars === smallChars, seen.map((x) => x.chars));
+    seen.length = 0;
+    limit = 100;
+    let e3 = null;
+    try { await R.ask(P, D0, { engine: 'device' }); } catch (e) { e3 = e; }
+    check('and when that\'s too long as well, a plain error says what would work', e3 && e3.code === 'too-long' && /newer size in Settings/.test(e3.message) && seen.length === 2, e3 && e3.message);
+  } finally { Object.assign(DC, keep); }
+}
+
 section('The plan review: checking suggestions');
 {
   const ctx = R.context(P, D0, 'device');
