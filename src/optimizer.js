@@ -1888,6 +1888,9 @@
   const fmtN = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   const joinList = (a) => (a.length <= 1 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
   const lower = (s) => s.charAt(0).toLowerCase() + s.slice(1);
+  const setsWord = (n) => `${n} set${Math.abs(n) === 1 ? '' : 's'}`;
+  // A score change in words only when it shows: 0.917 to 0.922 is "92 to 92" otherwise.
+  const pct100 = (x) => Math.round(x * 100);
   // Groups by name, with biceps and triceps together as arms when both are there.
   function groupNames(list) {
     const b = B();
@@ -1984,7 +1987,7 @@
   function tweakWords(t) {
     const b = B();
     const out = [];
-    for (const [g, n] of Object.entries(t.sets)) out.push(`${b.GROUP_NAME[g].toLowerCase()} ${n > 0 ? '+' : ''}${n} sets a week`);
+    for (const [g, n] of Object.entries(t.sets)) out.push(`${b.GROUP_NAME[g].toLowerCase()} ${n > 0 ? '+' : ''}${setsWord(n)} a week`);
     for (const [f, id] of Object.entries(t.swaps)) { const m = M().MOVES[id]; const lad = M().LADDERS[f]; if (m) out.push(`${m.name.toLowerCase()} for ${lad ? lad.name.toLowerCase() : 'that exercise'}`); }
     if (t.split !== 'auto') out.push(lower(LABEL[t.split]));
     if (t.rest !== 'auto') out.push(`${t.rest === 60 ? '1 minute' : t.rest === 90 ? '90 s' : '2 minutes'} of rest`);
@@ -2069,7 +2072,7 @@
       reasons.push(`The plan would score lower (${Math.round(before.score * 100)} to ${Math.round(after.score * 100)} out of 100), mostly on ${PART_WORDS[worst]}.`);
     }
     const ok = !fresh.length && drop <= 0.03;
-    if (ok) reasons.push(drop < -0.005 ? `The plan scores better (${Math.round(before.score * 100)} to ${Math.round(after.score * 100)} out of 100) and every rule still holds.` : 'Every rule still holds and the plan scores about the same.');
+    if (ok) reasons.push(pct100(after.score) > pct100(before.score) ? `The plan scores better (${pct100(before.score)} to ${pct100(after.score)} out of 100) and every rule still holds.` : 'Every rule still holds and the plan scores about the same.');
     return { ok, reasons, before, after, diff: diffLines(before, after, cur, merged, S.profile, S2.profile), tweaks: merged };
   }
   const PART_WORDS = { goal: 'how well the sets match your goals', coverage: 'every muscle group getting its minimum', time: 'fitting your time', recovery: 'rest between sessions for the same muscles', balance: 'balance between pushing and pulling', variety: 'variety' };
@@ -2082,7 +2085,7 @@
     if (p1.days !== p2.days) out.push(`${p2.days} workouts a week (was ${p1.days}).`);
     for (const g of GROUPS) {
       const a = before.perGroup[g].sets, c = after.perGroup[g].sets;
-      if (a !== c) out.push(`${b.GROUP_NAME[g]}: ${c} sets a week (was ${a}).`);
+      if (a !== c) out.push(`${b.GROUP_NAME[g]}: ${setsWord(c)} a week (was ${a}).`);
     }
     for (const [f, id] of Object.entries(next.swaps)) if (cur.swaps[f] !== id) { const m = M().MOVES[id]; const lad = M().LADDERS[f]; out.push(`${lad ? lad.name : 'That exercise'}: ${m.name.toLowerCase()} from now on.`); }
     for (const f of Object.keys(cur.swaps)) if (!next.swaps[f]) { const lad = M().LADDERS[f]; out.push(`${lad ? lad.name : 'That exercise'}: back to the usual move.`); }
@@ -2092,7 +2095,7 @@
     if (cur.rest !== next.rest) out.push(`Rest between sets: ${restWords(next.rest)} (was ${restWords(cur.rest)}).`);
     if (cur.finisher !== next.finisher) out.push(next.finisher === 'on' ? 'A finisher at the end of every session.' : next.finisher === 'off' ? 'No finishers.' : 'Finishers when there\'s time for one.');
     if (cur.mobility !== next.mobility) out.push(next.mobility === 'on' ? 'A cool-down after every session.' : next.mobility === 'off' ? 'No cool-down unless your plan needs one.' : 'A cool-down when there\'s time for one.');
-    if (Math.abs(after.score - before.score) >= 0.005) out.push(`Plan score: ${Math.round(before.score * 100)} → ${Math.round(after.score * 100)} out of 100.`);
+    if (pct100(after.score) !== pct100(before.score)) out.push(`Plan score: ${pct100(before.score)} → ${pct100(after.score)} out of 100.`);
     return out;
   }
 

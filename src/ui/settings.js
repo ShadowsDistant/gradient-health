@@ -505,7 +505,7 @@
     const ctl = U.sheet({
       title: 'Share your data with Claude?', size: 'full',
       body: `<div class="sheet-prose">
-        <p class="t-body">Claude is an AI made by Anthropic. To answer you, Gradient Health sends Anthropic a summary of your data with each question, when you ask for suggestions, and once a week for your report.</p>
+        <p class="t-body">Claude is an AI made by Anthropic. To answer you, Gradient Health sends Anthropic a summary of your data with each question, when you ask for suggestions or a check of your plan, and once a week for your report.</p>
         <p class="t-headline">The summary holds</p>
         <ul class="plain-list">
           <li>An age range (not your age), and your sex if you gave it</li>
@@ -513,8 +513,9 @@
           <li>Averages and trends of your sleep, steps, heart rate, HRV, active calories and weight</li>
           <li>Your training: workouts done, sets, levels and how they felt</li>
           ${food ? '<li>Your calorie target and what you ate on average (not the foods)</li>' : ''}
+          <li>To check your plan, here or with the weekly report: next week's plan, its exercises, sets and minutes</li>
         </ul>
-        <p class="t-body">Never your name, email, exact dates or device IDs. Anthropic's privacy policy covers what happens to it there. You can turn Claude off any time in Settings.</p>
+        <p class="t-body">Never your name, email, exact dates or device IDs, and never the health conditions you plan around. Anthropic's privacy policy covers what happens to it there. You can turn Claude off any time in Settings.</p>
         <div class="btn-row"><button type="button" class="rf-btn" data-variant="plain" data-act="previewSheet">${U.icon('eye')}See exactly what gets sent</button><button type="button" class="rf-btn" data-variant="plain" data-act="privacySheet">${U.icon('lock')}Privacy policy</button></div>
         <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="claudeAllow">Allow</button><button type="button" class="rf-btn" data-size="lg" data-act="claudeDeny">Not now</button></div>
       </div>`,
