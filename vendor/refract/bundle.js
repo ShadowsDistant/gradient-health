@@ -1903,7 +1903,14 @@
     };
     offs.push(on(bar, "pointerup", end));
     offs.push(on(bar, "pointercancel", end));
-    const mo = new MutationObserver(() => position(true));
+    // gh-patch(tabbar-frame): the lens follows a change of tab at the next frame. From the observer's
+    // microtask it read the tabs' places before the frame, laying out the page the tab change had
+    // just drawn once for that read and again for the frame.
+    let moFrame = 0;
+    const mo = new MutationObserver(() => {
+      if (!moFrame) moFrame = requestAnimationFrame(() => { moFrame = 0; if (root.isConnected) position(true); });
+    });
+    // gh-patch-end(tabbar-frame)
     mo.observe(bar, { subtree: true, attributes: true, attributeFilter: ["aria-current", "aria-selected"] });
     const ro = new ResizeObserver(() => position(false));
     ro.observe(bar);

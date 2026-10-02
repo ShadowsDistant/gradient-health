@@ -211,7 +211,12 @@
       else if (plan.type === 'workout') main = workoutCard(S, day, plan, cal, session);
       else if (plan.type === 'light') main = lightCard(S, day, plan);
       else main = restCard(S, day, plan);
-      const top = GH.insights ? GH.insights.top(S, day, 1)[0] : null;
+      // The insight line sits at the end of the page. On the first frame after launch it's there only
+      // if it's already worked out (the last launch the same day kept it); otherwise it's worked out
+      // once that frame is drawn, a little at a time while the phone is idle, and comes in then.
+      const ins = GH.insights ? GH.insights.top(S, day, 1, U.firstFrame || insightJob ? { ready: true } : null) : [];
+      if (!ins) insightLater();
+      const top = ins ? ins[0] || null : null;
       if (top && GH.insights.markShown) GH.insights.markShown(S, [top], day);
       const measure = GH.health && GH.health.measureDue(S, day);
       // Today's tip waits while the Getting started checklist is up: one thing at a time.
@@ -260,6 +265,20 @@
       return '';
     },
   };
+  // (Until it's done, Today's renders leave the line out too, rather than working it all out at once.)
+  let insightJob = 0;
+  const idle = (fn) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: 400 }) : setTimeout(fn, 30));
+  function insightLater() {
+    if (insightJob) return;
+    const step = () => {
+      const t0 = Date.now();
+      if (U.S && GH.insights && !GH.insights.warm(U.S, U.today(), () => Date.now() - t0 < 40)) { insightJob = idle(step); return; }
+      insightJob = 0;
+      if (U.S && U.route.tab === 'today' && !U.route.view) U.renderSoon();
+    };
+    insightJob = idle(step);
+  }
+
   // "Good morning" until noon, and so on; with a name when there is one.
   function greeting(S) {
     const h = new Date().getHours();

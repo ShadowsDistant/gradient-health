@@ -47,7 +47,10 @@
 
   /* ---------------------------------------------------------------- wording */
   const fmtMin = (m) => B().fmtMin(Math.round(m));
-  const fmtInt = (n) => Math.round(n).toLocaleString('en-US');
+  // Made once, on first use (toLocaleString makes a formatter every call, and the first one made sets
+  // up the number formats, which a launch shouldn't wait for).
+  let INT = null;
+  const fmtInt = (n) => (INT || (INT = new Intl.NumberFormat('en-US'))).format(Math.round(n));
   const pct = (x) => `${Math.round(Math.abs(x) * 100)}%`;
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many || one + 's'}`;
   function wUnit(S) { return S.profile.units === 'kg' ? 'kg' : 'lb'; }
@@ -414,10 +417,13 @@
   const feelStamp = (S) => js([S.feel, S.sleepChip]);
   let memo = new WeakMap(); // S → { key, feel, day, found: Map(generator → what it found) }
   const stats = { hits: 0, misses: 0, kept: 0 };
-  function top(S, day, n) {
+  // o.ready: answer only if no generator has to run (this launch, or the last one the same day, has
+  // what they found), else null. Today's first frame asks this way and works the line out after it.
+  function top(S, day, n, o) {
     const key = stamp(S, day), feel = feelStamp(S);
     let m = memo.get(S);
     if (!m || m.key !== key) { m = { key, feel, day, found: (!m && kept(day, key, feel)) || new Map() }; memo.set(S, m); }
+    if (o && o.ready && !GENERATORS.every((gen) => m.found.has(gen) && (m.feel === feel || !FEEL.has(gen)))) return null;
     let ran = false;
     const raw = [];
     for (const gen of GENERATORS) {
@@ -435,6 +441,27 @@
     m.feel = feel;
     if (ran) keepSoon(S);
     return finish(S, day, raw).slice(0, n || 5);
+  }
+  // Works out what top() needs, a generator at a time while more() says there's time (one at least),
+  // and keeps it; true once there's nothing left to work out. For the moments after a launch, so no
+  // single task carries every generator.
+  function warm(S, day, more) {
+    const key = stamp(S, day), feel = feelStamp(S);
+    let m = memo.get(S);
+    if (!m || m.key !== key) { m = { key, feel, day, found: (!m && kept(day, key, feel)) || new Map() }; memo.set(S, m); }
+    if (m.feel !== feel) { for (const gen of FEEL) m.found.delete(gen); m.feel = feel; }
+    let ran = false, done = true;
+    for (const gen of GENERATORS) {
+      if (m.found.has(gen)) continue;
+      if (ran && !more()) { done = false; break; }
+      stats.misses++;
+      ran = true;
+      const found = [];
+      try { gen(S, day, found); } catch (e) { /* one broken generator never hides the rest */ }
+      m.found.set(gen, found);
+    }
+    if (ran) keepSoon(S);
+    return done;
   }
 
   /* ---------------------------------------------------------------- kept across launches */
@@ -502,5 +529,5 @@
   function dismiss(S, id, day) { S.insightsDismissed = S.insightsDismissed || {}; S.insightsDismissed[id] = day; }
   function markShown(S, list, day) { S.insightsShown = S.insightsShown || {}; for (const x of list) if (S.insightsShown[x.id] == null) S.insightsShown[x.id] = day; }
 
-  GH.insights = { all, top, dismiss, markShown, spearman, slope, mean, sd, MIN_PAIRS };
+  GH.insights = { all, top, warm, dismiss, markShown, spearman, slope, mean, sd, MIN_PAIRS };
 })(typeof window !== 'undefined' ? window : globalThis);

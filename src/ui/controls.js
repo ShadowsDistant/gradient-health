@@ -664,18 +664,23 @@
     }
     // Native picks (a tap's click, the keyboard on radios) and ours land here.
     on(root, 'change', () => position(true));
+    // Reading where the options are lays the page out, so a control a render made or changed is
+    // placed in the read pass at the next frame (core.js), once that render's writes are all in:
+    // read mid-render, it laid the whole page out again.
+    let gone = false;
+    const later = (fn) => { if (U.readSoon) U.readSoon(() => { if (!gone) fn(); }); else fn(); };
     // A re-render that picks another option, or changes the options, moves the thumb too.
     const mo = new G.MutationObserver((recs) => {
       if (recs.every((x) => x.type === 'childList' && [...x.addedNodes, ...x.removedNodes].every((n) => n === thumb || n === lens))) return;
-      position(true);
+      later(() => position(true));
     });
     mo.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: K.drag ? ['checked'] : ['aria-checked'] });
     const ro = G.ResizeObserver ? new G.ResizeObserver(() => { if (!d) position(false); }) : null;
     if (ro) ro.observe(root);
-    position(false);
-    // Moves animate from the second frame on (the first placement doesn't slide in).
-    G.requestAnimationFrame(() => root.setAttribute('data-ready', ''));
+    // Moves animate from the frame after the first placement (it doesn't slide in).
+    later(() => { position(false); G.requestAnimationFrame(() => root.setAttribute('data-ready', '')); });
     return () => {
+      gone = true;
       offs.forEach((f) => f());
       mo.disconnect();
       if (ro) ro.disconnect();

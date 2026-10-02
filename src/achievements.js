@@ -596,6 +596,10 @@
   }
 
   GH.achievements = { DEFS, CATS, CAT, TIERS, TIER_ORDER, EVENTS, byId, ctx, evaluate, check, event, migrate, ensure, unseen, markSeen, summary, toGo, stamps, applies };
-  // store.migrate runs these on every load (src/store.js), after the plan engine's own.
-  (GH.migrations = GH.migrations || []).push(function badges(S) { migrate(S); });
+  // store.migrate runs these on every load (src/store.js), after the plan engine's own. A launch runs
+  // this one once its first frame is drawn (later): nothing on that frame reads the badges, and the
+  // first check of them comes 800 ms after a change at the soonest (src/ui/badges.js).
+  const badges = function badges(S) { migrate(S); };
+  badges.later = true;
+  (GH.migrations = GH.migrations || []).push(badges);
 })(typeof window !== 'undefined' ? window : globalThis);
