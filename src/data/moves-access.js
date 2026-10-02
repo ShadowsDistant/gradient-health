@@ -41,7 +41,18 @@
     { to: a, ms, hold: 0, ph: 'iso' },
   ];
   const cyc = (names, ms, hold = 120, ph = 'move') => names.map((n) => ({ to: n, ms, hold, ph }));
-  const clone = (o) => JSON.parse(JSON.stringify(o));
+  // A deep copy of plain data, as JSON makes it but quicker (see moves.js).
+  function clone(o) {
+    if (o === null || typeof o !== 'object') return typeof o === 'number' && !Number.isFinite(o) ? null : o;
+    if (Array.isArray(o)) {
+      const a = new Array(o.length);
+      for (let i = 0; i < o.length; i++) { const v = o[i]; a[i] = v === undefined || typeof v === 'function' ? null : clone(v); }
+      return a;
+    }
+    const out = {};
+    for (const k of Object.keys(o)) { const v = o[k]; if (v !== undefined && typeof v !== 'function') out[k] = clone(v); }
+    return out;
+  }
   const merge = (a, b) => {
     const out = clone(a);
     for (const [k, v] of Object.entries(b || {})) {
