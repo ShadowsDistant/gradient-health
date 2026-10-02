@@ -315,6 +315,21 @@ section('The plan review: checking suggestions');
     reasons = reasons.concat(one.rejected.map((x) => x.reason));
   }
   check('each one passes exactly when the engine\'s own test passes', agree);
+  // More or fewer sets of a group is only offered when next week's sets of that group move that way
+  // (with no time for them, the plan could keep the group as it was and drop a set elsewhere).
+  const wrongWay = [];
+  for (const g of R.GROUPS) {
+    for (const t of [{ kind: 'more_sets', group: g, delta: 1 }, { kind: 'more_sets', group: g, delta: 2 }, { kind: 'fewer_sets', group: g, delta: -1 }]) {
+      const one = R.validate(P, { suggestions: [Object.assign({ title: 'A change', why: 'Because.' }, t)] }, D0, { ctx, given: null });
+      const it = one.items[0];
+      if (!it) continue;
+      const tr = R.trial(P, it.change, D0);
+      const gs = g === 'arms' ? ['biceps', 'triceps'] : [g];
+      const up = t.kind === 'more_sets';
+      if (!gs.some((x) => (up ? tr.after.perGroup[x].sets > tr.before.perGroup[x].sets : tr.after.perGroup[x].sets < tr.before.perGroup[x].sets))) wrongWay.push(`${t.kind} ${g} ${t.delta}`);
+    }
+  }
+  check('more or fewer sets of a group is only offered when that group\'s sets move that way', !wrongWay.length, wrongWay);
   check('and a turned-down one says why in plain words, with no ids or rule names', reasons.length > 0 && reasons.every((r) => /^[A-Z]/.test(r) && /\.$/.test(r) && !/_|violation|tweak|undefined/.test(r)), reasons);
   // A split the engine says no to, by name: the score would drop by more than 0.03.
   const worse = ['full_body', 'ppl', 'upper_lower'].map((s) => ({ s, t: GH.optimizer.applyTweaks(P, { split: s }, D0) })).find((x) => !x.t.ok);

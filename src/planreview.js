@@ -515,7 +515,23 @@
     const diff = diffOf(res, change);
     // A change that leaves next week as it was (more sets with no time for them) isn't one to make.
     if (res.ok && !diff.length && Math.abs(res.after.score - res.before.score) < 0.001) return { ok: false, reason: noChange(change), diff, before: res.before, after: res.after };
+    // More or fewer sets of a group must move that group's sets that way next week. With no time for
+    // them, the plan can come out with the group as it was and a set gone somewhere else: that's not
+    // the change the card would name.
+    const sets = change.tweaks && change.tweaks.sets && !change.weekdays && !change.profile ? Object.entries(change.tweaks.sets) : [];
+    if (res.ok && sets.length) {
+      const cur = opt.normTweaks(S.profile.planTweaks).sets;
+      const way = sets.map(([g, n]) => [g, Math.sign(n - (cur[g] || 0))]).filter(([, w]) => w);
+      const moved = way.some(([g, w]) => { const a = res.before.perGroup[g].sets, z = res.after.perGroup[g].sets; return w > 0 ? z > a : z < a; });
+      if (way.length && !moved) return { ok: false, reason: notMoved(way), diff, before: res.before, after: res.after };
+    }
     return { ok: !!res.ok, reason: res.ok ? null : fresh.length ? plain(fresh[0]) : worse(res.before, res.after), diff, before: res.before, after: res.after };
+  }
+  // way: [[group, +1 | -1]] (biceps and triceps together are the arms).
+  function notMoved(way) {
+    const groups = way.map(([g]) => g);
+    const word = groups.length === 2 && groups.includes('biceps') && groups.includes('triceps') ? ADJ.arms : ADJ[groups[0]];
+    return way[0][1] > 0 ? `Your time has no room for more ${word} sets next week.` : `Your ${word} sets can't come down any further next week.`;
   }
   function noChange(change) {
     const sets = change.tweaks && change.tweaks.sets ? Object.entries(change.tweaks.sets) : [];

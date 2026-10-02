@@ -178,6 +178,42 @@ async function run(dark) {
   await tab('you');
   await top();
   await shot('you');
+  // Badges: the gallery, then one shared as a picture (the preview is exactly what gets sent). The
+  // 30-day streak when it's earned, else the newest earned one.
+  await page.evaluate(() => window.GH.ui.open('badges'));
+  await settle(1200);
+  await top();
+  await shot('badges');
+  await page.evaluate(() => {
+    const U = window.GH.ui, earned = (U.S.achievements && U.S.achievements.earned) || {};
+    const ids = Object.keys(earned).sort((a, b) => (earned[b].day || 0) - (earned[a].day || 0));
+    U.shareBadge(ids.includes('streak30') ? 'streak30' : ids[0]);
+  });
+  await settle(1800);
+  await shot('badge-share');
+  await page.evaluate(() => { const U = window.GH.ui; U.closeSheets(); while (U.back()) { /* to the tab */ } });
+  await settle(600);
+  // Why this plan: what the planner compared and how the week scores, with no AI.
+  await page.evaluate(() => window.GH.ui.act.whyPlan());
+  await settle(1400);
+  await shot('why');
+  await page.evaluate(() => window.GH.ui.closeSheets());
+  await settle(600);
+  // The Coach's review: suggestions as Claude's weekly report would bring them, each checked against
+  // the plan before it's offered (the screenshot machine can't ask Claude, so they're written out).
+  await page.evaluate(() => window.GH.planReview.open('report', {
+    engine: 'claude', model: 'Claude', note: 'Your plan fits your goals well. A little more time would give your arms and abs more.',
+    suggestions: [
+      { kind: 'minutes', minutes: 30, title: 'Five more minutes a session', why: 'Your arms and abs get more sets each week, with nothing else cut.' },
+      { kind: 'swap_move', family: 'abs', move: 'ab_legraise', title: 'A new move for your abs', why: 'It works your abs from a new angle.' },
+      // Turned down: there's no time for it (the sheet lists it under Not applied, with the reason).
+      { kind: 'more_sets', group: 'back', delta: 1, title: 'More back work', why: 'You press more than you pull.' },
+    ],
+  }));
+  await settle(1800);
+  await shot('review');
+  await page.evaluate(() => window.GH.ui.closeSheets());
+  await settle(600);
   await page.evaluate(() => window.GH.ui.open('science', 'rir'));
   await shot('science');
   // The rule's sheet that "rir" opened closes before the next shots.
