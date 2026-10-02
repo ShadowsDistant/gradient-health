@@ -23,11 +23,11 @@ jobs:
       group: android-build-${{ github.ref }}
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -38,7 +38,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends aapt dalvik-exchange zipalign apksigner
 
       - name: Cache Android framework jar and bundletool
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/gradient-health
           key: android-all-14-robolectric-10818077-bundletool-1.18.1
@@ -73,7 +73,7 @@ jobs:
 
       - name: Cache the native engine
         id: native-cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: build/native
           key: native-${{ hashFiles('android/jni/**', 'scripts/build-native.sh') }}-${{ steps.ndk.outputs.name }}
@@ -96,7 +96,7 @@ jobs:
       - name: Build the Android App Bundle (test key)
         run: bash scripts/build-aab.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: gradient-health-test-${{ github.sha }}
           path: |
@@ -120,11 +120,11 @@ jobs:
       group: android-apk-latest-release
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
 
@@ -134,7 +134,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends aapt dalvik-exchange zipalign apksigner
 
       - name: Cache Android framework jar and bundletool
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/gradient-health
           key: android-all-14-robolectric-10818077-bundletool-1.18.1
@@ -146,7 +146,7 @@ jobs:
       # The build job has just saved these under the same key.
       - name: Cache the native engine
         id: native-cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: build/native
           key: native-${{ hashFiles('android/jni/**', 'scripts/build-native.sh') }}-${{ steps.ndk.outputs.name }}

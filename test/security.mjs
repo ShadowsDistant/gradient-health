@@ -324,8 +324,9 @@ section('CI: only main is signed with the release key and published');
   check('the release job runs on main only, after the build, in the release environment', jobs.release && /\n {4}needs: build\n/.test(jobs.release) && /\n {4}if: github\.ref == 'refs\/heads\/main'/.test(jobs.release) && /\n {4}environment: release\n/.test(jobs.release) && /\n {6}contents: write\n/.test(jobs.release));
   check('and refuses to publish without the release key', jobs.release && /if \[ -z "\$RELEASE_KEYSTORE_B64" \]; then[\s\S]*?exit 1/.test(jobs.release));
   check('no other job or workflow can write to the repository', Object.entries(jobs).every(([k, v]) => k === 'release' || !/contents: write/.test(v)) && !/contents: write/.test(read('.github/workflows/model-check.yml')));
-  const unpinned = [...new Set([...yml.matchAll(/uses: ([\w./-]+@[\w.-]+)/g)].map((m) => m[1]).filter((u) => !/@[0-9a-f]{40}$/.test(u)))];
-  if (unpinned.length) console.log(`  ! warning: actions not pinned to a commit SHA in android.yml: ${unpinned.join(', ')}`);
+  // A tag can be moved to other code; a commit SHA can't. Every action in every workflow runs at one.
+  const uses = ['android.yml', 'model-check.yml'].flatMap((f) => [...read(`.github/workflows/${f}`).matchAll(/^\s*-?\s*uses: (\S+)/gm)].map((m) => `${f}: ${m[1]}`));
+  check(`every action in the workflows is pinned to a commit SHA (${uses.length} uses)`, uses.length >= 10 && uses.every((u) => /@[0-9a-f]{40}$/.test(u)), uses.filter((u) => !/@[0-9a-f]{40}$/.test(u)));
 }
 
 section('Model files are pinned: a repo commit, an exact size and a SHA-256');
@@ -348,8 +349,10 @@ section('Model files are pinned: a repo commit, an exact size and a SHA-256');
   check('the PINS table holds only well-formed lines for files the catalog has', !!table && entries.length === lines.length && entries.every(([, file, commit, sha]) => current.some((m) => m.file === file) && /^[0-9a-f]{40}$/.test(commit) && /^[0-9a-f]{64}$/.test(sha)), lines.filter((l) => !entries.some((e) => e[0].trim() === l.trim())));
   check('a size that isn\'t pinned yet stays on the main branch without a hash (so the app won\'t download it)', current.filter((m) => !m.sha256).every((m) => /\/resolve\/main\//.test(m.url)));
   check('1.2\'s models keep their SHA-256 (they\'re never downloaded again)', MODELS.filter((m) => m.legacy).every((m) => /^[0-9a-f]{64}$/.test(m.sha256)));
+  // An unpinned size can't be downloaded at all, so a release needs all three. To pin a new file, run
+  // the "pins" job in .github/workflows/model-check.yml and paste its PINS into src/llm.js.
   const waiting = current.filter((m) => !m.sha256).map((m) => `${m.id} (${m.file})`);
-  if (waiting.length) console.log(`  ! warning: not pinned yet, so not downloadable: ${waiting.join(', ')}. Run the "pins" job in .github/workflows/model-check.yml and paste its PINS into src/llm.js.`);
+  check('every model the app offers is pinned, so it can be downloaded', waiting.length === 0, waiting);
   check('a model without a pin fails with a plain reason', /can't download this model/.test(GH.llm.MESSAGES.unpinned));
   // The self-test's report can go to GitHub: engine lines (which can quote a model's output) only
   // from its own run, whose question is a general one.
