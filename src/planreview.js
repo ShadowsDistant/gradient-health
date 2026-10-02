@@ -8,7 +8,8 @@
  *   (goals, experience, schedule, equipment, an age range, careful joints and the readiness trends);
  *   the on-device model gets the same in a short brief, plus what only it may know: health
  *   conditions, the joints arthritis affects, floor work and a gentle start. None of those ever goes
- *   to Claude (privacy.js), and neither does the planner's "Planned around ..." line.
+ *   to Claude (privacy.js), and neither does the planner's "Planned around ..." line. An on-device
+ *   model with a short memory gets a shorter plan (compact: fewer moves, no reasons).
  * - What comes back: { suggestions: [{ kind, group?, delta?, family?, move?, from?, to?, split?,
  *   rest?, minutes?, focus?, title, why }], note }, at most 3. SPEC lists each kind's fields and
  *   VALUES what each field may hold; together they make Claude's JSON schema and the on-device
