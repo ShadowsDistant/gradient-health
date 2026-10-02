@@ -45,9 +45,11 @@ jobs:
 
       - run: npm ci
 
-      - run: npm test
-
+      # The build comes first: test/buildcheck.mjs checks what it makes, including the lazy chunks
+      # in dist/lazy/, which aren't committed.
       - run: npm run build
+
+      - run: npm test
 
       - name: Check the committed dist/ is up to date
         run: |
