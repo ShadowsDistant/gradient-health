@@ -315,6 +315,42 @@
     return { topic, text: ANSWER[topic](S, day, facts(S, day), question) };
   }
 
+  /* ---------------------------------------------------------------- the number check */
+  // Every number in an AI's words should be one it was given, or that number rounded: models
+  // sometimes make one up or do their own sums. Sentences with any other number are left out. The
+  // on-device coach, Claude's answers and the plan review (src/planreview.js) all go through it.
+  // { text, cut } (cut: how many sentences went).
+  // A percentage has to be one of the given percentages exactly: a small model works out its own ("8%
+  // above your usual" for 1%), and neither some other 8 in the prompt nor a 7.6% rounded up may let it
+  // through.
+  const NUM = /\d+(?:,\d{3})*(?:\.\d+)?/g;
+  const PCT = /(\d+(?:\.\d+)?)\s*(?:%|percent\b|per cent\b)/g;
+  const numbers = (s) => (String(s || '').match(NUM) || []).map((x) => Number(x.replace(/,/g, '')));
+  const percents = (s) => [...String(s || '').matchAll(PCT)].map((m) => Number(m[1]));
+  const near = (known) => (n) => known.some((g) => g === n || (Number.isInteger(n) && (Math.round(g) === n || Math.trunc(g) === n)));
+  function keepToGiven(text, given) {
+    const known = near(numbers(given)), givenPct = percents(given), knownPct = (n) => givenPct.includes(n);
+    const all = String(text || '').trim().split(/(?<=[.!?])\s+/).filter(Boolean);
+    const kept = all.filter((x) => numbers(x).every(known) && percents(x).every(knownPct));
+    return { text: kept.length === all.length ? String(text || '').trim() : kept.join(' '), cut: all.length - kept.length };
+  }
+  // An AI's answer as shown: its own words, less any sentence with a number it wasn't given. If that
+  // leaves next to nothing (or it only got as far as the yes or no it was started with), the app's
+  // own answer stands in, and a note says so. who names the AI in that note ('The model', 'Claude').
+  // start: what the answer was started with, which isn't the AI's own words.
+  // { text, note, cut, replaced }.
+  function grounded(S, day, question, raw, given, start, who) {
+    const text = String(raw || '').trim();
+    const k = keepToGiven(text, given);
+    const after = (x) => { const lead0 = String(start || '').trim(); return (lead0 && x.startsWith(lead0) ? x.slice(lead0.length) : x).trim(); };
+    const words = after(k.text);
+    if (words.length >= (k.cut ? 30 : 8)) return { text: k.text, note: k.cut ? 'Left out a line with a number that isn\'t in your data.' : null, cut: k.cut, replaced: false };
+    const own = ask(S, day, question).text;
+    const name = who || 'The model';
+    const why = after(text) ? `${name}'s answer didn't match your numbers` : `${name} didn't answer`;
+    return { text: own || text, note: own ? `${why}, so this is the app's own.` : null, cut: k.cut, replaced: !!own };
+  }
+
   /* ---------------------------------------------------------------- Claude app hand-off */
   // The text sent to the Claude app: a short brief, the question, then the data summary.
   function claudePrompt(S, day, question) {
@@ -386,6 +422,8 @@
       if (e.type === 'deloadNext') items.push({ day: e.day, text: 'Lighter week planned for next week', why: 'you asked for it, or recovery has been poor' });
       else if (e.type === 'settings' && e.day > (S.profile.startDay || 0)) items.push({ day: e.day, text: `Schedule: ${e.days} days a week, ${e.minutes} min`, why: 'you changed it' });
       else if (e.type === 'tailor' && !e.undone) items.push({ day: e.day, text: `Tailored: ${(e.lines || []).map((x) => x.replace(/\.$/, '')).join('; ')}`, why: 'you asked for it' });
+      // Changes from the plan review (src/planreview.js), which the person approved.
+      else if (e.type === 'review' && !e.undone) items.push({ day: e.day, text: `Plan checked: ${(e.lines || []).map((x) => String(x).replace(/\.$/, '')).join('; ')}`, why: e.engine === 'claude' ? 'suggested by Claude, approved by you' : e.engine === 'device' ? 'suggested by the on-device coach, approved by you' : 'you chose it' });
       else if (e.type === 'plan') { const p = e.id && GH.customPlan ? GH.customPlan.get(S, e.id) : null; items.push({ day: e.day, text: e.id ? `Switched to ${p ? p.name : 'your own plan'}` : 'Back to the coach\'s plan', why: 'you chose it' }); }
     }
     // The same change repeated within a week (a deload note after every workout) shows once.
@@ -520,5 +558,5 @@
   }
   function dismiss(S, id, day) { S.coachDismissed = S.coachDismissed || {}; S.coachDismissed[id] = day; }
 
-  GH.coach = { report, glance, ask, verdict, correction, topicOf, facts, claudePrompt, decisions, timeline, watching, suggestions, validAction, apply, dismiss };
+  GH.coach = { report, glance, ask, verdict, correction, topicOf, facts, keepToGiven, grounded, claudePrompt, decisions, timeline, watching, suggestions, validAction, apply, dismiss };
 })(typeof window !== 'undefined' ? window : globalThis);
