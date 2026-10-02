@@ -193,7 +193,10 @@ async function run(dark) {
   await shot('badge-share');
   await page.evaluate(() => { const U = window.GH.ui; U.closeSheets(); while (U.back()) { /* to the tab */ } });
   await settle(600);
-  // Why this plan: what the planner compared and how the week scores, with no AI.
+  // Why this plan: what the planner compared and how the week scores, with no AI. From Plan, where
+  // its row is.
+  await tab('plan');
+  await top();
   await page.evaluate(() => window.GH.ui.act.whyPlan());
   await settle(1400);
   await shot('why');
