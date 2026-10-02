@@ -100,6 +100,9 @@ function stop() { if (busy) { try { busy.abort(); } catch (e) { /* ignore */ } }
 async function report(S, day) {
   AI().needConsent(S);
   const c = client();
+  // The plan review is a part of its own (src/ui/lazy.js): it's in before the report asks it for the
+  // plan's part, or the report goes without plan ideas, as it would without a plan.
+  if (GH.lazy) await GH.lazy('review').catch(() => null);
   let parts = AI().reportParts ? AI().reportParts(S, day) : { schema: AI().REPORT_SCHEMA, ask: '', plan: null };
   let ask = parts.ask ? `${REPORT_ASK}\n\n${parts.ask}` : REPORT_ASK;
   try {

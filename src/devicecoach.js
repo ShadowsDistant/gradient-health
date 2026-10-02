@@ -217,6 +217,8 @@
       return { text, safety: true, aborted: false };
     }
     const llm = await GH.lazy('llm');
+    // How it works (a part of its own, src/ui/lazy.js) has the rule each answer's facts quote.
+    await GH.lazy('science').catch(() => null);
     const av = llm.available();
     if (!av.ok) throw err(av.reason, 'unavailable');
     const id = pick(S, await llm.installed());

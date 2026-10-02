@@ -93,6 +93,8 @@
   }
   let reportCtl = null;
   const refreshReport = () => { if (reportCtl && !reportCtl.closed) reportCtl.update(reportBody(U.S, U.today())); };
+  // (Also once the plan review loads, for the report's plan ideas: src/ui/lazy.js.)
+  U.refreshReport = refreshReport;
   U.act.healthReport = () => {
     const ctl = U.sheet({ title: 'This week', size: 'auto', cls: 'rs-sheet', body: reportBody(U.S, U.today()), onClose: () => { if (reportCtl === ctl) reportCtl = null; } });
     reportCtl = ctl;

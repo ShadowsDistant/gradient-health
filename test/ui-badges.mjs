@@ -216,7 +216,7 @@ section('In a browser: a download');
   await p2.clock.runFor(2500);
   const [dl] = await Promise.all([
     p2.waitForEvent('download', { timeout: 15000 }).catch(() => null),
-    p2.evaluate(async () => { const cv = await window.GH.shareCard.draw(window.GH.achievements.byId.first, { theme: 'light', date: '', name: '' }); return window.GH.platform.shareImage(cv.toDataURL('image/png').split(',')[1], 'I earned it', 'gradient-health-first.png'); }),
+    p2.evaluate(async () => { await window.GH.lazy('shareCard'); const cv = await window.GH.shareCard.draw(window.GH.achievements.byId.first, { theme: 'light', date: '', name: '' }); return window.GH.platform.shareImage(cv.toDataURL('image/png').split(',')[1], 'I earned it', 'gradient-health-first.png'); }),
   ]);
   check('without the app\'s share sheet (and no Web Share for files), the picture downloads', !!dl && dl.suggestedFilename() === 'gradient-health-first.png', dl && dl.suggestedFilename());
   // Web Share that the person closes without sharing: the preview stays, with no error.
