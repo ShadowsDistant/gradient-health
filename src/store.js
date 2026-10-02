@@ -449,8 +449,10 @@
   }
 
   // Backup: the whole state, no key. Restore checks all of it (sanitize) before it replaces anything.
+  // The plans the engine keeps for the next launch (planCache, src/optimizer.js) stay out of both:
+  // a restored state works them out again from the rest, rather than take them on trust.
   function exportJson(S) {
-    const copy = stripSecrets(JSON.parse(JSON.stringify(S)));
+    const copy = stripSecrets(JSON.parse(JSON.stringify(Object.assign({}, S, { planCache: undefined }))));
     return JSON.stringify({ app: 'gradient-health', schema: SCHEMA, exportedAt: new Date().toISOString(), state: copy });
   }
   function importJson(txt) {
@@ -460,6 +462,7 @@
     try { o = text ? JSON.parse(text, reviver) : null; } catch (e) { o = null; }
     if (!isObj(o)) return { ok: false, error: 'That isn\'t a Gradient Health backup. Paste the whole text from Copy my data.' };
     const S = sanitize(o.app === 'gradient-health' && o.state ? o.state : o);
+    if (S) delete S.planCache;
     if (!valid(S)) return { ok: false, error: 'That backup is missing parts. Paste the whole text from Copy my data.' };
     if ((o.schema || S.v || 1) > SCHEMA) return { ok: false, error: 'That backup is from a newer version of Gradient Health. Update the app first.' };
     return { ok: true, state: migrate(S), workouts: S.log.filter((l) => l.type === 'workout').length, since: S.profile.startDay };
@@ -473,6 +476,8 @@
     try { const b = bridge(); if (b && b.save) b.save(''); } catch (e) { /* nothing to clear */ }
     // 1.4: an outdoor activity recording (or finished and not saved yet) goes too.
     if (GH.activity && GH.activity.reset) GH.activity.reset();
+    // The plans worked out this session (the ones kept for the next launch went with the state).
+    if (GH.optimizer && GH.optimizer.clearCache) GH.optimizer.clearCache();
   }
 
   // Secrets (the AI coach key). Never logged, never in the state or a backup. In the app they live

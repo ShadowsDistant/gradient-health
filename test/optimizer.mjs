@@ -334,6 +334,141 @@ section('Caches');
   check('so does a joint on a break', c3 !== c1);
 }
 
+/* ------------------------------------------------------------------ kept across launches */
+section('Kept across launches: the plan in the state');
+{
+  // Today is the Thursday of D0's week, a workout day; the app keeps plans (it has GH.BUILD), so
+  // these turn it on.
+  const realNow = Date.now;
+  Date.now = () => (D0 + 3) * B.DAY_MS + 12 * 3600000;
+  const wasKeep = O.keep(true);
+  const day = D0 + 3;
+  // Workouts done as test/fixtures.mjs does them: every step, some sets easy and some hard.
+  const train = (S, from, to, skip) => {
+    for (let d = from; d < to; d++) {
+      const plan = B.todayPlan(S, d);
+      if (plan.type !== 'workout' || skip.includes(d)) continue;
+      B.startWorkout(S, d, { now: d * B.DAY_MS + 17 * 3600000 });
+      for (let g = 0; S.active && S.active.idx < S.active.steps.length && g < 400; g++) {
+        const st = S.active.steps[S.active.idx];
+        B.completeStep(S, st.kind === 'test' ? { value: st.side === 'L' ? 14 : 15 } : {});
+        if (st.askRir) B.setRir(S, st.item, (d + S.active.idx) % 4 === 0 ? '3' : '12');
+      }
+      B.finishWorkout(S, { rating: 'right', now: d * B.DAY_MS + 17.5 * 3600000 });
+    }
+  };
+  // What a launch asks for first: the calendar, today's session and this week's plan (`now`), and
+  // last week's sets (`last`, for the insights).
+  const launch = (S) => {
+    const cal = B.calendar(S, day);
+    const plan = B.todayPlan(S, day, cal);
+    const s = plan.type === 'workout' ? B.buildSession(S, day, plan.tpl, { cal }) : null;
+    const wp = O.weekPlan(S, D0, { phase: cal.weeks[D0].phase });
+    return { now: JSON.stringify({ type: plan.type, tpl: plan.tpl, s, days: wp.days, perGroup: wp.perGroup, score: wp.score, split: wp.split }), last: JSON.stringify(B.weeklySets(S, D0 - 1)) };
+  };
+  // A launch in a fresh process: the saved state, nothing worked out in memory.
+  const relaunch = (json, change) => { O.clearCache(); const S = JSON.parse(json); if (change) change(S); const st = Object.assign({}, O.stats); return Object.assign({ S, st }, launch(S)); };
+  const did = (st, k) => O.stats[k] - st[k];
+  const fresh = (json, change) => { O.keep(false); const r = relaunch(json, (S) => { delete S.planCache; if (change) change(S); }); O.keep(true); return r; };
+
+  // (Last Friday's workout missed, and not made up at the weekend: last week's sets then also come
+  // from its plan.)
+  const S = person({ goals: ['abs', 'arms', 'chest', 'legs'], days: 4, minutes: 25 }, D0 - 14);
+  train(S, D0 - 14, day, [D0 - 3, D0 - 2, D0 - 1]);
+  const first = launch(S);
+  const pc = S.planCache;
+  check('today is a workout day, two weeks in', JSON.parse(first.now).type === 'workout' && JSON.parse(first.now).s.items.length > 0);
+  check('a launch keeps its split, week plans, today\'s session and last week\'s sets in the state', !!pc && pc.splits.length === 1 && pc.weeks.length >= 2 && pc.sessions.length === 1 && pc.sets.length === 1, pc && { splits: pc.splits.length, weeks: pc.weeks.length, sessions: pc.sessions.length, sets: pc.sets.length });
+  check('only so much: at most 3 weeks, 3 sessions, under 25 KB', pc.weeks.length <= 3 && pc.sessions.length <= 3 && JSON.stringify(pc).length < 25000, JSON.stringify(pc).length);
+  const json = JSON.stringify(S);
+  const f0 = fresh(json);
+  check('what it worked out afresh is what it keeps', first.now === f0.now && first.last === f0.last);
+
+  const a = relaunch(json);
+  check('the next launch plans nothing again: the split and the week come from the state', did(a.st, 'splits') === 0 && did(a.st, 'weeks') === 0 && did(a.st, 'keptSplits') === 1 && did(a.st, 'keptWeeks') >= 1, { splits: did(a.st, 'splits'), weeks: did(a.st, 'weeks') });
+  check('and gives the same plan, session and sets', a.now === first.now && a.last === first.last);
+
+  const kit = (S) => { S.profile.equipment = Object.assign({}, S.profile.equipment, { band: true, door: true }); };
+  const b = relaunch(json, kit);
+  check('a changed answer (new kit) plans the split and the week again, as it would afresh', did(b.st, 'splits') === 1 && did(b.st, 'weeks') >= 1 && b.now === fresh(json, kit).now);
+  const minutes = (S) => { B.updateSettings(S, day, { minutes: 35 }); };
+  const c = relaunch(json, minutes);
+  check('so do new minutes from today: the week is planned again', did(c.st, 'weeks') >= 1 && c.now === fresh(json, minutes).now && c.now !== first.now);
+  const screen = (S) => { S.profile.prefs.figure = 'flat'; S.profile.prefs.theme = 'dark'; S.profile.prefs.haptics = false; };
+  const d = relaunch(json, screen);
+  check('preferences only the screens read (the figure, the theme, haptics) keep it all', did(d.st, 'splits') === 0 && did(d.st, 'weeks') === 0 && d.now === first.now);
+  GH.BUILD = 'another-build';
+  const e = relaunch(json);
+  delete GH.BUILD;
+  check('another build of the app works it all out again, and keeps its own', did(e.st, 'splits') === 1 && did(e.st, 'weeks') >= 1 && e.now === first.now && e.last === first.last && e.S.planCache.v.startsWith('another-build'));
+  const f = relaunch(json, (S) => { S.planCache.weeks.forEach((x) => { x.v = { days: 'no' }; }); S.planCache.splits[0].v.days = null; S.planCache.sets.forEach((x) => { x.v = { chest: 'no' }; }); });
+  check('a kept answer that isn\'t one is worked out again', did(f.st, 'splits') === 1 && did(f.st, 'weeks') >= 1 && f.now === first.now && f.last === first.last);
+  const g = relaunch(json, (S) => { S.planCache = 'garbage'; });
+  check('and so is a cache that isn\'t one', g.now === first.now && g.last === first.last && Array.isArray(g.S.planCache.weeks));
+
+  // A week that's over keeps what it last had planned: a later change plans this week again, and
+  // last week stays as it was.
+  const more = (S) => { S.vol.chest += 2; };
+  const h = relaunch(json, more);
+  check('a change plans this week again', did(h.st, 'weeks') >= 1 && JSON.parse(h.now).perGroup.chest.target > JSON.parse(first.now).perGroup.chest.target);
+  const goals = (S) => { S.profile.goals = ['back', 'shoulders', 'legs']; };
+  const h2 = relaunch(json, goals);
+  check('but last week keeps the sets it was planned (new goals would change them, worked out afresh)', h2.last === first.last && fresh(json, goals).last !== first.last && h2.now !== first.now, { kept: h2.last, afresh: fresh(json, goals).last });
+  const sets0 = JSON.parse(first.last);
+  const drop = (S) => { S.log = S.log.filter((l) => l.day < D0 - 7 || l.day >= D0); };
+  const gone = relaunch(json, drop);
+  check('a change to last week\'s workouts plans it again: what\'s done comes from the log', B.GROUPS.some((q) => sets0[q].done > 0) && B.GROUPS.every((q) => JSON.parse(gone.last)[q].done === 0) && gone.last === fresh(json, drop).last && did(gone.st, 'weeks') >= 2);
+
+  // A history built day by day while the clock is past it (as the tests' fixtures build theirs):
+  // each week is planned again as its workouts are done, as it would be without keeping.
+  const gear = { db: [10, 15], kb: [15], band: true, chair: true, wall: true, towel: true };
+  const built = (on) => {
+    O.keep(on);
+    O.clearCache();
+    const T = person({ goals: ['abs', 'arms', 'chest', 'legs'], days: 4, minutes: 25, equipment: Object.assign({}, HOUSE, gear) }, D0 - 35);
+    train(T, D0 - 35, D0 - 2, [D0 - 17]);
+    O.keep(true);
+    return JSON.stringify(T.log) + JSON.stringify(T.prog) + JSON.stringify(T.vol);
+  };
+  check('a history built day by day comes out the same as without keeping', built(true) === built(false));
+
+  // Copies keep plans of their own: what's tried on one never takes the place of the state's.
+  const S2 = JSON.parse(json);
+  O.clearCache();
+  launch(S2);
+  const kept = JSON.stringify(S2.planCache);
+  O.alternatives(S2, D0);
+  O.applyTweaks(S2, { sets: { chest: 2 }, split: 'ppl' }, day);
+  check('trying other splits and tweaks leaves the state\'s kept plans alone', JSON.stringify(S2.planCache) === kept);
+
+  O.keep(false);
+  const T = person({ goals: ['abs'], days: 3 });
+  B.buildSession(T, D0 + 2, 0, {});
+  B.weeklySets(T, D0 - 1);
+  check('without keeping (tests, a plain page), nothing goes in the state', !('planCache' in T));
+  check('a reset starts from a new state, with nothing kept', !('planCache' in B.newState({ goals: ['abs'] }, null, D0)));
+
+  // Backups leave the kept plans out, a restore doesn't take any in, and a reset forgets what this
+  // session worked out too.
+  const store = load('src/store.js').store;
+  const withCache = JSON.parse(json);
+  const backup = JSON.parse(store.exportJson(withCache));
+  check('a backup leaves the kept plans out (the state keeps them)', !('planCache' in backup.state) && !!withCache.planCache && backup.state.log.length === withCache.log.length);
+  const restored = store.importJson(JSON.stringify({ app: 'gradient-health', schema: store.SCHEMA, state: withCache }));
+  check('a restored backup works its plans out again rather than take them on trust', restored.ok && !('planCache' in restored.state));
+  const pr = B.programFor(S.profile);
+  O.clearCache();
+  const n0 = O.stats.splits;
+  O.split(S.profile, pr);
+  O.split(S.profile, pr);
+  const n1 = O.stats.splits;
+  store.clear();
+  O.split(S.profile, pr);
+  check('a reset (store.clear) forgets the splits worked out this session', n1 - n0 === 1 && O.stats.splits - n1 === 1);
+  O.keep(wasKeep);
+  Date.now = realNow;
+}
+
 /* ------------------------------------------------------------------ timing */
 section('Timing');
 {

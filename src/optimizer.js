@@ -15,7 +15,8 @@
  * It reads GH.brain, GH.moves and GH.access only when called: it loads right after brain.js in
  * tests and after access.js in the app. Weeks before S.engineFrom keep 1.5's split (brain.js
  * templateV1), so history and the week in progress stay as they were; the session fixes (fill and
- * cap) apply to every week. Results are cached and must be treated as read-only.
+ * cap) apply to every week. Results are cached and must be treated as read-only; in the app they're
+ * also kept in the state for the next launch (see keptOf).
  */
 (function (G) {
   'use strict';
@@ -54,7 +55,86 @@
       clear: () => m.clear(),
     };
   }
-  const stats = { splits: 0, splitMs: 0, weeks: 0, weekMs: 0, nodes: 0 };
+  const stats = { splits: 0, splitMs: 0, weeks: 0, weekMs: 0, nodes: 0, keptSplits: 0, keptWeeks: 0 };
+
+  /* ================================================================== kept across launches */
+  // A launch mostly finds the state as the last one left it, and working its plan out again, on code
+  // that isn't compiled yet, was most of the time a launch spent on the plan. So what the plan worked
+  // out is kept in the state itself (S.planCache: saved with it, and gone with it on a reset):
+  //   splits    the split of each set of answers (a search and up to four trial weeks each)
+  //   weeks     the latest plan of each week (last week's, this week's, next week's)
+  //   sessions  the latest sessions to show, from today on (brain.js)
+  //   sets      each week's planned and target sets (brain.weeklySets)
+  // Each is filed under a hash of everything it was worked out from, and the whole cache under the
+  // app's build and the engine's version: a changed input, another build or another engine works it
+  // out afresh. A week that's over keeps what it last had (weekPlan, weeklySets) while its workouts
+  // stay as they were (brain.weekLog): what was planned for it then, whatever changed since in the
+  // rest of the state. (In the state rather than in localStorage, where src/insights.js keeps its finds:
+  // plans are worked out from the state alone, so they go where it goes, a backup or a copy
+  // included.) Only the app keeps them (the build sets GH.BUILD); tests switch it on with keep(true).
+  const ENGINE = 1; // bump when the engine's answers change in a way GH.BUILD can't see (a dev page)
+  const KEEP = { splits: 4, weeks: 3, sessions: 3, sets: 2 };
+  let keepOn = null; // null: as GH.BUILD says
+  const keeping = () => (keepOn != null ? keepOn : !!GH.BUILD);
+  // cyrb53, a quick 53-bit string hash; with the length, plenty to tell two inputs apart. (Keys are
+  // a few thousand characters, and the same one is often hashed to look an answer up and again to
+  // keep it: the last few are remembered.)
+  const hashMemo = new Map();
+  function hash(str) {
+    const seen = hashMemo.get(str);
+    if (seen) return seen;
+    if (hashMemo.size >= 16) hashMemo.clear();
+    const out = cyrb53(str);
+    hashMemo.set(str, out);
+    return out;
+  }
+  function cyrb53(str) {
+    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (let i = 0; i < str.length; i++) {
+      const c = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ c, 2654435761);
+      h2 = Math.imul(h2 ^ c, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return `${(4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)}.${str.length.toString(36)}`;
+  }
+  // The state's cache for this build and engine (made when `make` and there's none), or null.
+  function keptOf(S, make) {
+    if (!S || typeof S !== 'object' || !keeping()) return null;
+    const v = `${GH.BUILD || 'dev'}.${ENGINE}`;
+    const c = S.planCache;
+    if (c && typeof c === 'object' && c.v === v && Object.keys(KEEP).every((k) => Array.isArray(c[k]))) return c;
+    if (!make) return null;
+    S.planCache = { v, splits: [], weeks: [], sessions: [], sets: [] };
+    return S.planCache;
+  }
+  // A kept answer by its hash, or undefined. Entries: { h: [its hashes], s: its slot, w: its week, v }.
+  const entryOk = (e) => !!e && typeof e === 'object' && Array.isArray(e.h) && !!e.v && typeof e.v === 'object';
+  function recall(list, h) {
+    for (const e of list) if (entryOk(e) && e.h.includes(h)) return e.v;
+    return undefined;
+  }
+  // Keeps an answer (a copy, by way of JSON, and only if JSON gives it back as it is: no undefined,
+  // no NaN) under its hashes. It replaces what its slot held (a week's plan for an earlier state of
+  // the same week); past max, the earliest week goes first, then the oldest entry.
+  function remember(list, hs, answer, max, slot, week) {
+    let exact = true;
+    const txt = JSON.stringify(answer, (k, v) => { if (v === undefined || typeof v === 'function' || (typeof v === 'number' && !Number.isFinite(v))) exact = false; return v; });
+    if (!exact) return;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const e = list[i];
+      if (!entryOk(e) || e.h.some((h) => hs.includes(h)) || (slot != null && e.s === slot)) list.splice(i, 1);
+    }
+    const e = { h: hs, v: JSON.parse(txt) };
+    if (slot != null) { e.s = slot; e.w = week; }
+    list.push(e);
+    while (list.length > max) {
+      let drop = 0;
+      for (let i = 1; i < list.length; i++) if ((list[i].w != null ? list[i].w : Infinity) < (list[drop].w != null ? list[drop].w : Infinity)) drop = i;
+      list.splice(drop, 1);
+    }
+  }
 
   /* ================================================================== the split */
   // What a profile asks of a week's split, as plain data (also its cache key).
@@ -389,14 +469,37 @@
   const LABEL = { full_body: 'Full body', upper_lower: 'Upper and lower', ppl: 'Push, pull and legs', mixed: 'A mix of muscle groups each day' };
 
   // The split for a profile's week (its days, weekdays and minutes as given): which units go on
-  // which days, in training order. Cached by everything it reads.
+  // which days, in training order. Cached by everything it reads. Given the state, it's also kept
+  // in it for the next launch (see keptOf), filed under the profile, its program and the split
+  // asked for (everything the search and its trial weeks read): a launch that finds it there works
+  // nothing else out, not even which units the kit can train.
   const splitMemo = lru(48);
-  function split(p, prog, o) {
+  const keptMemo = lru(16); // profile key → { sp, h }, for the weeks of a calendar
+  function split(p, prog, o, S) {
+    const kc = o && o.raw ? null : keptOf(S, true);
+    let pk = null, h = null;
+    if (kc) {
+      pk = JSON.stringify([(o && o.split) || null, B().planProfile(p), prog]);
+      const seen = keptMemo.get(pk);
+      if (seen) { if (!recall(kc.splits, seen.h)) remember(kc.splits, [seen.h], seen.sp, KEEP.splits); return seen.sp; }
+      h = hash(pk);
+      const k = recall(kc.splits, h);
+      if (k && Array.isArray(k.days) && k.ctx && typeof k.ctx === 'object') {
+        const sp = deepFreeze(k);
+        stats.keptSplits++;
+        splitMemo.set(JSON.stringify([k.ctx, k.kind]), sp);
+        keptMemo.set(pk, { sp, h });
+        return sp;
+      }
+    }
     const ctx = splitInputs(p, prog);
     const kind = (o && o.split) || ctx.split || 'auto';
     const key = JSON.stringify([ctx, kind]);
     const hit = splitMemo.get(key);
-    if (hit) return hit;
+    if (hit) {
+      if (kc) { remember(kc.splits, [h], hit, KEEP.splits); keptMemo.set(pk, { sp: hit, h }); }
+      return hit;
+    }
     const t0 = now();
     let res = null, considered = 0, parity = false;
     if (kind !== 'auto') {
@@ -448,7 +551,9 @@
       out.scores = scored.map((x) => ({ label: x.c.label, score: x.sc }));
     }
     stats.splits++; stats.splitMs += now() - t0;
-    return splitMemo.set(key, deepFreeze(out));
+    deepFreeze(out);
+    if (kc) { remember(kc.splits, [h], out, KEEP.splits); keptMemo.set(pk, { sp: out, h }); }
+    return splitMemo.set(key, out);
   }
   // A split's days as the rest of the engine reads them: each day's units in training order.
   function shape(res, ctx, prog, o) {
@@ -473,8 +578,8 @@
       return null;
     }
   }
-  // brain.templateFor's v2 answer: [{ idx, offset, units }].
-  function template(p, prog) { return split(p, prog).days; }
+  // brain.templateFor's v2 answer: [{ idx, offset, units }] (S: the state it's for, if any).
+  function template(p, prog, S) { return split(p, prog, null, S).days; }
   const now = () => (G.performance && G.performance.now ? G.performance.now() : Date.now());
 
   /* ================================================================== tweaks */
@@ -525,19 +630,36 @@
     const opt = o || {};
     const phase = normPhase(opt.phase || phaseOf(S, ws));
     const stamp = opt.stamp || b.stateStamp(S);
-    const key = ws + '|' + JSON.stringify(phase) + '|' + stamp;
+    const slot = ws + '|' + JSON.stringify(phase) + '|';
+    const key = slot + stamp;
     let m = weekMemo.get(S);
     const hit = m && m.get(key);
     if (hit) return hit;
+    if (!m) weekMemo.set(S, (m = lru(12)));
+    // What the last launch kept (see keptOf): the plan for this week as the state is now, or for a
+    // week that's over, the plan it last had while its workouts are as they were then (each plan is
+    // also filed under those). (Not a lighter week's normal one, which only planning that week reads.)
+    const kc = phase.ref ? null : keptOf(S, true);
+    const h = kc ? hash(key) : null;
+    const past = kc ? hash('past|' + slot + b.weekLog(S, ws)) : null;
+    let k = kc ? recall(kc.weeks, h) : undefined;
+    if (!k && kc && ws < thisWeek(S)) k = recall(kc.weeks, past);
+    if (k && Array.isArray(k.days) && k.perGroup && typeof k.score === 'number') { stats.keptWeeks++; return m.set(key, deepFreeze(k)); }
     const t0 = now();
     const out = deepFreeze(b.op(() => planWeek(S, ws, phase)));
     stats.weeks++; stats.weekMs += now() - t0;
-    if (!m) weekMemo.set(S, (m = lru(12)));
     // Planning can start a ladder's progress (a gym exercise used for the first time); the plan is
     // the same either way, so it's kept for the state as it is now too.
     const after = b.stateStamp(S);
-    if (after !== stamp) m.set(ws + '|' + JSON.stringify(phase) + '|' + after, out);
+    if (after !== stamp) m.set(slot + after, out);
+    if (kc) remember(kc.weeks, after !== stamp ? [h, hash(slot + after), past] : [h, past], out, KEEP.weeks, slot, ws);
     return m.set(key, out);
+  }
+  // The week the person is in now (by the phone's clock, the day rolling over at their hour).
+  function thisWeek(S) {
+    const b = B();
+    const prefs = (S.profile && S.profile.prefs) || {};
+    return b.weekStart(b.dayOf(Date.now(), prefs.rollHour != null ? prefs.rollHour : 4));
   }
   const normPhase = (ph) => Object.assign({ mult: ph && ph.mult != null ? ph.mult : 1, onramp: !!(ph && ph.onramp), deload: !!(ph && ph.deload), idle: !!(ph && ph.idle) }, ph && ph.ref ? { ref: true } : {});
   // A week's phase as the calendar has it (on-ramp, deload or a full week).
@@ -948,7 +1070,7 @@
     const tw = tweaksOf(p);
     const legacy = b.legacyWeek(S, ws);
     const wi = b.weekInputs(S, ws);
-    const sp = legacy ? null : forced || split(wi.p, wi.prog);
+    const sp = legacy ? null : forced || split(wi.p, wi.prog, null, S);
     const tpl = legacy ? b.templateV1(wi.p, wi.prog) : sp.days;
     const full = !phase.onramp && !phase.deload && phase.mult >= 1 && !phase.ref;
     const boost = full ? (prog.level === 0 ? 0.25 : 0.5) : 0;
@@ -1896,10 +2018,11 @@
     });
     return out.sort((a, x) => x.score - a.score || KINDS.indexOf(a.split) - KINDS.indexOf(x.split));
   }
-  const cloneState = (S) => (typeof structuredClone === 'function' ? structuredClone(S) : JSON.parse(JSON.stringify(S)));
+  // (Copies keep plans of their own: what's tried on one never takes the place of the state's.)
+  const cloneState = (S) => { const c = Object.assign({}, S, { planCache: null }); return typeof structuredClone === 'function' ? structuredClone(c) : JSON.parse(JSON.stringify(c)); };
   // A copy of the state with tweaks merged in (what's planned is read from it; nothing in S changes).
   function withTweaks(S, t) {
-    const S2 = Object.assign({}, S, { profile: Object.assign({}, S.profile), prog: JSON.parse(JSON.stringify(S.prog || {})) });
+    const S2 = Object.assign({}, S, { profile: Object.assign({}, S.profile), prog: JSON.parse(JSON.stringify(S.prog || {})), planCache: null });
     S2.profile.planTweaks = mergeTweaks(tweaksOf(S.profile), t);
     return S2;
   }
@@ -1990,5 +2113,16 @@
     _internal: { bestDays, countSplits, variants, archetype, labelOf, maskCost, splitInputs, shareOut, planScore, timeFit, scoreBuilt },
   };
   self.freeze = (on) => { FREEZE = !!on; };
-  self.clearCache = () => { splitMemo.clear(); feasMemo.clear(); };
+  self.clearCache = () => { splitMemo.clear(); feasMemo.clear(); keptMemo.clear(); };
+  // Whether plans are kept in the state across launches (see keptOf): keep(true) or keep(false)
+  // for a test, keep(null) to go by GH.BUILD again. Returns the setting it replaced.
+  self.keep = (on) => { const was = keepOn; keepOn = on == null ? null : !!on; return was; };
+  // For brain.js, which keeps sessions and each week's sets the same way: get(S, list, key) is the
+  // answer filed under a key (a string, hashed here), and put(S, list, keys, answer, slot, week)
+  // files one, in place of what its slot held.
+  self.kept = {
+    get: (S, list, key) => { const c = keptOf(S); return c ? recall(c[list], hash(key)) : undefined; },
+    put: (S, list, keys, answer, slot, week) => { const c = keptOf(S, true); if (c && KEEP[list]) remember(c[list], keys.map(hash), answer, KEEP[list], slot, week); },
+    thisWeek,
+  };
 })(typeof window !== 'undefined' ? window : globalThis);

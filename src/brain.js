@@ -595,7 +595,29 @@
     // (A workout's sets count too: the next week's plan reads what the last one trained.)
     for (const l of S.log || []) if (l && (l.type === 'workout' || l.type === 'light')) lg += `${l.type[0]}${l.day}.${l.checkedIn ? 1 : 0}${(l.pct || 0) >= 0.5 ? 1 : 0}${l.walk ? 1 : 0}${l.mobility ? 1 : 0}${l.doneSets || 0};`;
     const ev = (S.events || []).filter((e) => e && (e.type === 'settings' || e.type === 'move' || e.type === 'deloadNext' || e.type === 'plan'));
-    return JSON.stringify([S.profile, S.vol, S.complexity, S.pain, S.excluded, S.catchup, S.place, S.lastPlace, S.engineFrom, ev, S.customPlans, S.activePlan]) + progStamp(S) + lg;
+    return JSON.stringify([planProfile(S.profile), S.vol, S.complexity, S.pain, S.excluded, S.catchup, S.place, S.lastPlace, S.engineFrom, ev, S.customPlans, S.activePlan]) + progStamp(S) + lg;
+  }
+  // The workouts a week's plan reads, in short (the week's own and the week before's, what they
+  // trained), and the changes to the schedule made in those weeks. A week that's over keeps its plan
+  // (src/optimizer.js, keptOf) only while these stay as they were: one done or changed later (a
+  // history built day by day, an edit) plans it again.
+  function weekLog(S, ws) {
+    let s = '';
+    const inWeeks = (d) => typeof d === 'number' && d >= ws - 7 && d <= ws + 6;
+    for (const l of S.log || []) if (l && l.type === 'workout' && inWeeks(l.day)) s += `${l.day}.${l.tpl}.${l.checkedIn ? 1 : 0}${(l.pct || 0) >= 0.5 ? 1 : 0}.${l.doneSets || 0};`;
+    for (const e of S.events || []) if (e && (e.type === 'settings' || e.type === 'move' || e.type === 'deloadNext' || e.type === 'plan') && (inWeeks(e.day) || inWeeks(e.from) || inWeeks(e.to) || inWeeks(e.at))) s += JSON.stringify(e);
+    return s;
+  }
+  // The profile as plans read it: without the preferences only the screens read (the figure, the
+  // theme, sounds and haptics, the outdoor activity's), so changing one keeps every plan worked out
+  // (and the plans kept across launches, see src/optimizer.js). Rest, supersets and the hour a day
+  // rolls over do change plans, and so does anything new.
+  const SCREEN_PREFS = new Set(['figure', 'figSkin', 'figShirt', 'theme', 'density', 'sound', 'vibrate', 'haptics', 'hapticStrength', 'reducedMotion', 'actType', 'actStreets']);
+  function planProfile(p) {
+    if (!p || !p.prefs || typeof p.prefs !== 'object') return p;
+    const prefs = {};
+    for (const k of Object.keys(p.prefs)) if (!SCREEN_PREFS.has(k)) prefs[k] = p.prefs[k];
+    return Object.assign({}, p, { prefs });
   }
   // What a single day's session also reads: the health days readiness looks at, how you said you
   // feel (a flare day too) and the sleep chip.
@@ -913,7 +935,8 @@
   }
   function templateOf(S, ws, set) {
     const w = weekInputs(S, ws, set);
-    return legacyWeek(S, ws) || !GH.optimizer ? templateV1(w.p, w.prog) : GH.optimizer.template(w.p, w.prog);
+    // (With the state, the optimizer can keep the split in it for the next launch.)
+    return legacyWeek(S, ws) || !GH.optimizer ? templateV1(w.p, w.prog) : GH.optimizer.template(w.p, w.prog, S);
   }
   // 1.5's sets for each group of a template day: the week's sets (scaled for the phase) shared out
   // over the days that train the group. Legacy weeks keep these, before the optimizer's fit.
@@ -1001,9 +1024,21 @@
     const week = (cal.weeks && cal.weeks[ws]) || { phase: { mult: 1, onramp: false, deload: false } };
     const phase = o.forceMult != null ? Object.assign({}, week.phase, { mult: o.forceMult }) : week.phase;
     const stamp = stateStamp(S);
-    const key = JSON.stringify([day, tplIdx, !!o.short, !!o.noReadiness, !!o.noTrim, o.forceMult == null ? null : o.forceMult, phase, dayStamp(S, day)]) + stamp;
+    const slot = JSON.stringify([day, tplIdx, !!o.short, !!o.noReadiness, !!o.noTrim, o.forceMult == null ? null : o.forceMult, phase]);
+    const key = slot.slice(0, -1) + ',' + JSON.stringify(dayStamp(S, day)) + ']' + stamp;
     const memo = sessionMemo.get(S);
     if (memo && memo.has(key)) return JSON.parse(memo.get(key));
+    // A session to show from today on (not one a week's sets are counted from) the last launch
+    // kept, for the state and the day as they are now (src/optimizer.js, keptOf).
+    const K = O && O.kept && !o.noReadiness && day >= dayOf(Date.now(), S.profile.prefs && S.profile.prefs.rollHour != null ? S.profile.prefs.rollHour : 4) ? O.kept : null;
+    const kept = K ? K.get(S, 'sessions', key) : undefined;
+    if (kept && Array.isArray(kept.items)) {
+      const json = JSON.stringify(kept);
+      const m = memo || new Map();
+      if (!memo) sessionMemo.set(S, m);
+      m.set(key, json);
+      return JSON.parse(json);
+    }
     const dp = O ? O.dayPlan(S, ws, tplIdx, { phase, stamp }) : plainDayPlan(S, ws, tplIdx, phase.mult);
     const { session, ready } = realize(S, day, dp, { short: o.short, noReadiness: o.noReadiness, phase, finisher: O ? !!dp.finisher : programFor(S.profile).finisherPerWeek >= 7 });
     const minutes = clampInt(settingsAt(S, day).minutes || S.profile.minutes || 25, 10, 60);
@@ -1029,7 +1064,9 @@
     // Building can start a ladder's progress (an exercise used for the first time): the same
     // session is kept for the state as it is now too.
     const after = stateStamp(S);
-    if (after !== stamp) m.set(key.slice(0, key.length - stamp.length) + after, json);
+    const keyAfter = key.slice(0, key.length - stamp.length) + after;
+    if (after !== stamp) m.set(keyAfter, json);
+    if (K) K.put(S, 'sessions', after !== stamp ? [key, keyAfter] : [key], JSON.parse(json), slot, day);
     return session;
   }
   const sessionMemo = new WeakMap();
@@ -2432,15 +2469,23 @@
   /* ================================================================== weekly summaries */
   function weeklySets(S, day) {
     const ws = weekStart(day);
-    const cal = calendar(S, day);
-    const week = cal.weeks[ws];
+    const out = {};
+    // A week that's over keeps the sets it last had planned (src/optimizer.js, keptOf), while its
+    // workouts stay as they were (weekLog): what was planned for it then, not what the state as it
+    // is now would plan. What's done is counted from the log, as ever.
+    const K = GH.optimizer && GH.optimizer.kept;
+    const pastKey = K ? `sets|${ws}|${weekLog(S, ws)}` : null;
+    const was = K && ws < K.thisWeek(S) ? K.get(S, 'sets', pastKey) : undefined;
+    const frozen = !!was && GROUPS.every((g) => was[g] && Number.isFinite(was[g].target) && Number.isFinite(was[g].planned));
+    if (frozen) for (const g of GROUPS) out[g] = { done: 0, target: was[g].target, planned: was[g].planned };
+    const cal = frozen ? null : calendar(S, day);
+    const week = cal && cal.weeks[ws];
     const mult = week ? week.phase.mult : 1;
     // The target is what the week's plan gives each group (src/optimizer.js: the weekly sets, more
     // when there's time for them, fewer when there isn't); a custom plan's week keeps the old one.
     const custom = week && GH.customPlan && week.sessions.some((s) => GH.customPlan.owns(s.tpl));
     const wp = !custom && GH.optimizer && GH.optimizer.weekPlan && week ? GH.optimizer.weekPlan(S, ws, { phase: week.phase }) : null;
-    const out = {};
-    for (const g of GROUPS) out[g] = { done: 0, target: wp && wp.perGroup[g] ? wp.perGroup[g].aim : Math.round(S.vol[g] * mult), planned: 0 };
+    if (!frozen) for (const g of GROUPS) out[g] = { done: 0, target: wp && wp.perGroup[g] ? wp.perGroup[g].aim : Math.round(S.vol[g] * mult), planned: 0 };
     for (const l of workoutLogs(S)) {
       if (l.day < ws || l.day > ws + 6 || !l.checkedIn) continue;
       for (const it of l.items) {
@@ -2454,6 +2499,11 @@
         const sess = buildSession(S, s.day, s.tpl, { cal, noReadiness: true });
         for (const it of sess.items) if (out[it.group]) out[it.group].planned += it.sets;
       }
+    }
+    if (K && !frozen) {
+      const keep = {};
+      for (const g of GROUPS) keep[g] = { target: out[g].target, planned: out[g].planned };
+      K.put(S, 'sets', [pastKey], keep, String(ws), ws);
     }
     return out;
   }
@@ -2588,6 +2638,6 @@
     UNIT_GROUPS, UNIT_OF, COMPOUND, MAIN_LIFTS, HOME_COMPOUND, FAM_FOCUS, MERGE_MAX, SET_MAX,
     realize, slotsOfDay, slotsForUnit, warmupItems, mobilityIds, finisherItem, finisherFor, pairSupersets, unpair, secsPerSet,
     limitExercises, mergeSame, orderItems, musclesOf, trimTier, perSession, autoRest, tweaksOf, isPinned, supersetConflict: conflicts,
-    weekSettings, weekInputs, templateOf, templateV1, legacyGroupSets, occurrences, legacyWeek, stateStamp, dayStamp, progStamp, freeze, op, inOp, opToken,
+    weekSettings, weekInputs, templateOf, templateV1, legacyGroupSets, occurrences, legacyWeek, stateStamp, dayStamp, progStamp, planProfile, weekLog, freeze, op, inOp, opToken,
   });
 })(typeof window !== 'undefined' ? window : globalThis);

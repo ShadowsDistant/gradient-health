@@ -6,7 +6,11 @@ const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pos
 const M = GH.moves;
 const P = GH.pose;
 const ids = Object.keys(M.MOVES);
-const POINTS = ['hip', 'neck', 'head', 'shN', 'shF', 'hpN', 'hpF', 'elN', 'elF', 'wrN', 'wrF', 'hdN', 'hdF', 'knN', 'knF', 'anN', 'anF', 'toN', 'toF', 'heN', 'heF'];
+// The library as data (without what the pose engine keeps on a move, the $ fields): moves share
+// their form's poses and steps, so drawing them all must leave it as it was (checked at the end).
+const libraryJson = () => JSON.stringify([M.MOVES, M.FORMS], (k, v) => (k[0] === '$' ? undefined : v));
+const libraryBefore = libraryJson();
+const POINTS =['hip', 'neck', 'head', 'shN', 'shF', 'hpN', 'hpF', 'elN', 'elF', 'wrN', 'wrF', 'hdN', 'hdF', 'knN', 'knF', 'anN', 'anF', 'toN', 'toF', 'heN', 'heF'];
 const FLOOR_TOL = 2; // about half a stroke width
 
 // Keyframes plus in-between frames. A contact is "planted" when its IK target is the same in the
@@ -430,5 +434,8 @@ check('treadmill: a foot is always on the belt', !gp.belt.length, gp.belt.slice(
 check('leg curl and extension: knees on the machine pivot', !gp.pivot.length, gp.pivot.slice(0, 6));
 check('chest and shoulder press levers keep their length', !gp.lever.length, gp.lever);
 check('cables run from a pulley to the hands', !gp.cable.length, gp.cable.slice(0, 6));
+
+section('Shared data');
+check('drawing every move leaves the library as it was (moves share their forms\' poses and steps)', libraryJson() === libraryBefore);
 
 done();
