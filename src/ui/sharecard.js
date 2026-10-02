@@ -249,7 +249,8 @@
         if (ok) {
           if (!ctl.closed) ctl.close('ok');
           if (U.badgeEvent) setTimeout(() => U.badgeEvent('sharedBadge'), 400);
-        } else U.toast('Couldn\'t share the picture', 'caution', 'Try again in a moment.');
+        } else if (ok === false) U.toast('Couldn\'t share the picture', 'caution', 'Try again in a moment.');
+        // null: the share sheet was closed without sharing, so the preview simply stays.
       } catch (e) {
         if (G.console) G.console.error(e);
         U.toast('Couldn\'t share the picture', 'caution');

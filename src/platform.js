@@ -276,7 +276,8 @@
   }
   // Sends a picture (a PNG as base64) and a line of text to another app: Android's share sheet in
   // the app; in a browser the Web Share API with a file where there is one, else a download (and,
-  // if even that fails, the text is copied). Resolves true once it's on its way.
+  // if even that fails, the text is copied). Resolves true once it's on its way, null if the person
+  // closed the share sheet, false if it couldn't go.
   async function shareImage(b64, text, name) {
     const msg = String(text || '');
     try { const b = bridge(); if (b && b.shareImage) return !!b.shareImage(String(b64), msg); } catch (e) { return false; }
@@ -292,7 +293,7 @@
     try {
       const f = new G.File([blob], file, { type: 'image/png' });
       if (nav.canShare && nav.share && nav.canShare({ files: [f] })) { await nav.share({ files: [f], text: msg }); return true; }
-    } catch (e) { if (e && e.name === 'AbortError') return false; }
+    } catch (e) { if (e && e.name === 'AbortError') return null; }
     try {
       const url = G.URL.createObjectURL(blob);
       const a = doc.createElement('a');

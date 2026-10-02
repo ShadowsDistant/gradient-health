@@ -219,6 +219,19 @@ section('In a browser: a download');
     p2.evaluate(async () => { const cv = await window.GH.shareCard.draw(window.GH.achievements.byId.first, { theme: 'light', date: '', name: '' }); return window.GH.platform.shareImage(cv.toDataURL('image/png').split(',')[1], 'I earned it', 'gradient-health-first.png'); }),
   ]);
   check('without the app\'s share sheet (and no Web Share for files), the picture downloads', !!dl && dl.suggestedFilename() === 'gradient-health-first.png', dl && dl.suggestedFilename());
+  // Web Share that the person closes without sharing: the preview stays, with no error.
+  await p2.evaluate(() => {
+    Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => true });
+    Object.defineProperty(navigator, 'share', { configurable: true, value: () => Promise.reject(new DOMException('Share canceled', 'AbortError')) });
+    window.GH.ui.shareBadge('first');
+  });
+  await p2.clock.runFor(1200);
+  await p2.waitForTimeout(400);
+  await p2.click('dialog.sc-sheet [data-act="scShare"]');
+  await p2.clock.runFor(1500);
+  await p2.waitForTimeout(400);
+  const cancel = await p2.evaluate(() => ({ open: !!document.querySelector('dialog.sc-sheet[open]'), toast: [...document.querySelectorAll('.rf-toast')].map((t) => t.textContent.trim()).filter((t) => /share/i.test(t)) }));
+  check('closing the share sheet without sharing keeps the preview open, with no error', cancel.open && !cancel.toast.length, cancel);
   await c2.close();
 }
 
