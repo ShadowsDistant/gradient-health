@@ -372,17 +372,30 @@
         const box = el.querySelector('.bdg-pages');
         // The first medal waits for the sheet to rise.
         setTimeout(() => { if (!c.closed) show(0, el); }, U.reduced() ? 0 : 260);
+        // A swipe settles on a page (scrollend; a pause in scrolling where it isn't supported). A dot
+        // goes straight to its page, and the scroll it starts doesn't count on the way there.
         if (many && box) {
           let t = 0;
-          box.addEventListener('scroll', () => { clearTimeout(t); t = setTimeout(() => { const i = Math.round(box.scrollLeft / Math.max(1, box.clientWidth)); if (i !== cur && i >= 0 && i < pages.length) { show(i, el); U.haptic('select'); } }, 90); }, { passive: true });
+          const settled = () => {
+            const i = Math.round(box.scrollLeft / Math.max(1, box.clientWidth));
+            const was = jumpTo;
+            jumpTo = null;
+            if (was === i) return;
+            if (i !== cur && i >= 0 && i < pages.length) { show(i, el); U.haptic('select'); }
+          };
+          if ('onscrollend' in G) box.addEventListener('scrollend', settled);
+          else box.addEventListener('scroll', () => { clearTimeout(t); t = setTimeout(settled, 120); }, { passive: true });
         }
       },
     });
+    let jumpTo = null;
     U.act.badgePage = (el) => {
-      const i = Number(el.dataset.arg) || 0;
+      const i = Math.max(0, Math.min(pages.length - 1, Number(el.dataset.arg) || 0));
       const box = ctl.el.querySelector('.bdg-pages');
-      if (box) box.scrollTo({ left: i * box.clientWidth, behavior: U.reduced() ? 'auto' : 'smooth' });
-      if (U.reduced()) show(i, ctl.el);
+      if (!box) return;
+      jumpTo = Math.abs(box.scrollLeft - i * box.clientWidth) < 4 ? null : i;
+      box.scrollTo({ left: i * box.clientWidth, behavior: U.reduced() ? 'auto' : 'smooth' });
+      show(i, ctl.el);
     };
     U.act.badgeShareCur = () => U.act.badgeShare({ dataset: { arg: pages[cur].id } });
     U.act.badgeDone = () => ctl.close('ok');

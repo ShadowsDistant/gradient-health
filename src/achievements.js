@@ -499,7 +499,8 @@
     const o = opts || {};
     const A = ensure(S, day);
     const x = ctx(S, day, o.live);
-    const now = num(o.now) ? o.now : Date.now();
+    // Always after the last time badges were seen, so a clock set back can't hide a new one.
+    const now = Math.max(num(o.now) ? o.now : Date.now(), A.seenAt + 1);
     const fresh = [];
     for (const def of DEFS) {
       if (own(A.earned, def.id) || (o.cats && !o.cats.includes(def.cat))) continue;
@@ -534,7 +535,7 @@
     const A = ensure(S, day);
     const had = Object.keys(A.earned).length;
     try { check(S, day, 'migrate', { now: t, approx: true }); } catch (e) { /* history the check can't read: try again next load */ return S; }
-    A.seenAt = t;
+    markSeen(S, t);
     A.migrated = { at: t, n: Object.keys(A.earned).length - had };
     return S;
   }
