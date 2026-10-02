@@ -423,15 +423,53 @@
       }
       if (best) res = best;
     }
+    let out = shape(res, ctx, prog, { kind, considered, parity });
+    // The best fit is the best whole plan: the split above and the classic shapes (full body, upper
+    // and lower, push, pull and legs) are each planned as a week, sets and all, and the one that
+    // scores best is kept (the split above on a tie).
+    if (kind === 'auto' && res && !parity && !(o && o.raw)) {
+      const cands = [out];
+      const W = ctx.w || UNITS.map(() => 1);
+      const fits = (days) => days.every((m) => UNITS.reduce((a, u, i) => a + (m >> i & 1 ? W[i] : 0), 0) <= ctx.maxUnits);
+      for (const k of ['full_body', 'upper_lower', 'ppl']) {
+        const r = archetype(k, ctx);
+        if (!r || !fits(r.days)) continue;
+        considered += r.considered;
+        const c = shape(r, ctx, prog, { kind: 'auto', considered: 0, parity: false });
+        if (!cands.some((x) => JSON.stringify(x.days) === JSON.stringify(c.days))) cands.push(c);
+      }
+      const scored = cands.length > 1 ? cands.map((c) => ({ c, sc: trial(p, c) })) : [];
+      let best = null;
+      for (const x of scored) if (x.sc != null && (!best || x.sc > best.sc + 1e-9)) best = x;
+      if (best) out = best.c;
+      out.considered = Math.max(1, Math.round(considered));
+      out.scores = scored.map((x) => ({ label: x.c.label, score: x.sc }));
+    }
+    stats.splits++; stats.splitMs += now() - t0;
+    return splitMemo.set(key, deepFreeze(out));
+  }
+  // A split's days as the rest of the engine reads them: each day's units in training order.
+  function shape(res, ctx, prog, o) {
     const prioOf = (u) => (u === 'abs' ? 9 : unitTier(prog, u));
     const days = (res ? res.days : []).map((m, i) => ({
       idx: i, offset: ctx.offsets[i],
       units: UNITS.filter((u, k) => m >> k & 1).sort((a, b2) => prioOf(a) - prioOf(b2) || ORDER.indexOf(a) - ORDER.indexOf(b2)),
     })).filter((d) => d.units.length);
     days.forEach((d, i) => { d.idx = i; });
-    stats.splits++; stats.splitMs += now() - t0;
-    const out = deepFreeze({ days, label: days.length ? labelOf(res.days) : 'mixed', kind, considered: Math.max(1, Math.round(considered)), parity, f: res ? res.f : [], ctx });
-    return splitMemo.set(key, out);
+    return { days, label: days.length ? labelOf(res.days) : 'mixed', kind: o.kind, considered: Math.max(1, Math.round(o.considered)), parity: o.parity, f: res ? res.f : [], ctx };
+  }
+  // A candidate split planned as a full week for someone new with these answers (the plan's own
+  // score, see planScore); null if it can't be planned.
+  function trial(p, cand) {
+    const b = B();
+    try {
+      const day = p.startDay != null ? p.startDay : b.weekStart(20000);
+      const S0 = b.newState(Object.assign({}, p), null, day);
+      S0.complexity = p.complexity || 0;
+      return b.op(() => planWeek(S0, b.weekStart(day), normPhase({ mult: 1 }), cand)).score;
+    } catch (e) {
+      return null;
+    }
   }
   // brain.templateFor's v2 answer: [{ idx, offset, units }].
   function template(p, prog) { return split(p, prog).days; }
@@ -651,7 +689,7 @@
       // 1.5's sets for each day, as the week was planned then (the fit still brings the sessions
       // within their time and fills them).
       days.forEach((d, k) => { for (const [g, n] of Object.entries(legacySets(k))) if (n > 0 && d.per[g] != null) add(k, g, n); });
-      return { x, X, extrasW, capEff, trainable, effective, parity, short };
+      return { x, X, extrasW, capEff, trainable, effective, parity, short, own };
     }
     const wk = Math.floor(ws / 7);
     const half = (g) => (GROUPS.indexOf(g) + wk) % 2 === 0;
@@ -766,14 +804,14 @@
     return { x, X, extrasW, capEff, trainable, effective, parity, short, own };
   }
 
-  function planWeek(S, ws, phase) {
+  function planWeek(S, ws, phase, forced) {
     const b = B();
     const p = S.profile;
     const prog = b.programFor(p);
     const tw = tweaksOf(p);
     const legacy = b.legacyWeek(S, ws);
     const wi = b.weekInputs(S, ws);
-    const sp = legacy ? null : split(wi.p, wi.prog);
+    const sp = legacy ? null : forced || split(wi.p, wi.prog);
     const tpl = legacy ? b.templateV1(wi.p, wi.prog) : sp.days;
     const full = !phase.onramp && !phase.deload && phase.mult >= 1 && !phase.ref;
     const boost = full ? (prog.level === 0 ? 0.25 : 0.5) : 0;
@@ -895,7 +933,12 @@
       };
     });
     const perGroup = {};
-    for (const g of GROUPS) perGroup[g] = { target: G[g].T, boosted: G[g].B, floor: G[g].floor, cap: G[g].cap, aim: X[g], extras: extrasW[g] || 0, effective: round1(e[g]), weight: G[g].w, tier: G[g].tier, trainable: trainable.includes(g) };
+    for (const g of GROUPS) {
+      perGroup[g] = {
+        target: G[g].T, boosted: G[g].B, floor: G[g].floor, cap: G[g].cap, aim: X[g], extras: extrasW[g] || 0, effective: round1(e[g]), weight: G[g].w, tier: G[g].tier,
+        trainable: trainable.includes(g), freq: Math.min(days.length, prog.freq[UNIT_OF[g]] || 1), days: days.filter((d, k) => x[k][g] > 0).length,
+      };
+    }
     const masks = tpl.map((t) => t.units.reduce((m, u) => m | (1 << UNITS.indexOf(u)), 0));
     const plan = {
       ws, legacy, phase, full, parity: parity || !!(sp && sp.parity),
@@ -942,14 +985,23 @@
     return 0.75 * (1 - (max ? pen / max : 0)) + 0.25 * (mean > 0 ? Math.max(0, 1 - sd / mean) : 1);
   }
   const ratio = (a, b) => (Math.max(a, b) <= 0 ? 1 : Math.min(a, b) / Math.max(a, b));
+  // How well a week matches the goals: each group's weekly sets against its target (three quarters)
+  // and how many days it's trained against the program's frequency (a quarter: the top goals three
+  // times a week), weighted by how much the group matters.
+  function goalFit(pg, tr, setsOf, daysOf) {
+    let gw = 0, gs = 0;
+    for (const g of tr) {
+      const vol = Math.min(1, pg[g].target ? setsOf(g) / pg[g].target : 1);
+      const fr = Math.min(1, pg[g].freq ? daysOf(g) / pg[g].freq : 1);
+      gw += pg[g].weight; gs += pg[g].weight * (0.75 * vol + 0.25 * fr);
+    }
+    return gw ? gs / gw : 0;
+  }
   function planScore(S, plan) {
     const pg = plan.perGroup;
     const tr = GROUPS.filter((g) => pg[g].trainable);
-    let gw = 0, gs = 0, cov = 0;
-    for (const g of tr) {
-      gw += pg[g].weight; gs += pg[g].weight * Math.min(1, pg[g].target ? pg[g].aim / pg[g].target : 1);
-      cov += Math.min(1, pg[g].floor ? pg[g].effective / pg[g].floor : 1);
-    }
+    let cov = 0;
+    for (const g of tr) cov += Math.min(1, pg[g].floor ? pg[g].effective / pg[g].floor : 1);
     const days = plan.days;
     const time = days.length ? days.reduce((a, d) => a + timeFit(Math.max(d.planned, Math.min(d.budget, d.planned + fillable(d))) / d.budget), 0) / days.length : 0;
     const push = (pg.chest.aim || 0) + (pg.shoulders.aim || 0), pull = pg.back.aim || 0;
@@ -957,7 +1009,7 @@
     for (const d of days) for (const sl of d.slots) for (const f of sl.fams) (fams[sl.group] = fams[sl.group] || new Set()).add(f);
     const variety = tr.length ? tr.reduce((a, g) => a + Math.min(1, ((fams[g] && fams[g].size) || 0) / (pg[g].aim >= 4 ? 2 : 1)), 0) / tr.length : 0;
     const parts = {
-      goal: gw ? gs / gw : 0, coverage: tr.length ? cov / tr.length : 0, time,
+      goal: goalFit(pg, tr, (g) => pg[g].aim, (g) => pg[g].days), coverage: tr.length ? cov / tr.length : 0, time,
       recovery: recoveryOf(days.map((d) => d.units), days.map((d) => d.offset), days.map((d) => d.planned)),
       balance: pull || push ? ratio(push, pull * 1.2) : 1, variety,
     };
@@ -1330,7 +1382,311 @@
     if (!fits()) s.mobility = s.mobility.filter((x) => x !== item);
   }
 
-  const self = GH.optimizer = { split, template, weekPlan, dayPlan, fit, TWEAKS, normTweaks, LABEL, UNITS, UNIT_GROUPS, PARTS, stats, _internal: { bestDays, countSplits, variants, archetype, labelOf, maskCost, splitInputs, shareOut, planScore, timeFit } };
+  /* ================================================================== a built week's score */
+  // score(S, ws): the week's sessions built as planned (no readiness), scored on the six parts, with
+  // the hard rules checked on them: every move allowed (kit, the body's rules, a joint on a break,
+  // careful joints, impact), no session over its time, no move twice in a session, no group past its
+  // weekly cap, and every group at its minimum while there's time. { score, parts, feasible,
+  // violations, sessions, perGroup, split }.
+  function score(S, ws) {
+    const b = B();
+    const cal = b.calendar(S, ws);
+    const week = cal.weeks[ws];
+    const wp = weekPlan(S, ws, { phase: week ? week.phase : undefined });
+    const live = week ? week.sessions.filter((x) => !x.dropped && x.day != null) : wp.days.map((d) => ({ day: d.day, tpl: d.tpl }));
+    const built = live.map((x) => b.buildSession(S, x.day, x.tpl, { cal, noReadiness: true }));
+    return scoreBuilt(S, wp, built);
+  }
+  function scoreBuilt(S, wp, built) {
+    const b = B(), ac = A(), p = S.profile;
+    const prog = b.programFor(p);
+    const pg = wp.perGroup;
+    const direct = {}, eff = {};
+    for (const g of GROUPS) { direct[g] = 0; eff[g] = 0; }
+    const violations = [];
+    const bad = (kind, text) => { if (violations.length < 12) violations.push({ kind, text }); };
+    const fams = {};
+    let quads = 0, posterior = 0;
+    for (const s of built) {
+      const budget = s.budget || 25;
+      const est = b.estimate(S, s);
+      if (est > budget + OVER + 1e-9) bad('time', `${s.title} runs ${Math.round(est - budget)} minutes over`);
+      const ids = s.items.map((it) => it.moveId);
+      if (new Set(ids).size !== ids.length) bad('twice', `${s.title} has a move twice`);
+      const eq = b.eqAt(S, s.place || 'home');
+      const sore = Object.entries(S.pain || {}).filter(([, until]) => until >= s.day).map(([j]) => j);
+      const impactOk = prog.impactOk;
+      for (const it of s.items.concat(s.extras || [], s.finisher ? [s.finisher] : [], s.warmup || [], s.mobility || [])) {
+        const m = M().MOVES[it.moveId];
+        if (!m) { bad('rules', `unknown move ${it.moveId}`); continue; }
+        const work = it.kind === 'move' || it.kind === 'extra' || it.kind === 'finisher';
+        if (!M().allowed(m, eq)) bad('kit', `${m.name} needs kit that isn't there`);
+        else if (ac && ac.why(p, m, s.day)) bad('rules', `${m.name}: ${ac.why(p, m, s.day)}`);
+        else if (m.impact && !impactOk) bad('impact', `${m.name} is a jumping move`);
+        else if ((m.joints || []).some((j) => sore.includes(j))) bad('pain', `${m.name} loads a joint on a break`);
+        else if (work && (m.impact || m.complex) && (m.joints || []).some((j) => (p.careful || []).includes(j))) bad('careful', `${m.name} is hard on a careful joint`);
+      }
+      for (const it of s.items.concat(s.extras || [])) {
+        const m = M().MOVES[it.moveId];
+        if (!m || !it.sets) continue;
+        if (GROUPS.includes(it.group)) { direct[it.group] += it.sets; eff[it.group] += it.sets; (fams[it.group] = fams[it.group] || new Set()).add(it.moveId); }
+        for (const h of new Set((m.muscles || []).map((mu) => b.MUSCLE_GROUP[mu]).filter((g) => g && g !== it.group))) eff[h] += 0.5 * it.sets;
+        const prime = (m.muscles || []).slice(0, m.prime || 1);
+        if (prime.includes('quads')) quads += it.sets;
+        if (prime.includes('glutes') || prime.includes('hamstrings')) posterior += it.sets;
+      }
+    }
+    const tr = GROUPS.filter((g) => pg[g].trainable);
+    const full = built.every((s) => b.estimate(S, s) >= 0.85 * (s.budget || 25));
+    for (const g of GROUPS) if (direct[g] > pg[g].cap) bad('cap', `${b.GROUP_NAME[g]} past its weekly cap`);
+    for (const g of tr) if (!full && eff[g] < pg[g].floor - 1e-9) bad('floor', `${b.GROUP_NAME[g]} under its weekly minimum with time to spare`);
+    let cov = 0;
+    for (const g of tr) cov += Math.min(1, pg[g].floor ? eff[g] / pg[g].floor : 1);
+    const sessions = built.map((s) => ({ day: s.day, title: s.title, units: s.units.slice(), minutes: Math.round(b.estimate(S, s)), budget: s.budget, sets: s.items.reduce((a, it) => a + (it.skill ? 0 : it.sets), 0) }));
+    const unitsOf = (s) => UNITS.filter((u) => s.items.some((it) => UNIT_GROUPS[u].includes(it.group)));
+    const variety = tr.length ? tr.reduce((a, g) => a + Math.min(1, ((fams[g] && fams[g].size) || 0) / (built.filter((s) => s.items.some((it) => it.group === g)).length >= 2 ? 2 : 1)), 0) / tr.length : 0;
+    const push = direct.chest + direct.shoulders, pull = direct.back;
+    const parts = {
+      goal: goalFit(pg, tr, (g) => direct[g], (g) => built.filter((s) => s.items.some((it) => it.group === g && !it.skill)).length),
+      coverage: tr.length ? cov / tr.length : 0,
+      time: built.length ? built.reduce((a, s) => a + timeFit(b.estimate(S, s) / (s.budget || 25)), 0) / built.length : 0,
+      recovery: recoveryOf(built.map(unitsOf), built.map((s) => b.weekday(s.day)), built.map((s) => b.estimate(S, s))),
+      balance: 0.5 * (pull || push ? ratio(push, pull * 1.2) : 1) + 0.5 * (quads || posterior ? ratio(quads, posterior) : 1),
+      variety,
+    };
+    for (const k of Object.keys(parts)) parts[k] = Math.round(clamp(parts[k], 0, 1) * 1000) / 1000;
+    const perGroup = {};
+    for (const g of GROUPS) perGroup[g] = { sets: direct[g], effective: Math.round(eff[g] * 10) / 10, target: pg[g].target, floor: pg[g].floor, cap: pg[g].cap };
+    return { score: combine(parts), parts, feasible: !violations.length, violations, sessions, perGroup, split: { kind: wp.split.kind, label: wp.split.label }, considered: wp.considered };
+  }
+
+  /* ================================================================== explanations */
+  const fmtN = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const joinList = (a) => (a.length <= 1 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
+  const lower = (s) => s.charAt(0).toLowerCase() + s.slice(1);
+  // Groups by name, with biceps and triceps together as arms when both are there.
+  function groupNames(list) {
+    const b = B();
+    const out = list.slice();
+    const both = out.includes('biceps') && out.includes('triceps');
+    return out.filter((g) => !(both && g === 'triceps')).map((g) => (both && g === 'biceps' ? 'arms' : b.GROUP_NAME[g].toLowerCase()));
+  }
+  // explain(S, day): why the plan is as it is, for the week of `day`, in plain English.
+  // { headline, week: [{ day, weekday, title, units, minutes, sets, done, today }], today (the
+  // session for `day`, or the next one this week) , reasons: [lines], parts, score, considered }.
+  function explain(S, day) {
+    const b = B();
+    const ws = b.weekStart(day);
+    const cal = b.calendar(S, day);
+    const week = cal.weeks[ws];
+    const wp = weekPlan(S, ws, { phase: week ? week.phase : undefined });
+    const live = week ? week.sessions.filter((x) => !x.dropped && x.day != null) : [];
+    const custom = GH.customPlan && live.some((x) => GH.customPlan.owns(x.tpl));
+    const built = live.map((x) => ({ x, s: b.buildSession(S, x.day, x.tpl, { cal, noReadiness: x.day !== day }) }));
+    const wd = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const weekOut = built.map(({ x, s }) => ({ day: x.day, weekday: wd[b.weekday(x.day)], title: s.title, units: s.units.slice(), minutes: s.estimateMin, sets: s.items.reduce((a, it) => a + (it.skill ? 0 : it.sets), 0), done: !!x.done, today: x.day === day }));
+    const pick = built.find(({ x }) => x.day === day) || built.find(({ x }) => x.day > day && !x.done) || null;
+    const today = pick ? {
+      day: pick.x.day, title: pick.s.title, minutes: pick.s.estimateMin, budget: pick.s.budget, light: !!pick.s.light,
+      items: pick.s.items.map((it) => ({ moveId: it.moveId, name: it.name, group: it.group, sets: it.sets, target: it.target, timed: !!it.timed, skill: !!it.skill })),
+      finisher: pick.s.finisher ? { moveId: pick.s.finisher.moveId, name: pick.s.finisher.name, rounds: pick.s.finisher.rounds } : null,
+      cooldown: (pick.s.mobility || []).map((mb) => ({ moveId: mb.moveId, name: mb.name, target: mb.target, cardio: !!mb.cardio })),
+    } : null;
+    const minutes = clamp(Math.round(Number(b.settingsAt(S, day).minutes) || Number(S.profile.minutes) || 25), 10, 60);
+    const prog = b.programFor(S.profile);
+    const top = GROUPS.filter((g) => prog.tiers[g] === 1 && wp.perGroup[g].trainable);
+    const headline = custom ? 'You\'re following your own plan this week'
+      : `${live.length} workout${live.length === 1 ? '' : 's'} a week, about ${minutes} minutes each${top.length ? `, built around your ${joinList(groupNames(top))}` : ''}`;
+    return { headline, week: weekOut, today, reasons: custom ? customReasons(S) : reasonLines(S, wp, built.map((x) => x.s), minutes), parts: wp.parts, score: wp.score, considered: wp.considered, split: { kind: wp.split.kind, label: wp.split.label, name: LABEL[wp.split.label] || LABEL.mixed } };
+  }
+  function customReasons(S) {
+    return ['These sessions come from a plan you made or added. The engine still fits each one to your body\'s rules and keeps it within your time.'];
+  }
+  // The reasons, most telling first.
+  function reasonLines(S, wp, sessions, minutes) {
+    const b = B(), ac = A(), p = S.profile;
+    const prog = b.programFor(p);
+    const tw = tweaksOf(p);
+    const out = [];
+    const pg = wp.perGroup;
+    const D = wp.days.length;
+    // The split.
+    if (wp.legacy) out.push('This week keeps the plan it started with. From next week the new planner arranges your days.');
+    else if (wp.split.kind !== 'auto') out.push(`You picked ${lower(LABEL[wp.split.kind])}: the ${fmtN(wp.considered)} ways to lay it over your ${D} days were compared, and this one rests each muscle best.`);
+    else out.push(`Every way to share your muscle groups over your ${D} days was compared (${fmtN(wp.considered)} of them). This one spreads the work most evenly and rests each muscle between sessions.`);
+    // The goals.
+    const top = GROUPS.filter((g) => prog.tiers[g] === 1 && pg[g].trainable && pg[g].aim > 0);
+    if (top.length) {
+      const parts = [];
+      const both = top.includes('biceps') && top.includes('triceps');
+      for (const g of top) {
+        if (both && g === 'triceps') continue;
+        const sets = both && g === 'biceps' ? pg.biceps.aim + pg.triceps.aim : pg[g].aim;
+        parts.push(`${both && g === 'biceps' ? 'arms' : b.GROUP_NAME[g].toLowerCase()} ${sets}`);
+      }
+      out.push(`Your top goals get the most work: ${joinList(parts)} sets this week.`);
+    }
+    // Recovery.
+    const units = wp.days.map((d) => d.units);
+    const offs = wp.days.map((d) => d.offset);
+    const backToBack = UNITS.filter((u) => {
+      const on = offs.filter((o, i) => units[i].includes(u)).sort((a, x) => a - x);
+      return on.some((o, i) => (i ? o - on[i - 1] : on[0] + 7 - on[on.length - 1]) <= 1) && on.length > 1;
+    });
+    if (D > 1 && !backToBack.length) out.push('No muscle group trains two days in a row, so each one recovers before it works again.');
+    else if (D > 1 && !backToBack.includes('legs') && units.filter((u) => u.includes('legs')).length > 1) out.push('Your legs always get a day off between sessions.');
+    // The time.
+    const setMin = wp.days.length ? Math.round(wp.days.reduce((a, d) => a + d.planned - d.fixed, 0) / wp.days.length) : 0;
+    const fin = sessions.some((s) => s.finisher), cool = sessions.some((s) => (s.mobility || []).some((mb) => !mb.cardio)), walk = sessions.some((s) => (s.mobility || []).some((mb) => mb.cardio));
+    const extras = ['a warm-up'].concat(fin ? ['a finisher'] : [], walk ? ['an easy cardio block'] : [], cool ? ['a cool-down'] : []);
+    if (setMin > 0) out.push(`Each session fits your ${minutes} minutes: about ${setMin} of sets, then ${joinList(extras)}.`);
+    // Coverage, or groups taking turns.
+    if (wp.parity) out.push('There isn\'t time for every muscle group each week, so they take turns: what misses out this week comes first next week.');
+    else if (GROUPS.every((g) => !pg[g].trainable || pg[g].effective >= pg[g].floor - 1e-9)) out.push('Every muscle group gets at least its weekly minimum, counting the help bigger moves give.');
+    // The phase.
+    const ph = wp.phase;
+    if (ph.deload) out.push(`A lighter week to recover: about ${Math.round(ph.mult * 100)}% of your usual sets.`);
+    else if (ph.onramp && ph.idle) out.push(`Back after a break: about ${Math.round(ph.mult * 100)}% of your usual sets while you settle in again.`);
+    else if (ph.onramp) out.push(`This week eases you in: about ${Math.round(ph.mult * 100)}% of a normal week's sets.`);
+    // Changes you made.
+    const mine = tweakWords(tw);
+    if (mine.length) out.push(`Your changes: ${joinList(mine)}.`);
+    // The body.
+    const around = ac && ac.plannedAround(p);
+    if (around) out.push(`${around}.`);
+    return out;
+  }
+  // Plan tweaks in words.
+  function tweakWords(t) {
+    const b = B();
+    const out = [];
+    for (const [g, n] of Object.entries(t.sets)) out.push(`${b.GROUP_NAME[g].toLowerCase()} ${n > 0 ? '+' : ''}${n} sets a week`);
+    for (const [f, id] of Object.entries(t.swaps)) { const m = M().MOVES[id]; const lad = M().LADDERS[f]; if (m) out.push(`${m.name.toLowerCase()} for ${lad ? lad.name.toLowerCase() : 'that exercise'}`); }
+    if (t.split !== 'auto') out.push(lower(LABEL[t.split]));
+    if (t.rest !== 'auto') out.push(`${t.rest === 60 ? '1 minute' : t.rest === 90 ? '90 s' : '2 minutes'} of rest`);
+    if (t.finisher !== 'auto') out.push(t.finisher === 'on' ? 'a finisher every session' : 'no finishers');
+    if (t.mobility !== 'auto') out.push(t.mobility === 'on' ? 'a cool-down every session' : 'no optional cool-downs');
+    if (t.avoid.length) out.push(`leaving out ${joinList(t.avoid.map((id) => M().MOVES[id].name.toLowerCase()))}`);
+    return out;
+  }
+  // explainProfile(p, day): the same for set-up's answers, before there's a state.
+  function explainProfile(p, day) {
+    const b = B();
+    const S = b.newState(p || {}, null, day);
+    return explain(S, day);
+  }
+
+  /* ================================================================== the classic splits */
+  // alternatives(S, ws): the best fit and the three classic splits (full body, upper and lower,
+  // push, pull and legs), each planned for the week and scored, best first.
+  const KINDS = ['auto', 'full_body', 'upper_lower', 'ppl'];
+  function alternatives(S, ws) {
+    const phase = phaseOf(S, ws);
+    const cur = tweaksOf(S.profile).split;
+    const out = KINDS.map((kind) => {
+      const S2 = withTweaks(S, { split: kind });
+      const wp = weekPlan(S2, ws, { phase });
+      return {
+        split: kind, name: kind === 'auto' ? 'Best fit' : LABEL[kind], shape: wp.split.label, shapeName: LABEL[wp.split.label] || LABEL.mixed,
+        score: wp.score, parts: wp.parts, considered: wp.considered, current: kind === cur,
+        days: wp.days.map((d) => ({ offset: d.offset, units: d.units.slice(), minutes: Math.round(d.planned) })),
+      };
+    });
+    return out.sort((a, x) => x.score - a.score || KINDS.indexOf(a.split) - KINDS.indexOf(x.split));
+  }
+  const cloneState = (S) => (typeof structuredClone === 'function' ? structuredClone(S) : JSON.parse(JSON.stringify(S)));
+  // A copy of the state with tweaks merged in (what's planned is read from it; nothing in S changes).
+  function withTweaks(S, t) {
+    const S2 = Object.assign({}, S, { profile: Object.assign({}, S.profile), prog: JSON.parse(JSON.stringify(S.prog || {})) });
+    S2.profile.planTweaks = mergeTweaks(tweaksOf(S.profile), t);
+    return S2;
+  }
+
+  /* ================================================================== trying plan tweaks */
+  // Tweaks merge onto the ones in force: sets and swaps per group or ladder (0 or null clears one),
+  // the split, rest, finisher and cool-down choices replace, and `avoid` replaces the whole list.
+  function mergeTweaks(cur, t) {
+    const x = t && typeof t === 'object' ? t : {};
+    const out = { sets: Object.assign({}, cur.sets), swaps: Object.assign({}, cur.swaps), split: cur.split, rest: cur.rest, finisher: cur.finisher, mobility: cur.mobility, avoid: cur.avoid.slice() };
+    if (x.sets && typeof x.sets === 'object') for (const g of GROUPS) if (Object.prototype.hasOwnProperty.call(x.sets, g)) out.sets[g] = x.sets[g];
+    if (x.swaps && typeof x.swaps === 'object') for (const f of Object.keys(x.swaps)) { if (x.swaps[f]) out.swaps[f] = x.swaps[f]; else delete out.swaps[f]; }
+    for (const k of ['split', 'rest', 'finisher', 'mobility']) if (x[k] != null) out[k] = x[k];
+    if (Array.isArray(x.avoid)) out.avoid = x.avoid.slice();
+    return normTweaks(out);
+  }
+  // applyTweaks(S, tweaks[, day]): what the tweaks would do, tried on a copy of the state (S is not
+  // changed). Next week is compared before and after: the score and its parts, the hard rules, each
+  // group's weekly sets, the sessions. It's ok when every rule still holds and the score drops by
+  // no more than 0.03. Besides the plan tweaks it takes minutes (10 to 60) and days (2 to 6), set as
+  // Settings would. Returns { ok, reasons, before, after, diff: [lines], tweaks (the merged tweaks to
+  // save as S.profile.planTweaks) }.
+  function applyTweaks(S, tweaks, day) {
+    const b = B();
+    const t = tweaks && typeof tweaks === 'object' ? tweaks : {};
+    const prefs = S.profile.prefs || {};
+    const d0 = day != null ? day : b.dayOf(Date.now(), prefs.rollHour != null ? prefs.rollHour : 4);
+    const ws = b.weekStart(d0) + 7;
+    const cur = tweaksOf(S.profile);
+    const merged = mergeTweaks(cur, t);
+    const S1 = cloneState(S), S2 = cloneState(S);
+    S2.profile.planTweaks = merged;
+    const patch = {};
+    if (t.minutes != null && Number.isFinite(Number(t.minutes))) patch.minutes = clamp(Math.round(Number(t.minutes) / 5) * 5, 10, 60);
+    if (t.days != null && Number.isFinite(Number(t.days))) { const n = clamp(Math.round(Number(t.days)), 2, 6); Object.assign(patch, b.setWorkoutDays(S.profile.weekdays, n)); }
+    if (Object.keys(patch).length) b.updateSettings(S2, d0, patch);
+    const before = score(S1, ws), after = score(S2, ws);
+    const reasons = [];
+    for (const v of after.violations) if (!before.violations.some((w) => w.text === v.text)) reasons.push(`${v.text}.`);
+    const fresh = after.violations.filter((v) => !before.violations.some((w) => w.text === v.text));
+    const drop = before.score - after.score;
+    if (drop > 0.03) {
+      const worst = Object.keys(PARTS).sort((a, x) => (after.parts[a] - before.parts[a]) * PARTS[a] - (after.parts[x] - before.parts[x]) * PARTS[x])[0];
+      reasons.push(`The plan would score lower (${Math.round(before.score * 100)} to ${Math.round(after.score * 100)} out of 100), mostly on ${PART_WORDS[worst]}.`);
+    }
+    const ok = !fresh.length && drop <= 0.03;
+    if (ok) reasons.push(drop < -0.005 ? `The plan scores better (${Math.round(before.score * 100)} to ${Math.round(after.score * 100)} out of 100) and every rule still holds.` : 'Every rule still holds and the plan scores about the same.');
+    return { ok, reasons, before, after, diff: diffLines(before, after, cur, merged, S.profile, S2.profile), tweaks: merged };
+  }
+  const PART_WORDS = { goal: 'how well the sets match your goals', coverage: 'every muscle group getting its minimum', time: 'fitting your time', recovery: 'rest between sessions for the same muscles', balance: 'balance between pushing and pulling', variety: 'variety' };
+  const restWords = (r) => (r === 'auto' ? 'automatic' : r === 60 ? '1 minute' : r === 90 ? '90 s' : '2 minutes');
+  function diffLines(before, after, cur, next, p1, p2) {
+    const b = B();
+    const out = [];
+    if (before.split.label !== after.split.label || cur.split !== next.split) out.push(`Your week: ${lower(LABEL[after.split.label] || LABEL.mixed)}${before.split.label !== after.split.label ? ` (was ${lower(LABEL[before.split.label] || LABEL.mixed)})` : ''}.`);
+    if (p1.minutes !== p2.minutes) out.push(`Sessions of ${p2.minutes} minutes (was ${p1.minutes}).`);
+    if (p1.days !== p2.days) out.push(`${p2.days} workouts a week (was ${p1.days}).`);
+    for (const g of GROUPS) {
+      const a = before.perGroup[g].sets, c = after.perGroup[g].sets;
+      if (a !== c) out.push(`${b.GROUP_NAME[g]}: ${c} sets a week (was ${a}).`);
+    }
+    for (const [f, id] of Object.entries(next.swaps)) if (cur.swaps[f] !== id) { const m = M().MOVES[id]; const lad = M().LADDERS[f]; out.push(`${lad ? lad.name : 'That exercise'}: ${m.name.toLowerCase()} from now on.`); }
+    for (const f of Object.keys(cur.swaps)) if (!next.swaps[f]) { const lad = M().LADDERS[f]; out.push(`${lad ? lad.name : 'That exercise'}: back to the usual move.`); }
+    const added = next.avoid.filter((id) => !cur.avoid.includes(id)), back = cur.avoid.filter((id) => !next.avoid.includes(id));
+    if (added.length) out.push(`Leaves out ${joinList(added.map((id) => M().MOVES[id].name.toLowerCase()))}.`);
+    if (back.length) out.push(`Brings back ${joinList(back.map((id) => M().MOVES[id].name.toLowerCase()))}.`);
+    if (cur.rest !== next.rest) out.push(`Rest between sets: ${restWords(next.rest)} (was ${restWords(cur.rest)}).`);
+    if (cur.finisher !== next.finisher) out.push(next.finisher === 'on' ? 'A finisher at the end of every session.' : next.finisher === 'off' ? 'No finishers.' : 'Finishers when there\'s time for one.');
+    if (cur.mobility !== next.mobility) out.push(next.mobility === 'on' ? 'A cool-down after every session.' : next.mobility === 'off' ? 'No cool-down unless your plan needs one.' : 'A cool-down when there\'s time for one.');
+    if (Math.abs(after.score - before.score) >= 0.005) out.push(`Plan score: ${Math.round(before.score * 100)} → ${Math.round(after.score * 100)} out of 100.`);
+    return out;
+  }
+
+  /* ================================================================== the engine epoch */
+  // A state saved before 1.6 keeps 1.5's split and sets up to the end of the week it's first loaded
+  // in (what's done and what's left of that week keep their meaning); the new engine plans from the
+  // week after. Safe to run on every load: it only sets S.engineFrom once.
+  (GH.migrations = GH.migrations || []).push(function engineEpoch(S) {
+    const b = B();
+    if (!S || typeof S !== 'object' || S.engineFrom != null || !S.profile || !b) return;
+    const prefs = S.profile.prefs || {};
+    S.engineFrom = b.weekStart(b.dayOf(Date.now(), prefs.rollHour != null ? prefs.rollHour : 4)) + 7;
+  });
+
+  const self = GH.optimizer = {
+    weekPlan, score, explain, explainProfile, alternatives, applyTweaks, TWEAKS,
+    split, template, dayPlan, fit, normTweaks, mergeTweaks, LABEL, UNITS, UNIT_GROUPS, PARTS, stats,
+    _internal: { bestDays, countSplits, variants, archetype, labelOf, maskCost, splitInputs, shareOut, planScore, timeFit, scoreBuilt },
+  };
   self.freeze = (on) => { FREEZE = !!on; };
   self.clearCache = () => { splitMemo.clear(); feasMemo.clear(); };
 })(typeof window !== 'undefined' ? window : globalThis);
