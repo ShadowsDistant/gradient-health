@@ -491,7 +491,16 @@
     if (!change.weekdays && !change.profile) res = opt.applyTweaks(S, Object.assign({}, change.tweaks || {}, change.minutes != null ? { minutes: change.minutes } : {}), day);
     else res = tryOnCopy(S, change, day);
     const fresh = res.after.violations.filter((v) => !res.before.violations.some((w) => w.text === v.text));
-    return { ok: !!res.ok, reason: res.ok ? null : fresh.length ? plain(fresh[0]) : worse(res.before, res.after), diff: diffOf(res, change), before: res.before, after: res.after };
+    const diff = diffOf(res, change);
+    // A change that leaves next week as it was (more sets with no time for them) isn't one to make.
+    if (res.ok && !diff.length && Math.abs(res.after.score - res.before.score) < 0.001) return { ok: false, reason: noChange(change), diff, before: res.before, after: res.after };
+    return { ok: !!res.ok, reason: res.ok ? null : fresh.length ? plain(fresh[0]) : worse(res.before, res.after), diff, before: res.before, after: res.after };
+  }
+  function noChange(change) {
+    const sets = change.tweaks && change.tweaks.sets ? Object.entries(change.tweaks.sets) : [];
+    if (sets.length === 1 && sets[0][1] > 0) return `Your time has no room for more ${ADJ[sets[0][0]]} sets, so next week would stay as it is.`;
+    if (sets.length === 1) return `Your ${ADJ[sets[0][0]]} sets are already at their weekly minimum, so next week would stay as it is.`;
+    return 'It wouldn\'t change next week\'s plan.';
   }
   function tryOnCopy(S, change, day) {
     const b = B(), opt = O();
@@ -742,7 +751,7 @@
     const ws = b.weekStart(day);
     const alts = opt.alternatives(S, ws);
     const cur = alts.find((a) => a.current) || alts.find((a) => a.split === 'auto') || alts[0];
-    const daysOf = (a) => a.days.map((d) => ({ wd: WD3[d.offset], label: dayLabel(d.units) }));
+    const daysOf = (a) => a.days.map((d) => ({ wd: WD3[d.offset], label: dayLabel(d.units, a.shape) }));
     const sameWeek = (a, c) => a.shape === c.shape && JSON.stringify(a.days.map((d) => [d.offset, d.units.slice().sort()])) === JSON.stringify(c.days.map((d) => [d.offset, d.units.slice().sort()]));
     const others = alts.filter((a) => a !== cur).map((a) => ({
       split: a.split, name: a.split === 'auto' ? 'The planner\'s pick' : a.name, score: a.score, days: daysOf(a),
@@ -774,15 +783,22 @@
     if (d >= -0.004) return picked ? 'About as good as the split you chose.' : 'About as good. Yours spreads the work over the week a little more evenly.';
     return NOT[partMoved({ parts: cur.parts }, { parts: a.parts }, -1)];
   }
-  // A day of a split in one word: full body, upper, lower, push, pull or core.
-  function dayLabel(units) {
+  // A day of a split in a word or two: the classic splits' own names for their days (full body,
+  // upper, lower, push, pull, legs), and for a mix, the groups it trains, the big ones first.
+  const UNIT_WORD = { chest: 'chest', back: 'back', legs: 'legs', shoulders: 'shoulders', arms: 'arms', abs: 'abs' };
+  function dayLabel(units, shape) {
     const has = (u) => units.includes(u);
     const upper = ['chest', 'back', 'shoulders', 'arms'].filter(has).length;
-    if (has('legs') && upper >= 2) return 'Full body';
-    if (has('legs')) return 'Legs';
-    if (has('back') && !has('chest') && !has('shoulders')) return 'Pull';
-    if ((has('chest') || has('shoulders')) && !has('back')) return 'Push';
-    return upper ? 'Upper' : 'Core';
+    if (shape === 'full_body') return 'Full body';
+    if (shape === 'upper_lower') return has('legs') ? 'Lower' : 'Upper';
+    if (shape === 'ppl') {
+      if (has('legs') && upper < 2) return 'Legs';
+      if (has('back') && !has('chest') && !has('shoulders')) return 'Pull';
+      if ((has('chest') || has('shoulders')) && !has('back')) return 'Push';
+    }
+    const list = Object.keys(UNIT_WORD).filter(has).map((u) => UNIT_WORD[u]);
+    const s = list.length > 3 ? `${list.slice(0, 2).join(', ')} +${list.length - 2}` : list.join(', ');
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Rest';
   }
 
   // Opens the Coach's review (src/ui/review.js). source: where from ('plan', 'you', 'setup',
