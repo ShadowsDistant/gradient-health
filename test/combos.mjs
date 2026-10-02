@@ -277,7 +277,7 @@ function checkSession(S, s, label, o) {
     if (!s.items.length && !s.light) { sessionsSeen.empty++; bad('every session has work (or is turned into a light day)', label); }
     if (!s.light && main.length < (budget >= 15 && !o.short ? 2 : 1)) { sessionsSeen.mainShort++; bad('at least 2 main exercises from 15 min (1 at 10 min)', `${label}: ${main.map((x) => x.moveId)}`); }
   }
-  if (est > budget + 0.5) { sessionsSeen.over++; sessionsSeen.maxOver = Math.max(sessionsSeen.maxOver, est - budget); bad('no session runs over its time by more than 30 s', `${label}: ${est.toFixed(1)} of ${budget} min`); }
+  if (est > budget + 0.5 + 1e-6) { sessionsSeen.over++; sessionsSeen.maxOver = Math.max(sessionsSeen.maxOver, est - budget); bad('no session runs over its time by more than 30 s', `${label}: ${est.toFixed(1)} of ${budget} min`); }
   if (!s.flare && !s.light && !o.malformed) fills.push({ budget, ratio: est / budget, phase: o.phase || 'full', short: !!o.short, label });
   const ids = s.items.map((it) => it.moveId);
   if (new Set(ids).size !== ids.length) { sessionsSeen.dup++; bad('no move twice in a session', `${label}: ${ids.join(',')}`); }
@@ -371,23 +371,25 @@ function checkWeek(S, ws, label, o) {
   // each group, groups may take turns week by week (checked over two weeks by the caller). The
   // time for sets is the week's time less what every session holds anyway for this person: the
   // warm-up, balance and floor practice, a cool-down every session from 65 (and with some
-  // conditions), the finisher when conditioning is a goal, and the lead side's catch-up sets and
-  // left vs right tests the plan keeps time for. It holds whole sets only: what's
-  // left of a session after its last whole set holds none (a set's minutes, its rest and setting
-  // up included, are this person's average this week), and 2 sets of each group take each group's
-  // own time a set (a squat takes longer than a curl). Simpler sessions hold a set number of
+  // conditions, or when mobility is a goal), the finisher when conditioning is a goal, and the lead
+  // side's catch-up sets and left vs right tests the plan keeps time for. It holds whole sets only:
+  // what's left of a session after its last whole set holds none (a set's minutes, its rest and
+  // setting up included, are this person's average this week), and 2 sets of each group take each
+  // group's own time a set (a squat takes longer than a curl), with a set to spare (how the sets
+  // pack into each session's time is only estimated here). Simpler sessions hold a set number of
   // exercises, one a group (balance and floor practice count among them), so a week of them may
   // not have room for every group either.
-  const full = built.every((s) => B.estimate(S, s) >= 0.85 * budgetOf(S, s, {}));
   const cond = prog.finisherPerWeek >= 7;
   const setTimes = built.map((s) => budgetOf(S, s, {}) - B.estimate(S, Object.assign({}, s, {
     items: s.items.filter((it) => it.skill), finisher: cond ? s.finisher : null,
-    mobility: s.keepMobility ? (s.mobility || []).filter((m) => !m.cardio) : [],
+    mobility: s.keepMobility || prog.mobilityPlus ? (s.mobility || []).filter((m) => !m.cardio) : [],
   })));
   const setTime = setTimes.reduce((a, t) => a + t, 0);
   const setsIn = built.reduce((a, s) => a + s.items.filter((it) => !it.skill).reduce((n, it) => n + it.sets, 0), 0);
   const setsMin = built.reduce((a, s) => a + B.estimate(S, s) - B.estimate(S, Object.assign({}, s, { items: s.items.filter((it) => it.skill) })), 0);
   const perSet = setsIn ? setsMin / setsIn : 2;
+  // Full: every session at 85% of its time or more, or with less time left than a set takes.
+  const full = built.every((s) => { const est = B.estimate(S, s), bud = budgetOf(S, s, {}); return est >= 0.85 * bud || bud - est < perSet; });
   const wholeSets = setTimes.reduce((a, t) => a + Math.max(0, Math.floor(t / perSet + 1e-9)), 0);
   const gTime = {}, gSets = {};
   for (const s of built) {
@@ -403,7 +405,7 @@ function checkWeek(S, ws, label, o) {
   const maxItems = S.complexity > 0 ? (S.complexity === 1 ? 5 : 4) : 0;
   const slots = maxItems ? built.reduce((a, s) => a + Math.max(0, maxItems - s.items.filter((it) => it.skill).length), 0) : Infinity;
   const nCan = GROUPS.filter((g) => can.has(g)).length;
-  const turns = holds < need2 - 1e-9 || slots < nCan;
+  const turns = holds < need2 + perSet - 1e-9 || slots < nCan;
   for (const g of below) {
     if (turns && o.pairWith) continue;
     if (!full) { bad('every group reaches its weekly floor while there is time left', `${label}: ${g} ${eff[g]} < ${Math.max(2, Math.round(prog.floor[g] * mult))} (${built.map((s) => `${B.estimate(S, s).toFixed(0)}/${budgetOf(S, s, {})}`).join(' ')})`); break; }

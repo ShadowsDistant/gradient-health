@@ -619,6 +619,7 @@
     const dp = { idx: d.idx, units, planUnits: d.planUnits, tplLen: d.tplLen, occ: d.occ, legIdx: d.legIdx, groupSets: gs };
     const { session } = b.realize(S, d.day, dp, { noReadiness: true, phase, finisher: d.finisher });
     session.tests = session.tests.filter((t) => d.tests && d.tests[t.test]);
+    if (d.noExtras) session.extras = [];
     if (d.budget < COMPACT || d.compact) compact(session, d.budget);
     // From 15 minutes the fit gives a session of one exercise a second (ensureMain): a set split off
     // into the group's other exercise, which changes what the sets do for other groups, or else a
@@ -687,6 +688,7 @@
     const dp = { idx: d.idx, units: d.units, planUnits: d.planUnits, tplLen: d.tplLen, occ: d.occ, legIdx: d.legIdx, groupSets: nominal };
     const { session } = b.realize(S, d.day, dp, { noReadiness: true, phase, finisher: d.finisher });
     session.tests = session.tests.filter((t) => d.tests && d.tests[t.test]);
+    if (d.noExtras) session.extras = [];
     if (d.budget < COMPACT || d.compact) compact(session, d.budget);
     const est = (s) => b.estimate(S, s);
     const all = est(session);
@@ -950,8 +952,12 @@
     const full = !phase.onramp && !phase.deload && phase.mult >= 1 && !phase.ref;
     const boost = full ? (prog.level === 0 ? 0.25 : 0.5) : 0;
     // A lighter week (easing in, a deload, back after a break) is lighter than a normal week really
-    // is: its share of the sets a normal week's time holds, not of a target that time couldn't.
+    // is: its share of the sets a normal week's time holds, not of a target that time couldn't. (How
+    // much of its targets the normal week holds in all, so one group's share doesn't swing with how
+    // a tight week happens to share its last few minutes.)
     const ref = !legacy && phase.mult < 1 ? weekPlan(S, ws, { phase: { mult: 1, onramp: false, deload: false, idle: false, ref: true } }) : null;
+    const refGroups = ref ? GROUPS.filter((g) => ref.perGroup[g].trainable) : [];
+    const refFill = ref ? Math.min(1, refGroups.reduce((a, g) => a + ref.perGroup[g].aim, 0) / Math.max(1, refGroups.reduce((a, g) => a + ref.perGroup[g].target, 0))) : 1;
     const focusGroups = new Set((prog.focus || []).map((mu) => b.MUSCLE_GROUP[mu]).filter(Boolean));
     // Each group's week: the target, the boosted target, the floor (effective sets), the cap, and
     // how much a set of it is worth.
@@ -960,7 +966,7 @@
       const cap = prog.cap[g];
       const vol = clamp((S.vol && S.vol[g] != null ? S.vol[g] : prog.start[g]) + (tw.sets[g] || 0), 1, cap);
       let T = Math.min(cap, Math.round(vol * phase.mult));
-      if (ref && ref.perGroup[g].trainable) T = Math.min(T, Math.max(1, Math.round(ref.perGroup[g].aim * phase.mult)));
+      if (ref && ref.perGroup[g].trainable) T = Math.min(T, Math.max(1, Math.round(ref.perGroup[g].target * refFill * phase.mult)));
       G[g] = {
         T, B: full ? Math.max(T, Math.min(cap, Math.round(vol * (1 + boost)))) : T, cap,
         floor: Math.min(cap, Math.max(2, Math.round(prog.floor[g] * phase.mult))),
@@ -1019,7 +1025,7 @@
     for (const d of days) measureDay(S, d, G, phase);
     // A day with no time left for a set: its test waits for another day, then the parts round the
     // sets shrink (as the fit would shrink them), then its finisher goes (unless a plan tweak asks
-    // for one every time), rather than the day going without any.
+    // for one every time), then its catch-up sets, rather than the day going without any.
     const giveWay = () => {
       if (legacy) return;
       for (const d of days) {
@@ -1028,6 +1034,7 @@
         if (d.tests && (d.tests.arm || d.tests.leg) && noRoom()) { d.tests = { arm: false, leg: false }; measureDay(S, d, G, phase); }
         if (!d.compact && noRoom()) { d.compact = true; measureDay(S, d, G, phase); }
         if (d.finisher && tw.finisher !== 'on' && noRoom()) { d.finisher = false; measureDay(S, d, G, phase); }
+        if (!d.noExtras && Object.keys(d.extras).length && noRoom()) { d.noExtras = true; measureDay(S, d, G, phase); }
       }
     };
     giveWay();
@@ -1060,7 +1067,7 @@
     // group falls short of its minimum.
     const same = (a, c) => JSON.stringify(Object.entries(a || {}).sort()) === JSON.stringify(Object.entries(c || {}).sort());
     const settle = () => {
-      for (let pass = 0; pass < 3; pass++) {
+      for (let pass = 0; pass < 4; pass++) {
         let changed = false, over = false;
         days.forEach((d, k) => {
           if (d.done) {
@@ -1068,21 +1075,32 @@
             return;
           }
           const real = realDay(S, d, al.x[k], phase);
-          for (const [g, v] of Object.entries(real.ind)) if (!same(v, d.ind[g])) { d.ind[g] = v; changed = true; }
+          // What a group's sets do for others only ever goes down here: it is counted as far as
+          // every session measured for it so far does it (a group's exercises change with its sets,
+          // and help that comes and goes isn't counted on), so the measuring settles.
+          for (const [g, v] of Object.entries(real.ind)) {
+            const was = d.ind[g] || {};
+            const low = {};
+            for (const h of Object.keys(v)) if (was[h] != null) low[h] = Math.min(was[h], v[h]);
+            if (!same(low, d.ind[g])) { d.ind[g] = low; changed = true; }
+          }
           // The catch-up sets the session will have (a group joining a day can make it an arm or
           // leg day).
           if (!same(real.extras, d.extras)) { d.extras = real.extras; changed = true; }
           // Over its time, or with less outside its sets than measured (a test kept for another
           // day, catch-up sets for units it doesn't have): the day's times from the session.
           const time = Object.keys(al.x[k]).reduce((a, g) => a + (al.x[k][g] || 0) * (real.per[g] != null ? real.per[g] : d.per[g]), real.fixed);
+          // (A set's time only goes up here, as the help above only goes down, so the measuring
+          // settles.)
           if (time > d.budget + OVER + 1e-9 || real.fixed < d.fixed - 1) {
-            for (const g of Object.keys(real.per)) d.per[g] = real.per[g];
+            for (const g of Object.keys(real.per)) d.per[g] = Math.max(d.per[g] || 0, real.per[g]);
             d.fixed = real.fixed;
             over = true;
           }
         });
         const e = al.effective();
-        if (!over && (!changed || al.trainable.every((g) => e[g] >= Math.min(2, G[g].floor) - 1e-9))) break;
+        // (The last pass only measures: the plan's numbers are always those of its own sets.)
+        if (pass === 3 || (!over && (!changed || al.trainable.every((g) => e[g] >= Math.min(2, G[g].floor) - 1e-9)))) break;
         al = allocate(S, ws, days, G, null);
       }
     };
@@ -1122,12 +1140,12 @@
       const lacking = trainable.includes(g) ? Math.ceil(Math.max(0, two - e[g]) - 1e-9) : 0;
       shortRoomOf[g] = lacking ? shareOut(lacking, days.map((d, k) => (!d.done && d.per[g] != null ? Math.max(0.01, d.budget - d.fixed - Object.entries(x[k]).reduce((a, [q, n]) => a + n * (d.per[q] || 0), 0)) : 0)), days.map(() => 1)) : days.map(() => 0);
     }
-    // Each such day (or one with no sets at all) a set of another group, then of a second (the fit
-    // takes the first it has a move for), then a second set of each while there are any: the more
-    // important groups first, never more in all than a group has under its cap.
+    // Each such day (or one with no sets at all, whatever its length) a set of another group, then
+    // of a second (the fit takes the first it has a move for), then a second set of each while there
+    // are any: the more important groups first, never more in all than a group has under its cap.
     const spareLeft = {};
     for (const g of trainable) spareLeft[g] = Math.max(0, capEff(g) - X[g] - roomOf[g].reduce((a, n) => a + n, 0));
-    const needy = days.filter((d, k) => !d.done && d.budget >= COMPACT && Object.keys(x[k]).filter((q) => x[k][q] > 0).length < 2).map((d) => d.k);
+    const needy = days.filter((d, k) => !d.done && Object.keys(x[k]).filter((q) => x[k][q] > 0).length < (d.budget >= COMPACT ? 2 : 1)).map((d) => d.k);
     for (const round of [0, 1, 2]) {
       for (const k of needy) {
         const given = GROUPS.filter((g) => spareOf[g][k] > 0);
@@ -1155,7 +1173,7 @@
         tpl: d.tpl, idx: d.idx, offset: d.offset, day: d.day, budget: d.budget, occ: d.occ, legIdx: d.legIdx, tplLen: d.tplLen,
         units: d.fallback ? d.units.filter((u) => UNIT_GROUPS[u].some((g) => groupSets[g] > 0))
           : d.units.concat(UNITS.filter((u) => !d.units.includes(u) && UNIT_GROUPS[u].some((g) => groupSets[g] > 0)).sort((a, x2) => ORDER.indexOf(a) - ORDER.indexOf(x2))),
-        planUnits: d.fallback || d.units,
+        planUnits: d.fallback || d.units, noExtras: !!d.noExtras,
         finisher: d.finisher, legacy, compact: !!d.compact, groupSets, base: pick(baseOf), protect: pick(protOf), room: pick(roomOf), spare: pick(spareOf), covered, slack, weights, short: pick(shortRoomOf),
         fixed: round1(d.fixed), planned: round1(planned),
         slots: Object.keys(groupSets).map((g) => ({ group: g, fams: (d.fams[g] || []).slice(), sets: groupSets[g], pri: pri(g), protect: (protOf[g] || [])[k] || 0 })),

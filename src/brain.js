@@ -1064,12 +1064,12 @@
       }
     }
     // Catch-up: one extra lead-side set on arm (and leg) days (the days the plan made for them, not
-    // a day another group joins for its weekly minimum).
+    // a day another group joins for its weekly minimum; not a day too short for one, dp.noExtras).
     const armDay = (dp.planUnits || dp.units).includes('arms');
     const legDay = (dp.planUnits || dp.units).includes('legs');
     const extras = [];
-    if (armDay && S.catchup.arm.active) { const x = extraItem(S, 'curl', 'arm', day); if (x) extras.push(x); }
-    if (legDay && S.catchup.leg.active) { const x = extraItem(S, 'squat', 'leg', day); if (x) extras.push(x); }
+    if (armDay && S.catchup.arm.active && !dp.noExtras) { const x = extraItem(S, 'curl', 'arm', day); if (x) extras.push(x); }
+    if (legDay && S.catchup.leg.active && !dp.noExtras) { const x = extraItem(S, 'squat', 'leg', day); if (x) extras.push(x); }
     // Tests (every 14 days, at the start of the first matching day).
     const tests = [];
     for (const [kind, on] of [['arm', armDay], ['leg', legDay]]) {
