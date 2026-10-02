@@ -36,7 +36,12 @@ const now = () => Date.now();
 // Actions tab): it reads each file at the repo's current commit, checks it against what the Hub says,
 // and prints the lines to paste here. Until a file has its pin, its entry keeps the size shown on its
 // page (to 3 digits) and the repo's main branch, and the app won't download it.
+// From the pins job on 2026-10-02 (each file downloaded at its commit and checked against the Hub's
+// SHA-256 and size).
 const PINS = {
+  'Qwen3.5-0.8B-Q4_K_M.gguf': { commit: '6ab461498e2023f6e3c1baea90a8f0fe38ab64d0', sha256: 'bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517', bytes: 532517120 },
+  'Qwen3.5-2B-Q4_K_M.gguf': { commit: 'f6d5376be1edb4d416d56da11e5397a961aca8ae', sha256: 'aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223', bytes: 1280835840 },
+  'Qwen3.5-4B-Q4_K_M.gguf': { commit: 'e87f176479d0855a907a41277aca2f8ee7a09523', sha256: '00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4', bytes: 2740937888 },
 };
 const HUB = 'https://huggingface.co';
 function pinned(repo, file, shownBytes) {
