@@ -951,6 +951,89 @@ public final class MainActivity extends Activity {
         tryStartActivity(Intent.createChooser(send, null));
     }
 
+    private static final Object SHARED_LOCK = new Object();
+    private static final int SHARED_KEEP = 5;
+    private static final long SHARED_MAX_AGE_MS = 60L * 60L * 1000L;
+
+    /**
+     * Writes a picture to share to cacheDir/shared/badge-<ms>.png, where ShareProvider serves it.
+     * Pictures older than an hour go first, and only the newest few stay (with this one, five at
+     * most): the app they went to has read them by then. Returns the file, or null.
+     */
+    java.io.File saveSharedImage(byte[] png) {
+        synchronized (SHARED_LOCK) {
+            java.io.File dir = new java.io.File(getCacheDir(), ShareProvider.DIR);
+            if (!dir.isDirectory() && !dir.mkdirs()) {
+                return null;
+            }
+            pruneShared(dir, SHARED_KEEP - 1);
+            java.io.File file = new java.io.File(dir, "badge-" + System.currentTimeMillis() + ".png");
+            java.io.FileOutputStream out = null;
+            try {
+                out = new java.io.FileOutputStream(file);
+                out.write(png);
+                out.flush();
+                return file;
+            } catch (java.io.IOException e) {
+                file.delete();
+                return null;
+            } finally {
+                if (out != null) {
+                    try {
+                        out.close();
+                    } catch (java.io.IOException e) {
+                        // already written, or already gone
+                    }
+                }
+            }
+        }
+    }
+
+    private static void pruneShared(java.io.File dir, int keep) {
+        java.io.File[] files = dir.listFiles();
+        if (files == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        java.util.List<java.io.File> left = new java.util.ArrayList<java.io.File>();
+        for (java.io.File f : files) {
+            if (!f.isFile() || !f.getName().endsWith(".png") || now - f.lastModified() > SHARED_MAX_AGE_MS) {
+                f.delete();
+            } else {
+                left.add(f);
+            }
+        }
+        java.util.Collections.sort(left, new java.util.Comparator<java.io.File>() {
+            @Override
+            public int compare(java.io.File a, java.io.File b) {
+                return Long.compare(b.lastModified(), a.lastModified());
+            }
+        });
+        for (int i = keep; i < left.size(); i++) {
+            left.get(i).delete();
+        }
+    }
+
+    /**
+     * Shares a picture from saveSharedImage on the share sheet, with a line of text. The app picked
+     * gets a read grant for that one content:// address (on the intent and on the chooser, whose
+     * preview shows the picture), nothing more.
+     */
+    void shareImage(java.io.File file, String text) {
+        Uri uri = ShareProvider.uriFor(file);
+        Intent send = new Intent(Intent.ACTION_SEND);
+        send.setType("image/png");
+        send.putExtra(Intent.EXTRA_STREAM, uri);
+        if (text != null && !text.isEmpty()) {
+            send.putExtra(Intent.EXTRA_TEXT, text);
+        }
+        send.setClipData(android.content.ClipData.newRawUri("", uri));
+        send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        Intent chooser = Intent.createChooser(send, null);
+        chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        tryStartActivity(chooser);
+    }
+
     boolean isInstalled(String pkg) {
         try {
             getPackageManager().getPackageInfo(pkg, 0);

@@ -58,6 +58,8 @@ export function seedBridge() {
     isDark: () => window.matchMedia('(prefers-color-scheme: dark)').matches, appVersion: () => window.GH && window.GH.VERSION,
     haptic: (k) => { window.__haptics.push(k); }, setSystemBars: () => {}, insets: () => JSON.stringify({ top: 30, bottom: 20, left: 0, right: 0, keyboard: false }),
     shareText: () => {}, claudeInstalled: () => true,
+    // A badge's card: what the page sent, for the tests to look at.
+    shareImage: (b64, text) => { (window.__sharedImages = window.__sharedImages || []).push({ b64, text }); return true; },
   };
 }
 

@@ -152,6 +152,15 @@
             android:foregroundServiceType="location"
             android:exported="false" />
 
+        <!-- A badge's picture, shared only to the app picked on the share sheet: read-only files in
+             the cache's shared/ folder, opened through that share's one-time read grant. Not
+             exported, so no other app can ask it for anything. -->
+        <provider
+            android:name=".ShareProvider"
+            android:authorities="com.shadowsdistant.gradienthealth.files"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
         <!-- Health Connect privacy rationale (required on Android 14+ before the permission
              dialog is shown). Opens the app's privacy page (#privacy). -->
         <activity-alias

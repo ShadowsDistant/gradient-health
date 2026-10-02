@@ -249,6 +249,59 @@ public final class Bridge {
         });
     }
 
+    /**
+     * Hands a picture (a badge's card: a PNG as base64, at most 10 MB) and a line of text to the app
+     * the person picks on the share sheet. Anything that isn't a PNG is refused. Returns whether it
+     * went to the share sheet.
+     */
+    @JavascriptInterface
+    public boolean shareImage(String b64, String text) {
+        if (!trusted()) {
+            return false;
+        }
+        if (b64 == null || b64.isEmpty() || b64.length() > MAX_SHARE_B64) {
+            return false;
+        }
+        final byte[] png;
+        try {
+            png = android.util.Base64.decode(b64, android.util.Base64.DEFAULT);
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+        if (png.length > MAX_SHARE_BYTES || !isPng(png)) {
+            return false;
+        }
+        // Written here, off the UI thread; the share sheet opens on it.
+        final File file = activity.saveSharedImage(png);
+        if (file == null) {
+            return false;
+        }
+        final String message = text == null ? "" : text;
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.shareImage(file, message);
+            }
+        });
+        return true;
+    }
+
+    private static final int MAX_SHARE_BYTES = 10 * 1024 * 1024;
+    private static final int MAX_SHARE_B64 = (MAX_SHARE_BYTES / 3 + 1) * 4 + 64;
+    private static final byte[] PNG_MAGIC = {(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
+
+    static boolean isPng(byte[] data) {
+        if (data == null || data.length < PNG_MAGIC.length + 25) {
+            return false;
+        }
+        for (int i = 0; i < PNG_MAGIC.length; i++) {
+            if (data[i] != PNG_MAGIC[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     @JavascriptInterface
     public boolean claudeInstalled() {
         return activity.isInstalled(MainActivity.CLAUDE_PACKAGE);
