@@ -1374,23 +1374,36 @@
       + group('Sex (optional)', `<div class="ob-pad">${U.seg('sex', [['female', 'Female'], ['male', 'Male'], ['', 'Skip']], Q.sex || '', 'Sex', ` ${bind('sex')}`)}</div>`, foodModeOf() === 'full' ? 'Used for your calorie target. Skip it and an average is used.' : 'Only used to read your health trends. Skip it if you like.');
   };
   // Switching units converts what's been entered: weight, height, dumbbells, the ball, the gym rack.
+  // Switching straight back (nothing changed meanwhile) restores what was there, rather than
+  // rounding it twice (10, 15 and 20 lb would come back as 12 and 20).
+  const UNIT_FIELDS = ['_w', '_hft', '_hin', '_hcm'];
+  const unitsSnap = () => JSON.stringify([UNIT_FIELDS.map((k) => Q[k]), Q.equipment.db, Q.equipment.kb, Q.equipment.ballLb, Q.gym && Q.gym.dbMax, Q._kitWas]);
+  let unitsBack = null; // { units, values, after }: what the last switch converted, to restore on the way back
   const unitsHandler = U.on.q;
   U.on.q = (el, ev, v) => {
     if (el.dataset && el.dataset.k === 'units' && Q && v !== Q.units) {
       const toKg = v === 'kg';
-      const f = toKg ? 1 / B().LB_PER_KG : B().LB_PER_KG;
-      if (Q._w) Q._w = Math.round(Q._w * f * 10) / 10;
-      if (toKg && Q._hft > 0) Q._hcm = Math.round((Q._hft * 12 + (Q._hin || 0)) * 2.54);
-      if (!toKg && Q._hcm > 0) { Q._hft = Math.floor(Q._hcm / 2.54 / 12); Q._hin = Math.round(Q._hcm / 2.54 - Q._hft * 12); if (Q._hin === 12) { Q._hft++; Q._hin = 0; } }
-      const near = (list, x) => list.reduce((a, c) => (Math.abs(c - x * f) < Math.abs(a - x * f) ? c : a), list[0]);
-      for (const k of ['db', 'kb']) {
-        const list = WEIGHTS[k][toKg ? 'kg' : 'lb'];
-        Q.equipment[k] = [...new Set((Q.equipment[k] || []).map((x) => near(list, x)))];
-        if (Q._kitWas && Q._kitWas[k]) Q._kitWas[k] = [...new Set(Q._kitWas[k].map((x) => near(list, x)))];
+      if (unitsBack && unitsBack.q === Q && unitsBack.units === v && unitsBack.after === unitsSnap()) Object.assign(Q, clone(unitsBack.values));
+      else {
+        const values = clone({ _w: Q._w, _hft: Q._hft, _hin: Q._hin, _hcm: Q._hcm, equipment: Q.equipment, gym: Q.gym, _kitWas: Q._kitWas || null });
+        const f = toKg ? 1 / B().LB_PER_KG : B().LB_PER_KG;
+        if (Q._w) Q._w = Math.round(Q._w * f * 10) / 10;
+        if (toKg && Q._hft > 0) Q._hcm = Math.round((Q._hft * 12 + (Q._hin || 0)) * 2.54);
+        if (!toKg && Q._hcm > 0) { Q._hft = Math.floor(Q._hcm / 2.54 / 12); Q._hin = Math.round(Q._hcm / 2.54 - Q._hft * 12); if (Q._hin === 12) { Q._hft++; Q._hin = 0; } }
+        const near = (list, x) => list.reduce((a, c) => (Math.abs(c - x * f) < Math.abs(a - x * f) ? c : a), list[0]);
+        for (const k of ['db', 'kb']) {
+          const list = WEIGHTS[k][toKg ? 'kg' : 'lb'];
+          Q.equipment[k] = [...new Set((Q.equipment[k] || []).map((x) => near(list, x)))];
+          if (Q._kitWas && Q._kitWas[k]) Q._kitWas[k] = [...new Set(Q._kitWas[k].map((x) => near(list, x)))];
+        }
+        if (Q.equipment.ballLb) Q.equipment.ballLb = Math.round(Q.equipment.ballLb * f);
+        if (Q.gym) Q.gym.dbMax = B().convertDbMax(Q.gym.dbMax, toKg ? 'kg' : 'lb');
+        unitsBack = { q: Q, units: Q.units, values, after: null };
       }
-      if (Q.equipment.ballLb) Q.equipment.ballLb = Math.round(Q.equipment.ballLb * f);
-      if (Q.gym) Q.gym.dbMax = B().convertDbMax(Q.gym.dbMax, toKg ? 'kg' : 'lb');
       errs = {};
+      unitsHandler(el, ev, v);
+      if (unitsBack && unitsBack.q === Q) unitsBack.after = unitsSnap();
+      return;
     }
     unitsHandler(el, ev, v);
   };

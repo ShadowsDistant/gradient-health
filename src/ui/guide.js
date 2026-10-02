@@ -154,8 +154,11 @@
     U.markSeen('hcInvite');
     const card = el.closest('.hc-invite');
     if (U.act.hcConnect) await U.act.hcConnect();
-    if (!card || !card.isConnected) return;
-    if (H().connected(H().status())) card.innerHTML = `<div class="hc-invite-row"><span class="rf-list-icon" data-tone="green">${U.icon('check')}</span><span class="hc-invite-text"><span class="t-headline">Connected</span><span class="t-footnote rf-muted">Your next workouts fit how you slept and moved.</span></span></div>`;
+    if (!H().connected(H().status())) return;
+    // The workout just finished goes to Health Connect too, as it would have with it connected.
+    const S = U.S;
+    if (S && S.health.write !== false && H().canWrite && H().canWrite() && H().writeRecent) H().writeRecent(S, 1);
+    if (card && card.isConnected) card.innerHTML = `<div class="hc-invite-row"><span class="rf-list-icon" data-tone="green">${U.icon('check')}</span><span class="hc-invite-text"><span class="t-headline">Connected</span><span class="t-footnote rf-muted">Your next workouts fit how you slept and moved.</span></span></div>`;
   };
   U.act.hcInviteLater = (el) => { const card = el.closest('.hc-invite'); U.markSeen('hcInvite'); collapse(card).then(() => { if (card) card.remove(); }); };
 
@@ -180,8 +183,9 @@
   }
   // A small copy of the real tab bar (same capsule, pill and tabs), with this card's tab lit.
   const tourTabs = (p) => `<div class="tour-tabs" aria-hidden="true">${U.tabList().map(([id, ic, l]) => `<span class="tour-tab${id === p.tab ? ' is-on' : (p.lit || []).includes(id) ? ' is-lit' : ''}">${U.icon(ic)}<span class="tour-tab-label">${U.esc(l)}</span></span>`).join('')}</div>`;
-  // Due once the first workout is done (and was checked in), for someone who hasn't had it.
-  const tourDue = (S) => !!S && !U.seen('tour') && S.profile.workouts !== false && doneWorkouts(S) > 0;
+  // Due once the first workout is done (and was checked in), in the first two weeks, for someone who
+  // hasn't had it (someone who's used the app for longer knows their way around).
+  const tourDue = (S) => !!S && !U.seen('tour') && S.profile.workouts !== false && U.today() - (S.profile.startDay != null ? S.profile.startDay : U.today()) <= 14 && doneWorkouts(S) > 0;
   let tourWait = 0;
   function tourSoon(tries) {
     if (tourWait && !tries) return;
