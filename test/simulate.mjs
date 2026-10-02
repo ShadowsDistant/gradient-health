@@ -85,11 +85,14 @@ section('Scenario A: your answers, 3 weeks from Mon Sep 28');
   for (let d = D0 - 10; d < D0 + 21; d++) health(S, d, { steps: 1800, rhr: 62, hrv: 55, sleepMin: 390 });
   for (let i = 0; i < 14; i++) health(S, D0 + i, { weightKg: kg0 * (1 - 0.0024 * i) });
 
-  // Mon: push-ups 3+ left (18 → 20); triceps short (rung-down path); curls +1; squats +2; rows hold.
+  // 1.6: the optimizer's split for these answers trains chest on Tuesday and Thursday (1.5 had it on
+  // Monday and Friday), so the push-up steps are checked on the first two chest days.
+  const chestDays = tpl.filter((t) => t.units.includes('chest')).map((t) => D0 + t.offset);
+  check('1.6 split: chest on Tuesday and Thursday', chestDays.join() === [D0 + 1, D0 + 3].join(), tpl.map((t) => `${t.offset}:${t.units.join('+')}`));
+  // Mon: triceps short (rung-down path); curls +1; squats +2; rows hold.
   const extraSeen = [];
   let r = doWorkout(S, D0, { rir: { push: '3', curl: '12', squat: '12', row: '0' }, reps: { triceps: 4 } });
   extraSeen.push(r.seen.some((x) => x.extra && x.side === 'L'));
-  check('Mon: push-ups → 20 reps (3+ left)', S.prog.push.reps === 20, lineTexts(r));
   check('Mon: curls +1 (11 → 12, 1-2 left)', S.prog.curl.reps === 12, S.prog.curl);
   check('Mon: rows held at 14 (0 left)', S.prog.row.reps === 14, S.prog.row);
   check('Mon: triceps below range → target matches what you got (6)', S.prog.triceps.reps === 6 && S.prog.triceps.rung === 'tri_dip_bent', S.prog.triceps);
@@ -99,17 +102,18 @@ section('Scenario A: your answers, 3 weeks from Mon Sep 28');
     return seen.every((x, i) => x.first !== false || !seen[i - 1] || x.val <= seen[i - 1].val);
   };
   check('Mon: second side never did more than the first', uniOk(r.seen));
-  // Tue
-  r = doWorkout(S, D0 + 1, { rir: { squat: '12' }, reps: { triceps: 4 } });
+  // Tue: push-ups 3+ left (18 → 20).
+  r = doWorkout(S, D0 + 1, { rir: { squat: '12', push: '3' }, reps: { triceps: 4 } });
   extraSeen.push(r.seen.some((x) => x.extra && x.side === 'L'));
+  check('Tue (first chest day): push-ups → 20 reps (3+ left)', S.prog.push.reps === 20, lineTexts(r));
   check('Tue: triceps below range twice → down a rung with a cooldown', S.prog.triceps.rung === 'tri_oh' && S.prog.triceps.cooldown === 2, S.prog.triceps);
   check('Tue: goblet squat +2 (15 → 17, 1-2 left at 12+ reps)', S.prog.squat.reps === 17, S.prog.squat);
   lightDay(S, D0 + 2);
-  r = doWorkout(S, D0 + 3, {});
+  r = doWorkout(S, D0 + 3, { rir: { push: '3' } });
   extraSeen.push(r.seen.some((x) => x.extra && x.side === 'L'));
-  r = doWorkout(S, D0 + 4, { rir: { push: '3' } });
-  check('Fri: push-ups at 20 with 3+ left → Push-up, 3-sec lowering', S.prog.push.rung === 'push_slow', lineTexts(r));
-  check('Fri: the rung-up is celebrated', r.celebrate.some((c) => c.kind === 'level'), r.celebrate);
+  check('Thu (second chest day): push-ups at 20 with 3+ left → Push-up, 3-sec lowering', S.prog.push.rung === 'push_slow', lineTexts(r));
+  check('Thu: the rung-up is celebrated', r.celebrate.some((c) => c.kind === 'level'), r.celebrate);
+  r = doWorkout(S, D0 + 4, {});
   health(S, D0 + 5, { steps: 6200 });
   lightDay(S, D0 + 5, { auto: true });
   check('Sat: steps auto-logged the walk', S.log.find((l) => l.type === 'light' && l.day === D0 + 5).walk === 'health-steps' || S.log.find((l) => l.type === 'light' && l.day === D0 + 5).walkSrc === 'health-steps');
@@ -143,9 +147,11 @@ section('Scenario A: your answers, 3 weeks from Mon Sep 28');
   cal = B.calendar(S, D0 + 12);
   check('second miss in the week breaks the streak', cal.days[D0 + 11].broken === true && cal.streak.current === 0, cal.streak);
   // Sat: legs day after a 60-min run and a resting-HR spike: legs trimmed, no finisher, readiness not stacked.
+  // (A template with legs in it: 1.6's split has them on its first and last days.)
+  const legTpl = tpl.filter((t) => t.units.includes('legs')).map((t) => t.idx);
   health(S, D0 + 12, { rhr: 71, sleepMin: 260 });
-  const plan12 = B.buildSession(S, D0 + 12, 2, { noReadiness: true });
-  const real12 = B.buildSession(S, D0 + 12, 2, {});
+  const plan12 = B.buildSession(S, D0 + 12, legTpl[legTpl.length - 1], { noReadiness: true });
+  const real12 = B.buildSession(S, D0 + 12, legTpl[legTpl.length - 1], {});
   const legsOk = real12.items.filter((it) => it.group === 'legs').every((it) => { const p = plan12.items.find((x) => x.fam === it.fam); return p && it.sets <= Math.max(1, p.sets - 1); });
   const nonLegOk = real12.items.filter((it) => it.group !== 'legs').every((it) => { const p = plan12.items.find((x) => x.fam === it.fam); return p && it.sets >= Math.max(1, p.sets - 1); });
   check('after a 60-min run: leg sets trimmed and no finisher', legsOk && !real12.finisher, real12.readiness.reasons);
@@ -166,8 +172,10 @@ section('Scenario A: your answers, 3 weeks from Mon Sep 28');
   check('week 3 is a deload week', w3.phase.deload && w3.phase.mult === 0.6, w3.phase);
   const deloadSets = [0, 1, 2, 3].reduce((a, i) => a + totalSets(B.buildSession(S, D0 + 14 + tpl[i].offset, i, { noTrim: true, noReadiness: true })), 0);
   const normalSets = [0, 1, 2, 3].reduce((a, i) => a + totalSets(B.buildSession(S, D0 + 14 + tpl[i].offset, i, { noTrim: true, noReadiness: true, forceMult: 1 })), 0);
-  check(`deload ≈ 40% less volume (${deloadSets} of ${normalSets} sets)`, deloadSets / normalSets >= 0.5 && deloadSets / normalSets <= 0.7);
-  const legsWeek3 = B.buildSession(S, D0 + 15, 1, {});
+  // 1.6: every group keeps its (lighter) weekly minimum on a deload too, so with short sessions and
+  // small weekly volumes the drop can be a little under 40%.
+  check(`deload ≈ 40% less volume (${deloadSets} of ${normalSets} sets)`, deloadSets / normalSets >= 0.5 && deloadSets / normalSets <= 0.75);
+  const legsWeek3 = B.buildSession(S, D0 + 15, legTpl[0], {});
   const squatFamily = legsWeek3.items.filter((it) => it.moveId.startsWith('sq_'));
   const kneeLoaded = legsWeek3.items.filter((it) => (M.MOVES[it.moveId].joints || []).includes('knee'));
   check('knee break: no squat-family or knee-loading moves', squatFamily.length === 0 && kneeLoaded.length === 0, legsWeek3.items.map((x) => x.moveId));
@@ -183,7 +191,7 @@ section('Scenario A: your answers, 3 weeks from Mon Sep 28');
   const tue3 = B.buildSession(S, D0 + 15, 1, {});
   check('no extra left set on the next arm day', tue3.extras.length === 0);
   // Knee break ends after 14 days.
-  const after = B.buildSession(S, D0 + 12 + 15, 1, {});
+  const after = B.buildSession(S, D0 + 12 + 15, legTpl[0], {});
   check('knee swaps end after 14 days', after.items.some((it) => (M.MOVES[it.moveId].joints || []).includes('knee')), after.items.map((x) => x.moveId));
   // Short on time.
   const shorts = [0, 1, 2, 3].map((i) => B.buildSession(S, D0 + 21 + tpl[i].offset, i, { short: true }).estimateMin);
@@ -416,9 +424,15 @@ section('Focus muscles, warm-ups and cool-downs');
   check('the kettlebell halo only on upper-body days', days.every((s) => s.warmup.some((w) => w.moveId === 'wu_halo') === upper(s)), days.map((s) => `${s.title}: ${s.warmup.map((w) => w.moveId)}`));
   const legDay = days.find((s) => s.units.includes('legs'));
   check('leg days warm up the legs', legDay && legDay.warmup.some((w) => ['wu_squat', 'wu_legswing'].includes(w.moveId)), legDay && legDay.warmup.map((w) => w.moveId));
-  check('the cool-down is 2 or 3 stretches for the day\'s muscles', days.every((s) => s.mobility.length >= 2 && s.mobility.length <= 3 && s.mobility.every((it) => M.MOBILITY.includes(it.moveId))), days.map((s) => s.mobility.map((x) => x.moveId)));
+  // 1.6: a session with time to spare starts its cool-down with an easy cardio block (a steady march,
+  // walk or ride, src/optimizer.js fill); the stretches after it are as before.
+  const stretches = (s) => s.mobility.filter((it) => !it.cardio);
+  check('the cool-down is 2 or 3 stretches for the day\'s muscles', days.every((s) => stretches(s).length >= 2 && stretches(s).length <= 3 && stretches(s).every((it) => M.MOBILITY.includes(it.moveId))), days.map((s) => s.mobility.map((x) => x.moveId)));
+  check('an easy cardio block, when there is one, is a steady move at a talking pace and comes first', days.every((s) => s.mobility.filter((it) => it.cardio).every((it) => s.mobility[0] === it && it.timed && it.target >= 180 && M.MOVES[it.moveId].group === 'conditioning')), days.map((s) => s.mobility.map((x) => `${x.moveId}:${x.target}`)));
   // The light-day flow follows what was trained: after leg days, leg stretches.
-  const S2 = B.newState(P, null, D0);
+  // (Someone whose top goal is legs, so leg days are mostly legs: 1.6 shares days between muscle
+  // groups differently, and for abs and arms goals the arm work outweighs the legs.)
+  const S2 = B.newState(Object.assign({}, P, { goals: ['legs'] }), null, D0);
   const legs = B.templateFor(S2.profile, B.programFor(S2.profile)).filter((t) => t.units.includes('legs'));
   for (const t of legs) doWorkout(S2, D0 + t.offset, {});
   const flowOn = (day) => B.mobilityFlow(S2, day).map((x) => x.moveId);
@@ -515,8 +529,16 @@ section('Different bodies: age bands');
   const bal55 = perWeek(older.sessions, (s) => s.items.some((it) => it.group === 'balance'));
   check('55: balance practice twice a week, first thing in the session', Object.values(bal55).every((n) => n === 2) && older.sessions.every((s) => !s.items.some((it) => it.group === 'balance') || s.items[0].group === 'balance'), bal55);
   const power55 = perWeek(older.sessions, (s) => s.items.some((it) => it.power));
-  check('55: once a week the squat is fast on the way up (power)', Object.values(power55).length >= 11 && Object.values(power55).every((n) => n === 1) && used(older.sessions, (it) => M.MOVES[it.moveId].powerOf).length >= 11, power55);
-  check('55: a longer, gentler warm-up (plus one move for the day\'s muscles) and 15 s more rest', older.sessions.every((s) => s.warmup.slice(0, 4).map((w) => w.moveId).join() === M.FLOWS.warmGentle.join() && s.warmup.length <= 5) && older.sessions.every((s) => s.items.filter((it) => !it.skill && !it.superset).every((it) => it.rest === 75 || it.rest === 105)));
+  // A strength goal works the home squat in 5 to 10 reps (1.6), so it climbs past the rungs with a
+  // fast-up version (goblet squats) within a few weeks: power runs once a week while it has one.
+  const powerWeeks = Object.keys(perWeek(older.sessions, (s) => s.items.some((it) => it.fam === 'squat' && M.MOVES[it.moveId].powerOf)));
+  const canPower = Object.keys(perWeek(older.sessions, (s) => s.items.some((it) => it.fam === 'squat' && Object.values(M.MOVES).some((m) => m.powerOf === it.moveId || m.id === it.moveId && m.powerOf))));
+  check('55: once a week the squat is fast on the way up (power), every week it has a fast-up version', Object.values(power55).length >= 4 && Object.values(power55).every((n) => n === 1) && canPower.every((w) => powerWeeks.includes(w)), { power55, canPower });
+  // 1.6: with a strength goal and time to spare the main lifts rest longer (about 2.5 minutes, or
+  // 2), the 15 s from 50 on top.
+  const strengthMain = (it) => B.HOME_COMPOUND.includes(it.fam) || B.MAIN_LIFTS.includes(it.fam);
+  check('55: a longer, gentler warm-up (plus one move for the day\'s muscles) and 15 s more rest', older.sessions.every((s) => s.warmup.slice(0, 4).map((w) => w.moveId).join() === M.FLOWS.warmGentle.join() && s.warmup.length <= 5) && older.sessions.every((s) => s.items.filter((it) => !it.skill && !it.superset).every((it) => it.rest === 75 || it.rest === 105 || (strengthMain(it) && (it.rest === 135 || it.rest === 165)))),
+    older.sessions.flatMap((s) => s.items.filter((it) => !it.skill && !it.superset).map((it) => `${it.fam}@${it.rest}`)).filter((x, i, a) => a.indexOf(x) === i));
   const powerLog = older.S.log.find((l) => l.type === 'workout' && l.items.some((it) => M.MOVES[it.moveId].powerOf));
   check('55: a fast-up set moves its base rung on like any other', !!powerLog && older.S.prog.squat && (older.S.prog.squat.reps > M.MOVES[older.S.prog.squat.rung].start || M.LADDERS.squat.rungs.indexOf(older.S.prog.squat.rung) > M.LADDERS.squat.rungs.indexOf('sq_goblet')), older.S.prog.squat);
   check('under 65, no left vs right test is skipped for age', B.testDue({ catchup: { arm: { active: true, tests: [], side: 'L' } }, profile: Object.assign(B.defaultProfile(), { age: 55, startDay: D0, lead: { arm: 'L' } }) }, D0 + 20, 'arm'));

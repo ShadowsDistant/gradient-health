@@ -7,6 +7,7 @@
 //
 // Usage: node test/combos.mjs [--full] [--seed=N] [--json=path]
 //   --full   a 3-wise covering array instead of pairwise, and 12-week simulations (before a release)
+//   --only=3,17,40-60  just those profiles, with --trace to print their weeks and sessions
 import { writeFileSync } from 'node:fs';
 import { load, check, section, done } from './lib.mjs';
 
@@ -16,6 +17,9 @@ const args = process.argv.slice(2);
 const FULL = args.includes('--full');
 const SEED = Number((args.find((a) => a.startsWith('--seed=')) || '--seed=16').split('=')[1]);
 const JSON_OUT = (args.find((a) => a.startsWith('--json=')) || '').split('=')[1] || null;
+const ONLY = ((args.find((a) => a.startsWith('--only=')) || '').split('=')[1] || '').split(',').filter(Boolean)
+  .flatMap((x) => { const [lo, hi] = x.split('-').map(Number); return hi >= lo ? Array.from({ length: hi - lo + 1 }, (_, i) => lo + i) : [lo]; });
+const TRACE = args.includes('--trace');
 const T0 = Date.now();
 const D0 = B.dayFromStr('2026-09-28'); // a Monday
 
@@ -232,12 +236,24 @@ const budgetOf = (S, s, o) => (s.budget != null ? s.budget : o && o.short ? 13 :
 /* ------------------------------------------------------------------ bookkeeping */
 const viol = {};
 function bad(name, detail) { const v = viol[name] || (viol[name] = { n: 0, ex: [] }); v.n++; if (v.ex.length < 4) v.ex.push(detail); }
-const times = [];
+const times = [], planTimes = [];
 const fills = []; // { budget, ratio, phase }
 const weeks = { n: 0, zero: 0, zeroEff: 0, belowFloor: 0 };
 const sessionsSeen = { n: 0, empty: 0, dup: 0, over: 0, maxOver: 0, mainShort: 0 };
 
+// A session, timed apart from its week's plan (worked out once for each state of the week and
+// kept; timed here when it's new).
 function build(S, day, tpl, o) {
+  const O = GH.optimizer;
+  if (O && !(CP && CP.owns(tpl))) {
+    const cal = (o && o.cal) || B.calendar(S, day);
+    const ws = B.weekStart(day);
+    const ph = cal.weeks[ws] ? cal.weeks[ws].phase : undefined;
+    const n0 = O.stats.weeks;
+    const t1 = performance.now();
+    O.weekPlan(S, ws, { phase: ph });
+    if (O.stats.weeks > n0) planTimes.push(performance.now() - t1);
+  }
   const t0 = performance.now();
   const s = B.buildSession(S, day, tpl, o);
   times.push(performance.now() - t0);
@@ -257,7 +273,7 @@ function checkSession(S, s, label, o) {
     if (!s.light && main.length < (budget >= 15 && !o.short ? 2 : 1)) { sessionsSeen.mainShort++; bad('at least 2 main exercises from 15 min (1 at 10 min)', `${label}: ${main.map((x) => x.moveId)}`); }
   }
   if (est > budget + 0.5) { sessionsSeen.over++; sessionsSeen.maxOver = Math.max(sessionsSeen.maxOver, est - budget); bad('no session runs over its time by more than 30 s', `${label}: ${est.toFixed(1)} of ${budget} min`); }
-  if (!s.flare && !s.light && !o.malformed) fills.push({ budget, ratio: est / budget, phase: o.phase || 'full', short: !!o.short });
+  if (!s.flare && !s.light && !o.malformed) fills.push({ budget, ratio: est / budget, phase: o.phase || 'full', short: !!o.short, label });
   const ids = s.items.map((it) => it.moveId);
   if (new Set(ids).size !== ids.length) { sessionsSeen.dup++; bad('no move twice in a session', `${label}: ${ids.join(',')}`); }
   if (s.finisher && ids.includes(s.finisher.moveId)) bad('no move twice in a session', `${label}: finisher ${s.finisher.moveId}`);
@@ -324,6 +340,7 @@ function checkWeek(S, ws, label, o) {
     let s;
     try { s = build(S, x.day, x.tpl, { cal, noReadiness: true }); } catch (e) { bad('no crash', `${label} ${x.tpl}: ${e.stack.split('\n').slice(0, 3).join(' ')}`); continue; }
     checkSession(S, s, `${label} ${B.dayStr(x.day)}`, { phase: o.phase });
+    if (TRACE) console.log(`  ${label} ${B.dayStr(x.day)} ${s.title} ${B.estimate(S, s).toFixed(1)}/${budgetOf(S, s, {})} min: ${s.items.map((it) => `${it.moveId}×${it.sets}${it.superset ? `/${it.superset}` : ''}`).join(' ')}${s.finisher ? ` fin ${s.finisher.moveId}×${s.finisher.rounds}` : ''}${(s.mobility || []).length ? ` cool ${s.mobility.map((m) => `${m.moveId}:${m.target}`).join(',')}` : ''}`);
     built.push(s);
   }
   if (!built.length) return null;
@@ -336,19 +353,27 @@ function checkWeek(S, ws, label, o) {
   if (GROUPS.some((g) => can.has(g) && !direct[g])) weeks.zero++;
   if (GROUPS.some((g) => can.has(g) && !eff[g])) weeks.zeroEff++;
   const below = GROUPS.filter((g) => can.has(g) && eff[g] < Math.max(2, Math.round(prog.floor[g] * mult)));
+  if (TRACE) console.log(`  ${label} effective: ${GROUPS.map((g) => `${g} ${eff[g]}${can.has(g) ? '' : '(-)'}`).join(', ')}${below.length ? `; below: ${below}` : ''}`);
   if (below.length) weeks.belowFloor++;
   for (const g of GROUPS) if (direct[g] > prog.cap[g]) bad('weekly sets stay under each group\'s cap', `${label}: ${g} ${direct[g]} > ${prog.cap[g]}`);
   // Coverage: every group it can train reaches its floor (scaled for a lighter week), or, when
-  // the time is used up, at least 2 effective sets; with under half an hour a week, groups may take
-  // turns week by week (checked over two weeks by the caller).
+  // the time is used up, at least 2 effective sets; with under half an hour a week for sets, groups
+  // may take turns week by week (checked over two weeks by the caller). The time for sets is the
+  // week's time less what every session holds anyway for this person: the warm-up, balance and
+  // floor practice, a cool-down every session from 65 (and with some conditions), and the finisher
+  // when conditioning is a goal.
   const full = built.every((s) => B.estimate(S, s) >= 0.85 * budgetOf(S, s, {}));
-  const weekBudget = built.reduce((a, s) => a + budgetOf(S, s, {}), 0);
+  const cond = prog.finisherPerWeek >= 7;
+  const setTime = built.reduce((a, s) => a + budgetOf(S, s, {}) - B.estimate(S, Object.assign({}, s, {
+    items: s.items.filter((it) => it.skill), extras: [], tests: [], finisher: cond ? s.finisher : null,
+    mobility: s.keepMobility ? (s.mobility || []).filter((m) => !m.cardio) : [],
+  })), 0);
   for (const g of below) {
-    if (weekBudget < 30 && o.pairWith) continue;
+    if (setTime < 30 && o.pairWith) continue;
     if (!full) { bad('every group reaches its weekly floor while there is time left', `${label}: ${g} ${eff[g]} < ${Math.max(2, Math.round(prog.floor[g] * mult))} (${built.map((s) => `${B.estimate(S, s).toFixed(0)}/${budgetOf(S, s, {})}`).join(' ')})`); break; }
-    if (eff[g] < 2 && weekBudget >= 30) { bad('every group gets at least 2 sets a week', `${label}: ${g} ${eff[g]}`); break; }
+    if (eff[g] < 2 && setTime >= 30) { bad('every group gets at least 2 sets a week', `${label}: ${g} ${eff[g]} (${setTime.toFixed(0)} min for sets)`); break; }
   }
-  return { eff, can, weekBudget };
+  return { eff, can, setTime };
 }
 
 // Done workouts (one a week, on Sunday) so later weeks count as training weeks.
@@ -367,8 +392,9 @@ function runProfile(spec, n, extra) {
     // Week 3: a full week.
     trained(S, 2);
     const w3 = checkWeek(S, D0 + 14, `${label} w3`, { phase: 'full', pairWith: true });
-    if (w3 && w3.weekBudget < 30) {
-      // Under half an hour a week: groups may take turns, so weeks 3 and 4 together train them all.
+    if (w3 && w3.setTime < 30) {
+      // Under half an hour a week for sets: groups may take turns, so weeks 3 and 4 together train
+      // them all.
       const w4 = checkWeek(S, D0 + 21, `${label} w4`, { phase: 'full', pairWith: true });
       if (w4) for (const g of GROUPS) if (w3.can.has(g) && w3.eff[g] + w4.eff[g] < 2) bad('with under half an hour a week, every group is trained over two weeks', `${label}: ${g}`);
     }
@@ -459,7 +485,11 @@ const all = specs.concat(EDGES, randRows.map(specOf));
 /* ------------------------------------------------------------------ run */
 section(`${all.length} profiles: ${specs.length} from a ${t}-wise covering array (${caMs} ms), ${EDGES.length} edge, ${RANDOM} random`);
 const EXTRA_EVERY = Math.max(1, Math.floor(all.length / 500));
-all.forEach((spec, i) => runProfile(spec, i, i % EXTRA_EVERY === 0));
+all.forEach((spec, i) => {
+  if (ONLY.length && !ONLY.includes(i)) return;
+  if (TRACE) console.log(`#${i} ${JSON.stringify(spec)}`);
+  runProfile(spec, i, i % EXTRA_EVERY === 0);
+});
 if (FULL) {
   section('Twelve-week simulations');
   const every = Math.max(1, Math.floor(specs.length / 400));
@@ -528,11 +558,16 @@ const byPhase = {};
 for (const f of big) (byPhase[f.phase] = byPhase[f.phase] || []).push(f.ratio);
 console.log(`  by week: ${Object.entries(byPhase).map(([k, r]) => `${k} ${q(r, 0.5).toFixed(2)} (≥0.8 ${pct(r.filter((x) => x >= 0.8).length, r.length)})`).join(', ')}`);
 const reach = big.filter((f) => f.ratio >= 0.8).length / Math.max(1, big.length);
+const low = big.filter((f) => f.ratio < 0.8);
+if (low.length) console.log(`  under 0.8, a sample: ${low.filter((f, i) => i % Math.max(1, Math.floor(low.length / 8)) === 0).slice(0, 8).map((f) => `${f.label.split(' ')[0]} ${f.phase} ${f.budget} min ${f.ratio.toFixed(2)}`).join('; ')}`);
 console.log(`  over the time by more than 30 s: ${sessionsSeen.over} of ${sessionsSeen.n} sessions (worst ${sessionsSeen.maxOver.toFixed(1)} min over)`);
 console.log(`  weeks with a trainable group at 0 direct sets: ${weeks.zero} of ${weeks.n} (${pct(weeks.zero, weeks.n)}); at 0 counting indirect: ${weeks.zeroEff}; below its floor: ${weeks.belowFloor}`);
 console.log(`  sessions with a move twice: ${sessionsSeen.dup}; with no work: ${sessionsSeen.empty}; under 2 main exercises: ${sessionsSeen.mainShort}`);
-const p95 = q(times, 0.95), p50 = q(times, 0.5);
-console.log(`  buildSession: ${times.length} builds, median ${p50.toFixed(2)} ms, p95 ${p95.toFixed(2)} ms, max ${Math.max(...times).toFixed(1)} ms`);
+const p95 = q(times, 0.95), p50 = q(times, 0.5), wp95 = q(planTimes, 0.95);
+console.log(`  buildSession (its week planned): ${times.length} builds, median ${p50.toFixed(2)} ms, p95 ${p95.toFixed(2)} ms, max ${Math.max(...times).toFixed(1)} ms`);
+console.log(`  week plans for a new state: ${planTimes.length}, median ${q(planTimes, 0.5).toFixed(2)} ms, p95 ${wp95.toFixed(2)} ms, max ${Math.max(0, ...planTimes).toFixed(1)} ms`);
+const OS = GH.optimizer && GH.optimizer.stats;
+if (OS) console.log(`  week plans: ${OS.weeks}, mean ${(OS.weekMs / Math.max(1, OS.weeks)).toFixed(2)} ms; splits searched: ${OS.splits}, mean ${(OS.splitMs / Math.max(1, OS.splits)).toFixed(2)} ms`);
 
 section('Invariants');
 const NAMED = [
@@ -550,6 +585,7 @@ for (const name of NAMED.concat(allowedNames.length ? allowedNames : ['only allo
 for (const name of Object.keys(viol)) if (!NAMED.includes(name) && !allowedNames.includes(name)) check(`${name} (${viol[name].n})`, false, viol[name].ex);
 check(`at least 90% of sessions with 20 min or more reach 0.8 of their time (${(reach * 100).toFixed(1)}%)`, reach >= 0.9);
 check(`buildSession p95 is 3 ms or less (${p95.toFixed(2)} ms)`, p95 <= 3);
+check(`a new week's plan p95 is 50 ms or less (${wp95.toFixed(2)} ms)`, wp95 <= 50);
 console.log(`\n  ran in ${((Date.now() - T0) / 1000).toFixed(1)} s`);
-if (JSON_OUT) writeFileSync(JSON_OUT, JSON.stringify({ profiles: all.length, rows: specs.length, sessions: sessionsSeen, weeks, hist, buckets: BUCKETS, byBudget: Object.fromEntries(Object.entries(byBudget).map(([b, r]) => [b, { n: r.length, median: q(r, 0.5), ge08: r.filter((x) => x >= 0.8).length / r.length, ge092: r.filter((x) => x >= 0.92).length / r.length }])), reach, p50, p95, viol }, null, 1));
+if (JSON_OUT) writeFileSync(JSON_OUT, JSON.stringify({ profiles: all.length, rows: specs.length, sessions: sessionsSeen, weeks, hist, buckets: BUCKETS, byBudget: Object.fromEntries(Object.entries(byBudget).map(([b, r]) => [b, { n: r.length, median: q(r, 0.5), ge08: r.filter((x) => x >= 0.8).length / r.length, ge092: r.filter((x) => x >= 0.92).length / r.length }])), reach, p50, p95, wp95, viol }, null, 1));
 done();

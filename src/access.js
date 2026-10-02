@@ -73,11 +73,14 @@
   const conditions = (p) => (p && Array.isArray(p.conditions) ? p.conditions.filter((id) => BY_ID[id]) : []);
 
   // The rules a profile brings, worked out once per distinct set of answers.
-  let memo = { key: null, r: null };
+  let memo = { key: null, r: null, p: null, op: null };
   function rulesOf(p) {
+    // The same profile within one week plan or session build (nothing changes it during one).
+    const op = GH.brain && GH.brain.opToken ? GH.brain.opToken() : null;
+    if (op && p === memo.p && memo.op === op) return memo.r;
     const list = conditions(p);
     const key = [list.join(), (p && p.oaJoints || []).join(), p && p.floorOk, p && p.age, p && p.jumpsOk].join('|');
-    if (memo.key === key) return memo.r;
+    if (memo.key === key) { memo.p = p; memo.op = op; return memo.r; }
     const c = new Set(list);
     const oa = new Set(c.has('oa') ? (p.oaJoints && p.oaJoints.length ? p.oaJoints : ['knee', 'hip']) : []);
     const r = {
@@ -88,7 +91,7 @@
       // Jumping and slamming: never with these; from 50 only if you turn it on.
       noImpact: ['ra', 'oa', 'osteo', 'balance', 'seated', 'heart'].some((x) => c.has(x)),
     };
-    memo = { key, r };
+    memo = { key, r, p, op };
     return r;
   }
   // Low back pain rules out heavy spinal loading for the first 8 weeks after it's added.
@@ -367,7 +370,7 @@
     }
     // A little more rest from 50 (auto rest only).
     const plus = restPlus(p);
-    if (plus && !c.custom && p.prefs && (p.prefs.rest === 'auto' || p.prefs.rest == null)) for (const it of s.items.concat(s.extras || [])) if (!it.skill) it.rest += plus;
+    if (plus && !c.custom && (B().autoRest ? B().autoRest(S) : p.prefs && (p.prefs.rest === 'auto' || p.prefs.rest == null))) for (const it of s.items.concat(s.extras || [])) if (!it.skill) it.rest += plus;
     // Cool-down: every session from 65, seated, and with rheumatoid arthritis. It's stretches for the
     // muscles the day worked when at least two suit this body; seated plans and rheumatoid arthritis
     // (range of motion, wrists included) have one of their own.
@@ -376,19 +379,28 @@
       s.mobility = r.seated || r.c.has('ra') || own.length < 2 ? flowItems(S, 'mobility', cooldownIds(p), day) : own;
     }
     if (mobilityEvery(p)) s.keepMobility = true;
-    // No all-out finishers with a heart condition or high blood pressure: 30 s on, 30 s off at most.
-    if (s.finisher && (r.c.has('heart') || r.c.has('bp'))) { s.finisher.work = Math.min(s.finisher.work, 30); s.finisher.rest = Math.max(s.finisher.rest, 30); }
-    // Under 30, the finisher changes more often: a different one of the rungs you've reached.
-    if (s.finisher && r.band === 'young' && s.finisher.fam === 'finisher') {
-      const avoid = sore(S, day);
-      const list = B().rungs(S, 'finisher', day).filter((x) => spares(M().MOVES[x], avoid));
-      const top = Math.min(list.length, Math.max(1, list.indexOf(s.finisher.moveId) + 2));
-      const id = list.slice(0, top)[(day + (c.tplIdx || 0)) % top];
-      if (id && id !== s.finisher.moveId) { const m = M().MOVES[id]; Object.assign(s.finisher, { moveId: id, name: m.name, uni: !!m.uni, load: B().loadInfo(S, m, day, 'finisher') }); }
-    }
+    if (s.finisher) adjustFinisher(S, s.finisher, day, c.tplIdx || 0);
     const notes = sessionNotes(p);
     if (notes.length) s.notes = (s.notes || []).concat(notes);
     return s;
+  }
+  // A finisher's limits, wherever it's added (here, or when src/optimizer.js finds time for one):
+  // no all-out intervals with a heart condition or high blood pressure (30 s on, 30 s off at most),
+  // and under 30 a different one of the rungs you've reached, so it changes more often. Run once
+  // per finisher (it marks it).
+  function adjustFinisher(S, f, day, tplIdx) {
+    if (!f || f.adjusted) return f;
+    const r = rulesOf(S.profile);
+    if (r.c.has('heart') || r.c.has('bp')) { f.work = Math.min(f.work, 30); f.rest = Math.max(f.rest, 30); }
+    if (r.band === 'young' && f.fam === 'finisher') {
+      const avoid = sore(S, day);
+      const list = B().rungs(S, 'finisher', day).filter((x) => spares(M().MOVES[x], avoid));
+      const top = Math.min(list.length, Math.max(1, list.indexOf(f.moveId) + 2));
+      const id = list.slice(0, top)[(day + (tplIdx || 0)) % top];
+      if (id && id !== f.moveId) { const m = M().MOVES[id]; Object.assign(f, { moveId: id, name: m.name, uni: !!m.uni, load: B().loadInfo(S, m, day, 'finisher') }); }
+    }
+    f.adjusted = true;
+    return f;
   }
   function flareSession(S, s, day) {
     s.flare = true;
@@ -488,7 +500,7 @@
   GH.access = {
     BANDS, CONDITIONS, OA_JOINTS, STAND_IN, BACK_WEEKS,
     band, conditions, rulesOf, why, moveOk, program, filterRungs, famFor, startRung, repStep, testsOk,
-    balancePerWeek, getupOn, powerOn, restPlus, mobilityEvery, flareOk, flareOn, mobilityIds, warmupIds, adjustSession,
+    balancePerWeek, getupOn, powerOn, restPlus, mobilityEvery, flareOk, flareOn, mobilityIds, warmupIds, adjustSession, adjustFinisher, cooldownIds, flowItems,
     plannedAround, planLines, doctorLines, briefLine, decisions, setHint, answer,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
