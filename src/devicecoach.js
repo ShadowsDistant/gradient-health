@@ -7,6 +7,9 @@
  * it in plain words. The rules and a compact brief of their data (no name, no dates) come first and
  * are the same every turn, so they stay in the model's cache. Questions that sound like an emergency
  * get the built-in safety answer instead of the model's.
+ *
+ * It also runs the plan review on the phone (structured(): an answer held to a grammar, with how far
+ * along it is), and its answers go through the coach's number check (GH.coach.keepToGiven).
  */
 (function (G) {
   'use strict';
@@ -169,37 +172,13 @@
     if (v) return `${v},`;
     return (C && C.correction && C.correction(S, day, question)) || '';
   }
-  // Every number in an answer should be one the model was given, or that number rounded: small models
-  // sometimes make one up or do their own sums. Sentences with any other number are left out.
-  // { text, cut } (cut: how many sentences went).
-  // A percentage has to be one of the given percentages exactly: a small model works out its own ("8%
-  // above your usual" for 1%), and neither some other 8 in the prompt nor a 7.6% rounded up may let it
-  // through.
-  const NUM = /\d+(?:,\d{3})*(?:\.\d+)?/g;
-  const PCT = /(\d+(?:\.\d+)?)\s*(?:%|percent\b|per cent\b)/g;
-  const numbers = (s) => (String(s || '').match(NUM) || []).map((x) => Number(x.replace(/,/g, '')));
-  const percents = (s) => [...String(s || '').matchAll(PCT)].map((m) => Number(m[1]));
-  const near = (list) => (n) => list.some((g) => g === n || (Number.isInteger(n) && (Math.round(g) === n || Math.trunc(g) === n)));
-  function keepToGiven(text, given) {
-    const known = near(numbers(given)), givenPct = percents(given), knownPct = (n) => givenPct.includes(n);
-    const all = String(text || '').trim().split(/(?<=[.!?])\s+/).filter(Boolean);
-    const kept = all.filter((x) => numbers(x).every(known) && percents(x).every(knownPct));
-    return { text: kept.length === all.length ? String(text || '').trim() : kept.join(' '), cut: all.length - kept.length };
-  }
-  // The answer as shown: the model's, less any sentence with a number it wasn't given. If that leaves
-  // next to nothing (or it only got as far as the yes or no), the app's own answer stands in, and a
-  // note says so. { text, note, cut, replaced }.
+  // Every number in an answer should be one the model was given: the check (keepToGiven) and the
+  // answer as shown (finish: less any sentence with a number it wasn't given, or the app's own answer
+  // with a note when too little is left) live in GH.coach (src/coach.js), shared with Claude's
+  // answers and the plan review. { text, cut } and { text, note, cut, replaced }.
   // (start: what the answer was started with, which isn't the model's own words.)
-  function finish(S, day, question, raw, given, start) {
-    const text = String(raw || '').trim();
-    const k = keepToGiven(text, given);
-    const after = (x) => { const lead0 = String(start || '').trim(); return (lead0 && x.startsWith(lead0) ? x.slice(lead0.length) : x).trim(); };
-    const words = after(k.text);
-    if (words.length >= (k.cut ? 30 : 8)) return { text: k.text, note: k.cut ? 'Left out a line with a number that isn\'t in your data.' : null, cut: k.cut, replaced: false };
-    const own = GH.coach ? GH.coach.ask(S, day, question).text : '';
-    const why = after(text) ? 'The model\'s answer didn\'t match your numbers' : 'The model didn\'t answer';
-    return { text: own || text, note: own ? `${why}, so this is the app's own.` : null, cut: k.cut, replaced: !!own };
-  }
+  const keepToGiven = (text, given) => GH.coach.keepToGiven(text, given);
+  const finish = (S, day, question, raw, given, start) => GH.coach.grounded(S, day, question, raw, given, start, 'The model');
 
   // The model to use: the one picked in Settings if it's on the phone, else any that is.
   // Without a pick, a current model (the bigger the better) comes before an older one, and one that
@@ -211,6 +190,16 @@
     const big = S.ai.tooBig || {};
     const rank = (id) => { const i = models.findIndex((m) => m.id === id); const m = models[i]; return (big[id] ? 100 : 0) + (!m ? 99 : m.legacy ? 50 + i : 10 - (m.quality || 0)); };
     return ids.slice().sort((a, b) => rank(a) - rank(b))[0] || null;
+  }
+  // How much the model that would answer can hold (its context, in tokens), or null when there's none
+  // on the phone. The plan review sends a shorter plan to a model with a short memory.
+  async function room(S) {
+    try {
+      const llm = await GH.lazy('llm');
+      const id = pick(S, await llm.installed());
+      const m = id ? (llm.MODELS || []).find((x) => x.id === id) : null;
+      return m && m.ctx ? m.ctx : null;
+    } catch (e) { return null; }
   }
 
   // o: { onToken(piece, textSoFar), onStatus(state, fraction), signal }. The states, in order:
@@ -275,6 +264,37 @@
     }
     return { text, aborted, stats: st, raw: String(raw || '').trim(), lead: start, note: out.note, cut: out.cut, replaced: out.replaced };
   }
+  // A grammar-held answer (the plan review, src/planreview.js): the model the chat would use, loaded
+  // if it isn't, then one reply the grammar keeps to the shape the app reads. o: { grammar,
+  // maxTokens, temperature, signal, onStatus(state, value) }: 'loading' (a fraction), 'reading' (the
+  // prompt, a fraction) and 'writing' (the characters written so far). One answer runs at a time, so
+  // it waits for a chat answer in progress. Resolves { raw, aborted, model, stats }.
+  async function structured(S, msgs, o) {
+    const opt = o || {};
+    const status = (st, v) => { if (opt.onStatus) { try { opt.onStatus(st, v); } catch (e) { /* a UI bug mustn't stop the answer */ } } };
+    const llm = await GH.lazy('llm');
+    const av = llm.available();
+    if (!av.ok) throw err(av.reason, 'unavailable');
+    const id = pick(S, await llm.installed());
+    if (!id) throw err('Download the on-device model first.', 'not-installed');
+    const loading = (p) => { if (p && p.total) status('loading', p.loaded / p.total); };
+    const cur = llm.loaded();
+    if (!cur || cur.id !== id) {
+      status('loading', 0);
+      await llm.load(id, { onProgress: loading });
+    }
+    if (opt.signal && opt.signal.aborted) return { raw: '', aborted: true, model: id, stats: null };
+    status('reading', 0);
+    let wrote = false;
+    const raw = await llm.chat(msgs, {
+      grammar: opt.grammar, maxTokens: opt.maxTokens || 400, temperature: opt.temperature != null ? opt.temperature : 0.3, signal: opt.signal, onLoadProgress: loading,
+      onPrompt: (done, total) => { if (!wrote) status('reading', total ? done / total : 0); },
+      onToken: (piece, soFar) => { wrote = true; status('writing', String(soFar || '').length); },
+    });
+    const st = llm.stats;
+    return { raw: String(raw || ''), aborted: !!(opt.signal && opt.signal.aborted) || !!(st && st.aborted), model: id, stats: st };
+  }
+
   // Loads the model and has it read the rules and data ahead of the first question, so the first
   // answer starts sooner (a question asked meanwhile waits for it, then reads only its own turn).
   // Quietly does nothing if the model isn't there.
@@ -291,5 +311,5 @@
   }
   function clear(S) { S.ai.deviceChat = []; }
 
-  GH.deviceCoach = { RULES, brief, facts, system, messages, lead, keepToGiven, finish, ask, prime, pick, clear };
+  GH.deviceCoach = { RULES, brief, facts, system, messages, lead, keepToGiven, finish, ask, structured, room, prime, pick, clear };
 })(typeof window !== 'undefined' ? window : globalThis);

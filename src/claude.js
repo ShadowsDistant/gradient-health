@@ -94,22 +94,42 @@ const REPORT_ASK = [
 let busy = null;
 function stop() { if (busy) { try { busy.abort(); } catch (e) { /* ignore */ } } }
 
-// Weekly report (structured). Saved in S.ai.reports; resolves with the report object.
+// Weekly report (structured). Saved in S.ai.reports; resolves with the report object. With a plan to
+// check, the plan review rides along (GH.ai.reportParts): its ideas are kept on the report as
+// rep.plan, already held to the numbers that were sent, for the person to look over.
 async function report(S, day) {
   AI().needConsent(S);
   const c = client();
+  let parts = AI().reportParts ? AI().reportParts(S, day) : { schema: AI().REPORT_SCHEMA, ask: '', plan: null };
+  let ask = parts.ask ? `${REPORT_ASK}\n\n${parts.ask}` : REPORT_ASK;
   try {
     const modelId = await model(S, c, day);
-    const stream = c.beta.messages.stream(Object.assign(baseParams(modelId, 12000, 'high', S, day), {
-      output_config: { effort: 'high', format: { type: 'json_schema', schema: AI().REPORT_SCHEMA } },
-      messages: [{ role: 'user', content: REPORT_ASK }],
-    }));
-    busy = stream;
-    const msg = await stream.finalMessage();
+    let params;
+    const send = async () => {
+      params = baseParams(modelId, 12000, 'high', S, day);
+      const stream = c.beta.messages.stream(Object.assign(params, {
+        output_config: { effort: 'high', format: { type: 'json_schema', schema: parts.schema } },
+        messages: [{ role: 'user', content: ask }],
+      }));
+      busy = stream;
+      return stream.finalMessage();
+    };
+    let msg;
+    try { msg = await send(); } catch (err) {
+      // The plan ideas make the schema the person's own (their moves and days); should the API ever
+      // turn it down (a schema too complex to compile is a 400), the report goes without them.
+      if (!(parts.plan && err instanceof Anthropic.BadRequestError)) throw err;
+      parts = { schema: AI().REPORT_SCHEMA, ask: '', plan: null };
+      ask = REPORT_ASK;
+      msg = await send();
+    }
     checkStop(msg);
     let data;
     try { data = JSON.parse(textOf(msg)); } catch (e) { throw coachError('other'); }
     const rep = { week: B().weekStart(day), day, createdAt: Date.now(), model: S.ai.model && S.ai.model.name, data: AI().readReport(data) };
+    if (parts.plan && GH.planReview) {
+      try { rep.plan = GH.planReview.fromReport(S, day, data, parts.plan, `${params.system.map((b) => b.text).join('\n')}\n${ask}`); } catch (e) { /* the report stands without its plan ideas */ }
+    }
     S.ai.reports = (S.ai.reports || []).filter((r) => r.week !== rep.week).concat(rep).slice(-12);
     return rep;
   } catch (err) {
@@ -117,25 +137,46 @@ async function report(S, day) {
   } finally { busy = null; }
 }
 
-// Ask the coach: streamed. onText(delta, snapshot) as it arrives. Keeps the last few turns.
+// The last few exchanges, as context for the next question: whole exchanges only, leaving out safety
+// answers (the app's own, never sent) and answers the person reported.
+function pastTurns(S) {
+  const log = S.ai.chat || [];
+  const out = [];
+  for (let i = 0; i + 1 < log.length; i++) {
+    const u = log[i], a = log[i + 1];
+    if (u.role !== 'user' || a.role !== 'assistant') continue;
+    i++;
+    if (u.safety || a.safety || a.flagged) continue;
+    out.push({ role: 'user', content: u.text }, { role: 'assistant', content: a.text });
+  }
+  return out.slice(-6);
+}
+
+// Ask the coach: streamed. onText(delta, snapshot) as it arrives. Keeps the last few turns. Once it's
+// in, the answer is held to the person's numbers like the on-device coach's (GH.coach.grounded): a
+// sentence with a number that wasn't sent goes, with a note, and if next to nothing is left the app's
+// own answer stands in. Resolves { text, raw, note, cut, replaced }.
 async function ask(S, day, question, onText) {
   const q = String(question || '').trim().slice(0, 1000);
   if (!q) throw coachError('other', 'Type a question first.');
   AI().needConsent(S);
   const c = client();
-  const history = (S.ai.chat || []).slice(-6).map((m) => ({ role: m.role, content: m.text }));
+  const past = pastTurns(S);
   try {
     const modelId = await model(S, c, day);
-    const stream = c.beta.messages.stream(Object.assign(baseParams(modelId, 6000, 'medium', S, day), {
-      messages: history.concat([{ role: 'user', content: q }]),
+    const params = baseParams(modelId, 6000, 'medium', S, day);
+    const stream = c.beta.messages.stream(Object.assign(params, {
+      messages: past.concat([{ role: 'user', content: q }]),
     }));
     busy = stream;
     if (onText) stream.on('text', (delta, snapshot) => { try { onText(delta, snapshot); } catch (e) { /* UI errors stay in the UI */ } });
     const msg = await stream.finalMessage();
     checkStop(msg);
-    const text = textOf(msg).trim();
-    S.ai.chat = (S.ai.chat || []).concat([{ role: 'user', text: q, day }, { role: 'assistant', text, day }]).slice(-20);
-    return { text };
+    const raw = textOf(msg).trim();
+    const given = [params.system.map((b) => b.text).join('\n')].concat(past.map((m) => m.content), [q]).join('\n');
+    const out = GH.coach && GH.coach.grounded ? GH.coach.grounded(S, day, q, raw, given, '', 'Claude') : { text: raw, note: null, cut: 0, replaced: false };
+    S.ai.chat = (S.ai.chat || []).concat([{ role: 'user', text: q, day }, Object.assign({ role: 'assistant', text: out.text, day }, out.note ? { note: out.note } : {})]).slice(-20);
+    return { text: out.text, raw, note: out.note, cut: out.cut, replaced: out.replaced };
   } catch (err) {
     throw explain(err);
   } finally { busy = null; }

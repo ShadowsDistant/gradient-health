@@ -1066,8 +1066,17 @@
       'name: 2 to 5 words. Each day\'s title: 1 to 3 words. note: one short, friendly sentence on what the plan does.',
     ].join('\n');
   }
-  // A model's answer, kept only if it's a plan this person can do with the days they asked for;
-  // anything else keeps the draft. Returns the plan, or null.
+  // A model's answer, kept only if it's a plan this person can do with the days they asked for, and
+  // it passes the checks the plan review makes on the coach's plan (src/planreview.js):
+  //  - time: each day fits the time asked for, or runs no longer than the draft's own day (a set
+  //    comes off the move with the most to spare until it fits, down to 1 as the coach's own days
+  //    have them; the move the day leads with and the groups they asked to focus on count as having
+  //    fewer, so they keep theirs longer);
+  //  - coverage: every muscle group the draft trains keeps at least half of its weekly sets;
+  //  - focus: the groups they asked to focus on keep at least two thirds of the draft's sets;
+  //  - balance: pulling still balances pushing about as well as in the draft.
+  // Core work goes last in each day (a tired core shouldn't undercut the heavier lifts); otherwise
+  // the model's order stands. Anything else keeps the draft. Returns the plan, or null.
   function accept(S, day, w, draft, raw, ids) {
     if (!raw || typeof raw !== 'object') return null;
     const { plan, report } = normalize(Object.assign({}, raw, { source: 'coach', weekdays: draft.weekdays }));
@@ -1081,7 +1090,34 @@
         if (m.timed) it.secs = Math.max(10, Math.min(120, it.secs)); else it.reps = Math.max(3, Math.min(30, it.reps));
       }
       d.items = d.items.filter((it, i) => d.items.findIndex((x) => x.move === it.move) === i);
+      const core = (it) => M().MOVES[it.move].group === 'abs';
+      d.items = d.items.filter((it) => !core(it)).concat(d.items.filter(core));
     }
+    const budget = clampInt((w && w.minutes) || S.profile.minutes, 10, 90, 30);
+    const focus = (it) => ((w && w.focus) || []).includes(M().MOVES[it.move].group);
+    for (let i = 0; i < plan.days.length; i++) {
+      const d = plan.days[i];
+      const limit = Math.max(budget, minutes(S, draft, i, day)) + 2;
+      // (On a tie, the later move gives a set first.)
+      const spare = (it, k) => it.sets - (focus(it) ? 1 : 0) - (k === 0 ? 2 : 0) + k / 100;
+      for (let guard = 0; guard < 200 && minutes(S, plan, i, day) > limit; guard++) {
+        let pick = -1;
+        d.items.forEach((it, k) => { if (it.sets > 1 && (pick < 0 || spare(it, k) > spare(d.items[pick], pick))) pick = k; });
+        if (pick < 0) break;
+        d.items[pick].sets--;
+      }
+      if (minutes(S, plan, i, day) > limit) return null;
+    }
+    const setsOf = (p) => {
+      const out = {};
+      for (const d of p.days) for (const it of d.items) { const m = M().MOVES[it.move]; if (m && GROUP_GOAL[m.group]) out[m.group] = (out[m.group] || 0) + it.sets; }
+      return out;
+    };
+    const was = setsOf(draft), now = setsOf(plan);
+    for (const g of Object.keys(was)) if (was[g] >= 2 && (now[g] || 0) < Math.ceil(was[g] / 2)) return null;
+    for (const g of (w && w.focus) || []) if (was[g] && (now[g] || 0) < Math.ceil((was[g] * 2) / 3)) return null;
+    const balance = (x) => { const push = (x.chest || 0) + (x.shoulders || 0), pull = (x.back || 0) * 1.2; return Math.max(push, pull) <= 0 ? 1 : Math.min(push, pull) / Math.max(push, pull); };
+    if (balance(now) < Math.min(0.5, balance(was) - 0.15)) return null;
     if (!plan.note) plan.note = draft.note;
     return plan;
   }

@@ -315,7 +315,9 @@
       rows.push(U.row({ icon: 'list', tone: 'violet', title: 'Your plans', sub: U.esc(mine ? `Using ${mine.name}` : 'Build your own, ask the coach, or add a shared one'), act: 'openPlans', chevron: true }));
     }
     if (U.act.tailorPlan) rows.push(U.row({ icon: 'sparkle', tone: 'violet', title: 'Tailor my plan', sub: 'Tell the coach what you want more or less of', act: 'tailorPlan', chevron: true }));
-    // The AI plan review, once it's in the app (src/planreview.js).
+    // The AI plan review, once it's in the app (src/planreview.js), and the planner's own account of
+    // the plan, which needs no AI (src/ui/review.js).
+    if (GH.planReview && U.act.whyPlan) rows.push(U.row({ icon: 'layers', tone: 'sky', title: 'Why this plan', sub: 'What the planner compared and why it picked this week', act: 'whyPlan', chevron: true }));
     if (GH.planReview && U.act.reviewPlan) rows.push(U.row({ icon: 'check-circle', tone: 'teal', title: 'Check my plan with AI', sub: 'The coach looks it over and suggests changes for you to approve', act: 'reviewPlan', chevron: true }));
     if (U.act.planAround) rows.push(U.row({ icon: 'heart', tone: 'rose', title: 'Built around you', sub: U.esc((GH.access && GH.access.plannedAround(p)) || 'Age, joints and health'), act: 'planAround', chevron: true }));
     if (U.editAnswers) rows.push(U.row({ icon: 'bag', tone: 'amber', title: 'Equipment', sub: U.equipSummary ? U.esc(U.equipSummary(p)) : '', act: 'planEquipment', chevron: true }));
