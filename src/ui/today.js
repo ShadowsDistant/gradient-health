@@ -214,11 +214,13 @@
       const top = GH.insights ? GH.insights.top(S, day, 1)[0] : null;
       if (top && GH.insights.markShown) GH.insights.markShown(S, [top], day);
       const measure = GH.health && GH.health.measureDue(S, day);
+      // Today's tip waits while the Getting started checklist is up: one thing at a time.
+      const ck = U.checklist ? U.checklist(S, day) : '';
       return `${U.navbar('Today')}
         <h1 class="rf-large-title">${U.esc(greeting(S))}</h1>
         <p class="lt-sub t-callout rf-muted">${U.esc(sub.join(' · '))}</p>
         <div class="section">
-          ${U.tip ? U.tip('today') : ''}
+          ${!ck && U.tip ? U.tip('today') : ''}
           ${workouts ? `<button type="button" class="card streak tap-card" data-key="streak" data-act="openProgress">
             <span class="streak-main">
               <span class="streak-n">${U.roll(st.current, 't-large-title')}<span class="t-callout rf-muted">day streak</span></span>
@@ -229,7 +231,7 @@
           ${main}
           ${workouts && plan.type !== 'done' && !S.active && U.coachCard ? U.coachCard(S, day, session) : ''}
           ${U.actTodayCard ? U.actTodayCard(S, day, plan) : ''}
-          ${U.checklist ? U.checklist(S, day) : ''}
+          ${ck}
           ${GH.food && GH.food.full(S) && U.foodCard ? U.foodCard(S, day) : proteinCard(S, day)}
           ${feelCard(S, day, plan)}
           ${measure ? `<ul class="rf-list" data-key="measure">${U.row({ icon: 'pin', tone: 'violet', title: 'Time to measure', sub: 'Waist and arms, once a month', act: 'logMeasure', chevron: true })}</ul>` : ''}

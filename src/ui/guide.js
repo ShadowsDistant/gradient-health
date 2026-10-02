@@ -34,7 +34,7 @@
 
   /* ---------------------------------------------------------------- tips */
   // One per tab (and Plan's Moves), shown until Got it. Today's waits while the Getting started
-  // checklist is up, so a new person sees one thing at a time.
+  // checklist is up (src/ui/today.js), so a new person sees one thing at a time.
   const TIPS = {
     today: ['home', 'accent', 'Your day at a glance: the workout, sized to your time, a quick feel check, and food or protein. Tap the streak for your progress, and the sparkle at the top left to ask the coach.'],
     plan: ['calendar', 'sky', 'Your week at a glance. Tap any day to see it, move a workout to a free day, or swipe for next week. Miss one and the rest of the week shifts forward, so nothing doubles up. Moves, at the top, has every exercise.'],
@@ -47,7 +47,6 @@
   U.tip = (id) => {
     const t = TIPS[id];
     if (!t || U.seen(`tip_${id}`)) return '';
-    if (id === 'today' && U.S && U.checklist && U.checklist(U.S, U.today())) return '';
     return `<div class="card tip" data-key="tip-${id}"><div class="tip-row"><span class="rf-list-icon" data-tone="${t[1]}">${U.icon(t[0])}</span><p class="t-callout">${U.esc(t[2])}</p></div><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="tipDone" data-arg="${id}">Got it</button></div>`;
   };
   U.act.tipDone = (el) => {

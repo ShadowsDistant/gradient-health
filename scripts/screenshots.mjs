@@ -3,6 +3,8 @@
 // Chromium. The page is served over http like the app's asset host, so the lazy parts load.
 //
 //   npm run build && node scripts/screenshots.mjs
+//
+// SHOTS_OUT=<dir> writes them somewhere else (to look at them without touching docs/).
 import { mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +17,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 let chromium;
 try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
-const out = join(root, 'docs/screenshots');
+const out = process.env.SHOTS_OUT || join(root, 'docs/screenshots');
 mkdirSync(out, { recursive: true });
 const NOW = new Date('2026-10-19T08:10:00'); // a Monday, week 6
 
@@ -56,6 +58,8 @@ async function run(dark) {
   await page.evaluate(seedState);
   await page.reload();
   await page.waitForSelector('#screen[data-view="today"] .session');
+  // Each tab's tip is for a first visit: the shots show the screens themselves.
+  await page.evaluate(() => { const U = window.GH.ui, S = U.S; for (const id of ['today', 'plan', 'moves', 'food', 'health', 'progress', 'you']) S.seen[`tip_${id}`] = true; window.GH.store.save(S); U.render(); });
   const settle = async (ms = 900) => { await page.clock.runFor(ms); await page.waitForTimeout(ms); };
   const shot = async (name) => { await settle(); await page.screenshot({ path: join(out, `${name}${dark ? '-dark' : ''}.png`) }); };
   const tab = async (t) => { await page.click(`.rf-tab[data-tab="${t}"]`); await settle(700); };
@@ -170,10 +174,15 @@ async function run(dark) {
   await shot('tailor');
   await page.evaluate(() => window.GH.ui.closeSheets());
   await settle(600);
-  await page.click('#topbar [data-act="openProfile"]');
-  await shot('profile');
+  // You: your card, badges, plans and answers (Profile before 1.6).
+  await tab('you');
+  await top();
+  await shot('you');
   await page.evaluate(() => window.GH.ui.open('science', 'rir'));
   await shot('science');
+  // The rule's sheet that "rir" opened closes before the next shots.
+  await page.evaluate(() => window.GH.ui.closeSheets());
+  await settle(700);
   // Food: calorie tracking on, a week of meals.
   await page.evaluate(seedFood);
   await page.evaluate(() => { while (window.GH.ui.back()) { /* to the tab */ } window.GH.ui.go('food'); });

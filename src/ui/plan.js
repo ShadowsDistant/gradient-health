@@ -21,9 +21,9 @@
   const hue = (g) => `var(--hue-${GROUP_HUE[g] || 'sky'})`;
   const PHASE = { full: 'Full volume', deload: 'Deload week', onramp: 'Easing in', comeback: 'Easing back in' };
 
-  // What's picked: a day (this week or next) and whether its "Move to" choices are open. Coming back
-  // to the tab (or a new day) starts from today again. The section (the week or the moves) stays as
-  // it was left.
+  // What's picked: the section (the week or the moves), a day (this week or next) and whether its
+  // "Move to" choices are open. Coming back to the tab (or a new day) starts from today again, on
+  // This week (go() in core.js sets the section).
   const view = { route: null, today: null, day: null, moving: null, section: 'week' };
   function syncView(w, day) {
     if (U.route !== view.route || view.today !== day) { view.route = U.route; view.today = day; view.day = day; view.moving = null; }
@@ -331,7 +331,7 @@
       const sched = `<button type="button" class="rf-btn rf-glass pw-sched" data-lens data-act="daysSheet" aria-label="Schedule: days and time">${U.icon('calendar')}<span class="pw-sched-label">Schedule</span></button>`;
       const head = `${U.navbar('Plan', sched)}
         <h1 class="rf-large-title">Plan</h1>
-        <div class="pw-seg" data-key="pw-seg">${U.choice('planSection', SECTIONS, view.section, 'Show', ' data-on="planSection"')}</div>`;
+        <div class="pw-seg" data-key="pw-seg">${U.choice('planSection', SECTIONS, view.section, 'What Plan shows', ' data-on="planSection"')}</div>`;
       if (view.section === 'moves') return `${head}${U.movesBody ? U.movesBody(S, day, U.tip ? U.tip('moves') : '') : ''}`;
       const w = week(S, day);
       syncView(w, day);

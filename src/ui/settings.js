@@ -88,7 +88,7 @@
           ${foot('coach', `${claude ? 'Claude mode uses your own Anthropic API key and its usage costs. The key is encrypted on this phone and never in backups.' : 'The on-device coach is Qwen3.5 (Apache 2.0), run with llama.cpp on your phone. It works offline, answers from what the app works out from your numbers, nothing you ask leaves the phone, and it can be wrong.'} Anything sent to Claude is a summary with no name, exact dates or IDs, and only after you've allowed it.`)}
 
           ${head('feel', 'Sound and haptics', 'vibration vibrate buzz haptic feedback feel touch beep audio')}
-          ${list('feel', `${U.sw('Sound', pr.sound !== false, 'data-on="setPref" data-k="sound"', 'Beeps for the countdown and the end of rest')}
+          ${list('feel', `${U.sw('Sound', pr.sound !== false, 'data-on="setPref" data-k="sound"', 'Beeps for the 3-2-1, and when a timer or rest ends')}
             ${U.sw('Vibration', pr.vibrate !== false, 'data-on="setPref" data-k="vibrate"', 'Buzzes for timers and the end of rest')}
             ${U.hapticRows ? U.hapticRows(S) : hapticRows(pr)}`)}
 
@@ -132,10 +132,9 @@
 
   /* ---------------------------------------------------------------- search */
   // Every word typed has to be in a row's text or its keywords (or in its group's title and
-  // keywords, which shows the whole group). Rows, lists, headers and footers are hidden in place, so
-  // switches keep their state and nothing re-renders while typing.
-  // Words match from their start ("rest" finds Rest between sets, "kg" the units), so short words
-  // don't turn up in the middle of others.
+  // keywords, which shows the whole group), matched from the start of a word: "rest" finds Rest
+  // between sets, and a short word doesn't turn up in the middle of others. Rows, lists, headers and
+  // footers are hidden in place, so switches keep their state and nothing re-renders while typing.
   const norm = (s) => String(s || '').toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
   const hits = (words, text) => { const t = ` ${norm(text)}`; return words.every((w) => t.includes(` ${w}`)); };
   function filter(root, q) {

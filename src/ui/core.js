@@ -548,7 +548,8 @@
   function go(tab, quiet) {
     // Places that were tabs before 1.6: Profile is the You tab, and the moves are a section of Plan.
     if (tab === 'profile') tab = 'you';
-    if (tab === 'moves' && U.hasTab('plan')) {
+    const moves = tab === 'moves' && U.hasTab('plan');
+    if (moves) {
       const turned = U.planSection ? U.planSection('moves') : false;
       if (U.route.tab === 'plan' && !U.route.view) {
         if (turned) { if (!quiet) U.haptic('select'); render(); }
@@ -569,6 +570,8 @@
       tab = 'today';
     }
     if (U.route.tab === tab && !U.route.view) { toTop(); return; }
+    // Plan opens on This week (as it opens on today), unless it's the moves that were asked for.
+    if (tab === 'plan' && !moves && U.planSection) U.planSection('week');
     const from = U.route.view ? null : tabIndex(U.route.tab);
     const to = tabIndex(tab);
     if (!quiet) U.haptic('tab');

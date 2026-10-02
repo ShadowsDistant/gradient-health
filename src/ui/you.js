@@ -97,7 +97,7 @@
     const n = badgeCount(S, day);
     stats.push([n, n === 1 ? 'Badge' : 'Badges']);
     return `<div class="card you-card" data-key="me">
-      <button type="button" class="you-me" data-act="editName" aria-label="${U.esc(name ? `${name}. Change your name` : 'Add your name')}">
+      <button type="button" class="you-me" data-act="editName" aria-label="${U.esc(name ? `${name}. ${line}. Change your name` : `Add your name. ${line}`)}">
         <span class="you-avatar" aria-hidden="true">${initials ? `<span>${U.esc(initials)}</span>` : U.icon('person')}</span>
         <span class="you-who"><span class="you-name">${U.esc(name || 'Add your name')}</span><span class="t-footnote you-since">${U.esc(line)}</span></span>
         ${U.icon('pencil', 'sm', 'you-edit')}

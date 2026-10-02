@@ -102,7 +102,8 @@ const sub = (await page.locator('#screen .pw-sub').innerText()).replace(/\s+/g, 
 check('the summary says the week, the phase and what\'s done', /Week 6 · Full volume · 0 of 4 done/.test(sub), sub);
 check('the navigation bar has Schedule', await page.locator('#topbar [data-act="daysSheet"]').count() === 1);
 check('Coming up lists next week\'s workouts', await page.locator('#screen .pw-cu li').count() === s.nextKinds.filter((k) => k === 'workout').length);
-check('Make it yours has days and time and equipment', await page.locator('#screen [data-key="mine"] [data-act="daysSheet"]').count() === 1 && await page.locator('#screen [data-key="mine"] [data-act="planEquipment"]').count() === 1);
+// Days and time has one place on Plan, Schedule at the top (and the schedule in Your answers on You).
+check('Make it yours has equipment, and days and time only behind Schedule', await page.locator('#screen [data-key="mine"] [data-act="daysSheet"]').count() === 0 && await page.locator('#screen [data-key="mine"] [data-act="planEquipment"]').count() === 1);
 check('sets by muscle has a bar for each muscle with a target', await page.locator('#screen .pw-mu').count() >= 5);
 await shotFull(page, '01-week');
 

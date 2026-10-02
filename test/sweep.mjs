@@ -216,8 +216,9 @@ for (const [width, theme, zoom, h] of COMBOS) {
     ['progress-12w', async () => { await page.evaluate(() => { const U = window.GH.ui; if (!U.act.tailorPlan) U.act.tailorPlan = () => {}; U.go('progress'); }); await settle(); await page.click('#screen .bm-range [data-arg="12"]'); }],
     ['progress-improved', async () => { await page.evaluate(() => { const U = window.GH.ui; if (!U.act.tailorPlan) U.act.tailorPlan = () => {}; U.go('progress'); }); await settle(); await page.click('[data-on="bodyMode"] input[value="improved"]', { force: true }); }],
     ['sheet-muscle', async () => { await page.evaluate(() => { const U = window.GH.ui; if (!U.act.tailorPlan) U.act.tailorPlan = () => {}; U.go('progress'); }); await settle(); await page.click('#screen .bm-view[data-view="front"] .bm-m[data-muscle="chest"] path'); await settle(1200); }],
+    // The moves are a section of Plan; Profile became the You tab.
     ['moves', async () => { await page.evaluate(() => window.GH.ui.go('moves')); }],
-    ['profile', async () => { await page.evaluate(() => window.GH.ui.open('profile')); }],
+    ['you', async () => { await page.evaluate(() => window.GH.ui.go('you')); }],
     ['settings', async () => { await page.evaluate(() => window.GH.ui.open('settings')); }],
     ['settings-coach', async () => { await page.evaluate(() => window.GH.ui.open('settings', 'coach')); await settle(1500); }],
     ['coach', async () => { await page.evaluate(() => window.GH.ui.open('coach')); }],

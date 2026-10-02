@@ -123,10 +123,13 @@ check('a ladder opens its sheet', await page.waitForSelector('dialog.rf-sheet[op
 await home();
 await go('today');
 await go('plan');
-check('Plan comes back on the section it was left on', (await seg()).on === 'moves');
+sg = await seg();
+check('back on Plan from another tab, it opens on This week again', sg.on === 'week' && sg.strip, JSON.stringify(sg));
+await page.click('#screen [data-on="planSection"] input[value="moves"]', { force: true });
+await settle(900);
 await page.click('#screen [data-on="planSection"] input[value="week"]', { force: true });
 await settle(900);
-check('and This week is back with one tap', (await seg()).strip);
+check('and the switch goes both ways', (await seg()).strip);
 check('Start today\'s workout on today\'s card', await ev(() => /Start today's workout/.test((document.querySelector('#screen [data-act="planStart"]') || {}).textContent || '')));
 
 section('Links to places that moved');
