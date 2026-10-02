@@ -8,7 +8,7 @@
   const CONTACT = 'https://github.com/ShadowsDistant/gradient-health/issues';
 
   GH.PRIVACY = {
-    updated: '2026-09-30',
+    updated: '2026-10-01',
     contact: CONTACT,
     intro: [
       'Gradient Health is a workout, health and food tracking app for Android. This policy explains exactly what the app collects, where it keeps it, what (if anything) leaves your phone, and how to delete it.',
@@ -37,7 +37,7 @@
             ['Manual logs: weight, sleep, body measurements, how you feel, protein, activities outside the app', 'You', 'Trends, readiness and insights', 'Only as averages in the Claude summary, if you use Claude'],
             ['Coach chats: questions you ask and the answers', 'You and the coach', 'Showing the conversation and answering follow-ups', 'Only questions you send to Claude. The built-in and on-device coaches run on your phone'],
             ['Reports about AI answers: the answer you flag and the reason you pick', 'You', 'Hiding that answer, and telling the developer if you choose to', 'Only if you choose to send it: it opens as a GitHub issue that you can read and edit before posting'],
-            ['Anthropic API key (optional)', 'You', 'Letting the app call Claude on your behalf', 'Only to Anthropic, with each Claude request'],
+            ['Anthropic API key (optional)', 'You', 'Letting the app call Claude on your behalf. It\'s stored encrypted on your phone, with a key Android keeps for the app that never leaves the phone', 'Only to Anthropic, with each Claude request. Never in a backup or in Copy my data'],
             ['On-device AI model file (optional)', 'Downloaded from Hugging Face when you ask', 'Running the on-device coach', 'No. It\'s a download, nothing is uploaded'],
           ],
         },
@@ -83,7 +83,7 @@
         paras: [
           'Everything is stored in the app\'s private storage on your phone, which other apps can\'t read. Connections to outside services use HTTPS. The app contains no third-party analytics, advertising or crash-reporting code.',
           'Background reads wait in the app\'s private storage until the app adds them to your history, and an activity\'s route is kept there while it records. Neither is in device backups. Once you save an activity, it\'s part of the app\'s saved data like everything else.',
-          'If you have Android\'s device backup turned on, it can keep a copy of the app\'s saved data. On Android 9 and newer the app only allows that when the backup is end-to-end encrypted with your screen lock (a PIN, pattern or password); Android 8 backs up without that encryption. Your API key and the on-device model are never in a backup, and the key is never in Copy my data.',
+          'If you have Android\'s device backup turned on, it can keep a copy of the app\'s saved data, but only when the backup is end-to-end encrypted with your screen lock (a PIN, pattern or password). That needs Android 9 or newer: on Android 8, the app\'s data isn\'t backed up at all. Your API key and the on-device model are never in a backup, and the key is never in Copy my data.',
         ],
       },
       {

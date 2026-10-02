@@ -84,10 +84,14 @@
         </intent>
     </queries>
 
+    <!-- Backups: none on Android 8 (res/xml/backup_rules.xml), only end-to-end encrypted ones on 9-11
+         (res/xml-v28/) and 12+ (data_extraction_rules.xml), never the API key. Every connection the
+         app makes is HTTPS: plain http is refused. -->
     <application
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
+        android:usesCleartextTraffic="false"
         android:icon="@mipmap/ic_launcher"
         android:label="Gradient Health"
         android:enableOnBackInvokedCallback="true"

@@ -1,9 +1,10 @@
 # Runs a real on-device model (downloaded from Hugging Face, which the tests can't do) through both of
 # the coach's engines: the in-app one (WebAssembly, in Chromium) and the native one (built for the
-# runner, and by hand also on an arm64 runner like a phone's CPU). Prints the answers, timings and the
-# file's size and SHA-256, to pin in src/llm.js. It runs when the coach's code changes (the in-app
-# engine with the Fast model, the native one with Fast and Balanced), or by hand from the Actions tab
-# with any size.
+# runner, and by hand also on an arm64 runner like a phone's CPU). Prints the answers and timings. It
+# runs when the coach's code changes (the in-app engine with the Fast model, the native one with Fast
+# and Balanced), or by hand from the Actions tab with any size.
+# The pins job reads the model pins for src/llm.js (each file's commit, exact size and SHA-256) from
+# the Hub, by hand or when src/llm.js or this workflow changes.
 name: Model check
 
 on:
@@ -119,3 +120,90 @@ jobs:
           # One thread per core: more than the runner has makes llama.cpp's threads wait on each other.
           build/native-host/ghllm_ask "${{ steps.model.outputs.file }}" "$(nproc)" build/tailor.gbnf build/prompts
           node test/model-prompts.mjs read build/prompts "${{ steps.model.outputs.id }}"
+
+  # The pins for src/llm.js. Hugging Face can't be reached from where the app is written, so this
+  # reads them here: for each Qwen3.5 file in src/llm.js, the repo's current commit (X-Repo-Commit),
+  # then the file itself at that commit, whose SHA-256 and size must match what the Hub says it is
+  # (X-Linked-Etag, X-Linked-Size), and which must be a GGUF file. It prints the PINS lines to paste
+  # into src/llm.js, here and in the run's summary. By hand from the Actions tab, or on a push that
+  # changes src/llm.js or this workflow.
+  pins:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Only for src/llm.js or this workflow (or by hand)
+        id: changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          run=true
+          if [ "$EVENT" = push ] && [ -n "$BEFORE" ] && [ "$BEFORE" != 0000000000000000000000000000000000000000 ]; then
+            # The files this push changed; if GitHub can't say, pin anyway.
+            if files="$(gh api "repos/$REPO/compare/$BEFORE...$AFTER" --jq '.files[].filename')"; then
+              printf '%s\n' "$files" | grep -qxE 'src/llm\.js|\.github/workflows/model-check\.yml' || run=false
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+      - name: Pin each Qwen3.5 file
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          # The files src/llm.js asks for: pinned('<owner>/<repo>', '<file>', <size on its page>).
+          node -e '
+            const src = require("fs").readFileSync("src/llm.js", "utf8");
+            for (const m of src.matchAll(/pinned\(\x27([\w.-]+\/[\w.-]+)\x27, \x27([\w.-]+\.gguf)\x27/g)) console.log(`${m[1]} ${m[2]}`);
+          ' > "$RUNNER_TEMP/models.txt"
+          [ -s "$RUNNER_TEMP/models.txt" ] || { echo "::error::No pinned('<repo>', '<file>', ...) entries found in src/llm.js"; exit 1; }
+          pins="$RUNNER_TEMP/pins.js"
+          echo "const PINS = {" > "$pins"
+          # A response header's value (names in any case: HTTP/2 sends them in lower case).
+          header() { printf '%s\n' "$2" | tr -d '\r' | awk -v k="$(printf '%s' "$1" | tr 'A-Z' 'a-z'):" 'tolower($1) == k { sub(/^[^:]*:[ ]*/, ""); print; exit }'; }
+          while read -r repo file; do
+            echo "::group::$repo $file"
+            # The Hub's answer for the main branch: its commit, and the file's SHA-256 and size. No
+            # redirect followed: those headers are on the Hub's own response.
+            head="$(curl -sSI --retry 3 --retry-all-errors "https://huggingface.co/$repo/resolve/main/$file")"
+            commit="$(header X-Repo-Commit "$head")"
+            hub_sha="$(header X-Linked-Etag "$head" | sed -e 's/^W\///' -e 's/"//g')"
+            hub_size="$(header X-Linked-Size "$head")"
+            [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::$file: the Hub sent no commit (X-Repo-Commit)"; exit 1; }
+            # The file itself, at that commit: what the phone will download.
+            curl -fsSL --retry 3 --retry-all-errors -o "$RUNNER_TEMP/model.gguf" "https://huggingface.co/$repo/resolve/$commit/$file"
+            sha="$(sha256sum "$RUNNER_TEMP/model.gguf" | cut -d' ' -f1)"
+            size="$(stat -c %s "$RUNNER_TEMP/model.gguf")"
+            magic="$(head -c 4 "$RUNNER_TEMP/model.gguf")"
+            rm -f "$RUNNER_TEMP/model.gguf"
+            [ "$magic" = GGUF ] || { echo "::error::$file at $commit isn't a GGUF file"; exit 1; }
+            if [[ "$hub_sha" =~ ^[0-9a-f]{64}$ ]]; then
+              [ "$sha" = "$hub_sha" ] || { echo "::error::$file: SHA-256 $sha, but the Hub says $hub_sha"; exit 1; }
+            else
+              echo "::warning::$file: the Hub sent no SHA-256 (X-Linked-Etag) to check against"
+            fi
+            if [[ "$hub_size" =~ ^[0-9]+$ ]]; then
+              [ "$size" = "$hub_size" ] || { echo "::error::$file: $size bytes, but the Hub says $hub_size"; exit 1; }
+            else
+              echo "::warning::$file: the Hub sent no size (X-Linked-Size) to check against"
+            fi
+            echo "$file: commit $commit, $size bytes, SHA-256 $sha"
+            printf "  '%s': { commit: '%s', sha256: '%s', bytes: %s },\n" "$file" "$commit" "$sha" "$size" >> "$pins"
+            echo "::endgroup::"
+          done < "$RUNNER_TEMP/models.txt"
+          echo "};" >> "$pins"
+          echo "Paste over PINS in src/llm.js:"
+          cat "$pins"
+          {
+            echo "### Model pins for src/llm.js"
+            echo
+            echo "Each file was downloaded at its commit and checked against the Hub's SHA-256 and size. Paste over \`PINS\` in src/llm.js:"
+            echo
+            echo '```js'
+            cat "$pins"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
