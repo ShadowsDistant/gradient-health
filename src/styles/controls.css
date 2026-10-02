@@ -237,7 +237,6 @@
   /* The check is always laid out; it fades and scales in, so pressing a chip never changes its width
      (the row doesn't reflow). With its label in a span (U.chip), the two sit centred while it's off
      and shift over together to make room for the check. */
-  .rf-chip:has(> .rf-chip-check) { --_shift: 0px; }
   .rf-chip > .rf-chip-check {
     inline-size: var(--icon-sm);
     margin-inline-end: 0;
@@ -255,6 +254,10 @@
 /* The bar isn't a scroller: a drag along it moves the lens, and the browser never takes it over for
    a pan (which would cancel the drag). */
 .rf-tabbar-bar { touch-action: none; }
+/* While the lens is dragged, the tab under it (Refract marks it data-hover) is the one lit, as it's
+   the one a release picks. */
+.rf-tabbar[data-dragging] .rf-tab[data-hover] { color: var(--accent); }
+.rf-tabbar[data-dragging] .rf-tab:not([data-hover]) { color: var(--glass-label); }
 /* The current tab keeps a glass lens at rest, like the lens you drag, instead of Refract's flat wash.
    Increased contrast and reduced transparency keep the wash. */
 :root:not([data-theme$="contrast"]):not([data-rf-transparency="reduced"]) .rf-tabbar:not([data-traveling]):not([data-dragging]) .rf-tabbar-lens {
@@ -285,6 +288,7 @@
 }
 /* Reduced motion: short eases (Refract's tokens already drop the springs and the stretch). */
 @media (prefers-reduced-motion: reduce) {
-  .rf-switch-thumb, .rf-segmented-thumb, .gh-chipseg-thumb, .gh-seg-lens { transition-duration: 120ms; transition-timing-function: ease-out; }
+  .rf-switch-thumb, .rf-switch-track::after, .rf-segmented-thumb, .gh-chipseg-thumb, .gh-seg-lens { transition-duration: 120ms; transition-timing-function: ease-out; }
 }
-:root[data-rf-motion="reduced"] :is(.rf-switch-thumb, .rf-segmented-thumb, .gh-chipseg-thumb, .gh-seg-lens) { transition-duration: 120ms; transition-timing-function: ease-out; }
+:root[data-rf-motion="reduced"] :is(.rf-switch-thumb, .rf-segmented-thumb, .gh-chipseg-thumb, .gh-seg-lens),
+:root[data-rf-motion="reduced"] .rf-switch-track::after { transition-duration: 120ms; transition-timing-function: ease-out; }
