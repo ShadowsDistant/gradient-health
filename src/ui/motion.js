@@ -22,7 +22,9 @@
  *
  * For src/ui/core.js: snap(root) measures a page before a re-render patches it; the patch reports
  * each container it changes (patched), so new blocks rise in and removed ones leave from where they
- * were; play() then glides whatever moved, every glide starting in the same frame. barSwap(bar)
+ * were (one in sight stays in the page, inert, for the 200 ms its fade takes: code or a test that
+ * looks for it to be gone waits for settled()); play() then glides whatever moved, every glide
+ * starting in the same frame. barSwap(bar)
  * cross-fades the navigation bar's title and buttons across a route change. show(el, frames, o)
  * plays frames on a part with glass in it without the glass losing its frost, and fadeAway(el, ms)
  * lets a part that hides at once (the workout capsule, the floating buttons) fade where it was.
