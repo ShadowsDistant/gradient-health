@@ -822,9 +822,10 @@
     if (text) openShared(text);
   };
   let pendingLink = null;
-  // A plan code or link from anywhere: the scanner, a link the app was opened with, a paste.
+  // A plan code or link from anywhere: the scanner, a link the app was opened with, a paste. During
+  // set-up it waits, and set-up hears of it (its welcome offers the plan, src/ui/onboarding.js).
   async function openShared(text) {
-    if (!U.S || !U.S.profile.onboarded) { pendingLink = text; return; }
+    if (!U.S || !U.S.profile.onboarded) { pendingLink = text; doc.dispatchEvent(new CustomEvent('gh-shared-plan')); return; }
     let got;
     try { got = await C().decode(text); } catch (e) {
       U.toast(e.code === 'newer' ? 'Update Gradient Health to open this plan' : 'That plan couldn\'t be opened', 'caution', e.message);
@@ -833,6 +834,17 @@
     importSheet(got);
   }
   U.openSharedPlan = openShared;
+  // Set-up's invited-friend path looks at the plan a link is waiting to open, without opening it:
+  // { plan, report, take() } or null. take() hands it over to set-up (which saves it, and uses it if
+  // they start with it), so it doesn't open again once set-up is done.
+  U.peekSharedPlan = async () => {
+    if (!pendingLink && (!U.S || !U.S.profile.onboarded)) coldLink();
+    const link = pendingLink;
+    if (!link) return null;
+    let got;
+    try { got = await C().decode(link); } catch (e) { return null; }
+    return Object.assign({}, got, { take: () => { if (pendingLink === link) pendingLink = null; } });
+  };
   function importSheet(got) {
     const S = U.S, day = U.today();
     const plan = got.plan;
