@@ -362,8 +362,9 @@
   };
 
   /* ================================================================== the weekly report's ideas */
-  // Claude's plan ideas on the weekly report (src/ui/healthtab.js shows this in the report's sheet):
-  // their titles and a way to look them over in the review, where they're checked against the plan.
+  // Claude's plan ideas on the weekly report: their titles and a way to look them over in the review,
+  // where they're checked against the plan. The report's sheet (reportBody in src/ui/healthtab.js)
+  // places it after Focus next with `${U.planIdeas && w.rep ? U.planIdeas(S, day, w.rep) : ''}`.
   U.planIdeas = (S, day, rep) => {
     const plan = rep && rep.plan;
     if (!plan || !Array.isArray(plan.items) || !plan.items.length || !R() || (S.profile && S.profile.workouts === false)) return '';
