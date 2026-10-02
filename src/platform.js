@@ -274,6 +274,35 @@
     try { if (G.navigator && G.navigator.share) { G.navigator.share({ text: String(text) }).catch(() => {}); return true; } } catch (e) { /* ignore */ }
     return false;
   }
+  // Sends a picture (a PNG as base64) and a line of text to another app: Android's share sheet in
+  // the app; in a browser the Web Share API with a file where there is one, else a download (and,
+  // if even that fails, the text is copied). Resolves true once it's on its way.
+  async function shareImage(b64, text, name) {
+    const msg = String(text || '');
+    try { const b = bridge(); if (b && b.shareImage) return !!b.shareImage(String(b64), msg); } catch (e) { return false; }
+    const file = /^[\w.-]{1,80}\.png$/.test(name || '') ? name : 'badge.png';
+    let blob;
+    try {
+      const bin = G.atob(String(b64));
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      blob = new G.Blob([bytes], { type: 'image/png' });
+    } catch (e) { return false; }
+    const nav = G.navigator || {};
+    try {
+      const f = new G.File([blob], file, { type: 'image/png' });
+      if (nav.canShare && nav.share && nav.canShare({ files: [f] })) { await nav.share({ files: [f], text: msg }); return true; }
+    } catch (e) { if (e && e.name === 'AbortError') return false; }
+    try {
+      const url = G.URL.createObjectURL(blob);
+      const a = doc.createElement('a');
+      a.href = url; a.download = file; a.rel = 'noopener';
+      doc.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => G.URL.revokeObjectURL(url), 30000);
+      return true;
+    } catch (e) { /* below */ }
+    return copy(msg);
+  }
   function claudeInstalled() { try { const b = bridge(); return !!(b && b.claudeInstalled && b.claudeInstalled()); } catch (e) { return false; } }
   function reducedMotion() {
     const r = R();
@@ -282,5 +311,5 @@
   }
   const isApp = () => !!bridge();
 
-  GH.platform = { setPrefs, hapticsSystemEnabled, keepAwake, haptic, hapticPattern, hapticKinds: Object.keys(HAPTIC_PATTERNS), vibrate, cue, unlockAudio, applyTheme, currentTheme, setDensity, onBack, on, emit, visible, copy, openUrl, share, claudeInstalled, appVersion, reducedMotion, isApp };
+  GH.platform = { setPrefs, hapticsSystemEnabled, keepAwake, haptic, hapticPattern, hapticKinds: Object.keys(HAPTIC_PATTERNS), vibrate, cue, unlockAudio, applyTheme, currentTheme, setDensity, onBack, on, emit, visible, copy, openUrl, share, shareImage, claudeInstalled, appVersion, reducedMotion, isApp };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -1,0 +1,142 @@
+/* Badges (src/ui/badges.js): the medals, the You tab's card, the gallery, the detail sheet, the
+   reveal and the player's card. A medal is one SVG with its own colours (it's an object, the same
+   in light and dark); what's around it follows the theme. */
+
+/* ================================================================== medals */
+.bdg-svg { display: block; overflow: visible; color: var(--positive-fill); flex: none; }
+.bdg-svg.is-locked { color: var(--label-tertiary); }
+.bdg-svg.is-locked .bdg-ring { color: var(--positive-fill); }
+:root[data-theme^="dark"] .bdg-svg.is-locked .bdg-ring { color: #3fc178; }
+/* The tier's colour, for the glow and rays round a medal and the tier dots. */
+[data-tier="bronze"] { --bdg-c: #e39a5b; --bdg-c2: #ffd3a6; }
+[data-tier="silver"] { --bdg-c: #a9b8c8; --bdg-c2: #eef3f8; }
+[data-tier="gold"] { --bdg-c: #f0b92a; --bdg-c2: #ffe89a; }
+[data-tier="platinum"] { --bdg-c: #9fb4ff; --bdg-c2: #e6cfff; }
+[data-tier="locked"] { --bdg-c: #8e949e; --bdg-c2: #c9cdd3; }
+
+/* A medal on its stage: a soft glow in its metal's colour, and on the reveal light rays turning
+   slowly behind it. */
+.bdg-stage { position: relative; display: grid; place-items: center; isolation: isolate; }
+.bdg-stage > .bdg-medal { position: relative; z-index: 2; display: block; filter: drop-shadow(0 10px 16px rgb(20 22 30 / .2)); }
+:root[data-theme^="dark"] .bdg-stage > .bdg-medal { filter: drop-shadow(0 10px 22px rgb(0 0 0 / .55)); }
+.bdg-glow { position: absolute; inset: 6%; z-index: 0; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--bdg-c) 55%, transparent), color-mix(in srgb, var(--bdg-c) 18%, transparent) 62%, transparent); pointer-events: none; }
+.bdg-rays {
+  position: absolute; inset: -22%; z-index: 1; pointer-events: none; opacity: 0;
+  background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--bdg-c2) 70%, transparent) 0deg 5deg, transparent 5deg 20deg);
+  -webkit-mask-image: radial-gradient(closest-side, #000 24%, transparent 74%); mask-image: radial-gradient(closest-side, #000 24%, transparent 74%);
+  transition: opacity .8s ease-out; animation: bdg-turn 40s linear infinite;
+}
+:root[data-theme^="dark"] .bdg-rays { background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--bdg-c) 46%, transparent) 0deg 5deg, transparent 5deg 20deg); }
+.bdg-stage.is-in .bdg-rays, .bdg-stage.is-still .bdg-rays { opacity: .85; }
+@keyframes bdg-turn { to { transform: rotate(360deg); } }
+/* Springing in: from small and turned away, a full turn round with a little overshoot, then still. */
+@keyframes bdg-pop {
+  0% { transform: perspective(700px) scale(.3) rotateY(-220deg); opacity: 0; }
+  12% { opacity: 1; }
+  48% { transform: perspective(700px) scale(1.12) rotateY(16deg); }
+  68% { transform: perspective(700px) scale(.95) rotateY(-7deg); }
+  84% { transform: perspective(700px) scale(1.025) rotateY(2deg); }
+  100% { transform: perspective(700px) scale(1) rotateY(0deg); opacity: 1; }
+}
+@keyframes bdg-sweep { from { transform: translateX(0); } to { transform: translateX(230px); } }
+.bdg-stage.is-in > .bdg-medal { animation: bdg-pop 1.1s cubic-bezier(.22, .8, .25, 1) both; }
+.bdg-stage.is-in .bdg-sweep { animation: bdg-sweep 1.15s .8s cubic-bezier(.45, .05, .25, 1) both; }
+.bdg-sweep { transform: translateX(0); }
+.bdg-stage:not(.is-in) .bdg-sweep { opacity: 0; }
+/* The reveal shows each medal only as it springs in. */
+.bdg-reveal .bdg-stage:not(.is-in):not(.is-still) > .bdg-medal { opacity: 0; }
+
+/* ================================================================== the You tab's card */
+.bdg-strip { gap: var(--space-3); }
+.bdg-strip-head { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: var(--space-3); cursor: pointer; min-width: 0; -webkit-tap-highlight-color: transparent; }
+.bdg-strip-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
+.bdg-strip-text { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.bdg-strip-all { display: inline-flex; align-items: center; gap: 2px; color: var(--accent); flex: none; }
+.bdg-note { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md, 12px); background: color-mix(in srgb, var(--hue-amber) 12%, transparent); color: var(--label); cursor: pointer; min-width: 0; }
+.bdg-note .rf-icon { color: var(--hue-amber); flex: none; }
+:root[data-theme^="dark"] .bdg-note { background: color-mix(in srgb, #f0b92a 16%, transparent); }
+:root[data-theme^="dark"] .bdg-note .rf-icon { color: #f0b92a; }
+.bdg-note > .t-subhead:first-of-type { flex: 1; min-width: 0; }
+.bdg-note-go { color: var(--accent); font-weight: 600; flex: none; }
+.bdg-row { display: flex; gap: var(--space-1); overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * var(--space-4)); padding: 2px var(--space-4) 2px; scroll-snap-type: x proximity; overscroll-behavior-x: contain; }
+.bdg-row::-webkit-scrollbar { display: none; }
+.bdg-mini { all: unset; box-sizing: border-box; flex: 0 0 76px; display: grid; justify-items: center; align-content: start; gap: 4px; scroll-snap-align: start; cursor: pointer; text-align: center; color: var(--label); -webkit-tap-highlight-color: transparent; }
+.bdg-mini:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
+.bdg-mini-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.2; width: 100%; overflow-wrap: anywhere; }
+.bdg-mini:not(.is-earned) .bdg-mini-title { color: var(--label-secondary); }
+.bdg-mini.is-new .bdg-svg { animation: bdg-glint 2.6s ease-in-out 3; }
+@keyframes bdg-glint { 0%, 100% { filter: none; } 50% { filter: brightness(1.18) drop-shadow(0 0 8px var(--bdg-c, #f0b92a)); } }
+
+/* ================================================================== the gallery */
+.bdg-hero { gap: var(--space-3); }
+.bdg-hero small { font-weight: 400; }
+.bdg-tiers { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); }
+.bdg-tier-n { display: inline-flex; align-items: center; gap: 6px; }
+.bdg-tier-n i { width: 12px; height: 12px; border-radius: 50%; background: linear-gradient(135deg, var(--bdg-c2), var(--bdg-c) 60%, color-mix(in srgb, var(--bdg-c) 70%, #000)); box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); }
+.bdg-tier-n b { font-variant-numeric: tabular-nums; }
+.bdg-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.bdg-tile { all: unset; box-sizing: border-box; display: grid; justify-items: center; align-content: start; text-align: center; gap: 4px; min-width: 0; padding: var(--space-3) var(--space-2) var(--space-3); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); cursor: pointer; color: var(--label); -webkit-tap-highlight-color: transparent; transition: transform .18s var(--ease-out-soft); }
+.bdg-tile:active { transform: scale(.97); }
+.bdg-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bdg-tile-medal { position: relative; display: block; margin-bottom: 2px; }
+.bdg-tile-title { font-weight: 600; line-height: 1.2; overflow-wrap: anywhere; }
+.bdg-tile:not(.is-earned) .bdg-tile-title { color: var(--label-secondary); }
+.bdg-tile-sub { line-height: 1.2; }
+.bdg-new { position: absolute; top: -4px; right: -10px; padding: 1px 6px; border-radius: 999px; background: var(--hue-rose); color: #fff; font-weight: 700; letter-spacing: .02em; box-shadow: 0 2px 6px rgb(192 42 100 / .35); }
+.bdg-nexts { display: grid; gap: var(--space-2); }
+.bdg-next { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); cursor: pointer; color: var(--label); min-width: 0; }
+.bdg-next-text { display: grid; gap: 4px; flex: 1; min-width: 0; }
+.bdg-next-text .rf-progress { margin-top: 2px; }
+.bdg-next-n { flex: none; font-variant-numeric: tabular-nums; }
+@media (min-width: 600px) { .bdg-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 900px) { .bdg-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+
+/* ================================================================== the detail sheet and the reveal */
+.bdg-detail, .bdg-page { display: grid; justify-items: center; text-align: center; gap: var(--space-1); min-width: 0; }
+.bdg-detail { padding-bottom: var(--space-2); }
+.bdg-stage.is-detail { width: 200px; height: 188px; }
+.bdg-tierline { margin: var(--space-2) 0 0; text-transform: uppercase; letter-spacing: .14em; font-weight: 700; color: color-mix(in srgb, var(--bdg-c, var(--label-secondary)) 55%, var(--label)); }
+.bdg-detail .bdg-tierline, .bdg-page .bdg-tierline { color: var(--label-secondary); }
+.bdg-title { margin: 0; overflow-wrap: anywhere; }
+.bdg-how { margin: 0; max-width: 34ch; }
+.bdg-when { margin: var(--space-1) 0 0; color: var(--label-secondary); }
+.bdg-prog { display: grid; gap: 6px; width: min(280px, 100%); margin-top: var(--space-2); }
+.bdg-actions { display: flex; gap: var(--space-2); width: 100%; box-sizing: border-box; padding: var(--space-4) 0 0; }
+.bdg-actions > .rf-btn { flex: 1; min-width: 0; }
+.bdg-detail .bdg-actions { max-width: 320px; }
+.bdg-reveal { display: grid; padding-bottom: var(--space-2); }
+.bdg-pages { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
+.bdg-pages::-webkit-scrollbar { display: none; }
+.bdg-page { flex: 0 0 100%; box-sizing: border-box; scroll-snap-align: center; padding: 0 var(--space-4); }
+.bdg-page .bdg-stage { width: 236px; height: 220px; }
+.bdg-reveal .bdg-actions { padding: var(--space-4) var(--space-4) 0; }
+.bdg-dots { display: flex; justify-content: center; gap: 2px; padding-top: var(--space-3); }
+.bdg-dot { all: unset; box-sizing: border-box; display: grid; place-items: center; width: 28px; height: 24px; cursor: pointer; }
+.bdg-dot::before { content: ''; width: 8px; height: 8px; border-radius: 4px; background: var(--fill-1); transition: width .3s var(--ease-out-soft), background-color .3s; }
+.bdg-dot[aria-selected="true"]::before { width: 20px; background: var(--label); }
+.bdg-dot:focus-visible { outline: 2px solid var(--accent); border-radius: 8px; }
+
+/* ================================================================== the player's card */
+.bdg-card { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: var(--space-3); margin: 0 var(--space-4) var(--space-3); padding: var(--space-3) var(--space-4) var(--space-3) var(--space-2); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); cursor: pointer; color: var(--label); min-width: 0; -webkit-tap-highlight-color: transparent; }
+.player .bdg-card { width: calc(100% - 2 * var(--space-4)); }
+.bdg-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bdg-stage.is-card { width: 92px; height: 88px; flex: none; }
+.bdg-card-text { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.bdg-card .bdg-tierline { margin: 0; color: var(--label-secondary); }
+.bdg-card-go { color: var(--label-tertiary); flex: none; }
+/* The player's card springs its medal in a moment after the screen arrives. */
+.bdg-stage.is-card > .bdg-medal { animation: bdg-pop 1.1s .7s cubic-bezier(.22, .8, .25, 1) both; }
+
+/* A toast's medal (src/ui/badges.js puts it where the toast's icon was). */
+.bdg-toast-medal { display: grid; place-items: center; background: none !important; }
+.bdg-toast-medal .bdg-svg { width: 30px; height: 30px; }
+
+/* ================================================================== quieter settings */
+@media (prefers-reduced-motion: reduce) {
+  .bdg-stage.is-in > .bdg-medal, .bdg-stage.is-card > .bdg-medal, .bdg-stage.is-in .bdg-sweep, .bdg-rays, .bdg-mini.is-new .bdg-svg { animation: none; }
+  .bdg-stage.is-in .bdg-sweep { opacity: 0; }
+}
+:root[data-rf-motion="reduced"] .bdg-stage.is-in > .bdg-medal, :root[data-rf-motion="reduced"] .bdg-stage.is-card > .bdg-medal, :root[data-rf-motion="reduced"] .bdg-rays, :root[data-rf-motion="reduced"] .bdg-mini.is-new .bdg-svg { animation: none; }
+:root[data-rf-motion="reduced"] .bdg-sweep { display: none; }
+:root[data-theme$="contrast"] .bdg-rays, :root[data-theme$="contrast"] .bdg-glow { display: none; }
+:root[data-theme$="contrast"] .bdg-tile, :root[data-theme$="contrast"] .bdg-next, :root[data-theme$="contrast"] .bdg-card { box-shadow: inset 0 0 0 1px var(--separator); }

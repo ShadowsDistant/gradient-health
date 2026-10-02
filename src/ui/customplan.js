@@ -804,6 +804,7 @@
       const text = `${who}: ${plan.name} (${C().summary(plan)}). Open it in Gradient Health: ${code()}`;
       const ok = GH.platform && GH.platform.share(text);
       U.haptic('tap');
+      if (U.badgeEvent) U.badgeEvent('sharedPlan');
       if (!ok) U.act.cpCopyLink();
     };
     U.act.cpCopyLink = async () => {

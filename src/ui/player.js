@@ -1046,7 +1046,8 @@
     const res = B().finishWorkout(S, { rating: ck.rating, complicated: ck.complicated, pain: ck.pain, weightKg: ck.weight ? U.toKg(ck.weight) : null, now: Date.now() });
     S.pendingLines = res ? res.lines : [];
     if (U.markSeen) U.markSeen('playerHint');
-    const fresh = U.newAchievements ? U.newAchievements(S, U.today()) : [];
+    // Badges this workout earned (and any not shown yet): the Next screen shows them itself.
+    const fresh = U.badgeCheck ? U.badgeCheck('workout') : [];
     U.save(true);
     P.result = res; P.ck = null; P.streakFrom = before; P.ach = fresh;
     P.phase = 'next';
@@ -1062,6 +1063,7 @@
     }
     const n = el.querySelector('.streak-roll');
     if (n && G.Refract && G.Refract.roll && !U.reduced()) setTimeout(() => { try { G.Refract.roll(n, n.dataset.to, { from: n.dataset.from, dir: 1 }); } catch (e) { /* ignore */ } }, 250);
+    if (fresh.length && U.badgeSpring) U.badgeSpring(el);
   };
 
   function viewNext() {
@@ -1074,7 +1076,7 @@
         <h1 class="rf-large-title">Next time</h1>
         ${res.done ? `<p class="t-callout pl-pad">Streak <span class="streak-roll rf-num t-headline" data-from="${P.streakFrom || 0}" data-to="${streak}">${streak}</span> ${streak === 1 ? 'day' : 'days'}</p>` : '<p class="t-callout rf-muted pl-pad">Saved. Under half the sets, so it doesn\'t count for the streak.</p>'}
         ${res.celebrate.map((c) => `<div class="card celebrate">${U.icon(c.kind === 'pr' ? 'star' : c.kind === 'weight' ? 'bolt' : 'sparkle')}<span class="t-headline">${U.esc(c.text)}</span></div>`).join('')}
-        ${(P.ach || []).map((a) => `<div class="card celebrate is-ach"><span class="rf-list-icon ach-badge" data-tone="${a.tone}">${U.icon(a.icon)}</span><span class="celebrate-text"><span class="t-footnote rf-muted">Achievement</span><span class="t-headline">${U.esc(a.title)}</span></span></div>`).join('')}
+        ${U.badgeCard ? U.badgeCard(P.ach) : ''}
         ${lines.length ? `<ul class="rf-list next-lines">${lines.map((l) => U.row({ title: U.esc(l.text), sub: l.why ? U.esc(U.cap(l.why)) : '', icon: l.buy ? 'bag' : /Deload|less/.test(l.text) ? 'moon' : 'arrow-up-right', tone: l.buy ? 'amber' : /Deload|less|Eat/.test(l.text) ? 'indigo' : 'green' })).join('')}</ul>` : '<p class="t-callout rf-muted pl-pad">Same targets next time. Keep it up.</p>'}
         ${lines.length && U.whyLink ? `<p class="pl-pad">${U.whyLink('overload', 'How the plan decides this')}</p>` : ''}
       </div>
@@ -1096,6 +1098,8 @@
     draw();
     // After the last hold's done buzz when the timer ended it, so the two play one after the other.
     if (byTimer) setTimeout(() => U.haptic('success'), 450); else U.haptic('success');
+    // Badges it earned (ten sessions, a streak kept going), told once that buzz is over.
+    if (U.badgeCheck) setTimeout(() => U.badgeCheck('mobility'), 900);
   }
   function viewMobDone() {
     return `${top('Mobility')}

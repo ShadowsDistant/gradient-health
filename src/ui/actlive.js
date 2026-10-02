@@ -615,6 +615,7 @@
     } else U.render();
     if (U.checklistCheck) U.checklistCheck();
     if (U.actAfterFinish) U.actAfterFinish(act);
+    if (U.badgeCheck) U.badgeCheck('activity'); // a first run, a 5K, a record: a toast with the medal
     return act;
   }
   // Discard: nothing is kept (quiet: no question, e.g. before the clock started).
