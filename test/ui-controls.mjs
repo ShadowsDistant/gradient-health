@@ -170,11 +170,13 @@ async function outcome(sel, key, from, settleMs) {
   const now = await checked(sel);
   const l = await log();
   const changes = l.changes.filter((c) => c.key === key).length;
-  const toggles = l.req.filter((k) => k === 'toggleOn' || k === 'toggleOff').length;
-  return { now, flipped: now !== from, changes, toggles, req: l.req };
+  // The toggle haptics asked for, and the ones the bridge (the fixture's Android shell) played.
+  const isToggle = (k) => k === 'toggleOn' || k === 'toggleOff';
+  const toggles = l.req.filter(isToggle).length, played = l.bridge.filter(isToggle).length;
+  return { now, flipped: now !== from, changes, toggles, played, req: l.req, bridge: l.bridge };
 }
-const once = (o) => (o.flipped && o.changes === 1 && o.toggles === 1 ? null : o);
-const never = (o) => (!o.flipped && o.changes === 0 && o.toggles === 0 ? null : o);
+const once = (o) => (o.flipped && o.changes === 1 && o.toggles === 1 && o.played === 1 ? null : o);
+const never = (o) => (!o.flipped && o.changes === 0 && o.toggles === 0 && o.played === 0 ? null : o);
 const SUP = '#screen input[data-on="setPref"][data-k="supersets"]';
 const SND = '#screen input[data-on="setPref"][data-k="sound"]';
 
@@ -266,8 +268,8 @@ await repeat('a double tap toggles twice, with two haptics', 13, async (i, r) =>
   await wait(Math.round(between(r, 40, 120)));
   await gesture([[b.x + between(r, -8, 8), b.y + between(r, -3, 3)]], { hold: 25 });
   const o = await outcome(SND, 'sound', b.checked, 220);
-  return !o.flipped && o.changes === 2 && o.toggles === 2 ? null : o;
-}, Math.max(4, Math.round(REPS / 2)));
+  return !o.flipped && o.changes === 2 && o.toggles === 2 && o.played === 2 ? null : o;
+});
 
 // The mouse and the keyboard.
 await repeat('a mouse click toggles once', 14, async (i, r) => {
@@ -275,7 +277,7 @@ await repeat('a mouse click toggles once', 14, async (i, r) => {
   await clear();
   await page.mouse.click(b.x + between(r, -10, 10), b.y + between(r, -4, 4));
   return once(await outcome(SUP, 'supersets', b.checked, 160));
-}, Math.max(4, Math.round(REPS / 2)));
+});
 await repeat('a mouse drag toggles once (its click is swallowed)', 15, async (i, r) => {
   const b = await where(SND);
   const dir = b.checked ? -1 : 1;
@@ -285,14 +287,14 @@ await repeat('a mouse drag toggles once (its click is swallowed)', 15, async (i,
   await page.mouse.move(b.kx + dir * 28, b.y + between(r, -2, 2), { steps: 6 });
   await page.mouse.up();
   return once(await outcome(SND, 'sound', b.checked, 260));
-}, Math.max(4, Math.round(REPS / 2)));
+});
 await repeat('Space toggles', 16, async () => {
   const b = await where(SUP);
   await page.focus(SUP);
   await clear();
   await page.keyboard.press('Space');
   return once(await outcome(SUP, 'supersets', b.checked, 160));
-}, Math.max(4, Math.round(REPS / 4)));
+});
 await page.evaluate(() => document.activeElement && document.activeElement.blur());
 
 // A disabled switch never moves.
@@ -308,7 +310,7 @@ await repeat('a disabled switch never toggles', 17, async (i, r) => {
   const o = await outcome(SUP, 'supersets', b.checked, 220);
   const lifted = await page.evaluate((s) => document.querySelector(s).closest('.rf-switch-track').matches('[data-pressed], [data-dragging], [data-traveling]'), SUP);
   return never(o) || lifted ? { o, lifted } : null;
-}, Math.max(6, Math.round(REPS / 2)));
+});
 await page.evaluate((s) => { document.querySelector(s).disabled = false; }, SUP);
 
 // A re-render that adds a row above: the "Allow the new data types" row shows up when Health Connect
@@ -339,7 +341,7 @@ await repeat('the next tap toggles that switch, and nothing else moves', 18, asy
   const o = await outcome(HCW, 'hcWriteToggle', b.checked, 160);
   const write1 = await page.evaluate(() => window.GH.ui.S.health.write !== false);
   return !once(o) && write1 !== write0 && !others.traveling && !others.moving ? null : { o, write0, write1, others };
-}, Math.max(4, Math.round(REPS / 2)));
+});
 await page.evaluate(() => { window.AndroidBridge.hcGranted = window.__granted; window.GH.ui.S.health.write = true; window.GH.ui.render(); });
 await wait(300);
 
@@ -359,7 +361,7 @@ await repeat('100 ms after a drag of the sheet, a tap on its switch toggles', 19
   const o = await outcome(DSL, 'dsLight', b.checked, 200);
   await wait(500);
   return once(o);
-}, Math.max(4, Math.round(REPS / 2)));
+});
 await page.evaluate(() => window.GH.ui.closeSheets());
 await wait(500);
 
@@ -379,8 +381,10 @@ await repeat('turning workouts off mid-workout springs back with a deny', 20, as
   await wait(500);
   const l = await log();
   const end = await page.evaluate((s) => ({ checked: document.querySelector(s).checked, workouts: window.GH.ui.S.profile.workouts !== false }), WRK);
-  return !mid && end.checked && end.workouts && l.req.includes('deny') ? null : { mid, end, req: l.req };
-}, Math.max(4, Math.round(REPS / 4)));
+  // The deny reaches the bridge too: as deny once the haptics work knows the name, as a tap until then.
+  const denied = l.req.includes('deny') && (l.bridge.includes('deny') || l.bridge.includes('tap'));
+  return !mid && end.checked && end.workouts && denied ? null : { mid, end, req: l.req, bridge: l.bridge };
+});
 await page.evaluate(() => { const U = window.GH.ui; window.GH.brain.cancelWorkout(U.S); U.save(); });
 await page.evaluate(() => window.GH.ui.closeSheets());
 await wait(300);
@@ -436,7 +440,7 @@ await repeat('a drag the page cancels leaves the pick as it was', 25, async (i, 
   const o = await segOutcome(segs[cur].v, 300);
   const thumb = await page.evaluate((s) => { const el = document.querySelector(s); const t = el.querySelector('.rf-segmented-thumb').getBoundingClientRect(); const c = el.querySelector('input:checked').closest('.rf-segment').getBoundingClientRect(); return { dx: Math.abs((t.x + t.width / 2) - (c.x + c.width / 2)), dragging: el.hasAttribute('data-dragging') }; }, REST);
   return o.now === segs[cur].v && !o.changes && thumb.dx < 3 && !thumb.dragging ? null : { ...o, thumb };
-}, Math.max(4, Math.round(REPS / 2)));
+});
 await repeat('a vertical swipe from a segment picks nothing', 26, async (i, r) => {
   const segs = await segBox();
   const cur = segs.findIndex((g) => g.on), to = (cur + 1) % segs.length;
@@ -444,7 +448,7 @@ await repeat('a vertical swipe from a segment picks nothing', 26, async (i, r) =
   await gesture(line(segs[to].x, segs[to].y, segs[to].x + between(r, -4, 4), segs[to].y - Math.round(between(r, 60, 100)), 8), { hold: 10 });
   const o = await segOutcome(segs[cur].v, 260);
   return o.now === segs[cur].v && !o.changes ? null : o;
-}, Math.max(4, Math.round(REPS / 2)));
+});
 {
   await page.focus(`${REST} input:checked`);
   const before = await picked();
@@ -480,7 +484,7 @@ for (const [m, name, settle] of [['native', 'a tap', 200], ['phone', 'a wobbly t
     const now = (await chips()).find((x) => x.on);
     const shown = await page.evaluate(() => document.querySelectorAll('#screen .sci-list').length);
     return now && now.v === c.v && l.changes.filter((x) => x.key === 'sciShow').length === 1 && l.req.filter((k) => k === 'select').length === 1 && (c.v === 'all' || shown === 1) ? null : { want: c.v, now: now && now.v, changes: l.changes, req: l.req, shown };
-  }, Math.max(4, Math.round(REPS / 2)));
+  });
 }
 await mode('native');
 await repeat('a sideways swipe on the rail scrolls it and picks nothing', 29, async (i, r) => {
@@ -492,7 +496,7 @@ await repeat('a sideways swipe on the rail scrolls it and picks nothing', 29, as
   await wait(250);
   const now = (await chips()).find((x) => x.on);
   return now.v === cur.v && !(await log()).changes.length ? null : { now: now.v, cur: cur.v };
-}, Math.max(4, Math.round(REPS / 2)));
+});
 {
   const list = await chips();
   const cur = list.findIndex((x) => x.on);
