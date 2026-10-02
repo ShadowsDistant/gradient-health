@@ -3,8 +3,9 @@
 // - Generates Refract's tokens.css from vendor/refract/tokens.json (the design system ships
 //   tokens as JSON only), with its fonts inlined as data URIs so the APK works offline.
 // - Inlines Refract's bundle.css/bundle.js and the app's own CSS/JS into src/shell.html.
-// - Minifies every inline script and style sheet on the way (MINIFY=0 turns that off, to debug
-//   with readable code). Names are kept (keepNames), so a function's .name is what the source says.
+// - Minifies every inline script and style sheet on the way, written all in ASCII (MINIFY=0 turns
+//   that off, to debug with readable code). Names are kept (keepNames), so a function's .name is
+//   what the source says.
 // - Bundles the parts that load on demand into dist/lazy/ with esbuild (see LAZY): the Claude
 //   requests with the Anthropic SDK, the 3D figure, the on-device model runtime and more.
 import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync, statSync, existsSync, readdirSync } from 'node:fs';
@@ -22,19 +23,94 @@ export const MINIFY = process.env.MINIFY !== '0';
 // Each script is wrapped in an IIFE of its own (format), because keepNames adds two helpers at the
 // top: unwrapped, they'd be globals with minified names, and every script would overwrite the last
 // one's. (Every app script is an IIFE already and declares no globals of its own.)
-const MIN_JS = { loader: 'js', format: 'iife', minify: true, keepNames: true, target: 'chrome100', legalComments: 'none', charset: 'utf8', logLevel: 'silent' };
+const MIN_JS = { loader: 'js', format: 'iife', minify: true, keepNames: true, target: 'chrome100', legalComments: 'none', charset: 'ascii', logLevel: 'silent' };
 // Style sheets lose only whitespace and comments. Full minifying also rewrites values (160ms to
 // .16s, 0.5 to .5), custom properties included, and scripts read those (Refract's durations and
 // easings, the lens sizes): this way they read exactly what's written, for about 1 KB more.
-const MIN_CSS = { loader: 'css', minifyWhitespace: true, target: 'chrome100', legalComments: 'none', charset: 'utf8', logLevel: 'silent' };
+const MIN_CSS = { loader: 'css', minifyWhitespace: true, target: 'chrome100', legalComments: 'none', charset: 'ascii', logLevel: 'silent' };
 export async function minJs(code, file) {
   if (!MINIFY) return code;
-  return (await transform(code, Object.assign({ sourcefile: file }, MIN_JS))).code.trim();
+  return asciiRegexps((await transform(code, Object.assign({ sourcefile: file }, MIN_JS))).code.trim());
 }
 export async function minCss(code, file) {
   if (!MINIFY) return code;
   return (await transform(code, Object.assign({ sourcefile: file }, MIN_CSS))).code.trim();
 }
+// The page is all ASCII (charset above). With even a few other characters, the browser decodes
+// the page into two-byte text and keeps its scripts that way; all ASCII, the first frame came 50 to
+// 90 ms sooner at 4x CPU (decoding the page alone went from 61 to 16 ms). esbuild escapes strings,
+// templates and names, and leaves regular expression literals as written: asciiRegexps finds those
+// and writes their other characters as \u escapes, which match the same text with or without the u
+// flag. A tagged template's text can't be escaped (String.raw would see the escape), so it stays as
+// it is, and so does a whole script whose tokens this doesn't follow: test/buildcheck.mjs names
+// what's left.
+const REGEX_AFTER = new Set(['return', 'typeof', 'instanceof', 'in', 'new', 'delete', 'void', 'throw', 'case', 'do', 'else']);
+export function asciiRegexps(code) {
+  if (!/[^\x00-\x7f]/.test(code)) return code;
+  const n = code.length;
+  let out = '', i = 0;
+  // The token before: 'value' or 'word' (a / after it divides), one of REGEX_AFTER, or a punctuator.
+  let prev = '';
+  const parens = []; // per open (: whether it's an if/while/for/with condition (a regex may follow its ))
+  const subs = []; // per open ${ in a template: the brace depth it opened at
+  let depth = 0;
+  while (i < n) {
+    const c = code[i];
+    let j = i + 1;
+    if (c === '`' || (c === '}' && subs.length && subs[subs.length - 1] === depth)) {
+      // Template text, to its end or the next ${.
+      if (c === '}') subs.pop();
+      while (j < n && code[j] !== '`' && !(code[j] === '$' && code[j + 1] === '{')) j += code[j] === '\\' ? 2 : 1;
+      if (j >= n) return code;
+      if (code[j] === '`') { j++; prev = 'value'; } else { j += 2; subs.push(depth); prev = '('; }
+    } else if (c === '"' || c === "'") {
+      while (j < n && code[j] !== c && code[j] !== '\n') j += code[j] === '\\' ? 2 : 1;
+      if (code[j] !== c) return code;
+      j++; prev = 'value';
+    } else if (c === '/' && code[j] === '/') {
+      j = code.indexOf('\n', i); if (j < 0) j = n;
+    } else if (c === '/' && code[j] === '*') {
+      j = code.indexOf('*/', i + 2); if (j < 0) return code; j += 2;
+    } else if (c === '/' && !['value', 'word', ')', ']'].includes(prev)) {
+      // A regular expression: to the closing / (not one in a [...] class), then its flags.
+      let cls = false;
+      for (; j < n && code[j] !== '\n'; j++) {
+        if (code[j] === '\\') j++;
+        else if (code[j] === '[') cls = true;
+        else if (code[j] === ']') cls = false;
+        else if (code[j] === '/' && !cls) break;
+      }
+      if (code[j] !== '/') return code;
+      j++;
+      while (j < n && /[a-z]/.test(code[j])) j++;
+      // An escaped character (\\→, an identity escape) becomes just the \u escape.
+      out += code.slice(i, j).replace(/(\\*)([^\x00-\x7f])/g, (m, bs, ch) => `${bs.slice(bs.length % 2)}\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`);
+      i = j; prev = 'value';
+      continue;
+    } else if (/[\w$\\]/.test(c)) {
+      // A name, keyword or number (esbuild writes other letters in names as \u escapes).
+      j = i;
+      while (j < n && /[\w$\\]/.test(code[j])) j = code[j] !== '\\' ? j + 1 : code[j + 2] === '{' ? code.indexOf('}', j) + 1 : j + 6;
+      const w = code.slice(i, j);
+      prev = prev !== '.' && REGEX_AFTER.has(w) ? w : prev !== '.' && /^(if|while|for|with)$/.test(w) ? `cond:${w}` : 'word';
+    } else if (/\s/.test(c)) {
+      // Nothing changes.
+    } else {
+      if (c === '(') parens.push(prev.startsWith('cond:'));
+      else if (c === ')') { if (!parens.length) return code; }
+      else if (c === '{') depth++;
+      else if (c === '}') { if (!depth) return code; depth--; }
+      if ((c === '+' || c === '-') && code[j] === c) {
+        j++; // ++ or --: after a value (a++) a / still divides
+        if (prev !== 'value' && prev !== 'word' && prev !== ')' && prev !== ']') prev = c;
+      } else prev = c === ')' ? (parens.pop() ? '(' : ')') : c;
+    }
+    out += code.slice(i, j);
+    i = j;
+  }
+  return subs.length || depth || parens.length ? code : out;
+}
+
 // Refract's bundle starts with its manifest comment (@ds-bundle: the components it has), kept as is.
 async function refractJs() {
   const src = read('vendor/refract/bundle.js');

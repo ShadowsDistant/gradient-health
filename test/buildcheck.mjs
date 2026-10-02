@@ -1,8 +1,8 @@
 // The built page (dist/gradient-health.html, so run `npm run build` first): its size budget, that
-// every inline script compiles and every style sheet parses, that the content security policy lists
-// exactly the inline scripts' hashes, that the parts loaded on demand are there (the Anthropic SDK
-// among them, and not in the page), and that the marked patches in Refract's vendored bundle are
-// well formed.
+// it's all ASCII, that every inline script compiles and every style sheet parses, that the content
+// security policy lists exactly the inline scripts' hashes, that the parts loaded on demand are
+// there (the Anthropic SDK among them, and not in the page), and that the marked patches in
+// Refract's vendored bundle are well formed.
 // Usage: node test/buildcheck.mjs
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 import { transform } from 'esbuild';
 import { root, check, section, done } from './lib.mjs';
-import { APP_SCRIPTS, LAZY } from '../scripts/build.mjs';
+import { APP_SCRIPTS, LAZY, asciiRegexps } from '../scripts/build.mjs';
 
 // The page was 2,551,794 bytes before 1.6.0. The target was 1.6 MB; minifying and moving the
 // Anthropic SDK to its own chunk brought it to 1,645,383 bytes (inline JS is most of it, and
@@ -24,6 +24,43 @@ const bytes = statSync(file).size;
 
 section('Size');
 check(`the page is ${bytes} bytes, within ${BUDGET}`, bytes <= BUDGET, `${bytes - BUDGET} bytes over`);
+
+section('All ASCII');
+// Any other character makes the browser decode the page into two-byte text and keep its scripts
+// that way, which cost the first frame 50 to 90 ms at 4x CPU (see asciiRegexps in scripts/build.mjs).
+const wide = [];
+for (let i = 0; i < html.length && wide.length < 5; i++) {
+  if (html.charCodeAt(i) > 0x7f) {
+    const at = html.lastIndexOf('<script>/* ', i);
+    wide.push(`${at >= 0 ? html.slice(at + 11, html.indexOf(' */', at)) : 'the page'}: ...${html.slice(Math.max(0, i - 30), i + 10)}... (write it as a \\u escape)`);
+  }
+}
+check('the page is all ASCII', wide.length === 0, wide);
+// The escaping of regular expressions, on cases a minifier's output can have: each function must give
+// the same answers once escaped.
+const RX = [
+  [(s) => s.replace(/[’']/g, '-'), ['it’s', 'its']],
+  [(s) => /\→/.test(s), ['a→b', 'ab']],
+  [(s) => /[😀]/u.test(s), ['x😀', 'x\ud83d']],
+  [(s) => /^😀+$/.test(s), ['😀😀', 'x']],
+  [(s) => { let r = 0; if (s) /→/.test(s) && (r = 1); return r; }, ['→', 'x']],
+  [(s) => `<${s.replace(/→/g, '>')}>`, ['a→b']],
+  [(s) => s.replace(/['"`]→/g, ''), ['"→x', 'x']],
+  [(s) => { let i = 4; const a = i++ / 2; return [a, /→/.test(s), i]; }, ['→']],
+  [(s) => { const o = { return: 4 }; return [o.return / 2, /→/.test(s)]; }, ['→']],
+  [(s) => [String.raw`→`.length, 6 / 2 / 3, /→/.test(s)], ['→']],
+  [(s) => { for (const x of [1]) /→/g.test(s + x); return s.split(/[·•]/); }, ['a·b•c']],
+];
+const rxBad = [];
+for (const [fn, inputs] of RX) {
+  const src = `(${fn})`;
+  const out = asciiRegexps(src);
+  let same = false;
+  try { const g = vm.runInNewContext(out); same = JSON.stringify(inputs.map(fn)) === JSON.stringify(inputs.map(g)); } catch (e) { same = false; }
+  const left = out.replace(/String\.raw`[^`]*`/g, '');
+  if (!same || /[^\x00-\x7f]/.test(left)) rxBad.push(out);
+}
+check('regular expressions are written in ASCII and match the same (tagged templates are left alone)', rxBad.length === 0, rxBad);
 
 section('Scripts');
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
