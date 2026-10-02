@@ -14,6 +14,9 @@ src/data/privacy.js      the privacy policy (the in-app page and docs/PRIVACY.md
 src/data/brand.js        the logo as a data URI
 src/engine/pose.js       2D skeleton (FK + IK), timing from tempo, SVG figures, gym props
 src/brain.js             program, sessions, gym loads, adaptation, calendar replay, streaks, readiness
+src/optimizer.js         the plan engine (GH.optimizer): the best weekly split, each day's sets, sessions
+                         filled to the time set, the plan's score and its "Why this plan" lines
+src/achievements.js      the badges (GH.achievements): what each takes, earned for good with a date
 src/planweek.js          one week of the plan for the Plan tab (GH.planWeek), cached
 src/body.js              weighted sets per muscle, how training splits, what improved (GH.body)
 src/health.js            Health Connect client (read and write), hand logs, per-day records
@@ -28,14 +31,20 @@ src/customplan.js        your own plans: checks, running them, swaps, progressio
 src/qr.js                a QR code encoder that draws SVG (GH.qr), for sharing plans
 src/share-page.html      the page a shared plan's link opens in a browser (built to docs/p/index.html)
 src/devicecoach.js       the on-device model's prompt: rules, a compact data brief, safety routing
-src/ai.js                the Claude API coach (bundled with the Anthropic SDK by esbuild)
+src/ai.js                the Claude coach's inline part: the key, consent, exactly what's sent, errors
+src/claude.js            the Claude requests with the Anthropic SDK, a lazy chunk: GH.lazy('claude')
 src/llm.js               on-device AI runtime (native engine or llama.cpp in WebAssembly), a lazy
                          chunk: GH.lazy('llm')
 src/store.js             local + file persistence, backup and restore, migrations
 src/platform.js          haptics, vibration, sounds, theme and system bars, insets, back button, lazy chunks
 src/ui/core.js           layout, tabs, router, in-place rendering (U.morph), transitions, sync, events
 src/ui/sheet.js          the bottom sheets: detents, dragging, springs (U.sheet in core.js wraps it)
+src/ui/controls.js       switches, segmented controls and single-choice chips (U.choice): the touch
+                         handling that makes every tap count, and the glass at rest
 src/ui/hapticsui.js      the haptics rows for Settings (U.hapticRows) and the Feel each one gallery
+src/ui/you.js            the You tab: profile, badges, plans, your answers, Settings and help
+src/ui/badges.js         the badge medals, the strip, the gallery and the detail and reveal sheets
+src/ui/sharecard.js      a badge's share image (a 1080×1350 canvas) and sharing it
 src/ui/chat.js           the coach chat and the coach button on every tab
 src/ui/tailor.js         the Tailor my plan sheet
 src/ui/customplan.js     Your plans: the list, the editor and exercise picker, sharing, a shared plan's
@@ -50,7 +59,8 @@ android/src/…/HealthSync*.java     background Health Connect sync (a JobSchedu
 android/src/…/Activity*.java       outdoor activity recording (a location foreground service, the track)
 android/jni/             the on-device coach's native engine (C++ over llama.cpp) and its host test
 scripts/build-native.sh  builds android/jni for arm64 (or --host, and tests it)
-scripts/build.mjs        inlines everything into dist/gradient-health.html; lazy chunks go to dist/lazy/
+scripts/build.mjs        inlines everything into dist/gradient-health.html, minified (MINIFY=0 to read
+                         it); lazy chunks go to dist/lazy/
 scripts/build-apk.sh     builds and signs the APK without Gradle
 scripts/make-icons.mjs   the launcher icons from art/logo.webp
 scripts/screenshots.mjs  renders docs/screenshots/ from the built page
@@ -62,10 +72,13 @@ scripts/make-tiny-gguf.py  a tiny random-weight model for test/llm.mjs
 ```sh
 npm ci
 npm test          # simulations, insights, AI (mocked API), coach, poses, persistence, food, health, gym,
-                  # your plans, activities, release notes
+                  # your plans, activities, release notes, the plan engine and every combination of
+                  # answers (combos; --full before a release), badges, haptics, security, the build
 npm run build     # dist/gradient-health.html, dist/lazy/, docs/PRIVACY.md and docs/p/index.html
 npm run smoke     # end-to-end run in Chromium (needs Playwright); add --dark for dark mode
-npm run test:ui   # layout regressions, food flows, the coach chat, the 3D figure, your plans (Chromium)
+npm run test:ui   # layout regressions, food flows, the coach chat, the 3D figure, your plans, controls
+                  # (real touches), haptics, motion, the You tab, badges, the plan review, speed
+                  # budgets (Chromium)
 npm run test:llm  # on-device AI runtime in Chromium with a tiny model (see On-device AI)
 node test/sweep.mjs [--quick]   # every screen at 360-600 px, light/dark, 100%/130% text, overflow checks
 npm run apk       # build/gradient-health.apk (see below)
@@ -87,6 +100,14 @@ left alone. A few conventions:
 - The navigation bar is shared: a screen's `<header class="rf-navbar">` is lifted into it.
 - A route change gets fresh content and an entrance (tabs slide toward the tab you picked, pushed
   views come in from the side); a re-render of the same route only patches.
+
+**Saving.** `U.save()` never writes in the tap that changed something. `GH.store` waits for the page
+to be idle (a second at most) and hands the JSON to `AndroidBridge.saveAsync`, which writes it on its
+own thread, so a burst of taps is one write. A waiting save is written at once when the page is
+hidden or goes away. Each save also fires `gh-change` on `document` (badges listen for it), and
+`GH.migrations` holds the upgrades `store.migrate` runs on a loaded state. A restored backup goes
+through `store.sanitize` first: a size cap, no `__proto__` keys, and every field's type and range
+checked, so a crafted file can't break the app.
 
 ## 3D exercise figure
 
@@ -115,8 +136,9 @@ Two losses while figures are on screen keep that session on the flat figure.
 
 In the app, `figure()` in `src/ui/player.js` hands the player, move sheets and the tour one
 controller that swaps what's underneath it: the flat figure while the chunk is still loading, 3D once
-it's there, and flat again if `onFallback` fires. Set-up fetches the chunk; the GPU warm-up runs
-a few seconds after launch. Settings keeps the choice in `profile.prefs.figure` (`'3d'` or `'flat'`), with
+it's there, and flat again if `onFallback` fires. Set-up fetches the chunk. The GPU warm-up
+(`U.warmFigure`) runs about 8 seconds after launch only when today is a workout day, or at once when a
+finger lands on something that opens a figure. Settings keeps the choice in `profile.prefs.figure` (`'3d'` or `'flat'`), with
 `figSkin` and `figShirt` for the look. The tempo strip under a figure comes from the move's `rep`
 steps and lights up from `onPhase`.
 
@@ -152,14 +174,14 @@ every build installs over the previous one. When `scripts/build-native.sh` has b
 coach's native engine (see On-device AI), its libraries go into the APK (installed extracted,
 `extractNativeLibs`); without them the app uses its in-app engine.
 
-**CI.** `.github/workflows/android.yml` runs the tests, rebuilds `dist/` and fails if the committed
-file is stale, builds (or restores from its cache) and tests the native engine, then builds the APK
-and the Android App Bundle. On every push to `main` or
-`claude/**` it replaces the release tagged `latest`. Each run's APK and bundle are also attached as
-the `gradient-health-apk` workflow artifact.
+**CI.** `.github/workflows/android.yml` builds `dist/` and runs the tests, fails if the committed
+`dist/` is stale, builds (or restores from its cache) and tests the native engine, then builds the
+APK and the Android App Bundle with the test key and attaches them to the run as the
+`gradient-health-test-<commit>` artifact. Only on `main` does a second job sign them with the release
+key and replace the release tagged `latest` (see Publishing, Builds).
 
-**Signing keys.** Builds are signed with the release key when it's given (from the repository's
-secrets in CI; see Publishing), else with `android/gradient-health.keystore` (alias `gradient`,
+**Signing keys.** Builds are signed with the release key when it's given (in CI only by the release
+job on `main`; see Publishing), else with `android/gradient-health.keystore` (alias `gradient`,
 password `gradient-health`), a test key committed so a local build works out of the box. Its
 password is public: builds signed with it are for trying the app only, never for a store.
 
@@ -267,9 +289,21 @@ hands the URL to `__gh.onLink(url)`. The link a cold start came with also waits 
 (`com.anthropic.claude`) when it's installed, and the share sheet otherwise. The text is the
 question plus the same privacy-safe summary the API coach uses (`GH.ai.summary`).
 
-**Privacy.** Health data stays on the phone. Android's device backup can include the app's data;
-`android/res/xml/*backup*` rules leave the API key out of it. Background reads and activity tracks
-are in `noBackupFilesDir`, so backups never include them.
+**Privacy.** Health data stays on the phone. Android's device backup only gets the app's saved state
+and settings when the backup is end-to-end encrypted with the screen lock: `res/xml/backup_rules.xml`
+backs up nothing on Android 8 (it can't require encryption), `res/xml-v28/` requires it on 9 to 11,
+and `data_extraction_rules.xml` on 12 and newer. The Claude API key is never in a backup, and on the
+phone it's encrypted with a key from the Android Keystore (`SecretBox.java`, AES-GCM); a key saved
+in plain text by an older version is encrypted on first read, and one that can't be decrypted (a
+restored backup, a reset Keystore) is dropped so the person enters it again. Background reads,
+activity tracks and models are in `noBackupFilesDir`, so backups never include them.
+
+**The bridge.** `AndroidBridge` only answers the app's own page: `MainActivity` follows the main
+frame's address and sets `pageTrusted` only for `https://appassets.androidplatform.net/`, and every
+bridge method that reads or changes the person's data, reaches the network or another app, or runs a
+model checks it first. Only the app's own pages load in the WebView. Another http(s) page opens in
+the browser, a frame never loads one, `javascript:`, `data:`, `blob:`, `intent:` and `file:`
+navigations are blocked, and the WebView never opens a second window.
 
 ## On-device AI
 
@@ -297,8 +331,8 @@ Both are the same llama.cpp release (b10663). Details:
   Balanced (2B, 1.28 GB, offered with 6 GB of RAM or more) and Best answers (4B, 2.74 GB, 12 GB or more).
   Balanced is the one suggested on phones with the native engine and 8 GB or more (on the model check's
   prompts it reads the facts clearly better than Fast, at about half the speed); Fast everywhere else. Qwen3.5 mixes gated delta-net (recurrent) layers with full attention.
-  1.2's Qwen2.5 models stay in the table as `legacy`, with their SHA-256 pinned: not offered, but one
-  already on a phone keeps working.
+  1.2's Qwen2.5 models stay in the table as `legacy`, with their SHA-256 pinned: never offered or
+  downloaded again, but one already on a phone keeps working until it's deleted.
 - **Prompts** are built in JS (`chatml()`), so neither engine depends on a template engine: ChatML, and
   for Qwen3.5 an empty `<think></think>` block after the assistant header, which is what its own
   template does with thinking off. `<|im_start|>`-style tags inside a message are defused. The in-app
@@ -340,8 +374,12 @@ Both are the same llama.cpp release (b10663). Details:
   days toward it.
 - **Downloads** run in Java (`ModelStore.java`, started by `AndroidBridge.modelDownload`): one at a
   time, only from Hugging Face, resumable from a `.part` file, optionally Wi-Fi only, after a free-space
-  check. A file counts as installed once its size (the Hub's exact size, within 3% of the table's),
-  GGUF magic and SHA-256 (pinned, or the Hub's `X-Linked-Etag`) check out. Progress goes to
+  check. Every file is pinned in `PINS` in `src/llm.js`: the repo commit its URL points at, its exact
+  size and its SHA-256, which come from the `pins` job in `.github/workflows/model-check.yml`. A file
+  without a pin isn't downloaded at all, and one counts as installed only when its size, GGUF magic and
+  SHA-256 match the pin. The Hub's `X-Linked-Etag` and `X-Linked-Size` only stop a download early when
+  they disagree. A model an older version installed without a hash is hashed once in the background,
+  and one that doesn't match its pin counts as not installed, so it can be downloaded again. Progress goes to
   `__gh.onModelProgress` at most 4 times a second; after a page reload `AndroidBridge.modelStatus()`
   reports it again. Models live in `noBackupFilesDir/models/`, so they stay out of device backups. The
   native engine reads the file there directly (`ModelStore.installedFile`); the in-app engine reads it
@@ -456,7 +494,7 @@ update only installs over a build signed with the same key, and Android develope
 the package name to that key's certificate.
 
 - **The release key** is a PKCS12 keystore (RSA 4096, valid to 2056, alias `gradienthealth`) kept by
-  the owner and in the repository's GitHub secrets, never in the repository. Keep two copies of it
+  the owner and in GitHub's secrets (below), never in the repository. Keep two copies of it
   and its password somewhere safe: a lost key means publishing a new app under a new name. Its
   certificate's SHA-256 is in `android/release-cert.sha256`, and `build-apk.sh` stops a release build
   signed with any other key, so a wrong secret can't publish an APK that won't update.
