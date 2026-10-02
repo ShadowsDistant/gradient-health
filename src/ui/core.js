@@ -138,13 +138,27 @@
   const owned = new WeakMap(); // element → { attrs, style } the markup set, so only those get removed
 
   const isInjected = (n) => n.nodeType === 1 && INJECTED.some((c) => n.classList.contains(c));
+  // Nodes on their way out: a removed card src/ui/motion.js pins where it was while it fades. A patch
+  // passes over them as it does Refract's parts.
+  const leaving = new WeakSet();
+  const passOver = (n) => isInjected(n) || leaving.has(n);
   const keyOf = (n) => (n.nodeType === 1 ? n.getAttribute('data-key') || n.id || null : null);
+  // A control is also what it sets: a segmented control's first radio name, a switch's (or a chip
+  // choice's) data-on and data-k. So a patch never hands one control's node, mid-move, to another
+  // that happens to sit where it was, keyed or not.
+  const CONTROLS = ['rf-segmented', 'rf-switch', 'gh-chipseg'];
   function sig(n) {
     if (n.nodeType !== 1) return String(n.nodeType);
     let s = n.nodeName;
     if (n.nodeName === 'INPUT') s += ':' + (n.getAttribute('type') || 'text');
-    for (const b of BEHAVIOR) if (n.classList.contains(b)) s += '.' + b;
+    let control = false;
+    for (const b of BEHAVIOR) if (n.classList.contains(b)) { s += '.' + b; if (CONTROLS.includes(b)) control = true; }
     if (n.hasAttribute('data-lens')) s += '[lens]';
+    if (control) {
+      const i = n.querySelector('input');
+      const on = n.getAttribute('data-on') || (i && i.getAttribute('data-on')) || '';
+      s += `@${(i && i.getAttribute('name')) || ''}:${on}:${n.getAttribute('data-k') || (i && i.getAttribute('data-k')) || ''}`;
+    }
     return s;
   }
   function styleProps(text) {
@@ -213,7 +227,7 @@
     }
     el.textContent = next;
   }
-  function morphNode(from, to) {
+  function morphNode(from, to, fx) {
     if (from.nodeType !== 1) { if (from.nodeValue !== to.nodeValue) from.nodeValue = to.nodeValue; return; }
     if (from.hasAttribute('data-roll') && to.hasAttribute('data-roll')) {
       const prev = from.getAttribute('data-roll');
@@ -224,7 +238,7 @@
     morphAttrs(from, to);
     morphForm(from, to);
     if (from.nodeName === 'TEXTAREA' || to.getAttribute('data-morph') === 'keep') return;
-    morphChildren(from, to, false);
+    morphChildren(from, to, fx);
   }
   function discard(n) {
     if (n.nodeType === 1) {
@@ -237,19 +251,19 @@
     }
     n.remove();
   }
-  function appear(el) {
-    if (el.nodeType !== 1 || U.reduced() || !el.animate) return;
-    el.animate([{ opacity: 0, transform: 'translateY(6px) scale(.985)' }, { opacity: 1, transform: 'none' }], { duration: 280, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)' });
-  }
-  // Makes `parent`'s children match `source`'s (a node or fragment). `animate` plays a short
-  // entrance on blocks that are new to a section.
-  function morphChildren(parent, source, animate) {
+  // Makes `parent`'s children match `source`'s (a node or fragment). `fx` is an animated re-render's
+  // motion (U.motion.snap): it was told where everything was before the patch, and hears what the
+  // patch did to each container, so new blocks rise in, removed ones leave from where they were and
+  // the rest glide to where they land (src/ui/motion.js). Without it, changes are instant.
+  function morphChildren(parent, source, fx) {
     const want = Array.from(source.childNodes);
     const keyed = new Map();
-    for (let n = parent.firstChild; n; n = n.nextSibling) { const k = keyOf(n); if (k) keyed.set(k, n); }
+    for (let n = parent.firstChild; n; n = n.nextSibling) { if (passOver(n)) continue; const k = keyOf(n); if (k) keyed.set(k, n); }
     let cur = parent.firstChild;
+    const added = [];
+    let moved = 0;
     for (const t of want) {
-      while (cur && isInjected(cur)) cur = cur.nextSibling;
+      while (cur && passOver(cur)) cur = cur.nextSibling;
       const k = keyOf(t);
       let match = null;
       if (k) {
@@ -259,31 +273,48 @@
       } else if (cur && !keyOf(cur) && sig(cur) === sig(t)) match = cur;
       if (match) {
         if (match === cur) cur = cur.nextSibling;
-        else parent.insertBefore(match, cur);
-        morphNode(match, t);
+        else { parent.insertBefore(match, cur); moved++; }
+        morphNode(match, t, fx);
       } else {
         if (t.nodeType === 1) record(t);
         parent.insertBefore(t, cur);
-        if (animate && t.nodeType === 1 && parent.classList && (parent.classList.contains('section') || parent.classList.contains('rf-list'))) appear(t);
+        added.push(t);
       }
     }
-    while (cur) { const next = cur.nextSibling; if (!isInjected(cur)) discard(cur); cur = next; }
+    const gone = [];
+    while (cur) { const next = cur.nextSibling; if (!passOver(cur)) gone.push(cur); cur = next; }
+    if (fx) fx.patched(parent, added, gone, moved);
+    else for (const n of gone) discard(n);
   }
-  // U.morph(el, html | node): patch el's children in place.
+  // U.morph(el, html | node, animate): patch el's children in place; `animate` moves what changes
+  // (as a re-render of the page does).
   U.morph = (el, html, animate) => {
     let src = html;
     if (src == null || typeof src === 'string') { const tpl = doc.createElement('template'); tpl.innerHTML = src || ''; src = tpl.content; }
-    morphChildren(el, src, !!animate);
+    const fx = animate && U.motion && U.motion.snap ? U.motion.snap(el) : null;
+    morphChildren(el, src, fx);
     enhance(el);
+    if (fx) fx.play();
     return el;
   };
-  // Replace el's children with fresh nodes (used when the route changes).
-  function replace(el, frag) {
-    for (const c of Array.from(el.childNodes)) discard(c);
+  // Replace el's children with fresh nodes (a route change). With a kind, the old ones leave while
+  // the new ones come in (U.motion.routeSwap); either way the new ones are in el when this returns.
+  function replace(el, frag, kind) {
     for (let c = frag.firstElementChild; c; c = c.nextElementSibling) record(c);
-    el.appendChild(frag);
+    if (U.motion && U.motion.routeSwap) U.motion.routeSwap(el, frag, kind);
+    else { for (const c of Array.from(el.childNodes)) discard(c); el.appendChild(frag); }
     enhance(el);
   }
+  // What src/ui/motion.js does its part of a patch with: dropping a node the way a patch does
+  // (Refract's cleanup runs), the nodes on their way out, and moving nodes Refract already set up
+  // (an old page into its exit layer, a copy of a bar button) without it taking them for new ones.
+  U.morphKit = {
+    discard, leaving, passOver,
+    aside(fn) {
+      if (rfObserver) initAdded(rfObserver.takeRecords());
+      try { return fn(); } finally { if (rfObserver) rfObserver.takeRecords(); }
+    },
+  };
 
   /* ---------------------------------------------------------------- layout */
   let root, topbar, screen, floatEl, playerEl, onboardEl, tabbar, accessory, ptrEl;
@@ -412,7 +443,9 @@
     items.forEach((n, i) => n.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 460, delay: 30 + i * 45, easing: EASE_ENTER, fill: 'backwards' }));
   }
   U.stagger = stagger;
-  // Route changes: tabs slide a little toward the tab you picked, pushed views come in from the side.
+  // A page drawn again with a motion of its own (the same page opened again, the first paint after
+  // a workout): it comes in from the side, or its cards rise. A route change's motion is
+  // U.motion.routeSwap's (src/ui/motion.js).
   function routeIn(kind) {
     if (U.reduced() || !screen.animate || !kind) return;
     if (kind === 'stagger') { stagger(screen); return; }
@@ -441,6 +474,11 @@
     const key = r.view ? `${r.view}:${r.arg || ''}` : r.tab;
     const changed = key !== lastKey;
     if (changed && lastKey && !lastKey.includes(':')) scrollMemo[lastKey] = screen.scrollTop;
+    const M = U.motion || {};
+    const kind = changed ? motion || nextMotion : motion;
+    // A re-render of the same page: where everything is, measured before the patch changes it, so
+    // whatever it moves glides there instead of jumping (src/ui/motion.js).
+    const fx = !changed && !motion && M.snap ? safe(() => M.snap(screen)) || null : null;
     runCleanups();
     const scr = U.screens[r.view || r.tab] || U.screens.today;
     const day = U.today();
@@ -450,11 +488,14 @@
     tpl.innerHTML = html;
     const nb = tpl.content.querySelector('header.rf-navbar');
     if (nb) nb.remove();
+    // The bar's title and buttons cross-fade along with the page.
+    const bar = changed && lastKey && kind && M.barSwap ? safe(() => M.barSwap(topbar)) || null : null;
     applyNavbar(nb);
+    // A new page: the old one leaves, with the look it had, while this one comes in.
+    if (changed) replace(screen, tpl.content, kind);
     screen.dataset.view = r.view || r.tab;
     screen.toggleAttribute('data-pushed', !!r.view);
-    if (changed) replace(screen, tpl.content);
-    else { morphChildren(screen, tpl.content, !motion); enhance(screen); }
+    if (!changed) { morphChildren(screen, tpl.content, fx); enhance(screen); }
     const fl = scr.float ? safe(() => scr.float(U.S, day, r.arg)) : '';
     const wasHidden = floatEl.hidden;
     U.morph(floatEl, fl || '');
@@ -465,13 +506,14 @@
     if (scr.after) safe(() => scr.after(screen, U.S, day, r.arg, changed));
     if (changed) {
       screen.scrollTop = r.view ? 0 : scrollMemo[key] || 0;
-      const kind = motion || nextMotion;
       nextMotion = null;
-      routeIn(kind);
+      if (kind === 'stagger') routeIn(kind);
       if (r.view && r.arg && scr.focus) safe(() => scr.focus(screen, r.arg));
     } else if (motion) routeIn(motion);
+    if (fx) safe(() => fx.play());
     lastKey = key;
     updateScrolled();
+    if (bar) safe(() => bar(kind));
     tabbar.toggleAttribute('data-away', !!r.view);
     for (const t of tabbar.querySelectorAll('.rf-tab')) { if (t.dataset.tab === r.tab) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current'); }
     if (R() && R().refresh) safe(() => R().refresh(tabbar));

@@ -1,0 +1,11 @@
+/* Motion (src/ui/motion.js): the old page while the new one comes in, and parts fading out where
+   they were. Everything moves by transform and opacity, so the compositor plays it. */
+
+/* The old page during a route change: the screen's own look (it keeps the .screen class and the
+   screen's attributes), as tall as what's in it and moved up by as far as it was scrolled, so it
+   starts exactly where it was. It isn't a scroller and has no scroll timeline of its own (a second
+   one would leave the glow's scroll fade with none). Its blocks don't play their entrances again:
+   moving them here restarts their CSS animations, which a page on its way out mustn't show. */
+.screen.screen-exit { bottom: auto; overflow: clip; scroll-timeline: none; pointer-events: none; contain: layout style; }
+.screen-exit *, .motion-leaving, .motion-leaving * { animation: none !important; }
+.screen-exit, .motion-copy, .motion-leaving { pointer-events: none !important; }

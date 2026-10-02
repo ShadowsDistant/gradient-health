@@ -306,9 +306,19 @@
     const S = U.S, d = U.today();
     const f = S.feel[d] || {};
     const hasSleep = (S.health.days[d] && S.health.days[d].sleepMin != null) || S.sleepChip[d];
-    if (f.energy && f.sore && hasSleep) feelOpen = false;
-    // Let the segmented thumb finish sliding before the card changes.
-    setTimeout(() => { U.render(); if (U.checklistCheck) U.checklistCheck(); }, f.energy && f.sore && hasSleep ? 260 : 0);
+    const change = () => { U.render(); if (U.checklistCheck) U.checklistCheck(); };
+    if (!(f.energy && f.sore && hasSleep)) { setTimeout(change, 0); return; }
+    feelOpen = false;
+    // All three answered. Once the thumb that moved has landed (half a second at most), the card
+    // folds into its one-line summary: the questions fade and shrink, the summary fades in where they
+    // were, and the cards under it glide up.
+    const card = document.querySelector('#screen [data-key="feel"]');
+    const moving = card && U.controlSettled ? Array.from(card.querySelectorAll('.rf-segmented, .gh-chipseg, .rf-switch-track'), (el) => U.controlSettled(el)) : [];
+    Promise.race([Promise.all(moving), new Promise((r) => setTimeout(r, 500))]).then(() => {
+      const now = document.querySelector('#screen [data-key="feel"]');
+      if (now && now === card && !feelOpen && U.motion && U.motion.collapse) U.motion.collapse(now, change);
+      else change();
+    });
   }
   U.act.addQuick = () => {
     const S = U.S, d = U.today();

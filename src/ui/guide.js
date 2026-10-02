@@ -23,13 +23,11 @@
   };
 
   /* ---------------------------------------------------------------- collapse (tips, checklist) */
+  // The card fades and shrinks, then goes, and the cards under it glide up into its room (transform
+  // and opacity only, src/ui/motion.js). The render after it finds it already gone.
   function collapse(el) {
-    if (!el || U.reduced() || !el.animate) return Promise.resolve();
-    const h = el.offsetHeight;
-    return el.animate([
-      { opacity: 1, height: `${h}px`, transform: 'none' },
-      { opacity: 0, height: '0px', marginTop: `calc(-1 * var(--space-3))`, paddingTop: '0px', paddingBottom: '0px', transform: 'scale(.97)' },
-    ], { duration: 300, easing: 'cubic-bezier(0.2, 0, 0, 1)', fill: 'forwards' }).finished.catch(() => {});
+    if (!el) return Promise.resolve();
+    return U.motion && U.motion.collapse ? U.motion.collapse(el) : Promise.resolve();
   }
 
   /* ---------------------------------------------------------------- tips */
