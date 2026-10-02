@@ -42,11 +42,14 @@
 .you-link-go { flex: none; color: var(--label-tertiary); }
 
 /* Row descriptions wrap without leaving one word on a line of its own. */
-.screen[data-view="you"] .rf-list-sub, .set-list .rf-list-sub { text-wrap: pretty; }
+.screen[data-view="you"] .rf-list-sub, .you-help .rf-list-sub, .you-link-text .t-footnote, .set-list .rf-list-sub { text-wrap: pretty; }
 
 /* Achievements, until the badges arrive. */
 .you-ach { gap: var(--space-3); }
 .you-ach .ach { box-shadow: none; background: var(--fill-3); }
+
+/* Progress's Totals: each tile's words sit at the top, whatever its neighbour's height. */
+[data-key="totals"] .stat { align-content: start; }
 
 /* ---------------------------------------------------------------- Plan: This week | Moves */
 .pw-seg { padding: 0 var(--space-4); margin: calc(-1 * var(--space-1)) 0 var(--space-4); }
@@ -61,7 +64,7 @@
 .streak.tap-card { appearance: none; border: 0; margin: 0; font: inherit; color: var(--label); text-align: start; width: 100%; cursor: pointer; }
 .streak.tap-card:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .streak-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-3); }
-.streak-foot > .t-footnote:first-child { flex: 1; min-width: 0; }
+.streak-foot > .t-footnote:first-child { flex: 1; min-width: 0; text-wrap: pretty; }
 .streak-go { flex: none; display: inline-flex; align-items: center; gap: 2px; color: var(--accent); font-weight: 600; --rf-icon-size: 14px; }
 
 /* ---------------------------------------------------------------- Settings: search */

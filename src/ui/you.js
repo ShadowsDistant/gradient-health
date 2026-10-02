@@ -55,7 +55,7 @@
     const ach = U.achievements(S, day);
     const earned = ach.filter((a) => a.earned).length;
     return `<div class="card you-ach" data-key="badges">
-      <div class="row-between"><span class="t-headline">Achievements</span><span class="t-footnote rf-muted rf-num">${earned} of ${ach.length}</span></div>
+      <p class="t-subhead rf-muted rf-num">${earned} of ${ach.length} earned</p>
       <div class="ach-grid">${ach.map((a) => `<div class="ach${a.earned ? ' is-earned' : ''}" data-key="ach-${a.id}" data-badge="${a.id}">
         <span class="rf-list-icon ach-badge" data-tone="${a.earned ? a.tone : 'none'}">${U.icon(a.earned ? a.icon : 'lock')}</span>
         <span class="t-footnote ach-title">${U.esc(a.title)}</span>
@@ -178,13 +178,14 @@
   /* ---------------------------------------------------------------- help */
   U.act.openHelp = () => U.sheet({
     title: 'Help', size: 'fit',
-    body: `<ul class="rf-list">
+    body: `<ul class="rf-list you-help">
       ${U.row({ icon: 'compass', tone: 'teal', title: 'Take the tour', sub: 'Where everything is, in a few short pages', act: 'helpTour', chevron: true })}
       ${U.row({ icon: 'info', tone: 'sky', title: 'Show the tips again', sub: 'Each tab explains itself the next time you open it', act: 'helpTips' })}
-    </ul>
-    <p class="t-footnote rf-muted sheet-lead">Questions about your plan, sleep or food? Ask the coach: the sparkle at the top left of every tab.</p>`,
+      ${U.act.askCoach ? U.row({ icon: 'sparkle', tone: 'violet', title: 'Ask the coach', sub: 'Questions about your plan, sleep or food. It\'s the sparkle at the top left of every tab.', act: 'helpCoach', chevron: true }) : ''}
+    </ul>`,
   });
   U.act.helpTour = () => { U.closeSheets(); if (U.showTour) setTimeout(() => U.showTour(), 320); };
+  U.act.helpCoach = () => { U.closeSheets(); setTimeout(() => U.act.askCoach(), 320); };
   U.act.helpTips = () => {
     U.closeSheets();
     if (U.resetTips) U.resetTips();
