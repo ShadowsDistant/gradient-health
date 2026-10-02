@@ -81,6 +81,8 @@
   /* ---------------------------------------------------------------- How it works (src/data/science.js, src/ui/science.js) */
   screen('science', 'science', 'How it works');
   stand(U, 'openRule', 'science');
+  // The evidence key's sheet: its button is on the page itself, but a link or a test can ask first.
+  stand(U.act, 'sciKey', 'science');
   // "Why?" links around the app open How it works at their rule (U.act.openScience, src/ui/profile.js).
   // The chip form is for lists where a link under every row would repeat (the Coach page).
   U.whyLink = (ruleId, label) => `<button type="button" class="rf-btn why-link" data-variant="plain" data-size="sm" data-act="openScience" data-arg="${U.esc(ruleId)}">${U.esc(label || 'Why?')}</button>`;

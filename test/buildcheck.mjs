@@ -122,6 +122,20 @@ for (const c of APP_CHUNKS) {
   check(`and none of its code is in the page`, bodies.length === c.scripts.length && kept.length === 0, `${kept.length} of ${bodies.length} still inline`);
 }
 check('the stand-ins for them are in the page (src/ui/lazy.js)', scripts.some((s) => s.startsWith('/* src/ui/lazy.js */')));
+// Every action a button in the page's own code names (data-act, or a row's act) is there at launch:
+// defined by inline code, or stood in for by src/ui/lazy.js until its part loads. An action that
+// only exists in a part would do nothing until that part happened to load.
+{
+  const inline = APP_SCRIPTS.filter((p) => p.endsWith('.js') && !APP_CHUNKS.some((c) => c.scripts.includes(p)));
+  const named = new Map(), defined = new Set();
+  for (const p of inline) {
+    const src = readFileSync(join(root, p), 'utf8');
+    for (const m of src.matchAll(/data-act=\\?"([A-Za-z_]\w*)\\?"|\bact: '([A-Za-z_]\w*)'/g)) { const a = m[1] || m[2]; if (!named.has(a)) named.set(a, p); }
+    for (const m of src.matchAll(/\bact\.([A-Za-z_]\w*)\s*=(?!=)|stand\(U\.act, '(\w+)'/g)) defined.add(m[1] || m[2]);
+  }
+  const none = [...named].filter(([a]) => !defined.has(a)).map(([a, p]) => `${a} (${p})`);
+  check(`every action the page's buttons name is there at launch (${named.size} actions)`, named.size > 100 && none.length === 0, none);
+}
 
 section('Patches to Refract');
 // Edits to vendor/refract/bundle.js are fenced: // gh-patch(<id>) ... // gh-patch-end(<id>), one
