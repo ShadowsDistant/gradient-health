@@ -35,6 +35,7 @@
   const LEVEL = { never: 0, onoff: 0, lt1: 1, '1to3': 1, '3plus': 2 };
   const JOINTS = ['knee', 'shoulder', 'back', 'wrist', 'elbow', 'hip', 'ankle', 'neck'];
   const CORE_ROTATION = [['abs', 'coreRot'], ['absLoad', 'coreSide'], ['abs', 'coreSide'], ['absLoad', 'coreRot']];
+  const CORE_ONE = ['abs', 'coreSide', 'absLoad', 'coreRot'];
   // Which of the 7 groups each of the 17 muscles counts toward: where its sets come from in the
   // plan (rear delts are trained with the back, forearms with curls, hip flexors with abs).
   const MUSCLE_GROUP = {
@@ -94,8 +95,44 @@
     return Object.assign(defaultGym(), { bar: false }, pr.eq, { dbMax: pr.dbMax[units === 'kg' ? 1 : 0] });
   }
 
-  // Tiers, frequencies and set targets from the questionnaire.
+  /* ---------------------------------------------------------------- one piece of work */
+  // Planning a week or building a session asks the same questions many times over (which rungs a
+  // ladder has today, what a place's kit is). Inside op() the answers are kept until the outermost
+  // op() returns; nothing they read changes meanwhile (only S.prog grows, which they don't read).
+  let OP = null, opDepth = 0;
+  function op(fn) {
+    if (opDepth++ === 0) OP = new Map();
+    try { return fn(); } finally { if (--opDepth === 0) OP = null; }
+  }
+  // The answers kept for one state, or for one kind of question (null outside op()).
+  function opMap(key) {
+    if (!OP) return null;
+    let m = OP.get(key);
+    if (!m) OP.set(key, (m = new Map()));
+    return m;
+  }
+  const PROGRAMS = {};
+  const inOp = () => !!OP;
+  const opToken = () => OP; // a different object for each outermost op(), null outside
+
+  // Tiers, frequencies and set targets from the questionnaire. Kept for each set of answers it reads
+  // (rungs() asks for it all the time); treat the answer as read-only.
+  const programMemo = new Map();
   function programFor(p) {
+    const om = opMap(PROGRAMS);
+    const kept = om && om.get(p);
+    if (kept) return kept;
+    const key = JSON.stringify([p.goals, p.focus, p.experience, p.recentActivity, p.days, p.gentle, p.impactOk, p.age, p.conditions, p.oaJoints, p.floorOk, p.jumpsOk]);
+    let out = programMemo.get(key);
+    if (!out) {
+      if (programMemo.size > 64) programMemo.clear();
+      out = programOf(p);
+      programMemo.set(key, out);
+    }
+    if (om) om.set(p, out);
+    return out;
+  }
+  function programOf(p) {
     const lvl = LEVEL[p.experience] != null ? LEVEL[p.experience] : 0;
     const tiers = {};
     let muscleRank = 0;
@@ -148,10 +185,16 @@
   }
   const clampInt = (x, lo, hi) => Math.max(lo, Math.min(hi, Math.round(Number(x) || lo)));
 
-  // Assign muscle units to the training days of a week: spread each unit, balance daily load.
+  // Which muscle units train on which of the week's days: the optimizer's split (src/optimizer.js),
+  // the best of every split it compares, or 1.5's when it isn't loaded.
   function templateFor(p, prog) {
+    return GH.optimizer ? GH.optimizer.template(p, prog) : templateV1(p, prog);
+  }
+  // 1.5's split, kept for the weeks planned before 1.6 (see legacyWeek): each unit in turn takes the
+  // days that keep the daily load most even, away from its own days before and after.
+  function templateV1(p, prog) {
     const D = prog.D;
-    const offsets = weekdaysFor(p);
+    const offsets = weekdaysV1(p);
     const units = Object.keys(UNIT_GROUPS).map((u) => ({
       u, f: prog.freq[u], sets: UNIT_GROUPS[u].reduce((a, g) => a + prog.start[g], 0),
     })).filter((x) => x.f > 0);
@@ -186,7 +229,18 @@
     for (const d of days) d.units.sort((a, b) => pri(a) - pri(b) || ORDER.indexOf(a) - ORDER.indexOf(b));
     return days.map((d, i) => ({ idx: i, offset: offsets[i], units: d.units }));
   }
+  // The weekdays a week's workouts fall on: the days picked (whole days 0-6, each once), or the usual
+  // spread for the count. Days picked that don't match the count (a backup from another version,
+  // a day listed twice) keep the ones there are and spread the rest (setWorkoutDays).
   function weekdaysFor(p) {
+    const D = clampInt(p.days, 2, 6);
+    const w = Array.isArray(p.weekdays) ? [...new Set(p.weekdays.map(Number).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6))] : [];
+    if (w.length === D) return w.sort((a, b) => a - b);
+    if (w.length) return setWorkoutDays(w, D).weekdays.slice().sort((a, b) => a - b);
+    return PATTERNS[D].slice();
+  }
+  // 1.5's reading, kept so weeks planned before 1.6 replay exactly as they were (see engineFrom).
+  function weekdaysV1(p) {
     const D = clampInt(p.days, 2, 6);
     const w = Array.isArray(p.weekdays) ? p.weekdays.filter((x) => x >= 0 && x <= 6) : null;
     if (w && w.length === D) return w.slice().sort((a, b) => a - b);
@@ -227,6 +281,9 @@
       feel: {}, sleepChip: {}, measurements: [], active: null, celebrated: {}, pendingLines: [],
       insightsDismissed: {}, insightsShown: {}, ai: { enabled: false, mode: 'device', reports: [], chat: [], model: null }, volWeeksDone: [], seen: {},
       place: {}, lastPlace: null,
+      // Every week is planned by the 1.6 engine (src/optimizer.js); a state saved before 1.6 gets
+      // the week after it first loads (the migration there), so earlier weeks replay as they were.
+      engineFrom: weekStart(day),
     };
     if (p.weightKg) S.weights.push({ day, kg: p.weightKg, src: 'profile' });
     initProgress(S, baseline, day);
@@ -292,8 +349,18 @@
   // Everything available at a place, in the shape moves.js checks. At a gym: its machines and
   // bars, a full dumbbell rack, benches that double as a chair, a wall and a towel.
   function eqAt(S, place) {
+    const om = opMap(S);
+    if (!om) return eqOf(S, place);
+    const k = 'eq|' + place;
+    let v = om.get(k);
+    if (!v) om.set(k, (v = eqOf(S, place)));
+    return v;
+  }
+  function eqOf(S, place) {
     const p = S.profile;
-    if (place !== 'gym') return p.equipment;
+    // A seated plan always has a seat: the wheelchair, or the chair someone who can't stand for long
+    // sits on, whatever the chair box in their kit says.
+    if (place !== 'gym') return Array.isArray(p.conditions) && p.conditions.includes('seated') && p.equipment && p.equipment.chair === false ? Object.assign({}, p.equipment, { chair: true }) : p.equipment;
     const g = Object.assign(defaultGym(), p.gym || {});
     const eq = Object.assign({}, g, { db: dbRack(g.dbMax, p.units), kb: [], ball: false, ballLb: null, ballSlam: false, band: false, chair: true, wall: true, towel: true, table: false, door: false, bar: g.bar !== false });
     delete eq.dbMax;
@@ -302,18 +369,49 @@
   const eqFor = (S, day) => eqAt(S, placeOf(S, day));
 
   function filtersFor(S, day, place) {
+    const om = opMap(S);
+    if (!om) return filtersOf(S, day, place);
+    const k = `f|${day}|${place || ''}`;
+    let v = om.get(k);
+    if (!v) om.set(k, (v = filtersOf(S, day, place)));
+    return v;
+  }
+  function filtersOf(S, day, place) {
     const p = S.profile;
     const avoid = Object.entries(S.pain || {}).filter(([, until]) => until >= day).map(([j]) => j);
     return { eq: place ? eqAt(S, place) : eqFor(S, day), noImpact: !programFor(p).impactOk, simple: S.complexity > 0, avoidJoints: avoid, careful: p.careful || [] };
   }
+  // The plan tweaks in force (S.profile.planTweaks, checked by src/optimizer.js normTweaks: unknown
+  // fields and moves are dropped). Kept for the last tweaks seen, since rungs() reads them constantly.
+  const NO_TWEAKS = Object.freeze({ sets: {}, swaps: {}, split: 'auto', rest: 'auto', finisher: 'auto', mobility: 'auto', avoid: [] });
+  let twKey = null, twVal = NO_TWEAKS;
+  function tweaksOf(S) {
+    const t = S && S.profile ? S.profile.planTweaks : null;
+    if (!t || typeof t !== 'object' || !GH.optimizer || !GH.optimizer.normTweaks) return NO_TWEAKS;
+    const k = JSON.stringify(t);
+    if (k !== twKey) { twKey = k; twVal = GH.optimizer.normTweaks(t); }
+    return twVal;
+  }
   // Rungs this person can use today (equipment, impact, complexity; careful joints drop risky rungs).
   // opts.place checks a specific place instead of the day's.
   function rungs(S, family, day, opts) {
+    const om = opMap(S);
+    if (!om) return rungsOf(S, family, day, opts);
+    const o = opts || {};
+    const k = `r|${family}|${day}|${o.place || ''}|${o.noImpact == null ? '' : +o.noImpact}|${o.simple == null ? '' : +o.simple}|${o.noRules ? 1 : 0}`;
+    let v = om.get(k);
+    if (!v) om.set(k, (v = deepFreeze(rungsOf(S, family, day, opts))));
+    return v;
+  }
+  function rungsOf(S, family, day, opts) {
     const f = filtersFor(S, day, opts && opts.place);
     const o = Object.assign({ noImpact: f.noImpact, simple: f.simple }, opts || {});
     let list = M().rungsFor(family, f.eq, { noImpact: o.noImpact, simple: o.simple });
     if (f.careful.length) list = list.filter((id) => { const m = M().MOVES[id]; return !((m.impact || m.complex) && (m.joints || []).some((j) => f.careful.includes(j))); });
     list = list.filter((id) => !(S.excluded || []).includes(id));
+    // Moves a plan tweak leaves out (Make it yours, or a suggestion you accepted).
+    const tw = tweaksOf(S);
+    if (tw.avoid.length) list = list.filter((id) => !tw.avoid.includes(id));
     // Age and health rules (src/access.js): moves a condition rules out go, and the stand-in
     // ladders stay closed until a plan needs them. opts.noRules skips this (to tell a ladder ruled
     // out by the body from one ruled out by the equipment).
@@ -324,7 +422,13 @@
   // of it out (seated band presses for push-ups with painful wrists), or a gentler one that suits
   // the person better (src/access.js).
   function famFor(S, fam, day) {
-    return GH.access ? GH.access.famFor(S, fam, day) : fam;
+    if (!GH.access) return fam;
+    const om = opMap(S);
+    if (!om) return GH.access.famFor(S, fam, day);
+    const k = `ff|${fam}|${day}`;
+    let v = om.get(k);
+    if (!v) om.set(k, (v = GH.access.famFor(S, fam, day)));
+    return v;
   }
 
   const isGymFam = (fam) => !!(M().LADDERS[fam] && M().LADDERS[fam].gym);
@@ -425,7 +529,7 @@
     return { gap, active: c.active, line };
   }
   function testDue(S, day, kind) {
-    if (GH.access && !GH.access.testsOk(S, kind)) return false;
+    if (GH.access && !GH.access.testsOk(S, kind, day)) return false;
     const c = S.catchup[kind];
     if (!c || (!c.active && !c.tests.length && !S.profile.lead[kind])) return false;
     const last = c.tests.length ? c.tests[c.tests.length - 1].day : S.profile.startDay;
@@ -464,8 +568,58 @@
   function workoutLogs(S) { return S.log.filter((l) => l.type === 'workout'); }
   function isDone(l) { return l.type === 'workout' && l.checkedIn && (l.pct || 0) >= 0.5; }
 
-  // Replays the schedule from the start date up to `today`. Pure: same inputs, same answer.
+  /* ---------------------------------------------------------------- caches */
+  // Answers worked out from the state (the calendar, the week's plan, sessions) are kept until
+  // something they read changes. stateStamp is a cheap fingerprint of every part of the state the
+  // plan reads, with the long logs cut down to what matters, so asking again costs one stamp.
+  // Cached answers are shared: treat them as read-only (tests freeze them to make sure).
+  let FREEZE = false;
+  function deepFreeze(o) {
+    if (!FREEZE || !o || typeof o !== 'object' || Object.isFrozen(o)) return o;
+    Object.freeze(o);
+    for (const v of Object.values(o)) deepFreeze(v);
+    return o;
+  }
+  function freeze(on) { FREEZE = !!on; if (GH.optimizer && GH.optimizer.freeze) GH.optimizer.freeze(on); }
+  function progStamp(S) {
+    let s = '';
+    const prog = S.prog || {};
+    for (const k of Object.keys(prog).sort()) {
+      const st = prog[k] || {};
+      s += `${k}:${st.rung}:${st.reps}:${st.w || 0}:${st.fmt || 0}:${st.cooldown || 0}${st.loads ? JSON.stringify(st.loads) : ''};`;
+    }
+    return s;
+  }
+  function stateStamp(S) {
+    let lg = '';
+    // (A workout's sets count too: the next week's plan reads what the last one trained.)
+    for (const l of S.log || []) if (l && (l.type === 'workout' || l.type === 'light')) lg += `${l.type[0]}${l.day}.${l.checkedIn ? 1 : 0}${(l.pct || 0) >= 0.5 ? 1 : 0}${l.walk ? 1 : 0}${l.mobility ? 1 : 0}${l.doneSets || 0};`;
+    const ev = (S.events || []).filter((e) => e && (e.type === 'settings' || e.type === 'move' || e.type === 'deloadNext' || e.type === 'plan'));
+    return JSON.stringify([S.profile, S.vol, S.complexity, S.pain, S.excluded, S.catchup, S.place, S.lastPlace, S.engineFrom, ev, S.customPlans, S.activePlan]) + progStamp(S) + lg;
+  }
+  // What a single day's session also reads: the health days readiness looks at, how you said you
+  // feel (a flare day too) and the sleep chip.
+  function dayStamp(S, day) {
+    const h = (S.health && S.health.days) || {};
+    const w = [];
+    for (let d = day - 14; d <= day; d++) if (h[d]) w.push(d, h[d].rhr, h[d].hrv, h[d].sleepMin, h[d].exercise);
+    return [w, S.feel && S.feel[day], S.sleepChip && S.sleepChip[day]];
+  }
+
+  // Replays the schedule from the start date up to `today`. Pure: same inputs, same answer (kept for
+  // the same state and day; read-only).
+  const calendarMemo = new WeakMap();
   function calendar(S, today) {
+    const key = today + '|' + stateStamp(S);
+    let m = calendarMemo.get(S);
+    if (m && m.has(key)) return m.get(key);
+    const out = deepFreeze(op(() => replay(S, today)));
+    if (!m) calendarMemo.set(S, (m = new Map()));
+    if (m.size > 8) m.delete(m.keys().next().value);
+    m.set(key, out);
+    return out;
+  }
+  function replay(S, today) {
     const p = S.profile;
     const start = p.startDay;
     const out = { weeks: {}, days: {}, streak: { current: 0, best: 0, weekly: 0, weeklyBest: 0, freezeThisWeek: false }, notices: [] };
@@ -482,7 +636,7 @@
     const lastWeek = weekStart(today);
     for (let ws = weekStart(start); ws <= lastWeek; ws += 7) {
       const set = settingsAt(S, ws + 6 < start ? start : Math.max(ws, start));
-      const tpl = templateFor(Object.assign({}, p, { days: set.days, weekdays: set.weekdays }), programFor(Object.assign({}, p, { days: set.days })));
+      const tpl = templateOf(S, ws, set);
       // Phase for this week, from history only.
       const idle = lastWorkoutDay != null && ws - lastWorkoutDay >= 7 + 1;
       let deload = false;
@@ -741,54 +895,162 @@
   // Distribute a group's weekly sets across the days that train it.
   function perSession(total, f, k) { const base = Math.floor(total / f); return base + (k < total - base * f ? 1 : 0); }
 
-  // Build the session for a template on a day. opts: { short, sleepChip }
-  function buildSession(S, day, tplIdx, opts) {
-    const o = opts || {};
-    // [custom plans] A custom plan's day ('c:<plan>:<day>') is built by src/customplan.js.
-    if (GH.customPlan && GH.customPlan.owns(tplIdx)) return GH.customPlan.buildSession(S, day, tplIdx, o);
+  // The settings a week's split comes from: those in force when the week starts (or on the start
+  // day), exactly as the calendar reads them, so a time change mid-week never reshuffles it.
+  function weekSettings(S, ws) {
+    const start = S.profile.startDay;
+    return settingsAt(S, start == null ? ws : ws + 6 < start ? start : Math.max(ws, start));
+  }
+  // Weeks before S.engineFrom (the week after 1.6 first ran) keep 1.5's split, so what's done and
+  // what's left of that week keep their meaning; later weeks come from the optimizer.
+  const legacyWeek = (S, ws) => S.engineFrom != null && ws < S.engineFrom;
+  // The profile and program a week's split is made from: the person as they are, with that week's
+  // days, weekdays and minutes, and how simple sessions are (fewer exercises a day).
+  function weekInputs(S, ws, set) {
+    const st = set || weekSettings(S, ws);
     const p = S.profile;
-    const prog = programFor(p);
-    const cal = o.cal || calendar(S, day);
-    const week = cal.weeks[weekStart(day)] || { phase: { mult: 1, onramp: false, deload: false } };
-    const set = settingsAt(S, day);
-    const tpl = templateFor(Object.assign({}, p, { days: set.days, weekdays: set.weekdays }), programFor(Object.assign({}, p, { days: set.days })));
-    const t = tpl[tplIdx] || tpl[0];
-    const mult = o.forceMult != null ? o.forceMult : week.phase.mult;
-    const ready = o.noReadiness ? { minus: 0, legsMinus: 0, reasons: [] } : readiness(S, day);
-    // Which occurrence of each unit this is within the week (for the remainder split).
+    return { set: st, p: Object.assign({}, p, { days: st.days, weekdays: st.weekdays, minutes: st.minutes, complexity: S.complexity || 0 }), prog: programFor(Object.assign({}, p, { days: st.days })) };
+  }
+  function templateOf(S, ws, set) {
+    const w = weekInputs(S, ws, set);
+    return legacyWeek(S, ws) || !GH.optimizer ? templateV1(w.p, w.prog) : GH.optimizer.template(w.p, w.prog);
+  }
+  // 1.5's sets for each group of a template day: the week's sets (scaled for the phase) shared out
+  // over the days that train the group. Legacy weeks keep these, before the optimizer's fit.
+  function legacyGroupSets(S, tpl, t, mult) {
+    const prog = programFor(S.profile);
     const occurrence = (unit) => tpl.slice(0, t.idx).filter((x) => x.units.includes(unit)).length;
+    const out = {};
+    for (const unit of t.units) for (const g of UNIT_GROUPS[unit]) out[g] = perSession(Math.round((S.vol[g] != null ? S.vol[g] : prog.start[g]) * mult), prog.freq[unit] || 1, occurrence(unit));
+    return out;
+  }
+  // The day plan when there is no optimizer: 1.5's split and sets.
+  function plainDayPlan(S, ws, tplIdx, mult) {
+    const tpl = templateOf(S, ws);
+    const t = tpl[tplIdx] || tpl[0] || { idx: 0, offset: 0, units: [] };
+    return { idx: t.idx, units: t.units, tplLen: tpl.length, occ: occurrences(tpl, t), legIdx: (tpl.find((x) => x.units.includes('legs')) || {}).idx, groupSets: legacyGroupSets(S, tpl, t, mult) };
+  }
+  // Which occurrence of each unit this day is within its week (rotations and remainders use it).
+  function occurrences(tpl, t) {
+    const out = {};
+    for (const u of t.units) out[u] = tpl.slice(0, t.idx).filter((x) => x.units.includes(u)).length;
+    return out;
+  }
+  // A day's slots: each of its groups' sets shared out over that group's exercises (the ladders
+  // for the unit, with their rotations, stand-ins and focus leaning).
+  function slotsOfDay(S, day, dp) {
+    const prog = programFor(S.profile);
     const slots = [];
     const atGym = placeOf(S, day) === 'gym';
-    for (const unit of t.units) {
-      const groups = UNIT_GROUPS[unit];
+    const gs = dp.groupSets || {};
+    for (const unit of dp.units) {
       if (unit === 'abs') {
-        const n = perSession(Math.round(S.vol.abs * mult), prog.freq.abs, occurrence('abs'));
-        let pair = [...new Set(CORE_ROTATION[t.idx % CORE_ROTATION.length].map((f) => famFor(S, f, day)))].filter((f) => rungs(S, f, day).length);
+        const n = gs.abs || 0;
+        if (n <= 0) continue;
+        // The core exercises rotate with the day's turn in the week and week by week, so each comes
+        // round whichever days the core is trained on.
+        const rot = ((dp.occ || {}).abs || 0) + Math.floor(weekStart(day) / 7);
+        const avail = (f) => rungs(S, f, day).length > 0;
+        let pair = [...new Set(CORE_ROTATION[rot % CORE_ROTATION.length].map((f) => famFor(S, f, day)))].filter(avail);
         // At the gym, one of the two ab slots is a cable or hanging move.
-        if (atGym && rungs(S, 'absG', day).length) pair = ['absG'].concat(pair.filter((f) => f !== 'absLoad' && f !== 'abs')).slice(0, 2);
-        if (n <= 2 || pair.length < 2) { if (pair.length) slots.push({ fam: pair[0], sets: n, group: 'abs' }); }
+        if (atGym && avail('absG')) pair = ['absG'].concat(pair.filter((f) => f !== 'absLoad' && f !== 'abs')).slice(0, 2);
+        // One or two core sets: one exercise, each core family in turn (the obliques get their share).
+        const one = atGym && avail('absG') ? pair : [...new Set(CORE_ONE.map((f) => famFor(S, f, day)))].filter(avail);
+        if (n <= 2 || pair.length < 2) { const fam = one.length ? one[rot % one.length] : pair[0]; if (fam) slots.push({ fam, sets: n, group: 'abs' }); }
         else { slots.push({ fam: pair[0], sets: Math.ceil(n / 2), group: 'abs' }); slots.push({ fam: pair[1], sets: Math.floor(n / 2), group: 'abs' }); }
         continue;
       }
       if (unit === 'arms') {
-        for (const g of groups) {
-          const n = perSession(Math.round(S.vol[g] * mult), prog.freq.arms, occurrence('arms'));
+        for (const g of UNIT_GROUPS.arms) {
+          const n = gs[g] || 0;
           const gymFam = g === 'biceps' ? 'curlG' : 'triG';
           const fam = atGym && rungs(S, gymFam, day).length ? gymFam : famFor(S, g === 'biceps' ? 'curl' : 'triceps', day);
           if (n > 0 && rungs(S, fam, day).length) slots.push({ fam, sets: n, group: g });
         }
         continue;
       }
-      const g = groups[0];
-      const n = perSession(Math.round(S.vol[g] * mult), prog.freq[unit], occurrence(unit));
-      for (const [fam, k] of slotsForUnit(unit, n, S, t.idx, day, { occ: occurrence(unit), prog })) slots.push({ fam, sets: k, group: g });
+      const g = UNIT_GROUPS[unit][0];
+      const n = gs[g] || 0;
+      if (n <= 0) continue;
+      for (const [fam, k] of slotsForUnit(unit, n, S, dp.idx, day, { occ: (dp.occ || {})[unit] || 0, prog })) slots.push({ fam, sets: k, group: g });
     }
-    // Readiness: one less set per exercise (never below 1); leg trim after another hard session.
+    // Simpler sessions (complexity 1 or 2): one exercise for each group, with all its sets (unless
+    // asked for each option, dp.multi).
+    if (S.complexity > 0 && !dp.multi) {
+      const one = [];
+      for (const sl of slots) { const same = one.find((x) => x.group === sl.group); if (same) same.sets += sl.sets; else one.push(Object.assign({}, sl)); }
+      return one;
+    }
+    return slots;
+  }
+
+  // Build the session for a template on a day. opts: { short, noReadiness, noTrim, forceMult, cal }
+  // The day's sets come from the week's plan (GH.optimizer.dayPlan), the session is built from them
+  // (realize), then fitted to its time (GH.optimizer.fit). Cached: the same state, day and options
+  // give the same session (a fresh copy each time, since callers change theirs).
+  function buildSession(S, day, tplIdx, opts) {
+    return op(() => build(S, day, tplIdx, opts));
+  }
+  function build(S, day, tplIdx, opts) {
+    const o = opts || {};
+    // [custom plans] A custom plan's day ('c:<plan>:<day>') is built by src/customplan.js.
+    if (GH.customPlan && GH.customPlan.owns(tplIdx)) return GH.customPlan.buildSession(S, day, tplIdx, o);
+    const O = GH.optimizer;
+    const ws = weekStart(day);
+    const cal = o.cal || calendar(S, day);
+    const week = (cal.weeks && cal.weeks[ws]) || { phase: { mult: 1, onramp: false, deload: false } };
+    const phase = o.forceMult != null ? Object.assign({}, week.phase, { mult: o.forceMult }) : week.phase;
+    const stamp = stateStamp(S);
+    const key = JSON.stringify([day, tplIdx, !!o.short, !!o.noReadiness, !!o.noTrim, o.forceMult == null ? null : o.forceMult, phase, dayStamp(S, day)]) + stamp;
+    const memo = sessionMemo.get(S);
+    if (memo && memo.has(key)) return JSON.parse(memo.get(key));
+    const dp = O ? O.dayPlan(S, ws, tplIdx, { phase, stamp }) : plainDayPlan(S, ws, tplIdx, phase.mult);
+    const { session, ready } = realize(S, day, dp, { short: o.short, noReadiness: o.noReadiness, phase, finisher: O ? !!dp.finisher : programFor(S.profile).finisherPerWeek >= 7 });
+    const minutes = clampInt(settingsAt(S, day).minutes || S.profile.minutes || 25, 10, 60);
+    const budget = o.short ? Math.min(13, minutes) : minutes;
+    session.budget = budget;
+    // Simpler sessions (complexity 1 or 2) have fewer exercises; the fit keeps to that too.
+    const maxItems = S.complexity > 0 ? (S.complexity === 1 ? 5 : 4) : 0;
+    if (!o.noTrim && O) O.fit(S, session, { dp, ready, phase, budget, short: !!o.short, maxItems });
+    else {
+      if (!o.noTrim) fitToBudget(S, session, budget);
+      if (maxItems) limitExercises(session, maxItems);
+    }
+    orderItems(S, session);
+    if (!session.items.length && !session.flare) lightInstead(S, session, day);
+    session.estimateMin = Math.round(estimate(S, session));
+    session.groups = groupsOf(session);
+    assignUids(session);
+    const m = memo || new Map();
+    if (!memo) sessionMemo.set(S, m);
+    if (m.size > 24) m.delete(m.keys().next().value);
+    const json = JSON.stringify(session);
+    m.set(key, json);
+    // Building can start a ladder's progress (an exercise used for the first time): the same
+    // session is kept for the state as it is now too.
+    const after = stateStamp(S);
+    if (after !== stamp) m.set(key.slice(0, key.length - stamp.length) + after, json);
+    return session;
+  }
+  const sessionMemo = new WeakMap();
+  // A day's session from its plan, before it's fitted to the time: the exercises for each group's
+  // sets, readiness, merges, the comeback, catch-up sets and tests, the warm-up (and a cool-down when
+  // mobility is a goal), supersets, and the age and health rules. o: { short, noReadiness, phase,
+  // finisher (add one, as 1.5 did on its days) }. Returns { session, ready }.
+  function realize(S, day, dp, o) {
+    const p = S.profile;
+    const prog = programFor(p);
+    const phase = o.phase || { mult: 1, onramp: false, deload: false };
+    const ready = o.noReadiness ? { minus: 0, legsMinus: 0, reasons: [] } : readiness(S, day);
+    const slots = slotsOfDay(S, day, dp);
+    // Readiness: one less set per exercise (never below 1); leg trim after another hard session. No
+    // exercise has more than 6 sets (a stand-in can take two slots' sets).
     for (const s of slots) {
+      s.sets = Math.min(SET_MAX, s.sets);
       if (ready.minus) s.sets = Math.max(1, s.sets - 1);
       if (ready.legsMinus && s.group === 'legs') s.sets = Math.max(1, s.sets - 1);
     }
-    const items = slots.map((s) => itemFor(S, s, day)).filter(Boolean);
+    const items = mergeSame(slots.map((s) => itemFor(S, s, day)).filter(Boolean));
     // Back after a break: strength and size come back quickly when training restarts (Ogasawara
     // et al. 2013), but the first session back is a little lighter so it doesn't flatten you.
     const lastDone = workoutLogs(S).filter((l) => isDone(l) && l.day < day).reduce((a, l) => Math.max(a, l.day), -Infinity);
@@ -801,40 +1063,97 @@
         if (kg != null && kg < it.load.kg) it.load = Object.assign({}, it.load, { kg, value: Math.round(toUnit(kg, unitsOf(S)) * 10) / 10, label: fmtLoad(S, kg, it.load.key, M().MOVES[it.moveId]) });
       }
     }
-    const extraLines = [];
-    // Catch-up: one extra lead-side set on arm (and leg) days.
-    const armDay = t.units.includes('arms');
-    const legDay = t.units.includes('legs');
+    // Catch-up: one extra lead-side set on arm (and leg) days (the days the plan made for them, not
+    // a day another group joins for its weekly minimum; not a day too short for one, dp.noExtras).
+    const armDay = (dp.planUnits || dp.units).includes('arms');
+    const legDay = (dp.planUnits || dp.units).includes('legs');
     const extras = [];
-    if (armDay && S.catchup.arm.active) { const x = extraItem(S, 'curl', 'arm', day); if (x) extras.push(x); }
-    if (legDay && S.catchup.leg.active) { const x = extraItem(S, 'squat', 'leg', day); if (x) extras.push(x); }
+    if (armDay && S.catchup.arm.active && !dp.noExtras) { const x = extraItem(S, 'curl', 'arm', day); if (x) extras.push(x); }
+    if (legDay && S.catchup.leg.active && !dp.noExtras) { const x = extraItem(S, 'squat', 'leg', day); if (x) extras.push(x); }
     // Tests (every 14 days, at the start of the first matching day).
     const tests = [];
-    if (armDay && testDue(S, day, 'arm') && M().rungsFor('curl', p.equipment).some((id) => M().MOVES[id].load)) tests.push(testItem(S, 'arm', day));
-    if (legDay && testDue(S, day, 'leg')) tests.push(testItem(S, 'leg', day));
+    for (const [kind, on] of [['arm', armDay], ['leg', legDay]]) {
+      const t = on && testDue(S, day, kind) ? testItem(S, kind, day) : null;
+      if (t) tests.push(t);
+    }
     // A test is a max-effort set for each side, so it stands in for one set of that ladder.
     for (const t of tests) { const it = items.find((x) => x.fam === t.fam); if (it && it.sets > 1) it.sets--; }
-    // Finisher.
-    let finisher = null;
-    const finDays = Math.min(prog.finisherPerWeek, tpl.length);
-    const finIdx = tpl.length <= 2 ? [0, 1] : finDays >= tpl.length ? tpl.map((x) => x.idx) : finDays === 2 ? [1, tpl.length - 1] : [tpl.length - 1];
-    if (!ready.noFinisher && finIdx.includes(t.idx) && !week.phase.deload && S.complexity < 2) finisher = finisherItem(S, day);
+    // A finisher here only for a conditioning goal (it's part of the point) or when a plan tweak asks
+    // for one; otherwise the fit adds one when there's time for it (GH.optimizer.fit).
+    const finisher = o.finisher && !ready.noFinisher && !phase.deload && S.complexity < 2 ? finisherFor(S, day, dp.idx) : null;
+    // A cool-down after every session when mobility is a goal or a plan tweak asks for one.
+    const tw = tweaksOf(S).mobility;
+    const cool = !o.short && tw !== 'off' && (prog.mobilityPlus || tw === 'on');
     const session = {
-      day, tpl: t.idx, units: t.units, title: templateTitle(t.units), short: !!o.short,
-      phase: week.phase, readiness: ready, warmup: warmupItems(S, day, o.short ? 1 : prog.warmupMin, items),
-      tests, items, extras, finisher, notes: [], mobility: prog.mobilityPlus ? cooldownItems(S, day, items, o.short) : [],
+      day, tpl: dp.idx, units: dp.units, title: templateTitle(dp.units), short: !!o.short,
+      phase, readiness: ready, warmup: warmupItems(S, day, o.short ? 1 : prog.warmupMin, items),
+      tests, items, extras, finisher, notes: [], mobility: cool ? cooldownItems(S, day, items, o.short) : [],
       place: placeOf(S, day), comeback,
     };
     pairSupersets(S, session);
     // Age and health (src/access.js): warm-up, balance and floor practice, power, rest, cool-down,
     // and a flare day's gentle range-of-motion session.
-    if (GH.access) GH.access.adjustSession(S, session, day, { tplIdx: t.idx, days: tpl.length, legIdx: (tpl.find((x) => x.units.includes('legs')) || {}).idx });
-    if (!o.noTrim) fitToBudget(S, session, o.short ? 13 : set.minutes || p.minutes);
-    if (S.complexity > 0) limitExercises(session, S.complexity === 1 ? 5 : 4);
-    session.estimateMin = Math.round(estimate(S, session));
-    session.groups = groupsOf(session);
-    assignUids(session);
-    return session;
+    if (GH.access) GH.access.adjustSession(S, session, day, { tplIdx: dp.idx, days: dp.tplLen || 3, legIdx: dp.legIdx });
+    return { session, ready };
+  }
+  // A finisher for the day, with the age and health limits on it (src/access.js).
+  function finisherFor(S, day, tplIdx) {
+    const f = finisherItem(S, day);
+    if (f && GH.access && GH.access.adjustFinisher) GH.access.adjustFinisher(S, f, day, tplIdx || 0);
+    return f;
+  }
+  // Running order: balance and floor practice first, then the units by priority (your top goals
+  // first, abs last), each superset's second exercise straight after its first.
+  function orderItems(S, s) {
+    const prog = programFor(S.profile);
+    const pri = (it) => {
+      if (it.skill) return -1;
+      const u = UNIT_OF[it.group];
+      if (!u) return 5;
+      return u === 'abs' ? 9 : Math.min(...UNIT_GROUPS[u].map((g) => prog.tiers[g] || 3));
+    };
+    const ord = (it) => { const u = UNIT_OF[it.group]; return u ? ORDER_UNITS.indexOf(u) : 3; };
+    const base = s.items.map((it, i) => [it, i]).sort((a, b) => pri(a[0]) - pri(b[0]) || ord(a[0]) - ord(b[0]) || a[1] - b[1]).map((x) => x[0]);
+    const out = [];
+    const seen = new Set();
+    for (const it of base) {
+      if (seen.has(it)) continue;
+      out.push(it); seen.add(it);
+      if (it.superset) {
+        const partner = base.find((x) => x !== it && x.superset && x.superset[0] === it.superset[0]);
+        if (partner && !seen.has(partner)) { out.push(partner); seen.add(partner); }
+      }
+    }
+    s.items = out;
+  }
+  const ORDER_UNITS = ['chest', 'legs', 'back', 'arms', 'shoulders', 'abs'];
+  // Two slots can end up with the same exercise: a stand-in ladder shared by two units (a supported
+  // hip hinge for the legs and the lower back), or a sore joint's swap into another ladder. For the
+  // same group they become one exercise with both slots' sets (up to 5). For another group, its
+  // sets go to that group's other exercise when it has one, so each group keeps the sets the week
+  // gave it; otherwise the exercise counts for both (`also`), with the larger of the two set counts.
+  function mergeSame(items) {
+    const out = [], dups = [];
+    for (const it of items) {
+      const same = out.find((x) => x.moveId === it.moveId || x.fam === it.fam);
+      if (same) dups.push([it, same]); else out.push(it);
+    }
+    for (const [it, same] of dups) {
+      if (it.group === same.group) { same.sets = Math.max(same.sets, Math.min(MERGE_MAX, same.sets + it.sets)); continue; }
+      const mate = out.find((x) => x !== same && x.group === it.group && x.sets < SET_MAX);
+      if (mate) { mate.sets = Math.min(SET_MAX, mate.sets + it.sets); continue; }
+      same.sets = Math.max(same.sets, Math.min(SET_MAX, it.sets));
+      if (!(same.also || []).includes(it.group)) same.also = (same.also || []).concat(it.group);
+    }
+    return out;
+  }
+  // Nothing in the day's plan can be done today (every move ruled out): it's a light day instead, a
+  // walk and the mobility flow, not an empty workout. Finished anyway, it doesn't count as one.
+  function lightInstead(S, s, day) {
+    Object.assign(s, { light: true, title: 'Light day', warmup: [], tests: [], extras: [], finisher: null, keepMobility: true });
+    const eq = eqFor(S, day);
+    s.mobility = mobilityFlow(S, day).filter((it) => M().allowed(M().MOVES[it.moveId], eq));
+    s.notes = (s.notes || []).concat({ kind: 'light', text: 'Nothing in today\'s plan suits you right now, so today is a light day: a walk and some easy mobility.' });
   }
   // Stable ids so a saved workout can point its steps back at the session's items after a reload.
   function assignUids(s) {
@@ -949,12 +1268,17 @@
   // Auto rest: 90 s after big multi-joint moves, 60 s after small ones (and inside supersets, see
   // pairSupersets). Resting over a minute gives a small extra benefit for muscle size, with nothing
   // clear past about 90 s (Singer et al. 2024).
+  // A rest a plan tweak asks for comes first, then the one picked in Settings. When both are auto,
+  // the optimizer lengthens rests in sessions with time to spare (src/optimizer.js fit).
   const COMPOUND = ['push', 'chestDb', 'press', 'squat', 'hinge', 'row', 'pull'];
   function restFor(S, fam) {
+    const tw = tweaksOf(S).rest;
+    if (tw !== 'auto') return tw;
     const pr = S.profile.prefs.rest;
     if (pr === 60 || pr === 90) return pr;
     return COMPOUND.includes(fam) ? 90 : 60;
   }
+  const autoRest = (S) => tweaksOf(S).rest === 'auto' && S.profile.prefs.rest !== 60 && S.profile.prefs.rest !== 90;
 
   // The move for a slot today: the ladder's current rung, swapped away from painful joints.
   function pickMove(S, fam, day) {
@@ -984,12 +1308,39 @@
       const alt = rungs(S, f2, day).filter((x) => !loads(x));
       if (alt.length) return { id: alt[0], swappedFrom: id, family: f2 };
     }
+    // Every ladder for the group loads the sore joint: the group's stand-in ladder (src/access.js:
+    // seated, self-resisted and supported versions), when one of its moves spares it.
+    const A = GH.access;
+    const sub = A && A.STAND_IN && A.STAND_IN[fam];
+    if (sub && M().LADDERS[sub] && sub !== fam) {
+      const list2 = rungs(S, sub, day, { noRules: true }).filter((x) => A.moveOk(S.profile, x, day) && !loads(x));
+      const st2 = S.prog[sub];
+      const id2 = st2 && list2.includes(st2.rung) ? st2.rung : (A.startRung(S, sub, list2) || list2[0]);
+      if (id2) return { id: id2, swappedFrom: id, family: sub };
+    }
     return { id: null, swappedFrom: id, dropped: true };
   }
 
+  // The move a plan tweak picked for a ladder (planTweaks.swaps), when it can be done today: one of
+  // the ladder's own rungs, or a move of another ladder for the same muscles (which it then
+  // progresses on). Never one that loads a joint on a break.
+  function pinnedFor(S, fam, day) {
+    const id = tweaksOf(S).swaps[fam];
+    const m = id && M().MOVES[id];
+    if (!m) return null;
+    const lad = (f) => M().LADDERS[f] && M().LADDERS[f].rungs.includes(id);
+    const f2 = lad(fam) ? fam : lad(m.family) ? m.family : null;
+    if (!f2 || !rungs(S, f2, day).includes(id)) return null;
+    const avoid = filtersFor(S, day).avoidJoints;
+    if ((m.joints || []).some((j) => avoid.includes(j))) return null;
+    return { id, family: f2 };
+  }
+  const isPinned = (S, id) => Object.values(tweaksOf(S).swaps).includes(id);
+
   function itemFor(S, slot, day) {
-    ensureProg(S, slot.fam, day);
-    const pick = pickMove(S, slot.fam, day);
+    const pin = pinnedFor(S, slot.fam, day);
+    ensureProg(S, pin ? pin.family : slot.fam, day);
+    const pick = pin ? { id: pin.id, swappedFrom: null, family: pin.family } : pickMove(S, slot.fam, day);
     if (!pick || !pick.id) return null;
     const m = M().MOVES[pick.id];
     const fam = pick.family || slot.fam;
@@ -997,11 +1348,13 @@
     let target = st.rung === pick.id ? st.reps : m.start;
     const [lo, hi] = rangeFor(S, m, fam);
     target = clampInt(target, lo, hi);
-    return {
+    const it = {
       kind: 'move', fam, moveId: m.id, name: m.name, group: slot.group, sets: slot.sets, target,
       timed: !!m.timed, uni: !!m.uni, rest: restFor(S, fam), load: loadInfo(S, m, day, fam),
       swappedFrom: pick.swappedFrom, superset: null,
     };
+    if (pin) it.pinned = true;
+    return it;
   }
 
   function extraItem(S, fam, kind, day) {
@@ -1014,7 +1367,7 @@
     const uni = list.filter((x) => M().MOVES[x].uni);
     let id = cur;
     const oneArm = M().ONE_ARM[cur];
-    if (!M().MOVES[cur].uni && oneArm && M().allowed(M().MOVES[oneArm], S.profile.equipment)) id = oneArm;
+    if (!M().MOVES[cur].uni && oneArm && M().allowed(M().MOVES[oneArm], eqFor(S, day)) && (!GH.access || GH.access.moveOk(S.profile, oneArm, day))) id = oneArm;
     else if (!M().MOVES[cur].uni && uni.length) id = uni.sort((a, b) => Math.abs(all.indexOf(a) - all.indexOf(cur)) - Math.abs(all.indexOf(b) - all.indexOf(cur)))[0];
     const avoid = filtersFor(S, day).avoidJoints;
     if ((M().MOVES[id].joints || []).some((j) => avoid.includes(j))) return null;
@@ -1024,25 +1377,34 @@
     const side = S.catchup[kind].side || 'L';
     return {
       kind: 'extra', fam, moveId: id, name: m.name, group: m.group, sets: 1, target, timed: !!m.timed, uni: true,
-      leadOnly: side, rest: restFor(S, fam), load: loadInfo(S, m), superset: null, extraKind: kind,
+      leadOnly: side, rest: restFor(S, fam), load: loadInfo(S, m, day), superset: null, extraKind: kind,
     };
   }
 
+  // The left vs right test's move: from the rungs this person can do today (kit at today's place,
+  // their health rules, careful joints), never one that loads a joint on a break. The arm test needs
+  // a loaded curl. null: no fair test today.
   function testItem(S, kind, day) {
     const fam = kind === 'arm' ? 'curl' : 'squat';
-    const list = M().rungsFor(fam, S.profile.equipment).filter((id) => !M().MOVES[id].timed);
-    const id = kind === 'arm' ? (list.includes('curl_std') ? 'curl_std' : list.find((x) => M().MOVES[x].load) || list[0]) : (list.includes('sq_split') ? 'sq_split' : list[0]);
+    const avoid = filtersFor(S, day).avoidJoints;
+    const list = rungs(S, fam, day).filter((id) => !M().MOVES[id].timed && !(M().MOVES[id].joints || []).some((j) => avoid.includes(j)));
+    const id = kind === 'arm' ? (list.includes('curl_std') ? 'curl_std' : list.find((x) => M().MOVES[x].load)) : (list.includes('sq_split') ? 'sq_split' : list[0]);
+    if (!id) return null;
     const m = M().MOVES[id];
-    return { kind: 'test', test: kind, fam, moveId: id, name: kind === 'arm' ? 'Left vs right curl test' : 'Left vs right leg test', load: loadInfo(S, m), side: S.catchup[kind].side || 'L' };
+    return { kind: 'test', test: kind, fam, moveId: id, name: kind === 'arm' ? 'Left vs right curl test' : 'Left vs right leg test', load: loadInfo(S, m, day), side: S.catchup[kind].side || 'L' };
   }
 
   function finisherItem(S, day) {
     // At the gym, the finisher is rowing, cycling or an incline walk when those are there.
     const fam = placeOf(S, day) === 'gym' && rungs(S, famFor(S, 'cardioG', day), day).length ? famFor(S, 'cardioG', day) : famFor(S, 'finisher', day);
-    const list = rungs(S, fam, day);
+    // Nothing that loads a joint on a break: the nearest easier interval, else none today.
+    const avoid = filtersFor(S, day).avoidJoints;
+    const all = rungs(S, fam, day);
+    const list = all.filter((x) => !(M().MOVES[x].joints || []).some((j) => avoid.includes(j)));
     if (!list.length) return null;
     const st = S.prog[fam] || {};
-    const id = list.includes(st.rung) ? st.rung : list[0];
+    const at = all.indexOf(st.rung);
+    const id = list.includes(st.rung) ? st.rung : list.filter((x) => all.indexOf(x) <= at).pop() || list[0];
     const m = M().MOVES[id];
     const lvl = list.indexOf(id);
     const formats = [[20, 40, 4], [30, 30, 4], [30, 30, 5], [40, 20, 4], [40, 20, 5]];
@@ -1083,9 +1445,10 @@
     const eq = eqFor(S, day);
     const avoid = filtersFor(S, day).avoidJoints;
     const upper = !items || !items.length || items.some((it) => UPPER.includes(it.group));
+    const skip = tweaksOf(S).avoid;
     const ids = (M().WARMUP.all || M().WARMUP.kb).filter((id) => {
       const m = M().MOVES[id];
-      return m && M().allowed(m, eq) && !(m.joints || []).some((j) => avoid.includes(j)) && (id !== 'wu_halo' || upper);
+      return m && M().allowed(m, eq) && !(m.joints || []).some((j) => avoid.includes(j)) && (id !== 'wu_halo' || upper) && !skip.includes(id);
     });
     const w = musclesOf(items);
     // (No exercises to go by: the usual whole-body three.)
@@ -1094,14 +1457,15 @@
     // Upper-body moves first, then the legs (the list's order).
     moves.sort((a, b) => ids.indexOf(a) - ids.indexOf(b));
     const pick = minutes <= 1 ? moves.slice(0, 2) : moves;
-    return pick.map((id) => { const m = M().MOVES[id]; return { kind: 'warmup', moveId: id, name: m.name, timed: !!m.timed, target: minutes <= 1 ? Math.min(m.start, 20) : m.start, load: loadInfo(S, m) }; });
+    return pick.map((id) => { const m = M().MOVES[id]; return { kind: 'warmup', moveId: id, name: m.name, timed: !!m.timed, target: minutes <= 1 ? Math.min(m.start, 20) : m.start, load: loadInfo(S, m, day) }; });
   }
   // Mobility moves this person can do on a day (the day's kit unless one is given, nothing for a
   // joint that's still sore then).
   function mobilityIds(S, day, eq) {
     const kit = eq || eqFor(S, day);
     const avoid = Object.entries(S.pain || {}).filter(([, until]) => until >= day).map(([j]) => j);
-    return M().MOBILITY.filter((id) => { const m = M().MOVES[id]; return m && M().allowed(m, kit) && !(m.joints || []).some((j) => avoid.includes(j)); });
+    const skip = tweaksOf(S).avoid;
+    return M().MOBILITY.filter((id) => { const m = M().MOVES[id]; return m && M().allowed(m, kit) && !(m.joints || []).some((j) => avoid.includes(j)) && !skip.includes(id); });
   }
   // The cool-down: two or three stretches for the muscles the day worked.
   function cooldownItems(S, day, items, short) {
@@ -1121,7 +1485,7 @@
     const d = day != null ? day : dayOf(Date.now(), prefs.rollHour != null ? prefs.rollHour : 4);
     // Moves a health condition rules out (src/access.js) never make the list.
     const A = GH.access;
-    const ids = mobilityIds(S, d, S.profile.equipment).filter((id) => !A || A.moveOk(S.profile, id, d));
+    const ids = mobilityIds(S, d, eqAt(S, 'home')).filter((id) => !A || A.moveOk(S.profile, id, d));
     const recent = workoutLogs(S).filter(isDone).sort((a, b) => b.day - a.day).slice(0, 3);
     const w = {};
     recent.forEach((l, k) => {
@@ -1143,15 +1507,19 @@
   const PREFER = [['squat', 'curl'], ['push', 'row'], ['hinge', 'triceps'], ['push', 'curl'], ['squat', 'row'], ['hinge', 'curl'], ['row', 'triceps'], ['squat', 'triceps'], ['curl', 'triceps'], ['pull', 'push'], ['rear', 'push'], ['raise', 'squat'], ['raise', 'hinge'], ['chestDb', 'row'], ['push', 'squat'], ['push', 'hinge'],
     ['press', 'row'], ['press', 'squat'], ['press', 'hinge'], ['hamCurl', 'push'], ['hamCurl', 'curl'], ['calf', 'row'], ['calf', 'curl'], ['backExt', 'push'], ['raise', 'hamCurl']];
   const conflicts = (a, b) => a.group === b.group || CONFLICT.some(([x, y]) => (x === a.fam && y === b.fam) || (x === b.fam && y === a.fam));
+  // Pairs exercises that don't share muscles. Called again on a fitted session it only pairs the
+  // exercises left on their own, with letters not in use yet.
   function pairSupersets(S, session) {
     if (!S.profile.prefs.supersets || S.complexity > 0) return;
-    const main = session.items.filter((it) => it.group !== 'abs');
-    const free = new Set(main);
+    const main = session.items.filter((it) => it.group !== 'abs' && !it.skill && it.kind === 'move');
+    const free = new Set(main.filter((it) => !it.superset));
+    const used = new Set(session.items.filter((it) => it.superset).map((it) => it.superset[0]));
+    const letters = 'ABCDEFGHIJ'.split('').filter((k) => !used.has(k));
     let tag = 0;
     // In a superset each muscle already rests through its partner's set, so auto rest stays at 60 s
     // there: that still gives every muscle about 90 s or more between its own sets.
-    const auto = S.profile.prefs.rest !== 60 && S.profile.prefs.rest !== 90;
-    const pairUp = (a, b) => { const k = 'ABCDEFG'[tag++]; a.superset = k + '1'; b.superset = k + '2'; free.delete(a); free.delete(b); if (auto) { a.rest = 60; b.rest = 60; } };
+    const auto = autoRest(S);
+    const pairUp = (a, b) => { const k = letters[tag++]; if (!k) return; a.superset = k + '1'; b.superset = k + '2'; free.delete(a); free.delete(b); if (auto) { a.rest = 60; b.rest = 60; } };
     for (const [x, y] of PREFER) {
       const a = [...free].find((it) => it.fam === x);
       const b = [...free].find((it) => it.fam === y && it !== a);
@@ -1265,7 +1633,7 @@
   }
   function unpair(s, it) {
     if (!it.superset) return;
-    const partner = s.items.find((x) => x.superset && x.superset[0] === it.superset[0]);
+    const partner = s.items.find((x) => x !== it && x.superset && x.superset[0] === it.superset[0]);
     if (partner) partner.superset = null;
     it.superset = null;
   }
@@ -1298,14 +1666,20 @@
       if (estimate(S, s) > 15) { s.items.pop(); break; }
     }
   }
+  // Simpler sessions (complexity 1 or 2): fewer exercises. The lowest-priority ones merge into an
+  // exercise for the same muscles where there is one (up to 5 sets: more of one move gets dull and
+  // sloppy), otherwise they're cut; what doesn't fit is listed in `trimmed`.
+  const MERGE_MAX = 5;
+  const SET_MAX = 6; // sets of one exercise in a session
   function limitExercises(s, max) {
-    const main = s.items;
-    if (main.length <= max) return;
-    // Merge the lowest-priority slots into same-group slots where possible, then cut.
+    if (s.items.length <= max) return;
+    s.trimmed = s.trimmed || [];
     while (s.items.length > max) {
       const last = s.items[s.items.length - 1];
       const same = s.items.find((it) => it !== last && it.group === last.group);
-      if (same) same.sets += last.sets;
+      const add = same ? Math.max(0, Math.min(last.sets, MERGE_MAX - same.sets)) : 0;
+      if (add) same.sets += add;
+      if (add < last.sets) s.trimmed.push(last.name);
       unpair(s, last);
       s.items.pop();
     }
@@ -1582,7 +1956,9 @@
     const celebrate = [];
     const planned = A.session.items.reduce((a, it) => a + it.sets, 0) + A.session.extras.length;
     const doneSets = A.logs.reduce((a, l) => a + new Set(l.sets.map((x) => x.set + (l.kind === 'extra' ? 'x' : ''))).size, 0);
-    const pct = planned ? Math.min(1, doneSets / planned) : 1;
+    // A session with no sets counts only when gentle range of motion was the point (a flare day);
+    // an empty workout (a light day in its place, see lightInstead) isn't a workout done.
+    const pct = planned ? Math.min(1, doneSets / planned) : A.session.flare ? 1 : 0;
     // 1. Reps and rungs from the per-exercise answers.
     for (let i = 0; i < A.logs.length; i++) {
       const log = A.logs[i];
@@ -1709,6 +2085,7 @@
   function progress(S, log, deload, day) {
     const m = M().MOVES[log.moveId];
     const fam = log.fam && M().LADDERS[log.fam] ? log.fam : m.family;
+    repin(S, fam, log);
     if (isGymFam(fam)) return progressGym(S, fam, log, deload, day);
     const st = S.prog[fam];
     if (!st) return {};
@@ -1772,19 +2149,32 @@
     return res;
   }
 
+  // A move a plan tweak pinned to its ladder: the ladder moves onto it the first time it's done, so
+  // its reps (or weight) progress from there like any rung's.
+  function repin(S, fam, log) {
+    const st = S.prog[fam];
+    const m = M().MOVES[log.moveId];
+    if (!st || !m || st.rung === log.moveId || !isPinned(S, log.moveId) || !M().LADDERS[fam] || !M().LADDERS[fam].rungs.includes(log.moveId)) return;
+    const [lo, hi] = rangeFor(S, m, fam);
+    Object.assign(st, { rung: log.moveId, reps: clampInt(log.target || m.start, lo, hi), short: 0, cooldown: 0 });
+  }
+
   // How many reps (or seconds) a good set adds: src/access.js makes the steps a little bigger under
   // 30 and smaller from 50.
   function stepFor(S, base, timed, rir) { return GH.access ? GH.access.repStep(S.profile, base, timed, rir) : base; }
 
   // Rep range for a move, by goal. Heavier sets build more maximal strength while muscle grows
   // about as well across a wide range of loads (Schoenfeld et al. 2017), so a strength goal moves
-  // the main gym lifts to 4-8 reps; an endurance goal moves smaller exercises up a little.
+  // the main gym lifts to 4-8 reps, and the big home moves to 5-10: a harder version comes sooner
+  // instead of ever more reps. An endurance goal moves smaller exercises up a little.
   const MAIN_LIFTS = ['pressG', 'squatG', 'hingeG', 'pullG', 'rowG', 'ohpG'];
+  const HOME_COMPOUND = ['push', 'chestDb', 'squat', 'hinge', 'row', 'pull', 'press'];
   function rangeFor(S, m, fam) {
     const [lo, hi] = m.range;
     if (m.timed) return [lo, hi];
     const top = (S.profile.goals || []).slice(0, 2);
     if (top.includes('strength') && MAIN_LIFTS.includes(fam) && m.load) return [Math.min(lo, 4), Math.max(Math.min(hi, 8), Math.min(lo, 4) + 3)];
+    if (top.includes('strength') && HOME_COMPOUND.includes(fam)) return [5, 10];
     if (top.includes('endurance') && (M().LADDERS[fam] || {}).iso) return [lo + 3, hi + 5];
     return [lo, hi];
   }
@@ -1832,7 +2222,7 @@
     // (a different bar, angle or machine). Some variation can help, rotating constantly doesn't
     // (Kassiano et al. 2022), so it happens at most once every three weeks per muscle slot.
     const hist = (st.e1rm[m.id] && st.e1rm[m.id].hist) || [];
-    if (hist.length >= 4 && !(st.rotatedAt > day - 21)) {
+    if (hist.length >= 4 && !(st.rotatedAt > day - 21) && !isPinned(S, m.id)) {
       const recent = hist.slice(-3).map((x) => x[1]);
       const before = hist[hist.length - 4][1];
       if (Math.max(...recent) <= before * 1.005) {
@@ -1909,7 +2299,8 @@
     }
     const list = rungs(S, fam, day);
     const at = list.indexOf(st.rung);
-    if (at >= 0 && at < list.length - 1 && !(st.cooldown > 0)) {
+    // A move a plan tweak picked stays: no harder rung while it's pinned.
+    if (at >= 0 && at < list.length - 1 && !(st.cooldown > 0) && !isPinned(S, st.rung)) {
       const nextId = list[at + 1];
       const nm = M().MOVES[nextId];
       st.rung = nextId;
@@ -2044,8 +2435,12 @@
     const cal = calendar(S, day);
     const week = cal.weeks[ws];
     const mult = week ? week.phase.mult : 1;
+    // The target is what the week's plan gives each group (src/optimizer.js: the weekly sets, more
+    // when there's time for them, fewer when there isn't); a custom plan's week keeps the old one.
+    const custom = week && GH.customPlan && week.sessions.some((s) => GH.customPlan.owns(s.tpl));
+    const wp = !custom && GH.optimizer && GH.optimizer.weekPlan && week ? GH.optimizer.weekPlan(S, ws, { phase: week.phase }) : null;
     const out = {};
-    for (const g of GROUPS) out[g] = { done: 0, target: Math.round(S.vol[g] * mult), planned: 0 };
+    for (const g of GROUPS) out[g] = { done: 0, target: wp && wp.perGroup[g] ? wp.perGroup[g].aim : Math.round(S.vol[g] * mult), planned: 0 };
     for (const l of workoutLogs(S)) {
       if (l.day < ws || l.day > ws + 6 || !l.checkedIn) continue;
       for (const it of l.items) {
@@ -2188,4 +2583,11 @@
   };
   // For src/access.js, which builds balance and floor-practice slots like any other.
   Object.assign(GH.brain, { itemFor, famFor, restFor, tierOf, cooldownItems });
+  // For src/optimizer.js, which plans the weeks and fits sessions to their time.
+  Object.assign(GH.brain, {
+    UNIT_GROUPS, UNIT_OF, COMPOUND, MAIN_LIFTS, HOME_COMPOUND, FAM_FOCUS, MERGE_MAX, SET_MAX,
+    realize, slotsOfDay, slotsForUnit, warmupItems, mobilityIds, finisherItem, finisherFor, pairSupersets, unpair, secsPerSet,
+    limitExercises, mergeSame, orderItems, musclesOf, trimTier, perSession, autoRest, tweaksOf, isPinned, supersetConflict: conflicts,
+    weekSettings, weekInputs, templateOf, templateV1, legacyGroupSets, occurrences, legacyWeek, stateStamp, dayStamp, progStamp, freeze, op, inOp, opToken,
+  });
 })(typeof window !== 'undefined' ? window : globalThis);
