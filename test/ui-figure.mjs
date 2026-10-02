@@ -351,6 +351,8 @@ await page.waitForTimeout(600);
 await page.evaluate(() => { window.GH.ui.S.profile.prefs.figure = 'flat'; });
 await page.evaluate(() => window.GH.ui.moveSheet('push_std'));
 await page.waitForSelector('dialog[open] .sheet-fig svg');
+// Like the 3D one, it holds its pose while the sheet is still moving (<html data-sheet-moving>).
+await page.waitForFunction(() => !document.documentElement.hasAttribute('data-sheet-moving'), null, { timeout: 5000 }).catch(() => {});
 await page.waitForTimeout(300);
 check('the flat figure moves too', await moves(page, 'dialog[open] .sheet-fig'));
 check('no console errors', errors.length === 0, errors.join('\n'));
