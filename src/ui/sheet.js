@@ -288,6 +288,10 @@
     // itself (not from a tap) Chrome would draw its focus ring round them.
     doc.body.appendChild(el);
     if (U.enhance) U.enhance(el);
+    // Its controls are placed now, in the one layout the sheet reads anyway to size itself, rather
+    // than in the next frame's read pass (core.js): placed while it slid open, a sheet with a view
+    // switch over a 3D figure drew no frames for most of a second.
+    if (U.readNow) U.readNow();
     const s = {
       el, size, scrim: el.querySelector('.gh-sheet-scrim'), panel: el.querySelector('.gh-sheet-panel'),
       grab: el.querySelector('.rf-sheet-grabber'), header: el.querySelector('.rf-sheet-header'), body: el.querySelector('.rf-sheet-body'),
