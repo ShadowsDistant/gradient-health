@@ -289,7 +289,7 @@
     S.ai.mode = v === 'api' ? 'api' : 'device';
     S.ai.enabled = S.ai.mode === 'api';
     U.save();
-    U.haptic('select');
+    if (!ev) U.haptic('select'); // a segment's change has played it already
     refreshChat();
     if (S.ai.mode === 'device' && U.checkDevice) U.checkDevice().then(() => { refreshChat(); if (!deviceGate() && GH.deviceCoach && !busy()) GH.deviceCoach.prime(U.S, U.today()); });
     if (U.route.view === 'settings' || U.route.tab === 'health') setTimeout(() => U.render(), 60);

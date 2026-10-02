@@ -960,10 +960,13 @@ public final class MainActivity extends Activity {
         }
     }
 
-    /** Plays a haptic by name (see Haptics). The view is only for phones without a vibrator to drive. */
+    /**
+     * A haptic by name on a phone without a vibrator the app can drive (Bridge.haptic plays it on the
+     * vibrator itself otherwise): the view's own touch feedback, for the UI kinds.
+     */
     void haptic(String kind) {
         View v = webView != null ? webView : root;
-        Haptics.play(this, v, kind);
+        Haptics.playOnView(this, v, kind);
     }
 
     /** API 30+ calls, isolated so older devices never load WindowInsetsController. */

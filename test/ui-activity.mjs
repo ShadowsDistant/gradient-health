@@ -142,7 +142,7 @@ await page.evaluate(() => { window.__haptics.length = 0; });
 await settle(2.95 * 60 * 1000);
 let banner = null;
 for (let i = 0; i < 20 && !banner; i++) { await settle(1000); banner = (await live()).banner; }
-check('a banner and a buzz for each mile', /^Mile 1 · 8:0\d$/.test(banner || '') && (await page.evaluate(() => window.__haptics.includes('success'))), banner);
+check('a banner and a milestone buzz for each mile', /^Mile 1 · 8:0\d$/.test(banner || '') && (await page.evaluate(() => window.__haptics.includes('milestone'))), banner);
 await settle(20000);
 
 section('Pause and resume');
@@ -213,7 +213,7 @@ await page.mouse.up();
 await settle(1500);
 f = await fake();
 const st = await S();
-check('holding for a second finishes it', f.calls.includes('actStop') && (await page.evaluate(() => window.__haptics.includes('done'))));
+check('holding for a second finishes it, with a detent as the hold is recognized', f.calls.includes('actStop') && (await page.evaluate(() => window.__haptics.includes('detent'))));
 check('it\'s saved, and the recording cleared', st.live === null && st.n === 1 && st.ids[0] === id && f.calls.includes(`actClear:${id}`));
 check('the summary opens', await page.evaluate((x) => window.GH.ui.route.view === 'activity' && window.GH.ui.route.arg === x, id));
 

@@ -298,7 +298,6 @@
     st.key = key;
     st.range = (o && o.range) || (key !== 'feel' && M(key).group === 'measure' ? 365 : 28);
     st.more = false;
-    U.haptic('tap');
     const ctl = U.sheet({ title: titleOf(key), size: 'auto', cls: 'ms-sheet', body: body(U.S, U.today()), onClose: () => { if (st.ctl === ctl) st.ctl = null; } });
     st.ctl = ctl;
     return ctl;
@@ -392,12 +391,14 @@
     const d = dayEl && dayEl.value ? B().dayFromStr(dayEl.value) : day;
     const v = readValue(key);
     if (v == null || !H().setManual(S, Math.min(U.today(), d), key, v)) {
+      U.haptic('deny');
       U.toast(v == null ? 'Enter a number first' : `Enter ${m.label.toLowerCase()} ${rangeText(key)}`, 'caution');
       return;
     }
     if (ed.ctl) ed.ctl.close('ok');
     U.commit();
     refresh();
+    U.haptic('log'); // the toast's success merges into it
     const ws = key === 'weightKg' ? B().weightStats(S, U.today()) : null;
     U.toast(`${m.label} saved`, 'positive', ws && ws.warn ? ws.warn : undefined);
     if (U.checklistCheck) U.checklistCheck();
@@ -412,7 +413,7 @@
     U.commit();
     refresh();
     const back = h.entry(S, key, day);
-    U.toast(`Removed your ${m.label.toLowerCase()}`, 'neutral', back ? `${h.SOURCE[back.src]}'s ${h.format(S, key, back.value)} is back.` : undefined, { label: 'Undo', onClick: () => { h.setManual(U.S, day, key, was); U.commit(); refresh(); } });
+    U.toast(`Removed your ${m.label.toLowerCase()}`, 'neutral', back ? `${h.SOURCE[back.src]}'s ${h.format(S, key, back.value)} is back.` : undefined, { label: 'Undo', onClick: () => { h.setManual(U.S, day, key, was); U.commit(); refresh(); U.haptic('undo'); } });
   }
   U.act.metricRemove = () => { const key = ed.key, day = ed.day; if (ed.ctl) ed.ctl.close('ok'); removeMine(key, day); };
   U.act.metricDelete = (el) => removeMine(st.key, Number(el.dataset.arg));
@@ -424,6 +425,6 @@
     H().removeManual(U.S, d, 'exercise', i);
     U.commit();
     refresh();
-    U.toast('Activity removed', 'neutral', undefined, { label: 'Undo', onClick: () => { H().logManual(U.S, d, { exercise: { typeName: x.typeName, minutes: x.minutes } }); U.commit(); refresh(); } });
+    U.toast('Activity removed', 'neutral', undefined, { label: 'Undo', onClick: () => { H().logManual(U.S, d, { exercise: { typeName: x.typeName, minutes: x.minutes } }); U.commit(); refresh(); U.haptic('undo'); } });
   };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -611,7 +611,9 @@
   U.renderAccessory = renderAccessory;
 
   /* ---------------------------------------------------------------- haptics */
-  U.haptic = (kind) => { const p = P(); if (p && p.haptic) p.haptic(kind); };
+  // U.haptic(kind, o): o.consequence marks a haptic that follows an action's own (a toast after a
+  // switch), which then keeps its feel (see platform.js).
+  U.haptic = (kind, o) => { const p = P(); if (p && p.haptic) p.haptic(kind, o); };
 
   /* ---------------------------------------------------------------- events */
   function dispatch(map, el, ev, value) {
@@ -620,56 +622,102 @@
     if (!fn) return;
     try { fn(el, ev, value); } catch (e) { if (G.console) G.console.error(e); U.toast('Something went wrong', 'critical'); }
   }
+  // After the next frame is drawn: a frame, then a task (a hidden page draws no frames, hence the
+  // timer as well; whichever comes first).
+  function afterFrame(fn) {
+    let done = false;
+    const run = () => { if (!done) { done = true; fn(); } };
+    if (G.requestAnimationFrame) G.requestAnimationFrame(() => setTimeout(run, 0));
+    setTimeout(run, 100);
+  }
+  // A stepper's or slider's value at (or past) its end: a firmer edge instead of a tick.
+  const atEnd = (t) => {
+    const v = parseFloat(t.value), lo = parseFloat(t.min), hi = parseFloat(t.max);
+    return isFinite(v) && ((isFinite(lo) && v <= lo) || (isFinite(hi) && v >= hi));
+  };
+  const lastValue = new WeakMap(); // a slider → the value it last ticked at
+  /* The haptics that come with a control by themselves (the controls in controls.js play their own
+   * press, detent and tick while held and dragged; chip choices their select):
+   * - data-haptic="<kind>" on a [data-act] element plays that kind on its click;
+   * - a segment, radio or switch change plays select, toggleOn or toggleOff, and a toggle chip
+   *   toggleOn or toggleOff;
+   * - a stepper ticks with each step of its value (held down too: it repeats without clicks), and a
+   *   slider with each step it passes, both with an edge at the end;
+   * - dialogs: heavy on a destructive OK, back on cancel (see U.dialog).
+   * A segment's, switch's or chip choice's change runs its data-on handler after the next frame,
+   * so the thumb or knob is already on its way (and the haptic played) before a re-render can hold
+   * up the page. data-sync on the control (or its data-on element) runs it at once instead. */
   function wire() {
     doc.addEventListener('click', (e) => {
-      if (e.target.closest && e.target.closest('.rf-stepper-btn')) U.haptic('tick');
       const el = e.target.closest && e.target.closest('[data-act]');
       if (!el || el.disabled || el.getAttribute('aria-disabled') === 'true') return;
       if (P()) P().unlockAudio();
+      if (el.hasAttribute('data-haptic')) U.haptic(el.getAttribute('data-haptic'));
       dispatch(U.act, el, e);
     });
     const onChange = (e) => {
       const t = e.target;
-      if (t.matches && t.matches('.rf-segment input, .ob-radio')) U.haptic('select');
-      else if (t.matches && t.matches('input[role="switch"]')) U.haptic(t.checked ? 'toggleOn' : 'toggleOff');
-      const el = t.closest && t.closest('[data-on]');
+      if (!t.matches) return;
+      const seg = t.matches('.rf-segment input');
+      const sw = !seg && t.matches('input[role="switch"]');
+      if (seg || t.matches('.ob-radio')) U.haptic('select');
+      else if (sw) U.haptic(t.checked ? 'toggleOn' : 'toggleOff');
+      const el = t.closest('[data-on]');
       if (!el) return;
       const v = t.type === 'checkbox' ? t.checked : t.type === 'number' || t.type === 'range' ? parseFloat(t.value) : t.value;
-      dispatch(U.on, el, e, v);
+      const later = (seg || sw || t.matches('.gh-chipseg > [role="radio"]')) && !t.hasAttribute('data-sync') && !el.hasAttribute('data-sync');
+      if (later) afterFrame(() => dispatch(U.on, el, e, v));
+      else dispatch(U.on, el, e, v);
     };
     doc.addEventListener('change', onChange);
     doc.addEventListener('rf-toggle', (e) => {
+      const d = e.detail;
+      if (!d || !('pressed' in d)) return;
+      if (e.target.closest && e.target.closest('.rf-chip')) U.haptic(d.pressed ? 'toggleOn' : 'toggleOff');
       const el = e.target.closest && e.target.closest('[data-on]');
-      if (e.target.closest && e.target.closest('.rf-chip')) U.haptic('select');
-      if (el && e.detail && 'pressed' in e.detail) dispatch(U.on, el, e, e.detail.pressed);
+      if (el) dispatch(U.on, el, e, d.pressed);
     });
-    // Sliders tick as they pass each step.
     doc.addEventListener('input', (e) => {
       const t = e.target;
-      if (t.type === 'range' && t.dataset.lastTick !== t.value) { t.dataset.lastTick = t.value; U.haptic('tick'); }
+      if (t.type === 'range') {
+        if (lastValue.get(t) === t.value) return;
+        lastValue.set(t, t.value);
+        U.haptic(atEnd(t) ? 'edge' : 'tick');
+      } else if (!e.isTrusted && t.classList && t.classList.contains('rf-stepper-value')) {
+        // A stepper's own step (typing in it is the keyboard's business).
+        U.haptic(atEnd(t) ? 'edge' : 'tick');
+      }
     });
   }
 
   /* ---------------------------------------------------------------- dialogs, toasts */
   // Sheets (U.sheet, U.topSheet, U.closeSheets) live in sheet.js.
+  // A dialog's answer has a feel of its own: heavy for a destructive choice (the moment it's made, not
+  // when the dialog opens), back for cancelling it (Cancel, Esc, a tap outside, Android Back). Other
+  // choices leave it to what they do.
+  function dialogHaptic(o, v) {
+    const a = (o.actions || []).find((x) => String(x.value != null ? x.value : x.label) === String(v));
+    if (a && a.tone === 'critical') U.haptic('heavy');
+    else if (!a || a.value === 'cancel') U.haptic('back');
+  }
   U.dialog = (o) => {
     const r = R();
-    if (r && r.dialog) return r.dialog.open(o);
+    if (r && r.dialog) return r.dialog.open(o).then((v) => { dialogHaptic(o, v); return v; });
     const labels = (o.actions || []).map((a) => a.label);
     return Promise.resolve(G.confirm(`${o.title}\n${o.message || ''}`) ? (o.actions || []).slice(-1)[0].value : 'cancel').then((v) => v || labels);
   };
   // cancelLabel names the safe choice when "Cancel" would be confusing (cancelling a workout).
-  U.confirm = (title, message, label, tone, icon, cancelLabel) => {
-    if (tone === 'critical') U.haptic('heavy');
-    return U.dialog({
-      title, message, icon, tone: tone === 'critical' ? 'critical' : undefined,
-      actions: [{ label: cancelLabel || 'Cancel', value: 'cancel', variant: 'gray', autofocus: true }, { label, value: 'ok', variant: 'filled', tone: tone || 'accent' }],
-    }).then((v) => v === 'ok');
-  };
+  U.confirm = (title, message, label, tone, icon, cancelLabel) => U.dialog({
+    title, message, icon, tone: tone === 'critical' ? 'critical' : undefined,
+    actions: [{ label: cancelLabel || 'Cancel', value: 'cancel', variant: 'gray', autofocus: true }, { label, value: 'ok', variant: 'filled', tone: tone || 'accent' }],
+  }).then((v) => v === 'ok');
+  // A toast's haptic is a consequence of what was just done: a success merges into that action's own
+  // feel, and a warning or an error waits for it to end (platform.js).
   U.toast = (title, tone, message, action) => {
-    if (tone === 'positive') U.haptic('success');
-    else if (tone === 'critical') U.haptic('error');
-    else if (tone === 'caution') U.haptic('warning');
+    const after = { consequence: true };
+    if (tone === 'positive') U.haptic('success', after);
+    else if (tone === 'critical') U.haptic('error', after);
+    else if (tone === 'caution') U.haptic('warning', after);
     const r = R();
     if (r && r.toast) { try { return r.toast({ title, message, tone: tone || 'neutral', action, position: 'top' }); } catch (e) { /* ignore */ } }
     return null;

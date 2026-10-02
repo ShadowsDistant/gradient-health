@@ -270,7 +270,7 @@
     if (p && !C().countItems(p) && C().activeId(S) !== id) { C().remove(S, id, U.today()); U.save(); }
   }
   U.act.openPlans = () => U.open('plans');
-  U.act.cpOpen = (el) => { U.haptic('tap'); U.open('planEdit', el.dataset.arg); };
+  U.act.cpOpen = (el) => U.open('planEdit', el.dataset.arg); // the page's opening has its own haptic
 
   /* ================================================================== new plan */
   U.act.cpNew = () => {
@@ -461,8 +461,8 @@
       </ul>`,
     });
     const done = () => ctl.close('ok');
-    U.act.cpDayMove = (b) => { const [a, dir] = b.dataset.arg.split(':').map(Number); done(); edit((p) => { const [d] = p.days.splice(a, 1); p.days.splice(a + dir, 0, d); }); U.haptic('select'); };
-    U.act.cpDayCopy = (b) => { const a = Number(b.dataset.arg); done(); edit((p) => { p.days.splice(a + 1, 0, JSON.parse(JSON.stringify(p.days[a]))); }); delete ui.wd[plan.id]; U.haptic('select'); };
+    U.act.cpDayMove = (b) => { const [a, dir] = b.dataset.arg.split(':').map(Number); done(); edit((p) => { const [d] = p.days.splice(a, 1); p.days.splice(a + dir, 0, d); }); U.haptic('drop'); };
+    U.act.cpDayCopy = (b) => { const a = Number(b.dataset.arg); done(); edit((p) => { p.days.splice(a + 1, 0, JSON.parse(JSON.stringify(p.days[a]))); }); delete ui.wd[plan.id]; U.haptic('log'); };
     U.act.cpDayDelete = (b) => {
       const a = Number(b.dataset.arg);
       done();
@@ -471,7 +471,7 @@
       edit((p) => { p.days.splice(a, 1); p.weekdays = null; });
       delete ui.wd[plan.id];
       U.haptic('heavy');
-      U.toast('Day deleted', 'neutral', undefined, { label: 'Undo', onClick: () => { if (U.route.arg === plan.id) edit((p) => { p.days = before; p.weekdays = wdBefore; }); } });
+      U.toast('Day deleted', 'neutral', undefined, { label: 'Undo', onClick: () => { if (U.route.arg === plan.id) { edit((p) => { p.days = before; p.weekdays = wdBefore; }); U.haptic('undo'); } } });
     };
   };
 
@@ -531,7 +531,7 @@
       if (k + dir < 0 || k + dir >= n) return;
       edit((p) => { const list = p.days[di].items; const [x] = list.splice(k, 1); list.splice(k + dir, 0, x); });
       k += dir;
-      U.haptic('select');
+      U.haptic('drop');
       ctl.update(body());
       drawThumbs(ctl.el);
     };
@@ -543,7 +543,7 @@
       ctl.close('ok');
       edit((p) => { p.days[di].items.splice(at, 1); });
       U.haptic('heavy');
-      U.toast(`Removed ${M().MOVES[it.move].name.toLowerCase()}`, 'neutral', undefined, { label: 'Undo', onClick: () => { if (U.route.arg === planId) edit((p) => { if (p.days[di]) p.days[di].items.splice(at, 0, it); }); } });
+      U.toast(`Removed ${M().MOVES[it.move].name.toLowerCase()}`, 'neutral', undefined, { label: 'Undo', onClick: () => { if (U.route.arg === planId) { edit((p) => { if (p.days[di]) p.days[di].items.splice(at, 0, it); }); U.haptic('undo'); } } });
     };
     U.act.cpReplace = () => { ctl.close('ok'); picker(planId, di, k); };
   }
@@ -565,7 +565,7 @@
         const to = k + (ev.key === 'ArrowUp' ? -1 : 1);
         if (to < 0 || to >= list.children.length) return;
         edit((p) => { const items = p.days[di].items; const [x] = items.splice(k, 1); items.splice(to, 0, x); });
-        U.haptic('select');
+        U.haptic('tick');
         const again = doc.querySelector(`#screen .cp-grip[data-grip="${di}:${to}"]`);
         if (again) again.focus();
       });
@@ -583,7 +583,7 @@
       try { g.setPointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
       row.setAttribute('data-lifted', '');
       list.setAttribute('data-dragging', '');
-      U.haptic('heavy');
+      U.haptic('grab');
       const move = (e) => {
         if (e.pointerId !== d.id) return;
         const dy = e.clientY - d.y0;
@@ -596,7 +596,7 @@
         d.rects.forEach((r, i) => { if (i !== d.k && mid > r.top + r.height / 2) to++; });
         if (to !== d.to) {
           d.to = to;
-          U.haptic('select');
+          U.haptic('tick');
           d.rows.forEach((r, i) => {
             if (i === d.k) return;
             const shift = d.k < to && i > d.k && i <= to ? -d.h : d.k > to && i >= to && i < d.k ? d.h : 0;
@@ -612,9 +612,9 @@
         for (const r of d.rows) r.style.transform = '';
         row.removeAttribute('data-lifted');
         list.removeAttribute('data-dragging');
-        if (e.type !== 'pointercancel' && d.to !== d.k) {
-          edit((p) => { const items = p.days[d.di].items; const [x] = items.splice(d.k, 1); items.splice(d.to, 0, x); });
-          U.haptic('success');
+        if (e.type !== 'pointercancel') {
+          if (d.to !== d.k) edit((p) => { const items = p.days[d.di].items; const [x] = items.splice(d.k, 1); items.splice(d.to, 0, x); });
+          U.haptic('drop');
         }
       };
       g.addEventListener('pointermove', move);
@@ -700,7 +700,7 @@
         st.added.splice(mine, 1);
         U.haptic('toggleOff');
       } else {
-        if (have.length >= C().LIMITS.items) { U.toast(`A day holds up to ${C().LIMITS.items} exercises`, 'caution'); return; }
+        if (have.length >= C().LIMITS.items) { U.haptic('deny'); U.toast(`A day holds up to ${C().LIMITS.items} exercises`, 'caution'); return; }
         edit((p) => { p.days[di].items.push(item); });
         st.added.push(id);
         U.haptic('toggleOn');
@@ -721,11 +721,11 @@
     const plan = C().get(S, id);
     const before = C().activeId(S);
     const r = C().use(S, id, day);
-    if (!r) { U.toast('Finish the plan first', 'caution', C().problems(plan)[0]); return; }
+    if (!r) { U.haptic('deny'); U.toast('Finish the plan first', 'caution', C().problems(plan)[0]); return; }
     U.save(true);
     U.render();
     U.haptic('success');
-    U.toast(`Using ${plan.name}`, 'positive', r.from > day ? 'It starts tomorrow.' : 'Today and the Plan tab follow it now.', { label: 'Undo', onClick: () => { C().use(U.S, before, U.today()); U.save(true); U.render(); } });
+    U.toast(`Using ${plan.name}`, 'positive', r.from > day ? 'It starts tomorrow.' : 'Today and the Plan tab follow it now.', { label: 'Undo', onClick: () => { C().use(U.S, before, U.today()); U.save(true); U.render(); U.haptic('undo'); } });
   };
   U.act.cpCoach = () => {
     const S = U.S, day = U.today();
@@ -735,7 +735,7 @@
     U.save(true);
     U.render();
     U.haptic('toggleOff');
-    U.toast('Back to the coach\'s plan', 'neutral', r && r.from > day ? 'From tomorrow.' : 'It picks up from today.', { label: 'Undo', onClick: () => { C().use(U.S, before, U.today()); U.save(true); U.render(); } });
+    U.toast('Back to the coach\'s plan', 'neutral', r && r.from > day ? 'From tomorrow.' : 'It picks up from today.', { label: 'Undo', onClick: () => { C().use(U.S, before, U.today()); U.save(true); U.render(); U.haptic('undo'); } });
   };
   U.act.cpMenu = (el) => {
     const id = el.dataset.arg;
@@ -765,7 +765,7 @@
       const token = C().remove(U.S, id, U.today());
       U.save(true);
       if (U.route.view === 'planEdit' && U.route.arg === id) U.back(); else U.render();
-      U.toast('Plan deleted', 'neutral', undefined, { label: 'Undo', onClick: () => { C().restore(U.S, token, U.today()); U.save(true); U.render(); } });
+      U.toast('Plan deleted', 'neutral', undefined, { label: 'Undo', onClick: () => { C().restore(U.S, token, U.today()); U.save(true); U.render(); U.haptic('undo'); } });
     };
   };
 
@@ -776,7 +776,7 @@
     const S = U.S;
     const plan = C().get(S, el.dataset.arg || U.route.arg);
     if (!plan) return;
-    if (C().problems(plan).length) { U.toast('Finish the plan first', 'caution', C().problems(plan)[0]); return; }
+    if (C().problems(plan).length) { U.haptic('deny'); U.toast('Finish the plan first', 'caution', C().problems(plan)[0]); return; }
     const name = firstName();
     const st = { withName: !!name, data: null, error: null };
     const code = () => (st.data ? C().link(st.data) : '');
@@ -965,7 +965,7 @@
       if (!q) return;
       const v = q.value.trim();
       q.value = v ? `${v.replace(/[,.\s]+$/, '')}, ${b.dataset.arg.toLowerCase()}` : b.dataset.arg;
-      U.haptic('select');
+      U.haptic('tick');
     };
     U.act.cpBuildGo = async () => {
       const q = doc.getElementById('cpAskQ');

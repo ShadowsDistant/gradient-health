@@ -472,7 +472,7 @@
         if (unticked) { light.walk = true; light.walkSrc = 'activity'; }
         U.save(true);
         U.render();
-        U.haptic('success');
+        U.haptic('undo');
       },
     });
   };
@@ -561,7 +561,7 @@
     return res;
   }
   U.actWatchCheck = watchCheck;
-  U.act.actWatch = (el) => { const a = A().get(U.S, el.dataset.arg); if (a) { U.haptic('tap'); watchCheck(a, false); } };
+  U.act.actWatch = (el) => { const a = A().get(U.S, el.dataset.arg); if (a) watchCheck(a, false); }; // what it finds plays its own
   async function saveHc(a, quiet) {
     const S = U.S;
     if (!a || busy.save[a.id]) return;

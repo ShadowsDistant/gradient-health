@@ -232,7 +232,7 @@
   U.onboardBack = () => {
     stopPlank();
     if (mode === 'one') { close(); return true; }
-    if (go(-1)) { U.haptic('tap'); return true; }
+    if (go(-1)) { U.haptic('back'); return true; }
     if (mode === 'edit') { close(); return true; }
     return false;
   };
@@ -286,14 +286,14 @@
     errs = CHECK[cur] ? CHECK[cur]() : {};
     const keys = Object.keys(errs);
     if (!keys.length) return true;
-    U.haptic('warning');
+    U.haptic('deny');
     draw();
     const el = U.els().onboardEl.querySelector(`[data-k="${keys[0]}"]`);
     if (el) { el.focus({ preventScroll: true }); el.scrollIntoView({ block: 'center', behavior: U.reduced() ? 'auto' : 'smooth' }); }
     return false;
   }
-  U.act.obNext = () => { stopPlank(); if (!valid()) return; U.haptic('tap'); go(1); };
-  U.act.obSkipTest = () => { stopPlank(); Q._base = { pushups: null, knees: false, plankSec: null, curlL: null, curlR: null }; errs = {}; U.haptic('tap'); go(1); };
+  U.act.obNext = () => { stopPlank(); if (!valid()) return; U.haptic('nav'); go(1); };
+  U.act.obSkipTest = () => { stopPlank(); Q._base = { pushups: null, knees: false, plankSec: null, curlL: null, curlR: null }; errs = {}; U.haptic('nav'); go(1); };
   U.act.obBack = () => { U.onboardBack(); };
 
   /* ---------------------------------------------------------------- generic answer binding */
@@ -524,7 +524,7 @@
     if (Q && el.dataset && el.dataset.list === 'weekdays') {
       const r = B().pickWeekday(Q.days, Q.weekdays, Number(el.dataset.v), !!v);
       Q.days = r.days; Q.weekdays = r.weekdays; dayNote = r.note;
-      if (r.note === 'max') U.haptic('warning');
+      if (r.note === 'max') U.haptic('deny');
       draw();
       return;
     }
