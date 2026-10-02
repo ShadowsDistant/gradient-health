@@ -324,7 +324,9 @@
   // The navigation bar across a route change. Before: what each part (title, leading and trailing
   // buttons) shows and where. After: a part that changed leaves as a copy fading out where it was,
   // and the new one fades in, a little from the side the page is coming from. A title with nothing
-  // to show (the new page is at its top) goes at once, so its new words never fade out.
+  // to show (the new page is at its top) goes at once, so its new words never fade out. The copies
+  // go in a stand-in for the bar laid over it (its classes, none of its content or its id), so the
+  // bar itself only ever holds what it shows now.
   const BAR = [['.rf-navbar-leading', false], ['.rf-navbar-title', true], ['.rf-navbar-trailing', false]];
   // What a part shows: the title's words, or which buttons (by what they do and say, so a button
   // whose state alone changed isn't taken for a new one).
@@ -349,17 +351,24 @@
       // A title slides a little; buttons shrink or grow in place, each by itself.
       const pieces = (el, title) => (title ? [el] : Array.from(el.children));
       const look = (title) => `translateX(${dir * 10}px)${title ? '' : ' scale(.8)'}`;
+      let holder = null;
+      const leaving = [];
       for (const p of parts) {
         if (!p.el.isConnected || showing(p.el, p.title) === p.was) continue;
         if (p.copy) {
+          if (!holder) {
+            holder = bar.cloneNode(false);
+            holder.removeAttribute('id');
+            holder.classList.add('motion-copy');
+            shield(holder);
+            aside(() => bar.parentNode.appendChild(holder));
+          }
           const c = p.copy;
           c.classList.add('motion-copy');
           Object.assign(c.style, { position: 'absolute', margin: '0', left: `${p.r.left - box.left}px`, top: `${p.r.top - box.top}px`, width: `${p.r.width}px`, height: `${p.r.height}px`, opacity: '1', translate: 'none', transition: 'none' });
           shield(c);
-          aside(() => bar.appendChild(c));
-          const a = [];
-          for (const x of pieces(c, p.title)) a.push(...show(x, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: look(p.title) }], { duration: 180, easing: t.standard, fill: 'forwards' }));
-          track(Promise.all(a.map(ended)).then(() => c.remove()));
+          aside(() => holder.appendChild(c));
+          for (const x of pieces(c, p.title)) leaving.push(...show(x, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: look(p.title) }], { duration: 180, easing: t.standard, fill: 'forwards' }));
         }
         if (isShown(bar, p.el, p.title)) {
           // The title's own fade (data-scrolled) already brings it in when it wasn't showing.
@@ -370,6 +379,7 @@
           for (const a of p.el.getAnimations()) if (a.transitionProperty) a.finish();
         }
       }
+      if (holder) { const h = holder; track(Promise.all(leaving.map(ended)).then(() => h.remove())); }
     };
   };
 

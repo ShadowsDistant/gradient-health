@@ -260,18 +260,20 @@ section('The bar\'s title cross-fades');
     await new Promise((res) => setTimeout(res, 500));
     const was = { scrolled: bar.hasAttribute('data-scrolled'), title: bar.querySelector('.rf-navbar-title').textContent };
     U.open('settings');
-    const copy = Array.from(bar.querySelectorAll('.motion-copy')).find((c) => c.classList.contains('rf-navbar-title'));
+    // The copies leave from a stand-in laid over the bar: the bar holds only what it shows now.
+    const copy = Array.from(document.querySelectorAll('.motion-copy')).find((c) => c.classList.contains('rf-navbar-title'));
     const title = bar.querySelector(':scope > .rf-navbar-title');
-    const out = { was, copy: copy ? copy.textContent : null, copyInert: copy ? copy.inert : null, copyFades: copy ? m.anims(copy).some((a) => m.frames(a).slice(-1)[0].opacity === '0' || m.frames(a).slice(-1)[0].opacity === 0) : false, now: title.textContent };
+    const out = { was, copy: copy ? copy.textContent : null, copyInert: copy ? copy.inert : null, copyFades: copy ? m.anims(copy).some((a) => m.frames(a).slice(-1)[0].opacity === '0' || m.frames(a).slice(-1)[0].opacity === 0) : false, now: title.textContent, inBar: bar.querySelectorAll('.motion-copy').length, coach: !!bar.querySelector('.rf-navbar-leading .coach-btn') };
     // The new page is at its top: its title isn't shown, and doesn't fade out with the new words.
     out.titleRunning = title.getAnimations().filter((a) => a.playState === 'running' && a.transitionProperty === 'opacity').length;
     await U.motion.settled();
     await new Promise((res) => setTimeout(res, 100));
-    out.left = bar.querySelectorAll('.motion-copy').length;
+    out.left = document.querySelectorAll('.motion-copy').length;
     return out;
   });
   check('the old title was showing (the page was scrolled)', r.was.scrolled && r.was.title === 'Health', r.was);
   check('a copy of the old title fades out where it was', r.copy === 'Health' && r.copyInert && r.copyFades, r);
+  check('the bar itself has only the new page\'s parts (Back, not the coach)', r.inBar === 0 && !r.coach, r);
   check('the bar has the new title at once, not fading out', r.now === 'Settings' && r.titleRunning === 0, r);
   check('the copies are gone once it ends', r.left === 0, r.left);
   await page.evaluate(() => window.GH.ui.back());
