@@ -325,7 +325,15 @@
     const s = lt ? lt.offsetTop + lt.offsetHeight - 8 - screen.scrollTop < barH : screen.scrollTop > 2;
     if (s !== scrolled) { scrolled = s; topbar.toggleAttribute('data-scrolled', s); }
   }
-  function onScroll() { if (!scrollFrame) scrollFrame = G.requestAnimationFrame(updateScrolled); }
+  // While the page scrolls, the glow behind it holds still (src/styles/perf.css): one moving layer
+  // less for every frame of a fling. It drifts on 150 ms after the last scroll.
+  let scrollIdle = 0;
+  function onScroll() {
+    if (!scrollFrame) scrollFrame = G.requestAnimationFrame(updateScrolled);
+    if (scrollIdle) clearTimeout(scrollIdle);
+    else root.setAttribute('data-scrolling', '');
+    scrollIdle = setTimeout(() => { scrollIdle = 0; root.removeAttribute('data-scrolling'); }, 150);
+  }
 
   function applyNavbar(nb) {
     const part = (sel) => (nb ? nb.querySelector(sel) : null);
@@ -436,8 +444,51 @@
     if (G.console) G.console.error(e);
     return `<div class="section"><div class="card"><p class="t-headline">Something went wrong drawing this screen.</p><p class="t-footnote rf-muted">${U.esc(e && e.message)}</p><button class="rf-btn" data-act="goToday">Back to Today</button></div></div>`;
   }
-  function enhance(el) { const r = R(); if (r && r.init) safe(() => r.init(el)); }
-  U.enhance = enhance;
+  /* Refract's init() wires up its controls (switches, segments, steppers, chips, glass and lenses,
+   * icons) in an element, looking through it once for each kind. A patch only needs that for the
+   * nodes it inserted, so instead of Refract's own observer (which looked through every inserted
+   * node again, after the whole screen had been looked through) one observer here collects the
+   * inserted nodes. enhance() initializes the ones a patch just inserted, and only those that carry
+   * something Refract handles; nodes inserted any other way (sheets, dialogs, toasts, a part added
+   * by hand) are initialized when the observer reports them, as before. */
+  // What init() handles: the `auto` list in vendor/refract/bundle.js, plus glass, data-rf
+  // behaviours and icon placeholders.
+  const RF_SEL = '.rf-glass, [data-rf], [data-icon]:not(svg), .rf-switch, .rf-slider, .rf-stepper, .rf-search, .rf-chip, .rf-playpause, .rf-tabbar, .rf-segmented, .rf-pagedots, .rf-navbar, .rf-scroll-edge[data-watch], .rf-sidebar, .rf-toolbar, .rf-menu[popover], .rf-popover[popover], .rf-menu[id], .rf-popover[id], dialog.rf-dialog, .rf-sheet, .rf-activity, [data-rf-tooltip], [data-reveal], .rf-loupe, .rf-droplets, [data-rf-morph], [data-rf-tone], [data-rf-adapt]';
+  let rfObserver = null;
+  function initAdded(records) {
+    const r = R();
+    if (!r || !r.init || !records.length) return;
+    const done = new Set();
+    for (const rec of records) {
+      for (const n of rec.addedNodes) {
+        if (n.nodeType !== 1 || !n.isConnected || !(n.matches(RF_SEL) || n.querySelector(RF_SEL))) continue;
+        let inDone = false;
+        for (let p = n.parentElement; p && !inDone; p = p.parentElement) inDone = done.has(p);
+        if (inDone) continue; // inside a node initialized just now
+        done.add(n);
+        safe(() => r.init(n));
+      }
+    }
+  }
+  function enhance(el) {
+    const r = R();
+    if (!r || !r.init) return;
+    if (rfObserver) initAdded(rfObserver.takeRecords());
+    else safe(() => r.init(el)); // before boot() starts the observer
+  }
+  // For other code: el is looked through as a whole when nothing was inserted in it since the last
+  // pass (it was changed some other way).
+  U.enhance = (el) => {
+    const recs = rfObserver ? rfObserver.takeRecords() : [];
+    initAdded(recs);
+    const touched = recs.some((x) => el.contains(x.target) || Array.prototype.includes.call(x.addedNodes, el));
+    if (!touched) { const r = R(); if (r && r.init) safe(() => r.init(el)); }
+  };
+  function observeInserts() {
+    if (!G.MutationObserver || rfObserver) return;
+    rfObserver = new G.MutationObserver(initAdded);
+    rfObserver.observe(doc.body, { childList: true, subtree: true });
+  }
 
   const tabIndex = (t) => TABS.findIndex((x) => x[0] === t);
   function go(tab) {
@@ -584,6 +635,17 @@
     document.dispatchEvent(new CustomEvent('gh-change'));
   };
   U.commit = () => { U.save(); render(); };
+  // For background triggers (a sync that ended, the day rolling over, the app coming back): one
+  // render at the next frame however many ask, none while the page is hidden (it runs once it's
+  // shown again), and none under the player or set-up.
+  let renderFrame = 0;
+  U.renderSoon = () => {
+    if (renderFrame || !G.requestAnimationFrame) return;
+    renderFrame = G.requestAnimationFrame(() => {
+      renderFrame = 0;
+      if (U.S && U.S.profile.onboarded && playerEl.hidden && onboardEl.hidden) render();
+    });
+  };
 
   /* ---------------------------------------------------------------- back button */
   function onBack() {
@@ -611,16 +673,18 @@
     if (!S || !GH.health) return Promise.resolve(null);
     const manual = reason === true || reason === 'manual';
     const st = GH.health.status();
+    const stChanged = S.health.status !== st;
     S.health.status = st;
     if (!GH.health.connected(st)) return Promise.resolve(null);
     if (syncing) return syncing;
     if (!manual && Date.now() - lastTry < SYNC_GAP) return Promise.resolve(null);
     lastTry = Date.now();
+    const before = { last: S.health.lastSync, error: syncError };
     syncing = (async () => {
       try {
         const res = await GH.health.sync(S, Date.now());
         syncError = res && !res.ok ? res.error || 'failed' : null;
-        if (res && res.ok) { GH.health.afterSync(S, U.today()); U.save(); }
+        if (res && res.ok) { if (GH.health.afterSync(S, U.today())) res.changed = true; U.save(); }
         return res;
       } catch (e) {
         syncError = 'failed';
@@ -628,13 +692,21 @@
       }
     })();
     syncChanged();
-    return syncing.finally(() => { syncing = null; syncChanged(); });
+    return syncing.then((res) => { syncing = null; syncChanged(res, before, stChanged); return res; });
   };
-  // Anything showing sync state re-renders; screens mark it with data-sync.
-  function syncChanged() {
+  // Spinners follow the sync. When it ends, the screen re-renders if the sync changed something it
+  // shows (new data, a different status or error) or if it shows the sync itself (the Health tab,
+  // Settings: their data-sync-spin buttons); otherwise the "Synced 3 min ago" labels just move on to
+  // the new time, and a sync that brought nothing new costs no render.
+  function syncChanged(res, before, stChanged) {
     const busy = !!syncing;
     for (const el of doc.querySelectorAll('[data-sync-spin]')) el.toggleAttribute('data-spinning', busy);
-    if (!busy && U.S && U.S.profile.onboarded && playerEl.hidden && onboardEl.hidden) render();
+    if (busy || !before || !U.S) return;
+    const quiet = res && res.ok && res.changed === false && !stChanged && syncError === before.error && !doc.querySelector('[data-sync-spin]');
+    if (!quiet) { U.renderSoon(); return; }
+    const last = U.S.health.lastSync;
+    if (before.last && last !== before.last) for (const el of doc.querySelectorAll(`[data-ago="${before.last}"]`)) el.dataset.ago = last;
+    tickAgo();
   }
   // "Updated 3 min ago" labels stay current without a re-render.
   function tickAgo() { for (const el of doc.querySelectorAll('[data-ago]')) { const t = U.ago(Number(el.dataset.ago)); if (el.textContent !== t) el.textContent = t; } }
@@ -690,6 +762,33 @@
   }
   U.applyPrefs = applyPrefs;
 
+  /* The 3D figure warms up (loads its chunk and compiles its shaders: seconds of work on a slow
+   * phone) only when today's workout will want it: workouts on, today's not done yet, a phone with
+   * 3 GB of memory or more and the app on screen, about 8 s after launch once the page is idle.
+   * Otherwise it starts loading the first time a figure is about to show: a press on Start or on a
+   * move. Set-up warms it for its own reveal (src/ui/onboarding.js). */
+  const FIGURE_ACTS = ['startWorkout', 'planStart', 'resumeWorkout', 'startMobility', 'moveInfo', 'planMoveInfo', 'cpHowTo', 'ladder'].map((a) => `[data-act="${a}"]`).join(',');
+  const idle = (fn, ms) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: ms }) : setTimeout(fn, 1));
+  function warmFigure() { safe(() => { const w = U.warmFigure || U.preloadFigure; if (w) w(); }); }
+  function warmFigureLater() {
+    const onDown = (e) => {
+      if (!e.target.closest || !e.target.closest(FIGURE_ACTS)) return;
+      doc.removeEventListener('pointerdown', onDown, true);
+      warmFigure();
+    };
+    doc.addEventListener('pointerdown', onDown, true);
+    const wanted = () => {
+      const S = U.S, nav = G.navigator || {};
+      return !!(S && S.profile.onboarded && S.profile.workouts !== false && nav.deviceMemory >= 3 && B().todayPlan(S, U.today()).type === 'workout');
+    };
+    const later = () => {
+      if (!wanted()) return;
+      if (doc.hidden) { doc.addEventListener('visibilitychange', later, { once: true }); return; }
+      warmFigure();
+    };
+    setTimeout(() => idle(later, 4000), 8000);
+  }
+
   let lastDay = null;
   function boot() {
     layout();
@@ -699,28 +798,28 @@
       P().on('resume', () => {
         if (!U.S || !U.S.profile.onboarded) return;
         U.syncHealth('resume');
-        if (U.today() !== lastDay) { lastDay = U.today(); if (playerEl.hidden) render(); }
+        if (U.today() !== lastDay) { lastDay = U.today(); U.renderSoon(); }
       });
+      // The app is going to the background: a save still waiting is written now.
+      P().on('pause', () => GH.store.flush());
       P().on('route', (route) => openRoute(route));
       P().on('insets', () => { updateScrolled(); });
     }
     U.S = GH.store.load();
     applyPrefs();
-    const r = R();
-    if (r && r.observe) safe(() => r.observe(doc.body));
+    observeInserts();
     if (!U.S || !U.S.profile.onboarded) U.showOnboarding();
     else {
       render('stagger');
       if (U.S.active && U.resumePrompt) U.resumePrompt();
       U.syncHealth('boot');
       if (U.afterBoot) safe(() => U.afterBoot());
-      // Warm up the 3D figure while the phone is idle, so the first workout doesn't wait for it.
-      if (U.S.profile.workouts !== false && U.preloadFigure) setTimeout(() => safe(() => U.preloadFigure()), 4000);
     }
+    warmFigureLater();
     lastDay = U.today();
     setInterval(() => {
       const d = U.today();
-      if (d !== lastDay) { lastDay = d; if (U.S && U.S.profile.onboarded && playerEl.hidden) render(); }
+      if (d !== lastDay) { lastDay = d; U.renderSoon(); }
       if (U.S && U.S.profile.onboarded && (!P() || P().visible()) && Date.now() - (U.S.health.lastSync || 0) >= SYNC_EVERY) U.syncHealth('interval');
       tickAgo();
     }, 30000);

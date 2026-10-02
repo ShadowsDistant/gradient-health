@@ -357,8 +357,9 @@
     return { el, still: true, duration: (m.$tl || GH.pose.timeline(m)).total, play() {}, pause() {}, time: () => 0, destroy() { el.remove(); } };
   }
 
-  // Warm 3D up right after the app's first paint, a small piece per idle moment (the app asks again
-  // a few seconds later; asking twice is free), then draw stills of today's moves for next time.
+  // Warm 3D up a small piece per idle moment, then draw stills of today's moves for next time.
+  // core.js decides when (U.warmFigure): only when today's workout will show a figure, after the
+  // app has gone idle, or on the first press of Start or a move.
   function warmSoon(tries) {
     const S = U.S;
     if (!S) { if (tries < 40) setTimeout(() => warmSoon(tries + 1), 250); return; }
@@ -367,7 +368,7 @@
       U.preloadFigure().then((ok) => { if (ok) setTimeout(stillsForToday, 600); }, () => {});
     })));
   }
-  if (G.document && G.requestAnimationFrame) setTimeout(() => warmSoon(0), 0);
+  U.warmFigure = () => { if (G.document && G.requestAnimationFrame) warmSoon(0); };
 
   let chunkFails = 0; // the chunk didn't load: tried again a couple of times, then left flat
   function figure(host, m, o) {
