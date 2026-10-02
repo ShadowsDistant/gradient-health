@@ -36,7 +36,7 @@
   // Each category has a medal shape and an enamel colour (light, body, deep) for the medal's face.
   // `workouts`: only shown while workouts are tracked (earned ones always show).
   const CATS = [
-    { id: 'consistency', name: 'Consistency', shape: 'circle', enamel: ['#ffc46b', '#d9780f', '#7a3c04'], workouts: true },
+    { id: 'consistency', name: 'Consistency', shape: 'circle', enamel: ['#ffa36b', '#e4471f', '#761705'], workouts: true },
     { id: 'workouts', name: 'Workouts', shape: 'hexagon', enamel: ['#9aa6ff', '#4357d6', '#1f2a82'], workouts: true },
     { id: 'strength', name: 'Strength', shape: 'shield', enamel: ['#ff9a7f', '#cc4330', '#6d1b10'], workouts: true },
     { id: 'body', name: 'Body', shape: 'hexagon', enamel: ['#6fe0d4', '#0f8a84', '#044340'], workouts: true },
@@ -44,7 +44,7 @@
     { id: 'activities', name: 'Activities', shape: 'square', enamel: ['#7fe0a2', '#1f8a4a', '#0b4022'] },
     { id: 'health', name: 'Health', shape: 'circle', enamel: ['#ff8fb4', '#c92e68', '#6a0f33'] },
     { id: 'food', name: 'Food', shape: 'square', enamel: ['#d4ec7a', '#79a51c', '#35500a'] },
-    { id: 'plans', name: 'Plans', shape: 'shield', enamel: ['#7fd0ff', '#1279b8', '#063f63'] },
+    { id: 'plans', name: 'Plans', shape: 'shield', enamel: ['#7fd0ff', '#1279b8', '#063f63'], workouts: true },
     { id: 'start', name: 'Getting started', shape: 'star', enamel: ['#8ff5df', '#13a891', '#05503f'] },
   ];
   const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
@@ -81,10 +81,12 @@
   const PULLUPS = ['pull_chin', 'pull_up', 'pull_slow']; // a real pull-up or chin-up, not a hang or a negative
 
   /* ---------------------------------------------------------------- what history says */
+  // Every section reads history up to the day being checked, never past it, so a day can be looked
+  // at as it was then.
   // Workout logs the person checked in, by day (the done ones count for streaks and totals; any
   // checked-in one counts for a best set or a new level).
-  function logsOf(S) {
-    return (Array.isArray(S.log) ? S.log : []).filter((l) => l && l.type === 'workout' && l.checkedIn && num(l.day)).sort((a, b) => a.day - b.day);
+  function logsOf(S, day) {
+    return (Array.isArray(S.log) ? S.log : []).filter((l) => l && l.type === 'workout' && l.checkedIn && num(l.day) && l.day <= day).sort((a, b) => a.day - b.day);
   }
   // Streaks from the calendar replay: each day's done (a workout or a walk-and-stretch day) adds one
   // and a broken day starts again, as the replay itself counts; full weeks in a row from its weeks.
@@ -182,7 +184,7 @@
     }
     return out;
   }
-  function bodyStats(S, logs) {
+  function bodyStats(S, logs, day) {
     const b = B(), MV = M();
     const GROUPS = b.GROUPS;
     const weeks = new Map();
@@ -210,7 +212,7 @@
     // Left and right evened out: a test within 10% after one that wasn't.
     let even = null;
     for (const k of ['arm', 'leg']) {
-      const tests = (S.catchup && S.catchup[k] && Array.isArray(S.catchup[k].tests) ? S.catchup[k].tests : []).filter((t) => t && num(t.day) && num(t.gap)).sort((a, z) => a.day - z.day);
+      const tests = (S.catchup && S.catchup[k] && Array.isArray(S.catchup[k].tests) ? S.catchup[k].tests : []).filter((t) => t && num(t.day) && num(t.gap) && t.day <= day).sort((a, z) => a.day - z.day);
       let gap = false;
       for (const t of tests) {
         if (t.gap >= 0.1) gap = true;
@@ -219,15 +221,15 @@
     }
     const mob = [], both = [];
     for (const l of Array.isArray(S.log) ? S.log : []) {
-      if (!l || l.type !== 'light' || !num(l.day)) continue;
+      if (!l || l.type !== 'light' || !num(l.day) || l.day > day) continue;
       if (l.mobility) mob.push(l.day);
       if (l.walk && l.mobility) both.push(l.day);
     }
     return { all, bestGroups, all4, best4, even, mob: uniq(mob), both: uniq(both) };
   }
   // Outdoor activities of a minute or more, oldest first.
-  function activityStats(S) {
-    const list = (Array.isArray(S.activities) ? S.activities : []).filter((a) => a && num(a.day) && num(a.start) && a.movingMs >= 60000).sort((a, z) => a.start - z.start);
+  function activityStats(S, day) {
+    const list = (Array.isArray(S.activities) ? S.activities : []).filter((a) => a && num(a.day) && a.day <= day && num(a.start) && a.movingMs >= 60000).sort((a, z) => a.start - z.start);
     const out = { first: null, k5: null, k10: null, half: null, km100: null, record: null, climb: null, longestRun: 0, totalM: 0, maxClimb: 0 };
     for (const a of list) {
       if (out.first == null) out.first = a.day;
@@ -248,10 +250,10 @@
     }
     return out;
   }
-  function healthStats(S, live) {
+  function healthStats(S, live, day) {
     const h = S.health || {};
     const days = isObj(h.days) ? h.days : {};
-    const keys = Object.keys(days).map(Number).filter(num).sort(asc);
+    const keys = Object.keys(days).map(Number).filter((d) => num(d) && d <= day).sort(asc);
     const steps = keys.filter((d) => isObj(days[d]) && days[d].steps >= 10000);
     const sleep = keys.filter((d) => isObj(days[d]) && days[d].sleepMin >= 420);
     const st = runs(steps, [7]), sl = runs(sleep, [7]);
@@ -259,8 +261,8 @@
     return {
       steps10k: steps.length ? steps[0] : null, stepsBest: st.best, stepsWeek: st.at[7] || null,
       sleepBest: sl.best, sleepWeek: sl.at[7] || null,
-      weighIns: uniq((Array.isArray(S.weights) ? S.weights : []).filter((w) => w && w.src !== 'profile').map((w) => w.day)),
-      measures: uniq((Array.isArray(S.measurements) ? S.measurements : []).filter(isObj).map((m) => m.day)),
+      weighIns: uniq((Array.isArray(S.weights) ? S.weights : []).filter((w) => w && w.src !== 'profile' && w.day <= day).map((w) => w.day)),
+      measures: uniq((Array.isArray(S.measurements) ? S.measurements : []).filter((m) => isObj(m) && m.day <= day).map((m) => m.day)),
       connected: conn(live && live.hc) || conn(h.status) || num(h.lastSync),
     };
   }
@@ -310,20 +312,21 @@
     }
     return out;
   }
-  function planStats(S) {
+  function planStats(S, day) {
     const ev = S.achievements && isObj(S.achievements.events) ? S.achievements.events : {};
-    const evDay = (k) => (own(ev, k) && isObj(ev[k]) && num(ev[k].day) ? ev[k].day : null);
+    const evDay = (k) => (own(ev, k) && isObj(ev[k]) && num(ev[k].day) && ev[k].day <= day ? ev[k].day : null);
     const roll = rollOf(S);
     // A plan of their own with at least one exercise in it; the day it was made (-1: not known).
     let mine = null;
     for (const p of Array.isArray(S.customPlans) ? S.customPlans : []) {
       if (!isObj(p) || p.source !== 'you' || !Array.isArray(p.days) || !p.days.some((d) => d && Array.isArray(d.items) && d.items.length)) continue;
       const d = num(p.createdAt) ? B().dayOf(p.createdAt, roll) : -1;
+      if (d > day) continue;
       if (mine == null || (d >= 0 && (mine < 0 || d < mine))) mine = d;
     }
     // Tailor my plan keeps its own record in S.events, so tailoring before 1.6 counts too.
     let tailored = evDay('tailored');
-    for (const e of Array.isArray(S.events) ? S.events : []) if (e && e.type === 'tailor' && num(e.day) && (tailored == null || e.day < tailored)) tailored = e.day;
+    for (const e of Array.isArray(S.events) ? S.events : []) if (e && e.type === 'tailor' && num(e.day) && e.day <= day && (tailored == null || e.day < tailored)) tailored = e.day;
     return { mine, shared: evDay('sharedPlan'), tailored, reviewed: evDay('reviewed'), badge: evDay('sharedBadge') };
   }
   // Everything the definitions read, computed once per check and only when asked for.
@@ -331,15 +334,15 @@
     const p = S.profile || {};
     const x = { S, day, live: live || {}, p, workouts: p.workouts !== false };
     x.cal = once(() => (num(p.startDay) ? B().calendar(S, day) : null));
-    x.logs = once(() => logsOf(S));
+    x.logs = once(() => logsOf(S, day));
     x.tl = once(() => timeline(S, day, x.cal()));
     x.wk = once(() => workoutStats(S, x.logs()));
     x.lift = once(() => strengthStats(x.logs()));
-    x.body = once(() => bodyStats(S, x.logs()));
-    x.acts = once(() => activityStats(S));
-    x.health = once(() => healthStats(S, live));
+    x.body = once(() => bodyStats(S, x.logs(), day));
+    x.acts = once(() => activityStats(S, day));
+    x.health = once(() => healthStats(S, live, day));
     x.food = once(() => foodStats(S, day));
-    x.plans = once(() => planStats(S));
+    x.plans = once(() => planStats(S, day));
     return x;
   }
 
@@ -437,7 +440,7 @@
     const S = x.S;
     if (S.seen && S.seen.checklistDone) return r(1, 1, -1);
     const first = x.workouts ? x.wk().days[0] : x.health().weighIns[0];
-    const feel = isObj(S.feel) ? Object.keys(S.feel).map(Number).filter(num).sort(asc)[0] : null;
+    const feel = isObj(S.feel) ? Object.keys(S.feel).map(Number).filter((d) => num(d) && d <= x.day).sort(asc)[0] : null;
     return r((first != null ? 1 : 0) + (feel != null ? 1 : 0), 2, first != null && feel != null ? Math.max(first, feel) : null);
   }
   const DEFS = LIST.map(([id, cat, tier, title, how, glyph, ev, extra]) => Object.freeze(Object.assign({ id, cat, tier, title, how, glyph, ev, shape: CAT[cat].shape, secret: false }, extra || {})));

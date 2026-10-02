@@ -73,7 +73,7 @@
   // Metal stops along the rim's diagonal: a dark edge, two bright bands and a deep turn, so it reads
   // as polished metal rather than a flat colour.
   function metalStops(t) {
-    if (t === 'platinum') return [[0, '#f3e6ff'], [0.18, '#ffffff'], [0.38, '#a8c6ff'], [0.55, '#d6f1ff'], [0.72, '#8c9fde'], [0.88, '#e5cfff'], [1, '#9db3ec']];
+    if (t === 'platinum') return [[0, '#efdcff'], [0.16, '#ffffff'], [0.34, '#8fb3ff'], [0.5, '#d2f4ff'], [0.66, '#a38cf0'], [0.82, '#f6e2ff'], [1, '#7f97e2']];
     if (t === 'lock') return [[0, '#d5d9df'], [0.3, '#eef0f3'], [0.55, '#b3b9c2'], [0.8, '#c9ced5'], [1, '#9aa1ab']];
     const [dk, body, lt, hi] = A().TIERS[t].metal;
     return [[0, lt], [0.2, hi], [0.42, body], [0.6, lt], [0.82, dk], [1, body]];
@@ -115,7 +115,8 @@
     const g = glyph(secret ? 'question' : def.glyph).replace(/currentColor/g, '#fff');
     const cy = sh.cy;
     const rib = def.ribbon && !secret;
-    const gy = rib ? cy - 5 : cy; // the glyph sits a little higher over a ribbon
+    const gy = rib ? cy - 5.5 : cy; // the glyph sits a little higher over a ribbon, a little smaller
+    const gs = rib ? 1.55 : 1.65;
     const size = o.size || 72;
     // Engraving: fine rays from the face's centre, clipped to it.
     let rays = '';
@@ -127,6 +128,7 @@
       <g${locked ? ' opacity=".62"' : ''}>
         <path d="${sh.outer}" fill="url(#ghb-m-${t})"/>
         <path d="${sh.outer}" fill="none" stroke="url(#ghb-edge)" stroke-width="2.2" transform="translate(60 60) scale(.965) translate(-60 -60)"/>
+        ${shape === 'circle' ? `<circle cx="60" cy="60" r="45.2" fill="none" stroke="#000" stroke-opacity="${locked ? 0.06 : 0.12}" stroke-width="7" pathLength="360" stroke-dasharray=".9 2.1"/><circle cx="60" cy="60" r="45.2" fill="none" stroke="#fff" stroke-opacity="${locked ? 0.1 : 0.24}" stroke-width="7" pathLength="360" stroke-dasharray=".7 2.3" stroke-dashoffset="-1.2"/>` : ''}
         <path d="${sh.face}" fill="#000" fill-opacity=".28" transform="translate(0 1.4)"/>
         <path d="${sh.face}" fill="url(#ghb-e-${locked ? 'lock' : def.cat})"/>
         <g clip-path="url(#ghb-k-${shape})">
@@ -135,7 +137,7 @@
         </g>
         <path d="${sh.face}" fill="none" stroke="#000" stroke-opacity=".3" stroke-width="2.4"/>
         <path d="${sh.face}" fill="none" stroke="url(#ghb-m-${t})" stroke-width="1.2"/>
-        <g transform="translate(${60 - 18} ${gy - 18}) scale(1.5)" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.85">
+        <g transform="translate(${f1(60 - 12 * gs)} ${f1(gy - 12 * gs)}) scale(${gs})" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
           <g stroke="#000" stroke-opacity=".38" transform="translate(0 .9)">${g}</g>
           <g stroke="#fff"${locked ? ' stroke-opacity=".8"' : ''}>${g}</g>
         </g>
@@ -171,7 +173,7 @@
   function progressText(item) {
     const u = item.def.unit;
     const n = (v) => (Math.round(v * 10) / 10).toLocaleString('en-US');
-    if (item.goal <= 1) return item.def.secret ? 'Secret' : 'Not yet';
+    if (item.goal <= 1) return item.def.secret ? 'Secret' : 'Locked';
     return `${n(item.have)} of ${n(item.goal)}${u === 'km' || u === 'm' || u === 'h' ? ` ${u}` : ''}`;
   }
   const tierLine = (def) => `${A().TIERS[def.tier].name} · ${A().TIERS[def.tier].rarity}`;
@@ -285,7 +287,7 @@
       <h3 class="t-title-2 bdg-title">${U.esc(secret ? 'Secret badge' : def.title)}</h3>
       <p class="t-callout rf-muted bdg-how">${U.esc(secret ? 'A surprise. Keep going and it will find you.' : def.how)}</p>
       ${!x.earned && !secret && x.goal > 1 ? `<div class="bdg-prog">${U.progress(x.pct, 'Progress', 'positive')}<span class="t-footnote rf-muted">${U.esc(progressText(x))}${x.have > 0 ? ` · ${U.esc(A().toGo(x))}` : ''}</span></div>` : ''}
-      ${x.earned ? `<p class="t-footnote bdg-when">${U.esc(earnedWhen(x, day))} · ${U.esc(`${rankOf(x)} of ${total}`)}</p>` : ''}
+      ${x.earned ? `<p class="t-footnote bdg-when">${U.esc(earnedWhen(x, day))} · ${U.esc(`Badge ${rankOf(x)} of ${total}`)}</p>` : ''}
       ${x.earned ? `<div class="bdg-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="badgeShare" data-arg="${x.id}">${U.icon('share')}Share</button></div>` : ''}
     </div>`;
   }
@@ -327,7 +329,7 @@
       <p class="bdg-tierline t-caption">${U.esc(tierLine(def))}</p>
       <h3 class="t-title-1 bdg-title">${U.esc(def.title)}</h3>
       <p class="t-callout rf-muted bdg-how">${U.esc(def.how)}</p>
-      <p class="t-footnote bdg-when">${U.esc(earnedWhen(x, day))} · ${U.esc(`${rankOf(x)} of ${total}`)}</p>
+      <p class="t-footnote bdg-when">${U.esc(earnedWhen(x, day))} · ${U.esc(`Badge ${rankOf(x)} of ${total}`)}</p>
     </section>`;
   }
   /* The reveal: a sheet with the new badges as pages (with dots when there are several), each
@@ -352,7 +354,7 @@
       <div class="bdg-pages"${many ? ' data-hscroll' : ''}>${pages.map((x) => revealPage(x, day, total)).join('')}</div>
       ${many ? `<div class="bdg-dots" role="tablist" aria-label="Badges">${pages.map((x, i) => `<button type="button" class="bdg-dot" role="tab" aria-selected="${i === 0}" aria-label="${U.esc(x.def.title)}" data-act="badgePage" data-arg="${i}"></button>`).join('')}</div>` : ''}
       <div class="bdg-actions">
-        <button type="button" class="rf-btn" data-size="lg" data-act="badgeShareCur">${U.icon('share')}Share</button>
+        <button type="button" class="rf-btn rf-glass" data-size="lg" data-act="badgeShareCur">${U.icon('share')}Share</button>
         <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="badgeDone">Done</button>
       </div>
     </div>`;
