@@ -312,14 +312,16 @@
   }
   // The on-device model's GBNF grammar, from the same lists (like GH.tailor.GRAMMAR): one rule per
   // kind, at most 3 suggestions, the note last so an answer cut off by the token limit can still be
-  // read. (A GBNF literal is quoted like a JSON string; rule names can't hold underscores.)
+  // read. (A GBNF literal is quoted like a JSON string; rule names can't hold underscores, and a kind's
+  // rule is named apart from the fields, since a name given twice is one rule to llama.cpp: "minutes"
+  // the kind would take "35" the value.)
   function grammar(ctx) {
     const lit = (s) => JSON.stringify(s);
     const value = (v) => lit(typeof v === 'number' ? String(v) : JSON.stringify(v));
-    const rule = (k) => k.replace(/_/g, '-');
+    const rule = (k) => `kind-${k.replace(/_/g, '-')}`;
     const fields = new Map();
     const fieldRule = (f, k) => {
-      const name = f === 'delta' ? `delta-${rule(k)}` : f;
+      const name = f === 'delta' ? `delta-${k.replace(/_/g, '-')}` : f;
       if (!fields.has(name)) fields.set(name, `${name} ::= ${VALUES[f](k, ctx).map(value).join(' | ')}`);
       return name;
     };
@@ -346,7 +348,9 @@
 
   /* ================================================================== checking */
   // A model's answer into suggestions the app understands: kinds it knows, values in range, at most
-  // 3. { items, dropped: [{ title, reason }], note }.
+  // 3. { items, dropped: [{ title, reason }], note }. (Enum values are matched without regard to
+  // case: structured outputs don't promise it.)
+  const pick = (list, v) => { const t = String(v == null ? '' : v).toLowerCase(); return list.find((x) => String(x).toLowerCase() === t) || null; };
   function normalize(raw, ctx) {
     const r = raw && typeof raw === 'object' ? raw : {};
     const list = Array.isArray(r.suggestions) ? r.suggestions : [];
@@ -354,24 +358,25 @@
     for (const [at, x] of list.entries()) {
       if (items.length + dropped.length >= MAX + 2 || items.length >= MAX) break;
       if (!x || typeof x !== 'object') continue;
-      const kind = KINDS.includes(x.kind) ? x.kind : null;
+      const kind = pick(KINDS, x.kind);
       const s = { kind, title: clean(x.title, 80), why: clean(x.why, 300), at };
       let bad = null;
       if (!kind) bad = 'It asked for a kind of change the app can\'t make.';
       else if (kind === 'more_sets' || kind === 'fewer_sets') {
-        s.group = x.group === 'arms' || GROUPS.includes(x.group) ? x.group : null;
+        s.group = pick(GROUPS.concat(['arms']), x.group);
         s.delta = clamp(Math.abs(int(x.delta) || 1), 1, 2);
         if (!s.group) bad = 'It didn\'t say which muscle group.';
       } else if (kind === 'swap_move') {
-        const move = typeof x.move === 'string' ? x.move : '';
-        const own = ctx.swaps.find((o) => o.family === x.family && o.options.includes(move)) || ctx.swaps.find((o) => o.options.includes(move));
+        const move = pick(ctx.allowed, x.move) || '';
+        const fam = pick(ctx.swaps.map((o) => o.family), x.family);
+        const own = ctx.swaps.find((o) => o.family === fam && o.options.includes(move)) || ctx.swaps.find((o) => o.options.includes(move));
         if (!own) bad = 'That move isn\'t one you can do with your equipment and joints, or it isn\'t in your plan.';
         else { s.family = own.family; s.move = move; }
       } else if (kind === 'move_day') {
         s.from = int(x.from); s.to = int(x.to);
         if (s.from == null || s.to == null || s.from < 0 || s.from > 6 || s.to < 0 || s.to > 6 || s.from === s.to) bad = 'It didn\'t say which days.';
       } else if (kind === 'split') {
-        s.split = SPLITS.includes(x.split) ? x.split : null;
+        s.split = pick(SPLITS, x.split);
         if (!s.split) bad = 'It named a split the planner doesn\'t have.';
       } else if (kind === 'rest') {
         const v = int(x.rest);
@@ -383,7 +388,7 @@
         if (!s.minutes) bad = 'It didn\'t say how many minutes.';
       } else if (kind === 'finisher' || kind === 'mobility') s.delta = int(x.delta) < 0 ? -1 : 1;
       else if (kind === 'focus') {
-        s.focus = focusList().includes(x.focus) ? x.focus : null;
+        s.focus = pick(focusList(), x.focus);
         if (!s.focus) bad = 'It named a muscle the plan doesn\'t know.';
       }
       if (bad) dropped.push({ kind, title: s.title || (kind ? ownTitle(s) : 'A suggestion'), reason: bad, at });

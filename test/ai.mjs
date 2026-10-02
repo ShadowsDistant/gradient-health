@@ -67,6 +67,7 @@ globalThis.fetch = async (url, init = {}) => {
   if (u.includes('/v1/models')) return new Response(JSON.stringify({ data: MODELS, has_more: false, first_id: MODELS[0].id, last_id: MODELS[MODELS.length - 1].id }), { status: 200, headers: { 'content-type': 'application/json' } });
   const fmt = body && body.output_config && body.output_config.format;
   const props = (fmt && fmt.schema && fmt.schema.properties) || {};
+  if (mode === 'schema400' && props.plan_suggestions) return new Response(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'Schema is too complex for compilation.' } }), { status: 400, headers: { 'content-type': 'application/json', 'request-id': 'req_2' } });
   const wantsReview = !!(props.suggestions && props.suggestions.items && props.suggestions.items.anyOf);
   const wantsSuggestions = !!props.suggestions;
   const report = props.plan_suggestions ? Object.assign({}, REPORT, PLAN_IDEAS) : REPORT;
@@ -201,9 +202,12 @@ section('The plan review: the schema and the grammar');
   check('values held to what the app can do: moves, free days, rest, minutes', JSON.stringify(byKind.swap_move.move.enum) === JSON.stringify(ctx.allowed) && JSON.stringify(byKind.move_day.to.enum) === JSON.stringify(ctx.freeDays) && JSON.stringify(byKind.rest.rest.enum) === '[60,90,120]' && byKind.minutes.minutes.enum.length === 11 && JSON.stringify(byKind.more_sets.delta.enum) === '[1,2]' && JSON.stringify(byKind.fewer_sets.delta.enum) === '[-2,-1]');
   check('only keywords structured outputs take (no ranges, lengths or item counts)', !/"(minimum|maximum|minLength|maxLength|maxItems|minItems|multipleOf)"/.test(JSON.stringify(sc)));
   const gram = R.grammar(R.context(P, D0, 'device'));
-  check('the grammar is made from the same spec: a rule for every kind, at most 3 suggestions, the note last', ctx.kinds.every((k) => gram.includes(`${k.replace(/_/g, '-')} ::= "{\\"kind\\":\\"${k}\\""`)) && /\{0,2\}\)\? "\],\\"note\\":" note "\}"$/m.test(gram.split('\n')[0]));
+  check('the grammar is made from the same spec: a rule for every kind, at most 3 suggestions, the note last', ctx.kinds.every((k) => gram.includes(`kind-${k.replace(/_/g, '-')} ::= "{\\"kind\\":\\"${k}\\""`)) && /\{0,2\}\)\? "\],\\"note\\":" note "\}"$/m.test(gram.split('\n')[0]));
   check('with the same moves and days', ctx.allowed.every((id) => gram.includes(`"\\"${id}\\""`)) && gram.split('\n').find((l) => l.startsWith('to ::=')) === `to ::= ${ctx.freeDays.map((d) => `"${d}"`).join(' | ')}`);
   check('rule names a GBNF parser reads (no underscores)', gram.split('\n').every((l) => /^[a-z0-9-]+ ::= /.test(l)));
+  // A name given twice is one rule to llama.cpp: the kind "minutes" would also take a bare 35.
+  const names = gram.split('\n').map((l) => l.split(' ::= ')[0]);
+  check('each rule is named once', new Set(names).size === names.length, names);
   check('an answer cut off at the token limit is still read', R.readJson('{"suggestions":[{"kind":"tip","title":"Sleep","why":"More sleep').suggestions.length === 1);
 }
 
@@ -293,6 +297,15 @@ section('The plan review: the weekly report\'s plan ideas');
   check('its ideas are kept on the report, read and held to the numbers', rep.plan && rep.plan.items.length === 1 && rep.plan.items[0].kind === 'more_sets' && rep.plan.items[0].why === '' && rep.plan.note === 'A good week of training.', rep.plan);
   check('the report itself is as before', rep.data.headline === REPORT.headline && !('plan_suggestions' in rep.data));
   check('workouts off: no plan ideas asked for', (() => { const was = P.profile.workouts; P.profile.workouts = false; const parts = AI.reportParts(P, D0); P.profile.workouts = was; return !parts.plan && !parts.schema.properties.plan_suggestions; })());
+  mode = 'schema400';
+  const n0 = calls.length;
+  let rep2 = null, e2 = null;
+  try { rep2 = await AI.report(P, D0); } catch (err) { e2 = err; }
+  mode = 'ok';
+  const tries = calls.slice(n0).filter((c) => c.url.includes('/v1/messages'));
+  check('should the API turn the plan\'s schema down, the report is asked for again without it', !e2 && rep2 && rep2.data.headline === REPORT.headline && !rep2.plan && tries.length === 2 && !tries[1].body.output_config.format.schema.properties.plan_suggestions, e2 && e2.message);
+  const odd = R.normalize({ suggestions: [{ kind: 'More_Sets', group: 'Back', delta: 1, title: 'x', why: 'y' }, { kind: 'SPLIT', split: 'Full_Body', title: 'x', why: 'y' }] }, ctx);
+  check('enum values come back in any case and are still read', odd.items.length === 2 && odd.items[0].kind === 'more_sets' && odd.items[0].group === 'back' && odd.items[1].split === 'full_body', odd);
 }
 
 section('Claude chat: red flags and the number check');

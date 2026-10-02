@@ -100,17 +100,29 @@ function stop() { if (busy) { try { busy.abort(); } catch (e) { /* ignore */ } }
 async function report(S, day) {
   AI().needConsent(S);
   const c = client();
-  const parts = AI().reportParts ? AI().reportParts(S, day) : { schema: AI().REPORT_SCHEMA, ask: '', plan: null };
-  const ask = parts.ask ? `${REPORT_ASK}\n\n${parts.ask}` : REPORT_ASK;
+  let parts = AI().reportParts ? AI().reportParts(S, day) : { schema: AI().REPORT_SCHEMA, ask: '', plan: null };
+  let ask = parts.ask ? `${REPORT_ASK}\n\n${parts.ask}` : REPORT_ASK;
   try {
     const modelId = await model(S, c, day);
-    const params = baseParams(modelId, 12000, 'high', S, day);
-    const stream = c.beta.messages.stream(Object.assign(params, {
-      output_config: { effort: 'high', format: { type: 'json_schema', schema: parts.schema } },
-      messages: [{ role: 'user', content: ask }],
-    }));
-    busy = stream;
-    const msg = await stream.finalMessage();
+    let params;
+    const send = async () => {
+      params = baseParams(modelId, 12000, 'high', S, day);
+      const stream = c.beta.messages.stream(Object.assign(params, {
+        output_config: { effort: 'high', format: { type: 'json_schema', schema: parts.schema } },
+        messages: [{ role: 'user', content: ask }],
+      }));
+      busy = stream;
+      return stream.finalMessage();
+    };
+    let msg;
+    try { msg = await send(); } catch (err) {
+      // The plan ideas make the schema the person's own (their moves and days); should the API ever
+      // turn it down (a schema too complex to compile is a 400), the report goes without them.
+      if (!(parts.plan && err instanceof Anthropic.BadRequestError)) throw err;
+      parts = { schema: AI().REPORT_SCHEMA, ask: '', plan: null };
+      ask = REPORT_ASK;
+      msg = await send();
+    }
     checkStop(msg);
     let data;
     try { data = JSON.parse(textOf(msg)); } catch (e) { throw coachError('other'); }
