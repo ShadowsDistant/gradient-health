@@ -262,10 +262,10 @@
     const s = Math.min(1, 520 / Math.max(w, h));
     const W = Math.max(2, Math.round(w * s)), H = Math.max(2, Math.round(h * s));
     const R = Math.min(r * s, W / 2, H / 2), B = Math.max(1, Math.min(b * s, Math.min(W, H) / 2));
-    // gh-patch(map-memo)
+    // gh-patch(map-memo-get)
     const memoKey = `${W},${H},${R},${B},${profile}`;
     if (MAP_MEMO.has(memoKey)) return MAP_MEMO.get(memoKey);
-    // gh-patch-end(map-memo)
+    // gh-patch-end(map-memo-get)
     const table = lut(profile);
     const canvas = document.createElement("canvas");
     canvas.width = W;
@@ -315,12 +315,12 @@
       }
     }
     ctx.putImageData(img, 0, 0);
-    // gh-patch(map-memo)
+    // gh-patch(map-memo-set)
     const url = canvas.toDataURL("image/png");
     MAP_MEMO.set(memoKey, url);
     if (MAP_MEMO.size > 64) MAP_MEMO.delete(MAP_MEMO.keys().next().value);
     return url;
-    // gh-patch-end(map-memo)
+    // gh-patch-end(map-memo-set)
   }
   function radiusOf(el, w, h) {
     const cs = getComputedStyle(el);

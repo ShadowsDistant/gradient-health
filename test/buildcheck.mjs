@@ -125,5 +125,9 @@ for (const m of marks) {
 }
 if (open) problems.push(`line ${open.line}: gh-patch(${open.id}) never ends`);
 check(`${seen.size} marked patch${seen.size === 1 ? '' : 'es'}, each well formed and closed`, problems.length === 0, problems);
+// The patches 1.6.0 relies on: lens maps encoded once per size and kept, and a preference change
+// that no longer throws every lens's map away (test/ui-controls.mjs checks what they fix).
+const WANT = ['map-memo', 'map-memo-get', 'map-memo-set', 'lens-pref'];
+check(`the 1.6.0 patches are all there (${WANT.join(', ')})`, WANT.every((id) => seen.has(id)), WANT.filter((id) => !seen.has(id)));
 
 done();
