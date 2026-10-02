@@ -106,7 +106,6 @@
     </div>`;
   };
   U.act.ckHide = (el) => collapse(el.closest('.checklist')).then(() => { U.markSeen('checklistHidden'); U.render(); });
-  U.act.ckPlan = () => U.go('plan');
   // The level check is Settings' sheet; saving it ticks the item off.
   U.act.ckLevel = () => {
     if (!U.act.baselineSheet) return;
@@ -194,7 +193,10 @@
       const S = U.S;
       if (!tourDue(S)) return;
       const els = U.els ? U.els() : {};
-      const busy = (els.playerEl && !els.playerEl.hidden) || (els.onboardEl && !els.onboardEl.hidden) || (U.topSheet && U.topSheet()) || (S && S.active);
+      // Not over the player, set-up or a sheet, and not over a toast either (a new badge's "See it"
+      // would be hidden behind it).
+      const toast = G.document && G.document.querySelector('.rf-toaster .rf-toast:not([data-leaving])');
+      const busy = (els.playerEl && !els.playerEl.hidden) || (els.onboardEl && !els.onboardEl.hidden) || (U.topSheet && U.topSheet()) || (S && S.active) || toast;
       if (busy) { if ((tries || 0) < 40) tourSoon((tries || 0) + 1); return; }
       U.showTour();
     }, tries ? 1500 : 900);
@@ -222,7 +224,7 @@
     };
     U.markSeen('tour');
     const ctl = U.sheet({
-      title: 'Find your way around', size: 'full', cls: 'tour-sheet', body: body(),
+      title: 'Find your way around', size: 'fit', cls: 'tour-sheet', body: body(),
       onClose: () => U.markSeen('tour'),
     });
     U.act.tourNext = () => { if (i >= last) { ctl.close('ok'); return; } i++; show(ctl, 1); };

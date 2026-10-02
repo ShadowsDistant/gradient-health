@@ -239,23 +239,26 @@ section('Set-up for food and health only');
   await p2.addInitScript(seedBridge);
   await p2.goto(server.url);
   await p2.waitForSelector('.onboard:not([hidden]) .rf-large-title');
-  const title = () => p2.locator('.onboard .rf-large-title').innerText();
+  const title = () => p2.locator('.onboard .rf-large-title').first().innerText();
   const next = async () => { await p2.locator('.ob-actions [data-variant="tinted"]').click(); await p2.clock.runFor(500); await p2.waitForTimeout(150); };
-  await next();
-  await p2.click('input[name="obTrack"][value="food"]', { force: true });
-  await p2.waitForTimeout(150);
+  // The welcome's "Just tracking food?".
+  await p2.click('.ob-actions [data-act="obFood"]');
+  await p2.clock.runFor(500); await p2.waitForTimeout(150);
   const seen = [];
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 8; i++) {
     const t = await title();
     seen.push(t);
-    if (t === 'About you') { await p2.fill('input[data-k="_w"]', '150'); await p2.locator('input[data-k="_w"]').dispatchEvent('change'); await p2.fill('input[data-k="age"]', '30'); await p2.locator('input[data-k="age"]').dispatchEvent('change'); }
-    if (t === 'Your plan') break;
+    if (t === 'A little about you') { await p2.fill('.onboard input[data-k="_w"]', '150'); await p2.locator('.onboard input[data-k="_w"]').dispatchEvent('change'); await p2.fill('.onboard input[data-k="age"]', '30'); await p2.locator('.onboard input[data-k="age"]').dispatchEvent('change'); }
+    if (t === 'Your daily targets') break;
     await next();
   }
-  check('workout screens are skipped', !seen.some((t) => ['Goals', 'Experience', 'Schedule', 'Equipment', 'Body check', 'Style', 'Baseline test'].includes(t)), seen.join(' → '));
-  check('food is set to calories', seen.includes('Food') && seen.includes('Your plan'), seen.join(' → '));
-  check('the last screen shows daily targets', await p2.evaluate(() => /Calories/.test(document.querySelector('.onboard').textContent) && /Steps/.test(document.querySelector('.onboard').textContent)));
-  await p2.locator('.ob-actions [data-variant="tinted"]').click();
+  check('workout screens are skipped', !seen.some((t) => ['What do you want most?', 'How much time do you have?', 'Where do you train?', 'Goals', 'Experience', 'Schedule', 'Equipment'].includes(t)), seen.join(' → '));
+  check('a goal, then the daily targets', seen.includes('What\'s your goal?') && seen[seen.length - 1] === 'Your daily targets', seen.join(' → '));
+  check('the targets: calories, protein and steps', await p2.evaluate(() => { const t = document.querySelector('.onboard').textContent; return /calories a day/.test(t) && /protein a day/.test(t) && /steps a day/.test(t); }));
+  // Health Connect (granted here) is the optional last screen; then the app.
+  await next();
+  if (await p2.locator('.ob-actions [data-act="obConnect"]').count()) await p2.click('.ob-actions [data-act="obLook"]');
+  else await p2.locator('.ob-actions [data-variant="tinted"]').click();
   await p2.clock.runFor(900); await p2.waitForTimeout(300);
   check('the app opens with Today, Food, Health and You', await p2.evaluate(() => [...document.querySelectorAll('#tabbar .rf-tab')].map((t) => t.dataset.tab).join(',')) === 'today,food,health,you');
   check('Today has no workout', await p2.evaluate(() => !!document.querySelector('#screen .day-card') && !document.querySelector('#screen .session')));

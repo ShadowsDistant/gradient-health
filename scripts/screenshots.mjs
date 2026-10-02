@@ -194,11 +194,13 @@ async function run(dark) {
   await settle(900);
   await page.evaluate(() => { const el = document.querySelector('#screen .session'); if (el) document.getElementById('screen').scrollTo(0, el.offsetTop - 110); });
   await shot('gym');
-  // Set-up, from the start: the step that asks what to plan around.
+  // Set-up, from the start: the plan it ends on, for someone who wants bigger arms and chest.
   await page.evaluate(() => { window.GH.ui.closeSheets(); window.GH.ui.showOnboarding(); });
   await settle(600);
+  await page.locator('.ob-actions [data-variant="tinted"]').click(); await settle(400);
+  for (const s of ['.ob-opt[data-arg="muscle"]', '.ob-areas [data-v="arms"]', '.ob-areas [data-v="chest"]']) { await page.click(s); await settle(200); }
   for (let i = 0; i < 4; i++) { await page.locator('.ob-actions [data-variant="tinted"]').click(); await settle(400); }
-  for (const v of ['balance', 'oa']) { await page.click(`.onboard .rf-chip[data-v="${v}"]`); await settle(200); }
+  await settle(1600);
   await shot('setup');
   if (errors.length) console.log('page errors:', errors);
   await browser.close();

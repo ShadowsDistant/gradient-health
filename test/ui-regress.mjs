@@ -117,7 +117,8 @@ await tab('today');
 section('Tour, last page');
 await page.evaluate(() => window.GH.ui.showTour());
 await settle(900);
-for (let i = 0; i < 3; i++) { await page.click('.tour-sheet [data-act="tourNext"]'); await settle(500); }
+// To the last card (its button says Let's go), however many there are.
+for (let i = 0; i < 6 && (await page.locator('.tour-sheet [data-act="tourNext"]').innerText()).trim() !== 'Let\'s go'; i++) { await page.click('.tour-sheet [data-act="tourNext"]'); await settle(500); }
 const tour = await page.evaluate(() => { const t = document.querySelector('.tour-tabs'); const b = document.querySelector('.tour-sheet .rf-sheet-body'); const r = t.getBoundingClientRect(); return { right: Math.round(r.right), left: Math.round(r.left), vw: innerWidth, scroll: b.scrollWidth - b.clientWidth, labels: [...t.querySelectorAll('.tour-tab-label')].every((l) => l.scrollWidth <= l.clientWidth + 1) }; });
 check('the tab bar replica fits on screen', tour.left >= 0 && tour.right <= tour.vw, JSON.stringify(tour));
 check('the page doesn\'t scroll sideways', tour.scroll <= 0, tour.scroll);

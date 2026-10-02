@@ -532,6 +532,19 @@
   // A disclosure for details most people skip; it stays open or closed across redraws.
   const more = (key, title, html, openIt, sub) => `<details class="ob-more" data-more="${key}" data-key="more-${key}"${openIt || (Q._open && Q._open[key]) ? ' open' : ''}><summary><span class="ob-more-text"><span class="ob-more-title">${U.esc(title)}</span>${sub ? `<span class="ob-more-sub">${U.esc(sub)}</span>` : ''}</span>${U.icon('chevron-down', 'sm', 'ob-more-chev')}</summary><div class="ob-more-body">${html}</div></details>`;
   const unitsSeg = () => `<div class="ob-pad">${U.seg('units', [['lb', 'lb, ft'], ['kg', 'kg, cm']], Q.units, 'Units', ` ${bind('units', '', true)}`)}</div>`;
+  // Age, weight and height, and sex: the same fields on About you, the first run's "A little about
+  // you" and the food path's. The age says what it changes in the plan, when workouts are on.
+  const ageField = (hint) => {
+    const age = A() && workoutsOn() && Q.age >= 13 && Q.age <= 100 ? A().planLines({ age: Q.age }).find((l) => l.kind === 'age') : null;
+    return field('Age (optional)', numInput('age', Q.age, 'e.g. 35', 'min="13" max="100" inputmode="numeric" data-redraw'), age ? age.text : hint || '', 'age');
+  };
+  const sizeFields = (hint) => {
+    const lb = Q.units !== 'kg';
+    return field(`Weight (${lb ? 'lb' : 'kg'}, optional)`, numInput('_w', Q._w, lb ? 'e.g. 150' : 'e.g. 68', 'min="30" max="700" step="0.1"'), hint || '', '_w')
+      + (lb ? `<div class="ob-row2">${field('Height (ft, optional)', numInput('_hft', Q._hft, '5', 'min="3" max="8" inputmode="numeric"'), '', '_hft')}${field('(in)', numInput('_hin', Q._hin, '9', 'min="0" max="11" inputmode="numeric"'), '', '_hin')}</div>`
+        : field('Height (cm, optional)', numInput('_hcm', Q._hcm, 'e.g. 175', 'min="100" max="250" inputmode="numeric"'), '', '_hcm'));
+  };
+  const sexGroup = () => group('Sex (optional)', `<div class="ob-pad">${U.seg('sex', [['female', 'Female'], ['male', 'Male'], ['', 'Skip']], Q.sex || '', 'Sex', ` ${bind('sex')}`)}</div>`, foodModeOf() === 'full' ? 'Used for your calorie target. Skip it and an average is used.' : 'Only used to read your health trends. Skip it if you like.');
 
   /* ---------------------------------------------------------------- checks */
   const CHECK = {};
@@ -590,7 +603,7 @@
   ACT.welcome = () => {
     const sh = Q._shared;
     const who = sender(sh);
-    const links = `<div class="ob-links" data-key="links"><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="obRestore">Restore from a backup</button><span class="ob-links-dot" aria-hidden="true">·</span><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="obFood">Just tracking food?</button></div>`;
+    const links = `<div class="ob-links" data-key="links"><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="obRestore">Restore from a backup</button><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="obFood">Just tracking food?</button></div>`;
     return sh ? { primary: ['obFriend', who ? `Start with ${who}'s plan` : 'Start with this plan', 'play'], secondary: ['obStart', 'Make my own plan instead'], links }
       : { primary: ['obStart', 'Get started'], links };
   };
@@ -877,16 +890,10 @@
   // A little about you: age, how much you've trained, anything to plan around, and (folded away)
   // weight and height.
   VIEW.you = () => {
-    const lb = Q.units !== 'kg';
-    const age = A() && Q.age >= 13 && Q.age <= 100 ? A().planLines({ age: Q.age }).find((l) => l.kind === 'age') : null;
     const sizeErr = ['_w', '_hft', '_hin', '_hcm'].some((k) => errs[k]);
     const levels = `<div class="ob-opts" role="radiogroup" aria-label="How much have you trained?" data-key="levels">${LEVELS.map((l) => opt({ act: 'obLevel', arg: l.id, icon: l.icon, tone: l.tone, title: l.title, sub: l.sub, on: levelOf() === l.id })).join('')}</div>`;
-    const size = `${unitsSeg()}<div class="ob-fields">
-        ${field(`Weight (${lb ? 'lb' : 'kg'}, optional)`, numInput('_w', Q._w, lb ? 'e.g. 150' : 'e.g. 68', 'min="30" max="700" step="0.1"'), '', '_w')}
-        ${lb ? `<div class="ob-row2">${field('Height (ft, optional)', numInput('_hft', Q._hft, '5', 'min="3" max="8" inputmode="numeric"'), '', '_hft')}${field('(in)', numInput('_hin', Q._hin, '9', 'min="0" max="11" inputmode="numeric"'), '', '_hin')}</div>`
-        : field('Height (cm, optional)', numInput('_hcm', Q._hcm, 'e.g. 175', 'min="100" max="250" inputmode="numeric" enterkeyhint="done"'), '', '_hcm')}
-      </div>${group('Sex (optional)', `<div class="ob-pad">${U.seg('sex', [['female', 'Female'], ['male', 'Male'], ['', 'Skip']], Q.sex || '', 'Sex', ` ${bind('sex')}`)}</div>`, 'Only used to read your health trends.')}`;
-    return `<div class="ob-fields" data-key="age">${field('Age (optional)', numInput('age', Q.age, 'e.g. 35', 'min="13" max="100" inputmode="numeric" data-redraw'), age ? age.text : 'A plan that suits your age.', 'age')}</div>`
+    const size = `${unitsSeg()}<div class="ob-fields">${sizeFields()}</div>${sexGroup()}`;
+    return `<div class="ob-fields" data-key="age">${ageField('A plan that suits your age.')}</div>`
       + group('How much have you trained?', levels)
       + linkRow('obAround', 'heart', 'rose', 'Anything to plan around?', aroundSummary() || 'Sore joints, old injuries, health conditions (optional)', 'around')
       + more('size', 'Weight and height (optional)', size, sizeErr, Q._w || Q._hcm || Q._hft ? sizeWords() : 'For your protein goal and your weight trend');
@@ -936,25 +943,34 @@
   U.act.obAroundDone = () => { if (aroundCtl) { U.haptic('success'); aroundCtl.close('ok'); } };
   function aroundBody() {
     if (!Q) return '';
+    const h = healthParts('Not medical advice. If a move hurts, stop, and say so after your workout.');
+    return `<div class="sheet-pad ob-around-body">
+      <p class="t-callout rf-muted">Pick anything that applies and your plan works around it. All optional, and it stays on this phone.</p>
+      ${jointGroups(true)}${h.pick}
+      <ul class="rf-list">${U.sw('A doctor told me to take it easy', Q.gentle, bind('gentle', '', true), 'A gentler start, fewer sets, no jumping.')}</ul>
+      ${h.after}
+    </div>`;
+  }
+  // Sore joints and old injuries (the sheet, and Joints and sides). redraw: the sheet's summary of
+  // what's planned around follows each tap.
+  const jointGroups = (redraw) => group('Does anything hurt right now?', `<div class="ob-chips">${JOINTS.map(([id, t]) => listChip('_pain', id, t, Q._pain.includes(id), '', redraw)).join('')}</div>`, 'Moves that load these are swapped out for two weeks.')
+    + group('Old injuries to be careful with', `<div class="ob-chips">${JOINTS.map(([id, t]) => listChip('careful', id, t, (Q.careful || []).includes(id), '', redraw)).join('')}</div>`, 'Jumps and tricky versions are left out for these.');
+  // Health conditions (the sheet, and Anything we should plan around?): the chips with the questions
+  // they bring (which joints, the floor), then what they change and when to ask a doctor.
+  function healthParts(foot) {
     const ac = A();
     const p = draftProfile();
     const has = (id) => Q.conditions.includes(id);
     const floorQ = !has('seated') && (Q.age >= 60 || ['balance', 'ra', 'oa', 'osteo'].some(has));
-    const around = ac.plannedAround(p);
     const lines = ac.planLines(p);
-    const doctor = ac.doctorLines(p);
-    return `<div class="sheet-pad ob-around-body">
-      <p class="t-callout rf-muted">Pick anything that applies and your plan works around it. All optional, and it stays on this phone.</p>
-      ${group('Does anything hurt right now?', `<div class="ob-chips">${JOINTS.map(([id, t]) => listChip('_pain', id, t, Q._pain.includes(id), '', true)).join('')}</div>`, 'Moves that load it are swapped out for two weeks.')}
-      ${group('Old injuries to be careful with', `<div class="ob-chips">${JOINTS.map(([id, t]) => listChip('careful', id, t, (Q.careful || []).includes(id), '', true)).join('')}</div>`, 'Jumps and tricky versions are left out for these.')}
-      ${group('Health', `<div class="ob-chips">${ac.CONDITIONS.map((c) => listChip('conditions', c.id, c.name, has(c.id), '', true)).join('')}</div>`, 'Not medical advice. If a move hurts, stop, and say so after your workout.')}
-      ${has('oa') ? group('Which joints?', `<div class="ob-chips">${ac.OA_JOINTS.map(([id, t]) => listChip('oaJoints', id, t, Q.oaJoints.includes(id), '', true)).join('')}</div>`, 'Knees and hips if you don\'t pick any.') : ''}
-      ${floorQ ? group('Getting down to the floor and back up', `<div class="ob-pad">${U.seg('floorOk', [['true', 'Easy enough'], ['false', 'Hard']], Q.floorOk === false ? 'false' : 'true', 'Getting down to the floor', ` ${bind('floorOk', 'bool', true)}`)}</div>`, 'If it\'s hard, nothing in your plan is on the floor.') : ''}
-      <ul class="rf-list">${U.sw('A doctor told me to take it easy', Q.gentle, bind('gentle', '', true), 'A gentler start, fewer sets, no jumping.')}</ul>
-      ${lines.length ? `<div class="card ob-card ob-around" data-key="around"><p class="t-headline">${U.esc(around || 'Your plan')}</p><ul class="ob-bullets">${lines.map((l) => `<li>${U.esc(l.text)}</li>`).join('')}</ul></div>` : ''}
-      ${doctor.map((t) => status('caution', t)).join('')}
-      <p class="t-footnote rf-muted">Pregnant? This plan isn't built for pregnancy. Ask your midwife or doctor what's right for you.</p>
-    </div>`;
+    return {
+      pick: group('Health', `<div class="ob-chips">${ac.CONDITIONS.map((c) => listChip('conditions', c.id, c.name, has(c.id), '', true)).join('')}</div>`, foot)
+        + (has('oa') ? group('Which joints?', `<div class="ob-chips">${ac.OA_JOINTS.map(([id, t]) => listChip('oaJoints', id, t, Q.oaJoints.includes(id), '', true)).join('')}</div>`, 'Knees and hips if you don\'t pick any.') : '')
+        + (floorQ ? group('Getting down to the floor and back up', `<div class="ob-pad">${U.seg('floorOk', [['true', 'Easy enough'], ['false', 'Hard']], Q.floorOk === false ? 'false' : 'true', 'Getting down to the floor', ` ${bind('floorOk', 'bool', true)}`)}</div>`, 'If it\'s hard, nothing in your plan is on the floor.') : ''),
+      after: (lines.length ? `<div class="card ob-card ob-around" data-key="around"><p class="t-headline">${U.esc(ac.plannedAround(p) || 'Your plan')}</p><ul class="ob-bullets">${lines.map((l) => `<li>${U.esc(l.text)}</li>`).join('')}</ul></div>` : '')
+        + ac.doctorLines(p).map((t) => status('caution', t)).join('')
+        + '<p class="t-footnote rf-muted ob-note">Pregnant? This plan isn\'t built for pregnancy. Ask your midwife or doctor what\'s right for you.</p>',
+    };
   }
 
   /* ---------------------------------------------------------------- the plan, revealed */
@@ -1032,7 +1048,9 @@
       const reasons = (x.reasons || []).slice(1).filter((r) => !around || r.indexOf(around) !== 0).slice(0, 3)
         .map((r) => r.replace(/about (\d+) of sets/, 'about $1 minutes of sets'));
       const plan = B().todayPlan(S0, day);
-      const review = !!(GH.planReview && GH.planReview.available && GH.planReview.available(S0) === true);
+      // The coach's review, when there's a coach to ask (GH.planReview says; a promise counts as no).
+      const can = GH.planReview && GH.planReview.available ? GH.planReview.available(S0) : false;
+      const review = !!can && typeof can.then !== 'function';
       return { key, day, p, x, days, first, reasons, around, startable: plan.type === 'workout', review, eq: B().eqFor(S0, day) };
     } catch (e) {
       if (G.console) G.console.error(e);
@@ -1260,18 +1278,11 @@
   };
 
   /* ---------------------------------------------------------------- just tracking food */
-  VIEW.fabout = () => {
-    const lb = Q.units !== 'kg';
-    return lead('For your calorie and protein targets. It all stays on this phone.')
-      + group('Units', unitsSeg())
-      + `<div class="ob-fields">
-          ${field(`Weight (${lb ? 'lb' : 'kg'}, optional)`, numInput('_w', Q._w, lb ? 'e.g. 150' : 'e.g. 68', 'min="30" max="700" step="0.1"'), 'Your targets come from it.', '_w')}
-          ${lb ? `<div class="ob-row2">${field('Height (ft, optional)', numInput('_hft', Q._hft, '5', 'min="3" max="8" inputmode="numeric"'), '', '_hft')}${field('(in)', numInput('_hin', Q._hin, '9', 'min="0" max="11" inputmode="numeric"'), '', '_hin')}</div>`
-        : field('Height (cm, optional)', numInput('_hcm', Q._hcm, 'e.g. 175', 'min="100" max="250" inputmode="numeric"'), '', '_hcm')}
-          ${field('Age (optional)', numInput('age', Q.age, 'e.g. 35', 'min="13" max="100" inputmode="numeric" enterkeyhint="done"'), '', 'age')}
-        </div>`
-      + group('Sex (optional)', `<div class="ob-pad">${U.seg('sex', [['female', 'Female'], ['male', 'Male'], ['', 'Skip']], Q.sex || '', 'Sex', ` ${bind('sex')}`)}</div>`, 'Used for your calorie target. Skip it and an average is used.');
-  };
+  // Weight first: the targets come from it.
+  VIEW.fabout = () => lead('For your calorie and protein targets. It all stays on this phone.')
+    + group('Units', unitsSeg())
+    + `<div class="ob-fields">${sizeFields('Your targets come from it.')}${ageField()}</div>`
+    + sexGroup();
   const WEIGHT_GOALS = [['lose', 'flame', 'rose', 'Lose weight', 'A steady calorie deficit'], ['maintain', 'scale', 'sky', 'Keep it steady', 'Eat to stay where you are'], ['gain', 'arrow-up-right', 'amber', 'Gain weight', 'A small surplus to build on']];
   VIEW.fgoal = () => `<div class="ob-opts" role="radiogroup" aria-label="Your goal" data-key="wgoal">${WEIGHT_GOALS.map(([id, icon, tone, title, sub]) => opt({ act: 'obWeightGoal', arg: id, icon, tone, title, sub, on: (Q.weightGoal || 'maintain') === id })).join('')}</div>`
     + (Q.weightGoal === 'lose' ? group('How fast?', `<div class="ob-pad">${U.seg('pace', paceOpts(), String((Q.food && Q.food.pace) || 0.5), 'How fast', ` ${bind('food.pace', 'num')}`)}</div>`, `${Q._w ? 'A week. ' : ''}Slower keeps more muscle.`) : '')
@@ -1360,19 +1371,10 @@
   }
 
   /* ---------------------------------------------------------------- Your answers: the detailed screens */
-  VIEW.about = () => {
-    const lb = Q.units !== 'kg';
-    const age = A() && Q.age >= 13 && Q.age <= 100 ? A().planLines({ age: Q.age }).find((l) => l.kind === 'age') : null;
-    return lead(`Used for your protein goal, weight trend${workoutsOn() ? ' and a plan that suits your age' : ''}. It stays on this phone.`)
-      + group('Units', unitsSeg())
-      + `<div class="ob-fields">
-          ${field('Age (optional)', numInput('age', Q.age, 'e.g. 35', 'min="13" max="100" inputmode="numeric" data-redraw'), workoutsOn() && age ? age.text : '', 'age')}
-          ${field(`Weight (${lb ? 'lb' : 'kg'}, optional)`, numInput('_w', Q._w, lb ? 'e.g. 150' : 'e.g. 68', 'min="30" max="700" step="0.1"'), '', '_w')}
-          ${lb ? `<div class="ob-row2">${field('Height (ft, optional)', numInput('_hft', Q._hft, '5', 'min="3" max="8" inputmode="numeric"'), '', '_hft')}${field('(in)', numInput('_hin', Q._hin, '9', 'min="0" max="11" inputmode="numeric"'), '', '_hin')}</div>`
-      : field('Height (cm, optional)', numInput('_hcm', Q._hcm, 'e.g. 175', 'min="100" max="250" inputmode="numeric" enterkeyhint="done"'), '', '_hcm')}
-        </div>`
-      + group('Sex (optional)', `<div class="ob-pad">${U.seg('sex', [['female', 'Female'], ['male', 'Male'], ['', 'Skip']], Q.sex || '', 'Sex', ` ${bind('sex')}`)}</div>`, foodModeOf() === 'full' ? 'Used for your calorie target. Skip it and an average is used.' : 'Only used to read your health trends. Skip it if you like.');
-  };
+  VIEW.about = () => lead(`Used for your protein goal, weight trend${workoutsOn() ? ' and a plan that suits your age' : ''}. It stays on this phone.`)
+    + group('Units', unitsSeg())
+    + `<div class="ob-fields">${ageField()}${sizeFields()}</div>`
+    + sexGroup();
   // Switching units converts what's been entered: weight, height, dumbbells, the ball, the gym rack.
   // Switching straight back (nothing changed meanwhile) restores what was there, rather than
   // rounding it twice (10, 15 and 20 lb would come back as 12 and 20).
@@ -1410,20 +1412,8 @@
 
   // Health conditions: optional, private, and what they change is said right there.
   VIEW.conditions = () => {
-    const ac = A();
-    const p = draftProfile();
-    const has = (id) => Q.conditions.includes(id);
-    const floorQ = !has('seated') && (Q.age >= 60 || ['balance', 'ra', 'oa', 'osteo'].some(has));
-    const around = ac.plannedAround(p);
-    const lines = ac.planLines(p);
-    const doctor = ac.doctorLines(p);
-    return lead('Pick anything that applies, and your plan works around it. It\'s optional, and it stays on this phone.')
-      + group('Health', `<div class="ob-chips">${ac.CONDITIONS.map((c) => listChip('conditions', c.id, c.name, has(c.id), '', true)).join('')}</div>`, 'Not medical advice. If a move hurts, stop, and say so after your workout: moves that load it are swapped out.')
-      + (has('oa') ? group('Which joints?', `<div class="ob-chips">${ac.OA_JOINTS.map(([id, t]) => listChip('oaJoints', id, t, Q.oaJoints.includes(id), '', true)).join('')}</div>`, 'Knees and hips if you don\'t pick any.') : '')
-      + (floorQ ? group('Getting down to the floor and back up', `<div class="ob-pad">${U.seg('floorOk', [['true', 'Easy enough'], ['false', 'Hard']], Q.floorOk === false ? 'false' : 'true', 'Getting down to the floor', ` ${bind('floorOk', 'bool', true)}`)}</div>`, 'If it\'s hard, nothing in your plan is on the floor.') : '')
-      + (lines.length ? `<div class="card ob-card ob-around" data-key="around"><p class="t-headline">${U.esc(around || 'Your plan')}</p><ul class="ob-bullets">${lines.map((l) => `<li>${U.esc(l.text)}</li>`).join('')}</ul></div>` : '')
-      + doctor.map((t) => status('caution', t)).join('')
-      + '<p class="t-footnote rf-muted ob-note">Pregnant? This plan isn\'t built for pregnancy. Ask your midwife or doctor what\'s right for you.</p>';
+    const h = healthParts('Not medical advice. If a move hurts, stop, and say so after your workout: moves that load it are swapped out.');
+    return lead('Pick anything that applies, and your plan works around it. It\'s optional, and it stays on this phone.') + h.pick + h.after;
   };
 
   VIEW.goals = () => lead('Tap them in order of priority. Your first two get the most work.')
@@ -1553,8 +1543,7 @@
       : from50 ? U.sw('Include jumping and slamming', Q.jumpsOk === true, bind('jumpsOk'), 'Off by default from 50. Turn it on if your knees and hips are happy with it and your floor allows it.')
         : U.sw('Jumping and slamming is OK where I train', Q.impactOk !== false, bind('impactOk'), 'Turn off for apartments, sore knees or thin floors.');
     return lead('So nothing here makes an old injury worse, and a weaker side catches up.')
-      + group('Does anything hurt right now?', `<div class="ob-chips">${JOINTS.map(([id, t]) => listChip('_pain', id, t, Q._pain.includes(id))).join('')}</div>`, 'Moves that load these are swapped out for two weeks.')
-      + group('Old injuries to be careful with', `<div class="ob-chips">${JOINTS.map(([id, t]) => listChip('careful', id, t, (Q.careful || []).includes(id))).join('')}</div>`, 'Risky versions (jumps, tricky variations) are left out for these.')
+      + jointGroups(false)
       + group('Which arm is stronger?', `<div class="ob-pad">${U.seg('strongArm', [['L', 'Left'], ['same', 'About the same'], ['R', 'Right']], Q._strongArm, 'Stronger arm', ` ${bind('_strongArm')}`)}</div>`, 'The weaker side goes first, never does fewer reps than the other, and gets one extra set until it catches up.')
       + group('Which leg is stronger?', `<div class="ob-pad">${U.seg('strongLeg', [['L', 'Left'], ['same', 'About the same'], ['R', 'Right']], Q._strongLeg, 'Stronger leg', ` ${bind('_strongLeg')}`)}</div>`)
       + group('', `<ul class="rf-list">
@@ -1567,13 +1556,14 @@
     return list.length <= 1 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
   }
 
-  // Protein: how much a day, in grams when the weight is known ("About 120 g").
+  // Protein: how much a day, in grams when the weight is known ("120 g", under "Protein a day"). Short
+  // labels, so the three fit side by side with the phone's text turned up.
   function perOpts() {
     const kg = Q._w > 0 ? (Q.units !== 'kg' ? Q._w / B().LB_PER_KG : Q._w) : null;
     const words = ['Standard', 'Higher', 'Highest'];
-    return [0.7, 0.8, 1].map((per, i) => [per, kg ? `About ${Math.round(per * kg * B().LB_PER_KG / 5) * 5} g` : words[i]]);
+    return [0.7, 0.8, 1].map((per, i) => [per, kg ? `${Math.round(per * kg * B().LB_PER_KG / 5) * 5} g` : words[i]]);
   }
-  const proteinFoot = () => (Q._w > 0 ? 'A day, from your weight. More helps you keep muscle while you lose fat.' : 'Add your weight to see grams a day.');
+  const proteinFoot = () => (Q._w > 0 ? 'About that much a day, from your weight. More helps you keep muscle while you lose fat.' : 'Add your weight to see grams a day.');
   // Pace: how much a week, in the person's units when the weight is known.
   function paceOpts() {
     const lb = Q.units !== 'kg';
@@ -1732,7 +1722,15 @@
     U.syncHealth('manual');
     if (U.afterOnboarding) U.afterOnboarding();
     if (start) { U.act.startWorkout(); return; }
-    if (how === 'review' && GH.planReview && GH.planReview.open) setTimeout(() => { try { GH.planReview.open('setup'); } catch (e) { if (G.console) G.console.error(e); } }, 450);
+    // The review opens as it does from You and Plan (their "Check my plan with AI").
+    if (how === 'review') {
+      setTimeout(() => {
+        try {
+          if (U.act.reviewPlan) U.act.reviewPlan({ dataset: { arg: 'setup' }, closest: () => null, setAttribute() {}, removeAttribute() {} });
+          else if (GH.planReview && GH.planReview.open) GH.planReview.open('setup');
+        } catch (e) { if (G.console) G.console.error(e); }
+      }, 450);
+    }
     else if (friend) setTimeout(() => U.toast(`Using ${sh.plan.name}`, 'positive', 'Your week follows it from today.'), 500);
     else if (kept) setTimeout(() => U.toast(`${sender(sh) ? `${sender(sh)}'s plan is` : 'The plan you were sent is'} in Your plans`, 'neutral', 'Open it from You whenever you like.'), 500);
   }

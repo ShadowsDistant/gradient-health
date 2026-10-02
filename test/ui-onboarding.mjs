@@ -5,7 +5,8 @@
 // before the plan, plain words (no dashes, optional fields marked), "Anything to plan around?" in a
 // sheet and what it changes, Restore from a backup on the welcome, a friend's shared plan's three
 // screens into that plan (no tour), and Just tracking food? with Health Connect as its optional last
-// screen. Then Your answers: every detailed screen as before, one screen with Save, and a flare day.
+// screen. Then Your answers: every detailed screen as before, one screen with Save; after the first
+// workout, Health Connect offered and then the tour (once, not over a toast); and a flare day.
 // No console errors. Screenshots go to build/ui-onboarding/.
 // Usage: node test/ui-onboarding.mjs [--dark] [--width=390]
 import { createRequire } from 'node:module';
@@ -310,7 +311,7 @@ section('Just tracking food?');
   await next(page);
   check('then the goal', (await title(page)) === 'What\'s your goal?');
   await tap(page, '.ob-opt[data-arg="lose"]', 300);
-  check('protein in grams a day, the pace in pounds a week', /About 145 g/.test(await text(page)) && /0\.9 lb/.test(await text(page)), await text(page));
+  check('protein in grams a day, the pace in pounds a week', /\b145 g\b/.test(await text(page)) && /About that much a day/.test(await text(page)) && /0\.9 lb/.test(await text(page)), await text(page));
   await next(page); await page.waitForTimeout(300);
   check('then the daily targets', (await title(page)) === 'Your daily targets' && await page.locator('.onboard .ft-big .ft-n').count() === 1 && /steps a day/.test(await text(page)));
   check('no Health Connect request before them', await page.evaluate(() => window.__hcAsks) === 0);
@@ -397,10 +398,45 @@ section('Planned around: the sheet and what it changes');
   await page.evaluate(() => window.__gh.back()); await page.waitForTimeout(400);
   await page.evaluate(() => window.GH.ui.editAnswers('nutrition'));
   await page.waitForTimeout(400);
-  check('Weight and protein on its own, protein in grams a day', (await title(page)) === 'Weight and protein' && /About \d+ g/.test(await text(page)) && !/g\/kg|g\/lb/.test(await text(page)));
+  check('Weight and protein on its own, protein in grams a day', (await title(page)) === 'Weight and protein' && /\b\d+ g\b/.test(await text(page)) && /About that much a day/.test(await text(page)) && !/g\/kg|g\/lb/.test(await text(page)));
   await shot(page, '14-one-nutrition');
   await page.evaluate(() => window.__gh.back()); await page.waitForTimeout(400);
   check('Android Back closes a one-screen edit', await page.locator('.onboard').isHidden());
+  await ctx.close();
+}
+
+section('After the first workout: Health Connect, then the tour');
+{
+  const { ctx, page } = await fresh('app', '2026-09-28T08:00:00');
+  await next(page); await next(page); await next(page); await next(page);
+  await toPlan(page);
+  await page.click('.ob-actions [data-act="obLook"]');
+  await page.waitForSelector('#screen[data-view="today"] .session', { timeout: 5000 });
+  await page.clock.runFor(2500); await page.waitForTimeout(500);
+  const before = await page.evaluate(() => ({ tour: !!document.querySelector('dialog.tour-sheet[open]'), card: window.GH.ui.hcInvite(window.GH.ui.S), list: (document.querySelector('#screen .checklist') || {}).innerText || '' }));
+  check('before it: no tour and no Health Connect card; the checklist keeps both for later', !before.tour && before.card === '' && /Connect Health Connect/.test(before.list) && /Do a level check/.test(before.list), before);
+  // The first workout, done and checked in as the player does it.
+  await page.evaluate(() => { const GH = window.GH, U = GH.ui, B = GH.brain, S = U.S; B.startWorkout(S, U.today(), { now: Date.now() - 26 * 60000 }); for (let g = 0; S.active && S.active.idx < S.active.steps.length && g < 400; g++) { const st = S.active.steps[S.active.idx]; B.completeStep(S, st.kind === 'test' ? { value: 12 } : {}); if (st.askRir) B.setRir(S, st.item, '12'); } B.finishWorkout(S, { rating: 'right', now: Date.now() }); U.save(true); });
+  const card = await page.evaluate(() => window.GH.ui.hcInvite(window.GH.ui.S));
+  check('after it, the Next screen\'s card offers Health Connect', /Let sleep and steps shape your workouts/.test(card) && /data-act="hcInviteGo"/.test(card) && /Not now/.test(card));
+  // Today brings the tour once nothing's on top (a new badge's toast goes first).
+  await page.evaluate(() => window.GH.ui.render());
+  let tour = {};
+  for (let i = 0; i < 40 && !tour.open; i++) {
+    await page.clock.runFor(500); await page.waitForTimeout(80);
+    tour = await page.evaluate(() => ({ open: !!document.querySelector('dialog.tour-sheet[open]'), title: (document.querySelector('dialog.tour-sheet[open] .rf-sheet-title') || {}).textContent, n: document.querySelectorAll('dialog.tour-sheet[open] .tour-dots i').length, toast: !!document.querySelector('.rf-toaster .rf-toast:not([data-leaving])') }));
+  }
+  check('then Today brings the tour, three cards, not over a toast', tour.open && tour.title === 'Find your way around' && tour.n === 3 && !tour.toast, tour);
+  await page.waitForTimeout(500);
+  await shot(page, '15-tour');
+  await page.evaluate(() => window.GH.ui.closeSheets()); await page.clock.runFor(600); await page.waitForTimeout(400);
+  await page.evaluate(() => window.GH.ui.render()); await page.clock.runFor(3000); await page.waitForTimeout(400);
+  check('once', await page.evaluate(() => !document.querySelector('dialog.tour-sheet[open]') && window.GH.ui.seen('tour')));
+  // Not now: the card goes, and stays gone.
+  await page.evaluate(() => { const U = window.GH.ui; const d = document.createElement('div'); d.innerHTML = U.hcInvite(U.S); document.body.appendChild(d); U.act.hcInviteLater(d.querySelector('[data-act="hcInviteLater"]')); });
+  await page.clock.runFor(600); await page.waitForTimeout(400);
+  check('Not now puts it away for good', await page.evaluate(() => window.GH.ui.hcInvite(window.GH.ui.S) === ''));
+  check('and no Health Connect request in all that', await page.evaluate(() => window.__hcAsks) === 0);
   await ctx.close();
 }
 
