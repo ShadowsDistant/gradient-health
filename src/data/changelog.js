@@ -29,7 +29,7 @@
         ['wave', 'Smoother motion: the page you leave slides away as the next comes in, and cards glide when something is added or removed.'],
         ['compass', 'A quicker set-up: six short steps, then your plan and why, and your first workout starts right away. Health Connect waits until after it. A friend\'s shared plan gets you started in three steps.'],
         ['lock', 'Safer: your Claude key is encrypted with your phone\'s keystore, backups only happen when they\'re end-to-end encrypted, model downloads are checked against fixed fingerprints, and a bad link or backup can\'t break the app.'],
-        ['clock', 'Faster: the app loads less when it starts, and saving never holds up a tap.'],
+        ['clock', 'Faster: the app opens about a fifth sooner, and a third sooner later the same day. It\'s over a quarter smaller, loads set-up and the plan check only when they\'re needed, and saving never holds up a tap.'],
       ],
     },
     {
