@@ -4,7 +4,8 @@
  *     frequencies and their one-step variants, and a count of every split that was in the running;
  *   - gives each day its sets (weekPlan): first enough for every group to reach its weekly floor
  *     (a bigger move's help counted at half), then by what a minute of training is worth toward
- *     the week's targets, the top goals weighing most;
+ *     the week's targets, the top goals weighing most, each day measured on the session its sets
+ *     make; with too little time for every group, the groups last week left short come first;
  *   - fits each session to the time set (fit): filled to about 92% of it with the most useful extra
  *     (more sets, a second exercise, the small muscles, longer rests, a finisher, a cool-down, a
  *     longer warm-up), and never more than 30 seconds over it;
