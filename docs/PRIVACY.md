@@ -1,6 +1,6 @@
 # Gradient Health privacy policy
 
-Last updated October 1, 2026.
+Last updated October 2, 2026.
 
 Gradient Health is a workout, health and food tracking app for Android. This policy explains exactly what the app collects, where it keeps it, what (if anything) leaves your phone, and how to delete it.
 
@@ -10,7 +10,7 @@ There's no account, no ads, no analytics and no tracking. Everything you enter, 
 
 If you allow it, the app also reads Health Connect in the background every 15 minutes, so your history stays complete on days you don't open it. When you record a run, walk, hike or ride, the app uses your location for its route, only while that activity is recording. The route stays on your phone, and goes to Health Connect only if you save the activity there.
 
-Data only leaves your phone when you use one of these optional features, and only what the feature needs: a summary sent to Claude, once you've allowed it, when you ask it something and for your weekly report; a food search or barcode sent to Open Food Facts when you look a food up online; a one-time download of the on-device AI model; street map pieces for the area around an activity, from OpenFreeMap, when you tap Show streets; and a workout plan you choose to share, which goes only to the people you send it to. Each one is off until you turn it on.
+Data only leaves your phone when you use one of these optional features, and only what the feature needs: a summary sent to Claude, once you've allowed it, when you ask it something, ask it to check your plan, and for your weekly report; a food search or barcode sent to Open Food Facts when you look a food up online; a one-time download of the on-device AI model; street map pieces for the area around an activity, from OpenFreeMap, when you tap Show streets; and a workout plan you choose to share, which goes only to the people you send it to. Each one is off until you turn it on.
 
 Nobody is paid for your data, and it's never used for advertising.
 
