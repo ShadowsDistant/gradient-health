@@ -43,7 +43,7 @@
         <span class="at-ic">${U.icon(tp.icon)}</span><span class="at-name">${U.esc(tp.label)}</span>${t === mark ? `<span class="at-last t-caption">${pre ? 'For today' : 'Last time'}</span>` : ''}</button>`;
     }).join('');
     U.sheet({
-      title: 'Start an activity', size: 'fit', cls: 'at-sheet',
+      title: 'Record a walk, run or ride', size: 'fit', cls: 'at-sheet',
       body: `<div class="sheet-pad at-pick"><div class="at-grid">${tiles}</div>
         <p class="t-footnote rf-muted at-note">${U.icon('lock', 'sm')}<span>Your route stays on this phone. It goes to Health Connect only if you save it there.</span></p></div>`,
     });

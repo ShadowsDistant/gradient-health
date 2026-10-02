@@ -287,13 +287,15 @@
 
   /* ---------------------------------------------------------------- layout */
   let root, topbar, screen, floatEl, playerEl, onboardEl, tabbar, accessory, ptrEl;
-  const ALL_TABS = { today: ['today', 'home', 'Today'], plan: ['plan', 'calendar', 'Plan'], food: ['food', 'food', 'Food'], health: ['health', 'heart', 'Health'], progress: ['progress', 'chart', 'Progress'], moves: ['moves', 'library', 'Moves'] };
-  // The tabs follow what you track. Food takes the Moves slot when calorie tracking is on (the moves
-  // are then in Plan and Profile); with workouts off, Plan, Progress and Moves go away.
+  const ALL_TABS = { today: ['today', 'home', 'Today'], plan: ['plan', 'calendar', 'Plan'], food: ['food', 'food', 'Food'], health: ['health', 'heart', 'Health'], progress: ['progress', 'chart', 'Progress'], you: ['you', 'person', 'You'] };
+  // The tabs follow what you track, five at most: a sixth doesn't fit a 360 px phone. You (your
+  // profile, badges, plans and Settings) is always last, and the moves are a section of Plan. With
+  // calorie tracking on, Food takes Progress's place, and Progress opens as a page from You, Today's
+  // streak and Plan; with workouts off, Plan and Progress go away.
   function tabsFor(S) {
     const workouts = !S || !S.profile || S.profile.workouts !== false;
     const food = !!(S && S.profile && GH.food && GH.food.full(S));
-    const ids = workouts ? (food ? ['today', 'plan', 'food', 'health', 'progress'] : ['today', 'plan', 'health', 'progress', 'moves']) : (food ? ['today', 'food', 'health'] : ['today', 'health']);
+    const ids = workouts ? (food ? ['today', 'plan', 'food', 'health', 'you'] : ['today', 'plan', 'health', 'progress', 'you']) : (food ? ['today', 'food', 'health', 'you'] : ['today', 'health', 'you']);
     return ids.map((id) => ALL_TABS[id]);
   }
   let TABS = tabsFor(null);
@@ -540,26 +542,50 @@
   }
 
   const tabIndex = (t) => TABS.findIndex((x) => x[0] === t);
-  function go(tab) {
-    // A section that isn't a tab right now opens as a page (Moves with Food on), or Today.
+  const viewStack = []; // the pages opened on top of the current tab, for Back
+  const toTop = () => screen.scrollTo({ top: 0, behavior: U.reduced() ? 'auto' : 'smooth' });
+  // `quiet` leaves the haptic to the caller (Android's Back plays its own).
+  function go(tab, quiet) {
+    // Places that were tabs before 1.6: Profile is the You tab, and the moves are a section of Plan.
+    if (tab === 'profile') tab = 'you';
+    if (tab === 'moves' && U.hasTab('plan')) {
+      const turned = U.planSection ? U.planSection('moves') : false;
+      if (U.route.tab === 'plan' && !U.route.view) {
+        if (turned) { if (!quiet) U.haptic('select'); render(); }
+        toTop();
+        return;
+      }
+      tab = 'plan';
+    }
+    // A section that isn't a tab right now opens as a page: Progress with Food on (while workouts
+    // are), the moves with workouts off. Anything else goes to Today.
     if (!U.hasTab(tab)) {
-      if (tab === 'moves' || (tab === 'food' && GH.food && U.S && GH.food.full(U.S))) { U.open(tab); return; }
+      const workouts = !U.S || U.S.profile.workouts !== false;
+      if (tab === 'moves' || (tab === 'progress' && workouts) || (tab === 'food' && GH.food && U.S && GH.food.full(U.S))) {
+        if (U.route.view === tab) toTop();
+        else U.open(tab);
+        return;
+      }
       tab = 'today';
     }
-    if (U.route.tab === tab && !U.route.view) { screen.scrollTo({ top: 0, behavior: U.reduced() ? 'auto' : 'smooth' }); return; }
+    if (U.route.tab === tab && !U.route.view) { toTop(); return; }
     const from = U.route.view ? null : tabIndex(U.route.tab);
     const to = tabIndex(tab);
-    U.haptic('select');
+    if (!quiet) U.haptic('tab');
     if (U.markSeen) U.markSeen(`tab_${tab}`);
+    // Pages opened on the tab we leave are left behind, so Back on the new tab never returns to one.
+    viewStack.length = 0;
     U.route = { tab, view: null, arg: null };
     render(from == null ? 'pop' : to > from ? 'right' : to < from ? 'left' : null);
     if (U.screens[tab] && U.screens[tab].shown) safe(() => U.screens[tab].shown(U.S, U.today()));
   }
   U.go = go;
-  const viewStack = [];
   U.open = (view, arg) => {
+    // Profile became the You tab: old links to it land there.
+    if (view === 'profile') { go('you'); return; }
     if (U.route.view) viewStack.push({ view: U.route.view, arg: U.route.arg, scroll: screen.scrollTop });
     U.route = { tab: U.route.tab, view, arg: arg == null ? null : arg };
+    U.haptic('nav');
     render('push');
     screen.focus({ preventScroll: true });
     if (U.screens[view] && U.screens[view].shown) safe(() => U.screens[view].shown(U.S, U.today(), arg));
@@ -568,6 +594,7 @@
     if (!U.route.view) return false;
     const prev = viewStack.pop();
     U.route = { tab: U.route.tab, view: prev ? prev.view : null, arg: prev ? prev.arg : null };
+    U.haptic('back');
     render('pop');
     if (prev) screen.scrollTop = prev.scroll || 0;
     return true;
@@ -704,7 +731,7 @@
     if (!playerEl.hidden) return U.playerBack ? U.playerBack() : false;
     if (!onboardEl.hidden) return U.onboardBack ? U.onboardBack() : false;
     if (U.route.view) return U.back();
-    if (U.route.tab !== 'today') { go('today'); return true; }
+    if (U.route.tab !== 'today') { U.haptic('back'); go('today', true); return true; }
     return false;
   }
 
@@ -876,11 +903,13 @@
     if (hash) openRoute(hash);
     G.addEventListener('hashchange', () => openRoute((G.location.hash || '').replace('#', '')));
   }
+  // Links into the app (#route, or the shell's route event). Tabs, and places that were tabs (moves,
+  // profile) or are pages in some modes (progress, food), go through go(); the rest open as pages.
   function openRoute(route) {
     const ready = U.S && U.S.profile.onboarded;
     if (route === 'privacy') { if (ready) U.open('privacy'); else if (U.showPrivacySheet) U.showPrivacySheet(); }
-    else if (['health', 'plan', 'progress', 'moves', 'today', 'food'].includes(route)) { if (ready) go(route); }
-    else if (['profile', 'settings', 'science', 'coach'].includes(route)) { if (ready) U.open(route); }
+    else if (['today', 'plan', 'food', 'health', 'progress', 'you', 'moves', 'profile'].includes(route)) { if (ready) go(route); }
+    else if (['settings', 'science', 'coach'].includes(route) || (route === 'badges' && U.screens.badges)) { if (ready) U.open(route); }
   }
   U.boot = boot;
   if (doc) {
