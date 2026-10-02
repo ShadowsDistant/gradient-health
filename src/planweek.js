@@ -189,7 +189,8 @@
   // as they are, so a new setting still refreshes the plan; the long logs are skipped or cut down to
   // what matters here. Outdoor activities reach the plan only through the health days (today's and
   // yesterday's are in the stamp), and badges never do, so neither is stringified on every render.
-  const SKIP = new Set(['log', 'health', 'feel', 'sleepChip', 'active', 'ai', 'seen', 'weights', 'measurements', 'food', 'protein', 'pendingLines', 'insightsShown', 'insightsDismissed', 'coachDismissed', 'celebrated', 'createdAt', 'updatedAt', 'activities', 'actLive', 'achievements']);
+  // Nor are the plans the optimizer keeps in the state (planCache), which come from the rest.
+  const SKIP = new Set(['log', 'health', 'feel', 'sleepChip', 'active', 'ai', 'seen', 'weights', 'measurements', 'food', 'protein', 'pendingLines', 'insightsShown', 'insightsDismissed', 'coachDismissed', 'celebrated', 'createdAt', 'updatedAt', 'activities', 'actLive', 'achievements', 'planCache']);
   const js = (v) => (v === undefined ? '' : JSON.stringify(v));
   function stamp(S, day) {
     const out = [day];

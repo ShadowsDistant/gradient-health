@@ -384,10 +384,11 @@
   //   when the sync ran doesn't matter); the hand logs, which are small; the log, one short line per
   //   entry (what changes after the fact:
   //   the check-in, the rating, what it celebrated); the workout in progress; and food only as the
-  //   protein of the days the goals read.
+  //   protein of the days the goals read. (Not the plans the optimizer keeps in the state,
+  //   planCache: they're worked out from the rest, and change as a launch works them out.)
   // A generator that starts reading something new adds it here.
   const FEEL = new Set([recovery, anomalies, trends, relationships]);
-  const SKIP = new Set(['log', 'health', 'food', 'active', 'feel', 'sleepChip', 'insightsShown', 'insightsDismissed', 'ai', 'seen', 'activities', 'actLive', 'achievements', 'pendingLines', 'updatedAt', 'createdAt']);
+  const SKIP = new Set(['log', 'health', 'food', 'active', 'feel', 'sleepChip', 'insightsShown', 'insightsDismissed', 'ai', 'seen', 'activities', 'actLive', 'achievements', 'pendingLines', 'updatedAt', 'createdAt', 'planCache']);
   const dayJson = new WeakMap(); // health day record → its JSON
   const js = (v) => (v === undefined ? '' : JSON.stringify(v));
   function stamp(S, day) {
