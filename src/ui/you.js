@@ -84,15 +84,19 @@
       line = `Training since ${since}${week ? ` · week ${week.trainingWeek}` : ''}`;
       stats = [[x.workouts, x.workouts === 1 ? 'Workout' : 'Workouts'], [x.current, 'Day streak']];
     } else {
-      // Without workouts: what's been tracked instead.
+      // Without workouts: what's been tracked since then (the last year of it at most).
       const F = GH.food;
+      const from = Math.max(p.startDay != null ? p.startDay : day, day - 365);
       const weighIns = (S.weights || []).filter((w) => w.src !== 'profile').length;
       line = `Using Gradient Health since ${since}`;
       if (F && F.mode(S) === 'full') {
         let foodDays = 0;
-        for (let d = day - 27; d <= day; d++) if (F.totals(S, d).n) foodDays++;
-        stats = [[foodDays, 'Food days'], [weighIns, weighIns === 1 ? 'Weigh-in' : 'Weigh-ins']];
-      } else stats = [[weighIns, weighIns === 1 ? 'Weigh-in' : 'Weigh-ins'], [H().stats(S, 'sleepMin', day - 27, day).n, 'Nights logged']];
+        for (let d = from; d <= day; d++) if (F.totals(S, d).n) foodDays++;
+        stats = [[foodDays, foodDays === 1 ? 'Day of food' : 'Days of food'], [weighIns, weighIns === 1 ? 'Weigh-in' : 'Weigh-ins']];
+      } else {
+        const nights = H().stats(S, 'sleepMin', from, day).n;
+        stats = [[weighIns, weighIns === 1 ? 'Weigh-in' : 'Weigh-ins'], [nights, nights === 1 ? 'Night of sleep' : 'Nights of sleep']];
+      }
     }
     const n = badgeCount(S, day);
     stats.push([n, n === 1 ? 'Badge' : 'Badges']);
