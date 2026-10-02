@@ -35,6 +35,7 @@ src/store.js             local + file persistence, backup and restore, migration
 src/platform.js          haptics, vibration, sounds, theme and system bars, insets, back button, lazy chunks
 src/ui/core.js           layout, tabs, router, in-place rendering (U.morph), transitions, sync, events
 src/ui/sheet.js          the bottom sheets: detents, dragging, springs (U.sheet in core.js wraps it)
+src/ui/hapticsui.js      the haptics rows for Settings (U.hapticRows) and the Feel each one gallery
 src/ui/chat.js           the coach chat and the coach button on every tab
 src/ui/tailor.js         the Tailor my plan sheet
 src/ui/customplan.js     Your plans: the list, the editor and exercise picker, sharing, a shared plan's
@@ -167,14 +168,23 @@ and keyboard insets to the page (`__gh.setInsets`), which pads itself with `--sa
 and `--sar`. The page reports its theme back (`AndroidBridge.setSystemBars`) so the bar icons stay
 readable when the app's theme differs from the phone's.
 
-**Haptics.** `AndroidBridge.haptic(kind)` plays `tap`, `select`, `tick`, `toggleOn`, `toggleOff`,
-`detent`, `countdown`, `warning`, `success`, `error`, `heavy`, `go`, `done` or `celebrate`, each its
-own composition of the phone's haptic primitives (see `Haptics.java`: each primitive's support is
-checked, with a stand-in for a missing one, and amplitude waveforms on phones without primitives),
-scaled by the strength setting (0.55, 0.8, 1). Event kinds play as media vibrations, so a low system
-touch intensity can't mute them; UI kinds follow the system touch-feedback setting. With the app out
-of sight, workout timer alerts fall back to alarm-class vibrations (`vibrate`, `vibratePattern`), the
-only kind Android lets through then.
+**Haptics.** `AndroidBridge.haptic(kind)` plays one of 31 kinds, in five groups: touch (`tap`,
+`press`, `select`, `tick`, `edge`, `toggleOn`, `toggleOff`, `detent`), navigation (`tab`, `nav`,
+`back`, `grab`, `drop`), feedback (`success`, `log`, `undo`, `deny`, `warning`, `error`, `heavy`),
+workout (`countdown`, `go`, `pause`, `setDone`, `done`, `workoutDone`, `levelUp`, `milestone`, `pr`)
+and moments (`badge`, `celebrate`). Each is its own composition of the phone's haptic primitives (see
+`Haptics.java`: each primitive's support is checked, with a stand-in for a missing one), then a
+predefined effect for the one-beat kinds, then an amplitude waveform, then on/off pulses. Light plays
+at 0.75, Medium (the default) at full strength, and Strong adds a low tick after each click. Every
+kind plays as a media vibration, so the phone's touch intensity can't dull it; the touch and
+navigation kinds are skipped when its touch feedback is off. The bridge plays them from its own
+thread, without waiting for the UI thread. `platform.js` has the same kinds as browser patterns, a
+rank for each, and the rules for when two meet (a toast's haptic is a consequence that leaves its
+action's feel alone); `core.js` (`wire`) and `sheet.js` play the ones that come with controls, sheets
+and dialogs by themselves, `data-haptic="<kind>"` on an action plays that kind, and
+`src/ui/hapticsui.js` has the Settings rows (`U.hapticRows`) and the Feel each one gallery. With the
+app out of sight, workout timer alerts fall back to alarm-class vibrations (`vibrate`,
+`vibratePattern`), the only kind Android lets through then.
 
 **Health Connect.** The platform API needs Android 14 or newer. Gradient Health reads steps, sleep, weight,
 height, body fat, resting heart rate, HRV and exercise, and since 1.2 heart rate (30-minute averages,

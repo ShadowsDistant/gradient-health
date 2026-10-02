@@ -9,7 +9,8 @@
 .hx-ico { grid-row: span 2; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: var(--_hue, var(--accent-fill)); color: var(--on-hue); box-shadow: inset 0 1px 0 rgb(255 255 255 / .22); }
 .hx-title { margin: 0; font-size: 1.0625rem; font-weight: 650; line-height: 1.2; color: var(--label); }
 .hx-sub { font-size: .8125rem; line-height: 1.25; color: var(--label-secondary); }
-.hx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(104px, 100%), 1fr)); gap: var(--space-2); }
+/* Three tiles a row on most phones, two on a narrow one or with large text. */
+.hx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(7rem, 100%), 1fr)); gap: var(--space-2); }
 
 .hx-chip {
   appearance: none; margin: 0; border: 0; font: inherit; text-align: start; cursor: pointer;
@@ -23,7 +24,7 @@
 [data-theme^="dark"] .hx-chip { background: linear-gradient(160deg, color-mix(in oklab, var(--_hue) 26%, var(--bg-raised)), color-mix(in oklab, var(--_hue) 9%, var(--bg-raised)) 70%); box-shadow: var(--rim-light), inset 0 0 0 1px color-mix(in oklab, var(--_hue) 34%, transparent); }
 .hx-chip:active { transform: scale(.955); }
 .hx-chip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.hx-name { font-size: .9375rem; font-weight: 600; line-height: 1.2; overflow-wrap: anywhere; }
+.hx-name { font-size: .9375rem; font-weight: 600; line-height: 1.2; overflow-wrap: break-word; hyphens: auto; }
 .hx-wave { display: flex; align-items: center; height: 14px; min-width: 0; overflow: hidden; color: color-mix(in oklab, var(--_hue) 78%, var(--label)); }
 .hx-wave > i { flex: none; border-radius: 2px; background: currentColor; opacity: .55; }
 [data-theme$="contrast"] .hx-wave > i { opacity: 1; }
