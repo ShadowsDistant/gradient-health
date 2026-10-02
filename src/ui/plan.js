@@ -287,7 +287,7 @@
         <ul class="pw-mus">${li}</ul>
         <p class="pw-legend t-caption rf-muted" aria-hidden="true"><span><i class="pw-sw is-done"></i>Sets done</span><span><i class="pw-sw is-plan"></i>In the plan</span>${own ? '' : '<span><i class="pw-sw is-target"></i>Weekly target</span>'}</p>
         ${short.length ? `<p class="t-footnote rf-muted">${short.length > 3 ? 'Your time per workout fits fewer sets than your weekly targets.' : `Your time per workout fits fewer sets than the target for ${U.esc(listWords(short))}.`} A few more minutes a workout closes the gap.</p>` : ''}
-        <button type="button" class="rf-btn pw-prog" data-variant="plain" data-size="sm" data-act="openProgress">${U.icon('chart')}See your progress${U.icon('chevron-right')}</button>
+        <button type="button" class="rf-btn pw-to-progress" data-variant="plain" data-size="sm" data-act="openProgress">${U.icon('chart')}See your progress${U.icon('chevron-right')}</button>
       </div></div>`;
   }
   function comingUp(w) {

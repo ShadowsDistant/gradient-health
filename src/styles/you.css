@@ -56,9 +56,9 @@
 .pw-seg .rf-segmented { width: 100%; }
 .pw-seg + .pw-sub { margin-top: calc(-1 * var(--space-1)); }
 .pw-seg ~ .moves-list > .tip:first-child { margin-bottom: var(--space-1); }
-.pw-prog { justify-self: start; gap: 6px; margin: calc(-1 * var(--space-1)) 0 calc(-1 * var(--space-1)) calc(-1 * var(--space-2)); }
-.pw-prog > .rf-icon { --rf-icon-size: 16px; }
-.pw-prog > .rf-icon:last-child { opacity: .7; }
+.pw-to-progress { justify-self: start; gap: 6px; margin: calc(-1 * var(--space-1)) 0 calc(-1 * var(--space-1)) calc(-1 * var(--space-2)); }
+.pw-to-progress > .rf-icon { --rf-icon-size: 16px; }
+.pw-to-progress > .rf-icon:last-child { opacity: .7; }
 
 /* ---------------------------------------------------------------- Today: the streak opens Progress */
 .streak.tap-card { appearance: none; border: 0; margin: 0; font: inherit; color: var(--label); text-align: start; width: 100%; cursor: pointer; }
