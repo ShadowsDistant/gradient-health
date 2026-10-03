@@ -110,6 +110,7 @@
           ${head('about', 'About', 'version licenses research science')}
           ${list('about', `${kw(U.row({ key: 'science', icon: 'library', tone: 'violet', title: 'How it works', sub: 'The research behind every rule', act: 'openScience', chevron: true }), 'science research studies rules why')}
             ${kw(U.row({ key: 'licenses', icon: 'doc', tone: 'indigo', title: 'Open-source licenses', act: 'licensesSheet', chevron: true }), 'credits open source')}
+            ${kw(U.row({ key: 'refract', lead: U.refractMark('sm'), title: 'Built with Refract', sub: 'The liquid glass design system behind every screen', act: 'licensesSheet', chevron: true }), 'refract design system glass credits')}
             ${U.row({ key: 'version', icon: 'info', tone: 'sky', title: 'Version', detail: U.esc(ver) })}`)}
           ${foot('about', 'Built-in foods from the USDA\'s nutrient database. Not medical advice: check with a doctor before starting if you have a condition or an injury.')}
           <p class="set-none t-callout rf-muted" data-key="none" hidden>No settings match. Try a word like dark, kg, vibration or backup.</p>
@@ -396,9 +397,15 @@
     ['MapLibre GL JS', 'Street maps behind an activity\'s route', 'BSD 3-Clause'],
     ['OpenStreetMap contributors and OpenMapTiles, served by OpenFreeMap', 'Street map data, when you show streets', 'Open Database License and CC BY 4.0'],
   ];
+  // The design system first: everything on screen is made of it. Its mark comes apart once as the
+  // sheet opens.
+  const refractCredit = () => {
+    const v = G.Refract && G.Refract.version ? String(G.Refract.version).replace(/\.0$/, '') : '';
+    return `<div class="credit-refract" data-key="credit-refract">${U.refractMark('lg', true)}<div class="credit-text"><p class="t-headline">Built with Refract${v ? ` ${U.esc(v)}` : ''}</p><p class="t-footnote rf-muted">The liquid glass design system behind every screen: its glass, controls, motion, icons and type.</p></div></div>`;
+  };
   U.act.licensesSheet = () => U.sheet({
     title: 'Open-source licenses', size: 'auto',
-    body: `<ul class="rf-list">${LICENSES.map(([name, what, lic]) => U.row({ title: U.esc(name), sub: U.esc(`${what} · ${lic}`) })).join('')}</ul>
+    body: `${refractCredit()}<ul class="rf-list">${LICENSES.map(([name, what, lic]) => U.row({ title: U.esc(name), sub: U.esc(`${what} · ${lic}`) })).join('')}</ul>
       <p class="t-footnote rf-muted sheet-lead">Thanks to everyone who made these. Their full license texts ship with the source code.</p>`,
   });
 

@@ -167,6 +167,8 @@ Pick a size in the chat or in Settings: Fast (0.8B, 533 MB) starts answering soo
 
 Glass bars, switches and buttons over soft colours that drift slowly behind each page, and controls that answer every tap, even a slightly wobbly one. Pages slide away as the next one comes in, and cards glide when something is added or removed. Sheets slide up from the bottom and follow your finger, from a quick glance up to full height. Haptics have 31 distinct feels (a tick for each tab, a bump at the end of a stepper, a timer counting down, a finished set, a new best, a badge) in Light, Medium or Strong, and you can feel each one in Settings. 3D figures appear right away, with a picture of the move until it starts. Light and dark themes, bigger text, reduced motion and increased contrast are all respected.
 
+The glass, controls, motion, icons and type come from Refract, the liquid glass design system the app is built with. It's credited in Settings, under About.
+
 ## Built on research, and honest about it
 
 Every rule Gradient Health follows, from how many sets you do to how long you rest, is listed in the app under training, recovery, food and habits, each with a one-line summary, the studies behind it and a plain rating of how strong the evidence is. Where the research is thin, it says so.

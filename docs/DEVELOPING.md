@@ -43,7 +43,7 @@ src/platform.js          haptics, vibration, sounds, theme and system bars, inse
 src/ui/core.js           layout, tabs, router, in-place rendering (U.morph), transitions, sync, events
 src/ui/sheet.js          the bottom sheets: detents, dragging, springs (U.sheet in core.js wraps it)
 src/ui/controls.js       switches, segmented controls and single-choice chips (U.choice): the touch
-                         handling that makes every tap count, and the glass at rest
+                         handling that makes every tap count, on Refract's liquid glass
 src/ui/hapticsui.js      the haptics rows for Settings (U.hapticRows) and the Feel each one gallery
 src/ui/you.js            the You tab: profile, badges, plans, your answers, Settings and help
 src/ui/badges.js         the badge medals, the strip, the gallery and the detail and reveal sheets
@@ -99,7 +99,7 @@ node test/contact-sheet.mjs [filter,…] [--dark]   # every move's keyframes, to
 Screens return HTML strings. `U.render()` doesn't replace the page: `U.morph()` patches it in
 place, keeping nodes that line up (by `data-key`, `id`, or position and tag). That keeps Refract's
 enhanced controls, running transitions, focus and scroll positions intact, so a tap never makes the
-screen flicker. Parts Refract injects (lens layers, the segmented thumb) and attributes it sets are
+screen flicker. Parts Refract injects (lens layers, the tab bar's pill, the segmented thumb and lens) and attributes it sets are
 left alone. A few conventions:
 
 - Give top-level cards a `data-key` so adding or removing one doesn't shift the rest.
@@ -131,6 +131,50 @@ hidden or goes away. Each save also fires `gh-change` on `document` (badges list
 `GH.migrations` holds the upgrades `store.migrate` runs on a loaded state. A restored backup goes
 through `store.sanitize` first: a size cap, no `__proto__` keys, and every field's type and range
 checked, so a crafted file can't break the app.
+
+## Refract, the design system
+
+Every screen is made of Refract, a liquid glass design system: its glass, controls, motion, icons,
+type and tokens. `vendor/refract/` holds Refract 1.4.0 exactly as its design system ships it
+(`vendor/refract/SOURCE.md` says where from, with each file's SHA-256, which `test/buildcheck.mjs`
+checks). It arrives minified, so the app never patches it: what the app needs differently goes
+through Refract's API, its attributes and the app's own CSS. To update it, copy the new
+`bundle.js`, `bundle.css`, `index.d.ts` and `tokens.json` and write their hashes in `SOURCE.md`.
+`scripts/build.mjs` ships the bundle as it is and drops the style sheet's demo landscapes
+(`.rf-art`, `.rf-scene`, about 49 KB the app doesn't use; `pruneCss`).
+
+What the app turns off, and why:
+
+- **Refract's haptics** (`data-rf-haptics="off"` on `<html>`, `src/shell.html`): the app's own
+  play instead (`src/platform.js`, `Haptics.java`), with their strengths and the on/off setting.
+  Refract's would buzz a second time on every control.
+- **Refraction by default** (`Refract.init(root, { lens: false })`, `RF_INIT` in `src/ui/core.js`):
+  only glass marked `data-lens` refracts, since each lens is redrawn every frame the page moves
+  under it.
+- **The light while busy**: on a phone, glass rims follow how it's tilted. The light holds still
+  while the page scrolls, while the workout player is open, with Moving background off and under
+  reduced motion, and follows the tilt again when things are calm (`U.steadyLight`, `core.js`).
+- **Click effects where a drag starts**: Refract's ripple, click ring and icon effects stay (they're
+  part of its feel), except on Plan's week strip, whose day pills are dragged
+  (`data-rf-effect="none"`).
+
+The controls (`src/ui/controls.js`): Refract 1.4's own switch and segmented control take any
+movement past 3 px as a drag, so a tap that wobbles would be lost. The app replaces those two
+behaviours (and adds the chip choice) with its own gesture rules (`U.switchGesture`: 12 px to drag,
+10 px up or down to scroll, the tap rescue), but draws them with Refract's liquid engine
+(`Refract.Liquid`): a frosted bead that rises into a lens under the finger, follows it on springs
+that keep their speed, and lands with a squash, exactly as Refract's own. A switch's knob is the
+engine's only while it's touched or moving; at rest Refract's style sheet puts it at either end.
+A resting bead's lens is a backdrop filter redrawn every frame the page moves behind it, for an
+edge hidden under the frost, so it only works while the bead is lifted (`data-lifted`;
+`src/styles/controls.css`). The tab bar is Refract's own (its pill and its lens); the app keeps
+the bar from panning and ticks once per tab a drag passes.
+
+Re-renders keep the parts Refract adds inside components (`INJECTED` in `core.js`: the tab bar's
+pill, the segmented lens, the click ripple and the rest) and the attributes it sets (`KEEP_ATTR`).
+
+The credit: Settings > About has "Built with Refract" with its mark (`U.refractMark`, drawn by
+Refract's `.rf-mark`), and the open-source licenses sheet opens with it.
 
 ## 3D exercise figure
 
