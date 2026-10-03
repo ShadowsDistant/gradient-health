@@ -53,7 +53,7 @@
       return `${U.navbar('Settings', '', U.glassBtn('chevron-left', 'Back', 'back'))}
         <h1 class="rf-large-title">Settings</h1>
         <div class="section set-top">
-          <div class="rf-search rf-glass set-search" role="search" data-key="search">${U.icon('search')}<input class="rf-search-input" type="search" id="setQ" placeholder="Search settings" aria-label="Search settings" value="${U.esc(query)}" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button type="button" class="rf-search-clear" aria-label="Clear search">${U.icon('x-circle')}</button></div>
+          <div class="rf-search set-search" role="search" data-key="search">${U.icon('search')}<input class="rf-search-input" type="search" id="setQ" placeholder="Search settings" aria-label="Search settings" value="${U.esc(query)}" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button type="button" class="rf-search-clear" aria-label="Clear search">${U.icon('x-circle')}</button></div>
         </div>
         <div class="section set-list">
           ${workouts ? `${head('plan', 'Your plan', 'workout training exercises sets reps')}

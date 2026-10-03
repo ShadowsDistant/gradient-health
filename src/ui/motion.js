@@ -1,14 +1,20 @@
-/* Motion: route changes, lists that glide, and cards that fold away or open up (U.motion).
+/* Motion: route changes, lists that glide, cards that fold away or open up, glass that forms and
+ * shape-shifts, and menus (U.motion, U.menu).
  *
- * Everything here moves with transform and opacity only, so the compositor plays it and nothing is
- * laid out again while it moves. With reduced motion a route change is a short fade, and lists and
- * cards change at once (a card folding away fades first).
+ * The app's own motion moves with transform and opacity only, so the compositor plays it and nothing
+ * is laid out again while it moves. Glass that sits above the page (the floating buttons, the
+ * workout capsule, the bar's buttons, menus) moves the way Refract 1.4 moves it: it forms and
+ * dissolves (Refract.materialize, dematerialize) and changes shape (Refract.shapeshift). That's
+ * Refract's own motion, which also animates the material and a few small parts' widths. With reduced
+ * motion a route change is a short fade, glass fades in and out, and lists and cards change at once
+ * (a card folding away fades first).
  *
  * U.motion.routeSwap(screen, frag, kind)  The route changed. The old page moves into a layer of its
  *   own beside the screen (.screen-exit: nothing in it takes a tap or is read out, and its ids are
  *   renamed) and leaves from where it was scrolled to, while frag, already in the screen when this
- *   returns, comes in. 'push' and 'pop' slide; a tab change ('left', 'right') cross-fades with a
- *   small shift toward the tab picked; any other kind just swaps.
+ *   returns, comes in, on Refract's springs: a push slides the new page in from the edge as the old
+ *   one falls back a third of the way, Back plays that in reverse, and a tab change ('left',
+ *   'right') morphs from one page to the other in place; any other kind just swaps.
  * U.motion.flip(els, mutate)  Measures els (an element's children, or a list of elements), runs
  *   mutate, then glides each from where it was to where it is now. Resolves when they've landed.
  * U.motion.exit(el)  el leaves from where it is: it's out of the flow at once, so what comes after it
@@ -20,14 +26,21 @@
  *   make room, and el fades and grows in. Resolves when it's in.
  * U.motion.settled()  Resolves once everything above that's playing has finished.
  *
+ * U.motion.glassIn(el, o)  Each glass part of el (or el) forms where it is (materialize).
+ * U.motion.glassOut(el, o)  A part that hides at once (the workout capsule, the floating buttons):
+ *   a copy of it dissolves where it was (dematerialize). o: { seen, ms }.
+ * U.motion.shift(root, update)  update() runs, and root's keyed parts ([data-rf-key]) shape-shift
+ *   from how they were: those that stay flow to their new width, new ones bud out, gone ones pinch off.
+ * U.menu(trigger, items, o)  A list of actions as Refract's menu, grown out of its button.
+ *
  * For src/ui/core.js: snap(root) measures a page before a re-render patches it; the patch reports
  * each container it changes (patched), so new blocks rise in and removed ones leave from where they
  * were (one in sight stays in the page, inert, for the 200 ms its fade takes: code or a test that
  * looks for it to be gone waits for settled()); play() then glides whatever moved, every glide
- * starting in the same frame. barSwap(bar)
- * cross-fades the navigation bar's title and buttons across a route change. show(el, frames, o)
- * plays frames on a part with glass in it without the glass losing its frost, and fadeAway(el, ms, seen)
- * lets a part that hides at once (the workout capsule, the floating buttons) fade where it was.
+ * starting in the same frame. barSwap(bar) carries the navigation bar across a route change: its
+ * title cross-fades, and its buttons shape-shift (update(fn) runs the bar's change). show(el, frames,
+ * o) plays frames on a part with glass in it without the glass losing its frost, and fadeAway(el,
+ * ms, seen) lets a part that hides at once fade where it was.
  */
 (function (G) {
   'use strict';
@@ -136,16 +149,80 @@
   // styled again for a node put in before it.
   // seen: whether it was showing, when the caller read that before changing anything (asked here,
   // after the change, it brings the page's style up to date).
+  // With reduced motion it only fades, for 150 ms at most.
   M.fadeAway = (el, ms, seen) => {
-    if (reduced() || !can(el) || !el.parentNode) return Promise.resolve();
+    if (!can(el) || !el.parentNode) return Promise.resolve();
     if (seen === false || (seen == null && el.checkVisibility && !el.checkVisibility({ visibilityProperty: true, opacityProperty: true }))) return Promise.resolve();
     const c = el.cloneNode(true);
     c.classList.add('motion-copy');
     c.hidden = false;
     shield(c);
     aside(() => el.parentNode.appendChild(c));
-    const a = show(c, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(10px) scale(.94)' }], { duration: ms || 220, easing: tok().standard, fill: 'forwards' });
+    const quiet = reduced();
+    const frames = quiet ? [{ opacity: 1 }, { opacity: 0 }] : [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(10px) scale(.94)' }];
+    const a = show(c, frames, { duration: quiet ? Math.min(150, ms || 150) : ms || 220, easing: quiet ? 'linear' : tok().standard, fill: 'forwards' });
     return track(Promise.all(a.map(ended)).then(() => c.remove()));
+  };
+
+  /* ---------------------------------------------------------------- glass that forms */
+  // Glass above the page forms instead of fading in (Refract.materialize: the shape grows out of a
+  // smaller copy of itself while its frost, rim and light arrive together, and its content settles in)
+  // and dissolves instead of fading out (dematerialize). These parts float over the tab bar, so they
+  // grow up out of it and sink back into it. Reading where the glass is lays the page out, so callers
+  // do this in the frame's read pass (core.js), and a copy that dissolves starts there too. Reduced
+  // motion: a short fade.
+  const glassOf = (el) => (el.classList.contains('rf-glass') ? [el] : Array.from(el.querySelectorAll(':scope > .rf-glass')));
+  const later = (fn) => { if (U.readSoon) U.readSoon(fn); else fn(); };
+  M.glassIn = (el, o) => {
+    const r = R();
+    if (!can(el)) return Promise.resolve();
+    if (reduced() || !r || !r.materialize) return all(show(el, [{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: 'linear' }));
+    const parts = glassOf(el);
+    return track(Promise.all(parts.map((g, i) => r.materialize(g, Object.assign({ origin: [0.5, 1], delay: i * 50 }, o)))));
+  };
+  // The copy, as fadeAway's: shielded, last in the parent (it's positioned, so it's drawn where the
+  // part was). Its glass carries its frost by itself while its opacity falls (data-fading).
+  M.glassOut = (el, o) => {
+    const opt = o || {};
+    if (!can(el) || !el.parentNode) return Promise.resolve();
+    if (opt.seen === false || (opt.seen == null && el.checkVisibility && !el.checkVisibility({ visibilityProperty: true, opacityProperty: true }))) return Promise.resolve();
+    const r = R();
+    if (reduced() || !r || !r.dematerialize) return M.fadeAway(el, 150, true);
+    const c = el.cloneNode(true);
+    c.classList.add('motion-copy');
+    c.hidden = false;
+    shield(c);
+    aside(() => el.parentNode.appendChild(c));
+    return track(new Promise((resolve) => later(() => {
+      const parts = c.isConnected ? glassOf(c) : [];
+      for (const g of parts) g.setAttribute('data-fading', '');
+      Promise.all(parts.map((g) => r.dematerialize(g, { origin: [0.5, 1], duration: opt.ms }))).then(() => { c.remove(); resolve(); });
+    })));
+  };
+
+  /* ---------------------------------------------------------------- shape-shifting */
+  // root's keyed parts ([data-rf-key]) shape-shift between two states (Refract.shapeshift): one that
+  // stays (a patch kept its node) flows to its new width and cross-fades what's in it, a new one buds
+  // out and a gone one pinches off. Refract animates their widths: a few small parts above the page,
+  // each laid out by itself. The pinched-off copies it leaves for a moment are only pictures:
+  // Refract doesn't set them up (aside), a patch passes them by (core.js), and they lose the actions
+  // and labels that would make them look like the real thing. Reduced motion: it just changes.
+  const GHOST_ATTRS = ['data-act', 'data-arg', 'data-on', 'data-key', 'aria-label', 'popovertarget', 'aria-controls', 'aria-haspopup', 'aria-expanded'];
+  M.shift = (root, update) => {
+    const r = R();
+    if (!r || !r.shapeshift || reduced() || !can(root)) { update(); return Promise.resolve(); }
+    let ran = false, p = null;
+    const run = () => { ran = true; update(); };
+    try { aside(() => { p = r.shapeshift(root, run); }); } catch (e) { if (!ran) update(); else throw e; }
+    for (const g of root.querySelectorAll('[data-rf-leaving]')) {
+      for (const n of [g, ...g.querySelectorAll('[data-act], [aria-label], [data-key]')]) for (const a of GHOST_ATTRS) n.removeAttribute(a);
+      // Blurring as it goes, it cuts its lens layer off from the page: its body carries the frost.
+      if (g.matches('.rf-glass[data-lens-ready]')) g.setAttribute('data-fading', '');
+    }
+    // The old look a changed part cross-fades from is a copy of what was in it, which includes the
+    // parts Refract drew there (its lens layer, a ripple): only the content goes in the copy.
+    for (const n of root.querySelectorAll('.rf-ghost :is(.rf-lens-layer, .rf-ripple, .rf-ghost)')) n.remove();
+    return p ? track(p) : Promise.resolve();
   };
 
   /* ---------------------------------------------------------------- parts on their way out */
@@ -177,30 +254,41 @@
   }
 
   /* ---------------------------------------------------------------- route changes */
-  // How each kind moves. Both pages move over the same time on the standard curve (quick, then a
-  // long settle), while each fade has a timeline of its own: the old page is gone well before the
-  // end, and the new one starts to show a little after the start, so the two are rarely both half
-  // there. A push sends the old page a third of the way off to the left as the new one comes in from
-  // 36 px to the right; Back plays that in reverse. A tab cross-fades, both pages shifted 12 px
-  // toward the tab picked.
-  function routeSpec(kind) {
-    if (kind === 'push') return { ms: 300, out: ['translateX(0)', 'translateX(-30%)'], in: ['translateX(36px)', 'translateX(0)'], gone: 0.42, show: 0.1 };
-    if (kind === 'pop') return { ms: 300, out: ['translateX(0)', 'translateX(36px)'], in: ['translateX(-30%)', 'translateX(0)'], gone: 0.42, show: 0.1 };
-    const dx = kind === 'right' ? 12 : kind === 'left' ? -12 : 0;
-    return { ms: 240, out: ['translateX(0)', `translateX(${-dx}px)`], in: [`translateX(${dx}px)`, 'translateX(0)'], gone: 0.5, show: 0.16 };
-  }
+  // How each kind moves: Refract 1.4's page motion (Refract.page), on its springs. A push slides the
+  // new page in from the edge on the smooth spring (the glide for large surfaces) while the old one
+  // falls back a third of the way and fades; Back plays that in reverse, the page under it coming
+  // back from a third of the way over. A tab change morphs in place: the new page settles from 97% as
+  // the old one grows to 103% and fades (360 ms). Each fade has a timeline of its own, so the old page
+  // is gone well before the end and the two are rarely both half there.
+  const TABS = { left: 1, right: 1, tab: 1 };
   const SLIDES = { push: 1, pop: 1, left: 1, right: 1, tab: 1 };
+  function routeSpec(kind) {
+    const t = tok();
+    const spring = { duration: t.smoothMs, easing: t.smooth };
+    if (TABS[kind]) {
+      return {
+        in: { move: ['scale(0.97)', 'scale(1)'], fade: [[0], [1, 0.45]], time: spring },
+        out: { move: ['scale(1)', 'scale(1.03)'], fade: [[1], [0]], time: { duration: 360, easing: t.standard } },
+      };
+    }
+    const push = kind === 'push';
+    return {
+      in: { move: [push ? 'translateX(100%)' : 'translateX(-30%)', 'translateX(0)'], fade: push ? null : [[0], [0, 0.04], [1, 0.5]], time: spring },
+      out: { move: ['translateX(0)', push ? 'translateX(-30%)' : 'translateX(100%)'], fade: [[1], [0, 0.5], [0]], time: spring },
+    };
+  }
   const swaps = new Set(); // old pages still leaving: { layer, anims, done }
   let entering = []; // the screen's own entrance, while it plays
 
-  // One moving part: a move on the standard curve over the whole time, and a fade through the given
-  // stops (keyframe offsets, each step easing out).
-  function slide(el, move, fade, ms, fill) {
+  // One moving part: a move on its spring, and a fade (if any) through the given stops (keyframe
+  // offsets, each step easing out) over the same time.
+  function slide(el, part, fill, from) {
     const t = tok();
-    return [
-      run(el, move.map((v) => ({ transform: v })), { duration: ms, easing: t.standard, fill }),
-      run(el, fade.map(([o, at]) => (at == null ? { opacity: o, easing: t.standard } : { opacity: o, offset: at, easing: t.standard })), { duration: ms, easing: 'linear', fill }),
-    ];
+    const move = from ? [from.transform, part.move[1]] : part.move;
+    const fade = part.fade && from ? [[from.opacity], ...part.fade.slice(1)] : part.fade;
+    const out = [run(el, move.map((v) => ({ transform: v })), Object.assign({ fill }, part.time))];
+    if (fade) out.push(run(el, fade.map(([o, at]) => (at == null ? { opacity: o, easing: t.standard } : { opacity: o, offset: at, easing: t.standard })), { duration: part.time.duration, easing: 'linear', fill }));
+    return out;
   }
   // Where an animated element is drawn right now (a transform and an opacity), to carry on from.
   function drawnAt(el) {
@@ -291,6 +379,8 @@
     layer.setAttribute('data-kind', kind);
     const top = pre && pre.screen === screen ? pre.scroll : screen.scrollTop;
     if (top) layer.style.translate = `0 ${-top}px`;
+    // A tab's morph scales about the middle of what was on screen (the layer is as tall as the page).
+    if (TABS[kind]) layer.style.transformOrigin = `50% ${Math.round(top + (G.innerHeight || 800) / 2)}px`;
     aside(() => { while (screen.firstChild) layer.appendChild(screen.firstChild); });
     shield(layer);
     screen.appendChild(frag);
@@ -305,7 +395,7 @@
       for (const c of gone) drop(c);
     };
     swaps.add(x);
-    entering = slide(screen, f.in, [[0], [0, f.show], [1]], f.ms);
+    entering = slide(screen, f.in);
     entering.forEach(track);
     // The old page goes on the page once the render that called this is done (before the next
     // frame): the layout that render does for the new page then doesn't lay the old one out too. It
@@ -314,8 +404,7 @@
     const shown = new Promise((resolve) => Promise.resolve().then(() => {
       if (finished) { resolve(); return; }
       aside(() => screen.parentNode.appendChild(layer));
-      const out = from ? [from.transform, f.out[1]] : f.out;
-      x.anims = slide(layer, out, [[from ? from.opacity : 1], [0, f.gone], [0]], f.ms, 'forwards');
+      x.anims = slide(layer, f.out, 'forwards', from);
       Promise.all(x.anims.map(ended)).then(() => x.done()).then(resolve);
     }));
     // (A page sent to the background meanwhile draws no frames: its motion ends, and the old page
@@ -323,13 +412,14 @@
     track(shown);
   };
 
-  // The navigation bar across a route change. Before: what each part (title, leading and trailing
-  // buttons) shows and where. After: a part that changed leaves as a copy fading out where it was,
-  // and the new one fades in, a little from the side the page is coming from. A title with nothing
-  // to show (the new page is at its top) goes at once, so its new words never fade out. The copies
-  // go in a stand-in for the bar laid over it (its classes, none of its content or its id), so the
-  // bar itself only ever holds what it shows now.
-  const BAR = [['.rf-navbar-leading', false], ['.rf-navbar-title', true], ['.rf-navbar-trailing', false]];
+  // The navigation bar across a route change. Its buttons shape-shift (M.shift): one on both routes
+  // keeps its glass and flows into its new place (the one at the top left is a single piece of glass,
+  // the coach on a tab and Back on a page, whose symbol changes), one the new route doesn't have
+  // pinches off, and a new one buds out. The title, if it changed, leaves as a copy fading out where
+  // it was while the new one fades in, a little from the side the page is coming from; a title with
+  // nothing to show (the new page is at its top) goes at once, so its new words never fade out. The
+  // copy goes in a stand-in for the bar laid over it (its classes, none of its content or its id), so
+  // the bar itself only ever holds what it shows now.
   // A title whose page is at its top goes at once, its fade off until the change has been drawn.
   // (Finishing the fade after the change instead meant asking for its transitions, which brings the
   // whole page's style up to date in the middle of the render that drew the new page.) Its own
@@ -342,57 +432,41 @@
     const back = () => { if (noFades.get(el) === ask) { noFades.delete(el); el.style.removeProperty('transition'); } };
     if (G.requestAnimationFrame) G.requestAnimationFrame(() => G.requestAnimationFrame(back)); else setTimeout(back, 50);
   }
-  // What a part shows: the title's words, or which buttons (by what they do and say, so a button
-  // whose state alone changed isn't taken for a new one).
-  const showing = (el, title) => (title ? el.textContent.trim() : Array.from(el.children, (c) => `${c.getAttribute('data-act') || c.tagName}|${c.getAttribute('aria-label') || ''}`).join());
-  const isShown = (bar, el, title) => (title ? bar.hasAttribute('data-scrolled') && !!el.textContent.trim() : el.childElementCount > 0);
   M.barSwap = (bar) => {
     if (reduced() || !can(bar)) return null;
-    const box = bar.getBoundingClientRect();
-    const parts = [];
-    for (const [sel, title] of BAR) {
-      const el = bar.querySelector(`:scope > ${sel}`);
-      if (!el) continue;
-      const shown = isShown(bar, el, title);
-      parts.push({ el, title, was: showing(el, title), r: shown ? el.getBoundingClientRect() : null, copy: shown ? el.cloneNode(true) : null });
-    }
+    const el = bar.querySelector(':scope > .rf-navbar-title');
+    const shown = !!el && bar.hasAttribute('data-scrolled') && !!el.textContent.trim();
+    const box = shown ? bar.getBoundingClientRect() : null;
+    const title = el ? { was: el.textContent.trim(), r: shown ? el.getBoundingClientRect() : null, copy: shown ? el.cloneNode(true) : null } : null;
     const screen = doc.getElementById('screen');
     if (screen) below = { screen, list: belowSight(screen), scroll: screen.scrollTop };
-    return (kind) => {
+    const swap = (kind) => {
+      if (!title || !el.isConnected || el.textContent.trim() === title.was) return;
       const t = tok();
       // The way the old page moves (left on a push or a tab to the right).
       const dir = kind === 'push' || kind === 'right' ? -1 : kind === 'pop' || kind === 'left' ? 1 : 0;
-      // A title slides a little; buttons shrink or grow in place, each by itself.
-      const pieces = (el, title) => (title ? [el] : Array.from(el.children));
-      const look = (title) => `translateX(${dir * 10}px)${title ? '' : ' scale(.8)'}`;
-      let holder = null;
-      const leaving = [];
-      for (const p of parts) {
-        if (!p.el.isConnected || showing(p.el, p.title) === p.was) continue;
-        if (p.copy) {
-          if (!holder) {
-            holder = bar.cloneNode(false);
-            holder.removeAttribute('id');
-            holder.classList.add('motion-copy');
-            shield(holder);
-            aside(() => bar.parentNode.appendChild(holder));
-          }
-          const c = p.copy;
-          c.classList.add('motion-copy');
-          Object.assign(c.style, { position: 'absolute', margin: '0', left: `${p.r.left - box.left}px`, top: `${p.r.top - box.top}px`, width: `${p.r.width}px`, height: `${p.r.height}px`, opacity: '1', translate: 'none', transition: 'none' });
-          shield(c);
-          aside(() => holder.appendChild(c));
-          for (const x of pieces(c, p.title)) leaving.push(...show(x, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: look(p.title) }], { duration: 180, easing: t.standard, fill: 'forwards' }));
-        }
-        if (isShown(bar, p.el, p.title)) {
-          // The title's own fade (data-scrolled) already brings it in when it wasn't showing.
-          if (p.title && !p.copy) continue;
-          const from = p.title ? `translateX(${-dir * 10}px)` : 'scale(.8)';
-          for (const x of pieces(p.el, p.title)) show(x, [{ opacity: 0, transform: from }, { opacity: 1, transform: 'none' }], { duration: p.title ? 260 : 360, delay: 60, easing: p.title ? t.enter : t.snappy, fill: 'backwards' });
-        } else if (p.title) noFade(p.el);
+      if (title.copy) {
+        const holder = bar.cloneNode(false);
+        holder.removeAttribute('id');
+        holder.classList.add('motion-copy');
+        shield(holder);
+        aside(() => bar.parentNode.appendChild(holder));
+        const c = title.copy;
+        c.classList.add('motion-copy');
+        Object.assign(c.style, { position: 'absolute', margin: '0', left: `${title.r.left - box.left}px`, top: `${title.r.top - box.top}px`, width: `${title.r.width}px`, height: `${title.r.height}px`, opacity: '1', translate: 'none', transition: 'none' });
+        shield(c);
+        aside(() => holder.appendChild(c));
+        const a = show(c, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${dir * 10}px)` }], { duration: 180, easing: t.standard, fill: 'forwards' });
+        track(Promise.all(a.map(ended)).then(() => holder.remove()));
       }
-      if (holder) { const h = holder; track(Promise.all(leaving.map(ended)).then(() => h.remove())); }
+      // The title's own fade (data-scrolled) already brings it in when it wasn't showing.
+      if (bar.hasAttribute('data-scrolled') && el.textContent.trim()) {
+        if (title.copy) show(el, [{ opacity: 0, transform: `translateX(${-dir * 10}px)` }, { opacity: 1, transform: 'none' }], { duration: 260, delay: 60, easing: t.enter, fill: 'backwards' });
+      } else noFade(el);
     };
+    // The bar's change (core.js), with its buttons shape-shifting.
+    swap.update = (fn) => M.shift(bar, fn);
+    return swap;
   };
 
   /* ---------------------------------------------------------------- FLIP */
@@ -596,5 +670,73 @@
     put();
     s.play();
     return all(show(el, [{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 260, delay: 90, easing: tok().enter, fill: 'backwards' }));
+  };
+
+  /* ---------------------------------------------------------------- menus */
+  // U.menu(trigger, items, o): a list of actions as Refract's menu, thick glass that grows out of the
+  // button that opened it and dissolves back into it (Refract.menu). items: [{ act, arg, icon, label,
+  // tone: 'critical' }], with null for a line between groups. Each item is its action's own button
+  // (data-act), so the app runs it as Refract closes the menu. A popover: arrow keys, Home, End and a
+  // letter move through it; Escape, Tab, a tap outside (which then does nothing else) and Android's
+  // Back (U.closeMenu, from core.js) close it, and focus goes back to the button. Opened from a sheet,
+  // it goes in the sheet's dialog, the one part of the page that takes taps then. o: { label }.
+  let menuSeq = 0;
+  let openMenu = null; // { el, trigger, picked }
+  U.closeMenu = () => {
+    const m = openMenu;
+    if (!m || !m.el.isConnected) return false;
+    const r = R();
+    if (r && r.menu) r.menu.close(m.el); else m.el.remove();
+    return true;
+  };
+  U.menu = (trigger, items, o) => {
+    const opt = o || {};
+    const r = R();
+    if (!trigger || !trigger.isConnected || !r || !r.menu) return null;
+    U.closeMenu();
+    const el = doc.createElement('div');
+    el.className = 'rf-menu rf-glass gh-menu';
+    el.id = `ghMenu${++menuSeq}`;
+    el.setAttribute('data-variant', 'thick');
+    el.setAttribute('popover', 'auto');
+    el.setAttribute('role', 'menu');
+    el.setAttribute('aria-label', opt.label || trigger.getAttribute('aria-label') || 'Options');
+    el.innerHTML = items.filter((x) => x !== undefined && x !== false && x !== '').map((x) => (x
+      ? `<button type="button" class="rf-menu-item" role="menuitem" data-act="${U.esc(x.act)}"${x.arg != null ? ` data-arg="${U.esc(x.arg)}"` : ''}${x.tone === 'critical' ? ' data-tone="critical"' : ''}>${x.icon ? U.icon(x.icon) : ''}<span>${U.esc(x.label)}</span></button>`
+      : '<hr class="rf-menu-sep">')).join('');
+    (trigger.closest('dialog[open]') || doc.body).appendChild(el);
+    if (U.enhance) U.enhance(el); else r.init(el);
+    trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-controls', el.id);
+    const m = openMenu = { el, trigger, picked: false };
+    el.addEventListener('rf-select', () => { m.picked = true; });
+    // A tap outside only closes it: Refract's popover would let it through to what's under it.
+    let outside = false;
+    const down = (e) => { outside = !el.contains(e.target); };
+    const click = (e) => { if (outside && !el.contains(e.target)) { e.preventDefault(); e.stopPropagation(); } outside = false; };
+    doc.addEventListener('pointerdown', down, true);
+    doc.addEventListener('click', click, true);
+    el.addEventListener('toggle', (e) => {
+      if (e.newState !== 'closed') return;
+      if (openMenu === m) openMenu = null;
+      if (trigger.getAttribute('aria-controls') === el.id) trigger.removeAttribute('aria-controls');
+      doc.removeEventListener('pointerdown', down, true);
+      // (The click of the tap that closed it comes after this.)
+      setTimeout(() => doc.removeEventListener('click', click, true), 400);
+      if (!m.picked) {
+        U.haptic('back');
+        const a = doc.activeElement;
+        if (trigger.isConnected && (!a || a === doc.body || el.contains(a))) trigger.focus({ preventScroll: true });
+      }
+      // It dissolves back into its button (Refract), then goes: once that motion ends, or after a
+      // moment whatever happens to it.
+      const gone = () => { if (el.isConnected) { if (r.destroy) r.destroy(el); el.remove(); } };
+      const anims = (el.getAnimations ? el.getAnimations({ subtree: true }) : []).filter((a) => a.playState === 'running' && Number.isFinite(a.effect && a.effect.getComputedTiming().endTime));
+      if (anims.length) Promise.all(anims.map((a) => a.finished.catch(() => {}))).then(gone);
+      setTimeout(gone, anims.length ? 900 : 0);
+    });
+    r.menu.open(el, trigger);
+    U.haptic('nav');
+    return el;
   };
 })(typeof window !== 'undefined' ? window : globalThis);

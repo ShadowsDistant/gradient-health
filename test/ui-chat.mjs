@@ -1,9 +1,11 @@
-// The coach chat in Chromium with someone five weeks in: the two engines (on-device and Claude), the
-// sizes offered before a model is on the phone, the on-device model (a tiny random-weight stand-in
-// with Qwen3.5's layout, served with Range requests like the app serves real models) and the facts
-// it gets with each question, Stop, the safety answer, and the model rows in Settings. The tiny
-// model's words are nonsense; what's checked is that answers stream in, stop, and are kept. Needs
-// build/tiny-qwen35.gguf (made here by scripts/make-tiny-gguf.py; see test/llm.mjs).
+// The coach chat in Chromium with someone five weeks in: the coach button (its ring and dot on a mark
+// of their own, its sparkle beating when tapped), the chat's options (a menu out of its button), the
+// two engines (on-device and Claude), the sizes offered before a model is on the phone, the
+// on-device model (a tiny random-weight stand-in with Qwen3.5's layout, served with Range requests
+// like the app serves real models) and the facts it gets with each question, Stop, the safety
+// answer, and the model rows in Settings. The tiny model's words are nonsense; what's checked is that
+// answers stream in, stop, and are kept. Needs build/tiny-qwen35.gguf (made here by
+// scripts/make-tiny-gguf.py; see test/llm.mjs).
 // Usage: node test/ui-chat.mjs [--dark] [--width=360]
 import { createRequire } from 'node:module';
 import { existsSync, statSync } from 'node:fs';
@@ -55,10 +57,18 @@ const tabs = await page.evaluate(async () => {
 });
 check('every tab has the coach button at its top left', tabs.today && tabs.plan && tabs.health && tabs.progress && tabs.you, tabs);
 check('a page opened on top has its Back button there instead', !tabs.settings, tabs);
+// Refract keeps its own ::before and ::after on the glass (the rim, the sheen and the press glow):
+// the ring and the dot are drawn by a mark of their own.
+const look = await page.evaluate(() => {
+  const btn = document.querySelector('#topbar .coach-btn'), after = getComputedStyle(btn, '::after');
+  return { mark: !!btn.querySelector(':scope > .coach-mark[aria-hidden="true"]'), sheen: /gradient/.test(after.backgroundImage), border: after.borderTopStyle };
+});
+check('the glass keeps Refract\'s own look (its sheen on ::after); the ring and dot have a mark of their own', look.mark && look.sheen && look.border === 'none', look);
 await page.click('#topbar .coach-btn');
+const beat = await page.evaluate(() => document.querySelector('#topbar .coach-btn .rf-icon').getAnimations().length);
 await page.waitForSelector('dialog.chat-sheet[open] .chat-pill');
 await wait(500);
-check('it opens the chat', true);
+check('it opens the chat, its sparkle beating (Refract\'s symbol effect)', beat > 0, beat);
 
 section('Engines');
 check('a pill at the top says who answers', await page.evaluate(() => /On this phone/.test(document.querySelector('.chat-sheet .chat-pill').textContent) && window.GH.ui.S.ai.mode === 'device'));
@@ -148,16 +158,50 @@ await page.click('.chat-sheet [data-act="askSend"]');
 await page.waitForSelector('.chat-sheet #chatLive', { timeout: 5000 });
 await page.evaluate(() => window.GH.ui.closeSheets());
 await wait(200);
-const ring = await page.evaluate(() => document.querySelector('#topbar .coach-btn').hasAttribute('data-busy'));
+const markOf = () => page.evaluate(() => { const btn = document.querySelector('#topbar .coach-btn'), m = btn.querySelector('.coach-mark'), cs = getComputedStyle(m); return { busy: btn.hasAttribute('data-busy'), unseen: btn.hasAttribute('data-unseen'), opacity: cs.opacity, spin: cs.animationName, w: Math.round(m.getBoundingClientRect().width) }; });
+const ring = await markOf();
 await page.waitForFunction(() => { const c = window.GH.ui.S.ai.deviceChat || []; return c.length >= 6; }, null, { timeout: 60000 });
 await wait(300);
-const dot = await page.evaluate(() => { const btn = document.querySelector('#topbar .coach-btn'); return btn.hasAttribute('data-unseen') && !btn.hasAttribute('data-busy'); });
-check('closing the chat doesn\'t stop the answer: the coach button shows a ring, then a dot', ring && dot, { ring, dot });
+const dot = await markOf();
+check('closing the chat doesn\'t stop the answer: the coach button shows a ring, then a dot', ring.busy && dot.unseen && !dot.busy, { ring, dot });
+check('the ring spins around the button, the dot is a small one in its corner', ring.spin === 'gh-spin' && ring.w > 40 && dot.spin === 'none' && dot.w === 9 && dot.opacity === '1', { ring, dot });
 await page.click('#topbar .coach-btn');
 await page.waitForSelector('dialog.chat-sheet[open] .chat-pill');
 await wait(500);
 b = await bubbles();
 check('reopened, the answer is there, and the dot is gone', b.length === 6 && b[5].text.trim().length > 0 && !(await page.evaluate(() => document.querySelector('#topbar .coach-btn').hasAttribute('data-unseen'))), b.slice(4));
+
+section('The chat\'s options, a menu out of its button');
+{
+  // More, in the chat: a menu that grows out of the button, in the chat's sheet; Escape closes only
+  // the menu, and focus goes back to More.
+  await page.click('dialog.chat-sheet [data-act="chatMenu"]');
+  await wait(600);
+  const m = await page.evaluate(() => {
+    const menu = document.querySelector('.rf-menu:popover-open'), d = document.querySelector('dialog.chat-sheet[open]');
+    return menu && { inSheet: d.contains(menu), items: [...menu.querySelectorAll('[role="menuitem"]')].map((b) => b.textContent.trim()), critical: !!menu.querySelector('[data-arg="askClear"][data-tone="critical"]'), glass: getComputedStyle(menu).backdropFilter, onMenu: document.activeElement === menu };
+  });
+  check('More opens a menu out of its button, inside the chat: AI coach settings and Clear this chat', m && m.inSheet && m.items.includes('AI coach settings') && m.items.includes('Clear this chat') && m.critical, m);
+  check('the menu is frosted glass (not see-through, as the sheet\'s own controls are made flat)', m && /blur/.test(m.glass), m && m.glass);
+  await page.keyboard.press('ArrowDown');
+  const first = await page.evaluate(() => document.activeElement && document.activeElement.textContent.trim());
+  check('focus is on the menu, and the arrow keys go to its items', m && m.onMenu && first === m.items[0], [m && m.onMenu, first]);
+  await page.keyboard.press('Escape');
+  await wait(700);
+  const shut = await page.evaluate(() => ({ menu: !!document.querySelector('.rf-menu'), chat: !!document.querySelector('dialog.chat-sheet[open]'), focus: document.activeElement && document.activeElement.dataset.act }));
+  check('Escape closes only the menu, and focus goes back to More', !shut.menu && shut.chat && shut.focus === 'chatMenu', shut);
+  await page.click('dialog.chat-sheet [data-act="chatMenu"]');
+  await wait(600);
+  await page.click('.rf-menu:popover-open [data-arg="chatSettings"]');
+  await wait(1200);
+  const went = await page.evaluate(() => ({ view: window.GH.ui.route.view, chat: !!document.querySelector('dialog.chat-sheet[open]'), menu: !!document.querySelector('.rf-menu') }));
+  check('AI coach settings in it opens the coach settings', went.view === 'settings' && !went.menu, went);
+  await page.evaluate(() => { const U = window.GH.ui; U.closeSheets(); if (U.route.view) U.back(); });
+  await wait(700);
+  await page.click('#topbar .coach-btn');
+  await page.waitForSelector('dialog.chat-sheet[open] .chat-pill');
+  await wait(500);
+}
 
 section('Stop');
 await page.fill('#askQ', 'Write me a long answer about everything');

@@ -344,9 +344,8 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 .tour-tab-label { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .tour-copy { display: grid; align-content: start; gap: var(--space-2); max-width: 36ch; min-height: 8.2em; }
 .tour-copy h3, .tour-copy p { margin: 0; }
-.tour-dots { display: flex; gap: 6px; }
-.tour-dots i { width: 7px; height: 7px; border-radius: 4px; background: var(--fill-1); transition: width var(--duration-spring-snappy) var(--spring-snappy), background-color var(--duration-base); }
-.tour-dots i.on { width: 22px; background: var(--accent-fill); }
+/* Refract's page dots (src/ui/guide.js): its ink worm stretches to the page shown and splats there. */
+.tour-dots { margin-block: calc(-1 * var(--space-2)); }
 .tour-btns { width: 100%; max-width: 420px; display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
 .tour-btns .rf-glass { min-width: 140px; }
 

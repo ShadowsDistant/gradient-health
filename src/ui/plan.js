@@ -86,7 +86,6 @@
       const at = list.findIndex((x) => x.day === view.day);
       const focusDay = at >= 0 ? view.day : (list.find((x) => x.isToday) || list[0]).day;
       return `<div class="pw-page" data-key="p${idx}" style="--n:${idx}"${idx !== page ? ' aria-hidden="true" inert' : ''}>
-        <span class="pw-sel${at < 0 ? ' is-off' : ''}" aria-hidden="true" style="--i:${Math.max(0, at)}"></span>
         <ul class="plan-list pw-days" role="tablist" aria-label="${idx ? 'Next week' : 'This week'}">${list.map((e) => pill(e, day, focusDay)).join('')}</ul>
       </div>`;
     };
@@ -353,7 +352,8 @@
     after(screen, S, day) {
       const st = screen.querySelector('.pw-strip');
       if (st) wireStrip(st);
-      travel(screen);
+      // The selection's bead goes to the day picked once this render's layout is in (it measures).
+      if (st && U.readSoon) U.readSoon(() => beadTo(screen)); else if (st) beadTo(screen);
       drawThumbs(screen, S, day);
       if (U.drawPlanThumbs) U.drawPlanThumbs(screen);
     },
@@ -379,22 +379,69 @@
   };
 
   /* ---------------------------------------------------------------- motion */
-  // The selection slides like a drop of glass: it stretches while it travels, then settles.
-  let lastSel = null;
-  function travel(screen) {
-    const vp = screen.querySelector('.pw-viewport');
-    if (!vp) { lastSel = null; return; }
-    const page = Number(vp.querySelector('.pw-track').style.getPropertyValue('--page')) || 0;
-    const sel = vp.querySelectorAll('.pw-sel')[page];
-    if (!sel) return;
-    const now = `${page}:${sel.style.getPropertyValue('--i').trim()}`;
-    if (lastSel && lastSel !== now && lastSel.split(':')[0] === String(page) && !U.reduced()) {
-      sel.setAttribute('data-traveling', '');
-      clearTimeout(sel._t);
-      sel._t = setTimeout(() => sel.removeAttribute('data-traveling'), 240);
-    }
-    lastSel = now;
+  // The selection is a bead of Refract's liquid glass (Refract.Liquid, driven as the segmented
+  // controls' thumbs are in src/ui/controls.js): a tinted face under the days and a lens over them,
+  // Refract's own segmented bead (its classes, so its material and its fallbacks for reduced
+  // transparency and increased contrast). Picking a day, it rises into glass, travels there and lands
+  // with a squash. Across weeks it holds the weekday picked, lifted into a lens, while the weeks slide
+  // under it (the days pass through the lens), and settles once the new week is in; a swipe lifts it
+  // the same way. With reduced motion it's simply placed. Its parts are made here, not in the markup:
+  // a patch leaves them where they are (core.js), and the next frame's read pass places them.
+  const BEAD = { lift: [1.08, 1.12], stretch: 0.22, lens: { zoom: 1.16, refract: 2.5, rim: 0.25, bezel: 10, dispersion: 0.04 } };
+  const bead = { vp: null, L: null, parts: null, page: -1, day: null, w: 0, t: 0 };
+  function beadParts(vp) {
+    const make = (cls, first) => {
+      let el = vp.querySelector(`:scope > .${cls.split(' ')[0]}`);
+      if (!el) {
+        el = doc.createElement('span');
+        el.className = cls;
+        el.setAttribute('aria-hidden', 'true');
+        if (first) vp.insertBefore(el, vp.firstChild); else vp.appendChild(el);
+      }
+      return el;
+    };
+    return [make('pw-bead rf-segmented-thumb', true), make('pw-bead-lens rf-segmented-lens', false)];
   }
+  function beadTo(screen) {
+    const vp = screen.querySelector('.pw-viewport');
+    if (!vp || !vp.isConnected) return;
+    const track = vp.querySelector('.pw-track');
+    const page = Number(track && track.style.getPropertyValue('--page')) || 0;
+    const pg = vp.querySelectorAll('.pw-page')[page];
+    const pillEl = pg && pg.querySelector('.pw-pill[aria-selected="true"]');
+    const li = pillEl && pillEl.closest('.pw-day');
+    const parts = beadParts(vp);
+    if (vp.hasAttribute('data-no-sel') === !!li) vp.toggleAttribute('data-no-sel', !li);
+    if (!li) return;
+    const x = li.offsetLeft, w = li.offsetWidth, day = pillEl.dataset.arg;
+    const rf = G.Refract;
+    if (bead.vp !== vp || !bead.L) {
+      if (bead.L) bead.L.destroy();
+      clearTimeout(bead.t);
+      Object.assign(bead, { vp, parts, L: rf && rf.Liquid ? new rf.Liquid(parts, BEAD) : null, page: -1, day: null, w: 0, t: 0 });
+    }
+    if (w !== bead.w) { bead.w = w; for (const p of parts) p.style.inlineSize = `${w}px`; }
+    const col = String(Array.prototype.indexOf.call(li.parentNode.children, li));
+    if (vp.getAttribute('data-sel') !== col) vp.setAttribute('data-sel', col); // the column picked
+    const L = bead.L;
+    const fresh = bead.day == null;
+    const weeks = !fresh && page !== bead.page;
+    const moved = !fresh && day !== bead.day;
+    bead.page = page; bead.day = day;
+    if (!L) { for (const p of parts) p.style.transform = `translateX(${x}px)`; return; }
+    // The same day (another re-render, a new size): put where it is, unless it's on its way.
+    if (fresh || U.reduced() || (!weeks && !moved)) { if (!bead.t && !L.held && !L.x.moving) L.place(x); return; }
+    clearTimeout(bead.t);
+    if (weeks) {
+      // The weeks slide under it (CSS, on the smooth spring): it lands as the new one settles.
+      L.grab();
+      const ms = (rf.duration ? rf.duration('duration-spring-smooth', 640) : 640) * 0.55;
+      bead.t = setTimeout(() => { bead.t = 0; L.travel(x, { lift: true }); L.drop(); }, ms);
+    } else L.travel(x, { lift: true });
+  }
+  // A swipe of the strip lifts it, and a swipe that comes back to the same week lets it down again.
+  function beadLift() { if (bead.L && !U.reduced()) { clearTimeout(bead.t); bead.t = 0; bead.L.grab(); } }
+  function beadDrop() { if (bead.L && !bead.t) bead.L.drop(); }
   // The picked day's card slides in from the side it came from.
   function slideCard(dir) {
     if (U.reduced()) return;
@@ -592,6 +639,7 @@
           g.mode = 'swipe';
           try { vp.setPointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
           vp.setAttribute('data-swiping', '');
+          beadLift();
         } else if (Math.abs(dy) > 12) { g = null; return; } else return;
       }
       // Past either end it gives, like a rubber band.
@@ -620,7 +668,7 @@
       }
       track().style.removeProperty('--drag');
       blockClick = Date.now() + 350;
-      if (page !== was.page) showWeek(page);
+      if (page !== was.page) showWeek(page); else beadDrop();
     };
     vp.addEventListener('pointerup', end);
     vp.addEventListener('pointercancel', end);

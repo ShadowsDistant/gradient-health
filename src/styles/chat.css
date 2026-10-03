@@ -11,7 +11,7 @@
 .chat-pill .pill-sub { color: var(--label-secondary); font-weight: 500; }
 .chat-pill .pill-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--label-tertiary); }
 .chat-pill .pill-dot[data-on] { background: var(--positive); box-shadow: 0 0 0 3px color-mix(in oklab, var(--positive) 22%, transparent); }
-.chat-engine-row, .chat-menu-row { width: 100%; border: 0; background: none; font: inherit; color: inherit; text-align: start; cursor: pointer; }
+.chat-engine-row { width: 100%; border: 0; background: none; font: inherit; color: inherit; text-align: start; cursor: pointer; }
 .chat-engine-on { color: var(--accent); display: inline-flex; }
 
 .chat-log { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-2) var(--space-4) var(--space-4); }
@@ -75,12 +75,15 @@ html[data-sheet-moving] .bubble.coach.is-typing, html[data-sheet-moving] .caret 
 .chat-compose textarea:focus-visible { outline: none; box-shadow: inset 0 0 0 1.5px var(--accent); }
 .chat-foot { margin: 0; padding: 0 var(--space-4) calc(var(--space-2) + var(--sab, 0px)); text-align: center; }
 
-/* The coach button, top left of every tab: a ring while an answer is on its way, a dot once it's in. */
-.coach-btn { position: relative; color: var(--hue-violet); }
-.coach-btn::after { content: ""; position: absolute; pointer-events: none; opacity: 0; transition: opacity var(--duration-fast); }
-.coach-btn[data-busy]::after { inset: -3px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--hue-violet); border-inline-end-color: var(--hue-violet); opacity: 1; animation: gh-spin 900ms linear infinite; }
-.coach-btn[data-unseen]::after { top: 4px; right: 4px; width: 9px; height: 9px; border-radius: 50%; background: var(--hue-rose); box-shadow: 0 0 0 2px var(--bg); opacity: 1; }
-@media (prefers-reduced-motion: reduce) { .coach-btn[data-busy]::after { animation: none; border-color: var(--hue-violet); } }
+/* The coach button, top left of every tab: a ring while an answer is on its way, a dot once it's in.
+   Both are its mark's (src/ui/chat.js), so the glass's ::before and ::after stay Refract's: its rim,
+   its sheen, the glow under a finger and the click ring. */
+.coach-btn { color: var(--hue-violet); }
+.coach-mark { position: absolute; inset: -3px; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity var(--duration-fast); }
+.coach-btn[data-busy] > .coach-mark { border: 2px solid transparent; border-top-color: var(--hue-violet); border-inline-end-color: var(--hue-violet); opacity: 1; animation: gh-spin 900ms linear infinite; }
+.coach-btn[data-unseen] > .coach-mark { inset: 4px 4px auto auto; width: 9px; height: 9px; background: var(--hue-rose); box-shadow: 0 0 0 2px var(--bg); opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .coach-btn[data-busy] > .coach-mark { animation: none; border-color: var(--hue-violet); } }
+:root[data-rf-motion="reduced"] .coach-btn[data-busy] > .coach-mark { animation: none; border-color: var(--hue-violet); }
 
 /* The on-device AI check (Settings). */
 .selftest-log { margin-top: var(--space-3); }

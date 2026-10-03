@@ -26,6 +26,9 @@
   const live = () => !!(U.S && U.S.actLive);
   const shown = () => !!(el && !el.hidden);
   U.actIsLive = live;
+  // While it's open the phone moves all the time: Refract's light holds still on its glass (core.js).
+  U.actLiveShown = shown;
+  const steady = () => { if (U.steadyLight) U.steadyLight(); };
 
   /* ---------------------------------------------------------------- starting */
   U.act.actStart = (btn) => {
@@ -186,6 +189,7 @@
     if (!L) L = fresh(S.actLive.goAt ? 'live' : 'search');
     const was = shown();
     el.hidden = false;
+    steady();
     if (!offBack) offBack = plat().onBack(onBack);
     pull(true);
     draw();
@@ -203,7 +207,7 @@
     if (offBack) { offBack(); offBack = null; }
     plat().keepAwake(false);
     let hid = false;
-    const done = () => { if (hid) return; hid = true; el.hidden = true; if (!live()) { el.textContent = ''; stopTimer(); } U.render(); capsuleClock(); };
+    const done = () => { if (hid) return; hid = true; el.hidden = true; steady(); if (!live()) { el.textContent = ''; stopTimer(); } U.render(); capsuleClock(); };
     if (animate === false || U.reduced() || !el.animate || el.hidden) { done(); return; }
     const an = el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(22px)' }], { duration: 220, easing: 'cubic-bezier(0.3, 0, 0.8, 0.15)', fill: 'forwards' });
     // A busy or throttled page can hold animation frames back: a timer finishes the job regardless.
@@ -413,20 +417,20 @@
     if (a.noGps) {
       const watch = A().canSession() ? ' Steps, distance and heart rate from a watch are added when you finish.' : '';
       return `${clock}
-      ${n.steps != null ? `<div class="al-grid"><div class="al-m al-m-wide"><span class="al-m-l">Steps</span><span class="al-m-v"><b data-live="steps">${U.num(n.steps)}</b></span><span class="al-m-s">from your phone</span></div></div>` : ''}
-      <div class="al-map al-map-none" data-type="${U.esc(a.type)}"><p class="al-map-wait t-footnote">${U.icon('pin', 'sm')}<span>${U.esc(`No GPS, so no distance or route this time.${watch}`)}</span></p></div>`;
+      ${n.steps != null ? `<div class="al-grid"><div class="al-m al-m-wide rf-glass" data-variant="thick" data-interactive><span class="al-m-l">Steps</span><span class="al-m-v"><b data-live="steps">${U.num(n.steps)}</b></span><span class="al-m-s">from your phone</span></div></div>` : ''}
+      <div class="al-map al-map-none rf-glass" data-variant="thick" data-interactive data-type="${U.esc(a.type)}"><p class="al-map-wait t-footnote">${U.icon('pin', 'sm')}<span>${U.esc(`No GPS, so no distance or route this time.${watch}`)}</span></p></div>`;
     }
     return `${clock}
       ${bn ? `<div class="al-banner" data-key="bn-${bn.n}" role="status">${U.icon('flag', 'sm')}<span>${U.esc(U.cap(U.actUnitLong()))} ${bn.n} · ${U.esc(U.actClock(bn.ms / 1000))}</span></div>` : ''}
       <div class="al-grid">
-        <div class="al-m"><span class="al-m-l">Distance</span><span class="al-m-v"><b data-live="dist">${U.esc(U.actDistNum(n.dist))}</b><small>${U.esc(unitShort())}</small></span><span class="al-m-s">&nbsp;</span></div>
-        <div class="al-m"><span class="al-m-l">${tp.speed ? 'Avg speed' : 'Avg pace'}</span><span class="al-m-v"><b data-live="avg">${U.esc(n.avg)}</b><small>${U.esc(tp.speed ? U.actSpeedUnit() : `/${unitShort()}`)}</small></span><span class="al-m-s" data-live="cur">${n.cur ? (n.cur === 'stopped' ? 'Now: stopped' : `Now ${U.esc(n.cur)}`) : '&nbsp;'}</span></div>
+        <div class="al-m rf-glass" data-variant="thick" data-interactive><span class="al-m-l">Distance</span><span class="al-m-v"><b data-live="dist">${U.esc(U.actDistNum(n.dist))}</b><small>${U.esc(unitShort())}</small></span><span class="al-m-s">&nbsp;</span></div>
+        <div class="al-m rf-glass" data-variant="thick" data-interactive><span class="al-m-l">${tp.speed ? 'Avg speed' : 'Avg pace'}</span><span class="al-m-v"><b data-live="avg">${U.esc(n.avg)}</b><small>${U.esc(tp.speed ? U.actSpeedUnit() : `/${unitShort()}`)}</small></span><span class="al-m-s" data-live="cur">${n.cur ? (n.cur === 'stopped' ? 'Now: stopped' : `Now ${U.esc(n.cur)}`) : '&nbsp;'}</span></div>
         ${n.steps != null
-    ? `<div class="al-m"><span class="al-m-l">Steps</span><span class="al-m-v"><b data-live="steps">${U.num(n.steps)}</b></span><span class="al-m-s">from your phone</span></div>`
-    : `<div class="al-m"><span class="al-m-l">Calories</span><span class="al-m-v"><b data-live="kcal">${U.num(kcal)}</b><small>kcal</small></span><span class="al-m-s">estimated</span></div>`}
-        <div class="al-m"><span class="al-m-l" data-live="splitl">${U.esc(U.cap(U.actUnitLong()))} ${n.k + 1}</span><span class="al-m-v"><b data-live="split">${U.esc(U.actClock(n.splitMs / 1000))}</b></span><span class="al-m-bar" aria-hidden="true"><i data-live="splitbar" style="width:${(Math.max(0, Math.min(1, n.splitFrac)) * 100).toFixed(1)}%"></i></span></div>
+    ? `<div class="al-m rf-glass" data-variant="thick" data-interactive><span class="al-m-l">Steps</span><span class="al-m-v"><b data-live="steps">${U.num(n.steps)}</b></span><span class="al-m-s">from your phone</span></div>`
+    : `<div class="al-m rf-glass" data-variant="thick" data-interactive><span class="al-m-l">Calories</span><span class="al-m-v"><b data-live="kcal">${U.num(kcal)}</b><small>kcal</small></span><span class="al-m-s">estimated</span></div>`}
+        <div class="al-m rf-glass" data-variant="thick" data-interactive><span class="al-m-l" data-live="splitl">${U.esc(U.cap(U.actUnitLong()))} ${n.k + 1}</span><span class="al-m-v"><b data-live="split">${U.esc(U.actClock(n.splitMs / 1000))}</b></span><span class="al-m-bar" aria-hidden="true"><i data-live="splitbar" style="width:${(Math.max(0, Math.min(1, n.splitFrac)) * 100).toFixed(1)}%"></i></span></div>
       </div>
-      <div class="al-map" data-type="${U.esc(a.type)}">${route.length > 1 ? U.actRouteSvg(route, { pace: false, marks: false, live: true, W: 360, H: 190, pad: 20, cls: 'rt-live' }) : `<p class="al-map-wait t-footnote">${a.noGps ? 'No GPS, so no route this time.' : 'Your route draws here as you go.'}</p>`}</div>`;
+      <div class="al-map rf-glass" data-variant="thick" data-interactive data-type="${U.esc(a.type)}">${route.length > 1 ? U.actRouteSvg(route, { pace: false, marks: false, live: true, W: 360, H: 190, pad: 20, cls: 'rt-live' }) : `<p class="al-map-wait t-footnote">${a.noGps ? 'No GPS, so no route this time.' : 'Your route draws here as you go.'}</p>`}</div>`;
   }
   function liveKcal(n) {
     const tr = L.tr;
@@ -461,7 +465,7 @@
           <div class="al-acc" role="meter" aria-label="GPS accuracy" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(q * 100)}"><i style="width:${(q * 100).toFixed(0)}%"></i></div>
         </div>`;
       actions = `<button type="button" class="rf-btn rf-glass al-cancel" data-size="lg" data-lens data-act="alDiscardNow">Cancel</button>
-        <button type="button" class="rf-btn rf-glass al-start" data-variant="tinted" data-size="xl" data-lens data-act="alGo"${ready ? ' data-ready' : ''}>${U.icon('play')}${ready ? 'Start' : 'Start now'}</button>`;
+        <button type="button" class="rf-btn rf-glass al-start" data-variant="tinted" data-size="xl" data-act="alGo"${ready ? ' data-ready' : ''}>${U.icon('play')}${ready ? 'Start' : 'Start now'}</button>`;
     } else if (L.phase === 'countdown') {
       const s = Math.max(1, Math.ceil((L.goAt - now) / 1000));
       body = `<div class="al-count"><span class="al-count-n" data-key="n${s}">${s}</span><span class="al-sub">${U.esc(`Your ${tp.noun} starts`)}</span></div>`;
@@ -472,7 +476,7 @@
       body = liveBody(now);
       actions = paused()
         ? `<button type="button" class="al-btn al-go" data-act="alResume" aria-label="Resume"><span class="al-btn-disc">${U.icon('play')}</span><span class="al-btn-l">Resume</span></button>${holdBtn()}`
-        : `<button type="button" class="al-btn al-pause" data-act="alPause" aria-label="Pause"><span class="al-btn-disc">${U.icon('pause')}</span><span class="al-btn-l">Pause</span></button>${holdBtn()}`;
+        : `<button type="button" class="al-btn al-pause" data-act="alPause" aria-label="Pause"><span class="al-btn-disc rf-glass" data-interactive>${U.icon('pause')}</span><span class="al-btn-l">Pause</span></button>${holdBtn()}`;
     }
     U.morph(el, `<div class="al-bg" aria-hidden="true"><i></i><i></i></div>
       <div class="al-top">
@@ -606,7 +610,7 @@
     R().clear(act.id);
     L = null;
     stopTimer();
-    if (el) { el.hidden = true; el.textContent = ''; }
+    if (el) { el.hidden = true; el.textContent = ''; steady(); }
     if (offBack) { offBack(); offBack = null; }
     plat().keepAwake(false);
     if (open) {
@@ -654,7 +658,7 @@
     if (!live() || shown()) return '';
     const tp = A().typeOf(U.S.actLive.type);
     const p = paused();
-    return `<button type="button" class="rf-btn rf-glass btn-main act-pill" data-variant="tinted" data-size="lg" data-lens data-act="actOpenLive" data-hue="${tp.hue}" aria-label="${U.esc(`${tp.label} in progress, ${p ? 'paused' : 'recording'}. Open`)}"><span class="act-pill-dot"${p ? ' data-paused' : ''} aria-hidden="true"></span><span>${U.esc(tp.label)} · <span class="rf-num" data-act-clock>${U.esc(clockText())}</span></span></button>`;
+    return `<button type="button" class="rf-btn rf-glass btn-main act-pill" data-variant="tinted" data-size="lg"${U.floatKey ? U.floatKey('main') : ''} data-act="actOpenLive" data-hue="${tp.hue}" aria-label="${U.esc(`${tp.label} in progress, ${p ? 'paused' : 'recording'}. Open`)}"><span class="act-pill-dot"${p ? ' data-paused' : ''} aria-hidden="true"></span><span>${U.esc(tp.label)} · <span class="rf-num" data-act-clock>${U.esc(clockText())}</span></span></button>`;
   };
   // The other tabs: the capsule over the tab bar.
   U.actAccessory = () => {
@@ -667,10 +671,16 @@
       <span class="rf-spacer"></span>
       <button type="button" class="rf-btn" data-size="sm" data-act="actOpenLive" aria-label="${U.esc(`Open the ${tp.noun}`)}">Open</button>`;
   };
+  // The clocks tick in place. When Today's pill gains a digit (9:59, then 10:00) it shape-shifts to its
+  // new width instead of jumping (U.motion.shift: the floating row's buttons are keyed).
   function capsuleClock() {
     if (!live() || shown()) { if (capTimer) { clearInterval(capTimer); capTimer = null; } return; }
     const txt = clockText();
-    for (const c of document.querySelectorAll('[data-act-clock]')) if (c.textContent !== txt) c.textContent = txt;
+    const set = (c) => { if (c.textContent !== txt) c.textContent = txt; };
+    for (const c of document.querySelectorAll('[data-act-clock]')) {
+      const row = c.textContent.length !== txt.length && c.closest('#float');
+      if (row && U.motion && U.motion.shift) U.motion.shift(row, () => set(c)); else set(c);
+    }
     if (!capTimer) capTimer = setInterval(capsuleClock, 1000);
   }
 
@@ -738,7 +748,7 @@
     L = null;
     stopTimer();
     U.save(true);
-    if (el) { el.hidden = true; el.textContent = ''; }
+    if (el) { el.hidden = true; el.textContent = ''; steady(); }
     if (offBack) { offBack(); offBack = null; }
     U.render();
   }

@@ -97,7 +97,8 @@ function problems() {
       const text = [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
       if (text && s.textOverflow === 'ellipsis' && e.scrollWidth > e.clientWidth + 1) out.push(`cut off: ${name(e)}`);
       else if (text && (s.overflowX === 'hidden' || s.overflow === 'hidden') && e.scrollWidth > e.clientWidth + 2 && s.whiteSpace === 'nowrap') out.push(`clipped: ${name(e)}`);
-      if ((e.tagName === 'BUTTON' || e.classList.contains('rf-chip') || e.classList.contains('rf-segment')) && e.scrollWidth > e.clientWidth + 2) out.push(`label wider than its control: ${name(e)}`);
+      // (Refract's page dots have no label: what reaches past one is its hit area, an ::after.)
+      if ((e.tagName === 'BUTTON' || e.classList.contains('rf-chip') || e.classList.contains('rf-segment')) && !e.classList.contains('rf-dot') && e.scrollWidth > e.clientWidth + 2) out.push(`label wider than its control: ${name(e)}`);
     }
   }
   // A page (not a sheet, the player or set-up): scrolled to the end, its last content must clear
@@ -165,7 +166,10 @@ for (const [width, theme, zoom, h] of COMBOS) {
   await page.evaluate(seedMore);
   await page.reload();
   await booted('#screen[data-view="today"]');
-  const settle = async (ms = 800) => { await page.clock.runFor(ms); await page.waitForTimeout(250); };
+  // A route change's motion runs in real time (Refract's springs, up to about 650 ms) however far the
+  // page's clock is moved on: a screen is checked once it has landed, not while it slides in.
+  const calm = () => Promise.race([page.evaluate(() => window.GH.ui.motion && window.GH.ui.motion.settled && window.GH.ui.motion.settled()), page.waitForTimeout(2000)]).catch(() => {});
+  const settle = async (ms = 800) => { await page.clock.runFor(ms); await page.waitForTimeout(250); await calm(); };
   const act = (name, arg) => page.evaluate(([a, b]) => { const f = window.GH.ui.act[a]; if (f) f({ dataset: { arg: b }, setAttribute() {}, removeAttribute() {}, closest: () => null }); }, [name, arg]);
   const reset = async () => { await page.evaluate(() => { window.GH.ui.closeSheets(); while (window.GH.ui.back()) { /* back to the tab */ } }); await settle(700); };
   // The set-up from the start (over the seeded app, never finished), n screens in; `pick` runs on

@@ -116,7 +116,7 @@
         <div class="section">${weekTargets(S, day)}</div>
         <h2 class="sec-title t-title-3">Recent changes</h2>
         <div class="section">${timelineCard(S, day)}</div>
-        <div class="section"><button type="button" class="rf-btn rf-glass co-chat" data-variant="tinted" data-size="lg" data-act="askCoach">${U.icon('chat')}Ask the coach</button></div>`;
+        <div class="section"><button type="button" class="rf-btn co-chat" data-variant="filled" data-size="lg" data-act="askCoach">${U.icon('chat')}Ask the coach</button></div>`;
     },
   };
 

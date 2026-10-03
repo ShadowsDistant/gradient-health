@@ -4,9 +4,10 @@
 // tucking it away (the pill on Today, the capsule on other tabs), a reload mid-activity, a tap asking
 // first and a hold finishing, the summary (the route, splits, heart rate from the watch, saved to
 // Health Connect without double counting), new records after a faster run, the street map loading
-// only when asked, deleting with Undo, a finish on the notification while the app is away, precise
-// location (asking, Open settings, starting without GPS), and the browser's own recorder
-// (navigator.geolocation).
+// only when asked, the options menu (out of its button, by keyboard too), deleting with Undo, a
+// finish on the notification while the app is away, precise location (asking, Open settings,
+// starting without GPS), and the browser's own recorder (navigator.geolocation). The live screen's
+// tiles, map and Pause are glass (solid with reduced transparency or increased contrast).
 // Usage: node test/ui-activity.mjs [--dark] [--width=390] [--shots]
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
@@ -48,7 +49,11 @@ await page.waitForSelector('.onboard:not([hidden])');
 await page.evaluate(seedState);
 await page.reload();
 await page.waitForSelector('#screen[data-view="today"] .session');
-const settle = async (ms = 700) => { await page.clock.runFor(ms); await page.waitForTimeout(Math.min(ms, 350)); };
+// A route change's motion runs in real time (Refract's springs, up to about 650 ms), however far the
+// page's clock is moved on: a step that changed the route waits for it to land, so what's clicked or
+// measured next isn't still sliding in.
+const calm = () => Promise.race([page.evaluate(() => window.GH.ui.motion && window.GH.ui.motion.settled && window.GH.ui.motion.settled()), page.waitForTimeout(2000)]).catch(() => {});
+const settle = async (ms = 700) => { await page.clock.runFor(ms); await page.waitForTimeout(Math.min(ms, 350)); await calm(); };
 const shot = async (name) => { if (shots) await page.screenshot({ path: join(OUT, `${width}-${dark ? 'dark' : 'light'}-${name}.png`) }); };
 const fake = () => page.evaluate(() => ({ calls: window.__act.calls.slice(), writes: window.__act.writes.slice(), sessions: window.__act.sessions.slice(), rec: window.__act.rec && { id: window.__act.rec.id, active: window.__act.rec.active, paused: window.__act.rec.paused, points: window.__act.rec.points.length } }));
 const live = () => page.evaluate(() => {
@@ -136,6 +141,26 @@ check('the average pace and the pace now', Math.abs(secs(L.avg) - 483) <= 8 && /
 check('steps from the phone', Number(L.steps.replace(/,/g, '')) > 1200, L.steps);
 check('the split it\'s in', L.splitl === 'Mile 1', L.splitl);
 check('the route so far', L.route >= 1);
+{
+  // The tiles, the map and Pause are Refract's glass (thick, lit when pressed); with reduced
+  // transparency or increased contrast they're solid.
+  const glass = () => page.evaluate(() => {
+    const el = document.getElementById('actlive');
+    const parts = [...el.querySelectorAll('.al-m, .al-map, .al-pause .al-btn-disc')];
+    // A fill's alpha (rgba(), or a color function's "/ alpha").
+    const alpha = (c) => { const m = /\/\s*([\d.]+)\)$/.exec(c) || /^rgba\([^)]*,\s*([\d.]+)\)$/.exec(c); return m ? Number(m[1]) : 1; };
+    // Solid: Refract's solid glass fill (--glass-fill-solid, nearly opaque), not the see-through one.
+    return { n: parts.length, glass: parts.every((e) => e.matches('.rf-glass[data-interactive]')), thick: el.querySelectorAll('.al-m.rf-glass[data-variant="thick"], .al-map.rf-glass[data-variant="thick"]').length, blurred: parts.filter((e) => /blur/.test(getComputedStyle(e).backdropFilter)).length, solid: parts.filter((e) => alpha(getComputedStyle(e).backgroundColor) >= 0.95).length };
+  });
+  const g = await glass();
+  check('the tiles, the map and Pause are glass (the tiles and map thick), frosted', g.n >= 4 && g.glass && g.thick === g.n - 1 && g.blurred === g.n && g.solid < g.n, g);
+  await page.evaluate(() => document.documentElement.setAttribute('data-rf-transparency', 'reduced'));
+  await page.waitForTimeout(400); // the fill's own transition
+  const rt = await glass();
+  await page.evaluate(() => document.documentElement.removeAttribute('data-rf-transparency'));
+  await page.waitForTimeout(400);
+  check('with reduced transparency their fill is solid (Refract\'s fallback)', rt.solid === rt.n, rt);
+}
 await shot('05-live');
 await page.evaluate(() => { window.__haptics.length = 0; });
 // Mile 1 falls at about 8:03.
@@ -167,7 +192,8 @@ check('the pause is remembered', pauses.length === 1 && pauses[0][1] - pauses[0]
 section('Back tucks it away');
 await page.evaluate(() => window.__gh.back());
 await settle(900);
-const pill = await page.evaluate(() => { const b = document.querySelector('#float .act-pill'); return b && b.textContent.replace(/\s+/g, ' ').trim(); });
+// Its words (less the old ones cross-fading out while Today's main button shape-shifts into it).
+const pill = await page.evaluate(() => { const b = document.querySelector('#float .act-pill'); if (!b) return null; const c = b.cloneNode(true); c.querySelectorAll('.rf-ghost').forEach((g) => g.remove()); return c.textContent.replace(/\s+/g, ' ').trim(); });
 check('Back hides the live screen and Today shows a pill with the time', !(await live()) && /^Run · \d+:\d\d$/.test(pill || ''), pill);
 await shot('07-pill');
 await settle(5000);
@@ -320,6 +346,43 @@ await shot('12-streets');
 await page.click('#screen [data-act="actStreets"]');
 await settle(700);
 check('Hide streets goes back to the route drawn here', await page.evaluate(() => !document.querySelector('#screen .am-streets canvas') && !window.GH.ui.S.profile.prefs.actStreets));
+
+section('Options, a menu out of its button');
+{
+  // Activity options is only a list: a menu that grows out of the button (U.menu), not a sheet.
+  await page.click('#topbar [data-act="actMenu"]');
+  await settle(600);
+  const m = await page.evaluate(() => {
+    const menu = document.querySelector('.rf-menu:popover-open'), btn = document.querySelector('#topbar [data-act="actMenu"]');
+    return menu && { role: menu.getAttribute('role'), items: [...menu.querySelectorAll('[role="menuitem"]')].map((b) => b.textContent.trim()), controls: btn.getAttribute('aria-controls') === menu.id && btn.getAttribute('aria-haspopup') === 'menu', glass: menu.matches('.rf-glass'), onMenu: document.activeElement === menu, sheet: !!document.querySelector('dialog.gh-sheet[open]') };
+  });
+  check('Activity options opens a menu out of its button, not a sheet: Rename, Delete', m && m.role === 'menu' && m.glass && m.controls && !m.sheet && m.items.length === 2 && m.items[0] === 'Rename' && /^Delete this run$/.test(m.items[1]), m);
+  const focused = () => page.evaluate(() => document.activeElement && document.activeElement.textContent.trim());
+  await page.keyboard.press('ArrowDown');
+  const first = await focused();
+  await page.keyboard.press('ArrowDown');
+  const second = await focused();
+  check('opened by a tap, focus is on the menu, and the arrow keys go through its items', m && m.onMenu && first === 'Rename' && /^Delete/.test(second || ''), [m && m.onMenu, first, second]);
+  await page.keyboard.press('Escape');
+  await settle(700);
+  await page.waitForFunction(() => !document.querySelector('.rf-menu'), null, { timeout: 3000 }).catch(() => {});
+  const shut = await page.evaluate(() => ({ open: !!document.querySelector('.rf-menu:popover-open'), left: document.querySelectorAll('.rf-menu').length, focus: document.activeElement && document.activeElement.dataset.act, view: window.GH.ui.route.view }));
+  check('Escape closes it, and focus goes back to the button', !shut.open && shut.left === 0 && shut.focus === 'actMenu' && shut.view === 'activity', shut);
+  await page.keyboard.press('Enter');
+  await settle(600);
+  const kb = await page.evaluate(() => ({ open: !!document.querySelector('.rf-menu:popover-open'), focus: document.activeElement && document.activeElement.textContent.trim() }));
+  check('opened from the keyboard, focus starts on its first item', kb.open && kb.focus === 'Rename', kb);
+  await page.keyboard.press('Escape');
+  await settle(700);
+  await page.click('#topbar [data-act="actMenu"]');
+  await settle(600);
+  await page.click('.rf-menu:popover-open [data-act="actRename"]');
+  await settle(900);
+  const ren = await page.evaluate(() => ({ menu: !!document.querySelector('.rf-menu:popover-open'), sheet: !!document.querySelector('dialog.gh-sheet[open] input') }));
+  check('Rename in it opens the rename sheet', !ren.menu && ren.sheet, ren);
+  await page.evaluate(() => window.GH.ui.closeSheets());
+  await settle(900);
+}
 
 section('Deleting, with Undo');
 const n0 = (await S()).n;

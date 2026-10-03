@@ -1077,7 +1077,8 @@
     const badge = page.querySelector('.rv-badge');
     if (badge) {
       badge.animate([{ transform: 'scale(.3)', opacity: 0 }, { transform: 'scale(1.15)', opacity: 1, offset: 0.6 }, { transform: 'none', opacity: 1 }], { duration: 620, easing: 'ease-out', fill: 'backwards' });
-      if (G.Refract && G.Refract.burst) setTimeout(() => { try { G.Refract.burst(badge, { count: 16 }); } catch (e) { /* ignore */ } }, 260);
+      // (Refract 1.4's burst is 8 to 14 beads.)
+      if (G.Refract && G.Refract.burst) setTimeout(() => { try { G.Refract.burst(badge, { count: 14 }); } catch (e) { /* ignore */ } }, 260);
     }
     const rise = (n, delay) => n.animate([{ opacity: 0, transform: 'translateY(18px)' }, { opacity: 1, transform: 'none' }], { duration: 560, delay, easing: EASE_ENTER, fill: 'backwards' });
     for (const [k, n] of Array.from(page.querySelectorAll('.rv-hero > :not(.rv-badge)')).entries()) rise(n, 80 + k * 60);

@@ -289,10 +289,14 @@
 .al-banner svg { width: 16px; height: 16px; }
 @keyframes al-banner { from { transform: translateY(-10px) scale(.9); opacity: 0; } to { transform: none; opacity: 1; } }
 .al-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
-.al-m { display: grid; align-content: start; gap: 2px; min-width: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg);
-  background: color-mix(in oklab, var(--bg-raised) 70%, transparent); -webkit-backdrop-filter: blur(20px) saturate(170%); backdrop-filter: blur(20px) saturate(170%);
-  box-shadow: var(--rim-light), 0 6px 18px -12px rgb(12 13 18 / .28); }
-[data-theme^="dark"] .al-m { background: color-mix(in oklab, var(--bg-raised) 62%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / .08), inset 0 0 0 1px rgb(255 255 255 / .06), var(--shadow-glass); }
+/* The tiles, the map and the pause button are Refract's glass (.rf-glass[data-interactive], thick so
+   the numbers read over the colours behind): its frost, its rim in the light, and the glow that
+   spreads from a finger pressing it. Refract makes them solid with reduced transparency and in the
+   increased-contrast themes. */
+.al-m { display: grid; align-content: start; gap: 2px; min-width: 0; padding: var(--space-3) var(--space-4); --rf-radius: var(--radius-lg); cursor: default; }
+/* They sit in the page, not over it: a short shadow (thick glass's lifted one would be cut off by
+   the scrolling body). */
+.al-m, .al-map { --_shadow: 0 6px 16px -12px color-mix(in oklab, var(--shadow-ink) 34%, transparent); }
 .al-m-l { font-size: .8125rem; font-weight: 600; color: var(--label-secondary); }
 .al-m-v { display: flex; align-items: baseline; gap: 4px; min-width: 0; flex-wrap: wrap; }
 .al-m-v b { font-size: clamp(1.625rem, 8.4vw, 2.375rem); font-weight: 700; letter-spacing: -0.025em; line-height: 1.08; font-variant-numeric: tabular-nums; }
@@ -300,13 +304,10 @@
 .al-m-s { font-size: .75rem; color: var(--label-secondary); }
 .al-m-bar { display: block; height: 4px; margin-top: 8px; border-radius: 2px; background: color-mix(in oklab, var(--label) 12%, transparent); overflow: hidden; }
 .al-m-bar i { display: block; height: 100%; border-radius: inherit; background: var(--act-hue); transition: width 800ms var(--ease-standard); }
-.al-map { position: relative; flex: 1 1 150px; min-height: 130px; border-radius: var(--radius-lg); overflow: hidden;
+.al-map { position: relative; flex: 1 1 150px; min-height: 130px; --rf-radius: var(--radius-lg); overflow: hidden; cursor: default;
   --am-grid: color-mix(in oklab, var(--label) 5%, transparent);
-  background-color: color-mix(in oklab, var(--bg-raised) 55%, transparent);
   background-image: linear-gradient(var(--am-grid) 1px, transparent 1px), linear-gradient(90deg, var(--am-grid) 1px, transparent 1px); background-size: 24px 24px; background-position: center;
-  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); box-shadow: var(--rim-light), 0 6px 18px -12px rgb(12 13 18 / .28);
   --rt-case: color-mix(in oklab, var(--act-hue) 30%, transparent); }
-[data-theme^="dark"] .al-map { box-shadow: inset 0 1px 0 rgb(255 255 255 / .08), inset 0 0 0 1px rgb(255 255 255 / .06), var(--shadow-glass); }
 .al-map .rt { position: absolute; inset: 0; }
 .rt-live .rt-case { stroke-width: 11; }
 .rt-live .rt-line { stroke: var(--act-hue); stroke-width: 4.5; }
@@ -332,11 +333,14 @@
 .al-actions > .al-cancel { flex: none; }
 .al-actions > .al-cancel:only-child { min-width: 160px; }
 .al-btn { appearance: none; border: 0; background: none; padding: 0; font: inherit; color: var(--label); display: grid; justify-items: center; gap: 8px; min-width: 100px; flex: none; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: none; user-select: none; -webkit-user-select: none; }
-.al-btn-disc { position: relative; width: 78px; height: 78px; border-radius: 50%; display: grid; place-items: center; --rf-icon-size: 30px; transition: scale var(--duration-spring-snappy) var(--spring-snappy); }
+.al-btn-disc { position: relative; width: 78px; height: 78px; border-radius: 50%; display: grid; place-items: center; --rf-icon-size: 30px; }
 .al-btn-disc svg { width: 30px; height: 30px; }
-.al-btn:active .al-btn-disc { scale: .93; transition-duration: var(--duration-instant); }
+/* Resume and Finish (solid) sink a little under a finger; Pause is glass, which Refract lifts and
+   lights up from the finger instead. */
+.al-btn-disc:not(.rf-glass) { transition: scale var(--duration-spring-snappy) var(--spring-snappy); }
+.al-btn:active .al-btn-disc:not(.rf-glass) { scale: .93; transition-duration: var(--duration-instant); }
 .al-btn-l { font-size: .8125rem; font-weight: 600; color: var(--label-secondary); white-space: nowrap; }
-.al-pause .al-btn-disc { background: color-mix(in oklab, var(--bg-raised) 72%, transparent); -webkit-backdrop-filter: blur(20px) saturate(170%); backdrop-filter: blur(20px) saturate(170%); box-shadow: var(--rim-light), var(--shadow-glass-lifted); color: var(--label); }
+.al-pause .al-btn-disc { color: var(--label); --_shadow: var(--shadow-glass-lifted); }
 .al-go .al-btn-disc { background: var(--positive-fill, var(--positive)); color: #fff; box-shadow: 0 16px 34px -14px var(--positive), inset 0 1px 0 rgb(255 255 255 / .3); }
 .al-finish .al-btn-disc { background: var(--label); color: var(--bg); box-shadow: 0 16px 34px -16px rgb(0 0 0 / .5); }
 .al-finish .al-btn-disc > svg:not(.al-ring) { position: relative; }
@@ -347,6 +351,11 @@
 .al-finish.is-holding .al-ring-fill { stroke-dashoffset: 0; transition: stroke-dashoffset 1000ms linear; }
 .al-finish.is-holding .al-btn-disc { scale: .94; }
 .app:has(> #actlive:not([hidden]))::before, .app:has(> #actlive:not([hidden]))::after { animation-play-state: paused, running; }
+/* Increased contrast and reduced transparency: Refract makes the glass solid, and the GPS pill
+   follows. */
+:root:is([data-theme$="contrast"], [data-rf-transparency="reduced"]) .al-gps { background: var(--bg-raised); }
+:root[data-theme$="contrast"] .al-gps { box-shadow: inset 0 0 0 1px var(--separator); }
+@media (prefers-reduced-transparency: reduce) { .al-gps { background: var(--bg-raised); } }
 @media (prefers-reduced-motion: reduce) {
   .al-bg i, .al-radar span, .rt-here-pulse, .act-pill-dot, .al-count-n, .al-banner, .al-gps[data-gps="searching"] .al-bars i:first-child, .al[data-phase="paused"] .al-cap { animation: none; }
   .al-radar span { opacity: .4; }

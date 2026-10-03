@@ -1,8 +1,10 @@
 // The Plan tab in Chromium at phone size, someone five weeks in: the week strip matches the plan,
-// picking a day fills the card (a workout with its exercises and stills, a light day, next week),
-// moving a workout with the chips (and Undo) and by long press, swiping to next week, the week's
-// phase explained, Start for today, Train today instead on a light day, a done day, missed days, and
-// no console errors. Screenshots go to build/ui-plan/ for a visual pass.
+// its selection is a bead of liquid glass that travels to the day picked (and holds the weekday
+// while the weeks slide under it), picking a day fills the card (a workout with its exercises and
+// stills, a light day, next week), moving a workout with the chips (and Undo) and by long press,
+// swiping to next week, the week's phase explained, Start for today, Train today instead on a light
+// day, a done day, missed days, and no console errors. Screenshots go to build/ui-plan/ for a
+// visual pass.
 // Usage: node test/ui-plan.mjs [--dark] [--width=390]
 import { createRequire } from 'node:module';
 import { mkdirSync, rmSync } from 'node:fs';
@@ -62,13 +64,20 @@ const state = (page) => page.evaluate(() => {
   const cur = pages.find((p) => p.getAttribute('aria-hidden') !== 'true');
   const pills = cur ? [...cur.querySelectorAll('.pw-day')] : [];
   const card = document.querySelector('#screen .pw-card');
+  // The selection's bead (Refract's liquid glass, src/ui/plan.js): at rest it covers the picked day.
+  const vp = document.querySelector('#screen .pw-viewport');
+  const bead = vp && vp.querySelector(':scope > .pw-bead');
+  const pick = cur && cur.querySelector('.pw-pill[aria-selected="true"]');
+  const bb = bead && bead.getBoundingClientRect(), pb = pick && pick.closest('.pw-day').getBoundingClientRect();
   return {
     view: document.getElementById('screen').dataset.view,
     page: Number(document.querySelector('#screen .pw-track').style.getPropertyValue('--page')),
     pills: pills.length,
     kinds: pills.map((li) => li.dataset.kind),
     selected: pills.findIndex((li) => li.querySelector('.pw-pill').getAttribute('aria-selected') === 'true'),
-    selIndex: cur ? Number(cur.querySelector('.pw-sel').style.getPropertyValue('--i')) : null,
+    selIndex: vp && vp.hasAttribute('data-sel') ? Number(vp.getAttribute('data-sel')) : null,
+    beadOn: !!(bb && pb) && Math.abs(bb.left - pb.left) <= 1.5 && Math.abs(bb.width - pb.width) <= 1.5 && !bead.hasAttribute('data-lifted') && getComputedStyle(bead).visibility === 'visible',
+    bead: bb && pb ? { at: Math.round(bb.left), day: Math.round(pb.left), w: Math.round(bb.width), dw: Math.round(pb.width), lifted: bead.hasAttribute('data-lifted') } : null,
     today: pills.findIndex((li) => li.hasAttribute('data-today')),
     planKinds: w.days.map((d) => d.kind),
     nextKinds: w.next.days.map((d) => d.kind),
@@ -95,6 +104,7 @@ let s = await state(page);
 check('the Plan tab shows seven days', s.view === 'plan' && s.pills === 7, JSON.stringify(s));
 check('each day\'s mark matches the plan', JSON.stringify(s.kinds) === JSON.stringify(s.planKinds), `${s.kinds} vs ${s.planKinds}`);
 check('Monday is today and picked', s.today === 0 && s.selected === 0 && s.selIndex === 0, JSON.stringify(s));
+check('the selection, a bead of liquid glass, rests on it', s.beadOn, JSON.stringify(s.bead));
 check('the card shows today\'s workout', s.cardKind === 'today' && s.cardTitle === s.titles[0], `${s.cardKind}: ${s.cardTitle}`);
 check('with Start and Move', await page.locator('#screen .pw-card [data-act="planStart"]').count() === 1 && await page.locator('#screen .pw-card [data-act="planMoveOpen"]').count() === 1);
 check('each exercise has a still of the move', s.thumbs >= 4 && s.drawn === s.thumbs, `${s.drawn} of ${s.thumbs}`);
@@ -128,9 +138,21 @@ section('Stills in 3D');
 section('Picking a day');
 const hits0 = await page.evaluate(() => window.GH.planWeek.stats.misses);
 await page.click(pill(1));
+// On its way: lifted into glass (a lens over the days), between the two days.
+await page.clock.runFor(100);
+await page.waitForTimeout(30);
+const mid = await page.evaluate(() => {
+  const vp = document.querySelector('#screen .pw-viewport');
+  const days = vp.querySelectorAll('.pw-page:not([aria-hidden="true"]) .pw-day');
+  const l = (el) => el.getBoundingClientRect().left;
+  const b = vp.querySelector(':scope > .pw-bead'), lens = vp.querySelector(':scope > .pw-bead-lens');
+  return { lifted: b.hasAttribute('data-lifted') && lens.hasAttribute('data-lifted'), at: Math.round(l(b)), from: Math.round(l(days[0])), to: Math.round(l(days[1])) };
+});
+check('the bead rises into a lens and travels to the day picked (Refract\'s liquid engine)', mid.lifted && mid.at > mid.from && mid.at < mid.to, JSON.stringify(mid));
 await settle();
 s = await state(page);
 check('Tuesday is picked and the selection slid there', s.selected === 1 && s.selIndex === 1, JSON.stringify(s));
+check('the bead has landed on it', s.beadOn, JSON.stringify(s.bead));
 check('its card shows Tuesday\'s workout', s.cardKind === 'workout' && s.cardTitle === s.titles[1] && /Tomorrow/.test(s.cardText), `${s.cardKind}: ${s.cardTitle}`);
 check('with its exercises drawn', s.thumbs >= 4 && s.drawn === s.thumbs, `${s.drawn} of ${s.thumbs}`);
 check('no Start on a later day', await page.locator('#screen .pw-card [data-act="planStart"]').count() === 0);
@@ -179,7 +201,7 @@ await page.click('#screen .pw-move .pw-chip >> nth=0');
 await settle(900);
 s = await state(page);
 check('Tuesday\'s workout is now on Wednesday', s.kinds[1] === 'light' && s.kinds[2] === 'workout' && JSON.stringify(s.kinds) === JSON.stringify(s.planKinds), s.kinds.join());
-check('and the strip follows it there', s.selected === 2 && s.selIndex === 2 && s.cardKind === 'workout' && /Moved here from Tue/.test(s.cardText), JSON.stringify({ sel: s.selected, text: s.cardText.slice(0, 90) }));
+check('and the strip follows it there', s.selected === 2 && s.selIndex === 2 && s.beadOn && s.cardKind === 'workout' && /Moved here from Tue/.test(s.cardText), JSON.stringify({ sel: s.selected, bead: s.bead, text: s.cardText.slice(0, 90) }));
 check('a move event was added', s.moves === 1);
 let t = await toasts(page);
 check('a toast says where it went, with Undo', /Moved to Wed, Oct 21/.test(t) && /Undo/.test(t), t);
@@ -214,8 +236,13 @@ section('Next week');
 await page.click(pill(0));
 await settle();
 await page.click('#screen [data-act="planWeek"][data-arg="1"]');
+// While the weeks slide under it, the bead holds the weekday, lifted into a lens.
+await page.clock.runFor(150);
+await page.waitForTimeout(30);
+const held = await page.evaluate(() => { const b = document.querySelector('#screen .pw-viewport > .pw-bead'); return !!b && b.hasAttribute('data-lifted'); });
 await settle(900);
 s = await state(page);
+check('the bead holds the weekday, lifted, while the weeks slide under it, then lands on it', held && s.beadOn, JSON.stringify({ held, bead: s.bead }));
 check('Next week slides in', s.page === 1 && s.pills === 7 && JSON.stringify(s.kinds) === JSON.stringify(s.nextKinds), JSON.stringify({ page: s.page, kinds: s.kinds }));
 check('the same weekday is picked, as a preview', s.selected === 0 && s.cardKind === 'workout' && s.cardTitle === s.nextTitles[0] && await page.locator('#screen .pw-card[data-preview]').count() === 1 && /preview/i.test(s.cardText), s.cardText.slice(0, 100));
 check('the header says which week', /Next week/.test(await page.locator('#screen .pw-head').innerText()));
