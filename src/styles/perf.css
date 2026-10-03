@@ -3,3 +3,11 @@
    second animation where it's supported, keeps running. Same values as the other pauses in
    styles.css. */
 #app[data-scrolling]::before, #app[data-scrolling]::after { animation-play-state: paused, running; }
+
+/* Glass over the moving page (the bar's buttons, Today's floating buttons, the tab bar, the workout
+   capsule) keeps its blur, its rim and its light while the page scrolls, but not its refraction:
+   Refract bends the edges with a lens map in the lens layer's backdrop filter (--_lens, between the
+   blur and the saturation), and that's redrawn every frame the page moves under it, for edges nobody
+   sees bend in a fling. The filter is Refract's own without the map, so nothing else changes, and the
+   edges bend again as soon as the page is still. */
+#app[data-scrolling] .rf-lens-layer { --_lens: ; }
