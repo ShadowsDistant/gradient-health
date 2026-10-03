@@ -323,6 +323,12 @@ section('CI: only main is signed with the release key and published');
   check('the build job never sees a release secret, writes nothing and publishes nothing', jobs.build && !/RELEASE_|contents: write|gh release/.test(jobs.build) && /upload-artifact/.test(jobs.build));
   check('the release job runs on main only, after the build, in the release environment', jobs.release && /\n {4}needs: build\n/.test(jobs.release) && /\n {4}if: github\.ref == 'refs\/heads\/main'/.test(jobs.release) && /\n {4}environment: release\n/.test(jobs.release) && /\n {6}contents: write\n/.test(jobs.release));
   check('and refuses to publish without the release key', jobs.release && /if \[ -z "\$RELEASE_KEYSTORE_B64" \]; then[\s\S]*?exit 1/.test(jobs.release));
+  // dist/lazy/ (set-up, the 3D figure, Claude and the rest that loads on demand) isn't committed, so
+  // a job that packages the app builds the page and its parts first, or its APK would install and then
+  // fail at the first part it needs.
+  const packs = Object.entries(jobs).filter(([, v]) => v.includes('scripts/build-apk.sh'));
+  const buildsFirst = (v) => { const ci = v.search(/\n\s*- run: npm ci\n/), build = v.search(/\n\s*- run: npm run build\n/); return ci >= 0 && build > ci && build < v.indexOf('scripts/build-apk.sh'); };
+  check(`every job that packages the app builds the page and its parts first (${packs.map(([k]) => k).join(', ')})`, packs.length >= 2 && packs.every(([, v]) => buildsFirst(v)), packs.filter(([, v]) => !buildsFirst(v)).map(([k]) => k));
   check('no other job or workflow can write to the repository', Object.entries(jobs).every(([k, v]) => k === 'release' || !/contents: write/.test(v)) && !/contents: write/.test(read('.github/workflows/model-check.yml')));
   // A tag can be moved to other code; a commit SHA can't. Every action in every workflow runs at one.
   const uses = ['android.yml', 'model-check.yml'].flatMap((f) => [...read(`.github/workflows/${f}`).matchAll(/^\s*-?\s*uses: (\S+)/gm)].map((m) => `${f}: ${m[1]}`));

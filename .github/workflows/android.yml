@@ -127,6 +127,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
+          cache: npm
 
       - name: Install Android build tools
         run: |
@@ -138,6 +139,20 @@ jobs:
         with:
           path: ~/.cache/gradient-health
           key: android-all-14-robolectric-10818077-bundletool-1.18.1
+
+      # The parts of the app that load on demand (set-up, the 3D figure, Claude, the on-device
+      # model's runtime and the rest, in dist/lazy/) aren't committed, so this job builds them too, as
+      # the build job did; build-apk.sh stops without them.
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Check the committed dist/ is the page this build made
+        run: |
+          if ! git diff --exit-code -- dist/; then
+            echo "::error::dist/ is stale. Run 'npm run build' and commit the result."
+            exit 1
+          fi
 
       - name: NDK version
         id: ndk

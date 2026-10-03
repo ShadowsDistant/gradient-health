@@ -565,6 +565,9 @@ the package name to that key's certificate.
   | `RELEASE_KEY_PASS` | the same password (PKCS12 keys share the keystore's) |
 
   Without them the `release` job stops: CI never publishes a "latest" that isn't release-signed.
+  A private repository needs GitHub Pro, Team or Enterprise for environments. On GitHub Free the
+  secrets stay repository secrets: the job's `main`-only condition still keeps branch builds from
+  publishing, but a workflow edited on a branch could read them.
 - **Locally**, `scripts/build-apk.sh` and `scripts/build-aab.sh` read the same values from
   `RELEASE_KEYSTORE` (a path), `RELEASE_KEYSTORE_PASS`, `RELEASE_KEY_ALIAS` and `RELEASE_KEY_PASS`.
   The passwords reach the signing tools through the environment or a private temporary file, never a
@@ -579,8 +582,11 @@ the package name to that key's certificate.
 Every push to `main` or a `claude/` branch runs `.github/workflows/android.yml`. Its `build` job runs
 the tests and the web build, then `build-apk.sh` and `build-aab.sh` signed with the public test key,
 and attaches both to the run as an artifact (kept 14 days) without publishing anything. Only on
-`main`, the `release` job then builds both again with the release key and one shared versionCode
-(minutes since 1970, so it only grows) and replaces the "latest" GitHub release. So only merged,
+`main`, the `release` job then builds the page again, with the parts that load on demand
+(`dist/lazy/`, which isn't committed; `build-apk.sh` stops without it, and its log counts the files
+it packed), checks it against the committed page, and builds both packages with the release key and
+one shared versionCode (minutes since 1970, so it only grows). Then it replaces the "latest" GitHub
+release. So only merged,
 reviewed code is ever release-signed. The `.apk` is for APKPure and direct installs; the `.aab`
 (Android App Bundle) is the upload for Google Play, which doesn't take APKs for new apps.
 The release's notes start with What's new in the version, from its entry in `src/data/changelog.js`
