@@ -484,13 +484,12 @@
     }
     schedule();
   }
-  // When the person last touched or scrolled: a 3D still waits until they've stopped for a moment
-  // (and for a sheet to stop moving), since drawing one takes a few frames' worth of work.
-  let lastInput = 0;
-  if (doc) for (const ev of ['touchstart', 'touchmove', 'pointerdown', 'wheel', 'scroll']) doc.addEventListener(ev, () => { lastInput = Date.now(); }, { passive: true, capture: true });
-  const calm = () => Date.now() - lastInput > 400 && !doc.documentElement.hasAttribute('data-sheet-moving');
+  // Stills, flat or 3D, wait until it's calm (U.calm in core.js: no scroll or touch for a moment and
+  // no sheet moving), since drawing one takes a frame's worth of work or more; then they're drawn.
+  const calm = () => !U.calm || U.calm();
   function schedule() {
     if (pending || !(queue.size || queue3d.size)) return;
+    if (!calm()) { pending = -1; U.whenCalm(() => { pending = 0; schedule(); }); return; }
     const soon = queue.size > 0;
     pending = G.requestIdleCallback ? G.requestIdleCallback(drawSome, { timeout: soon ? 150 : 600 }) : setTimeout(() => drawSome(null), soon ? 16 : 250);
   }
@@ -498,6 +497,7 @@
     pending = 0;
     const t0 = Date.now();
     for (const key of queue) {
+      if (!calm()) break;
       queue.delete(key);
       const svg = drawStill(key);
       const id = key.split('|')[0];

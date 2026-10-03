@@ -32,3 +32,8 @@
 /* Set-up's glow holds still while set-up scrolls (.onboard[data-scrolling], core.js), as the app's
    does while the page scrolls. */
 .onboard[data-scrolling]::before, .onboard[data-scrolling]::after { animation-play-state: paused; }
+
+/* 20 s after the last touch, key or scroll (#app[data-idle], core.js) the glow stops drifting, so a
+   phone left on a page isn't drawing it every frame; the next input starts it again. */
+#app[data-idle]::before, #app[data-idle]::after { animation-play-state: paused, running; }
+#app[data-idle] .onboard::before, #app[data-idle] .onboard::after { animation-play-state: paused; }

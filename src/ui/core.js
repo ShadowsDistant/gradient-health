@@ -483,6 +483,42 @@
   }
   U.steadyLight = () => steadyLight(!!(scrollIdle || doc.documentElement.hasAttribute('data-still-glow') || U.reduced() || (playerEl && !playerEl.hidden)));
 
+  /* ---------------------------------------------------------------- calm */
+  // When someone last touched, typed, scrolled (anywhere: a sheet, set-up) or turned a wheel.
+  // - U.calm(): nothing's happening: the page isn't scrolling, no input for 400 ms and no sheet
+  //   moving. Heavy work that can wait (the 3D figure's warm-up and stills, Plan's tiles, background
+  //   re-renders) waits for it, so it never lands in the middle of a fling or a drag.
+  // - U.whenCalm(fn): runs fn now if it's calm, or as soon as it is (never dropped).
+  // - #app[data-idle]: 20 s without any input. The background glow stops drifting
+  //   (src/styles/perf.css), so a phone left on a page isn't drawing it every frame; the next input
+  //   starts it again.
+  const CALM_MS = 400, IDLE_MS = 20000;
+  let lastInput = 0, idleTimer = 0, calmTimer = 0;
+  const calmQueue = [];
+  function onInput() {
+    lastInput = Date.now();
+    if (root && root.hasAttribute('data-idle')) root.removeAttribute('data-idle');
+    if (!idleTimer) idleTimer = setTimeout(checkIdle, IDLE_MS);
+  }
+  function checkIdle() {
+    idleTimer = 0;
+    const left = lastInput + IDLE_MS - Date.now();
+    if (left > 0) idleTimer = setTimeout(checkIdle, left);
+    else if (root) root.setAttribute('data-idle', '');
+  }
+  if (doc) for (const ev of ['pointerdown', 'pointermove', 'touchstart', 'touchmove', 'keydown', 'wheel', 'scroll']) doc.addEventListener(ev, onInput, { passive: true, capture: true });
+  U.calm = () => !scrollIdle && Date.now() - lastInput >= CALM_MS && !doc.documentElement.hasAttribute('data-sheet-moving');
+  function calmCheck() {
+    calmTimer = 0;
+    if (!U.calm()) { calmTimer = setTimeout(calmCheck, Math.max(60, lastInput + CALM_MS - Date.now())); return; }
+    for (const fn of calmQueue.splice(0)) safe(fn);
+  }
+  U.whenCalm = (fn) => {
+    if (!calmQueue.length && U.calm()) { safe(fn); return; }
+    calmQueue.push(fn);
+    if (!calmTimer) calmTimer = setTimeout(calmCheck, Math.max(60, lastInput + CALM_MS - Date.now()));
+  };
+
   function applyNavbar(nb) {
     const part = (sel) => (nb ? nb.querySelector(sel) : null);
     const lead = part('.rf-navbar-leading'), title = part('.rf-navbar-title'), trail = part('.rf-navbar-trailing');
@@ -958,15 +994,21 @@
     document.dispatchEvent(new CustomEvent('gh-change'));
   };
   U.commit = () => { U.save(); render(); };
-  // For background triggers (a sync that ended, the day rolling over, the app coming back): one
-  // render at the next frame however many ask, none while the page is hidden (it runs once it's
+  // For background triggers (a sync that ended, the day rolling over, the app coming back, Today's
+  // insight line worked out): one render at the next frame however many ask, once it's calm (not in
+  // the middle of a scroll or a touch, U.whenCalm), none while the page is hidden (it runs once it's
   // shown again), and none under the player or set-up.
-  let renderFrame = 0;
+  let renderFrame = 0, renderWait = false;
   U.renderSoon = () => {
-    if (renderFrame || !G.requestAnimationFrame) return;
-    renderFrame = G.requestAnimationFrame(() => {
-      renderFrame = 0;
-      if (U.S && U.S.profile.onboarded && playerEl.hidden && onboardEl.hidden) render();
+    if (renderFrame || renderWait || !G.requestAnimationFrame) return;
+    renderWait = true;
+    U.whenCalm(() => {
+      renderWait = false;
+      if (renderFrame) return;
+      renderFrame = G.requestAnimationFrame(() => {
+        renderFrame = 0;
+        if (U.S && U.S.profile.onboarded && playerEl.hidden && onboardEl.hidden) render();
+      });
     });
   };
 
@@ -1088,7 +1130,8 @@
 
   /* The 3D figure warms up (loads its chunk and compiles its shaders: seconds of work on a slow
    * phone) only when today's workout will want it: workouts on, today's not done yet, a phone with
-   * 3 GB of memory or more and the app on screen, about 8 s after launch once the page is idle.
+   * 3 GB of memory or more and the app on screen, about 8 s after launch once the page is idle and
+   * calm (U.calm: no scroll or touch going on).
    * Otherwise it starts loading the first time a figure is about to show: a press on Start or on a
    * move. Set-up warms it for its own reveal (src/ui/onboarding.js). */
   const FIGURE_ACTS = ['startWorkout', 'planStart', 'resumeWorkout', 'startMobility', 'moveInfo', 'planMoveInfo', 'cpHowTo', 'ladder'].map((a) => `[data-act="${a}"]`).join(',');
@@ -1108,6 +1151,8 @@
     const later = () => {
       if (!wanted()) return;
       if (doc.hidden) { doc.addEventListener('visibilitychange', later, { once: true }); return; }
+      // Not in the middle of a scroll or a touch: once it's calm, at the next idle moment.
+      if (!U.calm()) { U.whenCalm(() => idle(later, 4000)); return; }
       warmFigure();
     };
     setTimeout(() => idle(later, 4000), 8000);
@@ -1117,6 +1162,8 @@
   function boot() {
     layout();
     wire();
+    // The glow stops drifting 20 s after launch too if nothing's touched.
+    if (!idleTimer) idleTimer = setTimeout(checkIdle, IDLE_MS);
     if (P()) {
       P().onBack(onBack);
       P().on('resume', () => {

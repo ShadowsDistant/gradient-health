@@ -286,7 +286,8 @@
   }
   // Draw what's missing for moves opened lately, the moves on screen (today's session) and the
   // workout in progress, once 3D is warm: one still per idle moment, a second apart, only while no
-  // figure is on screen (a still never takes time from one), a dozen a launch at most, and none
+  // figure is on screen (a still never takes time from one) and it's calm (U.calm: no scroll, touch
+  // or moving sheet; the still waits for that, it isn't dropped), a dozen a launch at most, and none
   // more on a phone slow enough that one took long (it gets the few it has).
   let stillsRun = null; // the queue being drawn
   let stillsDrawn = 0, stillsSlow = false;
@@ -321,6 +322,8 @@
       // runs anywhere: stills are for later, and never take time from a figure on screen.
       const busyNow = document.hidden || document.querySelector('.fig3d[data-ready]') || [...document.querySelectorAll('.pl-fig, .sheet-fig')].some((h) => h.offsetParent);
       if (busyNow) { setTimeout(() => idleCall(step), 1500); return; }
+      // Nor in the middle of a scroll, a touch or a sheet's move (U.calm): it waits for calm.
+      if (U.calm && !U.calm()) { U.whenCalm(() => idleCall(step)); return; }
       while (jobs.length) {
         const j = jobs.shift();
         const m0 = M().MOVES[j.id];
