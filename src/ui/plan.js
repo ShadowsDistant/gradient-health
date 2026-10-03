@@ -565,10 +565,13 @@
   // Swipe the strip for next week (it follows the finger); a long press on a workout picks it up to
   // drop on a free day.
   const wired = new WeakSet();
+  const holds = new WeakMap(); // a strip's viewport → its touchmove listener for a picked-up workout
+  const armed = new WeakSet(); // the pills that have it
   let blockClick = 0;
   function wireStrip(stripEl) {
     const vp = stripEl.querySelector('.pw-viewport');
-    if (!vp || wired.has(vp)) return;
+    if (!vp) return;
+    if (wired.has(vp)) { armPills(vp); return; }
     wired.add(vp);
     let g = null;
     const track = () => vp.querySelector('.pw-track');
@@ -638,8 +641,12 @@
       const again = vp.querySelector(`.pw-pill[data-arg="${d}"]`);
       if (again) again.focus();
     });
-    // While a workout is picked up, the finger moves it, not the page.
-    vp.addEventListener('touchmove', (ev) => { if (drag && ev.cancelable) ev.preventDefault(); }, { passive: false });
+    // While a workout is picked up, the finger moves it, not the page: a touchmove listener that can
+    // cancel the scroll. Whether a touch's moves can be cancelled is settled as it starts, before the
+    // hold makes it a drag, so the listener is on the pills that can be picked up (armPills), not on
+    // the whole strip: a scroll that starts anywhere else doesn't wait for the page to answer.
+    holds.set(vp, (ev) => { if (drag && ev.cancelable) ev.preventDefault(); });
+    armPills(vp);
 
     let drag = null;
     function startDrag(ev, p) {
@@ -684,6 +691,17 @@
       if (ev.type !== 'pointercancel' && dr.over != null) { U.haptic('drop'); moveTo(dr.from, dr.over); }
       // Let go anywhere else and it glides back to its day.
       else if (was && !U.reduced() && dr.li.animate) dr.li.animate([{ transform: was }, { transform: 'none' }], { duration: 320, easing: EASE });
+    }
+  }
+
+  // (After every render: a pill a render made gets its listener.)
+  function armPills(vp) {
+    const hold = holds.get(vp);
+    if (!hold) return;
+    for (const p of vp.querySelectorAll('.pw-pill[data-drag]')) {
+      if (armed.has(p)) continue;
+      armed.add(p);
+      p.addEventListener('touchmove', hold, { passive: false });
     }
   }
 
