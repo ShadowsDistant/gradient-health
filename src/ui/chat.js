@@ -31,10 +31,12 @@
   const modelName = (id) => { const m = GH.llm && GH.llm.MODELS.find((x) => x.id === id); return m ? m.name : null; };
 
   /* The coach button: top left on every tab (core.js puts it there). A ring while an answer is on
-     its way with the chat closed, a dot once it has arrived. */
+     its way with the chat closed, a dot once it has arrived: both drawn by a mark of their own
+     (.coach-mark), so the glass keeps all of Refract's own look (its rim, sheen, press glow and click
+     ring live on its ::before and ::after). */
   U.coachBtn = () => {
     const out = busy() && !(chat && !chat.closed);
-    return `<button type="button" class="rf-btn rf-glass coach-btn" data-shape="circle" data-lens aria-label="Ask the coach" data-act="askCoach"${out ? ' data-busy' : ''}${unseen && !out ? ' data-unseen' : ''}>${U.icon('sparkle')}</button>`;
+    return `<button type="button" class="rf-btn rf-glass coach-btn" data-shape="circle" data-lens aria-label="Ask the coach" data-act="askCoach"${out ? ' data-busy' : ''}${unseen && !out ? ' data-unseen' : ''}>${U.icon('sparkle')}<span class="coach-mark" aria-hidden="true"></span></button>`;
   };
   function syncButtons() {
     const out = busy() && !(chat && !chat.closed);
@@ -213,6 +215,9 @@
 
   U.act.askCoach = (el, ev, preset) => {
     const S = U.S;
+    // Tapped: its sparkle beats once (Refract's symbol effect) as the chat comes up.
+    const ico = el && el.classList && el.classList.contains('coach-btn') ? el.querySelector('.rf-icon') : null;
+    if (ico && G.Refract && G.Refract.effect) { try { G.Refract.effect(ico, 'beat'); } catch (e) { /* only a flourish */ } }
     unseen = false;
     if (chat && !chat.closed) { syncButtons(); return; }
     chat = U.sheet({

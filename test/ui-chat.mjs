@@ -55,10 +55,18 @@ const tabs = await page.evaluate(async () => {
 });
 check('every tab has the coach button at its top left', tabs.today && tabs.plan && tabs.health && tabs.progress && tabs.you, tabs);
 check('a page opened on top has its Back button there instead', !tabs.settings, tabs);
+// Refract keeps its own ::before and ::after on the glass (the rim, the sheen and the press glow):
+// the ring and the dot are drawn by a mark of their own.
+const look = await page.evaluate(() => {
+  const btn = document.querySelector('#topbar .coach-btn'), after = getComputedStyle(btn, '::after');
+  return { mark: !!btn.querySelector(':scope > .coach-mark[aria-hidden="true"]'), sheen: /gradient/.test(after.backgroundImage), border: after.borderTopStyle };
+});
+check('the glass keeps Refract\'s own look (its sheen on ::after); the ring and dot have a mark of their own', look.mark && look.sheen && look.border === 'none', look);
 await page.click('#topbar .coach-btn');
+const beat = await page.evaluate(() => document.querySelector('#topbar .coach-btn .rf-icon').getAnimations().length);
 await page.waitForSelector('dialog.chat-sheet[open] .chat-pill');
 await wait(500);
-check('it opens the chat', true);
+check('it opens the chat, its sparkle beating (Refract\'s symbol effect)', beat > 0, beat);
 
 section('Engines');
 check('a pill at the top says who answers', await page.evaluate(() => /On this phone/.test(document.querySelector('.chat-sheet .chat-pill').textContent) && window.GH.ui.S.ai.mode === 'device'));
@@ -148,11 +156,13 @@ await page.click('.chat-sheet [data-act="askSend"]');
 await page.waitForSelector('.chat-sheet #chatLive', { timeout: 5000 });
 await page.evaluate(() => window.GH.ui.closeSheets());
 await wait(200);
-const ring = await page.evaluate(() => document.querySelector('#topbar .coach-btn').hasAttribute('data-busy'));
+const markOf = () => page.evaluate(() => { const btn = document.querySelector('#topbar .coach-btn'), m = btn.querySelector('.coach-mark'), cs = getComputedStyle(m); return { busy: btn.hasAttribute('data-busy'), unseen: btn.hasAttribute('data-unseen'), opacity: cs.opacity, spin: cs.animationName, w: Math.round(m.getBoundingClientRect().width) }; });
+const ring = await markOf();
 await page.waitForFunction(() => { const c = window.GH.ui.S.ai.deviceChat || []; return c.length >= 6; }, null, { timeout: 60000 });
 await wait(300);
-const dot = await page.evaluate(() => { const btn = document.querySelector('#topbar .coach-btn'); return btn.hasAttribute('data-unseen') && !btn.hasAttribute('data-busy'); });
-check('closing the chat doesn\'t stop the answer: the coach button shows a ring, then a dot', ring && dot, { ring, dot });
+const dot = await markOf();
+check('closing the chat doesn\'t stop the answer: the coach button shows a ring, then a dot', ring.busy && dot.unseen && !dot.busy, { ring, dot });
+check('the ring spins around the button, the dot is a small one in its corner', ring.spin === 'gh-spin' && ring.w > 40 && dot.spin === 'none' && dot.w === 9 && dot.opacity === '1', { ring, dot });
 await page.click('#topbar .coach-btn');
 await page.waitForSelector('dialog.chat-sheet[open] .chat-pill');
 await wait(500);
