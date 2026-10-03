@@ -378,6 +378,42 @@ await settle(600);
 check('and the row shows it', /^Every 15 minutes · last at /.test((await bgRow()).sub), (await bgRow()).sub);
 await page.click('#topbar [data-act="back"]'); await settle();
 
+section('Reps left, answered after the rest');
+// With the rest over and the question still open, an answer stays on screen and Continue (right
+// under it) moves on: the screen never changes under a finger already on its way to Continue, which
+// would land on the next set's Done and log it.
+// Tomorrow: today's workout was cancelled with a set done above, so today counts as done.
+await page.clock.fastForward('24:00:00');
+await settle(700);
+await tab('today');
+await page.evaluate(() => window.GH.ui.act.startWorkout());
+await page.waitForSelector('.player:not([hidden]) .pl-name');
+await settle(600);
+const asked = await page.evaluate(() => {
+  const U = window.GH.ui, a = U.S.active;
+  const k = a.steps.findIndex((st, i) => i >= a.idx && st.kind === 'set' && st.askRir);
+  if (k < 0) return { err: 'no set asks' };
+  a.idx = k;
+  U.act.plDone();
+  U.act.plSkipRest();
+  const p = document.querySelector('.player');
+  return { rir: !!p.querySelector('.pl-rir'), cont: !!p.querySelector('.pl-actions [data-act="plContinue"]'), idx: a.idx };
+});
+check('the rest over with the question open: the question and Continue', asked.rir && asked.cont, JSON.stringify(asked));
+await page.click('.player .pl-rir input[value="12"]', { force: true });
+await settle(900);
+const stayed = await page.evaluate(() => {
+  const p = document.querySelector('.player');
+  return { picked: !!p.querySelector('.pl-rir input[value="12"]:checked'), cont: !!p.querySelector('.pl-actions [data-act="plContinue"]'), idx: window.GH.ui.S.active.idx };
+});
+check('an answer stays on screen with Continue (it doesn\'t move on by itself)', stayed.picked && stayed.cont && stayed.idx === asked.idx, JSON.stringify(stayed));
+await page.click('.player [data-act="plContinue"]');
+await settle(700);
+const moved = await page.evaluate(() => { const p = document.querySelector('.player'); return { rir: !!p.querySelector('.pl-rir'), done: !!p.querySelector('.pl-actions [data-act="plDone"], .pl-actions [data-act="plStartTimer"]') }; });
+check('and Continue moves on to the next set', !moved.rir && moved.done, JSON.stringify(moved));
+await page.evaluate(() => { const U = window.GH.ui; U.act.plKeep(); window.GH.brain.cancelWorkout(U.S); window.GH.store.save(U.S); U.render(); });
+await settle(700);
+
 section('Console');
 check('no console errors', errors.length === 0, errors.join(' | '));
 await browser.close();

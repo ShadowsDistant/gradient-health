@@ -881,8 +881,11 @@
     U.S.seen = U.S.seen || {};
     U.S.seen.rirCount = (U.S.seen.rirCount || 0) + 1;
     U.save();
-    // Let the thumb land before the screen moves on.
-    if (!P.restEnd) setTimeout(() => { if (P && P.rirAnswered === String(v)) { if (P.restTotal) endRest(); else draw(); } }, 280);
+    // With the rest over, the answer stays on screen and Continue (right under it) moves on. Moving
+    // on by itself would change the screen under a finger already on its way to Continue, and that
+    // tap would land on the next set's Done and log it. The screen is redrawn once the thumb has
+    // landed.
+    if (!P.restEnd) setTimeout(() => { if (P && P.rirAnswered === String(v)) draw(); }, 280);
   };
   U.act.plAmend = () => {
     const st = P.justDone;
