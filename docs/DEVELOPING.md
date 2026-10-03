@@ -56,7 +56,8 @@ src/ui/metric.js         a health number's sheet: its history, chart, and adding
 src/ui/bodymap.js        Progress's body map (front and back, 17 muscles) and the muscle sheet
 src/ui/guide.js          tour (cards over Today after the first workout), first-week checklist, tab
                          tips, What's new
-src/ui/motion.js         route changes, glides, collapse and expand (U.motion)
+src/ui/motion.js         route changes, glides, collapse and expand, glass that forms and changes
+                         shape (U.motion), menus (U.menu)
 src/ui/lazy.js           stand-ins for the parts that load when they're needed (APP_CHUNKS)
 src/ui/answers.js        set-up's answers as You, Plan and Settings list them
 src/ui/review.js         Why this plan, the Coach's review sheet and the weekly report's plan ideas
@@ -107,11 +108,20 @@ left alone. A few conventions:
 - `U.roll(value)` for numbers that should roll when they change.
 - The navigation bar is shared: a screen's `<header class="rf-navbar">` is lifted into it.
 - A route change gets fresh content: the old page leaves in a layer of its own while the new one
-  comes in (`U.motion.routeSwap` in `src/ui/motion.js`; pushes and pops slide, tabs cross-fade, the
-  bar's title and buttons cross-fade with them). A re-render of the same route patches in place and
-  glides what moved (FLIP): new blocks rise in, and removed ones fade from where they were for 200 ms
-  before they go, so a test that checks one is gone waits for `U.motion.settled()`. Animate
-  transform and opacity only; `test/ui-motion.mjs` checks for layout properties.
+  comes in (`U.motion.routeSwap` in `src/ui/motion.js`, on Refract 1.4's page motion: pushes and
+  pops slide on the smooth spring, tabs morph in place; the bar's title cross-fades with them). A
+  re-render of the same route patches in place and glides what moved (FLIP): new blocks rise in,
+  and removed ones fade from where they were for 200 ms before they go, so a test that checks one is
+  gone waits for `U.motion.settled()`. Animate transform and opacity only; `test/ui-motion.mjs`
+  checks for layout properties.
+- Glass above the page moves as Refract's material does. The bar's buttons are keyed by what they
+  are (`data-rf-key`; the top-left one by its place, the coach on a tab and Back on a page), so a
+  route change shape-shifts them (`U.motion.shift`, `Refract.shapeshift`): one on both routes keeps
+  its glass, one the new route lacks pinches off, a new one buds out. Today's floating buttons and
+  the workout capsule form and dissolve (`U.motion.glassIn` and `glassOut`: `Refract.materialize`,
+  `dematerialize`), and a button whose words change (`U.floatKey`) flows to its new width. That's
+  Refract's own motion, asked for by name; the lint counts it apart and holds it to what Refract's
+  API animates.
 
 **Parts that load when they're needed.** Set-up (`src/ui/onboarding.js`), the plan review with
 Why this plan (`src/planreview.js`, `src/ui/review.js`), How it works (`src/data/science.js`,
@@ -152,8 +162,9 @@ What the app turns off, and why:
   only glass marked `data-lens` refracts, since each lens is redrawn every frame the page moves
   under it.
 - **The light while busy**: on a phone, glass rims follow how it's tilted. The light holds still
-  while the page scrolls, while the workout player is open, with Moving background off and under
-  reduced motion, and follows the tilt again when things are calm (`U.steadyLight`, `core.js`).
+  while the page scrolls, while the workout player or a live activity is open, with Moving
+  background off and under reduced motion, and follows the tilt again when things are calm
+  (`U.steadyLight`, `core.js`).
 - **Click effects where a drag starts**: Refract's ripple, click ring and icon effects stay (they're
   part of its feel), except on Plan's week strip, whose day pills are dragged
   (`data-rf-effect="none"`).
@@ -172,6 +183,25 @@ the bar from panning and ticks once per tab a drag passes.
 
 Re-renders keep the parts Refract adds inside components (`INJECTED` in `core.js`: the tab bar's
 pill, the segmented lens, the click ripple and the rest) and the attributes it sets (`KEEP_ATTR`).
+
+Where the app uses Refract 1.4's newer parts:
+
+- **Menus**: a button whose sheet would only be a list of actions opens Refract's menu instead,
+  thick glass that grows out of the button and dissolves back into it (`U.menu` in
+  `src/ui/motion.js`; the player's, an activity's, a plan day's and the chat's options). Each item
+  is its action's own button; the arrow keys, Home, End and a letter move through it, Escape, a tap
+  outside and Android's Back close it, and focus goes back to the button. Opened from a sheet, it
+  goes in the sheet's dialog. A sheet that holds more than a list stays a sheet.
+- **Sheets** (`src/ui/sheet.js`, `src/styles/sheet.css`): the panel's material is a layer of
+  Refract's thick glass at medium height (its frost and the rim that catches the light), and solid
+  at full height, while it moves and while its content scrolls.
+- **Page dots**: Refract's `.rf-pagedots` (its ink worm stretches to the page and splats there) for
+  the badge reveal and the tour; they follow the page however it's turned (`aria-current`).
+- **Plan's week strip**: the day picked is a bead of the liquid engine, as the segmented controls'
+  thumbs are; it travels between days and holds the weekday while the weeks slide under it.
+- **Bursts** are 8 to 14 beads, Refract 1.4's range (`test/ui-motion.mjs` checks every count).
+- **Glass in the content** is for controls that float: a search field in a page is a `fill-3` well,
+  and a page's own buttons are filled, not glass.
 
 The credit: Settings > About has "Built with Refract" with its mark (`U.refractMark`, drawn by
 Refract's `.rf-mark`), and the open-source licenses sheet opens with it.
