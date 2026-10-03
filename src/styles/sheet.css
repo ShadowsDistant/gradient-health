@@ -43,22 +43,32 @@ dialog.gh-sheet[data-closing] { pointer-events: none; }
   will-change: transform;
 }
 .gh-sheet[data-size="fit"] .gh-sheet-panel { height: auto; max-height: calc(var(--vvh, 100dvh) * .86); }
-/* The material, on a layer of its own under the content (the shadow is the panel's), so switching it
-   repaints one flat rounded rectangle, not everything in the sheet. It reaches below the panel so a
-   stretch past the top, or a spring's overshoot, never shows a gap at the bottom. At rest: a 92% fill
-   with a light blur. While the sheet moves or its content scrolls: solid, no blur (a blur under
-   anything that moves is redrawn every frame). */
-.gh-sheet-panel::before {
-  content: ''; position: absolute; inset: 0 0 -200px; z-index: -1; pointer-events: none;
-  border-radius: inherit;
-  background: color-mix(in oklab, var(--sheet-bg) 92%, transparent);
-  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / .08);
+/* The material (.gh-sheet-glass, src/ui/sheet.js), on a layer of its own under the content (the
+   shadow is the panel's), so switching it repaints one flat rounded rectangle, not everything in the
+   sheet. It reaches below the panel so a stretch past the top, or a spring's overshoot, never shows a
+   gap at the bottom. At medium height it's Refract's thick glass (Refract draws it: the frost, the
+   rim that catches the light and moves with it, the sheen). At full height, and while the sheet moves
+   or its content scrolls, it's solid, with no blur and no lit rim: a blur under anything that moves
+   is redrawn every frame. Increased contrast and reduced transparency: solid. Its corners are the
+   panel's own value, not inherited from it: a part that inherits a value is restyled with the panel
+   every frame the panel moves. The rim and sheen are hidden, not taken out (that would lay them out
+   again as a move starts). */
+.gh-sheet-glass {
+  position: absolute; inset: 0 0 -200px; z-index: -1; pointer-events: none;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  box-shadow: var(--rim-light), var(--rim-depth);
+  text-shadow: none;
+  transition: none;
   will-change: transform;
 }
-.gh-sheet:is([data-moving], [data-scrolling]) .gh-sheet-panel::before { background: var(--sheet-bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
-:root[data-theme$="contrast"] .gh-sheet-panel::before, :root[data-rf-transparency="reduced"] .gh-sheet-panel::before { background: var(--sheet-bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
-@media (prefers-reduced-transparency: reduce) { .gh-sheet-panel::before { background: var(--sheet-bg); -webkit-backdrop-filter: none; backdrop-filter: none; } }
+.gh-sheet:is([data-detent="large"], [data-moving], [data-scrolling]) .gh-sheet-glass {
+  background-color: var(--sheet-bg); -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .08);
+}
+.gh-sheet:is([data-detent="large"], [data-moving], [data-scrolling]) .gh-sheet-glass::before,
+.gh-sheet:is([data-detent="large"], [data-moving], [data-scrolling]) .gh-sheet-glass::after { visibility: hidden; }
+:root:is([data-theme$="contrast"], [data-rf-transparency="reduced"]) .gh-sheet-glass { background-color: var(--sheet-bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
+@media (prefers-reduced-transparency: reduce) { .gh-sheet-glass { background-color: var(--sheet-bg); -webkit-backdrop-filter: none; backdrop-filter: none; } }
 
 .gh-sheet .rf-sheet-grabber { flex: none; margin: 7px auto 0; touch-action: none; cursor: grab; }
 .gh-sheet .rf-sheet-header { animation: none; touch-action: none; }

@@ -3,8 +3,9 @@
 // touch drags on a CPU slowed 4x (a flick up, a slow drag, a flick down, and a scroll that hands over
 // to the sheet), what a drag costs (no layout, no style work past the one transform a frame, frame
 // times with the settle), how long opening, settling and closing take, sideways gestures, Back, Esc
-// and the scrim, the keyboard, reduced motion, Refract staying out of it, and the food Edit sheet's
-// width.
+// and the scrim, the keyboard, reduced motion, Refract staying out of it, the material (Refract's
+// thick glass at medium, solid at large, while it moves, and with reduced transparency or increased
+// contrast), and the food Edit sheet's width.
 // Usage: node test/ui-sheet.mjs [--dark] [--width=390] [--cpu=4]
 import { createRequire } from 'node:module';
 import { check, section, done, serveDist } from './lib.mjs';
@@ -114,6 +115,40 @@ const inner = await page.evaluate(() => { const d = document.querySelector('dial
 check('opening focuses the content, never the grabber', /rf-sheet-body/.test(inner.focus || '') && !inner.grabber, inner);
 check('Refract doesn\'t manage it, and it isn\'t glass', inner.managed && !inner.glass, inner);
 check('its own scrim; the backdrop is see-through', inner.scrim && /rgba\(0, 0, 0, 0\)|transparent/.test(inner.backdrop), inner);
+{
+  // The material: a layer of Refract's thick glass under the content. At medium it's glass (a blur,
+  // and Refract's rim that catches the light); at large, while the sheet moves, and with reduced
+  // transparency or increased contrast, it's solid (no blur, no rim).
+  const mat = () => page.evaluate(() => {
+    const d = document.querySelector('dialog.gh-sheet[open]'), g = d && d.querySelector('.gh-sheet-panel > .gh-sheet-glass');
+    if (!g) return null;
+    const cs = getComputedStyle(g), rim = getComputedStyle(g, '::before');
+    const lit = rim.display !== 'none' && rim.visibility !== 'hidden';
+    const solid = cs.backdropFilter === 'none' && !lit;
+    return { thick: g.matches('.rf-glass[data-variant="thick"]'), hidden: g.getAttribute('aria-hidden') === 'true', under: cs.zIndex === '-1' && cs.pointerEvents === 'none', blur: cs.backdropFilter, rim: lit, solid, opaque: /^rgb\(/.test(cs.backgroundColor), detent: d.dataset.detent };
+  });
+  const med = await mat();
+  check('the material is Refract\'s thick glass, on a layer under the content, hidden from assistive tech', med && med.thick && med.hidden && med.under, med);
+  check('at medium it\'s glass: frosted, with the lit rim', med && med.detent === 'medium' && /blur/.test(med.blur) && med.rim && !med.solid, med);
+  await page.evaluate(() => document.querySelector('dialog.gh-sheet[open]').setAttribute('data-moving', ''));
+  const moving = await mat();
+  await page.evaluate(() => document.querySelector('dialog.gh-sheet[open]').removeAttribute('data-moving'));
+  check('while it moves it\'s solid', moving && moving.solid && moving.opaque, moving);
+  await page.evaluate(() => window.GH.ui.topSheet().detent('large'));
+  await wait(700);
+  const large = await mat();
+  check('at large it\'s solid', large && large.detent === 'large' && large.solid && large.opaque, large);
+  await page.evaluate(() => window.GH.ui.topSheet().detent('medium'));
+  await wait(700);
+  await page.evaluate(() => document.documentElement.setAttribute('data-rf-transparency', 'reduced'));
+  const rt = await mat();
+  await page.evaluate(() => document.documentElement.removeAttribute('data-rf-transparency'));
+  const theme = await page.evaluate(() => document.documentElement.getAttribute('data-theme'));
+  await page.evaluate((dk) => document.documentElement.setAttribute('data-theme', dk ? 'dark-contrast' : 'light-contrast'), dark);
+  const hc = await mat();
+  await page.evaluate((t) => { if (t == null) document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t); }, theme);
+  check('with reduced transparency, and with increased contrast, it\'s solid at medium too', rt && rt.detent === 'medium' && !/blur/.test(rt.blur) && rt.opaque && hc && !/blur/.test(hc.blur) && hc.opaque, { rt, hc });
+}
 await page.dispatchEvent('dialog.gh-sheet[open] .rf-sheet-header', 'pointerdown', { pointerType: 'mouse', button: 0, clientX: 30, clientY: s.top + 30, isPrimary: true });
 check('Refract\'s own drag doesn\'t run on it', await page.evaluate(() => !document.querySelector('dialog.gh-sheet[open]').hasAttribute('data-dragging')));
 await page.dispatchEvent('dialog.gh-sheet[open] .rf-sheet-header', 'pointerup', { pointerType: 'mouse', button: 0 });
