@@ -52,6 +52,28 @@ check('7-day charts stay inside their plot', charts.every((c) => c.svg <= c.plot
 await page.evaluate(() => window.GH.ui.closeSheets());
 await settle(900);
 
+section('Pages don\'t zoom');
+// Two fingers spreading apart (a pinch to zoom in) leave the page at its size: the viewport says so
+// (src/shell.html), the root takes no pinch (touch-action), and the WebView has zoom off (MainActivity).
+{
+  const cdp = await ctx.newCDPSession(page);
+  const pinch = async (x, y, spread) => {
+    let t = Date.now() / 1000;
+    const at = (d) => [{ x: x - 24 - d, y, id: 1 }, { x: x + 24 + d, y, id: 2 }];
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(0), timestamp: t });
+    for (let i = 1; i <= 12; i++) { t += 0.016; await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at((spread / 2) * (i / 12)), timestamp: t }); }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [], timestamp: t + 0.016 });
+  };
+  const vp = await page.evaluate(() => document.querySelector('meta[name="viewport"]').content);
+  check('the viewport doesn\'t let the page zoom', /maximum-scale=1(?![\d.])/.test(vp) && /user-scalable=no/.test(vp), vp);
+  check('nor does the root take a pinch', await page.evaluate(() => getComputedStyle(document.documentElement).touchAction === 'pan-x pan-y' && getComputedStyle(document.body).touchAction === 'pan-x pan-y'));
+  await pinch(195, 420, 200);
+  await page.waitForTimeout(500);
+  const scale = await page.evaluate(() => window.visualViewport.scale);
+  check('a pinch on Today leaves the page at its size', scale === 1, scale);
+  await cdp.detach();
+}
+
 section('Type in the tab bar, buttons and chips');
 const type = await page.evaluate(() => {
   const label = document.querySelector('.rf-tab[aria-current="page"] .rf-tab-label');

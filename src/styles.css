@@ -64,6 +64,9 @@
 }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--label); font-family: var(--font-sans); -webkit-tap-highlight-color: transparent; }
 body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
+/* An app's pages don't zoom: no pinch and no double tap (the viewport says so too, src/shell.html).
+   Text follows the phone's font size instead, and the route map zooms with two fingers on its own. */
+html, body { touch-action: pan-x pan-y; }
 /* Plain buttons take the surrounding font. Refract's controls (.rf-*) keep their own sizes, so this
    must not reach them: an unlayered `font` here would beat Refract's layered rules. */
 button:not([class*="rf-"]) { font: inherit; }

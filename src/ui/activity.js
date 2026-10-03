@@ -513,7 +513,7 @@
     GH.lazy('actmap').then((M) => {
       if (!el.isConnected || !streetsOn()) { el.dataset.state = ''; return; }
       const ctl = M.mount(el, {
-        route, buckets, dark, colors,
+        route, buckets, dark, colors, interactive: true,
         casing: cssVar(box, '--rt-case'), start: cssVar(box, '--rt-start'), end: cssVar(box, '--rt-end'), ring: cssVar(box, '--rt-ring'),
         onReady: () => { el.dataset.state = 'ready'; box.setAttribute('data-streets', 'ready'); },
         onFail: () => fail(),

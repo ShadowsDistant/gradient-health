@@ -172,6 +172,11 @@ public final class MainActivity extends Activity {
             s.setDatabaseEnabled(true);
             s.setMediaPlaybackRequiresUserGesture(false);
             s.setTextZoom(textZoomFor(getResources().getConfiguration()));
+            // The page never zooms (pinch or double tap) and shows no zoom buttons: an app's screens
+            // follow the phone's font size instead (setTextZoom above). The route map zooms itself.
+            s.setSupportZoom(false);
+            s.setBuiltInZoomControls(false);
+            s.setDisplayZoomControls(false);
             s.setAllowFileAccess(false);
             s.setAllowContentAccess(false);
             // One page in one window: no pop-ups (window.open stays a navigation, which

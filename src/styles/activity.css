@@ -53,8 +53,9 @@
 .am-box[data-type="other"] { --act-hue: var(--hue-violet); }
 .am-box > .rt { position: absolute; inset: 0; transition: opacity 320ms var(--ease-standard); }
 /* The street map fills the box from the start, so MapLibre sizes its canvas (and fits the route) to it. */
+/* It takes touches once it's drawn (two fingers move and zoom it); until then they reach the page. */
 .am-streets { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity 420ms var(--ease-standard); }
-.am-box[data-streets="ready"] .am-streets { opacity: 1; }
+.am-box[data-streets="ready"] .am-streets { opacity: 1; pointer-events: auto; }
 .am-box[data-streets="failed"] .am-attr { display: none; }
 .am-box[data-streets="ready"] > .rt { opacity: 0; }
 .am-box[data-streets="loading"]::after { content: ''; position: absolute; right: 12px; top: 12px; width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid color-mix(in oklab, var(--label) 18%, transparent); border-top-color: var(--label-secondary); animation: gh-spin .9s linear infinite; }
@@ -82,6 +83,19 @@
 .maplibregl-canvas-container, .maplibregl-canvas { position: absolute; left: 0; top: 0; }
 .maplibregl-canvas { outline: none; }
 .maplibregl-control-container, .maplibregl-ctrl { display: none; }
+/* Two fingers move and zoom it (src/actmap.js, cooperativeGestures): one finger is left to the page,
+   which scrolls. A finger on its own gets the hint, in the app's type on a dimmed map. */
+.maplibregl-canvas-container.maplibregl-cooperative-gestures, .maplibregl-canvas-container.maplibregl-cooperative-gestures .maplibregl-canvas { touch-action: pan-x pan-y; }
+.maplibregl-cooperative-gesture-screen { position: absolute; inset: 0; z-index: 3; display: flex; justify-content: center; align-items: center; padding: var(--space-4); text-align: center; background: rgb(0 0 0 / .42); color: #fff; font: 600 .9375rem/1.3 var(--font-sans); opacity: 0; pointer-events: none; transition: opacity .6s var(--ease-standard) .8s; }
+.maplibregl-cooperative-gesture-screen.maplibregl-show { opacity: 1; transition: opacity .05s; }
+.maplibregl-cooperative-gesture-screen .maplibregl-desktop-message { display: none; }
+@media (hover: hover) and (pointer: fine) {
+  .maplibregl-cooperative-gesture-screen .maplibregl-desktop-message { display: block; }
+  .maplibregl-cooperative-gesture-screen .maplibregl-mobile-message { display: none; }
+}
+/* Back to the whole route, once the map has been moved. */
+.am-fit { position: absolute; top: 10px; right: 10px; z-index: 2; }
+.am-fit[hidden] { display: none; }
 
 /* ---------------------------------------------------------------- the summary */
 .as-top { display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-4); margin: var(--space-1) 0 var(--space-4); }

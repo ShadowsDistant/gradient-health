@@ -296,6 +296,26 @@ const streets = await page.evaluate(() => {
 check('Show streets loads the map chunk and asks OpenFreeMap', streets.chunk && tileRequests.some((u) => /tiles\.openfreemap\.org\/planet$/.test(u)), tileRequests.slice(0, 3));
 check('the street map draws over the whole box, with its attribution', streets.state === 'ready' && streets.canvas && streets.map === streets.box && streets.cv === streets.box && /© OpenMapTiles © OpenStreetMap contributors/.test(streets.attr || ''), streets);
 check('the choice is remembered', streets.pref === true);
+// Two fingers zoom the map (MapLibre's cooperative gestures), while the page itself stays at its size.
+{
+  const cdp = await ctx.newCDPSession(page);
+  const box = await page.evaluate(() => { const r = document.querySelector('#screen .am-streets').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+  const z0 = await page.evaluate(() => Number(document.querySelector('#screen .am-streets').dataset.zoom));
+  let t = Date.now() / 1000;
+  const at = (d) => [{ x: box.x - 20 - d, y: box.y, id: 1 }, { x: box.x + 20 + d, y: box.y, id: 2 }];
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(0), timestamp: t });
+  for (let i = 1; i <= 14; i++) { t += 0.016; await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(5 * i), timestamp: t }); await page.waitForTimeout(16); }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [], timestamp: t + 0.016 });
+  await page.waitForTimeout(900);
+  const after = await page.evaluate(() => ({ zoom: Number(document.querySelector('#screen .am-streets').dataset.zoom), scale: window.visualViewport.scale, fit: !document.querySelector('#screen .am-fit').hidden }));
+  check('a pinch zooms the street map in, not the page', after.zoom > z0 + 0.3 && after.scale === 1, { z0, ...after });
+  check('and a button appears to show the whole route again', after.fit, after);
+  await page.click('#screen .am-fit');
+  await page.waitForTimeout(900);
+  const back = await page.evaluate(() => ({ zoom: Number(document.querySelector('#screen .am-streets').dataset.zoom), fit: !document.querySelector('#screen .am-fit').hidden }));
+  check('which fits the route again and goes', Math.abs(back.zoom - z0) < 0.2 && !back.fit, { z0, ...back });
+  await cdp.detach();
+}
 await shot('12-streets');
 await page.click('#screen [data-act="actStreets"]');
 await settle(700);
