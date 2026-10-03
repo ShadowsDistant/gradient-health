@@ -86,7 +86,9 @@ npm run build     # dist/gradient-health.html, dist/lazy/, docs/PRIVACY.md and d
 npm run smoke     # end-to-end run in Chromium (needs Playwright); add --dark for dark mode
 npm run test:ui   # layout regressions, food flows, the coach chat, the 3D figure, your plans, controls
                   # (real touches), haptics, motion, the You tab, badges, the plan review, speed
-                  # budgets (Chromium)
+                  # and scrolling budgets (Chromium)
+node test/ui-scroll.mjs --measure [--vs=<dir>] [--ablate=<part>]   # scrolling every main screen: frames
+                  # dropped, the GPU's draw time; A/B against another build, or with one part switched off
 npm run test:llm  # on-device AI runtime in Chromium with a tiny model (see On-device AI)
 node test/sweep.mjs [--quick]   # every screen at 360-600 px, light/dark, 100%/130% text, overflow checks
 npm run apk       # build/gradient-health.apk (see below)
@@ -124,6 +126,30 @@ so a tap rarely waits. A new module that the first frame of Today doesn't need b
 `test/ui-perf.mjs` holds the launch, tab and save budgets (4× CPU), and `test/buildcheck.mjs` the
 page's size.
 
+**The first frame.** At launch Refract sets up what the first render inserts at the start of the
+first frame's read pass rather than before it (`enhance()` in `src/ui/core.js`), so the lens maps it
+draws pixel by pixel in JavaScript land in the frame after the first paint, and the tab bar's lens
+(the glass over the picked tab) shows from the bar's second frame (`src/styles/perf.css`). The
+controls take its liquid engine only when touched (Refract, the design system, below).
+
+**Scrolling, and work that can wait.** A fling should only move what's already drawn
+(`src/styles/perf.css`). While the page scrolls (`#app[data-scrolling]`, set in `core.js` and
+cleared 150 ms after the last scroll) the glass over it keeps its blur, rim and light but doesn't
+refract, and the background glow holds still; the glow also stops drifting 20 s after the last
+touch, key or scroll (`#app[data-idle]`), and fades out in its gradients' own stops rather than
+through a mask. The bar's frosted edge is a single blur, drawn only while it shows, and whether it
+shows comes from an IntersectionObserver on the large title, so a scroll reads nothing from the
+layout. Under the workout player and set-up the page's bars and glass are hidden. Set-up's cards are
+near-opaque rather than frosted, and its glow holds still while it scrolls. Long pages (the
+badges, Health, Progress, Settings, the moves) lay out and draw a block only as it comes near
+(`content-visibility: auto`); a tab opened again where it was left gets the heights its blocks had,
+so it opens on what was showing. Medals share one set of gradients. Progress bars shine once, as
+they show or change, not forever. Work that can wait (the 3D figure's warm-up and stills, Plan's
+tiles, a background re-render such as Today's insight line) waits for `U.calm()`: no scroll or touch
+for 400 ms and no sheet moving (`U.whenCalm(fn)` runs it then). `test/ui-scroll.mjs` scrolls every
+main screen at 4× CPU, traced, and holds the budgets; `--vs=<dir>` compares two builds run by run, and
+`--ablate=<part>` switches one part off to show what it costs.
+
 **Saving.** `U.save()` never writes in the tap that changed something. `GH.store` waits for the page
 to be idle (a second at most) and hands the JSON to `AndroidBridge.saveAsync`, which writes it on its
 own thread, so a burst of taps is one write. A waiting save is written at once when the page is
@@ -150,7 +176,8 @@ What the app turns off, and why:
   Refract's would buzz a second time on every control.
 - **Refraction by default** (`Refract.init(root, { lens: false })`, `RF_INIT` in `src/ui/core.js`):
   only glass marked `data-lens` refracts, since each lens is redrawn every frame the page moves
-  under it.
+  under it, and none refracts while the page scrolls (its lens layer's filter loses the map,
+  `src/styles/perf.css`).
 - **The light while busy**: on a phone, glass rims follow how it's tilted. The light holds still
   while the page scrolls, while the workout player is open, with Moving background off and under
   reduced motion, and follows the tilt again when things are calm (`U.steadyLight`, `core.js`).
@@ -163,8 +190,11 @@ movement past 3 px as a drag, so a tap that wobbles would be lost. The app repla
 behaviours (and adds the chip choice) with its own gesture rules (`U.switchGesture`: 12 px to drag,
 10 px up or down to scroll, the tap rescue), but draws them with Refract's liquid engine
 (`Refract.Liquid`): a frosted bead that rises into a lens under the finger, follows it on springs
-that keep their speed, and lands with a squash, exactly as Refract's own. A switch's knob is the
-engine's only while it's touched or moving; at rest Refract's style sheet puts it at either end.
+that keep their speed, and lands with a squash, exactly as Refract's own. A switch's knob and a
+segmented control's bead are the engine's only while they're touched or moving: at rest Refract's
+style sheet puts the knob at either end, and the bead sits where a transform puts it. The engine's
+lens is drawn pixel by pixel in JavaScript, so a control costs nothing until it's touched (at launch
+these held up the first frames).
 A resting bead's lens is a backdrop filter redrawn every frame the page moves behind it, for an
 edge hidden under the frost, so it only works while the bead is lifted (`data-lifted`;
 `src/styles/controls.css`). The tab bar is Refract's own (its pill and its lens); the app keeps
@@ -204,8 +234,9 @@ Two losses while figures are on screen keep that session on the flat figure.
 In the app, `figure()` in `src/ui/player.js` hands the player and move sheets one
 controller that swaps what's underneath it: the flat figure while the chunk is still loading, 3D once
 it's there, and flat again if `onFallback` fires. Set-up fetches the chunk. The GPU warm-up
-(`U.warmFigure`) runs about 8 seconds after launch only when today is a workout day, or at once when a
-finger lands on something that opens a figure. Settings keeps the choice in `profile.prefs.figure` (`'3d'` or `'flat'`), with
+(`U.warmFigure`) runs about 8 seconds after launch only when today is a workout day (once it's calm,
+`U.calm()`: not in the middle of a scroll or a touch), or at once when a finger lands on something
+that opens a figure. Settings keeps the choice in `profile.prefs.figure` (`'3d'` or `'flat'`), with
 `figSkin` and `figShirt` for the look. The tempo strip under a figure comes from the move's `rep`
 steps and lights up from `onPhase`.
 
