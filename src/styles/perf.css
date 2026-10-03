@@ -37,3 +37,11 @@
    phone left on a page isn't drawing it every frame; the next input starts it again. */
 #app[data-idle]::before, #app[data-idle]::after { animation-play-state: paused, running; }
 #app[data-idle] .onboard::before, #app[data-idle] .onboard::after { animation-play-state: paused; }
+
+/* A progress bar's sheen goes across it once as it shows, and once more each time its value changes
+   (core.js flips data-sheen, which swaps the animation for an identical one, so it starts again),
+   rather than forever: Refract's sheen moves a custom property, which repaints the bar every frame
+   on the main thread. */
+.rf-progress-fill::after { animation-iteration-count: 1; }
+.rf-progress[data-sheen] > .rf-progress-fill::after { animation-name: gh-sheen; }
+@keyframes gh-sheen { 0% { --rf-sheen: -60%; } to { --rf-sheen: 160%; } }

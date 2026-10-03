@@ -214,7 +214,11 @@
     for (let i = 0; i < list.length; i++) {
       const a = list[i];
       next.add(a.name);
-      if (a.name !== 'style' && from.getAttribute(a.name) !== a.value) from.setAttribute(a.name, a.value);
+      if (a.name !== 'style' && from.getAttribute(a.name) !== a.value) {
+        // A progress bar that moved: its sheen goes across it once more (src/styles/perf.css).
+        if (a.name === 'aria-valuenow' && from.classList.contains('rf-progress')) from.toggleAttribute('data-sheen');
+        from.setAttribute(a.name, a.value);
+      }
     }
     const had = rec ? rec.attrs : Array.from(from.attributes, (a) => a.name).filter((n) => !KEEP_ATTR.test(n));
     for (const name of had) if (!next.has(name) && name !== 'style') from.removeAttribute(name);
