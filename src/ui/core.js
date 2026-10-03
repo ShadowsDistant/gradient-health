@@ -436,6 +436,8 @@
     };
     if (G.ResizeObserver) new G.ResizeObserver(measure).observe(topbar); else measure();
     screen.addEventListener('scroll', onScroll, { passive: true });
+    // (A scroll inside set-up doesn't bubble: it's heard on the way down.)
+    onboardEl.addEventListener('scroll', onSetupScroll, { passive: true, capture: true });
     pullToRefresh();
   }
   U.els = () => ({ root, topbar, screen, floatEl, playerEl, onboardEl, tabbar, accessory });
@@ -450,14 +452,20 @@
     markScrolled(s);
   }
   function markScrolled(s) { if (s !== scrolled) { scrolled = s; topbar.toggleAttribute('data-scrolled', s); } }
-  // While the page scrolls, the glow behind it holds still (src/styles/perf.css): one moving layer
-  // less for every frame of a fling. It drifts on 150 ms after the last scroll.
-  let scrollIdle = 0;
+  // While the page scrolls (#app[data-scrolling]), the glow behind it holds still and the glass over
+  // it doesn't refract (src/styles/perf.css): less to draw every frame of a fling. That's over 150 ms
+  // after the last scroll. Set-up's own scroller does the same on its page (.onboard[data-scrolling]).
+  let scrollIdle = 0, obIdle = 0;
   function onScroll() {
     if (!scrollFrame) scrollFrame = G.requestAnimationFrame(updateScrolled);
     if (scrollIdle) clearTimeout(scrollIdle);
     else { root.setAttribute('data-scrolling', ''); steadyLight(true); }
     scrollIdle = setTimeout(() => { scrollIdle = 0; root.removeAttribute('data-scrolling'); U.steadyLight(); }, 150);
+  }
+  function onSetupScroll() {
+    if (obIdle) clearTimeout(obIdle);
+    else onboardEl.setAttribute('data-scrolling', '');
+    obIdle = setTimeout(() => { obIdle = 0; onboardEl.removeAttribute('data-scrolling'); }, 150);
   }
   // Refract's light: on a phone the glass rims follow how it's tilted, and every step the light takes
   // repaints those rims and redraws their lenses. It holds still where it is while the page scrolls,

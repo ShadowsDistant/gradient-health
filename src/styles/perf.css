@@ -28,3 +28,7 @@
   -webkit-backdrop-filter: none; backdrop-filter: none;
   transition: opacity var(--duration-slow) var(--ease-standard), -webkit-backdrop-filter 0s linear var(--duration-slow), backdrop-filter 0s linear var(--duration-slow);
 }
+
+/* Set-up's glow holds still while set-up scrolls (.onboard[data-scrolling], core.js), as the app's
+   does while the page scrolls. */
+.onboard[data-scrolling]::before, .onboard[data-scrolling]::after { animation-play-state: paused; }

@@ -31,7 +31,13 @@
 @media (prefers-reduced-transparency: reduce) { .onboard::before, .onboard::after { display: none; } }
 .onboard { --ob-glass: color-mix(in srgb, var(--bg-raised) 72%, transparent); --ob-line: inset 0 0 0 .5px var(--separator); }
 [data-theme^="dark"] .onboard { --ob-glass: color-mix(in srgb, var(--bg-raised) 64%, transparent); }
-.onboard .rf-list, .onboard .card, .ob-opt, .ob-tile, .ob-wd, .rv-day, .ob-more, .ob-points li { background-color: var(--ob-glass); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); box-shadow: var(--ob-line), var(--shadow-card); }
+/* Inside set-up's scroller (and the copy of a screen sliding out, .ob-exit) the tiles are
+   near-opaque instead of frosted (--ob-frost: none): a blur there was drawn again every frame the
+   page scrolled, over a backdrop that's only the glow, which is smooth already, so they look the
+   same. */
+.onboard :is(.ob-scroll, .ob-exit) { --ob-glass: color-mix(in srgb, var(--bg-raised) 90%, transparent); --ob-frost: none; }
+[data-theme^="dark"] .onboard :is(.ob-scroll, .ob-exit) { --ob-glass: color-mix(in srgb, var(--bg-raised) 86%, transparent); }
+.onboard .rf-list, .onboard .card, .ob-opt, .ob-tile, .ob-wd, .rv-day, .ob-more, .ob-points li { background-color: var(--ob-glass); -webkit-backdrop-filter: var(--ob-frost, blur(22px) saturate(160%)); backdrop-filter: var(--ob-frost, blur(22px) saturate(160%)); box-shadow: var(--ob-line), var(--shadow-card); }
 :root[data-theme$="contrast"] :is(.onboard .rf-list, .onboard .card, .ob-opt, .ob-tile, .ob-wd, .rv-day, .ob-more, .ob-points li), :root[data-rf-transparency="reduced"] :is(.onboard .rf-list, .onboard .card, .ob-opt, .ob-tile, .ob-wd, .rv-day, .ob-more, .ob-points li) { background-color: var(--bg-raised); -webkit-backdrop-filter: none; backdrop-filter: none; }
 @media (prefers-reduced-transparency: reduce) { :is(.onboard .rf-list, .onboard .card, .ob-opt, .ob-tile, .ob-wd, .rv-day, .ob-more, .ob-points li) { background-color: var(--bg-raised); -webkit-backdrop-filter: none; backdrop-filter: none; } }
 /* Above the keyboard there's no navigation bar to clear. */
@@ -260,7 +266,7 @@
 .ob-measure { position: fixed; left: -400px; top: 0; width: 200px; height: 200px; visibility: hidden; pointer-events: none; }
 .ob-measure > svg { width: 200px; height: 200px; }
 /* Why this plan. */
-.rv-why { display: grid; gap: 12px; padding: var(--space-4); border-radius: var(--radius-lg); background-color: var(--ob-glass); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); box-shadow: var(--ob-line), var(--shadow-card); }
+.rv-why { display: grid; gap: 12px; padding: var(--space-4); border-radius: var(--radius-lg); background-color: var(--ob-glass); -webkit-backdrop-filter: var(--ob-frost, blur(22px) saturate(160%)); backdrop-filter: var(--ob-frost, blur(22px) saturate(160%)); box-shadow: var(--ob-line), var(--shadow-card); }
 :root[data-theme$="contrast"] .rv-why, :root[data-rf-transparency="reduced"] .rv-why { background-color: var(--bg-raised); -webkit-backdrop-filter: none; backdrop-filter: none; }
 .rv-h { margin: 0; display: flex; align-items: center; gap: 6px; font-size: .8125rem; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; color: var(--label-secondary); }
 .rv-h > svg { width: 15px; height: 15px; color: var(--hue-rose); }
