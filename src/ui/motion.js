@@ -7,8 +7,9 @@
  * U.motion.routeSwap(screen, frag, kind)  The route changed. The old page moves into a layer of its
  *   own beside the screen (.screen-exit: nothing in it takes a tap or is read out, and its ids are
  *   renamed) and leaves from where it was scrolled to, while frag, already in the screen when this
- *   returns, comes in. 'push' and 'pop' slide; a tab change ('left', 'right') cross-fades with a
- *   small shift toward the tab picked; any other kind just swaps.
+ *   returns, comes in, on Refract's springs: a push slides the new page in from the edge as the old
+ *   one falls back a third of the way, Back plays that in reverse, and a tab change ('left',
+ *   'right') morphs from one page to the other in place; any other kind just swaps.
  * U.motion.flip(els, mutate)  Measures els (an element's children, or a list of elements), runs
  *   mutate, then glides each from where it was to where it is now. Resolves when they've landed.
  * U.motion.exit(el)  el leaves from where it is: it's out of the flow at once, so what comes after it
@@ -177,30 +178,41 @@
   }
 
   /* ---------------------------------------------------------------- route changes */
-  // How each kind moves. Both pages move over the same time on the standard curve (quick, then a
-  // long settle), while each fade has a timeline of its own: the old page is gone well before the
-  // end, and the new one starts to show a little after the start, so the two are rarely both half
-  // there. A push sends the old page a third of the way off to the left as the new one comes in from
-  // 36 px to the right; Back plays that in reverse. A tab cross-fades, both pages shifted 12 px
-  // toward the tab picked.
-  function routeSpec(kind) {
-    if (kind === 'push') return { ms: 300, out: ['translateX(0)', 'translateX(-30%)'], in: ['translateX(36px)', 'translateX(0)'], gone: 0.42, show: 0.1 };
-    if (kind === 'pop') return { ms: 300, out: ['translateX(0)', 'translateX(36px)'], in: ['translateX(-30%)', 'translateX(0)'], gone: 0.42, show: 0.1 };
-    const dx = kind === 'right' ? 12 : kind === 'left' ? -12 : 0;
-    return { ms: 240, out: ['translateX(0)', `translateX(${-dx}px)`], in: [`translateX(${dx}px)`, 'translateX(0)'], gone: 0.5, show: 0.16 };
-  }
+  // How each kind moves: Refract 1.4's page motion (Refract.page), on its springs. A push slides the
+  // new page in from the edge on the smooth spring (the glide for large surfaces) while the old one
+  // falls back a third of the way and fades; Back plays that in reverse, the page under it coming
+  // back from a third of the way over. A tab change morphs in place: the new page settles from 97% as
+  // the old one grows to 103% and fades (360 ms). Each fade has a timeline of its own, so the old page
+  // is gone well before the end and the two are rarely both half there.
+  const TABS = { left: 1, right: 1, tab: 1 };
   const SLIDES = { push: 1, pop: 1, left: 1, right: 1, tab: 1 };
+  function routeSpec(kind) {
+    const t = tok();
+    const spring = { duration: t.smoothMs, easing: t.smooth };
+    if (TABS[kind]) {
+      return {
+        in: { move: ['scale(0.97)', 'scale(1)'], fade: [[0], [1, 0.45]], time: spring },
+        out: { move: ['scale(1)', 'scale(1.03)'], fade: [[1], [0]], time: { duration: 360, easing: t.standard } },
+      };
+    }
+    const push = kind === 'push';
+    return {
+      in: { move: [push ? 'translateX(100%)' : 'translateX(-30%)', 'translateX(0)'], fade: push ? null : [[0], [0, 0.04], [1, 0.5]], time: spring },
+      out: { move: ['translateX(0)', push ? 'translateX(-30%)' : 'translateX(100%)'], fade: [[1], [0, 0.5], [0]], time: spring },
+    };
+  }
   const swaps = new Set(); // old pages still leaving: { layer, anims, done }
   let entering = []; // the screen's own entrance, while it plays
 
-  // One moving part: a move on the standard curve over the whole time, and a fade through the given
-  // stops (keyframe offsets, each step easing out).
-  function slide(el, move, fade, ms, fill) {
+  // One moving part: a move on its spring, and a fade (if any) through the given stops (keyframe
+  // offsets, each step easing out) over the same time.
+  function slide(el, part, fill, from) {
     const t = tok();
-    return [
-      run(el, move.map((v) => ({ transform: v })), { duration: ms, easing: t.standard, fill }),
-      run(el, fade.map(([o, at]) => (at == null ? { opacity: o, easing: t.standard } : { opacity: o, offset: at, easing: t.standard })), { duration: ms, easing: 'linear', fill }),
-    ];
+    const move = from ? [from.transform, part.move[1]] : part.move;
+    const fade = part.fade && from ? [[from.opacity], ...part.fade.slice(1)] : part.fade;
+    const out = [run(el, move.map((v) => ({ transform: v })), Object.assign({ fill }, part.time))];
+    if (fade) out.push(run(el, fade.map(([o, at]) => (at == null ? { opacity: o, easing: t.standard } : { opacity: o, offset: at, easing: t.standard })), { duration: part.time.duration, easing: 'linear', fill }));
+    return out;
   }
   // Where an animated element is drawn right now (a transform and an opacity), to carry on from.
   function drawnAt(el) {
@@ -291,6 +303,8 @@
     layer.setAttribute('data-kind', kind);
     const top = pre && pre.screen === screen ? pre.scroll : screen.scrollTop;
     if (top) layer.style.translate = `0 ${-top}px`;
+    // A tab's morph scales about the middle of what was on screen (the layer is as tall as the page).
+    if (TABS[kind]) layer.style.transformOrigin = `50% ${Math.round(top + (G.innerHeight || 800) / 2)}px`;
     aside(() => { while (screen.firstChild) layer.appendChild(screen.firstChild); });
     shield(layer);
     screen.appendChild(frag);
@@ -305,7 +319,7 @@
       for (const c of gone) drop(c);
     };
     swaps.add(x);
-    entering = slide(screen, f.in, [[0], [0, f.show], [1]], f.ms);
+    entering = slide(screen, f.in);
     entering.forEach(track);
     // The old page goes on the page once the render that called this is done (before the next
     // frame): the layout that render does for the new page then doesn't lay the old one out too. It
@@ -314,8 +328,7 @@
     const shown = new Promise((resolve) => Promise.resolve().then(() => {
       if (finished) { resolve(); return; }
       aside(() => screen.parentNode.appendChild(layer));
-      const out = from ? [from.transform, f.out[1]] : f.out;
-      x.anims = slide(layer, out, [[from ? from.opacity : 1], [0, f.gone], [0]], f.ms, 'forwards');
+      x.anims = slide(layer, f.out, 'forwards', from);
       Promise.all(x.anims.map(ended)).then(() => x.done()).then(resolve);
     }));
     // (A page sent to the background meanwhile draws no frames: its motion ends, and the old page
