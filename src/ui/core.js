@@ -614,6 +614,10 @@
     if (readFrame && G.cancelAnimationFrame) G.cancelAnimationFrame(readFrame);
     if (readTimer) clearTimeout(readTimer);
     readFrame = readTimer = 0;
+    // Refract setting up the launch's page (enhance) goes before the rest, which then includes what
+    // that asked for (a control placing its thumb).
+    const init = reads.get('init');
+    if (init) { reads.delete('init'); safe(init); }
     // (One that asks for another pass while this one runs gets it at the next frame.)
     const pick = (keys) => keys.filter((k) => reads.has(k)).map((k) => reads.get(k));
     const list = pick(READ_FIRST).concat(readsAfter.splice(0), pick(READ_LAST));
@@ -792,9 +796,19 @@
       }
     }
   }
+  // At launch (the first render, U.firstFrame) what's inserted is set up at the start of the first
+  // frame's read pass instead (still before that frame's layout and paint): Refract then queues its
+  // own first work for each part (a glass's lens map, drawn pixel by pixel in JavaScript; its light)
+  // into the frame after, and the first paint comes that much sooner.
+  let launchRecords = null;
   function enhance(el) {
     const r = R();
     if (!r || !r.init) return;
+    if (rfObserver && U.firstFrame) {
+      (launchRecords || (launchRecords = [])).push(...rfObserver.takeRecords());
+      readSoon('init', () => { const recs = launchRecords || []; launchRecords = null; initAdded(recs); });
+      return;
+    }
     if (rfObserver) initAdded(rfObserver.takeRecords());
     else safe(() => r.init(el, RF_INIT)); // before boot() starts the observer
   }

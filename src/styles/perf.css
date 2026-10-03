@@ -66,3 +66,9 @@
 #app:has(> #player:not([hidden]):not([data-closing]), > #onboard:not([hidden]):not([data-closing])) > :is(#topbar, #float, #tabbar, #ptr),
 #app:has(> #player:not([hidden]):not([data-closing]), > #onboard:not([hidden]):not([data-closing]))::before,
 #app:has(> #player:not([hidden]):not([data-closing]), > #onboard:not([hidden]):not([data-closing]))::after { visibility: hidden; transition: visibility 0s linear 250ms; }
+
+/* The tab bar's lens (the glass over the picked tab) shows from the bar's second frame, once Refract
+   marks it ready: in its first, its liquid engine finds it without a size and leaves its lens map,
+   drawn pixel by pixel in JavaScript, for the frame after, where it doesn't hold up the app's first
+   paint. The frosted pill under the tab is there from the first frame. */
+.rf-tabbar:not([data-ready]) > .rf-tabbar-bar > .rf-tabbar-lens { display: none; }
