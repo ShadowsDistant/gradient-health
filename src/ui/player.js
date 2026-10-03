@@ -54,6 +54,7 @@
     const el = root();
     const was = !el.hidden;
     if (closing) { closing.cancel(); closing = null; }
+    el.removeAttribute('data-closing');
     el.hidden = false;
     if (U.steadyLight) U.steadyLight();
     plat().keepAwake(true);
@@ -71,8 +72,10 @@
     const el = root();
     if (timer) { clearInterval(timer); timer = null; }
     plat().keepAwake(false);
-    const done = () => { closing = null; el.hidden = true; el.innerHTML = ''; dropFig(); scene = null; if (U.steadyLight) U.steadyLight(); };
+    const done = () => { closing = null; el.hidden = true; el.removeAttribute('data-closing'); el.innerHTML = ''; dropFig(); scene = null; if (U.steadyLight) U.steadyLight(); };
     if (U.reduced() || !el.animate || el.hidden) { done(); return; }
+    // Fading out: the page shows through again, so its bars come back now (src/styles/perf.css).
+    el.setAttribute('data-closing', '');
     closing = el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(22px)' }], { duration: 220, easing: 'cubic-bezier(0.3, 0, 0.8, 0.15)', fill: 'forwards' });
     closing.onfinish = () => { if (closing) { closing.cancel(); done(); } };
   }
