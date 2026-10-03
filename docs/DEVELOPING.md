@@ -140,9 +140,10 @@ touch, key or scroll (`#app[data-idle]`), and fades out in its gradients' own st
 through a mask. The bar's frosted edge is a single blur, drawn only while it shows, and whether it
 shows comes from an IntersectionObserver on the large title, so a scroll reads nothing from the
 layout. Under the workout player and set-up the page's bars and glass are hidden. Set-up's cards are
-near-opaque rather than frosted, and its glow holds still while it scrolls. Long pages (the
-badges, Health, Progress, Settings, the moves) lay out and draw a block only as it comes near
-(`content-visibility: auto`); a tab opened again where it was left gets the heights its blocks had,
+near-opaque rather than frosted, and its glow holds still while it scrolls. The badges
+gallery lays out and draws a block only as it comes near (`content-visibility: auto`; on Health,
+Progress, Settings and the moves it made no difference and moved rows by 1 px, so they don't); a
+page opened again where it was left gets the heights its blocks had,
 so it opens on what was showing. Medals share one set of gradients. Progress bars shine once, as
 they show or change, not forever. Work that can wait (the 3D figure's warm-up and stills, Plan's
 tiles, a background re-render such as Today's insight line) waits for `U.calm()`: no scroll or touch
