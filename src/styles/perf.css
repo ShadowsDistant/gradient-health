@@ -45,3 +45,16 @@
 .rf-progress-fill::after { animation-iteration-count: 1; }
 .rf-progress[data-sheen] > .rf-progress-fill::after { animation-name: gh-sheen; }
 @keyframes gh-sheen { 0% { --rf-sheen: -60%; } to { --rf-sheen: 160%; } }
+
+/* Long pages: a block out of sight isn't laid out or drawn until it comes near (content-visibility:
+   auto). Until it has been, it's as tall as guessed here (or as it was when its tab was left,
+   --cv-h from core.js); after, as tall as it was. Only the height: its width is its column's.
+   Content-visibility clips to the block's box, so overflow-clip-margin lets the cards' shadows show
+   past it as before. */
+.screen[data-view="badges"] > .section[data-key^="bs-"], .screen:is([data-view="health"], [data-view="progress"]) > .section,
+.screen[data-view="settings"] .set-list > .rf-list, .moves-list > .rf-list {
+  content-visibility: auto; contain-intrinsic-block-size: auto var(--cv-h, 400px); overflow-clip-margin: 24px;
+}
+.screen[data-view="badges"] > .section[data-key^="bs-"] { --cv-h: 440px; }
+.screen[data-view="settings"] .set-list > .rf-list { --cv-h: 260px; }
+.moves-list > .rf-list { --cv-h: 300px; }

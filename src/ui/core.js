@@ -650,6 +650,17 @@
   let nextMotion = null;
   const scrollMemo = {};
   const scrolledMemo = {}; // the bar's frosted edge as each tab was left (with its scroll)
+  // Long pages lay out and draw a block out of sight only as it comes near (content-visibility: auto,
+  // src/styles/perf.css), and until then it's as tall as a guess. A tab opened again where it was
+  // left gets the heights its blocks had then (--cv-h), so it opens on exactly what was showing.
+  const CV_BLOCKS = ':scope > .section, :scope > .section > .rf-list';
+  const cvMemo = {};
+  const cvHeights = () => Array.from(screen.querySelectorAll(CV_BLOCKS), (n) => n.offsetHeight);
+  function cvRestore(key) {
+    const h = cvMemo[key];
+    if (!h) return;
+    Array.from(screen.querySelectorAll(CV_BLOCKS)).forEach((n, i) => { if (h[i]) n.style.setProperty('--cv-h', `${h[i]}px`); });
+  }
   let floatEnter = false; // the floating buttons rise in at the next read pass
   function render(motion) {
     if (!U.S || !U.S.profile.onboarded) { U.showOnboarding(); return; }
@@ -666,7 +677,7 @@
     // Two route changes before a frame: the first one's scroll is set now, so the page leaving
     // starts from where it is.
     if (changed) applyScroll();
-    if (changed && lastKey && !lastKey.includes(':')) { scrollMemo[lastKey] = screen.scrollTop; scrolledMemo[lastKey] = !!scrolled; }
+    if (changed && lastKey && !lastKey.includes(':')) { scrollMemo[lastKey] = screen.scrollTop; scrolledMemo[lastKey] = !!scrolled; cvMemo[lastKey] = scrollMemo[lastKey] ? cvHeights() : null; }
     const M = U.motion || {};
     const kind = changed ? motion || nextMotion : motion;
     // A re-render of the same page: where everything is, measured before the patch changes it, so
@@ -702,7 +713,9 @@
     readSoon('float', floatPass);
     if (scr.after) safe(() => scr.after(screen, U.S, day, r.arg, changed));
     if (changed) {
-      scrollSoon(r.view ? 0 : scrollMemo[key] || 0);
+      const top = r.view ? 0 : scrollMemo[key] || 0;
+      if (top) cvRestore(key);
+      scrollSoon(top);
       // The bar's frosted edge for where the page will be: off at its top (the screen is padded by
       // the bar's height, so a large title there is all below it), else as it was when the page was
       // left there. The read pass checks it against the layout; the bar's cross-fade needs it now.
