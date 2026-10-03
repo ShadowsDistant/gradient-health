@@ -320,7 +320,8 @@
     if (!U.reduced()) { void stage.offsetWidth; stage.classList.add('is-in'); } else stage.classList.add('is-still');
     if (o && o.buzz) U.haptic('badge');
     const medal = stage.querySelector('.bdg-medal');
-    if (o && o.burst && medal && G.Refract && G.Refract.burst && !U.reduced()) setTimeout(() => { try { G.Refract.burst(medal, { count: 22, colors: BURST[def.tier], spread: 1.25, size: [6, 12] }); } catch (e) { /* ignore */ } }, 300);
+    // Refract 1.4's burst is 8 to 14 beads: the medal's is its biggest, 14.
+    if (o && o.burst && medal && G.Refract && G.Refract.burst && !U.reduced()) setTimeout(() => { try { G.Refract.burst(medal, { count: 14, colors: BURST[def.tier], spread: 1.25, size: [6, 12] }); } catch (e) { /* ignore */ } }, 300);
   }
   function revealPage(x, day, total) {
     const def = x.def;
@@ -573,6 +574,7 @@
     if (!tiles.length) return;
     U.haptic('badge');
     if (!G.Refract || !G.Refract.burst || U.reduced()) return;
-    for (const t of tiles) { try { G.Refract.burst(t, { count: 14 }); } catch (e) { /* ignore */ } }
+    // Each burst within Refract's 8 to 14 beads: one tile gets 12, several get 8 each, three at most.
+    for (const t of tiles.slice(0, 3)) { try { G.Refract.burst(t, { count: tiles.length > 1 ? 8 : 12 }); } catch (e) { /* ignore */ } }
   };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -19,7 +19,8 @@
 //   it glide;
 // - reduced motion: a route change is a short fade, lists change at once;
 // - the lint: no keyframes in src/ui touch layout (height, width, margin, padding, top, left and the
-//   like), in the source and in every animation the app starts here;
+//   like), in the source and in every animation the app starts here; Refract's material motion, which
+//   the app asks for by name, touches only what its API animates; bursts are 8 to 14 beads;
 // - frames while route changes play, with the CPU slowed 4x: the motion's own (route changes through
 //   the router between light stand-in pages) p95 ≤ 20 ms, best of 3; the real pages' reported with
 //   the motion and with the plain swap. The first frame after a change carries the new page's own
@@ -82,6 +83,17 @@ section('Lint: keyframes in src/ui move by transform and opacity');
   }
   check(`no layout properties in ${seen} keyframe lists`, bad.length === 0, bad.join(', '));
   check('the old height animation in guide.js is gone', !/height:\s*`\$\{h\}px`/.test(readFileSync(join(root, 'src/ui/guide.js'), 'utf8')));
+  // Refract 1.4's bursts are 8 to 14 beads: every count the app asks for is in that range.
+  const counts = [];
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.js'))) {
+    const src = readFileSync(join(dir, f), 'utf8');
+    for (const m of src.matchAll(/\.burst\([^;]*?count:\s*([^,}]+)/g)) {
+      const ns = Array.from(m[1].matchAll(/\b\d+\b/g), (x) => Number(x[0])).filter((n) => n > 3);
+      counts.push({ at: `${f}:${src.slice(0, m.index).split('\n').length}`, ns });
+    }
+  }
+  const off = counts.filter((c) => !c.ns.length || c.ns.some((n) => n < 8 || n > 14));
+  check(`bursts are 8 to 14 beads, as Refract 1.4's (${counts.length} of them)`, counts.length >= 6 && off.length === 0, off);
 }
 
 /* ---------------------------------------------------------------- the page */

@@ -406,7 +406,8 @@
       if (streetsOn()) mountStreets(root, a);
       if (changed && (a.records || []).length && !U.reduced() && G.Refract && G.Refract.burst && !celebrated.has(a.id)) {
         celebrated.add(a.id);
-        setTimeout(() => { const c = root.querySelector('.as-recs-head'); if (c) { try { G.Refract.burst(c, { count: 22 }); } catch (e) { /* ignore */ } } }, 420);
+        // (Refract 1.4's burst is 8 to 14 beads.)
+        setTimeout(() => { const c = root.querySelector('.as-recs-head'); if (c) { try { G.Refract.burst(c, { count: 14 }); } catch (e) { /* ignore */ } } }, 420);
       }
     },
   };

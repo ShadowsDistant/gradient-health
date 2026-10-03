@@ -1064,7 +1064,9 @@
     const then = kinds.includes('pr') ? 'pr' : kinds.includes('level') || kinds.includes('weight') ? 'levelUp' : null;
     if (then) setTimeout(() => U.haptic(then), 700);
     if (big && G.Refract && G.Refract.burst && !U.reduced()) {
-      setTimeout(() => { for (const c of el.querySelectorAll('.celebrate')) { try { G.Refract.burst(c, { count: 18 }); } catch (e) { /* ignore */ } } }, 350);
+      // Each burst within Refract 1.4's 8 to 14 beads: one card gets 14, several get 8 each, three at
+      // most.
+      setTimeout(() => { const cards = Array.from(el.querySelectorAll('.celebrate')); for (const c of cards.slice(0, 3)) { try { G.Refract.burst(c, { count: cards.length > 1 ? 8 : 14 }); } catch (e) { /* ignore */ } } }, 350);
     }
     const n = el.querySelector('.streak-roll');
     if (n && G.Refract && G.Refract.roll && !U.reduced()) setTimeout(() => { try { G.Refract.roll(n, n.dataset.to, { from: n.dataset.from, dir: 1 }); } catch (e) { /* ignore */ } }, 250);
