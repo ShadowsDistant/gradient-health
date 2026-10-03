@@ -468,7 +468,10 @@
     const r = R();
     if (fixed === lightFixed || !r || !r.light || !r.light.mode) return;
     lightFixed = fixed;
-    safe(() => (fixed ? r.light.mode('fixed', r.light.current()) : r.light.mode('pointer')));
+    // Held at the angle the rims show now, read off the tab bar's glass: with no element, current()
+    // is the light's resting angle rather than the tilt's, and every rim would swing round to it.
+    const glass = tabbar && tabbar.querySelector('.rf-tabbar-bar');
+    safe(() => (fixed ? r.light.mode('fixed', r.light.current(glass || undefined)) : r.light.mode('pointer')));
   }
   U.steadyLight = () => steadyLight(!!(scrollIdle || doc.documentElement.hasAttribute('data-still-glow') || U.reduced() || (playerEl && !playerEl.hidden)));
 

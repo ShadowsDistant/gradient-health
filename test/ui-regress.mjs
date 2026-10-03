@@ -74,6 +74,35 @@ section('Pages don\'t zoom');
   await cdp.detach();
 }
 
+section('Refract\'s light while the page scrolls');
+// On a phone the glass rims follow how it's tilted. While the page scrolls the light holds still
+// where the rims are (they mustn't swing round to the light's resting angle and back), and it
+// follows the tilt again once the page is still.
+{
+  const r = await page.evaluate(async () => {
+    const L = window.Refract.light;
+    const glass = document.querySelector('#tabbar .rf-tabbar-bar');
+    const frame = () => new Promise((f) => requestAnimationFrame(f));
+    const tilt = new Event('deviceorientation');
+    Object.defineProperty(tilt, 'beta', { value: 70 });
+    Object.defineProperty(tilt, 'gamma', { value: 30 });
+    window.dispatchEvent(tilt);
+    for (let i = 0; i < 90; i++) await frame();
+    const rest = L.current(glass), base = L.current();
+    const sc = document.getElementById('screen');
+    const top = sc.scrollTop, seen = [];
+    for (let i = 0; i < 12; i++) { sc.scrollTop += 40; sc.dispatchEvent(new Event('scroll')); await frame(); seen.push({ mode: L.mode(), at: L.current(glass) }); }
+    await new Promise((f) => setTimeout(f, 400));
+    await frame();
+    const after = L.mode();
+    sc.scrollTop = top;
+    return { rest, base, seen, after };
+  });
+  check('the tilt turns the rims (away from the resting angle)', Math.abs(r.rest - r.base) > 10, r);
+  check('scrolling holds the light still, where the rims were', r.seen.every((x) => x.mode === 'fixed' && Math.abs(x.at - r.rest) < 2), r.seen.map((x) => `${x.mode} ${Math.round(x.at)}`).join(', '));
+  check('then it follows the tilt again', r.after === 'pointer', r.after);
+}
+
 section('Type in the tab bar, buttons and chips');
 const type = await page.evaluate(() => {
   const label = document.querySelector('.rf-tab[aria-current="page"] .rf-tab-label');
