@@ -11,3 +11,20 @@
    sees bend in a fling. The filter is Refract's own without the map, so nothing else changes, and the
    edges bend again as soon as the page is still. */
 #app[data-scrolling] .rf-lens-layer { --_lens: ; }
+
+/* The bar's frosted edge (#topbar > .rf-scroll-edge, about 126 px tall): Refract draws it with two
+   full-width blurs, a light one (3 px, fading out from 55% down to the bottom) under a stronger one
+   (8 px, from 45% to 90%), and draws them even while the edge is faded out. Here it's the stronger
+   one alone, reaching as far down as the light one did (which looks the same: the light one only
+   showed below the strong one), and only while it shows (#topbar[data-scrolled], once the large
+   title is under the bar): it comes on at once (the edge fades in from nothing), and goes when the
+   edge has faded out. */
+.topbar > .rf-scroll-edge::before { display: none; }
+.topbar > .rf-scroll-edge::after {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+}
+.topbar:not([data-scrolled]) > .rf-scroll-edge::after {
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  transition: opacity var(--duration-slow) var(--ease-standard), -webkit-backdrop-filter 0s linear var(--duration-slow), backdrop-filter 0s linear var(--duration-slow);
+}
