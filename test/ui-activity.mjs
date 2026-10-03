@@ -4,9 +4,10 @@
 // tucking it away (the pill on Today, the capsule on other tabs), a reload mid-activity, a tap asking
 // first and a hold finishing, the summary (the route, splits, heart rate from the watch, saved to
 // Health Connect without double counting), new records after a faster run, the street map loading
-// only when asked, deleting with Undo, a finish on the notification while the app is away, precise
-// location (asking, Open settings, starting without GPS), and the browser's own recorder
-// (navigator.geolocation).
+// only when asked, the options menu (out of its button, by keyboard too), deleting with Undo, a
+// finish on the notification while the app is away, precise location (asking, Open settings,
+// starting without GPS), and the browser's own recorder (navigator.geolocation). The live screen's
+// tiles, map and Pause are glass (solid with reduced transparency or increased contrast).
 // Usage: node test/ui-activity.mjs [--dark] [--width=390] [--shots]
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
@@ -140,6 +141,26 @@ check('the average pace and the pace now', Math.abs(secs(L.avg) - 483) <= 8 && /
 check('steps from the phone', Number(L.steps.replace(/,/g, '')) > 1200, L.steps);
 check('the split it\'s in', L.splitl === 'Mile 1', L.splitl);
 check('the route so far', L.route >= 1);
+{
+  // The tiles, the map and Pause are Refract's glass (thick, lit when pressed); with reduced
+  // transparency or increased contrast they're solid.
+  const glass = () => page.evaluate(() => {
+    const el = document.getElementById('actlive');
+    const parts = [...el.querySelectorAll('.al-m, .al-map, .al-pause .al-btn-disc')];
+    // A fill's alpha (rgba(), or a color function's "/ alpha").
+    const alpha = (c) => { const m = /\/\s*([\d.]+)\)$/.exec(c) || /^rgba\([^)]*,\s*([\d.]+)\)$/.exec(c); return m ? Number(m[1]) : 1; };
+    // Solid: Refract's solid glass fill (--glass-fill-solid, nearly opaque), not the see-through one.
+    return { n: parts.length, glass: parts.every((e) => e.matches('.rf-glass[data-interactive]')), thick: el.querySelectorAll('.al-m.rf-glass[data-variant="thick"], .al-map.rf-glass[data-variant="thick"]').length, blurred: parts.filter((e) => /blur/.test(getComputedStyle(e).backdropFilter)).length, solid: parts.filter((e) => alpha(getComputedStyle(e).backgroundColor) >= 0.95).length };
+  });
+  const g = await glass();
+  check('the tiles, the map and Pause are glass (the tiles and map thick), frosted', g.n >= 4 && g.glass && g.thick === g.n - 1 && g.blurred === g.n && g.solid < g.n, g);
+  await page.evaluate(() => document.documentElement.setAttribute('data-rf-transparency', 'reduced'));
+  await page.waitForTimeout(400); // the fill's own transition
+  const rt = await glass();
+  await page.evaluate(() => document.documentElement.removeAttribute('data-rf-transparency'));
+  await page.waitForTimeout(400);
+  check('with reduced transparency their fill is solid (Refract\'s fallback)', rt.solid === rt.n, rt);
+}
 await shot('05-live');
 await page.evaluate(() => { window.__haptics.length = 0; });
 // Mile 1 falls at about 8:03.

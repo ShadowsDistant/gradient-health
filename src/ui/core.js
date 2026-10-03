@@ -462,8 +462,8 @@
   }
   // Refract's light: on a phone the glass rims follow how it's tilted, and every step the light takes
   // repaints those rims and redraws their lenses. It holds still where it is while the page scrolls,
-  // while the workout player is open (the phone moves all the time), with Moving background off and
-  // under reduced motion, and follows the tilt again once things are calm.
+  // while the workout player or a live activity is open (the phone moves all the time), with Moving
+  // background off and under reduced motion, and follows the tilt again once things are calm.
   let lightFixed = false;
   function steadyLight(fixed) {
     const r = R();
@@ -474,7 +474,7 @@
     const glass = tabbar && tabbar.querySelector('.rf-tabbar-bar');
     safe(() => (fixed ? r.light.mode('fixed', r.light.current(glass || undefined)) : r.light.mode('pointer')));
   }
-  U.steadyLight = () => steadyLight(!!(scrollIdle || doc.documentElement.hasAttribute('data-still-glow') || U.reduced() || (playerEl && !playerEl.hidden)));
+  U.steadyLight = () => steadyLight(!!(scrollIdle || doc.documentElement.hasAttribute('data-still-glow') || U.reduced() || (playerEl && !playerEl.hidden) || (U.actLiveShown && U.actLiveShown())));
 
   // The bar's buttons are keyed by what they are, so a route change keeps the node of one both routes
   // have and Refract can shape-shift them (U.motion.barSwap): the button at the top left is one piece
