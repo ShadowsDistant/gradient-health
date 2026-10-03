@@ -45,8 +45,8 @@ Miss a day and the rest of the week moves forward instead of doubling up. Every 
 
 <p align="center">
   <img src="docs/screenshots/plan.png" width="200" alt="Plan: the week strip and today's workout">
-  <img src="docs/screenshots/rest-dark.png" width="200" alt="Rest timer, in dark mode, with the question: how many more could you have done?">
-  <img src="docs/screenshots/gym.png" width="200" alt="A gym day: barbell curls, rope pushdowns, bench press and pulldowns with starting weights">
+  <img src="docs/screenshots/why.png" width="200" alt="Why this plan: how many weeks the planner compared, and how this one scores">
+  <img src="docs/screenshots/review-dark.png" width="200" alt="The coach's review, in dark mode: two suggested changes, each with what it would change, switched on to apply, and one that wasn't applied">
 </p>
 
 ## Your plans
@@ -79,8 +79,10 @@ Share a plan with a QR code or a link. Your friend scans it or taps it, sees the
 Started by mistake? Go back and cancel the workout: nothing from it is saved or counts against your streak.
 
 <p align="center">
+  <img src="docs/screenshots/setup-dark.png" width="200" alt="Set-up's last step, in dark mode: the plan it made, with the first workout a tap away">
+  <img src="docs/screenshots/rest-dark.png" width="200" alt="Rest timer, in dark mode, with the question: how many more could you have done?">
+  <img src="docs/screenshots/gym.png" width="200" alt="A gym day: barbell curls, rope pushdowns, bench press and pulldowns with starting weights">
   <img src="docs/screenshots/around.png" width="200" alt="Built around you: a plan for a 68-year-old with balance problems and a sore knee">
-  <img src="docs/screenshots/setup-dark.png" width="200" alt="Set-up, in dark mode: anything the plan should work around">
 </p>
 
 ## Moves
@@ -124,9 +126,18 @@ Strength charts, your left and right sides, levels, and the moments worth rememb
 
 64 badges for the things worth celebrating: your first workout, streaks from 3 days to 100, every muscle trained in a week, your first pull-up, a 5K, a month of protein goals, and a few secret ones. Once earned they're yours for good, with the date. Share one as a picture with friends and family: it shows the badge and what it took, and your name only if you choose.
 
+<p align="center">
+  <img src="docs/screenshots/badges.png" width="200" alt="Badges: the ones earned so far, with their tiers, and what's next">
+  <img src="docs/screenshots/badge-share-dark.png" width="200" alt="Sharing a badge as a picture, in dark mode: the medal, what it took and the date, with your name only if you turn it on">
+</p>
+
 ## You
 
 Your profile, your badges, your plans, your set-up answers and Settings live in the You tab. Settings has a search, so units or haptics are a word away.
+
+<p align="center">
+  <img src="docs/screenshots/you-dark.png" width="200" alt="You, in dark mode: your profile, badges and plans">
+</p>
 
 ## The coach
 
@@ -162,7 +173,6 @@ Every rule Gradient Health follows, from how many sets you do to how long you re
 
 <p align="center">
   <img src="docs/screenshots/science.png" width="200" alt="How it works: stopping 1 to 3 reps short of failure, with its research">
-  <img src="docs/screenshots/profile-dark.png" width="200" alt="Profile, in dark mode: stats and achievements">
   <img src="docs/screenshots/trends.png" width="200" alt="Trends: sleep and resting heart rate over four weeks">
 </p>
 
