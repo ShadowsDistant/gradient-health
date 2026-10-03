@@ -2,9 +2,14 @@
 // - route changes: the new page is in the screen as soon as the change returns, while the old one
 //   leaves from a layer of its own beside it (.screen-exit): inert, hidden from assistive tech, its
 //   ids renamed (never two of one), starting exactly where the old page was scrolled to, and gone,
-//   with Refract's cleanup, once its motion ends. Push, Back and tabs move the right way, only by
-//   transform and opacity; the bar's title cross-fades; route changes in quick succession leave
-//   nothing behind;
+//   with Refract's cleanup, once its motion ends. Push, Back and tabs move the right way, on
+//   Refract's page motion (a push slides in from the edge while the old page falls back a third; a
+//   tab change morphs in place), only by transform and opacity; the bar's title cross-fades; route
+//   changes in quick succession leave nothing behind;
+// - glass (Refract's material motion): the bar's buttons shape-shift across routes (one on both
+//   keeps its glass, one the new route lacks pinches off as an inert picture, new ones bud out, the
+//   coach becomes Back in the same glass); Today's floating buttons and the workout capsule form and
+//   dissolve instead of fading, and a new label shape-shifts its button;
 // - lists (FLIP): a re-render that adds, drops or resizes a block glides the blocks after it from
 //   where they were (transforms only), so nothing jumps; a dropped block fades where it was, a new
 //   one rises in; more than 8 changes in one container just change; an unkeyed control is never
@@ -89,20 +94,43 @@ page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 await page.addInitScript(seedBridge);
 // Every animation the page starts, with the properties its keyframes touch and where (the lint's
-// runtime half).
+// runtime half). Those started inside one of Refract's motion calls (glass forming and dissolving,
+// shape-shifting, menus, symbol effects, numbers rolling) are marked rf: Refract's own motion, which
+// the app asks for by name.
 await page.addInitScript(() => {
   window.__kf = [];
+  window.__rfDepth = 0;
   const orig = Element.prototype.animate;
   Element.prototype.animate = function (frames, o) {
     try {
       const props = new Set();
       if (Array.isArray(frames)) { for (const f of frames) for (const p of Object.keys(f || {})) props.add(p); } else if (frames) for (const p of Object.keys(frames)) props.add(p);
       ['offset', 'easing', 'composite'].forEach((p) => props.delete(p));
-      const where = this.closest ? (this.closest('#screen') ? 'screen' : this.closest('.screen-exit') ? 'exit' : this.closest('#topbar') ? 'bar' : this.closest('#float') ? 'float' : this.closest('#tabbar') ? 'tabbar' : 'other') : 'other';
-      window.__kf.push({ props: Array.from(props), where, cls: String(this.className && this.className.baseVal != null ? this.className.baseVal : this.className || this.tagName).slice(0, 40) });
+      const near = (sel) => !!(this.closest && this.closest(sel));
+      // A copy of the floating row or of a bar button (on its way out) counts where its original was.
+      const where = !this.closest ? 'other' : near('#screen') ? 'screen' : near('.screen-exit') ? 'exit' : near('#topbar, .rf-navbar.motion-copy') ? 'bar' : near('#float, .float-actions.motion-copy') ? 'float' : near('#tabbar') ? 'tabbar' : 'other';
+      window.__kf.push({ props: Array.from(props), where, rf: window.__rfDepth > 0, cls: String(this.className && this.className.baseVal != null ? this.className.baseVal : this.className || this.tagName).slice(0, 40) });
     } catch (e) { /* only a record */ }
     return orig.call(this, frames, o);
   };
+  // Refract's motion calls, wrapped as Refract arrives (it sets window.Refract once).
+  let rf;
+  Object.defineProperty(window, 'Refract', {
+    configurable: true,
+    get: () => rf,
+    set: (v) => {
+      rf = v;
+      const wrap = (obj, name) => {
+        const fn = obj && obj[name];
+        if (typeof fn !== 'function' || fn.__wrapped) return;
+        const w = function (...a) { window.__rfDepth++; try { return fn.apply(this, a); } finally { window.__rfDepth--; } };
+        w.__wrapped = true;
+        try { obj[name] = w; } catch (e) { /* read-only */ }
+      };
+      for (const n of ['materialize', 'dematerialize', 'shapeshift', 'page', 'swap', 'burst', 'effect', 'roll']) wrap(v, n);
+      if (v && v.menu) for (const n of ['open', 'close', 'toggle', 'openAt']) wrap(v.menu, n);
+    },
+  });
 });
 await page.goto(server.url);
 await page.waitForSelector('.onboard:not([hidden])');
@@ -162,12 +190,16 @@ section('A tab change');
     await new Promise((res) => setTimeout(res, 0));
     const layer = document.querySelector('.screen-exit');
     const out = { sync, layer: !!layer, smooth: window.Refract.duration('duration-spring-smooth', 640) };
-    // Today's floating buttons (Plan has none): a copy fades where they were, gone with the old page.
+    // Today's floating buttons (Plan has none): a copy of them dissolves where they were (Refract's
+    // dematerialize, from the frame's read pass), gone with the old page.
     const fc = document.querySelector('.float-actions.motion-copy');
     out.float = { had: hadFloat, hidden: document.getElementById('float').hidden, copy: !!fc && fc.inert && fc.getAttribute('aria-hidden') === 'true' };
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
     if (fc) {
-      const fa = [fc, ...fc.querySelectorAll('*')].flatMap((el) => m.anims(el));
-      out.float.props = Array.from(new Set(fa.flatMap(m.props))).sort().join();
+      const glass = [...fc.querySelectorAll(':scope > .rf-glass')];
+      const fa = glass.flatMap((el) => m.anims(el));
+      out.float.glass = glass.length;
+      out.float.dissolves = glass.length > 0 && glass.every((g) => m.anims(g).some((a) => m.frames(a).some((k) => k['--rf-mat'] != null) && Number(m.frames(a).slice(-1)[0]['--rf-mat']) === 0));
       out.float.ms = Math.max(0, ...fa.map((a) => a.effect.getTiming().duration));
     }
     if (layer) {
@@ -203,7 +235,7 @@ section('A tab change');
   check('a tab change morphs in place (Refract\'s page motion): the old page grows to 103%, the new one settles from 97%', /scale\(1\.03\)/.test(r.layerTo) && /scale\(0\.97\)/.test(r.screenFrom), `${r.layerTo} / ${r.screenFrom}`);
   check('on Refract\'s smooth spring', r.ms === r.smooth && r.ms >= 300 && r.ms <= 800, `${r.ms} vs ${r.smooth}`);
   check('the bar has the new title', r.title === 'Plan', r.title);
-  check('the floating buttons go with the old page: a copy of them fades where they were', r.float.had && r.float.hidden && r.float.copy && r.float.props === 'opacity,transform' && r.float.ms <= 160, r.float);
+  check('the floating buttons go with the old page: a copy of them dissolves where they were (Refract\'s dematerialize)', r.float.had && r.float.hidden && r.float.copy && r.float.glass === 2 && r.float.dissolves && r.float.ms <= 360, r.float);
   check('when it ends the layer is gone, with nothing left over', r.after.exit === 0 && r.after.copies === 0 && r.after.fading === 0 && r.oldGone, r.after);
   check('Refract cleans up the old page\'s controls', r.behaviours === 0 || r.cleaned === 1, `${Math.round(r.cleaned * 100)}% of ${r.behaviours}`);
   check('the new page rests in place', r.rest);
@@ -281,6 +313,112 @@ section('The bar\'s title cross-fades');
   check('the copies are gone once it ends', r.left === 0, r.left);
   await page.evaluate(() => window.GH.ui.back());
   await settle();
+}
+
+section('Glass forms, dissolves and shape-shifts (Refract\'s material motion)');
+{
+  // The bar's buttons across routes: one on both keeps its node; one the new route lacks pinches off
+  // (a copy, only a picture: inert, no action), one it adds buds out; the top-left one is the same
+  // piece of glass whether it's the coach or Back.
+  await page.evaluate(() => window.GH.ui.go('plan'));
+  await settle();
+  const bar = await page.evaluate(async () => {
+    const U = window.GH.ui, m = window.__m;
+    const tb = document.getElementById('topbar');
+    const lead = tb.querySelector('.rf-navbar-leading > button');
+    const sched = tb.querySelector('[data-act="daysSheet"]');
+    const out = { schedKey: sched && sched.getAttribute('data-rf-key'), leadKey: lead && lead.getAttribute('data-rf-key') };
+    U.go('health');
+    const ghost = tb.querySelector('[data-rf-leaving]');
+    out.sameLead = tb.querySelector('.rf-navbar-leading > button:not([data-rf-leaving])') === lead;
+    out.ghost = !!ghost && ghost.inert && ghost.getAttribute('aria-hidden') === 'true' && !ghost.hasAttribute('data-act') && !ghost.hasAttribute('aria-label');
+    out.ghostShrinks = !!ghost && m.anims(ghost).some((a) => 'width' in m.frames(a)[0]);
+    const added = [...tb.querySelectorAll('.rf-navbar-trailing > button:not([data-rf-leaving])')];
+    out.buds = added.length > 0 && added.every((b) => m.anims(b).some((a) => 'width' in m.frames(a)[0]));
+    out.schedCount = tb.querySelectorAll('[data-act="daysSheet"]').length;
+    await U.motion.settled();
+    await new Promise((res) => setTimeout(res, 100));
+    out.ghostGone = !tb.querySelector('[data-rf-leaving]');
+    // A push: the coach becomes Back in the same glass, its symbol changing.
+    U.go('you');
+    await U.motion.settled();
+    const coach = tb.querySelector('.rf-navbar-leading > button');
+    U.open('settings');
+    const back = tb.querySelector('.rf-navbar-leading > button:not([data-rf-leaving])');
+    out.pushSame = coach === back && back.getAttribute('data-act') === 'back' && !back.classList.contains('coach-btn');
+    out.symbolFades = !!back.querySelector(':scope > .rf-ghost') && !back.querySelector('.rf-ghost .rf-lens-layer');
+    await U.motion.settled();
+    out.ghostLeft = !!back.querySelector('.rf-ghost');
+    U.back();
+    await U.motion.settled();
+    return out;
+  });
+  check('the bar\'s buttons are keyed by what they are (the top-left one by its place)', bar.schedKey === 'daysSheet' && bar.leadKey === 'lead', bar);
+  check('a button on both routes keeps its glass (the coach, Plan to Health)', bar.sameLead, bar);
+  check('a button the new route lacks pinches off: a copy, only a picture (inert, hidden, no action)', bar.ghost && bar.ghostShrinks && bar.schedCount === 0, bar);
+  check('the new route\'s buttons bud out', bar.buds, bar);
+  check('and the copy is gone when it ends', bar.ghostGone, bar);
+  check('a push: the coach becomes Back in the same piece of glass, its symbol cross-fading (only the symbol)', bar.pushSame && bar.symbolFades && !bar.ghostLeft, bar);
+
+  // Today's floating buttons form when they appear, and a new label shape-shifts the button.
+  await page.evaluate(() => window.GH.ui.go('today'));
+  await settle();
+  const fl = await page.evaluate(async () => {
+    const U = window.GH.ui, m = window.__m;
+    U.go('plan');
+    await U.motion.settled();
+    U.go('today');
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+    const float = document.getElementById('float');
+    const glass = [...float.querySelectorAll(':scope > .rf-glass')];
+    const out = { n: glass.length, forms: glass.length > 0 && glass.every((g) => m.anims(g).some((a) => Number(m.frames(a)[0]['--rf-mat']) === 0 && Number(m.frames(a).slice(-1)[0]['--rf-mat']) === 1)) };
+    out.mainLens = float.querySelector('.btn-main[data-variant="tinted"]').hasAttribute('data-lens');
+    out.sideLens = !!float.querySelector('[data-rf-key="side"][data-lens]');
+    await U.motion.settled();
+    const side = float.querySelector('[data-rf-key="side"]');
+    const w0 = side.offsetWidth;
+    U.act.toggleShort();
+    const now = float.querySelector('[data-rf-key="side"]');
+    out.sameNode = now === side;
+    // Its words, less the old ones cross-fading out (Refract's .rf-ghost) while it changes shape.
+    out.label = Array.from(now.childNodes).filter((n) => !(n.classList && n.classList.contains('rf-ghost'))).map((n) => n.textContent).join('').trim();
+    out.widthFlows = m.anims(now).some((a) => 'width' in m.frames(a)[0] && Math.abs(parseFloat(m.frames(a)[0].width) - w0) < 1);
+    out.copies = document.querySelectorAll('.float-actions.motion-copy').length;
+    await U.motion.settled();
+    U.act.toggleShort();
+    await U.motion.settled();
+    return out;
+  });
+  check('the floating buttons form when they appear (Refract\'s materialize: their material arrives from nothing)', fl.n === 2 && fl.forms, fl);
+  check('the tinted main button doesn\'t refract; the other one does', !fl.mainLens && fl.sideLens, fl);
+  check('a new label shape-shifts the button to its new width (the same glass, no copy fading)', fl.sameNode && fl.label === 'Full session' && fl.widthFlows && fl.copies === 0, fl);
+
+  // The workout capsule over the tab bar forms on another tab, and dissolves on the way back to Today.
+  const cap = await page.evaluate(async () => {
+    const U = window.GH.ui, m = window.__m;
+    const S = U.S, saved = S.active;
+    S.active = { day: U.today(), idx: 0, steps: [{ kind: 'set' }, { kind: 'set' }], session: { title: 'Test session', items: [] }, logs: [] };
+    U.go('plan');
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+    const acc = document.getElementById('accessory');
+    const out = { shown: !acc.hidden, forms: m.anims(acc).some((a) => Number(m.frames(a)[0]['--rf-mat']) === 0) };
+    await U.motion.settled();
+    U.go('today');
+    const copy = document.querySelector('.rf-tabbar-accessory.motion-copy');
+    out.hidden = acc.hidden;
+    out.copy = !!copy && copy.inert;
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+    out.dissolves = !!copy && m.anims(copy).some((a) => Number(m.frames(a).slice(-1)[0]['--rf-mat']) === 0);
+    await U.motion.settled();
+    await new Promise((res) => setTimeout(res, 100));
+    out.gone = !document.querySelector('.rf-tabbar-accessory.motion-copy');
+    S.active = saved;
+    U.render();
+    await U.motion.settled();
+    return out;
+  });
+  check('the workout capsule forms over the tab bar on another tab', cap.shown && cap.forms, cap);
+  check('and on Today a copy of it dissolves where it was, then goes', cap.hidden && cap.copy && cap.dissolves && cap.gone, cap);
 }
 
 section('Route changes in quick succession');
@@ -604,16 +742,24 @@ section('Reduced motion');
 section('Lint: every animation started here moves by transform and opacity');
 {
   const kf = await page.evaluate(() => window.__kf);
-  // Refract's own (its light, a paused animation it seeks; the click ring on a press) are its look,
-  // not the app's motion: counted apart, and they may touch nothing but those two properties.
-  const RF_OWN = ['--rf-light', '--rf-ring'];
-  const rf = kf.filter((k) => k.props.some((p) => RF_OWN.includes(p)));
-  const mine = kf.filter((k) => !rf.includes(k) && ['screen', 'exit', 'bar', 'float'].includes(k.where));
+  // Refract's own look (its light, a paused animation it seeks; the click ring on a press) and its
+  // material motion (glass forming and dissolving, shape-shifting, menus, symbol effects, a number
+  // rolling to its new value: whatever starts inside one of its calls) are counted apart from the
+  // app's. The look touches nothing but its two properties. The material motion touches only what
+  // Refract's API animates: a clip, the material and its sweep, the rim's shadow, a blur, transform
+  // and opacity, and, when a part changes shape, that one part's box (its width, padding and flex).
+  const OWN = ['--rf-light', '--rf-ring'];
+  const MAT = ['clipPath', 'transformOrigin', '--rf-mat', '--rf-sweep', 'boxShadow', 'filter', 'opacity', 'transform', 'translate', 'scale', 'rotate', 'boxSizing', 'width', 'minWidth', 'paddingLeft', 'paddingRight', 'marginInlineEnd', 'flexGrow', 'flexShrink', 'flexBasis', 'overflow'];
+  const own = kf.filter((k) => k.props.some((p) => OWN.includes(p)));
+  const mat = kf.filter((k) => k.rf && !own.includes(k));
+  const mine = kf.filter((k) => !own.includes(k) && !k.rf && ['screen', 'exit', 'bar', 'float'].includes(k.where));
   const bad = mine.filter((k) => k.props.some((p) => LAYOUT.test(p.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`))));
   const other = Array.from(new Set(mine.flatMap((k) => k.props))).filter((p) => !['opacity', 'transform'].includes(p));
-  check(`${mine.length} animations on the page, the bar and the floating buttons: none animates layout`, bad.length === 0, bad.slice(0, 5));
-  check('and they animate only transform and opacity', other.length === 0, other);
-  check(`Refract's own ${rf.length} (its light and click ring) touch only --rf-light and --rf-ring`, rf.every((k) => k.props.every((p) => RF_OWN.includes(p))), rf.slice(0, 5));
+  check(`${mine.length} animations of the app's own on the page, the bar and the floating buttons: none animates layout`, bad.length === 0, bad.slice(0, 5));
+  check('and they animate only transform and opacity', other.length === 0, { other, on: mine.filter((k) => k.props.some((p) => other.includes(p))).slice(0, 4) });
+  check(`Refract's own ${own.length} (its light and click ring) touch only --rf-light and --rf-ring`, own.every((k) => k.props.every((p) => OWN.includes(p))), own.slice(0, 5));
+  const matOther = Array.from(new Set(mat.flatMap((k) => k.props))).filter((p) => !MAT.includes(p));
+  check(`Refract's material motion (${mat.length}, asked for by name) touches only what its API animates`, mat.length > 0 && matOther.length === 0, matOther);
 }
 
 /* ---------------------------------------------------------------- frames */

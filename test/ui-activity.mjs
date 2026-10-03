@@ -48,7 +48,11 @@ await page.waitForSelector('.onboard:not([hidden])');
 await page.evaluate(seedState);
 await page.reload();
 await page.waitForSelector('#screen[data-view="today"] .session');
-const settle = async (ms = 700) => { await page.clock.runFor(ms); await page.waitForTimeout(Math.min(ms, 350)); };
+// A route change's motion runs in real time (Refract's springs, up to about 650 ms), however far the
+// page's clock is moved on: a step that changed the route waits for it to land, so what's clicked or
+// measured next isn't still sliding in.
+const calm = () => Promise.race([page.evaluate(() => window.GH.ui.motion && window.GH.ui.motion.settled && window.GH.ui.motion.settled()), page.waitForTimeout(2000)]).catch(() => {});
+const settle = async (ms = 700) => { await page.clock.runFor(ms); await page.waitForTimeout(Math.min(ms, 350)); await calm(); };
 const shot = async (name) => { if (shots) await page.screenshot({ path: join(OUT, `${width}-${dark ? 'dark' : 'light'}-${name}.png`) }); };
 const fake = () => page.evaluate(() => ({ calls: window.__act.calls.slice(), writes: window.__act.writes.slice(), sessions: window.__act.sessions.slice(), rec: window.__act.rec && { id: window.__act.rec.id, active: window.__act.rec.active, paused: window.__act.rec.paused, points: window.__act.rec.points.length } }));
 const live = () => page.evaluate(() => {
@@ -167,7 +171,8 @@ check('the pause is remembered', pauses.length === 1 && pauses[0][1] - pauses[0]
 section('Back tucks it away');
 await page.evaluate(() => window.__gh.back());
 await settle(900);
-const pill = await page.evaluate(() => { const b = document.querySelector('#float .act-pill'); return b && b.textContent.replace(/\s+/g, ' ').trim(); });
+// Its words (less the old ones cross-fading out while Today's main button shape-shifts into it).
+const pill = await page.evaluate(() => { const b = document.querySelector('#float .act-pill'); if (!b) return null; const c = b.cloneNode(true); c.querySelectorAll('.rf-ghost').forEach((g) => g.remove()); return c.textContent.replace(/\s+/g, ' ').trim(); });
 check('Back hides the live screen and Today shows a pill with the time', !(await live()) && /^Run · \d+:\d\d$/.test(pill || ''), pill);
 await shot('07-pill');
 await settle(5000);

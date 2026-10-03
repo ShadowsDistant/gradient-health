@@ -158,10 +158,11 @@
     for (let i = 0; i < cl.length; i++) if (INJECTED_SET.has(cl[i])) return true;
     return false;
   };
-  // Nodes on their way out: a removed card src/ui/motion.js pins where it was while it fades. A patch
-  // passes over them as it does Refract's parts.
+  // Nodes on their way out: a removed card src/ui/motion.js pins where it was while it fades, and the
+  // copy of a button pinching off as Refract shape-shifts its row (data-rf-leaving). A patch passes
+  // over them as it does Refract's parts.
   const leaving = new WeakSet();
-  const passOver = (n) => isInjected(n) || leaving.has(n);
+  const passOver = (n) => isInjected(n) || leaving.has(n) || (n.nodeType === 1 && n.hasAttribute('data-rf-leaving'));
   const keyOf = (n) => (n.nodeType === 1 ? n.getAttribute('data-key') || n.id || null : null);
   // A control is also what it sets: a segmented control's first radio name, a switch's (or a chip
   // choice's) data-on and data-k. So a patch never hands one control's node, mid-move, to another
@@ -475,13 +476,27 @@
   }
   U.steadyLight = () => steadyLight(!!(scrollIdle || doc.documentElement.hasAttribute('data-still-glow') || U.reduced() || (playerEl && !playerEl.hidden)));
 
+  // The bar's buttons are keyed by what they are, so a route change keeps the node of one both routes
+  // have and Refract can shape-shift them (U.motion.barSwap): the button at the top left is one piece
+  // of glass whatever it does there (the coach on a tab, Back on a page), each on the right its own.
+  function barKeys(parent, lead) {
+    let i = 0;
+    for (const c of parent.children) {
+      if (!c.matches('button, a') || c.hasAttribute('data-rf-key')) continue;
+      const k = lead ? `lead${i++ || ''}` : c.getAttribute('data-act') || c.getAttribute('popovertarget') || c.getAttribute('aria-label') || `b${i++}`;
+      c.setAttribute('data-rf-key', k);
+      if (!c.hasAttribute('data-key')) c.setAttribute('data-key', `bar:${k}`);
+    }
+    return parent;
+  }
   function applyNavbar(nb) {
     const part = (sel) => (nb ? nb.querySelector(sel) : null);
     const lead = part('.rf-navbar-leading'), title = part('.rf-navbar-title'), trail = part('.rf-navbar-trailing');
+    const nodes = (html) => { const t = doc.createElement('template'); t.innerHTML = html; return t.content; };
     // Every tab's top left is the coach (a page opened on top has its Back button there instead).
-    const leading = lead && lead.innerHTML.trim() ? lead.innerHTML : !U.route.view && U.coachBtn ? U.coachBtn() : '';
-    U.morph(topbar.querySelector('.rf-navbar-leading'), leading);
-    U.morph(topbar.querySelector('.rf-navbar-trailing'), trail ? trail.innerHTML : '');
+    const leading = lead && lead.innerHTML.trim() ? lead : nodes(!U.route.view && U.coachBtn ? U.coachBtn() : '');
+    U.morph(topbar.querySelector('.rf-navbar-leading'), barKeys(leading, true));
+    U.morph(topbar.querySelector('.rf-navbar-trailing'), barKeys(trail || nodes(''), false));
     const t = topbar.querySelector('.rf-navbar-title');
     const text = title ? title.textContent : '';
     if (t.textContent !== text) t.textContent = text;
@@ -510,14 +525,15 @@
     const x = { push: 36, pop: -36, right: 18, left: -18 }[kind] || 0;
     screen.animate([{ opacity: 0, transform: `translateX(${x}px)` }, { opacity: 1, transform: 'none' }], { duration: kind === 'push' || kind === 'pop' ? 320 : 260, easing: EASE_ENTER });
   }
-  // The floating buttons rise in over the tab bar. They're glass: the row moves, and each button
-  // fades by itself (U.motion.show), so none of them shows the page behind it sharp until the end.
+  // A floating button's place in the row ('side' or 'main'), as attributes: a re-render keeps its node
+  // (data-key) and Refract follows it as it changes (data-rf-key), so a new label or time flows the
+  // button to its new width instead of the row jumping.
+  U.floatKey = (k) => ` data-key="float-${k}" data-rf-key="${k}"`;
+  // The floating buttons form over the tab bar, each its own piece of glass growing up out of it
+  // (U.motion.glassIn: Refract's materialize), one after the other. In the frame's read pass: it
+  // measures them.
   function floatIn() {
-    if (U.reduced() || !floatEl.animate) return;
-    const frames = [{ opacity: 0, transform: 'translateY(18px) scale(.94)' }, { opacity: 1, transform: 'none' }];
-    const o = { duration: 420, easing: 'cubic-bezier(0.34, 1.3, 0.64, 1)' };
-    if (U.motion && U.motion.show) U.motion.show(floatEl, frames, o);
-    else floatEl.animate(frames, o);
+    if (U.motion && U.motion.glassIn) U.motion.glassIn(floatEl);
   }
 
   /* ---------------------------------------------------------------- reading the layout back */
@@ -603,9 +619,9 @@
     tpl.innerHTML = html;
     const nb = tpl.content.querySelector('header.rf-navbar');
     if (nb) nb.remove();
-    // The bar's title and buttons cross-fade along with the page.
+    // The bar's title cross-fades along with the page, and its buttons shape-shift.
     const bar = changed && lastKey && kind && M.barSwap ? safe(() => M.barSwap(topbar)) || null : null;
-    applyNavbar(nb);
+    if (bar && bar.update) bar.update(() => applyNavbar(nb)); else applyNavbar(nb);
     // A new page: the old one leaves, with the look it had, while this one comes in.
     if (changed) replace(screen, tpl.content, kind);
     screen.dataset.view = r.view || r.tab;
@@ -613,13 +629,16 @@
     if (!changed) { morphChildren(screen, tpl.content, fx); enhance(screen); }
     const fl = scr.float ? safe(() => scr.float(U.S, day, r.arg)) : '';
     const wasHidden = floatEl.hidden;
-    // Floating buttons that go (Today's, on the way to another page) fade and sink where they were,
-    // gone with the old page on a route change.
-    if (!wasHidden && !fl && M.fadeAway) safe(() => M.fadeAway(floatEl, changed ? 140 : 220, floatSeen));
-    U.morph(floatEl, fl || '');
+    // Floating buttons that go (Today's, on the way to another page) dissolve where they were, sinking
+    // back into the tab bar (a copy of them: the row itself hides at once), gone with the old page on
+    // a route change.
+    if (!wasHidden && !fl && M.glassOut) safe(() => M.glassOut(floatEl, { seen: floatSeen, ms: changed ? 340 : 420 }));
+    // Buttons that stay shape-shift: a new label or time flows a button to its new width.
+    if (!wasHidden && fl && !changed && M.shift) M.shift(floatEl, () => U.morph(floatEl, fl));
+    else U.morph(floatEl, fl || '');
     floatEl.hidden = !fl;
     screen.toggleAttribute('data-float', !!fl);
-    // Whether they fit is read at the next frame, and then they rise in (measured before they move).
+    // Whether they fit is read at the next frame, and then they form (measured before they move).
     if (fl && (wasHidden || changed)) floatEnter = true;
     readSoon('float', floatPass);
     if (scr.after) safe(() => scr.after(screen, U.S, day, r.arg, changed));
@@ -786,14 +805,16 @@
   U.act.back = () => U.back();
 
   // A workout in progress rides above the tab bar on other tabs.
+  let accEnter = false; // the capsule forms at the next read pass
   function renderAccessory() {
     const A = U.S && U.S.active;
     // An outdoor activity recording in the background takes the capsule (src/ui/actlive.js).
     const act = U.actAccessory ? safe(() => U.actAccessory()) : '';
     const show = (!!A || !!act) && playerEl.hidden && !(U.route.tab === 'today' && !U.route.view);
     const was = !accessory.hidden;
-    // Going away: a copy of the capsule fades and sinks where it was (it hides at once).
-    if (was && !show && U.motion && U.motion.fadeAway) safe(() => U.motion.fadeAway(accessory));
+    // Going away: a copy of the capsule dissolves where it was, sinking into the tab bar (it hides at
+    // once).
+    if (was && !show && U.motion && U.motion.glassOut) safe(() => U.motion.glassOut(accessory));
     accessory.hidden = !show;
     screen.toggleAttribute('data-capsule', show);
     // Emptied with morph, not innerHTML: that keeps Refract's lens layer (the capsule's glass), which
@@ -808,14 +829,14 @@
       <span class="rf-spacer"></span>
       <button type="button" class="rf-btn" data-size="sm" data-act="resumeWorkout" aria-label="Resume the workout, ${doneN} of ${total} sets done">Resume</button>`);
     }
-    readSoon('accessory', fitAccessory);
-    // Coming in: it rises into place, its glass fading by itself (U.motion.show).
-    if (!was && !U.reduced() && accessory.animate) {
-      const frames = [{ opacity: 0, transform: 'translateY(10px) scale(.96)' }, { opacity: 1, transform: 'none' }];
-      const o = { duration: 360, easing: EASE_ENTER };
-      if (U.motion && U.motion.show) U.motion.show(accessory, frames, o);
-      else accessory.animate(frames, o);
-    }
+    // Coming in: it forms out of the tab bar (U.motion.glassIn), in the frame's read pass (it's
+    // measured first). A second change before that frame still forms it once.
+    if (!was) accEnter = true;
+    readSoon('accessory', () => {
+      fitAccessory();
+      if (accEnter && !accessory.hidden && U.motion && U.motion.glassIn) U.motion.glassIn(accessory);
+      accEnter = false;
+    });
   }
   // A long workout title with large text: two lines for the title and no set count, rather than a
   // title cut short.

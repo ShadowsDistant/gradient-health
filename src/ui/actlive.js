@@ -654,7 +654,7 @@
     if (!live() || shown()) return '';
     const tp = A().typeOf(U.S.actLive.type);
     const p = paused();
-    return `<button type="button" class="rf-btn rf-glass btn-main act-pill" data-variant="tinted" data-size="lg" data-lens data-act="actOpenLive" data-hue="${tp.hue}" aria-label="${U.esc(`${tp.label} in progress, ${p ? 'paused' : 'recording'}. Open`)}"><span class="act-pill-dot"${p ? ' data-paused' : ''} aria-hidden="true"></span><span>${U.esc(tp.label)} · <span class="rf-num" data-act-clock>${U.esc(clockText())}</span></span></button>`;
+    return `<button type="button" class="rf-btn rf-glass btn-main act-pill" data-variant="tinted" data-size="lg"${U.floatKey ? U.floatKey('main') : ''} data-act="actOpenLive" data-hue="${tp.hue}" aria-label="${U.esc(`${tp.label} in progress, ${p ? 'paused' : 'recording'}. Open`)}"><span class="act-pill-dot"${p ? ' data-paused' : ''} aria-hidden="true"></span><span>${U.esc(tp.label)} · <span class="rf-num" data-act-clock>${U.esc(clockText())}</span></span></button>`;
   };
   // The other tabs: the capsule over the tab bar.
   U.actAccessory = () => {
@@ -667,10 +667,16 @@
       <span class="rf-spacer"></span>
       <button type="button" class="rf-btn" data-size="sm" data-act="actOpenLive" aria-label="${U.esc(`Open the ${tp.noun}`)}">Open</button>`;
   };
+  // The clocks tick in place. When Today's pill gains a digit (9:59, then 10:00) it shape-shifts to its
+  // new width instead of jumping (U.motion.shift: the floating row's buttons are keyed).
   function capsuleClock() {
     if (!live() || shown()) { if (capTimer) { clearInterval(capTimer); capTimer = null; } return; }
     const txt = clockText();
-    for (const c of document.querySelectorAll('[data-act-clock]')) if (c.textContent !== txt) c.textContent = txt;
+    const set = (c) => { if (c.textContent !== txt) c.textContent = txt; };
+    for (const c of document.querySelectorAll('[data-act-clock]')) {
+      const row = c.textContent.length !== txt.length && c.closest('#float');
+      if (row && U.motion && U.motion.shift) U.motion.shift(row, () => set(c)); else set(c);
+    }
     if (!capTimer) capTimer = setInterval(capsuleClock, 1000);
   }
 
