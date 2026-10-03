@@ -380,7 +380,7 @@
           <div class="cp-hero-act">
             ${active ? `<span class="cp-badge is-lg">${U.icon('check')}${pending ? 'In use from tomorrow' : 'In use'}</span><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="cpCoach">Back to the coach's plan</button>`
     : problems.length ? `<p class="t-footnote cp-todo">${U.icon('info')}<span>${U.esc(problems[0])}</span></p>`
-      : `<button type="button" class="rf-btn rf-glass cp-use" data-variant="tinted" data-size="lg" data-act="cpUse" data-arg="${plan.id}">${U.icon('play')}Use this plan</button><p class="t-footnote rf-muted">${U.esc(startsLine(S, day, plan))}</p>`}
+      : `<button type="button" class="rf-btn cp-use" data-variant="filled" data-size="lg" data-act="cpUse" data-arg="${plan.id}">${U.icon('play')}Use this plan</button><p class="t-footnote rf-muted">${U.esc(startsLine(S, day, plan))}</p>`}
           </div>
         </div>`;
       return `${U.navbar(plan.name, trailing, back)}
@@ -781,7 +781,7 @@
         <div class="cp-qr" data-key="qr">${st.data ? GH.qr.svg(code(), { label: `A QR code for ${plan.name}`, cls: 'cp-qr-svg' }) : st.error ? `<p class="t-callout">${U.esc(st.error)}</p>` : '<span class="rf-spinner" data-size="sm"><i></i></span>'}</div>
         <div class="cp-share-what"><p class="t-headline">${U.esc(plan.name)}</p><p class="t-footnote rf-muted">${U.esc(`${C().summary(plan)}${st.withName ? ` · from ${name}` : ''}`)}</p></div>
         <div class="cp-share-btns">
-          <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="cpSendLink"${st.data ? '' : ' disabled'}>${U.icon('share')}Send a link</button>
+          <button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpSendLink"${st.data ? '' : ' disabled'}>${U.icon('share')}Send a link</button>
           <button type="button" class="rf-btn" data-size="lg" data-act="cpCopyLink"${st.data ? '' : ' disabled'}>${U.icon('copy')}Copy</button>
         </div>
         ${name ? `<ul class="rf-list">${U.sw(`Show my name (${name})`, st.withName, 'data-on="cpShareName"')}</ul>` : ''}
@@ -867,8 +867,8 @@
         ${swaps.length ? `<p class="cp-swap is-box">${U.icon('shuffle')}<span>${U.esc(`${swaps.length === 1 ? 'One exercise needs' : `${swaps.length} exercises need`} something you don't have. The app swaps in the closest one you can do, shown below.`)}</span></p>` : ''}
         ${unknown ? `<p class="cp-swap is-box">${U.icon('alert')}<span>${U.esc(`${unknown === 1 ? 'One exercise needs' : `${unknown} exercises need`} a newer version of Gradient Health, so ${unknown === 1 ? 'it was' : 'they were'} left out.`)}</span></p>` : ''}
         ${done ? `<div class="cp-saved" data-key="saved"><p class="cp-eyebrow" data-tone="positive">${U.icon('check-circle')}<span>${st.existed ? 'Already in your plans' : 'Saved to your plans'}</span></p>
-            <div class="cp-imp-btns">${C().activeId(S) === done.id ? '' : `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="cpImpUse">${U.icon('play')}${S.profile.workouts === false ? 'Turn on workouts and use it' : 'Use it now'}</button>`}<button type="button" class="rf-btn" data-size="lg" data-act="cpImpOpen">Open it</button></div></div>`
-    : `<div class="cp-imp-btns"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="cpImpSave">${U.icon('download')}Save to my plans</button></div>`}
+            <div class="cp-imp-btns">${C().activeId(S) === done.id ? '' : `<button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpImpUse">${U.icon('play')}${S.profile.workouts === false ? 'Turn on workouts and use it' : 'Use it now'}</button>`}<button type="button" class="rf-btn" data-size="lg" data-act="cpImpOpen">Open it</button></div></div>`
+    : `<div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpImpSave">${U.icon('download')}Save to my plans</button></div>`}
         <div class="cp-imp-days">${dayRows}</div>
       </div>`;
     };
@@ -950,8 +950,8 @@
         const acts = st.step === 'refining'
           ? `<div class="cp-refining" role="status"><span class="rf-spinner" data-size="sm"><i></i></span><span class="t-callout">The coach is fine-tuning it…</span><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="cpBuildSkip">Use this version</button></div>`
           : st.step === 'saved'
-            ? `<div class="cp-saved"><p class="cp-eyebrow" data-tone="positive">${U.icon('check-circle')}<span>Saved to your plans</span></p><div class="cp-imp-btns"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="cpBuildUse">${U.icon('play')}Use it now</button><button type="button" class="rf-btn" data-size="lg" data-act="cpBuildOpen">Edit it</button></div></div>`
-            : `<div class="cp-imp-btns"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="cpBuildSave">Save</button><button type="button" class="rf-btn" data-size="lg" data-act="cpBuildEdit">Change it</button></div>`;
+            ? `<div class="cp-saved"><p class="cp-eyebrow" data-tone="positive">${U.icon('check-circle')}<span>Saved to your plans</span></p><div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpBuildUse">${U.icon('play')}Use it now</button><button type="button" class="rf-btn" data-size="lg" data-act="cpBuildOpen">Edit it</button></div></div>`
+            : `<div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpBuildSave">Save</button><button type="button" class="rf-btn" data-size="lg" data-act="cpBuildEdit">Change it</button></div>`;
         return `<div class="sheet-pad cp-import cp-build${st.step === 'refining' ? ' is-refining' : ''}">
           ${st.text ? `<p class="t-callout rf-muted tailor-asked">“${U.esc(st.text)}”</p>` : ''}
           ${head}${note}${acts}
