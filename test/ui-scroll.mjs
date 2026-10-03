@@ -15,11 +15,16 @@
 // At rest on Today, nothing may animate forever unless the compositor can run it alone (transform and
 // opacity): anything else repaints every frame and keeps the phone from idling.
 //
-// Usage: node test/ui-scroll.mjs [--measure] [--dist=<dir>] [--runs=2] [--only=today,badges]
+// Usage: node test/ui-scroll.mjs [--measure] [--dist=<dir>] [--vs=<dir>] [--runs=2] [--only=today,badges]
 //   --measure  print the numbers only, no checks
 //   --dist     a built page somewhere else (a copy of an older dist/), to compare on the same machine
+//   --vs       another build to compare with, run by run in turn with this one (A/B, interleaved: the
+//              machine's speed drifts from minute to minute, so builds measured apart can't be compared)
 //   --ablate   switch one suspect off, to see what it costs: filters (every backdrop filter), lens (the
-//              refraction only), glow (the moving background), shimmer (the progress bars' sheen)
+//              refraction only), glow (the moving background), mask (the glow's fade, as a mask),
+//              shimmer (the progress bars' sheen), light (Refract's light following the scroll), edge
+//              (the top bar's frosted edge), cv (the long pages' content-visibility). With --vs, only
+//              A is ablated: --dist=X --vs=X --ablate=lens is what the lens costs, A/B.
 import { createRequire } from 'node:module';
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
@@ -57,7 +62,9 @@ async function show(page, id) {
     else if (id === 'badges' || id === 'badges-next') U.open('badges');
     else if (id === 'coach') U.open('coach');
     else if (id === 'settings') U.open('settings');
-    else if (id === 'setup') await U.editAnswers();
+    // Set-up's Your plan screen, one of its long ones, with its cards and lists (its first, About
+    // you, fits the screen and doesn't scroll): its scroller is .ob-scroll.
+    else if (id === 'setup') await U.editAnswers('plan');
   }, id);
   await page.waitForTimeout(900);
   if (id === 'badges-next') { await page.click('#screen [data-on="badgeFilter"] input[value="next"]', { force: true }); await page.waitForTimeout(600); }
@@ -66,17 +73,34 @@ async function show(page, id) {
   await page.waitForTimeout(700);
 }
 
-// CSS that switches one suspect off (--ablate).
+// What switches one suspect off (--ablate): CSS added once the page is up, or a script that runs
+// before the page's own.
 const ABLATIONS = {
-  filters: '*,*::before,*::after{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}',
-  lens: '.rf-lens-layer,.rf-glass[data-lens]::before{filter:none!important}',
-  glow: '.app::before,.app::after{display:none!important;animation:none!important}',
-  shimmer: '.rf-progress-fill::after{animation:none!important}',
+  filters: { css: '*,*::before,*::after{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}' },
+  // Refract 1.4 refracts in the lens layer's backdrop filter (the --_lens map, between the blur and
+  // the saturation): the same filter without it.
+  lens: { css: '.rf-lens-layer{-webkit-backdrop-filter:blur(calc(var(--_blur) * .3 * var(--rf-mat, 1))) saturate(var(--_sat)) brightness(var(--rf-glass-bright))!important;backdrop-filter:blur(calc(var(--_blur) * .3 * var(--rf-mat, 1))) saturate(var(--_sat)) brightness(var(--rf-glass-bright))!important}' },
+  glow: { css: '.app::before,.app::after{display:none!important;animation:none!important}' },
+  mask: { css: '.app::before,.app::after{-webkit-mask-image:none!important;mask-image:none!important}' },
+  shimmer: { css: '.rf-progress-fill::after{animation:none!important}' },
+  edge: { css: '.topbar>.rf-scroll-edge{display:none!important}' },
+  cv: { css: '*{content-visibility:visible!important}' },
+  // Refract's light hears every scroll on the window (in the capture phase) and then reads where each
+  // glass it lights is, a frame at a time: without that listener.
+  light: {
+    script() {
+      const add = EventTarget.prototype.addEventListener;
+      EventTarget.prototype.addEventListener = function (type, fn, o) {
+        if (this === window && type === 'scroll' && o && (o === true || o.capture)) return undefined;
+        return add.call(this, type, fn, o);
+      };
+    },
+  },
 };
+if (ABLATE && !ABLATIONS[ABLATE]) { console.error(`--ablate: one of ${Object.keys(ABLATIONS).join(', ')}`); process.exit(1); }
 
 /* ---------------------------------------------------------------- the page */
-async function serve() {
-  const dir = arg('dist', '');
+async function serve(dir) {
   if (!dir) return serveDist();
   const base = resolve(dir);
   const extra = {};
@@ -89,7 +113,10 @@ function asyncBridge() {
   if (window.AndroidBridge) window.AndroidBridge.saveAsync = () => true;
 }
 
-const server = await serve();
+// The build measured (checked against the budgets), and with --vs the one it's compared with.
+const builds = [{ name: arg('dist', '') ? `${arg('dist', '')}` : 'dist', server: await serve(arg('dist', '')) }];
+if (arg('vs', '')) builds.push({ name: arg('vs', ''), server: await serve(arg('vs', '')) });
+const server = builds[0].server;
 const browser = await chromium.launch();
 const ctxOpts = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: 'light' };
 const errors = [];
@@ -100,20 +127,24 @@ const watch = (page) => {
 const pct = (xs, p) => { const s = xs.slice().sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.ceil(s.length * p) - 1)] : 0; };
 const r1 = (x) => Math.round(x * 10) / 10;
 
-// CPU time (ms) of the browser's GPU and renderer processes, from /proc (Linux; elsewhere nothing).
+// CPU time (ms) of this browser's GPU and renderer processes, from /proc (Linux; elsewhere nothing).
+// Only this test's own (the processes under this node process): another Chromium running on the
+// same machine (a test in another checkout) isn't counted.
 function cpu() {
   const out = {};
   let dirs = [];
   try { dirs = readdirSync('/proc').filter((d) => /^\d+$/.test(d)); } catch (e) { return out; }
+  const info = new Map(); // pid → [parent pid, utime + stime in ms, process type]
   for (const d of dirs) {
     try {
-      const cmd = readFileSync(`/proc/${d}/cmdline`, 'utf8');
-      const type = (cmd.match(/--type=(gpu-process|renderer)/) || [])[1];
-      if (!type || !/chrom/i.test(cmd)) continue;
       const f = readFileSync(`/proc/${d}/stat`, 'utf8').split(') ')[1].split(' ');
-      out[type] = (out[type] || 0) + (Number(f[11]) + Number(f[12])) * 10;
+      const cmd = readFileSync(`/proc/${d}/cmdline`, 'utf8');
+      const type = /chrom|headless_shell/i.test(cmd) ? (cmd.match(/--type=(gpu-process|renderer)/) || [])[1] : null;
+      info.set(Number(d), [Number(f[1]), (Number(f[11]) + Number(f[12])) * 10, type]);
     } catch (e) { /* gone */ }
   }
+  const mine = (pid) => { for (let p = pid, n = 0; p > 1 && n < 64; n++) { if (p === process.pid) return true; const i = info.get(p); if (!i) return false; p = i[0]; } return false; };
+  for (const [pid, [, ms, type]] of info) if (type && mine(pid)) out[type] = (out[type] || 0) + ms;
   return out;
 }
 
@@ -135,21 +166,23 @@ let stateJson;
 if (!stateJson || stateJson.length < 1000) { console.error('Couldn\'t seed the state.'); process.exit(1); }
 const flatJson = (() => { const S = JSON.parse(stateJson); S.profile.prefs.figure = 'flat'; return JSON.stringify(S); })();
 
-async function open() {
+async function open(build) {
   const ctx = await browser.newContext(ctxOpts);
   await ctx.addInitScript(seedBridge);
   await ctx.addInitScript(asyncBridge);
   await ctx.addInitScript((j) => { try { if (!sessionStorage.getItem('shot-state')) sessionStorage.setItem('shot-state', j); } catch (e) { /* ignore */ } }, flatJson);
+  const ab = ABLATE && build === builds[0] ? ABLATIONS[ABLATE] : null;
+  if (ab && ab.script) await ctx.addInitScript(ab.script);
   const page = await ctx.newPage();
   watch(page);
   const cdp = await ctx.newCDPSession(page);
-  await page.goto(server.url);
+  await page.goto(build.server.url);
   await page.waitForSelector('#screen[data-view="today"] .session', { timeout: 60000 });
   // What's new and anything else that opens itself after launch.
   await page.waitForTimeout(1500);
   await page.evaluate(() => window.GH.ui.closeSheets && window.GH.ui.closeSheets());
   await page.waitForTimeout(500);
-  if (ABLATE) await page.addStyleTag({ content: ABLATIONS[ABLATE] || '' });
+  if (ab && ab.css) await page.addStyleTag({ content: ab.css });
   return { ctx, page, cdp };
 }
 
@@ -215,35 +248,52 @@ async function idleAnimations(page) {
   }));
 }
 
-section(`Scrolling (CPU ${CPU}x slower, best of ${RUNS}${ABLATE ? `, without ${ABLATE}` : ''})`);
-const results = {};
+section(`Scrolling (CPU ${CPU}x slower, best of ${RUNS}${ABLATE ? `, without ${ABLATE}` : ''}${builds.length > 1 ? `; A: ${builds[0].name}, B: ${builds[1].name}, in turn` : ''})`);
+const results = builds.map(() => ({}));
 let idle = null;
+const line = (b, runs) => `dropped ${r1(b.droppedPct)}% of ${b.presented + b.dropped} frames, draw p95 ${r1(b.drawP95)} ms (mean ${r1(b.drawMean)}), GPU ${Math.round(b.gpu)} ms/s, renderer ${Math.round(b.renderer)} ms/s, blocking ${Math.round(b.blocking)} ms, moved ${Math.round(b.moved)} px (runs: ${runs.map((x) => `${r1(x.drawP95)} ms, ${r1(x.droppedPct)}%`).join('; ')})`;
 for (const id of SCREENS) {
-  const runs = [];
+  const runs = builds.map(() => []);
+  // Run by run, each build in turn (A, B, A, B...), so a slower minute falls on both.
   for (let i = 0; i < RUNS; i++) {
-    const { ctx, page, cdp } = await open();
-    await show(page, id);
-    if (id === 'today' && idle === null) idle = await idleAnimations(page);
-    runs.push(await scroll(page, cdp));
-    await ctx.close();
+    for (let k = 0; k < builds.length; k++) {
+      const { ctx, page, cdp } = await open(builds[k]);
+      await show(page, id);
+      if (k === 0 && id === 'today' && idle === null) idle = await idleAnimations(page);
+      runs[k].push(await scroll(page, cdp));
+      await ctx.close();
+    }
   }
-  const b = runs.reduce((m, x) => (x.drawP95 < m.drawP95 ? x : m), runs[0]);
-  results[id] = b;
-  console.log(`  ${id}: dropped ${r1(b.droppedPct)}% of ${b.presented + b.dropped} frames, draw p95 ${r1(b.drawP95)} ms (mean ${r1(b.drawMean)}), GPU ${Math.round(b.gpu)} ms/s, renderer ${Math.round(b.renderer)} ms/s, blocking ${Math.round(b.blocking)} ms, moved ${Math.round(b.moved)} px (runs: ${runs.map((x) => `${r1(x.drawP95)} ms, ${r1(x.droppedPct)}%`).join('; ')})`);
+  builds.forEach((_, k) => {
+    const b = runs[k].reduce((m, x) => (x.drawP95 < m.drawP95 ? x : m), runs[k][0]);
+    results[k][id] = b;
+    console.log(`  ${id}${builds.length > 1 ? ` ${'AB'[k]}` : ''}: ${line(b, runs[k])}`);
+  });
 }
 console.log(`  idle on Today: ${idle && idle.length ? idle.join('; ') : 'nothing animating forever that the compositor can\'t run'}`);
-console.log(`  json: ${JSON.stringify(Object.fromEntries(Object.entries(results).map(([k, v]) => [k, { dropped: r1(v.droppedPct), drawP95: r1(v.drawP95), gpu: Math.round(v.gpu), renderer: Math.round(v.renderer), blocking: Math.round(v.blocking) }])))}`);
+const summary = (res) => Object.fromEntries(Object.entries(res).map(([k, v]) => [k, { dropped: r1(v.droppedPct), drawP95: r1(v.drawP95), gpu: Math.round(v.gpu), renderer: Math.round(v.renderer), blocking: Math.round(v.blocking) }]));
+builds.forEach((b, k) => console.log(`  json${builds.length > 1 ? ` ${'AB'[k]}` : ''}: ${JSON.stringify(summary(results[k]))}`));
+if (builds.length > 1) {
+  // B to A, screen by screen: draw p95, frames dropped, GPU time a second.
+  const ch = (b, a) => (b ? `${a < b ? '' : '+'}${Math.round((100 * (a - b)) / b)}%` : '');
+  console.log(`  B → A (${builds[1].name} → ${builds[0].name}):`);
+  for (const id of SCREENS) {
+    const a = results[0][id], b = results[1][id];
+    console.log(`    ${id}: draw p95 ${r1(b.drawP95)} → ${r1(a.drawP95)} ms (${ch(b.drawP95, a.drawP95)}), dropped ${r1(b.droppedPct)} → ${r1(a.droppedPct)}%, GPU ${Math.round(b.gpu)} → ${Math.round(a.gpu)} ms/s (${ch(b.gpu, a.gpu)}), renderer ${Math.round(b.renderer)} → ${Math.round(a.renderer)} ms/s`);
+  }
+}
 
 if (!measureOnly) {
-  for (const [id, v] of Object.entries(results)) {
+  for (const [id, v] of Object.entries(results[0])) {
     check(`${id}: the scroll moved the page`, v.moved > 300, `${Math.round(v.moved)} px`);
     check(`${id}: ${BUDGET.droppedPct}% of frames or fewer dropped while scrolling`, v.droppedPct <= BUDGET.droppedPct, `${r1(v.droppedPct)}%`);
     check(`${id}: a frame draws in ${BUDGET.drawP95Ms} ms or less (p95)`, v.drawP95 <= BUDGET.drawP95Ms, `${r1(v.drawP95)} ms`);
   }
   if (idle !== null) check('at rest on Today, nothing animates forever that the compositor can\'t run alone', idle.length === 0, idle);
-  check('no page errors', errors.length === 0, errors.slice(0, 5).join('\n'));
 }
 
+if (!measureOnly) check('no page errors', errors.length === 0, errors.slice(0, 5).join('\n'));
+
 await browser.close();
-await server.close();
+for (const b of builds) await b.server.close();
 done();
