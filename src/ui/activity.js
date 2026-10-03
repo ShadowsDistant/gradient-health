@@ -414,17 +414,14 @@
   U.act.actOpen = (el) => { const id = el.dataset.arg; if (id && A().get(U.S, id)) U.open('activity', id); };
   U.act.actOsm = () => { if (plat()) plat().openUrl('https://www.openstreetmap.org/copyright'); };
 
-  // Options: rename, delete.
+  // Options: rename, delete. A menu that grows out of its button (U.menu).
   U.act.actMenu = (el) => {
     const a = A().get(U.S, el.dataset.arg || openId());
     if (!a) return;
-    U.sheet({
-      title: A().typeOf(a.type).label, size: 'fit',
-      body: `<ul class="rf-list">
-        ${U.row({ icon: 'pencil', tone: 'sky', title: 'Rename', act: 'actRename', arg: a.id, chevron: true })}
-        ${U.row({ icon: 'trash', tone: 'rose', title: `Delete this ${U.esc(A().typeOf(a.type).noun)}`, act: 'actDelete', arg: a.id })}
-      </ul>`,
-    });
+    U.menu(el, [
+      { act: 'actRename', arg: a.id, icon: 'pencil', label: 'Rename' },
+      { act: 'actDelete', arg: a.id, icon: 'trash', label: `Delete this ${A().typeOf(a.type).noun}`, tone: 'critical' },
+    ], { label: `${A().typeOf(a.type).label} options` });
   };
   U.act.actRename = (el) => {
     const a = A().get(U.S, el.dataset.arg || openId());

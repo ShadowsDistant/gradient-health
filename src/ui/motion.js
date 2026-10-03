@@ -1,9 +1,9 @@
-/* Motion: route changes, lists that glide, cards that fold away or open up, and glass that forms
- * and shape-shifts (U.motion).
+/* Motion: route changes, lists that glide, cards that fold away or open up, glass that forms and
+ * shape-shifts, and menus (U.motion, U.menu).
  *
  * The app's own motion moves with transform and opacity only, so the compositor plays it and nothing
  * is laid out again while it moves. Glass that sits above the page (the floating buttons, the
- * workout capsule, the bar's buttons) moves the way Refract 1.4 moves it: it forms and
+ * workout capsule, the bar's buttons, menus) moves the way Refract 1.4 moves it: it forms and
  * dissolves (Refract.materialize, dematerialize) and changes shape (Refract.shapeshift). That's
  * Refract's own motion, which also animates the material and a few small parts' widths. With reduced
  * motion a route change is a short fade, glass fades in and out, and lists and cards change at once
@@ -31,6 +31,7 @@
  *   a copy of it dissolves where it was (dematerialize). o: { seen, ms }.
  * U.motion.shift(root, update)  update() runs, and root's keyed parts ([data-rf-key]) shape-shift
  *   from how they were: those that stay flow to their new width, new ones bud out, gone ones pinch off.
+ * U.menu(trigger, items, o)  A list of actions as Refract's menu, grown out of its button.
  *
  * For src/ui/core.js: snap(root) measures a page before a re-render patches it; the patch reports
  * each container it changes (patched), so new blocks rise in and removed ones leave from where they
@@ -669,5 +670,73 @@
     put();
     s.play();
     return all(show(el, [{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 260, delay: 90, easing: tok().enter, fill: 'backwards' }));
+  };
+
+  /* ---------------------------------------------------------------- menus */
+  // U.menu(trigger, items, o): a list of actions as Refract's menu, thick glass that grows out of the
+  // button that opened it and dissolves back into it (Refract.menu). items: [{ act, arg, icon, label,
+  // tone: 'critical' }], with null for a line between groups. Each item is its action's own button
+  // (data-act), so the app runs it as Refract closes the menu. A popover: arrow keys, Home, End and a
+  // letter move through it; Escape, Tab, a tap outside (which then does nothing else) and Android's
+  // Back (U.closeMenu, from core.js) close it, and focus goes back to the button. Opened from a sheet,
+  // it goes in the sheet's dialog, the one part of the page that takes taps then. o: { label }.
+  let menuSeq = 0;
+  let openMenu = null; // { el, trigger, picked }
+  U.closeMenu = () => {
+    const m = openMenu;
+    if (!m || !m.el.isConnected) return false;
+    const r = R();
+    if (r && r.menu) r.menu.close(m.el); else m.el.remove();
+    return true;
+  };
+  U.menu = (trigger, items, o) => {
+    const opt = o || {};
+    const r = R();
+    if (!trigger || !trigger.isConnected || !r || !r.menu) return null;
+    U.closeMenu();
+    const el = doc.createElement('div');
+    el.className = 'rf-menu rf-glass gh-menu';
+    el.id = `ghMenu${++menuSeq}`;
+    el.setAttribute('data-variant', 'thick');
+    el.setAttribute('popover', 'auto');
+    el.setAttribute('role', 'menu');
+    el.setAttribute('aria-label', opt.label || trigger.getAttribute('aria-label') || 'Options');
+    el.innerHTML = items.filter((x) => x !== undefined && x !== false && x !== '').map((x) => (x
+      ? `<button type="button" class="rf-menu-item" role="menuitem" data-act="${U.esc(x.act)}"${x.arg != null ? ` data-arg="${U.esc(x.arg)}"` : ''}${x.tone === 'critical' ? ' data-tone="critical"' : ''}>${x.icon ? U.icon(x.icon) : ''}<span>${U.esc(x.label)}</span></button>`
+      : '<hr class="rf-menu-sep">')).join('');
+    (trigger.closest('dialog[open]') || doc.body).appendChild(el);
+    if (U.enhance) U.enhance(el); else r.init(el);
+    trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-controls', el.id);
+    const m = openMenu = { el, trigger, picked: false };
+    el.addEventListener('rf-select', () => { m.picked = true; });
+    // A tap outside only closes it: Refract's popover would let it through to what's under it.
+    let outside = false;
+    const down = (e) => { outside = !el.contains(e.target); };
+    const click = (e) => { if (outside && !el.contains(e.target)) { e.preventDefault(); e.stopPropagation(); } outside = false; };
+    doc.addEventListener('pointerdown', down, true);
+    doc.addEventListener('click', click, true);
+    el.addEventListener('toggle', (e) => {
+      if (e.newState !== 'closed') return;
+      if (openMenu === m) openMenu = null;
+      if (trigger.getAttribute('aria-controls') === el.id) trigger.removeAttribute('aria-controls');
+      doc.removeEventListener('pointerdown', down, true);
+      // (The click of the tap that closed it comes after this.)
+      setTimeout(() => doc.removeEventListener('click', click, true), 400);
+      if (!m.picked) {
+        U.haptic('back');
+        const a = doc.activeElement;
+        if (trigger.isConnected && (!a || a === doc.body || el.contains(a))) trigger.focus({ preventScroll: true });
+      }
+      // It dissolves back into its button (Refract), then goes: once that motion ends, or after a
+      // moment whatever happens to it.
+      const gone = () => { if (el.isConnected) { if (r.destroy) r.destroy(el); el.remove(); } };
+      const anims = (el.getAnimations ? el.getAnimations({ subtree: true }) : []).filter((a) => a.playState === 'running' && Number.isFinite(a.effect && a.effect.getComputedTiming().endTime));
+      if (anims.length) Promise.all(anims.map((a) => a.finished.catch(() => {}))).then(gone);
+      setTimeout(gone, anims.length ? 900 : 0);
+    });
+    r.menu.open(el, trigger);
+    U.haptic('nav');
+    return el;
   };
 })(typeof window !== 'undefined' ? window : globalThis);

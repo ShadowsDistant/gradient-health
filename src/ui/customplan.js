@@ -446,26 +446,23 @@
     U.haptic('select');
     setTimeout(() => { const cards = doc.querySelectorAll('#screen .cp-day'); const last = cards[cards.length - 1]; if (last) last.scrollIntoView({ block: 'center', behavior: U.reduced() ? 'auto' : 'smooth' }); }, 60);
   };
+  // A day's options: a menu that grows out of its button (U.menu), which closes itself as one is
+  // picked.
   U.act.cpDayMenu = (el) => {
     const di = Number(el.dataset.arg);
     const plan = C().get(U.S, U.route.arg);
     if (!plan) return;
     const n = plan.days.length;
-    const ctl = U.sheet({
-      title: `Day ${di + 1}${plan.days[di].title ? `: ${plan.days[di].title}` : ''}`, size: 'fit',
-      body: `<ul class="rf-list">
-        ${di > 0 ? U.row({ icon: 'chevron-up', tone: 'sky', title: 'Move day up', act: 'cpDayMove', arg: `${di}:-1` }) : ''}
-        ${di < n - 1 ? U.row({ icon: 'chevron-down', tone: 'sky', title: 'Move day down', act: 'cpDayMove', arg: `${di}:1` }) : ''}
-        ${n < C().LIMITS.days ? U.row({ icon: 'copy', tone: 'indigo', title: 'Duplicate day', act: 'cpDayCopy', arg: String(di) }) : ''}
-        ${n > 1 ? U.row({ icon: 'trash', tone: 'rose', title: 'Delete day', act: 'cpDayDelete', arg: String(di) }) : ''}
-      </ul>`,
-    });
-    const done = () => ctl.close('ok');
-    U.act.cpDayMove = (b) => { const [a, dir] = b.dataset.arg.split(':').map(Number); done(); edit((p) => { const [d] = p.days.splice(a, 1); p.days.splice(a + dir, 0, d); }); U.haptic('drop'); };
-    U.act.cpDayCopy = (b) => { const a = Number(b.dataset.arg); done(); edit((p) => { p.days.splice(a + 1, 0, JSON.parse(JSON.stringify(p.days[a]))); }); delete ui.wd[plan.id]; U.haptic('log'); };
+    U.menu(el, [
+      di > 0 ? { act: 'cpDayMove', arg: `${di}:-1`, icon: 'chevron-up', label: 'Move day up' } : false,
+      di < n - 1 ? { act: 'cpDayMove', arg: `${di}:1`, icon: 'chevron-down', label: 'Move day down' } : false,
+      n < C().LIMITS.days ? { act: 'cpDayCopy', arg: String(di), icon: 'copy', label: 'Duplicate day' } : false,
+      n > 1 ? { act: 'cpDayDelete', arg: String(di), icon: 'trash', label: 'Delete day', tone: 'critical' } : false,
+    ], { label: `Day ${di + 1}${plan.days[di].title ? `: ${plan.days[di].title}` : ''}` });
+    U.act.cpDayMove = (b) => { const [a, dir] = b.dataset.arg.split(':').map(Number); edit((p) => { const [d] = p.days.splice(a, 1); p.days.splice(a + dir, 0, d); }); U.haptic('drop'); };
+    U.act.cpDayCopy = (b) => { const a = Number(b.dataset.arg); edit((p) => { p.days.splice(a + 1, 0, JSON.parse(JSON.stringify(p.days[a]))); }); delete ui.wd[plan.id]; U.haptic('log'); };
     U.act.cpDayDelete = (b) => {
       const a = Number(b.dataset.arg);
-      done();
       const before = JSON.parse(JSON.stringify(plan.days));
       const wdBefore = plan.weekdays ? plan.weekdays.slice() : null;
       edit((p) => { p.days.splice(a, 1); p.weekdays = null; });

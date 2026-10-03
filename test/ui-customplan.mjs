@@ -1,11 +1,11 @@
 // Your plans in Chromium at phone size, someone five weeks in: build a plan like a playlist (the
 // picker with its stills and filters, sets and reps with steppers, reordering by dragging and with
-// the keyboard, a second day, set weekdays), use it and run its first day in the player to the
-// check-in (targets move on), share it (the QR code, the link in the share text), get a friend's
-// plan from a link through window.__gh.onLink (the preview with its swaps, Save, Use it now, and the
-// same link twice), ask the coach to build one (with a stand-in on-device model held to the moves
-// this person can do), and go back to the coach's plan. No console errors. Screenshots of every
-// screen go to build/ui-customplan/ for a visual pass.
+// the keyboard, a second day, set weekdays, a day's options in a menu out of its button), use it
+// and run its first day in the player to the check-in (targets move on), share it (the QR code, the
+// link in the share text), get a friend's plan from a link through window.__gh.onLink (the preview
+// with its swaps, Save, Use it now, and the same link twice), ask the coach to build one (with a
+// stand-in on-device model held to the moves this person can do), and go back to the coach's plan.
+// No console errors. Screenshots of every screen go to build/ui-customplan/ for a visual pass.
 // Usage: node test/ui-customplan.mjs [--dark] [--width=390] [--zoom=1.3]
 import { createRequire } from 'node:module';
 import { mkdirSync, rmSync } from 'node:fs';
@@ -218,6 +218,25 @@ await shot('08-plan');
 await page.evaluate(() => { const s = document.getElementById('screen'); s.scrollTop = s.scrollHeight; });
 await settle(300);
 await shot('09-plan-days', true);
+// A day's options: a menu out of its button (not a sheet); moving a day down and back again.
+{
+  const dayMenu = async (key) => {
+    await page.click(`#screen .cp-day[data-key="${key}"] [data-act="cpDayMenu"]`);
+    await settle(600);
+    return S(() => { const m = document.querySelector('.rf-menu:popover-open'); return m && { items: [...m.querySelectorAll('[role="menuitem"]')].map((b) => b.textContent.trim()), sheet: !!document.querySelector('dialog.gh-sheet[open]') }; });
+  };
+  const dm = await dayMenu('day-0');
+  check('a day\'s options open as a menu out of its button: Move day down, Duplicate day, Delete day', dm && !dm.sheet && JSON.stringify(dm.items) === JSON.stringify(['Move day down', 'Duplicate day', 'Delete day']), dm);
+  await page.click('.rf-menu:popover-open [data-act="cpDayMove"]');
+  await settle(800);
+  const moved = (await plan()).days.map((d) => d.title);
+  await dayMenu('day-0');
+  await page.click('.rf-menu:popover-open [data-act="cpDayMove"]');
+  await settle(800);
+  await page.waitForFunction(() => !document.querySelector('.rf-menu'), null, { timeout: 3000 }).catch(() => {});
+  const back = (await plan()).days.map((d) => d.title);
+  check('Move day down moves it, and again puts it back', moved[0] === 'Arms' && back[1] === 'Arms' && !(await S(() => !!document.querySelector('.rf-menu'))), { moved, back });
+}
 
 /* ------------------------------------------------------------------ using it */
 section('Using it');

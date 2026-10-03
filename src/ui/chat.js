@@ -302,18 +302,18 @@
   U.act.chatConsent = async () => { if (await U.claudeConsent()) { U.S.ai.enabled = true; U.save(true); } refreshChat(); };
 
   /* ---------------------------------------------------------------- more */
-  U.act.chatMenu = () => {
+  // The chat's options: a menu that grows out of its button (U.menu), in the chat's sheet.
+  U.act.chatMenu = (el) => {
     const S = U.S;
-    const item = (act, icon, title) => `<li><button type="button" class="rf-list-row chat-menu-row" data-act="chatMenuPick" data-arg="${act}"><span class="rf-list-icon" data-tone="neutral">${U.icon(icon)}</span><span class="rf-list-text"><span class="rf-list-title">${title}</span></span></button></li>`;
-    const rows = (chatLog(S).length || live ? item('askClear', 'trash', 'Clear this chat') : '')
-      + (canHandOff() ? item('askClaudeApp', 'share', 'Ask in the Claude app') : '')
-      + item('chatSettings', 'sliders', 'AI coach settings');
-    U.sheet({ title: 'Chat', size: 'fit', body: `<div class="sheet-pad"><ul class="rf-list">${rows}</ul></div>` });
+    U.menu(el, [
+      canHandOff() ? { act: 'chatMenuPick', arg: 'askClaudeApp', icon: 'share', label: 'Ask in the Claude app' } : false,
+      { act: 'chatMenuPick', arg: 'chatSettings', icon: 'sliders', label: 'AI coach settings' },
+      chatLog(S).length || live ? null : false,
+      chatLog(S).length || live ? { act: 'chatMenuPick', arg: 'askClear', icon: 'trash', label: 'Clear this chat', tone: 'critical' } : false,
+    ], { label: 'Chat options' });
   };
-  // A pick closes the menu first, then does its thing.
+  // A pick: the menu closes itself (Refract), then the action runs.
   U.act.chatMenuPick = (el) => {
-    const t = U.topSheet();
-    if (t && !t.el.classList.contains('chat-sheet')) t.close('ok');
     const fn = U.act[el.dataset.arg];
     if (fn) setTimeout(() => fn(el), 60);
   };

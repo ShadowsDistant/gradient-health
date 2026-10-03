@@ -326,6 +326,43 @@ await page.click('#screen [data-act="actStreets"]');
 await settle(700);
 check('Hide streets goes back to the route drawn here', await page.evaluate(() => !document.querySelector('#screen .am-streets canvas') && !window.GH.ui.S.profile.prefs.actStreets));
 
+section('Options, a menu out of its button');
+{
+  // Activity options is only a list: a menu that grows out of the button (U.menu), not a sheet.
+  await page.click('#topbar [data-act="actMenu"]');
+  await settle(600);
+  const m = await page.evaluate(() => {
+    const menu = document.querySelector('.rf-menu:popover-open'), btn = document.querySelector('#topbar [data-act="actMenu"]');
+    return menu && { role: menu.getAttribute('role'), items: [...menu.querySelectorAll('[role="menuitem"]')].map((b) => b.textContent.trim()), controls: btn.getAttribute('aria-controls') === menu.id && btn.getAttribute('aria-haspopup') === 'menu', glass: menu.matches('.rf-glass'), onMenu: document.activeElement === menu, sheet: !!document.querySelector('dialog.gh-sheet[open]') };
+  });
+  check('Activity options opens a menu out of its button, not a sheet: Rename, Delete', m && m.role === 'menu' && m.glass && m.controls && !m.sheet && m.items.length === 2 && m.items[0] === 'Rename' && /^Delete this run$/.test(m.items[1]), m);
+  const focused = () => page.evaluate(() => document.activeElement && document.activeElement.textContent.trim());
+  await page.keyboard.press('ArrowDown');
+  const first = await focused();
+  await page.keyboard.press('ArrowDown');
+  const second = await focused();
+  check('opened by a tap, focus is on the menu, and the arrow keys go through its items', m && m.onMenu && first === 'Rename' && /^Delete/.test(second || ''), [m && m.onMenu, first, second]);
+  await page.keyboard.press('Escape');
+  await settle(700);
+  await page.waitForFunction(() => !document.querySelector('.rf-menu'), null, { timeout: 3000 }).catch(() => {});
+  const shut = await page.evaluate(() => ({ open: !!document.querySelector('.rf-menu:popover-open'), left: document.querySelectorAll('.rf-menu').length, focus: document.activeElement && document.activeElement.dataset.act, view: window.GH.ui.route.view }));
+  check('Escape closes it, and focus goes back to the button', !shut.open && shut.left === 0 && shut.focus === 'actMenu' && shut.view === 'activity', shut);
+  await page.keyboard.press('Enter');
+  await settle(600);
+  const kb = await page.evaluate(() => ({ open: !!document.querySelector('.rf-menu:popover-open'), focus: document.activeElement && document.activeElement.textContent.trim() }));
+  check('opened from the keyboard, focus starts on its first item', kb.open && kb.focus === 'Rename', kb);
+  await page.keyboard.press('Escape');
+  await settle(700);
+  await page.click('#topbar [data-act="actMenu"]');
+  await settle(600);
+  await page.click('.rf-menu:popover-open [data-act="actRename"]');
+  await settle(900);
+  const ren = await page.evaluate(() => ({ menu: !!document.querySelector('.rf-menu:popover-open'), sheet: !!document.querySelector('dialog.gh-sheet[open] input') }));
+  check('Rename in it opens the rename sheet', !ren.menu && ren.sheet, ren);
+  await page.evaluate(() => window.GH.ui.closeSheets());
+  await settle(900);
+}
+
 section('Deleting, with Undo');
 const n0 = (await S()).n;
 await page.click('#screen [data-act="actDelete"]');

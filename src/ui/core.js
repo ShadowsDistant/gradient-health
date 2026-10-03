@@ -985,6 +985,8 @@
 
   /* ---------------------------------------------------------------- back button */
   function onBack() {
+    // An open menu (U.menu) closes first, even over a sheet it was opened from.
+    if (U.closeMenu && U.closeMenu()) return true;
     const top = U.topSheet();
     if (top) { top.close('cancel'); return true; }
     if (doc.querySelector('dialog.rf-dialog[open]')) { const d = doc.querySelector('dialog.rf-dialog[open]'); try { if (R() && R().dialog) R().dialog.close(d, 'cancel'); else d.close('cancel'); } catch (e) { /* ignore */ } return true; }

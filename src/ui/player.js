@@ -959,19 +959,18 @@
     const sh = U.moveSheet(st.item.moveId, { side: st.side, onClose: () => { covered = false; if (P && !root().hidden) draw(); } });
     if (!sh) { covered = false; if (fig) fig.ctl.play(); } // no sheet opened: keep the figure going
   };
-  U.act.plMenu = () => {
+  // The workout's options: a menu that grows out of its button (U.menu). Cancel asks first.
+  U.act.plMenu = (el) => {
     const st = cur();
     const canSwap = st && st.kind === 'set' && !st.leadOnly;
-    U.sheet({
-      title: 'Workout', size: 'fit',
-      body: `<ul class="rf-list">
-        ${st ? U.row({ icon: 'info', tone: 'sky', title: 'How to do it', act: 'plHowTo', chevron: true }) : ''}
-        ${canSwap ? U.row({ icon: 'shuffle', tone: 'indigo', title: 'Swap this exercise', act: 'plSwap', chevron: true }) : ''}
-        ${st && st.kind === 'set' ? U.row({ icon: 'skip-forward', tone: 'amber', title: 'Skip the rest of this exercise', act: 'plSkipItem' }) : ''}
-        ${U.row({ icon: 'flag', tone: 'green', title: 'Finish now and check in', act: 'plFinishNow' })}
-        ${U.row({ icon: 'close', tone: 'rose', title: 'Cancel workout', sub: 'Nothing from it is saved', act: 'plCancel' })}
-      </ul>`,
-    });
+    const items = st ? [
+      { act: 'plHowTo', icon: 'info', label: 'How to do it' },
+      canSwap ? { act: 'plSwap', icon: 'shuffle', label: 'Swap this exercise' } : false,
+      st.kind === 'set' ? { act: 'plSkipItem', icon: 'skip-forward', label: 'Skip the rest of this exercise' } : false,
+      null,
+    ] : [];
+    items.push({ act: 'plFinishNow', icon: 'flag', label: 'Finish now and check in' }, { act: 'plCancel', icon: 'close', label: 'Cancel workout', tone: 'critical' });
+    U.menu(el && el.closest ? el : document.querySelector('.player [data-act="plMenu"]'), items, { label: 'Workout options' });
   };
   U.act.plSwap = () => {
     const st = cur();

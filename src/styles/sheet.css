@@ -90,13 +90,14 @@ dialog.gh-sheet[data-closing] { pointer-events: none; }
 /* Controls inside keep the look they had when the sheet itself was glass. Refract styles them by their
    glass ancestor, so these copies go in Refract's own layers, where its hover, pressed and focus
    states still win as before. No glass on glass: glass controls are flat fills, without a blur or
-   lens of their own. */
+   lens of their own. A menu opened from the sheet (a popover, U.menu) is glass on a layer of its own,
+   and keeps all of it. */
 @layer rf.material {
-  .gh-sheet .rf-glass:not([data-allow-nested]) { --_fill: var(--fill-3); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; text-shadow: none; }
-  .gh-sheet .rf-glass:not([data-allow-nested])::before { display: none; }
-  .gh-sheet .rf-glass[data-variant="tinted"] { --_fill: var(--accent-fill); }
-  .gh-sheet .rf-glass > .rf-lens-layer { display: none; }
-  .gh-sheet .rf-glass[data-lens-ready] { background-color: var(--_fill); }
+  .gh-sheet .rf-glass:not([data-allow-nested], [popover]) { --_fill: var(--fill-3); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; text-shadow: none; }
+  .gh-sheet .rf-glass:not([data-allow-nested], [popover])::before { display: none; }
+  .gh-sheet .rf-glass[data-variant="tinted"]:not([popover]) { --_fill: var(--accent-fill); }
+  .gh-sheet .rf-glass:not([popover]) > .rf-lens-layer { display: none; }
+  .gh-sheet .rf-glass[data-lens-ready]:not([popover]) { background-color: var(--_fill); }
   .gh-sheet :where(.rf-secondary) { color: var(--glass-label-secondary); }
 }
 @layer rf.components {

@@ -1,9 +1,11 @@
-// The coach chat in Chromium with someone five weeks in: the two engines (on-device and Claude), the
-// sizes offered before a model is on the phone, the on-device model (a tiny random-weight stand-in
-// with Qwen3.5's layout, served with Range requests like the app serves real models) and the facts
-// it gets with each question, Stop, the safety answer, and the model rows in Settings. The tiny
-// model's words are nonsense; what's checked is that answers stream in, stop, and are kept. Needs
-// build/tiny-qwen35.gguf (made here by scripts/make-tiny-gguf.py; see test/llm.mjs).
+// The coach chat in Chromium with someone five weeks in: the coach button (its ring and dot on a mark
+// of their own, its sparkle beating when tapped), the chat's options (a menu out of its button), the
+// two engines (on-device and Claude), the sizes offered before a model is on the phone, the
+// on-device model (a tiny random-weight stand-in with Qwen3.5's layout, served with Range requests
+// like the app serves real models) and the facts it gets with each question, Stop, the safety
+// answer, and the model rows in Settings. The tiny model's words are nonsense; what's checked is that
+// answers stream in, stop, and are kept. Needs build/tiny-qwen35.gguf (made here by
+// scripts/make-tiny-gguf.py; see test/llm.mjs).
 // Usage: node test/ui-chat.mjs [--dark] [--width=360]
 import { createRequire } from 'node:module';
 import { existsSync, statSync } from 'node:fs';
@@ -168,6 +170,38 @@ await page.waitForSelector('dialog.chat-sheet[open] .chat-pill');
 await wait(500);
 b = await bubbles();
 check('reopened, the answer is there, and the dot is gone', b.length === 6 && b[5].text.trim().length > 0 && !(await page.evaluate(() => document.querySelector('#topbar .coach-btn').hasAttribute('data-unseen'))), b.slice(4));
+
+section('The chat\'s options, a menu out of its button');
+{
+  // More, in the chat: a menu that grows out of the button, in the chat's sheet; Escape closes only
+  // the menu, and focus goes back to More.
+  await page.click('dialog.chat-sheet [data-act="chatMenu"]');
+  await wait(600);
+  const m = await page.evaluate(() => {
+    const menu = document.querySelector('.rf-menu:popover-open'), d = document.querySelector('dialog.chat-sheet[open]');
+    return menu && { inSheet: d.contains(menu), items: [...menu.querySelectorAll('[role="menuitem"]')].map((b) => b.textContent.trim()), critical: !!menu.querySelector('[data-arg="askClear"][data-tone="critical"]'), glass: getComputedStyle(menu).backdropFilter, onMenu: document.activeElement === menu };
+  });
+  check('More opens a menu out of its button, inside the chat: AI coach settings and Clear this chat', m && m.inSheet && m.items.includes('AI coach settings') && m.items.includes('Clear this chat') && m.critical, m);
+  check('the menu is frosted glass (not see-through, as the sheet\'s own controls are made flat)', m && /blur/.test(m.glass), m && m.glass);
+  await page.keyboard.press('ArrowDown');
+  const first = await page.evaluate(() => document.activeElement && document.activeElement.textContent.trim());
+  check('focus is on the menu, and the arrow keys go to its items', m && m.onMenu && first === m.items[0], [m && m.onMenu, first]);
+  await page.keyboard.press('Escape');
+  await wait(700);
+  const shut = await page.evaluate(() => ({ menu: !!document.querySelector('.rf-menu'), chat: !!document.querySelector('dialog.chat-sheet[open]'), focus: document.activeElement && document.activeElement.dataset.act }));
+  check('Escape closes only the menu, and focus goes back to More', !shut.menu && shut.chat && shut.focus === 'chatMenu', shut);
+  await page.click('dialog.chat-sheet [data-act="chatMenu"]');
+  await wait(600);
+  await page.click('.rf-menu:popover-open [data-arg="chatSettings"]');
+  await wait(1200);
+  const went = await page.evaluate(() => ({ view: window.GH.ui.route.view, chat: !!document.querySelector('dialog.chat-sheet[open]'), menu: !!document.querySelector('.rf-menu') }));
+  check('AI coach settings in it opens the coach settings', went.view === 'settings' && !went.menu, went);
+  await page.evaluate(() => { const U = window.GH.ui; U.closeSheets(); if (U.route.view) U.back(); });
+  await wait(700);
+  await page.click('#topbar .coach-btn');
+  await page.waitForSelector('dialog.chat-sheet[open] .chat-pill');
+  await wait(500);
+}
 
 section('Stop');
 await page.fill('#askQ', 'Write me a long answer about everything');
