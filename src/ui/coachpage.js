@@ -1,4 +1,4 @@
-/* The Coach page: what the coach changed today and why, what it suggests (you apply or dismiss),
+/* Coach notes: what the coach changed today and why, what it suggests (you apply or dismiss),
  * what it's keeping an eye on, this week's targets, and everything it changed lately. The chat
  * opens from here too. Nothing here changes the plan without a tap.
  */
@@ -33,7 +33,7 @@
     const rows = calm
       ? `<p class="t-callout rf-muted">${U.esc(session ? 'Full session as planned: sleep, heart rate and how you feel look normal.' : 'Nothing to adjust today.')}</p>`
       : `<ul class="co-list">${list.slice(0, 3).map((d) => decisionRow(d, false)).join('')}</ul>${list.length > 3 ? `<p class="t-footnote rf-muted">and ${list.length - 3} more</p>` : ''}`;
-    return `<div class="card co-card tap-card" data-key="coach" role="button" tabindex="0" data-act="openCoach" aria-label="Open your coach">
+    return `<div class="card co-card tap-card" data-key="coach" role="button" tabindex="0" data-act="openCoach" aria-label="Open coach notes">
       <div class="co-head">${U.icon('sparkle')}<span class="t-headline">${calm ? 'Your coach' : 'What your coach changed'}</span><span class="rf-spacer"></span><span class="t-footnote co-more">See all ${U.icon('chevron-right', 'sm')}</span></div>
       ${rows}
     </div>`;
@@ -100,8 +100,8 @@
       const decisions = C().decisions(S, day, session);
       const sugs = C().suggestions(S, day);
       const api = S.ai.mode === 'api' && GH.ai && GH.ai.hasKey();
-      return `${U.navbar('Coach', '', U.glassBtn('chevron-left', 'Back', 'back'))}
-        <h1 class="rf-large-title">Coach</h1>
+      return `${U.navbar('Coach notes', '', U.glassBtn('chevron-left', 'Back', 'back'))}
+        <h1 class="rf-large-title">Coach notes</h1>
         <p class="lt-sub t-footnote rf-muted">What it changed and why, what it suggests, and what it's watching. Your plan only changes when you apply something.</p>
         <h2 class="sec-title t-title-3">Today</h2>
         <div class="section"><div class="card">${decisions.length ? `<ul class="co-list">${decisions.map((d) => decisionRow(d, true)).join('')}</ul>` : `<p class="t-callout rf-muted">${session ? 'Full session as planned. Sleep, heart rate and how you feel look normal, so nothing was taken off.' : 'Nothing to adjust today.'}</p>`}</div></div>

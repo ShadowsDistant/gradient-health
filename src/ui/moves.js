@@ -1,5 +1,5 @@
-/* Moves: every ladder with its current level, and the move sheets (animated diagram, cues,
- * the common mistake and how to breathe) used across the app.
+/* Moves: every ladder with its current level (Plan's Moves section, or a page of its own), and the
+ * move sheets (animated diagram, cues, the common mistake and how to breathe) used across the app.
  */
 (function (G) {
   'use strict';
@@ -122,57 +122,65 @@
     U.toast('It can show up again', 'positive');
   };
 
-  /* ---------------------------------------------------------------- the screen */
+  /* ---------------------------------------------------------------- the list */
+  // Every ladder by muscle group, then the warm-ups and stretches: Plan's Moves section and the Moves
+  // page. `lead` goes first (the section's tip).
+  U.movesBody = (S, day, lead) => {
+    // Home ladders (levels you climb) for everyone who trains at home; gym exercises (a weight you
+    // add to) for people who train at a gym.
+    const where = S.profile.where || 'home';
+    const by = {};
+    for (const [fam, lad] of Object.entries(M().LADDERS)) {
+      const place = lad.gym ? 'gym' : 'home';
+      if (lad.gym ? where === 'home' : where === 'gym' && !B().rungs(S, fam, day, { place: 'gym' }).length) continue;
+      const list = B().rungs(S, fam, day, { place });
+      if (!list.length) continue;
+      (by[lad.group] = by[lad.group] || []).push(fam);
+    }
+    const groups = ORDER.filter((g) => by[g]).map((g) => {
+      const rows = by[g].map((fam) => {
+        const lad = M().LADDERS[fam];
+        const st = S.prog[fam];
+        if (lad.gym) {
+          const list = B().rungs(S, fam, day, { place: 'gym' });
+          const id = st && list.includes(st.rung) ? st.rung : list[0];
+          const mv = M().MOVES[id];
+          const kg = st && st.loads ? st.loads[id] : null;
+          const key = mv && mv.load ? String(mv.load).split('|')[0] : null;
+          return U.row({
+            icon: 'dumbbell', tone: GROUP_TONE[g] || 'sky', title: `${U.esc(lad.name)} <span class="mv-gym">Gym</span>`,
+            sub: U.esc(st ? `${mv.name} · ${U.target(mv, st.reps)}` : `${mv.name} · starts on your first gym day`), detail: kg != null && key ? U.esc(B().fmtLoad(S, kg, key, mv)) : '', act: 'ladder', arg: fam, chevron: true,
+          });
+        }
+        const lv = B().ladderLevel(S, fam, day);
+        const mv = st && M().MOVES[st.rung];
+        return U.row({
+          icon: GROUP_ICON[g] || 'bolt', tone: GROUP_TONE[g] || 'sky', title: U.esc(lad.name),
+          sub: mv ? `${U.esc(mv.name)} · ${U.esc(U.target(mv, st.reps))}` : '', detail: lv && lv.level > 0 ? `${lv.level}/${lv.of}` : '', act: 'ladder', arg: fam, chevron: true,
+        });
+      }).join('');
+      return `<h3 class="rf-list-header">${U.esc(B().GROUP_NAME[g] || g)}</h3><ul class="rf-list">${rows}</ul>`;
+    }).join('');
+    // The warm-ups and stretches this person's kit and body allow (the halo needs a kettlebell, the
+    // pull-apart a band; plans built around age or a health condition add gentler and seated ones).
+    const ok = (id) => M().MOVES[id] && (!M().allowed || M().allowed(M().MOVES[id], S.profile.equipment)) && (!GH.access || GH.access.moveOk(S.profile, id));
+    const wu = [...new Set(((GH.access && GH.access.warmupIds(S.profile)) || []).concat(M().WARMUP.all || M().WARMUP.kb))].filter(ok);
+    const mob = [...new Set(M().MOBILITY.concat(B().mobilityFlow(S).map((x) => x.moveId)))].filter(ok);
+    const extra = wu.concat(mob, ['walk']).filter((id) => M().MOVES[id]).map((id) => U.row({ icon: mob.includes(id) ? 'leaf' : id === 'walk' ? 'navigate' : 'sun', tone: 'teal', title: U.esc(M().MOVES[id].name), act: 'moveInfo', arg: id, chevron: true })).join('');
+    return `<div class="section moves-list" data-key="moves">${lead || ''}${groups}
+        <h3 class="rf-list-header">Warm-up and mobility</h3><ul class="rf-list">${extra}</ul>
+      </div>`;
+  };
+
+  /* ---------------------------------------------------------------- the page */
+  // Moves opens as a page of its own where Plan isn't there to hold it (workouts off), or when
+  // something opens it on top.
   U.screens.moves = {
     render(S, day) {
-      // Home ladders (levels you climb) for everyone who trains at home; gym exercises (a weight you
-      // add to) for people who train at a gym.
-      const where = S.profile.where || 'home';
-      const by = {};
-      for (const [fam, lad] of Object.entries(M().LADDERS)) {
-        const place = lad.gym ? 'gym' : 'home';
-        if (lad.gym ? where === 'home' : where === 'gym' && !B().rungs(S, fam, day, { place: 'gym' }).length) continue;
-        const list = B().rungs(S, fam, day, { place });
-        if (!list.length) continue;
-        (by[lad.group] = by[lad.group] || []).push(fam);
-      }
-      const groups = ORDER.filter((g) => by[g]).map((g) => {
-        const rows = by[g].map((fam) => {
-          const lad = M().LADDERS[fam];
-          const st = S.prog[fam];
-          if (lad.gym) {
-            const list = B().rungs(S, fam, day, { place: 'gym' });
-            const id = st && list.includes(st.rung) ? st.rung : list[0];
-            const mv = M().MOVES[id];
-            const kg = st && st.loads ? st.loads[id] : null;
-            const key = mv && mv.load ? String(mv.load).split('|')[0] : null;
-            return U.row({
-              icon: 'dumbbell', tone: GROUP_TONE[g] || 'sky', title: `${U.esc(lad.name)} <span class="mv-gym">Gym</span>`,
-              sub: U.esc(st ? `${mv.name} · ${U.target(mv, st.reps)}` : `${mv.name} · starts on your first gym day`), detail: kg != null && key ? U.esc(B().fmtLoad(S, kg, key, mv)) : '', act: 'ladder', arg: fam, chevron: true,
-            });
-          }
-          const lv = B().ladderLevel(S, fam, day);
-          const mv = st && M().MOVES[st.rung];
-          return U.row({
-            icon: GROUP_ICON[g] || 'bolt', tone: GROUP_TONE[g] || 'sky', title: U.esc(lad.name),
-            sub: mv ? `${U.esc(mv.name)} · ${U.esc(U.target(mv, st.reps))}` : '', detail: lv && lv.level > 0 ? `${lv.level}/${lv.of}` : '', act: 'ladder', arg: fam, chevron: true,
-          });
-        }).join('');
-        return `<h3 class="rf-list-header">${U.esc(B().GROUP_NAME[g] || g)}</h3><ul class="rf-list">${rows}</ul>`;
-      }).join('');
-      // The warm-ups and stretches this person's kit and body allow (the halo needs a kettlebell, the
-      // pull-apart a band; plans built around age or a health condition add gentler and seated ones).
-      const ok = (id) => M().MOVES[id] && (!M().allowed || M().allowed(M().MOVES[id], S.profile.equipment)) && (!GH.access || GH.access.moveOk(S.profile, id));
-      const wu = [...new Set(((GH.access && GH.access.warmupIds(S.profile)) || []).concat(M().WARMUP.all || M().WARMUP.kb))].filter(ok);
-      const mob = [...new Set(M().MOBILITY.concat(B().mobilityFlow(S).map((x) => x.moveId)))].filter(ok);
-      const extra = wu.concat(mob, ['walk']).filter((id) => M().MOVES[id]).map((id) => U.row({ icon: mob.includes(id) ? 'leaf' : id === 'walk' ? 'navigate' : 'sun', tone: 'teal', title: U.esc(M().MOVES[id].name), act: 'moveInfo', arg: id, chevron: true })).join('');
-      // A tab normally; a page (with a back button) when Food has the tab.
       const asPage = U.route && U.route.view === 'moves';
       return `${U.navbar('Moves', '', asPage ? U.glassBtn('chevron-left', 'Back', 'back') : '')}
         <h1 class="rf-large-title">Moves</h1>
-        <div class="section moves-list">${U.tip ? U.tip('moves') : ''}${groups}
-          <h3 class="rf-list-header">Warm-up and mobility</h3><ul class="rf-list">${extra}</ul>
-        </div>`;
+        ${U.movesBody(S, day, U.tip ? U.tip('moves') : '')}`;
     },
   };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -1,5 +1,6 @@
 // Food tracking and "what you track", in Chromium at phone size with someone five weeks in: turning
-// calories on (tabs change, Moves moves into Plan), the Food tab, quick add, a food from a label,
+// calories on (tabs change: Food takes Progress's place, and Progress opens from You), the Food tab,
+// quick add, a food from a label,
 // online search and a typed barcode (Open Food Facts mocked), meals saved to Health Connect, the
 // Health tab's food tile and chart, and switching workouts off.
 // Usage: node test/ui-food.mjs [--dark] [--width=360]
@@ -37,12 +38,12 @@ const noSideScroll = () => page.evaluate(() => document.documentElement.scrollWi
 const kcalToday = () => page.evaluate(() => window.GH.food.totals(window.GH.ui.S, window.GH.ui.today(), false).kcal);
 
 section('What you track');
-check('workout people start with the usual tabs', (await tabs()) === 'today,plan,health,progress,moves', await tabs());
+check('workout people start with the usual tabs', (await tabs()) === 'today,plan,health,progress,you', await tabs());
 await openSettings();
 check('Settings has the section', await page.evaluate(() => !!document.querySelector('#track') && !!document.querySelector('[data-on="setFoodMode"]')));
 await page.click('[data-on="setFoodMode"] input[value="full"]', { force: true });
 await settle();
-check('calories on: Food takes the Moves tab', (await tabs()) === 'today,plan,food,health,progress', await tabs());
+check('calories on: Food takes Progress\'s tab, and You stays last', (await tabs()) === 'today,plan,food,health,you', await tabs());
 check('the food settings show up', await page.evaluate(() => !!document.querySelector('#food') && !!document.querySelector('[data-on="setWeightGoal"]')));
 const cut = await page.evaluate(() => [...document.querySelectorAll('#screen .rf-list-title')].filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent.trim()));
 check('no setting title is cut off', cut.length === 0, cut.join(' | '));
@@ -55,16 +56,21 @@ section('Tab bar with Food');
 // Back from Settings first: the tab bar is out of sight on a pushed page.
 await page.evaluate(() => { while (window.GH.ui.back()) { /* back to the tab */ } });
 await settle();
-for (const t of ['today', 'plan', 'food', 'health', 'progress']) {
+for (const t of ['today', 'plan', 'food', 'health', 'you']) {
   await tab(t);
   const ok = await page.evaluate(() => { const l = document.querySelector('.rf-tab[aria-current="page"] .rf-tab-label').getBoundingClientRect(); const p = document.querySelector('.rf-tabbar-lens').getBoundingClientRect(); return l.left >= p.left - 0.5 && l.right <= p.right + 0.5 && p.width > 20; });
   check(`"${t}" label fits its pill`, ok);
 }
 await tab('plan');
-check('Plan links to all the moves', await page.evaluate(() => !!document.querySelector('#screen [data-act="openMoves"]')));
-await page.click('#screen [data-act="openMoves"]');
+await page.click('#screen [data-on="planSection"] input[value="moves"]', { force: true });
 await settle();
-check('Moves opens as a page with a back button', await page.evaluate(() => document.getElementById('screen').dataset.view === 'moves' && !!document.querySelector('#topbar [data-act="back"]')));
+check('the moves are a section of Plan', await page.evaluate(() => document.getElementById('screen').dataset.view === 'plan' && !!document.querySelector('#screen .moves-list [data-act="ladder"]')));
+await page.click('#screen [data-on="planSection"] input[value="week"]', { force: true });
+await settle();
+await tab('you');
+await page.click('#screen [data-act="openProgress"]');
+await settle();
+check('Progress opens from You as a page with a back button', await page.evaluate(() => document.getElementById('screen').dataset.view === 'progress' && !!document.querySelector('#topbar [data-act="back"]')));
 await page.evaluate(() => window.GH.ui.back());
 await settle();
 
@@ -178,7 +184,7 @@ section('Workouts off');
 await openSettings();
 await page.evaluate(() => document.querySelector('#screen [data-on="setWorkouts"]').click());
 await settle(900);
-check('Plan, Progress and Moves go away', (await tabs()) === 'today,food,health', await tabs());
+check('Plan and Progress go away', (await tabs()) === 'today,food,health,you', await tabs());
 await page.evaluate(() => { while (window.GH.ui.back()) { /* back to the tab */ } });
 await settle();
 await tab('today');
@@ -188,12 +194,12 @@ check('the food card is on Today', await page.evaluate(() => !!document.querySel
 await openSettings();
 await page.evaluate(() => document.querySelector('#screen [data-on="setWorkouts"]').click());
 await settle(900);
-check('and back on', (await tabs()) === 'today,plan,food,health,progress', await tabs());
+check('and back on', (await tabs()) === 'today,plan,food,health,you', await tabs());
 
 section('Calories off again');
 await page.click('[data-on="setFoodMode"] input[value="protein"]', { force: true });
 await settle();
-check('Moves is a tab again', (await tabs()) === 'today,plan,health,progress,moves', await tabs());
+check('Progress is a tab again', (await tabs()) === 'today,plan,health,progress,you', await tabs());
 check('what was logged is kept', (await kcalToday()) > 0);
 
 section('The barcode reader itself');
@@ -233,25 +239,28 @@ section('Set-up for food and health only');
   await p2.addInitScript(seedBridge);
   await p2.goto(server.url);
   await p2.waitForSelector('.onboard:not([hidden]) .rf-large-title');
-  const title = () => p2.locator('.onboard .rf-large-title').innerText();
+  const title = () => p2.locator('.onboard .rf-large-title').first().innerText();
   const next = async () => { await p2.locator('.ob-actions [data-variant="tinted"]').click(); await p2.clock.runFor(500); await p2.waitForTimeout(150); };
-  await next();
-  await p2.click('input[name="obTrack"][value="food"]', { force: true });
-  await p2.waitForTimeout(150);
+  // The welcome's "Just tracking food?".
+  await p2.click('.ob-actions [data-act="obFood"]');
+  await p2.clock.runFor(500); await p2.waitForTimeout(150);
   const seen = [];
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 8; i++) {
     const t = await title();
     seen.push(t);
-    if (t === 'About you') { await p2.fill('input[data-k="_w"]', '150'); await p2.locator('input[data-k="_w"]').dispatchEvent('change'); await p2.fill('input[data-k="age"]', '30'); await p2.locator('input[data-k="age"]').dispatchEvent('change'); }
-    if (t === 'Your plan') break;
+    if (t === 'A little about you') { await p2.fill('.onboard input[data-k="_w"]', '150'); await p2.locator('.onboard input[data-k="_w"]').dispatchEvent('change'); await p2.fill('.onboard input[data-k="age"]', '30'); await p2.locator('.onboard input[data-k="age"]').dispatchEvent('change'); }
+    if (t === 'Your daily targets') break;
     await next();
   }
-  check('workout screens are skipped', !seen.some((t) => ['Goals', 'Experience', 'Schedule', 'Equipment', 'Body check', 'Style', 'Baseline test'].includes(t)), seen.join(' → '));
-  check('food is set to calories', seen.includes('Food') && seen.includes('Your plan'), seen.join(' → '));
-  check('the last screen shows daily targets', await p2.evaluate(() => /Calories/.test(document.querySelector('.onboard').textContent) && /Steps/.test(document.querySelector('.onboard').textContent)));
-  await p2.locator('.ob-actions [data-variant="tinted"]').click();
+  check('workout screens are skipped', !seen.some((t) => ['What do you want most?', 'How much time do you have?', 'Where do you train?', 'Goals', 'Experience', 'Schedule', 'Equipment'].includes(t)), seen.join(' → '));
+  check('a goal, then the daily targets', seen.includes('What\'s your goal?') && seen[seen.length - 1] === 'Your daily targets', seen.join(' → '));
+  check('the targets: calories, protein and steps', await p2.evaluate(() => { const t = document.querySelector('.onboard').textContent; return /calories a day/.test(t) && /protein a day/.test(t) && /steps a day/.test(t); }));
+  // Health Connect (granted here) is the optional last screen; then the app.
+  await next();
+  if (await p2.locator('.ob-actions [data-act="obConnect"]').count()) await p2.click('.ob-actions [data-act="obLook"]');
+  else await p2.locator('.ob-actions [data-variant="tinted"]').click();
   await p2.clock.runFor(900); await p2.waitForTimeout(300);
-  check('the app opens with Today, Food and Health', await p2.evaluate(() => [...document.querySelectorAll('#tabbar .rf-tab')].map((t) => t.dataset.tab).join(',')) === 'today,food,health');
+  check('the app opens with Today, Food, Health and You', await p2.evaluate(() => [...document.querySelectorAll('#tabbar .rf-tab')].map((t) => t.dataset.tab).join(',')) === 'today,food,health,you');
   check('Today has no workout', await p2.evaluate(() => !!document.querySelector('#screen .day-card') && !document.querySelector('#screen .session')));
   await ctx2.close();
 }

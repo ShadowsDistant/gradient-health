@@ -49,7 +49,7 @@
     if (!q) return;
     const v = q.value.trim();
     q.value = v ? `${v.replace(/[,.\s]+$/, '')}, ${el.dataset.arg.toLowerCase()}` : el.dataset.arg;
-    U.haptic('select');
+    U.haptic('tick');
   };
   U.act.tailorEdit = () => { if (!st) return; st.step = 'ask'; draw(); };
   U.act.tailorSuggest = async () => {
@@ -73,7 +73,7 @@
       if (st !== me) return;
       if (got) { t = T().valid(S, T().merge(t, T().ground ? T().ground(got, text) : got)); note = String(got.note || '').trim(); }
     }
-    if (T().empty(t)) { st.step = 'nothing'; draw(); U.haptic('error'); return; }
+    if (T().empty(t)) { st.step = 'nothing'; draw(); U.haptic('deny'); return; }
     const { lines } = T().plan(S, t);
     if (!lines.length) { st.step = 'nothing'; draw(); return; }
     Object.assign(st, { step: 'propose', t, lines, note });
@@ -93,6 +93,7 @@
     const S = U.S;
     if (!T().undo(S, U.today())) return;
     U.commit();
+    U.haptic('undo');
     U.toast('Changes undone', 'neutral', 'Your plan is back to how it was.');
   };
 })(typeof window !== 'undefined' ? window : globalThis);

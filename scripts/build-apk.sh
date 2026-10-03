@@ -73,6 +73,12 @@ WORK="$ROOT/build/apk-work"
 [[ "$VERSION_NAME" =~ ^[A-Za-z0-9._+-]+$ ]] || die "VERSION_NAME has unexpected characters: '$VERSION_NAME'"
 [[ -f "$APP_HTML" ]] || die "web app not found: $APP_HTML
   Build it first with 'npm run build', or point APP_HTML at an HTML file."
+# The parts of the app that load on demand (set-up, the 3D figure, Claude, the on-device model's
+# runtime and the rest: scripts/build.mjs APP_CHUNKS and LAZY) sit in lazy/ next to the page. They
+# aren't committed, and an APK without them would install, then fail at the first one it needs.
+LAZY_DIR="$(dirname "$APP_HTML")/lazy"
+[[ -d "$LAZY_DIR" && -n "$(ls -A "$LAZY_DIR")" ]] || die "the page's load-on-demand parts aren't built: $LAZY_DIR
+  Run 'npm run build' first."
 [[ -f "$KEYSTORE" ]] || die "signing keystore missing: $KEYSTORE
   Do not generate a new one: updates only install over builds signed with the same key."
 [[ -r "$KEYSTORE" && -s "$KEYSTORE" ]] || die "signing keystore is empty or unreadable: $KEYSTORE"
@@ -126,12 +132,10 @@ dalvik-exchange --dex --output="$WORK/dex/classes.dex" "$WORK/classes"
 # ---------------------------------------------------------------- package
 step "Packaging resources + assets (versionName $VERSION_NAME, versionCode $VERSION_CODE)"
 cp "$APP_HTML" "$WORK/assets/index.html"
-# Load-on-demand parts (3D figure, on-device model runtime, barcode reader) built next to the page.
-LAZY_DIR="$(dirname "$APP_HTML")/lazy"
-if [[ -d "$LAZY_DIR" ]]; then
-  mkdir -p "$WORK/assets/lazy"
-  cp -R "$LAZY_DIR/." "$WORK/assets/lazy/"
-fi
+# The load-on-demand parts, built next to the page (checked above).
+mkdir -p "$WORK/assets/lazy"
+cp -R "$LAZY_DIR/." "$WORK/assets/lazy/"
+echo "  with $(find "$WORK/assets/lazy" -type f | wc -l) load-on-demand files in assets/lazy/"
 UNSIGNED="$WORK/unsigned.apk"
 # resources.arsc must be stored uncompressed (and 4-byte aligned) for targetSdk >= 30: -0 arsc.
 aapt package -f \

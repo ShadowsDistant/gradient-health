@@ -204,7 +204,7 @@
   function actionsFor(S, key) {
     const m = M(key);
     if (m.edit) return `<button type="button" class="rf-btn ms-add" data-variant="soft" data-act="metricAdd">${U.icon('plus')}${m.group === 'measure' ? 'Add a measurement' : 'Add or change'}</button>`;
-    if (key === 'activeMin') return `<button type="button" class="rf-btn ms-add" data-variant="soft" data-act="logActivity">${U.icon('plus')}Log an activity</button>`;
+    if (key === 'activeMin') return `<button type="button" class="rf-btn ms-add" data-variant="soft" data-act="logActivity">${U.icon('plus')}Log other exercise</button>`;
     if (key === 'kcalIn' && U.hasTab && U.hasTab('food')) return `<button type="button" class="rf-btn ms-add" data-variant="soft" data-act="metricGo" data-arg="food">${U.icon('food')}Open Food</button>`;
     if (key === 'protein') return `<button type="button" class="rf-btn ms-add" data-variant="soft" data-act="addProtein">${U.icon('plus')}Add protein</button>`;
     return '';
@@ -240,7 +240,7 @@
     const any = h.latestEntry(S, key, day, 400);
     const lr = key === 'rhr' ? h.latestEntry(S, 'rhr', day, 7) : null;
     const est = !!(lr && lr.src === 'est');
-    const picks = m.group === 'measure' ? `<div class="ms-picks" role="group" aria-label="Measurement">${h.MEASURES.filter((k) => k === 'waist' || k === key || h.latestEntry(S, k, day, 400)).map((k) => `<button type="button" class="rf-chip" aria-pressed="${k === key}" data-act="metricPick" data-arg="${k}">${U.esc(M(k).label)}</button>`).join('')}</div>` : '';
+    const picks = m.group === 'measure' ? `<div class="ms-picks">${U.choice('metricPick', h.MEASURES.filter((k) => k === 'waist' || k === key || h.latestEntry(S, k, day, 400)).map((k) => [k, M(k).label]), key, 'Measurement', ' data-on="metricPick"')}</div>` : '';
     if (!any) return `<div class="ms" data-tone="${m.tone}">${picks}${emptyFor(S, key)}${actionsFor(S, key)}${aboutFor(S, key, est)}</div>`;
     const list = key === 'activeMin' ? activityRows(S, from, day, day) : h.history(S, key, from, day).reverse().map((e) => rowFor(S, key, e, day));
     const shown = st.more ? list : list.slice(0, LIST_MAX);
@@ -298,7 +298,6 @@
     st.key = key;
     st.range = (o && o.range) || (key !== 'feel' && M(key).group === 'measure' ? 365 : 28);
     st.more = false;
-    U.haptic('tap');
     const ctl = U.sheet({ title: titleOf(key), size: 'auto', cls: 'ms-sheet', body: body(U.S, U.today()), onClose: () => { if (st.ctl === ctl) st.ctl = null; } });
     st.ctl = ctl;
     return ctl;
@@ -308,7 +307,7 @@
   U.act.metricOpen = (el) => U.metricSheet(el.dataset.arg);
   U.on.metricRange = (el, ev, v) => { st.range = Number(v) || 28; st.more = false; setTimeout(refresh, 200); };
   U.act.metricMore = () => { st.more = true; refresh(); };
-  U.act.metricPick = (el) => { if (el.dataset.arg === st.key) { el.setAttribute('aria-pressed', 'true'); return; } st.key = el.dataset.arg; st.more = false; U.haptic('select'); refresh(); };
+  U.on.metricPick = (el, ev, v) => { if (!v || v === st.key) return; st.key = v; st.more = false; refresh(); };
   U.act.metricGo = (el) => { U.closeSheets(); U.go(el.dataset.arg); };
 
   /* ---------------------------------------------------------------- add or change */
@@ -392,12 +391,14 @@
     const d = dayEl && dayEl.value ? B().dayFromStr(dayEl.value) : day;
     const v = readValue(key);
     if (v == null || !H().setManual(S, Math.min(U.today(), d), key, v)) {
+      U.haptic('deny');
       U.toast(v == null ? 'Enter a number first' : `Enter ${m.label.toLowerCase()} ${rangeText(key)}`, 'caution');
       return;
     }
     if (ed.ctl) ed.ctl.close('ok');
     U.commit();
     refresh();
+    U.haptic('log'); // the toast's success merges into it
     const ws = key === 'weightKg' ? B().weightStats(S, U.today()) : null;
     U.toast(`${m.label} saved`, 'positive', ws && ws.warn ? ws.warn : undefined);
     if (U.checklistCheck) U.checklistCheck();
@@ -412,7 +413,7 @@
     U.commit();
     refresh();
     const back = h.entry(S, key, day);
-    U.toast(`Removed your ${m.label.toLowerCase()}`, 'neutral', back ? `${h.SOURCE[back.src]}'s ${h.format(S, key, back.value)} is back.` : undefined, { label: 'Undo', onClick: () => { h.setManual(U.S, day, key, was); U.commit(); refresh(); } });
+    U.toast(`Removed your ${m.label.toLowerCase()}`, 'neutral', back ? `${h.SOURCE[back.src]}'s ${h.format(S, key, back.value)} is back.` : undefined, { label: 'Undo', onClick: () => { h.setManual(U.S, day, key, was); U.commit(); refresh(); U.haptic('undo'); } });
   }
   U.act.metricRemove = () => { const key = ed.key, day = ed.day; if (ed.ctl) ed.ctl.close('ok'); removeMine(key, day); };
   U.act.metricDelete = (el) => removeMine(st.key, Number(el.dataset.arg));
@@ -424,6 +425,6 @@
     H().removeManual(U.S, d, 'exercise', i);
     U.commit();
     refresh();
-    U.toast('Activity removed', 'neutral', undefined, { label: 'Undo', onClick: () => { H().logManual(U.S, d, { exercise: { typeName: x.typeName, minutes: x.minutes } }); U.commit(); refresh(); } });
+    U.toast('Activity removed', 'neutral', undefined, { label: 'Undo', onClick: () => { H().logManual(U.S, d, { exercise: { typeName: x.typeName, minutes: x.minutes } }); U.commit(); refresh(); U.haptic('undo'); } });
   };
 })(typeof window !== 'undefined' ? window : globalThis);

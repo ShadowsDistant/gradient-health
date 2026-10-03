@@ -270,7 +270,7 @@
     if (p && !C().countItems(p) && C().activeId(S) !== id) { C().remove(S, id, U.today()); U.save(); }
   }
   U.act.openPlans = () => U.open('plans');
-  U.act.cpOpen = (el) => { U.haptic('tap'); U.open('planEdit', el.dataset.arg); };
+  U.act.cpOpen = (el) => U.open('planEdit', el.dataset.arg); // the page's opening has its own haptic
 
   /* ================================================================== new plan */
   U.act.cpNew = () => {
@@ -461,8 +461,8 @@
       </ul>`,
     });
     const done = () => ctl.close('ok');
-    U.act.cpDayMove = (b) => { const [a, dir] = b.dataset.arg.split(':').map(Number); done(); edit((p) => { const [d] = p.days.splice(a, 1); p.days.splice(a + dir, 0, d); }); U.haptic('select'); };
-    U.act.cpDayCopy = (b) => { const a = Number(b.dataset.arg); done(); edit((p) => { p.days.splice(a + 1, 0, JSON.parse(JSON.stringify(p.days[a]))); }); delete ui.wd[plan.id]; U.haptic('select'); };
+    U.act.cpDayMove = (b) => { const [a, dir] = b.dataset.arg.split(':').map(Number); done(); edit((p) => { const [d] = p.days.splice(a, 1); p.days.splice(a + dir, 0, d); }); U.haptic('drop'); };
+    U.act.cpDayCopy = (b) => { const a = Number(b.dataset.arg); done(); edit((p) => { p.days.splice(a + 1, 0, JSON.parse(JSON.stringify(p.days[a]))); }); delete ui.wd[plan.id]; U.haptic('log'); };
     U.act.cpDayDelete = (b) => {
       const a = Number(b.dataset.arg);
       done();
@@ -471,7 +471,7 @@
       edit((p) => { p.days.splice(a, 1); p.weekdays = null; });
       delete ui.wd[plan.id];
       U.haptic('heavy');
-      U.toast('Day deleted', 'neutral', undefined, { label: 'Undo', onClick: () => { if (U.route.arg === plan.id) edit((p) => { p.days = before; p.weekdays = wdBefore; }); } });
+      U.toast('Day deleted', 'neutral', undefined, { label: 'Undo', onClick: () => { if (U.route.arg === plan.id) { edit((p) => { p.days = before; p.weekdays = wdBefore; }); U.haptic('undo'); } } });
     };
   };
 
@@ -506,7 +506,7 @@
           <div class="cp-step"><span class="t-subhead">${m.timed ? 'Seconds' : m.uni ? 'Reps each side' : 'Reps'}</span>${U.stepper('cpAmt', amt, m.timed ? 5 : 1, m.timed ? 600 : 100, m.timed ? 'Seconds' : 'Reps', 'data-on="cpAmt"', m.timed ? 5 : 1)}</div>
         </div>
         <p class="t-subhead cp-rest-label">Rest between sets</p>
-        <div class="ob-chips cp-rest" role="group" aria-label="Rest between sets">${restOpts.map(([v, t]) => U.chip(t, v === rest, `data-act="cpRestPick" data-arg="${v}"`)).join('')}</div>
+        ${U.choice('cpRest', restOpts, rest, 'Rest between sets', ' class="ob-chips cp-rest" data-on="cpRestPick"')}
         <p class="t-footnote rf-muted">${m.timed ? 'Hold for this long each set.' : 'Your reps go up from here as it gets easier, then the weight, when there is one.'}${rest === 'auto' ? ' Auto rest is 90 s after big moves, 60 s after small ones.' : ''}</p>
         <div class="cp-item-acts">
           <button type="button" class="rf-btn" data-act="cpItemMove" data-arg="-1"${k === 0 ? ' disabled' : ''}>${U.icon('chevron-up')}Up</button>
@@ -523,12 +523,7 @@
     };
     U.on.cpSets = (el, ev, v) => change((it) => { it.sets = Math.max(1, Math.min(10, Math.round(v) || 1)); });
     U.on.cpAmt = (el, ev, v) => change((it) => { const m = M().MOVES[it.move]; if (m.timed) it.secs = Math.max(5, Math.min(600, Math.round(v) || 5)); else it.reps = Math.max(1, Math.min(100, Math.round(v) || 1)); });
-    U.act.cpRestPick = (b) => {
-      const v = b.dataset.arg;
-      change((it) => { if (v === 'auto') delete it.rest; else it.rest = Number(v); });
-      for (const c of b.parentNode.querySelectorAll('.rf-chip')) c.setAttribute('aria-pressed', String(c === b));
-      U.haptic('select');
-    };
+    U.on.cpRestPick = (el, ev, v) => { change((it) => { if (v === 'auto') delete it.rest; else it.rest = Number(v); }); };
     U.act.cpItemMove = (b) => {
       const dir = Number(b.dataset.arg);
       const plan = C().get(S, planId);
@@ -536,7 +531,7 @@
       if (k + dir < 0 || k + dir >= n) return;
       edit((p) => { const list = p.days[di].items; const [x] = list.splice(k, 1); list.splice(k + dir, 0, x); });
       k += dir;
-      U.haptic('select');
+      U.haptic('drop');
       ctl.update(body());
       drawThumbs(ctl.el);
     };
@@ -548,7 +543,7 @@
       ctl.close('ok');
       edit((p) => { p.days[di].items.splice(at, 1); });
       U.haptic('heavy');
-      U.toast(`Removed ${M().MOVES[it.move].name.toLowerCase()}`, 'neutral', undefined, { label: 'Undo', onClick: () => { if (U.route.arg === planId) edit((p) => { if (p.days[di]) p.days[di].items.splice(at, 0, it); }); } });
+      U.toast(`Removed ${M().MOVES[it.move].name.toLowerCase()}`, 'neutral', undefined, { label: 'Undo', onClick: () => { if (U.route.arg === planId) { edit((p) => { if (p.days[di]) p.days[di].items.splice(at, 0, it); }); U.haptic('undo'); } } });
     };
     U.act.cpReplace = () => { ctl.close('ok'); picker(planId, di, k); };
   }
@@ -570,7 +565,7 @@
         const to = k + (ev.key === 'ArrowUp' ? -1 : 1);
         if (to < 0 || to >= list.children.length) return;
         edit((p) => { const items = p.days[di].items; const [x] = items.splice(k, 1); items.splice(to, 0, x); });
-        U.haptic('select');
+        U.haptic('tick');
         const again = doc.querySelector(`#screen .cp-grip[data-grip="${di}:${to}"]`);
         if (again) again.focus();
       });
@@ -588,7 +583,7 @@
       try { g.setPointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
       row.setAttribute('data-lifted', '');
       list.setAttribute('data-dragging', '');
-      U.haptic('heavy');
+      U.haptic('grab');
       const move = (e) => {
         if (e.pointerId !== d.id) return;
         const dy = e.clientY - d.y0;
@@ -601,7 +596,7 @@
         d.rects.forEach((r, i) => { if (i !== d.k && mid > r.top + r.height / 2) to++; });
         if (to !== d.to) {
           d.to = to;
-          U.haptic('select');
+          U.haptic('tick');
           d.rows.forEach((r, i) => {
             if (i === d.k) return;
             const shift = d.k < to && i > d.k && i <= to ? -d.h : d.k > to && i >= to && i < d.k ? d.h : 0;
@@ -617,9 +612,9 @@
         for (const r of d.rows) r.style.transform = '';
         row.removeAttribute('data-lifted');
         list.removeAttribute('data-dragging');
-        if (e.type !== 'pointercancel' && d.to !== d.k) {
-          edit((p) => { const items = p.days[d.di].items; const [x] = items.splice(d.k, 1); items.splice(d.to, 0, x); });
-          U.haptic('success');
+        if (e.type !== 'pointercancel') {
+          if (d.to !== d.k) edit((p) => { const items = p.days[d.di].items; const [x] = items.splice(d.k, 1); items.splice(d.to, 0, x); });
+          U.haptic('drop');
         }
       };
       g.addEventListener('pointermove', move);
@@ -661,7 +656,7 @@
     const body = () => `<div class="cp-pick">
         <div class="cp-pick-top">
           <div class="rf-search cp-q">${U.icon('search')}<input class="rf-input rf-search-input" type="search" id="cpQ" placeholder="Search exercises" aria-label="Search exercises" value="${U.esc(st.q)}" autocomplete="off" enterkeyhint="search"></div>
-          <div class="cp-filters" data-hscroll role="group" aria-label="Muscle group">${FILTERS.map(([g, t]) => `<button type="button" class="rf-chip cp-filter" aria-pressed="${st.group === g}" data-act="cpGroup" data-arg="${g}">${U.esc(t)}</button>`).join('')}</div>
+          ${U.choice('cpGroup', FILTERS, st.group, 'Muscle group', ' class="cp-filters" data-hscroll data-on="cpGroup"')}
           <ul class="rf-list cp-mine">${U.sw('Only what I can do', st.mine, 'data-on="cpMine"', 'With your equipment, today')}</ul>
         </div>
         <div class="cp-results" data-key="res">${tiles()}</div>
@@ -682,7 +677,7 @@
         if (res) { U.morph(res, tiles()); drawThumbs(res); }
       }, 110);
     });
-    U.act.cpGroup = (b) => { st.group = b.dataset.arg; U.haptic('select'); refresh(); };
+    U.on.cpGroup = (el, ev, v) => { st.group = v; refresh(); };
     U.on.cpMine = (el, ev, v) => { st.mine = !!v; refresh(); };
     U.act.cpPickDone = () => ctl.close('ok');
     U.act.cpPick = (b) => {
@@ -705,7 +700,7 @@
         st.added.splice(mine, 1);
         U.haptic('toggleOff');
       } else {
-        if (have.length >= C().LIMITS.items) { U.toast(`A day holds up to ${C().LIMITS.items} exercises`, 'caution'); return; }
+        if (have.length >= C().LIMITS.items) { U.haptic('deny'); U.toast(`A day holds up to ${C().LIMITS.items} exercises`, 'caution'); return; }
         edit((p) => { p.days[di].items.push(item); });
         st.added.push(id);
         U.haptic('toggleOn');
@@ -726,11 +721,11 @@
     const plan = C().get(S, id);
     const before = C().activeId(S);
     const r = C().use(S, id, day);
-    if (!r) { U.toast('Finish the plan first', 'caution', C().problems(plan)[0]); return; }
+    if (!r) { U.haptic('deny'); U.toast('Finish the plan first', 'caution', C().problems(plan)[0]); return; }
     U.save(true);
     U.render();
     U.haptic('success');
-    U.toast(`Using ${plan.name}`, 'positive', r.from > day ? 'It starts tomorrow.' : 'Today and the Plan tab follow it now.', { label: 'Undo', onClick: () => { C().use(U.S, before, U.today()); U.save(true); U.render(); } });
+    U.toast(`Using ${plan.name}`, 'positive', r.from > day ? 'It starts tomorrow.' : 'Today and the Plan tab follow it now.', { label: 'Undo', onClick: () => { C().use(U.S, before, U.today()); U.save(true); U.render(); U.haptic('undo'); } });
   };
   U.act.cpCoach = () => {
     const S = U.S, day = U.today();
@@ -740,7 +735,7 @@
     U.save(true);
     U.render();
     U.haptic('toggleOff');
-    U.toast('Back to the coach\'s plan', 'neutral', r && r.from > day ? 'From tomorrow.' : 'It picks up from today.', { label: 'Undo', onClick: () => { C().use(U.S, before, U.today()); U.save(true); U.render(); } });
+    U.toast('Back to the coach\'s plan', 'neutral', r && r.from > day ? 'From tomorrow.' : 'It picks up from today.', { label: 'Undo', onClick: () => { C().use(U.S, before, U.today()); U.save(true); U.render(); U.haptic('undo'); } });
   };
   U.act.cpMenu = (el) => {
     const id = el.dataset.arg;
@@ -770,7 +765,7 @@
       const token = C().remove(U.S, id, U.today());
       U.save(true);
       if (U.route.view === 'planEdit' && U.route.arg === id) U.back(); else U.render();
-      U.toast('Plan deleted', 'neutral', undefined, { label: 'Undo', onClick: () => { C().restore(U.S, token, U.today()); U.save(true); U.render(); } });
+      U.toast('Plan deleted', 'neutral', undefined, { label: 'Undo', onClick: () => { C().restore(U.S, token, U.today()); U.save(true); U.render(); U.haptic('undo'); } });
     };
   };
 
@@ -781,7 +776,7 @@
     const S = U.S;
     const plan = C().get(S, el.dataset.arg || U.route.arg);
     if (!plan) return;
-    if (C().problems(plan).length) { U.toast('Finish the plan first', 'caution', C().problems(plan)[0]); return; }
+    if (C().problems(plan).length) { U.haptic('deny'); U.toast('Finish the plan first', 'caution', C().problems(plan)[0]); return; }
     const name = firstName();
     const st = { withName: !!name, data: null, error: null };
     const code = () => (st.data ? C().link(st.data) : '');
@@ -809,6 +804,7 @@
       const text = `${who}: ${plan.name} (${C().summary(plan)}). Open it in Gradient Health: ${code()}`;
       const ok = GH.platform && GH.platform.share(text);
       U.haptic('tap');
+      if (U.badgeEvent) U.badgeEvent('sharedPlan');
       if (!ok) U.act.cpCopyLink();
     };
     U.act.cpCopyLink = async () => {
@@ -826,9 +822,10 @@
     if (text) openShared(text);
   };
   let pendingLink = null;
-  // A plan code or link from anywhere: the scanner, a link the app was opened with, a paste.
+  // A plan code or link from anywhere: the scanner, a link the app was opened with, a paste. During
+  // set-up it waits, and set-up hears of it (its welcome offers the plan, src/ui/onboarding.js).
   async function openShared(text) {
-    if (!U.S || !U.S.profile.onboarded) { pendingLink = text; return; }
+    if (!U.S || !U.S.profile.onboarded) { pendingLink = text; doc.dispatchEvent(new CustomEvent('gh-shared-plan')); return; }
     let got;
     try { got = await C().decode(text); } catch (e) {
       U.toast(e.code === 'newer' ? 'Update Gradient Health to open this plan' : 'That plan couldn\'t be opened', 'caution', e.message);
@@ -837,6 +834,17 @@
     importSheet(got);
   }
   U.openSharedPlan = openShared;
+  // Set-up's invited-friend path looks at the plan a link is waiting to open, without opening it:
+  // { plan, report, take() } or null. take() hands it over to set-up (which saves it, and uses it if
+  // they start with it), so it doesn't open again once set-up is done.
+  U.peekSharedPlan = async () => {
+    if (!pendingLink && (!U.S || !U.S.profile.onboarded)) coldLink();
+    const link = pendingLink;
+    if (!link) return null;
+    let got;
+    try { got = await C().decode(link); } catch (e) { return null; }
+    return Object.assign({}, got, { take: () => { if (pendingLink === link) pendingLink = null; } });
+  };
   function importSheet(got) {
     const S = U.S, day = U.today();
     const plan = got.plan;
@@ -970,7 +978,7 @@
       if (!q) return;
       const v = q.value.trim();
       q.value = v ? `${v.replace(/[,.\s]+$/, '')}, ${b.dataset.arg.toLowerCase()}` : b.dataset.arg;
-      U.haptic('select');
+      U.haptic('tick');
     };
     U.act.cpBuildGo = async () => {
       const q = doc.getElementById('cpAskQ');

@@ -43,7 +43,7 @@
         <span class="at-ic">${U.icon(tp.icon)}</span><span class="at-name">${U.esc(tp.label)}</span>${t === mark ? `<span class="at-last t-caption">${pre ? 'For today' : 'Last time'}</span>` : ''}</button>`;
     }).join('');
     U.sheet({
-      title: 'Start an activity', size: 'fit', cls: 'at-sheet',
+      title: 'Record a walk, run or ride', size: 'fit', cls: 'at-sheet',
       body: `<div class="sheet-pad at-pick"><div class="at-grid">${tiles}</div>
         <p class="t-footnote rf-muted at-note">${U.icon('lock', 'sm')}<span>Your route stays on this phone. It goes to Health Connect only if you save it there.</span></p></div>`,
     });
@@ -197,7 +197,7 @@
     }
   }
   U.actOpenLive = openLive;
-  U.act.actOpenLive = () => { U.haptic('tap'); openLive(); };
+  U.act.actOpenLive = () => { U.haptic('nav'); openLive(); };
   function hideLive(animate) {
     if (!el) return;
     if (offBack) { offBack(); offBack = null; }
@@ -210,7 +210,7 @@
     const t = setTimeout(done, 320);
     an.onfinish = () => { clearTimeout(t); done(); an.cancel(); };
   }
-  U.act.alMin = () => { U.haptic('tap'); hideLive(); };
+  U.act.alMin = () => { U.haptic('back'); hideLive(); };
   function onBack() {
     if (!shown()) return false;
     // A sheet or dialog over the screen closes first (the app's own Back does that).
@@ -252,7 +252,7 @@
       U.save();
       if (last && shown()) {
         L.splitBanner = { n: whole, ms: last.ms, until: now + 8000 };
-        U.haptic('success');
+        U.haptic('milestone');
       }
     }
   }
@@ -318,7 +318,7 @@
     if (!L || L.phase !== 'countdown') return;
     if (U.S.actLive.noGps) { discard(true); return; }
     L.phase = 'search';
-    U.haptic('toggleOff');
+    U.haptic('tick');
     awake();
     draw();
   }
@@ -342,7 +342,7 @@
     R().pause();
     logPause(true, Date.now());
     if (L.st) L.st = Object.assign({}, L.st, { paused: true, elapsedMs: A().clockMs(L.st, Date.now()), at: Date.now() });
-    U.haptic('toggleOff');
+    U.haptic('pause');
     pull(true);
     draw();
   };
@@ -521,12 +521,12 @@
         holding = false;
         if (b) b.classList.remove('is-holding');
         justHeld = Date.now();
-        U.haptic('done');
+        U.haptic('detent');
         finish(false);
       }, HOLD_MS) };
       btn.classList.add('is-holding');
       holding = true;
-      U.haptic('tick');
+      U.haptic('press');
     });
     document.addEventListener('pointermove', (e) => { if (hold && e.pointerId === hold.id && Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 36) stop(); });
     document.addEventListener('pointerup', (e) => { if (hold && e.pointerId === hold.id) stop(); });
@@ -543,7 +543,7 @@
     const l = el && el.querySelector('.al-finish .al-btn-l');
     if (!l) return;
     l.textContent = 'Keep holding';
-    U.haptic('warning');
+    U.haptic('deny');
     setTimeout(() => { if (l.isConnected) l.textContent = 'Hold to finish'; }, 1400);
   }
   async function confirmFinish() {
@@ -611,10 +611,11 @@
     plat().keepAwake(false);
     if (open) {
       U.open('activity', act.id);
-      U.haptic(act.records.length ? 'celebrate' : 'success');
+      U.haptic(act.records.length ? 'pr' : 'workoutDone');
     } else U.render();
     if (U.checklistCheck) U.checklistCheck();
     if (U.actAfterFinish) U.actAfterFinish(act);
+    if (U.badgeCheck) U.badgeCheck('activity'); // a first run, a 5K, a record: a toast with the medal
     return act;
   }
   // Discard: nothing is kept (quiet: no question, e.g. before the clock started).

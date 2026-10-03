@@ -17,15 +17,17 @@ Gradient Health plans a workout for each day of your week around your goals, the
 | | |
 |---|---|
 | **[Today](#today)** | Today's workout, with what the coach changed and why |
-| **[Plan](#plan)** | Your week at a glance: move a workout, see any day, peek at next week |
+| **[Plan](#plan)** | Your week at a glance, why it's built that way, and an AI check you approve |
 | **[Your plans](#your-plans)** | Build your own plan, or ask the coach for one, and share it with a QR code |
 | **[Workouts](#workouts)** | A 3D figure for every move, one question after each exercise, and a plan that fits your age and your body |
 | **[Moves](#moves)** | 282 exercises, at home or at the gym, seated or standing, each with a how-to |
+| **[Badges](#badges)** | 64 to earn, from your first workout to a 100-day streak, to share with friends and family |
 | **[Activities](#activities)** | Runs, walks, hikes and rides with GPS, a map, and your watch's heart rate |
 | **[Food](#food)** | Calories and macros, or just protein, or nothing |
 | **[Health](#health)** | Sleep, steps, heart rate, weight and more at a glance, with the history behind each number |
 | **[Progress](#progress)** | A body map of what you've trained and what's improved |
 | **[The coach](#the-coach)** | Ask it anything about your numbers, and tailor your plan by just saying what you want |
+| **[You](#you)** | Your profile, badges, plans and Settings in one place |
 
 ## Today
 
@@ -37,10 +39,14 @@ A strip of seven days shows the whole week: done, today, workouts to come, light
 
 Miss a day and the rest of the week moves forward instead of doubling up. Every fifth week is a lighter deload week, and it comes sooner if you're run down.
 
+**Why this plan.** The planner weighs every way to share your muscle groups over your days, often thousands of them, and picks the week that fits your goals, your time and your recovery best. Why this plan shows what it compared, how your week scores, and how full body, upper and lower, or push, pull and legs would do instead. Workouts fill the time you set (an hour means an hour, and never more), and every muscle gets its weekly minimum; on the shortest days, muscle groups take turns over two weeks.
+
+**Check my plan with AI.** The on-device coach or Claude looks your plan over and suggests up to three changes. Each one is checked first against your equipment, your joints and your time, and shows what it changes ("+2 back sets a week"). Pick the ones you want, and Undo puts it back. With Claude on, the weekly report brings plan ideas too.
+
 <p align="center">
   <img src="docs/screenshots/plan.png" width="200" alt="Plan: the week strip and today's workout">
-  <img src="docs/screenshots/rest-dark.png" width="200" alt="Rest timer, in dark mode, with the question: how many more could you have done?">
-  <img src="docs/screenshots/gym.png" width="200" alt="A gym day: barbell curls, rope pushdowns, bench press and pulldowns with starting weights">
+  <img src="docs/screenshots/why.png" width="200" alt="Why this plan: how many weeks the planner compared, and how this one scores">
+  <img src="docs/screenshots/review-dark.png" width="200" alt="The coach's review, in dark mode: two suggested changes, each with what it would change, switched on to apply, and one that wasn't applied">
 </p>
 
 ## Your plans
@@ -56,7 +62,7 @@ Share a plan with a QR code or a link. Your friend scans it or taps it, sees the
 
 ## Workouts
 
-**It fits your life.** Tell it what you want (visible abs, bigger arms, stronger legs, just showing up more), how many days you can train and for how long. Your top goals are trained most and done first, while you're fresh. Ten minutes or an hour, two days a week or six, a pair of dumbbells or nothing at all.
+**It fits your life.** Set-up takes six short steps and ends on your plan, with your first workout a tap away. Tell it what you want (visible abs, bigger arms, stronger legs, just showing up more), how many days you can train and for how long. Your top goals are trained most and done first, while you're fresh. Ten minutes or an hour, two days a week or six, a pair of dumbbells or nothing at all.
 
 **A 3D figure shows every move,** at the right tempo, with the working muscles lit. Drag it to see it from any side. A strip under it shows how long to take on each half of a rep, and a countdown haptic tells you when a timer's about to end.
 
@@ -73,13 +79,15 @@ Share a plan with a QR code or a link. Your friend scans it or taps it, sees the
 Started by mistake? Go back and cancel the workout: nothing from it is saved or counts against your streak.
 
 <p align="center">
+  <img src="docs/screenshots/setup-dark.png" width="200" alt="Set-up's last step, in dark mode: the plan it made, with the first workout a tap away">
+  <img src="docs/screenshots/rest-dark.png" width="200" alt="Rest timer, in dark mode, with the question: how many more could you have done?">
+  <img src="docs/screenshots/gym.png" width="200" alt="A gym day: barbell curls, rope pushdowns, bench press and pulldowns with starting weights">
   <img src="docs/screenshots/around.png" width="200" alt="Built around you: a plan for a 68-year-old with balance problems and a sore knee">
-  <img src="docs/screenshots/setup-dark.png" width="200" alt="Set-up, in dark mode: anything the plan should work around">
 </p>
 
 ## Moves
 
-282 exercises, each with a how-to: the figure, the cues that matter and the muscles it works. Home moves climb in ladders from easy to hard (push-ups from the wall to the floor and beyond), so there's always a next step, even with no equipment: a chair, a wall and a towel give you rows, overhead presses, calf raises and hamstring curls. Warm-ups follow the day's muscles, and with the mobility goal a short cool-down stretches what you trained. 71 of them are seated, supported, balance and floor-friendly moves for the plans that need them. Don't like a move? Swap it, or tell the coach to leave it out.
+282 exercises in Plan's Moves section, each with a how-to: the figure, the cues that matter and the muscles it works. Home moves climb in ladders from easy to hard (push-ups from the wall to the floor and beyond), so there's always a next step, even with no equipment: a chair, a wall and a towel give you rows, overhead presses, calf raises and hamstring curls. Warm-ups follow the day's muscles, and with the mobility goal a short cool-down stretches what you trained. 71 of them are seated, supported, balance and floor-friendly moves for the plans that need them. Don't like a move? Swap it, or tell the coach to leave it out.
 
 ## Activities
 
@@ -114,6 +122,23 @@ A body map, front and back, lights up the muscles you've trained most over the l
 
 Strength charts, your left and right sides, levels, and the moments worth remembering are all there too.
 
+## Badges
+
+64 badges for the things worth celebrating: your first workout, streaks from 3 days to 100, every muscle trained in a week, your first pull-up, a 5K, a month of protein goals, and a few secret ones. Once earned they're yours for good, with the date. Share one as a picture with friends and family: it shows the badge and what it took, and your name only if you choose.
+
+<p align="center">
+  <img src="docs/screenshots/badges.png" width="200" alt="Badges: the ones earned so far, with their tiers, and what's next">
+  <img src="docs/screenshots/badge-share-dark.png" width="200" alt="Sharing a badge as a picture, in dark mode: the medal, what it took and the date, with your name only if you turn it on">
+</p>
+
+## You
+
+Your profile, your badges, your plans, your set-up answers and Settings live in the You tab. Settings has a search, so units or haptics are a word away.
+
+<p align="center">
+  <img src="docs/screenshots/you-dark.png" width="200" alt="You, in dark mode: your profile, badges and plans">
+</p>
+
 ## The coach
 
 **It shows its work.** The coach never changes your plan quietly. Today's card says what changed and why, and the Coach page lists its suggestions (you apply them or not), what it's keeping an eye on and every change it made lately.
@@ -140,7 +165,7 @@ Pick a size in the chat or in Settings: Fast (0.8B, 533 MB) starts answering soo
 
 ## Made to feel good
 
-Glass bars and buttons over soft colours that drift slowly behind each page. Sheets that slide up from the bottom and follow your finger, from a quick glance up to full height. Haptics with a feel of their own for each thing you do (a tap, a toggle, a timer counting down, a finished set, a new best) in Light, Medium or Strong, with a Try it row to feel them. 3D figures appear right away, with a picture of the move until it starts. Light and dark themes, bigger text, reduced motion and increased contrast are all respected.
+Glass bars, switches and buttons over soft colours that drift slowly behind each page, and controls that answer every tap, even a slightly wobbly one. Pages slide away as the next one comes in, and cards glide when something is added or removed. Sheets slide up from the bottom and follow your finger, from a quick glance up to full height. Haptics have 31 distinct feels (a tick for each tab, a bump at the end of a stepper, a timer counting down, a finished set, a new best, a badge) in Light, Medium or Strong, and you can feel each one in Settings. 3D figures appear right away, with a picture of the move until it starts. Light and dark themes, bigger text, reduced motion and increased contrast are all respected.
 
 ## Built on research, and honest about it
 
@@ -148,7 +173,6 @@ Every rule Gradient Health follows, from how many sets you do to how long you re
 
 <p align="center">
   <img src="docs/screenshots/science.png" width="200" alt="How it works: stopping 1 to 3 reps short of failure, with its research">
-  <img src="docs/screenshots/profile-dark.png" width="200" alt="Profile, in dark mode: stats and achievements">
   <img src="docs/screenshots/trends.png" width="200" alt="Trends: sleep and resting heart rate over four weeks">
 </p>
 

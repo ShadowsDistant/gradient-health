@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
@@ -99,6 +100,12 @@ public final class MainActivity extends Activity {
     private WebView webView;
     private Bridge bridge;
     private boolean pageLoaded;
+    /**
+     * True while the WebView shows the app's own page (https://appassets.androidplatform.net). Set
+     * on the UI thread as each page starts and as its address changes; Bridge reads it on its own
+     * thread before anything that reads or changes data, or reaches the network or another app.
+     */
+    private volatile boolean pageTrusted;
     private String pendingRoute;
     private volatile boolean destroyed;
     private int rendererCrashes;
@@ -167,6 +174,11 @@ public final class MainActivity extends Activity {
             s.setTextZoom(textZoomFor(getResources().getConfiguration()));
             s.setAllowFileAccess(false);
             s.setAllowContentAccess(false);
+            // One page in one window: no pop-ups (window.open stays a navigation, which
+            // handleNavigation sends to the browser), and nothing over http on the https page.
+            s.setSupportMultipleWindows(false);
+            s.setJavaScriptCanOpenWindowsAutomatically(false);
+            s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
             wv.setBackgroundColor(currentBackground());
             wv.setWebViewClient(new AppWebViewClient());
             // A WebChromeClient is needed for alert()/confirm()/prompt() dialogs to show at all, and
@@ -179,6 +191,9 @@ public final class MainActivity extends Activity {
             root.addView(wv, lp);
             webView = wv;
             pageLoaded = false;
+            // Trusted from the start, so the page's first bridge calls (load, as it boots) never
+            // race onPageStarted; the WebViewClient keeps it in step from here on.
+            pageTrusted = isAppHost(Uri.parse(url));
             wv.loadUrl(url);
         } catch (Throwable t) {
             // Android System WebView missing, disabled or mid-update: explain instead of crashing.
@@ -936,6 +951,89 @@ public final class MainActivity extends Activity {
         tryStartActivity(Intent.createChooser(send, null));
     }
 
+    private static final Object SHARED_LOCK = new Object();
+    private static final int SHARED_KEEP = 5;
+    private static final long SHARED_MAX_AGE_MS = 60L * 60L * 1000L;
+
+    /**
+     * Writes a picture to share to cacheDir/shared/badge-<ms>.png, where ShareProvider serves it.
+     * Pictures older than an hour go first, and only the newest few stay (with this one, five at
+     * most): the app they went to has read them by then. Returns the file, or null.
+     */
+    java.io.File saveSharedImage(byte[] png) {
+        synchronized (SHARED_LOCK) {
+            java.io.File dir = new java.io.File(getCacheDir(), ShareProvider.DIR);
+            if (!dir.isDirectory() && !dir.mkdirs()) {
+                return null;
+            }
+            pruneShared(dir, SHARED_KEEP - 1);
+            java.io.File file = new java.io.File(dir, "badge-" + System.currentTimeMillis() + ".png");
+            java.io.FileOutputStream out = null;
+            try {
+                out = new java.io.FileOutputStream(file);
+                out.write(png);
+                out.flush();
+                return file;
+            } catch (java.io.IOException e) {
+                file.delete();
+                return null;
+            } finally {
+                if (out != null) {
+                    try {
+                        out.close();
+                    } catch (java.io.IOException e) {
+                        // already written, or already gone
+                    }
+                }
+            }
+        }
+    }
+
+    private static void pruneShared(java.io.File dir, int keep) {
+        java.io.File[] files = dir.listFiles();
+        if (files == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        java.util.List<java.io.File> left = new java.util.ArrayList<java.io.File>();
+        for (java.io.File f : files) {
+            if (!f.isFile() || !f.getName().endsWith(".png") || now - f.lastModified() > SHARED_MAX_AGE_MS) {
+                f.delete();
+            } else {
+                left.add(f);
+            }
+        }
+        java.util.Collections.sort(left, new java.util.Comparator<java.io.File>() {
+            @Override
+            public int compare(java.io.File a, java.io.File b) {
+                return Long.compare(b.lastModified(), a.lastModified());
+            }
+        });
+        for (int i = keep; i < left.size(); i++) {
+            left.get(i).delete();
+        }
+    }
+
+    /**
+     * Shares a picture from saveSharedImage on the share sheet, with a line of text. The app picked
+     * gets a read grant for that one content:// address (on the intent and on the chooser, whose
+     * preview shows the picture), nothing more.
+     */
+    void shareImage(java.io.File file, String text) {
+        Uri uri = ShareProvider.uriFor(file);
+        Intent send = new Intent(Intent.ACTION_SEND);
+        send.setType("image/png");
+        send.putExtra(Intent.EXTRA_STREAM, uri);
+        if (text != null && !text.isEmpty()) {
+            send.putExtra(Intent.EXTRA_TEXT, text);
+        }
+        send.setClipData(android.content.ClipData.newRawUri("", uri));
+        send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        Intent chooser = Intent.createChooser(send, null);
+        chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        tryStartActivity(chooser);
+    }
+
     boolean isInstalled(String pkg) {
         try {
             getPackageManager().getPackageInfo(pkg, 0);
@@ -945,10 +1043,13 @@ public final class MainActivity extends Activity {
         }
     }
 
-    /** Plays a haptic by name (see Haptics). The view is only for phones without a vibrator to drive. */
+    /**
+     * A haptic by name on a phone without a vibrator the app can drive (Bridge.haptic plays it on the
+     * vibrator itself otherwise): the view's own touch feedback, for the UI kinds.
+     */
     void haptic(String kind) {
         View v = webView != null ? webView : root;
-        Haptics.play(this, v, kind);
+        Haptics.playOnView(this, v, kind);
     }
 
     /** API 30+ calls, isolated so older devices never load WindowInsetsController. */
@@ -987,8 +1088,37 @@ public final class MainActivity extends Activity {
 
     // ---------------------------------------------------------------- navigation
 
+    /** The app's own origin: https://appassets.androidplatform.net, never over http or on another port. */
     static boolean isAppHost(Uri uri) {
+        return uri != null && "https".equalsIgnoreCase(uri.getScheme()) && APP_HOST.equalsIgnoreCase(uri.getHost())
+                && (uri.getPort() == -1 || uri.getPort() == 443);
+    }
+
+    /** The app's host name under any scheme or port: only https on the usual port is the app. */
+    private static boolean namesAppHost(Uri uri) {
         return uri != null && APP_HOST.equalsIgnoreCase(uri.getHost());
+    }
+
+    /** Bridge's check: whether the page calling in is the app's own. */
+    boolean pageTrusted() {
+        return pageTrusted;
+    }
+
+    /**
+     * Follows the main frame's address (onPageStarted, doUpdateVisitedHistory). about:blank keeps the
+     * flag as it was: it takes the origin of the page that opened it.
+     */
+    private void trackPage(WebView view, String url) {
+        if (view != webView || url == null || "about:blank".equalsIgnoreCase(url)) {
+            return;
+        }
+        boolean trusted;
+        try {
+            trusted = isAppHost(Uri.parse(url));
+        } catch (Throwable t) {
+            trusted = false;
+        }
+        pageTrusted = trusted;
     }
 
     /** Parses an absolute http(s) URL with a host, or returns null. */
@@ -1008,24 +1138,30 @@ public final class MainActivity extends Activity {
         return null;
     }
 
-    /** @return true to cancel the WebView navigation. */
+    /**
+     * @return true to cancel the WebView navigation. Only the app's own pages load in the WebView (the
+     * page and any frame in it), plus about:blank. Another http(s) page the page links to opens in
+     * the browser; a frame never loads one. javascript:, data: and blob: pages are blocked, as are
+     * intent:, file:, content:, market: and the rest: nothing but the app's page runs with the bridge.
+     */
     private boolean handleNavigation(Uri uri, boolean mainFrame) {
         if (uri == null) {
             return true;
         }
+        if (isAppHost(uri)) {
+            return false; // our own page stays inside
+        }
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+        if ("about".equals(scheme)) {
+            return !"about:blank".equalsIgnoreCase(uri.toString());
+        }
+        if (!mainFrame || namesAppHost(uri)) {
+            return true; // a foreign frame, or the app's host over http: neither is the app
+        }
         if ("http".equals(scheme) || "https".equals(scheme)) {
-            if (isAppHost(uri) || !mainFrame) {
-                return false; // our own page stays inside
-            }
             openExternal(uri);
-            return true;
         }
-        if ("about".equals(scheme) || "blob".equals(scheme) || "data".equals(scheme)
-                || "javascript".equals(scheme)) {
-            return false;
-        }
-        return true; // intent:, file:, content:, market: and friends are blocked
+        return true;
     }
 
     private static WebResourceResponse emptyResponse(int status, String reason) {
@@ -1098,6 +1234,11 @@ public final class MainActivity extends Activity {
         public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
             Uri uri = request != null ? request.getUrl() : null;
             if (!isAppHost(uri)) {
+                if (namesAppHost(uri)) {
+                    // http://appassets.androidplatform.net (or another port) is never the app, and
+                    // must not reach the network as if it were.
+                    return emptyResponse(403, "Forbidden");
+                }
                 return null; // real network, e.g. https://api.anthropic.com for the AI coach
             }
             String path = uri.getPath();
@@ -1124,6 +1265,16 @@ public final class MainActivity extends Activity {
                 return false;
             }
             return handleNavigation(request.getUrl(), request.isForMainFrame());
+        }
+
+        @Override
+        public void onPageStarted(WebView view, String url, Bitmap favicon) {
+            trackPage(view, url);
+        }
+
+        @Override
+        public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
+            trackPage(view, url);
         }
 
         @Override

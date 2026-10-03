@@ -81,6 +81,7 @@
       ${list('Wins', (d.wins || []).map(winText), 'star', 'good')}
       ${list('Keep an eye on', d.watch, 'alert', 'watch')}
       ${list('Focus next', d.focus, 'flag', 'focus')}
+      ${U.planIdeas && w.rep ? U.planIdeas(S, day, w.rep) : ''}
       ${d.ask_me && d.ask_me.length ? `<div class="hl-asks rs-asks" data-hscroll role="group" aria-label="Ask the coach">${d.ask_me.map((q) => `<button type="button" class="rf-chip" data-act="askPreset" data-arg="${U.esc(q)}">${U.esc(q)}</button>`).join('')}</div>` : ''}
       <p class="t-footnote rf-muted rs-meta">${meta}</p>
       <div class="btn-row rs-btns">
@@ -92,8 +93,9 @@
   }
   let reportCtl = null;
   const refreshReport = () => { if (reportCtl && !reportCtl.closed) reportCtl.update(reportBody(U.S, U.today())); };
+  // (Also once the plan review loads, for the report's plan ideas: src/ui/lazy.js.)
+  U.refreshReport = refreshReport;
   U.act.healthReport = () => {
-    U.haptic('tap');
     const ctl = U.sheet({ title: 'This week', size: 'auto', cls: 'rs-sheet', body: reportBody(U.S, U.today()), onClose: () => { if (reportCtl === ctl) reportCtl = null; } });
     reportCtl = ctl;
   };
@@ -249,7 +251,7 @@
     const list = H().activity(S, day - 27, day);
     // Starting an outdoor activity; the ones recorded here open their summary (src/ui/activity.js).
     const start = U.actHealthStart ? U.actHealthStart(S) : '';
-    if (!list.length) return `${start}<div class="card hl-note" data-key="noact"><p class="t-callout rf-muted">No workouts in the last 4 weeks yet. Start an activity, log one with the + button, or connect Health Connect.</p></div>`;
+    if (!list.length) return `${start}<div class="card hl-note" data-key="noact"><p class="t-callout rf-muted">No workouts in the last 4 weeks yet. Record a walk, run or ride, log other exercise with the + button, or connect Health Connect.</p></div>`;
     const rows = list.slice(0, 4).map((a) => (a.src === 'activity' && U.actHealthRow && U.actHealthRow(a)) || U.row({
       icon: a.src === 'app' ? 'bolt' : a.src === 'manual' ? 'pencil' : 'heart', tone: a.src === 'app' ? 'indigo' : a.src === 'manual' ? 'amber' : 'rose',
       title: U.esc(U.cap(a.name || 'Workout')), sub: `${U.esc(U.fmtDay(a.day))}${a.src === 'app' ? ' · Gradient Health' : a.src === 'manual' ? ' · logged by you' : ' · Health Connect'}`,
@@ -294,7 +296,7 @@
     const S = U.S;
     if (v && !(H().canWrite && H().canWrite())) {
       const st = await H().request(S);
-      if (!(H().canWrite && H().canWrite())) { el.checked = false; U.toast('Not allowed yet', 'caution', 'Turn on Exercise under Gradient Health in Health Connect.', { label: 'Open', onClick: () => H().openSettings() }); return; }
+      if (!(H().canWrite && H().canWrite())) { U.revertSwitch(el); U.toast('Not allowed yet', 'caution', 'Turn on Exercise under Gradient Health in Health Connect.', { label: 'Open', onClick: () => H().openSettings() }); return; }
       S.health.status = st;
     }
     S.health.write = !!v;
@@ -322,7 +324,7 @@
     const item = (act, icon, label) => `<button type="button" class="rf-menu-item" role="menuitem" data-act="${act}">${U.icon(icon)}<span>${label}</span></button>`;
     return `<button type="button" class="rf-btn rf-glass" data-shape="circle" data-lens aria-label="Log something" aria-haspopup="menu" popovertarget="hlLog">${U.icon('plus')}</button>
       <div class="rf-menu rf-glass hl-log" data-variant="thick" id="hlLog" popover="auto" aria-label="Log" data-placement="below">
-        ${item('logWeight', 'scale', 'Weight')}${item('logSleep', 'moon', 'Sleep')}${item('logFeel', 'sparkle', 'Feel check')}${item('logActivity', 'bolt', 'Activity')}${item('logMeasure', 'pin', 'Measurements')}
+        ${item('logWeight', 'scale', 'Weight')}${item('logSleep', 'moon', 'Sleep')}${item('logFeel', 'sparkle', 'Feel check')}${item('logActivity', 'bolt', 'Other exercise')}${item('logMeasure', 'pin', 'Measurements')}
       </div>`;
   }
   const unitLen = () => (U.S.profile.units === 'kg' ? 'cm' : 'in');
@@ -330,19 +332,19 @@
   U.act.logWeight = () => U.metricEdit('weightKg', U.today());
   U.act.logSleep = () => U.metricEdit('sleepMin', U.today());
   U.act.logFeel = () => U.metricSheet('feel');
-  U.act.logActivity = () => U.sheet({
-    title: 'Log an activity', size: 'auto',
-    body: `<div class="sheet-pad"><div class="ob-chips" id="actTypes">${['Walk', 'Run', 'Cycling', 'Sport', 'Gym', 'Swim', 'Yoga', 'Other'].map((t, i) => `<button type="button" class="rf-chip" aria-pressed="${i === 0}" data-on="actType" data-v="${t}">${t}</button>`).join('')}</div>
-      <p class="t-callout rf-muted">Minutes</p><div class="ob-center">${U.stepper('actMin', 30, 5, 300, 'Minutes', '', 5)}</div>
-      <p class="t-footnote rf-muted">45 min or more of hard exercise means easier legs and no finisher the next day.</p></div>`,
-    action: { label: 'Save', act: 'logActivitySave' },
-  });
-  let actType = 'Walk';
-  U.on.actType = (el, ev, v) => {
-    if (!v) { el.setAttribute('aria-pressed', 'true'); return; }
-    actType = el.dataset.v;
-    for (const c of document.querySelectorAll('#actTypes .rf-chip')) if (c !== el) c.setAttribute('aria-pressed', 'false');
+  // Each time it opens the type starts at Walk, as its picked chip does.
+  U.act.logActivity = () => {
+    actType = 'Walk';
+    return U.sheet({
+      title: 'Log other exercise', size: 'auto',
+      body: `<div class="sheet-pad">${U.choice('actType', ['Walk', 'Run', 'Cycling', 'Sport', 'Gym', 'Swim', 'Yoga', 'Other'].map((t) => [t, t]), 'Walk', 'Activity', ' class="ob-chips" id="actTypes" data-on="actType"')}
+        <p class="t-callout rf-muted">Minutes</p><div class="ob-center">${U.stepper('actMin', 30, 5, 300, 'Minutes', '', 5)}</div>
+        <p class="t-footnote rf-muted">45 min or more of hard exercise means easier legs and no finisher the next day.</p></div>`,
+      action: { label: 'Save', act: 'logActivitySave' },
+    });
   };
+  let actType = 'Walk';
+  U.on.actType = (el, ev, v) => { if (v) actType = v; };
   U.act.logActivitySave = () => {
     const m = parseInt(document.getElementById('actMin').value, 10);
     if (m > 0) {

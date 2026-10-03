@@ -47,7 +47,10 @@
 
   /* ---------------------------------------------------------------- wording */
   const fmtMin = (m) => B().fmtMin(Math.round(m));
-  const fmtInt = (n) => Math.round(n).toLocaleString('en-US');
+  // Made once, on first use (toLocaleString makes a formatter every call, and the first one made sets
+  // up the number formats, which a launch shouldn't wait for).
+  let INT = null;
+  const fmtInt = (n) => (INT || (INT = new Intl.NumberFormat('en-US'))).format(Math.round(n));
   const pct = (x) => `${Math.round(Math.abs(x) * 100)}%`;
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many || one + 's'}`;
   function wUnit(S) { return S.profile.units === 'kg' ? 'kg' : 'lb'; }
@@ -355,21 +358,176 @@
   }
 
   /* ---------------------------------------------------------------- all together */
-  function all(S, day) {
-    const raw = [];
-    for (const gen of [safety, recovery, anomalies, goals, weightTrend, trends, relationships, consistency]) {
-      try { gen(S, day, raw); } catch (e) { /* one broken generator never hides the rest */ }
-    }
+  const GENERATORS = [safety, recovery, anomalies, goals, weightTrend, trends, relationships, consistency];
+  // Sorted, one insight per metric (an anomaly beats the trend it's part of), dismissed ones out.
+  function finish(S, day, raw) {
     const dismissed = S.insightsDismissed || {};
     const list = raw.filter((x) => !(dismissed[x.id] != null && day - dismissed[x.id] < 30)).map((x) => make(x, S, day));
     list.sort((a, b) => b.score - a.score);
-    // One insight per metric (an anomaly beats the trend it's part of).
     const seen = new Set();
     return list.filter((x) => { if (seen.has(x.metric)) return false; seen.add(x.metric); return true; });
   }
-  function top(S, day, n) { return all(S, day).slice(0, n || 5); }
+  function all(S, day) {
+    const raw = [];
+    for (const gen of GENERATORS) {
+      try { gen(S, day, raw); } catch (e) { /* one broken generator never hides the rest */ }
+    }
+    return finish(S, day, raw);
+  }
+
+  /* ---------------------------------------------------------------- kept answers */
+  // top() is asked for on every render of Today and Health, and by the coach, and the generators run
+  // over weeks of data. What each generator found is kept per state and day until something it
+  // reads changes, which two stamps tell far more cheaply than running it:
+  // - the feel check and the sleep chips, read by the four generators in FEEL (straight away, or
+  //   through readiness or a night's sleep): a feel tap redoes only those
+  // - everything else: every top-level field as JSON, except the ones insights never read (or read
+  //   through others, or only when sorting: shown and dismissed); the health days, each record
+  //   stringified once (a sync or a hand log replaces a day's record rather than editing it, so
+  //   when the sync ran doesn't matter); the hand logs, which are small; the log, one short line per
+  //   entry (what changes after the fact:
+  //   the check-in, the rating, what it celebrated); the workout in progress; and food only as the
+  //   protein of the days the goals read. (Not the plans the optimizer keeps in the state,
+  //   planCache: they're worked out from the rest, and change as a launch works them out.)
+  // A generator that starts reading something new adds it here.
+  const FEEL = new Set([recovery, anomalies, trends, relationships]);
+  const SKIP = new Set(['log', 'health', 'food', 'active', 'feel', 'sleepChip', 'insightsShown', 'insightsDismissed', 'ai', 'seen', 'activities', 'actLive', 'achievements', 'pendingLines', 'updatedAt', 'createdAt', 'planCache']);
+  const dayJson = new WeakMap(); // health day record → its JSON
+  const js = (v) => (v === undefined ? '' : JSON.stringify(v));
+  function stamp(S, day) {
+    const out = [day];
+    for (const k of Object.keys(S)) if (!SKIP.has(k)) out.push(k, js(S[k]));
+    const h = S.health || {};
+    out.push(js(h.manual));
+    const days = h.days || {};
+    for (const d of Object.keys(days)) {
+      const r = days[d];
+      let t = r && typeof r === 'object' ? dayJson.get(r) : js(r);
+      if (t == null) { t = js(r); dayJson.set(r, t); }
+      out.push(d, t);
+    }
+    let lg = '';
+    for (const l of S.log || []) lg += `${l.type}.${l.day}.${l.checkedIn ? 1 : 0}.${l.pct == null ? '' : l.pct}.${l.walk ? 1 : 0}${l.mobility ? 1 : 0}.${l.walkSrc || ''}.${l.endedAt || ''}.${(l.checkin && l.checkin.rating) || ''}.${(l.celebrate || []).length}.${(l.items || []).length};`;
+    out.push(lg);
+    const a = S.active;
+    out.push(a ? `${a.day}.${a.idx}.${a.steps ? a.steps.length : 0}.${a.startedAt || ''}` : '');
+    if (S.food && S.protein && GH.brain) for (let d = day - 14; d < day; d++) out.push(B().proteinToday(S, d));
+    return out.join('\u0001');
+  }
+  const feelStamp = (S) => js([S.feel, S.sleepChip]);
+  let memo = new WeakMap(); // S → { key, feel, day, found: Map(generator → what it found) }
+  const stats = { hits: 0, misses: 0, kept: 0 };
+  // o.ready: answer only if no generator has to run (this launch, or the last one the same day, has
+  // what they found), else null. Today's first frame asks this way and works the line out after it.
+  function top(S, day, n, o) {
+    const key = stamp(S, day), feel = feelStamp(S);
+    let m = memo.get(S);
+    if (!m || m.key !== key) { m = { key, feel, day, found: (!m && kept(day, key, feel)) || new Map() }; memo.set(S, m); }
+    if (o && o.ready && !GENERATORS.every((gen) => m.found.has(gen) && (m.feel === feel || !FEEL.has(gen)))) return null;
+    let ran = false;
+    const raw = [];
+    for (const gen of GENERATORS) {
+      let found = m.found.get(gen);
+      if (found && (m.feel === feel || !FEEL.has(gen))) stats.hits++;
+      else {
+        stats.misses++;
+        ran = true;
+        found = [];
+        try { gen(S, day, found); } catch (e) { /* one broken generator never hides the rest */ }
+        m.found.set(gen, found);
+      }
+      for (const x of found) raw.push(x);
+    }
+    m.feel = feel;
+    if (ran) keepSoon(S);
+    return finish(S, day, raw).slice(0, n || 5);
+  }
+  // Works out what top() needs, a generator at a time while more() says there's time (one at least),
+  // and keeps it; true once there's nothing left to work out. For the moments after a launch, so no
+  // single task carries every generator.
+  function warm(S, day, more) {
+    const key = stamp(S, day), feel = feelStamp(S);
+    let m = memo.get(S);
+    if (!m || m.key !== key) { m = { key, feel, day, found: (!m && kept(day, key, feel)) || new Map() }; memo.set(S, m); }
+    if (m.feel !== feel) { for (const gen of FEEL) m.found.delete(gen); m.feel = feel; }
+    let ran = false, done = true;
+    for (const gen of GENERATORS) {
+      if (m.found.has(gen)) continue;
+      if (ran && !more()) { done = false; break; }
+      stats.misses++;
+      ran = true;
+      const found = [];
+      try { gen(S, day, found); } catch (e) { /* one broken generator never hides the rest */ }
+      m.found.set(gen, found);
+    }
+    if (ran) keepSoon(S);
+    return done;
+  }
+
+  /* ---------------------------------------------------------------- kept across launches */
+  // A launch usually finds the state as it was left, and the first render would otherwise run every
+  // generator on code that isn't compiled yet, a good part of the time Today takes to appear. So what
+  // they found is also kept in localStorage ('gh.v1.insights', which a reset deletes with the state),
+  // and only the same build of the app reuses it, on the same day, in the same time zone, for the
+  // same two stamps (as hashes). It holds no more than the insights show.
+  const KEEP = 'gh.v1.insights';
+  function ls() { try { return G.localStorage || null; } catch (e) { return null; } }
+  // cyrb53, a quick 53-bit string hash; with the length, plenty to tell two states apart.
+  function hash(str) {
+    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (let i = 0; i < str.length; i++) {
+      const c = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ c, 2654435761);
+      h2 = Math.imul(h2 ^ c, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return `${(4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)}.${str.length.toString(36)}`;
+  }
+  // The night-time numbers (bedtimes) read the clock in the phone's time zone.
+  const zone = () => new Date().getTimezoneOffset();
+  // What a launch can reuse for this state: generator → what it found, or null.
+  function kept(day, key, feel) {
+    const store = GH.BUILD ? ls() : null;
+    if (!store) return null;
+    let o = null;
+    try { o = JSON.parse(store.getItem(KEEP)); } catch (e) { o = null; }
+    if (!o || o.build !== GH.BUILD || o.day !== day || o.zone !== zone() || !Array.isArray(o.found) || o.found.length !== GENERATORS.length || o.key !== hash(key)) return null;
+    const sameFeel = o.feel === hash(feel);
+    const found = new Map();
+    GENERATORS.forEach((gen, i) => { if (Array.isArray(o.found[i]) && (sameFeel || !FEEL.has(gen))) { found.set(gen, o.found[i]); stats.kept++; } });
+    return found;
+  }
+  // After a call that ran generators, the page's next idle moment writes down what they found.
+  let keepJob = 0, keepFor = null, keptTxt = '';
+  function keepSoon(S) {
+    keepFor = S;
+    if (keepJob || !GH.BUILD || !G.requestIdleCallback || !ls()) return;
+    keepJob = G.requestIdleCallback(() => {
+      keepJob = 0;
+      const m = memo.get(keepFor);
+      keepFor = null;
+      if (!m) return;
+      // A generator's finds are kept only if JSON gives them back as they are (no undefined, no NaN).
+      const found = GENERATORS.map((gen) => {
+        const f = m.found.get(gen);
+        let exact = !!f;
+        const txt = f ? JSON.stringify(f, (k, v) => { if (v === undefined || typeof v === 'function' || (typeof v === 'number' && !isFinite(v))) exact = false; return v; }) : '';
+        return exact ? txt : 'null';
+      });
+      const txt = `{"build":${js(GH.BUILD)},"day":${Number(m.day) || 0},"zone":${zone()},"key":${js(hash(m.key))},"feel":${js(hash(m.feel))},"found":[${found.join(',')}]}`;
+      if (txt === keptTxt) return;
+      try { ls().setItem(KEEP, txt); keptTxt = txt; } catch (e) { /* storage full or blocked: the next launch works it out */ }
+    }, { timeout: 5000 });
+  }
+  top.clear = () => {
+    memo = new WeakMap();
+    keptTxt = '';
+    try { const store = ls(); if (store) store.removeItem(KEEP); } catch (e) { /* nothing kept */ }
+  };
+  top.stats = stats;
   function dismiss(S, id, day) { S.insightsDismissed = S.insightsDismissed || {}; S.insightsDismissed[id] = day; }
   function markShown(S, list, day) { S.insightsShown = S.insightsShown || {}; for (const x of list) if (S.insightsShown[x.id] == null) S.insightsShown[x.id] = day; }
 
-  GH.insights = { all, top, dismiss, markShown, spearman, slope, mean, sd, MIN_PAIRS };
+  GH.insights = { all, top, warm, dismiss, markShown, spearman, slope, mean, sd, MIN_PAIRS };
 })(typeof window !== 'undefined' ? window : globalThis);

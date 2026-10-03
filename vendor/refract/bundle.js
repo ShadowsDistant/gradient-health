@@ -254,10 +254,18 @@
     LUTS[profile] = out;
     return out;
   }
+  // gh-patch(map-memo): a map depends only on its size, radius, bezel and profile, so each one is
+  // encoded once and shared (a lens that rebuilds, or many controls of one size, reuse the PNG).
+  var MAP_MEMO = /* @__PURE__ */ new Map();
+  // gh-patch-end(map-memo)
   function mapURL(w, h, r, b, profile) {
     const s = Math.min(1, 520 / Math.max(w, h));
     const W = Math.max(2, Math.round(w * s)), H = Math.max(2, Math.round(h * s));
     const R = Math.min(r * s, W / 2, H / 2), B = Math.max(1, Math.min(b * s, Math.min(W, H) / 2));
+    // gh-patch(map-memo-get)
+    const memoKey = `${W},${H},${R},${B},${profile}`;
+    if (MAP_MEMO.has(memoKey)) return MAP_MEMO.get(memoKey);
+    // gh-patch-end(map-memo-get)
     const table = lut(profile);
     const canvas = document.createElement("canvas");
     canvas.width = W;
@@ -307,7 +315,12 @@
       }
     }
     ctx.putImageData(img, 0, 0);
-    return canvas.toDataURL("image/png");
+    // gh-patch(map-memo-set)
+    const url = canvas.toDataURL("image/png");
+    MAP_MEMO.set(memoKey, url);
+    if (MAP_MEMO.size > 64) MAP_MEMO.delete(MAP_MEMO.keys().next().value);
+    return url;
+    // gh-patch-end(map-memo-set)
   }
   function radiusOf(el, w, h) {
     const cs = getComputedStyle(el);
@@ -415,10 +428,13 @@
       const ro = new ResizeObserver(schedule2);
       ro.observe(el);
       schedule2();
+      // gh-patch(lens-pref): a preference change re-measures but keeps the key, so the map is only
+      // rebuilt if the lens's size or shape changed (every Settings change fires one). Reduced
+      // transparency still goes through off(), which clears the key.
       const onPref = () => {
-        key = "";
         schedule2();
       };
+      // gh-patch-end(lens-pref)
       document.addEventListener("rf:preferences", onPref);
       return () => {
         ro.disconnect();
@@ -1887,7 +1903,14 @@
     };
     offs.push(on(bar, "pointerup", end));
     offs.push(on(bar, "pointercancel", end));
-    const mo = new MutationObserver(() => position(true));
+    // gh-patch(tabbar-frame): the lens follows a change of tab at the next frame. From the observer's
+    // microtask it read the tabs' places before the frame, laying out the page the tab change had
+    // just drawn once for that read and again for the frame.
+    let moFrame = 0;
+    const mo = new MutationObserver(() => {
+      if (!moFrame) moFrame = requestAnimationFrame(() => { moFrame = 0; if (root.isConnected) position(true); });
+    });
+    // gh-patch-end(tabbar-frame)
     mo.observe(bar, { subtree: true, attributes: true, attributeFilter: ["aria-current", "aria-selected"] });
     const ro = new ResizeObserver(() => position(false));
     ro.observe(bar);

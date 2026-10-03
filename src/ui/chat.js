@@ -216,7 +216,7 @@
     unseen = false;
     if (chat && !chat.closed) { syncButtons(); return; }
     chat = U.sheet({
-      title: 'Coach', size: 'full', cls: 'chat-sheet',
+      title: 'Ask the coach', size: 'full', cls: 'chat-sheet',
       body: chatBody(S),
       // Closing doesn't stop an answer: it carries on, and the coach button shows when it's there.
       onClose: () => { chat = null; syncButtons(); },
@@ -289,7 +289,7 @@
     S.ai.mode = v === 'api' ? 'api' : 'device';
     S.ai.enabled = S.ai.mode === 'api';
     U.save();
-    U.haptic('select');
+    if (!ev) U.haptic('select'); // a segment's change has played it already
     refreshChat();
     if (S.ai.mode === 'device' && U.checkDevice) U.checkDevice().then(() => { refreshChat(); if (!deviceGate() && GH.deviceCoach && !busy()) GH.deviceCoach.prime(U.S, U.today()); });
     if (U.route.view === 'settings' || U.route.tab === 'health') setTimeout(() => U.render(), 60);
@@ -302,7 +302,7 @@
     const item = (act, icon, title) => `<li><button type="button" class="rf-list-row chat-menu-row" data-act="chatMenuPick" data-arg="${act}"><span class="rf-list-icon" data-tone="neutral">${U.icon(icon)}</span><span class="rf-list-text"><span class="rf-list-title">${title}</span></span></button></li>`;
     const rows = (chatLog(S).length || live ? item('askClear', 'trash', 'Clear this chat') : '')
       + (canHandOff() ? item('askClaudeApp', 'share', 'Ask in the Claude app') : '')
-      + item('chatSettings', 'sliders', 'Coach settings');
+      + item('chatSettings', 'sliders', 'AI coach settings');
     U.sheet({ title: 'Chat', size: 'fit', body: `<div class="sheet-pad"><ul class="rf-list">${rows}</ul></div>` });
   };
   // A pick closes the menu first, then does its thing.
@@ -426,7 +426,7 @@
         <p class="t-callout rf-muted">AI can get things wrong. Reporting hides this ${U.esc(o.what || 'answer')} on your phone and helps fix the coach.</p>
         <blockquote class="flag-quote t-footnote">${U.esc(String(o.text || '').slice(0, 400))}${String(o.text || '').length > 400 ? '…' : ''}</blockquote>
         <p class="t-headline">What's wrong with it?</p>
-        <div class="ob-chips" data-on="flagReason">${REASONS.map(([v, t]) => `<button type="button" class="rf-chip" aria-pressed="${v === reason}" data-act="flagReason" data-arg="${v}">${U.esc(t)}</button>`).join('')}</div>
+        ${U.choice('flagReason', REASONS, reason, 'What\'s wrong with it', ' class="ob-chips" data-on="flagReason"')}
         <div class="rf-field"><label class="rf-field-label" for="flagNote">Anything to add (optional)</label><div class="rf-field-control"><textarea class="rf-input" id="flagNote" rows="2" maxlength="500"></textarea></div></div>
         <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="flagSend">Report</button><button type="button" class="rf-btn" data-size="lg" data-act="flagHide">Just hide it</button></div>
         <p class="t-footnote rf-muted">Report hides it and opens a GitHub issue for the developer with the answer and your reason. You can read and edit it before posting, and nothing is sent until you do.</p>
@@ -446,7 +446,7 @@
       }
       U.toast('Reported', 'positive', send ? 'It\'s hidden on your phone. Post the issue to send it to the developer.' : 'It\'s hidden on your phone.');
     };
-    U.act.flagReason = (el) => { reason = el.dataset.arg; for (const c of ctl.el.querySelectorAll('[data-act="flagReason"]')) c.setAttribute('aria-pressed', String(c.dataset.arg === reason)); U.haptic('select'); };
+    U.on.flagReason = (el, ev, v) => { if (v) reason = v; };
     U.act.flagSend = () => record(true);
     U.act.flagHide = () => record(false);
     return ctl;

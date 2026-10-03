@@ -16,6 +16,8 @@ Gradient Health plans a workout for each day of your week around your goals, you
 
 WORKOUTS THAT ADJUST TO YOU
 • A plan built from your goals, your days and your time: 10 minutes to an hour, 2 to 6 days a week
+• The planner weighs every way to split your week and picks the best fit, and "Why this plan" shows you how
+• Workouts fill the time you set, never more, and every muscle gets its weekly minimum
 • Easier days after short sleep, a high resting heart rate or a hard workout the day before
 • One question after each exercise moves you up: more reps, then more weight, then a harder move
 • At home with just a chair, a wall and a towel, or at the gym with barbells, cables and machines
@@ -36,6 +38,10 @@ RUNS, WALKS, HIKES AND RIDES
 • Heart rate and calories from your watch through Health Connect
 • Personal records: fastest mile, longest run and more
 
+BADGES TO SHARE
+• 64 badges, from your first workout to a 100-day streak, and a few secret ones
+• Share one as a picture with friends and family, with your name only if you choose
+
 YOUR OWN PLANS
 • Build a plan like a playlist, or describe what you want and let the coach build it
 • Share it with a QR code or a link: friends scan it and train
@@ -49,6 +55,12 @@ A PRIVATE AI COACH
 • Ask about your numbers. The AI model runs on your phone after a one-time download, so it works offline
 • Or use Claude with your own Anthropic API key
 • Tailor your plan by saying what you want: "more legs, my knees hurt, 20 minutes"
+• Check your plan with AI: up to three suggestions, each checked against your equipment, joints and time, and you pick which to apply
+
+MADE TO FEEL GOOD
+• Glass controls that answer every tap, and smooth motion between screens
+• Haptics with 31 distinct feels, from a tick for each tab to a finished set and a new best
+• A quick set-up: six short steps, then your plan and your first workout
 
 PRIVATE BY DESIGN
 No account, no ads and no analytics. Your data stays on your phone, and health conditions you add are never sent anywhere.
@@ -60,17 +72,20 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 ## What's new (500 characters at most)
 
-Paste this into the What's new field with each update. This is 1.5.0's. Each GitHub release carries
+Paste this into the What's new field with each update. This is 1.6.0's. Each GitHub release carries
 its own version's text at the end of its What's new, under "Short version, for a store's What's new
 field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
 (`node scripts/release-notes.mjs --store` prints it).
 
 ```text
-• GPS for runs, walks, hikes and rides: a route map, splits, and heart rate from your watch
-• Plans that adapt to your age and to arthritis, back pain, balance problems and more, with 71 new seated and supported moves
-• Make your own plan, or have the coach build one, and share it with a QR code or a link
-• Health Connect syncs in the background every 15 minutes
-• A clearer set-up, smoother exercise animations, and 3D figures that show at once
+• Smarter plans: every way to split your week is weighed, and workouts fill the time you set
+• Why this plan, and an AI check of your plan whose suggestions you pick
+• 64 badges to earn and share as pictures with friends and family
+• A new You tab, and Settings you can search
+• Toggles that answer every tap, and glass switches
+• Stronger haptics with 31 distinct feels, and smoother motion
+• A quicker set-up that starts your first workout
+• Faster and safer
 ```
 
 ## Images
@@ -79,7 +94,7 @@ field". It comes from the `store` text of the version's entry in `src/data/chang
 |---|---|---|
 | `banner-1024x500.jpg` | 1024 × 500, JPEG | Banner / feature graphic |
 | `icon-512.png` (or `.jpg`) | 512 × 512, 24-bit PNG / JPEG | App icon (the app's own `docs/icon-512.png` has an alpha channel, which stores turn down) |
-| `screenshots/jpg/01-today.jpg` … `08-health.jpg` | 1080 × 1800, JPEG | Screenshots, in this order |
+| `screenshots/jpg/01-today.jpg` … `08-coach.jpg` | 1080 × 1800, JPEG | Screenshots, in this order |
 | `screenshots/1080x1800/` | 1080 × 1800, 24-bit PNG | The same eight as PNG |
 | `screenshots/480x800/` | 480 × 800, 24-bit PNG | The same eight, for a store that wants exactly 480 × 800 |
 

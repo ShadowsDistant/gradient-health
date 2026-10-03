@@ -1,7 +1,9 @@
 // End-to-end smoke run of the built page in Chromium at phone size, with a fake Android bridge
-// and a controlled clock: questionnaire → tour → Today → a workout with rest, a side switch, a
-// timer and a swap → check-in → Next time → Health (coach, Claude hand-off) → Progress, Plan, Moves
-// → Profile, How it works, Settings → reload (persistence, What's new). Screenshots go to build/smoke/.
+// and a controlled clock: set-up (welcome, four questions, the plan) → Today (the level check from
+// the first week's checklist) → a workout with rest, a side switch, a timer and a swap → check-in →
+// Next time (Health Connect offered there) → the tour → Health (coach, Claude hand-off) → Progress,
+// Plan and its Moves → You, How it works, Settings → reload (persistence, What's new). Screenshots
+// go to build/smoke/.
 // Usage: node test/smoke.mjs [--dark] [--keep]
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -73,78 +75,81 @@ await page.addInitScript(bridgeScript);
 await page.goto('file://' + join(root, 'dist/gradient-health.html'));
 await page.waitForSelector('.onboard:not([hidden]) .rf-large-title');
 
-const clickNext = async () => { await page.locator('.ob-actions [data-variant="tinted"]').click(); await page.waitForTimeout(150); };
-const title = () => page.locator('.onboard .rf-large-title').innerText();
+const settle = async (ms = 450) => { await page.clock.runFor(60); await page.waitForTimeout(ms); };
+const clickNext = async () => { await page.locator('.ob-actions [data-variant="tinted"]').click(); await settle(); };
+const title = () => page.locator('.onboard .rf-large-title').first().innerText();
+const hint = () => page.locator('.ob-actions .ob-hint').innerText().catch(() => '');
 
-section('Questionnaire');
-check('starts on the welcome screen', (await title()) === 'Gradient Health');
-check('with the logo', await page.locator('.ob-welcome .ob-logo').count() === 1);
+section('Set-up');
+check('starts on the welcome screen, with the logo', (await title()) === 'Gradient Health' && await page.locator('.ob-hello .ob-logo').count() === 1);
+check('and one way in: Get started', (await page.locator('.ob-actions [data-variant="tinted"]').innerText()).trim() === 'Get started');
 await shot(page, '00-welcome');
 await clickNext();
-check('then what to track', (await title()) === 'What to track');
-check('workouts and health is picked by default', await page.locator('input[name="obTrack"][value="workouts"]').isChecked());
+check('then what you want most', (await title()) === 'What do you want most?');
+await page.click('.ob-opt[data-arg="muscle"]'); await settle(300);
+for (const a of ['abs', 'arms', 'chest']) { await page.click(`.ob-areas [data-v="${a}"]`); await settle(150); }
+await page.click('.ob-opt[data-arg="consistency"]'); await settle(300);
+check('Build muscle (abs, arms, chest) then Stay consistent, numbered in tap order', (await page.locator('.ob-opt[data-arg="muscle"] .ob-mark-n').innerText()).trim() === '1' && (await page.locator('.ob-opt[data-arg="consistency"] .ob-mark-n').innerText()).trim() === '2');
+check('a line says how the plan leans', /leans on abs and arms/.test(await hint()), await hint());
+await shot(page, '01-want');
 await clickNext();
-check('then Health data', (await title()) === 'Health data');
-await page.click('[data-act="obConnect"]');
-await page.waitForSelector('.ob-status[data-tone="positive"]');
-check('Health Connect connects and prefills', /Read .*weight/.test(await page.locator('.ob-status').innerText()), await page.locator('.ob-status').innerText());
-await shot(page, '01-health');
+check('then the time you have: three 30-minute workouts to start', (await title()) === 'How much time do you have?' && await page.locator('.onboard input[name="obDaysN"][value="3"]').isChecked() && await page.locator('.onboard input[name="obMins"][value="30"]').isChecked());
+await page.click('.onboard input[name="obDaysN"][value="4"]', { force: true }); await settle(250);
+check('four days, and today (a Monday) is the first', await page.locator('.onboard .ob-wd.is-on').count() === 4 && await page.locator('.onboard .ob-wd.is-today.is-on').count() === 1 && /first workout is today/.test(await hint()), await hint());
 await clickNext();
-check('About you shows prefilled weight', (await title()) === 'About you' && (await page.locator('input[data-k="_w"]').inputValue()) !== '');
-await page.fill('input[data-k="age"]', '19'); await page.locator('input[data-k="age"]').dispatchEvent('change');
-await page.fill('input[data-k="_w"]', '148.8'); await page.locator('input[data-k="_w"]').dispatchEvent('change');
+check('then where you train: home, to start', (await title()) === 'Where do you train?' && await page.locator('.onboard .ob-tile[data-arg="home"][aria-checked="true"]').count() === 1);
+for (const k of ['db', 'kb', 'ball']) { await page.click(`.onboard .ob-kit [data-v="${k}"]`); await settle(150); }
+check('dumbbells and a kettlebell start from common weights', /Dumbbells: 10, 15, 20 lb/.test(await page.locator('.onboard details[data-more="weights"] summary').innerText()));
+await shot(page, '02-where');
 await clickNext();
-check('then Anything we should plan around?, optional', (await title()) === 'Anything we should plan around?' && await page.locator('.rf-chip[data-list="conditions"][aria-pressed="true"]').count() === 0);
-await clickNext();
-for (const g of ['abs', 'arms', 'chest', 'legs', 'consistency']) { await page.click(`.rf-chip[data-v="${g}"]`); await page.waitForTimeout(60); }
-check('goals are numbered in tap order', /1\. Visible abs/.test(await page.locator('.ob-chips').innerText()) && /5\. Consistency/.test(await page.locator('.ob-chips').innerText()));
-await shot(page, '02-goals');
-await clickNext(); // → experience
-check('Experience screen', (await title()) === 'Experience');
-await clickNext(); // → schedule
-check('Schedule defaults to 4 days, 25 min', (await page.locator('#obDays').inputValue()) === '4' && /25 min/.test(await page.locator('#obMin').innerText()));
-await clickNext(); // → equipment
-await page.click('.rf-chip[data-list="equipment.db"][data-v="8"]');
-await page.click('.rf-chip[data-list="equipment.kb"][data-v="10"]');
-await page.locator('input[data-k="equipment.ball"]').check();
-await page.waitForTimeout(100);
-await shot(page, '03-equipment');
-await clickNext(); // → joints and sides
-check('Joints and sides screen', (await title()) === 'Joints and sides');
-await page.click('.rf-segmented[aria-label="Stronger arm"] input[value="R"]', { force: true });
-await clickNext(); // → baseline
-check('Baseline test screen', (await title()) === 'Baseline test');
-for (const [k, v] of [['_base.pushups', '24'], ['_base.curlL', '14'], ['_base.curlR', '18']]) { await page.fill(`input[data-k="${k}"]`, v); await page.locator(`input[data-k="${k}"]`).dispatchEvent('change'); }
-await clickNext(); // → weight and protein
-check('Weight and protein, with no food tracking question', (await title()) === 'Weight and protein' && !/Food tracking|Protein only/.test(await page.locator('.onboard').innerText()));
-await clickNext();
-check('Your plan summary', (await title()) === 'Your plan' && /4 days · ~25 min/.test(await page.locator('.onboard').innerText()));
-check('the abs note is part of the plan with the abs goal', /About abs/.test(await page.locator('.onboard').innerText()));
-check('plan: abs + arms 3×', /abs \+ arms 3×/.test(await page.locator('.onboard').innerText()), await page.locator('.onboard .ob-card').first().innerText());
+check('then a little about you', (await title()) === 'A little about you');
+await page.fill('.onboard input[data-k="age"]', '19'); await page.locator('.onboard input[data-k="age"]').dispatchEvent('change'); await settle(150);
+await page.click('.onboard .ob-opt[data-arg="1to3"]'); await settle(200);
+await page.click('.onboard details[data-more="size"] summary'); await settle(300);
+await page.fill('.onboard input[data-k="_w"]', '148.8'); await page.locator('.onboard input[data-k="_w"]').dispatchEvent('change'); await settle(150);
+await page.click('.onboard [data-act="obAround"]');
+await page.waitForSelector('dialog.ob-around-sheet[open]');
+await settle(400);
+check('Anything to plan around? opens in a sheet, nothing picked', await page.locator('dialog.ob-around-sheet[open] .rf-chip[aria-pressed="true"]').count() === 0);
+await page.click('dialog.ob-around-sheet[open] [data-act="obAroundDone"]');
+await settle(500);
+await shot(page, '03-you');
+// See my plan: "Building your plan" for a moment, then the plan.
+await page.locator('.ob-actions [data-variant="tinted"]').click();
+await page.waitForTimeout(150);
+await page.clock.runFor(1400);
+await page.waitForSelector('.onboard .ob-reveal[data-ready]', { timeout: 8000 });
+await page.waitForTimeout(600);
+const planText = await page.locator('.onboard .ob-reveal').innerText();
+check('then the plan: four workouts a week, 30 minutes each', /4 workouts a week/.test(planText) && /30 minutes each/.test(planText), planText.slice(0, 200));
+check('the next seven days, today the first workout', await page.locator('.onboard .rv-day').count() === 7 && await page.locator('.onboard .rv-day.is-today.is-work').count() === 1);
+check('today\'s workout with its moves, and why it\'s this plan', await page.locator('.onboard .rv-first .rv-tag.is-today').count() === 1 && await page.locator('.onboard .rv-move').count() >= 3 && /Why this plan/i.test(planText));
+check('no Health Connect request before the plan', await page.evaluate(() => window.__hcStatus === undefined));
 await shot(page, '04-plan');
-await clickNext(); // Start
+await page.click('.ob-actions [data-act="obLook"]');
 
 section('First run');
 await page.waitForSelector('#screen[data-view="today"] .session');
-await page.waitForSelector('dialog.tour-sheet[open]', { timeout: 4000 }).catch(() => null);
-check('a short tour opens after set-up', await page.evaluate(() => !!document.querySelector('dialog.tour-sheet[open]')));
-await shot(page, '05a-tour');
-await page.click('dialog.tour-sheet [data-act="tourNext"]');
-await page.waitForTimeout(300);
-check('the tour pages through (an animated diagram on page 2)', await page.evaluate(() => !!document.querySelector('dialog.tour-sheet .tour-fig svg, dialog.tour-sheet .tour-fig .fig3d canvas')));
-await page.click('dialog.tour-sheet [data-act="tourSkip"]');
-await page.waitForTimeout(600);
+await page.waitForTimeout(1600);
+check('Look around first: Today, and no tour before the first workout', await page.evaluate(() => !document.querySelector('dialog.tour-sheet[open]')));
 check('the page draws edge to edge with the shell\'s insets', await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--sat').trim() === '32px'));
 check('status bar icons follow the page theme', await page.evaluate((d) => window.__bars === d, dark));
 
 section('Today');
+let todayText = await page.locator('#screen').innerText();
+check('a getting-started checklist for the first week, the level check on it', /Getting started/.test(todayText) && /Finish your first workout/.test(todayText) && /Do a level check/.test(todayText));
+await page.click('#screen [data-act="ckLevel"]');
+await page.waitForSelector('dialog[open] #bPush');
 await page.waitForTimeout(400);
-const todayText = await page.locator('#screen').innerText();
+for (const [id, v] of [['bPush', '24'], ['bCL', '14'], ['bCR', '18']]) await page.fill(`dialog[open] #${id}`, v);
+await page.click('dialog[open] [data-act="baselineSave"]');
+await page.waitForTimeout(800);
+todayText = await page.locator('#screen').innerText();
+check('the level check ticks off', await page.evaluate(() => window.GH.ui.seen('levelCheck')) && await page.locator('#screen .checklist [data-key="ck-level"] .ck.is-done').count() === 1);
 check('Today shows the session with a time estimate', /Workout · about \d+ min/.test(todayText));
 check('the extra left curl set is on the list', /left only/.test(todayText));
 check('Start workout floats in glass', await page.locator('#float [data-act="startWorkout"]').isVisible());
-check('a getting-started checklist for the first week', /Getting started/.test(todayText) && /Finish your first workout/.test(todayText));
-check('the profile button sits in the shared top bar', await page.locator('#topbar [data-act="openProfile"]').count() === 1);
+check('no profile button on Today: You is a tab', await page.locator('#topbar [data-act="openProfile"]').count() === 0 && await page.locator('.rf-tab[data-tab="you"]').count() === 1);
 await shot(page, '05-today');
 // Re-renders patch the page in place: the bar and the cards are the same nodes afterwards.
 await page.evaluate(() => { window.__nodes = [document.getElementById('topbar'), document.querySelector('#topbar .rf-scroll-edge'), document.querySelector('#screen [data-key="streak"]'), document.querySelector('#screen [data-key="main"]')]; });
@@ -231,17 +236,39 @@ await page.click('.player [data-act="plSaveCheckin"]');
 await page.waitForSelector('.player .rf-large-title:has-text("Next time")', { timeout: 5000 }).catch(async (e) => { console.log('errors so far:', errors); await shot(page, 'fail-next'); throw e; });
 const nextText = await page.locator('.player').innerText();
 check('Next time shows the streak', /Streak\s+1\s+day/.test(nextText), nextText.slice(0, 200));
+check('and offers Health Connect, now the first workout is done', await page.locator('.player .hc-invite [data-act="hcInviteGo"]').count() === 1);
 await shot(page, '09-next');
+await page.click('.player .hc-invite [data-act="hcInviteGo"]');
+const connected = await page.waitForFunction(() => /Connected/.test((document.querySelector('.player .hc-invite') || {}).textContent || ''), null, { timeout: 5000 }).then(() => true, () => false);
+check('Connect asks Health Connect, then says it\'s connected', connected && await page.evaluate(() => window.__hcStatus === 'granted'));
+await page.waitForTimeout(300);
 await page.click('.player [data-act="plClose"]');
 await page.waitForSelector('#screen .session.done');
 check('Today shows the workout as done', /Done/.test(await page.locator('#screen .session.done').innerText()));
 check('screen no longer kept awake', await page.evaluate(() => window.__awake === false));
 const hx = await page.evaluate(() => window.__haptics);
-check('haptics: start, finished sets and a finish', hx.includes('go') && hx.includes('done') && (hx.includes('celebrate') || hx.includes('success')), hx.slice(-12));
+check('haptics: start, finished sets and a finish', hx.includes('go') && hx.includes('done') && hx.includes('workoutDone'), hx.slice(-12));
 const writes = await page.evaluate(() => window.__writes);
 check('the workout was saved to Health Connect once, keyed by day', writes.length === 1 && writes[0].id === 'gradient-2026-09-28' && writes[0].type === 'strength_training' && writes[0].end > writes[0].start, writes);
 
-section('Health, Progress, Plan, Moves');
+section('The tour, after the first workout');
+// It waits for anything on top (the toasts from connecting, a new badge's) to go first.
+await page.waitForSelector('dialog.tour-sheet[open]', { timeout: 15000 }).catch(() => null);
+check('not over a toast', await page.evaluate(() => !document.querySelector('.rf-toaster .rf-toast:not([data-leaving])')));
+check('a short tour opens once the first workout is checked in', await page.evaluate(() => !!document.querySelector('dialog.tour-sheet[open]')));
+await page.waitForTimeout(500);
+await shot(page, '09b-tour');
+const tourPages = [];
+for (let k = 0; k < 5 && await page.locator('dialog.tour-sheet[open]').count(); k++) {
+  const lit = await page.locator('dialog.tour-sheet .tour-tab.is-on').count();
+  tourPages.push(`${await page.locator('dialog.tour-sheet .tour-copy h3').innerText()} (${lit})`);
+  await page.click('dialog.tour-sheet [data-act="tourNext"]');
+  await page.waitForTimeout(450);
+}
+check('three short cards, each with the tab bar and its tab lit', tourPages.length === 3 && tourPages.every((t) => / \(1\)$/.test(t)), tourPages);
+check('and Let\'s go closes it, for good', await page.evaluate(() => !document.querySelector('dialog.tour-sheet[open]') && window.GH.ui.seen('tour')));
+
+section('Health, Progress, Plan and its Moves');
 await page.click('.rf-tab[data-tab="health"]');
 await page.waitForSelector('#screen[data-view="health"] .hl-tr', { timeout: 5000 }).catch(async (e) => { console.log('errors so far:', errors); await shot(page, 'fail-health'); throw e; });
 await page.waitForTimeout(300);
@@ -288,8 +315,8 @@ await page.click('.rf-tab[data-tab="plan"]');
 await page.waitForSelector('#screen[data-view="plan"] .plan-list');
 check('Plan lists seven days', (await page.locator('#screen .plan-list').first().locator('li').count()) === 7);
 await shot(page, '12-plan');
-await page.click('.rf-tab[data-tab="moves"]');
-await page.waitForSelector('#screen[data-view="moves"] .moves-list');
+await page.click('#screen [data-on="planSection"] input[value="moves"]', { force: true });
+await page.waitForSelector('#screen[data-view="plan"] .moves-list');
 await page.locator('#screen [data-act="ladder"]').first().click();
 await page.waitForSelector('dialog.rf-sheet .sheet-fig svg, dialog.rf-sheet .sheet-fig .fig3d canvas');
 check('a ladder sheet shows an animated diagram', await page.locator('dialog.rf-sheet .sheet-fig svg, dialog.rf-sheet .sheet-fig .fig3d canvas').count() >= 1);
@@ -297,15 +324,15 @@ await shot(page, '13-ladder');
 await page.keyboard.press('Escape');
 await page.waitForTimeout(500);
 
-section('Profile, How it works, Settings');
-await page.click('.rf-tab[data-tab="today"]');
-await page.click('#topbar [data-act="openProfile"]');
-await page.waitForSelector('#screen[data-view="profile"] .ach-grid');
+section('You, How it works, Settings');
+await page.click('.rf-tab[data-tab="you"]');
+await page.waitForSelector('#screen[data-view="you"] .you-card');
 await page.waitForTimeout(500);
 const prof = await page.locator('#screen').innerText();
-check('Profile shows stats and the first achievement', /Workouts\s+1/.test(prof) && (await page.locator('#screen [data-key="ach-first"].is-earned').count()) === 1, prof.slice(0, 160));
-check('the tab bar steps aside on pushed pages', await page.evaluate(() => document.getElementById('tabbar').hasAttribute('data-away')));
-await shot(page, '14a-profile');
+// The first badge: the badges' own tile when they're in, else the achievement from before them.
+const firstBadge = (await page.locator('#screen [data-badge="first"].is-earned').count()) || (await page.locator('#screen [data-key="ach-first"].is-earned').count());
+check('You shows your numbers and the first badge', /\b1\s+Workout\b/.test(prof) && firstBadge === 1, prof.slice(0, 160));
+await shot(page, '14a-you');
 await page.evaluate(() => window.GH.ui.open('science', 'rest'));
 await page.waitForTimeout(900);
 check('How it works lists every rule in its group', await page.evaluate(() => document.querySelectorAll('#screen .sci-list .sci-row').length === window.GH.science.RULES.length && document.querySelectorAll('#screen .sci-list').length === window.GH.science.GROUPS.length));
@@ -313,16 +340,17 @@ check('a "Why?" link opens that rule with its research', await page.evaluate(() 
 await shot(page, '14b-science');
 await page.evaluate(() => window.GH.ui.closeSheets());
 await page.waitForTimeout(500);
-await page.click('#screen [data-act="sciShow"][data-arg="food"]');
+await page.click('#screen [data-on="sciShow"] [data-arg="food"]');
 await page.waitForTimeout(300);
 check('the group chips narrow the list', await page.evaluate(() => document.querySelectorAll('#screen .sci-list').length === 1 && [...document.querySelectorAll('#screen .sci-row')].every((r) => window.GH.science.RULES.find((x) => x.id === r.dataset.arg).cat === 'food')));
-await page.click('#screen [data-act="sciShow"][data-arg="all"]');
+await page.click('#screen [data-on="sciShow"] [data-arg="all"]');
 await page.waitForTimeout(200);
 await page.click('#topbar [data-act="back"]');
 await page.waitForTimeout(400);
-check('back returns to Profile', await page.evaluate(() => document.getElementById('screen').dataset.view === 'profile'));
+check('back returns to You', await page.evaluate(() => document.getElementById('screen').dataset.view === 'you'));
 await page.click('#topbar [data-act="openSettings"]');
 await page.waitForSelector('#screen[data-view="settings"]');
+check('the tab bar steps aside on pushed pages', await page.evaluate(() => document.getElementById('tabbar').hasAttribute('data-away')));
 await page.click('#screen [data-act="exportData"]');
 await page.waitForTimeout(200);
 const copied = await page.evaluate(() => window.__copied || '');

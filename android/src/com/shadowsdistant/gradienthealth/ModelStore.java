@@ -46,14 +46,19 @@ import java.util.regex.Pattern;
  * Downloads run one at a time on a background thread and outlive page reloads: the page asks for
  * their state with {@link #statusJson}, and progress goes to window.__gh.onModelProgress at most 4
  * times a second. They only go to Hugging Face (and its CDN, which the resolve URL redirects to),
- * resume from a .part file with a Range request, can wait for an unmetered network, need the free
- * space for the file plus a margin, and must pass three checks before they count as installed: the
- * size (the Hub's exact size, close to the page's figure), the GGUF magic, and the SHA-256 (the page's
- * pinned value, or the X-Linked-Etag the Hub sends with the redirect, computed while the file streams
- * in).
+ * resume from a .part file with a Range request, can wait for an unmetered network, and need the free
+ * space for the file plus a margin. Every download is pinned by the page (src/llm.js, PINS): a URL at
+ * a fixed commit of its repo (/resolve/&lt;40 hex&gt;/), an exact size and a SHA-256; one without all
+ * three fails as "unpinned" before anything is fetched. A file only counts as installed when it's
+ * exactly that size, starts with the GGUF magic and has that SHA-256 (computed while it streams in).
+ * The Hub's X-Linked-Etag and X-Linked-Size only stop a download early when they disagree with the
+ * pin; they're never what a file is checked against.
  *
  * In noBackupFilesDir/models/: &lt;file&gt; with &lt;file&gt;.json ({id, file, bytes, sha256, url}) once
  * installed; &lt;file&gt;.part with &lt;file&gt;.part.json ({id, url, sha256, total}) while downloading or paused.
+ * A model installed by an older version without a SHA-256 has its file hashed once, in the background
+ * ({@link #recheck}): the record then holds that hash with "rehashed": true, and the page treats a
+ * file whose hash isn't the pinned one as not installed, so it can be downloaded again.
  */
 final class ModelStore {
     private static final String DIR = "models";
@@ -70,6 +75,9 @@ final class ModelStore {
     private static final Pattern ID = Pattern.compile("[a-z0-9][a-z0-9_-]{0,39}");
     private static final Pattern FILE_NAME = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,150}\\.gguf");
     private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
+    /** A file at a fixed commit of a Hub repo: https://huggingface.co/&lt;owner&gt;/&lt;repo&gt;/resolve/&lt;40 hex&gt;/&lt;file&gt;. */
+    private static final Pattern PINNED_URL = Pattern.compile(
+            "https://(?:huggingface\\.co|hf\\.co)/[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*/resolve/[0-9a-f]{40}/([A-Za-z0-9][A-Za-z0-9._-]*\\.gguf)");
     private static final Pattern RANGE = Pattern.compile("bytes=(\\d*)-(\\d*)", Pattern.CASE_INSENSITIVE);
     private static final Pattern CONTENT_RANGE = Pattern.compile("bytes (\\d+)-(\\d+)/(\\d+|\\*)", Pattern.CASE_INSENSITIVE);
     private static final Pattern CONTENT_RANGE_TOTAL = Pattern.compile("bytes [^/]*/(\\d+)", Pattern.CASE_INSENSITIVE);
@@ -80,6 +88,7 @@ final class ModelStore {
     private final Map<String, Job> jobs = new LinkedHashMap<String, Job>();
     private volatile WeakReference<MainActivity> page = new WeakReference<MainActivity>(null);
     private ExecutorService executor;
+    private boolean rechecked;
 
     private ModelStore(Context context) {
         this.context = context;
@@ -158,18 +167,97 @@ final class ModelStore {
 
     // ---------------------------------------------------------------- for Bridge
 
-    /** Installed models: [{"id","file","bytes"}]. */
+    /**
+     * Installed models: [{"id","file","bytes","sha256","rehashed"}]. sha256 is what the file was
+     * checked against when it was downloaded, or ("rehashed": true) its own hash, worked out later for
+     * an older install that had none ("" until then).
+     */
     synchronized String listJson() {
+        recheck();
         JSONArray out = new JSONArray();
         for (JSONObject meta : installedMetas()) {
             try {
                 out.put(new JSONObject().put("id", meta.getString("id")).put("file", meta.getString("file"))
-                        .put("bytes", meta.getLong("bytes")));
+                        .put("bytes", meta.getLong("bytes")).put("sha256", meta.optString("sha256", ""))
+                        .put("rehashed", meta.optBoolean("rehashed", false)));
             } catch (JSONException ignored) {
                 // skip a record that lost a field
             }
         }
         return out.toString();
+    }
+
+    /**
+     * Once a run: hashes, in the background, every installed file whose record has no SHA-256 (a
+     * download from before 1.6 that the Hub sent no hash for), and keeps the hash in its record. The
+     * page compares it with the pin; a file that differs reads as not installed there.
+     */
+    private synchronized void recheck() {
+        if (rechecked) {
+            return;
+        }
+        rechecked = true;
+        final List<JSONObject> todo = new ArrayList<JSONObject>();
+        for (JSONObject meta : installedMetas()) {
+            if (!SHA256.matcher(meta.optString("sha256", "")).matches()) {
+                todo.add(meta);
+            }
+        }
+        if (todo.isEmpty()) {
+            return;
+        }
+        executor().execute(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
+                } catch (Throwable ignored) {
+                }
+                for (JSONObject meta : todo) {
+                    rehash(meta);
+                }
+            }
+        });
+    }
+
+    /** Hashes one installed file and records it, unless the model changed or went meanwhile. */
+    private void rehash(JSONObject meta) {
+        String file = meta.optString("file", "");
+        File model = new File(dir(), file);
+        long bytes = meta.optLong("bytes", -1);
+        String sha;
+        InputStream in = null;
+        try {
+            MessageDigest digest = sha256();
+            in = new FileInputStream(model);
+            byte[] buf = new byte[BUFFER_BYTES];
+            long total = 0;
+            int n;
+            while ((n = in.read(buf)) != -1) {
+                digest.update(buf, 0, n);
+                total += n;
+            }
+            if (total != bytes) {
+                return;
+            }
+            sha = hex(digest.digest());
+        } catch (Throwable t) {
+            return;
+        } finally {
+            closeQuietly(in);
+        }
+        synchronized (this) {
+            File record = new File(dir(), file + ".json");
+            JSONObject now = readJson(record);
+            if (now == null || !file.equals(now.optString("file", "")) || now.optLong("bytes", -2) != bytes
+                    || model.length() != bytes || SHA256.matcher(now.optString("sha256", "")).matches()) {
+                return; // replaced, deleted or checked meanwhile
+            }
+            try {
+                writeAtomically(record, now.put("sha256", sha).put("rehashed", true).toString());
+            } catch (JSONException ignored) {
+            }
+        }
     }
 
     /** An installed model's file, or null (for the native engine, which reads it directly). */
@@ -528,6 +616,10 @@ final class ModelStore {
             if (job.cancelled) {
                 throw cancelled();
             }
+            if (!pinned(job)) {
+                throw new Failure("unpinned", false, "no commit URL, SHA-256 or size to check it against");
+            }
+            dropMismatch(job, dir);
             adoptLeftovers(job, dir, part, partMeta);
             int failures = 0;
             while (true) {
@@ -588,6 +680,31 @@ final class ModelStore {
     }
 
     /**
+     * Whether the page pinned this download: a URL at a fixed commit (/resolve/&lt;40 hex&gt;/) naming
+     * this file, a SHA-256 and a size. Without all three the bytes can't be checked, so nothing is fetched.
+     */
+    private static boolean pinned(Job job) {
+        Matcher m = PINNED_URL.matcher(job.url);
+        return m.matches() && job.file.equals(m.group(1)) && job.sha256 != null && SHA256.matcher(job.sha256).matches()
+                && job.bytes > 0;
+    }
+
+    /**
+     * An install of this file the background check hashed and found isn't the pinned one goes before
+     * the download, so the phone never needs room for both.
+     */
+    private void dropMismatch(Job job, File dir) {
+        synchronized (this) {
+            File record = new File(dir, job.file + ".json");
+            JSONObject meta = readJson(record);
+            if (meta != null && meta.optBoolean("rehashed", false) && !job.sha256.equals(meta.optString("sha256", ""))) {
+                deleteFile(record); // the record first, so a half-deleted model never counts as installed
+                deleteFile(new File(dir, job.file));
+            }
+        }
+    }
+
+    /**
      * A model whose install was cut short (file, no record) is checked again as a finished .part;
      * a .part recorded for another file is dropped.
      */
@@ -601,7 +718,10 @@ final class ModelStore {
         JSONObject meta = readJson(partMeta);
         if (meta != null && part.exists()) {
             String sha = meta.optString("sha256", "");
-            if (!job.id.equals(meta.optString("id", "")) || (job.sha256 != null && !sha.isEmpty() && !sha.equals(job.sha256))) {
+            // Another revision's bytes (another URL, as from before files were pinned) can't be
+            // continued: the whole would fail its hash at the end.
+            if (!job.id.equals(meta.optString("id", "")) || !job.url.equals(meta.optString("url", ""))
+                    || (job.sha256 != null && !sha.isEmpty() && !sha.equals(job.sha256))) {
                 deleteFile(part);
                 deleteFile(partMeta);
             }
@@ -622,7 +742,7 @@ final class ModelStore {
             if (hop.code == 416 && have > 0) {
                 // Nothing left to send: the .part may be the whole file already, and verify() decides.
                 long t = totalOf(c.getHeaderField("Content-Range"));
-                if (t == have || (t < 0 && closeInSize(have, job.bytes))) {
+                if (t == have || (t < 0 && have == job.bytes)) {
                     job.remoteTotal = have;
                     expect(job, hop, have);
                     return;
@@ -745,10 +865,9 @@ final class ModelStore {
                 c.setRequestProperty("Range", "bytes=" + from + "-");
             }
             int code = c.getResponseCode();
+            // The Hub's word on the file (its SHA-256 and size), for stopping early: a plain ETag
+            // isn't always the file's SHA-256, so only X-Linked-Etag counts.
             String sha = shaOf(c.getHeaderField("X-Linked-Etag"));
-            if (sha == null && isHub(url.getHost())) {
-                sha = shaOf(c.getHeaderField("ETag"));
-            }
             if (sha != null && hop.linkedSha == null) {
                 hop.linkedSha = sha;
             }
@@ -775,16 +894,20 @@ final class ModelStore {
         throw new Failure("http", false, "too many redirects");
     }
 
-    /** A file on the Hub that doesn't match the page's description was replaced there: stop. */
+    /**
+     * Stops early when what's being sent can't be the pinned file: another size, or a hash from the
+     * Hub's headers that isn't the pin. The headers only ever stop a download: the file is checked
+     * against the pin itself (verify), whatever they say.
+     */
     private static void expect(Job job, Hop hop, long total) throws Failure {
         long size = total > 0 ? total : hop.linkedSize;
-        if (size > 0 && !closeInSize(size, job.bytes)) {
+        if ((size > 0 && size != job.bytes) || (hop.linkedSize > 0 && hop.linkedSize != job.bytes)) {
             throw new Failure("changed", false, "size " + size).discard();
         }
-        if (job.sha256 != null && hop.linkedSha != null && !job.sha256.equals(hop.linkedSha)) {
+        if (hop.linkedSha != null && !hop.linkedSha.equals(job.sha256)) {
             throw new Failure("changed", false, "sha256 " + hop.linkedSha).discard();
         }
-        job.expectedSha = job.sha256 != null ? job.sha256 : hop.linkedSha;
+        job.expectedSha = job.sha256;
     }
 
     /** Makes job.digest cover the .part (re-reading it after a restart or a failed write). */
@@ -834,22 +957,24 @@ final class ModelStore {
         job.hashed = 0;
     }
 
+    /** The finished .part: exactly the pinned size, a GGUF file, and the pinned SHA-256. */
     private void verify(Job job, File part) throws Failure {
         long length = part.length();
         setState(job, "verifying", length, length);
-        if ((job.remoteTotal > 0 && length != job.remoteTotal) || !closeInSize(length, job.bytes)) {
+        if ((job.remoteTotal > 0 && length != job.remoteTotal) || length != job.bytes) {
             throw new Failure("size", false, "size " + length).discard();
         }
         if (!isGguf(part)) {
             throw new Failure("format", false, "not a GGUF file").discard();
         }
-        if (job.expectedSha != null) {
-            hashPart(job, part, length);
-            String got = hex(job.digest.digest());
-            job.digest = null;
-            if (!job.expectedSha.equals(got)) {
-                throw new Failure("checksum", false, "sha256 " + got).discard();
-            }
+        if (job.expectedSha == null) {
+            throw new Failure("unpinned", false, "no SHA-256 to check against");
+        }
+        hashPart(job, part, length);
+        String got = hex(job.digest.digest());
+        job.digest = null;
+        if (!job.expectedSha.equals(got)) {
+            throw new Failure("checksum", false, "sha256 " + got).discard();
         }
     }
 
@@ -1165,14 +1290,6 @@ final class ModelStore {
         } catch (NumberFormatException e) {
             return -1;
         }
-    }
-
-    /**
-     * Whether a file is the size the page expects: within 3%, since the page may only know it to a few
-     * digits. Another quantization of a model differs by far more; the hash then checks every byte.
-     */
-    private static boolean closeInSize(long actual, long expected) {
-        return expected > 0 && Math.abs(actual - expected) <= expected * 3 / 100;
     }
 
     private static boolean isGguf(File file) {

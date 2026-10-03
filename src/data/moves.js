@@ -28,7 +28,20 @@
   ];
   const cyc = (names, ms, hold = 120, ph = 'move') => names.map((n) => ({ to: n, ms, hold, ph }));
 
-  const clone = (o) => JSON.parse(JSON.stringify(o));
+  // A deep copy of plain data, as a trip through JSON makes it (undefined and functions left out of
+  // objects and null in lists, numbers that aren't finite null), but quicker: it runs for every pose
+  // and every move as the page loads.
+  function clone(o) {
+    if (o === null || typeof o !== 'object') return typeof o === 'number' && !Number.isFinite(o) ? null : o;
+    if (Array.isArray(o)) {
+      const a = new Array(o.length);
+      for (let i = 0; i < o.length; i++) { const v = o[i]; a[i] = v === undefined || typeof v === 'function' ? null : clone(v); }
+      return a;
+    }
+    const out = {};
+    for (const k of Object.keys(o)) { const v = o[k]; if (v !== undefined && typeof v !== 'function') out[k] = clone(v); }
+    return out;
+  }
   const merge = (a, b) => {
     const out = clone(a);
     for (const [k, v] of Object.entries(b || {})) {
@@ -67,7 +80,9 @@
   const CHAIR_BEHIND = { type: 'box', x: -48, w: 46, h: 45, back: 0 };
 
   /* ------------------------------------------------------------------ forms */
-  const F = {};
+  // The registries below (forms, moves, ladders) have no prototype, so an id read from a saved state
+  // or a shared plan ("constructor", "__proto__") is simply unknown instead of an Object built-in.
+  const F = Object.create(null);
 
   // Curls ----------------------------------------------------------------------------
   F.curl = {
@@ -1519,7 +1534,7 @@
   };
 
   /* ------------------------------------------------------------------ moves */
-  const MOVES = {};
+  const MOVES = Object.create(null);
   // Forms whose first two muscles both drive the move (legs in squats and hinges, the back in rows).
   const PRIME = {};
   for (const f of ['squatBW', 'goblet', 'split', 'lunge', 'bulgarian', 'pistol', 'jumpSquat', 'kbDeadlift', 'swing', 'swing1', 'staggerRdl', 'sldl',
@@ -1545,8 +1560,13 @@
   function move(id, form, meta, variant) {
     const base = F[form];
     if (!base) throw new Error('moves: unknown form ' + form);
-    const m = merge(base, {});
-    Object.assign(m, clone(meta));
+    // Each move is an object of its own (the pose engine keeps its timeline and flattened poses on
+    // it) that shares its form's poses and steps, and any list its details share with other moves
+    // (cues, joints): nothing changes those once the library is built, and copying them for every
+    // move took a good part of the time the page spends loading. (Details left undefined stay out,
+    // as they did from a copy.)
+    const m = Object.assign({}, base);
+    for (const k of Object.keys(meta)) { const v = meta[k]; if (v !== undefined && typeof v !== 'function') m[k] = v; }
     m.id = id; m.form = form;
     if (variant) {
       if (variant.ecc) m.rep = slowEcc(m.rep, variant.ecc);
@@ -2011,7 +2031,7 @@
 
   /* ------------------------------------------------------------------ ladders */
   // Rungs are listed easiest → hardest; each user only sees the rungs their equipment allows.
-  const LADDERS = {
+  const LADDERS = Object.assign(Object.create(null), {
     curl: { name: 'Curls', group: 'biceps', rungs: ['curl_towel', 'curl_band', 'curl_hammer', 'curl_std', 'curl_slow', 'curl_half', 'curl_conc'] },
     triceps: { name: 'Triceps', group: 'triceps', rungs: ['tri_skull', 'tri_oh', 'tri_band', 'tri_band_oh', 'tri_dip_bent', 'tri_oh_slow', 'tri_dip', 'tri_diamond', 'tri_oh1'] },
     push: { name: 'Push-ups', group: 'chest', rungs: ['push_wall', 'push_incline', 'push_knee', 'push_std', 'push_slow', 'push_pause', 'push_decline', 'push_archer'] },
@@ -2054,7 +2074,7 @@
     triG: { name: 'Triceps', group: 'triceps', gym: true, rungs: ['pushdown_cable', 'oh_ext_cable', 'skull_ez', 'cg_bench', 'dip_bar'] },
     absG: { name: 'Core', group: 'abs', gym: true, rungs: ['cable_crunch', 'hang_knee', 'pallof'] },
     cardioG: { name: 'Cardio', group: 'conditioning', gym: true, rungs: ['rower_int', 'bike_int', 'incline_walk'] },
-  };
+  });
   // The rotation ladder ends in either a slam or a toss, never both for one person.
   LADDERS.coreRot.exclusive = [['rot_slam', 'rot_toss']];
   for (const [fam, lad] of Object.entries(LADDERS)) {
@@ -2065,7 +2085,7 @@
   MOVES.hg_bridge.family = 'hinge'; MOVES.hg_bridge1.family = 'hinge';
   MOVES.curl_1arm.family = 'curl'; MOVES.hammer_1arm.family = 'curl';
   // The single-arm version of a curl rung, for the extra lead-side set.
-  const ONE_ARM = { curl_std: 'curl_1arm', curl_slow: 'curl_1arm', curl_half: 'curl_1arm', curl_hammer: 'hammer_1arm', curl_band: 'curl_towel' };
+  const ONE_ARM = Object.assign(Object.create(null), { curl_std: 'curl_1arm', curl_slow: 'curl_1arm', curl_half: 'curl_1arm', curl_hammer: 'hammer_1arm', curl_band: 'curl_towel' });
 
   // Warm-ups: `all` is every one (upper body first); the brain picks the ones that suit the day's
   // muscles (mobFor). kb / none are the lists shown with and without a kettlebell.

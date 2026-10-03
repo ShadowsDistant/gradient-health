@@ -177,7 +177,7 @@ await page.click('#topbar [popovertarget="hlLog"]');
 await page.waitForSelector('#hlLog [data-act="logWeight"]', { state: 'visible', timeout: 5000 });
 await settle(400);
 const items = await page.evaluate(() => [...document.querySelectorAll('#hlLog .rf-menu-item')].map((b) => b.textContent.trim()));
-check('the menu offers weight, sleep, a feel check, an activity and measurements', items.join() === 'Weight,Sleep,Feel check,Activity,Measurements', items);
+check('the menu offers weight, sleep, a feel check, other exercise and measurements', items.join() === 'Weight,Sleep,Feel check,Other exercise,Measurements', items);
 await page.click('#hlLog [data-act="logWeight"]');
 check('Weight opens the same form', await sheetOpen('.ms-edit'));
 await settle(500);

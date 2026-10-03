@@ -1,7 +1,9 @@
-/* Plan: the week at a glance. A strip of seven days on top (tap a day; swipe or tap for next week),
- * the picked day in a card below it (its exercises, and Start, Move or Train today instead), then
- * the week's sets by muscle, next week, and the settings that shape the plan. The data comes from
- * GH.planWeek (src/planweek.js), which is cached, so picking a day re-renders cheaply.
+/* Plan: the week at a glance, and every move. A glass switch under the title picks the section.
+ * This week: a strip of seven days on top (tap a day; swipe or tap for next week), the picked day in
+ * a card below it (its exercises, and Start, Move or Train today instead), then the week's sets by
+ * muscle, next week, and the settings that shape the plan. The data comes from GH.planWeek
+ * (src/planweek.js), which is cached, so picking a day re-renders cheaply. Moves: every ladder and
+ * your level in it (U.movesBody, src/ui/moves.js).
  */
 (function (G) {
   'use strict';
@@ -14,14 +16,15 @@
   const week = (S, day) => GH.planWeek(S, day);
   const EASE = 'cubic-bezier(0.05, 0.7, 0.1, 1)';
 
-  // Each muscle group's colour (the hues the Moves tab uses).
+  // Each muscle group's colour (the hues the moves use).
   const GROUP_HUE = { biceps: 'amber', triceps: 'rose', chest: 'indigo', legs: 'green', back: 'teal', shoulders: 'sky', abs: 'violet', conditioning: 'coral', mobility: 'teal' };
   const hue = (g) => `var(--hue-${GROUP_HUE[g] || 'sky'})`;
   const PHASE = { full: 'Full volume', deload: 'Deload week', onramp: 'Easing in', comeback: 'Easing back in' };
 
-  // What's picked: a day (this week or next) and whether its "Move to" choices are open. Coming back
-  // to the tab (or a new day) starts from today again.
-  const view = { route: null, today: null, day: null, moving: null };
+  // What's picked: the section (the week or the moves), a day (this week or next) and whether its
+  // "Move to" choices are open. Coming back to the tab (or a new day) starts from today again, on
+  // This week (go() in core.js sets the section).
+  const view = { route: null, today: null, day: null, moving: null, section: 'week' };
   function syncView(w, day) {
     if (U.route !== view.route || view.today !== day) { view.route = U.route; view.today = day; view.day = day; view.moving = null; }
     if (view.day == null || view.day < w.ws || view.day > w.next.last) view.day = day;
@@ -127,7 +130,9 @@
     }
     for (const x of s.extras || []) if (!s.items.some((it) => it.fam === x.fam)) rows.push(extra(x));
     if (s.finisher) rows.push(exRow({ key: `fin-${s.finisher.moveId}`, move: s.finisher.moveId, name: `Finisher: ${s.finisher.name.toLowerCase()}`, meta: `${s.finisher.rounds} rounds · ${s.finisher.work} s on, ${s.finisher.rest} s off` }));
-    for (const mb of s.mobility || []) rows.push(exRow({ key: `mob-${mb.moveId}`, move: mb.moveId, name: mb.name, meta: `Cool-down · ${mb.target} s` }));
+    // The cool-down: stretches held for seconds, and the easy cardio block (its target is in seconds
+    // too, but it runs for minutes).
+    for (const mb of s.mobility || []) rows.push(exRow({ key: `mob-${mb.moveId}`, move: mb.moveId, name: mb.name, meta: mb.cardio ? `Easy cardio · ${Math.max(1, Math.round(mb.target / 60))} min` : `Cool-down · ${mb.target} s` }));
     const ss = s.items.some((it) => it.superset);
     return `<ul class="pw-ex-list">${rows.join('')}</ul>${ss ? '<p class="t-footnote rf-muted pw-note">Moves with the same letter are a superset: do them back to back, then rest.</p>' : ''}`;
   }
@@ -150,7 +155,7 @@
     if (e.kind === 'today') {
       out.push(e.active
         ? `<button type="button" class="rf-btn pw-go" data-variant="filled" data-size="lg" data-act="resumeWorkout">${U.icon('play')}Resume</button>`
-        : `<button type="button" class="rf-btn pw-go" data-variant="filled" data-size="lg" data-act="planStart">${U.icon('play')}Start workout</button>`);
+        : `<button type="button" class="rf-btn pw-go" data-variant="filled" data-size="lg" data-act="planStart">${U.icon('play')}Start today's workout</button>`);
     }
     if (e.canMove) {
       const open = view.moving === e.day;
@@ -282,6 +287,7 @@
         <ul class="pw-mus">${li}</ul>
         <p class="pw-legend t-caption rf-muted" aria-hidden="true"><span><i class="pw-sw is-done"></i>Sets done</span><span><i class="pw-sw is-plan"></i>In the plan</span>${own ? '' : '<span><i class="pw-sw is-target"></i>Weekly target</span>'}</p>
         ${short.length ? `<p class="t-footnote rf-muted">${short.length > 3 ? 'Your time per workout fits fewer sets than your weekly targets.' : `Your time per workout fits fewer sets than the target for ${U.esc(listWords(short))}.`} A few more minutes a workout closes the gap.</p>` : ''}
+        <button type="button" class="rf-btn pw-to-progress" data-variant="plain" data-size="sm" data-act="openProgress">${U.icon('chart')}See your progress${U.icon('chevron-right')}</button>
       </div></div>`;
   }
   function comingUp(w) {
@@ -309,24 +315,32 @@
       rows.push(U.row({ icon: 'list', tone: 'violet', title: 'Your plans', sub: U.esc(mine ? `Using ${mine.name}` : 'Build your own, ask the coach, or add a shared one'), act: 'openPlans', chevron: true }));
     }
     if (U.act.tailorPlan) rows.push(U.row({ icon: 'sparkle', tone: 'violet', title: 'Tailor my plan', sub: 'Tell the coach what you want more or less of', act: 'tailorPlan', chevron: true }));
-    rows.push(U.row({ icon: 'calendar', tone: 'sky', title: 'Days and time', sub: U.esc(`${U.plural(p.days, 'workout')} a week · ${p.minutes} min each`), act: 'daysSheet', chevron: true }));
+    // The AI plan review, once it's in the app (src/planreview.js), and the planner's own account of
+    // the plan, which needs no AI (src/ui/review.js).
+    if (GH.planReview && U.act.whyPlan) rows.push(U.row({ icon: 'layers', tone: 'sky', title: 'Why this plan', sub: 'What the planner compared and why it picked this week', act: 'whyPlan', chevron: true }));
+    if (GH.planReview && U.act.reviewPlan) rows.push(U.row({ icon: 'check-circle', tone: 'teal', title: 'Check my plan with AI', sub: 'The coach looks it over and suggests changes for you to approve', act: 'reviewPlan', chevron: true }));
     if (U.act.planAround) rows.push(U.row({ icon: 'heart', tone: 'rose', title: 'Built around you', sub: U.esc((GH.access && GH.access.plannedAround(p)) || 'Age, joints and health'), act: 'planAround', chevron: true }));
     if (U.editAnswers) rows.push(U.row({ icon: 'bag', tone: 'amber', title: 'Equipment', sub: U.equipSummary ? U.esc(U.equipSummary(p)) : '', act: 'planEquipment', chevron: true }));
-    if (U.hasTab && !U.hasTab('moves')) rows.push(U.row({ icon: 'library', tone: 'indigo', title: 'All moves', sub: 'Every exercise, your level in each and how to do it', act: 'openMoves', chevron: true }));
     return `<h2 class="sec-title t-title-3">Make it yours</h2>
-      <div class="section"><ul class="rf-list" data-key="mine">${rows.join('')}</ul></div>`;
+      <div class="section"><ul class="rf-list" data-key="mine">${rows.join('')}</ul>
+        <p class="rf-list-footer">Days and time are under Schedule, at the top.</p></div>`;
   }
 
   /* ---------------------------------------------------------------- the screen */
+  const SECTIONS = [['week', 'This week'], ['moves', 'Moves']];
   U.screens.plan = {
     render(S, day) {
+      const sched = `<button type="button" class="rf-btn rf-glass pw-sched" data-lens data-act="daysSheet" aria-label="Schedule: days and time">${U.icon('calendar')}<span class="pw-sched-label">Schedule</span></button>`;
+      const head = `${U.navbar('Plan', sched)}
+        <h1 class="rf-large-title">Plan</h1>
+        <div class="pw-seg" data-key="pw-seg">${U.choice('planSection', SECTIONS, view.section, 'What Plan shows', ' data-on="planSection"')}</div>`;
+      if (view.section === 'moves') return `${head}${U.movesBody ? U.movesBody(S, day, U.tip ? U.tip('moves') : '') : ''}`;
       const w = week(S, day);
       syncView(w, day);
       const page = view.day > w.last ? 1 : 0;
-      return `${U.navbar('Plan', `<button type="button" class="rf-btn rf-glass pw-sched" data-lens data-act="daysSheet" aria-label="Schedule: days and time">${U.icon('calendar')}<span class="pw-sched-label">Schedule</span></button>`)}
-        <h1 class="rf-large-title">Plan</h1>
+      return `${head}
         ${summary(w)}
-        <div class="section pw-main">
+        <div class="section pw-main" data-key="pw-main">
           ${U.tip ? U.tip('plan') : ''}
           ${U.customPlanBanner ? U.customPlanBanner(S, day) : ''}
           ${strip(w, day, page)}
@@ -343,6 +357,25 @@
       drawThumbs(screen, S, day);
       if (U.drawPlanThumbs) U.drawPlanThumbs(screen);
     },
+  };
+  // Which section Plan shows ('week' or 'moves'), for links into the moves (go('moves')). Returns
+  // whether it changed.
+  U.planSection = (sec) => {
+    const next = sec === 'moves' ? 'moves' : 'week';
+    if (view.section === next) return false;
+    view.section = next;
+    return true;
+  };
+  U.on.planSection = (el, ev, v) => {
+    const from = view.section;
+    if (!U.planSection(v)) return;
+    U.render();
+    // The new section slides in from the side of the segment picked.
+    if (U.reduced()) return;
+    const dir = from === 'week' ? 1 : -1;
+    for (const n of doc.querySelectorAll('#screen > :not(.rf-large-title):not(.pw-seg)')) {
+      if (n.animate) n.animate([{ opacity: 0, transform: `translateX(${dir * 16}px)` }, { opacity: 1, transform: 'none' }], { duration: 300, easing: EASE });
+    }
   };
 
   /* ---------------------------------------------------------------- motion */
@@ -623,7 +656,7 @@
       li.setAttribute('data-lifted', '');
       stripEl.setAttribute('data-dragging', '');
       for (const c of cells) if (drag.ok.has(Number(c.querySelector('.pw-pill').dataset.arg))) c.setAttribute('data-drop', '');
-      U.haptic('heavy');
+      U.haptic('grab');
     }
     function moveDrag(ev) {
       if (!drag) return;
@@ -634,7 +667,7 @@
       const over = d != null && drag.ok.has(d) ? d : null;
       if (over !== drag.over) {
         for (const c of drag.cells) c.removeAttribute('data-over');
-        if (over != null) { drag.cells[i].setAttribute('data-over', ''); U.haptic('select'); }
+        if (over != null) { drag.cells[i].setAttribute('data-over', ''); U.haptic('tick'); }
         drag.over = over;
       }
     }
@@ -648,7 +681,7 @@
       dr.li.removeAttribute('data-lifted');
       const was = dr.li.style.transform;
       dr.li.style.transform = '';
-      if (ev.type !== 'pointercancel' && dr.over != null) moveTo(dr.from, dr.over);
+      if (ev.type !== 'pointercancel' && dr.over != null) { U.haptic('drop'); moveTo(dr.from, dr.over); }
       // Let go anywhere else and it glides back to its day.
       else if (was && !U.reduced() && dr.li.animate) dr.li.animate([{ transform: was }, { transform: 'none' }], { duration: 320, easing: EASE });
     }
@@ -704,7 +737,7 @@
     if (i < 0) return;
     S.events.splice(i, 1);
     if (view.day === to) view.day = from;
-    U.haptic('select');
+    U.haptic('undo');
     U.commit();
   }
   U.act.planMoveTo = (el) => {
@@ -722,6 +755,7 @@
   };
   U.act.planMoveInfo = (el) => U.moveSheet(el.dataset.arg);
   U.act.planEquipment = () => U.editAnswers('equipment');
+  // Plan's Moves section (a page of its own when Plan isn't a tab).
   U.act.openMoves = () => U.go('moves');
   U.act.planWhy = (el) => { U.closeSheets(); U.open('science', el.dataset.arg); };
   // What this week's phase means, and how to read the marks on the strip.
@@ -747,5 +781,9 @@
     });
   };
   // Opens the Plan tab on a day (for other screens).
-  U.planShow = (d) => { U.go('plan'); if (d != null) { view.route = U.route; view.today = U.today(); view.day = d; view.moving = null; U.render(); } };
+  U.planShow = (d) => {
+    const turned = U.planSection('week');
+    U.go('plan');
+    if (d != null) { view.route = U.route; view.today = U.today(); view.day = d; view.moving = null; U.render(); } else if (turned) U.render();
+  };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -110,7 +110,10 @@ await page.click('.player [data-act="plHowTo"]');
 await page.waitForSelector('dialog[open] .sheet-fig');
 await page.waitForFunction(() => !!document.querySelector('dialog[open] .sheet-fig .fig3d:not(.fig-pending) canvas'), null, { timeout: 15000 });
 check('the how-to sheet has the 3D figure', true);
-await page.waitForTimeout(1200); // the frame in flight when the sheet opened lands
+// Paused, the figure draws one last frame where it stopped, held back while the sheet is still
+// moving (<html data-sheet-moving>, at most 1.5 s): wait for that frame to land before comparing.
+await page.waitForFunction(() => !document.documentElement.hasAttribute('data-sheet-moving'), null, { timeout: 5000 }).catch(() => {});
+await page.waitForTimeout(1200);
 const s1 = await sig(); await page.waitForTimeout(700); const s2 = await sig();
 check('the player\'s figure stops while the sheet covers it', s1 && s1 === s2);
 check('with Angle, Side and Front views', await page.evaluate(() => document.querySelectorAll('dialog[open] [data-on="figView"] input').length === 3));
@@ -188,6 +191,8 @@ await shot(page, 'settings');
 check('nothing in the figure rows is cut off', await page.evaluate(() => ![...document.querySelectorAll('#screen .set-fig-row .rf-list-title, #screen .swatches')].some((e) => e.scrollWidth > e.clientWidth + 1 || e.getBoundingClientRect().right > innerWidth)));
 await page.evaluate(() => document.querySelector('#screen [data-on="setFigure"] input[value="flat"]').click());
 await page.waitForTimeout(400);
+// A removed row fades from where it was before it goes (src/ui/motion.js), later under load.
+await page.evaluate(() => window.GH.ui.motion && window.GH.ui.motion.settled());
 check('Simple hides the look options', await page.evaluate(() => window.GH.ui.S.profile.prefs.figure === 'flat' && !document.querySelector('#screen .set-fig-row')));
 await page.evaluate(() => window.GH.ui.act.back ? window.GH.ui.act.back() : history.back());
 await page.waitForTimeout(500);
@@ -346,6 +351,8 @@ await page.waitForTimeout(600);
 await page.evaluate(() => { window.GH.ui.S.profile.prefs.figure = 'flat'; });
 await page.evaluate(() => window.GH.ui.moveSheet('push_std'));
 await page.waitForSelector('dialog[open] .sheet-fig svg');
+// Like the 3D one, it holds its pose while the sheet is still moving (<html data-sheet-moving>).
+await page.waitForFunction(() => !document.documentElement.hasAttribute('data-sheet-moving'), null, { timeout: 5000 }).catch(() => {});
 await page.waitForTimeout(300);
 check('the flat figure moves too', await moves(page, 'dialog[open] .sheet-fig'));
 check('no console errors', errors.length === 0, errors.join('\n'));

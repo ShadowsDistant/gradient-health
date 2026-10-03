@@ -7,8 +7,9 @@
  *   WebGPU when a quick self-test passes. It's the fallback: several times slower than native.
  * Both get the same prompt, built here (ChatML), and stream the same way.
  *
- * The Android shell downloads the model files (ModelStore.java: resumable, Wi-Fi only if asked, checked
- * against the size, the GGUF header and the SHA-256) into the app's private storage and serves them
+ * The Android shell downloads the model files (ModelStore.java: resumable, Wi-Fi only if asked, each
+ * pinned to a repo commit and checked against its exact size, the GGUF header and its SHA-256, see
+ * PINS) into the app's private storage and serves them
  * back to the page at models/<file> with HTTP Range support. wllama reads them through a Range-backed
  * stand-in for a Blob, so a model goes straight from storage into WebAssembly memory and is never
  * copied into browser storage. The chat and settings screens live in src/ui/.
@@ -26,10 +27,28 @@ const now = () => Date.now();
 /* ------------------------------------------------------------------ models */
 // Qwen3.5 (March 2026, Apache-2.0, not gated), Q4_K_M, from unsloth's GGUF repos on Hugging Face, in
 // three sizes. Qwen3.5 mixes gated delta-net layers with full attention; the llama.cpp inside wllama
-// 3.6.1 runs it, which test/llm.mjs checks with a tiny model of the same layout. Hugging Face was
-// blocked from the machine this was written on, so the names and sizes come from each file's page on
-// the Hub (shown to 3 digits, well inside ModelStore's size check), and the SHA-256 checked on the
-// phone is the one the Hub reports for the file (X-Linked-Etag).
+// 3.6.1 runs it, which test/llm.mjs checks with a tiny model of the same layout.
+//
+// Each file is pinned in PINS: the repo commit it's downloaded at (so its URL always means the same
+// bytes), its exact size and its SHA-256, which the phone checks every byte against. ModelStore.java
+// downloads nothing that isn't pinned. Hugging Face can't be reached from the machine this is written
+// on, so the pins come from the "pins" job in .github/workflows/model-check.yml (run it from the
+// Actions tab): it reads each file at the repo's current commit, checks it against what the Hub says,
+// and prints the lines to paste here. Until a file has its pin, its entry keeps the size shown on its
+// page (to 3 digits) and the repo's main branch, and the app won't download it.
+// From the pins job on 2026-10-02 (each file downloaded at its commit and checked against the Hub's
+// SHA-256 and size).
+const PINS = {
+  'Qwen3.5-0.8B-Q4_K_M.gguf': { commit: '6ab461498e2023f6e3c1baea90a8f0fe38ab64d0', sha256: 'bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517', bytes: 532517120 },
+  'Qwen3.5-2B-Q4_K_M.gguf': { commit: 'f6d5376be1edb4d416d56da11e5397a961aca8ae', sha256: 'aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223', bytes: 1280835840 },
+  'Qwen3.5-4B-Q4_K_M.gguf': { commit: 'e87f176479d0855a907a41277aca2f8ee7a09523', sha256: '00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4', bytes: 2740937888 },
+};
+const HUB = 'https://huggingface.co';
+function pinned(repo, file, shownBytes) {
+  const p = Object.prototype.hasOwnProperty.call(PINS, file) ? PINS[file] : null;
+  if (!p) return { file, url: `${HUB}/${repo}/resolve/main/${file}`, bytes: shownBytes };
+  return { file, url: `${HUB}/${repo}/resolve/${p.commit}/${file}`, sha256: p.sha256, bytes: p.bytes };
+}
 //
 // Each model carries how to run it: ctx, batch (a small batch keeps a cache checkpoint close to the
 // end of each prompt, so a follow-up question reuses nearly all of it on a hybrid model like this),
@@ -42,25 +61,16 @@ const QWEN35 = {
 };
 const MODELS = [
   Object.assign({
-    id: 'q35-08', tier: 'fast', name: 'Fast', label: 'Qwen3.5 0.8B', speed: 3, quality: 1,
-    file: 'Qwen3.5-0.8B-Q4_K_M.gguf',
-    url: 'https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf',
-    bytes: 533e6, minRamGB: 3,
-  }, QWEN35),
+    id: 'q35-08', tier: 'fast', name: 'Fast', label: 'Qwen3.5 0.8B', speed: 3, quality: 1, minRamGB: 3,
+  }, pinned('unsloth/Qwen3.5-0.8B-GGUF', 'Qwen3.5-0.8B-Q4_K_M.gguf', 533e6), QWEN35),
   Object.assign({
-    id: 'q35-2', tier: 'balanced', name: 'Balanced', label: 'Qwen3.5 2B', speed: 2, quality: 2,
-    file: 'Qwen3.5-2B-Q4_K_M.gguf',
-    url: 'https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/main/Qwen3.5-2B-Q4_K_M.gguf',
-    bytes: 1.28e9, minRamGB: 6,
-  }, QWEN35),
+    id: 'q35-2', tier: 'balanced', name: 'Balanced', label: 'Qwen3.5 2B', speed: 2, quality: 2, minRamGB: 6,
+  }, pinned('unsloth/Qwen3.5-2B-GGUF', 'Qwen3.5-2B-Q4_K_M.gguf', 1.28e9), QWEN35),
   Object.assign({
-    id: 'q35-4', tier: 'best', name: 'Best answers', label: 'Qwen3.5 4B', speed: 1, quality: 3,
-    file: 'Qwen3.5-4B-Q4_K_M.gguf',
-    url: 'https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf',
-    bytes: 2.74e9, minRamGB: 12,
-  }, QWEN35),
-  // 1.2's models (Qwen2.5 Instruct from Qwen's own GGUF repos): no longer offered, but one that's
-  // already on the phone keeps working until it's deleted. Their SHA-256 is pinned.
+    id: 'q35-4', tier: 'best', name: 'Best answers', label: 'Qwen3.5 4B', speed: 1, quality: 3, minRamGB: 12,
+  }, pinned('unsloth/Qwen3.5-4B-GGUF', 'Qwen3.5-4B-Q4_K_M.gguf', 2.74e9), QWEN35),
+  // 1.2's models (Qwen2.5 Instruct from Qwen's own GGUF repos): no longer offered or downloaded, but
+  // one that's already on the phone keeps working until it's deleted. Their SHA-256 is pinned.
   {
     id: 'qwen05', legacy: true, name: 'Standard (older)', label: 'Qwen2.5 0.5B Instruct', license: 'Apache-2.0', family: 'qwen2',
     file: 'qwen2.5-0.5b-instruct-q4_k_m.gguf',
@@ -111,6 +121,7 @@ const MESSAGES = {
   network: 'The download stopped. Check your connection and try again.',
   http: 'The model couldn\'t be downloaded right now. Try again later.',
   changed: 'The model file on the server has changed. Update Gradient Health to download it.',
+  unpinned: 'This version of Gradient Health can\'t download this model. Update the app to get it.',
   size: DAMAGED, format: DAMAGED, checksum: DAMAGED,
   io: 'The model couldn\'t be saved on this phone.',
   cancelled: 'Download cancelled.',
@@ -306,13 +317,20 @@ async function probeSize(url) {
   return size;
 }
 
-// [{ id, file, bytes }]: from the Android shell, or (browser, tests) the files found at baseUrl.
+// An install from before files were pinned, which the app has hashed since (ModelStore's background
+// check, "rehashed"), whose hash isn't this version's pin: not a file the app can vouch for.
+function mismatched(x) {
+  const m = cfg.models.find((y) => y.id === String(x.id));
+  return !!(x.rehashed && m && m.sha256 && String(x.sha256 || '') !== m.sha256);
+}
+// [{ id, file, bytes }]: from the Android shell, or (browser, tests) the files found at baseUrl. A
+// mismatched install reads as not installed, so it's offered for download again (which replaces it).
 async function installed() {
   const b = bridge();
   if (b && b.modelList) {
     let list = [];
     try { list = JSON.parse(b.modelList() || '[]'); } catch (e) { list = []; }
-    return list.filter((x) => x && x.id).map((x) => ({ id: String(x.id), file: String(x.file || ''), bytes: Number(x.bytes) || 0 }));
+    return list.filter((x) => x && x.id && !mismatched(x)).map((x) => ({ id: String(x.id), file: String(x.file || ''), bytes: Number(x.bytes) || 0 }));
   }
   if (!cfg.served) return [];
   const out = [];
@@ -438,10 +456,14 @@ function gpuUsable() {
 }
 
 /* ------------------------------------------------------------------ runtime */
+// The log: this file's own lines (what loaded where, fallbacks, errors), which never hold a chat, and
+// the engine's (wllama and llama.cpp), which can quote a model's output. The self-test's report, which
+// can go to GitHub, keeps engine lines from its own run only (its question is a general one).
 const LOG = [];
-function log(level, args) {
+let logSeq = 0;
+function log(level, args, engine) {
   const text = args.map((a) => (a instanceof Error ? a.message : typeof a === 'string' ? a : (() => { try { return JSON.stringify(a); } catch (e) { return String(a); } })())).join(' ');
-  LOG.push(`${level}: ${text}`.slice(0, 400));
+  LOG.push({ n: ++logSeq, engine: !!engine, line: `${level}: ${text}`.slice(0, 400) });
   if (LOG.length > 80) LOG.shift();
   if (cfg.debug) (console[level] || console.log)('[llm]', ...args);
 }
@@ -449,10 +471,10 @@ function log(level, args) {
 // error event comes here too, and only here: that means the worker is gone.
 const isWorkerError = (a) => !!a && typeof a === 'object' && !(a instanceof Error) && 'filename' in a && 'lineno' in a;
 const LOGGER = {
-  debug: (...a) => { if (cfg.debug) log('debug', a); },
-  log: (...a) => log('log', a),
-  warn: (...a) => log('warn', a),
-  error: (...a) => { log('error', a.map((x) => (isWorkerError(x) ? `worker error: ${x.message || 'unknown'}` : x))); if (a.some(isWorkerError)) workerDied(a.find(isWorkerError)); },
+  debug: (...a) => { if (cfg.debug) log('debug', a, true); },
+  log: (...a) => log('log', a, true),
+  warn: (...a) => log('warn', a, true),
+  error: (...a) => { log('error', a.map((x) => (isWorkerError(x) ? `worker error: ${x.message || 'unknown'}` : x)), true); if (a.some(isWorkerError)) workerDied(a.find(isWorkerError)); },
 };
 // Never used: models come from ModelStore, so wllama must not download or cache anything itself.
 const NO_STORE = Object.freeze({});
@@ -720,6 +742,8 @@ async function doLoad(m, opts) {
   const av = available();
   if (!av.ok) throw llmError('unavailable', av.reason);
   if (!fits(m)) throw llmError('memory');
+  // A file that isn't the pinned one (installed() leaves it out) doesn't load either engine.
+  if (bridge() && bridge().modelList && !(await installed()).some((x) => x.id === m.id)) throw llmError('not-installed');
   if (current) await stop();
   const report = opts.report;
   const t0 = now();
@@ -972,9 +996,12 @@ async function generate(c, msgs, opts) {
 
 /* ------------------------------------------------------------------ self-test */
 // For Settings: which engine runs here, how long the model takes to load and to start answering,
-// how fast it writes, what the phone and WebView are, and the recent log. onStep(text) narrates.
+// how fast it writes, what the phone and WebView are, and the recent log. onStep(text) narrates. It
+// can be sent to GitHub, so it holds nothing about the person: the question is a general one, and the
+// log has the runtime's own lines plus the engine's from this run only.
 async function selfTest(id, onStep) {
   const step = (t) => { if (onStep) { try { onStep(t); } catch (e) { /* ignore */ } } };
+  const since = logSeq;
   const ua = String((G.navigator && G.navigator.userAgent) || '');
   const out = {
     at: new Date().toISOString(),
@@ -987,7 +1014,7 @@ async function selfTest(id, onStep) {
   try {
     const m = model(id);
     const have = (await installed()).find((x) => x.id === id);
-    out.file = have ? { bytes: have.bytes, expected: m.bytes, ok: Math.abs(have.bytes - m.bytes) <= m.bytes * 0.006 } : null;
+    out.file = have ? { bytes: have.bytes, expected: m.bytes, pinned: !!m.sha256, ok: m.sha256 ? have.bytes === m.bytes : Math.abs(have.bytes - m.bytes) <= m.bytes * 0.006 } : null;
     if (!have) throw llmError('not-installed');
     if (current && current.id === id) await unload();
     step('Loading the model');
@@ -1007,7 +1034,7 @@ async function selfTest(id, onStep) {
     out.ok = false;
     out.error = `${e.code || 'error'}: ${e.message}${e.detail ? ` (${e.detail})` : ''}`;
   }
-  out.log = LOG.slice(-40);
+  out.log = LOG.filter((e) => !e.engine || e.n > since).map((e) => e.line).slice(-40);
   return out;
 }
 
@@ -1018,6 +1045,6 @@ GH.llm = {
   load, loaded: info, unload, chat, prepare, selfTest, lastCrash,
   get stats() { return stats; },
   get engine() { return nativeOk() ? 'native' : 'wasm'; },
-  logs: () => LOG.slice(),
+  logs: () => LOG.map((e) => e.line),
   MESSAGES,
 };

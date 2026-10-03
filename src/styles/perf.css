@@ -1,0 +1,5 @@
+/* Performance. While the page scrolls (#app[data-scrolling], set by src/ui/core.js and cleared
+   150 ms after the last scroll), the background glow's drift holds still; the scroll fade, the
+   second animation where it's supported, keeps running. Same values as the other pauses in
+   styles.css. */
+#app[data-scrolling]::before, #app[data-scrolling]::after { animation-play-state: paused, running; }

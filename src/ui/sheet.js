@@ -14,8 +14,8 @@
  *    damped spring that starts at that speed: a Web Animation with a linear() easing sampled from the
  *    spring, which the compositor plays.
  * o: { title, body, action: { label, act, arg }, cls, size: 'fit' | 'auto' | 'full', onClose(value),
- * after(ctl) }. Older calls pass detents/detent/fit instead: fit → 'fit', detents 'large' → 'full',
- * anything else → 'auto' (detent: 'large' opens it at large).
+ * after(ctl), quiet (no nav haptic as it opens) }. Older calls pass detents/detent/fit instead: fit →
+ * 'fit', detents 'large' → 'full', anything else → 'auto' (detent: 'large' opens it at large).
  * While any sheet moves, <html> has data-sheet-moving and the document hears 'gh-sheet-moving'
  * ({ detail: { moving } }), so other animations can wait; U.sheetMoving() says so too. While any is
  * open, <html> has data-sheet-open.
@@ -251,6 +251,14 @@
     else if (r.top < top) s.body.scrollTop -= top - r.top;
   }
 
+  /* ---------------------------------------------------------------- haptics */
+  // A sheet opening plays nav, in answer to a touch or a key in the last second: one the app opens by
+  // itself (at launch, after a long wait) stays quiet, and so does one opened with o.quiet. One the
+  // person closes (the close button, a tap on the scrim, a swipe down, Esc, Back) plays back.
+  let lastInput = -1e9;
+  for (const t of ['pointerdown', 'pointerup', 'keydown']) doc.addEventListener(t, () => { lastInput = now(); }, true);
+  const haptic = (kind) => { if (U.haptic) U.haptic(kind); };
+
   /* ---------------------------------------------------------------- a sheet */
   function sizeOf(o) {
     if (o.size === 'fit' || o.size === 'auto' || o.size === 'full') return o.size;
@@ -280,6 +288,10 @@
     // itself (not from a tap) Chrome would draw its focus ring round them.
     doc.body.appendChild(el);
     if (U.enhance) U.enhance(el);
+    // Its controls are placed now, in the one layout the sheet reads anyway to size itself, rather
+    // than in the next frame's read pass (core.js): placed while it slid open, a sheet with a view
+    // switch over a 3D figure drew no frames for most of a second.
+    if (U.readNow) U.readNow();
     const s = {
       el, size, scrim: el.querySelector('.gh-sheet-scrim'), panel: el.querySelector('.gh-sheet-panel'),
       grab: el.querySelector('.rf-sheet-grabber'), header: el.querySelector('.rf-sheet-header'), body: el.querySelector('.rf-sheet-body'),
@@ -551,8 +563,11 @@
     };
     el.addEventListener('pointerup', pointerEnd);
     el.addEventListener('pointercancel', pointerEnd);
-    // A drag that started on a button doesn't also press it.
-    el.addEventListener('click', (e) => { if (now() - s.dragEnd < 350) { e.preventDefault(); e.stopPropagation(); } }, true);
+    // A drag that started on a button doesn't also press it. Only that gesture's click is swallowed:
+    // a tap that starts after the drag ended (a switch right after a pull) goes through.
+    let downAt = -1e9;
+    el.addEventListener('pointerdown', () => { downAt = now(); }, true);
+    el.addEventListener('click', (e) => { if (e.detail && downAt <= s.dragEnd && now() - s.dragEnd < 350) { e.preventDefault(); e.stopPropagation(); } }, true);
 
     /* ---------- closing */
     let finished = false;
@@ -573,8 +588,11 @@
       pageDone();
     };
     // Slides out (at the finger's speed after a drag), then closes with `value` as its returnValue.
+    // A cancel is the person closing it, with back's feel; any other value is the app closing it after
+    // an action, which has its own.
     ctl.close = (value, v) => {
       if (s.closing) return;
+      if (value === 'cancel' && !s.quiet) haptic('back');
       s.closing = true;
       ctl.closed = true;
       g = null;
@@ -645,13 +663,15 @@
     s.y = s.closedY;
     put(s.closedY);
     goTo(first, 0, 'open');
+    if (!o.quiet && now() - lastInput < 1000) haptic('nav');
     const ro = G.ResizeObserver ? new G.ResizeObserver(() => { if (s.closing) return; if (dragging()) s.dirty = true; else relayout(); }) : null;
     if (ro) for (const x of [s.panel, s.header, s.body]) ro.observe(x);
     if (o.after) safe(() => o.after(ctl));
     return ctl;
   };
 
-  U.closeSheets = () => { for (const s of openSheets.slice()) s.ctl.close('cancel'); };
+  // The app closing them on its way somewhere else (that move has its own feel): no back.
+  U.closeSheets = () => { for (const s of openSheets.slice()) { s.quiet = true; s.ctl.close('cancel'); } };
   U.topSheet = () => { const s = openSheets[openSheets.length - 1]; return s ? s.ctl : null; };
   U.sheetMoving = () => moving > 0;
 })(typeof window !== 'undefined' ? window : globalThis);

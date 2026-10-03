@@ -340,6 +340,12 @@ section('The on-device coach keeps to the app\'s numbers');
   check('and when all it wrote was the yes or no', none.replaced && /didn't answer/.test(none.note), none);
   const fine = DC.finish(walker, D0, q, 'Yes, you walk 7675 steps a day, above what most studies link to better health.', given, 'Yes,');
   check('a good answer goes through untouched, with no note', !fine.replaced && !fine.note && fine.text.startsWith('Yes, you walk 7675'), fine);
+  // The check is the coach's own (GH.coach), shared by the on-device coach, Claude's chat answers and
+  // the plan review's text; only the name in the note changes.
+  const line = 'You walk 7,675 steps a day. That\'s 655 more than usual. Your goal is 8,000.';
+  check('the number check lives in the coach, the same for every model', JSON.stringify(C.keepToGiven(line, given)) === JSON.stringify(DC.keepToGiven(line, given)));
+  const claude = C.grounded(walker, D0, q, 'Yes, 12,000 steps.', given, 'Yes,', 'Claude');
+  check('and the stand-in note names who answered', claude.replaced && claude.text === C.ask(walker, D0, q).text && /^Claude's answer didn't match your numbers, so this is the app's own\.$/.test(claude.note), claude);
 
   // A question built on something that isn't so starts from the app's correction.
   const full = person(), tired = person({ sleep: 270 });

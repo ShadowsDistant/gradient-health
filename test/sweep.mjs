@@ -4,8 +4,9 @@
 // build/sweep/ for a visual pass.
 // Usage: node test/sweep.mjs [--quick] [--no-shots] [--only=food,settings]
 import { createRequire } from 'node:module';
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { root, check, section, done, serveDist } from './lib.mjs';
 import { seedBridge, seedState } from './fixtures.mjs';
 import { actBridge, seedActivities } from './actfixture.mjs';
@@ -215,8 +216,9 @@ for (const [width, theme, zoom, h] of COMBOS) {
     ['progress-12w', async () => { await page.evaluate(() => { const U = window.GH.ui; if (!U.act.tailorPlan) U.act.tailorPlan = () => {}; U.go('progress'); }); await settle(); await page.click('#screen .bm-range [data-arg="12"]'); }],
     ['progress-improved', async () => { await page.evaluate(() => { const U = window.GH.ui; if (!U.act.tailorPlan) U.act.tailorPlan = () => {}; U.go('progress'); }); await settle(); await page.click('[data-on="bodyMode"] input[value="improved"]', { force: true }); }],
     ['sheet-muscle', async () => { await page.evaluate(() => { const U = window.GH.ui; if (!U.act.tailorPlan) U.act.tailorPlan = () => {}; U.go('progress'); }); await settle(); await page.click('#screen .bm-view[data-view="front"] .bm-m[data-muscle="chest"] path'); await settle(1200); }],
+    // The moves are a section of Plan; Profile became the You tab.
     ['moves', async () => { await page.evaluate(() => window.GH.ui.go('moves')); }],
-    ['profile', async () => { await page.evaluate(() => window.GH.ui.open('profile')); }],
+    ['you', async () => { await page.evaluate(() => window.GH.ui.go('you')); }],
     ['settings', async () => { await page.evaluate(() => window.GH.ui.open('settings')); }],
     ['settings-coach', async () => { await page.evaluate(() => window.GH.ui.open('settings', 'coach')); await settle(1500); }],
     ['coach', async () => { await page.evaluate(() => window.GH.ui.open('coach')); }],
@@ -232,20 +234,10 @@ for (const [width, theme, zoom, h] of COMBOS) {
     ['sheet-answers', async () => { await act('editAnswers'); }],
     ['sheet-move', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await page.evaluate(() => { const b = document.querySelector('#screen .ex-name[data-act="moveInfo"]'); if (b) b.click(); }); await settle(1500); }],
     ['edit-equipment', async () => { await page.evaluate(() => window.GH.ui.editAnswers('equipment')); }],
-    ['setup-welcome', async () => { await setup(0); }],
-    ['setup-track', async () => { await setup(1); }],
-    ['setup-about', async () => { await setup(3, async () => { await page.fill('.onboard input[data-k="age"]', '150'); await page.locator('.onboard input[data-k="age"]').dispatchEvent('change'); await page.locator('.ob-actions [data-variant="tinted"]').click(); }); }],
-    ['setup-conditions', async () => { await setup(4, async () => { await chips(['.onboard .rf-chip[data-v="ra"]', '.onboard .rf-chip[data-v="oa"]', '.onboard .rf-chip[data-v="heart"]', '.onboard .rf-chip[data-v="seated"]']); }); }],
-    ['setup-goals', async () => { await setup(5); }],
-    ['setup-body', async () => { await setup(9); }],
-    ['setup-baseline', async () => { await setup(10); }],
-    ['setup-nutrition', async () => { await setup(11); }],
-    ['setup-plan', async () => { await setup(4, async () => { await chips(['.onboard .rf-chip[data-v="balance"]', '.onboard .rf-chip[data-v="bp"]']); for (let i = 0; i < 7; i++) { await page.locator('.ob-actions [data-variant="tinted"]').click(); await settle(300); } }); }],
-    ['setup-food', async () => { await setup(1, async () => { await page.click('.onboard input[name="obTrack"][value="both"]', { force: true }); await settle(200); for (let i = 0; i < 10; i++) { await page.locator('.ob-actions [data-variant="tinted"]').click(); await settle(300); } }); }],
+    // Set-up's first run and the tour are in test/sweep.d/setup.mjs.
     ['edit-conditions', async () => { await page.evaluate(() => window.GH.ui.editAnswers('conditions')); }],
     ['sheet-around', async () => { await page.evaluate(() => { window.GH.ui.S.profile.conditions = ['ra', 'bp']; window.GH.ui.S.profile.age = 67; window.GH.ui.act.planAround(); }); }],
     ['edit-food', async () => { await page.evaluate(() => window.GH.ui.editAnswers('food')); }],
-    ['tour-4', async () => { await act('showTour'); await settle(); for (let i = 0; i < 3; i++) { await page.evaluate(() => { const b = document.querySelector('dialog[open] [data-act="tourNext"], .tour [data-act="tourNext"]'); if (b) b.click(); }); await settle(600); } }],
     ['sheet-rule', async () => { await page.evaluate(() => window.GH.ui.open('science', 'volume')); await settle(1200); }],
     ['sheet-evidence', async () => { await page.evaluate(() => window.GH.ui.open('science')); await settle(); await act('sciKey'); }],
     ['player', async () => { await page.evaluate(() => window.GH.ui.go('today')); await settle(); await act('startWorkout'); await settle(2000); }],
@@ -284,6 +276,13 @@ for (const [width, theme, zoom, h] of COMBOS) {
     // Last, since it changes the state: today's workout done (not saved, so a reload undoes it).
     ['plan-done', async () => { await page.evaluate(() => { const GH = window.GH, U = GH.ui, B = GH.brain, S = U.S; GH.store.save = () => true; GH.store.saveSoon = () => {}; B.startWorkout(S, U.today(), { now: Date.now() - 26 * 60000 }); for (let g = 0; S.active && S.active.idx < S.active.steps.length && g < 400; g++) { const st = S.active.steps[S.active.idx]; B.completeStep(S, st.kind === 'test' ? { value: 12 } : {}); if (st.askRir) B.setRir(S, st.item, '12'); } B.finishWorkout(S, { rating: 'right', now: Date.now() }); U.go('plan'); }); }],
   ].filter(([id]) => !only.length || only.some((o) => id.startsWith(o)));
+  // Screens added per area in test/sweep.d/ (see its README), so areas don't all edit this list.
+  if (existsSync(join(root, 'test/sweep.d'))) {
+    for (const f of readdirSync(join(root, 'test/sweep.d')).filter((x) => x.endsWith('.mjs')).sort()) {
+      const mod = await import(pathToFileURL(join(root, 'test/sweep.d', f)).href);
+      scenes.push(...await mod.screens({ page, settle, act, reset, setup, chips, startAct, seedActs }));
+    }
+  }
   for (const [id, run] of scenes) {
     try {
       await run();

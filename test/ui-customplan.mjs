@@ -124,11 +124,11 @@ await settle(2500);
 const st1 = await drawn('dialog[open] .cp-tile .cp-thumb');
 check('tiles on screen get stills of the move', st1.drawn >= 4, st1);
 await shot('04-picker');
-await page.click('dialog[open] [data-act="cpGroup"][data-arg="legs"]');
+await page.click('dialog[open] [data-on="cpGroup"] [data-arg="legs"]');
 await settle(500);
 const legs = await S(() => [...document.querySelectorAll('dialog[open] .cp-tile-sub')].map((e) => e.textContent));
 check('the Legs filter shows leg moves only', legs.length > 3 && legs.every((t) => /^Legs/.test(t)), legs.slice(0, 5));
-await page.click('dialog[open] [data-act="cpGroup"][data-arg="all"]');
+await page.click('dialog[open] [data-on="cpGroup"] [data-arg="all"]');
 await page.fill('#cpQ', 'push-up');
 await settle(400);
 const found = await S(() => [...document.querySelectorAll('dialog[open] .cp-tile-name')].map((e) => e.textContent));
@@ -504,7 +504,8 @@ const sheetsUntil = async (p, ok) => {
   await c4.close();
 }
 {
-  // A new install opened by a link: set-up first, then the tour, then the plan.
+  // A new install opened by a link: set-up's welcome offers the plan, and two quick questions later
+  // it's in use, with no tour and no import sheet over the app (the rest is test/ui-onboarding.mjs).
   const c5 = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: dark ? 'dark' : 'light' });
   const p5 = await c5.newPage();
   p5.on('pageerror', (e) => errors.push(e.message));
@@ -516,14 +517,14 @@ const sheetsUntil = async (p, ok) => {
   await p5.waitForSelector('.onboard:not([hidden])');
   await p5.clock.runFor(2500); await p5.waitForTimeout(300);
   check('a new install starts with set-up, not the plan', (await titles(p5)).length === 0);
-  await p5.evaluate(() => window.GH.ui.act.obFinish());
-  const tour = await sheetsUntil(p5, (t) => t.length > 0);
-  await p5.clock.runFor(2500); await p5.waitForTimeout(300);
-  tour.push(...(await titles(p5)).slice(1));
-  check('after set-up the tour comes first, on its own', tour.length === 1 && tour[0] === 'Welcome', tour);
-  await p5.evaluate(() => window.GH.ui.closeSheets());
-  const plan = await sheetsUntil(p5, (t) => t.length === 1 && t[0] !== 'Welcome');
-  check('then the plan the app was opened with', plan.length === 1 && plan[0] === 'Jo\'s 1-day plan', plan);
+  await p5.waitForSelector('.onboard .ob-shared', { timeout: 5000 }).catch(() => null);
+  check('its welcome offers the plan, from Jo', /Jo sent you a plan/.test(await p5.locator('.onboard').innerText()) && (await p5.locator('.ob-actions [data-variant="tinted"]').innerText()).trim() === 'Start with Jo\'s plan');
+  for (let i = 0; i < 3; i++) { await p5.locator('.ob-actions [data-variant="tinted"]').click(); await p5.clock.runFor(100); await p5.waitForTimeout(500); }
+  check('two quick questions, then the plan as it\'ll be done', await p5.locator('.onboard .ob-friend').count() === 1 && /Lunch break/.test(await p5.locator('.onboard').innerText()));
+  await p5.click('.ob-actions [data-act="obLook"]');
+  await p5.clock.runFor(3000); await p5.waitForTimeout(300);
+  const st = await p5.evaluate(() => { const U = window.GH.ui, C = window.GH.customPlan, S = U.S; const id = C.activeId(S); return { plan: id && C.get(S, id).name, tour: !!S.seen.tour, sheets: [...document.querySelectorAll('dialog[open] .rf-sheet-title')].map((e) => e.textContent) }; });
+  check('then it\'s in use, with no tour and no plan sheet over the app', st.plan === 'Lunch break' && st.tour && st.sheets.length === 0, st);
   await c5.close();
 }
 

@@ -65,12 +65,12 @@ h1 { font-size: 40px; font-weight: 700; letter-spacing: -0.015em; line-height: 1
 const SHOTS = [
   ['01-today', 'today.png', 'Workouts that adjust to you, every day', 'Your sleep, recovery and last session shape today\'s plan.'],
   ['02-workout', 'workout.png', 'A 3D coach shows every move', 'The right tempo and the working muscles lit, from any angle.'],
-  ['03-plan', 'plan.png', 'Your whole week at a glance', 'Move a workout with a tap. Miss a day and the week moves along.'],
-  ['04-activity', 'activity-dark.png', 'Track runs, walks, hikes and rides', 'GPS route, pace and splits, with heart rate from your watch.'],
-  ['05-around', 'around.png', 'A plan built around your body', 'It adapts to your age, and to arthritis, back pain, balance and more.'],
-  ['06-share', 'share-dark.png', 'Make your own plan and share it', 'Build it like a playlist. Friends scan the QR code and train.'],
-  ['07-coach', 'answer-dark.png', 'A private AI coach on your phone', 'Ask about your numbers. It runs on the phone, even offline.'],
-  ['08-health', 'health.png', 'Your health, with the story behind it', 'Sleep, steps, heart rate and weight from Health Connect.'],
+  ['03-why', 'why.png', 'The best plan for you, and why', 'Every way to split your week is weighed, and the best fit picked.'],
+  ['04-review', 'review.png', 'Check your plan with AI', 'Each idea is checked against your kit, joints and time. You pick.'],
+  ['05-badges', 'badge-share-dark.png', 'Badges worth sharing', '64 to earn. Share one as a picture with friends and family.'],
+  ['06-activity', 'activity-dark.png', 'Track runs, walks, hikes and rides', 'GPS route, pace and splits, with heart rate from your watch.'],
+  ['07-around', 'around.png', 'A plan built around your body', 'It adapts to your age, and to arthritis, back pain, balance and more.'],
+  ['08-coach', 'answer-dark.png', 'A private AI coach on your phone', 'Ask about your numbers. It runs on the phone, even offline.'],
 ];
 function shotHtml(img, title, sub) {
   const dark = /-dark\.png$/.test(img);

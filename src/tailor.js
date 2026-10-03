@@ -258,7 +258,7 @@
     for (const g of t.goals) lines.push({ icon: 'star', tone: 'accent', text: GOAL_TEXT[g] });
     if (t.minutes != null) lines.push({ icon: 'timer', tone: 'accent', text: `Workouts of about ${t.minutes} minutes`, sub: `Now ${p.minutes}` });
     if (t.days != null) lines.push({ icon: 'calendar', tone: 'accent', text: `${t.days} workouts a week`, sub: `Now ${p.days}` });
-    if (t.avoid_joints.length) lines.push({ icon: 'heart', tone: 'caution', text: `Easy on your ${t.avoid_joints.map((j) => JOINT_NAME[j]).join(' and ')}`, sub: 'Moves that load them hard or jump are left out' });
+    if (t.avoid_joints.length) lines.push({ icon: 'heart', tone: 'caution', text: `Easy on your ${t.avoid_joints.map((j) => JOINT_NAME[j]).join(' and ')}`, sub: 'Two weeks off moves that load them, then no hard or jumping versions' });
     if (t.no_jumping) lines.push({ icon: 'volume-low', tone: 'accent', text: 'No jumping', sub: 'Quiet, low-impact moves instead' });
     if (t.gentle === true) lines.push({ icon: 'leaf', tone: 'positive', text: 'A gentler plan', sub: 'Fewer sets to start, building up over two weeks' });
     if (t.gentle === false) lines.push({ icon: 'bolt', tone: 'accent', text: 'Back to the full plan', sub: 'The usual number of sets' });
@@ -281,6 +281,17 @@
     const before = { profile: copy(Object.fromEntries(KEEP.map((k) => [k, k === 'focus' ? S.profile.focus || [] : S.profile[k]]))), excluded: (S.excluded || []).slice(), vol: Object.assign({}, S.vol) };
     if (Object.keys(patch).length) b.reprogram(S, patch, day);
     if (t.avoid_moves.length) S.excluded = [...new Set((S.excluded || []).concat(t.avoid_moves))];
+    // A joint that hurts gets the same two-week break as one ticked after a workout: every move
+    // that loads it is swapped out (careful alone only drops the hard and jumping versions).
+    if (t.avoid_joints.length) {
+      S.pain = S.pain || {};
+      before.pain = {};
+      before.painSet = {};
+      for (const j of t.avoid_joints) {
+        before.pain[j] = S.pain[j] != null ? S.pain[j] : null;
+        S.pain[j] = before.painSet[j] = Math.max(S.pain[j] || 0, day + 14);
+      }
+    }
     S.events = S.events || [];
     S.events.push({ type: 'tailor', day, at: Date.now(), lines: lines.map((l) => l.text), before });
     return lines;
@@ -293,6 +304,12 @@
     B().reprogram(S, copy(e.before.profile), day);
     S.excluded = e.before.excluded.slice();
     S.vol = Object.assign({}, S.vol, e.before.vol);
+    // The breaks it started end, unless something since (a sore joint ticked after a workout)
+    // moved them on.
+    for (const [j, was] of Object.entries(e.before.pain || {})) {
+      if (!S.pain || S.pain[j] !== e.before.painSet[j]) continue;
+      if (was == null) delete S.pain[j]; else S.pain[j] = was;
+    }
     e.undone = true;
     return true;
   }

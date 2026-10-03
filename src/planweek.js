@@ -130,7 +130,9 @@
     const nws = ws + 7;
     const set = b.settingsAt(S, nws);
     const cur = b.settingsAt(S, ws);
-    const tpl = b.templateFor(Object.assign({}, p, { days: set.days, weekdays: set.weekdays }), b.programFor(Object.assign({}, p, { days: set.days })));
+    // The split the engine will use that week (it depends on more than the days: time, how simple
+    // sessions are, the person's tweaks), with 1.5's for weeks before the new engine took over.
+    const tpl = b.templateOf ? b.templateOf(S, nws, set) : b.templateFor(Object.assign({}, p, { days: set.days, weekdays: set.weekdays }), b.programFor(Object.assign({}, p, { days: set.days })));
     // A custom plan in force next week shapes it instead (src/customplan.js).
     const custom = GH.customPlan ? GH.customPlan.weekSessions(S, nws, tpl) : null;
     const slot = (d) => {
@@ -185,8 +187,10 @@
   /* ---------------------------------------------------------------- cache */
   // Everything the calendar and the sessions read, cheaply. Unknown top-level fields are included
   // as they are, so a new setting still refreshes the plan; the long logs are skipped or cut down to
-  // what matters here.
-  const SKIP = new Set(['log', 'health', 'feel', 'sleepChip', 'active', 'ai', 'seen', 'weights', 'measurements', 'food', 'protein', 'pendingLines', 'insightsShown', 'insightsDismissed', 'coachDismissed', 'celebrated', 'createdAt', 'updatedAt']);
+  // what matters here. Outdoor activities reach the plan only through the health days (today's and
+  // yesterday's are in the stamp), and badges never do, so neither is stringified on every render.
+  // Nor are the plans the optimizer keeps in the state (planCache), which come from the rest.
+  const SKIP = new Set(['log', 'health', 'feel', 'sleepChip', 'active', 'ai', 'seen', 'weights', 'measurements', 'food', 'protein', 'pendingLines', 'insightsShown', 'insightsDismissed', 'coachDismissed', 'celebrated', 'createdAt', 'updatedAt', 'activities', 'actLive', 'achievements', 'planCache']);
   const js = (v) => (v === undefined ? '' : JSON.stringify(v));
   function stamp(S, day) {
     const out = [day];

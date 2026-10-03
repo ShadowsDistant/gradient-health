@@ -38,6 +38,8 @@
       const b = bridge();
       if (b && b.hapticStrength) { try { b.hapticStrength(String(prefs.hapticStrength || 'medium')); } catch (e) { /* ignore */ } }
     }
+    // Switched off: a haptic still waiting its turn doesn't play either.
+    if (!prefs.haptics) unqueue();
   }
   // False when the phone's own touch feedback is switched off (then the UI kinds of haptic don't buzz;
   // events like the workout timer's still do).
@@ -77,44 +79,118 @@
     } catch (e) { /* ignore */ }
   }
 
-  // Haptics, each kind with a feel of its own (Haptics.java has what each one is). UI kinds: tap, select,
-  // tick (slider steps), toggleOn, toggleOff, detent (a sheet snapping to a height). Events: countdown
-  // (the 3-2-1 before a timer ends), go, done (a hold or rest is over), success, warning, error, heavy
-  // (destructive confirmations), celebrate. The Android app plays its own compositions; a browser gets
-  // these on/off patterns with the same rhythm, [on, off, on, …] in ms at Strong. Light and Medium
-  // shorten the pulses by the same 0.55 and 0.8 the app scales its strength by.
-  const HAPTIC_PATTERNS = {
-    tap: [18], select: [11], tick: [8], toggleOn: [8, 24, 18], toggleOff: [16, 24, 8], detent: [22, 20, 8],
-    countdown: [26], go: [10, 30, 16, 30, 34], done: [22, 90, 22, 90, 50], success: [14, 70, 24], warning: [48],
-    error: [40, 60, 40], heavy: [70], celebrate: [10, 30, 24, 70, 20, 60, 30, 20, 50],
+  // Haptics: 31 kinds, each with a feel of its own, so every kind of moment can be told apart by touch
+  // (Haptics.java has the phone's version of each). Each kind has a rank: 0 for the UI (a touch, a
+  // move around the app), 1 for the countdown, 2 for feedback and workout events, 3 for the big ones.
+  // A browser gets on/off patterns with the same rhythm, [on, off, on, …] in ms at Medium.
+  const HAPTICS = {
+    // Touch
+    tap: [0, [20]], // a button
+    press: [0, [6]], // a finger down on a knob, a thumb or a lens; a hold starting (softer than a tick)
+    select: [0, [12]], // a segment, a radio, a single-choice chip, a picker
+    tick: [0, [8]], // a slider or stepper step (held down too), passing items while dragging
+    edge: [0, [30, 40, 12]], // a slider or stepper reaching its end
+    toggleOn: [0, [10, 24, 22]], toggleOff: [0, [22, 24, 10]], // a switch or a toggle chip
+    detent: [0, [24, 20, 10]], // a sheet snapping to a height, pull-to-refresh armed, a knob passing the middle, a hold recognized
+    // Navigation
+    tab: [0, [18, 25, 10]], // another tab
+    nav: [0, [12, 16, 20]], back: [0, [20, 16, 12]], // a page or sheet opening; going back, or closing one
+    grab: [0, [35, 30, 12]], drop: [0, [20, 20, 35]], // picking something up to drag it, and putting it down
+    // Feedback
+    success: [2, [16, 70, 26]], // saved, confirmed, connected
+    log: [2, [26, 40, 12]], // a quick log: protein, food, a walk, a weight
+    undo: [2, [26, 70, 16]],
+    deny: [2, [30, 60, 30]], // refused or put back: not allowed, not valid, the most there can be
+    warning: [2, [50, 40, 14]],
+    error: [3, [44, 50, 40, 50, 30]],
+    heavy: [3, [70]], // something destructive, confirmed
+    // Workout
+    countdown: [1, [28]], // each of a 3-2-1
+    go: [2, [12, 30, 18, 30, 36]], pause: [2, [36, 30, 18, 30, 12]], // a set, timer or workout starting (or going on again), and pausing
+    setDone: [2, [40, 30, 24]], // a set completed
+    done: [2, [24, 90, 24, 90, 52]], // a rest or hold over
+    workoutDone: [3, [14, 30, 24, 60, 30, 60, 60]], // a workout, activity or mobility session finished
+    levelUp: [2, [10, 40, 14, 40, 20, 40, 36]], // a harder move or a heavier weight
+    milestone: [2, [20, 30, 14, 30, 30]], // a goal reached: protein, steps, a split
+    pr: [3, [60, 60, 30, 40, 50]], // a personal best
+    // Moments
+    badge: [3, [12, 30, 24, 70, 20, 60, 30, 20, 50, 40, 60]], // a badge earned
+    celebrate: [3, [10, 30, 24, 70, 20, 60, 30, 20, 50]], // set-up done, all set
   };
-  const HAPTIC_STRENGTH = { light: 0.55, medium: 0.8, strong: 1 };
+  // Light shortens the pulses to 0.75 and Strong lengthens them to 1.3; the pauses stay, so the rhythm
+  // does too. (On the phone: 0.75, 1 and 1, with Strong adding weight after each click.)
+  const HAPTIC_STRENGTH = { light: 0.75, medium: 1, strong: 1.3 };
   const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
-  const hapticKind = (kind) => (own(HAPTIC_PATTERNS, kind) ? kind : 'tap'); // an unknown name is a tap
+  const hapticKind = (kind) => (own(HAPTICS, kind) ? kind : 'tap'); // an unknown name is a tap
+  const hapticRank = (kind) => HAPTICS[hapticKind(kind)][0];
   function hapticPattern(kind, strength) {
     const k = own(HAPTIC_STRENGTH, strength) ? HAPTIC_STRENGTH[strength] : HAPTIC_STRENGTH.medium;
-    return HAPTIC_PATTERNS[hapticKind(kind)].map((x, i) => (i % 2 ? x : Math.max(4, Math.round(x * k))));
+    return HAPTICS[hapticKind(kind)][1].map((x, i) => (i % 2 ? x : Math.max(4, Math.round(x * k))));
   }
-  // A phone plays one vibration at a time, and a new one cuts the last short. So a haptic doesn't cut
-  // in on a bigger one that's still playing: UI kinds rank lowest, then the countdown, then events,
-  // with errors, heavy and celebrate on top.
-  const HAPTIC_RANK = { countdown: 1, go: 2, done: 2, success: 2, warning: 2, error: 3, heavy: 3, celebrate: 3 };
-  let last = { kind: '', at: -1e9, until: 0, rank: 0 };
-  function haptic(kind) {
-    if (!prefs.haptics) return;
-    const k = hapticKind(kind);
-    const now = Date.now();
-    const rank = HAPTIC_RANK[k] || 0;
-    // Ticks (slider steps) don't stack; otherwise the same kind twice at once is one moment reported
-    // twice (a toast after its action's own haptic).
-    if (k === 'tick' || k === 'select' ? now - last.at < 35 : k === last.kind && now - last.at < 80) return;
-    if (rank < last.rank && now < last.until) return;
-    last = { kind: k, at: now, until: now + HAPTIC_PATTERNS[k].reduce((a, x) => a + x, 0) + 60, rank };
+  // How long a kind plays, in ms (the phone's composition takes about as long as the pattern).
+  const hapticMs = (kind, strength) => hapticPattern(kind, strength).reduce((a, x) => a + x, 0);
+
+  // A phone plays one vibration at a time, and a new one cuts the last short. So:
+  // - One moment reported twice plays once: a tick, select or press closer than 35 ms to the last
+  //   haptic, or the same kind again within 80 ms.
+  // - While one plays (and a moment after, as the motor winds down), a lower rank is dropped and a
+  //   higher one cuts in. The same rank cuts in for the UI (a touch is about now) and waits its turn
+  //   for an event: one place in the queue, and the newest waits.
+  // - A consequence ({ consequence: true }: a toast after its action) leaves the action its feel. A
+  //   success or a log within 200 ms of the action's own haptic is part of it and isn't played, and
+  //   so is a warning or a deny after the action's own deny, warning or error (a refusal says so
+  //   once); otherwise a warning, an error or a deny waits until the action's haptic is over.
+  // { force: true } (the Feel each one gallery) plays at once, whatever is playing.
+  const TAIL = 40; // ms a haptic still counts as playing after its pattern ends
+  const QUEUE_GAP = 20; // ms between a haptic and the one waiting for it
+  const NEGATIVE = { deny: true, warning: true, error: true };
+  let last = { kind: '', at: -1e9, end: -1e9, rank: 0, consequence: false };
+  let queued = null; // { kind, after: the haptic it waits for, timer }
+  function unqueue() { if (queued) { clearTimeout(queued.timer); queued = null; } }
+  function enqueue(k, consequence) {
+    unqueue();
+    const after = last;
+    const q = queued = {
+      kind: k, after,
+      timer: setTimeout(() => {
+        if (queued !== q) return;
+        queued = null;
+        if (!prefs.haptics) return;
+        // Something else started meanwhile: a bigger one isn't cut short, and an equal one is waited for too.
+        if (last !== after && Date.now() < last.end + TAIL) {
+          if (hapticRank(k) < last.rank) return;
+          if (hapticRank(k) === last.rank) { enqueue(k, consequence); return; }
+        }
+        play(k, Date.now(), consequence);
+      }, Math.max(0, after.end + QUEUE_GAP - Date.now())),
+    };
+  }
+  function play(k, now, consequence) {
+    last = { kind: k, at: now, end: now + hapticMs(k, prefs.hapticStrength), rank: hapticRank(k), consequence };
     try {
       const b = bridge();
       if (b && b.haptic) { b.haptic(k); return; }
       if (G.navigator && G.navigator.vibrate && G.navigator.userActivation && G.navigator.userActivation.hasBeenActive) G.navigator.vibrate(hapticPattern(k, prefs.hapticStrength));
     } catch (e) { /* ignore */ }
+  }
+  function haptic(kind, o) {
+    if (!prefs.haptics) return;
+    const k = hapticKind(kind);
+    const now = Date.now();
+    if (o && o.force) { unqueue(); play(k, now, false); return; }
+    const consequence = !!(o && o.consequence);
+    if (k === 'tick' || k === 'select' || k === 'press' ? now - last.at < 35 : k === last.kind && now - last.at < 80) return;
+    const busy = now < last.end + TAIL;
+    const bad = own(NEGATIVE, k);
+    if (consequence && !last.consequence && now - last.at < 200) {
+      if (k === 'success' || k === 'log') return;
+      if (bad && own(NEGATIVE, last.kind) && hapticRank(k) <= last.rank) return;
+    }
+    if (consequence && bad && busy) { enqueue(k, true); return; }
+    const rank = hapticRank(k);
+    if (busy && rank < last.rank) return;
+    if (busy && rank === last.rank && rank > 0) { enqueue(k, consequence); return; }
+    play(k, now, consequence);
   }
 
   let audio = null;
@@ -188,6 +264,15 @@
   }
   // pref: system | light | dark; contrast: the Increase contrast setting on top of it.
   function applyTheme(pref, contrast) {
+    // Nothing to do when it comes out the same: Settings applies the prefs after every change, and a
+    // theme change makes every glass lens on the page re-measure.
+    const nextPref = pref || 'system', nextContrast = contrast != null ? !!contrast : themeContrast;
+    if (nextPref === themePref && nextContrast === themeContrast && doc && doc.documentElement.hasAttribute('data-theme')) {
+      const hc = nextContrast || contrastWanted();
+      const following = nextPref === 'system' && !(bridge() || nextContrast) && R() && R().theme && R().theme.auto;
+      const want = (nextPref === 'system' ? (systemDark() ? 'dark' : 'light') : nextPref === 'dark' ? 'dark' : 'light') + (hc ? '-contrast' : '');
+      if (following ? !!stopAuto : !stopAuto && doc.documentElement.getAttribute('data-theme') === want) return;
+    }
     themePref = pref || 'system';
     if (contrast != null) themeContrast = !!contrast;
     if (stopAuto) { try { stopAuto(); } catch (e) { /* ignore */ } stopAuto = null; }
@@ -209,7 +294,9 @@
     if (r && r.theme && r.theme.get) return r.theme.get();
     return (doc && doc.documentElement.getAttribute('data-theme')) || 'light';
   }
-  function setDensity(v) { const r = R(); if (r && r.setDensity) r.setDensity(v); }
+  // The same density again is no change (and setting it makes every lens re-measure).
+  let density = null;
+  function setDensity(v) { if (v === density) return; const r = R(); if (r && r.setDensity) { r.setDensity(v); density = v; } }
   hooks.setTheme = (mode) => { osDark = mode === 'dark'; if (themePref === 'system') applyTheme('system'); };
 
   /* ---------------------------------------------------------------- back button + shell hooks */
@@ -263,6 +350,36 @@
     try { if (G.navigator && G.navigator.share) { G.navigator.share({ text: String(text) }).catch(() => {}); return true; } } catch (e) { /* ignore */ }
     return false;
   }
+  // Sends a picture (a PNG as base64) and a line of text to another app: Android's share sheet in
+  // the app; in a browser the Web Share API with a file where there is one, else a download (and,
+  // if even that fails, the text is copied). Resolves true once it's on its way, null if the person
+  // closed the share sheet, false if it couldn't go.
+  async function shareImage(b64, text, name) {
+    const msg = String(text || '');
+    try { const b = bridge(); if (b && b.shareImage) return !!b.shareImage(String(b64), msg); } catch (e) { return false; }
+    const file = /^[\w.-]{1,80}\.png$/.test(name || '') ? name : 'badge.png';
+    let blob;
+    try {
+      const bin = G.atob(String(b64));
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      blob = new G.Blob([bytes], { type: 'image/png' });
+    } catch (e) { return false; }
+    const nav = G.navigator || {};
+    try {
+      const f = new G.File([blob], file, { type: 'image/png' });
+      if (nav.canShare && nav.share && nav.canShare({ files: [f] })) { await nav.share({ files: [f], text: msg }); return true; }
+    } catch (e) { if (e && e.name === 'AbortError') return null; }
+    try {
+      const url = G.URL.createObjectURL(blob);
+      const a = doc.createElement('a');
+      a.href = url; a.download = file; a.rel = 'noopener';
+      doc.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => G.URL.revokeObjectURL(url), 30000);
+      return true;
+    } catch (e) { /* below */ }
+    return copy(msg);
+  }
   function claudeInstalled() { try { const b = bridge(); return !!(b && b.claudeInstalled && b.claudeInstalled()); } catch (e) { return false; } }
   function reducedMotion() {
     const r = R();
@@ -271,5 +388,5 @@
   }
   const isApp = () => !!bridge();
 
-  GH.platform = { setPrefs, hapticsSystemEnabled, keepAwake, haptic, hapticPattern, hapticKinds: Object.keys(HAPTIC_PATTERNS), vibrate, cue, unlockAudio, applyTheme, currentTheme, setDensity, onBack, on, emit, visible, copy, openUrl, share, claudeInstalled, appVersion, reducedMotion, isApp };
+  GH.platform = { setPrefs, hapticsSystemEnabled, keepAwake, haptic, hapticPattern, hapticRank, hapticMs, hapticKinds: Object.keys(HAPTICS), vibrate, cue, unlockAudio, applyTheme, currentTheme, setDensity, onBack, on, emit, visible, copy, openUrl, share, shareImage, claudeInstalled, appVersion, reducedMotion, isApp };
 })(typeof window !== 'undefined' ? window : globalThis);

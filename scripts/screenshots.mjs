@@ -3,6 +3,8 @@
 // Chromium. The page is served over http like the app's asset host, so the lazy parts load.
 //
 //   npm run build && node scripts/screenshots.mjs
+//
+// SHOTS_OUT=<dir> writes them somewhere else (to look at them without touching docs/).
 import { mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +17,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 let chromium;
 try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
-const out = join(root, 'docs/screenshots');
+const out = process.env.SHOTS_OUT || join(root, 'docs/screenshots');
 mkdirSync(out, { recursive: true });
 const NOW = new Date('2026-10-19T08:10:00'); // a Monday, week 6
 
@@ -56,6 +58,8 @@ async function run(dark) {
   await page.evaluate(seedState);
   await page.reload();
   await page.waitForSelector('#screen[data-view="today"] .session');
+  // Each tab's tip is for a first visit: the shots show the screens themselves.
+  await page.evaluate(() => { const U = window.GH.ui, S = U.S; for (const id of ['today', 'plan', 'moves', 'food', 'health', 'progress', 'you']) S.seen[`tip_${id}`] = true; window.GH.store.save(S); U.render(); });
   const settle = async (ms = 900) => { await page.clock.runFor(ms); await page.waitForTimeout(ms); };
   const shot = async (name) => { await settle(); await page.screenshot({ path: join(out, `${name}${dark ? '-dark' : ''}.png`) }); };
   const tab = async (t) => { await page.click(`.rf-tab[data-tab="${t}"]`); await settle(700); };
@@ -170,10 +174,54 @@ async function run(dark) {
   await shot('tailor');
   await page.evaluate(() => window.GH.ui.closeSheets());
   await settle(600);
-  await page.click('#topbar [data-act="openProfile"]');
-  await shot('profile');
+  // You: your card, badges, plans and answers (Profile before 1.6).
+  await tab('you');
+  await top();
+  await shot('you');
+  // Badges: the gallery, then one shared as a picture (the preview is exactly what gets sent). The
+  // 30-day streak when it's earned, else the newest earned one.
+  await page.evaluate(() => window.GH.ui.open('badges'));
+  await settle(1200);
+  await top();
+  await shot('badges');
+  await page.evaluate(() => {
+    const U = window.GH.ui, earned = (U.S.achievements && U.S.achievements.earned) || {};
+    const ids = Object.keys(earned).sort((a, b) => (earned[b].day || 0) - (earned[a].day || 0));
+    U.shareBadge(ids.includes('streak30') ? 'streak30' : ids[0]);
+  });
+  await settle(1800);
+  await shot('badge-share');
+  await page.evaluate(() => { const U = window.GH.ui; U.closeSheets(); while (U.back()) { /* to the tab */ } });
+  await settle(600);
+  // Why this plan: what the planner compared and how the week scores, with no AI. From Plan, where
+  // its row is.
+  await tab('plan');
+  await top();
+  await page.evaluate(() => window.GH.ui.act.whyPlan());
+  await settle(1400);
+  await shot('why');
+  await page.evaluate(() => window.GH.ui.closeSheets());
+  await settle(600);
+  // The Coach's review: suggestions as Claude's weekly report would bring them, each checked against
+  // the plan before it's offered (the screenshot machine can't ask Claude, so they're written out).
+  await page.evaluate(() => window.GH.planReview.open('report', {
+    engine: 'claude', model: 'Claude', note: 'Your plan fits your goals well. A little more time would give your arms and abs more.',
+    suggestions: [
+      { kind: 'minutes', minutes: 30, title: 'Five more minutes a session', why: 'Your arms and abs get more sets each week, with nothing else cut.' },
+      { kind: 'swap_move', family: 'abs', move: 'ab_legraise', title: 'A new move for your abs', why: 'It works your abs from a new angle.' },
+      // Turned down: there's no time for it (the sheet lists it under Not applied, with the reason).
+      { kind: 'more_sets', group: 'back', delta: 1, title: 'More back work', why: 'You press more than you pull.' },
+    ],
+  }));
+  await settle(1800);
+  await shot('review');
+  await page.evaluate(() => window.GH.ui.closeSheets());
+  await settle(600);
   await page.evaluate(() => window.GH.ui.open('science', 'rir'));
   await shot('science');
+  // The rule's sheet that "rir" opened closes before the next shots.
+  await page.evaluate(() => window.GH.ui.closeSheets());
+  await settle(700);
   // Food: calorie tracking on, a week of meals.
   await page.evaluate(seedFood);
   await page.evaluate(() => { while (window.GH.ui.back()) { /* to the tab */ } window.GH.ui.go('food'); });
@@ -185,11 +233,13 @@ async function run(dark) {
   await settle(900);
   await page.evaluate(() => { const el = document.querySelector('#screen .session'); if (el) document.getElementById('screen').scrollTo(0, el.offsetTop - 110); });
   await shot('gym');
-  // Set-up, from the start: the step that asks what to plan around.
+  // Set-up, from the start: the plan it ends on, for someone who wants bigger arms and chest.
   await page.evaluate(() => { window.GH.ui.closeSheets(); window.GH.ui.showOnboarding(); });
   await settle(600);
+  await page.locator('.ob-actions [data-variant="tinted"]').click(); await settle(400);
+  for (const s of ['.ob-opt[data-arg="muscle"]', '.ob-areas [data-v="arms"]', '.ob-areas [data-v="chest"]']) { await page.click(s); await settle(200); }
   for (let i = 0; i < 4; i++) { await page.locator('.ob-actions [data-variant="tinted"]').click(); await settle(400); }
-  for (const v of ['balance', 'oa']) { await page.click(`.onboard .rf-chip[data-v="${v}"]`); await settle(200); }
+  await settle(1600);
   await shot('setup');
   if (errors.length) console.log('page errors:', errors);
   await browser.close();

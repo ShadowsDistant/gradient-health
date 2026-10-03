@@ -48,12 +48,12 @@ section('The coach button');
 const tabs = await page.evaluate(async () => {
   const U = window.GH.ui, out = {};
   const pause = (ms) => new Promise((r) => setTimeout(r, ms));
-  for (const t of ['today', 'plan', 'health', 'progress', 'moves']) { U.go(t); await pause(300); out[t] = !!document.querySelector('#topbar .rf-navbar-leading .coach-btn'); }
+  for (const t of ['today', 'plan', 'health', 'progress', 'you']) { U.go(t); await pause(300); out[t] = !!document.querySelector('#topbar .rf-navbar-leading .coach-btn'); }
   U.open('settings'); await pause(400); out.settings = !!document.querySelector('#topbar .rf-navbar-leading .coach-btn');
   U.back(); await pause(300); U.go('today'); await pause(400);
   return out;
 });
-check('every tab has the coach button at its top left', tabs.today && tabs.plan && tabs.health && tabs.progress && tabs.moves, tabs);
+check('every tab has the coach button at its top left', tabs.today && tabs.plan && tabs.health && tabs.progress && tabs.you, tabs);
 check('a page opened on top has its Back button there instead', !tabs.settings, tabs);
 await page.click('#topbar .coach-btn');
 await page.waitForSelector('dialog.chat-sheet[open] .chat-pill');
@@ -197,7 +197,7 @@ check('AI answers get a Report button', await page.evaluate(() => { const m = [.
 const nFlags = await page.evaluate(() => (window.GH.ui.S.ai.flags || []).length);
 await page.evaluate(() => [...document.querySelectorAll('.chat-sheet [data-act="flagAnswer"]')].pop().click());
 await page.waitForSelector('dialog[open] [data-act="flagHide"]', { timeout: 5000 });
-check('the report sheet shows the answer and the reasons', await page.evaluate(() => document.querySelectorAll('dialog[open] [data-act="flagReason"]').length === 4 && !!document.querySelector('dialog[open] .flag-quote')));
+check('the report sheet shows the answer and the reasons', await page.evaluate(() => document.querySelectorAll('dialog[open] [data-on="flagReason"] [role="radio"]').length === 4 && !!document.querySelector('dialog[open] .flag-quote')));
 await page.click('dialog[open] [data-act="flagHide"]');
 await wait(900);
 check('a reported answer is hidden and kept in the list', await page.evaluate((n) => (window.GH.ui.S.ai.flags || []).length === n + 1 && /reported this answer/.test([...document.querySelectorAll('.chat-sheet .bubble.coach')].pop().textContent), nFlags));

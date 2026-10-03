@@ -78,14 +78,17 @@
     return Math.max(3, Math.min(30, gap + 2));
   }
   // Reads what changed and folds it in, after the reads the background sync saved meanwhile (which
-  // can make this read shorter: see ingestPending).
+  // can make this read shorter: see ingestPending). `changed` says whether anything the app shows
+  // came out different (the day records, weigh-ins, height, food from other apps, read errors), so
+  // a sync that brought nothing new needn't redraw the screen.
   async function sync(S, now, days) {
     const st = status();
     S.health.status = st;
     if (!connected(st)) return { ok: false, status: st };
+    const before = syncPrint(S);
     const bg = drainPending(S, now);
     const payload = await read(days || syncDays(S, now));
-    if (!payload || !payload.ok) return { ok: false, status: st, error: payload && payload.error, bg };
+    if (!payload || !payload.ok) return { ok: false, status: st, error: payload && payload.error, bg, changed: syncPrint(S) !== before };
     const res = ingest(S, payload, now);
     S.health.lastSync = now;
     drainPending(S, now); // reads saved while this one ran: already covered, just marked done
@@ -93,8 +96,9 @@
     // Allow prompt instead (and nutrition isn't asked for unless calorie tracking is on).
     const errs = payload.errors || {};
     S.health.errors = Object.keys(errs).filter((k) => errs[k] !== 'not granted');
-    return Object.assign({ ok: true, status: st, bg }, res);
+    return Object.assign({ ok: true, status: st, bg, changed: syncPrint(S) !== before }, res);
   }
+  const syncPrint = (S) => JSON.stringify([S.health.days, S.health.errors, S.weights, S.profile && S.profile.heightCm, S.food && S.food.other]);
 
   /* ---------------------------------------------------------------- background sync */
   // The Android app reads the last two days every 15 minutes while it's closed (HealthSyncJob.java)
@@ -571,7 +575,15 @@
     return x;
   }
   const digitsOf = (key) => (key === 'weightKg' || key === 'distanceM' || key === 'bodyFat' || isMeasure(key) ? 1 : 0);
-  const num = (v, d) => Number(v).toLocaleString('en-US', { maximumFractionDigits: d || 0, minimumFractionDigits: d || 0 });
+  // One formatter for each number of decimals, made once (toLocaleString makes one on every call,
+  // which was a good part of what Health's render cost).
+  const NF = new Map();
+  const num = (v, d) => {
+    const k = d || 0;
+    let f = NF.get(k);
+    if (!f) NF.set(k, (f = new Intl.NumberFormat('en-US', { maximumFractionDigits: k, minimumFractionDigits: k })));
+    return f.format(Number(v));
+  };
   // Minutes as "7 h 05", or "45 min" under an hour.
   function hm(min) {
     const t = Math.max(0, Math.round(min));

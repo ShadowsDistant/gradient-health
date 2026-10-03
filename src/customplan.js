@@ -42,12 +42,15 @@
   const copy = (x) => JSON.parse(JSON.stringify(x));
 
   /* ================================================================== the shape of a plan */
+  // Only the library's own entries count as moves: a shared code or a backup naming "constructor" or
+  // "toString" must not find Object.prototype's (which crashed Today and Plan).
+  const hasOwn = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
   // One exercise, clamped to what the app can run; null for a move this version doesn't know.
   function normItem(raw, report) {
     const r = raw && typeof raw === 'object' ? raw : {};
     const id = String(r.move || '');
-    const m = M().MOVES[id];
-    if (!m || !m.name) { if (report && id) report.unknown.push(id); return null; }
+    const m = hasOwn(M().MOVES, id) ? M().MOVES[id] : null;
+    if (!m || typeof m !== 'object' || !m.name) { if (report && id) report.unknown.push(id.slice(0, 60)); return null; }
     const it = { move: id, sets: clampInt(r.sets, LIMITS.sets[0], LIMITS.sets[1], 3) };
     if (m.timed) it.secs = clampInt(r.secs != null ? r.secs : r.reps, LIMITS.secs[0], LIMITS.secs[1], m.start || 30);
     else it.reps = clampInt(r.reps != null ? r.reps : r.secs, LIMITS.reps[0], LIMITS.reps[1], m.start || 10);
@@ -257,8 +260,12 @@
   // null, and the coach's template stands). Days under the coach's plan keep its sessions; a plan
   // switched on part-way through the week starts at its first day (or, with set weekdays, on them).
   // Each session knows its plan's stretch of the week (regime, until), so a missed day only moves
-  // that plan's sessions, and never past its last day.
+  // that plan's sessions, and never past its last day. A week that can't be worked out (a plan switch
+  // a backup mangled) keeps the coach's template rather than breaking the calendar.
   function weekSessions(S, ws, tpl) {
+    try { return planWeek(S, ws, tpl); } catch (e) { return null; }
+  }
+  function planWeek(S, ws, tpl) {
     const evs = planEvents(S);
     if (!evs.length) return null;
     const at = [];
@@ -439,10 +446,30 @@
     const pick = short ? list.slice(0, 2) : list;
     return pick.map((id) => { const m = mv.MOVES[id]; return { kind: 'warmup', moveId: id, name: m.name, timed: !!m.timed, target: short ? Math.min(m.start, 20) : m.start, load: b.loadInfo(S, m, day) }; });
   }
+  // A plan's day that can't be built (a shared code or backup that got past the checks, or a bug)
+  // never takes Today or Plan down: that day runs the coach's session instead, with a note saying
+  // so, and the plan is flagged (plan.broken, until it's edited or the app restarts).
+  function buildSession(S, day, tpl, opts) {
+    try { return planSession(S, day, tpl, opts); } catch (e) { return coachInstead(S, day, tpl, opts); }
+  }
+  function coachInstead(S, day, tpl, opts) {
+    const b = B();
+    const ref = parseTpl(tpl);
+    const plan = ref ? get(S, ref.id) : null;
+    if (plan) plan.broken = true;
+    const set = b.settingsAt(S, day);
+    const T = b.templateOf ? b.templateOf(S, b.weekStart(day), set) : b.templateFor(Object.assign({}, S.profile, { days: set.days, weekdays: set.weekdays }), b.programFor(Object.assign({}, S.profile, { days: set.days })));
+    const off = day - b.weekStart(day);
+    const t = T.find((x) => x.offset === off) || T[(ref ? ref.idx : 0) % Math.max(1, T.length)] || T[0];
+    const s = b.buildSession(S, day, t ? t.idx : 0, opts);
+    s.planBroken = { id: plan ? plan.id : ref ? ref.id : null, name: plan ? plan.name : '' };
+    s.notes = (s.notes || []).concat({ kind: 'plan', text: `${plan && plan.name ? `Your plan "${plan.name}"` : 'Your plan'} couldn't be used today, so this is the coach's workout.` });
+    return s;
+  }
   // The session for a custom plan's day, shaped like the brain's: the plan's exercises with today's
   // swaps, sets scaled for a lighter week and trimmed for a short night (never below one), targets
   // and weights from how each one has gone, and the usual warm-up. opts as brain.buildSession.
-  function buildSession(S, day, tpl, opts) {
+  function planSession(S, day, tpl, opts) {
     const o = opts || {};
     const b = B();
     const ref = parseTpl(tpl) || { id: null, idx: 0 };
@@ -644,8 +671,9 @@
     const b = B();
     const p = S.profile;
     const set = b.settingsAt(S, day);
-    const tpl = b.templateFor(Object.assign({}, p, { days: set.days, weekdays: set.weekdays }), b.programFor(Object.assign({}, p, { days: set.days })));
     const ws = b.weekStart(day);
+    // The coach's week as the engine builds it (the same split Plan shows).
+    const tpl = b.templateOf ? b.templateOf(S, ws, set) : b.templateFor(Object.assign({}, p, { days: set.days, weekdays: set.weekdays }), b.programFor(Object.assign({}, p, { days: set.days })));
     const days = tpl.map((t) => {
       const s = b.buildSession(S, ws + t.offset, t.idx, { cal: { weeks: {} }, noReadiness: true, forceMult: 1 });
       return { title: s.title, items: itemsOf(s) };
@@ -1038,8 +1066,17 @@
       'name: 2 to 5 words. Each day\'s title: 1 to 3 words. note: one short, friendly sentence on what the plan does.',
     ].join('\n');
   }
-  // A model's answer, kept only if it's a plan this person can do with the days they asked for;
-  // anything else keeps the draft. Returns the plan, or null.
+  // A model's answer, kept only if it's a plan this person can do with the days they asked for, and
+  // it passes the checks the plan review makes on the coach's plan (src/planreview.js):
+  //  - time: each day fits the time asked for, or runs no longer than the draft's own day (a set
+  //    comes off the move with the most to spare until it fits, down to 1 as the coach's own days
+  //    have them; the move the day leads with and the groups they asked to focus on count as having
+  //    fewer, so they keep theirs longer);
+  //  - coverage: every muscle group the draft trains keeps at least half of its weekly sets;
+  //  - focus: the groups they asked to focus on keep at least two thirds of the draft's sets;
+  //  - balance: pulling still balances pushing about as well as in the draft.
+  // Core work goes last in each day (a tired core shouldn't undercut the heavier lifts); otherwise
+  // the model's order stands. Anything else keeps the draft. Returns the plan, or null.
   function accept(S, day, w, draft, raw, ids) {
     if (!raw || typeof raw !== 'object') return null;
     const { plan, report } = normalize(Object.assign({}, raw, { source: 'coach', weekdays: draft.weekdays }));
@@ -1053,7 +1090,34 @@
         if (m.timed) it.secs = Math.max(10, Math.min(120, it.secs)); else it.reps = Math.max(3, Math.min(30, it.reps));
       }
       d.items = d.items.filter((it, i) => d.items.findIndex((x) => x.move === it.move) === i);
+      const core = (it) => M().MOVES[it.move].group === 'abs';
+      d.items = d.items.filter((it) => !core(it)).concat(d.items.filter(core));
     }
+    const budget = clampInt((w && w.minutes) || S.profile.minutes, 10, 90, 30);
+    const focus = (it) => ((w && w.focus) || []).includes(M().MOVES[it.move].group);
+    for (let i = 0; i < plan.days.length; i++) {
+      const d = plan.days[i];
+      const limit = Math.max(budget, minutes(S, draft, i, day)) + 2;
+      // (On a tie, the later move gives a set first.)
+      const spare = (it, k) => it.sets - (focus(it) ? 1 : 0) - (k === 0 ? 2 : 0) + k / 100;
+      for (let guard = 0; guard < 200 && minutes(S, plan, i, day) > limit; guard++) {
+        let pick = -1;
+        d.items.forEach((it, k) => { if (it.sets > 1 && (pick < 0 || spare(it, k) > spare(d.items[pick], pick))) pick = k; });
+        if (pick < 0) break;
+        d.items[pick].sets--;
+      }
+      if (minutes(S, plan, i, day) > limit) return null;
+    }
+    const setsOf = (p) => {
+      const out = {};
+      for (const d of p.days) for (const it of d.items) { const m = M().MOVES[it.move]; if (m && GROUP_GOAL[m.group]) out[m.group] = (out[m.group] || 0) + it.sets; }
+      return out;
+    };
+    const was = setsOf(draft), now = setsOf(plan);
+    for (const g of Object.keys(was)) if (was[g] >= 2 && (now[g] || 0) < Math.ceil(was[g] / 2)) return null;
+    for (const g of (w && w.focus) || []) if (was[g] && (now[g] || 0) < Math.ceil((was[g] * 2) / 3)) return null;
+    const balance = (x) => { const push = (x.chest || 0) + (x.shoulders || 0), pull = (x.back || 0) * 1.2; return Math.max(push, pull) <= 0 ? 1 : Math.min(push, pull) / Math.max(push, pull); };
+    if (balance(now) < Math.min(0.5, balance(was) - 0.15)) return null;
     if (!plan.note) plan.note = draft.note;
     return plan;
   }

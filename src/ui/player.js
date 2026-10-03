@@ -131,7 +131,7 @@
         if (U.S !== S || !B().restoreWorkout(S, gone)) return;
         U.save(true);
         U.render();
-        U.haptic('success');
+        U.haptic('undo');
       },
     });
     return true;
@@ -318,7 +318,7 @@
       if (!GH.figure3d || !GH.figure3d.warm() || stillsSlow || stillsDrawn >= 12) { stillsRun = null; return; }
       // Not while any figure box is showing (one may be getting its live figure ready) or a 3D figure
       // runs anywhere: stills are for later, and never take time from a figure on screen.
-      const busyNow = document.hidden || document.querySelector('.fig3d[data-ready]') || [...document.querySelectorAll('.pl-fig, .sheet-fig, .tour-fig')].some((h) => h.offsetParent);
+      const busyNow = document.hidden || document.querySelector('.fig3d[data-ready]') || [...document.querySelectorAll('.pl-fig, .sheet-fig')].some((h) => h.offsetParent);
       if (busyNow) { setTimeout(() => idleCall(step), 1500); return; }
       while (jobs.length) {
         const j = jobs.shift();
@@ -357,8 +357,9 @@
     return { el, still: true, duration: (m.$tl || GH.pose.timeline(m)).total, play() {}, pause() {}, time: () => 0, destroy() { el.remove(); } };
   }
 
-  // Warm 3D up right after the app's first paint, a small piece per idle moment (the app asks again
-  // a few seconds later; asking twice is free), then draw stills of today's moves for next time.
+  // Warm 3D up a small piece per idle moment, then draw stills of today's moves for next time.
+  // core.js decides when (U.warmFigure): only when today's workout will show a figure, after the
+  // app has gone idle, or on the first press of Start or a move.
   function warmSoon(tries) {
     const S = U.S;
     if (!S) { if (tries < 40) setTimeout(() => warmSoon(tries + 1), 250); return; }
@@ -367,7 +368,7 @@
       U.preloadFigure().then((ok) => { if (ok) setTimeout(stillsForToday, 600); }, () => {});
     })));
   }
-  if (G.document && G.requestAnimationFrame) setTimeout(() => warmSoon(0), 0);
+  U.warmFigure = () => { if (G.document && G.requestAnimationFrame) warmSoon(0); };
 
   let chunkFails = 0; // the chunk didn't load: tried again a couple of times, then left flat
   function figure(host, m, o) {
@@ -576,7 +577,7 @@
     if (st.kind === 'warmup') return 'Warm-up';
     if (st.kind === 'test') return 'Left vs right test';
     if (st.kind === 'interval') return `Finisher · round ${st.round + 1} of ${st.of}`;
-    if (st.kind === 'cooldown') return P.mode === 'mobility' ? `Mobility · ${P.mob.idx + 1} of ${P.mob.steps.length}` : 'Cool-down';
+    if (st.kind === 'cooldown') return P.mode === 'mobility' ? `Mobility · ${P.mob.idx + 1} of ${P.mob.steps.length}` : it.cardio ? 'Easy cardio' : 'Cool-down';
     if (st.leadOnly) return `Extra ${U.side(st.side).toLowerCase()} set`;
     return `${it.superset ? it.superset + ' · ' : ''}${B().GROUP_NAME[it.group] || ''} · set ${st.set + 1} of ${st.of}`;
   }
@@ -604,7 +605,7 @@
     if (!st) return '<p class="t-callout rf-muted">Last one.</p>';
     const it = st.item;
     const w = st.kind === 'set' ? weightOf(it) : null;
-    const what = st.kind === 'set' ? U.target(it, B().currentTarget(A(), st)) + (w ? ` at ${w.label}` : '') : st.kind === 'interval' ? `${st.work} s` : st.kind === 'test' ? 'max reps' : isTimed(st) ? `${durationOf(st)} s` : U.target(it);
+    const what = st.kind === 'set' ? U.target(it, B().currentTarget(A(), st)) + (w ? ` at ${w.label}` : '') : st.kind === 'interval' ? `${st.work} s` : st.kind === 'test' ? 'max reps' : isTimed(st) ? (it.cardio ? `${Math.max(1, Math.round(durationOf(st) / 60))} min` : `${durationOf(st)} s`) : U.target(it);
     return `<div class="pl-next"><span class="t-caption rf-muted">Up next</span><span class="t-headline">${U.esc(it.name)}</span><span class="t-footnote rf-muted">${U.esc(eyebrow(st))} · ${U.esc(what)}${st.side ? ` · ${U.side(st.side).toLowerCase()}` : ''}</span></div>`;
   }
 
@@ -807,7 +808,7 @@
     if (P.mode === 'mobility') {
       P.mob.idx++; P.phase = 'step';
       if (P.mob.idx >= P.mob.steps.length) finishMobility(byTimer);
-      else { if (!byTimer) U.haptic('tap'); startTimer(); }
+      else { if (!byTimer) U.haptic('nav'); startTimer(); }
       return;
     }
     complete(st.kind === 'set' ? { secs: Math.round(secs) } : {}, byTimer);
@@ -829,9 +830,9 @@
     const S = U.S;
     const a = A();
     const st = a.steps[a.idx];
-    // A timer that ran out has had its done cue. A tap gets success for a set or test it logged, and a
-    // plain tap for moving past a warm-up, cool-down or finisher round.
-    if (!byTimer) U.haptic(st.kind === 'set' || st.kind === 'test' ? 'success' : 'tap');
+    // A timer that ran out has had its done cue. A tap gets setDone for a set or test it logged, and
+    // nav for moving on past a warm-up, cool-down or finisher round.
+    if (!byTimer) U.haptic(st.kind === 'set' || st.kind === 'test' ? 'setDone' : 'nav');
     const linesBefore = (a.testLines || []).length;
     B().completeStep(S, result);
     U.save();
@@ -898,11 +899,7 @@
       action: { label: 'Save', act: 'plAmendSave' },
     });
   };
-  U.act.plAmendLoad = (el) => {
-    P.amendLoad = parseFloat(el.dataset.arg);
-    for (const c of el.parentNode.querySelectorAll('.rf-chip')) c.setAttribute('aria-pressed', String(c === el));
-    U.haptic('select');
-  };
+  U.on.plAmendLoad = (el, ev, v) => { if (isFinite(parseFloat(v))) P.amendLoad = parseFloat(v); };
   U.act.plAmendSave = () => {
     const input = document.getElementById('amendVal');
     const v = parseInt(input && input.value, 10);
@@ -917,7 +914,9 @@
   // Weight choices around the current one, as chips, plus "Other" for anything else.
   function loadChips(it, curKg, act) {
     const choices = B().loadChoices(U.S, Object.assign({}, it, { curLoad: curKg }), A().day);
-    return `<div class="load-chips">${choices.map((c) => U.chip(c.label, Math.abs(c.kg - curKg) < 1e-6, `data-act="${act}" data-arg="${c.kg}"`)).join('')}</div>
+    // Picking a weight to use closes its sheet, the one it's on too (data-repick).
+    const now = choices.find((c) => Math.abs(c.kg - curKg) < 1e-6);
+    return `<div class="load-chips">${U.choice(act, choices.map((c) => [c.kg, c.label]), now ? now.kg : '', 'Weight', ` data-on="${act}"${act === 'plLoadPick' ? ' data-repick' : ''}`)}</div>
       <div class="ob-add"><input class="rf-input" type="number" inputmode="decimal" id="plLoadOther" placeholder="Other weight (${U.wUnit()})" aria-label="Other weight"><button type="button" class="rf-btn" data-size="sm" data-act="plLoadOther" data-arg="${act}">Use</button></div>`;
   }
   U.act.plLoad = () => {
@@ -929,12 +928,11 @@
       body: `<div class="sheet-pad"><p class="t-callout rf-muted">${U.esc(st.item.name)}. ${w.first ? `A first guess. Pick one you could lift about ${B().currentTarget(A(), st) + 2} times.` : 'For the rest of this exercise.'}</p>${loadChips(st.item, w.kg, 'plLoadPick')}</div>`,
     });
   };
-  U.act.plLoadPick = (el) => {
+  U.on.plLoadPick = (el, ev, v) => {
     const st = cur();
-    if (!st) return;
-    B().setItemLoad(U.S, st.item, parseFloat(el.dataset.arg));
+    if (!st || !isFinite(parseFloat(v))) return;
+    B().setItemLoad(U.S, st.item, parseFloat(v));
     U.save();
-    U.haptic('select');
     const top = U.topSheet(); if (top) top.close('ok');
     draw();
   };
@@ -1048,7 +1046,8 @@
     const res = B().finishWorkout(S, { rating: ck.rating, complicated: ck.complicated, pain: ck.pain, weightKg: ck.weight ? U.toKg(ck.weight) : null, now: Date.now() });
     S.pendingLines = res ? res.lines : [];
     if (U.markSeen) U.markSeen('playerHint');
-    const fresh = U.newAchievements ? U.newAchievements(S, U.today()) : [];
+    // Badges this workout earned (and any not shown yet): the Next screen shows them itself.
+    const fresh = U.badgeCheck ? U.badgeCheck('workout') : [];
     U.save(true);
     P.result = res; P.ck = null; P.streakFrom = before; P.ach = fresh;
     P.phase = 'next';
@@ -1058,12 +1057,18 @@
     if (res && res.entry && GH.health && GH.health.writeWorkout(S, res.entry)) setTimeout(() => U.syncHealth('manual'), 2500);
     const el = root();
     const big = res && (res.celebrate.length || fresh.length);
-    U.haptic(big ? 'celebrate' : 'success');
+    // The workout's own finish, then, once it's over, the biggest thing it brought: a personal
+    // best, or a harder move or heavier weight. New badges play their own as their card springs.
+    U.haptic('workoutDone');
+    const kinds = res && res.celebrate ? res.celebrate.map((c) => c.kind) : [];
+    const then = kinds.includes('pr') ? 'pr' : kinds.includes('level') || kinds.includes('weight') ? 'levelUp' : null;
+    if (then) setTimeout(() => U.haptic(then), 700);
     if (big && G.Refract && G.Refract.burst && !U.reduced()) {
       setTimeout(() => { for (const c of el.querySelectorAll('.celebrate')) { try { G.Refract.burst(c, { count: 18 }); } catch (e) { /* ignore */ } } }, 350);
     }
     const n = el.querySelector('.streak-roll');
     if (n && G.Refract && G.Refract.roll && !U.reduced()) setTimeout(() => { try { G.Refract.roll(n, n.dataset.to, { from: n.dataset.from, dir: 1 }); } catch (e) { /* ignore */ } }, 250);
+    if (fresh.length && U.badgeSpring) U.badgeSpring(el);
   };
 
   function viewNext() {
@@ -1076,7 +1081,8 @@
         <h1 class="rf-large-title">Next time</h1>
         ${res.done ? `<p class="t-callout pl-pad">Streak <span class="streak-roll rf-num t-headline" data-from="${P.streakFrom || 0}" data-to="${streak}">${streak}</span> ${streak === 1 ? 'day' : 'days'}</p>` : '<p class="t-callout rf-muted pl-pad">Saved. Under half the sets, so it doesn\'t count for the streak.</p>'}
         ${res.celebrate.map((c) => `<div class="card celebrate">${U.icon(c.kind === 'pr' ? 'star' : c.kind === 'weight' ? 'bolt' : 'sparkle')}<span class="t-headline">${U.esc(c.text)}</span></div>`).join('')}
-        ${(P.ach || []).map((a) => `<div class="card celebrate is-ach"><span class="rf-list-icon ach-badge" data-tone="${a.tone}">${U.icon(a.icon)}</span><span class="celebrate-text"><span class="t-footnote rf-muted">Achievement</span><span class="t-headline">${U.esc(a.title)}</span></span></div>`).join('')}
+        ${U.badgeCard ? U.badgeCard(P.ach) : ''}
+        ${U.hcInvite ? U.hcInvite(S) : ''}
         ${lines.length ? `<ul class="rf-list next-lines">${lines.map((l) => U.row({ title: U.esc(l.text), sub: l.why ? U.esc(U.cap(l.why)) : '', icon: l.buy ? 'bag' : /Deload|less/.test(l.text) ? 'moon' : 'arrow-up-right', tone: l.buy ? 'amber' : /Deload|less|Eat/.test(l.text) ? 'indigo' : 'green' })).join('')}</ul>` : '<p class="t-callout rf-muted pl-pad">Same targets next time. Keep it up.</p>'}
         ${lines.length && U.whyLink ? `<p class="pl-pad">${U.whyLink('overload', 'How the plan decides this')}</p>` : ''}
       </div>
@@ -1097,7 +1103,9 @@
     dropFig();
     draw();
     // After the last hold's done buzz when the timer ended it, so the two play one after the other.
-    if (byTimer) setTimeout(() => U.haptic('success'), 450); else U.haptic('success');
+    if (byTimer) setTimeout(() => U.haptic('workoutDone'), 450); else U.haptic('workoutDone');
+    // Badges it earned (ten sessions, a streak kept going), told once that buzz is over.
+    if (U.badgeCheck) setTimeout(() => U.badgeCheck('mobility'), 900);
   }
   function viewMobDone() {
     return `${top('Mobility')}

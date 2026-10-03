@@ -1,7 +1,7 @@
 /* Progress: the training picture. First your body: which muscles your training reaches and which
- * are getting stronger, on a front and back figure. Then what improved most, this week's sets, the
- * last 12 weeks, the left/right gap, strength trends for gym lifts, levels and the moments worth
- * celebrating.
+ * are getting stronger, on a front and back figure. Then your totals, what improved most, this week's
+ * sets, the last 12 weeks, the left/right gap, strength trends for gym lifts, levels and the moments
+ * worth celebrating. A tab, or a page opened from You, Today's streak and Plan when Food has the tab.
  */
 (function (G) {
   'use strict';
@@ -56,7 +56,7 @@
     return `<div class="card bm-card" data-key="body" data-mode="${mode}">
       <div class="bm-head"><h2 class="t-title-3">Your body</h2><span class="t-footnote rf-muted">${mode === 'trained' ? 'Sets per muscle' : 'Progress per muscle'}, ${rangeText(weeks)}</span></div>
       ${U.seg('bodyMode', [['trained', 'Trained'], ['improved', 'Improved']], mode, 'Show', ' data-on="bodyMode"')}
-      <div class="bm-range" role="group" aria-label="Range">${RANGES.map(([w, txt]) => `<button type="button" class="rf-chip" aria-pressed="${w === weeks}" data-act="bodyRange" data-arg="${w}">${txt}</button>`).join('')}</div>
+      <div class="bm-range">${U.choice('bodyRange', RANGES, weeks, 'Range', ' data-on="bodyRange"')}</div>
       ${U.bodyMap(values, { mode, max, label, key: 'bm', listLabel: `Muscles, ${mode === 'trained' ? 'sets' : 'progress'} in the ${rangeText(weeks)}` })}
       ${U.bodyLegend(mode, mode === 'trained' ? 'No sets' : 'No progress')}
       <p class="bm-take t-callout" data-key="take">${take}</p>
@@ -64,8 +64,8 @@
     </div>`;
   }
   U.on.bodyMode = (el, ev, v) => { view().mode = v === 'improved' ? 'improved' : 'trained'; U.render(); };
-  U.act.bodyRange = (el) => {
-    const w = Number(el.getAttribute('data-arg'));
+  U.on.bodyRange = (el, ev, v) => {
+    const w = Number(v);
     if (!RANGES.some(([x]) => x === w)) return;
     view().weeks = w;
     U.render();
@@ -202,6 +202,20 @@
     return `<ul class="rf-list">${rows.join('')}</ul><p class="t-footnote rf-muted">Detail shows your best set at the current level.</p>`;
   }
 
+  // Everything so far: workouts, the streak, sets, time, level-ups and personal bests.
+  function totals(S, day) {
+    const x = U.profileStats(S, day);
+    const tile = (label, value, sub) => `<div class="stat"><span class="t-footnote rf-muted">${U.esc(label)}</span><span class="t-title-2">${value}</span>${sub ? `<span class="t-caption rf-muted">${U.esc(sub)}</span>` : ''}</div>`;
+    return `<div class="stat-grid" data-key="totals">
+      ${tile('Workouts', U.roll(x.workouts, 't-title-2'), x.weeks ? `${U.plural(x.weeks, 'week')} with training` : 'Your first is waiting')}
+      ${tile('Streak', `${U.roll(x.current)} <small>days</small>`, x.best > x.current ? `Best ${x.best}` : x.current ? 'Your best so far' : 'Starts with the next one')}
+      ${tile('Sets done', U.roll(U.num(x.sets)), 'Across every workout')}
+      ${tile('Time trained', U.esc(x.minutes ? U.fmtTrained(x.minutes) : '0 min'), 'In the workout player')}
+      ${tile('Level-ups', U.roll(x.ups), 'Harder moves and heavier weights')}
+      ${tile('Personal bests', U.roll(x.prs), 'Best sets beaten')}
+    </div>`;
+  }
+
   function moments(S) {
     const list = [];
     for (const l of S.log) if (l.type === 'workout') for (const c of l.celebrate || []) list.push({ day: l.day, c });
@@ -215,19 +229,16 @@
       const cal = B().calendar(S, day);
       const trained = Y().trained(S, day, view().weeks);
       const improved = Y().improved(S, day, view().weeks);
-      const done = S.log.filter((l) => l.type === 'workout' && B().isDone(l)).length;
-      const ups = S.log.reduce((a, l) => a + (l.celebrate || []).filter((c) => c.kind !== 'pr').length, 0);
-      return `${U.navbar('Progress')}
+      // A page (with Back) when it's opened on top of another tab.
+      const asPage = U.route && U.route.view === 'progress';
+      return `${U.navbar('Progress', '', asPage ? U.glassBtn('chevron-left', 'Back', 'back') : '')}
         <h1 class="rf-large-title">Progress</h1>
         <div class="section">
           ${U.tip ? U.tip('progress') : ''}
           ${bodyCard(S, day, trained, improved)}
-          <div class="stat-row" data-key="stats">
-            <div class="stat"><span class="t-footnote rf-muted">Workouts</span><span class="t-title-2">${U.roll(done)}</span></div>
-            <div class="stat"><span class="t-footnote rf-muted">Best streak</span><span class="t-title-2">${U.roll(cal.streak.best)}</span></div>
-            <div class="stat"><span class="t-footnote rf-muted">Level-ups</span><span class="t-title-2">${U.roll(ups)}</span></div>
-          </div>
         </div>
+        <h2 class="sec-title t-title-3">Totals</h2>
+        <div class="section">${totals(S, day)}</div>
         <h2 class="sec-title t-title-3">Most improved</h2>
         <div class="section">${mostImproved(S, improved)}</div>
         <h2 class="sec-title t-title-3">Training</h2>

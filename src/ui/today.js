@@ -1,5 +1,5 @@
-/* Today: streak tallies, readiness, the session (or light day), the feel check, protein and one
- * insight. The main actions float in glass above the tab bar.
+/* Today: streak tallies (a tap opens Progress), readiness, the session (or light day), the feel
+ * check, protein and one insight. The main actions float in glass above the tab bar.
  */
 (function (G) {
   'use strict';
@@ -40,7 +40,13 @@
     }
     for (const x of s.extras || []) if (!s.items.some((it) => it.fam === x.fam)) rows.push(`<li class="ex is-lead"><span class="ex-tag">+1</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${x.moveId}">${U.esc(x.name)}</button><span class="ex-meta rf-num">${U.side(x.leadOnly || lead).toLowerCase()} only · ${U.esc(U.target(x))}</span></li>`);
     if (s.finisher) rows.push(`<li class="ex"><span class="ex-tag">${U.icon('bolt', 'sm')}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${s.finisher.moveId}">Finisher: ${U.esc(s.finisher.name.toLowerCase())}</button><span class="ex-meta rf-num">${s.finisher.rounds} × ${s.finisher.work} s on, ${s.finisher.rest} s off</span></li>`);
-    for (const mb of s.mobility || []) rows.push(`<li class="ex ex-muted"><span class="ex-tag">${U.icon('moon', 'sm')}</span><span class="ex-name">${U.esc(mb.name)}</span><span class="ex-meta">${mb.target} s</span></li>`);
+    // The cool-down: stretches held for seconds, and the easy cardio block (its target is in seconds
+    // too, but it runs for minutes), which is a move to look up like the others.
+    for (const mb of s.mobility || []) {
+      rows.push(mb.cardio
+        ? `<li class="ex"><span class="ex-tag">${U.icon('heart', 'sm')}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${U.esc(mb.moveId)}">${U.esc(mb.name)}</button><span class="ex-meta rf-num">Easy cardio · ${Math.max(1, Math.round(mb.target / 60))} min</span></li>`
+        : `<li class="ex ex-muted"><span class="ex-tag">${U.icon('moon', 'sm')}</span><span class="ex-name">${U.esc(mb.name)}</span><span class="ex-meta">${mb.target} s</span></li>`);
+    }
     return `<ul class="ex-list">${rows.join('')}</ul>`;
   }
   U.sessionRows = sessionRows;
@@ -205,24 +211,32 @@
       else if (plan.type === 'workout') main = workoutCard(S, day, plan, cal, session);
       else if (plan.type === 'light') main = lightCard(S, day, plan);
       else main = restCard(S, day, plan);
-      const top = GH.insights ? GH.insights.top(S, day, 1)[0] : null;
+      // The insight line sits at the end of the page. On the first frame after launch it's there only
+      // if it's already worked out (the last launch the same day kept it); otherwise it's worked out
+      // once that frame is drawn, a little at a time while the phone is idle, and comes in then.
+      const ins = GH.insights ? GH.insights.top(S, day, 1, U.firstFrame || insightJob ? { ready: true } : null) : [];
+      if (!ins) insightLater();
+      const top = ins ? ins[0] || null : null;
       if (top && GH.insights.markShown) GH.insights.markShown(S, [top], day);
       const measure = GH.health && GH.health.measureDue(S, day);
-      return `${U.navbar('Today', U.glassBtn('person', 'Profile', 'openProfile'))}
+      // Today's tip waits while the Getting started checklist is up: one thing at a time.
+      const ck = U.checklist ? U.checklist(S, day) : '';
+      return `${U.navbar('Today')}
         <h1 class="rf-large-title">${U.esc(greeting(S))}</h1>
         <p class="lt-sub t-callout rf-muted">${U.esc(sub.join(' · '))}</p>
         <div class="section">
-          ${workouts ? `<div class="card streak" data-key="streak">
-            <div class="streak-main">
-              <div class="streak-n">${U.roll(st.current, 't-large-title')}<span class="t-callout rf-muted">day streak</span></div>
-              <div class="streak-tally">${tallies(st.current)}</div>
-            </div>
-            <p class="t-footnote rf-muted">${st.weekly ? `${U.plural(st.weekly, 'full week')} in a row · ` : ''}${st.freezeThisWeek ? 'Freeze used this week' : '1 freeze left this week'}${st.best > st.current ? ` · best ${st.best}` : ''}</p>
-          </div>` : ''}
+          ${!ck && U.tip ? U.tip('today') : ''}
+          ${workouts ? `<button type="button" class="card streak tap-card" data-key="streak" data-act="openProgress">
+            <span class="streak-main">
+              <span class="streak-n">${U.roll(st.current, 't-large-title')}<span class="t-callout rf-muted">day streak</span></span>
+              <span class="streak-tally">${tallies(st.current)}</span>
+            </span>
+            <span class="streak-foot"><span class="t-footnote rf-muted">${st.weekly ? `${U.plural(st.weekly, 'full week')} in a row · ` : ''}${st.freezeThisWeek ? 'Freeze used this week' : '1 freeze left this week'}${st.best > st.current ? ` · best ${st.best}` : ''}</span><span class="streak-go t-footnote">Progress${U.icon('chevron-right', 'sm')}</span></span>
+          </button>` : ''}
           ${main}
           ${workouts && plan.type !== 'done' && !S.active && U.coachCard ? U.coachCard(S, day, session) : ''}
           ${U.actTodayCard ? U.actTodayCard(S, day, plan) : ''}
-          ${U.checklist ? U.checklist(S, day) : ''}
+          ${ck}
           ${GH.food && GH.food.full(S) && U.foodCard ? U.foodCard(S, day) : proteinCard(S, day)}
           ${feelCard(S, day, plan)}
           ${measure ? `<ul class="rf-list" data-key="measure">${U.row({ icon: 'pin', tone: 'violet', title: 'Time to measure', sub: 'Waist and arms, once a month', act: 'logMeasure', chevron: true })}</ul>` : ''}
@@ -251,6 +265,20 @@
       return '';
     },
   };
+  // (Until it's done, Today's renders leave the line out too, rather than working it all out at once.)
+  let insightJob = 0;
+  const idle = (fn) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: 400 }) : setTimeout(fn, 30));
+  function insightLater() {
+    if (insightJob) return;
+    const step = () => {
+      const t0 = Date.now();
+      if (U.S && GH.insights && !GH.insights.warm(U.S, U.today(), () => Date.now() - t0 < 40)) { insightJob = idle(step); return; }
+      insightJob = 0;
+      if (U.S && U.route.tab === 'today' && !U.route.view) U.renderSoon();
+    };
+    insightJob = idle(step);
+  }
+
   // "Good morning" until noon, and so on; with a name when there is one.
   function greeting(S) {
     const h = new Date().getHours();
@@ -297,19 +325,30 @@
     const S = U.S, d = U.today();
     const f = S.feel[d] || {};
     const hasSleep = (S.health.days[d] && S.health.days[d].sleepMin != null) || S.sleepChip[d];
-    if (f.energy && f.sore && hasSleep) feelOpen = false;
-    // Let the segmented thumb finish sliding before the card changes.
-    setTimeout(() => { U.render(); if (U.checklistCheck) U.checklistCheck(); }, f.energy && f.sore && hasSleep ? 260 : 0);
+    const change = () => { U.render(); if (U.checklistCheck) U.checklistCheck(); };
+    if (!(f.energy && f.sore && hasSleep)) { setTimeout(change, 0); return; }
+    feelOpen = false;
+    // All three answered. Once the thumb that moved has landed (half a second at most), the card
+    // folds into its one-line summary: the questions fade and shrink, the summary fades in where they
+    // were, and the cards under it glide up.
+    const card = document.querySelector('#screen [data-key="feel"]');
+    const moving = card && U.controlSettled ? Array.from(card.querySelectorAll('.rf-segmented, .gh-chipseg, .rf-switch-track'), (el) => U.controlSettled(el)) : [];
+    Promise.race([Promise.all(moving), new Promise((r) => setTimeout(r, 500))]).then(() => {
+      const now = document.querySelector('#screen [data-key="feel"]');
+      if (now && now === card && !feelOpen && U.motion && U.motion.collapse) U.motion.collapse(now, change);
+      else change();
+    });
   }
   U.act.addQuick = () => {
     const S = U.S, d = U.today();
     B().addProtein(S, d, S.profile.protein.quickG || 26);
     U.commit();
-    U.haptic('success');
+    U.haptic('log');
     const goal = B().proteinGoal(S, d);
-    if (goal && B().proteinToday(S, d) >= goal && B().proteinToday(S, d) - (S.profile.protein.quickG || 26) < goal) U.toast('Protein goal hit', 'positive');
+    // The goal reached: a milestone after the log's click.
+    if (goal && B().proteinToday(S, d) >= goal && B().proteinToday(S, d) - (S.profile.protein.quickG || 26) < goal) { U.haptic('milestone'); U.toast('Protein goal hit', 'positive'); }
   };
-  U.act.undoProtein = () => { B().undoProtein(U.S, U.today()); U.commit(); U.haptic('toggleOff'); };
+  U.act.undoProtein = () => { B().undoProtein(U.S, U.today()); U.commit(); U.haptic('undo'); };
   U.act.addProtein = () => {
     U.sheet({
       title: 'Add protein', size: 'fit',
@@ -319,7 +358,7 @@
   };
   U.act.addProteinSave = () => {
     const v = parseInt(document.getElementById('protG').value, 10);
-    if (v > 0) { B().addProtein(U.S, U.today(), v); U.commit(); U.haptic('success'); }
+    if (v > 0) { B().addProtein(U.S, U.today(), v); U.commit(); U.haptic('log'); }
     const t = U.topSheet(); if (t) t.close('ok');
   };
   U.act.moveInfo = (el) => U.moveSheet(el.dataset.arg);

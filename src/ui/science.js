@@ -33,7 +33,7 @@
         <h1 class="rf-large-title">How it works</h1>
         <p class="lt-sub t-callout rf-muted">The rules behind your plan, and how sure the research is.</p>
         <div class="sci-top" data-key="sci-top">
-          <div class="sci-filter" role="group" aria-label="Show" data-hscroll>${[['all', 'All']].concat(sc.GROUPS).map(([k, t]) => `<button type="button" class="rf-chip" aria-pressed="${show === k}" data-act="sciShow" data-arg="${k}">${U.esc(t)}</button>`).join('')}</div>
+          ${U.choice('sciShow', [['all', 'All']].concat(sc.GROUPS), show, 'Show', ' class="sci-filter" data-hscroll data-on="sciShow"')}
           <button type="button" class="sci-key" data-act="sciKey">${LEVEL_ORDER.map((l) => `<span class="sci-key-item">${dot(l)}${U.esc(levelWord(l).replace(/ evidence$/, ''))}</span>`).join('')}<span class="sci-key-more t-footnote">${U.icon('info', 'sm')}What these mean</span></button>
         </div>
         <div class="section sci-groups">
@@ -91,9 +91,8 @@
   }
   U.openRule = openRule;
   U.act.sciOpen = (el) => openRule(el.dataset.arg);
-  U.act.sciShow = (el) => {
-    show = el.dataset.arg || 'all';
-    U.haptic('select');
+  U.on.sciShow = (el, ev, v) => {
+    show = v || 'all';
     U.render();
   };
   U.act.sciKey = () => U.sheet({
@@ -102,8 +101,6 @@
       <p class="sheet-pad t-footnote rf-muted">Each rule shows the strongest evidence behind it. Tap a rule for the papers.</p>`,
   });
   U.act.openRef = (el) => { const url = el.dataset.arg; if (url && GH.platform) GH.platform.openUrl(url); };
-  // "Why?" links elsewhere in the app. The chip form is for lists where a link under every row
-  // would repeat (the Coach page).
-  U.whyLink = (ruleId, label) => `<button type="button" class="rf-btn why-link" data-variant="plain" data-size="sm" data-act="openScience" data-arg="${U.esc(ruleId)}">${U.esc(label || 'Why?')}</button>`;
-  U.whyChip = (ruleId) => `<button type="button" class="why-chip" data-act="openScience" data-arg="${U.esc(ruleId)}" aria-label="Why: the research behind this">${U.icon('info', 'sm')}Why</button>`;
+  // (The "Why?" links elsewhere in the app, U.whyLink and U.whyChip, are drawn without this part:
+  // src/ui/lazy.js.)
 })(typeof window !== 'undefined' ? window : globalThis);

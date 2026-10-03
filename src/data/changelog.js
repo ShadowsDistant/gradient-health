@@ -1,10 +1,37 @@
-/* What's new, newest first. Shown once after an update and any time from Profile. Each version's
+/* What's new, newest first. Shown once after an update and any time from You. Each version's
    entry also goes in its GitHub release's notes (scripts/release-notes.mjs), and its `store` text is
    the same news in 500 characters at most, for a store's What's new field (test/release.mjs checks). */
 (function (G) {
   'use strict';
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
+    {
+      version: '1.6.0', date: '2026-10-02', title: 'Smarter plans, badges to share, and a stronger, smoother feel',
+      store: [
+        '• Smarter plans: every way to split your week is weighed, and workouts fill the time you set',
+        '• Why this plan, and an AI check of your plan whose suggestions you pick',
+        '• 64 badges to earn and share as pictures with friends and family',
+        '• A new You tab, and Settings you can search',
+        '• Toggles that answer every tap, and glass switches',
+        '• Stronger haptics with 31 distinct feels, and smoother motion',
+        '• A quicker set-up that starts your first workout',
+        '• Faster and safer',
+      ].join('\n'),
+      items: [
+        ['sliders', 'Smarter plans. The planner weighs every way to share your muscle groups over your days and picks the week that fits your goals, time and recovery best. Workouts fill the time you set (an hour means an hour, and never more), and every muscle gets its weekly minimum; on the shortest days they take turns over two weeks.'],
+        ['layers', 'Why this plan: see what the planner compared, how your week scores, and how full body, upper and lower, or push, pull and legs would do instead. Try one with a tap, and Undo puts it back.'],
+        ['chip', 'Check my plan with AI. The on-device coach or Claude suggests up to three changes, each checked against your equipment, your joints and your time before you see it. Pick the ones you want. With Claude on, your weekly report brings plan ideas too.'],
+        ['star', '64 badges to earn: streaks, milestones, strength, runs and rides, food, and a few secret ones. Once earned they\'re yours for good, with the date.'],
+        ['share', 'Share a badge as a picture with friends and family. It shows the badge and what it took, and your name only if you choose.'],
+        ['person', 'A new You tab with your profile, badges, plans and Settings in one place. Moves now lives in Plan, and Settings has a search.'],
+        ['check-circle', 'Toggles answer every tap: a tap with a little wobble counts, and a switch never flips twice or gets stuck. Switches and segmented controls stay glass at rest, like the tab bar.'],
+        ['bolt', 'Stronger haptics with 31 distinct feels: a tick for each tab, a bump at the end of a stepper, and a different feel for a finished set, a new best and a badge. Medium is now as strong as the old Strong. Feel each one in Settings.'],
+        ['wave', 'Smoother motion: the page you leave slides away as the next comes in, and cards glide when something is added or removed.'],
+        ['compass', 'A quicker set-up: six short steps, then your plan and why, and your first workout starts right away. Health Connect waits until after it. A friend\'s shared plan gets you started in three steps.'],
+        ['lock', 'Safer: your Claude key is encrypted with your phone\'s keystore, backups only happen when they\'re end-to-end encrypted, model downloads are checked against fixed fingerprints, and a bad link or backup can\'t break the app.'],
+        ['clock', 'Faster: the app opens about a fifth sooner, and a third sooner later the same day. It\'s over a quarter smaller, loads set-up and the plan check only when they\'re needed, and saving never holds up a tap.'],
+      ],
+    },
     {
       version: '1.5.0', date: '2026-10-01', title: 'Runs with GPS, plans for every body, and plans of your own',
       store: [
