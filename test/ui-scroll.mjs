@@ -43,11 +43,17 @@ const ABLATE = arg('ablate', '');
 const CPU = 4;
 
 /* ---------------------------------------------------------------- budgets */
-// Set from 1.7.0's own numbers, per screen: the frames dropped while scrolling, and the GPU's draw
-// time per frame (p95).
+// Per screen, from 1.7.0's own numbers (--runs=3, best of 3, run by run with the build before its
+// scrolling work, on the machine that set them). The GPU's draw time per frame, p95, in ms:
+//   today 9.9 (before: 13.9), plan 10.5 (13.8), health 11.2 (13.9), progress 10.7 (14), you 9.3
+//   (12.6), badges 8.4 (8.9), badges' Next up 7.4 (9.3), coach 7.4 (8.1), settings 7.8 (10.4),
+//   set-up 6.6 (15.2)
+// A budget is that plus 60%, rounded up, since a run here can be a third slower than the one before
+// it. Frames dropped while scrolling: 0 to 0.5% (before: up to 3%, and 13% on Health in another
+// session), so 10%.
 const BUDGET = {
-  droppedPct: 20,
-  drawP95Ms: 30,
+  droppedPct: 10,
+  drawP95Ms: { today: 16, plan: 17, health: 18, progress: 18, you: 15, badges: 14, 'badges-next': 12, coach: 12, settings: 13, setup: 11 },
 };
 
 /* ---------------------------------------------------------------- the screens */
@@ -287,9 +293,45 @@ if (!measureOnly) {
   for (const [id, v] of Object.entries(results[0])) {
     check(`${id}: the scroll moved the page`, v.moved > 300, `${Math.round(v.moved)} px`);
     check(`${id}: ${BUDGET.droppedPct}% of frames or fewer dropped while scrolling`, v.droppedPct <= BUDGET.droppedPct, `${r1(v.droppedPct)}%`);
-    check(`${id}: a frame draws in ${BUDGET.drawP95Ms} ms or less (p95)`, v.drawP95 <= BUDGET.drawP95Ms, `${r1(v.drawP95)} ms`);
+    const draw = BUDGET.drawP95Ms[id];
+    check(`${id}: a frame draws in ${draw} ms or less (p95)`, v.drawP95 <= draw, `${r1(v.drawP95)} ms`);
   }
   if (idle !== null) check('at rest on Today, nothing animates forever that the compositor can\'t run alone', idle.length === 0, idle);
+}
+
+/* ---------------------------------------------------------------- while scrolling, and at rest */
+// The glass over the page keeps its blur but doesn't refract while the page scrolls, and does again
+// at rest; the glow stops drifting 20 s after the last input, and starts again with the next one
+// (src/styles/perf.css, src/ui/core.js).
+if (!measureOnly) {
+  section('While scrolling, and at rest');
+  const { ctx, page } = await open(builds[0]);
+  const lens = () => page.evaluate(() => { const l = document.querySelector('#tabbar .rf-tabbar-bar > .rf-lens-layer'); return l ? getComputedStyle(l).backdropFilter : null; });
+  const atRest = await lens();
+  await page.mouse.move(195, 520);
+  await page.mouse.wheel(0, 500);
+  await page.waitForFunction(() => document.getElementById('app').hasAttribute('data-scrolling'), null, { timeout: 3000 }).catch(() => null);
+  const scrolling = await lens();
+  await page.waitForFunction(() => !document.getElementById('app').hasAttribute('data-scrolling'), null, { timeout: 3000 }).catch(() => null);
+  const after = await lens();
+  check('at rest, the tab bar refracts (a lens map in its backdrop filter)', /url\(/.test(atRest || ''), atRest);
+  check('while the page scrolls it keeps its blur, without the map', !!scrolling && /blur/.test(scrolling) && !/url\(/.test(scrolling), scrolling);
+  check('at rest again, it refracts again', /url\(/.test(after || ''), after);
+  const drift = () => page.evaluate(() => {
+    const app = document.getElementById('app');
+    const a = document.getAnimations().find((x) => x.effect && x.effect.target === app && x.effect.pseudoElement === '::before' && /glow-drift/.test(x.animationName || ''));
+    return { idle: app.hasAttribute('data-idle'), state: a ? a.playState : null };
+  });
+  const moving = await drift();
+  await page.waitForFunction(() => document.getElementById('app').hasAttribute('data-idle'), null, { timeout: 25000, polling: 500 }).catch(() => null);
+  const still = await drift();
+  await page.keyboard.press('Shift');
+  await page.waitForTimeout(100);
+  const again = await drift();
+  check('the glow drifts while things happen', !moving.idle && moving.state === 'running', moving);
+  check('20 s after the last input it holds still', still.idle && still.state === 'paused', still);
+  check('the next input sets it drifting again', !again.idle && again.state === 'running', again);
+  await ctx.close();
 }
 
 if (!measureOnly) check('no page errors', errors.length === 0, errors.slice(0, 5).join('\n'));
