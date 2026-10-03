@@ -301,13 +301,14 @@ const sheet = await ev(() => {
   const mark = c && c.querySelector('.rf-mark');
   const half = mark && getComputedStyle(mark, '::before');
   return {
-    open: !!d, credit: !!c, first: !!c && !c.previousElementSibling, text: c ? c.textContent.replace(/\s+/g, ' ').trim() : '',
+    open: !!d, credit: !!c, first: !!c && !c.previousElementSibling,
+    head: c && c.querySelector('.t-headline') ? c.querySelector('.t-headline').textContent.trim() : '', foot: c && c.querySelector('.t-footnote') ? c.querySelector('.t-footnote').textContent.trim() : '',
     mark: !!mark, size: mark ? Math.round(mark.getBoundingClientRect().width) : 0, once: !!mark && mark.dataset.animate === 'once' && half.animationIterationCount === '1', label: mark && mark.getAttribute('aria-label'),
     list: d ? d.querySelectorAll('ul.rf-list > li').length : 0, version: String(window.Refract.version),
   };
 });
 check('the credits open with Refract: its mark, larger, coming apart once', sheet.open && sheet.credit && sheet.first && sheet.mark && sheet.size === 48 && sheet.once && sheet.label === 'Refract', JSON.stringify(sheet));
-check(`"Built with Refract ${sheet.version.replace(/\.0$/, '')}", what it gave the app, then the licenses`, sheet.text.startsWith(`Built with Refract ${sheet.version.replace(/\.0$/, '')} `) && /glass, controls, motion, icons and type/.test(sheet.text) && sheet.list >= 11, JSON.stringify(sheet));
+check(`"Built with Refract ${sheet.version.replace(/\.0$/, '')}", what it gave the app, then the licenses`, sheet.head === `Built with Refract ${sheet.version.replace(/\.0$/, '')}` && /glass, controls, motion, icons and type\.$/.test(sheet.foot) && sheet.list >= 11, JSON.stringify(sheet));
 await ev(() => window.GH.ui.closeSheets());
 await settle(900);
 await home();
