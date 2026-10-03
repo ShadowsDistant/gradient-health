@@ -214,7 +214,11 @@
     for (let i = 0; i < list.length; i++) {
       const a = list[i];
       next.add(a.name);
-      if (a.name !== 'style' && from.getAttribute(a.name) !== a.value) from.setAttribute(a.name, a.value);
+      if (a.name !== 'style' && from.getAttribute(a.name) !== a.value) {
+        // A progress bar that moved: its sheen goes across it once more (src/styles/perf.css).
+        if (a.name === 'aria-valuenow' && from.classList.contains('rf-progress')) from.toggleAttribute('data-sheen');
+        from.setAttribute(a.name, a.value);
+      }
     }
     const had = rec ? rec.attrs : Array.from(from.attributes, (a) => a.name).filter((n) => !KEEP_ATTR.test(n));
     for (const name of had) if (!next.has(name) && name !== 'style') from.removeAttribute(name);
@@ -430,34 +434,72 @@
     // The bar's height feeds the screen's top padding (its observer reports before the first frame
     // is drawn). It's written only when the padding isn't that already (the style sheet's own value,
     // the safe area and 60 px, usually is): a change on the root restyles every element on the page.
+    // Its height is also where the large title goes under it (updateScrolled).
     const measure = () => {
       const h = topbar.offsetHeight;
       if (h && parseFloat(G.getComputedStyle(screen).paddingTop) !== h) doc.documentElement.style.setProperty('--topbar-h', h + 'px');
+      if (h && h !== barH) { barH = h; if (ioKey) readSoon('scrolled', updateScrolled); }
     };
     if (G.ResizeObserver) new G.ResizeObserver(measure).observe(topbar); else measure();
     screen.addEventListener('scroll', onScroll, { passive: true });
+    // (A scroll inside set-up doesn't bubble: it's heard on the way down.)
+    onboardEl.addEventListener('scroll', onSetupScroll, { passive: true, capture: true });
     pullToRefresh();
   }
   U.els = () => ({ root, topbar, screen, floatEl, playerEl, onboardEl, tabbar, accessory });
 
-  // The bar's frosted edge and small title appear once the large title slides under it.
-  let scrolled = null, scrollFrame = 0;
+  // The bar's frosted edge and small title appear once the large title slides under it (its last
+  // 8 px), or, on a page without one, once the page is scrolled at all (more than 2 px). An
+  // IntersectionObserver on the large title (or the page's first block) says when that changes, so
+  // scrolling reads nothing from the layout: the title is out while none of it is lower than the
+  // bar's edge plus 8 px, and the first block, while it's above where it starts less 2 px (all of it
+  // below that line, with no bottom to the line, is the page at its top). The page's scroll position
+  // and the title are watched again after each render (the read pass), and when the bar's height
+  // changes (barH, from its ResizeObserver).
+  let scrolled = null, barH = 0, io = null, ioKey = '', watched = null;
   function updateScrolled() {
-    scrollFrame = 0;
     const lt = screen.querySelector(':scope > .rf-large-title');
-    const barH = topbar.offsetHeight;
-    const s = lt ? lt.offsetTop + lt.offsetHeight - 8 - screen.scrollTop < barH : screen.scrollTop > 2;
-    markScrolled(s);
+    // (Without a title: the first block that's laid out in the page's flow.)
+    let target = lt;
+    for (let c = screen.firstElementChild; c && !target; c = c.nextElementSibling) if (c.getClientRects().length && !/^(absolute|fixed)$/.test(G.getComputedStyle(c).position)) target = c;
+    if (!G.IntersectionObserver || !target) { if (io) { io.disconnect(); io = null; ioKey = ''; watched = null; } markScrolled(lt ? lt.offsetTop + lt.offsetHeight - 8 - screen.scrollTop < topbar.offsetHeight : screen.scrollTop > 2); return; }
+    // Where the line is in the page's viewport: the bar's edge plus 8 px, or where the first block
+    // starts (its place in the page, whatever the scroll) less 2 px.
+    const line = lt ? (barH || topbar.offsetHeight) + 8 : target.offsetTop - 2;
+    const key = `${lt ? 'title' : 'block'}:${Math.round(line)}`;
+    if (key !== ioKey) {
+      if (io) io.disconnect();
+      io = new G.IntersectionObserver(onCrossed, { root: screen, rootMargin: `${-Math.round(line)}px 0px ${lt ? 0 : 100000}px 0px`, threshold: lt ? 0 : 1 });
+      ioKey = key;
+      watched = null;
+    }
+    if (watched === target) return;
+    if (watched) io.unobserve(watched);
+    watched = target;
+    io.observe(target);
+  }
+  function onCrossed(entries) {
+    // The latest for what's watched now (not one from before a route change, on its way out in
+    // motion.js's layer).
+    let e = null;
+    for (const x of entries) if (x.target === watched) e = x;
+    if (!e || !screen.contains(e.target)) return;
+    markScrolled(ioKey.startsWith('title') ? !e.isIntersecting : e.intersectionRatio < 1);
   }
   function markScrolled(s) { if (s !== scrolled) { scrolled = s; topbar.toggleAttribute('data-scrolled', s); } }
-  // While the page scrolls, the glow behind it holds still (src/styles/perf.css): one moving layer
-  // less for every frame of a fling. It drifts on 150 ms after the last scroll.
-  let scrollIdle = 0;
+  // While the page scrolls (#app[data-scrolling]), the glow behind it holds still and the glass over
+  // it doesn't refract (src/styles/perf.css): less to draw every frame of a fling. That's over 150 ms
+  // after the last scroll. Set-up's own scroller does the same on its page (.onboard[data-scrolling]).
+  let scrollIdle = 0, obIdle = 0;
   function onScroll() {
-    if (!scrollFrame) scrollFrame = G.requestAnimationFrame(updateScrolled);
     if (scrollIdle) clearTimeout(scrollIdle);
     else { root.setAttribute('data-scrolling', ''); steadyLight(true); }
     scrollIdle = setTimeout(() => { scrollIdle = 0; root.removeAttribute('data-scrolling'); U.steadyLight(); }, 150);
+  }
+  function onSetupScroll() {
+    if (obIdle) clearTimeout(obIdle);
+    else onboardEl.setAttribute('data-scrolling', '');
+    obIdle = setTimeout(() => { obIdle = 0; onboardEl.removeAttribute('data-scrolling'); }, 150);
   }
   // Refract's light: on a phone the glass rims follow how it's tilted, and every step the light takes
   // repaints those rims and redraws their lenses. It holds still where it is while the page scrolls,
@@ -474,6 +516,42 @@
     safe(() => (fixed ? r.light.mode('fixed', r.light.current(glass || undefined)) : r.light.mode('pointer')));
   }
   U.steadyLight = () => steadyLight(!!(scrollIdle || doc.documentElement.hasAttribute('data-still-glow') || U.reduced() || (playerEl && !playerEl.hidden)));
+
+  /* ---------------------------------------------------------------- calm */
+  // When someone last touched, typed, scrolled (anywhere: a sheet, set-up) or turned a wheel.
+  // - U.calm(): nothing's happening: the page isn't scrolling, no input for 400 ms and no sheet
+  //   moving. Heavy work that can wait (the 3D figure's warm-up and stills, Plan's tiles, background
+  //   re-renders) waits for it, so it never lands in the middle of a fling or a drag.
+  // - U.whenCalm(fn): runs fn now if it's calm, or as soon as it is (never dropped).
+  // - #app[data-idle]: 20 s without any input. The background glow stops drifting
+  //   (src/styles/perf.css), so a phone left on a page isn't drawing it every frame; the next input
+  //   starts it again.
+  const CALM_MS = 400, IDLE_MS = 20000;
+  let lastInput = 0, idleTimer = 0, calmTimer = 0;
+  const calmQueue = [];
+  function onInput() {
+    lastInput = Date.now();
+    if (root && root.hasAttribute('data-idle')) root.removeAttribute('data-idle');
+    if (!idleTimer) idleTimer = setTimeout(checkIdle, IDLE_MS);
+  }
+  function checkIdle() {
+    idleTimer = 0;
+    const left = lastInput + IDLE_MS - Date.now();
+    if (left > 0) idleTimer = setTimeout(checkIdle, left);
+    else if (root) root.setAttribute('data-idle', '');
+  }
+  if (doc) for (const ev of ['pointerdown', 'pointermove', 'touchstart', 'touchmove', 'keydown', 'wheel', 'scroll']) doc.addEventListener(ev, onInput, { passive: true, capture: true });
+  U.calm = () => !scrollIdle && Date.now() - lastInput >= CALM_MS && !doc.documentElement.hasAttribute('data-sheet-moving');
+  function calmCheck() {
+    calmTimer = 0;
+    if (!U.calm()) { calmTimer = setTimeout(calmCheck, Math.max(60, lastInput + CALM_MS - Date.now())); return; }
+    for (const fn of calmQueue.splice(0)) safe(fn);
+  }
+  U.whenCalm = (fn) => {
+    if (!calmQueue.length && U.calm()) { safe(fn); return; }
+    calmQueue.push(fn);
+    if (!calmTimer) calmTimer = setTimeout(calmCheck, Math.max(60, lastInput + CALM_MS - Date.now()));
+  };
 
   function applyNavbar(nb) {
     const part = (sel) => (nb ? nb.querySelector(sel) : null);
@@ -536,6 +614,10 @@
     if (readFrame && G.cancelAnimationFrame) G.cancelAnimationFrame(readFrame);
     if (readTimer) clearTimeout(readTimer);
     readFrame = readTimer = 0;
+    // Refract setting up the launch's page (enhance) goes before the rest, which then includes what
+    // that asked for (a control placing its thumb).
+    const init = reads.get('init');
+    if (init) { reads.delete('init'); safe(init); }
     // (One that asks for another pass while this one runs gets it at the next frame.)
     const pick = (keys) => keys.filter((k) => reads.has(k)).map((k) => reads.get(k));
     const list = pick(READ_FIRST).concat(readsAfter.splice(0), pick(READ_LAST));
@@ -572,6 +654,17 @@
   let nextMotion = null;
   const scrollMemo = {};
   const scrolledMemo = {}; // the bar's frosted edge as each tab was left (with its scroll)
+  // Long pages lay out and draw a block out of sight only as it comes near (content-visibility: auto,
+  // src/styles/perf.css), and until then it's as tall as a guess. A tab opened again where it was
+  // left gets the heights its blocks had then (--cv-h), so it opens on exactly what was showing.
+  const CV_BLOCKS = ':scope > .section, :scope > .section > .rf-list';
+  const cvMemo = {};
+  const cvHeights = () => Array.from(screen.querySelectorAll(CV_BLOCKS), (n) => n.offsetHeight);
+  function cvRestore(key) {
+    const h = cvMemo[key];
+    if (!h) return;
+    Array.from(screen.querySelectorAll(CV_BLOCKS)).forEach((n, i) => { if (h[i]) n.style.setProperty('--cv-h', `${h[i]}px`); });
+  }
   let floatEnter = false; // the floating buttons rise in at the next read pass
   function render(motion) {
     if (!U.S || !U.S.profile.onboarded) { U.showOnboarding(); return; }
@@ -588,7 +681,7 @@
     // Two route changes before a frame: the first one's scroll is set now, so the page leaving
     // starts from where it is.
     if (changed) applyScroll();
-    if (changed && lastKey && !lastKey.includes(':')) { scrollMemo[lastKey] = screen.scrollTop; scrolledMemo[lastKey] = !!scrolled; }
+    if (changed && lastKey && !lastKey.includes(':')) { scrollMemo[lastKey] = screen.scrollTop; scrolledMemo[lastKey] = !!scrolled; cvMemo[lastKey] = scrollMemo[lastKey] ? cvHeights() : null; }
     const M = U.motion || {};
     const kind = changed ? motion || nextMotion : motion;
     // A re-render of the same page: where everything is, measured before the patch changes it, so
@@ -624,7 +717,9 @@
     readSoon('float', floatPass);
     if (scr.after) safe(() => scr.after(screen, U.S, day, r.arg, changed));
     if (changed) {
-      scrollSoon(r.view ? 0 : scrollMemo[key] || 0);
+      const top = r.view ? 0 : scrollMemo[key] || 0;
+      if (top) cvRestore(key);
+      scrollSoon(top);
       // The bar's frosted edge for where the page will be: off at its top (the screen is padded by
       // the bar's height, so a large title there is all below it), else as it was when the page was
       // left there. The read pass checks it against the layout; the bar's cross-fade needs it now.
@@ -701,9 +796,19 @@
       }
     }
   }
+  // At launch (the first render, U.firstFrame) what's inserted is set up at the start of the first
+  // frame's read pass instead (still before that frame's layout and paint): Refract then queues its
+  // own first work for each part (a glass's lens map, drawn pixel by pixel in JavaScript; its light)
+  // into the frame after, and the first paint comes that much sooner.
+  let launchRecords = null;
   function enhance(el) {
     const r = R();
     if (!r || !r.init) return;
+    if (rfObserver && U.firstFrame) {
+      (launchRecords || (launchRecords = [])).push(...rfObserver.takeRecords());
+      readSoon('init', () => { const recs = launchRecords || []; launchRecords = null; initAdded(recs); });
+      return;
+    }
     if (rfObserver) initAdded(rfObserver.takeRecords());
     else safe(() => r.init(el, RF_INIT)); // before boot() starts the observer
   }
@@ -950,15 +1055,21 @@
     document.dispatchEvent(new CustomEvent('gh-change'));
   };
   U.commit = () => { U.save(); render(); };
-  // For background triggers (a sync that ended, the day rolling over, the app coming back): one
-  // render at the next frame however many ask, none while the page is hidden (it runs once it's
+  // For background triggers (a sync that ended, the day rolling over, the app coming back, Today's
+  // insight line worked out): one render at the next frame however many ask, once it's calm (not in
+  // the middle of a scroll or a touch, U.whenCalm), none while the page is hidden (it runs once it's
   // shown again), and none under the player or set-up.
-  let renderFrame = 0;
+  let renderFrame = 0, renderWait = false;
   U.renderSoon = () => {
-    if (renderFrame || !G.requestAnimationFrame) return;
-    renderFrame = G.requestAnimationFrame(() => {
-      renderFrame = 0;
-      if (U.S && U.S.profile.onboarded && playerEl.hidden && onboardEl.hidden) render();
+    if (renderFrame || renderWait || !G.requestAnimationFrame) return;
+    renderWait = true;
+    U.whenCalm(() => {
+      renderWait = false;
+      if (renderFrame) return;
+      renderFrame = G.requestAnimationFrame(() => {
+        renderFrame = 0;
+        if (U.S && U.S.profile.onboarded && playerEl.hidden && onboardEl.hidden) render();
+      });
     });
   };
 
@@ -1080,7 +1191,8 @@
 
   /* The 3D figure warms up (loads its chunk and compiles its shaders: seconds of work on a slow
    * phone) only when today's workout will want it: workouts on, today's not done yet, a phone with
-   * 3 GB of memory or more and the app on screen, about 8 s after launch once the page is idle.
+   * 3 GB of memory or more and the app on screen, about 8 s after launch once the page is idle and
+   * calm (U.calm: no scroll or touch going on).
    * Otherwise it starts loading the first time a figure is about to show: a press on Start or on a
    * move. Set-up warms it for its own reveal (src/ui/onboarding.js). */
   const FIGURE_ACTS = ['startWorkout', 'planStart', 'resumeWorkout', 'startMobility', 'moveInfo', 'planMoveInfo', 'cpHowTo', 'ladder'].map((a) => `[data-act="${a}"]`).join(',');
@@ -1100,6 +1212,8 @@
     const later = () => {
       if (!wanted()) return;
       if (doc.hidden) { doc.addEventListener('visibilitychange', later, { once: true }); return; }
+      // Not in the middle of a scroll or a touch: once it's calm, at the next idle moment.
+      if (!U.calm()) { U.whenCalm(() => idle(later, 4000)); return; }
       warmFigure();
     };
     setTimeout(() => idle(later, 4000), 8000);
@@ -1109,6 +1223,8 @@
   function boot() {
     layout();
     wire();
+    // The glow stops drifting 20 s after launch too if nothing's touched.
+    if (!idleTimer) idleTimer = setTimeout(checkIdle, IDLE_MS);
     if (P()) {
       P().onBack(onBack);
       P().on('resume', () => {

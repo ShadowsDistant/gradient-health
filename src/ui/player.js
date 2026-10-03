@@ -54,6 +54,7 @@
     const el = root();
     const was = !el.hidden;
     if (closing) { closing.cancel(); closing = null; }
+    el.removeAttribute('data-closing');
     el.hidden = false;
     if (U.steadyLight) U.steadyLight();
     plat().keepAwake(true);
@@ -71,8 +72,10 @@
     const el = root();
     if (timer) { clearInterval(timer); timer = null; }
     plat().keepAwake(false);
-    const done = () => { closing = null; el.hidden = true; el.innerHTML = ''; dropFig(); scene = null; if (U.steadyLight) U.steadyLight(); };
+    const done = () => { closing = null; el.hidden = true; el.removeAttribute('data-closing'); el.innerHTML = ''; dropFig(); scene = null; if (U.steadyLight) U.steadyLight(); };
     if (U.reduced() || !el.animate || el.hidden) { done(); return; }
+    // Fading out: the page shows through again, so its bars come back now (src/styles/perf.css).
+    el.setAttribute('data-closing', '');
     closing = el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(22px)' }], { duration: 220, easing: 'cubic-bezier(0.3, 0, 0.8, 0.15)', fill: 'forwards' });
     closing.onfinish = () => { if (closing) { closing.cancel(); done(); } };
   }
@@ -286,7 +289,8 @@
   }
   // Draw what's missing for moves opened lately, the moves on screen (today's session) and the
   // workout in progress, once 3D is warm: one still per idle moment, a second apart, only while no
-  // figure is on screen (a still never takes time from one), a dozen a launch at most, and none
+  // figure is on screen (a still never takes time from one) and it's calm (U.calm: no scroll, touch
+  // or moving sheet; the still waits for that, it isn't dropped), a dozen a launch at most, and none
   // more on a phone slow enough that one took long (it gets the few it has).
   let stillsRun = null; // the queue being drawn
   let stillsDrawn = 0, stillsSlow = false;
@@ -321,6 +325,8 @@
       // runs anywhere: stills are for later, and never take time from a figure on screen.
       const busyNow = document.hidden || document.querySelector('.fig3d[data-ready]') || [...document.querySelectorAll('.pl-fig, .sheet-fig')].some((h) => h.offsetParent);
       if (busyNow) { setTimeout(() => idleCall(step), 1500); return; }
+      // Nor in the middle of a scroll, a touch or a sheet's move (U.calm): it waits for calm.
+      if (U.calm && !U.calm()) { U.whenCalm(() => idleCall(step)); return; }
       while (jobs.length) {
         const j = jobs.shift();
         const m0 = M().MOVES[j.id];

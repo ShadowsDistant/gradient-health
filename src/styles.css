@@ -80,23 +80,27 @@ button:not([class*="rf-"]) { font: inherit; }
    pink) drift slowly on their own paths, 26 and 34 seconds round, moving only a few percent: transform
    alone, so it's the compositor's work, never a repaint. The glow also rises and fades as the page
    scrolls (a scroll-linked animation). The drift holds still with reduced motion, the "Moving
-   background" setting off, a full-height sheet up or a workout on screen; the glow is off with
+   background" setting off, a full-height sheet up, a workout on screen, the page scrolling, and 20 s
+   after the last input (src/styles/perf.css); the glow is off with
    increased contrast or reduced transparency. */
+/* Each layer fades out towards its lower edge in its gradients' own stops rather than through a
+   mask, which cost each layer a pass of its own every frame the page moved. The stops are fitted to
+   the look the mask gave (round gradients under linear-gradient(to bottom, #000 35%, transparent
+   95%)), to within a level or two of colour; set-up's glow (src/styles/onboarding.css) is the same. */
 .app::before, .app::after {
   content: ''; position: absolute; inset: -12% -25% auto; height: 62%; pointer-events: none;
-  -webkit-mask-image: linear-gradient(to bottom, #000 35%, transparent 95%); mask-image: linear-gradient(to bottom, #000 35%, transparent 95%);
   opacity: .5; will-change: transform; transform-origin: 50% 40%;
 }
 .app::before {
   background:
-    radial-gradient(34% 46% at 20% 34%, var(--glow-mint), transparent 72%),
-    radial-gradient(38% 48% at 64% 66%, var(--glow-violet), transparent 74%);
+    radial-gradient(34% 43% at 20% 32.5%, var(--glow-mint), color-mix(in srgb, var(--glow-mint) 44%, transparent) 38.5%, transparent 73.5%),
+    radial-gradient(33% 36% at 64% 59%, color-mix(in srgb, var(--glow-violet) 49%, transparent), color-mix(in srgb, var(--glow-violet) 44%, transparent) 19%, transparent 84%);
   animation: glow-drift-a 26s ease-in-out infinite alternate;
 }
 .app::after {
   background:
-    radial-gradient(34% 44% at 80% 26%, var(--glow-sky), transparent 72%),
-    radial-gradient(30% 40% at 34% 74%, var(--glow-pink), transparent 74%);
+    radial-gradient(33% 41% at 80% 25.5%, var(--glow-sky), color-mix(in srgb, var(--glow-sky) 50%, transparent) 37%, transparent 74.5%),
+    radial-gradient(26.5% 30% at 34% 67.5%, color-mix(in srgb, var(--glow-pink) 37%, transparent), color-mix(in srgb, var(--glow-pink) 32%, transparent) 21%, transparent 82.5%);
   animation: glow-drift-b 34s ease-in-out -9s infinite alternate;
 }
 [data-theme^="dark"] .app::before, [data-theme^="dark"] .app::after { opacity: .6; }

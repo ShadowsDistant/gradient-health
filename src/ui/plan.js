@@ -484,13 +484,12 @@
     }
     schedule();
   }
-  // When the person last touched or scrolled: a 3D still waits until they've stopped for a moment
-  // (and for a sheet to stop moving), since drawing one takes a few frames' worth of work.
-  let lastInput = 0;
-  if (doc) for (const ev of ['touchstart', 'touchmove', 'pointerdown', 'wheel', 'scroll']) doc.addEventListener(ev, () => { lastInput = Date.now(); }, { passive: true, capture: true });
-  const calm = () => Date.now() - lastInput > 400 && !doc.documentElement.hasAttribute('data-sheet-moving');
+  // Stills, flat or 3D, wait until it's calm (U.calm in core.js: no scroll or touch for a moment and
+  // no sheet moving), since drawing one takes a frame's worth of work or more; then they're drawn.
+  const calm = () => !U.calm || U.calm();
   function schedule() {
     if (pending || !(queue.size || queue3d.size)) return;
+    if (!calm()) { pending = -1; U.whenCalm(() => { pending = 0; schedule(); }); return; }
     const soon = queue.size > 0;
     pending = G.requestIdleCallback ? G.requestIdleCallback(drawSome, { timeout: soon ? 150 : 600 }) : setTimeout(() => drawSome(null), soon ? 16 : 250);
   }
@@ -498,6 +497,7 @@
     pending = 0;
     const t0 = Date.now();
     for (const key of queue) {
+      if (!calm()) break;
       queue.delete(key);
       const svg = drawStill(key);
       const id = key.split('|')[0];
@@ -565,10 +565,13 @@
   // Swipe the strip for next week (it follows the finger); a long press on a workout picks it up to
   // drop on a free day.
   const wired = new WeakSet();
+  const holds = new WeakMap(); // a strip's viewport → its touchmove listener for a picked-up workout
+  const armed = new WeakSet(); // the pills that have it
   let blockClick = 0;
   function wireStrip(stripEl) {
     const vp = stripEl.querySelector('.pw-viewport');
-    if (!vp || wired.has(vp)) return;
+    if (!vp) return;
+    if (wired.has(vp)) { armPills(vp); return; }
     wired.add(vp);
     let g = null;
     const track = () => vp.querySelector('.pw-track');
@@ -638,8 +641,12 @@
       const again = vp.querySelector(`.pw-pill[data-arg="${d}"]`);
       if (again) again.focus();
     });
-    // While a workout is picked up, the finger moves it, not the page.
-    vp.addEventListener('touchmove', (ev) => { if (drag && ev.cancelable) ev.preventDefault(); }, { passive: false });
+    // While a workout is picked up, the finger moves it, not the page: a touchmove listener that can
+    // cancel the scroll. Whether a touch's moves can be cancelled is settled as it starts, before the
+    // hold makes it a drag, so the listener is on the pills that can be picked up (armPills), not on
+    // the whole strip: a scroll that starts anywhere else doesn't wait for the page to answer.
+    holds.set(vp, (ev) => { if (drag && ev.cancelable) ev.preventDefault(); });
+    armPills(vp);
 
     let drag = null;
     function startDrag(ev, p) {
@@ -684,6 +691,17 @@
       if (ev.type !== 'pointercancel' && dr.over != null) { U.haptic('drop'); moveTo(dr.from, dr.over); }
       // Let go anywhere else and it glides back to its day.
       else if (was && !U.reduced() && dr.li.animate) dr.li.animate([{ transform: was }, { transform: 'none' }], { duration: 320, easing: EASE });
+    }
+  }
+
+  // (After every render: a pill a render made gets its listener.)
+  function armPills(vp) {
+    const hold = holds.get(vp);
+    if (!hold) return;
+    for (const p of vp.querySelectorAll('.pw-pill[data-drag]')) {
+      if (armed.has(p)) continue;
+      armed.add(p);
+      p.addEventListener('touchmove', hold, { passive: false });
     }
   }
 

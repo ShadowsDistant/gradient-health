@@ -366,34 +366,56 @@
   // A segmented control's thumb, as Refract draws its own: the frosted bead under the labels and a lens
   // over them, moving as one (it rises to 1.1 x 1.24, and its lens magnifies the labels it passes).
   const BEAD = { lift: [1.1, 1.24], stretch: 0.22, lens: { zoom: 1.2, refract: 2.5, rim: 0.25, bezel: 10, dispersion: 0.04 } };
+  // The bead is the engine's only while it's touched or moving, as a switch's knob is: at rest it's
+  // placed by a plain transform, which looks the same (a resting bead's lens is off, controls.css).
+  // So a control costs nothing until it's touched: the engine's lens is drawn pixel by pixel in
+  // JavaScript (a map for the bead's size), which at launch held up the first frames (Today's feel
+  // check is one of these). It's taken on where the bead is and handed back once it has landed.
   function beadMover(root) {
     const face = part(root, 'rf-segmented-thumb', true);
     const lens = part(root, 'rf-segmented-lens', false);
-    const L = liquid([face, lens], BEAD);
-    let held = false, width = -1, x = 0;
-    if (L) L.onRest = () => { if (!held) { root.removeAttribute('data-traveling'); settled(root); } };
+    let L = null, held = false, width = -1, x = 0;
+    const rest = () => { face.style.transform = lens.style.transform = `translateX(${x}px)`; };
+    const release = () => {
+      if (!L) return;
+      L.destroy();
+      L = null;
+      for (const el of [face, lens]) { el.style.removeProperty('--rf-lift'); el.style.removeProperty('--_lens'); el.removeAttribute('data-lifted'); }
+      rest();
+    };
+    // The engine, from where the bead is now (`at`); null without Refract.
+    const engage = (at) => {
+      if (L) return L;
+      L = liquid([face, lens], BEAD);
+      if (!L) return null;
+      L.onRest = () => { if (!held) { root.removeAttribute('data-traveling'); settled(root); release(); } };
+      L.place(at);
+      return L;
+    };
     const size = (w) => { if (w !== width) { width = w; face.style.inlineSize = lens.style.inlineSize = `${w}px`; } };
     return {
       parts: [face, lens],
       at: () => x,
       width: () => width,
       // Where an option is, with no motion (the first layout, a resize).
-      place(o) { x = o.offsetLeft; size(o.offsetWidth); if (L) L.place(x); else face.style.transform = lens.style.transform = `translateX(${x}px)`; },
+      place(o) { x = o.offsetLeft; size(o.offsetWidth); if (L) L.place(x); else rest(); },
       // To an option in glass, rising for the trip and landing with a squash; `fresh` grows the bead out
       // of nothing (the first pick of a control that had none).
       travel(o, { velocity = 0, fresh = false } = {}) {
+        const from = x;
         x = o.offsetLeft; size(o.offsetWidth);
-        if (!L) { this.place(o); return; }
+        const l = engage(fresh ? x : from);
+        if (!l) { this.place(o); return; }
         root.setAttribute('data-traveling', '');
         busy(root);
         held = false;
-        if (fresh) L.place(x, 0.4);
-        L.travel(x, { lift: true, velocity, width: 1 });
+        if (fresh) l.place(x, 0.4);
+        l.travel(x, { lift: true, velocity, width: 1 });
       },
-      grab() { held = true; busy(root); if (L) L.grab(); },
+      grab() { held = true; busy(root); const l = engage(x); if (l) l.grab(); },
       follow(tx) { if (L) L.follow(tx); },
       drop() { held = false; if (L) L.drop(); else settled(root); },
-      destroy() { if (L) L.destroy(); },
+      destroy() { held = false; release(); },
     };
   }
   // A chip choice's indicator: it slides (CSS transitions) to the chip picked, on any line.
