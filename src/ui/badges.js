@@ -332,9 +332,11 @@
       <p class="t-footnote bdg-when">${U.esc(earnedWhen(x, day))} · ${U.esc(`Badge ${rankOf(x)} of ${total}`)}</p>
     </section>`;
   }
-  /* The reveal: a sheet with the new badges as pages (with dots when there are several), each
-   * springing in as it comes into view, then Share and Done. Opening it counts them as seen.
-   * ids: the badges to show (default: everything not shown yet). */
+  /* The reveal: a sheet with the new badges as pages (with Refract's page dots when there are several:
+   * its ink worm stretches to the page picked and splats there), each springing in as it comes into
+   * view, then Share and Done. A dot (tapped, or scrubbed along the row, or the arrow keys) goes to
+   * its page. Opening it counts them as seen. ids: the badges to show (default: everything not shown
+   * yet). */
   U.badgeReveal = (ids) => {
     const S = U.S, day = U.today();
     if (!S || !A()) return null;
@@ -352,7 +354,7 @@
     const done = new Set();
     const body = `<div class="bdg-reveal${many ? ' is-many' : ''}">
       <div class="bdg-pages"${many ? ' data-hscroll' : ''}>${pages.map((x) => revealPage(x, day, total)).join('')}</div>
-      ${many ? `<div class="bdg-dots" role="tablist" aria-label="Badges">${pages.map((x, i) => `<button type="button" class="bdg-dot" role="tab" aria-selected="${i === 0}" aria-label="${U.esc(x.def.title)}" data-act="badgePage" data-arg="${i}"></button>`).join('')}</div>` : ''}
+      ${many ? `<div class="rf-pagedots bdg-dots" role="group" aria-label="Badges">${pages.map((x, i) => `<button type="button" class="rf-dot" aria-label="${U.esc(x.def.title)}"${i === 0 ? ' aria-current="true"' : ''}></button>`).join('')}</div>` : ''}
       <div class="bdg-actions">
         <button type="button" class="rf-btn rf-glass" data-size="lg" data-act="badgeShareCur">${U.icon('share')}Share</button>
         <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="badgeDone">Done</button>
@@ -360,7 +362,8 @@
     </div>`;
     const show = (i, el) => {
       cur = i;
-      for (const [k, d] of [...el.querySelectorAll('.bdg-dot')].entries()) d.setAttribute('aria-selected', String(k === i));
+      // The worm follows the dot marked current (Refract watches aria-current).
+      for (const [k, d] of [...el.querySelectorAll('.bdg-dots > .rf-dot')].entries()) { if (k === i) d.setAttribute('aria-current', 'true'); else d.removeAttribute('aria-current'); }
       if (done.has(i)) return;
       done.add(i);
       spring(el.querySelectorAll('.bdg-page')[i].querySelector('.bdg-stage'), pages[i].def, { buzz: true, burst: true });
@@ -386,18 +389,23 @@
           };
           if ('onscrollend' in G) box.addEventListener('scrollend', settled);
           else box.addEventListener('scroll', () => { clearTimeout(t); t = setTimeout(settled, 120); }, { passive: true });
+          // A dot picked (Refract's page dots tell which, however it was picked).
+          const dots = el.querySelector('.bdg-dots');
+          if (dots) dots.addEventListener('rf-select', (e) => { if (e.detail && e.detail.index != null) goTo(e.detail.index); });
         }
       },
     });
     let jumpTo = null;
-    U.act.badgePage = (el) => {
-      const i = Math.max(0, Math.min(pages.length - 1, Number(el.dataset.arg) || 0));
+    const goTo = (n) => {
+      const i = Math.max(0, Math.min(pages.length - 1, Number(n) || 0));
       const box = ctl.el.querySelector('.bdg-pages');
       if (!box) return;
       jumpTo = Math.abs(box.scrollLeft - i * box.clientWidth) < 4 ? null : i;
       box.scrollTo({ left: i * box.clientWidth, behavior: U.reduced() ? 'auto' : 'smooth' });
+      if (i !== cur) U.haptic('select');
       show(i, ctl.el);
     };
+    U.act.badgePage = (el) => goTo(el && el.dataset ? el.dataset.arg : 0);
     U.act.badgeShareCur = () => U.act.badgeShare({ dataset: { arg: pages[cur].id } });
     U.act.badgeDone = () => ctl.close('ok');
     return ctl;
