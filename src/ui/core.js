@@ -430,9 +430,11 @@
     // The bar's height feeds the screen's top padding (its observer reports before the first frame
     // is drawn). It's written only when the padding isn't that already (the style sheet's own value,
     // the safe area and 60 px, usually is): a change on the root restyles every element on the page.
+    // Its height is also where the large title goes under it (updateScrolled).
     const measure = () => {
       const h = topbar.offsetHeight;
       if (h && parseFloat(G.getComputedStyle(screen).paddingTop) !== h) doc.documentElement.style.setProperty('--topbar-h', h + 'px');
+      if (h && h !== barH) { barH = h; if (ioKey) readSoon('scrolled', updateScrolled); }
     };
     if (G.ResizeObserver) new G.ResizeObserver(measure).observe(topbar); else measure();
     screen.addEventListener('scroll', onScroll, { passive: true });
@@ -442,14 +444,43 @@
   }
   U.els = () => ({ root, topbar, screen, floatEl, playerEl, onboardEl, tabbar, accessory });
 
-  // The bar's frosted edge and small title appear once the large title slides under it.
-  let scrolled = null, scrollFrame = 0;
+  // The bar's frosted edge and small title appear once the large title slides under it (its last
+  // 8 px), or, on a page without one, once the page is scrolled at all (more than 2 px). An
+  // IntersectionObserver on the large title (or the page's first block) says when that changes, so
+  // scrolling reads nothing from the layout: the title is out while none of it is lower than the
+  // bar's edge plus 8 px, and the first block, while it's above where it starts less 2 px (all of it
+  // below that line, with no bottom to the line, is the page at its top). The page's scroll position
+  // and the title are watched again after each render (the read pass), and when the bar's height
+  // changes (barH, from its ResizeObserver).
+  let scrolled = null, barH = 0, io = null, ioKey = '', watched = null;
   function updateScrolled() {
-    scrollFrame = 0;
     const lt = screen.querySelector(':scope > .rf-large-title');
-    const barH = topbar.offsetHeight;
-    const s = lt ? lt.offsetTop + lt.offsetHeight - 8 - screen.scrollTop < barH : screen.scrollTop > 2;
-    markScrolled(s);
+    // (Without a title: the first block that's laid out in the page's flow.)
+    let target = lt;
+    for (let c = screen.firstElementChild; c && !target; c = c.nextElementSibling) if (c.getClientRects().length && !/^(absolute|fixed)$/.test(G.getComputedStyle(c).position)) target = c;
+    if (!G.IntersectionObserver || !target) { if (io) { io.disconnect(); io = null; ioKey = ''; watched = null; } markScrolled(lt ? lt.offsetTop + lt.offsetHeight - 8 - screen.scrollTop < topbar.offsetHeight : screen.scrollTop > 2); return; }
+    // Where the line is in the page's viewport: the bar's edge plus 8 px, or where the first block
+    // starts (its place in the page, whatever the scroll) less 2 px.
+    const line = lt ? (barH || topbar.offsetHeight) + 8 : target.offsetTop - 2;
+    const key = `${lt ? 'title' : 'block'}:${Math.round(line)}`;
+    if (key !== ioKey) {
+      if (io) io.disconnect();
+      io = new G.IntersectionObserver(onCrossed, { root: screen, rootMargin: `${-Math.round(line)}px 0px ${lt ? 0 : 100000}px 0px`, threshold: lt ? 0 : 1 });
+      ioKey = key;
+      watched = null;
+    }
+    if (watched === target) return;
+    if (watched) io.unobserve(watched);
+    watched = target;
+    io.observe(target);
+  }
+  function onCrossed(entries) {
+    // The latest for what's watched now (not one from before a route change, on its way out in
+    // motion.js's layer).
+    let e = null;
+    for (const x of entries) if (x.target === watched) e = x;
+    if (!e || !screen.contains(e.target)) return;
+    markScrolled(ioKey.startsWith('title') ? !e.isIntersecting : e.intersectionRatio < 1);
   }
   function markScrolled(s) { if (s !== scrolled) { scrolled = s; topbar.toggleAttribute('data-scrolled', s); } }
   // While the page scrolls (#app[data-scrolling]), the glow behind it holds still and the glass over
@@ -457,7 +488,6 @@
   // after the last scroll. Set-up's own scroller does the same on its page (.onboard[data-scrolling]).
   let scrollIdle = 0, obIdle = 0;
   function onScroll() {
-    if (!scrollFrame) scrollFrame = G.requestAnimationFrame(updateScrolled);
     if (scrollIdle) clearTimeout(scrollIdle);
     else { root.setAttribute('data-scrolling', ''); steadyLight(true); }
     scrollIdle = setTimeout(() => { scrollIdle = 0; root.removeAttribute('data-scrolling'); U.steadyLight(); }, 150);
