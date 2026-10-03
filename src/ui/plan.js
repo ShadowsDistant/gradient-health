@@ -97,7 +97,7 @@
         ${page ? `<button type="button" class="rf-btn pw-wk" data-variant="plain" data-size="sm" data-act="planWeek" data-arg="0">${U.icon('chevron-left')}This week</button>`
     : `<button type="button" class="rf-btn pw-wk" data-variant="plain" data-size="sm" data-act="planWeek" data-arg="1">Next week${U.icon('chevron-right')}</button>`}
       </div>
-      <div class="pw-viewport"><div class="pw-track" style="--page:${page}">${pageHtml(w.days, 0)}${pageHtml(w.next.days, 1)}</div></div>
+      <div class="pw-viewport" data-rf-effect="none"><div class="pw-track" style="--page:${page}">${pageHtml(w.days, 0)}${pageHtml(w.next.days, 1)}</div></div>
     </div>`;
   }
 

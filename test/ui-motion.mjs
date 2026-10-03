@@ -120,12 +120,15 @@ await page.evaluate(() => {
   // their start (what the first frame of a change shows), and ids that appear twice.
   window.__m = {
     box: (el) => { const r = el.getBoundingClientRect(); return { top: Math.round(r.top * 10) / 10, left: Math.round(r.left * 10) / 10, h: Math.round(r.height) }; },
-    anims: (el) => (el ? el.getAnimations().filter((a) => !a.transitionProperty && !a.animationName) : []),
+    // Refract's own: the light (a paused animation it seeks to set a rim's angle; it never plays)
+    // and the click ring on a press. Not the app's motion, so these helpers leave them alone.
+    own: (a) => { const k = a.effect && a.effect.getKeyframes()[0]; return !!k && Object.keys(k).some((p) => p === '--rf-light' || p === '--rf-ring'); },
+    anims: (el) => (el ? el.getAnimations().filter((a) => !a.transitionProperty && !a.animationName && !window.__m.own(a)) : []),
     frames: (a) => a.effect.getKeyframes(),
     props: (a) => { const s = new Set(); for (const k of a.effect.getKeyframes()) for (const p of Object.keys(k)) if (!['offset', 'easing', 'composite', 'computedOffset'].includes(p)) s.add(p); return Array.from(s); },
     // A glide (FLIP): a move by transform alone (a block rising in fades too).
     glides: (el) => (el ? el.getAnimations().filter((a) => !a.transitionProperty && !a.animationName && window.__m.props(a).join() === 'transform').length : 0),
-    pauseAll: () => { const list = document.getAnimations().filter((a) => !a.transitionProperty && !a.animationName); for (const a of list) { a.pause(); a.currentTime = 0; } return list; },
+    pauseAll: () => { const list = document.getAnimations().filter((a) => !a.transitionProperty && !a.animationName && !window.__m.own(a)); for (const a of list) { a.pause(); a.currentTime = 0; } return list; },
     playAll: (list) => { for (const a of list) a.play(); },
     dupIds: () => { const m = new Map(); for (const el of document.querySelectorAll('[id]')) m.set(el.id, (m.get(el.id) || 0) + 1); return Array.from(m).filter(([, n]) => n > 1).map(([k]) => k); },
     leftovers: () => ({ exit: document.querySelectorAll('.screen-exit').length, copies: document.querySelectorAll('.motion-copy').length, leaving: document.querySelectorAll('.motion-leaving').length, fading: document.querySelectorAll('[data-fading]').length }),
@@ -601,11 +604,16 @@ section('Reduced motion');
 section('Lint: every animation started here moves by transform and opacity');
 {
   const kf = await page.evaluate(() => window.__kf);
-  const mine = kf.filter((k) => ['screen', 'exit', 'bar', 'float'].includes(k.where));
+  // Refract's own (its light, a paused animation it seeks; the click ring on a press) are its look,
+  // not the app's motion: counted apart, and they may touch nothing but those two properties.
+  const RF_OWN = ['--rf-light', '--rf-ring'];
+  const rf = kf.filter((k) => k.props.some((p) => RF_OWN.includes(p)));
+  const mine = kf.filter((k) => !rf.includes(k) && ['screen', 'exit', 'bar', 'float'].includes(k.where));
   const bad = mine.filter((k) => k.props.some((p) => LAYOUT.test(p.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`))));
   const other = Array.from(new Set(mine.flatMap((k) => k.props))).filter((p) => !['opacity', 'transform'].includes(p));
   check(`${mine.length} animations on the page, the bar and the floating buttons: none animates layout`, bad.length === 0, bad.slice(0, 5));
   check('and they animate only transform and opacity', other.length === 0, other);
+  check(`Refract's own ${rf.length} (its light and click ring) touch only --rf-light and --rf-ring`, rf.every((k) => k.props.every((p) => RF_OWN.includes(p))), rf.slice(0, 5));
 }
 
 /* ---------------------------------------------------------------- frames */

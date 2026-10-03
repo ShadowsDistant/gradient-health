@@ -1,8 +1,8 @@
 // The built page (dist/gradient-health.html, so run `npm run build` first): its size budget, that
 // it's all ASCII, that every inline script compiles and every style sheet parses, that the content
 // security policy lists exactly the inline scripts' hashes, that the parts loaded on demand are
-// there (the Anthropic SDK among them, and not in the page), and that the marked patches in
-// Refract's vendored bundle are well formed.
+// there (the Anthropic SDK among them, and not in the page), and that Refract is the vendored
+// release, unmodified.
 // Usage: node test/buildcheck.mjs
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -137,32 +137,22 @@ check('the stand-ins for them are in the page (src/ui/lazy.js)', scripts.some((s
   check(`every action the page's buttons name is there at launch (${named.size} actions)`, named.size > 100 && none.length === 0, none);
 }
 
-section('Patches to Refract');
-// Edits to vendor/refract/bundle.js are fenced: // gh-patch(<id>) ... // gh-patch-end(<id>), one
-// level, ids made of letters, digits and dashes, each used once. A Refract update that drops one
-// shows up here and in the tests of what it fixed.
-const bundle = readFileSync(join(root, 'vendor/refract/bundle.js'), 'utf8');
-const marks = [...bundle.matchAll(/gh-patch(-end)?\(([^)]*)\)/g)].map((m) => ({ end: !!m[1], id: m[2], line: bundle.slice(0, m.index).split('\n').length }));
-const problems = [];
-const seen = new Set();
-let open = null;
-for (const m of marks) {
-  if (!/^[a-z0-9][a-z0-9-]*$/i.test(m.id)) problems.push(`line ${m.line}: id "${m.id}"`);
-  if (!m.end) {
-    if (open) problems.push(`line ${m.line}: gh-patch(${m.id}) inside gh-patch(${open.id})`);
-    if (seen.has(m.id)) problems.push(`line ${m.line}: gh-patch(${m.id}) used twice`);
-    seen.add(m.id);
-    open = m;
-  } else {
-    if (!open || open.id !== m.id) problems.push(`line ${m.line}: gh-patch-end(${m.id}) without its start`);
-    open = null;
-  }
-}
-if (open) problems.push(`line ${open.line}: gh-patch(${open.id}) never ends`);
-check(`${seen.size} marked patch${seen.size === 1 ? '' : 'es'}, each well formed and closed`, problems.length === 0, problems);
-// The patches 1.6.0 relies on: lens maps encoded once per size and kept, and a preference change
-// that no longer throws every lens's map away (test/ui-controls.mjs checks what they fix).
-const WANT = ['map-memo', 'map-memo-get', 'map-memo-set', 'lens-pref'];
-check(`the 1.6.0 patches are all there (${WANT.join(', ')})`, WANT.every((id) => seen.has(id)), WANT.filter((id) => !seen.has(id)));
+section('Refract, as vendored');
+// vendor/refract holds Refract 1.4.0 exactly as its design system ships it (SOURCE.md): minified, so
+// the app no longer patches it. Its files' hashes are written in SOURCE.md, so an edited or swapped
+// file shows up here.
+const source = readFileSync(join(root, 'vendor/refract/SOURCE.md'), 'utf8');
+const hashed = [...source.matchAll(/^\| ([\w.]+) \| ([0-9a-f]{64}) \|$/gm)].map((m) => [m[1], m[2]]);
+const changed = hashed.filter(([f, h]) => createHash('sha256').update(readFileSync(join(root, 'vendor/refract', f))).digest('hex') !== h).map(([f]) => f);
+check(`the vendored files match their hashes in SOURCE.md (${hashed.map(([f]) => f).join(', ')})`, hashed.length === 4 && changed.length === 0, changed);
+const bundleJs = readFileSync(join(root, 'vendor/refract/bundle.js'), 'utf8');
+check('it is Refract 1.4', /"1\.4\.\d+"/.test(bundleJs) && bundleJs.includes('liquidLens'));
+check('the page ships the bundle as it is (not minified again)', html.includes(bundleJs.trim().slice(0, 400)));
+// The demo landscapes' rules are dropped from the page (scripts/build.mjs pruneCss), and the app never
+// uses them.
+const pageCss = [...html.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((m) => m[1]).join('\n');
+check('no rule for Refract\'s demo landscapes (.rf-art, .rf-scene) ships', !/\.rf-(?:art|scene)(?![\w-])/.test(pageCss.replace(/:is\([^)]*\)/g, '')));
+const appUses = [...APP_SCRIPTS, ...APP_CHUNKS.flatMap((c) => c.scripts)].filter((p) => /rf-(?:art|scene)\b/.test(readFileSync(join(root, p), 'utf8')));
+check('the app uses none of them', appUses.length === 0, appUses);
 
 done();

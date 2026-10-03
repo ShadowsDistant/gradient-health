@@ -58,7 +58,7 @@ await page.evaluate(() => { while (window.GH.ui.back()) { /* back to the tab */ 
 await settle();
 for (const t of ['today', 'plan', 'food', 'health', 'you']) {
   await tab(t);
-  const ok = await page.evaluate(() => { const l = document.querySelector('.rf-tab[aria-current="page"] .rf-tab-label').getBoundingClientRect(); const p = document.querySelector('.rf-tabbar-lens').getBoundingClientRect(); return l.left >= p.left - 0.5 && l.right <= p.right + 0.5 && p.width > 20; });
+  const ok = await page.evaluate(() => { const l = document.querySelector('.rf-tab[aria-current="page"] .rf-tab-label').getBoundingClientRect(); const p = document.querySelector('.rf-tabbar-pill').getBoundingClientRect(); return l.left >= p.left - 0.5 && l.right <= p.right + 0.5 && p.width > 20; });
   check(`"${t}" label fits its pill`, ok);
 }
 await tab('plan');

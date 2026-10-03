@@ -7,10 +7,13 @@ import type * as React from 'react';
 export type Tone = 'accent' | 'positive' | 'caution' | 'critical' | 'neutral';
 export type Hue = 'coral' | 'amber' | 'green' | 'teal' | 'sky' | 'indigo' | 'violet' | 'rose';
 export type Size = 'sm' | 'md' | 'lg';
+/** Symbol effects a control's icon plays when it is used (Refract.effect, data-rf-effect). */
+export type SymbolEffect = 'bounce' | 'spin' | 'quarter' | 'back' | 'forward' | 'ring' | 'wiggle' | 'drop' | 'lift' | 'right' | 'left' | 'beat' | 'breathe' | 'write' | 'look';
 /** regular (default) · thick (menus, sheets, sidebars) · clear (over media, with a Scrim) · tinted (the primary action) · solid */
 export type GlassVariant = 'regular' | 'thick' | 'clear' | 'tinted' | 'solid';
 /** true = regular strength; 'soft' | 'strong' scale the refraction. Chromium renders it; other engines keep blur, rim and specular. */
-export type LensStrength = boolean | 'soft' | 'strong';
+/** Refraction strength. Regular and clear glass refract by default where the browser draws it (thick glass when asked); false (or 'off') opts out. */
+export type LensStrength = boolean | 'soft' | 'strong' | 'off';
 export type ThemeId = 'light' | 'dark' | 'light-contrast' | 'dark-contrast';
 export type IconName =
   | 'home' | 'search' | 'bell' | 'person' | 'people' | 'sliders' | 'plus' | 'minus' | 'close' | 'check'
@@ -20,7 +23,16 @@ export type IconName =
   | 'volume-low' | 'mic' | 'music' | 'send' | 'mail' | 'chat' | 'reply' | 'inbox' | 'archive' | 'folder' | 'doc' | 'copy'
   | 'link' | 'download' | 'upload' | 'lock' | 'eye' | 'sun' | 'moon' | 'cloud' | 'drop' | 'wave' | 'mountain' | 'leaf'
   | 'sparkle' | 'bolt' | 'layers' | 'globe' | 'wifi' | 'info' | 'alert' | 'check-circle' | 'x-circle' | 'plus-circle'
-  | 'arrow-right' | 'arrow-left' | 'arrow-up-right' | 'refresh' | 'sidebar' | 'library' | 'bag' | 'tag' | 'flag' | 'chart' | 'sort';
+  | 'arrow-right' | 'arrow-left' | 'arrow-up-right' | 'refresh' | 'sidebar' | 'library' | 'bag' | 'tag' | 'flag' | 'chart' | 'sort'
+  // added in 1.1
+  | 'arrow-up' | 'arrow-down' | 'undo' | 'redo' | 'expand' | 'collapse' | 'more-vertical' | 'menu' | 'settings'
+  | 'sign-out' | 'power' | 'zoom-in' | 'scan' | 'crop' | 'wand' | 'brush' | 'text' | 'paperclip' | 'person-add'
+  | 'at' | 'phone' | 'video' | 'bell-off' | 'key' | 'unlock' | 'eye-off' | 'shield' | 'cart' | 'card' | 'gift'
+  | 'box' | 'display' | 'laptop' | 'keyboard' | 'headphones' | 'battery' | 'airplane' | 'car' | 'bike' | 'tent'
+  | 'thermometer' | 'umbrella' | 'snowflake' | 'wind' | 'cloud-rain' | 'flame' | 'question' | 'minus-circle'
+  | 'checklist' | 'pulse' | 'hourglass' | 'trophy' | 'lightbulb' | 'book' | 'appearance'
+  // added in 1.2
+  | 'bluetooth' | 'signal' | 'flashlight' | 'volume-off' | 'rotate-lock' | 'calculator';
 
 /* ------------------------------------------------------------------ vanilla API */
 export interface ToastOptions {
@@ -43,7 +55,55 @@ export interface DialogOptions {
   /** Backdrop click and Esc close it. Default true. */
   dismissible?: boolean;
 }
-export interface LensOptions { bezel?: number; depth?: number; profile?: 'squircle' | 'circle' | 'soft' }
+/** dispersion: how far the rim splits colour (red bends 1 − d, blue 1 + d times as far as green); 0 turns it off. */
+export interface LensOptions { bezel?: number; depth?: number; profile?: 'squircle' | 'circle' | 'soft'; dispersion?: number }
+/**
+ * The glass of a liquid knob or selection: refraction in its rim bezel and a zoom of what is under it.
+ * zoom is the zoom when lifted (> 1 magnifies, < 1 pulls back), rest the zoom at rest (default 1: none);
+ * refract the px the rim bends when lifted and rim the share of it at rest (default 1); dispersion splits
+ * colour at the rim.
+ */
+export interface LiquidLensOptions { radius?: number; bezel?: number; refract?: number; rim?: number; zoom?: number; rest?: number; dispersion?: number; profile?: 'circle' | 'squircle' | 'soft' }
+
+/** Springs the way SwiftUI describes them: response ≈ seconds to arrive, damping 1 = no overshoot, 0.5 = lively. */
+export interface SpringParams { response: number; damping: number }
+export declare class Spring {
+  constructor(options?: { value?: number; response?: number; damping?: number; precision?: number; onUpdate?: (x: number, v: number) => void; onRest?: (x: number) => void; onWake?: (s: Spring) => void });
+  readonly value: number;
+  readonly velocity: number;
+  readonly moving: boolean;
+  target: number;
+  /** Head for a new target, keeping the current velocity unless one is given. Interruptible at any moment. */
+  to(target: number, options?: { velocity?: number; response?: number; damping?: number }): this;
+  /** Set the value now, with no motion. */
+  jump(value: number): this;
+  /** A kick that springs back to the same target. */
+  push(velocity: number): this;
+  stop(): this;
+}
+/**
+ * The knob or indicator made of glass (switch knobs, slider thumbs, the segmented control and tab bar
+ * selection): frosted at rest, it lifts and clears into a lens. One transform per frame plus --rf-lift
+ * (0 resting, 1 lifted) on the element(s); its lens is built for its size and follows the lift.
+ */
+export declare class Liquid {
+  constructor(el: HTMLElement | HTMLElement[], options?: { lift?: [number, number]; stretch?: number; lens?: Partial<LiquidLensOptions>; y?: number });
+  x: Spring; w: Spring; lift: Spring; squash: Spring;
+  onRender?: (l: Liquid) => void; onLand?: (l: Liquid) => void; onRest?: (l: Liquid) => void;
+  /** Put it somewhere with no motion (first layout, resizes). */
+  place(x: number, width?: number): this;
+  /** The finger is down on it: rise into glass and stay lifted. */
+  grab(): this;
+  /** Track the finger closely (px). */
+  follow(x: number): this;
+  /** Travel to x; with lift it rises for the trip and lands solid again (a tap). velocity carries a flick. */
+  travel(x: number, options?: { lift?: boolean; velocity?: number; width?: number; spring?: SpringParams }): this;
+  /** Let go: settle back into a solid face. */
+  drop(): this;
+  destroy(): void;
+}
+export type HapticType = 'selection' | 'soft' | 'light' | 'medium' | 'heavy' | 'rigid' | 'success' | 'warning' | 'error';
+export interface DragState { id: number; x0: number; y0: number; x: number; y: number; started: boolean; type: string; target: EventTarget | null; event: PointerEvent }
 
 export type SpringToken = 'spring-smooth' | 'spring-snappy' | 'spring-bouncy' | 'spring-gel' | 'spring-jelly';
 export interface Rect { left: number; top: number; width: number; height: number }
@@ -70,15 +130,16 @@ export interface MaterializeOptions {
 
 export interface RefractAPI {
   version: string;
-  /** Enhance everything under root: icons, light, lensing, behaviours. Idempotent. */
-  init(root?: ParentNode | Element, options?: { light?: boolean }): RefractAPI;
+  /** Enhance everything under root: icons, light, lensing, behaviours. Idempotent. lens: false keeps glass from refracting by default (explicit data-lens still does). */
+  init(root?: ParentNode | Element, options?: { light?: boolean; lens?: boolean }): RefractAPI;
   /** Keep enhancing nodes added later (SPAs, streamed HTML). Returns a stop function. */
   observe(root?: Node): () => void;
   /** Detach every behaviour from an element. */
   destroy(el: Element): void;
   /** Re-sync a behaviour after a framework changed state it cannot observe (segmented value, slider value, tab). */
   refresh(el: Element): void;
-  supports: { lens: boolean; backdrop: boolean; popover: boolean; scrollTimeline: boolean; viewTransition: boolean; closedBy: boolean; linear: boolean };
+  /** systemFont: Apple's system font (SF Pro) is what renders; Refract.init() then sets data-rf-font="system" on <html> and applies Apple's tracking. */
+  supports: { lens: boolean; backdrop: boolean; popover: boolean; scrollTimeline: boolean; viewTransition: boolean; closedBy: boolean; linear: boolean; systemFont: boolean };
   prefs: { readonly reducedMotion: boolean; readonly reducedTransparency: boolean; readonly contrast: boolean };
 
   /** Real refraction for one element (Chromium). Returns cleanup. Prefer data-lens in markup. */
@@ -87,10 +148,14 @@ export interface RefractAPI {
   lensFilter(width: number, height: number, options?: LensOptions & { radius?: number }): { id: string; url: string; remove(): void } | null;
   /** The shared light source that glass rims catch. */
   light: {
-    register(el: Element): () => void;
-    /** 'pointer' (default), 'orbit' (slow ambient drift), 'fixed', 'tilt' (device motion). */
-    mode(mode: 'pointer' | 'orbit' | 'fixed' | 'tilt', angleDeg?: number): string;
+    /** Have el's rim follow the light; pseudo names the pseudo-element that draws it (default '::before'). */
+    register(el: Element, options?: { pseudo?: '::before' | '::after' }): () => void;
+    /** 'pointer' (default; on touch screens it follows the tilt where reported without a prompt), 'orbit' (slow ambient drift), 'fixed', 'tilt' (device motion).
+     *  angleDeg: where a fixed light hangs or the orbit starts (0 = above, 90 = right). speed: the orbit's degrees a second (24; half under Reduce Motion). Called with no arguments, returns the current mode. */
+    mode(mode?: 'pointer' | 'orbit' | 'fixed' | 'tilt', angleDeg?: number, options?: { speed?: number }): string;
     angle(deg: number): void;
+    /** The angle the light comes from now: the angle el's rim shows, or without el the orbit's or fixed light's. */
+    current(el?: Element): number;
     requestTilt(): Promise<boolean>;
     refresh(): void;
   };
@@ -114,7 +179,14 @@ export interface RefractAPI {
   };
   /** 0 = ultra clear, 0.5 = regular (default), 1 = fully tinted. */
   setDensity(value: number, el?: HTMLElement): number;
-  setMotion(mode: 'reduced' | 'full' | 'system'): void;
+  /**
+   * Override the system's Reduce Motion setting: 'full' keeps every motion, 'reduced' calms it (no overshoot,
+   * travel or squash; light, fades and small motion in place stay), 'system' follows the OS. persist: true
+   * remembers it on this site (localStorage) and applies it in every open tab.
+   */
+  setMotion(mode: 'reduced' | 'full' | 'system', options?: { persist?: boolean }): void;
+  /** The motion override in force: 'system' (follow the OS), 'full' or 'reduced'. */
+  getMotion(): 'system' | 'full' | 'reduced';
   setTransparency(mode: 'reduced' | 'system'): void;
 
   icons: Record<IconName, string>;
@@ -122,14 +194,20 @@ export interface RefractAPI {
   icon(name: IconName, options?: { size?: 'sm' | 'lg'; label?: string; className?: string }): string;
 
   toast: ((options: ToastOptions | string) => { el: HTMLElement; close(): void }) & { close(el: HTMLElement): void; dismissAll(): void };
-  dialog: { open(target: HTMLDialogElement | DialogOptions): Promise<string>; close(el: HTMLDialogElement, value?: string): void };
+  /** confirm(): a yes or no question in thick glass; resolves true when the person confirms. */
+  dialog: {
+    open(target: HTMLDialogElement | DialogOptions): Promise<string>;
+    confirm(options: { title: string; message?: string; icon?: IconName; tone?: 'critical'; confirm?: string; cancel?: string }): Promise<boolean>;
+    close(el: HTMLDialogElement, value?: string): void;
+  };
   sheet: {
     open(el: HTMLElement, options?: { detent?: 'small' | 'medium' | 'large' }): Promise<string>;
     close(el: HTMLElement, value?: string): void;
     detent(el: HTMLElement, name: 'small' | 'medium' | 'large'): string;
   };
   /** Menus and popovers materialize out of their trigger. { focus: false } opens without moving focus. */
-  menu: { open(el: HTMLElement, trigger?: HTMLElement, options?: { focus?: boolean }): void; close(el: HTMLElement): void; toggle(el: HTMLElement, trigger?: HTMLElement, options?: { focus?: boolean }): void };
+  /** openAt: a context menu at a point (clientX, clientY); focus returns to whatever had it before. */
+  menu: { open(el: HTMLElement, trigger?: HTMLElement, options?: { focus?: boolean }): void; close(el: HTMLElement): void; toggle(el: HTMLElement, trigger?: HTMLElement, options?: { focus?: boolean }): void; openAt(el: HTMLElement, x: number, y: number, options?: { focus?: boolean }): void };
   /** A control becomes the surface it opens (materialize out of it), and dissolves back into it. */
   morph: {
     open(trigger: HTMLElement, surface: HTMLElement, options?: { focus?: boolean }): Promise<void>;
@@ -140,6 +218,7 @@ export interface RefractAPI {
   /** View transition on the system springs, instant under Reduce Motion. */
   transition(update: () => void): Promise<void>;
   /** Glass on one plane: merge through a liquid neck and snap apart; add and remove pinch in and out. */
+  /** Glass groups: pieces on one plane merge through a liquid neck; once they touch they share one body of glass (no seams), and a tinted piece stays a nested pill. */
   group: { merge(el: HTMLElement, merged?: boolean): Promise<void>; add(el: HTMLElement, node: HTMLElement): HTMLElement; remove(node: HTMLElement): void };
   /**
    * Glass forms instead of fading: the shape grows out of `from` while blur, tint, lensing and the rim
@@ -173,11 +252,25 @@ export interface RefractAPI {
    * `data-rf-burst` on a control does this when it turns on. Never runs under Reduce Motion.
    */
   burst(el: Element, options?: { count?: number; hue?: string; colors?: string[]; size?: [number, number]; spread?: number; gravity?: number; ring?: boolean; x?: number; y?: number; arc?: [number, number] }): void;
+  /** Play a symbol effect on an icon; 'auto' picks one by the icon's name (refresh spins, bell rings, download drops). Skipped under Reduce Motion. */
+  effect(icon: Element, effect?: SymbolEffect | 'auto' | 'none'): Animation;
+  /**
+   * Switch between two sibling pages (shown and hidden with the hidden attribute) with the motion that matches
+   * the navigation: morph (tabs and segments), slide (steps), push and pop (into and out of a detail), zoom (out of `origin`), fade.
+   * `scroll` sets where the scroller holding them starts on the new page. Cross-fades under Reduce Motion.
+   */
+  page(from: HTMLElement | null, to: HTMLElement, options?: { style?: 'morph' | 'slide' | 'push' | 'pop' | 'zoom' | 'fade'; direction?: 1 | -1; origin?: Element; scroll?: number; duration?: number }): Promise<void>;
+  /**
+   * Morph el from its current look into the next one: update() changes it (data-art, src, text, children).
+   * 'morph' (default) blur cross-fade in place; 'slide' next and previous within the frame (direction 1 | -1);
+   * 'zoom' the new look settles from a little larger; 'fade'. Keep glass outside el. A 200ms cross-fade under Reduce Motion.
+   */
+  swap(el: HTMLElement, update: () => void, options?: { style?: 'morph' | 'slide' | 'zoom' | 'fade'; direction?: 1 | -1; duration?: number }): Promise<void>;
   /** Stop the motion Refract started on a surface. */
   settle(el: HTMLElement): void;
-  /** A demo loop that runs only while `root` is on screen and stops for good at the first touch, click or key; never under Reduce Motion. Returns stop(). */
+  /** A demo loop that runs only while `root` is on screen and stops for good at the first touch, click or key. Returns stop(). */
   autoplay(step: (i: number) => void, options?: { root?: Element; every?: number; delay?: number }): () => void;
-  motion: Pick<RefractAPI, 'materialize' | 'dematerialize' | 'shapeshift' | 'flip' | 'stagger' | 'sweep' | 'roll' | 'bump' | 'settle' | 'autoplay' | 'jiggle' | 'wiggle' | 'burst'> & { radiusOf(el: Element, box?: Rect): number };
+  motion: Pick<RefractAPI, 'materialize' | 'dematerialize' | 'shapeshift' | 'flip' | 'stagger' | 'sweep' | 'roll' | 'bump' | 'settle' | 'autoplay' | 'jiggle' | 'wiggle' | 'burst' | 'effect' | 'page'> & { radiusOf(el: Element, box?: Rect): number };
   /** Web Animations with the system springs; collapses to a fade under Reduce Motion. */
   animate(el: Element, keyframes: Keyframe[], options?: KeyframeAnimationOptions & { spring?: SpringToken; reduced?: Keyframe[] }): Animation;
   /** Interruptible, velocity-aware spring for pointer-driven values. */
@@ -186,10 +279,60 @@ export interface RefractAPI {
   };
   easing(token: string, fallback?: string): string;
   duration(token: string, fallback?: number): number;
+
+  /**
+   * Haptics, named the way UIKit names its feedback generators. Android browsers drive the motor; Safari
+   * taps on real switches (Refract switches carry the switch attribute); desktops stay silent. Only a
+   * person's own input plays one: pass the triggering event. Off with enabled = false or data-rf-haptics="off".
+   * Declarative: data-haptic="light" on any element plays on a person's click.
+   */
+  haptics: {
+    enabled: boolean;
+    readonly supported: boolean;
+    selection(event?: Event): boolean;
+    impact(style?: 'soft' | 'light' | 'medium' | 'heavy' | 'rigid', event?: Event): boolean;
+    notify(type?: 'success' | 'warning' | 'error', event?: Event): boolean;
+    play(type: HapticType, event?: Event): boolean;
+  };
+  /** The liquid engine behind the switch, slider, segmented control and tab bar, for custom controls. */
+  Liquid: typeof Liquid;
+  Spring: typeof Spring;
+  /** The named springs: lift, drop, travel, follow, gel, pop. */
+  SPRINGS: Record<'lift' | 'drop' | 'travel' | 'follow' | 'gel' | 'pop', SpringParams>;
+  /** Run fn(dt, t) every frame (one shared loop) until it returns false. Returns unsubscribe. */
+  tick(fn: (dt: number, t: number) => boolean | void): () => void;
+  /** Pointer velocity over the last 80 ms, in px/s. */
+  velocityTracker(windowMs?: number): { add(x: number, y?: number, t?: number): void; get(): { x: number; y: number }; reset(): void };
+  /** Apple's rubber band: travel past a limit shrinks smoothly toward `dim` (c = 0.55). */
+  rubber(offset: number, dim: number, c?: number): number;
+  /** Where a flick would come to rest (UIScrollView's deceleration, rate 0.998). */
+  project(velocity: number, rate?: number): number;
+  /** One careful drag recogniser: threshold, axis, pointer capture, release velocity, click swallowing. Returns cleanup. */
+  drag(el: HTMLElement, options: {
+    axis?: 'x' | 'y'; threshold?: number;
+    onDown?: (e: PointerEvent, s: DragState) => void; onStart?: (e: PointerEvent, s: DragState) => void;
+    onMove?: (e: PointerEvent, s: DragState, dx: number, dy: number, velocity: { x: number; y: number }) => void;
+    onEnd?: (e: PointerEvent, s: DragState, velocity: { x: number; y: number }, info: { dragged: boolean; cancelled: boolean }) => void;
+    accept?: (e: PointerEvent) => boolean;
+  }): () => void;
+  /** The refraction filter a Liquid knob uses; shared by size. null where unsupported. */
+  /** The glass of a moving part; lift(0..1) turns its zoom and rim from rest to lifted. */
+  liquidLens(width: number, height: number, options?: LiquidLensOptions): { id: string; url: string; lift(amount: number): void; remove(): void } | null;
 }
 
+/* ------------------------------------------------------------------ events (vanilla)
+ * rf-change    tile { pressed } · wheel { index, value } · switch, segmented, tab bar as native change / rf-select
+ * rf-input     level { value, fraction } while it moves
+ * rf-code      keypad { code } when every digit is in · rf-unlock { code } (with data-code) · rf-cancel
+ * rf-settle    wheel { index } once it stops turning
+ * rf-refresh   pull to refresh { done() }: call done when the work is finished (data-manual), else it closes itself
+ * rf-peek      peek { menu } as the preview lifts
+ * rf-swipe-commit  swipe row { action } after a long swipe commits the last action
+ * Element handles: list.rfWheel.select(i) · row.rfSwipe.open() / close() · root.rfRefresh.done() / start() · pad.rfKeypad.clear()
+ */
+
 /* ------------------------------------------------------------------ React components */
-type Native<T> = Omit<React.HTMLAttributes<T>, 'onChange' | 'onToggle' | 'title'>;
+type Native<T> = Omit<React.HTMLAttributes<T>, 'onChange' | 'onToggle' | 'title' | 'onSelect'>;
 
 /** A glass surface. Children sit on the material; never nest glass in glass. */
 export interface GlassProps extends Native<HTMLElement> { as?: React.ElementType; variant?: GlassVariant; shape?: 'capsule' | 'circle' | 'rect' | 'panel'; tone?: Tone | Hue; lens?: LensStrength; interactive?: boolean; children?: React.ReactNode }
@@ -224,7 +367,7 @@ export declare function Button(props: ButtonProps): React.ReactElement;
 export interface ToolbarProps extends Native<HTMLDivElement> { position?: 'top' | 'bottom'; label: string; children?: React.ReactNode }
 export declare function Toolbar(props: ToolbarProps): React.ReactElement;
 /** A glass capsule of plain buttons inside a Toolbar. */
-export interface ToolbarGroupProps extends Native<HTMLDivElement> { lens?: boolean; children?: React.ReactNode }
+export interface ToolbarGroupProps extends Native<HTMLDivElement> { lens?: LensStrength; children?: React.ReactNode }
 export declare function ToolbarGroup(props: ToolbarGroupProps): React.ReactElement;
 
 /** A thick-glass popover menu that grows out of its trigger. Open it with <Button menu={id}>. */
@@ -244,7 +387,7 @@ export declare function Popover(props: PopoverProps): React.ReactElement;
 
 export interface TabItem { id?: string; label: string; icon: IconName; href?: string; badge?: React.ReactNode }
 /** A floating glass capsule of 3 to 5 destinations with a liquid selection lens. */
-export interface TabBarProps { items: TabItem[]; value?: string | number; onChange?: (id: string | number) => void; position?: 'bottom'; minimizeOnScroll?: string; search?: boolean; onSearch?: () => void; accessory?: React.ReactNode; label?: string; lens?: boolean; className?: string }
+export interface TabBarProps { items: TabItem[]; value?: string | number; onChange?: (id: string | number) => void; position?: 'bottom'; minimizeOnScroll?: string; search?: boolean; onSearch?: () => void; accessory?: React.ReactNode; label?: string; lens?: LensStrength; className?: string }
 export declare function TabBar(props: TabBarProps): React.ReactElement;
 
 /** Glass buttons at the edges; the inline title and scroll edge appear once the large title scrolls away. */
@@ -328,8 +471,12 @@ export interface ProgressProps { value?: number; label: string; size?: 'lg'; ton
 export declare function Progress(props: ProgressProps): React.ReactElement;
 export interface RingProps { value: number; label: string; size?: Size; tone?: 'positive'; showValue?: boolean }
 export declare function Ring(props: RingProps): React.ReactElement;
-export interface SpinnerProps { size?: Size; variant?: 'liquid' | 'ring'; label?: string }
+/** Twelve indeterminate spinners in currentColor; pick by meaning (bars = audio, fill = transfer, dots = typing). */
+export interface SpinnerProps { size?: Size | 'xl'; variant?: 'arc' | 'activity' | 'ring' | 'dots' | 'bars' | 'pulse' | 'orbit' | 'liquid' | 'morph' | 'fill' | 'merge'; label?: string }
 export declare function Spinner(props: SpinnerProps): React.ReactElement;
+/** The Refract mark in CSS (currentColor). animate: true loops (whole, apart, hold, rejoin); 'once' comes apart once and stays the mark. For Refract's own tools. */
+export interface MarkProps { size?: 'sm' | 'md' | 'lg' | 'xl'; animate?: boolean | 'once'; label?: string; className?: string }
+export declare function Mark(props: MarkProps): React.ReactElement;
 export interface SkeletonProps { shape?: 'circle' | 'block' | 'title'; width?: string; height?: string }
 export declare function Skeleton(props: SkeletonProps): React.ReactElement;
 
@@ -347,12 +494,51 @@ export declare function GlassGroup(props: GlassGroupProps): React.ReactElement;
 export declare function Loupe(props: { size?: number; x?: number; y?: number; label?: string }): React.ReactElement;
 /** Alias of Loupe: the draggable lens shown on the Lens card. */
 export declare const Lens: typeof Loupe;
-/** A tinted drop that buds up to three actions. */
-export declare function Droplets(props: { icon?: IconName; label?: string; actions: Array<{ icon: IconName; label: string; onSelect?: () => void }> }): React.ReactElement;
+/** A drop of tinted liquid glass that buds up to three actions. fan 'up-left' (default, for a bottom-right corner) or 'up-right' (bottom-left). */
+export declare function Droplets(props: { icon?: IconName; label?: string; fan?: 'up-left' | 'up-right'; actions: Array<{ icon: IconName; label: string; onSelect?: () => void }> }): React.ReactElement;
 /** Scroll-driven entrance; effect 'scale' | 'blur' | 'glass' or true for rise. */
 export declare function Reveal(props: { as?: React.ElementType; effect?: true | 'scale' | 'blur' | 'glass'; children?: React.ReactNode } & React.HTMLAttributes<HTMLElement>): React.ReactElement;
 /** Dimming layer under clear glass on media. */
 export declare function Scrim(props: { edge?: 'top' | 'both' | 'full' }): React.ReactElement;
+
+/** A glass toggle tile (Control Center). Controlled (`pressed` + onChange) or uncontrolled (defaultPressed). shape 'circle' for the small round ones (label becomes aria-label). */
+export interface TileProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'onChange'> { icon?: IconName; label: string; sub?: React.ReactNode; subOff?: React.ReactNode; pressed?: boolean; defaultPressed?: boolean; onChange?: (pressed: boolean) => void; tone?: Hue | 'critical'; shape?: 'circle' }
+export declare function Tile(props: TileProps): React.ReactElement;
+/** A thick glass panel that holds round tiles in a 2 by 2 cluster. */
+export declare function TileCluster(props: { children?: React.ReactNode; className?: string }): React.ReactElement;
+/** A tall (or, with orientation 'horizontal', wide) glass level that fills: drag anywhere, it stretches past the ends. */
+export interface LevelProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange' | 'defaultValue'> { icon?: IconName; label: string; value?: number; defaultValue?: number; min?: number; max?: number; onChange?: (value: number) => void; orientation?: 'horizontal' }
+export declare function Level(props: LevelProps): React.ReactElement;
+/** A passcode keypad. onComplete(code) when every digit is in. `code` checks locally: for demos only, never for real secrets. */
+export interface KeypadProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange'> { length?: number; code?: string; label?: string; onComplete?: (code: string) => void; onUnlock?: (code: string) => void; onCancel?: () => void }
+export declare function Keypad(props: KeypadProps): React.ReactElement;
+/** Wheels on a drum (time, date, any list): drag, flick, scroll or keys; a glass band magnifies the value. onChange(values) once a wheel settles on a row. */
+export interface WheelPickerWheel {
+  label: string;
+  options: Array<string | number>;
+  value?: string | number;
+  align?: 'start' | 'end';
+  /** Go round for ever (hours, minutes); needs eight options or more. */
+  loop?: boolean;
+  /** A unit that stays put beside the value in the band ("min"); unitOne is used when the value is 1 ("hour"). */
+  unit?: string;
+  unitOne?: string;
+  /** Options shown faint that the wheel will not rest on (Feb 30). */
+  disabled?: Array<string | number>;
+}
+export interface WheelPickerProps { wheels: WheelPickerWheel[]; label?: string; onChange?: (values: Array<string | null>) => void; className?: string }
+/** Behaviour handle on an enhanced .rf-wheel element. */
+export interface RefractWheel { select(index: number, smooth?: boolean): void; readonly index: number; readonly value: string | null; readonly options: HTMLElement[] }
+export declare function WheelPicker(props: WheelPickerProps): React.ReactElement;
+/** Pull the content down from its top to refresh. onRefresh may return a promise; the spinner stays until it settles. */
+export interface PullToRefreshProps { onRefresh?: () => void | Promise<unknown>; children?: React.ReactNode; className?: string }
+export declare function PullToRefresh(props: PullToRefreshProps): React.ReactElement;
+/** Press and hold (or right-click) to lift a preview and open the Menu whose id is `menu`. */
+export interface PeekProps extends React.HTMLAttributes<HTMLElement> { menu: string; as?: React.ElementType; children?: React.ReactNode }
+export declare function Peek(props: PeekProps): React.ReactElement;
+/** A List row with actions behind it: swipe (or drag) to reveal; a long swipe commits a last critical action. */
+export interface SwipeRowProps extends ListRowProps { label?: string; actions: Array<{ label: string; icon?: IconName; tone?: Hue | 'critical'; onSelect?: () => void }> }
+export declare function SwipeRow(props: SwipeRowProps): React.ReactElement;
 
 declare global {
   interface Window {
@@ -367,6 +553,8 @@ declare global {
       AvatarStack: typeof AvatarStack; Badge: typeof Badge; Chip: typeof Chip; Progress: typeof Progress; Ring: typeof Ring; Spinner: typeof Spinner;
       Skeleton: typeof Skeleton; PlayPause: typeof PlayPause; MediaControls: typeof MediaControls; GlassGroup: typeof GlassGroup; Loupe: typeof Loupe;
       Lens: typeof Loupe; Droplets: typeof Droplets; Reveal: typeof Reveal; Scrim: typeof Scrim;
+      Tile: typeof Tile; TileCluster: typeof TileCluster; Level: typeof Level; Keypad: typeof Keypad; WheelPicker: typeof WheelPicker;
+      PullToRefresh: typeof PullToRefresh; Peek: typeof Peek; SwipeRow: typeof SwipeRow; Mark: typeof Mark;
     };
   }
 }

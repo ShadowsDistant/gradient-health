@@ -55,8 +55,8 @@ await settle(900);
 section('Type in the tab bar, buttons and chips');
 const type = await page.evaluate(() => {
   const label = document.querySelector('.rf-tab[aria-current="page"] .rf-tab-label');
-  const lens = document.querySelector('.rf-tabbar-lens');
-  const lr = label.getBoundingClientRect(), pr = lens.getBoundingClientRect();
+  const pill = document.querySelector('.rf-tabbar-pill');
+  const lr = label.getBoundingClientRect(), pr = pill.getBoundingClientRect();
   const fs = (sel) => { const el = document.querySelector(sel); return el ? getComputedStyle(el).fontSize : null; };
   return { tabSize: getComputedStyle(label).fontSize, inside: lr.left >= pr.left - 0.5 && lr.right <= pr.right + 0.5, btn: fs('#screen .rf-btn:not([data-size])'), chip: fs('#screen .rf-chip') };
 });
@@ -66,7 +66,7 @@ check('buttons keep Refract\'s size', type.btn === null || type.btn !== '16px', 
 check('chips keep Refract\'s size', type.chip === null || type.chip === '13px', type.chip);
 for (const t of ['today', 'plan', 'health', 'progress', 'you']) {
   await tab(t);
-  const ok = await page.evaluate(() => { const l = document.querySelector('.rf-tab[aria-current="page"] .rf-tab-label').getBoundingClientRect(); const p = document.querySelector('.rf-tabbar-lens').getBoundingClientRect(); return l.left >= p.left - 0.5 && l.right <= p.right + 0.5; });
+  const ok = await page.evaluate(() => { const l = document.querySelector('.rf-tab[aria-current="page"] .rf-tab-label').getBoundingClientRect(); const p = document.querySelector('.rf-tabbar-pill').getBoundingClientRect(); return l.left >= p.left - 0.5 && l.right <= p.right + 0.5; });
   check(`"${t}" label fits its pill`, ok);
 }
 
@@ -125,16 +125,24 @@ check('the page doesn\'t scroll sideways', tour.scroll <= 0, tour.scroll);
 check('its labels aren\'t cut off', tour.labels);
 await page.click('.tour-sheet [data-act="tourNext"]'); await settle(900);
 
-section('The current tab is glass');
+section('The current tab is a bead of glass');
+// Refract 1.4's tab bar: the current tab sits on a frosted pill (.rf-tabbar-pill) with a lens over its
+// label (.rf-tabbar-lens) that only bends what's under it while lifted (src/styles/controls.css).
 await tab('plan');
 await settle(900);
-const lens = () => page.evaluate(() => { const s = getComputedStyle(document.querySelector('#tabbar .rf-tabbar-lens')); return { bf: s.backdropFilter, shadow: s.boxShadow }; });
-let ln = await lens();
-check('at rest the current tab sits in a glass lens', ln.bf !== 'none' && /inset/.test(ln.shadow), JSON.stringify(ln));
+const bead = () => page.evaluate(() => {
+  const pill = document.querySelector('#tabbar .rf-tabbar-pill'), lens = document.querySelector('#tabbar .rf-tabbar-lens');
+  const l = document.querySelector('.rf-tab[aria-current="page"] .rf-tab-label').getBoundingClientRect();
+  const p = pill.getBoundingClientRect();
+  const face = getComputedStyle(pill, '::before');
+  return { under: l.left >= p.left - 0.5 && l.right <= p.right + 0.5, fill: face.backgroundColor, lensFilter: getComputedStyle(lens, '::after').backdropFilter, lifted: lens.hasAttribute('data-lifted') };
+});
+let bd = await bead();
+check('at rest the current tab sits on a frosted pill, its lens off', bd.under && bd.fill !== 'rgba(0, 0, 0, 0)' && bd.lensFilter === 'none' && !bd.lifted, JSON.stringify(bd));
 await page.evaluate(() => { window.GH.ui.S.profile.prefs.contrast = true; window.GH.ui.applyPrefs(); });
 await settle(600);
-ln = await lens();
-check('with increased contrast it stays a plain wash', ln.bf === 'none' && !/inset/.test(ln.shadow), JSON.stringify(ln));
+bd = await bead();
+check('with increased contrast the pill is solid and there is no lens', bd.under && bd.lensFilter === 'none', JSON.stringify(bd));
 await page.evaluate(() => { window.GH.ui.S.profile.prefs.contrast = false; window.GH.ui.applyPrefs(); });
 await settle(600);
 

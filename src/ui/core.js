@@ -136,13 +136,13 @@
 
   /* ---------------------------------------------------------------- morph */
   // Nodes Refract (or controls.js) adds inside components. Re-renders leave them where they are.
-  const INJECTED = ['rf-lens-layer', 'rf-segmented-thumb', 'rf-tabbar-lens', 'rf-slider-ticks', 'rf-slider-track', 'rf-slider-fill', 'rf-slider-thumb', 'rf-pagedots-worm', 'rf-glass-bridge', 'rf-burst-layer', 'rf-ghost', 'rf-bead', 'rf-bead-ring', 'gh-seg-lens', 'gh-chipseg-thumb'];
+  const INJECTED = ['rf-lens-layer', 'rf-segmented-thumb', 'rf-segmented-lens', 'rf-tabbar-pill', 'rf-tabbar-lens', 'rf-slider-ticks', 'rf-slider-track', 'rf-slider-fill', 'rf-slider-thumb', 'rf-pagedots-worm', 'rf-glass-bridge', 'rf-burst-layer', 'rf-ghost', 'rf-bead', 'rf-bead-ring', 'rf-ripple', 'gh-chipseg-thumb'];
   // Classes that carry a behavior: an element never turns into or out of one of these in place, it's
   // replaced instead (so no stale listeners or injected parts are left behind).
   const BEHAVIOR = ['rf-segmented', 'rf-switch', 'rf-slider', 'rf-stepper', 'rf-chip', 'rf-glass', 'rf-navbar', 'rf-scroll-edge', 'rf-search', 'rf-pagedots', 'rf-activity', 'rf-tabbar', 'gh-chipseg'];
   const BEHAVIOR_SEL = BEHAVIOR.map((c) => '.' + c).join(',');
   // Attributes behaviors set on our elements. Only matters for nodes the markup didn't create.
-  const KEEP_ATTR = /^(data-(ready|lens-ready|lens-idle|scrolled|active|pressed|glow|magnet|dragging|drag-on|over|empty|bump|leaving|traveling|open|expanded|detent|entering|animate|minimized|revealed|hover|merged|tilting|fading|rf-.*)|role|tabindex|style|aria-(checked|selected|expanded|controls|describedby|valuetext))$/;
+  const KEEP_ATTR = /^(data-(ready|lens-ready|lens-idle|scrolled|active|pressed|glow|magnet|dragging|drag-on|over|empty|bump|leaving|traveling|open|expanded|detent|entering|animate|minimized|revealed|hover|merged|tilting|fading|lifted|liquid|ring|scrubbing|rf-.*)|role|tabindex|style|aria-(checked|selected|expanded|controls|describedby|valuetext))$/;
   const owned = new WeakMap(); // element → { attrs, style } the markup set, so only those get removed
 
   // (A node's own few classes are looked up, rather than asking for each of these in turn: a patch
@@ -421,7 +421,7 @@
     // measures where its glass goes as it's set up, which laid out the empty page once more.
     readSoon('bars', () => {
       const r = R();
-      if (r && r.init) U.morphKit.aside(() => { safe(() => r.init(tabbar)); safe(() => r.init(topbar)); });
+      if (r && r.init) U.morphKit.aside(() => { safe(() => r.init(tabbar, RF_INIT)); safe(() => r.init(topbar, RF_INIT)); });
     });
     // The bar's height feeds the screen's top padding (its observer reports before the first frame
     // is drawn). It's written only when the padding isn't that already (the style sheet's own value,
@@ -452,9 +452,21 @@
   function onScroll() {
     if (!scrollFrame) scrollFrame = G.requestAnimationFrame(updateScrolled);
     if (scrollIdle) clearTimeout(scrollIdle);
-    else root.setAttribute('data-scrolling', '');
-    scrollIdle = setTimeout(() => { scrollIdle = 0; root.removeAttribute('data-scrolling'); }, 150);
+    else { root.setAttribute('data-scrolling', ''); steadyLight(true); }
+    scrollIdle = setTimeout(() => { scrollIdle = 0; root.removeAttribute('data-scrolling'); U.steadyLight(); }, 150);
   }
+  // Refract's light: on a phone the glass rims follow how it's tilted, and every step the light takes
+  // repaints those rims and redraws their lenses. It holds still where it is while the page scrolls,
+  // while the workout player is open (the phone moves all the time), with Moving background off and
+  // under reduced motion, and follows the tilt again once things are calm.
+  let lightFixed = false;
+  function steadyLight(fixed) {
+    const r = R();
+    if (fixed === lightFixed || !r || !r.light || !r.light.mode) return;
+    lightFixed = fixed;
+    safe(() => (fixed ? r.light.mode('fixed', r.light.current()) : r.light.mode('pointer')));
+  }
+  U.steadyLight = () => steadyLight(!!(scrollIdle || doc.documentElement.hasAttribute('data-still-glow') || U.reduced() || (playerEl && !playerEl.hidden)));
 
   function applyNavbar(nb) {
     const part = (sel) => (nb ? nb.querySelector(sel) : null);
@@ -619,12 +631,14 @@
     readSoon('scrolled', updateScrolled);
     if (bar) safe(() => bar(kind));
     tabbar.toggleAttribute('data-away', !!r.view);
-    // Only a real change: Refract's tab bar moves its glass on every one it hears of.
-    for (const t of tabbar.querySelectorAll('.rf-tab')) {
-      if (t.dataset.tab === r.tab) { if (t.getAttribute('aria-current') !== 'page') t.setAttribute('aria-current', 'page'); } else if (t.hasAttribute('aria-current')) t.removeAttribute('aria-current');
-    }
-    // (Its glass also follows a change of tab by itself, from Refract's own observer.)
-    readSoon('tabbar', () => { if (R() && R().refresh) R().refresh(tabbar); });
+    // The current tab is marked in the frame's read pass, after this render's writes: Refract's tab
+    // bar measures where its glass goes as soon as it sees the change, which mid-render laid the
+    // page out once more. Only a real change: it moves its glass on every one it hears of.
+    readSoon('tabbar', () => {
+      for (const t of tabbar.querySelectorAll('.rf-tab')) {
+        if (t.dataset.tab === U.route.tab) { if (t.getAttribute('aria-current') !== 'page') t.setAttribute('aria-current', 'page'); } else if (t.hasAttribute('aria-current')) t.removeAttribute('aria-current');
+      }
+    });
     renderAccessory();
   }
   U.render = render;
@@ -657,6 +671,10 @@
    * inserted nodes. enhance() initializes the ones a patch just inserted, and only those that carry
    * something Refract handles; nodes inserted any other way (sheets, dialogs, toasts, a part added
    * by hand) are initialized when the observer reports them, as before. */
+  // Refract 1.4 refracts every regular and clear glass surface unless told otherwise: here only those
+  // the markup marks data-lens do (as before 1.4), since each lens is redrawn every frame the page
+  // moves under it.
+  const RF_INIT = { lens: false };
   // What init() handles: the `auto` list in vendor/refract/bundle.js, plus glass, data-rf
   // behaviours and icon placeholders.
   const RF_SEL = '.rf-glass, [data-rf], [data-icon]:not(svg), .rf-switch, .rf-slider, .rf-stepper, .rf-search, .rf-chip, .rf-playpause, .rf-tabbar, .rf-segmented, .rf-pagedots, .rf-navbar, .rf-scroll-edge[data-watch], .rf-sidebar, .rf-toolbar, .rf-menu[popover], .rf-popover[popover], .rf-menu[id], .rf-popover[id], dialog.rf-dialog, .rf-sheet, .rf-activity, [data-rf-tooltip], [data-reveal], .rf-loupe, .rf-droplets, [data-rf-morph], [data-rf-tone], [data-rf-adapt]';
@@ -672,7 +690,7 @@
         for (let p = n.parentElement; p && !inDone; p = p.parentElement) inDone = done.has(p);
         if (inDone) continue; // inside a node initialized just now
         done.add(n);
-        safe(() => r.init(n));
+        safe(() => r.init(n, RF_INIT));
       }
     }
   }
@@ -680,7 +698,7 @@
     const r = R();
     if (!r || !r.init) return;
     if (rfObserver) initAdded(rfObserver.takeRecords());
-    else safe(() => r.init(el)); // before boot() starts the observer
+    else safe(() => r.init(el, RF_INIT)); // before boot() starts the observer
   }
   // For other code: el is looked through as a whole when nothing was inserted in it since the last
   // pass (it was changed some other way).
@@ -688,7 +706,7 @@
     const recs = rfObserver ? rfObserver.takeRecords() : [];
     initAdded(recs);
     const touched = recs.some((x) => el.contains(x.target) || Array.prototype.includes.call(x.addedNodes, el));
-    if (!touched) { const r = R(); if (r && r.init) safe(() => r.init(el)); }
+    if (!touched) { const r = R(); if (r && r.init) safe(() => r.init(el, RF_INIT)); }
   };
   function observeInserts() {
     if (!G.MutationObserver || rfObserver) return;
@@ -1049,6 +1067,7 @@
     }
     // The background glow drifts unless it's switched off (Settings, Look).
     doc.documentElement.toggleAttribute('data-still-glow', p.glowMove === false);
+    if (U.steadyLight) U.steadyLight();
   }
   U.applyPrefs = applyPrefs;
 
