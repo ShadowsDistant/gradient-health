@@ -617,8 +617,18 @@ if (reducedMotion) {
   await wait(900);
   const w = () => page.evaluate(() => [...document.querySelectorAll('dialog[open] [data-on="dsWd"]')].map((c) => c.offsetWidth));
   const w0 = await w();
-  await page.click('dialog[open] [data-on="dsWd"][aria-pressed="false"]');
-  await wait(500);
+  const day = await page.evaluate(() => document.querySelector('dialog[open] [data-on="dsWd"][aria-pressed="false"]').dataset.v);
+  await page.click(`dialog[open] [data-on="dsWd"][data-v="${day}"]`);
+  await wait(150);
+  // Refract's ripple fills the chip it's in (inset 0), so the chip has to be its containing block.
+  const rip = await page.evaluate((v) => {
+    const c = document.querySelector(`dialog[open] [data-on="dsWd"][data-v="${v}"]`), r = c && c.querySelector('.rf-ripple');
+    if (!r) return null;
+    const a = c.getBoundingClientRect(), b = r.getBoundingClientRect();
+    return { l: Math.round(b.left - a.left), r: Math.round(b.right - a.right), t: Math.round(b.top - a.top), b: Math.round(b.bottom - a.bottom) };
+  }, day);
+  check('a tap\'s ripple stays inside the chip', rip && [rip.l, rip.r, rip.t, rip.b].every((d) => Math.abs(d) <= 1), rip);
+  await wait(350);
   const w1 = await w();
   check('pressing a toggle chip doesn\'t change its width', w0.join() === w1.join(), [w0, w1]);
   await page.evaluate(() => window.GH.ui.closeSheets());

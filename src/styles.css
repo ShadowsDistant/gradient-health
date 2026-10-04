@@ -67,6 +67,15 @@ body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
 /* An app's pages don't zoom: no pinch and no double tap (the viewport says so too, src/shell.html).
    Text follows the phone's font size instead, and the route map zooms with two fingers on its own. */
 html, body { touch-action: pan-x pan-y; }
+/* What Refract ripples on a tap is positioned, so the ripple (inset 0) fills it. On a static element
+   Refract places the ripple from its offsetLeft and offsetTop instead, which is wrong inside a sheet
+   (the panel's transform, not the offset parent, holds the ripple): a chip's ripple flashed a few
+   hundred pixels away. In the lowest layer (app-base, named first by scripts/build.mjs; not under gh,
+   which would move gh.controls ahead of Refract too), so any
+   position set by Refract or by the app still wins. */
+@layer app-base {
+  :where(button, a[href][class*="rf-"], [role="button"], [role="tab"], [role="menuitem"], [role="option"], label.rf-segment) { position: relative; }
+}
 /* Plain buttons take the surrounding font. Refract's controls (.rf-*) keep their own sizes, so this
    must not reach them: an unlayered `font` here would beat Refract's layered rules. */
 button:not([class*="rf-"]) { font: inherit; }

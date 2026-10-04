@@ -428,7 +428,9 @@ async function main() {
   const scripts = [`<script>(window.GH = window.GH || {}).VERSION = ${JSON.stringify(version)}; window.GH.BUILD = ${JSON.stringify(buildId)};</script>`];
   APP_SCRIPTS.forEach((p, i) => scripts.push(`<script>/* ${p} */\n${safeJs(appJs[i])}</script>`));
   const [tokensMin, refractCss, appCssMin, refractMin] = await Promise.all([
-    minCss(tokensCss(tokens), 'tokens.css'), minCss(pruneCss(read('vendor/refract/bundle.css')), 'vendor/refract/bundle.css'), minCss(appCss(), 'src/styles.css'), refractJs(),
+    // The app's lowest layer, app-base, is named first so it sorts before Refract's (layers order by
+    // first appearance): its defaults lose to anything Refract's or the app's other rules set.
+    minCss(`@layer app-base;\n${tokensCss(tokens)}`, 'tokens.css'), minCss(pruneCss(read('vendor/refract/bundle.css')), 'vendor/refract/bundle.css'), minCss(appCss(), 'src/styles.css'), refractJs(),
   ]);
   let html = shell
     .replace('<!--@TOKENS-->', () => `<style>${safeCss(tokensMin)}</style>`)
