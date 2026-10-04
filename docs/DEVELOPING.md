@@ -267,7 +267,10 @@ controller that swaps what's underneath it: the flat figure while the chunk is s
 it's there, and flat again if `onFallback` fires. Set-up fetches the chunk. The GPU warm-up
 (`U.warmFigure`) runs about 8 seconds after launch only when today is a workout day (once it's calm,
 `U.calm()`: not in the middle of a scroll or a touch), or at once when a finger lands on something
-that opens a figure. Settings keeps the choice in `profile.prefs.figure` (`'3d'` or `'flat'`), with
+that opens a figure. `GH.figure3d.warm()` turns true when the warm-up has finished compiling its
+shaders, not when it starts: a figure opened in between would wait on the compile, so it shows its
+kept still meanwhile. Stills of today's figures (for the next launch) start 4 seconds after the
+warm-up, one per idle moment while no figure is on screen. Settings keeps the choice in `profile.prefs.figure` (`'3d'` or `'flat'`), with
 `figSkin` and `figShirt` for the look. The tempo strip under a figure comes from the move's `rep`
 steps and lights up from `onPhase`.
 
