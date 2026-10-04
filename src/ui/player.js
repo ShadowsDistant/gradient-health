@@ -728,7 +728,7 @@
     const left = P.restEnd ? Math.max(0, (P.restEnd - Date.now()) / 1000) : 0;
     const rirQ = P.askRir ? `<div class="pl-rir">
         <p class="t-headline">How many more could you have done?</p>
-        ${U.seg('plRir', [['0', '0'], ['12', '1-2'], ['3', '3+']], P.rirAnswered || '', 'Reps left in the tank', ' data-on="plRir"')}
+        ${U.seg('plRir', [['0', '0'], ['12', '1-2'], ['3', '3+']], P.rirAnswered || '', 'Reps left in the tank', ' data-on="plRir" data-sync')}
         <p class="t-footnote rf-muted">${P.askRir.kind === 'finisher' ? 'For the whole finisher.' : `For ${U.esc(P.askRir.name.toLowerCase())}. This sets next time.`}${((U.S.seen || {}).rirCount || 0) < 3 ? ' Count the reps you could still have done with good form. A rough guess is fine.' : ''}</p>
       </div>` : '';
     const logged = done && done.kind === 'set' ? loggedLine(done) : '';
@@ -880,6 +880,8 @@
     const v = parseInt(input && input.value, 10);
     complete({ value: isFinite(v) ? Math.max(0, v) : 0 });
   };
+  // Taken at once (data-sync on the control), not a frame later like other segmented controls: a
+  // redraw in between (the rest ending, a toast) would draw the question with nothing picked.
   U.on.plRir = (el, ev, v) => {
     if (!P || !P.askRir) return;
     B().setRir(U.S, P.askRir, String(v));
