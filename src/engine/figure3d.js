@@ -3149,6 +3149,7 @@ let lostCount = 0; // contexts lost while figures were on screen
 let SUPPORTED = null;
 let ENV = null;
 let WARM = null; // a View kept alive after preload() so its shader programs stay compiled
+let warmed = false; // and preload() has finished: those programs are compiled, not still compiling
 let preloading = null;
 const live = new Set();
 let shownAt = -Infinity; // when the page last came to the front
@@ -3223,9 +3224,9 @@ function renderer() {
     if (me.released) return; // we gave it back
     e.preventDefault();
     // A loss while the page is hidden is the phone reclaiming memory (often only reported once the
-    // app is back in front); a loss while figures are on screen is the GPU giving up. Twice of those
-    // and this session stays with the flat figure.
-    const hidden = document.hidden || performanceNow() - shownAt < 2000;
+    // app is back in front, seconds later when the GPU is busy redrawing it); a loss while figures
+    // are on screen is the GPU giving up. Twice of those and this session stays with the flat figure.
+    const hidden = document.hidden || performanceNow() - shownAt < 5000;
     if (live.size && !hidden) lostCount++;
     if (lostCount >= 2) SUPPORTED = false;
     // Each figure frees its view while the renderer still exists.
@@ -3241,6 +3242,7 @@ function forget(rr) {
   R = null;
   preloading = null;
   if (WARM) { try { WARM.dispose(); } catch (e) { /* ignore */ } WARM = null; }
+  warmed = false;
   if (ENV) { try { ENV.dispose(); } catch (e) { /* ignore */ } ENV = null; }
   const drop = (o) => {
     if (!o || typeof o !== 'object') return;
@@ -3736,7 +3738,7 @@ function preload() {
       }
     };
     idle(run);
-  }).then((ok) => { maybeRelease(); return ok; });
+  }).then((ok) => { if (ok && R && WARM && preloading === p) warmed = true; maybeRelease(); return ok; });
   preloading = p;
   // A failed or released warm-up can be tried again later.
   p.then((ok) => { if (!ok && preloading === p) preloading = null; });
@@ -3745,13 +3747,14 @@ function preload() {
 
 GH.figure3d = {
   supported, mount, still, cachedStill, preload, phaseAt,
-  // Whether the renderer is up and its shaders compiled, so a new figure draws its first frame at once.
-  warm() { return !!(R && WARM && !isLost(R)); },
+  // Whether the renderer is up and its shaders compiled, so a new figure draws its first frame at once
+  // (not yet while the warm-up is compiling them: a figure would wait on that).
+  warm() { return !!(R && WARM && warmed && !isLost(R)); },
   // Internal, for tests: drop the shared GL context as a phone might, look at what's held, shorten
   // the idle release, and stop figures drawing (a GPU stuck compiling).
   _loseContext() { if (R) R.r.forceContextLoss(); },
   _stall(on) { stalled = !!on; },
-  _stats() { return { live: live.size, renderer: !!R, warm: !!WARM, lost: lostCount, programs: R ? R.r.info.programs.length : 0, size: R ? [R.w, R.h] : null }; },
+  _stats() { return { live: live.size, renderer: !!R, warm: !!(WARM && warmed), lost: lostCount, programs: R ? R.r.info.programs.length : 0, size: R ? [R.w, R.h] : null }; },
   _releaseAfter(ms) { releaseMs = ms; },
   // The 3D joints of a move (id or move) at time t ms into the rep, without drawing anything (no
   // WebGL needed): [x, y, z] for the head centre, shoulders, elbows, wrists, hands (grip point),

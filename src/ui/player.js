@@ -288,10 +288,10 @@
     return kind === 'sheet' ? [Math.round(Math.min(vw, 640) - 56), 220] : [Math.round(Math.min(vw - 32, 520) - 24), Math.round(Math.max(170, Math.min(vh * 0.38, 420)) - 44)];
   }
   // Draw what's missing for moves opened lately, the moves on screen (today's session) and the
-  // workout in progress, once 3D is warm: one still per idle moment, a second apart, only while no
-  // figure is on screen (a still never takes time from one) and it's calm (U.calm: no scroll, touch
-  // or moving sheet; the still waits for that, it isn't dropped), a dozen a launch at most, and none
-  // more on a phone slow enough that one took long (it gets the few it has).
+  // workout in progress, a few seconds after 3D is warm: one still per idle moment, a second apart,
+  // only while no figure is on screen (a still never takes time from one) and it's calm (U.calm: no
+  // scroll, touch or moving sheet; the still waits for that, it isn't dropped), a dozen a launch at
+  // most, and none more on a phone slow enough that one took long (it gets the few it has).
   let stillsRun = null; // the queue being drawn
   let stillsDrawn = 0, stillsSlow = false;
   function stillsForToday() {
@@ -367,12 +367,16 @@
   // Warm 3D up a small piece per idle moment, then draw stills of today's moves for next time.
   // core.js decides when (U.warmFigure): only when today's workout will show a figure, after the
   // app has gone idle, or on the first press of Start or a move.
+  // The stills wait a few seconds: once warm, a live figure is ready at once, so they only help the
+  // next launch, and copying one out holds the page for a moment, which shouldn't be the moment a
+  // move is opened (likeliest right after launch).
+  const STILLS_AFTER_WARM = 4000;
   function warmSoon(tries) {
     const S = U.S;
     if (!S) { if (tries < 40) setTimeout(() => warmSoon(tries + 1), 250); return; }
     if (!S.profile.onboarded || S.profile.workouts === false || !want3d() || !GH.lazy) return;
     G.requestAnimationFrame(() => G.requestAnimationFrame(() => idleCall(() => {
-      U.preloadFigure().then((ok) => { if (ok) setTimeout(stillsForToday, 600); }, () => {});
+      U.preloadFigure().then((ok) => { if (ok) setTimeout(stillsForToday, STILLS_AFTER_WARM); }, () => {});
     })));
   }
   U.warmFigure = () => { if (G.document && G.requestAnimationFrame) warmSoon(0); };
