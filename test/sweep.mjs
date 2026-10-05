@@ -2,7 +2,7 @@
 // at 100% and 130% text (the most the app allows when the phone's font size is turned up), checked
 // for sideways overflow, cut-off text and labels spilling out of buttons. Screenshots go to
 // build/sweep/ for a visual pass.
-// Usage: node test/sweep.mjs [--quick] [--no-shots] [--only=food,settings]
+// Usage: node test/sweep.mjs [--quick] [--no-shots] [--only=food,settings] [--from=600-light-100]
 import { createRequire } from 'node:module';
 import { mkdirSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -19,6 +19,9 @@ const quick = process.argv.includes('--quick');
 const tablet = process.argv.includes('--tablet');
 const shots = !process.argv.includes('--no-shots');
 const only = ((process.argv.find((a) => a.startsWith('--only=')) || '').split('=')[1] || '').split(',').filter(Boolean);
+// --from=600-light-100 starts at that combination, to finish a full sweep in two parts (it takes
+// over two hours now).
+const from = (process.argv.find((a) => a.startsWith('--from=')) || '').split('=')[1] || '';
 // [width, theme, text zoom, height]: phones, a small tablet, and a landscape tablet (from target
 // SDK 36 Android ignores the portrait lock on screens 600 dp and wider).
 const COMBOS = tablet ? [[1280, 'light', 1, 800]] : quick
@@ -135,8 +138,11 @@ const server = await serveDist();
 const browser = await chromium.launch();
 const errors = [];
 let n = 0;
+let reached = !from;
 for (const [width, theme, zoom, h] of COMBOS) {
   const tag = `${width}${h ? `x${h}` : ''}-${theme}-${zoom === 1 ? '100' : '130'}`;
+  if (tag === from) reached = true;
+  if (!reached) continue;
   section(tag);
   const ctx = await browser.newContext({ viewport: { width, height: h || (width >= 600 ? 960 : 844) }, deviceScaleFactor: h ? 1 : 2, isMobile: width < 600, hasTouch: true, colorScheme: theme });
   const page = await ctx.newPage();
