@@ -344,11 +344,9 @@ export const LAZY = [
   { name: 'foods', entry: 'src/data/foods.js' },
   // The 3D exercise figure (three.js), loaded the first time a figure is shown.
   { name: 'figure3d', entry: 'src/engine/figure3d.js' },
-  // Activity maps (an activity's route, and following you as you record), loaded only when a map is
-  // about to show: Google's (the Maps JavaScript API, with the app's key; this chunk loads Google's
-  // script), else MapLibre GL JS on OpenFreeMap, whose web worker is a chunk of its own, started
-  // from the app's origin.
-  { name: 'gmap', entry: 'src/gmap.js' },
+  // Activity maps (an activity's route, and following you as you record): MapLibre GL JS on
+  // OpenFreeMap's tiles, loaded only when a map is about to show. Its web worker is a chunk of its
+  // own, started from the app's origin.
   { name: 'actmap', entry: 'src/actmap.js' },
   { name: 'actmap-worker', entry: 'node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs' },
 ];

@@ -30,7 +30,7 @@ Gradient Health plans a workout for each day of your week around your goals, the
 | **[Your plans](#your-plans)** | Build your own plan, or ask the coach for one, and share it with a QR code |
 | **[Workouts](#workouts)** | A 3D figure for every move, one question after each exercise, and a plan that fits your age and your body |
 | **[Moves](#moves)** | 282 exercises, at home or at the gym, seated or standing, each with a how-to |
-| **[Activities](#activities)** | Runs, walks, hikes and rides with GPS, Google Maps, auto-pause and spoken splits |
+| **[Activities](#activities)** | Runs, walks, hikes and rides with GPS, a map that follows you, auto-pause and spoken splits |
 | **[Food](#food)** | Calories and macros, or just protein, or nothing |
 | **[Health](#health)** | Sleep, steps, heart rate, weight and more at a glance, with the history behind each number |
 | **[Progress](#progress)** | A body map of what you've trained and what's improved |
@@ -154,7 +154,7 @@ Going for a run with the dog? Start a run, walk, hike or ride from Today or Heal
 - **Auto-pause:** stop at a crossing and the clock stops with you, then starts again as you go. It's on for runs and rides, and you can turn it on for walks and hikes.
 - **Spoken splits:** at each kilometre or mile, your time and pace, spoken over your music (which dips meanwhile), if you turn them on.
 - **Steady numbers:** your pace is the pace you're going now, the distance doesn't creep up while you stand still, and the route is drawn smooth.
-- **Afterwards, a summary:** your route on Google Maps in pace colours (move and zoom it with two fingers), distance, pace and splits, elevation, steps, and heart rate and calories from your watch through Health Connect. OpenFreeMap's maps stand in when Google's can't load, and maps can be turned off.
+- **Afterwards, a summary:** your route in pace colours on OpenFreeMap's map (move and zoom it with two fingers), distance, pace and splits, elevation, steps, and heart rate and calories from your watch through Health Connect. Maps you've seen are kept on the phone, so they open at once and work offline, and maps can be turned off.
 - **Keep it:** save it to Health Connect with its route. Your history and personal records (fastest mile, longest ride and more) live next to it.
 
 <p align="center">
@@ -286,7 +286,7 @@ No account, no ads and no analytics. Everything stays on your phone. The only th
 - the words or barcode of a food you look up online
 - the one-time download of the on-device model
 - a workout plan you share with someone
-- the map around an activity, or around where you are while one records, from Google Maps (or OpenFreeMap when Google's can't load), when you turn maps on
+- map pieces for the area around an activity, or around where you are while one records, from OpenFreeMap, when you turn maps on (the ones you've seen are kept on the phone, so they're only asked for once)
 
 The [privacy policy](docs/PRIVACY.md) lists every piece of data and where it goes.
 
@@ -332,10 +332,10 @@ It ships unmodified in [`vendor/refract/`](vendor/refract/), and [`vendor/refrac
 | ZXing C++ | Barcode reading | Apache 2.0 |
 | USDA SR28 | Built-in food list | Public domain |
 | Open Food Facts | Online food search, when it's on | Open Database License |
-| MapLibre GL JS | Maps behind an activity's route when Google's aren't there | BSD 3-Clause |
-| OpenStreetMap contributors and OpenMapTiles, served by OpenFreeMap | Map data for those maps, when you show a map | Open Database License and CC BY 4.0 |
+| MapLibre GL JS | Maps behind an activity's route, and while one records | BSD 3-Clause |
+| OpenStreetMap contributors and OpenMapTiles, served by OpenFreeMap | Map data for those maps, when maps are on | Open Database License and CC BY 4.0 |
 
-The same list is in the app, under Settings, About, Open-source licenses. Activity maps come from [Google Maps](https://www.google.com/maps) through its Maps JavaScript API, under Google's terms, which every map shows.
+The same list is in the app, under Settings, About, Open-source licenses.
 
 ---
 

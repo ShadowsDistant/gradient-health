@@ -503,12 +503,12 @@
   }
   // The map card: the route drawn here, or with maps on, the map that follows you over it (its box,
   // .al-map-slot, is where the one map of this activity goes; see liveMap). Its button turns maps on
-  // and off; Google's logo and terms sit along its foot, OpenFreeMap's credit is the page's own line.
-  // With a map in it, the glass doesn't answer a press (fingers on it move the map).
+  // and off; OpenFreeMap's credit is a line of the page's along its foot. With a map in it, the glass
+  // doesn't answer a press (fingers on it move the map).
   function mapCard(inner, search) {
     const on = mapsWanted();
     const a = U.S.actLive;
-    return `<div class="al-map${search ? ' al-map-search' : ''} rf-glass" data-variant="thick"${on ? '' : ' data-interactive'} data-type="${U.esc(a.type)}"${on ? ` data-streets="${lm ? lm.state : 'loading'}"${lm && lm.provider ? ` data-provider="${lm.provider}"` : ''}` : ''}>
+    return `<div class="al-map${search ? ' al-map-search' : ''} rf-glass" data-variant="thick"${on ? '' : ' data-interactive'} data-type="${U.esc(a.type)}"${on ? ` data-streets="${lm ? lm.state : 'loading'}"` : ''}>
         ${inner}
         ${on ? '<div class="al-map-slot" data-morph="keep"></div><p class="am-attr t-caption"><button type="button" class="am-attr-btn" data-act="actOsm">© OpenMapTiles © OpenStreetMap contributors</button></p>' : ''}
         <button type="button" class="rf-btn rf-glass al-map-btn" data-variant="thick" data-size="sm" data-shape="circle" data-act="alMaps" aria-pressed="${on}" aria-label="${on ? 'Hide the map' : 'Show a map'}">${U.icon('map')}</button>
@@ -516,11 +516,11 @@
   }
 
   /* ---------------------------------------------------------------- the live map */
-  // With maps on (U.actMapsOn), a map that follows you, Google's or OpenFreeMap's (U.actMap): while
-  // GPS looks, at where the phone roughly is (st.coarse) until the GPS has you, and as you go. One map
-  // for the whole activity (each new one is another load of Google's): its box moves from the search
-  // card to the live one, and waits out the 3-2-1 in between.
-  let lm = null; // { el, ctl, dark, state, provider, routeOf, at }
+  // With maps on (U.actMapsOn), a map that follows you, OpenFreeMap's (U.actMap): while GPS looks, at
+  // where the phone roughly is (st.coarse) until the GPS has you, and as you go. One map for the whole
+  // activity: its box moves from the search card to the live one, and waits out the 3-2-1 in between.
+  // A theme change recolours it in place.
+  let lm = null; // { el, ctl, dark, state, routeOf, at }
   const mapsWanted = () => !!(U.actMapsOn && U.actMapsOn() && U.S.actLive && !U.S.actLive.noGps);
   // Where you are, for the map: the last fix (a minute old at most), else the rough position; which
   // way you're heading once you're moving and the GPS knows.
@@ -538,17 +538,17 @@
     if (!mapsWanted()) { dropMap(); return; }
     const slot = el.querySelector('.al-map-slot');
     const dark = U.actDark();
-    if (lm && lm.dark !== dark) dropMap(); // Google's colours are set when a map is made
+    const card = slot && slot.closest('.al-map');
+    // The theme changed: the same map, in the new colours.
+    if (lm && lm.dark !== dark && card) { lm.dark = dark; lm.ctl.restyle({ dark, line: U.actColor(card, '--al-line'), casing: U.actColor(card, '--rt-case') }); }
     if (!lm && slot) {
-      const card = slot.closest('.al-map');
       const box = document.createElement('div');
       box.className = 'am-streets al-streets';
-      const l = lm = { el: box, dark, state: 'loading', provider: null, ctl: null, routeOf: L.tr, at: '' };
-      const mark = () => { const c = l.el.closest('.al-map'); if (c && lm === l) { c.dataset.streets = l.state; if (l.provider) c.dataset.provider = l.provider; } };
+      const l = lm = { el: box, dark, state: 'loading', ctl: null, routeOf: L.tr, at: '' };
+      const mark = () => { const c = l.el.closest('.al-map'); if (c && lm === l) c.dataset.streets = l.state; };
       l.ctl = U.actMap(box, {
         live: true, dark, route: liveRoute(), here: hereNow(),
-        line: U.actColor(card, '--al-line'), casing: U.actColor(card, '--rt-case'), bg: (U.actColor(card, '--bg') || {}).hex,
-        onProvider: (p) => { l.provider = p; l.state = 'loading'; mark(); },
+        line: U.actColor(card, '--al-line'), casing: U.actColor(card, '--rt-case'),
         onReady: () => { l.state = 'ready'; mark(); },
         onFail: () => { l.state = 'failed'; mark(); },
       });
@@ -575,9 +575,8 @@
     const pr = U.S.profile.prefs;
     const on = !mapsWanted();
     // The first time, asked first: what the map's service sees.
-    if (on && pr.actMaps === undefined) {
-      const by = U.actMapsProvider() === 'google' ? 'Google' : 'OpenFreeMap';
-      if (!(await U.confirm(`Show a map from ${by}?`, `The map comes from ${by}, which sees the area it shows: while you record, around where you are. Your route stays on this phone. You can turn the map off here, or on an activity.`, 'Show map', undefined, 'map', 'Not now'))) return;
+    if (on && !U.actMapsAsked()) {
+      if (!(await U.confirm('Show a map from OpenFreeMap?', 'The map comes from OpenFreeMap, which sees the area it shows: while you record, around where you are. Your route stays on this phone. You can turn the map off here, or on an activity.', 'Show map', undefined, 'map', 'Not now'))) return;
       if (!live()) return;
     }
     pr.actMaps = on;

@@ -9,8 +9,7 @@
 // spoken splits at the start and from actSetOptions, and after a finish reports the recording (with
 // endedAt) until it's cleared. Its recording lives in sessionStorage, so a reload finds it still
 // going. window.__act has the knobs (standing: the runner stops, and with auto-pause on the clock
-// stops after autoStopMs and goes on when they move again; mapsKey: the build's Google Maps key),
-// what was called, and stopOutside() (Finish on the notification while the page hears nothing). Add
+// stops after autoStopMs and goes on when they move again), what was called, and stopOutside() (Finish on the notification while the page hears nothing). Add
 // after seedBridge (it extends window.AndroidBridge).
 export function actBridge() {
   const KEY = 'act-fake';
@@ -24,9 +23,9 @@ export function actBridge() {
     support: { gps: true, steps: true, hc: true, locationOn: true },
     grant: { location: 'granted', activity: 'granted', notifications: 'granted', approximate: false },
     searchMs: 4000, mps: 1000 / 300, calls: [], writes: [], sessions: [], watch: 'full', rec: null,
-    standing: false, autoStopMs: 6000, mapsKey: '',
+    standing: false, autoStopMs: 6000,
   }, load() || {});
-  const save = () => { try { sessionStorage.setItem(KEY, JSON.stringify({ perms: F.perms, support: F.support, rec: F.rec, watch: F.watch, calls: F.calls.slice(-80), writes: F.writes, sessions: F.sessions, searchMs: F.searchMs, standing: F.standing, mapsKey: F.mapsKey })); } catch (e) { /* ignore */ } };
+  const save = () => { try { sessionStorage.setItem(KEY, JSON.stringify({ perms: F.perms, support: F.support, rec: F.rec, watch: F.watch, calls: F.calls.slice(-80), writes: F.writes, sessions: F.sessions, searchMs: F.searchMs, standing: F.standing })); } catch (e) { /* ignore */ } };
   const hook = (name, v) => { if (window.__gh && window.__gh[name]) window.__gh[name](JSON.stringify(v)); };
   // Fixes up to now, one a second: standing still while paused (and flagged) or standing, running
   // otherwise. With auto-pause on, standing for autoStopMs stops the clock, and moving starts it.
@@ -114,7 +113,6 @@ export function actBridge() {
         if (!r.opts.autoPause && r.paused && r.auto) { r.pausedMs += Date.now() - r.pauseAt; r.paused = false; r.auto = false; r.pauseAt = null; }
         save();
       },
-      mapsKey: () => F.mapsKey || '',
       actStop: () => {
         call('actStop');
         if (!stop()) return;
@@ -179,74 +177,4 @@ export function seedActivities() {
   mk('seed-h1', 'hike', 6, 9, 7.4, 820, { title: 'Ridge trail' });
   mk('seed-r3', 'run', 1, 7, 6.1, 297, { title: 'Tempo run with a long name for the sweep', fast: true, slow: true, watch: true, saved: true });
   GH.store.save(S);
-}
-
-// Google's Maps JavaScript API, faked (only what src/gmap.js uses), so a test never loads Google's:
-// window.google.maps with importLibrary('maps' | 'core'). What the page does with it is in
-// window.__gm: the maps (with the options they were made with, and their fitBounds and panTo
-// calls), the lines and the overlays. A map is "drawn" (tilesloaded, idle) a moment after it's made,
-// and map.trigger(name) fires its listeners the way a finger would (dragstart).
-export function googleMapsStub() {
-  const GM = window.__gm = { maps: [], lines: [], overlays: [], imports: [] };
-  class LatLng {
-    constructor(a, b) { if (a && typeof a === 'object') { this.y = a.lat; this.x = a.lng; } else { this.y = a; this.x = b; } }
-    lat() { return this.y; }
-    lng() { return this.x; }
-  }
-  const ll = (p) => (p instanceof LatLng ? p : new LatLng(p));
-  class LatLngBounds {
-    constructor(sw, ne) { this.s = Infinity; this.w = Infinity; this.n = -Infinity; this.e = -Infinity; if (sw) this.extend(sw); if (ne) this.extend(ne); }
-    extend(p) { const q = ll(p); this.s = Math.min(this.s, q.lat()); this.n = Math.max(this.n, q.lat()); this.w = Math.min(this.w, q.lng()); this.e = Math.max(this.e, q.lng()); return this; }
-    isEmpty() { return !(this.s <= this.n); }
-    getCenter() { return new LatLng((this.s + this.n) / 2, (this.w + this.e) / 2); }
-    getSouthWest() { return new LatLng(this.s, this.w); }
-    getNorthEast() { return new LatLng(this.n, this.e); }
-  }
-  const listen = (obj, name, fn, once) => { const l = { name, fn, once, remove() { obj.ls = obj.ls.filter((x) => x !== l); } }; (obj.ls = obj.ls || []).push(l); return l; };
-  const fire = (obj, name) => { for (const l of (obj.ls || []).slice()) if (l.name === name) { if (l.once) l.remove(); l.fn(); } };
-  class GMap {
-    constructor(el, opts) {
-      this.el = el; this.opts = Object.assign({}, opts); this.center = ll(opts.center); this.zoom = opts.zoom; this.calls = []; this.ls = [];
-      // Like Google's: the box becomes position: relative, and the map is drawn inside it.
-      el.style.position = 'relative'; el.style.overflow = 'hidden';
-      this.div = document.createElement('div'); this.div.className = 'gm-style'; this.div.style.cssText = 'position:absolute;inset:0';
-      // Its marker pane's origin is the middle of the map, where this projection puts the centre.
-      this.panes = { markerLayer: document.createElement('div') };
-      this.panes.markerLayer.style.cssText = 'position:absolute;left:50%;top:50%';
-      this.div.appendChild(this.panes.markerLayer);
-      el.appendChild(this.div);
-      GM.maps.push(this);
-      setTimeout(() => { this.idle(); fire(this, 'tilesloaded'); }, 30);
-    }
-    addListener(name, fn) { return listen(this, name, fn); }
-    idle() { for (const o of GM.overlays) if (o.map === this) o.draw(); fire(this, 'idle'); }
-    getZoom() { return this.zoom; }
-    setOptions(o) { Object.assign(this.opts, o); this.calls.push(['setOptions', o]); }
-    fitBounds(b, pad) { this.calls.push(['fitBounds', pad]); this.center = b.getCenter(); this.zoom = 15; fire(this, 'zoom_changed'); setTimeout(() => this.idle(), 20); }
-    panTo(p) { const q = ll(p); this.calls.push(['panTo', { lat: q.lat(), lng: q.lng() }]); this.center = q; setTimeout(() => this.idle(), 20); }
-    trigger(name) { fire(this, name); }
-  }
-  class Polyline {
-    constructor(o) { this.o = o; this.path = o.path; this.map = o.map; GM.lines.push(this); }
-    setPath(p) { this.path = p; }
-    setMap(m) { this.map = m; }
-  }
-  class OverlayView {
-    setMap(m) {
-      if (!m) { if (this.map) { this.map = null; this.onRemove(); } return; }
-      this.map = m; GM.overlays.push(this); this.onAdd(); this.draw();
-    }
-    getPanes() { return this.map && this.map.panes; }
-    getProjection() {
-      const m = this.map;
-      if (!m) return null;
-      const s = (256 * 2 ** m.zoom) / 360;
-      return { fromLatLngToDivPixel: (p) => ({ x: (p.lng() - m.center.lng()) * s, y: (m.center.lat() - p.lat()) * s * 1.32 }) };
-    }
-  }
-  const event = { addListenerOnce: (obj, name, fn) => listen(obj, name, fn, true), clearInstanceListeners: (obj) => { obj.ls = []; } };
-  window.google = { maps: {
-    ColorScheme: { LIGHT: 'LIGHT', DARK: 'DARK', FOLLOW_SYSTEM: 'FOLLOW_SYSTEM' },
-    importLibrary: (name) => { GM.imports.push(name); return Promise.resolve(name === 'maps' ? { Map: GMap, Polyline, OverlayView } : { LatLng, LatLngBounds, event }); },
-  } };
 }

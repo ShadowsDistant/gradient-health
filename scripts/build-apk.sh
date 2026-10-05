@@ -13,10 +13,6 @@
 #   OUT            signed APK                          (default: build/gradient-health.apk)
 #   CACHE_DIR      download cache                      (default: ~/.cache/gradient-health)
 #   ANDROID_ALL_JAR  path of the android-all jar       (default: $CACHE_DIR/android-all-<ver>.jar)
-#   GOOGLE_MAPS_API_KEY  the Maps JavaScript API key for activity maps. It goes in the APK as
-#                   assets/maps.key, which only the app's Java reads (AndroidBridge.mapsKey), never
-#                   in the repository or dist/, and it's never printed. Without it (or empty) the
-#                   maps come from OpenFreeMap. build-aab.sh takes it from here with the assets.
 # Signing, for a build to publish (CI gets these from the repository's secrets):
 #   RELEASE_KEYSTORE        the release keystore (.jks); without it the build is signed with the
 #                           test key in android/, whose password is public: fine for trying a build,
@@ -75,10 +71,6 @@ WORK="$ROOT/build/apk-work"
 [[ "$VERSION_CODE" =~ ^[1-9][0-9]{0,9}$ ]] && (( VERSION_CODE <= 2100000000 )) \
   || die "VERSION_CODE must be a positive integer <= 2100000000 (got '$VERSION_CODE')"
 [[ "$VERSION_NAME" =~ ^[A-Za-z0-9._+-]+$ ]] || die "VERSION_NAME has unexpected characters: '$VERSION_NAME'"
-# Checked, never shown: an API key is letters, digits, - and _.
-if [[ -n "${GOOGLE_MAPS_API_KEY:-}" && ! "$GOOGLE_MAPS_API_KEY" =~ ^[A-Za-z0-9_-]{20,100}$ ]]; then
-  die "GOOGLE_MAPS_API_KEY doesn't look like an API key (20 to 100 letters, digits, - and _)"
-fi
 [[ -f "$APP_HTML" ]] || die "web app not found: $APP_HTML
   Build it first with 'npm run build', or point APP_HTML at an HTML file."
 # The parts of the app that load on demand (set-up, the 3D figure, Claude, the on-device model's
@@ -144,14 +136,6 @@ cp "$APP_HTML" "$WORK/assets/index.html"
 mkdir -p "$WORK/assets/lazy"
 cp -R "$LAZY_DIR/." "$WORK/assets/lazy/"
 echo "  with $(find "$WORK/assets/lazy" -type f | wc -l) load-on-demand files in assets/lazy/"
-# The Google Maps key, when there is one: outside lazy/, so the page's server (MainActivity) never
-# serves it; the page asks the bridge.
-MAPS_NOTE="without a Google Maps key (activity maps from OpenFreeMap)"
-if [[ -n "${GOOGLE_MAPS_API_KEY:-}" ]]; then
-  printf '%s' "$GOOGLE_MAPS_API_KEY" > "$WORK/assets/maps.key"
-  MAPS_NOTE="with a Google Maps key"
-fi
-echo "  $MAPS_NOTE"
 UNSIGNED="$WORK/unsigned.apk"
 # resources.arsc must be stored uncompressed (and 4-byte aligned) for targetSdk >= 30: -0 arsc.
 aapt package -f \
@@ -227,4 +211,4 @@ if [[ -n "${RELEASE_KEYSTORE:-}" ]]; then
     die "signed with certificate ${CERT_SHA256:-unknown}, not the release key's ($WANT_SHA256, android/release-cert.sha256). Check RELEASE_KEYSTORE (in CI, the RELEASE_KEYSTORE_B64 secret)."
   fi
 fi
-step "Built $OUT ($(du -h "$OUT" | cut -f1)), $NATIVE_NOTE, $MAPS_NOTE"
+step "Built $OUT ($(du -h "$OUT" | cut -f1)), $NATIVE_NOTE"
