@@ -12,14 +12,14 @@
 
   // Every kind, once, in the gallery's groups: [id, title, what's in it, tone, icon, [[kind, chip label]]].
   const GROUPS = [
-    ['touch', 'Touch', 'Buttons, switches and sliders', 'sky', 'sliders',
-      [['tap', 'Tap'], ['press', 'Press'], ['select', 'Pick'], ['tick', 'Step'], ['edge', 'Limit'], ['toggleOn', 'Switch on'], ['toggleOff', 'Switch off'], ['detent', 'Snap']]],
-    ['navigation', 'Navigation', 'Tabs, pages, sheets and dragging', 'violet', 'navigate',
-      [['tab', 'Tab'], ['nav', 'Open'], ['back', 'Back'], ['grab', 'Pick up'], ['drop', 'Put down']]],
+    ['touch', 'Touch', 'Buttons, switches, sliders and days', 'sky', 'sliders',
+      [['tap', 'Tap'], ['press', 'Press'], ['select', 'Pick'], ['day', 'Pick a day'], ['tick', 'Step'], ['edge', 'Limit'], ['toggleOn', 'Switch on'], ['toggleOff', 'Switch off'], ['detent', 'Snap'], ['hold', 'Long press']]],
+    ['navigation', 'Navigation', 'Tabs, pages, sheets, menus and dragging', 'violet', 'navigate',
+      [['tab', 'Tab'], ['nav', 'Page'], ['back', 'Back'], ['sheet', 'Sheet'], ['menu', 'Menu'], ['dismiss', 'Close'], ['swipe', 'Swipe away'], ['grab', 'Pick up'], ['drop', 'Put down']]],
     ['feedback', 'Feedback', 'How something went', 'green', 'check-circle',
-      [['success', 'Saved'], ['log', 'Logged'], ['undo', 'Undo'], ['deny', 'Not allowed'], ['warning', 'Warning'], ['error', 'Error'], ['heavy', 'Delete']]],
+      [['success', 'Success'], ['save', 'Saved'], ['log', 'Logged'], ['copy', 'Copied'], ['send', 'Sent'], ['refresh', 'Refreshed'], ['scan', 'Scanned'], ['undo', 'Undo'], ['remove', 'Removed'], ['deny', 'Not allowed'], ['warning', 'Warning'], ['error', 'Error'], ['heavy', 'Delete']]],
     ['workout', 'Workout', 'Sets, timers and records', 'coral', 'timer',
-      [['countdown', '3, 2, 1'], ['go', 'Go'], ['pause', 'Pause'], ['setDone', 'Set done'], ['done', 'Rest over'], ['workoutDone', 'Workout done'], ['levelUp', 'Level up'], ['milestone', 'Goal reached'], ['pr', 'New best']]],
+      [['start', 'Start'], ['countdown', '3, 2, 1'], ['go', 'Go'], ['pause', 'Pause'], ['setDone', 'Set done'], ['skip', 'Skip'], ['extend', 'More rest'], ['done', 'Rest over'], ['swap', 'Swap'], ['levelUp', 'Level up'], ['milestone', 'Goal reached'], ['pr', 'New best'], ['workoutDone', 'Workout done'], ['cancel', 'Cancel']]],
     ['moments', 'Moments', 'The big ones', 'amber', 'star',
       [['badge', 'Badge'], ['celebrate', 'Celebrate']]],
   ];
@@ -62,6 +62,23 @@
     // Picked in the gallery: the page behind shows it too.
     if (el && el.closest && el.closest('dialog')) U.render();
   };
+
+  /* ---------------------------------------------------------------- menus Refract opens */
+  // A menu that's a popover a button points at (the Health tab's +) is opened and closed by Refract
+  // and the browser, not U.menu, so it gets the same feel here: menu as it blooms out of its button,
+  // dismiss when a tap outside, Escape or Back closes it without a pick (a pick runs its action, which
+  // has its own). U.menu's play their own (src/ui/motion.js).
+  const NATIVE_MENU = '.rf-menu[popover]:not(.gh-menu)';
+  const picked = new WeakSet();
+  G.document.addEventListener('click', (e) => {
+    const m = e.target.closest && e.target.closest(NATIVE_MENU);
+    if (m && e.target.closest('.rf-menu-item')) picked.add(m);
+  }, true);
+  G.document.addEventListener('toggle', (e) => {
+    const m = e.target;
+    if (!m || !m.matches || !m.matches(NATIVE_MENU)) return;
+    if (e.newState === 'open') { picked.delete(m); U.haptic('menu'); } else if (!picked.has(m)) U.haptic('dismiss');
+  }, true);
 
   /* ---------------------------------------------------------------- the gallery */
   // A chip's rhythm, drawn: a bar for each beat (at Medium) and the gaps between, on a square-root scale

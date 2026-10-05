@@ -17,15 +17,20 @@ import java.util.Map;
 /**
  * Haptics with a feel of their own for each kind of moment, at the strength picked in Settings.
  *
- * 31 kinds, in the groups the Settings gallery shows them in (platform.js has the same names, with
- * browser patterns of the same rhythm):
+ * A kind for each kind of moment, in the groups the Settings gallery shows them in (platform.js has
+ * the same names, with browser patterns of the same rhythm):
  *  - Touch: tap, press (a finger down on a knob or thumb), select, tick (a step), edge (a slider or
- *    stepper at its end), toggleOn, toggleOff, detent (a snap).
- *  - Navigation: tab, nav (a page or sheet opening), back, grab and drop (a drag).
+ *    stepper at its end), toggleOn, toggleOff, detent (a snap), hold (a long press that picks
+ *    something up), day (a day picked).
+ *  - Navigation: tab, nav (a page opening), back, grab and drop (a drag), sheet (a sheet rising),
+ *    menu (a menu blooming out of its button), dismiss (a sheet, menu or card put away), swipe (a
+ *    sheet flicked away).
  *  - Feedback: success, log (a quick log), undo, deny (refused), warning, error, heavy (something
- *    destructive, confirmed).
+ *    destructive, confirmed), save, copy, send, remove (taken out, with Undo), refresh (fresh data
+ *    in), scan (a code read).
  *  - Workout: countdown, go, pause, setDone, done (a rest or hold over), workoutDone, levelUp,
- *    milestone, pr.
+ *    milestone, pr, start (a workout starting), cancel (a workout cancelled), skip, extend (more
+ *    rest), swap (another exercise).
  *  - Moments: badge, celebrate.
  * Touch and navigation are the UI kinds: they're skipped when touch feedback is switched off in the
  * phone's settings. The others always play.
@@ -148,7 +153,8 @@ final class Haptics {
     static {
         final boolean ui = true;
         final boolean event = false;
-        // Touch: one short beat, or two very close together.
+        // Touch: one short beat, or two close together. A long press presses in twice, deeper, and
+        // gives; a day picked is a tick with a softer echo.
         put("tap", ui, FX_CLICK, c(CLICK, 1f, 0), w(20, 1f));
         put("press", ui, FX_TICK, c(LOW_TICK, 0.7f, 0), w(6, 0.45f));
         put("select", ui, FX_TICK, c(TICK, 1f, 0), w(12, 0.75f));
@@ -157,13 +163,22 @@ final class Haptics {
         put("toggleOn", ui, NONE, c(QUICK_RISE, 0.45f, 0, CLICK, 1f, 0), w(10, 0.35f, 8, 0.6f, 22, 1f));
         put("toggleOff", ui, NONE, c(CLICK, 0.75f, 0, QUICK_FALL, 0.45f, 0), w(22, 0.85f, 10, 0.45f, 8, 0.25f));
         put("detent", ui, NONE, c(CLICK, 1f, 0, LOW_TICK, 0.6f, 20), w(24, 1f, 20, 0, 10, 0.5f));
+        put("hold", ui, NONE, c(LOW_TICK, 0.6f, 0, LOW_TICK, 0.8f, 26, CLICK, 1f, 26), w(8, 0.45f, 26, 0, 10, 0.65f, 26, 0, 22, 1f));
+        put("day", ui, NONE, c(TICK, 0.85f, 0, LOW_TICK, 0.55f, 14), w(10, 0.7f, 14, 0, 8, 0.45f));
         // Navigation: a click with an echo for a tab, a swell into a tick going in, a fade into one
-        // coming back, and a weight lifted and set down for a drag.
+        // coming back, and a weight lifted and set down for a drag. A sheet swells up, lands and
+        // settles; a menu blooms in a light flutter; put away, a sheet or a menu knocks softly and
+        // fades, and flicked away it trails off.
         put("tab", ui, NONE, c(CLICK, 1f, 0, TICK, 0.5f, 25), w(18, 1f, 25, 0, 10, 0.5f));
         put("nav", ui, NONE, c(QUICK_RISE, 0.5f, 0, TICK, 0.9f, 0), w(6, 0.25f, 6, 0.45f, 10, 0, 16, 0.9f));
         put("back", ui, NONE, c(QUICK_FALL, 0.5f, 0, TICK, 0.7f, 0), w(10, 0.6f, 10, 0.35f, 10, 0, 12, 0.7f));
         put("grab", ui, NONE, c(THUD, 0.6f, 0, LOW_TICK, 0.5f, 30), w(35, 0.85f, 30, 0, 12, 0.45f));
         put("drop", ui, NONE, c(CLICK, 0.9f, 0, THUD, 0.45f, 20), w(20, 0.9f, 20, 0, 35, 0.55f));
+        put("sheet", ui, NONE, c(QUICK_RISE, 0.35f, 0, LOW_TICK, 0.85f, 0, TICK, 0.3f, 45), w(8, 0.2f, 8, 0.4f, 14, 0.85f, 45, 0, 6, 0.3f));
+        put("menu", ui, NONE, c(TICK, 0.5f, 0, TICK, 0.75f, 16, TICK, 0.45f, 16), w(6, 0.45f, 16, 0, 8, 0.7f, 16, 0, 5, 0.4f));
+        put("dismiss", ui, NONE, c(LOW_TICK, 0.7f, 0, QUICK_FALL, 0.45f, 0), w(12, 0.65f, 10, 0.4f, 10, 0.2f));
+        put("swipe", ui, NONE, c(QUICK_FALL, 0.7f, 0, LOW_TICK, 0.4f, 30, LOW_TICK, 0.25f, 30),
+                w(10, 0.75f, 10, 0.5f, 10, 0.3f, 30, 0, 8, 0.35f, 30, 0, 6, 0.2f));
         // Feedback: fuller, and each with its own rhythm.
         put("success", event, NONE, c(CLICK, 0.6f, 0, CLICK, 1f, 70), w(16, 0.6f, 70, 0, 26, 1f));
         put("log", event, NONE, c(CLICK, 1f, 0, LOW_TICK, 0.8f, 40), w(26, 1f, 40, 0, 12, 0.6f));
@@ -173,6 +188,16 @@ final class Haptics {
         put("error", event, NONE, c(THUD, 1f, 0, THUD, 0.8f, 50, THUD, 0.6f, 50),
                 w(44, 1f, 50, 0, 40, 0.85f, 50, 0, 30, 0.65f));
         put("heavy", event, NONE, c(CLICK, 1f, 0, THUD, 1f, 0), w(14, 1f, 50, 0.9f, 20, 0.4f));
+        // Saved is a latch (a click, a firmer one with its body); a copy two beats the same; sent, a
+        // tap that whirls away; removed, a thump swept off; refreshed, a whirr that clicks home; a
+        // code read, a click that rings out.
+        put("save", event, NONE, c(CLICK, 0.7f, 0, CLICK, 1f, 30, LOW_TICK, 0.55f, 0), w(14, 0.65f, 30, 0, 20, 1f, 10, 0.45f));
+        put("copy", event, NONE, c(CLICK, 0.75f, 0, CLICK, 0.75f, 45), w(14, 0.75f, 45, 0, 14, 0.75f));
+        put("send", event, NONE, c(CLICK, 0.75f, 0, SPIN, 0.35f, 20), w(14, 0.75f, 20, 0, 8, 0.25f, 8, 0.4f, 8, 0.25f));
+        put("remove", event, NONE, c(THUD, 0.55f, 0, QUICK_FALL, 0.65f, 20, LOW_TICK, 0.3f, 30),
+                w(26, 0.65f, 20, 0, 10, 0.65f, 10, 0.4f, 10, 0.2f, 30, 0, 6, 0.25f));
+        put("refresh", event, NONE, c(SPIN, 0.45f, 0, CLICK, 0.85f, 20), w(10, 0.3f, 10, 0.5f, 10, 0.3f, 20, 0, 14, 0.85f));
+        put("scan", event, NONE, c(CLICK, 1f, 0, TICK, 0.5f, 18, TICK, 0.3f, 18), w(18, 1f, 18, 0, 6, 0.45f, 18, 0, 5, 0.3f));
         // Workout.
         put("countdown", event, NONE, c(CLICK, 1f, 0, LOW_TICK, 0.8f, 0), w(20, 1f, 8, 0.5f));
         put("go", event, NONE, c(QUICK_RISE, 0.8f, 0, CLICK, 1f, 0), w(14, 0.3f, 14, 0.55f, 14, 0.8f, 24, 1f));
@@ -188,6 +213,16 @@ final class Haptics {
                 w(20, 0.8f, 30, 0, 7, 0.35f, 7, 0.6f, 30, 0, 30, 1f));
         put("pr", event, NONE, c(THUD, 1f, 0, CLICK, 1f, 60, SPIN, 0.8f, 40),
                 w(60, 1f, 60, 0, 30, 1f, 40, 0, 12, 0.5f, 12, 0.85f, 12, 1f, 14, 0.6f));
+        // A workout starting swells into a firm beat; cancelled, it powers down, each beat softer.
+        // Skipping flicks forward twice, more rest winds the timer on by four even notches, and a
+        // swap fades one exercise out and the next in.
+        put("start", event, NONE, c(SLOW_RISE, 0.5f, 0, CLICK, 1f, 0, TICK, 0.5f, 50), w(16, 0.2f, 16, 0.4f, 16, 0.6f, 24, 1f, 50, 0, 8, 0.45f));
+        put("cancel", event, NONE, c(CLICK, 0.85f, 0, QUICK_FALL, 0.6f, 0, LOW_TICK, 0.45f, 70, LOW_TICK, 0.25f, 70),
+                w(16, 0.85f, 12, 0.55f, 12, 0.3f, 70, 0, 10, 0.45f, 70, 0, 8, 0.25f));
+        put("skip", event, NONE, c(QUICK_RISE, 0.35f, 0, TICK, 0.8f, 0, QUICK_RISE, 0.35f, 25, TICK, 0.8f, 0), w(6, 0.3f, 10, 0.75f, 25, 0, 6, 0.3f, 10, 0.75f));
+        put("extend", event, NONE, c(LOW_TICK, 0.6f, 0, LOW_TICK, 0.6f, 25, LOW_TICK, 0.6f, 25, LOW_TICK, 0.6f, 25),
+                w(8, 0.55f, 25, 0, 8, 0.55f, 25, 0, 8, 0.55f, 25, 0, 8, 0.55f));
+        put("swap", event, NONE, c(QUICK_FALL, 0.5f, 0, QUICK_RISE, 0.45f, 25, CLICK, 0.8f, 0), w(10, 0.6f, 10, 0.3f, 25, 0, 8, 0.3f, 8, 0.55f, 14, 0.85f));
         // Moments.
         put("badge", event, NONE, c(QUICK_RISE, 0.7f, 0, CLICK, 1f, 0, CLICK, 0.8f, 70, CLICK, 1f, 70, SPIN, 1f, 40, THUD, 0.8f, 60),
                 w(12, 0.4f, 12, 0.7f, 24, 1f, 70, 0, 20, 0.8f, 60, 0, 30, 1f, 20, 0, 12, 0.5f, 12, 0.85f, 12, 1f, 14, 0.6f, 40, 0, 60, 0.9f));

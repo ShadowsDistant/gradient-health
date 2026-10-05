@@ -79,9 +79,9 @@
     } catch (e) { /* ignore */ }
   }
 
-  // Haptics: 31 kinds, each with a feel of its own, so every kind of moment can be told apart by touch
-  // (Haptics.java has the phone's version of each). Each kind has a rank: 0 for the UI (a touch, a
-  // move around the app), 1 for the countdown, 2 for feedback and workout events, 3 for the big ones.
+  // Haptics: a kind for each kind of moment, each with a feel of its own, so they can be told apart by
+  // touch (Haptics.java has the phone's version of each). Each kind has a rank: 0 for the UI (a touch,
+  // a move around the app), 1 for the countdown, 2 for feedback and workout events, 3 for the big ones.
   // A browser gets on/off patterns with the same rhythm, [on, off, on, …] in ms at Medium.
   const HAPTICS = {
     // Touch
@@ -92,18 +92,30 @@
     edge: [0, [30, 40, 12]], // a slider or stepper reaching its end
     toggleOn: [0, [10, 24, 22]], toggleOff: [0, [22, 24, 10]], // a switch or a toggle chip
     detent: [0, [24, 20, 10]], // a sheet snapping to a height, pull-to-refresh armed, a knob passing the middle, a hold recognized
+    hold: [0, [6, 26, 8, 26, 22]], // a long press that picks something up: a press that deepens, then gives
+    day: [0, [10, 14, 8]], // a day picked: Plan's week, Food's days (a tick with a softer echo)
     // Navigation
     tab: [0, [18, 25, 10]], // another tab
-    nav: [0, [12, 16, 20]], back: [0, [20, 16, 12]], // a page or sheet opening; going back, or closing one
+    nav: [0, [12, 16, 20]], back: [0, [20, 16, 12]], // a page opening; going back
     grab: [0, [35, 30, 12]], drop: [0, [20, 20, 35]], // picking something up to drag it, and putting it down
+    sheet: [0, [6, 8, 16, 45, 5]], // a sheet rising from a tap: a swell, its landing, a settle
+    menu: [0, [6, 16, 8, 16, 5]], // a menu blooming out of its button: a quick, light flutter
+    dismiss: [0, [16, 12, 6]], // a sheet, menu or card put away: a soft knock that fades
+    swipe: [0, [26, 30, 8, 30, 5]], // a sheet flicked away: a whoosh that trails off
     // Feedback
-    success: [2, [16, 70, 26]], // saved, confirmed, connected
+    success: [2, [16, 70, 26]], // confirmed, connected, applied
     log: [2, [26, 40, 12]], // a quick log: protein, food, a walk, a weight
     undo: [2, [26, 70, 16]],
     deny: [2, [30, 60, 30]], // refused or put back: not allowed, not valid, the most there can be
     warning: [2, [50, 40, 14]],
     error: [3, [44, 50, 40, 50, 30]],
     heavy: [3, [70]], // something destructive, confirmed
+    save: [2, [14, 30, 30]], // saved: a form, a name, a plan (a latch: ka-chunk)
+    copy: [2, [14, 45, 14]], // copied or duplicated: two beats the same
+    send: [2, [14, 20, 5, 4, 7, 4, 5]], // sent off: a message to the coach, a link, a picture (a tap, then a whirr away)
+    remove: [2, [28, 20, 12, 30, 5]], // an entry or exercise taken out, with Undo: a thump, swept away
+    refresh: [2, [5, 4, 8, 4, 5, 20, 16]], // fresh data in: pull-to-refresh or Sync now done (a whirr, then a click)
+    scan: [2, [20, 18, 6, 18, 5]], // a code read by the camera: a click that rings out
     // Workout
     countdown: [1, [28]], // each of a 3-2-1
     go: [2, [12, 30, 18, 30, 36]], pause: [2, [36, 30, 18, 30, 12]], // a set, timer or workout starting (or going on again), and pausing
@@ -113,6 +125,11 @@
     levelUp: [2, [10, 40, 14, 40, 20, 40, 36]], // a harder move or a heavier weight
     milestone: [2, [20, 30, 14, 30, 30]], // a goal reached: protein, steps, a split
     pr: [3, [60, 60, 30, 40, 50]], // a personal best
+    start: [2, [6, 10, 10, 10, 26, 50, 8]], // a workout or mobility session starting: a swell into a firm beat
+    cancel: [2, [30, 70, 12, 70, 6]], // a workout cancelled: it powers down, each beat softer
+    skip: [2, [6, 4, 10, 25, 6, 4, 10]], // a rest, an exercise or a hold skipped: two quick flicks forward
+    extend: [2, [8, 25, 8, 25, 8, 25, 8]], // more rest: a timer wound on, four even notches
+    swap: [2, [16, 25, 6, 4, 14]], // one exercise for another: one fades out, the next comes in
     // Moments
     badge: [3, [12, 30, 24, 70, 20, 60, 30, 20, 50, 40, 60]], // a badge earned
     celebrate: [3, [10, 30, 24, 70, 20, 60, 30, 20, 50]], // set-up done, all set
