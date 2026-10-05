@@ -1,20 +1,25 @@
 // Outdoor activities in Chromium at phone size, against a fake Android recorder that plays back a
-// 5 km loop (test/actfixture.mjs): the ways in (Today, Health, Progress), the start sheet and its
-// permission step, finding GPS, the 3-2-1 with its haptics, the live numbers, pause and resume, Back
-// tucking it away (the pill on Today, the capsule on other tabs), a reload mid-activity, a tap asking
-// first and a hold finishing, the summary (the route, splits, heart rate from the watch, saved to
-// Health Connect without double counting), new records after a faster run, the street map loading
-// only when asked, the options menu (out of its button, by keyboard too), deleting with Undo, a
-// finish on the notification while the app is away, precise location (asking, Open settings,
-// starting without GPS), and the browser's own recorder (navigator.geolocation). The live screen's
-// tiles, map and Pause are glass (solid with reduced transparency or increased contrast).
+// 5 km loop (test/actfixture.mjs): the ways in (Today, Health, Progress), the start sheet (auto-pause
+// for each kind, the spoken splits) and its permission step, finding GPS (the signal's bars), the
+// 3-2-1 with its haptics (and cancelling it), the live numbers, pause and resume, auto-pause, the
+// options while it records, Back tucking it away (the pill on Today, the capsule on other tabs), a
+// reload mid-activity, a tap asking first and a hold finishing, the summary (the route, splits, heart
+// rate from the watch, saved to Health Connect without double counting), new records after a faster
+// run, the map loading only when asked (OpenFreeMap's without a Google Maps key; Google's, through a
+// stand-in, with one: its route, markers, cooperative gestures, Fit button and dark colours; and
+// OpenFreeMap's again when Google's won't load or turns the key down), the options menu (out of its
+// button, by keyboard too), deleting with Undo (folding away), a finish on the notification while
+// the app is away, the live map following you, discarding (folding away), precise location (asking,
+// Open settings, starting without GPS), and the browser's own recorder (navigator.geolocation). The
+// live screen's tiles, map and Pause are glass (solid with reduced transparency or increased
+// contrast). Google's real map is never loaded: its hosts fail, and are counted.
 // Usage: node test/ui-activity.mjs [--dark] [--width=390] [--shots]
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { root, check, section, done, serveDist } from './lib.mjs';
 import { seedBridge, seedState } from './fixtures.mjs';
-import { actBridge } from './actfixture.mjs';
+import { actBridge, googleMapsStub } from './actfixture.mjs';
 
 const require = createRequire(import.meta.url);
 let chromium;
@@ -32,7 +37,7 @@ const ctx = await browser.newContext({ viewport: { width, height: 844 }, deviceS
 const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => { if (m.type() === 'error' && !/tiles\.openfreemap\.org|Failed to load resource/.test(m.text())) errors.push(m.text()); });
+page.on('console', (m) => { if (m.type() === 'error' && !/tiles\.openfreemap\.org|maps\.googleapis\.com|Failed to load resource/.test(m.text())) errors.push(m.text()); });
 // OpenFreeMap, faked: every request is counted; the TileJSON and empty tiles let the map load.
 const tileRequests = [];
 await ctx.route('https://tiles.openfreemap.org/**', (route) => {
@@ -41,6 +46,12 @@ await ctx.route('https://tiles.openfreemap.org/**', (route) => {
   if (/\/planet$/.test(url)) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ tilejson: '3.0.0', tiles: ['https://tiles.openfreemap.org/planet/test/{z}/{x}/{y}.pbf'], minzoom: 0, maxzoom: 14, attribution: '© OpenMapTiles © OpenStreetMap contributors', vector_layers: ['water', 'landuse', 'landcover', 'park', 'waterway', 'building', 'transportation', 'transportation_name', 'place'].map((id) => ({ id, fields: {} })) }) });
   return route.fulfill({ status: 200, contentType: 'application/x-protobuf', body: Buffer.alloc(0) });
 });
+// Google's map is never loaded for real: its script and everything from Google's map hosts fail
+// (counted), and a test that wants Google's map puts in a stand-in (googleMapsStub).
+const googleRequests = [];
+for (const host of ['https://maps.googleapis.com/**', 'https://maps.gstatic.com/**']) {
+  await ctx.route(host, (route) => { googleRequests.push(route.request().url()); return route.abort(); });
+}
 await page.clock.install({ time: new Date('2026-10-19T08:10:00') });
 await page.addInitScript(seedBridge);
 await page.addInitScript(actBridge);
@@ -60,8 +71,26 @@ const live = () => page.evaluate(() => {
   const el = document.getElementById('actlive');
   if (!el || el.hidden) return null;
   const q = (s) => { const e = el.querySelector(s); return e ? e.textContent.replace(/\s+/g, ' ').trim() : null; };
-  return { phase: el.dataset.phase, type: el.dataset.type, time: q('[data-live="time"]'), cap: q('[data-live="cap"]'), dist: q('[data-live="dist"]'), avg: q('[data-live="avg"]'), cur: q('[data-live="cur"]'), steps: q('[data-live="steps"]'), splitl: q('[data-live="splitl"]'), gps: el.querySelector('.al-gps') && el.querySelector('.al-gps').dataset.gps, h1: q('.al-h1'), sub: q('.al-sub'), count: q('.al-count-n'), route: el.querySelectorAll('.al-map .rt-line').length, banner: q('.al-banner'), actions: [...el.querySelectorAll('.al-actions [aria-label], .al-actions .rf-btn')].map((b) => b.getAttribute('aria-label') || b.textContent.trim()) };
+  return { phase: el.dataset.phase, type: el.dataset.type, time: q('[data-live="time"]'), cap: q('[data-live="cap"]'), dist: q('[data-live="dist"]'), avg: q('[data-live="avg"]'), cur: q('[data-live="cur"]'), steps: q('[data-live="steps"]'), splitl: q('[data-live="splitl"]'), gps: el.querySelector('.al-gps') && el.querySelector('.al-gps').dataset.gps, bars: el.querySelector('.al-gps') && el.querySelector('.al-gps').dataset.bars, gpsText: q('.al-gps-t'), h1: q('.al-h1'), sub: q('.al-sub'), count: q('.al-count-n'), route: el.querySelectorAll('.al-map .rt-line').length, banner: q('.al-banner'), actions: [...el.querySelectorAll('.al-actions [aria-label], .al-actions .rf-btn')].map((b) => b.getAttribute('aria-label') || b.textContent.trim()) };
 });
+// What folds away (U.actFoldAway, for a discard, a delete or a cancelled 3-2-1): how many parts, and
+// how many were already moving when it was asked.
+const watchFolds = () => page.evaluate(() => {
+  const U = window.GH.ui;
+  window.__folds = [];
+  if (U.actFoldAway.watched) return;
+  const fold = U.actFoldAway;
+  U.actFoldAway = (list, o) => {
+    const els = Array.from(list || []);
+    const p = fold(els, o);
+    window.__folds.push({ n: els.length, moving: els.filter((e) => e.getAnimations && e.getAnimations().length > 0).length });
+    return p;
+  };
+  U.actFoldAway.watched = true;
+});
+// A switch in the open sheet, flipped.
+const flip = (on) => page.evaluate((x) => document.querySelector(`dialog[open] input[data-on="${x}"]`).click(), on);
+const KEY = 'AIzaTestKeyForTheStandIn_0123456789abc';
 const secs = (t) => { const p = String(t || '').split(':').map(Number); return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1]; };
 const S = () => page.evaluate(() => { const S = window.GH.ui.S; return { live: S.actLive, n: S.activities.length, ids: S.activities.map((a) => a.id) }; });
 const permText = () => page.evaluate(() => {
@@ -96,6 +125,19 @@ await page.click('#screen .act-cta');
 await settle(900);
 const tiles = await page.evaluate(() => [...document.querySelectorAll('dialog[open] .at-tile')].map((t) => t.querySelector('.at-name').textContent));
 check('a sheet with a big tile for each kind', tiles.join() === 'Walk,Run,Hike,Ride,Other', tiles);
+const sheetOpts = () => page.evaluate(() => {
+  const d = document.querySelector('dialog[open] .at-opts');
+  const v = d && d.querySelector('input[data-on="actVoice"]');
+  return d && { chips: [...d.querySelectorAll('.at-auto .rf-chip')].map((c) => `${c.textContent.trim()}:${c.getAttribute('aria-pressed')}`).join(), voice: v ? v.checked : null };
+});
+let so = await sheetOpts();
+check('under them, how it records: auto-pause for each kind (on for runs and rides) and the spoken splits (off)', so && so.chips === 'Walks:false,Runs:true,Hikes:false,Rides:true,Other:false' && so.voice === false, so);
+await page.click('dialog[open] .at-auto .rf-chip[data-v="walk"]');
+await settle(400);
+so = await sheetOpts();
+check('a chip turns auto-pause on for that kind, remembered', /Walks:true/.test(so.chips) && (await page.evaluate(() => window.GH.ui.S.profile.prefs.actAuto.walk === true)), so);
+await page.click('dialog[open] .at-auto .rf-chip[data-v="walk"]');
+await settle(400);
 await shot('01-sheet');
 await page.evaluate(() => { window.__act.searchMs = 9000; });
 await page.click('dialog[open] .at-tile[data-arg="run"]');
@@ -108,8 +150,10 @@ await settle(1300);
 let f = await fake();
 let L = await live();
 check('Continue asks Android, and the recording starts', f.calls.includes('actRequestPermissions') && f.calls.some((c) => /^actStart:.*"type":"run"/.test(c)));
+check('with auto-pause on (a run) and the spoken splits off', f.calls.some((c) => /^actStart:.*"autoPause":true,"voice":false/.test(c)), f.calls.find((c) => c.startsWith('actStart:')));
 check('its clock waits (paused) while GPS finds you', f.calls[f.calls.length - 1] === 'actPause' && f.rec.paused);
 check('the live screen opens on finding your location', L && L.phase === 'search' && L.h1 === 'Finding your location' && /32 m/.test(L.sub) && L.gps === 'searching', L);
+check('the GPS signal: one bar (accurate to 32 m), still finding', L.bars === '1' && L.gpsText === 'Finding GPS', [L.bars, L.gpsText]);
 const id = (await S()).live.id;
 check('the page remembers which activity it is, not started yet', !!id && (await S()).live.goAt === null);
 await shot('03-search');
@@ -118,6 +162,7 @@ section('Finding GPS, then 3-2-1');
 await settle(9500);
 L = await live();
 check('it says when GPS is ready', L.h1 === 'GPS is ready' && L.gps === 'ok' && /about 5 m/.test(L.sub), L);
+check('three bars and how accurate, with a feel of its own as it locks on', L.bars === '3' && L.gpsText === 'GPS ±5 m' && (await page.evaluate(() => window.__haptics.filter((k) => k === 'actGps').length === 1)), [L.bars, L.gpsText]);
 await page.evaluate(() => { window.__haptics.length = 0; });
 await page.click('#actlive [data-act="alGo"]');
 await settle(250);
@@ -126,7 +171,7 @@ check('Start counts down from 3', L.phase === 'countdown' && L.count === '3', L)
 await shot('04-countdown');
 await settle(3200);
 const haptics = await page.evaluate(() => window.__haptics.slice());
-check('a countdown haptic each second, then go', haptics.filter((k) => k === 'countdown').length === 3 && haptics.includes('go') && haptics.lastIndexOf('countdown') < haptics.indexOf('go'), haptics);
+check('a countdown haptic each second, then the start\'s own', haptics.filter((k) => k === 'countdown').length === 3 && haptics.includes('actGo') && haptics.lastIndexOf('countdown') < haptics.indexOf('actGo'), haptics);
 f = await fake();
 check('then the clock starts', f.calls[f.calls.length - 1] === 'actResume' && !f.rec.paused && (await S()).live.goAt > 0);
 
@@ -167,7 +212,7 @@ await page.evaluate(() => { window.__haptics.length = 0; });
 await settle(2.95 * 60 * 1000);
 let banner = null;
 for (let i = 0; i < 20 && !banner; i++) { await settle(1000); banner = (await live()).banner; }
-check('a banner and a milestone buzz for each mile', /^Mile 1 · 8:0\d$/.test(banner || '') && (await page.evaluate(() => window.__haptics.includes('milestone'))), banner);
+check('a banner and a split\'s buzz for each mile', /^Mile 1 · 8:0\d$/.test(banner || '') && (await page.evaluate(() => window.__haptics.includes('actSplit'))), banner);
 await settle(20000);
 
 section('Pause and resume');
@@ -176,7 +221,7 @@ await settle(900);
 L = await live();
 const pausedAt = secs(L.time), distAt = L.dist;
 f = await fake();
-check('Pause pauses the recorder and says so', f.calls[f.calls.length - 1] === 'actPause' && L.phase === 'paused' && L.cap === 'Paused', L);
+check('Pause pauses the recorder and says so, with its own feel', f.calls[f.calls.length - 1] === 'actPause' && L.phase === 'paused' && L.cap === 'Paused' && (await page.evaluate(() => window.__haptics.includes('actPause'))), L);
 check('with Resume and Finish to hand', L.actions.includes('Resume') && L.actions.some((a) => /^Finish/.test(a)), L.actions);
 await shot('06-paused');
 await settle(2 * 60 * 1000);
@@ -188,6 +233,61 @@ L = await live();
 check('Resume carries on from there', Math.abs(secs(L.time) - (pausedAt + 60)) <= 2 && L.phase === 'live', [L.time, pausedAt]);
 const pauses = (await S()).live.pauses;
 check('the pause is remembered', pauses.length === 1 && pauses[0][1] - pauses[0][0] >= 119000, pauses);
+check('Resume has its own feel', await page.evaluate(() => window.__haptics.includes('actResume')));
+
+section('Auto-pause');
+await page.evaluate(() => { window.__haptics.length = 0; window.__act.standing = true; });
+await settle(3000);
+check('stopping for a moment doesn\'t stop the clock', (await live()).phase === 'live');
+await settle(6000);
+L = await live();
+const autoAt = secs(L.time);
+check('standing still, auto-pause stops the clock and says so, with a feel of its own', L.phase === 'autopaused' && L.cap === 'Auto-paused' && (await page.evaluate(() => window.__haptics.includes('actAutoPause') && !window.__haptics.includes('actPause'))), [L.phase, L.cap, await page.evaluate(() => window.__haptics.slice())]);
+check('Resume and Finish to hand, as for a pause', L.actions.includes('Resume') && L.actions.some((a) => /^Finish/.test(a)), L.actions);
+await shot('06b-autopaused');
+await settle(30000);
+L = await live();
+check('the clock holds while you stand', secs(L.time) === autoAt, [L.time, autoAt]);
+await page.evaluate(() => { window.__act.standing = false; });
+await settle(3000);
+L = await live();
+check('moving again, it goes on by itself, with its own feel', L.phase === 'live' && L.cap === 'Time' && (await page.evaluate(() => window.__haptics.includes('actAutoResume'))), [L.phase, L.cap]);
+const pauses2 = (await S()).live.pauses;
+check('the stop is in the pause log too', pauses2.length === 2 && pauses2[1][1] - pauses2[1][0] >= 29000, pauses2);
+
+section('Its options while it records');
+await page.click('#actlive [data-act="alMenu"]');
+await settle(800);
+const alMenu = () => page.evaluate(() => {
+  const d = document.querySelector('dialog[open]');
+  const sw = (on) => { const i = d && d.querySelector(`input[data-on="${on}"]`); return i ? i.checked : null; };
+  return d && { auto: sw('alAuto'), voice: sw('actVoice'), rows: [...d.querySelectorAll('.rf-list-title')].map((t) => t.textContent.trim()).join() };
+});
+const am = await alMenu();
+check('auto-pause (on, for a run), the spoken splits (off), and discard', am && am.auto === true && am.voice === false && am.rows === 'Auto-pause,Spoken splits,Discard this run', am);
+await flip('alAuto');
+await settle(400);
+await flip('actVoice');
+await settle(400);
+f = await fake();
+check('the recorder takes a change at once', f.calls.includes('actSetOptions:{"autoPause":false}') && f.calls.includes('actSetOptions:{"voice":true}'), f.calls.slice(-4));
+check('and it\'s remembered: auto-pause for runs, the spoken splits for all', await page.evaluate(() => { const p = window.GH.ui.S.profile.prefs; return p.actAuto.run === false && p.actVoice === true; }));
+await flip('alAuto');
+await settle(400);
+await flip('actVoice');
+await settle(400);
+check('and back', await page.evaluate(() => { const p = window.GH.ui.S.profile.prefs; return p.actAuto.run === true && p.actVoice === false; }) && (await fake()).calls.slice(-2).join() === 'actSetOptions:{"autoPause":true},actSetOptions:{"voice":false}');
+await page.evaluate(() => window.GH.ui.closeSheets());
+await settle(900);
+
+section('The map button asks first');
+await page.click('#actlive [data-act="alMaps"]');
+await settle(700);
+const mq = await page.evaluate(() => { const d = document.querySelector('dialog.rf-dialog[open]'); return d && d.textContent.replace(/\s+/g, ' '); });
+check('the first time, it asks before showing a map: whose, and what that service sees', /Show a map from OpenFreeMap\?/.test(mq || '') && /sees the area it shows/.test(mq || '') && /Not now/.test(mq || ''), mq);
+await page.evaluate(() => { const d = document.querySelector('dialog.rf-dialog[open]'); [...d.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Not now').click(); });
+await settle(700);
+check('Not now leaves it off, and nothing is loaded', (await page.evaluate(() => window.GH.ui.S.profile.prefs.actMaps === undefined && !document.querySelector('#actlive .al-map-slot') && !window.GH.actmap && !window.GH.gmap)) && tileRequests.length === 0);
 
 section('Back tucks it away');
 await page.evaluate(() => window.__gh.back());
@@ -285,6 +385,15 @@ await settle(900);
 check('permissions already allowed: straight to finding GPS', (await live()).phase === 'search');
 await settle(1500);
 await page.click('#actlive [data-act="alGo"]');
+await settle(1100);
+await watchFolds();
+await page.evaluate(() => { window.__haptics.length = 0; });
+await page.click('#actlive [data-act="alCancelCount"]');
+await page.waitForFunction(() => document.getElementById('actlive').dataset.phase === 'search', null, { timeout: 5000 }).catch(() => {});
+await settle(4000);
+const cc = await page.evaluate(() => ({ phase: document.getElementById('actlive').dataset.phase, folds: window.__folds.slice(), haptics: window.__haptics.slice(), goAt: window.GH.ui.S.actLive && window.GH.ui.S.actLive.goAt }));
+check('Cancel in the 3-2-1 folds the number away and goes back to GPS, the clock not started', cc.phase === 'search' && cc.folds.length === 1 && cc.folds[0].moving > 0 && cc.haptics[0] === 'back' && cc.goAt === null, cc);
+await page.click('#actlive [data-act="alGo"]');
 await settle(3500);
 await settle(27 * 60 * 1000);
 const fin2 = await page.$('#actlive .al-finish .al-btn-disc');
@@ -307,45 +416,128 @@ await page.click('#screen .rec-tile');
 await settle(900);
 check('a record opens its activity', await page.evaluate(() => window.GH.ui.route.view === 'activity'));
 
-section('The street map, only when asked');
-check('nothing was asked of OpenFreeMap so far', tileRequests.length === 0, tileRequests.slice(0, 3));
+section('The map, only when asked');
+check('nothing was asked of OpenFreeMap or Google so far', tileRequests.length === 0 && googleRequests.length === 0, [tileRequests.slice(0, 3), googleRequests.slice(0, 3)]);
 check('the map chunk isn\'t loaded', await page.evaluate(() => !window.GH.actmap));
-await page.click('#screen [data-act="actStreets"]');
+await page.click('#screen [data-act="actMaps"]');
 await settle(1500);
 await page.waitForFunction(() => { const b = document.querySelector('#screen .am-box'); return b && /ready|failed/.test(b.getAttribute('data-streets') || ''); }, null, { timeout: 30000 }).catch(() => {});
 await settle(500);
 const streets = await page.evaluate(() => {
   const b = document.querySelector('#screen .am-box');
   const size = (e) => { if (!e) return null; const r = e.getBoundingClientRect(); return `${Math.round(r.width)}x${Math.round(r.height)}`; };
-  return { state: b.getAttribute('data-streets'), canvas: !!b.querySelector('.am-streets canvas'), box: size(b), map: size(b.querySelector('.am-streets')), cv: size(b.querySelector('.am-streets canvas')), attr: (b.querySelector('.am-attr') || {}).textContent, pref: window.GH.ui.S.profile.prefs.actStreets, chunk: !!window.GH.actmap };
+  return { state: b.getAttribute('data-streets'), canvas: !!b.querySelector('.am-streets canvas'), box: size(b), map: size(b.querySelector('.am-streets')), cv: size(b.querySelector('.am-streets canvas')), attr: (b.querySelector('.am-attr') || {}).textContent, pref: window.GH.ui.S.profile.prefs.actMaps, provider: b.getAttribute('data-provider'), chunk: !!window.GH.actmap };
 });
-check('Show streets loads the map chunk and asks OpenFreeMap', streets.chunk && tileRequests.some((u) => /tiles\.openfreemap\.org\/planet$/.test(u)), tileRequests.slice(0, 3));
-check('the street map draws over the whole box, with its attribution', streets.state === 'ready' && streets.canvas && streets.map === streets.box && streets.cv === streets.box && /© OpenMapTiles © OpenStreetMap contributors/.test(streets.attr || ''), streets);
+check('without a Google Maps key, Show map loads OpenFreeMap\'s map (MapLibre\'s chunk)', streets.chunk && streets.provider === 'maplibre' && tileRequests.some((u) => /tiles\.openfreemap\.org\/planet$/.test(u)) && !googleRequests.length, [streets.provider, tileRequests.slice(0, 3), googleRequests.length]);
+check('the map draws over the whole box, with OpenFreeMap\'s attribution', streets.state === 'ready' && streets.canvas && streets.map === streets.box && streets.cv === streets.box && /© OpenMapTiles © OpenStreetMap contributors/.test(streets.attr || ''), streets);
 check('the choice is remembered', streets.pref === true);
 // Two fingers zoom the map (MapLibre's cooperative gestures), while the page itself stays at its size.
 {
   const cdp = await ctx.newCDPSession(page);
   const box = await page.evaluate(() => { const r = document.querySelector('#screen .am-streets').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
-  const z0 = await page.evaluate(() => Number(document.querySelector('#screen .am-streets').dataset.zoom));
+  const z0 = await page.evaluate(() => Number(document.querySelector('#screen .am-streets .am-engine').dataset.zoom));
   let t = Date.now() / 1000;
   const at = (d) => [{ x: box.x - 20 - d, y: box.y, id: 1 }, { x: box.x + 20 + d, y: box.y, id: 2 }];
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(0), timestamp: t });
   for (let i = 1; i <= 14; i++) { t += 0.016; await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(5 * i), timestamp: t }); await page.waitForTimeout(16); }
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [], timestamp: t + 0.016 });
   await page.waitForTimeout(900);
-  const after = await page.evaluate(() => ({ zoom: Number(document.querySelector('#screen .am-streets').dataset.zoom), scale: window.visualViewport.scale, fit: !document.querySelector('#screen .am-fit').hidden }));
+  const after = await page.evaluate(() => ({ zoom: Number(document.querySelector('#screen .am-streets .am-engine').dataset.zoom), scale: window.visualViewport.scale, fit: !document.querySelector('#screen .am-fit').hidden }));
   check('a pinch zooms the street map in, not the page', after.zoom > z0 + 0.3 && after.scale === 1, { z0, ...after });
   check('and a button appears to show the whole route again', after.fit, after);
   await page.click('#screen .am-fit');
   await page.waitForTimeout(900);
-  const back = await page.evaluate(() => ({ zoom: Number(document.querySelector('#screen .am-streets').dataset.zoom), fit: !document.querySelector('#screen .am-fit').hidden }));
+  const back = await page.evaluate(() => ({ zoom: Number(document.querySelector('#screen .am-streets .am-engine').dataset.zoom), fit: !document.querySelector('#screen .am-fit').hidden }));
   check('which fits the route again and goes', Math.abs(back.zoom - z0) < 0.2 && !back.fit, { z0, ...back });
   await cdp.detach();
 }
 await shot('12-streets');
-await page.click('#screen [data-act="actStreets"]');
+await page.click('#screen [data-act="actMaps"]');
 await settle(700);
-check('Hide streets goes back to the route drawn here', await page.evaluate(() => !document.querySelector('#screen .am-streets canvas') && !window.GH.ui.S.profile.prefs.actStreets));
+check('Hide map goes back to the route drawn here', await page.evaluate(() => !document.querySelector('#screen .am-streets canvas') && window.GH.ui.S.profile.prefs.actMaps === false));
+
+section('Google\'s map, with the app\'s key');
+{
+  await page.evaluate(googleMapsStub);
+  await page.evaluate((k) => { window.__act.mapsKey = k; }, KEY);
+  const tiles0 = tileRequests.length;
+  await page.click('#screen [data-act="actMaps"]');
+  await settle(1000);
+  await page.waitForFunction(() => { const b = document.querySelector('#screen .am-box'); return b && /ready|failed/.test(b.getAttribute('data-streets') || ''); }, null, { timeout: 10000 }).catch(() => {});
+  await settle(500);
+  const gmap = () => page.evaluate(() => {
+    const b = document.querySelector('#screen .am-box');
+    const M = window.__gm.maps[window.__gm.maps.length - 1];
+    const U = window.GH.ui;
+    const lines = window.__gm.lines.filter((l) => l.map && l.map === M);
+    const pc = [0, 1, 2, 3, 4].map((i) => U.actColor(b, `--pc${i}`).hex);
+    const attr = b.querySelector('.am-attr');
+    return {
+      state: b.getAttribute('data-streets'), provider: b.getAttribute('data-provider'), maps: window.__gm.maps.length, imports: window.__gm.imports.join(),
+      opts: M && { gestures: M.opts.gestureHandling, scheme: M.opts.colorScheme, ui: M.opts.disableDefaultUI, tilt: M.opts.tiltInteractionEnabled, heading: M.opts.headingInteractionEnabled, restricted: !!(M.opts.restriction && M.opts.restriction.latLngBounds), quiet: (M.opts.styles || []).length },
+      fits: M ? M.calls.filter((c) => c[0] === 'fitBounds').length : 0,
+      casing: lines.filter((l) => l.o.strokeWeight === 9).map((l) => l.o.strokeColor), strokes: lines.filter((l) => l.o.strokeWeight === 5).map((l) => l.o.strokeColor),
+      pc, rtCase: U.actColor(b, '--rt-case').hex,
+      marks: { km: b.querySelectorAll('.mk-layer .mk-km').length, start: b.querySelectorAll('.mk-layer .mk-start').length, end: b.querySelectorAll('.mk-layer .mk-end').length, placed: [...b.querySelectorAll('.mk-layer .mk')].every((m) => /translate\(/.test(m.style.transform)) },
+      attr: attr ? getComputedStyle(attr).display : null, inBox: !!(M && b.contains(M.el)),
+    };
+  });
+  const g = await gmap();
+  check('with a key, Show map is Google\'s (a stand-in here): its map library, and nothing from OpenFreeMap', g.provider === 'google' && g.state === 'ready' && g.inBox && /maps/.test(g.imports) && tileRequests.length === tiles0 && !googleRequests.length, [g.provider, g.state, g.imports, tileRequests.length - tiles0, googleRequests.length]);
+  check('the route is drawn on it in the pace colours, over a casing', g.casing.length >= 1 && g.casing.every((c) => c === g.rtCase) && g.strokes.length >= 3 && g.strokes.every((c) => g.pc.includes(c)) && new Set(g.strokes).size >= 3, g);
+  check('with the start, the finish and a disc per mile, the page\'s own, placed on the map', g.marks.start === 1 && g.marks.end === 1 && g.marks.km >= 2 && g.marks.placed, g.marks);
+  check('two fingers move it (cooperative gestures), it neither turns nor tilts, and Google\'s buttons are off', g.opts.gestures === 'cooperative' && g.opts.tilt === false && g.opts.heading === false && g.opts.ui === true && g.opts.quiet >= 1, g.opts);
+  check('it\'s fitted to the route and kept around it', g.fits === 1 && g.opts.restricted, g);
+  check(`its colours follow the app's (${dark ? 'dark' : 'light'})`, g.opts.scheme === (dark ? 'DARK' : 'LIGHT'), g.opts.scheme);
+  check('Google\'s logo and terms are its own: OpenFreeMap\'s line isn\'t shown', g.attr === 'none', g.attr);
+  await page.evaluate(() => { const M = window.__gm.maps[window.__gm.maps.length - 1]; M.trigger('dragstart'); });
+  await settle(300);
+  const fitBtn = await page.evaluate(() => { const b = document.querySelector('#screen .am-fit'); return b && !b.hidden ? b.getAttribute('aria-label') : null; });
+  check('a finger moving it brings a button to show the whole route', fitBtn === 'Show the whole route', fitBtn);
+  await page.click('#screen .am-fit');
+  await settle(500);
+  const g2 = await gmap();
+  check('which fits it again, and goes', g2.fits === 2 && (await page.evaluate(() => document.querySelector('#screen .am-fit').hidden)), g2.fits);
+  await shot('12b-google');
+  // The theme changes under it (the phone's dark mode): it's made again in the new colours.
+  const other = dark ? 'light' : 'dark';
+  await page.evaluate((t) => { const U = window.GH.ui; U.S.profile.prefs.theme = t; U.applyPrefs(); }, other);
+  await settle(1200);
+  const g3 = await gmap();
+  check('a theme change makes it again in the other colours', g3.maps === g.maps + 1 && g3.opts.scheme === (dark ? 'LIGHT' : 'DARK') && g3.state === 'ready', [g3.maps, g3.opts.scheme]);
+  await page.evaluate(() => { const U = window.GH.ui; U.S.profile.prefs.theme = 'system'; U.applyPrefs(); });
+  await settle(1200);
+
+  section('OpenFreeMap\'s map when Google\'s can\'t be had');
+  // Google's script won't load (offline, blocked): the stand-in goes, so the page asks Google's
+  // host for it, which fails here.
+  await page.click('#screen [data-act="actMaps"]');
+  await settle(700);
+  await page.evaluate(() => { delete window.google; });
+  const g0 = googleRequests.length;
+  await page.click('#screen [data-act="actMaps"]');
+  await settle(1500);
+  await page.waitForFunction(() => { const b = document.querySelector('#screen .am-box'); return b && b.getAttribute('data-provider') === 'maplibre' && /ready|failed/.test(b.getAttribute('data-streets') || ''); }, null, { timeout: 30000 }).catch(() => {});
+  await settle(500);
+  const lf = await page.evaluate(() => { const b = document.querySelector('#screen .am-box'); return { provider: b.getAttribute('data-provider'), state: b.getAttribute('data-streets'), canvas: !!b.querySelector('.am-streets canvas'), attr: getComputedStyle(b.querySelector('.am-attr')).display }; });
+  const asked = googleRequests.slice(g0);
+  check('Google\'s script was asked for with the key, its origin only, and loaded asynchronously', asked.length >= 1 && asked.every((u) => u.startsWith('https://maps.googleapis.com/maps/api/js?') && u.includes(`key=${KEY}`) && /[?&]auth_referrer_policy=origin/.test(u) && /[?&]loading=async/.test(u) && /[?&]callback=/.test(u)), asked.map((u) => u.replace(KEY, '<key>')));
+  check('it failed to load: OpenFreeMap\'s map took its place, with its attribution', lf.provider === 'maplibre' && lf.state === 'ready' && lf.canvas && lf.attr !== 'none', lf);
+  // Google turns the key down (a key not allowed for the app, the API not enabled): every map goes
+  // over to OpenFreeMap's, then and from then on.
+  await page.click('#screen [data-act="actMaps"]');
+  await settle(700);
+  await page.evaluate(googleMapsStub);
+  await page.click('#screen [data-act="actMaps"]');
+  await settle(1000);
+  await page.waitForFunction(() => { const b = document.querySelector('#screen .am-box'); return b && b.getAttribute('data-provider') === 'google' && b.getAttribute('data-streets') === 'ready'; }, null, { timeout: 10000 }).catch(() => {});
+  const before = await page.evaluate(() => document.querySelector('#screen .am-box').getAttribute('data-provider'));
+  await page.evaluate(() => window.gm_authFailure());
+  await settle(1500);
+  await page.waitForFunction(() => { const b = document.querySelector('#screen .am-box'); return b && b.getAttribute('data-provider') === 'maplibre' && /ready|failed/.test(b.getAttribute('data-streets') || ''); }, null, { timeout: 30000 }).catch(() => {});
+  const af = await page.evaluate(() => { const b = document.querySelector('#screen .am-box'); return { provider: b.getAttribute('data-provider'), state: b.getAttribute('data-streets'), google: !!b.querySelector('.gm-style'), next: window.GH.ui.actMapsProvider() }; });
+  check('Google turning the key down (even once its map shows) swaps in OpenFreeMap\'s, for the rest of the session', before === 'google' && af.provider === 'maplibre' && af.state === 'ready' && !af.google && af.next === 'osm', [before, af]);
+}
 
 section('Options, a menu out of its button');
 {
@@ -388,9 +580,13 @@ section('Deleting, with Undo');
 const n0 = (await S()).n;
 await page.click('#screen [data-act="actDelete"]');
 await settle(600);
-await page.evaluate(() => { const d = document.querySelector('dialog.rf-dialog[open]'); const b = [...d.querySelectorAll('button')].find((x) => /Delete/.test(x.textContent)); b.click(); });
+await watchFolds();
+await page.evaluate(() => { window.__haptics.length = 0; const d = document.querySelector('dialog.rf-dialog[open]'); const b = [...d.querySelectorAll('button')].find((x) => /Delete/.test(x.textContent)); b.click(); });
+await page.waitForFunction(() => window.GH.ui.route.view !== 'activity', null, { timeout: 5000 }).catch(() => {});
 await settle(900);
 check('Delete takes it away and goes back', (await S()).n === n0 - 1 && (await page.evaluate(() => window.GH.ui.route.view !== 'activity')));
+const del = await page.evaluate(() => ({ folds: window.__folds.slice(), haptics: window.__haptics.slice() }));
+check('its summary folds away first, then the discard\'s own feel after the question\'s', del.folds.length === 1 && del.folds[0].moving > 0 && del.haptics.indexOf('heavy') >= 0 && del.haptics.indexOf('actDiscard') > del.haptics.indexOf('heavy'), del);
 await page.evaluate(() => { const t = [...document.querySelectorAll('.rf-toast')].pop(); const b = t && [...t.querySelectorAll('button')].find((x) => /Undo/.test(x.textContent)); if (b) b.click(); });
 await settle(700);
 check('Undo puts it back', (await S()).n === n0);
@@ -406,6 +602,19 @@ await page.click('#actlive [data-act="alGo"]');
 await settle(3500);
 const walkId = (await S()).live.id;
 check('the recorder gets the units for its notification', (await fake()).calls.some((c) => c.startsWith('actStart:') && c.includes('"units":"mi"')));
+check('a walk starts without auto-pause (unless it\'s turned on for walks)', (await fake()).calls.some((c) => c.startsWith('actStart:') && c.includes('"type":"walk"') && c.includes('"autoPause":false')));
+// Maps are on (from the summary), and Google turned the key down this session: OpenFreeMap's map,
+// following you.
+await page.waitForFunction(() => { const m = document.querySelector('#actlive .al-map'); return m && /ready|failed/.test(m.dataset.streets || ''); }, null, { timeout: 30000 }).catch(() => {});
+// (The route so far is worked out every 3 seconds: the start goes on the map with the first of it.)
+await settle(6000);
+const wm = await page.evaluate(() => {
+  const m = document.querySelector('#actlive .al-map');
+  const attr = m && m.querySelector('.am-attr');
+  return m && { state: m.dataset.streets, provider: m.dataset.provider, canvas: !!m.querySelector('.al-map-slot canvas'), here: !!m.querySelector('.maplibregl-marker .mk-here'), start: !!m.querySelector('.maplibregl-marker .mk-start'), attr: attr ? getComputedStyle(attr).display : null, pressable: m.hasAttribute('data-interactive') };
+});
+check('while it records, the map follows you: OpenFreeMap\'s now, with where you are and where you started', wm && wm.state === 'ready' && wm.provider === 'maplibre' && wm.canvas && wm.here && wm.start && wm.attr !== 'none', wm);
+check('the card\'s glass doesn\'t take a press while a map is in it (fingers move the map)', wm && !wm.pressable, wm);
 await settle(10 * 60 * 1000);
 await page.evaluate(() => window.__gh.back());
 await settle(900);
@@ -432,6 +641,84 @@ check('and the recording is cleared', (await fake()).calls.includes(`actClear:${
 await page.evaluate(() => window.__gh.openRoute('activity'));
 await settle(900);
 check('its notification then opens the summary', await page.evaluate((x) => window.GH.ui.route.view === 'activity' && window.GH.ui.route.arg === x, walkId));
+
+section('The live map, from Google');
+await page.reload();
+await page.waitForSelector('#screen[data-view]');
+await page.evaluate(googleMapsStub);
+await page.evaluate((k) => { Object.assign(window.__act, { mapsKey: k, searchMs: 6000, mps: 1000 / 300 }); const U = window.GH.ui; while (U.back()) { /* back to the tab */ } U.go('today'); }, KEY);
+await settle(900);
+await page.click('#screen .act-cta');
+await settle(900);
+await page.click('dialog[open] .at-tile[data-arg="run"]');
+await settle(1500);
+await page.waitForFunction(() => { const m = document.querySelector('#actlive .al-map-search'); return m && /ready|failed/.test(m.dataset.streets || ''); }, null, { timeout: 10000 }).catch(() => {});
+await settle(300);
+const gs = await page.evaluate(() => {
+  const m = document.querySelector('#actlive .al-map-search');
+  const M = window.__gm.maps[0];
+  return m && { state: m.dataset.streets, provider: m.dataset.provider, maps: window.__gm.maps.length, here: !!m.querySelector('.mk-layer .mk-here:not([hidden])'), radar: !!m.querySelector('.al-radar'), gestures: M && M.opts.gestureHandling, scheme: M && M.opts.colorScheme, tilt: M && M.opts.tiltInteractionEnabled };
+});
+check('maps on, finding GPS shows Google\'s map at where the phone is, the radar over it until it\'s drawn', gs && gs.state === 'ready' && gs.provider === 'google' && gs.maps === 1 && gs.here && gs.radar && gs.gestures === 'cooperative' && gs.tilt === false && gs.scheme === (dark ? 'DARK' : 'LIGHT'), gs);
+await shot('17-search-map');
+await settle(6000);
+await page.click('#actlive [data-act="alGo"]');
+await settle(3500);
+await settle(60000);
+const pans = () => page.evaluate(() => window.__gm.maps[0].calls.filter((c) => c[0] === 'panTo').length);
+const gl = await page.evaluate(() => {
+  const m = document.querySelector('#actlive .al-map:not(.al-map-search)');
+  const M = window.__gm.maps[0];
+  const lines = window.__gm.lines.filter((l) => l.map === M);
+  const here = m && m.querySelector('.mk-layer .mk-here');
+  const U = window.GH.ui;
+  return m && { maps: window.__gm.maps.length, inCard: !!(M && m.contains(M.el)), state: m.dataset.streets, lines: lines.map((l) => `${l.o.strokeWeight}:${l.path.length}`), line: lines.filter((l) => l.o.strokeWeight === 5).map((l) => l.o.strokeColor).join(), want: U.actColor(m, '--al-line').hex, heading: here && here.hasAttribute('data-heading'), acc: here && parseFloat(here.style.getPropertyValue('--mk-acc')), start: !!m.querySelector('.mk-layer .mk-start') };
+});
+check('then the same map moves into the live screen (no second load of Google\'s)', gl && gl.maps === 1 && gl.inCard && gl.state === 'ready', gl);
+check('with the route so far in the activity\'s colour, the start, and where you are, heading and all', gl && gl.lines.length === 2 && gl.lines.every((x) => Number(x.split(':')[1]) >= 2) && gl.line === gl.want && gl.start && gl.heading && gl.acc > 0, gl);
+const p0 = await pans();
+await settle(5000);
+const p1 = await pans();
+check('it follows you as you go', p0 >= 3 && p1 > p0, [p0, p1]);
+await shot('18-live-map');
+await page.evaluate(() => window.__gm.maps[0].trigger('dragstart'));
+await settle(300);
+const pa = await pans();
+await settle(5000);
+const fb = await page.evaluate(() => { const b = document.querySelector('#actlive .am-fit'); return b && !b.hidden ? b.getAttribute('aria-label') : null; });
+check('a finger moving it stops the following, and a button follows you again', fb === 'Follow your position' && (await pans()) === pa, [fb, pa, await pans()]);
+await page.click('#actlive .am-fit');
+await settle(2500);
+check('which it does', (await pans()) > pa && (await page.evaluate(() => document.querySelector('#actlive .am-fit').hidden)));
+await page.click('#actlive [data-act="alMaps"]');
+await settle(900);
+check('the map button hides it again (the route drawn here instead)', await page.evaluate(() => !document.querySelector('#actlive .gm-style') && !document.querySelector('#actlive .al-map-slot') && document.querySelectorAll('#actlive .al-map .rt-line').length >= 1 && window.GH.ui.S.profile.prefs.actMaps === false));
+await page.click('#actlive [data-act="alMaps"]');
+await settle(1500);
+check('and shows it again, without asking twice', await page.evaluate(() => !document.querySelector('dialog.rf-dialog[open]') && !!document.querySelector('#actlive .al-map-slot .gm-style') && window.__gm.maps.length === 2));
+// Google draws its "This page can't load Google Maps correctly" over the map (a key it won't serve:
+// billing off, the API not enabled): OpenFreeMap's map takes over, and the activity goes on.
+await page.evaluate(() => { const M = window.__gm.maps[window.__gm.maps.length - 1]; const b = document.createElement('button'); b.className = 'dismissButton'; b.textContent = 'OK'; M.div.appendChild(b); M.trigger('idle'); });
+await page.waitForFunction(() => { const m = document.querySelector('#actlive .al-map'); return m && m.dataset.provider === 'maplibre' && /ready|failed/.test(m.dataset.streets || ''); }, null, { timeout: 30000 }).catch(() => {});
+await settle(1500);
+const sw = await page.evaluate(() => { const m = document.querySelector('#actlive .al-map'); return { provider: m.dataset.provider, state: m.dataset.streets, google: !!m.querySelector('.gm-style'), canvas: !!m.querySelector('.al-map-slot canvas'), here: !!m.querySelector('.maplibregl-marker .mk-here'), phase: document.getElementById('actlive').dataset.phase }; });
+check('Google\'s "can\'t load Google Maps correctly" over its map swaps in OpenFreeMap\'s, and the activity goes on', sw.provider === 'maplibre' && sw.state === 'ready' && !sw.google && sw.canvas && sw.here && sw.phase === 'live', sw);
+
+section('Discarding');
+await watchFolds();
+await page.click('#actlive [data-act="alMenu"]');
+await settle(800);
+await page.evaluate(() => { window.__haptics.length = 0; });
+await page.click('dialog[open] [data-act="alDiscard"]');
+await settle(900);
+const dq = await page.evaluate(() => { const d = document.querySelector('dialog.rf-dialog[open]'); return d && d.textContent.replace(/\s+/g, ' '); });
+check('Discard asks first, once it has been going a minute', /Discard this run\?/.test(dq || '') && /Keep it/.test(dq), dq);
+await page.evaluate(() => { const d = document.querySelector('dialog.rf-dialog[open]'); [...d.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Discard').click(); });
+await page.waitForFunction(() => document.getElementById('actlive').hidden, null, { timeout: 5000 }).catch(() => {});
+await settle(900);
+const dc = await page.evaluate(() => ({ live: window.GH.ui.S.actLive, hidden: document.getElementById('actlive').hidden, folds: window.__folds.slice(), haptics: window.__haptics.slice(), maps: document.querySelectorAll('.gm-style').length, toast: ([...document.querySelectorAll('.rf-toast')].pop() || {}).textContent }));
+check('then the screen folds away, and nothing is kept', dc.live === null && dc.hidden && dc.folds.length === 1 && dc.folds[0].moving > 0 && (await fake()).rec === null && /Run discarded/.test(dc.toast || ''), dc);
+check('with the discard\'s own feel after the question\'s, and its map gone with it', dc.haptics.indexOf('heavy') >= 0 && dc.haptics.indexOf('actDiscard') > dc.haptics.indexOf('heavy') && dc.maps === 0, dc);
 
 section('Precise location, or none');
 await page.evaluate(() => {
