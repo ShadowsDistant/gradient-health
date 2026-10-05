@@ -6,10 +6,10 @@
 //
 // What it asks of OpenFreeMap goes through the page's U.mapPieces, which keeps every piece on the
 // phone (src/ui/activity.js): the tiles and the type for names are asked for as ghmap:// (a protocol of
-// the app's, registered here), so a map shown before draws at once and with no connection, and a live
-// map over a loop run every week asks for nothing new. The TileJSON (which week's tiles are current)
+// the app's, registered here), so a map shown before draws at once, and with no connection (a tile
+// kept from an earlier week of OpenFreeMap's too). The TileJSON (which week's tiles are current)
 // comes from U.actMap, fetched while this chunk loads (o.tilejson), so the map starts one round trip
-// sooner; offline, the one kept from last time points at the pieces kept with it.
+// sooner; offline, it's the one kept from last time.
 //
 // The style is the app's own and small: land, parks, water, buildings, roads and the names of water,
 // streets and places, in the app's light or dark colours, with no icons. A theme change recolours
@@ -181,8 +181,8 @@ function mount(el, o) {
   const ctl = { provider: 'maplibre', update, restyle, destroy };
   Promise.resolve(opt.tilejson).then((t) => {
     if (dead) return;
-    tj = t;
     if (!style(false, t).sources.omt.tiles.length) { fail(new Error('no tiles')); return; }
+    tj = t;
     if (!opt.live || liveAt()) build();
   }, (e) => fail(e));
   return ctl;

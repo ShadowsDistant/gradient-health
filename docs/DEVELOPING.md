@@ -456,13 +456,17 @@ doesn't turn or tilt. Under reduced motion it jumps where it would glide.
 - **Pieces kept on the phone** (`U.mapPieces` in `src/ui/activity.js`): every tile and range of the
   name font goes through a protocol of the app's own, `ghmap://`, which keeps it in Cache Storage
   (`gh-map-v1`, the newest 1,500, trimmed every 50 new ones). A map shown before draws at once with
-  nothing asked of OpenFreeMap, offline too, and a live map over a loop run every week downloads
-  nothing new. The TileJSON (which week's tiles are current) is fetched network first, once a session,
-  with the kept copy used offline. Settings' Clear saved maps and Reset everything delete them.
+  nothing asked of OpenFreeMap, offline too. OpenFreeMap rebuilds its tiles about weekly at new
+  addresses (`/planet/<week>/z/x/y.pbf`), so a tile is kept under its address without the week: one
+  from an earlier week is drawn at once (and offline), and this week's is fetched behind it to take
+  its place. The TileJSON (which week is current) is fetched network first, once a session; offline
+  the kept copy is used, and asked for again by the next map. Settings' Clear saved maps and Reset
+  everything delete them.
 - **Faster to the first map:** `U.actMap` asks for the TileJSON while the chunk loads, and the style
   takes the tiles from it directly, a round trip sooner than MapLibre fetching it after the style.
 - **When it can't draw:** with none of its pieces (offline, never shown here) or no TileJSON, the page
-  keeps the route it drew and says why; a summary's map tries again when the phone is back online.
+  keeps the route it drew (a summary says why); the map tries again when the phone is back online,
+  on a summary and while recording.
 - **A theme change** recolours the same map (`restyle`: each layer's paint, and the route's), with
   nothing loaded again.
 The CSP lets in OpenFreeMap and nothing else for maps (`test/security.mjs`, which also checks no

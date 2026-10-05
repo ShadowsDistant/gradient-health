@@ -286,7 +286,7 @@ No account, no ads and no analytics. Everything stays on your phone. The only th
 - the words or barcode of a food you look up online
 - the one-time download of the on-device model
 - a workout plan you share with someone
-- map pieces for the area around an activity, or around where you are while one records, from OpenFreeMap, when you turn maps on (the ones you've seen are kept on the phone, so they're only asked for once)
+- map pieces for the area around an activity, or around where you are while one records, from OpenFreeMap, when you turn maps on (the ones you've seen are kept on the phone, and asked for again only once OpenFreeMap has updated its map)
 
 The [privacy policy](docs/PRIVACY.md) lists every piece of data and where it goes.
 

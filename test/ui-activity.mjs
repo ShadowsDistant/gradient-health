@@ -40,15 +40,19 @@ const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => { if (m.type() === 'error' && !/tiles\.openfreemap\.org|Failed to load resource/.test(m.text())) errors.push(m.text()); });
 // OpenFreeMap, faked: every request is counted; the TileJSON and empty tiles let the map load. With
-// mapsOffline, every request fails as with no connection (and is counted in mapsBlocked).
-const tileRequests = [], mapsBlocked = [];
-let mapsOffline = false;
+// mapsOffline, every request fails as with no connection (and is counted in mapsBlocked). tileWeek is
+// the week of tiles the TileJSON names (OpenFreeMap's are rebuilt about weekly, at new addresses);
+// tiles matching holdTiles wait for an answer until released (held).
+const tileRequests = [], mapsBlocked = [], held = [];
+let mapsOffline = false, tileWeek = 'test', holdTiles = null;
 await ctx.route('https://tiles.openfreemap.org/**', (route) => {
   const url = route.request().url();
   if (mapsOffline) { mapsBlocked.push(url); return route.abort('internetdisconnected'); }
   tileRequests.push(url);
-  if (/\/planet$/.test(url)) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ tilejson: '3.0.0', tiles: ['https://tiles.openfreemap.org/planet/test/{z}/{x}/{y}.pbf'], minzoom: 0, maxzoom: 14, attribution: '© OpenMapTiles © OpenStreetMap contributors', vector_layers: ['water', 'landuse', 'landcover', 'park', 'waterway', 'building', 'transportation', 'transportation_name', 'place'].map((id) => ({ id, fields: {} })) }) });
-  return route.fulfill({ status: 200, contentType: 'application/x-protobuf', body: Buffer.alloc(0) });
+  if (/\/planet$/.test(url)) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ tilejson: '3.0.0', tiles: [`https://tiles.openfreemap.org/planet/${tileWeek}/{z}/{x}/{y}.pbf`], minzoom: 0, maxzoom: 14, attribution: '© OpenMapTiles © OpenStreetMap contributors', vector_layers: ['water', 'landuse', 'landcover', 'park', 'waterway', 'building', 'transportation', 'transportation_name', 'place'].map((id) => ({ id, fields: {} })) }) });
+  const tile = () => route.fulfill({ status: 200, contentType: 'application/x-protobuf', body: Buffer.alloc(0) }).catch(() => {});
+  if (holdTiles && holdTiles.test(url)) return new Promise((done) => held.push(() => done(tile())));
+  return tile();
 });
 await page.clock.install({ time: new Date('2026-10-19T08:10:00') });
 await page.addInitScript(seedBridge);
@@ -488,6 +492,32 @@ const hideMap = async () => { await page.click('#screen [data-act="actMaps"]'); 
   await showMap();
   const off = await sm();
   check('with no connection, a map shown before still draws, from the phone', off.state === 'ready' && mapsBlocked.length === 0, [off.state, mapsBlocked.slice(0, 3)]);
+  // OpenFreeMap's next week (its tiles at new addresses), the app opened again: the map draws at once
+  // from the kept pieces (the new week's are held back here, so it can't be from them), and the new
+  // week's come in behind them, in their place; shown again, it draws from those, asking for nothing.
+  await hideMap();
+  mapsOffline = false;
+  tileWeek = 'w2';
+  holdTiles = /\/planet\/w2\//;
+  const k0 = await page.evaluate(() => window.GH.ui.mapPieces.count());
+  const actId = await page.evaluate(() => window.GH.ui.route.arg);
+  await page.reload();
+  await page.waitForSelector('#screen[data-view]');
+  await page.evaluate((id) => { const U = window.GH.ui; while (U.back()) { /* back to the tab */ } U.open('activity', id); }, actId);
+  await settle(1200);
+  const tw = tileRequests.length;
+  await showMap();
+  const wk = await sm(), asked = tileRequests.slice(tw);
+  check('when OpenFreeMap has a new week\'s map, one shown before still draws at once, from the kept pieces', wk.state === 'ready' && asked.some((u) => /\/planet$/.test(u)) && asked.some((u) => /\/planet\/w2\//.test(u)) && held.length > 0, [wk.state, held.length, asked.slice(0, 4)]);
+  holdTiles = null;
+  held.splice(0).forEach((f) => f());
+  await settle(1500);
+  await page.waitForTimeout(600);
+  const k1 = await page.evaluate(() => window.GH.ui.mapPieces.count());
+  await hideMap();
+  const tx = tileRequests.length;
+  await showMap();
+  check('and the new week\'s pieces take their place: shown again, it asks for nothing', (await sm()).state === 'ready' && k1 === k0 && tileRequests.length === tx, [k0, k1, tileRequests.slice(tx, tx + 3)]);
   // No connection and nothing kept (Settings, Clear saved maps): the route drawn here stays, and the
   // map comes once the connection is back.
   await hideMap();
@@ -672,6 +702,25 @@ await settle(1500);
 await page.waitForFunction(() => { const m = document.querySelector('#actlive .al-map'); return m && /ready|failed/.test(m.dataset.streets || ''); }, null, { timeout: 30000 }).catch(() => {});
 const sa = await page.evaluate(() => ({ asked: !!document.querySelector('dialog.rf-dialog[open]'), canvas: !!document.querySelector('#actlive .al-map-slot .maplibregl-canvas'), state: (document.querySelector('#actlive .al-map') || {}).dataset.streets }));
 check('and shows it again without asking twice, from the pieces it kept as it followed you', !sa.asked && sa.canvas && sa.state === 'ready' && tileRequests.length === lt, [sa, tileRequests.slice(lt, lt + 3)]);
+{
+  // No connection, and nothing kept for here: the route drawn here stands in, and the map comes once
+  // the phone is back online.
+  await page.click('#actlive [data-act="alMaps"]');
+  await settle(900);
+  await page.evaluate(() => window.GH.ui.mapPieces.clear());
+  mapsOffline = true;
+  await page.click('#actlive [data-act="alMaps"]');
+  await settle(1500);
+  await page.waitForFunction(() => { const m = document.querySelector('#actlive .al-map'); return m && /ready|failed/.test(m.dataset.streets || ''); }, null, { timeout: 30000 }).catch(() => {});
+  const lf = await page.evaluate(() => { const m = document.querySelector('#actlive .al-map'); return m && { state: m.dataset.streets, line: m.querySelectorAll('.rt-line').length, asked: !!document.querySelector('dialog.rf-dialog[open]') }; });
+  check('with no connection and nothing kept, the live screen keeps the route it draws', lf && lf.state === 'failed' && lf.line >= 1 && !lf.asked, lf);
+  mapsOffline = false;
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await settle(1500);
+  await page.waitForFunction(() => { const m = document.querySelector('#actlive .al-map'); return m && m.dataset.streets === 'ready'; }, null, { timeout: 30000 }).catch(() => {});
+  const lb = await page.evaluate(() => ({ state: (document.querySelector('#actlive .al-map') || {}).dataset.streets, maps: document.querySelectorAll('#actlive .maplibregl-canvas').length }));
+  check('and back online, its map comes by itself', lb.state === 'ready' && lb.maps === 1, lb);
+}
 
 section('Discarding');
 await watchFolds();

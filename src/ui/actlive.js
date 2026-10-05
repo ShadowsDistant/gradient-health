@@ -570,6 +570,9 @@
     lm.el.remove();
     lm = null;
   }
+  // Back online: a map that couldn't load (no connection where it started, and nothing kept for there)
+  // tries again; the route drawn here stood in meanwhile.
+  if (G.addEventListener) G.addEventListener('online', () => { if (lm && lm.state === 'failed') { dropMap(); draw(); } });
   U.act.alMaps = async () => {
     if (!live()) return;
     const pr = U.S.profile.prefs;

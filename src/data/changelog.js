@@ -16,9 +16,9 @@
         '• Maps stay with OpenFreeMap: Google Maps is gone',
       ].join('\n'),
       items: [
-        ['map', 'Maps you\'ve seen open at once and work with no connection: the map pieces OpenFreeMap sent are kept on your phone (up to about 50 MB), so a route you open again, or a loop you run every week, needs nothing new. Clear them in Settings, under Walks, runs and rides.'],
+        ['map', 'Maps you\'ve seen open at once and work with no connection: the map pieces OpenFreeMap sent are kept on your phone (up to about 50 MB), and when OpenFreeMap updates its map, the newer pieces come in behind the ones you see. Clear them in Settings, under Walks, runs and rides.'],
         ['bolt', 'The first map opens sooner: it asks OpenFreeMap for what it needs while the map itself loads.'],
-        ['refresh', 'A map that can\'t load (no connection, and never shown before) leaves your route drawn on the phone, says why, and comes by itself once you\'re back online.'],
+        ['refresh', 'A map that can\'t load (no connection, and never shown before) leaves your route drawn on the phone, says why, and comes by itself once you\'re back online, while you record too.'],
         ['moon', 'Maps change with the app\'s light or dark look without loading again, and show the names of rivers and lakes.'],
         ['check-circle', 'Maps stay with OpenFreeMap. Google Maps needed a key the app never had, so it never switched on, and it\'s gone.'],
       ],

@@ -503,31 +503,42 @@
   /* ---------------------------------------------------------------- maps: OpenFreeMap's */
   // The map pieces a map has downloaded (OpenFreeMap's tiles, the type for names, the TileJSON that
   // says which week's tiles are current), kept on the phone in Cache Storage: a map shown before draws
-  // at once and with no connection, and a live map over a loop run every week asks OpenFreeMap for
-  // nothing new. src/actmap.js asks for every piece through here. The newest MAX_PIECES are kept
-  // (tiles are 10 to 30 KB: about 25 to 50 MB at most); Settings' Clear saved maps and Reset
-  // everything delete them. Without Cache Storage (a plain http page) pieces are simply fetched.
+  // at once, and with no connection. src/actmap.js asks for every piece through here. The newest
+  // MAX_PIECES are kept (tiles are 10 to 30 KB: about 25 to 50 MB at most); Settings' Clear saved
+  // maps and Reset everything delete them. Without Cache Storage (a plain http page) pieces are
+  // simply fetched.
+  // OpenFreeMap rebuilds its tiles every week or so, at new addresses (.../planet/<week>/z/x/y.pbf), so
+  // a tile is kept under its address without the week: one kept from an earlier week still shows at
+  // once (and offline), and this week's is fetched behind it, for next time, in its place.
   const PIECES = 'gh-map-v1', MAX_PIECES = 1500, TILEJSON = 'https://tiles.openfreemap.org/planet';
+  const TILE = /^(https:\/\/tiles\.openfreemap\.org\/[^/]+\/)[^/]+\/(\d+\/\d+\/\d+\.pbf)$/;
   let puts = 0, tj = null;
+  const renewing = new Set(); // tiles being fetched behind a kept one from an earlier week
   const pieceStore = () => (G.caches && G.caches.open ? G.caches.open(PIECES) : Promise.reject(new Error('no Cache Storage')));
-  // A piece: the kept copy, else the network (and kept). fresh: the network first, the kept copy when
-  // there's no connection (the TileJSON, which changes when OpenFreeMap publishes a new week).
+  const keep = (cache, key, res) => cache.put(key, res).then(trimPieces).catch(() => {});
+  // A piece: the kept copy, else the network (and kept), else the kept copy after all (no connection,
+  // or OpenFreeMap failing). fresh: the network first (the TileJSON, which says which week is
+  // current); a kept copy given instead says so (r.kept).
   async function piece(url, o) {
     const opt = o || {};
-    let cache = null;
-    try { cache = await pieceStore(); } catch (e) { /* not kept */ }
-    if (cache && !opt.fresh) { try { const hit = await cache.match(url); if (hit) return hit; } catch (e) { /* fetch it */ } }
-    try {
-      const res = await fetch(url, { signal: opt.signal });
-      if (res.ok && cache) cache.put(url, res.clone()).then(trimPieces).catch(() => {});
-      if (res.ok || !cache || !opt.fresh) return res;
-      throw new Error(`HTTP ${res.status}`);
-    } catch (e) {
-      if (cache && opt.fresh) { const hit = await cache.match(url).catch(() => null); if (hit) return hit; }
-      throw e;
+    const t = TILE.exec(url);
+    const key = t ? t[1] + t[2] : url;
+    let cache = null, kept = null;
+    try { cache = await pieceStore(); kept = (await cache.match(key)) || null; } catch (e) { /* not kept */ }
+    if (kept && !opt.fresh) {
+      if (t && kept.url !== url && !renewing.has(key) && !(G.navigator && G.navigator.onLine === false)) {
+        renewing.add(key);
+        fetch(url).then((r) => (r.ok ? keep(cache, key, r) : null)).catch(() => {}).then(() => renewing.delete(key));
+      }
+      return kept;
     }
+    let res = null;
+    try { res = await fetch(url, { signal: opt.signal }); } catch (e) { if (!kept) throw e; }
+    if (res && res.ok) { if (cache) keep(cache, key, res.clone()); return res; }
+    if (kept) { kept.kept = true; return kept; }
+    return res;
   }
-  // The oldest go once there are too many (checked every 50 new pieces; a piece fetched again is new).
+  // The oldest go once there are too many (checked every 50 new pieces; one fetched again is new).
   async function trimPieces() {
     if (++puts % 50) return;
     const c = await pieceStore();
@@ -536,9 +547,14 @@
   }
   U.mapPieces = {
     get: piece,
-    // OpenFreeMap's TileJSON, once a session (again after a failure).
+    // OpenFreeMap's TileJSON: fetched once a session; the kept one when there's no connection, and
+    // then asked for again next time (so back online, a map gets this week's).
     tilejson() {
-      if (!tj) tj = piece(TILEJSON, { fresh: true }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))).catch((e) => { tj = null; throw e; });
+      if (!tj) {
+        const p = tj = piece(TILEJSON, { fresh: true })
+          .then((r) => { if (r.kept && tj === p) tj = null; return r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)); })
+          .catch((e) => { if (tj === p) tj = null; throw e; });
+      }
       return tj;
     },
     count: async () => { try { return (await (await pieceStore()).keys()).length; } catch (e) { return 0; } },
