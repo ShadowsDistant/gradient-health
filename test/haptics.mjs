@@ -142,6 +142,8 @@ for (const [k, g, rank, feel, ok] of SPECIFIC) {
 }
 const harsh = SPECIFIC.map(([k]) => k).filter((k) => javaKinds[k] && (sc(k).filter((x) => x >= 1).length > 1 || beats(k).some((b) => (b.p === 'THUD' || b.p === 'SPIN') && b.scale > 0.6)));
 check('none of them is harsh: one full-strength beat at most, and no thud or spin above 0.6', !harsh.length, harsh);
+const unused = SPECIFIC.map(([k]) => k).filter((k) => !used.has(k) && !marked.has(k));
+check('each is played somewhere in the app', !unused.length, unused);
 
 section('In a browser');
 const buzzes = [];
