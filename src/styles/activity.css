@@ -37,7 +37,8 @@
 .rt-km circle { fill: var(--bg-raised); stroke: color-mix(in oklab, var(--label) 40%, transparent); stroke-width: 1.25; }
 .rt-km text { font: 700 10px/1 var(--font-sans); fill: var(--label); text-anchor: middle; }
 
-/* The summary's map card: the route over a quiet grid (offline), or over streets on request. */
+/* The summary's map card: the route over a quiet grid (offline), or on a map on request (Google's, or
+   OpenFreeMap's without a key). */
 .am-card { padding: 0; gap: 0; overflow: hidden; }
 .am-box { position: relative; aspect-ratio: 3 / 2; max-height: 60vh; overflow: hidden;
   --am-grid: color-mix(in oklab, var(--label) 6%, transparent);
@@ -52,14 +53,18 @@
 .am-box[data-type="cycle"] { --act-hue: var(--hue-sky); }
 .am-box[data-type="other"] { --act-hue: var(--hue-violet); }
 .am-box > .rt { position: absolute; inset: 0; transition: opacity 320ms var(--ease-standard); }
-/* The street map fills the box from the start, so MapLibre sizes its canvas (and fits the route) to it. */
-/* It takes touches once it's drawn (two fingers move and zoom it); until then they reach the page. */
+/* The map fills the box from the start, so it's drawn (and fits the route) to its size. It takes
+   touches once it's drawn (two fingers move and zoom it); until then they reach the page. The engine
+   draws in a box of its own (.am-engine, src/ui/activity.js): Google makes a map's box position:
+   relative, so it's sized as well as placed. */
 .am-streets { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity 420ms var(--ease-standard); }
-.am-box[data-streets="ready"] .am-streets { opacity: 1; pointer-events: auto; }
-.am-box[data-streets="failed"] .am-attr { display: none; }
+.am-engine { position: absolute; inset: 0; width: 100%; height: 100%; }
+:is(.am-box, .al-map)[data-streets="ready"] .am-streets { opacity: 1; pointer-events: auto; }
 .am-box[data-streets="ready"] > .rt { opacity: 0; }
-.am-box[data-streets="loading"]::after { content: ''; position: absolute; right: 12px; top: 12px; width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid color-mix(in oklab, var(--label) 18%, transparent); border-top-color: var(--label-secondary); animation: gh-spin .9s linear infinite; }
+:is(.am-box, .al-map:not(.al-map-search))[data-streets="loading"]::after { content: ''; position: absolute; right: 12px; top: 12px; z-index: 2; width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid color-mix(in oklab, var(--label) 18%, transparent); border-top-color: var(--label-secondary); animation: gh-spin .9s linear infinite; }
+/* OpenFreeMap's credit is a line of the page's; Google's map carries its own logo and terms. */
 .am-attr { position: absolute; right: 6px; bottom: 4px; margin: 0; z-index: 2; }
+:is(.am-box, .al-map):not([data-provider="maplibre"]) .am-attr, :is(.am-box, .al-map)[data-streets="failed"] .am-attr { display: none; }
 .am-attr-btn { appearance: none; border: 0; padding: 2px 6px; border-radius: 6px; background: color-mix(in oklab, var(--bg-raised) 82%, transparent); color: var(--label-secondary); font: 500 10px/1.3 var(--font-sans); cursor: pointer; }
 .am-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: var(--space-3) var(--space-4) 0; color: var(--label-secondary); }
 .am-scale { display: inline-flex; gap: 2px; }
@@ -93,9 +98,30 @@
   .maplibregl-cooperative-gesture-screen .maplibregl-desktop-message { display: block; }
   .maplibregl-cooperative-gesture-screen .maplibregl-mobile-message { display: none; }
 }
-/* Back to the whole route, once the map has been moved. */
+/* Back to the whole route, or to following you, once the map has been moved. */
 .am-fit { position: absolute; top: 10px; right: 10px; z-index: 2; }
 .am-fit[hidden] { display: none; }
+
+/* The markers on either map (src/gmap.js, src/actmap.js), as the drawn route has them: the start, the
+   finish, each km or mile, and where you are (a dot in its accuracy, with a beam for which way you're
+   heading once the GPS knows). Google's sit in an overlay of the page's, centred on their point;
+   MapLibre's in its own marker boxes (its stylesheet isn't loaded, so they're placed here). */
+.mk-layer { position: absolute; left: 0; top: 0; }
+.mk-layer > .mk { position: absolute; left: 0; top: 0; translate: -50% -50%; }
+.maplibregl-marker { position: absolute; left: 0; top: 0; will-change: transform; }
+.mk { box-sizing: border-box; pointer-events: none; }
+.mk-start, .mk-end { width: 15px; height: 15px; border-radius: 50%; border: 2.5px solid var(--rt-ring); box-shadow: 0 1px 4px rgb(0 0 0 / .3); }
+.mk-start { background: var(--rt-start); }
+.mk-end { background: var(--rt-end); }
+.mk-km { min-width: 19px; height: 19px; padding: 0 4px; border-radius: 10px; display: grid; place-items: center; background: var(--bg-raised); color: var(--label); border: 1.25px solid color-mix(in oklab, var(--label) 40%, transparent); font: 700 10px/1 var(--font-sans); font-variant-numeric: tabular-nums; box-shadow: 0 1px 3px rgb(0 0 0 / .2); }
+.mk-here { position: relative; width: 20px; height: 20px; --mk-c: var(--accent); }
+.mk-here > span { position: absolute; left: 50%; top: 50%; translate: -50% -50%; border-radius: 50%; }
+.mk-acc { width: calc(2 * var(--mk-acc, 0px)); height: calc(2 * var(--mk-acc, 0px)); background: color-mix(in oklab, var(--mk-c) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--mk-c) 38%, transparent); }
+.mk-dir { display: none; width: 68px; height: 68px; rotate: var(--mk-heading, 0deg);
+  background: conic-gradient(from -32deg, color-mix(in oklab, var(--mk-c) 55%, transparent) 0deg 64deg, transparent 64deg);
+  -webkit-mask: radial-gradient(closest-side, #000 28%, transparent); mask: radial-gradient(closest-side, #000 28%, transparent); }
+.mk-here[data-heading] .mk-dir { display: block; }
+.mk-dot { width: 20px; height: 20px; background: var(--mk-c); border: 3px solid #fff; box-shadow: 0 1px 6px rgb(0 0 0 / .35); }
 
 /* ---------------------------------------------------------------- the summary */
 .as-top { display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-4); margin: var(--space-1) 0 var(--space-4); }
@@ -218,6 +244,9 @@
 .at-tile[data-last] { box-shadow: inset 0 0 0 2px var(--act-hue), var(--shadow-card); }
 .at-last { position: absolute; right: var(--space-3); top: var(--space-3); padding: 2px 8px; border-radius: var(--radius-full); background: var(--act-hue); color: #fff; font-weight: 600; }
 .at-tile.is-wide .at-last { position: static; margin-inline-start: auto; }
+/* How it records: auto-pause for each kind (chips) and the spoken splits (a switch). */
+.at-opts { margin: 0; }
+.at-auto .rf-chip { min-height: 36px; }
 .at-note { display: flex; gap: 6px; align-items: flex-start; margin: 0; }
 .at-note svg { flex: none; margin-top: 2px; }
 .at-perm { gap: var(--space-3); padding-bottom: var(--space-4); }
@@ -242,7 +271,7 @@
 .al-bg i:nth-child(2) { width: 64vw; height: 64vw; right: -22vw; top: 38vh; background: color-mix(in oklab, var(--act-hue) 55%, #ffffff); opacity: .45; animation-duration: 29s; animation-direction: alternate-reverse; }
 [data-theme^="dark"] .al-bg i:nth-child(1) { opacity: .42; }
 [data-theme^="dark"] .al-bg i:nth-child(2) { background: var(--act-hue); opacity: .22; }
-.al[data-phase="paused"] .al-bg { filter: saturate(.3) brightness(.97); }
+.al:is([data-phase="paused"], [data-phase="autopaused"]) .al-bg { filter: saturate(.3) brightness(.97); }
 @keyframes al-drift { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(7vw, -5vh, 0) scale(1.14); } }
 .al-top { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-4); }
 .al-head { flex: 1; min-width: 0; display: grid; justify-items: center; gap: 3px; }
@@ -254,8 +283,11 @@
 .al-bars i:nth-child(1) { height: 4px; }
 .al-bars i:nth-child(2) { height: 7px; }
 .al-bars i:nth-child(3) { height: 11px; }
-.al-gps[data-gps="ok"] .al-bars i { background: var(--positive); }
-.al-gps[data-gps="searching"] .al-bars i:first-child { background: var(--caution); animation: al-blink 1.2s ease-in-out infinite; }
+/* The bars: by how accurate the last fix is (src/ui/actlive.js, gpsBars), weak in amber; while it
+   looks with nothing yet, the first one blinks. */
+.al-gps[data-bars="1"] .al-bars i:first-child { background: var(--caution); }
+.al-gps[data-bars="2"] .al-bars i:not(:last-child), .al-gps[data-bars="3"] .al-bars i { background: var(--positive); }
+.al-gps[data-gps="searching"][data-bars="0"] .al-bars i:first-child { background: var(--caution); animation: al-blink 1.2s ease-in-out infinite; }
 @keyframes al-blink { 50% { opacity: .35; } }
 .al-body { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-1) var(--space-4) var(--space-5, 20px); }
 .al-body::-webkit-scrollbar { display: none; }
@@ -283,8 +315,8 @@
 .al-clock { display: grid; justify-items: center; margin: var(--space-2) 0 var(--space-1); }
 .al-time { font-size: clamp(3.5rem, 21vw, 6rem); font-weight: 700; letter-spacing: -0.04em; line-height: .95; font-variant-numeric: tabular-nums; }
 .al-cap { margin-top: 6px; font-size: .75rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--label-secondary); }
-.al[data-phase="paused"] .al-time { opacity: .45; }
-.al[data-phase="paused"] .al-cap { color: var(--caution); animation: al-blink 1.6s ease-in-out infinite; }
+.al:is([data-phase="paused"], [data-phase="autopaused"]) .al-time { opacity: .45; }
+.al:is([data-phase="paused"], [data-phase="autopaused"]) .al-cap { color: var(--caution); animation: al-blink 1.6s ease-in-out infinite; }
 .al-banner { align-self: center; display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: var(--radius-full); background: var(--act-hue); color: #fff; font-weight: 700; box-shadow: 0 12px 28px -12px var(--act-hue); animation: al-banner 520ms var(--spring-bouncy) both; }
 .al-banner svg { width: 16px; height: 16px; }
 @keyframes al-banner { from { transform: translateY(-10px) scale(.9); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -309,13 +341,27 @@
   background-image: linear-gradient(var(--am-grid) 1px, transparent 1px), linear-gradient(90deg, var(--am-grid) 1px, transparent 1px); background-size: 24px 24px; background-position: center;
   --rt-case: color-mix(in oklab, var(--act-hue) 30%, transparent); }
 .al-map .rt { position: absolute; inset: 0; }
+.al-map { --al-line: var(--act-hue); }
+[data-theme^="dark"] .al-map { --al-line: color-mix(in oklab, var(--act-hue) 65%, #fff); }
 .rt-live .rt-case { stroke-width: 11; }
-.rt-live .rt-line { stroke: var(--act-hue); stroke-width: 4.5; }
-[data-theme^="dark"] .rt-live .rt-line { stroke: color-mix(in oklab, var(--act-hue) 65%, #fff); }
+.rt-live .rt-line { stroke: var(--al-line); stroke-width: 4.5; }
 .rt-here { fill: var(--accent); stroke: #fff; stroke-width: 3; }
 .rt-here-pulse { fill: var(--accent); opacity: .35; transform-box: fill-box; transform-origin: center; animation: al-here 1.8s ease-out infinite; }
 @keyframes al-here { from { transform: scale(.6); opacity: .5; } to { transform: scale(2.2); opacity: 0; } }
 .al-map-wait { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: var(--space-4); text-align: center; color: var(--label-secondary); }
+/* With maps on: the map that follows you (src/ui/actlive.js, liveMap) in the card's slot, over the
+   drawn route once it's there. Its button turns maps on and off. */
+.al-map[data-streets] { min-height: 190px; }
+.al-map-slot { position: absolute; inset: 0; }
+.al-map > :is(.rt, .al-map-wait, .al-radar) { transition: opacity 320ms var(--ease-standard), scale 320ms var(--ease-standard); }
+.al-map[data-streets="ready"] > :is(.rt, .al-map-wait, .al-radar) { opacity: 0; pointer-events: none; }
+.al-map[data-streets="ready"] > .al-radar { scale: .8; }
+.al-map-btn { position: absolute; top: 10px; left: 10px; z-index: 3; }
+/* While GPS looks, with maps on: the map in a card where the radar was, the radar over it until the
+   map's there. */
+.al-search.has-map { justify-content: stretch; padding-top: var(--space-2); }
+.al-map-search { justify-self: stretch; flex: none; aspect-ratio: 4 / 3; max-height: 44vh; min-height: 200px; display: grid; place-items: center; }
+.al-map-search > .al-radar { position: relative; z-index: 1; }
 /* Without GPS: the time in the middle, the steps across the width, and a note at the foot. */
 .al-clock-solo { margin-block: auto; }
 .al-m-wide { grid-column: 1 / -1; }
@@ -350,6 +396,8 @@
 .al-ring-fill { stroke: var(--act-hue); stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 100; transition: stroke-dashoffset 240ms var(--ease-standard); }
 .al-finish.is-holding .al-ring-fill { stroke-dashoffset: 0; transition: stroke-dashoffset 1000ms linear; }
 .al-finish.is-holding .al-btn-disc { scale: .94; }
+/* Discarded: the screen folds away (src/ui/actlive.js, foldAway) over the page that shows through. */
+.al.is-leaving { background: transparent; pointer-events: none; }
 .app:has(> #actlive:not([hidden]))::before, .app:has(> #actlive:not([hidden]))::after { animation-play-state: paused, running; }
 /* Increased contrast and reduced transparency: Refract makes the glass solid, and the GPS pill
    follows. */
@@ -357,7 +405,7 @@
 :root[data-theme$="contrast"] .al-gps { box-shadow: inset 0 0 0 1px var(--separator); }
 @media (prefers-reduced-transparency: reduce) { .al-gps { background: var(--bg-raised); } }
 @media (prefers-reduced-motion: reduce) {
-  .al-bg i, .al-radar span, .rt-here-pulse, .act-pill-dot, .al-count-n, .al-banner, .al-gps[data-gps="searching"] .al-bars i:first-child, .al[data-phase="paused"] .al-cap { animation: none; }
+  .al-bg i, .al-radar span, .rt-here-pulse, .act-pill-dot, .al-count-n, .al-banner, .al-gps[data-gps="searching"] .al-bars i:first-child, .al:is([data-phase="paused"], [data-phase="autopaused"]) .al-cap { animation: none; }
   .al-radar span { opacity: .4; }
 }
 @media (min-width: 700px) {

@@ -1012,6 +1012,18 @@ public final class Bridge {
         }
     }
 
+    /** Auto-pause and the spoken splits, changed while it records ({"autoPause"?, "voice"?}). */
+    @JavascriptInterface
+    public void actSetOptions(String json) {
+        if (!trusted()) {
+            return;
+        }
+        try {
+            ActivityService.setOptions(activity, json);
+        } catch (Throwable ignored) {
+        }
+    }
+
     /** Finishes the recording; window.__gh.onActivity gets its final state (active false). */
     @JavascriptInterface
     public void actStop() {
@@ -1059,6 +1071,53 @@ public final class Bridge {
         try {
             ActivityService.clear(activity, id);
         } catch (Throwable ignored) {
+        }
+    }
+
+    // ---------------------------------------------------------------- maps (Google Maps for activities)
+
+    /** The key build-apk.sh put in the app (assets/maps.key), read once. Null until then. */
+    private static volatile String mapsKeyCache;
+
+    /**
+     * The Google Maps JavaScript API key for activity maps, or "" when this build has none (the page
+     * then uses OpenFreeMap). It comes from GOOGLE_MAPS_API_KEY at build time and is never logged.
+     */
+    @JavascriptInterface
+    public String mapsKey() {
+        if (!trusted()) {
+            return "";
+        }
+        String k = mapsKeyCache;
+        if (k == null) {
+            k = readMapsKey();
+            mapsKeyCache = k;
+        }
+        return k;
+    }
+
+    private String readMapsKey() {
+        InputStream in = null;
+        try {
+            in = activity.getAssets().open("maps.key");
+            byte[] buf = new byte[256];
+            int n = 0;
+            int r;
+            while (n < buf.length && (r = in.read(buf, n, buf.length - n)) > 0) {
+                n += r;
+            }
+            String k = new String(buf, 0, n, StandardCharsets.UTF_8).trim();
+            // An API key's characters only: anything else isn't one (and never reaches a URL).
+            return k.matches("[A-Za-z0-9_-]{20,100}") ? k : "";
+        } catch (Throwable t) {
+            return ""; // a build without a key
+        } finally {
+            if (in != null) {
+                try {
+                    in.close();
+                } catch (IOException ignored) {
+                }
+            }
         }
     }
 

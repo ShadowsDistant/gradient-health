@@ -107,6 +107,7 @@
     // shows the consent screen first.
     if (!S.ai.consentAt && (auto || !(await U.claudeConsent()))) return;
     ai.busy = 'report'; ai.error = null; ai.tried = day;
+    if (!auto) U.haptic('send'); // asked by hand: sent off to Claude, and its end below
     if (U.route.tab === 'health' && !U.route.view) U.render();
     refreshReport();
     try {
@@ -117,6 +118,7 @@
       if (auto && e.code === 'offline') ai.error = null;
     } finally {
       ai.busy = false;
+      if (!auto) U.haptic(ai.error ? 'error' : 'success');
       if (U.route.tab === 'health' && !U.route.view) U.render();
       refreshReport();
     }
@@ -208,7 +210,7 @@
   }
   const insights = (list) => (list.length ? `<div class="hl-ins-list" data-key="ins">${list.map(insightRow).join('')}</div>`
     : '<div class="card hl-note" data-key="noins"><p class="t-callout rf-muted">Insights show up here after a few days of data: sleep, steps, weight, workouts and check-ins.</p></div>');
-  U.act.dismissInsight = (el) => { GH.insights.dismiss(U.S, el.dataset.arg, U.today()); U.commit(); U.toast('Hidden for 30 days', 'neutral'); };
+  U.act.dismissInsight = (el) => { GH.insights.dismiss(U.S, el.dataset.arg, U.today()); U.commit(); U.haptic('dismiss'); U.toast('Hidden for 30 days', 'neutral'); };
   U.act.insightGo = (el) => U.go(el.dataset.arg);
 
   /* ---------------------------------------------------------------- trends */
@@ -290,7 +292,7 @@
     U.haptic('tap');
     const r = await U.syncHealth('manual');
     if (r && !r.ok) U.toast('Couldn\'t read Health Connect', 'caution', r.error === 'timeout' ? 'It took too long. Try again.' : undefined);
-    else if (r) U.toast('Health data updated', 'positive');
+    else if (r) { U.haptic('refresh'); U.toast('Health data updated', 'positive'); }
   };
   U.on.hcWriteToggle = async (el, ev, v) => {
     const S = U.S;
@@ -306,7 +308,7 @@
   U.act.hcManage = () => H().openSettings();
   // Asked once on the Health tab; Settings keeps a row for it until everything's allowed.
   U.act.hcAllowNew = async () => { U.S.health.askedNew = Date.now(); await U.act.hcConnect(); };
-  U.act.hcSkipNew = () => { U.S.health.askedNew = Date.now(); U.commit(); };
+  U.act.hcSkipNew = () => { U.S.health.askedNew = Date.now(); U.commit(); U.haptic('dismiss'); };
   U.act.hcConnect = async () => {
     const st = await H().request(U.S);
     U.S.health.status = st;
@@ -354,6 +356,7 @@
     const t = U.topSheet(); if (t) t.close('ok');
     U.commit();
     if (U.refreshMetricSheet) U.refreshMetricSheet();
+    U.haptic('log');
     U.toast('Activity saved', 'positive');
   };
   U.act.logMeasure = () => {
@@ -374,7 +377,7 @@
     for (const k of ['waist', 'armL', 'armR', 'chest', 'thigh']) { const v = parseFloat(document.getElementById('m-' + k).value); if (v > 0) m[k] = u === 'cm' ? v : v * 2.54; }
     const saved = H().addMeasurement(U.S, U.today(), m);
     const t = U.topSheet(); if (t) t.close('ok');
-    if (saved) { U.commit(); if (U.refreshMetricSheet) U.refreshMetricSheet(); U.toast('Measurements saved', 'positive'); }
+    if (saved) { U.commit(); if (U.refreshMetricSheet) U.refreshMetricSheet(); U.haptic('log'); U.toast('Measurements saved', 'positive'); }
   };
 
   /* ---------------------------------------------------------------- the screen */

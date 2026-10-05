@@ -186,6 +186,9 @@ button.pw-ex-row:focus-visible { outline: 2px solid var(--focus-ring); outline-o
 .pw-why > .rf-btn:not(.rf-glass) { color: var(--accent); }
 
 /* ---------------------------------------------------------------- motion */
+/* After Plan's first show the week comes in with the page change alone: no marks popping or bars
+   growing on every visit (a mark that becomes done still pops). */
+#app[data-plan-seen] :is(.pw-mark, .pw-bar-plan, .pw-bar-done, .pw-thumb > svg.fig, .pw-thumb > img) { animation: none; }
 @keyframes pw-pop { from { opacity: 0; scale: .45; } to { opacity: 1; scale: 1; } }
 @keyframes pw-rise { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 @keyframes pw-fade { from { opacity: 0; } to { opacity: 1; } }

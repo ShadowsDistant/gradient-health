@@ -412,6 +412,7 @@
     h.clearManual(S, day, key);
     U.commit();
     refresh();
+    U.haptic('remove');
     const back = h.entry(S, key, day);
     U.toast(`Removed your ${m.label.toLowerCase()}`, 'neutral', back ? `${h.SOURCE[back.src]}'s ${h.format(S, key, back.value)} is back.` : undefined, { label: 'Undo', onClick: () => { h.setManual(U.S, day, key, was); U.commit(); refresh(); U.haptic('undo'); } });
   }
@@ -425,6 +426,7 @@
     H().removeManual(U.S, d, 'exercise', i);
     U.commit();
     refresh();
+    U.haptic('remove');
     U.toast('Activity removed', 'neutral', undefined, { label: 'Undo', onClick: () => { H().logManual(U.S, d, { exercise: { typeName: x.typeName, minutes: x.minutes } }); U.commit(); refresh(); U.haptic('undo'); } });
   };
 })(typeof window !== 'undefined' ? window : globalThis);

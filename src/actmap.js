@@ -1,13 +1,17 @@
-// Street maps behind an activity's route: MapLibre GL JS (BSD-3) drawing OpenFreeMap's vector tiles
-// (tiles.openfreemap.org, OpenMapTiles schema, © OpenMapTiles © OpenStreetMap contributors). A lazy
-// chunk, loaded with GH.lazy('actmap') only after someone taps Show streets on an activity: until
-// then nothing is requested from OpenFreeMap. Sets GH.actmap = { mount(el, o) → { destroy() } };
-// o.interactive lets two fingers move and zoom it.
+// Activity maps without Google: MapLibre GL JS (BSD-3) drawing OpenFreeMap's vector tiles
+// (tiles.openfreemap.org, OpenMapTiles schema, © OpenMapTiles © OpenStreetMap contributors), behind an
+// activity's route (its summary) and following you as you record. A lazy chunk, loaded with
+// GH.lazy('actmap') only when a map is about to show and there's no Google key or Google's map won't
+// load (src/ui/activity.js, U.actMap; src/gmap.js is Google's): until then nothing is requested from
+// OpenFreeMap. Sets GH.actmap = { mount(el, o) }, the same controller as Google's: mount(el, o) →
+// { provider, update({ route, here }), destroy() }, with the options src/gmap.js describes.
 //
 // The style is the app's own and small: land, parks, water, buildings, roads and their names, in the
-// app's light or dark colours, with no icons. The route draws on top in the page's pace colours.
-// MapLibre's web worker is its own chunk (dist/lazy/actmap-worker.js), from the app's own origin.
-import { Map as MLMap, LngLatBounds, setWorkerUrl, setWorkerCount } from 'maplibre-gl';
+// app's light or dark colours, with no icons. The route draws on top in the page's pace colours (live:
+// the activity's colour), and the markers are the page's own (start, finish, each km or mile, and
+// where you are), drawn as Google's are. MapLibre's web worker is its own chunk
+// (dist/lazy/actmap-worker.js), from the app's own origin.
+import { Map as MLMap, LngLatBounds, Marker, setWorkerUrl, setWorkerCount } from 'maplibre-gl';
 
 const G = typeof window !== 'undefined' ? window : globalThis;
 const GH = G.GH || (G.GH = {});
@@ -51,8 +55,8 @@ function style(dark) {
   };
 }
 
-// The route as features: one line per stretch of the same pace colour, plus the whole route for the
-// casing, and the start and the end.
+// The route as features: one line per stretch of the same pace colour (live: one colour), plus each
+// stretch whole for the casing.
 function features(route, buckets) {
   const lines = [], casing = [];
   let cur = null, coords = [], all = [];
@@ -68,11 +72,9 @@ function features(route, buckets) {
   }
   flush();
   if (all.length > 1) casing.push(all);
-  const first = route[0], last = route[route.length - 1];
   return {
     lines: { type: 'FeatureCollection', features: lines },
     casing: { type: 'FeatureCollection', features: casing.map((c) => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: c } })) },
-    ends: { type: 'FeatureCollection', features: [{ type: 'Feature', properties: { k: 'end' }, geometry: { type: 'Point', coordinates: [last.lon, last.lat] } }, { type: 'Feature', properties: { k: 'start' }, geometry: { type: 'Point', coordinates: [first.lon, first.lat] } }] },
   };
 }
 
@@ -83,75 +85,166 @@ function grow(b, by) {
   return new LngLatBounds([sw.lng - dx, sw.lat - dy], [ne.lng + dx, ne.lat + dy]);
 }
 
+// The page's markers (src/styles/activity.css), in a wrapper MapLibre positions: start and finish, a
+// numbered disc per km or mile, and where you are (a dot in its accuracy, with a wedge for which way
+// you're heading).
+function markEl(cls, text) {
+  const e = G.document.createElement('div');
+  const inner = G.document.createElement('div');
+  inner.className = `mk ${cls}`;
+  if (text != null) inner.textContent = String(text);
+  else if (cls === 'mk-here') inner.innerHTML = '<span class="mk-acc"></span><span class="mk-dir"></span><span class="mk-dot"></span>';
+  e.appendChild(inner);
+  return e;
+}
+// A colour as MapLibre takes it, from the page's { hex, a }.
+const css = (c, d) => {
+  if (!c || !c.hex) return d;
+  if (!(c.a < 1)) return c.hex;
+  const n = (i) => parseInt(c.hex.slice(i, i + 2), 16);
+  return `rgba(${n(1)}, ${n(3)}, ${n(5)}, ${c.a})`;
+};
+
 let workerSet = false;
 function mount(el, o) {
+  const opt = o || {};
   if (!workerSet) {
     // The worker comes from the app's own origin, next to this chunk.
     setWorkerUrl(new URL('lazy/actmap-worker.js', G.document.baseURI).href);
     try { setWorkerCount(1); } catch (e) { /* older API */ }
     workerSet = true;
   }
-  let map = null, done = false, timer = 0;
-  const ok = () => { if (done) return; done = true; clearTimeout(timer); if (o.onReady) o.onReady(); };
-  const fail = (e) => { if (done) return; done = true; clearTimeout(timer); if (o.onFail) o.onFail(e); };
-  try {
-    const b = new LngLatBounds();
-    for (const p of o.route) b.extend([p.lon, p.lat]);
-    // The attribution line sits along the bottom (the page's own, as MapLibre's control is off): the
-    // route keeps clear of it.
-    // With o.interactive (an activity's summary), two fingers move and zoom the map, the way a map in a
-    // scrolling page works: one finger keeps scrolling the page, and a hint says to use two. It doesn't
-    // turn or tilt, and it stays around the route: no farther out than a little past where it starts,
-    // and no farther off than the route's own span.
-    const pad = { top: 28, right: 28, bottom: 46, left: 28 };
-    const touch = !!o.interactive;
-    map = new MLMap({
-      container: el, style: style(o.dark), bounds: b, fitBoundsOptions: { padding: pad }, interactive: touch, attributionControl: false,
-      fadeDuration: 0, maxZoom: 17.5, pixelRatio: Math.min(2, G.devicePixelRatio || 1), cancelPendingTileRequestsWhileZooming: true,
-      ...(touch ? {
+  let map = null, done = false, dead = false, timer = 0, loaded = false, follow = true;
+  let route = opt.route || [], lastHere = opt.here || null, here = null, startMark = null, fit = null;
+  const marks = [];
+  const ok = () => { if (done) return; done = true; clearTimeout(timer); if (opt.onReady) opt.onReady(); };
+  const fail = (e) => { if (done || dead) return; done = true; clearTimeout(timer); if (opt.onFail) opt.onFail(e); };
+  const pad = { top: 28, right: 28, bottom: 46, left: 28 };
+  const b = new LngLatBounds();
+  for (const p of route) b.extend([p.lon, p.lat]);
+  // Where a live map opens: where you are, else the route's end. It waits for one of those.
+  const liveAt = () => (lastHere ? [lastHere.lon, lastHere.lat] : route.length ? [route[route.length - 1].lon, route[route.length - 1].lat] : null);
+  const ctl = { provider: 'maplibre', update, destroy };
+  if (!opt.live || liveAt()) build();
+  return ctl;
+
+  function build() {
+    try {
+      // Two fingers move and zoom the map, the way a map in a scrolling page works: one finger keeps
+      // scrolling the page, and a hint says to use two. It doesn't turn or tilt; a summary's stays
+      // around the route (no farther out than a little past where it starts, and no farther off than
+      // the route's own span), and a live one follows you until a finger moves it. The attribution
+      // line sits along the bottom (the page's own, as MapLibre's control is off): the route keeps
+      // clear of it.
+      map = new MLMap({
+        container: el, style: style(opt.dark), attributionControl: false,
+        fadeDuration: 0, maxZoom: 17.5, pixelRatio: Math.min(2, G.devicePixelRatio || 1), cancelPendingTileRequestsWhileZooming: true,
+        ...(opt.live ? { center: liveAt(), zoom: 15.5 } : { bounds: b, fitBoundsOptions: { padding: pad }, maxBounds: grow(b, 1) }),
         cooperativeGestures: true, dragRotate: false, pitchWithRotate: false, touchPitch: false, keyboard: false, boxZoom: false,
-        maxBounds: grow(b, 1), locale: { 'CooperativeGesturesHandler.WindowsHelpText': 'Use Ctrl and scroll to zoom the map', 'CooperativeGesturesHandler.MacHelpText': 'Use \u2318 and scroll to zoom the map', 'CooperativeGesturesHandler.MobileHelpText': 'Use two fingers to move or zoom the map' },
-      } : {}),
-    });
-    if (touch) {
+        locale: { 'CooperativeGesturesHandler.WindowsHelpText': 'Use Ctrl and scroll to zoom the map', 'CooperativeGesturesHandler.MacHelpText': 'Use ⌘ and scroll to zoom the map', 'CooperativeGesturesHandler.MobileHelpText': 'Use two fingers to move or zoom the map' },
+      });
       map.touchZoomRotate.disableRotation();
-      // Back to the whole route: a small glass button, there once the map has been moved.
-      const fit = G.document.createElement('button');
+      // Back to the whole route (a summary) or to following you (live): a small glass button, there
+      // once a finger has moved the map.
+      fit = G.document.createElement('button');
       fit.type = 'button';
       fit.className = 'rf-btn rf-glass am-fit';
       fit.setAttribute('data-size', 'sm');
+      fit.setAttribute('data-variant', 'thick');
       fit.setAttribute('data-shape', 'circle');
-      fit.setAttribute('aria-label', 'Show the whole route');
+      fit.setAttribute('aria-label', opt.live ? 'Follow your position' : 'Show the whole route');
       fit.hidden = true;
-      fit.innerHTML = GH.ui && GH.ui.icon ? GH.ui.icon('expand') : '';
-      fit.addEventListener('click', () => { fit.hidden = true; map.fitBounds(b, { padding: pad, duration: 420 }); });
+      fit.innerHTML = GH.ui && GH.ui.icon ? GH.ui.icon(opt.live ? 'navigate' : 'expand') : '';
+      fit.addEventListener('click', () => {
+        fit.hidden = true;
+        if (!opt.live) { map.fitBounds(b, { padding: pad, duration: 420 }); return; }
+        follow = true;
+        if (lastHere) map.easeTo({ center: [lastHere.lon, lastHere.lat], duration: 420 });
+      });
       el.appendChild(fit);
-      map.on('moveend', (e) => { if (e && e.originalEvent) fit.hidden = false; });
+      map.on('dragstart', (e) => { if (e && e.originalEvent) { follow = false; fit.hidden = false; } });
+      map.on('moveend', (e) => { if (e && e.originalEvent && !opt.live) fit.hidden = false; });
       // Its zoom, for anything that asks (the tests).
       map.on('zoomend', () => { el.dataset.zoom = map.getZoom().toFixed(2); });
-      map.once('load', () => { el.dataset.zoom = map.getZoom().toFixed(2); try { map.setMinZoom(Math.max(0, map.getZoom() - 1)); } catch (err) { /* ignore */ } });
+      map.on('zoom', () => sizeHere());
+      map.once('load', () => {
+        el.dataset.zoom = map.getZoom().toFixed(2);
+        if (!opt.live) { try { map.setMinZoom(Math.max(0, map.getZoom() - 1)); } catch (err) { /* ignore */ } }
+      });
+    } catch (e) { setTimeout(() => fail(e), 0); return; }
+    // Offline, or the map never came: the drawn route stays. (A tile that fails once the map is up
+    // just leaves a gap.)
+    timer = setTimeout(() => fail(new Error('timeout')), 20000);
+    map.on('error', (e) => { if (!loaded) fail(e && e.error); });
+    map.on('load', () => {
+      loaded = true;
+      const f = features(route, opt.live ? null : opt.buckets);
+      map.addSource('route-case', { type: 'geojson', data: f.casing });
+      map.addSource('route', { type: 'geojson', data: f.lines });
+      map.addLayer({ id: 'route-case', type: 'line', source: 'route-case', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': css(opt.casing, '#ffffff'), 'line-width': opt.live ? 11 : 9 } });
+      const cols = opt.colors || [];
+      const col = opt.live ? css(opt.line, '#e5674f') : ['match', ['get', 'b'], 0, css(cols[0], '#0465af'), 1, css(cols[1], '#5492c5'), 3, css(cols[3], '#cb7960'), 4, css(cols[4], '#bd3c22'), css(cols[2], '#a4a4a4')];
+      map.addLayer({ id: 'route', type: 'line', source: 'route', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': col, 'line-width': 5 } });
+      // The markers: each km or mile, then the finish and the start on top (a summary); the start and
+      // where you are (live).
+      const add = (cls, at, text) => { const m = new Marker({ element: markEl(cls, text), anchor: 'center' }).setLngLat(at).addTo(map); marks.push(m); return m; };
+      if (!opt.live) {
+        for (const m of opt.marks || []) add('mk-km', [m.lon, m.lat], m.n);
+        if (route.length) { add('mk-end', [route[route.length - 1].lon, route[route.length - 1].lat]); add('mk-start', [route[0].lon, route[0].lat]); }
+      } else {
+        if (route.length) startMark = add('mk-start', [route[0].lon, route[0].lat]);
+        here = add('mk-here', liveAt());
+        placeHere();
+      }
+      map.once('idle', ok);
+    });
+  }
+
+  // Where you are: the dot, its accuracy in pixels at this zoom (MapLibre's 512 px tiles), the wedge.
+  function placeHere() {
+    if (!here || !lastHere) return;
+    here.setLngLat([lastHere.lon, lastHere.lat]);
+    const dot = here.getElement().firstChild;
+    const h = lastHere.heading;
+    dot.toggleAttribute('data-heading', h != null);
+    if (h != null) dot.style.setProperty('--mk-heading', `${Math.round(h)}deg`);
+    sizeHere();
+  }
+  function sizeHere() {
+    if (!here || !lastHere || !map) return;
+    const mpp = (40075016.686 * Math.cos((lastHere.lat * Math.PI) / 180)) / (512 * 2 ** map.getZoom());
+    here.getElement().firstChild.style.setProperty('--mk-acc', `${Math.min(400, (lastHere.acc > 0 ? lastHere.acc : 0) / mpp).toFixed(1)}px`);
+  }
+
+  // Live: the route so far, and where you are now (kept in sight while it follows).
+  function update(u) {
+    if (dead || !u) return;
+    if (u.route) route = u.route;
+    if (u.here) lastHere = u.here;
+    if (!map) { if (opt.live && liveAt()) build(); return; }
+    if (!loaded) return;
+    if (u.route) {
+      const f = features(route, null);
+      map.getSource('route-case').setData(f.casing);
+      map.getSource('route').setData(f.lines);
+      if (!startMark && route.length) startMark = new Marker({ element: markEl('mk-start'), anchor: 'center' }).setLngLat([route[0].lon, route[0].lat]).addTo(map);
+      if (startMark && !marks.includes(startMark)) marks.push(startMark);
     }
-  } catch (e) { setTimeout(() => fail(e), 0); return { destroy() {} }; }
-  // Offline, or the map never came: the drawn route stays. (A tile that fails once the map is up
-  // just leaves a gap.)
-  let loaded = false;
-  timer = setTimeout(() => fail(new Error('timeout')), 20000);
-  map.on('error', (e) => { if (!loaded) fail(e && e.error); });
-  map.on('load', () => {
-    loaded = true;
-    const f = features(o.route, o.buckets);
-    map.addSource('route-case', { type: 'geojson', data: f.casing });
-    map.addSource('route', { type: 'geojson', data: f.lines });
-    map.addSource('ends', { type: 'geojson', data: f.ends });
-    map.addLayer({ id: 'route-case', type: 'line', source: 'route-case', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': o.casing || '#ffffff', 'line-width': 9 } });
-    const col = ['match', ['get', 'b'], 0, o.colors[0], 1, o.colors[1], 3, o.colors[3], 4, o.colors[4], o.colors[2]];
-    map.addLayer({ id: 'route', type: 'line', source: 'route', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': col, 'line-width': 5 } });
-    map.addLayer({ id: 'ends', type: 'circle', source: 'ends', paint: { 'circle-radius': ['match', ['get', 'k'], 'start', 6.5, 7.5], 'circle-color': ['match', ['get', 'k'], 'start', o.start || '#1d7a41', o.end || '#0c0d12'], 'circle-stroke-width': 2.5, 'circle-stroke-color': o.ring || '#ffffff' } });
-    map.once('idle', ok);
-  });
-  return {
-    destroy() { done = true; clearTimeout(timer); try { map.remove(); } catch (e) { /* already gone */ } },
-  };
+    if (u.here) {
+      placeHere();
+      if (follow) map.easeTo({ center: [lastHere.lon, lastHere.lat], duration: 600 });
+    }
+  }
+
+  function destroy() {
+    dead = true;
+    done = true;
+    clearTimeout(timer);
+    for (const m of marks) { try { m.remove(); } catch (e) { /* gone */ } }
+    try { if (map) map.remove(); } catch (e) { /* already gone */ }
+    map = null;
+    if (fit) fit.remove();
+  }
 }
 
 GH.actmap = { mount, style, features };

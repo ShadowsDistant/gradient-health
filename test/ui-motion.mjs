@@ -201,7 +201,7 @@ section('A tab change');
     await Promise.resolve();
     await new Promise((res) => setTimeout(res, 0));
     const layer = document.querySelector('.screen-exit');
-    const out = { sync, layer: !!layer, smooth: window.Refract.duration('duration-spring-smooth', 640) };
+    const out = { sync, layer: !!layer };
     // Today's floating buttons (Plan has none): a copy of them dissolves where they were (Refract's
     // dematerialize, from the frame's read pass), gone with the old page.
     const fc = document.querySelector('.float-actions.motion-copy');
@@ -244,8 +244,8 @@ section('A tab change');
   check('the layer is inert and hidden from assistive tech', r.inert === true);
   check('no id in the layer is used anywhere else', r.shared && r.shared.length === 0, r.shared);
   check('both move by transform and opacity only', r.layerProps && r.layerProps.join() === 'opacity,transform' && r.screenProps.join() === 'opacity,transform', `${r.layerProps} / ${r.screenProps}`);
-  check('a tab change morphs in place (Refract\'s page motion): the old page grows to 103%, the new one settles from 97%', /scale\(1\.03\)/.test(r.layerTo) && /scale\(0\.97\)/.test(r.screenFrom), `${r.layerTo} / ${r.screenFrom}`);
-  check('on Refract\'s smooth spring', r.ms === r.smooth && r.ms >= 300 && r.ms <= 800, `${r.ms} vs ${r.smooth}`);
+  check('a tab change morphs in place (Refract\'s page motion): the old page grows to 101.5%, the new one settles from 98.5%', /scale\(1\.015\)/.test(r.layerTo) && /scale\(0\.985\)/.test(r.screenFrom), `${r.layerTo} / ${r.screenFrom}`);
+  check('quick: the new page is in within 240 ms (1.7.0 took 640)', r.ms > 0 && r.ms <= 240, r.ms);
   check('the bar has the new title', r.title === 'Plan', r.title);
   check('the floating buttons go with the old page: a copy of them dissolves where they were (Refract\'s dematerialize)', r.float.had && r.float.hidden && r.float.copy && r.float.glass === 2 && r.float.dissolves && r.float.ms <= 360, r.float);
   check('when it ends the layer is gone, with nothing left over', r.after.exit === 0 && r.after.copies === 0 && r.after.fading === 0 && r.oldGone, r.after);
@@ -264,12 +264,12 @@ section('Push, Back, and where the old page starts');
     await new Promise((res) => setTimeout(res, 0));
     const layer = document.querySelector('.screen-exit'), screen = document.getElementById('screen');
     const lt = m.anims(layer).find((a) => m.props(a).includes('transform')), st = m.anims(screen).find((a) => m.props(a).includes('transform'));
-    const out = { to: lt && m.frames(lt).slice(-1)[0].transform, from: st && m.frames(st)[0].transform, ms: st && st.effect.getTiming().duration, view: screen.dataset.view, smooth: window.Refract.duration('duration-spring-smooth', 640) };
+    const out = { to: lt && m.frames(lt).slice(-1)[0].transform, from: st && m.frames(st)[0].transform, ms: st && st.effect.getTiming().duration, view: screen.dataset.view };
     await U.motion.settled();
     return out;
   });
   check('a push (Refract\'s page motion): the old page falls back a third of the way, the new one slides in from the edge', /translateX\(-30%\)/.test(push.to) && /translateX\(100%\)/.test(push.from), `${push.to} / ${push.from}`);
-  check('a push is on Refract\'s smooth spring', push.ms === push.smooth && push.ms >= 300 && push.ms <= 800, `${push.ms} vs ${push.smooth}`);
+  check('a push is quick, on Refract\'s snappy spring (340 ms; 1.7.0 took 640)', push.ms === 340, push.ms);
   await wait(200);
   const pop = await page.evaluate(async () => {
     const U = window.GH.ui, m = window.__m;

@@ -67,7 +67,7 @@ await settle(900);
 const sheet = await page.evaluate(() => {
   const d = document.querySelector('dialog.mu-sheet[open]');
   if (!d) return null;
-  return { title: d.querySelector('.rf-sheet-title').textContent, facts: [...d.querySelectorAll('.mu-fact')].map((f) => f.textContent.replace(/\s+/g, ' ').trim()), bars: d.querySelectorAll('.mu-bar').length, tip: d.querySelector('.mu-tip').textContent, moves: [...d.querySelectorAll('[data-act="moveInfo"] .rf-list-title')].map((e) => e.textContent), lines: [...d.querySelectorAll('.rf-list-row .rf-badge')].map((e) => e.textContent), lit: [...d.querySelectorAll('.mu-fig .bm-m')].filter((g) => g.dataset.l === '5').length, haptic: window.__haptics.includes('select') };
+  return { title: d.querySelector('.rf-sheet-title').textContent, facts: [...d.querySelectorAll('.mu-fact')].map((f) => f.textContent.replace(/\s+/g, ' ').trim()), bars: d.querySelectorAll('.mu-bar').length, tip: d.querySelector('.mu-tip').textContent, moves: [...d.querySelectorAll('[data-act="moveInfo"] .rf-list-title')].map((e) => e.textContent), lines: [...d.querySelectorAll('.rf-list-row .rf-badge')].map((e) => e.textContent), lit: [...d.querySelectorAll('.mu-fig .bm-m')].filter((g) => g.dataset.l === '5').length, haptic: window.__haptics.includes('sheet') && !window.__haptics.includes('select') };
 });
 check('tapping the chest opens the Chest sheet', sheet && sheet.title === 'Chest', sheet);
 check('with its sets, share of training and times it went up', sheet && sheet.facts.length === 3 && /sets in the last 4 weeks/.test(sheet.facts[0]) && /of your training/.test(sheet.facts[1]) && /went up/.test(sheet.facts[2]), sheet && sheet.facts);
@@ -75,7 +75,7 @@ check('twelve weekly bars, this week read out', sheet && sheet.bars === 12 && /^
 check('the exercises that trained it, push-ups first', sheet && sheet.moves.length >= 2 && /Push-up/.test(sheet.moves[0]), sheet && sheet.moves);
 check('progress lines with how much', sheet && sheet.lines.length >= 1 && sheet.lines.every((t) => /^[+−]/.test(t)), sheet && sheet.lines);
 check('its figure lights just that muscle', sheet && sheet.lit === 1);
-check('the tap gives a selection haptic', sheet && sheet.haptic);
+check('the tap gives one haptic, the sheet\'s as it rises', sheet && sheet.haptic);
 await page.click('dialog.mu-sheet .mu-bar:nth-child(11)');
 check('tapping a bar reads that week out', /^Week of \w{3} \d+: /.test(await page.evaluate(() => document.querySelector('dialog.mu-sheet .mu-tip').textContent)));
 await page.evaluate(() => window.GH.ui.closeSheets());

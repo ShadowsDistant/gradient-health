@@ -254,21 +254,24 @@
   }
 
   /* ---------------------------------------------------------------- route changes */
-  // How each kind moves: Refract 1.4's page motion (Refract.page), on its springs. A push slides the
-  // new page in from the edge on the smooth spring (the glide for large surfaces) while the old one
-  // falls back a third of the way and fades; Back plays that in reverse, the page under it coming
-  // back from a third of the way over. A tab change morphs in place: the new page settles from 97% as
-  // the old one grows to 103% and fades (360 ms). Each fade has a timeline of its own, so the old page
-  // is gone well before the end and the two are rarely both half there.
+  // How each kind moves: Refract 1.4's page motion (Refract.page), on its snappy spring, quick enough
+  // that a page change never feels like a wait. A push slides the new page in from the edge (340 ms)
+  // while the old one falls back a third of the way and fades; Back plays that in reverse, the page
+  // under it coming back from a third of the way over. A tab change morphs in place: the new page
+  // settles from 98.5% (240 ms) as the old one fades and grows a touch (140 ms), so the new page is
+  // there almost at once. Each fade has a timeline of its own, so the old page is gone well before
+  // the end and the two are rarely both half there. (1.7.0 ran both on the smooth spring, 640 ms:
+  // pages took up to a second to settle.)
   const TABS = { left: 1, right: 1, tab: 1 };
   const SLIDES = { push: 1, pop: 1, left: 1, right: 1, tab: 1 };
+  const PAGE_MS = 340, TAB_IN_MS = 240, TAB_OUT_MS = 140;
   function routeSpec(kind) {
     const t = tok();
-    const spring = { duration: t.smoothMs, easing: t.smooth };
+    const spring = { duration: PAGE_MS, easing: t.snappy };
     if (TABS[kind]) {
       return {
-        in: { move: ['scale(0.97)', 'scale(1)'], fade: [[0], [1, 0.45]], time: spring },
-        out: { move: ['scale(1)', 'scale(1.03)'], fade: [[1], [0]], time: { duration: 360, easing: t.standard } },
+        in: { move: ['scale(0.985)', 'scale(1)'], fade: [[0], [1, 0.5]], time: { duration: TAB_IN_MS, easing: t.snappy } },
+        out: { move: ['scale(1)', 'scale(1.015)'], fade: [[1], [0]], time: { duration: TAB_OUT_MS, easing: t.standard } },
       };
     }
     const push = kind === 'push';
@@ -456,12 +459,12 @@
         Object.assign(c.style, { position: 'absolute', margin: '0', left: `${title.r.left - box.left}px`, top: `${title.r.top - box.top}px`, width: `${title.r.width}px`, height: `${title.r.height}px`, opacity: '1', translate: 'none', transition: 'none' });
         shield(c);
         aside(() => holder.appendChild(c));
-        const a = show(c, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${dir * 10}px)` }], { duration: 180, easing: t.standard, fill: 'forwards' });
+        const a = show(c, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${dir * 10}px)` }], { duration: 140, easing: t.standard, fill: 'forwards' });
         track(Promise.all(a.map(ended)).then(() => holder.remove()));
       }
       // The title's own fade (data-scrolled) already brings it in when it wasn't showing.
       if (bar.hasAttribute('data-scrolled') && el.textContent.trim()) {
-        if (title.copy) show(el, [{ opacity: 0, transform: `translateX(${-dir * 10}px)` }, { opacity: 1, transform: 'none' }], { duration: 260, delay: 60, easing: t.enter, fill: 'backwards' });
+        if (title.copy) show(el, [{ opacity: 0, transform: `translateX(${-dir * 10}px)` }, { opacity: 1, transform: 'none' }], { duration: 200, delay: 40, easing: t.enter, fill: 'backwards' });
       } else noFade(el);
     };
     // The bar's change (core.js), with its buttons shape-shifting.
@@ -724,7 +727,7 @@
       // (The click of the tap that closed it comes after this.)
       setTimeout(() => doc.removeEventListener('click', click, true), 400);
       if (!m.picked) {
-        U.haptic('back');
+        U.haptic('dismiss');
         const a = doc.activeElement;
         if (trigger.isConnected && (!a || a === doc.body || el.contains(a))) trigger.focus({ preventScroll: true });
       }
@@ -736,7 +739,7 @@
       setTimeout(gone, anims.length ? 900 : 0);
     });
     r.menu.open(el, trigger);
-    U.haptic('nav');
+    U.haptic('menu');
     return el;
   };
 })(typeof window !== 'undefined' ? window : globalThis);

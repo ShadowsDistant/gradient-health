@@ -612,7 +612,7 @@
   // theme, sounds and haptics, the outdoor activity's), so changing one keeps every plan worked out
   // (and the plans kept across launches, see src/optimizer.js). Rest, supersets and the hour a day
   // rolls over do change plans, and so does anything new.
-  const SCREEN_PREFS = new Set(['figure', 'figSkin', 'figShirt', 'theme', 'density', 'sound', 'vibrate', 'haptics', 'hapticStrength', 'reducedMotion', 'actType', 'actStreets']);
+  const SCREEN_PREFS = new Set(['figure', 'figSkin', 'figShirt', 'theme', 'density', 'sound', 'vibrate', 'haptics', 'hapticStrength', 'reducedMotion', 'actType', 'actStreets', 'actMaps', 'actAuto', 'actVoice']);
   function planProfile(p) {
     if (!p || !p.prefs || typeof p.prefs !== 'object') return p;
     const prefs = {};

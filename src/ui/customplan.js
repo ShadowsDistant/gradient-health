@@ -300,7 +300,7 @@
       const { plan } = C().add(S, draft);
       U.save();
       ctl.close('ok');
-      U.haptic('success');
+      U.haptic('copy');
       U.open('planEdit', plan.id);
       U.toast('Copied your current plan', 'positive', 'Change anything. The coach\'s plan stays as it is.');
     };
@@ -460,14 +460,14 @@
       n > 1 ? { act: 'cpDayDelete', arg: String(di), icon: 'trash', label: 'Delete day', tone: 'critical' } : false,
     ], { label: `Day ${di + 1}${plan.days[di].title ? `: ${plan.days[di].title}` : ''}` });
     U.act.cpDayMove = (b) => { const [a, dir] = b.dataset.arg.split(':').map(Number); edit((p) => { const [d] = p.days.splice(a, 1); p.days.splice(a + dir, 0, d); }); U.haptic('drop'); };
-    U.act.cpDayCopy = (b) => { const a = Number(b.dataset.arg); edit((p) => { p.days.splice(a + 1, 0, JSON.parse(JSON.stringify(p.days[a]))); }); delete ui.wd[plan.id]; U.haptic('log'); };
+    U.act.cpDayCopy = (b) => { const a = Number(b.dataset.arg); edit((p) => { p.days.splice(a + 1, 0, JSON.parse(JSON.stringify(p.days[a]))); }); delete ui.wd[plan.id]; U.haptic('copy'); };
     U.act.cpDayDelete = (b) => {
       const a = Number(b.dataset.arg);
       const before = JSON.parse(JSON.stringify(plan.days));
       const wdBefore = plan.weekdays ? plan.weekdays.slice() : null;
       edit((p) => { p.days.splice(a, 1); p.weekdays = null; });
       delete ui.wd[plan.id];
-      U.haptic('heavy');
+      U.haptic('remove');
       U.toast('Day deleted', 'neutral', undefined, { label: 'Undo', onClick: () => { if (U.route.arg === plan.id) { edit((p) => { p.days = before; p.weekdays = wdBefore; }); U.haptic('undo'); } } });
     };
   };
@@ -539,7 +539,7 @@
       const at = k;
       ctl.close('ok');
       edit((p) => { p.days[di].items.splice(at, 1); });
-      U.haptic('heavy');
+      U.haptic('remove');
       U.toast(`Removed ${M().MOVES[it.move].name.toLowerCase()}`, 'neutral', undefined, { label: 'Undo', onClick: () => { if (U.route.arg === planId) { edit((p) => { if (p.days[di]) p.days[di].items.splice(at, 0, it); }); U.haptic('undo'); } } });
     };
     U.act.cpReplace = () => { ctl.close('ok'); picker(planId, di, k); };
@@ -676,7 +676,7 @@
     });
     U.on.cpGroup = (el, ev, v) => { st.group = v; refresh(); };
     U.on.cpMine = (el, ev, v) => { st.mine = !!v; refresh(); };
-    U.act.cpPickDone = () => ctl.close('ok');
+    U.act.cpPickDone = () => { U.haptic('dismiss'); ctl.close('ok'); };
     U.act.cpPick = (b) => {
       const id = b.dataset.arg;
       const m = M().MOVES[id];
@@ -684,7 +684,7 @@
       const item = m.timed ? { move: id, sets: 3, secs: Math.max(5, Math.min(600, m.start || 30)) } : { move: id, sets: 3, reps: Math.max(1, Math.min(100, m.start || 10)) };
       if (replaceK != null) {
         edit((p) => { const old = p.days[di].items[replaceK]; if (old) p.days[di].items[replaceK] = Object.assign(item, { sets: old.sets }, old.rest != null ? { rest: old.rest } : {}); });
-        U.haptic('success');
+        U.haptic('swap');
         ctl.close('ok');
         return;
       }
@@ -750,7 +750,7 @@
       ctl.close('ok');
       const copy = C().duplicate(U.S, id);
       U.save();
-      U.haptic('success');
+      U.haptic('copy');
       U.open('planEdit', copy.id);
       U.toast('Duplicated', 'positive', copy.name);
     };
@@ -800,13 +800,14 @@
       const who = st.withName && name ? `${name} shared a workout plan with you` : 'Here\'s a workout plan for you';
       const text = `${who}: ${plan.name} (${C().summary(plan)}). Open it in Gradient Health: ${code()}`;
       const ok = GH.platform && GH.platform.share(text);
-      U.haptic('tap');
+      if (ok) U.haptic('send'); // (else the link is copied, with copy's)
       if (U.badgeEvent) U.badgeEvent('sharedPlan');
       if (!ok) U.act.cpCopyLink();
     };
     U.act.cpCopyLink = async () => {
       if (!st.data) return;
       const ok = GH.platform && await GH.platform.copy(code());
+      if (ok) U.haptic('copy');
       U.toast(ok ? 'Link copied' : 'Couldn\'t copy the link', ok ? 'positive' : 'caution');
     };
     make();
@@ -877,7 +878,7 @@
       const r = C().save(U.S, plan);
       st.saved = r.plan; st.existed = r.existed;
       U.save(true);
-      U.haptic('success');
+      U.haptic('save');
       ctl.update(body());
       drawThumbs(ctl.el);
       if (U.route.view === 'plans') U.render();
@@ -1005,7 +1006,7 @@
       st.saved = r.plan;
       st.step = 'saved';
       U.save(true);
-      U.haptic('success');
+      U.haptic('save');
       draw();
       if (U.route.view === 'plans') U.render();
     };

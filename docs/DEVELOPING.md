@@ -23,6 +23,12 @@ src/health.js            Health Connect client (read and write), hand logs, per-
 src/food.js              food tracking: targets, logging, meals, the learned burn, Health Connect writes
 src/foodnet.js           Open Food Facts search and barcodes (through the Android shell)
 src/scanner.js           the barcode camera sheet; src/barcode.js is its lazy ZXing reader
+src/activity.js          outdoor activities: the recorder (the Android shell's, or the browser's), and
+                         the track's maths: distance, pace, splits, auto-pause, records (GH.activity)
+src/gmap.js              the map behind a route from Google (Maps JavaScript API), a lazy chunk:
+                         GH.lazy('gmap'); src/actmap.js is MapLibre on OpenFreeMap, GH.lazy('actmap')
+src/ui/activity.js       an activity's summary, the history and records, the maps (U.actMap) and an
+                         activity leaving (U.actFoldAway); src/ui/actlive.js records one
 src/insights.js          on-device insights
 src/coach.js             the built-in coach: report, answers, today's decisions, suggestions, and the
                          number check every AI answer goes through (keepToGiven, grounded)
@@ -124,6 +130,10 @@ left alone. A few conventions:
   `dematerialize`), and a button whose words change (`U.floatKey`) flows to its new width. That's
   Refract's own motion, asked for by name; the lint counts it apart and holds it to what Refract's
   API animates.
+- Cancelling a workout is a moment of its own (`src/ui/player.js`): in the player, what's on it drops
+  and shrinks away, then the panel dissolves into Today, whose cards rise back with the workout not
+  started; from Today, its buttons pinch away and its card folds and settles back
+  (`U.todayCancelled`); the toast with Undo only comes after. Reduced motion: short fades.
 
 **Parts that load when they're needed.** Set-up (`src/ui/onboarding.js`), the plan review with
 Why this plan (`src/planreview.js`, `src/ui/review.js`), How it works (`src/data/science.js`,
@@ -144,8 +154,8 @@ controls take its liquid engine only when touched (Refract, the design system, b
 
 **Scrolling, and work that can wait.** A fling should only move what's already drawn
 (`src/styles/perf.css`). While the page scrolls (`#app[data-scrolling]`, set in `core.js` and
-cleared 150 ms after the last scroll) the glass over it keeps its blur, rim and light but doesn't
-refract, and the background glow holds still; the glow also stops drifting 20 s after the last
+cleared 150 ms after the last scroll) the background glow holds still (the glass over it keeps its
+lens: dropping it for the scroll showed as the glass clearing and frosting again); the glow also stops drifting 20 s after the last
 touch, key or scroll (`#app[data-idle]`), and fades out in its gradients' own stops rather than
 through a mask. The bar's frosted edge is a single blur, drawn only while it shows, and whether it
 shows comes from an IntersectionObserver on the large title, so a scroll reads nothing from the
@@ -156,13 +166,15 @@ Progress, Settings and the moves it made no difference and moved rows by 1 px, s
 page opened again where it was left gets the heights its blocks had,
 so it opens on what was showing. Medals share one set of gradients. Progress bars shine once, as
 they show or change, not forever. Work that can wait (the 3D figure's warm-up and stills, Plan's
-tiles, a background re-render such as Today's insight line) waits for `U.calm()`: no scroll or touch
-for 400 ms and no sheet moving (`U.whenCalm(fn)` runs it then). `test/ui-scroll.mjs` scrolls every
+tiles, a background re-render such as Today's insight line, the 3D canvas shrinking once no figure
+shows) waits for `U.calm()`: no scroll or touch for 400 ms, no sheet moving and no control held or
+gliding (`U.controlsMoving`; `U.whenCalm(fn)` runs it then). `test/ui-scroll.mjs` scrolls every
 main screen at 4× CPU, traced, and holds the budgets; `--vs=<dir>` compares two builds run by run, and
 `--ablate=<part>` switches one part off to show what it costs.
 
 **Saving.** `U.save()` never writes in the tap that changed something. `GH.store` waits for the page
-to be idle (a second at most) and hands the JSON to `AndroidBridge.saveAsync`, which writes it on its
+to be idle (a second at most), and while it's busy (a scroll, a drag, a knob gliding) for `U.calm()`
+too (three seconds at most), then hands the JSON to `AndroidBridge.saveAsync`, which writes it on its
 own thread, so a burst of taps is one write. A waiting save is written at once when the page is
 hidden or goes away. Each save also fires `gh-change` on `document` (badges listen for it), and
 `GH.migrations` holds the upgrades `store.migrate` runs on a loaded state. A restored backup goes
@@ -187,11 +199,10 @@ What the app turns off, and why:
   Refract's would buzz a second time on every control.
 - **Refraction by default** (`Refract.init(root, { lens: false })`, `RF_INIT` in `src/ui/core.js`):
   only glass marked `data-lens` refracts, since each lens is redrawn every frame the page moves
-  under it, and none refracts while the page scrolls (its lens layer's filter loses the map,
-  `src/styles/perf.css`).
+  under it.
 - **The light while busy**: on a phone, glass rims follow how it's tilted. The light holds still
-  while the page scrolls, while the workout player or a live activity is open, with Moving
-  background off and under reduced motion, and follows the tilt again when things are calm
+  while the page scrolls, while a sheet moves, while the workout player or a live activity is open,
+  with Moving background off and under reduced motion, and follows the tilt again when things are calm
   (`U.steadyLight`, `core.js`).
 - **Click effects where a drag starts**: Refract's ripple, click ring and icon effects stay (they're
   part of its feel), except on Plan's week strip, whose day pills are dragged
@@ -206,7 +217,11 @@ that keep their speed, and lands with a squash, exactly as Refract's own. A swit
 segmented control's bead are the engine's only while they're touched or moving: at rest Refract's
 style sheet puts the knob at either end, and the bead sits where a transform puts it. The engine's
 lens is drawn pixel by pixel in JavaScript, so a control costs nothing until it's touched (at launch
-these held up the first frames).
+these held up the first frames); the knob's maps are drawn once, in a calm moment after the first
+switch shows, so the first touch doesn't wait on them. The knob glides on the main thread, so
+nothing heavy runs while it does: a switch's handler runs after the next frame, a re-render of the
+same page it asks for waits until the knob has landed (1.2 s at most; `holdRenders` in `core.js`),
+and work waiting for `U.calm()` waits for the knob too.
 A resting bead's lens is a backdrop filter redrawn every frame the page moves behind it, for an
 edge hidden under the frost, so it only works while the bead is lifted (`data-lifted`;
 `src/styles/controls.css`). The tab bar is Refract's own (its pill and its lens); the app keeps
@@ -224,8 +239,10 @@ Where the app uses Refract 1.4's newer parts:
   outside and Android's Back close it, and focus goes back to the button. Opened from a sheet, it
   goes in the sheet's dialog. A sheet that holds more than a list stays a sheet.
 - **Sheets** (`src/ui/sheet.js`, `src/styles/sheet.css`): the panel's material is a layer of
-  Refract's thick glass at medium height (its frost and the rim that catches the light), and solid
-  at full height, while it moves and while its content scrolls.
+  Refract's thick glass with its silver rim (the edge that catches the light) and sheen in every
+  frame, from the slide up through a drag to the slide out. It's frosted at medium height, and
+  solid under the rim and sheen at full height, while it moves and while its content scrolls (a
+  blur under anything that moves is redrawn every frame; the rim and sheen move with their layer).
 - **Page dots**: Refract's `.rf-pagedots` (its ink worm stretches to the page and splats there) for
   the badge reveal and the tour; they follow the page however it's turned (`aria-current`).
 - **Plan's week strip**: the day picked is a bead of the liquid engine, as the segmented controls'
@@ -312,6 +329,13 @@ APK and the Android App Bundle with the test key and attaches them to the run as
 `gradient-health-test-<commit>` artifact. Only on `main` does a second job sign them with the release
 key and replace the release tagged `latest` (see Publishing, Builds).
 
+**Google Maps key.** `GOOGLE_MAPS_API_KEY=… npm run apk` puts a Maps JavaScript API key in the APK
+(`assets/maps.key`, read only through the bridge's `mapsKey()`); without one the maps are
+OpenFreeMap's. It's never in the repo or in `dist/`, and the script never prints it. CI passes the
+repository secret `GOOGLE_MAPS_API_KEY` to both APK builds (missing is fine). In Google Cloud, enable
+the Maps JavaScript API and restrict the key to that API and to the website
+`https://appassets.androidplatform.net/*` (the WebView's origin).
+
 **Signing keys.** Builds are signed with the release key when it's given (in CI only by the release
 job on `main`; see Publishing), else with `android/gradient-health.keystore` (alias `gradient`,
 password `gradient-health`), a test key committed so a local build works out of the box. Its
@@ -322,11 +346,17 @@ and keyboard insets to the page (`__gh.setInsets`), which pads itself with `--sa
 and `--sar`. The page reports its theme back (`AndroidBridge.setSystemBars`) so the bar icons stay
 readable when the app's theme differs from the phone's.
 
-**Haptics.** `AndroidBridge.haptic(kind)` plays one of 31 kinds, in five groups: touch (`tap`,
-`press`, `select`, `tick`, `edge`, `toggleOn`, `toggleOff`, `detent`), navigation (`tab`, `nav`,
-`back`, `grab`, `drop`), feedback (`success`, `log`, `undo`, `deny`, `warning`, `error`, `heavy`),
-workout (`countdown`, `go`, `pause`, `setDone`, `done`, `workoutDone`, `levelUp`, `milestone`, `pr`)
-and moments (`badge`, `celebrate`). Each is its own composition of the phone's haptic primitives (see
+**Haptics.** `AndroidBridge.haptic(kind)` plays one of its kinds, in five groups: touch (`tap`,
+`press`, `select`, `tick`, `edge`, `toggleOn`, `toggleOff`, `detent`, `hold` for a long press that
+picks something up, `day` for a day picked), navigation (`tab`, `nav` for a page, `back`, `grab`,
+`drop`, `sheet` as a sheet rises, `menu` as a menu blooms, `dismiss` as either is put away, `swipe`
+for a sheet flicked down), feedback (`success`, `log`, `undo`, `deny`, `warning`, `error`, `heavy`,
+`save`, `copy`, `send`, `remove` for an entry taken out with Undo, `refresh` when fresh data is in,
+`scan` for a code read), workout (`countdown`, `go`, `pause`, `setDone`, `done`, `workoutDone`,
+`levelUp`, `milestone`, `pr`, `start`, `cancel`, `skip`, `extend` for more rest, `swap`) and moments
+(`badge`, `celebrate`). An action plays the kind for what it does, one per tap: a tap that opens a
+sheet leaves it to the sheet's own, a menu's pick to its action's. Each is its own composition of
+the phone's haptic primitives (see
 `Haptics.java`: each primitive's support is checked, with a stand-in for a missing one), then a
 predefined effect for the one-beat kinds, then an amplitude waveform, then on/off pulses. Light plays
 at 0.75, Medium (the default) at full strength, and Strong adds a low tick after each click. Every
@@ -334,9 +364,11 @@ kind plays as a media vibration, so the phone's touch intensity can't dull it; t
 navigation kinds are skipped when its touch feedback is off. The bridge plays them from its own
 thread, without waiting for the UI thread. `platform.js` has the same kinds as browser patterns, a
 rank for each, and the rules for when two meet (a toast's haptic is a consequence that leaves its
-action's feel alone); `core.js` (`wire`) and `sheet.js` play the ones that come with controls, sheets
-and dialogs by themselves, `data-haptic="<kind>"` on an action plays that kind, and
-`src/ui/hapticsui.js` has the Settings rows (`U.hapticRows`) and the Feel each one gallery. With the
+action's feel alone); `core.js` (`wire`), `sheet.js` and `U.menu` play the ones that come with
+controls, sheets, menus and dialogs by themselves (a dialog's action can name its own: `haptic:
+'cancel'` on Cancel workout), `data-haptic="<kind>"` on an action plays that kind, and
+`src/ui/hapticsui.js` has the Settings rows (`U.hapticRows`), the Feel each one gallery and the
+haptics of menus Refract opens by itself (a popover a button points at). With the
 app out of sight, workout timer alerts fall back to alarm-class vibrations (`vibrate`,
 `vibratePattern`), the only kind Android lets through then.
 
@@ -384,12 +416,28 @@ Settings, Health data, shows the switch and "Every 15 minutes · last at 3:15 pm
 foreground service of type `location` that the page starts while it's in front (so no background
 location permission is needed). It asks for precise location, physical activity (the step counter,
 Android 10+) and notifications (13+) with `actRequestPermissions()` (answer:
-`__gh.onActPermissions`), then `actStart({id, type, title, units?})`. The service takes a GPS fix
-about once a second from the GPS provider (else the fused provider on Android 12+, else the network),
-counts steps from the phone's step counter, and shows an ongoing, quiet notification,
-"Run · 12:34 · 2.14 km" with the average pace, Pause or Resume and Finish; tapping it opens the app
-(the page gets the route `activity`). Finish there ends the activity and leaves a note that opens the
-summary. While the page is in front it gets `__gh.onActivity(state)` about once a second.
+`__gh.onActPermissions`), then `actStart({id, type, title, units?, autoPause?, voice?})`. The
+service takes a GPS fix about once a second from the GPS provider (on Android 12+ with a
+`LocationRequest` at high accuracy, every second and unbatched; else the fused provider on Android
+12+, else the network). Until the GPS has a good fix it also passes the page a rough position (the
+freshest one the phone has, then the fused or network provider's every 2 s, for 3 minutes at most),
+for the map only, never into the track. It counts steps from the phone's step counter, and shows an
+ongoing, quiet notification, "Run · 12:34 · 2.14 km" with the average pace (or "Auto-paused"), Pause
+or Resume and Finish; tapping it opens the app (the page gets the route `activity`). Finish there
+ends the activity and leaves a note that opens the summary. While the page is in front it gets
+`__gh.onActivity(state)` about once a second (with `autoPaused`, `opts`, `coarse`, and the last
+fix's speed and bearing). `actSetOptions({autoPause?, voice?})` changes the options while it records.
+
+**Auto-pause and spoken splits.** With `autoPause` (to begin with on for runs and rides, off for
+walks and hikes; the start sheet's chips, the live screen's options and Settings, What you track),
+`ActivityAutoPause` stops the clock after 5 s without moving (20 s when the GPS gives no speed: then
+a least-squares fit of the last 20 s decides) and starts it again after 2 s of moving, both dated
+back to where the stop or the move began, so the fixes it was unsure of are stored flagged. It is
+`autoPauser` in `src/activity.js` (the browser's recorder) in Java, and `test/activity.mjs` keeps the
+two agreeing fix for fix. A pause or resume by hand takes over. With `voice`, `ActivityVoice` says
+each km or mile ("2 kilometres. Time, 10 minutes 24 seconds. Pace, 5 minutes 12 seconds per
+kilometre.", speed for a ride) through Android's TextToSpeech, with transient audio focus that ducks
+other audio and no permission.
 
 `ActivityTrack` keeps the recording in `noBackupFilesDir/activity/`: `<key>.json` with its details
 (replaced atomically on every change and every 20 seconds) and `<key>.track`, one point a line,
@@ -398,11 +446,26 @@ it's 3 m from the last one, 10 s after it, the first good one after bad ones or 
 pause. The distance leaves out points worse than 50 m, pauses (a pause ends the line), GPS jumps
 (faster than 12 m/s from the last good point on a walk or hike, 25 m/s otherwise; three in a row
 restart the line there) and standing still (the anchor only moves once the position has moved more
-than the accuracy, and not while the GPS speed is under 0.4 m/s). Loading a recording runs the same
-filter over its points, so a page reload, a crash or a restart gives the same numbers; if Android
-stops the service mid-activity, it starts again the next time the app comes to the front. A finished
-recording stays (actState reports it with `active: false`) until the page saves it and calls
-`actClear(id)`; at most 20 finished ones are kept.
+than the accuracy, and not while the GPS speed is under 0.4 m/s); between two kept points that both
+have the GPS's own (Doppler) speed, the distance is that speed over the time between them, which
+GPS noise doesn't lengthen. Loading a recording runs the same filter over its points, so a page
+reload, a crash or a restart gives the same numbers; if Android stops the service mid-activity, it
+starts again the next time the app comes to the front. A finished recording stays (actState reports
+it with `active: false`) until the page saves it and calls `actClear(id)`; at most 20 finished ones
+are kept.
+
+**Maps.** An activity's route is drawn on the phone. With maps on (Show map on its summary, the map
+button while recording, or Settings), a map goes behind it: Google's (`src/gmap.js`, which loads the
+Maps JavaScript API) when the build has a key, else MapLibre's on OpenFreeMap (`src/actmap.js`).
+`U.actMap` picks one and puts OpenFreeMap's in place whenever Google's won't load or Google turns the
+key down (`gm_authFailure`, its error page, or its "can't load Google Maps correctly" over a
+watermarked map; then for the rest of the session), even after it has shown. Both draw
+the route, the start, finish and km or mile markers and where you are the same way; two fingers move
+them while one scrolls the page, and they don't turn or tilt. `mapsKey()` returns the key from the
+APK's `assets/maps.key` (see Android build), and the page loads Google's script with
+`auth_referrer_policy=origin`, so the key's website restriction sees
+`https://appassets.androidplatform.net`. The CSP lets in Google's map hosts and OpenFreeMap, and
+nothing else new (`test/security.mjs`).
 
 The page reads `actState()` and `actPoints(from)`; `actSupport()` says whether the phone has GPS, a
 step counter and Health Connect. For the summary, `hcSession({id, start, end})` answers
@@ -753,10 +816,10 @@ SHA-256.
      a QR code on their screen), never through a server;
    - nothing else leaves the phone. The on-device model is a download from Hugging Face. Location
      (an activity's route) and the background Health Connect reads are processed only on the phone
-     (Health Connect is on the phone too). One exception to weigh: Show streets on an activity
-     downloads map tiles for the route's area from OpenFreeMap, which hints at roughly where it was.
-     Declaring "Approximate location, shared, optional, for app functionality" is the cautious
-     answer.
+     (Health Connect is on the phone too). One exception to weigh: with maps on, the map of an
+     activity's area (and, while one records, of where the person is) comes from Google Maps, or
+     OpenFreeMap without a key, which hints at roughly where they were. Declaring "Approximate
+     location, shared with Google, optional, for app functionality" is the cautious answer.
 10. **AI-generated content.** Every AI answer (on-device or Claude), Claude's weekly report and its
     suggestions have a Report action that hides the item and keeps a local record. Sending a report to
     the developer opens a prefilled GitHub issue in the browser. Play's policy asks that people can

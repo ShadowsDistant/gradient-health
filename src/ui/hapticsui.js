@@ -1,7 +1,8 @@
 /* Haptics in the UI: the rows Settings shows for them (U.hapticRows: the Haptic feedback switch, the
- * strength and "Feel each one") and the Feel each one gallery (U.act.hapticGallery), a sheet with
- * the strength control on top and every kind of haptic, in five groups, to try. The haptics that
- * come with the controls by themselves are in core.js (wire) and sheet.js; the kinds themselves, in
+ * strength and "Feel each one"), the Feel each one gallery (U.act.hapticGallery), a sheet with the
+ * strength control on top and every kind of haptic, in its groups, to try, and the feel of menus
+ * Refract opens by itself (a popover a button points at). The haptics that come with the controls
+ * by themselves are in core.js (wire), sheet.js and U.menu (motion.js); the kinds themselves, in
  * platform.js and Haptics.java.
  */
 (function (G) {
@@ -12,16 +13,18 @@
 
   // Every kind, once, in the gallery's groups: [id, title, what's in it, tone, icon, [[kind, chip label]]].
   const GROUPS = [
-    ['touch', 'Touch', 'Buttons, switches and sliders', 'sky', 'sliders',
-      [['tap', 'Tap'], ['press', 'Press'], ['select', 'Pick'], ['tick', 'Step'], ['edge', 'Limit'], ['toggleOn', 'Switch on'], ['toggleOff', 'Switch off'], ['detent', 'Snap']]],
-    ['navigation', 'Navigation', 'Tabs, pages, sheets and dragging', 'violet', 'navigate',
-      [['tab', 'Tab'], ['nav', 'Open'], ['back', 'Back'], ['grab', 'Pick up'], ['drop', 'Put down']]],
+    ['touch', 'Touch', 'Buttons, switches, sliders and days', 'sky', 'sliders',
+      [['tap', 'Tap'], ['press', 'Press'], ['select', 'Pick'], ['day', 'Pick a day'], ['tick', 'Step'], ['edge', 'Limit'], ['toggleOn', 'Switch on'], ['toggleOff', 'Switch off'], ['detent', 'Snap'], ['hold', 'Long press']]],
+    ['navigation', 'Navigation', 'Tabs, pages, sheets, menus and dragging', 'violet', 'navigate',
+      [['tab', 'Tab'], ['nav', 'Page'], ['back', 'Back'], ['sheet', 'Sheet'], ['menu', 'Menu'], ['dismiss', 'Close'], ['swipe', 'Swipe away'], ['grab', 'Pick up'], ['drop', 'Put down']]],
     ['feedback', 'Feedback', 'How something went', 'green', 'check-circle',
-      [['success', 'Saved'], ['log', 'Logged'], ['undo', 'Undo'], ['deny', 'Not allowed'], ['warning', 'Warning'], ['error', 'Error'], ['heavy', 'Delete']]],
+      [['success', 'Success'], ['save', 'Saved'], ['log', 'Logged'], ['copy', 'Copied'], ['send', 'Sent'], ['refresh', 'Refreshed'], ['scan', 'Scanned'], ['undo', 'Undo'], ['remove', 'Removed'], ['deny', 'Not allowed'], ['warning', 'Warning'], ['error', 'Error'], ['heavy', 'Delete']]],
     ['workout', 'Workout', 'Sets, timers and records', 'coral', 'timer',
-      [['countdown', '3, 2, 1'], ['go', 'Go'], ['pause', 'Pause'], ['setDone', 'Set done'], ['done', 'Rest over'], ['workoutDone', 'Workout done'], ['levelUp', 'Level up'], ['milestone', 'Goal reached'], ['pr', 'New best']]],
+      [['start', 'Start'], ['countdown', '3, 2, 1'], ['go', 'Go'], ['pause', 'Pause'], ['setDone', 'Set done'], ['skip', 'Skip'], ['extend', 'More rest'], ['done', 'Rest over'], ['swap', 'Swap'], ['levelUp', 'Level up'], ['milestone', 'Goal reached'], ['pr', 'New best'], ['workoutDone', 'Workout done'], ['cancel', 'Cancel']]],
     ['moments', 'Moments', 'The big ones', 'amber', 'star',
       [['badge', 'Badge'], ['celebrate', 'Celebrate']]],
+    ['activities', 'Activities', 'Runs, walks, hikes and rides', 'green', 'act-run',
+      [['actGo', 'Start'], ['actPause', 'Pause'], ['actResume', 'Resume'], ['actAutoPause', 'Auto-pause'], ['actAutoResume', 'Auto-resume'], ['actSplit', 'Split'], ['actGps', 'GPS ready'], ['actFinish', 'Finish'], ['actDiscard', 'Discard']]],
   ];
   U.hapticGroups = GROUPS;
   const STRENGTHS = [['light', 'Light'], ['medium', 'Medium'], ['strong', 'Strong']];
@@ -62,6 +65,29 @@
     // Picked in the gallery: the page behind shows it too.
     if (el && el.closest && el.closest('dialog')) U.render();
   };
+
+  /* ---------------------------------------------------------------- menus Refract opens */
+  // A menu that's a popover a button points at (the Health tab's +) is opened and closed by Refract
+  // and the browser, not U.menu, so it gets the same feel here: menu as it blooms out of its button,
+  // dismiss when Escape, its button or a tap on nothing in particular closes it without a pick. A pick
+  // runs its action, which has its own; so does a tap outside it on something else that does (a tab,
+  // another button: the browser lets that tap through). U.menu's play their own (src/ui/motion.js).
+  const NATIVE_MENU = '.rf-menu[popover]:not(.gh-menu)';
+  const OWN_FEEL = '[data-act], [data-on], .rf-tab, a[href], input, select, textarea, button:not([popovertarget])';
+  const picked = new WeakSet();
+  let downOn = null; // what the last touch or click went down on since a menu opened
+  G.document.addEventListener('pointerdown', (e) => { downOn = e.target; }, true);
+  G.document.addEventListener('click', (e) => {
+    const m = e.target.closest && e.target.closest(NATIVE_MENU);
+    if (m && e.target.closest('.rf-menu-item')) picked.add(m);
+  }, true);
+  G.document.addEventListener('toggle', (e) => {
+    const m = e.target;
+    if (!m || !m.matches || !m.matches(NATIVE_MENU)) return;
+    if (e.newState === 'open') { picked.delete(m); downOn = null; U.haptic('menu'); return; }
+    const other = downOn && downOn.closest && !m.contains(downOn) ? downOn.closest(OWN_FEEL) : null;
+    if (!picked.has(m) && !other) U.haptic('dismiss');
+  }, true);
 
   /* ---------------------------------------------------------------- the gallery */
   // A chip's rhythm, drawn: a bar for each beat (at Medium) and the gaps between, on a square-root scale

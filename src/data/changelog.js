@@ -6,6 +6,29 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.8.0', date: '2026-10-05', title: 'Google Maps, smarter runs, and a smoother feel',
+      store: [
+        '• Google Maps for runs, walks, hikes and rides, with a live map that follows you',
+        '• Auto-pause, spoken splits and your pace right now',
+        '• Steadier GPS distance and a smoother route',
+        '• Haptics with a feel of their own for saving, sending, swiping away and more',
+        '• Scrolling down no longer flickers, and pages switch faster',
+        '• Switches glide smoothly, and sheets keep their silver edge',
+        '• Cancelling a workout or an activity folds it away',
+      ].join('\n'),
+      items: [
+        ['map', 'Google Maps for runs, walks, hikes and rides. The summary shows your route on Google\'s map in pace colours, and the live screen\'s map follows you, with a dot for how sure the GPS is and a beam for the way you\'re facing. OpenFreeMap\'s maps stand in when Google\'s can\'t load, and maps can be turned off in Settings.'],
+        ['pause', 'Auto-pause: stop at a crossing and the clock stops with you, then starts again as you go. It\'s on for runs and rides and can be turned on for walks and hikes.'],
+        ['volume', 'Spoken splits: at each kilometre or mile, your time and pace, spoken over your music, which dips meanwhile. Turn them on when you start, or in Settings.'],
+        ['navigate', 'Steadier GPS. The distance no longer runs a few percent long from GPS noise or creeps up while you stand still, your pace is the pace you\'re going now, the route is drawn smoother, and the map shows roughly where you are while the GPS finds you. A badge shows how strong the signal is.'],
+        ['bolt', '26 new haptics, so more actions have a feel of their own: saving, copying, sending, removing, a sheet or menu opening or swiped away, picking a day, starting, skipping, more rest, swapping a move, cancelling, and every moment of a run, from the start to each split and the finish. 57 in all, each one to try in Settings.'],
+        ['x-circle', 'Cancelling a workout folds it away, and Today settles back as it was before you started. Discarding an activity folds it away too.'],
+        ['wave', 'Scrolling down no longer flickers: the glass over the page keeps its look while the page moves, so the big title no longer turns sharp under the bar\'s buttons.'],
+        ['clock', 'Pages switch faster: a new tab is there in a quarter of a second, where it took two thirds, and opening a page or going back is quicker too.'],
+        ['check-circle', 'Switches in Settings glide all the way across instead of stuttering, and sheets keep their silver edge from the moment they appear, while you drag them and at full height.'],
+      ],
+    },
+    {
       version: '1.7.0', date: '2026-10-04', title: 'Smoother scrolling and new liquid glass',
       store: [
         '• Smoother scrolling on every screen',

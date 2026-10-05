@@ -34,7 +34,9 @@ A 3D COACH FOR EVERY MOVE
 
 RUNS, WALKS, HIKES AND RIDES
 • Record with GPS, even with the screen off, with Pause and Finish in the notification
-• A summary with your route on a map, pace, splits, elevation and steps
+• Google Maps, with a live map that follows you
+• Auto-pause, spoken splits and your pace right now
+• A summary with your route on the map, pace, splits, elevation and steps
 • Heart rate and calories from your watch through Health Connect
 • Personal records: fastest mile, longest run and more
 
@@ -59,7 +61,7 @@ A PRIVATE AI COACH
 
 MADE TO FEEL GOOD
 • Glass controls that answer every tap, and smooth motion between screens
-• Haptics with 31 distinct feels, from a tick for each tab to a finished set and a new best
+• Haptics with 57 distinct feels, from a tick for each tab to saving, a finished set and a new best
 • A quick set-up: six short steps, then your plan and your first workout
 
 PRIVATE BY DESIGN
@@ -72,18 +74,19 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 ## What's new (500 characters at most)
 
-Paste this into the What's new field with each update. This is 1.7.0's. Each GitHub release carries
+Paste this into the What's new field with each update. This is 1.8.0's. Each GitHub release carries
 its own version's text at the end of its What's new, under "Short version, for a store's What's new
 field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
 (`node scripts/release-notes.mjs --store` prints it).
 
 ```text
-• Smoother scrolling on every screen
-• New liquid glass: switches, tabs and pickers rise into a lens as you touch them and flow where you let go
-• Buttons form out of the glass and change shape, and menus grow out of the button you tap
-• Pages no longer zoom by accident; pinch the route map to zoom it
-• Answering how many reps you had left no longer moves on under your finger
-• Built with Refract 1.4, now credited in Settings
+• Google Maps for runs, walks, hikes and rides, with a live map that follows you
+• Auto-pause, spoken splits and your pace right now
+• Steadier GPS distance and a smoother route
+• Haptics with a feel of their own for saving, sending, swiping away and more
+• Scrolling down no longer flickers, and pages switch faster
+• Switches glide smoothly, and sheets keep their silver edge
+• Cancelling a workout or an activity folds it away
 ```
 
 ## Images

@@ -504,8 +504,9 @@
   }
   // Refract's light: on a phone the glass rims follow how it's tilted, and every step the light takes
   // repaints those rims and redraws their lenses. It holds still where it is while the page scrolls,
-  // while the workout player or a live activity is open (the phone moves all the time), with Moving
-  // background off and under reduced motion, and follows the tilt again once things are calm.
+  // while a sheet moves, while the workout player or a live activity is open (the phone moves all the
+  // time), with Moving background off and under reduced motion, and follows the tilt again once
+  // things are calm.
   let lightFixed = false;
   function steadyLight(fixed) {
     const r = R();
@@ -516,13 +517,17 @@
     const glass = tabbar && tabbar.querySelector('.rf-tabbar-bar');
     safe(() => (fixed ? r.light.mode('fixed', r.light.current(glass || undefined)) : r.light.mode('pointer')));
   }
-  U.steadyLight = () => steadyLight(!!(scrollIdle || doc.documentElement.hasAttribute('data-still-glow') || U.reduced() || (playerEl && !playerEl.hidden) || (U.actLiveShown && U.actLiveShown())));
+  U.steadyLight = () => steadyLight(!!(scrollIdle || doc.documentElement.hasAttribute('data-sheet-moving') || doc.documentElement.hasAttribute('data-still-glow') || U.reduced() || (playerEl && !playerEl.hidden) || (U.actLiveShown && U.actLiveShown())));
+  // A sheet's rim and sheen show while it slides and is dragged (src/styles/sheet.css), so the light
+  // holds still meanwhile too: a step of it would repaint them every frame of the move.
+  if (doc) doc.addEventListener('gh-sheet-moving', () => U.steadyLight());
 
   /* ---------------------------------------------------------------- calm */
   // When someone last touched, typed, scrolled (anywhere: a sheet, set-up) or turned a wheel.
-  // - U.calm(): nothing's happening: the page isn't scrolling, no input for 400 ms and no sheet
-  //   moving. Heavy work that can wait (the 3D figure's warm-up and stills, Plan's tiles, background
-  //   re-renders) waits for it, so it never lands in the middle of a fling or a drag.
+  // - U.calm(): nothing's happening: the page isn't scrolling, no input for 400 ms, no sheet moving
+  //   and no switch, segmented control or chip choice held or still gliding (src/ui/controls.js).
+  //   Heavy work that can wait (the 3D figure's warm-up and stills, Plan's tiles, background
+  //   re-renders) waits for it, so it never lands in the middle of a fling, a drag or a knob's glide.
   // - U.whenCalm(fn): runs fn now if it's calm, or as soon as it is (never dropped).
   // - #app[data-idle]: 20 s without any input. The background glow stops drifting
   //   (src/styles/perf.css), so a phone left on a page isn't drawing it every frame; the next input
@@ -542,7 +547,7 @@
     else if (root) root.setAttribute('data-idle', '');
   }
   if (doc) for (const ev of ['pointerdown', 'pointermove', 'touchstart', 'touchmove', 'keydown', 'wheel', 'scroll']) doc.addEventListener(ev, onInput, { passive: true, capture: true });
-  U.calm = () => !scrollIdle && Date.now() - lastInput >= CALM_MS && !doc.documentElement.hasAttribute('data-sheet-moving');
+  U.calm = () => !scrollIdle && Date.now() - lastInput >= CALM_MS && !doc.documentElement.hasAttribute('data-sheet-moving') && !(U.controlsMoving && U.controlsMoving());
   function calmCheck() {
     calmTimer = 0;
     if (!U.calm()) { calmTimer = setTimeout(calmCheck, Math.max(60, lastInput + CALM_MS - Date.now())); return; }
@@ -682,8 +687,34 @@
     Array.from(screen.querySelectorAll(CV_BLOCKS)).forEach((n, i) => { if (h[i]) n.style.setProperty('--cv-h', `${h[i]}px`); });
   }
   let floatEnter = false; // the floating buttons rise in at the next read pass
+  // A switch's change re-renders the page it's on (a setting that shows or hides rows, a sub-line that
+  // changes) while its knob is still gliding to the other end. The glide is drawn from the main
+  // thread, so a 30 to 60 ms render (a phone's) held up its frames and the knob jumped the rest of the
+  // way. A re-render of the same page asked for then waits until the knob has landed (at most
+  // HOLD_MS); a route change never waits.
+  const HOLD_MS = 1200;
+  const holds = new Set();
+  let renderLater = false;
+  function holdRenders(input) {
+    const p = U.controlSettled ? U.controlSettled(input) : null;
+    if (!p) return;
+    const h = {};
+    holds.add(h);
+    const done = () => {
+      if (!holds.delete(h) || holds.size || !renderLater) return;
+      renderLater = false;
+      render();
+    };
+    p.then(done);
+    setTimeout(done, HOLD_MS);
+  }
   function render(motion) {
     if (!U.S || !U.S.profile.onboarded) { U.showOnboarding(); return; }
+    if (holds.size && !motion) {
+      const r0 = U.route;
+      if ((r0.view ? `${r0.view}:${r0.arg || ''}` : r0.tab) === lastKey) { renderLater = true; return; }
+    }
+    renderLater = false;
     if (!onboardEl.hidden) onboardEl.hidden = true;
     U.refreshTabs();
     // Food: the burn estimate learns from the logs once a day (cheap after the first call).
@@ -1010,6 +1041,7 @@
       if (!el) return;
       const v = t.type === 'checkbox' ? t.checked : t.type === 'number' || t.type === 'range' ? parseFloat(t.value) : t.value;
       const later = (seg || sw || t.matches('.gh-chipseg > [role="radio"]')) && !t.hasAttribute('data-sync') && !el.hasAttribute('data-sync');
+      if (sw && later) holdRenders(t);
       if (later) afterFrame(() => dispatch(U.on, el, e, v));
       else dispatch(U.on, el, e, v);
     };
@@ -1036,12 +1068,13 @@
 
   /* ---------------------------------------------------------------- dialogs, toasts */
   // Sheets (U.sheet, U.topSheet, U.closeSheets) live in sheet.js.
-  // A dialog's answer has a feel of its own: heavy for a destructive choice (the moment it's made, not
-  // when the dialog opens), back for cancelling it (Cancel, Esc, a tap outside, Android Back). Other
-  // choices leave it to what they do.
+  // A dialog's answer has a feel of its own: heavy for a destructive choice, or the one its action
+  // names (haptic: 'cancel' for Cancel workout), the moment it's made, not when the dialog opens;
+  // back for cancelling it (Cancel, Esc, a tap outside, Android Back). Other choices leave it to what
+  // they do.
   function dialogHaptic(o, v) {
     const a = (o.actions || []).find((x) => String(x.value != null ? x.value : x.label) === String(v));
-    if (a && a.tone === 'critical') U.haptic('heavy');
+    if (a && a.tone === 'critical') U.haptic(a.haptic || 'heavy');
     else if (!a || a.value === 'cancel') U.haptic('back');
   }
   U.dialog = (o) => {
@@ -1190,7 +1223,7 @@
       U.syncHealth('manual').then((res) => {
         ptrEl.classList.remove('spinning');
         reset(true);
-        if (res && res.ok) U.haptic('success');
+        if (res && res.ok) U.haptic('refresh');
         else if (res && !res.ok) U.toast('Couldn\'t read Health Connect', 'caution', res.error === 'timeout' ? 'It took too long. Try again.' : undefined);
       });
     };

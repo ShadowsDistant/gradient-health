@@ -312,6 +312,166 @@ const wWork = walkOn(workDay, 20, 'ww');
 A.add(S, wWork);
 check('a workout day has no walk to tick', A.countLight(S, wWork) === false);
 
+section('Auto-pause');
+// Fixes a second along a line: [seconds, m/s, GPS speed reported (null: none), jitter m, accuracy]
+// stretches, with the GPS's speed as phones report it (a few tenths of a m/s while standing).
+function legs(list, o = {}) {
+  const pts = [];
+  const t0 = o.t0 || Date.UTC(2026, 8, 28, 7, 0, 0);
+  let t = t0, x = 0;
+  for (const [secs, v, sp, jit = 1.5, acc = 5] of list) {
+    for (let i = 0; i < secs; i++) {
+      x += v;
+      pts.push([t, LAT0 + (gauss() * jit) / M_LAT, LON0 + (x + gauss() * jit) / mLon(LAT0), null, acc, sp === undefined ? Math.max(0, v + gauss() * 0.12) : sp === 'still' ? Math.abs(gauss()) * 0.12 : sp, 0]);
+      t += 1000;
+    }
+  }
+  return pts;
+}
+// Every fix through the detector: what it kept (each once, in order, with its flag) and when it paused
+// and went on.
+function autoRun(type, pts, init) {
+  const det = A.autoPauser(type, init);
+  const out = [], ev = [];
+  for (const p of pts) {
+    const res = det.feed(p.slice());
+    for (const [q, f] of res.out) { q[6] = f; out.push(q); }
+    if (res.pause != null) ev.push(['pause', res.pause]);
+    if (res.resume != null) ev.push(['resume', res.resume]);
+  }
+  for (const [q, f] of det.drain()) { q[6] = f; out.push(q); }
+  return { out, ev, det };
+}
+seed = 21;
+// A run: 2 minutes at 3 m/s, 40 s at a crossing, 2 minutes more.
+let ap = legs([[120, 3], [40, 0, 'still', 2], [120, 3]]);
+let ar = autoRun('run', ap);
+const stopAt = ap[120][0], goAt = ap[160][0];
+check('a 40 s stop on a run pauses the clock from where the stop began, and starts it where the running did', ar.ev.length === 2 && ar.ev[0][0] === 'pause' && ar.ev[0][1] === stopAt && ar.ev[1][0] === 'resume' && ar.ev[1][1] === goAt, ar.ev.map(([k, t]) => [k, (t - ap[0][0]) / 1000]));
+check('every fix is kept once, in order', ar.out.length === ap.length && ar.out.every((p, i) => p[0] === ap[i][0]));
+check('flagged paused exactly from the stop to the start again', ar.out.every((p) => (p[0] >= stopAt && p[0] < goAt ? p[6] === 1 : p[6] === 0)));
+tr = A.track(ar.out, { type: 'run', start: ap[0][0], end: ap[ap.length - 1][0] });
+check('so the moving time leaves the stop out, and the distance is the running', Math.abs(tr.movingMs - 239000) <= 2000 && Math.abs(tr.distanceM - 720) < 15 && tr.pauses.length === 1, [tr.movingMs, Math.round(tr.distanceM), tr.pauses.length]);
+seed = 22;
+ar = autoRun('run', legs([[60, 3], [90, 1.25], [60, 3]]));
+check('walking up a hill in the middle of a run isn\'t a stop', ar.ev.length === 0 && ar.out.every((p) => p[6] === 0), ar.ev);
+seed = 23;
+ar = autoRun('run', legs([[60, 3], [4, 0, 'still'], [60, 3]]));
+check('nor is a 4 s pause for breath', ar.ev.length === 0, ar.ev);
+seed = 24;
+ar = autoRun('run', legs([[20, 0, 'still'], [60, 3], [30, 0, 'still'], [20, 3]]));
+check('standing at the start doesn\'t pause (it waits for the first moving fix), a stop after does', ar.ev.length === 2 && ar.ev[0][1] === Date.UTC(2026, 8, 28, 7, 0, 80), ar.ev.map(([k, t]) => [k, (t - Date.UTC(2026, 8, 28, 7)) / 1000]));
+seed = 25;
+ap = legs([[60, 3], [30, 0, 'still'], [60, 3]]);
+ap[75][5] = 2.4; // one stray speed while standing
+ap[80][4] = 90; ap[80][1] += 60 / M_LAT; // and a fix 60 m off, 90 m accurate
+ar = autoRun('run', ap);
+check('a stray speed or a poor fix while stopped doesn\'t start it again', ar.ev.length === 2 && ar.ev[1][1] === ap[90][0], ar.ev.map(([k, t]) => [k, (t - ap[0][0]) / 1000]));
+seed = 26;
+ap = legs([[60, 3, null], [30, 0, null, 1.5], [60, 3, null]]);
+ar = autoRun('run', ap);
+check('without the GPS\'s speed: a stop is 20 s of fixes a straight line through which barely moves', ar.ev.length === 2 && ar.ev[0][1] >= ap[55][0] && ar.ev[0][1] <= ap[62][0] && ar.ev[1][1] >= ap[90][0] && ar.ev[1][1] <= ap[100][0], ar.ev.map(([k, t]) => [k, (t - ap[0][0]) / 1000]));
+check('and every fix is still kept once', ar.out.length === ap.length && ar.out.every((p, i) => p[0] === ap[i][0]));
+seed = 34;
+ap = legs([[150, 1.0, null, 3, 12]]);
+check('a slow hike with poor fixes and no speeds never pauses (single fixes wander, the fit doesn\'t)', autoRun('hike', ap).ev.length === 0, autoRun('hike', ap).ev);
+seed = 27;
+ap = legs([[60, 1.4], [30, 0, 'still'], [60, 1.4]]);
+check('a walk stops at its own speeds (still under 0.35 m/s)', autoRun('walk', ap).ev.length === 2 && autoRun('cycle', legs([[60, 6], [20, 0, 'still'], [60, 6]])).ev.length === 2);
+seed = 28;
+{
+  const det = A.autoPauser('run');
+  const pts = legs([[30, 3], [3, 0, 'still']]);
+  let kept = 0;
+  for (const p of pts) kept += det.feed(p).out.length;
+  const flushed = det.manual();
+  check('a pause by hand hands on what was held, as moving', kept === 30 && flushed.length === 3 && flushed.every(([, f]) => f === 0));
+  const after = legs([[20, 0, 'still']], { t0: pts[pts.length - 1][0] + 60000 });
+  check('and after a resume by hand, standing still doesn\'t pause until it moves', after.every((p) => det.feed(p).out.length === 1) && det.mode === 'moving');
+}
+seed = 29;
+{
+  ap = legs([[20, 0, 'still'], [30, 3]]);
+  ar = autoRun('run', ap, true);
+  check('picked up again while auto-paused (a reload), it goes on once it moves', ar.ev.length === 1 && ar.ev[0][0] === 'resume' && ar.ev[0][1] === ap[20][0] && ar.out.slice(0, 20).every((p) => p[6] === 1), ar.ev);
+}
+{
+  // The browser's recorder, with auto-pause on: its clock stops with the stop (from where it began).
+  const realNow = Date.now;
+  let clock = Date.UTC(2026, 8, 28, 8);
+  Date.now = () => clock;
+  const fixes = [];
+  globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, writable: true, value: { geolocation: { watchPosition: (f) => { fixes.push(f); return 1; }, clearWatch() {}, getCurrentPosition(ok) { ok({ coords: { latitude: LAT0, longitude: LON0, accuracy: 900 } }); } } } });
+  A.web.start({ id: 'ap1', type: 'run', title: 'Run', autoPause: true });
+  const s0 = A.web.state();
+  check('the browser\'s recorder takes a rough position at once, for the map', s0.coarse && s0.coarse.acc === 900 && s0.opts.autoPause && !s0.opts.voice, s0.coarse);
+  A.web.pause(); // waiting for the 3-2-1
+  clock += 5000;
+  A.web.resume();
+  seed = 30;
+  const run = legs([[60, 3], [40, 0, 'still'], [60, 3]], { t0: clock });
+  const seen = [];
+  for (const p of run) {
+    clock = p[0];
+    fixes[0]({ coords: { latitude: p[1], longitude: p[2], accuracy: p[4], speed: p[5], altitude: null, heading: 90 } });
+    const st = A.web.state();
+    seen.push(st.autoPaused ? 1 : 0);
+  }
+  const st = A.web.state();
+  check('it auto-pauses during the stop and says so, then goes on', seen.slice(0, 64).every((x) => x === 0) && seen.slice(66, 100).every((x) => x === 1) && seen.slice(103).every((x) => x === 0), seen.join(''));
+  check('its clock leaves the 40 s stop out', Math.abs(st.elapsedMs - (159000 - 40000)) <= 2000, st.elapsedMs);
+  check('its last fix has the GPS heading and speed', st.lastFix.bearing === 90 && st.lastFix.speed > 2);
+  A.web.setOptions({ autoPause: false });
+  check('auto-pause can be turned off while it records', A.web.state().opts.autoPause === false);
+  A.web.stop();
+  A.web.clear('ap1');
+  Date.now = realNow;
+}
+
+section('The pace now');
+const pts3 = (n, v, o = {}) => { const out = []; for (let i = 0; i < n; i++) out.push([1e9 + i * 1000, LAT0, LON0 + (i * v + gauss() * (o.jit || 0)) / mLon(LAT0), null, 5, o.speed === null ? null : v, o.paused ? 1 : 0]); return out; };
+seed = 31;
+check('from the GPS\'s own speeds', Math.abs(A.liveSpeed(pts3(30, 3), 'run') - 3) < 0.05);
+const wild = pts3(30, 3);
+wild[25][5] = 19; wild[27][5] = 0.2;
+check('a stray reading or two doesn\'t move it', Math.abs(A.liveSpeed(wild, 'run') - 3) < 0.1, A.liveSpeed(wild, 'run'));
+check('without speeds, from the distance covered (noise taken off)', Math.abs(A.liveSpeed(pts3(30, 3, { speed: null, jit: 2 }), 'run') - 3) < 0.35, A.liveSpeed(pts3(30, 3, { speed: null, jit: 2 }), 'run'));
+check('standing still is 0, paused is 0', A.liveSpeed(pts3(30, 0.1), 'run') === 0 && A.liveSpeed(pts3(30, 3, { paused: true }), 'run') === 0);
+check('not enough yet is null', A.liveSpeed(pts3(3, 3), 'run') === null && A.liveSpeed([], 'run') === null);
+
+section('The route as it\'s drawn');
+seed = 32;
+{
+  // Around a block: 150 m east, 150 m north, with ±4 m of noise and a stretch of poor fixes.
+  const corner = (d) => (d < 150 ? [d, 0] : [150, d - 150]);
+  const noisy = [];
+  const t0r = Date.UTC(2026, 8, 28, 9);
+  for (let i = 0, d = 0; d <= 300; i++, d += 1.4) {
+    const [x, y] = corner(d);
+    const poor = i > 60 && i < 75;
+    noisy.push([t0r + i * 1000, LAT0 + (y + gauss() * (poor ? 12 : 4)) / M_LAT, LON0 + (x + gauss() * (poor ? 12 : 4)) / mLon(LAT0), null, poor ? 25 : 5, 1.4, 0]);
+  }
+  const trr = A.track(noisy, { type: 'walk', start: noisy[0][0], end: noisy[noisy.length - 1][0] });
+  const drawn = A.smoothRoute(trr.pts);
+  const off = (p) => { const x = (p.lon - LON0) * mLon(LAT0), y = (p.lat - LAT0) * M_LAT; return Math.min(Math.abs(y) + Math.max(0, x - 150), Math.abs(x - 150) + Math.max(0, -y)); };
+  const rms = (list) => Math.sqrt(list.reduce((a, p) => a + off(p) ** 2, 0) / list.length);
+  // How much the drawn line (simplified, as it's stored) turns, all told: one real corner is 90°.
+  const turning = (list) => { const l = A.simplify(list, 5); let s = 0; for (let i = 2; i < l.length; i++) { const h1 = Math.atan2((l[i - 1].lat - l[i - 2].lat) * M_LAT, (l[i - 1].lon - l[i - 2].lon) * mLon(LAT0)), h2 = Math.atan2((l[i].lat - l[i - 1].lat) * M_LAT, (l[i].lon - l[i - 1].lon) * mLon(LAT0)); let d = Math.abs(h2 - h1); if (d > Math.PI) d = 2 * Math.PI - d; s += d; } return (s * 180) / Math.PI; };
+  check('the drawn line zigzags less than the filtered fixes\' (closer to the one 90° corner)', turning(drawn) < turning(trr.pts) - 20, [turning(drawn), turning(trr.pts)]);
+  check('and stays as close to where you went', rms(drawn) <= rms(trr.pts) * 1.05 + 0.3, [rms(drawn), rms(trr.pts)]);
+  const cornerPt = drawn.reduce((m, p) => (Math.hypot((p.lon - LON0) * mLon(LAT0) - 150, (p.lat - LAT0) * M_LAT) < Math.hypot((m.lon - LON0) * mLon(LAT0) - 150, (m.lat - LAT0) * M_LAT) ? p : m), drawn[0]);
+  check('without cutting the corner', Math.hypot((cornerPt.lon - LON0) * mLon(LAT0) - 150, (cornerPt.lat - LAT0) * M_LAT) < 6, Math.hypot((cornerPt.lon - LON0) * mLon(LAT0) - 150, (cornerPt.lat - LAT0) * M_LAT));
+  check('the ends stay put, and the track itself is untouched', drawn[0].lat === trr.pts[0].lat && drawn[drawn.length - 1].lon === trr.pts[trr.pts.length - 1].lon && drawn !== trr.pts && A.track(noisy, { type: 'walk', start: noisy[0][0], end: noisy[noisy.length - 1][0] }).distanceM === trr.distanceM);
+  // Half a minute at a crossing, halfway: the fixes wander, the drawn route doesn't scribble.
+  seed = 33;
+  const waited = legs([[60, 1.4], [30, 0, 'still', 3], [60, 1.4]]);
+  const trw = A.track(waited, { type: 'walk', start: waited[0][0], end: waited[waited.length - 1][0] });
+  const stop = A.smoothRoute(trw.pts).filter((p) => p.t >= waited[64][0] && p.t <= waited[86][0]);
+  const spread = Math.max(...stop.map((p) => A.haversine(p.lat, p.lon, stop[0].lat, stop[0].lon)));
+  check('standing at a crossing draws as one spot', spread < 2, spread);
+}
+
 section('The activity clock');
 const now = 1_000_000_000;
 check('elapsedMs is the clock, pauses already out', A.clockMs({ active: true, paused: false, startedAt: now - 600000, pausedMs: 60000, elapsedMs: 540000, at: now }, now) === 540000);

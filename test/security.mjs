@@ -269,15 +269,50 @@ section('The bridge answers only the app\'s page');
 {
   const BR = read(`${JAVA}Bridge.java`);
   // Everything that reads or changes data, reaches the network or another app, or runs a model.
-  const GATED = /^(save\w*|load\w*|deleteSecret|hc\w+|model\w+|share\w+|openUrl|act\w+|llm\w+|foodLookup|copy|pendingLink)$/;
+  const GATED = /^(save\w*|load\w*|deleteSecret|hc\w+|model\w+|share\w+|openUrl|act\w+|llm\w+|maps\w+|foodLookup|copy|pendingLink)$/;
   // The rest: the screen, haptics and harmless facts about the phone.
   const OPEN = /^(keepAwake|vibrate\w*|haptic\w*|isDark|setSystemBars|insets|claudeInstalled|appVersion|deviceMemory|rendererGone)$/;
   const methods = [...BR.matchAll(/@JavascriptInterface\n(?:\s*@\w+(?:\([^)]*\))?\n)?\s*public [\w<>[\]]+ (\w+)\(([^)]*)\) \{\n([^\n]*)/g)].map((m) => ({ name: m[1], first: m[3].trim() }));
   const ungated = methods.filter((m) => GATED.test(m.name) && m.first !== 'if (!trusted()) {');
   const unknown = methods.filter((m) => !GATED.test(m.name) && !OPEN.test(m.name)).map((m) => m.name);
-  check(`all ${methods.filter((m) => GATED.test(m.name)).length} bridge methods with side effects check trusted() first (secrets, save and load, hc*, model*, share*, openUrl, act*, llm*)`, methods.length > 40 && ungated.length === 0, ungated.map((m) => m.name));
+  check(`all ${methods.filter((m) => GATED.test(m.name)).length} bridge methods with side effects check trusted() first (secrets, save and load, hc*, model*, share*, openUrl, act*, llm*, mapsKey)`, methods.length > 40 && ungated.length === 0 && methods.some((m) => m.name === 'mapsKey'), ungated.map((m) => m.name));
   check('every other bridge method is one of the harmless kinds (a new one has to be sorted into a list here)', unknown.length === 0, unknown);
   check('trusted() asks MainActivity whether the page is the app\'s', /private boolean trusted\(\) \{\s*return activity\.pageTrusted\(\);/.test(BR));
+}
+
+section('The page\'s content security policy: the app, Claude, OpenFreeMap and Google Maps only');
+{
+  const shell = read('src/shell.html');
+  const csp = ((/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/.exec(shell)) || [])[1] || '';
+  const dir = Object.fromEntries(csp.split(';').map((d) => d.trim().split(/\s+/)).filter((d) => d[0]).map(([k, ...v]) => [k, v]));
+  const is = (k, list) => JSON.stringify(dir[k]) === JSON.stringify(list);
+  check('nothing by default, no frames, objects, forms or base URLs', is('default-src', ["'none'"]) && !dir['frame-src'] && !dir['child-src'] && is('object-src', ["'none'"]) && is('form-action', ["'none'"]) && is('base-uri', ["'none'"]), dir);
+  check('scripts: the app\'s own (the build swaps unsafe-inline for their hashes) and the Maps JavaScript API\'s two hosts', is('script-src', ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'", 'https://maps.googleapis.com', 'https://maps.gstatic.com']), dir['script-src']);
+  check('connections: the app, Claude, OpenFreeMap, and Google\'s map services', is('connect-src', ["'self'", 'https://api.anthropic.com', 'https://tiles.openfreemap.org', 'https://*.googleapis.com', 'https://*.google.com']), dir['connect-src']);
+  check('images: the app\'s own, and Google\'s map tiles, icons and logo', is('img-src', ["'self'", 'data:', 'blob:', 'https://*.googleapis.com', 'https://*.gstatic.com', 'https://*.google.com', 'https://*.ggpht.com']), dir['img-src']);
+  check('styles and fonts: inline and the app\'s, plus the map\'s Roboto from Google Fonts', is('style-src', ["'unsafe-inline'", 'https://fonts.googleapis.com']) && is('font-src', ['data:', 'https://fonts.gstatic.com']), [dir['style-src'], dir['font-src']]);
+  check('workers and media as before', is('worker-src', ["'self'", 'blob:']) && is('media-src', ["'self'", 'blob:', 'mediastream:']));
+}
+
+section('The Google Maps key: in the APK only, never in the repository, dist/ or a log');
+{
+  const { readdirSync, existsSync } = await import('node:fs');
+  const KEYLIKE = /AIza[0-9A-Za-z_-]{35}/;
+  const walk = (d) => readdirSync(join(root, d), { withFileTypes: true }).flatMap((f) => (f.isDirectory() ? walk(`${d}/${f.name}`) : [`${d}/${f.name}`]));
+  const files = ['src', 'android', 'scripts', '.github', 'docs'].flatMap(walk).concat(existsSync(join(root, 'dist')) ? walk('dist') : []).filter((f) => /\.(js|mjs|java|html|xml|yml|sh|md|json)$/.test(f));
+  const leaks = files.filter((f) => KEYLIKE.test(read(f)));
+  check(`no Google API key in the sources, scripts, workflows, docs or the built page and its parts (${files.length} files)`, files.length > 100 && leaks.length === 0, leaks);
+  const apk = read('scripts/build-apk.sh');
+  // Every line that reads the key's value ($GOOGLE_MAPS_API_KEY, not just its name in a message).
+  const uses = apk.split('\n').filter((l) => /\$\{?GOOGLE_MAPS_API_KEY/.test(l) && !/^\s*#/.test(l));
+  check('build-apk.sh only checks it and writes it to assets/maps.key, never printing it', uses.length === 3 && uses.every((l) => /^\s*if \[\[ -n "\$\{GOOGLE_MAPS_API_KEY:-\}"/.test(l) || /^\s*printf '%s' "\$GOOGLE_MAPS_API_KEY" > "\$WORK\/assets\/maps\.key"$/.test(l)) && !/set -x/.test(apk), uses);
+  const yml = read('.github/workflows/android.yml');
+  const passed = [...yml.matchAll(/^\s*GOOGLE_MAPS_API_KEY: \$\{\{ secrets\.GOOGLE_MAPS_API_KEY \}\}\n\s*run: bash scripts\/build-apk\.sh$/gm)].length;
+  check('CI hands the secret to the two APK steps only (the build and the release), as an environment variable', passed === 2 && (yml.match(/secrets\.GOOGLE_MAPS_API_KEY/g) || []).length === 2, passed);
+  const BR = read(`${JAVA}Bridge.java`), MA = read(`${JAVA}MainActivity.java`);
+  check('the bridge reads it from the APK\'s assets and hands back only a key\'s characters', /getAssets\(\)\.open\("maps\.key"\)/.test(BR) && /matches\("\[A-Za-z0-9_-\]\{20,100\}"\)/.test(BR));
+  const intercept = body(MA, 'public WebResourceResponse shouldInterceptRequest(');
+  check('the WebView serves the page, lazy/ and models/ only, so the key file can\'t be fetched', /path\.startsWith\("\/lazy\/"\)/.test(intercept) && /path\.startsWith\("\/models\/"\)/.test(intercept) && !/getAssets\(\)\.open\(path/.test(intercept) && /assetPath\.contains\("\.\."\)/.test(MA));
 }
 
 section('The API key is encrypted on the phone (SecretBox)');

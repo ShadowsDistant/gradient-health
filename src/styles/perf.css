@@ -5,12 +5,10 @@
 #app[data-scrolling]::before, #app[data-scrolling]::after { animation-play-state: paused, running; }
 
 /* Glass over the moving page (the bar's buttons, Today's floating buttons, the tab bar, the workout
-   capsule) keeps its blur, its rim and its light while the page scrolls, but not its refraction:
-   Refract bends the edges with a lens map in the lens layer's backdrop filter (--_lens, between the
-   blur and the saturation), and that's redrawn every frame the page moves under it, for edges nobody
-   sees bend in a fling. The filter is Refract's own without the map, so nothing else changes, and the
-   edges bend again as soon as the page is still. */
-#app[data-scrolling] .rf-lens-layer { --_lens: ; }
+   capsule) keeps its lens while the page scrolls. 1.7.0 dropped the lens map for the scroll, which
+   saved about a fifth of the GPU's time, but on a phone the glass visibly cleared as a scroll began
+   and frosted again after it: the page's big title went sharp under the bar's buttons as it slid
+   under them (only on the way down; on the way up the frosted edge covers it). */
 
 /* The bar's frosted edge (#topbar > .rf-scroll-edge, about 126 px tall): Refract draws it with two
    full-width blurs, a light one (3 px, fading out from 55% down to the bottom) under a stronger one

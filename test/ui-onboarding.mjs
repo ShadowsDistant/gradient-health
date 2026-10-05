@@ -483,7 +483,8 @@ section('A flare day (rheumatoid arthritis)');
   check('the feel check offers a flare day', has === 1);
   if (has) {
     await page.locator('#screen .feel-flare input[role="switch"]').check({ force: true });
-    await page.waitForTimeout(700);
+    // Today changes once the switch's knob has landed (a re-render waits for it, src/ui/core.js).
+    await page.waitForFunction(() => /Flare day/.test((document.querySelector('#screen .session') || {}).innerText || ''), null, { timeout: 4000 }).catch(() => {});
     const card = await page.locator('#screen .session').innerText().catch(() => '');
     check('today becomes gentle range of motion', /Flare day/.test(card) && /Gentle range of motion/.test(card), card.slice(0, 300));
     await page.evaluate(() => window.GH.ui.act.startWorkout());

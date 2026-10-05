@@ -395,8 +395,13 @@
   // it's written to localStorage and the bridge's file at once, as before 1.6. When the page is
   // hidden or goes away, a waiting save is written right away (flush), and the bridge's save()
   // returns only once the file is on disk. Without idle callbacks (node), save() writes at once.
+  // While the page is busy (a scroll, a drag, a switch's knob gliding: GH.ui.calm), the state's JSON
+  // (5 to 25 ms on a phone) would cost the motion a frame or two, so it waits for calm as well, for
+  // CALM_WAIT_MS at most.
+  const CALM_WAIT_MS = 3000;
   let waiting = null; // the state to write next
-  let job = 0; // its idle callback or timer
+  let job = 0, jobTimer = false; // its idle callback or timer
+  let since = 0; // when it started waiting
   let localCopy = true; // whether localStorage may hold a full copy (dropped once the app has the file)
   const canWait = !!(G.requestIdleCallback && G.document);
   function save(S) {
@@ -412,12 +417,30 @@
   function schedule(S, ms) {
     waiting = S;
     if (job) return;
-    const run = () => { job = 0; const s = waiting; waiting = null; if (s) write(s, false); };
+    if (!since) since = Date.now();
+    queue(ms);
+  }
+  function queue(ms) {
+    jobTimer = !canWait;
     job = canWait ? G.requestIdleCallback(run, { timeout: ms }) : setTimeout(run, ms);
   }
-  function cancelWaiting() {
-    if (job) { if (canWait) G.cancelIdleCallback(job); else clearTimeout(job); job = 0; }
+  function run() {
+    job = 0;
+    const ui = canWait && GH.ui;
+    if (waiting && ui && ui.calm && !ui.calm() && Date.now() - since < CALM_WAIT_MS) {
+      jobTimer = true;
+      job = setTimeout(() => { job = 0; queue(500); }, 150);
+      return;
+    }
+    since = 0;
+    const s = waiting;
     waiting = null;
+    if (s) write(s, false);
+  }
+  function cancelWaiting() {
+    if (job) { if (jobTimer) clearTimeout(job); else G.cancelIdleCallback(job); job = 0; }
+    waiting = null;
+    since = 0;
   }
   function flush() {
     if (!waiting) return;

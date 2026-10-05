@@ -1,8 +1,9 @@
 /* Outdoor activities, after the fact: the summary of one (a route map drawn here, offline, coloured
- * by pace, with a street map behind it on request; splits, elevation, heart rate and zones from the
- * watch, steps, calories, records, saving to Health Connect), the history and personal records, and
- * the ways in (Today, Health, Progress). Recording lives in src/ui/actlive.js; the maths in
- * src/activity.js.
+ * by pace, with a street map behind it on request: Google's with the app's key, else OpenFreeMap's;
+ * splits, elevation, heart rate and zones from the watch, steps, calories, records, saving to Health
+ * Connect), the history and personal records, and the ways in (Today, Health, Progress). Also the maps
+ * both screens use (U.actMap) and the way an activity leaves when it's discarded or deleted
+ * (U.actFoldAway). Recording lives in src/ui/actlive.js; the maths in src/activity.js.
  */
 (function (G) {
   'use strict';
@@ -91,6 +92,24 @@
     return { buckets: out, avg };
   }
   U.actPaceBuckets = paceBuckets;
+  // Where each whole km or mile falls along the stored route: [{ lat, lon, n }] (every 5th on long ones).
+  function kmMarks(route, unitM, total) {
+    const out = [];
+    let dist = 0, next = unitM, n = 1;
+    const every = total / unitM > 20 ? 5 : 1;
+    for (let i = 1; i < route.length; i++) {
+      if (route[i].gap) continue;
+      const a = route[i - 1], b = route[i];
+      const seg = A().haversine(a.lat, a.lon, b.lat, b.lon);
+      while (seg > 0 && dist + seg >= next) {
+        const f = (next - dist) / seg;
+        if (n % every === 0) out.push({ lat: a.lat + f * (b.lat - a.lat), lon: a.lon + f * (b.lon - a.lon), n });
+        n++; next += unitM;
+      }
+      dist += seg;
+    }
+    return out;
+  }
   // The route as SVG: a soft casing, the line (by pace, or one colour), start and end markers and a
   // marker at each km or mile. o: { W, H, pace, marks, live (a current-position dot), cls }.
   function routeSvg(route, o) {
@@ -115,20 +134,9 @@
       flush();
     } else parts.push(`<path class="rt-line" d="${all}"/>`);
     if (opt.marks && opt.unitM) {
-      // A dot at each whole km or mile along the stored route (every 5th on long ones).
-      let dist = 0, next = opt.unitM, n = 1;
-      const every = opt.total / opt.unitM > 20 ? 5 : 1;
-      for (let i = 1; i < route.length; i++) {
-        if (route[i].gap) continue;
-        const a = route[i - 1], b = route[i];
-        const seg = A().haversine(a.lat, a.lon, b.lat, b.lon);
-        while (seg > 0 && dist + seg >= next) {
-          const f = (next - dist) / seg;
-          const x = xy[i - 1][0] + f * (xy[i][0] - xy[i - 1][0]), y = xy[i - 1][1] + f * (xy[i][1] - xy[i - 1][1]);
-          if (n % every === 0) parts.push(`<g class="rt-km" transform="translate(${f1(x)} ${f1(y)})"><circle r="10"/><text dy="3.8">${n}</text></g>`);
-          n++; next += opt.unitM;
-        }
-        dist += seg;
+      for (const m of kmMarks(route, opt.unitM, opt.total)) {
+        const [x, y] = P(m.lat, m.lon);
+        parts.push(`<g class="rt-km" transform="translate(${f1(x)} ${f1(y)})"><circle r="10"/><text dy="3.8">${m.n}</text></g>`);
       }
     }
     const s = xy[0], e = xy[xy.length - 1];
@@ -258,7 +266,12 @@
       <ul class="as-recs-list">${list.map((r) => `<li class="as-rec" data-key="rec-${U.esc(r.key)}"><span class="as-rec-l t-subhead">${U.esc(r.label)}</span><span class="as-rec-v t-headline rf-num">${U.esc(recValue(r))}</span><span class="as-rec-p t-caption rf-muted">was ${U.esc(recValue({ kind: r.kind, v: r.prev }))}</span></li>`).join('')}</ul>
     </div>`;
   }
-  const streetsOn = () => !!(U.S && U.S.profile.prefs && U.S.profile.prefs.actStreets);
+  // The map behind a route, on its summary and while recording: the person's choice (prefs.actMaps),
+  // asked for afresh now that it's Google's (an OpenFreeMap one from before, actStreets, isn't taken
+  // as a yes to Google).
+  const mapsOn = () => !!(U.S && U.S.profile.prefs && U.S.profile.prefs.actMaps);
+  U.actMapsOn = mapsOn;
+  const mapsBy = () => (U.actMapsProvider() === 'google' ? 'Google' : 'OpenFreeMap');
   function mapCard(a) {
     const route = A().decodeRoute(a.route, a.start);
     if (route.length < 2) {
@@ -266,7 +279,8 @@
     }
     const { avg } = paceBuckets(route);
     const avgTxt = isSpeed(a.type) ? `${fmtSpeed(avg * 3600 / UNIT().m)} ${speedUnit()}` : `${fmtPace(avg > 0 ? UNIT().m / avg : null)} ${paceUnit()}`;
-    const on = streetsOn();
+    const on = mapsOn();
+    // OpenFreeMap's credit is the page's own line; Google's map carries its own logo and terms.
     return `<div class="card am-card" data-key="map">
       <div class="am-box${on ? ' has-streets' : ''}" data-type="${U.esc(a.type)}">
         ${routeSvg(route, { unitM: UNIT().m, total: a.distanceM })}
@@ -278,8 +292,8 @@
         <span class="am-avg rf-muted">Middle: your average, ${U.esc(avgTxt)}</span>
       </div>
       <div class="am-foot">
-        <button type="button" class="rf-btn" data-size="sm" data-variant="${on ? 'plain' : 'soft'}" data-act="actStreets" aria-pressed="${on}">${U.icon('map')}${on ? 'Hide streets' : 'Show streets'}</button>
-        <p class="t-caption rf-muted am-note">${on ? 'Street maps load from OpenFreeMap, which sees the area of the map.' : 'The route is drawn on this phone. Streets load from OpenFreeMap, which sees the area of the map.'}</p>
+        <button type="button" class="rf-btn" data-size="sm" data-variant="${on ? 'plain' : 'soft'}" data-act="actMaps" aria-pressed="${on}">${U.icon('map')}${on ? 'Hide map' : 'Show map'}</button>
+        <p class="t-caption rf-muted am-note">${on ? `The map comes from ${mapsBy()}, which sees the area it shows.` : `The route is drawn on this phone. A map behind it comes from ${mapsBy()}, which sees the area it shows.`}</p>
       </div>
     </div>`;
   }
@@ -403,7 +417,7 @@
     after(root, S, day, id, changed) {
       const a = A().get(S, id);
       if (!a) return;
-      if (streetsOn()) mountStreets(root, a);
+      if (mapsOn()) mountMap(root, a);
       if (changed && (a.records || []).length && !U.reduced() && G.Refract && G.Refract.burst && !celebrated.has(a.id)) {
         celebrated.add(a.id);
         // (Refract 1.4's burst is 8 to 14 beads.)
@@ -461,8 +475,16 @@
     const unticked = light && !others;
     if (unticked) { light.walk = false; delete light.walkSrc; }
     U.save(true);
-    if (U.route.view === 'activity') U.back(); else U.render();
-    U.haptic('heavy');
+    // Its summary folds away where it is, then the page goes back, with the discard's own feel as it
+    // goes (the question's Delete had its own).
+    const screen = U.route.view === 'activity' && U.route.arg === a.id ? document.getElementById('screen') : null;
+    if (screen) {
+      const map = screen.querySelector('.am-streets');
+      await U.actFoldAway(screen.children);
+      U.haptic('actDiscard');
+      if (map) unmount(map);
+      if (U.S === S && U.route.view === 'activity' && U.route.arg === a.id) U.back();
+    } else { U.haptic('actDiscard'); U.render(); }
     U.toast(`${U.cap(noun)} deleted`, 'neutral', undefined, {
       label: 'Undo',
       onClick: () => {
@@ -475,58 +497,154 @@
     });
   };
 
-  /* ---------------------------------------------------------------- the street map */
-  // Loaded only when someone taps Show streets (the tiles come from OpenFreeMap), and remembered.
-  U.act.actStreets = () => {
+  /* ---------------------------------------------------------------- maps: Google's, else OpenFreeMap's */
+  // The build's Google Maps key (AndroidBridge.mapsKey), or '' (a browser, a build without one).
+  const mapsKey = () => {
+    try { const b = G.AndroidBridge; const k = b && typeof b.mapsKey === 'function' ? String(b.mapsKey() || '') : ''; return /^[\w-]{20,100}$/.test(k) ? k : ''; } catch (e) { return ''; }
+  };
+  let googleRefused = false; // Google turned the key down this session: OpenFreeMap's from then on
+  U.actMapsProvider = () => (mapsKey() && !googleRefused ? 'google' : 'osm');
+  // A map in el (a positioned box): Google's when this build has a key and Google's map loads, else
+  // MapLibre's on OpenFreeMap. If Google's fails, even after it has shown (a key Google turns down),
+  // OpenFreeMap's takes its place with what the map was last given. Each draws in a box of its own in
+  // el. o: what src/gmap.js takes, plus onProvider(provider) (at the start, and when one takes the
+  // other's place: it's loading again). Nothing is asked of either until this runs. Returns
+  // { provider, update({ route, here }), destroy() }.
+  U.actMap = (el, o) => {
+    let inner = null, dead = false;
+    const given = {};
+    const ctl = {
+      provider: null,
+      update(u) { Object.assign(given, u); if (inner) inner.update(u); },
+      destroy() { dead = true; if (inner) { try { inner.destroy(); } catch (e) { /* gone */ } } inner = null; el.textContent = ''; },
+    };
+    const box = () => { el.textContent = ''; const h = document.createElement('div'); h.className = 'am-engine'; el.appendChild(h); return h; };
+    const use = (p) => { ctl.provider = p; el.dataset.provider = p; if (o.onProvider) o.onProvider(p); };
+    const opts = (extra) => Object.assign({}, o, given, extra);
+    function osm() {
+      use('maplibre');
+      GH.lazy('actmap').then((M) => { if (!dead) inner = M.mount(box(), opts({})); }).catch((e) => { if (!dead && o.onFail) o.onFail(e); });
+    }
+    const key = mapsKey();
+    if (!key || googleRefused) { osm(); return ctl; }
+    use('google');
+    GH.lazy('gmap').then((M) => {
+      if (dead) return;
+      inner = M.mount(box(), opts({ key, onFail: (why) => { if (why === 'auth') googleRefused = true; if (!dead) { inner = null; osm(); } } }));
+    }).catch(() => { if (!dead) osm(); });
+    return ctl;
+  };
+  // A colour of the page's as the map engines take it, { hex, a }: read off a 1 x 1 canvas, so a
+  // color-mix() or a theme's colour comes out as plain sRGB.
+  let paint = null;
+  function rgba(color) {
+    try {
+      if (!paint) { const c = document.createElement('canvas'); c.width = 1; c.height = 1; paint = c.getContext('2d', { willReadFrequently: true }); }
+      paint.clearRect(0, 0, 1, 1);
+      paint.fillStyle = '#000';
+      paint.fillStyle = color;
+      paint.fillRect(0, 0, 1, 1);
+      const d = paint.getImageData(0, 0, 1, 1).data;
+      return { hex: `#${[d[0], d[1], d[2]].map((x) => x.toString(16).padStart(2, '0')).join('')}`, a: Math.round((d[3] / 255) * 100) / 100 };
+    } catch (e) { return null; }
+  }
+  U.actColor = (el, name) => rgba(getComputedStyle(el).getPropertyValue(name).trim());
+  U.actDark = () => String(plat() ? plat().currentTheme() : '').startsWith('dark');
+
+  // The summary's map: there once someone taps Show map (and remembered).
+  U.act.actMaps = () => {
     const S = U.S;
-    const on = !streetsOn();
-    S.profile.prefs.actStreets = on;
-    if (!on) delete S.profile.prefs.actStreets;
+    const on = !mapsOn();
+    S.profile.prefs.actMaps = on;
+    delete S.profile.prefs.actStreets; // the OpenFreeMap-only choice before Google's maps
     U.save();
     U.haptic(on ? 'toggleOn' : 'toggleOff');
     if (!on) for (const el of document.querySelectorAll('.am-streets')) unmount(el);
     U.render();
   };
-  const maps = new WeakMap();
+  // Settings' switch for the same choice (the switch plays its own feel).
+  U.on.actMapsPref = (el, ev, v) => {
+    const pr = U.S.profile.prefs;
+    pr.actMaps = !!v;
+    delete pr.actStreets;
+    U.save();
+  };
+  const maps = new WeakMap(); // .am-streets → { ctl, dark }
   function unmount(el) {
     const m = maps.get(el);
-    if (m) { try { m.destroy(); } catch (e) { /* ignore */ } maps.delete(el); }
+    if (m) { try { m.ctl.destroy(); } catch (e) { /* ignore */ } maps.delete(el); }
     el.textContent = '';
     el.removeAttribute('data-state');
     const box = el.closest('.am-box');
-    if (box) box.removeAttribute('data-streets');
+    if (box) { box.removeAttribute('data-streets'); box.removeAttribute('data-provider'); }
   }
-  const cssVar = (el, name) => getComputedStyle(el).getPropertyValue(name).trim();
-  function mountStreets(root, a) {
+  function mountMap(root, a) {
     const el = root.querySelector('.am-streets');
-    if (!el || maps.has(el) || el.dataset.state === 'loading' || el.dataset.state === 'failed') return;
+    if (!el) return;
+    const dark = U.actDark();
+    const had = maps.get(el);
+    // The theme changed under it: Google's colours are set when a map is made.
+    if (had && had.dark !== dark) unmount(el);
+    if (maps.has(el) || el.dataset.state === 'failed') return;
     const route = A().decodeRoute(a.route, a.start);
     if (route.length < 2) return;
     const box = el.closest('.am-box');
     el.dataset.state = 'loading';
     box.setAttribute('data-streets', 'loading');
     const { buckets } = paceBuckets(route);
-    const colors = [0, 1, 2, 3, 4].map((b) => cssVar(box, `--pc${b}`));
-    const dark = String(plat() ? plat().currentTheme() : '').startsWith('dark');
-    GH.lazy('actmap').then((M) => {
-      if (!el.isConnected || !streetsOn()) { el.dataset.state = ''; return; }
-      const ctl = M.mount(el, {
-        route, buckets, dark, colors, interactive: true,
-        casing: cssVar(box, '--rt-case'), start: cssVar(box, '--rt-start'), end: cssVar(box, '--rt-end'), ring: cssVar(box, '--rt-ring'),
-        onReady: () => { el.dataset.state = 'ready'; box.setAttribute('data-streets', 'ready'); },
-        onFail: () => fail(),
-      });
-      maps.set(el, ctl);
-    }).catch(() => fail());
+    const ctl = U.actMap(el, {
+      route, buckets, dark, marks: kmMarks(route, UNIT().m, a.distanceM),
+      colors: [0, 1, 2, 3, 4].map((b) => U.actColor(box, `--pc${b}`)), casing: U.actColor(box, '--rt-case'), bg: (U.actColor(box, '--bg-raised') || {}).hex,
+      onProvider: (p) => { box.setAttribute('data-provider', p); box.setAttribute('data-streets', 'loading'); el.dataset.state = 'loading'; },
+      onReady: () => { el.dataset.state = 'ready'; box.setAttribute('data-streets', 'ready'); },
+      onFail: () => fail(),
+    });
+    maps.set(el, { ctl, dark });
     function fail() {
       const m = maps.get(el);
-      if (m) { try { m.destroy(); } catch (e) { /* ignore */ } maps.delete(el); }
+      if (m) { try { m.ctl.destroy(); } catch (e) { /* ignore */ } maps.delete(el); }
       el.textContent = '';
       el.dataset.state = 'failed';
       box.setAttribute('data-streets', 'failed');
-      U.toast('Couldn\'t load the street map', 'caution', 'Check your connection. Your route is still here.');
+      U.toast('Couldn\'t load the map', 'caution', 'Check your connection. Your route is still here.');
     }
   }
+  // The theme changing under a summary's map (the phone going dark at sunset): it's made again in the
+  // new colours. (The live screen's is redrawn every few seconds, and does the same.)
+  if (G.MutationObserver && G.document) {
+    new MutationObserver(() => {
+      for (const el of document.querySelectorAll('.am-streets[data-for]')) {
+        const m = maps.get(el);
+        const a = m && m.dark !== U.actDark() && U.S && A().get(U.S, el.dataset.for);
+        if (a) { unmount(el); mountMap(el.parentNode, a); }
+      }
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  }
+
+  /* ---------------------------------------------------------------- going away */
+  // An activity going for good (discarded, deleted): each part folds down and fades where it is, a
+  // few at a time, its glass dissolving the way Refract's does (dematerialize); with reduced motion,
+  // a short fade. Resolves once they've gone (by a timer too, however busy the page). The parts stay
+  // faded: the caller takes them away.
+  U.actFoldAway = (list, o) => {
+    const opt = o || {};
+    const els = Array.from(list || []).filter((e) => e && e.nodeType === 1 && e.isConnected && e.animate && !e.hidden);
+    if (!els.length || document.hidden) return Promise.resolve();
+    const quiet = U.reduced();
+    const ms = quiet ? 140 : opt.ms || 280;
+    const R = G.Refract;
+    const runs = els.map((e, i) => {
+      const delay = quiet ? 0 : Math.min(i, 6) * 28;
+      if (!quiet && R && R.dematerialize && e.matches('.rf-glass')) {
+        return new Promise((r) => setTimeout(r, delay)).then(() => R.dematerialize(e, { duration: ms })).catch(() => {});
+      }
+      const frames = quiet ? [{ opacity: 1 }, { opacity: 0 }] : [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(14px) scale(.94)' }];
+      const timing = { duration: ms, delay, easing: quiet ? 'linear' : 'cubic-bezier(0.3, 0, 0.8, 0.15)', fill: 'forwards' };
+      const anims = U.motion && U.motion.show ? U.motion.show(e, frames, timing) : [e.animate(frames, timing)];
+      return Promise.all(anims.map((x) => (x && x.finished ? x.finished.catch(() => {}) : null)));
+    });
+    return Promise.race([Promise.all(runs), new Promise((r) => setTimeout(r, ms + 6 * 28 + 300))]);
+  };
 
   /* ---------------------------------------------------------------- Health Connect */
   const recent = (a) => Date.now() - a.end < 86400000;
