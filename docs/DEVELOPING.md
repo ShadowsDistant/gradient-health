@@ -429,17 +429,18 @@ pause. The distance leaves out points worse than 50 m, pauses (a pause ends the 
 restart the line there) and standing still (the anchor only moves once the position has moved more
 than the accuracy, and not while the GPS speed is under 0.4 m/s); between two kept points that both
 have the GPS's own (Doppler) speed, the distance is that speed over the time between them, which
-GPS noise doesn't lengthen. Loading a recording runs the same
-filter over its points, so a page reload, a crash or a restart gives the same numbers; if Android
-stops the service mid-activity, it starts again the next time the app comes to the front. A finished
-recording stays (actState reports it with `active: false`) until the page saves it and calls
-`actClear(id)`; at most 20 finished ones are kept.
+GPS noise doesn't lengthen. Loading a recording runs the same filter over its points, so a page
+reload, a crash or a restart gives the same numbers; if Android stops the service mid-activity, it
+starts again the next time the app comes to the front. A finished recording stays (actState reports
+it with `active: false`) until the page saves it and calls `actClear(id)`; at most 20 finished ones
+are kept.
 
 **Maps.** An activity's route is drawn on the phone. With maps on (Show map on its summary, the map
 button while recording, or Settings), a map goes behind it: Google's (`src/gmap.js`, which loads the
 Maps JavaScript API) when the build has a key, else MapLibre's on OpenFreeMap (`src/actmap.js`).
 `U.actMap` picks one and puts OpenFreeMap's in place whenever Google's won't load or Google turns the
-key down (`gm_authFailure`, then for the rest of the session), even after it has shown. Both draw
+key down (`gm_authFailure`, its error page, or its "can't load Google Maps correctly" over a
+watermarked map; then for the rest of the session), even after it has shown. Both draw
 the route, the start, finish and km or mile markers and where you are the same way; two fingers move
 them while one scrolls the page, and they don't turn or tilt. `mapsKey()` returns the key from the
 APK's `assets/maps.key` (see Android build), and the page loads Google's script with
