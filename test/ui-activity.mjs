@@ -521,6 +521,7 @@ const hideMap = async () => { await page.click('#screen [data-act="actMaps"]'); 
   // No connection and nothing kept (Settings, Clear saved maps): the route drawn here stays, and the
   // map comes once the connection is back.
   await hideMap();
+  mapsOffline = true;
   await page.evaluate(() => window.GH.ui.act.mapPiecesClear());
   await settle(900);
   const cleared = { n: await page.evaluate(() => window.GH.ui.mapPieces.count()), toast: await page.evaluate(() => ([...document.querySelectorAll('.rf-toast')].pop() || {}).textContent || '') };
