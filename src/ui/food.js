@@ -91,8 +91,8 @@
     },
     float() { return ''; },
   };
-  U.act.foodDayPrev = () => { foodDay = Math.max(U.today() - 30, dayShown() - 1); U.haptic('tick'); U.render(); };
-  U.act.foodDayNext = () => { foodDay = Math.min(U.today(), dayShown() + 1); U.haptic('tick'); U.render(); };
+  U.act.foodDayPrev = () => { foodDay = Math.max(U.today() - 30, dayShown() - 1); U.haptic('day'); U.render(); };
+  U.act.foodDayNext = () => { foodDay = Math.min(U.today(), dayShown() + 1); U.haptic('day'); U.render(); };
 
   /* ---------------------------------------------------------------- adding food */
   // The meal a new entry goes into: the one you tapped, else by the time of day.
@@ -301,7 +301,7 @@
     if (edit) F().update(S, day, edit, { meal, g: n.g != null ? Math.round(n.g) : null, portion: label, kcal: n.kcal, p: Math.round(n.p * 10) / 10, c: Math.round(n.c * 10) / 10, f: Math.round(n.f * 10) / 10, fib: Math.round(n.fib * 10) / 10 });
     else F().add(S, day, { name: item.name, detail: item.detail, src: item.src, ref: item.ref, g: n.g, portion: label, meal, kcal: n.kcal, p: n.p, c: n.c, f: n.f, fib: n.fib }, whenOn(day, meal));
     U.commit();
-    U.haptic(edit ? 'success' : 'log');
+    U.haptic(edit ? 'save' : 'log');
     if (psheet) psheet.close('ok');
     if (sheet && !edit) sheet.close('ok');
     if (GH.health && GH.health.writeFood) GH.health.writeFood(S);
@@ -330,7 +330,7 @@
   U.act.foodDelete = () => {
     F().remove(U.S, pick.day, pick.edit);
     U.commit();
-    U.haptic('toggleOff');
+    U.haptic('remove');
     if (psheet) psheet.close('ok');
     if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S);
   };
@@ -365,11 +365,11 @@
     if (el.dataset.arg) { const [d, id] = el.dataset.arg.split(':'); if (!x.meal) delete x.meal; F().update(U.S, Number(d), id, x); }
     else F().add(U.S, dayShown(), Object.assign({ src: 'quick' }, x), whenOn(dayShown(), x.meal));
     U.commit();
-    U.haptic(el.dataset.arg ? 'success' : 'log');
+    U.haptic(el.dataset.arg ? 'save' : 'log');
     U.closeSheets();
     if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S);
   };
-  U.act.foodQuickDelete = (el) => { const [d, id] = el.dataset.arg.split(':'); F().remove(U.S, Number(d), id); U.commit(); U.haptic('toggleOff'); U.closeSheets(); if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S); };
+  U.act.foodQuickDelete = (el) => { const [d, id] = el.dataset.arg.split(':'); F().remove(U.S, Number(d), id); U.commit(); U.haptic('remove'); U.closeSheets(); if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S); };
   // Create a food from its label (optionally for a barcode that wasn't found).
   function createSheet(prefill) {
     const p = prefill || {};
@@ -418,6 +418,7 @@
     F().saveMeal(U.S, name, F().entries(U.S, dayShown()));
     U.save();
     U.closeSheets();
+    U.haptic('save');
     U.toast('Saved. Find it under Meals when you log food.', 'positive');
   };
   U.act.foodCopyYesterday = async () => {
@@ -428,7 +429,7 @@
     if (!ok) return;
     F().copyMeal(U.S, day - 1, day, null, (meal) => whenOn(day, meal));
     U.commit();
-    U.haptic('log');
+    U.haptic('copy');
     if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S);
   };
 
@@ -438,7 +439,7 @@
     if (!GH.scanner) { U.toast('Scanning isn\'t available here', 'caution'); return; }
     try {
       const code = await GH.scanner.scan();
-      if (!code) return; // the scanner played its detent as it caught the code; logging it has its own
+      if (!code) return; // the scanner played scan as it caught the code; logging it has its own
       const f = F().data(U.S);
       if (f.barcodes && f.barcodes[code]) { const c = f.custom.find((x) => x.id === f.barcodes[code]); if (c) { U.closeSheets(); openPortion(fromCustom(c)); return; } }
       U.toast('Looking it up…', 'neutral');

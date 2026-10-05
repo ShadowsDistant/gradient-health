@@ -74,6 +74,7 @@
     if (!f) return;
     const stop = el.getAttribute('aria-pressed') !== 'true';
     if (stop) f.pause(); else f.play();
+    U.haptic(stop ? 'toggleOff' : 'toggleOn');
     el.setAttribute('aria-pressed', String(stop));
     el.textContent = stop ? 'Play' : 'Pause';
   };

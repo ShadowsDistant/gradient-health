@@ -891,7 +891,7 @@
       onClose: () => { aroundCtl = null; if (Q && cur === 'you' && !U.els().onboardEl.hidden) draw(); },
     });
   };
-  U.act.obAroundDone = () => { if (aroundCtl) { U.haptic('success'); aroundCtl.close('ok'); } };
+  U.act.obAroundDone = () => { if (aroundCtl) { U.haptic('save'); aroundCtl.close('ok'); } };
   function aroundBody() {
     if (!Q) return '';
     const h = healthParts('Not medical advice. If a move hurts, stop, and say so after your workout.');
@@ -1717,7 +1717,7 @@
     U.applyPrefs();
     close();
     U.save(true);
-    U.haptic('success');
+    U.haptic('save');
     U.toast('Plan updated', 'positive', lines.length ? lines.map((l) => l.text).join('. ') : undefined);
   }
 })(typeof window !== 'undefined' ? window : globalThis);

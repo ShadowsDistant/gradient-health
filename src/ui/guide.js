@@ -49,6 +49,7 @@
   };
   U.act.tipDone = (el) => {
     const card = el.closest('.tip');
+    U.haptic('dismiss');
     collapse(card).then(() => { U.markSeen(`tip_${el.dataset.arg}`); U.render(); });
   };
   // Help, Show the tips again: every tab's tip comes back.
@@ -103,7 +104,7 @@
       <button type="button" class="rf-btn ck-hide" data-variant="plain" data-size="sm" data-act="ckHide">Hide this</button>
     </div>`;
   };
-  U.act.ckHide = (el) => collapse(el.closest('.checklist')).then(() => { U.markSeen('checklistHidden'); U.render(); });
+  U.act.ckHide = (el) => { U.haptic('dismiss'); collapse(el.closest('.checklist')).then(() => { U.markSeen('checklistHidden'); U.render(); }); };
   // The level check is Settings' sheet; saving it ticks the item off.
   U.act.ckLevel = () => {
     if (!U.act.baselineSheet) return;
@@ -157,7 +158,7 @@
     if (S && S.health.write !== false && H().canWrite && H().canWrite() && H().writeRecent) H().writeRecent(S, 1);
     if (card && card.isConnected) card.innerHTML = `<div class="hc-invite-row"><span class="rf-list-icon" data-tone="green">${U.icon('check')}</span><span class="hc-invite-text"><span class="t-headline">Connected</span><span class="t-footnote rf-muted">Your next workouts fit how you slept and moved.</span></span></div>`;
   };
-  U.act.hcInviteLater = (el) => { const card = el.closest('.hc-invite'); U.markSeen('hcInvite'); collapse(card).then(() => { if (card) card.remove(); }); };
+  U.act.hcInviteLater = (el) => { const card = el.closest('.hc-invite'); U.markSeen('hcInvite'); U.haptic('dismiss'); collapse(card).then(() => { if (card) card.remove(); }); };
 
   /* ---------------------------------------------------------------- the tour */
   // Three short cards, once the first workout is checked in: Today, the tab for the plan (or food),
@@ -225,8 +226,8 @@
       title: 'Find your way around', size: 'fit', cls: 'tour-sheet', body: body(),
       onClose: () => U.markSeen('tour'),
     });
-    U.act.tourNext = () => { if (i >= last) { ctl.close('ok'); return; } i++; show(ctl, 1); };
-    U.act.tourSkip = () => ctl.close('skip');
+    U.act.tourNext = () => { if (i >= last) { U.haptic('dismiss'); ctl.close('ok'); return; } i++; show(ctl, 1); };
+    U.act.tourSkip = () => { U.haptic('skip'); ctl.close('skip'); };
     // The dots are Refract's page dots: a dot tapped, scrubbed to or reached with the arrow keys goes
     // to its page, and its ink worm follows the page shown.
     ctl.body.addEventListener('rf-select', (e) => {

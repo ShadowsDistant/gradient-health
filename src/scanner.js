@@ -145,14 +145,14 @@
           if (a.stopped) return;
           if (a.qr) {
             const text = (found || []).map((x) => String(x.rawValue || '')).find((t) => t && (!a.accept || a.accept(t)));
-            if (text) { if (U().haptic) U().haptic('detent'); a.finish(text); return; }
+            if (text) { if (U().haptic) U().haptic('scan'); a.finish(text); return; }
             if ((found || []).length && a.notThis) say(a.notThis);
             a.timer = setTimeout(tick, 120);
             return;
           }
           const hit = (found || []).map((b) => ({ code: normalise(b.rawValue, b.format) })).find((b) => checksumOk(b.code));
           if (hit) {
-            if (a.last === hit.code) { if (U().haptic) U().haptic('detent'); a.finish(hit.code); return; }
+            if (a.last === hit.code) { if (U().haptic) U().haptic('scan'); a.finish(hit.code); return; }
             a.last = hit.code;
           } else a.last = null;
         } catch (e) { /* a frame that couldn't be read; try the next */ }

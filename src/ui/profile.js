@@ -59,6 +59,7 @@
   U.act.nameSave = () => {
     const v = ((document.getElementById('nameIn') || {}).value || '').trim().slice(0, 40);
     U.S.profile.name = v;
+    U.haptic('save');
     const t = U.topSheet(); if (t) t.close('ok');
     U.commit();
   };

@@ -711,7 +711,7 @@
       li.setAttribute('data-lifted', '');
       stripEl.setAttribute('data-dragging', '');
       for (const c of cells) if (drag.ok.has(Number(c.querySelector('.pw-pill').dataset.arg))) c.setAttribute('data-drop', '');
-      U.haptic('grab');
+      U.haptic('hold'); // a long press picked it up
     }
     function moveDrag(ev) {
       if (!drag) return;
@@ -762,7 +762,7 @@
     const fromList = !!(el.closest && el.closest('.pw-cu'));
     view.day = d;
     view.moving = null;
-    U.haptic('select');
+    U.haptic('day');
     U.render();
     if (prev !== d) slideCard(d > prev ? 1 : -1);
     if (fromList) scrollToStrip();
@@ -773,7 +773,7 @@
     if ((page === 1) === inNext) return;
     view.day = page ? Math.min(w.next.last, view.day + 7) : Math.max(w.ws, view.day - 7);
     view.moving = null;
-    U.haptic('select');
+    U.haptic('day');
     U.render();
     slideCard(page ? 1 : -1);
   }
@@ -808,15 +808,16 @@
   }
   U.act.planMoveTo = (el) => {
     const [from, to] = String(el.dataset.arg).split(':').map(Number);
-    if (isFinite(from) && isFinite(to)) moveTo(from, to);
+    if (isFinite(from) && isFinite(to)) { U.haptic('drop'); moveTo(from, to); }
   };
-  U.act.planStart = () => { U.go('today'); U.act.startWorkout(); };
+  // Quietly to Today: starting has its own haptic.
+  U.act.planStart = () => { U.go('today', true); U.act.startWorkout(); };
   // The next workout, today: the same flow as Today's "Train today instead" (cancelling it puts the
   // week back as it was).
   U.act.planTrainToday = async () => {
     const ok = await U.confirm('Train today instead?', 'The next workout moves to today and the rest of the week follows it.', 'Train today');
     if (!ok) return;
-    U.go('today');
+    U.go('today', true);
     U.act.startWorkout();
   };
   U.act.planMoveInfo = (el) => U.moveSheet(el.dataset.arg);

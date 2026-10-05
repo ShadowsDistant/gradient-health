@@ -327,12 +327,13 @@
     if (engineOf(S) === 'api') { if (AI()) AI().clearChat(S); } else if (GH.deviceCoach) GH.deviceCoach.clear(S);
     U.save();
     refreshChat();
+    U.haptic('remove');
   };
   U.act.copyAnswer = (el) => {
     const m = chatLog(U.S)[Number(el.dataset.arg)];
     if (!m || !GH.platform) return;
     GH.platform.copy(m.text);
-    U.haptic('tap');
+    U.haptic('copy');
     U.toast('Copied');
   };
   // What the app worked out and handed the model for this answer (the model only worded it).
@@ -352,7 +353,7 @@
     if (live.ctl) live.ctl.abort();
     if (live.engine === 'api' && AI()) AI().stop();
   }
-  U.act.askStop = () => { stopLive(); U.haptic('tap'); };
+  U.act.askStop = () => { stopLive(); U.haptic('pause'); };
   U.act.askRetry = () => {
     if (!live || !live.done || !live.q) return;
     const q = document.getElementById('askQ');
@@ -374,7 +375,7 @@
     const ctl = new AbortController();
     live = { id, engine: e, q: text, text: '', status: 'thinking', fraction: null, error: null, note: null, done: false, ctl };
     const mine = () => live && live.id === id;
-    U.haptic('tap');
+    U.haptic('send');
     refreshChat();
     const log = document.getElementById('chatLog');
     if (log) log.scrollTop = log.scrollHeight;
@@ -505,7 +506,7 @@
       const q = (ctl.el.querySelector('#handQ') || {}).value || '';
       const ok = GH.platform.share(GH.coach.claudePrompt(U.S, U.today(), q), 'claude');
       if (!ok) { U.toast('Couldn\'t open another app', 'caution'); return; }
-      U.haptic('success');
+      U.haptic('send');
       ctl.close('ok');
     };
     return ctl;

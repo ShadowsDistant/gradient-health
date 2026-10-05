@@ -304,7 +304,7 @@
 
   U.act.reviewPlan = (el) => { if (R()) R().open((el && el.dataset && el.dataset.arg) || (U.route && U.route.tab) || 'plan'); };
   U.act.reviewStart = () => { if (rv && R().engine(U.S)) start(rv, R().engine(U.S)); };
-  U.act.reviewStop = () => { if (!rv || rv.step !== 'busy') return; halt(rv); U.haptic('tap'); };
+  U.act.reviewStop = () => { if (!rv || rv.step !== 'busy') return; halt(rv); U.haptic('pause'); };
   U.act.reviewAgain = () => {
     if (!rv) return;
     const who = R().engine(U.S);

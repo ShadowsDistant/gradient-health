@@ -724,7 +724,7 @@
       // (The click of the tap that closed it comes after this.)
       setTimeout(() => doc.removeEventListener('click', click, true), 400);
       if (!m.picked) {
-        U.haptic('back');
+        U.haptic('dismiss');
         const a = doc.activeElement;
         if (trigger.isConnected && (!a || a === doc.body || el.contains(a))) trigger.focus({ preventScroll: true });
       }
@@ -736,7 +736,7 @@
       setTimeout(gone, anims.length ? 900 : 0);
     });
     r.menu.open(el, trigger);
-    U.haptic('nav');
+    U.haptic('menu');
     return el;
   };
 })(typeof window !== 'undefined' ? window : globalThis);
