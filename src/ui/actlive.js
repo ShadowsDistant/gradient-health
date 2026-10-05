@@ -1,9 +1,10 @@
-/* Recording an outdoor activity: the start sheet (the kind of activity, then what the app needs
- * permission for and why), finding GPS, the 3-2-1, and the live screen: time, distance, pace or speed,
- * steps, the current split, the GPS signal and the route so far, with pause and resume and a finish
+/* Recording an outdoor activity: the start sheet (the kind of activity, auto-pause and the spoken
+ * splits, then what the app needs permission for and why), finding GPS, the 3-2-1, and the live
+ * screen: time, distance, pace or speed, steps, the current split, the GPS signal and the route so far
+ * (drawn here, or on a map that follows you), with pause and resume (auto-pause too) and a finish
  * button you press and hold (a tap in a pocket can't end it). Back or the chevron tucks the screen
  * away while the activity keeps recording: Today shows a pill and the other tabs a capsule to get
- * back. Opening the app again, or a reload, goes straight back to it.
+ * back. Opening the app again, or a reload, goes straight back to it. Discarding one folds it away.
  *
  * The recorder (src/activity.js) is the Android shell's foreground service, or navigator.geolocation
  * in a browser. The page keeps S.actLive: which activity, when its clock started and its pauses.
@@ -22,7 +23,9 @@
   let L = null;
   let el = null;
   let timer = null, offBack = null, capTimer = null;
-  const fresh = (phase) => ({ phase, st: null, pts: [], tr: null, trAt: 0, lastState: 0, goAt: 0, lastCue: null, splitBanner: null });
+  // speedNow: the pace now, steadied (m/s); gpsReady: GPS has been ready once (its haptic played);
+  // byHand: when Pause or Resume was last tapped (the recorder's change that follows isn't auto-pause's).
+  const fresh = (phase) => ({ phase, st: null, pts: [], tr: null, trAt: 0, lastState: 0, goAt: 0, lastCue: null, splitBanner: null, speedNow: null, gpsReady: false, byHand: 0 });
   const live = () => !!(U.S && U.S.actLive);
   const shown = () => !!(el && !el.hidden);
   U.actIsLive = live;
@@ -37,7 +40,9 @@
     typeSheet(pre, (U.S.profile.prefs && U.S.profile.prefs.actType) || null);
   };
   // Big tiles, one tap each. The one suggested for today (a light day's walk), or else the one you
-  // did last, is marked.
+  // did last, is marked. Under them, how it records: auto-pause for each kind (on for runs and rides
+  // to begin with) and the spoken splits; both can change while it records (its options menu) and in
+  // Settings.
   function typeSheet(pre, last) {
     const mark = pre || last;
     const tiles = A().ORDER.map((t) => {
@@ -48,9 +53,31 @@
     U.sheet({
       title: 'Record a walk, run or ride', size: 'fit', cls: 'at-sheet',
       body: `<div class="sheet-pad at-pick"><div class="at-grid">${tiles}</div>
+        <ul class="rf-list at-opts">${U.actOptionRows(U.S)}</ul>
         <p class="t-footnote rf-muted at-note">${U.icon('lock', 'sm')}<span>Your route stays on this phone. It goes to Health Connect only if you save it there.</span></p></div>`,
     });
   }
+  // Auto-pause by kind of activity (chips) and the spoken splits (a switch): the start sheet's and
+  // Settings' rows.
+  const voiceOn = (S) => !!(S && S.profile.prefs && S.profile.prefs.actVoice);
+  const KINDS = { walk: 'Walks', run: 'Runs', hike: 'Hikes', cycle: 'Rides', other: 'Other' };
+  U.actOptionRows = (S) => `<li data-key="act-auto"><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Auto-pause</span><span class="rf-list-sub">The clock stops while you stand still</span></span>
+      <div class="ob-chips at-auto" role="group" aria-label="Auto-pause for">${A().ORDER.map((t) => U.chip(KINDS[t], A().autoOn(S, t), `data-on="actAutoType" data-v="${t}"`)).join('')}</div></div></li>
+    ${U.sw('Spoken splits', voiceOn(S), 'data-on="actVoice"', `Each ${U.actUnitLong()}: the distance, the time and its pace, said aloud`)}`;
+  U.on.actAutoType = (el, ev, v) => {
+    const t = el.dataset.v;
+    if (!A().TYPES[t]) return;
+    const pr = U.S.profile.prefs;
+    pr.actAuto = Object.assign({}, pr.actAuto || {}, { [t]: !!v });
+    U.save();
+    // The activity recording now, if it's this kind, takes it at once.
+    if (live() && U.S.actLive.type === t && !U.S.actLive.noGps) { if (L) L.byHand = Date.now(); R().setOptions({ autoPause: !!v }); }
+  };
+  U.on.actVoice = (el, ev, v) => {
+    U.S.profile.prefs.actVoice = !!v;
+    U.save();
+    if (live()) R().setOptions({ voice: !!v });
+  };
   const pickSheet = () => { const t = U.topSheet(); return t && t.el.classList.contains('at-sheet') ? t : null; };
   // The recorder a new activity would use (not one the page may still be finishing).
   const NEW = () => A().starter();
@@ -152,7 +179,7 @@
     const now = Date.now();
     const id = `act-${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     const title = A().defaultTitle(type, now);
-    const o = { id, type, title, units: A().unitsOf(S) };
+    const o = { id, type, title, units: A().unitsOf(S), autoPause: !noGps && A().autoOn(S, type), voice: voiceOn(S) };
     let ok = NEW().start(o);
     // Without location allowed the phone's recorder won't start: the page keeps the clock instead.
     if (!ok && noGps && A().hasNative()) ok = A().web.start(Object.assign({ noGps: true }, o));
@@ -246,6 +273,10 @@
     const a = U.S.actLive;
     if (!a.goAt) return;
     L.tr = A().track(L.pts, { type: a.type, start: a.goAt, end: now, pauses: closedPauses(now), movingMs: moving(now) });
+    // The pace now: the GPS's own speed over the last 20 s of this stretch (A.liveSpeed), steadied
+    // from one look to the next, so it doesn't jump with every fix; straight to 0 when you stop.
+    const v = A().liveSpeed(L.pts, a.type);
+    L.speedNow = v == null ? null : v === 0 || L.speedNow == null || L.speedNow === 0 ? v : L.speedNow + 0.45 * (v - L.speedNow);
     const unit = U.actUnitM();
     const whole = Math.floor(L.tr.distanceM / unit + 1e-9);
     // A split done: a banner (and a buzz) on screen.
@@ -256,7 +287,7 @@
       U.save();
       if (last && shown()) {
         L.splitBanner = { n: whole, ms: last.ms, until: now + 8000 };
-        U.haptic('milestone');
+        U.haptic('actSplit');
       }
     }
   }
@@ -275,9 +306,20 @@
     const was = L.st;
     L.st = st;
     L.lastState = Date.now();
-    // Paused or resumed from outside the app (the notification): kept in the pause log. It's only the
-    // time the page heard of it (the recorder's flagged fixes say when it really happened).
-    if (L.phase === 'live' && was && st.active && was.paused !== st.paused) logPause(st.paused, Date.now());
+    // Paused or resumed from outside the app (the notification, auto-pause): kept in the pause log.
+    // It's only the time the page heard of it (the recorder's flagged fixes say when it really
+    // happened).
+    if (L.phase === 'live' && was && st.active && was.paused !== st.paused) {
+      logPause(st.paused, Date.now());
+      // Auto-pause stopped the clock or started it again: a feel of its own (a tap on Pause or
+      // Resume plays its button's).
+      if (shown() && Date.now() - L.byHand > 2500) {
+        if (st.paused && st.autoPaused) U.haptic('actAutoPause');
+        else if (!st.paused && was.autoPaused) U.haptic('actAutoResume');
+      }
+    }
+    // GPS has you, while it looks: once.
+    if (L.phase === 'search' && !L.gpsReady && gpsReady(st)) { L.gpsReady = true; if (shown()) U.haptic('actGps'); }
     if (!st.active && st.id === a.id && L.phase === 'live' && a.goAt && !polled) { finish(true); return; }
     if (shown()) update();
     else capsuleClock();
@@ -291,6 +333,9 @@
     U.save();
   }
   const paused = () => !!(L && L.st && L.st.paused && L.phase === 'live');
+  const autoPaused = () => paused() && !!L.st.autoPaused;
+  // Accurate to 20 m, now: good enough to start on.
+  const gpsReady = (st) => !!(st && st.gps === 'ok' && st.lastFix && st.lastFix.acc != null && st.lastFix.acc <= 20);
 
   /* ---------------------------------------------------------------- the loop */
   function startTimer() { if (!timer) timer = setInterval(loop, 250); }
@@ -299,6 +344,7 @@
     if (!L || !live()) { stopTimer(); return; }
     const now = Date.now();
     if (L.phase === 'countdown') {
+      if (cancelling) return;
       const s = Math.ceil((L.goAt - now) / 1000);
       if (now >= L.goAt) { go(); return; }
       if (s !== L.lastCue) { L.lastCue = s; plat().cue('countdown'); if (shown()) draw(); }
@@ -317,14 +363,22 @@
     awake();
     draw();
   };
-  // Back to finding GPS (without GPS there's nothing to go back to, so it's called off).
+  // Back to finding GPS (without GPS there's nothing to go back to, so it's called off). The number
+  // folds away first; the clock doesn't start meanwhile.
+  let cancelling = false;
   function cancelCountdown() {
-    if (!L || L.phase !== 'countdown') return;
+    if (!L || L.phase !== 'countdown' || cancelling) return;
     if (U.S.actLive.noGps) { discard(true); return; }
-    L.phase = 'search';
-    U.haptic('tick');
-    awake();
-    draw();
+    U.haptic('back');
+    cancelling = true;
+    const l = L;
+    U.actFoldAway(el ? el.querySelectorAll('.al-count, .al-actions > *') : [], { ms: 200 }).then(() => {
+      cancelling = false;
+      if (L !== l || L.phase !== 'countdown') return;
+      L.phase = 'search';
+      awake();
+      draw();
+    });
   }
   U.act.alCancelCount = () => cancelCountdown();
   function go() {
@@ -334,7 +388,7 @@
     a.pauses = [];
     a.splits = 0;
     U.save(true);
-    plat().cue('go');
+    plat().cue('go', 'actGo');
     L.phase = 'live';
     L.pts = []; L.tr = null; L.trAt = 0;
     onState(R().state(), true);
@@ -345,30 +399,44 @@
     if (!L || L.phase !== 'live' || paused()) return;
     R().pause();
     logPause(true, Date.now());
-    if (L.st) L.st = Object.assign({}, L.st, { paused: true, elapsedMs: A().clockMs(L.st, Date.now()), at: Date.now() });
-    U.haptic('pause');
+    if (L.st) L.st = Object.assign({}, L.st, { paused: true, autoPaused: false, elapsedMs: A().clockMs(L.st, Date.now()), at: Date.now() });
+    L.byHand = Date.now();
+    U.haptic('actPause');
     pull(true);
     draw();
   };
+  // Resume (from a pause by hand or auto-pause's).
   U.act.alResume = () => {
     if (!L || L.phase !== 'live' || !paused()) return;
     R().resume();
     logPause(false, Date.now());
-    if (L.st) L.st = Object.assign({}, L.st, { paused: false, at: Date.now() });
-    U.haptic('go');
+    if (L.st) L.st = Object.assign({}, L.st, { paused: false, autoPaused: false, at: Date.now() });
+    L.byHand = Date.now();
+    U.haptic('actResume');
     pull(true);
     draw();
   };
 
   /* ---------------------------------------------------------------- drawing */
   const unitShort = () => U.actUnitShort();
+  // The GPS signal: three bars by how accurate the last fix is (10 m or better all three, 25 m two,
+  // 50 m one), green when it's good enough to measure by and amber when it's weak, said in words for a
+  // screen reader too; none while it looks (the first bar blinks), and none without location.
+  function gpsBars(st) {
+    const fix = st && st.lastFix;
+    if (!st || st.gps === 'off' || !fix || fix.acc == null || (fix.t && Date.now() - fix.t > 15000)) return 0;
+    return fix.acc <= 10 ? 3 : fix.acc <= 25 ? 2 : fix.acc <= 50 ? 1 : 0;
+  }
   function gpsBadge() {
     const st = L && L.st;
     const noGps = U.S.actLive && U.S.actLive.noGps;
     const g = noGps ? 'off' : st ? st.gps : 'searching';
-    const acc = st && st.lastFix && st.lastFix.acc != null ? Math.round(st.lastFix.acc) : null;
-    const word = noGps ? 'No GPS' : g === 'ok' ? 'GPS' : g === 'searching' ? 'Finding GPS' : 'GPS off';
-    return `<span class="al-gps" data-gps="${g}" role="status" aria-label="${U.esc(word)}${acc != null && g !== 'off' ? `, accurate to about ${acc} metres` : ''}"><span class="al-bars" aria-hidden="true"><i></i><i></i><i></i></span><span class="al-gps-t">${U.esc(word)}${acc != null && g === 'ok' ? ` ±${acc} m` : ''}</span></span>`;
+    const bars = noGps ? 0 : gpsBars(st);
+    const acc = bars ? Math.round(st.lastFix.acc) : null;
+    const looking = g === 'searching' && bars < 2;
+    const word = noGps ? 'No GPS' : g === 'off' ? 'GPS off' : looking ? 'Finding GPS' : 'GPS';
+    const say = noGps || g === 'off' ? word : `${looking ? 'Finding GPS' : `GPS signal ${['', 'weak', 'good', 'strong'][bars]}`}${acc != null ? `, accurate to about ${acc} metres` : ''}`;
+    return `<span class="al-gps" data-gps="${g}" data-bars="${bars}" role="status" aria-label="${U.esc(say)}"><span class="al-bars" aria-hidden="true"><i></i><i></i><i></i></span><span class="al-gps-t">${U.esc(word)}${acc != null && !looking ? ` ±${acc} m` : ''}</span></span>`;
   }
   function numbers(now) {
     const a = U.S.actLive;
@@ -377,18 +445,10 @@
     const dist = tr && tr.pts.length ? tr.distanceM : (L.st && L.st.distanceM) || 0;
     const unit = U.actUnitM();
     const tp = A().typeOf(a.type);
-    let nowPace = null;
-    // Now: over the last 30 seconds of this stretch (at least 10).
-    if (tr && tr.pts.length > 2) {
-      const last = tr.pts[tr.pts.length - 1];
-      const back = tr.pts.find((p) => p.mt >= last.mt - 30000 && p.run === last.run);
-      if (back && last.mt - back.mt >= 10000) {
-        const d = last.d - back.d;
-        nowPace = d > 5 ? { m: d, ms: last.mt - back.mt } : { m: 0, ms: 1 };
-      }
-    }
+    // Now: the steadied speed of the last 20 s (analyse), as a pace or a speed.
+    const v = L.speedNow;
     const avg = tp.speed ? U.actFmtSpeed(A().speedOf(dist, ms, unit)) : U.actFmtPace(A().paceOf(dist, ms, unit));
-    const cur = !nowPace ? null : nowPace.m === 0 ? 'stopped' : tp.speed ? U.actFmtSpeed(A().speedOf(nowPace.m, nowPace.ms, unit)) : U.actFmtPace(A().paceOf(nowPace.m, nowPace.ms, unit));
+    const cur = v == null || paused() ? null : v === 0 ? 'stopped' : tp.speed ? U.actFmtSpeed((v * 3600) / unit) : U.actFmtPace(unit / v);
     // The split you're in: its number, its time so far, how far through it you are.
     const k = Math.floor(dist / unit + 1e-9);
     let splitMs = ms, prevSplit = null;
@@ -405,12 +465,12 @@
     const a = U.S.actLive;
     const n = numbers(now);
     const tp = n.tp;
-    const route = L.tr && L.tr.pts.length > 1 ? A().simplify(L.tr.pts, 4).map((p, i, arr) => ({ lat: p.lat, lon: p.lon, gap: i > 0 && p.run !== arr[i - 1].run })) : [];
+    const route = liveRoute();
     const bn = L.splitBanner && L.splitBanner.until > now ? L.splitBanner : null;
     const kcal = n.steps == null ? liveKcal(n) : null;
     const clock = `<div class="al-clock${a.noGps ? ' al-clock-solo' : ''}">
         <span class="al-time" data-live="time">${U.esc(U.actClock(n.ms / 1000))}</span>
-        <span class="al-cap" data-live="cap">${paused() ? 'Paused' : 'Time'}</span>
+        <span class="al-cap" data-live="cap">${autoPaused() ? 'Auto-paused' : paused() ? 'Paused' : 'Time'}</span>
       </div>`;
     // Without GPS there's no distance, pace or split to show: the time, the phone's steps if it
     // counts them, and what comes later from a watch.
@@ -430,8 +490,103 @@
     : `<div class="al-m rf-glass" data-variant="thick" data-interactive><span class="al-m-l">Calories</span><span class="al-m-v"><b data-live="kcal">${U.num(kcal)}</b><small>kcal</small></span><span class="al-m-s">estimated</span></div>`}
         <div class="al-m rf-glass" data-variant="thick" data-interactive><span class="al-m-l" data-live="splitl">${U.esc(U.cap(U.actUnitLong()))} ${n.k + 1}</span><span class="al-m-v"><b data-live="split">${U.esc(U.actClock(n.splitMs / 1000))}</b></span><span class="al-m-bar" aria-hidden="true"><i data-live="splitbar" style="width:${(Math.max(0, Math.min(1, n.splitFrac)) * 100).toFixed(1)}%"></i></span></div>
       </div>
-      <div class="al-map rf-glass" data-variant="thick" data-interactive data-type="${U.esc(a.type)}">${route.length > 1 ? U.actRouteSvg(route, { pace: false, marks: false, live: true, W: 360, H: 190, pad: 20, cls: 'rt-live' }) : `<p class="al-map-wait t-footnote">${a.noGps ? 'No GPS, so no route this time.' : 'Your route draws here as you go.'}</p>`}</div>`;
+      ${mapCard(route.length > 1 ? U.actRouteSvg(route, { pace: false, marks: false, live: true, W: 360, H: 190, pad: 20, cls: 'rt-live' }) : '<p class="al-map-wait t-footnote">Your route draws here as you go.</p>')}`;
   }
+  // The route so far as it's drawn (A.smoothRoute), worked out again only when the track is.
+  function liveRoute() {
+    if (!L || !L.tr || L.tr.pts.length < 2) return [];
+    if (L.routeOf !== L.tr) {
+      L.routeOf = L.tr;
+      L.route = A().simplify(A().smoothRoute(L.tr.pts), 4).map((p, i, arr) => ({ lat: p.lat, lon: p.lon, gap: i > 0 && p.run !== arr[i - 1].run }));
+    }
+    return L.route;
+  }
+  // The map card: the route drawn here, or with maps on, the map that follows you over it (its box,
+  // .al-map-slot, is where the one map of this activity goes; see liveMap). Its button turns maps on
+  // and off; Google's logo and terms sit along its foot, OpenFreeMap's credit is the page's own line.
+  // With a map in it, the glass doesn't answer a press (fingers on it move the map).
+  function mapCard(inner, search) {
+    const on = mapsWanted();
+    const a = U.S.actLive;
+    return `<div class="al-map${search ? ' al-map-search' : ''} rf-glass" data-variant="thick"${on ? '' : ' data-interactive'} data-type="${U.esc(a.type)}"${on ? ` data-streets="${lm ? lm.state : 'loading'}"${lm && lm.provider ? ` data-provider="${lm.provider}"` : ''}` : ''}>
+        ${inner}
+        ${on ? '<div class="al-map-slot" data-morph="keep"></div><p class="am-attr t-caption"><button type="button" class="am-attr-btn" data-act="actOsm">© OpenMapTiles © OpenStreetMap contributors</button></p>' : ''}
+        <button type="button" class="rf-btn rf-glass al-map-btn" data-variant="thick" data-size="sm" data-shape="circle" data-act="alMaps" aria-pressed="${on}" aria-label="${on ? 'Hide the map' : 'Show a map'}">${U.icon('map')}</button>
+      </div>`;
+  }
+
+  /* ---------------------------------------------------------------- the live map */
+  // With maps on (U.actMapsOn), a map that follows you, Google's or OpenFreeMap's (U.actMap): while
+  // GPS looks, at where the phone roughly is (st.coarse) until the GPS has you, and as you go. One map
+  // for the whole activity (each new one is another load of Google's): its box moves from the search
+  // card to the live one, and waits out the 3-2-1 in between.
+  let lm = null; // { el, ctl, dark, state, provider, routeOf, at }
+  const mapsWanted = () => !!(U.actMapsOn && U.actMapsOn() && U.S.actLive && !U.S.actLive.noGps);
+  // Where you are, for the map: the last fix (a minute old at most), else the rough position; which
+  // way you're heading once you're moving and the GPS knows.
+  function hereNow() {
+    const st = L && L.st;
+    if (!st) return null;
+    const f = st.lastFix && st.lastFix.acc != null && st.lastFix.acc <= 100 && !(st.lastFix.t && Date.now() - st.lastFix.t > 60000) ? st.lastFix : null;
+    const p = f || st.coarse;
+    if (!p) return null;
+    const heading = f && f.bearing != null && f.speed != null && f.speed >= 0.6 && !paused() ? f.bearing : null;
+    return { lat: p.lat, lon: p.lon, acc: p.acc, heading };
+  }
+  function liveMap() {
+    if (!el || !L) return;
+    if (!mapsWanted()) { dropMap(); return; }
+    const slot = el.querySelector('.al-map-slot');
+    const dark = U.actDark();
+    if (lm && lm.dark !== dark) dropMap(); // Google's colours are set when a map is made
+    if (!lm && slot) {
+      const card = slot.closest('.al-map');
+      const box = document.createElement('div');
+      box.className = 'am-streets al-streets';
+      const l = lm = { el: box, dark, state: 'loading', provider: null, ctl: null, routeOf: L.tr, at: '' };
+      const mark = () => { const c = l.el.closest('.al-map'); if (c && lm === l) { c.dataset.streets = l.state; if (l.provider) c.dataset.provider = l.provider; } };
+      l.ctl = U.actMap(box, {
+        live: true, dark, route: liveRoute(), here: hereNow(),
+        line: U.actColor(card, '--al-line'), casing: U.actColor(card, '--rt-case'), bg: (U.actColor(card, '--bg') || {}).hex,
+        onProvider: (p) => { l.provider = p; l.state = 'loading'; mark(); },
+        onReady: () => { l.state = 'ready'; mark(); },
+        onFail: () => { l.state = 'failed'; mark(); },
+      });
+    }
+    if (lm && slot && lm.el.parentNode !== slot) slot.appendChild(lm.el);
+    feedMap();
+  }
+  // The route and where you are, as they change.
+  function feedMap() {
+    if (!lm || !lm.ctl) return;
+    if (lm.routeOf !== L.tr) { lm.routeOf = L.tr; lm.ctl.update({ route: liveRoute() }); }
+    const h = hereNow();
+    const at = h ? `${h.lat.toFixed(6)},${h.lon.toFixed(6)},${Math.round(h.acc || 0)},${h.heading == null ? '' : Math.round(h.heading)}` : '';
+    if (h && at !== lm.at) { lm.at = at; lm.ctl.update({ here: h }); }
+  }
+  function dropMap() {
+    if (!lm) return;
+    try { lm.ctl.destroy(); } catch (e) { /* gone */ }
+    lm.el.remove();
+    lm = null;
+  }
+  U.act.alMaps = async () => {
+    if (!live()) return;
+    const pr = U.S.profile.prefs;
+    const on = !mapsWanted();
+    // The first time, asked first: what the map's service sees.
+    if (on && pr.actMaps === undefined) {
+      const by = U.actMapsProvider() === 'google' ? 'Google' : 'OpenFreeMap';
+      if (!(await U.confirm(`Show a map from ${by}?`, `The map comes from ${by}, which sees the area it shows: while you record, around where you are. Your route stays on this phone. You can turn the map off here, or on an activity.`, 'Show map', undefined, 'map', 'Not now'))) return;
+      if (!live()) return;
+    }
+    pr.actMaps = on;
+    delete pr.actStreets;
+    U.save();
+    U.haptic(on ? 'toggleOn' : 'toggleOff');
+    if (!on) dropMap();
+    draw();
+  };
   function liveKcal(n) {
     const tr = L.tr;
     if (!tr) return 0;
@@ -448,7 +603,7 @@
     const S = U.S, a = S.actLive;
     const tp = A().typeOf(a.type);
     const now = Date.now();
-    const phase = L.phase === 'live' && paused() ? 'paused' : L.phase;
+    const phase = L.phase === 'live' && paused() ? (autoPaused() ? 'autopaused' : 'paused') : L.phase;
     el.dataset.type = a.type;
     el.dataset.hue = tp.hue;
     el.dataset.phase = phase;
@@ -456,12 +611,15 @@
     if (L.phase === 'search') {
       const st = L.st;
       const acc = st && st.lastFix && st.lastFix.acc != null ? Math.round(st.lastFix.acc) : null;
-      const ready = !!(st && st.gps === 'ok' && acc != null && acc <= 20);
+      const ready = gpsReady(st);
       const q = acc == null ? 0 : Math.max(0.06, Math.min(1, (50 - acc) / 40));
-      body = `<div class="al-search" data-ready="${ready}">
-          <div class="al-radar" aria-hidden="true"><span></span><span></span><span></span><i>${U.icon('navigate')}</i></div>
+      const radar = `<div class="al-radar" aria-hidden="true"><span></span><span></span><span></span><i>${U.icon('navigate')}</i></div>`;
+      // With maps on, the map shows where you are while GPS looks (roughly at first), the radar
+      // over it until the map's there.
+      body = `<div class="al-search${mapsWanted() ? ' has-map' : ''}" data-ready="${ready}">
+          ${mapsWanted() ? mapCard(radar, true) : radar}
           <h1 class="al-h1">${ready ? 'GPS is ready' : 'Finding your location'}</h1>
-          <p class="al-sub">${ready ? `Accurate to about ${acc} m. Start when you're ready.` : acc != null ? `Accurate to about ${acc} m so far. Stand still outside with a clear view of the sky.` : 'Stand still outside with a clear view of the sky.'}</p>
+          <p class="al-sub">${ready ? `Accurate to about ${acc} m. Start when you're ready.` : acc != null ? `Accurate to about ${acc} m so far. Stand still outside with a clear view of the sky.` : st && st.coarse ? 'Found roughly where you are. Stand still outside with a clear view of the sky.' : 'Stand still outside with a clear view of the sky.'}</p>
           <div class="al-acc" role="meter" aria-label="GPS accuracy" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(q * 100)}"><i style="width:${(q * 100).toFixed(0)}%"></i></div>
         </div>`;
       actions = `<button type="button" class="rf-btn rf-glass al-cancel" data-size="lg" data-lens data-act="alDiscardNow">Cancel</button>
@@ -485,17 +643,19 @@
         ${L.phase === 'live' ? U.glassBtn('more', 'Activity options', 'alMenu') : '<span class="ob-spacer"></span>'}
       </div>
       <div class="al-body" data-key="al-${L.phase}">${body}</div>
-      <div class="al-actions" data-key="alx-${phase}">${actions}</div>`);
+      <div class="al-actions" data-key="alx-${phase === 'autopaused' ? 'paused' : phase}">${actions}</div>`);
+    liveMap();
   }
   // Between draws, only the numbers change.
   let lastDraw = 0;
   function update() {
     if (!shown() || !L) return;
     const now = Date.now();
+    feedMap();
     if (L.phase !== 'live') { if (now - lastDraw > 900) { lastDraw = now; draw(); } return; }
     const banner = L.splitBanner && L.splitBanner.until > now;
     const hasBanner = !!el.querySelector('.al-banner');
-    if (now - lastDraw > 2500 || banner !== hasBanner || el.dataset.phase !== (paused() ? 'paused' : 'live')) { lastDraw = now; draw(); return; }
+    if (now - lastDraw > 2500 || banner !== hasBanner || el.dataset.phase !== (autoPaused() ? 'autopaused' : paused() ? 'paused' : 'live')) { lastDraw = now; draw(); return; }
     const t = el.querySelector('[data-live="time"]');
     const txt = U.actClock(moving(now) / 1000);
     if (t && t.textContent !== txt) t.textContent = txt;
@@ -610,25 +770,30 @@
     R().clear(act.id);
     L = null;
     stopTimer();
+    dropMap();
     if (el) { el.hidden = true; el.textContent = ''; steady(); }
     if (offBack) { offBack(); offBack = null; }
     plat().keepAwake(false);
     if (open) {
       U.open('activity', act.id);
-      U.haptic(act.records.length ? 'pr' : 'workoutDone');
+      // A record beaten: the record's feel; else the finish's own.
+      U.haptic(act.records.length ? 'pr' : 'actFinish');
     } else U.render();
     if (U.checklistCheck) U.checklistCheck();
     if (U.actAfterFinish) U.actAfterFinish(act);
     if (U.badgeCheck) U.badgeCheck('activity'); // a first run, a 5K, a record: a toast with the medal
     return act;
   }
-  // Discard: nothing is kept (quiet: no question, e.g. before the clock started).
+  // Discard: nothing is kept (quiet: no question, e.g. before the clock started). The screen folds
+  // away rather than vanishing.
   async function discard(quiet) {
     const S = U.S;
     const a = S.actLive;
-    if (!a) return;
+    if (!a || leaving) return;
     const noun = A().typeOf(a.type).noun;
-    if (!quiet && a.goAt && moving(Date.now()) > 60000 && !(await U.confirm(`Discard this ${noun}?`, 'Nothing from it is saved.', 'Discard', 'critical', 'trash', 'Keep it'))) return;
+    const ask = !quiet && a.goAt && moving(Date.now()) > 60000;
+    if (ask && !(await U.confirm(`Discard this ${noun}?`, 'Nothing from it is saved.', 'Discard', 'critical', 'trash', 'Keep it'))) return;
+    if (S.actLive !== a || leaving) return;
     const top = U.topSheet(); if (top) top.close('ok');
     // Forgotten first: the recorder's news of its stop (the page's own recorder tells at once) isn't
     // taken for a finish.
@@ -638,17 +803,66 @@
     R().stop();
     R().clear(a.id);
     stopTimer();
+    if (offBack) { offBack(); offBack = null; }
+    const said = !quiet || a.goAt;
+    // Something recorded goes with the discard's own feel: at once, or once the screen has gone when
+    // the question was asked (its Discard has a feel of its own); called off before the start, a step
+    // back.
+    if (!said) U.haptic('back');
+    else if (!ask) U.haptic('actDiscard');
+    await foldAway();
+    if (said && ask) U.haptic('actDiscard');
+    dropMap();
     hideLive(false);
-    if (!quiet || a.goAt) { U.haptic('heavy'); U.toast(`${U.cap(noun)} discarded`, 'neutral', 'Nothing from it was saved.'); }
+    if (said) U.toast(`${U.cap(noun)} discarded`, 'neutral', 'Nothing from it was saved.');
+  }
+  // The live screen folding away: its glass dissolves where it is (Refract's dematerialize), the rest
+  // sinks and fades a few at a time, and the colours behind it go, so the page beneath shows through.
+  // Reduced motion: a short fade.
+  let leaving = false;
+  function foldAway() {
+    if (!el || el.hidden || !el.animate) return Promise.resolve();
+    leaving = true;
+    el.classList.add('is-leaving');
+    const quiet = U.reduced();
+    const ms = quiet ? 140 : 300;
+    const bg = el.querySelector('.al-bg');
+    const fade = bg ? bg.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms + 120, delay: quiet ? 0 : 60, easing: 'linear', fill: 'forwards' }) : null;
+    const parts = el.querySelectorAll('.al-top > *, .al-clock, .al-banner, .al-grid > *, .al-map, .al-search > *, .al-count, .al-actions > *');
+    return Promise.all([U.actFoldAway(parts, { ms }), fade ? fade.finished.catch(() => {}) : null]).then(() => {
+      leaving = false;
+      el.classList.remove('is-leaving');
+      if (fade) fade.cancel();
+    });
   }
   U.act.alDiscardNow = () => discard(true);
   U.act.alDiscard = () => discard(false);
+  // Its options while it records: auto-pause (for this kind of activity from now on too) and the
+  // spoken splits, which the recorder takes at once, then discarding it.
   U.act.alMenu = () => {
     if (!live()) return;
+    const a = U.S.actLive;
+    const tp = A().typeOf(a.type);
+    const st = L && L.st;
+    const auto = st && st.active && st.opts ? st.opts.autoPause : A().autoOn(U.S, a.type);
     U.sheet({
-      title: A().typeOf(U.S.actLive.type).label, size: 'fit',
-      body: `<ul class="rf-list">${U.row({ icon: 'trash', tone: 'rose', title: `Discard this ${U.esc(A().typeOf(U.S.actLive.type).noun)}`, sub: 'Stops recording and saves nothing', act: 'alDiscard' })}</ul>`,
+      title: tp.label, size: 'fit', cls: 'al-menu',
+      body: `<ul class="rf-list">
+        ${a.noGps ? '' : `<li>${U.sw('Auto-pause', auto, 'data-on="alAuto"', 'The clock stops while you stand still')}</li>`}
+        <li>${U.sw('Spoken splits', voiceOn(U.S), 'data-on="actVoice"', `Each ${U.actUnitLong()}: the distance, the time and its pace, said aloud`)}</li>
+        ${U.row({ icon: 'trash', tone: 'rose', title: `Discard this ${U.esc(tp.noun)}`, sub: 'Stops recording and saves nothing', act: 'alDiscard' })}
+      </ul>`,
     });
+  };
+  U.on.alAuto = (sw, ev, v) => {
+    if (!live() || U.S.actLive.noGps) return;
+    const t = U.S.actLive.type;
+    const pr = U.S.profile.prefs;
+    pr.actAuto = Object.assign({}, pr.actAuto || {}, { [t]: !!v });
+    U.save();
+    // Turned off while it had stopped the clock: the clock goes on (the switch's feel is enough).
+    if (L) L.byHand = Date.now();
+    R().setOptions({ autoPause: !!v });
   };
 
   /* ---------------------------------------------------------------- the way back, while tucked away */
@@ -747,6 +961,7 @@
     U.S.actLive = null;
     L = null;
     stopTimer();
+    dropMap();
     U.save(true);
     if (el) { el.hidden = true; el.textContent = ''; steady(); }
     if (offBack) { offBack(); offBack = null; }
