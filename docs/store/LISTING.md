@@ -78,7 +78,7 @@ field". It comes from the `store` text of the version's entry in `src/data/chang
 (`node scripts/release-notes.mjs --store` prints it).
 
 ```text
-• Smoother scrolling on every screen, and the first screen shows sooner
+• Smoother scrolling on every screen
 • New liquid glass: switches, tabs and pickers rise into a lens as you touch them and flow where you let go
 • Buttons form out of the glass and change shape, and menus grow out of the button you tap
 • Pages no longer zoom by accident; pinch the route map to zoom it

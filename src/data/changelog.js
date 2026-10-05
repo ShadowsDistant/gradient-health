@@ -8,7 +8,7 @@
     {
       version: '1.7.0', date: '2026-10-04', title: 'Smoother scrolling and new liquid glass',
       store: [
-        '• Smoother scrolling on every screen, and the first screen shows sooner',
+        '• Smoother scrolling on every screen',
         '• New liquid glass: switches, tabs and pickers rise into a lens as you touch them and flow where you let go',
         '• Buttons form out of the glass and change shape, and menus grow out of the button you tap',
         '• Pages no longer zoom by accident; pinch the route map to zoom it',
@@ -16,10 +16,10 @@
         '• Built with Refract 1.4, now credited in Settings',
       ].join('\n'),
       items: [
-        ['wave', 'Smoother scrolling. While a page moves, the glass over it keeps its frost but stops bending what is behind it, the bar\'s frosted edge is a single blur drawn only when it shows, and the background glow is cheaper to draw and rests after 20 seconds without a touch. Scrolling takes a quarter to a third less drawing on every screen, and set-up about three quarters less.'],
+        ['wave', 'Smoother scrolling. While a page moves, the glass over it keeps its frost but stops bending what is behind it, the bar\'s frosted edge is a single blur drawn only when it shows, and the background glow is cheaper to draw and rests after 20 seconds without a touch. Scrolling takes about a fifth less drawing on most screens, and set-up three quarters less.'],
         ['sparkle', 'New liquid glass, from Refract 1.4. Switches, segmented controls, choices and the tab bar rest as frosted beads, rise into a lens under your finger, follow it and land with a little squash. A tap that wobbles still counts.'],
         ['layers', 'Glass that forms. Today\'s buttons and the workout capsule form out of the glass and dissolve when they go, and change shape when their label does. Buttons in the top bar carry over from page to page, menus grow out of the button you tap, sheets are thick glass, and the day picked in Plan is a bead that travels between days.'],
-        ['bolt', 'Faster to start: the first screen is drawn sooner, and work that can wait, like the 3D figures, waits until you stop scrolling.'],
+        ['bolt', 'Work that can wait, like drawing the 3D figures, now waits until you stop scrolling.'],
         ['navigate', 'Pages no longer zoom by accident, by pinch or double tap. The street map of a run, walk or ride now moves and zooms with two fingers, and a button brings the whole route back.'],
         ['check-circle', 'In a workout, answering how many more reps you could have done no longer moves the workout on by itself while Continue is on screen, so a quick tap can\'t log the next set by mistake.'],
         ['heart', 'Built with Refract, the liquid glass design system behind every screen. It\'s credited in Settings, under About.'],
