@@ -107,6 +107,7 @@
     // shows the consent screen first.
     if (!S.ai.consentAt && (auto || !(await U.claudeConsent()))) return;
     ai.busy = 'report'; ai.error = null; ai.tried = day;
+    if (!auto) U.haptic('send'); // asked by hand: sent off to Claude, and its end below
     if (U.route.tab === 'health' && !U.route.view) U.render();
     refreshReport();
     try {
@@ -117,6 +118,7 @@
       if (auto && e.code === 'offline') ai.error = null;
     } finally {
       ai.busy = false;
+      if (!auto) U.haptic(ai.error ? 'error' : 'success');
       if (U.route.tab === 'health' && !U.route.view) U.render();
       refreshReport();
     }

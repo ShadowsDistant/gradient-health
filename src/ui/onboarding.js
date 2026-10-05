@@ -284,9 +284,9 @@
   // Android Back (and the button at the top left): the screen before, or out of an edit.
   U.onboardBack = () => {
     if (!Q) return !!closing; // fading away after it finished: nothing to go back to
-    if (mode === 'one') { close(); return true; }
+    if (mode === 'one') { U.haptic('dismiss'); close(); return true; }
     if (go(-1)) { U.haptic('back'); return true; }
-    if (mode === 'edit') { close(); return true; }
+    if (mode === 'edit') { U.haptic('dismiss'); close(); return true; }
     return false;
   };
 
@@ -1622,7 +1622,7 @@
         ${U.whyLink ? U.whyLink('age', 'The research behind it') : ''}</div>`,
     });
   };
-  U.act.aroundEdit = () => { U.closeSheets(); U.editAnswers('conditions'); };
+  U.act.aroundEdit = () => { U.closeSheets(); U.haptic('nav'); U.editAnswers('conditions'); };
 
   /* ---------------------------------------------------------------- finish */
   // Low back pain rules out heavy spinal loading for its first weeks, counted from when it's added.

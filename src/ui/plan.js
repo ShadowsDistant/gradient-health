@@ -821,7 +821,7 @@
     U.act.startWorkout();
   };
   U.act.planMoveInfo = (el) => U.moveSheet(el.dataset.arg);
-  U.act.planEquipment = () => U.editAnswers('equipment');
+  U.act.planEquipment = () => { U.haptic('nav'); U.editAnswers('equipment'); };
   // Plan's Moves section (a page of its own when Plan isn't a tab).
   U.act.openMoves = () => U.go('moves');
   U.act.planWhy = (el) => { U.closeSheets(); U.open('science', el.dataset.arg); };

@@ -1,7 +1,8 @@
 /* Haptics in the UI: the rows Settings shows for them (U.hapticRows: the Haptic feedback switch, the
- * strength and "Feel each one") and the Feel each one gallery (U.act.hapticGallery), a sheet with
- * the strength control on top and every kind of haptic, in five groups, to try. The haptics that
- * come with the controls by themselves are in core.js (wire) and sheet.js; the kinds themselves, in
+ * strength and "Feel each one"), the Feel each one gallery (U.act.hapticGallery), a sheet with the
+ * strength control on top and every kind of haptic, in five groups, to try, and the feel of menus
+ * Refract opens by itself (a popover a button points at). The haptics that come with the controls
+ * by themselves are in core.js (wire), sheet.js and U.menu (motion.js); the kinds themselves, in
  * platform.js and Haptics.java.
  */
 (function (G) {
@@ -66,10 +67,14 @@
   /* ---------------------------------------------------------------- menus Refract opens */
   // A menu that's a popover a button points at (the Health tab's +) is opened and closed by Refract
   // and the browser, not U.menu, so it gets the same feel here: menu as it blooms out of its button,
-  // dismiss when a tap outside, Escape or Back closes it without a pick (a pick runs its action, which
-  // has its own). U.menu's play their own (src/ui/motion.js).
+  // dismiss when Escape, its button or a tap on nothing in particular closes it without a pick. A pick
+  // runs its action, which has its own; so does a tap outside it on something else that does (a tab,
+  // another button: the browser lets that tap through). U.menu's play their own (src/ui/motion.js).
   const NATIVE_MENU = '.rf-menu[popover]:not(.gh-menu)';
+  const OWN_FEEL = '[data-act], [data-on], .rf-tab, a[href], input, select, textarea, button:not([popovertarget])';
   const picked = new WeakSet();
+  let downOn = null; // what the last touch or click went down on since a menu opened
+  G.document.addEventListener('pointerdown', (e) => { downOn = e.target; }, true);
   G.document.addEventListener('click', (e) => {
     const m = e.target.closest && e.target.closest(NATIVE_MENU);
     if (m && e.target.closest('.rf-menu-item')) picked.add(m);
@@ -77,7 +82,9 @@
   G.document.addEventListener('toggle', (e) => {
     const m = e.target;
     if (!m || !m.matches || !m.matches(NATIVE_MENU)) return;
-    if (e.newState === 'open') { picked.delete(m); U.haptic('menu'); } else if (!picked.has(m)) U.haptic('dismiss');
+    if (e.newState === 'open') { picked.delete(m); downOn = null; U.haptic('menu'); return; }
+    const other = downOn && downOn.closest && !m.contains(downOn) ? downOn.closest(OWN_FEEL) : null;
+    if (!picked.has(m) && !other) U.haptic('dismiss');
   }, true);
 
   /* ---------------------------------------------------------------- the gallery */

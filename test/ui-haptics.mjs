@@ -419,6 +419,11 @@ l = await felt(() => tap('#topbar [popovertarget="hlLog"]'));
 check('the Health tab\'s + menu: menu', l.bridge.join() === 'menu' && (await page.evaluate(() => !!document.querySelector('#hlLog:popover-open'))), l);
 l = await felt(() => page.keyboard.press('Escape'), 600);
 check('closed without a pick: dismiss', l.bridge.join() === 'dismiss' && !(await page.evaluate(() => !!document.querySelector('#hlLog:popover-open'))), l);
+// A tap outside it on something with a feel of its own (the browser lets it through): that one only.
+await tap('#topbar [popovertarget="hlLog"]');
+await wait(700);
+l = await felt(() => tap('#tabbar .rf-tab[data-tab="today"]'), 900);
+check('open, then a tap on another tab: the menu goes, and only the tab plays (tab)', l.bridge.join() === 'tab' && !(await page.evaluate(() => !!document.querySelector('#hlLog:popover-open'))) && (await page.evaluate(() => window.GH.ui.route.tab)) === 'today', l);
 // Pull to refresh on Today: detent as it arms, and refresh once Health Connect has been read.
 await page.evaluate(() => { window.GH.ui.go('today'); document.getElementById('screen').scrollTop = 0; });
 await wait(900);
@@ -432,7 +437,8 @@ check('Start workout: start', l.bridge.join() === 'start' && (await page.evaluat
 await page.evaluate(() => {
   const U = window.GH.ui, a = U.S.active;
   // A set with rest after it, and another set after that (so its menu can skip the exercise).
-  a.idx = a.steps.findIndex((st, i) => st.kind === 'set' && !st.item.timed && (st.rest || 0) > 0 && a.steps[i + 1] && a.steps[i + 1].kind === 'set');
+  const i = a.steps.findIndex((st, k) => st.kind === 'set' && !st.item.timed && (st.rest || 0) > 0 && a.steps[k + 1] && a.steps[k + 1].kind === 'set');
+  if (i >= 0) a.idx = i;
   U.openPlayer();
 });
 await wait(700);

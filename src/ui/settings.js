@@ -342,8 +342,8 @@
     U.sheet({ title: 'Your answers', size: 'auto', body: `<p class="t-footnote rf-muted sheet-lead">Pick one to change. Your plan updates when you save.</p>
       <ul class="rf-list">${U.answerRows(U.S.profile)}</ul>` });
   };
-  U.act.editStep = (el) => { U.closeSheets(); U.editAnswers(el.dataset.arg); };
-  U.act.editEquipment = () => U.editAnswers('equipment');
+  U.act.editStep = (el) => { U.closeSheets(); U.haptic('nav'); U.editAnswers(el.dataset.arg); };
+  U.act.editEquipment = () => { U.haptic('nav'); U.editAnswers('equipment'); };
   U.act.openPrivacyView = () => U.open('privacy');
   U.act.openLink = (el, ev) => { if (ev && ev.preventDefault) ev.preventDefault(); const url = el.dataset.arg; if (url && /^https:\/\//.test(url) && GH.platform) GH.platform.openUrl(url); };
   U.on.setPref = (el, ev, v) => {

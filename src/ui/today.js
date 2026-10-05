@@ -297,7 +297,7 @@
   U.act.toggleShort = () => { const d = U.today(); shortDay = isShort(d) ? null : d; U.haptic(shortDay != null ? 'toggleOn' : 'toggleOff'); U.render(); };
   U.act.startWorkout = () => {
     const S = U.S;
-    if (S.active) { U.openPlayer(); return; }
+    if (S.active) { U.haptic('go'); U.openPlayer(); return; } // (Plan's Start with one going: resumed)
     const day = U.today();
     const r = B().startWorkout(S, day, { short: isShort(day), now: Date.now() });
     if (r.error) { U.haptic('deny'); U.toast(r.error === 'done' ? 'Already done today' : 'Nothing left to train this week', 'neutral'); return; }
