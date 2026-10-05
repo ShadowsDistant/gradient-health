@@ -4,8 +4,9 @@
 // to the sheet), what a drag costs (no layout, no style work past the one transform a frame, frame
 // times with the settle), how long opening, settling and closing take, sideways gestures, Back, Esc
 // and the scrim, the keyboard, reduced motion, Refract staying out of it, the material (Refract's
-// thick glass at medium, solid at large, while it moves, and with reduced transparency or increased
-// contrast), and the food Edit sheet's width.
+// thick glass at medium; solid at large, while it moves, and with reduced transparency or increased
+// contrast; its silver rim and sheen always, from the first frame of the slide up to the last of the
+// slide out), and the food Edit sheet's width.
 // Usage: node test/ui-sheet.mjs [--dark] [--width=390] [--cpu=4]
 import { createRequire } from 'node:module';
 import { check, section, done, serveDist } from './lib.mjs';
@@ -116,28 +117,27 @@ check('opening focuses the content, never the grabber', /rf-sheet-body/.test(inn
 check('Refract doesn\'t manage it, and it isn\'t glass', inner.managed && !inner.glass, inner);
 check('its own scrim; the backdrop is see-through', inner.scrim && /rgba\(0, 0, 0, 0\)|transparent/.test(inner.backdrop), inner);
 {
-  // The material: a layer of Refract's thick glass under the content. At medium it's glass (a blur,
-  // and Refract's rim that catches the light); at large, while the sheet moves, and with reduced
-  // transparency or increased contrast, it's solid (no blur, no rim).
+  // The material: a layer of Refract's thick glass under the content, with its silver rim (the lit
+  // edge) and sheen always. At medium it's frosted (a blur); at large, while the sheet moves, and with
+  // reduced transparency or increased contrast, it's solid under them (no blur).
   const mat = () => page.evaluate(() => {
     const d = document.querySelector('dialog.gh-sheet[open]'), g = d && d.querySelector('.gh-sheet-panel > .gh-sheet-glass');
     if (!g) return null;
-    const cs = getComputedStyle(g), rim = getComputedStyle(g, '::before');
-    const lit = rim.display !== 'none' && rim.visibility !== 'hidden';
-    const solid = cs.backdropFilter === 'none' && !lit;
-    return { thick: g.matches('.rf-glass[data-variant="thick"]'), hidden: g.getAttribute('aria-hidden') === 'true', under: cs.zIndex === '-1' && cs.pointerEvents === 'none', blur: cs.backdropFilter, rim: lit, solid, opaque: /^rgb\(/.test(cs.backgroundColor), detent: d.dataset.detent };
+    const cs = getComputedStyle(g), rim = getComputedStyle(g, '::before'), sheen = getComputedStyle(g, '::after');
+    const shown = (p) => p.display !== 'none' && p.visibility !== 'hidden' && p.content !== 'none' && parseFloat(p.opacity) > 0;
+    return { thick: g.matches('.rf-glass[data-variant="thick"]'), hidden: g.getAttribute('aria-hidden') === 'true', under: cs.zIndex === '-1' && cs.pointerEvents === 'none', blur: cs.backdropFilter, rim: shown(rim), sheen: shown(sheen), solid: cs.backdropFilter === 'none', opaque: /^rgb\(/.test(cs.backgroundColor), detent: d.dataset.detent };
   });
   const med = await mat();
   check('the material is Refract\'s thick glass, on a layer under the content, hidden from assistive tech', med && med.thick && med.hidden && med.under, med);
-  check('at medium it\'s glass: frosted, with the lit rim', med && med.detent === 'medium' && /blur/.test(med.blur) && med.rim && !med.solid, med);
+  check('at medium it\'s glass: frosted, with the silver rim and the sheen', med && med.detent === 'medium' && /blur/.test(med.blur) && med.rim && med.sheen && !med.solid, med);
   await page.evaluate(() => document.querySelector('dialog.gh-sheet[open]').setAttribute('data-moving', ''));
   const moving = await mat();
   await page.evaluate(() => document.querySelector('dialog.gh-sheet[open]').removeAttribute('data-moving'));
-  check('while it moves it\'s solid', moving && moving.solid && moving.opaque, moving);
+  check('while it moves it\'s solid, and keeps the rim and the sheen', moving && moving.solid && moving.opaque && moving.rim && moving.sheen, moving);
   await page.evaluate(() => window.GH.ui.topSheet().detent('large'));
   await wait(700);
   const large = await mat();
-  check('at large it\'s solid', large && large.detent === 'large' && large.solid && large.opaque, large);
+  check('at large it\'s solid, with the rim and the sheen', large && large.detent === 'large' && large.solid && large.opaque && large.rim && large.sheen, large);
   await page.evaluate(() => window.GH.ui.topSheet().detent('medium'));
   await wait(700);
   await page.evaluate(() => document.documentElement.setAttribute('data-rf-transparency', 'reduced'));
@@ -153,6 +153,28 @@ await page.dispatchEvent('dialog.gh-sheet[open] .rf-sheet-header', 'pointerdown'
 check('Refract\'s own drag doesn\'t run on it', await page.evaluate(() => !document.querySelector('dialog.gh-sheet[open]').hasAttribute('data-dragging')));
 await page.dispatchEvent('dialog.gh-sheet[open] .rf-sheet-header', 'pointerup', { pointerType: 'mouse', button: 0 });
 await closeAll();
+{
+  // In motion: in every frame of a slide up, a drag down and the slide out, the rim and the sheen are
+  // there (1.7.0 brought them in only once the sheet had stopped, and took them away for a drag).
+  await page.evaluate(() => {
+    window.__mat = []; window.__matOn = true;
+    const shown = (p) => p.display !== 'none' && p.visibility !== 'hidden' && parseFloat(p.opacity) > 0;
+    const f = () => {
+      if (!window.__matOn) return;
+      const d = [...document.querySelectorAll('dialog.gh-sheet[open]')].pop(), g = d && d.querySelector('.gh-sheet-panel > .gh-sheet-glass');
+      if (g) window.__mat.push({ moving: d.hasAttribute('data-moving') || d.hasAttribute('data-closing'), rim: shown(getComputedStyle(g, '::before')), sheen: shown(getComputedStyle(g, '::after')) });
+      requestAnimationFrame(f);
+    };
+    requestAnimationFrame(f);
+  });
+  const w = await open('window.GH.ui.showWhatsNew()');
+  await drag(Math.round(w.width / 2), w.top + 40, w.top + 160, 240, { settle: 700 });
+  await page.evaluate(() => window.GH.ui.closeSheets());
+  await wait(700);
+  const frames = await page.evaluate(() => { window.__matOn = false; return window.__mat; });
+  const moving = frames.filter((f) => f.moving);
+  check('the silver rim and the sheen are there in every frame of the slide up, a drag and the slide out', moving.length >= 6 && frames.every((f) => f.rim && f.sheen), { frames: frames.length, moving: moving.length, without: frames.filter((f) => !(f.rim && f.sheen)).length });
+}
 s = await open(act('sciKey'));
 check('a fit sheet is as tall as its content', s && s.size === 'fit' && Math.abs(s.height - s.content) <= 1, s);
 check('and sits on the bottom edge', s && Math.abs(s.bottom - s.vh) <= 1, s);

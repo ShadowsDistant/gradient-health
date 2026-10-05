@@ -504,8 +504,9 @@
   }
   // Refract's light: on a phone the glass rims follow how it's tilted, and every step the light takes
   // repaints those rims and redraws their lenses. It holds still where it is while the page scrolls,
-  // while the workout player or a live activity is open (the phone moves all the time), with Moving
-  // background off and under reduced motion, and follows the tilt again once things are calm.
+  // while a sheet moves, while the workout player or a live activity is open (the phone moves all the
+  // time), with Moving background off and under reduced motion, and follows the tilt again once
+  // things are calm.
   let lightFixed = false;
   function steadyLight(fixed) {
     const r = R();
@@ -516,7 +517,10 @@
     const glass = tabbar && tabbar.querySelector('.rf-tabbar-bar');
     safe(() => (fixed ? r.light.mode('fixed', r.light.current(glass || undefined)) : r.light.mode('pointer')));
   }
-  U.steadyLight = () => steadyLight(!!(scrollIdle || doc.documentElement.hasAttribute('data-still-glow') || U.reduced() || (playerEl && !playerEl.hidden) || (U.actLiveShown && U.actLiveShown())));
+  U.steadyLight = () => steadyLight(!!(scrollIdle || doc.documentElement.hasAttribute('data-sheet-moving') || doc.documentElement.hasAttribute('data-still-glow') || U.reduced() || (playerEl && !playerEl.hidden) || (U.actLiveShown && U.actLiveShown())));
+  // A sheet's rim and sheen show while it slides and is dragged (src/styles/sheet.css), so the light
+  // holds still meanwhile too: a step of it would repaint them every frame of the move.
+  if (doc) doc.addEventListener('gh-sheet-moving', () => U.steadyLight());
 
   /* ---------------------------------------------------------------- calm */
   // When someone last touched, typed, scrolled (anywhere: a sheet, set-up) or turned a wheel.
