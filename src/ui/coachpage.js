@@ -133,7 +133,7 @@
     U.haptic('success');
     U.toast(line.text, 'positive');
   };
-  U.act.coachDismiss = (el) => { C().dismiss(U.S, el.dataset.arg, U.today()); U.commit(); U.haptic('tap'); };
+  U.act.coachDismiss = (el) => { C().dismiss(U.S, el.dataset.arg, U.today()); U.commit(); U.haptic('dismiss'); };
   // A suggestion Claude wrote can be reported; it's dismissed right away.
   U.act.coachFlag = (el) => {
     const x = findSug(el.dataset.arg);
@@ -144,9 +144,11 @@
     if (!GH.ai || !GH.ai.suggest) return;
     if (!U.S.ai.consentAt && !(await U.claudeConsent())) return;
     btn.setAttribute('aria-busy', 'true');
+    U.haptic('send');
     try {
       const n = await GH.ai.suggest(U.S, U.today());
       U.save(true);
+      U.haptic(n ? 'success' : 'tap');
       U.toast(n ? `Claude suggested ${U.plural(n, 'change')}` : 'Claude had nothing to change', 'neutral');
     } catch (e) {
       U.toast(e.message || 'Claude couldn\'t help with that right now', 'caution');

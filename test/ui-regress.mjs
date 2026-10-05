@@ -2,7 +2,9 @@
 // weeks in: chart bounds, tab and button type, cut-off titles, the set-up overlay, sliders, the tour's
 // tab bar, the Resume and Cancel buttons, the workout capsule's glass, section spacing, the current
 // tab's glass lens, page ends that clear the tab bar, and cancelling a workout (from Back and from
-// Today, with Undo).
+// Today, with Undo) as a moment of its own: the cancel haptic once, the player folding away or
+// Today's buttons pinching away and its card settling back, the toast only after, and short fades
+// with reduced motion.
 // Usage: node test/ui-regress.mjs [--dark] [--width=360]
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
@@ -262,13 +264,71 @@ check('and closing it brings the page forward again', await page.evaluate(() => 
 section('Cancelling a workout');
 await tab('today');
 const toast = () => page.evaluate(() => [...document.querySelectorAll('.rf-toast')].map((t) => t.textContent).join(' | '));
-await page.click('#float [data-act="cancelWorkout"]');
-await settle(900);
-const c1 = await page.evaluate(() => ({ active: !!window.GH.ui.S.active, start: !!document.querySelector('#float [data-act="startWorkout"]'), dialog: !!document.querySelector('dialog.rf-dialog[open]') }));
+// Until fn is true in the page (its clock runs on meanwhile), for up to ms.
+const until = async (fn, ms = 4000) => { const t0 = Date.now(); for (;;) { if (await page.evaluate(fn)) return true; if (Date.now() - t0 > ms) return false; await page.waitForTimeout(50); } };
+// It's a moment of its own: the cancel haptic as it's tapped, then motion. Taps sel (a click in the
+// page, so the first frame after it can be read) and reads the animations it started there: on the
+// session card, on the copy of the floating buttons dissolving, on the player and its parts: their
+// properties, and how long each takes (with its delay).
+const cancelMoment = (sel) => page.evaluate(async (sel) => {
+  window.__haptics.length = 0;
+  const before = new Set(document.getAnimations());
+  const card = document.querySelector('#screen [data-key="main"]');
+  document.querySelector(sel).click();
+  const toastAtOnce = !!document.querySelector('.rf-toast');
+  await new Promise((r) => requestAnimationFrame(() => r()));
+  const props = (a) => Object.keys(a.effect.getKeyframes()[0] || {}).filter((k) => !['offset', 'easing', 'composite', 'computedOffset'].includes(k)).sort().join();
+  const fresh = document.getAnimations().filter((a) => !before.has(a) && a.effect && a.effect.target && !a.transitionProperty);
+  const on = (test) => fresh.filter((a) => test(a.effect.target)).map((a) => ({ props: props(a), ms: a.effect.getTiming().duration + (a.effect.getTiming().delay || 0) }));
+  return {
+    toastAtOnce,
+    card: on((t) => t === card),
+    copy: on((t) => !!(t.closest && t.closest('.float-actions.motion-copy'))),
+    floatHidden: document.getElementById('float').hidden,
+    haptics: window.__haptics.slice(),
+  };
+}, sel);
+// The player's own: taps the open dialog's Cancel workout, and reads the player's panel and the
+// parts on it the moment it starts to close (and whether the toast is there yet).
+const playerMoment = () => page.evaluate(async () => {
+  window.__haptics.length = 0;
+  for (const t of document.querySelectorAll('.rf-toast')) t.remove(); // (an earlier one, done with)
+  const pl = document.getElementById('player');
+  const closing = new Promise((resolve) => {
+    const mo = new MutationObserver(() => { if (pl.hasAttribute('data-closing') || pl.hidden) { mo.disconnect(); resolve(); } });
+    mo.observe(pl, { attributes: true, attributeFilter: ['data-closing', 'hidden'] });
+    setTimeout(() => { mo.disconnect(); resolve(); }, 4000);
+  });
+  const d = document.querySelector('dialog.rf-dialog[open]');
+  [...d.querySelectorAll('button')].find((b) => /Cancel workout/.test(b.textContent)).click();
+  await closing;
+  const props = (a) => Object.keys(a.effect.getKeyframes()[0] || {}).filter((k) => !['offset', 'easing', 'composite', 'computedOffset'].includes(k)).sort().join();
+  const list = (el) => el.getAnimations().filter((a) => !a.transitionProperty).map((a) => ({ props: props(a), ms: a.effect.getTiming().duration + (a.effect.getTiming().delay || 0) }));
+  return { closing: pl.hasAttribute('data-closing'), panel: list(pl), parts: [...pl.children].map(list), haptics: window.__haptics.slice(), toastAtOnce: !!document.querySelector('.rf-toast') };
+});
+const after = () => page.evaluate(() => ({
+  active: !!window.GH.ui.S.active,
+  player: !document.querySelector('.player').hidden,
+  eyebrow: ((document.querySelector('#screen [data-key="main"] .rf-card-eyebrow') || {}).textContent || '').trim(),
+  floats: [...document.querySelectorAll('#float [data-act]')].map((b) => b.dataset.act).join(),
+  copies: document.querySelectorAll('.motion-copy').length,
+  dialog: !!document.querySelector('dialog.rf-dialog[open]'),
+  toast: [...document.querySelectorAll('.rf-toast')].map((t) => t.textContent).join(' | '),
+}));
+const only = (list, props) => list.length > 0 && list.every((a) => a.props === props);
+const toastUndo = () => page.evaluate(() => { const t = [...document.querySelectorAll('.rf-toast')].pop(); t.querySelector('.rf-btn:not(.rf-toast-close)').click(); });
+let m = await cancelMoment('#float [data-act="cancelWorkout"]');
+check('Today\'s Cancel: the cancel haptic, once', m.haptics.join() === 'cancel', m.haptics);
+check('its buttons pinch away: a copy of them dissolves where they were (Refract\'s dematerialize), the row hidden at once', m.floatHidden && m.copy.some((a) => /--rf-mat/.test(a.props)), m);
+check('the session card folds, by transform and opacity only', only(m.card, 'opacity,transform') && m.card.every((a) => a.ms <= 400), m.card);
+check('and the toast waits for the moment', !m.toastAtOnce);
+await until(() => !!document.querySelector('.rf-toast'));
+const c1 = await after();
 check('Today\'s Cancel ends a workout with nothing done, without asking', !c1.active && !c1.dialog, JSON.stringify(c1));
-check('and today\'s workout can be started again', c1.start);
-check('the toast says so and offers Undo', /Workout cancelled/.test(await toast()) && /Undo/.test(await toast()), await toast());
-await page.evaluate(() => { const t = [...document.querySelectorAll('.rf-toast')].pop(); t.querySelector('.rf-btn:not(.rf-toast-close)').click(); });
+check('the card settles back to not started, and today\'s workout can be started again', /^Workout/.test(c1.eyebrow) && c1.floats === 'toggleShort,startWorkout', JSON.stringify(c1));
+await until(() => !document.querySelector('.motion-copy'));
+check('then the toast says so and offers Undo, with nothing left over', /Workout cancelled/.test(await toast()) && /Undo/.test(await toast()) && (await after()).copies === 0, await toast());
+await toastUndo();
 await settle(900);
 check('Undo puts it back', await page.evaluate(() => !!window.GH.ui.S.active && !!document.querySelector('#float [data-act="resumeWorkout"]')));
 // With sets done: Back offers finishing too, and cancelling asks first.
@@ -284,11 +344,16 @@ await page.click('dialog.leave-sheet [data-act="plCancel"]');
 await settle(900);
 const ask = await page.evaluate(() => { const d = document.querySelector('dialog.rf-dialog[open]'); return d ? d.textContent : ''; });
 check('cancelling with sets done asks first, with a clear way out', /Cancel this workout\?/.test(ask) && /Keep it/.test(ask) && /1 set you did/.test(ask), ask);
-await page.evaluate(() => { const d = document.querySelector('dialog.rf-dialog[open]'); [...d.querySelectorAll('button')].find((b) => /Cancel workout/.test(b.textContent)).click(); });
-await settle(1200);
-check('then the workout is gone and the player closed', await page.evaluate(() => !window.GH.ui.S.active && document.querySelector('.player').hidden && !!document.querySelector('#float [data-act="startWorkout"]')));
+m = await playerMoment();
+check('its Cancel workout plays the cancel haptic, once (not heavy as well)', m.haptics.join() === 'cancel', m.haptics);
+check('the player folds away: what\'s on it drops and shrinks (transform and opacity), then the panel dissolves into Today', m.closing && m.parts.length >= 2 && m.parts.every((p) => only(p, 'opacity,transform')) && only(m.panel, 'opacity') && [...m.panel, ...m.parts.flat()].every((a) => a.ms <= 400), m);
+check('and the toast waits for it', !m.toastAtOnce);
+await until(() => !!document.querySelector('.rf-toast'));
+const c2 = await after();
+check('then the workout is gone and the player closed', !c2.active && !c2.player && /^Workout/.test(c2.eyebrow) && c2.floats === 'toggleShort,startWorkout', JSON.stringify(c2));
+check('the toast offers Undo once it\'s gone', /Workout cancelled/.test(c2.toast) && /Undo/.test(c2.toast), c2.toast);
 // Undo brings back the same workout (not a copy, which broke every set after it).
-await page.evaluate(() => { const t = [...document.querySelectorAll('.rf-toast')].pop(); t.querySelector('.rf-btn:not(.rf-toast-close)').click(); });
+await toastUndo();
 await settle(900);
 await page.click('#float [data-act="resumeWorkout"]');
 await page.waitForSelector('.player:not([hidden]) .pl-name');
@@ -303,7 +368,33 @@ const undone = await page.evaluate(() => {
   return { logged: n() - before };
 });
 check('after Undo, sets log as usual', undone && !undone.err && undone.logged === 1, JSON.stringify(undone));
-await page.evaluate(() => { const U = window.GH.ui; U.act.plKeep(); window.GH.brain.cancelWorkout(U.S); window.GH.store.save(U.S); U.render(); });
+// Reduced motion: the same moment as short fades only (opacity, 150 ms at most), from the player
+// (its menu's Cancel workout, then the question, as a set is done) and from Today.
+await page.emulateMedia({ reducedMotion: 'reduce' });
+await settle(300);
+await page.click('.player [data-act="plMenu"]');
+await settle(600);
+await page.click('.gh-menu [data-act="plCancel"]');
+await until(() => !!document.querySelector('dialog.rf-dialog[open]'));
+await settle(300);
+m = await playerMoment();
+check('reduced motion, from the player: the panel only fades, briefly, and nothing on it moves', only(m.panel, 'opacity') && m.panel.every((a) => a.ms <= 150) && m.parts.every((p) => !p.length), m);
+await until(() => !!document.querySelector('.rf-toast'));
+let r = await after();
+check('and it ends the same: no workout, the player closed, Today ready to start, the toast with Undo', !r.active && !r.player && /^Workout/.test(r.eyebrow) && r.floats === 'toggleShort,startWorkout' && /Undo/.test(r.toast), JSON.stringify(r));
+await page.evaluate(() => { for (const t of document.querySelectorAll('.rf-toast')) t.remove(); });
+await page.click('#float [data-act="startWorkout"]');
+await page.waitForSelector('.player:not([hidden]) .pl-name');
+await settle(600);
+await page.evaluate(() => window.GH.ui.act.plKeep());
+await settle(900);
+m = await cancelMoment('#float [data-act="cancelWorkout"]');
+check('reduced motion, from Today: the buttons and the card only fade, briefly', m.haptics.join() === 'cancel' && only(m.card, 'opacity') && only(m.copy, 'opacity') && [...m.card, ...m.copy].every((a) => a.ms <= 150) && !m.toastAtOnce, m);
+await until(() => !!document.querySelector('.rf-toast'));
+r = await after();
+check('and ends the same', !r.active && /^Workout/.test(r.eyebrow) && r.floats === 'toggleShort,startWorkout' && /Undo/.test(r.toast) && r.copies === 0, JSON.stringify(r));
+await page.emulateMedia({ reducedMotion: 'no-preference' });
+await page.evaluate(() => { const U = window.GH.ui; if (U.S.active) { U.act.plKeep(); window.GH.brain.cancelWorkout(U.S); window.GH.store.save(U.S); } for (const t of document.querySelectorAll('.rf-toast')) t.remove(); U.render(); });
 await settle(700);
 
 section('How it works');

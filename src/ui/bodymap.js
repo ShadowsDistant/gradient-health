@@ -199,8 +199,8 @@
   U.act.muscleOpen = (el) => {
     const m = el.getAttribute('data-arg');
     if (!NAMES[m]) return;
-    U.haptic('select');
     pop(el, m);
+    // Its sheet's rising is the tap's haptic (sheet).
     if (U.muscleSheet) U.muscleSheet(m);
   };
   // Keyboard focus on the hidden list outlines the region it stands for.

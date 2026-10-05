@@ -1,9 +1,12 @@
-// Haptics in platform.js: a browser pattern for every kind (the same 31 kinds as Haptics.java, every one
+// Haptics in platform.js: a browser pattern for every kind (the same kinds as Haptics.java, every one
 // of them in the Feel each one gallery once, and every haptic('…') in the app names one), stronger at a
 // stronger setting, and the rules for when two meet: a moment reported twice plays once, a smaller
 // haptic can't cut a bigger one short, an equal event waits its turn, a toast's haptic leaves its
 // action's feel alone, and a player cue's buzz is that moment's haptic in the app with haptics on (the
-// plain alarm-class buzz otherwise, and while the app is out of sight).
+// plain alarm-class buzz otherwise, and while the app is out of sight). The kinds for specific
+// actions (a long press, a day picked, a sheet, a menu, closing and flicking away, save, copy, send,
+// remove, refresh, a code scanned, start, cancel, skip, more rest, a swap) each have the character
+// they're meant to, on the phone and in the browser, and each is played somewhere in the app.
 // Usage: node test/haptics.mjs
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -41,6 +44,20 @@ const uiWeb = kinds.filter((k) => P.hapticRank(k) === 0).sort(), uiJava = javaPu
 check('the UI kinds (rank 0) are the ones the phone skips with touch feedback off', same(uiWeb, uiJava), { uiWeb, uiJava });
 check('every composition starts from a click, tick, thud, rise or fall the phone has (or a stand-in for it)', javaPuts.every((x) => x.comp.split(',').length % 3 === 0 && /^(CLICK|THUD|SPIN|QUICK_RISE|SLOW_RISE|QUICK_FALL|TICK|LOW_TICK)$/.test(x.comp.split(',')[0].trim())), javaPuts.filter((x) => x.comp.split(',').length % 3));
 check('only the one-beat kinds and deny have a predefined effect', javaPuts.filter((x) => x.effect !== 'NONE').map((x) => x.kind).join() === 'tap,press,select,tick,edge,deny', javaPuts.filter((x) => x.effect !== 'NONE').map((x) => x.kind));
+// Each kind's composition (primitive, scale, gap triples) and waveform (ms, strength pairs), read
+// whole from its put(...): a number missing from either would shift every one after it.
+const PRIMS = { CLICK: 1, THUD: 2, SPIN: 3, QUICK_RISE: 4, SLOW_RISE: 5, QUICK_FALL: 6, TICK: 7, LOW_TICK: 8 };
+const javaKinds = {};
+for (const m of javaSrc.matchAll(/put\("(\w+)",\s*(ui|event),\s*(\w+),\s*c\(([^)]*)\),\s*w\(([^)]*)\)\);/g)) {
+  const comp = m[4].split(',').map((x) => x.trim());
+  const wave = m[5].split(',').map((x) => parseFloat(x));
+  const beats = [];
+  for (let i = 0; i + 2 < comp.length; i += 3) beats.push({ p: comp[i], scale: parseFloat(comp[i + 1]), gap: parseFloat(comp[i + 2]) });
+  javaKinds[m[1]] = { ui: m[2] === 'ui', comp, wave, beats };
+}
+check('every put(...) reads whole: its composition and its waveform', Object.keys(javaKinds).length === java.length, java.filter((k) => !javaKinds[k]));
+const badShape = Object.entries(javaKinds).filter(([, k]) => k.comp.length % 3 || k.wave.length % 2 || k.beats.some((b) => !PRIMS[b.p] || !(b.scale > 0 && b.scale <= 1) || !(b.gap >= 0)) || k.wave.some((x, i) => (i % 2 ? !(x >= 0 && x <= 1) : !(x > 0))));
+check('compositions are primitive, scale (0 to 1), gap (0 or more); waveforms ms, strength (0 to 1)', !badShape.length, badShape.map(([k]) => k));
 check('every kind plays as media on the phone, so its touch intensity can\'t dull it', /USAGE_MEDIA/.test(javaSrc) && !/USAGE_TOUCH/.test(javaSrc));
 check('Light 0.75, Medium full strength, Strong full strength with a body', /SCALE = \{0\.75f, 1f, 1f\}/.test(javaSrc) && /BODY_SCALE = 0\.7f/.test(javaSrc));
 check('Java 8: no lambdas or method references', !/->|::/.test(javaSrc.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '')));
@@ -86,9 +103,47 @@ check('Light is 0.75 of Medium and Strong 1.3 (a tap: 15, 20, 26 ms)', same(['li
 check('the pauses stay the same at every strength', kinds.every((k) => same(P.hapticPattern(k, 'light').filter((_, i) => i % 2), P.hapticPattern(k, 'strong').filter((_, i) => i % 2))));
 check('an unknown kind is a tap, and no strength is medium', same(P.hapticPattern('nope', 'strong'), P.hapticPattern('tap', 'strong')) && same(P.hapticPattern('success'), P.hapticPattern('success', 'medium')));
 check('names an object inherits aren\'t kinds or strengths', same(P.hapticPattern('constructor', 'toString'), P.hapticPattern('tap', 'medium')) && same(P.hapticPattern('__proto__', '__proto__'), P.hapticPattern('tap', 'medium')) && P.hapticRank('constructor') === 0);
-check('events are longer than taps', ['success', 'log', 'undo', 'deny', 'warning', 'error', 'heavy', 'setDone', 'done', 'workoutDone', 'pr', 'badge', 'celebrate'].every((k) => total(P.hapticPattern(k, 'strong')) > total(P.hapticPattern('tap', 'strong'))));
+check('events are longer than taps', ['success', 'log', 'undo', 'deny', 'warning', 'error', 'heavy', 'setDone', 'done', 'workoutDone', 'pr', 'badge', 'celebrate', 'save', 'copy', 'send', 'remove', 'refresh', 'scan', 'start', 'cancel', 'skip', 'extend', 'swap'].every((k) => total(P.hapticPattern(k, 'strong')) > total(P.hapticPattern('tap', 'strong'))));
 check('ranks: the UI 0, the countdown 1, events 2, the big ones 3', P.hapticRank('tab') === 0 && P.hapticRank('countdown') === 1 && P.hapticRank('setDone') === 2 && ['error', 'heavy', 'workoutDone', 'pr', 'badge', 'celebrate'].every((k) => P.hapticRank(k) === 3));
 check('no two kinds feel the same in the browser either', new Set(kinds.map((k) => P.hapticPattern(k, 'medium').join())).size === kinds.length);
+
+section('Kinds for specific actions');
+// Each: its gallery group, its rank, and the character it's meant to have, read from its phone
+// composition (primitives and their scales and gaps) and its browser pattern (the beats at Medium).
+const beats = (k) => (javaKinds[k] ? javaKinds[k].beats : []);
+const ps = (k) => beats(k).map((b) => b.p).join();
+const sc = (k) => beats(k).map((b) => b.scale);
+const ons = (k) => on(P.hapticPattern(k, 'medium'));
+const desc = (xs) => xs.length > 1 && xs.every((x, i) => i === 0 || x < xs[i - 1]);
+const loudest = (xs) => xs.indexOf(Math.max(...xs));
+const SPECIFIC = [
+  ['hold', 'touch', 0, 'a long press: two soft beats pressing in, then the click, last and strongest', () => ps('hold') === 'LOW_TICK,LOW_TICK,CLICK' && loudest(sc('hold')) === 2 && loudest(ons('hold')) === 2],
+  ['day', 'touch', 0, 'a day picked: a tick with a softer echo close behind', () => ps('day') === 'TICK,LOW_TICK' && desc(sc('day')) && beats('day')[1].gap <= 20 && desc(ons('day'))],
+  ['sheet', 'navigation', 0, 'a sheet: a swell, its landing (the strongest), then a light settle', () => ps('sheet') === 'QUICK_RISE,LOW_TICK,TICK' && loudest(sc('sheet')) === 1 && loudest(ons('sheet')) === 1 && beats('sheet')[2].gap >= 40],
+  ['menu', 'navigation', 0, 'a menu: a quick flutter of three light ticks', () => ps('menu') === 'TICK,TICK,TICK' && beats('menu').slice(1).every((b) => b.gap <= 20) && ons('menu').length === 3],
+  ['dismiss', 'navigation', 0, 'put away: a soft knock that fades', () => ps('dismiss') === 'LOW_TICK,QUICK_FALL' && desc(sc('dismiss')) && desc(ons('dismiss'))],
+  ['swipe', 'navigation', 0, 'flicked away: a fall that trails off, each beat softer', () => ps('swipe') === 'QUICK_FALL,LOW_TICK,LOW_TICK' && desc(sc('swipe')) && desc(ons('swipe'))],
+  ['save', 'feedback', 2, 'saved: a latch, a click and then a firmer one with its body', () => ps('save') === 'CLICK,CLICK,LOW_TICK' && sc('save')[1] > sc('save')[0] && ons('save')[1] > ons('save')[0]],
+  ['copy', 'feedback', 2, 'copied: two beats the same', () => ps('copy') === 'CLICK,CLICK' && sc('copy')[0] === sc('copy')[1] && ons('copy').length === 2 && ons('copy')[0] === ons('copy')[1]],
+  ['send', 'feedback', 2, 'sent: a tap, then a softer whirr away', () => ps('send') === 'CLICK,SPIN' && desc(sc('send')) && ons('send')[0] === Math.max(...ons('send'))],
+  ['remove', 'feedback', 2, 'removed: a thump swept away, fading', () => ps('remove') === 'THUD,QUICK_FALL,LOW_TICK' && desc(ons('remove'))],
+  ['refresh', 'feedback', 2, 'refreshed: a whirr that clicks home', () => ps('refresh') === 'SPIN,CLICK' && loudest(sc('refresh')) === 1 && loudest(ons('refresh')) === ons('refresh').length - 1],
+  ['scan', 'feedback', 2, 'a code read: a click that rings out', () => ps('scan') === 'CLICK,TICK,TICK' && desc(sc('scan')) && desc(ons('scan'))],
+  ['start', 'workout', 2, 'a workout starting: a swell into a firm beat, and an echo', () => ps('start') === 'SLOW_RISE,CLICK,TICK' && loudest(sc('start')) === 1 && loudest(ons('start')) === ons('start').length - 2],
+  ['cancel', 'workout', 2, 'a workout cancelled: it powers down, each beat softer', () => ps('cancel') === 'CLICK,QUICK_FALL,LOW_TICK,LOW_TICK' && desc(sc('cancel')) && desc(ons('cancel'))],
+  ['skip', 'workout', 2, 'skipped: two quick flicks forward, the same twice', () => ps('skip') === 'QUICK_RISE,TICK,QUICK_RISE,TICK' && same(sc('skip').slice(0, 2), sc('skip').slice(2)) && ons('skip').length === 4],
+  ['extend', 'workout', 2, 'more rest: four even notches', () => ps('extend') === 'LOW_TICK,LOW_TICK,LOW_TICK,LOW_TICK' && new Set(sc('extend')).size === 1 && ons('extend').length === 4 && new Set(ons('extend')).size === 1],
+  ['swap', 'workout', 2, 'a swap: one fades out, the next comes in to a click', () => ps('swap') === 'QUICK_FALL,QUICK_RISE,CLICK' && loudest(sc('swap')) === 2],
+];
+const groupOf = (k) => (groups.find((g) => g[5].some(([x]) => x === k)) || [])[0];
+for (const [k, g, rank, feel, ok] of SPECIFIC) {
+  const there = kinds.includes(k) && !!javaKinds[k];
+  check(`${k}, in ${g} at rank ${rank}: ${feel}`, there && groupOf(k) === g && P.hapticRank(k) === rank && javaKinds[k].ui === (rank === 0) && ok(), there ? { group: groupOf(k), rank: P.hapticRank(k), comp: ps(k), scales: sc(k), web: P.hapticPattern(k, 'medium') } : 'missing');
+}
+const harsh = SPECIFIC.map(([k]) => k).filter((k) => javaKinds[k] && (sc(k).filter((x) => x >= 1).length > 1 || beats(k).some((b) => (b.p === 'THUD' || b.p === 'SPIN') && b.scale > 0.6)));
+check('none of them is harsh: one full-strength beat at most, and no thud or spin above 0.6', !harsh.length, harsh);
+const unused = SPECIFIC.map(([k]) => k).filter((k) => !used.has(k) && !marked.has(k));
+check('each is played somewhere in the app', !unused.length, unused);
 
 section('In a browser');
 const buzzes = [];

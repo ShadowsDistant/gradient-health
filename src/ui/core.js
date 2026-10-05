@@ -1068,12 +1068,13 @@
 
   /* ---------------------------------------------------------------- dialogs, toasts */
   // Sheets (U.sheet, U.topSheet, U.closeSheets) live in sheet.js.
-  // A dialog's answer has a feel of its own: heavy for a destructive choice (the moment it's made, not
-  // when the dialog opens), back for cancelling it (Cancel, Esc, a tap outside, Android Back). Other
-  // choices leave it to what they do.
+  // A dialog's answer has a feel of its own: heavy for a destructive choice, or the one its action
+  // names (haptic: 'cancel' for Cancel workout), the moment it's made, not when the dialog opens;
+  // back for cancelling it (Cancel, Esc, a tap outside, Android Back). Other choices leave it to what
+  // they do.
   function dialogHaptic(o, v) {
     const a = (o.actions || []).find((x) => String(x.value != null ? x.value : x.label) === String(v));
-    if (a && a.tone === 'critical') U.haptic('heavy');
+    if (a && a.tone === 'critical') U.haptic(a.haptic || 'heavy');
     else if (!a || a.value === 'cancel') U.haptic('back');
   }
   U.dialog = (o) => {
@@ -1222,7 +1223,7 @@
       U.syncHealth('manual').then((res) => {
         ptrEl.classList.remove('spinning');
         reset(true);
-        if (res && res.ok) U.haptic('success');
+        if (res && res.ok) U.haptic('refresh');
         else if (res && !res.ok) U.toast('Couldn\'t read Health Connect', 'caution', res.error === 'timeout' ? 'It took too long. Try again.' : undefined);
       });
     };

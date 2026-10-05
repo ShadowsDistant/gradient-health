@@ -158,7 +158,7 @@ check('with its exercises drawn', s.thumbs >= 4 && s.drawn === s.thumbs, `${s.dr
 check('no Start on a later day', await page.locator('#screen .pw-card [data-act="planStart"]').count() === 0);
 check('picking a day doesn\'t rebuild the plan', (await page.evaluate(() => window.GH.planWeek.stats.misses)) === hits0);
 const haptics = await page.evaluate(() => window.__haptics.slice(-3));
-check('a tap on a day ticks', haptics.includes('select'), haptics.join());
+check('a tap on a day plays day', haptics.includes('day'), haptics.join());
 await page.click(pill(2));
 await settle();
 s = await state(page);

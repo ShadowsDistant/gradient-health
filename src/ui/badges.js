@@ -431,7 +431,7 @@
     };
     U.act.badgePage = (el) => goTo(el && el.dataset ? el.dataset.arg : 0);
     U.act.badgeShareCur = () => U.act.badgeShare({ dataset: { arg: pages[cur].id } });
-    U.act.badgeDone = () => ctl.close('ok');
+    U.act.badgeDone = () => { U.haptic('dismiss'); ctl.close('ok'); };
     return ctl;
   };
   U.act.badgeReveal = (el) => {

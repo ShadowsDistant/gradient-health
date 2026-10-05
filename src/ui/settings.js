@@ -228,8 +228,8 @@
     return lastPreview ? `<img class="is-stale" src="${lastPreview}" alt="" width="96" height="120">` : '<span class="set-fig-wait"></span>';
   }
   U.on.setFigure = (el, ev, v) => { U.S.profile.prefs.figure = v; U.save(); U.render(); };
-  U.act.setFigSkin = (el) => { U.S.profile.prefs.figSkin = el.dataset.arg; U.save(); U.render(); };
-  U.act.setFigShirt = (el) => { U.S.profile.prefs.figShirt = el.dataset.arg; U.save(); U.render(); };
+  U.act.setFigSkin = (el) => { U.S.profile.prefs.figSkin = el.dataset.arg; U.save(); U.haptic('select'); U.render(); };
+  U.act.setFigShirt = (el) => { U.S.profile.prefs.figShirt = el.dataset.arg; U.save(); U.haptic('select'); U.render(); };
 
   /* ---------------------------------------------------------------- background sync */
   // Health Connect read every 15 minutes with the app closed (see GH.health.background): its switch
@@ -342,8 +342,8 @@
     U.sheet({ title: 'Your answers', size: 'auto', body: `<p class="t-footnote rf-muted sheet-lead">Pick one to change. Your plan updates when you save.</p>
       <ul class="rf-list">${U.answerRows(U.S.profile)}</ul>` });
   };
-  U.act.editStep = (el) => { U.closeSheets(); U.editAnswers(el.dataset.arg); };
-  U.act.editEquipment = () => U.editAnswers('equipment');
+  U.act.editStep = (el) => { U.closeSheets(); U.haptic('nav'); U.editAnswers(el.dataset.arg); };
+  U.act.editEquipment = () => { U.haptic('nav'); U.editAnswers('equipment'); };
   U.act.openPrivacyView = () => U.open('privacy');
   U.act.openLink = (el, ev) => { if (ev && ev.preventDefault) ev.preventDefault(); const url = el.dataset.arg; if (url && /^https:\/\//.test(url) && GH.platform) GH.platform.openUrl(url); };
   U.on.setPref = (el, ev, v) => {
@@ -447,6 +447,7 @@
       const res = B().updateSettings(S, U.today(), { days: d.days, weekdays: d.weekdays.length >= 2 ? d.weekdays.slice().sort((a, b) => a - b) : null, minutes: d.minutes, lightDays: d.lightDays });
       ctl.close('ok');
       U.commit();
+      U.haptic('save');
       U.toast('Saved', 'positive', res && res.shape && res.from > U.today() ? 'New days start next Monday.' : undefined);
     };
   };
@@ -479,6 +480,7 @@
     if (!Object.keys(b).length) return;
     B().applyBaseline(U.S, b, U.today());
     U.commit();
+    U.haptic('save');
     U.toast('Level check saved', 'positive', 'Your starting levels are updated.');
   };
 
@@ -704,7 +706,7 @@
     };
     const ctl = U.sheet({ title: 'On-device AI check', size: 'auto', body: body() });
     const text = () => JSON.stringify(Object.assign({}, result, { app: GH.VERSION || '' }), null, 1);
-    U.act.selfTestCopy = () => { if (result && GH.platform) { GH.platform.copy(text()); U.toast('Copied'); } };
+    U.act.selfTestCopy = () => { if (result && GH.platform) { GH.platform.copy(text()); U.haptic('copy'); U.toast('Copied'); } };
     U.act.selfTestReport = () => {
       if (!result || !GH.platform) return;
       const q = new URLSearchParams({ title: `On-device AI check: ${result.ok ? 'working but' : 'not working'}`, labels: 'ai-selftest', body: `What happened (fill in):\n\n\n**Check:**\n\n\`\`\`json\n${text().slice(0, 5500)}\n\`\`\`\n` });
@@ -769,7 +771,7 @@
   U.act.exportData = async () => {
     const txt = GH.store.exportJson(U.S);
     const ok = await GH.platform.copy(txt);
-    if (ok) U.toast('Copied', 'positive', 'Paste it into a note or an email to yourself.');
+    if (ok) { U.haptic('copy'); U.toast('Copied', 'positive', 'Paste it into a note or an email to yourself.'); }
     else U.sheet({ title: 'Your data', size: 'full', body: `<div class="sheet-pad"><p class="t-callout rf-muted">Copying didn't work. Select all of this and copy it.</p></div><textarea class="rf-input preview" readonly>${U.esc(txt)}</textarea>` });
   };
   U.act.restoreSheet = () => U.sheet({

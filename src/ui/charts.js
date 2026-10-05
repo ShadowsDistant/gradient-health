@@ -160,6 +160,7 @@
     const span = Math.max(1, ...spec.series.filter((s) => s.points.some((p) => p.day === day)).map((s) => s.span || 1));
     const x = ((day + (span - 1) / 2 - spec.from) * W + W / 2).toFixed(2);
     mark.setAttribute('x1', x); mark.setAttribute('x2', x); mark.setAttribute('visibility', 'visible');
+    U.haptic('tick');
   };
 
   function table(spec) {

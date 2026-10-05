@@ -124,6 +124,10 @@ left alone. A few conventions:
   `dematerialize`), and a button whose words change (`U.floatKey`) flows to its new width. That's
   Refract's own motion, asked for by name; the lint counts it apart and holds it to what Refract's
   API animates.
+- Cancelling a workout is a moment of its own (`src/ui/player.js`): in the player, what's on it drops
+  and shrinks away, then the panel dissolves into Today, whose cards rise back with the workout not
+  started; from Today, its buttons pinch away and its card folds and settles back
+  (`U.todayCancelled`); the toast with Undo only comes after. Reduced motion: short fades.
 
 **Parts that load when they're needed.** Set-up (`src/ui/onboarding.js`), the plan review with
 Why this plan (`src/planreview.js`, `src/ui/review.js`), How it works (`src/data/science.js`,
@@ -329,11 +333,17 @@ and keyboard insets to the page (`__gh.setInsets`), which pads itself with `--sa
 and `--sar`. The page reports its theme back (`AndroidBridge.setSystemBars`) so the bar icons stay
 readable when the app's theme differs from the phone's.
 
-**Haptics.** `AndroidBridge.haptic(kind)` plays one of 31 kinds, in five groups: touch (`tap`,
-`press`, `select`, `tick`, `edge`, `toggleOn`, `toggleOff`, `detent`), navigation (`tab`, `nav`,
-`back`, `grab`, `drop`), feedback (`success`, `log`, `undo`, `deny`, `warning`, `error`, `heavy`),
-workout (`countdown`, `go`, `pause`, `setDone`, `done`, `workoutDone`, `levelUp`, `milestone`, `pr`)
-and moments (`badge`, `celebrate`). Each is its own composition of the phone's haptic primitives (see
+**Haptics.** `AndroidBridge.haptic(kind)` plays one of its kinds, in five groups: touch (`tap`,
+`press`, `select`, `tick`, `edge`, `toggleOn`, `toggleOff`, `detent`, `hold` for a long press that
+picks something up, `day` for a day picked), navigation (`tab`, `nav` for a page, `back`, `grab`,
+`drop`, `sheet` as a sheet rises, `menu` as a menu blooms, `dismiss` as either is put away, `swipe`
+for a sheet flicked down), feedback (`success`, `log`, `undo`, `deny`, `warning`, `error`, `heavy`,
+`save`, `copy`, `send`, `remove` for an entry taken out with Undo, `refresh` when fresh data is in,
+`scan` for a code read), workout (`countdown`, `go`, `pause`, `setDone`, `done`, `workoutDone`,
+`levelUp`, `milestone`, `pr`, `start`, `cancel`, `skip`, `extend` for more rest, `swap`) and moments
+(`badge`, `celebrate`). An action plays the kind for what it does, one per tap: a tap that opens a
+sheet leaves it to the sheet's own, a menu's pick to its action's. Each is its own composition of
+the phone's haptic primitives (see
 `Haptics.java`: each primitive's support is checked, with a stand-in for a missing one), then a
 predefined effect for the one-beat kinds, then an amplitude waveform, then on/off pulses. Light plays
 at 0.75, Medium (the default) at full strength, and Strong adds a low tick after each click. Every
@@ -341,9 +351,11 @@ kind plays as a media vibration, so the phone's touch intensity can't dull it; t
 navigation kinds are skipped when its touch feedback is off. The bridge plays them from its own
 thread, without waiting for the UI thread. `platform.js` has the same kinds as browser patterns, a
 rank for each, and the rules for when two meet (a toast's haptic is a consequence that leaves its
-action's feel alone); `core.js` (`wire`) and `sheet.js` play the ones that come with controls, sheets
-and dialogs by themselves, `data-haptic="<kind>"` on an action plays that kind, and
-`src/ui/hapticsui.js` has the Settings rows (`U.hapticRows`) and the Feel each one gallery. With the
+action's feel alone); `core.js` (`wire`), `sheet.js` and `U.menu` play the ones that come with
+controls, sheets, menus and dialogs by themselves (a dialog's action can name its own: `haptic:
+'cancel'` on Cancel workout), `data-haptic="<kind>"` on an action plays that kind, and
+`src/ui/hapticsui.js` has the Settings rows (`U.hapticRows`), the Feel each one gallery and the
+haptics of menus Refract opens by itself (a popover a button points at). With the
 app out of sight, workout timer alerts fall back to alarm-class vibrations (`vibrate`,
 `vibratePattern`), the only kind Android lets through then.
 

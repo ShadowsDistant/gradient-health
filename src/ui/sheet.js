@@ -14,7 +14,7 @@
  *    damped spring that starts at that speed: a Web Animation with a linear() easing sampled from the
  *    spring, which the compositor plays.
  * o: { title, body, action: { label, act, arg }, cls, size: 'fit' | 'auto' | 'full', onClose(value),
- * after(ctl), quiet (no nav haptic as it opens) }. Older calls pass detents/detent/fit instead: fit →
+ * after(ctl), quiet (no sheet haptic as it opens) }. Older calls pass detents/detent/fit instead: fit →
  * 'fit', detents 'large' → 'full', anything else → 'auto' (detent: 'large' opens it at large).
  * While any sheet moves, <html> has data-sheet-moving and the document hears 'gh-sheet-moving'
  * ({ detail: { moving } }), so other animations can wait; U.sheetMoving() says so too. While any is
@@ -252,9 +252,10 @@
   }
 
   /* ---------------------------------------------------------------- haptics */
-  // A sheet opening plays nav, in answer to a touch or a key in the last second: one the app opens by
-  // itself (at launch, after a long wait) stays quiet, and so does one opened with o.quiet. One the
-  // person closes (the close button, a tap on the scrim, a swipe down, Esc, Back) plays back.
+  // A sheet opening plays sheet, in answer to a touch or a key in the last second: one the app opens
+  // by itself (at launch, after a long wait) stays quiet, and so does one opened with o.quiet. One the
+  // person closes plays dismiss (the close button, a tap on the scrim, Esc, Back), or swipe when it's
+  // flicked down.
   let lastInput = -1e9;
   for (const t of ['pointerdown', 'pointerup', 'keydown']) doc.addEventListener(t, () => { lastInput = now(); }, true);
   const haptic = (kind) => { if (U.haptic) U.haptic(kind); };
@@ -592,11 +593,11 @@
       pageDone();
     };
     // Slides out (at the finger's speed after a drag), then closes with `value` as its returnValue.
-    // A cancel is the person closing it, with back's feel; any other value is the app closing it after
-    // an action, which has its own.
+    // A cancel is the person closing it, with dismiss's feel (swipe's when it's flicked away); any other
+    // value is the app closing it after an action, which has its own.
     ctl.close = (value, v) => {
       if (s.closing) return;
-      if (value === 'cancel' && !s.quiet) haptic('back');
+      if (value === 'cancel' && !s.quiet) haptic(v != null ? 'swipe' : 'dismiss');
       s.closing = true;
       ctl.closed = true;
       g = null;
@@ -667,7 +668,7 @@
     s.y = s.closedY;
     put(s.closedY);
     goTo(first, 0, 'open');
-    if (!o.quiet && now() - lastInput < 1000) haptic('nav');
+    if (!o.quiet && now() - lastInput < 1000) haptic('sheet');
     const ro = G.ResizeObserver ? new G.ResizeObserver(() => { if (s.closing) return; if (dragging()) s.dirty = true; else relayout(); }) : null;
     if (ro) for (const x of [s.panel, s.header, s.body]) ro.observe(x);
     if (o.after) safe(() => o.after(ctl));

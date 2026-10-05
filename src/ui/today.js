@@ -297,24 +297,47 @@
   U.act.toggleShort = () => { const d = U.today(); shortDay = isShort(d) ? null : d; U.haptic(shortDay != null ? 'toggleOn' : 'toggleOff'); U.render(); };
   U.act.startWorkout = () => {
     const S = U.S;
-    if (S.active) { U.openPlayer(); return; }
+    if (S.active) { U.haptic('go'); U.openPlayer(); return; } // (Plan's Start with one going: resumed)
     const day = U.today();
     const r = B().startWorkout(S, day, { short: isShort(day), now: Date.now() });
-    if (r.error) { U.toast(r.error === 'done' ? 'Already done today' : 'Nothing left to train this week', 'neutral'); return; }
+    if (r.error) { U.haptic('deny'); U.toast(r.error === 'done' ? 'Already done today' : 'Nothing left to train this week', 'neutral'); return; }
     shortDay = null;
     U.save(true);
-    U.haptic('go');
+    U.haptic('start');
     U.openPlayer();
   };
   U.act.trainToday = async () => {
     const ok = await U.confirm('Train today instead?', 'The next workout moves to today and the rest of the week follows it.', 'Train today');
     if (ok) U.act.startWorkout();
   };
-  U.act.logWalk = () => { B().logLight(U.S, U.today(), 'walk', true); U.commit(); U.toast('Walk logged', 'positive'); if (U.checklistCheck) U.checklistCheck(); };
-  U.act.startMobility = () => U.openMobility();
-  U.act.checkinStale = () => { if (U.openCheckin) U.openCheckin(); };
+  U.act.logWalk = () => { B().logLight(U.S, U.today(), 'walk', true); U.commit(); U.haptic('log'); U.toast('Walk logged', 'positive'); if (U.checklistCheck) U.checklistCheck(); };
+  U.act.startMobility = () => { U.haptic('start'); U.openMobility(); };
+  U.act.checkinStale = () => { if (U.openCheckin) { U.haptic('nav'); U.openCheckin(); } };
+  // An unfinished workout from an earlier day, discarded: cancelled as Today's Cancel does it (its
+  // haptic as Discard is tapped, and the card settling back).
   U.act.discardStale = async () => {
-    if (await U.confirm('Discard this workout?', 'Nothing from it is saved.', 'Discard', 'critical', 'trash')) { B().cancelWorkout(U.S); U.commit(); }
+    if (!(await U.cancelDialog('Discard this workout?', 'Nothing from it is saved.', 'Discard', 'trash'))) return;
+    B().cancelWorkout(U.S);
+    U.save(true);
+    U.todayCancelled();
+  };
+  // A workout cancelled from Today (src/ui/player.js): its buttons pinch away (a copy of them
+  // dissolves where they were, Refract's dematerialize, sinking into the tab bar; the row hides at
+  // once), the session card folds and settles back to not started (U.motion.collapse, with the
+  // re-render as its change: what's after it glides), and today's buttons form again in their place.
+  // With reduced motion each is a short fade. Resolves once the card has settled.
+  U.todayCancelled = () => {
+    const M = U.motion || {};
+    const { floatEl } = U.els();
+    if (!floatEl.hidden) {
+      if (M.glassOut) M.glassOut(floatEl, { ms: 240 });
+      U.morph(floatEl, '');
+      floatEl.hidden = true;
+    }
+    const card = document.querySelector('#screen [data-key="main"]');
+    const folded = card && M.collapse ? M.collapse(card, () => U.render()) : Promise.resolve(U.render());
+    const calm = () => (M.settled ? Promise.race([M.settled(), new Promise((r) => setTimeout(r, 320))]) : null);
+    return folded.then(calm);
   };
   U.act.feelEdit = () => { feelOpen = true; U.render(); };
   U.on.feelEnergy = (el, ev, v) => { GH.health.setFeel(U.S, U.today(), { energy: v }); U.save(); maybeClose(); };

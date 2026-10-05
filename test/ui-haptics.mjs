@@ -1,11 +1,18 @@
 // Haptics in the app, in Chromium at phone size with real touches (CDP), read from the fixture's
 // Android bridge (what the phone would play) and from U.haptic (what the UI asked for):
-// - the haptics controls play by themselves: data-haptic on an action; sheets (nav as one opens from
-//   a tap, back as the person closes it with the close button, the scrim, a swipe down, Esc or Back,
-//   and quiet when the app opens or closes one itself); a stepper's steps, held down too, with an edge
-//   at its end; a slider's steps and its edges; toggle chips; a dialog's destructive OK and its
-//   cancel; the tab bar's lens passing tabs; and, once the You tab work is in, tab, nav and back;
+// - the haptics controls play by themselves: data-haptic on an action; sheets (sheet as one opens
+//   from a tap, dismiss as the person closes it with the close button, the scrim, Esc or Back, swipe
+//   for a swipe down, and quiet when the app opens or closes one itself); menus (menu as one opens,
+//   dismiss as Escape closes it, nothing more for a pick: its action has its own); a stepper's steps,
+//   held down too, with an edge at its end; a slider's steps and its edges; toggle chips; a dialog's
+//   destructive OK and its cancel; the tab bar's lens passing tabs; and, once the You tab work is
+//   in, tab, nav and back;
 // - a toast's haptic after an action leaves the action its feel;
+// - the kinds for specific actions, one per tap, with real touches: the Health tab's + menu, pull to
+//   refresh and its finish, starting a workout, a set done, more rest, skipping it, the player's menu
+//   and a pick in it, the leave sheet, keeping it for later, resuming, cancelling (from the question,
+//   once, and nothing more as its toast comes), a day picked and a long press on Plan, and Copy my
+//   data;
 // - deferred change dispatch: with a 60 ms handler, a segmented control's thumb (and a switch's knob)
 //   is on its way by the first frame after the tap, and the handler runs after it; data-sync runs
 //   it at once instead;
@@ -52,6 +59,9 @@ await page.evaluate(() => {
   U.act.__hxOpenQuiet = () => U.sheet({ title: 'A quiet sheet', size: 'auto', quiet: true, body: '<div class="sheet-pad"><p>Opened without a buzz.</p></div>' });
   U.act.__hxDoneAct = () => { const t = U.topSheet(); if (t) t.close('ok'); };
   U.act.__hxPage = () => U.open('settings');
+  // A menu of the test's own: a pick with no haptic of its own, and one that has its own (skip).
+  U.act.__hxMenu = (el) => U.menu(el, [{ act: '__hxNoop', icon: 'info', label: 'Nothing' }, { act: '__hxSkipIt', icon: 'skip-forward', label: 'Skip it' }], { label: 'Test menu' });
+  U.act.__hxSkipIt = () => U.haptic('skip');
   U.on.__hxVal = () => {};
   U.on.__hxChip = () => {};
   // A button of the test's own, over the page (re-renders never touch it).
@@ -64,6 +74,7 @@ await page.evaluate(() => {
   add('hxOpenBtn', '__hxOpen', 300, 'Open');
   add('hxQuietBtn', '__hxOpenQuiet', 360, 'Quiet');
   add('hxPageBtn', '__hxPage', 420, 'Page');
+  add('hxMenuBtn', '__hxMenu', 480, 'Menu');
 });
 const cdp = await ctx.newCDPSession(page);
 let clock = 0;
@@ -113,21 +124,21 @@ await clear();
 await tap('#hxOpenBtn');
 await wait(700);
 l = await log();
-check('opened from a tap: nav', (await sheets()) === 1 && l.bridge.join() === 'nav', l);
+check('opened from a tap: sheet', (await sheets()) === 1 && l.bridge.join() === 'sheet', l);
 const closers = [
-  ['the close button', async () => tap('dialog[open] [data-sheet-close]')],
-  ['a tap on the scrim', async () => { await gesture([[195, 60]], { hold: 30 }); }],
-  ['a swipe down', async () => { const c = await centre('dialog[open] .rf-sheet-header'); await gesture(line(c.x, c.y, c.x, c.y + 260, 6), { hold: 0, stepMs: 12 }); }],
-  ['Esc', async () => { await page.keyboard.press('Escape'); }],
-  ['Back', async () => { await page.evaluate(() => window.__gh.back()); }],
+  ['the close button', 'dismiss', async () => tap('dialog[open] [data-sheet-close]')],
+  ['a tap on the scrim', 'dismiss', async () => { await gesture([[195, 60]], { hold: 30 }); }],
+  ['a swipe down', 'swipe', async () => { const c = await centre('dialog[open] .rf-sheet-header'); await gesture(line(c.x, c.y, c.x, c.y + 260, 6), { hold: 0, stepMs: 12 }); }],
+  ['Esc', 'dismiss', async () => { await page.keyboard.press('Escape'); }],
+  ['Back', 'dismiss', async () => { await page.evaluate(() => window.__gh.back()); }],
 ];
-for (const [name, close] of closers) {
+for (const [name, kind, close] of closers) {
   if (!(await sheets())) { await tap('#hxOpenBtn'); await wait(700); }
   await clear();
   await close();
   await wait(700);
   l = await log();
-  check(`closed with ${name}: back`, !(await sheets()) && l.bridge.join() === 'back', l);
+  check(`closed with ${name}: ${kind}`, !(await sheets()) && l.bridge.join() === kind, l);
 }
 await tap('#hxOpenBtn');
 await wait(700);
@@ -154,8 +165,37 @@ await clear();
 await tap('#hxQuietBtn');
 await wait(700);
 l = await log();
-check('opened with quiet: no nav even from a tap', (await sheets()) === 1 && !l.bridge.length, l);
+check('opened with quiet: no sheet haptic even from a tap', (await sheets()) === 1 && !l.bridge.length, l);
 await closeAll();
+
+/* ---------------------------------------------------------------- menus */
+section('Menus');
+const menuOpen = () => page.evaluate(() => !!document.querySelector('.gh-menu:popover-open'));
+await idle();
+await clear();
+await tap('#hxMenuBtn');
+await wait(600);
+l = await log();
+check('a menu opening: menu', (await menuOpen()) && l.bridge.join() === 'menu', l);
+await clear();
+await page.keyboard.press('Escape');
+await wait(600);
+l = await log();
+check('closed without a pick (Escape): dismiss', !(await menuOpen()) && l.bridge.join() === 'dismiss', l);
+await tap('#hxMenuBtn');
+await wait(600);
+await clear();
+await tap('.gh-menu [data-act="__hxNoop"]');
+await wait(600);
+l = await log();
+check('a pick whose action has no haptic: nothing (not dismiss as well)', !(await menuOpen()) && !l.bridge.length && (await page.evaluate(() => window.__acted)) >= 1, l);
+await tap('#hxMenuBtn');
+await wait(600);
+await clear();
+await tap('.gh-menu [data-act="__hxSkipIt"]');
+await wait(600);
+l = await log();
+check('a pick whose action has its own: that one, once', l.bridge.join() === 'skip', l);
 
 /* ---------------------------------------------------------------- steppers, sliders, toggle chips */
 section('Steppers, sliders and toggle chips');
@@ -364,6 +404,97 @@ p = await probe('#hxSegSync', '.rf-segmented-thumb', '#hxSegSync .rf-segment:nth
 check('data-sync runs the handler at once: no frame until it\'s done (60 ms)', p.first != null && p.first >= 60 && p.ranBeforeFrame, p);
 await closeAll();
 
+/* ---------------------------------------------------------------- specific actions */
+section('Kinds for specific actions, one per tap');
+// What the bridge played for a tap or a gesture (after a quiet second, so nothing before it counts).
+const felt = async (fn, ms = 700) => { await idle(); await clear(); await fn(); await wait(ms); return log(); };
+const noToasts = () => page.evaluate(() => { for (const t of document.querySelectorAll('.rf-toast')) t.remove(); });
+// (The test's own buttons float over the page's left edge: out of the way of the real ones here.)
+const testButtons = (show) => page.evaluate((v) => { for (const b of document.querySelectorAll('#hxOpenBtn, #hxQuietBtn, #hxPageBtn, #hxMenuBtn')) b.hidden = !v; }, show);
+await testButtons(false);
+// The Health tab's + is a popover Refract opens: it gets menu and dismiss as U.menu's do.
+await page.evaluate(() => window.GH.ui.go('health'));
+await wait(900);
+l = await felt(() => tap('#topbar [popovertarget="hlLog"]'));
+check('the Health tab\'s + menu: menu', l.bridge.join() === 'menu' && (await page.evaluate(() => !!document.querySelector('#hlLog:popover-open'))), l);
+l = await felt(() => page.keyboard.press('Escape'), 600);
+check('closed without a pick: dismiss', l.bridge.join() === 'dismiss' && !(await page.evaluate(() => !!document.querySelector('#hlLog:popover-open'))), l);
+// A tap outside it on something with a feel of its own (the browser lets it through): that one only.
+await tap('#topbar [popovertarget="hlLog"]');
+await wait(700);
+l = await felt(() => tap('#tabbar .rf-tab[data-tab="today"]'), 900);
+check('open, then a tap on another tab: the menu goes, and only the tab plays (tab)', l.bridge.join() === 'tab' && !(await page.evaluate(() => !!document.querySelector('#hlLog:popover-open'))) && (await page.evaluate(() => window.GH.ui.route.tab)) === 'today', l);
+// Pull to refresh on Today: detent as it arms, and refresh once Health Connect has been read.
+await page.evaluate(() => { window.GH.ui.go('today'); document.getElementById('screen').scrollTop = 0; });
+await wait(900);
+l = await felt(() => gesture(line(195, 250, 195, 540, 18), { hold: 80, stepMs: 20 }), 1500);
+check('pull to refresh: detent as it arms, refresh when the read is in', l.bridge.join() === 'detent,refresh', l);
+// A workout: started, a set done, more rest and skipping it, the player's menu and a pick in it,
+// the leave sheet, keeping it for later, and resuming it.
+await page.evaluate(() => { document.getElementById('screen').scrollTop = 0; });
+l = await felt(() => tap('#float [data-act="startWorkout"]'), 1000);
+check('Start workout: start', l.bridge.join() === 'start' && (await page.evaluate(() => !document.getElementById('player').hidden)), l);
+await page.evaluate(() => {
+  const U = window.GH.ui, a = U.S.active;
+  // A set with rest after it, and another set after that (so its menu can skip the exercise).
+  const i = a.steps.findIndex((st, k) => st.kind === 'set' && !st.item.timed && (st.rest || 0) > 0 && a.steps[k + 1] && a.steps[k + 1].kind === 'set');
+  if (i >= 0) a.idx = i;
+  U.openPlayer();
+});
+await wait(700);
+l = await felt(() => tap('.player [data-act="plDone"]'));
+check('Done set: setDone', l.bridge.join() === 'setDone', l);
+l = await felt(() => tap('.player [data-act="plMore"]'));
+check('+15 s: extend', l.bridge.join() === 'extend', l);
+l = await felt(() => tap('.player [data-act="plSkipRest"]'));
+check('Skip rest: skip', l.bridge.join() === 'skip', l);
+await page.evaluate(() => { if (document.querySelector('.player [data-act="plContinue"]')) window.GH.ui.act.plContinue(); });
+await wait(700);
+l = await felt(() => tap('.player [data-act="plMenu"]'));
+check('the player\'s menu: menu', l.bridge.join() === 'menu', l);
+l = await felt(() => tap('.gh-menu [data-act="plSkipItem"]'));
+check('Skip the rest of this exercise: skip, once (no dismiss for the pick)', l.bridge.join() === 'skip', l);
+l = await felt(() => tap('.player [data-act="plMin"]'), 800);
+check('minimized mid-workout, the leave sheet rises: sheet', l.bridge.join() === 'sheet', l);
+l = await felt(() => tap('dialog.leave-sheet [data-act="plKeep"]'), 900);
+check('Keep it for later: pause', l.bridge.join() === 'pause' && (await page.evaluate(() => document.getElementById('player').hidden)), l);
+l = await felt(() => tap('#float [data-act="resumeWorkout"]'), 900);
+check('Resume workout: go', l.bridge.join() === 'go', l);
+await page.evaluate(() => window.GH.ui.act.plKeep());
+await wait(900);
+// Cancelled with a set done: the question opens quietly, its Cancel workout is cancel, once, and
+// the moment after it (and its toast) add nothing.
+l = await felt(() => tap('#float [data-act="cancelWorkout"]'), 700);
+check('Cancel with a set done: the question opens quietly', !l.bridge.length && (await page.evaluate(() => !!document.querySelector('dialog.rf-dialog[open]'))), l);
+l = await felt(() => page.click('dialog.rf-dialog[open] button[value="ok"]'), 1500);
+const cancelled = await page.evaluate(() => ({ active: !!window.GH.ui.S.active, toast: [...document.querySelectorAll('.rf-toast')].map((t) => t.textContent).join(' | ') }));
+check('its Cancel workout: cancel, once, and nothing more as Today settles and the toast comes', l.bridge.join() === 'cancel' && !cancelled.active && /Workout cancelled/.test(cancelled.toast), { ...l, ...cancelled });
+await noToasts();
+// Plan: a day picked, and a long press that picks a workout up (let go where it was: no drop).
+await page.evaluate(() => window.GH.ui.go('plan'));
+await wait(1000);
+const other = await page.evaluate(() => { const pg = document.querySelector('#screen .pw-page'); const p = pg && [...pg.querySelectorAll('.pw-pill')].find((x) => x.getAttribute('aria-selected') !== 'true'); return p ? p.dataset.arg : null; });
+l = await felt(() => tap(`#screen .pw-page .pw-pill[data-arg="${other}"]`));
+check('a day picked on Plan: day', l.bridge.join() === 'day', l);
+const movable = await centre('#screen .pw-page .pw-pill[data-drag]');
+if (movable) {
+  l = await felt(() => gesture([[movable.x, movable.y]], { hold: 650 }), 700);
+  check('a long press on a workout picks it up: hold (and let go where it was, nothing more)', l.bridge.join() === 'hold', l);
+} else console.log('  (no workout this week can move today: test/ui-plan.mjs has the long press)');
+await closeAll();
+// Settings: Copy my data (its toast's success merges into the copy).
+await page.evaluate(() => window.GH.ui.open('settings'));
+await wait(900);
+await page.evaluate(() => document.querySelector('#screen [data-act="exportData"]').scrollIntoView({ block: 'center' }));
+await wait(500);
+l = await felt(() => tap('#screen [data-act="exportData"]'));
+check('Copy my data: copy, once', l.bridge.join() === 'copy', l);
+await noToasts();
+await closeAll();
+await page.evaluate(() => window.GH.ui.go('today'));
+await wait(700);
+await testButtons(true);
+
 /* ---------------------------------------------------------------- the rows and the gallery */
 section('Settings rows and the Feel each one gallery');
 check('touch feedback off in the phone\'s settings: the switch says what still buzzes', await page.evaluate(() => {
@@ -399,24 +530,24 @@ const gallery = await page.evaluate(() => {
   const chips = [...d.querySelectorAll('.hx-chip')].map((c) => c.dataset.arg);
   return { title: d.querySelector('.rf-sheet-title').textContent, groups: [...d.querySelectorAll('.hx-title')].map((t) => t.textContent), chips, kinds: window.GH.platform.hapticKinds, strength: [...d.querySelectorAll('.hx-top .rf-segmented input')].map((i) => `${i.value}${i.checked ? '*' : ''}`).join(), waves: d.querySelectorAll('.hx-chip .hx-wave > i').length };
 });
-check('Feel each one opens from its row with nav', l.bridge.join() === 'nav' && gallery.title === 'Feel each one', { ...l, title: gallery.title });
+check('Feel each one opens from its row with sheet', l.bridge.join() === 'sheet' && gallery.title === 'Feel each one', { ...l, title: gallery.title });
 check('the strength on top, then Touch, Navigation, Feedback, Workout and Moments', gallery.strength === 'light,medium,strong*' && gallery.groups.join() === 'Touch,Navigation,Feedback,Workout,Moments', gallery);
 check('a chip for every kind, once, each with its rhythm drawn', gallery.chips.length === gallery.kinds.length && [...gallery.chips].sort().join() === [...gallery.kinds].sort().join() && gallery.waves >= gallery.kinds.length, gallery);
-// Three chips in view together, tapped quickly: workoutDone is still playing when undo comes (a
-// smaller event, otherwise dropped), and deny right after undo (an equal one, otherwise queued).
+// Three chips in view together, tapped quickly: workoutDone is still playing when skip comes (a
+// smaller event, otherwise dropped), and swap right after skip (an equal one, otherwise queued).
 await page.evaluate(() => { const t = window.GH.ui.topSheet(); if (t) t.detent('large'); });
 await wait(700);
-await page.evaluate(() => document.querySelector('dialog[open] .hx-chip[data-arg="undo"]').scrollIntoView({ block: 'start' }));
+await page.evaluate(() => document.querySelector('dialog[open] .hx-chip[data-arg="skip"]').scrollIntoView({ block: 'start' }));
 await wait(500);
 {
   const spots = [];
-  for (const k of ['workoutDone', 'undo', 'deny']) spots.push(await centre(`dialog[open] .hx-chip[data-arg="${k}"]`));
+  for (const k of ['workoutDone', 'skip', 'swap']) spots.push(await centre(`dialog[open] .hx-chip[data-arg="${k}"]`));
   const inView = spots.every((c) => c && c.y > 120 && c.y < 800);
   await clear();
   for (const c of spots) await gesture([[c.x, c.y]], { hold: 20 });
   await wait(400);
   l = await log();
-  check('each chip plays its kind at once, even over a bigger or equal one still playing', inView && l.bridge.join() === 'workoutDone,undo,deny', { inView, spots, ...l });
+  check('each chip plays its kind at once, even over a bigger or equal one still playing', inView && l.bridge.join() === 'workoutDone,skip,swap', { inView, spots, ...l });
 }
 await page.evaluate(() => document.querySelector('dialog[open] .hx-top').scrollIntoView({ block: 'center' }));
 await wait(500);

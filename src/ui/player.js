@@ -45,15 +45,17 @@
     P = { mode: 'mobility', phase: 'step', mob: { steps, idx: 0 } };
     show();
   };
-  U.act.resumeWorkout = () => U.openPlayer();
+  U.act.resumeWorkout = () => { U.haptic('go'); U.openPlayer(); };
   // An unfinished workout from an earlier day goes straight to its check-in.
   U.openCheckin = () => { if (!A()) return; P = { mode: 'workout', phase: 'checkin' }; show(); };
   let scene = null; // what's on screen (phase + step), so a change of scene can animate in
   let closing = null;
+  let folding = []; // a cancelled workout's parts on their way out (see hide)
   function show() {
     const el = root();
     const was = !el.hidden;
     if (closing) { closing.cancel(); closing = null; }
+    for (const a of folding.splice(0)) a.cancel();
     el.removeAttribute('data-closing');
     el.hidden = false;
     if (U.steadyLight) U.steadyLight();
@@ -68,16 +70,30 @@
       for (const [i, c] of Array.from(el.children).entries()) c.animate([{ opacity: 0, transform: 'translateY(26px)' }, { opacity: 1, transform: 'none' }], { duration: 420, delay: 40 + i * 40, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)', fill: 'backwards' });
     }
   }
-  function hide() {
+  // The player goes: it fades and sinks (220 ms). A cancelled workout ('cancel') folds away instead:
+  // what's on it drops and shrinks away at once, the actions first and the bar last, and then the
+  // empty panel dissolves into Today under it (about 330 ms in all). With reduced motion it simply
+  // goes, and a cancelled one fades for 150 ms. Resolves once it's gone (or shown again meanwhile).
+  const EXIT = 'cubic-bezier(0.3, 0, 0.8, 0.15)', STANDARD = 'cubic-bezier(0.2, 0, 0, 1)';
+  function hide(how) {
     const el = root();
     if (timer) { clearInterval(timer); timer = null; }
     plat().keepAwake(false);
-    const done = () => { closing = null; el.hidden = true; el.removeAttribute('data-closing'); el.innerHTML = ''; dropFig(); scene = null; if (U.steadyLight) U.steadyLight(); };
-    if (U.reduced() || !el.animate || el.hidden) { done(); return; }
+    const done = () => { closing = null; folding = []; el.hidden = true; el.removeAttribute('data-closing'); el.innerHTML = ''; dropFig(); scene = null; if (U.steadyLight) U.steadyLight(); };
+    const cancel = how === 'cancel';
+    if (el.hidden || !el.animate || (U.reduced() && !cancel)) { done(); return Promise.resolve(); }
     // Fading out: the page shows through again, so its bars come back now (src/styles/perf.css).
     el.setAttribute('data-closing', '');
-    closing = el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(22px)' }], { duration: 220, easing: 'cubic-bezier(0.3, 0, 0.8, 0.15)', fill: 'forwards' });
-    closing.onfinish = () => { if (closing) { closing.cancel(); done(); } };
+    if (cancel && U.reduced()) closing = el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 150, easing: 'linear', fill: 'forwards' });
+    else if (cancel) {
+      folding = Array.from(el.children).reverse().map((c, i) => c.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(28px) scale(.9)' }], { duration: 240, delay: i * 35, easing: STANDARD, fill: 'forwards' }));
+      closing = el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, delay: 110, easing: STANDARD, fill: 'forwards' });
+    } else closing = el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(22px)' }], { duration: 220, easing: EXIT, fill: 'forwards' });
+    const me = closing;
+    return new Promise((resolve) => {
+      me.onfinish = () => { if (closing === me) { me.cancel(); done(); } resolve(); };
+      me.oncancel = () => resolve();
+    });
   }
   // Minimize: the workout keeps going; Today and the tab bar show a way back.
   function minimize() {
@@ -86,11 +102,14 @@
     U.render();
   }
   function closeDone() { P = null; hide(); U.route = { tab: 'today', view: null, arg: null }; U.nextMotion('stagger'); U.render('stagger'); }
+  // Closed or minimized, the player is put away (dismiss). Mid-workout the leave sheet asks first,
+  // with its own haptic as it rises.
   U.playerBack = () => {
-    if (P && (P.phase === 'next' || P.phase === 'mobdone')) { closeDone(); return true; }
-    if (P && P.mode === 'mobility') { P = null; hide(); U.render(); return true; }
+    if (P && (P.phase === 'next' || P.phase === 'mobdone')) { U.haptic('dismiss'); closeDone(); return true; }
+    if (P && P.mode === 'mobility') { U.haptic('dismiss'); P = null; hide(); U.render(); return true; }
     // Mid-workout, Back asks what to do with it: keep it for later, finish now or cancel it.
     if (P && P.mode === 'workout' && A() && P.phase !== 'checkin') { leaveSheet(); return true; }
+    U.haptic('dismiss');
     minimize();
     return true;
   };
@@ -115,19 +134,45 @@
       </div>`,
     });
   }
-  U.act.plKeep = () => { const top = U.topSheet(); if (top) top.close('ok'); minimize(); };
+  U.act.plKeep = () => { const top = U.topSheet(); if (top) top.close('ok'); U.haptic('pause'); minimize(); };
   // Cancel: nothing from the workout is kept and it doesn't count, so today's plan can be started
-  // again. Sets already done are worth a question first; either way the toast can put it all back.
+  // again. Sets already done are worth a question first. It's a moment of its own: the cancel haptic
+  // as it's tapped; the player folds away, uncovering Today with the workout not started (or, from
+  // Today, its buttons pinch away and its card settles back, U.todayCancelled in src/ui/today.js);
+  // and once that has settled, the toast can put it all back.
+  U.cancelDialog = (title, message, label, icon) => U.dialog({
+    title, message, icon, tone: 'critical',
+    actions: [{ label: 'Keep it', value: 'cancel', variant: 'gray', autofocus: true }, { label, value: 'ok', variant: 'filled', tone: 'critical', haptic: 'cancel' }],
+  }).then((v) => v === 'ok');
+  // In the player: it folds away, and Today comes back under it as it was before the workout began,
+  // its cards rising into place and its buttons forming again (they were the workout's).
+  function foldAway() {
+    P = null;
+    const gone = hide('cancel');
+    const { floatEl } = U.els();
+    if (!floatEl.hidden) { U.morph(floatEl, ''); floatEl.hidden = true; }
+    U.route = { tab: 'today', view: null, arg: null };
+    U.nextMotion('stagger');
+    U.render('stagger');
+    return gone;
+  }
   async function cancelWorkout() {
     const a = A();
     if (!a) return false;
     const done = setsDone(a);
-    if (done && !(await U.confirm('Cancel this workout?', `The ${U.plural(done, 'set')} you did won't be saved, and it won't count for your streak.`, 'Cancel workout', 'critical', 'close', 'Keep it'))) return false;
+    // The question's Cancel workout plays the cancel haptic as it's tapped (core.js, dialogHaptic).
+    if (done && !(await U.cancelDialog('Cancel this workout?', `The ${U.plural(done, 'set')} you did won't be saved, and it won't count for your streak.`, 'Cancel workout', 'close'))) return false;
+    if (A() !== a) return false;
+    if (!done) U.haptic('cancel');
     const S = U.S;
     const gone = B().cancelWorkout(S);
     U.save(true);
-    if (P && P.mode === 'workout') closeDone(); else U.render();
-    U.haptic('heavy');
+    const shown = !!P && P.mode === 'workout' && !root().hidden;
+    if (P && P.mode === 'workout' && !shown) P = null;
+    const moment = shown ? foldAway() : U.todayCancelled ? U.todayCancelled() : Promise.resolve(U.render());
+    await moment;
+    // Not when something else began meanwhile (another workout, a backup restored).
+    if (U.S !== S || S.active) return true;
     U.toast('Workout cancelled', 'neutral', 'Nothing from it was saved.', {
       label: 'Undo',
       onClick: () => {
@@ -812,7 +857,8 @@
     if (!next) { if (P.mode === 'mobility') finishMobility(); else { P.phase = 'checkin'; draw(); } return; }
     if (auto) startTimer(); else draw();
   }
-  // byTimer: the timer ran out, and its cue already buzzed (so nothing more here to cut it short).
+  // byTimer: the timer ran out, and its cue already buzzed (so nothing more here to cut it short);
+  // also a skip, whose haptic comes after (Skip, below).
   function finishTimed(secs, byTimer) {
     const st = cur();
     if (!st) return;
@@ -824,17 +870,31 @@
     }
     complete(st.kind === 'set' ? { secs: Math.round(secs) } : {}, byTimer);
   }
+  // A step that starts the next hold's 3-2-1 at once (a mobility flow, a finisher round) has that
+  // first beat as its feel: a haptic played over it would drop it.
+  const counting = () => !!P && P.phase === 'countdown';
   U.act.plStartTimer = () => { plat().unlockAudio(); startTimer(); };
-  U.act.plCancelTimer = () => { P.phase = 'step'; draw(); };
+  U.act.plCancelTimer = () => { U.haptic('back'); P.phase = 'step'; draw(); };
+  // Stop early logs a timed set (setDone); on a warm-up, cool-down or finisher round it's Skip.
   U.act.plStopEarly = () => {
     const st = cur();
     const elapsed = P.phase === 'running' ? (Date.now() - P.startAt) / 1000 : 0;
-    if (st && st.kind === 'set') finishTimed(Math.max(1, Math.round(elapsed)));
-    else finishTimed(0);
+    if (st && st.kind === 'set') { finishTimed(Math.max(1, Math.round(elapsed))); return; }
+    finishTimed(0, true);
+    if (!counting()) U.haptic('skip');
   };
-  U.act.plMore = () => { if (P.restEnd) { P.restEnd += 15000; P.restTotal += 15; loop(); } };
-  U.act.plSkipRest = () => { P.restEnd = null; if (P.askRir && P.rirAnswered == null) { draw(); return; } endRest(); };
-  U.act.plContinue = () => endRest();
+  U.act.plMore = () => { if (P.restEnd) { P.restEnd += 15000; P.restTotal += 15; loop(); U.haptic('extend'); } };
+  U.act.plSkipRest = () => {
+    P.restEnd = null;
+    if (P.askRir && P.rirAnswered == null) draw(); else endRest();
+    if (!counting()) U.haptic('skip');
+  };
+  // Continue: the next set (go), or the check-in after the last one (nav).
+  U.act.plContinue = () => {
+    endRest();
+    if (P && P.phase === 'step') U.haptic('go');
+    else if (P && P.phase === 'checkin') U.haptic('nav');
+  };
 
   /* ---------------------------------------------------------------- completing steps */
   function complete(result, byTimer) {
@@ -921,7 +981,7 @@
     const v = parseInt(input && input.value, 10);
     B().amendLast(U.S, isFinite(v) ? v : null, P.amendLoad);
     U.save();
-    U.haptic('success');
+    U.haptic('save');
     P.amendLoad = null;
     const top = U.topSheet(); if (top) top.close('ok');
     draw();
@@ -955,12 +1015,13 @@
   U.act.plLoadOther = (el) => {
     const input = document.getElementById('plLoadOther');
     const v = parseFloat(input && input.value);
-    if (!(v > 0 && v < 1000)) { U.toast('Enter a weight like 60', 'caution'); return; }
+    if (!(v > 0 && v < 1000)) { U.haptic('deny'); U.toast('Enter a weight like 60', 'caution'); return; }
     const kg = B().fromUnit(v, U.wUnit());
     if (el.dataset.arg === 'plAmendLoad') { P.amendLoad = kg; U.act.plAmendSave(); return; }
     const st = cur();
     if (st) B().setItemLoad(U.S, st.item, kg);
     U.save();
+    U.haptic('save');
     const top = U.topSheet(); if (top) top.close('ok');
     draw();
   };
@@ -1008,6 +1069,7 @@
     const top = U.topSheet(); if (top) top.close('ok');
     P.phase = 'step';
     draw();
+    U.haptic('swap');
     U.toast(`Swapped to ${M().MOVES[id].name.toLowerCase()}`, 'neutral');
   }
   U.act.plSwapTo = (el) => swapTo(el.dataset.arg, false);
@@ -1021,8 +1083,9 @@
     const top = U.topSheet(); if (top) top.close('ok');
     P.phase = 'step';
     draw();
+    U.haptic('skip');
   };
-  U.act.plFinishNow = () => { const top = U.topSheet(); if (top) top.close('ok'); P.phase = 'checkin'; draw(); };
+  U.act.plFinishNow = () => { const top = U.topSheet(); if (top) top.close('ok'); U.haptic('nav'); P.phase = 'checkin'; draw(); };
   U.act.plDiscard = U.act.plCancel; // 1.2's name for it
 
   /* ---------------------------------------------------------------- check-in */
@@ -1105,7 +1168,7 @@
       </div>
       <div class="pl-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plClose">Done</button></div>`;
   }
-  U.act.plClose = () => closeDone();
+  U.act.plClose = () => { U.haptic('dismiss'); closeDone(); };
 
   /* ---------------------------------------------------------------- mobility */
   function finishMobility(byTimer) {
@@ -1135,6 +1198,6 @@
   U.resumePrompt = () => {
     const a = A();
     if (!a) return;
-    if (a.day === U.today()) U.toast('Workout in progress', 'neutral', `${a.session.title}`, { label: 'Resume', onClick: () => U.openPlayer() });
+    if (a.day === U.today()) U.toast('Workout in progress', 'neutral', `${a.session.title}`, { label: 'Resume', onClick: () => { U.haptic('go'); U.openPlayer(); } });
   };
 })(typeof window !== 'undefined' ? window : globalThis);

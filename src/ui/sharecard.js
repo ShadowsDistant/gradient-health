@@ -247,6 +247,7 @@
         const b64 = cv.toDataURL('image/png').split(',')[1];
         const ok = GH.platform && GH.platform.shareImage ? await GH.platform.shareImage(b64, shareText(def), `gradient-health-${def.id.toLowerCase()}.png`) : false;
         if (ok) {
+          U.haptic('send');
           if (!ctl.closed) ctl.close('ok');
           if (U.badgeEvent) setTimeout(() => U.badgeEvent('sharedBadge'), 400);
         } else if (ok === false) U.toast('Couldn\'t share the picture', 'caution', 'Try again in a moment.');
