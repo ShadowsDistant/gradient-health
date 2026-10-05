@@ -159,7 +159,7 @@ Going for a run with the dog? Start a run, walk, hike or ride from Today or Heal
 
 <p align="center">
   <img src="docs/screenshots/activity.png" width="200" alt="A run's summary: distance, time, pace and five new personal records">
-  <img src="docs/screenshots/activity-dark.png" width="200" alt="The same run in dark mode: its route on the map, coloured by pace">
+  <img src="docs/screenshots/activity-dark.png" width="200" alt="The same run in dark mode: its route coloured by pace, with Show map to put the map behind it">
 </p>
 
 ## Food
