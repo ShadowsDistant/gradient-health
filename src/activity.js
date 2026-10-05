@@ -2,8 +2,8 @@
  *
  * Three parts:
  * - The maths: distance, moving time, pace, splits, elevation, calories, heart-rate zones, personal
- *   records, route simplification and a compact route encoding. Pure functions, tested in
- *   test/activity.mjs.
+ *   records, auto-pause, the pace now, the route as it's drawn, route simplification and a compact
+ *   route encoding. Pure functions, tested in test/activity.mjs.
  * - The history: S.activities, newest first. Each finished activity also counts as exercise for its
  *   day (health.js asks exerciseOn), so a long run makes tomorrow's legs lighter the same way a run
  *   from Health Connect does.
@@ -178,6 +178,43 @@
     }
     return out;
   }
+  // The route as it's drawn: each point moved toward its neighbours within a few metres along the way
+  // (by the track's own distance, so a ride's corners are kept as well as a walk's), weighted by how
+  // near they are and by their accuracy, within its own stretch. The window is the same on both
+  // sides, narrowing to nothing at a stretch's ends, so those stay put without a kink. It takes out
+  // the zigzag poor fixes leave, and the scribble of standing at a crossing (all there at one
+  // distance) draws as one point. Only for drawing: distance, splits and pace come from track()'s
+  // own filter. pts: track()'s points ({ t, lat, lon, acc, d, run }); returns copies.
+  const DRAW_M = 5;
+  function smoothRoute(pts) {
+    const out = pts.map((p) => Object.assign({}, p));
+    const n = pts.length;
+    if (n < 3) return out;
+    const ky = R_EARTH * rad(1), kx = ky * Math.cos(rad(pts[0].lat));
+    let s = 0;
+    for (let e = 1; e <= n; e++) {
+      if (e < n && pts[e].run === pts[s].run) continue;
+      // One stretch: s..e-1.
+      const d0 = pts[s].d, d1 = pts[e - 1].d;
+      let a = s;
+      for (let i = s; i < e; i++) {
+        const p = pts[i];
+        const half = Math.min(2 * DRAW_M, p.d - d0, d1 - p.d);
+        if (!(half > 0.5)) continue;
+        while (pts[a].d < p.d - half) a++;
+        let wSum = 0, x = 0, y = 0;
+        for (let j = a; j < e && pts[j].d <= p.d + half; j++) {
+          const q = pts[j], dd = (q.d - p.d) / DRAW_M;
+          const acc = Math.max(3, q.acc == null ? 5 : q.acc);
+          const w = Math.exp(-dd * dd) / (acc * acc);
+          wSum += w; x += w * (q.lon - p.lon) * kx; y += w * (q.lat - p.lat) * ky;
+        }
+        if (wSum > 0) { out[i].lat = p.lat + y / wSum / ky; out[i].lon = p.lon + x / wSum / kx; }
+      }
+      s = e;
+    }
+    return out;
+  }
   // Smooths one run of fixes: [{ lat, lon, spd (m/s, from the filter) }].
   function smoothRun(run, type) {
     const n = run.length;
@@ -261,6 +298,129 @@
     });
     const movingMs = opt.movingMs != null && opt.movingMs >= 0 ? opt.movingMs : Math.max(0, end - start - known);
     return { pts: out, pauses, distanceM: dist, movingMs, start, end, gate };
+  }
+
+  /* ---------------------------------------------------------------- auto-pause */
+  // The clock stops when you stop and goes on when you go (the Android shell's recorder runs the same
+  // rules: ActivityTrack.java, AutoPause). A fix is still when the GPS's own speed (Doppler, steady to
+  // a few tenths of a m/s) is under the activity's still speed, moving when it's over its move speed,
+  // and neither in between; without a speed, still while it stays within its accuracy of where the
+  // stop began and moving once it's well outside it. STOP_MS of still fixes pause the clock from the
+  // first of them; moving fixes over MOVE_MS start it again from the first of those. A fix in between
+  // calls a stop off (a runner walking up a hill keeps going), and one worse than 50 m decides
+  // nothing. Fixes in doubt are held back until it's decided, then handed on flagged paused or not,
+  // so the track's pauses are exactly the clock's. It's armed by the first moving fix (after the
+  // start, or a resume by hand, standing still doesn't pause straight away).
+  // [still, move] in m/s.
+  const AUTO = { walk: [0.35, 0.8], hike: [0.3, 0.7], run: [0.9, 1.6], cycle: [1.2, 2.4], other: [0.5, 1.0] };
+  const AUTO_STOP_MS = 5000, AUTO_STOP_BLIND_MS = 8000, AUTO_MOVE_MS = 2000, AUTO_BAD_ACC = 50;
+  // Defaults: on for runs and rides, off for walks, hikes and the rest.
+  const AUTO_DEFAULT = { walk: false, run: true, hike: false, cycle: true, other: false };
+  const autoOn = (S, type) => {
+    const pr = S && S.profile && S.profile.prefs && S.profile.prefs.actAuto;
+    const t = TYPES[type] ? type : 'other';
+    return pr && typeof pr[t] === 'boolean' ? pr[t] : AUTO_DEFAULT[t];
+  };
+  // feed(p) → { out: [[point, paused 0|1]], pause: t?, resume: t? }: the fixes to keep now, and when
+  // the clock stopped or went on (in the past: where the stop or the move began). The recorder feeds
+  // it only while auto-pause is on and it isn't paused by hand. paused: it starts out auto-paused (a
+  // recording picked up again after a reload), with the stop where the next fix is.
+  function autoPauser(type, paused) {
+    const [vStill, vMove] = AUTO[type] || AUTO.other;
+    let mode = paused ? 'paused' : 'moving'; // moving | stopping | paused | starting
+    let held = [], anchor = null, since = 0, armed = !!paused, ref = null;
+    const accOf = (p) => (p[4] == null ? 5 : p[4]);
+    const dist = (a, b) => haversine(a[1], a[2], b[1], b[2]);
+    const inside = (p) => dist(anchor, p) <= Math.max(5, accOf(p));
+    const outside = (p) => !!anchor && dist(anchor, p) > Math.max(15, 2 * accOf(p));
+    const flush = (paused) => { const out = held.map((p) => [p, paused]); held = []; return out; };
+    const pausedNow = () => (mode === 'paused' || mode === 'starting' ? 1 : 0);
+    return {
+      get mode() { return mode; },
+      get paused() { return pausedNow() === 1; },
+      // A pause or resume by hand: what's held goes as it stood, and it waits to be armed again.
+      manual() { const out = flush(pausedNow()); mode = 'moving'; armed = false; anchor = null; ref = null; return out; },
+      // Everything held, as it stands (the recording ends, or auto-pause is turned off).
+      drain() { return flush(pausedNow()); },
+      feed(p) {
+        const v = p[5], bad = accOf(p) > AUTO_BAD_ACC;
+        if (!armed && !bad) {
+          if (v != null) armed = v >= vMove;
+          else if (!ref) ref = p;
+          else armed = dist(ref, p) > Math.max(15, 2 * accOf(p));
+        }
+        if (mode === 'moving') {
+          // Without a speed, any fix could be where a stop begins: the next ones say whether it was.
+          if (bad || !armed || (v != null && v >= vStill)) return { out: [[p, 0]] };
+          mode = 'stopping'; since = p[0]; anchor = p; held = [p];
+          return { out: [] };
+        }
+        if (mode === 'stopping') {
+          held.push(p);
+          if (bad) return { out: [] };
+          if (v != null ? v < vStill : inside(p)) {
+            const need = held.some((x) => x[5] == null) ? AUTO_STOP_BLIND_MS : AUTO_STOP_MS;
+            if (p[0] - since < need) return { out: [] };
+            mode = 'paused';
+            return { out: flush(1), pause: since };
+          }
+          // Called off: kept as moving. A fix without a speed may start the next stop.
+          held.pop();
+          const out = flush(0);
+          if (v == null) { since = p[0]; anchor = p; held = [p]; return { out }; }
+          mode = 'moving'; anchor = null;
+          out.push([p, 0]);
+          return { out };
+        }
+        if (mode === 'paused') {
+          if (!anchor && !bad) anchor = p;
+          if (bad || !(v != null ? v >= vMove || outside(p) : outside(p))) return { out: [[p, 1]] };
+          mode = 'starting'; since = p[0]; held = [p];
+          return { out: [] };
+        }
+        // starting
+        held.push(p);
+        if (bad) return { out: [] };
+        if (!(v != null ? v >= vMove || outside(p) : outside(p))) { mode = 'paused'; return { out: flush(1) }; }
+        if (p[0] - since < AUTO_MOVE_MS) return { out: [] };
+        mode = 'moving'; anchor = null;
+        return { out: flush(0), resume: since };
+      },
+    };
+  }
+
+  /* ---------------------------------------------------------------- the pace now */
+  // How fast you're going now, in m/s: the fixes of the last LIVE_MS of this stretch (none from before
+  // a pause), from the GPS's own speeds where they have one (their median trimmed of the outer
+  // fifths, which a stray reading doesn't move), else from the distance covered. 0 when stopped, null
+  // until there's enough to say. points: the recorder's, oldest first.
+  const LIVE_MS = 20000;
+  function liveSpeed(points, type) {
+    const pts = points || [];
+    const [vStill] = AUTO[type] || AUTO.other;
+    const last = pts.length ? norm(pts[pts.length - 1]) : null;
+    if (!last || last[6]) return last ? 0 : null;
+    const win = [];
+    for (let i = pts.length - 1; i >= 0; i--) {
+      const p = norm(pts[i]);
+      if (!p || p[6] || p[0] < last[0] - LIVE_MS) break;
+      if (p[4] == null || p[4] <= AUTO_BAD_ACC) win.unshift(p);
+    }
+    if (win.length < 3 || win[win.length - 1][0] - win[0][0] < 6000) return null;
+    const sp = win.map((p) => p[5]).filter((v) => v != null).sort((x, y) => x - y);
+    let v;
+    if (sp.length >= win.length * 0.6) {
+      const cut = Math.floor(sp.length / 5);
+      const mid = sp.slice(cut, sp.length - cut);
+      v = mid.reduce((a, x) => a + x, 0) / mid.length;
+    } else {
+      let m = 0;
+      for (let i = 1; i < win.length; i++) m += haversine(win[i - 1][1], win[i - 1][2], win[i][1], win[i][2]);
+      // Straight-line wobble adds a little: about the fixes' own error, taken off.
+      const err = median(win.map((p) => p[4])) || 5;
+      v = Math.max(0, m - err) / ((win[win.length - 1][0] - win[0][0]) / 1000);
+    }
+    return v < vStill ? 0 : v;
   }
 
   /* ---------------------------------------------------------------- elevation */
@@ -557,7 +717,7 @@
     const elev = elevation(tr.pts);
     const day = B() ? B().dayOf(start, roll(S)) : null;
     const kg = weightKg(S, day);
-    const simple = simplify(tr.pts, 5);
+    const simple = simplify(smoothRoute(tr.pts), 5);
     const act = {
       v: 1, id: String(rec.id), type, title: String(rec.title || defaultTitle(type, start)).slice(0, 60), start, end, day,
       distanceM: Math.round(tr.distanceM), movingMs: Math.round(tr.movingMs), elapsedMs: end - start,
@@ -705,16 +865,25 @@
       fn(x);
     };
   }
-  const EMPTY = { active: false, id: null, type: null, title: null, startedAt: null, endedAt: null, paused: false, pausedMs: 0, elapsedMs: 0, distanceM: 0, steps: null, points: 0, lastFix: null, gps: 'off' };
+  const EMPTY = { active: false, id: null, type: null, title: null, startedAt: null, endedAt: null, paused: false, autoPaused: false, pausedMs: 0, elapsedMs: 0, distanceM: 0, steps: null, points: 0, lastFix: null, coarse: null, gps: 'off', opts: { autoPause: false, voice: false } };
+  // A position from the recorder: { lat, lon, acc, t, bearing (degrees, null when unknown), speed }.
+  const fixOf = (f) => {
+    if (!f || num(f.lat) == null || num(f.lon) == null || Math.abs(f.lat) > 90 || Math.abs(f.lon) > 180) return null;
+    const b = num(f.bearing), sp = num(f.speed);
+    return { lat: +f.lat, lon: +f.lon, acc: num(f.acc), t: num(f.t), bearing: b != null && b >= 0 && b <= 360 ? b : null, speed: sp != null && sp >= 0 ? sp : null };
+  };
   function normState(x) {
     const s = parse(x);
     if (!s || typeof s !== 'object') return Object.assign({}, EMPTY, { at: Date.now() });
-    const fix = s.lastFix && num(s.lastFix.lat) != null && num(s.lastFix.lon) != null ? { lat: +s.lastFix.lat, lon: +s.lastFix.lon, acc: num(s.lastFix.acc), t: num(s.lastFix.t) } : null;
+    const o = s.opts && typeof s.opts === 'object' ? s.opts : {};
     return {
       active: !!s.active, id: s.id != null ? String(s.id) : null, type: s.type || null, title: s.title || null,
-      startedAt: num(s.startedAt), endedAt: s.active ? null : num(s.endedAt), paused: !!s.paused, pausedMs: Math.max(0, num(s.pausedMs) || 0), elapsedMs: Math.max(0, num(s.elapsedMs) || 0),
-      distanceM: Math.max(0, num(s.distanceM) || 0), steps: num(s.steps), points: Math.max(0, num(s.points) || 0), lastFix: fix,
-      gps: s.gps === 'ok' || s.gps === 'searching' ? s.gps : 'off', at: Date.now(),
+      startedAt: num(s.startedAt), endedAt: s.active ? null : num(s.endedAt), paused: !!s.paused, autoPaused: !!(s.active && s.paused && s.autoPaused), pausedMs: Math.max(0, num(s.pausedMs) || 0), elapsedMs: Math.max(0, num(s.elapsedMs) || 0),
+      distanceM: Math.max(0, num(s.distanceM) || 0), steps: num(s.steps), points: Math.max(0, num(s.points) || 0), lastFix: fixOf(s.lastFix),
+      // Where the phone roughly is (the network's or the fused provider's guess) while GPS looks: for
+      // the map, never for the distance.
+      coarse: fixOf(s.coarse),
+      gps: s.gps === 'ok' || s.gps === 'searching' ? s.gps : 'off', opts: { autoPause: !!o.autoPause, voice: !!o.voice }, at: Date.now(),
     };
   }
   // The activity clock, pauses taken out, at `now`. elapsedMs is read as the clock itself; a recorder
@@ -759,10 +928,13 @@
         try { b.actRequestPermissions(); } catch (e) { permWaiters = permWaiters.filter((f) => f !== done); native.permissions().then(done); }
       });
     },
+    // o: { id, type, title, units?, autoPause?, voice? }
     start(o) { return !!call('actStart', JSON.stringify(o)); },
     pause() { call('actPause'); },
     resume() { call('actResume'); },
     stop() { call('actStop'); },
+    // Auto-pause and the spoken splits, changed while it records: { autoPause?, voice? }.
+    setOptions(o) { call('actSetOptions', JSON.stringify(o || {})); },
     state() { return normState(call('actState')); },
     points(from) { const p = parse(call('actPoints', Math.max(0, from | 0))); return Array.isArray(p) ? p : []; },
     clear(id) { call('actClear', String(id)); },
@@ -771,10 +943,11 @@
   // A browser's recorder: navigator.geolocation, the same state shape, kept in localStorage so a
   // reload picks it up. No step counter and no Health Connect. On the phone it also records an
   // activity without GPS when location isn't allowed (the shell's recorder won't start then): the
-  // clock only, with steps and heart rate from a watch afterwards.
+  // clock only, with steps and heart rate from a watch afterwards. Auto-pause runs the same rules as
+  // the shell's (autoPauser); a pause it makes starts where the stop began (r.auto marks it).
   const web = (() => {
     const KEY = 'gh.act.rec';
-    let r = null, loaded = false, watch = null, tick = null, saveAt = 0, measured = { at: 0, n: -1, m: 0 };
+    let r = null, loaded = false, watch = null, tick = null, saveAt = 0, measured = { at: 0, n: -1, m: 0 }, det = null;
     const geo = () => (G.navigator && G.navigator.geolocation) || null;
     const ls = () => { try { return G.localStorage || null; } catch (e) { return null; } };
     function load() { try { const s = ls(); const o = s ? JSON.parse(s.getItem(KEY) || 'null') : null; return o && o.id ? o : null; } catch (e) { return null; } }
@@ -795,9 +968,16 @@
     function state() {
       if (!holds()) return normState(null);
       const t = r.active ? Date.now() : r.endedAt;
-      const pausedMs = r.pausedMs + (r.paused && r.pauseAt ? t - r.pauseAt : 0);
-      return normState({ active: r.active, id: r.id, type: r.type, title: r.title, startedAt: r.startedAt, endedAt: r.active ? null : r.endedAt, paused: r.paused, pausedMs, elapsedMs: Math.max(0, t - r.startedAt - pausedMs), distanceM: distance(), steps: null, points: r.pts.length, lastFix: r.lastFix, gps: r.noGps ? 'off' : r.gps });
+      const pausedMs = r.pausedMs + (r.paused && r.pauseAt ? Math.max(0, t - r.pauseAt) : 0);
+      return normState({ active: r.active, id: r.id, type: r.type, title: r.title, startedAt: r.startedAt, endedAt: r.active ? null : r.endedAt, paused: r.paused, autoPaused: r.paused && r.auto, pausedMs, elapsedMs: Math.max(0, t - r.startedAt - pausedMs), distanceM: distance(), steps: null, points: r.pts.length, lastFix: r.lastFix, coarse: r.coarse, gps: r.noGps ? 'off' : r.gps, opts: r.opts });
     }
+    // Fixes the auto-pause has decided on, flagged as it says; and the clock stopped or going on.
+    function keep(res) {
+      for (const [p, paused] of res.out || []) { p[6] = paused; r.pts.push(p); }
+      if (res.pause != null && !r.paused) { r.paused = true; r.auto = true; r.pauseAt = Math.max(r.startedAt, res.pause); }
+      if (res.resume != null && r.paused && r.auto) { r.pausedMs += Math.max(0, res.resume - r.pauseAt); r.paused = false; r.auto = false; r.pauseAt = null; }
+    }
+    const detector = () => { if (!det && r && r.opts && r.opts.autoPause) det = autoPauser(r.type, r.paused && r.auto); return det; };
     function onFix(pos) {
       if (!r || !r.active || !pos || !pos.coords) return;
       const c = pos.coords;
@@ -805,15 +985,24 @@
       const p = [Date.now(), c.latitude, c.longitude, c.altitude == null ? null : c.altitude, c.accuracy == null ? null : c.accuracy, c.speed == null || !(c.speed >= 0) ? null : c.speed, r.paused ? 1 : 0];
       const n = norm(p);
       if (!n) return;
-      r.pts.push(n);
-      r.lastFix = { lat: n[1], lon: n[2], acc: n[4], t: n[0] };
+      r.lastFix = { lat: n[1], lon: n[2], acc: n[4], t: n[0], bearing: c.heading == null || !(c.heading >= 0) ? null : c.heading, speed: n[5] };
       r.gps = n[4] != null && n[4] > 30 ? 'searching' : 'ok';
+      // Paused by hand (or still waiting for the 3-2-1): kept as it comes. Otherwise auto-pause has
+      // its say.
+      if (r.paused && !r.auto) r.pts.push(n);
+      else if (detector()) keep(det.feed(n));
+      else r.pts.push(n);
       persist();
     }
     function onErr(e) { if (r) r.gps = e && e.code === 1 ? 'off' : 'searching'; }
     function run() {
       const g = geo();
       if (g && watch == null && !r.noGps) { try { watch = g.watchPosition(onFix, onErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }); } catch (e) { watch = null; } }
+      // A rough position at once (the network's, or one the phone already had) for the map while
+      // GPS looks: never part of the track.
+      if (g && !r.noGps && !r.lastFix && !r.coarse) {
+        try { g.getCurrentPosition((pos) => { if (r && r.active && pos && pos.coords && !r.lastFix) { r.coarse = { lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy, t: Date.now() }; emit(state()); } }, () => {}, { enableHighAccuracy: false, maximumAge: 120000, timeout: 15000 }); } catch (e) { /* none, then */ }
+      }
       if (!tick) {
         tick = setInterval(() => {
           if (!r || !r.active) return;
@@ -847,20 +1036,46 @@
             { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
         });
       },
-      // o: { id, type, title, noGps: the clock only }
+      // o: { id, type, title, noGps: the clock only, autoPause, voice }
       start(o) {
         if (holds() && r.active) return false;
-        r = { id: String(o.id), type: o.type, title: o.title || '', startedAt: Date.now(), paused: false, pausedMs: 0, pauseAt: null, pts: [], lastFix: null, gps: o.noGps ? 'off' : 'searching', noGps: !!o.noGps, active: true };
+        r = { id: String(o.id), type: o.type, title: o.title || '', startedAt: Date.now(), paused: false, auto: false, pausedMs: 0, pauseAt: null, pts: [], lastFix: null, coarse: null, gps: o.noGps ? 'off' : 'searching', noGps: !!o.noGps, active: true, opts: { autoPause: !!o.autoPause && !o.noGps, voice: !!o.voice } };
         measured = { at: 0, n: -1, m: 0 };
+        det = null;
         persist(true);
         run();
         return true;
       },
-      pause() { if (!r || !r.active || r.paused) return; r.paused = true; r.pauseAt = Date.now(); persist(true); emit(state()); },
-      resume() { if (!r || !r.active || !r.paused) return; r.pausedMs += Date.now() - (r.pauseAt || Date.now()); r.paused = false; r.pauseAt = null; persist(true); emit(state()); },
+      // By hand: what auto-pause was holding goes as it stood, and a pause it made becomes yours (it
+      // won't end by itself).
+      pause() {
+        if (!r || !r.active || (r.paused && !r.auto)) return;
+        if (det) keep({ out: det.manual() });
+        if (r.paused) r.auto = false;
+        else { r.paused = true; r.auto = false; r.pauseAt = Date.now(); }
+        persist(true); emit(state());
+      },
+      resume() {
+        if (!r || !r.active || !r.paused) return;
+        if (det) keep({ out: det.manual() });
+        r.pausedMs += Math.max(0, Date.now() - (r.pauseAt || Date.now())); r.paused = false; r.auto = false; r.pauseAt = null;
+        persist(true); emit(state());
+      },
+      setOptions(o) {
+        if (!r || !r.active || !o) return;
+        r.opts = { autoPause: o.autoPause != null ? !!o.autoPause && !r.noGps : r.opts.autoPause, voice: o.voice != null ? !!o.voice : r.opts.voice };
+        if (!r.opts.autoPause && det) {
+          // Off while it had stopped the clock: the clock goes on now.
+          keep({ out: det.drain() });
+          det = null;
+          if (r.paused && r.auto) { r.pausedMs += Math.max(0, Date.now() - r.pauseAt); r.paused = false; r.auto = false; r.pauseAt = null; }
+        }
+        persist(true); emit(state());
+      },
       stop() {
         if (!r || !r.active) return;
-        if (r.paused) { r.pausedMs += Date.now() - (r.pauseAt || Date.now()); r.paused = false; r.pauseAt = null; }
+        if (det) { keep({ out: det.drain() }); det = null; }
+        if (r.paused) { r.pausedMs += Math.max(0, Date.now() - (r.pauseAt || Date.now())); r.paused = false; r.auto = false; r.pauseAt = null; }
         r.active = false; r.endedAt = Date.now();
         halt();
         persist(true);
@@ -939,6 +1154,7 @@
 
   GH.activity = {
     TYPES, ORDER, UNITS, MILE, EFFORTS, ZONES, typeOf, unitsOf, haversine, norm, median,
+    AUTO, AUTO_DEFAULT, autoOn, autoPauser, liveSpeed, smoothRoute,
     spikeGate, smoothRun, track, elevation, splits, at, bestEffort, efforts, maxSpeed, kcalFor, kcalEstimate, hrMaxFor, zoneOf, hrStats,
     simplify, encodeRoute, decodeRoute, boundsOf, routeSegments, defaultTitle, build, withWatch, stepsOf, stepsSrc, kcalOf, kcalSrc,
     paceOf, speedOf, records, newRecords, list, get, add, remove, restore, trim, exerciseOn, spans, countLight, KEEP, KEEP_ROUTES,
