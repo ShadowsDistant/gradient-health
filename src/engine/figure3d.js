@@ -3174,11 +3174,18 @@ function letGo(self) {
 function maybeRelease() {
   if (live.size || !R) return;
   if (!shrinkTimer) {
+    const shrink = () => {
+      if (live.size || !R || !R.w) return;
+      R.w = R.h = 0;
+      try { R.r.setSize(1, 1, false); } catch (e) { /* ignore */ }
+    };
     shrinkTimer = setTimeout(() => {
       shrinkTimer = 0;
       if (live.size || !R) return;
-      R.w = R.h = 0;
-      try { R.r.setSize(1, 1, false); } catch (e) { /* ignore */ }
+      // Resizing the canvas waits on the GPU (45 ms in a software-GL test at 4x CPU), so not in the
+      // middle of a scroll, a drag or a switch's glide on the page opened after this one.
+      const ui = typeof GH !== 'undefined' && GH.ui;
+      if (ui && ui.whenCalm) ui.whenCalm(shrink); else shrink();
     }, 2000);
   }
   if (!releaseTimer) releaseTimer = setTimeout(() => { releaseTimer = 0; if (!live.size) release(); }, document.hidden ? Math.min(releaseMs, 30000) : releaseMs);

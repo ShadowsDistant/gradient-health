@@ -127,16 +127,24 @@
   // A control's settling: busy() while it's held or moving, then the promise U.controlSettled hands
   // out resolves.
   const settling = new WeakMap();
+  const moving = new Set(); // the controls held or moving now (U.calm waits for them)
   function busy(host) {
     if (settling.has(host)) return;
     let resolve;
     const promise = new Promise((r) => { resolve = r; });
     settling.set(host, { promise, resolve });
+    moving.add(host);
   }
   function settled(host) {
+    moving.delete(host);
     const s = settling.get(host);
     if (s) { settling.delete(host); s.resolve(); }
   }
+  // Whether any control is held or still on its way (one taken off the page no longer counts).
+  U.controlsMoving = () => {
+    for (const h of moving) if (!h.isConnected) settled(h);
+    return moving.size > 0;
+  };
 
   // Click arbitration, in the capture phase on the control: a click the gesture rules don't allow is
   // stopped before it can toggle or select anything.
@@ -153,12 +161,28 @@
   const KNOB = { lift: [1.42, 1.46], stretch: 0.3, lens: { zoom: 0.8, refract: 6, bezel: 8 } };
   const travels = new WeakMap(); // a switch's track → its travel (U.revertSwitch moves it in glass)
   const changedTo = new WeakMap(); // a switch's input → what its last change set it to
+  // The knob's lens maps (drawn pixel by pixel, then encoded) are made once, while nothing's
+  // happening after the first switch shows, instead of at the first touch of one (20 ms at 4x CPU,
+  // in the frame the knob starts to rise). Refract keeps them for every knob of that size after.
+  let knobWarm = false;
+  function warmKnob(thumb) {
+    if (knobWarm) return;
+    knobWarm = true;
+    setTimeout(() => (U.whenCalm || ((f) => f()))(() => {
+      const r = R(), w = thumb.offsetWidth, h = thumb.offsetHeight;
+      if (!r || !r.liquidLens || !thumb.isConnected || w < 4 || h < 4) { knobWarm = false; return; }
+      const o = KNOB.lens;
+      const l = r.liquidLens(w, h, { radius: Math.min(w, h) / 2, bezel: o.bezel, refract: o.refract, rim: 1, zoom: o.zoom, rest: 1, dispersion: 0.03, profile: 'circle' });
+      if (l) l.remove();
+    }), 1500);
+  }
   function ghSwitch(root) {
     const track = root.querySelector('.rf-switch-track');
     const input = root.querySelector('input[type="checkbox"]');
     const thumb = root.querySelector('.rf-switch-thumb');
     if (!track || !input || !thumb) return undefined;
     if (!input.hasAttribute('role')) input.setAttribute('role', 'switch');
+    warmKnob(thumb);
     const T = tracker();
     let L = null, held = false, liftTimer = 0, rescueTimer = 0, flick = 0;
     let base = 0, len = 0, side = false;
