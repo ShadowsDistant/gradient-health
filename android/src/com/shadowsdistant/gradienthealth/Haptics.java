@@ -27,6 +27,8 @@ import java.util.Map;
  *  - Workout: countdown, go, pause, setDone, done (a rest or hold over), workoutDone, levelUp,
  *    milestone, pr.
  *  - Moments: badge, celebrate.
+ *  - Activities: actGo, actPause, actResume, actAutoPause, actAutoResume, actSplit, actGps,
+ *    actFinish, actDiscard (a run, walk, hike or ride).
  * Touch and navigation are the UI kinds: they're skipped when touch feedback is switched off in the
  * phone's settings. The others always play.
  *
@@ -194,6 +196,29 @@ final class Haptics {
         put("celebrate", event, NONE, c(QUICK_RISE, 0.6f, 0, CLICK, 1f, 0, CLICK, 0.7f, 70, CLICK, 1f, 70, SPIN, 0.8f, 40),
                 w(12, 0.3f, 12, 0.55f, 12, 0.8f, 20, 1f, 70, 0, 18, 0.7f, 70, 0, 20, 1f, 40, 0,
                         14, 0.4f, 14, 0.7f, 14, 1f, 14, 0.7f, 14, 0.4f));
+        // Activities: a run, walk, hike or ride. Starting builds up to a firm click; pausing by hand
+        // falls away and resuming rises (auto-pause and auto-resume are the softer, slower kin of
+        // those, so a stop the app noticed feels different from one you made); a split is a lap's
+        // three beats; GPS ready, a quick double and a click; finishing, the line crossed and a spin;
+        // discarding, a weight that drops away.
+        put("actGo", event, NONE, c(TICK, 0.5f, 0, TICK, 0.75f, 35, CLICK, 0.9f, 40, QUICK_RISE, 0.6f, 40, CLICK, 1f, 0),
+                w(10, 0.35f, 25, 0, 16, 0.6f, 25, 0, 24, 0.85f, 50, 0, 40, 1f));
+        put("actPause", event, NONE, c(CLICK, 1f, 0, QUICK_FALL, 0.6f, 30, LOW_TICK, 0.5f, 60),
+                w(40, 1f, 30, 0, 20, 0.6f, 60, 0, 10, 0.35f));
+        put("actResume", event, NONE, c(LOW_TICK, 0.5f, 0, QUICK_RISE, 0.6f, 50, CLICK, 1f, 30),
+                w(10, 0.35f, 50, 0, 20, 0.6f, 30, 0, 40, 1f));
+        put("actAutoPause", event, NONE, c(TICK, 0.7f, 0, QUICK_FALL, 0.45f, 40, LOW_TICK, 0.4f, 90),
+                w(16, 0.6f, 40, 0, 10, 0.4f, 90, 0, 8, 0.3f));
+        put("actAutoResume", event, NONE, c(LOW_TICK, 0.4f, 0, QUICK_RISE, 0.45f, 90, TICK, 0.8f, 40),
+                w(8, 0.3f, 90, 0, 10, 0.4f, 40, 0, 16, 0.65f));
+        put("actSplit", event, NONE, c(TICK, 0.8f, 0, TICK, 0.8f, 50, CLICK, 1f, 50),
+                w(16, 0.7f, 50, 0, 16, 0.7f, 50, 0, 28, 1f));
+        put("actGps", event, NONE, c(TICK, 0.6f, 0, TICK, 0.6f, 20, CLICK, 0.9f, 20),
+                w(8, 0.5f, 20, 0, 8, 0.5f, 20, 0, 30, 0.9f));
+        put("actFinish", event, NONE, c(CLICK, 1f, 0, CLICK, 1f, 80, CLICK, 1f, 80, THUD, 1f, 60, SPIN, 0.7f, 40),
+                w(24, 1f, 80, 0, 24, 1f, 80, 0, 24, 1f, 60, 0, 50, 0.95f, 20, 0.5f));
+        put("actDiscard", event, NONE, c(THUD, 1f, 0, QUICK_FALL, 0.7f, 30, LOW_TICK, 0.4f, 50),
+                w(60, 1f, 30, 0, 24, 0.6f, 50, 0, 10, 0.3f));
     }
 
     private static final AudioAttributes MEDIA = new AudioAttributes.Builder()
