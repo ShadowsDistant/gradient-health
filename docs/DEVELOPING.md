@@ -156,13 +156,15 @@ Progress, Settings and the moves it made no difference and moved rows by 1 px, s
 page opened again where it was left gets the heights its blocks had,
 so it opens on what was showing. Medals share one set of gradients. Progress bars shine once, as
 they show or change, not forever. Work that can wait (the 3D figure's warm-up and stills, Plan's
-tiles, a background re-render such as Today's insight line) waits for `U.calm()`: no scroll or touch
-for 400 ms and no sheet moving (`U.whenCalm(fn)` runs it then). `test/ui-scroll.mjs` scrolls every
+tiles, a background re-render such as Today's insight line, the 3D canvas shrinking once no figure
+shows) waits for `U.calm()`: no scroll or touch for 400 ms, no sheet moving and no control held or
+gliding (`U.controlsMoving`; `U.whenCalm(fn)` runs it then). `test/ui-scroll.mjs` scrolls every
 main screen at 4× CPU, traced, and holds the budgets; `--vs=<dir>` compares two builds run by run, and
 `--ablate=<part>` switches one part off to show what it costs.
 
 **Saving.** `U.save()` never writes in the tap that changed something. `GH.store` waits for the page
-to be idle (a second at most) and hands the JSON to `AndroidBridge.saveAsync`, which writes it on its
+to be idle (a second at most), and while it's busy (a scroll, a drag, a knob gliding) for `U.calm()`
+too (three seconds at most), then hands the JSON to `AndroidBridge.saveAsync`, which writes it on its
 own thread, so a burst of taps is one write. A waiting save is written at once when the page is
 hidden or goes away. Each save also fires `gh-change` on `document` (badges listen for it), and
 `GH.migrations` holds the upgrades `store.migrate` runs on a loaded state. A restored backup goes
@@ -189,8 +191,8 @@ What the app turns off, and why:
   only glass marked `data-lens` refracts, since each lens is redrawn every frame the page moves
   under it.
 - **The light while busy**: on a phone, glass rims follow how it's tilted. The light holds still
-  while the page scrolls, while the workout player or a live activity is open, with Moving
-  background off and under reduced motion, and follows the tilt again when things are calm
+  while the page scrolls, while a sheet moves, while the workout player or a live activity is open,
+  with Moving background off and under reduced motion, and follows the tilt again when things are calm
   (`U.steadyLight`, `core.js`).
 - **Click effects where a drag starts**: Refract's ripple, click ring and icon effects stay (they're
   part of its feel), except on Plan's week strip, whose day pills are dragged
@@ -205,7 +207,11 @@ that keep their speed, and lands with a squash, exactly as Refract's own. A swit
 segmented control's bead are the engine's only while they're touched or moving: at rest Refract's
 style sheet puts the knob at either end, and the bead sits where a transform puts it. The engine's
 lens is drawn pixel by pixel in JavaScript, so a control costs nothing until it's touched (at launch
-these held up the first frames).
+these held up the first frames); the knob's maps are drawn once, in a calm moment after the first
+switch shows, so the first touch doesn't wait on them. The knob glides on the main thread, so
+nothing heavy runs while it does: a switch's handler runs after the next frame, a re-render of the
+same page it asks for waits until the knob has landed (1.2 s at most; `holdRenders` in `core.js`),
+and work waiting for `U.calm()` waits for the knob too.
 A resting bead's lens is a backdrop filter redrawn every frame the page moves behind it, for an
 edge hidden under the frost, so it only works while the bead is lifted (`data-lifted`;
 `src/styles/controls.css`). The tab bar is Refract's own (its pill and its lens); the app keeps
@@ -223,8 +229,10 @@ Where the app uses Refract 1.4's newer parts:
   outside and Android's Back close it, and focus goes back to the button. Opened from a sheet, it
   goes in the sheet's dialog. A sheet that holds more than a list stays a sheet.
 - **Sheets** (`src/ui/sheet.js`, `src/styles/sheet.css`): the panel's material is a layer of
-  Refract's thick glass at medium height (its frost and the rim that catches the light), and solid
-  at full height, while it moves and while its content scrolls.
+  Refract's thick glass with its silver rim (the edge that catches the light) and sheen in every
+  frame, from the slide up through a drag to the slide out. It's frosted at medium height, and
+  solid under the rim and sheen at full height, while it moves and while its content scrolls (a
+  blur under anything that moves is redrawn every frame; the rim and sheen move with their layer).
 - **Page dots**: Refract's `.rf-pagedots` (its ink worm stretches to the page and splats there) for
   the badge reveal and the tour; they follow the page however it's turned (`aria-current`).
 - **Plan's week strip**: the day picked is a bead of the liquid engine, as the segmented controls'
