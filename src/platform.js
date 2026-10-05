@@ -133,6 +133,14 @@
     // Moments
     badge: [3, [12, 30, 24, 70, 20, 60, 30, 20, 50, 40, 60]], // a badge earned
     celebrate: [3, [10, 30, 24, 70, 20, 60, 30, 20, 50]], // set-up done, all set
+    // Activities: a run, walk, hike or ride (src/ui/actlive.js, src/ui/activity.js)
+    actGo: [2, [10, 25, 16, 25, 24, 50, 40]], // the clock starts after the 3-2-1
+    actPause: [2, [40, 30, 20, 60, 10]], actResume: [2, [10, 50, 20, 30, 40]], // paused and resumed by hand
+    actAutoPause: [2, [16, 40, 10, 90, 8]], actAutoResume: [2, [8, 90, 10, 40, 16]], // stopped and gone on by themselves
+    actSplit: [2, [16, 50, 16, 50, 28]], // a km or mile done
+    actGps: [2, [8, 20, 8, 20, 30]], // GPS has you, ready to start
+    actFinish: [3, [24, 80, 24, 80, 24, 60, 70]], // finished and saved
+    actDiscard: [3, [60, 30, 24, 50, 10]], // discarded, or a saved one deleted
   };
   // Light shortens the pulses to 0.75 and Strong lengthens them to 1.3; the pauses stay, so the rhythm
   // does too. (On the phone: 0.75, 1 and 1, with Strong adding weight after each click.)
@@ -245,8 +253,9 @@
   // so the two would cut each other short (and the plain one, an alarm-class buzz, would win). Not
   // while the app is out of sight, though (a rest counting down under another app, or with the screen
   // off): Android only lets alarm-class vibrations through then, so it's the plain buzz.
+  // feel: the haptic for this moment in place of the cue's own (an activity's start has its own).
   const CUE_HAPTIC = { countdown: 'countdown', tick: 'countdown', go: 'go', done: 'done' };
-  function cue(kind) {
+  function cue(kind, feel) {
     if (prefs.sound) {
       if (CUE_HAPTIC[kind] === 'countdown') tone(880, 90);
       else if (kind === 'go') tone(1320, 240);
@@ -255,7 +264,7 @@
     }
     if (!prefs.vibrate) return;
     const b = bridge();
-    if (prefs.haptics && b && b.haptic && own(CUE_HAPTIC, kind) && visible()) { haptic(CUE_HAPTIC[kind]); return; }
+    if (prefs.haptics && b && b.haptic && own(CUE_HAPTIC, kind) && visible()) { haptic(feel && own(HAPTICS, feel) ? feel : CUE_HAPTIC[kind]); return; }
     if (CUE_HAPTIC[kind] === 'countdown') vibrate(35);
     else if (kind === 'go') vibrate(140);
     else if (kind === 'done') vibrate([140, 90, 220]);

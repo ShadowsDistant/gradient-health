@@ -85,7 +85,7 @@ check(`every haptic('…') and data-haptic in the app names a kind (${used.size}
 section('The Feel each one gallery');
 const groups = GH.ui.hapticGroups || [];
 const listed = groups.flatMap((g) => g[5].map(([k]) => k));
-check('five groups: Touch, Navigation, Feedback, Workout, Moments', groups.map((g) => g[1]).join() === 'Touch,Navigation,Feedback,Workout,Moments', groups.map((g) => g[1]));
+check('the groups: Touch, Navigation, Feedback, Workout, Moments, then Activities', groups.map((g) => g[1]).join() === 'Touch,Navigation,Feedback,Workout,Moments,Activities', groups.map((g) => g[1]));
 check('every kind is in it, once', listed.length === kinds.length && same([...listed].sort(), [...kinds].sort()), { missing: kinds.filter((k) => !listed.includes(k)), extra: listed.filter((k, i) => !kinds.includes(k) || listed.indexOf(k) !== i) });
 check('each chip has a short name', groups.every((g) => g[5].every(([, t]) => typeof t === 'string' && t.length >= 2 && t.length <= 14)), groups.flatMap((g) => g[5]).filter(([, t]) => t.length > 14));
 check('Touch and Navigation are the UI kinds, the rest the events', same(groups.slice(0, 2).flatMap((g) => g[5].map(([k]) => k)).sort(), uiWeb));
@@ -106,6 +106,10 @@ check('names an object inherits aren\'t kinds or strengths', same(P.hapticPatter
 check('events are longer than taps', ['success', 'log', 'undo', 'deny', 'warning', 'error', 'heavy', 'setDone', 'done', 'workoutDone', 'pr', 'badge', 'celebrate', 'save', 'copy', 'send', 'remove', 'refresh', 'scan', 'start', 'cancel', 'skip', 'extend', 'swap'].every((k) => total(P.hapticPattern(k, 'strong')) > total(P.hapticPattern('tap', 'strong'))));
 check('ranks: the UI 0, the countdown 1, events 2, the big ones 3', P.hapticRank('tab') === 0 && P.hapticRank('countdown') === 1 && P.hapticRank('setDone') === 2 && ['error', 'heavy', 'workoutDone', 'pr', 'badge', 'celebrate'].every((k) => P.hapticRank(k) === 3));
 check('no two kinds feel the same in the browser either', new Set(kinds.map((k) => P.hapticPattern(k, 'medium').join())).size === kinds.length);
+const ACT = ['actGo', 'actPause', 'actResume', 'actAutoPause', 'actAutoResume', 'actSplit', 'actGps', 'actFinish', 'actDiscard'];
+check('an activity\'s moments each have their own kind, the last block of both tables', ACT.every((k) => kinds.includes(k)) && kinds.slice(-ACT.length).join() === ACT.join() && java.slice(-ACT.length).join() === ACT.join(), { web: kinds.slice(-ACT.length), java: java.slice(-ACT.length) });
+check('finishing and discarding are among the big ones, the rest events', ['actFinish', 'actDiscard'].every((k) => P.hapticRank(k) === 3) && ACT.slice(0, 7).every((k) => P.hapticRank(k) === 2));
+check('a pause or resume the app made is softer than one by hand', total(P.hapticPattern('actAutoPause', 'medium')) < total(P.hapticPattern('actPause', 'medium')) && total(P.hapticPattern('actAutoResume', 'medium')) < total(P.hapticPattern('actResume', 'medium')));
 
 section('Kinds for specific actions');
 // Each: its gallery group, its rank, and the character it's meant to have, read from its phone
@@ -204,6 +208,7 @@ check('the gallery plays one at once over anything', run(() => { P.haptic('celeb
 
 section('Player cues in the app');
 check('with haptics on, each cue buzzes as its own haptic', run(() => { P.cue('countdown'); later(1000); P.cue('go'); later(); P.cue('done'); }) === 'countdown,go,done' && alarms.length === 0, { played, alarms });
+check('a cue can carry its moment\'s own haptic (an activity\'s start), and an unknown one is the cue\'s', run(() => P.cue('go', 'actGo')) === 'actGo' && run(() => P.cue('go', 'nope')) === 'go' && alarms.length === 0);
 check('\'tick\', the old name, is the countdown', run(() => P.cue('tick')) === 'countdown');
 globalThis.__gh.onPause();
 check('out of sight (only alarm-class buzzes get through), the plain buzzes', run(() => { P.cue('countdown'); later(); P.cue('done'); }) === '' && same(alarms, [[0, 35], [0, 140, 90, 220]]), { played, alarms });

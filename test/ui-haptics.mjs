@@ -531,7 +531,7 @@ const gallery = await page.evaluate(() => {
   return { title: d.querySelector('.rf-sheet-title').textContent, groups: [...d.querySelectorAll('.hx-title')].map((t) => t.textContent), chips, kinds: window.GH.platform.hapticKinds, strength: [...d.querySelectorAll('.hx-top .rf-segmented input')].map((i) => `${i.value}${i.checked ? '*' : ''}`).join(), waves: d.querySelectorAll('.hx-chip .hx-wave > i').length };
 });
 check('Feel each one opens from its row with sheet', l.bridge.join() === 'sheet' && gallery.title === 'Feel each one', { ...l, title: gallery.title });
-check('the strength on top, then Touch, Navigation, Feedback, Workout and Moments', gallery.strength === 'light,medium,strong*' && gallery.groups.join() === 'Touch,Navigation,Feedback,Workout,Moments', gallery);
+check('the strength on top, then Touch, Navigation, Feedback, Workout, Moments and Activities', gallery.strength === 'light,medium,strong*' && gallery.groups.join() === 'Touch,Navigation,Feedback,Workout,Moments,Activities', gallery);
 check('a chip for every kind, once, each with its rhythm drawn', gallery.chips.length === gallery.kinds.length && [...gallery.chips].sort().join() === [...gallery.kinds].sort().join() && gallery.waves >= gallery.kinds.length, gallery);
 // Three chips in view together, tapped quickly: workoutDone is still playing when skip comes (a
 // smaller event, otherwise dropped), and swap right after skip (an equal one, otherwise queued).

@@ -42,7 +42,14 @@ import java.util.Locale;
  * stops the service mid-activity (or the phone restarts), the recording stays in progress on disk and
  * recording starts again the next time the app comes to the front ({@link #pageResumed}).
  *
- * GPS comes from the GPS provider; without one, the fused provider (Android 12+), else the network.
+ * GPS comes from the GPS provider (on Android 12+ asked for with a LocationRequest at high accuracy,
+ * once a second); without one, the fused provider (Android 12+), else the network. Until the GPS has
+ * a good fix, the fused provider (or, before Android 12, the network) also gives a rough position at
+ * once, which the page shows on the map and which never counts toward the distance.
+ *
+ * With auto-pause on (see {@link ActivityAutoPause}) the clock stops when the person does, and the
+ * notification says "Auto-paused". With the voice on, each km or mile is said aloud
+ * ({@link ActivityVoice}), screen off or not.
  */
 public final class ActivityService extends Service {
     static final String ACTION_START = "com.shadowsdistant.gradienthealth.activity.START";
@@ -53,6 +60,11 @@ public final class ActivityService extends Service {
     private static final int NOTIFICATION_ID = 4401;
     private static final int FINISHED_NOTIFICATION_ID = 4402;
     private static final long FIX_EVERY_MS = 1000;
+    /** The rough position while GPS looks: this often, for at most COARSE_FOR_MS. */
+    private static final long COARSE_EVERY_MS = 2000;
+    private static final long COARSE_FOR_MS = 180000;
+    /** A position the phone already had is a fair first guess this fresh. */
+    private static final long LAST_KNOWN_MS = 5 * 60000L;
     private static final long TICK_MS = 1000;
     /** With the screen off the notification changes every 10 s instead of every second. */
     private static final long DARK_NOTIFY_MS = 10000;
@@ -71,6 +83,10 @@ public final class ActivityService extends Service {
     private volatile LocationListener locationListener;
     private volatile String provider;
     private volatile boolean providerOn;
+    private volatile LocationListener coarseListener;
+    private volatile long coarseSince;
+    // The spoken splits (main thread only).
+    private ActivityVoice voice;
     private SensorManager sensors;
     private SensorEventListener stepListener;
     private volatile boolean tracking;
@@ -86,8 +102,8 @@ public final class ActivityService extends Service {
     // ---------------------------------------------------------------- for the bridge
 
     /**
-     * actStart({id, type, title, units?}). False without precise location permission, while another
-     * activity is recording, or if the service can't start.
+     * actStart({id, type, title, units?, autoPause?, voice?}). False without precise location
+     * permission, while another activity is recording, or if the service can't start.
      */
     static boolean start(Context context, String json) {
         if (!ActivityPermissions.canTrack(context)) {
@@ -97,12 +113,16 @@ public final class ActivityService extends Service {
         String type;
         String title;
         String units;
+        boolean autoPause;
+        boolean speak;
         try {
             JSONObject in = new JSONObject(json == null ? "{}" : json);
             id = in.optString("id", "").trim();
             type = in.optString("type", "other");
             title = in.optString("title", "").trim();
             units = ActivityTrack.units(in.optString("units", ""));
+            autoPause = in.optBoolean("autoPause", false);
+            speak = in.optBoolean("voice", false);
         } catch (Throwable t) {
             return false;
         }
@@ -116,7 +136,7 @@ public final class ActivityService extends Service {
             title = title.substring(0, 100);
         }
         ActivityTrack track = ActivityTrack.get(context);
-        int result = track.begin(id, type, title, units, System.currentTimeMillis());
+        int result = track.begin(id, type, title, units, System.currentTimeMillis(), autoPause, speak);
         if (result == ActivityTrack.BUSY) {
             return false;
         }
@@ -157,6 +177,35 @@ public final class ActivityService extends Service {
         } else {
             poke();
         }
+    }
+
+    /** actSetOptions({autoPause?, voice?}): changed while it records. */
+    static void setOptions(Context context, String json) {
+        Boolean autoPause = null;
+        Boolean speak = null;
+        try {
+            JSONObject in = new JSONObject(json == null ? "{}" : json);
+            if (in.has("autoPause")) {
+                autoPause = in.optBoolean("autoPause", false);
+            }
+            if (in.has("voice")) {
+                speak = in.optBoolean("voice", false);
+            }
+        } catch (Throwable t) {
+            return;
+        }
+        ActivityTrack.get(context).setOptions(autoPause, speak, System.currentTimeMillis());
+        final ActivityService s = running;
+        if (s != null && speak != null) {
+            final boolean on = speak;
+            s.main.post(new Runnable() {
+                @Override
+                public void run() {
+                    s.voiceOn(on);
+                }
+            });
+        }
+        poke();
     }
 
     /** actStop(): ends the recording and tells the page (onActivity, active false). Returns that state. */
@@ -327,6 +376,7 @@ public final class ActivityService extends Service {
     @Override
     public void onDestroy() {
         stopTracking();
+        voiceOn(false);
         if (running == this) {
             running = null;
         }
@@ -355,6 +405,7 @@ public final class ActivityService extends Service {
     /** Stops recording and removes the service and its notification. */
     void shutDown() {
         stopTracking();
+        voiceOn(false);
         if (foreground) {
             try {
                 stopForeground(STOP_FOREGROUND_REMOVE);
@@ -379,7 +430,10 @@ public final class ActivityService extends Service {
     private void startTracking() {
         tracking = true;
         startLocation();
+        startCoarse();
         startSteps();
+        // The voice's engine takes a moment to start: it does so now, ready for the first split.
+        voiceOn(ActivityTrack.get(this).snapshot(System.currentTimeMillis()).voice);
         handler.removeCallbacks(tick);
         handler.post(tick);
     }
@@ -396,6 +450,7 @@ public final class ActivityService extends Service {
         } catch (Throwable ignored) {
         }
         locationListener = null;
+        stopCoarse();
         try {
             if (sensors != null && stepListener != null) {
                 sensors.unregisterListener(stepListener);
@@ -455,11 +510,100 @@ public final class ActivityService extends Service {
                 public void onStatusChanged(String name, int status, Bundle extras) {
                 }
             };
-            locations.requestLocationUpdates(p, FIX_EVERY_MS, 0f, listener, thread.getLooper());
+            // Android 12+: a LocationRequest at high accuracy (the GPS at its best, not in a
+            // power-saving mode), once a second and not batched. Before that, the classic request.
+            if (Build.VERSION.SDK_INT >= 31) {
+                Api31.request(locations, p, FIX_EVERY_MS, true, handler, listener);
+            } else {
+                locations.requestLocationUpdates(p, FIX_EVERY_MS, 0f, listener, thread.getLooper());
+            }
             locationListener = listener;
         } catch (Throwable t) {
             locationListener = null; // no permission after all: GPS shows as off
         }
+    }
+
+    /**
+     * A rough position at once while the GPS looks: the freshest one the phone already has, then the
+     * fused provider's (Android 12+, balanced power) or the network's every 2 s, until the GPS has a
+     * good fix (or for 3 minutes). Only for the map: ActivityTrack keeps it apart from the track.
+     */
+    private void startCoarse() {
+        try {
+            LocationManager lm = locations;
+            if (lm == null || coarseListener != null || !LocationManager.GPS_PROVIDER.equals(provider)
+                    || "ok".equals(gpsState())) {
+                return;
+            }
+            Location best = null;
+            for (String name : lm.getAllProviders()) {
+                Location l = lm.getLastKnownLocation(name);
+                if (l != null && ageMs(l) <= LAST_KNOWN_MS && (best == null || ageMs(l) < ageMs(best))) {
+                    best = l;
+                }
+            }
+            if (best != null) {
+                onCoarse(best);
+            }
+            String src = Build.VERSION.SDK_INT >= 31 && lm.getAllProviders().contains(LocationManager.FUSED_PROVIDER)
+                    ? LocationManager.FUSED_PROVIDER : LocationManager.NETWORK_PROVIDER;
+            if (!lm.getAllProviders().contains(src) || !lm.isProviderEnabled(src)) {
+                return;
+            }
+            LocationListener listener = new LocationListener() {
+                @Override
+                public void onLocationChanged(Location location) {
+                    onCoarse(location);
+                }
+
+                @Override
+                public void onProviderEnabled(String name) {
+                }
+
+                @Override
+                public void onProviderDisabled(String name) {
+                }
+
+                @Override
+                @SuppressWarnings("deprecation") // abstract before Android 11, so it has to be here
+                public void onStatusChanged(String name, int status, Bundle extras) {
+                }
+            };
+            if (Build.VERSION.SDK_INT >= 31) {
+                Api31.request(lm, src, COARSE_EVERY_MS, false, handler, listener);
+            } else {
+                lm.requestLocationUpdates(src, COARSE_EVERY_MS, 0f, listener, thread.getLooper());
+            }
+            coarseListener = listener;
+            coarseSince = SystemClock.elapsedRealtime();
+        } catch (Throwable t) {
+            coarseListener = null; // then the map waits for the GPS
+        }
+    }
+
+    private void stopCoarse() {
+        LocationListener l = coarseListener;
+        coarseListener = null;
+        try {
+            if (locations != null && l != null) {
+                locations.removeUpdates(l);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void onCoarse(Location l) {
+        if (l != null) {
+            long age = ageMs(l);
+            ActivityTrack.get(this).setCoarse(System.currentTimeMillis() - (age == Long.MAX_VALUE ? 0L : age),
+                    l.getLatitude(), l.getLongitude(), l.hasAccuracy() ? l.getAccuracy() : Double.NaN);
+        }
+    }
+
+    /** How old a fix is, by the clock that doesn't jump (Long.MAX_VALUE when it can't say). */
+    private static long ageMs(Location l) {
+        long nanos = l.getElapsedRealtimeNanos();
+        return nanos > 0 ? Math.max(0L, (SystemClock.elapsedRealtimeNanos() - nanos) / 1000000L) : Long.MAX_VALUE;
     }
 
     private void onFix(Location l) {
@@ -473,7 +617,8 @@ public final class ActivityService extends Service {
             alt = l.getAltitude();
         }
         ActivityTrack.get(this).addFix(fixTime(l), l.getLatitude(), l.getLongitude(), alt,
-                l.hasAccuracy() ? l.getAccuracy() : Double.NaN, l.hasSpeed() ? l.getSpeed() : Double.NaN);
+                l.hasAccuracy() ? l.getAccuracy() : Double.NaN, l.hasSpeed() ? l.getSpeed() : Double.NaN,
+                l.hasBearing() ? l.getBearing() : Double.NaN);
     }
 
     /** A fix's time on this phone's clock: GPS time is wrong on some phones, a fix's age isn't. */
@@ -537,6 +682,23 @@ public final class ActivityService extends Service {
                 return;
             }
             track.saveIfDue(now);
+            // The rough position has done its job once the GPS has a good fix.
+            if (coarseListener != null && ("ok".equals(gpsState()) || SystemClock.elapsedRealtime() - coarseSince > COARSE_FOR_MS)) {
+                stopCoarse();
+            }
+            // Each km or mile is noted as it passes, and said aloud with the voice on.
+            final ActivityTrack.Split split = track.takeSplit(now);
+            if (split != null && track.snapshot(now).voice) {
+                main.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (voice == null) {
+                            voice = new ActivityVoice(ActivityService.this);
+                        }
+                        voice.say(ActivityVoice.words(split));
+                    }
+                });
+            }
             ActivityTrack.Snapshot s = refresh(interactive() || now - notifiedAt >= DARK_NOTIFY_MS);
             // The next tick lands just after the moving time's next whole second, so the clock
             // in the notification and the page steps evenly.
@@ -567,6 +729,19 @@ public final class ActivityService extends Service {
             page.callJs(MainActivity.jsCall("onActivity", track.stateJson(now, gpsState())));
         }
         return s;
+    }
+
+    /** The voice's engine, started (ahead of the first split) or shut down. Main thread. */
+    void voiceOn(boolean on) {
+        if (on) {
+            if (voice == null) {
+                voice = new ActivityVoice(this);
+            }
+            voice.open();
+        } else if (voice != null) {
+            voice.close();
+            voice = null;
+        }
     }
 
     private boolean interactive() {
@@ -612,7 +787,7 @@ public final class ActivityService extends Service {
         String title = label(s.type) + " · " + clock(s.elapsedMs) + " · " + distance(s.distanceM, s.units);
         String text;
         if (s.paused) {
-            text = "Paused";
+            text = s.autoPaused ? "Auto-paused · goes on when you do" : "Paused";
         } else if (tracking && (locationListener == null || !providerOn)) {
             text = "Location is off";
         } else if (!"ok".equals(gpsState())) {
@@ -741,5 +916,29 @@ public final class ActivityService extends Service {
             sb.append(String.format(Locale.US, "%,d steps", s.steps));
         }
         return sb.length() > 0 ? sb.toString() : "Recording";
+    }
+
+    /** API 31+ calls, isolated so older phones never load LocationRequest.Builder. */
+    private static final class Api31 {
+        /**
+         * Updates from {@code provider} every {@code everyMs}, delivered on {@code handler}: at high
+         * accuracy (the GPS), or balanced power (a rough position from the fused provider).
+         */
+        static void request(LocationManager lm, String provider, long everyMs, boolean precise, final Handler handler,
+                LocationListener listener) {
+            android.location.LocationRequest request = new android.location.LocationRequest.Builder(everyMs)
+                    .setQuality(precise ? android.location.LocationRequest.QUALITY_HIGH_ACCURACY
+                            : android.location.LocationRequest.QUALITY_BALANCED_POWER_ACCURACY)
+                    .setMinUpdateIntervalMillis(everyMs)
+                    .setMinUpdateDistanceMeters(0f)
+                    .setMaxUpdateDelayMillis(0L)
+                    .build();
+            lm.requestLocationUpdates(provider, request, new java.util.concurrent.Executor() {
+                @Override
+                public void execute(Runnable r) {
+                    handler.post(r);
+                }
+            }, listener);
+        }
     }
 }

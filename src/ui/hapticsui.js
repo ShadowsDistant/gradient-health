@@ -1,6 +1,6 @@
 /* Haptics in the UI: the rows Settings shows for them (U.hapticRows: the Haptic feedback switch, the
  * strength and "Feel each one"), the Feel each one gallery (U.act.hapticGallery), a sheet with the
- * strength control on top and every kind of haptic, in five groups, to try, and the feel of menus
+ * strength control on top and every kind of haptic, in its groups, to try, and the feel of menus
  * Refract opens by itself (a popover a button points at). The haptics that come with the controls
  * by themselves are in core.js (wire), sheet.js and U.menu (motion.js); the kinds themselves, in
  * platform.js and Haptics.java.
@@ -23,6 +23,8 @@
       [['start', 'Start'], ['countdown', '3, 2, 1'], ['go', 'Go'], ['pause', 'Pause'], ['setDone', 'Set done'], ['skip', 'Skip'], ['extend', 'More rest'], ['done', 'Rest over'], ['swap', 'Swap'], ['levelUp', 'Level up'], ['milestone', 'Goal reached'], ['pr', 'New best'], ['workoutDone', 'Workout done'], ['cancel', 'Cancel']]],
     ['moments', 'Moments', 'The big ones', 'amber', 'star',
       [['badge', 'Badge'], ['celebrate', 'Celebrate']]],
+    ['activities', 'Activities', 'Runs, walks, hikes and rides', 'green', 'act-run',
+      [['actGo', 'Start'], ['actPause', 'Pause'], ['actResume', 'Resume'], ['actAutoPause', 'Auto-pause'], ['actAutoResume', 'Auto-resume'], ['actSplit', 'Split'], ['actGps', 'GPS ready'], ['actFinish', 'Finish'], ['actDiscard', 'Discard']]],
   ];
   U.hapticGroups = GROUPS;
   const STRENGTHS = [['light', 'Light'], ['medium', 'Medium'], ['strong', 'Strong']];

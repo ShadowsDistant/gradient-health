@@ -69,6 +69,8 @@
             ${stack('Food', FOOD_SUB[fm] || '', U.seg('setFood', [['off', 'Off'], ['protein', 'Protein'], ['full', 'Calories']], fm, 'Food tracking', ' data-on="setFoodMode"'), 'calories protein nutrition diet', 'foodmode')}`)}
           ${fm === 'full' ? foodSettings(S, on) : ''}
 
+          ${U.actOptionRows ? actSettings(S) : ''}
+
           ${head('hc', 'Health Connect', 'health data sync steps sleep heart rate weight permissions android google fit')}
           ${list('hc', `${U.row({ key: 'hc', icon: 'heart', tone: 'rose', title: 'Health Connect', detail: hcDetail, act: app && !['unsupported', 'unavailable'].includes(st) ? (on ? 'hcManage' : 'hcConnect') : null, chevron: app })}
             ${missing.length ? U.row({ key: 'hc-new', icon: 'plus', tone: 'rose', title: 'Allow the new data types', sub: U.esc(missingText(missing)), act: 'hcConnect', chevron: true }) : ''}
@@ -382,6 +384,16 @@
     S.profile.units = to;
   }
 
+  /* ---------------------------------------------------------------- walks, runs and rides */
+  // Under What you track: how an outdoor activity records (the start sheet's rows, auto-pause for each
+  // kind and the spoken splits; src/ui/actlive.js) and the map behind its route (src/ui/activity.js).
+  function actSettings(S) {
+    const by = U.actMapsProvider && U.actMapsProvider() === 'google' ? 'Google' : 'OpenFreeMap';
+    return `${sub('acts', 'track', 'Walks, runs and rides')}
+      <ul class="rf-list" data-group="track">${kw(U.actOptionRows(S), 'activity activities outdoor gps record running walking hiking cycling bike stops')}
+        ${kw(U.sw('Maps', !!(U.actMapsOn && U.actMapsOn()), 'data-on="actMapsPref"', `Your route on a map from ${by}, which sees the area the map shows. Off: the route is drawn on this phone.`), 'map google openfreemap streets route')}</ul>`;
+  }
+
   /* ---------------------------------------------------------------- licenses */
   // What ships in the app (or is downloaded or looked up by it) and under which license.
   const LICENSES = [
@@ -394,8 +406,8 @@
     ['ZXing C++', 'Barcode reading', 'Apache 2.0'],
     ['USDA SR28', 'Built-in food list', 'Public domain'],
     ['Open Food Facts', 'Online food search, when it\'s on', 'Open Database License'],
-    ['MapLibre GL JS', 'Street maps behind an activity\'s route', 'BSD 3-Clause'],
-    ['OpenStreetMap contributors and OpenMapTiles, served by OpenFreeMap', 'Street map data, when you show streets', 'Open Database License and CC BY 4.0'],
+    ['MapLibre GL JS', 'Maps behind an activity\'s route when Google\'s aren\'t there', 'BSD 3-Clause'],
+    ['OpenStreetMap contributors and OpenMapTiles, served by OpenFreeMap', 'Map data for those maps, when you show a map', 'Open Database License and CC BY 4.0'],
   ];
   // The design system first: everything on screen is made of it. Its mark comes apart once as the
   // sheet opens.
@@ -406,7 +418,8 @@
   U.act.licensesSheet = () => U.sheet({
     title: 'Open-source licenses', size: 'auto',
     body: `${refractCredit()}<ul class="rf-list">${LICENSES.map(([name, what, lic]) => U.row({ title: U.esc(name), sub: U.esc(`${what} · ${lic}`) })).join('')}</ul>
-      <p class="t-footnote rf-muted sheet-lead">Thanks to everyone who made these. Their full license texts ship with the source code.</p>`,
+      <p class="t-footnote rf-muted sheet-lead">Thanks to everyone who made these. Their full license texts ship with the source code.</p>
+      <p class="t-footnote rf-muted sheet-lead">Maps behind an activity's route come from Google Maps, under Google's terms (linked on each map), when the app has a key for them.</p>`,
   });
 
   /* ---------------------------------------------------------------- days and time */

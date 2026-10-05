@@ -27,8 +27,8 @@ import java.util.TreeSet;
  * its own state, then deletes these with actClear):
  * <ul>
  * <li>&lt;key&gt;.json: the recording's details, replaced atomically on start, pause, resume and
- * finish and every 20 seconds: {v, id, type, title, units, startedAt, endedAt, pauses: [[from, to]],
- * breaks, steps: {on, n, last, boot}}.
+ * finish and every 20 seconds: {v, id, type, title, units, startedAt, endedAt, pauses: [[from, to,
+ * auto]], breaks, steps: {on, n, last, boot}, opts: {autoPause, voice}, splits: {n, at}}.
  * <li>&lt;key&gt;.track: the GPS points, one a line, [t, lat, lon, alt|null, acc, speed|null, paused],
  * appended as they're recorded. actPoints returns them as they are.
  * </ul>
@@ -41,13 +41,23 @@ import java.util.TreeSet;
  * <li>a point that would mean moving faster than 12 m/s since the last good one (25 m/s for a run, a
  * ride or other) is a GPS jump and is left out; after three in a row the move is real (a lift, a
  * train), so the line starts again there without counting the gap;
- * <li>distance counts from an anchor that only moves once the position has moved further than the
- * points' accuracy explains (the worse accuracy, 3 to 20 m), and not while the GPS says the phone is
- * standing still (under 0.4 m/s): GPS wander at a crossing adds nothing, and since the anchor waits
- * instead of skipping, a straight line loses nothing.
+ * <li>between two good points no more than 12 s apart that both have the GPS's own (Doppler) speed,
+ * the distance is their average speed times the time between them (nothing under 0.4 m/s): far
+ * steadier than the step between two positions, whose errors add up;
+ * <li>otherwise distance counts from an anchor that only moves once the position has moved further
+ * than the points' accuracy explains (the worse accuracy, 3 to 20 m), and not while the GPS says the
+ * phone is standing still (under 0.4 m/s): GPS wander at a crossing adds nothing, and since the anchor
+ * waits instead of skipping, a straight line loses nothing.
  * </ul>
+ * This is the notification's distance and the spoken splits'; the page works out its own from the
+ * points (src/activity.js, track()), and the two agree to about 1% with speeds.
  * Fixes arrive about once a second. One is stored when it's 3 m from the last stored point, 10 s after
  * it, the first accurate one after inaccurate ones, or the first after a pause or resume.
+ *
+ * Auto-pause ({@link ActivityAutoPause}, when the activity has it on) holds back the fixes it's
+ * unsure of for a few seconds, then hands them on flagged: a pause it makes starts where the stop
+ * began (its interval's third column is 1), and one it ends, where the moving began. The clock, the
+ * stored flags and the page's maths so agree. A pause or resume by hand takes over from it.
  *
  * Steps come from the phone's step counter (steps since the phone started): only steps taken while
  * recording and not paused count.
@@ -64,6 +74,8 @@ final class ActivityTrack {
     private static final double FOOT_MAX_SPEED = 12; // m/s: walks and hikes
     private static final double FAST_MAX_SPEED = 25; // m/s: runs, rides, other
     private static final int JUMPS_TO_MOVE = 3;
+    /** Points with speeds this close (s) are measured by their speed; farther apart, by where they are. */
+    private static final double DOPPLER_GAP_S = 12;
     private static final double STORE_MOVE_M = 3;
     private static final long STORE_EVERY_MS = 10000;
     private static final int MAX_POINTS = 200000;
@@ -115,7 +127,7 @@ final class ActivityTrack {
         String units;
         long startedAt;
         long endedAt; // 0 while recording
-        final List<long[]> pauses = new ArrayList<long[]>(); // {from, to}, to = 0 while paused
+        final List<long[]> pauses = new ArrayList<long[]>(); // {from, to, auto}, to = 0 while paused
         final List<double[]> points = new ArrayList<double[]>();
         final TreeSet<Integer> breaks = new TreeSet<Integer>(); // points where the line starts again
         double distanceM;
@@ -129,9 +141,18 @@ final class ActivityTrack {
         long steps;
         double lastCounter = -1;
         long counterBoot;
-        // The latest fix, stored or not.
+        // The latest fix, stored or not: {t, lat, lon, acc, speed, bearing} (NaN: unknown).
         double[] lastFix;
         long lastGoodAt;
+        // Where the phone roughly is while GPS looks (the network's guess, for the map only):
+        // {t, lat, lon, acc}.
+        double[] coarse;
+        // Auto-pause (null when it's off) and the spoken splits.
+        ActivityAutoPause auto;
+        boolean voice;
+        // The whole km or miles passed so far, and the clock when the last one was.
+        int splits;
+        long splitAtMs;
         long savedAt;
         FileOutputStream out;
 
@@ -141,6 +162,15 @@ final class ActivityTrack {
 
         boolean paused() {
             return !pauses.isEmpty() && pauses.get(pauses.size() - 1)[1] == 0L;
+        }
+
+        /** Paused by auto-pause (not by hand). */
+        boolean autoPaused() {
+            if (!paused()) {
+                return false;
+            }
+            long[] last = pauses.get(pauses.size() - 1);
+            return last.length > 2 && last[2] == 1L;
         }
 
         long pausedMs(long now) {
@@ -158,10 +188,12 @@ final class ActivityTrack {
         }
     }
 
-    /** What the notification shows. */
+    /** What the notification and the spoken splits read. */
     static final class Snapshot {
         boolean active;
         boolean paused;
+        boolean autoPaused;
+        boolean voice;
         String type;
         String title;
         String units;
@@ -170,10 +202,23 @@ final class ActivityTrack {
         long steps = -1; // -1: not counted
     }
 
+    /** A whole km or mile just passed: which one, the clock then, and how long that one took. */
+    static final class Split {
+        int n;
+        long clockMs;
+        long splitMs;
+        String type;
+        String units;
+    }
+
     // ---------------------------------------------------------------- recording
 
-    /** Starts a recording: STARTED, ALREADY (this one is recording), or BUSY (another one is). */
-    synchronized int begin(String id, String type, String title, String units, long now) {
+    /**
+     * Starts a recording: STARTED, ALREADY (this one is recording), or BUSY (another one is). With
+     * {@code autoPause} the clock stops by itself when the person stops; {@code voice}: the service
+     * says each km or mile.
+     */
+    synchronized int begin(String id, String type, String title, String units, long now, boolean autoPause, boolean voice) {
         load();
         if (rec != null && rec.active()) {
             return id.equals(rec.id) ? ALREADY : BUSY;
@@ -186,6 +231,8 @@ final class ActivityTrack {
         r.title = title;
         r.units = units;
         r.startedAt = now;
+        r.auto = autoPause ? new ActivityAutoPause(type, false) : null;
+        r.voice = voice;
         deleteFiles(r.key); // the same id again: this one replaces it
         rec = r;
         saveMeta(r, now);
@@ -204,16 +251,28 @@ final class ActivityTrack {
         return rec != null && rec.active() && rec.paused();
     }
 
+    /**
+     * A pause by hand. What auto-pause was holding is kept as it stood; a pause it made becomes one
+     * by hand (it won't end by itself).
+     */
     synchronized void pause(long now) {
         load();
         Rec r = rec;
-        if (r == null || !r.active() || r.paused()) {
+        if (r == null || !r.active()) {
             return;
         }
-        r.pauses.add(new long[]{Math.max(now, r.startedAt), 0L});
-        r.anchor = null;
-        r.prev = null;
-        r.jumps = 0;
+        if (r.auto != null) {
+            keepAll(r, r.auto.manual().out);
+        }
+        if (r.paused()) {
+            long[] last = r.pauses.get(r.pauses.size() - 1);
+            if (last.length > 2 && last[2] == 1L) {
+                last[2] = 0L;
+                saveMeta(r, now);
+            }
+            return;
+        }
+        startPause(r, Math.max(now, r.startedAt), false);
         saveMeta(r, now);
         sync(r);
     }
@@ -224,9 +283,50 @@ final class ActivityTrack {
         if (r == null || !r.active() || !r.paused()) {
             return;
         }
+        if (r.auto != null) {
+            keepAll(r, r.auto.manual().out);
+        }
+        endPause(r, now);
+        saveMeta(r, now);
+    }
+
+    private static void startPause(Rec r, long from, boolean auto) {
+        r.pauses.add(new long[]{from, 0L, auto ? 1L : 0L});
+        r.anchor = null;
+        r.prev = null;
+        r.jumps = 0;
+    }
+
+    private static void endPause(Rec r, long at) {
         long[] last = r.pauses.get(r.pauses.size() - 1);
-        last[1] = Math.max(now, last[0]);
+        last[1] = Math.max(at, last[0]);
         r.breakNext = true; // the line starts again at the next point
+    }
+
+    /**
+     * Auto-pause and the spoken splits, changed while recording (null: as it is). Auto-pause turned
+     * off while it has the clock stopped: the clock goes on now.
+     */
+    synchronized void setOptions(Boolean autoPause, Boolean voice, long now) {
+        load();
+        Rec r = rec;
+        if (r == null || !r.active()) {
+            return;
+        }
+        if (autoPause != null) {
+            if (autoPause && r.auto == null) {
+                r.auto = new ActivityAutoPause(r.type, false);
+            } else if (!autoPause && r.auto != null) {
+                keepAll(r, r.auto.drain().out);
+                r.auto = null;
+                if (r.autoPaused()) {
+                    endPause(r, now);
+                }
+            }
+        }
+        if (voice != null) {
+            r.voice = voice;
+        }
         saveMeta(r, now);
     }
 
@@ -236,6 +336,9 @@ final class ActivityTrack {
         Rec r = rec;
         if (r == null || !r.active()) {
             return;
+        }
+        if (r.auto != null) {
+            keepAll(r, r.auto.drain().out);
         }
         long end = Math.max(now, r.startedAt + 1L);
         if (r.paused()) {
@@ -285,32 +388,60 @@ final class ActivityTrack {
     // ---------------------------------------------------------------- feeding it
 
     /**
-     * One location fix: t in epoch ms, alt and speed NaN when unknown, acc in meters (NaN: unknown,
-     * counted as poor). The latest fix is always remembered; see the class comment for what's stored.
+     * One location fix: t in epoch ms, alt, speed and bearing NaN when unknown, acc in meters (NaN:
+     * unknown, counted as poor). The latest fix is always remembered; see the class comment for what's
+     * stored, and auto-pause for when.
      */
-    synchronized void addFix(long t, double lat, double lon, double alt, double acc, double speed) {
+    synchronized void addFix(long t, double lat, double lon, double alt, double acc, double speed, double bearing) {
         Rec r = rec;
         if (r == null || !r.active() || !(lat >= -90 && lat <= 90) || !(lon >= -180 && lon <= 180)
                 || (lat == 0 && lon == 0)) {
             return;
         }
         double accuracy = acc >= 0 ? acc : 100;
-        boolean paused = r.paused();
-        r.lastFix = new double[]{t, lat, lon, accuracy};
+        double v = finite(speed) && speed >= 0 ? round(speed, 2) : Double.NaN;
+        r.lastFix = new double[]{t, lat, lon, accuracy, v, finite(bearing) && bearing >= 0 && bearing <= 360 ? round(bearing, 1) : Double.NaN};
         if (accuracy <= MAX_ACCURACY_M) {
             r.lastGoodAt = Math.max(r.lastGoodAt, t);
         }
+        double[] p = {t, round(lat, 6), round(lon, 6), finite(alt) ? round(alt, 1) : Double.NaN,
+                round(accuracy, 1), v, r.paused() ? 1 : 0};
+        // Paused by hand (or waiting for the 3-2-1): kept as it comes. Otherwise auto-pause has its say.
+        if (r.auto == null || (r.paused() && !r.autoPaused())) {
+            store(r, p);
+            return;
+        }
+        ActivityAutoPause.Result res = r.auto.feed(p);
+        if (res.pause >= 0 && !r.paused()) {
+            startPause(r, Math.max(res.pause, r.startedAt), true);
+            saveMeta(r, t);
+        }
+        if (res.resume >= 0 && r.autoPaused()) {
+            endPause(r, res.resume);
+            saveMeta(r, t);
+        }
+        keepAll(r, res.out);
+    }
+
+    private void keepAll(Rec r, List<double[]> points) {
+        for (double[] p : points) {
+            store(r, p);
+        }
+    }
+
+    /** Stores a point (its paused column as given) if it's worth keeping: see the class comment. */
+    private void store(Rec r, double[] p) {
+        long t = (long) p[T];
+        boolean paused = p[PAUSED] != 0;
         double[] last = r.points.isEmpty() ? null : r.points.get(r.points.size() - 1);
         if ((last != null && t <= last[T]) || r.points.size() >= MAX_POINTS) {
             return;
         }
         boolean force = r.breakNext || last == null || (last[PAUSED] != 0) != paused
-                || (last[ACC] > MAX_ACCURACY_M && accuracy <= MAX_ACCURACY_M);
-        if (!force && t - last[T] < STORE_EVERY_MS && meters(last, lat, lon) < STORE_MOVE_M) {
+                || (last[ACC] > MAX_ACCURACY_M && p[ACC] <= MAX_ACCURACY_M);
+        if (!force && t - last[T] < STORE_EVERY_MS && meters(last, p[LAT], p[LON]) < STORE_MOVE_M) {
             return;
         }
-        double[] p = {t, round(lat, 6), round(lon, 6), finite(alt) ? round(alt, 1) : Double.NaN,
-                round(accuracy, 1), finite(speed) && speed >= 0 ? round(speed, 2) : Double.NaN, paused ? 1 : 0};
         boolean isBreak = r.breakNext;
         int verdict = step(r, p, isBreak);
         if (verdict == DROP) {
@@ -370,6 +501,46 @@ final class ActivityTrack {
         return rec != null && rec.active() ? rec.lastGoodAt : 0L;
     }
 
+    /** A rough position (the network's or the fused provider's) while GPS looks: for the map only. */
+    synchronized void setCoarse(long t, double lat, double lon, double acc) {
+        Rec r = rec;
+        if (r == null || !r.active() || !(lat >= -90 && lat <= 90) || !(lon >= -180 && lon <= 180) || (lat == 0 && lon == 0)) {
+            return;
+        }
+        if (r.coarse != null && r.coarse[0] > t) {
+            return;
+        }
+        r.coarse = new double[]{t, lat, lon, acc >= 0 ? acc : 1000};
+    }
+
+    /**
+     * A whole km or mile passed since the last one (in the activity's units, by its distance), or null.
+     * Checked every second while it records, whether or not anyone is told, so each one's time is its
+     * own. Two at once (a jump after GPS came back) count as one, at the time they took between them.
+     */
+    synchronized Split takeSplit(long now) {
+        Rec r = rec;
+        if (r == null || !r.active() || r.paused()) {
+            return null;
+        }
+        double unit = "mi".equals(r.units) ? 1609.344 : 1000.0;
+        int whole = (int) Math.floor(r.distanceM / unit + 1e-9);
+        if (whole <= r.splits) {
+            return null;
+        }
+        long clock = r.elapsedMs(now);
+        Split s = new Split();
+        s.n = whole;
+        s.clockMs = clock;
+        s.splitMs = Math.max(0L, (clock - r.splitAtMs) / (whole - r.splits));
+        s.type = r.type;
+        s.units = r.units;
+        r.splits = whole;
+        r.splitAtMs = clock;
+        saveMeta(r, now);
+        return s;
+    }
+
     // ---------------------------------------------------------------- reading it
 
     synchronized Snapshot snapshot(long now) {
@@ -381,6 +552,8 @@ final class ActivityTrack {
         }
         s.active = r.active();
         s.paused = r.active() && r.paused();
+        s.autoPaused = r.active() && r.autoPaused();
+        s.voice = r.voice;
         s.type = r.type;
         s.title = r.title;
         s.units = r.units;
@@ -391,9 +564,10 @@ final class ActivityTrack {
     }
 
     /**
-     * actState(): {active, id, type, title, units, startedAt, endedAt, paused, pausedMs, elapsedMs,
-     * distanceM, steps, points, lastFix: {lat, lon, acc, t}, gps}. With nothing recording it describes
-     * the newest finished recording the page hasn't cleared (active false), or nothing.
+     * actState(): {active, id, type, title, units, startedAt, endedAt, paused, autoPaused, pausedMs,
+     * elapsedMs, distanceM, steps, points, lastFix: {lat, lon, acc, t, speed?, bearing?}, coarse: {lat,
+     * lon, acc, t}, gps, opts: {autoPause, voice}}. With nothing recording it describes the newest
+     * finished recording the page hasn't cleared (active false), or nothing.
      */
     synchronized String stateJson(long now, String gps) {
         load();
@@ -408,6 +582,7 @@ final class ActivityTrack {
             o.put("startedAt", r == null ? JSONObject.NULL : (Object) r.startedAt);
             o.put("endedAt", r == null || r.active() ? JSONObject.NULL : (Object) r.endedAt);
             o.put("paused", r != null && r.active() && r.paused());
+            o.put("autoPaused", r != null && r.active() && r.autoPaused());
             o.put("pausedMs", r == null ? 0L : r.pausedMs(now));
             o.put("elapsedMs", r == null ? 0L : r.elapsedMs(now));
             o.put("distanceM", r == null ? 0.0 : round(r.distanceM, 1));
@@ -419,11 +594,31 @@ final class ActivityTrack {
                 f.put("lon", r.lastFix[LON]);
                 f.put("acc", round(r.lastFix[3], 1));
                 f.put("t", (long) r.lastFix[T]);
+                if (r.lastFix.length > 5) {
+                    if (finite(r.lastFix[4])) {
+                        f.put("speed", r.lastFix[4]);
+                    }
+                    if (finite(r.lastFix[5])) {
+                        f.put("bearing", r.lastFix[5]);
+                    }
+                }
                 o.put("lastFix", f);
             } else {
                 o.put("lastFix", JSONObject.NULL);
             }
+            if (r != null && r.active() && r.coarse != null) {
+                JSONObject c = new JSONObject();
+                c.put("lat", round(r.coarse[1], 6));
+                c.put("lon", round(r.coarse[2], 6));
+                c.put("acc", round(r.coarse[3], 1));
+                c.put("t", (long) r.coarse[0]);
+                o.put("coarse", c);
+            }
             o.put("gps", r != null && r.active() ? gps : "off");
+            JSONObject opts = new JSONObject();
+            opts.put("autoPause", r != null && r.auto != null);
+            opts.put("voice", r != null && r.voice);
+            o.put("opts", opts);
             return o.toString();
         } catch (Throwable t) {
             return "{\"active\":false}";
@@ -480,6 +675,20 @@ final class ActivityTrack {
         if (a == null) {
             r.anchor = p;
             return KEEP;
+        }
+        // Between two good points that both have the GPS's own (Doppler) speed, the distance is that
+        // speed times the time between them: steadier by far than the step between two positions,
+        // whose errors add up (and their wander while standing still).
+        if (q != null && finite(p[SPEED]) && finite(q[SPEED])) {
+            double dt = (p[T] - q[T]) / 1000.0;
+            if (dt > 0 && dt <= DOPPLER_GAP_S) {
+                double v = Math.min(maxSpeed(r.type), (p[SPEED] + q[SPEED]) / 2);
+                if (v >= STILL_SPEED) {
+                    r.distanceM += v * dt;
+                }
+                r.anchor = p;
+                return KEEP;
+            }
         }
         if (p[SPEED] < STILL_SPEED) { // (false for an unknown speed, NaN)
             return KEEP;
@@ -601,8 +810,19 @@ final class ActivityTrack {
             for (int i = 0; pauses != null && i < pauses.length(); i++) {
                 JSONArray p = pauses.optJSONArray(i);
                 if (p != null && p.length() >= 2) {
-                    r.pauses.add(new long[]{p.optLong(0), p.optLong(1)});
+                    r.pauses.add(new long[]{p.optLong(0), p.optLong(1), p.optLong(2, 0L) == 1L ? 1L : 0L});
                 }
+            }
+            JSONObject opts = o.optJSONObject("opts");
+            if (opts != null) {
+                // Picked up again: auto-paused if it was (it goes on once the person moves).
+                r.auto = opts.optBoolean("autoPause", false) && r.active() ? new ActivityAutoPause(r.type, r.autoPaused()) : null;
+                r.voice = opts.optBoolean("voice", false);
+            }
+            JSONObject splits = o.optJSONObject("splits");
+            if (splits != null) {
+                r.splits = Math.max(0, splits.optInt("n", 0));
+                r.splitAtMs = Math.max(0L, splits.optLong("at", 0L));
             }
             JSONArray breaks = o.optJSONArray("breaks");
             for (int i = 0; breaks != null && i < breaks.length(); i++) {
@@ -766,9 +986,17 @@ final class ActivityTrack {
             o.put("endedAt", r.endedAt);
             JSONArray pauses = new JSONArray();
             for (long[] p : r.pauses) {
-                pauses.put(new JSONArray().put(p[0]).put(p[1]));
+                pauses.put(new JSONArray().put(p[0]).put(p[1]).put(p.length > 2 ? p[2] : 0L));
             }
             o.put("pauses", pauses);
+            JSONObject opts = new JSONObject();
+            opts.put("autoPause", r.auto != null);
+            opts.put("voice", r.voice);
+            o.put("opts", opts);
+            JSONObject splits = new JSONObject();
+            splits.put("n", r.splits);
+            splits.put("at", r.splitAtMs);
+            o.put("splits", splits);
             o.put("breaks", new JSONArray(r.breaks));
             JSONObject steps = new JSONObject();
             steps.put("on", r.stepsOn);

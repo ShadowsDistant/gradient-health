@@ -23,6 +23,12 @@ src/health.js            Health Connect client (read and write), hand logs, per-
 src/food.js              food tracking: targets, logging, meals, the learned burn, Health Connect writes
 src/foodnet.js           Open Food Facts search and barcodes (through the Android shell)
 src/scanner.js           the barcode camera sheet; src/barcode.js is its lazy ZXing reader
+src/activity.js          outdoor activities: the recorder (the Android shell's, or the browser's), and
+                         the track's maths: distance, pace, splits, auto-pause, records (GH.activity)
+src/gmap.js              the map behind a route from Google (Maps JavaScript API), a lazy chunk:
+                         GH.lazy('gmap'); src/actmap.js is MapLibre on OpenFreeMap, GH.lazy('actmap')
+src/ui/activity.js       an activity's summary, the history and records, the maps (U.actMap) and an
+                         activity leaving (U.actFoldAway); src/ui/actlive.js records one
 src/insights.js          on-device insights
 src/coach.js             the built-in coach: report, answers, today's decisions, suggestions, and the
                          number check every AI answer goes through (keepToGiven, grounded)
@@ -323,6 +329,13 @@ APK and the Android App Bundle with the test key and attaches them to the run as
 `gradient-health-test-<commit>` artifact. Only on `main` does a second job sign them with the release
 key and replace the release tagged `latest` (see Publishing, Builds).
 
+**Google Maps key.** `GOOGLE_MAPS_API_KEY=… npm run apk` puts a Maps JavaScript API key in the APK
+(`assets/maps.key`, read only through the bridge's `mapsKey()`); without one the maps are
+OpenFreeMap's. It's never in the repo or in `dist/`, and the script never prints it. CI passes the
+repository secret `GOOGLE_MAPS_API_KEY` to both APK builds (missing is fine). In Google Cloud, enable
+the Maps JavaScript API and restrict the key to that API and to the website
+`https://appassets.androidplatform.net/*` (the WebView's origin).
+
 **Signing keys.** Builds are signed with the release key when it's given (in CI only by the release
 job on `main`; see Publishing), else with `android/gradient-health.keystore` (alias `gradient`,
 password `gradient-health`), a test key committed so a local build works out of the box. Its
@@ -403,12 +416,28 @@ Settings, Health data, shows the switch and "Every 15 minutes · last at 3:15 pm
 foreground service of type `location` that the page starts while it's in front (so no background
 location permission is needed). It asks for precise location, physical activity (the step counter,
 Android 10+) and notifications (13+) with `actRequestPermissions()` (answer:
-`__gh.onActPermissions`), then `actStart({id, type, title, units?})`. The service takes a GPS fix
-about once a second from the GPS provider (else the fused provider on Android 12+, else the network),
-counts steps from the phone's step counter, and shows an ongoing, quiet notification,
-"Run · 12:34 · 2.14 km" with the average pace, Pause or Resume and Finish; tapping it opens the app
-(the page gets the route `activity`). Finish there ends the activity and leaves a note that opens the
-summary. While the page is in front it gets `__gh.onActivity(state)` about once a second.
+`__gh.onActPermissions`), then `actStart({id, type, title, units?, autoPause?, voice?})`. The
+service takes a GPS fix about once a second from the GPS provider (on Android 12+ with a
+`LocationRequest` at high accuracy, every second and unbatched; else the fused provider on Android
+12+, else the network). Until the GPS has a good fix it also passes the page a rough position (the
+freshest one the phone has, then the fused or network provider's every 2 s, for 3 minutes at most),
+for the map only, never into the track. It counts steps from the phone's step counter, and shows an
+ongoing, quiet notification, "Run · 12:34 · 2.14 km" with the average pace (or "Auto-paused"), Pause
+or Resume and Finish; tapping it opens the app (the page gets the route `activity`). Finish there
+ends the activity and leaves a note that opens the summary. While the page is in front it gets
+`__gh.onActivity(state)` about once a second (with `autoPaused`, `opts`, `coarse`, and the last
+fix's speed and bearing). `actSetOptions({autoPause?, voice?})` changes the options while it records.
+
+**Auto-pause and spoken splits.** With `autoPause` (to begin with on for runs and rides, off for
+walks and hikes; the start sheet's chips, the live screen's options and Settings, What you track),
+`ActivityAutoPause` stops the clock after 5 s without moving (20 s when the GPS gives no speed: then
+a least-squares fit of the last 20 s decides) and starts it again after 2 s of moving, both dated
+back to where the stop or the move began, so the fixes it was unsure of are stored flagged. It is
+`autoPauser` in `src/activity.js` (the browser's recorder) in Java, and `test/activity.mjs` keeps the
+two agreeing fix for fix. A pause or resume by hand takes over. With `voice`, `ActivityVoice` says
+each km or mile ("2 kilometres. Time, 10 minutes 24 seconds. Pace, 5 minutes 12 seconds per
+kilometre.", speed for a ride) through Android's TextToSpeech, with transient audio focus that ducks
+other audio and no permission.
 
 `ActivityTrack` keeps the recording in `noBackupFilesDir/activity/`: `<key>.json` with its details
 (replaced atomically on every change and every 20 seconds) and `<key>.track`, one point a line,
@@ -417,11 +446,26 @@ it's 3 m from the last one, 10 s after it, the first good one after bad ones or 
 pause. The distance leaves out points worse than 50 m, pauses (a pause ends the line), GPS jumps
 (faster than 12 m/s from the last good point on a walk or hike, 25 m/s otherwise; three in a row
 restart the line there) and standing still (the anchor only moves once the position has moved more
-than the accuracy, and not while the GPS speed is under 0.4 m/s). Loading a recording runs the same
-filter over its points, so a page reload, a crash or a restart gives the same numbers; if Android
-stops the service mid-activity, it starts again the next time the app comes to the front. A finished
-recording stays (actState reports it with `active: false`) until the page saves it and calls
-`actClear(id)`; at most 20 finished ones are kept.
+than the accuracy, and not while the GPS speed is under 0.4 m/s); between two kept points that both
+have the GPS's own (Doppler) speed, the distance is that speed over the time between them, which
+GPS noise doesn't lengthen. Loading a recording runs the same filter over its points, so a page
+reload, a crash or a restart gives the same numbers; if Android stops the service mid-activity, it
+starts again the next time the app comes to the front. A finished recording stays (actState reports
+it with `active: false`) until the page saves it and calls `actClear(id)`; at most 20 finished ones
+are kept.
+
+**Maps.** An activity's route is drawn on the phone. With maps on (Show map on its summary, the map
+button while recording, or Settings), a map goes behind it: Google's (`src/gmap.js`, which loads the
+Maps JavaScript API) when the build has a key, else MapLibre's on OpenFreeMap (`src/actmap.js`).
+`U.actMap` picks one and puts OpenFreeMap's in place whenever Google's won't load or Google turns the
+key down (`gm_authFailure`, its error page, or its "can't load Google Maps correctly" over a
+watermarked map; then for the rest of the session), even after it has shown. Both draw
+the route, the start, finish and km or mile markers and where you are the same way; two fingers move
+them while one scrolls the page, and they don't turn or tilt. `mapsKey()` returns the key from the
+APK's `assets/maps.key` (see Android build), and the page loads Google's script with
+`auth_referrer_policy=origin`, so the key's website restriction sees
+`https://appassets.androidplatform.net`. The CSP lets in Google's map hosts and OpenFreeMap, and
+nothing else new (`test/security.mjs`).
 
 The page reads `actState()` and `actPoints(from)`; `actSupport()` says whether the phone has GPS, a
 step counter and Health Connect. For the summary, `hcSession({id, start, end})` answers
@@ -772,10 +816,10 @@ SHA-256.
      a QR code on their screen), never through a server;
    - nothing else leaves the phone. The on-device model is a download from Hugging Face. Location
      (an activity's route) and the background Health Connect reads are processed only on the phone
-     (Health Connect is on the phone too). One exception to weigh: Show streets on an activity
-     downloads map tiles for the route's area from OpenFreeMap, which hints at roughly where it was.
-     Declaring "Approximate location, shared, optional, for app functionality" is the cautious
-     answer.
+     (Health Connect is on the phone too). One exception to weigh: with maps on, the map of an
+     activity's area (and, while one records, of where the person is) comes from Google Maps, or
+     OpenFreeMap without a key, which hints at roughly where they were. Declaring "Approximate
+     location, shared with Google, optional, for app functionality" is the cautious answer.
 10. **AI-generated content.** Every AI answer (on-device or Claude), Claude's weekly report and its
     suggestions have a Report action that hides the item and keeps a local record. Sending a report to
     the developer opens a prefilled GitHub issue in the browser. Play's policy asks that people can
