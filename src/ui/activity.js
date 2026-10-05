@@ -1,8 +1,8 @@
 /* Outdoor activities, after the fact: the summary of one (a route map drawn here, offline, coloured
- * by pace, with a street map behind it on request: Google's with the app's key, else OpenFreeMap's;
- * splits, elevation, heart rate and zones from the watch, steps, calories, records, saving to Health
- * Connect), the history and personal records, and the ways in (Today, Health, Progress). Also the maps
- * both screens use (U.actMap) and the way an activity leaves when it's discarded or deleted
+ * by pace, with OpenFreeMap's map behind it on request; splits, elevation, heart rate and zones from
+ * the watch, steps, calories, records, saving to Health Connect), the history and personal records,
+ * and the ways in (Today, Health, Progress). Also the maps both screens use (U.actMap, with the map
+ * pieces kept on the phone, U.mapPieces) and the way an activity leaves when it's discarded or deleted
  * (U.actFoldAway). Recording lives in src/ui/actlive.js; the maths in src/activity.js.
  */
 (function (G) {
@@ -266,12 +266,15 @@
       <ul class="as-recs-list">${list.map((r) => `<li class="as-rec" data-key="rec-${U.esc(r.key)}"><span class="as-rec-l t-subhead">${U.esc(r.label)}</span><span class="as-rec-v t-headline rf-num">${U.esc(recValue(r))}</span><span class="as-rec-p t-caption rf-muted">was ${U.esc(recValue({ kind: r.kind, v: r.prev }))}</span></li>`).join('')}</ul>
     </div>`;
   }
-  // The map behind a route, on its summary and while recording: the person's choice (prefs.actMaps),
-  // asked for afresh now that it's Google's (an OpenFreeMap one from before, actStreets, isn't taken
-  // as a yes to Google).
-  const mapsOn = () => !!(U.S && U.S.profile.prefs && U.S.profile.prefs.actMaps);
+  // The map behind a route, on its summary and while recording: the person's choice (prefs.actMaps).
+  // Before 1.8 it was Show streets on a summary (prefs.actStreets): the same service, OpenFreeMap, so a
+  // yes from then still stands until they choose again.
+  const mapsOn = () => {
+    const p = U.S && U.S.profile.prefs;
+    return !!(p && (p.actMaps !== undefined ? p.actMaps : p.actStreets));
+  };
   U.actMapsOn = mapsOn;
-  const mapsBy = () => (U.actMapsProvider() === 'google' ? 'Google' : 'OpenFreeMap');
+  U.actMapsAsked = () => { const p = U.S && U.S.profile.prefs; return !!(p && (p.actMaps !== undefined || p.actStreets !== undefined)); };
   function mapCard(a) {
     const route = A().decodeRoute(a.route, a.start);
     if (route.length < 2) {
@@ -280,7 +283,7 @@
     const { avg } = paceBuckets(route);
     const avgTxt = isSpeed(a.type) ? `${fmtSpeed(avg * 3600 / UNIT().m)} ${speedUnit()}` : `${fmtPace(avg > 0 ? UNIT().m / avg : null)} ${paceUnit()}`;
     const on = mapsOn();
-    // OpenFreeMap's credit is the page's own line; Google's map carries its own logo and terms.
+    // OpenFreeMap's credit is a line of the page's, over the map's foot.
     return `<div class="card am-card" data-key="map">
       <div class="am-box${on ? ' has-streets' : ''}" data-type="${U.esc(a.type)}">
         ${routeSvg(route, { unitM: UNIT().m, total: a.distanceM })}
@@ -293,7 +296,7 @@
       </div>
       <div class="am-foot">
         <button type="button" class="rf-btn" data-size="sm" data-variant="${on ? 'plain' : 'soft'}" data-act="actMaps" aria-pressed="${on}">${U.icon('map')}${on ? 'Hide map' : 'Show map'}</button>
-        <p class="t-caption rf-muted am-note">${on ? `The map comes from ${mapsBy()}, which sees the area it shows.` : `The route is drawn on this phone. A map behind it comes from ${mapsBy()}, which sees the area it shows.`}</p>
+        <p class="t-caption rf-muted am-note">${on ? 'The map comes from OpenFreeMap, which sees the area it shows. What it has shown is kept on this phone.' : 'The route is drawn on this phone. A map behind it comes from OpenFreeMap, which sees the area it shows.'}</p>
       </div>
     </div>`;
   }
@@ -497,41 +500,89 @@
     });
   };
 
-  /* ---------------------------------------------------------------- maps: Google's, else OpenFreeMap's */
-  // The build's Google Maps key (AndroidBridge.mapsKey), or '' (a browser, a build without one).
-  const mapsKey = () => {
-    try { const b = G.AndroidBridge; const k = b && typeof b.mapsKey === 'function' ? String(b.mapsKey() || '') : ''; return /^[\w-]{20,100}$/.test(k) ? k : ''; } catch (e) { return ''; }
+  /* ---------------------------------------------------------------- maps: OpenFreeMap's */
+  // The map pieces a map has downloaded (OpenFreeMap's tiles, the type for names, the TileJSON that
+  // says which week's tiles are current), kept on the phone in Cache Storage: a map shown before draws
+  // at once, and with no connection. src/actmap.js asks for every piece through here. The newest
+  // MAX_PIECES are kept (tiles are 10 to 30 KB: about 25 to 50 MB at most); Settings' Clear saved
+  // maps and Reset everything delete them. Without Cache Storage (a plain http page) pieces are
+  // simply fetched.
+  // OpenFreeMap rebuilds its tiles every week or so, at new addresses (.../planet/<week>/z/x/y.pbf), so
+  // a tile is kept under its address without the week: one kept from an earlier week still shows at
+  // once (and offline), and this week's is fetched behind it, for next time, in its place.
+  const PIECES = 'gh-map-v1', MAX_PIECES = 1500, TILEJSON = 'https://tiles.openfreemap.org/planet';
+  const TILE = /^(https:\/\/tiles\.openfreemap\.org\/[^/]+\/)[^/]+\/(\d+\/\d+\/\d+\.pbf)$/;
+  let puts = 0, tj = null;
+  const renewing = new Set(); // tiles being fetched behind a kept one from an earlier week
+  const pieceStore = () => (G.caches && G.caches.open ? G.caches.open(PIECES) : Promise.reject(new Error('no Cache Storage')));
+  const keep = (cache, key, res) => cache.put(key, res).then(trimPieces).catch(() => {});
+  // A piece: the kept copy, else the network (and kept), else the kept copy after all (no connection,
+  // or OpenFreeMap failing). fresh: the network first (the TileJSON, which says which week is
+  // current); a kept copy given instead says so (r.kept).
+  async function piece(url, o) {
+    const opt = o || {};
+    const t = TILE.exec(url);
+    const key = t ? t[1] + t[2] : url;
+    let cache = null, kept = null;
+    try { cache = await pieceStore(); kept = (await cache.match(key)) || null; } catch (e) { /* not kept */ }
+    if (kept && !opt.fresh) {
+      if (t && kept.url !== url && !renewing.has(key) && !(G.navigator && G.navigator.onLine === false)) {
+        renewing.add(key);
+        fetch(url).then((r) => (r.ok ? keep(cache, key, r) : null)).catch(() => {}).then(() => renewing.delete(key));
+      }
+      return kept;
+    }
+    let res = null;
+    try { res = await fetch(url, { signal: opt.signal }); } catch (e) { if (!kept) throw e; }
+    if (res && res.ok) { if (cache) keep(cache, key, res.clone()); return res; }
+    if (kept) { kept.kept = true; return kept; }
+    return res;
+  }
+  // The oldest go once there are too many (checked every 50 new pieces; one fetched again is new).
+  async function trimPieces() {
+    if (++puts % 50) return;
+    const c = await pieceStore();
+    const keys = await c.keys();
+    for (let i = 0; i < keys.length - MAX_PIECES; i++) await c.delete(keys[i]);
+  }
+  U.mapPieces = {
+    get: piece,
+    // OpenFreeMap's TileJSON: fetched once a session; the kept one when there's no connection, and
+    // then asked for again next time (so back online, a map gets this week's).
+    tilejson() {
+      if (!tj) {
+        const p = tj = piece(TILEJSON, { fresh: true })
+          .then((r) => { if (r.kept && tj === p) tj = null; return r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)); })
+          .catch((e) => { if (tj === p) tj = null; throw e; });
+      }
+      return tj;
+    },
+    count: async () => { try { return (await (await pieceStore()).keys()).length; } catch (e) { return 0; } },
+    clear: async () => { tj = null; try { return !!(G.caches && await G.caches.delete(PIECES)); } catch (e) { return false; } },
   };
-  let googleRefused = false; // Google turned the key down this session: OpenFreeMap's from then on
-  U.actMapsProvider = () => (mapsKey() && !googleRefused ? 'google' : 'osm');
-  // A map in el (a positioned box): Google's when this build has a key and Google's map loads, else
-  // MapLibre's on OpenFreeMap. If Google's fails, even after it has shown (a key Google turns down),
-  // OpenFreeMap's takes its place with what the map was last given. Each draws in a box of its own in
-  // el. o: what src/gmap.js takes, plus onProvider(provider) (at the start, and when one takes the
-  // other's place: it's loading again). Nothing is asked of either until this runs. Returns
-  // { provider, update({ route, here }), destroy() }.
+  // A map in el (a positioned box): MapLibre's on OpenFreeMap's tiles (src/actmap.js), in a box of its
+  // own. The TileJSON is asked for now, while the map's chunk loads, so the map starts one round trip
+  // sooner. Nothing is asked of OpenFreeMap until this runs. o: what src/actmap.js's mount takes.
+  // Returns { provider, update({ route, here }), restyle({ dark, colors, casing, line }), destroy() }.
   U.actMap = (el, o) => {
     let inner = null, dead = false;
-    const given = {};
+    const given = {}, look = {};
+    const tilejson = U.mapPieces.tilejson();
+    tilejson.catch(() => {});
     const ctl = {
-      provider: null,
+      provider: 'maplibre',
       update(u) { Object.assign(given, u); if (inner) inner.update(u); },
+      restyle(r) { Object.assign(look, r); if (inner) inner.restyle(r); },
       destroy() { dead = true; if (inner) { try { inner.destroy(); } catch (e) { /* gone */ } } inner = null; el.textContent = ''; },
     };
-    const box = () => { el.textContent = ''; const h = document.createElement('div'); h.className = 'am-engine'; el.appendChild(h); return h; };
-    const use = (p) => { ctl.provider = p; el.dataset.provider = p; if (o.onProvider) o.onProvider(p); };
-    const opts = (extra) => Object.assign({}, o, given, extra);
-    function osm() {
-      use('maplibre');
-      GH.lazy('actmap').then((M) => { if (!dead) inner = M.mount(box(), opts({})); }).catch((e) => { if (!dead && o.onFail) o.onFail(e); });
-    }
-    const key = mapsKey();
-    if (!key || googleRefused) { osm(); return ctl; }
-    use('google');
-    GH.lazy('gmap').then((M) => {
+    GH.lazy('actmap').then((M) => {
       if (dead) return;
-      inner = M.mount(box(), opts({ key, onFail: (why) => { if (why === 'auth') googleRefused = true; if (!dead) { inner = null; osm(); } } }));
-    }).catch(() => { if (!dead) osm(); });
+      el.textContent = '';
+      const h = document.createElement('div');
+      h.className = 'am-engine';
+      el.appendChild(h);
+      inner = M.mount(h, Object.assign({}, o, given, look, { tilejson }));
+    }).catch((e) => { if (!dead && o.onFail) o.onFail(e); });
     return ctl;
   };
   // A colour of the page's as the map engines take it, { hex, a }: read off a 1 x 1 canvas, so a
@@ -556,7 +607,7 @@
     const S = U.S;
     const on = !mapsOn();
     S.profile.prefs.actMaps = on;
-    delete S.profile.prefs.actStreets; // the OpenFreeMap-only choice before Google's maps
+    delete S.profile.prefs.actStreets; // Show streets, the choice before 1.8
     U.save();
     U.haptic(on ? 'toggleOn' : 'toggleOff');
     if (!on) for (const el of document.querySelectorAll('.am-streets')) unmount(el);
@@ -576,15 +627,13 @@
     el.textContent = '';
     el.removeAttribute('data-state');
     const box = el.closest('.am-box');
-    if (box) { box.removeAttribute('data-streets'); box.removeAttribute('data-provider'); }
+    if (box) box.removeAttribute('data-streets');
   }
+  // The summary's colours, as the map takes them: the five pace colours and the line's casing.
+  const looks = (box) => ({ dark: U.actDark(), colors: [0, 1, 2, 3, 4].map((b) => U.actColor(box, `--pc${b}`)), casing: U.actColor(box, '--rt-case') });
   function mountMap(root, a) {
     const el = root.querySelector('.am-streets');
     if (!el) return;
-    const dark = U.actDark();
-    const had = maps.get(el);
-    // The theme changed under it: Google's colours are set when a map is made.
-    if (had && had.dark !== dark) unmount(el);
     if (maps.has(el) || el.dataset.state === 'failed') return;
     const route = A().decodeRoute(a.route, a.start);
     if (route.length < 2) return;
@@ -592,33 +641,46 @@
     el.dataset.state = 'loading';
     box.setAttribute('data-streets', 'loading');
     const { buckets } = paceBuckets(route);
-    const ctl = U.actMap(el, {
-      route, buckets, dark, marks: kmMarks(route, UNIT().m, a.distanceM),
-      colors: [0, 1, 2, 3, 4].map((b) => U.actColor(box, `--pc${b}`)), casing: U.actColor(box, '--rt-case'), bg: (U.actColor(box, '--bg-raised') || {}).hex,
-      onProvider: (p) => { box.setAttribute('data-provider', p); box.setAttribute('data-streets', 'loading'); el.dataset.state = 'loading'; },
+    const look = looks(box);
+    const ctl = U.actMap(el, Object.assign({
+      route, buckets, marks: kmMarks(route, UNIT().m, a.distanceM),
       onReady: () => { el.dataset.state = 'ready'; box.setAttribute('data-streets', 'ready'); },
       onFail: () => fail(),
-    });
-    maps.set(el, { ctl, dark });
+    }, look));
+    maps.set(el, { ctl, dark: look.dark });
     function fail() {
       const m = maps.get(el);
       if (m) { try { m.ctl.destroy(); } catch (e) { /* ignore */ } maps.delete(el); }
       el.textContent = '';
       el.dataset.state = 'failed';
       box.setAttribute('data-streets', 'failed');
-      U.toast('Couldn\'t load the map', 'caution', 'Check your connection. Your route is still here.');
+      const off = G.navigator && G.navigator.onLine === false;
+      U.toast('Couldn\'t load the map', 'caution', off ? 'No connection, and this map hasn\'t been shown before. Your route is still here, and the map comes when you\'re back online.' : 'Your route is still here.');
     }
   }
-  // The theme changing under a summary's map (the phone going dark at sunset): it's made again in the
-  // new colours. (The live screen's is redrawn every few seconds, and does the same.)
+  // The theme changing under a summary's map (the phone going dark at sunset): the same map takes the
+  // new colours, with nothing loaded again. (The live screen's does the same, src/ui/actlive.js.)
   if (G.MutationObserver && G.document) {
     new MutationObserver(() => {
       for (const el of document.querySelectorAll('.am-streets[data-for]')) {
         const m = maps.get(el);
-        const a = m && m.dark !== U.actDark() && U.S && A().get(U.S, el.dataset.for);
-        if (a) { unmount(el); mountMap(el.parentNode, a); }
+        if (!m || m.dark === U.actDark()) continue;
+        const look = looks(el.closest('.am-box'));
+        m.dark = look.dark;
+        m.ctl.restyle(look);
       }
     }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  }
+  // Back online: a summary's map that couldn't load tries again.
+  if (G.addEventListener) {
+    G.addEventListener('online', () => {
+      for (const el of document.querySelectorAll('.am-streets[data-for][data-state="failed"]')) {
+        const a = U.S && mapsOn() && A().get(U.S, el.dataset.for);
+        if (!a) continue;
+        unmount(el);
+        mountMap(el.parentNode, a);
+      }
+    });
   }
 
   /* ---------------------------------------------------------------- going away */

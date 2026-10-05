@@ -6,9 +6,27 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
-      version: '1.8.0', date: '2026-10-05', title: 'Google Maps, smarter runs, and a smoother feel',
+      version: '1.8.1', date: '2026-10-05', title: 'Maps that open at once, even offline',
       store: [
-        '• Google Maps for runs, walks, hikes and rides, with a live map that follows you',
+        '• Maps you\'ve seen open at once, even with no connection',
+        '• The first map opens sooner',
+        '• A map that can\'t load keeps your route, and comes once you\'re back online',
+        '• Maps change with the app\'s light or dark look without loading again',
+        '• Names of rivers and lakes on the map',
+        '• Maps stay with OpenFreeMap: Google Maps is gone',
+      ].join('\n'),
+      items: [
+        ['map', 'Maps you\'ve seen open at once and work with no connection: the map pieces OpenFreeMap sent are kept on your phone (up to about 50 MB), and when OpenFreeMap updates its map, the newer pieces come in behind the ones you see. Clear them in Settings, under Walks, runs and rides.'],
+        ['bolt', 'The first map opens sooner: it asks OpenFreeMap for what it needs while the map itself loads.'],
+        ['refresh', 'A map that can\'t load (no connection, and never shown before) leaves your route drawn on the phone, says why, and comes by itself once you\'re back online, while you record too.'],
+        ['moon', 'Maps change with the app\'s light or dark look without loading again, and show the names of rivers and lakes.'],
+        ['check-circle', 'Maps stay with OpenFreeMap. Google Maps needed a key the app never had, so it never switched on, and it\'s gone.'],
+      ],
+    },
+    {
+      version: '1.8.0', date: '2026-10-05', title: 'A live map, smarter runs, and a smoother feel',
+      store: [
+        '• A live map that follows you on runs, walks, hikes and rides',
         '• Auto-pause, spoken splits and your pace right now',
         '• Steadier GPS distance and a smoother route',
         '• Haptics with a feel of their own for saving, sending, swiping away and more',
@@ -17,7 +35,7 @@
         '• Cancelling a workout or an activity folds it away',
       ].join('\n'),
       items: [
-        ['map', 'Google Maps for runs, walks, hikes and rides. The summary shows your route on Google\'s map in pace colours, and the live screen\'s map follows you, with a dot for how sure the GPS is and a beam for the way you\'re facing. OpenFreeMap\'s maps stand in when Google\'s can\'t load, and maps can be turned off in Settings.'],
+        ['map', 'A map that follows you on runs, walks, hikes and rides, with a dot for how sure the GPS is and a beam for the way you\'re facing, and your route on the map in pace colours afterwards. Maps come from OpenFreeMap, and can be turned off in Settings.'],
         ['pause', 'Auto-pause: stop at a crossing and the clock stops with you, then starts again as you go. It\'s on for runs and rides and can be turned on for walks and hikes.'],
         ['volume', 'Spoken splits: at each kilometre or mile, your time and pace, spoken over your music, which dips meanwhile. Turn them on when you start, or in Settings.'],
         ['navigate', 'Steadier GPS. The distance no longer runs a few percent long from GPS noise or creeps up while you stand still, your pace is the pace you\'re going now, the route is drawn smoother, and the map shows roughly where you are while the GPS finds you. A badge shows how strong the signal is.'],

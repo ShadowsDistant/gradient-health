@@ -5,21 +5,22 @@
 // options while it records, Back tucking it away (the pill on Today, the capsule on other tabs), a
 // reload mid-activity, a tap asking first and a hold finishing, the summary (the route, splits, heart
 // rate from the watch, saved to Health Connect without double counting), new records after a faster
-// run, the map loading only when asked (OpenFreeMap's without a Google Maps key; Google's, through a
-// stand-in, with one: its route, markers, cooperative gestures, Fit button and dark colours; and
-// OpenFreeMap's again when Google's won't load or turns the key down), the options menu (out of its
-// button, by keyboard too), deleting with Undo (folding away), a finish on the notification while
-// the app is away, the live map following you, discarding (folding away), precise location (asking,
-// Open settings, starting without GPS), and the browser's own recorder (navigator.geolocation). The
-// live screen's tiles, map and Pause are glass (solid with reduced transparency or increased
-// contrast). Google's real map is never loaded: its hosts fail, and are counted.
+// run, OpenFreeMap's map loading only when asked (pinch and Fit; the pieces it shows kept on the
+// phone, so it opens again with nothing asked, offline too; a map never shown failing offline to the
+// route drawn here, then coming back online; a theme change recolouring the same map; Clear saved
+// maps), the options menu (out of its button, by keyboard too), deleting with Undo (folding away), a
+// finish on the notification while the app is away, the live map (from finding GPS into the live
+// screen, following you, a finger stopping it, Follow, hiding and showing again), discarding
+// (folding away), precise location (asking, Open settings, starting without GPS), and the browser's
+// own recorder (navigator.geolocation). The live screen's tiles, map and Pause are glass (solid with
+// reduced transparency or increased contrast). OpenFreeMap is faked: nothing leaves the machine.
 // Usage: node test/ui-activity.mjs [--dark] [--width=390] [--shots]
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { root, check, section, done, serveDist } from './lib.mjs';
 import { seedBridge, seedState } from './fixtures.mjs';
-import { actBridge, googleMapsStub } from './actfixture.mjs';
+import { actBridge } from './actfixture.mjs';
 
 const require = createRequire(import.meta.url);
 let chromium;
@@ -37,21 +38,22 @@ const ctx = await browser.newContext({ viewport: { width, height: 844 }, deviceS
 const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => { if (m.type() === 'error' && !/tiles\.openfreemap\.org|maps\.googleapis\.com|Failed to load resource/.test(m.text())) errors.push(m.text()); });
-// OpenFreeMap, faked: every request is counted; the TileJSON and empty tiles let the map load.
-const tileRequests = [];
+page.on('console', (m) => { if (m.type() === 'error' && !/tiles\.openfreemap\.org|Failed to load resource/.test(m.text())) errors.push(m.text()); });
+// OpenFreeMap, faked: every request is counted; the TileJSON and empty tiles let the map load. With
+// mapsOffline, every request fails as with no connection (and is counted in mapsBlocked). tileWeek is
+// the week of tiles the TileJSON names (OpenFreeMap's are rebuilt about weekly, at new addresses);
+// tiles matching holdTiles wait for an answer until released (held).
+const tileRequests = [], mapsBlocked = [], held = [];
+let mapsOffline = false, tileWeek = 'test', holdTiles = null;
 await ctx.route('https://tiles.openfreemap.org/**', (route) => {
   const url = route.request().url();
+  if (mapsOffline) { mapsBlocked.push(url); return route.abort('internetdisconnected'); }
   tileRequests.push(url);
-  if (/\/planet$/.test(url)) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ tilejson: '3.0.0', tiles: ['https://tiles.openfreemap.org/planet/test/{z}/{x}/{y}.pbf'], minzoom: 0, maxzoom: 14, attribution: '© OpenMapTiles © OpenStreetMap contributors', vector_layers: ['water', 'landuse', 'landcover', 'park', 'waterway', 'building', 'transportation', 'transportation_name', 'place'].map((id) => ({ id, fields: {} })) }) });
-  return route.fulfill({ status: 200, contentType: 'application/x-protobuf', body: Buffer.alloc(0) });
+  if (/\/planet$/.test(url)) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ tilejson: '3.0.0', tiles: [`https://tiles.openfreemap.org/planet/${tileWeek}/{z}/{x}/{y}.pbf`], minzoom: 0, maxzoom: 14, attribution: '© OpenMapTiles © OpenStreetMap contributors', vector_layers: ['water', 'landuse', 'landcover', 'park', 'waterway', 'building', 'transportation', 'transportation_name', 'place'].map((id) => ({ id, fields: {} })) }) });
+  const tile = () => route.fulfill({ status: 200, contentType: 'application/x-protobuf', body: Buffer.alloc(0) }).catch(() => {});
+  if (holdTiles && holdTiles.test(url)) return new Promise((done) => held.push(() => done(tile())));
+  return tile();
 });
-// Google's map is never loaded for real: its script and everything from Google's map hosts fail
-// (counted), and a test that wants Google's map puts in a stand-in (googleMapsStub).
-const googleRequests = [];
-for (const host of ['https://maps.googleapis.com/**', 'https://maps.gstatic.com/**']) {
-  await ctx.route(host, (route) => { googleRequests.push(route.request().url()); return route.abort(); });
-}
 await page.clock.install({ time: new Date('2026-10-19T08:10:00') });
 await page.addInitScript(seedBridge);
 await page.addInitScript(actBridge);
@@ -90,7 +92,6 @@ const watchFolds = () => page.evaluate(() => {
 });
 // A switch in the open sheet, flipped.
 const flip = (on) => page.evaluate((x) => document.querySelector(`dialog[open] input[data-on="${x}"]`).click(), on);
-const KEY = 'AIzaTestKeyForTheStandIn_0123456789abc';
 const secs = (t) => { const p = String(t || '').split(':').map(Number); return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1]; };
 const S = () => page.evaluate(() => { const S = window.GH.ui.S; return { live: S.actLive, n: S.activities.length, ids: S.activities.map((a) => a.id) }; });
 const permText = () => page.evaluate(() => {
@@ -289,7 +290,7 @@ const mq = await page.evaluate(() => { const d = document.querySelector('dialog.
 check('the first time, it asks before showing a map: whose, and what that service sees', /Show a map from OpenFreeMap\?/.test(mq || '') && /sees the area it shows/.test(mq || '') && /Not now/.test(mq || ''), mq);
 await page.evaluate(() => { const d = document.querySelector('dialog.rf-dialog[open]'); [...d.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Not now').click(); });
 await settle(700);
-check('Not now leaves it off, and nothing is loaded', (await page.evaluate(() => window.GH.ui.S.profile.prefs.actMaps === undefined && !document.querySelector('#actlive .al-map-slot') && !window.GH.actmap && !window.GH.gmap)) && tileRequests.length === 0);
+check('Not now leaves it off, and nothing is loaded', (await page.evaluate(() => window.GH.ui.S.profile.prefs.actMaps === undefined && !document.querySelector('#actlive .al-map-slot') && !window.GH.actmap)) && tileRequests.length === 0);
 
 section('Back tucks it away');
 await page.evaluate(() => window.__gh.back());
@@ -419,7 +420,7 @@ await settle(900);
 check('a record opens its activity', await page.evaluate(() => window.GH.ui.route.view === 'activity'));
 
 section('The map, only when asked');
-check('nothing was asked of OpenFreeMap or Google so far', tileRequests.length === 0 && googleRequests.length === 0, [tileRequests.slice(0, 3), googleRequests.slice(0, 3)]);
+check('nothing was asked of OpenFreeMap so far', tileRequests.length === 0, tileRequests.slice(0, 3));
 check('the map chunk isn\'t loaded', await page.evaluate(() => !window.GH.actmap));
 await page.click('#screen [data-act="actMaps"]');
 await settle(1500);
@@ -428,9 +429,9 @@ await settle(500);
 const streets = await page.evaluate(() => {
   const b = document.querySelector('#screen .am-box');
   const size = (e) => { if (!e) return null; const r = e.getBoundingClientRect(); return `${Math.round(r.width)}x${Math.round(r.height)}`; };
-  return { state: b.getAttribute('data-streets'), canvas: !!b.querySelector('.am-streets canvas'), box: size(b), map: size(b.querySelector('.am-streets')), cv: size(b.querySelector('.am-streets canvas')), attr: (b.querySelector('.am-attr') || {}).textContent, pref: window.GH.ui.S.profile.prefs.actMaps, provider: b.getAttribute('data-provider'), chunk: !!window.GH.actmap };
+  return { state: b.getAttribute('data-streets'), canvas: !!b.querySelector('.am-streets canvas'), box: size(b), map: size(b.querySelector('.am-streets')), cv: size(b.querySelector('.am-streets canvas')), attr: (b.querySelector('.am-attr') || {}).textContent, pref: window.GH.ui.S.profile.prefs.actMaps, chunk: !!window.GH.actmap };
 });
-check('without a Google Maps key, Show map loads OpenFreeMap\'s map (MapLibre\'s chunk)', streets.chunk && streets.provider === 'maplibre' && tileRequests.some((u) => /tiles\.openfreemap\.org\/planet$/.test(u)) && !googleRequests.length, [streets.provider, tileRequests.slice(0, 3), googleRequests.length]);
+check('Show map loads OpenFreeMap\'s map (MapLibre\'s chunk): its TileJSON, then its tiles', streets.chunk && tileRequests.some((u) => /tiles\.openfreemap\.org\/planet$/.test(u)) && tileRequests.some((u) => /\/planet\/test\/\d+\/\d+\/\d+\.pbf$/.test(u)), tileRequests.slice(0, 4));
 check('the map draws over the whole box, with OpenFreeMap\'s attribution', streets.state === 'ready' && streets.canvas && streets.map === streets.box && streets.cv === streets.box && /© OpenMapTiles © OpenStreetMap contributors/.test(streets.attr || ''), streets);
 check('the choice is remembered', streets.pref === true);
 // Two fingers zoom the map (MapLibre's cooperative gestures), while the page itself stays at its size.
@@ -454,92 +455,94 @@ check('the choice is remembered', streets.pref === true);
   await cdp.detach();
 }
 await shot('12-streets');
-await page.click('#screen [data-act="actMaps"]');
-await settle(700);
-check('Hide map goes back to the route drawn here', await page.evaluate(() => !document.querySelector('#screen .am-streets canvas') && window.GH.ui.S.profile.prefs.actMaps === false));
-
-section('Google\'s map, with the app\'s key');
-{
-  await page.evaluate(googleMapsStub);
-  await page.evaluate((k) => { window.__act.mapsKey = k; }, KEY);
-  const tiles0 = tileRequests.length;
+// What the summary's map is: its id (a new one each time a map is made), its theme, its background.
+const sm = () => page.evaluate(() => {
+  const b = document.querySelector('#screen .am-box'), e = b && b.querySelector('.am-engine');
+  return { state: b && b.getAttribute('data-streets'), map: e && e.dataset.map, dark: e && e.dataset.dark, land: e && e.ghMap && e.ghMap.getPaintProperty('land', 'background-color'), routeCase: e && e.ghMap && e.ghMap.getPaintProperty('route-case', 'line-color'), toast: ([...document.querySelectorAll('.rf-toast')].pop() || {}).textContent || '' };
+});
+const showMap = async (wait) => {
   await page.click('#screen [data-act="actMaps"]');
-  await settle(1000);
-  await page.waitForFunction(() => { const b = document.querySelector('#screen .am-box'); return b && /ready|failed/.test(b.getAttribute('data-streets') || ''); }, null, { timeout: 10000 }).catch(() => {});
+  await settle(1500);
+  await page.waitForFunction(() => { const b = document.querySelector('#screen .am-box'); return b && /ready|failed/.test(b.getAttribute('data-streets') || ''); }, null, { timeout: wait || 30000 }).catch(() => {});
   await settle(500);
-  const gmap = () => page.evaluate(() => {
-    const b = document.querySelector('#screen .am-box');
-    const M = window.__gm.maps[window.__gm.maps.length - 1];
-    const U = window.GH.ui;
-    const lines = window.__gm.lines.filter((l) => l.map && l.map === M);
-    const pc = [0, 1, 2, 3, 4].map((i) => U.actColor(b, `--pc${i}`).hex);
-    const attr = b.querySelector('.am-attr');
-    return {
-      state: b.getAttribute('data-streets'), provider: b.getAttribute('data-provider'), maps: window.__gm.maps.length, imports: window.__gm.imports.join(),
-      opts: M && { gestures: M.opts.gestureHandling, scheme: M.opts.colorScheme, ui: M.opts.disableDefaultUI, tilt: M.opts.tiltInteractionEnabled, heading: M.opts.headingInteractionEnabled, restricted: !!(M.opts.restriction && M.opts.restriction.latLngBounds), quiet: (M.opts.styles || []).length },
-      fits: M ? M.calls.filter((c) => c[0] === 'fitBounds').length : 0,
-      casing: lines.filter((l) => l.o.strokeWeight === 9).map((l) => l.o.strokeColor), strokes: lines.filter((l) => l.o.strokeWeight === 5).map((l) => l.o.strokeColor),
-      pc, rtCase: U.actColor(b, '--rt-case').hex,
-      marks: { km: b.querySelectorAll('.mk-layer .mk-km').length, start: b.querySelectorAll('.mk-layer .mk-start').length, end: b.querySelectorAll('.mk-layer .mk-end').length, placed: [...b.querySelectorAll('.mk-layer .mk')].every((m) => /translate\(/.test(m.style.transform)) },
-      attr: attr ? getComputedStyle(attr).display : null, inBox: !!(M && b.contains(M.el)),
-    };
-  });
-  const g = await gmap();
-  check('with a key, Show map is Google\'s (a stand-in here): its map library, and nothing from OpenFreeMap', g.provider === 'google' && g.state === 'ready' && g.inBox && /maps/.test(g.imports) && tileRequests.length === tiles0 && !googleRequests.length, [g.provider, g.state, g.imports, tileRequests.length - tiles0, googleRequests.length]);
-  check('the route is drawn on it in the pace colours, over a casing', g.casing.length >= 1 && g.casing.every((c) => c === g.rtCase) && g.strokes.length >= 3 && g.strokes.every((c) => g.pc.includes(c)) && new Set(g.strokes).size >= 3, g);
-  check('with the start, the finish and a disc per mile, the page\'s own, placed on the map', g.marks.start === 1 && g.marks.end === 1 && g.marks.km >= 2 && g.marks.placed, g.marks);
-  check('two fingers move it (cooperative gestures), it neither turns nor tilts, and Google\'s buttons are off', g.opts.gestures === 'cooperative' && g.opts.tilt === false && g.opts.heading === false && g.opts.ui === true && g.opts.quiet >= 1, g.opts);
-  check('it\'s fitted to the route and kept around it', g.fits === 1 && g.opts.restricted, g);
-  check(`its colours follow the app's (${dark ? 'dark' : 'light'})`, g.opts.scheme === (dark ? 'DARK' : 'LIGHT'), g.opts.scheme);
-  check('Google\'s logo and terms are its own: OpenFreeMap\'s line isn\'t shown', g.attr === 'none', g.attr);
-  await page.evaluate(() => { const M = window.__gm.maps[window.__gm.maps.length - 1]; M.trigger('dragstart'); });
-  await settle(300);
-  const fitBtn = await page.evaluate(() => { const b = document.querySelector('#screen .am-fit'); return b && !b.hidden ? b.getAttribute('aria-label') : null; });
-  check('a finger moving it brings a button to show the whole route', fitBtn === 'Show the whole route', fitBtn);
-  await page.click('#screen .am-fit');
-  await settle(500);
-  const g2 = await gmap();
-  check('which fits it again, and goes', g2.fits === 2 && (await page.evaluate(() => document.querySelector('#screen .am-fit').hidden)), g2.fits);
-  await shot('12b-google');
-  // The theme changes under it (the phone's dark mode): it's made again in the new colours.
-  const other = dark ? 'light' : 'dark';
-  await page.evaluate((t) => { const U = window.GH.ui; U.S.profile.prefs.theme = t; U.applyPrefs(); }, other);
+};
+const hideMap = async () => { await page.click('#screen [data-act="actMaps"]'); await settle(700); };
+{
+  // A theme change: the same map, recoloured, with nothing loaded again.
+  const m0 = await sm(), t0 = tileRequests.length;
+  await page.evaluate((t) => { const U = window.GH.ui; U.S.profile.prefs.theme = t; U.applyPrefs(); }, dark ? 'light' : 'dark');
   await settle(1200);
-  const g3 = await gmap();
-  check('a theme change makes it again in the other colours', g3.maps === g.maps + 1 && g3.opts.scheme === (dark ? 'LIGHT' : 'DARK') && g3.state === 'ready', [g3.maps, g3.opts.scheme]);
+  const m1 = await sm();
+  check('a theme change recolours the same map in place, loading nothing', m1.map === m0.map && m1.dark !== m0.dark && m1.land !== m0.land && m1.state === 'ready' && tileRequests.length === t0, [m0, m1, tileRequests.length - t0]);
   await page.evaluate(() => { const U = window.GH.ui; U.S.profile.prefs.theme = 'system'; U.applyPrefs(); });
   await settle(1200);
-
-  section('OpenFreeMap\'s map when Google\'s can\'t be had');
-  // Google's script won't load (offline, blocked): the stand-in goes, so the page asks Google's
-  // host for it, which fails here.
-  await page.click('#screen [data-act="actMaps"]');
-  await settle(700);
-  await page.evaluate(() => { delete window.google; });
-  const g0 = googleRequests.length;
-  await page.click('#screen [data-act="actMaps"]');
+  const m2 = await sm();
+  check('and back', m2.map === m0.map && m2.land === m0.land && m2.routeCase === m0.routeCase, [m0, m2]);
+  // The pieces it showed are kept: shown again, it asks OpenFreeMap for nothing.
+  const kept = await page.evaluate(() => window.GH.ui.mapPieces.count());
+  check('the map pieces it showed are kept on the phone', kept >= 2, kept);
+  await hideMap();
+  const t1 = tileRequests.length;
+  await showMap();
+  const again = await sm();
+  check('shown again, it draws from them, asking OpenFreeMap for nothing', again.state === 'ready' && again.map !== m0.map && tileRequests.length === t1, [again, tileRequests.slice(t1)]);
+  // No connection: the kept pieces still draw it.
+  await hideMap();
+  mapsOffline = true;
+  await showMap();
+  const off = await sm();
+  check('with no connection, a map shown before still draws, from the phone', off.state === 'ready' && mapsBlocked.length === 0, [off.state, mapsBlocked.slice(0, 3)]);
+  // OpenFreeMap's next week (its tiles at new addresses), the app opened again: the map draws at once
+  // from the kept pieces (the new week's are held back here, so it can't be from them), and the new
+  // week's come in behind them, in their place; shown again, it draws from those, asking for nothing.
+  await hideMap();
+  mapsOffline = false;
+  tileWeek = 'w2';
+  holdTiles = /\/planet\/w2\//;
+  const k0 = await page.evaluate(() => window.GH.ui.mapPieces.count());
+  const actId = await page.evaluate(() => window.GH.ui.route.arg);
+  await page.reload();
+  await page.waitForSelector('#screen[data-view]');
+  await page.evaluate((id) => { const U = window.GH.ui; while (U.back()) { /* back to the tab */ } U.open('activity', id); }, actId);
+  await settle(1200);
+  const tw = tileRequests.length;
+  await showMap();
+  const wk = await sm(), asked = tileRequests.slice(tw);
+  check('when OpenFreeMap has a new week\'s map, one shown before still draws at once, from the kept pieces', wk.state === 'ready' && asked.some((u) => /\/planet$/.test(u)) && asked.some((u) => /\/planet\/w2\//.test(u)) && held.length > 0, [wk.state, held.length, asked.slice(0, 4)]);
+  holdTiles = null;
+  held.splice(0).forEach((f) => f());
   await settle(1500);
-  await page.waitForFunction(() => { const b = document.querySelector('#screen .am-box'); return b && b.getAttribute('data-provider') === 'maplibre' && /ready|failed/.test(b.getAttribute('data-streets') || ''); }, null, { timeout: 30000 }).catch(() => {});
-  await settle(500);
-  const lf = await page.evaluate(() => { const b = document.querySelector('#screen .am-box'); return { provider: b.getAttribute('data-provider'), state: b.getAttribute('data-streets'), canvas: !!b.querySelector('.am-streets canvas'), attr: getComputedStyle(b.querySelector('.am-attr')).display }; });
-  const asked = googleRequests.slice(g0);
-  check('Google\'s script was asked for with the key, its origin only, and loaded asynchronously', asked.length >= 1 && asked.every((u) => u.startsWith('https://maps.googleapis.com/maps/api/js?') && u.includes(`key=${KEY}`) && /[?&]auth_referrer_policy=origin/.test(u) && /[?&]loading=async/.test(u) && /[?&]callback=/.test(u)), asked.map((u) => u.replace(KEY, '<key>')));
-  check('it failed to load: OpenFreeMap\'s map took its place, with its attribution', lf.provider === 'maplibre' && lf.state === 'ready' && lf.canvas && lf.attr !== 'none', lf);
-  // Google turns the key down (a key not allowed for the app, the API not enabled): every map goes
-  // over to OpenFreeMap's, then and from then on.
-  await page.click('#screen [data-act="actMaps"]');
-  await settle(700);
-  await page.evaluate(googleMapsStub);
-  await page.click('#screen [data-act="actMaps"]');
-  await settle(1000);
-  await page.waitForFunction(() => { const b = document.querySelector('#screen .am-box'); return b && b.getAttribute('data-provider') === 'google' && b.getAttribute('data-streets') === 'ready'; }, null, { timeout: 10000 }).catch(() => {});
-  const before = await page.evaluate(() => document.querySelector('#screen .am-box').getAttribute('data-provider'));
-  await page.evaluate(() => window.gm_authFailure());
+  await page.waitForTimeout(600);
+  const k1 = await page.evaluate(() => window.GH.ui.mapPieces.count());
+  await hideMap();
+  const tx = tileRequests.length;
+  await showMap();
+  check('and the new week\'s pieces take their place: shown again, it asks for nothing', (await sm()).state === 'ready' && k1 === k0 && tileRequests.length === tx, [k0, k1, tileRequests.slice(tx, tx + 3)]);
+  // No connection and nothing kept (Settings, Clear saved maps): the route drawn here stays, and the
+  // map comes once the connection is back.
+  await hideMap();
+  mapsOffline = true;
+  await page.evaluate(() => window.GH.ui.act.mapPiecesClear());
+  await settle(900);
+  const cleared = { n: await page.evaluate(() => window.GH.ui.mapPieces.count()), toast: await page.evaluate(() => ([...document.querySelectorAll('.rf-toast')].pop() || {}).textContent || '') };
+  check('Clear saved maps (Settings) deletes them', cleared.n === 0 && /Saved maps cleared/.test(cleared.toast), cleared);
+  await showMap(25000);
+  // (Its toast waits for Clear saved maps' to go.)
+  await page.waitForFunction(() => [...document.querySelectorAll('.rf-toast')].some((t) => /Couldn't load the map/.test(t.textContent)), null, { timeout: 10000 }).catch(() => {});
+  const fo = await sm();
+  fo.toast = await page.evaluate(() => [...document.querySelectorAll('.rf-toast')].map((t) => t.textContent).join(' | '));
+  const drawn = await page.evaluate(() => { const r = document.querySelector('#screen .am-box > .rt'); return !!r && getComputedStyle(r).opacity === '1'; });
+  check('with no connection and nothing kept, the route drawn here stays, and it says why', fo.state === 'failed' && drawn && /Couldn't load the map/.test(fo.toast) && mapsBlocked.length >= 1, [fo, drawn, mapsBlocked.length]);
+  mapsOffline = false;
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await settle(1500);
-  await page.waitForFunction(() => { const b = document.querySelector('#screen .am-box'); return b && b.getAttribute('data-provider') === 'maplibre' && /ready|failed/.test(b.getAttribute('data-streets') || ''); }, null, { timeout: 30000 }).catch(() => {});
-  const af = await page.evaluate(() => { const b = document.querySelector('#screen .am-box'); return { provider: b.getAttribute('data-provider'), state: b.getAttribute('data-streets'), google: !!b.querySelector('.gm-style'), next: window.GH.ui.actMapsProvider() }; });
-  check('Google turning the key down (even once its map shows) swaps in OpenFreeMap\'s, for the rest of the session', before === 'google' && af.provider === 'maplibre' && af.state === 'ready' && !af.google && af.next === 'osm', [before, af]);
+  await page.waitForFunction(() => { const b = document.querySelector('#screen .am-box'); return b && b.getAttribute('data-streets') === 'ready'; }, null, { timeout: 30000 }).catch(() => {});
+  check('back online, the map comes by itself', (await sm()).state === 'ready');
 }
+await hideMap();
+check('Hide map goes back to the route drawn here', await page.evaluate(() => !document.querySelector('#screen .am-streets canvas') && window.GH.ui.S.profile.prefs.actMaps === false));
+// Maps on again, for the live map further on.
+await showMap();
 
 section('Options, a menu out of its button');
 {
@@ -608,17 +611,16 @@ check('the recorder gets the units for its notification', (await fake()).calls.s
   const walkStart = (await fake()).calls.filter((c) => c.startsWith('actStart:') && c.includes('"type":"walk"')).pop();
   check('a walk starts without auto-pause (unless it\'s turned on for walks)', /"autoPause":false/.test(walkStart || ''), [walkStart, await page.evaluate(() => window.GH.ui.S.profile.prefs.actAuto)]);
 }
-// Maps are on (from the summary), and Google turned the key down this session: OpenFreeMap's map,
-// following you.
+// Maps are on (from the summary): OpenFreeMap's map, following you.
 await page.waitForFunction(() => { const m = document.querySelector('#actlive .al-map'); return m && /ready|failed/.test(m.dataset.streets || ''); }, null, { timeout: 30000 }).catch(() => {});
 // (The route so far is worked out every 3 seconds: the start goes on the map with the first of it.)
 await settle(6000);
 const wm = await page.evaluate(() => {
   const m = document.querySelector('#actlive .al-map');
   const attr = m && m.querySelector('.am-attr');
-  return m && { state: m.dataset.streets, provider: m.dataset.provider, canvas: !!m.querySelector('.al-map-slot canvas'), here: !!m.querySelector('.maplibregl-marker .mk-here'), start: !!m.querySelector('.maplibregl-marker .mk-start'), attr: attr ? getComputedStyle(attr).display : null, pressable: m.hasAttribute('data-interactive') };
+  return m && { state: m.dataset.streets, canvas: !!m.querySelector('.al-map-slot canvas'), here: !!m.querySelector('.maplibregl-marker .mk-here'), start: !!m.querySelector('.maplibregl-marker .mk-start'), attr: attr ? getComputedStyle(attr).display : null, pressable: m.hasAttribute('data-interactive') };
 });
-check('while it records, the map follows you: OpenFreeMap\'s now, with where you are and where you started', wm && wm.state === 'ready' && wm.provider === 'maplibre' && wm.canvas && wm.here && wm.start && wm.attr !== 'none', wm);
+check('while it records, the map follows you: OpenFreeMap\'s, with where you are and where you started', wm && wm.state === 'ready' && wm.canvas && wm.here && wm.start && wm.attr !== 'none', wm);
 check('the card\'s glass doesn\'t take a press while a map is in it (fingers move the map)', wm && !wm.pressable, wm);
 await settle(10 * 60 * 1000);
 await page.evaluate(() => window.__gh.back());
@@ -647,67 +649,79 @@ await page.evaluate(() => window.__gh.openRoute('activity'));
 await settle(900);
 check('its notification then opens the summary', await page.evaluate((x) => window.GH.ui.route.view === 'activity' && window.GH.ui.route.arg === x, walkId));
 
-section('The live map, from Google');
+section('The live map');
 await page.reload();
 await page.waitForSelector('#screen[data-view]');
-await page.evaluate(googleMapsStub);
-await page.evaluate((k) => { Object.assign(window.__act, { mapsKey: k, searchMs: 6000, mps: 1000 / 300 }); const U = window.GH.ui; while (U.back()) { /* back to the tab */ } U.go('today'); }, KEY);
+await page.evaluate(() => { Object.assign(window.__act, { searchMs: 6000, mps: 1000 / 300 }); const U = window.GH.ui; while (U.back()) { /* back to the tab */ } U.go('today'); });
 await settle(900);
 await page.click('#screen .act-cta');
 await settle(900);
 await page.click('dialog[open] .at-tile[data-arg="run"]');
 await settle(1500);
-await page.waitForFunction(() => { const m = document.querySelector('#actlive .al-map-search'); return m && /ready|failed/.test(m.dataset.streets || ''); }, null, { timeout: 10000 }).catch(() => {});
+await page.waitForFunction(() => { const m = document.querySelector('#actlive .al-map-search'); return m && /ready|failed/.test(m.dataset.streets || ''); }, null, { timeout: 30000 }).catch(() => {});
 await settle(300);
 const gs = await page.evaluate(() => {
-  const m = document.querySelector('#actlive .al-map-search');
-  const M = window.__gm.maps[0];
-  return m && { state: m.dataset.streets, provider: m.dataset.provider, maps: window.__gm.maps.length, here: !!m.querySelector('.mk-layer .mk-here:not([hidden])'), radar: !!m.querySelector('.al-radar'), gestures: M && M.opts.gestureHandling, scheme: M && M.opts.colorScheme, tilt: M && M.opts.tiltInteractionEnabled };
+  const m = document.querySelector('#actlive .al-map-search'), e = m && m.querySelector('.am-engine');
+  return m && { state: m.dataset.streets, map: e && e.dataset.map, canvas: !!m.querySelector('.maplibregl-canvas'), here: !!m.querySelector('.maplibregl-marker .mk-here'), radar: !!m.querySelector('.al-radar') };
 });
-check('maps on, finding GPS shows Google\'s map at where the phone is, the radar over it until it\'s drawn', gs && gs.state === 'ready' && gs.provider === 'google' && gs.maps === 1 && gs.here && gs.radar && gs.gestures === 'cooperative' && gs.tilt === false && gs.scheme === (dark ? 'DARK' : 'LIGHT'), gs);
+check('maps on, finding GPS shows the map at where the phone is, the radar over it', gs && gs.state === 'ready' && gs.canvas && gs.here && gs.radar, gs);
 await shot('17-search-map');
 await settle(6000);
 await page.click('#actlive [data-act="alGo"]');
 await settle(3500);
 await settle(60000);
-const pans = () => page.evaluate(() => window.__gm.maps[0].calls.filter((c) => c[0] === 'panTo').length);
+const follows = () => page.evaluate(() => Number((document.querySelector('#actlive .al-map .am-engine') || {}).dataset.follows || 0));
 const gl = await page.evaluate(() => {
   const m = document.querySelector('#actlive .al-map:not(.al-map-search)');
-  const M = window.__gm.maps[0];
-  const lines = window.__gm.lines.filter((l) => l.map === M);
-  const here = m && m.querySelector('.mk-layer .mk-here');
-  const U = window.GH.ui;
-  return m && { maps: window.__gm.maps.length, inCard: !!(M && m.contains(M.el)), state: m.dataset.streets, lines: lines.map((l) => `${l.o.strokeWeight}:${l.path.length}`), line: lines.filter((l) => l.o.strokeWeight === 5).map((l) => l.o.strokeColor).join(), want: U.actColor(m, '--al-line').hex, heading: here && here.hasAttribute('data-heading'), acc: here && parseFloat(here.style.getPropertyValue('--mk-acc')), start: !!m.querySelector('.mk-layer .mk-start') };
+  const e = m && m.querySelector('.am-engine'), M = e && e.ghMap;
+  const here = m && m.querySelector('.maplibregl-marker .mk-here');
+  const want = window.GH.ui.actColor(m, '--al-line');
+  return m && { map: e && e.dataset.map, state: m.dataset.streets, line: M && String(M.getPaintProperty('route', 'line-color')).toLowerCase(), want: want && want.hex, drawn: M ? M.queryRenderedFeatures({ layers: ['route'] }).length : 0, heading: here && here.hasAttribute('data-heading'), acc: here && parseFloat(here.style.getPropertyValue('--mk-acc')), start: !!m.querySelector('.maplibregl-marker .mk-start') };
 });
-check('then the same map moves into the live screen (no second load of Google\'s)', gl && gl.maps === 1 && gl.inCard && gl.state === 'ready', gl);
-check('with the route so far in the activity\'s colour, the start, and where you are, heading and all', gl && gl.lines.length === 2 && gl.lines.every((x) => Number(x.split(':')[1]) >= 2) && gl.line === gl.want && gl.start && gl.heading && gl.acc > 0, gl);
-const p0 = await pans();
+check('then the same map moves into the live screen (not a second one)', gl && gl.map === gs.map && gl.state === 'ready', [gs && gs.map, gl]);
+check('with the route so far in the activity\'s colour, the start, and where you are, heading and all', gl && gl.drawn >= 1 && gl.line === gl.want && gl.start && gl.heading && gl.acc > 0, gl);
+const f0 = await follows();
 await settle(5000);
-const p1 = await pans();
-check('it follows you as you go', p0 >= 3 && p1 > p0, [p0, p1]);
+const f1 = await follows();
+check('it follows you as you go', f0 >= 3 && f1 > f0, [f0, f1]);
 await shot('18-live-map');
-await page.evaluate(() => window.__gm.maps[0].trigger('dragstart'));
+await page.evaluate(() => { const M = document.querySelector('#actlive .al-map .am-engine').ghMap; M.fire('dragstart', { originalEvent: new Event('touchstart') }); });
 await settle(300);
-const pa = await pans();
+const fa = await follows();
 await settle(5000);
 const fb = await page.evaluate(() => { const b = document.querySelector('#actlive .am-fit'); return b && !b.hidden ? b.getAttribute('aria-label') : null; });
-check('a finger moving it stops the following, and a button follows you again', fb === 'Follow your position' && (await pans()) === pa, [fb, pa, await pans()]);
+check('a finger moving it stops the following, and a button follows you again', fb === 'Follow your position' && (await follows()) === fa, [fb, fa, await follows()]);
 await page.click('#actlive .am-fit');
 await settle(2500);
-check('which it does', (await pans()) > pa && (await page.evaluate(() => document.querySelector('#actlive .am-fit').hidden)));
+check('which it does', (await follows()) > fa && (await page.evaluate(() => document.querySelector('#actlive .am-fit').hidden)));
 await page.click('#actlive [data-act="alMaps"]');
 await settle(900);
-check('the map button hides it again (the route drawn here instead)', await page.evaluate(() => !document.querySelector('#actlive .gm-style') && !document.querySelector('#actlive .al-map-slot') && document.querySelectorAll('#actlive .al-map .rt-line').length >= 1 && window.GH.ui.S.profile.prefs.actMaps === false));
+check('the map button hides it again (the route drawn here instead)', await page.evaluate(() => !document.querySelector('#actlive .maplibregl-canvas') && !document.querySelector('#actlive .al-map-slot') && document.querySelectorAll('#actlive .al-map .rt-line').length >= 1 && window.GH.ui.S.profile.prefs.actMaps === false));
+const lt = tileRequests.length;
 await page.click('#actlive [data-act="alMaps"]');
 await settle(1500);
-check('and shows it again, without asking twice', await page.evaluate(() => !document.querySelector('dialog.rf-dialog[open]') && !!document.querySelector('#actlive .al-map-slot .gm-style') && window.__gm.maps.length === 2));
-// Google draws its "This page can't load Google Maps correctly" over the map (a key it won't serve:
-// billing off, the API not enabled): OpenFreeMap's map takes over, and the activity goes on.
-await page.evaluate(() => { const M = window.__gm.maps[window.__gm.maps.length - 1]; const b = document.createElement('button'); b.className = 'dismissButton'; b.textContent = 'OK'; M.div.appendChild(b); M.trigger('idle'); });
-await page.waitForFunction(() => { const m = document.querySelector('#actlive .al-map'); return m && m.dataset.provider === 'maplibre' && /ready|failed/.test(m.dataset.streets || ''); }, null, { timeout: 30000 }).catch(() => {});
-await settle(1500);
-const sw = await page.evaluate(() => { const m = document.querySelector('#actlive .al-map'); return { provider: m.dataset.provider, state: m.dataset.streets, google: !!m.querySelector('.gm-style'), canvas: !!m.querySelector('.al-map-slot canvas'), here: !!m.querySelector('.maplibregl-marker .mk-here'), phase: document.getElementById('actlive').dataset.phase }; });
-check('Google\'s "can\'t load Google Maps correctly" over its map swaps in OpenFreeMap\'s, and the activity goes on', sw.provider === 'maplibre' && sw.state === 'ready' && !sw.google && sw.canvas && sw.here && sw.phase === 'live', sw);
+await page.waitForFunction(() => { const m = document.querySelector('#actlive .al-map'); return m && /ready|failed/.test(m.dataset.streets || ''); }, null, { timeout: 30000 }).catch(() => {});
+const sa = await page.evaluate(() => ({ asked: !!document.querySelector('dialog.rf-dialog[open]'), canvas: !!document.querySelector('#actlive .al-map-slot .maplibregl-canvas'), state: (document.querySelector('#actlive .al-map') || {}).dataset.streets }));
+check('and shows it again without asking twice, from the pieces it kept as it followed you', !sa.asked && sa.canvas && sa.state === 'ready' && tileRequests.length === lt, [sa, tileRequests.slice(lt, lt + 3)]);
+{
+  // No connection, and nothing kept for here: the route drawn here stands in, and the map comes once
+  // the phone is back online.
+  await page.click('#actlive [data-act="alMaps"]');
+  await settle(900);
+  await page.evaluate(() => window.GH.ui.mapPieces.clear());
+  mapsOffline = true;
+  await page.click('#actlive [data-act="alMaps"]');
+  await settle(1500);
+  await page.waitForFunction(() => { const m = document.querySelector('#actlive .al-map'); return m && /ready|failed/.test(m.dataset.streets || ''); }, null, { timeout: 30000 }).catch(() => {});
+  const lf = await page.evaluate(() => { const m = document.querySelector('#actlive .al-map'); return m && { state: m.dataset.streets, line: m.querySelectorAll('.rt-line').length, asked: !!document.querySelector('dialog.rf-dialog[open]') }; });
+  check('with no connection and nothing kept, the live screen keeps the route it draws', lf && lf.state === 'failed' && lf.line >= 1 && !lf.asked, lf);
+  mapsOffline = false;
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await settle(1500);
+  await page.waitForFunction(() => { const m = document.querySelector('#actlive .al-map'); return m && m.dataset.streets === 'ready'; }, null, { timeout: 30000 }).catch(() => {});
+  const lb = await page.evaluate(() => ({ state: (document.querySelector('#actlive .al-map') || {}).dataset.streets, maps: document.querySelectorAll('#actlive .maplibregl-canvas').length }));
+  check('and back online, its map comes by itself', lb.state === 'ready' && lb.maps === 1, lb);
+}
 
 section('Discarding');
 await watchFolds();
@@ -721,7 +735,7 @@ check('Discard asks first, once it has been going a minute', /Discard this run\?
 await page.evaluate(() => { const d = document.querySelector('dialog.rf-dialog[open]'); [...d.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Discard').click(); });
 await page.waitForFunction(() => document.getElementById('actlive').hidden, null, { timeout: 5000 }).catch(() => {});
 await settle(900);
-const dc = await page.evaluate(() => ({ live: window.GH.ui.S.actLive, hidden: document.getElementById('actlive').hidden, folds: window.__folds.slice(), haptics: window.__haptics.slice(), maps: document.querySelectorAll('.gm-style').length, toast: ([...document.querySelectorAll('.rf-toast')].pop() || {}).textContent }));
+const dc = await page.evaluate(() => ({ live: window.GH.ui.S.actLive, hidden: document.getElementById('actlive').hidden, folds: window.__folds.slice(), haptics: window.__haptics.slice(), maps: document.querySelectorAll('#actlive .maplibregl-canvas').length, toast: ([...document.querySelectorAll('.rf-toast')].pop() || {}).textContent }));
 check('then the screen folds away, and nothing is kept', dc.live === null && dc.hidden && dc.folds.length === 1 && dc.folds[0].moving > 0 && (await fake()).rec === null && /Run discarded/.test(dc.toast || ''), dc);
 check('with the discard\'s own feel after the question\'s, and its map gone with it', dc.haptics.indexOf('heavy') >= 0 && dc.haptics.indexOf('actDiscard') > dc.haptics.indexOf('heavy') && dc.maps === 0, dc);
 

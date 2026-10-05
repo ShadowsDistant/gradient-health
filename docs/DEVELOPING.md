@@ -25,8 +25,8 @@ src/foodnet.js           Open Food Facts search and barcodes (through the Androi
 src/scanner.js           the barcode camera sheet; src/barcode.js is its lazy ZXing reader
 src/activity.js          outdoor activities: the recorder (the Android shell's, or the browser's), and
                          the track's maths: distance, pace, splits, auto-pause, records (GH.activity)
-src/gmap.js              the map behind a route from Google (Maps JavaScript API), a lazy chunk:
-                         GH.lazy('gmap'); src/actmap.js is MapLibre on OpenFreeMap, GH.lazy('actmap')
+src/actmap.js            the map behind a route: MapLibre on OpenFreeMap's tiles, a lazy chunk
+                         (GH.lazy('actmap')); the pieces it shows are kept on the phone (U.mapPieces)
 src/ui/activity.js       an activity's summary, the history and records, the maps (U.actMap) and an
                          activity leaving (U.actFoldAway); src/ui/actlive.js records one
 src/insights.js          on-device insights
@@ -329,13 +329,6 @@ APK and the Android App Bundle with the test key and attaches them to the run as
 `gradient-health-test-<commit>` artifact. Only on `main` does a second job sign them with the release
 key and replace the release tagged `latest` (see Publishing, Builds).
 
-**Google Maps key.** `GOOGLE_MAPS_API_KEY=… npm run apk` puts a Maps JavaScript API key in the APK
-(`assets/maps.key`, read only through the bridge's `mapsKey()`); without one the maps are
-OpenFreeMap's. It's never in the repo or in `dist/`, and the script never prints it. CI passes the
-repository secret `GOOGLE_MAPS_API_KEY` to both APK builds (missing is fine). In Google Cloud, enable
-the Maps JavaScript API and restrict the key to that API and to the website
-`https://appassets.androidplatform.net/*` (the WebView's origin).
-
 **Signing keys.** Builds are signed with the release key when it's given (in CI only by the release
 job on `main`; see Publishing), else with `android/gradient-health.keystore` (alias `gradient`,
 password `gradient-health`), a test key committed so a local build works out of the box. Its
@@ -455,17 +448,29 @@ it with `active: false`) until the page saves it and calls `actClear(id)`; at mo
 are kept.
 
 **Maps.** An activity's route is drawn on the phone. With maps on (Show map on its summary, the map
-button while recording, or Settings), a map goes behind it: Google's (`src/gmap.js`, which loads the
-Maps JavaScript API) when the build has a key, else MapLibre's on OpenFreeMap (`src/actmap.js`).
-`U.actMap` picks one and puts OpenFreeMap's in place whenever Google's won't load or Google turns the
-key down (`gm_authFailure`, its error page, or its "can't load Google Maps correctly" over a
-watermarked map; then for the rest of the session), even after it has shown. Both draw
-the route, the start, finish and km or mile markers and where you are the same way; two fingers move
-them while one scrolls the page, and they don't turn or tilt. `mapsKey()` returns the key from the
-APK's `assets/maps.key` (see Android build), and the page loads Google's script with
-`auth_referrer_policy=origin`, so the key's website restriction sees
-`https://appassets.androidplatform.net`. The CSP lets in Google's map hosts and OpenFreeMap, and
-nothing else new (`test/security.mjs`).
+button while recording, or Settings; Show streets from before 1.8 still counts as a yes), MapLibre
+draws OpenFreeMap's tiles behind it (`src/actmap.js`, a lazy chunk): the route in the pace colours
+(live: the activity's), the start, finish and km or mile markers, and where you are, following you
+while it records until a finger moves it. Two fingers move it while one scrolls the page, and it
+doesn't turn or tilt. Under reduced motion it jumps where it would glide.
+- **Pieces kept on the phone** (`U.mapPieces` in `src/ui/activity.js`): every tile and range of the
+  name font goes through a protocol of the app's own, `ghmap://`, which keeps it in Cache Storage
+  (`gh-map-v1`, the newest 1,500, trimmed every 50 new ones). A map shown before draws at once with
+  nothing asked of OpenFreeMap, offline too. OpenFreeMap rebuilds its tiles about weekly at new
+  addresses (`/planet/<week>/z/x/y.pbf`), so a tile is kept under its address without the week: one
+  from an earlier week is drawn at once (and offline), and this week's is fetched behind it to take
+  its place. The TileJSON (which week is current) is fetched network first, once a session; offline
+  the kept copy is used, and asked for again by the next map. Settings' Clear saved maps and Reset
+  everything delete them.
+- **Faster to the first map:** `U.actMap` asks for the TileJSON while the chunk loads, and the style
+  takes the tiles from it directly, a round trip sooner than MapLibre fetching it after the style.
+- **When it can't draw:** with none of its pieces (offline, never shown here) or no TileJSON, the page
+  keeps the route it drew (a summary says why); the map tries again when the phone is back online,
+  on a summary and while recording.
+- **A theme change** recolours the same map (`restyle`: each layer's paint, and the route's), with
+  nothing loaded again.
+The CSP lets in OpenFreeMap and nothing else for maps (`test/security.mjs`, which also checks no
+Google Maps key or code comes back).
 
 The page reads `actState()` and `actPoints(from)`; `actSupport()` says whether the phone has GPS, a
 step counter and Health Connect. For the summary, `hcSession({id, start, end})` answers
@@ -816,10 +821,10 @@ SHA-256.
      a QR code on their screen), never through a server;
    - nothing else leaves the phone. The on-device model is a download from Hugging Face. Location
      (an activity's route) and the background Health Connect reads are processed only on the phone
-     (Health Connect is on the phone too). One exception to weigh: with maps on, the map of an
-     activity's area (and, while one records, of where the person is) comes from Google Maps, or
-     OpenFreeMap without a key, which hints at roughly where they were. Declaring "Approximate
-     location, shared with Google, optional, for app functionality" is the cautious answer.
+     (Health Connect is on the phone too). One exception to weigh: with maps on, the map pieces of an
+     activity's area (and, while one records, of where the person is) come from OpenFreeMap, which
+     hints at roughly where they were. Declaring "Approximate location, shared, optional, for app
+     functionality" is the cautious answer.
 10. **AI-generated content.** Every AI answer (on-device or Claude), Claude's weekly report and its
     suggestions have a Report action that hides the item and keeps a local record. Sending a report to
     the developer opens a prefilled GitHub issue in the browser. Play's policy asks that people can

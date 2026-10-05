@@ -387,12 +387,19 @@
   /* ---------------------------------------------------------------- walks, runs and rides */
   // Under What you track: how an outdoor activity records (the start sheet's rows, auto-pause for each
   // kind and the spoken splits; src/ui/actlive.js) and the map behind its route (src/ui/activity.js).
+  // The map pieces a map has downloaded are kept on the phone (src/ui/activity.js, U.mapPieces): Clear
+  // saved maps deletes them.
   function actSettings(S) {
-    const by = U.actMapsProvider && U.actMapsProvider() === 'google' ? 'Google' : 'OpenFreeMap';
     return `${sub('acts', 'track', 'Walks, runs and rides')}
       <ul class="rf-list" data-group="track">${kw(U.actOptionRows(S), 'activity activities outdoor gps record running walking hiking cycling bike stops')}
-        ${kw(U.sw('Maps', !!(U.actMapsOn && U.actMapsOn()), 'data-on="actMapsPref"', `Your route on a map from ${by}, which sees the area the map shows. Off: the route is drawn on this phone.`), 'map google openfreemap streets route')}</ul>`;
+        ${kw(U.sw('Maps', !!(U.actMapsOn && U.actMapsOn()), 'data-on="actMapsPref"', 'Your route on a map from OpenFreeMap, which sees the area the map shows. Off: the route is drawn on this phone.'), 'map openfreemap streets route')}
+        ${kw(U.row({ key: 'map-pieces', icon: 'map', tone: 'sky', title: 'Clear saved maps', sub: 'Maps you\'ve seen are kept on this phone, so they open at once and work offline', act: 'mapPiecesClear' }), 'map cache offline storage space delete')}</ul>`;
   }
+  U.act.mapPiecesClear = async () => {
+    const ok = U.mapPieces ? await U.mapPieces.clear() : false;
+    U.haptic(ok ? 'remove' : 'deny');
+    U.toast(ok ? 'Saved maps cleared' : 'No saved maps', 'neutral', ok ? 'Maps download again the next time they show.' : undefined);
+  };
 
   /* ---------------------------------------------------------------- licenses */
   // What ships in the app (or is downloaded or looked up by it) and under which license.
@@ -406,8 +413,8 @@
     ['ZXing C++', 'Barcode reading', 'Apache 2.0'],
     ['USDA SR28', 'Built-in food list', 'Public domain'],
     ['Open Food Facts', 'Online food search, when it\'s on', 'Open Database License'],
-    ['MapLibre GL JS', 'Maps behind an activity\'s route when Google\'s aren\'t there', 'BSD 3-Clause'],
-    ['OpenStreetMap contributors and OpenMapTiles, served by OpenFreeMap', 'Map data for those maps, when you show a map', 'Open Database License and CC BY 4.0'],
+    ['MapLibre GL JS', 'Maps behind an activity\'s route, and while one records', 'BSD 3-Clause'],
+    ['OpenStreetMap contributors and OpenMapTiles, served by OpenFreeMap', 'Map data for those maps, when maps are on', 'Open Database License and CC BY 4.0'],
   ];
   // The design system first: everything on screen is made of it. Its mark comes apart once as the
   // sheet opens.
@@ -418,8 +425,7 @@
   U.act.licensesSheet = () => U.sheet({
     title: 'Open-source licenses', size: 'auto',
     body: `${refractCredit()}<ul class="rf-list">${LICENSES.map(([name, what, lic]) => U.row({ title: U.esc(name), sub: U.esc(`${what} · ${lic}`) })).join('')}</ul>
-      <p class="t-footnote rf-muted sheet-lead">Thanks to everyone who made these. Their full license texts ship with the source code.</p>
-      <p class="t-footnote rf-muted sheet-lead">Maps behind an activity's route come from Google Maps, under Google's terms (linked on each map), when the app has a key for them.</p>`,
+      <p class="t-footnote rf-muted sheet-lead">Thanks to everyone who made these. Their full license texts ship with the source code.</p>`,
   });
 
   /* ---------------------------------------------------------------- days and time */
@@ -811,7 +817,7 @@
     U.toast('Restored', 'positive');
   };
   U.act.resetAll = async () => {
-    const one = await U.confirm('Reset Gradient Health?', 'Your plan, history, health and food logs, the AI key and the on-device model are deleted from this phone.', 'Continue', 'critical', 'trash');
+    const one = await U.confirm('Reset Gradient Health?', 'Your plan, history, health and food logs, the AI key, the on-device model and saved maps are deleted from this phone.', 'Continue', 'critical', 'trash');
     if (!one) return;
     const two = await U.dialog({
       title: 'This can\'t be undone', message: 'Copy your data first if you might want it back.', icon: 'alert', tone: 'critical',
@@ -828,8 +834,10 @@
         for (const m of await llm.installed()) await llm.remove(m.id);
       } catch (e) { /* nothing to delete */ }
     }
-    // Health Connect reads saved in the background and not added yet go too.
+    // Health Connect reads saved in the background and not added yet go too, and the map pieces kept
+    // on the phone.
     try { if (GH.health && GH.health.clearPending) GH.health.clearPending(); } catch (e) { /* none waiting */ }
+    try { if (U.mapPieces) await U.mapPieces.clear(); } catch (e) { /* none kept */ }
     GH.store.clear();
     U.S = null;
     G.location.hash = '';

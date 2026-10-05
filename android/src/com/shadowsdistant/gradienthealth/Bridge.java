@@ -1074,53 +1074,6 @@ public final class Bridge {
         }
     }
 
-    // ---------------------------------------------------------------- maps (Google Maps for activities)
-
-    /** The key build-apk.sh put in the app (assets/maps.key), read once. Null until then. */
-    private static volatile String mapsKeyCache;
-
-    /**
-     * The Google Maps JavaScript API key for activity maps, or "" when this build has none (the page
-     * then uses OpenFreeMap). It comes from GOOGLE_MAPS_API_KEY at build time and is never logged.
-     */
-    @JavascriptInterface
-    public String mapsKey() {
-        if (!trusted()) {
-            return "";
-        }
-        String k = mapsKeyCache;
-        if (k == null) {
-            k = readMapsKey();
-            mapsKeyCache = k;
-        }
-        return k;
-    }
-
-    private String readMapsKey() {
-        InputStream in = null;
-        try {
-            in = activity.getAssets().open("maps.key");
-            byte[] buf = new byte[256];
-            int n = 0;
-            int r;
-            while (n < buf.length && (r = in.read(buf, n, buf.length - n)) > 0) {
-                n += r;
-            }
-            String k = new String(buf, 0, n, StandardCharsets.UTF_8).trim();
-            // An API key's characters only: anything else isn't one (and never reaches a URL).
-            return k.matches("[A-Za-z0-9_-]{20,100}") ? k : "";
-        } catch (Throwable t) {
-            return ""; // a build without a key
-        } finally {
-            if (in != null) {
-                try {
-                    in.close();
-                } catch (IOException ignored) {
-                }
-            }
-        }
-    }
-
     /**
      * An activity's window in Health Connect ({"id", "start", "end"}): steps, distance, calories and
      * heart rate from other apps and watches. Answers with window.__gh.onHcSession.

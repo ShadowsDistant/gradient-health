@@ -34,7 +34,7 @@ A 3D COACH FOR EVERY MOVE
 
 RUNS, WALKS, HIKES AND RIDES
 • Record with GPS, even with the screen off, with Pause and Finish in the notification
-• Google Maps, with a live map that follows you
+• A live map that follows you, and maps you've seen open even offline
 • Auto-pause, spoken splits and your pace right now
 • A summary with your route on the map, pace, splits, elevation and steps
 • Heart rate and calories from your watch through Health Connect
@@ -74,19 +74,18 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 ## What's new (500 characters at most)
 
-Paste this into the What's new field with each update. This is 1.8.0's. Each GitHub release carries
+Paste this into the What's new field with each update. This is 1.8.1's. Each GitHub release carries
 its own version's text at the end of its What's new, under "Short version, for a store's What's new
 field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
 (`node scripts/release-notes.mjs --store` prints it).
 
 ```text
-• Google Maps for runs, walks, hikes and rides, with a live map that follows you
-• Auto-pause, spoken splits and your pace right now
-• Steadier GPS distance and a smoother route
-• Haptics with a feel of their own for saving, sending, swiping away and more
-• Scrolling down no longer flickers, and pages switch faster
-• Switches glide smoothly, and sheets keep their silver edge
-• Cancelling a workout or an activity folds it away
+• Maps you've seen open at once, even with no connection
+• The first map opens sooner
+• A map that can't load keeps your route, and comes once you're back online
+• Maps change with the app's light or dark look without loading again
+• Names of rivers and lakes on the map
+• Maps stay with OpenFreeMap: Google Maps is gone
 ```
 
 ## Images

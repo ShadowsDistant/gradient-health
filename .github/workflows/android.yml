@@ -89,12 +89,8 @@ jobs:
         if: steps.native-cache.outputs.cache-hit != 'true'
         run: bash scripts/build-native.sh
 
-      # Signed with the public test key: for trying a change out, never for a store. Activity maps
-      # come from Google with the GOOGLE_MAPS_API_KEY secret (into the APK and the bundle; never
-      # printed), else from OpenFreeMap.
+      # Signed with the public test key: for trying a change out, never for a store.
       - name: Build APK (test key)
-        env:
-          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: bash scripts/build-apk.sh
 
       - name: Build the Android App Bundle (test key)
@@ -198,7 +194,6 @@ jobs:
           RELEASE_KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASS }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASS: ${{ secrets.RELEASE_KEY_PASS }}
-          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: bash scripts/build-apk.sh
 
       - name: Build the Android App Bundle (release key, for Google Play)
