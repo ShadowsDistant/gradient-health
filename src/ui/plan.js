@@ -327,6 +327,7 @@
 
   /* ---------------------------------------------------------------- the screen */
   const SECTIONS = [['week', 'This week'], ['moves', 'Moves']];
+  let planSeen = false;
   U.screens.plan = {
     render(S, day) {
       const sched = `<button type="button" class="rf-btn rf-glass pw-sched" data-lens data-act="daysSheet" aria-label="Schedule: days and time">${U.icon('calendar')}<span class="pw-sched-label">Schedule</span></button>`;
@@ -350,6 +351,9 @@
         ${makeItYours(S)}`;
     },
     after(screen, S, day) {
+      // The week's marks pop and its bars grow the first time Plan shows; after that it comes in
+      // with the page change alone (src/styles/plan.css, #app[data-plan-seen]).
+      if (!planSeen) { planSeen = true; setTimeout(() => { const app = doc.getElementById('app'); if (app) app.setAttribute('data-plan-seen', ''); }, 1200); }
       const st = screen.querySelector('.pw-strip');
       if (st) wireStrip(st);
       // The selection's bead goes to the day picked once this render's layout is in (it measures).
