@@ -302,18 +302,20 @@
 
   /* ---------------------------------------------------------------- auto-pause */
   // The clock stops when you stop and goes on when you go (the Android shell's recorder runs the same
-  // rules: ActivityTrack.java, AutoPause). A fix is still when the GPS's own speed (Doppler, steady to
-  // a few tenths of a m/s) is under the activity's still speed, moving when it's over its move speed,
-  // and neither in between; without a speed, still while it stays within its accuracy of where the
-  // stop began and moving once it's well outside it. STOP_MS of still fixes pause the clock from the
-  // first of them; moving fixes over MOVE_MS start it again from the first of those. A fix in between
-  // calls a stop off (a runner walking up a hill keeps going), and one worse than 50 m decides
-  // nothing. Fixes in doubt are held back until it's decided, then handed on flagged paused or not,
-  // so the track's pauses are exactly the clock's. It's armed by the first moving fix (after the
-  // start, or a resume by hand, standing still doesn't pause straight away).
+  // rules: ActivityAutoPause.java). A fix is still when the GPS's own speed (Doppler, steady to a few
+  // tenths of a m/s) is under the activity's still speed, moving when it's over its move speed, and
+  // neither in between. STOP_MS of still fixes pause the clock from the first of them; moving fixes
+  // over MOVE_MS start it again from the first of those. A fix in between calls a stop off (a runner
+  // walking up a hill keeps going), and one worse than 50 m decides nothing. Without speeds (a
+  // network position, some browsers) it's slower and more careful: still is the last 20 s of fixes
+  // moving slower than the still speed, by a straight-line fit through them (single fixes wander by
+  // their error, the fit much less), and moving is being well outside the stop's circle. Fixes in
+  // doubt are held back until it's decided, then handed on flagged paused or not, so the track's
+  // pauses are exactly the clock's. It's armed by the first moving fix (after the start, or a resume
+  // by hand, standing still doesn't pause straight away).
   // [still, move] in m/s.
   const AUTO = { walk: [0.35, 0.8], hike: [0.3, 0.7], run: [0.9, 1.6], cycle: [1.2, 2.4], other: [0.5, 1.0] };
-  const AUTO_STOP_MS = 5000, AUTO_STOP_BLIND_MS = 8000, AUTO_MOVE_MS = 2000, AUTO_BAD_ACC = 50;
+  const AUTO_STOP_MS = 5000, AUTO_STOP_BLIND_MS = 20000, AUTO_MOVE_MS = 2000, AUTO_BAD_ACC = 50;
   // Defaults: on for runs and rides, off for walks, hikes and the rest.
   const AUTO_DEFAULT = { walk: false, run: true, hike: false, cycle: true, other: false };
   const autoOn = (S, type) => {
@@ -331,8 +333,22 @@
     let held = [], anchor = null, since = 0, armed = !!paused, ref = null;
     const accOf = (p) => (p[4] == null ? 5 : p[4]);
     const dist = (a, b) => haversine(a[1], a[2], b[1], b[2]);
-    const inside = (p) => dist(anchor, p) <= Math.max(5, accOf(p));
+    const near = (p) => dist(anchor, p) <= Math.max(10, 2 * accOf(p));
     const outside = (p) => !!anchor && dist(anchor, p) > Math.max(15, 2 * accOf(p));
+    // How fast the fixes move, m/s: the slope of a least-squares line through them, east and north.
+    // Their middle, for where a stop is: [t, lat, lon].
+    function drift(list) {
+      const ok = list.filter((x) => accOf(x) <= AUTO_BAD_ACC);
+      if (ok.length < 6) return Infinity;
+      const ky = R_EARTH * rad(1), kx = ky * Math.cos(rad(ok[0][1]));
+      let st = 0, sx = 0, sy = 0;
+      for (const x of ok) { st += x[0] / 1000; sx += (x[2] - ok[0][2]) * kx; sy += (x[1] - ok[0][1]) * ky; }
+      const n = ok.length, tm = st / n, xm = sx / n, ym = sy / n;
+      let tt = 0, tx = 0, ty = 0;
+      for (const x of ok) { const dt = x[0] / 1000 - tm; tt += dt * dt; tx += dt * ((x[2] - ok[0][2]) * kx - xm); ty += dt * ((x[1] - ok[0][1]) * ky - ym); }
+      return tt > 0 ? Math.hypot(tx / tt, ty / tt) : Infinity;
+    }
+    const middle = (list) => { const n = list.length; let t = 0, la = 0, lo = 0; for (const x of list) { t += x[0] / n; la += x[1] / n; lo += x[2] / n; } return [t, la, lo, null, accOf(list[0]), null, 1]; };
     const flush = (paused) => { const out = held.map((p) => [p, paused]); held = []; return out; };
     const pausedNow = () => (mode === 'paused' || mode === 'starting' ? 1 : 0);
     return {
@@ -358,11 +374,19 @@
         if (mode === 'stopping') {
           held.push(p);
           if (bad) return { out: [] };
-          if (v != null ? v < vStill : inside(p)) {
-            const need = held.some((x) => x[5] == null) ? AUTO_STOP_BLIND_MS : AUTO_STOP_MS;
-            if (p[0] - since < need) return { out: [] };
-            mode = 'paused';
-            return { out: flush(1), pause: since };
+          if (v != null ? v < vStill : near(p)) {
+            const blind = held.some((x) => x[5] == null);
+            if (p[0] - since < (blind ? AUTO_STOP_BLIND_MS : AUTO_STOP_MS)) return { out: [] };
+            if (!blind || drift(held) < vStill) {
+              // Without speeds the stop is where the fixes' middle was (any one of them could be off).
+              if (blind) anchor = middle(held.filter((x) => accOf(x) <= AUTO_BAD_ACC));
+              mode = 'paused';
+              return { out: flush(1), pause: since };
+            }
+            // Drifting along slowly: the oldest fix goes on as moving, and the window moves with it.
+            const first = held.shift();
+            since = held[0][0]; anchor = held[0];
+            return { out: [[first, 0]] };
           }
           // Called off: kept as moving. A fix without a speed may start the next stop.
           held.pop();

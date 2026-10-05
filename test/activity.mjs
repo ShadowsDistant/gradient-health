@@ -370,8 +370,11 @@ check('a stray speed or a poor fix while stopped doesn\'t start it again', ar.ev
 seed = 26;
 ap = legs([[60, 3, null], [30, 0, null, 1.5], [60, 3, null]]);
 ar = autoRun('run', ap);
-check('without the GPS\'s speed: a stop is staying inside the fixes\' accuracy for 8 s', ar.ev.length === 2 && ar.ev[0][1] >= ap[60][0] && ar.ev[0][1] <= ap[62][0] && ar.ev[1][1] >= ap[90][0] && ar.ev[1][1] <= ap[96][0], ar.ev.map(([k, t]) => [k, (t - ap[0][0]) / 1000]));
+check('without the GPS\'s speed: a stop is 20 s of fixes a straight line through which barely moves', ar.ev.length === 2 && ar.ev[0][1] >= ap[55][0] && ar.ev[0][1] <= ap[62][0] && ar.ev[1][1] >= ap[90][0] && ar.ev[1][1] <= ap[100][0], ar.ev.map(([k, t]) => [k, (t - ap[0][0]) / 1000]));
 check('and every fix is still kept once', ar.out.length === ap.length && ar.out.every((p, i) => p[0] === ap[i][0]));
+seed = 34;
+ap = legs([[150, 1.0, null, 3, 12]]);
+check('a slow hike with poor fixes and no speeds never pauses (single fixes wander, the fit doesn\'t)', autoRun('hike', ap).ev.length === 0, autoRun('hike', ap).ev);
 seed = 27;
 ap = legs([[60, 1.4], [30, 0, 'still'], [60, 1.4]]);
 check('a walk stops at its own speeds (still under 0.35 m/s)', autoRun('walk', ap).ev.length === 2 && autoRun('cycle', legs([[60, 6], [20, 0, 'still'], [60, 6]])).ev.length === 2);
