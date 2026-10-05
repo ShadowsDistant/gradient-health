@@ -258,6 +258,11 @@ section('The WebView: only the app\'s own page, over https');
   check('pageTrusted is volatile, follows each page start and address change, and is true only for the app', /private volatile boolean pageTrusted;/.test(MA) && /onPageStarted\(WebView view, String url, Bitmap favicon\) \{\s*trackPage\(view, url\);/.test(MA) && /doUpdateVisitedHistory\(WebView view, String url, boolean isReload\) \{\s*trackPage\(view, url\);/.test(MA) && /isAppHost\(Uri\.parse\(url\)\)/.test(track) && /pageTrusted = trusted;/.test(track), track);
   check('the app\'s page is trusted before it loads (its first bridge call can\'t race the flag)', /pageTrusted = isAppHost\(Uri\.parse\(url\)\);\s*wv\.loadUrl\(url\);/.test(MA));
   check('the camera only for the app\'s own page', /!isAppHost\(request\.getOrigin\(\)\)/.test(MA));
+  // Pages never zoom (the route map zooms itself): the WebView and the viewport both say so. The
+  // share page a friend opens in a browser still zooms.
+  check('the WebView never zooms the page and shows no zoom buttons', /setSupportZoom\(false\)/.test(MA) && /setBuiltInZoomControls\(false\)/.test(MA) && /setDisplayZoomControls\(false\)/.test(MA) && !/(SupportZoom|BuiltInZoomControls)\(true\)/.test(MA));
+  const vp = (f) => (read(f).match(/<meta name="viewport" content="([^"]*)"/) || [])[1] || '';
+  check('the app\'s viewport doesn\'t scale; the share page\'s does', /maximum-scale=1\b/.test(vp('src/shell.html')) && /user-scalable=no/.test(vp('src/shell.html')) && /initial-scale=1/.test(vp('src/share-page.html')) && !/maximum-scale|user-scalable/.test(vp('src/share-page.html')), `${vp('src/shell.html')} / ${vp('src/share-page.html')}`);
 }
 
 section('The bridge answers only the app\'s page');

@@ -440,11 +440,21 @@ section('After the first workout: Health Connect, then the tour');
   let tour = {};
   for (let i = 0; i < 40 && !tour.open; i++) {
     await page.clock.runFor(500); await page.waitForTimeout(80);
-    tour = await page.evaluate(() => ({ open: !!document.querySelector('dialog.tour-sheet[open]'), title: (document.querySelector('dialog.tour-sheet[open] .rf-sheet-title') || {}).textContent, n: document.querySelectorAll('dialog.tour-sheet[open] .tour-dots i').length, toast: !!document.querySelector('.rf-toaster .rf-toast:not([data-leaving])') }));
+    tour = await page.evaluate(() => ({ open: !!document.querySelector('dialog.tour-sheet[open]'), title: (document.querySelector('dialog.tour-sheet[open] .rf-sheet-title') || {}).textContent, n: document.querySelectorAll('dialog.tour-sheet[open] .tour-dots.rf-pagedots > .rf-dot').length, toast: !!document.querySelector('.rf-toaster .rf-toast:not([data-leaving])') }));
   }
   check('then Today brings the tour, three cards, not over a toast', tour.open && tour.title === 'Find your way around' && tour.n === 3 && !tour.toast, tour);
   await page.waitForTimeout(500);
   await shot(page, '15-tour');
+  // Refract's page dots follow the page: Next moves the current dot, and a dot goes to its page.
+  const dots = () => page.evaluate(() => { const d = document.querySelector('dialog.tour-sheet[open]'); const page = d.querySelector('.tour').dataset.page; const ds = [...d.querySelectorAll('.tour-dots > .rf-dot')]; return { page, cur: ds.findIndex((x) => x.getAttribute('aria-current') === 'true'), worm: !!d.querySelector('.tour-dots > .rf-pagedots-worm') }; });
+  const d0 = await dots();
+  await page.click('dialog.tour-sheet[open] [data-act="tourNext"]');
+  await page.clock.runFor(600); await page.waitForTimeout(300);
+  const d1 = await dots();
+  await page.click('dialog.tour-sheet[open] .tour-dots > .rf-dot:nth-child(3)');
+  await page.clock.runFor(600); await page.waitForTimeout(300);
+  const d2 = await dots();
+  check('its page dots follow the page (Next, then a dot tapped)', d0.page === '0' && d0.cur === 0 && d0.worm && d1.page === '1' && d1.cur === 1 && d2.page === '2' && d2.cur === 2, { d0, d1, d2 });
   await page.evaluate(() => window.GH.ui.closeSheets()); await page.clock.runFor(600); await page.waitForTimeout(400);
   await page.evaluate(() => window.GH.ui.render()); await page.clock.runFor(3000); await page.waitForTimeout(400);
   check('once', await page.evaluate(() => !document.querySelector('dialog.tour-sheet[open]') && window.GH.ui.seen('tour')));

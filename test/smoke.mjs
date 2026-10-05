@@ -207,10 +207,11 @@ while (guard++ < 300) {
   }
   if (!swapped && st.act === 'plDone' && /set 1 of/.test(st.eyebrow)) {
     swapped = true;
+    // Workout options: a menu out of its button (U.menu), then Swap opens its sheet.
     await page.click('.player [data-act="plMenu"]');
-    await page.waitForSelector('dialog.rf-sheet [data-act="plSwap"]', { timeout: 3000 }).catch(() => null);
-    if (await page.locator('dialog.rf-sheet [data-act="plSwap"]').count()) {
-      await page.click('dialog.rf-sheet [data-act="plSwap"]');
+    await page.waitForSelector('.rf-menu:popover-open [data-act="plSwap"]', { timeout: 3000 }).catch(() => null);
+    if (await page.locator('.rf-menu:popover-open [data-act="plSwap"]').count()) {
+      await page.click('.rf-menu:popover-open [data-act="plSwap"]');
       await page.waitForSelector('dialog.rf-sheet [data-act="plSwapTo"]', { timeout: 3000 }).catch(() => null);
       const opt = page.locator('dialog.rf-sheet [data-act="plSwapTo"]').first();
       if (await opt.count()) { await opt.click(); await page.waitForTimeout(400); continue; }

@@ -3,3 +3,70 @@
    second animation where it's supported, keeps running. Same values as the other pauses in
    styles.css. */
 #app[data-scrolling]::before, #app[data-scrolling]::after { animation-play-state: paused, running; }
+
+/* Glass over the moving page (the bar's buttons, Today's floating buttons, the tab bar, the workout
+   capsule) keeps its blur, its rim and its light while the page scrolls, but not its refraction:
+   Refract bends the edges with a lens map in the lens layer's backdrop filter (--_lens, between the
+   blur and the saturation), and that's redrawn every frame the page moves under it, for edges nobody
+   sees bend in a fling. The filter is Refract's own without the map, so nothing else changes, and the
+   edges bend again as soon as the page is still. */
+#app[data-scrolling] .rf-lens-layer { --_lens: ; }
+
+/* The bar's frosted edge (#topbar > .rf-scroll-edge, about 126 px tall): Refract draws it with two
+   full-width blurs, a light one (3 px, fading out from 55% down to the bottom) under a stronger one
+   (8 px, from 45% to 90%), and draws them even while the edge is faded out. Here it's the stronger
+   one alone, reaching as far down as the light one did (which looks the same: the light one only
+   showed below the strong one), and only while it shows (#topbar[data-scrolled], once the large
+   title is under the bar): it comes on at once (the edge fades in from nothing), and goes when the
+   edge has faded out. */
+.topbar > .rf-scroll-edge::before { display: none; }
+.topbar > .rf-scroll-edge::after {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+}
+.topbar:not([data-scrolled]) > .rf-scroll-edge::after {
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  transition: opacity var(--duration-slow) var(--ease-standard), -webkit-backdrop-filter 0s linear var(--duration-slow), backdrop-filter 0s linear var(--duration-slow);
+}
+
+/* Set-up's glow holds still while set-up scrolls (.onboard[data-scrolling], core.js), as the app's
+   does while the page scrolls. */
+.onboard[data-scrolling]::before, .onboard[data-scrolling]::after { animation-play-state: paused; }
+
+/* 20 s after the last touch, key or scroll (#app[data-idle], core.js) the glow stops drifting, so a
+   phone left on a page isn't drawing it every frame; the next input starts it again. */
+#app[data-idle]::before, #app[data-idle]::after { animation-play-state: paused, running; }
+#app[data-idle] .onboard::before, #app[data-idle] .onboard::after { animation-play-state: paused; }
+
+/* A progress bar's sheen goes across it once as it shows, and once more each time its value changes
+   (core.js flips data-sheen, which swaps the animation for an identical one, so it starts again),
+   rather than forever: Refract's sheen moves a custom property, which repaints the bar every frame
+   on the main thread. */
+.rf-progress-fill::after { animation-iteration-count: 1; }
+.rf-progress[data-sheen] > .rf-progress-fill::after { animation-name: gh-sheen; }
+@keyframes gh-sheen { 0% { --rf-sheen: -60%; } to { --rf-sheen: 160%; } }
+
+/* Long pages: a block out of sight isn't laid out or drawn until it comes near (content-visibility:
+   auto). Until it has been, it's as tall as guessed here (or as it was when its tab was left,
+   --cv-h from core.js); after, as tall as it was. Only the height: its width is its column's.
+   Content-visibility clips to the block's box, so overflow-clip-margin lets the cards' shadows show
+   past it as before. Only on Badges, the one long page where it was measured to help (opening it 268 to 210 ms at 4x
+   CPU): on Health, Progress, Settings and the moves list it made no difference, and its containment
+   snaps each block to whole pixels, which moved some rows by 1 px. */
+.screen[data-view="badges"] > .section[data-key^="bs-"] {
+  content-visibility: auto; contain-intrinsic-block-size: auto var(--cv-h, 440px); overflow-clip-margin: 24px;
+}
+
+/* Under an opaque overlay (the workout player, set-up) the page's bars, its floating glass and the
+   glow behind it are hidden: covered, they'd still be drawn every frame the player's figure or clock
+   moves (their blurs, their refraction, the glow's layers). They go once the overlay's fade in has
+   made it opaque (250 ms), and come back the moment it starts to fade out (data-closing). */
+#app:has(> #player:not([hidden]):not([data-closing]), > #onboard:not([hidden]):not([data-closing])) > :is(#topbar, #float, #tabbar, #ptr),
+#app:has(> #player:not([hidden]):not([data-closing]), > #onboard:not([hidden]):not([data-closing]))::before,
+#app:has(> #player:not([hidden]):not([data-closing]), > #onboard:not([hidden]):not([data-closing]))::after { visibility: hidden; transition: visibility 0s linear 250ms; }
+
+/* The tab bar's lens (the glass over the picked tab) shows from the bar's second frame, once Refract
+   marks it ready: in its first, its liquid engine finds it without a size and leaves its lens map,
+   drawn pixel by pixel in JavaScript, for the frame after, where it doesn't hold up the app's first
+   paint. The frosted pill under the tab is there from the first frame. */
+.rf-tabbar:not([data-ready]) > .rf-tabbar-bar > .rf-tabbar-lens { display: none; }

@@ -444,7 +444,8 @@ await repeat('a drag the page cancels leaves the pick as it was', 25, async (i, 
   await clear();
   await gesture(line(segs[cur].x, segs[cur].y, segs[to].x, segs[to].y, 6), { hold: 30, cancel: true });
   const o = await segOutcome(segs[cur].v, 300);
-  const thumb = await page.evaluate((s) => { const el = document.querySelector(s); const t = el.querySelector('.rf-segmented-thumb').getBoundingClientRect(); const c = el.querySelector('input:checked').closest('.rf-segment').getBoundingClientRect(); return { dx: Math.abs((t.x + t.width / 2) - (c.x + c.width / 2)), dragging: el.hasAttribute('data-dragging') }; }, REST);
+  // Once it has landed back (it springs there, keeping the drag's speed).
+  const thumb = await page.evaluate(async (s) => { const el = document.querySelector(s); await window.GH.ui.controlSettled(el); const t = el.querySelector('.rf-segmented-thumb').getBoundingClientRect(); const c = el.querySelector('input:checked').closest('.rf-segment').getBoundingClientRect(); return { dx: Math.abs((t.x + t.width / 2) - (c.x + c.width / 2)), dragging: el.hasAttribute('data-dragging') }; }, REST);
   return o.now === segs[cur].v && !o.changes && thumb.dx < 3 && !thumb.dragging ? null : { ...o, thumb };
 });
 await repeat('a vertical swipe from a segment picks nothing', 26, async (i, r) => {
@@ -524,33 +525,36 @@ await wait(500);
 /* ---------------------------------------------------------------- the glass */
 section('The glass');
 await settings();
+// Refract's liquid glass (src/ui/controls.js): a segmented control's thumb is a frosted bead with a lens
+// over its labels; held, it rises (data-lifted) and the lens bends what's under it. At rest the lens's
+// backdrop filter is off (src/styles/controls.css): it would be redrawn every frame the page moves.
 const look = (s) => page.evaluate((sel) => {
   const el = document.querySelector(sel);
-  const th = el.querySelector(':scope > .rf-segmented-thumb, :scope > .gh-chipseg-thumb'), lens = el.querySelector(':scope > .gh-seg-lens');
-  const cs = getComputedStyle(th), ls = lens && getComputedStyle(lens);
+  const th = el.querySelector(':scope > .rf-segmented-thumb'), lens = el.querySelector(':scope > .rf-segmented-lens');
+  const face = getComputedStyle(th, '::before'), ls = lens && getComputedStyle(lens, '::after');
   // A computed colour's alpha, whatever its form: rgba(r, g, b, a), or a / a at the end (oklab, color()).
   const alpha = (c) => { let m = /\/\s*([\d.]+)\s*\)\s*$/.exec(c); if (m) return parseFloat(m[1]); m = /rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\)/.exec(c); return m ? parseFloat(m[1]) : 1; };
+  const scale = (t) => { const m = /matrix\(([^,]+),[^,]+,[^,]+,([^,]+),/.exec(getComputedStyle(t).transform); return m ? parseFloat(m[1]) : 1; };
   return {
-    fill: alpha(cs.backgroundColor), sheen: cs.backgroundImage !== 'none', rim: /inset/.test(cs.boxShadow),
-    lens: ls ? { display: ls.display, opacity: parseFloat(ls.opacity), filter: ls.backdropFilter } : null,
-    idle: el.hasAttribute('data-lens-idle'), traveling: el.hasAttribute('data-traveling'),
+    fill: alpha(face.backgroundColor), width: th.getBoundingClientRect().width,
+    lens: ls ? { display: getComputedStyle(lens).display, content: ls.content, filter: ls.backdropFilter } : null,
+    lifted: th.hasAttribute('data-lifted'), scale: scale(th), traveling: el.hasAttribute('data-traveling'),
     label: getComputedStyle(el.querySelector('input:checked, [aria-checked="true"]').closest('.rf-segment, [role="radio"]')).color,
-    accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
   };
 }, s);
 const rest = await look(REST);
 if (solid) {
-  check(`${contrast ? 'increased contrast' : 'reduced transparency'}: the thumb is solid, with no lens and no backdrop filter`, rest.fill === 1 && !rest.sheen && rest.lens && rest.lens.display === 'none', rest);
+  check(`${contrast ? 'increased contrast' : 'reduced transparency'}: the thumb is solid, with no lens`, rest.fill === 1 && rest.lens && (rest.lens.display === 'none' || rest.lens.content === 'none'), rest);
 } else {
-  check('at rest the thumb is glass: a clear fill, a sheen and a rim', rest.fill > 0.2 && rest.fill < 0.9 && rest.sheen && rest.rim, rest);
-  check('at rest the lens is off: transparent, no backdrop filter', rest.idle && rest.lens.opacity === 0 && rest.lens.filter === 'none', rest.lens);
+  check('at rest the thumb is a frosted bead under the picked option', rest.fill > 0.5 && rest.width > 20 && !rest.lifted && Math.abs(rest.scale - 1) < 0.01, rest);
+  check('at rest its lens draws nothing: no backdrop filter', rest.lens && rest.lens.filter === 'none', rest.lens);
 }
-// Held: the lens comes up over the labels.
+// Held: the bead rises and its lens comes on over the labels.
 {
   const segs = await segBox();
   const cur = segs.find((g) => g.on);
   await touch('touchStart', cur.x, cur.y, (clock = Math.max(clock + 0.05, Date.now() / 1000)));
-  await wait(260);
+  await wait(300);
   const held = await look(REST);
   await touch('touchMove', cur.x + 14, cur.y, clock + 0.03);
   await touch('touchMove', cur.x + 24, cur.y, clock + 0.05);
@@ -559,12 +563,12 @@ if (solid) {
   await touch('touchCancel', cur.x + 24, cur.y, clock + 0.3);
   clock += 0.3;
   if (!solid) {
-    check('held, the thumb lifts and its lens fades in, with a backdrop filter', held.lens.opacity > 0.9 && held.lens.filter !== 'none' && !held.idle, held.lens);
-    check('dragged, the lens bends the labels it passes', dragged.lens.opacity > 0.9 && /url\(|saturate/.test(dragged.lens.filter), dragged.lens);
-  } else check('held and dragged, still no lens', held.lens.display === 'none' && dragged.lens.display === 'none');
-  await wait(800);
+    check('held, the bead rises (data-lifted, larger) and its lens comes on, with a backdrop filter', held.lifted && held.scale > (reducedMotion ? 0.99 : 1.04) && held.lens.filter !== 'none', held);
+    check('dragged, the lens bends the labels it passes', dragged.lifted && /url\(|saturate/.test(dragged.lens.filter), dragged.lens);
+  } else check('held and dragged, still no lens', held.lens.content === 'none' || held.lens.display === 'none');
+  await wait(900);
 }
-// Moving: the glass stays until the thumb lands, then the lens goes idle.
+// Moving: the glass stays until the thumb lands, then the bead is at rest again.
 {
   const segs = await segBox();
   const cur = segs.findIndex((g) => g.on), to = (cur + 1) % segs.length;
@@ -572,32 +576,40 @@ if (solid) {
   const samples = [];
   for (let k = 0; k < 8; k++) { await wait(50); samples.push(await page.evaluate((s) => { const el = document.querySelector(s); const t = el.querySelector('.rf-segmented-thumb'); const c = el.querySelector('input:checked').closest('.rf-segment').getBoundingClientRect(); const b = t.getBoundingClientRect(); return { traveling: el.hasAttribute('data-traveling'), off: Math.round(Math.abs((b.x + b.width / 2) - (c.x + c.width / 2))) }; }, REST)); }
   await page.evaluate((s) => window.GH.ui.controlSettled(document.querySelector(s)), REST);
-  await wait(320);
+  await wait(200);
   const after = await look(REST);
   const movingWhileTravel = samples.filter((x) => x.off > 2).every((x) => x.traveling);
   check('the thumb is glass for the whole move: data-traveling until it has landed', movingWhileTravel && samples.some((x) => x.traveling), samples);
-  check('then it settles and the lens goes idle', !after.traveling && after.idle, after);
+  check('then it settles: at rest, its lens off', !after.traveling && !after.lifted && (solid || after.lens.filter === 'none'), after);
   if (!contrast) check('the picked label is the accent colour', after.label === (await page.evaluate(() => { const d = document.createElement('i'); d.style.color = 'var(--accent)'; document.body.appendChild(d); const c = getComputedStyle(d).color; d.remove(); return c; })), after.label);
 }
-// Reduced motion: short moves.
+// Reduced motion: no rise, no squash, and a short move.
 if (reducedMotion) {
-  const dur = await page.evaluate((s) => getComputedStyle(document.querySelector(s).querySelector('.rf-segmented-thumb')).transitionDuration, REST);
-  check('reduced motion: the thumb moves in 120 ms', dur.split(',').every((d) => parseFloat(d) <= 0.12), dur);
+  const segs = await segBox();
+  const cur = segs.findIndex((g) => g.on), to = (cur + 1) % segs.length;
+  const t0 = Date.now();
+  await gesture([[segs[to].x, segs[to].y]], { hold: 20 });
+  await page.evaluate((s) => window.GH.ui.controlSettled(document.querySelector(s)), REST);
+  check('reduced motion: the thumb lands within half a second', Date.now() - t0 < 900, Date.now() - t0);
 }
-// The switch knob: solid with a rim at rest, glass only while held or moving.
+// The switch knob: a frosted bead at rest, left where Refract's style sheet puts it; held, it rises
+// into a lens.
 {
   const b = await where(SUP);
-  const knob = () => page.evaluate((s) => { const t = document.querySelector(s).closest('.rf-switch-track'); const th = t.querySelector('.rf-switch-thumb'); return { coat: parseFloat(getComputedStyle(th, '::before').opacity), filter: getComputedStyle(th).backdropFilter, idle: t.hasAttribute('data-lens-idle') }; }, SUP);
+  const knob = () => page.evaluate((s) => { const t = document.querySelector(s).closest('.rf-switch-track'); const th = t.querySelector('.rf-switch-thumb'); const a = getComputedStyle(th, '::after'); return { coat: parseFloat(getComputedStyle(th, '::before').opacity), body: a.content, filter: a.backdropFilter, lifted: th.hasAttribute('data-lifted'), inline: th.style.transform }; }, SUP);
   const k0 = await knob();
   await touch('touchStart', b.x, b.y, (clock = Math.max(clock + 0.05, Date.now() / 1000)));
   await wait(300);
   const k1 = await knob();
   await touch('touchCancel', b.x, b.y, clock + 0.3);
   clock += 0.3;
-  await wait(500);
-  check('a knob at rest is solid, its lens off', k0.coat === 1 && k0.filter === 'none' && k0.idle, k0);
-  if (!solid) check('held, its coat fades and the lens shows', k1.coat < 0.1 && k1.filter !== 'none', k1);
-  else check('held, with no glass it stays solid', k1.coat === 1 && k1.filter === 'none', k1);
+  await wait(900);
+  const k2 = await knob();
+  if (!solid) {
+    check('a knob at rest is a frosted bead with its lens off, placed by the style sheet', k0.filter === 'none' && !k0.lifted && !k0.inline, k0);
+    check('held, it rises into a lens', k1.lifted && k1.filter !== 'none', k1);
+    check('let go, it settles back and the style sheet has it again', !k2.lifted && !k2.inline && k2.filter === 'none', k2);
+  } else check('with no glass the knob is solid, held or not', k0.coat === 1 && k0.body === 'none' && k1.coat === 1, { k0, k1 });
 }
 // Toggle chips keep their width: the Days sheet's weekdays.
 {
@@ -605,8 +617,18 @@ if (reducedMotion) {
   await wait(900);
   const w = () => page.evaluate(() => [...document.querySelectorAll('dialog[open] [data-on="dsWd"]')].map((c) => c.offsetWidth));
   const w0 = await w();
-  await page.click('dialog[open] [data-on="dsWd"][aria-pressed="false"]');
-  await wait(500);
+  const day = await page.evaluate(() => document.querySelector('dialog[open] [data-on="dsWd"][aria-pressed="false"]').dataset.v);
+  await page.click(`dialog[open] [data-on="dsWd"][data-v="${day}"]`);
+  await wait(150);
+  // Refract's ripple fills the chip it's in (inset 0), so the chip has to be its containing block.
+  const rip = await page.evaluate((v) => {
+    const c = document.querySelector(`dialog[open] [data-on="dsWd"][data-v="${v}"]`), r = c && c.querySelector('.rf-ripple');
+    if (!r) return null;
+    const a = c.getBoundingClientRect(), b = r.getBoundingClientRect();
+    return { l: Math.round(b.left - a.left), r: Math.round(b.right - a.right), t: Math.round(b.top - a.top), b: Math.round(b.bottom - a.bottom) };
+  }, day);
+  check('a tap\'s ripple stays inside the chip', rip && [rip.l, rip.r, rip.t, rip.b].every((d) => Math.abs(d) <= 1), rip);
+  await wait(350);
   const w1 = await w();
   check('pressing a toggle chip doesn\'t change its width', w0.join() === w1.join(), [w0, w1]);
   await page.evaluate(() => window.GH.ui.closeSheets());

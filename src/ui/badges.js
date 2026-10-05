@@ -79,23 +79,37 @@
     return [[0, lt], [0.2, hi], [0.42, body], [0.6, lt], [0.82, dk], [1, body]];
   }
   const stops = (list) => list.map(([o, c, a]) => `<stop offset="${o}" stop-color="${c}"${a != null ? ` stop-opacity="${a}"` : ''}/>`).join('');
-  // The defs one medal needs. Ids are the same for the same tier, category and shape, so the same
-  // medal twice on a page shares identical definitions.
+  // The gradients and clips medals use. Ids are the same for the same tier, category and shape.
+  const RIBBON = { bronze: ['#b06a2c', '#7a4012'], silver: ['#8a96a3', '#5c6670'], gold: ['#c89412', '#8a5f00'], platinum: ['#8f8cd9', '#5d63b5'], lock: ['#8d939c', '#6b717a'] };
+  const metalDef = (t) => `<linearGradient id="ghb-m-${t}" x1=".1" y1="0" x2=".9" y2="1">${stops(metalStops(t))}</linearGradient>`;
+  const ribbonDef = (t) => `<linearGradient id="ghb-r-${t}" x1="0" y1="0" x2="0" y2="1">${stops([[0, RIBBON[t][0]], [1, RIBBON[t][1]]])}</linearGradient>`;
+  const enamelDef = (e) => {
+    const en = e === 'lock' ? ['#a4aab3', '#7b828c', '#565c66'] : A().CAT[e].enamel;
+    return `<radialGradient id="ghb-e-${e}" cx=".38" cy=".3" r=".9">${stops([[0, en[0]], [0.55, en[1]], [1, en[2]]])}</radialGradient>`;
+  };
+  const clipDefs = (shape) => `<clipPath id="ghb-k-${shape}"><path d="${SHAPES[shape].face}"/></clipPath><clipPath id="ghb-o-${shape}"><path d="${SHAPES[shape].outer}"/></clipPath>`;
+  const common = () => `<linearGradient id="ghb-edge" x1="0" y1="0" x2="1" y2="1">${stops([[0, '#fff', 0.95], [0.38, '#fff', 0.15], [0.55, '#fff', 0], [1, '#000', 0.22]])}</linearGradient>
+      <radialGradient id="ghb-spec" cx=".32" cy=".18" r=".7">${stops([[0, '#fff', 0.6], [0.45, '#fff', 0.12], [1, '#fff', 0]])}</radialGradient>
+      <radialGradient id="ghb-shadow">${stops([[0, '#000', 0.32], [1, '#000', 0]])}</radialGradient>`;
+  // The defs one medal needs, for a medal that stands on its own (drawn into an image: the share card).
   function defs(tier, cat, shape, locked) {
     const t = locked ? 'lock' : tier;
-    const en = locked ? ['#a4aab3', '#7b828c', '#565c66'] : A().CAT[cat].enamel;
-    const e = locked ? 'lock' : cat;
-    const rib = locked ? ['#8d939c', '#6b717a'] : { bronze: ['#b06a2c', '#7a4012'], silver: ['#8a96a3', '#5c6670'], gold: ['#c89412', '#8a5f00'], platinum: ['#8f8cd9', '#5d63b5'] }[tier];
-    return `<defs>
-      <linearGradient id="ghb-m-${t}" x1=".1" y1="0" x2=".9" y2="1">${stops(metalStops(t))}</linearGradient>
-      <radialGradient id="ghb-e-${e}" cx=".38" cy=".3" r=".9">${stops([[0, en[0]], [0.55, en[1]], [1, en[2]]])}</radialGradient>
-      <linearGradient id="ghb-r-${t}" x1="0" y1="0" x2="0" y2="1">${stops([[0, rib[0]], [1, rib[1]]])}</linearGradient>
-      <linearGradient id="ghb-edge" x1="0" y1="0" x2="1" y2="1">${stops([[0, '#fff', 0.95], [0.38, '#fff', 0.15], [0.55, '#fff', 0], [1, '#000', 0.22]])}</linearGradient>
-      <radialGradient id="ghb-spec" cx=".32" cy=".18" r=".7">${stops([[0, '#fff', 0.6], [0.45, '#fff', 0.12], [1, '#fff', 0]])}</radialGradient>
-      <radialGradient id="ghb-shadow">${stops([[0, '#000', 0.32], [1, '#000', 0]])}</radialGradient>
-      <clipPath id="ghb-k-${shape}"><path d="${SHAPES[shape].face}"/></clipPath>
-      <clipPath id="ghb-o-${shape}"><path d="${SHAPES[shape].outer}"/></clipPath>
-    </defs>`;
+    return `<defs>${metalDef(t)}${enamelDef(locked ? 'lock' : cat)}${ribbonDef(t)}${common()}${clipDefs(shape)}</defs>`;
+  }
+  // On the page, every medal uses one shared set of them (every tier, category and shape, in a hidden
+  // SVG of its own) instead of carrying a copy: the gallery has some 60 medals.
+  function sharedDefs() {
+    if (!doc || !doc.body || doc.getElementById('ghb-defs')) return;
+    const tiers = A().TIER_ORDER.concat('lock');
+    const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.id = 'ghb-defs';
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    svg.setAttribute('width', '0');
+    svg.setAttribute('height', '0');
+    svg.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;pointer-events:none';
+    svg.innerHTML = `<defs>${tiers.map((t) => metalDef(t) + ribbonDef(t)).join('')}${A().CATS.map((c) => enamelDef(c.id)).join('')}${enamelDef('lock')}${common()}${Object.keys(SHAPES).map(clipDefs).join('')}</defs>`;
+    doc.body.appendChild(svg);
   }
   // A four-pointed sparkle for platinum.
   const sparkle = (x, y, s) => `<path d="M${x} ${y - s}C${x + s * 0.16} ${y - s * 0.16} ${x + s * 0.16} ${y - s * 0.16} ${x + s} ${y}C${x + s * 0.16} ${y + s * 0.16} ${x + s * 0.16} ${y + s * 0.16} ${x} ${y + s}C${x - s * 0.16} ${y + s * 0.16} ${x - s * 0.16} ${y + s * 0.16} ${x - s} ${y}C${x - s * 0.16} ${y - s * 0.16} ${x - s * 0.16} ${y - s * 0.16} ${x} ${y - s}Z" fill="#fff"/>`;
@@ -104,9 +118,12 @@
    * with the count. Locked: matte grey with a lock and a progress ring (have of goal). A secret one
    * still locked shows a question mark.
    * o: { earned, size, have, goal, text (false: the ribbon without its number, for drawing it
-   * elsewhere), cls, label, sweep (a light sweep across it, for the reveal) }. */
+   * elsewhere), cls, label, sweep (a light sweep across it, for the reveal), shared (its gradients
+   * are the page's one set, sharedDefs: every medal drawn on the page; without it, the medal carries
+   * its own, to stand alone in an image) }. */
   function badgeSvg(def, o) {
     o = o || {};
+    if (o.shared) sharedDefs();
     const locked = !o.earned;
     const sh = SHAPES[def.shape] || SHAPES.circle;
     const shape = SHAPES[def.shape] ? def.shape : 'circle';
@@ -123,12 +140,18 @@
     for (let i = 0; i < 36; i++) { const a = (i * Math.PI) / 18; rays += `M60 ${cy}L${f1(60 + 60 * Math.cos(a))} ${f1(cy + 60 * Math.sin(a))}`; }
     const pct = locked && o.goal ? Math.max(0, Math.min(1, (o.have || 0) / o.goal)) : 0;
     const label = o.label ? ` role="img" aria-label="${U.esc(o.label)}"` : ' aria-hidden="true"';
-    return `<svg class="bdg-svg${o.cls ? ` ${o.cls}` : ''}${locked ? ' is-locked' : ''}" viewBox="0 0 120 120" width="${size}" height="${size}" data-tier="${locked ? 'locked' : def.tier}"${label} xmlns="http://www.w3.org/2000/svg">${defs(def.tier, def.cat, shape, locked)}
+    // The rim's knurling, a ring of fine dashes, dark and light. Below 100 px each dash is a pixel or
+    // two (a lot of drawing for a texture that can't be made out), so there it's two plain rings at
+    // the dashes' average strength.
+    const knurl = (dash, gap, op, colour, extra) => (size < 100
+      ? `<circle cx="60" cy="60" r="45.2" fill="none" stroke="${colour}" stroke-opacity="${Math.round((1000 * op * dash) / (dash + gap)) / 1000}" stroke-width="7"/>`
+      : `<circle cx="60" cy="60" r="45.2" fill="none" stroke="${colour}" stroke-opacity="${op}" stroke-width="7" pathLength="360" stroke-dasharray="${dash} ${gap}"${extra || ''}/>`);
+    return `<svg class="bdg-svg${o.cls ? ` ${o.cls}` : ''}${locked ? ' is-locked' : ''}" viewBox="0 0 120 120" width="${size}" height="${size}" data-tier="${locked ? 'locked' : def.tier}"${label} xmlns="http://www.w3.org/2000/svg">${o.shared ? '' : defs(def.tier, def.cat, shape, locked)}
       <ellipse cx="60" cy="113" rx="34" ry="5.5" fill="url(#ghb-shadow)"/>
       <g${locked ? ' opacity=".62"' : ''}>
         <path d="${sh.outer}" fill="url(#ghb-m-${t})"/>
         <path d="${sh.outer}" fill="none" stroke="url(#ghb-edge)" stroke-width="2.2" transform="translate(60 60) scale(.965) translate(-60 -60)"/>
-        ${shape === 'circle' ? `<circle cx="60" cy="60" r="45.2" fill="none" stroke="#000" stroke-opacity="${locked ? 0.06 : 0.12}" stroke-width="7" pathLength="360" stroke-dasharray=".9 2.1"/><circle cx="60" cy="60" r="45.2" fill="none" stroke="#fff" stroke-opacity="${locked ? 0.1 : 0.24}" stroke-width="7" pathLength="360" stroke-dasharray=".7 2.3" stroke-dashoffset="-1.2"/>` : ''}
+        ${shape === 'circle' ? `${knurl(0.9, 2.1, locked ? 0.06 : 0.12, '#000')}${knurl(0.7, 2.3, locked ? 0.1 : 0.24, '#fff', ' stroke-dashoffset="-1.2"')}` : ''}
         <path d="${sh.face}" fill="#000" fill-opacity=".28" transform="translate(0 1.4)"/>
         <path d="${sh.face}" fill="url(#ghb-e-${locked ? 'lock' : def.cat})"/>
         <g clip-path="url(#ghb-k-${shape})">
@@ -205,7 +228,7 @@
         <span class="bdg-strip-all t-subhead">See all${U.icon('chevron-right', 'sm')}</span>
       </button>
       ${note}
-      <div class="bdg-row" data-hscroll>${shown.map((x) => `<button type="button" class="bdg-mini${x.earned ? ' is-earned' : ''}${x.isNew ? ' is-new' : ''}" data-badge="${x.id}" data-key="bdg-mini-${x.id}" data-act="badgeOpen" data-arg="${x.id}" aria-label="${U.esc(`${x.def.title}, ${x.earned ? earnedWhen(x, day).toLowerCase() : progressText(x)}`)}">${badgeSvg(x.def, { earned: x.earned, size: 56, have: x.have, goal: x.goal })}<span class="bdg-mini-title t-caption">${U.esc(x.def.title)}</span></button>`).join('')}</div>
+      <div class="bdg-row" data-hscroll>${shown.map((x) => `<button type="button" class="bdg-mini${x.earned ? ' is-earned' : ''}${x.isNew ? ' is-new' : ''}" data-badge="${x.id}" data-key="bdg-mini-${x.id}" data-act="badgeOpen" data-arg="${x.id}" aria-label="${U.esc(`${x.def.title}, ${x.earned ? earnedWhen(x, day).toLowerCase() : progressText(x)}`)}">${badgeSvg(x.def, { shared: true, earned: x.earned, size: 56, have: x.have, goal: x.goal })}<span class="bdg-mini-title t-caption">${U.esc(x.def.title)}</span></button>`).join('')}</div>
     </div>`;
   };
   U.badgeSummary = (S, day) => A().summary(S, day, list(S, day));
@@ -217,14 +240,14 @@
     const sub = x.earned ? fmtDate(x.day) : x.def.secret ? 'Secret' : progressText(x);
     const title = x.def.secret && !x.earned ? 'Secret badge' : x.def.title;
     return `<button type="button" class="bdg-tile${x.earned ? ' is-earned' : ''}${x.isNew ? ' is-new' : ''}" data-badge="${x.id}" data-key="bdg-${x.id}" data-act="badgeOpen" data-arg="${x.id}" aria-label="${U.esc(`${title}, ${x.earned ? earnedWhen(x, day).toLowerCase() : sub}`)}">
-      <span class="bdg-tile-medal">${badgeSvg(x.def, { earned: x.earned, size: 68, have: x.have, goal: x.goal })}${x.isNew ? '<span class="bdg-new t-caption">New</span>' : ''}</span>
+      <span class="bdg-tile-medal">${badgeSvg(x.def, { shared: true, earned: x.earned, size: 68, have: x.have, goal: x.goal })}${x.isNew ? '<span class="bdg-new t-caption">New</span>' : ''}</span>
       <span class="bdg-tile-title t-footnote">${U.esc(title)}</span>
       <span class="bdg-tile-sub t-caption rf-muted">${U.esc(sub)}</span>
     </button>`;
   }
   function nextRow(x) {
     return `<button type="button" class="bdg-next" data-badge="${x.id}" data-key="bdg-next-${x.id}" data-act="badgeOpen" data-arg="${x.id}">
-      ${badgeSvg(x.def, { earned: false, size: 52, have: x.have, goal: x.goal })}
+      ${badgeSvg(x.def, { shared: true, earned: false, size: 52, have: x.have, goal: x.goal })}
       <span class="bdg-next-text"><span class="t-subhead">${U.esc(x.def.title)}</span><span class="t-footnote rf-muted">${U.esc(x.def.how)}</span>${U.progress(x.pct, `${x.def.title} progress`, 'positive')}</span>
       <span class="bdg-next-n t-footnote rf-muted">${U.esc(progressText(x))}</span>
     </button>`;
@@ -282,7 +305,7 @@
     const def = x.def;
     const secret = def.secret && !x.earned;
     return `<div class="sheet-pad bdg-detail" data-badge="${x.id}">
-      <div class="bdg-stage is-detail" data-tier="${x.earned ? def.tier : 'locked'}"><span class="bdg-glow" aria-hidden="true"></span><span class="bdg-medal">${badgeSvg(def, { earned: x.earned, size: 148, have: x.have, goal: x.goal, sweep: x.earned, label: `${secret ? 'Secret badge' : def.title}${x.earned ? '' : ', locked'}` })}</span></div>
+      <div class="bdg-stage is-detail" data-tier="${x.earned ? def.tier : 'locked'}"><span class="bdg-glow" aria-hidden="true"></span><span class="bdg-medal">${badgeSvg(def, { shared: true, earned: x.earned, size: 148, have: x.have, goal: x.goal, sweep: x.earned, label: `${secret ? 'Secret badge' : def.title}${x.earned ? '' : ', locked'}` })}</span></div>
       <p class="bdg-tierline t-caption">${x.earned ? U.esc(tierLine(def)) : secret ? 'Secret' : `${U.esc(A().TIERS[def.tier].name)} · Locked`}</p>
       <h3 class="t-title-2 bdg-title">${U.esc(secret ? 'Secret badge' : def.title)}</h3>
       <p class="t-callout rf-muted bdg-how">${U.esc(secret ? 'A surprise. Keep going and it will find you.' : def.how)}</p>
@@ -320,21 +343,24 @@
     if (!U.reduced()) { void stage.offsetWidth; stage.classList.add('is-in'); } else stage.classList.add('is-still');
     if (o && o.buzz) U.haptic('badge');
     const medal = stage.querySelector('.bdg-medal');
-    if (o && o.burst && medal && G.Refract && G.Refract.burst && !U.reduced()) setTimeout(() => { try { G.Refract.burst(medal, { count: 22, colors: BURST[def.tier], spread: 1.25, size: [6, 12] }); } catch (e) { /* ignore */ } }, 300);
+    // Refract 1.4's burst is 8 to 14 beads: the medal's is its biggest, 14.
+    if (o && o.burst && medal && G.Refract && G.Refract.burst && !U.reduced()) setTimeout(() => { try { G.Refract.burst(medal, { count: 14, colors: BURST[def.tier], spread: 1.25, size: [6, 12] }); } catch (e) { /* ignore */ } }, 300);
   }
   function revealPage(x, day, total) {
     const def = x.def;
     return `<section class="bdg-page" data-page="${x.id}" aria-label="${U.esc(def.title)}">
-      <div class="bdg-stage" data-tier="${def.tier}"><span class="bdg-rays" aria-hidden="true"></span><span class="bdg-glow" aria-hidden="true"></span><span class="bdg-medal">${badgeSvg(def, { earned: true, size: 176, sweep: true, label: def.title })}</span></div>
+      <div class="bdg-stage" data-tier="${def.tier}"><span class="bdg-rays" aria-hidden="true"></span><span class="bdg-glow" aria-hidden="true"></span><span class="bdg-medal">${badgeSvg(def, { shared: true, earned: true, size: 176, sweep: true, label: def.title })}</span></div>
       <p class="bdg-tierline t-caption">${U.esc(tierLine(def))}</p>
       <h3 class="t-title-1 bdg-title">${U.esc(def.title)}</h3>
       <p class="t-callout rf-muted bdg-how">${U.esc(def.how)}</p>
       <p class="t-footnote bdg-when">${U.esc(earnedWhen(x, day))} · ${U.esc(`Badge ${rankOf(x)} of ${total}`)}</p>
     </section>`;
   }
-  /* The reveal: a sheet with the new badges as pages (with dots when there are several), each
-   * springing in as it comes into view, then Share and Done. Opening it counts them as seen.
-   * ids: the badges to show (default: everything not shown yet). */
+  /* The reveal: a sheet with the new badges as pages (with Refract's page dots when there are several:
+   * its ink worm stretches to the page picked and splats there), each springing in as it comes into
+   * view, then Share and Done. A dot (tapped, or scrubbed along the row, or the arrow keys) goes to
+   * its page. Opening it counts them as seen. ids: the badges to show (default: everything not shown
+   * yet). */
   U.badgeReveal = (ids) => {
     const S = U.S, day = U.today();
     if (!S || !A()) return null;
@@ -352,7 +378,7 @@
     const done = new Set();
     const body = `<div class="bdg-reveal${many ? ' is-many' : ''}">
       <div class="bdg-pages"${many ? ' data-hscroll' : ''}>${pages.map((x) => revealPage(x, day, total)).join('')}</div>
-      ${many ? `<div class="bdg-dots" role="tablist" aria-label="Badges">${pages.map((x, i) => `<button type="button" class="bdg-dot" role="tab" aria-selected="${i === 0}" aria-label="${U.esc(x.def.title)}" data-act="badgePage" data-arg="${i}"></button>`).join('')}</div>` : ''}
+      ${many ? `<div class="rf-pagedots bdg-dots" role="group" aria-label="Badges">${pages.map((x, i) => `<button type="button" class="rf-dot" aria-label="${U.esc(x.def.title)}"${i === 0 ? ' aria-current="true"' : ''}></button>`).join('')}</div>` : ''}
       <div class="bdg-actions">
         <button type="button" class="rf-btn rf-glass" data-size="lg" data-act="badgeShareCur">${U.icon('share')}Share</button>
         <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="badgeDone">Done</button>
@@ -360,7 +386,8 @@
     </div>`;
     const show = (i, el) => {
       cur = i;
-      for (const [k, d] of [...el.querySelectorAll('.bdg-dot')].entries()) d.setAttribute('aria-selected', String(k === i));
+      // The worm follows the dot marked current (Refract watches aria-current).
+      for (const [k, d] of [...el.querySelectorAll('.bdg-dots > .rf-dot')].entries()) { if (k === i) d.setAttribute('aria-current', 'true'); else d.removeAttribute('aria-current'); }
       if (done.has(i)) return;
       done.add(i);
       spring(el.querySelectorAll('.bdg-page')[i].querySelector('.bdg-stage'), pages[i].def, { buzz: true, burst: true });
@@ -386,18 +413,23 @@
           };
           if ('onscrollend' in G) box.addEventListener('scrollend', settled);
           else box.addEventListener('scroll', () => { clearTimeout(t); t = setTimeout(settled, 120); }, { passive: true });
+          // A dot picked (Refract's page dots tell which, however it was picked).
+          const dots = el.querySelector('.bdg-dots');
+          if (dots) dots.addEventListener('rf-select', (e) => { if (e.detail && e.detail.index != null) goTo(e.detail.index); });
         }
       },
     });
     let jumpTo = null;
-    U.act.badgePage = (el) => {
-      const i = Math.max(0, Math.min(pages.length - 1, Number(el.dataset.arg) || 0));
+    const goTo = (n) => {
+      const i = Math.max(0, Math.min(pages.length - 1, Number(n) || 0));
       const box = ctl.el.querySelector('.bdg-pages');
       if (!box) return;
       jumpTo = Math.abs(box.scrollLeft - i * box.clientWidth) < 4 ? null : i;
       box.scrollTo({ left: i * box.clientWidth, behavior: U.reduced() ? 'auto' : 'smooth' });
+      if (i !== cur) U.haptic('select');
       show(i, ctl.el);
     };
+    U.act.badgePage = (el) => goTo(el && el.dataset ? el.dataset.arg : 0);
     U.act.badgeShareCur = () => U.act.badgeShare({ dataset: { arg: pages[cur].id } });
     U.act.badgeDone = () => ctl.close('ok');
     return ctl;
@@ -416,7 +448,7 @@
     const x = items[items.length - 1];
     const more = items.length - 1;
     return `<button type="button" class="card bdg-card" data-key="bdg-card" data-act="badgeReveal" data-arg="${items.map((i) => i.id).join(',')}" aria-label="${U.esc(more ? `${items.length} new badges. See them` : `New badge: ${x.def.title}. See it`)}">
-      <span class="bdg-stage is-card" data-tier="${x.def.tier}"><span class="bdg-glow" aria-hidden="true"></span><span class="bdg-medal">${badgeSvg(x.def, { earned: true, size: 72 })}</span></span>
+      <span class="bdg-stage is-card" data-tier="${x.def.tier}"><span class="bdg-glow" aria-hidden="true"></span><span class="bdg-medal">${badgeSvg(x.def, { shared: true, earned: true, size: 72 })}</span></span>
       <span class="bdg-card-text">
         <span class="t-caption bdg-tierline">${more ? `${items.length} new badges` : `New badge · ${U.esc(A().TIERS[x.def.tier].name)}`}</span>
         <span class="t-headline">${U.esc(x.def.title)}</span>
@@ -447,7 +479,7 @@
       const one = defs.length === 1;
       const t = U.toast(one ? 'New badge' : `${defs.length} new badges`, 'neutral', one ? defs[0].title : defs.map((d) => d.title).join(', '), { label: one ? 'See it' : 'See them', onClick: () => U.badgeReveal(defs.map((d) => d.id)) });
       const ic = t && t.el && t.el.querySelector('.rf-toast-icon');
-      if (ic) { ic.innerHTML = badgeSvg(defs[defs.length - 1], { earned: true, size: 30 }); ic.classList.add('bdg-toast-medal'); }
+      if (ic) { ic.innerHTML = badgeSvg(defs[defs.length - 1], { shared: true, earned: true, size: 30 }); ic.classList.add('bdg-toast-medal'); }
       U.haptic('badge');
     }, 450);
   }
@@ -565,6 +597,7 @@
     if (!tiles.length) return;
     U.haptic('badge');
     if (!G.Refract || !G.Refract.burst || U.reduced()) return;
-    for (const t of tiles) { try { G.Refract.burst(t, { count: 14 }); } catch (e) { /* ignore */ } }
+    // Each burst within Refract's 8 to 14 beads: one tile gets 12, several get 8 each, three at most.
+    for (const t of tiles.slice(0, 3)) { try { G.Refract.burst(t, { count: tiles.length > 1 ? 8 : 12 }); } catch (e) { /* ignore */ } }
   };
 })(typeof window !== 'undefined' ? window : globalThis);

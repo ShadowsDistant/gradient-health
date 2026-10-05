@@ -72,20 +72,18 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 ## What's new (500 characters at most)
 
-Paste this into the What's new field with each update. This is 1.6.0's. Each GitHub release carries
+Paste this into the What's new field with each update. This is 1.7.0's. Each GitHub release carries
 its own version's text at the end of its What's new, under "Short version, for a store's What's new
 field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
 (`node scripts/release-notes.mjs --store` prints it).
 
 ```text
-• Smarter plans: every way to split your week is weighed, and workouts fill the time you set
-• Why this plan, and an AI check of your plan whose suggestions you pick
-• 64 badges to earn and share as pictures with friends and family
-• A new You tab, and Settings you can search
-• Toggles that answer every tap, and glass switches
-• Stronger haptics with 31 distinct feels, and smoother motion
-• A quicker set-up that starts your first workout
-• Faster and safer
+• Smoother scrolling on every screen
+• New liquid glass: switches, tabs and pickers rise into a lens as you touch them and flow where you let go
+• Buttons form out of the glass and change shape, and menus grow out of the button you tap
+• Pages no longer zoom by accident; pinch the route map to zoom it
+• Answering how many reps you had left no longer moves on under your finger
+• Built with Refract 1.4, now credited in Settings
 ```
 
 ## Images

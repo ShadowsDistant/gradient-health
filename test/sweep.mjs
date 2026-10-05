@@ -2,7 +2,7 @@
 // at 100% and 130% text (the most the app allows when the phone's font size is turned up), checked
 // for sideways overflow, cut-off text and labels spilling out of buttons. Screenshots go to
 // build/sweep/ for a visual pass.
-// Usage: node test/sweep.mjs [--quick] [--no-shots] [--only=food,settings]
+// Usage: node test/sweep.mjs [--quick] [--no-shots] [--only=food,settings] [--from=600-light-100]
 import { createRequire } from 'node:module';
 import { mkdirSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -19,6 +19,9 @@ const quick = process.argv.includes('--quick');
 const tablet = process.argv.includes('--tablet');
 const shots = !process.argv.includes('--no-shots');
 const only = ((process.argv.find((a) => a.startsWith('--only=')) || '').split('=')[1] || '').split(',').filter(Boolean);
+// --from=600-light-100 starts at that combination, to finish a full sweep in two parts (it takes
+// over two hours now).
+const from = (process.argv.find((a) => a.startsWith('--from=')) || '').split('=')[1] || '';
 // [width, theme, text zoom, height]: phones, a small tablet, and a landscape tablet (from target
 // SDK 36 Android ignores the portrait lock on screens 600 dp and wider).
 const COMBOS = tablet ? [[1280, 'light', 1, 800]] : quick
@@ -97,7 +100,8 @@ function problems() {
       const text = [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
       if (text && s.textOverflow === 'ellipsis' && e.scrollWidth > e.clientWidth + 1) out.push(`cut off: ${name(e)}`);
       else if (text && (s.overflowX === 'hidden' || s.overflow === 'hidden') && e.scrollWidth > e.clientWidth + 2 && s.whiteSpace === 'nowrap') out.push(`clipped: ${name(e)}`);
-      if ((e.tagName === 'BUTTON' || e.classList.contains('rf-chip') || e.classList.contains('rf-segment')) && e.scrollWidth > e.clientWidth + 2) out.push(`label wider than its control: ${name(e)}`);
+      // (Refract's page dots have no label: what reaches past one is its hit area, an ::after.)
+      if ((e.tagName === 'BUTTON' || e.classList.contains('rf-chip') || e.classList.contains('rf-segment')) && !e.classList.contains('rf-dot') && e.scrollWidth > e.clientWidth + 2) out.push(`label wider than its control: ${name(e)}`);
     }
   }
   // A page (not a sheet, the player or set-up): scrolled to the end, its last content must clear
@@ -134,8 +138,11 @@ const server = await serveDist();
 const browser = await chromium.launch();
 const errors = [];
 let n = 0;
+let reached = !from;
 for (const [width, theme, zoom, h] of COMBOS) {
   const tag = `${width}${h ? `x${h}` : ''}-${theme}-${zoom === 1 ? '100' : '130'}`;
+  if (tag === from) reached = true;
+  if (!reached) continue;
   section(tag);
   const ctx = await browser.newContext({ viewport: { width, height: h || (width >= 600 ? 960 : 844) }, deviceScaleFactor: h ? 1 : 2, isMobile: width < 600, hasTouch: true, colorScheme: theme });
   const page = await ctx.newPage();
@@ -165,7 +172,10 @@ for (const [width, theme, zoom, h] of COMBOS) {
   await page.evaluate(seedMore);
   await page.reload();
   await booted('#screen[data-view="today"]');
-  const settle = async (ms = 800) => { await page.clock.runFor(ms); await page.waitForTimeout(250); };
+  // A route change's motion runs in real time (Refract's springs, up to about 650 ms) however far the
+  // page's clock is moved on: a screen is checked once it has landed, not while it slides in.
+  const calm = () => Promise.race([page.evaluate(() => window.GH.ui.motion && window.GH.ui.motion.settled && window.GH.ui.motion.settled()), page.waitForTimeout(2000)]).catch(() => {});
+  const settle = async (ms = 800) => { await page.clock.runFor(ms); await page.waitForTimeout(250); await calm(); };
   const act = (name, arg) => page.evaluate(([a, b]) => { const f = window.GH.ui.act[a]; if (f) f({ dataset: { arg: b }, setAttribute() {}, removeAttribute() {}, closest: () => null }); }, [name, arg]);
   const reset = async () => { await page.evaluate(() => { window.GH.ui.closeSheets(); while (window.GH.ui.back()) { /* back to the tab */ } }); await settle(700); };
   // The set-up from the start (over the seeded app, never finished), n screens in; `pick` runs on

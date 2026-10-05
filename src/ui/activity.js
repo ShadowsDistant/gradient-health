@@ -406,7 +406,8 @@
       if (streetsOn()) mountStreets(root, a);
       if (changed && (a.records || []).length && !U.reduced() && G.Refract && G.Refract.burst && !celebrated.has(a.id)) {
         celebrated.add(a.id);
-        setTimeout(() => { const c = root.querySelector('.as-recs-head'); if (c) { try { G.Refract.burst(c, { count: 22 }); } catch (e) { /* ignore */ } } }, 420);
+        // (Refract 1.4's burst is 8 to 14 beads.)
+        setTimeout(() => { const c = root.querySelector('.as-recs-head'); if (c) { try { G.Refract.burst(c, { count: 14 }); } catch (e) { /* ignore */ } } }, 420);
       }
     },
   };
@@ -414,17 +415,14 @@
   U.act.actOpen = (el) => { const id = el.dataset.arg; if (id && A().get(U.S, id)) U.open('activity', id); };
   U.act.actOsm = () => { if (plat()) plat().openUrl('https://www.openstreetmap.org/copyright'); };
 
-  // Options: rename, delete.
+  // Options: rename, delete. A menu that grows out of its button (U.menu).
   U.act.actMenu = (el) => {
     const a = A().get(U.S, el.dataset.arg || openId());
     if (!a) return;
-    U.sheet({
-      title: A().typeOf(a.type).label, size: 'fit',
-      body: `<ul class="rf-list">
-        ${U.row({ icon: 'pencil', tone: 'sky', title: 'Rename', act: 'actRename', arg: a.id, chevron: true })}
-        ${U.row({ icon: 'trash', tone: 'rose', title: `Delete this ${U.esc(A().typeOf(a.type).noun)}`, act: 'actDelete', arg: a.id })}
-      </ul>`,
-    });
+    U.menu(el, [
+      { act: 'actRename', arg: a.id, icon: 'pencil', label: 'Rename' },
+      { act: 'actDelete', arg: a.id, icon: 'trash', label: `Delete this ${A().typeOf(a.type).noun}`, tone: 'critical' },
+    ], { label: `${A().typeOf(a.type).label} options` });
   };
   U.act.actRename = (el) => {
     const a = A().get(U.S, el.dataset.arg || openId());
@@ -513,7 +511,7 @@
     GH.lazy('actmap').then((M) => {
       if (!el.isConnected || !streetsOn()) { el.dataset.state = ''; return; }
       const ctl = M.mount(el, {
-        route, buckets, dark, colors,
+        route, buckets, dark, colors, interactive: true,
         casing: cssVar(box, '--rt-case'), start: cssVar(box, '--rt-start'), end: cssVar(box, '--rt-end'), ring: cssVar(box, '--rt-ring'),
         onReady: () => { el.dataset.state = 'ready'; box.setAttribute('data-streets', 'ready'); },
         onFail: () => fail(),

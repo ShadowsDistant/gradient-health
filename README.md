@@ -91,7 +91,7 @@ Started by mistake? Go back and cancel the workout: nothing from it is saved or 
 
 ## Activities
 
-Going for a run with the dog? Start a run, walk, hike or ride from Today or Health. The app records your route with GPS and counts your steps, even with the screen off, and a notification shows your time and distance with Pause and Finish. Afterwards you get a summary: the map of where you went, distance, pace and splits, elevation, steps, and heart rate and calories from your watch through Health Connect. Save it to Health Connect with its route. Your history and personal records (fastest mile, longest ride and more) live next to it.
+Going for a run with the dog? Start a run, walk, hike or ride from Today or Health. The app records your route with GPS and counts your steps, even with the screen off, and a notification shows your time and distance with Pause and Finish. Afterwards you get a summary: the map of where you went (pinch it with two fingers to zoom in), distance, pace and splits, elevation, steps, and heart rate and calories from your watch through Health Connect. Save it to Health Connect with its route. Your history and personal records (fastest mile, longest ride and more) live next to it.
 
 <p align="center">
   <img src="docs/screenshots/activity.png" width="200" alt="A run's summary: distance, time, pace and five new personal records">
@@ -165,7 +165,9 @@ Pick a size in the chat or in Settings: Fast (0.8B, 533 MB) starts answering soo
 
 ## Made to feel good
 
-Glass bars, switches and buttons over soft colours that drift slowly behind each page, and controls that answer every tap, even a slightly wobbly one. Pages slide away as the next one comes in, and cards glide when something is added or removed. Sheets slide up from the bottom and follow your finger, from a quick glance up to full height. Haptics have 31 distinct feels (a tick for each tab, a bump at the end of a stepper, a timer counting down, a finished set, a new best, a badge) in Light, Medium or Strong, and you can feel each one in Settings. 3D figures appear right away, with a picture of the move until it starts. Light and dark themes, bigger text, reduced motion and increased contrast are all respected.
+Liquid glass over soft colours that drift slowly behind each page. Switches, segmented controls and the tab bar rest as frosted beads, rise into a lens under your finger, follow it and land with a little squash, and they answer every tap, even a slightly wobbly one. Buttons form out of the glass and change shape when their label does, menus grow out of the button you tap, and buttons in the top bar carry over from page to page. Pages slide away as the next one comes in, and cards glide when something is added or removed. Sheets of thick glass slide up from the bottom and follow your finger, from a quick glance up to full height. Scrolling stays smooth: glass stops bending what's behind it while the page moves, and work that can wait waits until it stops. Pages don't zoom by accident; maps do, with two fingers. Haptics have 31 distinct feels (a tick for each tab, a bump at the end of a stepper, a timer counting down, a finished set, a new best, a badge) in Light, Medium or Strong, and you can feel each one in Settings. 3D figures appear right away, with a picture of the move until it starts. Light and dark themes, bigger text, reduced motion and increased contrast are all respected.
+
+The glass, controls, motion, icons and type come from Refract, the liquid glass design system the app is built with. It's credited in Settings, under About.
 
 ## Built on research, and honest about it
 

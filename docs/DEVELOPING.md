@@ -43,7 +43,7 @@ src/platform.js          haptics, vibration, sounds, theme and system bars, inse
 src/ui/core.js           layout, tabs, router, in-place rendering (U.morph), transitions, sync, events
 src/ui/sheet.js          the bottom sheets: detents, dragging, springs (U.sheet in core.js wraps it)
 src/ui/controls.js       switches, segmented controls and single-choice chips (U.choice): the touch
-                         handling that makes every tap count, and the glass at rest
+                         handling that makes every tap count, on Refract's liquid glass
 src/ui/hapticsui.js      the haptics rows for Settings (U.hapticRows) and the Feel each one gallery
 src/ui/you.js            the You tab: profile, badges, plans, your answers, Settings and help
 src/ui/badges.js         the badge medals, the strip, the gallery and the detail and reveal sheets
@@ -56,7 +56,8 @@ src/ui/metric.js         a health number's sheet: its history, chart, and adding
 src/ui/bodymap.js        Progress's body map (front and back, 17 muscles) and the muscle sheet
 src/ui/guide.js          tour (cards over Today after the first workout), first-week checklist, tab
                          tips, What's new
-src/ui/motion.js         route changes, glides, collapse and expand (U.motion)
+src/ui/motion.js         route changes, glides, collapse and expand, glass that forms and changes
+                         shape (U.motion), menus (U.menu)
 src/ui/lazy.js           stand-ins for the parts that load when they're needed (APP_CHUNKS)
 src/ui/answers.js        set-up's answers as You, Plan and Settings list them
 src/ui/review.js         Why this plan, the Coach's review sheet and the weekly report's plan ideas
@@ -86,7 +87,9 @@ npm run build     # dist/gradient-health.html, dist/lazy/, docs/PRIVACY.md and d
 npm run smoke     # end-to-end run in Chromium (needs Playwright); add --dark for dark mode
 npm run test:ui   # layout regressions, food flows, the coach chat, the 3D figure, your plans, controls
                   # (real touches), haptics, motion, the You tab, badges, the plan review, speed
-                  # budgets (Chromium)
+                  # and scrolling budgets (Chromium)
+node test/ui-scroll.mjs --measure [--vs=<dir>] [--ablate=<part>]   # scrolling every main screen: frames
+                  # dropped, the GPU's draw time; A/B against another build, or with one part switched off
 npm run test:llm  # on-device AI runtime in Chromium with a tiny model (see On-device AI)
 node test/sweep.mjs [--quick]   # every screen at 360-600 px, light/dark, 100%/130% text, overflow checks
 npm run apk       # build/gradient-health.apk (see below)
@@ -99,7 +102,7 @@ node test/contact-sheet.mjs [filter,…] [--dark]   # every move's keyframes, to
 Screens return HTML strings. `U.render()` doesn't replace the page: `U.morph()` patches it in
 place, keeping nodes that line up (by `data-key`, `id`, or position and tag). That keeps Refract's
 enhanced controls, running transitions, focus and scroll positions intact, so a tap never makes the
-screen flicker. Parts Refract injects (lens layers, the segmented thumb) and attributes it sets are
+screen flicker. Parts Refract injects (lens layers, the tab bar's pill, the segmented thumb and lens) and attributes it sets are
 left alone. A few conventions:
 
 - Give top-level cards a `data-key` so adding or removing one doesn't shift the rest.
@@ -107,11 +110,20 @@ left alone. A few conventions:
 - `U.roll(value)` for numbers that should roll when they change.
 - The navigation bar is shared: a screen's `<header class="rf-navbar">` is lifted into it.
 - A route change gets fresh content: the old page leaves in a layer of its own while the new one
-  comes in (`U.motion.routeSwap` in `src/ui/motion.js`; pushes and pops slide, tabs cross-fade, the
-  bar's title and buttons cross-fade with them). A re-render of the same route patches in place and
-  glides what moved (FLIP): new blocks rise in, and removed ones fade from where they were for 200 ms
-  before they go, so a test that checks one is gone waits for `U.motion.settled()`. Animate
-  transform and opacity only; `test/ui-motion.mjs` checks for layout properties.
+  comes in (`U.motion.routeSwap` in `src/ui/motion.js`, on Refract 1.4's page motion: pushes and
+  pops slide on the smooth spring, tabs morph in place; the bar's title cross-fades with them). A
+  re-render of the same route patches in place and glides what moved (FLIP): new blocks rise in,
+  and removed ones fade from where they were for 200 ms before they go, so a test that checks one is
+  gone waits for `U.motion.settled()`. Animate transform and opacity only; `test/ui-motion.mjs`
+  checks for layout properties.
+- Glass above the page moves as Refract's material does. The bar's buttons are keyed by what they
+  are (`data-rf-key`; the top-left one by its place, the coach on a tab and Back on a page), so a
+  route change shape-shifts them (`U.motion.shift`, `Refract.shapeshift`): one on both routes keeps
+  its glass, one the new route lacks pinches off, a new one buds out. Today's floating buttons and
+  the workout capsule form and dissolve (`U.motion.glassIn` and `glassOut`: `Refract.materialize`,
+  `dematerialize`), and a button whose words change (`U.floatKey`) flows to its new width. That's
+  Refract's own motion, asked for by name; the lint counts it apart and holds it to what Refract's
+  API animates.
 
 **Parts that load when they're needed.** Set-up (`src/ui/onboarding.js`), the plan review with
 Why this plan (`src/planreview.js`, `src/ui/review.js`), How it works (`src/data/science.js`,
@@ -124,6 +136,31 @@ so a tap rarely waits. A new module that the first frame of Today doesn't need b
 `test/ui-perf.mjs` holds the launch, tab and save budgets (4× CPU), and `test/buildcheck.mjs` the
 page's size.
 
+**The first frame.** At launch Refract sets up what the first render inserts at the start of the
+first frame's read pass rather than before it (`enhance()` in `src/ui/core.js`), so the lens maps it
+draws pixel by pixel in JavaScript land in the frame after the first paint, and the tab bar's lens
+(the glass over the picked tab) shows from the bar's second frame (`src/styles/perf.css`). The
+controls take its liquid engine only when touched (Refract, the design system, below).
+
+**Scrolling, and work that can wait.** A fling should only move what's already drawn
+(`src/styles/perf.css`). While the page scrolls (`#app[data-scrolling]`, set in `core.js` and
+cleared 150 ms after the last scroll) the glass over it keeps its blur, rim and light but doesn't
+refract, and the background glow holds still; the glow also stops drifting 20 s after the last
+touch, key or scroll (`#app[data-idle]`), and fades out in its gradients' own stops rather than
+through a mask. The bar's frosted edge is a single blur, drawn only while it shows, and whether it
+shows comes from an IntersectionObserver on the large title, so a scroll reads nothing from the
+layout. Under the workout player and set-up the page's bars and glass are hidden. Set-up's cards are
+near-opaque rather than frosted, and its glow holds still while it scrolls. The badges
+gallery lays out and draws a block only as it comes near (`content-visibility: auto`; on Health,
+Progress, Settings and the moves it made no difference and moved rows by 1 px, so they don't); a
+page opened again where it was left gets the heights its blocks had,
+so it opens on what was showing. Medals share one set of gradients. Progress bars shine once, as
+they show or change, not forever. Work that can wait (the 3D figure's warm-up and stills, Plan's
+tiles, a background re-render such as Today's insight line) waits for `U.calm()`: no scroll or touch
+for 400 ms and no sheet moving (`U.whenCalm(fn)` runs it then). `test/ui-scroll.mjs` scrolls every
+main screen at 4× CPU, traced, and holds the budgets; `--vs=<dir>` compares two builds run by run, and
+`--ablate=<part>` switches one part off to show what it costs.
+
 **Saving.** `U.save()` never writes in the tap that changed something. `GH.store` waits for the page
 to be idle (a second at most) and hands the JSON to `AndroidBridge.saveAsync`, which writes it on its
 own thread, so a burst of taps is one write. A waiting save is written at once when the page is
@@ -131,6 +168,74 @@ hidden or goes away. Each save also fires `gh-change` on `document` (badges list
 `GH.migrations` holds the upgrades `store.migrate` runs on a loaded state. A restored backup goes
 through `store.sanitize` first: a size cap, no `__proto__` keys, and every field's type and range
 checked, so a crafted file can't break the app.
+
+## Refract, the design system
+
+Every screen is made of Refract, a liquid glass design system: its glass, controls, motion, icons,
+type and tokens. `vendor/refract/` holds Refract 1.4.0 exactly as its design system ships it
+(`vendor/refract/SOURCE.md` says where from, with each file's SHA-256, which `test/buildcheck.mjs`
+checks). It arrives minified, so the app never patches it: what the app needs differently goes
+through Refract's API, its attributes and the app's own CSS. To update it, copy the new
+`bundle.js`, `bundle.css`, `index.d.ts` and `tokens.json` and write their hashes in `SOURCE.md`.
+`scripts/build.mjs` ships the bundle as it is and drops the style sheet's demo landscapes
+(`.rf-art`, `.rf-scene`, about 49 KB the app doesn't use; `pruneCss`).
+
+What the app turns off, and why:
+
+- **Refract's haptics** (`data-rf-haptics="off"` on `<html>`, `src/shell.html`): the app's own
+  play instead (`src/platform.js`, `Haptics.java`), with their strengths and the on/off setting.
+  Refract's would buzz a second time on every control.
+- **Refraction by default** (`Refract.init(root, { lens: false })`, `RF_INIT` in `src/ui/core.js`):
+  only glass marked `data-lens` refracts, since each lens is redrawn every frame the page moves
+  under it, and none refracts while the page scrolls (its lens layer's filter loses the map,
+  `src/styles/perf.css`).
+- **The light while busy**: on a phone, glass rims follow how it's tilted. The light holds still
+  while the page scrolls, while the workout player or a live activity is open, with Moving
+  background off and under reduced motion, and follows the tilt again when things are calm
+  (`U.steadyLight`, `core.js`).
+- **Click effects where a drag starts**: Refract's ripple, click ring and icon effects stay (they're
+  part of its feel), except on Plan's week strip, whose day pills are dragged
+  (`data-rf-effect="none"`).
+
+The controls (`src/ui/controls.js`): Refract 1.4's own switch and segmented control take any
+movement past 3 px as a drag, so a tap that wobbles would be lost. The app replaces those two
+behaviours (and adds the chip choice) with its own gesture rules (`U.switchGesture`: 12 px to drag,
+10 px up or down to scroll, the tap rescue), but draws them with Refract's liquid engine
+(`Refract.Liquid`): a frosted bead that rises into a lens under the finger, follows it on springs
+that keep their speed, and lands with a squash, exactly as Refract's own. A switch's knob and a
+segmented control's bead are the engine's only while they're touched or moving: at rest Refract's
+style sheet puts the knob at either end, and the bead sits where a transform puts it. The engine's
+lens is drawn pixel by pixel in JavaScript, so a control costs nothing until it's touched (at launch
+these held up the first frames).
+A resting bead's lens is a backdrop filter redrawn every frame the page moves behind it, for an
+edge hidden under the frost, so it only works while the bead is lifted (`data-lifted`;
+`src/styles/controls.css`). The tab bar is Refract's own (its pill and its lens); the app keeps
+the bar from panning and ticks once per tab a drag passes.
+
+Re-renders keep the parts Refract adds inside components (`INJECTED` in `core.js`: the tab bar's
+pill, the segmented lens, the click ripple and the rest) and the attributes it sets (`KEEP_ATTR`).
+
+Where the app uses Refract 1.4's newer parts:
+
+- **Menus**: a button whose sheet would only be a list of actions opens Refract's menu instead,
+  thick glass that grows out of the button and dissolves back into it (`U.menu` in
+  `src/ui/motion.js`; the player's, an activity's, a plan day's and the chat's options). Each item
+  is its action's own button; the arrow keys, Home, End and a letter move through it, Escape, a tap
+  outside and Android's Back close it, and focus goes back to the button. Opened from a sheet, it
+  goes in the sheet's dialog. A sheet that holds more than a list stays a sheet.
+- **Sheets** (`src/ui/sheet.js`, `src/styles/sheet.css`): the panel's material is a layer of
+  Refract's thick glass at medium height (its frost and the rim that catches the light), and solid
+  at full height, while it moves and while its content scrolls.
+- **Page dots**: Refract's `.rf-pagedots` (its ink worm stretches to the page and splats there) for
+  the badge reveal and the tour; they follow the page however it's turned (`aria-current`).
+- **Plan's week strip**: the day picked is a bead of the liquid engine, as the segmented controls'
+  thumbs are; it travels between days and holds the weekday while the weeks slide under it.
+- **Bursts** are 8 to 14 beads, Refract 1.4's range (`test/ui-motion.mjs` checks every count).
+- **Glass in the content** is for controls that float: a search field in a page is a `fill-3` well,
+  and a page's own buttons are filled, not glass.
+
+The credit: Settings > About has "Built with Refract" with its mark (`U.refractMark`, drawn by
+Refract's `.rf-mark`), and the open-source licenses sheet opens with it.
 
 ## 3D exercise figure
 
@@ -160,8 +265,12 @@ Two losses while figures are on screen keep that session on the flat figure.
 In the app, `figure()` in `src/ui/player.js` hands the player and move sheets one
 controller that swaps what's underneath it: the flat figure while the chunk is still loading, 3D once
 it's there, and flat again if `onFallback` fires. Set-up fetches the chunk. The GPU warm-up
-(`U.warmFigure`) runs about 8 seconds after launch only when today is a workout day, or at once when a
-finger lands on something that opens a figure. Settings keeps the choice in `profile.prefs.figure` (`'3d'` or `'flat'`), with
+(`U.warmFigure`) runs about 8 seconds after launch only when today is a workout day (once it's calm,
+`U.calm()`: not in the middle of a scroll or a touch), or at once when a finger lands on something
+that opens a figure. `GH.figure3d.warm()` turns true when the warm-up has finished compiling its
+shaders, not when it starts: a figure opened in between would wait on the compile, so it shows its
+kept still meanwhile. Stills of today's figures (for the next launch) start 4 seconds after the
+warm-up, one per idle moment while no figure is on screen. Settings keeps the choice in `profile.prefs.figure` (`'3d'` or `'flat'`), with
 `figSkin` and `figShirt` for the look. The tempo strip under a figure comes from the move's `rep`
 steps and lights up from `onPhase`.
 

@@ -218,6 +218,7 @@ async function run(dark) {
   await page.evaluate(() => window.GH.ui.closeSheets());
   await settle(600);
   await page.evaluate(() => window.GH.ui.open('science', 'rir'));
+  await settle(1400); // the page's push, then the rule's sheet rising over it
   await shot('science');
   // The rule's sheet that "rir" opened closes before the next shots.
   await page.evaluate(() => window.GH.ui.closeSheets());

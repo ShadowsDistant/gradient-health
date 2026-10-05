@@ -52,11 +52,62 @@ check('7-day charts stay inside their plot', charts.every((c) => c.svg <= c.plot
 await page.evaluate(() => window.GH.ui.closeSheets());
 await settle(900);
 
+section('Pages don\'t zoom');
+// Two fingers spreading apart (a pinch to zoom in) leave the page at its size: the viewport says so
+// (src/shell.html), the root takes no pinch (touch-action), and the WebView has zoom off (MainActivity).
+{
+  const cdp = await ctx.newCDPSession(page);
+  const pinch = async (x, y, spread) => {
+    let t = Date.now() / 1000;
+    const at = (d) => [{ x: x - 24 - d, y, id: 1 }, { x: x + 24 + d, y, id: 2 }];
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(0), timestamp: t });
+    for (let i = 1; i <= 12; i++) { t += 0.016; await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at((spread / 2) * (i / 12)), timestamp: t }); }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [], timestamp: t + 0.016 });
+  };
+  const vp = await page.evaluate(() => document.querySelector('meta[name="viewport"]').content);
+  check('the viewport doesn\'t let the page zoom', /maximum-scale=1(?![\d.])/.test(vp) && /user-scalable=no/.test(vp), vp);
+  check('nor does the root take a pinch', await page.evaluate(() => getComputedStyle(document.documentElement).touchAction === 'pan-x pan-y' && getComputedStyle(document.body).touchAction === 'pan-x pan-y'));
+  await pinch(195, 420, 200);
+  await page.waitForTimeout(500);
+  const scale = await page.evaluate(() => window.visualViewport.scale);
+  check('a pinch on Today leaves the page at its size', scale === 1, scale);
+  await cdp.detach();
+}
+
+section('Refract\'s light while the page scrolls');
+// On a phone the glass rims follow how it's tilted. While the page scrolls the light holds still
+// where the rims are (they mustn't swing round to the light's resting angle and back), and it
+// follows the tilt again once the page is still.
+{
+  const r = await page.evaluate(async () => {
+    const L = window.Refract.light;
+    const glass = document.querySelector('#tabbar .rf-tabbar-bar');
+    const frame = () => new Promise((f) => requestAnimationFrame(f));
+    const tilt = new Event('deviceorientation');
+    Object.defineProperty(tilt, 'beta', { value: 70 });
+    Object.defineProperty(tilt, 'gamma', { value: 30 });
+    window.dispatchEvent(tilt);
+    for (let i = 0; i < 90; i++) await frame();
+    const rest = L.current(glass), base = L.current();
+    const sc = document.getElementById('screen');
+    const top = sc.scrollTop, seen = [];
+    for (let i = 0; i < 12; i++) { sc.scrollTop += 40; sc.dispatchEvent(new Event('scroll')); await frame(); seen.push({ mode: L.mode(), at: L.current(glass) }); }
+    await new Promise((f) => setTimeout(f, 400));
+    await frame();
+    const after = L.mode();
+    sc.scrollTop = top;
+    return { rest, base, seen, after };
+  });
+  check('the tilt turns the rims (away from the resting angle)', Math.abs(r.rest - r.base) > 10, r);
+  check('scrolling holds the light still, where the rims were', r.seen.every((x) => x.mode === 'fixed' && Math.abs(x.at - r.rest) < 2), r.seen.map((x) => `${x.mode} ${Math.round(x.at)}`).join(', '));
+  check('then it follows the tilt again', r.after === 'pointer', r.after);
+}
+
 section('Type in the tab bar, buttons and chips');
 const type = await page.evaluate(() => {
   const label = document.querySelector('.rf-tab[aria-current="page"] .rf-tab-label');
-  const lens = document.querySelector('.rf-tabbar-lens');
-  const lr = label.getBoundingClientRect(), pr = lens.getBoundingClientRect();
+  const pill = document.querySelector('.rf-tabbar-pill');
+  const lr = label.getBoundingClientRect(), pr = pill.getBoundingClientRect();
   const fs = (sel) => { const el = document.querySelector(sel); return el ? getComputedStyle(el).fontSize : null; };
   return { tabSize: getComputedStyle(label).fontSize, inside: lr.left >= pr.left - 0.5 && lr.right <= pr.right + 0.5, btn: fs('#screen .rf-btn:not([data-size])'), chip: fs('#screen .rf-chip') };
 });
@@ -66,7 +117,7 @@ check('buttons keep Refract\'s size', type.btn === null || type.btn !== '16px', 
 check('chips keep Refract\'s size', type.chip === null || type.chip === '13px', type.chip);
 for (const t of ['today', 'plan', 'health', 'progress', 'you']) {
   await tab(t);
-  const ok = await page.evaluate(() => { const l = document.querySelector('.rf-tab[aria-current="page"] .rf-tab-label').getBoundingClientRect(); const p = document.querySelector('.rf-tabbar-lens').getBoundingClientRect(); return l.left >= p.left - 0.5 && l.right <= p.right + 0.5; });
+  const ok = await page.evaluate(() => { const l = document.querySelector('.rf-tab[aria-current="page"] .rf-tab-label').getBoundingClientRect(); const p = document.querySelector('.rf-tabbar-pill').getBoundingClientRect(); return l.left >= p.left - 0.5 && l.right <= p.right + 0.5; });
   check(`"${t}" label fits its pill`, ok);
 }
 
@@ -125,16 +176,24 @@ check('the page doesn\'t scroll sideways', tour.scroll <= 0, tour.scroll);
 check('its labels aren\'t cut off', tour.labels);
 await page.click('.tour-sheet [data-act="tourNext"]'); await settle(900);
 
-section('The current tab is glass');
+section('The current tab is a bead of glass');
+// Refract 1.4's tab bar: the current tab sits on a frosted pill (.rf-tabbar-pill) with a lens over its
+// label (.rf-tabbar-lens) that only bends what's under it while lifted (src/styles/controls.css).
 await tab('plan');
 await settle(900);
-const lens = () => page.evaluate(() => { const s = getComputedStyle(document.querySelector('#tabbar .rf-tabbar-lens')); return { bf: s.backdropFilter, shadow: s.boxShadow }; });
-let ln = await lens();
-check('at rest the current tab sits in a glass lens', ln.bf !== 'none' && /inset/.test(ln.shadow), JSON.stringify(ln));
+const bead = () => page.evaluate(() => {
+  const pill = document.querySelector('#tabbar .rf-tabbar-pill'), lens = document.querySelector('#tabbar .rf-tabbar-lens');
+  const l = document.querySelector('.rf-tab[aria-current="page"] .rf-tab-label').getBoundingClientRect();
+  const p = pill.getBoundingClientRect();
+  const face = getComputedStyle(pill, '::before');
+  return { under: l.left >= p.left - 0.5 && l.right <= p.right + 0.5, fill: face.backgroundColor, lensFilter: getComputedStyle(lens, '::after').backdropFilter, lifted: lens.hasAttribute('data-lifted') };
+});
+let bd = await bead();
+check('at rest the current tab sits on a frosted pill, its lens off', bd.under && bd.fill !== 'rgba(0, 0, 0, 0)' && bd.lensFilter === 'none' && !bd.lifted, JSON.stringify(bd));
 await page.evaluate(() => { window.GH.ui.S.profile.prefs.contrast = true; window.GH.ui.applyPrefs(); });
 await settle(600);
-ln = await lens();
-check('with increased contrast it stays a plain wash', ln.bf === 'none' && !/inset/.test(ln.shadow), JSON.stringify(ln));
+bd = await bead();
+check('with increased contrast the pill is solid and there is no lens', bd.under && bd.lensFilter === 'none', JSON.stringify(bd));
 await page.evaluate(() => { window.GH.ui.S.profile.prefs.contrast = false; window.GH.ui.applyPrefs(); });
 await settle(600);
 
@@ -318,6 +377,42 @@ check('a read finishing while the app is open is folded in', late.steps === 5432
 await settle(600);
 check('and the row shows it', /^Every 15 minutes · last at /.test((await bgRow()).sub), (await bgRow()).sub);
 await page.click('#topbar [data-act="back"]'); await settle();
+
+section('Reps left, answered after the rest');
+// With the rest over and the question still open, an answer stays on screen and Continue (right
+// under it) moves on: the screen never changes under a finger already on its way to Continue, which
+// would land on the next set's Done and log it.
+// Tomorrow: today's workout was cancelled with a set done above, so today counts as done.
+await page.clock.fastForward('24:00:00');
+await settle(700);
+await tab('today');
+await page.evaluate(() => window.GH.ui.act.startWorkout());
+await page.waitForSelector('.player:not([hidden]) .pl-name');
+await settle(600);
+const asked = await page.evaluate(() => {
+  const U = window.GH.ui, a = U.S.active;
+  const k = a.steps.findIndex((st, i) => i >= a.idx && st.kind === 'set' && st.askRir);
+  if (k < 0) return { err: 'no set asks' };
+  a.idx = k;
+  U.act.plDone();
+  U.act.plSkipRest();
+  const p = document.querySelector('.player');
+  return { rir: !!p.querySelector('.pl-rir'), cont: !!p.querySelector('.pl-actions [data-act="plContinue"]'), idx: a.idx };
+});
+check('the rest over with the question open: the question and Continue', asked.rir && asked.cont, JSON.stringify(asked));
+await page.click('.player .pl-rir input[value="12"]', { force: true });
+await settle(900);
+const stayed = await page.evaluate(() => {
+  const p = document.querySelector('.player');
+  return { picked: !!p.querySelector('.pl-rir input[value="12"]:checked'), cont: !!p.querySelector('.pl-actions [data-act="plContinue"]'), idx: window.GH.ui.S.active.idx };
+});
+check('an answer stays on screen with Continue (it doesn\'t move on by itself)', stayed.picked && stayed.cont && stayed.idx === asked.idx, JSON.stringify(stayed));
+await page.click('.player [data-act="plContinue"]');
+await settle(700);
+const moved = await page.evaluate(() => { const p = document.querySelector('.player'); return { rir: !!p.querySelector('.pl-rir'), done: !!p.querySelector('.pl-actions [data-act="plDone"], .pl-actions [data-act="plStartTimer"]') }; });
+check('and Continue moves on to the next set', !moved.rir && moved.done, JSON.stringify(moved));
+await page.evaluate(() => { const U = window.GH.ui; U.act.plKeep(); window.GH.brain.cancelWorkout(U.S); window.GH.store.save(U.S); U.render(); });
+await settle(700);
 
 section('Console');
 check('no console errors', errors.length === 0, errors.join(' | '));

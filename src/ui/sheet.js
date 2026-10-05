@@ -274,8 +274,12 @@
     el.setAttribute('data-size', size);
     const tid = 'sh' + Math.random().toString(36).slice(2, 8);
     el.setAttribute('aria-labelledby', tid);
+    // The panel's material is a layer of Refract's thick glass under its content (sheet.css): glass at
+    // medium height, solid at full height and while it moves. data-allow-nested keeps it out of the
+    // rules that flatten the glass controls in a sheet.
     el.innerHTML = `<div class="gh-sheet-scrim" aria-hidden="true"></div>
       <div class="gh-sheet-panel">
+        <div class="gh-sheet-glass rf-glass" data-variant="thick" data-allow-nested aria-hidden="true"></div>
         <div class="rf-sheet-grabber"${size === 'auto' ? ' role="button" tabindex="0" aria-label="Resize sheet"' : ' aria-hidden="true"'}></div>
         <div class="rf-sheet-header">
           <button type="button" class="rf-btn" data-shape="circle" data-size="sm" aria-label="Close" data-sheet-close>${U.icon('close')}</button>

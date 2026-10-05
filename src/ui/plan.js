@@ -86,7 +86,6 @@
       const at = list.findIndex((x) => x.day === view.day);
       const focusDay = at >= 0 ? view.day : (list.find((x) => x.isToday) || list[0]).day;
       return `<div class="pw-page" data-key="p${idx}" style="--n:${idx}"${idx !== page ? ' aria-hidden="true" inert' : ''}>
-        <span class="pw-sel${at < 0 ? ' is-off' : ''}" aria-hidden="true" style="--i:${Math.max(0, at)}"></span>
         <ul class="plan-list pw-days" role="tablist" aria-label="${idx ? 'Next week' : 'This week'}">${list.map((e) => pill(e, day, focusDay)).join('')}</ul>
       </div>`;
     };
@@ -97,7 +96,7 @@
         ${page ? `<button type="button" class="rf-btn pw-wk" data-variant="plain" data-size="sm" data-act="planWeek" data-arg="0">${U.icon('chevron-left')}This week</button>`
     : `<button type="button" class="rf-btn pw-wk" data-variant="plain" data-size="sm" data-act="planWeek" data-arg="1">Next week${U.icon('chevron-right')}</button>`}
       </div>
-      <div class="pw-viewport"><div class="pw-track" style="--page:${page}">${pageHtml(w.days, 0)}${pageHtml(w.next.days, 1)}</div></div>
+      <div class="pw-viewport" data-rf-effect="none"><div class="pw-track" style="--page:${page}">${pageHtml(w.days, 0)}${pageHtml(w.next.days, 1)}</div></div>
     </div>`;
   }
 
@@ -353,7 +352,8 @@
     after(screen, S, day) {
       const st = screen.querySelector('.pw-strip');
       if (st) wireStrip(st);
-      travel(screen);
+      // The selection's bead goes to the day picked once this render's layout is in (it measures).
+      if (st && U.readSoon) U.readSoon(() => beadTo(screen)); else if (st) beadTo(screen);
       drawThumbs(screen, S, day);
       if (U.drawPlanThumbs) U.drawPlanThumbs(screen);
     },
@@ -379,22 +379,69 @@
   };
 
   /* ---------------------------------------------------------------- motion */
-  // The selection slides like a drop of glass: it stretches while it travels, then settles.
-  let lastSel = null;
-  function travel(screen) {
-    const vp = screen.querySelector('.pw-viewport');
-    if (!vp) { lastSel = null; return; }
-    const page = Number(vp.querySelector('.pw-track').style.getPropertyValue('--page')) || 0;
-    const sel = vp.querySelectorAll('.pw-sel')[page];
-    if (!sel) return;
-    const now = `${page}:${sel.style.getPropertyValue('--i').trim()}`;
-    if (lastSel && lastSel !== now && lastSel.split(':')[0] === String(page) && !U.reduced()) {
-      sel.setAttribute('data-traveling', '');
-      clearTimeout(sel._t);
-      sel._t = setTimeout(() => sel.removeAttribute('data-traveling'), 240);
-    }
-    lastSel = now;
+  // The selection is a bead of Refract's liquid glass (Refract.Liquid, driven as the segmented
+  // controls' thumbs are in src/ui/controls.js): a tinted face under the days and a lens over them,
+  // Refract's own segmented bead (its classes, so its material and its fallbacks for reduced
+  // transparency and increased contrast). Picking a day, it rises into glass, travels there and lands
+  // with a squash. Across weeks it holds the weekday picked, lifted into a lens, while the weeks slide
+  // under it (the days pass through the lens), and settles once the new week is in; a swipe lifts it
+  // the same way. With reduced motion it's simply placed. Its parts are made here, not in the markup:
+  // a patch leaves them where they are (core.js), and the next frame's read pass places them.
+  const BEAD = { lift: [1.08, 1.12], stretch: 0.22, lens: { zoom: 1.16, refract: 2.5, rim: 0.25, bezel: 10, dispersion: 0.04 } };
+  const bead = { vp: null, L: null, parts: null, page: -1, day: null, w: 0, t: 0 };
+  function beadParts(vp) {
+    const make = (cls, first) => {
+      let el = vp.querySelector(`:scope > .${cls.split(' ')[0]}`);
+      if (!el) {
+        el = doc.createElement('span');
+        el.className = cls;
+        el.setAttribute('aria-hidden', 'true');
+        if (first) vp.insertBefore(el, vp.firstChild); else vp.appendChild(el);
+      }
+      return el;
+    };
+    return [make('pw-bead rf-segmented-thumb', true), make('pw-bead-lens rf-segmented-lens', false)];
   }
+  function beadTo(screen) {
+    const vp = screen.querySelector('.pw-viewport');
+    if (!vp || !vp.isConnected) return;
+    const track = vp.querySelector('.pw-track');
+    const page = Number(track && track.style.getPropertyValue('--page')) || 0;
+    const pg = vp.querySelectorAll('.pw-page')[page];
+    const pillEl = pg && pg.querySelector('.pw-pill[aria-selected="true"]');
+    const li = pillEl && pillEl.closest('.pw-day');
+    const parts = beadParts(vp);
+    if (vp.hasAttribute('data-no-sel') === !!li) vp.toggleAttribute('data-no-sel', !li);
+    if (!li) return;
+    const x = li.offsetLeft, w = li.offsetWidth, day = pillEl.dataset.arg;
+    const rf = G.Refract;
+    if (bead.vp !== vp || !bead.L) {
+      if (bead.L) bead.L.destroy();
+      clearTimeout(bead.t);
+      Object.assign(bead, { vp, parts, L: rf && rf.Liquid ? new rf.Liquid(parts, BEAD) : null, page: -1, day: null, w: 0, t: 0 });
+    }
+    if (w !== bead.w) { bead.w = w; for (const p of parts) p.style.inlineSize = `${w}px`; }
+    const col = String(Array.prototype.indexOf.call(li.parentNode.children, li));
+    if (vp.getAttribute('data-sel') !== col) vp.setAttribute('data-sel', col); // the column picked
+    const L = bead.L;
+    const fresh = bead.day == null;
+    const weeks = !fresh && page !== bead.page;
+    const moved = !fresh && day !== bead.day;
+    bead.page = page; bead.day = day;
+    if (!L) { for (const p of parts) p.style.transform = `translateX(${x}px)`; return; }
+    // The same day (another re-render, a new size): put where it is, unless it's on its way.
+    if (fresh || U.reduced() || (!weeks && !moved)) { if (!bead.t && !L.held && !L.x.moving) L.place(x); return; }
+    clearTimeout(bead.t);
+    if (weeks) {
+      // The weeks slide under it (CSS, on the smooth spring): it lands as the new one settles.
+      L.grab();
+      const ms = (rf.duration ? rf.duration('duration-spring-smooth', 640) : 640) * 0.55;
+      bead.t = setTimeout(() => { bead.t = 0; L.travel(x, { lift: true }); L.drop(); }, ms);
+    } else L.travel(x, { lift: true });
+  }
+  // A swipe of the strip lifts it, and a swipe that comes back to the same week lets it down again.
+  function beadLift() { if (bead.L && !U.reduced()) { clearTimeout(bead.t); bead.t = 0; bead.L.grab(); } }
+  function beadDrop() { if (bead.L && !bead.t) bead.L.drop(); }
   // The picked day's card slides in from the side it came from.
   function slideCard(dir) {
     if (U.reduced()) return;
@@ -484,13 +531,12 @@
     }
     schedule();
   }
-  // When the person last touched or scrolled: a 3D still waits until they've stopped for a moment
-  // (and for a sheet to stop moving), since drawing one takes a few frames' worth of work.
-  let lastInput = 0;
-  if (doc) for (const ev of ['touchstart', 'touchmove', 'pointerdown', 'wheel', 'scroll']) doc.addEventListener(ev, () => { lastInput = Date.now(); }, { passive: true, capture: true });
-  const calm = () => Date.now() - lastInput > 400 && !doc.documentElement.hasAttribute('data-sheet-moving');
+  // Stills, flat or 3D, wait until it's calm (U.calm in core.js: no scroll or touch for a moment and
+  // no sheet moving), since drawing one takes a frame's worth of work or more; then they're drawn.
+  const calm = () => !U.calm || U.calm();
   function schedule() {
     if (pending || !(queue.size || queue3d.size)) return;
+    if (!calm()) { pending = -1; U.whenCalm(() => { pending = 0; schedule(); }); return; }
     const soon = queue.size > 0;
     pending = G.requestIdleCallback ? G.requestIdleCallback(drawSome, { timeout: soon ? 150 : 600 }) : setTimeout(() => drawSome(null), soon ? 16 : 250);
   }
@@ -498,6 +544,7 @@
     pending = 0;
     const t0 = Date.now();
     for (const key of queue) {
+      if (!calm()) break;
       queue.delete(key);
       const svg = drawStill(key);
       const id = key.split('|')[0];
@@ -565,10 +612,13 @@
   // Swipe the strip for next week (it follows the finger); a long press on a workout picks it up to
   // drop on a free day.
   const wired = new WeakSet();
+  const holds = new WeakMap(); // a strip's viewport → its touchmove listener for a picked-up workout
+  const armed = new WeakSet(); // the pills that have it
   let blockClick = 0;
   function wireStrip(stripEl) {
     const vp = stripEl.querySelector('.pw-viewport');
-    if (!vp || wired.has(vp)) return;
+    if (!vp) return;
+    if (wired.has(vp)) { armPills(vp); return; }
     wired.add(vp);
     let g = null;
     const track = () => vp.querySelector('.pw-track');
@@ -589,6 +639,7 @@
           g.mode = 'swipe';
           try { vp.setPointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
           vp.setAttribute('data-swiping', '');
+          beadLift();
         } else if (Math.abs(dy) > 12) { g = null; return; } else return;
       }
       // Past either end it gives, like a rubber band.
@@ -617,7 +668,7 @@
       }
       track().style.removeProperty('--drag');
       blockClick = Date.now() + 350;
-      if (page !== was.page) showWeek(page);
+      if (page !== was.page) showWeek(page); else beadDrop();
     };
     vp.addEventListener('pointerup', end);
     vp.addEventListener('pointercancel', end);
@@ -638,8 +689,12 @@
       const again = vp.querySelector(`.pw-pill[data-arg="${d}"]`);
       if (again) again.focus();
     });
-    // While a workout is picked up, the finger moves it, not the page.
-    vp.addEventListener('touchmove', (ev) => { if (drag && ev.cancelable) ev.preventDefault(); }, { passive: false });
+    // While a workout is picked up, the finger moves it, not the page: a touchmove listener that can
+    // cancel the scroll. Whether a touch's moves can be cancelled is settled as it starts, before the
+    // hold makes it a drag, so the listener is on the pills that can be picked up (armPills), not on
+    // the whole strip: a scroll that starts anywhere else doesn't wait for the page to answer.
+    holds.set(vp, (ev) => { if (drag && ev.cancelable) ev.preventDefault(); });
+    armPills(vp);
 
     let drag = null;
     function startDrag(ev, p) {
@@ -684,6 +739,17 @@
       if (ev.type !== 'pointercancel' && dr.over != null) { U.haptic('drop'); moveTo(dr.from, dr.over); }
       // Let go anywhere else and it glides back to its day.
       else if (was && !U.reduced() && dr.li.animate) dr.li.animate([{ transform: was }, { transform: 'none' }], { duration: 320, easing: EASE });
+    }
+  }
+
+  // (After every render: a pill a render made gets its listener.)
+  function armPills(vp) {
+    const hold = holds.get(vp);
+    if (!hold) return;
+    for (const p of vp.querySelectorAll('.pw-pill[data-drag]')) {
+      if (armed.has(p)) continue;
+      armed.add(p);
+      p.addEventListener('touchmove', hold, { passive: false });
     }
   }
 

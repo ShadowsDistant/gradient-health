@@ -1,7 +1,8 @@
 // The badge gallery, detail sheet, reveal and share card, in Chromium at phone size: the first 1.6
 // load (history earns its badges, all seen), the You tab's card, the gallery with its filter, a
-// badge's sheet, a workout that earns one (the player's own card, then the reveal), a toast for one
-// earned elsewhere, no checks while the player is open, and the share card: a 1080×1350 PNG with no
+// badge's sheet, a workout that earns one (the player's own card, then the reveal; several at once
+// page with Refract's page dots, which follow the page however it's turned), a toast for one earned
+// elsewhere, no checks while the player is open, and the share card: a 1080×1350 PNG with no
 // name unless it's turned on, handed to the Android bridge (or downloaded in a browser).
 // Usage: node test/ui-badges.mjs [--dark] [--shots]
 import { createRequire } from 'node:module';
@@ -113,7 +114,7 @@ check('no sheet covers the Next screen: Done is right there', await S(() => !doc
 await shot('04-next');
 await page.click('#player .bdg-card');
 await settle(1800);
-const rev = await S(() => { const d = document.querySelector('dialog.bdg-reveal-sheet[open]'); return d && { title: d.querySelector('.rf-sheet-title').textContent, pages: [...d.querySelectorAll('.bdg-page')].map((p) => p.dataset.page), text: d.textContent.replace(/\s+/g, ' '), sprung: !!d.querySelector('.bdg-page .bdg-stage.is-in'), share: !!d.querySelector('[data-act="badgeShareCur"]'), done: !!d.querySelector('[data-act="badgeDone"]'), dots: d.querySelectorAll('.bdg-dot').length }; });
+const rev = await S(() => { const d = document.querySelector('dialog.bdg-reveal-sheet[open]'); return d && { title: d.querySelector('.rf-sheet-title').textContent, pages: [...d.querySelectorAll('.bdg-page')].map((p) => p.dataset.page), text: d.textContent.replace(/\s+/g, ' '), sprung: !!d.querySelector('.bdg-page .bdg-stage.is-in'), share: !!d.querySelector('[data-act="badgeShareCur"]'), done: !!d.querySelector('[data-act="badgeDone"]'), dots: d.querySelectorAll('.bdg-dots > .rf-dot').length }; });
 check('the card opens the reveal: the medal springs in, then tier, rarity and "Earned today"', rev && rev.pages.includes('earlyBird') && rev.sprung && /Bronze · Common/i.test(rev.text) && /Earned today/.test(rev.text), rev);
 check('with Share and Done, and dots when there are several', rev && rev.share && rev.done && (rev.pages.length > 1 ? rev.dots === rev.pages.length : rev.dots === 0), rev && rev.pages);
 await shot('05-reveal');
@@ -126,12 +127,36 @@ await settle(1200);
 section('Several at once: pages with dots');
 await S(() => { const S = window.GH.ui.S, now = Date.now(), d = window.GH.ui.today(); for (const id of ['w25', 'streak30', 'halfMarathon']) S.achievements.earned[id] = { day: d, at: now }; window.GH.ui.badgeReveal(['w25', 'streak30', 'halfMarathon']); });
 await settle(1200);
-const multi = await S(() => { const d = document.querySelector('dialog.bdg-reveal-sheet[open]'); return { title: d.querySelector('.rf-sheet-title').textContent, pages: d.querySelectorAll('.bdg-page').length, dots: d.querySelectorAll('.bdg-dot').length, sel: [...d.querySelectorAll('.bdg-dot')].findIndex((x) => x.getAttribute('aria-selected') === 'true') }; });
-check('three new badges: three pages and three dots, the first one showing', multi.title === '3 new badges' && multi.pages === 3 && multi.dots === 3 && multi.sel === 0, multi);
-await page.click('dialog.bdg-reveal-sheet .bdg-dot[data-arg="2"]');
+// Refract's page dots: the dot marked current (aria-current) is the page showing, and its ink worm
+// sits on that dot.
+const dotsNow = () => S(() => {
+  const d = document.querySelector('dialog.bdg-reveal-sheet[open]'), row = d.querySelector('.bdg-dots');
+  const dots = [...row.querySelectorAll(':scope > .rf-dot')], sel = dots.findIndex((x) => x.getAttribute('aria-current') === 'true');
+  const worm = row.querySelector('.rf-pagedots-worm'), at = worm && parseFloat(worm.style.getPropertyValue('--_wx'));
+  const on = sel >= 0 && worm ? Math.abs(at + 9 - (dots[sel].offsetLeft + dots[sel].offsetWidth / 2)) <= 1 : false;
+  const box = d.querySelector('.bdg-pages');
+  return { dots: dots.length, sel, worm: !!worm, wormOn: on, page: Math.round(box.scrollLeft / box.clientWidth), pagedots: row.matches('.rf-pagedots') };
+});
+const multi = await S(() => { const d = document.querySelector('dialog.bdg-reveal-sheet[open]'); return { title: d.querySelector('.rf-sheet-title').textContent, pages: d.querySelectorAll('.bdg-page').length }; });
+let pd = await dotsNow();
+check('three new badges: three pages and three of Refract\'s page dots, the first one showing', multi.title === '3 new badges' && multi.pages === 3 && pd.pagedots && pd.dots === 3 && pd.sel === 0 && pd.worm && pd.wormOn, { multi, pd });
+await page.click('dialog.bdg-reveal-sheet .bdg-dots > .rf-dot:nth-child(3)');
 await settle(1500);
-const third = await S(() => { const d = document.querySelector('dialog.bdg-reveal-sheet[open]'); const p = d.querySelectorAll('.bdg-page')[2]; return { sel: [...d.querySelectorAll('.bdg-dot')].findIndex((x) => x.getAttribute('aria-selected') === 'true'), sprung: p.querySelector('.bdg-stage').classList.contains('is-in'), text: p.textContent.replace(/\s+/g, ' ') }; });
-check('a dot pages to its badge, which springs in then', third.sel === 2 && third.sprung && /Half marathon/.test(third.text) && /Platinum · Very rare/i.test(third.text), third);
+const third = await S(() => { const d = document.querySelector('dialog.bdg-reveal-sheet[open]'); const p = d.querySelectorAll('.bdg-page')[2]; return { sprung: p.querySelector('.bdg-stage').classList.contains('is-in'), text: p.textContent.replace(/\s+/g, ' ') }; });
+pd = await dotsNow();
+check('a dot pages to its badge, which springs in then', pd.sel === 2 && pd.page === 2 && third.sprung && /Half marathon/.test(third.text) && /Platinum · Very rare/i.test(third.text), { third, pd });
+check('and the worm has gone to that dot', pd.wormOn, pd);
+// Paging with a finger: the dots follow the page.
+await S(() => { const box = document.querySelector('dialog.bdg-reveal-sheet[open] .bdg-pages'); box.scrollTo({ left: box.clientWidth, behavior: 'auto' }); });
+await settle(1200);
+pd = await dotsNow();
+check('paging by swiping: the dots follow the page', pd.page === 1 && pd.sel === 1 && pd.wormOn, pd);
+// The arrow keys on the dots page too.
+await page.focus('dialog.bdg-reveal-sheet .bdg-dots > .rf-dot:nth-child(2)');
+await page.keyboard.press('ArrowLeft');
+await settle(1500);
+pd = await dotsNow();
+check('and the arrow keys on the dots page back', pd.sel === 0 && pd.page === 0 && pd.wormOn, pd);
 await shot('06-reveal-3');
 await closeAll();
 

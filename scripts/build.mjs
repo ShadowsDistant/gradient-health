@@ -5,7 +5,7 @@
 // - Inlines Refract's bundle.css/bundle.js and the app's own CSS/JS into src/shell.html.
 // - Minifies every inline script and style sheet on the way, written all in ASCII (MINIFY=0 turns
 //   that off, to debug with readable code). Names are kept (keepNames), so a function's .name is
-//   what the source says.
+//   what the source says. Refract's bundle arrives minified and ships as it is.
 // - Bundles the parts that load on demand into dist/lazy/ with esbuild (see LAZY): the Claude
 //   requests with the Anthropic SDK, the 3D figure, the on-device model runtime and more.
 import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync, statSync, existsSync, readdirSync } from 'node:fs';
@@ -111,12 +111,100 @@ export function asciiRegexps(code) {
   return subs.length || depth || parens.length ? code : out;
 }
 
-// Refract's bundle starts with its manifest comment (@ds-bundle: the components it has), kept as is.
+// Refract's bundle arrives minified (vendor/refract/SOURCE.md), its manifest comment (@ds-bundle: the
+// components it has) first: it ships as it is. Minifying it again only wraps it once more and adds
+// keepNames' helpers (about 4 KB, for nothing).
 async function refractJs() {
-  const src = read('vendor/refract/bundle.js');
-  const head = /^\/\* @ds-bundle:[^\n]*?\*\//.exec(src);
-  const code = await minJs(src, 'vendor/refract/bundle.js');
-  return MINIFY && head ? `${head[0]}\n${code}` : code;
+  return read('vendor/refract/bundle.js').trim();
+}
+// Refract's style sheet, without the rules for its demo landscapes (.rf-art, .rf-scene: six pictures
+// as data URIs, about 49 KB the app never uses). A rule goes when every selector in its list names one
+// of them outside :is() and the like, so a rule shared with other parts (:is(.rf-art, .rf-media) > x)
+// stays, and an at-rule left empty goes too.
+const DEMO_ART = /\.rf-(?:art|scene)(?![\w-])/;
+export function pruneCss(css, drop = DEMO_ART) {
+  let i = 0;
+  const n = css.length;
+  // Past a quoted string or a url(...) at i, which may hold braces or commas.
+  const skipToken = () => {
+    const c = css[i];
+    if (c === '"' || c === '\'') {
+      i++;
+      while (i < n && css[i] !== c) i += css[i] === '\\' ? 2 : 1;
+      i++;
+      return true;
+    }
+    if (css.startsWith('url(', i)) {
+      i += 4;
+      while (i < n && /\s/.test(css[i])) i++;
+      if (css[i] === '"' || css[i] === '\'') skipToken();
+      while (i < n && css[i] !== ')') i++;
+      i++;
+      return true;
+    }
+    return false;
+  };
+  // The body of a block (after its {), up to and past its }.
+  const skipBlock = () => {
+    let depth = 1;
+    while (i < n && depth) {
+      if (skipToken()) continue;
+      if (css[i] === '{') depth++;
+      else if (css[i] === '}') depth--;
+      i++;
+    }
+  };
+  // A selector list split at its top-level commas.
+  const selectors = (s) => {
+    const out = [];
+    let depth = 0, start = 0;
+    for (let j = 0; j < s.length; j++) {
+      if (s[j] === '(' || s[j] === '[') depth++;
+      else if (s[j] === ')' || s[j] === ']') depth--;
+      else if (s[j] === ',' && !depth) { out.push(s.slice(start, j)); start = j + 1; }
+    }
+    out.push(s.slice(start));
+    return out;
+  };
+  // What a selector names outside its functional pseudo-classes.
+  const outside = (s) => {
+    let out = '', depth = 0;
+    for (const c of s) {
+      if (c === '(') depth++;
+      else if (c === ')') depth--;
+      else if (!depth) out += c;
+    }
+    return out;
+  };
+  const NESTING = /^@(media|layer|supports|container|scope|starting-style|document)\b/;
+  function rules() {
+    let out = '';
+    while (i < n) {
+      if (css[i] === '}') { i++; return out; }
+      const start = i;
+      while (i < n && css[i] !== '{' && css[i] !== ';' && css[i] !== '}') if (!skipToken()) i++;
+      const prelude = css.slice(start, i);
+      if (i >= n || css[i] === '}') { out += prelude; continue; }
+      if (css[i] === ';') { out += `${prelude};`; i++; continue; }
+      i++; // past {
+      const head = prelude.trim();
+      if (NESTING.test(head)) {
+        const inner = rules();
+        if (inner.trim()) out += `${prelude}{${inner}}`;
+      } else if (head.startsWith('@')) {
+        const from = i;
+        skipBlock();
+        out += `${prelude}{${css.slice(from, i - 1)}}`;
+      } else {
+        const from = i;
+        skipBlock();
+        const keep = selectors(prelude).filter((s) => !drop.test(outside(s)));
+        if (keep.length) out += `${keep.join(',')}{${css.slice(from, i - 1)}}`;
+      }
+    }
+    return out;
+  }
+  return rules();
 }
 // The app's styles: src/styles.css, then each file in src/styles/ in name order (one per area).
 const appCss = () => [read('src/styles.css')].concat(existsSync(join(root, 'src/styles'))
@@ -340,7 +428,9 @@ async function main() {
   const scripts = [`<script>(window.GH = window.GH || {}).VERSION = ${JSON.stringify(version)}; window.GH.BUILD = ${JSON.stringify(buildId)};</script>`];
   APP_SCRIPTS.forEach((p, i) => scripts.push(`<script>/* ${p} */\n${safeJs(appJs[i])}</script>`));
   const [tokensMin, refractCss, appCssMin, refractMin] = await Promise.all([
-    minCss(tokensCss(tokens), 'tokens.css'), minCss(read('vendor/refract/bundle.css'), 'vendor/refract/bundle.css'), minCss(appCss(), 'src/styles.css'), refractJs(),
+    // The app's lowest layer, app-base, is named first so it sorts before Refract's (layers order by
+    // first appearance): its defaults lose to anything Refract's or the app's other rules set.
+    minCss(`@layer app-base;\n${tokensCss(tokens)}`, 'tokens.css'), minCss(pruneCss(read('vendor/refract/bundle.css')), 'vendor/refract/bundle.css'), minCss(appCss(), 'src/styles.css'), refractJs(),
   ]);
   let html = shell
     .replace('<!--@TOKENS-->', () => `<style>${safeCss(tokensMin)}</style>`)

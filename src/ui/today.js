@@ -243,25 +243,30 @@
           ${top ? `<button type="button" class="insight-line" data-key="insight" data-act="goHealth"><span class="rf-list-icon" data-tone="${top.tone === 'good' ? 'green' : top.tone === 'watch' ? 'amber' : top.tone === 'alert' ? 'rose' : 'sky'}">${U.icon(top.icon)}</span><span class="insight-text"><span class="t-subhead">${U.esc(top.title)}</span><span class="t-footnote rf-muted">${U.esc(top.evidence)}</span></span>${U.icon('chevron-right')}</button>` : ''}
         </div>`;
     },
+    // The floating buttons: at most a secondary one (regular glass, which refracts) and the main one
+    // (tinted glass, which doesn't). Each keeps its glass across a change of what it says (keyed by
+    // its place, U.floatKey in core.js), so Start workout becoming Resume, or Short on time becoming
+    // Full session, shape-shifts the button to its new width (U.motion.shift).
     float(S, day) {
       // An outdoor activity recording in the background: the way back to it (src/ui/actlive.js).
       const act = U.actFloat ? U.actFloat(S, day) : '';
       if (act) return act;
       const cal = B().calendar(S, day);
       const plan = B().todayPlan(S, day, cal);
+      const side = U.floatKey('side'), main = U.floatKey('main');
       if (S.active && S.active.day === day) {
-        return `<button type="button" class="rf-btn rf-glass" data-size="lg" data-lens data-act="cancelWorkout" aria-label="Cancel the workout">${U.icon('close')}<span class="btn-label">Cancel</span></button>
-          <button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg" data-lens data-act="resumeWorkout">${U.icon('play')}Resume workout</button>`;
+        return `<button type="button" class="rf-btn rf-glass" data-size="lg" data-lens${side} data-act="cancelWorkout" aria-label="Cancel the workout">${U.icon('close')}<span class="btn-label">Cancel</span></button>
+          <button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg"${main} data-act="resumeWorkout">${U.icon('play')}Resume workout</button>`;
       }
       if (S.active || S.profile.workouts === false) return '';
       if (plan.type === 'workout') {
         const on = isShort(day);
         // A flare day is one gentle flow: no short version, and the button says what it starts.
-        if (GH.access && GH.access.flareOn(S, day)) return `<button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg" data-lens data-act="startWorkout">${U.icon('play')}Start gentle session</button>`;
-        return `<button type="button" class="rf-btn rf-glass" data-size="lg" data-lens data-act="toggleShort" aria-pressed="${on}" aria-label="${on ? 'Full session' : 'Short on time'}">${U.icon('timer')}<span class="btn-label">${on ? 'Full session' : 'Short on time'}</span></button>
-          <button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg" data-lens data-act="startWorkout">${U.icon('play')}Start workout</button>`;
+        if (GH.access && GH.access.flareOn(S, day)) return `<button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg"${main} data-act="startWorkout">${U.icon('play')}Start gentle session</button>`;
+        return `<button type="button" class="rf-btn rf-glass" data-size="lg" data-lens${side} data-act="toggleShort" aria-pressed="${on}" aria-label="${on ? 'Full session' : 'Short on time'}">${U.icon('timer')}<span class="btn-label">${on ? 'Full session' : 'Short on time'}</span></button>
+          <button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg"${main} data-act="startWorkout">${U.icon('play')}Start workout</button>`;
       }
-      if (plan.type === 'light' && !(plan.light && plan.light.mobility)) return `<button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg" data-lens data-act="startMobility">${U.icon('play')}Start mobility</button>`;
+      if (plan.type === 'light' && !(plan.light && plan.light.mobility)) return `<button type="button" class="rf-btn rf-glass btn-main" data-variant="tinted" data-size="lg"${main} data-act="startMobility">${U.icon('play')}Start mobility</button>`;
       return '';
     },
   };

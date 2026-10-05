@@ -1,7 +1,8 @@
 // Street maps behind an activity's route: MapLibre GL JS (BSD-3) drawing OpenFreeMap's vector tiles
 // (tiles.openfreemap.org, OpenMapTiles schema, © OpenMapTiles © OpenStreetMap contributors). A lazy
 // chunk, loaded with GH.lazy('actmap') only after someone taps Show streets on an activity: until
-// then nothing is requested from OpenFreeMap. Sets GH.actmap = { mount(el, o) → { destroy() } }.
+// then nothing is requested from OpenFreeMap. Sets GH.actmap = { mount(el, o) → { destroy() } };
+// o.interactive lets two fingers move and zoom it.
 //
 // The style is the app's own and small: land, parks, water, buildings, roads and their names, in the
 // app's light or dark colours, with no icons. The route draws on top in the page's pace colours.
@@ -75,6 +76,13 @@ function features(route, buckets) {
   };
 }
 
+// The bounds b grown by `by` times their own size on every side (a map can't be dragged farther off).
+function grow(b, by) {
+  const sw = b.getSouthWest(), ne = b.getNorthEast();
+  const dx = Math.max(0.005, (ne.lng - sw.lng) * by), dy = Math.max(0.005, (ne.lat - sw.lat) * by);
+  return new LngLatBounds([sw.lng - dx, sw.lat - dy], [ne.lng + dx, ne.lat + dy]);
+}
+
 let workerSet = false;
 function mount(el, o) {
   if (!workerSet) {
@@ -91,10 +99,38 @@ function mount(el, o) {
     for (const p of o.route) b.extend([p.lon, p.lat]);
     // The attribution line sits along the bottom (the page's own, as MapLibre's control is off): the
     // route keeps clear of it.
+    // With o.interactive (an activity's summary), two fingers move and zoom the map, the way a map in a
+    // scrolling page works: one finger keeps scrolling the page, and a hint says to use two. It doesn't
+    // turn or tilt, and it stays around the route: no farther out than a little past where it starts,
+    // and no farther off than the route's own span.
+    const pad = { top: 28, right: 28, bottom: 46, left: 28 };
+    const touch = !!o.interactive;
     map = new MLMap({
-      container: el, style: style(o.dark), bounds: b, fitBoundsOptions: { padding: { top: 28, right: 28, bottom: 46, left: 28 } }, interactive: false, attributionControl: false,
+      container: el, style: style(o.dark), bounds: b, fitBoundsOptions: { padding: pad }, interactive: touch, attributionControl: false,
       fadeDuration: 0, maxZoom: 17.5, pixelRatio: Math.min(2, G.devicePixelRatio || 1), cancelPendingTileRequestsWhileZooming: true,
+      ...(touch ? {
+        cooperativeGestures: true, dragRotate: false, pitchWithRotate: false, touchPitch: false, keyboard: false, boxZoom: false,
+        maxBounds: grow(b, 1), locale: { 'CooperativeGesturesHandler.WindowsHelpText': 'Use Ctrl and scroll to zoom the map', 'CooperativeGesturesHandler.MacHelpText': 'Use \u2318 and scroll to zoom the map', 'CooperativeGesturesHandler.MobileHelpText': 'Use two fingers to move or zoom the map' },
+      } : {}),
     });
+    if (touch) {
+      map.touchZoomRotate.disableRotation();
+      // Back to the whole route: a small glass button, there once the map has been moved.
+      const fit = G.document.createElement('button');
+      fit.type = 'button';
+      fit.className = 'rf-btn rf-glass am-fit';
+      fit.setAttribute('data-size', 'sm');
+      fit.setAttribute('data-shape', 'circle');
+      fit.setAttribute('aria-label', 'Show the whole route');
+      fit.hidden = true;
+      fit.innerHTML = GH.ui && GH.ui.icon ? GH.ui.icon('expand') : '';
+      fit.addEventListener('click', () => { fit.hidden = true; map.fitBounds(b, { padding: pad, duration: 420 }); });
+      el.appendChild(fit);
+      map.on('moveend', (e) => { if (e && e.originalEvent) fit.hidden = false; });
+      // Its zoom, for anything that asks (the tests).
+      map.on('zoomend', () => { el.dataset.zoom = map.getZoom().toFixed(2); });
+      map.once('load', () => { el.dataset.zoom = map.getZoom().toFixed(2); try { map.setMinZoom(Math.max(0, map.getZoom() - 1)); } catch (err) { /* ignore */ } });
+    }
   } catch (e) { setTimeout(() => fail(e), 0); return { destroy() {} }; }
   // Offline, or the map never came: the drawn route stays. (A tile that fails once the map is up
   // just leaves a gap.)

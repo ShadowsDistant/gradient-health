@@ -54,7 +54,9 @@
     const el = root();
     const was = !el.hidden;
     if (closing) { closing.cancel(); closing = null; }
+    el.removeAttribute('data-closing');
     el.hidden = false;
+    if (U.steadyLight) U.steadyLight();
     plat().keepAwake(true);
     if (!timer) timer = setInterval(loop, 200);
     scene = null;
@@ -70,8 +72,10 @@
     const el = root();
     if (timer) { clearInterval(timer); timer = null; }
     plat().keepAwake(false);
-    const done = () => { closing = null; el.hidden = true; el.innerHTML = ''; dropFig(); scene = null; };
+    const done = () => { closing = null; el.hidden = true; el.removeAttribute('data-closing'); el.innerHTML = ''; dropFig(); scene = null; if (U.steadyLight) U.steadyLight(); };
     if (U.reduced() || !el.animate || el.hidden) { done(); return; }
+    // Fading out: the page shows through again, so its bars come back now (src/styles/perf.css).
+    el.setAttribute('data-closing', '');
     closing = el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(22px)' }], { duration: 220, easing: 'cubic-bezier(0.3, 0, 0.8, 0.15)', fill: 'forwards' });
     closing.onfinish = () => { if (closing) { closing.cancel(); done(); } };
   }
@@ -284,9 +288,10 @@
     return kind === 'sheet' ? [Math.round(Math.min(vw, 640) - 56), 220] : [Math.round(Math.min(vw - 32, 520) - 24), Math.round(Math.max(170, Math.min(vh * 0.38, 420)) - 44)];
   }
   // Draw what's missing for moves opened lately, the moves on screen (today's session) and the
-  // workout in progress, once 3D is warm: one still per idle moment, a second apart, only while no
-  // figure is on screen (a still never takes time from one), a dozen a launch at most, and none
-  // more on a phone slow enough that one took long (it gets the few it has).
+  // workout in progress, a few seconds after 3D is warm: one still per idle moment, a second apart,
+  // only while no figure is on screen (a still never takes time from one) and it's calm (U.calm: no
+  // scroll, touch or moving sheet; the still waits for that, it isn't dropped), a dozen a launch at
+  // most, and none more on a phone slow enough that one took long (it gets the few it has).
   let stillsRun = null; // the queue being drawn
   let stillsDrawn = 0, stillsSlow = false;
   function stillsForToday() {
@@ -320,6 +325,8 @@
       // runs anywhere: stills are for later, and never take time from a figure on screen.
       const busyNow = document.hidden || document.querySelector('.fig3d[data-ready]') || [...document.querySelectorAll('.pl-fig, .sheet-fig')].some((h) => h.offsetParent);
       if (busyNow) { setTimeout(() => idleCall(step), 1500); return; }
+      // Nor in the middle of a scroll, a touch or a sheet's move (U.calm): it waits for calm.
+      if (U.calm && !U.calm()) { U.whenCalm(() => idleCall(step)); return; }
       while (jobs.length) {
         const j = jobs.shift();
         const m0 = M().MOVES[j.id];
@@ -360,12 +367,16 @@
   // Warm 3D up a small piece per idle moment, then draw stills of today's moves for next time.
   // core.js decides when (U.warmFigure): only when today's workout will show a figure, after the
   // app has gone idle, or on the first press of Start or a move.
+  // The stills wait a few seconds: once warm, a live figure is ready at once, so they only help the
+  // next launch, and copying one out holds the page for a moment, which shouldn't be the moment a
+  // move is opened (likeliest right after launch).
+  const STILLS_AFTER_WARM = 4000;
   function warmSoon(tries) {
     const S = U.S;
     if (!S) { if (tries < 40) setTimeout(() => warmSoon(tries + 1), 250); return; }
     if (!S.profile.onboarded || S.profile.workouts === false || !want3d() || !GH.lazy) return;
     G.requestAnimationFrame(() => G.requestAnimationFrame(() => idleCall(() => {
-      U.preloadFigure().then((ok) => { if (ok) setTimeout(stillsForToday, 600); }, () => {});
+      U.preloadFigure().then((ok) => { if (ok) setTimeout(stillsForToday, STILLS_AFTER_WARM); }, () => {});
     })));
   }
   U.warmFigure = () => { if (G.document && G.requestAnimationFrame) warmSoon(0); };
@@ -721,7 +732,7 @@
     const left = P.restEnd ? Math.max(0, (P.restEnd - Date.now()) / 1000) : 0;
     const rirQ = P.askRir ? `<div class="pl-rir">
         <p class="t-headline">How many more could you have done?</p>
-        ${U.seg('plRir', [['0', '0'], ['12', '1-2'], ['3', '3+']], P.rirAnswered || '', 'Reps left in the tank', ' data-on="plRir"')}
+        ${U.seg('plRir', [['0', '0'], ['12', '1-2'], ['3', '3+']], P.rirAnswered || '', 'Reps left in the tank', ' data-on="plRir" data-sync')}
         <p class="t-footnote rf-muted">${P.askRir.kind === 'finisher' ? 'For the whole finisher.' : `For ${U.esc(P.askRir.name.toLowerCase())}. This sets next time.`}${((U.S.seen || {}).rirCount || 0) < 3 ? ' Count the reps you could still have done with good form. A rough guess is fine.' : ''}</p>
       </div>` : '';
     const logged = done && done.kind === 'set' ? loggedLine(done) : '';
@@ -873,6 +884,8 @@
     const v = parseInt(input && input.value, 10);
     complete({ value: isFinite(v) ? Math.max(0, v) : 0 });
   };
+  // Taken at once (data-sync on the control), not a frame later like other segmented controls: a
+  // redraw in between (the rest ending, a toast) would draw the question with nothing picked.
   U.on.plRir = (el, ev, v) => {
     if (!P || !P.askRir) return;
     B().setRir(U.S, P.askRir, String(v));
@@ -880,8 +893,11 @@
     U.S.seen = U.S.seen || {};
     U.S.seen.rirCount = (U.S.seen.rirCount || 0) + 1;
     U.save();
-    // Let the thumb land before the screen moves on.
-    if (!P.restEnd) setTimeout(() => { if (P && P.rirAnswered === String(v)) { if (P.restTotal) endRest(); else draw(); } }, 280);
+    // With the rest over, the answer stays on screen and Continue (right under it) moves on. Moving
+    // on by itself would change the screen under a finger already on its way to Continue, and that
+    // tap would land on the next set's Done and log it. The screen is redrawn once the thumb has
+    // landed.
+    if (!P.restEnd) setTimeout(() => { if (P && P.rirAnswered === String(v)) draw(); }, 280);
   };
   U.act.plAmend = () => {
     const st = P.justDone;
@@ -958,19 +974,18 @@
     const sh = U.moveSheet(st.item.moveId, { side: st.side, onClose: () => { covered = false; if (P && !root().hidden) draw(); } });
     if (!sh) { covered = false; if (fig) fig.ctl.play(); } // no sheet opened: keep the figure going
   };
-  U.act.plMenu = () => {
+  // The workout's options: a menu that grows out of its button (U.menu). Cancel asks first.
+  U.act.plMenu = (el) => {
     const st = cur();
     const canSwap = st && st.kind === 'set' && !st.leadOnly;
-    U.sheet({
-      title: 'Workout', size: 'fit',
-      body: `<ul class="rf-list">
-        ${st ? U.row({ icon: 'info', tone: 'sky', title: 'How to do it', act: 'plHowTo', chevron: true }) : ''}
-        ${canSwap ? U.row({ icon: 'shuffle', tone: 'indigo', title: 'Swap this exercise', act: 'plSwap', chevron: true }) : ''}
-        ${st && st.kind === 'set' ? U.row({ icon: 'skip-forward', tone: 'amber', title: 'Skip the rest of this exercise', act: 'plSkipItem' }) : ''}
-        ${U.row({ icon: 'flag', tone: 'green', title: 'Finish now and check in', act: 'plFinishNow' })}
-        ${U.row({ icon: 'close', tone: 'rose', title: 'Cancel workout', sub: 'Nothing from it is saved', act: 'plCancel' })}
-      </ul>`,
-    });
+    const items = st ? [
+      { act: 'plHowTo', icon: 'info', label: 'How to do it' },
+      canSwap ? { act: 'plSwap', icon: 'shuffle', label: 'Swap this exercise' } : false,
+      st.kind === 'set' ? { act: 'plSkipItem', icon: 'skip-forward', label: 'Skip the rest of this exercise' } : false,
+      null,
+    ] : [];
+    items.push({ act: 'plFinishNow', icon: 'flag', label: 'Finish now and check in' }, { act: 'plCancel', icon: 'close', label: 'Cancel workout', tone: 'critical' });
+    U.menu(el && el.closest ? el : document.querySelector('.player [data-act="plMenu"]'), items, { label: 'Workout options' });
   };
   U.act.plSwap = () => {
     const st = cur();
@@ -1064,7 +1079,9 @@
     const then = kinds.includes('pr') ? 'pr' : kinds.includes('level') || kinds.includes('weight') ? 'levelUp' : null;
     if (then) setTimeout(() => U.haptic(then), 700);
     if (big && G.Refract && G.Refract.burst && !U.reduced()) {
-      setTimeout(() => { for (const c of el.querySelectorAll('.celebrate')) { try { G.Refract.burst(c, { count: 18 }); } catch (e) { /* ignore */ } } }, 350);
+      // Each burst within Refract 1.4's 8 to 14 beads: one card gets 14, several get 8 each, three at
+      // most.
+      setTimeout(() => { const cards = Array.from(el.querySelectorAll('.celebrate')); for (const c of cards.slice(0, 3)) { try { G.Refract.burst(c, { count: cards.length > 1 ? 8 : 14 }); } catch (e) { /* ignore */ } } }, 350);
     }
     const n = el.querySelector('.streak-roll');
     if (n && G.Refract && G.Refract.roll && !U.reduced()) setTimeout(() => { try { G.Refract.roll(n, n.dataset.to, { from: n.dataset.from, dir: 1 }); } catch (e) { /* ignore */ } }, 250);

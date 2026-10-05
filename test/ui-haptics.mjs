@@ -330,7 +330,9 @@ await page.evaluate(() => {
     root.addEventListener('click', () => { if (!out.click) out.click = performance.now(); }, { capture: true });
     const loop = () => {
       if (out.click) {
-        const moving = part.getAnimations().some((a) => a.transitionProperty === 'translate' || a.transitionProperty === 'transform');
+        // On its way: a transition running, or Refract's liquid engine moving it (it marks the control
+        // data-traveling when the move starts, and drives the part frame by frame).
+        const moving = part.getAnimations().some((a) => a.transitionProperty === 'translate' || a.transitionProperty === 'transform') || !!part.closest('[data-traveling]');
         out.frames.push({ t: performance.now(), x: part.getBoundingClientRect().x, moving, ran: window.__ran });
       }
       if (out.frames.length < 10) requestAnimationFrame(loop);
@@ -352,7 +354,7 @@ const probe = async (rootSel, partSel, tapSel) => {
   // the thumb has left where it was within the frames noted; ranBeforeFrame: the handler had run by it.
   return { first: f.t ? Math.round(f.t - o.click) : null, moving: !!f.moving, moved: o.frames.some((x) => Math.abs(x.x - o.x0) > 2), ranBeforeFrame: !!f.ran, reqs, frames: o.frames.map((x) => [Math.round(x.t - o.click), Math.round(x.x), x.moving, !!x.ran]) };
 };
-// The thumb moves with its own transition (a translate) as soon as the pick lands.
+// The thumb is on its way as soon as the pick lands.
 let p = await probe('#hxSeg', '.rf-segmented-thumb', '#hxSeg .rf-segment:nth-of-type(2)');
 check('a segment with a 60 ms handler: the first frame comes within a frame of the tap, with the thumb on its way', p.first != null && p.first < 40 && p.moving && p.moved, p);
 check('the select played at once, and the handler ran only after that frame', p.reqs[0] === 'select' && !p.ranBeforeFrame && (await page.evaluate(() => window.__ran)) > 0, p);

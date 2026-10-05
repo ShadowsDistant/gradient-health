@@ -1,8 +1,8 @@
 // Where things are (1.6), in Chromium at phone size with someone five weeks in: the tabs for each
 // mode (five at most, so they fit a 360 px phone), the You tab and its order, Plan's This week |
 // Moves switch, links to places that moved (moves, profile), the ways into Progress, Settings' groups
-// and search, one place for each thing, the new names, a tip on every tab, the haptics on the way
-// around, and the easy cardio block's length.
+// and search, the Refract credit, one place for each thing, the new names, a tip on every tab, the
+// haptics on the way around, and the easy cardio block's length.
 // Usage: node test/ui-you.mjs [--dark] [--width=360]
 import { createRequire } from 'node:module';
 import { check, section, done, serveDist } from './lib.mjs';
@@ -268,6 +268,49 @@ await home();
 await page.click('#screen [data-act="openSettings"]');
 await settle(900);
 check('a new visit starts with an empty search', await ev(() => document.getElementById('setQ').value === '' && document.querySelectorAll('#screen .set-list > .rf-list-header:not([data-sub]):not([hidden])').length === 9));
+await home();
+
+section('The Refract credit');
+await go('you');
+await page.click('#screen [data-act="openSettings"]');
+await settle(900);
+const credit = await ev(() => {
+  const li = document.querySelector('#screen ul[data-group="about"] [data-key="refract"]');
+  const mark = li && li.querySelector('.rf-list-lead .rf-mark');
+  const b = mark && mark.getBoundingClientRect();
+  const half = mark && getComputedStyle(mark, '::before');
+  const prev = li && li.previousElementSibling && li.previousElementSibling.querySelector('[data-act]');
+  return {
+    row: !!li, title: li ? li.querySelector('.rf-list-title').textContent : '', act: li ? li.querySelector('[data-act]').dataset.act : '', after: prev ? prev.dataset.act : '',
+    mark: !!mark, role: mark && mark.getAttribute('role'), label: mark && mark.getAttribute('aria-label'), size: b ? [Math.round(b.width), Math.round(b.height)].join() : '',
+    drawn: !!half && half.content !== 'none' && half.backgroundColor !== 'rgba(0, 0, 0, 0)', ink: !!mark && getComputedStyle(mark).color === getComputedStyle(li.querySelector('.rf-list-title')).color,
+    tile: !!(li && li.querySelector('.rf-list-icon')),
+  };
+});
+check('About: "Built with Refract", after the licenses, opens them', credit.row && credit.title === 'Built with Refract' && credit.act === 'licensesSheet' && credit.after === 'licensesSheet', JSON.stringify(credit));
+check('its icon is Refract\'s mark, drawn (20 px, in the label\'s ink), named for screen readers, with no tile', credit.mark && credit.size === '20,20' && credit.drawn && credit.ink && credit.role === 'img' && credit.label === 'Refract' && !credit.tile, JSON.stringify(credit));
+r = await search('design system');
+check('search finds it: "design system"', r.groups === 'about' && r.rows.includes('Built with Refract'), JSON.stringify(r));
+await page.click('#screen .set-search .rf-search-clear');
+await settle(300);
+await page.click('#screen [data-key="refract"] [data-act]');
+await settle(900);
+const sheet = await ev(() => {
+  const d = document.querySelector('dialog.rf-sheet[open]');
+  const c = d && d.querySelector('.credit-refract');
+  const mark = c && c.querySelector('.rf-mark');
+  const half = mark && getComputedStyle(mark, '::before');
+  return {
+    open: !!d, credit: !!c, first: !!c && !c.previousElementSibling,
+    head: c && c.querySelector('.t-headline') ? c.querySelector('.t-headline').textContent.trim() : '', foot: c && c.querySelector('.t-footnote') ? c.querySelector('.t-footnote').textContent.trim() : '',
+    mark: !!mark, size: mark ? Math.round(mark.getBoundingClientRect().width) : 0, once: !!mark && mark.dataset.animate === 'once' && half.animationIterationCount === '1', label: mark && mark.getAttribute('aria-label'),
+    list: d ? d.querySelectorAll('ul.rf-list > li').length : 0, version: String(window.Refract.version),
+  };
+});
+check('the credits open with Refract: its mark, larger, coming apart once', sheet.open && sheet.credit && sheet.first && sheet.mark && sheet.size === 48 && sheet.once && sheet.label === 'Refract', JSON.stringify(sheet));
+check(`"Built with Refract ${sheet.version.replace(/\.0$/, '')}", what it gave the app, then the licenses`, sheet.head === `Built with Refract ${sheet.version.replace(/\.0$/, '')}` && /glass, controls, motion, icons and type\.$/.test(sheet.foot) && sheet.list >= 11, JSON.stringify(sheet));
+await ev(() => window.GH.ui.closeSheets());
+await settle(900);
 await home();
 
 section('One place for each');

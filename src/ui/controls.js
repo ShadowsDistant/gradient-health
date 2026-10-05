@@ -1,9 +1,12 @@
-/* Switches, segmented controls and chip choices: gestures that never miss a tap, and liquid-glass
- * thumbs that stay glass at rest.
+/* Switches, segmented controls and chip choices: gestures that never miss a tap, on Refract's liquid
+ * glass (knobs and thumbs that rise into a lens under the finger and land with a squash).
  *
- * Refract's own switch and segmented behaviours are replaced here, and a chip-choice behaviour is
- * added. Its behaviour registry (Refract.behaviors) is the very object Refract.init reads, and the
- * app's scripts run after Refract's and before its first init, so the vendored bundle stays as it is.
+ * Refract's own switch and segmented behaviours are replaced here (Refract 1.4's take any movement
+ * past 3 px as a drag, so a tap that wobbles would be lost), and a chip-choice behaviour is added. The
+ * look and the motion are still Refract's: the knob and the thumb run on its liquid engine
+ * (Refract.Liquid). Its behaviour registry (Refract.behaviors) is the very object Refract.init reads,
+ * and the app's scripts run after Refract's and before its first init, so the vendored bundle stays as
+ * it is.
  *
  * Every control follows one set of gesture rules (GH.ui.switchGesture, kept free of the DOM so node
  * can test it):
@@ -111,81 +114,15 @@
   const haptic = (kind) => { if (U.haptic) U.haptic(kind); };
   const reduced = () => !!(U.reduced ? U.reduced() : R() && R().prefs && R().prefs.reducedMotion);
   const dur = (name, fallback) => { const r = R(); return r && r.duration ? r.duration(name, fallback) : fallback; };
-  const LENS_FADE = 180; // ms; matches the lens's opacity transition in controls.css
-  const STATES = ['data-pressed', 'data-dragging', 'data-traveling'];
 
-  // The lens over a thumb or a knob is a drop of glass: what's under it is drawn larger in the middle
-  // and squeezed toward the rim. Refract's own lens maps only push pixels inward along the rim, which
-  // suits a glass bar over a background; over text, any depth that shows mirrors and tears the glyphs.
-  // This map pulls each point toward the centre by k·(1 - e²)² of its distance (e: 0 in the middle, 1
-  // at the rim), which never folds over (k < 1) and fades to nothing at the rim, so the lens meets
-  // what's around it without a seam.
-  //
-  // The filter is laid out in the element's own (unscaled) box, and scales with it when a held control
-  // swells. One per size and strength, shared by every control that size, and kept: an app has only a
-  // handful of control sizes. (An element carrying one must cast no outer shadow, nor anything in it:
-  // Chrome then applies the filter to the wrong box. See the switch's knob in controls.css.)
-  const NS = 'http://www.w3.org/2000/svg';
-  let defsEl = null;
-  const defs = () => {
-    if (defsEl && defsEl.isConnected) return defsEl;
-    const svg = doc.createElementNS(NS, 'svg');
-    svg.setAttribute('aria-hidden', 'true');
-    svg.setAttribute('focusable', 'false');
-    svg.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;pointer-events:none';
-    defsEl = doc.createElementNS(NS, 'defs');
-    svg.appendChild(defsEl);
-    (doc.body || doc.documentElement).appendChild(svg);
-    return defsEl;
-  };
-  let lensN = 0;
-  const LENSES = new Map();
-  function lensFor(w, h, kind) {
-    const r = R();
-    if (!r || !r.supports || !r.supports.lens) return '';
-    w = Math.round(w); h = Math.round(h);
-    if (w < 4 || h < 4) return '';
-    const key = `${kind}:${w}x${h}`;
-    if (LENSES.has(key)) return LENSES.get(key);
-    let url = '';
-    try {
-      const k = kind === 'knob' ? 0.26 : 0.18; // the middle looks 1 / (1 - k) times larger
-      const a = w / 2, b = h / 2;
-      // The farthest any point moves (u(1 - u²)² peaks at 0.286) sets the filter's scale; the map holds
-      // each move as a fraction of it.
-      const scale = Math.ceil(2 * 0.3 * k * Math.max(a, b));
-      const cv = doc.createElement('canvas');
-      cv.width = w; cv.height = h;
-      const ctx = cv.getContext('2d');
-      const img = ctx.createImageData(w, h);
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          const px = x + 0.5 - a, py = y + 0.5 - b;
-          const e2 = (px / a) ** 2 + (py / b) ** 2;
-          const pull = e2 < 1 ? k * (1 - e2) ** 2 : 0;
-          const ox = -px * pull, oy = -py * pull;
-          const i = (y * w + x) * 4;
-          img.data[i] = Math.round(127.5 + (ox / scale) * 255);
-          img.data[i + 1] = Math.round(127.5 + (oy / scale) * 255);
-          img.data[i + 2] = 128;
-          img.data[i + 3] = 255;
-        }
-      }
-      ctx.putImageData(img, 0, 0);
-      const id = `gh-lens-${++lensN}`;
-      const f = doc.createElementNS(NS, 'filter');
-      for (const [a, v] of [['id', id], ['x', 0], ['y', 0], ['width', w], ['height', h], ['filterUnits', 'userSpaceOnUse'], ['primitiveUnits', 'userSpaceOnUse'], ['color-interpolation-filters', 'sRGB']]) f.setAttribute(a, String(v));
-      const im = doc.createElementNS(NS, 'feImage');
-      for (const [a, v] of [['href', cv.toDataURL('image/png')], ['x', 0], ['y', 0], ['width', w], ['height', h], ['preserveAspectRatio', 'none'], ['result', 'map']]) im.setAttribute(a, String(v));
-      const dm = doc.createElementNS(NS, 'feDisplacementMap');
-      for (const [a, v] of [['in', 'SourceGraphic'], ['in2', 'map'], ['scale', scale], ['xChannelSelector', 'R'], ['yChannelSelector', 'G']]) dm.setAttribute(a, String(v));
-      f.append(im, dm);
-      defs().appendChild(f);
-      url = `url(#${id})`;
-    } catch (e) { url = ''; }
-    LENSES.set(key, url);
-    return url;
-  }
+  // Refract's liquid engine (Refract.Liquid): a knob or a selection made of glass, frosted at rest,
+  // that rises and clears into a lens under the finger, follows it on springs that keep their speed
+  // when interrupted, and lands with a squash. One transform a frame, plus --rf-lift and data-lifted;
+  // Refract's style sheet draws the rest. Null without Refract (the controls then stay where the
+  // style sheet puts them).
+  const liquid = (els, o) => { const r = R(); return r && r.Liquid ? new r.Liquid(els, o) : null; };
+  // Past either end, a dragged knob or thumb gives a little, like a rubber band.
+  const rubber = (over, dim) => { const r = R(); return over && r && r.rubber ? r.rubber(over, dim) : 0; };
 
   // A control's settling: busy() while it's held or moving, then the promise U.controlSettled hands
   // out resolves.
@@ -201,61 +138,6 @@
     if (s) { settling.delete(host); s.resolve(); }
   }
 
-  // The lens's life on one control: on while it's held, dragged or moving. When all that's over the
-  // lens fades (CSS), and then data-lens-idle turns its backdrop filter off, so a control at rest
-  // costs the GPU nothing.
-  function glass(host) {
-    let t = 0;
-    const active = () => STATES.some((a) => host.hasAttribute(a));
-    host.setAttribute('data-lens-idle', '');
-    return {
-      on() { clearTimeout(t); t = 0; host.removeAttribute('data-lens-idle'); busy(host); },
-      settle() {
-        if (active()) return;
-        settled(host);
-        clearTimeout(t);
-        t = setTimeout(() => { t = 0; if (!active()) host.setAttribute('data-lens-idle', ''); }, LENS_FADE + 40);
-      },
-      stop() { clearTimeout(t); settled(host); },
-    };
-  }
-
-  // The stretch: --rf-stretch follows how fast the knob moves and springs back to 0 (the CSS turns it
-  // into a squash and stretch). The one deformation a control has while it moves.
-  function stretcher(el) {
-    const r = R();
-    const s = r && r.spring ? r.spring({ stiffness: 420, damping: 24, onUpdate: (x) => el.style.setProperty('--rf-stretch', x.toFixed(3)) }) : null;
-    let lastX = 0, lastT = 0;
-    return {
-      track(x, t) {
-        if (s && lastT && t > lastT) s.set(clamp(Math.abs(x - lastX) / (t - lastT) / 2.2, 0, 1));
-        lastX = x; lastT = t;
-      },
-      release() { lastT = 0; if (s) s.to(0); },
-      kick(a) { lastT = 0; if (s && !reduced()) { s.set(a); s.to(0); } },
-      stop() { if (s) s.stop(); },
-    };
-  }
-
-  // Runs fn once el's `prop` transition has finished, or after ms at most. Call it right after the
-  // change that starts the move: getAnimations() brings the style up to date and hands back the
-  // transition itself (its events can come frames late when it runs on the compositor). A move that
-  // doesn't start (a dragged knob let go where it lands) ends after a short hold instead, and one cut
-  // short by a new move waits for that one. Returns a function that calls it off.
-  function afterMove(el, prop, ms, fn) {
-    let live = true, hold = 0;
-    const t = setTimeout(() => finish(), ms);
-    const off = () => { live = false; clearTimeout(t); clearTimeout(hold); };
-    function finish() { if (!live) return; off(); fn(); }
-    const watch = () => {
-      const a = el.getAnimations ? el.getAnimations().find((x) => x.transitionProperty === prop && x.playState !== 'finished') : null;
-      if (!a) { hold = setTimeout(finish, 140); return; }
-      a.finished.then(finish, () => { if (live) watch(); });
-    };
-    watch();
-    return off;
-  }
-
   // Click arbitration, in the capture phase on the control: a click the gesture rules don't allow is
   // stopped before it can toggle or select anything.
   function arbiter(T, onAllow) {
@@ -266,6 +148,9 @@
   }
 
   /* ---------------------------------------------------------------- switch */
+  // Refract's own switch knob: it rises to 1.42 x 1.46 its size, and its lens pulls what's under it
+  // back (zoom 0.8) with a refracting rim.
+  const KNOB = { lift: [1.42, 1.46], stretch: 0.3, lens: { zoom: 0.8, refract: 6, bezel: 8 } };
   const travels = new WeakMap(); // a switch's track → its travel (U.revertSwitch moves it in glass)
   const changedTo = new WeakMap(); // a switch's input → what its last change set it to
   function ghSwitch(root) {
@@ -275,66 +160,85 @@
     if (!track || !input || !thumb) return undefined;
     if (!input.hasAttribute('role')) input.setAttribute('role', 'switch');
     const T = tracker();
-    const st = stretcher(track); // the track carries the knob's stretch and drag, for its shadow too
-    const gl = glass(track);
-    let liftTimer = 0, rescueTimer = 0, frame = 0, endMove = null;
-    let base = 0, len = 0, side = false, pos = 0;
-    const travelLen = () => track.clientWidth - thumb.offsetWidth - 6;
+    let L = null, held = false, liftTimer = 0, rescueTimer = 0, flick = 0;
+    let base = 0, len = 0, side = false;
 
-    // The knob's lens (one per knob size, shared), set the first time the knob turns to glass.
-    let lensSet = false;
-    const knobLens = () => {
-      if (lensSet) return;
-      lensSet = true;
-      const url = lensFor(thumb.offsetWidth, thumb.offsetHeight, 'knob');
-      if (url) root.style.setProperty('--_knob-lens', url);
+    // The knob is the engine's only while it's touched or moving. At rest Refract's style sheet puts it
+    // at either end from whether the switch is on (and the on colour with it), so a re-render that
+    // turns a switch on or off needs nothing from here, and a resting knob costs nothing. It's taken
+    // on at the end it shows (`onEnd`), and handed back once it has landed there.
+    const engage = (onEnd) => {
+      if (L) return L;
+      len = Math.max(0, track.clientWidth - thumb.offsetWidth - 6);
+      L = liquid(thumb, KNOB);
+      if (!L) return null;
+      let p0 = -1;
+      // The on colour floods in behind the knob as it goes (Refract's --rf-p, 0 to 1 along the track).
+      L.onRender = (l) => {
+        const p = len ? Math.round(clamp(l.x.value / len, 0, 1) * 1000) / 1000 : 0;
+        if (p !== p0) { p0 = p; track.style.setProperty('--rf-p', String(p)); }
+      };
+      L.onRest = () => { if (!held) release(); };
+      L.place(onEnd ? len : 0);
+      busy(track);
+      return L;
     };
-    // Held: the knob swells into a clear lens.
+    const release = () => {
+      track.removeAttribute('data-traveling');
+      if (L) {
+        L.destroy();
+        L = null;
+        for (const k of ['transform', '--rf-lift', '--_lens']) thumb.style.removeProperty(k);
+        thumb.removeAttribute('data-lifted');
+        track.style.removeProperty('--rf-p');
+      }
+      settled(track);
+    };
+    // Held: the knob rises into a clear lens.
     const lift = () => {
       clearTimeout(liftTimer); liftTimer = 0;
-      if (track.hasAttribute('data-pressed')) return;
-      knobLens();
-      gl.on();
+      if (held) return;
+      held = true;
+      const l = engage(input.checked);
+      if (l) l.grab();
       track.setAttribute('data-pressed', '');
       haptic('press');
     };
-    const drop = () => { clearTimeout(liftTimer); liftTimer = 0; track.removeAttribute('data-pressed'); };
-    const endDrag = () => {
-      if (frame) { G.cancelAnimationFrame(frame); frame = 0; }
-      track.style.removeProperty('--_drag');
-      track.removeAttribute('data-dragging');
-      track.removeAttribute('data-drag-on');
-      st.release();
+    // Let go with nothing changed (a scroll, a click that didn't toggle): back to a solid face.
+    const drop = () => {
+      clearTimeout(liftTimer); liftTimer = 0;
+      track.removeAttribute('data-pressed');
+      if (!held) { if (!L) settled(track); return; }
+      held = false;
+      if (L) L.drop(); else settled(track);
     };
-    // Any change of state (a tap, the keyboard, a drag, a revert) moves the knob in glass until it
-    // lands: the travel lasts as long as the knob's translate, with a fallback for a move that never
-    // started.
+    // Any change of state (a tap, the keyboard, a drag, a revert): the knob travels to its new end in
+    // glass and lands there; a drag's release keeps its speed. It starts from where it is, or from the
+    // end it was showing before the change.
     const travel = () => {
-      drop();
-      knobLens();
-      gl.on();
-      if (!reduced()) st.kick(0.7);
+      clearTimeout(liftTimer); liftTimer = 0;
+      track.removeAttribute('data-pressed');
+      held = false;
+      const l = L || engage(!input.checked);
+      if (!l) return;
       track.setAttribute('data-traveling', '');
-      if (endMove) endMove();
-      endMove = afterMove(thumb, 'translate', dur('duration-spring-bouncy', 680) + 80, () => {
-        endMove = null;
-        track.removeAttribute('data-traveling');
-        gl.settle();
-      });
+      l.travel(input.checked ? len : 0, { lift: true, velocity: flick });
+      flick = 0;
     };
     travels.set(track, travel);
     const rescue = () => {
       rescueTimer = 0;
       if (T.rescue() && !input.disabled && root.isConnected) input.click(); // detail 0: it goes through, and its change moves the knob
-      if (!track.hasAttribute('data-traveling')) { drop(); gl.settle(); }
+      if (!track.hasAttribute('data-traveling')) drop();
     };
     const flushRescue = () => { if (rescueTimer) { clearTimeout(rescueTimer); rescue(); } };
     const follow = (x) => {
-      pos = clamp(base + (x - T.get().x0), 0, len);
-      if (!frame) frame = G.requestAnimationFrame(() => { frame = 0; track.style.setProperty('--_drag', `${(pos - base).toFixed(1)}px`); });
+      const raw = base + (x - T.get().x0);
+      const pos = clamp(raw, 0, len);
+      if (L) L.follow(pos + rubber(raw - pos, 10));
       const on = pos > len / 2;
-      // The on colour follows the knob across, with a detent at the middle.
-      if (on !== side) { side = on; track.toggleAttribute('data-drag-on', on); haptic('detent'); }
+      // A detent at the middle, where the on colour has filled half the track.
+      if (on !== side) { side = on; haptic('detent'); }
     };
 
     const offs = [];
@@ -343,7 +247,7 @@
       if (input.disabled || e.button > 0 || !e.isPrimary) return;
       flushRescue();
       T.down({ id: e.pointerId, type: e.pointerType, x: e.clientX, y: e.clientY, t: e.timeStamp });
-      len = travelLen();
+      engage(input.checked);
       base = input.checked ? len : 0;
       side = input.checked;
       if (e.pointerType === 'touch') { clearTimeout(liftTimer); liftTimer = setTimeout(lift, LIFT); } else lift();
@@ -352,14 +256,13 @@
       const g = T.get();
       if (!g || g.end || e.pointerId !== g.id) return;
       const m = T.move({ id: e.pointerId, x: e.clientX, y: e.clientY, t: e.timeStamp });
-      if (m === 'scroll') { drop(); gl.settle(); return; }
+      if (m === 'scroll') { drop(); return; }
       if (m === 'drag') {
         try { root.setPointerCapture(e.pointerId); } catch (err) { /* already gone */ }
         lift();
-        track.toggleAttribute('data-drag-on', side);
         track.setAttribute('data-dragging', '');
       }
-      if (g.mode === 'drag') { follow(e.clientX); st.track(e.clientX, e.timeStamp); }
+      if (g.mode === 'drag') follow(e.clientX);
     });
     on(root, 'pointerup', (e) => {
       const g = T.get();
@@ -367,8 +270,10 @@
       if (!end) return;
       clearTimeout(liftTimer); liftTimer = 0;
       if (end === 'drag') {
-        const next = landing(clamp(base + (e.clientX - g.x0), 0, len), len, T.speed(e.timeStamp));
-        endDrag();
+        const v = T.speed(e.timeStamp);
+        const next = landing(clamp(base + (e.clientX - g.x0), 0, len), len, v);
+        track.removeAttribute('data-dragging');
+        flick = v * 1000; // px/s, for the engine
         if (next !== input.checked) {
           input.checked = next;
           input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -377,49 +282,49 @@
         return;
       }
       if (end === 'tap') {
-        // The knob stays lifted until the tap's click (or the rescue) moves it.
+        // The knob stays up until the tap's click (or the rescue) moves it.
         if (!g.clicked) rescueTimer = setTimeout(rescue, RESCUE);
         return;
       }
-      drop(); gl.settle();
+      drop();
     });
     const cancel = (e) => {
       if (!T.cancel(e.pointerId)) return;
       clearTimeout(liftTimer); liftTimer = 0;
       const dragged = track.hasAttribute('data-dragging');
-      endDrag();
+      track.removeAttribute('data-dragging');
       if (dragged) travel(); // springs back
-      else { drop(); gl.settle(); }
+      else drop();
     };
     on(root, 'pointercancel', cancel);
     on(root, 'lostpointercapture', (e) => { if (e.target === root) cancel(e); });
     on(root, 'click', arbiter(T, () => {
       clearTimeout(rescueTimer); rescueTimer = 0;
       // Let go of the lift if nothing came of the click (something else stopped it).
-      setTimeout(() => { if (!track.hasAttribute('data-traveling')) { drop(); gl.settle(); } }, 0);
+      setTimeout(() => { if (!track.hasAttribute('data-traveling')) drop(); }, 0);
     }), true);
     on(input, 'change', () => { changedTo.set(input, input.checked); travel(); });
     return () => {
       offs.forEach((f) => f());
       clearTimeout(liftTimer); clearTimeout(rescueTimer);
-      if (frame) G.cancelAnimationFrame(frame);
-      if (endMove) endMove();
-      st.stop(); gl.stop();
+      held = false;
+      release();
       travels.delete(track);
     };
   }
 
   /* ---------------------------------------------------------------- segmented controls and chip choices */
-  // The two kinds of single choice share one behaviour: a glass thumb under the picked option, a lens
-  // over it while it's held or moving, taps with the rescue, and the keyboard. A segmented control's
-  // options are radio inputs (their change is native); a chip choice's are role=radio buttons, picked
-  // here, with a change fired from the button (its value is the option's).
+  // The two kinds of single choice share one behaviour: a thumb under the picked option, taps with the
+  // rescue, and the keyboard. A segmented control's thumb is a bead of Refract's liquid glass with a
+  // lens over its labels, and can be dragged; a chip choice's slides to the chip picked (across wrapped
+  // rows). A segmented control's options are radio inputs (their change is native); a chip choice's
+  // are role=radio buttons, picked here, with a change fired from the button (its value is the
+  // option's).
   const SEG = {
     opts: (root) => Array.from(root.querySelectorAll(':scope > .rf-segment')),
     optOf: (t) => (t.closest ? t.closest('.rf-segment') : null),
     on: (o) => { const i = o.querySelector('input'); return !!(i && i.checked); },
     disabled: (o) => { const i = o.querySelector('input'); return !i || i.disabled; },
-    thumb: 'rf-segmented-thumb',
     drag: true,
     pick(root, o) {
       const i = o.querySelector('input');
@@ -436,7 +341,6 @@
     optOf: (t) => (t.closest ? t.closest('[role="radio"]') : null),
     on: (o) => o.getAttribute('aria-checked') === 'true',
     disabled: (o) => o.disabled || o.getAttribute('aria-disabled') === 'true',
-    thumb: 'gh-chipseg-thumb',
     drag: false,
     pick(root, o) {
       if (CHIPS.on(o) || CHIPS.disabled(o)) return false;
@@ -448,97 +352,136 @@
     click(o) { o.click(); },
   };
   const refreshers = new WeakMap();
+  const part = (root, cls, first) => {
+    let el = root.querySelector(`:scope > .${cls}`);
+    if (!el) {
+      el = doc.createElement('span');
+      el.className = cls;
+      el.setAttribute('aria-hidden', 'true');
+      if (first) root.insertBefore(el, root.firstChild); else root.appendChild(el);
+    }
+    return el;
+  };
+
+  // A segmented control's thumb, as Refract draws its own: the frosted bead under the labels and a lens
+  // over them, moving as one (it rises to 1.1 x 1.24, and its lens magnifies the labels it passes).
+  const BEAD = { lift: [1.1, 1.24], stretch: 0.22, lens: { zoom: 1.2, refract: 2.5, rim: 0.25, bezel: 10, dispersion: 0.04 } };
+  // The bead is the engine's only while it's touched or moving, as a switch's knob is: at rest it's
+  // placed by a plain transform, which looks the same (a resting bead's lens is off, controls.css).
+  // So a control costs nothing until it's touched: the engine's lens is drawn pixel by pixel in
+  // JavaScript (a map for the bead's size), which at launch held up the first frames (Today's feel
+  // check is one of these). It's taken on where the bead is and handed back once it has landed.
+  function beadMover(root) {
+    const face = part(root, 'rf-segmented-thumb', true);
+    const lens = part(root, 'rf-segmented-lens', false);
+    let L = null, held = false, width = -1, x = 0;
+    const rest = () => { face.style.transform = lens.style.transform = `translateX(${x}px)`; };
+    const release = () => {
+      if (!L) return;
+      L.destroy();
+      L = null;
+      for (const el of [face, lens]) { el.style.removeProperty('--rf-lift'); el.style.removeProperty('--_lens'); el.removeAttribute('data-lifted'); }
+      rest();
+    };
+    // The engine, from where the bead is now (`at`); null without Refract.
+    const engage = (at) => {
+      if (L) return L;
+      L = liquid([face, lens], BEAD);
+      if (!L) return null;
+      L.onRest = () => { if (!held) { root.removeAttribute('data-traveling'); settled(root); release(); } };
+      L.place(at);
+      return L;
+    };
+    const size = (w) => { if (w !== width) { width = w; face.style.inlineSize = lens.style.inlineSize = `${w}px`; } };
+    return {
+      parts: [face, lens],
+      at: () => x,
+      width: () => width,
+      // Where an option is, with no motion (the first layout, a resize).
+      place(o) { x = o.offsetLeft; size(o.offsetWidth); if (L) L.place(x); else rest(); },
+      // To an option in glass, rising for the trip and landing with a squash; `fresh` grows the bead out
+      // of nothing (the first pick of a control that had none).
+      travel(o, { velocity = 0, fresh = false } = {}) {
+        const from = x;
+        x = o.offsetLeft; size(o.offsetWidth);
+        const l = engage(fresh ? x : from);
+        if (!l) { this.place(o); return; }
+        root.setAttribute('data-traveling', '');
+        busy(root);
+        held = false;
+        if (fresh) l.place(x, 0.4);
+        l.travel(x, { lift: true, velocity, width: 1 });
+      },
+      grab() { held = true; busy(root); const l = engage(x); if (l) l.grab(); },
+      follow(tx) { if (L) L.follow(tx); },
+      drop() { held = false; if (L) L.drop(); else settled(root); },
+      destroy() { held = false; release(); },
+    };
+  }
+  // A chip choice's indicator: it slides (CSS transitions) to the chip picked, on any line.
+  function slideMover(root) {
+    const thumb = part(root, 'gh-chipseg-thumb', true);
+    const put = (name, v) => { if (root.style.getPropertyValue(name) !== v) root.style.setProperty(name, v); };
+    let x = 0, endMove = 0;
+    const at = (o) => { x = o.offsetLeft; const y = o.offsetTop, w = o.offsetWidth, h = o.offsetHeight; put('--_tx', `${x}px`); put('--_tw', `${w}px`); put('--_ty', `${y}px`); put('--_th', `${h}px`); };
+    return {
+      parts: [thumb],
+      at: () => x,
+      width: () => thumb.offsetWidth,
+      place: at,
+      travel(o) {
+        at(o);
+        root.setAttribute('data-traveling', '');
+        busy(root);
+        clearTimeout(endMove);
+        endMove = setTimeout(() => { endMove = 0; root.removeAttribute('data-traveling'); settled(root); }, dur('duration-spring-snappy', 460) + 80);
+      },
+      grab() {},
+      follow() {},
+      drop() { settled(root); },
+      destroy() { clearTimeout(endMove); },
+    };
+  }
 
   function picker(root, K) {
-    const part = (cls) => {
-      let el = root.querySelector(`:scope > .${cls}`);
-      if (!el) {
-        el = doc.createElement('span');
-        el.className = cls;
-        el.setAttribute('aria-hidden', 'true');
-        if (cls === K.thumb) root.insertBefore(el, root.firstChild); else root.appendChild(el);
-      }
-      return el;
-    };
-    const thumb = part(K.thumb);
-    const lens = part('gh-seg-lens');
+    const M = K.drag ? beadMover(root) : slideMover(root);
     if (!root.hasAttribute('role')) root.setAttribute('role', 'radiogroup');
     const T = tracker();
-    const st = stretcher(root);
-    const gl = glass(root);
-    const r = R();
-    // While dragged, the thumb follows the finger on a spring: it jumps under it when the drag starts
-    // on another option, then stays with it.
-    const spring = r && r.spring ? r.spring({ stiffness: 900, damping: 50, onUpdate: (x) => root.style.setProperty('--_tx', `${x.toFixed(1)}px`) }) : null;
-    let last = -1, lensKey = '', liftTimer = 0, rescueTimer = 0, endMove = null, d = null;
+    let last = -1, liftTimer = 0, rescueTimer = 0, d = null;
     const opts = () => K.opts(root);
     const current = () => opts().find(K.on) || null;
 
-    // The thumb goes where the option is (with its size, for chips of any width on any line). Every
-    // size is read before anything is written (a read after a write restyles the page again), and a
-    // value that's already there isn't written again.
-    const put = (name, v) => { if (root.style.getPropertyValue(name) !== v) root.style.setProperty(name, v); };
-    const place = (o) => {
-      const x = o.offsetLeft, y = o.offsetTop, w = o.offsetWidth, h = o.offsetHeight;
-      const lensH = K.drag ? thumb.offsetHeight : h;
-      put('--_tx', `${x}px`);
-      put('--_tw', `${w}px`);
-      if (!K.drag) {
-        put('--_ty', `${y}px`);
-        put('--_th', `${h}px`);
-      }
-      // The lens filter for the thumb's size, rebuilt only when the size changes (a resize, another
-      // chip's width), from a cache shared by every control.
-      const k = `${w}x${lensH}`;
-      if (k !== lensKey) {
-        lensKey = k;
-        const url = lensFor(w, lensH, 'thumb');
-        if (url) root.style.setProperty('--_drag-lens', url); else root.style.removeProperty('--_drag-lens');
-      }
-    };
-    // In glass from where it is to the picked option, until the thumb's translate ends (or a fallback
-    // a little after the spring's length), then the lens fades.
-    const travel = (dist) => {
-      root.setAttribute('data-traveling', '');
-      gl.on();
-      if (dist) st.kick(clamp(dist * 0.45, 0.3, 0.9));
-      if (endMove) endMove();
-      endMove = afterMove(thumb, 'translate', dur('duration-spring-snappy', 460) + 80, () => {
-        endMove = null;
-        root.removeAttribute('data-traveling');
-        gl.settle();
-      });
-    };
-    const position = (kick) => {
+    // The thumb goes where the picked option is: placed at once on the first layout and a resize, in
+    // glass for a change (a pick, the keyboard, a re-render that picked another).
+    const position = (kick, velocity) => {
       const o = current();
+      const wasEmpty = root.hasAttribute('data-empty');
       root.toggleAttribute('data-empty', !o);
       if (!o) { last = -1; return; }
       const i = opts().indexOf(o);
-      const moved = kick && last !== -1 && i !== last && !d;
-      place(o);
-      if (moved) travel(Math.abs(i - last)); // after the move starts, so it can wait for its end
+      if (kick && !d && (i !== last || wasEmpty) && root.hasAttribute('data-ready')) M.travel(o, { velocity, fresh: wasEmpty });
+      else M.place(o);
       last = i;
     };
     refreshers.set(root, () => position(true));
 
-    // Held: the option pressed sinks a little; on the picked one the thumb lifts into its lens.
+    // Held: the option pressed sinks a little; on the picked one the thumb rises.
     const press = (o, lift) => {
       clearTimeout(liftTimer); liftTimer = 0;
       o.setAttribute('data-pressed', '');
-      if (lift) { root.setAttribute('data-pressed', ''); gl.on(); haptic('press'); }
+      if (lift) { root.setAttribute('data-pressed', ''); M.grab(); haptic('press'); }
     };
     const unpress = () => {
       clearTimeout(liftTimer); liftTimer = 0;
       for (const o of opts()) o.removeAttribute('data-pressed');
-      root.removeAttribute('data-pressed');
+      if (root.hasAttribute('data-pressed')) { root.removeAttribute('data-pressed'); M.drop(); }
     };
     const rescue = () => {
       rescueTimer = 0;
       const g = T.get();
-      if (!T.rescue() || !g.opt.isConnected || K.disabled(g.opt)) { unpress(); gl.settle(); return; }
+      if (!T.rescue() || !g.opt.isConnected || K.disabled(g.opt)) { unpress(); return; }
       unpress();
       K.click(g.opt); // detail 0: it goes through, and picks the option the finger was on
-      gl.settle();
     };
     const flushRescue = () => { if (rescueTimer) { clearTimeout(rescueTimer); rescue(); } };
 
@@ -547,27 +490,26 @@
       const g = T.get();
       clearTimeout(liftTimer); liftTimer = 0;
       g.opt.removeAttribute('data-pressed');
-      if (!root.hasAttribute('data-pressed')) { gl.on(); haptic('press'); }
+      if (!root.hasAttribute('data-pressed')) { M.grab(); haptic('press'); }
       root.setAttribute('data-pressed', '');
       root.setAttribute('data-dragging', '');
       const list = opts();
       const box = root.getBoundingClientRect();
-      const tx = parseFloat(root.style.getPropertyValue('--_tx')) || 0;
-      const tw = thumb.offsetWidth;
+      const tw = M.width();
       d = {
         left: box.left, min: 3, max: root.clientWidth - tw - 3, tw,
         // Grabbed on the thumb, it keeps the finger where it took it; from another option, it centres
         // under the finger.
-        grab: K.on(g.opt) ? g.x0 - box.left - tx : tw / 2,
+        grab: K.on(g.opt) ? g.x0 - box.left - M.at() : tw / 2,
         centres: list.map((o) => o.offsetLeft + o.offsetWidth / 2),
         over: list.indexOf(current()),
         list,
       };
-      if (spring) spring.set(tx);
     };
     const follow = (x) => {
-      const tx = clamp(x - d.left - d.grab, d.min, d.max);
-      if (spring) spring.to(tx); else root.style.setProperty('--_tx', `${tx}px`);
+      const raw = x - d.left - d.grab;
+      const tx = clamp(raw, d.min, d.max);
+      M.follow(tx + rubber(raw - tx, 8));
       // The option under the thumb's centre lights up, with a tick each time it changes.
       const c = tx + d.tw / 2;
       let over = 0;
@@ -580,13 +522,12 @@
       }
     };
     const endDrag = () => {
-      if (spring) spring.stop();
       for (const o of d.list) o.removeAttribute('data-over');
       const pick = d.list[d.over];
       d = null;
-      st.release();
       root.removeAttribute('data-dragging');
-      unpress();
+      for (const o of opts()) o.removeAttribute('data-pressed');
+      root.removeAttribute('data-pressed');
       return pick;
     };
 
@@ -609,11 +550,11 @@
       if (m === 'scroll' || (m === 'drag' && !K.drag)) {
         // A scroll, or chips moved sideways (a rail scrolling): not a pick.
         T.cancel(e.pointerId);
-        unpress(); gl.settle();
+        unpress();
         return;
       }
       if (m === 'drag') startDrag(e);
-      if (d) { follow(e.clientX); st.track(e.clientX, e.timeStamp); }
+      if (d) follow(e.clientX);
     });
     on(root, 'pointerup', (e) => {
       const g = T.get();
@@ -621,26 +562,27 @@
       if (!end) return;
       clearTimeout(liftTimer); liftTimer = 0;
       if (end === 'drag' && d) {
+        const v = T.speed(e.timeStamp) * 1000;
         const pick = endDrag();
-        if (!pick || !K.pick(root, pick)) { const o = current(); if (o) place(o); travel(0); } // back to the picked one
+        if (pick && K.on(pick)) { const o = current(); if (o) M.travel(o, { velocity: v }); } // where it was: back in glass
+        else if (!pick || !K.pick(root, pick)) { const o = current(); if (o) M.travel(o, { velocity: v }); }
         return;
       }
       if (end === 'tap') {
         // A tap on the picked option: the lift drops; on another one, its click (or the rescue) moves
         // the thumb there.
-        root.removeAttribute('data-pressed');
+        if (root.hasAttribute('data-pressed')) { root.removeAttribute('data-pressed'); M.drop(); }
         if (!g.clicked) rescueTimer = setTimeout(rescue, RESCUE);
         else unpress();
-        gl.settle();
         return;
       }
-      unpress(); gl.settle();
+      unpress();
     });
     const cancel = (e) => {
       if (!T.cancel(e.pointerId)) return;
       clearTimeout(liftTimer); liftTimer = 0;
-      if (d) { endDrag(); const o = current(); if (o) place(o); travel(0); } // springs back
-      else { unpress(); gl.settle(); }
+      if (d) { endDrag(); const o = current(); if (o) M.travel(o); } // springs back
+      else unpress();
     };
     on(root, 'pointercancel', cancel);
     on(root, 'lostpointercapture', (e) => { if (e.target === root) cancel(e); });
@@ -676,11 +618,11 @@
     const later = (fn) => { if (U.readSoon) U.readSoon(() => { if (!gone) fn(); }); else fn(); };
     // A re-render that picks another option, or changes the options, moves the thumb too.
     const mo = new G.MutationObserver((recs) => {
-      if (recs.every((x) => x.type === 'childList' && [...x.addedNodes, ...x.removedNodes].every((n) => n === thumb || n === lens))) return;
+      if (recs.every((x) => x.type === 'childList' && [...x.addedNodes, ...x.removedNodes].every((n) => M.parts.includes(n)))) return;
       later(() => position(true));
     });
     mo.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: K.drag ? ['checked'] : ['aria-checked'] });
-    const ro = G.ResizeObserver ? new G.ResizeObserver(() => { if (!d) position(false); }) : null;
+    const ro = G.ResizeObserver ? new G.ResizeObserver(() => { if (!d) later(() => position(false)); }) : null;
     if (ro) ro.observe(root);
     // Moves animate from the frame after the first placement (it doesn't slide in).
     later(() => { position(false); G.requestAnimationFrame(() => root.setAttribute('data-ready', '')); });
@@ -690,9 +632,8 @@
       mo.disconnect();
       if (ro) ro.disconnect();
       clearTimeout(liftTimer); clearTimeout(rescueTimer);
-      if (endMove) endMove();
-      if (spring) spring.stop();
-      st.stop(); gl.stop();
+      M.destroy();
+      settled(root);
       refreshers.delete(root);
     };
   }

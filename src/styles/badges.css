@@ -110,11 +110,8 @@
 .bdg-page { flex: 0 0 100%; box-sizing: border-box; scroll-snap-align: center; padding: 0 var(--space-4); }
 .bdg-page .bdg-stage { width: 236px; height: 220px; }
 .bdg-reveal .bdg-actions { padding: var(--space-4) var(--space-4) 0; }
-.bdg-dots { display: flex; justify-content: center; gap: 2px; padding-top: var(--space-3); }
-.bdg-dot { all: unset; box-sizing: border-box; display: grid; place-items: center; width: 28px; height: 24px; cursor: pointer; }
-.bdg-dot::before { content: ''; width: 8px; height: 8px; border-radius: 4px; background: var(--fill-1); transition: width .3s var(--ease-out-soft), background-color .3s; }
-.bdg-dot[aria-selected="true"]::before { width: 20px; background: var(--label); }
-.bdg-dot:focus-visible { outline: 2px solid var(--accent); border-radius: 8px; }
+/* Several new badges: Refract's page dots under the pages (src/ui/badges.js), its worm in the ink. */
+.bdg-dots { justify-self: center; margin-top: var(--space-2); }
 
 /* ================================================================== the player's card */
 .bdg-card { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: var(--space-3); width: calc(100% - 2 * var(--space-4)); margin: 0 var(--space-4) var(--space-3); padding: var(--space-3) var(--space-4) var(--space-3) var(--space-2); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); cursor: pointer; color: var(--label); min-width: 0; -webkit-tap-highlight-color: transparent; }

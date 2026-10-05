@@ -208,7 +208,7 @@
       return `<div class="tour" data-page="${i}">
         <div class="tour-art" data-key="art-${i}"><div class="tour-icon" data-tab="${p.tab}">${U.icon(p.icon)}</div>${tourTabs(p)}</div>
         <div class="tour-copy" data-key="copy-${i}"><h3 class="t-title-2">${U.esc(p.title)}</h3><p class="t-body rf-muted">${U.esc(p.text)}</p></div>
-        <div class="tour-dots" aria-hidden="true">${pages.map((_, k) => `<i${k === i ? ' class="on"' : ''}></i>`).join('')}</div>
+        <div class="rf-pagedots tour-dots" role="group" aria-label="Pages">${pages.map((x, k) => `<button type="button" class="rf-dot" aria-label="${U.esc(`${k + 1} of ${pages.length}: ${x.title}`)}"${k === i ? ' aria-current="true"' : ''}></button>`).join('')}</div>
         <div class="tour-btns">
           ${i < last ? '<button type="button" class="rf-btn" data-variant="plain" data-act="tourSkip">Skip</button>' : '<span></span>'}
           <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-lens data-act="tourNext">${i < last ? 'Next' : 'Let\'s go'}</button>
@@ -227,9 +227,18 @@
     });
     U.act.tourNext = () => { if (i >= last) { ctl.close('ok'); return; } i++; show(ctl, 1); };
     U.act.tourSkip = () => ctl.close('skip');
+    // The dots are Refract's page dots: a dot tapped, scrubbed to or reached with the arrow keys goes
+    // to its page, and its ink worm follows the page shown.
+    ctl.body.addEventListener('rf-select', (e) => {
+      const k = e.detail && e.detail.index;
+      if (k == null || !e.target.closest || !e.target.closest('.tour-dots') || k === i) return;
+      const dir = k > i ? 1 : -1;
+      i = Math.max(0, Math.min(last, k));
+      show(ctl, dir);
+    });
     // Swipe between pages.
     let x0 = null;
-    ctl.body.addEventListener('touchstart', (e) => { x0 = e.touches.length === 1 ? e.touches[0].clientX : null; }, { passive: true });
+    ctl.body.addEventListener('touchstart', (e) => { x0 = e.touches.length === 1 && !(e.target.closest && e.target.closest('.tour-dots')) ? e.touches[0].clientX : null; }, { passive: true });
     ctl.body.addEventListener('touchend', (e) => {
       if (x0 == null) return;
       const dx = e.changedTouches[0].clientX - x0;

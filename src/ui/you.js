@@ -40,12 +40,12 @@
     if (fresh.length) { S.seen = S.seen || {}; S.seen.ach = got.map((a) => a.id); U.save(); }
     return fresh;
   };
+  // Each burst within Refract 1.4's 8 to 14 beads: one badge gets 12, several get 8 each, three at
+  // most.
   function celebrate(list) {
     const grid = document.querySelector('.ach-grid');
-    for (const a of list) {
-      const el = grid && grid.querySelector(`[data-key="ach-${a.id}"] .ach-badge`);
-      if (el && G.Refract && G.Refract.burst && !U.reduced()) { try { G.Refract.burst(el, { count: 14 }); } catch (e) { /* ignore */ } }
-    }
+    const els = list.map((a) => grid && grid.querySelector(`[data-key="ach-${a.id}"] .ach-badge`)).filter(Boolean);
+    if (G.Refract && G.Refract.burst && !U.reduced()) for (const el of els.slice(0, 3)) { try { G.Refract.burst(el, { count: els.length > 1 ? 8 : 12 }); } catch (e) { /* ignore */ } }
     U.haptic('celebrate');
   }
   U.celebrateAchievements = celebrate;

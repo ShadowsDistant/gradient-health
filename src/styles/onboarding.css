@@ -9,11 +9,21 @@
 /* Set-up sits on the app's glow (see .app::before), stronger on the welcome, with glass on top. */
 .onboard::before, .onboard::after {
   content: ''; position: absolute; inset: -12% -25% auto; height: 64%; pointer-events: none; z-index: -1;
-  -webkit-mask-image: linear-gradient(to bottom, #000 35%, transparent 95%); mask-image: linear-gradient(to bottom, #000 35%, transparent 95%);
   opacity: .55; will-change: transform; transform-origin: 50% 40%; transition: opacity 700ms var(--ease-standard);
 }
-.onboard::before { background: radial-gradient(34% 46% at 20% 34%, var(--glow-mint), transparent 72%), radial-gradient(38% 48% at 64% 66%, var(--glow-violet), transparent 74%); animation: glow-drift-a 26s ease-in-out infinite alternate; }
-.onboard::after { background: radial-gradient(34% 44% at 80% 26%, var(--glow-sky), transparent 72%), radial-gradient(30% 40% at 34% 74%, var(--glow-pink), transparent 74%); animation: glow-drift-b 34s ease-in-out -9s infinite alternate; }
+/* The same gradients as the app's glow (src/styles.css), fading out in their own stops (no mask). */
+.onboard::before {
+  background:
+    radial-gradient(34% 43% at 20% 32.5%, var(--glow-mint), color-mix(in srgb, var(--glow-mint) 44%, transparent) 38.5%, transparent 73.5%),
+    radial-gradient(33% 36% at 64% 59%, color-mix(in srgb, var(--glow-violet) 49%, transparent), color-mix(in srgb, var(--glow-violet) 44%, transparent) 19%, transparent 84%);
+  animation: glow-drift-a 26s ease-in-out infinite alternate;
+}
+.onboard::after {
+  background:
+    radial-gradient(33% 41% at 80% 25.5%, var(--glow-sky), color-mix(in srgb, var(--glow-sky) 50%, transparent) 37%, transparent 74.5%),
+    radial-gradient(26.5% 30% at 34% 67.5%, color-mix(in srgb, var(--glow-pink) 37%, transparent), color-mix(in srgb, var(--glow-pink) 32%, transparent) 21%, transparent 82.5%);
+  animation: glow-drift-b 34s ease-in-out -9s infinite alternate;
+}
 [data-theme^="dark"] .onboard::before, [data-theme^="dark"] .onboard::after { opacity: .65; }
 .onboard[data-step="welcome"]::before, .onboard[data-step="welcome"]::after, .onboard[data-step="reveal"]::before, .onboard[data-step="reveal"]::after { opacity: .85; }
 :root[data-still-glow] .onboard::before, :root[data-still-glow] .onboard::after { animation-play-state: paused; }
@@ -21,7 +31,13 @@
 @media (prefers-reduced-transparency: reduce) { .onboard::before, .onboard::after { display: none; } }
 .onboard { --ob-glass: color-mix(in srgb, var(--bg-raised) 72%, transparent); --ob-line: inset 0 0 0 .5px var(--separator); }
 [data-theme^="dark"] .onboard { --ob-glass: color-mix(in srgb, var(--bg-raised) 64%, transparent); }
-.onboard .rf-list, .onboard .card, .ob-opt, .ob-tile, .ob-wd, .rv-day, .ob-more, .ob-points li { background-color: var(--ob-glass); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); box-shadow: var(--ob-line), var(--shadow-card); }
+/* Inside set-up's scroller (and the copy of a screen sliding out, .ob-exit) the tiles are
+   near-opaque instead of frosted (--ob-frost: none): a blur there was drawn again every frame the
+   page scrolled, over a backdrop that's only the glow, which is smooth already, so they look the
+   same. */
+.onboard :is(.ob-scroll, .ob-exit) { --ob-glass: color-mix(in srgb, var(--bg-raised) 90%, transparent); --ob-frost: none; }
+[data-theme^="dark"] .onboard :is(.ob-scroll, .ob-exit) { --ob-glass: color-mix(in srgb, var(--bg-raised) 86%, transparent); }
+.onboard .rf-list, .onboard .card, .ob-opt, .ob-tile, .ob-wd, .rv-day, .ob-more, .ob-points li { background-color: var(--ob-glass); -webkit-backdrop-filter: var(--ob-frost, blur(22px) saturate(160%)); backdrop-filter: var(--ob-frost, blur(22px) saturate(160%)); box-shadow: var(--ob-line), var(--shadow-card); }
 :root[data-theme$="contrast"] :is(.onboard .rf-list, .onboard .card, .ob-opt, .ob-tile, .ob-wd, .rv-day, .ob-more, .ob-points li), :root[data-rf-transparency="reduced"] :is(.onboard .rf-list, .onboard .card, .ob-opt, .ob-tile, .ob-wd, .rv-day, .ob-more, .ob-points li) { background-color: var(--bg-raised); -webkit-backdrop-filter: none; backdrop-filter: none; }
 @media (prefers-reduced-transparency: reduce) { :is(.onboard .rf-list, .onboard .card, .ob-opt, .ob-tile, .ob-wd, .rv-day, .ob-more, .ob-points li) { background-color: var(--bg-raised); -webkit-backdrop-filter: none; backdrop-filter: none; } }
 /* Above the keyboard there's no navigation bar to clear. */
@@ -250,7 +266,7 @@
 .ob-measure { position: fixed; left: -400px; top: 0; width: 200px; height: 200px; visibility: hidden; pointer-events: none; }
 .ob-measure > svg { width: 200px; height: 200px; }
 /* Why this plan. */
-.rv-why { display: grid; gap: 12px; padding: var(--space-4); border-radius: var(--radius-lg); background-color: var(--ob-glass); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); box-shadow: var(--ob-line), var(--shadow-card); }
+.rv-why { display: grid; gap: 12px; padding: var(--space-4); border-radius: var(--radius-lg); background-color: var(--ob-glass); -webkit-backdrop-filter: var(--ob-frost, blur(22px) saturate(160%)); backdrop-filter: var(--ob-frost, blur(22px) saturate(160%)); box-shadow: var(--ob-line), var(--shadow-card); }
 :root[data-theme$="contrast"] .rv-why, :root[data-rf-transparency="reduced"] .rv-why { background-color: var(--bg-raised); -webkit-backdrop-filter: none; backdrop-filter: none; }
 .rv-h { margin: 0; display: flex; align-items: center; gap: 6px; font-size: .8125rem; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; color: var(--label-secondary); }
 .rv-h > svg { width: 15px; height: 15px; color: var(--hue-rose); }
@@ -328,9 +344,8 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 .tour-tab-label { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .tour-copy { display: grid; align-content: start; gap: var(--space-2); max-width: 36ch; min-height: 8.2em; }
 .tour-copy h3, .tour-copy p { margin: 0; }
-.tour-dots { display: flex; gap: 6px; }
-.tour-dots i { width: 7px; height: 7px; border-radius: 4px; background: var(--fill-1); transition: width var(--duration-spring-snappy) var(--spring-snappy), background-color var(--duration-base); }
-.tour-dots i.on { width: 22px; background: var(--accent-fill); }
+/* Refract's page dots (src/ui/guide.js): its ink worm stretches to the page shown and splats there. */
+.tour-dots { margin-block: calc(-1 * var(--space-2)); }
 .tour-btns { width: 100%; max-width: 420px; display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
 .tour-btns .rf-glass { min-width: 140px; }
 
