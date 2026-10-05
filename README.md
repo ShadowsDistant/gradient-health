@@ -30,7 +30,7 @@ Gradient Health plans a workout for each day of your week around your goals, the
 | **[Your plans](#your-plans)** | Build your own plan, or ask the coach for one, and share it with a QR code |
 | **[Workouts](#workouts)** | A 3D figure for every move, one question after each exercise, and a plan that fits your age and your body |
 | **[Moves](#moves)** | 282 exercises, at home or at the gym, seated or standing, each with a how-to |
-| **[Activities](#activities)** | Runs, walks, hikes and rides with GPS, a map, and your watch's heart rate |
+| **[Activities](#activities)** | Runs, walks, hikes and rides with GPS, Google Maps, auto-pause and spoken splits |
 | **[Food](#food)** | Calories and macros, or just protein, or nothing |
 | **[Health](#health)** | Sleep, steps, heart rate, weight and more at a glance, with the history behind each number |
 | **[Progress](#progress)** | A body map of what you've trained and what's improved |
@@ -150,8 +150,11 @@ Your conditions stay on your phone and are never sent to Claude.
 
 Going for a run with the dog? Start a run, walk, hike or ride from Today or Health.
 
-- **While you move:** the app records your route with GPS and counts your steps, even with the screen off, and a notification shows your time and distance with Pause and Finish.
-- **Afterwards, a summary:** the map of where you went (pinch it with two fingers to zoom in), distance, pace and splits, elevation, steps, and heart rate and calories from your watch through Health Connect.
+- **While you move:** the app records your route with GPS and counts your steps, even with the screen off, and a notification shows your time and distance with Pause and Finish. The live map follows you, with a dot for how sure the GPS is and a beam for the way you're facing, and a badge shows how strong the signal is.
+- **Auto-pause:** stop at a crossing and the clock stops with you, then starts again as you go. It's on for runs and rides, and you can turn it on for walks and hikes.
+- **Spoken splits:** at each kilometre or mile, your time and pace, spoken over your music (which dips meanwhile), if you turn them on.
+- **Steady numbers:** your pace is the pace you're going now, the distance doesn't creep up while you stand still, and the route is drawn smooth.
+- **Afterwards, a summary:** your route on Google Maps in pace colours (move and zoom it with two fingers), distance, pace and splits, elevation, steps, and heart rate and calories from your watch through Health Connect. OpenFreeMap's maps stand in when Google's can't load, and maps can be turned off.
 - **Keep it:** save it to Health Connect with its route. Your history and personal records (fastest mile, longest ride and more) live next to it.
 
 <p align="center">
@@ -261,7 +264,8 @@ The download is one-off, checked, resumable, and can wait for Wi-Fi.
 - **Glass that moves.** Buttons form out of the glass and change shape when their label does, menus grow out of the button you tap, and buttons in the top bar carry over from page to page.
 - **Pages and cards.** Pages slide away as the next one comes in, and cards glide when something is added or removed. Sheets of thick glass slide up from the bottom and follow your finger, from a quick glance up to full height.
 - **Smooth scrolling.** The glow behind the page holds still while it moves, and work that can wait waits until it stops. Pages don't zoom by accident; maps do, with two fingers.
-- **Haptics with 31 distinct feels** (a tick for each tab, a bump at the end of a stepper, a timer counting down, a finished set, a new best, a badge) in Light, Medium or Strong, and you can feel each one in Settings.
+- **Haptics with 57 distinct feels** (a tick for each tab, a bump at the end of a stepper, a sheet swiped away, saving, sending, a timer counting down, a finished set, a new best, a badge, every split of a run) in Light, Medium or Strong, and you can feel each one in Settings.
+- **Changed your mind?** Cancelling a workout folds the player away and Today settles back; a discarded activity folds away too.
 - **3D figures appear right away,** with a picture of the move until it starts.
 - **For everyone:** light and dark themes, bigger text, reduced motion and increased contrast are all respected.
 
@@ -282,7 +286,7 @@ No account, no ads and no analytics. Everything stays on your phone. The only th
 - the words or barcode of a food you look up online
 - the one-time download of the on-device model
 - a workout plan you share with someone
-- street map pieces for an activity's area when you tap Show streets
+- the map around an activity, or around where you are while one records, from Google Maps (or OpenFreeMap when Google's can't load), when you turn maps on
 
 The [privacy policy](docs/PRIVACY.md) lists every piece of data and where it goes.
 
@@ -328,10 +332,10 @@ It ships unmodified in [`vendor/refract/`](vendor/refract/), and [`vendor/refrac
 | ZXing C++ | Barcode reading | Apache 2.0 |
 | USDA SR28 | Built-in food list | Public domain |
 | Open Food Facts | Online food search, when it's on | Open Database License |
-| MapLibre GL JS | Street maps behind an activity's route | BSD 3-Clause |
-| OpenStreetMap contributors and OpenMapTiles, served by OpenFreeMap | Street map data, when you show streets | Open Database License and CC BY 4.0 |
+| MapLibre GL JS | Maps behind an activity's route when Google's aren't there | BSD 3-Clause |
+| OpenStreetMap contributors and OpenMapTiles, served by OpenFreeMap | Map data for those maps, when you show a map | Open Database License and CC BY 4.0 |
 
-The same list is in the app, under Settings, About, Open-source licenses.
+The same list is in the app, under Settings, About, Open-source licenses. Activity maps come from [Google Maps](https://www.google.com/maps) through its Maps JavaScript API, under Google's terms, which every map shows.
 
 ---
 
