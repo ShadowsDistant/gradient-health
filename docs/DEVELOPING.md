@@ -144,8 +144,8 @@ controls take its liquid engine only when touched (Refract, the design system, b
 
 **Scrolling, and work that can wait.** A fling should only move what's already drawn
 (`src/styles/perf.css`). While the page scrolls (`#app[data-scrolling]`, set in `core.js` and
-cleared 150 ms after the last scroll) the glass over it keeps its blur, rim and light but doesn't
-refract, and the background glow holds still; the glow also stops drifting 20 s after the last
+cleared 150 ms after the last scroll) the background glow holds still (the glass over it keeps its
+lens: dropping it for the scroll showed as the glass clearing and frosting again); the glow also stops drifting 20 s after the last
 touch, key or scroll (`#app[data-idle]`), and fades out in its gradients' own stops rather than
 through a mask. The bar's frosted edge is a single blur, drawn only while it shows, and whether it
 shows comes from an IntersectionObserver on the large title, so a scroll reads nothing from the
@@ -187,8 +187,7 @@ What the app turns off, and why:
   Refract's would buzz a second time on every control.
 - **Refraction by default** (`Refract.init(root, { lens: false })`, `RF_INIT` in `src/ui/core.js`):
   only glass marked `data-lens` refracts, since each lens is redrawn every frame the page moves
-  under it, and none refracts while the page scrolls (its lens layer's filter loses the map,
-  `src/styles/perf.css`).
+  under it.
 - **The light while busy**: on a phone, glass rims follow how it's tilted. The light holds still
   while the page scrolls, while the workout player or a live activity is open, with Moving
   background off and under reduced motion, and follows the tilt again when things are calm

@@ -300,9 +300,9 @@ if (!measureOnly) {
 }
 
 /* ---------------------------------------------------------------- while scrolling, and at rest */
-// The glass over the page keeps its blur but doesn't refract while the page scrolls, and does again
-// at rest; the glow stops drifting 20 s after the last input, and starts again with the next one
-// (src/styles/perf.css, src/ui/core.js).
+// The glass over the page looks the same while the page scrolls as at rest (it keeps its lens: 1.7.0's
+// dropping it showed as the glass clearing and frosting again); the glow stops drifting 20 s after
+// the last input, and starts again with the next one (src/styles/perf.css, src/ui/core.js).
 if (!measureOnly) {
   section('While scrolling, and at rest');
   const { ctx, page } = await open(builds[0]);
@@ -315,8 +315,8 @@ if (!measureOnly) {
   await page.waitForFunction(() => !document.getElementById('app').hasAttribute('data-scrolling'), null, { timeout: 3000 }).catch(() => null);
   const after = await lens();
   check('at rest, the tab bar refracts (a lens map in its backdrop filter)', /url\(/.test(atRest || ''), atRest);
-  check('while the page scrolls it keeps its blur, without the map', !!scrolling && /blur/.test(scrolling) && !/url\(/.test(scrolling), scrolling);
-  check('at rest again, it refracts again', /url\(/.test(after || ''), after);
+  check('while the page scrolls it keeps the same glass, lens and all', !!scrolling && scrolling === atRest, scrolling);
+  check('and at rest again', after === atRest, after);
   const drift = () => page.evaluate(() => {
     const app = document.getElementById('app');
     const a = document.getAnimations().find((x) => x.effect && x.effect.target === app && x.effect.pseudoElement === '::before' && /glow-drift/.test(x.animationName || ''));
