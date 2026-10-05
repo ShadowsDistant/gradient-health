@@ -114,7 +114,7 @@ function mount(el, o) {
     try { setWorkerCount(1); } catch (e) { /* older API */ }
     workerSet = true;
   }
-  let map = null, done = false, dead = false, timer = 0, loaded = false, follow = true, fitting = false;
+  let map = null, done = false, dead = false, timer = 0, loaded = false, follow = true;
   let route = opt.route || [], lastHere = opt.here || null, here = null, startMark = null, fit = null;
   const marks = [];
   const ok = () => { if (done) return; done = true; clearTimeout(timer); if (opt.onReady) opt.onReady(); };
@@ -157,7 +157,7 @@ function mount(el, o) {
       fit.innerHTML = GH.ui && GH.ui.icon ? GH.ui.icon(opt.live ? 'navigate' : 'expand') : '';
       fit.addEventListener('click', () => {
         fit.hidden = true;
-        if (!opt.live) { fitting = true; map.fitBounds(b, { padding: pad, duration: 420 }); return; }
+        if (!opt.live) { map.fitBounds(b, { padding: pad, duration: 420 }); return; }
         follow = true;
         if (lastHere) map.easeTo({ center: [lastHere.lon, lastHere.lat], duration: 420 });
       });
@@ -165,7 +165,7 @@ function mount(el, o) {
       map.on('dragstart', (e) => { if (e && e.originalEvent) { follow = false; fit.hidden = false; } });
       map.on('moveend', (e) => { if (e && e.originalEvent && !opt.live) fit.hidden = false; });
       // Its zoom, for anything that asks (the tests).
-      map.on('zoomend', () => { el.dataset.zoom = map.getZoom().toFixed(2); fitting = false; });
+      map.on('zoomend', () => { el.dataset.zoom = map.getZoom().toFixed(2); });
       map.on('zoom', () => sizeHere());
       map.once('load', () => {
         el.dataset.zoom = map.getZoom().toFixed(2);
