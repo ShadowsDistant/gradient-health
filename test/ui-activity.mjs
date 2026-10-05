@@ -138,6 +138,8 @@ so = await sheetOpts();
 check('a chip turns auto-pause on for that kind, remembered', /Walks:true/.test(so.chips) && (await page.evaluate(() => window.GH.ui.S.profile.prefs.actAuto.walk === true)), so);
 await page.click('dialog[open] .at-auto .rf-chip[data-v="walk"]');
 await settle(400);
+so = await sheetOpts();
+check('and off again', /Walks:false/.test(so.chips) && (await page.evaluate(() => window.GH.ui.S.profile.prefs.actAuto.walk === false)), so);
 await shot('01-sheet');
 await page.evaluate(() => { window.__act.searchMs = 9000; });
 await page.click('dialog[open] .at-tile[data-arg="run"]');
@@ -602,7 +604,10 @@ await page.click('#actlive [data-act="alGo"]');
 await settle(3500);
 const walkId = (await S()).live.id;
 check('the recorder gets the units for its notification', (await fake()).calls.some((c) => c.startsWith('actStart:') && c.includes('"units":"mi"')));
-check('a walk starts without auto-pause (unless it\'s turned on for walks)', (await fake()).calls.some((c) => c.startsWith('actStart:') && c.includes('"type":"walk"') && c.includes('"autoPause":false')));
+{
+  const walkStart = (await fake()).calls.filter((c) => c.startsWith('actStart:') && c.includes('"type":"walk"')).pop();
+  check('a walk starts without auto-pause (unless it\'s turned on for walks)', /"autoPause":false/.test(walkStart || ''), [walkStart, await page.evaluate(() => window.GH.ui.S.profile.prefs.actAuto)]);
+}
 // Maps are on (from the summary), and Google turned the key down this session: OpenFreeMap's map,
 // following you.
 await page.waitForFunction(() => { const m = document.querySelector('#actlive .al-map'); return m && /ready|failed/.test(m.dataset.streets || ''); }, null, { timeout: 30000 }).catch(() => {});
