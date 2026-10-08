@@ -582,7 +582,8 @@ if (!measureOnly && (!ONLY.length || ONLY.includes('today'))) {
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   let aborted = null;
   for (let i = 0; i < 100 && !aborted; i++) { await sleep(100); aborted = await ev('window.__aborted ? { stopped: window.__aborted.stopped, rows: window.__aborted.rows.length } : null'); }
-  check('a touch stops it, and everything is put back', !!aborted && aborted.stopped && aborted.rows < 6 && (await ev("['data-gx-nolens', 'data-gx-noedge', 'data-gx-noglow', 'data-glass-lite'].filter((a) => document.documentElement.hasAttribute(a)).length")) === 0, aborted);
+  await sleep(300);
+  check('a touch stops it, and everything is put back', !!aborted && aborted.stopped && aborted.rows < 6 && (await ev("['data-gx-nolens', 'data-gx-noedge', 'data-gx-noglow', 'data-gx-keepglow', 'data-glass-lite'].filter((a) => document.documentElement.hasAttribute(a)).length")) === 0, { aborted, attrs: await ev("[...document.documentElement.attributes].map((a) => a.name).filter((n) => /^data-(gx|glass)/.test(n)).join(',')") });
   await ctx.close();
 }
 

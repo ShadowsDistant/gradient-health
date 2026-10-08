@@ -241,9 +241,12 @@
       doc.removeEventListener('touchstart', abort, true);
       doc.removeEventListener('keydown', abort, true);
       for (const a of GX_ATTRS) html.removeAttribute(a);
-      if (U.glassHold) U.glassHold(false); // works the attributes out again from the setting
       const sc = screen();
       if (sc) sc.scrollTop = 0;
+      // The scroll event of that reset comes a frame later, while the glass is still held (a touch that
+      // stopped the test may be down: its scroll would count as a move and lighten the glass for a moment).
+      await wait(150);
+      if (U.glassHold) U.glassHold(false); // works the attributes out again from the setting
       speedRunning = false;
     }
     speed = { when: new Date().toISOString().replace('T', ' ').slice(0, 19), page: (U.route && (U.route.view || U.route.tab)) || '?', ms, rows, stopped: speedAbort };
