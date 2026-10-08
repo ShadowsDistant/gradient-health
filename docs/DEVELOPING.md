@@ -154,12 +154,21 @@ controls take its liquid engine only when touched (Refract, the design system, b
 
 **Scrolling, and work that can wait.** A fling should only move what's already drawn
 (`src/styles/perf.css`). While the page scrolls (`#app[data-scrolling]`, set in `core.js` and
-cleared 150 ms after the last scroll) the background glow holds still (the glass over it keeps its
-lens: dropping it for the scroll showed as the glass clearing and frosting again); the glow also stops drifting 20 s after the last
-touch, key or scroll (`#app[data-idle]`), and fades out in its gradients' own stops rather than
-through a mask. The bar's frosted edge is a single blur, drawn only while it shows, and whether it
-shows comes from an IntersectionObserver on the large title, so a scroll reads nothing from the
-layout. Under the workout player and set-up the page's bars and glass are hidden. Set-up's cards are
+cleared 150 ms after the last scroll) the background glow holds still, and the glass at the bottom
+(the tab bar, Today's floating buttons, the workout capsule) loses its bend: its lens's strength eases
+to nothing in thirds over 160 ms, then the lens comes off (`[data-gh-flat]`), which looks the same;
+once the page stops it goes back on at no strength and eases up over 280 ms (`bend` in `core.js`).
+Its frost stays, and the bar's buttons keep their lens: 1.7.0 dropped every lens at once and the
+title went sharp under them. The glow also stops drifting 20 s after the last touch, key or scroll
+(`#app[data-idle]`), and fades out in its gradients' own stops rather than through a mask. The
+bar's frosted edge is a single 12 px blur (Refract's is 8: the wider one looks the same under its
+tint and is cheaper, as the renderer works a wide blur out at a lower resolution), drawn only while
+it shows, and whether it shows comes from an IntersectionObserver on the large title, so a scroll
+reads nothing from the layout. Refract's light no longer hears each scroll (it read where every
+glass was, a frame at a time, to find the same angles): it's refreshed once a scroll ends. What
+makes a fling miss frames is the glass: each piece over the page is filtered again every frame it
+moves (1.8.1 dropped about 30% of a touch fling's frames on Today at 4× CPU in software; 1.8.2
+about 16%). Under the workout player and set-up the page's bars and glass are hidden. Set-up's cards are
 near-opaque rather than frosted, and its glow holds still while it scrolls. The badges
 gallery lays out and draws a block only as it comes near (`content-visibility: auto`; on Health,
 Progress, Settings and the moves it made no difference and moved rows by 1 px, so they don't); a
@@ -170,7 +179,10 @@ tiles, a background re-render such as Today's insight line, the 3D canvas shrink
 shows) waits for `U.calm()`: no scroll or touch for 400 ms, no sheet moving and no control held or
 gliding (`U.controlsMoving`; `U.whenCalm(fn)` runs it then). `test/ui-scroll.mjs` scrolls every
 main screen at 4× CPU, traced, and holds the budgets; `--vs=<dir>` compares two builds run by run, and
-`--ablate=<part>` switches one part off to show what it costs.
+`--ablate=<part>` switches one part off to show what it costs. It also touch-scrolls (real touch
+flings, `Input.dispatchTouchEvent`) on pages driven through raw CDP: Playwright's page helpers inject
+a blocking `touchstart` listener on the window, which by itself makes any page scroll on the main
+thread, so a touch scroll measured through them is wrong.
 
 **Saving.** `U.save()` never writes in the tap that changed something. `GH.store` waits for the page
 to be idle (a second at most), and while it's busy (a scroll, a drag, a knob gliding) for `U.calm()`
@@ -201,7 +213,8 @@ What the app turns off, and why:
   only glass marked `data-lens` refracts, since each lens is redrawn every frame the page moves
   under it.
 - **The light while busy**: on a phone, glass rims follow how it's tilted. The light holds still
-  while the page scrolls, while a sheet moves, while the workout player or a live activity is open,
+  while a finger is on the screen and the page scrolls, while a sheet moves, while the workout
+  player or a live activity is open,
   with Moving background off and under reduced motion, and follows the tilt again when things are calm
   (`U.steadyLight`, `core.js`).
 - **Click effects where a drag starts**: Refract's ripple, click ring and icon effects stay (they're

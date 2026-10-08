@@ -299,24 +299,134 @@ if (!measureOnly) {
   if (idle !== null) check('at rest on Today, nothing animates forever that the compositor can\'t run alone', idle.length === 0, idle);
 }
 
+/* ---------------------------------------------------------------- touch */
+// A phone scrolls by touch, and the wheel scrolls above don't show all of it. Here: real touch flings
+// (CDP Input.dispatchTouchEvent; Chromium turns them into a scroll and a fling as on a phone), on a
+// page opened and driven through raw CDP only. Playwright's own page helpers inject a script that puts
+// a blocking touchstart listener on the window, which by itself makes any page scroll on the main
+// thread (a plain page too), so they aren't used on these pages.
+// Each screen: two flings down and one up, traced, best of the runs. Checks:
+// - no blocking touch or wheel listener on the window or the document (the app's are all passive)
+// - the page scrolls on the compositor (the frame reporter's scroll state), never the main thread
+// - frames dropped while it moves, within the budget
+// On Today, while it moves: the bottom glass's bend is off (the tab bar's and the floating buttons'
+// lens, faded out and taken off), its frost isn't, and the top bar's buttons keep theirs; once it
+// stops, all of it is as it was. And Refract's light no longer hears each scroll.
+// Budgets, dropped frames while touch-scrolling (best of 2, 1.8.2's numbers at 4x CPU, 390 x 844 at
+// 3x, plus about a half; 1.8.1 dropped about 31% on Today, 29% on Health, 31% on Plan, 27% on You,
+// 18% on Progress):
+const TOUCH_BUDGET = { today: 28, health: 24, plan: 24, you: 21, progress: 9 };
+const TOUCH = Object.keys(TOUCH_BUDGET).filter((s) => !ONLY.length || ONLY.includes(s));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// The touch pages draw with Chromium's GPU path (SwiftShader standing in for a phone's GPU), as a
+// phone does: without it the glass is drawn by the software compositor, at a cost unlike a phone's.
+let gpuBrowser = null;
+async function openRaw(build) {
+  if (!gpuBrowser) gpuBrowser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  const ctx = await gpuBrowser.newContext({ ...ctxOpts, deviceScaleFactor: 3 });
+  await ctx.addInitScript(seedBridge);
+  await ctx.addInitScript(asyncBridge);
+  await ctx.addInitScript((j) => { try { if (!sessionStorage.getItem('shot-state')) sessionStorage.setItem('shot-state', j); } catch (e) { /* ignore */ } }, flatJson);
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push(e.message));
+  const cdp = await ctx.newCDPSession(page);
+  const ev = async (expression) => { const r = await cdp.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 300)); return r.result.value; };
+  await cdp.send('Page.enable');
+  await cdp.send('Page.navigate', { url: build.server.url });
+  for (let i = 0; i < 120; i++) { await sleep(500); if (await ev("!!document.querySelector('#screen[data-view=\"today\"] .session')").catch(() => false)) break; }
+  await sleep(1500);
+  await ev('(window.GH.ui.closeSheets && window.GH.ui.closeSheets(), 1)');
+  await sleep(500);
+  return { ctx, page, cdp, ev };
+}
+// A finger dragging dy px over 15 moves a frame apart, then lifted: a fling.
+async function fling(cdp, y0, dy) {
+  let t = Date.now() / 1000;
+  const send = (type, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: 195, y, id: 1 }], timestamp: t });
+  await send('touchStart', y0);
+  for (let i = 1; i <= 15; i++) { t += 0.016; await send('touchMove', y0 + (dy * i) / 15); await sleep(16); }
+  t += 0.016;
+  await send('touchEnd', y0 + dy);
+}
+async function blockingListeners(cdp) {
+  const out = [];
+  for (const expr of ['window', 'document']) {
+    const { result } = await cdp.send('Runtime.evaluate', { expression: expr });
+    const { listeners } = await cdp.send('DOMDebugger.getEventListeners', { objectId: result.objectId });
+    for (const l of listeners) if (/^(touch|wheel|mousewheel)/.test(l.type) && !l.passive) out.push(`${expr} ${l.type}`);
+  }
+  return out;
+}
+async function touchScroll(build, id) {
+  const { ctx, page, cdp, ev } = await openRaw(build);
+  await ev(`(() => { const U = window.GH.ui; const id = ${JSON.stringify(id)}; if (id !== 'today') U.go(id); return 1; })()`);
+  await sleep(2500);
+  const blocking = await blockingListeners(cdp);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU });
+  await gpuBrowser.startTracing(page, { categories: ['cc', 'benchmark', 'disabled-by-default-devtools.timeline.frame'] });
+  for (const [y0, dy] of [[650, -400], [650, -400], [250, 500]]) { await fling(cdp, y0, dy); await sleep(1500); }
+  const evs = (JSON.parse((await gpuBrowser.stopTracing()).toString()).traceEvents) || [];
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+  let dropped = 0, presented = 0, mainThread = 0, compositor = 0;
+  for (const e of evs) {
+    const fr = e.name === 'PipelineReporter' && e.ph === 'b' && e.args && e.args.frame_reporter;
+    if (!fr || !fr.scroll_state || fr.scroll_state === 'SCROLL_NONE') continue;
+    if (fr.scroll_state === 'SCROLL_MAIN_THREAD') mainThread++; else compositor++;
+    if (fr.state === 'STATE_DROPPED') dropped++; else if (/^STATE_PRESENTED/.test(fr.state)) presented++;
+  }
+  const moved = await ev('document.getElementById("screen").scrollTop');
+  await ctx.close();
+  return { blocking, dropped, presented, droppedPct: (100 * dropped) / Math.max(1, dropped + presented), mainThread, compositor, moved };
+}
+if (TOUCH.length) {
+  section(`Touch scrolling (CPU ${CPU}x slower, at 3x, best of ${RUNS})`);
+  for (const id of TOUCH) {
+    const runs = [];
+    for (let i = 0; i < RUNS; i++) runs.push(await touchScroll(builds[0], id));
+    const b = runs.reduce((m, x) => (x.droppedPct < m.droppedPct ? x : m), runs[0]);
+    console.log(`  ${id}: dropped ${r1(b.droppedPct)}% of ${b.dropped + b.presented} frames, ${b.compositor} frames scrolled on the compositor, ${b.mainThread} on the main thread (runs: ${runs.map((x) => `${r1(x.droppedPct)}%`).join(', ')})`);
+    if (!measureOnly) {
+      check(`${id}: no blocking touch or wheel listener on the page`, b.blocking.length === 0, b.blocking);
+      check(`${id}: a touch scroll runs on the compositor, never the main thread`, b.compositor > 20 && b.mainThread === 0, b);
+      check(`${id}: ${TOUCH_BUDGET[id]}% of frames or fewer dropped while touch-scrolling`, b.droppedPct <= TOUCH_BUDGET[id], `${r1(b.droppedPct)}%`);
+    }
+  }
+}
+
 /* ---------------------------------------------------------------- while scrolling, and at rest */
-// The glass over the page looks the same while the page scrolls as at rest (it keeps its lens: 1.7.0's
-// dropping it showed as the glass clearing and frosting again); the glow stops drifting 20 s after
-// the last input, and starts again with the next one (src/styles/perf.css, src/ui/core.js).
+// While the page moves, the glass at the bottom loses its bend (faded out, then the lens taken off:
+// src/ui/core.js, bend) and keeps its frost; the top bar's buttons keep their lens (1.7.0 dropped
+// every lens for the scroll, and the title went sharp under them); once the page stops it's all as it
+// was. Refract's light doesn't hear each scroll. The glow stops drifting 20 s after the last input,
+// and starts again with the next one (src/styles/perf.css, src/ui/core.js).
 if (!measureOnly) {
   section('While scrolling, and at rest');
+  {
+    const { ctx, cdp, ev } = await openRaw(builds[0]);
+    const glass = () => ev(`[...document.querySelectorAll('#tabbar .rf-tabbar-bar, #float .rf-glass, #topbar .rf-glass')].filter((g) => g.querySelector(':scope > .rf-lens-layer')).map((g) => {
+      const f = getComputedStyle(g.querySelector(':scope > .rf-lens-layer')).backdropFilter;
+      const id = (/#([\\w-]+)/.exec(g.style.getPropertyValue('--_lens')) || [])[1], fe = id && document.getElementById(id) && document.getElementById(id).querySelector('feDisplacementMap');
+      return { where: g.closest('#tabbar, #float, #topbar').id, lens: /url\\(/.test(f), frost: /blur\\(/.test(f), scale: fe ? fe.getAttribute('scale') : null };
+    })`);
+    const atRest = await glass();
+    // Mid-fling, after the finger has lifted (a pause in the drag would be the scroll ending).
+    await fling(cdp, 650, -400);
+    await sleep(150);
+    const moving = await glass();
+    await sleep(2500);
+    const after = await glass();
+    const by = (list, w) => (list || []).filter((x) => x.where === w);
+    check('at rest, the tab bar, the floating buttons and the top bar\'s buttons bend (a lens in their glass)', ['tabbar', 'float', 'topbar'].every((w) => by(atRest, w).some((x) => x.lens)), atRest);
+    check('while the page moves, the tab bar and the floating buttons have no bend, and keep their frost', ['tabbar', 'float'].every((w) => by(moving, w).length && by(moving, w).every((x) => !x.lens && x.frost && Number(x.scale) === 0)), moving);
+    check('and the top bar\'s buttons keep theirs', by(moving, 'topbar').length > 0 && by(moving, 'topbar').every((x) => x.lens), moving);
+    check('once it stops, the glass is as it was, bend and all', JSON.stringify(after) === JSON.stringify(atRest), { atRest, after });
+    const light = await ev("(() => { const r = window.Refract; return !!(r && r.light && r.light.refresh); })()");
+    const { result } = await cdp.send('Runtime.evaluate', { expression: 'window' });
+    const { listeners } = await cdp.send('DOMDebugger.getEventListeners', { objectId: result.objectId });
+    check('Refract\'s light no longer hears each scroll (its listener comes off at the first)', light && !listeners.some((l) => l.type === 'scroll' && l.useCapture), listeners.filter((l) => l.type === 'scroll').map((l) => `${l.useCapture ? 'capture' : 'bubble'} ${l.lineNumber}`));
+    await ctx.close();
+  }
   const { ctx, page } = await open(builds[0]);
-  const lens = () => page.evaluate(() => { const l = document.querySelector('#tabbar .rf-tabbar-bar > .rf-lens-layer'); return l ? getComputedStyle(l).backdropFilter : null; });
-  const atRest = await lens();
-  await page.mouse.move(195, 520);
-  await page.mouse.wheel(0, 500);
-  await page.waitForFunction(() => document.getElementById('app').hasAttribute('data-scrolling'), null, { timeout: 3000 }).catch(() => null);
-  const scrolling = await lens();
-  await page.waitForFunction(() => !document.getElementById('app').hasAttribute('data-scrolling'), null, { timeout: 3000 }).catch(() => null);
-  const after = await lens();
-  check('at rest, the tab bar refracts (a lens map in its backdrop filter)', /url\(/.test(atRest || ''), atRest);
-  check('while the page scrolls it keeps the same glass, lens and all', !!scrolling && scrolling === atRest, scrolling);
-  check('and at rest again', after === atRest, after);
   const drift = () => page.evaluate(() => {
     const app = document.getElementById('app');
     const a = document.getAnimations().find((x) => x.effect && x.effect.target === app && x.effect.pseudoElement === '::before' && /glow-drift/.test(x.animationName || ''));
@@ -337,5 +447,6 @@ if (!measureOnly) {
 if (!measureOnly) check('no page errors', errors.length === 0, errors.slice(0, 5).join('\n'));
 
 await browser.close();
+if (gpuBrowser) await gpuBrowser.close();
 for (const b of builds) await b.server.close();
 done();

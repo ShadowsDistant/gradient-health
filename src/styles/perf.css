@@ -4,11 +4,13 @@
    styles.css. */
 #app[data-scrolling]::before, #app[data-scrolling]::after { animation-play-state: paused, running; }
 
-/* Glass over the moving page (the bar's buttons, Today's floating buttons, the tab bar, the workout
-   capsule) keeps its lens while the page scrolls. 1.7.0 dropped the lens map for the scroll, which
-   saved about a fifth of the GPU's time, but on a phone the glass visibly cleared as a scroll began
-   and frosted again after it: the page's big title went sharp under the bar's buttons as it slid
-   under them (only on the way down; on the way up the frosted edge covers it). */
+/* Glass over the moving page keeps its frost, tint and rim while the page scrolls. The bend of the
+   glass at the bottom (the tab bar, Today's floating buttons, the workout capsule) fades out while it
+   moves and back after (src/ui/core.js, bend): once its strength is down to nothing, the lens comes
+   off the glass, which then looks the same and costs a pass less every frame. The bar's buttons keep
+   theirs: 1.7.0 took every lens off at once for the scroll, and the page's big title went sharp
+   under them as it slid under. */
+#app [data-gh-flat] { --_lens: !important; }
 
 /* The bar's frosted edge (#topbar > .rf-scroll-edge, about 126 px tall): Refract draws it with two
    full-width blurs, a light one (3 px, fading out from 55% down to the bottom) under a stronger one
@@ -16,11 +18,17 @@
    one alone, reaching as far down as the light one did (which looks the same: the light one only
    showed below the strong one), and only while it shows (#topbar[data-scrolled], once the large
    title is under the bar): it comes on at once (the edge fades in from nothing), and goes when the
-   edge has faded out. */
+   edge has faded out.
+   Its blur is 12 px rather than Refract's 8: under the edge's tint (90% of the page's colour at the
+   top, 18% lower down) the two can't be told apart (screenshots of a scrolled Today differ by 6 levels
+   of 255 at most), and the wider blur is the cheaper one, as the renderer works a wide blur out at a
+   lower resolution: touch-scrolling Today and Health dropped about 20% of frames rather than 30%
+   (test/ui-scroll.mjs, at 4x CPU in software, where the edge was the largest single cost). */
 .topbar > .rf-scroll-edge::before { display: none; }
 .topbar > .rf-scroll-edge::after {
   -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
   mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+  -webkit-backdrop-filter: blur(12px) saturate(130%); backdrop-filter: blur(12px) saturate(130%);
 }
 .topbar:not([data-scrolled]) > .rf-scroll-edge::after {
   -webkit-backdrop-filter: none; backdrop-filter: none;
