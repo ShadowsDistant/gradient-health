@@ -507,9 +507,9 @@
   // page stops, the lens goes back on at no strength and eases up over 280 ms. The frost, the tint and
   // the rim stay as they are throughout. (1.7.0 took the lens off at once, all the glass: that showed,
   // the title going sharp under the bar's buttons, which keep theirs.) Reduced motion: at once.
-  // Each change of strength has the glass's filter made again (a few ms of the page's thread): fading
-  // out, as a fling starts, it steps down in thirds; fading back in, once the page is still, it's
-  // eased frame by frame.
+  // Each change of strength has the glass's filter made again (a few ms of the page's thread, right
+  // when the next flick may come): fading out, as a fling starts, it steps down in thirds; fading
+  // back in, once the page is still, in sixths.
   const BEND_GLASS = '#tabbar .rf-glass, #float .rf-glass, #accessory.rf-glass';
   let bendNow = 1, bendTo = 1, bendFrom = 1, bendAt = 0, bendMs = 0, bendRaf = 0, bendShown = 1, bendEls = [];
   // The glass to bend, and each one's displacements (with the strength Refract gave them), as they are
@@ -537,7 +537,7 @@
     bendRaf = 0;
     const k = Math.max(0, Math.min(1, (t - bendAt) / bendMs));
     bendNow = k >= 1 ? bendTo : bendFrom + (bendTo - bendFrom) * k * k * (3 - 2 * k);
-    bendSet(bendTo ? bendNow : Math.ceil(bendNow * 3) / 3);
+    bendSet(bendTo ? (k >= 1 ? 1 : Math.floor(bendNow * 6) / 6) : Math.ceil(bendNow * 3) / 3);
     if (k < 1) bendRaf = G.requestAnimationFrame(bendStep);
   }
   function bend(to) {
@@ -612,9 +612,16 @@
   // - #app[data-idle]: 20 s without any input. The background glow stops drifting
   //   (src/styles/perf.css), so a phone left on a page isn't drawing it every frame; the next input
   //   starts it again.
-  const CALM_MS = 400, IDLE_MS = 20000;
-  let lastInput = 0, idleTimer = 0, calmTimer = 0;
-  const calmQueue = [];
+  // - U.quiet(): calm, and nothing for 1.5 s. Heavy work that would hold the page for a while (a 3D
+  //   still, the 3D chunk and its warm-up, a background re-render, the 3D canvas shrinking) waits for
+  //   this rather than calm: on a phone a touch's scroll waits for the page's thread, and the likeliest
+  //   moment for the next flick is right after the last one settles (filmed: three flicks in a row
+  //   froze for 100 to 330 ms each, a still or a re-render running under the finger). A finger on the
+  //   screen is never calm or quiet, however still it holds.
+  // - U.whenQuiet(fn): runs fn now if it's quiet, or as soon as it is (never dropped).
+  const CALM_MS = 400, QUIET_MS = 1500, IDLE_MS = 20000;
+  let lastInput = 0, idleTimer = 0, calmTimer = 0, quietTimer = 0;
+  const calmQueue = [], quietQueue = [];
   function onInput() {
     lastInput = Date.now();
     if (root && root.hasAttribute('data-idle')) root.removeAttribute('data-idle');
@@ -627,7 +634,8 @@
     else if (root) root.setAttribute('data-idle', '');
   }
   if (doc) for (const ev of ['pointerdown', 'pointermove', 'touchstart', 'touchmove', 'keydown', 'wheel', 'scroll']) doc.addEventListener(ev, onInput, { passive: true, capture: true });
-  U.calm = () => !scrollIdle && Date.now() - lastInput >= CALM_MS && !doc.documentElement.hasAttribute('data-sheet-moving') && !(U.controlsMoving && U.controlsMoving());
+  U.calm = () => !touching && !scrollIdle && Date.now() - lastInput >= CALM_MS && !doc.documentElement.hasAttribute('data-sheet-moving') && !(U.controlsMoving && U.controlsMoving());
+  U.quiet = () => U.calm() && Date.now() - lastInput >= QUIET_MS;
   function calmCheck() {
     calmTimer = 0;
     if (!U.calm()) { calmTimer = setTimeout(calmCheck, Math.max(60, lastInput + CALM_MS - Date.now())); return; }
@@ -637,6 +645,16 @@
     if (!calmQueue.length && U.calm()) { safe(fn); return; }
     calmQueue.push(fn);
     if (!calmTimer) calmTimer = setTimeout(calmCheck, Math.max(60, lastInput + CALM_MS - Date.now()));
+  };
+  function quietCheck() {
+    quietTimer = 0;
+    if (!U.quiet()) { quietTimer = setTimeout(quietCheck, Math.max(60, lastInput + QUIET_MS - Date.now())); return; }
+    for (const fn of quietQueue.splice(0)) safe(fn);
+  }
+  U.whenQuiet = (fn) => {
+    if (!quietQueue.length && U.quiet()) { safe(fn); return; }
+    quietQueue.push(fn);
+    if (!quietTimer) quietTimer = setTimeout(quietCheck, Math.max(60, lastInput + QUIET_MS - Date.now()));
   };
 
   // The bar's buttons are keyed by what they are, so a route change keeps the node of one both routes
@@ -1190,14 +1208,15 @@
   };
   U.commit = () => { U.save(); render(); };
   // For background triggers (a sync that ended, the day rolling over, the app coming back, Today's
-  // insight line worked out): one render at the next frame however many ask, once it's calm (not in
-  // the middle of a scroll or a touch, U.whenCalm), none while the page is hidden (it runs once it's
-  // shown again), and none under the player or set-up.
+  // insight line worked out): one render at the next frame however many ask, once it's quiet (no
+  // scroll or touch for a while, U.whenQuiet: a page's render holds the page's thread for a few
+  // frames), none while the page is hidden (it runs once it's shown again), and none under the player
+  // or set-up.
   let renderFrame = 0, renderWait = false;
   U.renderSoon = () => {
     if (renderFrame || renderWait || !G.requestAnimationFrame) return;
     renderWait = true;
-    U.whenCalm(() => {
+    U.whenQuiet(() => {
       renderWait = false;
       if (renderFrame) return;
       renderFrame = G.requestAnimationFrame(() => {
@@ -1348,8 +1367,9 @@
     const later = () => {
       if (!wanted()) return;
       if (doc.hidden) { doc.addEventListener('visibilitychange', later, { once: true }); return; }
-      // Not in the middle of a scroll or a touch: once it's calm, at the next idle moment.
-      if (!U.calm()) { U.whenCalm(() => idle(later, 4000)); return; }
+      // Not in the middle of a scroll or a touch, nor right after one: once it's quiet, at the next
+      // idle moment (the chunk's load and its warm-up hold the page's thread for a while).
+      if (!U.quiet()) { U.whenQuiet(() => idle(later, 4000)); return; }
       warmFigure();
     };
     setTimeout(() => idle(later, 4000), 8000);

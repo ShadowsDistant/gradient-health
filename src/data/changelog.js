@@ -6,6 +6,19 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.8.3', date: '2026-10-08', title: 'Scrolling that never freezes',
+      store: [
+        '• Fixed: a flick right after another could freeze for a moment, then jump',
+        '• Background work (3D pictures, the coach\'s notes) now waits until you\'ve stopped for a while',
+        '• 3D pictures are prepared in the background instead of holding the page',
+      ].join('\n'),
+      items: [
+        ['wave', 'Fixed: a flick right after another could freeze for a moment and then jump, or only get going once your finger lifted. Filmed on a phone, the page was busy under the finger: the moment a scroll settled, the app took that as a quiet moment and started background work, which is exactly when the next flick comes.'],
+        ['clock', 'That work (3D pictures of your moves, a page refreshing after a sync, the 3D figure warming up) now waits until nothing has happened for a second and a half, and never starts while a finger is on the screen.'],
+        ['bolt', 'A 3D picture of a move is prepared in the background instead of holding the page while it\'s encoded, and its shaders compile in the background too, where the phone allows.'],
+      ],
+    },
+    {
       version: '1.8.2', date: '2026-10-08', title: 'Smoother scrolling',
       store: [
         '• Smoother scrolling: in testing, about half as many skipped frames on Today, Health, Plan and You',

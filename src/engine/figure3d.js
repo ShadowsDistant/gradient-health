@@ -3185,7 +3185,8 @@ function maybeRelease() {
       // Resizing the canvas waits on the GPU (45 ms in a software-GL test at 4x CPU), so not in the
       // middle of a scroll, a drag or a switch's glide on the page opened after this one.
       const ui = typeof GH !== 'undefined' && GH.ui;
-      if (ui && ui.whenCalm) ui.whenCalm(shrink); else shrink();
+      const when = ui && (ui.whenQuiet || ui.whenCalm);
+      if (when) when(shrink); else shrink();
     }, 2000);
   }
   if (!releaseTimer) releaseTimer = setTimeout(() => { releaseTimer = 0; if (!live.size) release(); }, document.hidden ? Math.min(releaseMs, 30000) : releaseMs);
@@ -3651,40 +3652,99 @@ function cropped(c, side) {
   ctx.drawImage(c, (x0 + x1 + 1) / 2 - box / 2, (y0 + y1 + 1) / 2 - box / 2, box, box, 0, 0, side, side);
   return out;
 }
-// A still of the move's key pose as an image URL, cached. opts: width, height, crop (a square this
-// many px across, cropped to the figure) and the look (dark, skin, shirt, mirrored).
-function still(move, opts) {
+// A still of the move's key pose, in two steps, so the second can wait for the shaders. stillPrep:
+// the cache key (and the kept URL, if it's drawn already) and the figure posed for it. stillDraw: one
+// frame of it and its copy out of the GL canvas (which waits on the GPU) and the crop, on the page's
+// thread, then the view goes.
+function stillPrep(move, opts) {
   const o = optsOf(Object.assign({ static: true }, opts));
   const crop = cropOf(opts), t = timeOf(opts);
   const [w, h] = drawSize(opts);
   const key = stillKey(move, w, h, o, crop, t);
-  if (stills.has(key)) return stills.get(key);
+  if (stills.has(key)) return { key, url: stills.get(key) };
   if (!renderer()) return null;
-  let view = null;
   try {
-    view = new View(move, o);
+    const view = new View(move, o);
     if (t == null) { view.fig.setPose(view.fig.A.key, null); view.fig.setGlow(0.78, null); }
     else { view.fig.setTime(t, null); view.fig.setGlow(glowFor(phaseAt(move, t), 0), null); } // as a live figure's first frame
-    const c = document.createElement('canvas');
-    c.width = w; c.height = h;
-    const ctx = c.getContext('2d');
     view.camState = { az: view.base.az, el: view.base.el };
-    if (!draw(view, ctx, w, h)) return null;
-    const pic = crop ? cropped(c, crop) : c;
-    if (!pic) return null;
-    let url = pic.toDataURL('image/webp', 0.9);
-    if (!/^data:image\/webp/.test(url)) url = pic.toDataURL('image/png');
-    if (stills.size > 160) stills.delete(stills.keys().next().value);
-    stills.set(key, url);
-    return url;
+    return { key, view, w, h, crop };
+  } catch (e) {
+    if (G.console) G.console.error('figure3d:', e);
+    return null;
+  }
+}
+function stillDraw(st) {
+  try {
+    const c = document.createElement('canvas');
+    c.width = st.w; c.height = st.h;
+    const ctx = c.getContext('2d');
+    if (!draw(st.view, ctx, st.w, st.h)) return null;
+    return (st.crop ? cropped(c, st.crop) : c) || null;
   } catch (e) {
     if (G.console) G.console.error('figure3d:', e);
     return null;
   } finally {
     // Disposing the view doesn't lose compiled shaders while the warm-up view holds them.
-    if (view) view.dispose();
+    st.view.dispose();
     maybeRelease();
   }
+}
+function keepUrl(key, url) {
+  if (stills.size > 160) stills.delete(stills.keys().next().value);
+  stills.set(key, url);
+  return url;
+}
+// A still of the move's key pose as an image URL, cached. opts: width, height, crop (a square this
+// many px across, cropped to the figure) and the look (dark, skin, shirt, mirrored). All on the
+// page's thread, the encoding too (110 ms and more for a 360 x 300 still in a software-GL test):
+// stillAsync is the one for stills drawn in the background.
+function still(move, opts) {
+  const st = stillPrep(move, opts);
+  if (!st) return null;
+  if (st.url) return st.url;
+  const pic = stillDraw(st);
+  if (!pic) return null;
+  let url = pic.toDataURL('image/webp', 0.9);
+  if (!/^data:image\/webp/.test(url)) url = pic.toDataURL('image/png');
+  return keepUrl(st.key, url);
+}
+// The same still with as little as can be on the page's thread: the figure is posed now; its shaders
+// compile in the background where the GPU allows (compileAsync: the first still of a move with new
+// kit compiled them on the thread, 730 ms in a software-GL test); then one frame and its copy out
+// (a few frames' worth); then the picture is encoded in the background (toBlob) and read back as a
+// data URL (which an <img> shows and localStorage keeps). Resolves with the URL, or null. One
+// request per still at a time: a second asks for the same promise.
+const pendingStills = new Map();
+function stillAsync(move, opts) {
+  const st = stillPrep(move, opts);
+  if (!st) return Promise.resolve(null);
+  if (st.url) return Promise.resolve(st.url);
+  if (pendingStills.has(st.key)) { st.view.dispose(); return pendingStills.get(st.key); }
+  const rr = renderer();
+  const compiled = rr && rr.r.compileAsync ? Promise.resolve(rr.r.compileAsync(st.view.scene, st.view.camera)).catch(() => {}) : Promise.resolve();
+  const p = compiled.then(() => {
+    const pic = stillDraw(st);
+    if (!pic) return null;
+    return new Promise((resolve) => {
+      const read = (blob) => {
+        if (!blob) { resolve(null); return; }
+        const fr = new FileReader();
+        fr.onload = () => resolve(typeof fr.result === 'string' ? keepUrl(st.key, fr.result) : null);
+        fr.onerror = () => resolve(null);
+        fr.readAsDataURL(blob);
+      };
+      try {
+        if (!pic.toBlob) { let url = pic.toDataURL('image/webp', 0.9); if (!/^data:image\/webp/.test(url)) url = pic.toDataURL('image/png'); resolve(keepUrl(st.key, url)); return; }
+        pic.toBlob((blob) => {
+          if (blob && blob.type === 'image/webp') read(blob);
+          else pic.toBlob(read, 'image/png');
+        }, 'image/webp', 0.9);
+      } catch (e) { resolve(null); }
+    });
+  }).then((url) => { pendingStills.delete(st.key); return url; }, () => { pendingStills.delete(st.key); return null; });
+  pendingStills.set(st.key, p);
+  return p;
 }
 
 /* ---------------------------------------------------------------- preload */
@@ -3753,7 +3813,7 @@ function preload() {
 }
 
 GH.figure3d = {
-  supported, mount, still, cachedStill, preload, phaseAt,
+  supported, mount, still, stillAsync, cachedStill, preload, phaseAt,
   // Whether the renderer is up and its shaders compiled, so a new figure draws its first frame at once
   // (not yet while the warm-up is compiling them: a figure would wait on that).
   warm() { return !!(R && WARM && warmed && !isLost(R)); },

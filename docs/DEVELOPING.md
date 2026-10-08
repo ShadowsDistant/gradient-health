@@ -174,10 +174,20 @@ gallery lays out and draws a block only as it comes near (`content-visibility: a
 Progress, Settings and the moves it made no difference and moved rows by 1 px, so they don't); a
 page opened again where it was left gets the heights its blocks had,
 so it opens on what was showing. Medals share one set of gradients. Progress bars shine once, as
-they show or change, not forever. Work that can wait (the 3D figure's warm-up and stills, Plan's
-tiles, a background re-render such as Today's insight line, the 3D canvas shrinking once no figure
-shows) waits for `U.calm()`: no scroll or touch for 400 ms, no sheet moving and no control held or
-gliding (`U.controlsMoving`; `U.whenCalm(fn)` runs it then). `test/ui-scroll.mjs` scrolls every
+they show or change, not forever. Work that can wait waits for `U.calm()`: no finger on the screen,
+no scroll or touch for 400 ms, no sheet moving and no control held or gliding (`U.controlsMoving`;
+`U.whenCalm(fn)` runs it then): saves, Plan's flat stills, a control's lens maps. Work that would
+hold the page's thread for a while (a 3D still, the 3D chunk and its warm-up, a background re-render
+such as Today's insight line, the 3D canvas shrinking once no figure shows) waits for `U.quiet()`
+instead: calm, and nothing for 1.5 s (`U.whenQuiet(fn)`). On a phone a touch's scroll waits for the
+page's thread, and the likeliest moment for the next flick is right after the last one settles:
+filmed on one, three flicks in a row froze for 100 to 330 ms each and then jumped, with a still's
+encode or a re-render running under the finger, let loose by the calm moment 400 ms after the last
+scroll. A 3D still now draws on the thread only its figure's frame and the copy out of the GL
+canvas: its shaders compile in the background where the GPU allows (`compileAsync`) and its picture
+is encoded in the background (`toBlob`; `figure3d.stillAsync`), where `toDataURL` took 110 ms and
+more on the thread. `ui-scroll` checks that for 1.1 s after a fling on Today, with the figure warm,
+no task holds the thread for 120 ms (at 4× CPU), and that the stills still come afterwards. `test/ui-scroll.mjs` scrolls every
 main screen at 4× CPU, traced, and holds the budgets; `--vs=<dir>` compares two builds run by run, and
 `--ablate=<part>` switches one part off to show what it costs. It also touch-scrolls (real touch
 flings, `Input.dispatchTouchEvent`) on pages driven through raw CDP: Playwright's page helpers inject

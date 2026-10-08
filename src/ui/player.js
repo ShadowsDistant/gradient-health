@@ -370,18 +370,23 @@
       // runs anywhere: stills are for later, and never take time from a figure on screen.
       const busyNow = document.hidden || document.querySelector('.fig3d[data-ready]') || [...document.querySelectorAll('.pl-fig, .sheet-fig')].some((h) => h.offsetParent);
       if (busyNow) { setTimeout(() => idleCall(step), 1500); return; }
-      // Nor in the middle of a scroll, a touch or a sheet's move (U.calm): it waits for calm.
-      if (U.calm && !U.calm()) { U.whenCalm(() => idleCall(step)); return; }
+      // Nor in the middle of a scroll, a touch or a sheet's move, nor right after one (U.quiet): a
+      // still holds the page's thread for a few frames, and on a phone a scroll that starts
+      // meanwhile waits for it. It waits for quiet.
+      const quiet = U.quiet || U.calm;
+      if (quiet && !quiet()) { (U.whenQuiet || U.whenCalm)(() => idleCall(step)); return; }
       while (jobs.length) {
         const j = jobs.shift();
         const m0 = M().MOVES[j.id];
         const { m, o } = figOpts({ side: j.side, item: { moveId: j.id } }, m0);
         const [w, h] = stills().sizes[j.kind] || boxGuess(j.kind);
         if (stillFor(m, o, w, h)) continue;
-        // 1.5 pixels a point: sharp enough for the moment it shows, small enough to keep.
+        // 1.5 pixels a point: sharp enough for the moment it shows, small enough to keep. Drawn
+        // now, encoded in the background (stillAsync), kept once it's back.
         const t0 = Date.now();
-        const url = GH.figure3d.still(m, Object.assign({ width: Math.round(w * 1.5), height: Math.round(h * 1.5), t: 0, mirrored: !!o.mirrored }, look()));
-        if (url) keepStill(m, o, w, h, url);
+        const opts = Object.assign({ width: Math.round(w * 1.5), height: Math.round(h * 1.5), t: 0, mirrored: !!o.mirrored }, look());
+        const f3 = GH.figure3d;
+        (f3.stillAsync ? f3.stillAsync(m, opts) : Promise.resolve(f3.still(m, opts))).then((url) => { if (url) keepStill(m, o, w, h, url); }, () => {});
         stillsDrawn++;
         if (Date.now() - t0 > 400) stillsSlow = true;
         break; // one per idle moment

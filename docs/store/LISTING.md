@@ -74,15 +74,15 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 ## What's new (500 characters at most)
 
-Paste this into the What's new field with each update. This is 1.8.2's. Each GitHub release carries
+Paste this into the What's new field with each update. This is 1.8.3's. Each GitHub release carries
 its own version's text at the end of its What's new, under "Short version, for a store's What's new
 field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
 (`node scripts/release-notes.mjs --store` prints it).
 
 ```text
-• Smoother scrolling: in testing, about half as many skipped frames on Today, Health, Plan and You
-• The glass at the bottom stops bending while the page moves, and eases back when it stops
-• Less work for your phone on every frame of a scroll
+• Fixed: a flick right after another could freeze for a moment, then jump
+• Background work (3D pictures, the coach's notes) now waits until you've stopped for a while
+• 3D pictures are prepared in the background instead of holding the page
 ```
 
 ## Images

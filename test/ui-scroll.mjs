@@ -393,6 +393,67 @@ if (TOUCH.length) {
   }
 }
 
+/* ---------------------------------------------------------------- deferred work after a scroll */
+// On a phone a touch's scroll waits for the page's thread (filmed on one: three flicks in a row froze
+// for 100 to 330 ms each, with the page's thread busy under the finger, a 3D still's encode or a
+// re-render that the "calm" moment after the last scroll had let loose). So the heavy deferred work
+// (3D stills, the 3D chunk and its warm-up, background re-renders) waits for quiet (U.whenQuiet,
+// 1.5 s with nothing happening, core.js) rather than calm (0.4 s), a held finger is never calm, and a
+// still's encoding runs off the thread (figure3d's stillAsync). Here, with the 3D figure warm on
+// Today (the stills of today's moves are the likeliest work): a touch fling, then the page's long
+// tasks for the next 1.1 s, which must stay short; then, left alone, the stills must still get drawn.
+if (!measureOnly && (!ONLY.length || ONLY.includes('today'))) {
+  section('Deferred work after a scroll');
+  if (!gpuBrowser) gpuBrowser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  const ctx = await gpuBrowser.newContext({ ...ctxOpts, deviceScaleFactor: 3 });
+  await ctx.addInitScript(seedBridge);
+  await ctx.addInitScript(asyncBridge);
+  await ctx.addInitScript((j) => { try { if (!sessionStorage.getItem('shot-state')) sessionStorage.setItem('shot-state', j); } catch (e) { /* ignore */ } }, stateJson);
+  await ctx.addInitScript(() => { try { localStorage.removeItem('gh.figStills'); } catch (e) { /* ignore */ } });
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push(e.message));
+  const cdp = await ctx.newCDPSession(page);
+  const ev = async (expression) => { const r = await cdp.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 300)); return r.result.value; };
+  await cdp.send('Page.enable');
+  await cdp.send('Page.navigate', { url: builds[0].server.url });
+  for (let i = 0; i < 120; i++) { await sleep(500); if (await ev("!!document.querySelector('#screen[data-view=\"today\"] .session')").catch(() => false)) break; }
+  await sleep(1500);
+  await ev('(window.GH.ui.closeSheets && window.GH.ui.closeSheets(), 1)');
+  // The figure warms up now (it would on its own 8 s after launch), and the stills queue behind it.
+  await ev('(window.GH.ui.warmFigure(), 1)');
+  let warm = false;
+  for (let i = 0; i < 180 && !warm; i++) { await sleep(500); warm = await ev('!!(window.GH.figure3d && window.GH.figure3d.warm())').catch(() => false); }
+  check('the 3D figure warms up', warm);
+  // The stills start now (it's quiet): the first is drawn at once, and the next is due a second
+  // later, in the middle of the fling below. Long animation frames with their scripts: a frame's
+  // blocking time is the part of any task over 50 ms (a software GPU makes frames long here with no
+  // task to blame, and those count for nothing).
+  await ev('(window.GH.ui.figureStills(true), 1)');
+  const kept = () => ev("(() => { try { return (JSON.parse(localStorage.getItem('gh.figStills') || '{}').items || []).length; } catch (e) { return 0; } })()").catch(() => 0);
+  for (let i = 0; i < 40 && !(await kept()); i++) await sleep(250);
+  const kept0 = await kept();
+  check('the first still is drawn while the page is quiet', kept0 > 0, kept0);
+  await ev(`(() => { const L = window.__loaf = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) L.push({ t: Math.round(e.startTime), d: Math.round(e.duration), block: Math.round(e.blockingDuration || 0), scripts: (e.scripts || []).filter((x) => x.duration >= 20).map((x) => \`\${x.invoker || ''} \${x.sourceFunctionName || ''}@\${x.sourceCharPosition} \${Math.round(x.duration)} ms\`) }); }).observe({ type: 'long-animation-frame', buffered: true }); } catch (e) { /* unsupported */ } return 1; })()`);
+  await sleep(300);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU });
+  const t0 = await ev('performance.now()');
+  await fling(cdp, 650, -400);
+  // From the fling's end: the window in which the next flick comes.
+  await sleep(1100);
+  const after = await ev(`window.__loaf.filter((x) => x.t > ${t0})`);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+  const blocking = after.reduce((m, x) => Math.max(m, x.block), 0);
+  // At 4x CPU: a task of 120 ms (blocking 70) is about 30 ms on the phone, a frame or two.
+  check('for 1.1 s after a fling, no task holds the page\'s thread for 120 ms or more (4x CPU)', blocking < 70, `frames (start, ms, blocking, scripts): ${JSON.stringify(after.filter((x) => x.block > 0).slice(0, 8))}`);
+  const quietAt = await ev('(() => { const U = window.GH.ui; return U.quiet ? U.quiet() : null; })()');
+  check('it isn\'t "quiet" yet (deferred work waits 1.5 s after the last scroll)', quietAt === false, quietAt);
+  // Left alone, the still that was due comes.
+  let kept1 = kept0;
+  for (let i = 0; i < 60 && kept1 <= kept0; i++) { await sleep(500); kept1 = await kept(); }
+  check('left alone, the still that was due during the fling is drawn and kept', kept1 > kept0, [kept0, kept1]);
+  await ctx.close();
+}
+
 /* ---------------------------------------------------------------- while scrolling, and at rest */
 // While the page moves, the glass at the bottom loses its bend (faded out, then the lens taken off:
 // src/ui/core.js, bend) and keeps its frost; the top bar's buttons keep their lens (1.7.0 dropped
