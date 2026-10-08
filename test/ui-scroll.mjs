@@ -544,6 +544,7 @@ if (!measureOnly && (!ONLY.length || ONLY.includes('today'))) {
   check('two flicks 250 ms apart are one stretch: light the whole time', midTwo.lite && (await ev('window.__lite')).length - n0 === 1, { midTwo, events: (await ev('window.__lite')).slice(n0) });
   for (let i = 0; i < 80 && (await ev("document.documentElement.hasAttribute('data-glass-lite')")); i++) await sleep(100);
   // A scroll the page makes by itself (a tab's position coming back, a scrollIntoView) never counts.
+  await sleep(1200);
   const n1 = (await ev('window.__lite')).length;
   await ev("(() => { const s = document.getElementById('screen'); s.scrollTop = 120; return 1; })()");
   await sleep(900);
@@ -561,7 +562,7 @@ if (!measureOnly && (!ONLY.length || ONLY.includes('today'))) {
     return { mid, events: (await ev('window.__lite')).length - before };
   };
   const liquid = await modeCheck('liquid');
-  check('Liquid never lightens it, moving or not', !liquid.mid.lite && liquid.events === 0 && /url\(/.test(liquid.mid.lens), liquid);
+  check('Liquid never lightens it, moving or not (its lens fades out and the frost stays, glow and all)', !liquid.mid.lite && liquid.events === 0 && /blur\(/.test(liquid.mid.lens) && liquid.mid.glowVis !== 'hidden', liquid);
   const flat = await modeCheck('flat');
   check('Flat has it light always, with the glow hidden', flat.mid.lite && /^none/.test(flat.mid.lens) && flat.mid.glow === 'none', flat);
   // The glass speed test (src/ui/diag.js): each look timed, and the setting's own look put back after.
@@ -571,7 +572,7 @@ if (!measureOnly && (!ONLY.length || ONLY.includes('today'))) {
     const root = document.documentElement, A = ['data-gx-nolens', 'data-gx-noedge', 'data-gx-noglow', 'data-glass-lite', 'data-rf-transparency'];
     const before = JSON.stringify(window.GH.ui.glassState());
     const r = await window.GH.diag.speedTest({ ms: 400, settle: 100 });
-    return { rows: r.rows.map((x) => [x.id, x.n, x.fps, x.p95]), stopped: r.stopped, before, after: JSON.stringify(window.GH.ui.glassState()), attrs: A.filter((a) => root.hasAttribute(a)), report: window.GH.diag.report().split('\n').filter((l) => /Glass speed test|smoothest|fps/.test(l)) };
+    return { rows: r.rows.map((x) => [x.id, x.n, x.fps, x.p95]), stopped: r.stopped, before, after: JSON.stringify(window.GH.ui.glassState()), attrs: A.filter((a) => root.hasAttribute(a)), report: window.GH.diag.report().split('\\n').filter((l) => /Glass speed test|smoothest|fps/.test(l)) };
   })()`);
   check('the glass speed test times six looks and puts everything back', speedRes.rows.length === 6 && speedRes.rows.every(([, n]) => n > 5) && !speedRes.stopped && speedRes.before === speedRes.after && speedRes.attrs.length === 0, speedRes);
   check('and the report carries its table, with the smoothest marked', speedRes.report.length >= 7 && speedRes.report.some((l) => /smoothest/.test(l)), speedRes.report);

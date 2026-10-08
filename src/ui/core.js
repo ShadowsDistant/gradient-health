@@ -623,9 +623,9 @@
   //   backdrop drawn anywhere and the glow hidden (Refract's reduced transparency hides it).
   // The glass goes at the first drag, not at the first touch (a tap would flash it), and a scroll the
   // page makes by itself (a tab's scroll position coming back) never counts: only one that follows a
-  // drag or a wheel.
-  const GLASS_REST_MS = 500, GLASS_DRAG_PX = 4, GLASS_FLING_MS = 4000;
-  let glassMode = 'auto', glassMoving = false, glassHeld = false, glassTimer = 0, glassLastMove = 0, glassDragAt = 0, dragStart = null;
+  // drag or a wheel closely (a fling's scrolls come a frame apart).
+  const GLASS_REST_MS = 500, GLASS_DRAG_PX = 4, GLASS_FLING_MS = 600;
+  let glassMode = 'auto', glassMoving = false, glassHeld = false, glassTimer = 0, glassLastMove = 0, dragStart = null;
   function glassApply() {
     if (glassHeld) return;
     const html = doc.documentElement;
@@ -651,10 +651,9 @@
     glassMoving = false;
     glassApply();
   }
-  function glassMove(fromScroll) {
+  function glassMove() {
     if (glassMode !== 'auto' || glassHeld) return;
     const t = Date.now();
-    if (!fromScroll) glassDragAt = t;
     glassLastMove = t;
     if (!glassMoving) { glassMoving = true; glassApply(); }
     if (!glassTimer) glassTimer = setTimeout(glassRest, GLASS_REST_MS);
@@ -681,7 +680,9 @@
     doc.addEventListener('scroll', (e) => {
       if (glassMode !== 'auto') return;
       const t = e.target;
-      if ((t === screen || (t && t.classList && t.classList.contains('ob-scroll'))) && (touching || Date.now() - glassDragAt < GLASS_FLING_MS)) glassMove(true);
+      // A fling's scrolls follow one another a frame apart, from the finger's lift: one that comes a
+      // good while after the last move, with no finger down, is the page's own.
+      if ((t === screen || (t && t.classList && t.classList.contains('ob-scroll'))) && (touching || Date.now() - glassLastMove < GLASS_FLING_MS)) glassMove();
     }, { passive: true, capture: true });
   }
   // The glass speed test (src/ui/diag.js) sets the root's attributes itself, one look after another:
