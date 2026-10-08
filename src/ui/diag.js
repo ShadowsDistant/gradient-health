@@ -14,6 +14,13 @@
  * it flung after, the frames drawn and the longest gap between them, any moment the fling held still
  * and then jumped, the longest the thread was held meanwhile and by what, and the touches' delays. A
  * gesture the page didn't follow is marked. Nothing leaves the phone unless the owner shares it.
+ *
+ * And the glass speed test: with the glass the cause of a freeze on one phone (Flat fixed it) and the
+ * emulator unable to say which part of it, the page scrolls itself for about two seconds in each of a
+ * few looks (the glass as designed, without the lenses, without the top bar's edge, with the glow
+ * hidden, light, light with the glow kept), timing every frame, and the report says
+ * which look this phone draws smoothly. The frames are timed on the page's own animation frames: when
+ * the GPU falls behind, the browser holds the next frame back, and the gaps show it.
  */
 (function (G) {
   'use strict';
@@ -162,6 +169,97 @@
     bits.push(`input delay up to ${delay} ms`);
     return bits.join('\n    ');
   }
+  /* ---------------------------------------------------------------- the glass speed test */
+  // [id, what it is, the attributes it sets on the root]. The first is run once before they are, to
+  // warm the shaders up, and not counted.
+  const LOOKS = [
+    ['liquid', 'the glass as designed', {}],
+    ['nolens', 'blur without the lenses', { 'data-gx-nolens': '' }],
+    ['noedge', 'as designed, top bar edge off', { 'data-gx-noedge': '' }],
+    ['noglow', 'as designed, glow hidden', { 'data-gx-noglow': '' }],
+    ['lite', 'light, glow hidden (Auto while moving, Flat)', { 'data-glass-lite': '' }],
+    ['liteglow', 'light, glow kept', { 'data-glass-lite': '', 'data-gx-keepglow': '' }],
+  ];
+  const GX_ATTRS = ['data-gx-nolens', 'data-gx-noedge', 'data-gx-noglow', 'data-gx-keepglow', 'data-glass-lite', 'data-rf-transparency'];
+  let speed = null; // the last run: { when, page, ms, rows: [{ id, label, n, p50, p95, max, over20, over33, fps }] }
+  let speedRunning = false, speedAbort = false;
+  const pct = (a, q) => { if (!a.length) return 0; const b = a.slice().sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(q * b.length))]; };
+  const wait = (ms) => new Promise((r) => G.setTimeout(r, ms));
+  // The page scroller back and forth at a medium fling's speed for ms, every frame timed.
+  function scrollRun(ms) {
+    return new Promise((resolve) => {
+      const sc = screen();
+      const max = Math.max(0, sc.scrollHeight - sc.clientHeight), amp = Math.max(1, Math.min(max, 1500)), v = 1.8; // px per ms
+      const gaps = [];
+      let t0 = 0, last = 0;
+      const frame = (t) => {
+        if (!t0) { t0 = t; last = t; }
+        else { gaps.push(t - last); last = t; }
+        const x = ((t - t0) * v) % (2 * amp);
+        sc.scrollTop = x < amp ? x : 2 * amp - x;
+        if (t - t0 < ms && !speedAbort) G.requestAnimationFrame(frame);
+        else resolve({ gaps, ms: t - t0 });
+      };
+      G.requestAnimationFrame(frame);
+    });
+  }
+  function summarize(r) {
+    const g = r.gaps, n = g.length;
+    return { n, p50: Math.round(pct(g, 0.5) * 10) / 10, p95: Math.round(pct(g, 0.95) * 10) / 10, max: Math.round(g.reduce((m, x) => Math.max(m, x), 0)), over20: n ? Math.round(100 * g.filter((x) => x > 20).length / n) : 0, over33: n ? Math.round(100 * g.filter((x) => x > 33).length / n) : 0, fps: r.ms ? Math.round(1000 * n / r.ms) : 0 };
+  }
+  // opts.ms: how long each look runs (default 2200); opts.settle: the wait before each (default 400).
+  async function speedTest(opts) {
+    if (speedRunning) return speed;
+    const ms = (opts && opts.ms) || 2200, settle = (opts && opts.settle) != null ? opts.settle : 400;
+    speedRunning = true; speedAbort = false;
+    const html = doc.documentElement;
+    const abort = () => { speedAbort = true; };
+    doc.addEventListener('touchstart', abort, { passive: true, capture: true });
+    doc.addEventListener('keydown', abort, { passive: true, capture: true });
+    const rows = [];
+    try {
+      if (U.closeSheets) U.closeSheets();
+      // A long page with the tab bar under it: Plan (or the page this is, when it's no tab).
+      if (U.go && !(opts && opts.stay)) U.go('plan');
+      await wait(1300);
+      if (U.motion && U.motion.settled) await U.motion.settled();
+      const sc = screen();
+      if (sc) sc.scrollTop = 0;
+      if (U.glassHold) U.glassHold(true);
+      const run = async (id, label, attrs, count) => {
+        for (const a of GX_ATTRS) html.removeAttribute(a);
+        for (const k of Object.keys(attrs)) html.setAttribute(k, attrs[k]);
+        sc.scrollTop = 0;
+        await wait(settle);
+        if (speedAbort) return;
+        const r = summarize(await scrollRun(ms));
+        if (count && !speedAbort) rows.push(Object.assign({ id, label }, r)); // a look cut short by a touch isn't counted
+      };
+      await run('warm', '', LOOKS[0][2], false);
+      for (const [id, label, attrs] of LOOKS) { if (speedAbort) break; await run(id, label, attrs, true); }
+    } finally {
+      doc.removeEventListener('touchstart', abort, true);
+      doc.removeEventListener('keydown', abort, true);
+      for (const a of GX_ATTRS) html.removeAttribute(a);
+      const sc = screen();
+      if (sc) sc.scrollTop = 0;
+      // The scroll event of that reset comes a frame later, while the glass is still held (a touch that
+      // stopped the test may be down: its scroll would count as a move and lighten the glass for a moment).
+      await wait(150);
+      if (U.glassHold) U.glassHold(false); // works the attributes out again from the setting
+      speedRunning = false;
+    }
+    speed = { when: new Date().toISOString().replace('T', ' ').slice(0, 19), page: (U.route && (U.route.view || U.route.tab)) || '?', ms, rows, stopped: speedAbort };
+    return speed;
+  }
+  function speedLines() {
+    if (!speed) return ['Glass speed test: not run (Settings, About, Scroll diagnostics)'];
+    const out = [`Glass speed test (${speed.when}, ${speed.page}, each look ${(speed.ms / 1000).toFixed(1)} s, frame times in ms; fewer frames over 20 ms is smoother${speed.stopped ? '; STOPPED by a touch' : ''}):`];
+    const best = speed.rows.reduce((m, r) => (m && m.p95 <= r.p95 ? m : r), null);
+    for (const r of speed.rows) out.push(`  ${r.label.padEnd(36)} ${String(r.fps).padStart(3)} fps · median ${r.p50} · p95 ${r.p95} · worst ${r.max} · over 20 ms ${r.over20}% · over 33 ms ${r.over33}%${best && r === best ? '   <- smoothest' : ''}`);
+    return out;
+  }
+
   function report() {
     prune(T); prune(S); prune(L); prune(E);
     const pr = (U.S && U.S.profile && U.S.profile.prefs) || {};
@@ -170,18 +268,20 @@
     lines.push(`Gradient Health ${p && p.appVersion ? p.appVersion() : GH.VERSION || ''} · scroll diagnostics · ${new Date().toISOString().replace('T', ' ').slice(0, 19)}`);
     lines.push(`Device: ${G.navigator.userAgent}`);
     lines.push(`Screen ${G.innerWidth}x${G.innerHeight} at ${G.devicePixelRatio}x · ${G.navigator.hardwareConcurrency || '?'} cores · ${G.navigator.deviceMemory ? G.navigator.deviceMemory + ' GB' : 'memory ?'} · GPU: ${gpuName() || '?'} · long frames ${loaf ? 'yes' : 'no'}`);
-    lines.push(`Settings: glass ${pr.glass || 'liquid'} · density ${pr.density == null ? 0.5 : pr.density} · theme ${pr.theme || 'system'} (${doc.documentElement.getAttribute('data-theme') || '?'}) · moving background ${pr.glowMove === false ? 'off' : 'on'} · contrast ${pr.contrast ? 'on' : 'off'} · reduced motion ${U.reduced && U.reduced() ? 'on' : 'off'} · figure ${pr.figure || '3d'} · text ${doc.documentElement.style.fontSize || 'normal'}`);
-    const gs = gestures().slice(-14).reverse();
-    lines.push(`Gestures, newest first (${gs.length} of the last ${Math.round(KEEP_MS / 60000)} min; * the page didn't follow the finger, ~ it followed late):`);
-    for (const g of gs) lines.push('  ' + describe(g));
-    if (!gs.length) lines.push('  none yet');
+    const gs = U.glassState ? U.glassState() : null;
+    lines.push(`Settings: glass ${['liquid', 'frosted', 'flat'].includes(pr.glass) ? pr.glass : 'auto'}${gs && gs.lite ? ' (light now)' : ''} · density ${pr.density == null ? 0.5 : pr.density} · theme ${pr.theme || 'system'} (${doc.documentElement.getAttribute('data-theme') || '?'}) · moving background ${pr.glowMove === false ? 'off' : 'on'} · contrast ${pr.contrast ? 'on' : 'off'} · reduced motion ${U.reduced && U.reduced() ? 'on' : 'off'} · figure ${pr.figure || '3d'} · text ${doc.documentElement.style.fontSize || 'normal'}`);
+    const gl = gestures().slice(-14).reverse();
+    lines.push(`Gestures, newest first (${gl.length} of the last ${Math.round(KEEP_MS / 60000)} min; * the page didn't follow the finger, ~ it followed late):`);
+    for (const g of gl) lines.push('  ' + describe(g));
+    if (!gl.length) lines.push('  none yet');
+    for (const l of speedLines()) lines.push(l);
     const worst = L.slice().sort((a, b) => b[2] - a[2]).slice(0, 6).sort((a, b) => b[0] - a[0]);
     lines.push(`Longest the thread was held, newest first:`);
     for (const l of worst) lines.push(`  ${clock(l[0])} · ${l[2]} ms of a ${l[1]} ms frame${l[3] ? ': ' + l[3] : ''}`);
     if (!worst.length) lines.push('  nothing over 50 ms');
     return lines.join('\n');
   }
-  GH.diag = { report, gestures, _streams: () => ({ T, S, L, E }) };
+  GH.diag = { report, gestures, speedTest, _streams: () => ({ T, S, L, E }) };
 
   /* ---------------------------------------------------------------- Settings */
   U.act.scrollDiag = () => {
@@ -189,13 +289,18 @@
     U.sheet({
       title: 'Scroll diagnostics', size: 'full',
       body: `<div class="sheet-pad"><p class="t-callout rf-muted">If a scroll freezes or jumps, open this right after and copy or share it to the developer. It's what the last few minutes of touches, scrolling, frames and the page's own work looked like on this phone; nothing is sent anywhere by itself.</p></div>
-        <ul class="rf-list">${U.row({ key: 'diag-copy', icon: 'copy', tone: 'teal', title: 'Copy', act: 'diagCopy' })}${U.row({ key: 'diag-share', icon: 'share', tone: 'violet', title: 'Share', sub: 'To a message, an email or a note', act: 'diagShare' })}</ul>
+        <ul class="rf-list">${U.row({ key: 'diag-copy', icon: 'copy', tone: 'teal', title: 'Copy', act: 'diagCopy' })}${U.row({ key: 'diag-share', icon: 'share', tone: 'violet', title: 'Share', sub: 'To a message, an email or a note', act: 'diagShare' })}${U.row({ key: 'diag-speed', icon: 'bolt', tone: 'amber', title: 'Glass speed test', sub: 'About 20 seconds. The page scrolls by itself in a few looks of the glass, and the report says which one this phone draws smoothly. Leave the screen alone', act: 'diagSpeed', chevron: true })}</ul>
         <textarea class="rf-input preview" readonly aria-label="Scroll diagnostics">${U.esc(txt)}</textarea>`,
     });
   };
+  // (No toast while it runs: a toast is glass too, and would be one more filter in the first look.)
+  U.act.diagSpeed = async () => {
+    try { await speedTest(); } catch (e) { U.toast('The speed test stopped', 'caution', String((e && e.message) || e).slice(0, 120)); }
+    if (U.act.scrollDiag) U.act.scrollDiag();
+  };
   U.act.diagCopy = async () => {
     const ok = GH.platform && GH.platform.copy ? await GH.platform.copy(report()) : false;
-    if (ok) { U.haptic('copy'); U.toast('Copied', 'positive', 'Paste it into a message to the developer.'); } else U.toast("Copying didn't work", 'warning', 'Select the text and copy it, or use Share.');
+    if (ok) { U.haptic('copy'); U.toast('Copied', 'positive', 'Paste it into a message to the developer.'); } else U.toast("Copying didn't work", 'caution', 'Select the text and copy it, or use Share.');
   };
   U.act.diagShare = () => { if (!(GH.platform && GH.platform.share && GH.platform.share(report(), ''))) U.act.diagCopy(); };
 })(typeof window !== 'undefined' ? window : globalThis);

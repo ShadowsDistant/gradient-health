@@ -23,7 +23,9 @@
 //   --ablate   switch one suspect off, to see what it costs: filters (every backdrop filter), lens (the
 //              refraction only), glow (the moving background), mask (the glow's fade, as a mask),
 //              shimmer (the progress bars' sheen), light (Refract's light following the scroll), edge
-//              (the top bar's frosted edge), cv (the long pages' content-visibility). With --vs, only
+//              (the top bar's frosted edge), cv (the long pages' content-visibility), flat and frosted
+//              (Settings' Glass effects), lite and litekeepglow (Auto's light state held on, with the
+//              glow hidden or kept), noglass (no backdrop, lens or glass fill). With --vs, only
 //              A is ablated: --dist=X --vs=X --ablate=lens is what the lens costs, A/B.
 import { createRequire } from 'node:module';
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
@@ -91,6 +93,15 @@ const ABLATIONS = {
   shimmer: { css: '.rf-progress-fill::after{animation:none!important}' },
   edge: { css: '.topbar>.rf-scroll-edge{display:none!important}' },
   cv: { css: '*{content-visibility:visible!important}' },
+  // Settings, Look, Glass effects: the two lighter modes, set the way the setting sets them.
+  flat: { css: '', pref: { glass: 'flat' } },
+  frosted: { css: '', pref: { glass: 'frosted' } },
+  // Auto's light state held on (data-glass-lite, core.js: no backdrop, no lenses, the glow hidden), and
+  // the same with the glow kept.
+  lite: { css: '', attr: 'data-glass-lite' },
+  litekeepglow: { css: '', attr: 'data-glass-lite', attr2: 'data-gx-keepglow' },
+  // The glass without the glow behind it that Frosted and Flat hide as well (reduced transparency).
+  noglass: { css: '*,*::before,*::after{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}.rf-lens-layer{display:none!important}.rf-glass[data-lens-ready]{background-color:var(--glass-fill-solid,var(--bg-raised))!important}' },
   // Refract's light hears every scroll on the window (in the capture phase) and then reads where each
   // glass it lights is, a frame at a time: without that listener.
   light: {
@@ -170,14 +181,15 @@ let stateJson;
   await ctx.close();
 }
 if (!stateJson || stateJson.length < 1000) { console.error('Couldn\'t seed the state.'); process.exit(1); }
-const flatJson = (() => { const S = JSON.parse(stateJson); S.profile.prefs.figure = 'flat'; return JSON.stringify(S); })();
+const flatJson = (() => { const S = JSON.parse(stateJson); S.profile.prefs.figure = 'flat'; S.profile.prefs.glass = 'liquid'; return JSON.stringify(S); })();
 
 async function open(build) {
   const ctx = await browser.newContext(ctxOpts);
   await ctx.addInitScript(seedBridge);
   await ctx.addInitScript(asyncBridge);
-  await ctx.addInitScript((j) => { try { if (!sessionStorage.getItem('shot-state')) sessionStorage.setItem('shot-state', j); } catch (e) { /* ignore */ } }, flatJson);
   const ab = ABLATE && build === builds[0] ? ABLATIONS[ABLATE] : null;
+  const seed = ab && ab.pref ? (() => { const S = JSON.parse(flatJson); Object.assign(S.profile.prefs, ab.pref); return JSON.stringify(S); })() : flatJson;
+  await ctx.addInitScript((j) => { try { if (!sessionStorage.getItem('shot-state')) sessionStorage.setItem('shot-state', j); } catch (e) { /* ignore */ } }, seed);
   if (ab && ab.script) await ctx.addInitScript(ab.script);
   const page = await ctx.newPage();
   watch(page);
@@ -189,6 +201,7 @@ async function open(build) {
   await page.evaluate(() => window.GH.ui.closeSheets && window.GH.ui.closeSheets());
   await page.waitForTimeout(500);
   if (ab && ab.css) await page.addStyleTag({ content: ab.css });
+  if (ab && ab.attr) await page.evaluate((a) => { for (const x of a) document.documentElement.setAttribute(x, ''); }, [ab.attr, ab.attr2].filter(Boolean));
   return { ctx, page, cdp };
 }
 
@@ -321,12 +334,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // The touch pages draw with Chromium's GPU path (SwiftShader standing in for a phone's GPU), as a
 // phone does: without it the glass is drawn by the software compositor, at a cost unlike a phone's.
 let gpuBrowser = null;
-async function openRaw(build) {
+async function openRaw(build, prefs) {
   if (!gpuBrowser) gpuBrowser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const ctx = await gpuBrowser.newContext({ ...ctxOpts, deviceScaleFactor: 3 });
   await ctx.addInitScript(seedBridge);
   await ctx.addInitScript(asyncBridge);
-  await ctx.addInitScript((j) => { try { if (!sessionStorage.getItem('shot-state')) sessionStorage.setItem('shot-state', j); } catch (e) { /* ignore */ } }, flatJson);
+  const seed = prefs ? (() => { const S = JSON.parse(flatJson); Object.assign(S.profile.prefs, prefs); return JSON.stringify(S); })() : flatJson;
+  await ctx.addInitScript((j) => { try { if (!sessionStorage.getItem('shot-state')) sessionStorage.setItem('shot-state', j); } catch (e) { /* ignore */ } }, seed);
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   const cdp = await ctx.newCDPSession(page);
@@ -461,6 +475,115 @@ if (!measureOnly && (!ONLY.length || ONLY.includes('plan'))) {
   let drawn3d = 0;
   for (let i = 0; i < 60 && !drawn3d; i++) { await sleep(500); drawn3d = await ev("document.querySelectorAll('#screen .pw-thumb[data-move] > img').length").catch(() => 0); }
   check('left alone, Plan\'s tiles get their 3D stills', drawn3d > 0, drawn3d);
+  await ctx.close();
+}
+
+/* ---------------------------------------------------------------- glass effects: Auto */
+// Auto (the default, core.js "glass while the page moves"): the glass as designed at rest and as light
+// as Flat while the page moves, from the first few pixels of a vertical drag until half a second
+// after the page stops. Reported on a phone: the scroll doesn't start until the finger lifts, or
+// freezes in a fling and jumps, with the glass on, and Flat fixes it. Here: a tap never lightens the
+// glass; a drag does, within a frame or two, takes every backdrop filter off (the tab bar, the
+// floating buttons, the bar's frosted edge, the lenses) and puts them back when the page has been
+// still for half a second; a tab change doesn't flash it; Liquid never lightens it; Flat always has.
+if (!measureOnly && (!ONLY.length || ONLY.includes('today'))) {
+  section('Glass effects: Auto lightens the glass while the page moves');
+  const { ctx, cdp, ev } = await openRaw(builds[0], { glass: 'auto' });
+  await ev(`(() => { const L = window.__lite = []; const root = document.documentElement; new MutationObserver(() => { L.push([Math.round(performance.now()), root.hasAttribute('data-glass-lite')]); }).observe(root, { attributes: true, attributeFilter: ['data-glass-lite'] }); return 1; })()`);
+  const backdrops = () => ev(`(() => {
+    const f = (el) => (el ? getComputedStyle(el).backdropFilter : 'none');
+    const q = (s) => document.querySelector(s);
+    const edge = q('#topbar > .rf-scroll-edge');
+    return {
+      lite: document.documentElement.hasAttribute('data-glass-lite'),
+      tabbar: f(q('#tabbar .rf-tabbar-bar')), lens: (() => { const l = q('#tabbar .rf-glass > .rf-lens-layer, #tabbar .rf-tabbar-bar .rf-lens-layer'); return l ? getComputedStyle(l).display + ' ' + f(l) : 'none'; })(),
+      floats: Array.from(document.querySelectorAll('#float .rf-glass'), (g) => getComputedStyle(g).backgroundColor).join(' | '),
+      glow: getComputedStyle(document.querySelector('.app'), '::before').display,
+      glowVis: getComputedStyle(document.querySelector('.app'), '::before').visibility,
+      state: window.GH.ui.glassState(),
+    };
+  })()`);
+  const atRest = await backdrops();
+  check('at rest: not light, the tab bar has its lens, the glow is there', !atRest.lite && atRest.state.mode === 'auto' && /url\(/.test(atRest.lens) && atRest.glow !== 'none' && atRest.glowVis !== 'hidden', atRest);
+  // A tap on the page, and on a tab: never light.
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 195, y: 420, id: 1 }] });
+  await sleep(60);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await sleep(700);
+  const tabXY = await ev(`(() => { const r = document.querySelector('#tabbar .rf-tab[data-tab="plan"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: tabXY[0], y: tabXY[1], id: 1 }] });
+  await sleep(60);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await sleep(1500);
+  const afterTaps = await ev('window.__lite');
+  check('a tap on the page and a tab change never lighten the glass', afterTaps.length === 0, afterTaps);
+  // A drag: light within a frame or two of the first pixels, nothing backdrop-filtered while it moves.
+  const t0 = await ev('performance.now()');
+  await fling(cdp, 650, -400);
+  await sleep(120);
+  const during = await backdrops();
+  const first = (await ev('window.__lite')).find((x) => x[1]);
+  check('a drag lightens it: within 150 ms of the first move', !!first && first[0] - t0 < 150 + 15 * 16, { first, t0 });
+  check('while it moves: no lens, no backdrop on the tab bar, solid fills, the glow hidden (what Flat is)', during.lite && /^none/.test(during.lens) && during.tabbar === 'none' && during.glowVis === 'hidden', during);
+  // Then half a second after the page has stopped (a fling lasts a while: wait for the end).
+  let rested = false;
+  for (let i = 0; i < 80 && !rested; i++) { await sleep(100); rested = await ev("!document.documentElement.hasAttribute('data-glass-lite')"); }
+  await sleep(300);
+  const back = await backdrops();
+  const lite = await ev('window.__lite');
+  const lastOn = lite.filter((x) => x[1]).pop(), lastOff = lite.filter((x) => !x[1]).pop();
+  check('it comes back once the page has been still for half a second', rested && !back.lite && /url\(/.test(back.lens) && back.glowVis !== 'hidden' && back.tabbar === atRest.tabbar && lastOff && lastOff[0] - lastOn[0] >= 450, { lite, back });
+  check('and one drag was one stretch of it, not a flicker', lite.length === 2, lite);
+  // A second flick right after the first: it stays light through both.
+  const n0 = (await ev('window.__lite')).length;
+  await fling(cdp, 650, -300);
+  await sleep(250);
+  await fling(cdp, 650, 300);
+  await sleep(150);
+  const midTwo = await ev('window.GH.ui.glassState()');
+  check('two flicks 250 ms apart are one stretch: light the whole time', midTwo.lite && (await ev('window.__lite')).length - n0 === 1, { midTwo, events: (await ev('window.__lite')).slice(n0) });
+  for (let i = 0; i < 80 && (await ev("document.documentElement.hasAttribute('data-glass-lite')")); i++) await sleep(100);
+  // A scroll the page makes by itself (a tab's position coming back, a scrollIntoView) never counts.
+  await sleep(1200);
+  const n1 = (await ev('window.__lite')).length;
+  await ev("(() => { const s = document.getElementById('screen'); s.scrollTop = 120; return 1; })()");
+  await sleep(900);
+  check('a scroll the page makes by itself never lightens the glass', (await ev('window.__lite')).length === n1, (await ev('window.__lite')).slice(n1));
+  // The other modes, set the way Settings sets them.
+  const modeCheck = async (mode) => {
+    await ev(`(window.GH.ui.on.setGlass(null, null, ${JSON.stringify(mode)}), 1)`);
+    await sleep(300);
+    const before = (await ev('window.__lite')).length;
+    await fling(cdp, 650, -300);
+    await sleep(150);
+    const mid = await backdrops();
+    for (let i = 0; i < 60 && (await ev("window.GH.ui.glassState().moving")); i++) await sleep(100);
+    await sleep(600);
+    return { mid, events: (await ev('window.__lite')).length - before };
+  };
+  const liquid = await modeCheck('liquid');
+  check('Liquid never lightens it, moving or not (its lens fades out and the frost stays, glow and all)', !liquid.mid.lite && liquid.events === 0 && /blur\(/.test(liquid.mid.lens) && liquid.mid.glowVis !== 'hidden', liquid);
+  const flat = await modeCheck('flat');
+  check('Flat has it light always, with the glow hidden', flat.mid.lite && /^none/.test(flat.mid.lens) && flat.mid.glow === 'none', flat);
+  // The glass speed test (src/ui/diag.js): each look timed, and the setting's own look put back after.
+  await ev(`(window.GH.ui.on.setGlass(null, null, 'auto'), 1)`);
+  await sleep(300);
+  const speedRes = await ev(`(async () => {
+    const root = document.documentElement, A = ['data-gx-nolens', 'data-gx-noedge', 'data-gx-noglow', 'data-glass-lite', 'data-rf-transparency'];
+    const before = JSON.stringify(window.GH.ui.glassState());
+    const r = await window.GH.diag.speedTest({ ms: 400, settle: 100 });
+    return { rows: r.rows.map((x) => [x.id, x.n, x.fps, x.p95]), stopped: r.stopped, before, after: JSON.stringify(window.GH.ui.glassState()), attrs: A.filter((a) => root.hasAttribute(a)), report: window.GH.diag.report().split('\\n').filter((l) => /Glass speed test|smoothest|fps/.test(l)) };
+  })()`);
+  check('the glass speed test times six looks and puts everything back', speedRes.rows.length === 6 && speedRes.rows.every(([, n]) => n > 5) && !speedRes.stopped && speedRes.before === speedRes.after && speedRes.attrs.length === 0, speedRes);
+  check('and the report carries its table, with the smoothest marked', speedRes.report.length >= 7 && speedRes.report.some((l) => /smoothest/.test(l)), speedRes.report);
+  await ev('(window.__abortRun = window.GH.diag.speedTest({ ms: 2500, settle: 100 }).then((r) => { window.__aborted = r; }), 1)');
+  await sleep(1900);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 195, y: 420, id: 1 }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  let aborted = null;
+  for (let i = 0; i < 100 && !aborted; i++) { await sleep(100); aborted = await ev('window.__aborted ? { stopped: window.__aborted.stopped, rows: window.__aborted.rows.length } : null'); }
+  await sleep(300);
+  check('a touch stops it, and everything is put back', !!aborted && aborted.stopped && aborted.rows < 6 && (await ev("['data-gx-nolens', 'data-gx-noedge', 'data-gx-noglow', 'data-gx-keepglow', 'data-glass-lite'].filter((a) => document.documentElement.hasAttribute(a)).length")) === 0, { aborted, attrs: await ev("[...document.documentElement.attributes].map((a) => a.name).filter((n) => /^data-(gx|glass)/.test(n)).join(',')") });
   await ctx.close();
 }
 

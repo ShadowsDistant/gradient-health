@@ -354,6 +354,16 @@ await wait(300);
 // A switch in a sheet, right after the sheet was dragged: the drag's own click is swallowed, never
 // the next tap's.
 section('A switch in a sheet after a sheet drag');
+// The 3D figure's warm-up is idle work after launch (seconds of shader compiling in software GL) that
+// starts at the first quiet moment, and that moment was here, under the first drag of the sheet: the
+// page held still for a few hundred ms, the sheet caught up with the finger late, and the tap landed
+// where the switch had been. It isn't what's tested, so it gets to finish first.
+await page.evaluate(() => new Promise((res) => {
+  const t0 = Date.now();
+  const f = () => { const F = window.GH.figure3d; if (!F || !F.warm || F.warm() || Date.now() - t0 > 25000) res(); else setTimeout(f, 250); };
+  f();
+}));
+await wait(600);
 await page.evaluate(() => { window.GH.ui.closeSheets(); window.GH.ui.act.daysSheet(); });
 await wait(900);
 const DSL = 'dialog[open] input[data-on="dsLight"]';

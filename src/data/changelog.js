@@ -6,6 +6,19 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.8.5', date: '2026-10-08', title: 'The glass steps aside while you scroll',
+      store: [
+        '• Glass effects (Settings, Look) is now Auto: the glass is as designed at rest and lightens while the page moves',
+        '• For scrolling that froze or only started once your finger lifted, on phones that can\'t keep up with the glass',
+        '• Glass speed test (Settings, About, Scroll diagnostics): which look your phone draws smoothly',
+      ].join('\n'),
+      items: [
+        ['wave', 'On some phones the page didn\'t follow your finger: it only started moving when you let go, or froze in a fling and jumped. The glass over a moving page is a lot for a phone\'s graphics chip to redraw every frame, and turning it off (Flat) fixed it. Glass effects in Settings under Look is now Auto, the new default: the glass is as designed whenever the page is still, and as light as Flat from your first drag until half a second after the page stops.'],
+        ['sparkle', 'Glass effects has four choices that mean what they say: Auto, Liquid (always as designed), Frosted (the blur without the lens effect, now with the glow behind the page) and Flat (no blur at all, the lightest).'],
+        ['bolt', 'Glass speed test, in Settings under About, Scroll diagnostics: about 20 seconds, the page scrolls by itself in a few looks of the glass, and the report says which one your phone draws smoothly. Copy or share it with the developer. A touch stops it.'],
+      ],
+    },
+    {
       version: '1.8.4', date: '2026-10-08', title: 'Glass you can turn down, and a report when scrolling freezes',
       store: [
         '• Glass effects: Liquid, Frosted or Flat (Settings, Look). Flat is the lightest to draw: try it if scrolling stutters',

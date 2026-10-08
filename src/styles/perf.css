@@ -77,12 +77,43 @@
    paint. The frosted pill under the tab is there from the first frame. */
 .rf-tabbar:not([data-ready]) > .rf-tabbar-bar > .rf-tabbar-lens { display: none; }
 
-/* Glass effects, Flat (Settings, Look; :root[data-glass-flat], set by core.js applyPrefs): no backdrop
-   is drawn anywhere, the glass is a solid fill, for a phone that can't keep up with blurred glass
-   over a moving page, and to tell, when a scroll stutters there, whether the glass is why. (Frosted,
-   the step before it, is Refract's own reduced-transparency look: the blur without the lenses.) */
-:root[data-glass-flat] .rf-glass, :root[data-glass-flat] .rf-glass > .rf-lens-layer, :root[data-glass-flat] .rf-tabbar-bar, :root[data-glass-flat] .gh-sheet-glass,
-:root[data-glass-flat] .rf-scroll-edge::before, :root[data-glass-flat] .rf-scroll-edge::after, :root[data-glass-flat] .rf-glass-bridge,
-:root[data-glass-flat] .onboard .rf-list, :root[data-glass-flat] .onboard .card, :root[data-glass-flat] .ob-opt, :root[data-glass-flat] .ob-tile, :root[data-glass-flat] .rv-why { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
-:root[data-glass-flat] .rf-glass[data-lens-ready] { background-color: var(--glass-fill-solid, var(--bg-raised)) !important; }
-:root[data-glass-flat] .rf-glass > .rf-lens-layer { display: none !important; }
+/* Glass effects (Settings, Look; core.js, "glass while the page moves"). :root[data-glass-lite] is Flat's
+   lightness: set always with Flat, and with Auto while the page moves. No backdrop is drawn anywhere
+   (each glass is one backdrop filter, drawn again every frame the page moves under it, and the lenses
+   and the bar's frosted edge are more), the glass is a solid fill, and the controls' lenses (the tab
+   bar's, the switches', the segmented controls') go, and so does the glow behind the page (hidden, not
+   removed: Flat has Refract's reduced transparency remove it, styles.css). That makes the light state
+   what Flat is, which fixed a scroll that froze on a phone every time. Measured in software the glow
+   is the second cost of a scrolling frame, and with the filters gone the largest left (draw p95
+   3.1 ms with it, 1.0 without; the GPU's own time 163 ms a second against 34). */
+:root[data-glass-lite] .rf-glass, :root[data-glass-lite] .rf-glass > .rf-lens-layer, :root[data-glass-lite] .rf-tabbar-bar, :root[data-glass-lite] .gh-sheet-glass,
+:root[data-glass-lite] .rf-scroll-edge::before, :root[data-glass-lite] .rf-scroll-edge::after, :root[data-glass-lite] .rf-glass-bridge,
+:root[data-glass-lite] :where(.rf-liquid, .rf-switch-thumb, .rf-slider-thumb, .rf-segmented-lens, .rf-tabbar-lens)::after,
+:root[data-glass-lite] .onboard .rf-list, :root[data-glass-lite] .onboard .card, :root[data-glass-lite] .ob-opt, :root[data-glass-lite] .ob-tile, :root[data-glass-lite] .rv-why { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+:root[data-glass-lite] .rf-glass[data-lens-ready] { background-color: var(--glass-fill-solid, var(--bg-raised)) !important; }
+:root[data-glass-lite] .rf-glass > .rf-lens-layer { display: none !important; }
+/* Without its blur the bar's edge has to hide what scrolls under the title by its tint alone: a good
+   deal more of it, fading out the same way (the mask is Refract's). */
+:root[data-glass-lite] .topbar > .rf-scroll-edge::after {
+  background: linear-gradient(to bottom,
+    color-mix(in oklab, var(--rf-edge-color, var(--bg)) 99%, transparent) 0%,
+    color-mix(in oklab, var(--rf-edge-color, var(--bg)) 96%, transparent) 45%,
+    color-mix(in oklab, var(--rf-edge-color, var(--bg)) 55%, transparent) 78%,
+    transparent 100%);
+}
+:root[data-glass-lite] .app::before, :root[data-glass-lite] .app::after, :root[data-glass-lite] .onboard::before, :root[data-glass-lite] .onboard::after { visibility: hidden; }
+
+/* Frosted (:root[data-glass="frosted"]) is the blur without the lenses: the lens layers go and the glass
+   itself carries the blur and its fill, as Refract's reduced transparency does, but without that
+   attribute, which would also hide the glow (and the glow is high contrast's and the system's
+   reduced transparency's to hide, as before). The glass speed test's "without the lenses" look
+   (:root[data-gx-nolens]) is the same. */
+:root[data-glass="frosted"] .rf-glass > .rf-lens-layer, :root[data-gx-nolens] .rf-glass > .rf-lens-layer { display: none !important; }
+:root[data-glass="frosted"] .rf-glass[data-lens-ready], :root[data-gx-nolens] .rf-glass[data-lens-ready] { -webkit-backdrop-filter: var(--_backdrop) !important; backdrop-filter: var(--_backdrop) !important; background-color: var(--_fill) !important; }
+
+/* The other looks the glass speed test compares (src/ui/diag.js), set on the root one at a time while
+   it runs and never otherwise: the glow hidden or, in the light state, kept; the top bar's frosted
+   edge off. (Its light looks use :root[data-glass-lite], above.) */
+:root[data-gx-noglow] .app::before, :root[data-gx-noglow] .app::after { visibility: hidden !important; }
+:root[data-gx-keepglow] .app::before, :root[data-gx-keepglow] .app::after { visibility: visible !important; }
+:root[data-gx-noedge] .topbar > .rf-scroll-edge::before, :root[data-gx-noedge] .topbar > .rf-scroll-edge::after { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
