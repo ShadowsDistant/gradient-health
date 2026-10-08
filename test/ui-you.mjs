@@ -176,29 +176,29 @@ const glassState = () => ev(() => {
   const glow = getComputedStyle(document.querySelector('.app'), '::before').display;
   return { pref: window.GH.ui.S.profile.prefs.glass || 'auto', mode: root.getAttribute('data-glass'), reduced: root.getAttribute('data-rf-transparency'), lite: root.hasAttribute('data-glass-lite'), lensShown: lens ? getComputedStyle(lens).display !== 'none' : false, lensFilter: lens ? getComputedStyle(lens).backdropFilter : 'none', glow };
 });
-// The tab bar's lens layer shows once Refract has marked its glass ready (a render a moment ago, mode
-// switches earlier in this suite, can have left it a few frames short of that).
-await page.waitForSelector('#tabbar .rf-glass[data-lens-ready] > .rf-lens-layer', { state: 'attached', timeout: 8000 }).catch(() => {});
+// The modes' looks are read where the tab bar is (Today); Settings, a pushed page, takes it away.
+await home();
+await go('today');
 let gs = await glassState();
 check('Auto at rest: the lens shows, no reduced transparency, the glow is there', gs.mode === 'auto' && !gs.lite && gs.reduced === null && gs.lensShown && /url\(/.test(gs.lensFilter) && gs.glow !== 'none', gs);
 await ev(() => window.GH.ui.on.setGlass(null, null, 'flat'));
-await settle();
+await settle(900);
 gs = await glassState();
 check('Flat: lite, reduced transparency, no lens, no glow', gs.pref === 'flat' && gs.mode === 'flat' && gs.lite && gs.reduced === 'reduced' && !gs.lensShown && gs.glow === 'none', gs);
 await ev(() => window.GH.ui.on.setGlass(null, null, 'frosted'));
-await settle();
+await settle(900);
 gs = await glassState();
 check('Frosted: the blur without the lenses, not lite, the glow kept', gs.pref === 'frosted' && gs.mode === 'frosted' && !gs.lite && gs.reduced === null && !gs.lensShown && gs.glow !== 'none', gs);
 await ev(() => window.GH.ui.on.setGlass(null, null, 'liquid'));
-await settle();
-await page.waitForFunction(() => { const l = document.querySelector('#tabbar .rf-glass[data-lens-ready] > .rf-lens-layer'); return l && getComputedStyle(l).display !== 'none'; }, null, { timeout: 5000 }).catch(() => {});
+await settle(900);
 gs = await glassState();
 check('Liquid: as designed', gs.pref === 'liquid' && gs.mode === 'liquid' && !gs.lite && gs.reduced === null && gs.lensShown && gs.glow !== 'none', gs);
 await ev(() => window.GH.ui.on.setGlass(null, null, 'auto'));
-await settle();
-await page.waitForFunction(() => { const l = document.querySelector('#tabbar .rf-glass[data-lens-ready] > .rf-lens-layer'); return l && getComputedStyle(l).display !== 'none'; }, null, { timeout: 5000 }).catch(() => {});
+await settle(900);
 gs = await glassState();
 check('and back to Auto', gs.pref === 'auto' && gs.mode === 'auto' && !gs.lite && gs.lensShown, gs);
+await ev(() => window.GH.ui.act.openSettings());
+await settle();
 check('About has a Scroll diagnostics row', await ev(() => !!document.querySelector('#screen [data-key="diag"] [data-act="scrollDiag"]')));
 await ev(() => window.GH.ui.act.scrollDiag());
 await settle();
