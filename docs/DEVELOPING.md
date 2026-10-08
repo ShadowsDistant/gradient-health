@@ -152,19 +152,31 @@ draws pixel by pixel in JavaScript land in the frame after the first paint, and 
 (the glass over the picked tab) shows from the bar's second frame (`src/styles/perf.css`). The
 controls take its liquid engine only when touched (Refract, the design system, below).
 
-Two things for a scroll that freezes on a phone and not here. Settings, Look, "Glass effects"
-(`prefs.glass`: liquid, frosted or flat; `applyPrefs` in core.js): frosted is Refract's
-reduced-transparency look (`:root[data-rf-transparency="reduced"]`, the blur without the lenses),
-flat draws no backdrop at all (`:root[data-glass-flat]`, src/styles/perf.css); if a scroll stutters on
-a phone, flat tells whether the glass over the page is why. And Settings, About, "Scroll
-diagnostics" (`src/ui/diag.js`, `GH.diag.report()`): a record, kept in memory for the last five
-minutes, of every touch (where, when, how late it reached the page), the scroller's position once a
-frame around a touch or a scroll, every long animation frame with its scripts (or long tasks), and
-the Event Timing API's input delays, written up as one report (the device, the settings that bear on
-scrolling, each gesture with how far the finger and the page went, when the page first moved, the
-frames and their longest gap, any hold-then-jump of a fling, the longest the thread was held and by
-what; a gesture the page didn't follow is marked) to copy or share with the developer right after a
-freeze. `ui-you` checks the setting and the sheet; `ui-scroll` checks the report after a fling.
+A scroll that freezes on a phone and not here (reported on one, after the main-thread fixes of
+1.8.2 and 1.8.3 changed nothing there, where Flat fixed it every time): the glass over the moving
+page. Each glass is a backdrop filter, drawn again every frame the page moves under it, and a phone's
+GPU can fall behind (the page then waits: it starts moving only when the finger lifts, or freezes in a
+fling and jumps). In software, `ui-scroll --measure --ablate=filters` (all backdrop filters off, run
+against the unablated page) takes about two thirds off a scrolling frame's draw time on Today and
+Plan. Settings, Look, "Glass effects" (`prefs.glass`, set as `data-glass` on the root by
+`setGlassMode` in core.js) is Auto by default: the glass as designed at rest and Flat's lightness
+(`:root[data-glass-lite]`, src/styles/perf.css: no backdrop anywhere, solid fills, no control lenses)
+from the first few pixels of a vertical drag on the page (or a wheel turn) until half a second after
+the page stops, flings included and for as long as a finger is down; a tap, a tab change and a scroll
+the page makes by itself never count. Liquid is the glass as designed, always; Frosted is the blur
+without the lenses (the glow kept); Flat is the lightness always, with the glow hidden (Refract's
+reduced transparency hides it). `ui-scroll` checks the transitions
+(`GH.ui.glassState()`), `ui-you` the setting and the root's attributes.
+
+Settings, About, "Scroll diagnostics" (`src/ui/diag.js`, `GH.diag.report()`) is for a freeze that
+survives: a record, kept in memory for the last five minutes, of every touch (where, when, how late it
+reached the page), the scroller's position once a frame around a touch or a scroll, every long
+animation frame with its scripts (or long tasks), and the Event Timing API's input delays, written up
+as one report (the device, the settings that bear on scrolling, each gesture with how far the finger
+and the page went, when the page first moved, the frames and their longest gap, any hold-then-jump of
+a fling, the longest the thread was held and by what; a gesture the page didn't follow is marked) to
+copy or share with the developer right after a freeze. `ui-you` checks the sheet; `ui-scroll` checks
+the report after a fling.
 
 **Scrolling, and work that can wait.** A fling should only move what's already drawn
 (`src/styles/perf.css`). While the page scrolls (`#app[data-scrolling]`, set in `core.js` and

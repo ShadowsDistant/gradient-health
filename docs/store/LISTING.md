@@ -6,8 +6,9 @@ renders the images again from `docs/screenshots/`.
 ## Short description (80 characters at most)
 
 ```text
-• Glass effects: Liquid, Frosted or Flat (Settings, Look). Flat is the lightest to draw: try it if scrolling stutters
-• Scroll diagnostics (Settings, About): if a scroll freezes or jumps, copy a report of what happened for the developer
+• Glass effects (Settings, Look) is now Auto: the glass is as designed at rest and lightens while the page moves
+• For scrolling that froze or only started once your finger lifted, on phones that can't keep up with the glass
+• Glass speed test (Settings, About, Scroll diagnostics): which look your phone draws smoothly
 ```
 
 ## Full description (4,000 characters at most)
@@ -75,7 +76,7 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 ## What's new (500 characters at most)
 
-Paste this into the What's new field with each update. This is 1.8.4's. Each GitHub release carries
+Paste this into the What's new field with each update. This is 1.8.5's. Each GitHub release carries
 its own version's text at the end of its What's new, under "Short version, for a store's What's new
 field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
 (`node scripts/release-notes.mjs --store` prints it).

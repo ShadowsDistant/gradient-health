@@ -165,32 +165,41 @@ check('and openProfile', (await where()).tab === 'you');
 await ev(() => window.GH.ui.act.openSettings());
 await settle();
 check('openSettings opens Settings on top', (await where()).view === 'settings' && (await where()).back);
-// Glass effects (Look): Liquid as designed, Frosted (Refract's reduced-transparency look, the lenses
-// off), Flat (no backdrop drawn anywhere); and the scroll diagnostics row (About) with its report.
+// Glass effects (Look): Auto (the default: Liquid at rest, light while the page moves, core.js), Liquid
+// as designed, Frosted (the blur without the lenses, the glow kept), Flat (no backdrop drawn
+// anywhere, the glow hidden); and the scroll diagnostics row (About) with its report.
 const glassFx = await ev(() => Array.from(document.querySelectorAll('#screen [data-key="glass-fx"] .rf-segment'), (b) => b.textContent.trim()));
-check('Look has Glass effects: Liquid, Frosted, Flat', JSON.stringify(glassFx) === JSON.stringify(['Liquid', 'Frosted', 'Flat']), glassFx);
+check('Look has Glass effects: Auto, Liquid, Frosted, Flat', JSON.stringify(glassFx) === JSON.stringify(['Auto', 'Liquid', 'Frosted', 'Flat']), glassFx);
+check('Auto is picked by default', await ev(() => { const on = document.querySelector('#screen [data-key="glass-fx"] input[type="radio"]:checked'); return !!on && on.value === 'auto'; }));
 const glassState = () => ev(() => {
   const root = document.documentElement, lens = document.querySelector('#tabbar .rf-tabbar-bar .rf-lens-layer, #tabbar .rf-glass > .rf-lens-layer');
-  const f = (el) => (el ? getComputedStyle(el).backdropFilter : 'none');
-  return { pref: window.GH.ui.S.profile.prefs.glass || 'liquid', reduced: root.getAttribute('data-rf-transparency'), flat: root.hasAttribute('data-glass-flat'), lens: lens ? f(lens) : 'none', lensShown: lens ? getComputedStyle(lens).display !== 'none' : false };
+  const glow = getComputedStyle(document.querySelector('.app'), '::before').display;
+  return { pref: window.GH.ui.S.profile.prefs.glass || 'auto', mode: root.getAttribute('data-glass'), reduced: root.getAttribute('data-rf-transparency'), lite: root.hasAttribute('data-glass-lite'), lensShown: lens ? getComputedStyle(lens).display !== 'none' : false, lensFilter: lens ? getComputedStyle(lens).backdropFilter : 'none', glow };
 });
+let gs = await glassState();
+check('Auto at rest: the lens shows, no reduced transparency, the glow is there', gs.mode === 'auto' && !gs.lite && gs.reduced === null && gs.lensShown && /url\(/.test(gs.lensFilter) && gs.glow !== 'none', gs);
 await ev(() => window.GH.ui.on.setGlass(null, null, 'flat'));
 await settle();
-let gs = await glassState();
-check('Flat: no lens layer shows and the tab bar draws no backdrop', gs.pref === 'flat' && gs.flat && gs.reduced === 'reduced' && !gs.lensShown, gs);
+gs = await glassState();
+check('Flat: lite, reduced transparency, no lens, no glow', gs.pref === 'flat' && gs.mode === 'flat' && gs.lite && gs.reduced === 'reduced' && !gs.lensShown && gs.glow === 'none', gs);
 await ev(() => window.GH.ui.on.setGlass(null, null, 'frosted'));
 await settle();
 gs = await glassState();
-check('Frosted: the reduced-transparency look, nothing flat', gs.pref === 'frosted' && !gs.flat && gs.reduced === 'reduced', gs);
+check('Frosted: the blur without the lenses, not lite, the glow kept', gs.pref === 'frosted' && gs.mode === 'frosted' && !gs.lite && gs.reduced === null && !gs.lensShown && gs.glow !== 'none', gs);
 await ev(() => window.GH.ui.on.setGlass(null, null, 'liquid'));
 await settle();
 gs = await glassState();
-check('Liquid: as designed', gs.pref === 'liquid' && !gs.flat && gs.reduced === null, gs);
+check('Liquid: as designed', gs.pref === 'liquid' && gs.mode === 'liquid' && !gs.lite && gs.reduced === null && gs.lensShown && gs.glow !== 'none', gs);
+await ev(() => window.GH.ui.on.setGlass(null, null, 'auto'));
+await settle();
+gs = await glassState();
+check('and back to Auto', gs.pref === 'auto' && gs.mode === 'auto' && !gs.lite && gs.lensShown, gs);
 check('About has a Scroll diagnostics row', await ev(() => !!document.querySelector('#screen [data-key="diag"] [data-act="scrollDiag"]')));
 await ev(() => window.GH.ui.act.scrollDiag());
 await settle();
 const diag = await ev(() => { const t = document.querySelector('.gh-sheet textarea'); return { open: !!t, text: t ? t.value : '', copy: !!document.querySelector('.gh-sheet [data-act="diagCopy"]'), share: !!document.querySelector('.gh-sheet [data-act="diagShare"]') }; });
-check('its sheet carries the report, with Copy and Share', diag.open && diag.copy && diag.share && /scroll diagnostics/.test(diag.text) && /Device: /.test(diag.text) && /Settings: glass liquid/.test(diag.text) && /Gestures, newest first/.test(diag.text), diag.text.slice(0, 300));
+check('and the Glass speed test row', await ev(() => !!document.querySelector('.gh-sheet [data-act="diagSpeed"]')));
+check('its sheet carries the report, with Copy and Share', diag.open && diag.copy && diag.share && /scroll diagnostics/.test(diag.text) && /Device: /.test(diag.text) && /Settings: glass auto/.test(diag.text) && /Gestures, newest first/.test(diag.text), diag.text.slice(0, 300));
 await ev(() => window.GH.ui.closeSheets && window.GH.ui.closeSheets());
 await settle();
 await home();

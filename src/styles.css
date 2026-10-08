@@ -87,7 +87,12 @@ button:not([class*="rf-"]) { font: inherit; }
 /* Ambient glow: the icon's colours (mint, sky, violet, pink) softly behind the top of each page, so
    the glass bars, buttons and sheets have real colour to refract. Two layers (mint and violet, sky and
    pink) drift slowly on their own paths, 26 and 34 seconds round, moving only a few percent: transform
-   alone, so it's the compositor's work, never a repaint. The glow also rises and fades as the page
+   alone, so it's the compositor's work, never a repaint. The drift moves in steps, about four a second
+   (steps(36) between each pair of keyframes), too small to see (a pixel or two) and a fifteenth of the
+   frames: every frame of a drift makes each glass in front of it filter its backdrop again, and at 60 a
+   second that alone kept a phone's GPU busy while the page was at rest, so that a flick landed on a GPU
+   with nothing to spare (measured in software: 1.6 s of the GPU process's CPU every second at rest,
+   against a hundredth of that with the drift off). The glow also rises and fades as the page
    scrolls (a scroll-linked animation). The drift holds still with reduced motion, the "Moving
    background" setting off, a full-height sheet up, a workout on screen, the page scrolling, and 20 s
    after the last input (src/styles/perf.css); the glow is off with
@@ -104,13 +109,13 @@ button:not([class*="rf-"]) { font: inherit; }
   background:
     radial-gradient(34% 43% at 20% 32.5%, var(--glow-mint), color-mix(in srgb, var(--glow-mint) 44%, transparent) 38.5%, transparent 73.5%),
     radial-gradient(33% 36% at 64% 59%, color-mix(in srgb, var(--glow-violet) 49%, transparent), color-mix(in srgb, var(--glow-violet) 44%, transparent) 19%, transparent 84%);
-  animation: glow-drift-a 26s ease-in-out infinite alternate;
+  animation: glow-drift-a 26s steps(36) infinite alternate;
 }
 .app::after {
   background:
     radial-gradient(33% 41% at 80% 25.5%, var(--glow-sky), color-mix(in srgb, var(--glow-sky) 50%, transparent) 37%, transparent 74.5%),
     radial-gradient(26.5% 30% at 34% 67.5%, color-mix(in srgb, var(--glow-pink) 37%, transparent), color-mix(in srgb, var(--glow-pink) 32%, transparent) 21%, transparent 82.5%);
-  animation: glow-drift-b 34s ease-in-out -9s infinite alternate;
+  animation: glow-drift-b 34s steps(36) -9s infinite alternate;
 }
 [data-theme^="dark"] .app::before, [data-theme^="dark"] .app::after { opacity: .6; }
 @keyframes glow-drift-a {
@@ -129,7 +134,7 @@ button:not([class*="rf-"]) { font: inherit; }
    comes first in each list, so a single paused value still stops it there. */
 @supports (animation-timeline: scroll()) {
   .screen { scroll-timeline: --page block; }
-  .app::before, .app::after { animation-name: glow-drift-a, glow-scroll; animation-duration: 26s, auto; animation-timing-function: ease-in-out, linear; animation-delay: 0s, 0s; animation-iteration-count: infinite, 1; animation-direction: alternate, normal; animation-fill-mode: none, both; animation-timeline: auto, --page; animation-range: normal, 0 480px; }
+  .app::before, .app::after { animation-name: glow-drift-a, glow-scroll; animation-duration: 26s, auto; animation-timing-function: steps(36), linear; animation-delay: 0s, 0s; animation-iteration-count: infinite, 1; animation-direction: alternate, normal; animation-fill-mode: none, both; animation-timeline: auto, --page; animation-range: normal, 0 480px; }
   .app::after { animation-name: glow-drift-b, glow-scroll; animation-duration: 34s, auto; animation-delay: -9s, 0s; }
   [data-theme^="dark"] .app::before { animation-name: glow-drift-a, glow-scroll-dark; }
   [data-theme^="dark"] .app::after { animation-name: glow-drift-b, glow-scroll-dark; }

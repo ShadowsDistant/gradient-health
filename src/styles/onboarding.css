@@ -16,13 +16,13 @@
   background:
     radial-gradient(34% 43% at 20% 32.5%, var(--glow-mint), color-mix(in srgb, var(--glow-mint) 44%, transparent) 38.5%, transparent 73.5%),
     radial-gradient(33% 36% at 64% 59%, color-mix(in srgb, var(--glow-violet) 49%, transparent), color-mix(in srgb, var(--glow-violet) 44%, transparent) 19%, transparent 84%);
-  animation: glow-drift-a 26s ease-in-out infinite alternate;
+  animation: glow-drift-a 26s steps(36) infinite alternate;
 }
 .onboard::after {
   background:
     radial-gradient(33% 41% at 80% 25.5%, var(--glow-sky), color-mix(in srgb, var(--glow-sky) 50%, transparent) 37%, transparent 74.5%),
     radial-gradient(26.5% 30% at 34% 67.5%, color-mix(in srgb, var(--glow-pink) 37%, transparent), color-mix(in srgb, var(--glow-pink) 32%, transparent) 21%, transparent 82.5%);
-  animation: glow-drift-b 34s ease-in-out -9s infinite alternate;
+  animation: glow-drift-b 34s steps(36) -9s infinite alternate;
 }
 [data-theme^="dark"] .onboard::before, [data-theme^="dark"] .onboard::after { opacity: .65; }
 .onboard[data-step="welcome"]::before, .onboard[data-step="welcome"]::after, .onboard[data-step="reveal"]::before, .onboard[data-step="reveal"]::after { opacity: .85; }
