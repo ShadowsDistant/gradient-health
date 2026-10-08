@@ -74,18 +74,15 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 ## What's new (500 characters at most)
 
-Paste this into the What's new field with each update. This is 1.8.1's. Each GitHub release carries
+Paste this into the What's new field with each update. This is 1.8.2's. Each GitHub release carries
 its own version's text at the end of its What's new, under "Short version, for a store's What's new
 field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
 (`node scripts/release-notes.mjs --store` prints it).
 
 ```text
-• Maps you've seen open at once, even with no connection
-• The first map opens sooner
-• A map that can't load keeps your route, and comes once you're back online
-• Maps change with the app's light or dark look without loading again
-• Names of rivers and lakes on the map
-• Maps stay with OpenFreeMap: Google Maps is gone
+• Smoother scrolling: in testing, about half as many skipped frames on Today, Health, Plan and You
+• The glass at the bottom stops bending while the page moves, and eases back when it stops
+• Less work for your phone on every frame of a scroll
 ```
 
 ## Images

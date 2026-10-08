@@ -146,7 +146,7 @@
   const BEHAVIOR = ['rf-segmented', 'rf-switch', 'rf-slider', 'rf-stepper', 'rf-chip', 'rf-glass', 'rf-navbar', 'rf-scroll-edge', 'rf-search', 'rf-pagedots', 'rf-activity', 'rf-tabbar', 'gh-chipseg'];
   const BEHAVIOR_SEL = BEHAVIOR.map((c) => '.' + c).join(',');
   // Attributes behaviors set on our elements. Only matters for nodes the markup didn't create.
-  const KEEP_ATTR = /^(data-(ready|lens-ready|lens-idle|scrolled|active|pressed|glow|magnet|dragging|drag-on|over|empty|bump|leaving|traveling|open|expanded|detent|entering|animate|minimized|revealed|hover|merged|tilting|fading|lifted|liquid|ring|scrubbing|rf-.*)|role|tabindex|style|aria-(checked|selected|expanded|controls|describedby|valuetext))$/;
+  const KEEP_ATTR = /^(data-(gh-flat|ready|lens-ready|lens-idle|scrolled|active|pressed|glow|magnet|dragging|drag-on|over|empty|bump|leaving|traveling|open|expanded|detent|entering|animate|minimized|revealed|hover|merged|tilting|fading|lifted|liquid|ring|scrubbing|rf-.*)|role|tabindex|style|aria-(checked|selected|expanded|controls|describedby|valuetext))$/;
   const owned = new WeakMap(); // element → { attrs, style } the markup set, so only those get removed
 
   // (A node's own few classes are looked up, rather than asking for each of these in turn: a patch
@@ -488,14 +488,68 @@
     markScrolled(ioKey.startsWith('title') ? !e.isIntersecting : e.intersectionRatio < 1);
   }
   function markScrolled(s) { if (s !== scrolled) { scrolled = s; topbar.toggleAttribute('data-scrolled', s); } }
-  // While the page scrolls (#app[data-scrolling]), the glow behind it holds still and the glass over
-  // it doesn't refract (src/styles/perf.css): less to draw every frame of a fling. That's over 150 ms
-  // after the last scroll. Set-up's own scroller does the same on its page (.onboard[data-scrolling]).
+  // While the page scrolls (#app[data-scrolling]), the glow behind it holds still (src/styles/perf.css),
+  // the light holds still, and the bottom glass's bend fades out (below): less to draw every frame of
+  // a fling. That's over 150 ms after the last scroll. Set-up's own scroller does the same on its page
+  // (.onboard[data-scrolling]).
   let scrollIdle = 0, obIdle = 0;
   function onScroll() {
     if (scrollIdle) clearTimeout(scrollIdle);
-    else { root.setAttribute('data-scrolling', ''); steadyLight(true); }
-    scrollIdle = setTimeout(() => { scrollIdle = 0; root.removeAttribute('data-scrolling'); U.steadyLight(); }, 150);
+    else { root.setAttribute('data-scrolling', ''); steadyLight(true); bend(0); }
+    scrollIdle = setTimeout(() => { scrollIdle = 0; root.removeAttribute('data-scrolling'); U.steadyLight(); bend(1); }, 150);
+  }
+  // The bend of the glass at the bottom (Refract's lens: what's under the tab bar, Today's floating
+  // buttons and the workout capsule bent at their edges as through a lens) is redrawn every frame the
+  // page moves under it, and it was about half of what made a fling miss frames. So while the page
+  // moves it fades out, and once it stops it fades back: the lens's own strength (its displacement's
+  // scale) eases to nothing over 160 ms, and only then is the lens taken off the glass
+  // ([data-gh-flat], src/styles/perf.css), which looks the same as a lens of no strength; when the
+  // page stops, the lens goes back on at no strength and eases up over 280 ms. The frost, the tint and
+  // the rim stay as they are throughout. (1.7.0 took the lens off at once, all the glass: that showed,
+  // the title going sharp under the bar's buttons, which keep theirs.) Reduced motion: at once.
+  // Each change of strength has the glass's filter made again (a few ms of the page's thread): fading
+  // out, as a fling starts, it steps down in thirds; fading back in, once the page is still, it's
+  // eased frame by frame.
+  const BEND_GLASS = '#tabbar .rf-glass, #float .rf-glass, #accessory.rf-glass';
+  let bendNow = 1, bendTo = 1, bendFrom = 1, bendAt = 0, bendMs = 0, bendRaf = 0, bendShown = 1, bendEls = [];
+  // The glass to bend, and each one's displacements (with the strength Refract gave them), as they are
+  // when a fade starts.
+  function bendFind() {
+    bendEls = [];
+    for (const g of doc.querySelectorAll(BEND_GLASS)) {
+      const id = (/url\(#([\w-]+)\)/.exec(g.style.getPropertyValue('--_lens')) || [])[1];
+      const filter = id && doc.getElementById(id);
+      const fes = filter ? [...filter.querySelectorAll('feDisplacementMap')] : [];
+      for (const fe of fes) if (!fe.dataset.ghScale) fe.dataset.ghScale = fe.getAttribute('scale') || '0';
+      bendEls.push([g, fes]);
+    }
+  }
+  function bendSet(f) {
+    if (f === bendShown) return;
+    bendShown = f;
+    for (const [g, fes] of bendEls) {
+      if (!g.isConnected) continue;
+      for (const fe of fes) fe.setAttribute('scale', String(Math.round(Number(fe.dataset.ghScale) * f * 100) / 100));
+      g.toggleAttribute('data-gh-flat', f === 0);
+    }
+  }
+  function bendStep(t) {
+    bendRaf = 0;
+    const k = Math.max(0, Math.min(1, (t - bendAt) / bendMs));
+    bendNow = k >= 1 ? bendTo : bendFrom + (bendTo - bendFrom) * k * k * (3 - 2 * k);
+    bendSet(bendTo ? bendNow : Math.ceil(bendNow * 3) / 3);
+    if (k < 1) bendRaf = G.requestAnimationFrame(bendStep);
+  }
+  function bend(to) {
+    if (to === bendTo) return;
+    bendTo = to;
+    bendFind();
+    if (U.reduced() || !G.requestAnimationFrame) { bendShown = -1; bendNow = to; bendSet(to); return; }
+    bendShown = bendNow;
+    bendFrom = bendNow;
+    bendAt = G.performance.now();
+    bendMs = to ? 280 : 160;
+    if (!bendRaf) bendRaf = G.requestAnimationFrame(bendStep);
   }
   function onSetupScroll() {
     if (obIdle) clearTimeout(obIdle);
@@ -507,7 +561,7 @@
   // while a sheet moves, while the workout player or a live activity is open (the phone moves all the
   // time), with Moving background off and under reduced motion, and follows the tilt again once
   // things are calm.
-  let lightFixed = false;
+  let lightFixed = false, touching = 0; // touching: fingers on the screen (below)
   function steadyLight(fixed) {
     const r = R();
     if (fixed === lightFixed || !r || !r.light || !r.light.mode) return;
@@ -517,7 +571,33 @@
     const glass = tabbar && tabbar.querySelector('.rf-tabbar-bar');
     safe(() => (fixed ? r.light.mode('fixed', r.light.current(glass || undefined)) : r.light.mode('pointer')));
   }
-  U.steadyLight = () => steadyLight(!!(scrollIdle || doc.documentElement.hasAttribute('data-sheet-moving') || doc.documentElement.hasAttribute('data-still-glow') || U.reduced() || (playerEl && !playerEl.hidden) || (U.actLiveShown && U.actLiveShown())));
+  U.steadyLight = () => steadyLight(!!(touching || scrollIdle || doc.documentElement.hasAttribute('data-sheet-moving') || doc.documentElement.hasAttribute('data-still-glow') || U.reduced() || (playerEl && !playerEl.hidden) || (U.actLiveShown && U.actLiveShown())));
+  // Refract's light also hears every scroll on the page (on the window, as it's captured) and, a frame
+  // later, reads where each glass it lights is. In a scroll that's every frame: the page's own thread
+  // then makes a frame of its own each time (and hands it to the compositor, which is moving the page
+  // meanwhile) only to find the same angles, since a phone's light follows its tilt rather than where
+  // the glass is, and the light holds still while the page scrolls anyway. So that listener (it's the
+  // light's own refresh) comes off at the first scroll, and the light is refreshed once a scroll has
+  // ended instead, wherever it was (the page, a sheet, set-up); with a mouse, the rims turn to the
+  // pointer once the page stops rather than as it moves.
+  let lightAfter = 0;
+  function lightAfterScroll() {
+    const r = R();
+    if (!r || !r.light || !r.light.refresh) return;
+    G.removeEventListener('scroll', r.light.refresh, true);
+    clearTimeout(lightAfter);
+    lightAfter = setTimeout(() => safe(() => r.light.refresh()), 150);
+  }
+  if (doc) doc.addEventListener('scroll', lightAfterScroll, { passive: true, capture: true });
+  // A finger on the screen holds it still too: a scroll starts with one, and on a phone in a moving
+  // hand a step of the light just then repaints every rim as the page begins to move. A tap lets it
+  // go again at once; a fling keeps it still until the page stops (scrollIdle).
+  if (doc) {
+    doc.addEventListener('touchstart', (e) => { touching = e.touches.length; steadyLight(true); }, { passive: true, capture: true });
+    const lift = (e) => { touching = e.touches.length; if (!touching) U.steadyLight(); };
+    doc.addEventListener('touchend', lift, { passive: true, capture: true });
+    doc.addEventListener('touchcancel', lift, { passive: true, capture: true });
+  }
   // A sheet's rim and sheen show while it slides and is dragged (src/styles/sheet.css), so the light
   // holds still meanwhile too: a step of it would repaint them every frame of the move.
   if (doc) doc.addEventListener('gh-sheet-moving', () => U.steadyLight());

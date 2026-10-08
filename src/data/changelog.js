@@ -6,6 +6,19 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.8.2', date: '2026-10-08', title: 'Smoother scrolling',
+      store: [
+        '• Smoother scrolling: in testing, about half as many skipped frames on Today, Health, Plan and You',
+        '• The glass at the bottom stops bending while the page moves, and eases back when it stops',
+        '• Less work for your phone on every frame of a scroll',
+      ].join('\n'),
+      items: [
+        ['wave', 'Scrolling is smoother. The frosted glass over the page is redrawn every frame of a scroll, and that was more than a phone could keep up with. In testing at phone size, a fling now skips about half as many frames on Today, Health, Plan and You, and almost none on Progress.'],
+        ['sparkle', 'While the page moves, the glass at the bottom (the tab bar and Today\'s buttons) stops bending what\'s under its edges, and eases back once the page is still. Its frost stays, and the buttons at the top keep their bend.'],
+        ['bolt', 'Less work on every frame of a scroll: the frosted strip under the top bar costs less to draw for the same look, and the glass\'s light holds still while your finger is on the screen.'],
+      ],
+    },
+    {
       version: '1.8.1', date: '2026-10-05', title: 'Maps that open at once, even offline',
       store: [
         '• Maps you\'ve seen open at once, even with no connection',
