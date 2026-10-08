@@ -193,7 +193,7 @@ the dear one (700 ms in a software-GL test, 130 ms after); `ui-figure` checks bo
 the Plan tab with the figure warm and flings 400 ms on, then checks that from the flick until 1.1 s
 after the page stops no task holds the thread for 120 ms (at 4× CPU), and that the tiles' stills
 still come afterwards (on 1.8.2 the first still, let loose at calm 400 ms after the tap, held the
-thread 2 s in mid-fling). `test/ui-scroll.mjs` scrolls every
+thread 1 to 2 s at 4× in mid-fling). `test/ui-scroll.mjs` scrolls every
 main screen at 4× CPU, traced, and holds the budgets; `--vs=<dir>` compares two builds run by run, and
 `--ablate=<part>` switches one part off to show what it costs. It also touch-scrolls (real touch
 flings, `Input.dispatchTouchEvent`) on pages driven through raw CDP: Playwright's page helpers inject

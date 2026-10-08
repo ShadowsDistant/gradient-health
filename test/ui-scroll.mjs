@@ -408,7 +408,7 @@ if (TOUCH.length) {
 // those count for nothing. The time from the flick to the stop is reported, not held: a frozen fling
 // runs long (the thread's work holds the scroll's end), but so does one on a loaded machine. (1.8.2
 // fails this: its first 3D still comes at "calm", 400 ms after the tap, and a shader compile and a
-// toDataURL encode held the thread 2 s at 4x in mid-fling; the page stopped 3 to 7 s after the flick.)
+// toDataURL encode held the thread 1 to 2 s at 4x in mid-fling, 0.2 s after the flick.)
 if (!measureOnly && (!ONLY.length || ONLY.includes('plan'))) {
   section('Deferred work after a scroll');
   if (!gpuBrowser) gpuBrowser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
