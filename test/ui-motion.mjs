@@ -654,11 +654,15 @@ section('Collapse, expand and exit');
 section('The feel check folds once its thumb has landed');
 {
   // Both answered, opened again with Change: the last answer moves a thumb that's already there.
+  // (The card is complete only with a night's sleep too: the seed's health sync has one for today
+  // except in the hour and a half after the day rolls over at 4, when its sleep ends on the day
+  // before, so the sleep chip stands in here and the section runs the same at any hour.)
   await page.evaluate(async () => {
     const U = window.GH.ui;
     U.go('today');
     await U.motion.settled();
     U.S.feel[U.today()] = { energy: 'ok', sore: 'some' };
+    if (!(U.S.health.days[U.today()] && U.S.health.days[U.today()].sleepMin != null)) U.S.sleepChip[U.today()] = 7;
     U.render();
     await U.motion.settled();
   });

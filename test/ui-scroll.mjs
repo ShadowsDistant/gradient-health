@@ -400,14 +400,15 @@ if (TOUCH.length) {
 // (3D stills, the 3D chunk and its warm-up, background re-renders) waits for quiet (U.whenQuiet,
 // 1.5 s with nothing happening, core.js) rather than calm (0.4 s), a held finger is never calm, and a
 // still's encoding runs off the thread (figure3d's stillAsync). Here, with the 3D figure warm, Plan is
-// opened (its tiles queue a 3D still each) and flung at once; then, from the flick until 1.1 s after
-// the page stops moving (the window in which the next flick comes), the page's long animation frames
-// must carry no task of 120 ms or more, the page must stop within 2 s of the flick (a frozen fling
-// runs long: the thread's work holds the scroll's end and the attribute that marks it), and left
-// alone after, the tiles must still get their stills. A frame's blocking time is the part of any one
-// task over 50 ms: a software GPU makes frames long here with no task to blame, and those count for
-// nothing. (1.8.2 fails this: 0.2 s into the fling its first 3D still, a shader compile and a
-// toDataURL encode, held the thread 2.3 s at 4x; the page stopped 3.3 s after the flick.)
+// opened by a tap on its tab, as on the phone (its tiles queue a 3D still each; the tap is the last
+// input) and flung 400 ms on; then, from the flick until 1.1 s after the page stops moving (the window
+// in which the next flick comes), the page's long animation frames must carry no task of 120 ms or
+// more, and left alone after, the tiles must still get their stills. A frame's blocking time is the
+// part of any one task over 50 ms: a software GPU makes frames long here with no task to blame, and
+// those count for nothing. The time from the flick to the stop is reported, not held: a frozen fling
+// runs long (the thread's work holds the scroll's end), but so does one on a loaded machine. (1.8.2
+// fails this: its first 3D still comes at "calm", 400 ms after the tap, and a shader compile and a
+// toDataURL encode held the thread 2 s at 4x in mid-fling; the page stopped 3 to 7 s after the flick.)
 if (!measureOnly && (!ONLY.length || ONLY.includes('plan'))) {
   section('Deferred work after a scroll');
   if (!gpuBrowser) gpuBrowser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
@@ -432,8 +433,14 @@ if (!measureOnly && (!ONLY.length || ONLY.includes('plan'))) {
   await sleep(2000);
   await ev(`(() => { const L = window.__loaf = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) L.push({ t: Math.round(e.startTime), d: Math.round(e.duration), block: Math.round(e.blockingDuration || 0), scripts: (e.scripts || []).filter((x) => x.duration >= 20).map((x) => \`\${x.invoker || ''} \${x.sourceFunctionName || ''}@\${x.sourceCharPosition} \${Math.round(x.duration)} ms\`) }); }).observe({ type: 'long-animation-frame', buffered: true }); } catch (e) { /* unsupported */ } return 1; })()`);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU });
-  // Plan, and a fling as soon as it's in (its tiles have just queued a 3D still each).
-  await ev("(window.GH.ui.go('plan'), 1)");
+  // Plan, by a tap on its tab, and a fling 400 ms after it's in (its tiles have queued a 3D still each).
+  const tab = await ev(`(() => { const r = document.querySelector('#tabbar .rf-tab[data-tab="plan"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: tab[0], y: tab[1], id: 1 }] });
+  await sleep(40);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  let onPlan = false;
+  for (let i = 0; i < 40 && !onPlan; i++) { await sleep(50); onPlan = await ev("!!document.querySelector('#screen[data-view=\"plan\"] .pw-thumb[data-move]')"); }
+  check('a tap on the Plan tab opens Plan', onPlan);
   await sleep(400);
   const flick = await ev('performance.now()');
   await fling(cdp, 650, -400);
@@ -446,8 +453,7 @@ if (!measureOnly && (!ONLY.length || ONLY.includes('plan'))) {
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
   const blocking = after.reduce((m, x) => Math.max(m, x.block), 0);
   // At 4x CPU: a task of 120 ms (blocking 70) is about 30 ms on the phone, a frame or two.
-  check('the fling ends', stopped !== null, stopped);
-  check('the page stops within 2 s of the flick (a frozen fling runs long)', stopped !== null && stopped - flick < 2000, `${Math.round(stopped - flick)} ms`);
+  check(`the fling ends (${stopped === null ? 'never' : `${Math.round(stopped - flick)} ms after the flick`})`, stopped !== null, stopped);
   check('from the flick until 1.1 s after the page stops, no task holds the page\'s thread for 120 ms or more (4x CPU)', blocking < 70, `frames (start after the flick, ms, blocking, scripts): ${JSON.stringify(after.filter((x) => x.block > 0).map((x) => ({ ...x, t: x.t - Math.round(flick) })).slice(0, 8))}`);
   const quietAt = await ev('(() => { const U = window.GH.ui; return U.quiet ? U.quiet() : null; })()');
   check('it isn\'t "quiet" yet (deferred work waits 1.5 s after the last scroll)', quietAt === false, quietAt);

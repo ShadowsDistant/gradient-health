@@ -3752,8 +3752,14 @@ function idle(fn) {
   if (G.requestIdleCallback) G.requestIdleCallback(fn, { timeout: 2000 });
   else setTimeout(() => fn(null), 16);
 }
-// A view that stays alive once its programs are compiled (so later figures reuse them), then one
-// small frame to compile the contact-shadow passes too.
+// A view that stays alive once its programs are compiled (so later figures reuse them): the figure's,
+// and a wall's or a door's (a transparent material, a program of its own that no figure's view keeps
+// compiled, so a speck of it lives here: a still of a wall push-up compiled it again every time, 200
+// ms in a software-GL test). Then one small frame to compile the contact-shadow passes too, and one
+// still the size of Plan's tiles, out through a 2D canvas as every still goes: the first copy out of
+// the GL canvas is the dear one (700 ms in the same test when a still was the first, 130 ms after),
+// so it's paid here, where nothing waits on it.
+const WARM_STILL = 208; // px: Plan's tiles at 2x
 function warmUp() {
   if (WARM || !R) return true;
   const m = GH.moves && GH.moves.MOVES && (GH.moves.MOVES.push_std || Object.values(GH.moves.MOVES)[0]);
@@ -3761,15 +3767,24 @@ function warmUp() {
   const view = new View(m, optsOf({ static: true }));
   view.fig.setPose(view.fig.A.key, null);
   view.fig.setGlow(0.78, null);
+  if (view.fig.M && view.fig.M.wall) mesh(new PlaneGeometry(0.01, 0.01), view.fig.M.wall, view.scene).position.set(0, -200, 0);
   view.camState = { az: view.base.az, el: view.base.el };
   view.frame(view.base.az, view.base.el, 1);
   WARM = view;
   const r = R.r;
   const compiled = r.compileAsync ? r.compileAsync(view.scene, view.camera) : Promise.resolve(r.compile(view.scene, view.camera));
-  return compiled.then(() => new Promise((done) => idle(() => {
-    if (R && WARM === view && !isLost(R)) { ensureSize(64, 64); view.render(R.r, 64, 64); }
+  // Each step in an idle moment, and only while this view is still the warm one (not released).
+  const step = (fn) => () => new Promise((done) => idle(() => {
+    if (R && WARM === view && !isLost(R)) { try { fn(); } catch (e) { /* the warm-up is best effort */ } }
     done();
-  })));
+  }));
+  return compiled
+    .then(step(() => { ensureSize(64, 64); view.render(R.r, 64, 64); }))
+    .then(step(() => {
+      const c = document.createElement('canvas');
+      c.width = c.height = WARM_STILL;
+      if (draw(view, c.getContext('2d'), WARM_STILL, WARM_STILL)) cropped(c, WARM_STILL / 2);
+    }));
 }
 // Build the renderer, the body, the equipment, the lighting and the shaders ahead of the first
 // figure, a small piece per idle moment so taps never wait on it. Resolves true when 3D is ready.

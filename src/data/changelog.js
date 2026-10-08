@@ -15,7 +15,7 @@
       items: [
         ['wave', 'Fixed: a flick right after another could freeze for a moment and then jump, or only get going once your finger lifted. Filmed on a phone, the page was busy under the finger: the moment a scroll settled, the app took that as a quiet moment and started background work, which is exactly when the next flick comes.'],
         ['clock', 'That work (3D pictures of your moves, a page refreshing after a sync, the 3D figure warming up) now waits until nothing has happened for a second and a half, and never starts while a finger is on the screen.'],
-        ['bolt', 'A 3D picture of a move is prepared in the background instead of holding the page while it\'s encoded, and its shaders compile in the background too, where the phone allows.'],
+        ['bolt', 'A 3D picture of a move is prepared in the background instead of holding the page while it\'s encoded, and its shaders compile in the background too, where the phone allows. The 3D warm-up after launch now covers the one shader a move at a wall or a door still compiled for every picture, and draws a first picture itself, so the first one you see costs no more than the rest.'],
       ],
     },
     {
