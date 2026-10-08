@@ -1,6 +1,6 @@
 {
   "name": "gradient-health",
-  "version": "1.8.3",
+  "version": "1.8.4",
   "private": true,
   "description": "Adaptive home workout app and health tracker for Android",
   "scripts": {

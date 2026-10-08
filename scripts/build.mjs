@@ -289,6 +289,7 @@ export const APP_SCRIPTS = [
   'src/ui/motion.js',
   'src/ui/sheet.js',
   'src/ui/hapticsui.js',
+  'src/ui/diag.js', // scroll diagnostics (Settings, About)
   'src/ui/charts.js',
   'src/ui/guide.js',
   'src/ui/answers.js', // set-up's answers as You, Plan and Settings list them
