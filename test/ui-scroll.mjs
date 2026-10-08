@@ -393,6 +393,77 @@ if (TOUCH.length) {
   }
 }
 
+/* ---------------------------------------------------------------- deferred work after a scroll */
+// On a phone a touch's scroll waits for the page's thread (filmed on one: three flicks in a row froze
+// for 100 to 330 ms each, with the page's thread busy under the finger, a 3D still's encode or a
+// re-render that the "calm" moment after the last scroll had let loose). So the heavy deferred work
+// (3D stills, the 3D chunk and its warm-up, background re-renders) waits for quiet (U.whenQuiet,
+// 1.5 s with nothing happening, core.js) rather than calm (0.4 s), a held finger is never calm, and a
+// still's encoding runs off the thread (figure3d's stillAsync). Here, with the 3D figure warm, Plan is
+// opened by a tap on its tab, as on the phone (its tiles queue a 3D still each; the tap is the last
+// input) and flung 400 ms on; then, from the flick until 1.1 s after the page stops moving (the window
+// in which the next flick comes), the page's long animation frames must carry no task of 120 ms or
+// more, and left alone after, the tiles must still get their stills. A frame's blocking time is the
+// part of any one task over 50 ms: a software GPU makes frames long here with no task to blame, and
+// those count for nothing. The time from the flick to the stop is reported, not held: a frozen fling
+// runs long (the thread's work holds the scroll's end), but so does one on a loaded machine. (1.8.2
+// fails this: its first 3D still comes at "calm", 400 ms after the tap, and a shader compile and a
+// toDataURL encode held the thread 1 to 2 s at 4x in mid-fling, 0.2 s after the flick.)
+if (!measureOnly && (!ONLY.length || ONLY.includes('plan'))) {
+  section('Deferred work after a scroll');
+  if (!gpuBrowser) gpuBrowser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  const ctx = await gpuBrowser.newContext({ ...ctxOpts, deviceScaleFactor: 3 });
+  await ctx.addInitScript(seedBridge);
+  await ctx.addInitScript(asyncBridge);
+  await ctx.addInitScript((j) => { try { if (!sessionStorage.getItem('shot-state')) sessionStorage.setItem('shot-state', j); } catch (e) { /* ignore */ } }, stateJson);
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push(e.message));
+  const cdp = await ctx.newCDPSession(page);
+  const ev = async (expression) => { const r = await cdp.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 300)); return r.result.value; };
+  await cdp.send('Page.enable');
+  await cdp.send('Page.navigate', { url: builds[0].server.url });
+  for (let i = 0; i < 120; i++) { await sleep(500); if (await ev("!!document.querySelector('#screen[data-view=\"today\"] .session')").catch(() => false)) break; }
+  await sleep(1500);
+  await ev('(window.GH.ui.closeSheets && window.GH.ui.closeSheets(), 1)');
+  // The figure warms up now (it would on its own 8 s after launch).
+  await ev('(window.GH.ui.warmFigure(), 1)');
+  let warm = false;
+  for (let i = 0; i < 180 && !warm; i++) { await sleep(500); warm = await ev('!!(window.GH.figure3d && window.GH.figure3d.warm())').catch(() => false); }
+  check('the 3D figure warms up', warm);
+  await sleep(2000);
+  await ev(`(() => { const L = window.__loaf = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) L.push({ t: Math.round(e.startTime), d: Math.round(e.duration), block: Math.round(e.blockingDuration || 0), scripts: (e.scripts || []).filter((x) => x.duration >= 20).map((x) => \`\${x.invoker || ''} \${x.sourceFunctionName || ''}@\${x.sourceCharPosition} \${Math.round(x.duration)} ms\`) }); }).observe({ type: 'long-animation-frame', buffered: true }); } catch (e) { /* unsupported */ } return 1; })()`);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU });
+  // Plan, by a tap on its tab, and a fling 400 ms after it's in (its tiles have queued a 3D still each).
+  const tab = await ev(`(() => { const r = document.querySelector('#tabbar .rf-tab[data-tab="plan"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: tab[0], y: tab[1], id: 1 }] });
+  await sleep(40);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  let onPlan = false;
+  for (let i = 0; i < 40 && !onPlan; i++) { await sleep(50); onPlan = await ev("!!document.querySelector('#screen[data-view=\"plan\"] .pw-thumb[data-move]')"); }
+  check('a tap on the Plan tab opens Plan', onPlan);
+  await sleep(400);
+  const flick = await ev('performance.now()');
+  await fling(cdp, 650, -400);
+  // The page stops moving (data-scrolling goes 150 ms after the last scroll): from there, 1.1 s.
+  let stopped = null;
+  for (let i = 0; i < 100 && stopped === null; i++) { await sleep(50); if (!(await ev("document.getElementById('app').hasAttribute('data-scrolling')"))) stopped = await ev('performance.now()'); }
+  await sleep(1100);
+  const end = (stopped === null ? flick + 5000 : stopped) + 1100;
+  const after = await ev(`window.__loaf.filter((x) => x.t + x.d > ${flick} && x.t < ${end})`);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+  const blocking = after.reduce((m, x) => Math.max(m, x.block), 0);
+  // At 4x CPU: a task of 120 ms (blocking 70) is about 30 ms on the phone, a frame or two.
+  check(`the fling ends (${stopped === null ? 'never' : `${Math.round(stopped - flick)} ms after the flick`})`, stopped !== null, stopped);
+  check('from the flick until 1.1 s after the page stops, no task holds the page\'s thread for 120 ms or more (4x CPU)', blocking < 70, `frames (start after the flick, ms, blocking, scripts): ${JSON.stringify(after.filter((x) => x.block > 0).map((x) => ({ ...x, t: x.t - Math.round(flick) })).slice(0, 8))}`);
+  const quietAt = await ev('(() => { const U = window.GH.ui; return U.quiet ? U.quiet() : null; })()');
+  check('it isn\'t "quiet" yet (deferred work waits 1.5 s after the last scroll)', quietAt === false, quietAt);
+  // Left alone, the tiles get their 3D stills.
+  let drawn3d = 0;
+  for (let i = 0; i < 60 && !drawn3d; i++) { await sleep(500); drawn3d = await ev("document.querySelectorAll('#screen .pw-thumb[data-move] > img').length").catch(() => 0); }
+  check('left alone, Plan\'s tiles get their 3D stills', drawn3d > 0, drawn3d);
+  await ctx.close();
+}
+
 /* ---------------------------------------------------------------- while scrolling, and at rest */
 // While the page moves, the glass at the bottom loses its bend (faded out, then the lens taken off:
 // src/ui/core.js, bend) and keeps its frost; the top bar's buttons keep their lens (1.7.0 dropped

@@ -205,6 +205,30 @@ await ctx.close();
 
 section('Warm-up and frame rate');
 ({ ctx, page, errors } = await open(false));
+// The stills a screen asks for once the figure is warm: no shader compiles (a wall or a door is a
+// transparent material with a program of its own, which the warm-up keeps compiled since 1.8.3), and
+// the first costs about what the next does (the warm-up has drawn one out through a 2D canvas: the
+// first copy out of the GL canvas was 700 ms in this software-GL set-up, the next 130). Timed without
+// the encode, which stillAsync runs off the thread.
+const kit = await page.evaluate(async () => {
+  const f = await window.GH.lazy('figure3d');
+  const ok = await f.preload();
+  const origs = [];
+  let links = 0;
+  for (const C of [window.WebGL2RenderingContext, window.WebGLRenderingContext]) { if (!C) continue; const o = C.prototype.linkProgram; origs.push([C, o]); C.prototype.linkProgram = function (p) { links++; return o.call(this, p); }; }
+  const enc = HTMLCanvasElement.prototype.toDataURL;
+  HTMLCanvasElement.prototype.toDataURL = function () { return 'data:image/webp;base64,x'; };
+  const look = { crop: 104, dark: true, skin: 'sand' };
+  const time = (id, lk) => { const t0 = performance.now(); const url = f.still(window.GH.moves.MOVES[id], lk); return [Math.round(performance.now() - t0), !!url]; };
+  const first = time('push_std', look), second = time('push_std', Object.assign({}, look, { crop: 105 }));
+  const linksFirst = links;
+  const wall = time('push_wall', look), door = time('tri_band', look);
+  for (const [C, o] of origs) C.prototype.linkProgram = o;
+  HTMLCanvasElement.prototype.toDataURL = enc;
+  return { ok, first: first[0], second: second[0], drawn: first[1] && second[1] && wall[1] && door[1], links: links - linksFirst, linksFirst };
+});
+check('with the figure warm, stills of a move at a wall and of one at a door compile no shaders', kit.ok && kit.drawn && kit.links === 0, kit);
+check('and the first still costs about what the next does (the warm-up drew one)', kit.first <= kit.second * 2.5 + 50, kit);
 const warm = await page.evaluate(async () => {
   const f = await window.GH.lazy('figure3d');
   const ok = await f.preload();

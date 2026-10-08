@@ -504,14 +504,16 @@
     if (!GH.pose || !M()) return;
     const place = B().placeOf ? B().placeOf(S, day) : 'home';
     drawFor = { S, day };
-    // The 3D chunk loads (and warms up) once, then the tiles on screen get their 3D stills.
+    // The 3D chunk loads (and warms up) once, then the tiles on screen get their 3D stills. Once
+    // it's quiet (U.whenQuiet): the chunk and its warm-up hold the page's thread for a while, and a
+    // scroll that starts meanwhile waits on it.
     if (U.figure3dOk && U.figure3dOk() && !GH.figure3d && !loading3d && U.preloadFigure) {
       loading3d = true;
-      U.preloadFigure().then(() => {
+      (U.whenQuiet || U.whenCalm || ((fn) => fn()))(() => U.preloadFigure().then(() => {
         loading3d = false;
         const scr = doc.querySelector('#screen[data-view="plan"]');
         if (scr && drawFor && f3d()) drawThumbs(scr, drawFor.S, drawFor.day);
-      }, () => { loading3d = false; });
+      }, () => { loading3d = false; }));
     }
     const f3 = f3d();
     const look = f3 ? look3d() : null;
@@ -535,12 +537,19 @@
     }
     schedule();
   }
-  // Stills, flat or 3D, wait until it's calm (U.calm in core.js: no scroll or touch for a moment and
-  // no sheet moving), since drawing one takes a frame's worth of work or more; then they're drawn.
+  // Stills wait until it's calm (U.calm in core.js: no scroll or touch for a moment and no sheet
+  // moving), since drawing one takes a frame's worth of work or more; the 3D ones until it's quiet
+  // (U.quiet: nothing for longer), since one holds the page's thread for a few frames (its figure, a
+  // frame of it and the copy out of the GL canvas; its encoding runs in the background, stillAsync),
+  // and on a phone a scroll that starts meanwhile waits for it. Then they're drawn.
   const calm = () => !U.calm || U.calm();
+  const quiet = () => (U.quiet ? U.quiet() : calm());
+  let waitCalm = false, waitQuiet = false; // asked to be told when it's calm, or quiet
   function schedule() {
     if (pending || !(queue.size || queue3d.size)) return;
-    if (!calm()) { pending = -1; U.whenCalm(() => { pending = 0; schedule(); }); return; }
+    if (!calm()) { if (!waitCalm) { waitCalm = true; U.whenCalm(() => { waitCalm = false; schedule(); }); } return; }
+    // Only 3D stills left: those wait for quiet, but flat ones queued meanwhile (a day picked) don't.
+    if (!queue.size && !quiet()) { if (!waitQuiet) { waitQuiet = true; (U.whenQuiet || U.whenCalm)(() => { waitQuiet = false; schedule(); }); } return; }
     const soon = queue.size > 0;
     pending = G.requestIdleCallback ? G.requestIdleCallback(drawSome, { timeout: soon ? 150 : 600 }) : setTimeout(() => drawSome(null), soon ? 16 : 250);
   }
@@ -557,15 +566,17 @@
     }
     const f3 = f3d();
     if (!f3) queue3d.clear();
-    // Then one 3D still per idle moment, once the flat ones are in and nobody's touching the screen.
-    else if (!queue.size && drawFor && calm()) {
+    // Then one 3D still per idle moment, once the flat ones are in and it's quiet.
+    else if (!queue.size && drawFor && quiet()) {
       const look = look3d(), lk = lookKey(look);
       for (const key of queue3d) {
         queue3d.delete(key);
         const m = personMove(key, drawFor.S, drawFor.day);
-        const url = m && (f3.cachedStill(m, look) || f3.still(m, look));
         const id = key.split('|')[0];
-        if (url) for (const host of doc.querySelectorAll('.pw-thumb[data-move]')) if (host.getAttribute('data-move') === id && host.getAttribute('data-drawn') !== `3d:${id}|${lk}`) fill3d(host, url, lk);
+        const show = (url) => { if (url) for (const host of doc.querySelectorAll('.pw-thumb[data-move]')) if (host.getAttribute('data-move') === id && host.getAttribute('data-drawn') !== `3d:${id}|${lk}`) fill3d(host, url, lk); };
+        const kept = m && f3.cachedStill(m, look);
+        if (kept) show(kept);
+        else if (m) (f3.stillAsync ? f3.stillAsync(m, look) : Promise.resolve(f3.still(m, look))).then(show, () => {});
         break;
       }
     }

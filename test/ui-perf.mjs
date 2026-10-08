@@ -369,7 +369,9 @@ if (!measureOnly) {
     const r1 = await U.syncHealth('manual'); // the same data as the last read
     await frames();
     const quiet = n;
-    delete U.S.health.days[U.today()]; // today's record lost: this read brings it back
+    // A day's record lost: this read brings it back. (Today's, or the day before's in the hour and
+    // a half after the day rolls over at 4, when the seed's records for today aren't on today yet.)
+    delete U.S.health.days[U.S.health.days[U.today()] ? U.today() : U.today() - 1];
     n = 0;
     const r2 = await U.syncHealth('manual');
     await frames();
