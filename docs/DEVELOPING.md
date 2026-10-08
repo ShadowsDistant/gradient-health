@@ -152,6 +152,20 @@ draws pixel by pixel in JavaScript land in the frame after the first paint, and 
 (the glass over the picked tab) shows from the bar's second frame (`src/styles/perf.css`). The
 controls take its liquid engine only when touched (Refract, the design system, below).
 
+Two things for a scroll that freezes on a phone and not here. Settings, Look, "Glass effects"
+(`prefs.glass`: liquid, frosted or flat; `applyPrefs` in core.js): frosted is Refract's
+reduced-transparency look (`:root[data-rf-transparency="reduced"]`, the blur without the lenses),
+flat draws no backdrop at all (`:root[data-glass-flat]`, src/styles/perf.css); if a scroll stutters on
+a phone, flat tells whether the glass over the page is why. And Settings, About, "Scroll
+diagnostics" (`src/ui/diag.js`, `GH.diag.report()`): a record, kept in memory for the last five
+minutes, of every touch (where, when, how late it reached the page), the scroller's position once a
+frame around a touch or a scroll, every long animation frame with its scripts (or long tasks), and
+the Event Timing API's input delays, written up as one report (the device, the settings that bear on
+scrolling, each gesture with how far the finger and the page went, when the page first moved, the
+frames and their longest gap, any hold-then-jump of a fling, the longest the thread was held and by
+what; a gesture the page didn't follow is marked) to copy or share with the developer right after a
+freeze. `ui-you` checks the setting and the sheet; `ui-scroll` checks the report after a fling.
+
 **Scrolling, and work that can wait.** A fling should only move what's already drawn
 (`src/styles/perf.css`). While the page scrolls (`#app[data-scrolling]`, set in `core.js` and
 cleared 150 ms after the last scroll) the background glow holds still, and the glass at the bottom

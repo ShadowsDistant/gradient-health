@@ -6,6 +6,17 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.8.4', date: '2026-10-08', title: 'Glass you can turn down, and a report when scrolling freezes',
+      store: [
+        '• Glass effects: Liquid, Frosted or Flat (Settings, Look). Flat is the lightest to draw: try it if scrolling stutters',
+        '• Scroll diagnostics (Settings, About): if a scroll freezes or jumps, copy a report of what happened for the developer',
+      ].join('\n'),
+      items: [
+        ['sparkle', 'Glass effects, in Settings under Look: Liquid as designed, Frosted (the blur without the lenses) or Flat (no blur at all, the lightest to draw). If scrolling stutters on your phone, try Flat.'],
+        ['bolt', 'Scroll diagnostics, in Settings under About: a record of what each touch, the scroll, the frames and the page\'s own work did in the last few minutes, to copy or share with the developer right after a scroll freezes or jumps. Nothing is sent anywhere by itself.'],
+      ],
+    },
+    {
       version: '1.8.3', date: '2026-10-08', title: 'Scrolling that never freezes',
       store: [
         '• Fixed: a flick right after another could freeze for a moment, then jump',

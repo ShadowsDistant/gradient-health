@@ -495,6 +495,13 @@ if (!measureOnly) {
     const { result } = await cdp.send('Runtime.evaluate', { expression: 'window' });
     const { listeners } = await cdp.send('DOMDebugger.getEventListeners', { objectId: result.objectId });
     check('Refract\'s light no longer hears each scroll (its listener comes off at the first)', light && !listeners.some((l) => l.type === 'scroll' && l.useCapture), listeners.filter((l) => l.type === 'scroll').map((l) => `${l.useCapture ? 'capture' : 'bubble'} ${l.lineNumber}`));
+    // The scroll diagnostics (src/ui/diag.js) saw that fling: the finger's travel, the page following
+    // it while the finger was down, frames drawn, the thread's long frames and the touches' delays.
+    const report = await ev('window.GH.diag.report()');
+    const gesture = report.split('\n').find((l) => /finger up \d+ px/.test(l)) || '';
+    const px = (re) => { const m = re.exec(report); return m ? Number(m[1]) : -1; };
+    check('the scroll diagnostics record the fling: the finger up 400 px, the page following while down', /finger up 4\d\d px/.test(gesture) && px(/page moved (\d+) px while down/) >= 100 && !/^\* /.test(gesture.trim()), report.slice(0, 900));
+    check('with frames, the thread and input delays reported', /frames \d+, longest gap \d+ ms/.test(report) && /thread (held|free)/.test(report) && /input delay up to \d+ ms/.test(report), report.slice(0, 900));
     await ctx.close();
   }
   const { ctx, page } = await open(builds[0]);

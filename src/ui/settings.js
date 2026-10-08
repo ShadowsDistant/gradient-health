@@ -98,6 +98,7 @@
           ${list('look', `${stack('Theme', '', U.seg('setTheme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], pr.theme || 'system', 'Theme', ' data-on="setTheme"'), 'dark mode light mode night', 'theme')}
             ${kw(U.sw('Increase contrast', !!pr.contrast, 'data-on="setPref" data-k="contrast"'), 'accessibility readable')}
             ${kw(U.sw('Moving background', pr.glowMove !== false, 'data-on="setPref" data-k="glowMove"', 'The colours behind each page drift slowly'), 'animation motion glow')}
+            ${stack('Glass effects', 'Flat is the lightest to draw: try it if scrolling stutters', U.seg('setGlass', [['liquid', 'Liquid'], ['frosted', 'Frosted'], ['flat', 'Flat']], ['frosted', 'flat'].includes(pr.glass) ? pr.glass : 'liquid', 'Glass effects', ' data-on="setGlass"'), 'blur lens transparency performance smooth stutter lag', 'glass-fx')}
             <li data-key="glass" data-keywords="blur transparency frosted"><div class="rf-list-row set-slider"><span class="rf-list-text"><span class="rf-list-title">Glass</span><span class="rf-list-sub">Clear to frosted</span></span><div class="rf-slider"><div class="rf-slider-control"><input class="rf-slider-input" type="range" min="0" max="1" step="0.05" value="${pr.density == null ? 0.5 : pr.density}" aria-label="Glass density" data-on="setDensity"></div></div></div></li>`)}
 
           ${head('general', 'General', 'language region')}
@@ -113,6 +114,7 @@
           ${list('about', `${kw(U.row({ key: 'science', icon: 'library', tone: 'violet', title: 'How it works', sub: 'The research behind every rule', act: 'openScience', chevron: true }), 'science research studies rules why')}
             ${kw(U.row({ key: 'licenses', icon: 'doc', tone: 'indigo', title: 'Open-source licenses', act: 'licensesSheet', chevron: true }), 'credits open source')}
             ${kw(U.row({ key: 'refract', lead: U.refractMark('sm'), title: 'Built with Refract', sub: 'The liquid glass design system behind every screen', act: 'licensesSheet', chevron: true }), 'refract design system glass credits')}
+            ${kw(U.row({ key: 'diag', icon: 'bolt', tone: 'amber', title: 'Scroll diagnostics', sub: 'If a scroll freezes or jumps, copy this for the developer', act: 'scrollDiag', chevron: true }), 'scroll freeze jump stutter lag debug diagnostics report')}
             ${U.row({ key: 'version', icon: 'info', tone: 'sky', title: 'Version', detail: U.esc(ver) })}`)}
           ${foot('about', 'Built-in foods from the USDA\'s nutrient database. Not medical advice: check with a doctor before starting if you have a condition or an injury.')}
           <p class="set-none t-callout rf-muted" data-key="none" hidden>No settings match. Try a word like dark, kg, vibration or backup.</p>
@@ -361,6 +363,7 @@
   U.act.tryHaptic = (el) => U.haptic(el.dataset.arg);
   U.on.setRest = (el, ev, v) => { U.S.profile.prefs.rest = v === 'auto' ? 'auto' : Number(v); U.save(); };
   U.on.setTheme = (el, ev, v) => { U.S.profile.prefs.theme = v; U.applyPrefs(); U.save(); };
+  U.on.setGlass = (el, ev, v) => { U.S.profile.prefs.glass = v === 'frosted' || v === 'flat' ? v : 'liquid'; U.applyPrefs(); U.save(); };
   U.on.setDensity = (el, ev, v) => { U.S.profile.prefs.density = v; U.applyPrefs(); U.save(); };
   U.on.setUnits = (el, ev, v) => { convertUnits(U.S, v); U.commit(); };
   // The hour a new day starts: until then, a late night still counts as the day before.

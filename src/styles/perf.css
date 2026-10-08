@@ -76,3 +76,13 @@
    drawn pixel by pixel in JavaScript, for the frame after, where it doesn't hold up the app's first
    paint. The frosted pill under the tab is there from the first frame. */
 .rf-tabbar:not([data-ready]) > .rf-tabbar-bar > .rf-tabbar-lens { display: none; }
+
+/* Glass effects, Flat (Settings, Look; :root[data-glass-flat], set by core.js applyPrefs): no backdrop
+   is drawn anywhere, the glass is a solid fill, for a phone that can't keep up with blurred glass
+   over a moving page, and to tell, when a scroll stutters there, whether the glass is why. (Frosted,
+   the step before it, is Refract's own reduced-transparency look: the blur without the lenses.) */
+:root[data-glass-flat] .rf-glass, :root[data-glass-flat] .rf-glass > .rf-lens-layer, :root[data-glass-flat] .rf-tabbar-bar, :root[data-glass-flat] .gh-sheet-glass,
+:root[data-glass-flat] .rf-scroll-edge::before, :root[data-glass-flat] .rf-scroll-edge::after, :root[data-glass-flat] .rf-glass-bridge,
+:root[data-glass-flat] .onboard .rf-list, :root[data-glass-flat] .onboard .card, :root[data-glass-flat] .ob-opt, :root[data-glass-flat] .ob-tile, :root[data-glass-flat] .rv-why { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+:root[data-glass-flat] .rf-glass[data-lens-ready] { background-color: var(--glass-fill-solid, var(--bg-raised)) !important; }
+:root[data-glass-flat] .rf-glass > .rf-lens-layer { display: none !important; }

@@ -6,7 +6,8 @@ renders the images again from `docs/screenshots/`.
 ## Short description (80 characters at most)
 
 ```text
-Workouts that adjust to you every day, plus GPS runs and a private AI coach.
+• Glass effects: Liquid, Frosted or Flat (Settings, Look). Flat is the lightest to draw: try it if scrolling stutters
+• Scroll diagnostics (Settings, About): if a scroll freezes or jumps, copy a report of what happened for the developer
 ```
 
 ## Full description (4,000 characters at most)
@@ -74,7 +75,7 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 ## What's new (500 characters at most)
 
-Paste this into the What's new field with each update. This is 1.8.3's. Each GitHub release carries
+Paste this into the What's new field with each update. This is 1.8.4's. Each GitHub release carries
 its own version's text at the end of its What's new, under "Short version, for a store's What's new
 field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
 (`node scripts/release-notes.mjs --store` prints it).

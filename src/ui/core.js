@@ -1340,6 +1340,13 @@
     }
     // The background glow drifts unless it's switched off (Settings, Look).
     doc.documentElement.toggleAttribute('data-still-glow', p.glowMove === false);
+    // Glass effects (Settings, Look): liquid, as designed; frosted keeps the blur and drops the lenses
+    // (Refract's reduced-transparency look, :root[data-rf-transparency="reduced"]); flat draws no
+    // backdrop at all (:root[data-glass-flat], src/styles/perf.css). The lighter ones are for a phone
+    // that can't keep up with blurred glass over a moving page, and to tell whether the glass is why.
+    const glass = p.glass === 'frosted' || p.glass === 'flat' ? p.glass : 'liquid';
+    if (glass === 'liquid') doc.documentElement.removeAttribute('data-rf-transparency'); else doc.documentElement.setAttribute('data-rf-transparency', 'reduced');
+    doc.documentElement.toggleAttribute('data-glass-flat', glass === 'flat');
     if (U.steadyLight) U.steadyLight();
   }
   U.applyPrefs = applyPrefs;
