@@ -400,11 +400,14 @@ if (TOUCH.length) {
 // (3D stills, the 3D chunk and its warm-up, background re-renders) waits for quiet (U.whenQuiet,
 // 1.5 s with nothing happening, core.js) rather than calm (0.4 s), a held finger is never calm, and a
 // still's encoding runs off the thread (figure3d's stillAsync). Here, with the 3D figure warm, Plan is
-// opened (its tiles queue a 3D still each) and flung at once; then, for 1.1 s after the page stops
-// moving (the window in which the next flick comes), the page's long animation frames must carry no
-// task of 120 ms or more; and left alone after, the tiles must still get their stills. A frame's
-// blocking time is the part of any one task over 50 ms: a software GPU makes frames long here with
-// no task to blame, and those count for nothing. (1.8.2 fails this: a still ran 0.4 s after the fling.)
+// opened (its tiles queue a 3D still each) and flung at once; then, from the flick until 1.1 s after
+// the page stops moving (the window in which the next flick comes), the page's long animation frames
+// must carry no task of 120 ms or more, the page must stop within 2 s of the flick (a frozen fling
+// runs long: the thread's work holds the scroll's end and the attribute that marks it), and left
+// alone after, the tiles must still get their stills. A frame's blocking time is the part of any one
+// task over 50 ms: a software GPU makes frames long here with no task to blame, and those count for
+// nothing. (1.8.2 fails this: 0.2 s into the fling its first 3D still, a shader compile and a
+// toDataURL encode, held the thread 2.3 s at 4x; the page stopped 3.3 s after the flick.)
 if (!measureOnly && (!ONLY.length || ONLY.includes('plan'))) {
   section('Deferred work after a scroll');
   if (!gpuBrowser) gpuBrowser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
@@ -432,17 +435,20 @@ if (!measureOnly && (!ONLY.length || ONLY.includes('plan'))) {
   // Plan, and a fling as soon as it's in (its tiles have just queued a 3D still each).
   await ev("(window.GH.ui.go('plan'), 1)");
   await sleep(400);
+  const flick = await ev('performance.now()');
   await fling(cdp, 650, -400);
   // The page stops moving (data-scrolling goes 150 ms after the last scroll): from there, 1.1 s.
   let stopped = null;
-  for (let i = 0; i < 60 && stopped === null; i++) { await sleep(50); if (!(await ev("document.getElementById('app').hasAttribute('data-scrolling')"))) stopped = await ev('performance.now()'); }
+  for (let i = 0; i < 100 && stopped === null; i++) { await sleep(50); if (!(await ev("document.getElementById('app').hasAttribute('data-scrolling')"))) stopped = await ev('performance.now()'); }
   await sleep(1100);
-  const after = await ev(`window.__loaf.filter((x) => x.t > ${stopped || 0} - 150)`);
+  const end = (stopped === null ? flick + 5000 : stopped) + 1100;
+  const after = await ev(`window.__loaf.filter((x) => x.t + x.d > ${flick} && x.t < ${end})`);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
   const blocking = after.reduce((m, x) => Math.max(m, x.block), 0);
   // At 4x CPU: a task of 120 ms (blocking 70) is about 30 ms on the phone, a frame or two.
   check('the fling ends', stopped !== null, stopped);
-  check('for 1.1 s after the page stops, no task holds the page\'s thread for 120 ms or more (4x CPU)', blocking < 70, `frames (start, ms, blocking, scripts): ${JSON.stringify(after.filter((x) => x.block > 0).slice(0, 8))}`);
+  check('the page stops within 2 s of the flick (a frozen fling runs long)', stopped !== null && stopped - flick < 2000, `${Math.round(stopped - flick)} ms`);
+  check('from the flick until 1.1 s after the page stops, no task holds the page\'s thread for 120 ms or more (4x CPU)', blocking < 70, `frames (start after the flick, ms, blocking, scripts): ${JSON.stringify(after.filter((x) => x.block > 0).map((x) => ({ ...x, t: x.t - Math.round(flick) })).slice(0, 8))}`);
   const quietAt = await ev('(() => { const U = window.GH.ui; return U.quiet ? U.quiet() : null; })()');
   check('it isn\'t "quiet" yet (deferred work waits 1.5 s after the last scroll)', quietAt === false, quietAt);
   // Left alone, the tiles get their 3D stills.

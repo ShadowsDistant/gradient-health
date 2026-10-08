@@ -186,8 +186,10 @@ encode or a re-render running under the finger, let loose by the calm moment 400
 scroll. A 3D still now draws on the thread only its figure's frame and the copy out of the GL
 canvas: its shaders compile in the background where the GPU allows (`compileAsync`) and its picture
 is encoded in the background (`toBlob`; `figure3d.stillAsync`), where `toDataURL` took 110 ms and
-more on the thread. `ui-scroll` checks that for 1.1 s after a fling on Today, with the figure warm,
-no task holds the thread for 120 ms (at 4× CPU), and that the stills still come afterwards. `test/ui-scroll.mjs` scrolls every
+more on the thread. `ui-scroll` opens Plan with the figure warm and flings it at once, then checks
+that from the flick until 1.1 s after the page stops no task holds the thread for 120 ms (at 4× CPU),
+that the page stops within 2 s of the flick, and that the tiles' stills still come afterwards (on
+1.8.2 the first still held the thread 2.3 s in mid-fling). `test/ui-scroll.mjs` scrolls every
 main screen at 4× CPU, traced, and holds the budgets; `--vs=<dir>` compares two builds run by run, and
 `--ablate=<part>` switches one part off to show what it costs. It also touch-scrolls (real touch
 flings, `Input.dispatchTouchEvent`) on pages driven through raw CDP: Playwright's page helpers inject
