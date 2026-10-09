@@ -94,8 +94,9 @@ button:not([class*="rf-"]) { font: inherit; }
    with nothing to spare (measured in software: 1.6 s of the GPU process's CPU every second at rest,
    against a hundredth of that with the drift off). The glow also rises and fades as the page
    scrolls (a scroll-linked animation). The drift holds still with reduced motion, the "Moving
-   background" setting off, a full-height sheet up, a workout on screen, the page scrolling, and 20 s
-   after the last input (src/styles/perf.css); the glow is off with
+   background" setting off, a full-height sheet up, a workout on screen, the page scrolling, while
+   the app is in use (any input in the last 3 s) and 20 s after the last input (src/styles/perf.css),
+   so it only drifts once the app has been left alone for a moment; the glow is off with
    increased contrast or reduced transparency. */
 /* Each layer fades out towards its lower edge in its gradients' own stops rather than through a
    mask, which cost each layer a pass of its own every frame the page moved. The stops are fitted to

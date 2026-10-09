@@ -177,7 +177,7 @@
     ['nolens', 'blur without the lenses', { 'data-gx-nolens': '' }],
     ['noedge', 'as designed, top bar edge off', { 'data-gx-noedge': '' }],
     ['noglow', 'as designed, glow hidden', { 'data-gx-noglow': '' }],
-    ['lite', 'light, glow hidden (Auto while moving, Flat)', { 'data-glass-lite': '' }],
+    ['lite', 'light, glow hidden (Flat)', { 'data-glass-lite': '' }],
     ['liteglow', 'light, glow kept', { 'data-glass-lite': '', 'data-gx-keepglow': '' }],
   ];
   const GX_ATTRS = ['data-gx-nolens', 'data-gx-noedge', 'data-gx-noglow', 'data-gx-keepglow', 'data-glass-lite', 'data-rf-transparency'];
@@ -269,7 +269,7 @@
     lines.push(`Device: ${G.navigator.userAgent}`);
     lines.push(`Screen ${G.innerWidth}x${G.innerHeight} at ${G.devicePixelRatio}x · ${G.navigator.hardwareConcurrency || '?'} cores · ${G.navigator.deviceMemory ? G.navigator.deviceMemory + ' GB' : 'memory ?'} · GPU: ${gpuName() || '?'} · long frames ${loaf ? 'yes' : 'no'}`);
     const gs = U.glassState ? U.glassState() : null;
-    lines.push(`Settings: glass ${['liquid', 'frosted', 'flat'].includes(pr.glass) ? pr.glass : 'auto'}${gs && gs.lite ? ' (light now)' : ''} · density ${pr.density == null ? 0.5 : pr.density} · theme ${pr.theme || 'system'} (${doc.documentElement.getAttribute('data-theme') || '?'}) · moving background ${pr.glowMove === false ? 'off' : 'on'} · contrast ${pr.contrast ? 'on' : 'off'} · reduced motion ${U.reduced && U.reduced() ? 'on' : 'off'} · figure ${pr.figure || '3d'} · text ${doc.documentElement.style.fontSize || 'normal'}`);
+    lines.push(`Settings: glass ${['frosted', 'flat'].includes(pr.glass) ? pr.glass : 'liquid'}${gs && gs.lite ? ' (light now)' : ''} · density ${pr.density == null ? 0.5 : pr.density} · theme ${pr.theme || 'system'} (${doc.documentElement.getAttribute('data-theme') || '?'}) · moving background ${pr.glowMove === false ? 'off' : 'on'} · contrast ${pr.contrast ? 'on' : 'off'} · reduced motion ${U.reduced && U.reduced() ? 'on' : 'off'} · figure ${pr.figure || '3d'} · text ${doc.documentElement.style.fontSize || 'normal'}`);
     const gl = gestures().slice(-14).reverse();
     lines.push(`Gestures, newest first (${gl.length} of the last ${Math.round(KEEP_MS / 60000)} min; * the page didn't follow the finger, ~ it followed late):`);
     for (const g of gl) lines.push('  ' + describe(g));

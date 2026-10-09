@@ -16,6 +16,17 @@
   const R = () => G.Refract || null;
   const P = () => GH.platform || null;
 
+  // Refract's light can follow the phone's tilt, and every step it takes repaints the rim and sheen
+  // of each glass and has its backdrop filtered again. A phone in a hand tilts all the time, so the
+  // GPU did that all the time too, scroll or not (measured at rest with a hand's tilt emulated: more
+  // than twice the GPU's work, for rims turning a few degrees). The light holds still at its designed
+  // angle instead, as it does with a mouse that's still: Refract listens to the tilt by itself only
+  // where the browser doesn't ask for permission first, so it's asked to here (before Refract's
+  // first glass registers, on DOMContentLoaded) and the sensor never starts. Nothing else uses it.
+  if (G.DeviceOrientationEvent && typeof G.DeviceOrientationEvent.requestPermission !== 'function') {
+    try { G.DeviceOrientationEvent.requestPermission = () => Promise.resolve('denied'); } catch (e) { /* read-only: the light then follows the tilt */ }
+  }
+
   U.screens = U.screens || {};
   U.act = U.act || {};
   U.on = U.on || {};
@@ -541,8 +552,7 @@
     if (k < 1) bendRaf = G.requestAnimationFrame(bendStep);
   }
   function bend(to) {
-    // Only Liquid keeps the lenses while the page moves, fading them. Auto takes the whole glass off
-    // for the move instead (below, "glass while the page moves"), and Frosted and Flat have no lenses.
+    // Only Liquid has lenses to fade: Frosted and Flat have none (below, "glass effects").
     if (glassMode !== 'liquid') {
       if (bendTo !== 1 || bendShown !== 1) { bendTo = 1; bendNow = 1; bendFind(); bendShown = -1; bendSet(1); }
       return;
@@ -562,11 +572,11 @@
     else onboardEl.setAttribute('data-scrolling', '');
     obIdle = setTimeout(() => { obIdle = 0; onboardEl.removeAttribute('data-scrolling'); }, 150);
   }
-  // Refract's light: on a phone the glass rims follow how it's tilted, and every step the light takes
-  // repaints those rims and redraws their lenses. It holds still where it is while the page scrolls,
-  // while a sheet moves, while the workout player or a live activity is open (the phone moves all the
-  // time), with Moving background off and under reduced motion, and follows the tilt again once
-  // things are calm.
+  // Refract's light: on a phone it holds still at its designed angle (it hears no tilt, see the top of
+  // this file). With a mouse the glass rims turn to the pointer, and every step the light takes
+  // repaints those rims and redraws their lenses, so it holds still where it is while the page
+  // scrolls, while a sheet moves, while the workout player or a live activity is open, with Moving
+  // background off and under reduced motion, and follows the pointer again once things are calm.
   let lightFixed = false, touching = 0; // touching: fingers on the screen (below)
   function steadyLight(fixed) {
     const r = R();
@@ -608,87 +618,37 @@
   // holds still meanwhile too: a step of it would repaint them every frame of the move.
   if (doc) doc.addEventListener('gh-sheet-moving', () => U.steadyLight());
 
-  /* ---------------------------------------------------------------- glass while the page moves */
+  /* ---------------------------------------------------------------- glass effects */
   // Glass effects (Settings, Look; prefs.glass), set on the root as data-glass:
-  // - Auto (the default): the glass as designed at rest, and what Flat is while the page moves
-  //   (:root[data-glass-lite], src/styles/perf.css: no backdrop, no lenses, solid fills, the glow
-  //   hidden): from the first few pixels a finger drags it (or a
-  //   wheel turns) until half a second after it stops, flings included, and for as long as a finger is
-  //   down. A phone's GPU draws every backdrop filter (each glass is one: the tab bar, the buttons, the
-  //   bar's frosted edge, the lenses) again every frame the page moves under it, and some can't: the
-  //   page then waits for the GPU, which shows as a scroll that doesn't start until the finger lifts or
-  //   freezes in a fling and jumps (reported on a phone, where Flat fixed it). Measured here, in
-  //   software, the glass is about two thirds of what a scrolling frame costs to draw.
-  // - Liquid: the glass as designed, always. Frosted: the blur without the lenses (perf.css). Flat: no
-  //   backdrop drawn anywhere and the glow hidden (Refract's reduced transparency hides it).
-  // The glass goes at the first drag, not at the first touch (a tap would flash it), and a scroll the
-  // page makes by itself (a tab's scroll position coming back) never counts: only one that follows a
-  // drag or a wheel closely (a fling's scrolls come a frame apart).
-  const GLASS_REST_MS = 500, GLASS_DRAG_PX = 4, GLASS_FLING_MS = 600;
-  let glassMode = 'auto', glassMoving = false, glassHeld = false, glassTimer = 0, glassLastMove = 0, dragStart = null;
+  // - Liquid (the default): the glass as designed, at rest and while the page moves. What made it
+  //   stutter on a phone (where Flat fixed it) was the GPU redrawing every glass when nothing it showed
+  //   had changed: each step of the light following the phone's tilt (now held still, above), and
+  //   each step of the background glow's drift (now only once the app has been left alone, "calm"
+  //   below). A flick then starts on a GPU with nothing else to do, and while the page moves, the
+  //   bottom glass's lenses fade out (bend(), above) and the glow holds still.
+  // - Frosted: the blur without the lenses (src/styles/perf.css).
+  // - Flat: no backdrop drawn anywhere and the glow hidden (:root[data-glass-lite] in perf.css, and
+  //   Refract's reduced transparency).
+  // 1.8.5's Auto (Flat while the page moved) is Liquid now: the glass going plain mid-scroll showed.
+  let glassMode = 'liquid', glassHeld = false;
   function glassApply() {
     if (glassHeld) return;
     const html = doc.documentElement;
     if (html.getAttribute('data-glass') !== glassMode) html.setAttribute('data-glass', glassMode);
-    // Flat is Refract's reduced transparency (which hides the glow too); Frosted is its own look (perf.css).
-    if (glassMode === 'flat') { if (html.getAttribute('data-rf-transparency') !== 'reduced') html.setAttribute('data-rf-transparency', 'reduced'); }
+    const flat = glassMode === 'flat';
+    if (flat) { if (html.getAttribute('data-rf-transparency') !== 'reduced') html.setAttribute('data-rf-transparency', 'reduced'); }
     else if (html.hasAttribute('data-rf-transparency')) html.removeAttribute('data-rf-transparency');
-    const lite = glassMode === 'flat' || (glassMode === 'auto' && glassMoving);
-    if (html.hasAttribute('data-glass-lite') !== lite) html.toggleAttribute('data-glass-lite', lite);
+    if (html.hasAttribute('data-glass-lite') !== flat) html.toggleAttribute('data-glass-lite', flat);
   }
   function setGlassMode(v) {
-    glassMode = v === 'liquid' || v === 'frosted' || v === 'flat' ? v : 'auto';
-    glassMoving = false;
-    clearTimeout(glassTimer); glassTimer = 0;
+    glassMode = v === 'frosted' || v === 'flat' ? v : 'liquid';
     glassApply();
     bend(1); // the lenses back at full strength where they were fading
   }
-  // One timer, looked at when it fires, rather than one set per touchmove or scroll event.
-  function glassRest() {
-    glassTimer = 0;
-    const left = glassLastMove + GLASS_REST_MS - Date.now();
-    if (touching || left > 0) { glassTimer = setTimeout(glassRest, touching ? GLASS_REST_MS : left); return; }
-    glassMoving = false;
-    glassApply();
-  }
-  function glassMove() {
-    if (glassMode !== 'auto' || glassHeld) return;
-    const t = Date.now();
-    glassLastMove = t;
-    if (!glassMoving) { glassMoving = true; glassApply(); }
-    if (!glassTimer) glassTimer = setTimeout(glassRest, GLASS_REST_MS);
-  }
-  if (doc) {
-    const pageOf = (t) => (t && t.closest ? t.closest('#screen, .ob-scroll') : null);
-    const inPage = (t) => !!pageOf(t);
-    doc.addEventListener('touchstart', (e) => {
-      const sc = e.touches.length === 1 ? pageOf(e.target) : null;
-      dragStart = sc ? { x: e.touches[0].clientX, y: e.touches[0].clientY, sc } : null;
-    }, { passive: true, capture: true });
-    doc.addEventListener('touchmove', (e) => {
-      if (glassMode !== 'auto' || !dragStart) return;
-      if (glassMoving) { glassMove(); return; }
-      const t = e.touches[0], dy = Math.abs(t.clientY - dragStart.y), dx = Math.abs(t.clientX - dragStart.x);
-      // A vertical drag on a page that can scroll (a short page doesn't move, and nothing needs to go).
-      if (dy >= GLASS_DRAG_PX && dy > dx && dragStart.sc.scrollHeight > dragStart.sc.clientHeight + 2) glassMove();
-    }, { passive: true, capture: true });
-    // Lifting the finger starts the half second (a fling's scroll events carry it on from there).
-    const lifted = () => { if (glassMoving) glassLastMove = Date.now(); };
-    doc.addEventListener('touchend', lifted, { passive: true, capture: true });
-    doc.addEventListener('touchcancel', lifted, { passive: true, capture: true });
-    doc.addEventListener('wheel', (e) => { if (glassMode === 'auto' && inPage(e.target)) glassMove(); }, { passive: true, capture: true });
-    doc.addEventListener('scroll', (e) => {
-      if (glassMode !== 'auto') return;
-      const t = e.target;
-      // A fling's scrolls follow one another a frame apart, from the finger's lift: one that comes a
-      // good while after the last move, with no finger down, is the page's own.
-      if ((t === screen || (t && t.classList && t.classList.contains('ob-scroll'))) && (touching || Date.now() - glassLastMove < GLASS_FLING_MS)) glassMove();
-    }, { passive: true, capture: true });
-  }
   // The glass speed test (src/ui/diag.js) sets the root's attributes itself, one look after another:
   // held, nothing here touches them; let go, they're worked out again from the setting.
-  U.glassHold = (on) => { glassHeld = !!on; if (!on) { glassMoving = false; clearTimeout(glassTimer); glassTimer = 0; glassApply(); } };
-  U.glassState = () => ({ mode: glassMode, moving: glassMoving, lite: !!doc.documentElement.hasAttribute('data-glass-lite') });
+  U.glassHold = (on) => { glassHeld = !!on; if (!on) glassApply(); };
+  U.glassState = () => ({ mode: glassMode, lite: !!doc.documentElement.hasAttribute('data-glass-lite') });
 
   /* ---------------------------------------------------------------- calm */
   // When someone last touched, typed, scrolled (anywhere: a sheet, set-up) or turned a wheel.
@@ -697,9 +657,13 @@
   //   Heavy work that can wait (the 3D figure's warm-up and stills, Plan's tiles, background
   //   re-renders) waits for it, so it never lands in the middle of a fling, a drag or a knob's glide.
   // - U.whenCalm(fn): runs fn now if it's calm, or as soon as it is (never dropped).
-  // - #app[data-idle]: 20 s without any input. The background glow stops drifting
-  //   (src/styles/perf.css), so a phone left on a page isn't drawing it every frame; the next input
-  //   starts it again.
+  // - #app[data-in-use]: any input in the last 3 s (and the first 3 s after launch). The background
+  //   glow holds still meanwhile (src/styles/perf.css): each step of its drift has every glass in
+  //   front of it filtered again, and a flick that lands on one starts on a busy GPU. Someone using
+  //   the app touches it again within a few seconds, so it drifts once they've stopped, and holds
+  //   still at the first touch.
+  // - #app[data-idle]: 20 s without any input. The glow stops drifting again (src/styles/perf.css),
+  //   so a phone left on a page isn't drawing it every frame; the next input starts the clock again.
   // - U.quiet(): calm, and nothing for 1.5 s. Heavy work that would hold the page for a while (a 3D
   //   still, the 3D chunk and its warm-up, a background re-render, the 3D canvas shrinking) waits for
   //   this rather than calm: on a phone a touch's scroll waits for the page's thread, and the likeliest
@@ -707,13 +671,26 @@
   //   froze for 100 to 330 ms each, a still or a re-render running under the finger). A finger on the
   //   screen is never calm or quiet, however still it holds.
   // - U.whenQuiet(fn): runs fn now if it's quiet, or as soon as it is (never dropped).
-  const CALM_MS = 400, QUIET_MS = 1500, IDLE_MS = 20000;
-  let lastInput = 0, idleTimer = 0, calmTimer = 0, quietTimer = 0;
+  const CALM_MS = 400, QUIET_MS = 1500, IDLE_MS = 20000, IN_USE_MS = 3000;
+  let lastInput = 0, idleTimer = 0, calmTimer = 0, quietTimer = 0, inUseUntil = 0, inUseTimer = 0;
   const calmQueue = [], quietQueue = [];
   function onInput() {
     lastInput = Date.now();
     if (root && root.hasAttribute('data-idle')) root.removeAttribute('data-idle');
     if (!idleTimer) idleTimer = setTimeout(checkIdle, IDLE_MS);
+    markInUse(lastInput);
+  }
+  // One timer, looked at when it fires, rather than one set per input event.
+  function markInUse(now) {
+    inUseUntil = now + IN_USE_MS;
+    if (root && !root.hasAttribute('data-in-use')) root.setAttribute('data-in-use', '');
+    if (!inUseTimer) inUseTimer = setTimeout(checkInUse, IN_USE_MS);
+  }
+  function checkInUse() {
+    inUseTimer = 0;
+    const left = inUseUntil - Date.now();
+    if (left > 0) inUseTimer = setTimeout(checkInUse, left);
+    else if (root) root.removeAttribute('data-in-use');
   }
   function checkIdle() {
     idleTimer = 0;
@@ -1469,7 +1446,9 @@
   function boot() {
     layout();
     wire();
-    // The glow stops drifting 20 s after launch too if nothing's touched.
+    // The glow holds still for the first 3 s (launch is busy enough), and stops drifting 20 s after
+    // launch too if nothing's touched.
+    markInUse(Date.now());
     if (!idleTimer) idleTimer = setTimeout(checkIdle, IDLE_MS);
     if (P()) {
       P().onBack(onBack);
