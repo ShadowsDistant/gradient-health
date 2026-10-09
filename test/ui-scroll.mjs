@@ -478,10 +478,85 @@ if (!measureOnly && (!ONLY.length || ONLY.includes('plan'))) {
   await ctx.close();
 }
 
+/* ---------------------------------------------------------------- glass effects: Auto */
+// Auto (the default, core.js "glass while the page moves"): the glass as designed at rest and as light
+// as Flat while the page moves, from the first few pixels of a vertical drag until half a second
+// after the page stops. Reported on a phone: the scroll doesn't start until the finger lifts, or
+// freezes in a fling and jumps, with the glass on, and Flat fixes it. Here: a tap never lightens the
+// glass; a drag does, within a frame or two, takes every backdrop filter off (the tab bar, the
+// floating buttons, the bar's frosted edge, the lenses) and puts them back when the page has been
+// still for half a second; a tab change doesn't flash it. (Liquid, Frosted, Flat and the glass speed
+// test: the next section.)
+if (!measureOnly && (!ONLY.length || ONLY.includes('today'))) {
+  section('Glass effects: Auto lightens the glass while the page moves');
+  const { ctx, cdp, ev } = await openRaw(builds[0], { glass: 'auto' });
+  await ev(`(() => { const L = window.__lite = []; const root = document.documentElement; new MutationObserver(() => { L.push([Math.round(performance.now()), root.hasAttribute('data-glass-lite')]); }).observe(root, { attributes: true, attributeFilter: ['data-glass-lite'] }); return 1; })()`);
+  const backdrops = () => ev(`(() => {
+    const f = (el) => (el ? getComputedStyle(el).backdropFilter : 'none');
+    const q = (s) => document.querySelector(s);
+    const edge = q('#topbar > .rf-scroll-edge');
+    return {
+      lite: document.documentElement.hasAttribute('data-glass-lite'),
+      tabbar: f(q('#tabbar .rf-tabbar-bar')), lens: (() => { const l = q('#tabbar .rf-glass > .rf-lens-layer, #tabbar .rf-tabbar-bar .rf-lens-layer'); return l ? getComputedStyle(l).display + ' ' + f(l) : 'none'; })(),
+      floats: Array.from(document.querySelectorAll('#float .rf-glass'), (g) => getComputedStyle(g).backgroundColor).join(' | '),
+      glow: getComputedStyle(document.querySelector('.app'), '::before').display,
+      glowVis: getComputedStyle(document.querySelector('.app'), '::before').visibility,
+      state: window.GH.ui.glassState(),
+    };
+  })()`);
+  const atRest = await backdrops();
+  check('at rest: not light, the tab bar has its lens, the glow is there', !atRest.lite && atRest.state.mode === 'auto' && /url\(/.test(atRest.lens) && atRest.glow !== 'none' && atRest.glowVis !== 'hidden', atRest);
+  // A tap on the page, and on a tab: never light.
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 195, y: 420, id: 1 }] });
+  await sleep(60);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await sleep(700);
+  const tabXY = await ev(`(() => { const r = document.querySelector('#tabbar .rf-tab[data-tab="plan"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: tabXY[0], y: tabXY[1], id: 1 }] });
+  await sleep(60);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await sleep(1500);
+  const afterTaps = await ev('window.__lite');
+  check('a tap on the page and a tab change never lighten the glass', afterTaps.length === 0, afterTaps);
+  // A drag: light within a frame or two of the first pixels, nothing backdrop-filtered while it moves.
+  const t0 = await ev('performance.now()');
+  await fling(cdp, 650, -400);
+  await sleep(120);
+  const during = await backdrops();
+  const first = (await ev('window.__lite')).find((x) => x[1]);
+  check('a drag lightens it: within 150 ms of the first move', !!first && first[0] - t0 < 150 + 15 * 16, { first, t0 });
+  check('while it moves: no lens, no backdrop on the tab bar, solid fills, the glow hidden (what Flat is)', during.lite && /^none/.test(during.lens) && during.tabbar === 'none' && during.glowVis === 'hidden', during);
+  // Then half a second after the page has stopped (a fling lasts a while: wait for the end).
+  let rested = false;
+  for (let i = 0; i < 80 && !rested; i++) { await sleep(100); rested = await ev("!document.documentElement.hasAttribute('data-glass-lite')"); }
+  await sleep(300);
+  const back = await backdrops();
+  const lite = await ev('window.__lite');
+  const lastOn = lite.filter((x) => x[1]).pop(), lastOff = lite.filter((x) => !x[1]).pop();
+  check('it comes back once the page has been still for half a second', rested && !back.lite && /url\(/.test(back.lens) && back.glowVis !== 'hidden' && back.tabbar === atRest.tabbar && lastOff && lastOff[0] - lastOn[0] >= 450, { lite, back });
+  check('and one drag was one stretch of it, not a flicker', lite.length === 2, lite);
+  // A second flick right after the first: it stays light through both.
+  const n0 = (await ev('window.__lite')).length;
+  await fling(cdp, 650, -300);
+  await sleep(250);
+  await fling(cdp, 650, 300);
+  await sleep(150);
+  const midTwo = await ev('window.GH.ui.glassState()');
+  check('two flicks 250 ms apart are one stretch: light the whole time', midTwo.lite && (await ev('window.__lite')).length - n0 === 1, { midTwo, events: (await ev('window.__lite')).slice(n0) });
+  for (let i = 0; i < 80 && (await ev("document.documentElement.hasAttribute('data-glass-lite')")); i++) await sleep(100);
+  // A scroll the page makes by itself (a tab's position coming back, a scrollIntoView) never counts.
+  await sleep(1200);
+  const n1 = (await ev('window.__lite')).length;
+  await ev("(() => { const s = document.getElementById('screen'); s.scrollTop = 120; return 1; })()");
+  await sleep(900);
+  check('a scroll the page makes by itself never lightens the glass', (await ev('window.__lite')).length === n1, (await ev('window.__lite')).slice(n1));
+  await ctx.close();
+}
+
 /* ---------------------------------------------------------------- glass effects: Liquid */
-// Liquid (the default, core.js "glass effects"): the glass as designed, at rest and while the page
-// moves. Reported on a phone: Liquid stutters, Flat doesn't, and the glass shouldn't look flat. What
-// it drew when nothing it showed had changed is gone: Refract's light hears no tilt (each step of it
+// Liquid (core.js "glass while the page moves"): the glass as designed, at rest and while the page
+// moves. 1.8.6 made it the default (the phone still stuttered while the page moved, so Auto is the
+// default again). What it drew when nothing it showed had changed is gone, in every mode: Refract's light hears no tilt (each step of it
 // repainted every rim and had every backdrop filtered again, all the time in a hand), and the glow
 // holds still while the app is in use (#app[data-in-use]: any input in the last 3 s), drifting once
 // it's left alone. Here: the light doesn't move however the phone tilts; a drag keeps the glass
@@ -489,7 +564,7 @@ if (!measureOnly && (!ONLY.length || ONLY.includes('plan'))) {
 // lets it drift; Frosted and Flat are what they were; the glass speed test still times its looks.
 if (!measureOnly && (!ONLY.length || ONLY.includes('today'))) {
   section('Glass effects: Liquid keeps its look and draws nothing while nothing changes');
-  const { ctx, cdp, ev } = await openRaw(builds[0]);
+  const { ctx, cdp, ev } = await openRaw(builds[0], { glass: 'liquid' });
   const backdrops = () => ev(`(() => {
     const f = (el) => (el ? getComputedStyle(el).backdropFilter : 'none');
     const q = (s) => document.querySelector(s);
@@ -505,7 +580,7 @@ if (!measureOnly && (!ONLY.length || ONLY.includes('today'))) {
     };
   })()`);
   const atRest = await backdrops();
-  check('Liquid is the default: the tab bar\'s glass has its blur and lens, the glow is there, nothing light', atRest.state.mode === 'liquid' && !atRest.lite && /^block blur\(.*url\(/.test(atRest.lens) && atRest.glow !== 'none' && atRest.glowVis !== 'hidden', atRest);
+  check('Liquid: the tab bar\'s glass has its blur and lens, the glow is there, nothing light', atRest.state.mode === 'liquid' && !atRest.lite && /^block blur\(.*url\(/.test(atRest.lens) && atRest.glow !== 'none' && atRest.glowVis !== 'hidden', atRest);
   // The light: however the phone tilts, the rims stay where they are, and the sensor isn't asked for.
   const light = await ev(`(async () => {
     const g = document.querySelector('#tabbar .rf-tabbar-bar'), L = window.Refract.light;

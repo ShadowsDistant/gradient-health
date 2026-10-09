@@ -74,15 +74,15 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 ## What's new (500 characters at most)
 
-Paste this into the What's new field with each update. This is 1.8.6's. Each GitHub release carries
+Paste this into the What's new field with each update. This is 1.8.7's. Each GitHub release carries
 its own version's text at the end of its What's new, under "Short version, for a store's What's new
 field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
 (`node scripts/release-notes.mjs --store` prints it).
 
 ```text
-• Liquid glass is the default again, and it no longer stutters: smooth scrolling with the glass as designed
-• The light on the glass stays put instead of following the phone's tilt, which kept redrawing every piece of glass
-• The colours behind each page drift only once you've left the app alone for a few seconds
+• Glass effects is back on Auto: the glass as designed at rest and lighter while the page moves, which keeps scrolling smooth
+• Liquid keeps the glass while you scroll too, for phones that can keep up
+• Still in: the light on the glass holds still, and the glow rests while you use the app
 ```
 
 ## Images

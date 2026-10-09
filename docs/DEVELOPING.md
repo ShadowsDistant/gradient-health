@@ -164,14 +164,19 @@ first glass registers, which is where Refract leaves the tilt alone, and the sen
 the glow holds still while the app is in use (`#app[data-in-use]`, any input in the last 3 s, and the
 first 3 s after launch; src/styles/perf.css), drifting only once it's left alone until 20 s after the
 last input (`#app[data-idle]`). In use, at rest, the GPU then has nothing to do (about what it has with
-every backdrop filter off), and a flick starts on a GPU that's free. While the page moves, the bottom
-glass's lenses fade out (`bend`) and the glow holds still (`#app[data-scrolling]`), as before.
-Settings, Look, "Glass effects" (`prefs.glass`, set as `data-glass` on the root by `setGlassMode` in
-core.js): Liquid (the default) is the glass as designed; Frosted is the blur without the lenses (the
-glow kept); Flat is no backdrop anywhere, solid fills and no control lenses (`:root[data-glass-lite]`,
-src/styles/perf.css) with the glow hidden (Refract's reduced transparency). 1.8.5's Auto (Flat while
-the page moved) is Liquid now. `ui-scroll` checks that the light hears no tilt, the glass while the
-page moves and the glow's in-use pause, `ui-you` the setting and the root's attributes.
+every backdrop filter off), and a flick starts on a GPU that's free. That wasn't enough on its own:
+1.8.6 kept the glass as designed while the page moved (Liquid), and the phone still stuttered there, so
+the glass steps aside then. Settings, Look, "Glass effects" (`prefs.glass`, set as `data-glass` on the
+root by `setGlassMode` in core.js) is Auto by default: the glass as designed at rest and Flat's
+lightness (`:root[data-glass-lite]`, src/styles/perf.css: no backdrop anywhere, solid fills, no
+control lenses) from the first few pixels of a vertical drag on the page (or a wheel turn) until half a
+second after the page stops, flings included and for as long as a finger is down; a tap, a tab change
+and a scroll the page makes by itself never count. Liquid is the glass as designed, always, its bottom
+lenses fading out while the page moves (`bend`); Frosted is the blur without the lenses (the glow
+kept); Flat is the lightness always, with the glow hidden (Refract's reduced transparency). In every
+mode the glow holds still while the page moves (`#app[data-scrolling]`). `ui-scroll` checks Auto's
+transitions (`GH.ui.glassState()`), that the light hears no tilt, Liquid's glass while the page moves
+and the glow's in-use pause, `ui-you` the setting and the root's attributes.
 
 Settings, About, "Scroll diagnostics" (`src/ui/diag.js`, `GH.diag.report()`) is for a freeze that
 survives: a record, kept in memory for the last five minutes, of every touch (where, when, how late it
