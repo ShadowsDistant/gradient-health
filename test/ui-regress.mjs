@@ -76,10 +76,12 @@ section('Pages don\'t zoom');
   await cdp.detach();
 }
 
-section('Refract\'s light while the page scrolls');
-// On a phone the glass rims follow how it's tilted. While the page scrolls the light holds still
-// where the rims are (they mustn't swing round to the light's resting angle and back), and it
-// follows the tilt again once the page is still.
+section('Refract\'s light: still on a phone, and while the page scrolls');
+// On a phone the light holds still at its designed angle: Refract never listens to the tilt (core.js
+// asks it to, before its first glass registers), since each step it took repainted every rim and had
+// every backdrop filtered again, all the time in a hand. While the page scrolls the light holds still
+// where the rims are (they mustn't swing round and back), and once the page is still it follows the
+// pointer again (a mouse; a finger isn't one).
 {
   const r = await page.evaluate(async () => {
     const L = window.Refract.light;
@@ -98,11 +100,11 @@ section('Refract\'s light while the page scrolls');
     await frame();
     const after = L.mode();
     sc.scrollTop = top;
-    return { rest, base, seen, after };
+    return { rest, base, seen, after, asks: typeof DeviceOrientationEvent.requestPermission === 'function' };
   });
-  check('the tilt turns the rims (away from the resting angle)', Math.abs(r.rest - r.base) > 10, r);
+  check('a tilt doesn\'t turn the rims: they stay at the light\'s resting angle', r.asks && Math.abs(r.rest - r.base) < 2, r);
   check('scrolling holds the light still, where the rims were', r.seen.every((x) => x.mode === 'fixed' && Math.abs(x.at - r.rest) < 2), r.seen.map((x) => `${x.mode} ${Math.round(x.at)}`).join(', '));
-  check('then it follows the tilt again', r.after === 'pointer', r.after);
+  check('then it follows the pointer again (a mouse)', r.after === 'pointer', r.after);
 }
 
 section('Type in the tab bar, buttons and chips');
