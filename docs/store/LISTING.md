@@ -6,9 +6,7 @@ renders the images again from `docs/screenshots/`.
 ## Short description (80 characters at most)
 
 ```text
-• Glass effects (Settings, Look) is now Auto: the glass is as designed at rest and lightens while the page moves
-• For scrolling that froze or only started once your finger lifted, on phones that can't keep up with the glass
-• Glass speed test (Settings, About, Scroll diagnostics): which look your phone draws smoothly
+Workouts that adjust to you every day, plus GPS runs and a private AI coach.
 ```
 
 ## Full description (4,000 characters at most)
@@ -76,15 +74,15 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 ## What's new (500 characters at most)
 
-Paste this into the What's new field with each update. This is 1.8.5's. Each GitHub release carries
+Paste this into the What's new field with each update. This is 1.8.6's. Each GitHub release carries
 its own version's text at the end of its What's new, under "Short version, for a store's What's new
 field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
 (`node scripts/release-notes.mjs --store` prints it).
 
 ```text
-• Fixed: a flick right after another could freeze for a moment, then jump
-• Background work (3D pictures, the coach's notes) now waits until you've stopped for a while
-• 3D pictures are prepared in the background instead of holding the page
+• Liquid glass is the default again, and it no longer stutters: smooth scrolling with the glass as designed
+• The light on the glass stays put instead of following the phone's tilt, which kept redrawing every piece of glass
+• The colours behind each page drift only once you've left the app alone for a few seconds
 ```
 
 ## Images

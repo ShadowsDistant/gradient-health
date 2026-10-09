@@ -36,6 +36,17 @@ check('--version picks another entry', run('--version', list[1].version).startsW
 let failed = false;
 try { run('--version', '0.0.1'); } catch (err) { failed = /no entry for 0\.0\.1/.test(String(err.stderr)); }
 check('a version with no entry fails and says why', failed);
+
+section('Store listing');
+// docs/store/LISTING.md: the short description is the app's line (it held two releases' What's new
+// before this check: 1.8.4 and 1.8.5 pasted theirs into the first block), and the What's new block is
+// this version's store text.
+const listing = readFileSync(join(root, 'docs/store/LISTING.md'), 'utf8');
+const block = (heading) => { const m = new RegExp(`## ${heading}[^\\n]*\\n[\\s\\S]*?\\\`\\\`\\\`text\\n([\\s\\S]*?)\\n\\\`\\\`\\\``).exec(listing); return m ? m[1] : null; };
+const short = block('Short description');
+check('the short description is one line of 80 characters at most', !!short && !short.includes('\n') && short.length <= 80, short);
+const news = block('What\'s new');
+check(`the What's new block is ${v}'s store text`, news === e.store && listing.includes(`This is ${v}'s.`), news);
 const ci = readFileSync(join(root, '.github/workflows/android.yml'), 'utf8');
 check('CI publishes the release with these notes', /node scripts\/release-notes\.mjs/.test(ci) && /--notes-file/.test(ci));
 

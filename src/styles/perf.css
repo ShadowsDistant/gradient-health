@@ -39,9 +39,15 @@
    does while the page scrolls. */
 .onboard[data-scrolling]::before, .onboard[data-scrolling]::after { animation-play-state: paused; }
 
-/* 20 s after the last touch, key or scroll (#app[data-idle], core.js) the glow stops drifting, so a
-   phone left on a page isn't drawing it every frame; the next input starts it again. */
+/* While the app is in use (#app[data-in-use], core.js: any touch, key or scroll in the last 3 s, and
+   the first 3 s after launch) the glow holds still too. Each step of its drift has every glass in
+   front of it filtered again, and a flick that lands on one starts on a GPU that's busy; someone
+   using the app touches it again within a few seconds, so it drifts once they've stopped. And 20 s
+   after the last input (#app[data-idle]) it stops again, so a phone left on a page isn't drawing it
+   every frame; the next input starts the clock again. */
+#app[data-in-use]::before, #app[data-in-use]::after,
 #app[data-idle]::before, #app[data-idle]::after { animation-play-state: paused, running; }
+#app[data-in-use] .onboard::before, #app[data-in-use] .onboard::after,
 #app[data-idle] .onboard::before, #app[data-idle] .onboard::after { animation-play-state: paused; }
 
 /* A progress bar's sheen goes across it once as it shows, and once more each time its value changes
@@ -77,13 +83,13 @@
    paint. The frosted pill under the tab is there from the first frame. */
 .rf-tabbar:not([data-ready]) > .rf-tabbar-bar > .rf-tabbar-lens { display: none; }
 
-/* Glass effects (Settings, Look; core.js, "glass while the page moves"). :root[data-glass-lite] is Flat's
-   lightness: set always with Flat, and with Auto while the page moves. No backdrop is drawn anywhere
+/* Glass effects (Settings, Look; core.js, "glass effects"). :root[data-glass-lite] is Flat's
+   lightness (and one of the glass speed test's looks, src/ui/diag.js). No backdrop is drawn anywhere
    (each glass is one backdrop filter, drawn again every frame the page moves under it, and the lenses
    and the bar's frosted edge are more), the glass is a solid fill, and the controls' lenses (the tab
    bar's, the switches', the segmented controls') go, and so does the glow behind the page (hidden, not
-   removed: Flat has Refract's reduced transparency remove it, styles.css). That makes the light state
-   what Flat is, which fixed a scroll that froze on a phone every time. Measured in software the glow
+   removed: Flat has Refract's reduced transparency remove it, styles.css). That's what fixed a scroll
+   that froze on a phone every time, in 1.8.4. Measured in software the glow
    is the second cost of a scrolling frame, and with the filters gone the largest left (draw p95
    3.1 ms with it, 1.0 without; the GPU's own time 163 ms a second against 34). */
 :root[data-glass-lite] .rf-glass, :root[data-glass-lite] .rf-glass > .rf-lens-layer, :root[data-glass-lite] .rf-tabbar-bar, :root[data-glass-lite] .gh-sheet-glass,

@@ -152,21 +152,26 @@ draws pixel by pixel in JavaScript land in the frame after the first paint, and 
 (the glass over the picked tab) shows from the bar's second frame (`src/styles/perf.css`). The
 controls take its liquid engine only when touched (Refract, the design system, below).
 
-A scroll that freezes on a phone and not here (reported on one, after the main-thread fixes of
-1.8.2 and 1.8.3 changed nothing there, where Flat fixed it every time): the glass over the moving
-page. Each glass is a backdrop filter, drawn again every frame the page moves under it, and a phone's
-GPU can fall behind (the page then waits: it starts moving only when the finger lifts, or freezes in a
-fling and jumps). In software, `ui-scroll --measure --ablate=filters` (all backdrop filters off, run
-against the unablated page) takes about two thirds off a scrolling frame's draw time on Today and
-Plan. Settings, Look, "Glass effects" (`prefs.glass`, set as `data-glass` on the root by
-`setGlassMode` in core.js) is Auto by default: the glass as designed at rest and Flat's lightness
-(`:root[data-glass-lite]`, src/styles/perf.css: no backdrop anywhere, solid fills, no control lenses)
-from the first few pixels of a vertical drag on the page (or a wheel turn) until half a second after
-the page stops, flings included and for as long as a finger is down; a tap, a tab change and a scroll
-the page makes by itself never count. Liquid is the glass as designed, always; Frosted is the blur
-without the lenses (the glow kept); Flat is the lightness always, with the glow hidden (Refract's
-reduced transparency hides it). `ui-scroll` checks the transitions
-(`GH.ui.glassState()`), `ui-you` the setting and the root's attributes.
+A scroll that stutters on a phone and not here (reported on one, where Flat fixed it every time, and
+the glass shouldn't look flat): the GPU redrawing the glass. Each glass is a backdrop filter, drawn
+again every frame the page moves under it, and also every frame anything behind it or on it changes,
+scroll or not. Two things did that all the time on a phone and never here: Refract's light following
+the tilt (every step repaints each rim and sheen and has each backdrop filtered again; with a hand's
+tilt emulated at rest on Today, `deviceorientation` at 60 a second, the GPU process's time more than
+doubled), and the glow's drift (each step has every glass filtered again). So the light holds still
+at its designed angle: core.js gives `DeviceOrientationEvent` a `requestPermission` before Refract's
+first glass registers, which is where Refract leaves the tilt alone, and the sensor never starts. And
+the glow holds still while the app is in use (`#app[data-in-use]`, any input in the last 3 s, and the
+first 3 s after launch; src/styles/perf.css), drifting only once it's left alone until 20 s after the
+last input (`#app[data-idle]`). In use, at rest, the GPU then has nothing to do (about what it has with
+every backdrop filter off), and a flick starts on a GPU that's free. While the page moves, the bottom
+glass's lenses fade out (`bend`) and the glow holds still (`#app[data-scrolling]`), as before.
+Settings, Look, "Glass effects" (`prefs.glass`, set as `data-glass` on the root by `setGlassMode` in
+core.js): Liquid (the default) is the glass as designed; Frosted is the blur without the lenses (the
+glow kept); Flat is no backdrop anywhere, solid fills and no control lenses (`:root[data-glass-lite]`,
+src/styles/perf.css) with the glow hidden (Refract's reduced transparency). 1.8.5's Auto (Flat while
+the page moved) is Liquid now. `ui-scroll` checks that the light hears no tilt, the glass while the
+page moves and the glow's in-use pause, `ui-you` the setting and the root's attributes.
 
 Settings, About, "Scroll diagnostics" (`src/ui/diag.js`, `GH.diag.report()`) is for a freeze that
 survives: a record, kept in memory for the last five minutes, of every touch (where, when, how late it

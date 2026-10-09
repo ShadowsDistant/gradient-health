@@ -6,6 +6,19 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.8.6', date: '2026-10-09', title: 'Liquid glass, without the stutter',
+      store: [
+        '• Liquid glass is the default again, and it no longer stutters: smooth scrolling with the glass as designed',
+        '• The light on the glass stays put instead of following the phone\'s tilt, which kept redrawing every piece of glass',
+        '• The colours behind each page drift only once you\'ve left the app alone for a few seconds',
+      ].join('\n'),
+      items: [
+        ['wave', 'Scrolling with the liquid glass on stuttered on some phones, and only Flat fixed it. The cause was work the phone kept doing when nothing on screen had changed: the light on the glass followed how the phone was tilted, and every step it took redrew every piece of glass, all the time while the phone was in your hand. The light now stays where it was designed to be, so a flick starts with the phone\'s graphics chip free.'],
+        ['sparkle', 'Liquid is the default look again, the glass as designed while you scroll too. 1.8.5\'s Auto, which turned the glass plain while the page moved, is gone: if you picked it, you\'re on Liquid. Frosted and Flat are still there, in Settings under Look.'],
+        ['bolt', 'The colours behind each page hold still while you\'re using the app and drift only once you\'ve left it alone for a few seconds. Each step of that drift redrew every piece of glass too.'],
+      ],
+    },
+    {
       version: '1.8.5', date: '2026-10-08', title: 'The glass steps aside while you scroll',
       store: [
         '• Glass effects (Settings, Look) is now Auto: the glass is as designed at rest and lightens while the page moves',
