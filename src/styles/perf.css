@@ -83,13 +83,14 @@
    paint. The frosted pill under the tab is there from the first frame. */
 .rf-tabbar:not([data-ready]) > .rf-tabbar-bar > .rf-tabbar-lens { display: none; }
 
-/* Glass effects (Settings, Look; core.js, "glass effects"). :root[data-glass-lite] is Flat's
-   lightness (and one of the glass speed test's looks, src/ui/diag.js). No backdrop is drawn anywhere
+/* Glass effects (Settings, Look; core.js, "glass while the page moves"). :root[data-glass-lite] is Flat's
+   lightness: set always with Flat, and with Auto while the page moves. No backdrop is drawn anywhere
    (each glass is one backdrop filter, drawn again every frame the page moves under it, and the lenses
    and the bar's frosted edge are more), the glass is a solid fill, and the controls' lenses (the tab
    bar's, the switches', the segmented controls') go, and so does the glow behind the page (hidden, not
-   removed: Flat has Refract's reduced transparency remove it, styles.css). That's what fixed a scroll
-   that froze on a phone every time, in 1.8.4. Measured in software the glow
+   removed: Flat has Refract's reduced transparency remove it, styles.css). That makes the light state
+   what Flat is, which fixed a scroll that froze on a phone every time (1.8.4's Flat, 1.8.5's Auto;
+   1.8.6's Liquid without it still stuttered there). Measured in software the glow
    is the second cost of a scrolling frame, and with the filters gone the largest left (draw p95
    3.1 ms with it, 1.0 without; the GPU's own time 163 ms a second against 34). */
 :root[data-glass-lite] .rf-glass, :root[data-glass-lite] .rf-glass > .rf-lens-layer, :root[data-glass-lite] .rf-tabbar-bar, :root[data-glass-lite] .gh-sheet-glass,

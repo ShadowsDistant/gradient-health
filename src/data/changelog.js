@@ -6,6 +6,19 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.8.7', date: '2026-10-09', title: 'Auto is back',
+      store: [
+        '• Glass effects is back on Auto: the glass as designed at rest and lighter while the page moves, which keeps scrolling smooth',
+        '• Liquid keeps the glass while you scroll too, for phones that can keep up',
+        '• Still in: the light on the glass holds still, and the glow rests while you use the app',
+      ].join('\n'),
+      items: [
+        ['wave', 'Liquid still stuttered while scrolling on some phones, even without the work 1.8.6 took away at rest. What keeps scrolling smooth there is Auto, so it\'s the default again: the glass as designed whenever the page is still, and as light as Flat from your first drag until half a second after the page stops.'],
+        ['sparkle', 'Glass effects has its four choices back: Auto, Liquid (the glass as designed, always), Frosted (the blur without the lens) and Flat (the lightest). If you picked Liquid in 1.8.6 you\'re still on it: pick Auto in Settings, under Look.'],
+        ['bolt', '1.8.6\'s fixes stay: the light on the glass holds still instead of following the phone\'s tilt, and the colours behind each page drift only once you\'ve left the app alone for a few seconds.'],
+      ],
+    },
+    {
       version: '1.8.6', date: '2026-10-09', title: 'Liquid glass, without the stutter',
       store: [
         '• Liquid glass is the default again, and it no longer stutters: smooth scrolling with the glass as designed',
