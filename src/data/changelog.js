@@ -6,6 +6,19 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.8.9', date: '2026-10-10', title: 'Switches that let go, and a speed test with a finger',
+      store: [
+        '• Scrolling Settings no longer leaves a piece of a switch\'s glass running each time a scroll starts on its row, which kept the app from ever settling there',
+        '• The glass speed test now also flicks the page the way a finger does, since a page that scrolls by itself was smooth where a finger\'s scroll stuttered',
+        '• Scroll diagnostics note the glass effects each gesture ran under',
+      ].join('\n'),
+      items: [
+        ['wave', 'Every scroll that started on a switch\'s row in Settings took that switch\'s liquid glass on (its own little engine and lens) and never let it go, and the switch counted as still moving. So while Settings was open the app never saw a calm moment: the work it holds back while you touch and scroll (a page redrawn in the background, the 3D figure) waited, then ran all at once after you left. Now a switch takes its glass on only when its knob lifts or moves, and lets it go once it lands.'],
+        ['bolt', 'The glass speed test (Settings, About, Scroll diagnostics) has a second half: the phone flicks the page itself with Android\'s own touch events, up and back down Settings in each look of the glass, so each scroll goes the way yours do, through the touch and the fling. The page scrolling by itself, the first half, was smooth in every look on a phone where Liquid stuttered under a finger. It times each flick, notes any moment the page held still and then jumped, and records one more pass for the whole picture. It takes about a minute; leave the screen alone.'],
+        ['activity', 'Each gesture in the report now says which glass effects it ran under, so flicks in different looks can be compared in one report.'],
+      ],
+    },
+    {
       version: '1.8.8', date: '2026-10-10', title: 'Finding the stutter in Liquid',
       store: [
         '• Scroll diagnostics can record what your phone does while a scroll stutters: how it handled each touch, frame and fling',

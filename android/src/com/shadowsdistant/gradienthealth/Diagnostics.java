@@ -4,10 +4,13 @@ import android.app.Activity;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.view.Display;
 import android.view.FrameMetrics;
+import android.view.InputDevice;
 import android.view.MotionEvent;
+import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.TracingConfig;
@@ -27,6 +30,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Scroll diagnostics, the Android side (src/ui/diag.js is the page's). The page can time its own
@@ -42,6 +46,8 @@ import java.util.concurrent.Executors;
  * each fling. It's written to the app's cache and read back by the page a piece at a time, which
  * sums it up (src/tracesum.js) and deletes it.</li>
  * </ul>
+ * And it's the glass speed test's finger: a flick of the page made of Android's own touch events, so
+ * the test can scroll the page the way a finger does ({@link #flick}).
  * All of it stays on the phone; the page puts the sums in the report the person may copy or share.
  * Nothing here is used outside the scroll diagnostics, and the frame and touch records cost a few
  * array writes each.
@@ -503,6 +509,86 @@ final class Diagnostics {
                 }
             } catch (Throwable ignored) {
             }
+        }
+    }
+
+    // ---------------------------------------------------------------- the speed test's finger
+
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private final AtomicBoolean flicking = new AtomicBoolean();
+
+    /**
+     * One vertical flick of the page for the glass speed test, made of Android's own touch events (a
+     * finger down, a move every 8 ms, the finger up at speed) and sent through the app's window as a
+     * finger's are, so the page goes the way it does under a finger: the touch through the UI thread
+     * and the WebView, its fling, the frames drawn after. A page that scrolls by itself (the test's
+     * other half) skips all of that, and on the owner's phone that half was smooth while the page
+     * stuttered under a finger. In the page view's pixels: from (x, y), dy up or down (100 to 6000)
+     * over ms (40 to 600). Only ever a straight vertical move that long, so it can scroll and never
+     * tap. False if one is still going or it's out of bounds.
+     */
+    boolean flick(final View page, final float x, final float y, final float dy, final int ms) {
+        if (page == null || !(Math.abs(dy) >= 100 && Math.abs(dy) <= 6000) || ms < 40 || ms > 600 || !(x >= 0) || !(y >= 0)) {
+            return false;
+        }
+        if (!flicking.compareAndSet(false, true)) {
+            return false;
+        }
+        main.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (!page.isAttachedToWindow() || x > page.getWidth() || y > page.getHeight() || y + dy < 0 || y + dy > page.getHeight()) {
+                        flicking.set(false);
+                        return;
+                    }
+                    int[] at = new int[2];
+                    page.getLocationInWindow(at);
+                    final float wx = at[0] + x;
+                    final float wy = at[1] + y;
+                    final long down = SystemClock.uptimeMillis();
+                    final int steps = Math.max(4, ms / 8);
+                    touch(down, down, MotionEvent.ACTION_DOWN, wx, wy);
+                    for (int i = 1; i <= steps; i++) {
+                        final long t = down + 16 + (long) ms * i / steps;
+                        final float yi = wy + dy * i / steps;
+                        final boolean last = i == steps;
+                        main.postAtTime(new Runnable() {
+                            @Override
+                            public void run() {
+                                touch(down, t, MotionEvent.ACTION_MOVE, wx, yi);
+                                if (last) {
+                                    touch(down, t, MotionEvent.ACTION_UP, wx, yi);
+                                    flicking.set(false);
+                                }
+                            }
+                        }, t);
+                    }
+                } catch (Throwable t) {
+                    flicking.set(false);
+                }
+            }
+        });
+        return true;
+    }
+
+    /** One finger's touch event at (x, y) in the window, at the given time, through the activity. */
+    private void touch(long down, long at, int action, float x, float y) {
+        MotionEvent.PointerProperties p = new MotionEvent.PointerProperties();
+        p.id = 0;
+        p.toolType = MotionEvent.TOOL_TYPE_FINGER;
+        MotionEvent.PointerCoords c = new MotionEvent.PointerCoords();
+        c.x = x;
+        c.y = y;
+        c.pressure = 1f;
+        c.size = 0.1f;
+        MotionEvent ev = MotionEvent.obtain(down, at, action, 1, new MotionEvent.PointerProperties[] {p},
+                new MotionEvent.PointerCoords[] {c}, 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
+        try {
+            activity.dispatchTouchEvent(ev);
+        } catch (Throwable ignored) {
+        } finally {
+            ev.recycle();
         }
     }
 }

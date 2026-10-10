@@ -74,14 +74,15 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 ## What's new (500 characters at most)
 
-Paste this into the What's new field with each update. This is 1.8.8's. Each GitHub release carries
+Paste this into the What's new field with each update. This is 1.8.9's. Each GitHub release carries
 its own version's text at the end of its What's new, under "Short version, for a store's What's new
 field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
 (`node scripts/release-notes.mjs --store` prints it).
 
 ```text
-• Scroll diagnostics can record what your phone does while a scroll stutters: how it handled each touch, frame and fling
-• The glass speed test now times the phone's own drawing of each frame, at its fastest refresh rate
+• Scrolling Settings no longer leaves a piece of a switch's glass running each time a scroll starts on its row, which kept the app from ever settling there
+• The glass speed test now also flicks the page the way a finger does, since a page that scrolls by itself was smooth where a finger's scroll stuttered
+• Scroll diagnostics note the glass effects each gesture ran under
 ```
 
 ## Images

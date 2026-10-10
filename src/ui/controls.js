@@ -187,13 +187,19 @@
     let L = null, held = false, liftTimer = 0, rescueTimer = 0, flick = 0;
     let base = 0, len = 0, side = false;
 
-    // The knob is the engine's only while it's touched or moving. At rest Refract's style sheet puts it
+    // The knob is the engine's only while it's held or moving. At rest Refract's style sheet puts it
     // at either end from whether the switch is on (and the on colour with it), so a re-render that
     // turns a switch on or off needs nothing from here, and a resting knob costs nothing. It's taken
-    // on at the end it shows (`onEnd`), and handed back once it has landed there.
+    // on at the end it shows (`onEnd`) when it lifts (a finger held on it, a drag) or travels (a
+    // change), and handed back once it has landed there. Not at the touch: most touches on a switch's
+    // row in Settings are the start of a scroll, and an engine taken on then was never handed back
+    // (the knob had neither lifted nor moved, so it never landed), leaving a liquid engine, its lens
+    // filter and the switch marked as moving behind each one, which kept the page from ever being
+    // calm (U.calm) while Settings was open.
+    const measure = () => { len = Math.max(0, track.clientWidth - thumb.offsetWidth - 6); };
     const engage = (onEnd) => {
       if (L) return L;
-      len = Math.max(0, track.clientWidth - thumb.offsetWidth - 6);
+      measure();
       L = liquid(thumb, KNOB);
       if (!L) return null;
       let p0 = -1;
@@ -271,7 +277,7 @@
       if (input.disabled || e.button > 0 || !e.isPrimary) return;
       flushRescue();
       T.down({ id: e.pointerId, type: e.pointerType, x: e.clientX, y: e.clientY, t: e.timeStamp });
-      engage(input.checked);
+      if (!L) measure(); // where a drag starts from (the engine, if the knob is still moving, has it)
       base = input.checked ? len : 0;
       side = input.checked;
       if (e.pointerType === 'touch') { clearTimeout(liftTimer); liftTimer = setTimeout(lift, LIFT); } else lift();

@@ -150,7 +150,7 @@ page's size.
 first frame's read pass rather than before it (`enhance()` in `src/ui/core.js`), so the lens maps it
 draws pixel by pixel in JavaScript land in the frame after the first paint, and the tab bar's lens
 (the glass over the picked tab) shows from the bar's second frame (`src/styles/perf.css`). The
-controls take its liquid engine only when touched (Refract, the design system, below).
+controls take its liquid engine only when held or moving (Refract, the design system, below).
 
 A scroll that stutters on a phone and not here (reported on one, where Flat fixed it every time, and
 the glass shouldn't look flat): the GPU redrawing the glass. Each glass is a backdrop filter, drawn
@@ -205,7 +205,22 @@ the frames dropped while scrolling and each frame's steps; each fling's speed an
 moved along; the GPU's drawing; the busiest threads and the longest tasks), then deleted. The sums go
 in the report; the recording itself never leaves the phone. `test/tracesum.mjs` checks the sums on a
 made-up trace read in pieces down to one character; `ui-you` runs a recording against a stand-in
-for the Android side.
+for the Android side. Each gesture in the report carries the glass effects it ran under, so flicks
+in different looks can be compared in one report.
+
+The glass speed test has two halves. In the first the page scrolls itself (its `scrollTop` from a
+frame callback), each look of the glass in turn, on Plan; on the owner's phone that was smooth in
+every look while the page stuttered under a finger in Liquid, and a page that scrolls itself skips
+everything a finger brings: Android's UI thread taking each touch, the WebView's touch handling, its
+fling. So in the second the phone flicks the page itself (`diagFlick`, `Diagnostics.flick`: Android's
+own touch events, a finger down, a move every 8 ms, the finger up at speed, sent through the app's
+window as a finger's are; only a straight vertical move of 100 px or more, so it can scroll and never
+tap), the same looks on Settings, four flicks each, every frame of the page timed with its scroll
+position: how long after each touch the page moved, any time it held still mid-fling then jumped, and
+Android's own frames. Then once more as designed, recorded, so the report has the trace of those
+flicks too. Throughout, the glass is held as Liquid's (`U.glassHold(true, 'liquid')`, which bends the
+bottom glass while the page moves whatever the setting). `ui-scroll` runs both halves, the phone's
+flicks played by a stand-in that sends CDP touches.
 
 **Scrolling, and work that can wait.** A fling should only move what's already drawn
 (`src/styles/perf.css`). While the page scrolls (`#app[data-scrolling]`, set in `core.js` and
@@ -298,8 +313,12 @@ behaviours (and adds the chip choice) with its own gesture rules (`U.switchGestu
 10 px up or down to scroll, the tap rescue), but draws them with Refract's liquid engine
 (`Refract.Liquid`): a frosted bead that rises into a lens under the finger, follows it on springs
 that keep their speed, and lands with a squash, exactly as Refract's own. A switch's knob and a
-segmented control's bead are the engine's only while they're touched or moving: at rest Refract's
-style sheet puts the knob at either end, and the bead sits where a transform puts it. The engine's
+segmented control's bead are the engine's only while they're held (lifted, after 80 ms of a finger
+on them, or dragged) or moving, and it's handed back once they've landed: at rest Refract's style
+sheet puts the knob at either end, and the bead sits where a transform puts it. A touch alone
+doesn't take it on, since most touches on a switch's row start a scroll: until 1.8.9 the switch took
+it at the touch and, as the knob then neither lifted nor moved, never handed it back, so each scroll
+from a row in Settings left an engine and its lens filter behind and the page never calm. The engine's
 lens is drawn pixel by pixel in JavaScript, so a control costs nothing until it's touched (at launch
 these held up the first frames); the knob's maps are drawn once, in a calm moment after the first
 switch shows, so the first touch doesn't wait on them. The knob glides on the main thread, so

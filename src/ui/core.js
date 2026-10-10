@@ -554,7 +554,8 @@
   function bend(to) {
     // Only Liquid keeps the lenses while the page moves, fading them. Auto takes the whole glass off
     // for the move instead (below, "glass while the page moves"), and Frosted and Flat have no lenses.
-    if (glassMode !== 'liquid') {
+    // (The glass speed test holds the glass as Liquid, whatever the setting: heldAs.)
+    if ((heldAs || glassMode) !== 'liquid') {
       if (bendTo !== 1 || bendShown !== 1) { bendTo = 1; bendNow = 1; bendFind(); bendShown = -1; bendSet(1); }
       return;
     }
@@ -640,7 +641,7 @@
   // page makes by itself (a tab's scroll position coming back) never counts: only one that follows a
   // drag or a wheel closely (a fling's scrolls come a frame apart).
   const GLASS_REST_MS = 500, GLASS_DRAG_PX = 4, GLASS_FLING_MS = 600;
-  let glassMode = 'auto', glassMoving = false, glassHeld = false, glassTimer = 0, glassLastMove = 0, dragStart = null;
+  let glassMode = 'auto', glassMoving = false, glassHeld = false, heldAs = null, glassTimer = 0, glassLastMove = 0, dragStart = null;
   function glassApply() {
     if (glassHeld) return;
     const html = doc.documentElement;
@@ -701,8 +702,14 @@
     }, { passive: true, capture: true });
   }
   // The glass speed test (src/ui/diag.js) sets the root's attributes itself, one look after another:
-  // held, nothing here touches them; let go, they're worked out again from the setting.
-  U.glassHold = (on) => { glassHeld = !!on; if (!on) { glassMoving = false; clearTimeout(glassTimer); glassTimer = 0; glassApply(); } };
+  // held, nothing here touches them; let go, they're worked out again from the setting. `as`: the
+  // mode the glass behaves as meanwhile (the test's is Liquid, so the bottom glass bends as Liquid's
+  // does while the page moves, whatever the setting).
+  U.glassHold = (on, as) => {
+    glassHeld = !!on;
+    heldAs = on && as ? as : null;
+    if (!on) { glassMoving = false; clearTimeout(glassTimer); glassTimer = 0; glassApply(); bend(1); }
+  };
   U.glassState = () => ({ mode: glassMode, moving: glassMoving, lite: !!doc.documentElement.hasAttribute('data-glass-lite') });
 
   /* ---------------------------------------------------------------- calm */

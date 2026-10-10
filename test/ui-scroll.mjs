@@ -635,16 +635,35 @@ if (!measureOnly && (!ONLY.length || ONLY.includes('today'))) {
   check('Flat: light always, with the glow hidden', flat.mid.lite && flat.rest.lite && /^none/.test(flat.rest.lens) && flat.rest.glow === 'none', flat);
   const back = await modeCheck('liquid');
   check('and Liquid again: as at the start', back.rest.state.mode === 'liquid' && !back.rest.lite && /url\(/.test(back.rest.lens) && back.rest.glow !== 'none', back.rest);
-  // The glass speed test (src/ui/diag.js): each look timed, and the setting's own look put back after.
+  // The glass speed test (src/ui/diag.js): each look timed with the page scrolling itself, then
+  // flicked as by a finger (on a phone, Android's own touch events from Diagnostics.flick; here a
+  // stand-in plays each flick as CDP touches along the same path), and the setting's own look put
+  // back after.
+  await cdp.send('Runtime.addBinding', { name: '__ghFlick' });
+  const flicked = [];
+  cdp.on('Runtime.bindingCalled', async (e) => {
+    if (e.name !== '__ghFlick') return;
+    const [x, y, dy, ms] = JSON.parse(e.payload);
+    flicked.push([Math.round(x), Math.round(y), Math.round(dy), ms]);
+    let t = Date.now() / 1000;
+    const send = (type, yy) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y: yy, id: 1 }], timestamp: t }).catch(() => {});
+    const steps = Math.max(4, Math.round(ms / 8));
+    await send('touchStart', y);
+    await sleep(16); t += 0.016;
+    for (let i = 1; i <= steps; i++) { t += ms / steps / 1000; await send('touchMove', y + (dy * i) / steps); await sleep(ms / steps); }
+    await send('touchEnd', y + dy);
+  });
+  await ev(`(() => { window.AndroidBridge.diagFlick = (x, y, dy, ms) => { const d = window.devicePixelRatio || 1; window.__ghFlick(JSON.stringify([x / d, y / d, dy / d, ms])); return true; }; return 1; })()`);
   const speedRes = await ev(`(async () => {
     const root = document.documentElement, A = ['data-gx-nolens', 'data-gx-noedge', 'data-gx-noglow', 'data-glass-lite', 'data-rf-transparency'];
     const before = JSON.stringify(window.GH.ui.glassState()), t0 = performance.now();
-    const r = await window.GH.diag.speedTest({ ms: 400, settle: 100 });
+    const r = await window.GH.diag.speedTest({ ms: 400, settle: 100, flicks: 2 });
     const held = window.GH.diag._streams().L.filter((x) => x[0] >= t0).map((x) => [Math.round(x[0] - t0), x[1], x[3]]);
-    return { rows: r.rows.map((x) => [x.id, x.n, x.fps, x.p95]), stopped: r.stopped, held, before, after: JSON.stringify(window.GH.ui.glassState()), attrs: A.filter((a) => root.hasAttribute(a)), report: window.GH.diag.report().split('\\n').filter((l) => /Glass speed test|smoothest|fps/.test(l)) };
+    return { rows: r.rows.map((x) => [x.id, x.n, x.fps, x.p95]), touch: r.touchRows.map((x) => [x.id, x.flicks, x.moved, x.start, x.holds, x.p95]), touchPage: r.touchPage, note: r.touchNote, stopped: r.stopped, held, before, after: JSON.stringify(window.GH.ui.glassState()), attrs: A.filter((a) => root.hasAttribute(a)), route: window.GH.ui.route.view || window.GH.ui.route.tab, report: window.GH.diag.report().split('\\n').filter((l) => /Glass speed test|smoothest|fps|Under a finger|after the touch/.test(l)) };
   })()`);
-  check('the glass speed test times six looks and puts everything back', speedRes.rows.length === 6 && speedRes.rows.every(([, n]) => n > 5) && !speedRes.stopped && speedRes.before === speedRes.after && speedRes.attrs.length === 0, speedRes);
-  check('and the report carries its table, with the smoothest marked', speedRes.report.length >= 7 && speedRes.report.some((l) => /smoothest/.test(l)), speedRes.report);
+  check('the glass speed test times six looks with the page scrolling itself and puts everything back', speedRes.rows.length === 6 && speedRes.rows.every(([, n]) => n > 5) && !speedRes.stopped && speedRes.before === speedRes.after && speedRes.attrs.length === 0, speedRes);
+  check('then the same six under a finger, on Settings: the phone\'s flicks move the page each time', speedRes.touchPage === 'settings' && speedRes.touch.length === 6 && speedRes.touch.every(([, n, moved, start]) => n === 2 && moved === 2 && start != null) && flicked.length >= 14 && flicked.every(([, , dy]) => Math.abs(dy) >= 100), { touch: speedRes.touch, note: speedRes.note, flicked: flicked.length });
+  check('and the report carries both tables, each with its smoothest marked', speedRes.report.filter((l) => /smoothest/.test(l)).length === 2 && speedRes.report.some((l) => /Under a finger \(the phone's own touch events\), on settings, 2 flicks each/.test(l)) && speedRes.report.filter((l) => /moved \d+ ms after the touch · held/.test(l)).length === 6, speedRes.report);
   await ev('(window.__abortRun = window.GH.diag.speedTest({ ms: 2500, settle: 100 }).then((r) => { window.__aborted = r; }), 1)');
   await sleep(1900);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 195, y: 420, id: 1 }] });
