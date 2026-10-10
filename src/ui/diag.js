@@ -480,7 +480,9 @@
     const android = speed.rows.length && speed.rows.every((r) => r.app && r.app.frames);
     const score = (r) => (android ? lateShare(r) : r.p95);
     const best = speed.rows.reduce((m, r) => (m && score(m) <= score(r) ? m : r), null);
-    const appBits = (r) => (r.app && r.app.frames ? ` · Android: ${r.app.frames} frames, ${r.app.overDeadline} late, frame p95 ${r.app.total ? r.app.total[1] : '-'}${r.app.gpu ? `, GPU p95 ${r.app.gpu[1]}` : ''}${r.app.command ? `, RenderThread p95 ${r.app.command[1]}` : ''}` : '');
+    // (Under a finger, how late the phone's own touches reached the app says how busy Android's UI
+    // thread was: it takes each touch, and in a web view it waits on the page's compositor every frame.)
+    const appBits = (r) => (r.app && r.app.frames ? ` · Android: ${r.app.frames} frames, ${r.app.overDeadline} late, frame p95 ${r.app.total ? r.app.total[1] : '-'}${r.app.gpu ? `, GPU p95 ${r.app.gpu[1]}` : ''}${r.app.command ? `, RenderThread p95 ${r.app.command[1]}` : ''}${r.app.waitUi ? `, waiting for the UI thread p95 ${r.app.waitUi[1]}` : ''}${r.app.touches && r.app.touchLate ? `, touches late p95 ${r.app.touchLate[1]}` : ''}` : '');
     for (const r of speed.rows) {
       out.push(`  ${r.label.padEnd(36)} ${String(r.fps).padStart(3)} fps · median ${r.p50} · p95 ${r.p95} · worst ${r.max} · over 20 ms ${r.over20}% · over 33 ms ${r.over33}%${appBits(r)}${best && r === best ? '   <- smoothest' : ''}`);
     }
