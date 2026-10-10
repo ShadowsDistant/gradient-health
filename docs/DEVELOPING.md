@@ -188,6 +188,25 @@ a fling, the longest the thread was held and by what; a gesture the page didn't 
 copy or share with the developer right after a freeze. `ui-you` checks the sheet; `ui-scroll` checks
 the report after a fling.
 
+The page can't see the rest of a scroll: Android's UI thread, which takes each touch and drives a
+fling, and the drawing of the app's window. So the Android side (`Diagnostics.java`, behind the
+`diag*` and `trace*` bridge methods, which answer only the app's page) keeps Android's own timing of
+each frame of the window (FrameMetrics: the frame, its deadline, the GPU's time on Android 12+, how
+long it waited for the UI thread, the RenderThread's part, where the WebView draws) and how late each
+touch reached the app's UI thread, and the report adds them to each gesture, with the display's
+refresh rate. The glass speed test reads them for each look too, with the display at its fastest rate
+for the test (a finger switches most phones to it; a page scrolling by itself doesn't), since the
+page's own frames can look even while Android draws them late. And "Record what the phone does" takes
+12 seconds of the WebView's own trace events (android.webkit.TracingController: input latency, frame
+reporting, the display compositor, the WebView's drawing, every thread's tasks), saved to the app's
+cache, read back by the page 256 KB at a time and summed up by `src/tracesum.js` (each scroll update's
+way from the finger to the screen, stage by stage, starting with its time on Android's UI thread;
+the frames dropped while scrolling and each frame's steps; each fling's speed and how evenly it was
+moved along; the GPU's drawing; the busiest threads and the longest tasks), then deleted. The sums go
+in the report; the recording itself never leaves the phone. `test/tracesum.mjs` checks the sums on a
+made-up trace read in pieces down to one character; `ui-you` runs a recording against a stand-in
+for the Android side.
+
 **Scrolling, and work that can wait.** A fling should only move what's already drawn
 (`src/styles/perf.css`). While the page scrolls (`#app[data-scrolling]`, set in `core.js` and
 cleared 150 ms after the last scroll) the background glow holds still, and the glass at the bottom

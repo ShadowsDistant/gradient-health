@@ -30,7 +30,7 @@
 import { createRequire } from 'node:module';
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
-import { check, section, done, serveDist } from './lib.mjs';
+import { check, section, done, serveDist, load } from './lib.mjs';
 import { seedBridge, seedState } from './fixtures.mjs';
 
 const require = createRequire(import.meta.url);
@@ -330,6 +330,7 @@ if (!measureOnly) {
 // 18% on Progress):
 const TOUCH_BUDGET = { today: 28, health: 24, plan: 24, you: 21, progress: 9 };
 const TOUCH = Object.keys(TOUCH_BUDGET).filter((s) => !ONLY.length || ONLY.includes(s));
+const TRACESUM = load('src/tracesum.js').traceSum;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // The touch pages draw with Chromium's GPU path (SwiftShader standing in for a phone's GPU), as a
 // phone does: without it the glass is drawn by the software compositor, at a cost unlike a phone's.
@@ -377,7 +378,9 @@ async function touchScroll(build, id) {
   await sleep(2500);
   const blocking = await blockingListeners(cdp);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU });
-  await gpuBrowser.startTracing(page, { categories: ['cc', 'benchmark', 'disabled-by-default-devtools.timeline.frame'] });
+  // input: the flings' own events (FlingController), which the trace summary below reads, as in a
+  // recording on the phone.
+  await gpuBrowser.startTracing(page, { categories: ['cc', 'benchmark', 'input', 'disabled-by-default-devtools.timeline.frame'] });
   for (const [y0, dy] of [[650, -400], [650, -400], [250, 500]]) { await fling(cdp, y0, dy); await sleep(1500); }
   const evs = (JSON.parse((await gpuBrowser.stopTracing()).toString()).traceEvents) || [];
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
@@ -390,7 +393,10 @@ async function touchScroll(build, id) {
   }
   const moved = await ev('document.getElementById("screen").scrollTop');
   await ctx.close();
-  return { blocking, dropped, presented, droppedPct: (100 * dropped) / Math.max(1, dropped + presented), mainThread, compositor, moved };
+  // The same trace through the scroll diagnostics' summary (src/tracesum.js), as a recording on the
+  // phone would go: read as text, a piece at a time.
+  const sum = (() => { const ts = TRACESUM.create(); const txt = JSON.stringify({ traceEvents: evs }); for (let i = 0; i < txt.length; i += 262144) ts.push(txt.slice(i, i + 262144)); return ts.finish(); })();
+  return { blocking, dropped, presented, droppedPct: (100 * dropped) / Math.max(1, dropped + presented), mainThread, compositor, moved, sum };
 }
 if (TOUCH.length) {
   section(`Touch scrolling (CPU ${CPU}x slower, at 3x, best of ${RUNS})`);
@@ -403,6 +409,10 @@ if (TOUCH.length) {
       check(`${id}: no blocking touch or wheel listener on the page`, b.blocking.length === 0, b.blocking);
       check(`${id}: a touch scroll runs on the compositor, never the main thread`, b.compositor > 20 && b.mainThread === 0, b);
       check(`${id}: ${TOUCH_BUDGET[id]}% of frames or fewer dropped while touch-scrolling`, b.droppedPct <= TOUCH_BUDGET[id], `${r1(b.droppedPct)}%`);
+      if (id === 'today') {
+        const s = b.sum;
+        check('today: the scroll diagnostics\' trace summary reads a real fling\'s trace: the frames while scrolling, the flings, their speeds and ticks, and each scroll update\'s stages', s.events > 1000 && !s.unreadable && s.frames.scroll >= 20 && s.flings >= 2 && s.flingSpeeds.length === 3 && s.gaps.length >= 10 && s.lat.fling && s.lat.fling.total.length >= 10 && !!s.lat.fling.stages.RendererCompositorQueueingDelay && s.threads.some((t) => /^Compositor/.test(t.name)), { events: s.events, unreadable: s.unreadable, frames: s.frames.scroll, flings: s.flings, speeds: s.flingSpeeds, ticks: s.gaps.length, lat: Object.fromEntries(Object.entries(s.lat).map(([k, v]) => [k, v.total.length])) });
+      }
     }
   }
 }

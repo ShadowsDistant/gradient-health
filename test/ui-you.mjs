@@ -205,6 +205,42 @@ await settle();
 const diag = await ev(() => { const t = document.querySelector('.gh-sheet textarea'); return { open: !!t, text: t ? t.value : '', copy: !!document.querySelector('.gh-sheet [data-act="diagCopy"]'), share: !!document.querySelector('.gh-sheet [data-act="diagShare"]') }; });
 check('and the Glass speed test row', await ev(() => !!document.querySelector('.gh-sheet [data-act="diagSpeed"]')));
 check('its sheet carries the report, with Copy and Share', diag.open && diag.copy && diag.share && /scroll diagnostics/.test(diag.text) && /Device: /.test(diag.text) && /Settings: glass auto/.test(diag.text) && /Gestures, newest first/.test(diag.text), diag.text.slice(0, 300));
+check('and the Record what the phone does row; no recording yet', await ev(() => !!document.querySelector('.gh-sheet [data-act="diagRecord"]')) && /What the phone did \(a recording\): none yet/.test(diag.text));
+// A recording, with a stand-in for the Android side (Diagnostics.java): its frame timings, the
+// display, and a small trace that it hands back in pieces and deletes once read.
+const rec = await ev(async () => {
+  const B = window.AndroidBridge;
+  const evs = [
+    { ph: 'M', name: 'thread_name', pid: 1, tid: 2, args: { name: 'Compositor' } },
+    { ph: 'b', name: 'EventLatency', pid: 1, tid: 2, ts: 1000, id2: { local: '0x1' }, args: { event_latency: { event_type: 'GESTURE_SCROLL_UPDATE', vsync_interval_ms: 8.333 } } },
+    { ph: 'b', name: 'GenerationToBrowserMain', pid: 1, tid: 2, ts: 1000, id2: { local: '0x1' }, args: {} },
+    { ph: 'e', name: 'GenerationToBrowserMain', pid: 1, tid: 2, ts: 31000, id2: { local: '0x1' } },
+    { ph: 'e', name: 'EventLatency', pid: 1, tid: 2, ts: 41000, id2: { local: '0x1' } },
+    { ph: 'b', name: 'PipelineReporter', pid: 1, tid: 2, ts: 50000, id2: { local: '0x2' }, args: { frame_reporter: { state: 'STATE_DROPPED', scroll_state: 'SCROLL_COMPOSITOR_THREAD' } } },
+    { ph: 'e', name: 'PipelineReporter', pid: 1, tid: 2, ts: 66000, id2: { local: '0x2' } },
+    { ph: 'X', name: 'ProxyImpl::ScheduledActionDraw', pid: 1, tid: 2, ts: 70000, dur: 20000 },
+  ];
+  const trace = JSON.stringify({ traceEvents: evs });
+  let pos = 0;
+  const added = {
+    diagFrames: () => JSON.stringify({ frameMetrics: true, frames: 90, overDeadline: 3, overDeadlineByHalf: 1, total: [6.1, 9.8, 22], gpu: [2, 4, 9], waitUi: [0.2, 1, 12], command: [3, 5, 8], touches: 40, moves: 36, touchLate: [4, 9, 30] }),
+    diagDisplay: () => JSON.stringify({ hz: 120, modes: [60, 120], sdk: 36 }),
+    traceStart: () => true,
+    traceStop: () => { setTimeout(() => window.__gh.onTraceSaved(trace.length), 50); return true; },
+    traceRead: () => { if (pos >= trace.length) return null; const c = trace.slice(pos, pos + 97); pos += 97; return c; },
+    traceDone: () => { B.__done = (B.__done || 0) + 1; },
+  };
+  Object.assign(B, added);
+  let out;
+  try {
+    const t = await window.GH.diag.record(1);
+    out = { ok: !!t, read: pos >= trace.length, done: B.__done || 0, report: window.GH.diag.report() };
+  } finally { for (const k of Object.keys(added)) delete B[k]; delete B.__done; }
+  return out;
+});
+check('a recording reads the trace back in pieces and deletes it after', rec.ok && rec.read && rec.done >= 1, { ok: rec.ok, read: rec.read, done: rec.done });
+check('the report carries it: the display, Android\'s frames and touches, and the trace summed up', /Display: 120 Hz now \(it can run at 60, 120\)/.test(rec.report) && /What the phone did, recorded [^\n]* with glass auto/.test(rec.report) && /Android drew 90 frames, 3 late \(1 by half a frame or more\)/.test(rec.report) && /touches reached the app 4\/9\/30 ms late/.test(rec.report) && /screen 120 Hz/.test(rec.report) && /drag: 1 updates, finger to screen 40\/40\/40 ms/.test(rec.report) && /Android UI thread 30\/30\/30/.test(rec.report) && /frames while scrolling: 1, dropped 1/.test(rec.report), rec.report.split('Gestures')[0] + rec.report.slice(rec.report.indexOf('What the phone did')));
+check('without the Android side, Record says why', await ev(async () => { try { await window.GH.diag.record(1); return false; } catch (e) { return /Android app/.test(e.message); } }));
 await ev(() => window.GH.ui.closeSheets && window.GH.ui.closeSheets());
 await settle();
 await home();

@@ -165,6 +165,10 @@ button:not([class*="rf-"]) { font: inherit; }
 .rf-btn[data-spinning] > svg { animation: gh-spin 900ms linear infinite; }
 @keyframes gh-spin { to { rotate: 360deg; } }
 
+/* Scroll diagnostics' recording (src/ui/diag.js): a solid pill at the top while it records, never
+   glass (it would be one more filter in what's being measured). A tap ends the recording early. */
+.diag-rec { position: fixed; top: calc(var(--sat) + var(--space-2)); left: 50%; transform: translateX(-50%); z-index: 2147483000; padding: var(--space-2) var(--space-4); border: 0; border-radius: var(--radius-full); background: var(--label); color: var(--bg); font: 600 var(--text-footnote, 13px)/1.2 var(--font-sans); white-space: nowrap; box-shadow: 0 2px 8px rgb(0 0 0 / .25); }
+
 /* Pull to refresh (Today and Health). */
 .ptr { position: absolute; top: calc(var(--topbar-h) - 40px); left: 50%; margin-left: -18px; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-raised); box-shadow: var(--shadow-card); color: var(--label-secondary); opacity: 0; z-index: calc(var(--z-float) - 1); pointer-events: none; }
 .ptr.armed { color: var(--accent); }

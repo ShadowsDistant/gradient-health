@@ -289,6 +289,7 @@ export const APP_SCRIPTS = [
   'src/ui/motion.js',
   'src/ui/sheet.js',
   'src/ui/hapticsui.js',
+  'src/tracesum.js', // a WebView trace recording summed up, for the scroll diagnostics
   'src/ui/diag.js', // scroll diagnostics (Settings, About)
   'src/ui/charts.js',
   'src/ui/guide.js',
