@@ -648,6 +648,11 @@ public final class MainActivity extends Activity {
         return diagnostics;
     }
 
+    /** The page's WebView, or null before it's made and after it's gone (the diagnostics flick it). */
+    View pageView() {
+        return webView;
+    }
+
     // ---------------------------------------------------------------- JS helpers
 
     /** Runs a script in the page (posted to the UI thread; result ignored). Safe from any thread. */

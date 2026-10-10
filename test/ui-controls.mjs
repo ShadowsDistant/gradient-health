@@ -1,10 +1,10 @@
 // Switches, segmented controls and chip choices under real touch gestures (CDP touch events at phone
 // size) and the mouse and keyboard, each case repeated with seeded jitter:
 // - switches: a clean tap, wobbly taps (6 and 11 px), a drag, a flick, a half drag, a drag the page
-//   cancels, a vertical swipe (the page scrolls), a tap on the row's text (also right after a
-//   cancelled drag), the mouse, Space, a re-render that adds a row above, a double tap, a switch in a
-//   sheet right after the sheet was dragged, a disabled switch and a refused change (it springs back
-//   with a deny);
+//   cancels, a vertical swipe (the page scrolls, and nothing's left held after), a tap on the row's
+//   text (also right after a cancelled drag), the mouse, Space, a re-render that adds a row above, a
+//   double tap, a switch in a sheet right after the sheet was dragged, a disabled switch and a refused
+//   change (it springs back with a deny);
 // - segmented controls and chip choices: wobbly taps, dragging from any segment, a cancelled drag,
 //   a vertical swipe and the arrow keys;
 // - then the glass: thumbs glass at rest, the lens only while held or moving and off at rest, the
@@ -257,6 +257,23 @@ await repeat('a vertical swipe that starts on the switch scrolls the page and do
   const o = await outcome(SUP, 'supersets', b.checked, 260);
   const moved = Math.abs((await page.evaluate(() => document.getElementById('screen').scrollTop)) - top);
   return never(o) || (moved < 20 && dy < 0 && top > 0) ? { o, moved } : null;
+});
+// Most touches on a switch's row in Settings start a scroll. Each one used to take Refract's liquid
+// engine on for the knob at the touch and never hand it back (the knob neither lifted nor moved, so it
+// never landed): an engine and a lens filter left behind per scroll, and the switch counted as moving,
+// so the page was never calm (U.calm) again while Settings was open.
+await repeat('a scroll that starts on a switch\'s row leaves nothing behind: no engine on the knob, no lens filter, and the page calm again', 31, async (i, r) => {
+  const b = await where(SUP);
+  const f0 = await page.evaluate(() => document.querySelectorAll('filter').length);
+  const dy = (i % 2 ? 1 : -1) * Math.round(between(r, 60, 110));
+  await gesture(line(b.tx, b.ty, b.tx + between(r, -4, 4), b.ty + dy, 8), { hold: 10 });
+  const s = await page.evaluate(async () => {
+    const U = window.GH.ui, t0 = performance.now();
+    while (!U.calm() && performance.now() - t0 < 4000) await new Promise((res) => setTimeout(res, 50));
+    const knobs = [...document.querySelectorAll('#screen .rf-switch-thumb')];
+    return { calm: U.calm(), moving: U.controlsMoving(), filters: document.querySelectorAll('filter').length, engaged: knobs.filter((k) => k.style.getPropertyValue('--_lens') || k.style.transform).length };
+  });
+  return s.calm && !s.moving && s.filters === f0 && !s.engaged ? null : { f0, ...s };
 });
 await mode('phone');
 await repeat('a tap on the row\'s text toggles, also right after a cancelled drag (phone slop)', 12, async (i, r) => {

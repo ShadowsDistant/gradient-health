@@ -1367,6 +1367,20 @@ public final class Bridge {
         activity.diagnostics().highRefresh(high);
     }
 
+    /**
+     * One vertical flick of the page as a finger makes it, for the glass speed test: Android's own
+     * touch events, sent through the app's window (Diagnostics.flick). In the page view's pixels, from
+     * (x, y), dy up or down over ms. Only ever a straight vertical move of 100 px or more, so it can
+     * scroll the page and never tap anything. False if it can't (one still going, out of bounds).
+     */
+    @JavascriptInterface
+    public boolean diagFlick(double x, double y, double dy, double ms) {
+        if (!trusted()) {
+            return false;
+        }
+        return activity.diagnostics().flick(activity.pageView(), (float) x, (float) y, (float) dy, (int) Math.round(ms));
+    }
+
     /** Starts recording the WebView's own trace events (Android 9+). False if it can't. */
     @JavascriptInterface
     public boolean traceStart() {

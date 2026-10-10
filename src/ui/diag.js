@@ -40,6 +40,9 @@
   const prune = (list) => { const cut = now() - KEEP_MS; let i = 0; while (i < list.length && list[i][0] < cut) i++; if (i) list.splice(0, i); };
   const screen = () => doc.getElementById('screen');
   const topNow = () => { const s = screen(); return s ? s.scrollTop : 0; };
+  // The glass effects setting a gesture started under, so flicks in different looks can be told apart
+  // in one report.
+  const glassNow = () => { const g = U.glassState && U.glassState(); return (g && g.mode) || doc.documentElement.getAttribute('data-glass') || ''; };
   const desc = (el) => {
     if (!el || el.nodeType !== 1) return '?';
     const c = String(el.className || '').trim().split(/\s+/).filter((x) => x && !/^rf-list-/.test(x))[0];
@@ -62,12 +65,16 @@
   /* ---------------------------------------------------------------- touches and scrolls */
   let touchSeq = 0;
   const onTouch = (e) => {
+    // The glass speed test's own flicks aren't gestures to report (there are dozens, and the report
+    // lists the last few): it reports them itself.
+    if (speedRunning) return;
     const t = now();
     const p = e.touches[0] || e.changedTouches[0];
     const route = U.route || {};
-    // [t, type, x, y, delay, touches, target, tab, view, sheet open]
+    // [t, type, x, y, delay, touches, target, tab, view, sheet open, glass effects]
     T.push([t, e.type, p ? Math.round(p.clientX) : -1, p ? Math.round(p.clientY) : -1, Math.round(t - e.timeStamp), e.touches.length,
-      e.type === 'touchstart' ? desc(e.target) : '', route.tab || '', route.view || '', e.type === 'touchstart' && !!doc.querySelector('.gh-sheet')]);
+      e.type === 'touchstart' ? desc(e.target) : '', route.tab || '', route.view || '', e.type === 'touchstart' && !!doc.querySelector('.gh-sheet'),
+      e.type === 'touchstart' ? glassNow() : '']);
     if (e.type === 'touchstart') touchSeq++;
     if (e.type === 'touchstart' || e.type === 'touchmove') wake(2500); else wake(2000);
     if (T.length > 3000) T.splice(0, 500);
@@ -131,7 +138,9 @@
   }
   // The last recording: { when, page, glass, bytes, readMs, lines, app }.
   let trace = null, recording = false;
-  async function record(secs, onTick) {
+  // opts.keep false: the recording is only returned, not kept as the report's (the speed test's own,
+  // which has a line of its own); opts.glass: what to call the glass it ran under.
+  async function record(secs, onTick, opts) {
     const br = bridge();
     if (!br || !br.traceStart || !br.traceStop || !br.traceRead) throw new Error('Recording needs the Android app, on Android 9 or newer');
     if (recording) throw new Error('A recording is already running');
@@ -164,13 +173,14 @@
         if (i % 6 === 5) await wait(0); // the page stays responsive while it reads
       }
       const pr = (U.S && U.S.profile && U.S.profile.prefs) || {};
-      trace = {
+      const out = {
         when: new Date().toISOString().replace('T', ' ').slice(0, 19),
         page: (U.route && (U.route.view || U.route.tab)) || '?',
-        glass: ['liquid', 'frosted', 'flat'].includes(pr.glass) ? pr.glass : 'auto',
+        glass: (opts && opts.glass) || (['liquid', 'frosted', 'flat'].includes(pr.glass) ? pr.glass : 'auto'),
         bytes, readMs: Math.round(now() - r0), lines: GH.traceSum.lines(sum.finish()), app: appFrames(t0, t1),
       };
-      return trace;
+      if (!opts || opts.keep !== false) trace = out;
+      return out;
     } finally {
       recording = false;
       if (!stopped) { try { br.traceStop(); } catch (e) { /* ignore */ } }
@@ -208,8 +218,8 @@
     const out = [];
     let g = null;
     for (const r of T) {
-      const [t, type, x, y, delay, fingers, target, tab, view, sheet] = r;
-      if (type === 'touchstart' && !g) { g = { t0: t, t1: null, x0: x, y0: y, yMin: y, yMax: y, yEnd: y, moves: 0, delay, target, tab, view, sheet, fingers: 1 }; continue; }
+      const [t, type, x, y, delay, fingers, target, tab, view, sheet, glass] = r;
+      if (type === 'touchstart' && !g) { g = { t0: t, t1: null, x0: x, y0: y, yMin: y, yMax: y, yEnd: y, moves: 0, delay, target, tab, view, sheet, glass, fingers: 1 }; continue; }
       if (!g) continue;
       g.delay = Math.max(g.delay, delay);
       g.fingers = Math.max(g.fingers, fingers + (type === 'touchstart' ? 0 : 0));
@@ -252,7 +262,7 @@
     const stuck = travel >= 120 && room > 40 && moved < 10 && !g.sheet && g.fingers < 2;
     const late = !stuck && first && first[0] - g.t0 >= 150;
     const bits = [];
-    bits.push(`${stuck ? '*' : late ? '~' : ' '} ${clock(g.t0)} ${g.view || g.tab}${g.sheet ? ' (sheet open)' : ''} · finger ${up ? 'up' : 'down'} ${Math.round(travel)} px in ${Math.round(t1 - g.t0)} ms${g.moves ? '' : ' (a tap)'} on ${g.target}${g.cancel ? ', cancelled' : ''}`);
+    bits.push(`${stuck ? '*' : late ? '~' : ' '} ${clock(g.t0)} ${g.view || g.tab}${g.sheet ? ' (sheet open)' : ''}${g.glass ? ` · ${g.glass}` : ''} · finger ${up ? 'up' : 'down'} ${Math.round(travel)} px in ${Math.round(t1 - g.t0)} ms${g.moves ? '' : ' (a tap)'} on ${g.target}${g.cancel ? ', cancelled' : ''}`);
     bits.push(`page moved ${Math.round(moved)} px while down${first ? ` (first at ${Math.round(first[0] - g.t0)} ms${first[0] > t1 ? ', after the lift' : ''})` : travel >= 120 ? ' (never)' : ''}, then ${Math.round(Math.abs(topEnd - topLift))} px more${holds.length ? `; held ${holds.join(', ')}` : ''}`);
     bits.push(`frames ${frames.length}, longest gap ${Math.round(gap)} ms`);
     bits.push(long.length ? `thread held ${long.length}x, longest ${longest[2]} ms (frame of ${longest[1]} ms at ${clock(longest[0])}${longest[0] < g.t0 ? ', before' : longest[0] > t1 ? ', after' : ''})${longest[3] ? ': ' + longest[3] : ''}` : 'thread free');
@@ -299,26 +309,97 @@
     const g = r.gaps, n = g.length;
     return { n, p50: Math.round(pct(g, 0.5) * 10) / 10, p95: Math.round(pct(g, 0.95) * 10) / 10, max: Math.round(g.reduce((m, x) => Math.max(m, x), 0)), over20: n ? Math.round(100 * g.filter((x) => x > 20).length / n) : 0, over33: n ? Math.round(100 * g.filter((x) => x > 33).length / n) : 0, fps: r.ms ? Math.round(1000 * n / r.ms) : 0 };
   }
-  // opts.ms: how long each look runs (default 2200); opts.settle: the wait before each (default 400).
+  // The touch half, where the phone can flick the page (the Android app: AndroidBridge.diagFlick,
+  // Diagnostics.java): the same looks, the page flicked by the phone's own touch events, so each scroll
+  // goes the way one does under a finger, through Android's UI thread and the web view's touch handling
+  // and fling. The half above scrolls the page from the page itself and skips all of that, and on the
+  // owner's phone it was smooth in every look while the page stuttered under a finger in Liquid. On
+  // Settings, where that was reported most: flicks up the page and back down, every frame timed.
+  const FLICK_MS = 110, FLICK_GAP = 950;
+  let ownTouchUntil = 0; // the test's own flicks: their touches mustn't stop it
+  function flickOnce(x, y, dy) {
+    const br = bridge(), d = G.devicePixelRatio || 1;
+    if (!br || !br.diagFlick) return false;
+    ownTouchUntil = now() + FLICK_MS + 400;
+    try { return !!br.diagFlick(Math.round(x * d), Math.round(y * d), Math.round(dy * d), FLICK_MS); } catch (e) { return false; }
+  }
+  // Flick k of a run: up the page twice (the finger going up), then back down twice.
+  function flickAt(k) {
+    const w = G.innerWidth, h = G.innerHeight, up = Math.floor(k / 2) % 2 === 0;
+    return flickOnce(w * 0.3, up ? h * 0.7 : h * 0.3, (up ? -1 : 1) * h * 0.38);
+  }
+  // n flicks, FLICK_GAP apart, with the page's frames and its scroll position kept; null if the phone
+  // wouldn't flick or a touch stopped the test.
+  function flickRun(n) {
+    return new Promise((resolve) => {
+      const sc = screen();
+      const gaps = [], pos = [], starts = [];
+      let last = 0, live = true, k = 0;
+      const t0 = now();
+      const frame = (t) => { if (last) gaps.push(t - last); last = t; pos.push([t, sc.scrollTop]); if (live) G.requestAnimationFrame(frame); };
+      G.requestAnimationFrame(frame);
+      const end = (ok) => { live = false; resolve(ok ? { gaps, pos, starts, ms: now() - t0 } : null); };
+      const next = () => {
+        if (speedAbort) { end(false); return; }
+        if (k >= n) { end(true); return; }
+        starts.push(now());
+        if (!flickAt(k)) { end(false); return; }
+        k++;
+        G.setTimeout(next, FLICK_GAP);
+      };
+      next();
+    });
+  }
+  // A run of flicks summed up: the page's frames; how long after each touch the page started to move;
+  // and each time it held still mid-fling (50 ms or more), then moved on with a jump (15 px or more):
+  // the fling stopping and catching up, as the diagnostics saw on the owner's phone.
+  function flickSummary(r) {
+    const s = summarize(r);
+    const startMs = [], holds = [];
+    let jump = 0;
+    r.starts.forEach((a, k) => {
+      const b = k + 1 < r.starts.length ? r.starts[k + 1] : Infinity;
+      const p = r.pos.filter((q) => q[0] >= a && q[0] < b);
+      const first = p.findIndex((q) => Math.abs(q[1] - (p[0] ? p[0][1] : 0)) >= 2);
+      if (first < 1) return;
+      startMs.push(p[first][0] - a);
+      let lastMove = first;
+      for (let j = first + 1; j < p.length; j++) if (p[j][1] !== p[j - 1][1]) lastMove = j;
+      let still = 0;
+      for (let j = first + 1; j <= lastMove; j++) {
+        if (p[j][1] === p[j - 1][1]) { still += p[j][0] - p[j - 1][0]; continue; }
+        const step = Math.abs(p[j][1] - p[j - 1][1]);
+        if (still >= 50 && step >= 15) { holds.push(still); jump = Math.max(jump, step); }
+        still = 0;
+      }
+    });
+    return Object.assign(s, { flicks: r.starts.length, moved: startMs.length, start: startMs.length ? Math.round(pct(startMs, 0.5)) : null, holds: holds.length, hold: holds.length ? Math.round(Math.max(...holds)) : 0, jump: Math.round(jump) });
+  }
+  // opts.ms: how long each look runs (default 1600); opts.settle: the wait before each (default 400);
+  // opts.flicks: the touch half's flicks per look (default 4; 0 leaves it out); opts.record: false
+  // leaves out its recorded pass.
   async function speedTest(opts) {
     if (speedRunning) return speed;
-    const ms = (opts && opts.ms) || 2200, settle = (opts && opts.settle) != null ? opts.settle : 400;
+    const ms = (opts && opts.ms) || 1600, settle = (opts && opts.settle) != null ? opts.settle : 400;
+    const flicks = (opts && opts.flicks) != null ? opts.flicks : 4;
     speedRunning = true; speedAbort = false;
     const html = doc.documentElement;
-    const abort = () => { speedAbort = true; };
+    const abort = () => { if (now() > ownTouchUntil) speedAbort = true; };
     doc.addEventListener('touchstart', abort, { passive: true, capture: true });
     doc.addEventListener('keydown', abort, { passive: true, capture: true });
-    const rows = [];
-    let hz = 0;
+    const rows = [], touchRows = [];
+    let hz = 0, scrollPage = '', touchPage = '', touchNote = '', touchTrace = null;
     try {
       if (U.closeSheets) U.closeSheets();
       // A long page with the tab bar under it: Plan (or the page this is, when it's no tab).
       if (U.go && !(opts && opts.stay)) U.go('plan');
       await wait(1300);
       if (U.motion && U.motion.settled) await U.motion.settled();
+      scrollPage = (U.route && (U.route.view || U.route.tab)) || '?';
       const sc = screen();
       if (sc) sc.scrollTop = 0;
-      if (U.glassHold) U.glassHold(true);
+      // Held as Liquid, whatever the setting: its bend (core.js) goes with the glass as designed.
+      if (U.glassHold) U.glassHold(true, 'liquid');
       // At the display's fastest rate, as under a finger (most phones switch to it for a touch,
       // and not for a page that scrolls by itself).
       const br = bridge();
@@ -340,6 +421,39 @@
       };
       await run('warm', '', LOOKS[0][2], false);
       for (const [id, label, attrs] of LOOKS) { if (speedAbort) break; await run(id, label, attrs, true); }
+      // The touch half (above), on Settings.
+      const bt = bridge();
+      if (flicks > 0 && !speedAbort && bt && bt.diagFlick) {
+        if (U.open && !(U.route && U.route.view === 'settings')) U.open('settings');
+        await wait(1300);
+        if (U.motion && U.motion.settled) await U.motion.settled();
+        touchPage = (U.route && (U.route.view || U.route.tab)) || '?';
+        const runT = async (id, label, attrs, count) => {
+          for (const a of GX_ATTRS) html.removeAttribute(a);
+          for (const k of Object.keys(attrs)) html.setAttribute(k, attrs[k]);
+          const sc2 = screen();
+          if (sc2) sc2.scrollTop = 0;
+          await wait(Math.max(settle, 500));
+          if (speedAbort) return;
+          const a0 = now();
+          const r = await flickRun(count ? flicks : 2);
+          const app = appFrames(a0, now());
+          if (!r) { if (!speedAbort) touchNote = 'the phone wouldn\'t flick the page'; return; }
+          if (count && !speedAbort) touchRows.push(Object.assign({ id, label, app }, flickSummary(r)));
+        };
+        await runT('warm', '', LOOKS[0][2], false);
+        for (const [id, label, attrs] of LOOKS) { if (speedAbort || touchNote) break; await runT(id, label, attrs, true); }
+        // Once more as designed, recorded (the web view's own trace, Android 9+): each touch's way to
+        // the screen, each frame's steps and each fling's ticks, under the same flicks.
+        if (!speedAbort && !touchNote && !(opts && opts.record === false) && bt.traceStart && !recording) {
+          for (const a of GX_ATTRS) html.removeAttribute(a);
+          const sc2 = screen();
+          if (sc2) sc2.scrollTop = 0;
+          await wait(Math.max(settle, 500));
+          let k = 0;
+          try { touchTrace = await record(Math.max(2, flicks), (left) => { if (left > 0) flickAt(k++); return !speedAbort; }, { keep: false, glass: 'the glass as designed, under the test\'s flicks' }); } catch (e) { touchTrace = { error: String((e && e.message) || e) }; }
+        }
+      }
     } finally {
       const br = bridge();
       if (br && br.diagRefresh) { try { br.diagRefresh(false); } catch (e) { /* ignore */ } }
@@ -354,19 +468,42 @@
       if (U.glassHold) U.glassHold(false); // works the attributes out again from the setting
       speedRunning = false;
     }
-    speed = { when: new Date().toISOString().replace('T', ' ').slice(0, 19), page: (U.route && (U.route.view || U.route.tab)) || '?', ms, rows, hz, stopped: speedAbort };
+    speed = { when: new Date().toISOString().replace('T', ' ').slice(0, 19), page: scrollPage || (U.route && (U.route.view || U.route.tab)) || '?', ms, rows, hz, stopped: speedAbort, touchPage, touchRows, touchNote, touchTrace, flicks };
     return speed;
   }
   function speedLines() {
     if (!speed) return ['Glass speed test: not run (Settings, About, Scroll diagnostics)'];
-    const out = [`Glass speed test (${speed.when}, ${speed.page}${speed.hz ? `, display ${speed.hz} Hz` : ''}, each look ${(speed.ms / 1000).toFixed(1)} s, the page's frame times in ms, then Android's; fewer late frames is smoother${speed.stopped ? '; STOPPED by a touch' : ''}):`];
+    const out = [`Glass speed test (${speed.when}${speed.hz ? `, display ${speed.hz} Hz` : ''}${speed.stopped ? '; STOPPED by a touch' : ''}):`];
+    out.push(`  The page scrolling by itself, on ${speed.page}, each look ${(speed.ms / 1000).toFixed(1)} s: the page's frame times in ms, then Android's; fewer late frames is smoother.`);
     // Smoothest by Android's late frames where it says, else by the page's own.
+    const lateShare = (r) => r.app.overDeadline / Math.max(1, r.app.frames);
     const android = speed.rows.length && speed.rows.every((r) => r.app && r.app.frames);
-    const score = (r) => (android ? r.app.overDeadline / Math.max(1, r.app.frames) : r.p95);
+    const score = (r) => (android ? lateShare(r) : r.p95);
     const best = speed.rows.reduce((m, r) => (m && score(m) <= score(r) ? m : r), null);
+    // (Under a finger, how late the phone's own touches reached the app says how busy Android's UI
+    // thread was: it takes each touch, and in a web view it waits on the page's compositor every frame.)
+    const appBits = (r) => (r.app && r.app.frames ? ` · Android: ${r.app.frames} frames, ${r.app.overDeadline} late, frame p95 ${r.app.total ? r.app.total[1] : '-'}${r.app.gpu ? `, GPU p95 ${r.app.gpu[1]}` : ''}${r.app.command ? `, RenderThread p95 ${r.app.command[1]}` : ''}${r.app.waitUi ? `, waiting for the UI thread p95 ${r.app.waitUi[1]}` : ''}${r.app.touches && r.app.touchLate ? `, touches late p95 ${r.app.touchLate[1]}` : ''}` : '');
     for (const r of speed.rows) {
-      const a = r.app && r.app.frames ? ` · Android: ${r.app.frames} frames, ${r.app.overDeadline} late, frame p95 ${r.app.total ? r.app.total[1] : '-'}${r.app.gpu ? `, GPU p95 ${r.app.gpu[1]}` : ''}${r.app.command ? `, RenderThread p95 ${r.app.command[1]}` : ''}` : '';
-      out.push(`  ${r.label.padEnd(36)} ${String(r.fps).padStart(3)} fps · median ${r.p50} · p95 ${r.p95} · worst ${r.max} · over 20 ms ${r.over20}% · over 33 ms ${r.over33}%${a}${best && r === best ? '   <- smoothest' : ''}`);
+      out.push(`  ${r.label.padEnd(36)} ${String(r.fps).padStart(3)} fps · median ${r.p50} · p95 ${r.p95} · worst ${r.max} · over 20 ms ${r.over20}% · over 33 ms ${r.over33}%${appBits(r)}${best && r === best ? '   <- smoothest' : ''}`);
+    }
+    // The touch half: the page flicked by the phone's own touch events.
+    if (speed.touchRows && speed.touchRows.length) {
+      out.push(`  Under a finger (the phone's own touch events), on ${speed.touchPage}, ${speed.flicks} flicks each look: the page's frames, how long after the touch it moved, any time it held still mid-fling then jumped, and Android's frames:`);
+      const tAndroid = speed.touchRows.every((r) => r.app && r.app.frames);
+      const tScore = (r) => r.holds * 1000 + (tAndroid ? lateShare(r) * 100 : 0) + r.p95 / 100;
+      const tBest = speed.touchRows.reduce((m, r) => (m && tScore(m) <= tScore(r) ? m : r), null);
+      for (const r of speed.touchRows) {
+        const moved = r.moved < r.flicks ? ` · moved on ${r.moved} of ${r.flicks}` : '';
+        out.push(`  ${r.label.padEnd(36)} p95 ${r.p95} · worst ${r.max} · over 20 ms ${r.over20}%${r.start != null ? ` · moved ${r.start} ms after the touch` : ''}${moved} · held ${r.holds ? `${r.holds}x, longest ${r.hold} ms, then ${r.jump} px` : 'never'}${appBits(r)}${tBest && r === tBest ? '   <- smoothest' : ''}`);
+      }
+    } else if (speed.touchNote) out.push(`  Under a finger: not run (${speed.touchNote})`);
+    else if (!speed.stopped && speed.flicks !== 0) out.push('  Under a finger: not run (it needs the Android app)');
+    const tt = speed.touchTrace;
+    if (tt && tt.error) out.push(`  Recorded under the test's flicks: no (${tt.error})`);
+    else if (tt) {
+      out.push(`  Recorded under the test's flicks, the glass as designed (${(tt.bytes / 1e6).toFixed(1)} MB, read in ${tt.readMs} ms):`);
+      if (tt.app) out.push('    ' + appLine(tt.app));
+      for (const l of tt.lines) out.push('  ' + l);
     }
     return out;
   }
@@ -403,7 +540,7 @@
     U.sheet({
       title: 'Scroll diagnostics', size: 'full',
       body: `<div class="sheet-pad"><p class="t-callout rf-muted">If a scroll freezes or jumps, open this right after and copy or share it to the developer. It's what the last few minutes of touches, scrolling, frames and the page's own work looked like on this phone; nothing is sent anywhere by itself.</p></div>
-        <ul class="rf-list">${U.row({ key: 'diag-copy', icon: 'copy', tone: 'teal', title: 'Copy', act: 'diagCopy' })}${U.row({ key: 'diag-share', icon: 'share', tone: 'violet', title: 'Share', sub: 'To a message, an email or a note', act: 'diagShare' })}${U.row({ key: 'diag-record', icon: 'activity', tone: 'rose', title: 'Record what the phone does', sub: '12 seconds: flick the page up and down where it stutters. It records how the phone handled each touch, frame and fling, and adds it to the report', act: 'diagRecord', chevron: true })}${U.row({ key: 'diag-speed', icon: 'bolt', tone: 'amber', title: 'Glass speed test', sub: 'About 20 seconds. The page scrolls by itself in a few looks of the glass, and the report says which one this phone draws smoothly. Leave the screen alone', act: 'diagSpeed', chevron: true })}</ul>
+        <ul class="rf-list">${U.row({ key: 'diag-copy', icon: 'copy', tone: 'teal', title: 'Copy', act: 'diagCopy' })}${U.row({ key: 'diag-share', icon: 'share', tone: 'violet', title: 'Share', sub: 'To a message, an email or a note', act: 'diagShare' })}${U.row({ key: 'diag-record', icon: 'activity', tone: 'rose', title: 'Record what the phone does', sub: '12 seconds: flick the page up and down where it stutters. It records how the phone handled each touch, frame and fling, and adds it to the report', act: 'diagRecord', chevron: true })}${U.row({ key: 'diag-speed', icon: 'bolt', tone: 'amber', title: 'Glass speed test', sub: 'About a minute. The page scrolls by itself, then the phone flicks it up and down as a finger would, in a few looks of the glass, and the report says which one stays smooth. Leave the screen alone', act: 'diagSpeed', chevron: true })}</ul>
         <textarea class="rf-input preview" readonly aria-label="Scroll diagnostics">${U.esc(txt)}</textarea>`,
     });
   };
