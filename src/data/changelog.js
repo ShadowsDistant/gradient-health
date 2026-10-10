@@ -6,6 +6,18 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.8.8', date: '2026-10-10', title: 'Finding the stutter in Liquid',
+      store: [
+        '• Scroll diagnostics can record what your phone does while a scroll stutters: how it handled each touch, frame and fling',
+        '• The glass speed test now times the phone\'s own drawing of each frame, at its fastest refresh rate',
+      ].join('\n'),
+      items: [
+        ['wave', 'Liquid still stutters on some phones while the page moves, and the glass speed test couldn\'t say why: it timed the page\'s own frames, which looked even while the phone drew them late. Scroll diagnostics now see the rest of the way from your finger to the screen.'],
+        ['activity', 'Record what the phone does (Settings, About, Scroll diagnostics): 12 seconds of how the app\'s web view handled each touch, frame and fling, summed up in the report. Flick the page up and down where it stutters with Glass effects on Liquid, then share the report. The recording stays on your phone and is deleted once it\'s read.'],
+        ['bolt', 'The report adds Android\'s own timing of the app\'s frames, how late each touch reached the app, and the screen\'s refresh rate, and the glass speed test runs at your screen\'s fastest rate and times each look as the phone draws it.'],
+      ],
+    },
+    {
       version: '1.8.7', date: '2026-10-09', title: 'Auto is back',
       store: [
         '• Glass effects is back on Auto: the glass as designed at rest and lighter while the page moves, which keeps scrolling smooth',

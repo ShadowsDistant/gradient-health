@@ -269,13 +269,13 @@ section('The bridge answers only the app\'s page');
 {
   const BR = read(`${JAVA}Bridge.java`);
   // Everything that reads or changes data, reaches the network or another app, or runs a model.
-  const GATED = /^(save\w*|load\w*|deleteSecret|hc\w+|model\w+|share\w+|openUrl|act\w+|llm\w+|foodLookup|copy|pendingLink)$/;
+  const GATED = /^(save\w*|load\w*|deleteSecret|hc\w+|model\w+|share\w+|openUrl|act\w+|llm\w+|foodLookup|copy|pendingLink|diag\w+|trace\w+)$/;
   // The rest: the screen, haptics and harmless facts about the phone.
   const OPEN = /^(keepAwake|vibrate\w*|haptic\w*|isDark|setSystemBars|insets|claudeInstalled|appVersion|deviceMemory|rendererGone)$/;
   const methods = [...BR.matchAll(/@JavascriptInterface\n(?:\s*@\w+(?:\([^)]*\))?\n)?\s*public [\w<>[\]]+ (\w+)\(([^)]*)\) \{\n([^\n]*)/g)].map((m) => ({ name: m[1], first: m[3].trim() }));
   const ungated = methods.filter((m) => GATED.test(m.name) && m.first !== 'if (!trusted()) {');
   const unknown = methods.filter((m) => !GATED.test(m.name) && !OPEN.test(m.name)).map((m) => m.name);
-  check(`all ${methods.filter((m) => GATED.test(m.name)).length} bridge methods with side effects check trusted() first (secrets, save and load, hc*, model*, share*, openUrl, act*, llm*)`, methods.length > 40 && ungated.length === 0, ungated.map((m) => m.name));
+  check(`all ${methods.filter((m) => GATED.test(m.name)).length} bridge methods with side effects check trusted() first (secrets, save and load, hc*, model*, share*, openUrl, act*, llm*, diag* and trace*)`, methods.length > 40 && ungated.length === 0, ungated.map((m) => m.name));
   check('every other bridge method is one of the harmless kinds (a new one has to be sorted into a list here)', unknown.length === 0, unknown);
   check('trusted() asks MainActivity whether the page is the app\'s', /private boolean trusted\(\) \{\s*return activity\.pageTrusted\(\);/.test(BR));
 }

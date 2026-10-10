@@ -19,8 +19,14 @@
  * emulator unable to say which part of it, the page scrolls itself for about two seconds in each of a
  * few looks (the glass as designed, without the lenses, without the top bar's edge, with the glow
  * hidden, light, light with the glow kept), timing every frame, and the report says
- * which look this phone draws smoothly. The frames are timed on the page's own animation frames: when
- * the GPU falls behind, the browser holds the next frame back, and the gaps show it.
+ * which look this phone draws smoothly. The frames are timed on the page's own animation frames, and
+ * on Android's (below): the page's can look even while the phone draws them late.
+ *
+ * And the phone's side (Diagnostics.java, through the diag* and trace* bridge methods): Android's own
+ * timing of each frame of the app's window and of each touch, added to each gesture and to each look
+ * of the speed test (run at the display's fastest refresh rate, as under a finger), and on request a
+ * 12-second recording of the WebView's trace events, summed up by src/tracesum.js: each touch's way
+ * from the finger to the screen, each frame's steps, each fling.
  */
 (function (G) {
   'use strict';
@@ -95,6 +101,90 @@
     }).observe({ type: 'event', durationThreshold: 16 });
   } catch (e) { /* ignore */ }
 
+  /* ---------------------------------------------------------------- the phone's side */
+  // What the page can't see from inside the WebView, from the Android side (Diagnostics.java):
+  // Android's timing of each frame of the app's window (how late it was, the GPU's time, how long it
+  // waited for the UI thread) and how late each touch reached the app's UI thread, for any stretch
+  // of time; and on request a recording of the WebView's own trace events, which the page reads back
+  // a piece at a time and sums up (src/tracesum.js): each touch's way to the screen, each frame's
+  // steps, each fling.
+  const bridge = () => G.AndroidBridge || null;
+  const wallAt = (t) => Math.round((perf.timeOrigin || (Date.now() - now())) + t);
+  function appFrames(a, b) {
+    const br = bridge();
+    if (!br || !br.diagFrames) return null;
+    try { const s = br.diagFrames(wallAt(a), wallAt(b)); return s ? JSON.parse(s) : null; } catch (e) { return null; }
+  }
+  function display() {
+    const br = bridge();
+    if (!br || !br.diagDisplay) return null;
+    try { const s = br.diagDisplay(); return s ? JSON.parse(s) : null; } catch (e) { return null; }
+  }
+  const tri = (a) => (a && a.length ? a.join('/') : '-');
+  function appLine(o) {
+    if (!o) return '';
+    if (!o.frames && !o.touches) return 'Android: no frames or touches recorded';
+    const bits = [];
+    if (o.frames) bits.push(`Android drew ${o.frames} frames, ${o.overDeadline} late${o.overDeadlineByHalf ? ` (${o.overDeadlineByHalf} by half a frame or more)` : ''}; ms p50/p95/max: frame ${tri(o.total)}${o.gpu ? `, GPU ${tri(o.gpu)}` : ''}, RenderThread ${tri(o.command)}, waiting for the UI thread ${tri(o.waitUi)}`);
+    if (o.touches) bits.push(`touches reached the app ${tri(o.touchLate)} ms late`);
+    return bits.join('; ');
+  }
+  // The last recording: { when, page, glass, bytes, readMs, lines, app }.
+  let trace = null, recording = false;
+  async function record(secs, onTick) {
+    const br = bridge();
+    if (!br || !br.traceStart || !br.traceStop || !br.traceRead) throw new Error('Recording needs the Android app, on Android 9 or newer');
+    if (recording) throw new Error('A recording is already running');
+    if (!br.traceStart()) throw new Error("The phone wouldn't start a recording");
+    recording = true;
+    const hooks = G.__gh || (G.__gh = {});
+    const t0 = now();
+    let stopped = false;
+    try {
+      for (let left = Math.max(1, secs); left > 0; left--) {
+        if (onTick && onTick(left) === false) break;
+        await wait(1000);
+      }
+      const t1 = now();
+      const saved = new Promise((resolve) => {
+        const timer = G.setTimeout(() => { hooks.onTraceSaved = null; resolve(-2); }, 60000);
+        hooks.onTraceSaved = (bytes) => { G.clearTimeout(timer); hooks.onTraceSaved = null; resolve(Number(bytes)); };
+      });
+      if (onTick) onTick(0);
+      if (!br.traceStop()) throw new Error("The recording couldn't be stopped");
+      stopped = true;
+      const bytes = await saved;
+      if (bytes < 0) throw new Error(bytes === -2 ? 'The recording took too long to save' : "The recording couldn't be saved");
+      const sum = GH.traceSum.create();
+      const r0 = now();
+      for (let i = 0; ; i++) {
+        const chunk = br.traceRead();
+        if (chunk == null) break;
+        sum.push(chunk);
+        if (i % 6 === 5) await wait(0); // the page stays responsive while it reads
+      }
+      const pr = (U.S && U.S.profile && U.S.profile.prefs) || {};
+      trace = {
+        when: new Date().toISOString().replace('T', ' ').slice(0, 19),
+        page: (U.route && (U.route.view || U.route.tab)) || '?',
+        glass: ['liquid', 'frosted', 'flat'].includes(pr.glass) ? pr.glass : 'auto',
+        bytes, readMs: Math.round(now() - r0), lines: GH.traceSum.lines(sum.finish()), app: appFrames(t0, t1),
+      };
+      return trace;
+    } finally {
+      recording = false;
+      if (!stopped) { try { br.traceStop(); } catch (e) { /* ignore */ } }
+      try { if (br.traceDone) br.traceDone(); } catch (e) { /* ignore */ }
+    }
+  }
+  function traceLines() {
+    if (!trace) return ['What the phone did (a recording): none yet (Record what the phone does, below the report)'];
+    const out = [`What the phone did, recorded ${trace.when} on ${trace.page} with glass ${trace.glass} (${(trace.bytes / 1e6).toFixed(1)} MB, read in ${trace.readMs} ms):`];
+    if (trace.app) out.push('  ' + appLine(trace.app));
+    for (const l of trace.lines) out.push(l);
+    return out;
+  }
+
   /* ---------------------------------------------------------------- the report */
   const clock = (t) => { const d = new Date((perf.timeOrigin || Date.now() - now()) + t); const two = (n) => String(n).padStart(2, '0'); return `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}.${Math.floor(d.getMilliseconds() / 100)}`; };
   let gpu = null;
@@ -167,6 +257,8 @@
     bits.push(`frames ${frames.length}, longest gap ${Math.round(gap)} ms`);
     bits.push(long.length ? `thread held ${long.length}x, longest ${longest[2]} ms (frame of ${longest[1]} ms at ${clock(longest[0])}${longest[0] < g.t0 ? ', before' : longest[0] > t1 ? ', after' : ''})${longest[3] ? ': ' + longest[3] : ''}` : 'thread free');
     bits.push(`input delay up to ${delay} ms`);
+    const af = appFrames(g.t0 - 50, after);
+    if (af) bits.push(appLine(af));
     return bits.join('\n    ');
   }
   /* ---------------------------------------------------------------- the glass speed test */
@@ -217,6 +309,7 @@
     doc.addEventListener('touchstart', abort, { passive: true, capture: true });
     doc.addEventListener('keydown', abort, { passive: true, capture: true });
     const rows = [];
+    let hz = 0;
     try {
       if (U.closeSheets) U.closeSheets();
       // A long page with the tab bar under it: Plan (or the page this is, when it's no tab).
@@ -226,18 +319,30 @@
       const sc = screen();
       if (sc) sc.scrollTop = 0;
       if (U.glassHold) U.glassHold(true);
+      // At the display's fastest rate, as under a finger (most phones switch to it for a touch,
+      // and not for a page that scrolls by itself).
+      const br = bridge();
+      if (br && br.diagRefresh) { try { br.diagRefresh(true); } catch (e) { /* ignore */ } await wait(600); }
+      const disp = display();
+      hz = disp ? disp.hz : 0;
       const run = async (id, label, attrs, count) => {
         for (const a of GX_ATTRS) html.removeAttribute(a);
         for (const k of Object.keys(attrs)) html.setAttribute(k, attrs[k]);
         sc.scrollTop = 0;
         await wait(settle);
         if (speedAbort) return;
+        const a0 = now();
         const r = summarize(await scrollRun(ms));
-        if (count && !speedAbort) rows.push(Object.assign({ id, label }, r)); // a look cut short by a touch isn't counted
+        // Android's own timing of the same frames: the page's frames alone can look even while
+        // the phone draws them late (on the GPU, or on Android's side of the WebView).
+        const app = appFrames(a0, now());
+        if (count && !speedAbort) rows.push(Object.assign({ id, label, app }, r)); // a look cut short by a touch isn't counted
       };
       await run('warm', '', LOOKS[0][2], false);
       for (const [id, label, attrs] of LOOKS) { if (speedAbort) break; await run(id, label, attrs, true); }
     } finally {
+      const br = bridge();
+      if (br && br.diagRefresh) { try { br.diagRefresh(false); } catch (e) { /* ignore */ } }
       doc.removeEventListener('touchstart', abort, true);
       doc.removeEventListener('keydown', abort, true);
       for (const a of GX_ATTRS) html.removeAttribute(a);
@@ -249,14 +354,20 @@
       if (U.glassHold) U.glassHold(false); // works the attributes out again from the setting
       speedRunning = false;
     }
-    speed = { when: new Date().toISOString().replace('T', ' ').slice(0, 19), page: (U.route && (U.route.view || U.route.tab)) || '?', ms, rows, stopped: speedAbort };
+    speed = { when: new Date().toISOString().replace('T', ' ').slice(0, 19), page: (U.route && (U.route.view || U.route.tab)) || '?', ms, rows, hz, stopped: speedAbort };
     return speed;
   }
   function speedLines() {
     if (!speed) return ['Glass speed test: not run (Settings, About, Scroll diagnostics)'];
-    const out = [`Glass speed test (${speed.when}, ${speed.page}, each look ${(speed.ms / 1000).toFixed(1)} s, frame times in ms; fewer frames over 20 ms is smoother${speed.stopped ? '; STOPPED by a touch' : ''}):`];
-    const best = speed.rows.reduce((m, r) => (m && m.p95 <= r.p95 ? m : r), null);
-    for (const r of speed.rows) out.push(`  ${r.label.padEnd(36)} ${String(r.fps).padStart(3)} fps · median ${r.p50} · p95 ${r.p95} · worst ${r.max} · over 20 ms ${r.over20}% · over 33 ms ${r.over33}%${best && r === best ? '   <- smoothest' : ''}`);
+    const out = [`Glass speed test (${speed.when}, ${speed.page}${speed.hz ? `, display ${speed.hz} Hz` : ''}, each look ${(speed.ms / 1000).toFixed(1)} s, the page's frame times in ms, then Android's; fewer late frames is smoother${speed.stopped ? '; STOPPED by a touch' : ''}):`];
+    // Smoothest by Android's late frames where it says, else by the page's own.
+    const android = speed.rows.length && speed.rows.every((r) => r.app && r.app.frames);
+    const score = (r) => (android ? r.app.overDeadline / Math.max(1, r.app.frames) : r.p95);
+    const best = speed.rows.reduce((m, r) => (m && score(m) <= score(r) ? m : r), null);
+    for (const r of speed.rows) {
+      const a = r.app && r.app.frames ? ` · Android: ${r.app.frames} frames, ${r.app.overDeadline} late, frame p95 ${r.app.total ? r.app.total[1] : '-'}${r.app.gpu ? `, GPU p95 ${r.app.gpu[1]}` : ''}${r.app.command ? `, RenderThread p95 ${r.app.command[1]}` : ''}` : '';
+      out.push(`  ${r.label.padEnd(36)} ${String(r.fps).padStart(3)} fps · median ${r.p50} · p95 ${r.p95} · worst ${r.max} · over 20 ms ${r.over20}% · over 33 ms ${r.over33}%${a}${best && r === best ? '   <- smoothest' : ''}`);
+    }
     return out;
   }
 
@@ -268,12 +379,15 @@
     lines.push(`Gradient Health ${p && p.appVersion ? p.appVersion() : GH.VERSION || ''} · scroll diagnostics · ${new Date().toISOString().replace('T', ' ').slice(0, 19)}`);
     lines.push(`Device: ${G.navigator.userAgent}`);
     lines.push(`Screen ${G.innerWidth}x${G.innerHeight} at ${G.devicePixelRatio}x · ${G.navigator.hardwareConcurrency || '?'} cores · ${G.navigator.deviceMemory ? G.navigator.deviceMemory + ' GB' : 'memory ?'} · GPU: ${gpuName() || '?'} · long frames ${loaf ? 'yes' : 'no'}`);
+    const disp = display();
+    if (disp) lines.push(`Display: ${disp.hz} Hz now${disp.modes ? ` (it can run at ${disp.modes.join(', ')})` : ''} · Android API ${disp.sdk}`);
     const gs = U.glassState ? U.glassState() : null;
     lines.push(`Settings: glass ${['liquid', 'frosted', 'flat'].includes(pr.glass) ? pr.glass : 'auto'}${gs && gs.lite ? ' (light now)' : ''} · density ${pr.density == null ? 0.5 : pr.density} · theme ${pr.theme || 'system'} (${doc.documentElement.getAttribute('data-theme') || '?'}) · moving background ${pr.glowMove === false ? 'off' : 'on'} · contrast ${pr.contrast ? 'on' : 'off'} · reduced motion ${U.reduced && U.reduced() ? 'on' : 'off'} · figure ${pr.figure || '3d'} · text ${doc.documentElement.style.fontSize || 'normal'}`);
     const gl = gestures().slice(-14).reverse();
     lines.push(`Gestures, newest first (${gl.length} of the last ${Math.round(KEEP_MS / 60000)} min; * the page didn't follow the finger, ~ it followed late):`);
     for (const g of gl) lines.push('  ' + describe(g));
     if (!gl.length) lines.push('  none yet');
+    for (const l of traceLines()) lines.push(l);
     for (const l of speedLines()) lines.push(l);
     const worst = L.slice().sort((a, b) => b[2] - a[2]).slice(0, 6).sort((a, b) => b[0] - a[0]);
     lines.push(`Longest the thread was held, newest first:`);
@@ -281,7 +395,7 @@
     if (!worst.length) lines.push('  nothing over 50 ms');
     return lines.join('\n');
   }
-  GH.diag = { report, gestures, speedTest, _streams: () => ({ T, S, L, E }) };
+  GH.diag = { report, gestures, speedTest, record, trace: () => trace, _streams: () => ({ T, S, L, E }) };
 
   /* ---------------------------------------------------------------- Settings */
   U.act.scrollDiag = () => {
@@ -289,9 +403,32 @@
     U.sheet({
       title: 'Scroll diagnostics', size: 'full',
       body: `<div class="sheet-pad"><p class="t-callout rf-muted">If a scroll freezes or jumps, open this right after and copy or share it to the developer. It's what the last few minutes of touches, scrolling, frames and the page's own work looked like on this phone; nothing is sent anywhere by itself.</p></div>
-        <ul class="rf-list">${U.row({ key: 'diag-copy', icon: 'copy', tone: 'teal', title: 'Copy', act: 'diagCopy' })}${U.row({ key: 'diag-share', icon: 'share', tone: 'violet', title: 'Share', sub: 'To a message, an email or a note', act: 'diagShare' })}${U.row({ key: 'diag-speed', icon: 'bolt', tone: 'amber', title: 'Glass speed test', sub: 'About 20 seconds. The page scrolls by itself in a few looks of the glass, and the report says which one this phone draws smoothly. Leave the screen alone', act: 'diagSpeed', chevron: true })}</ul>
+        <ul class="rf-list">${U.row({ key: 'diag-copy', icon: 'copy', tone: 'teal', title: 'Copy', act: 'diagCopy' })}${U.row({ key: 'diag-share', icon: 'share', tone: 'violet', title: 'Share', sub: 'To a message, an email or a note', act: 'diagShare' })}${U.row({ key: 'diag-record', icon: 'activity', tone: 'rose', title: 'Record what the phone does', sub: '12 seconds: flick the page up and down where it stutters. It records how the phone handled each touch, frame and fling, and adds it to the report', act: 'diagRecord', chevron: true })}${U.row({ key: 'diag-speed', icon: 'bolt', tone: 'amber', title: 'Glass speed test', sub: 'About 20 seconds. The page scrolls by itself in a few looks of the glass, and the report says which one this phone draws smoothly. Leave the screen alone', act: 'diagSpeed', chevron: true })}</ul>
         <textarea class="rf-input preview" readonly aria-label="Scroll diagnostics">${U.esc(txt)}</textarea>`,
     });
+  };
+  // The recording runs on whatever page is under the sheet, which closes for it. A small solid pill
+  // (not glass: it would be one more filter in what's being measured) counts down; a tap ends it early.
+  U.act.diagRecord = async () => {
+    if (U.closeSheets) U.closeSheets();
+    const pill = doc.createElement('button');
+    pill.type = 'button';
+    pill.className = 'diag-rec';
+    let early = false;
+    pill.addEventListener('click', () => { early = true; });
+    doc.body.appendChild(pill);
+    try {
+      await record(12, (left) => {
+        pill.textContent = left > 0 ? `Recording: flick up and down · ${left}` : 'Reading the recording…';
+        return !early;
+      });
+      U.haptic('success');
+    } catch (e) {
+      U.toast('No recording', 'caution', String((e && e.message) || e).slice(0, 140));
+    } finally {
+      pill.remove();
+    }
+    if (U.act.scrollDiag) U.act.scrollDiag();
   };
   // (No toast while it runs: a toast is glass too, and would be one more filter in the first look.)
   U.act.diagSpeed = async () => {

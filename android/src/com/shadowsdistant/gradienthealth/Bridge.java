@@ -1334,4 +1334,80 @@ public final class Bridge {
         } catch (Throwable ignored) {
         }
     }
+
+    // ---------------------------------------------------------------- scroll diagnostics (Diagnostics)
+
+    /**
+     * Android's timing of the app's frames and touches between two wall-clock times (ms since the
+     * epoch), summed up as JSON (Diagnostics.summary), for the scroll diagnostics report.
+     */
+    @JavascriptInterface
+    public String diagFrames(double from, double to) {
+        if (!trusted()) {
+            return "";
+        }
+        return activity.diagnostics().summary((long) from, (long) to);
+    }
+
+    /** The display's refresh rate now and the rates it can run at, as JSON. */
+    @JavascriptInterface
+    public String diagDisplay() {
+        if (!trusted()) {
+            return "";
+        }
+        return activity.diagnostics().display();
+    }
+
+    /** The display at its fastest refresh rate while true (the glass speed test), Android's choice after. */
+    @JavascriptInterface
+    public void diagRefresh(boolean high) {
+        if (!trusted()) {
+            return;
+        }
+        activity.diagnostics().highRefresh(high);
+    }
+
+    /** Starts recording the WebView's own trace events (Android 9+). False if it can't. */
+    @JavascriptInterface
+    public boolean traceStart() {
+        if (!trusted()) {
+            return false;
+        }
+        return activity.diagnostics().traceStart();
+    }
+
+    /**
+     * Stops the recording and saves it to the app's cache; the page hears onTraceSaved(bytes) once
+     * it's all written (bytes is -1 if it couldn't be). False if nothing was being recorded.
+     */
+    @JavascriptInterface
+    public boolean traceStop() {
+        if (!trusted()) {
+            return false;
+        }
+        return activity.diagnostics().traceStop(new Diagnostics.SizeCallback() {
+            @Override
+            public void done(long bytes) {
+                activity.callJs(MainActivity.jsCall("onTraceSaved", String.valueOf(bytes)));
+            }
+        });
+    }
+
+    /** The next piece (about 256 KB) of the saved recording, or null at its end. */
+    @JavascriptInterface
+    public String traceRead() {
+        if (!trusted()) {
+            return null;
+        }
+        return activity.diagnostics().traceRead();
+    }
+
+    /** The recording has been read (or isn't wanted): it's deleted. */
+    @JavascriptInterface
+    public void traceDone() {
+        if (!trusted()) {
+            return;
+        }
+        activity.diagnostics().traceDone();
+    }
 }

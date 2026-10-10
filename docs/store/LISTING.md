@@ -74,15 +74,14 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 ## What's new (500 characters at most)
 
-Paste this into the What's new field with each update. This is 1.8.7's. Each GitHub release carries
+Paste this into the What's new field with each update. This is 1.8.8's. Each GitHub release carries
 its own version's text at the end of its What's new, under "Short version, for a store's What's new
 field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
 (`node scripts/release-notes.mjs --store` prints it).
 
 ```text
-• Glass effects is back on Auto: the glass as designed at rest and lighter while the page moves, which keeps scrolling smooth
-• Liquid keeps the glass while you scroll too, for phones that can keep up
-• Still in: the light on the glass holds still, and the glow rests while you use the app
+• Scroll diagnostics can record what your phone does while a scroll stutters: how it handled each touch, frame and fling
+• The glass speed test now times the phone's own drawing of each frame, at its fastest refresh rate
 ```
 
 ## Images

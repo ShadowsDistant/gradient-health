@@ -18,6 +18,7 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -94,6 +95,9 @@ public final class MainActivity extends Activity {
     private static final long BACK_TIMEOUT_MS = 2000;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    // Scroll diagnostics, the Android side: the window's frame timings, each touch's lateness and
+    // the WebView trace recordings (Bridge.diag*, Bridge.trace*).
+    private final Diagnostics diagnostics = new Diagnostics(this);
 
     // UI-thread state.
     private FrameLayout root;
@@ -136,6 +140,8 @@ public final class MainActivity extends Activity {
 
         bridge = new Bridge(this);
         current = new WeakReference<MainActivity>(this);
+        diagnostics.start(getWindow());
+        diagnostics.traceDone(); // a recording the last run left half read
         String url = APP_URL;
         Intent intent = getIntent();
         if (isPrivacyIntent(intent)) {
@@ -309,6 +315,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        diagnostics.stop(getWindow());
         LlmClient c = llm;
         if (c != null) {
             c.release();
@@ -626,6 +633,19 @@ public final class MainActivity extends Activity {
             // SecurityException for a protected action, etc.
             return false;
         }
+    }
+
+    // ---------------------------------------------------------------- scroll diagnostics
+
+    /** Each touch passes through here on the UI thread first: Diagnostics notes how late it is. */
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        diagnostics.touch(ev);
+        return super.dispatchTouchEvent(ev);
+    }
+
+    Diagnostics diagnostics() {
+        return diagnostics;
     }
 
     // ---------------------------------------------------------------- JS helpers

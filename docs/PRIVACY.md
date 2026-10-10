@@ -1,6 +1,6 @@
 # Gradient Health privacy policy
 
-Last updated October 8, 2026.
+Last updated October 10, 2026.
 
 Gradient Health is a workout, health and food tracking app for Android. This policy explains exactly what the app collects, where it keeps it, what (if anything) leaves your phone, and how to delete it.
 
@@ -28,7 +28,7 @@ Nobody is paid for your data, and it's never used for advertising.
 | Badges you share: a picture of the badge, its name and the date you earned it, and your first name only if you turn it on | You, when you tap Share on a badge you earned | Showing friends and family what you did | Only when you tap Share, and only to the app you pick on Android's share sheet: exactly the picture the preview shows. Nothing goes through a server |
 | Coach chats: questions you ask and the answers | You and the coach | Showing the conversation and answering follow-ups | Only questions you send to Claude. The built-in and on-device coaches run on your phone |
 | Reports about AI answers: the answer you flag and the reason you pick | You | Hiding that answer, and telling the developer if you choose to | Only if you choose to send it: it opens as a GitHub issue that you can read and edit before posting |
-| Scroll diagnostics (optional): the last five minutes of touches (where and when), how far the page moved, how long frames took, and your phone's model, screen size and graphics chip | Your phone, while the app is open | Showing you what a freeze looked like (Settings, About, Scroll diagnostics), and which look of the glass your phone draws smoothly | No. It stays in memory and is gone when the app closes, unless you tap Copy or Share to send the report somewhere yourself |
+| Scroll diagnostics (optional): the last few minutes of touches (where and when, and how late each reached the app), how far the page moved, how long frames took (as the page and as Android timed them), your phone's model, screen size, refresh rate and graphics chip, and if you record one, 12 seconds of the app's own web view timing each touch, frame and fling | Your phone, while the app is open | Showing you what a freeze looked like (Settings, About, Scroll diagnostics), and which look of the glass your phone draws smoothly | No. It stays in memory and is gone when the app closes, unless you tap Copy or Share to send the report somewhere yourself. A recording is saved in the app's own storage only while the app reads it, then deleted; the report keeps its sums |
 | Anthropic API key (optional) | You | Letting the app call Claude on your behalf. It's stored encrypted on your phone, with a key Android keeps for the app that never leaves the phone | Only to Anthropic, with each Claude request. Never in a backup or in Copy my data |
 | On-device AI model file (optional) | Downloaded from Hugging Face when you ask | Running the on-device coach | No. It's a download, nothing is uploaded |
 
