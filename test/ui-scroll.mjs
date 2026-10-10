@@ -378,7 +378,9 @@ async function touchScroll(build, id) {
   await sleep(2500);
   const blocking = await blockingListeners(cdp);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU });
-  await gpuBrowser.startTracing(page, { categories: ['cc', 'benchmark', 'disabled-by-default-devtools.timeline.frame'] });
+  // input: the flings' own events (FlingController), which the trace summary below reads, as in a
+  // recording on the phone.
+  await gpuBrowser.startTracing(page, { categories: ['cc', 'benchmark', 'input', 'disabled-by-default-devtools.timeline.frame'] });
   for (const [y0, dy] of [[650, -400], [650, -400], [250, 500]]) { await fling(cdp, y0, dy); await sleep(1500); }
   const evs = (JSON.parse((await gpuBrowser.stopTracing()).toString()).traceEvents) || [];
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
