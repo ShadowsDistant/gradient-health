@@ -37,7 +37,21 @@ export function seedBridge() {
   window.__pending = window.__pending || [];
   window.__pendingDone = [];
   const bgJson = () => JSON.stringify(Object.assign({}, window.__bg, { pending: window.__pending.length }));
+  // Notifications (Notifier.java): each schedule the page hands over collects in __notify.schedules.
+  // A test sets __notify.permission (what Android says now), __notify.answer (what the person answers
+  // when asked), __notify.tap (the notification the app was opened from) and __notify.sent.
+  const nf = window.__notify = Object.assign({ schedules: [], permission: 'ask', answer: 'granted', asked: 0, opened: 0, tap: '', sent: [], lastPosted: null, blocked: [] }, window.__notify || {});
+  const nfState = () => {
+    const last = nf.schedules[nf.schedules.length - 1];
+    const items = last ? last.items : [];
+    return JSON.stringify({ permission: nf.permission, blocked: nf.blocked, lastPosted: nf.lastPosted, sent: nf.sent, scheduled: items.length, next: items.length ? items[0].at : null });
+  };
   window.AndroidBridge = {
+    notifySchedule: (json) => { nf.schedules.push(JSON.parse(json)); return true; },
+    notifyState: nfState,
+    notifyRequest: () => { nf.asked++; setTimeout(() => { if (nf.permission === 'ask') nf.permission = nf.answer; window.__gh.onNotifyPermission(nfState()); }, 30); },
+    notifyOpenSettings: () => { nf.opened++; },
+    notifyTap: () => { const t = nf.tap; nf.tap = ''; return t; },
     hcStatus: () => 'granted', hcRequest: () => {}, hcRequestFood: () => {}, hcOpenSettings: () => {}, hcCanWrite: () => true, hcWriteWorkout: () => {},
     hcGranted: () => JSON.stringify(['steps', 'sleep', 'weight', 'height', 'bodyFat', 'restingHr', 'hrv', 'exercise', 'heartRate', 'activeKcal', 'distance', 'nutrition', 'writeExercise', 'writeNutrition', 'background']),
     hcBackground: bgJson,
@@ -96,7 +110,8 @@ export function seedState(o) {
   }
   B.addProtein(S, today, 26); B.addProtein(S, today, 32);
   S.feel[today] = { energy: 'good', sore: 'some' };
-  S.seen = { tour: true, checklistHidden: true, lastVersion: window.GH.VERSION, tip_plan: true, tip_health: true, tip_progress: true, tip_moves: true, playerHint: true, rirCount: 5, moveSheet: true };
+  // (notifyAsk: they've answered Today's card about notifications; test/ui-notify.mjs asks it.)
+  S.seen = { tour: true, checklistHidden: true, lastVersion: window.GH.VERSION, tip_plan: true, tip_health: true, tip_progress: true, tip_moves: true, playerHint: true, rirCount: 5, moveSheet: true, notifyAsk: true };
   S.measurements = [{ day: start + 1, waist: 81.5, armL: 30.4, armR: 31.6 }, { day: today - 1, waist: 80.6, armL: 31.1, armR: 31.8 }];
   window.GH.store.save(S);
 }

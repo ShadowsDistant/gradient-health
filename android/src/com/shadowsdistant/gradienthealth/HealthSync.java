@@ -238,11 +238,13 @@ final class HealthSync {
     static boolean finishRun(Context context, String json, long at) {
         String error;
         boolean ok = false;
+        String sleep = null;
         try {
             JSONObject payload = new JSONObject(json == null ? "{}" : json);
             error = problem(payload);
             if (error == null) {
                 ok = true;
+                sleep = sleepOf(payload);
                 String hash = contentHash(payload);
                 SharedPreferences p = prefs(context);
                 if (!hash.equals(p.getString("lastHash", ""))) {
@@ -264,7 +266,28 @@ final class HealthSync {
             e.putString("error", error == null ? "failed" : error);
         }
         e.apply();
+        if (sleep != null) {
+            Notifier.sleepRead(context, sleep, at);
+        }
         return ok;
+    }
+
+    /*
+     * The morning's sleep note (Notifier) needs last night's sleep while the app is closed: each good
+     * read's sleep sessions go to it as JSON (the entries onHealth gets: start, end, asleepMin,
+     * stages), apart from the queue the page empties.
+     */
+    private static final int MAX_SLEEP_JSON = 64 * 1024;
+
+    /** The read's sleep sessions as JSON, or null when sleep wasn't read (not allowed, or it failed). */
+    private static String sleepOf(JSONObject payload) {
+        JSONArray sleep = payload.optJSONArray("sleep");
+        JSONObject errors = payload.optJSONObject("errors");
+        if (sleep == null || (errors != null && errors.has("sleep"))) {
+            return null;
+        }
+        String s = sleep.toString();
+        return s.length() <= MAX_SLEEP_JSON ? s : null;
     }
 
     /** Records why a run didn't read anything (see {@link #blocker}). */

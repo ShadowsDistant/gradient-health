@@ -285,7 +285,7 @@ await go('you');
 await page.click('#screen [data-act="openSettings"]');
 await settle(900);
 const groups = () => ev(() => [...document.querySelectorAll('#screen .set-list > .rf-list-header:not([data-sub])')].filter((h) => !h.hidden).map((h) => h.textContent).join(','));
-check('in order: your plan, tracking, Health Connect, AI coach, sound and haptics, look, general, your data, about', (await groups()) === 'Your plan,What you track,Health Connect,AI coach,Sound and haptics,Look,General,Your data,About', await groups());
+check('in order: your plan, tracking, notifications, Health Connect, AI coach, sound and haptics, look, general, your data, about', (await groups()) === 'Your plan,What you track,Notifications,Health Connect,AI coach,Sound and haptics,Look,General,Your data,About', await groups());
 const general = await ev(() => [...document.querySelectorAll('#screen ul[data-group="general"] .rf-list-title')].map((t) => t.textContent).join());
 check('General holds units and the start of the day', general === 'Units,Start of the day', general);
 check('Sound and Vibration lead Sound and haptics', await ev(() => [...document.querySelectorAll('#screen ul[data-group="feel"] .rf-list-title')].slice(0, 2).map((t) => t.textContent).join() === 'Sound,Vibration'));
@@ -334,7 +334,7 @@ check('typing doesn\'t re-render: the same nodes, still in the field', await ev(
 await page.click('#screen .set-search .rf-search-clear');
 await settle(300);
 r = await shown();
-check('clearing it brings every group back', r.groups === 'plan,track,hc,coach,feel,look,general,data,about' && !r.none, JSON.stringify(r.groups));
+check('clearing it brings every group back', r.groups === 'plan,track,notify,hc,coach,feel,look,general,data,about' && !r.none, JSON.stringify(r.groups));
 await search('supersets');
 await ev(() => document.querySelector('#screen [data-k="supersets"]').click());
 await settle(900);
@@ -345,7 +345,7 @@ await settle(900);
 await home();
 await page.click('#screen [data-act="openSettings"]');
 await settle(900);
-check('a new visit starts with an empty search', await ev(() => document.getElementById('setQ').value === '' && document.querySelectorAll('#screen .set-list > .rf-list-header:not([data-sub]):not([hidden])').length === 9));
+check('a new visit starts with an empty search', await ev(() => document.getElementById('setQ').value === '' && document.querySelectorAll('#screen .set-list > .rf-list-header:not([data-sub]):not([hidden])').length === 10));
 await home();
 
 section('The Refract credit');

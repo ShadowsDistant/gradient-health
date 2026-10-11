@@ -1,16 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Android 12 and newer. Cloud backups only happen when they're end-to-end encrypted with the
      phone's screen lock. Only the app's saved state and settings are included; the AI coach key never
-     is, and the on-device model lives in no-backup storage. -->
+     is, and the on-device model lives in no-backup storage. Notifications' schedule (notify.xml: what
+     was posted and the last night's sleep it judges) is for this phone only. -->
 <data-extraction-rules>
     <cloud-backup disableIfNoEncryptionCapabilities="true">
         <include domain="file" path="." />
         <include domain="sharedpref" path="." />
         <exclude domain="sharedpref" path="secrets.xml" />
+        <exclude domain="sharedpref" path="notify.xml" />
     </cloud-backup>
     <device-transfer>
         <include domain="file" path="." />
         <include domain="sharedpref" path="." />
         <exclude domain="sharedpref" path="secrets.xml" />
+        <exclude domain="sharedpref" path="notify.xml" />
     </device-transfer>
 </data-extraction-rules>

@@ -235,6 +235,7 @@
           </button>` : ''}
           ${main}
           ${workouts && plan.type !== 'done' && !S.active && U.coachCard ? U.coachCard(S, day, session) : ''}
+          ${U.notifyCard ? U.notifyCard(S, day) : ''}
           ${U.actTodayCard ? U.actTodayCard(S, day, plan) : ''}
           ${ck}
           ${GH.food && GH.food.full(S) && U.foodCard ? U.foodCard(S, day) : proteinCard(S, day)}

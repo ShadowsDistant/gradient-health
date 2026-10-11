@@ -315,6 +315,7 @@ export const APP_SCRIPTS = [
   'src/ui/badges.js',
   'src/ui/coachpage.js',
   'src/ui/settings.js',
+  'src/ui/notify.js', // notifications: the hand-off to Android, Settings' rows and Today's card
 ];
 
 // Parts of the app itself that the first screen doesn't need, each a chunk of its own in dist/lazy/:
@@ -331,6 +332,9 @@ export const APP_CHUNKS = [
   { name: 'science', scripts: ['src/data/science.js', 'src/ui/science.js'] },
   // A badge's share image.
   { name: 'shareCard', scripts: ['src/ui/sharecard.js'] },
+  // What notifications to send and when (GH.notify): planned as the app is left or opened, only for
+  // someone who turned them on (src/ui/notify.js loads it).
+  { name: 'notify', scripts: ['src/notify.js'] },
 ];
 
 // Heavy parts that load only when they're used (the 3D figure, the on-device model runtime, the

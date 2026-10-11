@@ -81,7 +81,8 @@ final class ActivityPermissions {
         return !rationale && prefs(activity).getBoolean(permission, false) ? "denied" : "ask";
     }
 
-    private static String notifications(Activity activity) {
+    /** The notification permission's state; reminders (Notifier) ask with the same memory of a no. */
+    static String notifications(Activity activity) {
         boolean enabled = true;
         try {
             NotificationManager nm = activity.getSystemService(NotificationManager.class);
