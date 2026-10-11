@@ -1,8 +1,6 @@
 /* Performance. While the page scrolls (#app[data-scrolling], set by src/ui/core.js and cleared
-   150 ms after the last scroll), the background glow's drift holds still; the scroll fade, the
-   second animation where it's supported, keeps running. Same values as the other pauses in
-   styles.css. */
-#app[data-scrolling]::before, #app[data-scrolling]::after { animation-play-state: paused, running; }
+   150 ms after the last scroll), the background glow's drift holds still. */
+#app[data-scrolling]::before, #app[data-scrolling]::after { animation-play-state: paused; }
 
 /* Glass over the moving page keeps its frost, tint and rim while the page scrolls. The bend of the
    glass at the bottom (the tab bar, Today's floating buttons, the workout capsule) fades out while it
@@ -46,7 +44,7 @@
    after the last input (#app[data-idle]) it stops again, so a phone left on a page isn't drawing it
    every frame; the next input starts the clock again. */
 #app[data-in-use]::before, #app[data-in-use]::after,
-#app[data-idle]::before, #app[data-idle]::after { animation-play-state: paused, running; }
+#app[data-idle]::before, #app[data-idle]::after { animation-play-state: paused; }
 #app[data-in-use] .onboard::before, #app[data-in-use] .onboard::after,
 #app[data-idle] .onboard::before, #app[data-idle] .onboard::after { animation-play-state: paused; }
 

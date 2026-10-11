@@ -81,7 +81,7 @@ html, body { touch-action: pan-x pan-y; }
 button:not([class*="rf-"]) { font: inherit; }
 /* clip, not hidden: a hidden box can still be scrolled by script, and the glow below is wider than
    the screen, so scrollIntoView could shift the whole app sideways. */
-.app { position: fixed; inset: 0; overflow: hidden; overflow: clip; background: var(--bg); timeline-scope: --page; }
+.app { position: fixed; inset: 0; overflow: hidden; overflow: clip; background: var(--bg); }
 :root { --glow-mint: rgb(111 227 200 / .55); --glow-sky: rgb(58 168 255 / .5); --glow-violet: rgb(155 92 255 / .42); --glow-pink: rgb(255 126 179 / .34); }
 :root[data-theme^="dark"] { --glow-mint: rgb(70 190 170 / .26); --glow-sky: rgb(60 130 255 / .5); --glow-violet: rgb(140 80 255 / .52); --glow-pink: rgb(240 100 170 / .3); }
 /* Ambient glow: the icon's colours (mint, sky, violet, pink) softly behind the top of each page, so
@@ -92,8 +92,8 @@ button:not([class*="rf-"]) { font: inherit; }
    frames: every frame of a drift makes each glass in front of it filter its backdrop again, and at 60 a
    second that alone kept a phone's GPU busy while the page was at rest, so that a flick landed on a GPU
    with nothing to spare (measured in software: 1.6 s of the GPU process's CPU every second at rest,
-   against a hundredth of that with the drift off). The glow also rises and fades as the page
-   scrolls (a scroll-linked animation). The drift holds still with reduced motion, the "Moving
+   against a hundredth of that with the drift off). The glow also rises and fades once the page is
+   scrolled down (below). The drift holds still with reduced motion, the "Moving
    background" setting off, a full-height sheet up, a workout on screen, the page scrolling, while
    the app is in use (any input in the last 3 s) and 20 s after the last input (src/styles/perf.css),
    so it only drifts once the app has been left alone for a moment; the glow is off with
@@ -131,21 +131,28 @@ button:not([class*="rf-"]) { font: inherit; }
   75% { transform: translate3d(2.5%, -2.5%, 0) rotate(2deg) scale(1.05); }
   100% { transform: translate3d(4%, 1.5%, 0) rotate(4deg) scale(1.02); }
 }
-/* Where scroll-linked animations aren't supported (older WebViews) the glow only drifts. The drift
-   comes first in each list, so a single paused value still stops it there. */
-@supports (animation-timeline: scroll()) {
-  .screen { scroll-timeline: --page block; }
-  .app::before, .app::after { animation-name: glow-drift-a, glow-scroll; animation-duration: 26s, auto; animation-timing-function: steps(36), linear; animation-delay: 0s, 0s; animation-iteration-count: infinite, 1; animation-direction: alternate, normal; animation-fill-mode: none, both; animation-timeline: auto, --page; animation-range: normal, 0 480px; }
-  .app::after { animation-name: glow-drift-b, glow-scroll; animation-duration: 34s, auto; animation-delay: -9s, 0s; }
-  [data-theme^="dark"] .app::before { animation-name: glow-drift-a, glow-scroll-dark; }
-  [data-theme^="dark"] .app::after { animation-name: glow-drift-b, glow-scroll-dark; }
-}
-@keyframes glow-scroll { from { opacity: .5; translate: 0 0; } to { opacity: .16; translate: 0 -80px; } }
-@keyframes glow-scroll-dark { from { opacity: .6; translate: 0 0; } to { opacity: .22; translate: 0 -80px; } }
-/* The drift holds still; the scroll fade keeps working. */
+/* Once the page is scrolled down (the large title under the bar, as the bar's frosted edge shows:
+   #app[data-page-scrolled], set with #topbar[data-scrolled] in src/ui/core.js) the glow rises and
+   fades, and it comes back at the top of a page: a timed fade, not one tied to the scroll. Up to
+   1.8.9 it followed the scroll itself, a scroll-linked animation (the page's scroll timeline,
+   animation-timeline: --page). With one of those on the page's scroller, Chromium hands each step
+   of a touch scroll to the page only at the start of a frame, so the animation and the page move
+   together; a web view only gets those frames when the app asks it to draw, and on a phone the
+   steps of a flick waited for one up to 2 s (a recording on a phone: scroll updates queued
+   0.7 s at the median in Liquid), then landed at once, a page that held still and then jumped.
+   Auto and Flat hid the glow while the page moved, which took the animation off the compositor,
+   and scrolled smoothly. So nothing in the app is linked to a scroll position
+   (test/ui-scroll.mjs checks). Reduced motion: the glow fades without rising. */
+.app::before, .app::after { transition: opacity 420ms var(--ease-standard), translate 420ms var(--ease-standard); }
+#app[data-page-scrolled]::before, #app[data-page-scrolled]::after { opacity: .16; translate: 0 -80px; }
+[data-theme^="dark"] #app[data-page-scrolled]::before, [data-theme^="dark"] #app[data-page-scrolled]::after { opacity: .22; }
+/* The drift holds still. */
 :root[data-still-glow] .app::before, :root[data-still-glow] .app::after, #app[data-receded]::before, #app[data-receded]::after,
-.app:has(> #player:not([hidden]))::before, .app:has(> #player:not([hidden]))::after { animation-play-state: paused, running; }
-@media (prefers-reduced-motion: reduce) { .app::before, .app::after { animation-play-state: paused, running; } }
+.app:has(> #player:not([hidden]))::before, .app:has(> #player:not([hidden]))::after { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .app::before, .app::after { animation-play-state: paused; }
+  #app[data-page-scrolled]::before, #app[data-page-scrolled]::after { translate: none; }
+}
 :root[data-theme$="contrast"] .app::before, :root[data-theme$="contrast"] .app::after, :root[data-rf-transparency="reduced"] .app::before, :root[data-rf-transparency="reduced"] .app::after { display: none; }
 @media (prefers-reduced-transparency: reduce) { .app::before, .app::after { display: none; } }
 .screen { position: absolute; inset: 0; overflow-x: hidden; overflow-y: auto; box-sizing: border-box; padding: var(--topbar-h) var(--sar) calc(var(--float-gap) + var(--space-6)) var(--sal); scrollbar-width: none; outline: none; }

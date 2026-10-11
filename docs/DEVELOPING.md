@@ -222,6 +222,21 @@ flicks too. Throughout, the glass is held as Liquid's (`U.glassHold(true, 'liqui
 bottom glass while the page moves whatever the setting). `ui-scroll` runs both halves, the phone's
 flicks played by a stand-in that sends CDP touches.
 
+**Nothing follows the scroll position.** Up to 1.8.9 the glow rose and faded with the page's
+scroll, a scroll-linked animation (`animation-timeline` on the page's scroll timeline). With an
+animation linked to a scroller, Chromium's compositor applies each step of a touch scroll on it only at
+the start of a frame (`InputHandlerProxy`: the scroll needs frame alignment), so the page and the
+animation move together. A WebView gets those frames only when the app asks it to draw, and on the
+owner's phone in Liquid a flick's steps waited up to 2 s (1.8.9's recording: scroll updates queued in
+the renderer's compositor 0.7 s at the median), then landed at once: a page that held still, then
+jumped. Auto and Flat hid the glow while the page moved, which took the animation off the compositor
+(Blink doesn't composite an animation on something that paints nothing), and scrolled smoothly; a
+page scrolling itself (the speed test's first half) never goes through that queue. The glow now fades
+on a timer once the page is scrolled down (`#app[data-page-scrolled]`, set with the bar's frosted
+edge in `core.js`). `ui-scroll` checks that no animation runs on a scroll's timeline, and no page
+names one, in every look; Refract's own scroll-driven effects (`data-reveal`, `data-parallax`,
+`.rf-list-swipe`) stay unused.
+
 **Scrolling, and work that can wait.** A fling should only move what's already drawn
 (`src/styles/perf.css`). While the page scrolls (`#app[data-scrolling]`, set in `core.js` and
 cleared 150 ms after the last scroll) the background glow holds still, and the glass at the bottom

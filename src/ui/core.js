@@ -498,7 +498,9 @@
     if (!e || !screen.contains(e.target)) return;
     markScrolled(ioKey.startsWith('title') ? !e.isIntersecting : e.intersectionRatio < 1);
   }
-  function markScrolled(s) { if (s !== scrolled) { scrolled = s; topbar.toggleAttribute('data-scrolled', s); } }
+  // The glow behind the page rises and fades with it (#app[data-page-scrolled], src/styles.css): a
+  // timed fade, as nothing may follow the scroll position itself (see there).
+  function markScrolled(s) { if (s !== scrolled) { scrolled = s; topbar.toggleAttribute('data-scrolled', s); root.toggleAttribute('data-page-scrolled', s); } }
   // While the page scrolls (#app[data-scrolling]), the glow behind it holds still (src/styles/perf.css),
   // the light holds still, and the bottom glass's bend fades out (below): less to draw every frame of
   // a fling. That's over 150 ms after the last scroll. Set-up's own scroller does the same on its page

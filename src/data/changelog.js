@@ -6,6 +6,17 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.8.10', date: '2026-10-11', title: 'Liquid, without the hold-then-jump',
+      store: [
+        '• Scrolling with Liquid glass no longer holds still and then jumps: the glow behind each page followed the scroll in a way that made the phone hold back each step of a scroll, up to 2 seconds',
+        '• The glow still rises and fades as you scroll down, now as a short fade of its own',
+      ].join('\n'),
+      items: [
+        ['wave', 'Your recording found it. In Liquid, each step of a scroll waited up to 2 seconds before the page moved, then they all landed at once. The glow behind each page followed the scroll position, and while anything does, the web view moves the page only at the start of a frame, which on your phone came late. Auto and Flat hid the glow while you scrolled, which is why they were smooth.'],
+        ['sparkle', 'The glow still rises and fades once you scroll down a page and comes back at the top, as a short fade of its own instead of following your finger. Nothing else in the app follows the scroll that way, and a test now makes sure nothing does.'],
+      ],
+    },
+    {
       version: '1.8.9', date: '2026-10-10', title: 'Switches that let go, and a speed test with a finger',
       store: [
         '• Scrolling Settings no longer leaves a piece of a switch\'s glass running each time a scroll starts on its row, which kept the app from ever settling there',
