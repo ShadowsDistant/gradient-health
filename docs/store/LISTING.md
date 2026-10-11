@@ -47,7 +47,7 @@ BADGES TO OPEN AND SHARE
 • Share one as a picture with friends and family, with your name only if you choose
 
 REMINDERS THAT DON'T NAG
-• A nudge on workout days, a walk on rest days, a badge to open, good news after a great night
+• A nudge on workout days, a walk now and then on rest days, a badge to open, good news after a great night
 • Never more than one a day, never late at night, and at most one a week if you've been away
 • Switch each kind on or off. They're worked out on your phone
 
@@ -82,14 +82,18 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 ## What's new (500 characters at most)
 
-Paste this into the What's new field with each update. This is 1.8.10's. Each GitHub release carries
+Paste this into the What's new field with each update. This is 1.9.0's. Each GitHub release carries
 its own version's text at the end of its What's new, under "Short version, for a store's What's new
 field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
 (`node scripts/release-notes.mjs --store` prints it).
 
 ```text
-• Scrolling with Liquid glass no longer holds still and then jumps: the glow behind each page followed the scroll in a way that made the phone hold back each step of a scroll, up to 2 seconds
-• The glow still rises and fades as you scroll down, now as a short fade of its own
+• Reminders, if you want them: your workout, a walk now and then, a badge to open, a good night's sleep. One a day at most, never at night
+• New badges arrive sealed: tap to crack them open
+• 3D figures on Plan show up at once
+• Quicker switching between tabs
+• Fixed: scrolling could stutter, freeze or jump with the glass effects on
+• Glass effects setting: Auto, Liquid, Frosted or Flat
 ```
 
 ## Images

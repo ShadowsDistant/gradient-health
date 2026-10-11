@@ -199,7 +199,7 @@ A body map, front and back, lights up the muscles you've trained most over the l
 
 64 badges for the things worth celebrating: your first workout, streaks from 3 days to 100, every muscle trained in a week, your first pull-up, a 5K, a month of protein goals, and a few secret ones. Once earned they're yours for good, with the date.
 
-**Every new badge arrives sealed.** It glows in its tier's colour, so you can see how rare it is before you know what it is. Tap it and it cracks; tap again and it bursts open, with a feel in your hand at each tap. Earned a few at once? Open them one by one, or all together.
+**Every new badge arrives sealed,** a glass capsule in its tier's colours, so you can see how rare it is before you know what it is. Tap it and it wobbles, tap again and light cracks through, and the third tap bursts it open, with a feel in your hand at each one. Earned a few at once? Open them one by one, or all together.
 
 Share one as a picture with friends and family: it shows the badge and what it took, and your name only if you choose.
 
