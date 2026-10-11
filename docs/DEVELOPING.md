@@ -65,6 +65,8 @@ src/ui/guide.js          tour (cards over Today after the first workout), first-
 src/ui/motion.js         route changes, glides, collapse and expand, glass that forms and changes
                          shape (U.motion), menus (U.menu)
 src/ui/lazy.js           stand-ins for the parts that load when they're needed (APP_CHUNKS)
+src/ui/stills.js         the 3D figure's stills of the moves, kept on the phone (U.stills): Plan's
+                         tiles, the plan builder's, set-up's reveal, Settings' preview
 src/ui/answers.js        set-up's answers as You, Plan and Settings list them
 src/ui/review.js         Why this plan, the Coach's review sheet and the weekly report's plan ideas
 src/ui/*.js              screens: onboarding, player, today, plan, health, food, progress, moves,
@@ -112,7 +114,8 @@ screen flicker. Parts Refract injects (lens layers, the tab bar's pill, the segm
 left alone. A few conventions:
 
 - Give top-level cards a `data-key` so adding or removing one doesn't shift the rest.
-- `data-morph="keep"` on a container whose children are drawn by code (the exercise figures).
+- `data-morph="keep"` on a container whose children are drawn by code (the exercise figures). Its
+  HTML can bring children (Plan's kept 3D stills) for a new node; a patch leaves the ones it has.
 - `U.roll(value)` for numbers that should roll when they change.
 - The navigation bar is shared: a screen's `<header class="rf-navbar">` is lifted into it.
 - A route change gets fresh content: the old page leaves in a layer of its own while the new one
@@ -275,8 +278,8 @@ filmed on one, three flicks in a row froze for 100 to 330 ms each and then jumpe
 encode or a re-render running under the finger, let loose by the calm moment 400 ms after the last
 scroll. A 3D still now draws on the thread only its figure's frame and the copy out of the GL
 canvas: its shaders compile in the background where the GPU allows (`compileAsync`) and its picture
-is encoded in the background (`toBlob`; `figure3d.stillAsync`), where `toDataURL` took 110 ms and
-more on the thread. The warm-up (`figure3d.preload`) also keeps a wall's transparent material
+is encoded in the background (`toBlob`; `figure3d.stillAsync` and `stillNow`), where `toDataURL`
+took 110 ms and more on the thread. The warm-up (`figure3d.preload`) also keeps a wall's transparent material
 compiled (a program of its own, which a still of a wall or door move compiled again every time) and
 ends with one still the size of Plan's tiles drawn out through a 2D canvas, the first such copy being
 the dear one (700 ms in a software-GL test, 130 ms after); `ui-figure` checks both. `ui-scroll` taps
@@ -392,7 +395,14 @@ minified), which `GH.lazy('figure3d')` loads when it's needed. It sets `GH.figur
 - `mount(el, move, opts)`: a controller shaped like `GH.pose.mount`'s, plus `setView(name)`,
   `phase()` and an `onPhase` callback.
 - `still(move, opts)`: a thumbnail as a data URL, or `null` without WebGL. `cachedStill()` returns
-  one only if it's already drawn, so a page render never waits on the GPU.
+  one only if it's already drawn, so a page render never waits on the GPU. `stillAsync()` is the
+  same with its shaders compiled and its picture encoded in the background (the player's and move
+  sheet's stills).
+- `stillNow(move, opts)`: a still drawn now, in the caller's idle moment (posed, one frame, the copy
+  out and the crop: a few frames' work once warm), so a caller with time left can draw another;
+  `{ url }` is a promise of the data URL, encoded in the background. One that needs shaders no warm
+  view keeps compiled returns `{ wait }` instead, resolved once they've compiled in the background
+  (its posed figure is held meanwhile, so they stay compiled), and the next call draws it.
 - `preload()`: builds the renderer, the body, the equipment and the lighting, then compiles the
   shaders with a view it keeps, one small piece per idle callback so taps never wait on it.
 
@@ -415,10 +425,35 @@ it's there, and flat again if `onFallback` fires. Set-up fetches the chunk. The 
 `U.calm()`: not in the middle of a scroll or a touch), or at once when a finger lands on something
 that opens a figure. `GH.figure3d.warm()` turns true when the warm-up has finished compiling its
 shaders, not when it starts: a figure opened in between would wait on the compile, so it shows its
-kept still meanwhile. Stills of today's figures (for the next launch) start 4 seconds after the
-warm-up, one per idle moment while no figure is on screen. Settings keeps the choice in `profile.prefs.figure` (`'3d'` or `'flat'`), with
+kept still meanwhile. Stills of today's figures for those boxes (for the next launch, in
+localStorage, `gh.figStills`) start 4 seconds after the warm-up, one per idle moment while no figure
+is on screen. Settings keeps the choice in `profile.prefs.figure` (`'3d'` or `'flat'`), with
 `figSkin` and `figShirt` for the look. The tempo strip under a figure comes from the move's `rep`
 steps and lights up from `onPhase`.
+
+**Stills kept on the phone.** With the 3D figure picked, Plan's tiles, the plan builder's, set-up's
+reveal and Settings' preview show the 3D figure's stills of the moves; the flat figure shows only
+when it's the setting, or where a still can't be drawn (no WebGL 2, the chunk didn't load, a still
+that failed). `src/ui/stills.js` (`U.stills`) keeps them across launches in IndexedDB (`gh-stills`),
+under the move as the person does it (`forPerson`: their kit), the look (theme, skin, shirt), the
+size and `GH.FIGURE`, an id the build gives the figure (its chunk with three.js, the pose engine and
+the moves), so a change to any of them draws it again, and only then. What's kept is read into
+memory in one request once the first frame is drawn (with the 3D figure picked; nothing at boot
+otherwise), so Plan puts a kept still straight into its tile's HTML (`U.stills.img`): it's there
+from the page's first frame, without the 3D chunk. A tile without one shows its own background
+(`U.stills.tile`) until its still is drawn, which then fades in (a tile in another look keeps its
+old still until the new one is in). About 3 s after launch, once it's quiet, the stills of this
+week's and next week's moves that aren't kept (`U.planStills` in `src/ui/plan.js`: what each day's
+card shows) are drawn ahead, warming the figure up for them, so Plan finds them even on the first
+day (after set-up too); when they're all kept nothing loads. New ones are drawn with `stillNow` once
+the figure is warm, as many per idle moment as fit, only while it's quiet (`U.quiet`) and no
+figure's box shows: what a screen waits for first, then what's drawn ahead. Up to 300 are kept; past
+that the oldest that this week and next don't show go, and ones an older figure drew go once a
+launch. The plan builder's large tiles (its picker's) are drawn as they come near the screen and
+held for the launch only. Reset everything deletes them. `ui-plan` checks that no tile ever holds
+the flat figure while 3D is picked, the drawing ahead, Plan's first render after a relaunch, a new
+look and the flat setting; `ui-figure` Settings' preview after a relaunch, and that stills wait
+while the page is in use and then go several per idle moment.
 
 ```sh
 npm run build && node test/figure3d.mjs [filter,…] [--dark] [--mirrored]

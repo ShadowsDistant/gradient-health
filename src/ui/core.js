@@ -1486,8 +1486,14 @@
    * 3 GB of memory or more and the app on screen, about 8 s after launch once the page is idle and
    * calm (U.calm: no scroll or touch going on).
    * Otherwise it starts loading the first time a figure is about to show: a press on Start or on a
-   * move. Set-up warms it for its own reveal (src/ui/onboarding.js). */
+   * move. Set-up warms it for its own reveal (src/ui/onboarding.js).
+   * With the 3D figure picked, the stills kept on the phone (src/ui/stills.js) are read in once the
+   * first frame is drawn, so Plan's first frame has them. About 3 s after launch, once it's quiet,
+   * the ones Plan's cards would show this week and next (U.planStills) that aren't kept yet are drawn
+   * ahead, the figure warming up for them, so Plan has them from its first frame even on the first
+   * day; when they're all kept, nothing loads for them. */
   const FIGURE_ACTS = ['startWorkout', 'planStart', 'resumeWorkout', 'startMobility', 'moveInfo', 'planMoveInfo', 'cpHowTo', 'ladder'].map((a) => `[data-act="${a}"]`).join(',');
+  const STILLS_AHEAD_MS = 3000;
   const idle = (fn, ms) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: ms }) : setTimeout(fn, 1));
   function warmFigure() { safe(() => { const w = U.warmFigure || U.preloadFigure; if (w) w(); }); }
   function warmFigureLater() {
@@ -1510,6 +1516,18 @@
       warmFigure();
     };
     setTimeout(() => idle(later, 4000), 8000);
+    const S0 = U.S;
+    if (U.stills && S0 && S0.profile.onboarded && (S0.profile.prefs.figure || '3d') === '3d') afterFrame(() => safe(() => U.stills.load()));
+    U.stillsAhead();
+  }
+  // (Also after set-up, src/ui/stills.js: the first day starts there.)
+  U.stillsAhead = () => setTimeout(() => idle(stillsAhead, 4000), STILLS_AHEAD_MS);
+  function stillsAhead() {
+    const S = U.S, nav = G.navigator || {};
+    if (!S || !S.profile.onboarded || S.profile.workouts === false || nav.deviceMemory < 3 || !U.stills || !U.planStills || !U.stills.ok()) return;
+    if (doc.hidden) { doc.addEventListener('visibilitychange', stillsAhead, { once: true }); return; }
+    if (!U.quiet()) { U.whenQuiet(() => idle(stillsAhead, 4000)); return; }
+    U.stills.load().then(() => { if (U.S === S) safe(() => U.stills.ahead(U.planStills(S, U.today()))); });
   }
 
   let lastDay = null;

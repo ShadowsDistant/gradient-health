@@ -121,8 +121,12 @@ check('the picker opens full height with tiles', await page.locator('dialog[open
 const onlyMine = await S(() => [...document.querySelectorAll('dialog[open] .cp-tile')].every((t) => !t.classList.contains('is-off')));
 check('by default only moves you can do', onlyMine);
 await settle(2500);
-const st1 = await drawn('dialog[open] .cp-tile .cp-thumb');
-check('tiles on screen get stills of the move', st1.drawn >= 4, st1);
+// With the 3D figure (the default) the tiles near the screen get the 3D figure's stills once it's warm
+// (software WebGL here: a while), each a square crop at the tile's size, and never the flat figure.
+let st1 = await drawn('dialog[open] .cp-tile .cp-thumb');
+for (let i = 0; i < 40 && st1.drawn < 4; i++) { await settle(1500); st1 = await drawn('dialog[open] .cp-tile .cp-thumb'); }
+const pic1 = await S(() => { const i = document.querySelector('dialog[open] .cp-tile .cp-thumb > img'); return { flat: document.querySelectorAll('dialog[open] .cp-tile .cp-thumb > svg').length, w: i && i.naturalWidth, h: i && i.naturalHeight }; });
+check('tiles on screen get 3D stills of the move, sharp at their size (not the flat figure)', st1.drawn >= 4 && !pic1.flat && pic1.w === 240 && pic1.h === 240, { ...st1, ...pic1 });
 await shot('04-picker');
 await page.click('dialog[open] [data-on="cpGroup"] [data-arg="legs"]');
 await settle(500);

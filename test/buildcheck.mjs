@@ -20,9 +20,11 @@ import { APP_SCRIPTS, APP_CHUNKS, LAZY, asciiRegexps } from '../scripts/build.mj
 // 2,012,805 bytes; the speed pass then moved set-up, the plan review, How it works and the share
 // card into chunks of their own, and 1.6.0 shipped at 1,840,238 bytes, with a budget of that plus
 // 5% (1,932,000) that held through 1.8.3 (1,930,412 bytes, with Refract 1.4 in). 1.8.4 adds the
-// scroll diagnostics and the glass setting (11 KB) and ships at 1,941,415 bytes; the budget is that
-// plus 2%, enough to catch an asset inlined by mistake.
-const BUDGET = 1980000;
+// scroll diagnostics and the glass setting (11 KB) and ships at 1,941,415 bytes; the budget was that
+// plus 2% (1,980,000), which held through 1.8.10 (1,975,240 bytes). The 3D stills kept on the phone
+// (src/ui/stills.js, about 5 KB) bring it to 1,980,561 bytes; the budget is that plus 1%, enough to
+// catch an asset inlined by mistake.
+const BUDGET = 2000000;
 
 const file = join(root, 'dist/gradient-health.html');
 if (!existsSync(file)) { console.error('No dist/gradient-health.html: run npm run build first.'); process.exit(1); }
