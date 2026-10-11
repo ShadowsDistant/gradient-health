@@ -258,7 +258,7 @@
           ${U.sw('Show the date', true, 'data-on="scDate"')}
         </ul>
         ${U.choice('scTheme', [['light', 'Light'], ['dark', 'Dark']], st.theme, 'Card colours', ' data-on="scTheme"')}
-        <p class="t-footnote rf-muted sc-note">Only this picture goes, and only to the app you pick. ${name ? 'Your name is on it only if you turn it on.' : 'It doesn\'t have your name on it.'}</p>
+        <p class="t-footnote rf-muted sc-note">Only this picture goes, and only to the app you pick. ${name ? 'Your name shows only if you turn it on.' : 'It doesn\'t show your name.'}</p>
         <div class="bdg-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="scShare">${U.icon('share')}Share</button></div>
       </div>`;
     let drawing = Promise.resolve();
