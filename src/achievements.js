@@ -4,12 +4,14 @@
  * out `now`, so tests can drive any timeline. src/ui/badges.js draws the medals and decides when to
  * celebrate.
  *
- * S.achievements = { v: 1, earned: { [id]: { day, at, value?, approx? } }, events: { [name]: { day,
- * at, n } }, seenAt, migrated: { at, n, seen? } }. A badge, once earned, is never taken away: a
- * streak that breaks or a log that's deleted leaves it where it is. `day` is the day it was earned
+ * S.achievements = { v: 2, earned: { [id]: { day, at, opened, value?, approx? } }, events: { [name]:
+ * { day, at, n } }, seenAt, migrated: { at, n, seen? } }. A badge, once earned, is never taken away:
+ * a streak that breaks or a log that's deleted leaves it where it is. `day` is the day it was earned
  * (worked out from history where it can be: the 10th workout's day, the day a streak reached 7);
  * `approx` marks one whose day history can't tell (it then says the day it was found). Badges earned
- * after `seenAt` haven't been shown yet.
+ * after `seenAt` haven't been shown yet. A new badge arrives sealed (`opened: false`) and is opened
+ * in the reveal, src/ui/badges.js; sealed or opened, it's earned all the same. Since 1.8.11 (v 2);
+ * every badge earned before then counts as opened.
  *
  * Everything a definition needs is worked out once per check by ctx(S, day), in sections that are
  * only computed when a definition asks (a check for food badges never replays the calendar).
@@ -455,17 +457,19 @@
   const EVENTS = ['sharedPlan', 'tailored', 'reviewed', 'sharedBadge'];
   function todayOf(S, now) { return B().dayOf(num(now) ? now : Date.now(), rollOf(S)); }
   // The saved record, made whole: anything that isn't one of its parts goes (a backup from elsewhere
-  // may hold anything), unknown badge ids stay (a newer version's).
+  // may hold anything), unknown badge ids stay (a newer version's). A badge's opened is true or false;
+  // without one (earned before 1.8.11) it counts as opened.
   function ensure(S, day) {
     let A = S.achievements;
     if (!isObj(A)) A = S.achievements = {};
-    if (!num(A.v)) A.v = 1;
+    if (!num(A.v)) A.v = 2;
     if (!isObj(A.earned)) A.earned = {};
     for (const id of Object.keys(A.earned)) {
       const e = A.earned[id];
       if (!isObj(e) || !/^[A-Za-z0-9_-]{1,40}$/.test(id)) { delete A.earned[id]; continue; }
       if (!num(e.at)) e.at = 0;
       if (!num(e.day)) { e.day = e.at > 1e12 ? B().dayOf(e.at, rollOf(S)) : num(day) ? day : todayOf(S); e.approx = true; }
+      if (typeof e.opened !== 'boolean') e.opened = true;
     }
     if (!isObj(A.events)) A.events = {};
     for (const k of Object.keys(A.events)) if (!isObj(A.events[k]) || !num(A.events[k].day)) delete A.events[k];
@@ -489,12 +493,14 @@
         id: def.id, def, have: e ? res.goal : res.have, goal: res.goal, pct: earned ? 1 : res.goal ? res.have / res.goal : 0, earned,
         day: e ? e.day : res.day != null ? (res.day < 0 || res.day > day ? day : res.day) : null,
         approx: !!(e && e.approx), at: e ? e.at : null, isNew: !!(e && e.at > seenAt),
+        sealed: !!(e && e.opened === false),
         shown: earned || applies(def, x),
       };
     });
   }
-  // Works out what's newly earned and saves it (cats: only these categories). Returns the new ids,
-  // oldest first. opts: { cats, live, now, approx (an unknown day is marked approximate) }.
+  // Works out what's newly earned and saves it, sealed (cats: only these categories). Returns the new
+  // ids, oldest first. opts: { cats, live, now, approx (an unknown day is marked approximate), opened
+  // (what it finds counts as opened: history found on the first load) }.
   function check(S, day, reason, opts) {
     const o = opts || {};
     const A = ensure(S, day);
@@ -507,7 +513,7 @@
       const res = def.ev(x);
       if (res.day == null) continue;
       const known = res.day >= 0;
-      const rec = { day: known && res.day <= day ? res.day : day, at: now };
+      const rec = { day: known && res.day <= day ? res.day : day, at: now, opened: !!o.opened };
       if (!known && o.approx) rec.approx = true;
       if (def.unit && res.goal > 1) rec.value = res.have;
       A.earned[def.id] = rec;
@@ -525,8 +531,8 @@
     return e;
   }
   // 1.6's first load: everything history already shows is earned now, on the day it happened where
-  // that can be told, all counted as seen (the You tab says how many, once). Runs on every load and
-  // does nothing after the first time.
+  // that can be told, all counted as seen and opened (the You tab says how many, once). Runs on every
+  // load and does nothing after the first time.
   function migrate(S, now) {
     if (!S || !S.profile || (isObj(S.achievements) && S.achievements.migrated)) return S;
     const t = num(now) ? now : Date.now();
@@ -534,9 +540,19 @@
     const day = todayOf(S, t);
     const A = ensure(S, day);
     const had = Object.keys(A.earned).length;
-    try { check(S, day, 'migrate', { now: t, approx: true }); } catch (e) { /* history the check can't read: try again next load */ return S; }
+    try { check(S, day, 'migrate', { now: t, approx: true, opened: true }); } catch (e) { /* history the check can't read: try again next load */ return S; }
     markSeen(S, t);
     A.migrated = { at: t, n: Object.keys(A.earned).length - had };
+    return S;
+  }
+  // 1.8.11's first load: badges now arrive sealed, and every one earned before then was shown as its
+  // medal, so it counts as opened (the record is v 2 from then on). Runs on every load and does
+  // nothing after the first time.
+  function migrateOpened(S) {
+    const A = S && S.achievements;
+    if (!isObj(A) || (num(A.v) && A.v >= 2)) return S;
+    if (isObj(A.earned)) for (const e of Object.values(A.earned)) if (isObj(e)) e.opened = true;
+    A.v = 2;
     return S;
   }
   // Earned but not shown yet, oldest first.
@@ -551,8 +567,24 @@
     A.seenAt = Math.max(A.seenAt, num(now) ? now : Date.now(), ...Object.values(A.earned).map((e) => (num(e.at) ? e.at : 0)));
     return A;
   }
-  // Earned and offered counts, and what's next: the closest badge still to earn (by how far along it
-  // is; a lower tier first on a tie), never a secret one.
+  // Earned and still sealed, oldest first: what the reveal opens, and what a reminder can say is
+  // waiting. Only badges this version knows (a newer version's can't be opened here).
+  function unopened(S) {
+    const A = S && S.achievements;
+    if (!isObj(A) || !isObj(A.earned)) return [];
+    const E = A.earned, at = (id) => (num(E[id].at) ? E[id].at : 0), day = (id) => (num(E[id].day) ? E[id].day : 0);
+    return Object.keys(E).filter((id) => own(byId, id) && isObj(E[id]) && E[id].opened === false).sort((a, b) => at(a) - at(b) || day(a) - day(b));
+  }
+  // Opens a sealed badge, for good. True when it was sealed.
+  function markOpened(S, id) {
+    const E = S && isObj(S.achievements) && isObj(S.achievements.earned) ? S.achievements.earned : null;
+    const e = E && typeof id === 'string' && own(E, id) ? E[id] : null;
+    if (!isObj(e) || e.opened !== false) return false;
+    e.opened = true;
+    return true;
+  }
+  // Earned and offered counts, how many are still sealed, and what's next: the closest badge still to
+  // earn (by how far along it is; a lower tier first on a tie), never a secret one.
   function summary(S, day, list) {
     const l = list || evaluate(S, day);
     const shown = l.filter((x) => x.shown);
@@ -561,7 +593,7 @@
     open.sort((a, b) => (b.pct - a.pct) || (TIERS[a.def.tier].rank - TIERS[b.def.tier].rank));
     const tiers = {};
     for (const t of TIER_ORDER) tiers[t] = earned.filter((x) => x.def.tier === t).length;
-    return { earned: earned.length, total: shown.length, next: open[0] || null, tiers, newCount: l.filter((x) => x.isNew).length };
+    return { earned: earned.length, total: shown.length, next: open[0] || null, tiers, newCount: l.filter((x) => x.isNew).length, unopened: l.filter((x) => x.sealed).length };
   }
   // What "Next up" says is left: "4 to go", "1.2 km to go".
   function toGo(item) {
@@ -595,11 +627,11 @@
     };
   }
 
-  GH.achievements = { DEFS, CATS, CAT, TIERS, TIER_ORDER, EVENTS, byId, ctx, evaluate, check, event, migrate, ensure, unseen, markSeen, summary, toGo, stamps, applies };
+  GH.achievements = { DEFS, CATS, CAT, TIERS, TIER_ORDER, EVENTS, byId, ctx, evaluate, check, event, migrate, migrateOpened, ensure, unseen, markSeen, unopened, markOpened, summary, toGo, stamps, applies };
   // store.migrate runs these on every load (src/store.js), after the plan engine's own. A launch runs
   // this one once its first frame is drawn (later): nothing on that frame reads the badges, and the
   // first check of them comes 800 ms after a change at the soonest (src/ui/badges.js).
-  const badges = function badges(S) { migrate(S); };
+  const badges = function badges(S) { migrateOpened(S); migrate(S); };
   badges.later = true;
   (GH.migrations = GH.migrations || []).push(badges);
 })(typeof window !== 'undefined' ? window : globalThis);
