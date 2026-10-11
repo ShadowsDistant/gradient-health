@@ -1530,7 +1530,12 @@
     if (!S || !S.profile.onboarded || S.profile.workouts === false || nav.deviceMemory < 3 || !U.stills || !U.planStills || !U.stills.ok()) return;
     if (doc.hidden) { doc.addEventListener('visibilitychange', stillsAhead, { once: true }); return; }
     if (!U.calm()) { U.whenCalm(() => idle(stillsAhead, 1000)); return; }
-    U.stills.load().then(() => idle(() => { if (U.S === S) safe(() => U.stills.ahead(U.planStills(S, U.today()))); }, 1000));
+    U.stills.load().then((n) => {
+      // None kept under this figure's id (a fresh install, an update that draws it differently): the
+      // figure starts warming up at once, before the week's stills are worked out.
+      if (!n) safe(() => U.stills.prime());
+      idle(() => { if (U.S === S) safe(() => U.stills.ahead(U.planStills(S, U.today()))); }, 1000);
+    });
   }
 
   let lastDay = null;

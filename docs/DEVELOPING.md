@@ -470,9 +470,10 @@ this version's are drawn, and go once they are. A tile without one shows its own
 old still until the new one is in). Right after the read, in a calm moment, the stills of this
 week's and next week's moves that aren't kept (`U.planStills` in `src/ui/plan.js`: what each day's
 card shows, this week's first) are drawn ahead, warming the figure up for them at once (the chunk is
-asked for straight away, its warm-up's steps run in calm moments; a press on the Plan tab warms it
-up too), so Plan finds them even on the first day (after set-up too); when they're all kept nothing
-loads. New ones are drawn with `stillNow` as soon as its shaders are compiled, as many per idle
+asked for straight away, its warm-up's steps run in calm moments; with none kept under this figure's
+id, a fresh install or an update that draws it differently, it starts as soon as the read is done,
+before the week is worked out; a press on the Plan tab warms it up too), so Plan finds them even on
+the first day (after set-up too); when they're all kept nothing loads. New ones are drawn with `stillNow` as soon as its shaders are compiled, as many per idle
 moment as fit and no figure's box shows: what a screen waits for first, whenever nothing is in the
 person's hands (no finger on the screen, the page not scrolling, no sheet or control moving), then
 what's drawn ahead, once it's calm too. A still shows as soon as its picture is encoded (an object

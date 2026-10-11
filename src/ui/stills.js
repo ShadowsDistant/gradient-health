@@ -371,14 +371,19 @@
     trim();
     return n;
   }
-  // Plan's tab pressed: the figure warms up now if a still of this week's or next week's is missing
-  // (it usually started after launch already).
+  // The figure warms up now if a still of this week's or next week's is missing: Plan's tab pressed
+  // (it usually started after launch already), or launch with none kept under this figure's id
+  // (core.js: a fresh install, an update that draws it differently). With none kept, one is missing
+  // for sure, so it starts without working out which.
   function prime() {
     if (warming || !ok() || ready(GH.figure3d) || !U.S || !U.planStills) return;
-    load().then(() => idle(() => {
-      const keys = need || new Set(U.planStills(U.S, U.today()).map((j) => key(j.m, j.o)));
-      for (const k of keys) if (!url(k) && !failed.has(k)) { warm(); return; }
-    }));
+    load().then(() => {
+      if (!mem.size) { warm(); return; }
+      idle(() => {
+        const keys = need || new Set(U.planStills(U.S, U.today()).map((j) => key(j.m, j.o)));
+        for (const k of keys) if (!url(k) && !failed.has(k)) { warm(); return; }
+      });
+    });
   }
 
   /* ---------------------------------------------------------------- tiles */
