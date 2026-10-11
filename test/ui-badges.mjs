@@ -175,7 +175,7 @@ const lock = await S(() => { const d = document.querySelector('dialog.bdg-sheet[
 check('a locked one: the unminted blank, how to earn it, a progress bar, how many to go, no Share', /Finish 250 workouts/.test(lock.text) && /\d+ of 250/.test(lock.text) && /to go/.test(lock.text) && lock.bar && !lock.share && lock.ring && lock.blank, lock);
 await closeAll();
 const secret = await S(() => { window.GH.ui.badgeDetail('nightOwl'); const d = document.querySelector('dialog.bdg-sheet[open]'); return d.textContent.replace(/\s+/g, ' '); });
-check('a secret one stays a secret until it\'s earned', /Secret badge/.test(secret) && !/Night owl/.test(secret) && !/9 at night/.test(secret), secret.slice(0, 120));
+check('a secret one stays a secret until it\'s earned', /Secret badge/.test(secret) && !/Night owl/.test(secret) && !/9 pm/.test(secret), secret.slice(0, 120));
 await closeAll();
 
 section('A workout that earns one');
@@ -235,7 +235,7 @@ const beads = await S(() => window.__bursts[window.__bursts.length - 1] || 0);
 await actsIn();
 const out = await revNow();
 check('the medal that springs out is the 3D one, spinning out with a flash of light (live over its still)', await until(() => !!document.querySelector('dialog.bdg-reveal-sheet[open] .bdg-page .bdg-stage.is-live > canvas.bdg-live'), 30));
-check('the medal springs out, then its name, tier, what it took, the date, Share and Done', out.opened && out.sprung && !out.cap && !out.medalHidden && /Early bird/.test(out.text) && /Bronze · Common/i.test(out.text) && /Start a workout before 8 in the morning/.test(out.text) && /Earned today/.test(out.text) && out.share && out.done && !out.bob, out);
+check('the medal springs out, then its name, tier, what it took, the date, Share and Done', out.opened && out.sprung && !out.cap && !out.medalHidden && /Early bird/.test(out.text) && /Bronze · Common/i.test(out.text) && /Start a workout before 8 am/.test(out.text) && /Earned today/.test(out.text) && out.share && out.done && !out.bob, out);
 const hx = await S(() => window.__haptics.slice());
 check('the haptics, in order: wobble, crack, then badge as it bursts', hx.join() === 'wobble,crack,badge', hx);
 check('beads burst from it as it opens, within Refract\'s 8 to 14', beads >= 8 && beads <= 14, beads);

@@ -363,16 +363,16 @@
   const LIST = [
     // Consistency
     ['first', 'consistency', 'bronze', 'Day one', 'Finish your first workout.', 'play', (x) => done1(x.wk().days[0]), { next: 'your first workout' }],
-    ['streak3', 'consistency', 'bronze', 'On a roll', 'Keep a streak going for 3 days.', 'flame', streak(3), { ribbon: '3', next: 'a 3-day streak', unit: 'days' }],
-    ['streak7', 'consistency', 'silver', 'Week on fire', 'Keep a streak going for 7 days.', 'flame', streak(7), { ribbon: '7', next: 'a 7-day streak', unit: 'days' }],
-    ['streak30', 'consistency', 'gold', 'Unstoppable', 'Keep a streak going for 30 days.', 'flame', streak(30), { ribbon: '30', next: 'a 30-day streak', unit: 'days' }],
-    ['streak100', 'consistency', 'platinum', 'Triple digits', 'Keep a streak going for 100 days.', 'flame', streak(100), { ribbon: '100', next: 'a 100-day streak', unit: 'days' }],
+    ['streak3', 'consistency', 'bronze', 'On a roll', 'Reach a 3-day streak.', 'flame', streak(3), { ribbon: '3', next: 'a 3-day streak', unit: 'days' }],
+    ['streak7', 'consistency', 'silver', 'Week on fire', 'Reach a 7-day streak.', 'flame', streak(7), { ribbon: '7', next: 'a 7-day streak', unit: 'days' }],
+    ['streak30', 'consistency', 'gold', 'Unstoppable', 'Reach a 30-day streak.', 'flame', streak(30), { ribbon: '30', next: 'a 30-day streak', unit: 'days' }],
+    ['streak100', 'consistency', 'platinum', 'Triple digits', 'Reach a 100-day streak.', 'flame', streak(100), { ribbon: '100', next: 'a 100-day streak', unit: 'days' }],
     ['weeks4', 'consistency', 'silver', 'Full month', 'Do every workout, 4 weeks in a row.', 'calendar', weeks(4), { ribbon: '4', next: '4 full weeks', unit: 'weeks' }],
     ['weeks12', 'consistency', 'gold', 'Twelve strong', 'Do every workout, 12 weeks in a row.', 'calendar', weeks(12), { ribbon: '12', next: '12 full weeks', unit: 'weeks' }],
     ['weeks26', 'consistency', 'platinum', 'Iron habit', 'Do every workout, 26 weeks in a row.', 'calendar', weeks(26), { ribbon: '26', next: '26 full weeks', unit: 'weeks' }],
-    ['comeback', 'consistency', 'bronze', 'Welcome back', 'Work out again after two weeks or more off.', 'refresh', (x) => done1(x.wk().comeback)],
-    ['weekendWarrior', 'consistency', 'bronze', 'Weekend warrior', 'Work out on a Saturday and the Sunday after it.', 'sun', (x) => done1(x.wk().weekend)],
-    ['perfectWeek', 'consistency', 'silver', 'Perfect week', 'Do every workout and every walk-and-stretch day in a week.', 'check-circle', (x) => done1(x.tl().perfect)],
+    ['comeback', 'consistency', 'bronze', 'Welcome back', 'Work out after two weeks or more off.', 'refresh', (x) => done1(x.wk().comeback)],
+    ['weekendWarrior', 'consistency', 'bronze', 'Weekend warrior', 'Work out on both days of a weekend.', 'sun', (x) => done1(x.wk().weekend)],
+    ['perfectWeek', 'consistency', 'silver', 'Perfect week', 'Do every workout and walk-and-stretch day in a week.', 'check-circle', (x) => done1(x.tl().perfect)],
     // Workouts
     ['w10', 'workouts', 'bronze', 'Ten down', 'Finish 10 workouts.', 'dumbbell', count((x) => x.wk().days, 10), { ribbon: '10', next: '10 workouts' }],
     ['w25', 'workouts', 'silver', 'Twenty-five', 'Finish 25 workouts.', 'dumbbell', count((x) => x.wk().days, 25), { ribbon: '25', next: '25 workouts' }],
@@ -381,16 +381,16 @@
     ['w250', 'workouts', 'platinum', 'Lifer', 'Finish 250 workouts.', 'trophy', count((x) => x.wk().days, 250), { ribbon: '250', next: '250 workouts' }],
     ['sets500', 'workouts', 'silver', 'Set machine', 'Do 500 sets.', 'layers', sum((x) => x.wk().sets, 500), { ribbon: '500', next: '500 sets', unit: 'sets' }],
     ['sets2000', 'workouts', 'gold', 'Two thousand sets', 'Do 2,000 sets.', 'layers', sum((x) => x.wk().sets, 2000), { ribbon: '2K', next: '2,000 sets', unit: 'sets' }],
-    ['hours10', 'workouts', 'silver', 'Ten hours in', 'Train for 10 hours in the workout player.', 'hourglass', sum((x) => x.wk().mins, 600, 60), { ribbon: '10h', next: '10 hours', unit: 'h' }],
-    ['hours50', 'workouts', 'gold', 'Fifty hours', 'Train for 50 hours in the workout player.', 'hourglass', sum((x) => x.wk().mins, 3000, 60), { ribbon: '50h', next: '50 hours', unit: 'h' }],
+    ['hours10', 'workouts', 'silver', 'Ten hours in', 'Train 10 hours in the workout player.', 'hourglass', sum((x) => x.wk().mins, 600, 60), { ribbon: '10h', next: '10 hours', unit: 'h' }],
+    ['hours50', 'workouts', 'gold', 'Fifty hours', 'Train 50 hours in the workout player.', 'hourglass', sum((x) => x.wk().mins, 3000, 60), { ribbon: '50h', next: '50 hours', unit: 'h' }],
     // Strength
-    ['levelup', 'strength', 'bronze', 'Level up', 'Move up to a harder move or a heavier weight.', 'arrow-up-right', count((x) => x.lift().ups, 1), { next: 'your first level-up' }],
+    ['levelup', 'strength', 'bronze', 'Level up', 'Reach a harder move or a heavier weight.', 'arrow-up-right', count((x) => x.lift().ups, 1), { next: 'your first level-up' }],
     ['levelup10', 'strength', 'silver', 'Climbing', 'Level up 10 times.', 'arrow-up-right', count((x) => x.lift().ups, 10), { ribbon: '10', next: '10 level-ups' }],
     ['levelup25', 'strength', 'gold', 'Summit seeker', 'Level up 25 times.', 'arrow-up-right', count((x) => x.lift().ups, 25), { ribbon: '25', next: '25 level-ups' }],
     ['pr', 'strength', 'bronze', 'Personal best', 'Beat one of your best sets.', 'star', count((x) => x.lift().prs, 1), { next: 'a personal best' }],
     ['pr25', 'strength', 'silver', 'Record breaker', 'Set 25 personal bests.', 'star', count((x) => x.lift().prs, 25), { ribbon: '25', next: '25 personal bests' }],
     ['pr100', 'strength', 'gold', 'Unbeatable', 'Set 100 personal bests.', 'star', count((x) => x.lift().prs, 100), { ribbon: '100', next: '100 personal bests' }],
-    ['topRung', 'strength', 'gold', 'Top of the ladder', 'Reach the hardest move on one of your ladders.', 'ladder', (x) => done1(x.lift().top)],
+    ['topRung', 'strength', 'gold', 'Top of the ladder', 'Reach the hardest move on a ladder.', 'ladder', (x) => done1(x.lift().top)],
     ['firstPullup', 'strength', 'gold', 'First pull-up', 'Do a full pull-up or chin-up.', 'pullup', (x) => done1(x.lift().pullup)],
     ['pushups20', 'strength', 'silver', 'Twenty push-ups', 'Do 20 full push-ups in one set.', 'bolt', (x) => done1(x.lift().push20), { ribbon: '20' }],
     ['heavier', 'strength', 'bronze', 'Heavier', 'Move up to a heavier weight.', 'dumbbell', (x) => done1(x.lift().heavier)],
@@ -401,12 +401,12 @@
     ['mobility10', 'body', 'bronze', 'Loose and limber', 'Do 10 mobility sessions.', 'leaf', count((x) => x.body().mob, 10), { ribbon: '10', next: '10 mobility sessions' }],
     ['lightDays10', 'body', 'bronze', 'Easy does it', 'Complete 10 walk-and-stretch days.', 'act-walk', count((x) => x.body().both, 10), { ribbon: '10', next: '10 walk-and-stretch days' }],
     // Moments
-    ['earlyBird', 'moments', 'bronze', 'Early bird', 'Start a workout before 8 in the morning.', 'sunrise', (x) => done1(x.wk().early), { secret: true }],
-    ['nightOwl', 'moments', 'bronze', 'Night owl', 'Start a workout after 9 at night.', 'moonstar', (x) => done1(x.wk().owl), { secret: true }],
+    ['earlyBird', 'moments', 'bronze', 'Early bird', 'Start a workout before 8 am.', 'sunrise', (x) => done1(x.wk().early), { secret: true }],
+    ['nightOwl', 'moments', 'bronze', 'Night owl', 'Start a workout after 9 pm.', 'moonstar', (x) => done1(x.wk().owl), { secret: true }],
     ['fullHour', 'moments', 'silver', 'The full hour', 'Train for an hour in one workout.', 'clock', (x) => done1(x.wk().full)],
     ['shortSweet', 'moments', 'bronze', 'Short and sweet', 'Do 10 short-on-time workouts.', 'timer', count((x) => x.wk().short, 10), { ribbon: '10', next: '10 short workouts' }],
     ['newYear', 'moments', 'gold', 'Fresh start', 'Work out on New Year\'s Day.', 'sparkle', (x) => done1(x.wk().newYear), { secret: true }],
-    ['anniversary', 'moments', 'gold', 'One year in', 'A year since you started with Gradient Health.', 'cake', (x) => { const s = x.p.startDay; return num(s) ? r(x.day - s, 365, x.day >= s + 365 ? s + 365 : null) : r(0, 365, null); }, { ribbon: '1', next: 'a year with the app', unit: 'days', applies: () => true }],
+    ['anniversary', 'moments', 'gold', 'One year in', 'A year since you started.', 'cake', (x) => { const s = x.p.startDay; return num(s) ? r(x.day - s, 365, x.day >= s + 365 ? s + 365 : null) : r(0, 365, null); }, { ribbon: '1', next: 'a year with the app', unit: 'days', applies: () => true }],
     // Activities
     ['firstActivity', 'activities', 'bronze', 'Out the door', 'Record your first walk, run, hike or ride.', 'compass', (x) => done1(x.acts().first), { next: 'your first activity' }],
     ['run5k', 'activities', 'silver', '5K', 'Run 5 km (3.1 miles) in one go.', 'act-run', (x) => r(Math.floor(x.acts().longestRun / 100) / 10, 5, x.acts().k5), { ribbon: '5K', next: 'a 5K run', unit: 'km' }],
@@ -419,7 +419,7 @@
     ['connected', 'health', 'bronze', 'Connected', 'Connect Health Connect.', 'heart', (x) => done1(x.health().connected ? -1 : null), { applies: (x) => !['unsupported', 'unavailable'].includes(x.live.hc) }],
     ['steps10k', 'health', 'bronze', '10K steps', 'Walk 10,000 steps in a day.', 'steps', (x) => done1(x.health().steps10k), { ribbon: '10K' }],
     ['stepsWeek', 'health', 'silver', 'Step streak', 'Walk 10,000 steps a day, 7 days in a row.', 'steps', (x) => r(x.health().stepsBest, 7, x.health().stepsWeek), { ribbon: '7', next: '10,000 steps for 7 days', unit: 'days' }],
-    ['sleepWeek', 'health', 'silver', 'Well rested', 'Sleep 7 hours or more, 7 nights in a row.', 'moon', (x) => r(x.health().sleepBest, 7, x.health().sleepWeek), { ribbon: '7', next: '7 good nights', unit: 'nights' }],
+    ['sleepWeek', 'health', 'silver', 'Well rested', 'Sleep 7+ hours, 7 nights in a row.', 'moon', (x) => r(x.health().sleepBest, 7, x.health().sleepWeek), { ribbon: '7', next: '7 good nights', unit: 'nights' }],
     ['weighIns10', 'health', 'bronze', 'On the scale', 'Log your weight on 10 days.', 'scale', count((x) => x.health().weighIns, 10), { ribbon: '10', next: '10 weigh-ins' }],
     ['measure3', 'health', 'silver', 'Measured up', 'Log your body measurements on 3 days.', 'tape', count((x) => x.health().measures, 3), { ribbon: '3', next: '3 measurements' }],
     // Food
@@ -429,12 +429,12 @@
     ['foodLog30', 'food', 'silver', 'Month of meals', 'Log food 30 days in a row.', 'calendar', (x) => r(x.food().logBest, 30, x.food().log30), { ribbon: '30', next: 'a month of food logs', unit: 'days', applies: foodFull }],
     // Plans
     ['ownPlan', 'plans', 'bronze', 'Your way', 'Build a plan of your own.', 'pencil', (x) => done1(x.plans().mine), { next: 'a plan of your own' }],
-    ['sharedPlan', 'plans', 'bronze', 'Pass it on', 'Share a plan with someone.', 'share', (x) => done1(x.plans().shared)],
+    ['sharedPlan', 'plans', 'bronze', 'Pass it on', 'Share a plan.', 'share', (x) => done1(x.plans().shared)],
     ['tailored', 'plans', 'bronze', 'Made to measure', 'Tailor your plan.', 'sliders', (x) => done1(x.plans().tailored)],
     ['reviewed', 'plans', 'bronze', 'Second opinion', 'Have the AI coach check your plan.', 'sparkle', (x) => done1(x.plans().reviewed)],
-    ['shareBadge', 'plans', 'bronze', 'Show and tell', 'Share a badge with friends or family.', 'people', (x) => done1(x.plans().badge), { secret: true, applies: () => true }],
+    ['shareBadge', 'plans', 'bronze', 'Show and tell', 'Share a badge.', 'people', (x) => done1(x.plans().badge), { secret: true, applies: () => true }],
     // Getting started
-    ['allSet', 'start', 'bronze', 'All set', 'Finish everything on the getting-started list.', 'flag', allSet, { next: 'the getting-started list' }],
+    ['allSet', 'start', 'bronze', 'All set', 'Finish the getting-started list.', 'flag', allSet, { next: 'the getting-started list' }],
   ];
   // All set: the getting-started list ticked off, or its two essentials done (a first workout, or a
   // weigh-in without workouts, and a feel check), for people who hid the list or started before it.
