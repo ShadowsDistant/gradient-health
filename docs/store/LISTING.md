@@ -94,6 +94,7 @@ field". It comes from the `store` text of the version's entry in `src/data/chang
 • Quicker switching between tabs
 • Fixed: scrolling could stutter, freeze or jump with the glass effects on
 • Glass effects setting: Auto, Liquid, Frosted or Flat
+• Maps you've seen open at once, even offline
 ```
 
 ## Images

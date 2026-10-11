@@ -14,6 +14,7 @@
         '• Quicker switching between tabs',
         '• Fixed: scrolling could stutter, freeze or jump with the glass effects on',
         '• Glass effects setting: Auto, Liquid, Frosted or Flat',
+        '• Maps you\'ve seen open at once, even offline',
       ].join('\n'),
       items: [
         ['bell', 'Reminders, if you want them. Turn them on in Settings, Notifications, or when Today asks after your first workout: today\'s workout a little before you usually train, a walk or a run now and then on a rest day, a badge waiting to be opened, and a note after a good night\'s sleep. One a day at most, never at night, and each kind can be switched off. Take a break and you get a gentle note after a few days, then one a week, and after six weeks they stop until you\'re back. They\'re worked out on your phone, and nothing about them is sent anywhere.'],
