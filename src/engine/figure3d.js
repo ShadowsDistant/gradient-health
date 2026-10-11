@@ -5,8 +5,9 @@
  * its true segment lengths, so meshes never stretch and planted hands and feet stay put.
  *
  * Loaded on demand with GH.lazy('figure3d'); it sets GH.figure3d = { supported, mount, still,
- * preload, warm }. One shared WebGLRenderer draws every mounted figure and copies each frame into
- * that figure's own 2D canvas, so any number of figures can be on screen with a single GL context.
+ * stillAsync, stillNow, preload, warm }. One shared WebGLRenderer draws every mounted figure and
+ * copies each frame into that figure's own 2D canvas, so any number of figures can be on screen with
+ * a single GL context.
  *
  * Units are centimetres. World axes: +Y up, floor at Y = 0. Side-view moves face +X with the near
  * ("N") limbs at +Z; front-view moves face +Z with N (the figure's left) at +X.
@@ -3251,6 +3252,7 @@ function forget(rr) {
   preloading = null;
   if (WARM) { try { WARM.dispose(); } catch (e) { /* ignore */ } WARM = null; }
   warmed = false;
+  held.clear(); // stills waiting for shaders this renderer was compiling: posed again next time
   if (ENV) { try { ENV.dispose(); } catch (e) { /* ignore */ } ENV = null; }
   const drop = (o) => {
     if (!o || typeof o !== 'object') return;
@@ -3709,12 +3711,31 @@ function still(move, opts) {
   if (!/^data:image\/webp/.test(url)) url = pic.toDataURL('image/png');
   return keepUrl(st.key, url);
 }
+// A drawn still encoded in the background (toBlob) and read back as a data URL, which an <img> shows
+// and the page keeps on the phone: a promise of the URL, or null.
+function encode(pic) {
+  return new Promise((resolve) => {
+    const read = (blob) => {
+      if (!blob) { resolve(null); return; }
+      const fr = new FileReader();
+      fr.onload = () => resolve(typeof fr.result === 'string' ? fr.result : null);
+      fr.onerror = () => resolve(null);
+      fr.readAsDataURL(blob);
+    };
+    try {
+      if (!pic.toBlob) { let url = pic.toDataURL('image/webp', 0.9); if (!/^data:image\/webp/.test(url)) url = pic.toDataURL('image/png'); resolve(url); return; }
+      pic.toBlob((blob) => {
+        if (blob && blob.type === 'image/webp') read(blob);
+        else pic.toBlob(read, 'image/png');
+      }, 'image/webp', 0.9);
+    } catch (e) { resolve(null); }
+  });
+}
 // The same still with as little as can be on the page's thread: the figure is posed now; its shaders
 // compile in the background where the GPU allows (compileAsync: the first still of a move with new
 // kit compiled them on the thread, 730 ms in a software-GL test); then one frame and its copy out
-// (a few frames' worth); then the picture is encoded in the background (toBlob) and read back as a
-// data URL (which an <img> shows and localStorage keeps). Resolves with the URL, or null. One
-// request per still at a time: a second asks for the same promise.
+// (a few frames' worth); then the picture is encoded in the background. Resolves with the URL, or
+// null. One request per still at a time: a second asks for the same promise.
 const pendingStills = new Map();
 function stillAsync(move, opts) {
   const st = stillPrep(move, opts);
@@ -3725,26 +3746,46 @@ function stillAsync(move, opts) {
   const compiled = rr && rr.r.compileAsync ? Promise.resolve(rr.r.compileAsync(st.view.scene, st.view.camera)).catch(() => {}) : Promise.resolve();
   const p = compiled.then(() => {
     const pic = stillDraw(st);
-    if (!pic) return null;
-    return new Promise((resolve) => {
-      const read = (blob) => {
-        if (!blob) { resolve(null); return; }
-        const fr = new FileReader();
-        fr.onload = () => resolve(typeof fr.result === 'string' ? keepUrl(st.key, fr.result) : null);
-        fr.onerror = () => resolve(null);
-        fr.readAsDataURL(blob);
-      };
-      try {
-        if (!pic.toBlob) { let url = pic.toDataURL('image/webp', 0.9); if (!/^data:image\/webp/.test(url)) url = pic.toDataURL('image/png'); resolve(keepUrl(st.key, url)); return; }
-        pic.toBlob((blob) => {
-          if (blob && blob.type === 'image/webp') read(blob);
-          else pic.toBlob(read, 'image/png');
-        }, 'image/webp', 0.9);
-      } catch (e) { resolve(null); }
-    });
+    return pic ? encode(pic).then((url) => (url ? keepUrl(st.key, url) : null)) : null;
   }).then((url) => { pendingStills.delete(st.key); return url; }, () => { pendingStills.delete(st.key); return null; });
   pendingStills.set(st.key, p);
   return p;
+}
+// A still drawn now, in the caller's idle moment: all of its work on the page's thread at once (the
+// figure posed, one frame, the copy out of the GL canvas and the crop: a few frames' worth once the
+// figure is warm), so a caller with time left can draw another. Returns { url }, a promise of the data
+// URL encoded in the background. A still that needs shaders no warm view keeps compiled (kit the
+// warm-up didn't have) isn't drawn yet: they compile in the background where the GPU allows, and
+// { wait } resolves once they have; the next call draws it (its figure is held meanwhile, so they
+// stay compiled). null without 3D. The page keeps these itself (src/ui/stills.js), so they aren't
+// kept here as well.
+const held = new Map(); // key → a still posed and waiting for its shaders
+function stillNow(move, opts) {
+  const o = optsOf(Object.assign({ static: true }, opts));
+  const [w, h] = drawSize(opts);
+  const key = stillKey(move, w, h, o, cropOf(opts), timeOf(opts));
+  if (pendingStills.has(key)) return { url: pendingStills.get(key) };
+  let st = held.get(key);
+  if (st) held.delete(key);
+  else {
+    st = stillPrep(move, opts);
+    if (!st) return null;
+    if (st.url) return { url: Promise.resolve(st.url) };
+    // Compiling only makes programs for what has none; more programs than before means new shaders.
+    const r = R.r, n = r.info.programs.length;
+    try { r.compile(st.view.scene, st.view.camera); } catch (e) { /* drawn below, compiled then */ }
+    if (r.info.programs.length > n) {
+      if (held.size >= 8) { const [k0, s0] = held.entries().next().value; held.delete(k0); s0.view.dispose(); }
+      held.set(key, st);
+      const wait = r.compileAsync ? Promise.resolve(r.compileAsync(st.view.scene, st.view.camera)).catch(() => {}) : new Promise((done) => setTimeout(done, 50));
+      return { wait };
+    }
+  }
+  const pic = stillDraw(st);
+  if (!pic) return null;
+  const p = encode(pic).then((url) => { pendingStills.delete(key); return url; }, () => { pendingStills.delete(key); return null; });
+  pendingStills.set(key, p);
+  return { url: p };
 }
 
 /* ---------------------------------------------------------------- preload */
@@ -3828,7 +3869,7 @@ function preload() {
 }
 
 GH.figure3d = {
-  supported, mount, still, stillAsync, cachedStill, preload, phaseAt,
+  supported, mount, still, stillAsync, stillNow, cachedStill, preload, phaseAt,
   // Whether the renderer is up and its shaders compiled, so a new figure draws its first frame at once
   // (not yet while the warm-up is compiling them: a figure would wait on that).
   warm() { return !!(R && WARM && warmed && !isLost(R)); },
