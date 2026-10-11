@@ -246,6 +246,16 @@ final class ActivityTrack {
         return rec != null && rec.active();
     }
 
+    /**
+     * When the recording in progress, else the newest finished one not cleared yet, started (0 for
+     * none): a walk nudge (Notifier) waits for a day nothing was recorded on, even one finished from
+     * the notification with the app never opened.
+     */
+    synchronized long latestStart() {
+        load();
+        return rec == null ? 0L : rec.startedAt;
+    }
+
     synchronized boolean isPaused() {
         load();
         return rec != null && rec.active() && rec.paused();

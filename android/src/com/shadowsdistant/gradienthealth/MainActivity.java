@@ -62,6 +62,7 @@ public final class MainActivity extends Activity {
     static final int REQUEST_HEALTH_PERMISSIONS = 4201;
     static final int REQUEST_CAMERA = 4202;
     static final int REQUEST_ACTIVITY_PERMISSIONS = 4203;
+    static final int REQUEST_NOTIFY_PERMISSION = 4204;
     /** A camera request from the page, waiting on the runtime permission dialog. */
     private PermissionRequest pendingCamera;
     static final String CLAUDE_PACKAGE = "com.anthropic.claude";
@@ -75,11 +76,16 @@ public final class MainActivity extends Activity {
     private static volatile boolean front;
     /** A plan link the app was opened with, until the page takes it (pendingLink) or gets it (onLink). */
     private final AtomicReference<String> pendingLink = new AtomicReference<String>();
+    /** A notification tapped (Notifier.tapFrom), until the page takes it (notifyTap) or gets it (onNotifyTap). */
+    private final AtomicReference<String> pendingTap = new AtomicReference<String>();
     private volatile String lastBackgroundJson;
     private long backgroundCheckedAt;
     // The activity permission request in flight: when it went out, and what Android would explain then.
     private long actRequestAt;
     private boolean[] actRationale;
+    // The same for the notification permission (asked when notifications are turned on).
+    private long notifyRequestAt;
+    private boolean[] notifyRationale;
 
     private static final String ACTION_VIEW_PERMISSION_USAGE =
             "android.intent.action.VIEW_PERMISSION_USAGE";
@@ -153,6 +159,10 @@ public final class MainActivity extends Activity {
         }
         if (isOpenActivityIntent(intent)) {
             pendingRoute = "activity";
+        }
+        String tap = Notifier.tapFrom(intent);
+        if (tap != null) {
+            pendingTap.set(tap); // the same way: notifyTap(), or onNotifyTap once loaded
         }
         createWebView(url);
     }
@@ -357,6 +367,14 @@ public final class MainActivity extends Activity {
                 pendingLink.set(link);
             }
         }
+        String tap = Notifier.tapFrom(intent);
+        if (tap != null) {
+            if (pageLoaded && webView != null) {
+                deliverTap(tap);
+            } else {
+                pendingTap.set(tap);
+            }
+        }
     }
 
     @Override
@@ -437,6 +455,11 @@ public final class MainActivity extends Activity {
                     SystemClock.elapsedRealtime() - actRequestAt);
             actRationale = null;
             notifyActivityPermissions();
+        } else if (requestCode == REQUEST_NOTIFY_PERMISSION) {
+            ActivityPermissions.onResult(this, permissions, grantResults, notifyRationale,
+                    SystemClock.elapsedRealtime() - notifyRequestAt);
+            notifyRationale = null;
+            notifyPermissionAnswer();
         } else if (requestCode == REQUEST_CAMERA) {
             PermissionRequest request = pendingCamera;
             pendingCamera = null;
@@ -597,6 +620,40 @@ public final class MainActivity extends Activity {
     void openAppSettings() {
         tryStartActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                 Uri.fromParts("package", getPackageName(), null)));
+    }
+
+    /**
+     * Asks for the notification permission (a runtime one from Android 13), when the person turns
+     * notifications on; answers with window.__gh.onNotifyPermission (Notifier.stateJson). A no is
+     * remembered the way the activity permissions' is, so the page knows when only Android's
+     * settings can allow them.
+     */
+    void requestNotifyPermission() {
+        try {
+            if (Build.VERSION.SDK_INT < 33 || ActivityPermissions.granted(this, ActivityPermissions.NOTIFICATIONS)) {
+                notifyPermissionAnswer();
+                return;
+            }
+            String[] ask = {ActivityPermissions.NOTIFICATIONS};
+            notifyRationale = ActivityPermissions.rationale(this, ask);
+            notifyRequestAt = SystemClock.elapsedRealtime();
+            requestPermissions(ask, REQUEST_NOTIFY_PERMISSION);
+        } catch (Throwable t) {
+            notifyPermissionAnswer();
+        }
+    }
+
+    private void notifyPermissionAnswer() {
+        callJs(jsCall("onNotifyPermission", Notifier.stateJson(this)));
+    }
+
+    /** Android's notification settings for the app (each kind's channel is there), else the app's page. */
+    void openNotificationSettings() {
+        Intent i = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+        i.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+        if (!tryStartActivity(i)) {
+            openAppSettings();
+        }
     }
 
     /** Health Connect's per-app permission screen, falling back to its home screen. */
@@ -782,6 +839,33 @@ public final class MainActivity extends Activity {
         String url = pendingLink.getAndSet(null);
         if (url != null) {
             deliverLink(url);
+        }
+    }
+
+    // ---------------------------------------------------------------- notification taps
+
+    /** AndroidBridge.notifyTap(): the notification the app was opened from ({"id", "kind", "route"}), once. */
+    String takePendingTap() {
+        return pendingTap.getAndSet(null);
+    }
+
+    /** Hands a tap to window.__gh.onNotifyTap; if the page has no such hook yet, it waits for notifyTap(). */
+    private void deliverTap(final String json) {
+        evalJs("(window.__gh&&window.__gh.onNotifyTap)?(window.__gh.onNotifyTap(" + jsSafe(json) + "),true):false",
+                new ValueCallback<String>() {
+                    @Override
+                    public void onReceiveValue(String value) {
+                        if (!"true".equals(value)) {
+                            pendingTap.compareAndSet(null, json);
+                        }
+                    }
+                });
+    }
+
+    private void flushPendingTap() {
+        String json = pendingTap.getAndSet(null);
+        if (json != null) {
+            deliverTap(json);
         }
     }
 
@@ -1317,6 +1401,7 @@ public final class MainActivity extends Activity {
                 callJs(jsCall("setInsets", insetsJson));
                 flushPendingRoute();
                 flushPendingLink(); // unless the page already took it with pendingLink()
+                flushPendingTap(); // likewise with notifyTap()
             }
         }
 
