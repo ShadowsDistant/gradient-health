@@ -239,7 +239,7 @@ const idleDraws = await page.evaluate(async () => {
   window.requestIdleCallback = (fn, o) => ric((d) => { cur = ++seq; try { fn(d); } finally { cur = 0; } }, o);
   const real = f.stillNow;
   const dot = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
-  f.stillNow = () => { const t = performance.now(); while (performance.now() - t < 5) { /* a still's work */ } calls.push({ at: t, cb: cur }); return { url: Promise.resolve(dot) }; };
+  f.stillNow = (m) => { const t = performance.now(); while (performance.now() - t < 5) { /* a still's work */ } calls.push({ at: t, cb: cur, id: m.id }); return { url: Promise.resolve(dot) }; };
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const touch = (type, on) => document.dispatchEvent(new TouchEvent(type, { bubbles: true, touches: on ? [new Touch({ identifier: 1, target: document.body, clientX: 100, clientY: 300 })] : [] }));
   const app = document.getElementById('app');
@@ -258,12 +258,13 @@ const idleDraws = await page.evaluate(async () => {
   const free = performance.now();
   const got = (await Promise.race([asked, wait(20000).then(() => null)])) || [];
   // Drawn ahead: after calm as well.
-  const ahead = Object.keys(GH.moves.MOVES).slice(24, 30).map((id) => ({ m: GH.moves.MOVES[id], o }));
-  const n0 = calls.length;
+  // (Only these moves are counted: what launch itself drew ahead may still be on its way.)
+  const aheadIds = Object.keys(GH.moves.MOVES).slice(24, 30);
+  const mine = () => calls.filter((c) => aheadIds.includes(c.id) && c.at >= moved);
   document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
   const moved = performance.now();
-  U.stills.ahead(ahead);
-  for (let i = 0; i < 100 && calls.length < n0 + ahead.length; i++) await wait(50);
+  U.stills.ahead(aheadIds.map((id) => ({ m: GH.moves.MOVES[id], o })));
+  for (let i = 0; i < 100 && mine().length < aheadIds.length; i++) await wait(50);
   f.stillNow = real;
   window.requestIdleCallback = ric;
   const per = {};
@@ -271,7 +272,7 @@ const idleDraws = await page.evaluate(async () => {
   return {
     held, scrolled, n: calls.length, drawn: got.filter(Boolean).length, wait: calls.length > held ? Math.round(calls[held].at - free) : null,
     most: Math.max(0, ...Object.values(per)), moments: Object.keys(per).length, outside: calls.filter((c) => !c.cb).length,
-    ahead: calls.length - n0, aheadWait: calls[n0] ? Math.round(calls[n0].at - moved) : null,
+    ahead: mine().length, aheadWait: mine().length ? Math.round(mine()[0].at - moved) : null,
   };
 });
 check('none while a finger is on the screen, nor while the page scrolls', idleDraws.held === 0 && idleDraws.scrolled === 0, idleDraws);

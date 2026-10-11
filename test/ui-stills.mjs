@@ -41,7 +41,10 @@ const CPU = 4;
 const MONDAY = '2026-10-19T08:10:00';
 
 /* ---------------------------------------------------------------- budgets */
-const BUDGET = null;
+const BUDGET = {
+  fresh: { screen: 9000, week: 15000 },
+  update: { screen: 1000, screenNew: 9000, week: 15000 },
+};
 
 /* ---------------------------------------------------------------- the page */
 async function serve(dir) {
@@ -356,6 +359,15 @@ if (!measureOnly) {
     check(`${kind}: no tile ever shows the flat figure`, rs.every((r) => r.s && r.s.flat === 0), rs.map((r) => r.s && r.s.flat));
   }
   check('no page errors', errors.length === 0, errors.slice(0, 5));
+
+  section(`Budgets (best of ${RUNS})`);
+  for (const kind of kinds) {
+    const rs = results[kind][0], b = BUDGET[kind];
+    const top = (k) => best(rs.map((r) => r[k]));
+    check(`${kind}: Plan's first screen shows the 3D figure within ${b.screen} ms of the tap`, top('screen') != null && top('screen') <= b.screen, `${r0(top('screen'))} ms`);
+    if (b.screenNew) check(`${kind}: this version's stills there within ${b.screenNew} ms`, top('screenNew') != null && top('screenNew') <= b.screenNew, `${r0(top('screenNew'))} ms`);
+    check(`${kind}: this week's stills all drawn within ${b.week} ms`, top('week') != null && top('week') <= b.week, `${r0(top('week'))} ms`);
+  }
 }
 
 for (const b of builds) await b.server.close();

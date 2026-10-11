@@ -101,8 +101,8 @@ npm test          # simulations, insights, AI (mocked API), coach, poses, persis
 npm run build     # dist/gradient-health.html, dist/lazy/, docs/PRIVACY.md and docs/p/index.html
 npm run smoke     # end-to-end run in Chromium (needs Playwright); add --dark for dark mode
 npm run test:ui   # layout regressions, food flows, the coach chat, the 3D figure, your plans, controls
-                  # (real touches), haptics, motion, the You tab, badges, the plan review, speed
-                  # and scrolling budgets (Chromium)
+                  # (real touches), haptics, motion, the You tab, badges, the plan review, speed,
+                  # scrolling and Plan's cold 3D stills budgets (Chromium)
 node test/ui-scroll.mjs --measure [--vs=<dir>] [--ablate=<part>]   # scrolling every main screen: frames
                   # dropped, the GPU's draw time; A/B against another build, or with one part switched off
 npm run test:llm  # on-device AI runtime in Chromium with a tiny model (see On-device AI)
@@ -278,24 +278,27 @@ page opened again where it was left gets the heights its blocks had,
 so it opens on what was showing. Medals share one set of gradients. Progress bars shine once, as
 they show or change, not forever. Work that can wait waits for `U.calm()`: no finger on the screen,
 no scroll or touch for 400 ms, no sheet moving and no control held or gliding (`U.controlsMoving`;
-`U.whenCalm(fn)` runs it then): saves, Plan's flat stills, a control's lens maps. Work that would
-hold the page's thread for a while (a 3D still, the 3D chunk and its warm-up, a background re-render
-such as Today's insight line, the 3D canvas shrinking once no figure shows) waits for `U.quiet()`
-instead: calm, and nothing for 1.5 s (`U.whenQuiet(fn)`). On a phone a touch's scroll waits for the
-page's thread, and the likeliest moment for the next flick is right after the last one settles:
-filmed on one, three flicks in a row froze for 100 to 330 ms each and then jumped, with a still's
-encode or a re-render running under the finger, let loose by the calm moment 400 ms after the last
-scroll. A 3D still now draws on the thread only its figure's frame and the copy out of the GL
-canvas: its shaders compile in the background where the GPU allows (`compileAsync`) and its picture
-is encoded in the background (`toBlob`; `figure3d.stillAsync` and `stillNow`), where `toDataURL`
-took 110 ms and more on the thread. The warm-up (`figure3d.preload`) also keeps a wall's transparent material
-compiled (a program of its own, which a still of a wall or door move compiled again every time) and
-ends with one still the size of Plan's tiles drawn out through a 2D canvas, the first such copy being
-the dear one (700 ms in a software-GL test, 130 ms after); `ui-figure` checks both. `ui-scroll` taps
-the Plan tab with the figure warm and flings 400 ms on, then checks that from the flick until 1.1 s
-after the page stops no task holds the thread for 120 ms (at 4× CPU), and that the tiles' stills
-still come afterwards (on 1.8.2 the first still, let loose at calm 400 ms after the tap, held the
-thread 1 to 2 s at 4× in mid-fling). `test/ui-scroll.mjs` scrolls every
+`U.whenCalm(fn)` runs it then): saves, Plan's flat stills, a control's lens maps, the 3D chunk's
+warm-up steps and the 3D stills drawn ahead. Work that would hold the page's thread for a while (a
+background re-render such as Today's insight line, the 3D canvas shrinking once no figure shows)
+waits for `U.quiet()` instead: calm, and nothing for 1.5 s (`U.whenQuiet(fn)`). On a phone a touch's
+scroll waits for the page's thread, and the likeliest moment for the next flick is right after the
+last one settles: filmed on one, three flicks in a row froze for 100 to 330 ms each and then jumped,
+with a still's encode or a re-render running under the finger, let loose by the calm moment 400 ms
+after the last scroll. So a 3D still holds the thread for its figure's posing and one frame only (40
+to 50 ms at 4× CPU here, where it was 230 to 370), and never while a finger is on the screen or the
+page moves: its shaders compile in the background where the GPU allows (`compileAsync`), the copy
+out of the GL canvas goes into a buffer on the GPU behind a fence, so nothing waits for the GPU to
+draw (`figure3d.stillNow`), and the crop and the encoding run on the CPU in the background
+(`toBlob`), where `toDataURL` took 110 ms and more on the thread. The warm-up (`figure3d.preload`)
+also keeps a wall's transparent material compiled (a program of its own, which a still of a wall or
+door move compiled again every time) and ends with one still the size of Plan's tiles drawn out
+through a 2D canvas, the first such copy being the dear one for a live figure (700 ms in a
+software-GL test, 130 ms after), once the page's stills are drawn; `ui-figure` checks both.
+`ui-scroll` taps the Plan tab with the figure warm and flings 400 ms on, then checks that from the
+flick until 1.1 s after the page stops no task holds the thread for 120 ms (at 4× CPU), and that the
+tiles' stills still come afterwards (on 1.8.2 the first still, let loose at calm 400 ms after the
+tap, held the thread 1 to 2 s at 4× in mid-fling). `test/ui-scroll.mjs` scrolls every
 main screen at 4× CPU, traced, and holds the budgets; `--vs=<dir>` compares two builds run by run, and
 `--ablate=<part>` switches one part off to show what it costs. It also touch-scrolls (real touch
 flings, `Input.dispatchTouchEvent`) on pages driven through raw CDP: Playwright's page helpers inject
@@ -407,13 +410,21 @@ minified), which `GH.lazy('figure3d')` loads when it's needed. It sets `GH.figur
   one only if it's already drawn, so a page render never waits on the GPU. `stillAsync()` is the
   same with its shaders compiled and its picture encoded in the background (the player's and move
   sheet's stills).
-- `stillNow(move, opts)`: a still drawn now, in the caller's idle moment (posed, one frame, the copy
-  out and the crop: a few frames' work once warm), so a caller with time left can draw another;
-  `{ url }` is a promise of the data URL, encoded in the background. One that needs shaders no warm
-  view keeps compiled returns `{ wait }` instead, resolved once they've compiled in the background
-  (its posed figure is held meanwhile, so they stay compiled), and the next call draws it.
-- `preload()`: builds the renderer, the body, the equipment and the lighting, then compiles the
-  shaders with a view it keeps, one small piece per idle callback so taps never wait on it.
+- `stillNow(move, opts)`: a still drawn now, in the caller's idle moment (posed and one frame, a
+  frame or two of work once warm), so a caller with time left can draw another. The stills drawn in
+  one task go side by side into the GL canvas and are copied out together into a buffer on the GPU
+  behind a fence, so the page's thread never waits for the GPU; then each is turned the right way up,
+  cropped and encoded on the CPU in the background. `{ blob }` is a promise of its picture (WebP).
+  One batch is on its way at a time: until it's back (or while the warm-up copies its own still out)
+  it returns `{ busy }`, resolved then, so the GPU never has a queue of stills that a live figure's
+  first frame would wait behind. One that needs shaders no warm view keeps compiled returns `{ wait }`
+  instead, resolved once they've compiled in the background (its posed figure is held meanwhile, so
+  they stay compiled), and the next call draws it.
+- `preload(opts)`: builds the renderer, the room's light (first: it's the GPU's longest job here),
+  the body and the equipment, then compiles the shaders with a view it keeps, one small piece per
+  idle callback so taps never wait on it (or whenever `opts.when(fn)` runs it: the stills hold it to
+  calm moments). `stillsReady()` turns true, and `opts.ready()` is called, once stills can be drawn,
+  a step before `warm()`.
 
 The chunk authors no poses. Every frame it lifts the 2D joints from `GH.pose` into 3D. Side, front
 and top views each have their own rules, and segment lengths stay constant. A fix to a move's 2D
@@ -444,29 +455,42 @@ steps and lights up from `onPhase`.
 reveal and Settings' preview show the 3D figure's stills of the moves; the flat figure shows only
 when it's the setting, or where a still can't be drawn (no WebGL 2, the chunk didn't load, a still
 that failed). `src/ui/stills.js` (`U.stills`) keeps them across launches in IndexedDB (`gh-stills`),
-under the move as the person does it (`forPerson`: their kit), the look (theme, skin, shirt), the
-size and `GH.FIGURE`, an id the build gives the figure (its chunk with three.js, the pose engine and
-the moves), so a change to any of them draws it again, and only then. What's kept is read into
-memory in one request once the first frame is drawn (with the 3D figure picked; nothing at boot
-otherwise), so Plan puts a kept still straight into its tile's HTML (`U.stills.img`): it's there
-from the page's first frame, without the 3D chunk. A tile without one shows its own background
+under the move as the person does it (`forPerson`: their kit), what the move's figure is drawn from
+(its poses, steps and view, not its words), the look (theme, skin, shirt), the size and
+`GH.FIGURE`, an id the build gives the code that draws the figure (`figureId` in
+`scripts/build.mjs`: the figure's chunk bundled on its own, with the parts of three.js it uses, and
+the pose engine, both minified, so a comment, a cue reworded, a new move or another module bundled
+into the chunk keeps every still; `buildcheck` holds it to that), so a change to any of them draws it
+again, and only then. What's kept is read into memory in one request once the first frame is drawn
+(with the 3D figure picked; nothing at boot otherwise), so Plan puts a kept still straight into its
+tile's HTML (`U.stills.img`): it's there from the page's first frame, without the 3D chunk. After an
+update that draws the figure differently, the last version's stills stand in, in their tiles, until
+this version's are drawn, and go once they are. A tile without one shows its own background
 (`U.stills.tile`) until its still is drawn, which then fades in (a tile in another look keeps its
-old still until the new one is in). About 3 s after launch, once it's quiet, the stills of this
+old still until the new one is in). Right after the read, in a calm moment, the stills of this
 week's and next week's moves that aren't kept (`U.planStills` in `src/ui/plan.js`: what each day's
-card shows) are drawn ahead, warming the figure up for them, so Plan finds them even on the first
-day (after set-up too); when they're all kept nothing loads. New ones are drawn with `stillNow` once
-the figure is warm, as many per idle moment as fit, only while it's quiet (`U.quiet`) and no
-figure's box shows: what a screen waits for first, then what's drawn ahead. Up to 300 are kept; past
-that the oldest that this week and next don't show go, and ones an older figure drew go once a
-launch. The plan builder's large tiles (its picker's) are drawn as they come near the screen and
-held for the launch only. Reset everything deletes them. `ui-plan` checks that no tile ever holds
-the flat figure while 3D is picked, the drawing ahead, Plan's first render after a relaunch, a new
-look and the flat setting; `ui-figure` Settings' preview after a relaunch, and that stills wait
-while the page is in use and then go several per idle moment.
+card shows, this week's first) are drawn ahead, warming the figure up for them at once (the chunk is
+asked for straight away, its warm-up's steps run in calm moments; a press on the Plan tab warms it
+up too), so Plan finds them even on the first day (after set-up too); when they're all kept nothing
+loads. New ones are drawn with `stillNow` as soon as its shaders are compiled, as many per idle
+moment as fit and no figure's box shows: what a screen waits for first, whenever nothing is in the
+person's hands (no finger on the screen, the page not scrolling, no sheet or control moving), then
+what's drawn ahead, once it's calm too. A still shows as soon as its picture is encoded (an object
+URL) and is kept as a data URL made in the background. Up to 300 are kept; past that the oldest
+that this week and next don't show go. The plan builder's large tiles (its picker's) are drawn as
+they come near the screen and held for the launch only. Reset everything deletes them. `ui-plan`
+checks that no tile ever holds the flat figure while 3D is picked, the drawing ahead, Plan's first
+render after a relaunch, a new look and the flat setting; `ui-figure` Settings' preview after a
+relaunch, and that stills never go while a finger is down or the page scrolls, and then go at once,
+several per idle moment. `test/ui-stills.mjs` times Plan's stills from cold (a fresh install, and an
+update that draws the figure differently: until the first screen's tiles, today's card and the
+week's stills show the 3D figure, and where the time goes) and holds their budget; `--vs=<dir>`
+compares two builds run by run.
 
 ```sh
 npm run build && node test/figure3d.mjs [filter,…] [--dark] [--mirrored]
 node test/ui-figure.mjs [--dark] [--shots]   # the figure inside the app, and the no-WebGL fallback
+node test/ui-stills.mjs [--measure] [--runs=3] [--vs=<dir>]   # Plan's 3D stills from cold, timed
 ```
 
 The test renders every move in Chromium (SwiftShader), plus gym fixtures for barbells, cables,

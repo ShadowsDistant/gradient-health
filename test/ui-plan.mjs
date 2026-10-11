@@ -144,7 +144,8 @@ section('Stills in 3D');
   check('every exercise tile gets a still of the 3D figure, fading in', s3.thumbs > 0 && s3.drawn3d === s3.thumbs && s3.fading === s3.thumbs, `${s3.drawn3d} of ${s3.thumbs}, ${s3.fading} fading in`);
   check('and no tile ever held the flat figure on the way', await flatSeen(page) === 0, await flatSeen(page));
   const img = await page.evaluate(() => { const i = document.querySelector('#screen .pw-card .pw-thumb > img'); return i && { w: i.naturalWidth, h: i.naturalHeight, src: i.src.slice(0, 16), k: i.getAttribute('data-k') }; });
-  check('square, at twice the tile\'s size on a 2x screen, in the person\'s look', img && img.w === 104 && img.h === 104 && /^data:image\//.test(img.src) && /\|c104\|l\|sand\|/.test(img.k), img);
+  // (Shown at once from its picture, an object URL; kept on the phone as a data URL.)
+  check('square, at twice the tile\'s size on a 2x screen, in the person\'s look', img && img.w === 104 && img.h === 104 && /^(blob:|data:image\/)/.test(img.src) && /\|c104\|l\|sand\|/.test(img.k), img);
   await shot(page, '01b-stills-3d');
 
   // After launch (3 s on, once it's quiet) the stills of this week's and next week's moves are drawn
