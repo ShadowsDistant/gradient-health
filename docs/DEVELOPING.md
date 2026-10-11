@@ -43,8 +43,11 @@ src/customplan.js        your own plans: checks, running them, swaps, progressio
 src/qr.js                a QR code encoder that draws SVG (GH.qr), for sharing plans
 src/share-page.html      the page a shared plan's link opens in a browser (built to docs/p/index.html)
 src/devicecoach.js       the on-device model's prompt: rules, a compact data brief, safety routing
+src/spend.js             Claude's model, thinking level and spending limits, and what each request cost
+                         (GH.spend)
 src/ai.js                the Claude coach's inline part: the key, consent, exactly what's sent, errors
 src/claude.js            the Claude requests with the Anthropic SDK, a lazy chunk: GH.lazy('claude')
+src/ui/claudeset.js      Claude's page, the model and thinking sheet and the limits' sheets (a lazy part)
 src/llm.js               on-device AI runtime (native engine or llama.cpp in WebAssembly), a lazy
                          chunk: GH.lazy('llm')
 src/store.js             local + file persistence, backup and restore, migrations
@@ -679,6 +682,57 @@ bridge method that reads or changes the person's data, reaches the network or an
 model checks it first. Only the app's own pages load in the WebView. Another http(s) page opens in
 the browser, a frame never loads one, `javascript:`, `data:`, `blob:`, `intent:` and `file:`
 navigations are blocked, and the WebView never opens a second window.
+
+## Claude
+
+Claude runs on the person's own Anthropic API key, after they've allowed it on a screen that lists
+what's sent (`U.claudeConsent`). Adding a key leads straight to `U.claudeSetup`: a model and a monthly
+budget, with the defaults picked (Claude Opus 5.5, $10 a month).
+
+**Model and thinking** (`src/spend.js` `MODELS`, `LEVELS`, `FEATURES`). The person picks the model
+(Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 5.5, or an older Opus 5, Sonnet 5 or Opus 4.8) and the thinking
+level, and every Claude feature uses both; nothing is picked by the app any more. `shape(S, feature)`
+turns the level into the request: Auto is each feature's own (medium for questions, the weekly report,
+plan checks and plans built; low for suggestions and Tailor); a level picked is used for all of them;
+Off is `thinking: {type: "disabled"}`, or `{type: "between_tools"}` on Sonnet 5.5 (where `disabled` is
+a 400), always at an effort of high or below, and it isn't offered on Fable 5.1 or Opus 5.5, which
+always think. The output limit (`max_tokens`, thinking included) comes from the feature and the level.
+The model table holds each model's prices; check them against Anthropic's pricing page when a model is
+added, since the limits depend on them.
+
+**Spending limits** (`GH.spend.limits`, `allow`). A monthly budget, a daily limit (Auto: what's left of
+the month this morning, spread evenly over the days left, so it lasts to the end of the month and
+spending today doesn't move today's limit) and an optional limit for any one request. Before a request
+goes, `allow()` reckons its worst case: every input token at the cache-write price (characters over
+2.5, which errs high), every output token the request allows, and a backup model's whole answer when a
+server-side fallback could step in after a refusal (`fallbacks: "default"`, only on the models it's
+documented for, never on Haiku 5.5). When that won't fit, the backup goes first, then the output limit
+comes down to what's left; a request whose smallest useful answer still can't fit isn't sent, and
+`GH.ai.budgetError` says which limit stopped it, what's left and what it could have cost. Requests in
+flight hold their worst case until they're recorded, so two at once can't both spend the same room.
+The app counts only what this phone spends, so Claude's page points to the Console's own spend limits
+(Settings, Limits) as the backstop for the key.
+
+**What it cost** (`GH.spend.record`, `costOf`). Every request goes through `send()` in
+`src/claude.js`, which records its cost from the usage the API returns: each attempt in
+`usage.iterations` at its own model's prices when a backup model answered (an unknown model is priced
+as the dearest), cache reads and writes at theirs, and Haiku 5.5's long-prompt rate card over 100K
+tokens. A request stopped or broken after it started is reckoned from the time it ran and the text that
+came, and marked as reckoned. `S.ai.spend` keeps sums by day (the last 62 days) and by month (by feature
+and by model, forever), and the last 40 requests; it's in backups, and restore checks it.
+
+**Prompts.** Each feature sends only the parts of the summary it can use (`PARTS` in `src/ai.js`): all
+of it with a question, the weekly report and suggestions; the training parts for plan checks, plans
+built and Tailor. A line with nothing to say is left out rather than sent as dashes. A question's
+system text and the conversation so far are cached (the next question within five minutes reads them
+back at a fraction of the price), and so is the plan builder's; the requests that go once skip the
+cache-write premium. `node test/ai.mjs` checks the shapes, and a short script in the PR measured the
+sizes before and after.
+
+**Plans.** Build me a plan and Check my plan go through Claude with the person's model and limits
+(`GH.ai.json(..., { feature })`), and Improve (`GH.customPlan.improve`) reworks a plan of the person's
+own the same way: their plan is the draft, held to the same checks as a plan built from scratch
+(`accept`), with the changes listed in words (`diff`) before they choose to use them or save a new plan.
 
 ## On-device AI
 

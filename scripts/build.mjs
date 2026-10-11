@@ -282,6 +282,7 @@ export const APP_SCRIPTS = [
   'src/qr.js',
   'src/customplan.js',
   'src/devicecoach.js',
+  'src/spend.js', // Claude's model, thinking level and spending limits (the chunk asks it before each request)
   'src/ai.js', // the Claude coach's inline part; its requests are the lazy 'claude' chunk
   'src/ui/core.js',
   'src/ui/lazy.js', // stand-ins for the parts in APP_CHUNKS below
@@ -332,6 +333,9 @@ export const APP_CHUNKS = [
   { name: 'science', scripts: ['src/data/science.js', 'src/ui/science.js'] },
   // A badge's share image.
   { name: 'shareCard', scripts: ['src/ui/sharecard.js'] },
+  // Claude's page and pickers: the model and thinking level, the spending limits and the usage, for
+  // someone who added an API key.
+  { name: 'claudeUi', scripts: ['src/ui/claudeset.js'] },
   // What notifications to send and when (GH.notify): planned as the app is left or opened, only for
   // someone who turned them on (src/ui/notify.js loads it).
   { name: 'notify', scripts: ['src/notify.js'] },

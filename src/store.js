@@ -305,6 +305,26 @@
       for (const k of ['reports', 'chat', 'deviceChat']) if (own(ai, k)) ai[k] = objects(ai[k], 1000);
       if (own(ai, 'enabled') && typeof ai.enabled !== 'boolean') ai.enabled = false;
       if (own(ai, 'mode') && ai.mode !== 'api' && ai.mode !== 'device') delete ai.mode;
+      // Claude's model and limits (src/spend.js makes the rest whole), and what it has cost: sums in
+      // millionths of a dollar by day and by month, and the last few requests.
+      for (const k of ['claude', 'budget']) if (own(ai, k) && !isObj(ai[k])) delete ai[k];
+      if (own(ai, 'spend')) {
+        const sp = ai.spend;
+        if (!isObj(sp)) delete ai.spend;
+        else {
+          if (own(sp, 'log')) sp.log = objects(sp.log, 200);
+          for (const k of ['days', 'months']) if (own(sp, k) && !isObj(sp[k])) delete sp[k];
+          if (isObj(sp.days)) for (const d of Object.keys(sp.days)) { const x = sp.days[d]; if (!isObj(x) || !isNum(x.c) || !isNum(x.n)) delete sp.days[d]; }
+          if (isObj(sp.months)) {
+            for (const m of Object.keys(sp.months)) {
+              const x = sp.months[m];
+              if (!/^\d{4}-\d{2}$/.test(m) || !isObj(x) || !isNum(x.c)) { delete sp.months[m]; continue; }
+              if (!isNum(x.n)) x.n = 0;
+              for (const k of ['f', 'm']) { if (!isObj(x[k])) x[k] = {}; for (const j of Object.keys(x[k])) if (!isNum(x[k][j])) delete x[k][j]; }
+            }
+          }
+        }
+      }
     }
     // Badges (src/achievements.js makes the rest of its record whole when it runs): whether a badge
     // earned has been opened is true or false, and anything else counts as opened, as a badge earned

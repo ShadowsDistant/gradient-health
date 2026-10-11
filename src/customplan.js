@@ -1132,15 +1132,16 @@
       return GH.deviceCoach.pick(S, await llm.installed()) ? 'device' : null;
     } catch (e) { return null; }
   }
-  // The draft, refined by a model when there is one. Resolves { plan, by } (by: 'claude', 'device'
-  // or null when the draft stands).
+  // The draft, refined by a model when there is one. Resolves { plan, by, error? } (by: 'claude',
+  // 'device' or null when the draft stands; error: why a model's take didn't come, such as a Claude
+  // spending limit, for the screen to say).
   async function refine(S, day, w, draft, signal) {
     const by = await modelFor(S);
     if (!by) return { plan: draft, by: null };
     const ids = allowedMoves(S, day, w, draft);
-    let raw = null;
+    let raw = null, error = null;
     try {
-      if (by === 'claude') raw = await GH.ai.json(S, day, claudePrompt(S, w, draft, ids), planSchema(ids), { maxTokens: 6000 });
+      if (by === 'claude') raw = await GH.ai.json(S, day, claudePrompt(S, w, draft, ids), planSchema(ids), { feature: 'build' });
       else {
         const llm = await GH.lazy('llm');
         const id = GH.deviceCoach.pick(S, await llm.installed());
@@ -1148,10 +1149,42 @@
         const text = await llm.chat(planMessages(S, w, draft, ids), { grammar: planGrammar(ids, draft.days.length), maxTokens: 200 * draft.days.length + 150, temperature: 0.3, signal });
         raw = readJson(text);
       }
-    } catch (e) { raw = null; }
+    } catch (e) { raw = null; error = e; }
     if (signal && signal.aborted) return { plan: draft, by: null };
     const plan = accept(S, day, w, draft, raw, ids);
-    return plan ? { plan, by } : { plan: draft, by: null };
+    return plan ? { plan, by } : Object.assign({ plan: draft, by: null }, error ? { error } : {});
+  }
+  // Their own plan, reworked by a model from their data and what they ask for, and held to the same
+  // checks as a plan built from scratch (accept: the same days, time, coverage, focus and balance).
+  // Resolves { plan, by, changes, error? }: plan is null when there's no model or its take didn't
+  // pass, and changes says what's different, day by day.
+  async function improve(S, day, plan, text, signal) {
+    const ask = clean(text, 300);
+    const w = wishes(S, ask);
+    w.days = plan.days.length;
+    w.text = `Improve my own plan from my data${ask ? `, and: ${ask}` : ''}. Keep what works and what I clearly chose; change what would help most.`;
+    const draft = copy(plan);
+    const r = await refine(S, day, w, draft, signal);
+    if (!r.by) return Object.assign({ plan: null, by: null, changes: [] }, r.error ? { error: r.error } : {});
+    const out = Object.assign(r.plan, { name: plan.name });
+    return { plan: out, by: r.by, changes: diff(plan, out) };
+  }
+  // What changed between two versions of a plan, day by day, in plain words.
+  function diff(a, b) {
+    const out = [];
+    const name = (id) => (M().MOVES[id] ? M().MOVES[id].name : id);
+    const amt = (it) => `${it.sets} × ${amountText(it)}`;
+    b.days.forEach((d, i) => {
+      const was = (a.days[i] && a.days[i].items) || [];
+      const day = `Day ${i + 1}`;
+      for (const it of d.items) {
+        const x = was.find((y) => y.move === it.move);
+        if (!x) out.push(`${day}: added ${name(it.move)}, ${amt(it)}`);
+        else if (x.sets !== it.sets || (x.reps || 0) !== (it.reps || 0) || (x.secs || 0) !== (it.secs || 0)) out.push(`${day}: ${name(it.move)} ${amt(x)} → ${amt(it)}`);
+      }
+      for (const x of was) if (!d.items.some((it) => it.move === x.move)) out.push(`${day}: took out ${name(x.move)}`);
+    });
+    return out;
   }
   function readJson(text) {
     const s = String(text || '').trim();
@@ -1166,6 +1199,6 @@
     use, inForce, eventAt: (S, day) => eventAt(planEvents(S), day), startDay, weekSessions, owns, parseTpl, buildSession, minutes, progress, nextHarder,
     context, check, choose, whyText, swapsFor, catalog, offsetsFor,
     fromCoach, encode, decode, dataFrom, isLink, link, appLink, sharedTitle,
-    wishes, generate, knows, allowedMoves, planMessages, planGrammar, planSchema, accept, refine, modelFor, readJson,
+    wishes, generate, knows, allowedMoves, planMessages, planGrammar, planSchema, accept, refine, modelFor, readJson, improve, diff,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

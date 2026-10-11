@@ -342,6 +342,7 @@
             ${plan.note ? `<p class="t-footnote cp-note">${U.esc(plan.note)}</p>` : ''}
           </div>
           <div class="cp-hero-act">
+            ${improveBtn(S, plan)}
             ${active ? `<span class="cp-badge is-lg">${U.icon('check')}${pending ? 'In use from tomorrow' : 'In use'}</span><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="cpCoach">Back to the coach's plan</button>`
     : problems.length ? `<p class="t-footnote cp-todo">${U.icon('info')}<span>${U.esc(problems[0])}</span></p>`
       : `<button type="button" class="rf-btn cp-use" data-variant="filled" data-size="lg" data-act="cpUse" data-arg="${plan.id}">${U.icon('play')}Use this plan</button><p class="t-footnote rf-muted">${U.esc(startsLine(S, day, plan))}</p>`}
@@ -369,6 +370,14 @@
       wireDrag(screen, id);
     },
   };
+  // Improve: with Claude on (or the on-device AI there), for a plan with something to improve.
+  function improveBtn(S, plan) {
+    if (!C().countItems(plan)) return '';
+    const claude = S.ai && S.ai.mode === 'api' && S.ai.consentAt && GH.ai && GH.ai.hasKey && GH.ai.hasKey();
+    const device = !!(S.ai && S.ai.deviceModel);
+    if (!claude && !device) return '';
+    return `<button type="button" class="rf-btn cp-improve" data-variant="soft" data-size="sm" data-act="cpImprove" data-arg="${plan.id}">${U.icon('sparkle')}Improve with ${claude ? 'Claude' : 'the coach'}</button>`;
+  }
   // Every change is saved as it's made; the plan in use picks it up from today.
   function edit(fn) {
     const S = U.S, id = U.route.arg;
@@ -706,10 +715,12 @@
       title: plan.name, size: 'fit',
       body: `<ul class="rf-list">
         ${U.row({ icon: 'share', tone: 'violet', title: 'Share', sub: 'A QR code or a link', act: 'cpShare', arg: id, chevron: true })}
+        ${C().countItems(plan) ? U.row({ icon: 'sparkle', tone: 'violet', title: 'Improve it', sub: 'Claude or the on-device AI reworks it from your data', act: 'cpImproveFromMenu', arg: id, chevron: true }) : ''}
         ${U.row({ icon: 'copy', tone: 'indigo', title: 'Duplicate', sub: 'A copy to change', act: 'cpDup', arg: id })}
         ${U.row({ icon: 'trash', tone: 'rose', title: 'Delete plan', act: 'cpDelete', arg: id })}
       </ul>`,
     });
+    U.act.cpImproveFromMenu = () => { ctl.close('ok'); setTimeout(() => U.act.cpImprove({ dataset: { arg: id } }), 320); };
     U.act.cpDup = () => {
       ctl.close('ok');
       const copy = C().duplicate(U.S, id);
@@ -902,11 +913,20 @@
 
   /* ================================================================== ask the coach */
   const ASK_CHIPS = ['3 days a week', '30 minutes', 'Full body', 'Upper and lower', 'Push, pull, legs', 'Bigger arms', 'Stronger legs', 'No equipment', 'Easy on my knees'];
+  // A plan's days as Build me a plan and Improve show them: each day's moves with their sets.
+  const planView = (S, plan) => plan.days.map((d, di) => `<div class="cp-imp-day"><p class="cp-day-eyebrow"><b>Day ${di + 1}</b><span class="cp-imp-title">${U.esc(C().titleOf(plan, di))}</span><span class="rf-num">${C().minutes(S, plan, di, U.today())} min</span></p>
+      <ul class="cp-imp-list">${d.items.map((it) => `<li class="cp-imp-ex">${thumb(it.move)}<span class="cp-ex-text"><span class="cp-ex-name">${U.esc(M().MOVES[it.move].name)}</span><span class="cp-ex-meta rf-num">${U.esc(itemMeta(it))}</span></span></li>`).join('')}</ul></div>`).join('');
+  // About what a Claude request for a plan costs with the person's model ("about 4¢ with Opus 5.5"),
+  // or nothing for the on-device AI.
+  function costHint(S, by) {
+    const sp = GH.spend;
+    if (by !== 'claude' || !sp) return '';
+    const c = sp.typical(S, 'build');
+    return `About ${c < 10000 ? 'under 1¢' : c < 1e6 ? `${Math.round(c / 10000)}¢` : sp.money(c)} with ${sp.model(S).short}.`;
+  }
   U.act.cpBuild = () => {
     const S = U.S;
     const st = { step: 'ask', text: '', plan: null, by: null, ctrl: null, saved: null };
-    const planView = (plan) => plan.days.map((d, di) => `<div class="cp-imp-day"><p class="cp-day-eyebrow"><b>Day ${di + 1}</b><span class="cp-imp-title">${U.esc(C().titleOf(plan, di))}</span><span class="rf-num">${C().minutes(S, plan, di, U.today())} min</span></p>
-        <ul class="cp-imp-list">${d.items.map((it) => `<li class="cp-imp-ex">${thumb(it.move)}<span class="cp-ex-text"><span class="cp-ex-name">${U.esc(M().MOVES[it.move].name)}</span><span class="cp-ex-meta rf-num">${U.esc(itemMeta(it))}</span></span></li>`).join('')}</ul></div>`).join('');
     const body = () => {
       if (st.step === 'propose' || st.step === 'refining' || st.step === 'saved') {
         const p = st.plan;
@@ -920,7 +940,7 @@
         return `<div class="sheet-pad cp-import cp-build${st.step === 'refining' ? ' is-refining' : ''}">
           ${st.text ? `<p class="t-callout rf-muted tailor-asked">“${U.esc(st.text)}”</p>` : ''}
           ${head}${note}${acts}
-          <div class="cp-imp-days">${planView(p)}</div>
+          <div class="cp-imp-days">${planView(S, p)}</div>
           ${st.step === 'propose' ? '<p class="t-footnote rf-muted">Nothing changes until you save it and choose to use it. You can change anything after.</p>' : ''}
         </div>`;
       }
@@ -962,6 +982,8 @@
       st.plan = r.plan; st.by = r.by; st.step = 'propose';
       draw();
       U.haptic('tap');
+      // A Claude limit that stopped its take: the coach's plan stands, and they're told why.
+      if (r.error && GH.ai && GH.ai.isBudget(r.error.code)) U.toast('Claude didn\'t refine it', 'caution', r.error.message);
     };
     U.act.cpBuildSkip = () => { if (st.ctrl) st.ctrl.abort(); st.ctrl = null; st.step = 'propose'; draw(); };
     U.act.cpBuildEdit = () => { st.step = 'ask'; st.plan = null; draw(); };
@@ -984,6 +1006,104 @@
       U.toast(`Using ${st.saved.name}`, 'positive', r.from > U.today() ? 'It starts tomorrow.' : 'Your week follows it from today.');
     };
     U.act.cpBuildOpen = () => { const id = st.saved && st.saved.id; ctl.close('ok'); if (id) U.open('planEdit', id); };
+  };
+
+  /* ================================================================== improve a plan of their own */
+  // Claude (or the on-device AI) reworks one of their plans from their training, their health and
+  // anything they ask, under the same checks as a plan built from scratch. What changes is listed
+  // first and the new version under it; their plan stays as it is until they replace it or save the
+  // new one as a plan of its own.
+  const IMPROVE_CHIPS = ['Shorter workouts', 'More for my arms', 'Easier on my knees', 'A bit harder', 'More variety'];
+  U.act.cpImprove = async (el) => {
+    const id = (el && el.dataset && el.dataset.arg) || U.route.arg;
+    const S = U.S;
+    const plan0 = C().get(S, id);
+    if (!plan0) return;
+    const by = await C().modelFor(S);
+    if (!by) { U.toast('Set up an AI coach first', 'neutral', 'Claude or the on-device AI can improve a plan. Both are in Settings, under AI coach.'); return; }
+    const who = by === 'claude' ? 'Claude' : 'The on-device AI';
+    const st = { step: 'ask', text: '', plan: null, changes: [], ctrl: null, error: null };
+    const body = () => {
+      if (st.step === 'working') return `<div class="sheet-pad cp-import cp-build"><div class="cp-refining" role="status"><span class="rf-spinner" data-size="sm"><i></i></span><span class="t-callout">${U.esc(who)} is reworking it…</span><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="cpImproveStop">Stop</button></div></div>`;
+      if (st.step === 'none') {
+        return `<div class="sheet-pad cp-import"><p class="t-headline">Your plan stays as it is</p><p class="t-callout rf-muted">${U.esc(st.error || `${who} couldn't make a version that passes the checks this time.`)}</p>
+          <div class="cp-imp-btns"><button type="button" class="rf-btn" data-size="lg" data-act="cpImproveAgain">Try again</button></div></div>`;
+      }
+      if (st.step === 'propose') {
+        const p = st.plan;
+        if (!st.changes.length) return `<div class="sheet-pad cp-import"><p class="t-headline">${U.esc(who)} kept it as it is</p><p class="t-callout rf-muted">${U.esc(p.note || 'It already fits what you asked for and what your data shows.')}</p><div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpImproveDone">Done</button></div></div>`;
+        return `<div class="sheet-pad cp-import cp-build">
+          ${st.text ? `<p class="t-callout rf-muted tailor-asked">“${U.esc(st.text)}”</p>` : ''}
+          ${p.note ? `<p class="t-callout tailor-note">${U.icon('sparkle', 'sm')}<span>${U.esc(p.note)}</span></p>` : ''}
+          <p class="t-subhead">What changes</p>
+          <ul class="cp-changes t-footnote">${st.changes.slice(0, 12).map((x) => `<li>${U.esc(x)}</li>`).join('')}${st.changes.length > 12 ? `<li>${U.esc(`and ${st.changes.length - 12} more`)}</li>` : ''}</ul>
+          <div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpImproveReplace">Use these changes</button><button type="button" class="rf-btn" data-size="lg" data-act="cpImproveNew">Save as a new plan</button></div>
+          <div class="cp-imp-days">${planView(S, p)}</div>
+          <p class="t-footnote rf-muted">Your plan stays as it was until you choose. You can change anything after.</p>
+        </div>`;
+      }
+      return `<div class="sheet-pad tailor cp-ask">
+        <p class="t-callout rf-muted">${U.esc(who)} reworks it from your training, your health and anything you ask, then shows you what it would change. ${U.esc(costHint(S, by))}</p>
+        <div class="rf-field"><label class="rf-field-label" for="cpImpQ">Anything you'd like? (optional)</label><div class="rf-field-control"><textarea class="rf-input" id="cpImpQ" rows="2" maxlength="300" placeholder="Shorter workouts, more for my arms">${U.esc(st.text)}</textarea></div></div>
+        <div class="ob-chips tailor-chips">${IMPROVE_CHIPS.map((x) => `<button type="button" class="rf-chip" data-act="cpImpChip" data-arg="${U.esc(x)}">${U.esc(x)}</button>`).join('')}</div>
+        <button type="button" class="rf-btn ob-wide" data-variant="filled" data-size="lg" data-act="cpImproveGo">${U.icon('sparkle')}Improve it</button>
+      </div>`;
+    };
+    const ctl = U.sheet({ title: `Improve ${plan0.name}`, size: 'auto', cls: 'cp-sheet cp-build-sheet', body: body(), onClose: () => { if (st.ctrl) st.ctrl.abort(); } });
+    const draw = () => { if (!ctl.closed) { ctl.update(body()); drawThumbs(ctl.el); } };
+    U.act.cpImpChip = (b) => {
+      const q = doc.getElementById('cpImpQ');
+      if (!q) return;
+      const v = q.value.trim();
+      q.value = v ? `${v.replace(/[,.\s]+$/, '')}, ${b.dataset.arg.toLowerCase()}` : b.dataset.arg;
+      U.haptic('tick');
+    };
+    U.act.cpImproveGo = async () => {
+      const q = doc.getElementById('cpImpQ');
+      st.text = (q ? q.value : st.text || '').trim();
+      const me = st.ctrl = new AbortController();
+      st.step = 'working';
+      draw();
+      U.haptic('tap');
+      const plan = C().get(S, id);
+      const r = await C().improve(S, U.today(), plan || plan0, st.text, me.signal).catch((e) => ({ plan: null, error: e }));
+      if (st.ctrl !== me || me.signal.aborted) return;
+      st.ctrl = null;
+      if (!r.plan) {
+        st.step = 'none';
+        st.error = r.error && GH.ai && GH.ai.isBudget(r.error.code) ? r.error.message : null;
+        draw();
+        U.haptic('deny');
+        return;
+      }
+      st.plan = r.plan; st.changes = r.changes; st.step = 'propose';
+      draw();
+      grow(ctl);
+      U.haptic('tap');
+    };
+    U.act.cpImproveStop = () => { if (st.ctrl) st.ctrl.abort(); st.ctrl = null; st.step = 'ask'; draw(); };
+    U.act.cpImproveAgain = () => { st.step = 'ask'; st.error = null; draw(); };
+    U.act.cpImproveDone = () => ctl.close('ok');
+    U.act.cpImproveReplace = () => {
+      const was = C().get(S, id);
+      if (!was || !st.plan) return;
+      const before = JSON.parse(JSON.stringify({ days: was.days, note: was.note }));
+      C().update(S, id, (p) => { p.days = st.plan.days; if (st.plan.note) p.note = st.plan.note; }, U.today());
+      U.save(true);
+      ctl.close('ok');
+      U.haptic('success');
+      U.render();
+      U.toast('Plan updated', 'positive', undefined, { label: 'Undo', onClick: () => { C().update(U.S, id, (p) => { p.days = before.days; p.note = before.note; }, U.today()); U.save(true); U.render(); U.haptic('undo'); } });
+    };
+    U.act.cpImproveNew = () => {
+      if (!st.plan) return;
+      const r = C().save(S, Object.assign({}, st.plan, { name: `${plan0.name} (improved)`.slice(0, 40) }));
+      U.save(true);
+      ctl.close('ok');
+      U.haptic('save');
+      if (r && r.plan) U.open('planEdit', r.plan.id);
+      U.toast('Saved to your plans', 'positive', 'Yours stays as it was.');
+    };
   };
 
   /* ================================================================== elsewhere in the app */

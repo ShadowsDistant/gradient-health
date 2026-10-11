@@ -10,6 +10,7 @@
   const B = () => GH.brain;
   const H = () => GH.health;
   const AI = () => GH.ai;
+  const SP = () => GH.spend;
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   /* ---------------------------------------------------------------- building blocks */
@@ -85,13 +86,15 @@
           ${list('coach', `${stack('Who answers your questions', ENGINE_SUB[engine], U.seg('setCoach', [['device', 'On-device'], ['api', 'Claude']], engine, 'Coach', ' data-on="setCoachMode"'), 'claude anthropic api key on-device model engine', 'engine')}
             ${engine === 'device' ? U.modelRows(S) : ''}
             ${engine === 'device' && dev.installed.length ? kw(U.row({ key: 'selftest', icon: 'bolt', tone: 'teal', title: 'Check the on-device AI', sub: 'Starts the model and times a short answer', act: 'aiSelfTest', chevron: true }), 'test speed problem report') : ''}
-            ${claude ? `${kw(hasKey ? U.row({ key: 'key', icon: 'lock', tone: 'green', title: 'API key saved on this phone', sub: S.ai.model && S.ai.model.name ? `Using ${U.esc(S.ai.model.name)}` : 'The model is picked on first use', act: 'keySheet', detail: 'Change', chevron: true }) : U.row({ key: 'key', icon: 'lock', tone: 'amber', title: 'Add your API key', sub: 'From the Claude Console, starts with sk-ant-', act: 'keySheet', chevron: true }), 'api key anthropic console')}
+            ${claude ? `${kw(hasKey ? U.row({ key: 'key', icon: 'lock', tone: 'green', title: 'API key saved on this phone', sub: 'Encrypted here, never in backups', act: 'keySheet', detail: 'Change', chevron: true }) : U.row({ key: 'key', icon: 'lock', tone: 'amber', title: 'Add your API key', sub: 'From the Claude Console, starts with sk-ant-', act: 'keySheet', chevron: true }), 'api key anthropic console')}
+              ${hasKey && SP() ? kw(U.row({ key: 'claude-model', icon: 'sparkle', tone: 'violet', title: 'Model and thinking', detail: U.esc(`${SP().model(S).short} · ${SP().LEVEL_NAMES[SP().level(S)]}`), act: 'claudeModel', chevron: true }), 'claude model opus sonnet haiku fable thinking effort reasoning') : ''}
+              ${hasKey && SP() ? kw(U.row({ key: 'claude-spend', icon: 'card', tone: 'teal', title: 'Spending and usage', sub: U.esc(SP().todayLine(S, U.today())), act: 'claudePage', chevron: true }), 'budget spending limit cost usage money dollars price tokens bill monthly daily') : ''}
               ${hasKey && !S.ai.consentAt ? U.row({ key: 'consent', icon: 'alert', tone: 'amber', title: 'Claude is waiting for your OK', sub: 'Review what it gets before it turns on', act: 'claudeReview', chevron: true }) : ''}
               ${hasKey && S.ai.consentAt ? U.row({ key: 'consent', icon: 'check-circle', tone: 'green', title: 'You allowed Claude to get your summary', sub: 'Turn it off by picking another coach, or withdraw it', act: 'claudeWithdraw', chevron: true }) : ''}
               ${hasKey ? kw(U.row({ key: 'delkey', icon: 'trash', tone: 'rose', title: 'Delete key', act: 'deleteKey' }), 'api key remove') : ''}` : ''}
             ${U.row({ key: 'claudeapp', icon: 'share', tone: 'violet', title: 'Ask in the Claude app', sub: 'Uses your own Claude plan, no key needed', act: 'askClaudeApp', chevron: true })}
             ${kw(U.row({ key: 'sent', icon: 'eye', tone: 'sky', title: 'What gets sent', sub: 'The exact summary Claude sees', act: 'previewSheet', chevron: true }), 'privacy data summary')}`)}
-          ${foot('coach', `${claude ? 'Claude mode uses your own Anthropic API key and its usage costs. The key is encrypted on this phone and never in backups.' : 'The on-device coach is Qwen3.5 (Apache 2.0), run with llama.cpp on your phone. It works offline, answers from what the app works out from your numbers, nothing you ask leaves the phone, and it can be wrong.'} Anything sent to Claude is a summary with no name, exact dates or IDs, and only after you've allowed it.`)}
+          ${foot('coach', `${claude ? 'Claude mode uses your own Anthropic API key, and its usage costs money. Spending and usage has hard limits on what Claude may spend.' : 'The on-device coach is Qwen3.5 (Apache 2.0), run with llama.cpp on your phone. It works offline, answers from what the app works out from your numbers, nothing you ask leaves the phone, and it can be wrong.'} Anything sent to Claude is a summary with no name, exact dates or IDs, and only after you've allowed it.`)}
 
           ${head('feel', 'Sound and haptics', 'vibration vibrate buzz haptic feedback feel touch beep audio')}
           ${list('feel', `${U.sw('Sound', pr.sound !== false, 'data-on="setPref" data-k="sound"', 'Beeps for the 3-2-1, and when a timer or rest ends')}
@@ -501,7 +504,7 @@
   };
 
   /* ---------------------------------------------------------------- coach */
-  const ENGINE_SUB = { device: 'On-device: an AI model that runs on your phone', api: 'Claude: your own API key, the most capable' };
+  const ENGINE_SUB = { device: 'On-device: an AI model that runs on your phone', api: 'Claude: your own API key, with the model, thinking and spending limits you pick' };
   U.on.setCoachMode = async (el, ev, v) => {
     const S = U.S;
     const before = S.ai.mode;
@@ -757,19 +760,27 @@
     const res = AI().setKey(input ? input.value : '');
     if (!res.ok) { if (err) { err.hidden = false; err.textContent = res.error || 'Couldn\'t save the key.'; } return; }
     if (input) input.value = '';
-    U.S.ai.model = null;
     U.save(true);
     const t = U.topSheet(); if (t) t.close('ok');
-    // Claude turns on only once the person has allowed it to get their data.
+    // Claude turns on only once the person has allowed it to get their data; then they pick the
+    // model and the monthly budget (the defaults are picked for them).
     setTimeout(async () => {
       const ok = await U.claudeConsent();
       U.S.ai.enabled = ok;
       U.S.ai.mode = ok ? 'api' : 'device';
       U.save(true);
       U.render();
-      if (ok) U.toast('Key saved', 'positive', 'Claude writes your weekly report when you open Health.');
-      else U.toast('Key saved', 'neutral', 'Claude stays off until you allow it in Settings, under AI coach.');
+      if (!ok) { U.toast('Key saved', 'neutral', 'Claude stays off until you allow it in Settings, under AI coach.'); return; }
+      if (U.claudeSetup) await U.claudeSetup();
+      U.render();
+      U.toast('Claude is on', 'positive', 'It writes your weekly report when you open Health, and you can ask it anything.');
     }, 350);
+  };
+  // Claude's page (src/ui/claudeset.js): over a sheet, the sheet goes first.
+  U.act.claudePage = () => {
+    const top = U.topSheet && U.topSheet();
+    const here = U.route && U.route.view === 'claude';
+    if (top && !top.closed) { U.closeSheets(); if (!here) setTimeout(() => U.open('claude'), 320); } else if (!here) U.open('claude');
   };
   U.act.deleteKey = async () => {
     if (!(await U.confirm('Delete the API key?', 'The coach stops working until you add a key again. Reports you already have stay.', 'Delete', 'critical', 'trash'))) return;
@@ -779,7 +790,7 @@
   U.act.previewSheet = () => {
     U.sheet({
       title: 'What gets sent', size: 'auto',
-      body: `<div class="sheet-pad"><p class="t-callout rf-muted">This summary goes to Claude with your questions, suggestion requests and weekly report once you've allowed it (through your API key), or into the Claude app when you ask there. No name, email, exact dates or device IDs. The on-device coach and the weekly report worked out on this phone send nothing.</p></div><pre class="preview">${U.esc(AI().preview(U.S, U.today()))}</pre>`,
+      body: `<div class="sheet-pad"><p class="t-callout rf-muted">This is what goes to Claude with a question once you've allowed it (through your API key), or into the Claude app when you ask there. Your weekly report and suggestions get the same; building, checking or improving a plan gets less of it, with the plan and the moves you can do. No name, email, exact dates or device IDs. The on-device coach and the weekly report worked out on this phone send nothing.</p></div><pre class="preview">${U.esc(AI().preview(U.S, U.today()))}</pre>`,
     });
   };
 

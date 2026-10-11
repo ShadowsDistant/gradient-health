@@ -43,6 +43,15 @@
     };
   }
 
+  /* ---------------------------------------------------------------- Claude's page (src/ui/claudeset.js) */
+  // Only for someone with an API key: the model and thinking sheet, a limit's sheet, the page, and
+  // the sheet right after a key is added.
+  stand(U.act, 'claudeModel', 'claudeUi');
+  stand(U.act, 'claudeBudget', 'claudeUi');
+  stand(U.act, 'claudeConsole', 'claudeUi');
+  stand(U, 'claudeSetup', 'claudeUi');
+  screen('claude', 'claudeUi', 'Claude');
+
   /* ---------------------------------------------------------------- set-up (src/ui/onboarding.js) */
   // Someone who isn't set up yet gets it at launch (core's boot asks for it); everyone else only
   // when they edit their answers, or look at what their plan works around.

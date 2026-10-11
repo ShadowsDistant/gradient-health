@@ -245,7 +245,11 @@ Your profile, your badges, your plans, your set-up answers and Settings live in 
 
 **Tailor your plan by saying what you want.** "More legs, my knees hurt, 20 minutes", or "train my calves more". The coach shows you the changes first (legs trained more often, easy on the knees, shorter workouts) and nothing changes until you apply it. Undo is always there.
 
-**Or use Claude.** Add your own Anthropic API key and Claude answers in the app, writes your weekly report and reads your Tailor requests. Or tap Ask in the Claude app and your question plus a summary of your data (no name, no dates) opens there.
+**Or use Claude.** Add your own Anthropic API key and Claude answers in the app, writes your weekly report, builds plans with you, checks your plan and improves plans of your own. Or tap Ask in the Claude app and your question plus a summary of your data (no name, no dates) opens there.
+
+- **You pick the model and how much it thinks:** Fable 5.1, Opus 5.5, Sonnet 5.5 or Haiku 5.5 (or an older one), from no thinking up to Max, with about what a question costs next to each.
+- **Spending limits that hold.** Set a monthly budget and each day gets an equal share of what's left, so it lasts the month; add a daily limit or a most per request if you like. A request that could go over a limit isn't sent, and Claude's page shows what each day, feature and model cost.
+- **Leaner requests.** Each feature sends only the part of your summary it needs, and a conversation is cached between questions, so answers cost less.
 
 <p align="center">
   <img src="docs/screenshots/framed/chat.png" width="200" alt="The coach chat: questions worth asking today">

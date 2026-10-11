@@ -1,0 +1,33 @@
+/* Claude's page and pickers (src/ui/claudeset.js): picked rows with a check, the spending meters, the
+ * amount field of a limit, and the model and cost under a Claude answer in the chat. */
+
+/* A list of choices: the whole row picks, and the picked one carries a check. */
+.cl-pick { width: 100%; text-align: start; }
+.cl-pick .rf-list-text { min-width: 0; }
+.cl-check { display: inline-flex; flex: none; inline-size: 22px; justify-content: center; color: var(--rf-accent, var(--accent)); }
+.cl-pick[aria-checked="true"] .rf-list-title { font-weight: 600; }
+.cl-price { font-variant-numeric: tabular-nums; }
+.cl-older { margin-block: var(--space-2) var(--space-3); }
+.cl-older > summary { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; padding: var(--space-2) var(--space-1); color: var(--label-secondary); list-style: none; }
+.cl-older > summary::-webkit-details-marker { display: none; }
+.cl-older > summary .rf-icon { transition: transform 0.2s ease; }
+.cl-older[open] > summary .rf-icon { transform: rotate(180deg); }
+
+/* Today and the month: what's spent against each limit. */
+.cl-meters { display: grid; gap: var(--space-3); padding: var(--space-4); margin-block-end: var(--space-3); }
+.cl-meter { display: grid; gap: 6px; }
+.cl-meter-top { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); }
+.cl-meter-top .t-footnote { color: var(--label-secondary); text-align: end; }
+.cl-console { margin-block-start: var(--space-1); }
+.cl-empty { padding: var(--space-4); }
+
+/* A limit's amount: a dollar sign and the number, dimmed while a preset with no amount is picked. */
+.cl-amount { display: flex; align-items: center; gap: var(--space-2); margin-block: var(--space-3); }
+.cl-cur { font-size: 28px; font-weight: 600; color: var(--label-secondary); }
+.cl-amount .rf-input { font-size: 28px; font-weight: 600; min-height: 52px; }
+.cl-amount.is-off .cl-cur, .cl-amount.is-off .rf-input { opacity: 0.45; }
+.cl-amt-line { margin-block-start: var(--space-3); color: var(--label-secondary); }
+.cl-budget .gh-chipseg, .cl-setup .gh-chipseg { margin-block-start: var(--space-2); }
+
+/* Under a Claude answer: which model wrote it, and what it cost. */
+.msg-meta { display: inline-flex; align-items: center; min-height: 30px; padding: 0 9px; color: var(--label-tertiary); }

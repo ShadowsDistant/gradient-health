@@ -187,7 +187,8 @@
       case 'error': return `<div class="sheet-pad rv rv-msg"><div class="notice" data-tone="critical" data-key="error">${U.icon('alert')}<span>${U.esc(st.error || 'Something went wrong.')}</span></div>
         <button type="button" class="rf-btn ob-wide" data-variant="soft" data-size="lg" data-act="reviewAgain">${U.icon('refresh')}Retry</button>
         <div class="rv-more btn-row"><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="whyPlan">${U.icon('layers', 'sm')}Why this plan</button></div></div>`;
-      case 'custom': return noteBody('list', 'You\'re following your own plan', 'The review checks the coach\'s plan. Go back to it under Your plans to have it checked.', U.act.openPlans ? `<button type="button" class="rf-btn ob-wide" data-variant="soft" data-size="lg" data-act="reviewPlans">${U.icon('list')}Your plans</button>` : '');
+      // Their own plan: the coach can rework it (Improve, src/ui/customplan.js) rather than check it.
+      case 'custom': return noteBody('list', 'You\'re following your own plan', 'The review checks the coach\'s plan. Your own can be improved instead: the coach reworks it from your data and shows you what it would change.', `${U.act.cpImprove && GH.customPlan && GH.customPlan.activeId(U.S) ? `<button type="button" class="rf-btn ob-wide" data-variant="filled" data-size="lg" data-act="reviewImprove">${U.icon('sparkle')}Improve my plan</button>` : ''}${U.act.openPlans ? `<button type="button" class="rf-btn ob-wide" data-variant="soft" data-size="lg" data-act="reviewPlans">${U.icon('list')}Your plans</button>` : ''}`);
       case 'off': return noteBody('info', 'Workouts are off', 'Turn workouts on in Settings, under What you track, to get a plan to check.');
       case 'result': return resultBody(st);
       default: return `<div class="sheet-pad rv rv-wait" data-key="start"><span class="rf-spinner" data-size="sm"><i></i></span><p class="t-callout rf-muted">Getting the coach ready…</p></div>`;
@@ -324,6 +325,7 @@
     if (rv && rv.step === 'none') start(rv, 'claude');
   };
   U.act.reviewPlans = () => { U.closeSheets(); if (U.act.openPlans) setTimeout(() => U.act.openPlans(), 320); };
+  U.act.reviewImprove = () => { const id = GH.customPlan && GH.customPlan.activeId(U.S); U.closeSheets(); if (id && U.act.cpImprove) setTimeout(() => U.act.cpImprove({ dataset: { arg: id } }), 320); };
   U.on.reviewPick = (el, ev, v) => {
     if (!rv || !rv.review) return;
     const id = el.getAttribute('data-k');
