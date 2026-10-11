@@ -8,9 +8,10 @@ A training plan, a food log, your health data and a coach that runs on your phon
 <p align="center">
   <a href="../../releases/latest"><b>Download the latest APK</b></a> ·
   Android 8.0+ ·
-  No account, no ads, no analytics ·
-  <a href="#credits">Built with Refract</a>
+  No account, no ads, no analytics
 </p>
+
+<p align="center"><a href="#credits"><img src="docs/refract-badge.svg" height="32" alt="Built with Refract"></a></p>
 
 <p align="center">
   <img src="docs/screenshots/today.png" width="200" alt="Today: a 35-day streak and today's workout">
@@ -34,7 +35,8 @@ Gradient Health plans a workout for each day of your week around your goals, the
 | **[Food](#food)** | Calories and macros, or just protein, or nothing |
 | **[Health](#health)** | Sleep, steps, heart rate, weight and more at a glance, with the history behind each number |
 | **[Progress](#progress)** | A body map of what you've trained and what's improved |
-| **[Badges](#badges)** | 64 to earn, from your first workout to a 100-day streak, to share with friends and family |
+| **[Badges](#badges)** | 64 to earn and open, from your first workout to a 100-day streak, to share with friends and family |
+| **[Reminders](#reminders)** | A nudge on workout days, a walk on rest days and good news after a great night's sleep, never more than one a day |
 | **[You](#you)** | Your profile, badges, plans and Settings in one place |
 | **[The coach](#the-coach)** | Ask it anything about your numbers, and tailor your plan by just saying what you want |
 
@@ -197,12 +199,26 @@ A body map, front and back, lights up the muscles you've trained most over the l
 
 64 badges for the things worth celebrating: your first workout, streaks from 3 days to 100, every muscle trained in a week, your first pull-up, a 5K, a month of protein goals, and a few secret ones. Once earned they're yours for good, with the date.
 
+**Every new badge arrives sealed.** It glows in its tier's colour, so you can see how rare it is before you know what it is. Tap it and it cracks; tap again and it bursts open, with a feel in your hand at each tap. Earned a few at once? Open them one by one, or all together.
+
 Share one as a picture with friends and family: it shows the badge and what it took, and your name only if you choose.
 
 <p align="center">
   <img src="docs/screenshots/badges.png" width="200" alt="Badges: the ones earned so far, with their tiers, and what's next">
   <img src="docs/screenshots/badge-share-dark.png" width="200" alt="Sharing a badge as a picture, in dark mode: the medal, what it took and the date, with your name only if you turn it on">
 </p>
+
+## Reminders
+
+Gradient Health can nudge you, never nag you. Turn reminders on in Settings (or when the app asks after your first workout), and pick what you want to hear about:
+
+- **Workout days:** what's on today, a little before you usually train. Nothing on rest days, and nothing once you've done it.
+- **Walks and runs:** on a rest day, now and then, a walk, or a run if that's your thing.
+- **Badges:** one you've earned and haven't opened yet.
+- **Sleep:** good news after a great night.
+- **When you've been away:** one gentle note after a few days, then at most one a week, and after a few weeks it stops until you're back.
+
+Never more than one a day, nothing late at night, and every kind can be switched off. They're worked out on your phone from what you do in the app, and nothing is sent anywhere.
 
 ## You
 
@@ -232,30 +248,15 @@ Your profile, your badges, your plans, your set-up answers and Settings live in 
   <img src="docs/screenshots/coach.png" width="200" alt="The Coach page: what changed today and why">
 </p>
 
-<details>
-<summary><b>How the on-device AI runs</b></summary>
+**Pick a size for the on-device coach,** in the chat or in Settings. It's a one-off download that's checked, picks up where it left off and can wait for Wi-Fi.
 
-<br>
+| Size | Download | Good for |
+|---|---|---|
+| Fast | 533 MB | Starts answering soonest |
+| Balanced | 1.28 GB | Reads your numbers noticeably better (phones with 6 GB of memory or more) |
+| Best answers | 2.74 GB | The most thoughtful answers (phones with 12 GB of memory) |
 
-The app runs the model with llama.cpp built for your phone's processor, on its fast cores, in a separate process so a problem there can't take the app down. Phones it can't run on use a slower copy that runs inside the app. The model reads your data summary once and keeps it, so each new question starts answering quickly. Settings has a check that shows which engine ran, how long the model took to start and how fast it writes.
-
-Small models can slip, so the app checks every answer:
-
-- A yes-or-no question starts from the app's own yes or no, worked out from your numbers.
-- A question built on something that isn't so ("Why is today lighter?" on a full day) starts from the app's correction.
-- A line with a number that isn't in your data is left out, and if too little is left, you get the app's own answer instead, with a note saying so.
-
-Pick a size in the chat or in Settings:
-
-| Size | Model | Download | Good for |
-|---|---|---|---|
-| Fast | 0.8B | 533 MB | Starts answering soonest |
-| Balanced | 2B | 1.28 GB | Reads your numbers noticeably better; needs 6 GB of memory or more, and is the one suggested on phones with 8 GB or more |
-| Best answers | 4B | 2.74 GB | Needs 12 GB |
-
-The download is one-off, checked, resumable, and can wait for Wi-Fi.
-
-</details>
+Small models can slip, so the app checks every answer against your own numbers, and leaves out anything it can't back up.
 
 ## Made to feel good
 
@@ -263,7 +264,7 @@ The download is one-off, checked, resumable, and can wait for Wi-Fi.
 - **Controls you can feel.** Switches, segmented controls and the tab bar rest as frosted beads, rise into a lens under your finger, follow it and land with a little squash, and they answer every tap, even a slightly wobbly one.
 - **Glass that moves.** Buttons form out of the glass and change shape when their label does, menus grow out of the button you tap, and buttons in the top bar carry over from page to page.
 - **Pages and cards.** Pages slide away as the next one comes in, and cards glide when something is added or removed. Sheets of thick glass slide up from the bottom and follow your finger, from a quick glance up to full height.
-- **Smooth scrolling.** The glass is as designed at rest and steps aside while the page moves (Settings, Look, Glass effects: Auto, Liquid, Frosted or Flat), since a phone's graphics chip can fall behind on blurred glass over a moving page. Nothing redraws it while nothing on screen changes: its light holds still, and the glow behind the page drifts only once you've left the app alone. Work that can wait waits until you stop. Pages don't zoom by accident; maps do, with two fingers.
+- **Smooth scrolling,** with the glass on or off: pick Auto, Liquid, Frosted or Flat in Settings, under Look. Pages don't zoom by accident; maps do, with two fingers.
 - **Haptics with 57 distinct feels** (a tick for each tab, a bump at the end of a stepper, a sheet swiped away, saving, sending, a timer counting down, a finished set, a new best, a badge, every split of a run) in Light, Medium or Strong, and you can feel each one in Settings.
 - **Changed your mind?** Cancelling a workout folds the player away and Today settles back; a discarded activity folds away too.
 - **3D figures appear right away,** with a picture of the move until it starts.
@@ -294,7 +295,7 @@ The [privacy policy](docs/PRIVACY.md) lists every piece of data and where it goe
 
 1. Download `gradient-health.apk` from the [latest release](../../releases/latest).
 2. Open it on your phone. You may need to allow installs from your browser or file manager.
-3. Updates install over the old version and keep your data.
+3. Updates install over the old version and keep your data. The APKPure version is the same app, signed with the same key, so you can switch between them.
 
 | Needs | |
 |---|---|
@@ -302,22 +303,15 @@ The [privacy policy](docs/PRIVACY.md) lists every piece of data and where it goe
 | Health Connect | Android 14 or newer (on older phones you can log sleep and weight by hand) |
 | The on-device AI's fast engine | A 64-bit phone, which is nearly all of them since 2017 |
 
-**Is it genuine?** Builds are signed with the app's release key, the one the Play Store and APKPure versions use. A genuine download's signing certificate has the SHA-256 `f32f5e8302cb9ec6f470254af7f9c894b6ac105a9f173988edf5ed536dc3f55f`, which `apksigner verify --print-certs gradient-health.apk` shows.
-
-**Coming from a test build?** A build signed with the earlier test key won't update to one of these: copy your data first (Settings, Copy my data), uninstall, install the new build, then use Settings, Restore from a copy.
-
 > Gradient Health isn't medical advice. If you have a condition or an injury, check with a doctor before you start.
 
 ## Credits
 
 ### Refract
 
-Every screen is made of **Refract**, the liquid glass design system the app is built with: its glass, controls, motion, icons and type. The app credits it in Settings, under About, with Refract's mark.
+<a href="#credits"><img src="docs/refract-badge.svg" height="32" alt="Built with Refract"></a>
 
-> Refract 1.4.0 (version 1790984272-0589), a liquid glass design system.
-> https://claude.ai/artifact/RaBZ71Jxa3wHHRURMRnDzQ
-
-It ships unmodified in [`vendor/refract/`](vendor/refract/), and [`vendor/refract/SOURCE.md`](vendor/refract/SOURCE.md) records where each file came from and its SHA-256, which the build checks.
+Every screen is made of **Refract**, the liquid glass design system: its glass, controls, motion, icons and type. You'll find it in the app too, in Settings under About.
 
 ### Open-source projects
 
@@ -336,7 +330,3 @@ It ships unmodified in [`vendor/refract/`](vendor/refract/), and [`vendor/refrac
 | OpenStreetMap contributors and OpenMapTiles, served by OpenFreeMap | Map data for those maps, when maps are on | Open Database License and CC BY 4.0 |
 
 The same list is in the app, under Settings, About, Open-source licenses.
-
----
-
-Building it yourself, running the tests or curious how it's put together? See [docs/DEVELOPING.md](docs/DEVELOPING.md).
