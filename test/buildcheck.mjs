@@ -21,8 +21,10 @@ import { APP_SCRIPTS, APP_CHUNKS, LAZY, asciiRegexps } from '../scripts/build.mj
 // card into chunks of their own, and 1.6.0 shipped at 1,840,238 bytes, with a budget of that plus
 // 5% (1,932,000) that held through 1.8.3 (1,930,412 bytes, with Refract 1.4 in). 1.8.4 adds the
 // scroll diagnostics and the glass setting (11 KB) and ships at 1,941,415 bytes; the budget is that
-// plus 2%, enough to catch an asset inlined by mistake.
-const BUDGET = 1980000;
+// plus 2%, enough to catch an asset inlined by mistake. 1.8.10 shipped at 1,975,240 bytes. Sealed
+// badges (a capsule for each badge waiting to be opened, opening it in the reveal, and its CSS) add
+// about 20 KB, to 1,994,812 bytes, so the budget moves up by that until a release sets it again.
+const BUDGET = 2000000;
 
 const file = join(root, 'dist/gradient-health.html');
 if (!existsSync(file)) { console.error('No dist/gradient-health.html: run npm run build first.'); process.exit(1); }
