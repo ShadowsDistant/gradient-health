@@ -5,7 +5,7 @@
  * glyph (a 24 px icon's SVG markup), its tier's metal, its category's enamel, the number it carries,
  * and what's engraved on its back. Everything is made here: the outlines are the SVG medals' own,
  * the glyph and the number are traced from a canvas into raised, bevelled relief, the enamel's
- * guilloché, the blank's frost and the engraving are canvas textures, and the light is a studio
+ * guilloché, platinum's film and the engraving are canvas textures, and the light is a studio
  * drawn into an environment map. A locked badge is the unminted blank: the same shape in dark,
  * frosted metal, its design only faintly there.
  *
@@ -26,7 +26,7 @@
 import {
   WebGLRenderer, Scene, PerspectiveCamera, Group, Mesh, MeshPhysicalMaterial, MeshBasicMaterial, Shape, Path, Vector2,
   ExtrudeGeometry, ShapeGeometry, SphereGeometry, PlaneGeometry, Float32BufferAttribute, Color, CanvasTexture, DataTexture, PMREMGenerator,
-  SRGBColorSpace, NoColorSpace, NeutralToneMapping, RepeatWrapping, BackSide, RGBAFormat, LinearMipmapLinearFilter, LinearFilter,
+  SRGBColorSpace, NoColorSpace, NeutralToneMapping, BackSide, RGBAFormat, LinearMipmapLinearFilter, LinearFilter,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
@@ -42,7 +42,7 @@ const TAU = Math.PI * 2;
 
 /* ---------------------------------------------------------------- the look */
 // Each tier's metal: its colour (sRGB), how polished the rim and relief are (rough) and the back
-// (satin). Platinum has a pearly film over a clear coat; the blank is dark and frosted.
+// (satin). Platinum has a pearly film over a clear coat; the blank is dark, frosted metal (matte).
 const METALS = {
   bronze: { color: '#cf8a58', rough: 0.2, satin: 0.4 },
   silver: { color: '#eef2f7', rough: 0.13, satin: 0.34 },
@@ -305,7 +305,7 @@ function textures() {
         const u = (x + 0.5) / n * 2 - 1, v = (y + 0.5) / n * 2 - 1;
         const r = Math.hypot(u, v), th = Math.atan2(v, u);
         const N = 96, wave = 0.18 * Math.sin(r * 14);
-        // d/dθ of sin(Nθ + wave), over r: the slope across the rays; and along them, from the wave.
+        // The slope of sin(N theta + wave) across the rays (over r), and along them from the wave.
         const c = Math.cos(N * th + wave);
         const fade = clamp((r - 0.06) / 0.12, 0, 1);
         const gt = (c * N) / Math.max(r, 0.08) * 0.006 * fade, gr = c * 0.18 * 14 * Math.cos(r * 14) * 0.006 * fade;
@@ -346,31 +346,9 @@ function textures() {
     ctx.fillRect(0, 0, n, n);
     const t = new CanvasTexture(cv);
     t.colorSpace = NoColorSpace;
-    t.repeat.set(0.5, -0.5);
+    t.repeat.set(0.5, 0.5);
     t.offset.set(0.5, 0.5);
     TEX.film = t;
-  }
-  // The blank's frost: fine grain, as a sandblasted surface.
-  {
-    const n = 128, data = new Uint8Array(n * n * 4);
-    let s = 7;
-    const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647 - 0.5; };
-    for (let i = 0; i < n * n; i++) {
-      const gx = rnd() * 0.9, gy = rnd() * 0.9, len = Math.hypot(gx, gy, 1);
-      data[i * 4] = Math.round(((gx / len) * 0.5 + 0.5) * 255);
-      data[i * 4 + 1] = Math.round(((gy / len) * 0.5 + 0.5) * 255);
-      data[i * 4 + 2] = Math.round(((1 / len) * 0.5 + 0.5) * 255);
-      data[i * 4 + 3] = 255;
-    }
-    const t = new DataTexture(data, n, n, RGBAFormat);
-    t.colorSpace = NoColorSpace;
-    t.wrapS = t.wrapT = RepeatWrapping;
-    t.repeat.set(9, 9);
-    t.generateMipmaps = true;
-    t.minFilter = LinearMipmapLinearFilter;
-    t.magFilter = LinearFilter;
-    t.needsUpdate = true;
-    TEX.frost = t;
   }
   return TEX;
 }
@@ -389,13 +367,15 @@ function enamelMap(c) {
   ctx.fillRect(0, 0, n, n);
   const t = new CanvasTexture(cv);
   t.colorSpace = SRGBColorSpace;
-  t.repeat.set(0.5, -0.5);
+  t.repeat.set(0.5, 0.5);
   t.offset.set(0.5, 0.5);
   enamelMaps.set(k, t);
   return t;
 }
 // The engraving on the back: its lines, cut into the metal (a bump map in red, the cut's roughness in
 // green).
+// Lines: [tier, name, day, app]; the name large, the rest in spaced capitals, each as wide as the face
+// allows where it sits (the name shrinks to fit before it's ever cut short).
 function engraving(lines, sh) {
   const n = 512, cv = canvas2d(n, n), ctx = cv.getContext('2d');
   ctx.fillStyle = 'rgb(255,70,0)';
@@ -404,22 +384,25 @@ function engraving(lines, sh) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const cy = n / 2 - (layout(sh)[0] * n) / 2;
+  const R = (n / 2) * 0.62; // inside the face, which reaches 0.74 of the way to the edge
   const L = (lines || []).filter(Boolean).slice(0, 4);
-  const sizes = [22, 44, 24, 20];
-  const gaps = L.map((_, i) => sizes[i] * 1.5);
+  const sizes = [21, 46, 20, 16];
+  const gaps = L.map((_, i) => sizes[i] * (i === 1 ? 1.35 : 1.7));
   let y = cy - gaps.reduce((s, x) => s + x, 0) / 2 + gaps[0] / 2;
   L.forEach((text, i) => {
-    const px = sizes[i];
-    ctx.font = `${i === 1 ? 800 : 700} ${px}px ${FONT}`;
-    if ('letterSpacing' in ctx) ctx.letterSpacing = i === 1 ? '0px' : `${Math.round(px * 0.16)}px`;
+    const room = 2 * Math.sqrt(Math.max(0, R * R - (y - cy) * (y - cy)));
+    let px = sizes[i];
+    const set = () => { ctx.font = `${i === 1 ? 800 : 700} ${px}px ${FONT}`; if ('letterSpacing' in ctx) ctx.letterSpacing = i === 1 ? '0px' : `${Math.round(px * 0.14)}px`; };
+    set();
     let s = i === 1 ? String(text) : String(text).toUpperCase();
-    while (s.length > 3 && ctx.measureText(s).width > n * 0.56) s = `${s.slice(0, -2)}…`;
+    while (i === 1 && px > 28 && ctx.measureText(s).width > room) { px -= 2; set(); }
+    while (s.length > 3 && ctx.measureText(s).width > room) s = `${s.slice(0, -2).trim()}…`;
     ctx.fillText(s, n / 2, y);
     y += gaps[i];
   });
   const t = new CanvasTexture(cv);
   t.colorSpace = NoColorSpace;
-  t.repeat.set(0.5, -0.5);
+  t.repeat.set(0.5, 0.5);
   t.offset.set(0.5, 0.5);
   t.anisotropy = 4;
   return t;
@@ -600,7 +583,7 @@ function studio(rr, dark) {
   fm.lookAt(0, 0, 0);
   scene.add(fm);
   const pm = new PMREMGenerator(rr.r);
-  const env = pm.fromScene(scene, 0.02, 0.1, 100, { size: 256 }).texture;
+  const env = pm.fromScene(scene, 0.02, 0.1, 100, { size: 512 }).texture;
   pm.dispose();
   scene.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
   envs[k] = env;
@@ -685,16 +668,39 @@ function view(spec, dark) {
   scene.environment = studio(rr, dark);
   const medal = build(spec);
   scene.add(medal);
+  // Its shadow on the ground under it, where the SVG medal has its own (behind it, so it's never over
+  // it), the same in a still and live.
+  const shadow = new Mesh(geo('shadow', () => new PlaneGeometry(1, 1)), shadowMaterial(dark));
+  const back = (CAM_D + 0.3) / CAM_D;
+  shadow.position.set(0, (-53 / 53) * back, -0.3);
+  shadow.scale.set(((2 * 34) / 53) * back, ((2 * 5.5) / 53) * back, 1);
+  scene.add(shadow);
   const half = BOX * FRAME;
   const cam = new PerspectiveCamera((2 * Math.atan(half / CAM_D) * 180) / Math.PI, 1, CAM_D - 2, CAM_D + 2);
   cam.position.set(0, 0, CAM_D);
   cam.lookAt(0, 0, 0);
-  return { scene, cam, medal, rr, dispose() { medal.userData.dispose(); scene.remove(medal); } };
+  return { scene, cam, medal, shadow, rr, w: shadow.scale.x, dispose() { medal.userData.dispose(); scene.remove(medal); } };
 }
-// Turned by y about its own upright, then leaned by x toward the viewer.
+function shadowMaterial(dark) {
+  return material(`shadow:${dark ? 1 : 0}`, () => {
+    const n = 64, cv = canvas2d(n, n), ctx = cv.getContext('2d');
+    const g = ctx.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
+    g.addColorStop(0, `rgba(0,0,0,${dark ? 0.5 : 0.3})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, n, n);
+    const t = new CanvasTexture(cv);
+    t.colorSpace = SRGBColorSpace;
+    return new MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, toneMapped: false });
+  });
+}
+// Turned by y about its own upright, then leaned by x toward the viewer; its shadow narrows as it
+// turns side on, and grows with it.
 function pose(v, x, y, s) {
+  const k = s == null ? 1 : s;
   v.medal.rotation.set(x, y, 0, 'XYZ');
-  v.medal.scale.setScalar(s == null ? 1 : s);
+  v.medal.scale.setScalar(k);
+  v.shadow.scale.x = v.w * k * (0.55 + 0.45 * Math.abs(Math.cos(y)));
 }
 function sizeTo(rr, w, h) {
   if (rr.canvas.width !== w || rr.canvas.height !== h) rr.r.setSize(w, h, false);
@@ -702,11 +708,11 @@ function sizeTo(rr, w, h) {
 
 /* ---------------------------------------------------------------- stills */
 // A picture of a medal at rest, px device pixels across its box (the SVG medal's 120 box: the
-// medal, and its shadow under it), drawn at twice that and scaled down so its edges stay fine.
-// o: { px, dark }. Returns a canvas, or null without WebGL.
-function shoot(v, px, dark) {
+// medal, and its shadow under it), drawn larger (twice; a large one one and a half times) and scaled
+// down so its edges stay fine. Returns a canvas.
+function shoot(v, px) {
   const rr = v.rr;
-  const ss = px <= 360 ? 2 : 1;
+  const ss = px <= 640 ? 2 : 1.5;
   const full = Math.round(px * FRAME * ss);
   const lv = live && live.rr === rr && live.el.isConnected ? live : null;
   const keep = lv ? [rr.canvas.width, rr.canvas.height] : null;
@@ -716,18 +722,6 @@ function shoot(v, px, dark) {
   rr.r.render(v.scene, v.cam);
   const out = canvas2d(px, px);
   const ctx = out.getContext('2d');
-  // Its shadow on the ground, as the SVG medal has.
-  const sh = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
-  sh.addColorStop(0, `rgba(0,0,0,${dark ? 0.5 : 0.3})`);
-  sh.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.save();
-  ctx.translate(px / 2, px * (113 / 120));
-  ctx.scale(px * (34 / 120), px * (5.5 / 120));
-  ctx.fillStyle = sh;
-  ctx.beginPath();
-  ctx.arc(0, 0, 1, 0, TAU);
-  ctx.fill();
-  ctx.restore();
   ctx.imageSmoothingQuality = 'high';
   const crop = full / FRAME, at = (full - crop) / 2;
   ctx.drawImage(rr.canvas, at, at, crop, crop, 0, 0, px, px);
@@ -736,11 +730,12 @@ function shoot(v, px, dark) {
   maybeRelease();
   return out;
 }
+// A still of a medal, drawn now. o: { px, dark }. Returns a canvas, or null without WebGL.
 function still(spec, o) {
   o = o || {};
   const v = view(spec, !!o.dark);
   if (!v) return null;
-  try { return shoot(v, Math.round(o.px || 144), !!o.dark); } catch (e) { if (G.console) G.console.error('medal3d:', e); return null; } finally { v.dispose(); }
+  try { return shoot(v, Math.round(o.px || 144)); } catch (e) { if (G.console) G.console.error('medal3d:', e); return null; } finally { v.dispose(); }
 }
 // Compiled once per kind of medal (its materials' programs): the ones a still needs that aren't yet
 // compile in the background where the GPU allows, so the page's thread doesn't wait on them.
@@ -759,7 +754,7 @@ function stillAsync(spec, o) {
   const v = view(spec, !!o.dark);
   if (!v) return Promise.resolve(null);
   return compiled(v, spec).then(() => {
-    try { return R === v.rr ? shoot(v, Math.round(o.px || 144), !!o.dark) : null; } catch (e) { if (G.console) G.console.error('medal3d:', e); return null; } finally { v.dispose(); }
+    try { return R === v.rr ? shoot(v, Math.round(o.px || 144)) : null; } catch (e) { if (G.console) G.console.error('medal3d:', e); return null; } finally { v.dispose(); }
   });
 }
 // A still drawn now, in the caller's idle moment: { canvas } (one frame and its copy: a few frames'
@@ -787,14 +782,16 @@ function encode(cv) {
 }
 
 /* ---------------------------------------------------------------- live */
-// The live medal: it rests turned a little and sways slowly round that while the studio's light
-// sweeps across it; a drag spins it (a full width of the canvas is half a turn), a flick spins on and
-// slows, and it settles on its face or its back, whichever is nearer. The phone's tilt leans it a few
-// degrees. Each time someone's spin turns it over (face to back, or back to face) o.onFlip() is
+// The live medal: it rests turned a little and (o.sway) sways slowly round that while the studio's
+// light sweeps across it; a drag spins it (a full width of the canvas is half a turn), a flick spins
+// on and slows, and it settles on its face or its back, whichever is nearer. The phone's tilt leans it
+// a few degrees. Each time someone's spin turns it over (face to back, or back to face) o.onFlip() is
 // called (the inline code plays a light haptic). It draws at most 30 frames a second while it sways
-// and 60 while it's spun, stops when it's off screen, covered (o.covered()) or the page is hidden,
-// and stops swaying 30 s after the last touch (a touch starts it again).
-// o: { size (css px of the medal's box), dark, interactive, tilt, covered, onFlip, onReady, onFail }.
+// and 60 while it's spun, nothing while it rests still, and stops when it's off screen, covered
+// (o.covered()) or the page is hidden; it stops swaying 30 s after the last touch (a touch starts it
+// again).
+// o: { size (css px of the medal's box), dark, interactive, tilt, sway, covered, onFlip, onReady,
+// onFail }.
 function mount(host, spec, o) {
   o = o || {};
   const rr = renderer();
@@ -876,7 +873,7 @@ function mount(host, spec, o) {
     }
     // At rest it sways slowly round where it settled (not with reduced motion, and not 30 s after the
     // last touch), easing in.
-    const swaying = !busy && !reduced() && t - st.touched < 30000;
+    const swaying = !busy && !!o.sway && !reduced() && t - st.touched < 30000;
     if (swaying) { const k = Math.min(1, (t - st.swayFrom) / 1800); st.sway = Math.sin(((t - st.swayFrom) / 7000) * TAU) * 0.42 * k * k; } else if (!busy) st.sway *= 0.9;
     // The phone's tilt, eased.
     st.tx += (st.tiltX - st.tx) * Math.min(1, dt * 6);
