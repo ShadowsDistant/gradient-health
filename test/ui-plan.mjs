@@ -148,8 +148,8 @@ section('Stills in 3D');
   check('square, at twice the tile\'s size on a 2x screen, in the person\'s look', img && img.w === 104 && img.h === 104 && /^(blob:|data:image\/)/.test(img.src) && /\|c104\|l\|sand\|/.test(img.k), img);
   await shot(page, '01b-stills-3d');
 
-  // After launch (3 s on, once it's quiet) the stills of this week's and next week's moves are drawn
-  // ahead and kept on the phone, after the ones on screen.
+  // After launch (in a calm moment once the kept ones are read) the stills of this week's and next
+  // week's moves are drawn ahead and kept on the phone, after the ones on screen.
   const ahead = () => page.evaluate(() => {
     const U = window.GH.ui;
     const keys = [...new Set(U.planStills(U.S, U.today()).map((j) => U.stills.key(j.m, j.o)))];
