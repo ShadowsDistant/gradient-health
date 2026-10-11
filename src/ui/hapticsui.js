@@ -22,7 +22,7 @@
     ['workout', 'Workout', 'Sets, timers and records', 'coral', 'timer',
       [['start', 'Start'], ['countdown', '3, 2, 1'], ['go', 'Go'], ['pause', 'Pause'], ['setDone', 'Set done'], ['skip', 'Skip'], ['extend', 'More rest'], ['done', 'Rest over'], ['swap', 'Swap'], ['levelUp', 'Level up'], ['milestone', 'Goal reached'], ['pr', 'New best'], ['workoutDone', 'Workout done'], ['cancel', 'Cancel']]],
     ['moments', 'Moments', 'The big ones', 'amber', 'star',
-      [['badge', 'Badge'], ['celebrate', 'Celebrate']]],
+      [['wobble', 'Wobble'], ['crack', 'Crack'], ['badge', 'Badge'], ['celebrate', 'Celebrate']]],
     ['activities', 'Activities', 'Runs, walks, hikes and rides', 'green', 'act-run',
       [['actGo', 'Start'], ['actPause', 'Pause'], ['actResume', 'Resume'], ['actAutoPause', 'Auto-pause'], ['actAutoResume', 'Auto-resume'], ['actSplit', 'Split'], ['actGps', 'GPS ready'], ['actFinish', 'Finish'], ['actDiscard', 'Discard']]],
   ];
