@@ -160,9 +160,13 @@ public final class MainActivity extends Activity {
         if (isOpenActivityIntent(intent)) {
             pendingRoute = "activity";
         }
-        String tap = Notifier.tapFrom(intent);
+        // A tap the app was started from, the same way (notifyTap(), or onNotifyTap once loaded). Not
+        // when the activity is made again, or reopened from Recents: Android hands back the same
+        // intent then, and the page would go to that screen a second time.
+        String tap = savedInstanceState == null && intent != null
+                && (intent.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0 ? Notifier.tapFrom(intent) : null;
         if (tap != null) {
-            pendingTap.set(tap); // the same way: notifyTap(), or onNotifyTap once loaded
+            pendingTap.set(tap);
         }
         createWebView(url);
     }

@@ -61,7 +61,7 @@ function rules(items, now, label) {
       if ((w.body || '').length > 100) bad.push(`body "${w.body}"`);
       if (/[—–]/.test(`${w.title} ${w.body}`)) bad.push(`a dash in "${w.title} ${w.body}"`);
     }
-    if (x.kind === 'sleep' && !(x.until > x.at && x.sleep && x.sleep.from <= x.at && x.sleep.tiers.length)) bad.push(`${x.id}: sleep question`);
+    if (x.kind === 'sleep' && !(x.until > x.at && x.sleep && x.sleep.from <= x.at && x.sleep.tiers.length && x.sleep.tiers.every((t) => t.min <= t.max))) bad.push(`${x.id}: sleep question`);
     if (x.alt && !(x.alt.at >= x.until + 30 * MIN && dayOf(x.alt.at) === dayOf(x.at) && !x.alt.alt)) bad.push(`${x.id}: alt`);
   }
   for (const [d, n] of days) if (n > 1) bad.push(`${B.dayStr(d)}: ${n} in one day`);
@@ -242,6 +242,16 @@ section('Sleep');
   sleepy(W);
   for (let d = MON - 10; d <= MON; d++) W.health.days[d].wake = at(d, 9, 30);
   check('up at 9:30: asked at 10:15', hhmm(N.plan(W, now0).find((x) => x.kind === 'sleep').at) === '10:15');
+  // A very long night in the week (a sick day, or a nap added to the night) puts its best over 11
+  // hours: a bar that can't be reached isn't sent (Android would turn the question down).
+  const L = person();
+  sleepy(L, (i) => (i === 2 ? 700 : 420 + ((i * 17) % 30)));
+  const lq = rules(N.plan(L, now0), now0, 'an 11-hour night in the week').find((x) => x.kind === 'sleep');
+  check('a week with an 11-hour night: only the bar it can reach is sent', lq && lq.sleep.tiers.length === 1 && !lq.sleep.tiers[0].best, lq && lq.sleep.tiers);
+  const H = person();
+  sleepy(H, () => 670);
+  const hq = rules(N.plan(H, now0), now0, 'eleven hours a night');
+  check('someone who sleeps over eleven hours a night: no question, and the day\'s walk goes as it would', !hq.some((x) => x.kind === 'sleep') && hq.some((x) => x.kind === 'move' && dayOf(x.at) === MON + 2), list(hq));
 }
 
 /* ------------------------------------------------------------------ settings */

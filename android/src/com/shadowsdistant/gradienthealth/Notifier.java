@@ -174,8 +174,9 @@ final class Notifier {
      * a schedule the page makes). Each is checked on its own and dropped if anything's off: an id of
      * 1 to 64 plain characters (one of each), a known kind and screen, a title of 1 to 80 characters
      * and a text of at most 200, a time ahead and within about two months; a sleep item also has its
-     * wait (until, half a day at most), the start of its night and 1 to 3 tiers; an alt is a plain
-     * item, after the sleep question's wait, the same day.
+     * wait (until, half a day at most), the start of its night and 1 to 3 tiers (one that isn't right
+     * is left out, and a question with none left goes); an alt is a plain item, after the sleep
+     * question's wait, the same day.
      */
     static JSONArray clean(JSONArray in, long now) {
         if (in == null || in.length() > MAX_ITEMS) {
@@ -227,21 +228,22 @@ final class Notifier {
                 if (from > at || from < at - DAY_MS || tiers == null || tiers.length() < 1 || tiers.length() > MAX_TIERS) {
                     return null;
                 }
+                // A tier that isn't right is left out on its own; a question with none left goes.
                 JSONArray kept = new JSONArray();
                 for (int i = 0; i < tiers.length(); i++) {
                     JSONObject t = tiers.optJSONObject(i);
-                    if (t == null) {
-                        return null;
-                    }
-                    int min = t.optInt("min", -1);
-                    int max = t.optInt("max", 24 * 60);
-                    String tt = t.optString("title", "");
-                    String tb = t.optString("body", "");
+                    int min = t == null ? -1 : t.optInt("min", -1);
+                    int max = t == null ? -1 : t.optInt("max", 24 * 60);
+                    String tt = t == null ? "" : t.optString("title", "");
+                    String tb = t == null ? "" : t.optString("body", "");
                     if (min < 60 || max < min || max > 24 * 60 || tt.isEmpty() || tt.length() > MAX_TITLE || tb.length() > MAX_BODY) {
-                        return null;
+                        continue;
                     }
                     kept.put(new JSONObject().put("min", min).put("max", max).put("best", t.optBoolean("best", false))
                             .put("title", tt).put("body", tb));
+                }
+                if (kept.length() == 0) {
+                    return null;
                 }
                 x.put("until", until).put("sleep", new JSONObject().put("from", from).put("tiers", kept));
             }
@@ -558,10 +560,14 @@ final class Notifier {
 
     // ---------------------------------------------------------------- the alarm
 
-    /** Sets the one alarm for the soonest item (a due one a second from now), or cancels it. */
+    /**
+     * Sets the one alarm for the soonest item (a due one a second from now), or cancels it. Under the
+     * lock, reading and setting together: when an alarm's run and a new schedule meet, whichever sets
+     * the alarm last has read the newest schedule.
+     */
     static void arm(Context context, long now) {
-        long next = Long.MAX_VALUE;
         synchronized (LOCK) {
+            long next = Long.MAX_VALUE;
             JSONArray items = array(prefs(context).getString("items", "[]"));
             for (int i = 0; i < items.length(); i++) {
                 JSONObject x = items.optJSONObject(i);
@@ -569,22 +575,22 @@ final class Notifier {
                     next = Math.min(next, x.optLong("at", Long.MAX_VALUE));
                 }
             }
-        }
-        try {
-            AlarmManager am = context.getSystemService(AlarmManager.class);
-            if (am == null) {
-                return;
+            try {
+                AlarmManager am = context.getSystemService(AlarmManager.class);
+                if (am == null) {
+                    return;
+                }
+                PendingIntent pi = PendingIntent.getBroadcast(context, ALARM_REQUEST,
+                        new Intent(context, NotifyReceiver.class).setAction(ACTION_ALARM),
+                        PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+                if (next == Long.MAX_VALUE) {
+                    am.cancel(pi);
+                    return;
+                }
+                am.setWindow(AlarmManager.RTC_WAKEUP, Math.max(next, now + 1000L), WINDOW_MS, pi);
+            } catch (Throwable ignored) {
+                // No alarm: the page plans again the next time it's opened.
             }
-            PendingIntent pi = PendingIntent.getBroadcast(context, ALARM_REQUEST,
-                    new Intent(context, NotifyReceiver.class).setAction(ACTION_ALARM),
-                    PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-            if (next == Long.MAX_VALUE) {
-                am.cancel(pi);
-                return;
-            }
-            am.setWindow(AlarmManager.RTC_WAKEUP, Math.max(next, now + 1000L), WINDOW_MS, pi);
-        } catch (Throwable ignored) {
-            // No alarm: the page plans again the next time it's opened.
         }
     }
 

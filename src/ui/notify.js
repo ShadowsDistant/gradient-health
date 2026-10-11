@@ -45,13 +45,18 @@
   // The schedule for now, handed over in place of the last one. When notifications are off (or the
   // person isn't set up) it's empty, which clears Android's. `why`: 'open' (the app came to the front:
   // what's showing in the shade can go, the person is here), 'leave' or 'settings'.
-  let last = { json: '', at: 0 };
+  let leftAt = 0;
   function sync(why) {
     if (!can()) return;
     const S = U.S;
     const p = S && S.profile && S.profile.onboarded ? prefs(S) : null;
     const on = !!(p && p.on);
     if (on && !GH.notify) { if (GH.lazy) GH.lazy('notify').then(() => sync(why), () => {}); return; }
+    // Leaving the app is heard twice, as Android's pause and as the page hidden: planned once.
+    if (why === 'leave') {
+      if (Date.now() - leftAt < 3000) return;
+      leftAt = Date.now();
+    }
     let items = [];
     if (on) {
       const st = state();
@@ -60,11 +65,7 @@
     }
     const sched = { on, items };
     if (why === 'open') sched.opened = true;
-    const json = JSON.stringify(sched);
-    // (Leaving the app is heard twice, as Android's pause and as the page hidden: one hand-off.)
-    if (json === last.json && Date.now() - last.at < 3000) return;
-    last = { json, at: Date.now() };
-    try { bridge().notifySchedule(json); } catch (e) { /* the next one goes through */ }
+    try { bridge().notifySchedule(JSON.stringify(sched)); } catch (e) { /* the next one goes through */ }
   }
   // Opening plans once the page is quiet (the first frame and a touch come first), and not at all if
   // the app went away meanwhile (leaving planned already).
@@ -90,8 +91,9 @@
   let booted = false, tapWaiting = null;
   function openTap(t) {
     if (!t || typeof t.route !== 'string') return;
-    if (!booted || !U.S || !U.S.profile.onboarded) { tapWaiting = t; return; }
-    if (P() && P().emit) P().emit('route', t.route);
+    if (!booted) { tapWaiting = t; return; }
+    // (During set-up there's no screen to open; a schedule from before set-up is gone by now.)
+    if (U.S && U.S.profile.onboarded && P() && P().emit) P().emit('route', t.route);
   }
   hooks.onNotifyTap = (t) => { openTap(parse(t)); return true; };
   const prevBoot = U.afterBoot;
@@ -133,6 +135,8 @@
 
   // When workout reminders come, in words ("5:30 pm").
   const clock = (min) => U.fmtClock(new Date(2000, 0, 1, 0, min).getTime());
+  // A time picked on the slider, to its quarter hour (minutes after midnight).
+  const quarter = (v) => Math.round(Number(v) / 15) * 15;
   const when = (S) => (GH.notify ? clock(GH.notify.reminderTime(S, Date.now()).min) : null);
 
   // Turning them on (Settings' switch, Today's card): the setting, Android's permission, then the
@@ -253,7 +257,7 @@
     U.render();
   };
   U.on.notifyTime = (el, ev, v) => {
-    const t = Math.round(Number(v) / 15) * 15;
+    const t = quarter(v);
     if (!(t >= 480 && t <= 1200)) return;
     prefs(U.S).time = t;
     U.save();
@@ -265,7 +269,7 @@
       const t = e.target;
       if (!t || !t.matches || !t.matches('[data-on="notifyTime"]')) return;
       const out = doc.querySelector('#screen [data-nf-time]');
-      if (out) out.textContent = clock(Math.round(Number(t.value) / 15) * 15);
+      if (out) out.textContent = clock(quarter(t.value));
     });
   }
 })(typeof window !== 'undefined' ? window : globalThis);

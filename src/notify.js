@@ -52,12 +52,7 @@
   const num = (v) => typeof v === 'number' && Number.isFinite(v);
   const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
   const round5 = (m) => Math.round(m / 5) * 5;
-  function median(list) {
-    const s = list.filter(num).sort((a, b) => a - b);
-    if (!s.length) return null;
-    const m = s.length >> 1;
-    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-  }
+  const median = (list) => B().median(list);
   // Day numbers are local dates (GH.brain): day d at `min` minutes after its midnight, in local time.
   function local(d, min) {
     const x = new Date(d * DAY_MS);
@@ -71,11 +66,11 @@
   const quiet = (ts) => { const m = minuteOf(ts); return m >= QUIET_FROM || m < QUIET_TO; };
 
   /* ---------------------------------------------------------------- settings */
-  const DEFAULTS = { on: false, workout: true, move: true, badge: true, sleep: true, comeback: true, time: null };
-  // The settings as the planner reads them (S.profile.prefs.notify; store.js fills and checks it).
+  // The settings as the planner reads them (S.profile.prefs.notify, with brain.js's defaults; store.js
+  // fills and checks it).
   function prefs(S) {
     const p = S && S.profile && S.profile.prefs && S.profile.prefs.notify;
-    const o = Object.assign({}, DEFAULTS, p && typeof p === 'object' ? p : {});
+    const o = Object.assign(B().defaultProfile().prefs.notify, p && typeof p === 'object' ? p : {});
     o.on = o.on === true;
     for (const k of KINDS) o[k] = o[k] !== false;
     o.time = num(o.time) ? clamp(Math.round(o.time / 15) * 15, EARLIEST, LATEST) : null;
@@ -307,10 +302,13 @@
         for (let x = d - 6; x < d; x++) if (x <= today && sleep.night(x) != null) before.push(sleep.night(x));
         if (before.length >= 3) tiers.push({ min: Math.max(SLEEP_GOOD, Math.round(Math.max(...before)) + 1), max: SLEEP_MAX, best: true, title: SLEEP_TITLE, body: '{t} of sleep: your best this week.' });
         tiers.push({ min: Math.max(SLEEP_GOOD, Math.round(sleep.usual) + 30), max: SLEEP_MAX, title: SLEEP_TITLE, body: '{t} of sleep, more than you usually get.' });
-        if (ok(at, d)) {
+        // A bar above 11 hours (a week with a very long night in it, or someone who usually sleeps
+        // over ten and a half) can't be reached: that one isn't asked.
+        const reach = tiers.filter((t) => t.min <= t.max);
+        if (reach.length && ok(at, d)) {
           const item = make('sleep', `sleep:${d}`, at, { title: SLEEP_TITLE, body: '' });
           item.until = Math.min(at + 150 * MIN_MS, local(d, 13 * 60));
-          item.sleep = { from: local(d, rollOf(S) * 60), tiers };
+          item.sleep = { from: local(d, rollOf(S) * 60), tiers: reach };
           add(d, item);
         }
       }
@@ -353,5 +351,5 @@
     return out.sort((a, b) => a.at - b.at);
   }
 
-  GH.notify = { KINDS, DEFAULTS, QUIET_FROM, QUIET_TO, EARLIEST, LATEST, DEFAULT_TIME, EVERYDAY_DAYS, COMEBACK_DAYS, MOVE_PER_WEEK, prefs, reminderTime, habits, plan, local };
+  GH.notify = { KINDS, QUIET_FROM, QUIET_TO, EARLIEST, LATEST, DEFAULT_TIME, EVERYDAY_DAYS, COMEBACK_DAYS, MOVE_PER_WEEK, prefs, reminderTime, habits, plan, local };
 })(typeof window !== 'undefined' ? window : globalThis);

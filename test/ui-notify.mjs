@@ -86,17 +86,20 @@ section('Today: the card that asks, once');
   // The badge opened: the day's one is today's workout again.
   await ev(() => { const GH = window.GH; GH.achievements.markSeen(GH.ui.S); GH.ui.save(true); });
   const n0 = (await schedules(ev)).length;
+  // On a phone, leaving is heard twice: Android's pause, then the page hidden.
+  await ev(() => window.__gh.onPause());
   await visibility(ev, 'hidden');
   const left = await schedules(ev);
   const leftLast = left[left.length - 1];
-  check('leaving hands Android the whole schedule again', left.length === n0 + 1 && leftLast.on === true && leftLast.items.length >= 8 && !leftLast.opened, left.length - n0);
+  check('leaving (Android\'s pause, then the page hidden) hands Android the whole schedule again, once', left.length === n0 + 1 && leftLast.on === true && leftLast.items.length >= 8 && !leftLast.opened, left.length - n0);
   const title = await ev(() => document.querySelector('#screen [data-key="main"] h2').textContent);
   const w = leftLast.items.find((x) => x.id === `workout:${today}`);
   check('with today\'s workout at 5:30 pm, named as Today names it', w && hhmm(w.at) === '17:30' && w.title.startsWith(title.slice(0, 20)) && /, \d+ min$/.test(w.title) && w.route === 'today', { w, title });
+  await ev(() => window.__gh.onResume());
   await visibility(ev, 'visible');
   await settle(3000);
   const back = await schedules(ev);
-  check('and so does opening it, saying it\'s open (what\'s in the shade can go)', back.length === n0 + 2 && back[back.length - 1].opened === true, back.length - n0);
+  check('and so does opening it (once), saying it\'s open: what\'s in the shade can go', back.length === n0 + 2 && back[back.length - 1].opened === true, back.length - n0);
   // Today's workout, done: leaving again plans without its reminder.
   await ev(() => {
     const GH = window.GH, B = GH.brain, U = GH.ui, S = U.S, d = U.today();
