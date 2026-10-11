@@ -14,14 +14,14 @@
 /* The same gradients as the app's glow (src/styles.css), fading out in their own stops (no mask). */
 .onboard::before {
   background:
-    radial-gradient(34% 43% at 20% 32.5%, var(--glow-mint), color-mix(in srgb, var(--glow-mint) 44%, transparent) 38.5%, transparent 73.5%),
-    radial-gradient(33% 36% at 64% 59%, color-mix(in srgb, var(--glow-violet) 49%, transparent), color-mix(in srgb, var(--glow-violet) 44%, transparent) 19%, transparent 84%);
+    radial-gradient(34% 43% at 20% 32.5%, var(--glow-sky), color-mix(in srgb, var(--glow-sky) 44%, transparent) 38.5%, transparent 73.5%),
+    radial-gradient(33% 36% at 64% 59%, color-mix(in srgb, var(--glow-green) 49%, transparent), color-mix(in srgb, var(--glow-green) 44%, transparent) 19%, transparent 84%);
   animation: glow-drift-a 26s steps(36) infinite alternate;
 }
 .onboard::after {
   background:
-    radial-gradient(33% 41% at 80% 25.5%, var(--glow-sky), color-mix(in srgb, var(--glow-sky) 50%, transparent) 37%, transparent 74.5%),
-    radial-gradient(26.5% 30% at 34% 67.5%, color-mix(in srgb, var(--glow-pink) 37%, transparent), color-mix(in srgb, var(--glow-pink) 32%, transparent) 21%, transparent 82.5%);
+    radial-gradient(33% 41% at 80% 25.5%, var(--glow-mint), color-mix(in srgb, var(--glow-mint) 50%, transparent) 37%, transparent 74.5%),
+    radial-gradient(26.5% 30% at 34% 67.5%, color-mix(in srgb, var(--glow-amber) 37%, transparent), color-mix(in srgb, var(--glow-amber) 32%, transparent) 21%, transparent 82.5%);
   animation: glow-drift-b 34s steps(36) -9s infinite alternate;
 }
 [data-theme^="dark"] .onboard::before, [data-theme^="dark"] .onboard::after { opacity: .65; }
@@ -66,7 +66,7 @@
 /* The first run's: a dash a screen, each filling with a spring as you reach it. */
 .ob-steps { display: flex; gap: 5px; width: 100%; max-width: 260px; }
 .ob-steps > i { position: relative; flex: 1; height: 5px; border-radius: 3px; background: var(--fill-2); overflow: hidden; }
-.ob-steps > i::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(90deg, var(--accent-fill), color-mix(in oklab, var(--accent-fill) 60%, var(--hue-violet))); transform: scaleX(0); transform-origin: left center; transition: transform var(--duration-spring-snappy) var(--spring-snappy); }
+.ob-steps > i::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(90deg, var(--accent-fill), color-mix(in oklab, var(--accent-fill) 55%, var(--brand-mint))); transform: scaleX(0); transform-origin: left center; transition: transform var(--duration-spring-snappy) var(--spring-snappy); }
 .ob-steps > i:is(.is-done, .is-on)::after { transform: none; }
 .ob-steps > i.is-on::after { transition-delay: 120ms; }
 .ob-count { font-weight: 600; }
@@ -146,7 +146,7 @@
 .ob-hello { display: grid; justify-items: center; text-align: center; gap: var(--space-3); padding: var(--space-5) var(--space-1) var(--space-2); }
 .ob-mark { position: relative; width: 104px; height: 104px; margin-bottom: var(--space-2); }
 /* The halo: the logo's colours, turning slowly behind it (one painted layer, transform only). */
-.ob-halo { position: absolute; inset: -46px; border-radius: 50%; background: radial-gradient(closest-side at 34% 36%, var(--glow-mint), transparent), radial-gradient(closest-side at 68% 36%, var(--glow-sky), transparent), radial-gradient(closest-side at 54% 70%, var(--glow-violet), transparent), radial-gradient(closest-side at 28% 66%, var(--glow-pink), transparent); animation: ob-turn 14s linear infinite; }
+.ob-halo { position: absolute; inset: -46px; border-radius: 50%; background: radial-gradient(closest-side at 34% 36%, var(--glow-sky), transparent), radial-gradient(closest-side at 68% 36%, var(--glow-mint), transparent), radial-gradient(closest-side at 64% 68%, var(--glow-green), transparent), radial-gradient(closest-side at 32% 68%, var(--glow-amber), transparent); animation: ob-turn 14s linear infinite; }
 .ob-logo { position: relative; display: block; width: 104px; height: 104px; border-radius: 25px; box-shadow: 0 22px 46px -16px rgb(92 60 200 / 52%), 0 2px 6px rgb(0 0 0 / 10%); animation: ob-float 6s ease-in-out infinite; }
 @keyframes ob-turn { to { transform: rotate(1turn); } }
 @keyframes ob-float { 50% { transform: translateY(-5px); } }
@@ -202,8 +202,8 @@
 /* ================================================================== building the plan */
 .ob-build { min-height: calc(100vh - 230px); min-height: calc(100dvh - 230px); box-sizing: border-box; display: grid; align-content: center; justify-items: center; text-align: center; gap: var(--space-5); padding: var(--space-6) 0; }
 .ob-orb { position: relative; width: 128px; height: 128px; display: grid; place-items: center; }
-.ob-orb-glow { position: absolute; inset: -34px; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in oklab, var(--hue-violet) 34%, transparent), transparent); animation: ob-breathe 1.8s ease-in-out infinite; }
-.ob-orb-ring { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0 10%, color-mix(in oklab, var(--hue-teal) 75%, transparent), color-mix(in oklab, var(--hue-sky) 85%, transparent), color-mix(in oklab, var(--hue-violet) 90%, transparent), color-mix(in oklab, var(--hue-rose) 85%, transparent) 90%, transparent); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px)); mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px)); animation: ob-turn 1.1s linear infinite; }
+.ob-orb-glow { position: absolute; inset: -34px; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in oklab, var(--brand-mint) 34%, transparent), transparent); animation: ob-breathe 1.8s ease-in-out infinite; }
+.ob-orb-ring { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0 10%, color-mix(in oklab, var(--brand-blue) 80%, transparent), color-mix(in oklab, var(--brand-mint) 85%, transparent), color-mix(in oklab, var(--brand-green) 85%, transparent), color-mix(in oklab, var(--brand-amber) 85%, transparent) 90%, transparent); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px)); mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px)); animation: ob-turn 1.1s linear infinite; }
 .ob-orb-logo { position: relative; width: 70px; height: 70px; border-radius: 18px; box-shadow: 0 14px 30px -12px rgb(92 60 200 / 55%); animation: ob-breathe 1.8s ease-in-out infinite; }
 @keyframes ob-breathe { 50% { transform: scale(1.06); } }
 .ob-build .ob-build-title { margin: 0; padding: 0; font-size: 1.75rem; line-height: 1.2; }
@@ -273,7 +273,7 @@
 .rv-stat { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
 .rv-n { font-size: 2.25rem; font-weight: 750; line-height: 1.05; letter-spacing: -0.02em; color: var(--accent); }
 @supports (background-clip: text) or (-webkit-background-clip: text) {
-  :root:not([data-theme$="contrast"]) .rv-n { background: linear-gradient(90deg, var(--accent), color-mix(in oklab, var(--hue-violet) 80%, var(--accent))); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  :root:not([data-theme$="contrast"]) .rv-n { background: linear-gradient(90deg, var(--accent), color-mix(in oklab, var(--brand-mint) 80%, var(--accent))); -webkit-background-clip: text; background-clip: text; color: transparent; }
 }
 .rv-stat-text { flex: 1 1 150px; line-height: 1.35; color: var(--label-secondary); }
 .rv-reasons { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }

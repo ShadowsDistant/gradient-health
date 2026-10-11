@@ -82,11 +82,18 @@ button:not([class*="rf-"]) { font: inherit; }
 /* clip, not hidden: a hidden box can still be scrolled by script, and the glow below is wider than
    the screen, so scrollIntoView could shift the whole app sideways. */
 .app { position: fixed; inset: 0; overflow: hidden; overflow: clip; background: var(--bg); }
-:root { --glow-mint: rgb(111 227 200 / .55); --glow-sky: rgb(58 168 255 / .5); --glow-violet: rgb(155 92 255 / .42); --glow-pink: rgb(255 126 179 / .34); }
-:root[data-theme^="dark"] { --glow-mint: rgb(70 190 170 / .26); --glow-sky: rgb(60 130 255 / .5); --glow-violet: rgb(140 80 255 / .52); --glow-pink: rgb(240 100 170 / .3); }
-/* Ambient glow: the icon's colours (mint, sky, violet, pink) softly behind the top of each page, so
-   the glass bars, buttons and sheets have real colour to refract. Two layers (mint and violet, sky and
-   pink) drift slowly on their own paths, 26 and 34 seconds round, moving only a few percent: transform
+/* The icon's colours (art/logo.png): blue at its top left, mint at its top right, green at its bottom
+   right and amber at its bottom left. The app's own gradients (the avatars, the orbs, set-up's halo)
+   use them, as the glow behind each page does. */
+:root { --brand-blue: #3e95f9; --brand-mint: #34c7ae; --brand-green: #4bc985; --brand-amber: #f4a83e; }
+/* Deeper mint and green for a fill that carries white text (the initials on You), at least 3:1. */
+:root { --brand-mint-deep: #1fa08b; --brand-green-deep: #2f9e64; }
+:root { --glow-sky: rgb(62 149 249 / .5); --glow-mint: rgb(82 221 180 / .5); --glow-green: rgb(109 218 150 / .42); --glow-amber: rgb(251 183 81 / .4); }
+:root[data-theme^="dark"] { --glow-sky: rgb(55 130 245 / .5); --glow-mint: rgb(60 190 160 / .3); --glow-green: rgb(70 185 120 / .4); --glow-amber: rgb(232 150 60 / .32); }
+/* Ambient glow: the icon's colours softly behind the top of each page, where they are in the icon
+   (blue and amber on the left, mint and green on the right), so the glass bars, buttons and sheets
+   have real colour to refract. Two layers (blue and green, mint and amber) drift slowly on their own
+   paths, 26 and 34 seconds round, moving only a few percent: transform
    alone, so it's the compositor's work, never a repaint. The drift moves in steps, about four a second
    (steps(36) between each pair of keyframes), too small to see (a pixel or two) and a fifteenth of the
    frames: every frame of a drift makes each glass in front of it filter its backdrop again, and at 60 a
@@ -108,14 +115,14 @@ button:not([class*="rf-"]) { font: inherit; }
 }
 .app::before {
   background:
-    radial-gradient(34% 43% at 20% 32.5%, var(--glow-mint), color-mix(in srgb, var(--glow-mint) 44%, transparent) 38.5%, transparent 73.5%),
-    radial-gradient(33% 36% at 64% 59%, color-mix(in srgb, var(--glow-violet) 49%, transparent), color-mix(in srgb, var(--glow-violet) 44%, transparent) 19%, transparent 84%);
+    radial-gradient(34% 43% at 20% 32.5%, var(--glow-sky), color-mix(in srgb, var(--glow-sky) 44%, transparent) 38.5%, transparent 73.5%),
+    radial-gradient(33% 36% at 64% 59%, color-mix(in srgb, var(--glow-green) 49%, transparent), color-mix(in srgb, var(--glow-green) 44%, transparent) 19%, transparent 84%);
   animation: glow-drift-a 26s steps(36) infinite alternate;
 }
 .app::after {
   background:
-    radial-gradient(33% 41% at 80% 25.5%, var(--glow-sky), color-mix(in srgb, var(--glow-sky) 50%, transparent) 37%, transparent 74.5%),
-    radial-gradient(26.5% 30% at 34% 67.5%, color-mix(in srgb, var(--glow-pink) 37%, transparent), color-mix(in srgb, var(--glow-pink) 32%, transparent) 21%, transparent 82.5%);
+    radial-gradient(33% 41% at 80% 25.5%, var(--glow-mint), color-mix(in srgb, var(--glow-mint) 50%, transparent) 37%, transparent 74.5%),
+    radial-gradient(26.5% 30% at 34% 67.5%, color-mix(in srgb, var(--glow-amber) 37%, transparent), color-mix(in srgb, var(--glow-amber) 32%, transparent) 21%, transparent 82.5%);
   animation: glow-drift-b 34s steps(36) -9s infinite alternate;
 }
 [data-theme^="dark"] .app::before, [data-theme^="dark"] .app::after { opacity: .6; }

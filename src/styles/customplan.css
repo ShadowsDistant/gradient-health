@@ -54,7 +54,7 @@
 button.cp-inuse-row { cursor: pointer; }
 .cp-inuse-text { display: grid; gap: 2px; min-width: 0; flex: 1; }
 .cp-coach-ico { flex: none; width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center; color: #fff; --rf-icon-size: 26px;
-  background: linear-gradient(145deg, color-mix(in oklab, var(--hue-violet) 85%, #fff), var(--hue-indigo)); box-shadow: inset 0 1px 0 rgb(255 255 255 / .3), 0 8px 18px -10px var(--hue-violet); }
+  background: linear-gradient(145deg, var(--brand-blue), var(--brand-mint)); box-shadow: inset 0 1px 0 rgb(255 255 255 / .3), 0 8px 18px -10px var(--brand-mint); }
 .cp-back { justify-self: start; margin-inline-start: calc(var(--space-2) * -1); }
 .cp-make { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-3); }
 .cp-make-tile { appearance: none; border: 0; margin: 0; font: inherit; color: var(--label); text-align: start; cursor: pointer; display: grid; align-content: start; gap: 4px; min-width: 0; padding: var(--space-4); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); }

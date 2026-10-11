@@ -6,7 +6,7 @@
 .wy-hero {
   gap: var(--space-3); position: relative; overflow: hidden;
   background:
-    radial-gradient(120% 100% at 0% 0%, color-mix(in oklab, var(--hue-violet) 14%, transparent), transparent 60%),
+    radial-gradient(120% 100% at 0% 0%, color-mix(in oklab, var(--brand-mint) 14%, transparent), transparent 60%),
     radial-gradient(110% 100% at 100% 100%, color-mix(in oklab, var(--hue-sky) 12%, transparent), transparent 62%),
     var(--bg-raised);
 }
@@ -73,8 +73,8 @@
 .rv-intro > p { margin: 0; text-wrap: balance; }
 .rv-orb {
   width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; color: #fff; --rf-icon-size: 26px;
-  background: linear-gradient(145deg, var(--hue-teal), var(--accent-fill) 55%, var(--hue-violet));
-  box-shadow: 0 10px 24px -12px color-mix(in oklab, var(--hue-violet) 80%, transparent), inset 0 1px 0 rgb(255 255 255 / .35);
+  background: linear-gradient(145deg, var(--brand-blue), var(--brand-mint) 55%, var(--brand-green));
+  box-shadow: 0 10px 24px -12px color-mix(in oklab, var(--brand-mint) 80%, transparent), inset 0 1px 0 rgb(255 255 255 / .35);
 }
 .rv-orb svg { width: 26px; height: 26px; }
 

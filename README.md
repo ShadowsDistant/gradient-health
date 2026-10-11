@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/icon-512.png" width="96" alt="The Gradient Health icon: a glass heart"></p>
+<p align="center"><img src="docs/icon-512.png" width="96" alt="The Gradient Health icon: a white heart with a pulse line on a blue, green and amber gradient"></p>
 
 <h1 align="center">Gradient Health</h1>
 

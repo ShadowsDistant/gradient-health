@@ -531,7 +531,7 @@
       <h1 class="rf-large-title ob-hero-title">Gradient Health</h1>
       <p class="ob-tagline">Workouts that fit your goals, your time and your body.</p>
       ${sh ? sharedCard(sh) : `<ul class="ob-points">
-        ${point('sparkle', 'violet', 'Your plan in under a minute', 'Four quick questions, then your first workout.')}
+        ${point('sparkle', 'amber', 'Your plan in under a minute', 'Four quick questions, then your first workout.')}
         ${point('refresh', 'green', 'It adapts after every workout', 'Too easy and it steps up. A rough night and it eases off.')}
         ${point('lock', 'sky', 'No account, no ads', 'Everything stays on your phone.')}
       </ul>`}

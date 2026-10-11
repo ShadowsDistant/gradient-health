@@ -20,16 +20,16 @@
   const LOOK = {
     light: {
       bg: '#f1f2f6', label: '#0c0d12', label2: '#4b4f5b', card: 'rgba(255,255,255,0.64)', rim: 'rgba(255,255,255,0.95)', edge: 'rgba(12,13,18,0.07)', shadow: 'rgba(30,34,60,0.16)', glow: 0.78,
-      glows: ['rgb(111 227 200 / .55)', 'rgb(155 92 255 / .42)', 'rgb(58 168 255 / .5)', 'rgb(255 126 179 / .34)'],
+      glows: ['rgb(62 149 249 / .5)', 'rgb(109 218 150 / .42)', 'rgb(82 221 180 / .5)', 'rgb(251 183 81 / .4)'],
       tier: { bronze: '#9a5626', silver: '#5a6470', gold: '#946800', platinum: '#5559b8' },
     },
     dark: {
       bg: '#0b0c10', label: '#f4f5f8', label2: '#b4b8c4', card: 'rgba(28,30,38,0.62)', rim: 'rgba(255,255,255,0.16)', edge: 'rgba(255,255,255,0.05)', shadow: 'rgba(0,0,0,0.5)', glow: 0.85,
-      glows: ['rgb(70 190 170 / .26)', 'rgb(140 80 255 / .52)', 'rgb(60 130 255 / .5)', 'rgb(240 100 170 / .3)'],
+      glows: ['rgb(55 130 245 / .5)', 'rgb(70 185 120 / .4)', 'rgb(60 190 160 / .3)', 'rgb(232 150 60 / .32)'],
       tier: { bronze: '#eaa974', silver: '#cdd5de', gold: '#f5c84c', platinum: '#bac6ff' },
     },
   };
-  const GLOW_VARS = ['--glow-mint', '--glow-violet', '--glow-sky', '--glow-pink'];
+  const GLOW_VARS = ['--glow-sky', '--glow-green', '--glow-mint', '--glow-amber'];
   function look(theme) {
     const L = Object.assign({}, LOOK[theme === 'dark' ? 'dark' : 'light']);
     // The glow's colours from the app's own CSS, when the card is in the app's current theme.
@@ -96,7 +96,7 @@
     ctx.save();
     ctx.fillStyle = L.bg;
     ctx.fillRect(0, 0, W, H);
-    // The glow: mint and violet, sky and pink, as behind the top of every page in the app.
+    // The glow: the icon's blue and green, mint and amber, as behind the top of every page in the app.
     ctx.globalAlpha = L.glow;
     for (const [c, x, y, r] of [[L.glows[0], 230, 300, 560], [L.glows[1], 700, 640, 600], [L.glows[2], 880, 220, 520], [L.glows[3], 360, 860, 520]]) {
       const g = ctx.createRadialGradient(x, y, 0, x, y, r);

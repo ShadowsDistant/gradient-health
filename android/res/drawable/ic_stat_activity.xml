@@ -1,19 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Status bar icon for the activity notification: the logo's heart (as in ic_launcher_monochrome),
-     centred in 24 dp. White on transparent, as Android wants. -->
+<!-- Status bar icon for the activity and reminder notifications: the logo's heart and pulse line (the
+     paths of ic_launcher_monochrome), centred in 24 dp with 2 dp strokes. White on transparent, as
+     Android wants. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
     <group
-        android:pivotX="12"
-        android:pivotY="13"
-        android:scaleX="1.1"
-        android:scaleY="1.1"
-        android:translateY="-1">
+        android:scaleX="0.45"
+        android:scaleY="0.45"
+        android:translateX="-13.2"
+        android:translateY="-12.6">
         <path
-            android:fillColor="#FFFFFFFF"
-            android:pathData="M12,20.25C12,20.25 4.25,15.75 4.25,10A4.35,4.35 0,0 1,12 7.35A4.35,4.35 0,0 1,19.75 10C19.75,15.75 12,20.25 12,20.25Z" />
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="4.4"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M72.5,54.6 C75.5,45.2 72.4,37.3 65.8,37.0 C60.7,36.8 56.5,39.7 54.1,43.0 C51.6,39.7 47.5,36.8 42.4,37.0 C36.0,37.3 32.5,43.8 34.4,50.5 C36.3,57.3 44.8,64.3 52.6,70.6 C54.4,71.9 56.7,71.1 58.5,68.6" />
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="4.4"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M51.0,63.2 L58.0,63.2 L59.3,66.3 L63.7,53.7 L67.6,72.4 L70.6,63.7 L78.4,63.2" />
     </group>
 </vector>

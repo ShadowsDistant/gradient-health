@@ -87,7 +87,7 @@ scripts/build-native.sh  builds android/jni for arm64 (or --host, and tests it)
 scripts/build.mjs        inlines everything into dist/gradient-health.html, minified (MINIFY=0 to read
                          it); lazy chunks go to dist/lazy/
 scripts/build-apk.sh     builds and signs the APK without Gradle
-scripts/make-icons.mjs   the launcher icons from art/logo.webp
+scripts/make-icons.mjs   the launcher icons, the Play icon and the in-app logo from art/logo.png
 scripts/screenshots.mjs  renders docs/screenshots/ from the built page (the activity is a walk along
                          Venice Beach, on OpenFreeMap's map when it can be reached from where it runs)
 scripts/frame-shots.mjs  puts the README's screenshots in a phone, in docs/screenshots/framed/

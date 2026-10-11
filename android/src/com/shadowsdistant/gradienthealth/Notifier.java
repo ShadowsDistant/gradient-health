@@ -115,7 +115,7 @@ final class Notifier {
     private static final int NOTIFICATION_ID = 4501;
     private static final int ALARM_REQUEST = 4502;
     private static final int TAP_REQUEST = 4503;
-    private static final int BRAND = 0xFF7B72D9; // the logo's purple (res/values/colors.xml icon_bg)
+    private static final int BRAND = 0xFF3E95F9; // the logo's blue, its gradient's first colour
     private static final Object LOCK = new Object();
 
     private static final int POSTED = 0;

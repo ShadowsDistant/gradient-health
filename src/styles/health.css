@@ -24,13 +24,13 @@
   gap: var(--space-3); padding: var(--space-4); position: relative; overflow: hidden;
   background:
     radial-gradient(120% 90% at 0% 0%, color-mix(in oklab, var(--accent-fill) 11%, transparent), transparent 62%),
-    linear-gradient(165deg, color-mix(in oklab, var(--hue-violet) 7%, var(--bg-raised)), var(--bg-raised) 70%);
+    linear-gradient(165deg, color-mix(in oklab, var(--brand-mint) 8%, var(--bg-raised)), var(--bg-raised) 70%);
   box-shadow: var(--rim-light), var(--shadow-card);
 }
 [data-theme^="dark"] .card.hl-week {
   background:
     radial-gradient(120% 90% at 0% 0%, color-mix(in oklab, var(--accent-fill) 22%, transparent), transparent 62%),
-    linear-gradient(165deg, color-mix(in oklab, var(--hue-violet) 14%, var(--bg-raised)), var(--bg-raised) 72%);
+    linear-gradient(165deg, color-mix(in oklab, var(--brand-mint) 14%, var(--bg-raised)), var(--bg-raised) 72%);
 }
 .hl-week-main { appearance: none; border: 0; margin: 0; padding: 0; background: none; color: inherit; font: inherit; text-align: start; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); cursor: pointer; border-radius: var(--radius-md); transition: scale var(--duration-spring-snappy) var(--spring-snappy); }
 .hl-week-main:active { scale: .985; transition-duration: var(--duration-instant); }

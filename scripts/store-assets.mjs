@@ -22,14 +22,14 @@ for (const d of ['', 'screenshots/1080x1800', 'screenshots/480x800', 'screenshot
 const tmp = mkdtempSync(join(tmpdir(), 'gh-store-'));
 const url = (p) => pathToFileURL(join(root, p)).href;
 
-// The app's own type and colours (src/styles.css: the glow behind each page is the icon's mint, sky,
-// violet and pink).
+// The app's own type and colours (src/styles.css: the glow behind each page is the icon's blue, mint,
+// green and amber, where they sit in the icon).
 const FONT = `@font-face { font-family: 'Host Grotesk'; src: url('${url('vendor/refract/fonts/HostGrotesk-Variable.woff2')}') format('woff2'); font-weight: 300 800; }`;
 const BASE = `${FONT}
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { width: 100%; height: 100%; overflow: hidden; }
 body { font-family: 'Host Grotesk', system-ui, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision; }
-.phone { position: absolute; border-radius: 9.5% / 4.4%; padding: 2.1%; background: linear-gradient(160deg, #3a3a44, #121217 40%, #0a0a0e); box-shadow: 0 0 0 2px rgb(255 255 255 / .08) inset, 0 40px 80px -20px rgb(20 10 60 / .45), 0 18px 36px -12px rgb(0 0 0 / .35); }
+.phone { position: absolute; border-radius: 9.5% / 4.4%; padding: 2.1%; background: linear-gradient(160deg, #3a3a44, #121217 40%, #0a0a0e); box-shadow: 0 0 0 2px rgb(255 255 255 / .08) inset, 0 40px 80px -20px rgb(4 24 60 / .45), 0 18px 36px -12px rgb(0 0 0 / .35); }
 .phone img { display: block; width: 100%; border-radius: 8% / 3.7%; }
 `;
 
@@ -37,15 +37,15 @@ body { font-family: 'Host Grotesk', system-ui, sans-serif; -webkit-font-smoothin
 const banner = `<!doctype html><html><head><meta charset="utf-8"><style>${BASE}
 body { width: 1024px; height: 500px; position: relative; color: #fff;
   background:
-    radial-gradient(60% 90% at 0% 100%, rgb(255 126 179 / .55), transparent 70%),
-    radial-gradient(55% 80% at 100% 0%, rgb(111 227 200 / .75), transparent 72%),
-    radial-gradient(50% 70% at 78% 92%, rgb(58 168 255 / .55), transparent 70%),
-    linear-gradient(118deg, #2f2ab8 0%, #5a33e6 38%, #7c3cf0 55%, #2f8ff0 82%, #3fd0b4 100%); }
+    radial-gradient(60% 90% at 0% 100%, rgb(251 183 81 / .6), transparent 70%),
+    radial-gradient(55% 80% at 100% 0%, rgb(82 221 180 / .7), transparent 72%),
+    radial-gradient(50% 70% at 82% 96%, rgb(109 218 150 / .6), transparent 70%),
+    linear-gradient(118deg, #1a5cd0 0%, #2a7ff0 36%, #3a9ef2 52%, #31b9c4 78%, #3ccf9a 100%); }
 .copy { position: absolute; left: 64px; top: 0; bottom: 0; width: 520px; display: flex; flex-direction: column; justify-content: center; }
 .brand { display: flex; align-items: center; gap: 22px; margin-bottom: 26px; }
-.brand img { width: 92px; height: 92px; border-radius: 22px; box-shadow: 0 0 0 2px rgb(255 255 255 / .55), 0 14px 30px -8px rgb(20 0 60 / .5); }
+.brand img { width: 92px; height: 92px; border-radius: 22px; box-shadow: 0 0 0 2px rgb(255 255 255 / .55), 0 14px 30px -8px rgb(4 30 70 / .5); }
 .name { font-size: 50px; font-weight: 750; letter-spacing: -0.02em; line-height: 1; }
-h1 { font-size: 40px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.12; text-wrap: balance; text-shadow: 0 2px 18px rgb(30 0 80 / .25); }
+h1 { font-size: 40px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.12; text-wrap: balance; text-shadow: 0 2px 18px rgb(4 30 80 / .3); }
 .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
 .chips span { font-size: 18px; font-weight: 600; padding: 9px 16px; border-radius: 999px; background: rgb(255 255 255 / .16); box-shadow: 0 0 0 1.5px rgb(255 255 255 / .35) inset; backdrop-filter: blur(6px); }
 .p1 { width: 236px; left: 618px; top: 64px; transform: rotate(-7deg); }
@@ -77,8 +77,8 @@ function shotHtml(img, title, sub) {
   return `<!doctype html><html><head><meta charset="utf-8"><style>${BASE}
 body { width: 1080px; height: 1800px; position: relative; color: ${dark ? '#f4f3fa' : '#15141c'};
   background: ${dark
-    ? `radial-gradient(50% 32% at 12% 10%, rgb(70 190 170 / .32), transparent 72%), radial-gradient(48% 30% at 92% 16%, rgb(60 130 255 / .45), transparent 72%), radial-gradient(60% 40% at 50% 62%, rgb(140 80 255 / .42), transparent 74%), radial-gradient(50% 30% at 10% 90%, rgb(240 100 170 / .28), transparent 72%), #09080f`
-    : `radial-gradient(50% 32% at 12% 10%, rgb(111 227 200 / .6), transparent 72%), radial-gradient(48% 30% at 92% 14%, rgb(58 168 255 / .48), transparent 72%), radial-gradient(60% 40% at 50% 64%, rgb(155 92 255 / .36), transparent 74%), radial-gradient(50% 30% at 8% 92%, rgb(255 126 179 / .34), transparent 72%), #f1f2f6`}; }
+    ? `radial-gradient(50% 32% at 12% 10%, rgb(55 130 245 / .45), transparent 72%), radial-gradient(48% 30% at 92% 16%, rgb(60 190 160 / .36), transparent 72%), radial-gradient(60% 40% at 50% 62%, rgb(70 185 120 / .3), transparent 74%), radial-gradient(50% 30% at 10% 90%, rgb(232 150 60 / .28), transparent 72%), #09080f`
+    : `radial-gradient(50% 32% at 12% 10%, rgb(62 149 249 / .45), transparent 72%), radial-gradient(48% 30% at 92% 14%, rgb(82 221 180 / .55), transparent 72%), radial-gradient(60% 40% at 50% 64%, rgb(109 218 150 / .34), transparent 74%), radial-gradient(50% 30% at 8% 92%, rgb(251 183 81 / .36), transparent 72%), #f1f2f6`}; }
 .copy { position: absolute; left: 90px; right: 90px; top: 108px; text-align: center; }
 h1 { font-size: 78px; font-weight: 760; letter-spacing: -0.025em; line-height: 1.04; text-wrap: balance; }
 p { margin-top: 26px; font-size: 38px; font-weight: 500; line-height: 1.28; color: ${dark ? 'rgb(236 234 248 / .78)' : 'rgb(30 28 44 / .66)'}; text-wrap: balance; }
@@ -105,7 +105,7 @@ async function render(html, name, width, height, opts = {}) {
 
 await render(banner, 'banner-1024x500.jpg', 1024, 500, { jpeg: true });
 // The icon without its alpha channel (it's opaque anyway: a full-bleed square).
-const icon = `<!doctype html><html><head><meta charset="utf-8"><style>${BASE} body { width: 512px; height: 512px; background: #7c3cf0; } img { display: block; width: 512px; height: 512px; }</style></head><body><img src="${url('docs/icon-512.png')}" alt=""></body></html>`;
+const icon = `<!doctype html><html><head><meta charset="utf-8"><style>${BASE} body { width: 512px; height: 512px; background: #4fb9c9; } img { display: block; width: 512px; height: 512px; }</style></head><body><img src="${url('docs/icon-512.png')}" alt=""></body></html>`;
 await render(icon, 'icon-512.png', 512, 512);
 await render(icon, 'icon-512.jpg', 512, 512, { jpeg: true });
 for (const [name, img, title, sub] of SHOTS) {
