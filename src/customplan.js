@@ -706,7 +706,7 @@
   function codeError(code) {
     const text = {
       broken: 'That code doesn\'t hold a plan.',
-      newer: 'This plan was shared from a newer version of Gradient Health. Update the app to open it.',
+      newer: 'It was shared from a newer version of the app.',
       unsupported: 'This phone can\'t unpack that plan. Update Android System WebView and try again.',
     }[code] || 'That code doesn\'t hold a plan.';
     const e = new Error(text);

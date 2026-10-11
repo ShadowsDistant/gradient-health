@@ -1196,7 +1196,7 @@
     Object.assign(s, { light: true, title: 'Light day', warmup: [], tests: [], extras: [], finisher: null, keepMobility: true });
     const eq = eqFor(S, day);
     s.mobility = mobilityFlow(S, day).filter((it) => M().allowed(M().MOVES[it.moveId], eq));
-    s.notes = (s.notes || []).concat({ kind: 'light', text: 'Nothing in today\'s plan suits you right now, so today is a light day: a walk and some easy mobility.' });
+    s.notes = (s.notes || []).concat({ kind: 'light', text: 'Nothing in today\'s plan suits you right now, so it\'s a light day: a walk and easy mobility.' });
   }
   // Stable ids so a saved workout can point its steps back at the session's items after a reload.
   function assignUids(s) {
@@ -2032,7 +2032,7 @@
       const st = S.prog[ff] || (S.prog[ff] = { rung: A.finisher.moveId, reps: 0, best: {} });
       if (A.finisher.rir === '3' && !deload) {
         st.fmt = Math.min(4, (st.fmt || 0) + 1);
-        lines.push({ text: 'Finisher: longer work intervals next time', why: 'you had plenty left' });
+        lines.push({ text: 'Finisher: longer work intervals', why: 'you had plenty left' });
       }
     }
     if (deload) lines.push({ text: 'Progress held this week', why: 'deload week' });
@@ -2288,7 +2288,7 @@
           const nm = M().MOVES[next];
           const [nlo, nhi] = rangeFor(S, nm, fam);
           st.rung = next; st.reps = clampInt(nm.start, nlo, nhi); st.short = 0; st.rotatedAt = day;
-          res.line = { text: `${m.name} → ${nm.name}`, why: 'no progress in three sessions: a different angle often gets things moving' };
+          res.line = { text: `${m.name} → ${nm.name}`, why: 'no progress in three sessions: a new angle often helps' };
           return res;
         }
       }
@@ -2309,7 +2309,7 @@
         } else if (!st.topNoted || st.topNoted[m.id] == null) {
           (st.topNoted = st.topNoted || {})[m.id] = day;
           res.line = work != null
-            ? { text: `${m.name}: that's the heaviest option here. Slow the lowering down to keep it hard.`, why: 'the rack tops out' }
+            ? { text: `${m.name}: the heaviest option here. Lower it slowly to keep it hard.`, why: 'the rack tops out' }
             : { text: `${m.name}: top of the rep range. Hold a dumbbell to keep progressing.`, why: 'you had reps to spare' };
         }
       } else {
