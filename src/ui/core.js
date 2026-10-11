@@ -1329,9 +1329,167 @@
     else if (tone === 'critical') U.haptic('error', after);
     else if (tone === 'caution') U.haptic('warning', after);
     const r = R();
-    if (r && r.toast) { try { return r.toast({ title, message, tone: tone || 'neutral', action, position: 'top' }); } catch (e) { /* ignore */ } }
-    return null;
+    if (!r || !r.toast) return null;
+    try {
+      // Placed before it's put in: that reads where the buttons at the bottom are, in the layout the
+      // toast's own entrance makes anyway.
+      seatToaster();
+      placeToasts();
+      const t = r.toast({ title, message, tone: tone || 'neutral', action, position: 'bottom' });
+      if (t && t.el) toastIn(t.el);
+      return t;
+    } catch (e) { if (G.console) G.console.error(e); return null; }
   };
+
+  /* ---------------------------------------------------------------- toasts at the bottom */
+  // Toasts come up from the bottom of the screen, where there's nothing to go back to, rather than
+  // over the bar's buttons and the page's title at the top. They sit above whatever is down there:
+  // the tab bar, Today's floating buttons and the workout capsule, the player's, set-up's or a live
+  // activity's buttons, or an open sheet's main buttons, so one never covers a main button (and at
+  // least clear of the system bar). How high that is (--toast-lift on the toaster) is read as a toast
+  // comes, and again while one shows whenever one of those comes or goes; the toaster glides there
+  // (src/styles.css). Refract's toaster brings them in rising from below and lets them drop away,
+  // keeps three at most, and takes a swipe down to dismiss the bottom one.
+  const TOAST_GAP = 8; // px between a toast and the buttons under it (its slot adds 4 more)
+  const TOAST_H = 64; // a toast's height with its slot, to check what it would cover
+  // A sheet's main buttons: filled, tinted or large ones.
+  const MAIN_BTN = '.gh-sheet-panel .rf-btn:is([data-variant="filled"], [data-variant="tinted"], [data-size="lg"], [data-size="xl"]), .rf-dialog-actions .rf-btn';
+  const toaster = () => doc.querySelector('.rf-toaster[data-position="bottom"]');
+  const shows = (el) => !!el && !el.hidden && el.isConnected && !el.hasAttribute('data-closing') && el.getClientRects().length > 0;
+  // Where an element is laid out on the screen, without the transforms an entrance plays on it (the
+  // player's actions rising in, a button forming).
+  function laidOut(el) {
+    let top = 0;
+    for (let n = el; n; n = n.offsetParent) top += n.offsetTop;
+    return { top, bottom: top + el.offsetHeight };
+  }
+  // The open sheet or dialog toasts go over: the topmost modal one that isn't on its way out.
+  function topModal() {
+    let list = [];
+    try { list = Array.from(doc.querySelectorAll('dialog:modal')); } catch (e) { list = Array.from(doc.querySelectorAll('dialog[open]')); }
+    list = list.filter((d) => !d.hasAttribute('data-closing'));
+    return list.length ? list[list.length - 1] : null;
+  }
+  // What a toast must stay clear of, as boxes on screen ({ top, bottom }).
+  function toastObstacles() {
+    const out = [];
+    const modal = topModal();
+    if (modal) {
+      // A sheet at rest (read again once it settles), so these are read as drawn.
+      for (const b of modal.querySelectorAll(MAIN_BTN)) { const r = b.getBoundingClientRect(); if (r.height && r.width) out.push({ top: r.top, bottom: r.bottom }); }
+      return out;
+    }
+    const live = doc.getElementById('actlive');
+    const over = [[playerEl, '.pl-actions > *'], [onboardEl, '.ob-actions > *'], [live, '.al-actions > *']].find(([el]) => shows(el));
+    if (over) {
+      for (const b of over[0].querySelectorAll(over[1])) if (b.offsetHeight) out.push(laidOut(b));
+      return out;
+    }
+    if (shows(floatEl)) out.push(laidOut(floatEl));
+    if (shows(accessory)) out.push(laidOut(accessory));
+    const bar = tabbar && !tabbar.hasAttribute('data-away') ? tabbar.querySelector('.rf-tabbar-bar') : null;
+    if (bar && bar.offsetHeight) out.push(laidOut(bar));
+    return out;
+  }
+  // From the bottom up: a toast at the bottom that would cover one of them goes above it, and so on
+  // up (a sheet's two buttons one over the other), but never past the middle of the screen.
+  let toastLift = 0;
+  function placeToasts() {
+    const H = G.innerHeight || doc.documentElement.clientHeight;
+    const sab = parseFloat(G.getComputedStyle(doc.documentElement).getPropertyValue('--sab')) || 0;
+    let lift = sab + TOAST_GAP;
+    const obs = toastObstacles().filter((o) => o.bottom > H / 2).sort((a, b) => b.bottom - a.bottom);
+    for (const o of obs) if (o.bottom > H - lift - TOAST_H && o.top < H - lift) lift = Math.max(lift, H - o.top + TOAST_GAP);
+    toastLift = Math.round(Math.min(lift, H / 2));
+    liftToaster(toaster());
+  }
+  // (Written only when it changes: the toaster is restyled for it.)
+  function liftToaster(t) {
+    const v = `${toastLift}px`;
+    if (t && toastLift && t.style.getPropertyValue('--toast-lift') !== v) t.style.setProperty('--toast-lift', v);
+  }
+  // Over an open sheet a toast goes in its dialog: outside the topmost modal dialog nothing takes a
+  // tap (it's inert), so a toast left on the page couldn't be tapped, and a tap on its Undo would land
+  // on the sheet under it. The toaster goes back where it was as that sheet starts to close (moving
+  // a popover closes it, so it's shown again).
+  const watchedModals = new WeakSet();
+  const isOpen = (t) => { try { return t.matches(':popover-open'); } catch (e) { return true; } };
+  function seatToaster() {
+    const t = toaster();
+    if (!t) return;
+    const modal = topModal();
+    const host = modal || doc.body;
+    if (t.parentNode === host) return;
+    const was = isOpen(t) || !!t.querySelector('.rf-toast');
+    host.appendChild(t);
+    if (was && t.showPopover && !isOpen(t)) {
+      try { t.showPopover(); } catch (e) { /* not a popover here */ }
+      // Its style as it shows now, where it was, so the move to its new place (the next read pass)
+      // glides rather than jumps.
+      void G.getComputedStyle(t).translate;
+    }
+    if (!modal || watchedModals.has(modal) || !G.MutationObserver) return;
+    watchedModals.add(modal);
+    const back = () => { const x = toaster(); if (x && x.parentNode === modal) { seatToaster(); toastsMoved(); } };
+    new G.MutationObserver(() => { if (modal.hasAttribute('data-closing') || !modal.open) back(); }).observe(modal, { attributes: true, attributeFilter: ['data-closing', 'open'] });
+    modal.addEventListener('close', back);
+  }
+  const toastsShowing = () => !!doc.querySelector('.rf-toast:not([data-leaving])');
+  // Something at the bottom came or went: placed again in the frame's read pass.
+  let placeWait = false;
+  function toastsMoved() {
+    if (placeWait || !toastsShowing()) return;
+    placeWait = true;
+    readSoon(null, () => { placeWait = false; if (toastsShowing()) { seatToaster(); placeToasts(); } });
+  }
+  // Watched from the first toast on: the parts at the bottom showing or hiding, a sheet opening or
+  // settling, the keyboard, a live activity's screen added to the page.
+  let toastWatch = null;
+  function watchToasts() {
+    if (toastWatch || !G.MutationObserver) return;
+    toastWatch = new G.MutationObserver(() => toastsMoved());
+    const attrs = { attributes: true, attributeFilter: ['hidden', 'data-away', 'data-closing'] };
+    for (const el of [floatEl, tabbar, accessory, playerEl, onboardEl, doc.getElementById('actlive')]) if (el) toastWatch.observe(el, attrs);
+    toastWatch.observe(doc.documentElement, { attributes: true, attributeFilter: ['data-sheet-open', 'data-keyboard'] });
+    if (root) {
+      new G.MutationObserver((list) => {
+        for (const m of list) for (const n of m.addedNodes) if (n.id === 'actlive') { toastWatch.observe(n, attrs); toastsMoved(); }
+      }).observe(root, { childList: true });
+    }
+    doc.addEventListener('gh-sheet-moving', (e) => { if (!(e.detail && e.detail.moving)) toastsMoved(); });
+    G.addEventListener('resize', toastsMoved);
+  }
+  // A toast's motion is Refract's: it rises in on a spring with its words and buttons after it (about
+  // a second), and drops away, its slot closing up after it (about 0.6 s). Both play 1.6 times as fast,
+  // the same curves; its countdown runs for as long as it should. Reduced motion: Refract's short fades.
+  const TOAST_RATE = 1.6;
+  const quicken = (list) => { if (!U.reduced()) for (const a of list) if (a.id !== 'rf-countdown') a.playbackRate = TOAST_RATE; };
+  const toasterWatched = new WeakSet();
+  function toastIn(el) {
+    watchToasts();
+    const t = el.closest('.rf-toaster');
+    if (t && !toasterWatched.has(t) && G.MutationObserver) {
+      toasterWatched.add(t);
+      // Its exit starts as Refract marks it leaving, and its slot's as Refract sets the slot's height.
+      new G.MutationObserver((list) => {
+        for (const m of list) {
+          const n = m.target;
+          if (!n.getAnimations) continue;
+          if (m.attributeName === 'data-leaving' && n.hasAttribute('data-leaving')) quicken(n.getAnimations({ subtree: true }));
+          else if (m.attributeName === 'style' && n.classList.contains('rf-toast-slot') && n.style.height) quicken(n.getAnimations());
+        }
+      }).observe(t, { subtree: true, attributes: true, attributeFilter: ['data-leaving', 'style'] });
+    }
+    if (el.getAnimations) {
+      quicken(el.getAnimations({ subtree: true }));
+      if (el.parentElement && el.parentElement.classList.contains('rf-toast-slot')) quicken(el.parentElement.getAnimations());
+      // (The squash as it lands starts a moment later.)
+      setTimeout(() => { if (el.isConnected && !el.hasAttribute('data-leaving')) quicken(el.getAnimations({ subtree: true })); }, 340);
+    }
+    // The first toast made the toaster: it gets its place now, before its first frame.
+    liftToaster(t);
+    seatToaster();
+  }
 
   /* ---------------------------------------------------------------- persistence */
   // Every saved change also fires 'gh-change' on the document, for anything that follows the state

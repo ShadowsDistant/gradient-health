@@ -148,6 +148,12 @@ left alone. A few conventions:
   and shrinks away, then the panel dissolves into Today, whose cards rise back with the workout not
   started; from Today, its buttons pinch away and its card folds and settles back
   (`U.todayCancelled`); the toast with Undo only comes after. Reduced motion: short fades.
+- Toasts (`U.toast` in `core.js`, Refract's toaster) come up from the bottom of the screen, above
+  whatever is there: the tab bar, Today's floating buttons and the workout capsule, the player's,
+  set-up's or a live activity's buttons, or an open sheet's main buttons (`--toast-lift`, read again
+  whenever one of those comes or goes, and glided to). Over an open sheet the toaster goes in the
+  sheet's dialog, the one part of the page that takes taps then, and back as the sheet closes. A
+  swipe down dismisses the bottom one. Refract's toast motion plays 1.6 times as fast.
 
 **Parts that load when they're needed.** Set-up (`src/ui/onboarding.js`), the plan review with
 Why this plan (`src/planreview.js`, `src/ui/review.js`), How it works (`src/data/science.js`,
