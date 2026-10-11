@@ -387,6 +387,12 @@ Where the app uses Refract 1.4's newer parts:
   frame, from the slide up through a drag to the slide out. It's frosted at medium height, and
   solid under the rim and sheen at full height, while it moves and while its content scrolls (a
   blur under anything that moves is redrawn every frame; the rim and sheen move with their layer).
+  A sheet opened over another is solid at every height (`data-stacked`): frost over a sheet's words
+  lets them through. A sheet's body has no inset of its own, so each block in it brings its 16 px.
+- **Dropdowns** (`<details class="gh-drop">`, `src/styles/dropdown.css`): what's inside grows open
+  and folds shut (`::details-content`'s height, with `interpolate-size`), fading as it goes, and the
+  chevron turns with it. It's the one motion here that lays the page out every frame, for 280 ms
+  after a tap. Chromium before 131 and reduced motion open and shut at once.
 - **Page dots**: Refract's `.rf-pagedots` (its ink worm stretches to the page and splats there) for
   the badge reveal and the tour; they follow the page however it's turned (`aria-current`).
 - **Plan's week strip**: the day picked is a bead of the liquid engine, as the segmented controls'

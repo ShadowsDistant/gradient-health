@@ -654,6 +654,9 @@
     }
 
     /* ---------- opening */
+    // Over another sheet, the material is solid at every height: frosted glass over a sheet's words
+    // shows them through, close and sharp enough to read (sheet.css).
+    if (openSheets.some((o) => !o.closing)) el.setAttribute('data-stacked', '');
     openSheets.push(s);
     markOpen();
     pageOpen();

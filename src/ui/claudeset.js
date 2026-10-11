@@ -71,7 +71,7 @@
     return `<div class="sheet-pad cl-models">
       <h3 class="rf-list-header">Model</h3>
       <ul class="rf-list" role="radiogroup" aria-label="Model">${current.map((x) => modelRow(S, x)).join('')}</ul>
-      <details class="cl-older"${olderOpen ? ' open' : ''}><summary class="t-subhead">Older models${U.icon('chevron-down', 'sm')}</summary>
+      <details class="cl-older gh-drop"${olderOpen ? ' open' : ''}><summary class="t-subhead">Older models${U.icon('chevron-down', 'sm')}</summary>
         <ul class="rf-list" role="radiogroup" aria-label="Older models">${older.map((x) => modelRow(S, x)).join('')}</ul></details>
       <h3 class="rf-list-header">Thinking</h3>
       <ul class="rf-list" role="radiogroup" aria-label="Thinking">${SP().levelsFor(m).map((lv) => levelRow(S, lv)).join('')}</ul>

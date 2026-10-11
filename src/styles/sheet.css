@@ -52,6 +52,7 @@ dialog.gh-sheet[data-closing] { pointer-events: none; }
    height, and while the sheet moves or its content scrolls, it's solid under the rim and sheen, with
    no blur: a blur under anything that moves is redrawn every frame, while the rim and sheen move with
    the layer and cost nothing to move (the light holds still while a sheet moves, src/ui/core.js).
+   Over another sheet it's solid at every height (frost over that sheet's words lets them through).
    Increased contrast and reduced transparency: solid. Its corners are the panel's own value, not
    inherited from it: a part that inherits a value is restyled with the panel every frame the panel
    moves. */
@@ -63,7 +64,7 @@ dialog.gh-sheet[data-closing] { pointer-events: none; }
   transition: none;
   will-change: transform;
 }
-.gh-sheet:is([data-detent="large"], [data-moving], [data-scrolling]) .gh-sheet-glass {
+.gh-sheet:is([data-detent="large"], [data-moving], [data-scrolling], [data-stacked]) .gh-sheet-glass {
   background-color: var(--sheet-bg); -webkit-backdrop-filter: none; backdrop-filter: none;
 }
 :root:is([data-theme$="contrast"], [data-rf-transparency="reduced"]) .gh-sheet-glass { background-color: var(--sheet-bg); -webkit-backdrop-filter: none; backdrop-filter: none; }

@@ -122,9 +122,7 @@ button.hl-pill:active { scale: .97; transition-duration: var(--duration-instant)
 .hl-ins-body { display: grid; gap: 6px; padding: 0 var(--space-4) 14px calc(var(--space-4) + 30px + var(--space-3)); }
 .hl-ins-body p { margin: 0; }
 .hl-ins-body .t-callout { line-height: 1.4; }
-.hl-ins[open] .hl-ins-body { animation: hl-open 320ms var(--ease-out-soft); }
 .hl-ins-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
-@keyframes hl-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .card.hl-note { padding-block: 14px; }
 
 /* ---------------------------------------------------------------- trends */
@@ -167,7 +165,7 @@ button.hl-pill:active { scale: .97; transition-duration: var(--duration-instant)
 .rf-menu.hl-log { min-inline-size: 208px; }
 
 /* ---------------------------------------------------------------- metric sheet */
-.ms { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-1) 0 var(--space-3); min-width: 0; }
+.ms { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-1) var(--space-4) var(--space-3); min-width: 0; }
 .ms-picks { display: flex; flex-wrap: wrap; gap: 6px; }
 .ms-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-lg); background: linear-gradient(150deg, color-mix(in oklab, var(--_hue) 14%, var(--bg-raised)), var(--bg-raised) 72%); box-shadow: var(--rim-light), var(--shadow-card); min-width: 0; }
 [data-theme^="dark"] .ms-hero { background: linear-gradient(150deg, color-mix(in oklab, var(--_hue) 26%, var(--bg-raised)), var(--bg-raised) 72%); }
@@ -219,7 +217,6 @@ button.hl-pill:active { scale: .97; transition-duration: var(--duration-instant)
 .ms-about[open] .ms-chev { rotate: 180deg; }
 .ms-about-body { display: grid; gap: var(--space-2); padding: 0 var(--space-4) var(--space-4); }
 .ms-about-body p { margin: 0; line-height: 1.45; }
-.ms-about[open] .ms-about-body { animation: hl-open 320ms var(--ease-out-soft); }
 .ms-empty { display: grid; justify-items: center; text-align: center; gap: var(--space-2); padding: var(--space-6) var(--space-3) var(--space-4); }
 .ms-empty p { margin: 0; max-width: 34ch; }
 .ms-empty-ico { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 16px; background: var(--_hue); color: var(--on-hue); margin-bottom: var(--space-1); }
@@ -238,7 +235,8 @@ button.hl-pill:active { scale: .97; transition-duration: var(--duration-instant)
 .ms-remove { justify-self: start; color: var(--critical); }
 
 /* ---------------------------------------------------------------- report sheet */
-.rs { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-1) 0 var(--space-3); min-width: 0; }
+/* (A sheet's body has no inset of its own: src/styles/sheet.css.) */
+.rs { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-1) var(--space-4) var(--space-3); min-width: 0; }
 .rs-top { display: flex; align-items: center; gap: var(--space-2); min-height: 22px; }
 .rs-title { margin: 0; font-size: 1.375rem; font-weight: 700; letter-spacing: -.015em; line-height: 1.25; overflow-wrap: break-word; }
 .rs-glance .hl-pill { background: var(--bg-raised); box-shadow: var(--shadow-card); }

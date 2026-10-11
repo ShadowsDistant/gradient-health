@@ -96,8 +96,9 @@
   const refreshReport = () => { if (reportCtl && !reportCtl.closed) reportCtl.update(reportBody(U.S, U.today())); };
   // (Also once the plan review loads, for the report's plan ideas: src/ui/lazy.js.)
   U.refreshReport = refreshReport;
+  // It opens at full height: it's there to be read.
   U.act.healthReport = () => {
-    const ctl = U.sheet({ title: 'This week', size: 'auto', cls: 'rs-sheet', body: reportBody(U.S, U.today()), onClose: () => { if (reportCtl === ctl) reportCtl = null; } });
+    const ctl = U.sheet({ title: 'This week', size: 'auto', detent: 'large', cls: 'rs-sheet', body: reportBody(U.S, U.today()), onClose: () => { if (reportCtl === ctl) reportCtl = null; } });
     reportCtl = ctl;
   };
   U.act.reportFlag = () => { if (reportCtl) reportCtl.close('ok'); if (U.act.flagReport) U.act.flagReport(); };
@@ -197,7 +198,7 @@
   const INS_METRIC = { sleepMin: 'sleepMin', steps: 'steps', rhr: 'rhr', hrv: 'hrv', weight: 'weightKg', waist: 'waist', arms: 'armL', protein: 'protein', sleepTiming: 'sleepMin', 'sleep-rhr': 'rhr', 'feel-sleep': 'sleepMin', 'steps-weight': 'steps' };
   function insightRow(x) {
     const mk = INS_METRIC[x.metric];
-    return `<details class="hl-ins" data-state="${U.esc(x.tone)}" data-key="ins-${U.esc(x.id)}">
+    return `<details class="hl-ins gh-drop" data-state="${U.esc(x.tone)}" data-key="ins-${U.esc(x.id)}">
       <summary class="hl-ins-sum"><span class="rf-list-icon" data-tone="${TONE_HUE[x.tone] || 'sky'}">${U.icon(x.icon)}</span><span class="hl-ins-title">${U.esc(x.title)}</span><span class="hl-ins-chev">${U.icon('chevron-down', 'sm')}</span></summary>
       <div class="hl-ins-body">
         <p class="t-callout">${U.esc(x.body)}</p>

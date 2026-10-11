@@ -158,8 +158,24 @@ await settle(700);
 const rep = await page.evaluate(() => { const d = document.querySelector('dialog.rs-sheet[open]'); return { title: d.querySelector('.rf-sheet-title').textContent, sections: [...d.querySelectorAll('.rs-h')].map((h) => h.textContent.trim()), pills: [...d.querySelectorAll('.rs-glance button.hl-pill')].map((b) => b.dataset.arg) }; });
 check('with its sections', rep.title === 'This week' && rep.sections.includes('Wins') && rep.sections.includes('Focus next'), JSON.stringify(rep));
 check('and its numbers open their own sheets', rep.pills.length === 4 && rep.pills.includes('rhr'), JSON.stringify(rep.pills));
+// Its content keeps the sheet's 16 px inset (it had none: the headline and cards ran to the edges),
+// and it opens at full height, there to be read.
+const inset = await page.evaluate(() => {
+  const d = document.querySelector('dialog.rs-sheet[open]'), p = d.querySelector('.gh-sheet-panel').getBoundingClientRect();
+  const gaps = [...d.querySelectorAll('.rs-top, .rs-title, .rs-glance .hl-pill, .rs-sec')].map((el) => { const b = el.getBoundingClientRect(); return Math.round(Math.min(b.left - p.left, p.right - b.right)); });
+  return { gaps, detent: d.getAttribute('data-detent') };
+});
+check('the report\'s content sits 16 px in from the sheet\'s edges', inset.gaps.length >= 6 && inset.gaps.every((g) => g >= 15), JSON.stringify(inset.gaps));
+check('the report opens at full height', inset.detent === 'large', inset.detent);
 await page.click('dialog.rs-sheet .rs-glance button.hl-pill[data-arg="sleepMin"]');
 check('Sleep from the report opens the sleep sheet on top', await sheetOpen('.ms-sheet') && (await page.evaluate(() => document.querySelector('dialog.ms-sheet[open] .rf-sheet-title').textContent)) === 'Sleep');
+await settle(600);
+// Over the report the sleep sheet is solid: frosted glass let the report's words show through it.
+const over = await page.evaluate(() => {
+  const d = document.querySelector('dialog.ms-sheet[open]'), g = getComputedStyle(d.querySelector('.gh-sheet-glass'));
+  return { stacked: d.hasAttribute('data-stacked'), detent: d.getAttribute('data-detent'), blur: g.backdropFilter, bg: g.backgroundColor, report: document.querySelector('dialog.rs-sheet[open]').hasAttribute('data-stacked') };
+});
+check('a sheet over another is solid, even at medium height', over.stacked && !over.report && over.detent === 'medium' && (over.blur === 'none' || over.blur === '') && !/^rgba\(.*, 0\)$/.test(over.bg), JSON.stringify(over));
 await closeSheets();
 
 section('Insights, one line each');
@@ -169,6 +185,27 @@ await page.click('#screen details.hl-ins summary');
 await settle(500);
 const opened = await page.evaluate(() => { const d = document.querySelector('#screen details.hl-ins'); return { open: d.open, body: d.querySelector('.hl-ins-body').textContent.replace(/\s+/g, ' ').trim(), acts: [...d.querySelectorAll('.hl-ins-acts [data-act]')].map((b) => b.dataset.act) }; });
 check('tapping one opens it in place: the detail, what it\'s based on, and what to do', opened.open && /Based on/.test(opened.body) && opened.acts.includes('dismissInsight'), JSON.stringify(opened));
+// It grows open and folds shut, rather than jumping. Read just after each tap, its content's height
+// is still where it was (all of it while folding, none while growing), not at once where it's going.
+// (Chromium leaves ::details-content transitions out of getAnimations(), so the height is what's read.)
+const drop = () => page.evaluate(() => {
+  const d = document.querySelector('#screen details.hl-ins');
+  return { open: d.open, h: Math.round(d.getBoundingClientRect().height), content: Math.round(parseFloat(getComputedStyle(d, '::details-content').blockSize) || 0), full: Math.round(d.querySelector('.hl-ins-body').scrollHeight) };
+});
+const wasOpen = await drop();
+await page.click('#screen details.hl-ins summary');
+const closing = await drop();
+await settle(600);
+const shut = await drop();
+await page.click('#screen details.hl-ins summary');
+const opening = await drop();
+await settle(600);
+const again = await drop();
+const fold = { wasOpen, closing, shut, opening, again };
+check('an insight folds shut, its height moving rather than jumping', !closing.open && closing.content > 0 && shut.content === 0 && shut.h <= 80 && shut.h < wasOpen.h, JSON.stringify(fold));
+check('and grows open again the same way', opening.open && opening.content < opening.full - 4 && again.content >= again.full - 1 && again.h === wasOpen.h, JSON.stringify(fold));
+await page.click('#screen details.hl-ins summary');
+await settle(600);
 
 section('Logging from the + menu');
 check('the + button sits in the top bar next to sync', await page.evaluate(() => { const t = document.querySelector('#topbar .rf-navbar-trailing'); const b = t.querySelector('[popovertarget="hlLog"]'); return !!b && !!t.querySelector('[data-act="hcSync"]') && b.getAttribute('aria-label') === 'Log something'; }));
