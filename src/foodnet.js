@@ -26,7 +26,7 @@
     if (!b || !b.foodLookup) return Promise.reject(new Error('Online food search works in the Android app.'));
     const now = Date.now();
     sent[kind] = sent[kind].filter((t) => now - t < 60000);
-    if (sent[kind].length >= LIMIT[kind]) return Promise.reject(new Error('That\'s a lot of lookups in a minute. Try again shortly.'));
+    if (sent[kind].length >= LIMIT[kind]) return Promise.reject(new Error('Too many lookups this minute. Try again shortly.'));
     sent[kind].push(now);
     const id = `f${++seq}`;
     return new Promise((resolve, reject) => {

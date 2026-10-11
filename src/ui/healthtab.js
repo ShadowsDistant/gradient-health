@@ -52,7 +52,7 @@
     const wins = (d.wins || []).slice(0, 2);
     // A spending limit that stopped the report says so, with the way to the limits.
     const err = ai.error && w.api ? `<div class="notice" data-tone="${ai.budget ? 'caution' : 'critical'}">${U.icon('alert')}<span>${U.esc(ai.error)}${ai.budget ? ' <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="claudePage">Limits</button>' : ''}</span></div>` : '';
-    const waiting = w.api && !S.ai.consentAt ? `<div class="notice" data-tone="info">${U.icon('info')}<span>Claude is waiting for your OK before it gets your data. <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="claudeReview">Review</button></span></div>` : '';
+    const waiting = w.api && !S.ai.consentAt ? `<div class="notice" data-tone="info">${U.icon('info')}<span>Claude needs your OK before it gets your data. <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="claudeReview">Review</button></span></div>` : '';
     return `<div class="card hl-week" data-key="week">
       <button type="button" class="hl-week-main" data-act="healthReport">
         <span class="hl-week-head"><span class="hl-week-eyebrow">${U.icon('sparkle', 'sm')}This week</span>${src}<span class="hl-week-go">${U.icon('chevron-right', 'sm')}</span></span>
@@ -73,10 +73,10 @@
     const busy = w.api && ai.busy === 'report';
     const list = (title, arr, icon, state) => (arr && arr.length ? `<section class="rs-sec" data-state="${state}"><h3 class="rs-h">${U.icon(icon, 'sm')}<span>${title}</span></h3><ul class="rs-list">${arr.map((x) => `<li>${U.esc(x)}</li>`).join('')}</ul></section>` : '');
     const meta = w.rep ? `Written ${U.esc(U.fmtDay(w.rep.day))}${w.rep.model ? ` by ${U.esc(w.rep.model)}` : ''}. Not medical advice.`
-      : w.api ? 'Claude hasn\'t written this week\'s report yet, so this one is worked out on this phone. Not medical advice.' : 'Worked out on this phone from your own numbers. Not medical advice.';
+      : w.api ? 'Claude hasn\'t written this week\'s yet, so this one is from this phone. Not medical advice.' : 'From your numbers, on this phone. Not medical advice.';
     const glance = (d.glance || []).length >= 2 ? d.glance.slice(0, 4) : [];
     return `<div class="rs">
-      <div class="rs-top">${busy ? `<span class="rf-spinner" data-size="sm"><i></i></span><span class="t-footnote rf-muted">Claude is writing this week's report…</span>` : w.rep ? U.badge('Claude', 'accent') : U.badge('From your numbers', 'neutral')}</div>
+      <div class="rs-top">${busy ? `<span class="rf-spinner" data-size="sm"><i></i></span><span class="t-footnote rf-muted">Claude is writing…</span>` : w.rep ? U.badge('Claude', 'accent') : U.badge('From your numbers', 'neutral')}</div>
       <h3 class="rs-title">${U.esc(d.headline)}</h3>
       ${glance.length ? `<div class="hl-glance rs-glance" data-n="${glance.length}">${glance.map((g) => U.metricPill(g, 'metricOpen')).join('')}</div>` : ''}
       ${list('Wins', (d.wins || []).map(winText), 'star', 'good')}
@@ -116,7 +116,7 @@
       await AI().report(S, day);
       U.save(true);
     } catch (e) {
-      ai.error = e.message || 'The coach couldn\'t write the report.';
+      ai.error = e.message || 'Couldn\'t write the report.';
       ai.budget = !!(AI().isBudget && AI().isBudget(e.code));
       if (auto && e.code === 'offline') ai.error = null;
     } finally {
@@ -140,7 +140,7 @@
     if (key === 'steps') {
       e = h.entry(S, 'steps', day);
       const goal = B().stepsGoal(S, day).goal;
-      sub = e ? `Goal ${U.num(goal)}` : connected ? 'None synced yet today' : 'Tap to add';
+      sub = e ? `Goal ${U.num(goal)}` : connected ? 'None synced yet' : 'Tap to add';
       if (e) bar = U.progress(e.value / goal, `${U.num(e.value)} of ${U.num(goal)} steps`);
     } else {
       e = h.latestEntry(S, key, day, key === 'sleepMin' ? 1 : key === 'weightKg' ? 60 : 3);
@@ -212,7 +212,7 @@
     </details>`;
   }
   const insights = (list) => (list.length ? `<div class="hl-ins-list" data-key="ins">${list.map(insightRow).join('')}</div>`
-    : '<div class="card hl-note" data-key="noins"><p class="t-callout rf-muted">Insights show up here after a few days of data: sleep, steps, weight, workouts and check-ins.</p></div>');
+    : '<div class="card hl-note" data-key="noins"><p class="t-callout rf-muted">Insights start after a few days of sleep, steps, weight, workouts and check-ins.</p></div>');
   U.act.dismissInsight = (el) => { GH.insights.dismiss(U.S, el.dataset.arg, U.today()); U.commit(); U.haptic('dismiss'); U.toast('Hidden for 30 days', 'neutral'); };
   U.act.insightGo = (el) => U.go(el.dataset.arg);
 
@@ -256,7 +256,7 @@
     const list = H().activity(S, day - 27, day);
     // Starting an outdoor activity; the ones recorded here open their summary (src/ui/activity.js).
     const start = U.actHealthStart ? U.actHealthStart(S) : '';
-    if (!list.length) return `${start}<div class="card hl-note" data-key="noact"><p class="t-callout rf-muted">No workouts in the last 4 weeks yet. Record a walk, run or ride, log other exercise with the + button, or connect Health Connect.</p></div>`;
+    if (!list.length) return `${start}<div class="card hl-note" data-key="noact"><p class="t-callout rf-muted">No workouts in the last 4 weeks. Log other exercise with the + button, or connect Health Connect.</p></div>`;
     const rows = list.slice(0, 4).map((a) => (a.src === 'activity' && U.actHealthRow && U.actHealthRow(a)) || U.row({
       icon: a.src === 'app' ? 'bolt' : a.src === 'manual' ? 'pencil' : 'heart', tone: a.src === 'app' ? 'indigo' : a.src === 'manual' ? 'amber' : 'rose',
       title: U.esc(U.cap(a.name || 'Workout')), sub: `${U.esc(U.fmtDay(a.day))}${a.src === 'app' ? ' · Gradient Health' : a.src === 'manual' ? ' · logged by you' : ' · Health Connect'}`,
@@ -282,14 +282,14 @@
     if (app && on) {
       rows.push(`<li><button type="button" class="rf-list-row" data-act="hcSync" data-sync-spin${sync.busy ? ' data-spinning' : ''}><span class="rf-list-icon" data-tone="sky">${U.icon('refresh')}</span><span class="rf-list-text"><span class="rf-list-title">Sync now</span></span></button></li>`);
       rows.push(U.row({ icon: 'lock', tone: 'indigo', title: 'Permissions', sub: 'What Gradient Health can read and write', act: 'hcManage', chevron: true }));
-      rows.push(`<li>${U.sw('Save workouts to Health Connect', !!(S.health.write !== false && canWrite), 'data-on="hcWriteToggle"', canWrite ? 'Other apps see your Gradient Health workouts' : 'Needs the Exercise permission in Health Connect')}</li>`);
+      rows.push(`<li>${U.sw('Save workouts to Health Connect', !!(S.health.write !== false && canWrite), 'data-on="hcWriteToggle"', canWrite ? 'Other apps can see them' : 'Needs the Exercise permission in Health Connect')}</li>`);
     }
-    const errs = (S.health.errors || []).length ? `<p class="t-footnote rf-muted">Couldn't read: ${U.esc(S.health.errors.map((k) => TYPE_LABEL[k] || k).join(', '))}. It'll try again on the next sync.</p>` : '';
-    const failed = sync.error && !sync.busy ? `<div class="notice" data-tone="caution">${U.icon('alert')}<span>The last sync didn't finish${sync.error === 'timeout' ? ' (it took too long)' : ''}. Pull down or tap Sync now to try again.</span></div>` : '';
+    const errs = (S.health.errors || []).length ? `<p class="t-footnote rf-muted">Couldn't read: ${U.esc(S.health.errors.map((k) => TYPE_LABEL[k] || k).join(', '))}. It tries again next sync.</p>` : '';
+    const failed = sync.error && !sync.busy ? `<div class="notice" data-tone="caution">${U.icon('alert')}<span>The last sync didn't finish${sync.error === 'timeout' ? ' (it took too long)' : ''}. Pull down to try again.</span></div>` : '';
     const allow = on && !S.health.askedNew && H().missingTypes && H().missingTypes(S).length ? `<div class="notice" data-tone="info">${U.icon('info')}<span>This version can also read heart rate, active calories and distance${GH.food && GH.food.full(S) ? ', and share meals' : ''}. <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="hcAllowNew">Allow</button><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="hcSkipNew">Not now</button></span></div>` : '';
     const connect = app && !on && st !== 'unsupported' && st !== 'unavailable' ? '<button type="button" class="rf-btn hl-connect" data-variant="filled" data-act="hcConnect">Connect Health Connect</button>' : '';
     return `${allow}${failed}<ul class="rf-list hl-src" data-key="sources">${rows.join('')}</ul>${connect}${errs}
-      <p class="t-footnote rf-muted hl-src-note">Reads sleep, steps, weight, height, body fat, heart rate, resting heart rate, HRV, active calories, distance and workouts${GH.food && GH.food.full(S) ? ', plus meals from other apps' : ''}. Syncs when you open the app and every 15 minutes while it's open. <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="openPrivacy">Privacy</button></p>`;
+      <p class="t-footnote rf-muted hl-src-note">Reads sleep, steps, weight, height, body fat, heart rate, resting heart rate, HRV, active calories, distance and workouts${GH.food && GH.food.full(S) ? ', plus meals from other apps' : ''}. Syncs when the app opens and every 15 minutes while it's open. <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="openPrivacy">Privacy</button></p>`;
   }
   U.act.hcSync = async () => {
     U.haptic('tap');
@@ -316,7 +316,7 @@
     const st = await H().request(U.S);
     U.S.health.status = st;
     if (H().connected(st)) { await U.syncHealth('manual'); U.toast('Health Connect connected', 'positive'); if (U.checklistCheck) U.checklistCheck(); }
-    else if (st === 'denied') U.toast('Not connected', 'caution', 'Allow access in Health Connect to use your data.', { label: 'Open', onClick: () => H().openSettings() });
+    else if (st === 'denied') U.toast('Not connected', 'caution', 'Allow access in Health Connect.', { label: 'Open', onClick: () => H().openSettings() });
     U.commit();
   };
   U.act.openPrivacy = () => { const t = U.topSheet(); if (t) t.close('ok'); U.open('privacy'); };
@@ -344,7 +344,7 @@
       title: 'Log other exercise', size: 'auto',
       body: `<div class="sheet-pad">${U.choice('actType', ['Walk', 'Run', 'Cycling', 'Sport', 'Gym', 'Swim', 'Yoga', 'Other'].map((t) => [t, t]), 'Walk', 'Activity', ' class="ob-chips" id="actTypes" data-on="actType"')}
         <p class="t-callout rf-muted">Minutes</p><div class="ob-center">${U.stepper('actMin', 30, 5, 300, 'Minutes', '', 5)}</div>
-        <p class="t-footnote rf-muted">45 min or more of hard exercise means easier legs and no finisher the next day.</p></div>`,
+        <p class="t-footnote rf-muted">45+ min of hard exercise means easier legs and no finisher the next day.</p></div>`,
       action: { label: 'Save', act: 'logActivitySave' },
     });
   };
@@ -370,7 +370,7 @@
     U.sheet({
       title: 'Measurements', size: 'auto',
       body: `<div class="sheet-pad ob-fields">${f('waist', 'Waist, at the belly button')}<div class="ob-row2">${f('armL', 'Left arm, flexed')}${f('armR', 'Right arm, flexed')}</div>${f('chest', 'Chest')}${f('thigh', 'Thigh')}
-        <p class="t-footnote rf-muted">Once a month, same time of day. Leave any blank. Arms show whether the left side is catching up.</p></div>`,
+        <p class="t-footnote rf-muted">Once a month, same time of day. Leave any blank. Arms show if one side is catching up.</p></div>`,
       action: { label: 'Save', act: 'logMeasureSave' },
     });
   };

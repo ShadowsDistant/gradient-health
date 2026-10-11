@@ -22,7 +22,7 @@
   function summary(S, day, compact) {
     const t = F().targets(S, day);
     const tot = F().totals(S, day);
-    if (!t) return `<p class="t-callout rf-muted">Add your weight and height to get a calorie target.</p><button type="button" class="rf-btn" data-act="editStep" data-arg="about">Add them</button>`;
+    if (!t) return `<p class="t-callout rf-muted">Add your weight and height for a calorie target.</p><button type="button" class="rf-btn" data-act="editStep" data-arg="about">Add them</button>`;
     const left = t.kcal - tot.kcal;
     const bar = (label, have, want, tone) => `<div class="fd-macro"><span class="t-footnote">${label}</span>${U.progress(want ? have / want : 0, label, have > want * 1.1 ? 'caution' : tone)}<span class="t-caption rf-muted rf-num">${g1(have)} / ${want} g</span></div>`;
     return `<div class="fd-sum${compact ? ' is-compact' : ''}">
@@ -67,7 +67,7 @@
           ${list.length ? `<ul class="rf-list fd-list">${list.map((e) => entryRow(e, day)).join('')}</ul>` : ''}
         </div>`;
       }).join('');
-      const other = tot.other && tot.other.kcal ? `<div class="card" data-key="other"><div class="row-between"><span class="t-subhead">From other apps</span><span class="t-callout rf-num">${kcal(tot.other.kcal)} kcal</span></div><p class="t-footnote rf-muted">Logged in another app and shared through Health Connect. It counts toward today.</p></div>` : '';
+      const other = tot.other && tot.other.kcal ? `<div class="card" data-key="other"><div class="row-between"><span class="t-subhead">From other apps</span><span class="t-callout rf-num">${kcal(tot.other.kcal)} kcal</span></div><p class="t-footnote rf-muted">Shared through Health Connect, and counted in the total.</p></div>` : '';
       const why = t ? `${t.learned ? `Your burn, learned from your logs and weight, is about ${kcal(t.burn)} kcal a day` : `Your estimated burn is about ${kcal(t.burn)} kcal a day`}${t.delta ? `, ${t.delta < 0 ? 'minus' : 'plus'} ${kcal(Math.abs(t.delta))} to ${t.delta < 0 ? 'lose' : 'gain'} steadily` : ''}.` : '';
       return `${U.navbar('Food', U.glassBtn('plus', 'Log food', 'foodAdd'))}
         <h1 class="rf-large-title">Food</h1>
@@ -410,7 +410,7 @@
   U.act.foodSavedMeals = () => { tab = 'meals'; U.act.foodAdd({ dataset: {} }); tab = 'meals'; refresh(); };
   U.act.foodSaveDay = () => {
     if (!F().entries(U.S, dayShown()).length) return;
-    U.sheet({ title: 'Save as a meal', size: 'fit', body: `<div class="sheet-pad fd-form">${textField('mName', 'Name', '', 'My usual breakfast')}<p class="t-footnote rf-muted">Everything logged ${dayShown() === U.today() ? 'today' : 'on this day'} is saved together. Add it again in one tap under Meals.</p>
+    U.sheet({ title: 'Save as a meal', size: 'fit', body: `<div class="sheet-pad fd-form">${textField('mName', 'Name', '', 'My usual breakfast')}<p class="t-footnote rf-muted">Everything logged ${dayShown() === U.today() ? 'today' : 'on this day'} goes under Meals, to add again in one tap.</p>
       <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="foodSaveDayOk">Save</button></div></div>` });
   };
   U.act.foodSaveDayOk = () => {
@@ -419,7 +419,7 @@
     U.save();
     U.closeSheets();
     U.haptic('save');
-    U.toast('Saved. Find it under Meals when you log food.', 'positive');
+    U.toast('Saved to Meals', 'positive');
   };
   U.act.foodCopyYesterday = async () => {
     const day = dayShown();
@@ -445,7 +445,7 @@
       U.toast('Looking it up…', 'neutral');
       const item = await GH.foodNet.barcode(code);
       if (!item) {
-        const ok = await U.confirm('Not found', 'Open Food Facts doesn\'t know this barcode yet. Create it from the label? It\'s remembered for next time.', 'Create it');
+        const ok = await U.confirm('Not found', 'Open Food Facts doesn\'t know this barcode yet. Create it from the label? It\'s kept for next time.', 'Create it');
         if (ok) createSheet({ barcode: code });
         return;
       }

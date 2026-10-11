@@ -271,9 +271,9 @@
       </div>
       ${weekBars(x)}
       ${lines ? `<h3 class="rf-list-header">Progress, ${U.esc(range)}</h3><ul class="rf-list">${lines}</ul>${counts ? `<p class="rf-list-footer">${U.esc(U.cap(counts))} for exercises that train it.</p>` : ''}`
-        : `<p class="mu-note t-callout rf-muted">${x.sets ? `No change to show in the ${range} yet. Progress shows up as your reps, weights and levels go up.` : `Not trained in the ${range}.`}</p>`}
+        : `<p class="mu-note t-callout rf-muted">${x.sets ? `No change in the ${range} yet. It shows as your reps, weights and levels go up.` : `Not trained in the ${range}.`}</p>`}
       ${moves ? `<h3 class="rf-list-header">What trained it</h3><ul class="rf-list">${moves}</ul>
-        <p class="rf-list-footer">A set counts in full for the muscle an exercise works most and half for the ones that help. Warm-ups and stretches don't count.</p>` : ''}
+        <p class="rf-list-footer">A set counts in full for the main muscle and half for the ones that help. Warm-ups and stretches don't count.</p>` : ''}
       ${U.act.tailorPlan && !(GH.body.MINOR || []).includes(x.id) ? `<div class="mu-actions"><button type="button" class="rf-btn" data-variant="soft" data-size="lg" data-act="tailorPlan" data-arg="${U.esc(x.id)}">${U.icon('plus-circle')}Train this more</button></div>` : ''}
     </div>`;
   }
