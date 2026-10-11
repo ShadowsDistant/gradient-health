@@ -401,7 +401,7 @@ Refract's `.rf-mark`), and the open-source licenses sheet opens with it.
 
 ## 3D exercise figure
 
-`src/engine/figure3d.js` is in the lazy chunk `dist/lazy/figure3d.js` (three.js, about 690 KB
+`src/engine/figure3d.js` is in the lazy chunk `dist/lazy/figure3d.js` (three.js, about 710 KB
 minified, with the badges' 3D medals: its entry is `src/engine/chunk3d.js`), which
 `GH.lazy('figure3d')` loads when it's needed. It sets `GH.figure3d`:
 
@@ -976,7 +976,8 @@ the categories it touched.
   and settles on its face or its back, each turn over plays `tick`; at rest it sways slowly while
   the light sweeps across it, and a few degrees of the phone's tilt lean it (`deviceorientation`,
   only while the sheet is open). It draws at most 30 frames a second at rest and 60 while spun,
-  nothing while covered, hidden or off screen, and stops swaying 30 s after the last touch. In the
+  nothing while covered, hidden or off screen, and stops swaying 30 s after the last touch; as its
+  sheet starts to close it stops, and it goes once the sheet has slid away. In the
   reveal the medal freed from the capsule is the live one, spinning out with a flash of light (the
   three taps and their haptics as before); it rests there, and a page on its own spins by hand too.
   Reduced motion: a still and a fade.
