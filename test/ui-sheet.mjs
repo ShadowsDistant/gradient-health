@@ -75,6 +75,10 @@ const open = async (expr) => {
   await wait(900);
   return sheet();
 };
+// An auto sheet taller than medium (so it has a large detent) and shorter than the screen: What's
+// new as 1.8.9's notes made it. The newest notes can be short enough to fit in medium whole, and a
+// sheet that fits there has no large detent (src/ui/sheet.js).
+const NEWS = `(() => { const U = window.GH.ui, e = window.GH.CHANGELOG.find((x) => x.version === '1.8.9'); return U.sheet({ title: "What's new in " + e.version, size: 'auto', body: '<div class="sheet-pad"><p class="t-title-3">' + U.esc(e.title) + '</p></div>' + U.changesHtml(e) }); })()`;
 const act = (name, arg) => `window.GH.ui.act.${name}({ dataset: { arg: ${JSON.stringify(arg == null ? '' : arg)} }, setAttribute() {}, removeAttribute() {}, closest: () => null })`;
 
 // Touches, with their own timeline (8 ms apart), so a flick's speed doesn't depend on how fast the
@@ -106,7 +110,7 @@ async function swipe(x0, y0, x1, y1, ms, { hold = 0, settle = 0 } = {}) {
 const drag = (x, y0, y1, ms, o) => swipe(x, y0, x, y1, ms, o);
 
 section('Where a sheet sits');
-let s = await open('window.GH.ui.showWhatsNew()');
+let s = await open(NEWS);
 check('an auto sheet opens at medium', s && s.size === 'auto' && s.detent === 'medium', s);
 check('anchored to the bottom edge, with no gap under it', s && s.bottom >= s.vh - 1, s);
 check(`full width at ${width} px`, s && s.left === Math.max(0, Math.round((s.vw - 640) / 2)) && s.width === Math.min(s.vw, 640), s);
@@ -167,7 +171,7 @@ await closeAll();
     };
     requestAnimationFrame(f);
   });
-  const w = await open('window.GH.ui.showWhatsNew()');
+  const w = await open(NEWS);
   await drag(Math.round(w.width / 2), w.top + 40, w.top + 160, 240, { settle: 700 });
   await page.evaluate(() => window.GH.ui.closeSheets());
   await wait(700);
@@ -189,7 +193,7 @@ async function fourDrags() {
   const r = { cost: [] };
   const measured = (name, x) => r.cost.push(Object.assign(x, { name }));
   await page.evaluate(() => { window.__det = []; window.__haptics.length = 0; if (!window.__detOn) { window.__detOn = true; document.addEventListener('rf-detent', (e) => window.__det.push(e.detail.detent)); } });
-  let s = await open('window.GH.ui.showWhatsNew()');
+  let s = await open(NEWS);
   r.medTop = s.top;
   measured('flick up', await drag(200, s.top + 260, s.top + 150, 64, { settle: 600 })); // on the content
   await wait(500);
@@ -263,7 +267,7 @@ check('frame time p95 under 20 ms, settles included', best < 20, sets.map((t) =>
 // And that recalc touches only what the drag writes to (the panel and the scrim), never the content
 // or the page: a trace of one drag, frame by frame (the frame a move starts in also switches the
 // material and pauses animations, a few elements more).
-s = await open('window.GH.ui.showWhatsNew()');
+s = await open(NEWS);
 await page.evaluate(() => window.GH.ui.topSheet().detent('large'));
 await wait(700);
 s = await sheet();
