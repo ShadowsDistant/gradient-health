@@ -420,10 +420,10 @@ minified), which `GH.lazy('figure3d')` loads when it's needed. It sets `GH.figur
   first frame would wait behind. One that needs shaders no warm view keeps compiled returns `{ wait }`
   instead, resolved once they've compiled in the background (its posed figure is held meanwhile, so
   they stay compiled), and the next call draws it.
-- `preload(opts)`: builds the renderer, the room's light (first: it's the GPU's longest job here),
-  the body and the equipment, then compiles the shaders with a view it keeps, one small piece per
-  idle callback so taps never wait on it (or whenever `opts.when(fn)` runs it: the stills hold it to
-  calm moments). `stillsReady()` turns true, and `opts.ready()` is called, once stills can be drawn,
+- `preload(opts)`: builds the renderer, the body, the equipment and the room's light, then compiles
+  the shaders with a view it keeps, one small piece per idle callback so taps never wait on it (or
+  whenever `opts.when(fn)` runs it: the stills hold it to calm moments, and wait 300 ms at most for
+  an idle one). `stillsReady()` turns true, and `opts.ready()` is called, once stills can be drawn,
   a step before `warm()`.
 
 The chunk authors no poses. Every frame it lifts the 2D joints from `GH.pose` into 3D. Side, front
@@ -486,13 +486,15 @@ relaunch, and that stills never go while a finger is down or the page scrolls, a
 several per idle moment. `test/ui-stills.mjs` times Plan's stills from cold (a fresh install, and an
 update that draws the figure differently: until the first screen's tiles, today's card and the
 week's stills show the 3D figure, and where the time goes) and holds their budget; `--vs=<dir>`
-compares two builds run by run, and `--still-glow` holds the background glow still (its drift is
-drawn in the same software GPU process as the stills here, and starts just as they do).
+compares two builds run by run, `--still-glow` holds the background glow still (its drift is drawn
+in the same software GPU process as the stills here, and starts just as they do) and `--flat` sets
+Glass effects to Flat (the software GPU spends seconds after launch drawing the page's glass, which a
+phone's GPU does in a few frames, so this is nearer a phone).
 
 ```sh
 npm run build && node test/figure3d.mjs [filter,…] [--dark] [--mirrored]
 node test/ui-figure.mjs [--dark] [--shots]   # the figure inside the app, and the no-WebGL fallback
-node test/ui-stills.mjs [--measure] [--runs=3] [--vs=<dir>] [--still-glow]   # Plan's 3D stills from cold, timed
+node test/ui-stills.mjs [--measure] [--runs=3] [--vs=<dir>] [--still-glow] [--flat]   # Plan's 3D stills from cold, timed
 ```
 
 The test renders every move in Chromium (SwiftShader), plus gym fixtures for barbells, cables,

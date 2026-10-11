@@ -39,7 +39,7 @@
   let tries = 0; // warm-ups that failed: at 3, the flat figure for this launch
   let noChunk = false; // the 3D chunk didn't load (until a figure loads it)
   let waiting = false, warming = false, writing = 0, cost = 0, drawn = 0;
-  const idle = (fn) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(() => fn(null), 50));
+  const idle = (fn, ms = 1000) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: ms }) : setTimeout(() => fn(null), 50));
   const now = () => (G.performance ? G.performance.now() : Date.now());
   const safe = (fn) => { try { fn(); } catch (e) { if (G.console) G.console.error(e); } };
 
@@ -215,17 +215,21 @@
   // from: they wait. (A workout put aside keeps its figure, hidden: that one doesn't count.)
   const figureShown = () => Array.prototype.some.call(doc.querySelectorAll('.pl-fig, .sheet-fig'), (h) => !!h.offsetParent);
   // fn(deadline) in the next idle moment that's free (nothing in the person's hands; calm too if
-  // lax, for the work that can wait longer: true, or a function asked each time), the app in front.
-  function whenFree(fn, lax) {
-    const again = () => setTimeout(() => whenFree(fn, lax), 100);
+  // lax, for the work that can wait longer: true, or a function asked each time), the app in front;
+  // or after ms if no idle moment comes (still only when it's free).
+  function whenFree(fn, lax, ms) {
+    const again = () => setTimeout(() => whenFree(fn, lax, ms), 100);
     if (doc.hidden) { doc.addEventListener('visibilitychange', again, { once: true }); return; }
     idle((deadline) => {
       if (doc.hidden || ((typeof lax === 'function' ? lax() : lax) ? !calm() : busy())) { again(); return; }
       fn(deadline);
-    });
+    }, ms);
   }
-  // The chunk's run and the warm-up's steps hold the page's thread for a while: calm moments only.
-  const whenCalm = (fn) => whenFree(fn, true);
+  // The chunk's run and the warm-up's steps hold the page's thread for a while: calm moments only. A
+  // step waits 300 ms at most for an idle moment: while launch's own work goes on, or the GPU draws
+  // the page, none comes for seconds (in a software-GL test the dozen steps that build the body
+  // waited a second each, right after launch).
+  const whenCalm = (fn) => whenFree(fn, true, 300);
 
   /* ---------------------------------------------------------------- drawing */
   // A still for a screen: its URL if it's kept; false if it can't be drawn (the flat figure, then);

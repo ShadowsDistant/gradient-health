@@ -18,13 +18,17 @@
 // the 4x, so a still costs far more than on a phone, and other tests running on this machine slow
 // it down; the numbers are for comparing builds here, best run against run with --vs).
 //
-// Usage: node test/ui-stills.mjs [--measure] [--runs=3] [--delay=1000] [--only=fresh|update] [--dist=<dir>] [--vs=<dir>] [--still-glow]
+// Usage: node test/ui-stills.mjs [--measure] [--runs=3] [--delay=1000] [--only=fresh|update] [--dist=<dir>] [--vs=<dir>] [--still-glow] [--flat]
 //   --measure     print the numbers only, no checks
 //   --dist        a built page somewhere else (a copy of an older dist/), to compare on the same machine
 //   --vs          another build, run by run in turn with this one
 //   --still-glow  the background glow held still (Settings, Look, Moving background off). Its drift
 //                 starts 3 s after the tap, just as the stills draw, and here SwiftShader draws it in
 //                 software too, in the same GPU process: this shows the stills' own time without it.
+//   --flat        Glass effects set to Flat (Settings, Look: no glass filters, no glow). SwiftShader
+//                 spends seconds drawing the page itself after launch (the glass over everything, at
+//                 2x), which a phone's GPU does in a few frames: this is nearer a phone, where the
+//                 GPU's time goes to the 3D figure.
 import { createRequire } from 'node:module';
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
@@ -41,6 +45,7 @@ const RUNS = Math.max(1, Number(arg('runs', 3)));
 const DELAY = Math.max(0, Number(arg('delay', 1000)));
 const ONLY = arg('only', '');
 const STILL_GLOW = process.argv.includes('--still-glow');
+const FLAT = process.argv.includes('--flat');
 const CPU = 4;
 const MONDAY = '2026-10-19T08:10:00';
 
@@ -212,9 +217,9 @@ let stateJson;
   await browser.close();
 }
 if (!stateJson || stateJson.length < 1000) { console.error('Couldn\'t seed the state.'); process.exit(1); }
-if (STILL_GLOW) {
+if (STILL_GLOW || FLAT) {
   const S = JSON.parse(stateJson);
-  S.profile.prefs = Object.assign({}, S.profile.prefs, { glowMove: false });
+  S.profile.prefs = Object.assign({}, S.profile.prefs, STILL_GLOW ? { glowMove: false } : {}, FLAT ? { glass: 'flat' } : {});
   stateJson = JSON.stringify(S);
 }
 
@@ -335,7 +340,7 @@ function report(r) {
 const kinds = ONLY ? [ONLY] : ['fresh', 'update'];
 const results = {};
 for (const kind of kinds) {
-  section(`${kind === 'fresh' ? 'A fresh install' : 'After an update'}: Plan ${DELAY} ms after the first frame (CPU ${CPU}x slower, ${RUNS} runs${builds.length > 1 ? ' each, run by run' : ''}${STILL_GLOW ? ', the glow held still' : ''})`);
+  section(`${kind === 'fresh' ? 'A fresh install' : 'After an update'}: Plan ${DELAY} ms after the first frame (CPU ${CPU}x slower, ${RUNS} runs${builds.length > 1 ? ' each, run by run' : ''}${STILL_GLOW ? ', the glow held still' : ''}${FLAT ? ', glass effects flat' : ''})`);
   results[kind] = builds.map(() => []);
   for (let i = 0; i < RUNS; i++) {
     for (let b = 0; b < builds.length; b++) {

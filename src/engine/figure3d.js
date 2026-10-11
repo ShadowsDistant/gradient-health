@@ -4036,13 +4036,14 @@ function settled() {
     look();
   });
 }
-// Build the renderer, the room's light, the body, the equipment and the shaders ahead of the first
+// Build the renderer, the body, the equipment, the room's light and the shaders ahead of the first
 // figure, a small piece per idle moment so taps never wait on it (or whenever opts.when(fn) runs fn
 // with an idle deadline: the page's stills hold the steps while the page is in use). The room's light
-// goes first: it's the GPU's longest job here (2.5 to 4 s of a software GL's), and the GPU works on it
-// while the body's shapes are built. opts.ready(): called once stills can be drawn (stillsReady), a
-// step before the end; opts.busy(): whether a still a screen waits for is left (the last step waits
-// for those). Resolves true when 3D is ready.
+// comes after the body's shapes: it's the GPU's longest job here, and first, right after launch, its
+// shaders compiled while the GPU was still drawing the page, which held the page's thread longest
+// (2.8 s in a software-GL test), and the stills came no sooner for it. opts.ready(): called once
+// stills can be drawn (stillsReady), a step before the end; opts.busy(): whether a still a screen
+// waits for is left (the last step waits for those). Resolves true when 3D is ready.
 const readyFns = [];
 function preload(opts) {
   const onReady = opts && typeof opts.ready === 'function' ? opts.ready : null;
@@ -4052,9 +4053,9 @@ function preload(opts) {
   const busy = opts && typeof opts.busy === 'function' ? opts.busy : null;
   const steps = [
     () => (renderer() ? true : null), // null: no 3D here
-    () => { envMap(); return true; },
     bodyStep, // false until every body part is built
     () => { eqGeos(); shared(); return true; },
+    () => { envMap(); return true; },
     () => warmUp(when, busy), // a promise
   ];
   const p = new Promise((resolve) => {
