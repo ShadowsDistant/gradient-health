@@ -255,10 +255,17 @@ await page.evaluate(() => window.GH.ui.showWhatsNew());
 await settle(900);
 const sh = await page.evaluate(() => { const a = document.activeElement; return { cls: a && a.className, ring: !!(a && a.matches('.rf-sheet-grabber')) }; });
 check('a sheet the app opens by itself focuses its content, not the grabber (no blue ring)', /rf-sheet-body/.test(sh.cls || '') && !sh.ring, JSON.stringify(sh));
-// What's new opens at medium; pulled up to large, it sets the page back.
+// Pulled up to large, a sheet sets the page back. Open-source licenses is long enough for a large
+// detent whatever the release notes say: What's new fits in medium whole when they're short, and a
+// sheet that fits there has no large detent (src/ui/sheet.js).
+await page.evaluate(() => window.GH.ui.closeSheets());
+await settle(900);
+await page.evaluate(() => window.GH.ui.act.licensesSheet());
+await settle(900);
 await page.evaluate(() => window.GH.ui.topSheet().detent('large'));
 await settle(900);
-check('a sheet at full height sets the page back', await page.evaluate(() => document.getElementById('app').hasAttribute('data-receded')));
+const big = await page.evaluate(() => ({ detent: (document.querySelector('dialog[open][data-detent]') || { getAttribute: () => null }).getAttribute('data-detent'), receded: document.getElementById('app').hasAttribute('data-receded') }));
+check('a sheet at full height sets the page back', big.detent === 'large' && big.receded, JSON.stringify(big));
 await page.evaluate(() => window.GH.ui.closeSheets());
 await settle(900);
 check('and closing it brings the page forward again', await page.evaluate(() => !document.getElementById('app').hasAttribute('data-receded')));
