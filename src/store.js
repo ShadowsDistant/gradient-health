@@ -143,6 +143,16 @@
       text(pr, 'theme', 20);
       range(pr, 'density', 0, 1);
       range(pr, 'rollHour', 0, 23, true);
+      // Notifications (src/notify.js): switches as booleans, and a reminder time Settings can set
+      // (8 am to 8 pm, in quarter hours) or null for the one worked out from history.
+      if (own(pr, 'notify')) {
+        const n = pr.notify;
+        if (!isObj(n)) delete pr.notify;
+        else {
+          ['on', 'workout', 'move', 'badge', 'sleep', 'comeback'].forEach((k) => bool(n, k));
+          if (own(n, 'time') && n.time !== null) n.time = isNum(n.time) ? clamp(Math.round(n.time / 15) * 15, 480, 1200) : null;
+        }
+      }
     }
   }
 
@@ -335,9 +345,13 @@
     if (!S.catchup) S.catchup = { arm: { side: 'L', active: false, tests: [] }, leg: { side: 'L', active: false, tests: [] } };
     if (S.profile && GH.brain) {
       const def = GH.brain.defaultProfile();
+      const notify = def.prefs.notify;
       for (const k of Object.keys(def)) if (S.profile[k] === undefined) S.profile[k] = def[k];
       S.profile.equipment = Object.assign(def.equipment, S.profile.equipment || {});
       S.profile.prefs = Object.assign(def.prefs, S.profile.prefs || {});
+      // Notifications: off for everyone until they turn them on, and a setting this version adds
+      // takes its default.
+      S.profile.prefs.notify = Object.assign(notify, isObj(S.profile.prefs.notify) ? S.profile.prefs.notify : {});
       S.profile.protein = Object.assign(def.protein, S.profile.protein || {});
       S.profile.lead = Object.assign({ arm: null, leg: null }, S.profile.lead || {});
       // Every muscle group has a weekly volume: one a backup lost starts again where a new plan
