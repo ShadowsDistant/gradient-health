@@ -937,7 +937,7 @@
             ? `<div class="cp-saved"><p class="cp-eyebrow" data-tone="positive">${U.icon('check-circle')}<span>Saved to your plans</span></p><div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpBuildUse">${U.icon('play')}Use it now</button><button type="button" class="rf-btn" data-size="lg" data-act="cpBuildOpen">Edit it</button></div></div>`
             : `<div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpBuildSave">Save</button><button type="button" class="rf-btn" data-size="lg" data-act="cpBuildEdit">Change it</button></div>`;
         return `<div class="sheet-pad cp-import cp-build${st.step === 'refining' ? ' is-refining' : ''}">
-          ${st.text ? `<p class="t-callout rf-muted tailor-asked">“${U.esc(st.text)}”</p>` : ''}
+          ${st.text ? `<p class="t-callout rf-muted tailor-asked">"${U.esc(st.text)}"</p>` : ''}
           ${head}${note}${acts}
           <div class="cp-imp-days">${planView(S, p)}</div>
           ${st.step === 'propose' ? '<p class="t-footnote rf-muted">Nothing changes until you save and use it. You can edit it after.</p>' : ''}
@@ -1032,7 +1032,7 @@
         const p = st.plan;
         if (!st.changes.length) return `<div class="sheet-pad cp-import"><p class="t-headline">${U.esc(who)} kept it as it is</p><p class="t-callout rf-muted">${U.esc(p.note || 'It already fits what you asked for and what your data shows.')}</p><div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpImproveDone">Done</button></div></div>`;
         return `<div class="sheet-pad cp-import cp-build">
-          ${st.text ? `<p class="t-callout rf-muted tailor-asked">“${U.esc(st.text)}”</p>` : ''}
+          ${st.text ? `<p class="t-callout rf-muted tailor-asked">"${U.esc(st.text)}"</p>` : ''}
           ${p.note ? `<p class="t-callout tailor-note">${U.icon('sparkle', 'sm')}<span>${U.esc(p.note)}</span></p>` : ''}
           <p class="t-subhead">What changes</p>
           <ul class="cp-changes t-footnote">${st.changes.slice(0, 12).map((x) => `<li>${U.esc(x)}</li>`).join('')}${st.changes.length > 12 ? `<li>${U.esc(`and ${st.changes.length - 12} more`)}</li>` : ''}</ul>

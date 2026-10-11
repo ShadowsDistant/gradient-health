@@ -35,7 +35,7 @@
   /* ---------------------------------------------------------------- words */
   function range(first) {
     const a = B().fmtDay(first, false), b = B().fmtDay(first + 6, false);
-    return a.split(' ')[0] === b.split(' ')[0] ? `${a} – ${b.split(' ')[1]}` : `${a} – ${b}`;
+    return a.split(' ')[0] === b.split(' ')[0] ? `${a}-${b.split(' ')[1]}` : `${a}-${b}`;
   }
   const when = (e, day) => (e.day === day ? 'Today' : e.day === day + 1 ? 'Tomorrow' : e.day === day - 1 ? 'Yesterday' : e.date);
   // "Today", "Tomorrow", else "Sat 24".

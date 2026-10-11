@@ -17,7 +17,7 @@
     if (st.step === 'reading') return `<div class="sheet-pad tailor"><div class="chat-setup"><span class="rf-spinner" data-size="sm"><i></i></span><span class="t-callout">The coach is reading that…</span></div></div>`;
     if (st.step === 'propose') {
       return `<div class="sheet-pad tailor">
-        <p class="t-callout rf-muted tailor-asked">“${U.esc(st.text)}”</p>
+        <p class="t-callout rf-muted tailor-asked">"${U.esc(st.text)}"</p>
         <p class="t-headline">Here's what would change</p>
         <ul class="rf-list tailor-lines">${st.lines.map((l) => `<li><div class="rf-list-row"><span class="rf-list-icon" data-tone="${l.tone === 'positive' ? 'green' : l.tone === 'caution' ? 'amber' : l.tone === 'neutral' ? 'neutral' : 'violet'}">${U.icon(l.icon)}</span><span class="rf-list-text"><span class="rf-list-title">${U.esc(l.text)}</span>${l.sub ? `<span class="rf-list-sub">${U.esc(l.sub)}</span>` : ''}</span></div></li>`).join('')}</ul>
         ${st.note ? `<p class="t-callout tailor-note">${U.icon('sparkle', 'sm')}<span>${U.esc(st.note)}</span></p>` : ''}
