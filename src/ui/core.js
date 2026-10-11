@@ -1042,7 +1042,7 @@
   function safe(fn) { try { return fn(); } catch (e) { if (G.console) G.console.error(e); return ''; } }
   function errorBox(e) {
     if (G.console) G.console.error(e);
-    return `<div class="section"><div class="card"><p class="t-headline">Something went wrong drawing this screen.</p><p class="t-footnote rf-muted">${U.esc(e && e.message)}</p><button class="rf-btn" data-act="goToday">Back to Today</button></div></div>`;
+    return `<div class="section"><div class="card"><p class="t-headline">Couldn't show this screen.</p><p class="t-footnote rf-muted">${U.esc(e && e.message)}</p><button class="rf-btn" data-act="goToday">Back to Today</button></div></div>`;
   }
   /* Refract's init() wires up its controls (switches, segments, steppers, chips, glass and lenses,
    * icons) in an element, looking through it once for each kind. A patch only needs that for the

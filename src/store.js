@@ -522,14 +522,14 @@
   }
   function importJson(txt) {
     const text = typeof txt === 'string' ? txt.trim() : '';
-    if (text.length > MAX_TEXT) return { ok: false, error: 'That\'s too much text for a Gradient Health backup. Paste the text from Copy my data.' };
+    if (text.length > MAX_TEXT) return { ok: false, error: 'That\'s too much text for a backup. Paste the text from Copy my data.' };
     let o = null;
     try { o = text ? JSON.parse(text, reviver) : null; } catch (e) { o = null; }
     if (!isObj(o)) return { ok: false, error: 'That isn\'t a Gradient Health backup. Paste the whole text from Copy my data.' };
     const S = sanitize(o.app === 'gradient-health' && o.state ? o.state : o);
     if (S) delete S.planCache;
     if (!valid(S)) return { ok: false, error: 'That backup is missing parts. Paste the whole text from Copy my data.' };
-    if ((o.schema || S.v || 1) > SCHEMA) return { ok: false, error: 'That backup is from a newer version of Gradient Health. Update the app first.' };
+    if ((o.schema || S.v || 1) > SCHEMA) return { ok: false, error: 'That backup is from a newer version. Update the app first.' };
     return { ok: true, state: migrate(S), workouts: S.log.filter((l) => l.type === 'workout').length, since: S.profile.startDay };
   }
 
