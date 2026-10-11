@@ -870,8 +870,11 @@ function mount(host, spec, o) {
     return [1, 0];
   }
   // One frame: where it is now, drawn. Returns whether it's still moving.
+  // (A frame drawn outside the loop, ctl.draw(), is timed by performance.now(), the loop's by its
+  // frame's timestamp, and the two can disagree, by seconds under a test's clock: so the step and the
+  // sway's ease-in are kept to their ranges, or a sway eased in "from the future" whirls the medal.)
   function frame(t) {
-    const dt = Math.min(0.05, last ? (t - last) / 1000 : 0.016);
+    const dt = clamp(last ? (t - last) / 1000 : 0.016, 0, 0.05);
     last = t;
     let scale = 1, yaw = st.yaw, busy = !!st.drag, sweep = Math.sin((t / 11000) * TAU) * 0.5;
     if (st.spin) {
@@ -897,7 +900,7 @@ function mount(host, spec, o) {
     // At rest it sways slowly round where it settled (not with reduced motion, and not 30 s after the
     // last touch), easing in.
     const swaying = !busy && !!o.sway && !reduced() && t - st.touched < 30000;
-    if (swaying) { const k = Math.min(1, (t - st.swayFrom) / 1800); st.sway = Math.sin(((t - st.swayFrom) / 7000) * TAU) * 0.42 * k * k; } else if (!busy) st.sway *= 0.9;
+    if (swaying) { const k = clamp((t - st.swayFrom) / 1800, 0, 1); st.sway = Math.sin(((t - st.swayFrom) / 7000) * TAU) * 0.42 * k * k; } else if (!busy) st.sway *= 0.9;
     // The phone's tilt, eased.
     st.tx += (st.tiltX - st.tx) * Math.min(1, dt * 6);
     st.ty += (st.tiltY - st.ty) * Math.min(1, dt * 6);
