@@ -294,12 +294,12 @@
     const out = [];
     const ws = B().weightStats(S, day);
     const goal = S.profile.weightGoal;
-    if (goal === 'lose' && ws.rate != null && ws.rate < -0.01) out.push({ id: `food-fast-${B().weekStart(day)}`, icon: 'flame', title: 'Eat a little more', body: `You're losing ${Math.round(-ws.rate * 1000) / 10}% a week. Under 1% keeps more muscle. About 150 kcal more a day would slow it down.` });
+    if (goal === 'lose' && ws.rate != null && ws.rate < -0.01) out.push({ id: `food-fast-${B().weekStart(day)}`, icon: 'flame', title: 'Eat a little more', body: `You're losing ${Math.round(-ws.rate * 1000) / 10}% a week. Under 1% keeps more muscle. About 150 kcal more a day slows it.` });
     const t = targets(S, day);
     if (t) {
       let low = 0, n = 0;
       for (let d = day - 7; d < day; d++) { const x = totals(S, d, true); if (x.kcal >= t.kcal * 0.4) { n++; if (x.p < t.protein * 0.8) low++; } }
-      if (n >= 4 && low >= n - 1) out.push({ id: `food-protein-${B().weekStart(day)}`, icon: 'check-circle', title: `Aim for ${t.protein} g of protein`, body: `You were under it on ${low} of the ${n} days you logged. A portion of meat, fish, tofu, eggs or Greek yogurt at each meal covers most of it.` });
+      if (n >= 4 && low >= n - 1) out.push({ id: `food-protein-${B().weekStart(day)}`, icon: 'check-circle', title: `Aim for ${t.protein} g of protein`, body: `You were under it on ${low} of ${n} logged days. Meat, fish, tofu, eggs or Greek yogurt at each meal covers most of it.` });
     }
     return out;
   }
