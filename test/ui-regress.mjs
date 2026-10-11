@@ -1,7 +1,9 @@
 // Layout regressions from real-phone reports, checked in Chromium at phone size with someone five
 // weeks in: chart bounds, tab and button type, cut-off titles, the set-up overlay, sliders, the tour's
 // tab bar, the Resume and Cancel buttons, the workout capsule's glass, section spacing, the current
-// tab's glass lens, page ends that clear the tab bar, and cancelling a workout (from Back and from
+// tab's glass lens, page ends that clear the tab bar, toasts at the bottom (above the workout
+// capsule, Today's buttons, the system bar and an open sheet's main button; a swipe down dismisses
+// one, and over a sheet a tap reaches it), and cancelling a workout (from Back and from
 // Today, with Undo) as a moment of its own: the cancel haptic once, the player folding away or
 // Today's buttons pinching away and its card settling back, the toast only after, and short fades
 // with reduced motion.
@@ -269,6 +271,67 @@ check('a sheet at full height sets the page back', big.detent === 'large' && big
 await page.evaluate(() => window.GH.ui.closeSheets());
 await settle(900);
 check('and closing it brings the page forward again', await page.evaluate(() => !document.getElementById('app').hasAttribute('data-receded')));
+
+section('Toasts at the bottom');
+// They sat over the bar's buttons and the page's title at the top. Now they come up from the bottom,
+// above whatever is down there and clear of the system bar (the stand-in's is 20 px), and take a tap
+// and a swipe down, over an open sheet too. (Each one's countdown is held, as a finger on it holds
+// it, so a slow moment here can't end it before it's measured.)
+{
+  const say = (title, undo) => page.evaluate(([title, undo]) => {
+    window.GH.ui.toast(title, 'positive', 'Counted for today.', undo ? { label: 'Undo', onClick: () => { window.__undid = (window.__undid || 0) + 1; } } : undefined);
+    for (const b of document.querySelectorAll('.rf-toast-close')) for (const a of b.getAnimations()) if (a.id === 'rf-countdown') a.pause();
+  }, [title, undo]);
+  const box = (sel) => page.evaluate((s) => { const e = document.querySelector(s); if (!e || e.hidden) return null; const r = e.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom) }; }, sel);
+  const newest = () => page.evaluate(() => { const t = [...document.querySelectorAll('.rf-toast:not([data-leaving])')].pop(); if (!t) return null; const r = t.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), h: innerHeight }; });
+  const clear = async () => { await page.evaluate(() => window.Refract.toast.dismissAll()); await settle(900); await page.evaluate(() => { for (const t of document.querySelectorAll('.rf-toast')) t.remove(); }); };
+  // Health, with the workout capsule over the tab bar.
+  await tab('health');
+  await say('Walk logged');
+  await settle(900);
+  let t = await newest();
+  const capsule = await box('#accessory'), top = await box('#topbar');
+  check('over the workout capsule, just above it, and nowhere near the bar at the top', t && capsule && t.bottom <= capsule.top && capsule.top - t.bottom < 30 && t.top > top.bottom + 200, { t, capsule, top });
+  await clear();
+  // Today: above its floating buttons (Resume and Cancel), clear of the title.
+  await tab('today');
+  await say('Walk logged');
+  await settle(900);
+  t = await newest();
+  const fl = await box('#float'), title = await box('#screen > .rf-large-title');
+  check('on Today, just above the floating buttons, clear of the title', t && fl && t.bottom <= fl.top && fl.top - t.bottom < 30 && (!title || t.top > title.bottom), { t, fl, title });
+  // A page pushed on top: the tab bar goes, and the toast that's showing glides down with it.
+  await page.evaluate(() => window.GH.ui.open('settings'));
+  await settle(900);
+  const low = await newest();
+  check('a page pushed on top: it goes down to just above the system bar', low && low.bottom <= low.h - 20 && low.bottom > low.h - 20 - 30 && low.top > t.top, { low, before: t });
+  // A swipe down dismisses it (real touches).
+  const cdp = await ctx.newCDPSession(page);
+  const x = Math.round(width / 3), y0 = Math.round((low.top + low.bottom) / 2);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: y0, id: 1 }] });
+  for (let i = 1; i <= 8; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y0 + i * 11, id: 1 }] }); await page.waitForTimeout(16); }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await settle(900);
+  check('a swipe down dismisses it', !(await newest()));
+  await page.click('#topbar [data-act="back"]'); await settle();
+  // Over an open sheet: above its main button, and a tap reaches the toast, not the sheet under it.
+  await page.evaluate(() => window.GH.ui.sheet({ title: 'Toast test', size: 'fit', body: '<div class="sheet-pad"><p class="t-body">Something to save.</p><button type="button" class="rf-btn" data-variant="filled" data-size="lg" id="ttSave">Save</button></div>' }));
+  await settle(900);
+  await say('Saved', true);
+  await settle(900);
+  t = await newest();
+  const save = await box('#ttSave');
+  check('over an open sheet, just above its main button', t && save && t.bottom <= save.top && save.top - t.bottom < 30, { t, save });
+  const hit = await page.evaluate(() => { const b = [...document.querySelectorAll('.rf-toast')].pop().querySelector('.rf-btn:not(.rf-toast-close)'); const r = b.getBoundingClientRect(); const x = r.left + r.width / 2, y = r.top + r.height / 2; const at = document.elementFromPoint(x, y); return { x, y, toast: !!(at && at.closest('.rf-toast')) }; });
+  await page.mouse.click(hit.x, hit.y);
+  await settle(600);
+  const after = await page.evaluate(() => ({ undid: window.__undid || 0, sheet: !!document.querySelector('dialog.gh-sheet[open]:not([data-closing])') }));
+  check('and its Undo takes the tap (the sheet stays open)', hit.toast && after.undid === 1 && after.sheet, { hit, after });
+  await page.evaluate(() => window.GH.ui.closeSheets());
+  await settle(900);
+  check('when the sheet goes, the toaster is back on the page', await page.evaluate(() => { const t = document.querySelector('.rf-toaster[data-position="bottom"]'); return !t || t.parentNode === document.body; }));
+  await clear();
+}
 
 section('Cancelling a workout');
 await tab('today');
