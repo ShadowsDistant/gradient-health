@@ -859,7 +859,8 @@ that's the back-off, with no page running. The rules (`test/notify.mjs`, in any 
 - workout: a planned day not done yet ("Chest, arms and abs, 25 min"), at the reminder time: 30
   minutes before the usual start (the median of 4 weeks, 8 am to 8 pm), else 6 pm, or the time set.
 - move: a rest or light day, twice a week at most: their habit ("Saturday run?", 3 days on that
-  weekday in 8 weeks, one in the last 3), else a walk; not once they've walked or recorded something.
+  weekday in 8 weeks, one in the last 3, half an hour before they usually set off, so not for a 7 am
+  run), else a walk; not once they've walked or recorded something that day.
 - badge: two hours after the app is left, or the next morning at 9; once per badge.
 - sleep: a question for a rest day's morning, when the watch puts sleep in Health Connect and the
   background sync runs. Android answers it then: the night (sessions ended since the day began, from

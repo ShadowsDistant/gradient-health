@@ -156,15 +156,16 @@ section('Walks and runs');
   check('rest days (no light days): a walk, gently', r.length >= 1 && r[0].body === 'Your plan has today off. A short walk outside still feels good.', r.map((x) => x.body));
 }
 {
-  // Runs on Wednesdays at 7 am, recorded in the app, three of the last six weeks.
+  // Runs on Wednesdays at 9:15 am, recorded in the app, three of the last six weeks.
   const S = person();
-  S.activities = [7, 14, 35].map((n) => ({ id: `r${n}`, type: 'run', start: at(MON + 2 - n, 7), end: at(MON + 2 - n, 7, 40) }));
+  S.activities = [7, 14, 35].map((n) => ({ id: `r${n}`, type: 'run', start: at(MON + 2 - n, 9, 15), end: at(MON + 2 - n, 10) }));
   const items = rules(N.plan(S, now0), now0, 'a running habit');
   const wed = items.find((x) => dayOf(x.at) === MON + 2);
-  check('their habit on Wednesday: "You usually run on Wednesdays", at 8 am (30 minutes before 7 is too early)', wed && wed.kind === 'move' && wed.title === 'Wednesday run?' && wed.body === 'You usually run on Wednesdays, and it\'s a light day.' && hhmm(wed.at) === '08:00', wed);
-  S.activities = [7, 14, 35].map((n) => ({ id: `r${n}`, type: 'run', start: at(MON + 2 - n, 9, 15), end: at(MON + 2 - n, 10) }));
-  check('a 9:15 habit: the nudge at 8:45', hhmm(N.plan(S, now0).find((x) => dayOf(x.at) === MON + 2).at) === '08:45');
-  S.activities = [28, 35, 42].map((n) => ({ id: `r${n}`, type: 'run', start: at(MON + 2 - n, 7), end: at(MON + 2 - n, 7, 40) }));
+  check('their habit on Wednesday: "You usually run on Wednesdays", half an hour before (8:45)', wed && wed.kind === 'move' && wed.title === 'Wednesday run?' && wed.body === 'You usually run on Wednesdays, and it\'s a light day.' && hhmm(wed.at) === '08:45', wed);
+  S.activities = [7, 14, 35].map((n) => ({ id: `r${n}`, type: 'run', start: at(MON + 2 - n, 7), end: at(MON + 2 - n, 7, 40) }));
+  const early = N.plan(S, now0).find((x) => dayOf(x.at) === MON + 2);
+  check('a 7 am habit can\'t be nudged ahead (8 am is after it): the light day\'s walk instead', early && early.title === 'A walk today?' && hhmm(early.at) === '17:30', early);
+  S.activities = [28, 35, 42].map((n) => ({ id: `r${n}`, type: 'run', start: at(MON + 2 - n, 9, 15), end: at(MON + 2 - n, 10) }));
   check('a habit that stopped three weeks ago isn\'t one', !N.plan(S, now0).some((x) => /run/.test(x.title)));
   // Health Connect's runs from a watch count too, and with workouts off only a habit brings a nudge.
   const T = person({ profile: { workouts: false } });

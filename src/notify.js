@@ -114,7 +114,8 @@
 
   // Walks, runs, hikes and rides the person does on the same weekday: the app's own recordings and
   // Health Connect's sessions from other apps, the last 8 weeks. A habit is 3 days or more on that
-  // weekday, one of them in the last 3 weeks. weekday → { type, n, min (the usual start) }.
+  // weekday, one of them in the last 3 weeks, and one that can be nudged half an hour ahead within the
+  // day (a 7 am run can't: by 8 it's done or skipped). weekday → { type, n, min (when to nudge) }.
   const HC_TYPES = [['run', /run/i], ['walk', /walk/i], ['hike', /hik/i], ['cycle', /cycl|bik/i]];
   const TYPE_ORDER = ['run', 'walk', 'cycle', 'hike'];
   function habits(S, today) {
@@ -145,11 +146,12 @@
     }
     const out = {};
     for (const [k, o] of Object.entries(by)) {
-      if (o.days.length < 3 || Math.max(...o.days) < today - 21) continue;
+      const min = round5(median(o.starts) - 30);
+      if (o.days.length < 3 || Math.max(...o.days) < today - 21 || min < EARLIEST) continue;
       const wd = Number(k.split(':')[0]);
       const cur = out[wd];
       const better = !cur || o.days.length > cur.n || (o.days.length === cur.n && TYPE_ORDER.indexOf(o.type) < TYPE_ORDER.indexOf(cur.type));
-      if (better) out[wd] = { type: o.type, n: o.days.length, min: clamp(round5(median(o.starts) - 30), EARLIEST, LATEST) };
+      if (better) out[wd] = { type: o.type, n: o.days.length, min: Math.min(min, LATEST) };
     }
     return out;
   }
@@ -227,8 +229,8 @@
       ['A walk counts', 'A short walk outside is an easy way to start again.'],
       ['No catching up needed', 'Pick up wherever suits you.'],
       ['Small steps count', 'One short walk this week is plenty.'],
-      ['Still here for you', 'Your history is on this phone, where you left it.'],
-      ['Fresh start, any day', 'Your numbers pick up as soon as you\'re back.'],
+      ['Still here for you', 'Everything you logged is on this phone, where you left it.'],
+      ['Fresh start, any day', 'Whenever you\'re ready, today is a fine day to start.'],
       ['We\'ll leave you be', 'This is the last nudge for now.'],
     ] : [
       ['Your plan\'s ready when you are', `${min} minutes keeps it going.`],
