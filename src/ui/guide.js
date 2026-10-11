@@ -34,13 +34,13 @@
   // One per tab (and Plan's Moves), shown until Got it. Today's waits while the Getting started
   // checklist is up (src/ui/today.js), so a new person sees one thing at a time.
   const TIPS = {
-    today: ['home', 'accent', 'Your day at a glance: the workout, sized to your time, a quick feel check, and food or protein. Tap the streak for your progress, and the sparkle at the top left to ask the coach.'],
-    plan: ['calendar', 'sky', 'Your week at a glance. Tap any day to see it, move a workout to a free day, or swipe for next week. Miss one and the rest of the week shifts forward, so nothing doubles up. Moves, at the top, has every exercise.'],
-    moves: ['library', 'violet', 'Every exercise, grouped into ladders from easiest to hardest. You move up a level once you have 3 or more reps left at the top of the range. Tap one to see how it\'s done.'],
-    food: ['food', 'green', 'Log what you eat by meal: search, scan a barcode, or just add the calories. The ring shows what\'s left for today, and your target learns from your logs and your weight.'],
-    health: ['heart', 'rose', 'Your numbers from Health Connect plus anything you log by hand. Tap any number for its history, or to add or fix a value. Pull down to sync.'],
-    progress: ['chart', 'green', 'How your training is going. The body map shows which muscles you\'ve trained and where you\'ve got stronger: tap one for its story. Your totals, levels and your weaker side are below.'],
-    you: ['person', 'indigo', 'Everything about you in one place: your badges, your plans and your answers. Settings, help and What\'s new are at the bottom, and Settings is at the top right too.'],
+    today: ['home', 'accent', 'Tap the streak for your progress, or the sparkle at the top left to ask the coach.'],
+    plan: ['calendar', 'sky', 'Tap a day to see or move it, and swipe for next week. Miss one and the week shifts forward instead of doubling up. Moves, at the top, has every exercise.'],
+    moves: ['library', 'violet', 'Every exercise, in ladders from easiest to hardest. You move up once you have 3+ reps left at the top of the range. Tap one to see how it\'s done.'],
+    food: ['food', 'green', 'Log meals by searching, scanning a barcode or adding calories. The ring shows what\'s left today, and your target learns from your logs and weight.'],
+    health: ['heart', 'rose', 'Numbers from Health Connect and your own logs. Tap one for its history, or to add or fix it. Pull down to sync.'],
+    progress: ['chart', 'green', 'The body map shows what you\'ve trained and where you\'ve got stronger. Tap a muscle for its story.'],
+    you: ['person', 'indigo', 'Settings is at the top right. Help and What\'s new are at the bottom.'],
   };
   U.tip = (id) => {
     const t = TIPS[id];
@@ -78,7 +78,7 @@
         if (plan.type !== 'workout' && plan.next) sub = `Your first one is on ${b.fmtDay(plan.next.day)}.`;
       }
       items.push({ id: 'workout', icon: 'play', title: 'Finish your first workout', sub, done: doneWorkout });
-      if (levelCheckFits(S.profile) && U.act.baselineSheet) items.push({ id: 'level', icon: 'timer', title: 'Do a level check', sub: 'Push-ups, a plank and curls, about 3 minutes. Every move starts at the right level.', done: U.seen('levelCheck'), act: 'ckLevel' });
+      if (levelCheckFits(S.profile) && U.act.baselineSheet) items.push({ id: 'level', icon: 'timer', title: 'Do a level check', sub: 'About 3 minutes of push-ups, a plank and curls sets each move\'s starting level.', done: U.seen('levelCheck'), act: 'ckLevel' });
       items.push({ id: 'howto', icon: 'eye', title: 'See how a move is done', sub: 'Tap any exercise name for an animated demo.', done: U.seen('moveSheet'), act: 'ckHowTo' });
     }
     if (food) items.push({ id: 'food', icon: 'food', title: 'Log your first meal', sub: 'Search, scan or quick-add the calories.', done: Object.keys(GH.food.data(S).days).some((d) => (GH.food.data(S).days[d] || []).length), act: 'foodAdd' });
@@ -134,7 +134,7 @@
     const day = U.today();
     if (day - (S.profile.startDay || day) > 14) return;
     const items = checkItems(S, day);
-    if (items.every((x) => x.done)) { U.markSeen('checklistDone'); U.toast('You\'re all set', 'positive', 'That\'s everything to get started. The rest is showing up.'); U.haptic('celebrate'); }
+    if (items.every((x) => x.done)) { U.markSeen('checklistDone'); U.toast('You\'re all set', 'positive', 'That\'s everything to get started.'); U.haptic('celebrate'); }
   };
 
   /* ---------------------------------------------------------------- Health Connect, after the first workout */
@@ -144,7 +144,7 @@
     if (!S || U.seen('hcInvite') || !hcCanAsk() || H().connected(H().status()) || doneWorkouts(S) !== 1) return '';
     return `<div class="card hc-invite" data-key="hcinvite">
       <div class="hc-invite-row"><span class="rf-list-icon" data-tone="rose">${U.icon('heart')}</span>
-        <span class="hc-invite-text"><span class="t-headline">Let sleep and steps shape your workouts</span><span class="t-footnote rf-muted">Connect Health Connect and each day fits how you slept and moved. It stays on this phone.</span></span></div>
+        <span class="hc-invite-text"><span class="t-headline">Let sleep and steps shape your workouts</span><span class="t-footnote rf-muted">With Health Connect, each day fits how you slept and moved. It stays on this phone.</span></span></div>
       <div class="hc-invite-btns"><button type="button" class="rf-btn" data-variant="filled" data-act="hcInviteGo">Connect</button><button type="button" class="rf-btn" data-variant="plain" data-act="hcInviteLater">Not now</button></div>
     </div>`;
   };
@@ -168,13 +168,13 @@
     food: 'Food logs your meals and counts what\'s left for today.',
     health: 'Health has your sleep, steps and heart rate.',
     progress: 'Progress shows your levels, streaks and records.',
-    you: 'You has your badges, your plans and Settings.',
+    you: 'You has your badges, plans and Settings.',
   };
   function tourPages() {
     const tabs = U.tabList().map((t) => t[0]);
-    const pages = [{ tab: 'today', icon: 'home', title: 'Today is home base', text: tabs.includes('plan') ? 'Each day starts here: your workout, sized to your time, and a quick feel check. Your energy and soreness shape the session.' : 'Each day starts here: what to eat and what\'s left, how you slept and how you feel.' }];
-    if (tabs.includes('plan')) pages.push({ tab: 'plan', icon: 'calendar', title: 'Your week, your way', text: 'Plan shows every day ahead. Tap a day to see it or move it to a free one, and Moves has every exercise, from easiest to hardest.' });
-    else if (tabs.includes('food')) pages.push({ tab: 'food', icon: 'food', title: 'Log what you eat', text: 'Search, scan a barcode or just add the calories. Your target learns from your logs and your weight.' });
+    const pages = [{ tab: 'today', icon: 'home', title: 'Today is home base', text: tabs.includes('plan') ? 'Each day starts here: your workout, sized to your time, and a quick feel check that shapes it.' : 'Each day starts here: what\'s left to eat, how you slept and how you feel.' }];
+    if (tabs.includes('plan')) pages.push({ tab: 'plan', icon: 'calendar', title: 'Your week', text: 'Plan shows every day ahead. Tap a day to see it or move it, and Moves has every exercise, easiest to hardest.' });
+    else if (tabs.includes('food')) pages.push({ tab: 'food', icon: 'food', title: 'Log what you eat', text: 'Search, scan a barcode or add the calories. Your target learns from your logs and weight.' });
     const rest = tabs.filter((t) => t !== 'today' && !pages.some((p) => p.tab === t));
     pages.push({ tab: rest.includes('you') ? 'you' : rest[rest.length - 1], lit: rest, icon: 'compass', title: 'Everything else', text: rest.map((t) => TAB_WORDS[t]).filter(Boolean).join(' ') });
     return pages;

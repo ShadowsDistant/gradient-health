@@ -30,7 +30,7 @@
   const WANT = [
     { id: 'muscle', icon: 'dumbbell', tone: 'coral', title: 'Build muscle', sub: 'Bigger, more defined muscles' },
     { id: 'strength', icon: 'bolt', tone: 'amber', title: 'Get stronger', sub: 'Lift more and feel solid' },
-    { id: 'fat', icon: 'flame', tone: 'rose', title: 'Lose fat', sub: 'Burn more and keep your muscle' },
+    { id: 'fat', icon: 'flame', tone: 'rose', title: 'Lose fat', sub: 'Burn more, keep your muscle' },
     { id: 'endurance', icon: 'heart', tone: 'green', title: 'Get fitter', sub: 'More stamina, less out of breath' },
     { id: 'mobility', icon: 'leaf', tone: 'teal', title: 'Move better', sub: 'Looser hips, back and shoulders' },
     { id: 'consistency', icon: 'repeat', tone: 'indigo', title: 'Stay consistent', sub: 'A habit that sticks' },
@@ -494,7 +494,7 @@
       + (lb ? `<div class="ob-row2">${field('Height (ft, optional)', numInput('_hft', Q._hft, '5', 'min="3" max="8" inputmode="numeric"'), '', '_hft')}${field('(in)', numInput('_hin', Q._hin, '9', 'min="0" max="11" inputmode="numeric"'), '', '_hin')}</div>`
         : field('Height (cm, optional)', numInput('_hcm', Q._hcm, 'e.g. 175', 'min="100" max="250" inputmode="numeric"'), '', '_hcm'));
   };
-  const sexGroup = () => group('Sex (optional)', `<div class="ob-pad">${U.seg('sex', [['female', 'Female'], ['male', 'Male'], ['', 'Skip']], Q.sex || '', 'Sex', ` ${bind('sex')}`)}</div>`, foodModeOf() === 'full' ? 'Used for your calorie target. Skip it and an average is used.' : 'Only used to read your health trends. Skip it if you like.');
+  const sexGroup = () => group('Sex (optional)', `<div class="ob-pad">${U.seg('sex', [['female', 'Female'], ['male', 'Male'], ['', 'Skip']], Q.sex || '', 'Sex', ` ${bind('sex')}`)}</div>`, foodModeOf() === 'full' ? 'For your calorie target. Without it, the app uses an average.' : 'Only used to read your health trends.');
 
   // A weight that isn't in the list: typed in a field of its own, with Add beside it.
   const addRow = (k, u) => `<div class="ob-add"><div class="rf-field-control"><input class="rf-input" type="number" inputmode="decimal" id="add-${k}" placeholder="Other weight (${u})" aria-label="Other ${k === 'db' ? 'dumbbell' : 'kettlebell'} weight"></div><button type="button" class="rf-btn" data-size="sm" data-act="obAddWeight" data-arg="${k}">Add</button></div>`;
@@ -531,7 +531,7 @@
     return `<div class="ob-hello" data-key="hello">
       <div class="ob-mark" aria-hidden="true"><span class="ob-halo"></span>${GH.LOGO ? `<img class="ob-logo" src="${GH.LOGO}" alt="" width="104" height="104">` : ''}</div>
       <h1 class="rf-large-title ob-hero-title">Gradient Health</h1>
-      <p class="ob-tagline">Workouts that fit your goals, your time and your body.</p>
+      <p class="ob-tagline">Workouts that fit your goals, time and body.</p>
       ${sh ? sharedCard(sh) : `<ul class="ob-points">
         ${point('sparkle', 'amber', 'Your plan in under a minute', 'Four quick questions, then your first workout.')}
         ${point('refresh', 'green', 'It adapts after every workout', 'Too easy and it steps up. A rough night and it eases off.')}
@@ -550,14 +550,14 @@
       <span class="ob-shared-name">${U.esc(plan.name)}</span>
       <span class="ob-shared-meta">${U.esc(`${U.plural(n, 'day')} a week · ${U.plural(plan.days.reduce((a, d) => a + d.items.length, 0), 'exercise')}`)}</span>
       ${titles.length ? `<ol class="ob-shared-days">${titles.map((t, i) => `<li><b class="rf-num">${i + 1}</b><span>${U.esc(t)}</span></li>`).join('')}</ol>` : ''}
-      <span class="ob-shared-foot">${U.esc('Two quick questions and you\'re in. It\'s fitted to your kit and your body.')}</span>
+      <span class="ob-shared-foot">${U.esc('Two quick questions, then it\'s fitted to your kit and body.')}</span>
     </div>`;
   }
   ACT.welcome = () => {
     const sh = Q._shared;
     const who = sender(sh);
     const links = `<div class="ob-links" data-key="links"><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="obRestore">Restore from a backup</button><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="obFood">Just tracking food?</button></div>`;
-    return sh ? { primary: ['obFriend', who ? `Start with ${who}'s plan` : 'Start with this plan', 'play'], secondary: ['obStart', 'Make my own plan instead'], links }
+    return sh ? { primary: ['obFriend', who ? `Start with ${who}'s plan` : 'Start with this plan', 'play'], secondary: ['obStart', 'Make my own plan'], links }
       : { primary: ['obStart', 'Get started'], links };
   };
   // A plan link waiting (the app was opened by one, or one arrived while this shows): its card.
@@ -657,7 +657,7 @@
       const all = !Q._areas.length;
       return `<div class="ob-opt-group" data-key="muscle">${card}<div class="ob-areas" data-key="areas"><p class="ob-areas-title">Where do you want it most?</p><div class="ob-chips">${U.chip('All over', all, 'data-on="obArea" data-v="all"')}${AREAS.map(([id, t]) => U.chip(t, Q._areas.includes(id), `data-on="obArea" data-v="${id}"`)).join('')}</div></div></div>`;
     }).join('');
-    return lead('Pick up to 3, the most important first. You can change them any time.') + `<div class="ob-opts" data-key="wants">${cards}</div>`;
+    return lead('Pick up to 3, most important first. You can change them later.') + `<div class="ob-opts" data-key="wants">${cards}</div>`;
   };
   ACT.want = () => (note === 'full' ? { hint: `${U.icon('alert', 'sm')}<span>Up to 3. Tap one to take it off.</span>`, hintTone: 'caution' } : { hint: `${U.icon('sparkle', 'sm')}<span>${U.esc(leanLine())}</span>` });
   U.act.obWant = (el) => {
@@ -686,7 +686,7 @@
   };
   // How the plan leans, from what's picked: "Your plan leans on legs and arms, then chest."
   function leanLine() {
-    if (!Q._want.length) return 'Pick what matters most and your plan leans that way.';
+    if (!Q._want.length) return 'Your plan leans toward what you pick.';
     const p = draftProfile();
     const t = B().programFor(p).tiers;
     const tierOf = (u) => Math.min(...UNIT_GROUPS[u].map((g) => t[g] || 3));
@@ -695,7 +695,7 @@
     const one = picked.filter((u) => tierOf(u) === 1), two = picked.filter((u) => tierOf(u) === 2);
     const out = [];
     if (one.length) out.push(`Your plan leans on ${joinWords(one.map(word))}${two.length ? `, then ${joinWords(two.map(word))}` : ''}.`);
-    else if (Q._want.includes('muscle')) out.push('An all-over plan: every muscle gets the same attention.');
+    else if (Q._want.includes('muscle')) out.push('Every muscle gets the same work.');
     else if (Q._want.includes('strength')) out.push('Every muscle, with fewer, harder reps on the big moves.');
     else out.push('A balanced plan for every muscle.');
     if (one.length && Q._want.includes('strength')) out.push('Harder reps on the big moves.');
@@ -727,8 +727,8 @@
     }).join('');
     return group('Workouts a week', `<div class="ob-pad">${U.seg('obDaysN', [2, 3, 4, 5, 6].map((n) => [String(n), String(n)]), String(Q.days), 'Workouts a week', ' data-on="obDaysN"')}</div>`)
       + `<div class="ob-week-box" data-key="week"><div class="ob-week" role="group" aria-label="Your workout days">${strip}</div>
-        <p class="ob-week-foot">${picked ? `Your days.${shown.includes(today) ? '' : ` First workout: ${DAY_NAMES[nextOf(shown, today)]}.`} <button type="button" class="rf-btn ob-inline-btn" data-variant="plain" data-size="sm" data-act="obDaysAuto">Let the app pick</button>` : 'Tap a day to choose your own (optional).'}</p></div>`
-      + group('Minutes each', `<div class="ob-pad">${U.seg('obMins', MINUTES.map((m) => [String(m), String(m)]), String(Q.minutes), 'Minutes each workout', ' data-on="obMins"')}</div>`, 'Short on time on the day? A 12 to 15 minute version is a tap away.');
+        <p class="ob-week-foot">${picked ? `Your days.${shown.includes(today) ? '' : ` First workout: ${DAY_NAMES[nextOf(shown, today)]}.`} <button type="button" class="rf-btn ob-inline-btn" data-variant="plain" data-size="sm" data-act="obDaysAuto">Let the app pick</button>` : 'Or tap days to pick your own.'}</p></div>`
+      + group('Minutes each', `<div class="ob-pad">${U.seg('obMins', MINUTES.map((m) => [String(m), String(m)]), String(Q.minutes), 'Minutes each workout', ' data-on="obMins"')}</div>`, 'Short on time? A 12 to 15 minute version is a tap away.');
   };
   const nextOf = (days, wd) => { for (let k = 1; k <= 7; k++) if (days.includes((wd + k) % 7)) return (wd + k) % 7; return wd; };
   ACT.time = () => {
@@ -849,7 +849,7 @@
     return `<div class="ob-fields" data-key="age">${ageField('A plan that suits your age.')}</div>`
       + group('How much have you trained?', levels)
       + linkRow('obAround', 'heart', 'rose', 'Anything to plan around?', aroundSummary() || 'Sore joints, old injuries, health conditions (optional)', 'around')
-      + more('size', 'Weight and height (optional)', size, sizeErr, Q._w || Q._hcm || Q._hft ? sizeWords() : 'For your protein goal and your weight trend');
+      + more('size', 'Weight and height (optional)', size, sizeErr, Q._w || Q._hcm || Q._hft ? sizeWords() : 'For your protein goal and weight trend');
   };
   ACT.you = () => ({ primary: ['obNext', 'See my plan', 'sparkle'] });
   // The three cards cover the five answers: the two below a year count as new.
@@ -898,7 +898,7 @@
     if (!Q) return '';
     const h = healthParts('Not medical advice. If a move hurts, stop, and say so after your workout.');
     return `<div class="sheet-pad ob-around-body">
-      <p class="t-callout rf-muted">Pick anything that applies and your plan works around it. All optional, and it stays on this phone.</p>
+      <p class="t-callout rf-muted">Your plan works around anything you pick. It's optional and stays on this phone.</p>
       ${jointGroups(true)}${h.pick}
       <ul class="rf-list">${U.sw('A doctor told me to take it easy', Q.gentle, bind('gentle', '', true), 'A gentler start, fewer sets, no jumping.')}</ul>
       ${h.after}
@@ -908,7 +908,7 @@
   // what's planned around follows each tap.
   const jointGroups = (redraw) => group('Does anything hurt right now?', `<div class="ob-chips">${JOINTS.map(([id, t]) => listChip('_pain', id, t, Q._pain.includes(id), '', redraw)).join('')}</div>`, 'Moves that load these are swapped out for two weeks.')
     + group('Old injuries to be careful with', `<div class="ob-chips">${JOINTS.map(([id, t]) => listChip('careful', id, t, (Q.careful || []).includes(id), '', redraw)).join('')}</div>`, 'Jumps and tricky versions are left out for these.');
-  // Health conditions (the sheet, and Anything we should plan around?): the chips with the questions
+  // Health conditions (the sheet, and Anything to plan around?): the chips with the questions
   // they bring (which joints, the floor), then what they change and when to ask a doctor.
   function healthParts(foot) {
     const ac = A();
@@ -1031,11 +1031,11 @@
         <p class="rv-sub">${U.esc(lean)}</p>
       </div>
       <div class="rv-week-box"><ol class="rv-week" aria-label="Your next 7 days">${r.days.map(dayCell).join('')}</ol>
-        <p class="rv-week-foot">${U.esc(`The next 7 days: ${U.plural(n, 'workout')}${rest ? ', and a walk and a stretch on the days between' : ''}. Miss one and the week moves forward.`)}</p></div>
+        <p class="rv-week-foot">${U.esc(`Next 7 days: ${U.plural(n, 'workout')}${rest ? ', with a walk and a stretch on the days between' : ''}. Miss one and the week moves forward.`)}</p></div>
       ${firstCard(r)}
       ${whyBlock(r)}
       ${r.around ? aroundCard(r) : ''}
-      ${r.review ? linkRow('obReview', 'sparkle', 'violet', 'Ask the coach to check it', 'It looks your plan over and suggests changes for you to approve.', 'review') : ''}
+      ${r.review ? linkRow('obReview', 'sparkle', 'violet', 'Ask the coach to check it', 'It suggests changes for you to approve.', 'review') : ''}
     </div>`;
   }
   const moveMeta = (it) => `${U.plural(it.sets, 'set')} · ${it.timed ? `${it.target} s` : `${it.target} reps`}`;
@@ -1210,7 +1210,7 @@
         ${d0.items.length > 5 ? `<p class="rv-more">${U.esc(`And ${U.plural(d0.items.length - 5, 'more move')}.`)}</p>` : ''}
       </div>
       ${later ? `<div class="card rv-days" data-key="days"><p class="rv-h is-sm">Then</p><ul class="rv-day-list">${later}</ul></div>` : ''}
-      ${swaps.length ? `<p class="rv-swaps">${U.icon('shuffle', 'sm')}<span>${U.esc(`${swaps.length === 1 ? 'One exercise is' : `${swaps.length} exercises are`} swapped for the closest one you can do with your kit and body.`)}</span></p>` : ''}
+      ${swaps.length ? `<p class="rv-swaps">${U.icon('shuffle', 'sm')}<span>${U.esc(`${swaps.length === 1 ? 'One exercise is' : `${swaps.length} exercises are`} swapped to suit your kit and body.`)}</span></p>` : ''}
     </div>`;
   };
   ACT.friend = () => {
@@ -1226,9 +1226,9 @@
 
   /* ---------------------------------------------------------------- just tracking food */
   // Weight first: the targets come from it.
-  VIEW.fabout = () => lead('For your calorie and protein targets. It all stays on this phone.')
+  VIEW.fabout = () => lead('For your calorie and protein targets. It stays on this phone.')
     + group('Units', unitsSeg())
-    + `<div class="ob-fields">${sizeFields('Your targets come from it.')}${ageField()}</div>`
+    + `<div class="ob-fields">${sizeFields()}${ageField()}</div>`
     + sexGroup();
   const WEIGHT_GOALS = [['lose', 'flame', 'rose', 'Lose weight', 'A steady calorie deficit'], ['maintain', 'scale', 'sky', 'Keep it steady', 'Eat to stay where you are'], ['gain', 'arrow-up-right', 'amber', 'Gain weight', 'A small surplus to build on']];
   VIEW.fgoal = () => `<div class="ob-opts" role="radiogroup" aria-label="Your goal" data-key="wgoal">${WEIGHT_GOALS.map(([id, icon, tone, title, sub]) => opt({ act: 'obWeightGoal', arg: id, icon, tone, title, sub, on: (Q.weightGoal || 'maintain') === id })).join('')}</div>`
@@ -1250,14 +1250,14 @@
       <div class="rv-hero">
         <span class="rv-badge" aria-hidden="true">${U.icon('check')}</span>
         <h1 class="rf-large-title ob-title rv-title">Your daily targets</h1>
-        <p class="rv-sub">${U.esc(t ? 'An estimate to start. After two weeks of logging and weighing in, it tunes itself to what your weight actually does.' : 'Add your weight any time for a calorie target.')}</p>
+        <p class="rv-sub">${U.esc(t ? 'A starting estimate. After two weeks of logging and weigh-ins, it adjusts to your weight trend.' : 'Add your weight any time for a calorie target.')}</p>
       </div>
       <div class="ft-grid">
         ${t ? `<div class="card ft-big"><span class="ob-ico" data-tone="coral">${U.icon('flame')}</span><span class="ft-n rf-num">${U.num(t.kcal)}</span><span class="ft-l">calories a day</span></div>` : ''}
         ${proteinG ? cell('check-circle', 'green', `${proteinG} g`, '', 'protein a day') : ''}
         ${cell('navigate', 'sky', U.num(steps), '', 'steps a day')}
       </div>
-      <p class="rv-week-foot">Workouts are off. You can turn them on any time in Settings.</p>
+      <p class="rv-week-foot">Workouts are off. Turn them on any time in Settings.</p>
     </div>`;
   };
   ACT.ftargets = () => (visible().some((s) => s.id === 'fhealth') ? { primary: ['obNext', 'Continue'] } : withReminders({ primary: ['obLook', 'Start tracking', 'play'] }));
@@ -1266,12 +1266,12 @@
   VIEW.fhealth = () => {
     const st = H().status();
     let msg = null;
-    if (st === 'unavailable') msg = ['caution', 'Health Connect isn\'t available on this phone right now. You can connect it later in Settings.'];
+    if (st === 'unavailable') msg = ['caution', 'Health Connect isn\'t available right now. You can connect it later in Settings.'];
     else if (H().connected(st)) msg = ['positive', Q._hcNote ? `Connected. Read ${Q._hcNote}.` : 'Connected.'];
     const rows = [['moon', 'indigo', 'Sleep', 'How you slept, next to what you ate'], ['navigate', 'green', 'Steps', 'Counted toward your calories'], ['chart', 'teal', 'Weight', 'Your trend and targets, without typing it in'], ['food', 'green', 'Meals', 'Food from other apps counts toward your day']];
-    return lead('Optional. Gradient Health can read these from Health Connect, so you don\'t type them in.')
+    return lead('Optional. The app can read these from Health Connect.')
       + `<ul class="rf-list">${rows.map(([ic, tone, t, sub]) => U.row({ icon: ic, tone, title: t, sub })).join('')}</ul>`
-      + '<p class="t-footnote rf-muted ob-note">Everything stays on this phone, and you choose what to allow. You can change it any time in Health Connect.</p>'
+      + '<p class="t-footnote rf-muted ob-note">It stays on this phone, and you choose what to allow. Change it any time in Health Connect.</p>'
       + (msg ? status(msg[0], msg[1]) : '');
   };
   ACT.fhealth = () => {
@@ -1288,7 +1288,7 @@
       const res = await H().sync(tmpS, Date.now(), 90);
       if (res && res.ok) prefill();
       U.haptic('success');
-    } else if (st === 'denied') U.toast('Not connected', 'caution', 'You can connect Health Connect later in Settings.');
+    } else if (st === 'denied') U.toast('Not connected', 'caution', 'You can connect it later in Settings.');
     if (Q) draw();
   };
   // Answers Health Connect can already give: weight, height, sleep, how active you've been.
@@ -1318,7 +1318,7 @@
   }
 
   /* ---------------------------------------------------------------- Your answers: the detailed screens */
-  VIEW.about = () => lead(`Used for your protein goal, weight trend${workoutsOn() ? ' and a plan that suits your age' : ''}. It stays on this phone.`)
+  VIEW.about = () => lead(`For your protein goal, weight trend${workoutsOn() ? ' and a plan that suits your age' : ''}. It stays on this phone.`)
     + group('Units', unitsSeg())
     + `<div class="ob-fields">${ageField()}${sizeFields()}</div>`
     + sexGroup();
@@ -1360,10 +1360,10 @@
   // Health conditions: optional, private, and what they change is said right there.
   VIEW.conditions = () => {
     const h = healthParts('Not medical advice. If a move hurts, stop, and say so after your workout: moves that load it are swapped out.');
-    return lead('Pick anything that applies, and your plan works around it. It\'s optional, and it stays on this phone.') + h.pick + h.after;
+    return lead('Your plan works around anything you pick. It\'s optional and stays on this phone.') + h.pick + h.after;
   };
 
-  VIEW.goals = () => lead('Tap them in order of priority. Your first two get the most work.')
+  VIEW.goals = () => lead('Tap in order of priority. Your first two get the most work.')
     + `<div class="ob-chips">${GOALS.map(([id, label]) => {
       const i = Q.goals.indexOf(id);
       return U.chip(i >= 0 ? `${i + 1}. ${label}` : label, i >= 0, `data-on="q" data-list="goals" data-v="${id}" data-redraw`);
@@ -1377,7 +1377,7 @@
     return one.length ? `Most work: ${one.join(', ')}. Everything else is kept up.` : 'A balanced plan for every muscle group.';
   }
 
-  VIEW.experience = () => lead('This sets how gently you start and where each exercise begins.')
+  VIEW.experience = () => lead('Sets how gently you start and where each exercise begins.')
     + group('How long have you trained?', choice('experience', [['never', 'Never really'], ['onoff', 'Now and then'], ['lt1', 'Under a year, steadily'], ['1to3', '1 to 3 years'], ['3plus', 'More than 3 years']], Q.experience))
     + group('Last month', `<div class="ob-pad">${U.seg('recentActivity', [['none', 'Not active'], ['some', 'A little'], ['regular', 'Regularly']], Q.recentActivity, 'Activity last month', ` ${bind('recentActivity')}`)}</div>`, Q._hcNote ? 'Filled in from Health Connect.' : '');
 
@@ -1406,7 +1406,7 @@
     return lead('Missed a day? The plan shifts forward instead of doubling up.')
       + group('Workouts a week', `<div class="ob-pad ob-center">${U.stepper('obDays', Q.days, 2, 6, 'Workouts a week', bind('days', 'num', true))}</div>`)
       + group('Which days (optional)', `<div class="ob-chips">${DAYS.map((d, i) => listChip('weekdays', i, d, Q.weekdays.includes(i), 'num', true)).join('')}</div>`, hint)
-      + group('Minutes per workout', `<div class="ob-pad"><div class="ob-slider-value t-title-2 rf-num" id="obMin">${Q.minutes} min</div><div class="rf-slider"><div class="rf-slider-control"><input class="rf-slider-input" type="range" min="10" max="60" step="5" value="${Q.minutes}" aria-label="Minutes per workout" aria-valuetext="${Q.minutes} minutes" ${bind('minutes', 'num')}></div></div></div>`, 'Short on time mode fits a real session into 12 to 15 minutes any day.')
+      + group('Minutes per workout', `<div class="ob-pad"><div class="ob-slider-value t-title-2 rf-num" id="obMin">${Q.minutes} min</div><div class="rf-slider"><div class="rf-slider-control"><input class="rf-slider-input" type="range" min="10" max="60" step="5" value="${Q.minutes}" aria-label="Minutes per workout" aria-valuetext="${Q.minutes} minutes" ${bind('minutes', 'num')}></div></div></div>`, 'Short on time? A 12 to 15 minute version is a tap away.')
       + group('', `<ul class="rf-list">${U.sw('Walk-and-stretch days', Q.lightDays !== false, bind('lightDays'), 'A walk and 5 minutes of stretching on days off. They count for your streak.')}</ul>`);
   };
   AFTER.schedule = (el) => {
@@ -1426,7 +1426,7 @@
   function gymGroups(presets) {
     const u = Q.units !== 'kg' ? 'lb' : 'kg';
     const g = Q.gym;
-    return (presets ? group('Your gym', `<div class="ob-chips">${Object.entries(B().GYM_PRESETS).map(([id, pr]) => `<button type="button" class="rf-chip" data-act="obGymPreset" data-arg="${id}">${U.esc(pr.name)}</button>`).join('')}</div>`, 'Start from one of these, then adjust below.') : '')
+    return (presets ? group('Your gym', `<div class="ob-chips">${Object.entries(B().GYM_PRESETS).map(([id, pr]) => `<button type="button" class="rf-chip" data-act="obGymPreset" data-arg="${id}">${U.esc(pr.name)}</button>`).join('')}</div>`, 'Start from one, then adjust below.') : '')
       + group('Dumbbells up to', `<div class="ob-chips">${DB_MAX[u].map((w) => U.chip(w ? `${w}${w === DB_MAX[u][DB_MAX[u].length - 1] ? '+' : ''} ${u}` : 'None', Number(g.dbMax || 0) === w, `data-act="obGymDb" data-arg="${w}"`)).join('')}</div>`)
       + GYM_KIT.map(([title, items]) => group(title, `<ul class="rf-list">${items.map(([k, label]) => U.sw(label, k === 'bar' ? g.bar !== false : !!g[k], bind(`gym.${k}`))).join('')}</ul>`)).join('');
   }
@@ -1442,7 +1442,7 @@
   VIEW.equipment = () => {
     const where = Q.where || 'home';
     Q.gym = Object.assign(B().defaultGym(), Q.gym || {});
-    return lead(where === 'home' ? 'Pick everything you have. Exercises only use what\'s here, and you get told when it\'s time to buy heavier.' : 'Pick what your gym has. Exercises only use what\'s there, and the weights go up as you get stronger.')
+    return lead(where === 'home' ? 'Exercises use only what you pick, and the app says when to buy heavier.' : 'Exercises use only what you pick, and weights rise as you get stronger.')
       + group('Where do you train?', `<div class="ob-pad">${U.seg('where', [['home', 'Home'], ['gym', 'Gym'], ['both', 'Both']], where, 'Where you train', ` ${bind('where', '', true)}`)}</div>`, where === 'both' ? 'Pick home or gym on the day. Each keeps its own progress.' : '')
       + (where !== 'home' ? gymGroups(true) : '')
       + (where !== 'gym' ? (where === 'both' ? '<h2 class="ob-section t-title-3">At home</h2>' : '') + homeEquipment() : '');
@@ -1487,11 +1487,11 @@
     const from50 = p.age >= 50;
     const jump = r.noImpact
       ? `<li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">Jumping and slamming</span><span class="rf-list-sub">Left out of your plan, for ${U.esc(joinShort(p))}.</span></span></div></li>`
-      : from50 ? U.sw('Include jumping and slamming', Q.jumpsOk === true, bind('jumpsOk'), 'Off by default from 50. Turn it on if your knees and hips are happy with it and your floor allows it.')
+      : from50 ? U.sw('Include jumping and slamming', Q.jumpsOk === true, bind('jumpsOk'), 'Off by default from 50. Turn it on if your knees, hips and floor are fine with it.')
         : U.sw('Jumping and slamming is OK where I train', Q.impactOk !== false, bind('impactOk'), 'Turn off for apartments, sore knees or thin floors.');
-    return lead('So nothing here makes an old injury worse, and a weaker side catches up.')
+    return lead('So old injuries don\'t get worse and a weaker side catches up.')
       + jointGroups(false)
-      + group('Which arm is stronger?', `<div class="ob-pad">${U.seg('strongArm', [['L', 'Left'], ['same', 'About the same'], ['R', 'Right']], Q._strongArm, 'Stronger arm', ` ${bind('_strongArm')}`)}</div>`, 'The weaker side goes first, never does fewer reps than the other, and gets one extra set until it catches up.')
+      + group('Which arm is stronger?', `<div class="ob-pad">${U.seg('strongArm', [['L', 'Left'], ['same', 'About the same'], ['R', 'Right']], Q._strongArm, 'Stronger arm', ` ${bind('_strongArm')}`)}</div>`, 'The weaker side goes first, never does fewer reps, and gets an extra set until it catches up.')
       + group('Which leg is stronger?', `<div class="ob-pad">${U.seg('strongLeg', [['L', 'Left'], ['same', 'About the same'], ['R', 'Right']], Q._strongLeg, 'Stronger leg', ` ${bind('_strongLeg')}`)}</div>`)
       + group('', `<ul class="rf-list">
         ${U.sw('A doctor told me to take it easy', Q.gentle, bind('gentle', '', true), 'Gentler start, lower volume, no jumping.')}
@@ -1510,28 +1510,28 @@
     const words = ['Standard', 'Higher', 'Highest'];
     return [0.7, 0.8, 1].map((per, i) => [per, kg ? `${Math.round(per * kg * B().LB_PER_KG / 5) * 5} g` : words[i]]);
   }
-  const proteinFoot = () => (Q._w > 0 ? 'About that much a day, from your weight. More helps you keep muscle while you lose fat.' : 'Add your weight to see grams a day.');
+  const proteinFoot = () => (Q._w > 0 ? 'About that much a day, from your weight. More helps keep muscle while you lose fat.' : 'Add your weight to see grams a day.');
   // Pace: how much a week, in the person's units when the weight is known.
   function paceOpts() {
     const lb = Q.units !== 'kg';
     const words = ['Gentle', 'Steady', 'Faster', 'Fastest'];
     return [0.25, 0.5, 0.75, 1].map((pct, i) => [String(pct), Q._w > 0 ? `${(Math.round(Q._w * pct / 10) / 10).toFixed(1)} ${lb ? 'lb' : 'kg'}` : words[i]]);
   }
-  const weightGoal = () => group('Weight goal', `<div class="ob-pad">${U.seg('weightGoal', [['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']], Q.weightGoal, 'Weight goal', ` ${bind('weightGoal', '', true)}`)}</div>`, 'You get a heads-up if you\'re losing more than 1% a week.');
+  const weightGoal = () => group('Weight goal', `<div class="ob-pad">${U.seg('weightGoal', [['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']], Q.weightGoal, 'Weight goal', ` ${bind('weightGoal', '', true)}`)}</div>`, 'The app warns you if you lose more than 1% a week.');
   // Workouts and health: a protein number and a weight trend, no food tracking.
   VIEW.nutrition = () => {
     const fm = foodModeOf();
-    return lead('No meal plans. Just a protein number to hit and a weight trend to watch.')
+    return lead('No meal plans: a protein number to hit and a weight trend to watch.')
       + weightGoal()
-      + (fm === 'off' ? '<p class="t-footnote rf-muted ob-note">Your protein goal is off. You can turn it on in Settings, under What you track.</p>'
+      + (fm === 'off' ? '<p class="t-footnote rf-muted ob-note">Your protein goal is off. Turn it on in Settings, What you track.</p>'
         : group('Protein a day', `<div class="ob-pad">${U.seg('perLb', perOpts(), Q.protein.perLb, 'Protein a day', ` ${bind('protein.perLb', 'num', true)}`)}</div>`, proteinFoot())
           + group('Your go-to protein', `<div class="ob-fields ob-row2">
           ${field('Name', `<input class="rf-input" type="text" maxlength="24" enterkeyhint="next" value="${U.esc(Q.protein.quickName)}" ${bind('protein.quickName')}>`)}
           ${field('Grams', numInput('protein.quickG', Q.protein.quickG, '26', 'min="1" max="100" inputmode="numeric" enterkeyhint="done"'), '', 'protein.quickG')}
-        </div>`, 'One tap adds it on the Today screen.'));
+        </div>`, 'One tap adds it on Today.'));
   };
   // Calories and macros (food tracking on).
-  VIEW.food = () => lead('Your calorie target comes from your size, your steps and your goal, and learns from your logs over time.')
+  VIEW.food = () => lead('Your calorie target comes from your size, steps and goal, and learns from your logs.')
     + weightGoal()
     + (Q.weightGoal === 'lose' ? group('Pace', `<div class="ob-pad">${U.seg('pace', paceOpts(), String((Q.food && Q.food.pace) || 0.5), 'Pace', ` ${bind('food.pace', 'num')}`)}</div>`, `${Q._w > 0 ? 'A week. ' : ''}Slower keeps more muscle.`) : '')
     + group('Protein a day', `<div class="ob-pad">${U.seg('perLb', perOpts(), Q.protein.perLb, 'Protein a day', ` ${bind('protein.perLb', 'num', true)}`)}</div>`, proteinFoot());
@@ -1559,7 +1559,7 @@
     notes.push('An easier week about every 5th week, sooner if you\'re run down.');
     if (proteinG) notes.push(`Protein goal: about ${proteinG} g a day.`);
     if (H().connected(H().status())) notes.push('Health Connect adjusts each day to your sleep, heart rate and activity.');
-    if (p.goals.includes('abs')) notes.push('About abs: training builds them, and seeing them comes down to body fat, from food and daily movement over months. So there\'s no date promised here: watch your waist, your weight trend and your ab levels in Progress.');
+    if (p.goals.includes('abs')) notes.push('Training builds abs. Seeing them depends on body fat, which food and daily movement change over months, so there\'s no promised date. Watch your waist, weight trend and ab levels in Progress.');
     const ac = A();
     const around = ac ? ac.plannedAround(p) : null;
     const lines = ac ? ac.planLines(p) : [];
@@ -1585,9 +1585,9 @@
     if (proteinG) rows.push(U.row({ icon: 'check-circle', tone: 'green', title: 'Protein', detail: `${proteinG} g a day` }));
     rows.push(U.row({ icon: 'navigate', tone: 'sky', title: 'Steps', detail: `${U.num(steps)} a day` }));
     const notes = [];
-    if (t) notes.push('The calorie target is an estimate. After two weeks of logging and weighing in, it tunes itself to what your weight actually does.');
+    if (t) notes.push('The calorie target is a starting estimate. After two weeks of logging and weigh-ins, it adjusts to your weight trend.');
     if (!kg) notes.push('Add your weight to get calorie and protein targets.');
-    notes.push('Workouts are off. You can turn them on any time in Settings.');
+    notes.push('Workouts are off. Turn them on any time in Settings.');
     return group('Your daily targets', `<ul class="rf-list">${rows.join('')}</ul>`)
       + `<div class="card ob-card"><ul class="ob-bullets">${notes.map((n) => `<li>${U.esc(n)}</li>`).join('')}</ul></div>`;
   }
@@ -1600,7 +1600,7 @@
     const doctor = ac.doctorLines(p);
     const body = lines.length
       ? `<p class="t-headline sheet-lead">${U.esc(ac.plannedAround(p) || 'Your plan')}</p><ul class="ob-bullets around-list">${lines.map((l) => `<li>${U.esc(l.text)}</li>`).join('')}</ul>${doctor.map((t) => status('caution', t)).join('')}`
-      : '<p class="t-callout sheet-lead">Nothing to plan around yet. Your age, sore joints, balance and health conditions like arthritis or high blood pressure can all shape your plan.</p>';
+      : '<p class="t-callout sheet-lead">Nothing to plan around yet. Your age, sore joints, balance and conditions like arthritis or high blood pressure can shape your plan.</p>';
     U.sheet({
       title: 'Built around you', size: 'auto',
       body: `<div class="sheet-pad sheet-prose">${body}<p class="t-footnote rf-muted">It stays on this phone and is never sent to Claude. Not medical advice: if a move hurts, stop.</p>
@@ -1691,7 +1691,7 @@
       }, 450);
     }
     else if (friend) setTimeout(() => U.toast(`Using ${sh.plan.name}`, 'positive', 'Your week follows it from today.'), 500);
-    else if (kept) setTimeout(() => U.toast(`${sender(sh) ? `${sender(sh)}'s plan is` : 'The plan you were sent is'} in Your plans`, 'neutral', 'Open it from You whenever you like.'), 500);
+    else if (kept) setTimeout(() => U.toast(`${sender(sh) ? `${sender(sh)}'s plan is` : 'The plan you were sent is'} in Your plans`, 'neutral', 'Open it from You any time.'), 500);
   }
   function saveEdit() {
     const S = U.S;

@@ -84,8 +84,8 @@
     if (r.n >= 4 && b.n >= 10 && Math.abs(r.avg - b.avg) >= 30) {
       const up = r.avg > b.avg;
       out.push({ id: `trend:sleep:${up ? 'up' : 'down'}`, cat: 'trend', metric: 'sleepMin', icon: 'moon', tone: up ? 'good' : 'watch', n: r.n + b.n, effect: Math.abs(r.avg - b.avg) / 30,
-        title: up ? `Sleeping ${fmtMin(r.avg - b.avg)} more` : `Sleep is down ${fmtMin(b.avg - r.avg)} a night`,
-        body: up ? `${fmtMin(r.avg)} a night this week against your usual ${fmtMin(b.avg)}.` : `${fmtMin(r.avg)} a night this week against your usual ${fmtMin(b.avg)}. Short nights make sessions feel harder; the app trims a set when you're under 5 h.`,
+        title: up ? `Sleeping ${fmtMin(r.avg - b.avg)} more` : `Sleep down ${fmtMin(b.avg - r.avg)} a night`,
+        body: up ? `${fmtMin(r.avg)} a night this week against your usual ${fmtMin(b.avg)}.` : `${fmtMin(r.avg)} a night this week against your usual ${fmtMin(b.avg)}. Short nights make sessions feel harder. Under 5 h, the app trims a set.`,
         evidence: `${plural(r.n, 'night')} this week vs ${b.n} before` });
     }
     // Steps: ±15%.
@@ -103,7 +103,7 @@
       const up = r.avg > b.avg;
       out.push({ id: `trend:rhr:${up ? 'up' : 'down'}`, cat: 'trend', metric: 'rhr', icon: 'heart', tone: up ? 'watch' : 'good', n: r.n + b.n, effect: Math.abs(r.avg - b.avg) / 3,
         title: `Resting heart rate ${up ? 'up' : 'down'} ${Math.round(Math.abs(r.avg - b.avg))} bpm`,
-        body: up ? `${Math.round(r.avg)} bpm this week against your usual ${Math.round(b.avg)}. Short sleep, stress, alcohol, illness and hard training can all push it up.` : `${Math.round(r.avg)} bpm this week against your usual ${Math.round(b.avg)}. A falling resting heart rate often goes with better fitness.`,
+        body: up ? `${Math.round(r.avg)} bpm this week against your usual ${Math.round(b.avg)}. Short sleep, stress, alcohol, illness and hard training can all raise it.` : `${Math.round(r.avg)} bpm this week against your usual ${Math.round(b.avg)}. A falling resting heart rate often goes with better fitness.`,
         evidence: `${plural(r.n, 'day')} this week vs ${b.n} before` });
     }
     // HRV: ±10%.
@@ -130,10 +130,10 @@
     const flat = Math.abs(rel) < 0.0025;
     if (goal === 'lose') {
       if (rel <= -0.0025 && rel >= -0.01) out.push(Object.assign(base, { id: 'goal:weight:on-track', tone: 'good', effect: 1.2, title: `Weight trending down ${amount}`, body: 'A steady pace that keeps muscle. Keep protein up and keep training.' }));
-      else if (rel > 0.0025) out.push(Object.assign(base, { id: 'goal:weight:up', tone: 'watch', effect: 1, title: `Weight trending up ${amount}`, body: 'Your goal is to lose. Smaller portions of the snacks you like and a daily walk move this without a meal plan.' }));
-      else if (flat) out.push(Object.assign(base, { id: 'goal:weight:flat', tone: 'info', effect: 0.6, title: 'Weight holding steady', body: `Within ${fmtW(S, Math.abs(perWeek))} a week. Losing needs a small, steady food gap; strength work keeps what comes off from being muscle.` }));
+      else if (rel > 0.0025) out.push(Object.assign(base, { id: 'goal:weight:up', tone: 'watch', effect: 1, title: `Weight trending up ${amount}`, body: 'Your goal is to lose. Smaller portions of the snacks you like, plus a daily walk, can turn this around.' }));
+      else if (flat) out.push(Object.assign(base, { id: 'goal:weight:flat', tone: 'info', effect: 0.6, title: 'Weight holding steady', body: `Within ${fmtW(S, Math.abs(perWeek))} a week. To lose, eat a little less each day; strength work protects your muscle.` }));
     } else if (goal === 'gain') {
-      if (rel >= 0.001) out.push(Object.assign(base, { id: 'goal:weight:on-track', tone: 'good', effect: 1.2, title: `Weight trending up ${amount}`, body: 'On track for gaining. Keep the protein and the training steady.' }));
+      if (rel >= 0.001) out.push(Object.assign(base, { id: 'goal:weight:on-track', tone: 'good', effect: 1.2, title: `Weight trending up ${amount}`, body: 'On track. Keep protein and training steady.' }));
       else out.push(Object.assign(base, { id: 'goal:weight:flat', tone: 'watch', effect: 1, title: 'Weight isn\'t moving up', body: 'To gain, add an easy extra: a shake, a bigger portion of something you already like.' }));
     } else if (flat) out.push(Object.assign(base, { id: 'goal:weight:steady', tone: 'good', effect: 0.7, title: 'Weight steady', body: `Within ${fmtW(S, Math.abs(perWeek))} a week, which is what maintaining looks like.` }));
     else out.push(Object.assign(base, { id: `goal:weight:${rel > 0 ? 'up' : 'down'}`, tone: 'info', effect: 0.8, title: `Weight trending ${rel > 0 ? 'up' : 'down'} ${amount}`, body: 'Your goal is to hold steady. Small drifts like this are normal week to week.' }));
@@ -183,7 +183,7 @@
       const s = sd(mids);
       const m = mean(mids) + 720;
       if (s >= 60) out.push({ id: 'consistency:sleep-timing:loose', cat: 'consistency', metric: 'sleepTiming', icon: 'clock', tone: 'watch', n: mids.length, full: 14, effect: s / 60,
-        title: `Sleep timing swings about ±${fmtMin(s)}`, body: `Your middle of the night moves around ${fmtClock(m)} by that much. A steadier bedtime is one of the simplest ways to sleep better.`, evidence: `${mids.length} nights` });
+        title: `Sleep timing swings about ±${fmtMin(s)}`, body: `The middle of your night moves that much around ${fmtClock(m)}. A steadier bedtime is an easy way to sleep better.`, evidence: `${mids.length} nights` });
       else if (s <= 30) out.push({ id: 'consistency:sleep-timing:steady', cat: 'consistency', metric: 'sleepTiming', icon: 'clock', tone: 'good', n: mids.length, full: 14, effect: 0.8,
         title: 'Steady sleep timing', body: `Within about ±${Math.round(s)} min of ${fmtClock(m)} most nights.`, evidence: `${mids.length} nights` });
     }
@@ -252,7 +252,7 @@
     if (f.length >= MIN_PAIRS) {
       const low = f.filter((x) => x.low).map((x) => x.s), rest = f.filter((x) => !x.low).map((x) => x.s);
       if (low.length >= 3 && rest.length >= 3 && mean(rest) - mean(low) >= 30) out.push({ id: 'rel:feel-sleep', cat: 'relationship', metric: 'feel-sleep', icon: 'bolt', tone: 'info', n: f.length, full: 20, effect: (mean(rest) - mean(low)) / 30,
-        title: 'Low-energy days follow short nights', body: `On days you felt low on energy you'd slept ${fmtMin(mean(rest) - mean(low))} less on average, in ${f.length} check-ins so far.`, evidence: `${f.length} feel checks with sleep` });
+        title: 'Low-energy days follow short nights', body: `On low-energy days you'd slept ${fmtMin(mean(rest) - mean(low))} less on average, over ${f.length} check-ins so far.`, evidence: `${f.length} feel checks with sleep` });
     }
     // Weekly steps → weekly weight change.
     const weeks = [];
@@ -265,7 +265,7 @@
     if (weeks.length >= MIN_PAIRS) {
       const rho = spearman(weeks.map((w) => w.steps), weeks.map((w) => w.dw));
       if (rho <= -0.3) out.push({ id: 'rel:steps-weight', cat: 'relationship', metric: 'steps-weight', icon: 'navigate', tone: 'info', n: weeks.length, full: 12, effect: Math.abs(rho) / 0.3,
-        title: 'More steps, lower weight trend', body: `Weeks with more steps have tended to be the weeks your weight dropped, over ${weeks.length} weeks so far.`, evidence: `${weeks.length} weeks with both` });
+        title: 'More steps, lower weight trend', body: `Your weight has tended to drop in weeks with more steps, over ${weeks.length} weeks so far.`, evidence: `${weeks.length} weeks with both` });
     }
   }
 
@@ -302,7 +302,7 @@
       const a = t[0], b = t[t.length - 1];
       const side = S.catchup.arm.side === 'R' ? 'Right' : 'Left';
       if (b.gap < a.gap - 0.03) out.push({ id: `goal:lr:${b.day}`, cat: 'goal', metric: 'lr', icon: 'layers', tone: 'good', n: t.length, full: 3, effect: clamp((a.gap - b.gap) / 0.05, 0.5, 2),
-        title: `${side} arm gap: ${Math.round(a.gap * 100)}% → ${Math.round(b.gap * 100)}%`, body: b.gap < 0.1 ? 'Closed to under 10%, so the extra set is off. The test keeps checking every two weeks.' : 'The extra set is doing its job.', evidence: `${t.length} curl tests` });
+        title: `${side} arm gap: ${Math.round(a.gap * 100)}% → ${Math.round(b.gap * 100)}%`, body: b.gap < 0.1 ? 'Under 10% now, so the extra set is off. The test still runs every two weeks.' : 'The extra set is doing its job.', evidence: `${t.length} curl tests` });
     }
     // Level-ups and heavier weights in the last four weeks.
     const ups = [];
@@ -320,7 +320,7 @@
       if (done > 0 && short.length) {
         const [grp, v] = short.sort((a, b) => (a[1].done / a[1].target) - (b[1].done / b[1].target))[0];
         out.push({ id: `goal:volume:${lastWeek}:${grp}`, cat: 'goal', metric: 'volume', icon: 'chart', tone: 'watch', n: 7, full: 7, effect: 0.9,
-          title: `${B().GROUP_NAME[grp]}: ${v.done} of ${v.target} sets last week`, body: v.planned < v.target ? 'Your time budget fits fewer sets than the target. A few more minutes a session would close it.' : 'Missed sessions left this one short.', evidence: 'last week\'s log' });
+          title: `${B().GROUP_NAME[grp]}: ${v.done} of ${v.target} sets last week`, body: v.planned < v.target ? 'Your sessions are too short for the target. A few more minutes each would close the gap.' : 'Missed sessions left this one short.', evidence: 'last week\'s log' });
       }
     }
     // Streaks.
@@ -328,7 +328,7 @@
     const cal = B().calendar(S, day);
     const cur = cal.streak.current;
     if (cur >= 7 && cur % 7 === 0) out.push({ id: `goal:streak:${cur}`, cat: 'goal', metric: 'streak', icon: 'star', tone: 'good', n: cur, full: 7, effect: 1.2, title: `${cur}-day streak`, body: 'Light days count, so keep them light.', evidence: 'your calendar' });
-    if (cal.streak.weekly >= 2) out.push({ id: `goal:weekly:${cal.streak.weekly}`, cat: 'goal', metric: 'streak-weekly', icon: 'calendar', tone: 'good', n: cal.streak.weekly, full: 3, effect: 0.9, title: `${cal.streak.weekly} full weeks in a row`, body: 'Every planned session done, weeks running.', evidence: 'your calendar' });
+    if (cal.streak.weekly >= 2) out.push({ id: `goal:weekly:${cal.streak.weekly}`, cat: 'goal', metric: 'streak-weekly', icon: 'calendar', tone: 'good', n: cal.streak.weekly, full: 3, effect: 0.9, title: `${cal.streak.weekly} full weeks in a row`, body: 'Every planned session done.', evidence: 'your calendar' });
   }
 
   /* ---------------------------------------------------------------- 6. recovery */

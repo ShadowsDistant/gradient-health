@@ -42,11 +42,11 @@
     let take, target = null;
     if (mode === 'trained') {
       if (t.sum) { take = clause('Most', t.most.slice(0, 2)) + SEP + clause('Least', t.least.slice(0, 1)); target = t.least[0]; }
-      else take = hasWorkouts(S) ? `No sets in the ${rangeText(weeks)}. Your next workout lights up the muscles it trains.` : 'Finish a workout and the muscles it trained light up here.';
+      else take = hasWorkouts(S) ? `No sets in the ${rangeText(weeks)}. Muscles light up as you train them.` : 'Finish a workout to light up the muscles it trained.';
     } else if (imp.max > 0) {
       take = clause('Most', imp.most.slice(0, 2)) + SEP + clause('Least', imp.least.slice(0, 1));
       target = imp.least[0];
-    } else take = t.sum ? `No progress to show in the ${rangeText(weeks)} yet. It shows up here as your reps, weights and levels go up.` : 'Progress shows up here as your reps, weights and levels go up.';
+    } else take = t.sum ? `No progress in the ${rangeText(weeks)} yet. It shows as your reps, weights and levels go up.` : 'Progress shows as your reps, weights and levels go up.';
     // Offer to train the least one more only when it's clearly behind, not in an even split.
     const main = Y().MUSCLES.filter((m) => !Y().MINOR.includes(m));
     const mean = main.reduce((a, m) => a + (t.sets[m] || 0), 0) / main.length;
@@ -75,7 +75,7 @@
   function mostImproved(S, imp) {
     const { weeks } = view();
     const rows = B().GROUPS.map((g) => ({ g, x: imp.groups[g] })).filter((r) => r.x.score > 0).sort((a, b) => b.x.score - a.x.score).slice(0, 5);
-    if (!rows.length) return `<div class="card" data-key="mi-none"><p class="t-callout rf-muted">${hasWorkouts(S) ? `Nothing went up in the ${rangeText(weeks)} yet. The muscle groups` : 'After a few workouts, the muscle groups'} getting stronger show here, with what changed: levels, weights and reps.</p></div>`;
+    if (!rows.length) return `<div class="card" data-key="mi-none"><p class="t-callout rf-muted">${hasWorkouts(S) ? `Nothing went up in the ${rangeText(weeks)} yet. Muscle groups` : 'After a few workouts, muscle groups'} getting stronger show here, with what changed.</p></div>`;
     const vals = {};
     for (const m of Y().MUSCLES) vals[m] = Math.max(0, imp.score[m] || 0);
     return `<ul class="rf-list mi-list" data-key="mi">${rows.map(({ g, x }) => {
@@ -87,7 +87,7 @@
         <span class="rf-list-text"><span class="rf-list-title">${U.esc(B().GROUP_NAME[g])}</span><span class="rf-list-sub">${ups.slice(0, 2).map((l) => U.progressText(l.text)).join(' · ') || U.esc(`Went up ${U.plural(x.ups, 'time')}`)}</span></span>
         ${top ? `<span class="rf-list-detail">${U.badge(top.delta, 'positive')}</span>` : ''}</div></li>`;
     }).join('')}</ul>
-    <p class="rf-list-footer">${U.esc(U.cap(rangeText(weeks)))}. Tap the figure above for each muscle.</p>`;
+    <p class="rf-list-footer">${U.esc(U.cap(rangeText(weeks)))}. Tap a muscle above for more.</p>`;
   }
 
   /* ---------------------------------------------------------------- the rest */
@@ -132,7 +132,7 @@
     const lastDay = last ? last.day : S.profile.startDay;
     const due = Math.max(0, 14 - (day - lastDay));
     if (!tests.length && !c.active) return '';
-    const status = c.active ? `Extra ${U.side(side).toLowerCase()} set: on, until the gap is under 10%.` : `Extra ${U.side(side).toLowerCase()} set: off. It comes back if the gap reaches 15%.`;
+    const status = c.active ? `Extra ${U.side(side).toLowerCase()} set: on, until the gap is under 10%.` : `Extra ${U.side(side).toLowerCase()} set: off unless the gap reaches 15%.`;
     let chart = '';
     if (tests.length >= 2) {
       const pts = tests.map((t) => ({ day: t.day, value: t.gap * 100 }));
@@ -161,7 +161,7 @@
     const short = rows.filter((r) => r.planned < r.target);
     return `<div class="card" data-key="sets"><div class="row-between"><span class="t-headline">Sets this week</span><span class="t-footnote rf-muted">done of target</span></div>
       ${U.meterRows(rows)}
-      ${short.length ? `<p class="t-footnote rf-muted">Your time budget fits fewer sets than the target for ${U.esc(short.map((r) => r.name.toLowerCase()).join(', '))}. A few more minutes a session closes it.</p>` : ''}</div>`;
+      ${short.length ? `<p class="t-footnote rf-muted">Your sessions are too short for the target sets in ${U.esc(short.map((r) => r.name.toLowerCase()).join(', '))}. A few more minutes each closes the gap.</p>` : ''}</div>`;
   }
 
   // Gym lifts: the estimated one-rep max over time, from the heaviest set and the reps left in the
@@ -185,7 +185,7 @@
         series: [{ name: 'Estimated max', kind: 'line', color: 'var(--hue-indigo)', points: pts, gap: 28 }] });
     });
     return `<h2 class="sec-title t-title-3">Strength</h2>
-      <div class="section">${cards.join('')}<p class="t-footnote rf-muted">Your estimated one-rep max, worked out from your heaviest set and the reps you had left. Watch the trend; there's no need to test it.</p></div>`;
+      <div class="section">${cards.join('')}<p class="t-footnote rf-muted">Your estimated one-rep max, from your heaviest set and the reps you had left. Watch the trend; no need to test it.</p></div>`;
   }
 
   function bests(S, day) {

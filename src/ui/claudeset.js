@@ -75,7 +75,7 @@
         <ul class="rf-list" role="radiogroup" aria-label="Older models">${older.map((x) => modelRow(S, x)).join('')}</ul></details>
       <h3 class="rf-list-header">Thinking</h3>
       <ul class="rf-list" role="radiogroup" aria-label="Thinking">${SP().levelsFor(m).map((lv) => levelRow(S, lv)).join('')}</ul>
-      <p class="rf-list-footer">Claude thinks before it answers, and thinking is billed as output, so more of it costs more. The amounts are for a typical question with your data: estimates at first, then the average of your own.${m.off ? '' : ` ${U.esc(m.short)} always thinks a little, so it has no Off.`}</p>
+      <p class="rf-list-footer">Thinking is billed as output, so more of it costs more. Amounts are for a typical question with your data: estimates at first, then your own average.${m.off ? '' : ` ${U.esc(m.short)} always thinks a little, so it has no Off.`}</p>
     </div>`;
   }
   U.act.claudeModel = () => {
@@ -107,8 +107,8 @@
   const PRESETS = { monthly: [5, 10, 20, 50, 100, 200], daily: [0.25, 0.5, 1, 2, 5, 10], request: [0.05, 0.1, 0.25, 0.5, 1, 2] };
   const TITLES = { monthly: 'Monthly budget', daily: 'Daily limit', request: 'Most for one request' };
   const INTRO = {
-    monthly: 'The most Claude may cost in a calendar month. Each day gets an equal share of what\'s left, so it lasts to the end of the month.',
-    daily: 'The most Claude may cost in a day. On Auto it\'s an equal share of what\'s left of your monthly budget.',
+    monthly: 'The most Claude may cost in a calendar month, shared evenly over the days left so it lasts.',
+    daily: 'The most Claude may cost in a day. Auto is an equal share of what\'s left this month.',
     request: 'The most any one question, report or plan may cost. A request that could cost more isn\'t sent.',
   };
   const NONE = { monthly: 'No budget', daily: 'No daily limit', request: 'No limit' };
@@ -118,7 +118,7 @@
     const md = SP().monthDays(day);
     const spent = SP().limits(S, day).month.spent - SP().limits(S, day).today.spent;
     if (kind === 'monthly') {
-      if (v == null) return 'No monthly budget: only a daily limit of your own, if you set one, holds Claude back.';
+      if (v == null) return 'No monthly budget: only a daily limit you set holds Claude back.';
       const per = Math.max(0, Math.floor((SP().micro(v) - spent) / md.left));
       return `${money(SP().micro(v), { whole: true })} a month is about ${money(per)} a day for the rest of ${monthName(day)}.`;
     }
@@ -207,13 +207,13 @@
       const when = GH.brain.dayOf(e.t, U.rollHour()) === day ? U.fmtClock(e.t) : `${U.fmtDay(GH.brain.dayOf(e.t, U.rollHour()))}, ${U.fmtClock(e.t)}`;
       const bits = [when, m ? m.short : e.m, `${toks(e.i + e.r + e.w)} in, ${toks(e.o)} out`];
       if (by) bits.push(`answered by ${by.short}`);
-      if (e.est) bits.push('stopped early, reckoned');
+      if (e.est) bits.push('stopped early, estimated');
       return `<li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(ONE[e.f] || e.f)}</span><span class="rf-list-sub rf-num">${U.esc(bits.join(' · '))}</span></span><span class="rf-list-detail rf-num">${U.esc(money(e.c, { exact: true }))}</span></div></li>`;
     }).join('');
     // The months before this one, newest first (the last six).
     const cur = SP().monthOf(day);
     const earlier = Object.keys(sp.months).filter((k) => k < cur && sp.months[k].c > 0).sort().reverse().slice(0, 6).map((k) => `<li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(`${MONTHS[Number(k.slice(5, 7)) - 1]} ${k.slice(0, 4)}`)}</span><span class="rf-list-sub">${U.esc(U.plural(sp.months[k].n, 'request'))}</span></span><span class="rf-list-detail rf-num">${U.esc(money(sp.months[k].c, { exact: true }))}</span></div></li>`).join('');
-    if (!month.n && !recent && !earlier) return `<h2 class="sec-title t-title-3">Usage</h2><div class="section"><div class="card cl-empty"><p class="t-callout rf-muted">Nothing yet this month. What each question, report and plan costs shows up here.</p></div></div>`;
+    if (!month.n && !recent && !earlier) return `<h2 class="sec-title t-title-3">Usage</h2><div class="section"><div class="card cl-empty"><p class="t-callout rf-muted">Nothing yet this month. Each request's cost shows up here.</p></div></div>`;
     return `<h2 class="sec-title t-title-3">Usage</h2>
       <div class="section">
         ${chart}
@@ -221,7 +221,7 @@
         ${byModel ? `<h3 class="rf-list-header">${U.esc(monthName(day))} by model</h3><ul class="rf-list">${byModel}</ul>` : ''}
         ${recent ? `<h3 class="rf-list-header">Latest</h3><ul class="rf-list">${recent}</ul>` : ''}
         ${earlier ? `<h3 class="rf-list-header">Earlier months</h3><ul class="rf-list">${earlier}</ul>` : ''}
-        <p class="rf-list-footer">Worked out from the tokens Anthropic reports for each request, at its list prices. Your bill in the Claude Console is the final word.</p>
+        <p class="rf-list-footer">Worked out from the tokens Anthropic reports, at list prices. Your bill in the Claude Console is the final word.</p>
       </div>`;
   }
   U.screens.claude = {
@@ -232,9 +232,9 @@
       const left = questionsLeft(S, day);
       const hasKey = AI() && AI().hasKey();
       const does = [
-        U.act.askCoach ? U.row({ key: 'ask', icon: 'chat', tone: 'violet', title: 'Ask the coach', sub: `Anything about your training, health or food · ${about(S, 'chat')} a question`, act: 'askCoach', chevron: true }) : '',
+        U.act.askCoach ? U.row({ key: 'ask', icon: 'chat', tone: 'violet', title: 'Ask the coach', sub: `Your training, health or food · ${about(S, 'chat')} a question`, act: 'askCoach', chevron: true }) : '',
         U.act.cpBuild ? U.row({ key: 'build', icon: 'wand', tone: 'indigo', title: 'Build me a plan', sub: `Claude builds a plan around you · ${about(S, 'build')}`, act: 'cpBuild', chevron: true }) : '',
-        U.act.reviewPlan ? U.row({ key: 'review', icon: 'check-circle', tone: 'teal', title: 'Check my plan', sub: `Claude looks over your week and suggests changes · ${about(S, 'review')}`, act: 'reviewPlan', chevron: true }) : '',
+        U.act.reviewPlan ? U.row({ key: 'review', icon: 'check-circle', tone: 'teal', title: 'Check my plan', sub: `Claude suggests changes to your week · ${about(S, 'review')}`, act: 'reviewPlan', chevron: true }) : '',
       ].join('');
       return `${U.navbar('Claude', '', U.glassBtn('chevron-left', 'Back', 'back'))}
         <h1 class="rf-large-title">Claude</h1>
@@ -257,7 +257,7 @@
             ${U.row({ key: 'daily', icon: 'sun', tone: 'amber', title: 'Daily limit', act: 'claudeBudget', arg: 'daily', detail: U.esc(limitText(S, day, 'daily')), chevron: true })}
             ${U.row({ key: 'request', icon: 'shield', tone: 'teal', title: 'Most for one request', act: 'claudeBudget', arg: 'request', detail: U.esc(limitText(S, day, 'request')), chevron: true })}
           </ul>
-          <p class="rf-list-footer">These are hard limits: Claude isn't asked anything that could go over them. They count what this phone spends. To cap your key wherever it's used, set a spend limit in the Claude Console, under Settings, Limits.</p>
+          <p class="rf-list-footer">Claude isn't asked anything that could go over these. They count only this phone's spending; to cap your key everywhere, set a spend limit in the Claude Console.</p>
           <button type="button" class="rf-btn cl-console" data-variant="plain" data-act="claudeConsole">${U.icon('arrow-up-right')}Open the Console's limits</button>
         </div>
         ${usage(S, day)}
@@ -277,7 +277,7 @@
       const b = SP().budget(S);
       const opts = PRESETS.monthly.map((v) => [String(v), SP().money(SP().micro(v), { whole: true })]);
       return `<div class="sheet-pad cl-setup">
-        <p class="t-callout rf-muted">Pick the model that answers, how much it thinks, and the most Claude may cost a month. You can change them any time in Settings, under AI coach.</p>
+        <p class="t-callout rf-muted">Pick a model, how much it thinks and a monthly budget. Change them any time in Settings, under AI coach.</p>
         <h3 class="rf-list-header">Model</h3>
         <ul class="rf-list" role="radiogroup" aria-label="Model">${SP().MODELS.filter((x) => !x.older).map((x) => modelRow(S, x)).join('')}</ul>
         <h3 class="rf-list-header">Thinking</h3>

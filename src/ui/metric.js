@@ -51,25 +51,25 @@
   const SRC_ICON = { hc: 'heart', manual: 'pencil', est: 'wave', chip: 'check-circle', app: 'bolt', food: 'food' };
 
   /* ---------------------------------------------------------------- what each number means */
-  const WHY_MISSING = ['Gradient Health can only show what your watch or phone app shares with Health Connect. Some apps don\'t share resting heart rate or HRV at all (Samsung Health and Garmin Connect, right now), even though they show them in their own app.',
-    'To check, open Health Connect, then App permissions, pick your watch app and make sure it\'s allowed to write the data you want.'];
-  const ESTIMATE = ['Your watch app shares heart rate but not a resting value, so Gradient Health works one out: it averages your heart rate over each half hour and takes the lowest half hour of the day. If you wear your watch in bed, that\'s deep sleep, close to what watches call resting heart rate.',
-    'A day whose lowest half hour isn\'t at night is skipped, because it usually means the watch was off overnight. Use it to compare your days with each other; it can sit a few beats off your watch app\'s number.'];
+  const WHY_MISSING = ['Gradient Health only sees what your apps share with Health Connect. Some keep resting heart rate and HRV to themselves (for now, Samsung Health and Garmin Connect).',
+    'In Health Connect, open App permissions, pick your watch app and let it write the data you want.'];
+  const ESTIMATE = ['Your watch app shares heart rate but not a resting value, so Gradient Health takes your lowest half-hour average each day. If you wear the watch in bed, that\'s deep sleep, close to a watch\'s resting heart rate.',
+    'Days whose lowest half hour isn\'t at night are skipped, as the watch was likely off overnight. Use it to compare your days; it can be a few beats off your watch app\'s number.'];
   const ABOUT = {
-    sleepMin: (S) => ['Time asleep, from your watch or phone app through Health Connect, from your check-in, or what you add here. A night counts toward the morning you wake up.',
-      `Most adults do best on 7 hours or more. A steady bedtime, weekends included, helps more than catching up.${S.profile.workouts !== false ? ' A night under 5 hours takes a set off the next day\'s workout.' : ''}`],
-    steps: (S) => { const g = B().stepsGoal(S, U.today()); return ['Steps from Health Connect for each calendar day, or what you add here.', `Your goal, ${U.num(g.goal)} a day, comes from your own usual: about 10% above it, between 5,000 and 10,000. In large studies the benefit kept growing up to about 8,000-10,000 steps a day.`]; },
-    rhr: (S, est) => ['Your heart rate at complete rest, usually measured while you sleep. It\'s lower when you\'re fitter.', `A few beats above your usual can mean poor sleep, stress, alcohol or an illness coming on.${S.profile.workouts !== false ? ' The app takes a set off when that happens.' : ''} Over 100 at rest is worth checking with a doctor.`].concat(est ? ESTIMATE : []),
-    hrv: () => ['Heart rate variability: how much the time between heartbeats varies, in milliseconds. Above your usual often means you\'re well recovered; well below it often follows poor sleep, stress or a run of hard days.', 'It differs a lot from person to person, so only compare yourself with yourself.'],
-    weightKg: () => ['Day-to-day swings are mostly water and food, so watch the 7-day average, not single weigh-ins.', 'Weigh in the morning, after the bathroom and before breakfast, a few times a week. A weight you add here replaces Health Connect\'s for that day.'],
-    bodyFat: () => ['From a smart scale that shares with Health Connect. Scales estimate body fat from a small electric current, so single readings jump around; the trend over weeks means more.'],
-    activeKcal: () => ['Calories burned by moving, on top of what your body burns at rest, as counted by your watch or phone.'],
+    sleepMin: (S) => ['Time asleep, from Health Connect, your check-in or what you add here. A night counts toward the morning you wake up.',
+      `Most adults do best on 7+ hours. A steady bedtime, weekends too, helps more than catching up.${S.profile.workouts !== false ? ' Under 5 hours takes a set off the next day\'s workout.' : ''}`],
+    steps: (S) => { const g = B().stepsGoal(S, U.today()); return ['Steps from Health Connect for each calendar day, or what you add here.', `Your goal, ${U.num(g.goal)} a day, is about 10% above your usual, between 5,000 and 10,000. Large studies found the benefit grows up to about 8,000-10,000 a day.`]; },
+    rhr: (S, est) => ['Your heart rate at complete rest, usually while you sleep. It\'s lower when you\'re fitter.', `A few beats above your usual can mean poor sleep, stress, alcohol or an illness coming on.${S.profile.workouts !== false ? ' The app then takes a set off.' : ''} Over 100 at rest is worth checking with a doctor.`].concat(est ? ESTIMATE : []),
+    hrv: () => ['Heart rate variability: how much the time between heartbeats varies, in milliseconds. Above your usual often means you\'ve recovered well; well below often follows poor sleep, stress or a run of hard days.', 'It varies a lot between people, so only compare yourself with yourself.'],
+    weightKg: () => ['Daily swings are mostly water and food, so watch the 7-day average, not single weigh-ins.', 'Weigh in a few mornings a week, after the bathroom and before breakfast. One you add here replaces Health Connect\'s for that day.'],
+    bodyFat: () => ['From a smart scale that shares with Health Connect. Scales estimate it with a small electric current, so single readings jump around. Watch the trend over weeks.'],
+    activeKcal: () => ['Calories you burn moving, on top of your resting burn, counted by your watch or phone.'],
     distanceM: () => ['How far you walked, ran or rode each day, from Health Connect.'],
-    activeMin: (S) => [`Minutes of exercise: workouts in Gradient Health, workouts other apps share with Health Connect, and activities you log with the + button.${S.profile.workouts !== false ? ' 45 minutes or more of hard exercise means easier legs and no finisher the next day.' : ''}`],
-    kcalIn: () => ['Everything you log on the Food tab, plus meals other apps share with Health Connect when that\'s on.'],
-    protein: (S) => { const g = B().proteinGoal(S, U.today()); return [`Protein from your quick adds and the food you log.${g ? ` Your goal is ${g} g a day, from your weight.` : ''} Past about 1.6 g per kg of body weight, extra protein adds little for most people.`]; },
-    measure: () => ['Measure once a month, at the same time of day, relaxed, with the tape snug but not tight. Waist at the belly button; arms flexed, at the widest point.', 'Waist size tracks belly fat better than the scale does.'],
-    feel: () => ['A two-tap check-in: your energy and how sore you are. Low energy or a lot of soreness makes the day\'s workout a little lighter.'],
+    activeMin: (S) => [`Minutes of exercise: Gradient Health workouts, workouts other apps share with Health Connect, and what you log with the + button.${S.profile.workouts !== false ? ' 45+ min of hard exercise means easier legs and no finisher the next day.' : ''}`],
+    kcalIn: () => ['Food you log, plus meals other apps share with Health Connect when that\'s on.'],
+    protein: (S) => { const g = B().proteinGoal(S, U.today()); return [`Protein from quick adds and food you log.${g ? ` Your goal is ${g} g a day, from your weight.` : ''} Past about 1.6 g per kg of body weight, more adds little for most people.`]; },
+    measure: () => ['Once a month, same time of day, relaxed, with the tape snug but not tight. Waist at the belly button; arms flexed, at the widest point.', 'Waist size tracks belly fat better than the scale does.'],
+    feel: () => ['A two-tap check-in: your energy and soreness. Low energy or a lot of soreness makes the day\'s workout a little lighter.'],
   };
   const aboutOf = (S, key, est) => (ABOUT[key] || (M(key) && M(key).group === 'measure' ? ABOUT.measure : () => []))(S, est);
 
@@ -133,7 +133,7 @@
     const v = h.versus(S, key, day, m.daily ? 'week' : 'latest');
     if (!v) return '';
     if (v.usual == null) {
-      const why = key === 'weightKg' ? 'Weigh in over two weeks and the change shows up here.' : 'Your usual shows up here after a week or two of data.';
+      const why = key === 'weightKg' ? 'Weigh in over two weeks to see the change.' : 'Your usual shows after a week or two of data.';
       return `<p class="ms-compare" data-state="${v.tone}">${U.icon('clock', 'sm')}<span>${why}</span></p>`;
     }
     const word = (m.words || ['above', 'below'])[v.dir === 'up' ? 0 : 1];
@@ -215,7 +215,7 @@
     const app = GH.platform && GH.platform.isApp();
     const hcOn = H().connected(H().status());
     const shared = key === 'rhr' || key === 'hrv' || key === 'bodyFat';
-    const text = shared ? WHY_MISSING[0] : m.group === 'measure' ? 'Nothing yet. Measure once a month and add it here.' : m.edit ? `Nothing yet. ${key === 'weightKg' ? 'Weigh in and add it here, or connect a scale through Health Connect.' : 'Add it here, or let Health Connect fill it in.'}` : key === 'kcalIn' ? 'Log food on the Food tab and it shows up here.' : key === 'protein' ? 'Add protein on Today or log food, and it shows up here.' : key === 'activeMin' ? 'Workouts and activities show up here.' : 'This comes from Health Connect. Nothing has come in yet.';
+    const text = shared ? WHY_MISSING[0] : m.group === 'measure' ? 'Measure once a month and add it here.' : m.edit ? (key === 'weightKg' ? 'Weigh in and add it here, or connect a scale through Health Connect.' : 'Add it here, or let Health Connect fill it in.') : key === 'kcalIn' ? 'Log food on the Food tab to see it here.' : key === 'protein' ? 'Add protein on Today or log food to see it here.' : key === 'activeMin' ? 'Workouts and activities show up here.' : 'This comes from Health Connect.';
     return `<div class="ms-empty">
       <span class="ms-empty-ico" data-tone="${m.tone}">${U.icon(m.icon)}</span>
       <p class="t-headline">No ${U.esc(m.label.toLowerCase())} yet</p>
@@ -334,7 +334,7 @@
       fields = field('msVal', label, e ? (key === 'steps' || key === 'rhr' ? Math.round(e.value) : shown(e.value)) : null, { int: key === 'steps' || key === 'rhr', step: key === 'steps' || key === 'rhr' ? 1 : 0.1, ph });
     }
     let hint;
-    if (mine && e && e.hc != null) hint = `This is your number. Remove it to go back to Health Connect's ${h.format(S, key, e.hc)}.`;
+    if (mine && e && e.hc != null) hint = `Remove yours to go back to Health Connect's ${h.format(S, key, e.hc)}.`;
     else if (mine) hint = 'This is your number for the day.';
     else if (e && e.src !== 'manual' && e.hc != null) hint = `Health Connect has ${h.format(S, key, e.hc)} for this day. Yours will replace it.`;
     else if (key === 'weightKg') hint = 'Same time each morning is best. The trend uses a 7-day average.';

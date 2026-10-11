@@ -447,7 +447,7 @@
         // The closest ones still to earn, each series' next tier only (the ones after it wait their turn).
         const open = shown.filter((x) => !x.earned && !x.def.secret && nextInSeries(x, items)).sort((a, b) => (b.pct - a.pct) || (T[a.def.tier].rank - T[b.def.tier].rank)).slice(0, 10);
         body = open.length ? `<h2 class="sec-title t-title-3">Closest to earning</h2><div class="section"><div class="bdg-nexts" data-key="nexts">${open.map((x) => nextRow(x, items)).join('')}</div></div>`
-          : '<div class="section"><div class="card"><p class="t-callout rf-muted">Every badge you can earn right now is yours. New ones open up as you track more.</p></div></div>';
+          : '<div class="section"><div class="card"><p class="t-callout rf-muted">Every badge you can earn now is yours. Track more to open up new ones.</p></div></div>';
       } else {
         for (const c of A().CATS) {
           const its = pick.filter((x) => x.def.cat === c.id);

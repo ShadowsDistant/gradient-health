@@ -107,10 +107,10 @@
   }
   function galleryBody(S) {
     const off = S && S.profile && S.profile.prefs && S.profile.prefs.haptics === false;
-    const note = off ? '<div class="notice" data-tone="info">' + U.icon('info') + '<span>Haptic feedback is off, so these won\'t buzz. Turn it on in Settings to feel them.</span></div>'
+    const note = off ? '<div class="notice" data-tone="info">' + U.icon('info') + '<span>Haptic feedback is off, so these won\'t buzz. Turn it on in Settings.</span></div>'
       : touchOff() ? '<div class="notice" data-tone="info">' + U.icon('info') + '<span>Touch feedback is off in your phone\'s settings, so Touch and Navigation won\'t buzz.</span></div>' : '';
     return `<div class="hx">
-      <div class="hx-top">${strength(S, 'hapticStrengthG')}<p class="t-footnote rf-muted">Tap one to feel it. Each kind of moment in the app has its own.</p>${note}</div>
+      <div class="hx-top">${strength(S, 'hapticStrengthG')}<p class="t-footnote rf-muted">Tap one to feel it.</p>${note}</div>
       ${GROUPS.map(([id, title, sub, tone, icon, kinds]) => `<section class="hx-group" data-key="hx:${id}" data-tone="${tone}" aria-labelledby="hx-${id}">
         <div class="hx-head"><span class="hx-ico">${U.icon(icon, 'sm')}</span><h3 class="hx-title" id="hx-${id}">${U.esc(title)}</h3><span class="hx-sub">${U.esc(sub)}</span></div>
         <div class="hx-grid">${kinds.map(([k, label]) => `<button type="button" class="hx-chip" data-act="hapticTry" data-arg="${U.esc(k)}"><span class="hx-name">${U.esc(label)}</span>${wave(k)}</button>`).join('')}</div>

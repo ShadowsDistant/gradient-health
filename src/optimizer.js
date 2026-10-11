@@ -1927,7 +1927,7 @@
     return { headline, week: weekOut, today, reasons: custom ? customReasons(S) : reasonLines(S, wp, built.map((x) => x.s), minutes), parts: wp.parts, score: wp.score, considered: wp.considered, split: { kind: wp.split.kind, label: wp.split.label, name: LABEL[wp.split.label] || LABEL.mixed } };
   }
   function customReasons(S) {
-    return ['These sessions come from a plan you made or added. The engine still fits each one to your body\'s rules and keeps it within your time.'];
+    return ['These sessions come from your own plan, still fitted to your body\'s rules and your time.'];
   }
   // The reasons, most telling first.
   function reasonLines(S, wp, sessions, minutes) {
@@ -1938,9 +1938,9 @@
     const pg = wp.perGroup;
     const D = wp.days.length;
     // The split.
-    if (wp.legacy) out.push('This week keeps the plan it started with. From next week the new planner arranges your days.');
-    else if (wp.split.kind !== 'auto') out.push(`You picked ${lower(LABEL[wp.split.kind])}: the ${fmtN(wp.considered)} ways to lay it over your ${D} days were compared, and this one rests each muscle best.`);
-    else out.push(`Every way to share your muscle groups over your ${D} days was compared (${fmtN(wp.considered)} of them). This one spreads the work most evenly and rests each muscle between sessions.`);
+    if (wp.legacy) out.push('This week keeps the plan it started with. The new planner takes over next week.');
+    else if (wp.split.kind !== 'auto') out.push(`You picked ${lower(LABEL[wp.split.kind])}. Of ${fmtN(wp.considered)} ways to lay it over your ${D} days, this one rests each muscle best.`);
+    else out.push(`Of ${fmtN(wp.considered)} ways to share your muscle groups over ${D} days, this one spreads the work most evenly, with rest between sessions.`);
     // The goals.
     const top = GROUPS.filter((g) => prog.tiers[g] === 1 && pg[g].trainable && pg[g].aim > 0);
     if (top.length) {
@@ -1962,7 +1962,7 @@
       const on = offs.filter((o, i) => units[i].includes(u)).sort((a, x) => a - x);
       return on.some((o, i) => (i ? o - on[i - 1] : on[0] + 7 - on[on.length - 1]) <= 1) && on.length > 1;
     });
-    if (D > 1 && !backToBack.length) out.push('No muscle group trains two days in a row, so each one recovers before it works again.');
+    if (D > 1 && !backToBack.length) out.push('No muscle group trains two days in a row, so each one recovers.');
     else if (D > 1 && !backToBack.includes('legs') && units.filter((u) => u.includes('legs')).length > 1) out.push('Your legs always get a day off between sessions.');
     // The time.
     const setMin = wp.days.length ? Math.round(wp.days.reduce((a, d) => a + d.planned - d.fixed, 0) / wp.days.length) : 0;
@@ -1970,8 +1970,8 @@
     const extras = ['a warm-up'].concat(fin ? ['a finisher'] : [], walk ? ['an easy cardio block'] : [], cool ? ['a cool-down'] : []);
     if (setMin > 0) out.push(`Each session fits your ${minutes} minutes: about ${setMin} minutes of sets, then ${joinList(extras)}.`);
     // Coverage, or groups taking turns.
-    if (wp.parity) out.push('There isn\'t time for every muscle group each week, so they take turns: what misses out this week comes first next week.');
-    else if (GROUPS.every((g) => !pg[g].trainable || pg[g].effective >= pg[g].floor - 1e-9)) out.push('Every muscle group gets at least its weekly minimum, counting the help bigger moves give.');
+    if (wp.parity) out.push('Not every muscle group fits in each week, so they take turns: what misses out comes first next week.');
+    else if (GROUPS.every((g) => !pg[g].trainable || pg[g].effective >= pg[g].floor - 1e-9)) out.push('Every muscle group gets at least its weekly minimum, counting help from bigger moves.');
     // The phase.
     const ph = wp.phase;
     if (ph.deload) out.push(`A lighter week to recover: about ${Math.round(ph.mult * 100)}% of your usual sets.`);

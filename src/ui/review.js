@@ -46,7 +46,7 @@
   function whyBody(w) {
     const score = pct(w.score);
     const compared = w.considered > 1
-      ? `<p class="wy-compared">${U.icon('layers', 'sm')}<span>We compared <b class="rf-num">${fmtN(w.considered)}</b> weekly plans and picked this one.</span></p>`
+      ? `<p class="wy-compared">${U.icon('layers', 'sm')}<span>Picked from <b class="rf-num">${fmtN(w.considered)}</b> weekly plans.</span></p>`
       : `<p class="wy-compared">${U.icon('layers', 'sm')}<span>This week keeps the plan it started with.</span></p>`;
     return `<div class="sheet-pad wy">
       <div class="card wy-hero" data-key="hero">
@@ -58,12 +58,12 @@
       </div>
       <h3 class="wy-h">How it scores</h3>
       <ul class="wy-meters" data-key="meters">${w.parts.map(meter).join('')}</ul>
-      <p class="t-footnote rf-muted wy-foot">Each plan is scored out of 100. The percentages are how much each part counts.</p>
+      <p class="t-footnote rf-muted wy-foot">Each part scores out of 100. The percentage is how much it counts.</p>
       <h3 class="wy-h">Why it's built this way</h3>
       <ul class="wy-reasons" data-key="reasons">${w.reasons.map((r) => `<li>${U.icon('check-circle', 'sm')}<span>${U.esc(r)}</span></li>`).join('')}</ul>
       <h3 class="wy-h">Other ways to split your week</h3>
       <ul class="wy-alts" data-key="alts">${altRow(w.current, true)}${w.others.map((a) => altRow(a, false)).join('')}</ul>
-      <p class="t-footnote rf-muted wy-foot">Trying one checks it against your plan's rules first, and you can undo it.</p>
+      <p class="t-footnote rf-muted wy-foot">Trying one checks it against your plan's rules first. You can undo it.</p>
       ${U.act.reviewPlan ? `<button type="button" class="rf-btn ob-wide wy-ai" data-variant="soft" data-size="lg" data-act="reviewPlan" data-arg="why">${U.icon('sparkle')}Check my plan with AI</button>` : ''}
     </div>`;
   }
@@ -117,7 +117,7 @@
       <p class="t-headline">${device ? 'The on-device coach is checking your plan' : 'Claude is checking your plan'}</p>
       <p class="t-callout rf-muted rv-status" aria-live="polite">${U.esc(statusLine(st))}</p>
       <div class="rv-bar"${device ? '' : ' data-indeterminate'}>${U.progress(device ? progressOf(st) : 0.3, 'How far the review has got')}</div>
-      <p class="t-footnote rf-muted">${device ? 'On a phone this takes about a minute. Keep the app open; nothing leaves your phone.' : 'This usually takes under a minute.'}</p>
+      <p class="t-footnote rf-muted">${device ? 'This takes about a minute. Keep the app open; nothing leaves your phone.' : 'This usually takes under a minute.'}</p>
       <button type="button" class="rf-btn rv-stop" data-size="lg" data-act="reviewStop">${U.icon('stop')}Stop</button>
     </div>`;
   }
@@ -126,12 +126,12 @@
     const ready = R().engine(S);
     const hasKey = !!(AI() && AI().hasKey());
     const claudeSub = !hasKey ? 'With your own Anthropic API key' : !S.ai.consentAt ? 'Allow Claude to get your summary first' : 'Ready';
-    const deviceSub = d && d.checked && !d.available.ok ? d.available.reason : 'Runs on this phone and works offline. A one-time download.';
+    const deviceSub = d && d.checked && !d.available.ok ? d.available.reason : 'Runs on this phone, offline. A one-time download.';
     return `<div class="sheet-pad rv rv-none">
       <div class="rv-intro">
         <span class="rv-orb" aria-hidden="true">${U.icon('check-circle')}</span>
         <p class="t-headline">A second opinion on your plan</p>
-        <p class="t-callout rf-muted">The planner already compared every way to lay out your week. An AI coach can look it over too and suggest changes. Each one is checked against your plan's rules, and nothing changes until you approve it.</p>
+        <p class="t-callout rf-muted">An AI coach can suggest changes to the planner's pick. Each one is checked against your plan's rules, and nothing changes until you approve it.</p>
       </div>
       ${ready ? `<button type="button" class="rf-btn rf-glass ob-wide" data-variant="tinted" data-size="lg" data-act="reviewStart">${U.icon('sparkle')}Check my plan now</button>` : ''}
       <ul class="rf-list rv-options" data-key="options">
@@ -167,12 +167,12 @@
       ${r.note ? `<p class="t-callout rv-note">${U.esc(r.note)}</p>` : ''}
       ${r.cut ? '<p class="t-footnote rf-muted rv-cut">Left out a line with a number that isn\'t in your data.</p>' : ''}
     </div>`;
-    const empty = !r.items.length ? `<div class="card rv-empty" data-key="empty">${U.icon('check-circle')}<p class="t-headline">${r.rejected.length ? 'Nothing to apply' : 'Your plan already fits'}</p><p class="t-callout rf-muted">${r.rejected.length ? 'What it suggested didn\'t pass your plan\'s checks. The reasons are below.' : 'The coach found nothing worth changing.'}</p></div>` : '';
+    const empty = !r.items.length ? `<div class="card rv-empty" data-key="empty">${U.icon('check-circle')}<p class="t-headline">${r.rejected.length ? 'Nothing to apply' : 'Your plan already fits'}</p><p class="t-callout rf-muted">${r.rejected.length ? 'Its suggestions didn\'t pass your plan\'s checks (reasons below).' : 'The coach found nothing worth changing.'}</p></div>` : '';
     const cards = r.items.length ? `<ul class="rv-cards" data-key="cards">${r.items.map((it) => card(it, st.picked.has(it.id))).join('')}</ul>` : '';
     const tips = r.tips.length ? `<div class="rv-tips" data-key="tips"><p class="rv-h">Tips</p>${r.tips.map((t) => `<div class="rv-tip">${U.icon('sparkle', 'sm')}<span><b>${U.esc(t.title)}</b>${t.why ? ` ${U.esc(t.why)}` : ''}</span></div>`).join('')}</div>` : '';
     const not = r.rejected.length ? `<details class="rv-not gh-drop" data-key="not"><summary><span>Not applied (${r.rejected.length})</span>${U.icon('chevron-down', 'sm')}</summary><ul>${r.rejected.map((x) => `<li><span class="rv-not-title">${U.esc(x.title)}</span><span class="rv-not-why">${U.esc(x.reason)}</span></li>`).join('')}</ul></details>` : '';
     const apply = r.items.length ? `<div class="rv-actions" data-key="actions"><button type="button" class="rf-btn rf-glass ob-wide rv-apply" data-variant="tinted" data-size="lg" data-act="reviewApply"${n ? '' : ' aria-disabled="true"'}>${U.esc(applyLabel(n, r.items.length))}</button>
-      <p class="t-footnote rf-muted">Each change passed your plan's checks: your equipment and joints, your time, every muscle's weekly minimum and rest between sessions. Nothing changes until you apply it, and you can undo it.</p></div>` : '';
+      <p class="t-footnote rf-muted">Each change passed your plan's checks: equipment, joints, time, each muscle's weekly minimum and rest between sessions. You can undo it.</p></div>` : '';
     return `<div class="sheet-pad rv rv-result">${head}${cards}${empty}${tips}${not}${apply}
       <div class="rv-more btn-row" data-key="more">${r.engine !== 'app' && R().engine(U.S) ? `<button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="reviewAgain">${U.icon('refresh', 'sm')}Ask again</button>` : ''}<button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="whyPlan">${U.icon('layers', 'sm')}Why this plan</button></div>
     </div>`;
@@ -188,8 +188,8 @@
         <button type="button" class="rf-btn ob-wide" data-variant="soft" data-size="lg" data-act="reviewAgain">${U.icon('refresh')}Retry</button>
         <div class="rv-more btn-row"><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="whyPlan">${U.icon('layers', 'sm')}Why this plan</button></div></div>`;
       // Their own plan: the coach can rework it (Improve, src/ui/customplan.js) rather than check it.
-      case 'custom': return noteBody('list', 'You\'re following your own plan', 'The review checks the coach\'s plan. Your own can be improved instead: the coach reworks it from your data and shows you what it would change.', `${U.act.cpImprove && GH.customPlan && GH.customPlan.activeId(U.S) ? `<button type="button" class="rf-btn ob-wide" data-variant="filled" data-size="lg" data-act="reviewImprove">${U.icon('sparkle')}Improve my plan</button>` : ''}${U.act.openPlans ? `<button type="button" class="rf-btn ob-wide" data-variant="soft" data-size="lg" data-act="reviewPlans">${U.icon('list')}Your plans</button>` : ''}`);
-      case 'off': return noteBody('info', 'Workouts are off', 'Turn workouts on in Settings, under What you track, to get a plan to check.');
+      case 'custom': return noteBody('list', 'You\'re following your own plan', 'The review checks the coach\'s plan. The coach can rework yours from your data instead, showing the changes first.', `${U.act.cpImprove && GH.customPlan && GH.customPlan.activeId(U.S) ? `<button type="button" class="rf-btn ob-wide" data-variant="filled" data-size="lg" data-act="reviewImprove">${U.icon('sparkle')}Improve my plan</button>` : ''}${U.act.openPlans ? `<button type="button" class="rf-btn ob-wide" data-variant="soft" data-size="lg" data-act="reviewPlans">${U.icon('list')}Your plans</button>` : ''}`);
+      case 'off': return noteBody('info', 'Workouts are off', 'Turn them on in Settings, under What you track.');
       case 'result': return resultBody(st);
       default: return `<div class="sheet-pad rv rv-wait" data-key="start"><span class="rf-spinner" data-size="sm"><i></i></span><p class="t-callout rf-muted">Getting the coach ready…</p></div>`;
     }

@@ -386,7 +386,7 @@
         const move = pick(ctx.allowed, x.move) || '';
         const fam = pick(ctx.swaps.map((o) => o.family), x.family);
         const own = ctx.swaps.find((o) => o.family === fam && o.options.includes(move)) || ctx.swaps.find((o) => o.options.includes(move));
-        if (!own) bad = 'That move isn\'t one you can do with your equipment and joints, or it isn\'t in your plan.';
+        if (!own) bad = 'You can\'t do that move with your equipment and joints, or it isn\'t in your plan.';
         else { s.family = own.family; s.move = move; }
       } else if (kind === 'move_day') {
         s.from = int(x.from); s.to = int(x.to);
@@ -535,8 +535,8 @@
   }
   function noChange(change) {
     const sets = change.tweaks && change.tweaks.sets ? Object.entries(change.tweaks.sets) : [];
-    if (sets.length === 1 && sets[0][1] > 0) return `Your time has no room for more ${ADJ[sets[0][0]]} sets, so next week would stay as it is.`;
-    if (sets.length === 1) return `Your ${ADJ[sets[0][0]]} sets are already at their weekly minimum, so next week would stay as it is.`;
+    if (sets.length === 1 && sets[0][1] > 0) return `Your time has no room for more ${ADJ[sets[0][0]]} sets, so next week wouldn't change.`;
+    if (sets.length === 1) return `Your ${ADJ[sets[0][0]]} sets are already at their weekly minimum, so next week wouldn't change.`;
     return 'It wouldn\'t change next week\'s plan.';
   }
   function tryOnCopy(S, change, day) {
@@ -687,7 +687,7 @@
     // A model with a short memory gets the shorter plan when the whole one won't fit (counted at 3
     // characters a token, as llm.js does), and should it still say the plan is too long, the shorter
     // one is tried before giving up.
-    const tooLong = () => err('Your plan is too long for this on-device model. A newer size in Settings can read it, or Claude can.', 'too-long');
+    const tooLong = () => err('Your plan is too long for this on-device model. Try a newer size in Settings, or Claude.', 'too-long');
     const room = GH.deviceCoach.room ? await GH.deviceCoach.room(S) : null;
     const needs = (c) => Math.ceil(deviceMessages(S, day, c).reduce((a, m) => a + m.content.length + 18, 0) / 3) + 64 + DEVICE_TOKENS;
     const once = async (c) => {
@@ -719,7 +719,7 @@
     const opt = o || {};
     const res = await ask(S, day, opt);
     if (res.aborted) return { aborted: true };
-    if (!res.raw || typeof res.raw !== 'object') throw err('The coach\'s answer couldn\'t be read. Try again.', 'unread');
+    if (!res.raw || typeof res.raw !== 'object') throw err('Couldn\'t read the coach\'s answer. Try again.', 'unread');
     const out = validate(S, res.raw, day, { ctx: res.ctx, given: res.given });
     const review = Object.assign(out, { v: 1, at: Date.now(), day, engine: res.engine, model: res.model || null, source: opt.source || null, stamp: stamp(S, day) });
     S.ai = S.ai || {};
@@ -832,11 +832,10 @@
     const d = a.score - cur.score;
     const picked = cur.split !== 'auto';
     if (d > 0.004) {
-      if (a.split === 'auto') return 'What the planner would pick for you. It scores higher than the split you chose.';
       if (picked) return 'It scores higher than the split you chose.';
-      return d > 0.02 ? `It scores higher, but the planner chose yours for how evenly it spreads the work and how often each muscle trains. You can try it.` : 'Scores a touch higher, but yours spreads the work and the rest days more evenly.';
+      return d > 0.02 ? 'It scores higher, but the planner chose yours for its even spread and how often each muscle trains.' : 'Scores a touch higher, but yours spreads the work and the rest days more evenly.';
     }
-    if (d >= -0.004) return picked ? 'About as good as the split you chose.' : 'About as good. Yours spreads the work over the week a little more evenly.';
+    if (d >= -0.004) return picked ? 'About as good as the split you chose.' : 'About as good. Yours spreads the work a little more evenly.';
     return NOT[partMoved({ parts: cur.parts }, { parts: a.parts }, -1)];
   }
   // A day of a split in a word or two: the classic splits' own names for their days (full body,

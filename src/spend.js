@@ -28,7 +28,7 @@
   const OPUS_BACKUP = { in: 5, out: 25, write: 6.25 };
   const MODELS = [
     { id: 'claude-fable-5-1', name: 'Claude Fable 5.1', short: 'Fable 5.1', note: 'The most capable, and the priciest', in: 10, out: 50, read: 0.25, write: 12.5, off: null, backup: OPUS_BACKUP },
-    { id: 'claude-opus-5-5', name: 'Claude Opus 5.5', short: 'Opus 5.5', note: 'Very capable, the best fit for most people', in: 4, out: 20, read: 0.2, write: 5, off: null, backup: OPUS_BACKUP },
+    { id: 'claude-opus-5-5', name: 'Claude Opus 5.5', short: 'Opus 5.5', note: 'Very capable, right for most people', in: 4, out: 20, read: 0.2, write: 5, off: null, backup: OPUS_BACKUP },
     { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5', short: 'Sonnet 5.5', note: 'Quick and capable, half the price of Opus', in: 2, out: 10, read: 0.2, write: 2.5, off: 'between_tools', backup: { in: 2, out: 10, write: 2.5 } },
     { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5', short: 'Haiku 5.5', note: 'The quickest, for a fraction of the price', in: 0.1, out: 0.5, read: 0.01, write: 0.125, off: 'disabled', backup: null, long: { over: 100000, in: 0.5, out: 2.5, read: 0.05, write: 0.625 } },
     { id: 'claude-opus-5', name: 'Claude Opus 5', short: 'Opus 5', older: true, in: 5, out: 25, read: 0.5, write: 6.25, off: 'disabled', backup: OPUS_BACKUP },
@@ -47,13 +47,13 @@
   const LEVELS = ['off', 'low', 'medium', 'high', 'xhigh', 'max'];
   const LEVEL_NAMES = { auto: 'Auto', off: 'Off', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
   const LEVEL_NOTES = {
-    auto: 'More for plans and your weekly report, less for quick questions',
-    off: 'Answers straight away without thinking first',
+    auto: 'More for plans and reports, less for quick questions',
+    off: 'Answers without thinking first',
     low: 'A little thinking: quick and cheap',
     medium: 'A balance of depth, speed and cost',
     high: 'Thinks things through',
     xhigh: 'Thinks longer, for the hardest questions',
-    max: 'Thinks as long as it needs: the slowest, and costs the most',
+    max: 'Thinks as long as it needs: the slowest and costliest',
   };
   // Each feature: its name in the usage list, its level on Auto, the most it may write at each level
   // (thinking included, in the order of LEVELS), and the least worth sending: an answer the size of

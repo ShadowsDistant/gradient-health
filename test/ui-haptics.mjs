@@ -453,7 +453,7 @@ await wait(700);
 l = await felt(() => tap('.player [data-act="plMenu"]'));
 check('the player\'s menu: menu', l.bridge.join() === 'menu', l);
 l = await felt(() => tap('.gh-menu [data-act="plSkipItem"]'));
-check('Skip the rest of this exercise: skip, once (no dismiss for the pick)', l.bridge.join() === 'skip', l);
+check('Skip remaining sets: skip, once (no dismiss for the pick)', l.bridge.join() === 'skip', l);
 l = await felt(() => tap('.player [data-act="plMin"]'), 800);
 check('minimized mid-workout, the leave sheet rises: sheet', l.bridge.join() === 'sheet', l);
 l = await felt(() => tap('dialog.leave-sheet [data-act="plKeep"]'), 900);

@@ -54,7 +54,7 @@
       title: 'Record a walk, run or ride', size: 'fit', cls: 'at-sheet',
       body: `<div class="sheet-pad at-pick"><div class="at-grid">${tiles}</div>
         <ul class="rf-list at-opts">${U.actOptionRows(U.S)}</ul>
-        <p class="t-footnote rf-muted at-note">${U.icon('lock', 'sm')}<span>Your route stays on this phone. It goes to Health Connect only if you save it there.</span></p></div>`,
+        <p class="t-footnote rf-muted at-note">${U.icon('lock', 'sm')}<span>Your route stays on this phone unless you save it to Health Connect.</span></p></div>`,
     });
   }
   // Auto-pause by kind of activity (chips) and the spoken splits (a switch): the start sheet's and
@@ -63,7 +63,7 @@
   const KINDS = { walk: 'Walks', run: 'Runs', hike: 'Hikes', cycle: 'Rides', other: 'Other' };
   U.actOptionRows = (S) => `<li data-key="act-auto"><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Auto-pause</span><span class="rf-list-sub">The clock stops while you stand still</span></span>
       <div class="ob-chips at-auto" role="group" aria-label="Auto-pause for">${A().ORDER.map((t) => U.chip(KINDS[t], A().autoOn(S, t), `data-on="actAutoType" data-v="${t}"`)).join('')}</div></div></li>
-    ${U.sw('Spoken splits', voiceOn(S), 'data-on="actVoice"', `Each ${U.actUnitLong()}: the distance, the time and its pace, said aloud`)}`;
+    ${U.sw('Spoken splits', voiceOn(S), 'data-on="actVoice"', `Each ${U.actUnitLong()}: distance, time and pace, said aloud`)}`;
   U.on.actAutoType = (el, ev, v) => {
     const t = el.dataset.v;
     if (!A().TYPES[t]) return;
@@ -122,16 +122,16 @@
     const blocked = perm.location === 'denied';
     const refused = !!asked && !precise(perm);
     const settings = blocked && canSettings();
-    const rough = 'Gradient Health has your approximate location only, which is too rough to measure a route.';
+    const rough = 'Gradient Health has your approximate location only: too rough for a route.';
     const note = approx ? `${rough} ${settings ? 'Choose Precise in Android\'s Settings, under Permissions, Location.' : 'Choose Precise when Android asks.'}`
       : blocked ? `Location is turned off for Gradient Health. ${settings ? 'Allow it in Android\'s Settings, under Permissions.' : app ? 'Allow it in Android\'s Settings, under Apps, Gradient Health, Permissions.' : 'Allow it for this site in your browser\'s settings.'}`
-        : refused ? 'Without your location there\'s no distance or route. You can still start without GPS.' : '';
+        : refused ? 'Without your location there\'s no distance or route.' : '';
     return `<div class="sheet-pad at-perm">
       <p class="t-callout">${U.esc(`To track your ${tp.noun}, Gradient Health asks ${app ? 'Android' : 'your browser'} for:`)}</p>
       <ul class="at-perm-list">
-        ${permRow('pin', 'sky', app ? 'Precise location' : 'Location', 'To measure distance and draw your route, while you record. It stays on this phone.', precise(perm) ? 'granted' : perm.location)}
-        ${sup.steps && perm.activity !== 'granted' ? permRow('act-walk', 'green', 'Physical activity, optional', 'To count your steps with the phone. A watch in Health Connect counts them too.', perm.activity) : ''}
-        ${app && perm.notifications !== 'granted' ? permRow('bell', 'amber', 'Notifications, optional', 'To show the time and distance on your lock screen while you\'re out.', perm.notifications) : ''}
+        ${permRow('pin', 'sky', app ? 'Precise location' : 'Location', 'For distance and your route, while you record. It stays on this phone.', precise(perm) ? 'granted' : perm.location)}
+        ${sup.steps && perm.activity !== 'granted' ? permRow('act-walk', 'green', 'Physical activity, optional', 'To count steps with the phone. A watch in Health Connect does too.', perm.activity) : ''}
+        ${app && perm.notifications !== 'granted' ? permRow('bell', 'amber', 'Notifications, optional', 'To show time and distance on your lock screen.', perm.notifications) : ''}
       </ul>
       ${note ? `<div class="notice" data-tone="caution">${U.icon('alert')}<span>${U.esc(note)}</span></div>` : ''}
       <div class="at-perm-actions">
@@ -143,14 +143,14 @@
   }
   function noGpsBody(type) {
     return `<div class="sheet-pad at-perm">
-      <div class="notice" data-tone="caution">${U.icon('alert')}<span>This phone can't find its location, so there's no distance or route. The time, and your steps and heart rate from a watch, still count.</span></div>
+      <div class="notice" data-tone="caution">${U.icon('alert')}<span>This phone can't find its location, so there's no distance or route. Time still counts, plus steps and heart rate from a watch.</span></div>
       <div class="at-perm-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="actNoGps" data-arg="${type}">Start without GPS</button></div>
     </div>`;
   }
   // Location is switched off for the whole phone (quick settings).
   function offBody(type) {
     return `<div class="sheet-pad at-perm">
-      <div class="notice" data-tone="caution">${U.icon('alert')}<span>Location is off on this phone. Swipe down from the top of the screen and turn it on, then try again.</span></div>
+      <div class="notice" data-tone="caution">${U.icon('alert')}<span>Location is off on this phone. Swipe down from the top to turn it on.</span></div>
       <div class="at-perm-actions">
         <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="actRecheck" data-arg="${type}">Try again</button>
         <button type="button" class="rf-btn" data-variant="plain" data-act="actNoGps" data-arg="${type}">Start without GPS</button>
@@ -476,10 +476,10 @@
     // Without GPS there's no distance, pace or split to show: the time, the phone's steps if it
     // counts them, and what comes later from a watch.
     if (a.noGps) {
-      const watch = A().canSession() ? ' Steps, distance and heart rate from a watch are added when you finish.' : '';
+      const watch = A().canSession() ? ' A watch\'s steps, distance and heart rate come in when you finish.' : '';
       return `${clock}
       ${n.steps != null ? `<div class="al-grid"><div class="al-m al-m-wide rf-glass" data-variant="thick" data-interactive><span class="al-m-l">Steps</span><span class="al-m-v"><b data-live="steps">${U.num(n.steps)}</b></span><span class="al-m-s">from your phone</span></div></div>` : ''}
-      <div class="al-map al-map-none rf-glass" data-variant="thick" data-interactive data-type="${U.esc(a.type)}"><p class="al-map-wait t-footnote">${U.icon('pin', 'sm')}<span>${U.esc(`No GPS, so no distance or route this time.${watch}`)}</span></p></div>`;
+      <div class="al-map al-map-none rf-glass" data-variant="thick" data-interactive data-type="${U.esc(a.type)}"><p class="al-map-wait t-footnote">${U.icon('pin', 'sm')}<span>${U.esc(`No GPS, so no distance or route.${watch}`)}</span></p></div>`;
     }
     return `${clock}
       ${bn ? `<div class="al-banner" data-key="bn-${bn.n}" role="status">${U.icon('flag', 'sm')}<span>${U.esc(U.cap(U.actUnitLong()))} ${bn.n} · ${U.esc(U.actClock(bn.ms / 1000))}</span></div>` : ''}
@@ -580,7 +580,7 @@
     const on = !mapsWanted();
     // The first time, asked first: what the map's service sees.
     if (on && !U.actMapsAsked()) {
-      if (!(await U.confirm('Show a map from OpenFreeMap?', 'The map comes from OpenFreeMap, which sees the area it shows: while you record, around where you are. Your route stays on this phone. You can turn the map off here, or on an activity.', 'Show map', undefined, 'map', 'Not now'))) return;
+      if (!(await U.confirm('Show a map from OpenFreeMap?', 'OpenFreeMap sees the area it shows: while you record, around where you are. Your route stays on this phone. You can turn the map off here or on an activity.', 'Show map', undefined, 'map', 'Not now'))) return;
       if (!live()) return;
     }
     pr.actMaps = on;
@@ -622,7 +622,7 @@
       body = `<div class="al-search${mapsWanted() ? ' has-map' : ''}" data-ready="${ready}">
           ${mapsWanted() ? mapCard(radar, true) : radar}
           <h1 class="al-h1">${ready ? 'GPS is ready' : 'Finding your location'}</h1>
-          <p class="al-sub">${ready ? `Accurate to about ${acc} m. Start when you're ready.` : acc != null ? `Accurate to about ${acc} m so far. Stand still outside with a clear view of the sky.` : st && st.coarse ? 'Found roughly where you are. Stand still outside with a clear view of the sky.' : 'Stand still outside with a clear view of the sky.'}</p>
+          <p class="al-sub">${ready ? `Accurate to about ${acc} m.` : acc != null ? `Accurate to about ${acc} m so far. Stand still outside under open sky.` : st && st.coarse ? 'Found roughly where you are. Stand still outside under open sky.' : 'Stand still outside under open sky.'}</p>
           <div class="al-acc" role="meter" aria-label="GPS accuracy" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(q * 100)}"><i style="width:${(q * 100).toFixed(0)}%"></i></div>
         </div>`;
       actions = `<button type="button" class="rf-btn rf-glass al-cancel" data-size="lg" data-lens data-act="alDiscardNow">Cancel</button>
@@ -717,7 +717,7 @@
   async function confirmFinish() {
     if (!L || L.phase !== 'live') return;
     const noun = A().typeOf(U.S.actLive.type).noun;
-    if (await U.confirm(`Finish your ${noun}?`, 'Next time you can press and hold the button to finish straight away.', 'Finish', undefined, 'flag', 'Keep going')) finish(false);
+    if (await U.confirm(`Finish your ${noun}?`, 'Next time, press and hold to finish at once.', 'Finish', undefined, 'flag', 'Keep going')) finish(false);
   }
 
   /* ---------------------------------------------------------------- finishing */
@@ -853,7 +853,7 @@
       title: tp.label, size: 'fit', cls: 'al-menu',
       body: `<ul class="rf-list">
         ${a.noGps ? '' : `<li>${U.sw('Auto-pause', auto, 'data-on="alAuto"', 'The clock stops while you stand still')}</li>`}
-        <li>${U.sw('Spoken splits', voiceOn(U.S), 'data-on="actVoice"', `Each ${U.actUnitLong()}: the distance, the time and its pace, said aloud`)}</li>
+        <li>${U.sw('Spoken splits', voiceOn(U.S), 'data-on="actVoice"', `Each ${U.actUnitLong()}: distance, time and pace, said aloud`)}</li>
         ${U.row({ icon: 'trash', tone: 'rose', title: `Discard this ${U.esc(tp.noun)}`, sub: 'Stops recording and saves nothing', act: 'alDiscard' })}
       </ul>`,
     });

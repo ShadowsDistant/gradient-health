@@ -166,7 +166,7 @@
     const top = pts.reduce((m, p) => (p[1] > m[1] ? p : m), pts[0]);
     hrSpecs[a.id] = { pts, t1 };
     const avgY = y(a.hr.avg);
-    return `<div class="hr-plot" data-act="actHrTap" data-arg="${U.esc(a.id)}" role="img" aria-label="Heart rate over the ${U.esc(A().typeOf(a.type).noun)}: average ${a.hr.avg}, highest ${a.hr.max} beats a minute. Tap for the reading at a time.">
+    return `<div class="hr-plot" data-act="actHrTap" data-arg="${U.esc(a.id)}" role="img" aria-label="Heart rate over the ${U.esc(A().typeOf(a.type).noun)}: average ${a.hr.avg}, highest ${a.hr.max} beats a minute. Tap for a reading.">
         <div class="ch-y t-caption rf-num"><span>${hi}</span><span>${lo}</span></div>
         <svg class="hr-svg" viewBox="0 0 ${W} ${HT}" preserveAspectRatio="none" aria-hidden="true">
           <line class="ch-axis" x1="0" x2="${W}" y1="${HT}" y2="${HT}"/>
@@ -290,13 +290,13 @@
         <div class="am-streets" data-morph="keep" data-for="${U.esc(a.id)}"></div>
         ${on ? '<p class="am-attr t-caption"><button type="button" class="am-attr-btn" data-act="actOsm">© OpenMapTiles © OpenStreetMap contributors</button></p>' : ''}
       </div>
-      <div class="am-legend t-caption" role="img" aria-label="The line shows pace against your average of ${U.esc(avgTxt)}: blue where you were slower, red where you were faster.">
+      <div class="am-legend t-caption" role="img" aria-label="Line colour: pace against your average of ${U.esc(avgTxt)}. Blue is slower, red is faster.">
         <span>Slower</span><span class="am-scale"><i data-b="0"></i><i data-b="1"></i><i data-b="2"></i><i data-b="3"></i><i data-b="4"></i></span><span>Faster</span>
         <span class="am-avg rf-muted">Middle: your average, ${U.esc(avgTxt)}</span>
       </div>
       <div class="am-foot">
         <button type="button" class="rf-btn" data-size="sm" data-variant="${on ? 'plain' : 'soft'}" data-act="actMaps" aria-pressed="${on}">${U.icon('map')}${on ? 'Hide map' : 'Show map'}</button>
-        <p class="t-caption rf-muted am-note">${on ? 'The map comes from OpenFreeMap, which sees the area it shows. What it has shown is kept on this phone.' : 'The route is drawn on this phone. A map behind it comes from OpenFreeMap, which sees the area it shows.'}</p>
+        <p class="t-caption rf-muted am-note">${on ? 'The map comes from OpenFreeMap, which sees the area it shows. Maps already shown stay on this phone.' : 'Your route is drawn on this phone. A map behind it comes from OpenFreeMap, which sees the area it shows.'}</p>
       </div>
     </div>`;
   }
@@ -312,7 +312,7 @@
     out.push(statTile('Total time', U.esc(fmtTime(a.elapsedMs)), '', pausedMs >= 60000 ? `${U.esc(fmtTime(pausedMs))} paused` : `${U.esc(U.fmtClock(a.start))} to ${U.esc(U.fmtClock(a.end))}`));
     if (a.maxMps > 0 && a.distanceM > 0) {
       const v = a.maxMps * 3600 / UNIT().m;
-      out.push(isSpeed(a.type) ? statTile('Top speed', fmtSpeed(v), speedUnit(), 'held for 10 seconds or more') : statTile('Best pace', fmtPace(UNIT().m / a.maxMps), paceUnit(), 'held for 10 seconds or more'));
+      out.push(isSpeed(a.type) ? statTile('Top speed', fmtSpeed(v), speedUnit(), 'held for 10+ seconds') : statTile('Best pace', fmtPace(UNIT().m / a.maxMps), paceUnit(), 'held for 10+ seconds'));
     }
     return `<div class="stat-grid as-grid" data-key="grid">${out.join('')}</div>`;
   }
@@ -340,7 +340,7 @@
           return `<tr${s === fastest ? ' class="is-best"' : ''}><th scope="row">${U.esc(label)}</th><td>${U.esc(val)}${s === fastest ? ` <span class="sp-best" role="img" aria-label="fastest">${U.icon('star', 'sm')}</span>` : ''}</td><td class="sp-bar"><span style="width:${w.toFixed(0)}%"></span></td>${elev}</tr>`;
         }).join('')}</tbody>
       </table>
-      ${up ? `<p class="t-caption rf-muted">Elevation is the climb minus the drop in each ${U.esc(UNIT().long)}, in ${metric() ? 'metres' : 'feet'}.</p>` : ''}
+      ${up ? `<p class="t-caption rf-muted">Elev: climb minus drop in each ${U.esc(UNIT().long)}, in ${metric() ? 'metres' : 'feet'}.</p>` : ''}
     </div>`;
   }
   function hrCard(a) {
@@ -353,14 +353,14 @@
         ${hrChart(a)}
         <p class="t-subhead hz-title">Time in zones</p>
         ${zoneBars(a)}
-        <p class="t-caption rf-muted">Zones are shares of a maximum of ${a.hr.hrMax} bpm, worked out from your age (208 − 0.7 × age, Tanaka 2001).${hc.sources && hc.sources.length ? ` From ${U.esc(hc.sources.map(prettySource).join(', '))}.` : ''}</p>
+        <p class="t-caption rf-muted">Zones are shares of a ${a.hr.hrMax} bpm maximum, from your age (208 − 0.7 × age, Tanaka 2001).${hc.sources && hc.sources.length ? ` From ${U.esc(hc.sources.map(prettySource).join(', '))}.` : ''}</p>
       </div>`;
     }
     if (!can) return '';
     const recent = Date.now() - a.end < 86400000;
     return `<div class="card hr-card" data-key="hr">
       <div class="ch-head"><span class="t-headline">Heart rate</span></div>
-      <p class="t-callout rf-muted">${checking ? 'Checking Health Connect for your watch\'s data…' : hc.at ? `No heart rate from a watch for this time${recent ? ' yet. It can take a few minutes to reach Health Connect after you stop.' : '.'}` : 'Heart rate, steps and calories come from your watch through Health Connect.'}</p>
+      <p class="t-callout rf-muted">${checking ? 'Checking Health Connect for your watch\'s data…' : hc.at ? `No heart rate from a watch${recent ? ' yet. It can take a few minutes to reach Health Connect.' : ' for this time.'}` : 'Heart rate, steps and calories come from your watch through Health Connect.'}</p>
       ${checking ? '<span class="rf-spinner" data-size="sm"><i></i></span>' : `<div class="btn-row"><button type="button" class="rf-btn" data-size="sm" data-act="actWatch" data-arg="${U.esc(a.id)}">${U.icon('refresh')}${hc.at ? 'Check again' : 'Check now'}</button></div>`}
       ${hc.at ? `<p class="t-caption rf-muted">Checked <span data-ago="${hc.at}">${U.esc(U.ago(hc.at))}</span>.</p>` : ''}
     </div>`;
@@ -378,9 +378,9 @@
     const saving = !!busy.save[a.id];
     let body;
     if (saving) body = '<span class="t-footnote rf-muted">Saving…</span>';
-    else if (sv.ok) body = `<span class="t-footnote rf-muted">${sv.route === false ? 'Saved without the route. Allow exercise routes and it goes with it.' : 'Saved as an exercise session with your route. Your other health apps can see it.'}</span>`;
+    else if (sv.ok) body = `<span class="t-footnote rf-muted">${sv.route === false ? 'Saved without the route. Allow routes to add it.' : 'Saved with your route. Your other health apps can see it.'}</span>`;
     else if (sv.error) body = `<span class="t-footnote rf-muted">Couldn't save it${sv.error === 'timeout' ? ': Health Connect took too long' : ''}. Try again in a moment.</span>`;
-    else body = '<span class="t-footnote rf-muted">Saves it as an exercise session with your route, so your other health apps see it. The route goes to Health Connect only if you save it.</span>';
+    else body = '<span class="t-footnote rf-muted">Saves it with your route, so your other health apps see it. The route goes only if you save.</span>';
     const icon = sv.ok ? `<span class="rf-list-icon" data-tone="green">${U.icon('check-circle')}</span>` : `<span class="rf-list-icon" data-tone="rose">${U.icon('heart')}</span>`;
     return `<div class="card as-hc" data-key="hc"${sv.ok ? ' data-saved' : ''}>
       <div class="as-hc-row">${icon}<span class="as-hc-text"><span class="t-headline">${sv.ok ? 'Saved to Health Connect' : 'Health Connect'}</span>${body}</span></div>
@@ -470,7 +470,7 @@
     const top = U.topSheet(); if (top) top.close('ok');
     const noun = A().typeOf(a.type).noun;
     const saved = a.saved && a.saved.ok;
-    if (!(await U.confirm(`Delete this ${noun}?`, saved ? 'It stays in Health Connect. You can delete it there too.' : 'Its route and numbers go, and your records are worked out again.', 'Delete', 'critical', 'trash'))) return;
+    if (!(await U.confirm(`Delete this ${noun}?`, saved ? 'It stays in Health Connect unless you delete it there.' : 'Its route and numbers go, and your records are worked out again.', 'Delete', 'critical', 'trash'))) return;
     const gone = A().remove(S, a.id);
     // A light-day walk this activity ticked goes with it.
     const light = S.log.find((l) => l.type === 'light' && l.day === a.day && l.walk && l.walkSrc === 'activity');
@@ -655,7 +655,7 @@
       el.dataset.state = 'failed';
       box.setAttribute('data-streets', 'failed');
       const off = G.navigator && G.navigator.onLine === false;
-      U.toast('Couldn\'t load the map', 'caution', off ? 'No connection, and this map hasn\'t been shown before. Your route is still here, and the map comes when you\'re back online.' : 'Your route is still here.');
+      U.toast('Couldn\'t load the map', 'caution', off ? 'You\'re offline and this map isn\'t saved yet. It loads when you\'re back online.' : 'Your route is still here.');
     }
   }
   // The theme changing under a summary's map (the phone going dark at sunset): the same map takes the
@@ -729,7 +729,7 @@
     rerender(a.id);
     if (!quiet) {
       if (res && res.ok && a.hc.found) U.toast('Watch data added', 'positive', a.hr ? `Average heart rate ${a.hr.avg} bpm` : undefined);
-      else if (res && res.ok) U.toast('Nothing from your watch yet', 'neutral', 'It can take a few minutes after you stop. Check again soon.');
+      else if (res && res.ok) U.toast('Nothing from your watch yet', 'neutral', 'It can take a few minutes after you stop.');
       else U.toast('Couldn\'t read Health Connect', 'caution', res && res.error === 'timeout' ? 'It took too long. Try again.' : undefined);
     }
     // Saved earlier with our own distance or calories, and now the watch has them: save again
@@ -850,7 +850,7 @@
   // Progress: the highlights and a way into everything. The history page: every record.
   U.actRecordsSection = (S, compact) => {
     const n = A().list(S).length;
-    const empty = `<div class="card" data-key="rec-none"><p class="t-callout rf-muted">Your bests show up here: fastest 1 km, mile, 5 km and 10 km, your longest walk, run and ride, and the most steps in one go.</p><div class="btn-row"><button type="button" class="rf-btn" data-size="sm" data-act="actStart">${U.icon('navigate')}Record a walk, run or ride</button></div></div>`;
+    const empty = `<div class="card" data-key="rec-none"><p class="t-callout rf-muted">Your bests show here: fastest 1 km, mile, 5 km and 10 km, longest walk, run and ride, and most steps in one go.</p><div class="btn-row"><button type="button" class="rf-btn" data-size="sm" data-act="actStart">${U.icon('navigate')}Record a walk, run or ride</button></div></div>`;
     if (compact) {
       return `<h2 class="sec-title t-title-3">Personal records</h2>
         <div class="section act-records">
@@ -860,7 +860,7 @@
     }
     const rows = recordRows(S);
     return `<h2 class="sec-title t-title-3">Personal records</h2>
-      <div class="section act-records">${rows ? `${rows}<p class="rf-list-footer">Your own bests from the activities you track. Fastest times come from runs, anywhere along the way.</p>` : empty}</div>`;
+      <div class="section act-records">${rows ? `${rows}<p class="rf-list-footer">Bests from the activities you track. Fastest times come from any stretch of a run.</p>` : empty}</div>`;
   };
 
   /* ---------------------------------------------------------------- history */
@@ -903,7 +903,7 @@
             <div class="stat"><span class="t-footnote rf-muted">All time</span><span class="t-title-3 rf-num">${U.num(list.length)}</span><span class="t-caption rf-muted">${U.esc(fmtDist(list.reduce((s, a) => s + (a.distanceM || 0), 0)))}</span></div>
           </div>
           ${types.length > 1 ? U.choice('actFilter', [['all', 'All']].concat(types.map((t) => [t, A().typeOf(t).label])), filter, 'Show', ' class="ah-filter" data-hscroll data-on="actFilter"') : ''}
-          ${groups.length ? groups.map((g) => `<h3 class="rf-list-header">${U.esc(g.m)}</h3><ul class="rf-list">${g.rows.join('')}</ul>`).join('') : `<div class="card" data-key="none"><p class="t-callout rf-muted">No activities yet. Start one from Today when you head out for a walk, run, hike or ride.</p><div class="btn-row"><button type="button" class="rf-btn" data-variant="filled" data-size="sm" data-act="actStart">${U.icon('navigate')}Record a walk, run or ride</button></div></div>`}
+          ${groups.length ? groups.map((g) => `<h3 class="rf-list-header">${U.esc(g.m)}</h3><ul class="rf-list">${g.rows.join('')}</ul>`).join('') : `<div class="card" data-key="none"><p class="t-callout rf-muted">No activities yet.</p><div class="btn-row"><button type="button" class="rf-btn" data-variant="filled" data-size="sm" data-act="actStart">${U.icon('navigate')}Record a walk, run or ride</button></div></div>`}
         </div>
         ${all.length ? U.actRecordsSection(S, false) : ''}`;
     },
@@ -916,7 +916,7 @@
     const last = A().list(S)[0];
     const lightWalk = plan && plan.type === 'light' && !(plan.light && plan.light.walk);
     const title = lightWalk ? 'Track today\'s walk' : 'Record a walk, run or ride';
-    const sub = lightWalk ? 'With GPS. It ticks off the walk when you finish.' : last ? `Last: ${last.distanceM > 0 ? `${fmtDist(last.distanceM)} ` : ''}${A().typeOf(last.type).noun}, ${U.ago(last.end)}` : 'Time, distance and your route, with GPS';
+    const sub = lightWalk ? 'With GPS, and it ticks off the walk.' : last ? `Last: ${last.distanceM > 0 ? `${fmtDist(last.distanceM)} ` : ''}${A().typeOf(last.type).noun}, ${U.ago(last.end)}` : 'Time, distance and your route, with GPS';
     return `<button type="button" class="card act-cta tap-card" data-key="act-cta" data-act="actStart"${lightWalk ? ' data-arg="walk"' : ''}>
       <span class="act-cta-art" aria-hidden="true"><span data-tone="green">${U.icon('act-walk')}</span><span data-tone="coral">${U.icon('act-run')}</span><span data-tone="sky">${U.icon('act-cycle')}</span></span>
       <span class="act-cta-text"><span class="t-headline">${U.esc(title)}</span><span class="t-footnote rf-muted">${U.esc(sub)}</span></span>
