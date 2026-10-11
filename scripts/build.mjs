@@ -349,8 +349,9 @@ export const LAZY = [
   { name: 'llm', entry: 'src/llm.js', assets: [['node_modules/@wllama/wllama/esm/wasm/wllama.wasm', 'wllama/wllama.wasm']] },
   // The built-in food list (USDA SR28), loaded the first time someone searches for a food.
   { name: 'foods', entry: 'src/data/foods.js' },
-  // The 3D exercise figure (three.js), loaded the first time a figure is shown.
-  { name: 'figure3d', entry: 'src/engine/figure3d.js' },
+  // The 3D exercise figure and the badges' 3D medals (three.js, once), loaded the first time either is
+  // drawn.
+  { name: 'figure3d', entry: 'src/engine/chunk3d.js' },
   // Activity maps (an activity's route, and following you as you record): MapLibre GL JS on
   // OpenFreeMap's tiles, loaded only when a map is about to show. Its web worker is a chunk of its
   // own, started from the app's origin.
