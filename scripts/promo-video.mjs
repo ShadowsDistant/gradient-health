@@ -340,7 +340,7 @@ if (stills) {
   const from = arg('from') || 0, to = arg('to') || DURATION;
   const file = join(out, from || to !== DURATION ? `promo-${from}-${to}.mp4` : 'promo-1080p.mp4');
   const ff = spawn(FFMPEG, ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'mjpeg', '-i', '-',
-    '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-movflags', '+faststart', file], { stdio: ['pipe', 'inherit', 'inherit'] });
+    '-c:v', 'libx264', '-preset', 'slow', '-crf', '20', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-movflags', '+faststart', file], { stdio: ['pipe', 'inherit', 'inherit'] });
   const n = Math.round((to - from) * FPS);
   const t0 = Date.now();
   for (let i = 0; i < n; i++) {
@@ -350,8 +350,11 @@ if (stills) {
   }
   ff.stdin.end();
   await new Promise((r, j) => ff.on('close', (c) => (c ? j(new Error(`ffmpeg exited ${c}`)) : r())));
-  // A thumbnail for a video page: the medal scene.
-  if (!from && to === DURATION) writeFileSync(join(out, 'promo-thumbnail-1280x720.jpg'), await page.evaluate((t) => window.seek(t), 21.2).then(() => page.screenshot({ type: 'jpeg', quality: 92, clip: { x: 0, y: 0, width: 1920, height: 1080 }, scale: 'css' })));
+  // A thumbnail for a video page: the medal scene, scaled to 1280 x 720.
+  if (!from && to === DURATION) {
+    const big = await frameAt(21.2);
+    writeFileSync(join(out, 'promo-thumbnail-1280x720.jpg'), execFileSync(FFMPEG, ['-loglevel', 'error', '-f', 'image2pipe', '-c:v', 'mjpeg', '-i', '-', '-vf', 'scale=1280:720:flags=lanczos', '-q:v', '2', '-f', 'image2pipe', '-c:v', 'mjpeg', '-'], { input: big }));
+  }
   console.log(`${file}: ${n} frames in ${Math.round((Date.now() - t0) / 1000)} s`);
 }
 await browser.close();
