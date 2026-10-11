@@ -676,7 +676,7 @@
     const ids = items.map((i) => i.id).join(',');
     if (sealedNow(x.id)) {
       const T = A().TIERS[x.def.tier];
-      return `<button type="button" class="card bdg-card is-sealed" data-key="bdg-card" data-act="badgeReveal" data-arg="${ids}" aria-label="${U.esc(more ? `${items.length} new badges to open` : capLabel(x.def, 'New badge, tap to open'))}">
+      return `<button type="button" class="card bdg-card is-sealed" data-key="bdg-card" data-act="badgeReveal" data-arg="${ids}" aria-label="${U.esc(more ? `${items.length} new badges to open` : capLabel(x.def))}">
       <span class="bdg-stage is-card is-sealed" data-tier="${x.def.tier}"><span class="bdg-glow" aria-hidden="true"></span>${capArt(x.def, 72)}</span>
       <span class="bdg-card-text">
         <span class="t-caption bdg-tierline">${more ? `${items.length} new badges` : `New badge · ${U.esc(T.name)}`}</span>
@@ -686,12 +686,16 @@
       ${U.icon('chevron-right', null, 'bdg-card-go')}
     </button>`;
     }
+    // The others by name, but not one still sealed ("And Day one · 1 still to open").
+    const others = items.slice(0, -1);
+    const named = others.filter((i) => !sealedNow(i.id)).map((i) => i.def.title);
+    const rest = [named.length ? `And ${named.join(', ')}` : '', others.length > named.length ? `${others.length - named.length} still to open` : ''].filter(Boolean).join(' · ');
     return `<button type="button" class="card bdg-card" data-key="bdg-card" data-act="badgeReveal" data-arg="${ids}" aria-label="${U.esc(more ? `${items.length} new badges. See them` : `New badge: ${x.def.title}. See it`)}">
       <span class="bdg-stage is-card" data-tier="${x.def.tier}"><span class="bdg-glow" aria-hidden="true"></span><span class="bdg-medal">${badgeSvg(x.def, { shared: true, earned: true, size: 72 })}</span></span>
       <span class="bdg-card-text">
         <span class="t-caption bdg-tierline">${more ? `${items.length} new badges` : `New badge · ${U.esc(A().TIERS[x.def.tier].name)}`}</span>
         <span class="t-headline">${U.esc(x.def.title)}</span>
-        <span class="t-footnote rf-muted">${more ? U.esc(`And ${items.slice(0, -1).map((i) => i.def.title).join(', ')}`) : U.esc(x.def.how)}</span>
+        <span class="t-footnote rf-muted">${U.esc(more ? rest : x.def.how)}</span>
       </span>
       ${U.icon('chevron-right', null, 'bdg-card-go')}
     </button>`;
@@ -710,7 +714,8 @@
   let quietUntil = 0; // set-up's own first moments are quiet
   // Announces new badges: a toast that opens the reveal. Only for badges earned today or yesterday
   // (history found later just waits, sealed). Sealed, it shows the capsule and says the tier and
-  // rarity, not the name ("Gold · Rare", Open it); one opened already shows its medal and name.
+  // rarity, never a name ("Gold · Rare", Open it); only when every one is opened already does it
+  // show the medal and the names.
   function announce(ids) {
     const S = U.S, day = U.today();
     const defs = ids.map((id) => A().byId[id]).filter((d) => d && S.achievements.earned[d.id] && S.achievements.earned[d.id].day >= day - 1);
@@ -719,7 +724,7 @@
       if (U.S !== S) return;
       const one = defs.length === 1;
       const last = defs[defs.length - 1];
-      const sealed = defs.every((d) => sealedNow(d.id));
+      const sealed = defs.some((d) => sealedNow(d.id));
       const say = sealed ? (one ? tierLine(last) : tierCount(defs)) : one ? last.title : defs.map((d) => d.title).join(', ');
       const t = U.toast(one ? 'New badge' : `${defs.length} new badges`, 'neutral', say, { label: sealed ? (one ? 'Open it' : 'Open them') : (one ? 'See it' : 'See them'), onClick: () => U.badgeReveal(defs.map((d) => d.id)) });
       const ic = t && t.el && t.el.querySelector('.rf-toast-icon');

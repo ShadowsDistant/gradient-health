@@ -242,6 +242,16 @@ await settle(1500);
 const last = await S(() => { const p = document.querySelectorAll('dialog.bdg-reveal-sheet[open] .bdg-page')[2]; return { sprung: p.querySelector('.bdg-stage').classList.contains('is-in'), text: p.innerText.replace(/\s+/g, ' '), hx: window.__haptics.slice() }; });
 check('the others spring in as their page shows, as an opened one does', last.sprung && /Iron habit/.test(last.text) && /Platinum · Very rare/i.test(last.text) && last.hx.filter((k) => k === 'badge').length === 2, last);
 await shot('06c-open-all');
+check('a Next screen card for several, the newest opened, names none still sealed', await S(() => {
+  const U = window.GH.ui, S = U.S, A = window.GH.achievements, d = U.today(), now = Date.now();
+  S.achievements.earned.km100 = { day: d, at: now, opened: false };
+  S.achievements.earned.climb500 = { day: d, at: now + 1, opened: true };
+  const el = document.createElement('div');
+  el.innerHTML = U.badgeCard(A.evaluate(S, d).filter((x) => x.id === 'km100' || x.id === 'climb500'));
+  delete S.achievements.earned.km100;
+  delete S.achievements.earned.climb500;
+  return /Mountain goat/.test(el.textContent) && !/Hundred club/.test(el.textContent) && /1 still to open/.test(el.textContent);
+}));
 // Sharing works as it did, from the page showing.
 await page.click('dialog.bdg-reveal-sheet [data-act="badgeShareCur"]');
 await settle(2000);
