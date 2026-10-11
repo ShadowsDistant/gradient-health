@@ -21,8 +21,8 @@
       [['success', 'Success'], ['save', 'Saved'], ['log', 'Logged'], ['copy', 'Copied'], ['send', 'Sent'], ['refresh', 'Refreshed'], ['scan', 'Scanned'], ['undo', 'Undo'], ['remove', 'Removed'], ['deny', 'Not allowed'], ['warning', 'Warning'], ['error', 'Error'], ['heavy', 'Delete']]],
     ['workout', 'Workout', 'Sets, timers and records', 'coral', 'timer',
       [['start', 'Start'], ['countdown', '3, 2, 1'], ['go', 'Go'], ['pause', 'Pause'], ['setDone', 'Set done'], ['skip', 'Skip'], ['extend', 'More rest'], ['done', 'Rest over'], ['swap', 'Swap'], ['levelUp', 'Level up'], ['milestone', 'Goal reached'], ['pr', 'New best'], ['workoutDone', 'Workout done'], ['cancel', 'Cancel']]],
-    ['moments', 'Moments', 'The big ones', 'amber', 'star',
-      [['badge', 'Badge'], ['celebrate', 'Celebrate']]],
+    ['moments', 'Moments', 'Opening a badge, and the big ones', 'amber', 'star',
+      [['wobble', 'Wobble'], ['crack', 'Crack'], ['badge', 'Badge'], ['celebrate', 'Celebrate']]],
     ['activities', 'Activities', 'Runs, walks, hikes and rides', 'green', 'act-run',
       [['actGo', 'Start'], ['actPause', 'Pause'], ['actResume', 'Resume'], ['actAutoPause', 'Auto-pause'], ['actAutoResume', 'Auto-resume'], ['actSplit', 'Split'], ['actGps', 'GPS ready'], ['actFinish', 'Finish'], ['actDiscard', 'Discard']]],
   ];

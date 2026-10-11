@@ -8,15 +8,16 @@ A training plan, a food log, your health data and a coach that runs on your phon
 <p align="center">
   <a href="../../releases/latest"><b>Download the latest APK</b></a> ·
   Android 8.0+ ·
-  No account, no ads, no analytics ·
-  <a href="#credits">Built with Refract</a>
+  No account, no ads, no analytics
 </p>
 
+<p align="center"><a href="#credits"><img src="docs/refract-badge.svg" height="32" alt="Built with Refract"></a></p>
+
 <p align="center">
-  <img src="docs/screenshots/today.png" width="200" alt="Today: a 35-day streak and today's workout">
-  <img src="docs/screenshots/workout.png" width="200" alt="The workout player: the 3D figure doing a dumbbell curl, with the tempo strip lit">
-  <img src="docs/screenshots/answer-dark.png" width="200" alt="The coach chat, in dark mode: answers from the model on the phone">
-  <img src="docs/screenshots/progress.png" width="200" alt="Progress: the body map, showing which muscles were trained most">
+  <img src="docs/screenshots/framed/today.png" width="200" alt="Today: a 35-day streak and today's workout">
+  <img src="docs/screenshots/framed/workout.png" width="200" alt="The workout player: the 3D figure doing a dumbbell curl, with the tempo strip lit">
+  <img src="docs/screenshots/framed/answer-dark.png" width="200" alt="The coach chat, in dark mode: answers from the model on the phone">
+  <img src="docs/screenshots/framed/progress.png" width="200" alt="Progress: the body map, showing which muscles were trained most">
 </p>
 
 Gradient Health plans a workout for each day of your week around your goals, the equipment you have and the time you've got. A 3D figure shows you every move. After each exercise it asks one question, and your answer, with how you slept and recovered, decides what you do next time. Track your food and your health too, or only the parts you want.
@@ -34,7 +35,8 @@ Gradient Health plans a workout for each day of your week around your goals, the
 | **[Food](#food)** | Calories and macros, or just protein, or nothing |
 | **[Health](#health)** | Sleep, steps, heart rate, weight and more at a glance, with the history behind each number |
 | **[Progress](#progress)** | A body map of what you've trained and what's improved |
-| **[Badges](#badges)** | 64 to earn, from your first workout to a 100-day streak, to share with friends and family |
+| **[Badges](#badges)** | 64 to earn and open, from your first workout to a 100-day streak, to share with friends and family |
+| **[Reminders](#reminders)** | A nudge on workout days, a walk on rest days and good news after a great night's sleep, never more than one a day |
 | **[You](#you)** | Your profile, badges, plans and Settings in one place |
 | **[The coach](#the-coach)** | Ask it anything about your numbers, and tailor your plan by just saying what you want |
 
@@ -68,9 +70,9 @@ Workouts fill the time you set (an hour means an hour, and never more), and ever
 The on-device coach or Claude looks your plan over and suggests up to three changes. Each one is checked first against your equipment, your joints and your time, and shows what it changes ("+2 back sets a week"). Pick the ones you want, and Undo puts it back. With Claude on, the weekly report brings plan ideas too.
 
 <p align="center">
-  <img src="docs/screenshots/plan.png" width="200" alt="Plan: the week strip and today's workout">
-  <img src="docs/screenshots/why.png" width="200" alt="Why this plan: how many weeks the planner compared, and how this one scores">
-  <img src="docs/screenshots/review-dark.png" width="200" alt="The coach's review, in dark mode: two suggested changes, each with what it would change, switched on to apply, and one that wasn't applied">
+  <img src="docs/screenshots/framed/plan.png" width="200" alt="Plan: the week strip and today's workout">
+  <img src="docs/screenshots/framed/why.png" width="200" alt="Why this plan: how many weeks the planner compared, and how this one scores">
+  <img src="docs/screenshots/framed/review-dark.png" width="200" alt="The coach's review, in dark mode: two suggested changes, each with what it would change, switched on to apply, and one that wasn't applied">
 </p>
 
 ## Your plans
@@ -85,8 +87,8 @@ Either way it runs like the coach's plan, with the same lighter weeks and easier
 **Share a plan** with a QR code or a link. Your friend scans it or taps it, sees the whole plan and saves it. If it needs something they don't have, like a barbell, or a move that's hard on a joint they're careful with, the app swaps in the closest exercise they can do and says why.
 
 <p align="center">
-  <img src="docs/screenshots/plans.png" width="200" alt="Your plans: a plan's days, made from the coach's week">
-  <img src="docs/screenshots/share-dark.png" width="200" alt="Sharing a plan as a QR code, in dark mode">
+  <img src="docs/screenshots/framed/plans.png" width="200" alt="Your plans: a plan's days, made from the coach's week">
+  <img src="docs/screenshots/framed/share-dark.png" width="200" alt="Sharing a plan as a QR code, in dark mode">
 </p>
 
 ## Workouts
@@ -131,10 +133,10 @@ Your conditions stay on your phone and are never sent to Claude.
 **Started by mistake?** Go back and cancel the workout: nothing from it is saved or counts against your streak.
 
 <p align="center">
-  <img src="docs/screenshots/setup-dark.png" width="200" alt="Set-up's last step, in dark mode: the plan it made, with the first workout a tap away">
-  <img src="docs/screenshots/rest-dark.png" width="200" alt="Rest timer, in dark mode, with the question: how many more could you have done?">
-  <img src="docs/screenshots/gym.png" width="200" alt="A gym day: barbell curls, rope pushdowns, bench press and pulldowns with starting weights">
-  <img src="docs/screenshots/around.png" width="200" alt="Built around you: a plan for a 68-year-old with balance problems and a sore knee">
+  <img src="docs/screenshots/framed/setup-dark.png" width="200" alt="Set-up's last step, in dark mode: the plan it made, with the first workout a tap away">
+  <img src="docs/screenshots/framed/rest-dark.png" width="200" alt="Rest timer, in dark mode, with the question: how many more could you have done?">
+  <img src="docs/screenshots/framed/gym.png" width="200" alt="A gym day: barbell curls, rope pushdowns, bench press and pulldowns with starting weights">
+  <img src="docs/screenshots/framed/around.png" width="200" alt="Built around you: a plan for a 68-year-old with balance problems and a sore knee">
 </p>
 
 ## Moves
@@ -158,8 +160,8 @@ Going for a run with the dog? Start a run, walk, hike or ride from Today or Heal
 - **Keep it:** save it to Health Connect with its route. Your history and personal records (fastest mile, longest ride and more) live next to it.
 
 <p align="center">
-  <img src="docs/screenshots/activity.png" width="200" alt="A run's summary: distance, time, pace and five new personal records">
-  <img src="docs/screenshots/activity-dark.png" width="200" alt="The same run in dark mode: its route coloured by pace, with Show map to put the map behind it">
+  <img src="docs/screenshots/framed/activity.png" width="200" alt="A walk along Venice Beach: distance, time and pace, two new records, and the route coloured by pace">
+  <img src="docs/screenshots/framed/activity-dark.png" width="200" alt="The same walk in dark mode: splits per mile, elevation and heart rate from the watch">
 </p>
 
 ## Food
@@ -180,9 +182,9 @@ Connect Health Connect and your sleep, steps, weight, heart rate, HRV, active ca
 - **Insights only when they're backed by data:** a week of short sleep, a resting heart rate creeping up, a weight trend moving faster than it should.
 
 <p align="center">
-  <img src="docs/screenshots/health.png" width="200" alt="Health: the week at a glance and trends">
-  <img src="docs/screenshots/metric-dark.png" width="200" alt="Resting heart rate, in dark mode: its history and where each value came from">
-  <img src="docs/screenshots/food.png" width="200" alt="Food: calories left today, macros and meals">
+  <img src="docs/screenshots/framed/health.png" width="200" alt="Health: the week at a glance and trends">
+  <img src="docs/screenshots/framed/metric-dark.png" width="200" alt="Resting heart rate, in dark mode: its history and where each value came from">
+  <img src="docs/screenshots/framed/food.png" width="200" alt="Food: calories left today, macros and meals">
 </p>
 
 ## Progress
@@ -197,11 +199,30 @@ A body map, front and back, lights up the muscles you've trained most over the l
 
 64 badges for the things worth celebrating: your first workout, streaks from 3 days to 100, every muscle trained in a week, your first pull-up, a 5K, a month of protein goals, and a few secret ones. Once earned they're yours for good, with the date.
 
+**Every new badge arrives sealed,** a glass capsule in its tier's colours, so you can see how rare it is before you know what it is. Tap it and it wobbles, tap again and light cracks through, and the third tap bursts it open, with a feel in your hand at each one. Earned a few at once? Open them one by one, or all together.
+
 Share one as a picture with friends and family: it shows the badge and what it took, and your name only if you choose.
 
 <p align="center">
-  <img src="docs/screenshots/badges.png" width="200" alt="Badges: the ones earned so far, with their tiers, and what's next">
-  <img src="docs/screenshots/badge-share-dark.png" width="200" alt="Sharing a badge as a picture, in dark mode: the medal, what it took and the date, with your name only if you turn it on">
+  <img src="docs/screenshots/framed/badges.png" width="200" alt="Badges: the ones earned so far, with their tiers, what's next and five waiting to be opened">
+  <img src="docs/screenshots/framed/sealed-dark.png" width="200" alt="A new badge, sealed, in dark mode: a gold capsule cracked by two taps, one more to open it">
+  <img src="docs/screenshots/framed/badge-share-dark.png" width="200" alt="Sharing a badge as a picture, in dark mode: the medal, what it took and the date, with your name only if you turn it on">
+</p>
+
+## Reminders
+
+Gradient Health can nudge you, never nag you. Turn reminders on in Settings (or when the app asks after your first workout), and pick what you want to hear about:
+
+- **Workout days:** what's on today, a little before you usually train. Nothing on rest days, and nothing once you've done it.
+- **Walks and runs:** on a rest day, now and then, a walk, or a run if that's your thing.
+- **Badges:** one you've earned and haven't opened yet.
+- **Sleep:** good news after a great night.
+- **When you've been away:** one gentle note after a few days, then at most one a week, and after a few weeks it stops until you're back.
+
+Never more than one a day, nothing late at night, and every kind can be switched off. They're worked out on your phone from what you do in the app, and nothing is sent anywhere.
+
+<p align="center">
+  <img src="docs/screenshots/framed/reminders.png" width="200" alt="Settings, Notifications: a switch for each kind of reminder, and the reminder time, 30 minutes before you usually start">
 </p>
 
 ## You
@@ -209,7 +230,7 @@ Share one as a picture with friends and family: it shows the badge and what it t
 Your profile, your badges, your plans, your set-up answers and Settings live in the You tab. Settings has a search, so units or haptics are a word away.
 
 <p align="center">
-  <img src="docs/screenshots/you-dark.png" width="200" alt="You, in dark mode: your profile, badges and plans">
+  <img src="docs/screenshots/framed/you-dark.png" width="200" alt="You, in dark mode: your profile, badges and plans">
 </p>
 
 ## The coach
@@ -227,35 +248,20 @@ Your profile, your badges, your plans, your set-up answers and Settings live in 
 **Or use Claude.** Add your own Anthropic API key and Claude answers in the app, writes your weekly report and reads your Tailor requests. Or tap Ask in the Claude app and your question plus a summary of your data (no name, no dates) opens there.
 
 <p align="center">
-  <img src="docs/screenshots/chat.png" width="200" alt="The coach chat: questions worth asking today">
-  <img src="docs/screenshots/tailor.png" width="200" alt="Tailor my plan: the changes it would make, before anything changes">
-  <img src="docs/screenshots/coach.png" width="200" alt="The Coach page: what changed today and why">
+  <img src="docs/screenshots/framed/chat.png" width="200" alt="The coach chat: questions worth asking today">
+  <img src="docs/screenshots/framed/tailor.png" width="200" alt="Tailor my plan: the changes it would make, before anything changes">
+  <img src="docs/screenshots/framed/coach.png" width="200" alt="The Coach page: what changed today and why">
 </p>
 
-<details>
-<summary><b>How the on-device AI runs</b></summary>
+**Pick a size for the on-device coach,** in the chat or in Settings. It's a one-off download that's checked, picks up where it left off and can wait for Wi-Fi.
 
-<br>
+| Size | Download | Good for |
+|---|---|---|
+| Fast | 533 MB | Starts answering soonest |
+| Balanced | 1.28 GB | Reads your numbers noticeably better (phones with 6 GB of memory or more) |
+| Best answers | 2.74 GB | The most thoughtful answers (phones with 12 GB of memory) |
 
-The app runs the model with llama.cpp built for your phone's processor, on its fast cores, in a separate process so a problem there can't take the app down. Phones it can't run on use a slower copy that runs inside the app. The model reads your data summary once and keeps it, so each new question starts answering quickly. Settings has a check that shows which engine ran, how long the model took to start and how fast it writes.
-
-Small models can slip, so the app checks every answer:
-
-- A yes-or-no question starts from the app's own yes or no, worked out from your numbers.
-- A question built on something that isn't so ("Why is today lighter?" on a full day) starts from the app's correction.
-- A line with a number that isn't in your data is left out, and if too little is left, you get the app's own answer instead, with a note saying so.
-
-Pick a size in the chat or in Settings:
-
-| Size | Model | Download | Good for |
-|---|---|---|---|
-| Fast | 0.8B | 533 MB | Starts answering soonest |
-| Balanced | 2B | 1.28 GB | Reads your numbers noticeably better; needs 6 GB of memory or more, and is the one suggested on phones with 8 GB or more |
-| Best answers | 4B | 2.74 GB | Needs 12 GB |
-
-The download is one-off, checked, resumable, and can wait for Wi-Fi.
-
-</details>
+Small models can slip, so the app checks every answer against your own numbers, and leaves out anything it can't back up.
 
 ## Made to feel good
 
@@ -263,8 +269,8 @@ The download is one-off, checked, resumable, and can wait for Wi-Fi.
 - **Controls you can feel.** Switches, segmented controls and the tab bar rest as frosted beads, rise into a lens under your finger, follow it and land with a little squash, and they answer every tap, even a slightly wobbly one.
 - **Glass that moves.** Buttons form out of the glass and change shape when their label does, menus grow out of the button you tap, and buttons in the top bar carry over from page to page.
 - **Pages and cards.** Pages slide away as the next one comes in, and cards glide when something is added or removed. Sheets of thick glass slide up from the bottom and follow your finger, from a quick glance up to full height.
-- **Smooth scrolling.** The glass is as designed at rest and steps aside while the page moves (Settings, Look, Glass effects: Auto, Liquid, Frosted or Flat), since a phone's graphics chip can fall behind on blurred glass over a moving page. Nothing redraws it while nothing on screen changes: its light holds still, and the glow behind the page drifts only once you've left the app alone. Work that can wait waits until you stop. Pages don't zoom by accident; maps do, with two fingers.
-- **Haptics with 57 distinct feels** (a tick for each tab, a bump at the end of a stepper, a sheet swiped away, saving, sending, a timer counting down, a finished set, a new best, a badge, every split of a run) in Light, Medium or Strong, and you can feel each one in Settings.
+- **Smooth scrolling,** with the glass on or off: pick Auto, Liquid, Frosted or Flat in Settings, under Look. Pages don't zoom by accident; maps do, with two fingers.
+- **Haptics with 59 distinct feels** (a tick for each tab, a bump at the end of a stepper, a sheet swiped away, saving, sending, a timer counting down, a finished set, a new best, each tap that cracks a badge open, every split of a run) in Light, Medium or Strong, and you can feel each one in Settings.
 - **Changed your mind?** Cancelling a workout folds the player away and Today settles back; a discarded activity folds away too.
 - **3D figures appear right away,** with a picture of the move until it starts.
 - **For everyone:** light and dark themes, bigger text, reduced motion and increased contrast are all respected.
@@ -274,8 +280,8 @@ The download is one-off, checked, resumable, and can wait for Wi-Fi.
 Every rule Gradient Health follows, from how many sets you do to how long you rest, is listed in the app under training, recovery, food and habits, each with a one-line summary, the studies behind it and a plain rating of how strong the evidence is. Where the research is thin, it says so.
 
 <p align="center">
-  <img src="docs/screenshots/science.png" width="200" alt="How it works: stopping 1 to 3 reps short of failure, with its research">
-  <img src="docs/screenshots/trends.png" width="200" alt="Trends: sleep and resting heart rate over four weeks">
+  <img src="docs/screenshots/framed/science.png" width="200" alt="How it works: stopping 1 to 3 reps short of failure, with its research">
+  <img src="docs/screenshots/framed/trends.png" width="200" alt="Trends: sleep and resting heart rate over four weeks">
 </p>
 
 ## Private by design
@@ -294,7 +300,7 @@ The [privacy policy](docs/PRIVACY.md) lists every piece of data and where it goe
 
 1. Download `gradient-health.apk` from the [latest release](../../releases/latest).
 2. Open it on your phone. You may need to allow installs from your browser or file manager.
-3. Updates install over the old version and keep your data.
+3. Updates install over the old version and keep your data. The APKPure version is the same app, signed with the same key, so you can switch between them.
 
 | Needs | |
 |---|---|
@@ -302,22 +308,15 @@ The [privacy policy](docs/PRIVACY.md) lists every piece of data and where it goe
 | Health Connect | Android 14 or newer (on older phones you can log sleep and weight by hand) |
 | The on-device AI's fast engine | A 64-bit phone, which is nearly all of them since 2017 |
 
-**Is it genuine?** Builds are signed with the app's release key, the one the Play Store and APKPure versions use. A genuine download's signing certificate has the SHA-256 `f32f5e8302cb9ec6f470254af7f9c894b6ac105a9f173988edf5ed536dc3f55f`, which `apksigner verify --print-certs gradient-health.apk` shows.
-
-**Coming from a test build?** A build signed with the earlier test key won't update to one of these: copy your data first (Settings, Copy my data), uninstall, install the new build, then use Settings, Restore from a copy.
-
 > Gradient Health isn't medical advice. If you have a condition or an injury, check with a doctor before you start.
 
 ## Credits
 
 ### Refract
 
-Every screen is made of **Refract**, the liquid glass design system the app is built with: its glass, controls, motion, icons and type. The app credits it in Settings, under About, with Refract's mark.
+<a href="#credits"><img src="docs/refract-badge.svg" height="32" alt="Built with Refract"></a>
 
-> Refract 1.4.0 (version 1790984272-0589), a liquid glass design system.
-> https://claude.ai/artifact/RaBZ71Jxa3wHHRURMRnDzQ
-
-It ships unmodified in [`vendor/refract/`](vendor/refract/), and [`vendor/refract/SOURCE.md`](vendor/refract/SOURCE.md) records where each file came from and its SHA-256, which the build checks.
+Every screen is made of **Refract**, the liquid glass design system: its glass, controls, motion, icons and type. You'll find it in the app too, in Settings under About.
 
 ### Open-source projects
 
@@ -336,7 +335,3 @@ It ships unmodified in [`vendor/refract/`](vendor/refract/), and [`vendor/refrac
 | OpenStreetMap contributors and OpenMapTiles, served by OpenFreeMap | Map data for those maps, when maps are on | Open Database License and CC BY 4.0 |
 
 The same list is in the app, under Settings, About, Open-source licenses.
-
----
-
-Building it yourself, running the tests or curious how it's put together? See [docs/DEVELOPING.md](docs/DEVELOPING.md).

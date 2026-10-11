@@ -75,7 +75,12 @@
       careful: [], impactOk: true, gentle: false, lead: { arm: null, leg: null },
       weightGoal: 'maintain', protein: { track: true, perLb: 0.8, quickName: 'Shake', quickG: 26 },
       sleepTypical: '6-7', sleepIrregular: false,
-      prefs: { supersets: true, rest: 'auto', sound: true, vibrate: true, haptics: true, theme: 'system', density: 0.5, rollHour: 4 },
+      // notify: notifications (src/notify.js), off until the person turns them on; then every kind
+      // is on, and the reminder time is worked out (time: minutes after midnight once they set one).
+      prefs: {
+        supersets: true, rest: 'auto', sound: true, vibrate: true, haptics: true, theme: 'system', density: 0.5, rollHour: 4,
+        notify: { on: false, workout: true, move: true, badge: true, sleep: true, comeback: true, time: null },
+      },
       startDay: null,
     };
   }
@@ -609,10 +614,10 @@
     return s;
   }
   // The profile as plans read it: without the preferences only the screens read (the figure, the
-  // theme, sounds and haptics, the outdoor activity's), so changing one keeps every plan worked out
-  // (and the plans kept across launches, see src/optimizer.js). Rest, supersets and the hour a day
-  // rolls over do change plans, and so does anything new.
-  const SCREEN_PREFS = new Set(['figure', 'figSkin', 'figShirt', 'theme', 'density', 'sound', 'vibrate', 'haptics', 'hapticStrength', 'reducedMotion', 'actType', 'actStreets', 'actMaps', 'actAuto', 'actVoice']);
+  // theme, sounds and haptics, the outdoor activity's, notifications), so changing one keeps every
+  // plan worked out (and the plans kept across launches, see src/optimizer.js). Rest, supersets and
+  // the hour a day rolls over do change plans, and so does anything new.
+  const SCREEN_PREFS = new Set(['figure', 'figSkin', 'figShirt', 'theme', 'density', 'sound', 'vibrate', 'haptics', 'hapticStrength', 'reducedMotion', 'actType', 'actStreets', 'actMaps', 'actAuto', 'actVoice', 'notify']);
   function planProfile(p) {
     if (!p || !p.prefs || typeof p.prefs !== 'object') return p;
     const prefs = {};
@@ -1162,6 +1167,7 @@
       }
     }
     s.items = out;
+    numberPairs(s.items);
   }
   const ORDER_UNITS = ['chest', 'legs', 'back', 'arms', 'shoulders', 'abs'];
   // Two slots can end up with the same exercise: a stand-in ladder shared by two units (a supported
@@ -1579,6 +1585,18 @@
       }
     }
     session.items = order;
+    numberPairs(session.items);
+  }
+  // A superset's numbers follow the running order: whichever of the two comes first is 1 (A1 then A2),
+  // however the pair was matched.
+  function numberPairs(items) {
+    const first = new Set();
+    for (const it of items) {
+      if (!it.superset) continue;
+      const k = it.superset[0];
+      it.superset = k + (first.has(k) ? '2' : '1');
+      first.add(k);
+    }
   }
 
   /* ---------------- time */

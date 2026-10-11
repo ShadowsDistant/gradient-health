@@ -16,7 +16,10 @@ src/engine/pose.js       2D skeleton (FK + IK), timing from tempo, SVG figures, 
 src/brain.js             program, sessions, gym loads, adaptation, calendar replay, streaks, readiness
 src/optimizer.js         the plan engine (GH.optimizer): the best weekly split, each day's sets, sessions
                          filled to the time set, the plan's score and its "Why this plan" lines
-src/achievements.js      the badges (GH.achievements): what each takes, earned for good with a date
+src/achievements.js      the badges (GH.achievements): what each takes, earned for good with a date,
+                         sealed until opened
+src/notify.js            notifications' planner (GH.notify, a lazy chunk): what to send and when;
+                         src/ui/notify.js hands it to Android, with Settings' rows and Today's card
 src/planweek.js          one week of the plan for the Plan tab (GH.planWeek), cached
 src/body.js              weighted sets per muscle, how training splits, what improved (GH.body)
 src/health.js            Health Connect client (read and write), hand logs, per-day records
@@ -52,7 +55,8 @@ src/ui/controls.js       switches, segmented controls and single-choice chips (U
                          handling that makes every tap count, on Refract's liquid glass
 src/ui/hapticsui.js      the haptics rows for Settings (U.hapticRows) and the Feel each one gallery
 src/ui/you.js            the You tab: profile, badges, plans, your answers, Settings and help
-src/ui/badges.js         the badge medals, the strip, the gallery and the detail and reveal sheets
+src/ui/badges.js         the badge medals and sealed capsules, the strip, the gallery, the detail sheet
+                         and the reveal, where a capsule is opened (see Badges)
 src/ui/sharecard.js      a badge's share image (a 1080×1350 canvas) and sharing it
 src/ui/chat.js           the coach chat and the coach button on every tab
 src/ui/tailor.js         the Tailor my plan sheet
@@ -65,6 +69,8 @@ src/ui/guide.js          tour (cards over Today after the first workout), first-
 src/ui/motion.js         route changes, glides, collapse and expand, glass that forms and changes
                          shape (U.motion), menus (U.menu)
 src/ui/lazy.js           stand-ins for the parts that load when they're needed (APP_CHUNKS)
+src/ui/stills.js         the 3D figure's stills of the moves, kept on the phone (U.stills): Plan's
+                         tiles, the plan builder's, set-up's reveal, Settings' preview
 src/ui/answers.js        set-up's answers as You, Plan and Settings list them
 src/ui/review.js         Why this plan, the Coach's review sheet and the weekly report's plan ideas
 src/ui/*.js              screens: onboarding, player, today, plan, health, food, progress, moves,
@@ -72,13 +78,16 @@ src/ui/*.js              screens: onboarding, player, today, plan, health, food,
 src/styles.css, src/styles/*.css   the app's styles (the per-area files are appended in order)
 android/src/…/HealthSync*.java     background Health Connect sync (a JobScheduler job every 15 minutes)
 android/src/…/Activity*.java       outdoor activity recording (a location foreground service, the track)
+android/src/…/Notif*.java          notifications: the schedule the page plans, its alarm, posting each one
 android/jni/             the on-device coach's native engine (C++ over llama.cpp) and its host test
 scripts/build-native.sh  builds android/jni for arm64 (or --host, and tests it)
 scripts/build.mjs        inlines everything into dist/gradient-health.html, minified (MINIFY=0 to read
                          it); lazy chunks go to dist/lazy/
 scripts/build-apk.sh     builds and signs the APK without Gradle
 scripts/make-icons.mjs   the launcher icons from art/logo.webp
-scripts/screenshots.mjs  renders docs/screenshots/ from the built page
+scripts/screenshots.mjs  renders docs/screenshots/ from the built page (the activity is a walk along
+                         Venice Beach, on OpenFreeMap's map when it can be reached from where it runs)
+scripts/frame-shots.mjs  puts the README's screenshots in a phone, in docs/screenshots/framed/
 scripts/store-assets.mjs   the store images in docs/store/ from docs/screenshots/
 scripts/release-notes.mjs  What's new for a version, for its GitHub release and the stores
 scripts/make-tiny-gguf.py  a tiny random-weight model for test/llm.mjs
@@ -100,6 +109,7 @@ npm run test:llm  # on-device AI runtime in Chromium with a tiny model (see On-d
 node test/sweep.mjs [--quick]   # every screen at 360-600 px, light/dark, 100%/130% text, overflow checks
 npm run apk       # build/gradient-health.apk (see below)
 node scripts/screenshots.mjs          # docs/screenshots/, light and dark
+node scripts/frame-shots.mjs [name …] # the README's copies of them, in a phone
 node test/contact-sheet.mjs [filter,…] [--dark]   # every move's keyframes, to build/
 ```
 
@@ -112,7 +122,8 @@ screen flicker. Parts Refract injects (lens layers, the tab bar's pill, the segm
 left alone. A few conventions:
 
 - Give top-level cards a `data-key` so adding or removing one doesn't shift the rest.
-- `data-morph="keep"` on a container whose children are drawn by code (the exercise figures).
+- `data-morph="keep"` on a container whose children are drawn by code (the exercise figures). Its
+  HTML can bring children (Plan's kept 3D stills) for a new node; a patch leaves the ones it has.
 - `U.roll(value)` for numbers that should roll when they change.
 - The navigation bar is shared: a screen's `<header class="rf-navbar">` is lifted into it.
 - A route change gets fresh content: the old page leaves in a layer of its own while the new one
@@ -124,8 +135,11 @@ left alone. A few conventions:
   checks for layout properties.
 - Glass above the page moves as Refract's material does. The bar's buttons are keyed by what they
   are (`data-rf-key`; the top-left one by its place, the coach on a tab and Back on a page), so a
-  route change shape-shifts them (`U.motion.shift`, `Refract.shapeshift`): one on both routes keeps
-  its glass, one the new route lacks pinches off, a new one buds out. Today's floating buttons and
+  push or Back shape-shifts them (`U.motion.shift`, `Refract.shapeshift`): one on both routes keeps
+  its glass, one the new route lacks pinches off, a new one buds out. A tab change doesn't: the new
+  tab's buttons fade in and the old ones fade out as pictures (`swapButtons` in `motion.js`), since
+  shape-shifting animates widths, which laid the bar out and gave each button's lens a new size, and
+  so a new filter, in every frame for half a second after every tab change. Today's floating buttons and
   the workout capsule form and dissolve (`U.motion.glassIn` and `glassOut`: `Refract.materialize`,
   `dematerialize`), and a button whose words change (`U.floatKey`) flows to its new width. That's
   Refract's own motion, asked for by name; the lint counts it apart and holds it to what Refract's
@@ -137,7 +151,8 @@ left alone. A few conventions:
 
 **Parts that load when they're needed.** Set-up (`src/ui/onboarding.js`), the plan review with
 Why this plan (`src/planreview.js`, `src/ui/review.js`), How it works (`src/data/science.js`,
-`src/ui/science.js`) and a badge's share card (`src/ui/sharecard.js`) aren't in the page: they're
+`src/ui/science.js`), a badge's share card (`src/ui/sharecard.js`) and notifications' planner
+(`src/notify.js`, loaded by `src/ui/notify.js` for someone who has them on) aren't in the page: they're
 `APP_CHUNKS` in `scripts/build.mjs`, built into `dist/lazy/` and loaded with `GH.lazy(name)`.
 `src/ui/lazy.js` puts small stand-ins in their place: an action loads its part and then runs the
 real one, a screen draws its bar and title until its part is in, and `GH.planReview.available`
@@ -180,7 +195,9 @@ and the glow's in-use pause, `ui-you` the setting and the root's attributes.
 
 Settings, About, "Scroll diagnostics" (`src/ui/diag.js`, `GH.diag.report()`) is for a freeze that
 survives: a record, kept in memory for the last five minutes, of every touch (where, when, how late it
-reached the page), the scroller's position once a frame around a touch or a scroll, every long
+reached the page), the scroller's position once a frame around a touch or a scroll (read once the
+frame is drawn, when the page's style and layout are already up to date: read in the frame itself it
+made them catch up with each change twice a frame, all through a tab change), every long
 animation frame with its scripts (or long tasks), and the Event Timing API's input delays, written up
 as one report (the device, the settings that bear on scrolling, each gesture with how far the finger
 and the page went, when the page first moved, the frames and their longest gap, any hold-then-jump of
@@ -270,8 +287,8 @@ filmed on one, three flicks in a row froze for 100 to 330 ms each and then jumpe
 encode or a re-render running under the finger, let loose by the calm moment 400 ms after the last
 scroll. A 3D still now draws on the thread only its figure's frame and the copy out of the GL
 canvas: its shaders compile in the background where the GPU allows (`compileAsync`) and its picture
-is encoded in the background (`toBlob`; `figure3d.stillAsync`), where `toDataURL` took 110 ms and
-more on the thread. The warm-up (`figure3d.preload`) also keeps a wall's transparent material
+is encoded in the background (`toBlob`; `figure3d.stillAsync` and `stillNow`), where `toDataURL`
+took 110 ms and more on the thread. The warm-up (`figure3d.preload`) also keeps a wall's transparent material
 compiled (a program of its own, which a still of a wall or door move compiled again every time) and
 ends with one still the size of Plan's tiles drawn out through a 2D canvas, the first such copy being
 the dear one (700 ms in a software-GL test, 130 ms after); `ui-figure` checks both. `ui-scroll` taps
@@ -319,8 +336,14 @@ What the app turns off, and why:
   with Moving background off and under reduced motion, and follows the tilt again when things are calm
   (`U.steadyLight`, `core.js`).
 - **Click effects where a drag starts**: Refract's ripple, click ring and icon effects stay (they're
-  part of its feel), except on Plan's week strip, whose day pills are dragged
-  (`data-rf-effect="none"`).
+  part of its feel), except on Plan's week strip, whose day pills are dragged, and on the tab bar
+  (`data-rf-effect="none"`): the ring reads where the tapped tab is after the click's handlers have
+  drawn the new page, which laid the whole page out inside the tap (its glass bead is its answer).
+- **The light only for a mouse**: `Refract.init` registers each glass with its light unless told
+  not to (`RF_INIT` in `core.js`), and every page that brings new glass then had the light read
+  where every glass on screen is and start a paused animation for each rim. Without a fine pointer
+  that hovers, every rim gets the light's resting angle, which is what an unregistered rim shows,
+  so only such a screen registers its glass.
 
 The controls (`src/ui/controls.js`): Refract 1.4's own switch and segmented control take any
 movement past 3 px as a drag, so a tap that wobbles would be lost. The app replaces those two
@@ -381,7 +404,14 @@ minified), which `GH.lazy('figure3d')` loads when it's needed. It sets `GH.figur
 - `mount(el, move, opts)`: a controller shaped like `GH.pose.mount`'s, plus `setView(name)`,
   `phase()` and an `onPhase` callback.
 - `still(move, opts)`: a thumbnail as a data URL, or `null` without WebGL. `cachedStill()` returns
-  one only if it's already drawn, so a page render never waits on the GPU.
+  one only if it's already drawn, so a page render never waits on the GPU. `stillAsync()` is the
+  same with its shaders compiled and its picture encoded in the background (the player's and move
+  sheet's stills).
+- `stillNow(move, opts)`: a still drawn now, in the caller's idle moment (posed, one frame, the copy
+  out and the crop: a few frames' work once warm), so a caller with time left can draw another;
+  `{ url }` is a promise of the data URL, encoded in the background. One that needs shaders no warm
+  view keeps compiled returns `{ wait }` instead, resolved once they've compiled in the background
+  (its posed figure is held meanwhile, so they stay compiled), and the next call draws it.
 - `preload()`: builds the renderer, the body, the equipment and the lighting, then compiles the
   shaders with a view it keeps, one small piece per idle callback so taps never wait on it.
 
@@ -404,10 +434,35 @@ it's there, and flat again if `onFallback` fires. Set-up fetches the chunk. The 
 `U.calm()`: not in the middle of a scroll or a touch), or at once when a finger lands on something
 that opens a figure. `GH.figure3d.warm()` turns true when the warm-up has finished compiling its
 shaders, not when it starts: a figure opened in between would wait on the compile, so it shows its
-kept still meanwhile. Stills of today's figures (for the next launch) start 4 seconds after the
-warm-up, one per idle moment while no figure is on screen. Settings keeps the choice in `profile.prefs.figure` (`'3d'` or `'flat'`), with
+kept still meanwhile. Stills of today's figures for those boxes (for the next launch, in
+localStorage, `gh.figStills`) start 4 seconds after the warm-up, one per idle moment while no figure
+is on screen. Settings keeps the choice in `profile.prefs.figure` (`'3d'` or `'flat'`), with
 `figSkin` and `figShirt` for the look. The tempo strip under a figure comes from the move's `rep`
 steps and lights up from `onPhase`.
+
+**Stills kept on the phone.** With the 3D figure picked, Plan's tiles, the plan builder's, set-up's
+reveal and Settings' preview show the 3D figure's stills of the moves; the flat figure shows only
+when it's the setting, or where a still can't be drawn (no WebGL 2, the chunk didn't load, a still
+that failed). `src/ui/stills.js` (`U.stills`) keeps them across launches in IndexedDB (`gh-stills`),
+under the move as the person does it (`forPerson`: their kit), the look (theme, skin, shirt), the
+size and `GH.FIGURE`, an id the build gives the figure (its chunk with three.js, the pose engine and
+the moves), so a change to any of them draws it again, and only then. What's kept is read into
+memory in one request once the first frame is drawn (with the 3D figure picked; nothing at boot
+otherwise), so Plan puts a kept still straight into its tile's HTML (`U.stills.img`): it's there
+from the page's first frame, without the 3D chunk. A tile without one shows its own background
+(`U.stills.tile`) until its still is drawn, which then fades in (a tile in another look keeps its
+old still until the new one is in). About 3 s after launch, once it's quiet, the stills of this
+week's and next week's moves that aren't kept (`U.planStills` in `src/ui/plan.js`: what each day's
+card shows) are drawn ahead, warming the figure up for them, so Plan finds them even on the first
+day (after set-up too); when they're all kept nothing loads. New ones are drawn with `stillNow` once
+the figure is warm, as many per idle moment as fit, only while it's quiet (`U.quiet`) and no
+figure's box shows: what a screen waits for first, then what's drawn ahead. Up to 300 are kept; past
+that the oldest that this week and next don't show go, and ones an older figure drew go once a
+launch. The plan builder's large tiles (its picker's) are drawn as they come near the screen and
+held for the launch only. Reset everything deletes them. `ui-plan` checks that no tile ever holds
+the flat figure while 3D is picked, the drawing ahead, Plan's first render after a relaunch, a new
+look and the flat setting; `ui-figure` Settings' preview after a relaunch, and that stills wait
+while the page is in use and then go several per idle moment.
 
 ```sh
 npm run build && node test/figure3d.mjs [filter,…] [--dark] [--mirrored]
@@ -465,9 +520,9 @@ for a sheet flicked down), feedback (`success`, `log`, `undo`, `deny`, `warning`
 `save`, `copy`, `send`, `remove` for an entry taken out with Undo, `refresh` when fresh data is in,
 `scan` for a code read), workout (`countdown`, `go`, `pause`, `setDone`, `done`, `workoutDone`,
 `levelUp`, `milestone`, `pr`, `start`, `cancel`, `skip`, `extend` for more rest, `swap`) and moments
-(`badge`, `celebrate`). An action plays the kind for what it does, one per tap: a tap that opens a
-sheet leaves it to the sheet's own, a menu's pick to its action's. Each is its own composition of
-the phone's haptic primitives (see
+(`wobble` and `crack`, a sealed badge's first two taps, then `badge`, `celebrate`). An action plays
+the kind for what it does, one per tap: a tap that opens a sheet leaves it to the sheet's own, a
+menu's pick to its action's. Each is its own composition of the phone's haptic primitives (see
 `Haptics.java`: each primitive's support is checked, with a stand-in for a missing one), then a
 predefined effect for the one-beat kinds, then an amplitude waveform, then on/off pulses. Light plays
 at 0.75, Medium (the default) at full strength, and Strong adds a low tick after each click. Every
@@ -614,7 +669,9 @@ and `data_extraction_rules.xml` on 12 and newer. The Claude API key is never in 
 phone it's encrypted with a key from the Android Keystore (`SecretBox.java`, AES-GCM); a key saved
 in plain text by an older version is encrypted on first read, and one that can't be decrypted (a
 restored backup, a reset Keystore) is dropped so the person enters it again. Background reads,
-activity tracks and models are in `noBackupFilesDir`, so backups never include them.
+activity tracks and models are in `noBackupFilesDir`, so backups never include them, and the backup
+rules leave out notifications' preferences (`notify.xml`: the schedule, what was posted, the last
+night's sleep), which are for this phone only.
 
 **The bridge.** `AndroidBridge` only answers the app's own page: `MainActivity` follows the main
 frame's address and sets `pageTrusted` only for `https://appassets.androidplatform.net/`, and every
@@ -830,6 +887,94 @@ state (`test/customplan.mjs`); `src/ui/customplan.js` is the screens (`test/ui-c
   sets, the focus groups keep two thirds, and pulling still balances pushing. Otherwise the app's own
   plan stands.
 
+## Notifications
+
+A reminder on workout days, a walk or run on a rest day, a badge waiting to be opened, a word the
+morning after a good night and a gentle note after a few days away. All local: no server, no push
+service, nothing sent anywhere. They're off until the person turns them on: a one-time card on Today
+(for people updating, and new people once their first workout and the tour are done) or Settings,
+Notifications, with a switch per kind and the reminder time.
+
+**The page plans, Android delivers.** `src/notify.js` (`GH.notify`, a chunk) is a pure planner:
+`plan(S, now, o)` works out the next six weeks from the plan as Plan shows it (`GH.planWeek`), what's
+done, walks and runs (recorded here or from Health Connect), sleep from Health Connect, badges
+(`GH.achievements.unopened`, else `unseen`), the settings (`S.profile.prefs.notify`) and what
+Android posted lately (`o.sent`, `o.lastPosted`). Each time the app goes to the background (the page
+hidden, or Android's pause) and each time it opens, `src/ui/notify.js` hands the whole schedule to
+Android (`AndroidBridge.notifySchedule`), which replaces the last one. So it always follows what the
+person just did, and when they stop opening the app the schedule from their last visit plays out:
+that's the back-off, with no page running. The rules (`test/notify.mjs`, in any time zone):
+
+- One a day at most, by priority: badge, workout, sleep, move, comeback. Never 9:30 pm to 8 am, nor in
+  the 15 minutes after the app is left; nothing more today during a workout or once one went out.
+- workout: a planned day not done yet ("Chest, arms and abs, 25 min"), at the reminder time: 30
+  minutes before the usual start (the median of 4 weeks, 8 am to 8 pm), else 6 pm, or the time set.
+- move: a rest or light day, twice a week at most: their habit ("Saturday run?", 3 days on that
+  weekday in 8 weeks, one in the last 3, half an hour before they usually set off, so not for a 7 am
+  run), else a walk; not once they've walked or recorded something that day.
+- badge: two hours after the app is left, or the next morning at 9; once per badge.
+- sleep: a question for a rest day's morning, when the watch puts sleep in Health Connect and the
+  background sync runs. Android answers it then: the night (sessions ended since the day began, from
+  the sync's last read, which `HealthSync` hands to `Notifier.sleepRead`) against the page's tiers
+  (above the week's best, or half an hour over the usual; 7 to 11 hours), looking again every 20
+  minutes until a read has the night. Only good news; otherwise the day's walk (`alt`) goes instead.
+- comeback: days 3, 10, 17, 24, 31, 38 and 45 after the last open, each worded differently, then
+  nothing. The everyday kinds come only within 2 days of the last open.
+
+**Android** (`Notifier.java`, `NotifyReceiver.java`) checks what the page sends (64 KB, 60 items,
+plain ids, known kinds and screens, short texts, times ahead and within two months), keeps it in the
+`notify` preferences (out of backups) and sets one alarm, for the soonest item: `setWindow`, inexact,
+so no exact-alarm permission, and while the phone dozes it waits for it to wake. It's set again after
+each item, a restart and an update. At its time an item is dropped if one went out today, it's quiet
+hours, the app is on screen, an activity records (a walk also waits for a day with none recorded), or
+Android has its kind off (a channel per kind) or it's two hours late. One notification shows at a
+time, and each goes once it's out of date. `POST_NOTIFICATIONS` (Android 13+) is asked for only when
+they're turned on (`notifyRequest`, answered with `__gh.onNotifyPermission`); after a no, Settings
+opens Android's settings for them. A tap opens its screen the way a plan link does: `notifyTap()` for
+the one the app was started from, `__gh.onNotifyTap` while it runs. A badge's opens Badges with what's
+still sealed coming up over it, ready to be opened (`openRoute` in `src/ui/core.js`).
+`test/ui-notify.mjs` covers the card, Settings, taps and the hand-off against a stand-in
+(`test/fixtures.mjs`); compile the Java as `build-apk.sh` does.
+
+## Badges
+
+About 60 badges in ten categories and four tiers (bronze to platinum, Common to Very rare).
+`src/achievements.js` (`GH.achievements`) is pure logic on the saved state (`test/achievements.mjs`):
+what each takes, worked out from history, so a badge is dated the day it happened (the 10th
+workout's, the day a streak reached 7). Once earned, a badge is kept for good: a broken streak or a
+deleted log leaves it where it is. `src/ui/badges.js` draws the medals (one SVG each, the gradients
+in one shared set), the You tab's card, the gallery, a badge's sheet and the reveal
+(`test/ui-badges.mjs`). A saved change is checked 800 ms later, only for the categories it touched.
+
+- **Sealed until opened.** A badge is earned sealed: `S.achievements.earned[id]` is `{ day, at,
+  opened: false }` (the record's v 2). `GH.achievements.unopened(S)` lists the ones still sealed,
+  oldest first (what the reveal opens by default, and what a reminder can say is waiting), and
+  `markOpened(S, id)` opens one for good. Sealed or not, a badge is earned: counted, dated and kept
+  the same. Every badge earned before they came sealed counts as opened (`migrateOpened`, one of the
+  store's migrations), as does what 1.6's first load finds in history, and `store.sanitize` takes
+  an `opened` that isn't true or false as opened.
+- **The capsule.** A sealed badge is a glass capsule in its tier's colours, sealed round its middle
+  with a band of the tier's metal: its rarity shows, its name and medal don't. Like a medal it's an
+  object, the same in light and dark. The toast for a new one says its tier and rarity ("Bronze ·
+  Common", Open it), the workout's Next screen card shows its capsule dropping in, the You tab's card
+  says how many are waiting ("2 badges to open") and shows them first, and the gallery shows each in
+  its place, marked New, with its rarity and "Tap to open". A tap on any of them opens it in the
+  reveal, and so does a badge's sheet asked for a sealed one.
+- **Opening it.** In the reveal the capsule floats, bobbing gently, until it's tapped three times.
+  The first tap wobbles it with a hairline crack (`wobble`); the second shakes it harder, with
+  cracks of light and light leaking round it (`crack`); the third bursts it at its seam: the halves
+  fly apart, light floods out, and the medal springs out with its burst (14 beads) and the `badge`
+  haptic, then its name, tier, what it took, Share and Done rise in. It's opened, and saved, the
+  moment it bursts. Several page as before, each sealed, with Open all: the page showing bursts, the
+  rest spring in as their pages show. What a sealed page says and what it will say sit in the same
+  place, so the sheet keeps its height as it opens. Reduced motion: one tap, and a fade. Increased
+  contrast and reduced transparency (and Flat): the glass is a solid fill.
+- **Cheap to show.** Everything moves by transform and opacity, so the compositor plays it. The
+  capsule bobs only while its page is on screen (an IntersectionObserver), and stops when the sheet
+  closes; on a page nothing moves forever (a sealed tile nudges twice as it first shows, and the You
+  tab shakes a newly earned one awake once, with Refract's wiggle). Refract's click effect is off on
+  the capsule (`data-rf-effect="none"`), whose round shape it filled with a grey disc.
+
 ## Publishing (Google Play and APKPure)
 
 The app targets API 36 (what Play requires for new apps and updates from Aug 31, 2026) and handles
@@ -921,7 +1066,9 @@ SHA-256.
    `ACCESS_FINE_LOCATION` and `ACCESS_COARSE_LOCATION` (an activity's route, only while one the person
    started records; no `ACCESS_BACKGROUND_LOCATION`, so no location declaration form),
    `ACTIVITY_RECOGNITION` (steps during an activity), `POST_NOTIFICATIONS` (the recording's
-   notification) and `RECEIVE_BOOT_COMPLETED` (keeps the background sync's job after a restart).
+   notification, and the reminders the person turns on, asked for then) and `RECEIVE_BOOT_COMPLETED`
+   (keeps the background sync's job and the reminders' alarm after a restart). The reminders use
+   inexact alarms only, so there's no exact-alarm permission to declare.
 7. **Foreground service declaration** (App content, Foreground service permissions).
    `FOREGROUND_SERVICE_LOCATION` for `ActivityService`: the use case is fitness tracking the person
    starts ("Record a run, walk, hike or ride: the route, distance and pace with the screen off"). It

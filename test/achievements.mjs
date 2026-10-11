@@ -135,6 +135,7 @@ check('nothing else is approximate', Object.entries(E).every(([id, e]) => id ===
 check('every day is on or before the day of the check, and after the start of the data', Object.values(E).every((e) => e.day <= D0 && e.day >= START - 1));
 check('each saved with when it was recorded', Object.values(E).every((e) => e.at === NOW));
 check('the counted ones keep their number', E.km100.value >= 100 && E.streak7.value === 7);
+check('and each arrives sealed (not opened yet)', Object.values(E).every((e) => e.opened === false));
 
 section('Progress on the way');
 {
@@ -152,9 +153,34 @@ section('Progress on the way');
   check('earned today: day and progress are right before anything is saved', it('first').earned && it('first').day === START);
 }
 
+section('Sealed until opened');
+{
+  const S = copy(S1);
+  const E1 = S.achievements.earned;
+  // Earned at three different times: the oldest first, then by day.
+  E1.w250.at = NOW - 3000; E1.first.at = NOW - 2000; E1.newYear.at = NOW - 2000;
+  const sealed = A.unopened(S);
+  check('unopened(S): every badge earned and not opened yet', sealed.length === A.DEFS.length && new Set(sealed).size === sealed.length, sealed.length);
+  check('oldest first: by when each was earned, then by its day', sealed[0] === 'w250' && sealed[1] === 'first' && sealed[2] === 'newYear' && sealed.slice(3).every((id, i, l) => i === 0 || E1[l[i - 1]].day <= E1[id].day), sealed.slice(0, 4));
+  check('evaluate marks them sealed, and still earned, on their day', A.evaluate(S, D0).every((x) => x.sealed && x.earned && x.day === E1[x.id].day));
+  const sum = A.summary(S, D0);
+  check('the summary counts them as earned, and how many are still to open', sum.earned === A.DEFS.length && sum.unopened === A.DEFS.length, sum);
+  const rec = JSON.stringify(E1.km100);
+  check('markOpened opens one (true), and only once (false after)', A.markOpened(S, 'km100') === true && E1.km100.opened === true && A.markOpened(S, 'km100') === false);
+  check('opening changes nothing else: its day, when it was earned, its number', JSON.stringify(Object.assign({}, E1.km100, { opened: false })) === rec);
+  check('it leaves unopened(S), and only it', !A.unopened(S).includes('km100') && A.unopened(S).length === A.DEFS.length - 1);
+  const it = A.evaluate(S, D0).find((x) => x.id === 'km100');
+  check('evaluate: opened, earned, the same day', !it.sealed && it.earned && it.day === E1.km100.day);
+  check('a badge not earned, or not a badge at all, can\'t be opened', A.markOpened(copy(YEAR), 'first') === false && A.markOpened(S, 'nope') === false && A.markOpened(S, '__proto__') === false && A.markOpened(S, null) === false && A.markOpened({}, 'first') === false);
+  E1.fromLater = { day: D0, at: NOW, opened: false };
+  check('a newer version\'s sealed badge isn\'t offered to open here, and stays in the record', !A.unopened(S).includes('fromLater') && A.check(S, D0, 'test', { now: NOW + 5 }).length === 0 && E1.fromLater.opened === false);
+  check('nothing sealed, nothing to open', A.unopened(copy(YEAR)).length === 0 && A.unopened({}).length === 0 && A.unopened(null).length === 0);
+}
+
 section('Earned for good');
 {
   const S = copy(S1);
+  for (const id of ['first', 'streak7', 'w10']) A.markOpened(S, id);
   const before = JSON.stringify(S.achievements.earned);
   S.log = []; S.activities = []; S.weights = []; S.health.days = {}; S.food.days = {}; S.protein = {}; S.customPlans = []; S.events = S.events.filter((e) => e.type !== 'tailor');
   const again = A.check(S, D0 + 3, 'test', { now: NOW + 3 * 86400000 });
@@ -162,6 +188,7 @@ section('Earned for good');
   check('history wiped (a reset streak, deleted logs): nothing new, nothing taken away', again.length === 0 && JSON.stringify(S.achievements.earned) === before);
   check('every badge still shows earned, on its day', list.every((x) => x.earned && x.day === S1.achievements.earned[x.id].day));
   check('and still offered (earned ones always show)', list.every((x) => x.shown));
+  check('opened ones stay opened, sealed ones stay sealed, waiting', list.filter((x) => !x.sealed).map((x) => x.id).sort().join() === 'first,streak7,w10' && A.unopened(S).length === A.DEFS.length - 3);
 }
 
 section('Seen, events and the saved record');
@@ -175,9 +202,10 @@ section('Seen, events and the saved record');
   const e2 = A.event(S, 'tailored', D0 + 1, 4000);
   check('an event keeps its first day and a count', e1 === e2 && e2.day === D0 && e2.n >= 2);
   check('an event that isn\'t a name is turned away', A.event(S, '__proto__', D0) === null && A.event(S, 'a b', D0) === null);
-  const R = { profile: S.profile, achievements: { earned: { first: { at: 1 }, junk: 'x', 'bad id!': { day: 3 } }, events: { x: 5 }, seenAt: 'no' } };
+  const R = { profile: S.profile, achievements: { earned: { first: { at: 1 }, w10: { day: D0, at: 2, opened: 'no' }, w25: { day: D0, at: 3, opened: false }, junk: 'x', 'bad id!': { day: 3 } }, events: { x: 5 }, seenAt: 'no' } };
   A.ensure(R, D0);
-  check('a record from elsewhere is made whole (bad entries go, a missing day is marked approximate)', R.achievements.v === 1 && R.achievements.earned.first.approx === true && R.achievements.earned.first.day === D0 && !R.achievements.earned.junk && !R.achievements.earned['bad id!'] && !R.achievements.events.x && R.achievements.seenAt === 0);
+  check('a record from elsewhere is made whole (bad entries go, a missing day is marked approximate)', R.achievements.v === 2 && R.achievements.earned.first.approx === true && R.achievements.earned.first.day === D0 && !R.achievements.earned.junk && !R.achievements.earned['bad id!'] && !R.achievements.events.x && R.achievements.seenAt === 0);
+  check('with opened true or false: none, or anything else, counts as opened', R.achievements.earned.first.opened === true && R.achievements.earned.w10.opened === true && R.achievements.earned.w25.opened === false);
 }
 
 section('Migration: the first 1.6 load');
@@ -187,9 +215,10 @@ section('Migration: the first 1.6 load');
   const t0 = Date.now();
   const m = GH.store.migrate(old);
   const M = m.achievements;
-  check('runs with the store\'s migration (GH.migrations)', GH.migrations.length >= 1 && M && M.v === 1 && M.migrated && M.migrated.n === Object.keys(M.earned).length);
+  check('runs with the store\'s migration (GH.migrations)', GH.migrations.length >= 1 && M && M.v === 2 && M.migrated && M.migrated.n === Object.keys(M.earned).length);
   check('history earns its badges, back-dated', M.earned.first.day === START && M.earned.w10.day === YEAR.log.filter((l) => l.type === 'workout' && B.isDone(l)).map((l) => l.day).sort((a, b) => a - b)[9]);
   check('every badge it found counts as seen', A.unseen(m).length === 0 && M.seenAt >= t0);
+  check('and as opened: history found on the first load isn\'t sealed (nothing to open)', A.unopened(m).length === 0 && Object.values(M.earned).every((e) => e.opened === true) && M.v === 2);
   check('one it can\'t date says so (approximate)', M.earned.connected && M.earned.connected.approx === true);
   const snap = JSON.stringify(M);
   GH.store.migrate(m);
@@ -199,6 +228,42 @@ section('Migration: the first 1.6 load');
   check('a new state migrates to nothing earned', fresh2.achievements.migrated.n === 0 && Object.keys(fresh2.achievements.earned).length === 0);
   const back = GH.store.importJson(GH.store.exportJson(m));
   check('a backup keeps them, earned dates and all', back.ok && JSON.stringify(back.state.achievements.earned) === JSON.stringify(M.earned));
+}
+
+section('Migration: the first load with sealed badges');
+{
+  // A record as 1.8.10 saved it: v 1, no opened, one badge earned and not shown yet.
+  const old = copy(YEAR);
+  A.check(old, D0, 'test', { now: NOW });
+  A.markSeen(old, NOW);
+  for (const e of Object.values(old.achievements.earned)) delete e.opened;
+  old.achievements.v = 1;
+  old.achievements.migrated = { at: NOW, n: 3, seen: true };
+  old.achievements.earned.w250.at = NOW + 60000; // earned after it was last seen
+  const days = JSON.stringify(Object.fromEntries(Object.entries(old.achievements.earned).map(([id, e]) => [id, [e.day, e.at]])));
+  const m = GH.store.migrate(copy(old));
+  const M = m.achievements;
+  check('every badge earned before then counts as opened (nothing to open)', M.v === 2 && Object.values(M.earned).every((e) => e.opened === true) && A.unopened(m).length === 0 && A.evaluate(m, D0).every((x) => !x.sealed));
+  check('the one not shown yet is still new (shown, as before, as its medal)', A.unseen(m).join() === 'w250');
+  check('nothing else changes: every badge, its day and when it was earned', JSON.stringify(Object.fromEntries(Object.entries(M.earned).map(([id, e]) => [id, [e.day, e.at]]))) === days && Object.keys(M.earned).length === A.DEFS.length);
+  const snap = JSON.stringify(M);
+  GH.store.migrate(m);
+  check('a second load changes nothing', JSON.stringify(m.achievements) === snap);
+  // From then on a new badge stays sealed, load after load, until it's opened.
+  delete m.achievements.earned.w250;
+  check('a badge earned after it arrives sealed', A.check(m, D0, 'test', { now: NOW + 120000 }).join() === 'w250' && A.unopened(m).join() === 'w250');
+  GH.store.migrate(m);
+  check('and a load doesn\'t open it', A.unopened(m).join() === 'w250' && m.achievements.earned.w250.opened === false);
+  const back = GH.store.importJson(GH.store.exportJson(m));
+  check('a backup keeps it sealed, and the rest opened', back.ok && A.unopened(back.state).join() === 'w250' && Object.entries(back.state.achievements.earned).every(([id, e]) => e.opened === (id !== 'w250')));
+  // A crafted backup: opened has to be true or false (store.sanitize), anything else counts as opened.
+  const bad = JSON.parse(GH.store.exportJson(m));
+  bad.state.achievements.earned.w250.opened = 'nope';
+  bad.state.achievements.earned.first.opened = { x: 1 };
+  bad.state.achievements.earned.w10.opened = 0;
+  const r = GH.store.importJson(JSON.stringify(bad));
+  check('a crafted backup\'s opened that isn\'t true or false counts as opened', r.ok && ['w250', 'first', 'w10'].every((id) => r.state.achievements.earned[id].opened === true) && A.unopened(r.state).length === 0, r.ok && ['w250', 'first', 'w10'].map((id) => r.state.achievements.earned[id].opened));
+  check('store.sanitize checks it on every load too', (() => { const s = copy(m); s.achievements.earned.w250.opened = 'x'; GH.store.sanitize(s, { deep: false }); return s.achievements.earned.w250.opened === true; })());
 }
 
 section('What\'s offered');

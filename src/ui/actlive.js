@@ -345,7 +345,8 @@
     const now = Date.now();
     if (L.phase === 'countdown') {
       if (cancelling) return;
-      const s = Math.ceil((L.goAt - now) / 1000);
+      // (A tick whose clock reads earlier than the tap, as a test's clock can, still counts from 3.)
+      const s = Math.min(3, Math.ceil((L.goAt - now) / 1000));
       if (now >= L.goAt) { go(); return; }
       if (s !== L.lastCue) { L.lastCue = s; plat().cue('countdown'); if (shown()) draw(); }
       return;

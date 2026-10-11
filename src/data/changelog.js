@@ -6,6 +6,25 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.9.0', date: '2026-10-11', title: 'Reminders, badges to open, and a quicker feel',
+      store: [
+        '• Reminders, if you want them: your workout, a walk now and then, a badge to open, a good night\'s sleep. One a day at most, never at night',
+        '• New badges arrive sealed: tap to crack them open',
+        '• 3D figures on Plan show up at once',
+        '• Quicker switching between tabs',
+        '• Fixed: scrolling could stutter, freeze or jump with the glass effects on',
+        '• Glass effects setting: Auto, Liquid, Frosted or Flat',
+        '• Maps you\'ve seen open at once, even offline',
+      ].join('\n'),
+      items: [
+        ['bell', 'Reminders, if you want them. Turn them on in Settings, Notifications, or when Today asks after your first workout: today\'s workout a little before you usually train, a walk or a run now and then on a rest day, a badge waiting to be opened, and a note after a good night\'s sleep. One a day at most, never at night, and each kind can be switched off. Take a break and you get a gentle note after a few days, then one a week, and after six weeks they stop until you\'re back. They\'re worked out on your phone, and nothing about them is sent anywhere.'],
+        ['gift', 'New badges arrive sealed: a glass capsule in the tier\'s colours, so you see how rare it is before you know what it is. Tap it and it wobbles, tap again and light cracks through, and the third tap bursts it open, with a feel of its own at each tap. Earned a few at once? Open them one by one, or all together. The You tab says how many are waiting.'],
+        ['person', 'The 3D figures on Plan are there the moment it opens. The app now keeps a picture of each one on your phone, so with 3D picked you no longer see the simple figures first and watch them swap.'],
+        ['bolt', 'Switching tabs is quicker. A tap on the tab bar no longer makes the app measure the page before anything moves, the top bar\'s buttons fade across instead of resizing, a chart\'s line draws itself in only the first time you see it, and the glass light that follows a mouse pointer no longer runs on touch screens.'],
+        ['sparkle', 'Paired exercises (supersets) are numbered in the order you do them: A1, then A2. The second of a pair sometimes came first, as A2.'],
+      ],
+    },
+    {
       version: '1.8.10', date: '2026-10-11', title: 'Liquid, without the hold-then-jump',
       store: [
         '• Scrolling with Liquid glass no longer holds still and then jumps: the glow behind each page followed the scroll in a way that made the phone hold back each step of a scroll, up to 2 seconds',

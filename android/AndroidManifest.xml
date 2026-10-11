@@ -45,7 +45,8 @@
     <!-- 1.4, background sync: reading Health Connect every 15 minutes with the app closed (a
          platform permission from Android 15; asked for only where Health Connect knows it). -->
     <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
-    <!-- Keeps the background sync's job scheduled after the phone restarts (JobInfo.setPersisted). -->
+    <!-- Keeps the background sync's job scheduled after the phone restarts (JobInfo.setPersisted), and
+         puts notifications' alarm back (NotifyReceiver). -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Only for scanning food barcodes, and only when the person taps Scan. Not required, so
          phones without a camera can still install the app. -->
@@ -54,7 +55,8 @@
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
     <!-- Outdoor activities: the route (precise location, only while an activity the person started
          is recording, in a foreground service; no background location), steps from the phone's
-         step counter, and the ongoing notification with time and distance. None is required. -->
+         step counter, and the ongoing notification with time and distance. None is required.
+         POST_NOTIFICATIONS also shows the reminders and nudges, once the person turns them on. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
@@ -144,6 +146,18 @@
             android:name=".HealthSyncJob"
             android:permission="android.permission.BIND_JOB_SERVICE"
             android:exported="true" />
+
+        <!-- Notifications (Notifier): posts each one the page planned at its time, and sets the alarm
+             again after a restart or an update. Not exported: only Android's own broadcasts and the
+             app's alarm reach it. -->
+        <receiver
+            android:name=".NotifyReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Records an outdoor activity the person started in the app (GPS and steps), with an
              ongoing notification. Started only while the app is in front. -->

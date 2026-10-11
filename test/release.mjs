@@ -45,6 +45,8 @@ const listing = readFileSync(join(root, 'docs/store/LISTING.md'), 'utf8');
 const block = (heading) => { const m = new RegExp(`## ${heading}[^\\n]*\\n[\\s\\S]*?\\\`\\\`\\\`text\\n([\\s\\S]*?)\\n\\\`\\\`\\\``).exec(listing); return m ? m[1] : null; };
 const short = block('Short description');
 check('the short description is one line of 80 characters at most', !!short && !short.includes('\n') && short.length <= 80, short);
+const full = block('Full description');
+check('the full description is 4,000 characters at most', !!full && full.length <= 4000, full && full.length);
 const news = block('What\'s new');
 check(`the What's new block is ${v}'s store text`, news === e.store && listing.includes(`This is ${v}'s.`), news);
 const ci = readFileSync(join(root, '.github/workflows/android.yml'), 'utf8');

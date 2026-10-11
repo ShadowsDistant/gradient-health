@@ -1145,6 +1145,77 @@ public final class Bridge {
         return link == null ? "" : link;
     }
 
+    // ---------------------------------------------------------------- notifications (Notifier)
+
+    /**
+     * The schedule the page planned (src/notify.js), in place of the last one: {"on", "opened"?,
+     * "items": [{id, at, kind, title, body, route, until?, sleep?, alt?}]}. Everything is checked
+     * (Notifier.clean): 64 KB and 60 items at most, short texts, known kinds and screens, times ahead
+     * and within about two months; an item that isn't right is left out. False if it isn't a schedule.
+     */
+    @JavascriptInterface
+    public boolean notifySchedule(String json) {
+        if (!trusted()) {
+            return false;
+        }
+        try {
+            return Notifier.schedule(activity, json);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** {"permission", "blocked", "lastPosted", "sent", "scheduled", "next"} (Notifier.stateJson). */
+    @JavascriptInterface
+    public String notifyState() {
+        if (!trusted()) {
+            return "{}";
+        }
+        try {
+            return Notifier.stateJson(activity);
+        } catch (Throwable t) {
+            return "{}";
+        }
+    }
+
+    /** Asks for the notification permission (Android 13+); answers with window.__gh.onNotifyPermission. */
+    @JavascriptInterface
+    public void notifyRequest() {
+        if (!trusted()) {
+            return;
+        }
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.requestNotifyPermission();
+            }
+        });
+    }
+
+    /** Opens Android's notification settings for the app. */
+    @JavascriptInterface
+    public void notifyOpenSettings() {
+        if (!trusted()) {
+            return;
+        }
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.openNotificationSettings();
+            }
+        });
+    }
+
+    /** The notification the app was opened from ({"id", "kind", "route"}), once; else "". */
+    @JavascriptInterface
+    public String notifyTap() {
+        if (!trusted()) {
+            return "";
+        }
+        String tap = activity.takePendingTap();
+        return tap == null ? "" : tap;
+    }
+
     // ---------------------------------------------------------------- on-device AI models (ModelStore)
 
     /** Installed models: [{"id","file","bytes"}]. */

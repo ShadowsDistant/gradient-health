@@ -6,10 +6,10 @@
 //   Refract's page motion (a push slides in from the edge while the old page falls back a third; a
 //   tab change morphs in place), only by transform and opacity; the bar's title cross-fades; route
 //   changes in quick succession leave nothing behind;
-// - glass (Refract's material motion): the bar's buttons shape-shift across routes (one on both
-//   keeps its glass, one the new route lacks pinches off as an inert picture, new ones bud out, the
-//   coach becomes Back in the same glass); Today's floating buttons and the workout capsule form and
-//   dissolve instead of fading, and a new label shape-shifts its button;
+// - glass (Refract's material motion): the bar's buttons fade across a tab change (the one on both
+//   keeps its glass, a gone one fades out as an inert picture, new ones fade in, no width moving) and
+//   shape-shift across a push (the coach becomes Back in the same glass); Today's floating buttons and
+//   the workout capsule form and dissolve instead of fading, and a new label shape-shifts its button;
 // - lists (FLIP): a re-render that adds, drops or resizes a block glides the blocks after it from
 //   where they were (transforms only), so nothing jumps; a dropped block fades where it was, a new
 //   one rises in; more than 8 changes in one container just change; an unkeyed control is never
@@ -329,9 +329,11 @@ section('The bar\'s title cross-fades');
 
 section('Glass forms, dissolves and shape-shifts (Refract\'s material motion)');
 {
-  // The bar's buttons across routes: one on both keeps its node; one the new route lacks pinches off
-  // (a copy, only a picture: inert, no action), one it adds buds out; the top-left one is the same
-  // piece of glass whether it's the coach or Back.
+  // The bar's buttons across a tab change: one on both keeps its node (the coach at the top left);
+  // one the new tab lacks fades out where it was (a copy, only a picture: inert, no action); the new
+  // tab's fade in. Opacity only: no button's width moves (shape-shifting them laid the bar out, and
+  // drew each lens again, in every frame for half a second). A push still shape-shifts: the top-left
+  // one is the same piece of glass whether it's the coach or Back.
   await page.evaluate(() => window.GH.ui.go('plan'));
   await settle();
   const bar = await page.evaluate(async () => {
@@ -341,16 +343,18 @@ section('Glass forms, dissolves and shape-shifts (Refract\'s material motion)');
     const sched = tb.querySelector('[data-act="daysSheet"]');
     const out = { schedKey: sched && sched.getAttribute('data-rf-key'), leadKey: lead && lead.getAttribute('data-rf-key') };
     U.go('health');
-    const ghost = tb.querySelector('[data-rf-leaving]');
-    out.sameLead = tb.querySelector('.rf-navbar-leading > button:not([data-rf-leaving])') === lead;
-    out.ghost = !!ghost && ghost.inert && ghost.getAttribute('aria-hidden') === 'true' && !ghost.hasAttribute('data-act') && !ghost.hasAttribute('aria-label');
-    out.ghostShrinks = !!ghost && m.anims(ghost).some((a) => 'width' in m.frames(a)[0]);
-    const added = [...tb.querySelectorAll('.rf-navbar-trailing > button:not([data-rf-leaving])')];
-    out.buds = added.length > 0 && added.every((b) => m.anims(b).some((a) => 'width' in m.frames(a)[0]));
+    const holder = [...document.querySelectorAll('.topbar.motion-copy')].pop();
+    const ghost = holder && holder.querySelector('button.motion-copy');
+    out.sameLead = tb.querySelector('.rf-navbar-leading > button') === lead;
+    out.ghost = !!ghost && !!ghost.closest('[inert]') && holder.getAttribute('aria-hidden') === 'true' && !ghost.hasAttribute('data-act') && !ghost.hasAttribute('aria-label') && !ghost.querySelector('.rf-lens-layer');
+    out.ghostFades = !!ghost && m.anims(ghost).some((a) => 'opacity' in m.frames(a)[0]);
+    const added = [...tb.querySelectorAll('.rf-navbar-trailing > button')];
+    out.fadesIn = added.length > 0 && added.every((b) => m.anims(b).some((a) => 'opacity' in m.frames(a)[0]));
+    out.widths = [...tb.querySelectorAll('button'), ...(holder ? holder.querySelectorAll('button') : [])].flatMap((b) => b.getAnimations()).filter((a) => a.effect && a.effect.getKeyframes().some((k) => 'width' in k || 'flexBasis' in k)).length;
     out.schedCount = tb.querySelectorAll('[data-act="daysSheet"]').length;
     await U.motion.settled();
-    await new Promise((res) => setTimeout(res, 100));
-    out.ghostGone = !tb.querySelector('[data-rf-leaving]');
+    await new Promise((res) => setTimeout(res, 200));
+    out.ghostGone = !document.querySelector('.topbar.motion-copy');
     // A push: the coach becomes Back in the same glass, its symbol changing.
     U.go('you');
     await U.motion.settled();
@@ -367,8 +371,8 @@ section('Glass forms, dissolves and shape-shifts (Refract\'s material motion)');
   });
   check('the bar\'s buttons are keyed by what they are (the top-left one by its place)', bar.schedKey === 'daysSheet' && bar.leadKey === 'lead', bar);
   check('a button on both routes keeps its glass (the coach, Plan to Health)', bar.sameLead, bar);
-  check('a button the new route lacks pinches off: a copy, only a picture (inert, hidden, no action)', bar.ghost && bar.ghostShrinks && bar.schedCount === 0, bar);
-  check('the new route\'s buttons bud out', bar.buds, bar);
+  check('a button the new tab lacks fades out: a copy, only a picture (inert, hidden, no action, no lens)', bar.ghost && bar.ghostFades && bar.schedCount === 0, bar);
+  check('the new tab\'s buttons fade in, and no button\'s width moves', bar.fadesIn && bar.widths === 0, bar);
   check('and the copy is gone when it ends', bar.ghostGone, bar);
   check('a push: the coach becomes Back in the same piece of glass, its symbol cross-fading (only the symbol)', bar.pushSame && bar.symbolFades && !bar.ghostLeft, bar);
 

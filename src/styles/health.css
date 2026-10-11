@@ -150,6 +150,10 @@ button.hl-pill:active { scale: .97; transition-duration: var(--duration-instant)
 .sp-area { fill: var(--c, var(--accent-fill)); opacity: .13; }
 .sp-dot { stroke: var(--c, var(--accent-fill)); stroke-width: 7; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .sp-svg { animation: sp-draw 900ms var(--ease-out-soft) both; }
+/* On the Health tab the lines draw in the first time it's shown, not on every visit: a clip's
+   animation is drawn again on the page's thread in every frame, eight of them for most of a second
+   after each tab change (src/ui/healthtab.js sets data-sparks-seen). */
+:root[data-sparks-seen] #screen .sp-svg { animation: none; }
 @keyframes sp-draw { from { clip-path: inset(-8px 100% -8px -8px); } to { clip-path: inset(-8px -8px -8px -8px); } }
 
 /* ---------------------------------------------------------------- activity + sources */

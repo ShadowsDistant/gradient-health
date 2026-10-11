@@ -1,6 +1,7 @@
 // The exercise figure in the app, in Chromium (SwiftShader): the 3D figure in the player with its
 // tempo strip, the move sheet's views, a ladder's rungs, pausing under the how-to sheet, the Settings
-// look (3D or simple, skin tone, shirt), the warm-up and frame rate, how soon a figure is 3D (warm,
+// look (3D or simple, skin tone, shirt; its preview kept across a relaunch), the warm-up and frame
+// rate, how soon a figure is 3D (warm,
 // and on a fresh launch with the stills kept from the one before), losing and handing back the GPU,
 // figures that keep moving with reduced motion, a box that's never empty while 3D gets ready (and
 // gives up on a stuck GPU), 3D coming back after the phone took the GPU in the background, a chunk
@@ -200,6 +201,59 @@ await page.evaluate(() => window.GH.ui.act.resumeWorkout());
 await page.waitForSelector('.player:not([hidden]) .pl-fig');
 await page.waitForTimeout(500);
 check('with Simple picked, the workout uses the flat figure', await figKind(page, '.player .pl-fig') === 'flat');
+check('no console errors', errors.length === 0, errors.join('\n'));
+await ctx.close();
+
+section('Settings\' preview, kept');
+// The preview is one of the 3D stills kept on the phone (src/ui/stills.js): after a relaunch it's in
+// Settings' first render, with no 3D chunk loaded.
+({ ctx, page, errors } = await open(false));
+await page.evaluate(() => window.GH.ui.open('settings'));
+await page.waitForSelector('#screen .set-fig img:not(.is-stale)', { timeout: 30000 });
+await page.evaluate(() => window.GH.ui.stills.flush());
+await page.reload();
+await page.waitForSelector('#screen[data-view="today"] .session');
+await page.evaluate(() => window.GH.ui.stills.load());
+const kept = await page.evaluate(() => {
+  const chunk = !!window.GH.figure3d;
+  window.GH.ui.open('settings');
+  const i = document.querySelector('#screen .set-fig img');
+  return { img: !!i && !i.classList.contains('is-stale') && /^data:image\//.test(i.src), chunk };
+});
+check('after a relaunch, Settings\' first render has the kept preview, with no 3D chunk loaded', kept.img && !kept.chunk, kept);
+
+section('Stills drawn in idle moments');
+// The stills a screen asks for wait while the page is in use (touched, scrolled: U.quiet, 1.5 s after
+// the last input), then go as many per idle moment as fit: with the drawing stood in by one that
+// takes 5 ms (a phone's GPU takes a few frames for a still), an idle moment draws several.
+const idleDraws = await page.evaluate(async () => {
+  const GH = window.GH, U = GH.ui;
+  const f = await GH.lazy('figure3d');
+  await f.preload();
+  let cur = 0, seq = 0;
+  const calls = [];
+  const ric = window.requestIdleCallback;
+  window.requestIdleCallback = (fn, o) => ric((d) => { cur = ++seq; try { fn(d); } finally { cur = 0; } }, o);
+  const real = f.stillNow;
+  const dot = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+  f.stillNow = () => { const t = performance.now(); while (performance.now() - t < 5) { /* a still's work */ } calls.push({ at: t, cb: cur }); return { url: Promise.resolve(dot) }; };
+  // Asked for while someone uses the app: a touch every 100 ms for a second.
+  let lastInput = 0;
+  const touch = () => { document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true })); lastInput = performance.now(); };
+  touch();
+  const ids = Object.keys(GH.moves.MOVES).slice(0, 24);
+  const o = U.stills.look(30);
+  const asked = Promise.all(ids.map((id) => new Promise((res) => { const u = U.stills.want(GH.moves.MOVES[id], o, res, { keep: false }); if (u !== null) res(u); })));
+  for (let i = 0; i < 10; i++) { await new Promise((r) => setTimeout(r, 100)); touch(); }
+  const got = (await Promise.race([asked, new Promise((r) => setTimeout(() => r(null), 20000))])) || [];
+  f.stillNow = real;
+  window.requestIdleCallback = ric;
+  const per = {};
+  for (const c of calls) per[c.cb] = (per[c.cb] || 0) + 1;
+  return { n: calls.length, drawn: got.filter(Boolean).length, wait: calls.length ? Math.round(calls[0].at - lastInput) : null, most: Math.max(0, ...Object.values(per)), moments: Object.keys(per).length, outside: calls.filter((c) => !c.cb).length };
+});
+check(`none while the page is in use: the first ${idleDraws.wait} ms after the last input`, idleDraws.wait >= 1400, idleDraws);
+check(`then several per idle moment (${idleDraws.n} in ${idleDraws.moments}, at most ${idleDraws.most} in one)`, idleDraws.drawn === 24 && idleDraws.most >= 3 && idleDraws.outside === 0, idleDraws);
 check('no console errors', errors.length === 0, errors.join('\n'));
 await ctx.close();
 

@@ -381,6 +381,7 @@
   };
 
   /* ---------------------------------------------------------------- the screen */
+  let sparksSeen = false;
   U.screens.health = {
     render(S, day) {
       const ins = GH.insights.top(S, day, 5);
@@ -407,6 +408,8 @@
       if (AI() && AI().needsReport(S, day) && ai.tried !== day && !ai.busy) writeReport(true);
     },
     after(root, S, day) {
+      // The sparklines draw in this once (src/styles/health.css).
+      if (!sparksSeen) { sparksSeen = true; setTimeout(() => G.document.documentElement.setAttribute('data-sparks-seen', ''), 1200); }
       if (AI() && AI().needsReport(S, day) && ai.tried !== day && !ai.busy) setTimeout(() => writeReport(true), 50);
       // A sync or a change elsewhere: open sheets show the new numbers too.
       if (U.refreshMetricSheet) U.refreshMetricSheet();

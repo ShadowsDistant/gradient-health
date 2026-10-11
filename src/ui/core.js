@@ -406,7 +406,7 @@
       </header>
       <div id="ptr" class="ptr" aria-hidden="true"><span class="ptr-dot">${U.icon('refresh')}</span></div>
       <div id="float" class="float-actions" hidden></div>
-      <nav class="rf-tabbar" data-position="bottom" aria-label="Main" id="tabbar" style="--tab-count:${TABS.length}">
+      <nav class="rf-tabbar" data-position="bottom" aria-label="Main" id="tabbar" data-rf-effect="none" style="--tab-count:${TABS.length}">
         <div class="rf-tabbar-accessory rf-glass" data-variant="thick" data-lens id="accessory" hidden></div>
         <div class="rf-tabbar-bar rf-glass" data-lens>${tabsHtml('today')}</div>
       </nav>
@@ -971,7 +971,7 @@
     const nb = tpl.content.querySelector('header.rf-navbar');
     if (nb) nb.remove();
     // The bar's title cross-fades along with the page, and its buttons shape-shift.
-    const bar = changed && lastKey && kind && M.barSwap ? safe(() => M.barSwap(topbar)) || null : null;
+    const bar = changed && lastKey && kind && M.barSwap ? safe(() => M.barSwap(topbar, kind)) || null : null;
     if (bar && bar.update) bar.update(() => applyNavbar(nb)); else applyNavbar(nb);
     // A new page: the old one leaves, with the look it had, while this one comes in.
     if (changed) replace(screen, tpl.content, kind);
@@ -1053,7 +1053,13 @@
   // Refract 1.4 refracts every regular and clear glass surface unless told otherwise: here only those
   // the markup marks data-lens do (as before 1.4), since each lens is redrawn every frame the page
   // moves under it.
-  const RF_INIT = { lens: false };
+  // Its light is registered on every glass it sets up, and each time a page brings new glass the
+  // light reads where every glass on screen is and starts a paused animation for each rim (a tab
+  // change spent about 75 ms of a 4x-slowed CPU there, in the frames after it). All that is for a
+  // mouse: with no pointer to follow (a phone's light holds still, see steadyLight), every rim gets
+  // the light's resting angle, which is what an unregistered rim shows anyway (--rf-light's initial
+  // value, 315deg). So only a screen with a fine pointer that hovers registers its glass.
+  const RF_INIT = { lens: false, light: !!(G.matchMedia && G.matchMedia('(hover: hover) and (pointer: fine)').matches) };
   // What init() handles: the `auto` list in vendor/refract/bundle.js, plus glass, data-rf
   // behaviours and icon placeholders.
   const RF_SEL = '.rf-glass, [data-rf], [data-icon]:not(svg), .rf-switch, .rf-slider, .rf-stepper, .rf-search, .rf-chip, .rf-playpause, .rf-tabbar, .rf-segmented, .rf-pagedots, .rf-navbar, .rf-scroll-edge[data-watch], .rf-sidebar, .rf-toolbar, .rf-menu[popover], .rf-popover[popover], .rf-menu[id], .rf-popover[id], dialog.rf-dialog, .rf-sheet, .rf-activity, [data-rf-tooltip], [data-reveal], .rf-loupe, .rf-droplets, [data-rf-morph], [data-rf-tone], [data-rf-adapt]';
@@ -1480,8 +1486,14 @@
    * 3 GB of memory or more and the app on screen, about 8 s after launch once the page is idle and
    * calm (U.calm: no scroll or touch going on).
    * Otherwise it starts loading the first time a figure is about to show: a press on Start or on a
-   * move. Set-up warms it for its own reveal (src/ui/onboarding.js). */
+   * move. Set-up warms it for its own reveal (src/ui/onboarding.js).
+   * With the 3D figure picked, the stills kept on the phone (src/ui/stills.js) are read in once the
+   * first frame is drawn, so Plan's first frame has them. About 3 s after launch, once it's quiet,
+   * the ones Plan's cards would show this week and next (U.planStills) that aren't kept yet are drawn
+   * ahead, the figure warming up for them, so Plan has them from its first frame even on the first
+   * day; when they're all kept, nothing loads for them. */
   const FIGURE_ACTS = ['startWorkout', 'planStart', 'resumeWorkout', 'startMobility', 'moveInfo', 'planMoveInfo', 'cpHowTo', 'ladder'].map((a) => `[data-act="${a}"]`).join(',');
+  const STILLS_AHEAD_MS = 3000;
   const idle = (fn, ms) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: ms }) : setTimeout(fn, 1));
   function warmFigure() { safe(() => { const w = U.warmFigure || U.preloadFigure; if (w) w(); }); }
   function warmFigureLater() {
@@ -1504,6 +1516,18 @@
       warmFigure();
     };
     setTimeout(() => idle(later, 4000), 8000);
+    const S0 = U.S;
+    if (U.stills && S0 && S0.profile.onboarded && (S0.profile.prefs.figure || '3d') === '3d') afterFrame(() => safe(() => U.stills.load()));
+    U.stillsAhead();
+  }
+  // (Also after set-up, src/ui/stills.js: the first day starts there.)
+  U.stillsAhead = () => setTimeout(() => idle(stillsAhead, 4000), STILLS_AHEAD_MS);
+  function stillsAhead() {
+    const S = U.S, nav = G.navigator || {};
+    if (!S || !S.profile.onboarded || S.profile.workouts === false || nav.deviceMemory < 3 || !U.stills || !U.planStills || !U.stills.ok()) return;
+    if (doc.hidden) { doc.addEventListener('visibilitychange', stillsAhead, { once: true }); return; }
+    if (!U.quiet()) { U.whenQuiet(() => idle(stillsAhead, 4000)); return; }
+    U.stills.load().then(() => { if (U.S === S) safe(() => U.stills.ahead(U.planStills(S, U.today()))); });
   }
 
   let lastDay = null;
@@ -1561,7 +1585,15 @@
     const ready = U.S && U.S.profile.onboarded;
     if (route === 'privacy') { if (ready) U.open('privacy'); else if (U.showPrivacySheet) U.showPrivacySheet(); }
     else if (['today', 'plan', 'food', 'health', 'progress', 'you', 'moves', 'profile'].includes(route)) { if (ready) go(route); }
-    else if (['settings', 'science', 'coach'].includes(route) || (route === 'badges' && U.screens.badges)) { if (ready) U.open(route); }
+    else if (['settings', 'science', 'coach'].includes(route) || (route === 'badges' && U.screens.badges)) {
+      if (!ready) return;
+      U.open(route);
+      // A badge's notification: what's still sealed comes up over the gallery, ready to be opened.
+      const A = GH.achievements;
+      if (route === 'badges' && U.badgeReveal && A && A.unopened && A.unopened(U.S).length) {
+        (U.motion && U.motion.settled ? U.motion.settled() : Promise.resolve()).then(() => { if (U.route.view === 'badges') U.badgeReveal(); });
+      }
+    }
   }
   U.boot = boot;
   if (doc) {

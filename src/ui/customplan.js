@@ -26,99 +26,63 @@
   const ui = { wd: {}, when: {}, fresh: null };
 
   /* ================================================================== stills */
-  // Each tile shows its move's key pose: the 3D figure's still when 3D is on (drawn once, while the
-  // phone is idle, only for tiles on screen), else the flat figure. Tiles fade in as they're drawn.
-  const T = { svg: new Map(), q: [], busy: false, io: null, failed: false, loading: false };
+  // Each tile shows its move's key pose. With the 3D figure, its still in the person's look (kept on
+  // the phone, src/ui/stills.js): a kept one at once, else the tile's own background until it's
+  // drawn, and then it fades in. The small tiles are Plan's size and share its stills; the large ones
+  // (the picker's, a plan's exercise) are drawn when they come near the screen and kept for this
+  // launch only (there are a lot of them). Else the flat figure.
+  const T = { svg: new Map(), io: null };
   const thumb = (id, cls) => `<span class="cp-thumb${cls ? ` ${cls}` : ''}" data-morph="keep" data-move="${U.esc(id)}" aria-hidden="true"></span>`;
-  const want3d = () => !T.failed && !!(U.figure3dOk && U.figure3dOk());
-  function look() {
-    const pr = (U.S && U.S.profile.prefs) || {};
-    const dpr = Math.min(2, G.devicePixelRatio || 1);
-    return { width: Math.round(120 * dpr), height: Math.round(120 * dpr), dark: String(GH.platform ? GH.platform.currentTheme() : '').startsWith('dark'), skin: pr.figSkin || 'sand', shirt: pr.figShirt || undefined, crop: true };
-  }
-  const lookKey = (lk) => `${lk.dark ? 'd' : 'l'}${lk.skin}${lk.shirt || ''}`;
+  const want3d = () => !!(U.stills && U.stills.ok());
+  const big = (h) => h.classList.contains('is-tile') || h.classList.contains('is-xl');
+  const lookFor = (h) => (big(h) ? U.stills.look(120) : U.stills.look(52));
   function personMove(id) {
     const m = M().MOVES[id];
     if (!m) return null;
     try { return M().forPerson ? M().forPerson(m, B().eqFor(U.S, U.today())) : m; } catch (e) { return m; }
   }
-  const idle = (fn) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: 250 }) : setTimeout(() => fn(null), 24));
-  function fillImg(host, url, tag) {
-    host.textContent = '';
-    const img = doc.createElement('img');
-    img.alt = '';
-    img.draggable = false;
-    img.src = url;
-    host.appendChild(img);
-    host.setAttribute('data-drawn', tag);
+  function flatInto(h) {
+    const id = h.getAttribute('data-move');
+    const svg = flatStill(id);
+    h.textContent = '';
+    if (svg) { h.appendChild(svg.cloneNode(true)); h.setAttribute('data-drawn', id); }
   }
+  const show3d = (h, m, o) => U.stills.tile(h, m, o, flatInto, big(h) ? { keep: false } : null);
   function drawThumbs(root) {
     if (!root || !U.S) return;
     const hosts = root.querySelectorAll('.cp-thumb[data-move]');
     if (!hosts.length) return;
     if (want3d()) {
-      const f = GH.figure3d;
-      if (!f) {
-        if (!T.loading && GH.lazy) {
-          T.loading = true;
-          GH.lazy('figure3d').then(() => { T.loading = false; drawThumbs(doc.body); }, () => { T.loading = false; T.failed = true; drawThumbs(doc.body); });
-        }
-        return;
-      }
-      const lk = look();
-      const lkk = lookKey(lk);
       for (const h of hosts) {
-        const id = h.getAttribute('data-move');
-        const tag = `${id}|${lkk}`;
-        if (h.getAttribute('data-drawn') === tag && h.firstElementChild) continue;
-        const m = personMove(id);
-        const url = m && f.cachedStill(m, lk);
-        if (url) { fillImg(h, url, tag); continue; }
-        if (h.firstElementChild) h.textContent = '';
+        const m = personMove(h.getAttribute('data-move'));
+        if (!m) continue;
         h.removeAttribute('data-drawn');
+        const o = lookFor(h);
+        if (U.stills.url(U.stills.key(m, o)) || !big(h) || !G.IntersectionObserver) { show3d(h, m, o); continue; }
+        if (h.firstElementChild && h.firstElementChild.tagName !== 'IMG') h.textContent = '';
         observe(h);
       }
       return;
     }
     for (const h of hosts) {
       const id = h.getAttribute('data-move');
-      if (h.getAttribute('data-drawn') === id && h.firstElementChild) continue;
-      const svg = flatStill(id);
-      h.textContent = '';
-      if (svg) { h.appendChild(svg.cloneNode(true)); h.setAttribute('data-drawn', id); }
+      h.removeAttribute('data-want');
+      if (h.getAttribute('data-drawn') !== id || !h.firstElementChild) flatInto(h);
     }
   }
+  // A large tile's still is asked for once the tile is near the screen.
   function observe(h) {
-    if (!G.IntersectionObserver) { enqueue(h); return; }
     if (!T.io) {
       T.io = new G.IntersectionObserver((entries) => {
-        for (const e of entries) if (e.isIntersecting) { T.io.unobserve(e.target); enqueue(e.target); }
+        for (const e of entries) {
+          if (!e.isIntersecting) continue;
+          T.io.unobserve(e.target);
+          const m = e.target.isConnected && want3d() ? personMove(e.target.getAttribute('data-move')) : null;
+          if (m) show3d(e.target, m, lookFor(e.target));
+        }
       }, { rootMargin: '120px' });
     }
     T.io.observe(h);
-  }
-  function enqueue(h) {
-    if (!T.q.includes(h)) T.q.push(h);
-    if (!T.busy) { T.busy = true; idle(drawNext); }
-  }
-  function drawNext(deadline) {
-    const f = GH.figure3d;
-    const t0 = Date.now();
-    while (T.q.length && f) {
-      const h = T.q.shift();
-      if (!h.isConnected) continue;
-      const id = h.getAttribute('data-move');
-      const lk = look();
-      const tag = `${id}|${lookKey(lk)}`;
-      if (h.getAttribute('data-drawn') === tag) continue;
-      const m = personMove(id);
-      let url = null;
-      try { url = m ? f.still(m, lk) : null; } catch (e) { url = null; }
-      if (!url && m) { T.failed = true; T.q = []; T.busy = false; drawThumbs(doc.body); return; }
-      if (url) for (const x of doc.querySelectorAll(`.cp-thumb[data-move="${id}"]`)) if (x.getAttribute('data-drawn') !== tag) fillImg(x, url, tag);
-      if (deadline ? deadline.timeRemaining() < 8 : Date.now() - t0 > 12) break;
-    }
-    if (T.q.length) idle(drawNext); else T.busy = false;
   }
   // The flat figure's key pose, cropped to the figure (the Plan tab draws its tiles the same way).
   function flatStill(id) {

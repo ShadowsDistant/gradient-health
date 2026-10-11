@@ -269,13 +269,14 @@ section('The bridge answers only the app\'s page');
 {
   const BR = read(`${JAVA}Bridge.java`);
   // Everything that reads or changes data, reaches the network or another app, or runs a model.
-  const GATED = /^(save\w*|load\w*|deleteSecret|hc\w+|model\w+|share\w+|openUrl|act\w+|llm\w+|foodLookup|copy|pendingLink|diag\w+|trace\w+)$/;
+  const GATED = /^(save\w*|load\w*|deleteSecret|hc\w+|model\w+|share\w+|openUrl|act\w+|llm\w+|foodLookup|copy|pendingLink|diag\w+|trace\w+|notify\w+)$/;
   // The rest: the screen, haptics and harmless facts about the phone.
   const OPEN = /^(keepAwake|vibrate\w*|haptic\w*|isDark|setSystemBars|insets|claudeInstalled|appVersion|deviceMemory|rendererGone)$/;
   const methods = [...BR.matchAll(/@JavascriptInterface\n(?:\s*@\w+(?:\([^)]*\))?\n)?\s*public [\w<>[\]]+ (\w+)\(([^)]*)\) \{\n([^\n]*)/g)].map((m) => ({ name: m[1], first: m[3].trim() }));
   const ungated = methods.filter((m) => GATED.test(m.name) && m.first !== 'if (!trusted()) {');
   const unknown = methods.filter((m) => !GATED.test(m.name) && !OPEN.test(m.name)).map((m) => m.name);
-  check(`all ${methods.filter((m) => GATED.test(m.name)).length} bridge methods with side effects check trusted() first (secrets, save and load, hc*, model*, share*, openUrl, act*, llm*, diag* and trace*)`, methods.length > 40 && ungated.length === 0, ungated.map((m) => m.name));
+  check(`all ${methods.filter((m) => GATED.test(m.name)).length} bridge methods with side effects check trusted() first (secrets, save and load, hc*, model*, share*, openUrl, act*, llm*, diag*, trace* and notify*)`, methods.length > 40 && ungated.length === 0, ungated.map((m) => m.name));
+  check('the notification methods are among them', ['notifySchedule', 'notifyState', 'notifyRequest', 'notifyOpenSettings', 'notifyTap'].every((n) => methods.some((m) => m.name === n && GATED.test(n))), methods.filter((m) => /^notify/.test(m.name)).map((m) => m.name));
   check('every other bridge method is one of the harmless kinds (a new one has to be sorted into a list here)', unknown.length === 0, unknown);
   check('trusted() asks MainActivity whether the page is the app\'s', /private boolean trusted\(\) \{\s*return activity\.pageTrusted\(\);/.test(BR));
 }
@@ -341,6 +342,21 @@ section('The manifest');
   const tags = [...M.matchAll(/<(activity|activity-alias|service|receiver|provider)\b[^>]*>/g)].map((m) => ({ kind: m[1], tag: m[0], name: (/android:name="([^"]+)"/.exec(m[0]) || [])[1] }));
   const open = tags.filter((t) => /android:exported="true"/.test(t.tag) && !/android:permission="/.test(t.tag) && t.name !== '.MainActivity');
   check('every exported component but the launcher activity needs a permission (and no provider is exported)', open.length === 0 && tags.filter((t) => t.kind === 'provider').every((t) => /android:exported="false"/.test(t.tag)), open.map((t) => t.name));
+}
+
+section('Notifications: local, checked, and inexact');
+{
+  const NT = read(`${JAVA}Notifier.java`), M = read('android/AndroidManifest.xml').replace(/<!--[\s\S]*?-->/g, '');
+  const receiver = (M.match(/<receiver\b[^>]*android:name="\.NotifyReceiver"[^>]*>/) || [''])[0];
+  check('the receiver isn\'t exported (only Android\'s broadcasts and the app\'s own alarm reach it)', /android:exported="false"/.test(receiver), receiver);
+  check('inexact alarms only: no exact-alarm permission, no setExact', /am\.setWindow\(AlarmManager\.RTC_WAKEUP/.test(NT) && !/setExact|setAlarmClock/.test(NT) && !/SCHEDULE_EXACT_ALARM|USE_EXACT_ALARM/.test(M));
+  check('the schedule is capped: 64 KB, 60 items, 80-character titles, 200-character texts', /MAX_JSON = 64 \* 1024;/.test(NT) && /MAX_ITEMS = 60;/.test(NT) && /MAX_TITLE = 80;/.test(NT) && /MAX_BODY = 200;/.test(NT) && /in\.length\(\) > MAX_ITEMS\) \{\s*return null;/.test(NT));
+  const item = body(NT, 'private static JSONObject item(');
+  check('each item: a plain id, a known kind and screen, a time ahead and within two months', /ID\.matcher\(id\)\.matches\(\)/.test(item) && /index\(KINDS, kind\) < 0/.test(item) && /index\(ROUTES, route\) < 0/.test(item) && /at <= now \|\| at > now \+ MAX_AHEAD_MS/.test(item), item.slice(0, 400));
+  const routes = (/ROUTES = \{([^}]*)\}/.exec(NT) || [])[1] || '';
+  check('a notification only ever opens one of the app\'s own screens', /^"[a-z]+"(, "[a-z]+")*$/.test(routes.trim()) && /index\(ROUTES, route\) < 0/.test(body(NT, 'static String tapFrom(')), routes);
+  check('nothing about them reaches the network', !/java\.net|HttpURLConnection|URL\(|Socket/.test(NT) && !/java\.net|HttpURLConnection/.test(read(`${JAVA}NotifyReceiver.java`)));
+  check('their preferences stay out of backups (they\'re for this phone)', (read('android/res/xml/data_extraction_rules.xml').match(/<exclude domain="sharedpref" path="notify\.xml" \/>/g) || []).length === 2 && /<exclude domain="sharedpref" path="notify\.xml" \/>/.test(read('android/res/xml-v28/backup_rules.xml')) && /"notify"/.test(NT));
 }
 
 section('CI: only main is signed with the release key and published');

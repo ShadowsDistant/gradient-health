@@ -1,10 +1,12 @@
 // The Plan tab in Chromium at phone size, someone five weeks in: the week strip matches the plan,
 // its selection is a bead of liquid glass that travels to the day picked (and holds the weekday
-// while the weeks slide under it), picking a day fills the card (a workout with its exercises and
-// stills, a light day, next week), moving a workout with the chips (and Undo) and by long press,
-// swiping to next week, the week's phase explained, Start for today, Train today instead on a light
-// day, a done day, missed days, and no console errors. Screenshots go to build/ui-plan/ for a
-// visual pass.
+// while the weeks slide under it), the tiles' 3D stills (never the flat figure while 3D is picked,
+// drawn ahead after launch and kept, there from Plan's first render after a relaunch, drawn again
+// for a new look; the flat stills with the flat figure picked), picking a day fills the card (a
+// workout with its exercises and stills, a light day, next week), moving a workout with the chips
+// (and Undo) and by long press, swiping to next week, the week's phase explained, Start for today,
+// Train today instead on a light day, a done day, missed days, and no console errors. Screenshots go
+// to build/ui-plan/ for a visual pass.
 // Usage: node test/ui-plan.mjs [--dark] [--width=390]
 import { createRequire } from 'node:module';
 import { mkdirSync, rmSync } from 'node:fs';
@@ -35,6 +37,7 @@ async function openApp(time, mutate) {
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await page.clock.install({ time: new Date(time) });
   await page.addInitScript(seedBridge);
+  await page.addInitScript(watchTiles);
   await page.goto(server.url);
   await page.waitForSelector('.onboard:not([hidden])');
   await page.evaluate(seedState, { usualWeek: true });
@@ -45,6 +48,15 @@ async function openApp(time, mutate) {
   await settle();
   return { ctx, page, settle };
 }
+// In the page from its start: every flat figure (an SVG pose) that ever lands in one of Plan's tiles,
+// counted (with the 3D figure picked there must never be one).
+function watchTiles() {
+  window.__flatInTile = 0;
+  const flat = (n) => n.nodeType === 1 && ((n.matches('svg') && n.parentElement && n.parentElement.matches('.pw-thumb[data-move]')) || !!n.querySelector('.pw-thumb[data-move] > svg'));
+  const start = () => new MutationObserver((rs) => { for (const r of rs) for (const n of r.addedNodes) if (flat(n)) window.__flatInTile++; }).observe(document.documentElement, { childList: true, subtree: true });
+  if (document.documentElement) start(); else document.addEventListener('readystatechange', start, { once: true });
+}
+const flatSeen = (page) => page.evaluate(() => window.__flatInTile);
 const shot = (page, name) => page.screenshot({ path: join(OUT, `${name}${dark ? '-dark' : ''}.png`) });
 const shotFull = async (page, name) => {
   // The whole page, scrolled in steps (the screen scrolls, not the window).
@@ -89,6 +101,8 @@ const state = (page) => page.evaluate(() => {
     thumbs: card ? card.querySelectorAll('.pw-thumb[data-move]').length : 0,
     drawn: card ? card.querySelectorAll('.pw-thumb[data-move] > :is(svg, img)').length : 0,
     drawn3d: card ? card.querySelectorAll('.pw-thumb[data-move] > img').length : 0,
+    fading: card ? card.querySelectorAll('.pw-thumb[data-move] > img.is-new').length : 0,
+    looks: card ? [...card.querySelectorAll('.pw-thumb[data-move] > img')].map((i) => (i.getAttribute('data-k') || '').split('|').slice(1, 5).join('|')) : [],
     moves: U.S.events.filter((e) => e.type === 'move').length,
   };
 });
@@ -107,7 +121,9 @@ check('Monday is today and picked', s.today === 0 && s.selected === 0 && s.selIn
 check('the selection, a bead of liquid glass, rests on it', s.beadOn, JSON.stringify(s.bead));
 check('the card shows today\'s workout', s.cardKind === 'today' && s.cardTitle === s.titles[0], `${s.cardKind}: ${s.cardTitle}`);
 check('with Start and Move', await page.locator('#screen .pw-card [data-act="planStart"]').count() === 1 && await page.locator('#screen .pw-card [data-act="planMoveOpen"]').count() === 1);
-check('each exercise has a still of the move', s.thumbs >= 4 && s.drawn === s.thumbs, `${s.drawn} of ${s.thumbs}`);
+// The 3D figure is picked (the default) and this phone has kept no stills yet: each tile shows its
+// own background until its 3D still is drawn (below).
+check('each exercise has a tile for a still of the move, waiting for its 3D still', s.thumbs >= 4 && s.drawn === s.drawn3d, `${s.drawn3d} in 3D, ${s.drawn} drawn of ${s.thumbs}`);
 const sub = (await page.locator('#screen .pw-sub').innerText()).replace(/\s+/g, ' ');
 check('the summary says the week, the phase and what\'s done', /Week 6 · Full volume · 0 of 4 done/.test(sub), sub);
 check('the navigation bar has Schedule', await page.locator('#topbar [data-act="daysSheet"]').count() === 1);
@@ -119,19 +135,67 @@ await shotFull(page, '01-week');
 
 section('Stills in 3D');
 {
-  // The 3D figure is on by default: once the phone is idle, each tile's flat still turns into a 3D
-  // one, in the person's look, cropped square and drawn at the screen's pixel density.
-  let s3 = s;
-  for (let i = 0; i < 20 && s3.drawn3d < s3.thumbs; i++) { await settle(1500); s3 = await state(page); }
-  check('every exercise tile turns into a still of the 3D figure', s3.thumbs > 0 && s3.drawn3d === s3.thumbs, `${s3.drawn3d} of ${s3.thumbs}`);
-  const img = await page.evaluate(() => { const i = document.querySelector('#screen .pw-card .pw-thumb > img'); return i && { w: i.naturalWidth, h: i.naturalHeight, src: i.src.slice(0, 16), look: i.parentElement.getAttribute('data-drawn') }; });
-  check('square, at twice the tile\'s size on a 2x screen, in the person\'s look', img && img.w === 104 && img.h === 104 && /^data:image\//.test(img.src) && /\|sand\|/.test(img.look), img);
+  // The 3D figure is on by default. Once the phone is idle each tile's 3D still is drawn, in the
+  // person's look, cropped square and drawn at the screen's pixel density, and fades in; the tile
+  // shows its own background until then, never the flat figure. Headless Chromium draws WebGL in
+  // software, so this takes a while here.
+  const until = async (ok, tries = 40) => { let x = await state(page); for (let i = 0; i < tries && !ok(x); i++) { await settle(1500); x = await state(page); } return x; };
+  let s3 = await until((x) => x.thumbs > 0 && x.drawn3d === x.thumbs);
+  check('every exercise tile gets a still of the 3D figure, fading in', s3.thumbs > 0 && s3.drawn3d === s3.thumbs && s3.fading === s3.thumbs, `${s3.drawn3d} of ${s3.thumbs}, ${s3.fading} fading in`);
+  check('and no tile ever held the flat figure on the way', await flatSeen(page) === 0, await flatSeen(page));
+  const img = await page.evaluate(() => { const i = document.querySelector('#screen .pw-card .pw-thumb > img'); return i && { w: i.naturalWidth, h: i.naturalHeight, src: i.src.slice(0, 16), k: i.getAttribute('data-k') }; });
+  check('square, at twice the tile\'s size on a 2x screen, in the person\'s look', img && img.w === 104 && img.h === 104 && /^data:image\//.test(img.src) && /\|c104\|l\|sand\|/.test(img.k), img);
   await shot(page, '01b-stills-3d');
-  await page.evaluate(() => { const U = window.GH.ui; U.S.profile.prefs.figure = '2d'; U.render(); });
+
+  // After launch (3 s on, once it's quiet) the stills of this week's and next week's moves are drawn
+  // ahead and kept on the phone, after the ones on screen.
+  const ahead = () => page.evaluate(() => {
+    const U = window.GH.ui;
+    const keys = [...new Set(U.planStills(U.S, U.today()).map((j) => U.stills.key(j.m, j.o)))];
+    const thisWeek = window.GH.planWeek(U.S, U.today()).days.filter((e) => e.session).length;
+    return { keys: keys.length, kept: keys.filter((k) => U.stills.url(k)).length, thisWeek, stats: U.stills._stats() };
+  });
+  let a = await ahead();
+  for (let i = 0; i < 60 && a.kept < a.keys; i++) { await settle(1500); a = await ahead(); }
+  check(`this week's and next week's stills are drawn ahead into the phone's store (${a.keys}, over ${a.thisWeek} workouts this week)`, a.keys >= 10 && a.thisWeek >= 3 && a.kept === a.keys && a.stats.ahead === 0, a);
+
+  // A relaunch: what's kept is read in after the first frame, and Plan's first render has every
+  // tile's 3D still straight in its HTML (not faded in), with no 3D chunk loaded: nothing to wait for.
+  await page.evaluate(() => window.GH.ui.stills.flush());
+  await page.reload();
+  await page.waitForSelector('#screen[data-view="today"] .session');
+  const read = await page.evaluate(() => window.GH.ui.stills.load());
+  const first = await page.evaluate(() => {
+    const U = window.GH.ui;
+    const chunk = !!window.GH.figure3d;
+    U.go('plan');
+    const t = [...document.querySelectorAll('#screen .pw-card .pw-thumb[data-move]')];
+    return { tiles: t.length, kept: t.filter((h) => h.querySelector(':scope > img[data-k]:not(.is-new)')).length, flat: t.filter((h) => h.querySelector(':scope > svg')).length, chunk };
+  });
+  check(`after a relaunch, Plan's first render has every kept 3D still in its tiles (${read} read in)`, read >= a.keys && first.tiles >= 4 && first.kept === first.tiles && !first.flat && !first.chunk, first);
+  await page.waitForTimeout(100);
+  await shot(page, '01c-relaunch');
+
+  // A new look draws them again: each tile keeps the still it had until the new one fades in over it.
+  await page.evaluate(() => { const U = window.GH.ui; U.S.profile.prefs.figSkin = 'umber'; U.render(); });
+  s3 = await until((x) => x.looks.length === x.thumbs && x.looks.every((l) => l === 'c104|l|umber|'));
+  check('a new skin tone draws the tiles\' stills again, in it', s3.thumbs > 0 && s3.drawn3d === s3.thumbs && s3.looks.every((l) => l === 'c104|l|umber|'), s3.looks);
+  await page.evaluate(() => { const U = window.GH.ui; U.S.profile.prefs.theme = 'dark'; U.applyPrefs(); U.render(); });
+  s3 = await until((x) => x.looks.length === x.thumbs && x.looks.every((l) => l === 'c104|d|umber|'));
+  check('and so does a change of theme', s3.thumbs > 0 && s3.drawn3d === s3.thumbs && s3.looks.every((l) => l === 'c104|d|umber|'), s3.looks);
+  await shot(page, '01d-stills-dark');
+  check('still never the flat figure', await flatSeen(page) === 0, await flatSeen(page));
+  await page.evaluate(() => { const U = window.GH.ui; U.S.profile.prefs.figSkin = 'sand'; U.S.profile.prefs.theme = 'light'; U.applyPrefs(); U.render(); });
+  s3 = await state(page);
+  check('back to the look before, its kept stills are back at once', s3.drawn3d === s3.thumbs && s3.looks.every((l) => l === 'c104|l|sand|'), s3.looks);
+
+  await page.evaluate(() => { const U = window.GH.ui; U.S.profile.prefs.figure = 'flat'; U.render(); });
   await settle(900);
   s3 = await state(page);
   check('with the flat figure picked in Settings, the tiles show the flat still', s3.drawn3d === 0 && s3.drawn === s3.thumbs, `${s3.drawn} flat of ${s3.thumbs}`);
-  await page.evaluate(() => { const U = window.GH.ui; U.S.profile.prefs.figure = '3d'; U.render(); });
+  await page.evaluate(() => { const U = window.GH.ui; U.S.profile.prefs.figure = '3d'; U.render(); window.__flatInTile = 0; });
+  s3 = await state(page);
+  check('and back on 3D, the kept 3D stills at once', s3.drawn3d === s3.thumbs, `${s3.drawn3d} of ${s3.thumbs}`);
   await settle(900);
 }
 
@@ -154,7 +218,7 @@ s = await state(page);
 check('Tuesday is picked and the selection slid there', s.selected === 1 && s.selIndex === 1, JSON.stringify(s));
 check('the bead has landed on it', s.beadOn, JSON.stringify(s.bead));
 check('its card shows Tuesday\'s workout', s.cardKind === 'workout' && s.cardTitle === s.titles[1] && /Tomorrow/.test(s.cardText), `${s.cardKind}: ${s.cardTitle}`);
-check('with its exercises drawn', s.thumbs >= 4 && s.drawn === s.thumbs, `${s.drawn} of ${s.thumbs}`);
+check('with its exercises\' 3D stills there at once (drawn ahead)', s.thumbs >= 4 && s.drawn3d === s.thumbs, `${s.drawn3d} of ${s.thumbs}`);
 check('no Start on a later day', await page.locator('#screen .pw-card [data-act="planStart"]').count() === 0);
 check('picking a day doesn\'t rebuild the plan', (await page.evaluate(() => window.GH.planWeek.stats.misses)) === hits0);
 const haptics = await page.evaluate(() => window.__haptics.slice(-3));
@@ -163,7 +227,7 @@ await page.click(pill(2));
 await settle();
 s = await state(page);
 check('Wednesday is a light day: walk and mobility', s.cardKind === 'light' && /Walk and mobility/.test(s.cardText) && /Mobility flow/.test(s.cardText), s.cardText.slice(0, 120));
-check('with the five mobility moves drawn', await page.locator('#screen .pw-mob .pw-thumb > :is(svg, img)').count() === 5);
+check('with the five mobility moves\' 3D stills', await page.locator('#screen .pw-mob .pw-thumb > img').count() === 5);
 await shot(page, '02-light');
 await page.click('#screen .pw-mob .pw-mob-btn');
 await settle(1200);
@@ -241,6 +305,9 @@ await page.clock.runFor(150);
 await page.waitForTimeout(30);
 const held = await page.evaluate(() => { const b = document.querySelector('#screen .pw-viewport > .pw-bead'); return !!b && b.hasAttribute('data-lifted'); });
 await settle(900);
+// The weeks slide on a CSS spring in real time (about 700 ms, its last pixels slowly), whatever the
+// page's clock does: what's measured is where everything comes to rest.
+await page.waitForFunction(() => !document.getAnimations().some((a) => a.playState === 'running' && a.effect && a.effect.target && a.effect.target.closest && a.effect.target.closest('.pw-viewport')), null, { timeout: 4000, polling: 50 }).catch(() => {});
 s = await state(page);
 check('the bead holds the weekday, lifted, while the weeks slide under it, then lands on it', held && s.beadOn, JSON.stringify({ held, bead: s.bead }));
 check('Next week slides in', s.page === 1 && s.pills === 7 && JSON.stringify(s.kinds) === JSON.stringify(s.nextKinds), JSON.stringify({ page: s.page, kinds: s.kinds }));
@@ -316,6 +383,7 @@ s = await state(page);
 check('the day is done, with what was done in it', s.kinds[0] === 'done' && s.cardKind === 'done' && /Done/.test(s.cardText) && /sets/.test(s.cardText) && s.drawn >= 4, s.cardText.slice(0, 120));
 check('the summary counts it', /1 of 4 done/.test((await page.locator('#screen .pw-sub').innerText()).replace(/\s+/g, ' ')));
 await shot(page, '08-done');
+check('Plan\'s tiles never held the flat figure with 3D picked', await flatSeen(page) === 0, await flatSeen(page));
 await ctx.close();
 
 /* ------------------------------------------------------------------ Wednesday: a light day today */

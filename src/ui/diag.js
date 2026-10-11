@@ -50,10 +50,25 @@
   };
 
   /* ---------------------------------------------------------------- the scroll, once a frame */
+  // The position is read once the frame is drawn (a message posted from the frame's callback, or
+  // from a scroll event, runs as a task after the frame's style and layout), with the time it was
+  // asked for. Read in the frame's callback itself, scrollTop made the page's style and layout catch
+  // up there with everything that frame was about to change: after a tab change, with the new page
+  // and the tab bar's moving glass, a recalculation of hundreds of elements in every frame for the
+  // two seconds after each touch, all of it on top of the frame's own.
+  const pend = [];
+  const mc = G.MessageChannel ? new G.MessageChannel() : null;
+  let posted = false;
+  if (mc) mc.port1.onmessage = () => { posted = false; const y = topNow(); for (const [t, k] of pend) S.push([t, y, k]); pend.length = 0; };
+  const sample = (t, kind) => {
+    if (!mc) { S.push([t, topNow(), kind]); return; }
+    pend.push([t, kind]);
+    if (!posted) { posted = true; mc.port2.postMessage(0); }
+  };
   let until = 0, running = false;
   function tick() {
     const t = now();
-    S.push([t, topNow(), 0]);
+    sample(t, 0);
     if (t < until) G.requestAnimationFrame(tick); else running = false;
     if (S.length > 4000) S.splice(0, 500);
   }
@@ -80,7 +95,7 @@
     if (T.length > 3000) T.splice(0, 500);
   };
   for (const type of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) doc.addEventListener(type, onTouch, { passive: true, capture: true });
-  doc.addEventListener('scroll', (e) => { if (e.target === screen()) { S.push([now(), topNow(), 1]); wake(1500); } }, { passive: true, capture: true });
+  doc.addEventListener('scroll', (e) => { if (e.target === screen()) { sample(now(), 1); wake(1500); } }, { passive: true, capture: true });
 
   /* ---------------------------------------------------------------- the thread, and input delays */
   let loaf = false;
