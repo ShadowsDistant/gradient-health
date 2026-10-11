@@ -109,8 +109,9 @@ async function run(dark) {
   const shot = async (name) => { await settle(); await page.screenshot({ path: join(out, `${name}${dark ? '-dark' : ''}.png`) }); };
   const tab = async (t) => { await page.click(`.rf-tab[data-tab="${t}"]`); await settle(700); };
   const top = () => page.evaluate(() => document.getElementById('screen').scrollTo(0, 0));
-  // The badges' medals turn into stills of the 3D ones while the phone is idle (the SVG stands in).
-  const medals = async () => { for (let i = 0; i < 90 && await page.evaluate(() => [...document.querySelectorAll('#screen .bdg-m')].some((h) => !h.querySelector('.bdg-img'))); i++) await settle(1000); };
+  // The badges' medals turn into stills of the 3D ones while the phone is idle (the SVG stands in, and
+  // stays where WebGL can't draw).
+  const medals = async () => { for (let i = 0; i < 90 && await page.evaluate(() => { const U = window.GH.ui; return !!(U.canDraw3d && U.canDraw3d()) && !U.medals.off && [...document.querySelectorAll('#screen .bdg-m')].some((h) => !h.querySelector('.bdg-img')); }); i++) await settle(1000); };
 
   await shot('today');
   await page.click('#float [data-act="startWorkout"]');

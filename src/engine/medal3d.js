@@ -814,11 +814,18 @@ function mount(host, spec, o) {
   const reduced = () => !!(GH.platform && GH.platform.reducedMotion && GH.platform.reducedMotion());
   // Where the sway has it now becomes where it is, so a touch or a spin starts from what shows.
   const hold = () => { st.yaw += st.sway; st.sway = 0; };
+  // Turned over (face to back, or back to face) at this turn: by someone's spin, that's o.onFlip.
+  const turned = (yaw) => {
+    const side = Math.cos(yaw) >= 0 ? 1 : -1;
+    if (side === st.side) return;
+    st.side = side;
+    if ((st.drag || st.vel) && o.onFlip) o.onFlip();
+  };
   const ctl = {
     el, rr, ready: null,
     // The reveal: in from small and turned away, a full turn and a little past, then still, with a
-    // sweep of light across it.
-    spinIn() { hold(); st.vel = 0; st.spin = { at: now() }; st.touched = now(); kick(); },
+    // sweep of light across it (where the capsule was just tapped: on screen).
+    spinIn() { visible = true; hold(); st.vel = 0; st.spin = { at: now() }; st.touched = now(); kick(); },
     draw() { if (ready) frame(now()); },
     fail() { if (dead) return; ctl.destroy(); if (o.onFail) Promise.resolve().then(() => o.onFail()); },
     destroy() {
@@ -879,8 +886,7 @@ function mount(host, spec, o) {
     st.tx += (st.tiltX - st.tx) * Math.min(1, dt * 6);
     st.ty += (st.tiltY - st.ty) * Math.min(1, dt * 6);
     yaw += st.sway + st.ty;
-    const side = Math.cos(yaw) >= 0 ? 1 : -1;
-    if (side !== st.side) { st.side = side; if ((st.drag || st.vel) && o.onFlip) o.onFlip(); }
+    turned(yaw);
     pose(v, REST.x + st.tx, yaw, scale);
     v.scene.environmentRotation.y = sweep;
     if (R !== rr || rr.lost) return false;
@@ -903,6 +909,8 @@ function mount(host, spec, o) {
   // Spun by hand: a horizontal drag (a vertical one is the sheet's or the page's).
   const down = (e) => {
     if (e.button > 0) return;
+    // (A medal being touched is on screen, whatever the observer last had to say.)
+    visible = true;
     hold();
     st.drag = { id: e.pointerId, x: e.clientX, t: e.timeStamp, v: 0 };
     st.vel = 0;
@@ -916,6 +924,8 @@ function mount(host, spec, o) {
     if (!d || e.pointerId !== d.id) return;
     const a = ((e.clientX - d.x) / css) * Math.PI, dt = Math.max(1, e.timeStamp - d.t);
     st.yaw += a;
+    // Its haptic comes with the finger, not with the next frame.
+    turned(st.yaw + st.ty);
     d.v = lerp(d.v, (a / dt) * 1000, 0.5); // its speed (radians a second), smoothed
     d.x = e.clientX;
     d.t = e.timeStamp;
