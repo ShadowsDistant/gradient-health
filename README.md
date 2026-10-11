@@ -265,7 +265,7 @@ Small models can slip, so the app checks every answer against your own numbers, 
 - **Glass that moves.** Buttons form out of the glass and change shape when their label does, menus grow out of the button you tap, and buttons in the top bar carry over from page to page.
 - **Pages and cards.** Pages slide away as the next one comes in, and cards glide when something is added or removed. Sheets of thick glass slide up from the bottom and follow your finger, from a quick glance up to full height.
 - **Smooth scrolling,** with the glass on or off: pick Auto, Liquid, Frosted or Flat in Settings, under Look. Pages don't zoom by accident; maps do, with two fingers.
-- **Haptics with 57 distinct feels** (a tick for each tab, a bump at the end of a stepper, a sheet swiped away, saving, sending, a timer counting down, a finished set, a new best, a badge, every split of a run) in Light, Medium or Strong, and you can feel each one in Settings.
+- **Haptics with 59 distinct feels** (a tick for each tab, a bump at the end of a stepper, a sheet swiped away, saving, sending, a timer counting down, a finished set, a new best, each tap that cracks a badge open, every split of a run) in Light, Medium or Strong, and you can feel each one in Settings.
 - **Changed your mind?** Cancelling a workout folds the player away and Today settles back; a discarded activity folds away too.
 - **3D figures appear right away,** with a picture of the move until it starts.
 - **For everyone:** light and dark themes, bigger text, reduced motion and increased contrast are all respected.
