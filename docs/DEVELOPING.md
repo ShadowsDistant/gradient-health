@@ -842,7 +842,8 @@ request. `test/ai.mjs` and `test/ui-review.mjs` cover it.
 Set-up (`src/ui/onboarding.js`) is six screens with one decision each, ending on the plan the engine
 built (`GH.optimizer.explainProfile`) with its first workout a tap away. With no weekdays picked, the
 usual pattern is turned so today is a workout day. Health Connect is offered after the first workout
-(`U.hcInvite`), never before the plan. `test/ui-onboarding.mjs` covers it.
+(`U.hcInvite`), never before the plan. Reminders come on as it ends (see Notifications).
+`test/ui-onboarding.mjs` covers it.
 
 ## Your plans
 
@@ -897,9 +898,13 @@ state (`test/customplan.mjs`); `src/ui/customplan.js` is the screens (`test/ui-c
 
 A reminder on workout days, a walk or run on a rest day, a badge waiting to be opened, a word the
 morning after a good night and a gentle note after a few days away. All local: no server, no push
-service, nothing sent anywhere. They're off until the person turns them on: a one-time card on Today
-(for people updating, and new people once their first workout and the tour are done) or Settings,
-Notifications, with a switch per kind and the reminder time.
+service, nothing sent anywhere. Set-up turns them on for someone new as it ends: its last screen says
+so over the button that finishes it, and on Android 13 and newer Android asks for the permission as
+that's tapped, once, with set-up still showing (`U.notifySetupAsk`, `U.notifySetupDone` in
+`src/ui/notify.js`); a no leaves them off with nothing asking again. Someone set up before keeps what
+they have (`brain.js`'s default and the store's migration are off), and if that's off, a one-time
+card on Today asks once their first workout and the tour are done. Settings, Notifications, has a
+switch per kind and the reminder time.
 
 **The page plans, Android delivers.** `src/notify.js` (`GH.notify`, a chunk) is a pure planner:
 `plan(S, now, o)` works out the next six weeks from the plan as Plan shows it (`GH.planWeek`), what's
@@ -934,9 +939,9 @@ so no exact-alarm permission, and while the phone dozes it waits for it to wake.
 each item, a restart and an update. At its time an item is dropped if one went out today, it's quiet
 hours, the app is on screen, an activity records (a walk also waits for a day with none recorded), or
 Android has its kind off (a channel per kind) or it's two hours late. One notification shows at a
-time, and each goes once it's out of date. `POST_NOTIFICATIONS` (Android 13+) is asked for only when
-they're turned on (`notifyRequest`, answered with `__gh.onNotifyPermission`); after a no, Settings
-opens Android's settings for them. A tap opens its screen the way a plan link does: `notifyTap()` for
+time, and each goes once it's out of date. `POST_NOTIFICATIONS` (Android 13+) is asked for at the end
+of set-up and when they're turned on (`notifyRequest`, answered with `__gh.onNotifyPermission`);
+after a no, Settings opens Android's settings for them. A tap opens its screen the way a plan link does: `notifyTap()` for
 the one the app was started from, `__gh.onNotifyTap` while it runs. A badge's opens Badges with what's
 still sealed coming up over it, ready to be opened (`openRoute` in `src/ui/core.js`).
 `test/ui-notify.mjs` covers the card, Settings, taps and the hand-off against a stand-in

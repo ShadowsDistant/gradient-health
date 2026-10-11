@@ -2,10 +2,13 @@
  * - the hand-off: each time the app is left (the page hidden, or Android's pause) and each time it's
  *   opened, the whole schedule goes to the Android app (AndroidBridge.notifySchedule), which keeps it
  *   in place of the last one and posts each item at its time (Notifier.java);
- * - the permission Android 13 and newer asks for, only when someone turns notifications on;
+ * - on for someone new: set-up turns them on as it ends (U.notifySetupAsk, U.notifySetupDone), with
+ *   the permission Android 13 and newer asks for asked then, once; otherwise it's asked only when
+ *   someone turns notifications on;
  * - a tapped notification opens its screen (window.__gh.onNotifyTap while the app runs, or
  *   AndroidBridge.notifyTap() for the one the app was started from, as plan links do);
- * - Settings' Notifications rows (U.notifyRows) and Today's one-time card that asks (U.notifyCard).
+ * - Settings' Notifications rows (U.notifyRows) and Today's one-time card that asks (U.notifyCard),
+ *   for someone with them off who hasn't answered it (set-up answers it for someone new).
  * In a plain browser there's nothing to post with: Settings says they're in the Android app.
  */
 (function (G) {
@@ -153,6 +156,34 @@
     U.toast('Notifications are on', 'positive', `${at ? `Workout days at ${at}. ` : ''}One a day at most, never at night.`);
     return st;
   }
+
+  /* ---------------------------------------------------------------- set-up */
+  // Someone new gets them on as set-up ends (src/ui/onboarding.js). Android 13 and newer asks for the
+  // permission then, once, as they tap the last button with their plan still showing, and set-up goes
+  // once it's answered; a no leaves them off with nothing more said (Settings shows them off and
+  // Today's card doesn't come). Older Androids allow them already. Resolves with whether they're on;
+  // in a plain browser there's nothing to turn on.
+  U.notifySetupAsk = () => {
+    if (!can()) return Promise.resolve(false);
+    return askPermission().then((st) => st.permission === 'granted', () => false);
+  };
+  // What set-up says above its last button, so the ask that follows makes sense ('' in a browser).
+  U.notifySetupHint = (workouts) => (can()
+    ? `${U.icon('bell', 'sm')}<span>${workouts ? 'A reminder on workout days, and a walk now and then.' : 'A nudge now and then.'} One a day at most, never at night.</span>`
+    : '');
+  // The new state, as set-up saves it: the setting, and the card answered either way.
+  U.notifySetupDone = (S, on) => {
+    if (!can() || !S) return;
+    prefs(S).on = !!on;
+    S.seen = S.seen || {};
+    S.seen.notifyAsk = true;
+  };
+  // Then Android gets the first schedule.
+  const prevOnboarding = U.afterOnboarding;
+  U.afterOnboarding = () => {
+    if (prevOnboarding) prevOnboarding();
+    if (U.S && prefs(U.S).on) sync('settings');
+  };
 
   /* ---------------------------------------------------------------- Today's card, once */
   // For people updating and for new people after their first workout (once the tour has been, so it

@@ -6,7 +6,10 @@
 // before the plan, plain words (no dashes, optional fields marked), "Anything to plan around?" in a
 // sheet and what it changes, Restore from a backup on the welcome, a friend's shared plan's three
 // screens into that plan (no tour), and Just tracking food? with Health Connect as its optional last
-// screen. Then Your answers: every detailed screen as before, one screen with Save; after the first
+// screen. Reminders on from the end of set-up: the last screen says so, Android asks once as it's
+// tapped (not before), a no leaves them off with nothing asking again (Settings shows them off), an
+// Android that allows them already asks nothing, a browser has none, and a restored backup keeps its
+// own. Then Your answers: every detailed screen as before, one screen with Save; after the first
 // workout, Health Connect offered and then the tour (once, not over a toast); and a flare day.
 // No console errors. Screenshots go to build/ui-onboarding/.
 // Usage: node test/ui-onboarding.mjs [--dark] [--width=390]
@@ -33,12 +36,15 @@ const errors = [];
 const SUNDAY = '2026-10-04T08:00:00'; // a Sunday: in none of the usual spreads of days
 // A fresh first run. bridge: 'app' (Health Connect there but not allowed yet; every permission
 // request is counted in window.__hcAsks), 'unsupported' (the app on an older Android) or 'web'.
-async function fresh(bridge = 'app', time = SUNDAY) {
+// notify: Android's side of notifications before the app starts (test/fixtures.mjs: Android 13
+// asks, and the answer is yes unless notify.answer says otherwise).
+async function fresh(bridge = 'app', time = SUNDAY, notify = null) {
   const ctx = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: dark ? 'dark' : 'light' });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await page.clock.install({ time: new Date(time) });
+  if (notify) await page.addInitScript((n) => { window.__notify = n; }, notify);
   if (bridge !== 'web') await page.addInitScript(seedBridge);
   await page.addInitScript((kind) => {
     window.__hcAsks = 0;
@@ -195,6 +201,8 @@ section('The first run: six screens, one decision each');
   check('in words that read well ("12 sets for arms", "minutes of sets")', !/\b(?:[a-z]+ \d+ and [a-z]+ \d+ sets|about \d+ of sets)\b/.test(plan.why) && (!/most work/.test(plan.why) || /\d+ sets for /.test(plan.why)), plan.why);
   check('nothing "built around you" for an age and a sore knee that change nothing there', !plan.around);
   check('Start my first workout, or Look around first', (await page.locator('.ob-actions [data-variant="tinted"]').innerText()).trim() === 'Start my first workout' && await page.locator('.ob-actions [data-act="obLook"]').count() === 1);
+  check('over them, reminders come on: workout days and a walk now and then, one a day at most', /^A reminder on workout days, and a walk now and then\. One a day at most, never at night\.$/.test((await hint(page)).trim()), await hint(page));
+  check('nothing asked of Android about notifications yet', await page.evaluate(() => window.__notify.asked) === 0);
   check('six screens from the welcome to the plan', seen.join(' > ') === ['Gradient Health', 'What do you want most?', 'How much time do you have?', 'Where do you train?', 'A little about you', 'Your plan'].join(' > '), seen.join(' > '));
   check('still no Health Connect request', await page.evaluate(() => window.__hcAsks) === 0);
   words.push(await text(page));
@@ -226,6 +234,53 @@ section('The first run: six screens, one decision each');
   check('no tour before the first workout', !st.tour);
   check('and never a Health Connect request', await page.evaluate(() => window.__hcAsks) === 0);
   await shot(page, '08-first-workout');
+
+  section('Reminders, on from the end of set-up');
+  const nf = await page.evaluate(() => ({ asked: window.__notify.asked, on: window.GH.ui.S.profile.prefs.notify.on, kinds: ['workout', 'move', 'badge', 'sleep', 'comeback'].every((k) => window.GH.ui.S.profile.prefs.notify[k] === true), time: window.GH.ui.S.profile.prefs.notify.time, answered: window.GH.ui.S.seen.notifyAsk }));
+  check('Start my first workout: Android asked about notifications, once, and said yes', nf.asked === 1, nf);
+  check('so reminders are on, every kind, at the time worked out', nf.on === true && nf.kinds && nf.time === null, nf);
+  check('and Today\'s card that asks is answered: it won\'t come', nf.answered === true, nf);
+  let sched = null;
+  for (let i = 0; i < 20 && !sched; i++) { await page.clock.runFor(300); await page.waitForTimeout(150); sched = await page.evaluate(() => window.__notify.schedules.filter((x) => x.on).pop() || null); }
+  check('Android has the first schedule', sched && sched.items.length >= 3, sched && sched.items.map((x) => x.id));
+  check('nothing about notifications was said in a toast', !/[Nn]otifications/.test(await page.evaluate(() => [...document.querySelectorAll('.rf-toast')].map((t) => t.textContent).join(' | '))));
+  await ctx.close();
+}
+
+section('Reminders: a no at the end of set-up leaves them off, and nothing asks again');
+{
+  const { ctx, page } = await fresh('app', SUNDAY, { answer: 'denied' });
+  for (let i = 0; i < 4; i++) await next(page);
+  await toPlan(page);
+  check('the plan says reminders come on', /A reminder on workout days/.test(await hint(page)), await hint(page));
+  await page.click('.ob-actions [data-act="obLook"]');
+  await page.waitForSelector('#screen[data-view="today"] .session', { timeout: 5000 });
+  await page.clock.runFor(1500); await page.waitForTimeout(600);
+  const r = await page.evaluate(() => ({ asked: window.__notify.asked, on: window.GH.ui.S.profile.prefs.notify.on, answered: window.GH.ui.S.seen.notifyAsk, toasts: [...document.querySelectorAll('.rf-toast')].map((t) => t.textContent).join(' | '), scheduled: window.__notify.schedules.some((x) => x.on) }));
+  check('Look around first: Android asked once, and they said no', r.asked === 1, r);
+  check('reminders stay off, with nothing handed to Android', r.on === false && !r.scheduled, r);
+  check('and nothing nags: no toast about it', !/[Nn]otifications/.test(r.toasts), r.toasts);
+  // Later, with a workout done and the tour seen: Today's card still doesn't ask.
+  const card = await page.evaluate(() => { const GH = window.GH, U = GH.ui, B = GH.brain, S = U.S; B.startWorkout(S, U.today(), { now: Date.now() - 26 * 60000 }); for (let g = 0; S.active && S.active.idx < S.active.steps.length && g < 400; g++) { const st = S.active.steps[S.active.idx]; B.completeStep(S, st.kind === 'test' ? { value: 12 } : {}); } B.finishWorkout(S, { rating: 'right', now: Date.now() }); S.seen.tour = true; U.save(true); return U.notifyCard(S, U.today()); });
+  check('after the first workout and the tour, Today\'s card doesn\'t ask either', card === '', card);
+  await page.evaluate(() => { window.GH.ui.open('settings'); });
+  await page.clock.runFor(900); await page.waitForTimeout(700);
+  const set = await page.evaluate(() => { const i = document.querySelector('#screen [data-on="notifyOn"]'); return { sw: i && i.checked, rows: document.querySelectorAll('#screen ul[data-group="notify"] > *').length, perm: !!document.querySelector('#screen [data-key="nf-perm"]') }; });
+  check('Settings shows them off, as for anyone who has them off', set.sw === false && set.rows === 1 && !set.perm, set);
+  check('still asked once', await page.evaluate(() => window.__notify.asked) === 1);
+  await ctx.close();
+}
+
+section('Reminders: Android already allows them');
+{
+  const { ctx, page } = await fresh('app', SUNDAY, { permission: 'granted' });
+  for (let i = 0; i < 4; i++) await next(page);
+  await toPlan(page);
+  await page.click('.ob-actions [data-act="obLook"]');
+  await page.waitForSelector('#screen[data-view="today"] .session', { timeout: 5000 });
+  await page.clock.runFor(1500); await page.waitForTimeout(600);
+  const r = await page.evaluate(() => ({ asked: window.__notify.asked, on: window.GH.ui.S.profile.prefs.notify.on }));
+  check('older Androids (or one that allowed them before): nothing to ask, and they\'re on', r.asked === 0 && r.on === true, r);
   await ctx.close();
 }
 
@@ -251,11 +306,13 @@ section('Today is a workout day, every weekday');
   await page.click('.onboard input[name="obDaysN"][value="3"]', { force: true }); await settle(page, 200);
   await next(page); await next(page);
   await toPlan(page);
+  check('in a browser, the plan says nothing about reminders (there\'s nothing to post them with)', !(await hint(page)));
   await page.click('.ob-actions [data-act="obLook"]');
   await page.waitForSelector('#screen[data-view="today"] .session', { timeout: 5000 });
   await page.waitForTimeout(600);
   const m = await page.evaluate(() => { const U = window.GH.ui, S = U.S; return { weekdays: S.profile.weekdays, plan: window.GH.brain.todayPlan(S, U.today()).type, tour: !!document.querySelector('dialog.tour-sheet[open]'), start: !!document.querySelector('#float [data-act="startWorkout"]') }; });
   check('Look around first: Today, with today\'s workout to start', m.plan === 'workout' && m.start, m);
+  check('and notifications left off', await page.evaluate(() => window.GH.ui.S.profile.prefs.notify.on) === false);
   check('a Monday start keeps the usual days (none stored)', m.weekdays === null, m.weekdays);
   check('and no tour yet', !m.tour);
   await ctx.close();
@@ -278,7 +335,7 @@ section('Ask the coach to check it, when there\'s a coach');
 
 section('Restore from a backup, on the welcome');
 {
-  const { ctx, page } = await fresh('web');
+  const { ctx, page } = await fresh('app');
   const backup = await page.evaluate(() => { const B = window.GH.brain; const day = B.dayOf(Date.now(), 4); const S = B.newState({ goals: ['legs'], name: 'Rae', days: 4 }, null, day - 20); S.seen = { tour: true, lastVersion: window.GH.VERSION }; return window.GH.store.exportJson(S); });
   await page.click('.ob-actions [data-act="obRestore"]');
   await page.clock.runFor(400); await page.waitForTimeout(700);
@@ -294,6 +351,8 @@ section('Restore from a backup, on the welcome');
   await page.clock.runFor(600); await page.waitForTimeout(900);
   const r = await page.evaluate(() => ({ name: window.GH.ui.S && window.GH.ui.S.profile.name, view: document.getElementById('screen').dataset.view, hidden: document.getElementById('onboard').hidden, empty: !document.getElementById('onboard').firstElementChild }));
   check('restoring it opens the app with the backup, set-up gone', r.name === 'Rae' && r.view === 'today' && r.hidden && r.empty, r);
+  const nf = await page.evaluate(() => ({ on: window.GH.ui.S.profile.prefs.notify.on, asked: window.__notify.asked }));
+  check('someone set up before keeps their notifications as they were (off), and nothing is asked', nf.on === false && nf.asked === 0, nf);
   await shot(page, '09-restored');
   await ctx.close();
 }
@@ -316,6 +375,7 @@ section('A friend\'s plan: three screens into it');
   await page.waitForTimeout(300);
   const f = await page.evaluate(() => ({ title: document.querySelector('.onboard .rf-large-title').textContent, from: (document.querySelector('.onboard .rv-from') || {}).textContent, moves: document.querySelectorAll('.onboard .rv-first .rv-move').length, btn: document.querySelector('.ob-actions [data-variant="tinted"]').textContent.trim() }));
   check('then the plan as you\'d do it, and Start with Alex\'s plan', f.title === 'Upper and lower' && /Alex/.test(f.from) && f.moves === 3 && f.btn === 'Start with Alex\'s plan', f);
+  check('saying reminders come on', /A reminder on workout days/.test(await hint(page)), await hint(page));
   await shot(page, '11-friend-plan');
   await page.click('.ob-actions [data-act="obLook"]');
   await page.waitForSelector('#screen[data-view="today"]', { timeout: 5000 });
@@ -324,6 +384,7 @@ section('A friend\'s plan: three screens into it');
   check('it\'s saved and in use, from Alex', u.plan === 'Upper and lower' && u.from === 'Alex', u);
   check('the tour is skipped, and the plan doesn\'t open again', u.tour && !u.sheets.length, u);
   check('no Health Connect request', u.asks === 0);
+  check('reminders on, Android asked once', await page.evaluate(() => window.GH.ui.S.profile.prefs.notify.on === true && window.__notify.asked === 1));
   await ctx.close();
 }
 
@@ -347,11 +408,14 @@ section('Just tracking food?');
   await page.clock.runFor(300); await page.waitForTimeout(500);
   check('Connect asks Health Connect, once', await page.evaluate(() => window.__hcAsks) === 1);
   await page.waitForSelector('.ob-actions [data-act="obLook"][data-variant="tinted"]', { timeout: 4000 });
+  check('then Start tracking, saying a nudge comes now and then', /^A nudge now and then\. One a day at most, never at night\.$/.test((await hint(page)).trim()), await hint(page));
+  check('and nothing asked about notifications yet', await page.evaluate(() => window.__notify.asked) === 0);
   await page.click('.ob-actions [data-variant="tinted"]');
   await page.waitForSelector('#screen[data-view="today"]', { timeout: 5000 });
   await page.waitForTimeout(700);
-  const t = await page.evaluate(() => ({ tabs: [...document.querySelectorAll('#tabbar .rf-tab')].map((x) => x.dataset.tab).join(','), session: !!document.querySelector('#screen .session'), mode: window.GH.food.mode(window.GH.ui.S), goal: window.GH.ui.S.profile.weightGoal }));
+  const t = await page.evaluate(() => ({ tabs: [...document.querySelectorAll('#tabbar .rf-tab')].map((x) => x.dataset.tab).join(','), session: !!document.querySelector('#screen .session'), mode: window.GH.food.mode(window.GH.ui.S), goal: window.GH.ui.S.profile.weightGoal, notify: window.GH.ui.S.profile.prefs.notify.on, asked: window.__notify.asked }));
   check('the app opens with Today, Food, Health and You, no workout', t.tabs === 'today,food,health,you' && !t.session && t.mode === 'full' && t.goal === 'lose', t);
+  check('with notifications on, Android asked once', t.notify === true && t.asked === 1, t);
   await ctx.close();
 }
 for (const bridge of ['unsupported', 'web']) {

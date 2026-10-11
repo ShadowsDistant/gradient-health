@@ -937,8 +937,14 @@
   ACT.reveal = () => {
     const ready = rv && rv.key === revealKey();
     if (!ready) return { primary: ['obGo', 'Start my first workout', 'play', true], secondary: ['obLook', 'Look around first', true] };
-    if (rv.error) return { primary: ['obLook', 'Let\'s go'] };
-    return rv.startable ? { primary: ['obGo', 'Start my first workout', 'play'], secondary: ['obLook', 'Look around first'] } : { primary: ['obLook', 'Let\'s go'] };
+    if (rv.error) return withReminders({ primary: ['obLook', 'Let\'s go'] });
+    return withReminders(rv.startable ? { primary: ['obGo', 'Start my first workout', 'play'], secondary: ['obLook', 'Look around first'] } : { primary: ['obLook', 'Let\'s go'] });
+  };
+  // The last screen of each path says reminders come on (src/ui/notify.js), over the button that
+  // finishes: Android may ask about them next.
+  const withReminders = (a) => {
+    const h = U.notifySetupHint ? U.notifySetupHint(workoutsOn()) : '';
+    return h ? Object.assign({ hint: h }, a) : a;
   };
   AFTER.reveal = (el) => {
     if (rv && rv.key === revealKey()) { revealIn(el, true); return; }
@@ -1205,7 +1211,7 @@
   };
   ACT.friend = () => {
     const who = sender(Q._shared);
-    return { primary: ['obGo', who ? `Start with ${who}'s plan` : 'Start with this plan', 'play'], secondary: ['obLook', 'Look around first'] };
+    return withReminders({ primary: ['obGo', who ? `Start with ${who}'s plan` : 'Start with this plan', 'play'], secondary: ['obLook', 'Look around first'] });
   };
   AFTER.friend = (el) => {
     const page = el.querySelector('.ob-friend');
@@ -1250,7 +1256,7 @@
       <p class="rv-week-foot">Workouts are off. You can turn them on any time in Settings.</p>
     </div>`;
   };
-  ACT.ftargets = () => (visible().some((s) => s.id === 'fhealth') ? { primary: ['obNext', 'Continue'] } : { primary: ['obLook', 'Start tracking', 'play'] });
+  ACT.ftargets = () => (visible().some((s) => s.id === 'fhealth') ? { primary: ['obNext', 'Continue'] } : withReminders({ primary: ['obLook', 'Start tracking', 'play'] }));
   AFTER.ftargets = (el) => revealIn(el, false);
   // The food path's optional last screen: Health Connect fills in sleep, steps, weight and meals.
   VIEW.fhealth = () => {
@@ -1266,7 +1272,7 @@
   };
   ACT.fhealth = () => {
     const st = H().status();
-    if (H().connected(st) || st === 'unavailable') return { primary: ['obLook', 'Start tracking', 'play'] };
+    if (H().connected(st) || st === 'unavailable') return withReminders({ primary: ['obLook', 'Start tracking', 'play'] });
     return { primary: ['obConnect', 'Connect Health Connect'], secondary: ['obLook', 'Not now'] };
   };
   U.act.obConnect = async (btn) => {
@@ -1616,11 +1622,21 @@
     if (mode !== 'new') return saveEdit();
     return finishNew('look');
   };
-  // The first run done: the new state, and then the first workout ('start'), the app ('look') or the
-  // coach's review of the plan ('review'). A friend's plan is saved and put in use (and the tour, made
-  // for the coach's plan, is skipped); a friend's plan they passed over is kept in Your plans, so it
-  // doesn't open over them later.
+  // The first run done. Reminders come on for someone new (src/ui/notify.js): on Android 13 and newer
+  // Android asks for the permission first, here, with the plan still showing, and set-up goes once
+  // it's answered (a tap meanwhile does nothing more).
+  let finishing = false;
   function finishNew(how) {
+    if (!Q || finishing) return;
+    finishing = true;
+    const ask = U.notifySetupAsk ? U.notifySetupAsk() : Promise.resolve(false);
+    Promise.resolve(ask).catch(() => false).then((on) => { finishing = false; finishWith(how, on); });
+  }
+  // The new state, and then the first workout ('start'), the app ('look') or the coach's review of
+  // the plan ('review'). A friend's plan is saved and put in use (and the tour, made for the coach's
+  // plan, is skipped); a friend's plan they passed over is kept in Your plans, so it doesn't open over
+  // them later.
+  function finishWith(how, notify) {
     if (!Q) return;
     stopBuild();
     const day = dayNow();
@@ -1647,6 +1663,7 @@
       if (sh.take) sh.take();
     }
     if (friend) S.seen.tour = true;
+    if (U.notifySetupDone) U.notifySetupDone(S, notify);
     GH.store.save(S);
     U.S = S;
     Q = null; tmpS = null;

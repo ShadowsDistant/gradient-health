@@ -1,5 +1,7 @@
 // Notifications in the app, in Chromium at phone size with someone five weeks in (a stand-in for the
-// Android side, test/fixtures.mjs): Today's one-time card (Turn on asks Android once; Not now, or any
+// Android side, test/fixtures.mjs): someone set up before keeps what they have (off or on, nothing
+// asked at launch; set-up turning them on for someone new is test/ui-onboarding.mjs's), Today's
+// one-time card (Turn on asks Android once; Not now, or any
 // answer, and it never comes back), Settings' Notifications group (the switch, one per kind, the
 // reminder time, Android's permission when it's off, a kind switched off in Android, search), the
 // schedule handed to Android as the app is left and opened (and a workout done comes off it), a
@@ -53,6 +55,25 @@ const visibility = (ev, v) => ev((state) => {
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => state === 'hidden' });
   document.dispatchEvent(new Event('visibilitychange'));
 }, v);
+
+/* ------------------------------------------------------------------ people set up before */
+// Set-up turns them on for someone new (test/ui-onboarding.mjs); someone already set up keeps what
+// they have, whatever it is, and nothing is asked of Android at launch.
+section('Someone set up before keeps what they have');
+{
+  const { ctx, page, settle, ev } = await open({ ask: true });
+  await settle(2500);
+  const r = await ev(() => ({ on: window.GH.ui.S.profile.prefs.notify.on, asked: window.__notify.asked, card: !!document.querySelector('#screen [data-key="notify-ask"]'), handed: window.__notify.schedules.map((x) => x.on) }));
+  check('off, as they were: nothing asked at launch, and Android is told there\'s nothing to post', r.on === false && r.asked === 0 && r.handed.every((x) => x === false), r);
+  check('Today\'s card still offers them', r.card, r);
+  await ev(() => { const U = window.GH.ui; U.S.profile.prefs.notify.on = true; U.S.seen.notifyAsk = true; U.save(true); });
+  await page.reload();
+  await page.waitForSelector('#screen[data-view="today"] .session');
+  await settle(2500);
+  const on = await ev(() => ({ on: window.GH.ui.S.profile.prefs.notify.on, asked: window.__notify.asked, card: !!document.querySelector('#screen [data-key="notify-ask"]'), last: (window.__notify.schedules.slice(-1)[0] || {}).on }));
+  check('on, as they were: still on after a launch, nothing asked, no card, and the schedule handed over', on.on === true && on.asked === 0 && !on.card && on.last === true, on);
+  await ctx.close();
+}
 
 /* ------------------------------------------------------------------ Today's card */
 section('Today: the card that asks, once');
