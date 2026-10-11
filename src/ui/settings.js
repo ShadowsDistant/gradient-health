@@ -94,7 +94,7 @@
               ${hasKey ? kw(U.row({ key: 'delkey', icon: 'trash', tone: 'rose', title: 'Delete key', act: 'deleteKey' }), 'api key remove') : ''}` : ''}
             ${U.row({ key: 'claudeapp', icon: 'share', tone: 'violet', title: 'Ask in the Claude app', sub: 'Uses your own Claude plan, no key needed', act: 'askClaudeApp', chevron: true })}
             ${kw(U.row({ key: 'sent', icon: 'eye', tone: 'sky', title: 'What gets sent', sub: 'The exact summary Claude sees', act: 'previewSheet', chevron: true }), 'privacy data summary')}`)}
-          ${foot('coach', `${claude ? 'Claude uses your own Anthropic API key, and each request costs money. Set hard limits under Spending and usage.' : 'The on-device coach runs Qwen3.5 (Apache 2.0) with llama.cpp on your phone. It answers from your numbers, works offline and can be wrong. Nothing you ask leaves the phone.'} Claude gets a summary with no name, exact dates or IDs, and only after you allow it.`)}
+          ${foot('coach', `${claude ? 'Claude uses your own Anthropic API key, and each request costs money. Set hard limits under Spending and usage.' : 'The on-device coach runs Qwen3.5 on your phone. It answers from your numbers, works offline and can be wrong. Nothing you ask leaves the phone.'} Claude gets a summary with no name, exact dates or IDs, and only after you allow it.`)}
 
           ${head('feel', 'Sound and haptics', 'vibration vibrate buzz haptic feedback feel touch beep audio')}
           ${list('feel', `${U.sw('Sound', pr.sound !== false, 'data-on="setPref" data-k="sound"', 'Beeps for the 3-2-1, and when a timer or rest ends')}
@@ -312,7 +312,7 @@
       U.toast('Food is on', 'positive', 'It has its own tab. Progress now opens from You and Today\'s streak.');
       // Saving meals to Health Connect needs the nutrition permissions.
       if (H().connected(H().status()) && H().missingTypes && H().missingTypes(S).some((t) => t === 'nutrition' || t === 'writeNutrition')) {
-        const ok = await U.confirm('Share food with Health Connect?', 'Meals you log can go to Health Connect, and meals from other apps can count toward your day.', 'Allow');
+        const ok = await U.confirm('Share food with Health Connect?', 'Meals you log go to Health Connect, and meals from other apps count toward your day.', 'Allow');
         if (ok) { await H().request(true); U.render(); }
       }
     }
@@ -533,7 +533,7 @@
     const ctl = U.sheet({
       title: 'Share your data with Claude?', size: 'full',
       body: `<div class="sheet-prose">
-        <p class="t-body">Claude is an AI made by Anthropic. Gradient Health sends Anthropic a summary of your data with each question, suggestion or plan check, and once a week for your report.</p>
+        <p class="t-body">Claude is Anthropic's AI. Gradient Health sends Anthropic a summary of your data with each question, suggestion or plan check, and weekly for your report.</p>
         <p class="t-headline">The summary holds</p>
         <ul class="plain-list">
           <li>An age range (not your age), and your sex if you gave it</li>
@@ -543,7 +543,7 @@
           ${food ? '<li>Your calorie target and what you ate on average (not the foods)</li>' : ''}
           <li>To check your plan (here or in the weekly report): next week's plan, its exercises, sets and minutes</li>
         </ul>
-        <p class="t-body">Never your name, email, exact dates, device IDs or the health conditions you plan around. Anthropic's privacy policy covers it from there. Turn Claude off any time in Settings.</p>
+        <p class="t-body">Never your name, email, exact dates, device IDs or the health conditions you plan around. Anthropic's privacy policy applies there. Turn Claude off any time in Settings.</p>
         <div class="btn-row"><button type="button" class="rf-btn" data-variant="plain" data-act="previewSheet">${U.icon('eye')}See exactly what gets sent</button><button type="button" class="rf-btn" data-variant="plain" data-act="privacySheet">${U.icon('lock')}Privacy policy</button></div>
         <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="claudeAllow">Allow</button><button type="button" class="rf-btn" data-size="lg" data-act="claudeDeny">Not now</button></div>
       </div>`,
@@ -790,7 +790,7 @@
   U.act.previewSheet = () => {
     U.sheet({
       title: 'What gets sent', size: 'auto',
-      body: `<div class="sheet-pad"><p class="t-callout rf-muted">Claude gets this with each question, weekly report and suggestion, through your API key, once you allow it. The Claude app gets it when you ask there. Building, checking or improving a plan sends less, plus the plan and the moves you can do. No name, email, exact dates or device IDs. The on-device coach and the phone's own weekly report send nothing.</p></div><pre class="preview">${U.esc(AI().preview(U.S, U.today()))}</pre>`,
+      body: `<div class="sheet-pad"><p class="t-callout rf-muted">Claude gets this with each question, weekly report and suggestion once you allow it. The Claude app gets it when you ask there. Building, checking or improving a plan sends less, plus the plan and the moves you can do. No name, email, exact dates or device IDs. The on-device coach and the phone's own weekly report send nothing.</p></div><pre class="preview">${U.esc(AI().preview(U.S, U.today()))}</pre>`,
     });
   };
 

@@ -144,7 +144,7 @@
     else if (workouts && f.rirN >= 6 && f.rir['3'] / f.rirN > 0.5) addFocus('Rate the reps you have left honestly', 'You had lots left in the tank. Honest answers keep the plan moving you up.');
     if (f.steps7.n >= 4 && f.stepsBase.n >= 7 && f.steps7.avg < f.stepsBase.avg * 0.8) addFocus('A 10-minute walk after a meal', 'Steps are down on your usual. A 10-minute walk after a meal adds up.');
     if (workouts && S.catchup.arm.active) addFocus(`Lead with your ${S.catchup.arm.side === 'R' ? 'right' : 'left'} arm`, `Keep leading with your ${S.catchup.arm.side === 'R' ? 'right' : 'left'} arm and never let the other side do more reps.`);
-    if (F && foodDays < 4) addFocus('Log what you eat most days', 'Log what you eat on most days. After two weeks with a few weigh-ins, your calorie target tunes itself to you.');
+    if (F && foodDays < 4) addFocus('Log what you eat most days', 'Log what you eat most days. After two weeks and a few weigh-ins, your calorie target tunes itself to you.');
     if (focus.length < 2) {
       if (workouts) addFocus('Show up for the next session', 'Show up for the next session. Consistency beats any single workout.');
       else addFocus('Keep sleep and steps steady', 'Keep your sleep and steps steady. Small daily habits move the trends most.');
@@ -210,7 +210,7 @@
     },
     weight: (S, day, f) => {
       const w = f.weight;
-      if (w.avg7 == null) return 'I need a few weigh-ins to see a trend. Weigh in the morning, a few times a week, and the app smooths it into a 7-day average.';
+      if (w.avg7 == null) return 'I need a few weigh-ins to see a trend. Weigh in a few mornings a week, and the app smooths them into a 7-day average.';
       let a = `Your 7-day average is ${weightText(S, w.avg7)}`;
       if (w.rate != null) a += `, ${Math.abs(w.rate) < 0.002 ? 'steady' : w.rate < 0 ? `down ${pct(w.rate)}` : `up ${pct(w.rate)}`} on the week before.`;
       else a += '.';

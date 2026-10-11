@@ -434,7 +434,7 @@
     const ctl = U.sheet({
       title: 'Report this answer', size: 'auto',
       body: `<div class="sheet-pad">
-        <p class="t-callout rf-muted">AI can get things wrong. Reporting hides this ${U.esc(o.what || 'answer')} on your phone and helps fix the coach.</p>
+        <p class="t-callout rf-muted">AI can get things wrong. Reporting hides this ${U.esc(o.what || 'answer')} and helps fix the coach.</p>
         <blockquote class="flag-quote t-footnote">${U.esc(String(o.text || '').slice(0, 400))}${String(o.text || '').length > 400 ? '…' : ''}</blockquote>
         <p class="t-headline">What's wrong with it?</p>
         ${U.choice('flagReason', REASONS, reason, 'What\'s wrong with it', ' class="ob-chips" data-on="flagReason"')}
