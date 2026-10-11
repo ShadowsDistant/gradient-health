@@ -790,7 +790,7 @@
   U.act.previewSheet = () => {
     U.sheet({
       title: 'What gets sent', size: 'auto',
-      body: `<div class="sheet-pad"><p class="t-callout rf-muted">Claude gets this with each question, weekly report and suggestion once you allow it. The Claude app gets it when you ask there. Building, checking or improving a plan sends less, plus the plan and the moves you can do. No name, email, exact dates or device IDs. The on-device coach and the phone's own weekly report send nothing.</p></div><pre class="preview">${U.esc(AI().preview(U.S, U.today()))}</pre>`,
+      body: `<div class="sheet-pad"><p class="t-callout rf-muted">Claude gets this with each question, weekly report and suggestion once you allow it, and the Claude app when you ask there. Plan builds, checks and improvements send less, plus the plan and the moves you can do. No name, email, exact dates or device IDs. The on-device coach and the phone's own report send nothing.</p></div><pre class="preview">${U.esc(AI().preview(U.S, U.today()))}</pre>`,
     });
   };
 

@@ -255,8 +255,8 @@
     return rows.join('');
   };
   U.notifyFoot = (S) => (can() && prefs(S).on
-    ? 'Made on this phone from your plan and what you do, and nothing is sent anywhere. Quiet from 9:30 pm to 8 am. After a few days away they slow to weekly and stop after six weeks.'
-    : can() ? 'Made on this phone from your plan and what you do. Nothing is sent anywhere.' : '');
+    ? 'Made on this phone from your plan and activity; nothing is sent anywhere. Quiet from 9:30 pm to 8 am. After a few days away they go weekly, then stop at six weeks.'
+    : can() ? 'Made on this phone from your plan and activity. Nothing is sent anywhere.' : '');
 
   U.on.notifyOn = async (el, ev, v) => {
     const S = U.S;

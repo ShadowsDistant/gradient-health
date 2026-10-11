@@ -48,7 +48,7 @@
     const d = U.deviceState ? U.deviceState() : null;
     if (!d || !d.checked) return `<div class="chat-setup"><span class="rf-spinner" data-size="sm"><i></i></span><span class="t-callout rf-muted">Checking the on-device model…</span></div>`;
     if (!d.available.ok) return `<div class="chat-setup card"><p class="t-callout">${U.esc(d.available.reason)}</p><p class="t-footnote rf-muted">You can still use Claude with your own API key, or the Claude app.</p></div>`;
-    if (!d.installed.length) return `<div class="chat-setup card"><span class="chat-setup-ico" aria-hidden="true">${U.icon('chip')}</span><p class="t-headline">Get the on-device coach</p><p class="t-callout rf-muted">A small AI model on your phone. It works offline, and your questions and data never leave it. You can change the size later.</p>${U.modelRows ? `<ul class="rf-list">${U.modelRows(U.S, { compact: true })}</ul>` : ''}</div>`;
+    if (!d.installed.length) return `<div class="chat-setup card"><span class="chat-setup-ico" aria-hidden="true">${U.icon('chip')}</span><p class="t-headline">Get the on-device coach</p><p class="t-callout rf-muted">A small AI model on your phone. It works offline, and your questions and data never leave it. You can change it later.</p>${U.modelRows ? `<ul class="rf-list">${U.modelRows(U.S, { compact: true })}</ul>` : ''}</div>`;
     return null;
   }
   function gate(S) {
@@ -440,7 +440,7 @@
         ${U.choice('flagReason', REASONS, reason, 'What\'s wrong with it', ' class="ob-chips" data-on="flagReason"')}
         <div class="rf-field"><label class="rf-field-label" for="flagNote">Anything to add (optional)</label><div class="rf-field-control"><textarea class="rf-input" id="flagNote" rows="2" maxlength="500"></textarea></div></div>
         <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="flagSend">Report</button><button type="button" class="rf-btn" data-size="lg" data-act="flagHide">Just hide it</button></div>
-        <p class="t-footnote rf-muted">Report also opens a GitHub issue for the developer with the answer and your reason. Nothing is sent until you post it, and you can edit it first.</p>
+        <p class="t-footnote rf-muted">Report also opens a GitHub issue with the answer and your reason, for you to edit and post. Nothing is sent until you do.</p>
       </div>`,
     });
     const record = (send) => {

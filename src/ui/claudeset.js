@@ -75,7 +75,7 @@
         <ul class="rf-list" role="radiogroup" aria-label="Older models">${older.map((x) => modelRow(S, x)).join('')}</ul></details>
       <h3 class="rf-list-header">Thinking</h3>
       <ul class="rf-list" role="radiogroup" aria-label="Thinking">${SP().levelsFor(m).map((lv) => levelRow(S, lv)).join('')}</ul>
-      <p class="rf-list-footer">Thinking is billed as output, so more of it costs more. Prices are for a typical question with your data: estimates at first, then your own average.${m.off ? '' : ` ${U.esc(m.short)} always thinks a little, so it has no Off.`}</p>
+      <p class="rf-list-footer">Thinking is billed as output, so more of it costs more. Amounts are for a typical question with your data: estimates at first, then your own average.${m.off ? '' : ` ${U.esc(m.short)} always thinks a little, so it has no Off.`}</p>
     </div>`;
   }
   U.act.claudeModel = () => {
@@ -107,7 +107,7 @@
   const PRESETS = { monthly: [5, 10, 20, 50, 100, 200], daily: [0.25, 0.5, 1, 2, 5, 10], request: [0.05, 0.1, 0.25, 0.5, 1, 2] };
   const TITLES = { monthly: 'Monthly budget', daily: 'Daily limit', request: 'Most for one request' };
   const INTRO = {
-    monthly: 'The most Claude may cost in a calendar month. Each day gets an equal share of what\'s left, so it lasts the month.',
+    monthly: 'The most Claude may cost in a calendar month, shared evenly over the days left so it lasts.',
     daily: 'The most Claude may cost in a day. Auto is an equal share of what\'s left this month.',
     request: 'The most any one question, report or plan may cost. A request that could cost more isn\'t sent.',
   };
@@ -257,7 +257,7 @@
             ${U.row({ key: 'daily', icon: 'sun', tone: 'amber', title: 'Daily limit', act: 'claudeBudget', arg: 'daily', detail: U.esc(limitText(S, day, 'daily')), chevron: true })}
             ${U.row({ key: 'request', icon: 'shield', tone: 'teal', title: 'Most for one request', act: 'claudeBudget', arg: 'request', detail: U.esc(limitText(S, day, 'request')), chevron: true })}
           </ul>
-          <p class="rf-list-footer">Hard limits: Claude isn't asked anything that could go over them. They count only this phone's spending. To cap your key everywhere, set a spend limit in the Claude Console, under Settings, Limits.</p>
+          <p class="rf-list-footer">Claude isn't asked anything that could go over these. They count only this phone's spending; to cap your key everywhere, set a spend limit in the Console.</p>
           <button type="button" class="rf-btn cl-console" data-variant="plain" data-act="claudeConsole">${U.icon('arrow-up-right')}Open the Console's limits</button>
         </div>
         ${usage(S, day)}

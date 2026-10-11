@@ -54,7 +54,7 @@
   }
 
   function watchGrid(items) {
-    if (!items.length) return '<div class="card"><p class="t-callout rf-muted">After a few days of workouts and health data, this shows your sleep, recovery, effort, steps and weight trend.</p></div>';
+    if (!items.length) return '<div class="card"><p class="t-callout rf-muted">After a few days of data, this shows your sleep, recovery, effort, steps and weight trend.</p></div>';
     return `<div class="co-watch">${items.map((w) => {
       const [tone, word] = STATUS[w.status] || STATUS.info;
       return `<div class="co-w" data-status="${U.esc(w.status)}"><span class="co-w-top">${U.icon(w.icon || 'info', 'sm')}<span class="t-footnote rf-muted">${U.esc(w.label)}</span></span>
@@ -87,7 +87,7 @@
 
   function timelineCard(S, day) {
     const items = C().timeline(S, day, 42);
-    if (!items.length) return '<div class="card"><p class="t-callout rf-muted">After your first workouts, each change shows here with its reason: more reps or weight, lighter weeks, swaps and new schedules.</p></div>';
+    if (!items.length) return '<div class="card"><p class="t-callout rf-muted">After your first workouts, each change shows here with its reason, like more reps or a lighter week.</p></div>';
     const byDay = new Map();
     for (const x of items.slice(0, 40)) { if (!byDay.has(x.day)) byDay.set(x.day, []); byDay.get(x.day).push(x); }
     return `<div class="card co-time">${[...byDay.entries()].map(([d, xs]) => `<div class="co-day"><p class="t-footnote rf-muted co-day-label">${U.esc(d === day ? 'Today' : d === day - 1 ? 'Yesterday' : U.fmtDay(d))}</p>
