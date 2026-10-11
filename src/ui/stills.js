@@ -274,6 +274,7 @@
   function put(host, k, u, fade) {
     const img = doc.createElement('img');
     img.alt = '';
+    img.draggable = false; // (the plan builder's rows are dragged)
     img.setAttribute('data-k', k);
     const old = Array.from(host.childNodes);
     if (fade && old.length && !U.reduced()) {
@@ -308,7 +309,7 @@
   // screen's first frame; data-k says which still it is.
   function img(m, o) {
     const k = key(m, o), u = url(k);
-    return u ? `<img alt="" src="${U.esc(u)}" data-k="${U.esc(k)}">` : '';
+    return u ? `<img alt="" draggable="false" src="${U.esc(u)}" data-k="${U.esc(k)}">` : '';
   }
 
   // After set-up the week's stills are drawn ahead as after a launch (core.js), so Plan has them on
