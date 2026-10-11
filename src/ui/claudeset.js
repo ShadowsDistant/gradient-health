@@ -257,7 +257,7 @@
             ${U.row({ key: 'daily', icon: 'sun', tone: 'amber', title: 'Daily limit', act: 'claudeBudget', arg: 'daily', detail: U.esc(limitText(S, day, 'daily')), chevron: true })}
             ${U.row({ key: 'request', icon: 'shield', tone: 'teal', title: 'Most for one request', act: 'claudeBudget', arg: 'request', detail: U.esc(limitText(S, day, 'request')), chevron: true })}
           </ul>
-          <p class="rf-list-footer">Claude isn't asked anything that could go over these. They count only this phone's spending; to cap your key everywhere, set a spend limit in the Console.</p>
+          <p class="rf-list-footer">Claude isn't asked anything that could go over these. They count only this phone's spending; to cap your key everywhere, set a spend limit in the Claude Console.</p>
           <button type="button" class="rf-btn cl-console" data-variant="plain" data-act="claudeConsole">${U.icon('arrow-up-right')}Open the Console's limits</button>
         </div>
         ${usage(S, day)}

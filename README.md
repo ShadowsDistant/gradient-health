@@ -338,7 +338,7 @@ Every screen is built with **Refract**, the liquid glass design system: its glas
 | ZXing C++ | Barcode reading | Apache 2.0 |
 | USDA SR28 | Built-in food list | Public domain |
 | Open Food Facts | Online food search, when it's on | Open Database License |
-| MapLibre GL JS | Maps behind an activity's route, and while one records | BSD 3-Clause |
-| OpenStreetMap contributors and OpenMapTiles, served by OpenFreeMap | Map data for those maps, when maps are on | Open Database License and CC BY 4.0 |
+| MapLibre GL JS | Activity maps | BSD 3-Clause |
+| OpenStreetMap contributors and OpenMapTiles, served by OpenFreeMap | Map data, when maps are on | Open Database License and CC BY 4.0 |
 
 The same list is in the app, under Settings, About, Open-source licenses.

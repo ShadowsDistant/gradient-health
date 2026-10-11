@@ -71,11 +71,11 @@ final class Notifier {
     static final String[] KINDS = {"workout", "move", "badge", "sleep", "comeback"};
     private static final String[] CHANNEL_NAMES = {"Workout days", "Walks and runs", "New badges", "Good nights", "After a few days away"};
     private static final String[] CHANNEL_INFO = {
-            "What today's workout is, at your reminder time",
-            "On a rest day, now and then, a nudge to walk or run",
-            "A badge you've earned that's waiting to be opened",
+            "Today's workout, at your reminder time",
+            "A walk or run on a rest day, now and then",
+            "A new badge waiting to be opened",
             "The morning after a good night's sleep",
-            "A gentle note after a few days away, then weekly for a while",
+            "A note after a few days away, then weekly for six weeks",
     };
     // Reminders and badges make a sound; the nudges and notes come quietly.
     private static final int[] IMPORTANCE = {
