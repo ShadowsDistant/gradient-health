@@ -214,18 +214,21 @@ await page.evaluate(() => window.GH.ui.stills.flush());
 await page.reload();
 await page.waitForSelector('#screen[data-view="today"] .session');
 await page.evaluate(() => window.GH.ui.stills.load());
+// (The week's stills aren't kept here, so the figure warms up after launch to draw them ahead.)
 const kept = await page.evaluate(() => {
-  const chunk = !!window.GH.figure3d;
+  const drawn = window.GH.ui.stills._stats().drawn;
   window.GH.ui.open('settings');
   const i = document.querySelector('#screen .set-fig img');
-  return { img: !!i && !i.classList.contains('is-stale') && /^data:image\//.test(i.src), chunk };
+  return { img: !!i && !i.classList.contains('is-stale') && /^data:image\//.test(i.src), drawn };
 });
-check('after a relaunch, Settings\' first render has the kept preview, with no 3D chunk loaded', kept.img && !kept.chunk, kept);
+check('after a relaunch, Settings\' first render has the kept preview, with nothing drawn for it', kept.img && kept.drawn === 0, kept);
 
 section('Stills drawn in idle moments');
-// The stills a screen asks for wait while the page is in use (touched, scrolled: U.quiet, 1.5 s after
-// the last input), then go as many per idle moment as fit: with the drawing stood in by one that
-// takes 5 ms (a phone's GPU takes a few frames for a still), an idle moment draws several.
+// The stills a screen asks for are never drawn while something is in the person's hands (a finger on
+// the screen, the page scrolling: src/ui/stills.js), and as soon as nothing is, as many per idle
+// moment as fit: with the drawing stood in by one that takes 5 ms (a phone's GPU takes a few frames
+// for a still), an idle moment draws several. The ones drawn ahead wait for calm as well (core.js:
+// 400 ms after the last input).
 const idleDraws = await page.evaluate(async () => {
   const GH = window.GH, U = GH.ui;
   const f = await GH.lazy('figure3d');
@@ -237,23 +240,43 @@ const idleDraws = await page.evaluate(async () => {
   const real = f.stillNow;
   const dot = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
   f.stillNow = () => { const t = performance.now(); while (performance.now() - t < 5) { /* a still's work */ } calls.push({ at: t, cb: cur }); return { url: Promise.resolve(dot) }; };
-  // Asked for while someone uses the app: a touch every 100 ms for a second.
-  let lastInput = 0;
-  const touch = () => { document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true })); lastInput = performance.now(); };
-  touch();
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const touch = (type, on) => document.dispatchEvent(new TouchEvent(type, { bubbles: true, touches: on ? [new Touch({ identifier: 1, target: document.body, clientX: 100, clientY: 300 })] : [] }));
+  const app = document.getElementById('app');
+  // Asked for with a finger on the screen, held for a second; then the page scrolls for half a second.
+  touch('touchstart', true);
   const ids = Object.keys(GH.moves.MOVES).slice(0, 24);
   const o = U.stills.look(30);
   const asked = Promise.all(ids.map((id) => new Promise((res) => { const u = U.stills.want(GH.moves.MOVES[id], o, res, { keep: false }); if (u !== null) res(u); })));
-  for (let i = 0; i < 10; i++) { await new Promise((r) => setTimeout(r, 100)); touch(); }
-  const got = (await Promise.race([asked, new Promise((r) => setTimeout(() => r(null), 20000))])) || [];
+  await wait(1000);
+  const held = calls.length;
+  touch('touchend', false);
+  app.setAttribute('data-scrolling', '');
+  await wait(500);
+  const scrolled = calls.length - held;
+  app.removeAttribute('data-scrolling');
+  const free = performance.now();
+  const got = (await Promise.race([asked, wait(20000).then(() => null)])) || [];
+  // Drawn ahead: after calm as well.
+  const ahead = Object.keys(GH.moves.MOVES).slice(24, 30).map((id) => ({ m: GH.moves.MOVES[id], o }));
+  const n0 = calls.length;
+  document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+  const moved = performance.now();
+  U.stills.ahead(ahead);
+  for (let i = 0; i < 100 && calls.length < n0 + ahead.length; i++) await wait(50);
   f.stillNow = real;
   window.requestIdleCallback = ric;
   const per = {};
   for (const c of calls) per[c.cb] = (per[c.cb] || 0) + 1;
-  return { n: calls.length, drawn: got.filter(Boolean).length, wait: calls.length ? Math.round(calls[0].at - lastInput) : null, most: Math.max(0, ...Object.values(per)), moments: Object.keys(per).length, outside: calls.filter((c) => !c.cb).length };
+  return {
+    held, scrolled, n: calls.length, drawn: got.filter(Boolean).length, wait: calls.length > held ? Math.round(calls[held].at - free) : null,
+    most: Math.max(0, ...Object.values(per)), moments: Object.keys(per).length, outside: calls.filter((c) => !c.cb).length,
+    ahead: calls.length - n0, aheadWait: calls[n0] ? Math.round(calls[n0].at - moved) : null,
+  };
 });
-check(`none while the page is in use: the first ${idleDraws.wait} ms after the last input`, idleDraws.wait >= 1400, idleDraws);
-check(`then several per idle moment (${idleDraws.n} in ${idleDraws.moments}, at most ${idleDraws.most} in one)`, idleDraws.drawn === 24 && idleDraws.most >= 3 && idleDraws.outside === 0, idleDraws);
+check('none while a finger is on the screen, nor while the page scrolls', idleDraws.held === 0 && idleDraws.scrolled === 0, idleDraws);
+check(`then at once (${idleDraws.wait} ms after the page is let go), several per idle moment (${idleDraws.n} in ${idleDraws.moments}, at most ${idleDraws.most} in one)`, idleDraws.drawn === 24 && idleDraws.wait != null && idleDraws.wait < 400 && idleDraws.most >= 3 && idleDraws.outside === 0, idleDraws);
+check(`the ones drawn ahead wait for calm (${idleDraws.aheadWait} ms after the last input)`, idleDraws.ahead === 6 && idleDraws.aheadWait >= 380, idleDraws);
 check('no console errors', errors.length === 0, errors.join('\n'));
 await ctx.close();
 

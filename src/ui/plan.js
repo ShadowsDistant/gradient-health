@@ -521,14 +521,15 @@
     if (e.kind === 'light') return (B().mobilityFlow ? B().mobilityFlow(S) : []).map((m) => m.moveId);
     return [];
   }
-  // The stills Plan's cards show, this week and next, today's first ([{ m, o }]): drawn ahead after
-  // launch (core.js) and kept, so Plan has them from its first frame.
+  // The stills Plan's cards show, this week and next ([{ m, o, day }]): today's first, then the rest
+  // of this week (a tap away), then next week's. Drawn ahead after launch (core.js) and kept, so Plan
+  // has them from its first frame.
   U.planStills = (S, day) => {
     const w = week(S, day), o = U.stills.look(THUMB), out = [];
-    const days = w.days.concat(w.next.days).filter((e) => e.day >= day).concat(w.days.filter((e) => e.day < day));
+    const days = w.days.filter((e) => e.day >= day).concat(w.days.filter((e) => e.day < day), w.next.days);
     for (const e of days) {
       const eq = eqOf(S, e.day);
-      for (const id of cardMoves(S, e)) { const m = personMove(id, eq); if (m) out.push({ m, o }); }
+      for (const id of cardMoves(S, e)) { const m = personMove(id, eq); if (m) out.push({ m, o, day: e.day }); }
     }
     return out;
   };
