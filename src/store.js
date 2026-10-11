@@ -504,6 +504,8 @@
     if (GH.activity && GH.activity.reset) GH.activity.reset();
     // The plans worked out this session (the ones kept for the next launch went with the state).
     if (GH.optimizer && GH.optimizer.clearCache) GH.optimizer.clearCache();
+    // The 3D figure's stills kept on the phone (src/ui/stills.js): drawn in the person's look.
+    if (GH.ui && GH.ui.stills) GH.ui.stills.clear();
   }
 
   // Secrets (the AI coach key). Never logged, never in the state or a backup. In the app they live

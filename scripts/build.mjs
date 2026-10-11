@@ -295,6 +295,7 @@ export const APP_SCRIPTS = [
   'src/ui/guide.js',
   'src/ui/answers.js', // set-up's answers as You, Plan and Settings list them
   'src/ui/player.js',
+  'src/ui/stills.js', // the 3D figure's stills, kept on the phone
   'src/ui/today.js',
   'src/ui/plan.js',
   'src/ui/healthtab.js',
@@ -428,7 +429,11 @@ async function main() {
   // an id of this build's code (its chunks' too), for things kept across launches that a code change
   // should drop.
   const buildId = createHash('sha256').update(appJs.concat(chunks).join('\n')).digest('hex').slice(0, 12);
-  const scripts = [`<script>(window.GH = window.GH || {}).VERSION = ${JSON.stringify(version)}; window.GH.BUILD = ${JSON.stringify(buildId)};</script>`];
+  // And an id of the 3D figure as it draws: its chunk (with three.js) and the poses it lifts (the pose
+  // engine and the moves). The 3D stills kept on the phone (src/ui/stills.js) are kept under it, so
+  // they're drawn again when the figure could look different, and only then.
+  const figureId = createHash('sha256').update(['src/engine/figure3d.js', 'src/engine/pose.js', 'src/data/moves.js', 'src/data/moves-access.js', 'node_modules/three/package.json'].map(read).join('\n')).digest('hex').slice(0, 8);
+  const scripts = [`<script>(window.GH = window.GH || {}).VERSION = ${JSON.stringify(version)}; window.GH.BUILD = ${JSON.stringify(buildId)}; window.GH.FIGURE = ${JSON.stringify(figureId)};</script>`];
   APP_SCRIPTS.forEach((p, i) => scripts.push(`<script>/* ${p} */\n${safeJs(appJs[i])}</script>`));
   const [tokensMin, refractCss, appCssMin, refractMin] = await Promise.all([
     // The app's lowest layer, app-base, is named first so it sorts before Refract's (layers order by
