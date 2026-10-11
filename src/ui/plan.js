@@ -126,7 +126,7 @@
     const rows = [];
     const lead = (S.catchup && S.catchup.arm && S.catchup.arm.side) || 'L';
     if (s.warmup && s.warmup.length) rows.push(exRow({ key: 'warmup', icon: 'sun', name: 'Warm-up', meta: U.esc(U.cap(s.warmup.map((x) => x.name.toLowerCase()).join(', '))), cls: 'is-muted' }));
-    for (const t of s.tests || []) rows.push(exRow({ key: `t-${t.moveId}`, move: t.moveId, name: t.name, meta: `${U.esc(U.side(t.side))} side first, as many as you can`, cls: 'is-lead' }));
+    for (const t of s.tests || []) rows.push(exRow({ key: `t-${t.moveId}`, move: t.moveId, name: t.name, meta: `${U.esc(U.side(t.side))} side first, max reps`, cls: 'is-lead' }));
     const extra = (x) => exRow({ key: `x-${x.uid || x.moveId}`, move: x.moveId, name: x.name, meta: `Extra set, ${U.esc(U.side(x.leadOnly || lead).toLowerCase())} side only · ${U.esc(U.target(x))}`, cls: 'is-lead' });
     for (const it of s.items) {
       const load = it.load && it.load.label ? ` · ${U.esc(it.load.label.replace(/ (dumbbells?|kettlebell)$/, ''))}` : '';
@@ -139,7 +139,7 @@
     // too, but it runs for minutes).
     for (const mb of s.mobility || []) rows.push(exRow({ key: `mob-${mb.moveId}`, move: mb.moveId, name: mb.name, meta: mb.cardio ? `Easy cardio · ${Math.max(1, Math.round(mb.target / 60))} min` : `Cool-down · ${mb.target} s` }));
     const ss = s.items.some((it) => it.superset);
-    return `<ul class="pw-ex-list">${rows.join('')}</ul>${ss ? '<p class="t-footnote rf-muted pw-note">Moves with the same letter are a superset: do them back to back, then rest.</p>' : ''}`;
+    return `<ul class="pw-ex-list">${rows.join('')}</ul>${ss ? '<p class="t-footnote rf-muted pw-note">Same-letter moves are a superset: do them back to back, then rest.</p>' : ''}`;
   }
   // A saved workout's exercises, with what was done.
   function logList(l) {
@@ -227,7 +227,7 @@
         ${done ? '' : btn || ''}${extra || ''}</li>`;
     const mob = flow.length ? `<div class="pw-mob" aria-label="Mobility moves">${flow.map((m) => `<button type="button" class="pw-mob-btn" data-act="planMoveInfo" data-arg="${U.esc(m.moveId)}" aria-label="${U.esc(m.name)}: how to do it">${thumb(m.moveId)}</button>`).join('')}</div>` : '';
     const label = today ? 'Today · Light day' : `Light day · ${when(e, day)}`;
-    const lead = e.preview || !e.isPast || L.done ? 'A walk and a short mobility flow. Do both and the day counts toward your streak.' : 'Not ticked off. Light days only add to your streak, so nothing is lost.';
+    const lead = e.preview || !e.isPast || L.done ? 'Do both and the day counts toward your streak.' : 'Light days only add to your streak, so nothing is lost.';
     return `${top(L.done ? 'check-circle' : 'leaf', e.preview ? `Light day · ${e.date}` : label, L.done ? 'positive' : 'teal')}
       <h2 class="t-title-2 pw-title">Walk and mobility</h2>
       <p class="t-callout rf-muted">${U.esc(lead)}</p>
@@ -291,7 +291,7 @@
       <div class="section"><div class="card pw-mus-card" data-key="mus">
         <ul class="pw-mus">${li}</ul>
         <p class="pw-legend t-caption rf-muted" aria-hidden="true"><span><i class="pw-sw is-done"></i>Sets done</span><span><i class="pw-sw is-plan"></i>In the plan</span>${own ? '' : '<span><i class="pw-sw is-target"></i>Weekly target</span>'}</p>
-        ${short.length ? `<p class="t-footnote rf-muted">${short.length > 3 ? 'Your time per workout fits fewer sets than your weekly targets.' : `Your time per workout fits fewer sets than the target for ${U.esc(listWords(short))}.`} A few more minutes a workout closes the gap.</p>` : ''}
+        ${short.length ? `<p class="t-footnote rf-muted">${short.length > 3 ? 'Your workout time fits fewer sets than your weekly targets.' : `Your workout time fits fewer sets than the target for ${U.esc(listWords(short))}.`} A few more minutes closes the gap.</p>` : ''}
         <button type="button" class="rf-btn pw-to-progress" data-variant="plain" data-size="sm" data-act="openProgress">${U.icon('chart')}See your progress${U.icon('chevron-right')}</button>
       </div></div>`;
   }
@@ -325,8 +325,8 @@
     if (U.act.tailorPlan) rows.push(U.row({ icon: 'sparkle', tone: 'violet', title: 'Tailor my plan', sub: 'Tell the coach what you want more or less of', act: 'tailorPlan', chevron: true }));
     // The AI plan review, once it's in the app (src/planreview.js), and the planner's own account of
     // the plan, which needs no AI (src/ui/review.js).
-    if (GH.planReview && U.act.whyPlan) rows.push(U.row({ icon: 'layers', tone: 'sky', title: 'Why this plan', sub: 'What the planner compared and why it picked this week', act: 'whyPlan', chevron: true }));
-    if (GH.planReview && U.act.reviewPlan) rows.push(U.row({ icon: 'check-circle', tone: 'teal', title: claude ? 'Check my plan with Claude' : 'Check my plan with AI', sub: `${claude ? 'Claude looks it over' : 'The coach looks it over'} and suggests changes for you to approve`, act: 'reviewPlan', chevron: true }));
+    if (GH.planReview && U.act.whyPlan) rows.push(U.row({ icon: 'layers', tone: 'sky', title: 'Why this plan', sub: 'How the planner picked this week', act: 'whyPlan', chevron: true }));
+    if (GH.planReview && U.act.reviewPlan) rows.push(U.row({ icon: 'check-circle', tone: 'teal', title: claude ? 'Check my plan with Claude' : 'Check my plan with AI', sub: `${claude ? 'Claude' : 'The coach'} suggests changes for you to approve`, act: 'reviewPlan', chevron: true }));
     if (U.act.planAround) rows.push(U.row({ icon: 'heart', tone: 'rose', title: 'Built around you', sub: U.esc((GH.access && GH.access.plannedAround(p)) || 'Age, joints and health'), act: 'planAround', chevron: true }));
     if (U.editAnswers) rows.push(U.row({ icon: 'bag', tone: 'amber', title: 'Equipment', sub: U.equipSummary ? U.esc(U.equipSummary(p)) : '', act: 'planEquipment', chevron: true }));
     return `<h2 class="sec-title t-title-3">Make it yours</h2>
@@ -817,7 +817,7 @@
   // The next workout, today: the same flow as Today's "Train today instead" (cancelling it puts the
   // week back as it was).
   U.act.planTrainToday = async () => {
-    const ok = await U.confirm('Train today instead?', 'The next workout moves to today and the rest of the week follows it.', 'Train today');
+    const ok = await U.confirm('Train today instead?', 'The next workout moves to today, and the rest of the week follows.', 'Train today');
     if (!ok) return;
     U.go('today', true);
     U.act.startWorkout();
@@ -832,12 +832,12 @@
     const w = week(U.S, U.today());
     const ph = w.phase;
     const text = {
-      full: 'This week you do every set your plan calls for. About every fifth week is a lighter deload week, so tiredness can clear and you keep getting stronger.',
-      deload: `A lighter week: about ${100 - ph.pct}% fewer sets than usual, so built-up tiredness can clear. Your weights and levels stay where they are, and next week you're back to full volume.`,
-      onramp: `Your first weeks use about ${ph.pct}% of the full number of sets while your body gets used to training.${ph.fullFrom ? ` Full volume starts in week ${ph.fullFrom}.` : ''}`,
-      comeback: `After more than a week without a workout, this week eases back in with about ${ph.pct}% of the sets. Strength comes back quickly once you start again.`,
+      full: 'You do every set your plan calls for. About one week in five is a lighter deload, so tiredness clears and you keep getting stronger.',
+      deload: `About ${100 - ph.pct}% fewer sets, so built-up tiredness can clear. Your weights and levels stay put, and full volume is back next week.`,
+      onramp: `Your first weeks have about ${ph.pct}% of the usual sets while your body adjusts.${ph.fullFrom ? ` Full volume starts in week ${ph.fullFrom}.` : ''}`,
+      comeback: `After over a week off, this week has about ${ph.pct}% of the sets. Strength comes back quickly.`,
     }[ph.key];
-    const key = [['work', 'A workout'], ['done', 'Done'], ['light', 'Light day: a walk and a short mobility flow'], ['missed', 'Missed: the rest of the week moves a day'], ['frozen', 'Freeze used: missed, but the streak is kept (one a week)']];
+    const key = [['work', 'A workout'], ['done', 'Done'], ['light', 'Light day: a walk and a short mobility flow'], ['missed', 'Missed: the rest of the week moves a day'], ['frozen', 'Freeze used: missed, streak kept (one a week)']];
     const why = ph.key === 'comeback' ? ['comeback', 'How coming back works'] : ['deload', 'How deload weeks work'];
     U.sheet({
       title: PHASE[ph.key], size: 'fit',

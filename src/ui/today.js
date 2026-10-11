@@ -87,7 +87,7 @@
     const total = a.steps.filter((x) => x.kind === 'set').length;
     if (a.day < day) {
       return `<div class="card session" data-key="main"><span class="rf-card-eyebrow">Unfinished</span><h2 class="t-title-2">${U.esc(a.session.title)}</h2>
-        <p class="t-callout rf-muted">From ${U.esc(U.fmtDay(a.day))}: ${doneN} of ${total} sets. Check in to save it, or discard it.</p>
+        <p class="t-callout rf-muted">From ${U.esc(U.fmtDay(a.day))}: ${doneN} of ${total} sets. Check in to save it.</p>
         <div class="btn-row"><button type="button" class="rf-btn" data-variant="filled" data-act="checkinStale">Check in</button><button type="button" class="rf-btn" data-tone="critical" data-act="discardStale">Discard</button></div></div>`;
     }
     return `<div class="card session" data-key="main"><span class="rf-card-eyebrow">In progress</span><h2 class="t-title-2">${U.esc(a.session.title)}</h2>
@@ -124,13 +124,13 @@
   function restCard(S, day, plan) {
     const next = plan.next;
     return `<div class="card light" data-key="main"><span class="rf-card-eyebrow">Rest day</span><h2 class="t-title-2">Recover</h2>
-      <p class="t-callout rf-muted">${next ? `Next: ${U.esc((next.title || B().templateTitle(next.units)).toLowerCase())} on ${U.esc(U.fmtDay(next.day))}.` : 'Nothing planned for the rest of the week.'}</p></div>`;
+      <p class="t-callout rf-muted">${next ? `Next: ${U.esc((next.title || B().templateTitle(next.units)).toLowerCase())} on ${U.esc(U.fmtDay(next.day))}.` : 'Nothing else planned this week.'}</p></div>`;
   }
   // With arthritis, a flare swaps a workout day's session for gentle range of motion (src/access.js).
   function flareRow(S, day, plan) {
     if (!GH.access || !GH.access.flareOk(S.profile) || S.profile.workouts === false || S.active || !plan || plan.type !== 'workout') return '';
     const on = !!(S.feel[day] && S.feel[day].flare);
-    return `<ul class="rf-list feel-flare">${U.sw('Joints flaring today', on, 'data-on="feelFlare"', on ? 'Today is gentle range of motion instead. It still counts.' : 'Swaps today\'s workout for gentle range of motion.')}</ul>`;
+    return `<ul class="rf-list feel-flare">${U.sw('Joints flaring today', on, 'data-on="feelFlare"', on ? 'Today\'s gentle range of motion still counts.' : 'Swaps today\'s workout for gentle range of motion.')}</ul>`;
   }
   function feelCard(S, day, plan) {
     const f = S.feel[day] || {};
@@ -149,7 +149,7 @@
       <div class="feel-row"><span class="t-subhead">Soreness</span>${U.seg('feelSore', [['none', 'None'], ['some', 'Some'], ['very', 'Very']], f.sore || '', 'Soreness', ' data-on="feelSore"')}</div>
       ${hasSleep ? '' : `<div class="feel-row"><span class="t-subhead">Sleep</span>${U.seg('sleepChip', [['<5', '<5 h'], ['5-6', '5-6'], ['6-7', '6-7'], ['7-8', '7-8'], ['8+', '8+']], chip || '', 'Sleep last night', ' data-on="sleepChip"')}</div>`}
       ${flareRow(S, day, plan)}
-      ${S.profile.workouts !== false ? '<p class="t-footnote rf-muted">Very sore with low energy, or under 5 h of sleep, means one less set per exercise today.</p>' : ''}
+      ${S.profile.workouts !== false ? '<p class="t-footnote rf-muted">Very sore with low energy, or under 5 h of sleep: one less set per exercise today.</p>' : ''}
     </div>`;
   }
   // With workouts off, Today leads with the day's movement and last night's sleep.
@@ -180,7 +180,7 @@
     if (pr.track === false || (GH.food && GH.food.mode(S) === 'off')) return '';
     const goal = B().proteinGoal(S, day);
     const got = B().proteinToday(S, day);
-    if (!goal) return `<div class="card protein" data-key="protein"><span class="t-headline">Protein</span><p class="t-callout rf-muted">Add your weight to get a daily protein goal.</p><button type="button" class="rf-btn" data-act="logWeight">Log weight</button></div>`;
+    if (!goal) return `<div class="card protein" data-key="protein"><span class="t-headline">Protein</span><p class="t-callout rf-muted">Add your weight for a daily protein goal.</p><button type="button" class="rf-btn" data-act="logWeight">Log weight</button></div>`;
     return `<div class="card protein" data-key="protein">
       <div class="row-between"><span class="t-headline">Protein</span><span class="t-callout rf-num"><b>${U.roll(got)}</b> of ${goal} g</span></div>
       ${U.progress(got / goal, 'Protein today', got >= goal ? 'positive' : '')}
@@ -308,7 +308,7 @@
     U.openPlayer();
   };
   U.act.trainToday = async () => {
-    const ok = await U.confirm('Train today instead?', 'The next workout moves to today and the rest of the week follows it.', 'Train today');
+    const ok = await U.confirm('Train today instead?', 'The next workout moves to today, and the rest of the week follows.', 'Train today');
     if (ok) U.act.startWorkout();
   };
   U.act.logWalk = () => { B().logLight(U.S, U.today(), 'walk', true); U.commit(); U.haptic('log'); U.toast('Walk logged', 'positive'); if (U.checklistCheck) U.checklistCheck(); };
@@ -348,7 +348,7 @@
     GH.health.setFeel(U.S, U.today(), { flare: !!v });
     U.save();
     setTimeout(() => U.render(), 200);
-    U.toast(v ? 'A gentle day' : 'Back to today\'s workout', v ? 'neutral' : 'positive', v ? 'Today is range of motion for every joint, done seated. It counts for your streak.' : undefined);
+    U.toast(v ? 'A gentle day' : 'Back to today\'s workout', v ? 'neutral' : 'positive', v ? 'Seated range of motion for every joint. It counts for your streak.' : undefined);
   };
   function maybeClose() {
     const S = U.S, d = U.today();

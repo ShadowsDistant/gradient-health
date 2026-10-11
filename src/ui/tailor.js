@@ -22,12 +22,12 @@
         <ul class="rf-list tailor-lines">${st.lines.map((l) => `<li><div class="rf-list-row"><span class="rf-list-icon" data-tone="${l.tone === 'positive' ? 'green' : l.tone === 'caution' ? 'amber' : l.tone === 'neutral' ? 'neutral' : 'violet'}">${U.icon(l.icon)}</span><span class="rf-list-text"><span class="rf-list-title">${U.esc(l.text)}</span>${l.sub ? `<span class="rf-list-sub">${U.esc(l.sub)}</span>` : ''}</span></div></li>`).join('')}</ul>
         ${st.note ? `<p class="t-callout tailor-note">${U.icon('sparkle', 'sm')}<span>${U.esc(st.note)}</span></p>` : ''}
         <div class="btn-row tailor-btns"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="tailorApply">Apply</button><button type="button" class="rf-btn" data-size="lg" data-act="tailorEdit">Change it</button></div>
-        <p class="t-footnote rf-muted">Nothing changes until you apply it, and you can undo it afterwards.</p>
+        <p class="t-footnote rf-muted">You can undo it afterwards.</p>
       </div>`;
     }
-    const none = st.step === 'nothing' ? `<p class="t-callout tailor-none">${U.icon('info', 'sm')}<span>There's no change to make from that. Try saying what you want more or less of, a sore joint, or the time you have.</span></p>` : '';
+    const none = st.step === 'nothing' ? `<p class="t-callout tailor-none">${U.icon('info', 'sm')}<span>There's nothing to change from that. Try more or less of something, a sore joint, or the time you have.</span></p>` : '';
     return `<div class="sheet-pad tailor">
-      <p class="t-callout rf-muted">Say what you'd like to change. The coach shows you what it would do first.</p>
+      <p class="t-callout rf-muted">Say what you'd like to change. You'll see the changes first.</p>
       ${none}
       <div class="rf-field"><label class="rf-field-label" for="tailorQ">What would you like?</label><div class="rf-field-control"><textarea class="rf-input" id="tailorQ" rows="3" maxlength="400" placeholder="More legs, easy on my knees, 30 minutes">${U.esc(st.text || '')}</textarea></div></div>
       ${chips}

@@ -104,7 +104,7 @@ const why = await ev(() => {
   };
 });
 check('the headline is the planner\'s', why.headline === why.ex.headline, why.headline);
-check('"We compared N weekly plans", N from the planner', why.compared === `We compared ${why.ex.considered.toLocaleString('en-US')} weekly plans and picked this one.`, why.compared);
+check('"Picked from N weekly plans", N from the planner', why.compared === `Picked from ${why.ex.considered.toLocaleString('en-US')} weekly plans.`, why.compared);
 check('its reasons, each one', why.reasons === why.ex.reasons && why.reasons >= 3, why.reasons);
 check('the six parts of the score as meters, with plain names', why.meters.map((m) => m.name).join() === 'Your goals,Every muscle,Your time,Recovery,Balance,Variety' && why.meters.every((m) => m.v === Math.round(why.ex.parts[{ 'Your goals': 'goal', 'Every muscle': 'coverage', 'Your time': 'time', Recovery: 'recovery', Balance: 'balance', Variety: 'variety' }[m.name]] * 100)), why.meters);
 const cur = why.alts.filter((a) => a.current);
