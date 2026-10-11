@@ -435,7 +435,7 @@
     const back = () => { if (noFades.get(el) === ask) { noFades.delete(el); el.style.removeProperty('transition'); } };
     if (G.requestAnimationFrame) G.requestAnimationFrame(() => G.requestAnimationFrame(back)); else setTimeout(back, 50);
   }
-  M.barSwap = (bar) => {
+  M.barSwap = (bar, kind) => {
     if (reduced() || !can(bar)) return null;
     const el = bar.querySelector(':scope > .rf-navbar-title');
     const shown = !!el && bar.hasAttribute('data-scrolled') && !!el.textContent.trim();
@@ -467,10 +467,50 @@
         if (title.copy) show(el, [{ opacity: 0, transform: `translateX(${-dir * 10}px)` }, { opacity: 1, transform: 'none' }], { duration: 200, delay: 40, easing: t.enter, fill: 'backwards' });
       } else noFade(el);
     };
-    // The bar's change (core.js), with its buttons shape-shifting.
-    swap.update = (fn) => M.shift(bar, fn);
+    // The bar's change (core.js), with its buttons shape-shifting, or on a tab change swapping.
+    swap.update = (fn) => (kind && TABS[kind] ? swapButtons(bar, fn) : M.shift(bar, fn));
     return swap;
   };
+  // On a tab change the bar's buttons don't shape-shift: the new ones fade in and the old ones fade
+  // out where they were (copies, as the title's), opacity only, which the compositor plays alone.
+  // Shape-shifting animates each button's width: a layout of the bar in every frame for half a
+  // second, and a new size for each button's lens in every frame, which builds its filter again
+  // (with the tab bar's glass moving at the same time, about a fifth of the page's thread for that
+  // half second, at 4x). Two tabs' buttons are different ones anyway, apart from the coach at the
+  // top left, which stays as it is. A push and Back keep shape-shifting (the coach becoming Back).
+  function swapButtons(bar, update) {
+    const PARTS = ':scope > .rf-navbar-leading > *, :scope > .rf-navbar-trailing > *';
+    // Read before the render writes anything (core.js calls this first), so nothing is laid out again.
+    const box = bar.getBoundingClientRect();
+    const old = Array.from(bar.querySelectorAll(PARTS), (n) => ({ n, r: n.getBoundingClientRect() }));
+    update();
+    const now = new Set(bar.querySelectorAll(PARTS));
+    const gone = old.filter((o) => !now.has(o.n) && o.r.width && o.r.height);
+    if (gone.length) {
+      const holder = bar.cloneNode(false);
+      holder.removeAttribute('id');
+      holder.classList.add('motion-copy');
+      for (const { n, r } of gone) {
+        const c = n.cloneNode(true);
+        // A picture of the button: none of the parts Refract drew in it (its lens layer, a ripple),
+        // and no lens of its own.
+        for (const x of c.querySelectorAll('.rf-lens-layer, .rf-ripple')) x.remove();
+        c.removeAttribute('data-lens-ready');
+        c.style.removeProperty('--_lens');
+        for (const x of [c, ...c.querySelectorAll('[data-act], [aria-label], [data-key]')]) for (const a of GHOST_ATTRS) x.removeAttribute(a);
+        c.classList.add('motion-copy');
+        Object.assign(c.style, { position: 'absolute', margin: '0', left: `${r.left - box.left}px`, top: `${r.top - box.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+        holder.appendChild(c);
+      }
+      shield(holder);
+      aside(() => bar.parentNode.appendChild(holder));
+      const a = show(holder, [{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: 'linear', fill: 'forwards' });
+      track(Promise.all(a.map(ended)).then(() => holder.remove()));
+    }
+    const t = tok();
+    for (const n of now) if (!old.some((o) => o.n === n)) show(n, [{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: t.standard });
+    return Promise.resolve();
+  }
 
   /* ---------------------------------------------------------------- FLIP */
   // Lists, a page's sections and its cards: measured before a change (First), read again once after

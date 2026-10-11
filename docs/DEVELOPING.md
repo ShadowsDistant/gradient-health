@@ -124,8 +124,11 @@ left alone. A few conventions:
   checks for layout properties.
 - Glass above the page moves as Refract's material does. The bar's buttons are keyed by what they
   are (`data-rf-key`; the top-left one by its place, the coach on a tab and Back on a page), so a
-  route change shape-shifts them (`U.motion.shift`, `Refract.shapeshift`): one on both routes keeps
-  its glass, one the new route lacks pinches off, a new one buds out. Today's floating buttons and
+  push or Back shape-shifts them (`U.motion.shift`, `Refract.shapeshift`): one on both routes keeps
+  its glass, one the new route lacks pinches off, a new one buds out. A tab change doesn't: the new
+  tab's buttons fade in and the old ones fade out as pictures (`swapButtons` in `motion.js`), since
+  shape-shifting animates widths, which laid the bar out and gave each button's lens a new size, and
+  so a new filter, in every frame for half a second after every tab change. Today's floating buttons and
   the workout capsule form and dissolve (`U.motion.glassIn` and `glassOut`: `Refract.materialize`,
   `dematerialize`), and a button whose words change (`U.floatKey`) flows to its new width. That's
   Refract's own motion, asked for by name; the lint counts it apart and holds it to what Refract's
@@ -180,7 +183,9 @@ and the glow's in-use pause, `ui-you` the setting and the root's attributes.
 
 Settings, About, "Scroll diagnostics" (`src/ui/diag.js`, `GH.diag.report()`) is for a freeze that
 survives: a record, kept in memory for the last five minutes, of every touch (where, when, how late it
-reached the page), the scroller's position once a frame around a touch or a scroll, every long
+reached the page), the scroller's position once a frame around a touch or a scroll (read once the
+frame is drawn, when the page's style and layout are already up to date: read in the frame itself it
+made them catch up with each change twice a frame, all through a tab change), every long
 animation frame with its scripts (or long tasks), and the Event Timing API's input delays, written up
 as one report (the device, the settings that bear on scrolling, each gesture with how far the finger
 and the page went, when the page first moved, the frames and their longest gap, any hold-then-jump of
@@ -319,8 +324,14 @@ What the app turns off, and why:
   with Moving background off and under reduced motion, and follows the tilt again when things are calm
   (`U.steadyLight`, `core.js`).
 - **Click effects where a drag starts**: Refract's ripple, click ring and icon effects stay (they're
-  part of its feel), except on Plan's week strip, whose day pills are dragged
-  (`data-rf-effect="none"`).
+  part of its feel), except on Plan's week strip, whose day pills are dragged, and on the tab bar
+  (`data-rf-effect="none"`): the ring reads where the tapped tab is after the click's handlers have
+  drawn the new page, which laid the whole page out inside the tap (its glass bead is its answer).
+- **The light only for a mouse**: `Refract.init` registers each glass with its light unless told
+  not to (`RF_INIT` in `core.js`), and every page that brings new glass then had the light read
+  where every glass on screen is and start a paused animation for each rim. Without a fine pointer
+  that hovers, every rim gets the light's resting angle, which is what an unregistered rim shows,
+  so only such a screen registers its glass.
 
 The controls (`src/ui/controls.js`): Refract 1.4's own switch and segmented control take any
 movement past 3 px as a drag, so a tap that wobbles would be lost. The app replaces those two

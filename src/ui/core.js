@@ -406,7 +406,7 @@
       </header>
       <div id="ptr" class="ptr" aria-hidden="true"><span class="ptr-dot">${U.icon('refresh')}</span></div>
       <div id="float" class="float-actions" hidden></div>
-      <nav class="rf-tabbar" data-position="bottom" aria-label="Main" id="tabbar" style="--tab-count:${TABS.length}">
+      <nav class="rf-tabbar" data-position="bottom" aria-label="Main" id="tabbar" data-rf-effect="none" style="--tab-count:${TABS.length}">
         <div class="rf-tabbar-accessory rf-glass" data-variant="thick" data-lens id="accessory" hidden></div>
         <div class="rf-tabbar-bar rf-glass" data-lens>${tabsHtml('today')}</div>
       </nav>
@@ -971,7 +971,7 @@
     const nb = tpl.content.querySelector('header.rf-navbar');
     if (nb) nb.remove();
     // The bar's title cross-fades along with the page, and its buttons shape-shift.
-    const bar = changed && lastKey && kind && M.barSwap ? safe(() => M.barSwap(topbar)) || null : null;
+    const bar = changed && lastKey && kind && M.barSwap ? safe(() => M.barSwap(topbar, kind)) || null : null;
     if (bar && bar.update) bar.update(() => applyNavbar(nb)); else applyNavbar(nb);
     // A new page: the old one leaves, with the look it had, while this one comes in.
     if (changed) replace(screen, tpl.content, kind);
@@ -1053,7 +1053,13 @@
   // Refract 1.4 refracts every regular and clear glass surface unless told otherwise: here only those
   // the markup marks data-lens do (as before 1.4), since each lens is redrawn every frame the page
   // moves under it.
-  const RF_INIT = { lens: false };
+  // Its light is registered on every glass it sets up, and each time a page brings new glass the
+  // light reads where every glass on screen is and starts a paused animation for each rim (a tab
+  // change spent about 75 ms of a 4x-slowed CPU there, in the frames after it). All that is for a
+  // mouse: with no pointer to follow (a phone's light holds still, see steadyLight), every rim gets
+  // the light's resting angle, which is what an unregistered rim shows anyway (--rf-light's initial
+  // value, 315deg). So only a screen with a fine pointer that hovers registers its glass.
+  const RF_INIT = { lens: false, light: !!(G.matchMedia && G.matchMedia('(hover: hover) and (pointer: fine)').matches) };
   // What init() handles: the `auto` list in vendor/refract/bundle.js, plus glass, data-rf
   // behaviours and icon placeholders.
   const RF_SEL = '.rf-glass, [data-rf], [data-icon]:not(svg), .rf-switch, .rf-slider, .rf-stepper, .rf-search, .rf-chip, .rf-playpause, .rf-tabbar, .rf-segmented, .rf-pagedots, .rf-navbar, .rf-scroll-edge[data-watch], .rf-sidebar, .rf-toolbar, .rf-menu[popover], .rf-popover[popover], .rf-menu[id], .rf-popover[id], dialog.rf-dialog, .rf-sheet, .rf-activity, [data-rf-tooltip], [data-reveal], .rf-loupe, .rf-droplets, [data-rf-morph], [data-rf-tone], [data-rf-adapt]';
