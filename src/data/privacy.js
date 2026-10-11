@@ -8,7 +8,7 @@
   const CONTACT = 'https://github.com/ShadowsDistant/gradient-health/issues';
 
   GH.PRIVACY = {
-    updated: '2026-10-10',
+    updated: '2026-10-11',
     contact: CONTACT,
     intro: [
       'Gradient Health is a workout, health and food tracking app for Android. This policy explains exactly what the app collects, where it keeps it, what (if anything) leaves your phone, and how to delete it.',
@@ -19,6 +19,7 @@
         paras: [
           'There\'s no account, no ads, no analytics and no tracking. Everything you enter, and everything the app reads from Health Connect, is stored on your phone. Android\'s own device backup can keep a copy if you have backup turned on (see below).',
           'If you allow it, the app also reads Health Connect in the background every 15 minutes, so your history stays complete on days you don\'t open it. When you record a run, walk, hike or ride, the app uses your location for its route, only while that activity is recording. The route stays on your phone, and goes to Health Connect only if you save the activity there.',
+          'If you turn on notifications, the app works out its reminders on your phone and Android shows them. Nothing about them is sent anywhere.',
           'Data only leaves your phone when you use one of these optional features, and only what the feature needs: a summary sent to Claude, once you\'ve allowed it, when you ask it something, ask it to check your plan, and for your weekly report; a food search or barcode sent to Open Food Facts when you look a food up online; a one-time download of the on-device AI model; map pieces for the area around an activity, or around where you are while one records, from OpenFreeMap, when you turn maps on; and a workout plan you choose to share, which goes only to the people you send it to. Each one is off until you turn it on.',
           'Nobody is paid for your data, and it\'s never used for advertising.',
         ],
@@ -35,6 +36,7 @@
             ['Food log: foods, portions, calories, protein, carbs, fat, fibre, your custom foods and saved meals', 'You', 'Calorie and macro tracking, if you turn it on', 'Only as averages in the Claude summary, if you use Claude: your calorie target and what you ate on average, not the foods. Online food lookups send only the search words or the barcode number'],
             ['Your workout plans: their names, notes, days, exercises, sets and reps, how each exercise has progressed, and who shared a plan with you (a first name, if they included it)', 'You, the coach, or a plan someone shared with you', 'Running the plan you pick instead of the coach\'s', 'Only a plan you share yourself: the code or link holds that plan (not your workouts or health data) and your first name if you leave it on. If you ask Claude to build a plan, your request and the moves you can do go with the Claude summary'],
             ['Manual logs: weight, sleep, body measurements, how you feel, protein, activities outside the app', 'You', 'Trends, readiness and insights', 'Only as averages in the Claude summary, if you use Claude'],
+            ['Notifications (optional): when to remind you and what to say, worked out from your plan, workouts, activities, badges and, for the morning note, last night\'s sleep from Health Connect', 'Your phone, once you turn notifications on', 'Workout reminders, a nudge to walk or run now and then, a new badge, a note after a good night\'s sleep, and a short note now and then after a break', 'No. The schedule, which ones were shown and the nights it looked at stay on your phone, out of backups'],
             ['Badges you share: a picture of the badge, its name and the date you earned it, and your first name only if you turn it on', 'You, when you tap Share on a badge you earned', 'Showing friends and family what you did', 'Only when you tap Share, and only to the app you pick on Android\'s share sheet: exactly the picture the preview shows. Nothing goes through a server'],
             ['Coach chats: questions you ask and the answers', 'You and the coach', 'Showing the conversation and answering follow-ups', 'Only questions you send to Claude. The built-in and on-device coaches run on your phone'],
             ['Reports about AI answers: the answer you flag and the reason you pick', 'You', 'Hiding that answer, and telling the developer if you choose to', 'Only if you choose to send it: it opens as a GitHub issue that you can read and edit before posting'],
@@ -50,6 +52,7 @@
         paras: [
           'The app reads only the data types you allow on Health Connect\'s permission screen, and you can change that at any time in Health Connect. If you allow it, it also writes back the workouts you finish in the app and the activities you record, as exercise sessions (an activity with its route, if you allow routes, and its distance and active calories when no watch recorded them), and the meals you log, as nutrition records. That lets your other health apps see them. You can turn writing off in Settings or in Health Connect.',
           'Reading in the background is a separate permission. With it, the app reads the last two days of the data types you allow every 15 minutes, even while it\'s closed, and keeps each read on your phone until it adds it to your history. It needs Android 15, or Android 14 with a recent Health Connect, and you can turn it off in Settings (Sync in the background) or in Health Connect.',
+          'With notifications and background reads both on, each morning the app looks at last night\'s sleep from its latest background read, on your phone, to decide whether a good night is worth a note. Nothing about it leaves the phone.',
           'Gradient Health\'s use of information received from Health Connect adheres to the Health Connect Permissions policy, including the Limited Use requirements. Health Connect data is used only to provide the features described above, is never sold, never used for advertising, never used to decide credit or insurance, and never shared with anyone except when you choose to send a summary to Claude.',
         ],
       },
@@ -72,9 +75,9 @@
           ['Health Connect (write)', 'Exercise (with routes), distance, active calories and nutrition, so your workouts, activities and meals show up in your other health apps. Optional.'],
           ['Location (precise)', 'Only while a run, walk, hike or ride you started is recording, to draw its route and measure it, including with the screen off. The app never asks for location in the background.'],
           ['Physical activity', 'Counting your steps during an activity with the phone\'s step counter. Optional.'],
-          ['Notifications', 'The notification you see while an activity records, with its time, distance, Pause and Finish. Optional.'],
+          ['Notifications', 'The notification you see while an activity records, with its time, distance, Pause and Finish, and reminders if you turn them on in Settings (on Android 13 and newer, Android asks you first). Optional.'],
           ['Foreground service', 'Keeps an activity recording with the screen off. It runs only while one you started is recording.'],
-          ['Run at startup', 'Keeps the background sync scheduled after your phone restarts.'],
+          ['Run at startup', 'Keeps the background sync and your reminders scheduled after your phone restarts or the app updates.'],
           ['Camera', 'Only for scanning food barcodes and shared plan codes, and only when you tap Scan or Add a shared plan. The image is read on your phone to find the code; no photo or video is saved or sent.'],
           ['Internet and network state', 'For the optional features above, and to wait for Wi-Fi before a large model download.'],
           ['Vibration', 'Haptic feedback and workout timer alerts.'],
@@ -84,14 +87,14 @@
         title: 'Where it\'s kept and how it\'s protected',
         paras: [
           'Everything is stored in the app\'s private storage on your phone, which other apps can\'t read. Connections to outside services use HTTPS. The app contains no third-party analytics, advertising or crash-reporting code.',
-          'Background reads wait in the app\'s private storage until the app adds them to your history, and an activity\'s route is kept there while it records. Neither is in device backups. Once you save an activity, it\'s part of the app\'s saved data like everything else.',
+          'Background reads wait in the app\'s private storage until the app adds them to your history, an activity\'s route is kept there while it records, and so is the notifications\' schedule. None of these is in device backups. Once you save an activity, it\'s part of the app\'s saved data like everything else.',
           'If you have Android\'s device backup turned on, it can keep a copy of the app\'s saved data, but only when the backup is end-to-end encrypted with your screen lock (a PIN, pattern or password). That needs Android 9 or newer: on Android 8, the app\'s data isn\'t backed up at all. Your API key and the on-device model are never in a backup, and the key is never in Copy my data.',
         ],
       },
       {
         title: 'How long it\'s kept, and deleting it',
         paras: [
-          'Your data stays on your phone until you delete it. Settings, Reset everything, deletes all of it, including the API key, the downloaded model and the saved map pieces. Uninstalling the app deletes it from the phone; a copy in your Android device backup, if you have one, stays until that backup is replaced or you delete it in your Google account. You can delete the model on its own in Settings.',
+          'Your data stays on your phone until you delete it. Settings, Reset everything, deletes all of it, including the API key, the downloaded model, the saved map pieces and any reminders waiting to be shown. Uninstalling the app deletes it from the phone; a copy in your Android device backup, if you have one, stays until that backup is replaced or you delete it in your Google account. You can delete the model on its own in Settings.',
           'Records the app wrote to Health Connect stay there until you remove them in Health Connect, and a meal you delete in the app is deleted from Health Connect too. To stop the app reading or writing health data, remove its access in Health Connect.',
           'Settings, Copy my data, gives you a copy of everything (except the API key) as text you control.',
         ],

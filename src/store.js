@@ -520,6 +520,9 @@
     if (GH.optimizer && GH.optimizer.clearCache) GH.optimizer.clearCache();
     // The 3D figure's stills kept on the phone (src/ui/stills.js): drawn in the person's look.
     if (GH.ui && GH.ui.stills) GH.ui.stills.clear();
+    // Notifications' schedule on Android (src/ui/notify.js): handed over empty and off, which clears
+    // it, and the nights it kept for the morning note, now rather than when the page next opens.
+    try { const b = bridge(); if (b && typeof b.notifySchedule === 'function') b.notifySchedule('{"on":false,"items":[]}'); } catch (e) { /* nothing scheduled */ }
   }
 
   // Secrets (the AI coach key). Never logged, never in the state or a backup. In the app they live
