@@ -28,7 +28,6 @@
   const asked = new Map(), ahead = new Map(); // key → job { k, m, o, keep, fns }: for a screen, ahead
   const failed = new Set(); // keys that couldn't be drawn this launch: their tiles show the flat figure
   const dirty = new Map(); // key → record, drawn and not written yet
-  const asking = new WeakMap(); // a tile → the key it's waiting for
   let need = null; // the keys of this week's and next week's stills, which stay past KEEP
   let reads = null; // what's kept, being read in (a promise)
   let tries = 0; // warm-ups that failed: at 3, the flat figure for this launch
@@ -94,7 +93,7 @@
   function load() {
     if (!reads) {
       const lo = `${engine()}|`;
-      reads = tx('readonly', (os) => os.getAll(G.IDBKeyRange.bound(lo, `${lo}￿`))).then((list) => {
+      reads = tx('readonly', (os) => os.getAll(G.IDBKeyRange.bound(lo, `${lo}\uffff`))).then((list) => {
         for (const r of list || []) if (r && typeof r.url === 'string' && r.url.startsWith('data:image/') && !mem.has(r.k)) mem.set(r.k, r.url);
         return mem.size;
       });
@@ -123,7 +122,7 @@
   function trim() {
     const lo = `${engine()}|`;
     return tx('readwrite', (os) => {
-      if (!swept) { swept = true; os.delete(G.IDBKeyRange.upperBound(lo, true)); os.delete(G.IDBKeyRange.lowerBound(`${lo}￿`, true)); }
+      if (!swept) { swept = true; os.delete(G.IDBKeyRange.upperBound(lo, true)); os.delete(G.IDBKeyRange.lowerBound(`${lo}\uffff`, true)); }
       const n = os.count();
       n.onsuccess = () => {
         let over = n.result - KEEP;
@@ -169,7 +168,8 @@
       // Maybe kept, but not read in yet (just after launch): read in first, drawn only if it isn't.
       load().then(() => { const kept = mem.get(k); if (kept) done(job, kept); else pump(); });
     } else if (!later && ahead.delete(k)) asked.set(k, job);
-    if (fn) job.fns.push(fn);
+    // (A tile asking again while it waits replaces its own callback.)
+    if (fn) { if (fn.host) job.fns = job.fns.filter((x) => x.host !== fn.host); job.fns.push(fn); }
     return null;
   }
   // A still is in (or can't be drawn, null): off the lists, and to whatever waits for it.
@@ -238,12 +238,14 @@
     }
   }
   // The next still to draw: what a screen waits for first. One in another look than the person's now
-  // (the theme, skin or shirt changed since) is dropped: its screen has asked for the new one.
+  // (the theme, skin or shirt changed since) is dropped, unless a tile on screen still waits for it
+  // (its screen wasn't drawn again: the phone's theme changing doesn't redraw it).
   function next(L) {
     for (const list of [asked, ahead]) {
       for (const j of Array.from(list.values())) {
         if (j.busy || j.wait) continue;
-        if (j.o.dark !== L.dark || (j.o.skin || 'sand') !== L.skin || (j.o.shirt || '') !== (L.shirt || '')) { list.delete(j.k); continue; }
+        const stale = j.o.dark !== L.dark || (j.o.skin || 'sand') !== L.skin || (j.o.shirt || '') !== (L.shirt || '');
+        if (stale && !j.fns.some((fn) => !fn.host || (fn.host.isConnected && fn.host.getAttribute('data-want') === j.k))) { list.delete(j.k); continue; }
         return j;
       }
     }
@@ -289,17 +291,17 @@
   function tile(host, m, o, flat, opt) {
     const k = key(m, o);
     const shown = host.lastElementChild;
-    host.setAttribute('data-want', k);
+    if (host.getAttribute('data-want') !== k) host.setAttribute('data-want', k);
     if (shown && shown.getAttribute('data-k') === k) return;
-    const u = want(m, o, asking.get(host) === k ? null : (v) => {
-      if (asking.get(host) === k) asking.delete(host);
+    const fn = (v) => {
       const now0 = host.lastElementChild;
       if (host.getAttribute('data-want') !== k || (now0 && now0.getAttribute('data-k') === k)) return;
       if (v) put(host, k, v, true); else { host.removeAttribute('data-want'); flat(host); }
-    }, opt);
+    };
+    fn.host = host;
+    const u = want(m, o, fn, opt);
     if (u) { put(host, k, u, false); return; }
     if (u === false) { host.removeAttribute('data-want'); flat(host); return; }
-    asking.set(host, k);
     for (const n of Array.from(host.children)) if (n.tagName !== 'IMG') n.remove();
   }
   // The <img> of a kept still for a screen's HTML ('' if it isn't kept), so it's there from the
