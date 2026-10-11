@@ -314,6 +314,7 @@ function checkSession(S, s, label, o) {
     if (off) { bad('no supersets when they\'re off', `${label}: ${k}`); break; }
     if (pair.length !== 2 || conflicts(pair[0], pair[1])) bad('supersets pair two exercises that don\'t clash', `${label}: ${pair.map((x) => x.fam)}`);
     else if (Math.abs(s.items.indexOf(pair[0]) - s.items.indexOf(pair[1])) !== 1) bad('superset partners side by side', `${label}: ${k}`);
+    else if (pair[0].superset !== `${k}1` || pair[1].superset !== `${k}2`) bad('a superset\'s 1 comes before its 2', `${label}: ${pair.map((x) => x.superset)}`);
   }
   // Tests only when they're allowed.
   for (const t of s.tests || []) {
@@ -635,7 +636,7 @@ const NAMED = [
   'no crash', 'every session has work (or is turned into a light day)', 'at least 2 main exercises from 15 min (1 at 10 min)', 'no session runs over its time by more than 30 s',
   'every group reaches its weekly floor while there is time left', 'every group gets at least 2 sets a week', 'with too little time for 2 sets of each group a week, every group is trained over two weeks',
   'no move twice in a session', 'never two workouts on one day', 'at most 6 sets an exercise', 'at most 10 sets a muscle group a session', 'weekly sets stay under each group\'s cap',
-  'merged exercises keep at most 5 sets', 'priority order', 'no supersets when they\'re off', 'supersets pair two exercises that don\'t clash', 'superset partners side by side',
+  'merged exercises keep at most 5 sets', 'priority order', 'no supersets when they\'re off', 'supersets pair two exercises that don\'t clash', 'superset partners side by side', 'a superset\'s 1 comes before its 2',
   'left vs right tests only when allowed', 'a strength goal works home compounds in 5 to 10 reps', 'the same answers build the same session', 'a deload comes after four training weeks', 'every week has a plan',
 ];
 const allowedNames = Object.keys(viol).filter((k) => k.startsWith('only allowed moves'));

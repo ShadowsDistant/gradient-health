@@ -1167,6 +1167,7 @@
       }
     }
     s.items = out;
+    numberPairs(s.items);
   }
   const ORDER_UNITS = ['chest', 'legs', 'back', 'arms', 'shoulders', 'abs'];
   // Two slots can end up with the same exercise: a stand-in ladder shared by two units (a supported
@@ -1584,6 +1585,18 @@
       }
     }
     session.items = order;
+    numberPairs(session.items);
+  }
+  // A superset's numbers follow the running order: whichever of the two comes first is 1 (A1 then A2),
+  // however the pair was matched.
+  function numberPairs(items) {
+    const first = new Set();
+    for (const it of items) {
+      if (!it.superset) continue;
+      const k = it.superset[0];
+      it.superset = k + (first.has(k) ? '2' : '1');
+      first.add(k);
+    }
   }
 
   /* ---------------- time */

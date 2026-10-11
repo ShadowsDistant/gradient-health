@@ -183,8 +183,8 @@ section('Badges');
 {
   const S = person();
   const id = 'streak100';
-  GH.achievements.ensure(S, MON).earned[id] = { day: MON, at: at(MON, 9, 30) };
-  check('(a badge earned and not opened)', GH.achievements.unseen(S).join() === id, GH.achievements.unseen(S));
+  GH.achievements.ensure(S, MON).earned[id] = { day: MON, at: at(MON, 9, 30), opened: false };
+  check('(a badge earned and not opened)', GH.achievements.unopened(S).join() === id, GH.achievements.unopened(S));
   const items = rules(N.plan(S, now0), now0, 'a badge waiting');
   const b = items.find((x) => x.kind === 'badge');
   check('two hours after leaving, opening the badges', b && hhmm(b.at) === '12:00' && b.id === `badge:${id}` && b.route === 'badges' && b.title === 'You earned a new badge', b);
@@ -196,11 +196,15 @@ section('Badges');
   S.profile.prefs.notify.badge = false;
   check('badges off: none', !N.plan(S, now0).some((x) => x.kind === 'badge'));
   S.profile.prefs.notify.badge = true;
-  // The tap-to-open reveals (GH.achievements.unopened), where they're there.
+  // Sealed badges are asked for (GH.achievements.unopened); without it, the ones not seen yet.
+  const real = GH.achievements.unopened;
+  GH.achievements.unopened = undefined;
+  const unseen = N.plan(S, now0).find((x) => x.kind === 'badge');
   GH.achievements.unopened = () => [{ id: 'first' }, { id: 'week1' }];
   const two = N.plan(S, now0).find((x) => x.kind === 'badge');
-  delete GH.achievements.unopened;
-  check('unopened() is asked first, where it\'s there: "You earned 2 new badges"', two && two.id === 'badge:week1' && two.title === 'You earned 2 new badges', two);
+  GH.achievements.unopened = real;
+  check('without unopened(), the badges not seen yet', unseen && unseen.id === `badge:${id}`, unseen);
+  check('unopened() as ids or { id }, newest last: "You earned 2 new badges"', two && two.id === 'badge:week1' && two.title === 'You earned 2 new badges', two);
 }
 
 /* ------------------------------------------------------------------ sleep */

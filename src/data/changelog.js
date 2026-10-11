@@ -20,6 +20,7 @@
         ['gift', 'New badges arrive sealed: a glass capsule in the tier\'s colours, so you see how rare it is before you know what it is. Tap it and it wobbles, tap again and light cracks through, and the third tap bursts it open, with a feel of its own at each tap. Earned a few at once? Open them one by one, or all together. The You tab says how many are waiting.'],
         ['person', 'The 3D figures on Plan are there the moment it opens. The app now keeps a picture of each one on your phone, so with 3D picked you no longer see the simple figures first and watch them swap.'],
         ['bolt', 'Switching tabs is quicker. A tap on the tab bar no longer makes the app measure the page before anything moves, the top bar\'s buttons fade across instead of resizing, a chart\'s line draws itself in only the first time you see it, and the glass light that follows a mouse pointer no longer runs on touch screens.'],
+        ['sparkle', 'Paired exercises (supersets) are numbered in the order you do them: A1, then A2. The second of a pair sometimes came first, as A2.'],
       ],
     },
     {
