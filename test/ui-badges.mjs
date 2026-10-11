@@ -155,12 +155,13 @@ const burst = await revNow();
 check('the third bursts it open: it\'s opened for good at once (saved), the halves fly apart, light floods out', await S(() => window.GH.ui.S.achievements.earned.earlyBird.opened === true && !window.GH.achievements.unopened(window.GH.ui.S).includes('earlyBird')) && ['bdg-split-top', 'bdg-split-bottom', 'bdg-flash'].every((n) => burst.anims.some((a) => a.name === n)), burst.anims.map((a) => a.name));
 check('every animation of the opening moves by transform and opacity only', burst.anims.length >= 5 && [...shake.anims, ...burst.anims].every((a) => a.props.every((p) => p === 'transform' || p === 'opacity')), [...shake.anims, ...burst.anims].filter((a) => a.props.some((p) => p !== 'transform' && p !== 'opacity')));
 await settle(1400);
+const beads = await S(() => document.querySelectorAll('.rf-bead').length);
 await page.waitForTimeout(900); // Share and Done fade in on a CSS transition, which runs in real time
 const out = await revNow();
 check('the medal springs out, then its name, tier, what it took, the date, Share and Done', out.opened && out.sprung && !out.cap && !out.medalHidden && /Early bird/.test(out.text) && /Bronze · Common/i.test(out.text) && /Start a workout before 8 in the morning/.test(out.text) && /Earned today/.test(out.text) && out.share && out.done && !out.bob, out);
 const hx = await S(() => window.__haptics.slice());
 check('the haptics, in order: wobble, crack, then badge as it bursts', hx.join() === 'wobble,crack,badge', hx);
-check('beads burst from it, within Refract\'s 8 to 14', await S(() => { const n = document.querySelectorAll('.rf-bead').length; return n === 0 || (n >= 8 && n <= 14); }));
+check('beads burst from it as it opens, within Refract\'s 8 to 14', beads >= 8 && beads <= 14, beads);
 await shot('05c-opened');
 await page.click('dialog.bdg-reveal-sheet [data-act="badgeDone"]');
 await settle(800);
