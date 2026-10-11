@@ -74,15 +74,14 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 ## What's new (500 characters at most)
 
-Paste this into the What's new field with each update. This is 1.8.9's. Each GitHub release carries
+Paste this into the What's new field with each update. This is 1.8.10's. Each GitHub release carries
 its own version's text at the end of its What's new, under "Short version, for a store's What's new
 field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
 (`node scripts/release-notes.mjs --store` prints it).
 
 ```text
-• Scrolling Settings no longer leaves a piece of a switch's glass running each time a scroll starts on its row, which kept the app from ever settling there
-• The glass speed test now also flicks the page the way a finger does, since a page that scrolls by itself was smooth where a finger's scroll stuttered
-• Scroll diagnostics note the glass effects each gesture ran under
+• Scrolling with Liquid glass no longer holds still and then jumps: the glow behind each page followed the scroll in a way that made the phone hold back each step of a scroll, up to 2 seconds
+• The glow still rises and fades as you scroll down, now as a short fade of its own
 ```
 
 ## Images

@@ -675,6 +675,62 @@ if (!measureOnly && (!ONLY.length || ONLY.includes('today'))) {
   await ctx.close();
 }
 
+/* ---------------------------------------------------------------- nothing follows the scroll */
+// Nothing in the app is linked to a scroll position (src/styles.css, the glow). With an animation on a
+// page's scroll timeline, Chromium hands each step of a touch scroll to the page only at the start of
+// a frame, so the page and the animation move together; a phone's web view gets those frames only
+// when the app asks it to draw, and in Liquid it held a flick's steps up to 2 s (1.8.9's recording on
+// a phone: scroll updates queued 0.7 s at the median), then landed them at once. Auto and Flat hid
+// the glow while the page moved, which took its scroll fade off the compositor, and were smooth.
+// Here, in each look, on Today and Settings, scrolled: no animation runs on a scroll's timeline, and
+// no page names one. The glow still rises and fades once the page is scrolled down (a timed fade),
+// and comes back at the top.
+if (!measureOnly && (!ONLY.length || ONLY.includes('today') || ONLY.includes('settings'))) {
+  section('Nothing follows the scroll position');
+  const { ctx, cdp, ev } = await openRaw(builds[0], { glass: 'liquid' });
+  const linked = () => ev(`(() => ({
+    anims: document.getAnimations().filter((a) => a.timeline && !(a.timeline instanceof DocumentTimeline)).map((a) => (a.animationName || a.transitionProperty || a.id || 'animation') + ' (' + a.timeline.constructor.name + ')'),
+    named: Array.from(document.querySelectorAll('#app, #app > *, .screen, .ob-scroll'), (el) => { const c = getComputedStyle(el); return [c.scrollTimelineName, c.viewTimelineName, c.timelineScope].filter((v) => v && v !== 'none').map((v) => (el.id || el.className) + ': ' + v).join(', '); }).filter(Boolean),
+  }))()`);
+  const glow = () => ev(`(() => { const c = getComputedStyle(document.getElementById('app'), '::before'); return { scrolled: document.getElementById('app').hasAttribute('data-page-scrolled'), bar: document.getElementById('topbar').hasAttribute('data-scrolled'), opacity: Math.round(parseFloat(c.opacity) * 100) / 100, translate: c.translate, top: document.getElementById('screen').scrollTop }; })()`);
+  const top0 = await glow();
+  const found = [];
+  for (const mode of ['liquid', 'frosted', 'flat', 'auto']) {
+    await ev(`(window.GH.ui.on.setGlass(null, null, ${JSON.stringify(mode)}), 1)`);
+    for (const id of ['today', 'settings']) {
+      await ev(`(() => { const U = window.GH.ui; if (${JSON.stringify(id)} === 'today') U.go('today'); else U.open('settings'); return 1; })()`);
+      await sleep(1200);
+      await fling(cdp, 650, -400);
+      await sleep(250);
+      const mid = await linked();
+      for (let i = 0; i < 60 && (await ev("document.getElementById('app').hasAttribute('data-scrolling')")); i++) await sleep(100);
+      const rest = await linked();
+      found.push({ mode, id, anims: [...new Set([...mid.anims, ...rest.anims])], named: [...new Set([...mid.named, ...rest.named])] });
+    }
+  }
+  const bad = found.filter((x) => x.anims.length || x.named.length);
+  check('in Liquid, Frosted, Flat and Auto, on Today and Settings, while and after a fling: no animation runs on a scroll\'s timeline and no page names one', bad.length === 0, bad.length ? bad : found.map((x) => `${x.mode}/${x.id}`).join(' '));
+  // The glow: Liquid, back on Today at its top, then scrolled down, then back up.
+  await ev(`(window.GH.ui.on.setGlass(null, null, 'liquid'), window.GH.ui.go('today'), 1)`);
+  await sleep(1200);
+  await ev("(document.getElementById('screen').scrollTo(0, 0), 1)");
+  await sleep(900);
+  const atTop = await glow();
+  // Each read once the fade (420 ms) has run its course.
+  await fling(cdp, 650, -400);
+  for (let i = 0; i < 30 && !(await glow()).scrolled; i++) await sleep(100);
+  await sleep(700);
+  const down = await glow();
+  // (Once the fling is over: one still going would carry the page back down.)
+  for (let i = 0; i < 60 && (await ev("document.getElementById('app').hasAttribute('data-scrolling')")); i++) await sleep(100);
+  await ev("(document.getElementById('screen').scrollTo(0, 0), 1)");
+  for (let i = 0; i < 30 && (await glow()).scrolled; i++) await sleep(100);
+  await sleep(700);
+  const up = await glow();
+  check('the glow rises and fades once the page is scrolled down (with the bar\'s frosted edge) and comes back at the top', !top0.scrolled && !atTop.scrolled && atTop.opacity === 0.5 && down.scrolled && down.bar && down.opacity === 0.16 && down.translate === '0px -80px' && !up.scrolled && up.translate === 'none' && up.opacity === 0.5, { top0, atTop, down, up });
+  await ctx.close();
+}
+
 /* ---------------------------------------------------------------- while scrolling, and at rest */
 // While the page moves, the glass at the bottom loses its bend (faded out, then the lens taken off:
 // src/ui/core.js, bend) and keeps its frost; the top bar's buttons keep their lens (1.7.0 dropped
