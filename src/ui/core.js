@@ -1343,14 +1343,14 @@
   };
 
   /* ---------------------------------------------------------------- toasts at the bottom */
-  // Toasts come up from the bottom of the screen, where there's nothing to go back to, rather than
-  // over the bar's buttons and the page's title at the top. They sit above whatever is down there:
-  // the tab bar, Today's floating buttons and the workout capsule, the player's, set-up's or a live
-  // activity's buttons, or an open sheet's main buttons, so one never covers a main button (and at
-  // least clear of the system bar). How high that is (--toast-lift on the toaster) is read as a toast
-  // comes, and again while one shows whenever one of those comes or goes; the toaster glides there
-  // (src/styles.css). Refract's toaster brings them in rising from below and lets them drop away,
-  // keeps three at most, and takes a swipe down to dismiss the bottom one.
+  // Toasts come up from the bottom of the screen. At the top they covered the bar's Back button and
+  // the page's title; down here they sit above whatever is there: the tab bar, Today's floating
+  // buttons and the workout capsule, the player's, set-up's or a live activity's buttons, or an open
+  // sheet's main buttons, so one never covers a main button (and at least clear of the system bar).
+  // How high that is (--toast-lift on the toaster) is read as a toast comes, and again while one
+  // shows whenever one of those comes or goes; the toaster glides there (src/styles.css). Refract's
+  // toaster brings them in rising from below and lets them drop away, keeps three at most, and takes
+  // a swipe down to dismiss the bottom one.
   const TOAST_GAP = 8; // px between a toast and the buttons under it (its slot adds 4 more)
   const TOAST_H = 64; // a toast's height with its slot, to check what it would cover
   // A sheet's main buttons: filled, tinted or large ones.
