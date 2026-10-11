@@ -1,10 +1,11 @@
 /* A badge's share card, drawn on a canvas and shared as an image.
  *
  * The card is 1080×1350 (4:5, what chats and stories show whole) in the app's look: the four-colour
- * glow, a glass card, the medal, its tier and name, how it was earned, and the app's name at the
- * foot. The preview sheet draws it into the very canvas it shows, and Share sends that canvas: only
- * what the preview shows leaves the phone, and only when Share is tapped. The name is off until the
- * person turns it on; the date is on.
+ * glow, a glass card, the medal in 3D (drawn at the card's own size, so it's sharp; the SVG medal
+ * where WebGL can't draw) with rays of its tier's colour behind it, its tier and name, how it was
+ * earned, and the app's name at the foot. The preview sheet draws it into the very canvas it shows,
+ * and Share sends that canvas: only what the preview shows leaves the phone, and only when Share is
+ * tapped. The name is off until the person turns it on; the date is on.
  */
 (function (G) {
   'use strict';
@@ -80,18 +81,34 @@
     return out;
   }
   function spaced(ctx, px) { if ('letterSpacing' in ctx) ctx.letterSpacing = `${px}px`; }
+  // The 3D medal at the card's size (src/engine/medal3d.js), or null where it can't be drawn. Kept for
+  // the preview's redraws (each theme's: the light differs).
+  const MEDAL = 520;
+  const pics = new Map();
+  function medal3d(def, theme) {
+    const k = `${def.id}|${theme}`;
+    if (!pics.has(k)) {
+      const ok = U.medals && U.canDraw3d && U.canDraw3d();
+      pics.set(k, ok ? GH.lazy('figure3d').then(() => (GH.medal3d ? GH.medal3d.stillAsync(U.medals.spec(def, true), { px: MEDAL, dark: theme === 'dark' }) : null)).catch(() => null) : Promise.resolve(null));
+      if (pics.size > 4) pics.delete(pics.keys().next().value);
+    }
+    return pics.get(k);
+  }
 
   /* Draws the card for a badge into `canvas` (a new one if none). o: { theme: 'light' | 'dark',
-   * date: text or '' (none), name: text or '' (none) }. Resolves with the canvas. */
+   * date: text or '' (none), name: text or '' (none) }. Resolves with the canvas, its data-medal '3d'
+   * or 'svg' for which medal it has. */
   async function draw(def, o, canvas) {
     const cv = canvas || doc.createElement('canvas');
-    cv.width = W; cv.height = H;
-    const L = look(o.theme);
+    const pic = await medal3d(def, o.theme);
     const [medal, logo] = await Promise.all([
-      image(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(U.badgeSvg(def, { earned: true, size: 420, text: false }))}`),
+      pic ? null : image(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(U.badgeSvg(def, { earned: true, size: 420, text: false }))}`),
       GH.LOGO ? image(GH.LOGO).catch(() => null) : Promise.resolve(null),
       fontsReady(),
     ]);
+    cv.width = W; cv.height = H;
+    cv.dataset.medal = pic ? '3d' : 'svg';
+    const L = look(o.theme);
     const ctx = cv.getContext('2d');
     ctx.save();
     ctx.fillStyle = L.bg;
@@ -133,15 +150,34 @@
     halo.addColorStop(1, `rgba(${tierC},0)`);
     ctx.fillStyle = halo;
     ctx.fillRect(90, 170, 900, 640);
+    // Rays of the tier's colour turning out from behind it, fading toward the card's edge.
+    ctx.save();
+    roundRect(ctx, 90, 170, 900, 1010, 64);
+    ctx.clip();
+    const rays = ctx.createRadialGradient(540, 446, 60, 540, 446, 470);
+    rays.addColorStop(0, `rgba(${tierC},${o.theme === 'dark' ? 0.34 : 0.3})`);
+    rays.addColorStop(1, `rgba(${tierC},0)`);
+    ctx.fillStyle = rays;
+    ctx.beginPath();
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2 - Math.PI / 2;
+      ctx.moveTo(540, 446);
+      ctx.arc(540, 446, 470, a - 0.06, a + 0.06);
+      ctx.closePath();
+    }
+    ctx.fill();
+    ctx.restore();
     ctx.save();
     ctx.shadowColor = o.theme === 'dark' ? 'rgba(0,0,0,0.55)' : 'rgba(30,24,10,0.24)';
     ctx.shadowBlur = 40;
     ctx.shadowOffsetY = 18;
-    ctx.drawImage(medal, 330, 236, 420, 420);
+    if (pic) ctx.drawImage(pic, 540 - MEDAL / 2, 446 - MEDAL / 2, MEDAL, MEDAL);
+    else ctx.drawImage(medal, 330, 236, 420, 420);
     ctx.restore();
-    // The ribbon's number, in the app's font (an SVG drawn as an image can't use it).
+    // The ribbon's number, in the app's font (an SVG drawn as an image can't use it; the 3D medal has
+    // its own).
     const S = 420 / 120;
-    if (def.ribbon) {
+    if (def.ribbon && !pic) {
       ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';

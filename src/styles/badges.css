@@ -9,17 +9,19 @@
 .bdg-svg.is-locked .bdg-ring { color: var(--positive-fill); }
 :root[data-theme^="dark"] .bdg-svg.is-locked .bdg-ring { color: #3fc178; }
 /* The tier's colour, for the glow and rays round a medal and the tier dots. */
-[data-tier="bronze"] { --bdg-c: #e39a5b; --bdg-c2: #ffd3a6; }
-[data-tier="silver"] { --bdg-c: #a9b8c8; --bdg-c2: #eef3f8; }
-[data-tier="gold"] { --bdg-c: #f0b92a; --bdg-c2: #ffe89a; }
-[data-tier="platinum"] { --bdg-c: #9fb4ff; --bdg-c2: #e6cfff; }
+/* --bdg-glow: how strongly a medal glows in the gallery and on the shelf, more the rarer it is. */
+[data-tier="bronze"] { --bdg-c: #e39a5b; --bdg-c2: #ffd3a6; --bdg-glow: 0%; }
+[data-tier="silver"] { --bdg-c: #a9b8c8; --bdg-c2: #eef3f8; --bdg-glow: 24%; }
+[data-tier="gold"] { --bdg-c: #f0b92a; --bdg-c2: #ffe89a; --bdg-glow: 38%; }
+[data-tier="platinum"] { --bdg-c: #9fb4ff; --bdg-c2: #e6cfff; --bdg-glow: 52%; }
 [data-tier="locked"] { --bdg-c: #8e949e; --bdg-c2: #c9cdd3; }
 
 /* A medal on its stage: a soft glow in its metal's colour, and on the reveal light rays turning
    slowly behind it. */
 .bdg-stage { position: relative; display: grid; place-items: center; isolation: isolate; }
-.bdg-stage > .bdg-medal { position: relative; z-index: 2; display: block; filter: drop-shadow(0 10px 16px rgb(20 22 30 / .2)); }
-:root[data-theme^="dark"] .bdg-stage > .bdg-medal { filter: drop-shadow(0 10px 22px rgb(0 0 0 / .55)); }
+.bdg-stage > .bdg-medal { position: relative; z-index: 2; display: block; }
+.bdg-stage > :is(.bdg-medal, .bdg-live) { filter: drop-shadow(0 10px 16px rgb(20 22 30 / .2)); }
+:root[data-theme^="dark"] .bdg-stage > :is(.bdg-medal, .bdg-live) { filter: drop-shadow(0 10px 22px rgb(0 0 0 / .55)); }
 .bdg-glow { position: absolute; inset: 2%; z-index: 0; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--bdg-c) 62%, transparent), color-mix(in srgb, var(--bdg-c) 24%, transparent) 60%, transparent); pointer-events: none; transition: transform .6s cubic-bezier(.2, .9, .3, 1.2); }
 .bdg-rays {
   position: absolute; inset: -22%; z-index: 1; pointer-events: none; opacity: 0;
@@ -45,8 +47,23 @@
 .bdg-sweep { transform: translateX(0); }
 .bdg-stage:not(.is-in) .bdg-sweep { opacity: 0; }
 /* The reveal shows each medal only as it springs in (with reduced motion, it fades in). */
-.bdg-reveal .bdg-stage:not(.is-in):not(.is-still) > .bdg-medal { opacity: 0; }
+.bdg-reveal .bdg-stage:not(.is-in):not(.is-still) > :is(.bdg-medal, .bdg-live) { opacity: 0; }
 .bdg-reveal .bdg-stage > .bdg-medal { transition: opacity .3s ease-out; }
+
+/* ================================================================== 3D medals (src/engine/medal3d.js) */
+/* A medal's place: its 3D still (its SVG until one is drawn, which then fades in), a locked one's ring
+   and lock over it. On a stage, the live medal's canvas (larger than the medal: room to sway) fades in
+   over it once its first frame is drawn; spinning out of its capsule it's there at once. In the
+   gallery and on the shelf each earned one glows in its tier's colour, the rarer the more. */
+.bdg-m { position: relative; display: block; flex: none; line-height: 0; }
+.bdg-img.is-new { animation: bdg-fade .45s ease-out both; }
+@keyframes bdg-fade { from { opacity: 0; } }
+.bdg-marks { position: absolute; inset: 0; }
+.bdg-stage > .bdg-live { position: absolute; left: 50%; top: 50%; z-index: 2; transform: translate(-50%, -50%); opacity: 0; transition: opacity .35s ease-out; }
+.bdg-stage.is-live > .bdg-live { opacity: 1; }
+.bdg-stage.is-live > .bdg-medal { opacity: 0; animation: none; transition: opacity .35s ease-out; }
+.bdg-stage.is-opening.is-live > .bdg-live { transition: none; }
+:is(.bdg-tile, .bdg-mini:not(.is-sealed))[data-tier] :is(.bdg-tile-medal, .bdg-mini-medal)::before { content: ''; position: absolute; inset: -14%; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--bdg-c) var(--bdg-glow), transparent), transparent); }
 
 /* ================================================================== sealed capsules */
 /* A badge not opened yet: a glass capsule in its tier's colours, where its medal would be. In the
@@ -135,7 +152,10 @@
 .bdg-mini:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
 .bdg-mini-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.2; width: 100%; overflow-wrap: anywhere; }
 .bdg-mini:not(.is-earned) .bdg-mini-title { color: var(--label-secondary); }
-.bdg-mini.is-new .bdg-svg { animation: bdg-glint 2.6s ease-in-out 3; }
+.bdg-mini-medal { position: relative; display: block; }
+/* The shelf: the medals stand on a glass ledge, where their shadows fall. */
+.bdg-shelf { gap: var(--space-2); background: linear-gradient(transparent 57px, color-mix(in srgb, var(--label) 12%, transparent) 57px 58.5px, color-mix(in srgb, var(--label) 4%, transparent) 58.5px 64px, transparent 64px) no-repeat; }
+.bdg-mini.is-new :is(.bdg-svg, .bdg-img) { animation: bdg-glint 2.6s ease-in-out 3; }
 @keyframes bdg-glint { 0%, 100% { filter: none; } 50% { filter: brightness(1.18) drop-shadow(0 0 8px var(--bdg-c, #f0b92a)); } }
 
 /* ================================================================== the gallery */
@@ -159,6 +179,11 @@
 .bdg-next-text { display: grid; gap: 4px; flex: 1; min-width: 0; }
 .bdg-next-text .rf-progress { margin-top: 2px; }
 .bdg-next-n { flex: none; font-variant-numeric: tabular-nums; }
+/* Where it sits in its series: a pip a badge in its tier's colour, the earned ones lit, this one half. */
+.bdg-pips { display: flex; gap: 5px; margin-top: 3px; }
+.bdg-pips > i { width: 8px; height: 8px; border-radius: 50%; background: var(--bdg-c); opacity: .25; }
+.bdg-pips > .is-on { opacity: 1; }
+.bdg-pips > .is-now { opacity: .6; }
 @media (min-width: 600px) { .bdg-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (min-width: 900px) { .bdg-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 
@@ -172,6 +197,13 @@
 .bdg-how { margin: 0; max-width: 34ch; }
 .bdg-when { margin: var(--space-1) 0 0; color: var(--label-secondary); }
 .bdg-prog { display: grid; gap: 6px; width: min(280px, 100%); margin-top: var(--space-2); }
+/* Its series: the medals in it, this one marked under it, and the next one up. */
+.bdg-series { display: grid; justify-items: center; gap: 6px; width: min(300px, 100%); }
+.bdg-series > p:not(.bdg-tierline) { margin: 0; }
+.bdg-series-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding-bottom: 6px; }
+.bdg-series-m { position: relative; }
+.bdg-series-m.is-this::after { content: ''; position: absolute; left: calc(50% - 2.5px); bottom: -6px; width: 5px; height: 5px; border-radius: 50%; background: var(--label); }
+.bdg-series > .rf-progress { width: 100%; }
 .bdg-actions { display: flex; gap: var(--space-2); width: 100%; box-sizing: border-box; padding: var(--space-4) 0 0; }
 .bdg-actions > .rf-btn, .bdg-acts > .rf-btn { flex: 1; min-width: 0; }
 .bdg-detail .bdg-actions { max-width: 320px; }
@@ -235,12 +267,12 @@
 /* Reduced motion: no spin, sweep or burst, and nothing nudges or drops in. A capsule's taps, bob and
    burst never start (src/ui/badges.js): one tap and it fades as the medal fades in. */
 @media (prefers-reduced-motion: reduce) {
-  .bdg-stage.is-in > .bdg-medal, .bdg-stage.is-card > .bdg-medal, .bdg-stage.is-in .bdg-sweep, .bdg-rays, .bdg-mini.is-new .bdg-svg, .bdg-cap-art.is-nudge, .bdg-stage.is-card > .bdg-cap-art { animation: none; }
+  .bdg-stage.is-in > .bdg-medal, .bdg-stage.is-card > .bdg-medal, .bdg-stage.is-in .bdg-sweep, .bdg-rays, .bdg-mini.is-new :is(.bdg-svg, .bdg-img), .bdg-cap-art.is-nudge, .bdg-stage.is-card > .bdg-cap-art { animation: none; }
   .bdg-stage.is-in .bdg-sweep { opacity: 0; }
 }
-:root[data-rf-motion="reduced"] :is(.bdg-stage.is-in > .bdg-medal, .bdg-stage.is-card > .bdg-medal, .bdg-rays, .bdg-mini.is-new .bdg-svg, .bdg-cap-art.is-nudge, .bdg-stage.is-card > .bdg-cap-art) { animation: none; }
+:root[data-rf-motion="reduced"] :is(.bdg-stage.is-in > .bdg-medal, .bdg-stage.is-card > .bdg-medal, .bdg-rays, .bdg-mini.is-new :is(.bdg-svg, .bdg-img), .bdg-cap-art.is-nudge, .bdg-stage.is-card > .bdg-cap-art) { animation: none; }
 :root[data-rf-motion="reduced"] .bdg-sweep { display: none; }
-:root[data-theme$="contrast"] :is(.bdg-rays, .bdg-glow), :root[data-theme$="contrast"] .bdg-cap-art::before { display: none; }
+:root[data-theme$="contrast"] :is(.bdg-rays, .bdg-glow), :root[data-theme$="contrast"] :is(.bdg-cap-art, .bdg-tile-medal, .bdg-mini-medal)::before { display: none; }
 :root[data-theme$="contrast"] :is(.bdg-tile, .bdg-next, .bdg-card) { box-shadow: inset 0 0 0 1px var(--separator); }
 /* Increased contrast and reduced transparency: the capsule's glass is a solid fill (its solid layer
    shows under the glass), with a clear edge for contrast. */

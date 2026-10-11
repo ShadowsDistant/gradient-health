@@ -109,6 +109,8 @@ async function run(dark) {
   const shot = async (name) => { await settle(); await page.screenshot({ path: join(out, `${name}${dark ? '-dark' : ''}.png`) }); };
   const tab = async (t) => { await page.click(`.rf-tab[data-tab="${t}"]`); await settle(700); };
   const top = () => page.evaluate(() => document.getElementById('screen').scrollTo(0, 0));
+  // The badges' medals turn into stills of the 3D ones while the phone is idle (the SVG stands in).
+  const medals = async () => { for (let i = 0; i < 90 && await page.evaluate(() => [...document.querySelectorAll('#screen .bdg-m')].some((h) => !h.querySelector('.bdg-img'))); i++) await settle(1000); };
 
   await shot('today');
   await page.click('#float [data-act="startWorkout"]');
@@ -233,9 +235,10 @@ async function run(dark) {
   await shot('tailor');
   await page.evaluate(() => window.GH.ui.closeSheets());
   await settle(600);
-  // You: your card, badges, plans and answers (Profile before 1.6).
+  // You: your card, the badges' shelf, plans and answers (Profile before 1.6).
   await tab('you');
   await top();
+  await medals();
   await shot('you');
   // Reminders, turned on: Settings' Notifications group, a switch for each kind and the time.
   await page.evaluate(() => {
@@ -252,11 +255,12 @@ async function run(dark) {
   await shot('reminders');
   await page.evaluate(() => { const U = window.GH.ui; while (U.back()) { /* to the tab */ } });
   await settle(600);
-  // Badges: the gallery, then one shared as a picture (the preview is exactly what gets sent). The
-  // 30-day streak when it's earned, else the newest earned one.
+  // Badges: the gallery's 3D medals, then one shared as a picture (the preview is exactly what gets
+  // sent, the 3D medal large on it). The 30-day streak when it's earned, else the newest earned one.
   await page.evaluate(() => window.GH.ui.open('badges'));
   await settle(1200);
   await top();
+  await medals();
   await shot('badges');
   // A new badge, sealed: a glass capsule in its tier's colours, with its rarity and nothing else. In
   // dark, two taps in: cracked, one more to open it.
@@ -279,6 +283,7 @@ async function run(dark) {
     U.shareBadge(ids.includes('streak30') ? 'streak30' : ids[0]);
   });
   await settle(1800);
+  for (let i = 0; i < 60 && !(await page.evaluate(() => { const c = document.querySelector('dialog.sc-sheet[open] .sc-canvas'); return !!c && !!c.dataset.medal; })); i++) await settle(1000);
   await shot('badge-share');
   await page.evaluate(() => { const U = window.GH.ui; U.closeSheets(); while (U.back()) { /* to the tab */ } });
   await settle(600);
