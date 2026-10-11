@@ -716,15 +716,18 @@ if (!measureOnly && (!ONLY.length || ONLY.includes('today') || ONLY.includes('se
   await ev("(document.getElementById('screen').scrollTo(0, 0), 1)");
   await sleep(900);
   const atTop = await glow();
+  // Each read once the fade (420 ms) has run its course.
   await fling(cdp, 650, -400);
-  let down = null;
-  for (let i = 0; i < 30; i++) { await sleep(100); const g = await glow(); if (g.scrolled && g.opacity <= 0.2) { down = g; break; } }
+  for (let i = 0; i < 30 && !(await glow()).scrolled; i++) await sleep(100);
+  await sleep(700);
+  const down = await glow();
   // (Once the fling is over: one still going would carry the page back down.)
   for (let i = 0; i < 60 && (await ev("document.getElementById('app').hasAttribute('data-scrolling')")); i++) await sleep(100);
   await ev("(document.getElementById('screen').scrollTo(0, 0), 1)");
-  let up = null;
-  for (let i = 0; i < 30; i++) { await sleep(100); const g = await glow(); if (!g.scrolled && g.opacity >= 0.45) { up = g; break; } }
-  check('the glow rises and fades once the page is scrolled down (with the bar\'s frosted edge) and comes back at the top', !top0.scrolled && !atTop.scrolled && atTop.opacity === 0.5 && !!down && down.bar && down.translate === '0px -80px' && !!up && up.translate === 'none' && up.opacity === 0.5, { top0, atTop, down, up });
+  for (let i = 0; i < 30 && (await glow()).scrolled; i++) await sleep(100);
+  await sleep(700);
+  const up = await glow();
+  check('the glow rises and fades once the page is scrolled down (with the bar\'s frosted edge) and comes back at the top', !top0.scrolled && !atTop.scrolled && atTop.opacity === 0.5 && down.scrolled && down.bar && down.opacity === 0.16 && down.translate === '0px -80px' && !up.scrolled && up.translate === 'none' && up.opacity === 0.5, { top0, atTop, down, up });
   await ctx.close();
 }
 
