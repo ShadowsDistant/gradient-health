@@ -906,7 +906,7 @@ so over the button that finishes it, and on Android 13 and newer Android asks fo
 that's tapped, once, with set-up still showing (`U.notifySetupAsk`, `U.notifySetupDone` in
 `src/ui/notify.js`); a no leaves them off with nothing asking again. Someone set up before keeps what
 they have (`brain.js`'s default and the store's migration are off), and if that's off, a one-time
-card on Today asks once their first workout and the tour are done. Settings, Notifications, has a
+card on Today asks (once they've done a workout and had the tour). Settings, Notifications, has a
 switch per kind and the reminder time.
 
 **The page plans, Android delivers.** `src/notify.js` (`GH.notify`, a chunk) is a pure planner:

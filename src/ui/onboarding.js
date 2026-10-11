@@ -1633,7 +1633,8 @@
   function finishNew(how) {
     if (!Q || finishing) return;
     finishing = true;
-    const ask = U.notifySetupAsk ? U.notifySetupAsk() : Promise.resolve(false);
+    let ask = false;
+    try { ask = U.notifySetupAsk ? U.notifySetupAsk() : false; } catch (e) { if (G.console) G.console.error(e); }
     Promise.resolve(ask).catch(() => false).then((on) => { finishing = false; finishWith(how, on); });
   }
   // The new state, and then the first workout ('start'), the app ('look') or the coach's review of
