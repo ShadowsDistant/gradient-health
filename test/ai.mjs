@@ -1,8 +1,9 @@
-// The AI coach against a mocked Anthropic API: model choice, request shape (streaming, adaptive
-// thinking, effort, structured output, server-side fallback), what the summary leaves out, the key
-// never leaking, and the error paths (bad key, refusal, offline). Both parts: src/ai.js (inline in
-// the page) and src/claude.js (the requests and the SDK, a lazy chunk), bundled here like the build
-// does and loaded through GH.lazy the first time it's needed.
+// The AI coach against a mocked Anthropic API: the model and thinking level the person picked, the
+// request shape (streaming, thinking, effort, structured output, server-side fallback), the spending
+// limits (checked before a request, recorded after), what the summary leaves out, the key never
+// leaking, and the error paths (bad key, refusal, offline). Three parts: src/spend.js and src/ai.js
+// (inline in the page) and src/claude.js (the requests and the SDK, a lazy chunk), bundled here like
+// the build does and loaded through GH.lazy the first time it's needed.
 import { build } from 'esbuild';
 import { join } from 'node:path';
 import { load, root, check, section, done } from './lib.mjs';
@@ -10,7 +11,7 @@ import { load, root, check, section, done } from './lib.mjs';
 // Browser-ish globals the modules expect.
 const ls = new Map();
 globalThis.localStorage = { getItem: (k) => (ls.has(k) ? ls.get(k) : null), setItem: (k, v) => ls.set(k, String(v)), removeItem: (k) => ls.delete(k) };
-const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/health.js', 'src/store.js', 'src/ai.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/health.js', 'src/store.js', 'src/spend.js', 'src/ai.js');
 const bundle = await build({ entryPoints: [join(root, 'src/claude.js')], bundle: true, write: false, format: 'iife', platform: 'browser', target: ['es2022'], logLevel: 'silent' });
 let chunkLoads = 0;
 GH.lazy = async (name) => {
@@ -22,16 +23,6 @@ const AI = GH.ai;
 const B = GH.brain;
 
 /* ---------------------------------------------------------------- the fake API */
-const MODELS = [
-  { type: 'model', id: 'sonnet-test-3', display_name: 'Sonnet Test 3', created_at: '2026-08-01T00:00:00Z', capabilities: caps(true) },
-  { type: 'model', id: 'opus-test-no-effort', display_name: 'Opus No Effort', created_at: '2026-09-01T00:00:00Z', capabilities: caps(false) },
-  { type: 'model', id: 'opus-test-2', display_name: 'Opus Test 2', created_at: '2026-07-01T00:00:00Z', capabilities: caps(true) },
-  { type: 'model', id: 'opus-test-1', display_name: 'Opus Test 1', created_at: '2025-11-01T00:00:00Z', capabilities: caps(true) },
-];
-function caps(effort) {
-  const yes = { supported: true };
-  return { effort: { supported: effort, low: yes, medium: yes, high: yes, max: yes, xhigh: null }, structured_outputs: yes, thinking: { supported: true, types: { adaptive: yes, enabled: yes } } };
-}
 // Claude's suggestions: one fine, one out of range, one plain tip, one kind the app doesn't know.
 const SUGGEST = { suggestions: [
   { kind: 'minutes', title: 'Plan 30-minute workouts', why: 'Your last three took about 31 minutes.', minutes: 30 },
@@ -40,14 +31,18 @@ const SUGGEST = { suggestions: [
 ] };
 const REPORT = { headline: 'A steady week.', wins: ['4 of 4 workouts.'], watch: ['Sleep dipped to 6 h 10.'], focus: ['Protein on rest days.'], ask_me: ['How do I sleep more?'] };
 const sse = (events) => events.map(([e, d]) => `event: ${e}\ndata: ${JSON.stringify(d)}\n\n`).join('');
-function stream(text, stop) {
+// USAGE: what the next answers report having used (per test below); its iterations, when a backup
+// model answered.
+let USAGE = { input_tokens: 1000, output_tokens: 500 };
+function stream(text, stop, model) {
   const chunks = text ? text.match(/[\s\S]{1,9}/g) : [];
+  const { output_tokens: out, ...start } = USAGE;
   return sse([
-    ['message_start', { type: 'message_start', message: { id: 'msg_test', type: 'message', role: 'assistant', model: 'opus-test-2', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 12, output_tokens: 1 } } }],
+    ['message_start', { type: 'message_start', message: { id: 'msg_test', type: 'message', role: 'assistant', model: model || 'claude-opus-5-5', content: [], stop_reason: null, stop_sequence: null, usage: Object.assign({ output_tokens: 1 }, start, { iterations: undefined }) } }],
     ...(chunks.length ? [['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }]] : []),
     ...chunks.map((c) => ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: c } }]),
     ...(chunks.length ? [['content_block_stop', { type: 'content_block_stop', index: 0 }]] : []),
-    ['message_delta', { type: 'message_delta', delta: { stop_reason: stop || 'end_turn', stop_sequence: null }, usage: { output_tokens: 30 } }],
+    ['message_delta', { type: 'message_delta', delta: { stop_reason: stop || 'end_turn', stop_sequence: null }, usage: Object.assign({ output_tokens: out }, USAGE.iterations ? { iterations: USAGE.iterations } : {}) }],
     ['message_stop', { type: 'message_stop' }],
   ]);
 }
@@ -57,6 +52,8 @@ let mode = 'ok';
 let REVIEW = { suggestions: [], note: '' };
 let PLAN_IDEAS = { plan_suggestions: [], plan_note: '' };
 let ANSWER = 'Aim for the same bedtime on weekends.';
+let PLAN = null; // what Build me a plan and Improve get back
+
 globalThis.fetch = async (url, init = {}) => {
   const u = String(url);
   const headers = new Headers(init.headers);
@@ -64,15 +61,15 @@ globalThis.fetch = async (url, init = {}) => {
   calls.push({ url: u, method: init.method || 'GET', headers, body });
   if (mode === 'offline') throw new TypeError('fetch failed');
   if (mode === '401') return new Response(JSON.stringify({ type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }), { status: 401, headers: { 'content-type': 'application/json', 'request-id': 'req_1' } });
-  if (u.includes('/v1/models')) return new Response(JSON.stringify({ data: MODELS, has_more: false, first_id: MODELS[0].id, last_id: MODELS[MODELS.length - 1].id }), { status: 200, headers: { 'content-type': 'application/json' } });
+  if (mode === '404') return new Response(JSON.stringify({ type: 'error', error: { type: 'not_found_error', message: `model: ${body && body.model}` } }), { status: 404, headers: { 'content-type': 'application/json', 'request-id': 'req_3' } });
   const fmt = body && body.output_config && body.output_config.format;
   const props = (fmt && fmt.schema && fmt.schema.properties) || {};
   if (mode === 'schema400' && props.plan_suggestions) return new Response(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'Schema is too complex for compilation.' } }), { status: 400, headers: { 'content-type': 'application/json', 'request-id': 'req_2' } });
   const wantsReview = !!(props.suggestions && props.suggestions.items && props.suggestions.items.anyOf);
   const wantsSuggestions = !!props.suggestions;
   const report = props.plan_suggestions ? Object.assign({}, REPORT, PLAN_IDEAS) : REPORT;
-  const text = mode === 'refusal' ? '' : wantsReview ? JSON.stringify(REVIEW) : wantsSuggestions ? JSON.stringify(SUGGEST) : fmt ? JSON.stringify(report) : ANSWER;
-  return new Response(stream(text, mode === 'refusal' ? 'refusal' : 'end_turn'), { status: 200, headers: { 'content-type': 'text/event-stream' } });
+  const text = mode === 'refusal' ? '' : props.days && PLAN ? JSON.stringify(PLAN) : wantsReview ? JSON.stringify(REVIEW) : wantsSuggestions ? JSON.stringify(SUGGEST) : fmt ? JSON.stringify(report) : ANSWER;
+  return new Response(stream(text, mode === 'refusal' ? 'refusal' : mode === 'cut' ? 'max_tokens' : 'end_turn', body && body.model), { status: 200, headers: { 'content-type': 'text/event-stream' } });
 };
 
 /* ---------------------------------------------------------------- a person with some history */
@@ -111,14 +108,14 @@ S.ai.consentAt = Date.now();
 
 section('Weekly report');
 const rep = await AI.report(S, D0);
-const models = calls.filter((c) => c.url.includes('/v1/models'));
 const msg = calls.filter((c) => c.url.includes('/v1/messages')).pop();
-check('lists the models once and picks the newest capable Opus', models.length === 1 && msg.body.model === 'opus-test-2' && S.ai.model.id === 'opus-test-2', msg.body.model);
-check('streams, with adaptive thinking and high effort', msg.body.stream === true && msg.body.thinking && msg.body.thinking.type === 'adaptive' && msg.body.output_config.effort === 'high');
+check('the model is the one picked (Opus 5.5 until they pick another), with no model listing', msg.body.model === 'claude-opus-5-5' && GH.spend.model(S).id === 'claude-opus-5-5' && !calls.some((c) => c.url.includes('/v1/models')), msg.body.model);
+check('streams, with adaptive thinking and, on Auto, medium effort for the report', msg.body.stream === true && msg.body.thinking && msg.body.thinking.type === 'adaptive' && msg.body.output_config.effort === 'medium' && msg.body.max_tokens === GH.spend.FEATURES.report.tokens[2]);
 check('asks for structured JSON', msg.body.output_config.format && msg.body.output_config.format.type === 'json_schema' && msg.body.output_config.format.schema.required.includes('headline'));
 check('server-side fallback on (beta header + fallbacks)', (msg.headers.get('anthropic-beta') || '').includes('server-side-fallback-2026-07-01') && msg.body.fallbacks === 'default');
 check('the key goes only in its header, browser access flagged', msg.headers.get('x-api-key') === KEY && msg.headers.get('anthropic-dangerous-direct-browser-access') === 'true' && !JSON.stringify(msg.body).includes('TESTKEY'));
-check('the data summary is a cached system block', msg.body.system[1].cache_control && msg.body.system[1].cache_control.type === 'ephemeral' && msg.body.system[1].text.includes('DATA SUMMARY'));
+check('the data summary goes as its own system block, not cached for a report that goes once', !msg.body.system[1].cache_control && msg.body.system[1].text.includes('DATA SUMMARY'));
+check('what it cost is on the day and the month: 1,000 tokens in and 500 out at Opus 5.5\'s prices', GH.spend.data(S).days[D0].c === 1000 * 4 + 500 * 20 && GH.spend.data(S).months['2026-09'].f.report === 14000, GH.spend.data(S).days[D0]);
 check('the report is parsed and saved for the week', rep.data.headline === REPORT.headline && AI.reportFor(S, D0) && !AI.needsReport(S, D0));
 check('the first request loaded the chunk, once', chunkLoads === 1 && !!GH.claude);
 
@@ -127,8 +124,10 @@ const deltas = [];
 const ans = await AI.ask(S, D0, 'How do I sleep more?', (d, snap) => deltas.push(snap));
 const q = calls.filter((c) => c.url.includes('/v1/messages')).pop();
 check('medium effort, no JSON format, streamed as it arrives', q.body.output_config.effort === 'medium' && !q.body.output_config.format && deltas.length > 1 && deltas[deltas.length - 1] === ans.text);
-check('the question is the last message; the chat is kept', q.body.messages[q.body.messages.length - 1].content === 'How do I sleep more?' && S.ai.chat.length === 2);
-check('no second model listing (the pick is reused)', calls.filter((c) => c.url.includes('/v1/models')).length === 1);
+const last = q.body.messages[q.body.messages.length - 1];
+check('the question is the last message, the end of what\'s cached; the chat is kept', last.content[0].text === 'How do I sleep more?' && last.content[0].cache_control.type === 'ephemeral' && S.ai.chat.length === 2);
+check('a question\'s summary is cached too, with the chat\'s own rules', q.body.system[1].cache_control && /Under 150 words/.test(q.body.system[0].text) && !/Under 150 words/.test(msg.body.system[0].text));
+check('the answer keeps what it cost and which model wrote it', S.ai.chat[1].cost === 14000 && S.ai.chat[1].model === 'claude-opus-5-5' && ans.cost === 14000);
 
 section('Errors');
 const fail = async (m) => { mode = m; try { await AI.ask(S, D0, 'Hi', null); return null; } catch (e) { return e; } finally { mode = 'ok'; } };
@@ -138,7 +137,13 @@ e = await fail('refusal');
 check('a refusal is reported as one', e && e.code === 'refusal', e && e.code);
 e = await fail('offline');
 check('offline → one line, on-device insights still work', e && e.code === 'offline' && /offline/i.test(e.message), e && e.message);
+e = await fail('404');
+check('a model the key can\'t use → says which, and where to pick another', e && e.code === 'nomodel' && /Claude Opus 5\.5/.test(e.message) && /Settings/.test(e.message), e && e.message);
 check('failed questions are not added to the chat', S.ai.chat.length === 2);
+mode = 'cut';
+const cut = await AI.ask(S, D0, 'Tell me more', null);
+mode = 'ok';
+check('an answer cut short keeps what came, with a note', /bedtime/.test(cut.text) && /Cut short/.test(cut.note) && S.ai.chat.length === 4);
 AI.deleteKey(S);
 check('delete key removes it', !AI.hasKey());
 e = null;
@@ -414,6 +419,38 @@ section('Build me a plan: a model\'s plan is checked too');
   check('so is one that cuts back the groups they asked for', noArms === null);
   const core = CP.accept(S1, D0, w, draft, like((d) => d.items.slice().reverse().map((it) => ({ move: it.move, sets: it.sets, reps: 10 }))), ids);
   check('core work goes last', !core || core.days.every((d) => { const k = d.items.findIndex((it) => group(it.move) === 'abs'); return k < 0 || d.items.slice(k).every((it) => group(it.move) === 'abs'); }));
+}
+
+section('Improve a plan of their own');
+{
+  const CP = GH.customPlan;
+  const S2 = B.newState({ goals: ['arms', 'chest', 'legs'], experience: 'onoff', days: 3, minutes: 30, age: 30, equipment: { db: [10, 15], kb: [15], band: true, chair: true, wall: true, towel: true } }, null, D0 - 14);
+  CP.ensure(S2);
+  Object.assign(S2.ai, { mode: 'api', enabled: true, consentAt: Date.now() });
+  const mine = CP.save(S2, CP.generate(S2, D0, CP.wishes(S2, '3 days, 30 minutes'))).plan;
+  const first = mine.days[0].items.find((x) => x.sets > 1);
+  const as = (f) => ({ name: 'Something else', note: 'A little more for your arms.', days: mine.days.map((d, i) => ({ title: d.title, items: d.items.map((it, k) => f(it, i, k)).filter(Boolean) })) });
+  // One set fewer on the first move of day 1 with more than one: it still fits the time and the checks.
+  const k0 = mine.days[0].items.findIndex((x) => x.sets > 1);
+  PLAN = as((it, i, k) => ({ move: it.move, sets: i === 0 && k === k0 ? it.sets - 1 : it.sets, reps: it.reps || it.secs }));
+  const before = calls.length;
+  const r = await CP.improve(S2, D0, mine, 'more for my arms');
+  const msg = calls.slice(before).filter((c) => c.url.includes('/v1/messages')).pop();
+  check('Claude gets their plan as the draft, and what they asked', !!msg && /Improve my own plan from my data, and: more for my arms/.test(msg.body.messages[0].content) && /"move":/.test(msg.body.messages[0].content) && !!msg.body.output_config.format.schema.properties.days);
+  check('as a plan built from scratch: the plan features\' summary, without food', /TRAINING/.test(msg.body.system[1].text) && !/FOOD AND BODY/.test(msg.body.system[1].text));
+  check('its take comes back checked, with their plan\'s name, and what changed in words', r.by === 'claude' && r.plan && r.plan.name === mine.name && r.changes.length === 1 && r.changes[0].startsWith(`Day 1: ${GH.moves.MOVES[first.move].name} ${first.sets} × `) && / → \d+ × /.test(r.changes[0]), r.changes);
+  check('their plan isn\'t changed until they choose', CP.get(S2, mine.id).days[0].items[0].sets === first.sets);
+  check('the request is on the month\'s record as a plan built', GH.spend.data(S2).months['2026-09'] && GH.spend.data(S2).months['2026-09'].f.build > 0);
+  // A take that drops every leg move fails the same checks as a plan built from scratch.
+  PLAN = as((it) => (GH.moves.MOVES[it.move].group === 'legs' ? null : { move: it.move, sets: it.sets, reps: it.reps || it.secs }));
+  const bad = await CP.improve(S2, D0, mine, '');
+  check('a take that fails the checks leaves nothing to use', bad.plan === null && !bad.error);
+  S2.ai.budget = { monthly: 10, daily: null, request: 0.0001 };
+  const capped = await CP.improve(S2, D0, mine, '');
+  check('a spending limit that stops Claude comes back as the reason', capped.plan === null && capped.error && capped.error.code === 'budget-request', capped.error && capped.error.code);
+  const same = CP.diff(mine, mine);
+  check('the same plan has nothing to say', same.length === 0);
+  PLAN = null;
 }
 
 done();

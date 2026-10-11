@@ -36,9 +36,10 @@
   const PROJECT = 200; // a release carries on at its speed for this long (ms) before picking a detent
   const FLICK = 0.35; // px/ms: a flick moves at least one detent its way
   const FLICK_OUT = 0.6; // px/ms: a flick down from the lowest detent dismisses
-  // [response ms, damping ratio]. Settles take 250 to 350 ms (90% of the way in about 150): quick
-  // with a little give, never a slow drift. Closing doesn't bounce.
-  const SPRINGS = { open: [280, 0.9], snap: [290, 0.8], out: [240, 1] };
+  // [response ms, damping ratio]. Settles take 220 to 290 ms (90% of the way in about 125): quick
+  // with a little give, never a slow drift. Closing doesn't bounce. (1.9.0's took 260 to 355:
+  // [280, 0.9], [290, 0.8] and [240, 1].)
+  const SPRINGS = { open: [230, 0.9], snap: [240, 0.8], out: [200, 1] };
   const THERE = { open: 1, snap: 1, out: 4 }; // px from the end that counts as there (leaving: out of sight)
 
   const supports = (p, v) => { try { return !!(G.CSS && G.CSS.supports(p, v)); } catch (e) { return false; } };
@@ -654,6 +655,9 @@
     }
 
     /* ---------- opening */
+    // Over another sheet, the material is solid at every height: frosted glass over a sheet's words
+    // shows them through, close and sharp enough to read (sheet.css).
+    if (openSheets.some((o) => !o.closing)) el.setAttribute('data-stacked', '');
     openSheets.push(s);
     markOpen();
     pageOpen();

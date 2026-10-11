@@ -70,7 +70,7 @@ public final class ActivityService extends Service {
     private static final long DARK_NOTIFY_MS = 10000;
     /** A fix accurate to 50 m this recent means GPS is "ok". */
     private static final long FRESH_FIX_MS = 10000;
-    private static final int BRAND = 0xFF7B72D9; // the logo's purple (res/values/colors.xml icon_bg)
+    private static final int BRAND = 0xFF3E95F9; // the logo's blue, its gradient's first colour
     private static final double METERS_PER_MILE = 1609.344;
 
     private static volatile ActivityService running;

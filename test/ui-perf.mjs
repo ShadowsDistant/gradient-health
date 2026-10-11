@@ -64,9 +64,15 @@ const BASE = {
 //   and single best-of-3 runs here land anywhere from 764 to 831 and from 700 to 798. Level, within
 //   the noise, so the boot budgets move to 860 and 800: still well under 1.5's 954, and a real
 //   slowdown of a tenth fails them.
+// - 1.10.0: this machine now measures 1.9.0 itself over those budgets. Interleaved (4 rounds, best
+//   of 5 launches each), 1.9.0 took 807-961 ms for the first launch of a day and 766-833 ms for a
+//   launch later the same day; 1.10.0 (Claude's limits, the 3D medals' page part, toasts at the
+//   bottom and quicker motion, about 44 KB more page) took 865-929 and 737-799. Level within the
+//   noise again (first launches 2% apart on average, later ones 1.10 the quicker), so the budgets
+//   move to 980 and 900.
 const BUDGET = {
-  bootMs: 860, // the first launch of a day
-  againMs: 800, // a launch later the same day
+  bootMs: 980, // the first launch of a day
+  againMs: 900, // a launch later the same day
   tabP95Ms: 160,
   feelMs: 30,
   longTaskMs: 200,
@@ -489,7 +495,9 @@ if (!measureOnly) {
   check('Tailor my plan works through it', ai.tailor === TAILOR.note, ai.tailor);
   check('Build me a plan works through it', ai.json === 'Push,Pull', ai.json);
   check('the weekly report works through it, and is kept for the week', ai.report === REPORT.headline && ai.saved, ai);
-  check('every request went to the API, and only there', sent.length >= 5 && sent.every((u) => u.startsWith('https://api.anthropic.com/')), sent);
+  // One request a feature: the question, Tailor, the plan and the report (1.9.0 also listed the models
+  // to pick the newest; since 1.10 the person picks).
+  check('every request went to the API, and only there', sent.length >= 4 && sent.every((u) => u.startsWith('https://api.anthropic.com/v1/messages')), sent);
   // The chat on screen, end to end.
   await page.evaluate(() => { window.GH.ui.S.ai.chat = []; window.GH.ui.go('today'); });
   await pause(500);

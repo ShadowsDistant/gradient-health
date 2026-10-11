@@ -24,13 +24,13 @@
   gap: var(--space-3); padding: var(--space-4); position: relative; overflow: hidden;
   background:
     radial-gradient(120% 90% at 0% 0%, color-mix(in oklab, var(--accent-fill) 11%, transparent), transparent 62%),
-    linear-gradient(165deg, color-mix(in oklab, var(--hue-violet) 7%, var(--bg-raised)), var(--bg-raised) 70%);
+    linear-gradient(165deg, color-mix(in oklab, var(--brand-mint) 8%, var(--bg-raised)), var(--bg-raised) 70%);
   box-shadow: var(--rim-light), var(--shadow-card);
 }
 [data-theme^="dark"] .card.hl-week {
   background:
     radial-gradient(120% 90% at 0% 0%, color-mix(in oklab, var(--accent-fill) 22%, transparent), transparent 62%),
-    linear-gradient(165deg, color-mix(in oklab, var(--hue-violet) 14%, var(--bg-raised)), var(--bg-raised) 72%);
+    linear-gradient(165deg, color-mix(in oklab, var(--brand-mint) 14%, var(--bg-raised)), var(--bg-raised) 72%);
 }
 .hl-week-main { appearance: none; border: 0; margin: 0; padding: 0; background: none; color: inherit; font: inherit; text-align: start; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); cursor: pointer; border-radius: var(--radius-md); transition: scale var(--duration-spring-snappy) var(--spring-snappy); }
 .hl-week-main:active { scale: .985; transition-duration: var(--duration-instant); }
@@ -122,9 +122,7 @@ button.hl-pill:active { scale: .97; transition-duration: var(--duration-instant)
 .hl-ins-body { display: grid; gap: 6px; padding: 0 var(--space-4) 14px calc(var(--space-4) + 30px + var(--space-3)); }
 .hl-ins-body p { margin: 0; }
 .hl-ins-body .t-callout { line-height: 1.4; }
-.hl-ins[open] .hl-ins-body { animation: hl-open 320ms var(--ease-out-soft); }
 .hl-ins-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
-@keyframes hl-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .card.hl-note { padding-block: 14px; }
 
 /* ---------------------------------------------------------------- trends */
@@ -149,7 +147,7 @@ button.hl-pill:active { scale: .97; transition-duration: var(--duration-instant)
 .sp-line { fill: none; stroke: var(--c, var(--accent-fill)); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .sp-area { fill: var(--c, var(--accent-fill)); opacity: .13; }
 .sp-dot { stroke: var(--c, var(--accent-fill)); stroke-width: 7; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-.sp-svg { animation: sp-draw 900ms var(--ease-out-soft) both; }
+.sp-svg { animation: sp-draw 600ms var(--ease-out-soft) both; }
 /* On the Health tab the lines draw in the first time it's shown, not on every visit: a clip's
    animation is drawn again on the page's thread in every frame, eight of them for most of a second
    after each tab change (src/ui/healthtab.js sets data-sparks-seen). */
@@ -167,7 +165,7 @@ button.hl-pill:active { scale: .97; transition-duration: var(--duration-instant)
 .rf-menu.hl-log { min-inline-size: 208px; }
 
 /* ---------------------------------------------------------------- metric sheet */
-.ms { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-1) 0 var(--space-3); min-width: 0; }
+.ms { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-1) var(--space-4) var(--space-3); min-width: 0; }
 .ms-picks { display: flex; flex-wrap: wrap; gap: 6px; }
 .ms-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-lg); background: linear-gradient(150deg, color-mix(in oklab, var(--_hue) 14%, var(--bg-raised)), var(--bg-raised) 72%); box-shadow: var(--rim-light), var(--shadow-card); min-width: 0; }
 [data-theme^="dark"] .ms-hero { background: linear-gradient(150deg, color-mix(in oklab, var(--_hue) 26%, var(--bg-raised)), var(--bg-raised) 72%); }
@@ -219,7 +217,6 @@ button.hl-pill:active { scale: .97; transition-duration: var(--duration-instant)
 .ms-about[open] .ms-chev { rotate: 180deg; }
 .ms-about-body { display: grid; gap: var(--space-2); padding: 0 var(--space-4) var(--space-4); }
 .ms-about-body p { margin: 0; line-height: 1.45; }
-.ms-about[open] .ms-about-body { animation: hl-open 320ms var(--ease-out-soft); }
 .ms-empty { display: grid; justify-items: center; text-align: center; gap: var(--space-2); padding: var(--space-6) var(--space-3) var(--space-4); }
 .ms-empty p { margin: 0; max-width: 34ch; }
 .ms-empty-ico { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 16px; background: var(--_hue); color: var(--on-hue); margin-bottom: var(--space-1); }
@@ -238,7 +235,8 @@ button.hl-pill:active { scale: .97; transition-duration: var(--duration-instant)
 .ms-remove { justify-self: start; color: var(--critical); }
 
 /* ---------------------------------------------------------------- report sheet */
-.rs { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-1) 0 var(--space-3); min-width: 0; }
+/* (A sheet's body has no inset of its own: src/styles/sheet.css.) */
+.rs { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-1) var(--space-4) var(--space-3); min-width: 0; }
 .rs-top { display: flex; align-items: center; gap: var(--space-2); min-height: 22px; }
 .rs-title { margin: 0; font-size: 1.375rem; font-weight: 700; letter-spacing: -.015em; line-height: 1.25; overflow-wrap: break-word; }
 .rs-glance .hl-pill { background: var(--bg-raised); box-shadow: var(--shadow-card); }
@@ -256,16 +254,17 @@ button.hl-pill:active { scale: .97; transition-duration: var(--duration-instant)
 .rs-btns { gap: 6px; }
 
 /* ---------------------------------------------------------------- motion */
-/* The week's numbers settle in one after another the first time they're drawn. */
-.hl-week .hl-pill, .hl-week .hl-win, .hl-week .hl-focus { animation: hl-rise 560ms var(--ease-out-soft) both; }
-.hl-week .hl-pill:nth-child(2) { animation-delay: 50ms; }
-.hl-week .hl-pill:nth-child(3) { animation-delay: 100ms; }
-.hl-week .hl-pill:nth-child(4) { animation-delay: 150ms; }
-.hl-week .hl-win { animation-delay: 200ms; }
-.hl-week .hl-focus { animation-delay: 240ms; }
+/* The week's numbers settle in one after another the first time they're drawn, all in about 600 ms
+   (1.9.0's took 800). */
+.hl-week .hl-pill, .hl-week .hl-win, .hl-week .hl-focus { animation: hl-rise 420ms var(--ease-out-soft) both; }
+.hl-week .hl-pill:nth-child(2) { animation-delay: 35ms; }
+.hl-week .hl-pill:nth-child(3) { animation-delay: 70ms; }
+.hl-week .hl-pill:nth-child(4) { animation-delay: 105ms; }
+.hl-week .hl-win { animation-delay: 140ms; }
+.hl-week .hl-focus { animation-delay: 170ms; }
 @keyframes hl-rise { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
-  .hl-week .hl-pill, .hl-week .hl-win, .hl-week .hl-focus, .sp-svg, .hl-ins[open] .hl-ins-body, .ms-about[open] .ms-about-body { animation: none; }
+  .hl-week .hl-pill, .hl-week .hl-win, .hl-week .hl-focus, .sp-svg { animation: none; }
 }
 
 @media (min-width: 700px) {

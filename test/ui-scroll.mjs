@@ -455,6 +455,9 @@ if (!measureOnly && (!ONLY.length || ONLY.includes('plan'))) {
   for (let i = 0; i < 180 && !warm; i++) { await sleep(500); warm = await ev('!!(window.GH.figure3d && window.GH.figure3d.warm())').catch(() => false); }
   check('the 3D figure warms up', warm);
   await sleep(2000);
+  // (The week's stills were drawn ahead after launch meanwhile: they go, so Plan's tiles each queue
+  // one again.)
+  await ev('window.GH.ui.stills.clear().then(() => 1)');
   await ev(`(() => { const L = window.__loaf = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) L.push({ t: Math.round(e.startTime), d: Math.round(e.duration), block: Math.round(e.blockingDuration || 0), scripts: (e.scripts || []).filter((x) => x.duration >= 20).map((x) => \`\${x.invoker || ''} \${x.sourceFunctionName || ''}@\${x.sourceCharPosition} \${Math.round(x.duration)} ms\`) }); }).observe({ type: 'long-animation-frame', buffered: true }); } catch (e) { /* unsupported */ } return 1; })()`);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU });
   // Plan, by a tap on its tab, and a fling 400 ms after it's in (its tiles have queued a 3D still each).

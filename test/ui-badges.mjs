@@ -1,13 +1,18 @@
 // The badge gallery, detail sheet, reveal and share card, in Chromium at phone size: the first 1.6
-// load (history earns its badges, all seen and opened), the You tab's card, the gallery with its
-// filter, a badge's sheet, a workout that earns one, sealed (the player's own card with its capsule,
-// then the reveal: three taps open it, wobble, crack and burst, each with its haptic, moving only by
-// transform and opacity, the capsule bobbing only while it's on screen); several at once page with
+// load (history earns its badges, all seen and opened), the You tab's shelf, the gallery with its
+// filter and Next up (each series' next tier), the 3D medals' stills (drawn while it's quiet, kept on
+// the phone and shown straight from there after a relaunch, without the 3D chunk), a badge's sheet
+// with its live 3D medal (spun by hand, a light haptic as it turns over) and its series, a workout
+// that earns one, sealed (the player's own card with its capsule, then the reveal: three taps open
+// it, wobble, crack and burst, each with its haptic, moving only by transform and opacity, the
+// capsule bobbing only while it's on screen, the 3D medal spinning out); several at once page with
 // Refract's page dots, which follow the page however it's turned, and several sealed ones offer Open
 // all; a toast for one earned elsewhere, which opens it; a sealed one in the gallery and on the You
-// tab, opened from there; no checks while the player is open; the share card: a 1080×1350 PNG with no
-// name unless it's turned on, handed to the Android bridge (or downloaded in a browser); and reduced
-// motion (one tap, a fade).
+// tab, opened from there; no checks while the player is open; the share card: a 1080×1350 PNG with the
+// 3D medal and no name unless it's turned on, handed to the Android bridge (or downloaded in a
+// browser); the SVG medals where WebGL can't draw; and reduced motion (one tap, a fade, a still).
+// WebGL here is software (SwiftShader), so the 3D medals take real seconds where a phone takes
+// moments, and the page's clock is the test's: waits for them run it on.
 // Usage: node test/ui-badges.mjs [--dark] [--shots]
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
@@ -24,28 +29,40 @@ const OUT = join(root, 'build/ui-badges');
 if (shots) mkdirSync(OUT, { recursive: true });
 
 const server = await serveDist();
-const browser = await chromium.launch();
+const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const errors = [];
 async function open(o = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: dark ? 'dark' : 'light', reducedMotion: o.reduced ? 'reduce' : 'no-preference', acceptDownloads: true });
   const page = await ctx.newPage();
+  // (Software WebGL on a busy machine can hold the page's frames up for a while, so actions wait longer.)
+  page.setDefaultTimeout(90000);
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   // A Monday at 6:30 in the morning: today's workout will be an early one.
   await page.clock.install({ time: new Date('2026-10-19T06:30:00') });
   await page.addInitScript(seedBridge);
   if (o.noBridgeShare) await page.addInitScript(() => { const t = setInterval(() => { if (window.AndroidBridge) { delete window.AndroidBridge.shareImage; clearInterval(t); } }, 1); });
+  // A phone without WebGL: no context of either kind.
+  if (o.noGl) await page.addInitScript(() => { const get = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (type, ...a) { return /webgl/.test(type) ? null : get.call(this, type, ...a); }; });
+  // Every burst of beads, with its count (the beads themselves are gone by the time a check looks, as
+  // the live medal's frames take real time here).
+  await page.addInitScript(() => { window.__bursts = []; const t = setInterval(() => { const R = window.Refract; if (R && R.burst && !R.burst.spied) { const b = R.burst; R.burst = function (el, opt) { window.__bursts.push((opt && opt.count) || 0); return b.call(this, el, opt); }; R.burst.spied = true; clearInterval(t); } }, 1); });
   await page.goto(server.url);
   await page.waitForSelector('.onboard:not([hidden])');
   await page.evaluate(seedState);
+  if (o.keepStills) await o.keepStills(page);
   await page.reload();
   await page.waitForSelector('#screen[data-view="today"] .session');
   return { ctx, page };
 }
 const { ctx, page } = await open();
 const settle = async (ms = 700) => { await page.clock.runFor(ms); await page.waitForTimeout(Math.min(ms, 300)); };
+// Runs the page's clock on until fn (in the page) is true, or about `max` seconds of it.
+const until = async (fn, max = 120, p = page) => { for (let i = 0; i < max; i++) { if (await p.evaluate(fn)) return true; await p.clock.runFor(1000); await p.waitForTimeout(150); } return p.evaluate(fn); };
 const shot = async (name) => { if (shots) await page.screenshot({ path: join(OUT, `${dark ? 'dark' : 'light'}-${name}.png`) }); };
 const S = (fn, arg) => page.evaluate(fn, arg);
+// Share and Done fade in on a CSS transition, which runs in real time (on a busy machine, slowly).
+const actsIn = async () => { for (let i = 0; i < 50 && !(await S(() => { const e = document.querySelector('dialog.bdg-reveal-sheet[open] [data-act="badgeDone"]'); return !!e && e.checkVisibility({ visibilityProperty: true, opacityProperty: true }); })); i++) await page.waitForTimeout(200); };
 const closeAll = async () => { await S(() => { window.GH.ui.closeSheets(); while (window.GH.ui.back()) { /* back to the tab */ } }); await settle(700); };
 await settle(2500);
 
@@ -59,9 +76,14 @@ check('a Health Connect sync after it earns quietly: no toast, just sealed and w
 section('The You tab\'s card');
 const strip = await S(() => { const U = window.GH.ui; const d = document.createElement('div'); d.innerHTML = U.badgeStrip(U.S, U.today()); return { html: d.innerHTML, text: d.textContent.replace(/\s+/g, ' '), tiles: [...d.querySelectorAll('[data-badge]')].map((t) => [t.dataset.badge, t.classList.contains('is-earned'), t.classList.contains('is-sealed')]) }; });
 check('a summary: how many of how many, and what\'s next', /Badges\s*\d+ of \d+ · Next: /.test(strip.text), strip.text.slice(0, 120));
-// Newest first, the sealed ones (waiting to be opened) before the rest.
-const latest = await S(() => { const S = window.GH.ui.S, E = S.achievements.earned, sealed = (id) => (E[id].opened === false ? 0 : 1); return Object.keys(E).filter((id) => window.GH.achievements.byId[id]).sort((a, b) => (sealed(a) - sealed(b)) || (E[b].day - E[a].day) || (E[b].at - E[a].at)).slice(0, 8); });
-check('the latest badges (sealed ones first, then newest first), each [data-badge] and .is-earned', strip.tiles.length === 8 && strip.tiles.every(([, e]) => e) && strip.tiles.map(([id]) => id).join() === latest.join(), [strip.tiles, latest]);
+// The shelf: the sealed ones (waiting to be opened) first, newest first; then the best, the rarest
+// first and the newest first within a tier.
+const latest = await S(() => {
+  const A = window.GH.achievements, S = window.GH.ui.S, E = S.achievements.earned, sealed = (id) => (E[id].opened === false ? 0 : 1), rank = (id) => (sealed(id) ? A.TIERS[A.byId[id].tier].rank : 0);
+  return Object.keys(E).filter((id) => A.byId[id]).sort((a, b) => (sealed(a) - sealed(b)) || (rank(b) - rank(a)) || (E[b].day - E[a].day) || (E[b].at - E[a].at)).slice(0, 8);
+});
+check('the shelf: sealed ones first, then the best (rarest first, newest first in a tier), each [data-badge] and .is-earned', strip.tiles.length === 8 && strip.tiles.every(([, e]) => e) && strip.tiles.map(([id]) => id).join() === latest.join(), [strip.tiles, latest]);
+check('each earned medal on it carries its tier (its glow)', await S(() => { const d = document.createElement('div'); d.innerHTML = window.GH.ui.badgeStrip(window.GH.ui.S, window.GH.ui.today()); return [...d.querySelectorAll('.bdg-mini.is-earned:not(.is-sealed)')].every((m) => window.GH.achievements.TIERS[m.dataset.tier]); }));
 check('and a note: how many are waiting to be opened, or the one-time note about badges already earned, or what\'s new', /\d+ badges? to open|You've already earned \d+ badges|New badge|new badges/.test(strip.text), strip.text);
 
 section('The gallery');
@@ -75,13 +97,46 @@ check('in sections by category, with counts', gal.heads.length >= 8 && /^Consist
 check('a summary on top with the tiers', /\d+ of \d+ earned/.test(gal.hero) && /Bronze \d+/.test(gal.hero) && /Platinum \d+/.test(gal.hero), gal.hero);
 check('opening it counts everything as seen', await S(() => window.GH.achievements.unseen(window.GH.ui.S).length === 0 && window.GH.ui.S.achievements.migrated.seen === true));
 await shot('01-gallery');
+
+section('3D medals: stills');
+// Every tile is a medal but a sealed one's (its capsule).
+const medalsN = await S(() => document.querySelectorAll('#screen .bdg-tile:not(.is-sealed)').length);
+const svgFirst = await S(() => { const M = window.GH.ui.medals, h = [...document.querySelectorAll('#screen .bdg-m')]; return { holders: h.length, svg: h.filter((x) => x.querySelector('.bdg-svg')).length, waiting: h.filter((x) => !M.kept.has(x.dataset.mk)).every((x) => x.querySelector('.bdg-svg')) }; });
+check('until its still is drawn, a medal is the SVG one', svgFirst.holders === medalsN && svgFirst.svg > 0 && svgFirst.waiting, svgFirst);
+// Left alone, the 3D chunk loads, and the medals on screen get their stills, a few at a time.
+const allStills = await until(() => { const h = [...document.querySelectorAll('#screen .bdg-m')]; return h.length > 0 && h.every((x) => x.querySelector('.bdg-img')); }, 240);
+const st = await S(() => { const M = window.GH.ui.medals; return { kept: M.kept.size, want: M.want.size, drawn: M.drawn, chunk: !!window.GH.medal3d, imgs: document.querySelectorAll('#screen .bdg-m > .bdg-img').length, blobs: [...document.querySelectorAll('#screen .bdg-m > .bdg-img')].every((i) => /^blob:/.test(i.src)) }; });
+check('left alone, each medal on the page turns into a still of its 3D medal', allStills && st.chunk && st.imgs === medalsN && st.blobs && st.kept >= medalsN, st);
+check('a locked one keeps its progress ring and lock over its still (the unminted blank)', await S(() => { const t = document.querySelector('#screen [data-badge="w250"] .bdg-m'); return !!t && /\|lock$/.test(t.dataset.mk) && !!t.querySelector('.bdg-img') && !!t.querySelector('.bdg-marks .bdg-ring'); }));
+check('earned ones are kept under their tier, and rarer ones glow (their tile carries the tier)', await S(() => { const t = document.querySelector('#screen [data-badge="first"]'); return /\|bronze$/.test(t.querySelector('.bdg-m').dataset.mk) && t.dataset.tier === 'bronze'; }));
+check('kept by theme too: in the other theme a medal shows this one\'s still until its own is drawn', await S(() => { const M = window.GH.ui.medals, k = document.querySelector('#screen [data-badge="first"] .bdg-m').dataset.mk, other = k.replace(/\|([dl])\|/, (m, t) => (t === 'd' ? '|l|' : '|d|')); return other !== k && !M.kept.has(other) && M.still(other) === M.kept.get(k); }));
+await shot('01b-gallery-3d');
+// Kept on the phone: after a relaunch the gallery has them from its first frame.
+await S(() => window.GH.ui.medals.flush());
+await settle(500);
+await page.reload();
+await page.waitForSelector('#screen[data-view="today"] .session', { timeout: 120000 });
+await settle(3000);
+const again = await S(() => { window.GH.ui.open('badges'); const h = [...document.querySelectorAll('#screen .bdg-m')]; return { holders: h.length, imgs: h.filter((x) => x.querySelector('.bdg-img')).length, drawn: window.GH.ui.medals.drawn || 0 }; });
+check('kept on the phone: after a relaunch the gallery shows them in its first frame, none drawn again', again.holders === medalsN && again.imgs === medalsN && !again.drawn, again);
+await settle(900);
+// (The page slides in, in real time.)
+await until(() => { const r = document.querySelector('#screen [data-on="badgeFilter"]').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight; }, 20);
+
+section('The gallery\'s filters');
 await page.click('#screen [data-on="badgeFilter"] input[value="earned"]', { force: true });
 await settle(600);
 check('Earned: only earned ones', await S(() => { const t = document.querySelectorAll('#screen [data-badge]'); return t.length > 0 && [...t].every((x) => x.classList.contains('is-earned')); }));
 await page.click('#screen [data-on="badgeFilter"] input[value="next"]', { force: true });
 await settle(600);
-const next = await S(() => [...document.querySelectorAll('#screen .bdg-next')].map((r) => ({ id: r.dataset.badge, bar: !!r.querySelector('.rf-progress') })));
+const next = await S(() => [...document.querySelectorAll('#screen .bdg-next')].map((r) => ({ id: r.dataset.badge, bar: !!r.querySelector('.rf-progress'), pips: r.querySelectorAll('.bdg-pips > i').length })));
 check('Next up: the closest ones still to earn, with their progress', next.length >= 3 && next.length <= 10 && next.every((x) => x.bar), next);
+const behind = await S((ids) => {
+  const A = window.GH.achievements, E = window.GH.ui.S.achievements.earned;
+  // A badge listed while one before it in its series is still to earn.
+  return ids.filter((id) => { const s = A.seriesOf(id); return s && s.slice(0, s.indexOf(id)).some((p) => !E[p]); });
+}, next.map((x) => x.id));
+check('each series shows only its next tier, with a pip for each badge in the series', behind.length === 0 && next.filter((x) => x.pips).every((x) => x.pips >= 2) && next.some((x) => x.pips), { behind, next });
 await shot('02-next-up');
 await page.click('#screen [data-on="badgeFilter"] input[value="all"]', { force: true });
 await settle(600);
@@ -89,14 +144,35 @@ await settle(600);
 section('A badge\'s sheet');
 await page.click('#screen [data-badge="first"]');
 await settle(900);
-const det = await S(() => { const d = document.querySelector('dialog.bdg-sheet[open]'); return d && { title: d.querySelector('.rf-sheet-title').textContent, badge: d.querySelector('.bdg-detail').dataset.badge, text: d.textContent.replace(/\s+/g, ' '), share: !!d.querySelector('[data-act="badgeShare"]'), medal: !!d.querySelector('.bdg-medal svg[role="img"]') }; });
+const det = await S(() => { const d = document.querySelector('dialog.bdg-sheet[open]'); return d && { title: d.querySelector('.rf-sheet-title').textContent, badge: d.querySelector('.bdg-detail').dataset.badge, text: d.textContent.replace(/\s+/g, ' '), share: !!d.querySelector('[data-act="badgeShare"]'), medal: !!d.querySelector('.bdg-medal [role="img"][aria-label="Day one"]'), series: d.querySelectorAll('.bdg-series-m').length, mark: !!d.querySelector('.bdg-series-m.is-this [data-mk*="|first|"]') }; });
 check('tapping a medal opens its sheet: a large medal, its name and tier, how it was earned, the date, Share', det && det.badge === 'first' && det.title === 'Consistency' && /Day one/.test(det.text) && /Bronze · Common/i.test(det.text) && /Finish your first workout/.test(det.text) && /Earned/.test(det.text) && det.share && det.medal, det);
+check('and its series: each badge in it, this one marked, the next one up and how far along it is', det.series === 6 && det.mark && /\d of 6 in this series/i.test(det.text) && /Next: Twenty-five, Silver/.test(det.text), det);
+// Its medal goes live in 3D over its still, once its first frame is drawn (the 3D chunk is in).
+const liveUp = await until(() => !!document.querySelector('dialog.bdg-sheet[open] .bdg-stage.is-live > canvas.bdg-live'), 60);
+check('its medal goes live in 3D over its still, once its first frame is drawn', liveUp && await S(() => window.GH.medal3d._stats().live), await S(() => window.GH.medal3d && window.GH.medal3d._stats()));
 await shot('03-detail');
+// Spun by hand: a quick drag across it turns it over, with a light haptic as it does. A finger there
+// lands on it; the drag itself goes to the medal straight from the page (a busy machine can hold
+// real input up for seconds, while frames of software WebGL queue up).
+const spinAt = await S(() => { const c = document.querySelector('dialog.bdg-sheet[open] canvas.bdg-live'), r = c.getBoundingClientRect(); return document.elementFromPoint(r.x + r.width * 0.15, r.y + r.height / 2) === c; });
+const hxSpin = await S(() => {
+  window.__haptics.length = 0;
+  const c = document.querySelector('dialog.bdg-sheet[open] canvas.bdg-live'), r = c.getBoundingClientRect(), y = r.y + r.height / 2;
+  const fire = (type, f) => c.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'touch', isPrimary: true, button: type === 'pointermove' ? -1 : 0, buttons: type === 'pointerup' ? 0 : 1, clientX: r.x + r.width * f, clientY: y }));
+  fire('pointerdown', 0.15);
+  for (let i = 1; i <= 8; i++) fire('pointermove', 0.15 + i * 0.09);
+  fire('pointerup', 0.87);
+  return window.__haptics.slice();
+});
+await settle(1500);
+check('a drag or flick spins it, and as it turns over between face and back a light haptic plays', spinAt && hxSpin.includes('tick') && hxSpin.every((k) => k === 'tick'), { spinAt, hxSpin });
+await shot('03b-detail-spun');
 await closeAll();
+check('closing the sheet lets the live medal go', await until(() => !window.GH.medal3d._stats().live && !document.querySelector('canvas.bdg-live'), 10));
 await S(() => window.GH.ui.badgeDetail('w250'));
 await settle(900);
-const lock = await S(() => { const d = document.querySelector('dialog.bdg-sheet[open]'); return { text: d.textContent.replace(/\s+/g, ' '), bar: !!d.querySelector('.bdg-prog .rf-progress'), share: !!d.querySelector('[data-act="badgeShare"]'), ring: !!d.querySelector('.bdg-svg.is-locked .bdg-ring') }; });
-check('a locked one: how to earn it, a progress bar, how many to go, no Share', /Finish 250 workouts/.test(lock.text) && /\d+ of 250/.test(lock.text) && /to go/.test(lock.text) && lock.bar && !lock.share && lock.ring, lock.text.slice(0, 160));
+const lock = await S(() => { const d = document.querySelector('dialog.bdg-sheet[open]'); return { text: d.textContent.replace(/\s+/g, ' '), bar: !!d.querySelector('.bdg-prog .rf-progress'), share: !!d.querySelector('[data-act="badgeShare"]'), ring: !!d.querySelector('.bdg-medal .bdg-ring'), blank: !!d.querySelector('.bdg-medal [data-mk$="|w250|lock"]') }; });
+check('a locked one: the unminted blank, how to earn it, a progress bar, how many to go, no Share', /Finish 250 workouts/.test(lock.text) && /\d+ of 250/.test(lock.text) && /to go/.test(lock.text) && lock.bar && !lock.share && lock.ring && lock.blank, lock);
 await closeAll();
 const secret = await S(() => { window.GH.ui.badgeDetail('nightOwl'); const d = document.querySelector('dialog.bdg-sheet[open]'); return d.textContent.replace(/\s+/g, ' '); });
 check('a secret one stays a secret until it\'s earned', /Secret badge/.test(secret) && !/Night owl/.test(secret) && !/9 at night/.test(secret), secret.slice(0, 120));
@@ -112,7 +188,7 @@ await settle(900);
 await page.click('#player [data-act="plSaveCheckin"]');
 await page.waitForSelector('#player .rf-large-title:has-text("Next time")');
 await settle(2200);
-const card = await S(() => { const c = document.querySelector('#player .bdg-card'); return c && { ids: c.dataset.arg.split(','), text: c.innerText.replace(/\s+/g, ' '), sealed: c.classList.contains('is-sealed'), capsule: !!c.querySelector('.bdg-cap-svg'), medal: !!c.querySelector('.bdg-svg') }; });
+const card = await S(() => { const c = document.querySelector('#player .bdg-card'); return c && { ids: c.dataset.arg.split(','), text: c.innerText.replace(/\s+/g, ' '), sealed: c.classList.contains('is-sealed'), capsule: !!c.querySelector('.bdg-cap-svg'), medal: !!c.querySelector('.bdg-m') }; });
 check('the Next screen shows its own badge card: an early workout earned Early bird, sealed', card && card.ids.includes('earlyBird') && card.sealed && await S(() => window.GH.ui.S.achievements.earned.earlyBird.opened === false), card);
 check('a capsule in its tier\'s colours, the tier and "Tap to open": not its name or its medal', card && card.capsule && !card.medal && /New badge · Bronze/i.test(card.text) && /Tap to open/.test(card.text) && /A common badge is inside/.test(card.text) && !/Early bird/.test(card.text), card);
 check('it plays the badge haptic as the capsule lands', await S(() => window.__haptics.includes('badge') || (!window.GH.platform.hapticKinds.includes('badge') && window.__haptics.includes('tap'))), await S(() => window.__haptics.slice(-8)));
@@ -155,9 +231,10 @@ const burst = await revNow();
 check('the third bursts it open: it\'s opened for good at once (saved), the halves fly apart, light floods out', await S(() => window.GH.ui.S.achievements.earned.earlyBird.opened === true && !window.GH.achievements.unopened(window.GH.ui.S).includes('earlyBird')) && ['bdg-split-top', 'bdg-split-bottom', 'bdg-flash'].every((n) => burst.anims.some((a) => a.name === n)), burst.anims.map((a) => a.name));
 check('every animation of the opening moves by transform and opacity only', burst.anims.length >= 5 && [...shake.anims, ...burst.anims].every((a) => a.props.every((p) => p === 'transform' || p === 'opacity')), [...shake.anims, ...burst.anims].filter((a) => a.props.some((p) => p !== 'transform' && p !== 'opacity')));
 await settle(1400);
-const beads = await S(() => document.querySelectorAll('.rf-bead').length);
-await page.waitForTimeout(900); // Share and Done fade in on a CSS transition, which runs in real time
+const beads = await S(() => window.__bursts[window.__bursts.length - 1] || 0);
+await actsIn();
 const out = await revNow();
+check('the medal that springs out is the 3D one, spinning out with a flash of light (live over its still)', await until(() => !!document.querySelector('dialog.bdg-reveal-sheet[open] .bdg-page .bdg-stage.is-live > canvas.bdg-live'), 30));
 check('the medal springs out, then its name, tier, what it took, the date, Share and Done', out.opened && out.sprung && !out.cap && !out.medalHidden && /Early bird/.test(out.text) && /Bronze · Common/i.test(out.text) && /Start a workout before 8 in the morning/.test(out.text) && /Earned today/.test(out.text) && out.share && out.done && !out.bob, out);
 const hx = await S(() => window.__haptics.slice());
 check('the haptics, in order: wobble, crack, then badge as it bursts', hx.join() === 'wobble,crack,badge', hx);
@@ -166,7 +243,7 @@ await shot('05c-opened');
 await page.click('dialog.bdg-reveal-sheet [data-act="badgeDone"]');
 await settle(800);
 check('Done closes it', await S(() => !document.querySelector('dialog.bdg-reveal-sheet[open]')));
-const card2 = await S(() => { const c = document.querySelector('#player .bdg-card'); return c && { sealed: c.classList.contains('is-sealed'), medal: !!c.querySelector('.bdg-svg'), text: c.innerText.replace(/\s+/g, ' ') }; });
+const card2 = await S(() => { const c = document.querySelector('#player .bdg-card'); return c && { sealed: c.classList.contains('is-sealed'), medal: !!c.querySelector('.bdg-m'), text: c.innerText.replace(/\s+/g, ' ') }; });
 check('and the Next screen\'s card shows the medal now, with its name', card2 && !card2.sealed && card2.medal && /Early bird/.test(card2.text), card2);
 await page.click('#player [data-act="plClose"]');
 await settle(1200);
@@ -190,6 +267,8 @@ let pd = await dotsNow();
 check('three new badges: three pages and three of Refract\'s page dots, the first one showing', multi.title === '3 new badges' && multi.pages === 3 && pd.pagedots && pd.dots === 3 && pd.sel === 0 && pd.worm && pd.wormOn, { multi, pd });
 await page.click('dialog.bdg-reveal-sheet .bdg-dots > .rf-dot:nth-child(3)');
 await settle(1500);
+// (It scrolls there smoothly, in real time.)
+for (let i = 0; i < 20 && !((pd = await dotsNow()).sel === 2 && pd.page === 2); i++) await settle(300);
 const third = await S(() => { const d = document.querySelector('dialog.bdg-reveal-sheet[open]'); const p = d.querySelectorAll('.bdg-page')[2]; return { sprung: p.querySelector('.bdg-stage').classList.contains('is-in'), text: p.textContent.replace(/\s+/g, ' ') }; });
 pd = await dotsNow();
 check('a dot pages to its badge, which springs in then', pd.sel === 2 && pd.page === 2 && third.sprung && /Half marathon/.test(third.text) && /Platinum · Very rare/i.test(third.text), { third, pd });
@@ -197,13 +276,15 @@ check('and the worm has gone to that dot', pd.wormOn, pd);
 // Paging with a finger: the dots follow the page.
 await S(() => { const box = document.querySelector('dialog.bdg-reveal-sheet[open] .bdg-pages'); box.scrollTo({ left: box.clientWidth, behavior: 'auto' }); });
 await settle(1200);
-pd = await dotsNow();
+// (The dots hear of it as the scroll ends, a frame or two later: on a busy machine, later still.)
+for (let i = 0; i < 20 && !((pd = await dotsNow()).sel === 1 && pd.page === 1 && pd.wormOn); i++) await settle(300);
 check('paging by swiping: the dots follow the page', pd.page === 1 && pd.sel === 1 && pd.wormOn, pd);
 // The arrow keys on the dots page too.
 await page.focus('dialog.bdg-reveal-sheet .bdg-dots > .rf-dot:nth-child(2)');
 await page.keyboard.press('ArrowLeft');
 await settle(1500);
-pd = await dotsNow();
+// (The page scrolls back smoothly, in real time.)
+for (let i = 0; i < 20 && !((pd = await dotsNow()).sel === 0 && pd.page === 0 && pd.wormOn); i++) await settle(300);
 check('and the arrow keys on the dots page back', pd.sel === 0 && pd.page === 0 && pd.wormOn, pd);
 await shot('06-reveal-3');
 await closeAll();
@@ -218,6 +299,8 @@ await S(() => {
   window.GH.ui.badgeReveal();
 });
 await settle(1400);
+// (Whether a capsule is on screen comes from an IntersectionObserver, a frame or two after the sheet.)
+await until(() => !!document.querySelector('dialog.bdg-reveal-sheet[open] .bdg-page .bdg-stage[data-bob]'), 10);
 const many = await S(() => {
   const d = document.querySelector('dialog.bdg-reveal-sheet[open]');
   const vis = (sel) => { const e = d.querySelector(sel); return !!e && e.checkVisibility({ visibilityProperty: true, opacityProperty: true }); };
@@ -229,7 +312,7 @@ check('only the capsule on screen bobs (the other pages are off to the side)', m
 await shot('06b-sealed-3');
 await page.click('dialog.bdg-reveal-sheet [data-act="badgeOpenAll"]');
 await settle(1500);
-await page.waitForTimeout(900); // Share and Done fade in in real time
+await actsIn();
 const all = await S(() => {
   const d = document.querySelector('dialog.bdg-reveal-sheet[open]');
   const vis = (sel) => { const e = d.querySelector(sel); return !!e && e.checkVisibility({ visibilityProperty: true, opacityProperty: true }); };
@@ -282,7 +365,7 @@ check('the You tab\'s card says how many are waiting ("1 badge to open"), and sh
 await shot('07b-you-sealed');
 await S(() => window.GH.ui.open('badges'));
 await settle(1200);
-const tileNow = () => S(() => { const t = document.querySelector('#screen [data-badge="ownPlan"]'); return { sealed: t.classList.contains('is-sealed'), earned: t.classList.contains('is-earned'), capsule: !!t.querySelector('.bdg-cap-svg'), medal: !!t.querySelector('.bdg-svg'), isNew: !!t.querySelector('.bdg-new'), text: t.textContent.replace(/\s+/g, ' '), hero: document.querySelector('#screen .bdg-hero').innerText.replace(/\s+/g, ' ') }; });
+const tileNow = () => S(() => { const t = document.querySelector('#screen [data-badge="ownPlan"]'); return { sealed: t.classList.contains('is-sealed'), earned: t.classList.contains('is-earned'), capsule: !!t.querySelector('.bdg-cap-svg'), medal: !!t.querySelector('.bdg-m'), isNew: !!t.querySelector('.bdg-new'), text: t.textContent.replace(/\s+/g, ' '), hero: document.querySelector('#screen .bdg-hero').innerText.replace(/\s+/g, ' ') }; });
 const t0 = await tileNow();
 check('in the gallery it\'s sealed in its place, a capsule marked New: its rarity and "Tap to open", not its name', t0.sealed && t0.earned && t0.capsule && !t0.medal && t0.isNew && /Common/.test(t0.text) && /Tap to open/.test(t0.text) && !/Your way/.test(t0.text) && /1 badge to open/.test(t0.hero), t0);
 check('increased contrast and reduced transparency: the glass is a solid fill', await S(() => {
@@ -304,8 +387,11 @@ await settle(1200);
 check('three taps open it: its name, Share and Done', await S(() => { const d = document.querySelector('dialog.bdg-reveal-sheet[open]'); return /Your way/.test(d.querySelector('.bdg-reveal').innerText) && window.GH.ui.S.achievements.earned.ownPlan.opened === true; }) && (await S(() => window.__haptics.join())).includes('wobble,crack,badge'));
 await page.click('dialog.bdg-reveal-sheet [data-act="badgeDone"]');
 await settle(1500);
+// (The page behind re-renders once the sheet has closed and it's calm; a busy machine can hold a
+// sheet's close up for a while.)
+await until(() => !document.querySelector('#screen [data-badge="ownPlan"]').classList.contains('is-sealed'), 60);
 const t1 = await tileNow();
-check('closed, the gallery shows its medal in its place, its name and date, and nothing left to open', !t1.sealed && t1.earned && t1.medal && !t1.capsule && /Your way/.test(t1.text) && !/to open/.test(t1.hero), t1);
+check('closed, the gallery shows its medal in its place, its name and date, and nothing left to open', !t1.sealed && t1.earned && t1.medal && !t1.capsule && /Your way/.test(t1.text) && !/to open/.test(t1.hero), Object.assign(t1, await S(() => ({ calm: window.GH.ui.calm(), moving: document.documentElement.hasAttribute('data-sheet-moving'), dialogs: [...document.querySelectorAll('dialog')].map((d) => `${d.className} open=${d.open}`) }))));
 check('and its sheet is the detail sheet again, as before', await S(() => { window.GH.ui.badgeDetail('ownPlan'); const d = document.querySelector('dialog.bdg-sheet[open]'); return !!d && !!d.querySelector('.bdg-detail[data-badge="ownPlan"]') && /Your way/.test(d.textContent); }));
 await closeAll();
 
@@ -335,6 +421,7 @@ await S(() => window.GH.ui.badgeDetail('first'));
 await settle(900);
 await page.click('dialog.bdg-sheet [data-act="badgeShare"]');
 await settle(2000);
+await until(() => { const c = document.querySelector('dialog.sc-sheet[open] .sc-canvas'); return !!c && !!c.dataset.medal; }, 60);
 const card1 = await S(() => {
   const d = document.querySelector('dialog.sc-sheet[open]');
   const cv = d && d.querySelector('.sc-canvas');
@@ -342,9 +429,12 @@ const card1 = await S(() => {
   const px = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
   const colors = new Set();
   for (let i = 0; i < px.length; i += 4 * 997) colors.add(`${px[i] >> 4},${px[i + 1] >> 4},${px[i + 2] >> 4}`);
-  return { w: cv.width, h: cv.height, colors: colors.size, name: !!d.querySelector('[data-on="scName"]'), nameOn: d.querySelector('[data-on="scName"]') && d.querySelector('[data-on="scName"]').checked, date: d.querySelector('[data-on="scDate"]').checked, theme: !!d.querySelector('[data-on="scTheme"]'), drawn: window.__drawn.slice() };
+  // The medal's middle: its enamel, a strong colour (the card round it is pale grey glass).
+  const at = (x, y) => { const p = cv.getContext('2d').getImageData(x, y, 1, 1).data; return Math.max(p[0], p[1], p[2]) - Math.min(p[0], p[1], p[2]); };
+  return { w: cv.width, h: cv.height, colors: colors.size, medal: cv.dataset.medal, enamel: at(540, 400), name: !!d.querySelector('[data-on="scName"]'), nameOn: d.querySelector('[data-on="scName"]') && d.querySelector('[data-on="scName"]').checked, date: d.querySelector('[data-on="scDate"]').checked, theme: !!d.querySelector('[data-on="scTheme"]'), drawn: window.__drawn.slice() };
 });
 check('a preview of the card: a 1080×1350 canvas, not blank', card1 && card1.w === 1080 && card1.h === 1350 && card1.colors > 40, card1 && { w: card1.w, h: card1.h, colors: card1.colors });
+check('with the 3D medal on it, large: a still drawn at the card\'s own size', card1.medal === '3d' && card1.enamel > 60, { medal: card1.medal, enamel: card1.enamel });
 check('Show my name is there and off, Show the date on, light or dark', card1.name && card1.nameOn === false && card1.date === true && card1.theme);
 check('it draws the badge\'s name and the date, never the person\'s name', card1.drawn.includes('Day one') && card1.drawn.some((t) => /^Earned /.test(t)) && !card1.drawn.some((t) => /Alex/.test(t)), card1.drawn);
 await shot('08-share');
@@ -374,10 +464,12 @@ section('In a browser: a download');
 {
   const { ctx: c2, page: p2 } = await open({ noBridgeShare: true });
   await p2.clock.runFor(2500);
-  const [dl] = await Promise.all([
-    p2.waitForEvent('download', { timeout: 15000 }).catch(() => null),
-    p2.evaluate(async () => { await window.GH.lazy('shareCard'); const cv = await window.GH.shareCard.draw(window.GH.achievements.byId.first, { theme: 'light', date: '', name: '' }); return window.GH.platform.shareImage(cv.toDataURL('image/png').split(',')[1], 'I earned it', 'gradient-health-first.png'); }),
-  ]);
+  // (The 3D medal's shaders compile on the page's clock, which runs only when the test runs it.)
+  let dl = null;
+  const got = p2.waitForEvent('download', { timeout: 120000 }).then((d) => { dl = d; }, () => {});
+  p2.evaluate(async () => { await window.GH.lazy('shareCard'); const cv = await window.GH.shareCard.draw(window.GH.achievements.byId.first, { theme: 'light', date: '', name: '' }); return window.GH.platform.shareImage(cv.toDataURL('image/png').split(',')[1], 'I earned it', 'gradient-health-first.png'); }).catch(() => null);
+  for (let i = 0; i < 200 && !dl; i++) { await p2.clock.runFor(300); await p2.waitForTimeout(100); }
+  await Promise.race([got, new Promise((r) => setTimeout(r, 2000))]);
   check('without the app\'s share sheet (and no Web Share for files), the picture downloads', !!dl && dl.suggestedFilename() === 'gradient-health-first.png', dl && dl.suggestedFilename());
   // Web Share that the person closes without sharing: the preview stays, with no error.
   await p2.evaluate(() => {
@@ -395,6 +487,24 @@ section('In a browser: a download');
   await c2.close();
 }
 
+section('Without WebGL: the SVG medals');
+{
+  const { ctx: c4, page: p4 } = await open({ noGl: true });
+  await p4.clock.runFor(2500);
+  await p4.evaluate(() => { window.GH.ui.closeSheets(); window.GH.ui.open('badges'); });
+  for (let i = 0; i < 8; i++) { await p4.clock.runFor(1000); await p4.waitForTimeout(100); }
+  const ng = await p4.evaluate(() => { const h = [...document.querySelectorAll('#screen .bdg-m')]; return { holders: h.length, svg: h.filter((x) => x.querySelector('.bdg-svg')).length, imgs: document.querySelectorAll('#screen .bdg-img').length, want: window.GH.ui.medals.want.size, kept: window.GH.ui.medals.kept.size }; });
+  check('the gallery keeps its SVG medals and asks for no stills', ng.holders > 50 && ng.svg === ng.holders && !ng.imgs && !ng.want && !ng.kept, ng);
+  await p4.evaluate(() => window.GH.ui.badgeDetail('first'));
+  for (let i = 0; i < 3; i++) { await p4.clock.runFor(1000); await p4.waitForTimeout(100); }
+  const nd = await p4.evaluate(() => { const d = document.querySelector('dialog.bdg-sheet[open]'); return { svg: !!d.querySelector('.bdg-medal .bdg-svg'), live: !!d.querySelector('canvas.bdg-live'), isLive: !!d.querySelector('.bdg-stage.is-live') }; });
+  check('a badge\'s sheet shows its SVG medal, with no live one', nd.svg && !nd.live && !nd.isLive, nd);
+  await p4.evaluate(() => { window.GH.ui.closeSheets(); window.GH.ui.shareBadge('first'); });
+  for (let i = 0; i < 6; i++) { await p4.clock.runFor(1000); await p4.waitForTimeout(150); }
+  check('and the share card draws the SVG medal', await p4.evaluate(() => { const c = document.querySelector('dialog.sc-sheet[open] .sc-canvas'); return !!c && c.dataset.medal === 'svg'; }));
+  await c4.close();
+}
+
 section('Reduced motion');
 {
   const { ctx: c3, page: p3 } = await open({ reduced: true });
@@ -402,8 +512,10 @@ section('Reduced motion');
   await p3.evaluate(() => { const S = window.GH.ui.S; S.achievements.earned.w25 = { day: window.GH.ui.today(), at: Date.now() }; window.GH.ui.badgeReveal(['w25']); });
   await p3.clock.runFor(1500);
   await p3.waitForTimeout(400);
-  const rm = await p3.evaluate(() => { const st = document.querySelector('dialog.bdg-reveal-sheet[open] .bdg-stage'); const m = st.querySelector('.bdg-medal'); return { still: st.classList.contains('is-still'), sprung: st.classList.contains('is-in'), anim: getComputedStyle(m).animationName, beads: document.querySelectorAll('.rf-bead').length, visible: getComputedStyle(m).opacity }; });
-  check('no burst and no spin: the medal is simply there', rm.still && !rm.sprung && rm.anim === 'none' && rm.beads === 0 && rm.visible === '1', rm);
+  const rm = await p3.evaluate(() => { const st = document.querySelector('dialog.bdg-reveal-sheet[open] .bdg-stage'); const m = st.querySelector('.bdg-medal'); return { still: st.classList.contains('is-still'), sprung: st.classList.contains('is-in'), anim: getComputedStyle(m).animationName, beads: window.__bursts.length, visible: getComputedStyle(m).opacity, live: !!st.querySelector('canvas.bdg-live') }; });
+  check('no burst and no spin: the medal is simply there, never live', rm.still && !rm.sprung && rm.anim === 'none' && rm.beads === 0 && rm.visible === '1' && !rm.live, rm);
+  const rs3d = await until(() => !!document.querySelector('dialog.bdg-reveal-sheet[open] .bdg-stage .bdg-medal .bdg-m > .bdg-img'), 60, p3);
+  check('it\'s a still of the 3D medal, drawn for it, which fades in over the SVG one', rs3d && await p3.evaluate(() => !document.querySelector('canvas.bdg-live')));
   await p3.evaluate(() => window.GH.ui.closeSheets());
   await p3.clock.runFor(800);
   // A sealed one: no bob, and one tap opens it, with a fade.
@@ -413,6 +525,9 @@ section('Reduced motion');
   const stageNow = () => p3.evaluate(() => { const d = document.querySelector('dialog.bdg-reveal-sheet[open]'), st = d.querySelector('.bdg-stage'); return { sealed: st.classList.contains('is-sealed'), bob: st.hasAttribute('data-bob'), taps: st.dataset.taps, fading: st.classList.contains('is-fading'), opening: st.classList.contains('is-opening'), anims: st.getAnimations({ subtree: true }).map((a) => a.animationName || 'web'), text: d.querySelector('.bdg-reveal').innerText.replace(/\s+/g, ' '), opened: window.GH.ui.S.achievements.earned.w50.opened, hx: window.__haptics.slice(), beads: document.querySelectorAll('.rf-bead').length, medal: getComputedStyle(st.querySelector('.bdg-medal')).opacity }; });
   const rs = await stageNow();
   check('a sealed one shows still: no bob, nothing moving', rs.sealed && !rs.bob && rs.anims.length === 0 && /Tap to open/.test(rs.text), rs);
+  // (The page's clock stands still for the tap, so the fade is still on when it's read: from a moment
+  // ahead, as it runs on meanwhile.)
+  await p3.clock.pauseAt(new Date(await p3.evaluate(() => Date.now()) + 3000));
   await p3.click('dialog.bdg-reveal-sheet .bdg-cap');
   const r1 = await stageNow();
   check('one tap opens it, for good: no wobble or crack, no burst, just a fade, with the badge haptic', r1.opened === true && r1.fading && !r1.opening && r1.taps === '0' && r1.hx.join() === 'badge' && r1.anims.every((a) => !/^bdg-(split|flash|wobble|shake|bob)/.test(a)), r1);

@@ -6,6 +6,33 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.10.0', date: '2026-10-11', title: 'Claude your way, 3D medals, a new icon and a quicker feel',
+      store: [
+        '• Pick Claude\'s model and how much it thinks, with spending limits that hold',
+        '• Claude builds plans and improves your own',
+        '• Badges are 3D medals you can spin',
+        '• A new icon, and colours to match',
+        '• Plan\'s 3D figures show at once after an update',
+        '• Messages come up from the bottom; quicker pages, sheets and dialogs',
+        '• Reminders on after set-up',
+        '• Health: a tidier This week, and dropdowns that fold open',
+      ].join('\n'),
+      items: [
+        ['sparkle', 'Pick your Claude. Once you add an API key, you choose the model (Fable 5.1, Opus 5.5, Sonnet 5.5 or Haiku 5.5, or an older one) and how much it thinks, from Off or Low up to Max, with about what a question costs next to each. Every Claude feature uses what you pick: your questions, the weekly report, and the plans it builds and checks. Change it any time in Settings, AI coach, or from the chat.'],
+        ['card', 'Spending limits that hold. Set a monthly budget and Claude gets an equal share of what\'s left each day, so it lasts to the end of the month; or set your own daily limit, and a most for any one request. Before anything is sent, the app works out the most it could cost, and a request that could go over a limit isn\'t sent: it says which limit, and by how much. Claude\'s page shows today and the month against your limits, what each feature and model cost, and your latest requests.'],
+        ['wand', 'Claude builds and improves your plans. Build me a plan with Claude is on Plan now, and any plan of your own has Improve with Claude: it reworks it from your training, your health and anything you ask, shows what it would change, and changes nothing until you choose.'],
+        ['trophy', 'Badges are 3D medals: bronze, silver, gold and platinum, with an enamel face, a beaded rim from silver up, and their name and the day you earned them engraved on the back. Spin one with your finger in its sheet, and the one you open spins out of its capsule. Your best stand on a shelf on You, rarest first, and each badge shows the rest of its series and how far you are from the next.'],
+        ['heart', 'A new icon: a white heart with a pulse line on a blue, mint, green and amber gradient, on your home screen, in themed icons, in notifications and in the app. The glow behind each page, set-up and the avatars use its colours now too.'],
+        ['bolt', 'Everything moves quicker: a page lands in 280 ms (it took 340), a dialog in about 600 (830), Today\'s cards in about 600 (850), and sheets, lists, set-up and the player sooner too. Reduce motion still gives you short fades.'],
+        ['chat', 'Messages like Walk logged now come up from the bottom, above whatever buttons are there, instead of covering the top bar. Swipe one down to clear it. Over a sheet, its Undo now works too.'],
+        ['bell', 'Reminders are on once you finish setting up: Android asks you first, and you can turn any of them off in Settings. If you\'re already set up, nothing changes.'],
+        ['person', 'Plan\'s 3D figures show at once after an update: the last version\'s pictures stand in while this version\'s are drawn, under a second from the tap instead of about 23. Each now takes about a tenth of the work it did, none is drawn while your finger is down or the page moves, and an update that doesn\'t change how figures are drawn keeps them all.'],
+        ['chart', 'Health\'s This week opens at full height, with room around everything (its headline and cards ran to the edges of the screen), and a number opened from it no longer lets the report show through. Insights, About this number and the app\'s other dropdowns now fold open and shut.'],
+        ['leaf', 'Leaner Claude requests: each feature sends only the part of your summary it can use, lines with nothing to say are left out, and a conversation is cached between questions, so the same answers cost less.'],
+        ['check-circle', 'Fixed: a run\'s or walk\'s 3-2-1 countdown could show a 4.'],
+      ],
+    },
+    {
       version: '1.9.0', date: '2026-10-11', title: 'Reminders, badges to open, and a quicker feel',
       store: [
         '• Reminders, if you want them: your workout, a walk now and then, a badge to open, a good night\'s sleep. One a day at most, never at night',

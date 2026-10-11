@@ -245,9 +245,9 @@ section('A tab change');
   check('no id in the layer is used anywhere else', r.shared && r.shared.length === 0, r.shared);
   check('both move by transform and opacity only', r.layerProps && r.layerProps.join() === 'opacity,transform' && r.screenProps.join() === 'opacity,transform', `${r.layerProps} / ${r.screenProps}`);
   check('a tab change morphs in place (Refract\'s page motion): the old page grows to 101.5%, the new one settles from 98.5%', /scale\(1\.015\)/.test(r.layerTo) && /scale\(0\.985\)/.test(r.screenFrom), `${r.layerTo} / ${r.screenFrom}`);
-  check('quick: the new page is in within 240 ms (1.7.0 took 640)', r.ms > 0 && r.ms <= 240, r.ms);
+  check('quick: the new page is in within 200 ms (1.7.0 took 640, 1.9.0 240)', r.ms > 0 && r.ms <= 200, r.ms);
   check('the bar has the new title', r.title === 'Plan', r.title);
-  check('the floating buttons go with the old page: a copy of them dissolves where they were (Refract\'s dematerialize)', r.float.had && r.float.hidden && r.float.copy && r.float.glass === 2 && r.float.dissolves && r.float.ms <= 360, r.float);
+  check('the floating buttons go with the old page: a copy of them dissolves where they were (Refract\'s dematerialize)', r.float.had && r.float.hidden && r.float.copy && r.float.glass === 2 && r.float.dissolves && r.float.ms <= 300, r.float);
   check('when it ends the layer is gone, with nothing left over', r.after.exit === 0 && r.after.copies === 0 && r.after.fading === 0 && r.oldGone, r.after);
   check('Refract cleans up the old page\'s controls', r.behaviours === 0 || r.cleaned === 1, `${Math.round(r.cleaned * 100)}% of ${r.behaviours}`);
   check('the new page rests in place', r.rest);
@@ -269,7 +269,7 @@ section('Push, Back, and where the old page starts');
     return out;
   });
   check('a push (Refract\'s page motion): the old page falls back a third of the way, the new one slides in from the edge', /translateX\(-30%\)/.test(push.to) && /translateX\(100%\)/.test(push.from), `${push.to} / ${push.from}`);
-  check('a push is quick, on Refract\'s snappy spring (340 ms; 1.7.0 took 640)', push.ms === 340, push.ms);
+  check('a push is quick, on Refract\'s snappy spring (280 ms; 1.7.0 took 640, 1.9.0 340)', push.ms === 280, push.ms);
   await wait(200);
   const pop = await page.evaluate(async () => {
     const U = window.GH.ui, m = window.__m;
@@ -589,8 +589,13 @@ section('Collapse, expand and exit');
     const before = m.box(four);
     const p = U.motion.collapse(two);
     const first = { fades: m.anims(two).some((a) => Number(m.frames(a).slice(-1)[0].opacity) === 0), props: m.anims(two).flatMap(m.props).sort().join(), ms: m.anims(two)[0] ? m.anims(two)[0].effect.getTiming().duration : null };
+    // (The fade plays at a quarter of its speed while this looks: a busy machine's late timer could
+    // otherwise look after the fade, 160 ms, when the rest has started gliding.)
+    const fade = m.anims(two);
+    for (const a of fade) a.playbackRate = 0.25;
     await new Promise((res) => setTimeout(res, 60));
     first.stillThere = two.isConnected && Math.abs(m.box(four).top - before.top) <= 1;
+    for (const a of fade) a.playbackRate = 1;
     await p;
     const r = { first, gone: !two.isConnected, glides: m.glides(four) };
     const list = m.pauseAll();
@@ -602,7 +607,7 @@ section('Collapse, expand and exit');
     return r;
   });
   check('collapse: it fades and shrinks first, by transform and opacity', col.first.fades && /opacity/.test(col.first.props) && /transform/.test(col.first.props) && !/height|width|margin|padding|top|left/.test(col.first.props), col.first);
-  check('collapse takes about 180 ms', col.first.ms >= 150 && col.first.ms <= 220, col.first.ms);
+  check('collapse takes about 160 ms (1.9.0: 180)', col.first.ms >= 140 && col.first.ms <= 200, col.first.ms);
   check('while it fades, nothing else moves', col.first.stillThere);
   check('then it goes and the cards after it glide up, without a jump', col.gone && col.glides === 1 && Math.abs(col.at0.top - col.before.top) <= 1 && col.after.top < col.before.top - 40, col);
 
@@ -811,7 +816,7 @@ section('Frames while route changes play (CPU 4x slower, best of 3)');
       if (how === 'go') U.go(a); else if (how === 'open') U.open(a); else U.back();
       let last = await frame();
       first.push(last - t0);
-      const end = last + 340;
+      const end = last + 300;
       while (last < end) { const t = await frame(); motion.push(t - last); last = t; }
       await U.motion.settled();
       await new Promise((res) => setTimeout(res, 250));

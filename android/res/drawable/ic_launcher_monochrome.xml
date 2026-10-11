@@ -1,17 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Themed (Material You) icon: the logo's heart as a single-colour shape, centred in the 66 dp safe zone. -->
+<!-- Themed (Material You) icon: the logo's heart and pulse line as single-colour strokes, traced from
+     art/logo.png where scripts/make-icons.mjs puts them in the 108 dp layer, inside the 66 dp safe zone. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group
-        android:scaleX="2.9"
-        android:scaleY="2.9"
-        android:translateX="19.2"
-        android:translateY="14">
-        <path
-            android:fillColor="#FFFFFFFF"
-            android:pathData="M12,20.25C12,20.25 4.25,15.75 4.25,10A4.35,4.35 0,0 1,12 7.35A4.35,4.35 0,0 1,19.75 10C19.75,15.75 12,20.25 12,20.25Z" />
-    </group>
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M72.5,54.6 C75.5,45.2 72.4,37.3 65.8,37.0 C60.7,36.8 56.5,39.7 54.1,43.0 C51.6,39.7 47.5,36.8 42.4,37.0 C36.0,37.3 32.5,43.8 34.4,50.5 C36.3,57.3 44.8,64.3 52.6,70.6 C54.4,71.9 56.7,71.1 58.5,68.6" />
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M51.0,63.2 L58.0,63.2 L59.3,66.3 L63.7,53.7 L67.6,72.4 L70.6,63.7 L78.4,63.2" />
 </vector>

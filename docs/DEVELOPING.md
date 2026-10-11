@@ -13,6 +13,8 @@ src/data/changelog.js    What's new, newest first
 src/data/privacy.js      the privacy policy (the in-app page and docs/PRIVACY.md come from it)
 src/data/brand.js        the logo as a data URI
 src/engine/pose.js       2D skeleton (FK + IK), timing from tempo, SVG figures, gym props
+src/engine/medal3d.js    the badges' 3D medals (GH.medal3d): stills and the live medal, in the 3D chunk
+                         with the figure (src/engine/chunk3d.js brings both, and src/ui/badges3d.js)
 src/brain.js             program, sessions, gym loads, adaptation, calendar replay, streaks, readiness
 src/optimizer.js         the plan engine (GH.optimizer): the best weekly split, each day's sets, sessions
                          filled to the time set, the plan's score and its "Why this plan" lines
@@ -43,8 +45,11 @@ src/customplan.js        your own plans: checks, running them, swaps, progressio
 src/qr.js                a QR code encoder that draws SVG (GH.qr), for sharing plans
 src/share-page.html      the page a shared plan's link opens in a browser (built to docs/p/index.html)
 src/devicecoach.js       the on-device model's prompt: rules, a compact data brief, safety routing
+src/spend.js             Claude's model, thinking level and spending limits, and what each request cost
+                         (GH.spend)
 src/ai.js                the Claude coach's inline part: the key, consent, exactly what's sent, errors
 src/claude.js            the Claude requests with the Anthropic SDK, a lazy chunk: GH.lazy('claude')
+src/ui/claudeset.js      Claude's page, the model and thinking sheet and the limits' sheets (a lazy part)
 src/llm.js               on-device AI runtime (native engine or llama.cpp in WebAssembly), a lazy
                          chunk: GH.lazy('llm')
 src/store.js             local + file persistence, backup and restore, migrations
@@ -55,9 +60,11 @@ src/ui/controls.js       switches, segmented controls and single-choice chips (U
                          handling that makes every tap count, on Refract's liquid glass
 src/ui/hapticsui.js      the haptics rows for Settings (U.hapticRows) and the Feel each one gallery
 src/ui/you.js            the You tab: profile, badges, plans, your answers, Settings and help
-src/ui/badges.js         the badge medals and sealed capsules, the strip, the gallery, the detail sheet
+src/ui/badges.js         the badge medals and sealed capsules, the shelf, the gallery, the detail sheet
                          and the reveal, where a capsule is opened (see Badges)
-src/ui/sharecard.js      a badge's share image (a 1080×1350 canvas) and sharing it
+src/ui/badges3d.js       the medals' 3D side, in the 3D chunk: drawing their stills and keeping them,
+                         the live medal on a stage
+src/ui/sharecard.js      a badge's share image (a 1080×1350 canvas, the 3D medal on it) and sharing it
 src/ui/chat.js           the coach chat and the coach button on every tab
 src/ui/tailor.js         the Tailor my plan sheet
 src/ui/customplan.js     Your plans: the list, the editor and exercise picker, sharing, a shared plan's
@@ -84,7 +91,7 @@ scripts/build-native.sh  builds android/jni for arm64 (or --host, and tests it)
 scripts/build.mjs        inlines everything into dist/gradient-health.html, minified (MINIFY=0 to read
                          it); lazy chunks go to dist/lazy/
 scripts/build-apk.sh     builds and signs the APK without Gradle
-scripts/make-icons.mjs   the launcher icons from art/logo.webp
+scripts/make-icons.mjs   the launcher icons, the Play icon and the in-app logo from art/logo.png
 scripts/screenshots.mjs  renders docs/screenshots/ from the built page (the activity is a walk along
                          Venice Beach, on OpenFreeMap's map when it can be reached from where it runs)
 scripts/frame-shots.mjs  puts the README's screenshots in a phone, in docs/screenshots/framed/
@@ -101,8 +108,8 @@ npm test          # simulations, insights, AI (mocked API), coach, poses, persis
 npm run build     # dist/gradient-health.html, dist/lazy/, docs/PRIVACY.md and docs/p/index.html
 npm run smoke     # end-to-end run in Chromium (needs Playwright); add --dark for dark mode
 npm run test:ui   # layout regressions, food flows, the coach chat, the 3D figure, your plans, controls
-                  # (real touches), haptics, motion, the You tab, badges, the plan review, speed
-                  # and scrolling budgets (Chromium)
+                  # (real touches), haptics, motion, the You tab, badges, the plan review, speed,
+                  # scrolling and Plan's cold 3D stills budgets (Chromium)
 node test/ui-scroll.mjs --measure [--vs=<dir>] [--ablate=<part>]   # scrolling every main screen: frames
                   # dropped, the GPU's draw time; A/B against another build, or with one part switched off
 npm run test:llm  # on-device AI runtime in Chromium with a tiny model (see On-device AI)
@@ -128,11 +135,14 @@ left alone. A few conventions:
 - The navigation bar is shared: a screen's `<header class="rf-navbar">` is lifted into it.
 - A route change gets fresh content: the old page leaves in a layer of its own while the new one
   comes in (`U.motion.routeSwap` in `src/ui/motion.js`, on Refract 1.4's page motion: pushes and
-  pops slide on the smooth spring, tabs morph in place; the bar's title cross-fades with them). A
-  re-render of the same route patches in place and glides what moved (FLIP): new blocks rise in,
-  and removed ones fade from where they were for 200 ms before they go, so a test that checks one is
-  gone waits for `U.motion.settled()`. Animate transform and opacity only; `test/ui-motion.mjs`
-  checks for layout properties.
+  pops slide on the snappy spring in 280 ms, tabs morph in place in 200; the bar's title cross-fades
+  with them, and its buttons and the tab bar land with the page). A re-render of the same route
+  patches in place and glides what moved (FLIP, 340 ms): new blocks rise in, and removed ones fade
+  from where they were for 180 ms before they go, so a test that checks one is gone waits for
+  `U.motion.settled()`. Animate transform and opacity only; `test/ui-motion.mjs` checks for layout
+  properties. Nothing that moves makes anyone wait: Refract's own motion the app asks for by name
+  (glass forming, shape-shifting) plays quicker where it would run long (`U.motion.within`), on the
+  same curves.
 - Glass above the page moves as Refract's material does. The bar's buttons are keyed by what they
   are (`data-rf-key`; the top-left one by its place, the coach on a tab and Back on a page), so a
   push or Back shape-shifts them (`U.motion.shift`, `Refract.shapeshift`): one on both routes keeps
@@ -148,6 +158,12 @@ left alone. A few conventions:
   and shrinks away, then the panel dissolves into Today, whose cards rise back with the workout not
   started; from Today, its buttons pinch away and its card folds and settles back
   (`U.todayCancelled`); the toast with Undo only comes after. Reduced motion: short fades.
+- Toasts (`U.toast` in `core.js`, Refract's toaster) come up from the bottom of the screen, above
+  whatever is there: the tab bar, Today's floating buttons and the workout capsule, the player's,
+  set-up's or a live activity's buttons, or an open sheet's main buttons (`--toast-lift`, read again
+  whenever one of those comes or goes, and glided to). Over an open sheet the toaster goes in the
+  sheet's dialog, the one part of the page that takes taps then, and back as the sheet closes. A
+  swipe down dismisses the bottom one. Refract's toast motion plays 1.6 times as fast.
 
 **Parts that load when they're needed.** Set-up (`src/ui/onboarding.js`), the plan review with
 Why this plan (`src/planreview.js`, `src/ui/review.js`), How it works (`src/data/science.js`,
@@ -278,24 +294,27 @@ page opened again where it was left gets the heights its blocks had,
 so it opens on what was showing. Medals share one set of gradients. Progress bars shine once, as
 they show or change, not forever. Work that can wait waits for `U.calm()`: no finger on the screen,
 no scroll or touch for 400 ms, no sheet moving and no control held or gliding (`U.controlsMoving`;
-`U.whenCalm(fn)` runs it then): saves, Plan's flat stills, a control's lens maps. Work that would
-hold the page's thread for a while (a 3D still, the 3D chunk and its warm-up, a background re-render
-such as Today's insight line, the 3D canvas shrinking once no figure shows) waits for `U.quiet()`
-instead: calm, and nothing for 1.5 s (`U.whenQuiet(fn)`). On a phone a touch's scroll waits for the
-page's thread, and the likeliest moment for the next flick is right after the last one settles:
-filmed on one, three flicks in a row froze for 100 to 330 ms each and then jumped, with a still's
-encode or a re-render running under the finger, let loose by the calm moment 400 ms after the last
-scroll. A 3D still now draws on the thread only its figure's frame and the copy out of the GL
-canvas: its shaders compile in the background where the GPU allows (`compileAsync`) and its picture
-is encoded in the background (`toBlob`; `figure3d.stillAsync` and `stillNow`), where `toDataURL`
-took 110 ms and more on the thread. The warm-up (`figure3d.preload`) also keeps a wall's transparent material
-compiled (a program of its own, which a still of a wall or door move compiled again every time) and
-ends with one still the size of Plan's tiles drawn out through a 2D canvas, the first such copy being
-the dear one (700 ms in a software-GL test, 130 ms after); `ui-figure` checks both. `ui-scroll` taps
-the Plan tab with the figure warm and flings 400 ms on, then checks that from the flick until 1.1 s
-after the page stops no task holds the thread for 120 ms (at 4× CPU), and that the tiles' stills
-still come afterwards (on 1.8.2 the first still, let loose at calm 400 ms after the tap, held the
-thread 1 to 2 s at 4× in mid-fling). `test/ui-scroll.mjs` scrolls every
+`U.whenCalm(fn)` runs it then): saves, Plan's flat stills, a control's lens maps, the 3D chunk's
+warm-up steps and the 3D stills drawn ahead. Work that would hold the page's thread for a while (a
+background re-render such as Today's insight line, the 3D canvas shrinking once no figure shows)
+waits for `U.quiet()` instead: calm, and nothing for 1.5 s (`U.whenQuiet(fn)`). On a phone a touch's
+scroll waits for the page's thread, and the likeliest moment for the next flick is right after the
+last one settles: filmed on one, three flicks in a row froze for 100 to 330 ms each and then jumped,
+with a still's encode or a re-render running under the finger, let loose by the calm moment 400 ms
+after the last scroll. So a 3D still holds the thread for its figure's posing and one frame only (40
+to 50 ms at 4× CPU here, where it was 230 to 370), and never while a finger is on the screen or the
+page moves: its shaders compile in the background where the GPU allows (`compileAsync`), the copy
+out of the GL canvas goes into a buffer on the GPU behind a fence, so nothing waits for the GPU to
+draw (`figure3d.stillNow`), and the crop and the encoding run on the CPU in the background
+(`toBlob`), where `toDataURL` took 110 ms and more on the thread. The warm-up (`figure3d.preload`)
+also keeps a wall's transparent material compiled (a program of its own, which a still of a wall or
+door move compiled again every time) and ends with one still the size of Plan's tiles drawn out
+through a 2D canvas, the first such copy being the dear one for a live figure (700 ms in a
+software-GL test, 130 ms after), once the page's stills are drawn; `ui-figure` checks both.
+`ui-scroll` taps the Plan tab with the figure warm and flings 400 ms on, then checks that from the
+flick until 1.1 s after the page stops no task holds the thread for 120 ms (at 4× CPU), and that the
+tiles' stills still come afterwards (on 1.8.2 the first still, let loose at calm 400 ms after the
+tap, held the thread 1 to 2 s at 4× in mid-fling). `test/ui-scroll.mjs` scrolls every
 main screen at 4× CPU, traced, and holds the budgets; `--vs=<dir>` compares two builds run by run, and
 `--ablate=<part>` switches one part off to show what it costs. It also touch-scrolls (real touch
 flings, `Input.dispatchTouchEvent`) on pages driven through raw CDP: Playwright's page helpers inject
@@ -384,6 +403,12 @@ Where the app uses Refract 1.4's newer parts:
   frame, from the slide up through a drag to the slide out. It's frosted at medium height, and
   solid under the rim and sheen at full height, while it moves and while its content scrolls (a
   blur under anything that moves is redrawn every frame; the rim and sheen move with their layer).
+  A sheet opened over another is solid at every height (`data-stacked`): frost over a sheet's words
+  lets them through. A sheet's body has no inset of its own, so each block in it brings its 16 px.
+- **Dropdowns** (`<details class="gh-drop">`, `src/styles/dropdown.css`): what's inside grows open
+  and folds shut (`::details-content`'s height, with `interpolate-size`), fading as it goes, and the
+  chevron turns with it. It's the one motion here that lays the page out every frame, for 240 ms
+  after a tap. Chromium before 131 and reduced motion open and shut at once.
 - **Page dots**: Refract's `.rf-pagedots` (its ink worm stretches to the page and splats there) for
   the badge reveal and the tour; they follow the page however it's turned (`aria-current`).
 - **Plan's week strip**: the day picked is a bead of the liquid engine, as the segmented controls'
@@ -397,8 +422,9 @@ Refract's `.rf-mark`), and the open-source licenses sheet opens with it.
 
 ## 3D exercise figure
 
-`src/engine/figure3d.js` builds the lazy chunk `dist/lazy/figure3d.js` (three.js, about 620 KB
-minified), which `GH.lazy('figure3d')` loads when it's needed. It sets `GH.figure3d`:
+`src/engine/figure3d.js` is in the lazy chunk `dist/lazy/figure3d.js` (three.js, about 710 KB
+minified, with the badges' 3D medals: its entry is `src/engine/chunk3d.js`), which
+`GH.lazy('figure3d')` loads when it's needed. It sets `GH.figure3d`:
 
 - `supported()`: whether WebGL works here (checked once).
 - `mount(el, move, opts)`: a controller shaped like `GH.pose.mount`'s, plus `setView(name)`,
@@ -407,13 +433,21 @@ minified), which `GH.lazy('figure3d')` loads when it's needed. It sets `GH.figur
   one only if it's already drawn, so a page render never waits on the GPU. `stillAsync()` is the
   same with its shaders compiled and its picture encoded in the background (the player's and move
   sheet's stills).
-- `stillNow(move, opts)`: a still drawn now, in the caller's idle moment (posed, one frame, the copy
-  out and the crop: a few frames' work once warm), so a caller with time left can draw another;
-  `{ url }` is a promise of the data URL, encoded in the background. One that needs shaders no warm
-  view keeps compiled returns `{ wait }` instead, resolved once they've compiled in the background
-  (its posed figure is held meanwhile, so they stay compiled), and the next call draws it.
-- `preload()`: builds the renderer, the body, the equipment and the lighting, then compiles the
-  shaders with a view it keeps, one small piece per idle callback so taps never wait on it.
+- `stillNow(move, opts)`: a still drawn now, in the caller's idle moment (posed and one frame, a
+  frame or two of work once warm), so a caller with time left can draw another. The stills drawn in
+  one task go side by side into the GL canvas and are copied out together into a buffer on the GPU
+  behind a fence, so the page's thread never waits for the GPU; then each is turned the right way up,
+  cropped and encoded on the CPU in the background. `{ blob }` is a promise of its picture (WebP).
+  One batch is on its way at a time: until it's back (or while the warm-up copies its own still out)
+  it returns `{ busy }`, resolved then, so the GPU never has a queue of stills that a live figure's
+  first frame would wait behind. One that needs shaders no warm view keeps compiled returns `{ wait }`
+  instead, resolved once they've compiled in the background (its posed figure is held meanwhile, so
+  they stay compiled), and the next call draws it.
+- `preload(opts)`: builds the renderer, the body, the equipment and the room's light, then compiles
+  the shaders with a view it keeps, one small piece per idle callback so taps never wait on it (or
+  whenever `opts.when(fn)` runs it: the stills hold it to calm moments, and wait 300 ms at most for
+  an idle one). `stillsReady()` turns true, and `opts.ready()` is called, once stills can be drawn,
+  a step before `warm()`.
 
 The chunk authors no poses. Every frame it lifts the 2D joints from `GH.pose` into 3D. Side, front
 and top views each have their own rules, and segment lengths stay constant. A fix to a move's 2D
@@ -444,29 +478,49 @@ steps and lights up from `onPhase`.
 reveal and Settings' preview show the 3D figure's stills of the moves; the flat figure shows only
 when it's the setting, or where a still can't be drawn (no WebGL 2, the chunk didn't load, a still
 that failed). `src/ui/stills.js` (`U.stills`) keeps them across launches in IndexedDB (`gh-stills`),
-under the move as the person does it (`forPerson`: their kit), the look (theme, skin, shirt), the
-size and `GH.FIGURE`, an id the build gives the figure (its chunk with three.js, the pose engine and
-the moves), so a change to any of them draws it again, and only then. What's kept is read into
-memory in one request once the first frame is drawn (with the 3D figure picked; nothing at boot
-otherwise), so Plan puts a kept still straight into its tile's HTML (`U.stills.img`): it's there
-from the page's first frame, without the 3D chunk. A tile without one shows its own background
+under the move as the person does it (`forPerson`: their kit), what the move's figure is drawn from
+(its poses, steps and view, not its words), the look (theme, skin, shirt), the size and
+`GH.FIGURE`, an id the build gives the code that draws the figure (`figureId` in
+`scripts/build.mjs`: the figure's chunk bundled on its own, with the parts of three.js it uses, and
+the pose engine, both minified, so a comment, a cue reworded, a new move or another module bundled
+into the chunk keeps every still; `buildcheck` holds it to that), so a change to any of them draws it
+again, and only then. What's kept is read into memory in one request once the first frame is drawn
+(with the 3D figure picked; nothing at boot otherwise), so Plan puts a kept still straight into its
+tile's HTML (`U.stills.img`): it's there from the page's first frame, without the 3D chunk. After an
+update that draws the figure differently, the last version's stills stand in, in their tiles, until
+this version's are drawn, and go once they are. A tile without one shows its own background
 (`U.stills.tile`) until its still is drawn, which then fades in (a tile in another look keeps its
-old still until the new one is in). About 3 s after launch, once it's quiet, the stills of this
-week's and next week's moves that aren't kept (`U.planStills` in `src/ui/plan.js`: what each day's
-card shows) are drawn ahead, warming the figure up for them, so Plan finds them even on the first
-day (after set-up too); when they're all kept nothing loads. New ones are drawn with `stillNow` once
-the figure is warm, as many per idle moment as fit, only while it's quiet (`U.quiet`) and no
-figure's box shows: what a screen waits for first, then what's drawn ahead. Up to 300 are kept; past
-that the oldest that this week and next don't show go, and ones an older figure drew go once a
-launch. The plan builder's large tiles (its picker's) are drawn as they come near the screen and
-held for the launch only. Reset everything deletes them. `ui-plan` checks that no tile ever holds
-the flat figure while 3D is picked, the drawing ahead, Plan's first render after a relaunch, a new
-look and the flat setting; `ui-figure` Settings' preview after a relaunch, and that stills wait
-while the page is in use and then go several per idle moment.
+old still until the new one is in). Once launch has settled (its first idle moment that comes by
+itself, 6 s at most: before then the GPU is still drawing the page, and a WebGL context made then
+waits for it on the page's thread), in a calm moment, the stills of this week's and next week's
+moves that aren't kept (`U.planStills` in `src/ui/plan.js`: what each day's card shows, this week's
+first) are drawn ahead, warming the figure up for them at once (the chunk is asked for straight
+away, its warm-up's steps run in calm moments; with none kept under this figure's id, a fresh
+install or an update that draws it differently, it starts as soon as the read is done, before the
+week is worked out; a press on the Plan tab warms it up too, once Plan has settled), so Plan finds
+them even on the first day (after set-up too); when they're all kept nothing loads. New ones are
+drawn with `stillNow` as soon as its shaders are compiled, as many per idle moment as fit and no
+figure's box shows: what a screen waits for first, whenever nothing is in the person's hands (no
+finger on the screen, the page not scrolling, no sheet or control moving), then what's drawn ahead,
+once it's calm too. A still shows as soon as its picture is encoded (an object URL) and is kept as
+a data URL made in the background. Up to 300 are kept; past that the oldest that this week and next
+don't show go. The plan builder's large tiles (its picker's) are drawn as they come near the screen
+and held for the launch only. Reset everything deletes them. `ui-plan`
+checks that no tile ever holds the flat figure while 3D is picked, the drawing ahead, Plan's first
+render after a relaunch, a new look and the flat setting; `ui-figure` Settings' preview after a
+relaunch, and that stills never go while a finger is down or the page scrolls, and then go at once,
+several per idle moment. `test/ui-stills.mjs` times Plan's stills from cold (a fresh install, and an
+update that draws the figure differently: until the first screen's tiles, today's card and the
+week's stills show the 3D figure, and where the time goes) and holds their budget; `--vs=<dir>`
+compares two builds run by run, `--still-glow` holds the background glow still (its drift is drawn
+in the same software GPU process as the stills here, and starts just as they do) and `--flat` sets
+Glass effects to Flat (the software GPU spends seconds after launch drawing the page's glass, which a
+phone's GPU does in a few frames, so this is nearer a phone).
 
 ```sh
 npm run build && node test/figure3d.mjs [filter,…] [--dark] [--mirrored]
 node test/ui-figure.mjs [--dark] [--shots]   # the figure inside the app, and the no-WebGL fallback
+node test/ui-stills.mjs [--measure] [--runs=3] [--vs=<dir>] [--still-glow] [--flat]   # Plan's 3D stills from cold, timed
 ```
 
 The test renders every move in Chromium (SwiftShader), plus gym fixtures for barbells, cables,
@@ -680,6 +734,57 @@ model checks it first. Only the app's own pages load in the WebView. Another htt
 the browser, a frame never loads one, `javascript:`, `data:`, `blob:`, `intent:` and `file:`
 navigations are blocked, and the WebView never opens a second window.
 
+## Claude
+
+Claude runs on the person's own Anthropic API key, after they've allowed it on a screen that lists
+what's sent (`U.claudeConsent`). Adding a key leads straight to `U.claudeSetup`: a model and a monthly
+budget, with the defaults picked (Claude Opus 5.5, $10 a month).
+
+**Model and thinking** (`src/spend.js` `MODELS`, `LEVELS`, `FEATURES`). The person picks the model
+(Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 5.5, or an older Opus 5, Sonnet 5 or Opus 4.8) and the thinking
+level, and every Claude feature uses both; nothing is picked by the app any more. `shape(S, feature)`
+turns the level into the request: Auto is each feature's own (medium for questions, the weekly report,
+plan checks and plans built; low for suggestions and Tailor); a level picked is used for all of them;
+Off is `thinking: {type: "disabled"}`, or `{type: "between_tools"}` on Sonnet 5.5 (where `disabled` is
+a 400), always at an effort of high or below, and it isn't offered on Fable 5.1 or Opus 5.5, which
+always think. The output limit (`max_tokens`, thinking included) comes from the feature and the level.
+The model table holds each model's prices; check them against Anthropic's pricing page when a model is
+added, since the limits depend on them.
+
+**Spending limits** (`GH.spend.limits`, `allow`). A monthly budget, a daily limit (Auto: what's left of
+the month this morning, spread evenly over the days left, so it lasts to the end of the month and
+spending today doesn't move today's limit) and an optional limit for any one request. Before a request
+goes, `allow()` reckons its worst case: every input token at the cache-write price (characters over
+2.5, which errs high), every output token the request allows, and a backup model's whole answer when a
+server-side fallback could step in after a refusal (`fallbacks: "default"`, only on the models it's
+documented for, never on Haiku 5.5). When that won't fit, the backup goes first, then the output limit
+comes down to what's left; a request whose smallest useful answer still can't fit isn't sent, and
+`GH.ai.budgetError` says which limit stopped it, what's left and what it could have cost. Requests in
+flight hold their worst case until they're recorded, so two at once can't both spend the same room.
+The app counts only what this phone spends, so Claude's page points to the Console's own spend limits
+(Settings, Limits) as the backstop for the key.
+
+**What it cost** (`GH.spend.record`, `costOf`). Every request goes through `send()` in
+`src/claude.js`, which records its cost from the usage the API returns: each attempt in
+`usage.iterations` at its own model's prices when a backup model answered (an unknown model is priced
+as the dearest), cache reads and writes at theirs, and Haiku 5.5's long-prompt rate card over 100K
+tokens. A request stopped or broken after it started is reckoned from the time it ran and the text that
+came, and marked as reckoned. `S.ai.spend` keeps sums by day (the last 62 days) and by month (by feature
+and by model, forever), and the last 40 requests; it's in backups, and restore checks it.
+
+**Prompts.** Each feature sends only the parts of the summary it can use (`PARTS` in `src/ai.js`): all
+of it with a question, the weekly report and suggestions; the training parts for plan checks, plans
+built and Tailor. A line with nothing to say is left out rather than sent as dashes. A question's
+system text and the conversation so far are cached (the next question within five minutes reads them
+back at a fraction of the price), and so is the plan builder's; the requests that go once skip the
+cache-write premium. `node test/ai.mjs` checks the shapes, and a short script in the PR measured the
+sizes before and after.
+
+**Plans.** Build me a plan and Check my plan go through Claude with the person's model and limits
+(`GH.ai.json(..., { feature })`), and Improve (`GH.customPlan.improve`) reworks a plan of the person's
+own the same way: their plan is the draft, held to the same checks as a plan built from scratch
+(`accept`), with the changes listed in words (`diff`) before they choose to use them or save a new plan.
+
 ## On-device AI
 
 A small open model runs on the phone with llama.cpp, one of two ways. `src/llm.js` (a lazy chunk:
@@ -836,7 +941,8 @@ request. `test/ai.mjs` and `test/ui-review.mjs` cover it.
 Set-up (`src/ui/onboarding.js`) is six screens with one decision each, ending on the plan the engine
 built (`GH.optimizer.explainProfile`) with its first workout a tap away. With no weekdays picked, the
 usual pattern is turned so today is a workout day. Health Connect is offered after the first workout
-(`U.hcInvite`), never before the plan. `test/ui-onboarding.mjs` covers it.
+(`U.hcInvite`), never before the plan. Reminders come on as it ends (see Notifications).
+`test/ui-onboarding.mjs` covers it.
 
 ## Your plans
 
@@ -891,9 +997,13 @@ state (`test/customplan.mjs`); `src/ui/customplan.js` is the screens (`test/ui-c
 
 A reminder on workout days, a walk or run on a rest day, a badge waiting to be opened, a word the
 morning after a good night and a gentle note after a few days away. All local: no server, no push
-service, nothing sent anywhere. They're off until the person turns them on: a one-time card on Today
-(for people updating, and new people once their first workout and the tour are done) or Settings,
-Notifications, with a switch per kind and the reminder time.
+service, nothing sent anywhere. Set-up turns them on for someone new as it ends: its last screen says
+so over the button that finishes it, and on Android 13 and newer Android asks for the permission as
+that's tapped, once, with set-up still showing (`U.notifySetupAsk`, `U.notifySetupDone` in
+`src/ui/notify.js`); a no leaves them off with nothing asking again. Someone set up before keeps what
+they have (`brain.js`'s default and the store's migration are off), and if that's off, a one-time
+card on Today asks (once they've done a workout and had the tour). Settings, Notifications, has a
+switch per kind and the reminder time.
 
 **The page plans, Android delivers.** `src/notify.js` (`GH.notify`, a chunk) is a pure planner:
 `plan(S, now, o)` works out the next six weeks from the plan as Plan shows it (`GH.planWeek`), what's
@@ -928,11 +1038,12 @@ so no exact-alarm permission, and while the phone dozes it waits for it to wake.
 each item, a restart and an update. At its time an item is dropped if one went out today, it's quiet
 hours, the app is on screen, an activity records (a walk also waits for a day with none recorded), or
 Android has its kind off (a channel per kind) or it's two hours late. One notification shows at a
-time, and each goes once it's out of date. `POST_NOTIFICATIONS` (Android 13+) is asked for only when
-they're turned on (`notifyRequest`, answered with `__gh.onNotifyPermission`); after a no, Settings
-opens Android's settings for them. A tap opens its screen the way a plan link does: `notifyTap()` for
-the one the app was started from, `__gh.onNotifyTap` while it runs. A badge's opens Badges with what's
-still sealed coming up over it, ready to be opened (`openRoute` in `src/ui/core.js`).
+time, and each goes once it's out of date. `POST_NOTIFICATIONS` (Android 13+) is asked for at the end
+of set-up and when they're turned on (`notifyRequest`, answered with `__gh.onNotifyPermission`);
+after a no, Settings opens Android's settings for them. A tap opens its screen the way a plan link
+does: `notifyTap()` for the one the app was started from, `__gh.onNotifyTap` while it runs. A badge's
+opens Badges with what's still sealed coming up over it, ready to be opened (`openRoute` in
+`src/ui/core.js`).
 `test/ui-notify.mjs` covers the card, Settings, taps and the hand-off against a stand-in
 (`test/fixtures.mjs`); compile the Java as `build-apk.sh` does.
 
@@ -942,9 +1053,45 @@ About 60 badges in ten categories and four tiers (bronze to platinum, Common to 
 `src/achievements.js` (`GH.achievements`) is pure logic on the saved state (`test/achievements.mjs`):
 what each takes, worked out from history, so a badge is dated the day it happened (the 10th
 workout's, the day a streak reached 7). Once earned, a badge is kept for good: a broken streak or a
-deleted log leaves it where it is. `src/ui/badges.js` draws the medals (one SVG each, the gradients
-in one shared set), the You tab's card, the gallery, a badge's sheet and the reveal
-(`test/ui-badges.mjs`). A saved change is checked 800 ms later, only for the categories it touched.
+deleted log leaves it where it is. Badges that count the same thing further make a series
+(`GH.achievements.SERIES`: 10, 25, 50 workouts...). `src/ui/badges.js` draws the medals (3D where
+WebGL works, else one SVG each, the gradients in one shared set), the You tab's shelf, the gallery, a
+badge's sheet and the reveal (`test/ui-badges.mjs`). A saved change is checked 800 ms later, only for
+the categories it touched.
+
+- **3D medals.** `src/engine/medal3d.js` builds each medal in three.js, in the 3D figure's chunk:
+  its category's shape with a rounded rim (beaded from silver up), its enamel over a guilloché, the
+  glyph and the number traced from a canvas into bevelled relief, its tier's metal (platinum with a
+  pearly film), and an engraved back (tier, name, the day, the app). A locked one is the unminted
+  blank: the same shape in dark, frosted metal, its design only faintly there. Everything is made
+  there, lit by a studio drawn into an environment map; it has a WebGL renderer of its own, which it
+  hands back a few seconds after the last medal it drew.
+- **Stills everywhere else.** The shelf, the gallery, Next up, the player's card and a sheet's medal
+  until it's live show stills of the 3D medals, kept on the phone (IndexedDB, `gh-medals`, up to
+  400) under `MEDAL_REV` (in badges.js: one more whenever a medal's look changes), the size, the
+  theme, the badge and its tier or the blank. What's kept is read in once, 2 s after launch while
+  it's idle, so a screen has them from its first frame without the chunk. A medal without one is its
+  SVG and asks for it; `src/ui/badges3d.js` (in the chunk, which loads once medals missing a still
+  have been on screen 2.5 s and it's quiet) draws them in quiet idle moments (`U.quiet`), only while
+  their medals are on screen and no live medal is, encodes them in the background and writes them in
+  batches; each fades in over its SVG. After a change of theme the other theme's still stands in
+  until this one's is drawn. Without WebGL, or on a phone with less than 3 GB, the SVG medals stay.
+  Reset everything deletes them.
+- **Live where it counts.** A badge's sheet shows its medal live once its first frame is drawn
+  (after the medal's own spring, fading over its still): a horizontal drag spins it, a flick spins on
+  and settles on its face or its back, each turn over plays `tick`; at rest it sways slowly while
+  the light sweeps across it, and a few degrees of the phone's tilt lean it (`deviceorientation`,
+  only while the sheet is open). It draws at most 30 frames a second at rest and 60 while spun,
+  nothing while covered, hidden or off screen, and stops swaying 30 s after the last touch; as its
+  sheet starts to close it stops, and it goes once the sheet has slid away. In the
+  reveal the medal freed from the capsule is the live one, spinning out with a flash of light (the
+  three taps and their haptics as before); it rests there, and a page on its own spins by hand too.
+  Reduced motion: a still and a fade.
+- **Showing them off.** The You tab's shelf stands the sealed ones and then the best medals, rarest
+  first, on a glass ledge; rarer medals glow more there and in the gallery. Next up lists each
+  series' next tier with a pip for each badge in the series, and a badge's sheet shows its series
+  and, once earned, the next one up and how far along it is. The share card has the 3D medal, drawn
+  at the card's own size, with rays of its tier's colour behind it.
 
 - **Sealed until opened.** A badge is earned sealed: `S.achievements.earned[id]` is `{ day, at,
   opened: false }` (the record's v 2). `GH.achievements.unopened(S)` lists the ones still sealed,

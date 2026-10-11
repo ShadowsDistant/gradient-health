@@ -34,12 +34,12 @@
 .bm-m[data-l="4"] { --f: var(--bm-4); }
 .bm-m[data-l="5"] { --f: var(--bm-5); }
 /* The gaps between muscles are the body's own colour, so the figure reads as one shape on any surface. */
-.bm-m path { fill: var(--f); stroke: var(--bm-body); stroke-width: 1.5; stroke-linejoin: round; transition: fill 560ms var(--ease-out-soft) calc(var(--y, 0) * 280ms); }
+.bm-m path { fill: var(--f); stroke: var(--bm-body); stroke-width: 1.5; stroke-linejoin: round; transition: fill 420ms var(--ease-out-soft) calc(var(--y, 0) * 180ms); }
 /* The top step glows a little on a dark surface. */
 [data-theme^="dark"] .bm-m[data-l="5"] path { filter: drop-shadow(0 0 3px var(--bm-glow)); }
 .bm-m.is-focus path { stroke: var(--focus-ring); stroke-width: 2.4; }
-/* On the Progress screen the muscles fill in from the head down. */
-.bm-card .bm-m path { animation: bm-in 760ms var(--ease-out-soft) backwards; animation-delay: calc(80ms + var(--y, 0) * 460ms); }
+/* On the Progress screen the muscles fill in from the head down, in under 0.9 s (1.9.0's took 1.3). */
+.bm-card .bm-m path { animation: bm-in 520ms var(--ease-out-soft) backwards; animation-delay: calc(60ms + var(--y, 0) * 300ms); }
 @keyframes bm-in { from { fill: var(--bm-empty); } }
 /* The screen-reader list: there for assistive tech, out of sight. */
 .bm-sr { position: absolute; left: 0; top: 0; width: 1px; height: 1px; margin: 0; padding: 0; list-style: none; overflow: hidden; clip-path: inset(50%); white-space: normal; }
@@ -103,7 +103,7 @@
 .mu-bars-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px var(--space-2); }
 .mu-plot { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); align-items: end; gap: 4px; height: 92px; }
 .mu-bar { appearance: none; border: 0; margin: 0; padding: 0; background: none; height: 100%; min-width: 0; display: flex; align-items: flex-end; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.mu-bar i { display: block; width: 100%; height: calc(var(--h, 0) * 100%); min-height: 3px; border-radius: 4px 4px 2px 2px; background: var(--bm-3); transform-origin: 50% 100%; animation: ms-grow 560ms var(--ease-out-soft) backwards; animation-delay: calc(var(--i, 0) * 24ms); transition: background-color var(--duration-fast); }
+.mu-bar i { display: block; width: 100%; height: calc(var(--h, 0) * 100%); min-height: 3px; border-radius: 4px 4px 2px 2px; background: var(--bm-3); transform-origin: 50% 100%; animation: ms-grow 420ms var(--ease-out-soft) backwards; animation-delay: calc(var(--i, 0) * 16ms); transition: background-color var(--duration-fast); }
 .mu-bar.is-zero i { background: var(--fill-2); }
 .mu-bar.is-now i { background: var(--bm-5); }
 .mu-bar.is-picked i { box-shadow: 0 0 0 2px var(--bg-raised), 0 0 0 3.5px var(--label); }

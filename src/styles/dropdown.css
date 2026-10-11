@@ -1,0 +1,14 @@
+/* Dropdowns (<details class="gh-drop">): what's inside grows open under its summary and folds shut
+   again, fading as it goes, instead of appearing and vanishing at once, and what's below moves with
+   it. The summary's chevron turns with it (each dropdown's own rule). Unlike the app's other motion
+   this changes the layout every frame, for the quarter second it takes: only a tap starts it, and
+   it's the one way to grow something whose height isn't known in advance. A browser without
+   ::details-content (Chromium before 131) opens and shuts at once, as before; so does reduced motion. */
+.gh-drop { interpolate-size: allow-keywords; }
+.gh-drop::details-content {
+  block-size: 0; opacity: 0; overflow: clip;
+  transition: block-size 240ms var(--ease-standard), opacity 180ms linear, content-visibility 240ms allow-discrete;
+}
+.gh-drop[open]::details-content { block-size: auto; opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .gh-drop::details-content { transition: none; } }
+:root[data-rf-motion="reduced"] .gh-drop::details-content { transition: none; }

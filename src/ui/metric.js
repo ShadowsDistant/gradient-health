@@ -228,7 +228,7 @@
   function aboutFor(S, key, est) {
     const paras = aboutOf(S, key, est);
     if (!paras.length) return '';
-    return `<details class="ms-about" data-key="about-${key}"><summary>${U.icon('info', 'sm')}<span>About this number</span><span class="ms-chev">${U.icon('chevron-down', 'sm')}</span></summary><div class="ms-about-body">${paras.map((p) => `<p class="t-callout">${U.esc(p)}</p>`).join('')}</div></details>`;
+    return `<details class="ms-about gh-drop" data-key="about-${key}"><summary>${U.icon('info', 'sm')}<span>About this number</span><span class="ms-chev">${U.icon('chevron-down', 'sm')}</span></summary><div class="ms-about-body">${paras.map((p) => `<p class="t-callout">${U.esc(p)}</p>`).join('')}</div></details>`;
   }
 
   function body(S, day) {

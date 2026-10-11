@@ -50,7 +50,8 @@
       : `<span class="hl-week-src">${w.rep ? 'By Claude' : 'From your numbers'}</span>`;
     const glance = (d.glance || []).length >= 2 ? d.glance.slice(0, 4) : [];
     const wins = (d.wins || []).slice(0, 2);
-    const err = ai.error && w.api ? `<div class="notice" data-tone="critical">${U.icon('alert')}<span>${U.esc(ai.error)}</span></div>` : '';
+    // A spending limit that stopped the report says so, with the way to the limits.
+    const err = ai.error && w.api ? `<div class="notice" data-tone="${ai.budget ? 'caution' : 'critical'}">${U.icon('alert')}<span>${U.esc(ai.error)}${ai.budget ? ' <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="claudePage">Limits</button>' : ''}</span></div>` : '';
     const waiting = w.api && !S.ai.consentAt ? `<div class="notice" data-tone="info">${U.icon('info')}<span>Claude is waiting for your OK before it gets your data. <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="claudeReview">Review</button></span></div>` : '';
     return `<div class="card hl-week" data-key="week">
       <button type="button" class="hl-week-main" data-act="healthReport">
@@ -95,8 +96,9 @@
   const refreshReport = () => { if (reportCtl && !reportCtl.closed) reportCtl.update(reportBody(U.S, U.today())); };
   // (Also once the plan review loads, for the report's plan ideas: src/ui/lazy.js.)
   U.refreshReport = refreshReport;
+  // It opens at full height: it's there to be read.
   U.act.healthReport = () => {
-    const ctl = U.sheet({ title: 'This week', size: 'auto', cls: 'rs-sheet', body: reportBody(U.S, U.today()), onClose: () => { if (reportCtl === ctl) reportCtl = null; } });
+    const ctl = U.sheet({ title: 'This week', size: 'auto', detent: 'large', cls: 'rs-sheet', body: reportBody(U.S, U.today()), onClose: () => { if (reportCtl === ctl) reportCtl = null; } });
     reportCtl = ctl;
   };
   U.act.reportFlag = () => { if (reportCtl) reportCtl.close('ok'); if (U.act.flagReport) U.act.flagReport(); };
@@ -115,6 +117,7 @@
       U.save(true);
     } catch (e) {
       ai.error = e.message || 'The coach couldn\'t write the report.';
+      ai.budget = !!(AI().isBudget && AI().isBudget(e.code));
       if (auto && e.code === 'offline') ai.error = null;
     } finally {
       ai.busy = false;
@@ -195,7 +198,7 @@
   const INS_METRIC = { sleepMin: 'sleepMin', steps: 'steps', rhr: 'rhr', hrv: 'hrv', weight: 'weightKg', waist: 'waist', arms: 'armL', protein: 'protein', sleepTiming: 'sleepMin', 'sleep-rhr': 'rhr', 'feel-sleep': 'sleepMin', 'steps-weight': 'steps' };
   function insightRow(x) {
     const mk = INS_METRIC[x.metric];
-    return `<details class="hl-ins" data-state="${U.esc(x.tone)}" data-key="ins-${U.esc(x.id)}">
+    return `<details class="hl-ins gh-drop" data-state="${U.esc(x.tone)}" data-key="ins-${U.esc(x.id)}">
       <summary class="hl-ins-sum"><span class="rf-list-icon" data-tone="${TONE_HUE[x.tone] || 'sky'}">${U.icon(x.icon)}</span><span class="hl-ins-title">${U.esc(x.title)}</span><span class="hl-ins-chev">${U.icon('chevron-down', 'sm')}</span></summary>
       <div class="hl-ins-body">
         <p class="t-callout">${U.esc(x.body)}</p>

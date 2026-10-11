@@ -284,7 +284,7 @@
       events: [{ type: 'settings', day, days: p.days, weekdays: p.weekdays, minutes: p.minutes }],
       log: [], weights: [], protein: {}, health: { days: {}, hc: {}, manual: {}, lastSync: null, status: null },
       feel: {}, sleepChip: {}, measurements: [], active: null, celebrated: {}, pendingLines: [],
-      insightsDismissed: {}, insightsShown: {}, ai: { enabled: false, mode: 'device', reports: [], chat: [], model: null }, volWeeksDone: [], seen: {},
+      insightsDismissed: {}, insightsShown: {}, ai: { enabled: false, mode: 'device', reports: [], chat: [] }, volWeeksDone: [], seen: {},
       place: {}, lastPlace: null,
       // Every week is planned by the 1.6 engine (src/optimizer.js); a state saved before 1.6 gets
       // the week after it first loads (the migration there), so earlier weeks replay as they were.

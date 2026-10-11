@@ -170,7 +170,7 @@
     const empty = !r.items.length ? `<div class="card rv-empty" data-key="empty">${U.icon('check-circle')}<p class="t-headline">${r.rejected.length ? 'Nothing to apply' : 'Your plan already fits'}</p><p class="t-callout rf-muted">${r.rejected.length ? 'What it suggested didn\'t pass your plan\'s checks. The reasons are below.' : 'The coach found nothing worth changing.'}</p></div>` : '';
     const cards = r.items.length ? `<ul class="rv-cards" data-key="cards">${r.items.map((it) => card(it, st.picked.has(it.id))).join('')}</ul>` : '';
     const tips = r.tips.length ? `<div class="rv-tips" data-key="tips"><p class="rv-h">Tips</p>${r.tips.map((t) => `<div class="rv-tip">${U.icon('sparkle', 'sm')}<span><b>${U.esc(t.title)}</b>${t.why ? ` ${U.esc(t.why)}` : ''}</span></div>`).join('')}</div>` : '';
-    const not = r.rejected.length ? `<details class="rv-not" data-key="not"><summary><span>Not applied (${r.rejected.length})</span>${U.icon('chevron-down', 'sm')}</summary><ul>${r.rejected.map((x) => `<li><span class="rv-not-title">${U.esc(x.title)}</span><span class="rv-not-why">${U.esc(x.reason)}</span></li>`).join('')}</ul></details>` : '';
+    const not = r.rejected.length ? `<details class="rv-not gh-drop" data-key="not"><summary><span>Not applied (${r.rejected.length})</span>${U.icon('chevron-down', 'sm')}</summary><ul>${r.rejected.map((x) => `<li><span class="rv-not-title">${U.esc(x.title)}</span><span class="rv-not-why">${U.esc(x.reason)}</span></li>`).join('')}</ul></details>` : '';
     const apply = r.items.length ? `<div class="rv-actions" data-key="actions"><button type="button" class="rf-btn rf-glass ob-wide rv-apply" data-variant="tinted" data-size="lg" data-act="reviewApply"${n ? '' : ' aria-disabled="true"'}>${U.esc(applyLabel(n, r.items.length))}</button>
       <p class="t-footnote rf-muted">Each change passed your plan's checks: your equipment and joints, your time, every muscle's weekly minimum and rest between sessions. Nothing changes until you apply it, and you can undo it.</p></div>` : '';
     return `<div class="sheet-pad rv rv-result">${head}${cards}${empty}${tips}${not}${apply}
@@ -187,7 +187,8 @@
       case 'error': return `<div class="sheet-pad rv rv-msg"><div class="notice" data-tone="critical" data-key="error">${U.icon('alert')}<span>${U.esc(st.error || 'Something went wrong.')}</span></div>
         <button type="button" class="rf-btn ob-wide" data-variant="soft" data-size="lg" data-act="reviewAgain">${U.icon('refresh')}Retry</button>
         <div class="rv-more btn-row"><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="whyPlan">${U.icon('layers', 'sm')}Why this plan</button></div></div>`;
-      case 'custom': return noteBody('list', 'You\'re following your own plan', 'The review checks the coach\'s plan. Go back to it under Your plans to have it checked.', U.act.openPlans ? `<button type="button" class="rf-btn ob-wide" data-variant="soft" data-size="lg" data-act="reviewPlans">${U.icon('list')}Your plans</button>` : '');
+      // Their own plan: the coach can rework it (Improve, src/ui/customplan.js) rather than check it.
+      case 'custom': return noteBody('list', 'You\'re following your own plan', 'The review checks the coach\'s plan. Your own can be improved instead: the coach reworks it from your data and shows you what it would change.', `${U.act.cpImprove && GH.customPlan && GH.customPlan.activeId(U.S) ? `<button type="button" class="rf-btn ob-wide" data-variant="filled" data-size="lg" data-act="reviewImprove">${U.icon('sparkle')}Improve my plan</button>` : ''}${U.act.openPlans ? `<button type="button" class="rf-btn ob-wide" data-variant="soft" data-size="lg" data-act="reviewPlans">${U.icon('list')}Your plans</button>` : ''}`);
       case 'off': return noteBody('info', 'Workouts are off', 'Turn workouts on in Settings, under What you track, to get a plan to check.');
       case 'result': return resultBody(st);
       default: return `<div class="sheet-pad rv rv-wait" data-key="start"><span class="rf-spinner" data-size="sm"><i></i></span><p class="t-callout rf-muted">Getting the coach ready…</p></div>`;
@@ -324,6 +325,7 @@
     if (rv && rv.step === 'none') start(rv, 'claude');
   };
   U.act.reviewPlans = () => { U.closeSheets(); if (U.act.openPlans) setTimeout(() => U.act.openPlans(), 320); };
+  U.act.reviewImprove = () => { const id = GH.customPlan && GH.customPlan.activeId(U.S); U.closeSheets(); if (id && U.act.cpImprove) setTimeout(() => U.act.cpImprove({ dataset: { arg: id } }), 320); };
   U.on.reviewPick = (el, ev, v) => {
     if (!rv || !rv.review) return;
     const id = el.getAttribute('data-k');

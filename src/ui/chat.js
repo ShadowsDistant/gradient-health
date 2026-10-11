@@ -62,7 +62,7 @@
   function pill(S) {
     const e = engineOf(S);
     let name = 'Claude', sub = '', on = false;
-    if (e === 'api') { sub = (S.ai.model && S.ai.model.name) || ''; on = !!(AI() && AI().hasKey() && S.ai.consentAt); } else {
+    if (e === 'api') { sub = GH.spend ? `${GH.spend.model(S).short} · ${GH.spend.LEVEL_NAMES[GH.spend.level(S)]}` : ''; on = !!(AI() && AI().hasKey() && S.ai.consentAt); } else {
       const d = U.deviceState ? U.deviceState() : null;
       name = 'On this phone';
       const id = d && d.installed.length && GH.deviceCoach ? GH.deviceCoach.pick(S, d.installed) : null;
@@ -96,13 +96,16 @@
   const userMsg = (text) => `<div class="msg me"><div class="bubble me">${U.esc(text)}</div></div>`;
   function coachMsg(m, i) {
     if (m.flagged) return `<div class="msg coach">${AVATAR}<div class="msg-main"><div class="bubble coach is-flagged">You reported this answer, so it's hidden.</div></div></div>`;
-    const tools = m.safety ? '' : `<div class="msg-tools">${tool('copyAnswer', i, 'copy', 'Copy')}${m.facts && m.facts.length ? tool('answerFacts', i, 'info', 'What it used') : ''}${flagBtn(i)}</div>`;
+    // A Claude answer says which model wrote it and what it cost.
+    const sp = GH.spend;
+    const meta = m.cost != null && sp ? `<span class="msg-meta t-caption rf-num">${U.esc(`${sp.byId(m.model) ? sp.byId(m.model).short : 'Claude'} · ${sp.money(m.cost)}`)}</span>` : '';
+    const tools = m.safety ? '' : `<div class="msg-tools">${tool('copyAnswer', i, 'copy', 'Copy')}${m.facts && m.facts.length ? tool('answerFacts', i, 'info', 'What it used') : ''}${flagBtn(i)}${meta}</div>`;
     const note = m.note ? `<p class="t-footnote rf-muted msg-note">${U.esc(m.note)}</p>` : '';
     return `<div class="msg coach">${AVATAR}<div class="msg-main"><div class="bubble coach${m.stopped ? ' is-stopped' : ''}">${fmt(m.text)}</div>${note}${tools}</div></div>`;
   }
   const STATUS = { loading: 'Starting the model', thinking: 'Thinking', reading: 'Reading your numbers', writing: 'Writing' };
   function liveInner(l) {
-    if (l.error) return `<div class="bubble coach is-error">${U.esc(l.error)}</div><div class="msg-tools">${tool('askRetry', 0, 'refresh', 'Try again')}</div>`;
+    if (l.error) return `<div class="bubble coach is-error">${U.esc(l.error)}</div><div class="msg-tools">${l.budget ? tool('claudePage', 0, 'card', 'Limits') : tool('askRetry', 0, 'refresh', 'Try again')}</div>`;
     if (l.text) return `<div class="bubble coach${l.done ? '' : ' is-writing'}">${fmt(l.text)}${l.done ? '' : '<span class="caret" aria-hidden="true"></span>'}</div>${l.done && l.note ? `<p class="t-footnote rf-muted msg-note">${U.esc(l.note)}</p>` : ''}`;
     if (l.done) return `<div class="bubble coach is-stopped">${U.esc(l.note || 'Stopped.')}</div>`;
     const f = l.fraction;
@@ -278,6 +281,7 @@
     const row = (v, icon, tone, title, sub) => `<li><button type="button" class="rf-list-row chat-engine-row" data-act="setChatEngine" data-arg="${v}" aria-pressed="${e === v}"><span class="rf-list-icon" data-tone="${tone}">${U.icon(icon)}</span><span class="rf-list-text"><span class="rf-list-title">${title}</span><span class="rf-list-sub">${sub}</span></span>${e === v ? `<span class="chat-engine-on">${U.icon('check')}</span>` : ''}</button></li>`;
     return `<div class="sheet-pad">
       <ul class="rf-list">${row('device', 'chip', 'violet', 'On this phone', 'Private and works offline')}${row('api', 'sparkle', 'indigo', 'Claude', 'Sharper answers, with your own API key')}</ul>
+      ${e === 'api' && GH.spend && AI() && AI().hasKey() ? `<ul class="rf-list">${U.row({ key: 'claude-model', icon: 'lightbulb', tone: 'amber', title: 'Model and thinking', detail: U.esc(`${GH.spend.model(S).short} · ${GH.spend.LEVEL_NAMES[GH.spend.level(S)]}`), act: 'claudeModel', chevron: true })}${U.row({ key: 'claude-spend', icon: 'card', tone: 'teal', title: 'Spending and usage', detail: U.esc(GH.spend.todayLine(S, U.today())), act: 'claudePage', chevron: true })}</ul>` : ''}
       ${e === 'device' && U.modelRows ? `<p class="sec-title">Model</p><ul class="rf-list">${U.modelRows(S, { compact: true })}</ul><p class="t-footnote rf-muted">Bigger sizes write better answers but take longer to start. Settings has a self-test that shows how fast each runs here.</p>` : ''}
     </div>`;
   }
@@ -413,6 +417,7 @@
       if (!mine()) return;
       if (live.text) { live.note = 'Stopped.'; finish(false); return; }
       live.error = err.message || 'Something went wrong.';
+      live.budget = !!(AI() && AI().isBudget(err.code));
       finish(false);
     }
   };
@@ -465,7 +470,7 @@
     if (!m) return;
     const e = engineOf(S);
     const q = log[i - 1] && log[i - 1].role === 'user' ? log[i - 1].text : '';
-    U.flagSheet({ kind: 'chat answer', what: 'answer', engine: e === 'api' ? 'Claude' : 'the on-device model', model: e === 'api' ? S.ai.model && S.ai.model.name : m.model || (GH.llm && GH.llm.loaded() ? GH.llm.loaded().id : S.ai.deviceModel), text: q ? `Q: ${q}\nA: ${m.text}` : m.text, onHide: () => { m.flagged = true; refreshChat(); } });
+    U.flagSheet({ kind: 'chat answer', what: 'answer', engine: e === 'api' ? 'Claude' : 'the on-device model', model: e === 'api' ? (m.model && GH.spend && GH.spend.byId(m.model) ? GH.spend.byId(m.model).name : AI().modelName(S)) : m.model || (GH.llm && GH.llm.loaded() ? GH.llm.loaded().id : S.ai.deviceModel), text: q ? `Q: ${q}\nA: ${m.text}` : m.text, onHide: () => { m.flagged = true; refreshChat(); } });
   };
   U.act.flagReport = () => {
     const S = U.S;

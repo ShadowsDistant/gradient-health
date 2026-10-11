@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/icon-512.png" width="96" alt="The Gradient Health icon: a glass heart"></p>
+<p align="center"><img src="docs/icon-512.png" width="96" alt="The Gradient Health icon: a white heart with a pulse line on a blue, green and amber gradient"></p>
 
 <h1 align="center">Gradient Health</h1>
 
@@ -35,7 +35,7 @@ Gradient Health plans a workout for each day of your week around your goals, the
 | **[Food](#food)** | Calories and macros, or just protein, or nothing |
 | **[Health](#health)** | Sleep, steps, heart rate, weight and more at a glance, with the history behind each number |
 | **[Progress](#progress)** | A body map of what you've trained and what's improved |
-| **[Badges](#badges)** | 64 to earn and open, from your first workout to a 100-day streak, to share with friends and family |
+| **[Badges](#badges)** | 64 3D medals to earn, open and spin, from your first workout to a 100-day streak, to share with friends and family |
 | **[Reminders](#reminders)** | A nudge on workout days, a walk on rest days and good news after a great night's sleep, never more than one a day |
 | **[You](#you)** | Your profile, badges, plans and Settings in one place |
 | **[The coach](#the-coach)** | Ask it anything about your numbers, and tailor your plan by just saying what you want |
@@ -199,9 +199,13 @@ A body map, front and back, lights up the muscles you've trained most over the l
 
 64 badges for the things worth celebrating: your first workout, streaks from 3 days to 100, every muscle trained in a week, your first pull-up, a 5K, a month of protein goals, and a few secret ones. Once earned they're yours for good, with the date.
 
-**Every new badge arrives sealed,** a glass capsule in its tier's colours, so you can see how rare it is before you know what it is. Tap it and it wobbles, tap again and light cracks through, and the third tap bursts it open, with a feel in your hand at each one. Earned a few at once? Open them one by one, or all together.
+**Every badge is a 3D medal:** bronze, silver, gold or platinum, with an enamel face, a beaded rim from silver up, and its name and the day you earned it engraved on the back. Spin one with your finger and it settles on its face or its back; tilt your phone and the light moves across it. The ones you haven't earned yet are blank medals with how far along you are.
 
-Share one as a picture with friends and family: it shows the badge and what it took, and your name only if you choose.
+**Every new badge arrives sealed,** a glass capsule in its tier's colours, so you can see how rare it is before you know what it is. Tap it and it wobbles, tap again and light cracks through, and the third tap bursts it open and the medal spins out, with a feel in your hand at each one. Earned a few at once? Open them one by one, or all together.
+
+Your best medals stand on a shelf on the You tab, rarest first, and Next up shows the next step of each series (3, 7, 30 and 100 days in a row, say).
+
+Share one as a picture with friends and family: it shows the medal and what it took, and your name only if you choose.
 
 <p align="center">
   <img src="docs/screenshots/framed/badges.png" width="200" alt="Badges: the ones earned so far, with their tiers, what's next and five waiting to be opened">
@@ -211,7 +215,7 @@ Share one as a picture with friends and family: it shows the badge and what it t
 
 ## Reminders
 
-Gradient Health can nudge you, never nag you. Turn reminders on in Settings (or when the app asks after your first workout), and pick what you want to hear about:
+Gradient Health can nudge you, never nag you. Reminders are on once you finish setting up (Android asks you first), and you pick what you want to hear about in Settings:
 
 - **Workout days:** what's on today, a little before you usually train. Nothing on rest days, and nothing once you've done it.
 - **Walks and runs:** on a rest day, now and then, a walk, or a run if that's your thing.
@@ -245,7 +249,11 @@ Your profile, your badges, your plans, your set-up answers and Settings live in 
 
 **Tailor your plan by saying what you want.** "More legs, my knees hurt, 20 minutes", or "train my calves more". The coach shows you the changes first (legs trained more often, easy on the knees, shorter workouts) and nothing changes until you apply it. Undo is always there.
 
-**Or use Claude.** Add your own Anthropic API key and Claude answers in the app, writes your weekly report and reads your Tailor requests. Or tap Ask in the Claude app and your question plus a summary of your data (no name, no dates) opens there.
+**Or use Claude.** Add your own Anthropic API key and Claude answers in the app, writes your weekly report, builds plans with you, checks your plan and improves plans of your own. Or tap Ask in the Claude app and your question plus a summary of your data (no name, no dates) opens there.
+
+- **You pick the model and how much it thinks:** Fable 5.1, Opus 5.5, Sonnet 5.5 or Haiku 5.5 (or an older one), from no thinking up to Max, with about what a question costs next to each.
+- **Spending limits that hold.** Set a monthly budget and each day gets an equal share of what's left, so it lasts the month; add a daily limit or a most per request if you like. A request that could go over a limit isn't sent, and Claude's page shows what each day, feature and model cost.
+- **Leaner requests.** Each feature sends only the part of your summary it needs, and a conversation is cached between questions, so answers cost less.
 
 <p align="center">
   <img src="docs/screenshots/framed/chat.png" width="200" alt="The coach chat: questions worth asking today">
@@ -272,7 +280,8 @@ Small models can slip, so the app checks every answer against your own numbers, 
 - **Smooth scrolling,** with the glass on or off: pick Auto, Liquid, Frosted or Flat in Settings, under Look. Pages don't zoom by accident; maps do, with two fingers.
 - **Haptics with 59 distinct feels** (a tick for each tab, a bump at the end of a stepper, a sheet swiped away, saving, sending, a timer counting down, a finished set, a new best, each tap that cracks a badge open, every split of a run) in Light, Medium or Strong, and you can feel each one in Settings.
 - **Changed your mind?** Cancelling a workout folds the player away and Today settles back; a discarded activity folds away too.
-- **3D figures appear right away,** with a picture of the move until it starts.
+- **3D figures appear right away,** with a picture of the move until it starts, and Plan's pictures of them are there at once, even after an update.
+- **Messages come up from the bottom,** above whatever buttons are there, and a swipe down clears one. Dropdowns fold open and shut.
 - **For everyone:** light and dark themes, bigger text, reduced motion and increased contrast are all respected.
 
 ## Built on research, and honest about it

@@ -447,6 +447,23 @@
   }
   const DEFS = LIST.map(([id, cat, tier, title, how, glyph, ev, extra]) => Object.freeze(Object.assign({ id, cat, tier, title, how, glyph, ev, shape: CAT[cat].shape, secret: false }, extra || {})));
   const byId = Object.fromEntries(DEFS.map((d) => [d.id, d]));
+  // Badges that lead on to one another, the same thing counted further, lowest first: what "Next up"
+  // shows is the next of each, and a badge's sheet shows where it sits in its series.
+  const SERIES = [
+    ['first', 'w10', 'w25', 'w50', 'w100', 'w250'],
+    ['streak3', 'streak7', 'streak30', 'streak100'],
+    ['weeks4', 'weeks12', 'weeks26'],
+    ['sets500', 'sets2000'],
+    ['hours10', 'hours50'],
+    ['levelup', 'levelup10', 'levelup25'],
+    ['pr', 'pr25', 'pr100'],
+    ['allGroups', 'allGroups4'],
+    ['run5k', 'run10k', 'halfMarathon'],
+    ['steps10k', 'stepsWeek'],
+    ['protein7', 'protein30'],
+    ['foodLog7', 'foodLog30'],
+  ];
+  const seriesOf = (id) => SERIES.find((s) => s.includes(id)) || null;
   // Whether a badge is offered at all right now (earned ones always show).
   function applies(def, x) {
     if (def.applies) return !!def.applies(x);
@@ -627,7 +644,7 @@
     };
   }
 
-  GH.achievements = { DEFS, CATS, CAT, TIERS, TIER_ORDER, EVENTS, byId, ctx, evaluate, check, event, migrate, migrateOpened, ensure, unseen, markSeen, unopened, markOpened, summary, toGo, stamps, applies };
+  GH.achievements = { DEFS, CATS, CAT, TIERS, TIER_ORDER, EVENTS, SERIES, byId, seriesOf, ctx, evaluate, check, event, migrate, migrateOpened, ensure, unseen, markSeen, unopened, markOpened, summary, toGo, stamps, applies };
   // store.migrate runs these on every load (src/store.js), after the plan engine's own. A launch runs
   // this one once its first frame is drawn (later): nothing on that frame reads the badges, and the
   // first check of them comes 800 ms after a change at the soonest (src/ui/badges.js).

@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 import { transform } from 'esbuild';
 import { root, check, section, done } from './lib.mjs';
-import { APP_SCRIPTS, APP_CHUNKS, LAZY, asciiRegexps } from '../scripts/build.mjs';
+import { APP_SCRIPTS, APP_CHUNKS, LAZY, asciiRegexps, figureId } from '../scripts/build.mjs';
 
 // The page was 2,551,794 bytes before 1.6.0. The target was 1.6 MB; minifying and moving the
 // Anthropic SDK to its own chunk brought it to 1,645,383 bytes (inline JS is most of it, and
@@ -25,8 +25,12 @@ import { APP_SCRIPTS, APP_CHUNKS, LAZY, asciiRegexps } from '../scripts/build.mj
 // the phone (src/ui/stills.js, about 5 KB), notifications' page part (about 10 KB: the hand-off to
 // Android, Settings' rows and Today's card; the planner is a chunk of its own) and sealed badges (about
 // 20 KB: the capsule, opening it in the reveal, and its CSS), which bring it to 2,015,732 bytes; the
-// budget is that plus 1%, enough to catch an asset inlined by mistake.
-const BUDGET = 2036000;
+// budget was that plus 1% (2,036,000). 1.10 adds Claude's model, thinking level and spending limits
+// (src/spend.js, about 6 KB; Claude's page and its sheets are a chunk of their own), Improve for a
+// plan of your own (about 5 KB), the 3D medals' page part (about 8 KB: the shelf, series and medal
+// slots; the medals themselves are in the 3D chunk), toasts at the bottom and the quicker motion
+// (about 6 KB) and its What's new, and ships at 2,060,195 bytes; the budget is that plus 1%.
+const BUDGET = 2081000;
 
 const file = join(root, 'dist/gradient-health.html');
 if (!existsSync(file)) { console.error('No dist/gradient-health.html: run npm run build first.'); process.exit(1); }
@@ -142,6 +146,28 @@ check('the stand-ins for them are in the page (src/ui/lazy.js)', scripts.some((s
   }
   const none = [...named].filter(([a]) => !defined.has(a)).map(([a, p]) => `${a} (${p})`);
   check(`every action the page's buttons name is there at launch (${named.size} actions)`, named.size > 100 && none.length === 0, none);
+}
+
+section('The 3D figure\'s id');
+// GH.FIGURE (figureId in scripts/build.mjs): the 3D stills kept on the phone are drawn again when it
+// changes, so it changes with the code that draws the figure, and not with a comment, a function of
+// its own nothing calls, or a module bundled into the same chunk (the medals); the moves' data isn't
+// in it (each still is kept under what its own move is drawn from, src/ui/stills.js).
+{
+  const id = await figureId();
+  const shipped = (html.match(/window\.GH\.FIGURE = "([0-9a-f]+)"/) || [])[1];
+  check('the page carries it', shipped === id, { shipped, id });
+  const src = (p) => readFileSync(join(root, p), 'utf8');
+  const changed = (file, fn) => figureId((p) => (p === file ? fn(src(p)) : src(p)));
+  check('a comment in the figure or the pose engine leaves it as it is', await changed('src/engine/figure3d.js', (s) => `${s}\n// A note.\n`) === id && await changed('src/engine/pose.js', (s) => `/* A note. */\n${s}`) === id);
+  check('so does a function of the figure\'s that nothing calls (another module in its chunk may)', await changed('src/engine/figure3d.js', (s) => `${s}\nexport function medalLight() { return 42; }\n`) === id);
+  check('a change to how it draws changes it', await changed('src/engine/figure3d.js', (s) => s.replace("sand: '#d9a982'", "sand: '#d9a983'")) !== id && await changed('src/engine/pose.js', (s) => s.replace('torso: 50,', 'torso: 51,')) !== id);
+  const fig = LAZY.find((c) => c.name === 'figure3d'), entry = fig.entry;
+  fig.entry = 'src/engine/medals.js'; // (a chunk of the figure and the medals: never built here)
+  const other = await figureId();
+  fig.entry = entry;
+  check('the 3D chunk bundling another module with the figure leaves it as it is', other === id, other);
+  check('so does a move\'s cue reworded', await changed('src/data/moves.js', (s) => s.replace("'Elbows pinned to your sides.'", "'Keep your elbows in.'")) === id);
 }
 
 section('Refract, as vendored');

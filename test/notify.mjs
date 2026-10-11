@@ -2,8 +2,9 @@
 // hours, workout reminders only on workout days and none once it's done or while one's in progress,
 // walks and runs on rest days twice a week at most, badges, the sleep question and what goes instead,
 // the back-off (nothing everyday after 2 days, a note on day 3, then weekly to day 45, then nothing),
-// kinds switched off, notifications off, the reminder time from history and from Settings, and the
-// words (short, plain, no em dashes).
+// kinds switched off, notifications off, on from set-up for someone new (kept through a launch) and
+// off for a state from before, the reminder time from history and from Settings, and the words
+// (short, plain, no em dashes).
 // Usage: node test/notify.mjs (any time zone: TZ=America/New_York node test/notify.mjs)
 import { load, check, section, done } from './lib.mjs';
 
@@ -85,7 +86,7 @@ section('Off');
   for (const k of N.KINDS) U.profile.prefs.notify[k] = false;
   check('every kind off: nothing', N.plan(U, at(MON, 10)).length === 0);
   const def = B.defaultProfile().prefs.notify;
-  check('off by default, every kind on once they\'re on, the time worked out', def.on === false && N.KINDS.every((k) => def[k] === true) && def.time === null, def);
+  check('off in a state made without set-up (set-up turns them on for someone new), every kind on once they\'re on, the time worked out', def.on === false && N.KINDS.every((k) => def[k] === true) && def.time === null, def);
 }
 
 /* ------------------------------------------------------------------ a week */
@@ -280,11 +281,17 @@ section('Kinds switched off, and the reminder time');
   check('usually starts at 7 am: reminders at 8 (not before)', N.reminderTime(early, now0).min === 8 * 60);
   const late = person({ hour: 21 });
   check('usually starts at 9 pm: reminders at 8 pm (not later)', N.reminderTime(late, now0).min === 20 * 60);
+  // Someone just set up: set-up turns them on as it ends, once Android allows them
+  // (src/ui/onboarding.js, src/ui/notify.js).
   const fresh = B.newState(USER, { pushups: 18, plankSec: 55, curlL: 12, curlR: 15 }, MON);
   fresh.profile.prefs.notify.on = true;
   check('no workouts yet: 6 pm', N.reminderTime(fresh, now0).min === 18 * 60 && N.reminderTime(fresh, now0).how === 'default');
   const first = rules(N.plan(fresh, now0), now0, 'a new plan');
   check('and the first one says so', first.find((x) => x.id === `workout:${MON}`).body === 'Your first workout, ready when you are.', first[0]);
+  check('from the day they set up: a reminder a day for their first days, then the notes after a few days away', first.length >= 8 && dayOf(first[0].at) === MON && first.some((x) => x.kind === 'comeback'), list(first));
+  const relaunched = JSON.parse(JSON.stringify(fresh));
+  GH.store.migrate(relaunched);
+  check('on from set-up stays on through a save and a launch', relaunched.profile.prefs.notify.on === true && N.plan(relaunched, now0).length === first.length, relaunched.profile.prefs.notify);
   // A setting from a crafted backup is put right by store.sanitize.
   const bad = JSON.parse(JSON.stringify(person()));
   Object.assign(bad.profile.prefs.notify, { on: 'yes', workout: 1, time: 3 });
@@ -293,7 +300,7 @@ section('Kinds switched off, and the reminder time');
   const old = JSON.parse(JSON.stringify(person()));
   delete old.profile.prefs.notify;
   GH.store.migrate(old);
-  check('an older state gets the settings, off', old.profile.prefs.notify && old.profile.prefs.notify.on === false && old.profile.prefs.notify.sleep === true, old.profile.prefs.notify);
+  check('an older state (set up before notifications) gets the settings, off: someone set up before keeps theirs', old.profile.prefs.notify && old.profile.prefs.notify.on === false && old.profile.prefs.notify.sleep === true, old.profile.prefs.notify);
   const part = JSON.parse(JSON.stringify(person()));
   part.profile.prefs.notify = { on: true };
   GH.store.migrate(part);

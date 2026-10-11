@@ -815,7 +815,8 @@
   /* ---------------------------------------------------------------- motion */
   U.reduced = () => !!(P() && P().reducedMotion());
   const EASE_ENTER = 'cubic-bezier(0.05, 0.7, 0.1, 1)';
-  // Cards and titles rise into place one after another (first paint, after set-up, after a workout).
+  // Cards and titles rise into place one after another (first paint, after set-up, after a workout),
+  // all of them in about 600 ms (1.9.0's took 850).
   function stagger(el) {
     if (U.reduced() || !el.animate) return;
     const items = [];
@@ -823,7 +824,7 @@
       items.push(n);
       if (items.length >= 9) break;
     }
-    items.forEach((n, i) => n.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 460, delay: 30 + i * 45, easing: EASE_ENTER, fill: 'backwards' }));
+    items.forEach((n, i) => n.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 360, delay: 20 + i * 28, easing: EASE_ENTER, fill: 'backwards' }));
   }
   U.stagger = stagger;
   // A page drawn again with a motion of its own (the same page opened again, the first paint after
@@ -833,7 +834,7 @@
     if (U.reduced() || !screen.animate || !kind) return;
     if (kind === 'stagger') { stagger(screen); return; }
     const x = { push: 36, pop: -36, right: 18, left: -18 }[kind] || 0;
-    screen.animate([{ opacity: 0, transform: `translateX(${x}px)` }, { opacity: 1, transform: 'none' }], { duration: kind === 'push' || kind === 'pop' ? 320 : 260, easing: EASE_ENTER });
+    screen.animate([{ opacity: 0, transform: `translateX(${x}px)` }, { opacity: 1, transform: 'none' }], { duration: kind === 'push' || kind === 'pop' ? 260 : 220, easing: EASE_ENTER });
   }
   // A floating button's place in the row ('side' or 'main'), as attributes: a re-render keeps its node
   // (data-key) and Refract follows it as it changes (data-rf-key), so a new label or time flows the
@@ -983,7 +984,7 @@
     // Floating buttons that go (Today's, on the way to another page) dissolve where they were, sinking
     // back into the tab bar (a copy of them: the row itself hides at once), gone with the old page on
     // a route change.
-    if (!wasHidden && !fl && M.glassOut) safe(() => M.glassOut(floatEl, { seen: floatSeen, ms: changed ? 340 : 420 }));
+    if (!wasHidden && !fl && M.glassOut) safe(() => M.glassOut(floatEl, { seen: floatSeen, ms: changed ? 280 : 340 }));
     // Buttons that stay shape-shift: a new label or time flows a button to its new width.
     if (!wasHidden && fl && !changed && M.shift) M.shift(floatEl, () => U.morph(floatEl, fl));
     else U.morph(floatEl, fl || '');
@@ -1329,9 +1330,167 @@
     else if (tone === 'critical') U.haptic('error', after);
     else if (tone === 'caution') U.haptic('warning', after);
     const r = R();
-    if (r && r.toast) { try { return r.toast({ title, message, tone: tone || 'neutral', action, position: 'top' }); } catch (e) { /* ignore */ } }
-    return null;
+    if (!r || !r.toast) return null;
+    try {
+      // Placed before it's put in: that reads where the buttons at the bottom are, in the layout the
+      // toast's own entrance makes anyway.
+      seatToaster();
+      placeToasts();
+      const t = r.toast({ title, message, tone: tone || 'neutral', action, position: 'bottom' });
+      if (t && t.el) toastIn(t.el);
+      return t;
+    } catch (e) { if (G.console) G.console.error(e); return null; }
   };
+
+  /* ---------------------------------------------------------------- toasts at the bottom */
+  // Toasts come up from the bottom of the screen. At the top they covered the bar's Back button and
+  // the page's title; down here they sit above whatever is there: the tab bar, Today's floating
+  // buttons and the workout capsule, the player's, set-up's or a live activity's buttons, or an open
+  // sheet's main buttons, so one never covers a main button (and at least clear of the system bar).
+  // How high that is (--toast-lift on the toaster) is read as a toast comes, and again while one
+  // shows whenever one of those comes or goes; the toaster glides there (src/styles.css). Refract's
+  // toaster brings them in rising from below and lets them drop away, keeps three at most, and takes
+  // a swipe down to dismiss the bottom one.
+  const TOAST_GAP = 8; // px between a toast and the buttons under it (its slot adds 4 more)
+  const TOAST_H = 64; // a toast's height with its slot, to check what it would cover
+  // A sheet's main buttons: filled, tinted or large ones.
+  const MAIN_BTN = '.gh-sheet-panel .rf-btn:is([data-variant="filled"], [data-variant="tinted"], [data-size="lg"], [data-size="xl"]), .rf-dialog-actions .rf-btn';
+  const toaster = () => doc.querySelector('.rf-toaster[data-position="bottom"]');
+  const shows = (el) => !!el && !el.hidden && el.isConnected && !el.hasAttribute('data-closing') && el.getClientRects().length > 0;
+  // Where an element is laid out on the screen, without the transforms an entrance plays on it (the
+  // player's actions rising in, a button forming).
+  function laidOut(el) {
+    let top = 0;
+    for (let n = el; n; n = n.offsetParent) top += n.offsetTop;
+    return { top, bottom: top + el.offsetHeight };
+  }
+  // The open sheet or dialog toasts go over: the topmost modal one that isn't on its way out.
+  function topModal() {
+    let list = [];
+    try { list = Array.from(doc.querySelectorAll('dialog:modal')); } catch (e) { list = Array.from(doc.querySelectorAll('dialog[open]')); }
+    list = list.filter((d) => !d.hasAttribute('data-closing'));
+    return list.length ? list[list.length - 1] : null;
+  }
+  // What a toast must stay clear of, as boxes on screen ({ top, bottom }).
+  function toastObstacles() {
+    const out = [];
+    const modal = topModal();
+    if (modal) {
+      // A sheet at rest (read again once it settles), so these are read as drawn.
+      for (const b of modal.querySelectorAll(MAIN_BTN)) { const r = b.getBoundingClientRect(); if (r.height && r.width) out.push({ top: r.top, bottom: r.bottom }); }
+      return out;
+    }
+    const live = doc.getElementById('actlive');
+    const over = [[playerEl, '.pl-actions > *'], [onboardEl, '.ob-actions > *'], [live, '.al-actions > *']].find(([el]) => shows(el));
+    if (over) {
+      for (const b of over[0].querySelectorAll(over[1])) if (b.offsetHeight) out.push(laidOut(b));
+      return out;
+    }
+    if (shows(floatEl)) out.push(laidOut(floatEl));
+    if (shows(accessory)) out.push(laidOut(accessory));
+    const bar = tabbar && !tabbar.hasAttribute('data-away') ? tabbar.querySelector('.rf-tabbar-bar') : null;
+    if (bar && bar.offsetHeight) out.push(laidOut(bar));
+    return out;
+  }
+  // From the bottom up: a toast at the bottom that would cover one of them goes above it, and so on
+  // up (a sheet's two buttons one over the other), but never past the middle of the screen.
+  let toastLift = 0;
+  function placeToasts() {
+    const H = G.innerHeight || doc.documentElement.clientHeight;
+    const sab = parseFloat(G.getComputedStyle(doc.documentElement).getPropertyValue('--sab')) || 0;
+    let lift = sab + TOAST_GAP;
+    const obs = toastObstacles().filter((o) => o.bottom > H / 2).sort((a, b) => b.bottom - a.bottom);
+    for (const o of obs) if (o.bottom > H - lift - TOAST_H && o.top < H - lift) lift = Math.max(lift, H - o.top + TOAST_GAP);
+    toastLift = Math.round(Math.min(lift, H / 2));
+    liftToaster(toaster());
+  }
+  // (Written only when it changes: the toaster is restyled for it.)
+  function liftToaster(t) {
+    const v = `${toastLift}px`;
+    if (t && toastLift && t.style.getPropertyValue('--toast-lift') !== v) t.style.setProperty('--toast-lift', v);
+  }
+  // Over an open sheet a toast goes in its dialog: outside the topmost modal dialog nothing takes a
+  // tap (it's inert), so a toast left on the page couldn't be tapped, and a tap on its Undo would land
+  // on the sheet under it. The toaster goes back where it was as that sheet starts to close (moving
+  // a popover closes it, so it's shown again).
+  const watchedModals = new WeakSet();
+  const isOpen = (t) => { try { return t.matches(':popover-open'); } catch (e) { return true; } };
+  function seatToaster() {
+    const t = toaster();
+    if (!t) return;
+    const modal = topModal();
+    const host = modal || doc.body;
+    if (t.parentNode === host) return;
+    const was = isOpen(t) || !!t.querySelector('.rf-toast');
+    host.appendChild(t);
+    if (was && t.showPopover && !isOpen(t)) {
+      try { t.showPopover(); } catch (e) { /* not a popover here */ }
+      // Its style as it shows now, where it was, so the move to its new place (the next read pass)
+      // glides rather than jumps.
+      void G.getComputedStyle(t).translate;
+    }
+    if (!modal || watchedModals.has(modal) || !G.MutationObserver) return;
+    watchedModals.add(modal);
+    const back = () => { const x = toaster(); if (x && x.parentNode === modal) { seatToaster(); toastsMoved(); } };
+    new G.MutationObserver(() => { if (modal.hasAttribute('data-closing') || !modal.open) back(); }).observe(modal, { attributes: true, attributeFilter: ['data-closing', 'open'] });
+    modal.addEventListener('close', back);
+  }
+  const toastsShowing = () => !!doc.querySelector('.rf-toast:not([data-leaving])');
+  // Something at the bottom came or went: placed again in the frame's read pass.
+  let placeWait = false;
+  function toastsMoved() {
+    if (placeWait || !toastsShowing()) return;
+    placeWait = true;
+    readSoon(null, () => { placeWait = false; if (toastsShowing()) { seatToaster(); placeToasts(); } });
+  }
+  // Watched from the first toast on: the parts at the bottom showing or hiding, a sheet opening or
+  // settling, the keyboard, a live activity's screen added to the page.
+  let toastWatch = null;
+  function watchToasts() {
+    if (toastWatch || !G.MutationObserver) return;
+    toastWatch = new G.MutationObserver(() => toastsMoved());
+    const attrs = { attributes: true, attributeFilter: ['hidden', 'data-away', 'data-closing'] };
+    for (const el of [floatEl, tabbar, accessory, playerEl, onboardEl, doc.getElementById('actlive')]) if (el) toastWatch.observe(el, attrs);
+    toastWatch.observe(doc.documentElement, { attributes: true, attributeFilter: ['data-sheet-open', 'data-keyboard'] });
+    if (root) {
+      new G.MutationObserver((list) => {
+        for (const m of list) for (const n of m.addedNodes) if (n.id === 'actlive') { toastWatch.observe(n, attrs); toastsMoved(); }
+      }).observe(root, { childList: true });
+    }
+    doc.addEventListener('gh-sheet-moving', (e) => { if (!(e.detail && e.detail.moving)) toastsMoved(); });
+    G.addEventListener('resize', toastsMoved);
+  }
+  // A toast's motion is Refract's: it rises in on a spring with its words and buttons after it (about
+  // a second), and drops away, its slot closing up after it (about 0.6 s). Both play 1.6 times as fast,
+  // the same curves; its countdown runs for as long as it should. Reduced motion: Refract's short fades.
+  const TOAST_RATE = 1.6;
+  const quicken = (list) => { if (!U.reduced()) for (const a of list) if (a.id !== 'rf-countdown') a.playbackRate = TOAST_RATE; };
+  const toasterWatched = new WeakSet();
+  function toastIn(el) {
+    watchToasts();
+    const t = el.closest('.rf-toaster');
+    if (t && !toasterWatched.has(t) && G.MutationObserver) {
+      toasterWatched.add(t);
+      // Its exit starts as Refract marks it leaving, and its slot's as Refract sets the slot's height.
+      new G.MutationObserver((list) => {
+        for (const m of list) {
+          const n = m.target;
+          if (!n.getAnimations) continue;
+          if (m.attributeName === 'data-leaving' && n.hasAttribute('data-leaving')) quicken(n.getAnimations({ subtree: true }));
+          else if (m.attributeName === 'style' && n.classList.contains('rf-toast-slot') && n.style.height) quicken(n.getAnimations());
+        }
+      }).observe(t, { subtree: true, attributes: true, attributeFilter: ['data-leaving', 'style'] });
+    }
+    if (el.getAnimations) {
+      quicken(el.getAnimations({ subtree: true }));
+      if (el.parentElement && el.parentElement.classList.contains('rf-toast-slot')) quicken(el.parentElement.getAnimations());
+      // (The squash as it lands starts a moment later.)
+      setTimeout(() => { if (el.isConnected && !el.hasAttribute('data-leaving')) quicken(el.getAnimations({ subtree: true })); }, 340);
+    }
+    // The first toast made the toaster: it gets its place now, before its first frame.
+    liftToaster(t);
+    seatToaster();
+  }
 
   /* ---------------------------------------------------------------- persistence */
   // Every saved change also fires 'gh-change' on the document, for anything that follows the state
@@ -1488,13 +1647,24 @@
    * Otherwise it starts loading the first time a figure is about to show: a press on Start or on a
    * move. Set-up warms it for its own reveal (src/ui/onboarding.js).
    * With the 3D figure picked, the stills kept on the phone (src/ui/stills.js) are read in once the
-   * first frame is drawn, so Plan's first frame has them. About 3 s after launch, once it's quiet,
-   * the ones Plan's cards would show this week and next (U.planStills) that aren't kept yet are drawn
-   * ahead, the figure warming up for them, so Plan has them from its first frame even on the first
-   * day; when they're all kept, nothing loads for them. */
+   * first frame is drawn, so Plan's first frame has them. Once launch has settled (its first idle
+   * moment that comes by itself), in a calm one, the ones Plan's cards would show this week and next
+   * (U.planStills) that aren't kept yet are drawn ahead, the figure warming up for them at once (a
+   * fresh install, an update that draws the figure differently, a new move in the plan), so Plan has
+   * them, or soon will, when it's opened; when they're all kept, nothing loads for them. A press on
+   * the Plan tab warms the figure up too if one is still missing. */
   const FIGURE_ACTS = ['startWorkout', 'planStart', 'resumeWorkout', 'startMobility', 'moveInfo', 'planMoveInfo', 'cpHowTo', 'ladder'].map((a) => `[data-act="${a}"]`).join(',');
-  const STILLS_AHEAD_MS = 3000;
+  const PLAN_TAB = '#tabbar .rf-tab[data-tab="plan"]';
   const idle = (fn, ms) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: ms }) : setTimeout(fn, 1));
+  // fn in the first idle moment that comes by itself (not one a timeout forced), or after ms at the
+  // latest. Right after launch, or a tap on Plan, the page's own work goes on and the GPU is still
+  // drawing the page; a WebGL context made then (the check for WebGL 2, the 3D warm-up's) waits for
+  // all of that, holding the page's thread (2 to 4 s each in a software-GL test).
+  function settled(fn, ms) {
+    const t0 = Date.now();
+    const look = () => idle((d) => (d && d.didTimeout && Date.now() - t0 < ms ? look() : fn()), 1000);
+    look();
+  }
   function warmFigure() { safe(() => { const w = U.warmFigure || U.preloadFigure; if (w) w(); }); }
   function warmFigureLater() {
     const onDown = (e) => {
@@ -1503,6 +1673,7 @@
       warmFigure();
     };
     doc.addEventListener('pointerdown', onDown, true);
+    doc.addEventListener('pointerdown', (e) => { if (U.stills && e.target.closest && e.target.closest(PLAN_TAB)) settled(() => safe(() => U.stills.prime()), 2000); }, { capture: true, passive: true });
     const wanted = () => {
       const S = U.S, nav = G.navigator || {};
       return !!(S && S.profile.onboarded && S.profile.workouts !== false && nav.deviceMemory >= 3 && B().todayPlan(S, U.today()).type === 'workout');
@@ -1521,13 +1692,18 @@
     U.stillsAhead();
   }
   // (Also after set-up, src/ui/stills.js: the first day starts there.)
-  U.stillsAhead = () => setTimeout(() => idle(stillsAhead, 4000), STILLS_AHEAD_MS);
+  U.stillsAhead = () => afterFrame(() => settled(() => safe(stillsAhead), 6000));
   function stillsAhead() {
     const S = U.S, nav = G.navigator || {};
     if (!S || !S.profile.onboarded || S.profile.workouts === false || nav.deviceMemory < 3 || !U.stills || !U.planStills || !U.stills.ok()) return;
     if (doc.hidden) { doc.addEventListener('visibilitychange', stillsAhead, { once: true }); return; }
-    if (!U.quiet()) { U.whenQuiet(() => idle(stillsAhead, 4000)); return; }
-    U.stills.load().then(() => { if (U.S === S) safe(() => U.stills.ahead(U.planStills(S, U.today()))); });
+    if (!U.calm()) { U.whenCalm(() => idle(stillsAhead, 1000)); return; }
+    U.stills.load().then((n) => {
+      // None kept under this figure's id (a fresh install, an update that draws it differently): the
+      // figure starts warming up at once, before the week's stills are worked out.
+      if (!n) safe(() => U.stills.prime());
+      idle(() => { if (U.S === S) safe(() => U.stills.ahead(U.planStills(S, U.today()))); }, 1000);
+    });
   }
 
   let lastDay = null;

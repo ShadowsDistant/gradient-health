@@ -319,11 +319,14 @@
       const mine = cp.activeId(S) ? cp.get(S, cp.activeId(S)) : null;
       rows.push(U.row({ icon: 'list', tone: 'violet', title: 'Your plans', sub: U.esc(mine ? `Using ${mine.name}` : 'Build your own, ask the coach, or add a shared one'), act: 'openPlans', chevron: true }));
     }
+    // With Claude on, building a plan with it is one tap from here (it's also under Your plans).
+    const claude = S.ai && S.ai.mode === 'api' && S.ai.consentAt && GH.ai && GH.ai.hasKey && GH.ai.hasKey();
+    if (claude && U.act.cpBuild) rows.push(U.row({ key: 'build', icon: 'wand', tone: 'indigo', title: 'Build me a plan with Claude', sub: 'Say what you want; Claude builds it around your data', act: 'cpBuild', chevron: true }));
     if (U.act.tailorPlan) rows.push(U.row({ icon: 'sparkle', tone: 'violet', title: 'Tailor my plan', sub: 'Tell the coach what you want more or less of', act: 'tailorPlan', chevron: true }));
     // The AI plan review, once it's in the app (src/planreview.js), and the planner's own account of
     // the plan, which needs no AI (src/ui/review.js).
     if (GH.planReview && U.act.whyPlan) rows.push(U.row({ icon: 'layers', tone: 'sky', title: 'Why this plan', sub: 'What the planner compared and why it picked this week', act: 'whyPlan', chevron: true }));
-    if (GH.planReview && U.act.reviewPlan) rows.push(U.row({ icon: 'check-circle', tone: 'teal', title: 'Check my plan with AI', sub: 'The coach looks it over and suggests changes for you to approve', act: 'reviewPlan', chevron: true }));
+    if (GH.planReview && U.act.reviewPlan) rows.push(U.row({ icon: 'check-circle', tone: 'teal', title: claude ? 'Check my plan with Claude' : 'Check my plan with AI', sub: `${claude ? 'Claude looks it over' : 'The coach looks it over'} and suggests changes for you to approve`, act: 'reviewPlan', chevron: true }));
     if (U.act.planAround) rows.push(U.row({ icon: 'heart', tone: 'rose', title: 'Built around you', sub: U.esc((GH.access && GH.access.plannedAround(p)) || 'Age, joints and health'), act: 'planAround', chevron: true }));
     if (U.editAnswers) rows.push(U.row({ icon: 'bag', tone: 'amber', title: 'Equipment', sub: U.equipSummary ? U.esc(U.equipSummary(p)) : '', act: 'planEquipment', chevron: true }));
     return `<h2 class="sec-title t-title-3">Make it yours</h2>
@@ -521,14 +524,15 @@
     if (e.kind === 'light') return (B().mobilityFlow ? B().mobilityFlow(S) : []).map((m) => m.moveId);
     return [];
   }
-  // The stills Plan's cards show, this week and next, today's first ([{ m, o }]): drawn ahead after
-  // launch (core.js) and kept, so Plan has them from its first frame.
+  // The stills Plan's cards show, this week and next ([{ m, o, day }]): today's first, then the rest
+  // of this week (a tap away), then next week's. Drawn ahead after launch (core.js) and kept, so Plan
+  // has them from its first frame.
   U.planStills = (S, day) => {
     const w = week(S, day), o = U.stills.look(THUMB), out = [];
-    const days = w.days.concat(w.next.days).filter((e) => e.day >= day).concat(w.days.filter((e) => e.day < day));
+    const days = w.days.filter((e) => e.day >= day).concat(w.days.filter((e) => e.day < day), w.next.days);
     for (const e of days) {
       const eq = eqOf(S, e.day);
-      for (const id of cardMoves(S, e)) { const m = personMove(id, eq); if (m) out.push({ m, o }); }
+      for (const id of cardMoves(S, e)) { const m = personMove(id, eq); if (m) out.push({ m, o, day: e.day }); }
     }
     return out;
   };

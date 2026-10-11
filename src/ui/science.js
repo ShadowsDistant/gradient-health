@@ -82,7 +82,7 @@
         <section class="sci-block"><h3 class="sci-label">What the app does</h3><p class="t-body">${U.esc(r.does)}</p></section>
         <section class="sci-block"><h3 class="sci-label">Why</h3><p class="t-body">${U.esc(r.why)}</p></section>
         ${r.caveat ? `<p class="sci-caveat t-footnote">${U.icon('info', 'sm')}<span>${U.esc(r.caveat)}</span></p>` : ''}
-        ${refs.length ? `<details class="sci-studies">
+        ${refs.length ? `<details class="sci-studies gh-drop">
           <summary><span class="sci-label">The research</span><span class="t-footnote rf-muted">${U.plural(refs.length, 'source')}</span>${U.icon('chevron-down', 'sm', 'sci-chev')}</summary>
           <ul class="sci-refs">${refs.map((x) => `<li><button type="button" class="sci-ref" data-act="openRef" data-arg="${U.esc(sc.refUrl(x))}"><b class="t-footnote">${U.esc(x.cite)}</b><span class="t-caption">${U.esc(x.title)}</span><span class="t-caption rf-muted">${U.esc(x.journal)}</span></button></li>`).join('')}</ul>
         </details>` : ''}

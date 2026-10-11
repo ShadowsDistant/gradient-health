@@ -82,11 +82,18 @@ button:not([class*="rf-"]) { font: inherit; }
 /* clip, not hidden: a hidden box can still be scrolled by script, and the glow below is wider than
    the screen, so scrollIntoView could shift the whole app sideways. */
 .app { position: fixed; inset: 0; overflow: hidden; overflow: clip; background: var(--bg); }
-:root { --glow-mint: rgb(111 227 200 / .55); --glow-sky: rgb(58 168 255 / .5); --glow-violet: rgb(155 92 255 / .42); --glow-pink: rgb(255 126 179 / .34); }
-:root[data-theme^="dark"] { --glow-mint: rgb(70 190 170 / .26); --glow-sky: rgb(60 130 255 / .5); --glow-violet: rgb(140 80 255 / .52); --glow-pink: rgb(240 100 170 / .3); }
-/* Ambient glow: the icon's colours (mint, sky, violet, pink) softly behind the top of each page, so
-   the glass bars, buttons and sheets have real colour to refract. Two layers (mint and violet, sky and
-   pink) drift slowly on their own paths, 26 and 34 seconds round, moving only a few percent: transform
+/* The icon's colours (art/logo.png): blue at its top left, mint at its top right, green at its bottom
+   right and amber at its bottom left. The app's own gradients (the avatars, the orbs, set-up's halo)
+   use them, as the glow behind each page does. */
+:root { --brand-blue: #3e95f9; --brand-mint: #34c7ae; --brand-green: #4bc985; --brand-amber: #f4a83e; }
+/* Deeper mint and green for a fill that carries white text (the initials on You), at least 3:1. */
+:root { --brand-mint-deep: #1fa08b; --brand-green-deep: #2f9e64; }
+:root { --glow-sky: rgb(62 149 249 / .5); --glow-mint: rgb(82 221 180 / .5); --glow-green: rgb(109 218 150 / .42); --glow-amber: rgb(251 183 81 / .4); }
+:root[data-theme^="dark"] { --glow-sky: rgb(55 130 245 / .5); --glow-mint: rgb(60 190 160 / .3); --glow-green: rgb(70 185 120 / .4); --glow-amber: rgb(232 150 60 / .32); }
+/* Ambient glow: the icon's colours softly behind the top of each page, where they are in the icon
+   (blue and amber on the left, mint and green on the right), so the glass bars, buttons and sheets
+   have real colour to refract. Two layers (blue and green, mint and amber) drift slowly on their own
+   paths, 26 and 34 seconds round, moving only a few percent: transform
    alone, so it's the compositor's work, never a repaint. The drift moves in steps, about four a second
    (steps(36) between each pair of keyframes), too small to see (a pixel or two) and a fifteenth of the
    frames: every frame of a drift makes each glass in front of it filter its backdrop again, and at 60 a
@@ -108,14 +115,14 @@ button:not([class*="rf-"]) { font: inherit; }
 }
 .app::before {
   background:
-    radial-gradient(34% 43% at 20% 32.5%, var(--glow-mint), color-mix(in srgb, var(--glow-mint) 44%, transparent) 38.5%, transparent 73.5%),
-    radial-gradient(33% 36% at 64% 59%, color-mix(in srgb, var(--glow-violet) 49%, transparent), color-mix(in srgb, var(--glow-violet) 44%, transparent) 19%, transparent 84%);
+    radial-gradient(34% 43% at 20% 32.5%, var(--glow-sky), color-mix(in srgb, var(--glow-sky) 44%, transparent) 38.5%, transparent 73.5%),
+    radial-gradient(33% 36% at 64% 59%, color-mix(in srgb, var(--glow-green) 49%, transparent), color-mix(in srgb, var(--glow-green) 44%, transparent) 19%, transparent 84%);
   animation: glow-drift-a 26s steps(36) infinite alternate;
 }
 .app::after {
   background:
-    radial-gradient(33% 41% at 80% 25.5%, var(--glow-sky), color-mix(in srgb, var(--glow-sky) 50%, transparent) 37%, transparent 74.5%),
-    radial-gradient(26.5% 30% at 34% 67.5%, color-mix(in srgb, var(--glow-pink) 37%, transparent), color-mix(in srgb, var(--glow-pink) 32%, transparent) 21%, transparent 82.5%);
+    radial-gradient(33% 41% at 80% 25.5%, var(--glow-mint), color-mix(in srgb, var(--glow-mint) 50%, transparent) 37%, transparent 74.5%),
+    radial-gradient(26.5% 30% at 34% 67.5%, color-mix(in srgb, var(--glow-amber) 37%, transparent), color-mix(in srgb, var(--glow-amber) 32%, transparent) 21%, transparent 82.5%);
   animation: glow-drift-b 34s steps(36) -9s infinite alternate;
 }
 [data-theme^="dark"] .app::before, [data-theme^="dark"] .app::after { opacity: .6; }
@@ -188,9 +195,18 @@ button.stat:active, .insight-line:active, .pl-fig-card:active, .tap-card:active 
 .ex-name { transition: opacity var(--duration-fast); }
 .ex-name:active { opacity: .55; transition-duration: 0ms; }
 
-/* Sheets (and the page receding behind them) are styled in styles/sheet.css. Toasts clear the
-   status bar. */
-.rf-toaster:not([data-position="bottom"]) { inset-block-start: calc(var(--space-3) + var(--sat)); }
+/* Sheets (and the page receding behind them) are styled in styles/sheet.css. Toasts come up from
+   the bottom (U.toast, src/ui/core.js), above the tab bar, the floating buttons, the player's or
+   set-up's buttons or a sheet's main ones: --toast-lift is how far up that is, and never less than the
+   system bar. When it changes while one shows (the tab bar going, a sheet opening) they glide there,
+   by transform. Reduced motion: they're just there. */
+.rf-toaster[data-position="bottom"] {
+  inset-block-end: 0;
+  translate: 0 calc(-1 * max(var(--toast-lift, 0px), calc(var(--sab) + var(--space-2))));
+  transition: translate 300ms var(--spring-snappy);
+}
+@media (prefers-reduced-motion: reduce) { .rf-toaster[data-position="bottom"] { transition: none; } }
+:root[data-rf-motion="reduced"] .rf-toaster[data-position="bottom"] { transition: none; }
 .rf-large-title { overflow-wrap: anywhere; }
 .lt-sub { margin: calc(-1 * var(--space-2)) 0 var(--space-4); padding: 0 var(--space-4); }
 .section { display: grid; gap: var(--space-3); padding: 0 var(--space-4); margin-bottom: var(--space-6); min-width: 0; }
@@ -225,7 +241,9 @@ button.stat:active, .insight-line:active, .pl-fig-card:active, .tap-card:active 
 .float-actions .btn-main { flex: 1 1 auto; max-width: 320px; }
 .float-actions:has(> .btn-main:only-child) { justify-content: center; }
 .float-actions > .btn-main:only-child { max-width: 420px; }
-.rf-tabbar[data-position="bottom"] { inset-block-end: var(--tabbar-bottom); transition: translate var(--duration-spring-smooth) var(--spring-smooth), opacity var(--duration-base) var(--ease-standard); }
+/* The tab bar slides away under a page pushed on top, and back with Back, with the page (280 ms):
+   the smooth spring over 280 ms rather than Refract's 640. */
+.rf-tabbar[data-position="bottom"] { inset-block-end: var(--tabbar-bottom); transition: translate 280ms var(--spring-smooth), opacity 200ms var(--ease-standard); }
 .rf-tabbar[data-away] { translate: 0 calc(100% + var(--tabbar-bottom)); opacity: 0; pointer-events: none; }
 .rf-tabbar-accessory[hidden] { display: none; }
 /* The tab bar's lens and its gestures: src/styles/controls.css. */
@@ -468,7 +486,8 @@ textarea.preview { border: 0; resize: vertical; }
 .streak-roll { display: inline-block; }
 
 /* ---------------------------------------------------------------- charts draw in */
-.ch-svg { animation: ch-wipe 700ms var(--ease-out-soft) both; }
+/* (500 ms: 1.9.0's 700 kept a chart half drawn while you'd already read its numbers.) */
+.ch-svg { animation: ch-wipe 500ms var(--ease-out-soft) both; }
 @keyframes ch-wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 
 /* ---------------------------------------------------------------- tips */

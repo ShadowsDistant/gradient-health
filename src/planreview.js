@@ -679,10 +679,10 @@
     if (!ctx.sessions.length) throw err('There\'s no plan to check next week.', 'empty');
     if (who === 'claude') {
       const prompt = claudeAsk(S, ctx);
-      const given = `${GH.ai.preview(S, day)}\n${prompt}`;
+      const given = `${GH.ai.systemBlocks(S, day, 'review').map((b) => b.text).join('\n\n')}\n${prompt}`;
       if (opt.onStatus) { try { opt.onStatus('asking'); } catch (e) { /* ignore */ } }
-      const raw = await GH.ai.json(S, day, prompt, schema(ctx), { effort: 'medium', maxTokens: 8000 });
-      return { raw, given, ctx, engine: 'claude', model: (S.ai.model && S.ai.model.name) || null };
+      const raw = await GH.ai.json(S, day, prompt, schema(ctx), { feature: 'review' });
+      return { raw, given, ctx, engine: 'claude', model: GH.ai.modelName(S) };
     }
     // A model with a short memory gets the shorter plan when the whole one won't fit (counted at 3
     // characters a token, as llm.js does), and should it still say the plan is too long, the shorter

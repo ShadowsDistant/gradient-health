@@ -138,7 +138,7 @@
   U.act.coachFlag = (el) => {
     const x = findSug(el.dataset.arg);
     if (!x || !U.flagSheet) return;
-    U.flagSheet({ kind: 'suggestion', what: 'suggestion', engine: 'Claude', model: U.S.ai.model && U.S.ai.model.name, text: `${x.title}\n${x.body}`, onHide: () => { C().dismiss(U.S, x.id, U.today()); U.render(); } });
+    U.flagSheet({ kind: 'suggestion', what: 'suggestion', engine: 'Claude', model: GH.ai && GH.ai.modelName(U.S), text: `${x.title}\n${x.body}`, onHide: () => { C().dismiss(U.S, x.id, U.today()); U.render(); } });
   };
   U.act.coachAskClaude = async (btn) => {
     if (!GH.ai || !GH.ai.suggest) return;
