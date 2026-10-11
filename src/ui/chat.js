@@ -47,14 +47,14 @@
   function deviceGate() {
     const d = U.deviceState ? U.deviceState() : null;
     if (!d || !d.checked) return `<div class="chat-setup"><span class="rf-spinner" data-size="sm"><i></i></span><span class="t-callout rf-muted">Checking the on-device model…</span></div>`;
-    if (!d.available.ok) return `<div class="chat-setup card"><p class="t-callout">${U.esc(d.available.reason)}</p><p class="t-footnote rf-muted">Claude still works with your own API key, and so does asking in the Claude app.</p></div>`;
-    if (!d.installed.length) return `<div class="chat-setup card"><span class="chat-setup-ico" aria-hidden="true">${U.icon('chip')}</span><p class="t-headline">Get the on-device coach</p><p class="t-callout rf-muted">A small AI model that runs on your phone. Your questions and data never leave it, and it works offline. Pick a size once; you can change it later.</p>${U.modelRows ? `<ul class="rf-list">${U.modelRows(U.S, { compact: true })}</ul>` : ''}</div>`;
+    if (!d.available.ok) return `<div class="chat-setup card"><p class="t-callout">${U.esc(d.available.reason)}</p><p class="t-footnote rf-muted">You can still use Claude with your own API key, or the Claude app.</p></div>`;
+    if (!d.installed.length) return `<div class="chat-setup card"><span class="chat-setup-ico" aria-hidden="true">${U.icon('chip')}</span><p class="t-headline">Get the on-device coach</p><p class="t-callout rf-muted">A small AI model on your phone. It works offline, and your questions and data never leave it. You can change it later.</p>${U.modelRows ? `<ul class="rf-list">${U.modelRows(U.S, { compact: true })}</ul>` : ''}</div>`;
     return null;
   }
   function gate(S) {
     const e = engineOf(S);
     if (e === 'api' && !(AI() && AI().hasKey())) return `<div class="chat-setup card"><p class="t-headline">Add your API key</p><p class="t-callout rf-muted">Claude answers with your own Anthropic API key, which stays on this phone.</p><button type="button" class="rf-btn" data-variant="filled" data-act="keySheet">Add a key</button></div>`;
-    if (e === 'api' && !S.ai.consentAt) return `<div class="chat-setup card"><p class="t-headline">Claude needs your OK</p><p class="t-callout rf-muted">It gets a summary of your data with each question. See what's in it before you decide.</p><button type="button" class="rf-btn" data-variant="filled" data-act="chatConsent">Review</button></div>`;
+    if (e === 'api' && !S.ai.consentAt) return `<div class="chat-setup card"><p class="t-headline">Claude needs your OK</p><p class="t-callout rf-muted">It gets a summary of your data with each question. See what's in it first.</p><button type="button" class="rf-btn" data-variant="filled" data-act="chatConsent">Review</button></div>`;
     return e === 'device' ? deviceGate() : null;
   }
 
@@ -270,8 +270,8 @@
     const was = modelName(c.id) || 'That size';
     if (smaller) {
       S.ai.deviceModel = smaller.id;
-      crashNote = `The app restarted while ${was} was answering: this phone ran short of memory. The chat uses ${modelName(smaller.id)} now.`;
-    } else crashNote = `The app restarted while ${was} was answering: this phone ran short of memory. Fast, the smallest size, should run fine.`;
+      crashNote = `${was} ran this phone short of memory, so the app restarted. The chat now uses ${modelName(smaller.id)}.`;
+    } else crashNote = `${was} ran this phone short of memory, so the app restarted. Fast, the smallest size, should work.`;
     U.save();
   }
 
@@ -282,7 +282,7 @@
     return `<div class="sheet-pad">
       <ul class="rf-list">${row('device', 'chip', 'violet', 'On this phone', 'Private and works offline')}${row('api', 'sparkle', 'indigo', 'Claude', 'Sharper answers, with your own API key')}</ul>
       ${e === 'api' && GH.spend && AI() && AI().hasKey() ? `<ul class="rf-list">${U.row({ key: 'claude-model', icon: 'lightbulb', tone: 'amber', title: 'Model and thinking', detail: U.esc(`${GH.spend.model(S).short} · ${GH.spend.LEVEL_NAMES[GH.spend.level(S)]}`), act: 'claudeModel', chevron: true })}${U.row({ key: 'claude-spend', icon: 'card', tone: 'teal', title: 'Spending and usage', detail: U.esc(GH.spend.todayLine(S, U.today())), act: 'claudePage', chevron: true })}</ul>` : ''}
-      ${e === 'device' && U.modelRows ? `<p class="sec-title">Model</p><ul class="rf-list">${U.modelRows(S, { compact: true })}</ul><p class="t-footnote rf-muted">Bigger sizes write better answers but take longer to start. Settings has a self-test that shows how fast each runs here.</p>` : ''}
+      ${e === 'device' && U.modelRows ? `<p class="sec-title">Model</p><ul class="rf-list">${U.modelRows(S, { compact: true })}</ul><p class="t-footnote rf-muted">Bigger sizes answer better but start slower. Settings has a self-test that times each one here.</p>` : ''}
     </div>`;
   }
   U.act.chatEngineSheet = () => {
@@ -346,7 +346,7 @@
     if (!m || !m.facts) return;
     U.sheet({
       title: 'What it used', size: 'auto',
-      body: `<div class="sheet-pad"><p class="t-callout rf-muted">The app worked these out from your data. The model's job was to put them in plain words.</p>
+      body: `<div class="sheet-pad"><p class="t-callout rf-muted">The app worked these out from your data. The model only put them in plain words.</p>
         <ul class="facts-list">${m.facts.map((f) => `<li class="t-callout">${U.esc(f)}</li>`).join('')}</ul></div>`,
     });
   };
@@ -434,13 +434,13 @@
     const ctl = U.sheet({
       title: 'Report this answer', size: 'auto',
       body: `<div class="sheet-pad">
-        <p class="t-callout rf-muted">AI can get things wrong. Reporting hides this ${U.esc(o.what || 'answer')} on your phone and helps fix the coach.</p>
+        <p class="t-callout rf-muted">AI can get things wrong. Reporting hides this ${U.esc(o.what || 'answer')} and helps fix the coach.</p>
         <blockquote class="flag-quote t-footnote">${U.esc(String(o.text || '').slice(0, 400))}${String(o.text || '').length > 400 ? '…' : ''}</blockquote>
         <p class="t-headline">What's wrong with it?</p>
         ${U.choice('flagReason', REASONS, reason, 'What\'s wrong with it', ' class="ob-chips" data-on="flagReason"')}
         <div class="rf-field"><label class="rf-field-label" for="flagNote">Anything to add (optional)</label><div class="rf-field-control"><textarea class="rf-input" id="flagNote" rows="2" maxlength="500"></textarea></div></div>
         <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="flagSend">Report</button><button type="button" class="rf-btn" data-size="lg" data-act="flagHide">Just hide it</button></div>
-        <p class="t-footnote rf-muted">Report hides it and opens a GitHub issue for the developer with the answer and your reason. You can read and edit it before posting, and nothing is sent until you do.</p>
+        <p class="t-footnote rf-muted">Report also opens a GitHub issue with the answer and your reason, for you to edit and post. Nothing is sent until you do.</p>
       </div>`,
     });
     const record = (send) => {
@@ -491,9 +491,9 @@
     const ctl = U.sheet({
       title: 'Ask in the Claude app', size: 'auto',
       body: `<div class="sheet-pad">
-          <p class="t-callout rf-muted">Your question and a summary of your data (no name or dates) open in the Claude app, where your own Claude plan answers it. Nothing is sent until you press the button.</p>
+          <p class="t-callout rf-muted">Your question and a summary of your data (no name or dates) open in the Claude app, on your own Claude plan. Nothing is sent until you tap the button.</p>
           <div class="rf-field"><label class="rf-field-label" for="handQ">Your question</label><div class="rf-field-control"><textarea class="rf-input" id="handQ" rows="3" maxlength="1000" placeholder="What should I focus on this week?">${U.esc(typed || lastQuestion)}</textarea></div></div>
-          ${installed ? '' : '<p class="t-footnote rf-muted">The Claude app isn\'t installed, so this opens the share sheet. You can pick Claude there after installing it, or any other app.</p>'}
+          ${installed ? '' : '<p class="t-footnote rf-muted">The Claude app isn\'t installed, so this opens the share sheet, where you can pick any app.</p>'}
           <button type="button" class="rf-btn ob-wide" data-variant="filled" data-size="lg" data-act="handOff">${U.icon(installed ? 'arrow-up-right' : 'share')}${installed ? 'Open in Claude' : 'Share'}</button>
           <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="handPreview" aria-expanded="false">Show what gets sent</button>
         </div>

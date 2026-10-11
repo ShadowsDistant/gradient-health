@@ -135,7 +135,7 @@
     }
     if (U.act.tailorPlan) rows.push(U.row({ key: 'tailor', icon: 'sparkle', tone: 'violet', title: 'Tailor my plan', sub: 'Tell the coach what you want more or less of', act: 'tailorPlan', chevron: true }));
     // The AI plan review, once it's in the app (src/planreview.js).
-    if (GH.planReview && U.act.reviewPlan) rows.push(U.row({ key: 'review', icon: 'check-circle', tone: 'teal', title: 'Check my plan with AI', sub: 'The coach looks it over and suggests changes for you to approve', act: 'reviewPlan', chevron: true }));
+    if (GH.planReview && U.act.reviewPlan) rows.push(U.row({ key: 'review', icon: 'check-circle', tone: 'teal', title: 'Check my plan with AI', sub: 'The coach suggests changes for you to approve', act: 'reviewPlan', chevron: true }));
     if (!rows.length) return '';
     return `<h2 class="sec-title t-title-3">Your plans</h2>
       <div class="section"><ul class="rf-list" data-key="plans">${rows.join('')}</ul></div>`;
@@ -161,16 +161,16 @@
         <h2 class="sec-title t-title-3">Your answers</h2>
         <div class="section">
           <ul class="rf-list" data-key="answers">${U.answerRows ? U.answerRows(S.profile) : ''}</ul>
-          <p class="rf-list-footer">Change any of them. Your plan follows when you save.</p>
+          <p class="rf-list-footer">Your plan updates when you save a change.</p>
         </div>
         <div class="section you-app">
           <ul class="rf-list" data-key="app">
-            ${U.row({ key: 'settings', icon: 'sliders', tone: 'indigo', title: 'Settings', sub: 'What you track, the AI coach, sound, look and your data', act: 'openSettings', chevron: true })}
-            ${U.row({ key: 'help', icon: 'compass', tone: 'teal', title: 'Help and tour', sub: 'Where everything is, and the tips on each tab', act: 'openHelp', chevron: true })}
+            ${U.row({ key: 'settings', icon: 'sliders', tone: 'indigo', title: 'Settings', sub: 'Tracking, the AI coach, sound, look and your data', act: 'openSettings', chevron: true })}
+            ${U.row({ key: 'help', icon: 'compass', tone: 'teal', title: 'Help and tour', sub: 'The tour and each tab\'s tips', act: 'openHelp', chevron: true })}
             ${U.row({ key: 'news', icon: 'sparkle', tone: 'amber', title: 'What\'s new', detail: U.esc(verShort ? `Version ${verShort}` : ''), act: 'openWhatsNew', chevron: true })}
-            ${U.row({ key: 'privacy', icon: 'lock', tone: 'green', title: 'Privacy', sub: 'What stays on this phone, and what can leave it', act: 'openPrivacyView', chevron: true })}
+            ${U.row({ key: 'privacy', icon: 'lock', tone: 'green', title: 'Privacy', sub: 'What stays on this phone and what can leave', act: 'openPrivacyView', chevron: true })}
           </ul>
-          <p class="rf-list-footer">Gradient Health ${U.esc(ver || 'web')}. Not medical advice: check with a doctor before starting if you have a condition or an injury.</p>
+          <p class="rf-list-footer">Gradient Health ${U.esc(ver || 'web')}. Not medical advice. Check with a doctor first if you have a condition or injury.</p>
         </div>`;
     },
     shown(S, day) {
@@ -183,9 +183,9 @@
   U.act.openHelp = () => U.sheet({
     title: 'Help', size: 'fit',
     body: `<ul class="rf-list you-help">
-      ${U.row({ icon: 'compass', tone: 'teal', title: 'Take the tour', sub: 'Where everything is, in a few short pages', act: 'helpTour', chevron: true })}
-      ${U.row({ icon: 'info', tone: 'sky', title: 'Show the tips again', sub: 'Each tab explains itself the next time you open it', act: 'helpTips' })}
-      ${U.act.askCoach ? U.row({ icon: 'sparkle', tone: 'violet', title: 'Ask the coach', sub: 'Questions about your plan, sleep or food. It\'s the sparkle at the top left of every tab.', act: 'helpCoach', chevron: true }) : ''}
+      ${U.row({ icon: 'compass', tone: 'teal', title: 'Take the tour', sub: 'Where everything is, in a few pages', act: 'helpTour', chevron: true })}
+      ${U.row({ icon: 'info', tone: 'sky', title: 'Show the tips again', sub: 'Each tab\'s tip shows again next time', act: 'helpTips' })}
+      ${U.act.askCoach ? U.row({ icon: 'sparkle', tone: 'violet', title: 'Ask the coach', sub: 'Your plan, sleep or food. It\'s the sparkle at the top left of every tab.', act: 'helpCoach', chevron: true }) : ''}
     </ul>`,
   });
   U.act.helpTour = () => { U.closeSheets(); if (U.showTour) setTimeout(() => U.showTour(), 320); };
@@ -194,6 +194,6 @@
     U.closeSheets();
     if (U.resetTips) U.resetTips();
     U.render();
-    U.toast('Tips are back', 'positive', 'Each tab shows its tip again until you tap Got it.');
+    U.toast('Tips are back', 'positive', 'Each tab shows its tip until you tap Got it.');
   };
 })(typeof window !== 'undefined' ? window : globalThis);

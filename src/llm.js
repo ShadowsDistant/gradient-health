@@ -119,7 +119,7 @@ const MESSAGES = {
   memory: 'This phone doesn\'t have enough memory for this model.',
   space: 'Not enough free space.',
   network: 'The download stopped. Check your connection and try again.',
-  http: 'The model couldn\'t be downloaded right now. Try again later.',
+  http: 'The model couldn\'t be downloaded. Try again later.',
   changed: 'The model file on the server has changed. Update Gradient Health to download it.',
   unpinned: 'This version of Gradient Health can\'t download this model. Update the app to get it.',
   size: DAMAGED, format: DAMAGED, checksum: DAMAGED,

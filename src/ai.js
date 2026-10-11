@@ -44,14 +44,14 @@
     permission: 'This API key can\'t use the coach. Check its permissions in the Claude Console.',
     rate: 'The coach is busy. Try again in a minute.',
     offline: 'You\'re offline. The on-device coach and your insights still work.',
-    overloaded: 'The coach is overloaded right now. Try again soon.',
+    overloaded: 'The coach is overloaded. Try again soon.',
     refusal: 'The coach couldn\'t help with that one. Try asking another way.',
     cut: 'The answer was cut short. Try again.',
     nomodel: 'This key can\'t use that model. Pick another one in Settings, under AI coach.',
     aborted: 'Stopped.',
     consent: 'Claude needs your OK before it gets any of your data. Allow it in Settings, under AI coach.',
-    'budget-today': 'That could go over today\'s Claude limit. It resets tomorrow, or you can raise it in Settings, under AI coach.',
-    'budget-month': 'That could go over this month\'s Claude budget. It resets on the 1st, or you can raise it in Settings, under AI coach.',
+    'budget-today': 'That could go over today\'s Claude limit. It resets tomorrow, or raise it in Settings, under AI coach.',
+    'budget-month': 'That could go over this month\'s Claude budget. It resets on the 1st, or raise it in Settings, under AI coach.',
     'budget-request': 'That could cost more than your limit for one request. Raise it in Settings, under AI coach, or pick less thinking or a cheaper model.',
     other: 'Something went wrong reaching the coach. Try again.',
   };
@@ -347,7 +347,7 @@
     const left = res.code === 'budget-month' ? L.month.left : res.code === 'budget-today' ? L.today.left : L.request;
     const what = res.code === 'budget-month' ? 'This month\'s Claude budget has' : res.code === 'budget-today' ? 'Today\'s Claude limit has' : 'Your limit for one request is';
     const lead = res.code === 'budget-request' ? `${what} ${sp.money(left)}, and this could cost up to ${sp.money(res.need)}.` : `${what} ${sp.money(left)} left, and this could cost up to ${sp.money(res.need)}.`;
-    const tail = res.code === 'budget-month' ? 'It resets on the 1st, or you can raise it in Settings, under AI coach.' : res.code === 'budget-today' ? 'It resets tomorrow, or you can raise it in Settings, under AI coach.' : 'Raise it in Settings, under AI coach, or pick less thinking or a cheaper model.';
+    const tail = res.code === 'budget-month' ? 'It resets on the 1st, or raise it in Settings, under AI coach.' : res.code === 'budget-today' ? 'It resets tomorrow, or raise it in Settings, under AI coach.' : 'Raise it in Settings, under AI coach, or pick less thinking or a cheaper model.';
     const e = coachError(res.code, `${lead} ${tail}`);
     e.budget = { code: res.code, left, need: res.need };
     return e;

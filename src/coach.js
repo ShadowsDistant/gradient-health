@@ -141,10 +141,10 @@
     if (f.sleep7.n >= 4 && f.sleep7.avg < 420) addFocus('Keep a steady bedtime', 'Protect your sleep: a steady bedtime helps more than catching up on weekends.');
     if (f.goal && f.proteinDays >= 3 && f.proteinHit < f.proteinDays / 2) addFocus(`Get to ${f.goal} g of protein a day`, `Get to ${f.goal} g of protein. One ${S.profile.protein.quickName || 'shake'} on training days goes a long way.`);
     if (workouts && f.rirN >= 6 && f.rir['0'] / f.rirN > 0.4) addFocus('Stop sets with 1-2 reps left', 'Stop most sets with 1-2 reps left. Going to failure every time makes recovery harder without much extra growth.');
-    else if (workouts && f.rirN >= 6 && f.rir['3'] / f.rirN > 0.5) addFocus('Rate the reps you have left honestly', 'You had lots left in the tank. Keep answering honestly and the plan will keep moving you up.');
+    else if (workouts && f.rirN >= 6 && f.rir['3'] / f.rirN > 0.5) addFocus('Rate the reps you have left honestly', 'You had lots left in the tank. Honest answers keep the plan moving you up.');
     if (f.steps7.n >= 4 && f.stepsBase.n >= 7 && f.steps7.avg < f.stepsBase.avg * 0.8) addFocus('A 10-minute walk after a meal', 'Steps are down on your usual. A 10-minute walk after a meal adds up.');
     if (workouts && S.catchup.arm.active) addFocus(`Lead with your ${S.catchup.arm.side === 'R' ? 'right' : 'left'} arm`, `Keep leading with your ${S.catchup.arm.side === 'R' ? 'right' : 'left'} arm and never let the other side do more reps.`);
-    if (F && foodDays < 4) addFocus('Log what you eat most days', 'Log what you eat on most days. After two weeks with a few weigh-ins, your calorie target tunes itself to you.');
+    if (F && foodDays < 4) addFocus('Log what you eat most days', 'Log what you eat most days. After two weeks and a few weigh-ins, your calorie target tunes itself to you.');
     if (focus.length < 2) {
       if (workouts) addFocus('Show up for the next session', 'Show up for the next session. Consistency beats any single workout.');
       else addFocus('Keep sleep and steps steady', 'Keep your sleep and steps steady. Small daily habits move the trends most.');
@@ -186,31 +186,31 @@
 
   const ANSWER = {
     bodies: (S, day, f, q) => (GH.access ? GH.access.answer(S.profile, q) : 'Tell the app about anything to plan around under Settings, Your answers.'),
-    redflag: () => 'That could be serious, and it\'s not something an app should judge. Stop exercising and talk to a doctor. If it\'s happening right now or getting worse, call emergency services.',
+    redflag: () => 'That could be serious, and an app can\'t judge it. Stop exercising and talk to a doctor. If it\'s happening now or getting worse, call emergency services.',
     today: (S, day, f) => {
       const r = f.readiness;
-      if (!r.reasons.length) return 'Nothing is holding today back: your sleep, heart rate and feel check look normal, so you get the full session.';
-      return `${r.reasons.map((x) => x.text).join(' ')} On days like this a slightly smaller session keeps the habit going without digging a hole. Everything goes back to normal once you recover.`;
+      if (!r.reasons.length) return 'Your sleep, heart rate and feel check look normal, so you get the full session.';
+      return `${r.reasons.map((x) => x.text).join(' ')} A slightly smaller session keeps the habit going without digging a hole. It goes back to normal once you recover.`;
     },
     sleep: (S, day, f) => {
-      if (!f.sleep7.n) return 'I don\'t have any sleep from this week. Connect Health Connect, or log sleep on the Health tab, and I can tell you more.';
+      if (!f.sleep7.n) return 'I don\'t have any sleep from this week. Connect Health Connect or log sleep on the Health tab.';
       let a = `You averaged ${hrs(f.sleep7.avg)} over ${f.sleep7.n === 1 ? 'the last night' : `the last ${f.sleep7.n} nights`}`;
       a += f.sleepBase.n >= 7 ? `, ${Math.abs(f.sleep7.avg - f.sleepBase.avg) < 15 ? 'about the same as' : f.sleep7.avg > f.sleepBase.avg ? `${Math.round(f.sleep7.avg - f.sleepBase.avg)} min more than` : `${Math.round(f.sleepBase.avg - f.sleep7.avg)} min less than`} your usual ${hrs(f.sleepBase.avg)}.` : '.';
       const timing = f.insights.find((x) => /sleep-timing/.test(x.id));
       if (timing) a += ` ${timing.title}.`;
       a += f.sleep7.avg < 420 ? ' Most adults do best on 7 hours or more. A steady bedtime, weekends included, is the easiest lever.' : ' That\'s a solid amount.';
-      return `${a} Under 5 hours and the app takes a set off each exercise that day. Short nights hurt performance most when they pile up.`;
+      return `${a} Under 5 hours, the app takes a set off each exercise that day. Short nights hurt most when they pile up.`;
     },
     steps: (S, day, f) => {
       if (!f.steps7.n) return 'No steps from this week yet. With Health Connect on, steps come in on their own.';
       let a = `You're averaging ${int(Math.round(f.steps7.avg))} steps a day this week`;
       a += f.stepsBase.n >= 7 ? `, against your usual ${int(Math.round(f.stepsBase.avg))}.` : '.';
-      a += f.steps7.avg < 7000 ? ' In large step-count studies, the risk of dying early kept falling up to about 8,000-10,000 steps a day for adults under 60 (6,000-8,000 over 60). A short walk after meals is the easiest way to add some.' : ' That\'s a healthy amount for most adults.';
+      a += f.steps7.avg < 7000 ? ' In large studies, the risk of dying early kept falling up to about 8,000-10,000 steps a day for adults under 60 (6,000-8,000 over 60). A short walk after meals is the easiest way to add some.' : ' That\'s a healthy amount for most adults.';
       return a;
     },
     weight: (S, day, f) => {
       const w = f.weight;
-      if (w.avg7 == null) return 'I need a few weigh-ins to see a trend. Weigh in the morning, a few times a week, and the app smooths it into a 7-day average.';
+      if (w.avg7 == null) return 'I need a few weigh-ins to see a trend. Weigh in a few mornings a week, and the app smooths them into a 7-day average.';
       let a = `Your 7-day average is ${weightText(S, w.avg7)}`;
       if (w.rate != null) a += `, ${Math.abs(w.rate) < 0.002 ? 'steady' : w.rate < 0 ? `down ${pct(w.rate)}` : `up ${pct(w.rate)}`} on the week before.`;
       else a += '.';
@@ -221,12 +221,12 @@
       return `${a} Day-to-day swings are mostly water, so watch the average, not single weigh-ins.`;
     },
     protein: (S, day, f) => {
-      if (S.profile.protein.track === false) return 'Protein tracking is off. You can turn it on in Settings under Update my answers, Food.';
+      if (S.profile.protein.track === false) return 'Protein tracking is off. Turn it on in Settings, under What you track.';
       if (!f.goal) return 'Add your weight and I can set a protein goal for you.';
       const got = B().proteinToday(S, day);
       let a = `Your goal is ${f.goal} g a day and you're at ${got} g today.`;
       if (f.proteinDays) a += ` You hit it on ${f.proteinHit} of the last ${f.proteinDays} days you logged.`;
-      return `${a} Past roughly 1.6 g per kg of body weight a day, extra protein adds little for most people, so hitting the goal matters more than going over it.`;
+      return `${a} Past about 1.6 g per kg of body weight a day, more adds little for most people, so hitting the goal matters more than beating it.`;
     },
     strength: (S, day, f) => {
       const ups = S.log.filter((l) => l.type === 'workout').flatMap((l) => (l.celebrate || []).map((c) => ({ day: l.day, c })));
@@ -242,7 +242,7 @@
       const s = f.streak;
       let a = s.current ? `You're on a ${s.current}-day streak${s.best > s.current ? ` (best ${s.best})` : ''}.` : 'No streak running right now, and that\'s fine: the next workout starts one.';
       a += s.freezeThisWeek ? ' Your freeze for this week is used.' : ' You have one freeze this week, so one miss won\'t break it.';
-      return `${a} Missing a single day doesn't undo a habit. What matters is picking it back up the next day, which is why the plan shifts forward instead of doubling up.`;
+      return `${a} One missed day doesn't undo a habit. Picking it back up the next day matters most, so the plan shifts forward instead of doubling up.`;
     },
     heart: (S, day, f) => {
       if (!f.rhr7.n && !f.hrv7.n) return 'I don\'t have resting heart rate or HRV yet. A watch or ring that syncs to Health Connect adds them.';
@@ -251,7 +251,7 @@
       if (f.hrv7.n) bits.push(`HRV ${Math.round(f.hrv7.avg)} ms${f.hrvBase.n >= 7 ? ` (usual ${Math.round(f.hrvBase.avg)})` : ''}`);
       let a = `This week: ${list(bits)}.`;
       if (f.rhr7.n && f.rhr7.avg > 100) a += ' A resting heart rate over 100 is worth checking with a doctor.';
-      a += ' A resting heart rate well above your normal, or HRV well below it, often goes with stress, poor sleep, alcohol or an illness coming on. The app takes a set off when that happens. The weekly trend tells you more than any single day.';
+      a += ' A resting heart rate well above your normal, or HRV well below it, often goes with stress, poor sleep, alcohol or an illness coming on, and the app takes a set off. The weekly trend says more than any single day.';
       return a;
     },
     sore: (S, day, f) => {
@@ -275,7 +275,7 @@
       const a = w && w.phase.deload ? 'This is a deload week: about 40% less volume.' : 'A deload is a lighter week, about 40% less volume. It comes every 5th week, or sooner if you rate two workouts in a row too hard while sleeping badly.';
       return `${a} Coaches use deloads to shed built-up fatigue before the next block. A lighter week doesn't cost you muscle.`;
     },
-    abs: (S, day, f) => 'Abs training builds the muscle, but it doesn\'t burn the fat over it: in a study where people only did ab work for 6 weeks, belly fat didn\'t change. Visible abs come from the muscle plus lower body fat over months, which is mostly food and daily movement. Watch your waist measurement and your ab levels in Progress instead of a date.',
+    abs: (S, day, f) => 'Ab training builds the muscle but doesn\'t burn the fat over it: in a 6-week study of ab work alone, belly fat didn\'t change. Visible abs take the muscle plus lower body fat over months, which is mostly food and daily movement. Track your waist and ab levels in Progress rather than a date.',
     focus: (S, day, f) => report(S, day).focus.join(' '),
   };
 
@@ -313,7 +313,7 @@
   function ask(S, day, question) {
     const topic = topicOf(question);
     if (!topic) {
-      return { topic: null, text: 'I can answer questions about your sleep, steps, weight, protein, training, streak, recovery and your left and right sides. For anything else, try Ask in the Claude app.' };
+      return { topic: null, text: 'I can answer about your sleep, steps, weight, protein, training, streak, recovery and left and right sides. For anything else, try Ask in the Claude app.' };
     }
     return { topic, text: ANSWER[topic](S, day, facts(S, day), question) };
   }

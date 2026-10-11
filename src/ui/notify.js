@@ -194,7 +194,7 @@
     if (!U.seen('tour') && day - (S.profile.startDay != null ? S.profile.startDay : day) <= 14) return '';
     return `<div class="card nf-ask" data-key="notify-ask">
       <div class="hc-invite-row"><span class="rf-list-icon" data-tone="amber">${U.icon('bell')}</span>
-        <span class="hc-invite-text"><span class="t-headline">Want a nudge on workout days?</span><span class="t-footnote rf-muted">A reminder of the day's workout, and a walk now and then. One a day at most, never at night.</span></span></div>
+        <span class="hc-invite-text"><span class="t-headline">Want a nudge on workout days?</span><span class="t-footnote rf-muted">The day's workout, and a walk now and then. One a day at most, never at night.</span></span></div>
       <div class="hc-invite-btns"><button type="button" class="rf-btn" data-variant="filled" data-act="notifyAskYes">Turn on</button><button type="button" class="rf-btn" data-variant="plain" data-act="notifyAskNo">Not now</button></div>
     </div>`;
   };
@@ -217,7 +217,7 @@
 
   /* ---------------------------------------------------------------- Settings */
   const KIND_ROWS = [
-    ['workout', 'Workout days', 'What today\'s workout is, at your reminder time', 'reminder workout plan'],
+    ['workout', 'Workout days', 'Today\'s workout, at your reminder time', 'reminder workout plan'],
     ['move', 'Walks and runs', 'On a rest day, twice a week at most', 'walk run ride hike rest day'],
     ['badge', 'New badges', 'When one is waiting to be opened', 'badge achievement award'],
     ['sleep', 'Good nights', 'The morning after a good night\'s sleep', 'sleep night health connect'],
@@ -234,7 +234,7 @@
     const st = state();
     if (st.permission !== 'granted') {
       const ask = st.permission === 'ask';
-      rows.push(`<li data-key="nf-perm" data-keywords="permission allow android"><div class="rf-list-row"><span class="rf-list-icon" data-tone="amber">${U.icon('bell-off')}</span><span class="rf-list-text"><span class="rf-list-title">${ask ? 'Not allowed yet' : 'Off in Android\'s settings'}</span><span class="rf-list-sub">${ask ? 'Android asks once before any can show.' : 'Allow notifications for Gradient Health there to get them.'}</span></span><button type="button" class="rf-btn" data-size="sm" data-act="${ask ? 'notifyAllow' : 'notifyOpenSettings'}">${ask ? 'Allow' : 'Open'}</button></div></li>`);
+      rows.push(`<li data-key="nf-perm" data-keywords="permission allow android"><div class="rf-list-row"><span class="rf-list-icon" data-tone="amber">${U.icon('bell-off')}</span><span class="rf-list-text"><span class="rf-list-title">${ask ? 'Not allowed yet' : 'Off in Android\'s settings'}</span><span class="rf-list-sub">${ask ? 'Android asks once before any can show.' : 'Allow them for Gradient Health there.'}</span></span><button type="button" class="rf-btn" data-size="sm" data-act="${ask ? 'notifyAllow' : 'notifyOpenSettings'}">${ask ? 'Allow' : 'Open'}</button></div></li>`);
     }
     const blocked = new Set(Array.isArray(st.blocked) ? st.blocked : []);
     const bg = GH.health && GH.health.background ? GH.health.background() : null;
@@ -250,13 +250,13 @@
     const rt = GH.notify ? GH.notify.reminderTime(S, Date.now()) : null;
     const set = p.time != null;
     const auto = rt && rt.how !== 'set' ? `Auto: ${clock(rt.min)}, ${rt.how === 'usual' ? '30 minutes before you usually start' : 'until you\'ve done a few workouts'}` : 'Auto: 30 minutes before you usually start';
-    rows.push(`<li data-key="nf-time" data-keywords="reminder time clock hour when"><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Reminder time</span><span class="rf-list-sub">${U.esc(set ? 'For workout days, walks and the notes after a few days away' : auto)}</span></span>${U.seg('nfTime', [['auto', 'Auto'], ['set', 'Pick a time']], set ? 'set' : 'auto', 'Reminder time', ' data-on="notifyTimeMode"')}</div></li>`);
+    rows.push(`<li data-key="nf-time" data-keywords="reminder time clock hour when"><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Reminder time</span><span class="rf-list-sub">${U.esc(set ? 'For workouts, walks and notes after time away' : auto)}</span></span>${U.seg('nfTime', [['auto', 'Auto'], ['set', 'Pick a time']], set ? 'set' : 'auto', 'Reminder time', ' data-on="notifyTimeMode"')}</div></li>`);
     if (set) rows.push(`<li data-key="nf-at" data-keywords="reminder time clock hour"><div class="rf-list-row set-slider"><span class="rf-list-text"><span class="rf-list-title rf-num" data-nf-time>${U.esc(clock(p.time))}</span><span class="rf-list-sub">Between 8 am and 8 pm</span></span><div class="rf-slider"><div class="rf-slider-control"><input class="rf-slider-input" type="range" min="480" max="1200" step="15" value="${p.time}" aria-label="Reminder time" data-on="notifyTime"></div></div></div></li>`);
     return rows.join('');
   };
   U.notifyFoot = (S) => (can() && prefs(S).on
-    ? 'Worked out on this phone from your plan and what you do, and nothing is sent anywhere. Quiet from 9:30 pm to 8 am. After a few days away they slow to once a week, and stop after six weeks.'
-    : can() ? 'Worked out on this phone from your plan and what you do. Nothing is sent anywhere.' : '');
+    ? 'Made on this phone from your plan and activity; nothing is sent anywhere. Quiet from 9:30 pm to 8 am. After a few days away they go weekly, then stop at six weeks.'
+    : can() ? 'Made on this phone from your plan and activity. Nothing is sent anywhere.' : '');
 
   U.on.notifyOn = async (el, ev, v) => {
     const S = U.S;

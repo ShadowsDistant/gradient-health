@@ -24,7 +24,7 @@
   const kw = (html, words) => html.replace(/^(\s*<(?:li|label)\b)/, `$1 data-keywords="${U.esc(words)}"`);
   // A row with its control under the words (a segmented control or chips).
   const stack = (title, subline, control, words, key) => `<li${key ? ` data-key="${key}"` : ''}${words ? ` data-keywords="${U.esc(words)}"` : ''}><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">${U.esc(title)}</span>${subline ? `<span class="rf-list-sub">${U.esc(subline)}</span>` : ''}</span>${control}</div></li>`;
-  const REST_SUB = 'Auto: 90 s after big moves, 60 s after small ones and in supersets, and about 2.5 min after the main lifts on a strength plan when there\'s time';
+  const REST_SUB = 'Auto: 90 s after big moves, 60 s after small ones and supersets, about 2.5 min after the main lifts on a strength plan if there\'s time';
   const DAY_STARTS = [['0', 'Midnight'], ['2', '2 am'], ['4', '4 am'], ['6', '6 am']];
 
   /* ---------------------------------------------------------------- screen */
@@ -50,7 +50,7 @@
       const F = GH.food;
       const fm = F ? F.mode(S) : 'protein';
       const missing = on && H().missingTypes ? H().missingTypes(S) : [];
-      const answers = U.row({ key: 'answers', icon: 'pencil', tone: 'indigo', title: 'Your answers', sub: workouts ? 'Goals, days and time, equipment and more, one at a time' : 'Age, weight, height and more', act: 'editAnswers', chevron: true });
+      const answers = U.row({ key: 'answers', icon: 'pencil', tone: 'indigo', title: 'Your answers', sub: workouts ? 'Goals, days, time, equipment and more' : 'Age, weight, height and more', act: 'editAnswers', chevron: true });
       return `${U.navbar('Settings', '', U.glassBtn('chevron-left', 'Back', 'back'))}
         <h1 class="rf-large-title">Settings</h1>
         <div class="section set-top">
@@ -94,7 +94,7 @@
               ${hasKey ? kw(U.row({ key: 'delkey', icon: 'trash', tone: 'rose', title: 'Delete key', act: 'deleteKey' }), 'api key remove') : ''}` : ''}
             ${U.row({ key: 'claudeapp', icon: 'share', tone: 'violet', title: 'Ask in the Claude app', sub: 'Uses your own Claude plan, no key needed', act: 'askClaudeApp', chevron: true })}
             ${kw(U.row({ key: 'sent', icon: 'eye', tone: 'sky', title: 'What gets sent', sub: 'The exact summary Claude sees', act: 'previewSheet', chevron: true }), 'privacy data summary')}`)}
-          ${foot('coach', `${claude ? 'Claude mode uses your own Anthropic API key, and its usage costs money. Spending and usage has hard limits on what Claude may spend.' : 'The on-device coach is Qwen3.5 (Apache 2.0), run with llama.cpp on your phone. It works offline, answers from what the app works out from your numbers, nothing you ask leaves the phone, and it can be wrong.'} Anything sent to Claude is a summary with no name, exact dates or IDs, and only after you've allowed it.`)}
+          ${foot('coach', `${claude ? 'Claude uses your own Anthropic API key, and each request costs money. Set hard limits under Spending and usage.' : 'The on-device coach runs Qwen3.5 on your phone. It answers from your numbers, works offline and can be wrong. Nothing you ask leaves the phone.'} Claude gets a summary with no name, exact dates or IDs, and only after you allow it.`)}
 
           ${head('feel', 'Sound and haptics', 'vibration vibrate buzz haptic feedback feel touch beep audio')}
           ${list('feel', `${U.sw('Sound', pr.sound !== false, 'data-on="setPref" data-k="sound"', 'Beeps for the 3-2-1, and when a timer or rest ends')}
@@ -105,7 +105,7 @@
           ${list('look', `${stack('Theme', '', U.seg('setTheme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], pr.theme || 'system', 'Theme', ' data-on="setTheme"'), 'dark mode light mode night', 'theme')}
             ${kw(U.sw('Increase contrast', !!pr.contrast, 'data-on="setPref" data-k="contrast"'), 'accessibility readable')}
             ${kw(U.sw('Moving background', pr.glowMove !== false, 'data-on="setPref" data-k="glowMove"', 'The colours behind each page drift slowly'), 'animation motion glow')}
-            ${stack('Glass effects', 'Auto lightens the glass while the page moves. Liquid keeps it as designed, Flat is the lightest', U.seg('setGlass', [['auto', 'Auto'], ['liquid', 'Liquid'], ['frosted', 'Frosted'], ['flat', 'Flat']], ['liquid', 'frosted', 'flat'].includes(pr.glass) ? pr.glass : 'auto', 'Glass effects', ' data-on="setGlass"'), 'blur lens transparency performance smooth stutter lag freeze jump', 'glass-fx')}
+            ${stack('Glass effects', 'Auto lightens it while you scroll. Liquid is as designed, Flat the lightest', U.seg('setGlass', [['auto', 'Auto'], ['liquid', 'Liquid'], ['frosted', 'Frosted'], ['flat', 'Flat']], ['liquid', 'frosted', 'flat'].includes(pr.glass) ? pr.glass : 'auto', 'Glass effects', ' data-on="setGlass"'), 'blur lens transparency performance smooth stutter lag freeze jump', 'glass-fx')}
             <li data-key="glass" data-keywords="blur transparency frosted"><div class="rf-list-row set-slider"><span class="rf-list-text"><span class="rf-list-title">Glass</span><span class="rf-list-sub">Clear to frosted</span></span><div class="rf-slider"><div class="rf-slider-control"><input class="rf-slider-input" type="range" min="0" max="1" step="0.05" value="${pr.density == null ? 0.5 : pr.density}" aria-label="Glass density" data-on="setDensity"></div></div></div></li>`)}
 
           ${head('general', 'General', 'language region')}
@@ -113,7 +113,7 @@
             ${stack('Start of the day', 'Late nights count as the day before until then', U.choice('setRollHour', DAY_STARTS, String(U.rollHour()), 'Start of the day', ' data-on="setRollHour"'), 'midnight night owl day begins rollover', 'daystart')}`)}
 
           ${head('data', 'Your data', 'backup export import save transfer')}
-          ${list('data', `${kw(U.row({ key: 'export', icon: 'copy', tone: 'teal', title: 'Copy my data', sub: 'Everything except the API key, as text to keep somewhere safe', act: 'exportData' }), 'backup export')}
+          ${list('data', `${kw(U.row({ key: 'export', icon: 'copy', tone: 'teal', title: 'Copy my data', sub: 'Everything but the API key, as text to keep safe', act: 'exportData' }), 'backup export')}
             ${kw(U.row({ key: 'restore', icon: 'download', tone: 'indigo', title: 'Restore from a copy', act: 'restoreSheet', chevron: true }), 'backup import')}
             ${kw(U.row({ key: 'reset', icon: 'trash', tone: 'rose', title: 'Reset everything', act: 'resetAll' }), 'delete erase start over')}`)}
 
@@ -121,10 +121,10 @@
           ${list('about', `${kw(U.row({ key: 'science', icon: 'library', tone: 'violet', title: 'How it works', sub: 'The research behind every rule', act: 'openScience', chevron: true }), 'science research studies rules why')}
             ${kw(U.row({ key: 'licenses', icon: 'doc', tone: 'indigo', title: 'Open-source licenses', act: 'licensesSheet', chevron: true }), 'credits open source')}
             ${kw(U.row({ key: 'refract', lead: U.refractMark('sm'), title: 'Built with Refract', sub: 'The liquid glass design system behind every screen', act: 'licensesSheet', chevron: true }), 'refract design system glass credits')}
-            ${kw(U.row({ key: 'diag', icon: 'bolt', tone: 'amber', title: 'Scroll diagnostics', sub: 'If a scroll freezes or jumps, copy this for the developer', act: 'scrollDiag', chevron: true }), 'scroll freeze jump stutter lag debug diagnostics report')}
+            ${kw(U.row({ key: 'diag', icon: 'bolt', tone: 'amber', title: 'Scroll diagnostics', sub: 'For the developer, if a scroll freezes or jumps', act: 'scrollDiag', chevron: true }), 'scroll freeze jump stutter lag debug diagnostics report')}
             ${U.row({ key: 'version', icon: 'info', tone: 'sky', title: 'Version', detail: U.esc(ver) })}`)}
-          ${foot('about', 'Built-in foods from the USDA\'s nutrient database. Not medical advice: check with a doctor before starting if you have a condition or an injury.')}
-          <p class="set-none t-callout rf-muted" data-key="none" hidden>No settings match. Try a word like dark, kg, vibration or backup.</p>
+          ${foot('about', 'Built-in foods from the USDA\'s nutrient database. Not medical advice. Check with a doctor first if you have a condition or injury.')}
+          <p class="set-none t-callout rf-muted" data-key="none" hidden>No settings match. Try dark, kg, vibration or backup.</p>
         </div>`;
     },
     after(root) {
@@ -258,7 +258,7 @@
   U.act.hcBgAllow = async () => {
     const bg = await H().requestBackground();
     U.render();
-    if (bg.granted) U.toast('Background sync is on', 'positive', 'Health Connect is read every 15 minutes, even with the app closed.');
+    if (bg.granted) U.toast('Background sync is on', 'positive', 'The app reads Health Connect every 15 minutes, even when closed.');
     else U.toast('Not allowed yet', 'caution', 'Turn on background access for Gradient Health in Health Connect.', { label: 'Open', onClick: () => H().openSettings() });
   };
   // A background read just finished (or its state changed): fold the reads in while the app is open,
@@ -287,8 +287,8 @@
       <ul class="rf-list" data-group="track">
         <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Weight goal</span></span>${U.seg('setWGoal', [['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']], p.weightGoal || 'maintain', 'Weight goal', ' data-on="setWeightGoal"')}</div></li>
         ${p.weightGoal === 'lose' ? `<li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Pace</span><span class="rf-list-sub">Of your body weight a week. Slower keeps more muscle.</span></span>${U.seg('setPace', [['0.25', '0.25%'], ['0.5', '0.5%'], ['0.75', '0.75%'], ['1', '1%']], String(fp.pace), 'Pace', ' data-on="setFoodPace"')}</div></li>` : ''}
-        <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Sex</span><span class="rf-list-sub">For the calorie estimate. Skip it and an average is used.</span></span>${U.seg('setSex', [['female', 'Female'], ['male', 'Male'], ['', 'Skip']], p.sex || '', 'Sex', ' data-on="setSex"')}</div></li>
-        ${U.sw('Online search and barcodes', !!fp.online, 'data-on="setFoodPref" data-k="online"', 'From Open Food Facts. Only the barcode or the words you search are sent.')}
+        <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Sex</span><span class="rf-list-sub">For the calorie estimate. Skip it to use an average.</span></span>${U.seg('setSex', [['female', 'Female'], ['male', 'Male'], ['', 'Skip']], p.sex || '', 'Sex', ' data-on="setSex"')}</div></li>
+        ${U.sw('Online search and barcodes', !!fp.online, 'data-on="setFoodPref" data-k="online"', 'From Open Food Facts. Only barcodes and search words are sent.')}
         ${hcOn ? U.sw('Save meals to Health Connect', fp.hcWrite !== false && canWriteFood, 'data-on="setFoodPref" data-k="hcWrite"', canWriteFood ? 'Other apps see what you log here' : 'Needs the Nutrition permission') : ''}
         ${hcOn ? U.sw('Count food from other apps', fp.hcRead !== false, 'data-on="setFoodPref" data-k="hcRead"', 'Meals logged in other apps add to your day') : ''}
       </ul>
@@ -300,7 +300,7 @@
     S.profile.workouts = !!v;
     U.save();
     U.render();
-    U.toast(v ? 'Workouts are back on' : 'Workouts are off', 'neutral', v ? 'Your plan picks up where it left off.' : 'Your plan and progress are kept if you turn them back on.');
+    U.toast(v ? 'Workouts are back on' : 'Workouts are off', 'neutral', v ? 'Your plan picks up where it left off.' : 'Your plan and progress are kept.');
   };
   U.on.setFoodMode = async (el, ev, v) => {
     const S = U.S;
@@ -309,10 +309,10 @@
     U.save();
     U.render();
     if (v === 'full' && before !== 'full') {
-      U.toast('Food is on', 'positive', 'It has its own tab now. Progress opens from You, and from the streak on Today.');
+      U.toast('Food is on', 'positive', 'It has its own tab. Progress now opens from You and Today\'s streak.');
       // Saving meals to Health Connect needs the nutrition permissions.
       if (H().connected(H().status()) && H().missingTypes && H().missingTypes(S).some((t) => t === 'nutrition' || t === 'writeNutrition')) {
-        const ok = await U.confirm('Share food with Health Connect?', 'Meals you log here can be saved to Health Connect, and meals from other apps can count toward your day.', 'Allow');
+        const ok = await U.confirm('Share food with Health Connect?', 'Meals you log go to Health Connect, and meals from other apps count toward your day.', 'Allow');
         if (ok) { await H().request(true); U.render(); }
       }
     }
@@ -340,7 +340,7 @@
   // One row per set-up screen, with its current answer: on You, and in this sheet from Settings.
   U.answerRows = (p) => U.editableSteps().map((st) => { const [ic, tone] = STEP_ICON[st.id] || ['pencil', 'sky']; return U.row({ key: `ans-${st.id}`, icon: ic, tone, title: U.esc(st.title), sub: U.esc(U.answerSummary(st.id, p)), act: 'editStep', arg: st.id, chevron: true }); }).join('');
   U.act.editAnswers = () => {
-    U.sheet({ title: 'Your answers', size: 'auto', body: `<p class="t-footnote rf-muted sheet-lead">Pick one to change. Your plan updates when you save.</p>
+    U.sheet({ title: 'Your answers', size: 'auto', body: `<p class="t-footnote rf-muted sheet-lead">Your plan updates when you save a change.</p>
       <ul class="rf-list">${U.answerRows(U.S.profile)}</ul>` });
   };
   U.act.editStep = (el) => { U.closeSheets(); U.haptic('nav'); U.editAnswers(el.dataset.arg); };
@@ -392,8 +392,8 @@
   function actSettings(S) {
     return `${sub('acts', 'track', 'Walks, runs and rides')}
       <ul class="rf-list" data-group="track">${kw(U.actOptionRows(S), 'activity activities outdoor gps record running walking hiking cycling bike stops')}
-        ${kw(U.sw('Maps', !!(U.actMapsOn && U.actMapsOn()), 'data-on="actMapsPref"', 'Your route on a map from OpenFreeMap, which sees the area the map shows. Off: the route is drawn on this phone.'), 'map openfreemap streets route')}
-        ${kw(U.row({ key: 'map-pieces', icon: 'map', tone: 'sky', title: 'Clear saved maps', sub: 'Maps you\'ve seen are kept on this phone, so they open at once and work offline', act: 'mapPiecesClear' }), 'map cache offline storage space delete')}</ul>`;
+        ${kw(U.sw('Maps', !!(U.actMapsOn && U.actMapsOn()), 'data-on="actMapsPref"', 'Your route on a map from OpenFreeMap, which sees the area shown. Off: only the route, drawn on this phone.'), 'map openfreemap streets route')}
+        ${kw(U.row({ key: 'map-pieces', icon: 'map', tone: 'sky', title: 'Clear saved maps', sub: 'Maps you\'ve seen stay on this phone, so they open fast and offline', act: 'mapPiecesClear' }), 'map cache offline storage space delete')}</ul>`;
   }
   U.act.mapPiecesClear = async () => {
     const ok = U.mapPieces ? await U.mapPieces.clear() : false;
@@ -413,8 +413,8 @@
     ['ZXing C++', 'Barcode reading', 'Apache 2.0'],
     ['USDA SR28', 'Built-in food list', 'Public domain'],
     ['Open Food Facts', 'Online food search, when it\'s on', 'Open Database License'],
-    ['MapLibre GL JS', 'Maps behind an activity\'s route, and while one records', 'BSD 3-Clause'],
-    ['OpenStreetMap contributors and OpenMapTiles, served by OpenFreeMap', 'Map data for those maps, when maps are on', 'Open Database License and CC BY 4.0'],
+    ['MapLibre GL JS', 'Activity maps', 'BSD 3-Clause'],
+    ['OpenStreetMap contributors and OpenMapTiles, served by OpenFreeMap', 'Map data, when maps are on', 'Open Database License and CC BY 4.0'],
   ];
   // The design system first: everything on screen is made of it. Its mark comes apart once as the
   // sheet opens.
@@ -425,7 +425,7 @@
   U.act.licensesSheet = () => U.sheet({
     title: 'Open-source licenses', size: 'auto',
     body: `${refractCredit()}<ul class="rf-list">${LICENSES.map(([name, what, lic]) => U.row({ title: U.esc(name), sub: U.esc(`${what} · ${lic}`) })).join('')}</ul>
-      <p class="t-footnote rf-muted sheet-lead">Thanks to everyone who made these. Their full license texts ship with the source code.</p>`,
+      <p class="t-footnote rf-muted sheet-lead">Thanks to everyone who made these. The full license texts ship with the source code.</p>`,
   });
 
   /* ---------------------------------------------------------------- days and time */
@@ -482,7 +482,7 @@
         <ul class="rf-list">${U.sw('On my knees', false, 'id="bKnees"')}</ul>
         <div class="rf-field"><label class="rf-field-label" for="bPlank">Plank hold (seconds)</label><div class="rf-field-control"><input class="rf-input" id="bPlank" type="number" inputmode="numeric" placeholder="Leave blank to skip"></div></div>
         ${curls ? '<div class="ob-row2"><div class="rf-field"><label class="rf-field-label" for="bCL">Curls, left</label><div class="rf-field-control"><input class="rf-input" id="bCL" type="number" inputmode="numeric"></div></div><div class="rf-field"><label class="rf-field-label" for="bCR">Curls, right</label><div class="rf-field-control"><input class="rf-input" id="bCR" type="number" inputmode="numeric"></div></div></div>' : ''}
-        <p class="t-footnote rf-muted">Results reset those exercises to a fitting level. The curls also count as a left vs right test.</p></div>`,
+        <p class="t-footnote rf-muted">Each result sets that exercise's level. The curls also count as a left vs right test.</p></div>`,
       action: { label: 'Save', act: 'baselineSave' },
     });
   };
@@ -504,7 +504,7 @@
   };
 
   /* ---------------------------------------------------------------- coach */
-  const ENGINE_SUB = { device: 'On-device: an AI model that runs on your phone', api: 'Claude: your own API key, with the model, thinking and spending limits you pick' };
+  const ENGINE_SUB = { device: 'On-device: an AI model on your phone', api: 'Claude: your own API key, model, thinking and spending limits' };
   U.on.setCoachMode = async (el, ev, v) => {
     const S = U.S;
     const before = S.ai.mode;
@@ -533,7 +533,7 @@
     const ctl = U.sheet({
       title: 'Share your data with Claude?', size: 'full',
       body: `<div class="sheet-prose">
-        <p class="t-body">Claude is an AI made by Anthropic. To answer you, Gradient Health sends Anthropic a summary of your data with each question, when you ask for suggestions or a check of your plan, and once a week for your report.</p>
+        <p class="t-body">Claude is Anthropic's AI. Gradient Health sends Anthropic a summary of your data with each question, suggestion or plan check, and weekly for your report.</p>
         <p class="t-headline">The summary holds</p>
         <ul class="plain-list">
           <li>An age range (not your age), and your sex if you gave it</li>
@@ -541,9 +541,9 @@
           <li>Averages and trends of your sleep, steps, heart rate, HRV, active calories and weight</li>
           <li>Your training: workouts done, sets, levels and how they felt</li>
           ${food ? '<li>Your calorie target and what you ate on average (not the foods)</li>' : ''}
-          <li>To check your plan, here or with the weekly report: next week's plan, its exercises, sets and minutes</li>
+          <li>To check your plan (here or in the weekly report): next week's plan, its exercises, sets and minutes</li>
         </ul>
-        <p class="t-body">Never your name, email, exact dates or device IDs, and never the health conditions you plan around. Anthropic's privacy policy covers what happens to it there. You can turn Claude off any time in Settings.</p>
+        <p class="t-body">Never your name, email, exact dates, device IDs or the health conditions you plan around. Anthropic's privacy policy applies there. Turn Claude off any time in Settings.</p>
         <div class="btn-row"><button type="button" class="rf-btn" data-variant="plain" data-act="previewSheet">${U.icon('eye')}See exactly what gets sent</button><button type="button" class="rf-btn" data-variant="plain" data-act="privacySheet">${U.icon('lock')}Privacy policy</button></div>
         <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="claudeAllow">Allow</button><button type="button" class="rf-btn" data-size="lg" data-act="claudeDeny">Not now</button></div>
       </div>`,
@@ -554,7 +554,7 @@
   });
   U.act.claudeReview = async () => { if (await U.claudeConsent()) { U.S.ai.enabled = U.S.ai.mode === 'api'; U.save(true); U.render(); U.toast('Claude is on', 'positive'); } };
   U.act.claudeWithdraw = async () => {
-    if (!(await U.confirm('Stop sending your data to Claude?', 'Claude turns off and the on-device coach takes over. Nothing more is sent. Reports and chats you already have stay on this phone.', 'Stop', 'critical'))) return;
+    if (!(await U.confirm('Stop sending your data to Claude?', 'Claude turns off and the on-device coach takes over. Nothing more is sent, and your reports and chats stay on this phone.', 'Stop', 'critical'))) return;
     const S = U.S;
     S.ai.consentAt = null;
     S.ai.enabled = false;
@@ -648,7 +648,7 @@
         return row(sub, right, p.state === 'downloading' || p.state === 'verifying' ? U.progress(p.total ? p.loaded / p.total : 0, `${m.name} download`) : '');
       }
       if (have) {
-        const sub = m.legacy ? `${m.label} · an older model. The new ones answer much better.` : [m.label, pace(S, m.id) || 'on this phone'].join(' · ');
+        const sub = m.legacy ? `${m.label} · an older model. The new ones answer better.` : [m.label, pace(S, m.id) || 'on this phone'].join(' · ');
         const right = (inUse === m.id ? `<span class="t-footnote model-on">${U.icon('check-circle', 'sm')}In use</span>` : `<button type="button" class="rf-btn" data-size="sm" data-act="modelUse" data-arg="${m.id}">Use</button>`)
           + (compact ? '' : `<button type="button" class="rf-btn" data-variant="plain" data-shape="circle" data-size="sm" aria-label="Delete ${U.esc(m.name)}" data-act="modelDelete" data-arg="${m.id}">${U.icon('trash')}</button>`);
         return row(sub, right);
@@ -718,7 +718,7 @@
       return `<div class="sheet-pad">
         <ul class="rf-list">${rows.map(([k, v]) => `<li><div class="rf-list-row"><span class="rf-list-text"><span class="rf-list-title">${U.esc(k)}</span></span><span class="rf-list-detail">${U.esc(v)}</span></div></li>`).join('')}</ul>
         ${r.error ? `<p class="t-callout">${U.esc(r.error)}</p>` : ''}
-        ${r.reply ? `<p class="t-footnote rf-muted">Its answer: “${U.esc(r.reply)}”</p>` : ''}
+        ${r.reply ? `<p class="t-footnote rf-muted">Its answer: "${U.esc(r.reply)}"</p>` : ''}
         <details class="selftest-log"><summary class="t-footnote">The log</summary><pre class="preview">${U.esc((r.log || []).join('\n'))}</pre></details>
         <div class="btn-row"><button type="button" class="rf-btn" data-variant="soft" data-act="selfTestCopy">${U.icon('copy')}Copy</button><button type="button" class="rf-btn" data-variant="soft" data-act="selfTestReport">${U.icon('flag')}Report a problem</button></div>
       </div>`;
@@ -773,7 +773,7 @@
       if (!ok) { U.toast('Key saved', 'neutral', 'Claude stays off until you allow it in Settings, under AI coach.'); return; }
       if (U.claudeSetup) await U.claudeSetup();
       U.render();
-      U.toast('Claude is on', 'positive', 'It writes your weekly report when you open Health, and you can ask it anything.');
+      U.toast('Claude is on', 'positive', 'It writes your weekly report when you open Health. Ask it anything.');
     }, 350);
   };
   // Claude's page (src/ui/claudeset.js): over a sheet, the sheet goes first.
@@ -783,14 +783,14 @@
     if (top && !top.closed) { U.closeSheets(); if (!here) setTimeout(() => U.open('claude'), 320); } else if (!here) U.open('claude');
   };
   U.act.deleteKey = async () => {
-    if (!(await U.confirm('Delete the API key?', 'The coach stops working until you add a key again. Reports you already have stay.', 'Delete', 'critical', 'trash'))) return;
+    if (!(await U.confirm('Delete the API key?', 'Claude stops working until you add a key again. Your reports stay.', 'Delete', 'critical', 'trash'))) return;
     AI().deleteKey(U.S);
     U.commit();
   };
   U.act.previewSheet = () => {
     U.sheet({
       title: 'What gets sent', size: 'auto',
-      body: `<div class="sheet-pad"><p class="t-callout rf-muted">This is what goes to Claude with a question once you've allowed it (through your API key), or into the Claude app when you ask there. Your weekly report and suggestions get the same; building, checking or improving a plan gets less of it, with the plan and the moves you can do. No name, email, exact dates or device IDs. The on-device coach and the weekly report worked out on this phone send nothing.</p></div><pre class="preview">${U.esc(AI().preview(U.S, U.today()))}</pre>`,
+      body: `<div class="sheet-pad"><p class="t-callout rf-muted">Claude gets this with each question, weekly report and suggestion once you allow it, and the Claude app when you ask there. Plan builds, checks and improvements send less, plus the plan and the moves you can do. No name, email, exact dates or device IDs. The on-device coach and the phone's own report send nothing.</p></div><pre class="preview">${U.esc(AI().preview(U.S, U.today()))}</pre>`,
     });
   };
 
@@ -825,7 +825,7 @@
     U.toast('Restored', 'positive');
   };
   U.act.resetAll = async () => {
-    const one = await U.confirm('Reset Gradient Health?', 'Your plan, history, health and food logs, the AI key, the on-device model and saved maps are deleted from this phone.', 'Continue', 'critical', 'trash');
+    const one = await U.confirm('Reset Gradient Health?', 'This deletes your plan, history, health and food logs, the AI key, the on-device model and saved maps from this phone.', 'Continue', 'critical', 'trash');
     if (!one) return;
     const two = await U.dialog({
       title: 'This can\'t be undone', message: 'Copy your data first if you might want it back.', icon: 'alert', tone: 'critical',
