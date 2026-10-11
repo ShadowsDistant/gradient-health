@@ -131,11 +131,14 @@ left alone. A few conventions:
 - The navigation bar is shared: a screen's `<header class="rf-navbar">` is lifted into it.
 - A route change gets fresh content: the old page leaves in a layer of its own while the new one
   comes in (`U.motion.routeSwap` in `src/ui/motion.js`, on Refract 1.4's page motion: pushes and
-  pops slide on the smooth spring, tabs morph in place; the bar's title cross-fades with them). A
-  re-render of the same route patches in place and glides what moved (FLIP): new blocks rise in,
-  and removed ones fade from where they were for 200 ms before they go, so a test that checks one is
-  gone waits for `U.motion.settled()`. Animate transform and opacity only; `test/ui-motion.mjs`
-  checks for layout properties.
+  pops slide on the snappy spring in 280 ms, tabs morph in place in 200; the bar's title cross-fades
+  with them, and its buttons and the tab bar land with the page). A re-render of the same route
+  patches in place and glides what moved (FLIP, 340 ms): new blocks rise in, and removed ones fade
+  from where they were for 180 ms before they go, so a test that checks one is gone waits for
+  `U.motion.settled()`. Animate transform and opacity only; `test/ui-motion.mjs` checks for layout
+  properties. Nothing that moves makes anyone wait: Refract's own motion the app asks for by name
+  (glass forming, shape-shifting) plays quicker where it would run long (`U.motion.within`), on the
+  same curves.
 - Glass above the page moves as Refract's material does. The bar's buttons are keyed by what they
   are (`data-rf-key`; the top-left one by its place, the coach on a tab and Back on a page), so a
   push or Back shape-shifts them (`U.motion.shift`, `Refract.shapeshift`): one on both routes keeps
@@ -151,6 +154,12 @@ left alone. A few conventions:
   and shrinks away, then the panel dissolves into Today, whose cards rise back with the workout not
   started; from Today, its buttons pinch away and its card folds and settles back
   (`U.todayCancelled`); the toast with Undo only comes after. Reduced motion: short fades.
+- Toasts (`U.toast` in `core.js`, Refract's toaster) come up from the bottom of the screen, above
+  whatever is there: the tab bar, Today's floating buttons and the workout capsule, the player's,
+  set-up's or a live activity's buttons, or an open sheet's main buttons (`--toast-lift`, read again
+  whenever one of those comes or goes, and glided to). Over an open sheet the toaster goes in the
+  sheet's dialog, the one part of the page that takes taps then, and back as the sheet closes. A
+  swipe down dismisses the bottom one. Refract's toast motion plays 1.6 times as fast.
 
 **Parts that load when they're needed.** Set-up (`src/ui/onboarding.js`), the plan review with
 Why this plan (`src/planreview.js`, `src/ui/review.js`), How it works (`src/data/science.js`,
@@ -394,7 +403,7 @@ Where the app uses Refract 1.4's newer parts:
   lets them through. A sheet's body has no inset of its own, so each block in it brings its 16 px.
 - **Dropdowns** (`<details class="gh-drop">`, `src/styles/dropdown.css`): what's inside grows open
   and folds shut (`::details-content`'s height, with `interpolate-size`), fading as it goes, and the
-  chevron turns with it. It's the one motion here that lays the page out every frame, for 280 ms
+  chevron turns with it. It's the one motion here that lays the page out every frame, for 240 ms
   after a tap. Chromium before 131 and reduced motion open and shut at once.
 - **Page dots**: Refract's `.rf-pagedots` (its ink worm stretches to the page and splats there) for
   the badge reveal and the tour; they follow the page however it's turned (`aria-current`).
@@ -927,7 +936,8 @@ request. `test/ai.mjs` and `test/ui-review.mjs` cover it.
 Set-up (`src/ui/onboarding.js`) is six screens with one decision each, ending on the plan the engine
 built (`GH.optimizer.explainProfile`) with its first workout a tap away. With no weekdays picked, the
 usual pattern is turned so today is a workout day. Health Connect is offered after the first workout
-(`U.hcInvite`), never before the plan. `test/ui-onboarding.mjs` covers it.
+(`U.hcInvite`), never before the plan. Reminders come on as it ends (see Notifications).
+`test/ui-onboarding.mjs` covers it.
 
 ## Your plans
 
@@ -982,9 +992,13 @@ state (`test/customplan.mjs`); `src/ui/customplan.js` is the screens (`test/ui-c
 
 A reminder on workout days, a walk or run on a rest day, a badge waiting to be opened, a word the
 morning after a good night and a gentle note after a few days away. All local: no server, no push
-service, nothing sent anywhere. They're off until the person turns them on: a one-time card on Today
-(for people updating, and new people once their first workout and the tour are done) or Settings,
-Notifications, with a switch per kind and the reminder time.
+service, nothing sent anywhere. Set-up turns them on for someone new as it ends: its last screen says
+so over the button that finishes it, and on Android 13 and newer Android asks for the permission as
+that's tapped, once, with set-up still showing (`U.notifySetupAsk`, `U.notifySetupDone` in
+`src/ui/notify.js`); a no leaves them off with nothing asking again. Someone set up before keeps what
+they have (`brain.js`'s default and the store's migration are off), and if that's off, a one-time
+card on Today asks (once they've done a workout and had the tour). Settings, Notifications, has a
+switch per kind and the reminder time.
 
 **The page plans, Android delivers.** `src/notify.js` (`GH.notify`, a chunk) is a pure planner:
 `plan(S, now, o)` works out the next six weeks from the plan as Plan shows it (`GH.planWeek`), what's
@@ -1019,11 +1033,12 @@ so no exact-alarm permission, and while the phone dozes it waits for it to wake.
 each item, a restart and an update. At its time an item is dropped if one went out today, it's quiet
 hours, the app is on screen, an activity records (a walk also waits for a day with none recorded), or
 Android has its kind off (a channel per kind) or it's two hours late. One notification shows at a
-time, and each goes once it's out of date. `POST_NOTIFICATIONS` (Android 13+) is asked for only when
-they're turned on (`notifyRequest`, answered with `__gh.onNotifyPermission`); after a no, Settings
-opens Android's settings for them. A tap opens its screen the way a plan link does: `notifyTap()` for
-the one the app was started from, `__gh.onNotifyTap` while it runs. A badge's opens Badges with what's
-still sealed coming up over it, ready to be opened (`openRoute` in `src/ui/core.js`).
+time, and each goes once it's out of date. `POST_NOTIFICATIONS` (Android 13+) is asked for at the end
+of set-up and when they're turned on (`notifyRequest`, answered with `__gh.onNotifyPermission`);
+after a no, Settings opens Android's settings for them. A tap opens its screen the way a plan link
+does: `notifyTap()` for the one the app was started from, `__gh.onNotifyTap` while it runs. A badge's
+opens Badges with what's still sealed coming up over it, ready to be opened (`openRoute` in
+`src/ui/core.js`).
 `test/ui-notify.mjs` covers the card, Settings, taps and the hand-off against a stand-in
 (`test/fixtures.mjs`); compile the Java as `build-apk.sh` does.
 

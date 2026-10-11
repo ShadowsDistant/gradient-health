@@ -101,17 +101,18 @@ dialog.gh-sheet[data-closing] { pointer-events: none; }
    glass ancestor, so these copies go in Refract's own layers, where its hover, pressed and focus
    states still win as before. No glass on glass: glass controls are flat fills, without a blur or
    lens of their own. A menu opened from the sheet (a popover, U.menu) is glass on a layer of its own,
-   and keeps all of it. */
+   and keeps all of it; so does a toast over the sheet, which goes in its dialog beside the panel
+   (U.toast), so these are the panel's. */
 @layer rf.material {
-  .gh-sheet .rf-glass:not([data-allow-nested], [popover]) { --_fill: var(--fill-3); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; text-shadow: none; }
-  .gh-sheet .rf-glass:not([data-allow-nested], [popover])::before { display: none; }
-  .gh-sheet .rf-glass[data-variant="tinted"]:not([popover]) { --_fill: var(--accent-fill); }
-  .gh-sheet .rf-glass:not([popover]) > .rf-lens-layer { display: none; }
-  .gh-sheet .rf-glass[data-lens-ready]:not([popover]) { background-color: var(--_fill); }
-  .gh-sheet :where(.rf-secondary) { color: var(--glass-label-secondary); }
+  .gh-sheet-panel .rf-glass:not([data-allow-nested], [popover]) { --_fill: var(--fill-3); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; text-shadow: none; }
+  .gh-sheet-panel .rf-glass:not([data-allow-nested], [popover])::before { display: none; }
+  .gh-sheet-panel .rf-glass[data-variant="tinted"]:not([popover]) { --_fill: var(--accent-fill); }
+  .gh-sheet-panel .rf-glass:not([popover]) > .rf-lens-layer { display: none; }
+  .gh-sheet-panel .rf-glass[data-lens-ready]:not([popover]) { background-color: var(--_fill); }
+  .gh-sheet-panel :where(.rf-secondary) { color: var(--glass-label-secondary); }
 }
 @layer rf.components {
-  .gh-sheet .rf-btn:not(.rf-glass):not([data-variant]), .gh-sheet .rf-btn:not(.rf-glass)[data-variant="plain"] { background-color: transparent; color: inherit; }
+  .gh-sheet-panel .rf-btn:not(.rf-glass):not([data-variant]), .gh-sheet-panel .rf-btn:not(.rf-glass)[data-variant="plain"] { background-color: transparent; color: inherit; }
   .gh-sheet .rf-segmented { --thumb: var(--fill-selected); }
   .gh-sheet .rf-segmented .rf-segmented-thumb { box-shadow: none; }
   .gh-sheet .rf-segment { color: inherit; }

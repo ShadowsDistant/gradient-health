@@ -31,3 +31,20 @@
 @media (prefers-reduced-transparency: reduce) {
   .rf-glass[data-lens-ready][data-fading] { -webkit-backdrop-filter: var(--_backdrop); backdrop-filter: var(--_backdrop); }
 }
+
+/* Refract's rings and progress bars fill on its smooth spring over 640 ms, and a dialog scales in on
+   its bouncy one over 680, wobbles as it lands (.72 s) and settles its words and buttons in (.42 s
+   each, the last starting at .15 s): here the same springs over less time (each takes its time from
+   these tokens on itself), so a question that needs an answer is there sooner and a ring counting
+   rest down, which the player redraws five times a second, keeps up with its numbers. Only with
+   motion on: reduced motion keeps Refract's own short times. */
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-rf-motion="reduced"]) :is(.rf-ring, .rf-progress) { --duration-spring-smooth: 440ms; }
+  :root:not([data-rf-motion="reduced"]) .rf-dialog { --duration-spring-bouncy: 500ms; }
+  :root:not([data-rf-motion="reduced"]) .rf-dialog[open] { animation-duration: .5s; }
+  :root:not([data-rf-motion="reduced"]) .rf-dialog[open] > form > * { animation-duration: .32s; }
+}
+:root[data-rf-motion="full"] :is(.rf-ring, .rf-progress) { --duration-spring-smooth: 440ms; }
+:root[data-rf-motion="full"] .rf-dialog { --duration-spring-bouncy: 500ms; }
+:root[data-rf-motion="full"] .rf-dialog[open] { animation-duration: .5s; }
+:root[data-rf-motion="full"] .rf-dialog[open] > form > * { animation-duration: .32s; }

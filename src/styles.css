@@ -195,9 +195,18 @@ button.stat:active, .insight-line:active, .pl-fig-card:active, .tap-card:active 
 .ex-name { transition: opacity var(--duration-fast); }
 .ex-name:active { opacity: .55; transition-duration: 0ms; }
 
-/* Sheets (and the page receding behind them) are styled in styles/sheet.css. Toasts clear the
-   status bar. */
-.rf-toaster:not([data-position="bottom"]) { inset-block-start: calc(var(--space-3) + var(--sat)); }
+/* Sheets (and the page receding behind them) are styled in styles/sheet.css. Toasts come up from
+   the bottom (U.toast, src/ui/core.js), above the tab bar, the floating buttons, the player's or
+   set-up's buttons or a sheet's main ones: --toast-lift is how far up that is, and never less than the
+   system bar. When it changes while one shows (the tab bar going, a sheet opening) they glide there,
+   by transform. Reduced motion: they're just there. */
+.rf-toaster[data-position="bottom"] {
+  inset-block-end: 0;
+  translate: 0 calc(-1 * max(var(--toast-lift, 0px), calc(var(--sab) + var(--space-2))));
+  transition: translate 300ms var(--spring-snappy);
+}
+@media (prefers-reduced-motion: reduce) { .rf-toaster[data-position="bottom"] { transition: none; } }
+:root[data-rf-motion="reduced"] .rf-toaster[data-position="bottom"] { transition: none; }
 .rf-large-title { overflow-wrap: anywhere; }
 .lt-sub { margin: calc(-1 * var(--space-2)) 0 var(--space-4); padding: 0 var(--space-4); }
 .section { display: grid; gap: var(--space-3); padding: 0 var(--space-4); margin-bottom: var(--space-6); min-width: 0; }
@@ -232,7 +241,9 @@ button.stat:active, .insight-line:active, .pl-fig-card:active, .tap-card:active 
 .float-actions .btn-main { flex: 1 1 auto; max-width: 320px; }
 .float-actions:has(> .btn-main:only-child) { justify-content: center; }
 .float-actions > .btn-main:only-child { max-width: 420px; }
-.rf-tabbar[data-position="bottom"] { inset-block-end: var(--tabbar-bottom); transition: translate var(--duration-spring-smooth) var(--spring-smooth), opacity var(--duration-base) var(--ease-standard); }
+/* The tab bar slides away under a page pushed on top, and back with Back, with the page (280 ms):
+   the smooth spring over 280 ms rather than Refract's 640. */
+.rf-tabbar[data-position="bottom"] { inset-block-end: var(--tabbar-bottom); transition: translate 280ms var(--spring-smooth), opacity 200ms var(--ease-standard); }
 .rf-tabbar[data-away] { translate: 0 calc(100% + var(--tabbar-bottom)); opacity: 0; pointer-events: none; }
 .rf-tabbar-accessory[hidden] { display: none; }
 /* The tab bar's lens and its gestures: src/styles/controls.css. */
@@ -475,7 +486,8 @@ textarea.preview { border: 0; resize: vertical; }
 .streak-roll { display: inline-block; }
 
 /* ---------------------------------------------------------------- charts draw in */
-.ch-svg { animation: ch-wipe 700ms var(--ease-out-soft) both; }
+/* (500 ms: 1.9.0's 700 kept a chart half drawn while you'd already read its numbers.) */
+.ch-svg { animation: ch-wipe 500ms var(--ease-out-soft) both; }
 @keyframes ch-wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 
 /* ---------------------------------------------------------------- tips */

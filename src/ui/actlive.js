@@ -224,7 +224,7 @@
     awake();
     U.render();
     if (!was && !U.reduced() && el.animate) {
-      el.animate([{ opacity: 0, transform: 'translateY(24px) scale(.985)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)' });
+      el.animate([{ opacity: 0, transform: 'translateY(24px) scale(.985)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)' });
     }
   }
   U.actOpenLive = openLive;
@@ -628,7 +628,8 @@
       actions = `<button type="button" class="rf-btn rf-glass al-cancel" data-size="lg" data-lens data-act="alDiscardNow">Cancel</button>
         <button type="button" class="rf-btn rf-glass al-start" data-variant="tinted" data-size="xl" data-act="alGo"${ready ? ' data-ready' : ''}>${U.icon('play')}${ready ? 'Start' : 'Start now'}</button>`;
     } else if (L.phase === 'countdown') {
-      const s = Math.max(1, Math.ceil((L.goAt - now) / 1000));
+      // 3-2-1, as the loop's cue: a tick whose clock reads earlier than the tap drew a 4.
+      const s = Math.min(3, Math.max(1, Math.ceil((L.goAt - now) / 1000)));
       body = `<div class="al-count"><span class="al-count-n" data-key="n${s}">${s}</span><span class="al-sub">${U.esc(`Your ${tp.noun} starts`)}</span></div>`;
       actions = '<button type="button" class="rf-btn rf-glass al-cancel" data-size="lg" data-lens data-act="alCancelCount">Cancel</button>';
     } else if (L.phase === 'saving') {

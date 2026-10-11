@@ -35,7 +35,7 @@
  *
  * For src/ui/core.js: snap(root) measures a page before a re-render patches it; the patch reports
  * each container it changes (patched), so new blocks rise in and removed ones leave from where they
- * were (one in sight stays in the page, inert, for the 200 ms its fade takes: code or a test that
+ * were (one in sight stays in the page, inert, for the 180 ms its fade takes: code or a test that
  * looks for it to be gone waits for settled()); play() then glides whatever moved, every glide
  * starting in the same frame. barSwap(bar) carries the navigation bar across a route change: its
  * title cross-fades, and its buttons shape-shift (update(fn) runs the bar's change). show(el, frames,
@@ -83,6 +83,23 @@
     };
     return tokens[i];
   }
+
+  // Glides on the snappy spring, and a long one on the smooth spring: Refract's curves over less time
+  // than its own settle times (460 and 640 ms), which is the same spring, stiffer. Nothing the app
+  // moves this way makes anyone wait for it.
+  const GLIDE_MS = 340, GLIDE_FAR_MS = 460;
+  // Refract's material motion asked for by name plays on its own settle times (a shape-shift 640 ms,
+  // a button budding out on its bouncy spring 680, glass forming 620 and its light sweeping on for
+  // 880). Here each part of it ends within `ms`: whatever would run longer plays faster, the same
+  // curves. (A part already under that keeps its time.)
+  function within(el, ms) {
+    if (!el || !el.getAnimations) return;
+    for (const a of el.getAnimations({ subtree: true })) {
+      const end = a.effect && a.effect.getComputedTiming().endTime;
+      if (Number.isFinite(end) && end > ms && a.playState !== 'finished') a.playbackRate = end / ms;
+    }
+  }
+  M.within = within;
 
   /* ---------------------------------------------------------------- what's playing */
   const playing = new Set();
@@ -160,7 +177,7 @@
     aside(() => el.parentNode.appendChild(c));
     const quiet = reduced();
     const frames = quiet ? [{ opacity: 1 }, { opacity: 0 }] : [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(10px) scale(.94)' }];
-    const a = show(c, frames, { duration: quiet ? Math.min(150, ms || 150) : ms || 220, easing: quiet ? 'linear' : tok().standard, fill: 'forwards' });
+    const a = show(c, frames, { duration: quiet ? Math.min(150, ms || 150) : ms || 200, easing: quiet ? 'linear' : tok().standard, fill: 'forwards' });
     return track(Promise.all(a.map(ended)).then(() => c.remove()));
   };
 
@@ -173,12 +190,17 @@
   // motion: a short fade.
   const glassOf = (el) => (el.classList.contains('rf-glass') ? [el] : Array.from(el.querySelectorAll(':scope > .rf-glass')));
   const later = (fn) => { if (U.readSoon) U.readSoon(fn); else fn(); };
+  // Glass forming is there within 320 ms (Refract's takes up to 930 with its light's sweep, one
+  // button a beat after another), and one dissolving goes in 340 unless the caller says.
+  const GLASS_IN_MS = 320, GLASS_OUT_MS = 340;
   M.glassIn = (el, o) => {
     const r = R();
     if (!can(el)) return Promise.resolve();
     if (reduced() || !r || !r.materialize) return all(show(el, [{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: 'linear' }));
     const parts = glassOf(el);
-    return track(Promise.all(parts.map((g, i) => r.materialize(g, Object.assign({ origin: [0.5, 1], delay: i * 50 }, o)))));
+    const p = Promise.all(parts.map((g, i) => r.materialize(g, Object.assign({ origin: [0.5, 1], delay: i * 50 }, o))));
+    within(el, GLASS_IN_MS);
+    return track(p);
   };
   // The copy, as fadeAway's: shielded, last in the parent (it's positioned, so it's drawn where the
   // part was). Its glass carries its frost by itself while its opacity falls (data-fading).
@@ -196,7 +218,7 @@
     return track(new Promise((resolve) => later(() => {
       const parts = c.isConnected ? glassOf(c) : [];
       for (const g of parts) g.setAttribute('data-fading', '');
-      Promise.all(parts.map((g) => r.dematerialize(g, { origin: [0.5, 1], duration: opt.ms }))).then(() => { c.remove(); resolve(); });
+      Promise.all(parts.map((g) => r.dematerialize(g, { origin: [0.5, 1], duration: opt.ms || GLASS_OUT_MS }))).then(() => { c.remove(); resolve(); });
     })));
   };
 
@@ -206,14 +228,18 @@
   // out and a gone one pinches off. Refract animates their widths: a few small parts above the page,
   // each laid out by itself. The pinched-off copies it leaves for a moment are only pictures:
   // Refract doesn't set them up (aside), a patch passes them by (core.js), and they lose the actions
-  // and labels that would make them look like the real thing. Reduced motion: it just changes.
+  // and labels that would make them look like the real thing. Reduced motion: it just changes. All of
+  // it lands within 280 ms (Refract's own takes 640, and 680 for a part budding out), with the page a
+  // push or Back brings in.
   const GHOST_ATTRS = ['data-act', 'data-arg', 'data-on', 'data-key', 'aria-label', 'popovertarget', 'aria-controls', 'aria-haspopup', 'aria-expanded'];
+  const SHIFT_MS = 280;
   M.shift = (root, update) => {
     const r = R();
     if (!r || !r.shapeshift || reduced() || !can(root)) { update(); return Promise.resolve(); }
     let ran = false, p = null;
     const run = () => { ran = true; update(); };
     try { aside(() => { p = r.shapeshift(root, run); }); } catch (e) { if (!ran) update(); else throw e; }
+    within(root, SHIFT_MS);
     for (const g of root.querySelectorAll('[data-rf-leaving]')) {
       for (const n of [g, ...g.querySelectorAll('[data-act], [aria-label], [data-key]')]) for (const a of GHOST_ATTRS) n.removeAttribute(a);
       // Blurring as it goes, it cuts its lens layer off from the page: its body carries the frost.
@@ -255,16 +281,16 @@
 
   /* ---------------------------------------------------------------- route changes */
   // How each kind moves: Refract 1.4's page motion (Refract.page), on its snappy spring, quick enough
-  // that a page change never feels like a wait. A push slides the new page in from the edge (340 ms)
+  // that a page change never feels like a wait. A push slides the new page in from the edge (280 ms)
   // while the old one falls back a third of the way and fades; Back plays that in reverse, the page
   // under it coming back from a third of the way over. A tab change morphs in place: the new page
-  // settles from 98.5% (240 ms) as the old one fades and grows a touch (140 ms), so the new page is
+  // settles from 98.5% (200 ms) as the old one fades and grows a touch (120 ms), so the new page is
   // there almost at once. Each fade has a timeline of its own, so the old page is gone well before
   // the end and the two are rarely both half there. (1.7.0 ran both on the smooth spring, 640 ms:
-  // pages took up to a second to settle.)
+  // pages took up to a second to settle; 1.9.0 took 340 and 240.)
   const TABS = { left: 1, right: 1, tab: 1 };
   const SLIDES = { push: 1, pop: 1, left: 1, right: 1, tab: 1 };
-  const PAGE_MS = 340, TAB_IN_MS = 240, TAB_OUT_MS = 140;
+  const PAGE_MS = 280, TAB_IN_MS = 200, TAB_OUT_MS = 120;
   function routeSpec(kind) {
     const t = tok();
     const spring = { duration: PAGE_MS, easing: t.snappy };
@@ -459,12 +485,12 @@
         Object.assign(c.style, { position: 'absolute', margin: '0', left: `${title.r.left - box.left}px`, top: `${title.r.top - box.top}px`, width: `${title.r.width}px`, height: `${title.r.height}px`, opacity: '1', translate: 'none', transition: 'none' });
         shield(c);
         aside(() => holder.appendChild(c));
-        const a = show(c, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${dir * 10}px)` }], { duration: 140, easing: t.standard, fill: 'forwards' });
+        const a = show(c, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${dir * 10}px)` }], { duration: 120, easing: t.standard, fill: 'forwards' });
         track(Promise.all(a.map(ended)).then(() => holder.remove()));
       }
       // The title's own fade (data-scrolled) already brings it in when it wasn't showing.
       if (bar.hasAttribute('data-scrolled') && el.textContent.trim()) {
-        if (title.copy) show(el, [{ opacity: 0, transform: `translateX(${-dir * 10}px)` }, { opacity: 1, transform: 'none' }], { duration: 200, delay: 40, easing: t.enter, fill: 'backwards' });
+        if (title.copy) show(el, [{ opacity: 0, transform: `translateX(${-dir * 10}px)` }, { opacity: 1, transform: 'none' }], { duration: 160, delay: 30, easing: t.enter, fill: 'backwards' });
       } else noFade(el);
     };
     // The bar's change (core.js), with its buttons shape-shifting, or on a tab change swapping.
@@ -504,11 +530,11 @@
       }
       shield(holder);
       aside(() => bar.parentNode.appendChild(holder));
-      const a = show(holder, [{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: 'linear', fill: 'forwards' });
+      const a = show(holder, [{ opacity: 1 }, { opacity: 0 }], { duration: 100, easing: 'linear', fill: 'forwards' });
       track(Promise.all(a.map(ended)).then(() => holder.remove()));
     }
     const t = tok();
-    for (const n of now) if (!old.some((o) => o.n === n)) show(n, [{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: t.standard });
+    for (const n of now) if (!old.some((o) => o.n === n)) show(n, [{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: t.standard });
     return Promise.resolve();
   }
 
@@ -559,11 +585,11 @@
   // A block new to a list or a page rises into place, a beat after its neighbours start to make room.
   function rise(el, delay) {
     if (el.nodeType !== 1 || !el.animate) return null;
-    return all(show(el, [{ opacity: 0, transform: 'translateY(8px) scale(.985)' }, { opacity: 1, transform: 'none' }], { duration: 320, delay: delay || 0, easing: tok().enter, fill: 'backwards' }));
+    return all(show(el, [{ opacity: 0, transform: 'translateY(8px) scale(.985)' }, { opacity: 1, transform: 'none' }], { duration: 260, delay: delay || 0, easing: tok().enter, fill: 'backwards' }));
   }
   // A pinned block fades and shrinks where it's drawn, then goes.
   function vanish(el, at) {
-    const list = show(el, [{ opacity: 1, transform: at || 'none' }, { opacity: 0, transform: `${at && at !== 'none' ? at + ' ' : ''}scale(.96)` }], { duration: 200, easing: tok().standard, fill: 'forwards' });
+    const list = show(el, [{ opacity: 1, transform: at || 'none' }, { opacity: 0, transform: `${at && at !== 'none' ? at + ' ' : ''}scale(.96)` }], { duration: 180, easing: tok().standard, fill: 'forwards' });
     const gone = () => { const k = kit(); if (k) k.leaving.delete(el); drop(el); };
     if (!list.some(Boolean)) { gone(); return Promise.resolve(); }
     return track(all(list).then(gone));
@@ -611,13 +637,13 @@
         const outs = pins.map((n) => [n, glides.has(n) ? offsetNow(n).t : null]);
         const done = [];
         // Short moves on the snappy spring; a long one (the page's end coming up after a card folds
-        // at the bottom) on the smooth one, which takes its time.
+        // at the bottom) on the smooth one, which takes a little longer.
         const t = tok();
         const far = moves.some(([, dx, dy]) => Math.abs(dx) > 120 || Math.abs(dy) > 120);
-        const time = far ? { duration: t.smoothMs, easing: t.smooth } : { duration: t.snappyMs, easing: t.snappy };
+        const time = far ? { duration: GLIDE_FAR_MS, easing: t.smooth } : { duration: GLIDE_MS, easing: t.snappy };
         for (const [el, dx, dy, now] of moves) done.push(glide(el, dx + (now ? now.x : 0), dy + (now ? now.y : 0), time));
         for (const [n, at] of outs) { glides.delete(n); done.push(vanish(n, at)); }
-        for (const n of added) done.push(rise(n, moves.length ? 70 : 0));
+        for (const n of added) done.push(rise(n, moves.length ? 50 : 0));
         return Promise.all(done).then(() => {});
       },
     };
@@ -683,13 +709,13 @@
       return track(all(a).then(() => { swap(); for (const x of a) if (x) x.cancel(); }));
     }
     const t = tok();
-    const a = show(el, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.96)' }], { duration: 180, easing: t.standard, fill: 'forwards' });
+    const a = show(el, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.96)' }], { duration: 160, easing: t.standard, fill: 'forwards' });
     return track(all(a).then(() => {
       if (change) {
         // A re-render folds it into something smaller (it keeps its node, and the re-render glides
         // what's after it): that fades in where it was.
         change();
-        if (el.isConnected) show(el, [{ opacity: 0, transform: 'scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: t.enter });
+        if (el.isConnected) show(el, [{ opacity: 0, transform: 'scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 200, easing: t.enter });
         for (const x of a) if (x) x.cancel();
         return;
       }
@@ -712,7 +738,7 @@
     const s = around(parent);
     put();
     s.play();
-    return all(show(el, [{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 260, delay: 90, easing: tok().enter, fill: 'backwards' }));
+    return all(show(el, [{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 220, delay: 60, easing: tok().enter, fill: 'backwards' }));
   };
 
   /* ---------------------------------------------------------------- menus */

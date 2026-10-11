@@ -7,7 +7,7 @@
 .gh-drop { interpolate-size: allow-keywords; }
 .gh-drop::details-content {
   block-size: 0; opacity: 0; overflow: clip;
-  transition: block-size 280ms var(--ease-standard), opacity 200ms linear, content-visibility 280ms allow-discrete;
+  transition: block-size 240ms var(--ease-standard), opacity 180ms linear, content-visibility 240ms allow-discrete;
 }
 .gh-drop[open]::details-content { block-size: auto; opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .gh-drop::details-content { transition: none; } }

@@ -64,10 +64,10 @@
     scene = null;
     draw();
     U.renderAccessory();
-    // The backdrop turns solid fast; the content rises in a little slower.
+    // The backdrop turns solid fast; the content rises in a little slower, all of it in under 0.45 s.
     if (!was && !U.reduced() && el.animate) {
-      el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 140, easing: 'ease-out' });
-      for (const [i, c] of Array.from(el.children).entries()) c.animate([{ opacity: 0, transform: 'translateY(26px)' }, { opacity: 1, transform: 'none' }], { duration: 420, delay: 40 + i * 40, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)', fill: 'backwards' });
+      el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: 'ease-out' });
+      for (const [i, c] of Array.from(el.children).entries()) c.animate([{ opacity: 0, transform: 'translateY(26px)' }, { opacity: 1, transform: 'none' }], { duration: 340, delay: 30 + i * 30, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)', fill: 'backwards' });
     }
   }
   // The player goes: it fades and sinks (220 ms). A cancelled workout ('cancel') folds away instead:
@@ -613,7 +613,7 @@
     tempoSync(fig.ctl, host.parentNode);
     if (playing && !covered) fig.ctl.play(); else fig.ctl.pause();
   }
-  function fadeIn(el) { if (el && !U.reduced() && el.animate) el.animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)' }); }
+  function fadeIn(el) { if (el && !U.reduced() && el.animate) el.animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)' }); }
   U.figureFor = (host, moveId, side, playing) => {
     const m0 = M().MOVES[moveId];
     if (!m0 || !GH.pose) return null;
@@ -714,13 +714,14 @@
     loop();
   }
 
-  // A new step or phase slides in: the main block rises, the action row settles.
+  // A new step or phase slides in: the main block rises, the action row settles. It plays after
+  // every set, so it's quick: in by 300 ms (1.9.0's took 380).
   function sceneIn(el, phase) {
     if (U.reduced()) return;
     const main = el.querySelector('.pl-main, .pl-scroll');
     const acts = el.querySelector('.pl-actions');
-    if (main && main.animate) main.animate([{ opacity: 0, transform: `translateY(${phase === 'rest' ? 18 : 24}px)` }, { opacity: 1, transform: 'none' }], { duration: 380, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)' });
-    if (acts && acts.animate) acts.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: 80, easing: 'ease-out', fill: 'backwards' });
+    if (main && main.animate) main.animate([{ opacity: 0, transform: `translateY(${phase === 'rest' ? 18 : 24}px)` }, { opacity: 1, transform: 'none' }], { duration: 300, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)' });
+    if (acts && acts.animate) acts.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, delay: 60, easing: 'ease-out', fill: 'backwards' });
   }
 
   function viewStep(st) {
