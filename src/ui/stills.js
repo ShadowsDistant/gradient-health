@@ -68,8 +68,8 @@
     if (same) shapes.set(m.id, h);
     return h;
   }
-  // Under what a still is kept: the figure's id first (what's kept is read in as that range), then
-  // its size, the look, and the move with its kit and what it's drawn from.
+  // Under what a still is kept: the figure's id first (an older figure's stills are told apart by it),
+  // then its size, the look, and the move with its kit and what it's drawn from.
   const key = (m, o) => [engine(), o.crop ? `c${o.crop}` : `${o.width}x${o.height}`, o.dark ? 'd' : 'l', o.skin || 'sand', o.shirt || '', m.id, kit(m), shape(m)].join('|');
   // A key without the figure's id or what the move's drawn from: an older figure's still of the same
   // move, size, look and kit stands in for it until it's drawn.
@@ -171,7 +171,8 @@
         c0.onsuccess = () => {
           const c = c0.result;
           if (!c || over <= 0) return;
-          if (!need.has(c.primaryKey)) { os.delete(c.primaryKey); mem.delete(c.primaryKey); stale.delete(rest(c.primaryKey)); over--; }
+          const k = c.primaryKey, s = stale.get(rest(k));
+          if (!need.has(k)) { os.delete(k); mem.delete(k); if (s && s.k === k) stale.delete(rest(k)); over--; }
           c.continue();
         };
       };
@@ -214,12 +215,12 @@
   // from: they wait. (A workout put aside keeps its figure, hidden: that one doesn't count.)
   const figureShown = () => Array.prototype.some.call(doc.querySelectorAll('.pl-fig, .sheet-fig'), (h) => !!h.offsetParent);
   // fn(deadline) in the next idle moment that's free (nothing in the person's hands; calm too if
-  // lax, for the work that can wait longer), the app in front.
+  // lax, for the work that can wait longer: true, or a function asked each time), the app in front.
   function whenFree(fn, lax) {
     const again = () => setTimeout(() => whenFree(fn, lax), 100);
     if (doc.hidden) { doc.addEventListener('visibilitychange', again, { once: true }); return; }
     idle((deadline) => {
-      if (doc.hidden || (lax ? !calm() : busy())) { again(); return; }
+      if (doc.hidden || ((typeof lax === 'function' ? lax() : lax) ? !calm() : busy())) { again(); return; }
       fn(deadline);
     });
   }
@@ -264,12 +265,15 @@
     const f = GH.figure3d;
     if (!ready(f)) { warm(); return; }
     waiting = true;
+    // (Calm only while no screen waits: one that asks meanwhile doesn't wait for calm.)
     whenFree((deadline) => {
       waiting = false;
       if (figureShown()) { waiting = true; setTimeout(() => { waiting = false; pump(); }, 1500); return; }
-      draw(deadline);
+      const busy = draw(deadline);
+      // The GPU still on the last stills: the next once they're back.
+      if (busy) { waiting = true; busy.then(() => { waiting = false; pump(); }); return; }
       pump();
-    }, !urgent());
+    }, () => !urgent());
   }
   // The 3D chunk, asked for at once (it's fetched and parsed off the page's thread), and its warm-up,
   // each step in a calm moment. One that didn't get there is tried again, twice. The stills go as
@@ -281,7 +285,7 @@
     GH.lazy('figure3d').then((f) => {
       if (!f || !f.preload) { fail(); return; }
       if (!ok()) { warming = false; pump(); return; }
-      f.preload({ when: whenCalm, ready: pump }).then(() => {
+      f.preload({ when: whenCalm, ready: pump, busy: urgent }).then(() => {
         warming = false;
         if (!ready(GH.figure3d)) tries++;
         pump();
@@ -290,7 +294,7 @@
   }
   // As many stills as fit in this idle moment (one at least; the ones a screen waits for go together,
   // a few at a time, so a tile's neighbours come with it). Those drawn in one go are copied out of the
-  // GL canvas together.
+  // GL canvas together. Returns a promise if the GPU is still busy with the last ones.
   function draw(deadline) {
     const f = GH.figure3d;
     const L = look(1);
@@ -298,12 +302,13 @@
     for (let n = 0; ready(f); n++) {
       const job = next(L);
       // (One drawn ahead only once it's calm too.)
-      if (!job || (!asked.has(job.k) && !calm())) return;
+      if (!job || (!asked.has(job.k) && !calm())) return null;
       const left = deadline ? deadline.timeRemaining() : 0;
-      if (n && !(left > cost + 4 || (asked.has(job.k) && n < 3 && now() - t0 + cost < 50))) return;
+      if (n && !(left > cost + 4 || (asked.has(job.k) && n < 3 && now() - t0 + cost < 50))) return null;
       const t1 = now();
       let r = null;
       try { r = f.stillNow(job.m, job.o); } catch (e) { r = null; }
+      if (r && r.busy) return r.busy;
       cost = now() - t1;
       // New shaders, compiling in the background: the others meanwhile, this one once they're in.
       if (r && r.wait) { job.wait = true; r.wait.then(() => { job.wait = false; pump(); }); continue; }
@@ -311,6 +316,7 @@
       drawn++;
       take(job, r);
     }
+    return null;
   }
   // A drawn still into its tiles: at once, from its picture (an object URL); kept on the phone as a
   // data URL, made in the background (the next launch shows it from its first frame).
@@ -325,6 +331,8 @@
     if (!r) { out(null); return; }
     if (!r.blob) { (r.url || Promise.resolve(null)).then(out, () => out(null)); return; }
     r.blob.then((b) => {
+      // The GPU taken back while it was drawn: drawn again once the figure's back.
+      if (!b && !ready(GH.figure3d)) { job.busy = false; pump(); return; }
       if (!b) { out(null); return; }
       out(URL.createObjectURL(b));
       if (!job.keep) return;
@@ -340,8 +348,8 @@
     for (const list of [asked, ahead]) {
       for (const j of Array.from(list.values())) {
         if (j.busy || j.wait) continue;
-        const old2 = j.o.dark !== L.dark || (j.o.skin || 'sand') !== L.skin || (j.o.shirt || '') !== (L.shirt || '');
-        if (old2 && !j.fns.some((fn) => !fn.host || (fn.host.isConnected && fn.host.getAttribute('data-want') === j.k))) { list.delete(j.k); continue; }
+        const other = j.o.dark !== L.dark || (j.o.skin || 'sand') !== L.skin || (j.o.shirt || '') !== (L.shirt || '');
+        if (other && !j.fns.some((fn) => !fn.host || (fn.host.isConnected && fn.host.getAttribute('data-want') === j.k))) { list.delete(j.k); continue; }
         return j;
       }
     }
@@ -367,10 +375,10 @@
   // (it usually started after launch already).
   function prime() {
     if (warming || !ok() || ready(GH.figure3d) || !U.S || !U.planStills) return;
-    load().then(() => {
+    load().then(() => idle(() => {
       const keys = need || new Set(U.planStills(U.S, U.today()).map((j) => key(j.m, j.o)));
       for (const k of keys) if (!url(k) && !failed.has(k)) { warm(); return; }
-    });
+    }));
   }
 
   /* ---------------------------------------------------------------- tiles */
@@ -381,12 +389,12 @@
     img.alt = '';
     img.draggable = false; // (the plan builder's rows are dragged)
     img.setAttribute('data-k', k);
-    const old2 = Array.from(host.childNodes);
-    if (fade && old2.length && !U.reduced()) {
-      const drop = () => { for (const n of old2) if (n.parentNode === host) n.remove(); };
+    const before = Array.from(host.childNodes);
+    if (fade && before.length && !U.reduced()) {
+      const drop = () => { for (const n of before) if (n.parentNode === host) n.remove(); };
       img.addEventListener('animationend', drop, { once: true });
       setTimeout(drop, 900);
-    } else for (const n of old2) n.remove();
+    } else for (const n of before) n.remove();
     if (fade) img.className = 'is-new';
     img.src = u;
     host.appendChild(img);
