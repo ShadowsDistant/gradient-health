@@ -41,7 +41,7 @@
   const from50 = (p) => { const b = band(p); return b === 'older' || b === 'senior'; };
 
   /* ================================================================== conditions */
-  // Offered in set-up ("Anything we should plan around?") and Settings. `plan` says what changes,
+  // Offered in set-up ("Anything to plan around?") and Settings. `plan` says what changes,
   // `doctor` when to check first. Pregnancy is left out on purpose: exercise in pregnancy needs a
   // midwife's or doctor's say for each person (ACOG 2020), which an app can't give.
   const CONDITIONS = [
@@ -493,7 +493,7 @@
     const lines = planLines(p).map((l) => l.text);
     const around = plannedAround(p);
     const doc = doctorLines(p);
-    if (!lines.length) return 'Your plan isn\'t shaped around any health condition right now. If something applies, like arthritis, low back pain, balance problems or high blood pressure, add it under Settings, Your answers, Anything we should plan around, and the plan works around it.';
+    if (!lines.length) return 'Your plan isn\'t shaped around any health condition right now. If something applies, like arthritis, low back pain, balance problems or high blood pressure, add it under Settings, Your answers, Anything to plan around, and the plan works around it.';
     return `${around}. ${lines.join(' ')}${doc.length ? ` ${doc.join(' ')}` : ''} If a move hurts, stop, and say so after your workout: moves that load that joint are swapped out.`;
   }
 

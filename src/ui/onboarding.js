@@ -908,7 +908,7 @@
   // what's planned around follows each tap.
   const jointGroups = (redraw) => group('Does anything hurt right now?', `<div class="ob-chips">${JOINTS.map(([id, t]) => listChip('_pain', id, t, Q._pain.includes(id), '', redraw)).join('')}</div>`, 'Moves that load these are swapped out for two weeks.')
     + group('Old injuries to be careful with', `<div class="ob-chips">${JOINTS.map(([id, t]) => listChip('careful', id, t, (Q.careful || []).includes(id), '', redraw)).join('')}</div>`, 'Jumps and tricky versions are left out for these.');
-  // Health conditions (the sheet, and Anything we should plan around?): the chips with the questions
+  // Health conditions (the sheet, and Anything to plan around?): the chips with the questions
   // they bring (which joints, the floor), then what they change and when to ask a doctor.
   function healthParts(foot) {
     const ac = A();

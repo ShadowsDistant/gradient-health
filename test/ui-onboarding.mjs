@@ -464,7 +464,7 @@ section('Planned around: the sheet and what it changes');
   check('the weight shown is your latest one (70 kg = 154.3 lb)', (await page.locator('.onboard input[data-k="_w"]').inputValue()) === '154.3');
   const edits = [];
   for (let i = 0; i < 12; i++) { const t = await title(page); edits.push(t); if (t === 'Your plan') break; await next(page); }
-  check('every detailed screen in order', edits.join(' > ') === ['About you', 'Anything we should plan around?', 'Goals', 'Experience', 'Schedule', 'Equipment', 'Joints and sides', 'Weight and protein', 'Your plan'].join(' > '), edits.join(' > '));
+  check('every detailed screen in order', edits.join(' > ') === ['About you', 'Anything to plan around?', 'Goals', 'Experience', 'Schedule', 'Equipment', 'Joints and sides', 'Weight and protein', 'Your plan'].join(' > '), edits.join(' > '));
   check('ending in Save changes', /Save changes/.test(await page.locator('.ob-actions').innerText()));
   check('in plain words there too', !dashes(await text(page)) && !/deload|×/.test(await text(page)));
   await next(page);
@@ -476,7 +476,7 @@ section('Planned around: the sheet and what it changes');
   section('One screen with Save');
   await page.evaluate(() => window.GH.ui.editAnswers('conditions'));
   await page.waitForTimeout(400);
-  check('one screen: no progress bar, Save', (await title(page)) === 'Anything we should plan around?' && await page.locator('.onboard .ob-progress .rf-progress').count() === 0 && (await page.locator('.ob-actions').innerText()).trim() === 'Save');
+  check('one screen: no progress bar, Save', (await title(page)) === 'Anything to plan around?' && await page.locator('.onboard .ob-progress .rf-progress').count() === 0 && (await page.locator('.ob-actions').innerText()).trim() === 'Save');
   await tap(page, '.onboard .rf-chip[data-list="conditions"][data-v="hands"]', 120);
   await next(page);
   await page.waitForTimeout(400);

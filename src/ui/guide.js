@@ -78,7 +78,7 @@
         if (plan.type !== 'workout' && plan.next) sub = `Your first one is on ${b.fmtDay(plan.next.day)}.`;
       }
       items.push({ id: 'workout', icon: 'play', title: 'Finish your first workout', sub, done: doneWorkout });
-      if (levelCheckFits(S.profile) && U.act.baselineSheet) items.push({ id: 'level', icon: 'timer', title: 'Do a level check', sub: 'Push-ups, a plank and curls, about 3 minutes, set each move\'s starting level.', done: U.seen('levelCheck'), act: 'ckLevel' });
+      if (levelCheckFits(S.profile) && U.act.baselineSheet) items.push({ id: 'level', icon: 'timer', title: 'Do a level check', sub: 'About 3 minutes of push-ups, a plank and curls sets each move\'s starting level.', done: U.seen('levelCheck'), act: 'ckLevel' });
       items.push({ id: 'howto', icon: 'eye', title: 'See how a move is done', sub: 'Tap any exercise name for an animated demo.', done: U.seen('moveSheet'), act: 'ckHowTo' });
     }
     if (food) items.push({ id: 'food', icon: 'food', title: 'Log your first meal', sub: 'Search, scan or quick-add the calories.', done: Object.keys(GH.food.data(S).days).some((d) => (GH.food.data(S).days[d] || []).length), act: 'foodAdd' });
