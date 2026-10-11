@@ -5,9 +5,9 @@
  * its true segment lengths, so meshes never stretch and planted hands and feet stay put.
  *
  * Loaded on demand with GH.lazy('figure3d'); it sets GH.figure3d = { supported, mount, still,
- * stillAsync, stillNow, preload, warm }. One shared WebGLRenderer draws every mounted figure and
- * copies each frame into that figure's own 2D canvas, so any number of figures can be on screen with
- * a single GL context.
+ * stillAsync, stillNow, preload, warm, stillsReady }. One shared WebGLRenderer draws every mounted
+ * figure and copies each frame into that figure's own 2D canvas, so any number of figures can be on
+ * screen with a single GL context.
  *
  * Units are centimetres. World axes: +Y up, floor at Y = 0. Side-view moves face +X with the near
  * ("N") limbs at +Z; front-view moves face +Z with N (the figure's left) at +X.
@@ -3121,14 +3121,16 @@ class View {
     return { tx, ty, tz, D, near: Math.max(2, D - span * 1.5), far: D + span * 1.5 + 200 };
   }
 
-  render(r, w, h) {
+  // Drawn w × h px at the GL canvas's bottom left, or x px to the right of it (stills drawn side by
+  // side, see copyOut).
+  render(r, w, h, x = 0) {
     const az = this.camState.az, el = this.camState.el;
     const key = `${az.toFixed(4)}:${el.toFixed(4)}:${w}x${h}`;
     if (key !== this.fkey) { this.frame(az, el, w / h); this.fkey = key; }
     this.shadow.render(r, this.scene, this.hideForShadow);
     r.setRenderTarget(null);
-    r.setViewport(0, 0, w, h);
-    r.setScissor(0, 0, w, h);
+    r.setViewport(x, 0, w, h);
+    r.setScissor(x, 0, w, h);
     r.setScissorTest(true);
     r.setClearColor(0x000000, 0);
     r.clear();
@@ -3151,6 +3153,7 @@ let SUPPORTED = null;
 let ENV = null;
 let WARM = null; // a View kept alive after preload() so its shader programs stay compiled
 let warmed = false; // and preload() has finished: those programs are compiled, not still compiling
+let stillsReady = false; // the shaders a still needs are compiled (before the warm-up's last step)
 let preloading = null;
 const live = new Set();
 let shownAt = -Infinity; // when the page last came to the front
@@ -3196,6 +3199,10 @@ function maybeRelease() {
 function supported() {
   if (SUPPORTED != null) return SUPPORTED;
   if (R) return (SUPPORTED = true);
+  // While the warm-up is under way, its renderer is the test: it makes one in a moment anyway, and a
+  // throwaway test context first would be one more context creation (slow on some phones, seconds in
+  // a software-GL test with the page busy).
+  if (preloading) return !!renderer();
   try {
     const c = document.createElement('canvas');
     const gl = c.getContext('webgl2'); // three.js needs WebGL 2
@@ -3251,8 +3258,11 @@ function forget(rr) {
   R = null;
   preloading = null;
   if (WARM) { try { WARM.dispose(); } catch (e) { /* ignore */ } WARM = null; }
-  warmed = false;
+  warmed = stillsReady = false;
   held.clear(); // stills waiting for shaders this renderer was compiling: posed again next time
+  strip.x = strip.h = 0; // (stills drawn in this task and not copied out yet: their copy finds R gone)
+  unhold(); // (the stills that waited for the warm-up's copy go back to the page)
+  if (flying) { flying = 1; landed(); }
   if (ENV) { try { ENV.dispose(); } catch (e) { /* ignore */ } ENV = null; }
   const drop = (o) => {
     if (!o || typeof o !== 'object') return;
@@ -3635,10 +3645,13 @@ function cachedStill(move, opts) {
 }
 // A square crop of a still around the figure (anything drawn more than faintly: the body, what it
 // holds, its shadow), side px across, so a small tile shows the body rather than the room the whole
-// move needs. Drawn from a still twice the size, so it's scaled down and stays sharp.
-function cropped(c, side) {
+// move needs. Drawn from a still twice the size, so it's scaled down and stays sharp. px: the
+// still's pixels when they're at hand (else they're read from the canvas), and then the crop is
+// drawn on the CPU too (a canvas the GPU kept would wait behind everything queued there).
+function cropped(c, side, px) {
   const w = c.width, h = c.height;
-  const px = c.getContext('2d').getImageData(0, 0, w, h).data;
+  const soft = !!px;
+  if (!px) px = c.getContext('2d').getImageData(0, 0, w, h).data;
   let x0 = w, y0 = h, x1 = -1, y1 = -1;
   for (let y = 0; y < h; y++) {
     for (let x = 0, i = y * w * 4 + 3; x < w; x++, i += 4) {
@@ -3649,7 +3662,7 @@ function cropped(c, side) {
   const box = Math.max(x1 - x0 + 1, y1 - y0 + 1) * 1.1;
   const out = document.createElement('canvas');
   out.width = side; out.height = side;
-  const ctx = out.getContext('2d');
+  const ctx = out.getContext('2d', soft ? { willReadFrequently: true } : undefined);
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(c, (x0 + x1 + 1) / 2 - box / 2, (y0 + y1 + 1) / 2 - box / 2, box, box, 0, 0, side, side);
   return out;
@@ -3711,25 +3724,29 @@ function still(move, opts) {
   if (!/^data:image\/webp/.test(url)) url = pic.toDataURL('image/png');
   return keepUrl(st.key, url);
 }
-// A drawn still encoded in the background (toBlob) and read back as a data URL, which an <img> shows
-// and the page keeps on the phone: a promise of the URL, or null.
-function encode(pic) {
+// A drawn still encoded in the background (toBlob, WebP, else PNG): a promise of the Blob, or null.
+function blobOf(pic) {
   return new Promise((resolve) => {
-    const read = (blob) => {
-      if (!blob) { resolve(null); return; }
-      const fr = new FileReader();
-      fr.onload = () => resolve(typeof fr.result === 'string' ? fr.result : null);
-      fr.onerror = () => resolve(null);
-      fr.readAsDataURL(blob);
-    };
     try {
-      if (!pic.toBlob) { let url = pic.toDataURL('image/webp', 0.9); if (!/^data:image\/webp/.test(url)) url = pic.toDataURL('image/png'); resolve(url); return; }
       pic.toBlob((blob) => {
-        if (blob && blob.type === 'image/webp') read(blob);
-        else pic.toBlob(read, 'image/png');
+        if (blob && blob.type === 'image/webp') resolve(blob);
+        else pic.toBlob((b) => resolve(b || null), 'image/png');
       }, 'image/webp', 0.9);
     } catch (e) { resolve(null); }
   });
+}
+// The same as a data URL, which an <img> shows and the page can keep: a promise of the URL, or null.
+function encode(pic) {
+  if (!pic.toBlob) {
+    try { let url = pic.toDataURL('image/webp', 0.9); if (!/^data:image\/webp/.test(url)) url = pic.toDataURL('image/png'); return Promise.resolve(url); } catch (e) { return Promise.resolve(null); }
+  }
+  return blobOf(pic).then((blob) => new Promise((resolve) => {
+    if (!blob) { resolve(null); return; }
+    const fr = new FileReader();
+    fr.onload = () => resolve(typeof fr.result === 'string' ? fr.result : null);
+    fr.onerror = () => resolve(null);
+    fr.readAsDataURL(blob);
+  }));
 }
 // The same still with as little as can be on the page's thread: the figure is posed now; its shaders
 // compile in the background where the GPU allows (compileAsync: the first still of a move with new
@@ -3751,20 +3768,160 @@ function stillAsync(move, opts) {
   pendingStills.set(st.key, p);
   return p;
 }
-// A still drawn now, in the caller's idle moment: all of its work on the page's thread at once (the
-// figure posed, one frame, the copy out of the GL canvas and the crop: a few frames' worth once the
-// figure is warm), so a caller with time left can draw another. Returns { url }, a promise of the data
-// URL encoded in the background. A still that needs shaders no warm view keeps compiled (kit the
-// warm-up didn't have) isn't drawn yet: they compile in the background where the GPU allows, and
-// { wait } resolves once they have; the next call draws it (its figure is held meanwhile, so they
-// stay compiled). null without 3D. The page keeps these itself (src/ui/stills.js), so they aren't
-// kept here as well.
+/* ---------------------------------------------------------------- stills that wait on nothing */
+// The page's stills (src/ui/stills.js: Plan's tiles, the plan builder's, set-up's reveal, Settings'
+// preview) never wait for the GPU on the page's thread. Each is posed and drawn into its own part of
+// the shared GL canvas, side by side, and everything drawn in one task is copied out at its end in one
+// go, into a buffer on the GPU (readPixels into a pixel pack buffer, then a fence). Nothing waits for
+// the GPU to finish drawing, which a copy out through a 2D canvas did: the still's whole frame, and
+// everything the GPU had queued before it (a few frames' worth on a phone; in a software-GL test the
+// first still of a launch waited 3 s there for the room's light). Once the fence says the copy's
+// done (looked at every few ms), the pixels are read back, and each still is turned the right way
+// up, cropped and encoded in the background.
+const strip = { x: 0, h: 0, list: [], soon: false }; // the stills drawn in this task, left to right
+// Resolves true once the GPU has done all it was asked so far, false if the context went meanwhile.
+function fence(rr) {
+  return new Promise((resolve) => {
+    let gl = null, sync = null;
+    try { gl = rr.r.getContext(); sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0); gl.flush(); } catch (e) { sync = null; }
+    if (!sync) { resolve(false); return; }
+    const look = () => {
+      if (R !== rr || isLost(rr)) { resolve(false); return; }
+      const s = gl.clientWaitSync(sync, 0, 0);
+      if (s === gl.TIMEOUT_EXPIRED) { setTimeout(look, 4); return; }
+      gl.deleteSync(sync);
+      resolve(s !== gl.WAIT_FAILED);
+    };
+    setTimeout(look, 4);
+  });
+}
+// Stills copied out and not back yet: one batch at most, so the GPU never has a queue of them (a live
+// figure's first frame waits for whatever the GPU has queued: a dozen stills held one for 1.5 s in a
+// software-GL test). stillNow answers { busy } meanwhile, which resolves once it's back.
+let flying = 0, landing = null, land = null;
+function landed() {
+  flying = Math.max(0, flying - 1);
+  const r = land;
+  landing = land = null;
+  if (r) r();
+}
+const busyUntil = () => landing || (landing = new Promise((r) => { land = r; }));
+// Room for a still w × h px right of what this task drew already. The canvas only grows here, by a
+// few stills' room at a time (a resize waits on the GPU and clears the canvas, so what's drawn is
+// copied out first).
+function room(w, h) {
+  const rr = R;
+  if (strip.x + w > rr.w || h > rr.h) {
+    copyOut();
+    if (w > rr.w || h > rr.h) ensureSize(Math.max(rr.w, Math.min(2048, w * 4)), Math.max(rr.h, h));
+  }
+  const x = strip.x;
+  strip.x += w;
+  strip.h = Math.max(strip.h, h);
+  return x;
+}
+// What this task drew, copied out of the canvas at once; each still's picture follows (s.done).
+function copyOut() {
+  const list = strip.list, w = strip.x, h = strip.h, rr = R;
+  strip.list = [];
+  strip.x = strip.h = 0;
+  if (!list.length) return;
+  const fail = () => { for (const s of list) s.done(null); };
+  if (!rr || isLost(rr) || !w || !h) { fail(); return; }
+  let gl = null, buf = null;
+  try {
+    gl = rr.r.getContext();
+    buf = gl.createBuffer();
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, buf);
+    gl.bufferData(gl.PIXEL_PACK_BUFFER, w * h * 4, gl.STREAM_READ);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, 0);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+  } catch (e) { fail(); return; }
+  flying++;
+  fence(rr).then((ok) => {
+    let px = null;
+    if (ok) {
+      try {
+        px = new Uint8Array(w * h * 4);
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, buf);
+        gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, px);
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+      } catch (e) { px = null; }
+    }
+    try { gl.deleteBuffer(buf); } catch (e) { /* gone with the context */ }
+    landed();
+    if (!px) { fail(); return; }
+    // Each still in a task of its own (a few ms each), so the page's thread is never held long.
+    let i = 0;
+    const one = () => {
+      const s = list[i++];
+      let pic = null;
+      try { pic = cut(px, w, s); } catch (e) { pic = null; }
+      s.done(pic);
+      if (i < list.length) setTimeout(one, 0);
+    };
+    one();
+  });
+}
+// One still out of the pixels read back (w px wide, rows from the bottom up, colours premultiplied by
+// their alpha as the canvas keeps them): a canvas the right way up, cropped to the figure if asked.
+function cut(px, w, s) {
+  const img = new ImageData(s.w, s.h);
+  const d = img.data;
+  for (let y = 0; y < s.h; y++) {
+    let i = (y * w + s.x) * 4, o = (s.h - 1 - y) * s.w * 4;
+    for (let x = 0; x < s.w; x++, i += 4, o += 4) {
+      const a = px[i + 3];
+      if (!a) continue;
+      const k = 255 / a;
+      d[o] = px[i] * k; d[o + 1] = px[i + 1] * k; d[o + 2] = px[i + 2] * k; d[o + 3] = a;
+    }
+  }
+  const c = document.createElement('canvas');
+  c.width = s.w; c.height = s.h;
+  c.getContext('2d', { willReadFrequently: true }).putImageData(img, 0, 0);
+  return s.crop ? cropped(c, s.crop, d) : c;
+}
+// A posed still drawn into the canvas; a promise of its picture once it's copied out (null if it
+// couldn't be). Its view goes as soon as it's drawn.
+function stillOut(st) {
+  return new Promise((resolve) => {
+    const rr = renderer();
+    try {
+      if (!rr || isLost(rr)) { resolve(null); return; }
+      clearTimers(); // (the canvas keeps its size while stills are drawn)
+      const x = room(st.w, st.h);
+      st.view.render(rr.r, st.w, st.h, x);
+      strip.list.push({ x, w: st.w, h: st.h, crop: st.crop, done: resolve });
+      if (!strip.soon) { strip.soon = true; queueMicrotask(() => { strip.soon = false; copyOut(); }); }
+    } catch (e) {
+      if (G.console) G.console.error('figure3d:', e);
+      resolve(null);
+    } finally {
+      // Disposing the view doesn't lose compiled shaders while the warm-up view holds them.
+      st.view.dispose();
+      maybeRelease();
+    }
+  });
+}
+// A still drawn now, in the caller's idle moment (the figure posed and one frame of it, a few frames'
+// worth on the page's thread once the figure is warm), so a caller with time left can draw another:
+// those drawn in the same task are copied out together. Returns { blob }, a promise of the picture
+// (WebP), encoded in the background; or { busy } while the last stills are still on their way (or
+// the warm-up copies its still out), which resolves once they're back. A still that needs shaders no
+// warm view keeps compiled (kit the warm-up didn't have) isn't drawn yet: they compile in the
+// background where the GPU allows, and { wait } resolves once they have; the next call draws it (its
+// figure is held meanwhile, so they stay compiled). null without 3D. The page keeps these itself
+// (src/ui/stills.js), so they aren't kept here as well.
 const held = new Map(); // key → a still posed and waiting for its shaders
+const pendingBlobs = new Map(); // key → its picture on the way
 function stillNow(move, opts) {
   const o = optsOf(Object.assign({ static: true }, opts));
   const [w, h] = drawSize(opts);
   const key = stillKey(move, w, h, o, cropOf(opts), timeOf(opts));
-  if (pendingStills.has(key)) return { url: pendingStills.get(key) };
+  if (pendingBlobs.has(key)) return { blob: pendingBlobs.get(key) };
+  if (paused) return { busy: paused };
+  if (flying && !strip.list.length) return { busy: busyUntil() };
   let st = held.get(key);
   if (st) held.delete(key);
   else {
@@ -3777,15 +3934,15 @@ function stillNow(move, opts) {
     if (r.info.programs.length > n) {
       if (held.size >= 8) { const [k0, s0] = held.entries().next().value; held.delete(k0); s0.view.dispose(); }
       held.set(key, st);
-      const wait = r.compileAsync ? Promise.resolve(r.compileAsync(st.view.scene, st.view.camera)).catch(() => {}) : new Promise((done) => setTimeout(done, 50));
+      // (And the GPU done with them, so the first frame doesn't wait for it on the page's thread.)
+      const rr = R;
+      const wait = (r.compileAsync ? Promise.resolve(r.compileAsync(st.view.scene, st.view.camera)).catch(() => {}) : new Promise((done) => setTimeout(done, 50))).then(() => (R === rr ? fence(rr) : false));
       return { wait };
     }
   }
-  const pic = stillDraw(st);
-  if (!pic) return null;
-  const p = encode(pic).then((url) => { pendingStills.delete(key); return url; }, () => { pendingStills.delete(key); return null; });
-  pendingStills.set(key, p);
-  return { url: p };
+  const p = stillOut(st).then((pic) => (pic ? blobOf(pic) : null)).then((b) => { pendingBlobs.delete(key); return b; }, () => { pendingBlobs.delete(key); return null; });
+  pendingBlobs.set(key, p);
+  return { blob: p };
 }
 
 /* ---------------------------------------------------------------- preload */
@@ -3796,12 +3953,16 @@ function idle(fn) {
 // A view that stays alive once its programs are compiled (so later figures reuse them): the figure's,
 // and a wall's or a door's (a transparent material, a program of its own that no figure's view keeps
 // compiled, so a speck of it lives here: a still of a wall push-up compiled it again every time, 200
-// ms in a software-GL test). Then one small frame to compile the contact-shadow passes too, and one
-// still the size of Plan's tiles, out through a 2D canvas as every still goes: the first copy out of
-// the GL canvas is the dear one (700 ms in the same test when a still was the first, 130 ms after),
-// so it's paid here, where nothing waits on it.
+// ms in a software-GL test). Then one small frame to compile the contact-shadow passes too: the
+// page's stills can be drawn from there (stillNow). Last, one still the size of Plan's tiles, out
+// through a 2D canvas as a live figure's frames go: the first copy out of the GL canvas is the dear
+// one (700 ms in the same test when a still was the first, 130 ms after), so it's paid here, where
+// nothing waits on it: once the stills a screen waits for are drawn (busy(): whether one is left), the
+// ones drawn ahead wait a moment while the GPU finishes what it was asked, so the copy waits on its
+// own frame only (on the room's light it held the page's thread 3 s there, and in the middle of the
+// stills more than a second). when(fn): runs each step.
 const WARM_STILL = 208; // px: Plan's tiles at 2x
-function warmUp() {
+function warmUp(when, busy) {
   if (WARM || !R) return true;
   const m = GH.moves && GH.moves.MOVES && (GH.moves.MOVES.push_std || Object.values(GH.moves.MOVES)[0]);
   if (!m) return true;
@@ -3814,29 +3975,88 @@ function warmUp() {
   WARM = view;
   const r = R.r;
   const compiled = r.compileAsync ? r.compileAsync(view.scene, view.camera) : Promise.resolve(r.compile(view.scene, view.camera));
-  // Each step in an idle moment, and only while this view is still the warm one (not released).
-  const step = (fn) => () => new Promise((done) => idle(() => {
-    if (R && WARM === view && !isLost(R)) { try { fn(); } catch (e) { /* the warm-up is best effort */ } }
+  // Each step in its own moment, and only while this view is still the warm one (not released).
+  const mine = () => R && WARM === view && !isLost(R);
+  const step = (fn) => () => new Promise((done) => when(() => {
+    if (mine()) { try { fn(); } catch (e) { /* the warm-up is best effort */ } }
     done();
   }));
+  // (Its first frame once the GPU is done with what it was asked, the shaders' compiling and the
+  // room's light: the frame asks whether the shaders compiled, which waited for all of that on the
+  // page's thread, 0.3 to 7 s in a software-GL test.)
   return compiled
+    .then(() => (mine() ? fence(R) : false))
     .then(step(() => { ensureSize(64, 64); view.render(R.r, 64, 64); }))
-    .then(step(() => {
-      const c = document.createElement('canvas');
-      c.width = c.height = WARM_STILL;
-      if (draw(view, c.getContext('2d'), WARM_STILL, WARM_STILL)) cropped(c, WARM_STILL / 2);
+    .then(() => {
+      if (!mine()) return;
+      stillsReady = true;
+      for (const fn of readyFns.splice(0)) { try { fn(); } catch (e) { /* the page's own */ } }
+    })
+    .then(() => new Promise((done) => {
+      // In a calm moment once no still a screen waits for is left (busy(): the page's own), the
+      // stills drawn ahead wait (stillNow) until those on their way are out, the GPU is done, and
+      // the copy's made.
+      const go = () => when(() => {
+        if (!mine()) { done(); return; }
+        if (busy && busy()) { setTimeout(go, 250); return; }
+        hold();
+        settled().then((ok) => {
+          if (ok && mine()) {
+            try {
+              const c = document.createElement('canvas');
+              c.width = c.height = WARM_STILL;
+              if (draw(view, c.getContext('2d'), WARM_STILL, WARM_STILL)) cropped(c, WARM_STILL / 2);
+            } catch (e) { /* the warm-up is best effort */ }
+          }
+          unhold();
+          done();
+        });
+      });
+      go();
     }));
 }
-// Build the renderer, the body, the equipment, the lighting and the shaders ahead of the first
-// figure, a small piece per idle moment so taps never wait on it. Resolves true when 3D is ready.
-function preload() {
+// While the warm-up copies its still out, the page's stills wait (stillNow returns { busy: paused }).
+let paused = null, unpause = null;
+function hold() { if (!paused) paused = new Promise((r) => { unpause = r; }); }
+function unhold() { const r = unpause; paused = unpause = null; if (r) r(); }
+// Resolves true once none of the page's stills is on its way (stillNow) and the GPU has done all it
+// was asked; false if the renderer went meanwhile (the stills drawn meanwhile are held: hold()).
+function settled() {
+  return new Promise((resolve) => {
+    const look = () => {
+      const rr = R;
+      if (!rr) { resolve(false); return; }
+      if (pendingBlobs.size || strip.list.length) { setTimeout(look, 50); return; }
+      fence(rr).then((ok) => {
+        if (!ok) resolve(false);
+        else if (pendingBlobs.size || strip.list.length) setTimeout(look, 50);
+        else resolve(true);
+      });
+    };
+    look();
+  });
+}
+// Build the renderer, the body, the equipment, the room's light and the shaders ahead of the first
+// figure, a small piece per idle moment so taps never wait on it (or whenever opts.when(fn) runs fn
+// with an idle deadline: the page's stills hold the steps while the page is in use). The room's light
+// comes after the body's shapes: it's the GPU's longest job here, and first, right after launch, its
+// shaders compiled while the GPU was still drawing the page, which held the page's thread longest
+// (2.8 s in a software-GL test), and the stills came no sooner for it. opts.ready(): called once
+// stills can be drawn (stillsReady), a step before the end; opts.busy(): whether a still a screen
+// waits for is left (the last step waits for those). Resolves true when 3D is ready.
+const readyFns = [];
+function preload(opts) {
+  const onReady = opts && typeof opts.ready === 'function' ? opts.ready : null;
+  if (onReady) { if (stillsReady || warmed) Promise.resolve().then(onReady); else readyFns.push(onReady); }
   if (preloading) return preloading;
+  const when = opts && typeof opts.when === 'function' ? opts.when : idle;
+  const busy = opts && typeof opts.busy === 'function' ? opts.busy : null;
   const steps = [
     () => (renderer() ? true : null), // null: no 3D here
     bodyStep, // false until every body part is built
     () => { eqGeos(); shared(); return true; },
     () => { envMap(); return true; },
-    warmUp, // a promise
+    () => warmUp(when, busy), // a promise
   ];
   const p = new Promise((resolve) => {
     let i = 0;
@@ -3847,20 +4067,20 @@ function preload() {
           if (out === null) { resolve(false); return; }
           if (out && typeof out.then === 'function') {
             i++;
-            out.then(() => idle(run), () => resolve(false));
+            out.then(() => when(run), () => resolve(false));
             return;
           }
           if (out) i++;
           if (!deadline || deadline.timeRemaining() < 8) break;
         }
         if (i >= steps.length) { resolve(true); return; }
-        idle(run);
+        when(run);
       } catch (e) {
         if (G.console) G.console.error('figure3d:', e);
         resolve(false);
       }
     };
-    idle(run);
+    when(run);
   }).then((ok) => { if (ok && R && WARM && preloading === p) warmed = true; maybeRelease(); return ok; });
   preloading = p;
   // A failed or released warm-up can be tried again later.
@@ -3873,6 +4093,9 @@ GH.figure3d = {
   // Whether the renderer is up and its shaders compiled, so a new figure draws its first frame at once
   // (not yet while the warm-up is compiling them: a figure would wait on that).
   warm() { return !!(R && WARM && warmed && !isLost(R)); },
+  // Whether the page's stills can be drawn without compiling anything (stillNow): true once the
+  // warm-up has compiled its shaders, a step before warm().
+  stillsReady() { return !!(R && WARM && (stillsReady || warmed) && !isLost(R)); },
   // Internal, for tests: drop the shared GL context as a phone might, look at what's held, shorten
   // the idle release, and stop figures drawing (a GPU stuck compiling).
   _loseContext() { if (R) R.r.forceContextLoss(); },
