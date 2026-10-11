@@ -82,12 +82,13 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 ## What's new (500 characters at most)
 
-Paste this into the What's new field with each update. This is 1.10.0's. Each GitHub release carries
+Paste this into the What's new field with each update. This is 1.10.1's. It covers 1.10.0 too. Each GitHub release carries
 its own version's text at the end of its What's new, under "Short version, for a store's What's new
 field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
 (`node scripts/release-notes.mjs --store` prints it).
 
 ```text
+• Shorter, plainer words across the app
 • Pick Claude's model and how much it thinks, with hard spending limits
 • Claude builds plans and improves your own
 • Badges are 3D medals you can spin

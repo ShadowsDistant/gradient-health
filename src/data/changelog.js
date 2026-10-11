@@ -6,6 +6,25 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.10.1', date: '2026-10-11', title: 'Shorter, plainer words',
+      // The store text covers 1.10.0 too, for a store that skipped it.
+      store: [
+        '• Shorter, plainer words across the app',
+        '• Pick Claude\'s model and how much it thinks, with hard spending limits',
+        '• Claude builds plans and improves your own',
+        '• Badges are 3D medals you can spin',
+        '• A new icon and matching colours',
+        '• Plan\'s 3D figures show at once after an update',
+        '• Messages come up from the bottom; quicker pages, sheets and dialogs',
+        '• Reminders on after set-up',
+        '• Health: a tidier This week, and dropdowns that fold open',
+      ].join('\n'),
+      items: [
+        ['pencil', 'Shorter, plainer words across the app, from set-up and tips to How it works and the privacy policy. Every number, limit and safety note is still there.'],
+        ['check-circle', 'Fixed: a leg test was called an arm test, and a few notes pointed to settings by their old names.'],
+      ],
+    },
+    {
       version: '1.10.0', date: '2026-10-11', title: 'Claude your way, 3D medals, a new icon and a quicker feel',
       store: [
         '• Pick Claude\'s model and how much it thinks, with hard spending limits',
