@@ -171,7 +171,7 @@ await page.click('#player [data-act="plClose"]');
 await settle(1200);
 
 section('Several at once: pages with dots');
-// Badges recorded without opened (as before 1.8.11) count as opened: each springs in as its page shows.
+// Badges recorded without opened (as before badges came sealed) count as opened: each springs in as its page shows.
 await S(() => { const S = window.GH.ui.S, now = Date.now(), d = window.GH.ui.today(); for (const id of ['w25', 'streak30', 'halfMarathon']) S.achievements.earned[id] = { day: d, at: now }; window.GH.ui.badgeReveal(['w25', 'streak30', 'halfMarathon']); });
 await settle(1200);
 // Refract's page dots: the dot marked current (aria-current) is the page showing, and its ink worm

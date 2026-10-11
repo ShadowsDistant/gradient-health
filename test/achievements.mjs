@@ -230,7 +230,7 @@ section('Migration: the first 1.6 load');
   check('a backup keeps them, earned dates and all', back.ok && JSON.stringify(back.state.achievements.earned) === JSON.stringify(M.earned));
 }
 
-section('Migration: the first 1.8.11 load (badges arrive sealed)');
+section('Migration: the first load with sealed badges');
 {
   // A record as 1.8.10 saved it: v 1, no opened, one badge earned and not shown yet.
   const old = copy(YEAR);

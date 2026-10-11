@@ -10,8 +10,8 @@
  * (worked out from history where it can be: the 10th workout's day, the day a streak reached 7);
  * `approx` marks one whose day history can't tell (it then says the day it was found). Badges earned
  * after `seenAt` haven't been shown yet. A new badge arrives sealed (`opened: false`) and is opened
- * in the reveal, src/ui/badges.js; sealed or opened, it's earned all the same. Since 1.8.11 (v 2);
- * every badge earned before then counts as opened.
+ * in the reveal, src/ui/badges.js; sealed or opened, it's earned all the same. Every badge earned
+ * before badges came sealed (the record's v 1, without opened) counts as opened.
  *
  * Everything a definition needs is worked out once per check by ctx(S, day), in sections that are
  * only computed when a definition asks (a check for food badges never replays the calendar).
@@ -458,7 +458,7 @@
   function todayOf(S, now) { return B().dayOf(num(now) ? now : Date.now(), rollOf(S)); }
   // The saved record, made whole: anything that isn't one of its parts goes (a backup from elsewhere
   // may hold anything), unknown badge ids stay (a newer version's). A badge's opened is true or false;
-  // without one (earned before 1.8.11) it counts as opened.
+  // without one (earned before badges came sealed) it counts as opened.
   function ensure(S, day) {
     let A = S.achievements;
     if (!isObj(A)) A = S.achievements = {};
@@ -545,9 +545,9 @@
     A.migrated = { at: t, n: Object.keys(A.earned).length - had };
     return S;
   }
-  // 1.8.11's first load: badges now arrive sealed, and every one earned before then was shown as its
-  // medal, so it counts as opened (the record is v 2 from then on). Runs on every load and does
-  // nothing after the first time.
+  // The first load with sealed badges: every badge earned before then was shown as its medal, so it
+  // counts as opened (the record is v 2 from then on). Runs on every load and does nothing after the
+  // first time.
   function migrateOpened(S) {
     const A = S && S.achievements;
     if (!isObj(A) || (num(A.v) && A.v >= 2)) return S;

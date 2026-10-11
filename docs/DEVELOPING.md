@@ -846,9 +846,9 @@ in one shared set), the You tab's card, the gallery, a badge's sheet and the rev
   opened: false }` (the record's v 2). `GH.achievements.unopened(S)` lists the ones still sealed,
   oldest first (what the reveal opens by default, and what a reminder can say is waiting), and
   `markOpened(S, id)` opens one for good. Sealed or not, a badge is earned: counted, dated and kept
-  the same. Every badge earned before 1.8.11 counts as opened (`migrateOpened`, one of the store's
-  migrations), as does what 1.6's first load finds in history, and `store.sanitize` takes an
-  `opened` that isn't true or false as opened.
+  the same. Every badge earned before they came sealed counts as opened (`migrateOpened`, one of the
+  store's migrations), as does what 1.6's first load finds in history, and `store.sanitize` takes
+  an `opened` that isn't true or false as opened.
 - **The capsule.** A sealed badge is a glass capsule in its tier's colours, sealed round its middle
   with a band of the tier's metal: its rarity shows, its name and medal don't. Like a medal it's an
   object, the same in light and dark. The toast for a new one says its tier and rarity ("Bronze ·
