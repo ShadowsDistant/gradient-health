@@ -194,7 +194,7 @@
     const cut = s.slice(0, n - 1);
     return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), n - 12)).replace(/[\s,]+$/, '')}…`;
   }
-  const WORKOUT_LINES = ['Today\'s workout, ready when you are.', 'It\'s on your plan for today. Start whenever suits you.', 'Your session for today is set up and ready.'];
+  const WORKOUT_LINES = ['Today\'s workout, ready when you are.', 'It\'s on today\'s plan. Start whenever suits you.', 'Today\'s session is set up and ready.'];
   function workoutWords(S, w, d, first) {
     return { title: `${fit(w.title, 30)}, ${w.min} min`, body: first ? 'Your first workout, ready when you are.' : WORKOUT_LINES[((d % 3) + 3) % 3] };
   }
@@ -231,7 +231,7 @@
       ['Your plan\'s ready when you are', `${min} minutes keeps it going.`],
       ['Fancy a short one?', 'Even 15 minutes counts, and your plan eases you back in.'],
       ['A walk counts too', `Not up for a workout? A ${walk} minute walk is a good way back.`],
-      ['No catching up needed', 'Your plan adjusts to where you are now. Just start with today.'],
+      ['No catching up needed', 'Your plan adjusts to where you are. Just start with today.'],
       ['One workout is a good week', 'Start small. One session this week is plenty.'],
       ['Fresh start, any day', 'Open the app and today\'s workout fits the time you have.'],
       ['We\'ll leave you be', 'This is the last nudge for now. Your plan\'s here whenever you want it.'],

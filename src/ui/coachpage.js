@@ -54,7 +54,7 @@
   }
 
   function watchGrid(items) {
-    if (!items.length) return '<div class="card"><p class="t-callout rf-muted">After a few days of workouts and health data, this shows what the coach is watching: sleep, recovery, effort, steps and your weight trend.</p></div>';
+    if (!items.length) return '<div class="card"><p class="t-callout rf-muted">After a few days of workouts and health data, this shows your sleep, recovery, effort, steps and weight trend.</p></div>';
     return `<div class="co-watch">${items.map((w) => {
       const [tone, word] = STATUS[w.status] || STATUS.info;
       return `<div class="co-w" data-status="${U.esc(w.status)}"><span class="co-w-top">${U.icon(w.icon || 'info', 'sm')}<span class="t-footnote rf-muted">${U.esc(w.label)}</span></span>
@@ -87,7 +87,7 @@
 
   function timelineCard(S, day) {
     const items = C().timeline(S, day, 42);
-    if (!items.length) return '<div class="card"><p class="t-callout rf-muted">Changes show up here after your first workouts: reps and weights going up, lighter weeks, swaps and schedule changes, each with the reason.</p></div>';
+    if (!items.length) return '<div class="card"><p class="t-callout rf-muted">After your first workouts, each change shows here with its reason: more reps or weight, lighter weeks, swaps and new schedules.</p></div>';
     const byDay = new Map();
     for (const x of items.slice(0, 40)) { if (!byDay.has(x.day)) byDay.set(x.day, []); byDay.get(x.day).push(x); }
     return `<div class="card co-time">${[...byDay.entries()].map(([d, xs]) => `<div class="co-day"><p class="t-footnote rf-muted co-day-label">${U.esc(d === day ? 'Today' : d === day - 1 ? 'Yesterday' : U.fmtDay(d))}</p>
@@ -102,12 +102,12 @@
       const api = S.ai.mode === 'api' && GH.ai && GH.ai.hasKey();
       return `${U.navbar('Coach notes', '', U.glassBtn('chevron-left', 'Back', 'back'))}
         <h1 class="rf-large-title">Coach notes</h1>
-        <p class="lt-sub t-footnote rf-muted">What it changed and why, what it suggests, and what it's watching. Your plan only changes when you apply something.</p>
+        <p class="lt-sub t-footnote rf-muted">Your plan only changes when you apply something.</p>
         <h2 class="sec-title t-title-3">Today</h2>
-        <div class="section"><div class="card">${decisions.length ? `<ul class="co-list">${decisions.map((d) => decisionRow(d, true)).join('')}</ul>` : `<p class="t-callout rf-muted">${session ? 'Full session as planned. Sleep, heart rate and how you feel look normal, so nothing was taken off.' : 'Nothing to adjust today.'}</p>`}</div></div>
+        <div class="section"><div class="card">${decisions.length ? `<ul class="co-list">${decisions.map((d) => decisionRow(d, true)).join('')}</ul>` : `<p class="t-callout rf-muted">${session ? 'Full session as planned: sleep, heart rate and how you feel look normal.' : 'Nothing to adjust today.'}</p>`}</div></div>
         <h2 class="sec-title t-title-3">Suggestions</h2>
         <div class="section">
-          ${sugs.length ? sugs.map(suggestionCard).join('') : '<div class="card" data-key="nosug"><p class="t-callout rf-muted">No suggestions right now. They show up when a pattern needs your say, like a day that keeps getting missed.</p></div>'}
+          ${sugs.length ? sugs.map(suggestionCard).join('') : '<div class="card" data-key="nosug"><p class="t-callout rf-muted">None right now. They come when a pattern needs your say, like a day that keeps getting missed.</p></div>'}
           ${api ? `<button type="button" class="rf-btn co-ask-ai" data-variant="soft" data-act="coachAskClaude">${U.icon('sparkle')}Ask Claude for suggestions</button>` : ''}
         </div>
         <h2 class="sec-title t-title-3">What it's watching</h2>
