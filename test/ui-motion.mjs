@@ -589,8 +589,13 @@ section('Collapse, expand and exit');
     const before = m.box(four);
     const p = U.motion.collapse(two);
     const first = { fades: m.anims(two).some((a) => Number(m.frames(a).slice(-1)[0].opacity) === 0), props: m.anims(two).flatMap(m.props).sort().join(), ms: m.anims(two)[0] ? m.anims(two)[0].effect.getTiming().duration : null };
+    // (The fade plays at a quarter of its speed while this looks: a busy machine's late timer could
+    // otherwise look after the fade, 160 ms, when the rest has started gliding.)
+    const fade = m.anims(two);
+    for (const a of fade) a.playbackRate = 0.25;
     await new Promise((res) => setTimeout(res, 60));
     first.stillThere = two.isConnected && Math.abs(m.box(four).top - before.top) <= 1;
+    for (const a of fade) a.playbackRate = 1;
     await p;
     const r = { first, gone: !two.isConnected, glides: m.glides(four) };
     const list = m.pauseAll();
