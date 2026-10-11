@@ -106,11 +106,19 @@ fi
 rm -rf "$WORK"
 mkdir -p "$WORK/base" "$(dirname "$OUT")"
 rm -f "$OUT"
+# The bundle is for Google Play, which updates the app itself: it goes without the permission to
+# install apps that the APK's own updates need (Updater.java). The app reads its absence as "updates
+# come from the store" (src/update.js), so nothing checks GitHub.
+MANIFEST="$WORK/AndroidManifest.xml"
+sed -E '/<uses-permission[^>]*android:name="android\.permission\.REQUEST_INSTALL_PACKAGES"[^>]*\/>/d' \
+  "$ROOT/android/AndroidManifest.xml" > "$MANIFEST"
+grep -q 'android.permission.REQUEST_INSTALL_PACKAGES' "$MANIFEST" \
+  && die "couldn't take REQUEST_INSTALL_PACKAGES out of the bundle's manifest"
 step "Compiling resources with $(basename "$(dirname "$AAPT2")")/aapt2 against $(basename "$(dirname "$PLATFORM_JAR")")"
 "$AAPT2" compile --dir "$ROOT/android/res" -o "$WORK/res.zip"
 "$AAPT2" link --proto-format -o "$WORK/linked.zip" \
   -I "$PLATFORM_JAR" \
-  --manifest "$ROOT/android/AndroidManifest.xml" \
+  --manifest "$MANIFEST" \
   --min-sdk-version "$MIN_SDK" --target-sdk-version "$TARGET_SDK" \
   --version-code "$VERSION_CODE" --version-name "$VERSION_NAME" \
   --auto-add-overlay \
@@ -153,6 +161,8 @@ bundletool build-apks --bundle="$OUT" --output="$WORK/universal.apks" --mode=uni
   --ks="$KEYSTORE" --ks-key-alias="$KEY_ALIAS" --ks-pass="file:$PASSDIR/store" --key-pass="file:$PASSDIR/key" >/dev/null
 rm -rf "$PASSDIR"
 unzip -l "$WORK/universal.apks" | grep -q "universal.apk" || die "bundletool couldn't make a universal APK from the bundle"
-bundletool dump manifest --bundle="$OUT" | grep -E "package=|versionCode|targetSdkVersion" | head -n 4 || true
+bundletool dump manifest --bundle="$OUT" > "$WORK/manifest.txt"
+grep -q 'REQUEST_INSTALL_PACKAGES' "$WORK/manifest.txt" && die "the bundle asks to install apps; Play updates it, so it mustn't"
+grep -E "package=|versionCode|targetSdkVersion" "$WORK/manifest.txt" | head -n 4 || true
 echo
 step "Built $OUT ($(du -h "$OUT" | cut -f1)), signed with $SIGNED_WITH"

@@ -96,12 +96,18 @@ jobs:
       - name: Build the Android App Bundle (test key)
         run: bash scripts/build-aab.sh
 
+      # The same version.json the release job publishes, for this APK: so a change that breaks it shows
+      # here, before main.
+      - name: Write version.json (test key)
+        run: node scripts/version-json.mjs build/gradient-health.apk build/version.json
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: gradient-health-test-${{ github.sha }}
           path: |
             build/gradient-health.apk
             build/gradient-health.aab
+            build/version.json
           if-no-files-found: error
           retention-days: 14
 
@@ -207,11 +213,17 @@ jobs:
         if: always()
         run: rm -f "$RUNNER_TEMP/release.jks"
 
+      # What the app's own update check reads (Updater.java, src/update.js): this build's versionName
+      # and versionCode, read from the APK, the APK's name, size and SHA-256, which the phone checks
+      # the download against, and What's new in the store's words (release-notes.mjs --store).
+      - name: Write version.json
+        run: node scripts/version-json.mjs build/gradient-health.apk build/version.json
+
       - name: Publish the "latest" release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          signed="Signed with the release key: the APK is the one for APKPure and direct installs, and the .aab is the upload for Google Play."
+          signed="Signed with the release key: the APK is the one for APKPure and direct installs, the .aab is the upload for Google Play, and version.json is what the app's update check reads."
           # What's new in this version from src/data/changelog.js, with the short store text to paste
           # into APKPure's or Play's What's new field, then how this build was made.
           version="$(node -p "require('./package.json').version")"
@@ -224,7 +236,7 @@ jobs:
           # the next run fine), so each step gets three tries.
           for i in 1 2 3; do
             gh release delete latest --yes --cleanup-tag 2>/dev/null || true
-            if gh release create latest build/gradient-health.apk build/gradient-health.aab \
+            if gh release create latest build/gradient-health.apk build/gradient-health.aab build/version.json \
               --title "Gradient Health ${version} (latest build)" \
               --notes-file "$RUNNER_TEMP/release-notes.md" \
               --target "$GITHUB_SHA" \
