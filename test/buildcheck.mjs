@@ -23,7 +23,7 @@ import { APP_SCRIPTS, APP_CHUNKS, LAZY, asciiRegexps } from '../scripts/build.mj
 // scroll diagnostics and the glass setting (11 KB) and ships at 1,941,415 bytes; the budget is that
 // plus 2%, enough to catch an asset inlined by mistake. 1.8.10 shipped at 1,975,240 bytes. Sealed
 // badges (a capsule for each badge waiting to be opened, opening it in the reveal, and its CSS) add
-// about 20 KB, to 1,994,812 bytes, so the budget moves up by that until a release sets it again.
+// about 20 KB, to 1,994,941 bytes, so the budget moves up by that until a release sets it again.
 const BUDGET = 2000000;
 
 const file = join(root, 'dist/gradient-health.html');
