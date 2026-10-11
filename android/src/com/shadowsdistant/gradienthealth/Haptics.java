@@ -31,7 +31,8 @@ import java.util.Map;
  *  - Workout: countdown, go, pause, setDone, done (a rest or hold over), workoutDone, levelUp,
  *    milestone, pr, start (a workout starting), cancel (a workout cancelled), skip, extend (more
  *    rest), swap (another exercise).
- *  - Moments: badge, celebrate.
+ *  - Moments: wobble and crack (a sealed badge tapped open: it rocks, then cracks), badge,
+ *    celebrate.
  *  - Activities: actGo, actPause, actResume, actAutoPause, actAutoResume, actSplit, actGps,
  *    actFinish, actDiscard (a run, walk, hike or ride).
  * Touch and navigation are the UI kinds: they're skipped when touch feedback is switched off in the
@@ -225,7 +226,11 @@ final class Haptics {
         put("extend", event, NONE, c(LOW_TICK, 0.6f, 0, LOW_TICK, 0.6f, 25, LOW_TICK, 0.6f, 25, LOW_TICK, 0.6f, 25),
                 w(8, 0.55f, 25, 0, 8, 0.55f, 25, 0, 8, 0.55f, 25, 0, 8, 0.55f));
         put("swap", event, NONE, c(QUICK_FALL, 0.5f, 0, QUICK_RISE, 0.45f, 25, CLICK, 0.8f, 0), w(10, 0.6f, 10, 0.3f, 25, 0, 8, 0.3f, 8, 0.55f, 14, 0.85f));
-        // Moments.
+        // Moments. A sealed badge tapped rocks on three soft beats, each softer; tapped again it takes
+        // a knock and the glass splinters in quick ticks; the third tap bursts it open (badge).
+        put("wobble", event, NONE, c(TICK, 0.6f, 0, LOW_TICK, 0.5f, 45, LOW_TICK, 0.3f, 45), w(12, 0.6f, 45, 0, 10, 0.45f, 45, 0, 6, 0.3f));
+        put("crack", event, NONE, c(THUD, 0.6f, 0, TICK, 0.7f, 18, TICK, 0.5f, 10, TICK, 0.35f, 10),
+                w(34, 0.9f, 18, 0, 6, 0.6f, 10, 0, 5, 0.45f, 10, 0, 4, 0.3f));
         put("badge", event, NONE, c(QUICK_RISE, 0.7f, 0, CLICK, 1f, 0, CLICK, 0.8f, 70, CLICK, 1f, 70, SPIN, 1f, 40, THUD, 0.8f, 60),
                 w(12, 0.4f, 12, 0.7f, 24, 1f, 70, 0, 20, 0.8f, 60, 0, 30, 1f, 20, 0, 12, 0.5f, 12, 0.85f, 12, 1f, 14, 0.6f, 40, 0, 60, 0.9f));
         put("celebrate", event, NONE, c(QUICK_RISE, 0.6f, 0, CLICK, 1f, 0, CLICK, 0.7f, 70, CLICK, 1f, 70, SPIN, 0.8f, 40),

@@ -16,7 +16,8 @@ src/engine/pose.js       2D skeleton (FK + IK), timing from tempo, SVG figures, 
 src/brain.js             program, sessions, gym loads, adaptation, calendar replay, streaks, readiness
 src/optimizer.js         the plan engine (GH.optimizer): the best weekly split, each day's sets, sessions
                          filled to the time set, the plan's score and its "Why this plan" lines
-src/achievements.js      the badges (GH.achievements): what each takes, earned for good with a date
+src/achievements.js      the badges (GH.achievements): what each takes, earned for good with a date,
+                         sealed until opened
 src/notify.js            notifications' planner (GH.notify, a lazy chunk): what to send and when;
                          src/ui/notify.js hands it to Android, with Settings' rows and Today's card
 src/planweek.js          one week of the plan for the Plan tab (GH.planWeek), cached
@@ -54,7 +55,8 @@ src/ui/controls.js       switches, segmented controls and single-choice chips (U
                          handling that makes every tap count, on Refract's liquid glass
 src/ui/hapticsui.js      the haptics rows for Settings (U.hapticRows) and the Feel each one gallery
 src/ui/you.js            the You tab: profile, badges, plans, your answers, Settings and help
-src/ui/badges.js         the badge medals, the strip, the gallery and the detail and reveal sheets
+src/ui/badges.js         the badge medals and sealed capsules, the strip, the gallery, the detail sheet
+                         and the reveal, where a capsule is opened (see Badges)
 src/ui/sharecard.js      a badge's share image (a 1080×1350 canvas) and sharing it
 src/ui/chat.js           the coach chat and the coach button on every tab
 src/ui/tailor.js         the Tailor my plan sheet
@@ -515,9 +517,9 @@ for a sheet flicked down), feedback (`success`, `log`, `undo`, `deny`, `warning`
 `save`, `copy`, `send`, `remove` for an entry taken out with Undo, `refresh` when fresh data is in,
 `scan` for a code read), workout (`countdown`, `go`, `pause`, `setDone`, `done`, `workoutDone`,
 `levelUp`, `milestone`, `pr`, `start`, `cancel`, `skip`, `extend` for more rest, `swap`) and moments
-(`badge`, `celebrate`). An action plays the kind for what it does, one per tap: a tap that opens a
-sheet leaves it to the sheet's own, a menu's pick to its action's. Each is its own composition of
-the phone's haptic primitives (see
+(`wobble` and `crack`, a sealed badge's first two taps, then `badge`, `celebrate`). An action plays
+the kind for what it does, one per tap: a tap that opens a sheet leaves it to the sheet's own, a
+menu's pick to its action's. Each is its own composition of the phone's haptic primitives (see
 `Haptics.java`: each primitive's support is checked, with a stand-in for a missing one), then a
 predefined effect for the one-beat kinds, then an amplitude waveform, then on/off pulses. Light plays
 at 0.75, Medium (the default) at full strength, and Strong adds a low tick after each click. Every
@@ -929,6 +931,45 @@ opens Android's settings for them. A tap opens its screen the way a plan link do
 the one the app was started from, `__gh.onNotifyTap` while it runs. `test/ui-notify.mjs` covers the
 card, Settings, taps and the hand-off against a stand-in (`test/fixtures.mjs`); compile the Java as
 `build-apk.sh` does.
+
+## Badges
+
+About 60 badges in ten categories and four tiers (bronze to platinum, Common to Very rare).
+`src/achievements.js` (`GH.achievements`) is pure logic on the saved state (`test/achievements.mjs`):
+what each takes, worked out from history, so a badge is dated the day it happened (the 10th
+workout's, the day a streak reached 7). Once earned, a badge is kept for good: a broken streak or a
+deleted log leaves it where it is. `src/ui/badges.js` draws the medals (one SVG each, the gradients
+in one shared set), the You tab's card, the gallery, a badge's sheet and the reveal
+(`test/ui-badges.mjs`). A saved change is checked 800 ms later, only for the categories it touched.
+
+- **Sealed until opened.** A badge is earned sealed: `S.achievements.earned[id]` is `{ day, at,
+  opened: false }` (the record's v 2). `GH.achievements.unopened(S)` lists the ones still sealed,
+  oldest first (what the reveal opens by default, and what a reminder can say is waiting), and
+  `markOpened(S, id)` opens one for good. Sealed or not, a badge is earned: counted, dated and kept
+  the same. Every badge earned before they came sealed counts as opened (`migrateOpened`, one of the
+  store's migrations), as does what 1.6's first load finds in history, and `store.sanitize` takes
+  an `opened` that isn't true or false as opened.
+- **The capsule.** A sealed badge is a glass capsule in its tier's colours, sealed round its middle
+  with a band of the tier's metal: its rarity shows, its name and medal don't. Like a medal it's an
+  object, the same in light and dark. The toast for a new one says its tier and rarity ("Bronze ·
+  Common", Open it), the workout's Next screen card shows its capsule dropping in, the You tab's card
+  says how many are waiting ("2 badges to open") and shows them first, and the gallery shows each in
+  its place, marked New, with its rarity and "Tap to open". A tap on any of them opens it in the
+  reveal, and so does a badge's sheet asked for a sealed one.
+- **Opening it.** In the reveal the capsule floats, bobbing gently, until it's tapped three times.
+  The first tap wobbles it with a hairline crack (`wobble`); the second shakes it harder, with
+  cracks of light and light leaking round it (`crack`); the third bursts it at its seam: the halves
+  fly apart, light floods out, and the medal springs out with its burst (14 beads) and the `badge`
+  haptic, then its name, tier, what it took, Share and Done rise in. It's opened, and saved, the
+  moment it bursts. Several page as before, each sealed, with Open all: the page showing bursts, the
+  rest spring in as their pages show. What a sealed page says and what it will say sit in the same
+  place, so the sheet keeps its height as it opens. Reduced motion: one tap, and a fade. Increased
+  contrast and reduced transparency (and Flat): the glass is a solid fill.
+- **Cheap to show.** Everything moves by transform and opacity, so the compositor plays it. The
+  capsule bobs only while its page is on screen (an IntersectionObserver), and stops when the sheet
+  closes; on a page nothing moves forever (a sealed tile nudges twice as it first shows, and the You
+  tab shakes a newly earned one awake once, with Refract's wiggle). Refract's click effect is off on
+  the capsule (`data-rf-effect="none"`), whose round shape it filled with a grey disc.
 
 ## Publishing (Google Play and APKPure)
 

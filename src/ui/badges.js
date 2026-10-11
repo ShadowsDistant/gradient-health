@@ -1,17 +1,21 @@
-/* Badges in the UI: the medals, the gallery, the detail sheet, the reveal, and when to celebrate.
+/* Badges in the UI: the medals, the sealed capsules, the gallery, the detail sheet, the reveal (where
+ * a capsule is opened), and when to celebrate.
  *
  * The badges themselves are src/achievements.js (GH.achievements). Hooks for other screens:
- *  - U.badgeStrip(S, day): the You tab's card (a summary, what's next, the latest medals).
+ *  - U.badgeStrip(S, day): the You tab's card (a summary, how many are waiting to be opened, the
+ *    latest badges).
  *  - U.open('badges'): the gallery page.
+ *  - U.badgeReveal(ids): the reveal (by default, every badge still sealed).
  *  - U.badgeCheck(reason): check now ('workout' and 'mobility' come from the player, which shows
  *    its own; 'activity', 'boot' and the rest say so with a toast). Returns what's new to show.
  *  - U.badgeEvent(name): a moment the state doesn't keep ('sharedPlan', 'tailored', 'reviewed',
  *    'sharedBadge'), then a check.
  * Otherwise every saved change (the 'gh-change' event) is checked 800 ms later, only for the
- * categories it touched, and never while the player or set-up is open. New badges never pop up
- * over what someone is doing: the player's Next screen shows its own card, and elsewhere a toast
- * with the medal offers the reveal. A badge that came in with a Health Connect sync, or whose day
- * is in the past, waits quietly on the You tab as "New".
+ * categories it touched, and never while the player or set-up is open. A new badge arrives sealed,
+ * a glass capsule in its tier's colours (its rarity shows, its name and medal don't), and is opened
+ * in the reveal with three taps. It never pops up over what someone is doing: the player's Next
+ * screen shows its own card, and elsewhere a toast offers to open it. A badge that came in with a
+ * Health Connect sync, or whose day is in the past, waits quietly on the You tab, sealed.
  */
 (function (G) {
   'use strict';
@@ -108,11 +112,11 @@
     svg.setAttribute('width', '0');
     svg.setAttribute('height', '0');
     svg.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;pointer-events:none';
-    svg.innerHTML = `<defs>${tiers.map((t) => metalDef(t) + ribbonDef(t)).join('')}${A().CATS.map((c) => enamelDef(c.id)).join('')}${enamelDef('lock')}${common()}${Object.keys(SHAPES).map(clipDefs).join('')}</defs>`;
+    svg.innerHTML = `<defs>${tiers.map((t) => metalDef(t) + ribbonDef(t)).join('')}${A().CATS.map((c) => enamelDef(c.id)).join('')}${enamelDef('lock')}${common()}${Object.keys(SHAPES).map(clipDefs).join('')}${capDefs()}</defs>`;
     doc.body.appendChild(svg);
   }
-  // A four-pointed sparkle for platinum.
-  const sparkle = (x, y, s) => `<path d="M${x} ${y - s}C${x + s * 0.16} ${y - s * 0.16} ${x + s * 0.16} ${y - s * 0.16} ${x + s} ${y}C${x + s * 0.16} ${y + s * 0.16} ${x + s * 0.16} ${y + s * 0.16} ${x} ${y + s}C${x - s * 0.16} ${y + s * 0.16} ${x - s * 0.16} ${y + s * 0.16} ${x - s} ${y}C${x - s * 0.16} ${y - s * 0.16} ${x - s * 0.16} ${y - s * 0.16} ${x} ${y - s}Z" fill="#fff"/>`;
+  // A four-pointed sparkle for platinum (and inside a sealed capsule, fainter).
+  const sparkle = (x, y, s, op) => `<path d="M${x} ${y - s}C${x + s * 0.16} ${y - s * 0.16} ${x + s * 0.16} ${y - s * 0.16} ${x + s} ${y}C${x + s * 0.16} ${y + s * 0.16} ${x + s * 0.16} ${y + s * 0.16} ${x} ${y + s}C${x - s * 0.16} ${y + s * 0.16} ${x - s * 0.16} ${y + s * 0.16} ${x - s} ${y}C${x - s * 0.16} ${y - s * 0.16} ${x - s * 0.16} ${y - s * 0.16} ${x} ${y - s}Z" fill="#fff"${op != null ? ` fill-opacity="${op}"` : ''}/>`;
   /* A badge's medal as SVG: a shape per category, the tier's metal rim, an enamel face with fine
    * engraving, the glyph embossed in it, a specular highlight and, for numbered badges, a ribbon
    * with the count. Locked: matte grey with a lock and a progress ring (have of goal). A secret one
@@ -180,6 +184,54 @@
   }
   U.badgeSvg = badgeSvg;
 
+  /* ---------------------------------------------------------------- sealed capsules */
+  // A badge not opened yet is a glass capsule in its tier's colours, sealed round its middle with a
+  // band of the tier's metal: its rarity shows, its name and its medal don't. Like a medal it's an
+  // object, the same in light and dark. The glass by tier: deep, body, light, glint.
+  const GLASS = { bronze: ['#7a3a12', '#c4713a', '#f2b27c', '#ffe3c6'], silver: ['#56606e', '#98a6b6', '#dbe4ee', '#fff'], gold: ['#8a5a00', '#e0a412', '#ffd75e', '#fff3c4'], platinum: ['#5a5fc4', '#8f9dff', '#c9d6ff', '#f4e6ff'] };
+  // The orb sits in the medals' 120 box (centre 60 57, radius 43). Its seam is its equator seen from a
+  // little above, so it dips toward you; it splits there when it bursts.
+  const seam = (dy) => `M17 ${57 + dy}A43 8.6 0 0 0 103 ${57 + dy}`;
+  // Its gradients and clips, in the page's one set (sharedDefs). The glass is clear where you look
+  // straight through it and deeper toward its edge, where the light goes through more of it; inside
+  // is the light the badge gives off, gathered at the bottom by the glass; platinum has a film of
+  // colour, as a soap bubble does.
+  const capDefs = () => A().TIER_ORDER.map((t) => { const [deep, body, lt, hi] = GLASS[t]; return `<radialGradient id="ghc-${t}" cx=".42" cy=".36" r=".7" fx=".4" fy=".3">${stops([[0, hi, 0.42], [0.45, lt, 0.4], [0.78, body, 0.66], [0.94, deep, 0.86], [1, deep, 0.95]])}</radialGradient>`; }).join('')
+    + `<radialGradient id="ghc-in">${stops([[0, '#fff', 0.95], [0.35, '#fff', 0.5], [1, '#fff', 0]])}</radialGradient>`
+    + `<linearGradient id="ghc-rim" x1=".2" y1="0" x2=".8" y2="1">${stops([[0, '#fff', 0.95], [0.3, '#fff', 0.25], [0.55, '#fff', 0], [1, '#fff', 0.8]])}</linearGradient>`
+    + `<linearGradient id="ghc-film" x1="0" y1=".1" x2="1" y2=".9">${stops([[0, '#ffc8f0', 0.5], [0.28, '#9fd4ff', 0.12], [0.5, '#d4b0ff', 0.45], [0.72, '#a8fff0', 0.15], [1, '#ffd0f4', 0.5]])}</linearGradient>`
+    + '<clipPath id="ghc-orb"><circle cx="60" cy="57" r="43"/></clipPath>'
+    + `<clipPath id="ghc-top"><path d="M-5-5H125V57H103A43 8.6 0 0 1 17 57H-5Z"/></clipPath><clipPath id="ghc-bottom"><path d="M-5 125H125V57H103A43 8.6 0 0 1 17 57H-5Z"/></clipPath>`;
+  /* A sealed badge's capsule as SVG (with the page's shared gradients). o: { size, part ('top' or
+   * 'bottom': that half alone, cut at the seam, for the reveal to split) }. Its solid layer
+   * (.bdg-cap-solid) shows with increased contrast and reduced transparency, where the glass is a
+   * solid fill. */
+  function capsuleSvg(tier, o) {
+    o = o || {};
+    sharedDefs();
+    const t = GLASS[tier] ? tier : 'bronze';
+    const size = o.size || 72;
+    const big = size >= 44;
+    return `<svg class="bdg-cap-svg" viewBox="0 0 120 120" width="${size}" height="${size}" aria-hidden="true"><g${o.part ? ` clip-path="url(#ghc-${o.part})"` : ''}>`
+      + `<circle class="bdg-cap-solid" cx="60" cy="57" r="43" fill="${GLASS[t][1]}" opacity="0"/><circle cx="60" cy="57" r="43" fill="url(#ghc-${t})"/>${t === 'platinum' ? '<circle cx="60" cy="57" r="43" fill="url(#ghc-film)"/>' : ''}`
+      + `<circle cx="60" cy="65" r="27" fill="url(#ghc-in)" opacity=".8"/>${big ? `${sparkle(47, 45, 4.2, 0.85)}${sparkle(72, 66, 2.8, 0.7)}${sparkle(54, 71, 1.9, 0.6)}` : ''}`
+      + `<g clip-path="url(#ghc-orb)"><path d="${seam(-0.4)}" fill="none" stroke="#000" stroke-opacity=".22" stroke-width="7.4"/><path d="${seam(0)}" fill="none" stroke="url(#ghb-m-${t})" stroke-width="6.2"/>${big ? `<path d="${seam(-2.6)}" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width=".8"/>` : ''}<ellipse cx="65" cy="88" rx="24" ry="9" fill="url(#ghc-in)" opacity=".7"/></g>`
+      + `<ellipse cx="45" cy="35" rx="23" ry="14" fill="url(#ghb-spec)" transform="rotate(-32 45 35)"/><ellipse cx="41.5" cy="31.5" rx="8" ry="4.2" fill="url(#ghc-in)" transform="rotate(-36 41.5 31.5)"/>`
+      + `<circle cx="60" cy="57" r="42.2" fill="none" stroke="url(#ghc-rim)" stroke-width="1.6"/><circle class="bdg-cap-edge" cx="60" cy="57" r="43" fill="none" stroke="${GLASS[t][0]}" stroke-opacity=".35" stroke-width=".8"/></g></svg>`;
+  }
+  // Cracks of light across the glass from a knock near its top, the light inside showing through:
+  // the first tap's hairline from the knock, or the second's fissure and the cracks off it. Each is
+  // [trunk, twigs], drawn wide in the glass's colour, then in its glint, then a white core.
+  const CRACKS = [['M74 30L72 35L73 37L69 42', 'M74 30L78 28L82 29'],
+    ['M74 30L72 35L73 37L69 42L70 44L67 49L68 52L64 56L65 59L61 63L62 67L59 71', 'M69 42L64 41L62 43L57 41L54 44M70 44L75 47L79 46L82 49L87 49M64 56L59 56L56 60L51 61M74 30L78 28L82 29L85 26M62 67L66 70L66 75L70 79M73 37L76 38M67 49L63 47M61 63L58 66']];
+  function crackSvg(tier, n) {
+    const g = GLASS[tier] || GLASS.bronze;
+    const [trunk, twigs] = CRACKS[n - 1];
+    const line = (d, c, w, op) => `<path d="${d}" stroke="${c}" stroke-width="${w}"${op ? ` stroke-opacity="${op}"` : ''}/>`;
+    return `<svg class="bdg-cap-svg" viewBox="0 0 120 120" width="176" height="176" aria-hidden="true"><g clip-path="url(#ghc-orb)" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="74" cy="30" r="${n === 1 ? 8 : 12}" fill="url(#ghc-in)" stroke="none"/>`
+      + `${line(trunk, g[1], 6.5, 0.4)}${line(twigs, g[1], 4.4, 0.32)}${line(trunk, g[3], 2.6)}${line(twigs, g[3], 1.7)}${line(trunk, '#fff', 1.15)}${line(twigs, '#fff', 0.7)}</g></svg>`;
+  }
+
   /* ---------------------------------------------------------------- reading the state */
   const live = () => ({ hc: GH.health && GH.health.status ? GH.health.status() : null });
   const list = (S, day) => A().evaluate(S, day, { live: live() });
@@ -200,6 +252,17 @@
     return `${n(item.have)} of ${n(item.goal)}${u === 'km' || u === 'm' || u === 'h' ? ` ${u}` : ''}`;
   }
   const tierLine = (def) => `${A().TIERS[def.tier].name} · ${A().TIERS[def.tier].rarity}`;
+  // A sealed one says no more than its tier and rarity: "Sealed badge, gold, rare. Tap to open",
+  // "A rare badge is inside.", and for several "2 Bronze · 1 Gold".
+  const capLabel = (def, rest) => `Sealed badge, ${A().TIERS[def.tier].name.toLowerCase()}, ${A().TIERS[def.tier].rarity.toLowerCase()}. ${rest || 'Tap to open'}`;
+  const inside = (def) => { const r = A().TIERS[def.tier].rarity.toLowerCase(); return `${/^[aeiou]/.test(r) ? 'An' : 'A'} ${r} badge is inside.`; };
+  const tierCount = (defs) => A().TIER_ORDER.map((t) => [t, defs.filter((d) => d.tier === t).length]).filter(([, n]) => n).map(([t, n]) => `${n} ${A().TIERS[t].name}`).join(' · ');
+  // Whether a badge is sealed now, from the saved record (a card drawn earlier may be out of date).
+  const sealedNow = (id) => { const E = U.S && U.S.achievements && U.S.achievements.earned; return !!(E && own(E, id) && E[id] && E[id].opened === false); };
+  // The note on the You tab's card and the gallery's: how many are waiting, and the way to them.
+  const openNote = (ids) => `<button type="button" class="bdg-note" data-act="badgeReveal" data-arg="${ids.join(',')}" data-key="bdg-open-note">${U.icon('sparkle', 'sm')}<span class="t-subhead">${ids.length === 1 ? '1 badge to open' : `${ids.length} badges to open`}</span><span class="bdg-note-go t-subhead">Open ${ids.length === 1 ? 'it' : 'them'}</span></button>`;
+  // A sealed one's capsule where its medal would be, with a glow in its tier's colour.
+  const capArt = (def, size, cls) => `<span class="bdg-cap-art${cls ? ` ${cls}` : ''}" data-tier="${def.tier}">${capsuleSvg(def.tier, { size })}</span>`;
   function nextLine(sum) {
     if (!sum.next) return sum.earned ? 'Every badge you can earn now is yours' : '';
     const it = sum.next;
@@ -208,27 +271,33 @@
   const sorted = (items) => items.slice().sort((a, b) => (b.day - a.day) || (b.at - a.at) || (A().TIERS[b.def.tier].rank - A().TIERS[a.def.tier].rank));
 
   /* ---------------------------------------------------------------- the You tab's card */
-  // A summary ("12 of 64 · Next: 25 workouts, 4 to go"), a note about new badges or (once, after
-  // 1.6) the ones history already earned, and the latest medals; before any, the next ones to earn.
+  // A summary ("12 of 64 · Next: 25 workouts, 4 to go"), a note about badges waiting to be opened
+  // ("2 badges to open"), new ones or (once, after 1.6) the ones history already earned, and the
+  // latest medals, the sealed ones first as capsules; before any, the next ones to earn.
+  function mini(x, day) {
+    if (x.sealed) return `<button type="button" class="bdg-mini is-earned is-sealed" data-tier="${x.def.tier}" data-badge="${x.id}" data-key="bdg-mini-${x.id}" data-act="badgeOpen" data-arg="${x.id}" aria-label="${U.esc(capLabel(x.def))}">${capArt(x.def, 56, 'is-nudge')}<span class="bdg-mini-title t-caption">${U.esc(A().TIERS[x.def.tier].rarity)}</span></button>`;
+    return `<button type="button" class="bdg-mini${x.earned ? ' is-earned' : ''}${x.isNew ? ' is-new' : ''}" data-badge="${x.id}" data-key="bdg-mini-${x.id}" data-act="badgeOpen" data-arg="${x.id}" aria-label="${U.esc(`${x.def.title}, ${x.earned ? earnedWhen(x, day).toLowerCase() : progressText(x)}`)}">${badgeSvg(x.def, { shared: true, earned: x.earned, size: 56, have: x.have, goal: x.goal })}<span class="bdg-mini-title t-caption">${U.esc(x.def.title)}</span></button>`;
+  }
   U.badgeStrip = (S, day) => {
     if (!S || !A()) return '';
     const items = list(S, day);
     const sum = A().summary(S, day, items);
     const ach = S.achievements || {};
     const mig = ach.migrated && ach.migrated.n > 0 && !ach.migrated.seen ? ach.migrated.n : 0;
-    const earned = sorted(items.filter((x) => x.earned)).slice(0, 8);
+    const earned = sorted(items.filter((x) => x.sealed)).concat(sorted(items.filter((x) => x.earned && !x.sealed))).slice(0, 8);
     const shown = earned.length ? earned : items.filter((x) => x.shown && !x.earned && !x.def.secret).sort((a, b) => b.pct - a.pct).slice(0, 4);
     const fresh = items.filter((x) => x.isNew);
-    const note = fresh.length
-      ? `<button type="button" class="bdg-note" data-act="badgeReveal">${U.icon('sparkle', 'sm')}<span class="t-subhead">${fresh.length === 1 ? `New badge: ${U.esc(fresh[0].def.title)}` : `${fresh.length} new badges`}</span><span class="bdg-note-go t-subhead">See ${fresh.length === 1 ? 'it' : 'them'}</span></button>`
+    const waiting = A().unopened(S);
+    const note = waiting.length ? openNote(waiting)
+      : fresh.length ? `<button type="button" class="bdg-note" data-act="badgeReveal">${U.icon('sparkle', 'sm')}<span class="t-subhead">${fresh.length === 1 ? `New badge: ${U.esc(fresh[0].def.title)}` : `${fresh.length} new badges`}</span><span class="bdg-note-go t-subhead">See ${fresh.length === 1 ? 'it' : 'them'}</span></button>`
       : mig ? `<button type="button" class="bdg-note" data-act="openBadges">${U.icon('sparkle', 'sm')}<span class="t-subhead">You've already earned ${U.plural(mig, 'badge')}</span><span class="bdg-note-go t-subhead">See them</span></button>` : '';
     return `<div class="card bdg-strip" data-key="badge-strip">
-      <button type="button" class="bdg-strip-head" data-act="openBadges" aria-label="Badges: ${sum.earned} of ${sum.total}. See all">
+      <button type="button" class="bdg-strip-head" data-act="openBadges" aria-label="Badges: ${sum.earned} of ${sum.total}${sum.unopened ? `, ${sum.unopened} to open` : ''}. See all">
         <span class="bdg-strip-text"><span class="t-headline">Badges</span><span class="t-footnote rf-muted">${U.roll(sum.earned)} of ${sum.total}${sum.next ? ` · ${U.esc(nextLine(sum))}` : ''}</span></span>
         <span class="bdg-strip-all t-subhead">See all${U.icon('chevron-right', 'sm')}</span>
       </button>
       ${note}
-      <div class="bdg-row" data-hscroll>${shown.map((x) => `<button type="button" class="bdg-mini${x.earned ? ' is-earned' : ''}${x.isNew ? ' is-new' : ''}" data-badge="${x.id}" data-key="bdg-mini-${x.id}" data-act="badgeOpen" data-arg="${x.id}" aria-label="${U.esc(`${x.def.title}, ${x.earned ? earnedWhen(x, day).toLowerCase() : progressText(x)}`)}">${badgeSvg(x.def, { shared: true, earned: x.earned, size: 56, have: x.have, goal: x.goal })}<span class="bdg-mini-title t-caption">${U.esc(x.def.title)}</span></button>`).join('')}</div>
+      <div class="bdg-row" data-hscroll>${shown.map((x) => mini(x, day)).join('')}</div>
     </div>`;
   };
   U.badgeSummary = (S, day) => A().summary(S, day, list(S, day));
@@ -237,6 +306,14 @@
   /* ---------------------------------------------------------------- the gallery */
   let filter = 'all';
   function tile(x, day) {
+    // A sealed one: its capsule in its place, marked New until it's opened; a tap opens the reveal.
+    if (x.sealed) {
+      return `<button type="button" class="bdg-tile is-earned is-sealed is-new" data-tier="${x.def.tier}" data-badge="${x.id}" data-key="bdg-${x.id}" data-act="badgeOpen" data-arg="${x.id}" aria-label="${U.esc(capLabel(x.def))}">
+      <span class="bdg-tile-medal">${capArt(x.def, 68, 'is-nudge')}<span class="bdg-new t-caption">New</span></span>
+      <span class="bdg-tile-title t-footnote">${U.esc(A().TIERS[x.def.tier].rarity)}</span>
+      <span class="bdg-tile-sub t-caption rf-muted">Tap to open</span>
+    </button>`;
+    }
     const sub = x.earned ? fmtDate(x.day) : x.def.secret ? 'Secret' : progressText(x);
     const title = x.def.secret && !x.earned ? 'Secret badge' : x.def.title;
     return `<button type="button" class="bdg-tile${x.earned ? ' is-earned' : ''}${x.isNew ? ' is-new' : ''}" data-badge="${x.id}" data-key="bdg-${x.id}" data-act="badgeOpen" data-arg="${x.id}" aria-label="${U.esc(`${title}, ${x.earned ? earnedWhen(x, day).toLowerCase() : sub}`)}">
@@ -283,6 +360,7 @@
             ${U.progress(sum.total ? sum.earned / sum.total : 0, 'Badges earned', 'positive')}
             <div class="bdg-tiers">${A().TIER_ORDER.map((t) => `<span class="bdg-tier-n" data-tier="${t}"><i aria-hidden="true"></i><span class="t-footnote">${U.esc(T[t].name)} <b>${sum.tiers[t]}</b></span></span>`).join('')}</div>
             ${sum.next ? `<p class="t-footnote rf-muted">${U.esc(nextLine(sum))}</p>` : ''}
+            ${sum.unopened ? openNote(A().unopened(S)) : ''}
           </div>
           ${U.choice('badgeFilter', [['all', 'All'], ['earned', 'Earned'], ['next', 'Next up']], filter, 'Show badges', ' data-on="badgeFilter"')}
         </div>
@@ -322,9 +400,11 @@
     rankMap = {};
     got.forEach((i, k) => { rankMap[i.id] = k + 1; });
   }
+  // A sealed one opens in the reveal instead, right there: its medal is its own to see first.
   U.badgeDetail = (id) => {
     const S = U.S, day = U.today();
     if (!S || !A() || !own(A().byId, id)) return null;
+    if (sealedNow(id)) return U.badgeReveal([id]);
     const items = list(S, day);
     ranks(items);
     const x = items.find((i) => i.id === id);
@@ -346,25 +426,57 @@
     // Refract 1.4's burst is 8 to 14 beads: the medal's is its biggest, 14.
     if (o && o.burst && medal && G.Refract && G.Refract.burst && !U.reduced()) setTimeout(() => { try { G.Refract.burst(medal, { count: 14, colors: BURST[def.tier], spread: 1.25, size: [6, 12] }); } catch (e) { /* ignore */ } }, 300);
   }
+  /* A page of the reveal: the stage, then what it says. A sealed one has its capsule on the stage over
+   * the medal, and says its tier, its rarity and "Tap to open"; what the badge is waits in the same
+   * place, hidden (from a screen reader too) until it's opened, so the sheet keeps its height as it
+   * opens. The capsule: its shadow, then (each a layer the compositor moves) the float that bobs, the
+   * shake that wobbles and shakes, its two halves (split at the seam, to fly apart), the cracks of
+   * the first and second taps and the light inside. */
   function revealPage(x, day, total) {
     const def = x.def;
-    return `<section class="bdg-page" data-page="${x.id}" aria-label="${U.esc(def.title)}">
-      <div class="bdg-stage" data-tier="${def.tier}"><span class="bdg-rays" aria-hidden="true"></span><span class="bdg-glow" aria-hidden="true"></span><span class="bdg-medal">${badgeSvg(def, { shared: true, earned: true, size: 176, sweep: true, label: def.title })}</span></div>
-      <p class="bdg-tierline t-caption">${U.esc(tierLine(def))}</p>
-      <h3 class="t-title-1 bdg-title">${U.esc(def.title)}</h3>
-      <p class="t-callout rf-muted bdg-how">${U.esc(def.how)}</p>
-      <p class="t-footnote bdg-when">${U.esc(earnedWhen(x, day))} · ${U.esc(`Badge ${rankOf(x)} of ${total}`)}</p>
+    const when = `${earnedWhen(x, day)} · Badge ${rankOf(x)} of ${total}`;
+    const copy = (title, how, cls) => `<div class="${cls}">
+        <p class="bdg-tierline t-caption">${U.esc(tierLine(def))}</p>
+        <h3 class="t-title-1 bdg-title" tabindex="-1">${U.esc(title)}</h3>
+        <p class="t-callout rf-muted bdg-how">${U.esc(how)}</p>
+        <p class="t-footnote bdg-when">${U.esc(when)}</p>
+      </div>`;
+    const medal = badgeSvg(def, { shared: true, earned: true, size: 176, sweep: true, label: def.title });
+    if (!x.sealed) {
+      return `<section class="bdg-page" data-page="${x.id}" aria-label="${U.esc(def.title)}">
+      <div class="bdg-stage" data-tier="${def.tier}"><span class="bdg-rays" aria-hidden="true"></span><span class="bdg-glow" aria-hidden="true"></span><span class="bdg-medal">${medal}</span></div>
+      <div class="bdg-copy">${copy(def.title, def.how, 'bdg-copy-open')}</div>
+    </section>`;
+    }
+    const half = (part) => `<span class="bdg-cap-half is-${part}">${capsuleSvg(def.tier, { size: 176, part })}</span>`;
+    const crack = (n) => `<span class="bdg-cap-crack is-${n}">${crackSvg(def.tier, n)}</span>`;
+    return `<section class="bdg-page is-sealed" data-page="${x.id}" aria-label="New badge, sealed">
+      <div class="bdg-stage is-sealed" data-tier="${def.tier}" data-taps="0">
+        <span class="bdg-rays" aria-hidden="true"></span><span class="bdg-glow" aria-hidden="true"></span>
+        <span class="bdg-medal" aria-hidden="true">${medal}</span>
+        <button type="button" class="bdg-cap" data-rf-effect="none" data-act="badgeCrack" data-arg="${x.id}" aria-label="${U.esc(capLabel(def))}">
+          <span class="bdg-cap-shadow"></span>
+          <span class="bdg-cap-float"><span class="bdg-cap-shake">${half('top')}${half('bottom')}${crack(1)}${crack(2)}<span class="bdg-cap-light"></span></span></span>
+        </button>
+        <span class="bdg-flash" aria-hidden="true"></span>
+      </div>
+      <div class="bdg-copy">${copy('Tap to open', inside(def), 'bdg-copy-sealed')}${copy(def.title, def.how, 'bdg-copy-open')}</div>
     </section>`;
   }
   /* The reveal: a sheet with the new badges as pages (with Refract's page dots when there are several:
-   * its ink worm stretches to the page picked and splats there), each springing in as it comes into
-   * view, then Share and Done. A dot (tapped, or scrubbed along the row, or the arrow keys) goes to
-   * its page. Opening it counts them as seen. ids: the badges to show (default: everything not shown
-   * yet). */
+   * its ink worm stretches to the page picked and splats there), then Share and Done. A sealed badge
+   * is a capsule, bobbing gently while it's on screen, and it opens in three taps: it wobbles, then
+   * it shakes and cracks with light, then it bursts, light floods out and the medal springs out of
+   * it (with reduced motion, one tap and a fade). Several sealed ones offer Open all. An opened one
+   * springs in as its page comes into view. A dot (tapped, or scrubbed along the row, or the arrow
+   * keys) goes to its page. Opening the sheet counts them as seen; a badge counts as opened once it
+   * has burst. ids: the badges to show (default: every one still sealed, then any opened one not
+   * shown yet). */
   U.badgeReveal = (ids) => {
     const S = U.S, day = U.today();
     if (!S || !A()) return null;
-    const want = (ids && ids.length ? ids : A().unseen(S)).filter((id) => own(A().byId, id));
+    const waiting = () => A().unopened(S).concat(A().unseen(S).filter((id) => !sealedNow(id)));
+    const want = (ids && ids.length ? ids : waiting()).filter((id) => own(A().byId, id));
     if (!want.length) return null;
     const items = list(S, day);
     ranks(items);
@@ -376,28 +488,116 @@
     const many = pages.length > 1;
     let cur = 0;
     const done = new Set();
-    const body = `<div class="bdg-reveal${many ? ' is-many' : ''}">
+    // Each page: sealed or not, and how many taps it has taken. Opened ones change what's behind.
+    const state = pages.map((x) => ({ sealed: x.sealed, taps: 0, busy: false }));
+    let opened = false, io = null, ctl = null;
+    const stillSealed = () => state.filter((s) => s.sealed).length;
+    const dotLabel = (x, i) => (state[i].sealed ? `${A().TIERS[x.def.tier].name} badge, sealed` : x.def.title);
+    const body = `<div class="bdg-reveal${many ? ' is-many' : ''}" data-cur="${state[0].sealed ? 'sealed' : 'open'}">
       <div class="bdg-pages"${many ? ' data-hscroll' : ''}>${pages.map((x) => revealPage(x, day, total)).join('')}</div>
-      ${many ? `<div class="rf-pagedots bdg-dots" role="group" aria-label="Badges">${pages.map((x, i) => `<button type="button" class="rf-dot" aria-label="${U.esc(x.def.title)}"${i === 0 ? ' aria-current="true"' : ''}></button>`).join('')}</div>` : ''}
+      ${many ? `<div class="rf-pagedots bdg-dots" role="group" aria-label="Badges">${pages.map((x, i) => `<button type="button" class="rf-dot" aria-label="${U.esc(dotLabel(x, i))}"${i === 0 ? ' aria-current="true"' : ''}></button>`).join('')}</div>` : ''}
       <div class="bdg-actions">
-        <button type="button" class="rf-btn rf-glass" data-size="lg" data-act="badgeShareCur">${U.icon('share')}Share</button>
-        <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="badgeDone">Done</button>
+        <div class="bdg-acts is-open">
+          <button type="button" class="rf-btn rf-glass" data-size="lg" data-act="badgeShareCur">${U.icon('share')}Share</button>
+          <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="badgeDone">Done</button>
+        </div>
+        <div class="bdg-acts is-sealed"><button type="button" class="rf-btn rf-glass" data-size="lg" data-act="badgeOpenAll"${stillSealed() > 1 ? '' : ' hidden'}>${U.icon('sparkle')}Open all</button></div>
       </div>
     </div>`;
+    const pageEls = () => (ctl ? ctl.el.querySelectorAll('.bdg-page') : []);
+    // Share and Done for an opened page; for a sealed one, Open all while more than one is.
+    const setActions = () => {
+      const r = ctl && ctl.el.querySelector('.bdg-reveal');
+      if (!r) return;
+      r.dataset.cur = state[cur] && state[cur].sealed ? 'sealed' : 'open';
+      const all = r.querySelector('[data-act="badgeOpenAll"]');
+      if (all) all.hidden = stillSealed() < 2;
+    };
     const show = (i, el) => {
       cur = i;
       // The worm follows the dot marked current (Refract watches aria-current).
       for (const [k, d] of [...el.querySelectorAll('.bdg-dots > .rf-dot')].entries()) { if (k === i) d.setAttribute('aria-current', 'true'); else d.removeAttribute('aria-current'); }
+      setActions();
       if (done.has(i)) return;
       done.add(i);
-      spring(el.querySelectorAll('.bdg-page')[i].querySelector('.bdg-stage'), pages[i].def, { buzz: true, burst: true });
+      // A sealed one waits for its taps.
+      if (!state[i].sealed) spring(el.querySelectorAll('.bdg-page')[i].querySelector('.bdg-stage'), pages[i].def, { buzz: true, burst: true });
     };
-    // quiet: the medal's own badge haptic is the moment, not the sheet opening.
-    const ctl = U.sheet({
-      title: many ? `${pages.length} new badges` : 'New badge', size: 'fit', cls: 'bdg-sheet bdg-reveal-sheet', body, quiet: true,
+    // A sealed one opens: it's opened for good at once (saved), then it bursts, the medal springs out
+    // with its haptic and burst, and what it is rises in. o.still: opened off screen (Open all), so
+    // it springs in like any opened one when its page comes into view.
+    const open = (i, o) => {
+      const st = state[i];
+      const page = pageEls()[i];
+      if (!st || !st.sealed || !page) return;
+      const x = pages[i];
+      st.sealed = false;
+      st.busy = true;
+      opened = true;
+      A().markOpened(S, x.id);
+      U.save();
+      const stage = page.querySelector('.bdg-stage');
+      const cap = stage.querySelector('.bdg-cap');
+      const focused = !!cap && doc.activeElement === cap;
+      if (io) io.unobserve(stage);
+      stage.removeAttribute('data-bob');
+      page.classList.remove('is-sealed');
+      page.setAttribute('aria-label', x.def.title);
+      const medal = stage.querySelector('.bdg-medal');
+      if (medal) medal.removeAttribute('aria-hidden');
+      if (cap) { cap.disabled = true; cap.setAttribute('aria-hidden', 'true'); }
+      const dot = ctl.el.querySelectorAll('.bdg-dots > .rf-dot')[i];
+      if (dot) dot.setAttribute('aria-label', x.def.title);
+      if (o && o.still) {
+        stage.classList.remove('is-sealed');
+        stage.classList.add('is-opened');
+        st.busy = false;
+        done.delete(i);
+        return;
+      }
+      // With reduced motion it simply fades (badges.css): no burst, no flying halves, nothing rising.
+      const r = ctl.el.querySelector('.bdg-reveal');
+      const calm = U.reduced();
+      if (calm) stage.classList.add('is-fading');
+      else { stage.dataset.taps = '3'; for (const n of [r, stage, page]) n.classList.add('is-opening'); }
+      spring(stage, x.def, { buzz: true, burst: true });
+      setActions();
+      setTimeout(() => {
+        st.busy = false;
+        stage.classList.remove('is-sealed', 'is-opening', 'is-fading');
+        stage.classList.add('is-opened');
+        if (!state.some((s) => s.busy)) r.classList.remove('is-opening');
+        // A key opened it: focus goes to what it is (its name, which a screen reader then reads).
+        if (focused && !ctl.closed) { const h = page.querySelector('.bdg-copy-open .bdg-title'); if (h) h.focus({ preventScroll: true }); }
+      }, calm ? 400 : 1000);
+    };
+    // A tap on a sealed one: a wobble, then a shake and cracks, then it bursts (one tap with reduced
+    // motion). Taps come as fast as a finger likes; each moves it on.
+    const crack = (i) => {
+      const st = state[i];
+      const page = pageEls()[i];
+      if (!st || !st.sealed || st.busy || !page) return;
+      if (U.reduced() || st.taps >= 2) { open(i); return; }
+      st.taps++;
+      const stage = page.querySelector('.bdg-stage');
+      stage.dataset.taps = String(st.taps);
+      U.haptic(st.taps === 1 ? 'wobble' : 'crack');
+      const cap = stage.querySelector('.bdg-cap');
+      if (cap) cap.setAttribute('aria-label', capLabel(pages[i].def, st.taps === 1 ? 'Tap twice more to open' : 'Tap once more to open'));
+    };
+    // quiet: an opened medal's own badge haptic is the moment, not the sheet opening; a sealed one's
+    // moment comes with its taps, so the sheet plays its own as it rises.
+    ctl = U.sheet({
+      title: many ? `${pages.length} new badges` : 'New badge', size: 'fit', cls: 'bdg-sheet bdg-reveal-sheet', body, quiet: !state[0].sealed,
       after: (c) => {
         const el = c.el;
         const box = el.querySelector('.bdg-pages');
+        // A capsule bobs only while it's on screen (and never with reduced motion): its page showing,
+        // the sheet open.
+        if (G.IntersectionObserver && el.querySelector('.bdg-stage.is-sealed')) {
+          io = new G.IntersectionObserver((entries) => { for (const e of entries) e.target.toggleAttribute('data-bob', e.isIntersecting && e.target.classList.contains('is-sealed') && !U.reduced()); });
+          for (const st of el.querySelectorAll('.bdg-stage.is-sealed')) io.observe(st);
+        }
         // The first medal waits for the sheet to rise.
         setTimeout(() => { if (!c.closed) show(0, el); }, U.reduced() ? 0 : 260);
         // A swipe settles on a page (scrollend; a pause in scrolling where it isn't supported). A dot
@@ -418,6 +618,8 @@
           if (dots) dots.addEventListener('rf-select', (e) => { if (e.detail && e.detail.index != null) goTo(e.detail.index); });
         }
       },
+      // The capsules stop; what shows the badges behind it shows the opened ones as medals.
+      onClose: () => { if (io) io.disconnect(); if (opened) behind(); },
     });
     let jumpTo = null;
     const goTo = (n) => {
@@ -430,7 +632,13 @@
       show(i, ctl.el);
     };
     U.act.badgePage = (el) => goTo(el && el.dataset ? el.dataset.arg : 0);
-    U.act.badgeShareCur = () => U.act.badgeShare({ dataset: { arg: pages[cur].id } });
+    U.act.badgeCrack = (el) => { const i = pages.findIndex((x) => el && el.dataset && x.id === el.dataset.arg); if (i >= 0) crack(i); };
+    // Open all: this page bursts; the others open as they are, each springing in when it shows.
+    U.act.badgeOpenAll = () => {
+      state.forEach((s, k) => { if (k !== cur && s.sealed) open(k, { still: true }); });
+      if (state[cur].sealed) open(cur); else setActions();
+    };
+    U.act.badgeShareCur = () => { if (state[cur] && !state[cur].sealed) U.act.badgeShare({ dataset: { arg: pages[cur].id } }); };
     U.act.badgeDone = () => { U.haptic('dismiss'); ctl.close('ok'); };
     return ctl;
   };
@@ -438,21 +646,56 @@
     const ids = el && el.dataset && el.dataset.arg ? el.dataset.arg.split(',') : null;
     U.badgeReveal(ids);
   };
+  // After a reveal that opened some: the page behind shows their medals (the You tab's card and the
+  // gallery re-render once it's calm), and so does the workout's Next screen card.
+  function behind() {
+    const card = doc.querySelector('#player .bdg-card');
+    if (card && card.dataset.arg) {
+      const items = list(U.S, U.today());
+      const tpl = doc.createElement('template');
+      tpl.innerHTML = U.badgeCard(card.dataset.arg.split(',').map((id) => items.find((i) => i.id === id)).filter(Boolean)).trim();
+      if (tpl.content.firstElementChild) card.replaceWith(tpl.content.firstElementChild);
+    }
+    const view = () => (U.els && U.els().screen ? U.els().screen.dataset.view : '');
+    if (view() === 'you' || view() === 'badges') {
+      const go = () => { if (view() === 'you' || view() === 'badges') U.render(); };
+      if (U.whenCalm) U.whenCalm(go); else go();
+    }
+  }
 
   /* ---------------------------------------------------------------- the player's own card */
-  // The Next screen's card: the newest medal (and how many more), opening the reveal. The medal
-  // springs in after the screen does (U.badgeSpring).
+  // The Next screen's card: the newest badge (and how many more), opening the reveal. A sealed one
+  // shows its capsule, which drops into the card after the screen arrives, with the badge haptic as
+  // it lands; an opened one, its medal springing in (U.badgeSpring). Drawn from the saved record, so
+  // once they're opened it shows the medal.
   U.badgeCard = (fresh) => {
     const items = (fresh || []).filter((x) => x && x.def);
     if (!items.length) return '';
     const x = items[items.length - 1];
     const more = items.length - 1;
-    return `<button type="button" class="card bdg-card" data-key="bdg-card" data-act="badgeReveal" data-arg="${items.map((i) => i.id).join(',')}" aria-label="${U.esc(more ? `${items.length} new badges. See them` : `New badge: ${x.def.title}. See it`)}">
+    const ids = items.map((i) => i.id).join(',');
+    if (sealedNow(x.id)) {
+      const T = A().TIERS[x.def.tier];
+      return `<button type="button" class="card bdg-card is-sealed" data-key="bdg-card" data-act="badgeReveal" data-arg="${ids}" aria-label="${U.esc(more ? `${items.length} new badges to open` : capLabel(x.def))}">
+      <span class="bdg-stage is-card is-sealed" data-tier="${x.def.tier}"><span class="bdg-glow" aria-hidden="true"></span>${capArt(x.def, 72)}</span>
+      <span class="bdg-card-text">
+        <span class="t-caption bdg-tierline">${more ? `${items.length} new badges` : `New badge · ${U.esc(T.name)}`}</span>
+        <span class="t-headline">${more ? 'Tap to open them' : 'Tap to open'}</span>
+        <span class="t-footnote rf-muted">${U.esc(more ? tierCount(items.map((i) => i.def)) : inside(x.def))}</span>
+      </span>
+      ${U.icon('chevron-right', null, 'bdg-card-go')}
+    </button>`;
+    }
+    // The others by name, but not one still sealed ("And Day one · 1 still to open").
+    const others = items.slice(0, -1);
+    const named = others.filter((i) => !sealedNow(i.id)).map((i) => i.def.title);
+    const rest = [named.length ? `And ${named.join(', ')}` : '', others.length > named.length ? `${others.length - named.length} still to open` : ''].filter(Boolean).join(' · ');
+    return `<button type="button" class="card bdg-card" data-key="bdg-card" data-act="badgeReveal" data-arg="${ids}" aria-label="${U.esc(more ? `${items.length} new badges. See them` : `New badge: ${x.def.title}. See it`)}">
       <span class="bdg-stage is-card" data-tier="${x.def.tier}"><span class="bdg-glow" aria-hidden="true"></span><span class="bdg-medal">${badgeSvg(x.def, { shared: true, earned: true, size: 72 })}</span></span>
       <span class="bdg-card-text">
         <span class="t-caption bdg-tierline">${more ? `${items.length} new badges` : `New badge · ${U.esc(A().TIERS[x.def.tier].name)}`}</span>
         <span class="t-headline">${U.esc(x.def.title)}</span>
-        <span class="t-footnote rf-muted">${more ? U.esc(`And ${items.slice(0, -1).map((i) => i.def.title).join(', ')}`) : U.esc(x.def.how)}</span>
+        <span class="t-footnote rf-muted">${U.esc(more ? rest : x.def.how)}</span>
       </span>
       ${U.icon('chevron-right', null, 'bdg-card-go')}
     </button>`;
@@ -461,6 +704,7 @@
     const stage = root && root.querySelector('.bdg-card .bdg-stage');
     const card = root && root.querySelector('.bdg-card');
     if (!stage || !card) return;
+    if (stage.classList.contains('is-sealed')) { setTimeout(() => U.haptic('badge'), U.reduced() ? 700 : 1150); return; }
     const ids = (card.dataset.arg || '').split(',');
     const def = A().byId[ids[ids.length - 1]];
     if (def) setTimeout(() => spring(stage, def, { buzz: true, burst: true }), 700);
@@ -468,8 +712,10 @@
 
   /* ---------------------------------------------------------------- checking and telling */
   let quietUntil = 0; // set-up's own first moments are quiet
-  // Announces new badges: a toast with the medal that opens the reveal. Only for badges earned
-  // today or yesterday (history found later just waits as New).
+  // Announces new badges: a toast that opens the reveal. Only for badges earned today or yesterday
+  // (history found later just waits, sealed). Sealed, it shows the capsule and says the tier and
+  // rarity, never a name ("Gold · Rare", Open it); only when every one is opened already does it
+  // show the medal and the names.
   function announce(ids) {
     const S = U.S, day = U.today();
     const defs = ids.map((id) => A().byId[id]).filter((d) => d && S.achievements.earned[d.id] && S.achievements.earned[d.id].day >= day - 1);
@@ -477,9 +723,12 @@
     setTimeout(() => {
       if (U.S !== S) return;
       const one = defs.length === 1;
-      const t = U.toast(one ? 'New badge' : `${defs.length} new badges`, 'neutral', one ? defs[0].title : defs.map((d) => d.title).join(', '), { label: one ? 'See it' : 'See them', onClick: () => U.badgeReveal(defs.map((d) => d.id)) });
+      const last = defs[defs.length - 1];
+      const sealed = defs.some((d) => sealedNow(d.id));
+      const say = sealed ? (one ? tierLine(last) : tierCount(defs)) : one ? last.title : defs.map((d) => d.title).join(', ');
+      const t = U.toast(one ? 'New badge' : `${defs.length} new badges`, 'neutral', say, { label: sealed ? (one ? 'Open it' : 'Open them') : (one ? 'See it' : 'See them'), onClick: () => U.badgeReveal(defs.map((d) => d.id)) });
       const ic = t && t.el && t.el.querySelector('.rf-toast-icon');
-      if (ic) { ic.innerHTML = badgeSvg(defs[defs.length - 1], { shared: true, earned: true, size: 30 }); ic.classList.add('bdg-toast-medal'); }
+      if (ic) { ic.innerHTML = sealed ? capsuleSvg(last.tier, { size: 30 }) : badgeSvg(last, { shared: true, earned: true, size: 30 }); ic.classList.add('bdg-toast-medal'); }
       U.haptic('badge');
     }, 450);
   }
@@ -589,15 +838,21 @@
     U.save();
     return ids.map((id) => items.find((i) => i.id === id)).filter(Boolean).map(oldShape);
   };
-  // Badges earned since they were last seen are celebrated where they are, on the You tab: each new
-  // tile bursts, with one badge haptic. A sheet that opened by itself on arrival would get in the
-  // way; the toast's See it, the workout's card and a tap on a badge open the reveal when asked.
+  // Badges earned since they were last seen are celebrated where they are, on the You tab, with one
+  // badge haptic: a sealed one's capsule shakes itself awake (Refract's wiggle; its beads are for
+  // when it bursts open), an opened one's tile bursts. A sheet that opened by itself on arrival would
+  // get in the way; the toast, the workout's card and a tap on a badge open the reveal when asked.
   U.celebrateAchievements = (items) => {
     const tiles = (items || []).map((x) => document.querySelector(`#screen [data-badge="${x.id}"]`)).filter(Boolean);
     if (!tiles.length) return;
     U.haptic('badge');
-    if (!G.Refract || !G.Refract.burst || U.reduced()) return;
+    if (!G.Refract || U.reduced()) return;
     // Each burst within Refract's 8 to 14 beads: one tile gets 12, several get 8 each, three at most.
-    for (const t of tiles.slice(0, 3)) { try { G.Refract.burst(t, { count: tiles.length > 1 ? 8 : 12 }); } catch (e) { /* ignore */ } }
+    for (const t of tiles.slice(0, 3)) {
+      const cap = t.querySelector('.bdg-cap-art');
+      try {
+        if (cap) { if (G.Refract.wiggle) G.Refract.wiggle(cap, { deg: 12, duration: 720 }); } else if (G.Refract.burst) G.Refract.burst(t, { count: tiles.length > 1 ? 8 : 12 });
+      } catch (e) { /* ignore */ }
+    }
   };
 })(typeof window !== 'undefined' ? window : globalThis);

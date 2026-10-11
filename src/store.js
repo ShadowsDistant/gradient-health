@@ -306,6 +306,11 @@
       if (own(ai, 'enabled') && typeof ai.enabled !== 'boolean') ai.enabled = false;
       if (own(ai, 'mode') && ai.mode !== 'api' && ai.mode !== 'device') delete ai.mode;
     }
+    // Badges (src/achievements.js makes the rest of its record whole when it runs): whether a badge
+    // earned has been opened is true or false, and anything else counts as opened, as a badge earned
+    // before badges were sealed does.
+    const ach = S.achievements;
+    if (isObj(ach) && isObj(ach.earned)) for (const id of Object.keys(ach.earned)) { const e = ach.earned[id]; if (isObj(e) && own(e, 'opened') && typeof e.opened !== 'boolean') e.opened = true; }
     if (S.place) for (const d of Object.keys(S.place)) if (S.place[d] !== 'home' && S.place[d] !== 'gym') delete S.place[d];
     if (own(S, 'lastPlace') && S.lastPlace !== null && S.lastPlace !== 'home' && S.lastPlace !== 'gym') S.lastPlace = null;
     return S;

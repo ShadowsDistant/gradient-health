@@ -131,7 +131,9 @@
     extend: [2, [8, 25, 8, 25, 8, 25, 8]], // more rest: a timer wound on, four even notches
     swap: [2, [16, 25, 6, 4, 14]], // one exercise for another: one fades out, the next comes in
     // Moments
-    badge: [3, [12, 30, 24, 70, 20, 60, 30, 20, 50, 40, 60]], // a badge earned
+    wobble: [2, [12, 45, 10, 45, 6]], // a sealed badge tapped: it rocks, each beat softer
+    crack: [2, [34, 18, 6, 10, 5, 10, 4]], // tapped again: a knock, and the glass splinters
+    badge: [3, [12, 30, 24, 70, 20, 60, 30, 20, 50, 40, 60]], // a badge earned, or bursting open
     celebrate: [3, [10, 30, 24, 70, 20, 60, 30, 20, 50]], // set-up done, all set
     // Activities: a run, walk, hike or ride (src/ui/actlive.js, src/ui/activity.js)
     actGo: [2, [10, 25, 16, 25, 24, 50, 40]], // the clock starts after the 3-2-1

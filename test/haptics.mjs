@@ -5,8 +5,9 @@
 // action's feel alone, and a player cue's buzz is that moment's haptic in the app with haptics on (the
 // plain alarm-class buzz otherwise, and while the app is out of sight). The kinds for specific
 // actions (a long press, a day picked, a sheet, a menu, closing and flicking away, save, copy, send,
-// remove, refresh, a code scanned, start, cancel, skip, more rest, a swap) each have the character
-// they're meant to, on the phone and in the browser, and each is played somewhere in the app.
+// remove, refresh, a code scanned, start, cancel, skip, more rest, a swap, and a sealed badge's
+// wobble and crack) each have the character they're meant to, on the phone and in the browser, and
+// each is played somewhere in the app.
 // Usage: node test/haptics.mjs
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -138,12 +139,16 @@ const SPECIFIC = [
   ['skip', 'workout', 2, 'skipped: two quick flicks forward, the same twice', () => ps('skip') === 'QUICK_RISE,TICK,QUICK_RISE,TICK' && same(sc('skip').slice(0, 2), sc('skip').slice(2)) && ons('skip').length === 4],
   ['extend', 'workout', 2, 'more rest: four even notches', () => ps('extend') === 'LOW_TICK,LOW_TICK,LOW_TICK,LOW_TICK' && new Set(sc('extend')).size === 1 && ons('extend').length === 4 && new Set(ons('extend')).size === 1],
   ['swap', 'workout', 2, 'a swap: one fades out, the next comes in to a click', () => ps('swap') === 'QUICK_FALL,QUICK_RISE,CLICK' && loudest(sc('swap')) === 2],
+  ['wobble', 'moments', 2, 'a sealed badge tapped: it rocks, three soft beats, each softer', () => ps('wobble') === 'TICK,LOW_TICK,LOW_TICK' && desc(sc('wobble')) && desc(ons('wobble')) && Math.max(...sc('wobble')) <= 0.6],
+  ['crack', 'moments', 2, 'tapped again: a knock, then the glass splinters in quick ticks, each softer', () => ps('crack') === 'THUD,TICK,TICK,TICK' && desc(sc('crack').slice(1)) && beats('crack').slice(1).every((b) => b.gap <= 20) && desc(ons('crack'))],
 ];
 const groupOf = (k) => (groups.find((g) => g[5].some(([x]) => x === k)) || [])[0];
 for (const [k, g, rank, feel, ok] of SPECIFIC) {
   const there = kinds.includes(k) && !!javaKinds[k];
   check(`${k}, in ${g} at rank ${rank}: ${feel}`, there && groupOf(k) === g && P.hapticRank(k) === rank && javaKinds[k].ui === (rank === 0) && ok(), there ? { group: groupOf(k), rank: P.hapticRank(k), comp: ps(k), scales: sc(k), web: P.hapticPattern(k, 'medium') } : 'missing');
 }
+// Opening a sealed badge builds up: each tap's haptic stronger than the last, then the badge's.
+check('wobble, crack, badge: the three taps that open a sealed badge, each stronger than the last', total(ons('wobble')) < total(ons('crack')) && total(ons('crack')) < total(ons('badge')) && P.hapticRank('crack') < P.hapticRank('badge'), [ons('wobble'), ons('crack'), ons('badge')]);
 const harsh = SPECIFIC.map(([k]) => k).filter((k) => javaKinds[k] && (sc(k).filter((x) => x >= 1).length > 1 || beats(k).some((b) => (b.p === 'THUD' || b.p === 'SPIN') && b.scale > 0.6)));
 check('none of them is harsh: one full-strength beat at most, and no thud or spin above 0.6', !harsh.length, harsh);
 const unused = SPECIFIC.map(([k]) => k).filter((k) => !used.has(k) && !marked.has(k));
