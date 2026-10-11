@@ -277,14 +277,14 @@
   }
   // The 3D chunk, asked for at once (it's fetched and parsed off the page's thread), and its warm-up,
   // each step in a calm moment. One that didn't get there is tried again, twice. The stills go as
-  // soon as its shaders are compiled (before its last step).
+  // soon as its shaders are compiled (before its last step). (The warm-up's renderer is the test for
+  // WebGL 2 from here: asked before it, the chunk would make a throwaway context to tell.)
   function warm() {
     if (warming || !GH.lazy) return;
     warming = true;
     const fail = () => { warming = false; noChunk = true; pump(); };
     GH.lazy('figure3d').then((f) => {
       if (!f || !f.preload) { fail(); return; }
-      if (!ok()) { warming = false; pump(); return; }
       f.preload({ when: whenCalm, ready: pump, busy: urgent }).then(() => {
         warming = false;
         if (!ready(GH.figure3d)) tries++;

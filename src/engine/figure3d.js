@@ -3199,6 +3199,10 @@ function maybeRelease() {
 function supported() {
   if (SUPPORTED != null) return SUPPORTED;
   if (R) return (SUPPORTED = true);
+  // While the warm-up is under way, its renderer is the test: it makes one in a moment anyway, and a
+  // throwaway test context first would be one more context creation (slow on some phones, seconds in
+  // a software-GL test with the page busy).
+  if (preloading) return !!renderer();
   try {
     const c = document.createElement('canvas');
     const gl = c.getContext('webgl2'); // three.js needs WebGL 2
@@ -3905,11 +3909,10 @@ function stillOut(st) {
 // those drawn in the same task are copied out together. Returns { blob }, a promise of the picture
 // (WebP), encoded in the background; or { busy } while the last stills are still on their way (or
 // the warm-up copies its still out), which resolves once they're back. A still that needs shaders no
-// warm view keeps compiled (kit the
-// warm-up didn't have) isn't drawn yet: they compile in the background where the GPU allows, and
-// { wait } resolves once they have; the next call draws it (its figure is held meanwhile, so they
-// stay compiled). null without 3D. The page keeps these itself (src/ui/stills.js), so they aren't
-// kept here as well.
+// warm view keeps compiled (kit the warm-up didn't have) isn't drawn yet: they compile in the
+// background where the GPU allows, and { wait } resolves once they have; the next call draws it (its
+// figure is held meanwhile, so they stay compiled). null without 3D. The page keeps these itself
+// (src/ui/stills.js), so they aren't kept here as well.
 const held = new Map(); // key → a still posed and waiting for its shaders
 const pendingBlobs = new Map(); // key → its picture on the way
 function stillNow(move, opts) {

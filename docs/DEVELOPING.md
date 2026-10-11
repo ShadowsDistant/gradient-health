@@ -485,12 +485,13 @@ relaunch, and that stills never go while a finger is down or the page scrolls, a
 several per idle moment. `test/ui-stills.mjs` times Plan's stills from cold (a fresh install, and an
 update that draws the figure differently: until the first screen's tiles, today's card and the
 week's stills show the 3D figure, and where the time goes) and holds their budget; `--vs=<dir>`
-compares two builds run by run.
+compares two builds run by run, and `--still-glow` holds the background glow still (its drift is
+drawn in the same software GPU process as the stills here, and starts just as they do).
 
 ```sh
 npm run build && node test/figure3d.mjs [filter,…] [--dark] [--mirrored]
 node test/ui-figure.mjs [--dark] [--shots]   # the figure inside the app, and the no-WebGL fallback
-node test/ui-stills.mjs [--measure] [--runs=3] [--vs=<dir>]   # Plan's 3D stills from cold, timed
+node test/ui-stills.mjs [--measure] [--runs=3] [--vs=<dir>] [--still-glow]   # Plan's 3D stills from cold, timed
 ```
 
 The test renders every move in Chromium (SwiftShader), plus gym fixtures for barbells, cables,

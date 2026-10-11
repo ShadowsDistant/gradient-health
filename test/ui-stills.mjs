@@ -18,10 +18,13 @@
 // the 4x, so a still costs far more than on a phone, and other tests running on this machine slow
 // it down; the numbers are for comparing builds here, best run against run with --vs).
 //
-// Usage: node test/ui-stills.mjs [--measure] [--runs=3] [--delay=1000] [--only=fresh|update] [--dist=<dir>] [--vs=<dir>]
-//   --measure  print the numbers only, no checks
-//   --dist     a built page somewhere else (a copy of an older dist/), to compare on the same machine
-//   --vs       another build, run by run in turn with this one
+// Usage: node test/ui-stills.mjs [--measure] [--runs=3] [--delay=1000] [--only=fresh|update] [--dist=<dir>] [--vs=<dir>] [--still-glow]
+//   --measure     print the numbers only, no checks
+//   --dist        a built page somewhere else (a copy of an older dist/), to compare on the same machine
+//   --vs          another build, run by run in turn with this one
+//   --still-glow  the background glow held still (Settings, Look, Moving background off). Its drift
+//                 starts 3 s after the tap, just as the stills draw, and here SwiftShader draws it in
+//                 software too, in the same GPU process: this shows the stills' own time without it.
 import { createRequire } from 'node:module';
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
@@ -37,6 +40,7 @@ const measureOnly = process.argv.includes('--measure');
 const RUNS = Math.max(1, Number(arg('runs', 3)));
 const DELAY = Math.max(0, Number(arg('delay', 1000)));
 const ONLY = arg('only', '');
+const STILL_GLOW = process.argv.includes('--still-glow');
 const CPU = 4;
 const MONDAY = '2026-10-19T08:10:00';
 
@@ -113,7 +117,7 @@ function probe() {
       try { return orig.apply(this, a); } finally { add(k, performance.now() - t0); }
     };
   };
-  // WebGL contexts (the 3D figure's, and the check for WebGL 2 on a fresh install).
+  // WebGL contexts made (the 3D figure's, and the checks for WebGL 2 before it).
   const gc = HTMLCanvasElement.prototype.getContext;
   HTMLCanvasElement.prototype.getContext = function (type, ...rest) {
     if (!/webgl/.test(type)) return gc.call(this, type, ...rest);
@@ -208,6 +212,11 @@ let stateJson;
   await browser.close();
 }
 if (!stateJson || stateJson.length < 1000) { console.error('Couldn\'t seed the state.'); process.exit(1); }
+if (STILL_GLOW) {
+  const S = JSON.parse(stateJson);
+  S.profile.prefs = Object.assign({}, S.profile.prefs, { glowMove: false });
+  stateJson = JSON.stringify(S);
+}
 
 // In the page: this week's stills (as each day's card shows them: cardMoves in src/ui/plan.js), the
 // tiles on Plan's first screen and in today's card, and how many show a still.
@@ -319,14 +328,14 @@ function report(r) {
   const s = r.s || {};
   console.log(`  ${builds.length > 1 ? `${r.build}: ` : ''}screen ${r0(r.screen)} ms (new ${r0(r.screenNew)}, ${s.screen} tiles), card ${r0(r.card)} ms (new ${r0(r.cardNew)}, ${s.card} tiles), week ${r0(r.week)} ms (${s.kept} of ${s.week} stills)${r.old ? `; ${r.old} kept under the old figure` : ''}`);
   console.log(`    chunk asked +${r0(a.chunkAsked)}, run +${r0(a.chunkRun)}; warm-up +${r0(a.preload)}, stills can go +${r0(a.ready || a.warm)}, done +${r0(a.preloaded)}; first still +${r0(a.firstStill)}, first tile +${r0(r.firstTile)}`);
-  console.log(`    on the page's thread: WebGL contexts ${r0(sm.context)} ms, shader compiles ${r0(sm.compile)} ms, stills ${per('still')}, copies out ${r0(sm.copyOut)} ms, 2D canvas reads ${r0(sm.canvasRead)} ms, encodes ${r0(sm.encodeSync)} ms; longest frame ${r.longest} ms`);
+  console.log(`    on the page's thread: WebGL contexts ${per('context')}, shader compiles ${r0(sm.compile)} ms, stills ${per('still')}, copies out ${r0(sm.copyOut)} ms, 2D canvas reads ${r0(sm.canvasRead)} ms, encodes ${r0(sm.encodeSync)} ms; longest frame ${r.longest} ms`);
   console.log(`    in the background: encodes ${per('encode')}, data URLs ${per('dataUrl')}, IndexedDB writes ${per('idbWrite')}, ${n.idbPut || 0} puts; GPU process ${r0(r.gpu)} ms of CPU`);
 }
 
 const kinds = ONLY ? [ONLY] : ['fresh', 'update'];
 const results = {};
 for (const kind of kinds) {
-  section(`${kind === 'fresh' ? 'A fresh install' : 'After an update'}: Plan ${DELAY} ms after the first frame (CPU ${CPU}x slower, ${RUNS} runs${builds.length > 1 ? ' each, run by run' : ''})`);
+  section(`${kind === 'fresh' ? 'A fresh install' : 'After an update'}: Plan ${DELAY} ms after the first frame (CPU ${CPU}x slower, ${RUNS} runs${builds.length > 1 ? ' each, run by run' : ''}${STILL_GLOW ? ', the glow held still' : ''})`);
   results[kind] = builds.map(() => []);
   for (let i = 0; i < RUNS; i++) {
     for (let b = 0; b < builds.length; b++) {
