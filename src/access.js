@@ -46,7 +46,7 @@
   // midwife's or doctor's say for each person (ACOG 2020), which an app can't give.
   const CONDITIONS = [
     { id: 'ra', name: 'Rheumatoid arthritis', short: 'rheumatoid arthritis', flare: true,
-      plan: 'Joint-friendly moves with no weight on your hands, gentle range of motion every session, and a flare-day option.' },
+      plan: 'No weight on your hands, gentle range of motion every session, and a flare-day option.' },
     { id: 'oa', name: 'Osteoarthritis', short: 'osteoarthritis', joints: true, flare: true,
       plan: 'Low impact, strength around the joints, and no deep loaded bending for sore knees or hips.' },
     { id: 'osteo', name: 'Osteoporosis or low bone density', short: 'osteoporosis',
@@ -437,7 +437,7 @@
     const r = rulesOf(p);
     if (b === 'young') out.push({ kind: 'age', text: 'Under 30: reps climb a little faster and finishers change more often.' });
     if (b === 'older') out.push({ kind: 'age', text: `From 50: longer warm-ups, a little more rest, balance twice a week and fast sit-to-stands or squats once a week.${r.noImpact || p.gentle ? '' : p.jumpsOk ? '' : ' Jumping stays off unless you turn it on.'}` });
-    if (b === 'senior') out.push({ kind: 'age', text: `From 65: balance practice every session, chair-supported moves first, low impact and a cool-down every time. Strength still keeps progressing.${getupOn(p) ? ' Once a week you practise getting down to the floor and up, with a chair.' : ''}` });
+    if (b === 'senior') out.push({ kind: 'age', text: `From 65: balance practice every session, chair-supported moves first, low impact and a cool-down every time. Strength keeps progressing.${getupOn(p) ? ' Once a week you practise getting down to the floor and up, with a chair.' : ''}` });
     for (const id of conditions(p)) {
       const c = BY_ID[id];
       let text = c.plan;
@@ -469,7 +469,7 @@
     if (s.flare) return [{ icon: 'refresh', tone: 'coral', text: 'Flare day: gentle range of motion instead', why: 'You said your joints are flaring. The plan picks up again tomorrow.', rule: 'arthritis' }];
     const items = s.items || [];
     if (items.some((it) => it.fam === 'balance')) out.push({ icon: 'compass', tone: 'teal', text: 'Balance practice first', why: rulesOf(p).c.has('balance') ? 'You said balance is a problem, so it starts every session, with a hand on the wall.' : band(p) === 'senior' ? 'From 65 it starts every session.' : 'From 50 it comes twice a week.', rule: 'balance' });
-    if (items.some((it) => it.fam === 'getup')) out.push({ icon: 'arrow-up-right', tone: 'green', text: 'Down to the floor and up, with a chair', why: 'Once a week, so getting up after a fall is practised.', rule: 'floor' });
+    if (items.some((it) => it.fam === 'getup')) out.push({ icon: 'arrow-up-right', tone: 'green', text: 'Down to the floor and up, with a chair', why: 'Once a week, to practise getting up after a fall.', rule: 'floor' });
     if (items.some((it) => it.power)) out.push({ icon: 'bolt', tone: 'amber', text: 'Squats fast on the way up today', why: 'Power fades faster than strength from 50. Up fast, down slow.', rule: 'power' });
     const stand = items.filter((it) => { const m = M().MOVES[it.moveId]; return m && M().LADDERS[m.family] && M().LADDERS[m.family].alt && m.family !== 'balance' && m.family !== 'getup'; });
     if (stand.length) out.push({ icon: 'shuffle', tone: 'coral', text: stand.length === 1 ? `${stand[0].name} in place of the usual move` : `${stand.length} moves swapped for versions that suit you`, why: plannedAround(p) ? `${plannedAround(p)}.` : 'Your answers rule the usual moves out.', rule: rulesOf(p).seated ? 'seated' : 'arthritis' });
@@ -493,7 +493,7 @@
     const lines = planLines(p).map((l) => l.text);
     const around = plannedAround(p);
     const doc = doctorLines(p);
-    if (!lines.length) return 'Your plan isn\'t shaped around any health condition right now. If something applies, like arthritis, low back pain, balance problems or high blood pressure, add it under Settings, Your answers, Anything to plan around, and the plan works around it.';
+    if (!lines.length) return 'Your plan isn\'t shaped around any health condition right now. To add one, like arthritis or high blood pressure, go to Settings, Your answers, Anything to plan around.';
     return `${around}. ${lines.join(' ')}${doc.length ? ` ${doc.join(' ')}` : ''} If a move hurts, stop, and say so after your workout: moves that load that joint are swapped out.`;
   }
 

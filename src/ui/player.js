@@ -124,13 +124,13 @@
     U.sheet({
       title: 'Leave the workout?', size: 'fit', cls: 'leave-sheet',
       body: `<div class="sheet-pad leave">
-        <p class="t-callout rf-muted">${done ? `You've done ${done} of ${total} sets.` : 'You haven\'t done any sets yet.'}</p>
+        <p class="t-callout rf-muted">${done ? `${done} of ${total} sets done.` : 'No sets done yet.'}</p>
         <div class="leave-actions">
           <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="plKeep">${U.icon('pause')}Keep it for later</button>
           ${done ? `<button type="button" class="rf-btn" data-variant="soft" data-size="lg" data-act="plFinishNow">${U.icon('flag')}Finish now and check in</button>` : ''}
           <button type="button" class="rf-btn" data-variant="soft" data-tone="critical" data-size="lg" data-act="plCancel">${U.icon('close')}Cancel workout</button>
         </div>
-        <p class="t-footnote rf-muted">Keep it for later and Today shows Resume. Cancel it and nothing from it is saved or counts toward your streak, so you can start it again today.</p>
+        <p class="t-footnote rf-muted">Cancel it and nothing is saved or counts toward your streak. You can start again today.</p>
       </div>`,
     });
   }
@@ -161,7 +161,7 @@
     if (!a) return false;
     const done = setsDone(a);
     // The question's Cancel workout plays the cancel haptic as it's tapped (core.js, dialogHaptic).
-    if (done && !(await U.cancelDialog('Cancel this workout?', `The ${U.plural(done, 'set')} you did won't be saved, and it won't count for your streak.`, 'Cancel workout', 'close'))) return false;
+    if (done && !(await U.cancelDialog('Cancel this workout?', `The ${U.plural(done, 'set')} you did won't be saved or count for your streak.`, 'Cancel workout', 'close'))) return false;
     if (A() !== a) return false;
     if (!done) U.haptic('cancel');
     const S = U.S;
@@ -173,7 +173,7 @@
     await moment;
     // Not when something else began meanwhile (another workout, a backup restored).
     if (U.S !== S || S.active) return true;
-    U.toast('Workout cancelled', 'neutral', 'Nothing from it was saved.', {
+    U.toast('Workout cancelled', 'neutral', 'Nothing was saved.', {
       label: 'Undo',
       onClick: () => {
         // Not over another workout, or into data restored from a copy meanwhile.
@@ -646,7 +646,7 @@
     if (!st.side) return '';
     const lead = leadSideFor(st.item.fam || (M().MOVES[st.item.moveId] || {}).family);
     const isLead = st.side === lead;
-    const txt = st.kind === 'test' ? `${U.side(st.side)} arm: as many clean reps as you can`
+    const txt = st.kind === 'test' ? `${U.side(st.side)} ${limbOf(st)}: max clean reps`
       : `${U.side(st.side)} ${st.kind === 'interval' || st.kind === 'cooldown' ? 'side' : limbOf(st)}${st.first === true && !st.leadOnly ? ' first' : ''}`;
     return `<p class="pl-side${isLead ? ' is-lead' : ''}">${U.esc(txt)}</p>`;
   }
@@ -784,7 +784,7 @@
     const rirQ = P.askRir ? `<div class="pl-rir">
         <p class="t-headline">How many more could you have done?</p>
         ${U.seg('plRir', [['0', '0'], ['12', '1-2'], ['3', '3+']], P.rirAnswered || '', 'Reps left in the tank', ' data-on="plRir" data-sync')}
-        <p class="t-footnote rf-muted">${P.askRir.kind === 'finisher' ? 'For the whole finisher.' : `For ${U.esc(P.askRir.name.toLowerCase())}. This sets next time.`}${((U.S.seen || {}).rirCount || 0) < 3 ? ' Count the reps you could still have done with good form. A rough guess is fine.' : ''}</p>
+        <p class="t-footnote rf-muted">${P.askRir.kind === 'finisher' ? 'For the whole finisher.' : `For ${U.esc(P.askRir.name.toLowerCase())}. This sets next time.`}${((U.S.seen || {}).rirCount || 0) < 3 ? ' Only count reps with good form. A rough guess is fine.' : ''}</p>
       </div>` : '';
     const logged = done && done.kind === 'set' ? loggedLine(done) : '';
     const timerBlock = P.restEnd
@@ -1048,7 +1048,7 @@
     const items = st ? [
       { act: 'plHowTo', icon: 'info', label: 'How to do it' },
       canSwap ? { act: 'plSwap', icon: 'shuffle', label: 'Swap this exercise' } : false,
-      st.kind === 'set' ? { act: 'plSkipItem', icon: 'skip-forward', label: 'Skip the rest of this exercise' } : false,
+      st.kind === 'set' ? { act: 'plSkipItem', icon: 'skip-forward', label: 'Skip remaining sets' } : false,
       null,
     ] : [];
     items.push({ act: 'plFinishNow', icon: 'flag', label: 'Finish now and check in' }, { act: 'plCancel', icon: 'close', label: 'Cancel workout', tone: 'critical' });
@@ -1063,7 +1063,7 @@
       title: 'Swap exercise', size: 'auto',
       body: opts.length ? `<ul class="rf-list">${opts.map((o) => U.row({ title: U.esc(o.name), sub: U.esc(o.why), act: 'plSwapTo', arg: o.id, chevron: true })).join('')}</ul>
         <ul class="rf-list sheet-gap">${U.row({ icon: 'eye', tone: 'rose', title: 'Don\'t show this move again', sub: 'Swaps it out now and keeps it out of future plans', act: 'plExclude', arg: opts[0].id })}</ul>`
-        : '<p class="sheet-pad t-callout rf-muted">No other moves fit your equipment for this one.</p>',
+        : '<p class="sheet-pad t-callout rf-muted">No other move fits your equipment.</p>',
     });
   };
   function swapTo(id, exclude) {
@@ -1111,7 +1111,7 @@
     return `${top('Check-in')}
       <div class="pl-scroll">
         <h1 class="rf-large-title">Check-in</h1>
-        <p class="t-callout rf-muted pl-pad">${flare ? 'A gentle day done. It counts for your streak.' : `${doneSets} of ${planned} sets done.${pct < 0.5 ? ' Under half, so this one is saved but won\'t count for the streak.' : ''}`}</p>
+        <p class="t-callout rf-muted pl-pad">${flare ? 'A gentle day done. It counts for your streak.' : `${doneSets} of ${planned} sets done.${pct < 0.5 ? ' Under half, so it\'s saved but won\'t count for your streak.' : ''}`}</p>
         ${flare ? '' : `<div class="ob-group"><h3 class="rf-list-header">How was it?</h3><div class="ob-pad">${U.seg('ckRating', [['easy', 'Too easy'], ['right', 'About right'], ['hard', 'Too hard']], ck.rating, 'How was it', ' data-on="ckRating"')}</div></div>
         <div class="ob-group"><h3 class="rf-list-header">Too complicated?</h3><div class="ob-pad">${U.seg('ckComplicated', [['false', 'No'], ['true', 'Yes, simpler please']], String(ck.complicated), 'Too complicated', ' data-on="ckComplicated"')}</div></div>`}
         <div class="ob-group"><h3 class="rf-list-header">Anything hurt?</h3><div class="ob-chips">${JOINTS.map(([id, t]) => U.chip(t, ck.pain.includes(id), `data-on="ckPain" data-v="${id}"`)).join('')}</div><p class="rf-list-footer">Moves that load it get swapped out for two weeks.</p></div>
@@ -1165,7 +1165,7 @@
     return `${top('Done')}
       <div class="pl-scroll">
         <h1 class="rf-large-title">Next time</h1>
-        ${res.done ? `<p class="t-callout pl-pad">Streak <span class="streak-roll rf-num t-headline" data-from="${P.streakFrom || 0}" data-to="${streak}">${streak}</span> ${streak === 1 ? 'day' : 'days'}</p>` : '<p class="t-callout rf-muted pl-pad">Saved. Under half the sets, so it doesn\'t count for the streak.</p>'}
+        ${res.done ? `<p class="t-callout pl-pad">Streak <span class="streak-roll rf-num t-headline" data-from="${P.streakFrom || 0}" data-to="${streak}">${streak}</span> ${streak === 1 ? 'day' : 'days'}</p>` : '<p class="t-callout rf-muted pl-pad">Saved. Under half the sets, so it doesn\'t count for your streak.</p>'}
         ${res.celebrate.map((c) => `<div class="card celebrate">${U.icon(c.kind === 'pr' ? 'star' : c.kind === 'weight' ? 'bolt' : 'sparkle')}<span class="t-headline">${U.esc(c.text)}</span></div>`).join('')}
         ${U.badgeCard ? U.badgeCard(P.ach) : ''}
         ${U.hcInvite ? U.hcInvite(S) : ''}

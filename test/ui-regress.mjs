@@ -411,7 +411,7 @@ await page.evaluate(() => { const S = window.GH.ui.S; const a = S.active; while 
 await page.evaluate(() => window.__gh.back());
 await settle(700);
 const leave = await page.evaluate(() => { const d = document.querySelector('dialog.leave-sheet[open]'); return d ? { acts: [...d.querySelectorAll('[data-act]')].map((b) => b.dataset.act), text: d.textContent } : null; });
-check('Back with a set done offers keep, finish or cancel', leave && ['plKeep', 'plFinishNow', 'plCancel'].every((a) => leave.acts.includes(a)) && /done 1 of \d+ sets/.test(leave.text), JSON.stringify(leave && leave.acts));
+check('Back with a set done offers keep, finish or cancel', leave && ['plKeep', 'plFinishNow', 'plCancel'].every((a) => leave.acts.includes(a)) && /1 of \d+ sets done/.test(leave.text), JSON.stringify(leave && leave.acts));
 await page.click('dialog.leave-sheet [data-act="plCancel"]');
 await settle(900);
 const ask = await page.evaluate(() => { const d = document.querySelector('dialog.rf-dialog[open]'); return d ? d.textContent : ''; });

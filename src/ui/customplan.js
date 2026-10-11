@@ -208,7 +208,7 @@
       const plans = C().list(S).slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
       return `${U.navbar('Your plans', U.glassBtn('plus', 'New plan', 'cpNew'), U.glassBtn('chevron-left', 'Back', 'back'))}
         <h1 class="rf-large-title">Your plans</h1>
-        <p class="lt-sub t-callout rf-muted">Build your own, ask the coach, or add one someone shared with you.</p>
+        <p class="lt-sub t-callout rf-muted">Build your own, ask the coach, or add a shared one.</p>
         <div class="section">
           ${inUse(S, day)}
           <div class="cp-make" data-key="make">
@@ -220,7 +220,7 @@
         <h2 class="sec-title t-title-3">Saved plans</h2>
         <div class="section">
           ${plans.length ? `<ul class="cp-plans" data-key="plans">${plans.map((p) => planCard(S, p)).join('')}</ul>`
-    : `<div class="card cp-empty" data-key="empty"><span class="cp-empty-ico" aria-hidden="true">${U.icon('list')}</span><p class="t-headline">No plans yet</p><p class="t-callout rf-muted">Your plans show up here. Share one and anyone with Gradient Health can scan it.</p></div>`}
+    : `<div class="card cp-empty" data-key="empty"><span class="cp-empty-ico" aria-hidden="true">${U.icon('list')}</span><p class="t-headline">No plans yet</p><p class="t-callout rf-muted">Share one and anyone with Gradient Health can scan it.</p></div>`}
         </div>`;
     },
     after(screen) { drawThumbs(screen); },
@@ -243,10 +243,9 @@
     const ctl = U.sheet({
       title: 'New plan', size: 'fit', cls: 'cp-sheet',
       body: `<div class="sheet-pad cp-new">
-        <p class="t-callout rf-muted">Start from scratch, or from the week the coach made for you and change what you like.</p>
         <button type="button" class="cp-choice cp-press" data-act="cpNewBlank"><span class="cp-choice-ico" data-tone="indigo" aria-hidden="true">${U.icon('plus')}</span><span class="cp-choice-text"><span class="t-headline">An empty plan</span><span class="t-footnote rf-muted">Name it, add days, pick the exercises</span></span>${U.icon('chevron-right')}</button>
         <button type="button" class="cp-choice cp-press" data-act="cpNewCopy"><span class="cp-choice-ico" data-tone="sky" aria-hidden="true">${U.icon('copy')}</span><span class="cp-choice-text"><span class="t-headline">Start from my current plan</span><span class="t-footnote rf-muted">This week's days and exercises, ready to change</span></span>${U.icon('chevron-right')}</button>
-        ${n ? '' : '<p class="t-footnote rf-muted">Nothing changes until you choose to use a plan.</p>'}
+        ${n ? '' : '<p class="t-footnote rf-muted">Nothing changes until you use a plan.</p>'}
       </div>`,
     });
     U.act.cpNewBlank = () => {
@@ -266,7 +265,7 @@
       ctl.close('ok');
       U.haptic('copy');
       U.open('planEdit', plan.id);
-      U.toast('Copied your current plan', 'positive', 'Change anything. The coach\'s plan stays as it is.');
+      U.toast('Copied your current plan', 'positive', 'The coach\'s plan stays as it is.');
     };
   };
   function uniqueName(S, base) {
@@ -304,7 +303,7 @@
       <input class="cp-day-title" type="text" maxlength="30" value="${U.esc(d.title)}" placeholder="${U.esc(d.items.length ? C().titleFrom(d.items) : 'Name this day')}" aria-label="${U.esc(`Day ${di + 1} name`)}" data-on="cpDayTitle" data-arg="${di}" enterkeyhint="done">
       ${groups.length ? `<div class="pw-tags" aria-label="Muscles">${groups.map((g) => `<span class="pw-tag" style="--c:${hue(g)}">${U.esc(groupName(g))}</span>`).join('')}</div>` : ''}
       ${d.items.length ? `<ul class="cp-exlist" data-day="${di}">${d.items.map((it, k) => exRow(plan, di, it, k, swaps.find((x) => x.day === di && x.i === k))).join('')}</ul>`
-    : `<p class="t-callout rf-muted cp-day-empty">No exercises yet. Add a few to make this day a workout.</p>`}
+    : `<p class="t-callout rf-muted cp-day-empty">No exercises yet.</p>`}
       <button type="button" class="rf-btn cp-add" data-variant="soft" data-act="cpAdd" data-arg="${di}">${U.icon('plus')}Add exercises</button>
     </div>`;
   }
@@ -362,7 +361,7 @@
         <div class="section cp-days">
           ${plan.days.map((d, di) => dayCard(S, plan, di, swaps, day)).join('')}
           ${plan.days.length < C().LIMITS.days ? `<button type="button" class="rf-btn cp-addday" data-size="lg" data-act="cpAddDay" data-key="addday">${U.icon('plus')}Add a day</button>` : ''}
-          <p class="t-footnote rf-muted cp-foot" data-key="foot">Each workout starts with a short warm-up. Sets go down a little on a lighter week or after a short night, and your reps and weights go up as you answer how many more you could have done.</p>
+          <p class="t-footnote rf-muted cp-foot" data-key="foot">Each workout starts with a short warm-up. Lighter weeks and short nights trim a few sets. Reps and weights go up as you say how many more you could have done.</p>
         </div>`;
     },
     after(screen, S, day, id) {
@@ -477,7 +476,7 @@
         </div>
         <p class="t-subhead cp-rest-label">Rest between sets</p>
         ${U.choice('cpRest', restOpts, rest, 'Rest between sets', ' class="ob-chips cp-rest" data-on="cpRestPick"')}
-        <p class="t-footnote rf-muted">${m.timed ? 'Hold for this long each set.' : 'Your reps go up from here as it gets easier, then the weight, when there is one.'}${rest === 'auto' ? ' Auto rest is 90 s after big moves, 60 s after small ones.' : ''}</p>
+        <p class="t-footnote rf-muted">${m.timed ? 'Hold for this long each set.' : 'Reps go up as it gets easier, then the weight, if it has one.'}${rest === 'auto' ? ' Auto rest is 90 s after big moves, 60 s after small ones.' : ''}</p>
         <div class="cp-item-acts">
           <button type="button" class="rf-btn" data-act="cpItemMove" data-arg="-1"${k === 0 ? ' disabled' : ''}>${U.icon('chevron-up')}Up</button>
           <button type="button" class="rf-btn" data-act="cpItemMove" data-arg="1"${k >= n - 1 ? ' disabled' : ''}>${U.icon('chevron-down')}Down</button>
@@ -760,7 +759,7 @@
           <button type="button" class="rf-btn" data-size="lg" data-act="cpCopyLink"${st.data ? '' : ' disabled'}>${U.icon('copy')}Copy</button>
         </div>
         ${name ? `<ul class="rf-list">${U.sw(`Show my name (${name})`, st.withName, 'data-on="cpShareName"')}</ul>` : ''}
-        <p class="t-footnote rf-muted">They scan it in Gradient Health (Your plans, then Add a shared plan) or tap the link. It holds only this plan: its name, days and exercises${st.withName ? ', and your first name' : ''}. Nothing goes through a server.</p>
+        <p class="t-footnote rf-muted">They scan it in Gradient Health, under Your plans, or tap the link. It holds only the plan's name, days and exercises${st.withName ? ', and your first name' : ''}. Nothing goes through a server.</p>
       </div>`;
     const ctl = U.sheet({ title: 'Share this plan', size: 'fit', cls: 'cp-sheet cp-share-sheet', body: body() });
     const make = async () => {
@@ -840,8 +839,8 @@
       return `<div class="sheet-pad cp-import">
         <div class="cp-imp-head">${art(plan, 'is-lg')}<div class="cp-imp-head-text"><span class="cp-src" data-src="shared">${U.esc(plan.from ? `From ${plan.from}` : 'Shared with you')}</span><p class="t-title-3 cp-name">${U.esc(plan.name)}</p><p class="t-footnote rf-muted">${U.esc(`${C().summary(plan)} · ${daysLine(plan)}`)}</p></div></div>
         ${plan.note ? `<p class="t-callout cp-note is-box">${U.esc(plan.note)}</p>` : ''}
-        ${swaps.length ? `<p class="cp-swap is-box">${U.icon('shuffle')}<span>${U.esc(`${swaps.length === 1 ? 'One exercise needs' : `${swaps.length} exercises need`} something you don't have. The app swaps in the closest one you can do, shown below.`)}</span></p>` : ''}
-        ${unknown ? `<p class="cp-swap is-box">${U.icon('alert')}<span>${U.esc(`${unknown === 1 ? 'One exercise needs' : `${unknown} exercises need`} a newer version of Gradient Health, so ${unknown === 1 ? 'it was' : 'they were'} left out.`)}</span></p>` : ''}
+        ${swaps.length ? `<p class="cp-swap is-box">${U.icon('shuffle')}<span>${U.esc(`${swaps.length === 1 ? 'One exercise needs' : `${swaps.length} exercises need`} something you don't have. You'll get the closest one you can do, shown below.`)}</span></p>` : ''}
+        ${unknown ? `<p class="cp-swap is-box">${U.icon('alert')}<span>${U.esc(`${unknown === 1 ? 'One exercise needs' : `${unknown} exercises need`} a newer Gradient Health, so ${unknown === 1 ? 'it was' : 'they were'} left out.`)}</span></p>` : ''}
         ${done ? `<div class="cp-saved" data-key="saved"><p class="cp-eyebrow" data-tone="positive">${U.icon('check-circle')}<span>${st.existed ? 'Already in your plans' : 'Saved to your plans'}</span></p>
             <div class="cp-imp-btns">${C().activeId(S) === done.id ? '' : `<button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpImpUse">${U.icon('play')}${S.profile.workouts === false ? 'Turn on workouts and use it' : 'Use it now'}</button>`}<button type="button" class="rf-btn" data-size="lg" data-act="cpImpOpen">Open it</button></div></div>`
     : `<div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpImpSave">${U.icon('download')}Save to my plans</button></div>`}
@@ -938,15 +937,15 @@
             ? `<div class="cp-saved"><p class="cp-eyebrow" data-tone="positive">${U.icon('check-circle')}<span>Saved to your plans</span></p><div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpBuildUse">${U.icon('play')}Use it now</button><button type="button" class="rf-btn" data-size="lg" data-act="cpBuildOpen">Edit it</button></div></div>`
             : `<div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpBuildSave">Save</button><button type="button" class="rf-btn" data-size="lg" data-act="cpBuildEdit">Change it</button></div>`;
         return `<div class="sheet-pad cp-import cp-build${st.step === 'refining' ? ' is-refining' : ''}">
-          ${st.text ? `<p class="t-callout rf-muted tailor-asked">“${U.esc(st.text)}”</p>` : ''}
+          ${st.text ? `<p class="t-callout rf-muted tailor-asked">"${U.esc(st.text)}"</p>` : ''}
           ${head}${note}${acts}
           <div class="cp-imp-days">${planView(S, p)}</div>
-          ${st.step === 'propose' ? '<p class="t-footnote rf-muted">Nothing changes until you save it and choose to use it. You can change anything after.</p>' : ''}
+          ${st.step === 'propose' ? '<p class="t-footnote rf-muted">Nothing changes until you save and use it. You can edit it after.</p>' : ''}
         </div>`;
       }
       const knows = C().knows(S);
       return `<div class="sheet-pad tailor cp-ask">
-        <p class="t-callout rf-muted">Say what you want in a plan. The coach builds on what it already knows about you and shows you the plan first.</p>
+        <p class="t-callout rf-muted">Say what you want. The coach builds on what it knows about you and shows you the plan first.</p>
         <div class="rf-field"><label class="rf-field-label" for="cpAskQ">What would you like?</label><div class="rf-field-control"><textarea class="rf-input" id="cpAskQ" rows="3" maxlength="400" placeholder="3 days, 30 minutes, bigger arms, easy on my knees">${U.esc(st.text)}</textarea></div></div>
         <div class="ob-chips tailor-chips">${ASK_CHIPS.map((x) => `<button type="button" class="rf-chip" data-act="cpAskChip" data-arg="${U.esc(x)}">${U.esc(x)}</button>`).join('')}</div>
         <button type="button" class="rf-btn ob-wide" data-variant="filled" data-size="lg" data-act="cpBuildGo">${U.icon('sparkle')}Build my plan</button>
@@ -1020,7 +1019,7 @@
     const plan0 = C().get(S, id);
     if (!plan0) return;
     const by = await C().modelFor(S);
-    if (!by) { U.toast('Set up an AI coach first', 'neutral', 'Claude or the on-device AI can improve a plan. Both are in Settings, under AI coach.'); return; }
+    if (!by) { U.toast('Set up an AI coach first', 'neutral', 'Turn on Claude or the on-device AI in Settings, under AI coach.'); return; }
     const who = by === 'claude' ? 'Claude' : 'The on-device AI';
     const st = { step: 'ask', text: '', plan: null, changes: [], ctrl: null, error: null };
     const body = () => {
@@ -1033,17 +1032,17 @@
         const p = st.plan;
         if (!st.changes.length) return `<div class="sheet-pad cp-import"><p class="t-headline">${U.esc(who)} kept it as it is</p><p class="t-callout rf-muted">${U.esc(p.note || 'It already fits what you asked for and what your data shows.')}</p><div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpImproveDone">Done</button></div></div>`;
         return `<div class="sheet-pad cp-import cp-build">
-          ${st.text ? `<p class="t-callout rf-muted tailor-asked">“${U.esc(st.text)}”</p>` : ''}
+          ${st.text ? `<p class="t-callout rf-muted tailor-asked">"${U.esc(st.text)}"</p>` : ''}
           ${p.note ? `<p class="t-callout tailor-note">${U.icon('sparkle', 'sm')}<span>${U.esc(p.note)}</span></p>` : ''}
           <p class="t-subhead">What changes</p>
           <ul class="cp-changes t-footnote">${st.changes.slice(0, 12).map((x) => `<li>${U.esc(x)}</li>`).join('')}${st.changes.length > 12 ? `<li>${U.esc(`and ${st.changes.length - 12} more`)}</li>` : ''}</ul>
           <div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpImproveReplace">Use these changes</button><button type="button" class="rf-btn" data-size="lg" data-act="cpImproveNew">Save as a new plan</button></div>
           <div class="cp-imp-days">${planView(S, p)}</div>
-          <p class="t-footnote rf-muted">Your plan stays as it was until you choose. You can change anything after.</p>
+          <p class="t-footnote rf-muted">Your plan stays as it is until you choose.</p>
         </div>`;
       }
       return `<div class="sheet-pad tailor cp-ask">
-        <p class="t-callout rf-muted">${U.esc(who)} reworks it from your training, your health and anything you ask, then shows you what it would change. ${U.esc(costHint(S, by))}</p>
+        <p class="t-callout rf-muted">${U.esc(who)} reworks it from your training, health and requests, then shows what it would change. ${U.esc(costHint(S, by))}</p>
         <div class="rf-field"><label class="rf-field-label" for="cpImpQ">Anything you'd like? (optional)</label><div class="rf-field-control"><textarea class="rf-input" id="cpImpQ" rows="2" maxlength="300" placeholder="Shorter workouts, more for my arms">${U.esc(st.text)}</textarea></div></div>
         <div class="ob-chips tailor-chips">${IMPROVE_CHIPS.map((x) => `<button type="button" class="rf-chip" data-act="cpImpChip" data-arg="${U.esc(x)}">${U.esc(x)}</button>`).join('')}</div>
         <button type="button" class="rf-btn ob-wide" data-variant="filled" data-size="lg" data-act="cpImproveGo">${U.icon('sparkle')}Improve it</button>
