@@ -212,9 +212,9 @@
     errs = {};
     draw();
     if (!was && !U.reduced() && el.animate) {
-      el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
+      el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: 'ease-out' });
       if (cur === 'welcome') hello(el);
-      else for (const [i, c] of Array.from(el.querySelectorAll('.ob-top, .ob-page, .ob-actions')).entries()) c.animate([{ opacity: 0, transform: 'translateY(22px)' }, { opacity: 1, transform: 'none' }], { duration: 420, delay: 40 + i * 50, easing: EASE_ENTER, fill: 'backwards' });
+      else for (const [i, c] of Array.from(el.querySelectorAll('.ob-top, .ob-page, .ob-actions')).entries()) c.animate([{ opacity: 0, transform: 'translateY(22px)' }, { opacity: 1, transform: 'none' }], { duration: 340, delay: 30 + i * 40, easing: EASE_ENTER, fill: 'backwards' });
     }
   }
   U.showOnboarding = () => {
@@ -249,7 +249,7 @@
     if (U.reduced() || !el.animate || !el.firstElementChild) { done(); return; }
     el.hidden = false;
     el.setAttribute('data-closing', '');
-    const a = el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(24px)' }], { duration: 240, easing: EASE_EXIT, fill: 'forwards' });
+    const a = el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(24px)' }], { duration: 200, easing: EASE_EXIT, fill: 'forwards' });
     closing = a;
     a.onfinish = () => { if (closing === a) closing = null; done(); a.cancel(); };
   }
@@ -380,7 +380,8 @@
     return { copy, top: box.top - host.top, left: box.left - host.left, width: box.width, height: box.height, shift: page.getBoundingClientRect().top - box.top };
   }
   // The screen changing: the old one slides out the way the person is going while the new one's
-  // parts come in from the other side a beat apart, with a little spring. Transform and opacity only.
+  // parts come in from the other side a beat apart, with a little spring, all in by about 0.7 s
+  // (1.9.0's took up to 0.95). Transform and opacity only.
   function slide(el, leaving, d) {
     if (U.reduced()) return;
     const page = el.querySelector('.ob-page');
@@ -395,19 +396,20 @@
       exit.appendChild(leaving.copy);
       el.appendChild(exit);
       const drop = () => { if (exit.isConnected) exit.remove(); };
-      const a = exit.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${-d * 18}%) scale(.98)` }], { duration: 230, easing: EASE_EXIT, fill: 'forwards' });
+      const a = exit.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${-d * 18}%) scale(.98)` }], { duration: 200, easing: EASE_EXIT, fill: 'forwards' });
       a.onfinish = drop;
       setTimeout(drop, 500);
     }
     const parts = Array.from(page.querySelectorAll(':scope > .ob-title, :scope > .ob-body > *')).slice(0, 10);
-    parts.forEach((n, k) => n.animate([{ opacity: 0, transform: `translateX(${d * 52}px)` }, { opacity: 1, transform: 'none' }], { duration: 560, delay: 40 + k * 38, easing: SPRING, fill: 'backwards' }));
+    parts.forEach((n, k) => n.animate([{ opacity: 0, transform: `translateX(${d * 52}px)` }, { opacity: 1, transform: 'none' }], { duration: 420, delay: 30 + k * 26, easing: SPRING, fill: 'backwards' }));
   }
-  // The welcome comes in: the logo blooms, then the words and the buttons rise one after another.
+  // The welcome comes in: the logo blooms, then the words and the buttons rise one after another,
+  // Get started there within about 0.9 s (1.9.0's took 1.35).
   function hello(el) {
     const mark = el.querySelector('.ob-mark');
-    if (mark) mark.animate([{ opacity: 0, transform: 'scale(.6)', filter: 'blur(8px)' }, { opacity: 1, transform: 'none', filter: 'blur(0)' }], { duration: 760, easing: SPRING, fill: 'backwards' });
+    if (mark) mark.animate([{ opacity: 0, transform: 'scale(.6)', filter: 'blur(8px)' }, { opacity: 1, transform: 'none', filter: 'blur(0)' }], { duration: 560, easing: SPRING, fill: 'backwards' });
     const parts = Array.from(el.querySelectorAll('.ob-hello > :not(.ob-mark):not(.ob-points), .ob-points > li, .ob-actions > *'));
-    parts.forEach((n, k) => n.animate([{ opacity: 0, transform: 'translateY(18px)' }, { opacity: 1, transform: 'none' }], { duration: 620, delay: 160 + k * 70, easing: EASE_ENTER, fill: 'backwards' }));
+    parts.forEach((n, k) => n.animate([{ opacity: 0, transform: 'translateY(18px)' }, { opacity: 1, transform: 'none' }], { duration: 460, delay: 100 + k * 45, easing: EASE_ENTER, fill: 'backwards' }));
   }
   // Checks the screen's answers; on a problem, says what's wrong under the field and stays.
   function valid() {
@@ -568,7 +570,7 @@
       if (cur === 'welcome' && !U.els().onboardEl.hidden) {
         draw();
         const card = U.els().onboardEl.querySelector('.ob-shared');
-        if (card && card.animate && !U.reduced()) card.animate([{ opacity: 0, transform: 'translateY(14px) scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 560, easing: SPRING });
+        if (card && card.animate && !U.reduced()) card.animate([{ opacity: 0, transform: 'translateY(14px) scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 440, easing: SPRING });
       }
     }, () => {});
   }
@@ -955,8 +957,9 @@
       revealIn(U.els().onboardEl, false);
     };
     if (U.reduced()) { rv = revealData(); finish(); return; }
-    // Each line ticks off a beat apart while the plan is worked out (after the first frame is up).
-    [280, 540, 800].forEach((ms, k) => setTimeout(() => {
+    // Each line ticks off a beat apart while the plan is worked out (after the first frame is up), and
+    // the plan shows at 0.76 s (1.9.0 held it to 1.05).
+    [200, 380, 560].forEach((ms, k) => setTimeout(() => {
       if (gen !== rvGen) return;
       const li = el.querySelector(`.ob-build-steps li[data-i="${k}"]`);
       if (li) { li.classList.add('is-done'); U.haptic('tick'); }
@@ -965,7 +968,7 @@
     setTimeout(() => {
       if (gen !== rvGen || !Q) return;
       rv = revealData();
-      setTimeout(finish, Math.max(120, 1050 - (Date.now() - t0)));
+      setTimeout(finish, Math.max(120, 760 - (Date.now() - t0)));
     }, 90);
   };
   function buildHtml() {
@@ -1072,7 +1075,8 @@
       ${doctor.map((t) => status('caution', t)).join('')}
     </div>`;
   }
-  // The plan comes in: the badge springs, the days pop in one by one, the rest rises after them.
+  // The plan comes in: the badge springs, the days pop in one by one, the rest rises after them, with
+  // its buttons there by about 0.95 s (1.9.0's took 1.25).
   function revealIn(el, again) {
     const page = el.querySelector('.ob-reveal');
     if (!page) return;
@@ -1082,18 +1086,18 @@
     if (U.reduced() || !page.animate) return;
     const badge = page.querySelector('.rv-badge');
     if (badge) {
-      badge.animate([{ transform: 'scale(.3)', opacity: 0 }, { transform: 'scale(1.15)', opacity: 1, offset: 0.6 }, { transform: 'none', opacity: 1 }], { duration: 620, easing: 'ease-out', fill: 'backwards' });
+      badge.animate([{ transform: 'scale(.3)', opacity: 0 }, { transform: 'scale(1.15)', opacity: 1, offset: 0.6 }, { transform: 'none', opacity: 1 }], { duration: 480, easing: 'ease-out', fill: 'backwards' });
       // (Refract 1.4's burst is 8 to 14 beads.)
-      if (G.Refract && G.Refract.burst) setTimeout(() => { try { G.Refract.burst(badge, { count: 14 }); } catch (e) { /* ignore */ } }, 260);
+      if (G.Refract && G.Refract.burst) setTimeout(() => { try { G.Refract.burst(badge, { count: 14 }); } catch (e) { /* ignore */ } }, 200);
     }
-    const rise = (n, delay) => n.animate([{ opacity: 0, transform: 'translateY(18px)' }, { opacity: 1, transform: 'none' }], { duration: 560, delay, easing: EASE_ENTER, fill: 'backwards' });
-    for (const [k, n] of Array.from(page.querySelectorAll('.rv-hero > :not(.rv-badge)')).entries()) rise(n, 80 + k * 60);
-    for (const [k, n] of Array.from(page.querySelectorAll('.rv-day')).entries()) n.animate([{ opacity: 0, transform: 'translateY(10px) scale(.7)' }, { opacity: 1, transform: 'none' }], { duration: 480, delay: 260 + k * 45, easing: SPRING, fill: 'backwards' });
+    const rise = (n, delay) => n.animate([{ opacity: 0, transform: 'translateY(18px)' }, { opacity: 1, transform: 'none' }], { duration: 440, delay, easing: EASE_ENTER, fill: 'backwards' });
+    for (const [k, n] of Array.from(page.querySelectorAll('.rv-hero > :not(.rv-badge)')).entries()) rise(n, 60 + k * 45);
+    for (const [k, n] of Array.from(page.querySelectorAll('.rv-day')).entries()) n.animate([{ opacity: 0, transform: 'translateY(10px) scale(.7)' }, { opacity: 1, transform: 'none' }], { duration: 380, delay: 200 + k * 32, easing: SPRING, fill: 'backwards' });
     const parts = Array.from(page.querySelectorAll('.rv-week-foot, .rv-first, .rv-why, .rv-around, .ob-link, .ft-grid > *'));
-    parts.forEach((n, k) => rise(n, 520 + k * 90));
-    for (const n of el.querySelectorAll('.ob-actions > *')) rise(n, 700);
+    parts.forEach((n, k) => rise(n, 380 + k * 60));
+    for (const n of el.querySelectorAll('.ob-actions > *')) rise(n, 500);
     const num = page.querySelector('.rv-n');
-    if (num && G.Refract && G.Refract.roll) setTimeout(() => { try { G.Refract.roll(num, num.textContent, { from: '0', dir: 1 }); } catch (e) { /* plain number */ } }, 640);
+    if (num && G.Refract && G.Refract.roll) setTimeout(() => { try { G.Refract.roll(num, num.textContent, { from: '0', dir: 1 }); } catch (e) { /* plain number */ } }, 480);
   }
 
   /* ---------------------------------------------------------------- pictures of the moves */

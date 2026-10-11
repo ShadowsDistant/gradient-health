@@ -149,7 +149,7 @@ button.hl-pill:active { scale: .97; transition-duration: var(--duration-instant)
 .sp-line { fill: none; stroke: var(--c, var(--accent-fill)); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .sp-area { fill: var(--c, var(--accent-fill)); opacity: .13; }
 .sp-dot { stroke: var(--c, var(--accent-fill)); stroke-width: 7; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-.sp-svg { animation: sp-draw 900ms var(--ease-out-soft) both; }
+.sp-svg { animation: sp-draw 600ms var(--ease-out-soft) both; }
 /* On the Health tab the lines draw in the first time it's shown, not on every visit: a clip's
    animation is drawn again on the page's thread in every frame, eight of them for most of a second
    after each tab change (src/ui/healthtab.js sets data-sparks-seen). */
@@ -256,13 +256,14 @@ button.hl-pill:active { scale: .97; transition-duration: var(--duration-instant)
 .rs-btns { gap: 6px; }
 
 /* ---------------------------------------------------------------- motion */
-/* The week's numbers settle in one after another the first time they're drawn. */
-.hl-week .hl-pill, .hl-week .hl-win, .hl-week .hl-focus { animation: hl-rise 560ms var(--ease-out-soft) both; }
-.hl-week .hl-pill:nth-child(2) { animation-delay: 50ms; }
-.hl-week .hl-pill:nth-child(3) { animation-delay: 100ms; }
-.hl-week .hl-pill:nth-child(4) { animation-delay: 150ms; }
-.hl-week .hl-win { animation-delay: 200ms; }
-.hl-week .hl-focus { animation-delay: 240ms; }
+/* The week's numbers settle in one after another the first time they're drawn, all in about 600 ms
+   (1.9.0's took 800). */
+.hl-week .hl-pill, .hl-week .hl-win, .hl-week .hl-focus { animation: hl-rise 420ms var(--ease-out-soft) both; }
+.hl-week .hl-pill:nth-child(2) { animation-delay: 35ms; }
+.hl-week .hl-pill:nth-child(3) { animation-delay: 70ms; }
+.hl-week .hl-pill:nth-child(4) { animation-delay: 105ms; }
+.hl-week .hl-win { animation-delay: 140ms; }
+.hl-week .hl-focus { animation-delay: 170ms; }
 @keyframes hl-rise { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
   .hl-week .hl-pill, .hl-week .hl-win, .hl-week .hl-focus, .sp-svg, .hl-ins[open] .hl-ins-body, .ms-about[open] .ms-about-body { animation: none; }

@@ -224,7 +224,7 @@
     awake();
     U.render();
     if (!was && !U.reduced() && el.animate) {
-      el.animate([{ opacity: 0, transform: 'translateY(24px) scale(.985)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)' });
+      el.animate([{ opacity: 0, transform: 'translateY(24px) scale(.985)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)' });
     }
   }
   U.actOpenLive = openLive;

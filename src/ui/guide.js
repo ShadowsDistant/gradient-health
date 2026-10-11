@@ -218,7 +218,7 @@
     };
     const show = (ctl, dir) => {
       ctl.update(body());
-      if (!U.reduced()) for (const el of ctl.el.querySelectorAll('.tour-art, .tour-copy')) el.animate([{ opacity: 0, transform: `translateX(${dir * 40}px)` }, { opacity: 1, transform: 'none' }], { duration: 360, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)' });
+      if (!U.reduced()) for (const el of ctl.el.querySelectorAll('.tour-art, .tour-copy')) el.animate([{ opacity: 0, transform: `translateX(${dir * 40}px)` }, { opacity: 1, transform: 'none' }], { duration: 300, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)' });
       U.haptic('select');
     };
     U.markSeen('tour');

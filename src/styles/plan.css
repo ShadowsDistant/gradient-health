@@ -161,9 +161,9 @@ button.pw-ex-row:focus-visible { outline: 2px solid var(--focus-ring); outline-o
 .pw-mu-n { color: var(--label-secondary); text-align: end; white-space: nowrap; }
 .pw-mu-n b { color: var(--label); font-weight: 650; }
 .pw-bar { position: relative; height: 10px; border-radius: var(--radius-full); background: var(--fill-3); }
-.pw-bar-plan, .pw-bar-done { position: absolute; inset-block: 0; inset-inline-start: 0; border-radius: inherit; transform-origin: 0 50%; animation: pw-grow 900ms var(--ease-out-soft) both; }
+.pw-bar-plan, .pw-bar-done { position: absolute; inset-block: 0; inset-inline-start: 0; border-radius: inherit; transform-origin: 0 50%; animation: pw-grow 600ms var(--ease-out-soft) both; }
 .pw-bar-plan { background: color-mix(in oklab, var(--c) 30%, transparent); }
-.pw-bar-done { background: color-mix(in oklab, var(--c), #fff var(--pw-lift)); animation-delay: 120ms; }
+.pw-bar-done { background: color-mix(in oklab, var(--c), #fff var(--pw-lift)); animation-delay: 80ms; }
 .pw-bar-target { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-inline-start: -1px; border-radius: 1px; background: var(--label); opacity: .7; }
 .pw-legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: 0; }
 .pw-legend > span { display: inline-flex; align-items: center; gap: 6px; }

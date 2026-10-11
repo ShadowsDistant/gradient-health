@@ -815,7 +815,8 @@
   /* ---------------------------------------------------------------- motion */
   U.reduced = () => !!(P() && P().reducedMotion());
   const EASE_ENTER = 'cubic-bezier(0.05, 0.7, 0.1, 1)';
-  // Cards and titles rise into place one after another (first paint, after set-up, after a workout).
+  // Cards and titles rise into place one after another (first paint, after set-up, after a workout),
+  // all of them in about 600 ms (1.9.0's took 850).
   function stagger(el) {
     if (U.reduced() || !el.animate) return;
     const items = [];
@@ -823,7 +824,7 @@
       items.push(n);
       if (items.length >= 9) break;
     }
-    items.forEach((n, i) => n.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 460, delay: 30 + i * 45, easing: EASE_ENTER, fill: 'backwards' }));
+    items.forEach((n, i) => n.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 360, delay: 20 + i * 28, easing: EASE_ENTER, fill: 'backwards' }));
   }
   U.stagger = stagger;
   // A page drawn again with a motion of its own (the same page opened again, the first paint after
@@ -833,7 +834,7 @@
     if (U.reduced() || !screen.animate || !kind) return;
     if (kind === 'stagger') { stagger(screen); return; }
     const x = { push: 36, pop: -36, right: 18, left: -18 }[kind] || 0;
-    screen.animate([{ opacity: 0, transform: `translateX(${x}px)` }, { opacity: 1, transform: 'none' }], { duration: kind === 'push' || kind === 'pop' ? 320 : 260, easing: EASE_ENTER });
+    screen.animate([{ opacity: 0, transform: `translateX(${x}px)` }, { opacity: 1, transform: 'none' }], { duration: kind === 'push' || kind === 'pop' ? 260 : 220, easing: EASE_ENTER });
   }
   // A floating button's place in the row ('side' or 'main'), as attributes: a re-render keeps its node
   // (data-key) and Refract follows it as it changes (data-rf-key), so a new label or time flows the
@@ -983,7 +984,7 @@
     // Floating buttons that go (Today's, on the way to another page) dissolve where they were, sinking
     // back into the tab bar (a copy of them: the row itself hides at once), gone with the old page on
     // a route change.
-    if (!wasHidden && !fl && M.glassOut) safe(() => M.glassOut(floatEl, { seen: floatSeen, ms: changed ? 340 : 420 }));
+    if (!wasHidden && !fl && M.glassOut) safe(() => M.glassOut(floatEl, { seen: floatSeen, ms: changed ? 280 : 340 }));
     // Buttons that stay shape-shift: a new label or time flows a button to its new width.
     if (!wasHidden && fl && !changed && M.shift) M.shift(floatEl, () => U.morph(floatEl, fl));
     else U.morph(floatEl, fl || '');

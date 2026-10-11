@@ -234,7 +234,9 @@ button.stat:active, .insight-line:active, .pl-fig-card:active, .tap-card:active 
 .float-actions .btn-main { flex: 1 1 auto; max-width: 320px; }
 .float-actions:has(> .btn-main:only-child) { justify-content: center; }
 .float-actions > .btn-main:only-child { max-width: 420px; }
-.rf-tabbar[data-position="bottom"] { inset-block-end: var(--tabbar-bottom); transition: translate var(--duration-spring-smooth) var(--spring-smooth), opacity var(--duration-base) var(--ease-standard); }
+/* The tab bar slides away under a page pushed on top, and back with Back, with the page (280 ms):
+   the smooth spring over 280 ms rather than Refract's 640. */
+.rf-tabbar[data-position="bottom"] { inset-block-end: var(--tabbar-bottom); transition: translate 280ms var(--spring-smooth), opacity 200ms var(--ease-standard); }
 .rf-tabbar[data-away] { translate: 0 calc(100% + var(--tabbar-bottom)); opacity: 0; pointer-events: none; }
 .rf-tabbar-accessory[hidden] { display: none; }
 /* The tab bar's lens and its gestures: src/styles/controls.css. */
@@ -477,7 +479,8 @@ textarea.preview { border: 0; resize: vertical; }
 .streak-roll { display: inline-block; }
 
 /* ---------------------------------------------------------------- charts draw in */
-.ch-svg { animation: ch-wipe 700ms var(--ease-out-soft) both; }
+/* (500 ms: 1.9.0's 700 kept a chart half drawn while you'd already read its numbers.) */
+.ch-svg { animation: ch-wipe 500ms var(--ease-out-soft) both; }
 @keyframes ch-wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 
 /* ---------------------------------------------------------------- tips */

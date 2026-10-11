@@ -128,11 +128,14 @@ left alone. A few conventions:
 - The navigation bar is shared: a screen's `<header class="rf-navbar">` is lifted into it.
 - A route change gets fresh content: the old page leaves in a layer of its own while the new one
   comes in (`U.motion.routeSwap` in `src/ui/motion.js`, on Refract 1.4's page motion: pushes and
-  pops slide on the smooth spring, tabs morph in place; the bar's title cross-fades with them). A
-  re-render of the same route patches in place and glides what moved (FLIP): new blocks rise in,
-  and removed ones fade from where they were for 200 ms before they go, so a test that checks one is
-  gone waits for `U.motion.settled()`. Animate transform and opacity only; `test/ui-motion.mjs`
-  checks for layout properties.
+  pops slide on the snappy spring in 280 ms, tabs morph in place in 200; the bar's title cross-fades
+  with them, and its buttons and the tab bar land with the page). A re-render of the same route
+  patches in place and glides what moved (FLIP, 340 ms): new blocks rise in, and removed ones fade
+  from where they were for 180 ms before they go, so a test that checks one is gone waits for
+  `U.motion.settled()`. Animate transform and opacity only; `test/ui-motion.mjs` checks for layout
+  properties. Nothing that moves makes anyone wait: Refract's own motion the app asks for by name
+  (glass forming, shape-shifting) plays quicker where it would run long (`U.motion.within`), on the
+  same curves.
 - Glass above the page moves as Refract's material does. The bar's buttons are keyed by what they
   are (`data-rf-key`; the top-left one by its place, the coach on a tab and Back on a page), so a
   push or Back shape-shifts them (`U.motion.shift`, `Refract.shapeshift`): one on both routes keeps
