@@ -365,7 +365,7 @@ section('A friend\'s plan: three screens into it');
   await page.waitForSelector('.onboard .ob-shared', { timeout: 4000 });
   await page.waitForTimeout(500);
   check('the welcome offers the plan, with who sent it', /Alex sent you a plan/.test(await page.locator('.onboard .ob-shared').innerText()) && /Upper and lower/.test(await page.locator('.onboard .ob-shared').innerText()));
-  check('Start with Alex\'s plan leads, Make my own plan instead below', (await page.locator('.ob-actions [data-variant="tinted"]').innerText()).trim() === 'Start with Alex\'s plan' && await page.locator('.ob-actions [data-act="obStart"]').count() === 1);
+  check('Start with Alex\'s plan leads, Make my own plan below', (await page.locator('.ob-actions [data-variant="tinted"]').innerText()).trim() === 'Start with Alex\'s plan' && await page.locator('.ob-actions [data-act="obStart"]').count() === 1);
   await shot(page, '10-friend-welcome');
   await next(page);
   check('what you want, filled in from the plan', (await title(page)) === 'What do you want most?' && /1 of 3/.test(await page.locator('.ob-count').innerText()) && await page.locator('.onboard .ob-opt[data-arg="muscle"][aria-pressed="true"]').count() === 1);
