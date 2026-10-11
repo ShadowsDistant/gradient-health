@@ -21,8 +21,10 @@ import { APP_SCRIPTS, APP_CHUNKS, LAZY, asciiRegexps } from '../scripts/build.mj
 // card into chunks of their own, and 1.6.0 shipped at 1,840,238 bytes, with a budget of that plus
 // 5% (1,932,000) that held through 1.8.3 (1,930,412 bytes, with Refract 1.4 in). 1.8.4 adds the
 // scroll diagnostics and the glass setting (11 KB) and ships at 1,941,415 bytes; the budget is that
-// plus 2%, enough to catch an asset inlined by mistake.
-const BUDGET = 1980000;
+// plus 2%, enough to catch an asset inlined by mistake. Notifications then add their page part (10 KB:
+// the hand-off to Android, Settings' rows and Today's card; the planner is a chunk of its own), and the
+// budget moves up by as much.
+const BUDGET = 1990000;
 
 const file = join(root, 'dist/gradient-health.html');
 if (!existsSync(file)) { console.error('No dist/gradient-health.html: run npm run build first.'); process.exit(1); }

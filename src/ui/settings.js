@@ -71,6 +71,10 @@
 
           ${U.actOptionRows ? actSettings(S) : ''}
 
+          ${U.notifyRows ? `${head('notify', 'Notifications', 'notifications reminders reminder nudges alerts notify push bell quiet hours')}
+          ${list('notify', U.notifyRows(S))}
+          ${U.notifyFoot(S) ? foot('notify', U.esc(U.notifyFoot(S))) : ''}` : ''}
+
           ${head('hc', 'Health Connect', 'health data sync steps sleep heart rate weight permissions android google fit')}
           ${list('hc', `${U.row({ key: 'hc', icon: 'heart', tone: 'rose', title: 'Health Connect', detail: hcDetail, act: app && !['unsupported', 'unavailable'].includes(st) ? (on ? 'hcManage' : 'hcConnect') : null, chevron: app })}
             ${missing.length ? U.row({ key: 'hc-new', icon: 'plus', tone: 'rose', title: 'Allow the new data types', sub: U.esc(missingText(missing)), act: 'hcConnect', chevron: true }) : ''}
@@ -130,7 +134,7 @@
       filter(root, query);
     },
     focus(root, arg) {
-      const el = arg && ['coach', 'track', 'food', 'feel', 'hc'].includes(arg) ? root.querySelector(`#${arg}`) : null;
+      const el = arg && ['coach', 'track', 'food', 'feel', 'hc', 'notify'].includes(arg) ? root.querySelector(`#${arg}`) : null;
       if (el) setTimeout(() => el.scrollIntoView({ block: 'start', behavior: U.reduced() ? 'auto' : 'smooth' }), 60);
     },
   };

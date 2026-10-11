@@ -314,6 +314,7 @@ export const APP_SCRIPTS = [
   'src/ui/badges.js',
   'src/ui/coachpage.js',
   'src/ui/settings.js',
+  'src/ui/notify.js', // notifications: the hand-off to Android, Settings' rows and Today's card
 ];
 
 // Parts of the app itself that the first screen doesn't need, each a chunk of its own in dist/lazy/:
