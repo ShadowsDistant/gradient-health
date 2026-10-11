@@ -20,7 +20,7 @@
           'There\'s no account, no ads, no analytics and no tracking. Everything you enter, and everything the app reads from Health Connect, is stored on your phone. Android\'s device backup can keep a copy if you have backup on (see below).',
           'If you allow it, the app also reads Health Connect every 15 minutes in the background. Recording a run, walk, hike or ride uses your location for its route, and only then. The route stays on your phone, and goes to Health Connect only if you save it there.',
           'Reminders are on after set-up unless you say no when Android asks to allow notifications (Android 13 and newer asks at the end of set-up). The app plans them on your phone and sends nothing about them. You can turn them off in Settings.',
-          'Data leaves your phone only through optional features you turn on, and only what each needs: a summary for Claude once you\'ve allowed it, a food search or barcode for Open Food Facts, a one-time download of the on-device AI model, map pieces from OpenFreeMap with maps on, and a plan you share, only with the people you send it to.',
+          'Data leaves your phone only through optional features you use, and only what each needs: a summary for Claude once you\'ve allowed it, a food search or barcode for Open Food Facts, a one-time download of the on-device AI model, map pieces from OpenFreeMap with maps on, and a plan you share, only with the people you send it to.',
           'Your data is never sold or used for advertising.',
         ],
       },
