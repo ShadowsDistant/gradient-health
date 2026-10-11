@@ -28,7 +28,7 @@ import {
   ExtrudeGeometry, ShapeGeometry, SphereGeometry, PlaneGeometry, Float32BufferAttribute, Color, CanvasTexture, DataTexture, PMREMGenerator,
   SRGBColorSpace, NoColorSpace, NeutralToneMapping, BackSide, RGBAFormat, LinearMipmapLinearFilter, LinearFilter,
 } from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const G = typeof window !== 'undefined' ? window : globalThis;
 const GH = G.GH || (G.GH = {});
@@ -289,6 +289,15 @@ function relief(shapes, h) {
   // themselves and its face was filled wrong.)
   const g = new ExtrudeGeometry(shapes, { depth: h, bevelEnabled: true, bevelThickness: bt, bevelSize: bs, bevelOffset: 0, bevelSegments: 2, curveSegments: 1 });
   g.translate(0, 0, -bt);
+  return flatUv(g);
+}
+// Texture coordinates straight from where each point is, as the field's are, so a texture across the
+// medal (platinum's film) runs on smoothly over its sides and bevels (an extrusion's own change from
+// one face to the next, which showed as blocks).
+function flatUv(g) {
+  const p = g.attributes.position, uv = g.attributes.uv;
+  for (let i = 0; i < p.count; i++) uv.setXY(i, p.getX(i), p.getY(i));
+  uv.needsUpdate = true;
   return g;
 }
 
@@ -440,8 +449,13 @@ function rimGeo(sh) {
     const bt = DIM.bevel, bs = sh === 'star' ? DIM.bevelIn * 0.6 : DIM.bevelIn;
     const g = new ExtrudeGeometry(s, { depth: DIM.thick - 2 * bt, bevelEnabled: true, bevelThickness: bt, bevelSize: bs, bevelOffset: -bs, bevelSegments: 10, curveSegments: 1 });
     g.translate(0, 0, -(DIM.thick - 2 * bt) / 2);
-    g.computeVertexNormals();
-    return g;
+    // Shaded smooth all round: an extrusion's faces each have their own corners, so its normals are
+    // flat, and a polished rim showed each facet of a rounded corner as a block.
+    g.deleteAttribute('normal');
+    const m = mergeVertices(flatUv(g), 1e-5);
+    g.dispose();
+    m.computeVertexNormals();
+    return m;
   });
 }
 // The field, a plate in the rim's opening (front or back), a hair larger so no gap shows.
