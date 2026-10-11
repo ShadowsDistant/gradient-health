@@ -17,6 +17,8 @@ src/brain.js             program, sessions, gym loads, adaptation, calendar repl
 src/optimizer.js         the plan engine (GH.optimizer): the best weekly split, each day's sets, sessions
                          filled to the time set, the plan's score and its "Why this plan" lines
 src/achievements.js      the badges (GH.achievements): what each takes, earned for good with a date
+src/notify.js            notifications' planner (GH.notify, a lazy chunk): what to send and when;
+                         src/ui/notify.js hands it to Android, with Settings' rows and Today's card
 src/planweek.js          one week of the plan for the Plan tab (GH.planWeek), cached
 src/body.js              weighted sets per muscle, how training splits, what improved (GH.body)
 src/health.js            Health Connect client (read and write), hand logs, per-day records
@@ -72,6 +74,7 @@ src/ui/*.js              screens: onboarding, player, today, plan, health, food,
 src/styles.css, src/styles/*.css   the app's styles (the per-area files are appended in order)
 android/src/…/HealthSync*.java     background Health Connect sync (a JobScheduler job every 15 minutes)
 android/src/…/Activity*.java       outdoor activity recording (a location foreground service, the track)
+android/src/…/Notif*.java          notifications: the schedule the page plans, its alarm, posting each one
 android/jni/             the on-device coach's native engine (C++ over llama.cpp) and its host test
 scripts/build-native.sh  builds android/jni for arm64 (or --host, and tests it)
 scripts/build.mjs        inlines everything into dist/gradient-health.html, minified (MINIFY=0 to read
@@ -137,7 +140,8 @@ left alone. A few conventions:
 
 **Parts that load when they're needed.** Set-up (`src/ui/onboarding.js`), the plan review with
 Why this plan (`src/planreview.js`, `src/ui/review.js`), How it works (`src/data/science.js`,
-`src/ui/science.js`) and a badge's share card (`src/ui/sharecard.js`) aren't in the page: they're
+`src/ui/science.js`), a badge's share card (`src/ui/sharecard.js`) and notifications' planner
+(`src/notify.js`, loaded by `src/ui/notify.js` for someone who has them on) aren't in the page: they're
 `APP_CHUNKS` in `scripts/build.mjs`, built into `dist/lazy/` and loaded with `GH.lazy(name)`.
 `src/ui/lazy.js` puts small stand-ins in their place: an action loads its part and then runs the
 real one, a screen draws its bar and title until its part is in, and `GH.planReview.available`
@@ -614,7 +618,9 @@ and `data_extraction_rules.xml` on 12 and newer. The Claude API key is never in 
 phone it's encrypted with a key from the Android Keystore (`SecretBox.java`, AES-GCM); a key saved
 in plain text by an older version is encrypted on first read, and one that can't be decrypted (a
 restored backup, a reset Keystore) is dropped so the person enters it again. Background reads,
-activity tracks and models are in `noBackupFilesDir`, so backups never include them.
+activity tracks and models are in `noBackupFilesDir`, so backups never include them, and the backup
+rules leave out notifications' preferences (`notify.xml`: the schedule, what was posted, the last
+night's sleep), which are for this phone only.
 
 **The bridge.** `AndroidBridge` only answers the app's own page: `MainActivity` follows the main
 frame's address and sets `pageTrusted` only for `https://appassets.androidplatform.net/`, and every
@@ -830,6 +836,53 @@ state (`test/customplan.mjs`); `src/ui/customplan.js` is the screens (`test/ui-c
   sets, the focus groups keep two thirds, and pulling still balances pushing. Otherwise the app's own
   plan stands.
 
+## Notifications
+
+A reminder on workout days, a walk or run on a rest day, a badge waiting to be opened, a word the
+morning after a good night and a gentle note after a few days away. All local: no server, no push
+service, nothing sent anywhere. They're off until the person turns them on: a one-time card on Today
+(for people updating, and new people once their first workout and the tour are done) or Settings,
+Notifications, with a switch per kind and the reminder time.
+
+**The page plans, Android delivers.** `src/notify.js` (`GH.notify`, a chunk) is a pure planner:
+`plan(S, now, o)` works out the next six weeks from the plan as Plan shows it (`GH.planWeek`), what's
+done, walks and runs (recorded here or from Health Connect), sleep from Health Connect, badges
+(`GH.achievements.unopened`, else `unseen`), the settings (`S.profile.prefs.notify`) and what
+Android posted lately (`o.sent`, `o.lastPosted`). Each time the app goes to the background (the page
+hidden, or Android's pause) and each time it opens, `src/ui/notify.js` hands the whole schedule to
+Android (`AndroidBridge.notifySchedule`), which replaces the last one. So it always follows what the
+person just did, and when they stop opening the app the schedule from their last visit plays out:
+that's the back-off, with no page running. The rules (`test/notify.mjs`, in any time zone):
+
+- One a day at most, by priority: badge, workout, sleep, move, comeback. Never 9:30 pm to 8 am, nor in
+  the 15 minutes after the app is left; nothing more today during a workout or once one went out.
+- workout: a planned day not done yet ("Chest, arms and abs, 25 min"), at the reminder time: 30
+  minutes before the usual start (the median of 4 weeks, 8 am to 8 pm), else 6 pm, or the time set.
+- move: a rest or light day, twice a week at most: their habit ("Saturday run?", 3 days on that
+  weekday in 8 weeks, one in the last 3), else a walk; not once they've walked or recorded something.
+- badge: two hours after the app is left, or the next morning at 9; once per badge.
+- sleep: a question for a rest day's morning, when the watch puts sleep in Health Connect and the
+  background sync runs. Android answers it then: the night (sessions ended since the day began, from
+  the sync's last read, which `HealthSync` hands to `Notifier.sleepRead`) against the page's tiers
+  (above the week's best, or half an hour over the usual; 7 to 11 hours), looking again every 20
+  minutes until a read has the night. Only good news; otherwise the day's walk (`alt`) goes instead.
+- comeback: days 3, 10, 17, 24, 31, 38 and 45 after the last open, each worded differently, then
+  nothing. The everyday kinds come only within 2 days of the last open.
+
+**Android** (`Notifier.java`, `NotifyReceiver.java`) checks what the page sends (64 KB, 60 items,
+plain ids, known kinds and screens, short texts, times ahead and within two months), keeps it in the
+`notify` preferences (out of backups) and sets one alarm, for the soonest item: `setWindow`, inexact,
+so no exact-alarm permission, and while the phone dozes it waits for it to wake. It's set again after
+each item, a restart and an update. At its time an item is dropped if one went out today, it's quiet
+hours, the app is on screen, an activity records (a walk also waits for a day with none recorded), or
+Android has its kind off (a channel per kind) or it's two hours late. One notification shows at a
+time, and each goes once it's out of date. `POST_NOTIFICATIONS` (Android 13+) is asked for only when
+they're turned on (`notifyRequest`, answered with `__gh.onNotifyPermission`); after a no, Settings
+opens Android's settings for them. A tap opens its screen the way a plan link does: `notifyTap()` for
+the one the app was started from, `__gh.onNotifyTap` while it runs. `test/ui-notify.mjs` covers the
+card, Settings, taps and the hand-off against a stand-in (`test/fixtures.mjs`); compile the Java as
+`build-apk.sh` does.
+
 ## Publishing (Google Play and APKPure)
 
 The app targets API 36 (what Play requires for new apps and updates from Aug 31, 2026) and handles
@@ -921,7 +974,9 @@ SHA-256.
    `ACCESS_FINE_LOCATION` and `ACCESS_COARSE_LOCATION` (an activity's route, only while one the person
    started records; no `ACCESS_BACKGROUND_LOCATION`, so no location declaration form),
    `ACTIVITY_RECOGNITION` (steps during an activity), `POST_NOTIFICATIONS` (the recording's
-   notification) and `RECEIVE_BOOT_COMPLETED` (keeps the background sync's job after a restart).
+   notification, and the reminders the person turns on, asked for then) and `RECEIVE_BOOT_COMPLETED`
+   (keeps the background sync's job and the reminders' alarm after a restart). The reminders use
+   inexact alarms only, so there's no exact-alarm permission to declare.
 7. **Foreground service declaration** (App content, Foreground service permissions).
    `FOREGROUND_SERVICE_LOCATION` for `ActivityService`: the use case is fitness tracking the person
    starts ("Record a run, walk, hike or ride: the route, distance and pace with the screen off"). It
