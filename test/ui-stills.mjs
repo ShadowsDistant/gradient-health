@@ -50,21 +50,20 @@ const CPU = 4;
 const MONDAY = '2026-10-19T08:10:00';
 
 /* ---------------------------------------------------------------- budgets */
-// What this version reached, best of 3, run by run with 1.9.0 (in brackets) on a machine with 4 CPUs
-// and other tests running alongside (load 10 to 15):
-// - a fresh install: Plan's first screen 10.5 s (10.4 s), the week's stills 21.1 s (19.2 s); medians
-//   12.7 s (15.5 s) and 24 s (24.9 s). An earlier build of this work, on a quieter machine: 5.9 s
+// What this version reached, run by run with 1.9.0 (in brackets) on a machine with 4 CPUs and other
+// tests running alongside (load 12 to 18), best of 3 and median:
+// - a fresh install: Plan's first screen 15.9 and 16.5 s (15.1 and 18.1 s), the week's stills 27.2
+//   and 30.1 s (25.1 and 27.3 s). On a quieter machine, with an earlier build of this work: 5.9 s
 //   (6.8 s) and 9.6 s (11.9 s).
-// - after an update: the first screen 0.2 s, a stand-in at once (12.2 s), this version's there
-//   10.5 s, the week's 24.7 s (20 s). The earlier build, quieter: 0.14 s (7.4 s), the week 10.1 s
-//   (13.1 s).
-// A fresh install here waits on the software GPU: drawing the page's glass after launch, the room's
-// light, the shaders and some 300 ms a still, all in one process. A phone's GPU does that in a
-// fraction of the time, so these budgets are loose, there to catch stills that stop coming (stuck
-// behind a wait); the stand-in's is tight, and so is each still's time on the page's thread (Checks).
+// - after an update: the first screen 0.75 and 0.76 s, a stand-in at once (18.7 and 22.9 s), this
+//   version's there 13.6 and 16.6 s, the week's 27.3 and 28.5 s (29.8 and 32.7 s).
+// A fresh install here waits on the software GPU, which draws the page's glass after launch, the
+// room's light, the shaders and some 300 ms a still, all in one process, and gets less of the
+// machine the more else runs: these budgets are loose, there to catch stills that stop coming (stuck
+// behind a wait). The stand-in's is tight, and so is each still's time on the page's thread (Checks).
 const BUDGET = {
-  fresh: { screen: 15000, week: 30000 },
-  update: { screen: 3000, screenNew: 25000, week: 35000 },
+  fresh: { screen: 22000, week: 40000 },
+  update: { screen: 3000, screenNew: 30000, week: 40000 },
 };
 
 /* ---------------------------------------------------------------- the page */
