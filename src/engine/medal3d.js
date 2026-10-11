@@ -13,9 +13,9 @@
  *   and the share card. stillNow(spec, o) draws one in the caller's idle moment, or says to wait
  *   while new shaders compile in the background.
  * - mount(host, spec, o): the live medal, drawn into a canvas of its own in `host`: drag or flick to
- *   spin it, at rest it sways slowly while the light sweeps across it, and it tilts a little with
- *   the phone. spinIn() is the reveal's: it spins in from small with a flash of light.
- * - preload(), warm(), supported().
+ *   spin it, at rest it (o.sway) sways slowly while the light sweeps across it, and it tilts a
+ *   little with the phone. spinIn() is the reveal's: it spins in from small with a flash of light.
+ * - supported(): whether WebGL works here.
  *
  * It has a WebGL renderer of its own (the figure's is the figure's), made when a medal is first
  * drawn and handed back a few seconds after the last one, so it only holds the GPU while medals are
@@ -961,35 +961,8 @@ function mount(host, spec, o) {
   return ctl;
 }
 
-/* ---------------------------------------------------------------- preload */
-// The renderer, the studio and the shaders of the kinds of medal this person has, ahead of the first
-// one drawn, a piece per idle moment. Resolves true when medals can be drawn at once.
-let preloading = null;
-function preload(kinds) {
-  if (preloading) return preloading;
-  const idle = (fn) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(() => fn(null), 16));
-  const list = (kinds && kinds.length ? kinds : [{ tier: 'bronze' }, { tier: 'lock' }]).map((k) => Object.assign({ shape: 'circle', glyph: '', enamel: ['#ccc', '#888', '#444'] }, k));
-  preloading = new Promise((resolve) => {
-    idle(() => {
-      if (!renderer()) { resolve(false); return; }
-      let i = 0;
-      const next = () => idle(() => {
-        if (!R) { resolve(false); return; }
-        if (i >= list.length) { resolve(true); return; }
-        const spec = list[i++];
-        const v = view(spec, false);
-        compiled(v, spec).then(() => { v.dispose(); next(); }, () => { v.dispose(); next(); });
-      });
-      next();
-    });
-  }).then((ok) => { preloading = null; maybeRelease(); return ok; });
-  return preloading;
-}
-
 GH.medal3d = {
-  supported, still, stillAsync, stillNow, encode, mount, preload,
-  // Whether medals of these kinds draw at once (the renderer up, their shaders compiled).
-  warm(specs) { return !!(R && !R.lost && (specs || []).every((s) => R.compiled.has(kindOf(s)))); },
+  supported, still, stillAsync, stillNow, encode, mount,
   // For tests: what it holds.
   _stats() { return { renderer: !!R, live: !!live, geos: geos.size, mats: mats.size, compiled: R ? [...R.compiled] : [] }; },
   _release() { if (live) live.destroy(); forget(); },
