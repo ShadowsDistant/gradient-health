@@ -53,7 +53,9 @@ function page(img, dark) {
 const only = process.argv.slice(2);
 const names = readdirSync(src).filter((f) => f.endsWith('.png') && (!only.length || only.includes(f.replace(/\.png$/, ''))));
 const browser = await chromium.launch();
-const ctx = await browser.newContext({ deviceScaleFactor: 2, viewport: { width: W + 2 * BEZEL + 2 * PAD, height: H + 2 * BEZEL + 2 * PAD + 10 } });
+// At 1.5x: the README shows them about 200 px wide, so this is still sharp on a high-density screen, at
+// about half the bytes of 2x.
+const ctx = await browser.newContext({ deviceScaleFactor: 1.5, viewport: { width: W + 2 * BEZEL + 2 * PAD, height: H + 2 * BEZEL + 2 * PAD + 10 } });
 const p = await ctx.newPage();
 for (const f of names) {
   const dark = /-dark\.png$/.test(f);

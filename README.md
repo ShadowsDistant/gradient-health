@@ -14,10 +14,10 @@ A training plan, a food log, your health data and a coach that runs on your phon
 <p align="center"><a href="#credits"><img src="docs/refract-badge.svg" height="32" alt="Built with Refract"></a></p>
 
 <p align="center">
-  <img src="docs/screenshots/today.png" width="200" alt="Today: a 35-day streak and today's workout">
-  <img src="docs/screenshots/workout.png" width="200" alt="The workout player: the 3D figure doing a dumbbell curl, with the tempo strip lit">
-  <img src="docs/screenshots/answer-dark.png" width="200" alt="The coach chat, in dark mode: answers from the model on the phone">
-  <img src="docs/screenshots/progress.png" width="200" alt="Progress: the body map, showing which muscles were trained most">
+  <img src="docs/screenshots/framed/today.png" width="200" alt="Today: a 35-day streak and today's workout">
+  <img src="docs/screenshots/framed/workout.png" width="200" alt="The workout player: the 3D figure doing a dumbbell curl, with the tempo strip lit">
+  <img src="docs/screenshots/framed/answer-dark.png" width="200" alt="The coach chat, in dark mode: answers from the model on the phone">
+  <img src="docs/screenshots/framed/progress.png" width="200" alt="Progress: the body map, showing which muscles were trained most">
 </p>
 
 Gradient Health plans a workout for each day of your week around your goals, the equipment you have and the time you've got. A 3D figure shows you every move. After each exercise it asks one question, and your answer, with how you slept and recovered, decides what you do next time. Track your food and your health too, or only the parts you want.
@@ -70,9 +70,9 @@ Workouts fill the time you set (an hour means an hour, and never more), and ever
 The on-device coach or Claude looks your plan over and suggests up to three changes. Each one is checked first against your equipment, your joints and your time, and shows what it changes ("+2 back sets a week"). Pick the ones you want, and Undo puts it back. With Claude on, the weekly report brings plan ideas too.
 
 <p align="center">
-  <img src="docs/screenshots/plan.png" width="200" alt="Plan: the week strip and today's workout">
-  <img src="docs/screenshots/why.png" width="200" alt="Why this plan: how many weeks the planner compared, and how this one scores">
-  <img src="docs/screenshots/review-dark.png" width="200" alt="The coach's review, in dark mode: two suggested changes, each with what it would change, switched on to apply, and one that wasn't applied">
+  <img src="docs/screenshots/framed/plan.png" width="200" alt="Plan: the week strip and today's workout">
+  <img src="docs/screenshots/framed/why.png" width="200" alt="Why this plan: how many weeks the planner compared, and how this one scores">
+  <img src="docs/screenshots/framed/review-dark.png" width="200" alt="The coach's review, in dark mode: two suggested changes, each with what it would change, switched on to apply, and one that wasn't applied">
 </p>
 
 ## Your plans
@@ -87,8 +87,8 @@ Either way it runs like the coach's plan, with the same lighter weeks and easier
 **Share a plan** with a QR code or a link. Your friend scans it or taps it, sees the whole plan and saves it. If it needs something they don't have, like a barbell, or a move that's hard on a joint they're careful with, the app swaps in the closest exercise they can do and says why.
 
 <p align="center">
-  <img src="docs/screenshots/plans.png" width="200" alt="Your plans: a plan's days, made from the coach's week">
-  <img src="docs/screenshots/share-dark.png" width="200" alt="Sharing a plan as a QR code, in dark mode">
+  <img src="docs/screenshots/framed/plans.png" width="200" alt="Your plans: a plan's days, made from the coach's week">
+  <img src="docs/screenshots/framed/share-dark.png" width="200" alt="Sharing a plan as a QR code, in dark mode">
 </p>
 
 ## Workouts
@@ -133,10 +133,10 @@ Your conditions stay on your phone and are never sent to Claude.
 **Started by mistake?** Go back and cancel the workout: nothing from it is saved or counts against your streak.
 
 <p align="center">
-  <img src="docs/screenshots/setup-dark.png" width="200" alt="Set-up's last step, in dark mode: the plan it made, with the first workout a tap away">
-  <img src="docs/screenshots/rest-dark.png" width="200" alt="Rest timer, in dark mode, with the question: how many more could you have done?">
-  <img src="docs/screenshots/gym.png" width="200" alt="A gym day: barbell curls, rope pushdowns, bench press and pulldowns with starting weights">
-  <img src="docs/screenshots/around.png" width="200" alt="Built around you: a plan for a 68-year-old with balance problems and a sore knee">
+  <img src="docs/screenshots/framed/setup-dark.png" width="200" alt="Set-up's last step, in dark mode: the plan it made, with the first workout a tap away">
+  <img src="docs/screenshots/framed/rest-dark.png" width="200" alt="Rest timer, in dark mode, with the question: how many more could you have done?">
+  <img src="docs/screenshots/framed/gym.png" width="200" alt="A gym day: barbell curls, rope pushdowns, bench press and pulldowns with starting weights">
+  <img src="docs/screenshots/framed/around.png" width="200" alt="Built around you: a plan for a 68-year-old with balance problems and a sore knee">
 </p>
 
 ## Moves
@@ -160,8 +160,8 @@ Going for a run with the dog? Start a run, walk, hike or ride from Today or Heal
 - **Keep it:** save it to Health Connect with its route. Your history and personal records (fastest mile, longest ride and more) live next to it.
 
 <p align="center">
-  <img src="docs/screenshots/activity.png" width="200" alt="A run's summary: distance, time, pace and five new personal records">
-  <img src="docs/screenshots/activity-dark.png" width="200" alt="The same run in dark mode: its route coloured by pace, with Show map to put the map behind it">
+  <img src="docs/screenshots/framed/activity.png" width="200" alt="A walk along Venice Beach: distance, time and pace, two new records, and the route coloured by pace">
+  <img src="docs/screenshots/framed/activity-dark.png" width="200" alt="The same walk in dark mode: splits per mile, elevation and heart rate from the watch">
 </p>
 
 ## Food
@@ -182,9 +182,9 @@ Connect Health Connect and your sleep, steps, weight, heart rate, HRV, active ca
 - **Insights only when they're backed by data:** a week of short sleep, a resting heart rate creeping up, a weight trend moving faster than it should.
 
 <p align="center">
-  <img src="docs/screenshots/health.png" width="200" alt="Health: the week at a glance and trends">
-  <img src="docs/screenshots/metric-dark.png" width="200" alt="Resting heart rate, in dark mode: its history and where each value came from">
-  <img src="docs/screenshots/food.png" width="200" alt="Food: calories left today, macros and meals">
+  <img src="docs/screenshots/framed/health.png" width="200" alt="Health: the week at a glance and trends">
+  <img src="docs/screenshots/framed/metric-dark.png" width="200" alt="Resting heart rate, in dark mode: its history and where each value came from">
+  <img src="docs/screenshots/framed/food.png" width="200" alt="Food: calories left today, macros and meals">
 </p>
 
 ## Progress
@@ -204,8 +204,9 @@ A body map, front and back, lights up the muscles you've trained most over the l
 Share one as a picture with friends and family: it shows the badge and what it took, and your name only if you choose.
 
 <p align="center">
-  <img src="docs/screenshots/badges.png" width="200" alt="Badges: the ones earned so far, with their tiers, and what's next">
-  <img src="docs/screenshots/badge-share-dark.png" width="200" alt="Sharing a badge as a picture, in dark mode: the medal, what it took and the date, with your name only if you turn it on">
+  <img src="docs/screenshots/framed/badges.png" width="200" alt="Badges: the ones earned so far, with their tiers, what's next and five waiting to be opened">
+  <img src="docs/screenshots/framed/sealed-dark.png" width="200" alt="A new badge, sealed, in dark mode: a gold capsule cracked by two taps, one more to open it">
+  <img src="docs/screenshots/framed/badge-share-dark.png" width="200" alt="Sharing a badge as a picture, in dark mode: the medal, what it took and the date, with your name only if you turn it on">
 </p>
 
 ## Reminders
@@ -220,12 +221,16 @@ Gradient Health can nudge you, never nag you. Turn reminders on in Settings (or 
 
 Never more than one a day, nothing late at night, and every kind can be switched off. They're worked out on your phone from what you do in the app, and nothing is sent anywhere.
 
+<p align="center">
+  <img src="docs/screenshots/framed/reminders.png" width="200" alt="Settings, Notifications: a switch for each kind of reminder, and the reminder time, 30 minutes before you usually start">
+</p>
+
 ## You
 
 Your profile, your badges, your plans, your set-up answers and Settings live in the You tab. Settings has a search, so units or haptics are a word away.
 
 <p align="center">
-  <img src="docs/screenshots/you-dark.png" width="200" alt="You, in dark mode: your profile, badges and plans">
+  <img src="docs/screenshots/framed/you-dark.png" width="200" alt="You, in dark mode: your profile, badges and plans">
 </p>
 
 ## The coach
@@ -243,9 +248,9 @@ Your profile, your badges, your plans, your set-up answers and Settings live in 
 **Or use Claude.** Add your own Anthropic API key and Claude answers in the app, writes your weekly report and reads your Tailor requests. Or tap Ask in the Claude app and your question plus a summary of your data (no name, no dates) opens there.
 
 <p align="center">
-  <img src="docs/screenshots/chat.png" width="200" alt="The coach chat: questions worth asking today">
-  <img src="docs/screenshots/tailor.png" width="200" alt="Tailor my plan: the changes it would make, before anything changes">
-  <img src="docs/screenshots/coach.png" width="200" alt="The Coach page: what changed today and why">
+  <img src="docs/screenshots/framed/chat.png" width="200" alt="The coach chat: questions worth asking today">
+  <img src="docs/screenshots/framed/tailor.png" width="200" alt="Tailor my plan: the changes it would make, before anything changes">
+  <img src="docs/screenshots/framed/coach.png" width="200" alt="The Coach page: what changed today and why">
 </p>
 
 **Pick a size for the on-device coach,** in the chat or in Settings. It's a one-off download that's checked, picks up where it left off and can wait for Wi-Fi.
@@ -275,8 +280,8 @@ Small models can slip, so the app checks every answer against your own numbers, 
 Every rule Gradient Health follows, from how many sets you do to how long you rest, is listed in the app under training, recovery, food and habits, each with a one-line summary, the studies behind it and a plain rating of how strong the evidence is. Where the research is thin, it says so.
 
 <p align="center">
-  <img src="docs/screenshots/science.png" width="200" alt="How it works: stopping 1 to 3 reps short of failure, with its research">
-  <img src="docs/screenshots/trends.png" width="200" alt="Trends: sleep and resting heart rate over four weeks">
+  <img src="docs/screenshots/framed/science.png" width="200" alt="How it works: stopping 1 to 3 reps short of failure, with its research">
+  <img src="docs/screenshots/framed/trends.png" width="200" alt="Trends: sleep and resting heart rate over four weeks">
 </p>
 
 ## Private by design

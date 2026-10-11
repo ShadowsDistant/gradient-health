@@ -85,7 +85,9 @@ scripts/build.mjs        inlines everything into dist/gradient-health.html, mini
                          it); lazy chunks go to dist/lazy/
 scripts/build-apk.sh     builds and signs the APK without Gradle
 scripts/make-icons.mjs   the launcher icons from art/logo.webp
-scripts/screenshots.mjs  renders docs/screenshots/ from the built page
+scripts/screenshots.mjs  renders docs/screenshots/ from the built page (the activity is a walk along
+                         Venice Beach, on OpenFreeMap's map when it can be reached from where it runs)
+scripts/frame-shots.mjs  puts the README's screenshots in a phone, in docs/screenshots/framed/
 scripts/store-assets.mjs   the store images in docs/store/ from docs/screenshots/
 scripts/release-notes.mjs  What's new for a version, for its GitHub release and the stores
 scripts/make-tiny-gguf.py  a tiny random-weight model for test/llm.mjs
@@ -107,6 +109,7 @@ npm run test:llm  # on-device AI runtime in Chromium with a tiny model (see On-d
 node test/sweep.mjs [--quick]   # every screen at 360-600 px, light/dark, 100%/130% text, overflow checks
 npm run apk       # build/gradient-health.apk (see below)
 node scripts/screenshots.mjs          # docs/screenshots/, light and dark
+node scripts/frame-shots.mjs [name …] # the README's copies of them, in a phone
 node test/contact-sheet.mjs [filter,…] [--dark]   # every move's keyframes, to build/
 ```
 

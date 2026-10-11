@@ -15,8 +15,8 @@ import { serveDist } from '../test/lib.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
-let chromium;
-try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
+let chromium, request;
+try { ({ chromium, request } = require('playwright')); } catch { ({ chromium, request } = require('/opt/node22/lib/node_modules/playwright')); }
 const out = process.env.SHOTS_OUT || join(root, 'docs/screenshots');
 mkdirSync(out, { recursive: true });
 const NOW = new Date('2026-10-19T08:10:00'); // a Monday, week 6
@@ -43,10 +43,55 @@ function seedFood() {
   GH.store.save(S);
 }
 
+// A walk along Venice Beach, Los Angeles, the evening before: up the boardwalk (Ocean Front Walk) from
+// the pier to Rose Avenue, back along the water, then out to the end of the pier and back. A fix a
+// second at a walk's pace with a little GPS noise, and the watch's steps, calories and heart rate.
+function seedWalk() {
+  const GH = window.GH, A = GH.activity, U = GH.ui, S = U.S;
+  const WAY = [
+    [33.97880, -118.46640], [33.98110, -118.46830], [33.98365, -118.47040], [33.98650, -118.47290],
+    [33.98960, -118.47560], [33.99300, -118.47830], [33.99600, -118.48070], // north on the boardwalk
+    [33.99540, -118.48170], [33.99200, -118.47930], [33.98850, -118.47650], [33.98500, -118.47370],
+    [33.98150, -118.47080], [33.97840, -118.46790], // south along the water
+    [33.97660, -118.47030], [33.97830, -118.46800], // out along the pier and back
+  ];
+  const M = 111195, ML = M * Math.cos((33.987 * Math.PI) / 180);
+  let seed = 11;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646 - 0.5; };
+  const dt = new Date((U.today() - 1) * 86400000);
+  const start = new Date(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate(), 16, 50).getTime();
+  const pts = [];
+  let t = start, d = 0;
+  for (let i = 0; i + 1 < WAY.length; i++) {
+    const [a, b] = [WAY[i], WAY[i + 1]];
+    const len = Math.hypot((b[0] - a[0]) * M, (b[1] - a[1]) * ML);
+    for (let x = 0; x < len;) {
+      const f = x / len, v = 1.42 + 0.12 * Math.sin(d / 400);
+      pts.push([t, a[0] + (b[0] - a[0]) * f + (rnd() * 2.5) / M, a[1] + (b[1] - a[1]) * f + (rnd() * 2.5) / ML, 4 + 2 * Math.sin(d / 700), 4, v, 0]);
+      x += v; d += v; t += 1000;
+    }
+  }
+  let act = A.build(S, { id: 'shot-walk', type: 'walk', title: 'Venice Beach walk', start, end: t, points: pts, movingMs: t - start, steps: null });
+  const hr = [];
+  let drift = 0;
+  for (let x = start; x <= t; x += 5000) { drift = drift * 0.85 + rnd() * 3; hr.push([x, Math.round(97 + 9 * Math.sin((x - start) / 900000) + drift)]); }
+  act = A.withWatch(S, act, { id: 'shot-walk', ok: true, steps: Math.round(d * 1.31), activeKcal: Math.round(d * 0.052), hr, sources: ['com.samsung.android.wear.shealth'] });
+  act.saved = { at: Date.now(), ok: true, route: true };
+  A.add(S, act);
+  GH.store.save(S);
+}
+
 async function run(dark) {
   const server = await serveDist();
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: dark ? 'dark' : 'light' });
+  // The map's pieces come from OpenFreeMap, fetched here (through the environment's proxy, if it has
+  // one: Playwright would send the local page through a browser's proxy too) and handed to the page.
+  const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
+  const net = await request.newContext(proxy ? { proxy: { server: proxy } } : {});
+  await ctx.route(/^https:\/\/tiles\.openfreemap\.org\//, async (route) => {
+    try { await route.fulfill({ response: await net.fetch(route.request()) }); } catch (e) { await route.abort(); }
+  });
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -111,14 +156,28 @@ async function run(dark) {
   // The exercise tiles turn into stills of the 3D figure while the phone is idle.
   for (let i = 0; i < 20 && await page.evaluate(() => document.querySelectorAll('#screen .pw-card .pw-thumb[data-move] > svg').length > 0); i++) await settle(700);
   await shot('plan');
-  // An outdoor activity's summary: the route, pace, splits and the watch's heart rate.
+  // An outdoor activity's summary: the walk along Venice Beach, after a few weeks of runs and walks
+  // (so it has records to beat). When OpenFreeMap can be reached from here, its map is behind the route.
   await page.evaluate(seedActivities);
-  await page.evaluate(() => { const a = window.GH.activity.get(window.GH.ui.S, 'seed-r3'); a.title = 'Tempo run'; });
+  await page.evaluate(seedWalk);
+  const mapOk = await page.evaluate(() => window.GH.ui.mapPieces.tilejson().then(() => true, () => false));
+  if (mapOk) await page.evaluate(() => { const S = window.GH.ui.S; S.profile.prefs.actMaps = true; delete S.profile.prefs.actStreets; window.GH.store.save(S); });
+  else console.log('OpenFreeMap can\'t be reached from here: the activity shots have no map');
   await settle();
-  await page.evaluate(() => window.GH.ui.open('activity', 'seed-r3'));
+  await page.evaluate(() => window.GH.ui.open('activity', 'shot-walk'));
   await settle(1500);
-  // Light: the numbers and new records; dark: the route on its map, with the splits under it.
-  if (dark) await page.evaluate(() => { const el = document.querySelector('#screen [data-key="map"]'); if (el) document.getElementById('screen').scrollTo(0, el.offsetTop - 110); });
+  if (mapOk) {
+    for (let i = 0; i < 40 && !(await page.$('#screen .am-streets[data-state="ready"]')); i++) await settle(500);
+    await settle(2500); // the tiles under the route
+  }
+  // Light: the numbers and new records; dark: the route on its map (with no map, pace and terrain).
+  if (dark) {
+    await page.evaluate((m) => {
+      const sp = document.querySelector('#screen [data-key="splits"]'), sec = sp && sp.closest('.section');
+      const el = m ? document.querySelector('#screen [data-key="map"]') : sec && sec.previousElementSibling;
+      if (el) document.getElementById('screen').scrollTo(0, el.offsetTop - (m ? 110 : 96));
+    }, mapOk);
+  }
   else await top();
   await shot('activity');
   // Your plans: one made from the coach's week, its days, and sharing it as a QR code.
@@ -178,12 +237,42 @@ async function run(dark) {
   await tab('you');
   await top();
   await shot('you');
+  // Reminders, turned on: Settings' Notifications group, a switch for each kind and the time.
+  await page.evaluate(() => {
+    const U = window.GH.ui, S = U.S;
+    window.__notify.permission = 'granted';
+    if (window.__bg) Object.assign(window.__bg, { supported: true, granted: true, on: true });
+    S.profile.prefs.notify.on = true;
+    window.GH.store.save(S);
+    U.open('settings');
+  });
+  await settle(1500);
+  await page.evaluate(() => { const h = document.querySelector('#screen #notify'); if (h) document.getElementById('screen').scrollTo(0, h.offsetTop - 210); });
+  await settle(900); // the planner's chunk loads, for the reminder time
+  await shot('reminders');
+  await page.evaluate(() => { const U = window.GH.ui; while (U.back()) { /* to the tab */ } });
+  await settle(600);
   // Badges: the gallery, then one shared as a picture (the preview is exactly what gets sent). The
   // 30-day streak when it's earned, else the newest earned one.
   await page.evaluate(() => window.GH.ui.open('badges'));
   await settle(1200);
   await top();
   await shot('badges');
+  // A new badge, sealed: a glass capsule in its tier's colours, with its rarity and nothing else. In
+  // dark, two taps in: cracked, one more to open it.
+  const sealed = await page.evaluate(() => {
+    const U = window.GH.ui, earned = (U.S.achievements && U.S.achievements.earned) || {};
+    const ids = Object.keys(earned).sort((a, b) => (earned[b].day || 0) - (earned[a].day || 0));
+    const id = ids.includes('streak30') ? 'streak30' : ids[0];
+    earned[id].opened = false;
+    U.badgeReveal([id]);
+    return id;
+  });
+  await settle(1600);
+  if (dark) for (let i = 0; i < 2; i++) { await page.click('.bdg-reveal .bdg-cap'); await settle(800); }
+  await shot('sealed');
+  await page.evaluate((id) => { const U = window.GH.ui; window.GH.achievements.markOpened(U.S, id); U.closeSheets(); }, sealed);
+  await settle(800);
   await page.evaluate(() => {
     const U = window.GH.ui, earned = (U.S.achievements && U.S.achievements.earned) || {};
     const ids = Object.keys(earned).sort((a, b) => (earned[b].day || 0) - (earned[a].day || 0));
@@ -244,6 +333,7 @@ async function run(dark) {
   await shot('setup');
   if (errors.length) console.log('page errors:', errors);
   await browser.close();
+  await net.dispose();
   await server.close();
 }
 
