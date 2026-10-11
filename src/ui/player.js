@@ -819,7 +819,7 @@
     const setCount = (txt) => { const c = el.querySelector('.pl-count'); if (c && c.textContent !== txt) c.textContent = txt; };
     const setRing = (v) => { const r = el.querySelector('.rf-ring'); if (r) { r.style.setProperty('--rf-value', Math.max(0, Math.min(1, v)).toFixed(3)); r.setAttribute('aria-valuenow', String(Math.round(v * 100))); } };
     if (P.phase === 'countdown') {
-      const s = Math.ceil((P.goAt - now) / 1000);
+      const s = Math.min(3, Math.ceil((P.goAt - now) / 1000)); // 3-2-1, however late a tick runs
       if (s > 0 && s !== P.lastCue) { plat().cue('countdown'); P.lastCue = s; }
       if (now >= P.goAt) { plat().cue('go'); P.phase = 'running'; P.startAt = now; P.endAt = now + P.dur * 1000; P.lastCue = null; draw(); return; }
       setCount(String(Math.max(1, s)));

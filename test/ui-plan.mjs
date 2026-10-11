@@ -305,6 +305,9 @@ await page.clock.runFor(150);
 await page.waitForTimeout(30);
 const held = await page.evaluate(() => { const b = document.querySelector('#screen .pw-viewport > .pw-bead'); return !!b && b.hasAttribute('data-lifted'); });
 await settle(900);
+// The weeks slide on a CSS spring in real time (about 700 ms, its last pixels slowly), whatever the
+// page's clock does: what's measured is where everything comes to rest.
+await page.waitForFunction(() => !document.getAnimations().some((a) => a.playState === 'running' && a.effect && a.effect.target && a.effect.target.closest && a.effect.target.closest('.pw-viewport')), null, { timeout: 4000, polling: 50 }).catch(() => {});
 s = await state(page);
 check('the bead holds the weekday, lifted, while the weeks slide under it, then lands on it', held && s.beadOn, JSON.stringify({ held, bead: s.bead }));
 check('Next week slides in', s.page === 1 && s.pills === 7 && JSON.stringify(s.kinds) === JSON.stringify(s.nextKinds), JSON.stringify({ page: s.page, kinds: s.kinds }));
