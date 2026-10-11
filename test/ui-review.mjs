@@ -262,6 +262,10 @@ await ev(() => {
 });
 check('with Claude on, the review is Claude\'s', await ev(() => window.GH.planReview.engine(window.GH.ui.S) === 'claude'));
 await go('health');
+// Opening Health with Claude on writes the week's report by itself, and that request can go out
+// before or after go() returns. Let it finish first, so the count below holds only the one asked for
+// by hand (Write it again).
+await page.waitForFunction(() => !!window.GH.ai.reportFor(window.GH.ui.S, window.GH.ui.today()), null, { timeout: 30000 });
 const n0 = anthropic.length;
 await ev(() => window.GH.ui.act.aiReport());
 await page.waitForFunction(() => { const r = window.GH.ai.reportFor(window.GH.ui.S, window.GH.ui.today()); return !!(r && r.plan); }, null, { timeout: 30000 });
