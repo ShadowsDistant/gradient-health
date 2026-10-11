@@ -9,8 +9,9 @@
 .bdg-svg.is-locked .bdg-ring { color: var(--positive-fill); }
 :root[data-theme^="dark"] .bdg-svg.is-locked .bdg-ring { color: #3fc178; }
 /* The tier's colour, for the glow and rays round a medal and the tier dots. */
-/* --bdg-glow: how strongly a medal glows in the gallery and on the shelf, more the rarer it is. */
-[data-tier="bronze"] { --bdg-c: #e39a5b; --bdg-c2: #ffd3a6; --bdg-glow: 0%; }
+/* --bdg-glow: how strongly a medal glows in the gallery and on the shelf, more the rarer it is (a
+   bronze one doesn't). */
+[data-tier="bronze"] { --bdg-c: #e39a5b; --bdg-c2: #ffd3a6; }
 [data-tier="silver"] { --bdg-c: #a9b8c8; --bdg-c2: #eef3f8; --bdg-glow: 24%; }
 [data-tier="gold"] { --bdg-c: #f0b92a; --bdg-c2: #ffe89a; --bdg-glow: 38%; }
 [data-tier="platinum"] { --bdg-c: #9fb4ff; --bdg-c2: #e6cfff; --bdg-glow: 52%; }
@@ -63,7 +64,7 @@
 .bdg-stage.is-live > .bdg-live { opacity: 1; }
 .bdg-stage.is-live > .bdg-medal { opacity: 0; animation: none; transition: opacity .35s ease-out; }
 .bdg-stage.is-opening.is-live > .bdg-live { transition: none; }
-:is(.bdg-tile, .bdg-mini:not(.is-sealed))[data-tier] :is(.bdg-tile-medal, .bdg-mini-medal)::before { content: ''; position: absolute; inset: -14%; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--bdg-c) var(--bdg-glow), transparent), transparent); }
+:is(.bdg-tile, .bdg-mini:not(.is-sealed)):not([data-tier="bronze"])[data-tier] :is(.bdg-tile-medal, .bdg-mini-medal)::before { content: ''; position: absolute; inset: -14%; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--bdg-c) var(--bdg-glow), transparent), transparent); }
 
 /* ================================================================== sealed capsules */
 /* A badge not opened yet: a glass capsule in its tier's colours, where its medal would be. In the

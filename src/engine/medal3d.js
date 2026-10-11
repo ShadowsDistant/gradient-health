@@ -43,8 +43,9 @@ const TAU = Math.PI * 2;
 /* ---------------------------------------------------------------- the look */
 // Each tier's metal: its colour (sRGB), how polished the rim and relief are (rough) and the back
 // (satin). Platinum has a pearly film over a clear coat; the blank is dark, frosted metal (matte).
+// Bronze's relief is polished brighter (relief), or its glyph would sink into a warm enamel.
 const METALS = {
-  bronze: { color: '#cf8a58', rough: 0.2, satin: 0.4 },
+  bronze: { color: '#cf8a58', relief: '#efbd94', rough: 0.2, satin: 0.4 },
   silver: { color: '#eef2f7', rough: 0.13, satin: 0.34 },
   gold: { color: '#ffd57a', rough: 0.15, satin: 0.34 },
   platinum: { color: '#efeaff', rough: 0.1, satin: 0.28, pearl: true },
@@ -411,10 +412,10 @@ function engraving(lines, sh) {
 /* ---------------------------------------------------------------- materials */
 const mats = new Map();
 function material(key, make) { if (!mats.has(key)) mats.set(key, make()); return mats.get(key); }
-function metal(tier, satin) {
+function metal(tier, satin, raised) {
   const m = METALS[tier] || METALS.bronze;
-  return material(`m:${tier}:${satin ? 1 : 0}`, () => {
-    const o = { color: new Color(m.color), metalness: 1, roughness: satin ? m.satin : m.rough, envMapIntensity: 1 };
+  return material(`m:${tier}:${satin ? 1 : 0}${raised ? ':r' : ''}`, () => {
+    const o = { color: new Color((raised && m.relief) || m.color), metalness: 1, roughness: satin ? m.satin : m.rough, envMapIntensity: 1 };
     if (m.pearl) Object.assign(o, { clearcoat: 0.8, clearcoatRoughness: 0.05, iridescence: 0.8, iridescenceIOR: 1.7, iridescenceThicknessMap: textures().film, iridescenceThicknessRange: [260, 600] });
     if (m.frost) Object.assign(o, { metalness: 0.9 });
     return new MeshPhysicalMaterial(o);
@@ -515,8 +516,9 @@ function build(spec) {
   const num = spec.ribbon ? String(spec.ribbon) : '';
   const [alone, over, under] = layout(sh);
   const gg = spec.glyph ? glyphGeo(spec.glyph, !!num) : null;
-  if (gg) { const m = new Mesh(gg, polished); m.position.y = num ? over : alone; rel.add(m); }
-  if (num) { const m = new Mesh(numberGeo(num), polished); m.position.y = under; rel.add(m); }
+  const raised = metal(tier, false, true);
+  if (gg) { const m = new Mesh(gg, raised); m.position.y = num ? over : alone; rel.add(m); }
+  if (num) { const m = new Mesh(numberGeo(num), raised); m.position.y = under; rel.add(m); }
   if (blank) rel.scale.z = 0.6;
   g.add(rel);
   // The back: a plate of satin metal, with what's engraved there.
