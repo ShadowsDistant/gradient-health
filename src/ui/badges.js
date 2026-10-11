@@ -317,6 +317,12 @@
     U.whenCalm(() => GH.lazy('figure3d').then(() => { if (!h.dead && M.live) h.ctl = M.live(stage, x, o); }, () => { M.off = true; }));
     return h;
   }
+  // fn, once, as soon as a sheet starts to close (its onClose comes once it has closed, which a busy
+  // page can hold up for a while).
+  function onClosing(c, fn) {
+    const close = c.close;
+    c.close = function () { const was = c.closed, r = close.apply(this, arguments); if (!was && c.closed) fn(); return r; };
+  }
   // A still drawn now, with reduced motion (a sheet's, where the live one would be).
   const stillNow = (x) => { if (can3d()) GH.lazy('figure3d').then(() => M.draw && M.draw(x), () => {}); };
 
@@ -537,6 +543,8 @@
         if (x.earned) spring(stage, x.def, null);
         if (U.reduced()) stillNow(x);
         else live3d = liveMedal(stage, x, { size: 148, sheet: c, interactive: true, sway: true });
+        // It stops as the sheet starts to close, and goes once the sheet has slid away.
+        onClosing(c, () => setTimeout(() => { if (live3d) live3d.destroy(); }, 400));
       },
       onClose: () => { if (live3d) live3d.destroy(); },
     });
@@ -621,7 +629,10 @@
     const done = new Set();
     // Each page: sealed or not, and how many taps it has taken. Opened ones change what's behind.
     const state = pages.map((x) => ({ sealed: x.sealed, taps: 0, busy: false }));
-    let opened = false, io = null, ctl = null;
+    let opened = false, io = null, ctl = null, left = false;
+    // As it starts to close: the capsules stop, and what shows the badges behind it shows the opened ones
+    // as medals. (Its live medal goes once it has slid away.)
+    const leave = () => { if (left) return; left = true; if (io) io.disconnect(); if (opened) behind(); };
     // The page showing has its medal live in 3D, ready behind its capsule for when it bursts (one live
     // medal at a time); with reduced motion, its still.
     let live3d = null, liveAt = -1;
@@ -765,10 +776,9 @@
           const dots = el.querySelector('.bdg-dots');
           if (dots) dots.addEventListener('rf-select', (e) => { if (e.detail && e.detail.index != null) goTo(e.detail.index); });
         }
+        onClosing(c, () => { leave(); setTimeout(() => { if (live3d) live3d.destroy(); }, 400); });
       },
-      // The capsules stop, the live medal goes; what shows the badges behind it shows the opened ones as
-      // medals.
-      onClose: () => { if (io) io.disconnect(); if (live3d) live3d.destroy(); if (opened) behind(); },
+      onClose: () => { leave(); if (live3d) live3d.destroy(); },
     });
     let jumpTo = null;
     const goTo = (n) => {

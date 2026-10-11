@@ -61,6 +61,8 @@ const settle = async (ms = 700) => { await page.clock.runFor(ms); await page.wai
 const until = async (fn, max = 120, p = page) => { for (let i = 0; i < max; i++) { if (await p.evaluate(fn)) return true; await p.clock.runFor(1000); await p.waitForTimeout(150); } return p.evaluate(fn); };
 const shot = async (name) => { if (shots) await page.screenshot({ path: join(OUT, `${dark ? 'dark' : 'light'}-${name}.png`) }); };
 const S = (fn, arg) => page.evaluate(fn, arg);
+// Share and Done fade in on a CSS transition, which runs in real time (on a busy machine, slowly).
+const actsIn = async () => { for (let i = 0; i < 50 && !(await S(() => { const e = document.querySelector('dialog.bdg-reveal-sheet[open] [data-act="badgeDone"]'); return !!e && e.checkVisibility({ visibilityProperty: true, opacityProperty: true }); })); i++) await page.waitForTimeout(200); };
 const closeAll = async () => { await S(() => { window.GH.ui.closeSheets(); while (window.GH.ui.back()) { /* back to the tab */ } }); await settle(700); };
 await settle(2500);
 
@@ -149,16 +151,21 @@ check('and its series: each badge in it, this one marked, the next one up and ho
 const liveUp = await until(() => !!document.querySelector('dialog.bdg-sheet[open] .bdg-stage.is-live > canvas.bdg-live'), 60);
 check('its medal goes live in 3D over its still, once its first frame is drawn', liveUp && await S(() => window.GH.medal3d._stats().live), await S(() => window.GH.medal3d && window.GH.medal3d._stats()));
 await shot('03-detail');
-// Spun by hand: a quick drag across it turns it over, with a light haptic as it does.
-await S(() => { window.__haptics.length = 0; });
-const lb = await page.locator('dialog.bdg-sheet[open] canvas.bdg-live').boundingBox();
-await page.mouse.move(lb.x + lb.width * 0.15, lb.y + lb.height / 2);
-await page.mouse.down();
-for (let i = 1; i <= 8; i++) { await page.mouse.move(lb.x + lb.width * (0.15 + i * 0.09), lb.y + lb.height / 2); await page.clock.runFor(16); await page.waitForTimeout(12); }
-await page.mouse.up();
+// Spun by hand: a quick drag across it turns it over, with a light haptic as it does. A finger there
+// lands on it; the drag itself goes to the medal straight from the page (a busy machine can hold
+// real input up for seconds, while frames of software WebGL queue up).
+const spinAt = await S(() => { const c = document.querySelector('dialog.bdg-sheet[open] canvas.bdg-live'), r = c.getBoundingClientRect(); return document.elementFromPoint(r.x + r.width * 0.15, r.y + r.height / 2) === c; });
+const hxSpin = await S(() => {
+  window.__haptics.length = 0;
+  const c = document.querySelector('dialog.bdg-sheet[open] canvas.bdg-live'), r = c.getBoundingClientRect(), y = r.y + r.height / 2;
+  const fire = (type, f) => c.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'touch', isPrimary: true, button: type === 'pointermove' ? -1 : 0, buttons: type === 'pointerup' ? 0 : 1, clientX: r.x + r.width * f, clientY: y }));
+  fire('pointerdown', 0.15);
+  for (let i = 1; i <= 8; i++) fire('pointermove', 0.15 + i * 0.09);
+  fire('pointerup', 0.87);
+  return window.__haptics.slice();
+});
 await settle(1500);
-const hxSpin = await S(() => window.__haptics.slice());
-check('a drag or flick spins it, and as it turns over between face and back a light haptic plays', hxSpin.includes('tick') && hxSpin.every((k) => k === 'tick'), hxSpin);
+check('a drag or flick spins it, and as it turns over between face and back a light haptic plays', spinAt && hxSpin.includes('tick') && hxSpin.every((k) => k === 'tick'), { spinAt, hxSpin });
 await shot('03b-detail-spun');
 await closeAll();
 check('closing the sheet lets the live medal go', await until(() => !window.GH.medal3d._stats().live && !document.querySelector('canvas.bdg-live'), 10));
@@ -225,7 +232,7 @@ check('the third bursts it open: it\'s opened for good at once (saved), the halv
 check('every animation of the opening moves by transform and opacity only', burst.anims.length >= 5 && [...shake.anims, ...burst.anims].every((a) => a.props.every((p) => p === 'transform' || p === 'opacity')), [...shake.anims, ...burst.anims].filter((a) => a.props.some((p) => p !== 'transform' && p !== 'opacity')));
 await settle(1400);
 const beads = await S(() => window.__bursts[window.__bursts.length - 1] || 0);
-await page.waitForTimeout(900); // Share and Done fade in on a CSS transition, which runs in real time
+await actsIn();
 const out = await revNow();
 check('the medal that springs out is the 3D one, spinning out with a flash of light (live over its still)', await until(() => !!document.querySelector('dialog.bdg-reveal-sheet[open] .bdg-page .bdg-stage.is-live > canvas.bdg-live'), 30));
 check('the medal springs out, then its name, tier, what it took, the date, Share and Done', out.opened && out.sprung && !out.cap && !out.medalHidden && /Early bird/.test(out.text) && /Bronze · Common/i.test(out.text) && /Start a workout before 8 in the morning/.test(out.text) && /Earned today/.test(out.text) && out.share && out.done && !out.bob, out);
@@ -305,7 +312,7 @@ check('only the capsule on screen bobs (the other pages are off to the side)', m
 await shot('06b-sealed-3');
 await page.click('dialog.bdg-reveal-sheet [data-act="badgeOpenAll"]');
 await settle(1500);
-await page.waitForTimeout(900); // Share and Done fade in in real time
+await actsIn();
 const all = await S(() => {
   const d = document.querySelector('dialog.bdg-reveal-sheet[open]');
   const vis = (sel) => { const e = d.querySelector(sel); return !!e && e.checkVisibility({ visibilityProperty: true, opacityProperty: true }); };
@@ -380,7 +387,9 @@ await settle(1200);
 check('three taps open it: its name, Share and Done', await S(() => { const d = document.querySelector('dialog.bdg-reveal-sheet[open]'); return /Your way/.test(d.querySelector('.bdg-reveal').innerText) && window.GH.ui.S.achievements.earned.ownPlan.opened === true; }) && (await S(() => window.__haptics.join())).includes('wobble,crack,badge'));
 await page.click('dialog.bdg-reveal-sheet [data-act="badgeDone"]');
 await settle(1500);
-await until(() => !document.querySelector('#screen [data-badge="ownPlan"]').classList.contains('is-sealed'), 20);
+// (The page behind re-renders once the sheet has closed and it's calm; a busy machine can hold a
+// sheet's close up for a while.)
+await until(() => !document.querySelector('#screen [data-badge="ownPlan"]').classList.contains('is-sealed'), 60);
 const t1 = await tileNow();
 check('closed, the gallery shows its medal in its place, its name and date, and nothing left to open', !t1.sealed && t1.earned && t1.medal && !t1.capsule && /Your way/.test(t1.text) && !/to open/.test(t1.hero), Object.assign(t1, await S(() => ({ calm: window.GH.ui.calm(), moving: document.documentElement.hasAttribute('data-sheet-moving'), dialogs: [...document.querySelectorAll('dialog')].map((d) => `${d.className} open=${d.open}`) }))));
 check('and its sheet is the detail sheet again, as before', await S(() => { window.GH.ui.badgeDetail('ownPlan'); const d = document.querySelector('dialog.bdg-sheet[open]'); return !!d && !!d.querySelector('.bdg-detail[data-badge="ownPlan"]') && /Your way/.test(d.textContent); }));
@@ -516,8 +525,9 @@ section('Reduced motion');
   const stageNow = () => p3.evaluate(() => { const d = document.querySelector('dialog.bdg-reveal-sheet[open]'), st = d.querySelector('.bdg-stage'); return { sealed: st.classList.contains('is-sealed'), bob: st.hasAttribute('data-bob'), taps: st.dataset.taps, fading: st.classList.contains('is-fading'), opening: st.classList.contains('is-opening'), anims: st.getAnimations({ subtree: true }).map((a) => a.animationName || 'web'), text: d.querySelector('.bdg-reveal').innerText.replace(/\s+/g, ' '), opened: window.GH.ui.S.achievements.earned.w50.opened, hx: window.__haptics.slice(), beads: document.querySelectorAll('.rf-bead').length, medal: getComputedStyle(st.querySelector('.bdg-medal')).opacity }; });
   const rs = await stageNow();
   check('a sealed one shows still: no bob, nothing moving', rs.sealed && !rs.bob && rs.anims.length === 0 && /Tap to open/.test(rs.text), rs);
-  // (The page's clock stands still for the tap, so the fade is still on when it's read.)
-  await p3.clock.pauseAt(new Date(await p3.evaluate(() => Date.now()) + 50));
+  // (The page's clock stands still for the tap, so the fade is still on when it's read: from a moment
+  // ahead, as it runs on meanwhile.)
+  await p3.clock.pauseAt(new Date(await p3.evaluate(() => Date.now()) + 3000));
   await p3.click('dialog.bdg-reveal-sheet .bdg-cap');
   const r1 = await stageNow();
   check('one tap opens it, for good: no wobble or crack, no burst, just a fade, with the badge haptic', r1.opened === true && r1.fading && !r1.opening && r1.taps === '0' && r1.hx.join() === 'badge' && r1.anims.every((a) => !/^bdg-(split|flash|wobble|shake|bob)/.test(a)), r1);

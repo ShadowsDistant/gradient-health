@@ -125,7 +125,7 @@
    * Returns { spinIn() (spins it in from small with a flash of light, if it's ready: true then),
    * destroy() }. */
   M.live = (stage, x, o) => {
-    let ctl = null, ready = false, dead = false, spun = false, bye = 0;
+    let ctl = null, ready = false, dead = false, spun = false;
     live++;
     const show = () => {
       if (dead) return;
@@ -135,16 +135,11 @@
     };
     const h = {
       spinIn() { if (!ready) return false; spun = true; stage.classList.add('is-live'); ctl.spinIn(); return true; },
-      destroy() { if (dead) return; dead = true; clearTimeout(bye); live--; if (ctl) ctl.destroy(); stage.classList.remove('is-live'); M.pump(); },
+      destroy() { if (dead) return; dead = true; live--; if (ctl) ctl.destroy(); stage.classList.remove('is-live'); M.pump(); },
     };
     ctl = M3.mount(stage, M.spec(x.def, x.earned, x.earned ? back(x) : null), {
       size: o.size, dark: M.dark(), interactive: !!o.interactive, tilt: !!o.interactive, sway: !!o.sway,
-      // Its sheet closing: it stops at once, and goes once the sheet has slid away (not waiting for the
-      // sheet's close, which a busy page can hold up).
-      covered: () => {
-        if (o.sheet && o.sheet.closed && !bye) bye = setTimeout(() => h.destroy(), 400);
-        return !!o.sheet && U.topSheet() !== o.sheet;
-      },
+      covered: () => !!o.sheet && U.topSheet() !== o.sheet,
       onFlip: () => U.haptic('tick'),
       onReady: () => { ready = true; show(); },
       onFail: () => h.destroy(),
