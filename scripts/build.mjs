@@ -404,6 +404,24 @@ function allowOnlyOurScripts(html) {
   return html.replace(csp, `script-src 'self' 'wasm-unsafe-eval' ${hashes.join(' ')}`);
 }
 
+// An id of the 3D figure as it draws (GH.FIGURE). The 3D stills kept on the phone (src/ui/stills.js)
+// are kept under it, so they're drawn again when the figure could look different, and only then. It
+// hashes the code that draws the figure, minified, so a comment or a blank line doesn't count: the 3D
+// chunk's figure (src/engine/figure3d.js with the parts of three.js it uses, bundled on its own, so
+// another module the chunk bundles with it, such as the medals, leaves it as it is, and so does
+// anything of its own nothing calls) and the pose engine it lifts its poses from. The moves' data
+// isn't in it: each still is also kept under what its move is drawn from (its poses and steps, not
+// its words), so a new move or a cue reworded keeps every still. src(path): a source file's text.
+export async function figureId(src = read) {
+  const own = { name: 'figure-src', setup(b) { b.onLoad({ filter: /src[\\/]engine[\\/]figure3d\.js$/ }, () => ({ contents: src('src/engine/figure3d.js'), loader: 'js' })); } };
+  const fig = await build({
+    stdin: { contents: "import './src/engine/figure3d.js';", resolveDir: root, sourcefile: 'figure-id.js' },
+    bundle: true, write: false, format: 'iife', platform: 'browser', target: ['chrome100'], minify: true, legalComments: 'none', charset: 'ascii', logLevel: 'silent', plugins: [own],
+  });
+  const pose = await transform(src('src/engine/pose.js'), { loader: 'js', minify: true, target: 'chrome100', legalComments: 'none', charset: 'ascii', logLevel: 'silent' });
+  return createHash('sha256').update(fig.outputFiles[0].text).update('\n').update(pose.code).digest('hex').slice(0, 8);
+}
+
 // The page a shared plan's link opens in a browser (docs/p/index.html, served by GitHub Pages from
 // /docs): the plan from the link's #fragment, the move names and the QR encoder inline, and a
 // content security policy that allows exactly its one script. No other requests, no trackers.
@@ -433,11 +451,9 @@ async function main() {
   // an id of this build's code (its chunks' too), for things kept across launches that a code change
   // should drop.
   const buildId = createHash('sha256').update(appJs.concat(chunks).join('\n')).digest('hex').slice(0, 12);
-  // And an id of the 3D figure as it draws: its chunk (with three.js) and the poses it lifts (the pose
-  // engine and the moves). The 3D stills kept on the phone (src/ui/stills.js) are kept under it, so
-  // they're drawn again when the figure could look different, and only then.
-  const figureId = createHash('sha256').update(['src/engine/figure3d.js', 'src/engine/pose.js', 'src/data/moves.js', 'src/data/moves-access.js', 'node_modules/three/package.json'].map(read).join('\n')).digest('hex').slice(0, 8);
-  const scripts = [`<script>(window.GH = window.GH || {}).VERSION = ${JSON.stringify(version)}; window.GH.BUILD = ${JSON.stringify(buildId)}; window.GH.FIGURE = ${JSON.stringify(figureId)};</script>`];
+  // And an id of the 3D figure as it draws (figureId, above).
+  const figure = await figureId();
+  const scripts = [`<script>(window.GH = window.GH || {}).VERSION = ${JSON.stringify(version)}; window.GH.BUILD = ${JSON.stringify(buildId)}; window.GH.FIGURE = ${JSON.stringify(figure)};</script>`];
   APP_SCRIPTS.forEach((p, i) => scripts.push(`<script>/* ${p} */\n${safeJs(appJs[i])}</script>`));
   const [tokensMin, refractCss, appCssMin, refractMin] = await Promise.all([
     // The app's lowest layer, app-base, is named first so it sorts before Refract's (layers order by
