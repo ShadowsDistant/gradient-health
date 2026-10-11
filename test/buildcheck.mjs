@@ -26,9 +26,11 @@ import { APP_SCRIPTS, APP_CHUNKS, LAZY, asciiRegexps, figureId } from '../script
 // Android, Settings' rows and Today's card; the planner is a chunk of its own) and sealed badges (about
 // 20 KB: the capsule, opening it in the reveal, and its CSS), which bring it to 2,015,732 bytes; the
 // budget was that plus 1% (2,036,000). 1.10 adds Claude's model, thinking level and spending limits
-// (src/spend.js, about 6 KB; Claude's page and its sheets are a chunk of their own) and Improve for a
-// plan of your own (about 5 KB), which bring it to 2,039,088 bytes; the budget is that plus 1%.
-const BUDGET = 2060000;
+// (src/spend.js, about 6 KB; Claude's page and its sheets are a chunk of their own), Improve for a
+// plan of your own (about 5 KB), the 3D medals' page part (about 8 KB: the shelf, series and medal
+// slots; the medals themselves are in the 3D chunk), toasts at the bottom and the quicker motion
+// (about 6 KB) and its What's new, and ships at 2,060,195 bytes; the budget is that plus 1%.
+const BUDGET = 2081000;
 
 const file = join(root, 'dist/gradient-health.html');
 if (!existsSync(file)) { console.error('No dist/gradient-health.html: run npm run build first.'); process.exit(1); }

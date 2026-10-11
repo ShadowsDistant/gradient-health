@@ -82,19 +82,20 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 ## What's new (500 characters at most)
 
-Paste this into the What's new field with each update. This is 1.9.0's. Each GitHub release carries
+Paste this into the What's new field with each update. This is 1.10.0's. Each GitHub release carries
 its own version's text at the end of its What's new, under "Short version, for a store's What's new
 field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
 (`node scripts/release-notes.mjs --store` prints it).
 
 ```text
-• Reminders, if you want them: your workout, a walk now and then, a badge to open, a good night's sleep. One a day at most, never at night
-• New badges arrive sealed: tap to crack them open
-• 3D figures on Plan show up at once
-• Quicker switching between tabs
-• Fixed: scrolling could stutter, freeze or jump with the glass effects on
-• Glass effects setting: Auto, Liquid, Frosted or Flat
-• Maps you've seen open at once, even offline
+• Pick Claude's model and how much it thinks, with spending limits that hold
+• Claude builds plans and improves your own
+• Badges are 3D medals you can spin
+• A new icon, and colours to match
+• Plan's 3D figures show at once after an update
+• Messages come up from the bottom; quicker pages, sheets and dialogs
+• Reminders on after set-up
+• Health: a tidier This week, and dropdowns that fold open
 ```
 
 ## Images
