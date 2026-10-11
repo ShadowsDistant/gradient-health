@@ -88,10 +88,10 @@ field". It comes from the `store` text of the version's entry in `src/data/chang
 (`node scripts/release-notes.mjs --store` prints it).
 
 ```text
-• Pick Claude's model and how much it thinks, with spending limits that hold
+• Pick Claude's model and how much it thinks, with hard spending limits
 • Claude builds plans and improves your own
 • Badges are 3D medals you can spin
-• A new icon, and colours to match
+• A new icon and matching colours
 • Plan's 3D figures show at once after an update
 • Messages come up from the bottom; quicker pages, sheets and dialogs
 • Reminders on after set-up
