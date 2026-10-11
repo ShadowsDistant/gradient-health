@@ -42,7 +42,7 @@
             return `<h3 class="rf-list-header sci-head" data-key="sci-h-${k}">${U.esc(t)}<span class="sci-count t-footnote">${rules.length}</span></h3>
               <ul class="rf-list sci-list" data-key="sci-l-${k}">${rules.map(row).join('')}</ul>`;
           }).join('')}
-          <p class="rf-list-footer">General information, not medical advice. Research findings are averages across groups of people, so your results can differ.</p>
+          <p class="rf-list-footer">General information, not medical advice. Studies report group averages, so your results can differ.</p>
         </div>`;
     },
     // U.open('science', ruleId): the rule's row is brought into view and its sheet opens (once).
@@ -98,7 +98,7 @@
   U.act.sciKey = () => U.sheet({
     title: 'Evidence', size: 'fit',
     body: `<ul class="rf-list sci-levels">${LEVEL_ORDER.map((k) => { const l = SC().LEVELS[k]; return `<li><div class="rf-list-row">${dot(k)}<span class="rf-list-text"><span class="rf-list-title">${U.esc(l.label)}</span><span class="rf-list-sub">${U.esc(l.text)}</span></span></div></li>`; }).join('')}</ul>
-      <p class="sheet-pad t-footnote rf-muted">Each rule shows the strongest evidence behind it. Tap a rule for the papers.</p>`,
+      <p class="sheet-pad t-footnote rf-muted">Each rule shows its strongest evidence. Tap one for the papers.</p>`,
   });
   U.act.openRef = (el) => { const url = el.dataset.arg; if (url && GH.platform) GH.platform.openUrl(url); };
   // (The "Why?" links elsewhere in the app, U.whyLink and U.whyChip, are drawn without this part:
