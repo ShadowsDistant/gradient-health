@@ -239,7 +239,7 @@ const idleDraws = await page.evaluate(async () => {
   window.requestIdleCallback = (fn, o) => ric((d) => { cur = ++seq; try { fn(d); } finally { cur = 0; } }, o);
   const real = f.stillNow;
   const dot = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
-  f.stillNow = (m) => { const t = performance.now(); while (performance.now() - t < 5) { /* a still's work */ } calls.push({ at: t, cb: cur, id: m.id }); return { url: Promise.resolve(dot) }; };
+  f.stillNow = (m, o) => { const t = performance.now(); while (performance.now() - t < 5) { /* a still's work */ } calls.push({ at: t, cb: cur, id: m.id, crop: o && o.crop }); return { url: Promise.resolve(dot) }; };
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const touch = (type, on) => document.dispatchEvent(new TouchEvent(type, { bubbles: true, touches: on ? [new Touch({ identifier: 1, target: document.body, clientX: 100, clientY: 300 })] : [] }));
   const app = document.getElementById('app');
@@ -258,9 +258,10 @@ const idleDraws = await page.evaluate(async () => {
   const free = performance.now();
   const got = (await Promise.race([asked, wait(20000).then(() => null)])) || [];
   // Drawn ahead: after calm as well.
-  // (Only these moves are counted: what launch itself drew ahead may still be on its way.)
+  // (Only these moves at this size are counted: what launch itself drew ahead, Plan's size, may still
+  // be on its way, and may have one of these moves.)
   const aheadIds = Object.keys(GH.moves.MOVES).slice(24, 30);
-  const mine = () => calls.filter((c) => aheadIds.includes(c.id) && c.at >= moved);
+  const mine = () => calls.filter((c) => aheadIds.includes(c.id) && c.crop === o.crop && c.at >= moved);
   document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
   const moved = performance.now();
   U.stills.ahead(aheadIds.map((id) => ({ m: GH.moves.MOVES[id], o })));

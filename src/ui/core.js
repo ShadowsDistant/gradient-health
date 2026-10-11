@@ -1488,15 +1488,24 @@
    * Otherwise it starts loading the first time a figure is about to show: a press on Start or on a
    * move. Set-up warms it for its own reveal (src/ui/onboarding.js).
    * With the 3D figure picked, the stills kept on the phone (src/ui/stills.js) are read in once the
-   * first frame is drawn, so Plan's first frame has them. Right after, in a calm idle moment, the ones
-   * Plan's cards would show this week and next (U.planStills) that aren't kept yet are drawn ahead,
-   * the figure warming up for them at once (a fresh install, an update that draws the figure
-   * differently, a new move in the plan), so Plan has them, or soon will, when it's opened; when
-   * they're all kept, nothing loads for them. A press on the Plan tab warms the figure up too if one
-   * is still missing. */
+   * first frame is drawn, so Plan's first frame has them. Once launch has settled (its first idle
+   * moment that comes by itself), in a calm one, the ones Plan's cards would show this week and next
+   * (U.planStills) that aren't kept yet are drawn ahead, the figure warming up for them at once (a
+   * fresh install, an update that draws the figure differently, a new move in the plan), so Plan has
+   * them, or soon will, when it's opened; when they're all kept, nothing loads for them. A press on
+   * the Plan tab warms the figure up too if one is still missing. */
   const FIGURE_ACTS = ['startWorkout', 'planStart', 'resumeWorkout', 'startMobility', 'moveInfo', 'planMoveInfo', 'cpHowTo', 'ladder'].map((a) => `[data-act="${a}"]`).join(',');
   const PLAN_TAB = '#tabbar .rf-tab[data-tab="plan"]';
   const idle = (fn, ms) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: ms }) : setTimeout(fn, 1));
+  // fn in the first idle moment that comes by itself (not one a timeout forced), or after ms at the
+  // latest. Right after launch, or a tap on Plan, the page's own work goes on and the GPU is still
+  // drawing the page; a WebGL context made then (the check for WebGL 2, the 3D warm-up's) waits for
+  // all of that, holding the page's thread (2 to 4 s each in a software-GL test).
+  function settled(fn, ms) {
+    const t0 = Date.now();
+    const look = () => idle((d) => (d && d.didTimeout && Date.now() - t0 < ms ? look() : fn()), 1000);
+    look();
+  }
   function warmFigure() { safe(() => { const w = U.warmFigure || U.preloadFigure; if (w) w(); }); }
   function warmFigureLater() {
     const onDown = (e) => {
@@ -1505,7 +1514,7 @@
       warmFigure();
     };
     doc.addEventListener('pointerdown', onDown, true);
-    doc.addEventListener('pointerdown', (e) => { if (U.stills && e.target.closest && e.target.closest(PLAN_TAB)) safe(() => U.stills.prime()); }, { capture: true, passive: true });
+    doc.addEventListener('pointerdown', (e) => { if (U.stills && e.target.closest && e.target.closest(PLAN_TAB)) settled(() => safe(() => U.stills.prime()), 2000); }, { capture: true, passive: true });
     const wanted = () => {
       const S = U.S, nav = G.navigator || {};
       return !!(S && S.profile.onboarded && S.profile.workouts !== false && nav.deviceMemory >= 3 && B().todayPlan(S, U.today()).type === 'workout');
@@ -1524,7 +1533,7 @@
     U.stillsAhead();
   }
   // (Also after set-up, src/ui/stills.js: the first day starts there.)
-  U.stillsAhead = () => afterFrame(() => safe(stillsAhead));
+  U.stillsAhead = () => afterFrame(() => settled(() => safe(stillsAhead), 6000));
   function stillsAhead() {
     const S = U.S, nav = G.navigator || {};
     if (!S || !S.profile.onboarded || S.profile.workouts === false || nav.deviceMemory < 3 || !U.stills || !U.planStills || !U.stills.ok()) return;
