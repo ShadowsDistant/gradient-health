@@ -106,8 +106,14 @@
   }
   const minutes = (n, label) => (n ? `<span class="pw-min" aria-label="${U.esc(label || `about ${n} minutes`)}">${U.icon('timer')}<span>${U.roll(n)} min</span></span>` : '');
   const tags = (groups) => (groups && groups.length ? `<div class="pw-tags" aria-label="Muscles">${groups.map((g) => `<span class="pw-tag" style="--c:${hue(g)}">${U.esc(B().GROUP_NAME[g] || g)}</span>`).join('')}</div>` : '');
+  // A move's tile. With the 3D figure, a still kept on the phone goes straight into the HTML, so it's
+  // there from the page's first frame; the rest come in as they're drawn (drawThumbs).
+  function thumb(id) {
+    const m = tiles && personMove(id, tiles.eq);
+    return `<span class="pw-thumb" data-morph="keep" data-move="${U.esc(id)}" aria-hidden="true">${m ? U.stills.img(m, tiles.o) : ''}</span>`;
+  }
   function exRow(o) {
-    const inner = `${o.move ? `<span class="pw-thumb" data-morph="keep" data-move="${U.esc(o.move)}" aria-hidden="true"></span>` : `<span class="pw-thumb is-icon" aria-hidden="true">${U.icon(o.icon || 'sun')}</span>`}
+    const inner = `${o.move ? thumb(o.move) : `<span class="pw-thumb is-icon" aria-hidden="true">${U.icon(o.icon || 'sun')}</span>`}
       <span class="pw-ex-text"><span class="pw-ex-name">${U.esc(o.name)}${o.tag ? ` <span class="pw-ss">${U.esc(o.tag)}</span>` : ''}</span>${o.meta ? `<span class="pw-ex-meta">${o.meta}</span>` : ''}</span>
       ${o.badge || ''}${o.move ? `<span class="pw-ex-go">${U.icon('chevron-right')}</span>` : ''}`;
     return `<li class="pw-ex${o.cls ? ' ' + o.cls : ''}" data-key="x-${U.esc(o.key)}">${o.move
@@ -219,7 +225,7 @@
         <span class="pw-check-mark" data-key="${key}-${done ? 'y' : 'n'}"${done ? ' role="img" aria-label="Done"' : ' aria-hidden="true"'}>${U.icon(done ? 'check' : icon)}</span>
         <span class="pw-check-text"><span class="t-subhead">${U.esc(title)}</span><span class="t-footnote rf-muted">${U.esc(sub)}</span></span>
         ${done ? '' : btn || ''}${extra || ''}</li>`;
-    const mob = flow.length ? `<div class="pw-mob" aria-label="Mobility moves">${flow.map((m) => `<button type="button" class="pw-mob-btn" data-act="planMoveInfo" data-arg="${U.esc(m.moveId)}" aria-label="${U.esc(m.name)}: how to do it"><span class="pw-thumb" data-morph="keep" data-move="${U.esc(m.moveId)}" aria-hidden="true"></span></button>`).join('')}</div>` : '';
+    const mob = flow.length ? `<div class="pw-mob" aria-label="Mobility moves">${flow.map((m) => `<button type="button" class="pw-mob-btn" data-act="planMoveInfo" data-arg="${U.esc(m.moveId)}" aria-label="${U.esc(m.name)}: how to do it">${thumb(m.moveId)}</button>`).join('')}</div>` : '';
     const label = today ? 'Today · Light day' : `Light day · ${when(e, day)}`;
     const lead = e.preview || !e.isPast || L.done ? 'A walk and a short mobility flow. Do both and the day counts toward your streak.' : 'Not ticked off. Light days only add to your streak, so nothing is lost.';
     return `${top(L.done ? 'check-circle' : 'leaf', e.preview ? `Light day · ${e.date}` : label, L.done ? 'positive' : 'teal')}
@@ -338,13 +344,17 @@
       const w = week(S, day);
       syncView(w, day);
       const page = view.day > w.last ? 1 : 0;
+      // The card's tiles: the moves as done on its day (that day's kit), in the person's look.
+      tiles = U.stills && U.stills.ok() ? { eq: eqOf(S, view.day), o: U.stills.look(THUMB) } : null;
+      const card = dayCard(S, w, findDay(w, view.day), day);
+      tiles = null;
       return `${head}
         ${summary(w)}
         <div class="section pw-main" data-key="pw-main">
           ${U.tip ? U.tip('plan') : ''}
           ${U.customPlanBanner ? U.customPlanBanner(S, day) : ''}
           ${strip(w, day, page)}
-          ${dayCard(S, w, findDay(w, view.day), day)}
+          ${card}
         </div>
         ${muscles(w)}
         ${comingUp(w)}
@@ -358,7 +368,7 @@
       if (st) wireStrip(st);
       // The selection's bead goes to the day picked once this render's layout is in (it measures).
       if (st && U.readSoon) U.readSoon(() => beadTo(screen)); else if (st) beadTo(screen);
-      drawThumbs(screen, S, day);
+      drawThumbs(screen, S, view.day != null ? view.day : day);
       if (U.drawPlanThumbs) U.drawPlanThumbs(screen);
     },
   };
@@ -462,96 +472,84 @@
   }
 
   /* ---------------------------------------------------------------- still figures */
-  // Each move's key pose, drawn once and put in every tile that shows it: the 3D figure in the
-  // person's look when the phone draws it (Settings, Exercise figure), else the flat one. A figure is
-  // slow to draw the first time, so new ones are drawn while the phone is idle and fade into their
-  // tiles: the screen never waits for them. The flat one stands in until a 3D one is ready, and a 3D
-  // one is only drawn when the phone has nothing else to do, so it can't stutter a swipe or a sheet.
+  // Each move's key pose in its tiles. With the 3D figure (Settings, Exercise figure), its 3D still in
+  // the person's look, kept on the phone (src/ui/stills.js): a kept one is in the page's HTML (thumb),
+  // and one that isn't is drawn when the phone has nothing else to do, so it can't stutter a swipe or
+  // a sheet, and fades into its tile, which shows its own background until then. The flat figure only
+  // shows when it's the setting, or where 3D can't be drawn: drawn once, while the phone is idle.
   const stills = new Map(); // `${moveId}|${place}` → svg, cropped to the figure
   const queue = new Set(); // flat stills still to draw
-  const queue3d = new Set(); // 3D stills still to draw
   let pending = 0;
   let drawFor = null; // { S, day } the queued stills are for
-  let loading3d = false;
+  let tiles = null; // while the card renders with the 3D figure: { eq, o }, its kit and the look
   const THUMB = 52; // the tile's size in CSS px
-  const f3d = () => (U.figure3dOk && U.figure3dOk() && GH.figure3d && GH.figure3d.supported() ? GH.figure3d : null);
-  function look3d() {
-    const pr = (U.S && U.S.profile.prefs) || {};
-    return { crop: Math.round(THUMB * Math.min(2, G.devicePixelRatio || 1)), dark: String(GH.platform.currentTheme()).startsWith('dark'), skin: pr.figSkin || 'sand', shirt: pr.figShirt || undefined };
-  }
-  const lookKey = (l) => `${l.dark ? 'd' : 'l'}|${l.skin}|${l.shirt || ''}|${l.crop}`;
+  const eqOf = (S, day) => (B().eqFor ? B().eqFor(S, day) : S.profile.equipment);
   // The move as this person does it (their equipment), as the workout shows it.
-  function personMove(key, S, day) {
-    const m0 = M().MOVES[key.split('|')[0]];
+  function personMove(id, eq) {
+    const m0 = M().MOVES[id];
     if (!m0) return null;
-    return M().forPerson ? M().forPerson(m0, B().eqFor ? B().eqFor(S, day) : S.profile.equipment) : m0;
+    return M().forPerson ? M().forPerson(m0, eq) : m0;
   }
   function fill(host, svg) {
     host.textContent = '';
     host.appendChild(svg.cloneNode(true));
     host.setAttribute('data-drawn', host.getAttribute('data-move'));
   }
-  function fill3d(host, url, lk) {
-    const img = doc.createElement('img');
-    img.alt = '';
-    img.decoding = 'async';
-    img.src = url;
-    host.textContent = '';
-    host.appendChild(img);
-    host.setAttribute('data-drawn', `3d:${host.getAttribute('data-move')}|${lk}`);
-  }
   function drawThumbs(root, S, day) {
     if (!GH.pose || !M()) return;
-    const place = B().placeOf ? B().placeOf(S, day) : 'home';
     drawFor = { S, day };
-    // The 3D chunk loads (and warms up) once, then the tiles on screen get their 3D stills. Once
-    // it's quiet (U.whenQuiet): the chunk and its warm-up hold the page's thread for a while, and a
-    // scroll that starts meanwhile waits on it.
-    if (U.figure3dOk && U.figure3dOk() && !GH.figure3d && !loading3d && U.preloadFigure) {
-      loading3d = true;
-      (U.whenQuiet || U.whenCalm || ((fn) => fn()))(() => U.preloadFigure().then(() => {
-        loading3d = false;
-        const scr = doc.querySelector('#screen[data-view="plan"]');
-        if (scr && drawFor && f3d()) drawThumbs(scr, drawFor.S, drawFor.day);
-      }, () => { loading3d = false; }));
-    }
-    const f3 = f3d();
-    const look = f3 ? look3d() : null;
-    const lk = look ? lookKey(look) : '';
-    for (const host of root.querySelectorAll('.pw-thumb[data-move]')) {
-      const id = host.getAttribute('data-move');
-      const key = `${id}|${place}`;
-      if (f3) {
-        if (host.getAttribute('data-drawn') === `3d:${id}|${lk}` && host.firstElementChild) continue;
-        const m = personMove(key, S, day);
-        const url = m && f3.cachedStill(m, look);
-        if (url) { fill3d(host, url, lk); continue; }
-        if (m) queue3d.add(key);
-        // Meanwhile the 3D still of another look, or else the flat one.
-        if (/^3d:/.test(host.getAttribute('data-drawn') || '') && host.firstElementChild) continue;
+    if (U.stills && U.stills.ok()) {
+      const o = U.stills.look(THUMB), eq = eqOf(S, day);
+      for (const host of root.querySelectorAll('.pw-thumb[data-move]')) {
+        const m = personMove(host.getAttribute('data-move'), eq);
+        if (!m) continue;
+        host.removeAttribute('data-drawn');
+        U.stills.tile(host, m, o, flatTile);
       }
-      if (host.getAttribute('data-drawn') === id && host.firstElementChild) continue;
-      const svg = stills.get(key);
-      if (svg) fill(host, svg);
-      else { if (host.firstElementChild) host.textContent = ''; queue.add(key); }
+      schedule();
+      return;
     }
+    for (const host of root.querySelectorAll('.pw-thumb[data-move]')) flatTile(host);
     schedule();
   }
-  // Stills wait until it's calm (U.calm in core.js: no scroll or touch for a moment and no sheet
-  // moving), since drawing one takes a frame's worth of work or more; the 3D ones until it's quiet
-  // (U.quiet: nothing for longer), since one holds the page's thread for a few frames (its figure, a
-  // frame of it and the copy out of the GL canvas; its encoding runs in the background, stillAsync),
-  // and on a phone a scroll that starts meanwhile waits for it. Then they're drawn.
+  // The moves a day's card has a tile for: a workout's (sessionList), a done day's (logList) or a
+  // light day's mobility flow.
+  function cardMoves(S, e) {
+    const s = (e.kind === 'today' || e.kind === 'workout') && e.session;
+    if (s) return [].concat((s.tests || []).map((t) => t.moveId), s.items.map((it) => it.moveId), (s.extras || []).map((x) => x.moveId), s.finisher ? [s.finisher.moveId] : [], (s.mobility || []).map((mb) => mb.moveId));
+    if (e.kind === 'done' && e.log) return e.log.items.map((x) => x.moveId);
+    if (e.kind === 'light') return (B().mobilityFlow ? B().mobilityFlow(S) : []).map((m) => m.moveId);
+    return [];
+  }
+  // The stills Plan's cards show, this week and next, today's first ([{ m, o }]): drawn ahead after
+  // launch (core.js) and kept, so Plan has them from its first frame.
+  U.planStills = (S, day) => {
+    const w = week(S, day), o = U.stills.look(THUMB), out = [];
+    const days = w.days.concat(w.next.days).filter((e) => e.day >= day).concat(w.days.filter((e) => e.day < day));
+    for (const e of days) {
+      const eq = eqOf(S, e.day);
+      for (const id of cardMoves(S, e)) { const m = personMove(id, eq); if (m) out.push({ m, o }); }
+    }
+    return out;
+  };
+  // A tile's flat still: drawn already, or queued (it's filled once it's drawn).
+  function flatTile(host) {
+    const id = host.getAttribute('data-move');
+    host.removeAttribute('data-want');
+    if (host.getAttribute('data-drawn') === id && host.firstElementChild) return;
+    const key = `${id}|${B().placeOf ? B().placeOf(drawFor.S, drawFor.day) : 'home'}`;
+    const svg = stills.get(key);
+    if (svg) fill(host, svg);
+    else { if (host.firstElementChild) host.textContent = ''; queue.add(key); }
+  }
+  // Flat stills wait until it's calm (U.calm in core.js: no scroll or touch for a moment and no sheet
+  // moving), since drawing one takes a frame's worth of work or more. Then they're drawn.
   const calm = () => !U.calm || U.calm();
-  const quiet = () => (U.quiet ? U.quiet() : calm());
-  let waitCalm = false, waitQuiet = false; // asked to be told when it's calm, or quiet
+  let waitCalm = false; // asked to be told when it's calm
   function schedule() {
-    if (pending || !(queue.size || queue3d.size)) return;
+    if (pending || !queue.size) return;
     if (!calm()) { if (!waitCalm) { waitCalm = true; U.whenCalm(() => { waitCalm = false; schedule(); }); } return; }
-    // Only 3D stills left: those wait for quiet, but flat ones queued meanwhile (a day picked) don't.
-    if (!queue.size && !quiet()) { if (!waitQuiet) { waitQuiet = true; (U.whenQuiet || U.whenCalm)(() => { waitQuiet = false; schedule(); }); } return; }
-    const soon = queue.size > 0;
-    pending = G.requestIdleCallback ? G.requestIdleCallback(drawSome, { timeout: soon ? 150 : 600 }) : setTimeout(() => drawSome(null), soon ? 16 : 250);
+    pending = G.requestIdleCallback ? G.requestIdleCallback(drawSome, { timeout: 150 }) : setTimeout(() => drawSome(null), 16);
   }
   function drawSome(deadline) {
     pending = 0;
@@ -561,30 +559,15 @@
       queue.delete(key);
       const svg = drawStill(key);
       const id = key.split('|')[0];
-      if (svg) for (const host of doc.querySelectorAll('.pw-thumb[data-move]')) if (host.getAttribute('data-move') === id && !host.firstElementChild) fill(host, svg);
+      // (Not into a tile waiting for its 3D still.)
+      if (svg) for (const host of doc.querySelectorAll('.pw-thumb[data-move]')) if (host.getAttribute('data-move') === id && !host.firstElementChild && !host.hasAttribute('data-want')) fill(host, svg);
       if (deadline ? deadline.timeRemaining() < 10 : Date.now() - t0 > 12) break;
-    }
-    const f3 = f3d();
-    if (!f3) queue3d.clear();
-    // Then one 3D still per idle moment, once the flat ones are in and it's quiet.
-    else if (!queue.size && drawFor && quiet()) {
-      const look = look3d(), lk = lookKey(look);
-      for (const key of queue3d) {
-        queue3d.delete(key);
-        const m = personMove(key, drawFor.S, drawFor.day);
-        const id = key.split('|')[0];
-        const show = (url) => { if (url) for (const host of doc.querySelectorAll('.pw-thumb[data-move]')) if (host.getAttribute('data-move') === id && host.getAttribute('data-drawn') !== `3d:${id}|${lk}`) fill3d(host, url, lk); };
-        const kept = m && f3.cachedStill(m, look);
-        if (kept) show(kept);
-        else if (m) (f3.stillAsync ? f3.stillAsync(m, look) : Promise.resolve(f3.still(m, look))).then(show, () => {});
-        break;
-      }
     }
     schedule();
   }
   function drawStill(key) {
     if (!drawFor) return null;
-    const m = personMove(key, drawFor.S, drawFor.day);
+    const m = personMove(key.split('|')[0], eqOf(drawFor.S, drawFor.day));
     if (!m) return null;
     // Drawn in a hidden box on the page, so the figure's size can be measured for the crop.
     const box = doc.createElement('div');
