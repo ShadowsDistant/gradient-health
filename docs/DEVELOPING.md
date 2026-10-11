@@ -13,6 +13,8 @@ src/data/changelog.js    What's new, newest first
 src/data/privacy.js      the privacy policy (the in-app page and docs/PRIVACY.md come from it)
 src/data/brand.js        the logo as a data URI
 src/engine/pose.js       2D skeleton (FK + IK), timing from tempo, SVG figures, gym props
+src/engine/medal3d.js    the badges' 3D medals (GH.medal3d): stills and the live medal, in the 3D chunk
+                         with the figure (src/engine/chunk3d.js brings both, and src/ui/badges3d.js)
 src/brain.js             program, sessions, gym loads, adaptation, calendar replay, streaks, readiness
 src/optimizer.js         the plan engine (GH.optimizer): the best weekly split, each day's sets, sessions
                          filled to the time set, the plan's score and its "Why this plan" lines
@@ -58,9 +60,11 @@ src/ui/controls.js       switches, segmented controls and single-choice chips (U
                          handling that makes every tap count, on Refract's liquid glass
 src/ui/hapticsui.js      the haptics rows for Settings (U.hapticRows) and the Feel each one gallery
 src/ui/you.js            the You tab: profile, badges, plans, your answers, Settings and help
-src/ui/badges.js         the badge medals and sealed capsules, the strip, the gallery, the detail sheet
+src/ui/badges.js         the badge medals and sealed capsules, the shelf, the gallery, the detail sheet
                          and the reveal, where a capsule is opened (see Badges)
-src/ui/sharecard.js      a badge's share image (a 1080×1350 canvas) and sharing it
+src/ui/badges3d.js       the medals' 3D side, in the 3D chunk: drawing their stills and keeping them,
+                         the live medal on a stage
+src/ui/sharecard.js      a badge's share image (a 1080×1350 canvas, the 3D medal on it) and sharing it
 src/ui/chat.js           the coach chat and the coach button on every tab
 src/ui/tailor.js         the Tailor my plan sheet
 src/ui/customplan.js     Your plans: the list, the editor and exercise picker, sharing, a shared plan's
@@ -418,8 +422,9 @@ Refract's `.rf-mark`), and the open-source licenses sheet opens with it.
 
 ## 3D exercise figure
 
-`src/engine/figure3d.js` builds the lazy chunk `dist/lazy/figure3d.js` (three.js, about 620 KB
-minified), which `GH.lazy('figure3d')` loads when it's needed. It sets `GH.figure3d`:
+`src/engine/figure3d.js` is in the lazy chunk `dist/lazy/figure3d.js` (three.js, about 710 KB
+minified, with the badges' 3D medals: its entry is `src/engine/chunk3d.js`), which
+`GH.lazy('figure3d')` loads when it's needed. It sets `GH.figure3d`:
 
 - `supported()`: whether WebGL works here (checked once).
 - `mount(el, move, opts)`: a controller shaped like `GH.pose.mount`'s, plus `setView(name)`,
@@ -1048,9 +1053,45 @@ About 60 badges in ten categories and four tiers (bronze to platinum, Common to 
 `src/achievements.js` (`GH.achievements`) is pure logic on the saved state (`test/achievements.mjs`):
 what each takes, worked out from history, so a badge is dated the day it happened (the 10th
 workout's, the day a streak reached 7). Once earned, a badge is kept for good: a broken streak or a
-deleted log leaves it where it is. `src/ui/badges.js` draws the medals (one SVG each, the gradients
-in one shared set), the You tab's card, the gallery, a badge's sheet and the reveal
-(`test/ui-badges.mjs`). A saved change is checked 800 ms later, only for the categories it touched.
+deleted log leaves it where it is. Badges that count the same thing further make a series
+(`GH.achievements.SERIES`: 10, 25, 50 workouts...). `src/ui/badges.js` draws the medals (3D where
+WebGL works, else one SVG each, the gradients in one shared set), the You tab's shelf, the gallery, a
+badge's sheet and the reveal (`test/ui-badges.mjs`). A saved change is checked 800 ms later, only for
+the categories it touched.
+
+- **3D medals.** `src/engine/medal3d.js` builds each medal in three.js, in the 3D figure's chunk:
+  its category's shape with a rounded rim (beaded from silver up), its enamel over a guilloché, the
+  glyph and the number traced from a canvas into bevelled relief, its tier's metal (platinum with a
+  pearly film), and an engraved back (tier, name, the day, the app). A locked one is the unminted
+  blank: the same shape in dark, frosted metal, its design only faintly there. Everything is made
+  there, lit by a studio drawn into an environment map; it has a WebGL renderer of its own, which it
+  hands back a few seconds after the last medal it drew.
+- **Stills everywhere else.** The shelf, the gallery, Next up, the player's card and a sheet's medal
+  until it's live show stills of the 3D medals, kept on the phone (IndexedDB, `gh-medals`, up to
+  400) under `MEDAL_REV` (in badges.js: one more whenever a medal's look changes), the size, the
+  theme, the badge and its tier or the blank. What's kept is read in once, 2 s after launch while
+  it's idle, so a screen has them from its first frame without the chunk. A medal without one is its
+  SVG and asks for it; `src/ui/badges3d.js` (in the chunk, which loads once medals missing a still
+  have been on screen 2.5 s and it's quiet) draws them in quiet idle moments (`U.quiet`), only while
+  their medals are on screen and no live medal is, encodes them in the background and writes them in
+  batches; each fades in over its SVG. After a change of theme the other theme's still stands in
+  until this one's is drawn. Without WebGL, or on a phone with less than 3 GB, the SVG medals stay.
+  Reset everything deletes them.
+- **Live where it counts.** A badge's sheet shows its medal live once its first frame is drawn
+  (after the medal's own spring, fading over its still): a horizontal drag spins it, a flick spins on
+  and settles on its face or its back, each turn over plays `tick`; at rest it sways slowly while
+  the light sweeps across it, and a few degrees of the phone's tilt lean it (`deviceorientation`,
+  only while the sheet is open). It draws at most 30 frames a second at rest and 60 while spun,
+  nothing while covered, hidden or off screen, and stops swaying 30 s after the last touch; as its
+  sheet starts to close it stops, and it goes once the sheet has slid away. In the
+  reveal the medal freed from the capsule is the live one, spinning out with a flash of light (the
+  three taps and their haptics as before); it rests there, and a page on its own spins by hand too.
+  Reduced motion: a still and a fade.
+- **Showing them off.** The You tab's shelf stands the sealed ones and then the best medals, rarest
+  first, on a glass ledge; rarer medals glow more there and in the gallery. Next up lists each
+  series' next tier with a pip for each badge in the series, and a badge's sheet shows its series
+  and, once earned, the next one up and how far along it is. The share card has the 3D medal, drawn
+  at the card's own size, with rays of its tier's colour behind it.
 
 - **Sealed until opened.** A badge is earned sealed: `S.achievements.earned[id]` is `{ day, at,
   opened: false }` (the record's v 2). `GH.achievements.unopened(S)` lists the ones still sealed,

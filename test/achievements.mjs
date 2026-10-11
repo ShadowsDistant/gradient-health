@@ -93,6 +93,11 @@ section('The badges');
   check('short names and one line on how to earn each, in plain words (no dashes as punctuation)', A.DEFS.every((d) => d.title.length <= 22 && d.how.length <= 70 && /\.$/.test(d.how)) && !words.some((w) => /—|–/.test(w)), A.DEFS.filter((d) => d.title.length > 22 || d.how.length > 70).map((d) => d.id));
   check('a medal number on the counted ones', ['streak7', 'w25', 'sets2000', 'run5k', 'km100'].every((id) => A.byId[id].ribbon));
   check('every badge names a glyph', A.DEFS.every((d) => typeof d.glyph === 'string' && d.glyph));
+  // Series: badges that lead on to one another, lowest first.
+  const inSeries = A.SERIES.flat();
+  check(`series (${A.SERIES.length}): each of known badges, two or more, none in two`, A.SERIES.length >= 8 && A.SERIES.every((s) => s.length >= 2 && s.every((id) => A.byId[id])) && new Set(inSeries).size === inSeries.length, A.SERIES.filter((s) => s.some((id) => !A.byId[id])));
+  check('each climbs: a tier never lower than the one before, never a secret one', A.SERIES.every((s) => s.every((id, i) => !A.byId[id].secret && (!i || A.TIERS[A.byId[id].tier].rank >= A.TIERS[A.byId[s[i - 1]].tier].rank))), A.SERIES.filter((s) => s.some((id, i) => i && A.TIERS[A.byId[id].tier].rank < A.TIERS[A.byId[s[i - 1]].tier].rank)));
+  check('seriesOf finds a badge\'s series (and none for one on its own)', A.seriesOf('w50').includes('w250') && A.seriesOf('streak3')[0] === 'streak3' && A.seriesOf('comeback') === null && A.seriesOf('nonsense') === null);
 }
 
 section('Every badge over a seeded year');

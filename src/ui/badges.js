@@ -178,11 +178,13 @@
         </g>` : ''}
         ${!locked && def.tier === 'platinum' ? `${sparkle(93, 21, 6)}${sparkle(103, 37, 3.4)}${sparkle(20, 84, 3)}` : ''}
       </g>
-      ${locked ? `${o.goal > 1 && !secret ? `<circle cx="60" cy="60" r="57.5" fill="none" stroke="currentColor" stroke-opacity=".14" stroke-width="3.5"/><circle class="bdg-ring" cx="60" cy="60" r="57.5" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" pathLength="100" stroke-dasharray="${f1(pct * 100)} 100" transform="rotate(-90 60 60)"/>` : ''}
-        <g transform="translate(91 91)"><circle r="12.5" fill="#3c424d" stroke="#fff" stroke-width="2"/><g transform="translate(-7.5 -7.75) scale(.625)" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${glyph('lock')}</g></g>` : ''}
+      ${locked ? lockMarks(o.goal > 1 && !secret ? pct : null) : ''}
     </svg>`;
   }
   U.badgeSvg = badgeSvg;
+  // A locked medal's progress ring (pct, or none) and its lock, in the medal's 120 box.
+  const lockMarks = (pct) => `${pct != null ? `<circle cx="60" cy="60" r="57.5" fill="none" stroke="currentColor" stroke-opacity=".14" stroke-width="3.5"/><circle class="bdg-ring" cx="60" cy="60" r="57.5" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" pathLength="100" stroke-dasharray="${f1(pct * 100)} 100" transform="rotate(-90 60 60)"/>` : ''}
+        <g transform="translate(91 91)"><circle r="12.5" fill="#3c424d" stroke="#fff" stroke-width="2"/><g transform="translate(-7.5 -7.75) scale(.625)" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${glyph('lock')}</g></g>`;
 
   /* ---------------------------------------------------------------- sealed capsules */
   // A badge not opened yet is a glass capsule in its tier's colours, sealed round its middle with a
@@ -232,6 +234,98 @@
       + `${line(trunk, g[1], 6.5, 0.4)}${line(twigs, g[1], 4.4, 0.32)}${line(trunk, g[3], 2.6)}${line(twigs, g[3], 1.7)}${line(trunk, '#fff', 1.15)}${line(twigs, '#fff', 0.7)}</g></svg>`;
   }
 
+  /* ---------------------------------------------------------------- 3D medals */
+  // Wherever WebGL works a medal is the 3D one (src/engine/medal3d.js, in the 3D figure's chunk): live
+  // in a badge's sheet and as it bursts from its capsule, and everywhere else a still of it, kept on the
+  // phone (IndexedDB) under the medal's revision, the size, the theme, the badge and its tier (or the
+  // blank). What's kept is read in here, so a screen has it from its first frame without the chunk;
+  // drawing new ones and keeping them is src/ui/badges3d.js's, in the chunk, which loads once medals
+  // missing one have been on screen a couple of seconds and it's quiet. Until a still is drawn the SVG
+  // medal stands in, and it stays where WebGL can't draw.
+  // MEDAL_REV: one more whenever a medal's look changes, so phones draw their stills again.
+  const MEDAL_REV = 1, SMALL = 72, LARGE = 176; // css px: the stills lists show (scaled), a stage's
+  const M = U.medals = { kept: new Map(), want: new Map(), off: false, rev: MEDAL_REV, LARGE };
+  const can3d = () => !M.off && !!(U.canDraw3d && U.canDraw3d());
+  M.dark = () => String(GH.platform ? GH.platform.currentTheme() : '').startsWith('dark');
+  M.px = (css) => Math.round(css * Math.min(3, G.devicePixelRatio || 1));
+  M.key = (x, css, dark) => `${MEDAL_REV}|${M.px(css)}|${dark ? 'd' : 'l'}|${x.id}|${x.earned ? x.def.tier : 'lock'}`;
+  // What the chunk builds a medal from. back: the lines engraved on an earned one's back.
+  M.spec = (def, earned, back) => {
+    const secret = !earned && def.secret;
+    return { shape: SHAPES[def.shape] ? def.shape : 'circle', glyph: glyph(secret ? 'question' : def.glyph), tier: earned ? def.tier : 'lock', enamel: A().CAT[def.cat].enamel, ribbon: secret ? '' : def.ribbon || '', back: earned ? back : null };
+  };
+  // What's kept, read in once, in one request: key → object URL.
+  let reads = null;
+  M.load = () => reads || (reads = new Promise((done) => {
+    try {
+      const req = G.indexedDB.open('gh-medals', 1);
+      req.onupgradeneeded = () => { req.result.createObjectStore('m', { keyPath: 'k' }).createIndex('at', 'at'); };
+      req.onerror = () => done();
+      req.onsuccess = () => {
+        const d = req.result, end = () => { d.close(); done(); };
+        try {
+          const all = d.transaction('m').objectStore('m').getAll(G.IDBKeyRange.bound(`${MEDAL_REV}|`, `${MEDAL_REV}|\uffff`));
+          all.onsuccess = () => { for (const r of all.result || []) if (r && r.b && !M.kept.has(r.k)) M.kept.set(r.k, G.URL.createObjectURL(r.b)); end(); };
+          all.onerror = end;
+        } catch (e) { end(); }
+      };
+    } catch (e) { done(); } // no IndexedDB: kept for this launch only
+  }));
+  // Reset everything: they go with the rest (they show what was earned).
+  const clear0 = GH.store && GH.store.clear;
+  if (clear0) GH.store.clear = function clear() { clear0.apply(this, arguments); M.kept.clear(); M.want.clear(); reads = null; if (M.drop) M.drop(); else try { G.indexedDB.deleteDatabase('gh-medals'); } catch (e) { /* none kept */ } };
+  // A kept still: this theme's, else the other's until this one is drawn.
+  M.still = (k) => M.kept.get(k) || M.kept.get(k.replace(/\|([dl])\|/, (m, t) => (t === 'd' ? '|l|' : '|d|'))) || null;
+
+  /* A badge's medal for a screen's HTML, size css px: its 3D still when one is kept, else its SVG medal
+   * (and the still is asked for). A locked one's progress ring and lock go over its still as they go
+   * over the SVG. o: the SVG's own options (sweep), label (what it is, for a screen reader). */
+  function medal(x, size, o) {
+    o = o || {};
+    const k = M.key(x, size > 100 ? LARGE : SMALL, M.dark());
+    const ring = x.earned ? null : x.goal > 1 && !x.def.secret ? Math.max(0, Math.min(1, (x.have || 0) / x.goal)) : -1;
+    const at = `class="bdg-m" data-mk="${k}" data-size="${size}"${ring != null ? ` data-ring="${ring}"` : ''}${o.label ? ` role="img" aria-label="${U.esc(o.label)}"` : ' aria-hidden="true"'}`;
+    const u = can3d() ? M.still(k) : null;
+    // (The other theme's still stands in until this theme's is drawn.)
+    if (can3d() && !M.kept.has(k)) ask(k, x, size > 100 ? LARGE : SMALL);
+    if (u) return `<span ${at}>${stillImg(u, size, ring)}</span>`;
+    return `<span ${at}>${badgeSvg(x.def, Object.assign({}, o, { shared: true, earned: x.earned, size, have: x.have, goal: x.goal, label: null }))}</span>`;
+  }
+  const stillImg = (u, size, ring, fresh) => `<img class="bdg-img${fresh ? ' is-new' : ''}" alt="" src="${u}" width="${size}" height="${size}" decoding="async">${ring != null ? `<svg class="bdg-svg is-locked bdg-marks" viewBox="0 0 120 120" width="${size}" height="${size}">${lockMarks(ring >= 0 ? ring : null)}</svg>` : ''}`;
+  // A still that's in goes into each medal on screen waiting for it, fading in over its SVG (in place
+  // of the other theme's still, at once).
+  M.swap = (k) => {
+    const u = M.kept.get(k);
+    if (u) for (const h of doc.querySelectorAll(`.bdg-m[data-mk="${k}"]`)) { const i = h.querySelector('.bdg-img'); if (!i || i.getAttribute('src') !== u) h.innerHTML = stillImg(u, h.dataset.size, h.dataset.ring != null ? Number(h.dataset.ring) : null, !i && !U.reduced()); }
+  };
+  // Asked for: drawn in quiet idle moments while their medals are on screen (src/ui/badges3d.js). Not on
+  // a phone with little memory, as the 3D figure isn't warmed up there.
+  let soon = 0;
+  const shown = () => [...M.want.keys()].some((k) => doc.querySelector(`.bdg-m[data-mk="${k}"]`));
+  function ask(k, x, css) {
+    if (!M.want.has(k)) M.want.set(k, { k, def: x.def, earned: x.earned, css, dark: k.split('|')[2] === 'd' });
+    if (!reads) M.load().then(() => { for (const j of M.want.keys()) if (M.kept.has(j)) { M.want.delete(j); M.swap(j); } });
+    if (M.pump) M.pump();
+    else if (!soon && !((G.navigator || {}).deviceMemory < 3)) soon = setTimeout(() => U.whenQuiet(() => { soon = 0; if (shown()) GH.lazy('figure3d').then(() => { if (M.pump) M.pump(); }, () => { M.off = true; }); else M.want.clear(); }), 2500);
+  }
+  // The live medal on a stage (a badge's sheet, the reveal), once the chunk's in: src/ui/badges3d.js.
+  // Returns a handle whose spinIn() spins it in if it's ready (and says so), or null (no WebGL, reduced
+  // motion: the still).
+  function liveMedal(stage, x, o) {
+    if (!stage || !can3d() || U.reduced()) return null;
+    const h = { ctl: null, dead: false, spinIn: () => !!(h.ctl && h.ctl.spinIn()), destroy() { h.dead = true; if (h.ctl) h.ctl.destroy(); } };
+    U.whenCalm(() => GH.lazy('figure3d').then(() => { if (!h.dead && M.live) h.ctl = M.live(stage, x, o); }, () => { M.off = true; }));
+    return h;
+  }
+  // fn, once, as soon as a sheet starts to close (its onClose comes once it has closed, which a busy
+  // page can hold up for a while).
+  function onClosing(c, fn) {
+    const close = c.close;
+    c.close = function () { const was = c.closed, r = close.apply(this, arguments); if (!was && c.closed) fn(); return r; };
+  }
+  // A still drawn now, with reduced motion (a sheet's, where the live one would be).
+  const stillNow = (x) => { if (can3d()) GH.lazy('figure3d').then(() => M.draw && M.draw(x), () => {}); };
+
   /* ---------------------------------------------------------------- reading the state */
   const live = () => ({ hc: GH.health && GH.health.status ? GH.health.status() : null });
   const list = (S, day) => A().evaluate(S, day, { live: live() });
@@ -272,19 +366,22 @@
 
   /* ---------------------------------------------------------------- the You tab's card */
   // A summary ("12 of 64 · Next: 25 workouts, 4 to go"), a note about badges waiting to be opened
-  // ("2 badges to open"), new ones or (once, after 1.6) the ones history already earned, and the
-  // latest medals, the sealed ones first as capsules; before any, the next ones to earn.
+  // ("2 badges to open"), new ones or (once, after 1.6) the ones history already earned, and the shelf:
+  // the sealed ones first as capsules, then the best medals, the rarest first (the newest first within
+  // a tier), standing on a glass ledge, each with its tier's glow; before any, the next ones to earn.
   function mini(x, day) {
-    if (x.sealed) return `<button type="button" class="bdg-mini is-earned is-sealed" data-tier="${x.def.tier}" data-badge="${x.id}" data-key="bdg-mini-${x.id}" data-act="badgeOpen" data-arg="${x.id}" aria-label="${U.esc(capLabel(x.def))}">${capArt(x.def, 56, 'is-nudge')}<span class="bdg-mini-title t-caption">${U.esc(A().TIERS[x.def.tier].rarity)}</span></button>`;
-    return `<button type="button" class="bdg-mini${x.earned ? ' is-earned' : ''}${x.isNew ? ' is-new' : ''}" data-badge="${x.id}" data-key="bdg-mini-${x.id}" data-act="badgeOpen" data-arg="${x.id}" aria-label="${U.esc(`${x.def.title}, ${x.earned ? earnedWhen(x, day).toLowerCase() : progressText(x)}`)}">${badgeSvg(x.def, { shared: true, earned: x.earned, size: 56, have: x.have, goal: x.goal })}<span class="bdg-mini-title t-caption">${U.esc(x.def.title)}</span></button>`;
+    if (x.sealed) return `<button type="button" class="bdg-mini is-earned is-sealed" data-tier="${x.def.tier}" data-badge="${x.id}" data-key="bdg-mini-${x.id}" data-act="badgeOpen" data-arg="${x.id}" aria-label="${U.esc(capLabel(x.def))}">${capArt(x.def, 60, 'is-nudge')}<span class="bdg-mini-title t-caption">${U.esc(A().TIERS[x.def.tier].rarity)}</span></button>`;
+    return `<button type="button" class="bdg-mini${x.earned ? ' is-earned' : ''}${x.isNew ? ' is-new' : ''}"${x.earned ? ` data-tier="${x.def.tier}"` : ''} data-badge="${x.id}" data-key="bdg-mini-${x.id}" data-act="badgeOpen" data-arg="${x.id}" aria-label="${U.esc(`${x.def.title}, ${x.earned ? `${A().TIERS[x.def.tier].name}, ${earnedWhen(x, day).toLowerCase()}` : progressText(x)}`)}"><span class="bdg-mini-medal">${medal(x, 60)}</span><span class="bdg-mini-title t-caption">${U.esc(x.def.title)}</span></button>`;
   }
+  const rank = (x) => A().TIERS[x.def.tier].rank;
+  const best = (items) => sorted(items).sort((a, b) => rank(b) - rank(a));
   U.badgeStrip = (S, day) => {
     if (!S || !A()) return '';
     const items = list(S, day);
     const sum = A().summary(S, day, items);
     const ach = S.achievements || {};
     const mig = ach.migrated && ach.migrated.n > 0 && !ach.migrated.seen ? ach.migrated.n : 0;
-    const earned = sorted(items.filter((x) => x.sealed)).concat(sorted(items.filter((x) => x.earned && !x.sealed))).slice(0, 8);
+    const earned = sorted(items.filter((x) => x.sealed)).concat(best(items.filter((x) => x.earned && !x.sealed))).slice(0, 8);
     const shown = earned.length ? earned : items.filter((x) => x.shown && !x.earned && !x.def.secret).sort((a, b) => b.pct - a.pct).slice(0, 4);
     const fresh = items.filter((x) => x.isNew);
     const waiting = A().unopened(S);
@@ -297,7 +394,7 @@
         <span class="bdg-strip-all t-subhead">See all${U.icon('chevron-right', 'sm')}</span>
       </button>
       ${note}
-      <div class="bdg-row" data-hscroll>${shown.map((x) => mini(x, day)).join('')}</div>
+      <div class="bdg-row bdg-shelf" data-hscroll>${shown.map((x) => mini(x, day)).join('')}</div>
     </div>`;
   };
   U.badgeSummary = (S, day) => A().summary(S, day, list(S, day));
@@ -316,16 +413,25 @@
     }
     const sub = x.earned ? fmtDate(x.day) : x.def.secret ? 'Secret' : progressText(x);
     const title = x.def.secret && !x.earned ? 'Secret badge' : x.def.title;
-    return `<button type="button" class="bdg-tile${x.earned ? ' is-earned' : ''}${x.isNew ? ' is-new' : ''}" data-badge="${x.id}" data-key="bdg-${x.id}" data-act="badgeOpen" data-arg="${x.id}" aria-label="${U.esc(`${title}, ${x.earned ? earnedWhen(x, day).toLowerCase() : sub}`)}">
-      <span class="bdg-tile-medal">${badgeSvg(x.def, { shared: true, earned: x.earned, size: 68, have: x.have, goal: x.goal })}${x.isNew ? '<span class="bdg-new t-caption">New</span>' : ''}</span>
+    return `<button type="button" class="bdg-tile${x.earned ? ' is-earned' : ''}${x.isNew ? ' is-new' : ''}"${x.earned ? ` data-tier="${x.def.tier}"` : ''} data-badge="${x.id}" data-key="bdg-${x.id}" data-act="badgeOpen" data-arg="${x.id}" aria-label="${U.esc(`${title}, ${x.earned ? `${A().TIERS[x.def.tier].name}, ${earnedWhen(x, day).toLowerCase()}` : sub}`)}">
+      <span class="bdg-tile-medal">${medal(x, 68)}${x.isNew ? '<span class="bdg-new t-caption">New</span>' : ''}</span>
       <span class="bdg-tile-title t-footnote">${U.esc(title)}</span>
       <span class="bdg-tile-sub t-caption rf-muted">${U.esc(sub)}</span>
     </button>`;
   }
-  function nextRow(x) {
-    return `<button type="button" class="bdg-next" data-badge="${x.id}" data-key="bdg-next-${x.id}" data-act="badgeOpen" data-arg="${x.id}">
-      ${badgeSvg(x.def, { shared: true, earned: false, size: 52, have: x.have, goal: x.goal })}
-      <span class="bdg-next-text"><span class="t-subhead">${U.esc(x.def.title)}</span><span class="t-footnote rf-muted">${U.esc(x.def.how)}</span>${U.progress(x.pct, `${x.def.title} progress`, 'positive')}</span>
+  // Where a badge sits in its series: a pip a badge, in its tier's colour, lit once it's earned.
+  function pips(x, items) {
+    const s = A().seriesOf(x.id);
+    if (!s) return '';
+    return `<span class="bdg-pips" aria-hidden="true">${s.map((id) => { const i = items.find((y) => y.id === id); return `<i data-tier="${A().byId[id].tier}"${i && i.earned ? ' class="is-on"' : id === x.id ? ' class="is-now"' : ''}></i>`; }).join('')}</span>`;
+  }
+  // The next one to earn in its series (or one in none).
+  const nextInSeries = (x, items) => { const s = A().seriesOf(x.id); return !s || s.find((id) => { const i = items.find((y) => y.id === id); return i && i.shown && !i.earned; }) === x.id; };
+  function nextRow(x, items) {
+    const T = A().TIERS[x.def.tier];
+    return `<button type="button" class="bdg-next" data-badge="${x.id}" data-key="bdg-next-${x.id}" data-act="badgeOpen" data-arg="${x.id}" aria-label="${U.esc(`${x.def.title}, ${T.name}. ${x.def.how} ${progressText(x)}`)}">
+      ${medal(x, 52)}
+      <span class="bdg-next-text"><span class="t-subhead">${U.esc(x.def.title)}</span><span class="t-footnote rf-muted">${U.esc(x.def.how)}</span>${U.progress(x.pct, `${x.def.title} progress`, 'positive')}${pips(x, items)}</span>
       <span class="bdg-next-n t-footnote rf-muted">${U.esc(progressText(x))}</span>
     </button>`;
   }
@@ -338,8 +444,9 @@
       const pick = filter === 'earned' ? shown.filter((x) => x.earned) : shown;
       let body = '';
       if (filter === 'next') {
-        const open = shown.filter((x) => !x.earned && !x.def.secret).sort((a, b) => (b.pct - a.pct) || (T[a.def.tier].rank - T[b.def.tier].rank)).slice(0, 10);
-        body = open.length ? `<h2 class="sec-title t-title-3">Closest to earning</h2><div class="section"><div class="bdg-nexts" data-key="nexts">${open.map(nextRow).join('')}</div></div>`
+        // The closest ones still to earn, each series' next tier only (the ones after it wait their turn).
+        const open = shown.filter((x) => !x.earned && !x.def.secret && nextInSeries(x, items)).sort((a, b) => (b.pct - a.pct) || (T[a.def.tier].rank - T[b.def.tier].rank)).slice(0, 10);
+        body = open.length ? `<h2 class="sec-title t-title-3">Closest to earning</h2><div class="section"><div class="bdg-nexts" data-key="nexts">${open.map((x) => nextRow(x, items)).join('')}</div></div>`
           : '<div class="section"><div class="card"><p class="t-callout rf-muted">Every badge you can earn right now is yours. New ones open up as you track more.</p></div></div>';
       } else {
         for (const c of A().CATS) {
@@ -379,17 +486,34 @@
   U.on.badgeFilter = (el, ev, v) => { filter = ['all', 'earned', 'next'].includes(v) ? v : 'all'; U.render(); };
 
   /* ---------------------------------------------------------------- the detail sheet */
-  function detailBody(x, day, total) {
+  function detailBody(x, day, total, items) {
     const def = x.def;
     const secret = def.secret && !x.earned;
     return `<div class="sheet-pad bdg-detail" data-badge="${x.id}">
-      <div class="bdg-stage is-detail" data-tier="${x.earned ? def.tier : 'locked'}"><span class="bdg-glow" aria-hidden="true"></span><span class="bdg-medal">${badgeSvg(def, { shared: true, earned: x.earned, size: 148, have: x.have, goal: x.goal, sweep: x.earned, label: `${secret ? 'Secret badge' : def.title}${x.earned ? '' : ', locked'}` })}</span></div>
+      <div class="bdg-stage is-detail" data-tier="${x.earned ? def.tier : 'locked'}"><span class="bdg-glow" aria-hidden="true"></span><span class="bdg-medal">${medal(x, 148, { sweep: x.earned, label: `${secret ? 'Secret badge' : def.title}${x.earned ? '' : ', locked'}` })}</span></div>
       <p class="bdg-tierline t-caption">${x.earned ? U.esc(tierLine(def)) : secret ? 'Secret' : `${U.esc(A().TIERS[def.tier].name)} · Locked`}</p>
       <h3 class="t-title-2 bdg-title">${U.esc(secret ? 'Secret badge' : def.title)}</h3>
       <p class="t-callout rf-muted bdg-how">${U.esc(secret ? 'A surprise. Keep going and it will find you.' : def.how)}</p>
       ${!x.earned && !secret && x.goal > 1 ? `<div class="bdg-prog">${U.progress(x.pct, 'Progress', 'positive')}<span class="t-footnote rf-muted">${U.esc(progressText(x))}${x.have > 0 ? ` · ${U.esc(A().toGo(x))}` : ''}</span></div>` : ''}
       ${x.earned ? `<p class="t-footnote bdg-when">${U.esc(earnedWhen(x, day))} · ${U.esc(`Badge ${rankOf(x)} of ${total}`)}</p>` : ''}
+      ${secret ? '' : seriesBlock(x, items)}
       ${x.earned ? `<div class="bdg-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="badgeShare" data-arg="${x.id}">${U.icon('share')}Share</button></div>` : ''}
+    </div>`;
+  }
+  // Its series: each badge in it, lowest first, this one marked, the earned ones in their metal; and for
+  // an earned one, the next one up and how far along it is.
+  function seriesBlock(x, items) {
+    const s = A().seriesOf(x.id);
+    const its = s ? s.map((id) => items.find((i) => i.id === id)).filter((i) => i && i.shown) : [];
+    if (its.length < 2) return '';
+    const next = its.find((i) => !i.earned);
+    const got = its.filter((i) => i.earned).length;
+    const line = x.earned && next ? `Next: ${next.def.title}, ${A().TIERS[next.def.tier].name}${next.goal > 1 && next.have > 0 ? ` · ${A().toGo(next)}` : ''}` : !next ? 'You have every one in this series' : '';
+    return `<div class="bdg-series">
+      <p class="t-caption bdg-tierline">${got} of ${its.length} in this series</p>
+      <div class="bdg-series-row" aria-hidden="true">${its.map((i) => `<span class="bdg-series-m${i === x ? ' is-this' : ''}"${i.earned ? ` data-tier="${i.def.tier}"` : ''}>${medal(i, 40)}</span>`).join('')}</div>
+      ${line ? `<p class="t-footnote rf-muted">${U.esc(line)}</p>` : ''}
+      ${x.earned && next && next.goal > 1 ? U.progress(next.pct, `${next.def.title} progress`, 'positive') : ''}
     </div>`;
   }
   // Which badge this was, in the order they were earned ("the 14th"): its place among the earned.
@@ -409,7 +533,21 @@
     ranks(items);
     const x = items.find((i) => i.id === id);
     const total = items.filter((i) => i.shown).length;
-    return U.sheet({ title: A().CAT[x.def.cat].name, size: 'fit', cls: 'bdg-sheet', body: detailBody(x, day, total), after: (c) => { if (x.earned) spring(c.el.querySelector('.bdg-stage'), x.def, null); } });
+    // Its medal live in 3D (drag or flick to spin it; it sways in the light at rest), over its still;
+    // with reduced motion, the still.
+    let live3d = null;
+    return U.sheet({
+      title: A().CAT[x.def.cat].name, size: 'fit', cls: 'bdg-sheet', body: detailBody(x, day, total, items),
+      after: (c) => {
+        const stage = c.el.querySelector('.bdg-stage');
+        if (x.earned) spring(stage, x.def, null);
+        if (U.reduced()) stillNow(x);
+        else live3d = liveMedal(stage, x, { size: 148, sheet: c, interactive: true, sway: true });
+        // It stops as the sheet starts to close, and goes once the sheet has slid away.
+        onClosing(c, () => setTimeout(() => { if (live3d) live3d.destroy(); }, 400));
+      },
+      onClose: () => { if (live3d) live3d.destroy(); },
+    });
   };
   U.act.badgeOpen = (el) => { const id = el && el.dataset ? el.dataset.arg : null; if (id) U.badgeDetail(id); };
 
@@ -420,7 +558,8 @@
   function spring(stage, def, o) {
     if (!stage) return;
     stage.classList.remove('is-in');
-    if (!U.reduced()) { void stage.offsetWidth; stage.classList.add('is-in'); } else stage.classList.add('is-still');
+    // (A live medal waits for the pop to end before it fades in over it.)
+    if (!U.reduced()) { void stage.offsetWidth; stage.classList.add('is-in'); stage.dataset.popAt = Date.now(); } else stage.classList.add('is-still');
     if (o && o.buzz) U.haptic('badge');
     const medal = stage.querySelector('.bdg-medal');
     // Refract 1.4's burst is 8 to 14 beads: the medal's is its biggest, 14.
@@ -441,10 +580,10 @@
         <p class="t-callout rf-muted bdg-how">${U.esc(how)}</p>
         <p class="t-footnote bdg-when">${U.esc(when)}</p>
       </div>`;
-    const medal = badgeSvg(def, { shared: true, earned: true, size: 176, sweep: true, label: def.title });
+    const art = medal(x, 176, { sweep: true, label: def.title });
     if (!x.sealed) {
       return `<section class="bdg-page" data-page="${x.id}" aria-label="${U.esc(def.title)}">
-      <div class="bdg-stage" data-tier="${def.tier}"><span class="bdg-rays" aria-hidden="true"></span><span class="bdg-glow" aria-hidden="true"></span><span class="bdg-medal">${medal}</span></div>
+      <div class="bdg-stage" data-tier="${def.tier}"><span class="bdg-rays" aria-hidden="true"></span><span class="bdg-glow" aria-hidden="true"></span><span class="bdg-medal">${art}</span></div>
       <div class="bdg-copy">${copy(def.title, def.how, 'bdg-copy-open')}</div>
     </section>`;
     }
@@ -453,7 +592,7 @@
     return `<section class="bdg-page is-sealed" data-page="${x.id}" aria-label="New badge, sealed">
       <div class="bdg-stage is-sealed" data-tier="${def.tier}" data-taps="0">
         <span class="bdg-rays" aria-hidden="true"></span><span class="bdg-glow" aria-hidden="true"></span>
-        <span class="bdg-medal" aria-hidden="true">${medal}</span>
+        <span class="bdg-medal" aria-hidden="true">${art}</span>
         <button type="button" class="bdg-cap" data-rf-effect="none" data-act="badgeCrack" data-arg="${x.id}" aria-label="${U.esc(capLabel(def))}">
           <span class="bdg-cap-shadow"></span>
           <span class="bdg-cap-float"><span class="bdg-cap-shake">${half('top')}${half('bottom')}${crack(1)}${crack(2)}<span class="bdg-cap-light"></span></span></span>
@@ -490,7 +629,23 @@
     const done = new Set();
     // Each page: sealed or not, and how many taps it has taken. Opened ones change what's behind.
     const state = pages.map((x) => ({ sealed: x.sealed, taps: 0, busy: false }));
-    let opened = false, io = null, ctl = null;
+    let opened = false, io = null, ctl = null, left = false;
+    // As it starts to close: the capsules stop, and what shows the badges behind it shows the opened ones
+    // as medals. (Its live medal goes once it has slid away.)
+    const leave = () => { if (left) return; left = true; if (io) io.disconnect(); if (opened) behind(); };
+    // The page showing has its medal live in 3D, ready behind its capsule for when it bursts (one live
+    // medal at a time); with reduced motion, its still.
+    let live3d = null, liveAt = -1;
+    const goLive = (i) => {
+      if (liveAt === i) return;
+      if (live3d) live3d.destroy();
+      liveAt = i;
+      const page = pageEls()[i];
+      // (A sealed one's still is drawn once it's opened: nothing shows it before.)
+      if (U.reduced()) { if (!state[i].sealed) stillNow(pages[i]); live3d = null; return; }
+      // Several pages turn with a sideways swipe, so only a page on its own spins by hand.
+      live3d = page ? liveMedal(page.querySelector('.bdg-stage'), pages[i], { size: 176, sheet: ctl, interactive: !many }) : null;
+    };
     const stillSealed = () => state.filter((s) => s.sealed).length;
     const dotLabel = (x, i) => (state[i].sealed ? `${A().TIERS[x.def.tier].name} badge, sealed` : x.def.title);
     const body = `<div class="bdg-reveal${many ? ' is-many' : ''}" data-cur="${state[0].sealed ? 'sealed' : 'open'}">
@@ -518,6 +673,7 @@
       // The worm follows the dot marked current (Refract watches aria-current).
       for (const [k, d] of [...el.querySelectorAll('.bdg-dots > .rf-dot')].entries()) { if (k === i) d.setAttribute('aria-current', 'true'); else d.removeAttribute('aria-current'); }
       setActions();
+      goLive(i);
       if (done.has(i)) return;
       done.add(i);
       // A sealed one waits for its taps.
@@ -558,8 +714,11 @@
       // With reduced motion it simply fades (badges.css): no burst, no flying halves, nothing rising.
       const r = ctl.el.querySelector('.bdg-reveal');
       const calm = U.reduced();
-      if (calm) stage.classList.add('is-fading');
+      if (calm) { stage.classList.add('is-fading'); stillNow(x); }
       else { stage.dataset.taps = '3'; for (const n of [r, stage, page]) n.classList.add('is-opening'); }
+      // The 3D medal spins out of it when it's ready (else the still or SVG one springs out, and the 3D
+      // one takes over once it's still).
+      if (live3d && liveAt === i) live3d.spinIn();
       spring(stage, x.def, { buzz: true, burst: true });
       setActions();
       setTimeout(() => {
@@ -617,9 +776,9 @@
           const dots = el.querySelector('.bdg-dots');
           if (dots) dots.addEventListener('rf-select', (e) => { if (e.detail && e.detail.index != null) goTo(e.detail.index); });
         }
+        onClosing(c, () => { leave(); setTimeout(() => { if (live3d) live3d.destroy(); }, 400); });
       },
-      // The capsules stop; what shows the badges behind it shows the opened ones as medals.
-      onClose: () => { if (io) io.disconnect(); if (opened) behind(); },
+      onClose: () => { leave(); if (live3d) live3d.destroy(); },
     });
     let jumpTo = null;
     const goTo = (n) => {
@@ -691,7 +850,7 @@
     const named = others.filter((i) => !sealedNow(i.id)).map((i) => i.def.title);
     const rest = [named.length ? `And ${named.join(', ')}` : '', others.length > named.length ? `${others.length - named.length} still to open` : ''].filter(Boolean).join(' · ');
     return `<button type="button" class="card bdg-card" data-key="bdg-card" data-act="badgeReveal" data-arg="${ids}" aria-label="${U.esc(more ? `${items.length} new badges. See them` : `New badge: ${x.def.title}. See it`)}">
-      <span class="bdg-stage is-card" data-tier="${x.def.tier}"><span class="bdg-glow" aria-hidden="true"></span><span class="bdg-medal">${badgeSvg(x.def, { shared: true, earned: true, size: 72 })}</span></span>
+      <span class="bdg-stage is-card" data-tier="${x.def.tier}"><span class="bdg-glow" aria-hidden="true"></span><span class="bdg-medal">${medal(Object.assign({}, x, { earned: true }), 72)}</span></span>
       <span class="bdg-card-text">
         <span class="t-caption bdg-tierline">${more ? `${items.length} new badges` : `New badge · ${U.esc(A().TIERS[x.def.tier].name)}`}</span>
         <span class="t-headline">${U.esc(x.def.title)}</span>
@@ -795,11 +954,14 @@
   }
   if (doc) doc.addEventListener('gh-change', onChange);
 
-  // After the app opens: time-based badges (a year in) and anything a closed app didn't get to.
+  // After the app opens: time-based badges (a year in) and anything a closed app didn't get to; and the
+  // medals' stills kept on the phone are read in (one request, while it's idle), so You and the
+  // gallery have them from their first frame.
   const prevBoot = U.afterBoot;
   U.afterBoot = () => {
     if (prevBoot) prevBoot();
     setTimeout(() => { if (U.S && U.S.profile.onboarded && U.els().onboardEl.hidden) U.badgeCheck('boot'); }, 1500);
+    setTimeout(() => (G.requestIdleCallback || setTimeout)(M.load), 2000);
   };
   // After set-up: what it already earned (Health Connect connected, say) counts as seen, quietly.
   const prevOnboarding = U.afterOnboarding;
