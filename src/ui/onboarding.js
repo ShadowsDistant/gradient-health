@@ -1091,55 +1091,31 @@
   }
 
   /* ---------------------------------------------------------------- pictures of the moves */
-  // The plan's moves show their key pose, as Plan's tiles do: the flat figure at once, then the 3D
-  // figure's still in its place when 3D is warm (set-up starts warming it while they answer). New 3D
-  // stills are drawn one per idle moment, so the plan's entrance never waits on them.
+  // The plan's moves show their key pose, as Plan's tiles do. With the 3D figure, its still in the
+  // person's look, kept on the phone at Plan's tiles' size (src/ui/stills.js), so Plan has them
+  // later: the tile's own background until it's drawn (set-up starts warming the figure up while
+  // they answer), then it fades in, so the plan's entrance never waits on them. The flat figure
+  // where 3D can't be drawn.
   const flatStills = new Map();
-  let thumbRun = 0;
-  const idle = (fn) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: 400 }) : setTimeout(fn, 32));
   function thumbs(root, eq) {
-    const run = ++thumbRun;
-    const f3 = U.figure3dOk && U.figure3dOk() && GH.figure3d && GH.figure3d.supported && GH.figure3d.supported() ? GH.figure3d : null;
-    const look = { crop: Math.round(52 * Math.min(2, G.devicePixelRatio || 1)), dark: String(GH.platform ? GH.platform.currentTheme() : '').startsWith('dark'), skin: 'sand' };
-    const todo = [];
+    const S3 = U.stills && U.stills.ok() ? U.stills : null;
+    const look = S3 && S3.look(52);
     for (const h of root.querySelectorAll('.ob-thumb[data-move]')) {
       const m = personMove(h.getAttribute('data-move'), eq);
       if (!m) continue;
-      const url = f3 && f3.cachedStill ? f3.cachedStill(m, look) : null;
-      if (url) { const shown = h.querySelector('img'); if (!shown || shown.getAttribute('src') !== url) fillImg(h, url); continue; }
-      if (!h.firstElementChild) { const svg = flatStill(m); if (svg) h.appendChild(svg.cloneNode(true)); }
-      if (f3 && f3.warm && f3.warm() && f3.still) todo.push([h, m]);
+      if (S3) S3.tile(h, m, look, (x) => flatInto(x, m));
+      else if (!h.firstElementChild) flatInto(h, m);
     }
-    const next = () => {
-      if (run !== thumbRun || !todo.length) return;
-      const [h, m] = todo.shift();
-      if (h.isConnected) { let url = null; try { url = f3.still(m, look); } catch (e) { url = null; } if (url) fillImg(h, url); }
-      idle(next);
-    };
-    if (todo.length) setTimeout(() => idle(next), 700);
+  }
+  function flatInto(h, m) {
+    const svg = flatStill(m);
+    h.textContent = '';
+    if (svg) h.appendChild(svg.cloneNode(true));
   }
   function personMove(id, eq) {
     const m0 = M() && M().MOVES[id];
     if (!m0) return null;
     try { return M().forPerson ? M().forPerson(m0, eq) : m0; } catch (e) { return m0; }
-  }
-  // A 3D still in an empty tile goes straight in. Over a flat figure it goes in once it's loaded and
-  // fades in on top (they share the tile's one grid cell), and the flat one goes once it's covered:
-  // the tile is never empty on the way, and a still that fails leaves the flat figure.
-  function fillImg(h, url) {
-    const img = doc().createElement('img');
-    img.alt = '';
-    img.decoding = 'async';
-    const old = Array.from(h.childNodes);
-    if (!old.length) { img.src = url; h.appendChild(img); return; }
-    img.addEventListener('load', () => {
-      if (!h.isConnected) return;
-      h.appendChild(img);
-      const drop = () => { for (const n of old) if (n.parentNode === h) n.remove(); };
-      img.addEventListener('animationend', drop, { once: true });
-      setTimeout(drop, 900);
-    }, { once: true });
-    img.src = url;
   }
   function flatStill(m) {
     if (!GH.pose) return null;

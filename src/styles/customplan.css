@@ -26,7 +26,10 @@
 
 /* Stills: the 3D figure's key pose (or the flat one), faded in as each is drawn. */
 .cp-thumb { --cp-t: 48px; flex: none; width: var(--cp-t); height: var(--cp-t); border-radius: 13px; display: grid; place-items: center; overflow: hidden; background: color-mix(in oklab, var(--label) 6%, var(--bg-raised)); --fig-bg: color-mix(in oklab, var(--label) 6%, var(--bg-raised)); }
-.cp-thumb > img, .cp-thumb > svg { display: block; width: 100%; height: 100%; object-fit: contain; animation: cp-fade 320ms var(--ease-standard) both; }
+.cp-thumb > img, .cp-thumb > svg { grid-area: 1 / 1; display: block; width: 100%; height: 100%; object-fit: contain; }
+/* A 3D still kept on the phone is part of the page; one drawn while the tile shows fades in over
+   what it showed (they share its one grid cell). */
+.cp-thumb > svg, .cp-thumb > img.is-new { animation: cp-fade 320ms var(--ease-standard) both; }
 .cp-thumb > svg { width: 88%; height: 88%; }
 .cp-thumb:empty { background-image: linear-gradient(100deg, transparent 30%, color-mix(in oklab, var(--label) 5%, transparent) 50%, transparent 70%); background-size: 220% 100%; animation: cp-shimmer 1.4s linear infinite; }
 .cp-thumb.is-xl { --cp-t: 92px; border-radius: 22px; }
@@ -217,7 +220,7 @@ button.cp-inuse-row { cursor: pointer; }
 @keyframes cp-shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
 @media (prefers-reduced-motion: reduce) {
   .cp-press, .cp-exlist[data-dragging] .cp-ex:not([data-lifted]) { transition: none; }
-  .cp-thumb > img, .cp-thumb > svg, .cp-thumb:empty, .cp-saved { animation: none; }
+  .cp-thumb > img.is-new, .cp-thumb > svg, .cp-thumb:empty, .cp-saved { animation: none; }
 }
 :root[data-rf-motion="reduced"] :is(.cp-press, .cp-exlist[data-dragging] .cp-ex:not([data-lifted])) { transition: none; }
 :root[data-rf-motion="reduced"] :is(.cp-thumb > img, .cp-thumb > svg, .cp-thumb:empty, .cp-saved) { animation: none; }

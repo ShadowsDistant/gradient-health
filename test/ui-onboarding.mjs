@@ -1,6 +1,7 @@
 // The set-up in Chromium at phone size. The first run: six screens with one decision each (welcome,
 // what you want most, time, where you train, about you, the plan), today a workout day whatever the
-// weekday and however many days, the plan from the engine with today's workout, the first workout
+// weekday and however many days, the plan from the engine with today's workout (its moves' 3D
+// stills, never the flat figure first), the first workout
 // started from it, Back (the button and Android Back) with answers kept, no Health Connect request
 // before the plan, plain words (no dashes, optional fields marked), "Anything to plan around?" in a
 // sheet and what it changes, Restore from a backup on the welcome, a friend's shared plan's three
@@ -181,7 +182,15 @@ section('The first run: six screens, one decision each');
   });
   check('three 30-minute workouts a week', /3 workouts a week, 30 minutes each/.test(plan.head), plan.head);
   check('the next seven days, today first and a workout day', plan.days === 7 && plan.first && plan.todayWork, plan);
-  check('today\'s workout with its moves and their pictures', plan.tag === 'Today' && plan.moves >= 2 && plan.thumbs >= 2, plan);
+  check('today\'s workout with its moves', plan.tag === 'Today' && plan.moves >= 2, plan);
+  // Their pictures: with the 3D figure (the default), each move's 3D still, drawn once the figure
+  // set-up started warming up is ready, fading into the tile's own background; never the flat figure
+  // first. (WebGL is software here, so it takes a while.)
+  const pics = () => page.evaluate(() => { const t = [...document.querySelectorAll('.onboard .rv-first .ob-thumb[data-move]')]; return { n: t.length, img: t.filter((h) => h.querySelector(':scope > img')).length, flat: t.filter((h) => h.querySelector(':scope > svg')).length }; });
+  let pic = await pics();
+  const flatFirst = pic.flat;
+  for (let i = 0; i < 40 && pic.img < pic.n; i++) { await page.clock.runFor(1500); await page.waitForTimeout(400); pic = await pics(); }
+  check('and their pictures: the 3D figure\'s stills, never the flat figure first', pic.n >= 2 && pic.img === pic.n && !pic.flat && !flatFirst, { first: flatFirst, ...pic });
   check('why this plan: the weekly plans compared and two or three reasons', plan.n > 100 && plan.reasons >= 2 && plan.reasons <= 3 && /weekly plans compared/.test(plan.why), plan);
   check('in words that read well ("12 sets for arms", "minutes of sets")', !/\b(?:[a-z]+ \d+ and [a-z]+ \d+ sets|about \d+ of sets)\b/.test(plan.why) && (!/most work/.test(plan.why) || /\d+ sets for /.test(plan.why)), plan.why);
   check('nothing "built around you" for an age and a sore knee that change nothing there', !plan.around);

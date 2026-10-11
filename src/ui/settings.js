@@ -202,34 +202,24 @@
         <span class="rf-list-title">Shirt</span>${swatches('setFigShirt', SHIRTS.map(([hex, n]) => [hex, hex, n]), pr.figShirt || SHIRTS[0][0], 'Shirt colour')}
       </div></div></li>` : ''}`;
   }
-  // A still of the figure in the chosen look. Drawing one takes a moment, so a render only uses one
-  // that's ready; otherwise it shows the last one (dimmed) and draws the new one when the phone is
-  // idle, then swaps it in.
-  let previewWait = false, lastPreview = '', previewJob = 0;
+  // A still of the figure in the chosen look, kept on the phone with the others (src/ui/stills.js),
+  // so a look seen before shows at once. A new one takes a moment to draw, so meanwhile the last one
+  // shows (dimmed), and the new one is swapped in once it's drawn.
+  let lastPreview = '';
   function figPreview(pr) {
-    const f = GH.figure3d;
     const m = GH.moves.MOVES.curl_std || GH.moves.MOVES.sq_bw;
-    if (!f || !m) {
-      if (!previewWait && GH.lazy) {
-        previewWait = true;
-        GH.lazy('figure3d').then(() => { previewWait = false; if (U.route.view === 'settings') U.render(); }).catch(() => { previewWait = false; });
-      }
-      return '<span class="set-fig-wait"></span>';
-    }
-    const dpr = Math.min(2, G.devicePixelRatio || 1);
-    const look = { width: 96 * dpr, height: 120 * dpr, dark: String(GH.platform.currentTheme()).startsWith('dark'), skin: pr.figSkin || 'sand', shirt: pr.figShirt || undefined };
-    const ready = f.cachedStill(m, look);
-    if (ready) { lastPreview = ready; return `<img src="${ready}" alt="" width="96" height="120">`; }
-    const job = ++previewJob;
-    const later = G.requestIdleCallback ? (fn) => G.requestIdleCallback(fn, { timeout: 600 }) : (fn) => setTimeout(fn, 30);
-    later(() => {
-      if (job !== previewJob) return; // a newer look was picked meanwhile
-      const url = f.still(m, look);
+    if (!m || !U.stills) return '<span class="set-fig-wait"></span>';
+    const look = U.stills.look(96, 120), k = U.stills.key(m, look);
+    const img = (url, cls) => `<img${cls ? ` class="${cls}"` : ''} src="${U.esc(url)}" alt="" width="96" height="120">`;
+    const ready = U.stills.want(m, look, (url) => {
       const box = document.querySelector('#screen .set-fig');
-      if (!box) return;
-      if (url) { lastPreview = url; box.innerHTML = `<img src="${url}" alt="" width="96" height="120">`; } else box.innerHTML = '';
+      // (Not over a newer look picked meanwhile.)
+      if (!url || !box || U.stills.key(m, U.stills.look(96, 120)) !== k) return;
+      lastPreview = url;
+      box.innerHTML = img(url);
     });
-    return lastPreview ? `<img class="is-stale" src="${lastPreview}" alt="" width="96" height="120">` : '<span class="set-fig-wait"></span>';
+    if (ready) { lastPreview = ready; return img(ready); }
+    return lastPreview ? img(lastPreview, 'is-stale') : '<span class="set-fig-wait"></span>';
   }
   U.on.setFigure = (el, ev, v) => { U.S.profile.prefs.figure = v; U.save(); U.render(); };
   U.act.setFigSkin = (el) => { U.S.profile.prefs.figSkin = el.dataset.arg; U.save(); U.haptic('select'); U.render(); };
