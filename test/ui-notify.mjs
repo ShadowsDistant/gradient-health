@@ -247,6 +247,9 @@ section('Settings: Notifications');
   await ev(() => window.__gh.onNotifyTap({ id: 'sleep:1', kind: 'sleep', route: 'health' }));
   await settle(900);
   check('a sleep note opens Health', (await ev(() => window.GH.ui.route.tab)) === 'health');
+  // None sealed: the badge this state earns at launch (On the scale, the one Today's section opens
+  // above) is opened here too. (1.9.0's check ran with it still sealed, so it came up and failed.)
+  await ev(() => { const GH = window.GH, A = GH.achievements, S = GH.ui.S; for (const id of A.unopened(S)) A.markOpened(S, id); A.markSeen(S); GH.ui.save(true); });
   await ev(() => window.__gh.onNotifyTap('{"id":"badge:first","kind":"badge","route":"badges"}'));
   await settle(900);
   check('a badge opens the badges', (await ev(() => window.GH.ui.route.view)) === 'badges');
