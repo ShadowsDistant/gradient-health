@@ -928,9 +928,10 @@ Android has its kind off (a channel per kind) or it's two hours late. One notifi
 time, and each goes once it's out of date. `POST_NOTIFICATIONS` (Android 13+) is asked for only when
 they're turned on (`notifyRequest`, answered with `__gh.onNotifyPermission`); after a no, Settings
 opens Android's settings for them. A tap opens its screen the way a plan link does: `notifyTap()` for
-the one the app was started from, `__gh.onNotifyTap` while it runs. `test/ui-notify.mjs` covers the
-card, Settings, taps and the hand-off against a stand-in (`test/fixtures.mjs`); compile the Java as
-`build-apk.sh` does.
+the one the app was started from, `__gh.onNotifyTap` while it runs. A badge's opens Badges with what's
+still sealed coming up over it, ready to be opened (`openRoute` in `src/ui/core.js`).
+`test/ui-notify.mjs` covers the card, Settings, taps and the hand-off against a stand-in
+(`test/fixtures.mjs`); compile the Java as `build-apk.sh` does.
 
 ## Badges
 

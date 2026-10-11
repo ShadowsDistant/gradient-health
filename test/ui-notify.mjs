@@ -74,8 +74,8 @@ section('Today: the card that asks, once');
   const sched = await schedules(ev);
   const last = sched[sched.length - 1];
   const today = await ev(() => window.GH.ui.today());
-  // Launch found a badge in the history (ten weigh-ins), waiting as New: that comes first today.
-  const waiting = await ev(() => window.GH.achievements.unseen(window.GH.ui.S));
+  // Launch found a badge in the history (ten weigh-ins), waiting sealed: that comes first today.
+  const waiting = await ev(() => window.GH.achievements.unopened(window.GH.ui.S));
   const b = last && last.items.find((x) => x.kind === 'badge');
   check(`Android has the schedule: the badge found at launch (${waiting.join()}) two hours on, first that day`, last && last.on === true && waiting.length === 1 && b && b.id === `badge:${waiting[0]}` && b.at >= tapped + 2 * 3600000 && b.at <= tapped + 2 * 3600000 + 8 * 60000 && b.route === 'badges' && !last.items.some((x) => x.id === `workout:${today}`), last && last.items.map((x) => `${x.id} ${hhmm(x.at)}`));
   const days = last.items.map((x) => new Date(x.at).toDateString());
@@ -84,7 +84,7 @@ section('Today: the card that asks, once');
 
   section('Leaving and opening the app');
   // The badge opened: the day's one is today's workout again.
-  await ev(() => { const GH = window.GH; GH.achievements.markSeen(GH.ui.S); GH.ui.save(true); });
+  await ev(() => { const GH = window.GH, A = GH.achievements, S = GH.ui.S; for (const id of A.unopened(S)) A.markOpened(S, id); A.markSeen(S); GH.ui.save(true); });
   const n0 = (await schedules(ev)).length;
   // On a phone, leaving is heard twice: Android's pause, then the page hidden.
   await ev(() => window.__gh.onPause());
@@ -229,6 +229,13 @@ section('Settings: Notifications');
   await ev(() => window.__gh.onNotifyTap('{"id":"badge:first","kind":"badge","route":"badges"}'));
   await settle(900);
   check('a badge opens the badges', (await ev(() => window.GH.ui.route.view)) === 'badges');
+  check('with none sealed, nothing comes up over them', !(await ev(() => !!document.querySelector('.bdg-reveal'))));
+  // One still sealed: the tap brings it up over the gallery, sealed, to be opened there.
+  const sealed = await ev(() => { const U = window.GH.ui, E = U.S.achievements.earned, id = Object.keys(E)[0]; E[id].opened = false; U.back(); return id; });
+  await settle(900);
+  await ev(() => window.__gh.onNotifyTap('{"id":"badge:x","kind":"badge","route":"badges"}'));
+  for (let i = 0; i < 12 && !(await ev(() => !!document.querySelector('.bdg-reveal'))); i++) await settle(400); // once the push has played
+  check('with one sealed, it comes up over the badges, still sealed', (await ev(() => window.GH.ui.route.view)) === 'badges' && (await ev(() => { const r = document.querySelector('.bdg-reveal'); return !!r && r.dataset.cur === 'sealed'; })) && (await ev((id) => window.GH.ui.S.achievements.earned[id].opened === false, sealed)), sealed);
   await ctx.close();
 }
 {

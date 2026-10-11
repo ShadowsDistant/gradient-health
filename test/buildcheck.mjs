@@ -24,9 +24,9 @@ import { APP_SCRIPTS, APP_CHUNKS, LAZY, asciiRegexps } from '../scripts/build.mj
 // plus 2% (1,980,000), which held through 1.8.10 (1,975,240 bytes). 1.9.0 adds the 3D stills kept on
 // the phone (src/ui/stills.js, about 5 KB), notifications' page part (about 10 KB: the hand-off to
 // Android, Settings' rows and Today's card; the planner is a chunk of its own) and sealed badges (about
-// 20 KB: the capsule, opening it in the reveal, and its CSS), which bring it to @SIZE@ bytes; the
+// 20 KB: the capsule, opening it in the reveal, and its CSS), which bring it to 2,015,732 bytes; the
 // budget is that plus 1%, enough to catch an asset inlined by mistake.
-const BUDGET = 2040000;
+const BUDGET = 2036000;
 
 const file = join(root, 'dist/gradient-health.html');
 if (!existsSync(file)) { console.error('No dist/gradient-health.html: run npm run build first.'); process.exit(1); }

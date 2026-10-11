@@ -1585,7 +1585,15 @@
     const ready = U.S && U.S.profile.onboarded;
     if (route === 'privacy') { if (ready) U.open('privacy'); else if (U.showPrivacySheet) U.showPrivacySheet(); }
     else if (['today', 'plan', 'food', 'health', 'progress', 'you', 'moves', 'profile'].includes(route)) { if (ready) go(route); }
-    else if (['settings', 'science', 'coach'].includes(route) || (route === 'badges' && U.screens.badges)) { if (ready) U.open(route); }
+    else if (['settings', 'science', 'coach'].includes(route) || (route === 'badges' && U.screens.badges)) {
+      if (!ready) return;
+      U.open(route);
+      // A badge's notification: what's still sealed comes up over the gallery, ready to be opened.
+      const A = GH.achievements;
+      if (route === 'badges' && U.badgeReveal && A && A.unopened && A.unopened(U.S).length) {
+        (U.motion && U.motion.settled ? U.motion.settled() : Promise.resolve()).then(() => { if (U.route.view === 'badges') U.badgeReveal(); });
+      }
+    }
   }
   U.boot = boot;
   if (doc) {
