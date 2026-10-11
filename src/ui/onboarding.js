@@ -1031,7 +1031,7 @@
         <p class="rv-sub">${U.esc(lean)}</p>
       </div>
       <div class="rv-week-box"><ol class="rv-week" aria-label="Your next 7 days">${r.days.map(dayCell).join('')}</ol>
-        <p class="rv-week-foot">${U.esc(`Next 7 days: ${U.plural(n, 'workout')}${rest ? ', with a walk and a stretch between' : ''}. Miss one and the week moves forward.`)}</p></div>
+        <p class="rv-week-foot">${U.esc(`Next 7 days: ${U.plural(n, 'workout')}${rest ? ', with a walk and a stretch on the days between' : ''}. Miss one and the week moves forward.`)}</p></div>
       ${firstCard(r)}
       ${whyBlock(r)}
       ${r.around ? aroundCard(r) : ''}
