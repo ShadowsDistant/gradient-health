@@ -833,7 +833,7 @@
     const ph = w.phase;
     const text = {
       full: 'You do every set your plan calls for. About one week in five is a lighter deload, so tiredness clears and you keep getting stronger.',
-      deload: `About ${100 - ph.pct}% fewer sets, so built-up tiredness can clear. Your weights and levels stay put, and full volume is back next week.`,
+      deload: `About ${100 - ph.pct}% fewer sets, so built-up tiredness can clear. Your weights and levels stay put, and next week is back to full volume.`,
       onramp: `Your first weeks have about ${ph.pct}% of the usual sets while your body adjusts.${ph.fullFrom ? ` Full volume starts in week ${ph.fullFrom}.` : ''}`,
       comeback: `After over a week off, this week has about ${ph.pct}% of the sets. Strength comes back quickly.`,
     }[ph.key];

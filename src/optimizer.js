@@ -1971,7 +1971,7 @@
     if (setMin > 0) out.push(`Each session fits your ${minutes} minutes: about ${setMin} minutes of sets, then ${joinList(extras)}.`);
     // Coverage, or groups taking turns.
     if (wp.parity) out.push('Not every muscle group fits in each week, so they take turns: what misses out comes first next week.');
-    else if (GROUPS.every((g) => !pg[g].trainable || pg[g].effective >= pg[g].floor - 1e-9)) out.push('Every muscle group gets its weekly minimum, counting help from bigger moves.');
+    else if (GROUPS.every((g) => !pg[g].trainable || pg[g].effective >= pg[g].floor - 1e-9)) out.push('Every muscle group gets at least its weekly minimum, counting help from bigger moves.');
     // The phase.
     const ph = wp.phase;
     if (ph.deload) out.push(`A lighter week to recover: about ${Math.round(ph.mult * 100)}% of your usual sets.`);
