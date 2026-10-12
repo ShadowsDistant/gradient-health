@@ -102,7 +102,7 @@ const SHOTS = [
     name: '05-medals',
     glows: [['amber', 84, 14, 60, 36, 0.5], ['blue', 2, 60, 54, 34, 0.36], ['mint', 70, 100, 60, 30, 0.3]],
     title: 'Earn <span class="hue-warm">3D medals</span>',
-    sub: '64 badges to collect, crack open and share.',
+    sub: 'Over 60 badges to collect, crack open and share.',
     body: phone('badges.png', 'width:760px;left:60px;top:520px', 'rgb(244 168 62 / .5)')
       + `<img src="${r3('medal-halfMarathon.png')}" alt="" style="position:absolute;width:300px;left:760px;top:560px;transform:rotate(10deg);filter:drop-shadow(0 20px 30px rgb(0 0 0 / .55))">`
       + `<img src="${r3('medal-pushups20.png')}" alt="" style="position:absolute;width:260px;left:800px;top:1450px;transform:rotate(-8deg);filter:drop-shadow(0 20px 30px rgb(0 0 0 / .55))">`

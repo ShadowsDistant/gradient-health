@@ -16,7 +16,7 @@ A training plan, a food log, your health data and a coach that runs on your phon
 <p align="center">
   <img src="docs/screenshots/framed/today.png" width="200" alt="Today: a 35-day streak and today's workout">
   <img src="docs/screenshots/framed/workout.png" width="200" alt="The workout player: the 3D figure doing a dumbbell curl, with the tempo strip lit">
-  <img src="docs/screenshots/framed/answer-dark.png" width="200" alt="The coach chat, in dark mode: answers from the model on the phone">
+  <img src="docs/screenshots/framed/answer-dark.png" width="200" alt="The coach chat, in dark mode: a short answer with a card of how your curl has gone">
   <img src="docs/screenshots/framed/progress.png" width="200" alt="Progress: the body map, showing which muscles were trained most">
 </p>
 
