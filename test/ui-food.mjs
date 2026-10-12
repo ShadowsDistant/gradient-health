@@ -6,7 +6,8 @@
 // Facts mocked), recent foods most used first with a one-tap add and Undo, the same meal as
 // yesterday, each entry's time and a new time moving it to another meal, meal times changing where
 // food goes, every food sheet's size at 360 px, meals saved to Health Connect, the food route,
-// workouts off, and set-up's food-only path.
+// workouts off, the Food page's part loading ahead of time only for someone tracking calories, and
+// set-up's food-only path.
 // Usage: node test/ui-food.mjs [--dark] [--width=360]
 import { createRequire } from 'node:module';
 import { check, section, done, serveDist } from './lib.mjs';
@@ -461,6 +462,8 @@ check('Not now puts the invite away', await ev(() => !document.querySelector('#s
 await page.reload();
 await page.waitForSelector('#screen[data-view]', { timeout: 15000 }).catch(async () => { await ev(() => window.GH.ui.boot()); });
 await settle(900);
+await settle(4000);
+check('without calorie tracking, the Food page\'s part waits until it\'s wanted', await ev(() => !window.GH.foodUi));
 await tab('health');
 check('and it stays away', await ev(() => !document.querySelector('#screen .hf-invite')));
 await menuFood();
@@ -470,6 +473,13 @@ await page.click('dialog.rf-sheet[open] [data-act="fsGo"]');
 await settle(1500);
 check('and Start goes on to Add food, the clock\'s meal picked', await ev(() => window.GH.food.full(window.GH.ui.S)) && await sheetOpen('.fd-search') && (await sheetMeal('foodAddMeal')) === 'breakfast', await sheetMeal('foodAddMeal'));
 await closeSheets();
+// With calorie tracking on, the Food page and its sheets load once the app is idle, before any of
+// them is wanted.
+await page.reload();
+await page.waitForSelector('#screen[data-view]', { timeout: 15000 }).catch(async () => { await ev(() => window.GH.ui.boot()); });
+let warmed = false;
+for (let i = 0; i < 20 && !warmed; i++) { await settle(500); warmed = await ev(() => !!window.GH.foodUi && !document.querySelector('dialog.rf-sheet[open]') && window.GH.ui.route.view !== 'food'); }
+check('with calorie tracking on, the Food page\'s part loads ahead of time', warmed);
 
 section('The barcode reader itself');
 // An EAN-13 drawn on a canvas, read by the bundled ZXing build (lazy/barcode.js + the .wasm).
