@@ -269,8 +269,11 @@
   };
 
   // After the app opens: What's new once per update, for people who used an earlier version. (Badges
-  // already earned are marked seen by their own migration, src/achievements.js.)
+  // already earned are marked seen by their own migration, src/achievements.js.) What an earlier
+  // script hung on the same hook (lazy.js's warm-up) runs first.
+  const prevBoot = U.afterBoot;
   U.afterBoot = () => {
+    if (prevBoot) prevBoot();
     const S = U.S;
     if (!S || !GH.VERSION) return;
     const last = U.seen('lastVersion') ? seen().lastVersion : '1.0.0';

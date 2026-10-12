@@ -480,6 +480,12 @@ await page.waitForSelector('#screen[data-view]', { timeout: 15000 }).catch(async
 let warmed = false;
 for (let i = 0; i < 20 && !warmed; i++) { await settle(500); warmed = await ev(() => !!window.GH.foodUi && !document.querySelector('dialog.rf-sheet[open]') && window.GH.ui.route.view !== 'food'); }
 check('with calorie tracking on, the Food page\'s part loads ahead of time', warmed);
+// So do the parts a tap is likely to want next (src/ui/lazy.js): the plan review, How it works and the
+// badge share card, one at a time while the phone is idle. (Every script that hangs work on
+// U.afterBoot keeps what was there before; guide.js once didn't, and this warm-up never ran.)
+let rest = false;
+for (let i = 0; i < 20 && !rest; i++) { await settle(500); rest = await ev(() => !!(window.GH.review && window.GH.science && window.GH.shareCard)); }
+check('and so do the plan review, How it works and the share card', rest, await ev(() => ({ review: !!window.GH.review, science: !!window.GH.science, shareCard: !!window.GH.shareCard })));
 
 section('The barcode reader itself');
 // An EAN-13 drawn on a canvas, read by the bundled ZXing build (lazy/barcode.js + the .wasm).
