@@ -287,6 +287,7 @@ await page.evaluate(() => window.GH.ui.closeSheets());
 await page.waitForTimeout(500);
 check('a weekly report worked out on the phone', /This week/.test(healthText) && /From your numbers/.test(healthText));
 check('sync status shows when it last synced', /Synced (just now|\d+ min ago)/.test(healthText));
+check('food sits in Health: Track calories, one tap to start', /Track calories/.test(healthText) && await page.locator('#screen .hf-invite [data-act="foodStart"]').count() === 1 && await page.locator('.rf-tab[data-tab="food"]').count() === 0);
 check('the coach button sits at the top left', await page.locator('#topbar .rf-navbar-leading .coach-btn').count() === 1);
 await page.click('#topbar .coach-btn');
 await page.waitForSelector('dialog.chat-sheet[open] .chat-pill');

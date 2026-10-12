@@ -1,5 +1,6 @@
 // Where things are (1.6), in Chromium at phone size with someone five weeks in: the tabs for each
-// mode (five at most, so they fit a 360 px phone), the You tab and its order, Plan's This week |
+// mode (five at most, so they fit a 360 px phone; food never takes one, since 1.12 it's in Health),
+// the You tab and its order, Plan's This week |
 // Moves switch, links to places that moved (moves, profile), the ways into Progress, Settings' groups
 // and search, the Refract credit, one place for each thing, the new names, a tip on every tab, the
 // haptics on the way around, and the easy cardio block's length.
@@ -44,9 +45,9 @@ section('The tabs for each mode');
 await mode(true, false);
 check('workouts: Today, Plan, Health, Progress and You', (await tabs()) === 'today,plan,health,progress,you', await tabs());
 await mode(true, true);
-check('workouts and calories: Today, Plan, Food, Health and You', (await tabs()) === 'today,plan,food,health,you', await tabs());
+check('workouts and calories: the same (food is in Health)', (await tabs()) === 'today,plan,health,progress,you', await tabs());
 await mode(false, true);
-check('calories only: Today, Food, Health and You', (await tabs()) === 'today,food,health,you', await tabs());
+check('calories only: Today, Health and You', (await tabs()) === 'today,health,you', await tabs());
 await mode(false, false);
 check('health only: Today, Health and You', (await tabs()) === 'today,health,you', await tabs());
 await mode(true, true);
@@ -69,7 +70,7 @@ const order = () => ev(() => {
   const marks = [['card', '.you-card'], ['progress', '.you-link[data-act="openProgress"]'], ['badges', '.you-badges'], ['plans', 'ul[data-key="plans"]'], ['answers', 'ul[data-key="answers"]'], ['app', 'ul[data-key="app"]']];
   return marks.map(([k, sel]) => { const el = scr.querySelector(sel); return el ? [k, el.getBoundingClientRect().top] : null; }).filter(Boolean).sort((a, b) => a[1] - b[1]).map((x) => x[0]).join();
 });
-check('with calories on: your card, Progress, badges, your plans, your answers, then the app', (await order()) === 'card,progress,badges,plans,answers,app', await order());
+check('with calories on: your card, badges, your plans, your answers, then the app (Progress is a tab)', (await order()) === 'card,badges,plans,answers,app', await order());
 const card = await ev(() => { const c = document.querySelector('#screen .you-card'); return { name: c.querySelector('.you-name').textContent, since: c.querySelector('.you-since').textContent, stats: [...c.querySelectorAll('.you-stat')].map((s) => s.textContent.replace(/\s+/g, ' ').trim()) }; });
 check('your card: initials, name, since when and the week', card.name === 'Alex' && /^Training since .+ · week \d+$/.test(card.since), JSON.stringify(card));
 check('and workouts, streak and badges in a row', card.stats.length === 3 && /Workouts$/.test(card.stats[0]) && /Day streak$/.test(card.stats[1]) && /Badges?$/.test(card.stats[2]), JSON.stringify(card.stats));
@@ -252,25 +253,22 @@ await mode(true, true);
 await ev(() => window.GH.ui.planSection('week'));
 
 section('The ways into Progress');
+// With calories on or off it's a tab: each way in goes to it.
 const viaProgress = async (label, run) => {
   await run();
   await settle(900);
   const w = await where();
-  check(label, w.view === 'progress' && w.back && await ev(() => document.getElementById('tabbar').hasAttribute('data-away') && !!document.querySelector('#screen .bm-card')), JSON.stringify(w));
-  await ev(() => window.GH.ui.back());
-  await settle();
+  check(label, w.tab === 'progress' && !w.view && !w.back && await ev(() => !document.getElementById('tabbar').hasAttribute('data-away') && !!document.querySelector('#screen .bm-card')), JSON.stringify(w));
 };
 await go('today');
-await viaProgress('with calories on, Today\'s streak opens Progress as a page', () => page.click('#screen [data-key="streak"]'));
-check('and Back returns to Today', (await where()).tab === 'today' && !(await where()).view);
-await go('you');
-await viaProgress('so does You\'s Progress card', () => page.click('#screen .you-link[data-act="openProgress"]'));
+await viaProgress('with calories on, Today\'s streak goes to the Progress tab', () => page.click('#screen [data-key="streak"]'));
 await go('plan');
-await viaProgress('and Plan\'s muscles card', async () => { await ev(() => document.querySelector('#screen .pw-mus-card [data-act="openProgress"]').scrollIntoView({ block: 'center' })); await settle(300); await page.click('#screen .pw-mus-card [data-act="openProgress"]'); });
+await viaProgress('so does Plan\'s muscles card', async () => { await ev(() => document.querySelector('#screen .pw-mus-card [data-act="openProgress"]').scrollIntoView({ block: 'center' })); await settle(300); await page.click('#screen .pw-mus-card [data-act="openProgress"]'); });
 await go('today');
-await ev(() => { location.hash = '#progress'; });
-await settle(900);
-check('a #progress link opens it too', (await where()).view === 'progress');
+await viaProgress('and a #progress link', () => ev(() => { location.hash = '#progress'; }));
+await ev(() => { history.replaceState(null, '', location.pathname); });
+await go('you');
+check('You has no Progress card any more', await ev(() => !document.querySelector('#screen [data-act="openProgress"]')));
 await home();
 await go('today');
 await mode(true, false);
@@ -431,10 +429,16 @@ await home();
 
 section('A tip on every tab');
 await ev(() => { const s = window.GH.ui.S.seen; for (const k of Object.keys(s)) if (k.startsWith('tip_')) delete s[k]; window.GH.ui.save(); });
-for (const [t, id] of [['today', 'today'], ['plan', 'plan'], ['food', 'food'], ['health', 'health'], ['you', 'you']]) {
+for (const [t, id] of [['today', 'today'], ['plan', 'plan'], ['health', 'health'], ['progress', 'progress'], ['you', 'you']]) {
   await go(t);
   check(`${t}`, await ev((x) => !!document.querySelector(`#screen [data-key="tip-${x}"]`), id));
 }
+await go('health');
+check('with calories on, Health\'s says where the food is', await ev(() => window.GH.food.full(window.GH.ui.S) && /Your food is at the top/.test((document.querySelector('#screen [data-key="tip-health"]') || {}).textContent || '')));
+await go('food');
+await page.waitForSelector('#screen .fd-sum', { timeout: 8000 }).catch(() => {});
+check('the Food page has no tip of its own', await ev(() => window.GH.ui.route.view === 'food' && !!document.querySelector('#screen .fd-sum') && !document.querySelector('#screen .tip')));
+await home();
 await go('moves');
 check('Plan\'s Moves', await ev(() => !!document.querySelector('#screen [data-key="tip-moves"]')));
 await ev(() => window.GH.ui.planSection('week'));
