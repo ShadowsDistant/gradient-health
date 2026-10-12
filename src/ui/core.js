@@ -368,16 +368,14 @@
 
   /* ---------------------------------------------------------------- layout */
   let root, topbar, screen, floatEl, playerEl, onboardEl, tabbar, accessory, ptrEl;
-  const ALL_TABS = { today: ['today', 'home', 'Today'], plan: ['plan', 'calendar', 'Plan'], food: ['food', 'food', 'Food'], health: ['health', 'heart', 'Health'], progress: ['progress', 'chart', 'Progress'], you: ['you', 'person', 'You'] };
+  const ALL_TABS = { today: ['today', 'home', 'Today'], plan: ['plan', 'calendar', 'Plan'], health: ['health', 'heart', 'Health'], progress: ['progress', 'chart', 'Progress'], you: ['you', 'person', 'You'] };
   // The tabs follow what you track, five at most: a sixth doesn't fit a 360 px phone. You (your
   // profile, badges, plans and Settings) is always last, and the moves are a section of Plan. With
-  // calorie tracking on, Food takes Progress's place, and Progress opens as a page from You, Today's
-  // streak and Plan; with workouts off, Plan and Progress go away.
+  // workouts off, Plan and Progress go away. Food never takes a tab: it's a section of Health, and
+  // its page opens from there (and from Today's card and the food route).
   function tabsFor(S) {
     const workouts = !S || !S.profile || S.profile.workouts !== false;
-    const food = !!(S && S.profile && GH.food && GH.food.full(S));
-    const ids = workouts ? (food ? ['today', 'plan', 'food', 'health', 'you'] : ['today', 'plan', 'health', 'progress', 'you']) : (food ? ['today', 'food', 'health', 'you'] : ['today', 'health', 'you']);
-    return ids.map((id) => ALL_TABS[id]);
+    return (workouts ? ['today', 'plan', 'health', 'progress', 'you'] : ['today', 'health', 'you']).map((id) => ALL_TABS[id]);
   }
   let TABS = tabsFor(null);
   U.tabList = () => TABS;
@@ -1127,16 +1125,15 @@
       }
       tab = 'plan';
     }
-    // A section that isn't a tab right now opens as a page: Progress with Food on (while workouts
-    // are), the moves with workouts off. Anything else goes to Today.
+    // A section that isn't a tab opens as a page: Food with calorie tracking on, the moves with
+    // workouts off. Food without it goes to Health, where it starts; anything else to Today.
     if (!U.hasTab(tab)) {
-      const workouts = !U.S || U.S.profile.workouts !== false;
-      if (tab === 'moves' || (tab === 'progress' && workouts) || (tab === 'food' && GH.food && U.S && GH.food.full(U.S))) {
+      if (tab === 'moves' || (tab === 'food' && GH.food && U.S && GH.food.full(U.S))) {
         if (U.route.view === tab) toTop();
         else U.open(tab);
         return;
       }
-      tab = 'today';
+      tab = tab === 'food' ? 'health' : 'today';
     }
     if (U.route.tab === tab && !U.route.view) { toTop(); return; }
     // Plan opens on This week (as it opens on today), unless it's the moves that were asked for.
@@ -1756,7 +1753,7 @@
     G.addEventListener('hashchange', () => openRoute((G.location.hash || '').replace('#', '')));
   }
   // Links into the app (#route, or the shell's route event). Tabs, and places that were tabs (moves,
-  // profile) or are pages in some modes (progress, food), go through go(); the rest open as pages.
+  // profile, food) or are pages in some modes (progress), go through go(); the rest open as pages.
   function openRoute(route) {
     const ready = U.S && U.S.profile.onboarded;
     if (route === 'privacy') { if (ready) U.open('privacy'); else if (U.showPrivacySheet) U.showPrivacySheet(); }

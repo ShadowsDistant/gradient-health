@@ -205,7 +205,7 @@
     const m = M(key);
     if (m.edit) return `<button type="button" class="rf-btn ms-add" data-variant="soft" data-act="metricAdd">${U.icon('plus')}${m.group === 'measure' ? 'Add a measurement' : 'Add or change'}</button>`;
     if (key === 'activeMin') return `<button type="button" class="rf-btn ms-add" data-variant="soft" data-act="logActivity">${U.icon('plus')}Log other exercise</button>`;
-    if (key === 'kcalIn' && U.hasTab && U.hasTab('food')) return `<button type="button" class="rf-btn ms-add" data-variant="soft" data-act="metricGo" data-arg="food">${U.icon('food')}Open Food</button>`;
+    if (key === 'kcalIn' && GH.food && GH.food.full(S)) return `<button type="button" class="rf-btn ms-add" data-variant="soft" data-act="metricGo" data-arg="food">${U.icon('food')}Open Food</button>`;
     if (key === 'protein') return `<button type="button" class="rf-btn ms-add" data-variant="soft" data-act="addProtein">${U.icon('plus')}Add protein</button>`;
     return '';
   }
@@ -215,7 +215,7 @@
     const app = GH.platform && GH.platform.isApp();
     const hcOn = H().connected(H().status());
     const shared = key === 'rhr' || key === 'hrv' || key === 'bodyFat';
-    const text = shared ? WHY_MISSING[0] : m.group === 'measure' ? 'Measure once a month and add it here.' : m.edit ? (key === 'weightKg' ? 'Weigh in and add it here, or connect a scale through Health Connect.' : 'Add it here, or let Health Connect fill it in.') : key === 'kcalIn' ? 'Log food on the Food tab to see it here.' : key === 'protein' ? 'Add protein on Today or log food to see it here.' : key === 'activeMin' ? 'Workouts and activities show up here.' : 'This comes from Health Connect.';
+    const text = shared ? WHY_MISSING[0] : m.group === 'measure' ? 'Measure once a month and add it here.' : m.edit ? (key === 'weightKg' ? 'Weigh in and add it here, or connect a scale through Health Connect.' : 'Add it here, or let Health Connect fill it in.') : key === 'kcalIn' ? 'Add food in Health to see it here.' : key === 'protein' ? 'Add protein on Today or log food to see it here.' : key === 'activeMin' ? 'Workouts and activities show up here.' : 'This comes from Health Connect.';
     return `<div class="ms-empty">
       <span class="ms-empty-ico" data-tone="${m.tone}">${U.icon(m.icon)}</span>
       <p class="t-headline">No ${U.esc(m.label.toLowerCase())} yet</p>

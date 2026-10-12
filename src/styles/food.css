@@ -5,3 +5,99 @@
 .fd-tabs { overflow-x: auto; scrollbar-width: none; margin: var(--space-2) 0 0; padding-inline: var(--space-4); }
 .fd-tabs::-webkit-scrollbar { display: none; }
 .fd-tabs .rf-segmented { min-width: 100%; width: max-content; }
+
+/* ---------------------------------------------------------------- Health's food section */
+/* One card: the ring and macros over the four meals, all one button that opens the Food page, with
+   Add food and Scan under it. */
+.card.hf { gap: var(--space-3); }
+.hf-main { appearance: none; border: 0; margin: 0; padding: 0; background: none; color: inherit; font: inherit; text-align: start; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); cursor: pointer; border-radius: var(--radius-md); transition: scale var(--duration-spring-snappy) var(--spring-snappy); }
+.hf-main:active { scale: .985; transition-duration: var(--duration-instant); }
+.hf-main:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 4px; }
+.hf-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); }
+/* The ring grows with the text, so its number stays inside it with bigger text. */
+.hf .rf-ring { --_s: 5.5em; --_w: 8px; font-size: 1rem; }
+.hf .rf-ring-label { display: grid; justify-items: center; line-height: 1.1; padding-inline: 8px; text-align: center; }
+.hf-n { font-size: 1.3125rem; font-weight: 720; letter-spacing: -.03em; }
+.hf-l { font-size: .75rem; font-weight: 550; color: var(--label-secondary); }
+.hf-macros { display: grid; gap: 6px; min-width: 0; }
+.hf-kcal { font-size: .9375rem; color: var(--label-secondary); overflow-wrap: anywhere; }
+.hf-kcal b { color: var(--label); font-weight: 700; }
+/* Each macro: its name and grams on a line (the grams go under the name when there isn't room), its
+   bar under them. */
+.hf-macro { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px var(--space-2); }
+.hf-macro-k { font-size: .75rem; font-weight: 620; color: var(--label-secondary); }
+.hf-macro-v { font-size: .75rem; font-weight: 680; margin-inline-start: auto; }
+.hf-macro-v small { font-size: inherit; font-weight: 500; color: var(--label-secondary); }
+.hf-macro .rf-progress { flex: 1 0 100%; block-size: 5px; }
+.hf-go { align-self: start; display: inline-flex; color: var(--label-tertiary); }
+/* The meals: a tight list, each meal's name, what was eaten (or when it is) and its calories. */
+.hf-meals { display: grid; font-size: .9375rem; }
+.hf-meal { display: grid; grid-template-columns: 5.4em minmax(0, 1fr) auto; align-items: baseline; gap: var(--space-3); padding: 9px 0; box-shadow: inset 0 1px 0 var(--separator); }
+.hf-meal-k { font-weight: 620; }
+.hf-meal-what { min-width: 0; font-size: .8125rem; color: var(--label-secondary); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.hf-meal.is-empty .hf-meal-what { color: var(--label-tertiary); }
+.hf-meal-n { font-weight: 650; font-variant-numeric: tabular-nums; }
+.hf-btns { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.hf-btns .rf-btn[data-variant="filled"] { flex: 1 1 auto; }
+
+/* Without calorie tracking: the invite to start it. */
+.card.hf-invite { gap: var(--space-3); }
+.hf-inv-row { display: flex; gap: var(--space-3); align-items: flex-start; }
+.hf-inv-row .rf-list-icon { flex: none; }
+.hf-inv-text { display: grid; gap: 2px; min-width: 0; }
+.hf-inv-btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
+
+/* ---------------------------------------------------------------- the rings on the Food page and Today */
+/* Big enough for a four-digit number, and growing with the text so it stays inside. */
+.fd-sum .rf-ring { --_s: 5em; --_w: 7px; font-size: 1rem; }
+.fd-sum.is-compact .rf-ring { --_s: 4.25em; --_w: 6px; }
+.fd-sum .rf-ring-label { padding-inline: 6px; }
+/* Where the macros' column is narrow (a small phone, bigger text), each one's grams go beside its
+   name and its bar under them, as on Health, rather than squeezing the bar between. */
+.fd-macros { container-type: inline-size; }
+@container (max-width: 210px) {
+  .fd-macro { grid-template-columns: minmax(0, 1fr) auto; row-gap: 3px; }
+  .fd-macro .rf-progress { grid-column: 1 / -1; grid-row: 2; }
+  .fd-macro .t-caption { min-width: 0; }
+}
+
+/* ---------------------------------------------------------------- the Food page */
+.fd-same { justify-self: start; gap: 6px; margin-inline-start: calc(-1 * var(--space-2)); }
+.fd-same > .rf-icon { --rf-icon-size: 16px; }
+
+/* ---------------------------------------------------------------- the sheets */
+/* Add food: the meal at the top, recent foods with a one-tap add. Its switches sit at the content's
+   16 px inset (the lists' rail scrolls from there). */
+.fd-pick { padding: 0 var(--space-4) var(--space-3); }
+.fd-sheet :is(.fd-pick, .fd-tabs) .rf-segmented { margin: 0; }
+.fd-sheet .fd-tabs { margin-block: var(--space-3) 0; }
+.fd-reg { display: flex; align-items: center; gap: var(--space-2); }
+.fd-reg-main { appearance: none; border: 0; margin: 0; padding: 0; background: none; color: inherit; font: inherit; text-align: start; flex: 1 1 auto; min-width: 0; min-height: 40px; display: flex; align-items: center; cursor: pointer; }
+.fd-again { flex: none; }
+.fd-same-list { margin-bottom: var(--space-3); }
+/* A portion: the favourite star beside the calories. */
+.fd-big .rf-spacer { flex: 1; }
+.fd-big .rf-btn { align-self: center; }
+/* A time: the word, and the clock's field at the end. */
+.fd-time { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.fd-time .rf-field-control, .fd-trow .rf-field-control { flex: none; inline-size: auto; min-block-size: 40px; padding-inline: 10px; border-radius: var(--radius-md); }
+.fd-time .rf-input, .fd-trow .rf-input { inline-size: 7.2em; font-size: .9375rem; text-align: center; font-variant-numeric: tabular-nums; }
+/* Track calories: the target big, what it comes from, and Start. */
+.fd-start { gap: var(--space-3); }
+.fd-target { display: grid; justify-items: center; gap: 2px; text-align: center; padding-block: var(--space-1); }
+.fd-target-n { font-size: 2.75rem; font-weight: 750; letter-spacing: -.03em; line-height: 1.05; }
+.fd-start-k { display: grid; gap: 6px; }
+.fd-basis { margin: 0; }
+.gh-sheet-panel .fd-basis .rf-btn { min-block-size: 0; padding: 0 4px; vertical-align: baseline; color: var(--accent); font-weight: 650; }
+.fd-start-more { display: grid; gap: var(--space-3); }
+.fd-start-go { inline-size: 100%; }
+/* Meal times: each meal's from and to, which drop under its name when the row is narrow. */
+.fd-times { gap: var(--space-2); }
+.fd-trow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px var(--space-2); min-block-size: 44px; }
+.fd-trow > .t-subhead { flex: 1 0 auto; }
+.fd-tspan { display: flex; align-items: center; gap: var(--space-2); flex: 0 1 auto; min-inline-size: 0; }
+.fd-tspan .rf-field-control { flex: 0 1 auto; min-inline-size: 0; }
+.fd-tspan .rf-input { min-inline-size: 0; max-inline-size: 100%; }
+.fd-tany { padding-inline-end: var(--space-3); }
+.fd-tlearn { margin-block: var(--space-2); }
+.fd-times > .rf-btn { margin-top: var(--space-1); }

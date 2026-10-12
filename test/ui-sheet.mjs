@@ -359,7 +359,9 @@ check('the food Create sheet opens at medium', s && s.detent === 'medium', s);
 await page.focus('#cName');
 await wait(900);
 s = await sheet();
-check('focusing a text field expands it to large', s && s.detent === 'large', s);
+// (Since 1.12 the form fits whole at medium here, so there's no large detent to go to until the
+// keyboard comes up below.)
+check('focusing a text field keeps all of it in sight: at large, or at medium when it fits there whole', s && (s.detent === 'large' || s.content <= s.vh - s.top + 1), s);
 // The Android app's WebView shrinks above the keyboard.
 await page.focus('#cFib');
 await page.setViewportSize({ width, height: 844 - 330 });

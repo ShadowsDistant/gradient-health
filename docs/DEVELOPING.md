@@ -176,8 +176,9 @@ left alone. A few conventions:
 
 **Parts that load when they're needed.** Set-up (`src/ui/onboarding.js`), the plan review with
 Why this plan (`src/planreview.js`, `src/ui/review.js`), How it works (`src/data/science.js`,
-`src/ui/science.js`), a badge's share card (`src/ui/sharecard.js`) and notifications' planner
-(`src/notify.js`, loaded by `src/ui/notify.js` for someone who has them on) aren't in the page: they're
+`src/ui/science.js`), a badge's share card (`src/ui/sharecard.js`), notifications' planner
+(`src/notify.js`, loaded by `src/ui/notify.js` for someone who has them on) and the Food page with
+its sheets (`src/ui/foodpage.js`, whose stand-ins are in `src/ui/food.js`) aren't in the page: they're
 `APP_CHUNKS` in `scripts/build.mjs`, built into `dist/lazy/` and loaded with `GH.lazy(name)`.
 `src/ui/lazy.js` puts small stand-ins in their place: an action loads its part and then runs the
 real one, a screen draws its bar and title until its part is in, and `GH.planReview.available`
@@ -919,10 +920,26 @@ Both are the same llama.cpp release (b10663). Details:
 
 ## Food
 
-Food tracking is off until someone turns it on (Settings, What you track). `src/food.js` is pure logic
+Food tracking is off until someone turns it on (Settings, What you track, or Health's Track calories:
+one sheet with the target the app suggests, each part of it changeable). `src/food.js` is pure logic
 on the saved state and is unit-tested (`test/food.mjs`): Mifflin-St Jeor times an activity factor from
-the person's steps and workouts, a pace from the goal, floors, macros, and a burn estimate that learns
-from logged intake and the weight trend (a regression on raw weigh-ins, blended in slowly).
+the person's steps and workouts (or the activity they set), a pace from the goal, floors, macros, and a
+burn estimate that learns from logged intake and the weight trend (a regression on raw weigh-ins,
+blended in slowly).
+
+Food never takes a tab. Health has it after the week (`U.healthFood`: today's calories and macros, the
+four meals, Add food and Scan), which opens the Food page; Health's + menu has Food first, and Today
+has its card. The Food page and every food sheet are a part of their own (`src/ui/foodpage.js`, the
+`foodUi` chunk, loaded ahead of time for someone tracking calories); `src/ui/food.js` keeps the card,
+the section and the stand-ins in the page.
+
+- **Meal times**: breakfast, lunch and dinner each have a window (`profile.food.meals`, minutes after
+  midnight) and snacks are any other time. A new entry goes in the meal its time falls in unless one
+  was picked by hand (`mh`), and a new time moves it the same way. With Learn from my logs
+  (`profile.food.learn`, on by default) each window follows the last 4 weeks' times for that meal
+  (10th to 90th percentile, an hour either side, 3 hours at least, never more than 2 hours from the
+  window set, once it has 5 days), counting only times that say when food was eaten: not copies, an
+  earlier day's usual time (an entry's `at`), or meals logged within half an hour of each other.
 
 - **Built-in foods** load on demand from `dist/lazy/foods.js` (`GH.foods`), built from USDA data.
 - **Open Food Facts** (only with Online search and barcodes on): `FoodLookup.java` makes the request with

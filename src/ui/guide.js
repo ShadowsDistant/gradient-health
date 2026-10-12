@@ -37,15 +37,17 @@
     today: ['home', 'accent', 'Tap the streak for your progress, or the sparkle at the top left to ask the coach.'],
     plan: ['calendar', 'sky', 'Tap a day to see or move it, and swipe for next week. Miss one and the week shifts forward instead of doubling up. Moves, at the top, has every exercise.'],
     moves: ['library', 'violet', 'Every exercise, in ladders from easiest to hardest. You move up once you have 3+ reps left at the top of the range. Tap one to see how it\'s done.'],
-    food: ['food', 'green', 'Log meals by searching, scanning a barcode or adding calories. The ring shows what\'s left today, and your target learns from your logs and weight.'],
     health: ['heart', 'rose', 'Numbers from Health Connect and your own logs. Tap one for its history, or to add or fix it. Pull down to sync.'],
     progress: ['chart', 'green', 'The body map shows what you\'ve trained and where you\'ve got stronger. Tap a muscle for its story.'],
     you: ['person', 'indigo', 'Settings is at the top right. Help and What\'s new are at the bottom.'],
   };
+  // Health's, with calorie tracking on: where the food is.
+  const HEALTH_FOOD = 'Your food is at the top: tap it for the day\'s meals, or use + to add food. Below are your numbers from Health Connect and your own logs. Tap one for its history.';
   U.tip = (id) => {
     const t = TIPS[id];
     if (!t || U.seen(`tip_${id}`)) return '';
-    return `<div class="card tip" data-key="tip-${id}"><div class="tip-row"><span class="rf-list-icon" data-tone="${t[1]}">${U.icon(t[0])}</span><p class="t-callout">${U.esc(t[2])}</p></div><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="tipDone" data-arg="${id}">Got it</button></div>`;
+    const text = id === 'health' && GH.food && U.S && GH.food.full(U.S) ? HEALTH_FOOD : t[2];
+    return `<div class="card tip" data-key="tip-${id}"><div class="tip-row"><span class="rf-list-icon" data-tone="${t[1]}">${U.icon(t[0])}</span><p class="t-callout">${U.esc(text)}</p></div><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="tipDone" data-arg="${id}">Got it</button></div>`;
   };
   U.act.tipDone = (el) => {
     const card = el.closest('.tip');
@@ -161,22 +163,21 @@
   U.act.hcInviteLater = (el) => { const card = el.closest('.hc-invite'); U.markSeen('hcInvite'); U.haptic('dismiss'); collapse(card).then(() => { if (card) card.remove(); }); };
 
   /* ---------------------------------------------------------------- the tour */
-  // Three short cards, once the first workout is checked in: Today, the tab for the plan (or food),
-  // and the rest. They're built from the tabs there are, so they only describe what's on screen, and
-  // each shows the real tab bar with its tab lit.
+  // Three short cards, once the first workout is checked in: Today, the tab for the plan, and the
+  // rest. They're built from the tabs there are, so they only describe what's on screen, and each
+  // shows the real tab bar with its tab lit.
   const TAB_WORDS = {
-    food: 'Food logs your meals and counts what\'s left for today.',
     health: 'Health has your sleep, steps and heart rate.',
     progress: 'Progress shows your levels, streaks and records.',
     you: 'You has your badges, plans and Settings.',
   };
   function tourPages() {
     const tabs = U.tabList().map((t) => t[0]);
+    const words = Object.assign({}, TAB_WORDS, GH.food && U.S && GH.food.full(U.S) ? { health: 'Health has your food, sleep, steps and heart rate.' } : {});
     const pages = [{ tab: 'today', icon: 'home', title: 'Today is home base', text: tabs.includes('plan') ? 'Each day starts here: your workout, sized to your time, and a quick feel check that shapes it.' : 'Each day starts here: what\'s left to eat, how you slept and how you feel.' }];
     if (tabs.includes('plan')) pages.push({ tab: 'plan', icon: 'calendar', title: 'Your week', text: 'Plan shows every day ahead. Tap a day to see it or move it, and Moves has every exercise, easiest to hardest.' });
-    else if (tabs.includes('food')) pages.push({ tab: 'food', icon: 'food', title: 'Log what you eat', text: 'Search, scan a barcode or add the calories. Your target learns from your logs and weight.' });
     const rest = tabs.filter((t) => t !== 'today' && !pages.some((p) => p.tab === t));
-    pages.push({ tab: rest.includes('you') ? 'you' : rest[rest.length - 1], lit: rest, icon: 'compass', title: 'Everything else', text: rest.map((t) => TAB_WORDS[t]).filter(Boolean).join(' ') });
+    pages.push({ tab: rest.includes('you') ? 'you' : rest[rest.length - 1], lit: rest, icon: 'compass', title: 'Everything else', text: rest.map((t) => words[t]).filter(Boolean).join(' ') });
     return pages;
   }
   // A small copy of the real tab bar (same capsule, pill and tabs), with this card's tab lit.

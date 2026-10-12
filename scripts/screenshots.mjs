@@ -21,7 +21,7 @@ const out = process.env.SHOTS_OUT || join(root, 'docs/screenshots');
 mkdirSync(out, { recursive: true });
 const NOW = new Date('2026-10-19T08:10:00'); // a Monday, week 6
 
-// A week of meals on top of the training history, so the Food tab has something to show.
+// A week of meals on top of the training history, so the Food page has something to show.
 function seedFood() {
   const GH = window.GH, S = GH.ui.S, B = GH.brain, F = GH.food;
   const day = GH.ui.today();

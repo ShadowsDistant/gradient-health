@@ -125,6 +125,8 @@
       p.lead = { arm: l.arm === 'L' || l.arm === 'R' ? l.arm : null, leg: l.leg === 'L' || l.leg === 'R' ? l.leg : null };
     }
     for (const k of ['equipment', 'gym', 'protein', 'prefs', 'food']) if (own(p, k) && !isObj(p[k])) delete p[k];
+    // Food's meal times (each meal's start and end, minutes after midnight) and how it learns them.
+    if (p.food) { bool(p.food, 'learn'); pick(p.food, 'activity', ['auto', 'light', 'moderate', 'active']); const m = p.food.meals; if (own(p.food, 'meals') && !(isObj(m) && ['breakfast', 'lunch', 'dinner'].every((k) => Array.isArray(m[k]) && m[k].length === 2 && m[k].every((x) => Number.isInteger(x) && x >= 0 && x < 1440)))) delete p.food.meals; }
     const eq = p.equipment;
     if (eq) {
       for (const k of ['db', 'kb']) if (own(eq, k)) eq[k] = Array.isArray(eq[k]) ? [...new Set(eq[k].filter((x) => isNum(x) && x > 0 && x <= 500))].slice(0, 40) : [];

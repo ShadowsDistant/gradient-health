@@ -1,6 +1,6 @@
-/* The You tab: who you are and what you've done (your card, Progress when Food has its tab, your
- * badges), your plans, your answers, and the way to Settings, help, What's new and privacy. It took
- * over from Profile, which only opened from an unlabelled button on Today.
+/* The You tab: who you are and what you've done (your card, your badges), your plans, your answers,
+ * and the way to Settings, help, What's new and privacy. It took over from Profile, which only opened
+ * from an unlabelled button on Today.
  */
 (function (G) {
   'use strict';
@@ -110,18 +110,7 @@
     </div>`;
   }
 
-  // With Food on, Progress isn't a tab: it opens from here (and from Today's streak and Plan).
-  function progressCard(S, day) {
-    const b = B();
-    const recent = S.log.filter((l) => l.type === 'workout' && l.day > day - 28 && l.day <= day && b.isDone(l));
-    const ups = recent.reduce((a, l) => a + (l.celebrate || []).filter((c) => c.kind !== 'pr').length, 0);
-    const sub = recent.length ? `${U.plural(recent.length, 'workout')}${ups ? ` and ${U.plural(ups, 'level-up')}` : ''} in the last 4 weeks` : 'Your body map, levels and records';
-    return `<button type="button" class="card you-link tap-card" data-key="progress" data-act="openProgress">
-      <span class="rf-list-icon" data-tone="green">${U.icon('chart')}</span>
-      <span class="you-link-text"><span class="t-headline">Progress</span><span class="t-footnote rf-muted">${U.esc(sub)}</span></span>
-      ${U.icon('chevron-right', 'sm', 'you-link-go')}
-    </button>`;
-  }
+  // Progress, from Today's streak and Plan's muscles card: its tab (with workouts on, it always is one).
   U.act.openProgress = () => U.go('progress');
 
   /* ---------------------------------------------------------------- your plans */
@@ -145,7 +134,6 @@
   U.screens.you = {
     render(S, day) {
       const workouts = S.profile.workouts !== false;
-      const food = !!(GH.food && GH.food.full(S));
       const ver = (GH.platform && GH.platform.appVersion()) || GH.VERSION || '';
       const verShort = String(ver).split(' ')[0];
       return `${U.navbar('You', U.glassBtn('sliders', 'Settings', 'openSettings'))}
@@ -153,7 +141,6 @@
         <div class="section">
           ${U.tip ? U.tip('you') : ''}
           ${youCard(S, day)}
-          ${workouts && food ? progressCard(S, day) : ''}
         </div>
         <h2 class="sec-title t-title-3">Badges</h2>
         <div class="section you-badges">${U.badgeStrip ? U.badgeStrip(S, day) : achievementTiles(S, day)}</div>
