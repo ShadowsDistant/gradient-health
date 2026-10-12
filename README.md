@@ -243,6 +243,8 @@ Your profile, badges, plans, set-up answers and Settings. Settings has a search.
 
 - An AI model runs on your phone (Qwen3.5, in three sizes), so it works offline and nothing you ask leaves the phone.
 - Each question goes in with what the app has already worked out from your data and the research, and "What it used" under each answer shows exactly that.
+- **Answers are short and easy to scan:** the answer in a line with the number that matters in bold, a few points, a next step. Cards of your own data sit inside, like your sleep this week or how a lift has gone, drawn from the app's numbers, never the model's. Tap one to open it.
+- **Your chats are kept.** Start a new one any time, or go back to an old one and carry on where you left off. They stay on your phone.
 - Suggested questions come from your data. Answers keep coming if you close the chat.
 
 **Change your plan by saying what you want:** "More legs, my knees hurt, 20 minutes." The coach shows the changes first, and nothing changes until you apply them. Undo is always there.
