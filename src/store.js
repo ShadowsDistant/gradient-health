@@ -303,6 +303,23 @@
     const ai = S.ai;
     if (ai) {
       for (const k of ['reports', 'chat', 'deviceChat']) if (own(ai, k)) ai[k] = objects(ai[k], 1000);
+      // Chat history (src/chats.js): the newest 50 conversations, each a title, two times and its
+      // newest 60 messages (a role and its words; the engine that answered, the facts and embeds as
+      // lists of words).
+      if (own(ai, 'chats')) {
+        ai.chats = listOf(ai.chats, (c) => isObj(c) && typeof c.id === 'string' && c.id.length <= 40 && !BAD_KEYS.has(c.id), 50);
+        if (new Set(ai.chats.map((c) => c.id)).size !== ai.chats.length) ai.chats = ai.chats.filter((c, i, a) => a.findIndex((x) => x.id === c.id) === i);
+        for (const c of ai.chats) {
+          c.title = typeof c.title === 'string' ? c.title.slice(0, 120) : '';
+          for (const k of ['started', 'used']) if (!isNum(c[k])) c[k] = 0;
+          c.msgs = listOf(c.msgs, (m) => isObj(m) && (m.role === 'user' || m.role === 'assistant') && typeof m.text === 'string', 60);
+          for (const m of c.msgs) {
+            if (own(m, 'engine') && m.engine !== 'api' && m.engine !== 'device') delete m.engine;
+            for (const k of ['facts', 'embeds']) if (own(m, k)) m[k] = Array.isArray(m[k]) ? m[k].filter((x) => typeof x === 'string').slice(0, 12) : [];
+          }
+        }
+      }
+      if (own(ai, 'chatId') && ai.chatId !== null && typeof ai.chatId !== 'string') ai.chatId = null;
       if (own(ai, 'enabled') && typeof ai.enabled !== 'boolean') ai.enabled = false;
       if (own(ai, 'mode') && ai.mode !== 'api' && ai.mode !== 'device') delete ai.mode;
       // Claude's model and limits (src/spend.js makes the rest whole), and what it has cost: sums in
@@ -364,8 +381,10 @@
     if (ai.mode !== 'api' && ai.mode !== 'device') ai.mode = ai.enabled ? 'api' : 'device';
     delete S.coachChat;
     if (!Array.isArray(ai.reports)) ai.reports = [];
-    if (!Array.isArray(ai.chat)) ai.chat = [];
-    if (!Array.isArray(ai.deviceChat)) ai.deviceChat = [];
+    // 1.11: chat history (src/chats.js, whose migration turns the two logs from before into
+    // conversations).
+    if (!Array.isArray(ai.chats)) ai.chats = [];
+    if (ai.chatId === undefined) ai.chatId = null;
     stripSecrets(S);
     if (!S.catchup) S.catchup = { arm: { side: 'L', active: false, tests: [] }, leg: { side: 'L', active: false, tests: [] } };
     if (S.profile && GH.brain) {

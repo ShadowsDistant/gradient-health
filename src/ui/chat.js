@@ -1,6 +1,11 @@
 /* The coach chat: ask the on-device model (runs on the phone, grounded in what the built-in coach
  * works out) or Claude (your own API key), report an answer, or hand the question to the Claude app.
  * Opened from the coach button at the top left of every tab (U.coachBtn), or U.act.askCoach.
+ *
+ * Answers read like small cards: their Markdown drawn by src/ui/md.js, and the data embeds they name
+ * ([[sleep]], [[workouts]]...) drawn from the app's own numbers (src/ui/embeds.js). Every
+ * conversation is kept (src/chats.js): New chat starts another, Chats lists them to open, carry on or
+ * delete.
  */
 (function (G) {
   'use strict';
@@ -8,6 +13,7 @@
   const U = GH.ui = GH.ui || {};
   U.act = U.act || {}; U.on = U.on || {};
   const AI = () => GH.ai;
+  const CH = () => GH.chats;
   const canHandOff = () => !!(GH.platform && (GH.platform.isApp() || (G.navigator && G.navigator.share)));
   U.canHandOff = canHandOff;
 
@@ -18,16 +24,22 @@
   let chat = null;      // the open chat sheet
   let engineSheet = null;
   // The exchange in progress (or the last one that failed or was stopped), kept here rather than in
-  // the page so a redraw can't lose it: { id, engine, q, text, status, fraction, error, note, done, ctl }.
+  // the page so a redraw can't lose it: { id, engine, chat (its conversation), q, text, status,
+  // fraction, error, note, done, ctl }. One at a time; it carries on in its own conversation whatever
+  // is opened meanwhile.
   let live = null;
   let seq = 0;
   let unseen = false;   // an answer finished while the chat was closed: the coach button shows a dot
+  let landed = null;    // ...or in a conversation that isn't the open one: Chats shows a dot
   let crashNote = null; // the page restarted while the in-app model worked (see GH.llm.lastCrash)
   let crashChecked = false;
-  const ENGINES = [['device', 'On this phone'], ['api', 'Claude']];
+  let earlier = false;  // the open conversation's earlier messages are shown
+  const SHOWN = 24;     // the newest messages shown before "Show earlier"
   const engineOf = (S) => (S.ai.mode === 'api' ? 'api' : 'device');
-  const chatLog = (S) => (engineOf(S) === 'api' ? (S.ai.chat || []) : (S.ai.deviceChat || []));
+  const openId = (S) => S.ai.chatId || null;
+  const msgsOf = (S) => { const c = CH() && CH().current(S); return c ? c.msgs : []; };
   const busy = () => !!(live && !live.done);
+  const liveHere = (S) => !!(live && live.chat && live.chat === openId(S));
   const modelName = (id) => { const m = GH.llm && GH.llm.MODELS.find((x) => x.id === id); return m ? m.name : null; };
 
   /* The coach button: top left on every tab (core.js puts it there). A ring while an answer is on
@@ -74,22 +86,34 @@
       ${U.icon(e === 'api' ? 'sparkle' : 'chip', 'sm')}<span class="pill-text">${U.esc(name)}${sub ? `<span class="pill-sub"> · ${U.esc(sub)}</span>` : ''}</span><span class="pill-dot"${on ? ' data-on' : ''} aria-hidden="true"></span>${U.icon('chevron-down', 'sm')}</button>`;
   }
 
-  // Answers are plain text; **bold**, line breaks and "- " lists are shown as such. Everything else
-  // is escaped.
-  function fmt(text) {
-    const lines = U.esc(String(text || '').trim()).replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>').split('\n');
-    let out = '', list = false, para = [];
-    const flush = () => { if (para.length) { out += `<p>${para.join('<br>')}</p>`; para = []; } };
-    for (const line of lines) {
-      const item = /^\s*(?:[-*•]|\d+[.)])\s+(.*)$/.exec(line);
-      if (item) { flush(); if (!list) { out += '<ul>'; list = true; } out += `<li>${item[1]}</li>`; continue; }
-      if (list) { out += '</ul>'; list = false; }
-      if (!line.trim()) flush(); else para.push(line);
-    }
-    flush();
-    if (list) out += '</ul>';
-    return out;
+  /* ---------------------------------------------------------------- answers as cards */
+  // Answers' Markdown (src/ui/md.js) and their embeds (src/ui/embeds.js) are a part that loads when
+  // the chat is about to open (a finger on the coach button, or the chat itself); until it's in, an
+  // answer is its words as they are, and it's drawn again as soon as it is.
+  const part = () => (GH.md && GH.embeds ? Promise.resolve(true) : GH.lazy('cards').catch(() => false));
+  document.addEventListener('pointerdown', (e) => { if (!GH.embeds && e.target && e.target.closest && e.target.closest('.coach-btn, [data-act="askPreset"]')) part(); }, { capture: true, passive: true });
+  // Each embed drawn once per drawing of the chat (and kept while an answer streams in, so its card
+  // isn't worked out again every frame).
+  const embedCache = new Map();
+  function embedHtml(token) {
+    if (!GH.embeds) return '';
+    if (!embedCache.has(token)) embedCache.set(token, GH.embeds.html(U.S, U.today(), token));
+    return embedCache.get(token);
   }
+  // An answer's words and the embeds the app added after them. streaming: still coming in, with the
+  // caret at the end of its last line. noEmbed: the on-device model's, whose own [[…]] the app takes
+  // out (it adds the embeds for the question once the answer is in).
+  const none = () => '';
+  function answerHtml(text, embeds, streaming, noEmbed) {
+    let html = GH.md ? GH.md.render(text, { streaming, embed: noEmbed ? none : embedHtml }) : `<p>${U.esc(GH.coach ? GH.coach.noEmbeds(text) : text).replace(/\n+/g, '<br>')}</p>`;
+    if (streaming) {
+      const caret = '<span class="caret" aria-hidden="true"></span>';
+      const at = /(<\/(?:p|li|h3|h4|td|th)>)((?:<\/(?:ul|ol|li|tr|tbody|thead|table|div)>)*)$/;
+      html = at.test(html) ? html.replace(at, `${caret}$1$2`) : html + caret;
+    }
+    return html + (embeds || []).map(embedHtml).join('');
+  }
+
   const AVATAR = `<span class="msg-av" aria-hidden="true">${U.icon('sparkle', 'sm')}</span>`;
   const tool = (act, i, icon, label) => `<button type="button" class="msg-tool" data-act="${act}" data-arg="${i}">${U.icon(icon, 'sm')}${label}</button>`;
   const flagBtn = (i) => tool('flagAnswer', i, 'flag', 'Report');
@@ -101,18 +125,18 @@
     const meta = m.cost != null && sp ? `<span class="msg-meta t-caption rf-num">${U.esc(`${sp.byId(m.model) ? sp.byId(m.model).short : 'Claude'} · ${sp.money(m.cost)}`)}</span>` : '';
     const tools = m.safety ? '' : `<div class="msg-tools">${tool('copyAnswer', i, 'copy', 'Copy')}${m.facts && m.facts.length ? tool('answerFacts', i, 'info', 'What it used') : ''}${flagBtn(i)}${meta}</div>`;
     const note = m.note ? `<p class="t-footnote rf-muted msg-note">${U.esc(m.note)}</p>` : '';
-    return `<div class="msg coach">${AVATAR}<div class="msg-main"><div class="bubble coach${m.stopped ? ' is-stopped' : ''}">${fmt(m.text)}</div>${note}${tools}</div></div>`;
+    return `<div class="msg coach">${AVATAR}<div class="msg-main"><div class="bubble coach answer${m.stopped ? ' is-stopped' : ''}${m.safety ? ' is-safety' : ''}">${answerHtml(m.text, m.embeds)}</div>${note}${tools}</div></div>`;
   }
   const STATUS = { loading: 'Starting the model', thinking: 'Thinking', reading: 'Reading your numbers', writing: 'Writing' };
   function liveInner(l) {
     if (l.error) return `<div class="bubble coach is-error">${U.esc(l.error)}</div><div class="msg-tools">${l.budget ? tool('claudePage', 0, 'card', 'Limits') : tool('askRetry', 0, 'refresh', 'Try again')}</div>`;
-    if (l.text) return `<div class="bubble coach${l.done ? '' : ' is-writing'}">${fmt(l.text)}${l.done ? '' : '<span class="caret" aria-hidden="true"></span>'}</div>${l.done && l.note ? `<p class="t-footnote rf-muted msg-note">${U.esc(l.note)}</p>` : ''}`;
+    if (l.text) return `<div class="bubble coach answer${l.done ? '' : ' is-writing'}">${answerHtml(l.text, null, !l.done, l.engine === 'device')}</div>${l.done && l.note ? `<p class="t-footnote rf-muted msg-note">${U.esc(l.note)}</p>` : ''}`;
     if (l.done) return `<div class="bubble coach is-stopped">${U.esc(l.note || 'Stopped.')}</div>`;
     const f = l.fraction;
     const pct = f != null && f > 0 && l.status !== 'thinking' ? ` ${Math.round(f * 100)}%` : '…';
     return `<div class="bubble coach is-typing"><span class="bubble-status">${STATUS[l.status] || STATUS.thinking}${pct}</span>${f != null && l.status !== 'thinking' ? `<span class="chat-prog" aria-hidden="true"><i style="--p:${Math.max(0.02, Math.min(1, f)).toFixed(3)}"></i></span>` : ''}</div>`;
   }
-  const liveHtml = (S) => (live && live.engine === engineOf(S) ? `${userMsg(live.q)}<div class="msg coach" id="chatLive" aria-live="polite">${AVATAR}<div class="msg-main">${liveInner(live)}</div></div>` : '');
+  const liveHtml = (S) => (liveHere(S) ? `${userMsg(live.q)}<div class="msg coach" id="chatLive" aria-live="polite">${AVATAR}<div class="msg-main">${liveInner(live)}</div></div>` : '');
 
   // Questions worth asking today, from what the app knows (so they have good answers).
   function suggestions(S, day) {
@@ -143,35 +167,42 @@
     const note = crashNote && engineOf(S) === 'device' ? `<div class="chat-note card"><span aria-hidden="true">${U.icon('alert', 'sm')}</span><p class="t-footnote">${U.esc(crashNote)}</p></div>` : '';
     const g = gate(S);
     if (g) return note + g;
-    const all = chatLog(S);
-    const start = Math.max(0, all.length - 12);
+    const all = msgsOf(S);
+    const start = earlier ? 0 : Math.max(0, all.length - SHOWN);
     const msgs = all.slice(start);
-    if (!msgs.length && !(live && live.engine === engineOf(S))) return note + emptyState(S);
+    if (!msgs.length && !liveHere(S)) return note + emptyState(S);
+    const more = start > 0 ? `<button type="button" class="rf-btn chat-earlier" data-variant="plain" data-size="sm" data-act="chatEarlier">Show ${U.plural(start, 'earlier message')}</button>` : '';
     // AI answers can be reported; a reported one stays hidden. Safety answers are the app's own.
-    return note + msgs.map((m, i) => (m.role === 'user' ? userMsg(m.text) : coachMsg(m, start + i))).join('') + liveHtml(S);
+    return note + more + msgs.map((m, i) => (m.role === 'user' ? userMsg(m.text) : coachMsg(m, start + i))).join('') + liveHtml(S);
   }
+  U.act.chatEarlier = () => { earlier = true; refreshChat(); };
   const FOOT = {
     device: 'Runs on your phone and can be wrong.',
     api: 'Claude sees a summary without your name, not your raw data.',
   };
   function composeBtn() {
-    return busy() && live.engine === engineOf(U.S)
+    return busy() && liveHere(U.S)
       ? `<button type="button" class="rf-btn rf-glass" data-shape="circle" aria-label="Stop" data-act="askStop">${U.icon('stop')}</button>`
       : `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-shape="circle" aria-label="Send" data-act="askSend">${U.icon('send')}</button>`;
   }
   function chatBody(S) {
     const e = engineOf(S);
     const ready = !gate(S);
-    return `<div class="chat-bar">${pill(S)}<button type="button" class="rf-btn" data-variant="plain" data-shape="circle" data-size="sm" aria-label="More" data-act="chatMenu">${U.icon('more')}</button></div>
+    const small = (act, icon, label, extra) => `<button type="button" class="rf-btn chat-bar-btn" data-variant="plain" data-shape="circle" data-size="sm" aria-label="${label}" data-act="${act}"${extra || ''}>${U.icon(icon)}</button>`;
+    return `<div class="chat-bar">${pill(S)}${small('chatNew', 'compose', 'New chat')}${small('chatMenu', 'more', 'More')}</div>
       <div class="chat-log" id="chatLog">${logBody(S)}</div>
       <div class="chat-compose"${ready ? '' : ' hidden'}><textarea class="rf-input" id="askQ" rows="1" maxlength="600" placeholder="Ask a question" aria-label="Your question" enterkeyhint="send"></textarea>${composeBtn()}</div>
       <p class="t-footnote rf-muted chat-foot">${FOOT[e]} Not medical advice.</p>`;
   }
   const nearBottom = (log) => log.scrollHeight - log.scrollTop - log.clientHeight < 96;
-  // Redraws the chat (keeps what's typed, and the newest answer in view if it was).
-  function refreshChat() {
+  // Redraws the chat (keeps what's typed, and the newest answer in view if it was). to: 'bottom' or
+  // 'top' to scroll there (another conversation opened).
+  function refreshChat(to) {
+    embedCache.clear();
     if (engineSheet && !engineSheet.closed) engineSheet.update(engineBody(U.S));
+    refreshList();
     if (!chat || chat.closed) return;
+    markChats();
     const q = chat.el.querySelector('#askQ');
     const typed = q ? q.value : '';
     const log0 = chat.el.querySelector('#chatLog');
@@ -180,30 +211,35 @@
     const q2 = chat.el.querySelector('#askQ');
     if (q2 && typed) { q2.value = typed; grow(q2); }
     const log = chat.el.querySelector('#chatLog');
-    if (log && stick) log.scrollTop = log.scrollHeight;
+    if (log && (to === 'top')) log.scrollTop = 0;
+    else if (log && (stick || to === 'bottom')) log.scrollTop = log.scrollHeight;
   }
   U.refreshChat = refreshChat;
-  // The answer in progress, redrawn at most once a frame as words arrive.
+  // Chats, in the sheet's header, has a dot while an answer that landed in another chat is unread.
+  // (A mark of its own, as the coach button's: the glass keeps Refract's ::before and ::after.)
+  function markChats() {
+    const b = chat && chat.el.querySelector('.rf-sheet-header [data-act="chatList"]');
+    if (!b) return;
+    if (!b.querySelector('.chats-dot')) b.insertAdjacentHTML('beforeend', '<span class="chats-dot" aria-hidden="true"></span>');
+    b.toggleAttribute('data-unseen', !!landed);
+    b.setAttribute('aria-label', landed ? 'Chats, a new answer' : 'Chats');
+  }
+  // The answer in progress, patched in place at most once a frame as words arrive (U.morph keeps
+  // what's already there: an embed's card, the caret).
   let paintFrame = 0;
   function paintLive() {
     if (paintFrame) return;
     paintFrame = G.requestAnimationFrame(() => {
       paintFrame = 0;
       syncButtons();
-      if (!chat || chat.closed || !live) return;
+      if (!chat || chat.closed || !live || !liveHere(U.S)) return;
       const box = chat.el.querySelector('#chatLive .msg-main');
       if (!box) { refreshChat(); return; }
       const log = chat.el.querySelector('#chatLog');
       const stick = log && nearBottom(log);
-      box.innerHTML = liveInner(live);
+      U.morph(box, liveInner(live));
       if (log && stick) log.scrollTop = log.scrollHeight;
     });
-  }
-  function setComposeBtn() {
-    const box = chat && !chat.closed && chat.el.querySelector('.chat-compose');
-    if (!box) return;
-    const btn = box.querySelector('[data-act="askSend"], [data-act="askStop"]');
-    if (btn) btn.outerHTML = composeBtn();
   }
   // The question box grows with what's typed (up to about five lines).
   function grow(t) { t.style.height = 'auto'; t.style.height = `${Math.min(t.scrollHeight, 132)}px`; }
@@ -223,13 +259,19 @@
     if (ico && G.Refract && G.Refract.effect) { try { G.Refract.effect(ico, 'beat'); } catch (e) { /* only a flourish */ } }
     unseen = false;
     if (chat && !chat.closed) { syncButtons(); return; }
+    earlier = false;
+    // A suggested question starts a chat of its own.
+    if (preset && !busy()) S.ai.chatId = null;
+    embedCache.clear();
+    if (!GH.embeds) part().then((ok) => { if (ok) refreshChat(); });
     chat = U.sheet({
       title: 'Ask the coach', size: 'full', cls: 'chat-sheet',
-      body: chatBody(S),
+      body: chatBody(S), action: { label: 'Chats', act: 'chatList' },
       // Closing doesn't stop an answer: it carries on, and the coach button shows when it's there.
       onClose: () => { chat = null; syncButtons(); },
       after: (c) => { const log = c.el.querySelector('#chatLog'); if (log) log.scrollTop = log.scrollHeight; },
     });
+    markChats();
     syncButtons();
     // A suggested question goes in once the sheet is up and, for the on-device coach, once it's
     // known whether the model is there (the box to type in waits for that).
@@ -286,7 +328,7 @@
     </div>`;
   }
   U.act.chatEngineSheet = () => {
-    if (U.checkDevice) U.checkDevice().then(refreshChat);
+    if (U.checkDevice) U.checkDevice().then(() => refreshChat());
     engineSheet = U.sheet({ title: 'Who answers', size: 'auto', body: engineBody(U.S), onClose: () => { engineSheet = null; } });
   };
   U.act.setChatEngine = (el) => U.on.setChatEngine(el, null, el.dataset.arg);
@@ -305,15 +347,107 @@
   };
   U.act.chatConsent = async () => { if (await U.claudeConsent()) { U.S.ai.enabled = true; U.save(true); } refreshChat(); };
 
+  /* ---------------------------------------------------------------- chats */
+  // New chat: the next question starts a conversation of its own (the one open stays in Chats, and
+  // an answer still coming carries on in it).
+  U.act.chatNew = () => {
+    const S = U.S;
+    earlier = false;
+    if (openId(S)) { S.ai.chatId = null; U.save(); U.haptic('select'); }
+    refreshChat('top');
+    const q = chat && chat.el.querySelector('#askQ');
+    if (q && !q.closest('[hidden]') && !(GH.platform && GH.platform.isApp())) q.focus({ preventScroll: true });
+  };
+  // Chats: every conversation, newest first, grouped by when it was last used, each with who
+  // answered; tap one to carry on with it. Edit shows a delete button on each (with Undo), and
+  // Delete all chats.
+  let listSheet = null, editing = false;
+  function listBody(S) {
+    const list = CH() ? CH().recent(S) : [];
+    if (!list.length) return `<div class="sheet-pad chat-list-none"><span class="chat-setup-ico" aria-hidden="true">${U.icon('chat')}</span><p class="t-headline">No chats yet</p><p class="t-callout rf-muted">Questions you ask the coach are kept here, on this phone, to go back to and carry on.</p></div>`;
+    const today = U.today();
+    const dayOf = (ms) => GH.brain.dayOf(ms, U.rollHour());
+    const groups = [['Today', []], ['Yesterday', []], ['Earlier', []]];
+    for (const c of list) { const d = dayOf(c.used || c.started || 0); groups[d >= today ? 0 : d === today - 1 ? 1 : 2][1].push(c); }
+    const row = (c) => {
+      const api = CH().engineOf(c) === 'api';
+      const d = dayOf(c.used || 0);
+      const when = d >= today - 1 ? U.fmtClock(c.used) : U.fmtDay(d);
+      const n = c.msgs.filter((m) => m.role === 'user').length;
+      const open = c.id === openId(S);
+      return `<li data-key="cl-${U.esc(c.id)}"><div class="chat-row${open ? ' is-open' : ''}">
+        <button type="button" class="rf-list-row chat-row-main" data-act="chatOpen" data-arg="${U.esc(c.id)}"${open ? ' aria-current="true"' : ''}>
+          <span class="rf-list-icon" data-tone="${api ? 'indigo' : 'violet'}" aria-label="${api ? 'Claude' : 'On this phone'}">${U.icon(api ? 'sparkle' : 'chip')}</span>
+          <span class="rf-list-text"><span class="rf-list-title">${U.esc(c.title || 'Chat')}</span><span class="rf-list-sub">${U.esc(`${when} · ${U.plural(n, 'question')}`)}${landed === c.id ? ' · <b class="chat-row-new">New answer</b>' : ''}</span></span>
+          ${open && !editing ? `<span class="chat-engine-on" aria-hidden="true">${U.icon('check')}</span>` : ''}
+        </button>
+        ${editing ? `<button type="button" class="rf-btn chat-row-del" data-variant="plain" data-shape="circle" data-size="sm" aria-label="Delete ${U.esc(c.title || 'this chat')}" data-act="chatDelete" data-arg="${U.esc(c.id)}">${U.icon('trash')}</button>` : ''}
+      </div></li>`;
+    };
+    return `<div class="chat-list${editing ? ' is-editing' : ''}">${groups.filter((g) => g[1].length).map(([name, cs]) => `<h3 class="rf-list-header">${name}</h3><ul class="rf-list" data-key="cg-${name}">${cs.map(row).join('')}</ul>`).join('')}
+      ${editing ? '<div class="sheet-pad"><button type="button" class="rf-btn chat-del-all" data-variant="soft" data-tone="critical" data-act="chatDeleteAll">' + U.icon('trash') + 'Delete all chats</button></div>' : ''}
+      <p class="t-footnote rf-muted chat-list-foot">Chats stay on this phone and go in Copy my data. The newest ${CH().MAX_CHATS} are kept.</p></div>`;
+  }
+  function refreshList() {
+    if (!listSheet || listSheet.closed) return;
+    const any = !!(CH() && CH().all(U.S).length);
+    if (!any) editing = false;
+    listSheet.update(listBody(U.S));
+    const b = listSheet.el.querySelector('.rf-sheet-header [data-act="chatListEdit"]');
+    if (b) { b.textContent = editing ? 'Done' : 'Edit'; b.hidden = !any; }
+  }
+  U.act.chatList = () => {
+    editing = false;
+    listSheet = U.sheet({ title: 'Chats', size: 'auto', detent: 'large', cls: 'chat-list-sheet', body: listBody(U.S), action: { label: 'Edit', act: 'chatListEdit' }, onClose: () => { listSheet = null; editing = false; } });
+    refreshList();
+  };
+  U.act.chatListEdit = () => { editing = !editing; U.haptic('select'); refreshList(); };
+  U.act.chatOpen = (el) => {
+    const S = U.S, id = el.dataset.arg;
+    if (!CH() || !CH().get(S, id)) return;
+    if (landed === id) landed = null;
+    earlier = false;
+    S.ai.chatId = id;
+    U.save();
+    U.haptic('select');
+    if (listSheet) listSheet.close('ok');
+    refreshChat('bottom');
+  };
+  // Deletes one, with Undo; an answer still coming in it stops.
+  function deleteChat(id) {
+    const S = U.S;
+    if (busy() && live.chat === id) stopLive();
+    const was = CH().remove(S, id);
+    if (!was) return;
+    if (landed === id) landed = null;
+    U.save();
+    refreshChat();
+    U.haptic('remove');
+    U.toast('Chat deleted', 'neutral', undefined, { label: 'Undo', onClick: () => { CH().restore(U.S, was); U.save(); refreshChat(); U.haptic('undo'); } });
+  }
+  U.act.chatDelete = (el) => deleteChat(el.dataset.arg);
+  U.act.chatDeleteAll = async () => {
+    if (!(await U.confirm('Delete all chats?', 'Every conversation with the coach goes from this phone. This can\'t be undone.', 'Delete all', 'critical', 'trash'))) return;
+    if (busy()) stopLive();
+    live = null;
+    landed = null;
+    editing = false;
+    CH().clear(U.S);
+    U.save(true);
+    refreshChat('top');
+    U.toast('All chats deleted', 'neutral');
+  };
+
   /* ---------------------------------------------------------------- more */
   // The chat's options: a menu that grows out of its button (U.menu), in the chat's sheet.
   U.act.chatMenu = (el) => {
     const S = U.S;
+    const cur = !!(CH() && CH().current(S));
     U.menu(el, [
       canHandOff() ? { act: 'chatMenuPick', arg: 'askClaudeApp', icon: 'share', label: 'Ask in the Claude app' } : false,
       { act: 'chatMenuPick', arg: 'chatSettings', icon: 'sliders', label: 'AI coach settings' },
-      chatLog(S).length || live ? null : false,
-      chatLog(S).length || live ? { act: 'chatMenuPick', arg: 'askClear', icon: 'trash', label: 'Clear this chat', tone: 'critical' } : false,
+      cur ? null : false,
+      cur ? { act: 'chatMenuPick', arg: 'askClear', icon: 'trash', label: 'Delete this chat', tone: 'critical' } : false,
     ], { label: 'Chat options' });
   };
   // A pick: the menu closes itself (Refract), then the action runs.
@@ -324,25 +458,19 @@
   U.act.chatSettings = () => { U.closeSheets(); setTimeout(() => U.open('settings', 'coach'), 320); };
   U.act.askPreset = (el) => U.act.askCoach(el, null, el.dataset.arg);
   U.act.askQuick = (el) => { const q = document.getElementById('askQ'); if (q) q.value = el.dataset.arg; U.act.askSend(); };
-  U.act.askClear = () => {
-    const S = U.S;
-    if (busy()) stopLive();
-    live = null;
-    if (engineOf(S) === 'api') { if (AI()) AI().clearChat(S); } else if (GH.deviceCoach) GH.deviceCoach.clear(S);
-    U.save();
-    refreshChat();
-    U.haptic('remove');
-  };
+  // Delete this chat (the open one).
+  U.act.askClear = () => { const id = openId(U.S); if (id && CH().get(U.S, id)) deleteChat(id); };
+  const msgAt = (el) => msgsOf(U.S)[Number(el.dataset.arg)];
   U.act.copyAnswer = (el) => {
-    const m = chatLog(U.S)[Number(el.dataset.arg)];
+    const m = msgAt(el);
     if (!m || !GH.platform) return;
-    GH.platform.copy(m.text);
+    GH.platform.copy(GH.md ? GH.md.plain(m.text) : m.text);
     U.haptic('copy');
     U.toast('Copied');
   };
   // What the app worked out and handed the model for this answer (the model only worded it).
   U.act.answerFacts = (el) => {
-    const m = chatLog(U.S)[Number(el.dataset.arg)];
+    const m = msgAt(el);
     if (!m || !m.facts) return;
     U.sheet({
       title: 'What it used', size: 'auto',
@@ -368,25 +496,28 @@
   U.act.askSend = async () => {
     const S = U.S;
     const q = document.getElementById('askQ');
-    if (!q || busy()) return;
+    if (!q) return;
+    // One answer at a time: one still coming in another conversation finishes there first.
+    if (busy()) { if (!liveHere(S)) U.toast('An answer is still on its way', 'neutral', 'It goes in its own chat. Ask again once it\'s in.'); return; }
     const text = q.value.trim();
     if (!text) return;
     q.value = '';
     grow(q);
     lastQuestion = text;
     const e = engineOf(S);
+    // The open conversation, or a new one (kept once its first answer is in).
+    const cid = CH() ? CH().target(S) : null;
     const id = ++seq;
     const ctl = new AbortController();
-    live = { id, engine: e, q: text, text: '', status: 'thinking', fraction: null, error: null, note: null, done: false, ctl };
+    live = { id, engine: e, chat: cid, q: text, text: '', status: 'thinking', fraction: null, error: null, note: null, done: false, ctl };
     const mine = () => live && live.id === id;
     U.haptic('send');
-    refreshChat();
-    const log = document.getElementById('chatLog');
-    if (log) log.scrollTop = log.scrollHeight;
+    refreshChat('bottom');
     const finish = (ok) => {
       if (!mine()) return;
       live.done = true;
       if (!(chat && !chat.closed) && ok) unseen = true;
+      if (ok && openId(U.S) !== cid) landed = cid;
       if (ok) { live = null; U.haptic('success'); } else if (live.error) U.haptic('error');
       U.save(true);
       refreshChat();
@@ -395,6 +526,7 @@
     if (e === 'device') {
       try {
         const res = await GH.deviceCoach.ask(S, U.today(), text, {
+          chat: cid,
           signal: ctl.signal,
           onStatus: (st, f) => { if (!mine() || live.text) return; live.status = st; live.fraction = f == null ? null : f; paintLive(); },
           onToken: (piece, soFar) => { if (!mine()) return; live.text = soFar; live.status = 'writing'; paintLive(); },
@@ -406,12 +538,12 @@
         if (!mine()) return;
         live.error = err.message || 'The on-device model couldn\'t answer that.';
         finish(false);
-        if (err.code === 'not-installed' && U.checkDevice) U.checkDevice().then(refreshChat);
+        if (err.code === 'not-installed' && U.checkDevice) U.checkDevice().then(() => refreshChat());
       }
       return;
     }
     try {
-      await AI().ask(S, U.today(), text, (delta, snapshot) => { if (!mine()) return; live.text = snapshot; live.status = 'writing'; paintLive(); });
+      await AI().ask(S, U.today(), text, (delta, snapshot) => { if (!mine()) return; live.text = snapshot; live.status = 'writing'; paintLive(); }, { chat: cid });
       finish(true);
     } catch (err) {
       if (!mine()) return;
@@ -426,7 +558,8 @@
   /* ---------------------------------------------------------------- reporting AI answers */
   // Anything an AI wrote (an on-device or Claude answer, Claude's report or suggestions) can be
   // reported from where it's shown. It's hidden right away and kept in a local list; sending it to
-  // the developer opens a GitHub issue with the answer and the reason, to read before posting.
+  // the developer opens a GitHub issue with the answer and the reason, to read before posting. The
+  // repository is public, so the sheet says the issue is too.
   const REPORT_URL = 'https://github.com/ShadowsDistant/gradient-health/issues/new';
   const REASONS = [['unsafe', 'Harmful or unsafe'], ['wrong', 'Wrong or misleading'], ['offensive', 'Offensive'], ['other', 'Something else']];
   U.flagSheet = (o) => {
@@ -440,7 +573,7 @@
         ${U.choice('flagReason', REASONS, reason, 'What\'s wrong with it', ' class="ob-chips" data-on="flagReason"')}
         <div class="rf-field"><label class="rf-field-label" for="flagNote">Anything to add (optional)</label><div class="rf-field-control"><textarea class="rf-input" id="flagNote" rows="2" maxlength="500"></textarea></div></div>
         <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="flagSend">Report</button><button type="button" class="rf-btn" data-size="lg" data-act="flagHide">Just hide it</button></div>
-        <p class="t-footnote rf-muted">Report also opens a GitHub issue with the answer and your reason, for you to edit and post. Nothing is sent until you do.</p>
+        <p class="t-footnote rf-muted">Report also opens a GitHub issue with the answer and your reason, for you to read and edit. Once you post it, the issue is public on GitHub, so take out anything personal first. Nothing is sent until you do.</p>
       </div>`,
     });
     const record = (send) => {
@@ -455,7 +588,7 @@
         const body = [`**What:** ${o.kind} from ${o.engine}${o.model ? ` (${o.model})` : ''}`, `**Reason:** ${(REASONS.find((r) => r[0] === reason) || [, reason])[1]}`, note ? `**Note:** ${note}` : '', '', '**The answer:**', '', String(o.text || '').slice(0, 1500), '', `_Gradient Health ${GH.VERSION || ''}_`].filter((x) => x !== null).join('\n');
         GH.platform.openUrl(`${REPORT_URL}?${new URLSearchParams({ title: `AI answer report: ${(REASONS.find((r) => r[0] === reason) || [, reason])[1].toLowerCase()}`, body, labels: 'ai-report' }).toString()}`);
       }
-      U.toast('Reported', 'positive', send ? 'It\'s hidden on your phone. Post the issue to send it to the developer.' : 'It\'s hidden on your phone.');
+      U.toast('Reported', 'positive', send ? 'It\'s hidden on your phone. Once you post the issue, it\'s public on GitHub.' : 'It\'s hidden on your phone.');
     };
     U.on.flagReason = (el, ev, v) => { if (v) reason = v; };
     U.act.flagSend = () => record(true);
@@ -465,12 +598,12 @@
   U.act.flagAnswer = (el) => {
     const S = U.S;
     const i = Number(el.dataset.arg);
-    const log = chatLog(S);
+    const log = msgsOf(S);
     const m = log[i];
     if (!m) return;
-    const e = engineOf(S);
+    const api = (m.engine || engineOf(S)) === 'api';
     const q = log[i - 1] && log[i - 1].role === 'user' ? log[i - 1].text : '';
-    U.flagSheet({ kind: 'chat answer', what: 'answer', engine: e === 'api' ? 'Claude' : 'the on-device model', model: e === 'api' ? (m.model && GH.spend && GH.spend.byId(m.model) ? GH.spend.byId(m.model).name : AI().modelName(S)) : m.model || (GH.llm && GH.llm.loaded() ? GH.llm.loaded().id : S.ai.deviceModel), text: q ? `Q: ${q}\nA: ${m.text}` : m.text, onHide: () => { m.flagged = true; refreshChat(); } });
+    U.flagSheet({ kind: 'chat answer', what: 'answer', engine: api ? 'Claude' : 'the on-device model', model: api ? (m.model && GH.spend && GH.spend.byId(m.model) ? GH.spend.byId(m.model).name : AI().modelName(S)) : m.model || (GH.llm && GH.llm.loaded() ? GH.llm.loaded().id : S.ai.deviceModel), text: q ? `Q: ${q}\nA: ${m.text}` : m.text, onHide: () => { m.flagged = true; refreshChat(); } });
   };
   U.act.flagReport = () => {
     const S = U.S;

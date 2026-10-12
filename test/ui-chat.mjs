@@ -4,8 +4,11 @@
 // on-device model (a tiny random-weight stand-in with Qwen3.5's layout, served with Range requests
 // like the app serves real models) and the facts it gets with each question, Stop, the safety
 // answer, and the model rows in Settings. The tiny model's words are nonsense; what's checked is that
-// answers stream in, stop, and are kept. Needs build/tiny-qwen35.gguf (made here by
-// scripts/make-tiny-gguf.py; see test/llm.mjs).
+// answers stream in, stop, and are kept. Then an answer written out as a model would: drawn as a
+// card with a list and the embed the app adds for its question, an embed it can't draw dropped; and
+// chat history: New chat, Chats, opening one and carrying on with its turns, deleting with Undo,
+// Delete all, and the logs from before 1.11 moved into conversations. Needs build/tiny-qwen35.gguf
+// (made here by scripts/make-tiny-gguf.py; see test/llm.mjs).
 // Usage: node test/ui-chat.mjs [--dark] [--width=360]
 import { createRequire } from 'node:module';
 import { existsSync, statSync } from 'node:fs';
@@ -38,6 +41,8 @@ page.on('pageerror', (e) => errors.push(e.message));
 // Looking for a model file that isn't on the phone is a 404, which Chromium logs.
 page.on('console', (m) => { if (m.type() === 'error' && !/\/models\/[^/]+\.gguf$/.test((m.location() || {}).url || '')) errors.push(m.text()); });
 await page.addInitScript(seedBridge);
+// The open conversation's messages (src/chats.js).
+await page.addInitScript(() => { window.__msgs = () => { const c = window.GH.chats.current(window.GH.ui.S); return c ? c.msgs : []; }; });
 await page.goto(server.url);
 await page.waitForSelector('.onboard:not([hidden])');
 await page.evaluate(seedState);
@@ -103,10 +108,10 @@ const cards = await page.evaluate(() => [...document.querySelectorAll('.chat-she
 check('with questions worth asking today, from their data', cards.length >= 3 && cards.includes('How is my sleep?') && cards.includes('What should I focus on this week?'), cards);
 await page.fill('#askQ', 'How is my sleep?');
 await page.click('.chat-sheet [data-act="askSend"]');
-await page.waitForFunction(() => { const s = window.GH.ui.S.ai.deviceChat || []; return s.length >= 2; }, null, { timeout: 60000 });
+await page.waitForFunction(() => window.__msgs().length >= 2, null, { timeout: 60000 });
 b = await bubbles();
 check('the answer streams into a bubble', b.length === 2 && b[1].text.trim().length > 0 && !b[1].cls.includes('is-error'), b);
-check('and is kept for the next turn, with the model that wrote it', await page.evaluate(() => window.GH.ui.S.ai.deviceChat.length === 2 && window.GH.ui.S.ai.deviceChat[0].text === 'How is my sleep?' && window.GH.ui.S.ai.deviceChat[1].model === 'q35-2'));
+check('and is kept for the next turn in a conversation of its own, with the model that wrote it', await page.evaluate(() => { const m = window.__msgs(); return m.length === 2 && m[0].text === 'How is my sleep?' && m[1].model === 'q35-2' && m[1].engine === 'device' && window.GH.chats.current(window.GH.ui.S).title === 'How is my sleep?'; }));
 check('how fast it answered on this phone is remembered', await page.evaluate(() => (window.GH.ui.S.ai.speed || {})['q35-2'] > 0));
 check('the send button is back', await page.evaluate(() => !!document.querySelector('.chat-sheet [data-act="askSend"]')));
 check('an answer can be copied, and shows what the app gave the model', await page.evaluate(() => { const m = [...document.querySelectorAll('.chat-sheet .msg.coach')].pop(); return !!(m && m.querySelector('[data-act="copyAnswer"]') && m.querySelector('[data-act="answerFacts"]')); }));
@@ -147,7 +152,7 @@ await page.waitForSelector('.chat-sheet #chatLive .bubble.is-typing', { timeout:
 check('the answer on its way says what the model is doing', await page.evaluate(() => /Thinking|Reading your numbers|Starting the model/.test(document.querySelector('.chat-sheet #chatLive').textContent)));
 // Download progress (and anything else) redraws the chat several times a second.
 await page.evaluate(() => { window.__redraws = setInterval(() => window.GH.ui.refreshChat(), 60); });
-await page.waitForFunction(() => { const c = window.GH.ui.S.ai.deviceChat || []; return c.length >= 4; }, null, { timeout: 60000 });
+await page.waitForFunction(() => window.__msgs().length >= 4, null, { timeout: 60000 });
 await page.evaluate(() => clearInterval(window.__redraws));
 b = await bubbles();
 check('redraws don\'t lose it: the question and its answer are both there', b.length === 4 && b[2].text === 'How are my steps?' && b[3].text.trim().length > 0 && !b[3].cls.includes('is-error'), b.slice(2));
@@ -160,7 +165,7 @@ await page.evaluate(() => window.GH.ui.closeSheets());
 await wait(200);
 const markOf = () => page.evaluate(() => { const btn = document.querySelector('#topbar .coach-btn'), m = btn.querySelector('.coach-mark'), cs = getComputedStyle(m); return { busy: btn.hasAttribute('data-busy'), unseen: btn.hasAttribute('data-unseen'), opacity: cs.opacity, spin: cs.animationName, w: Math.round(m.getBoundingClientRect().width) }; });
 const ring = await markOf();
-await page.waitForFunction(() => { const c = window.GH.ui.S.ai.deviceChat || []; return c.length >= 6; }, null, { timeout: 60000 });
+await page.waitForFunction(() => window.__msgs().length >= 6, null, { timeout: 60000 });
 await wait(300);
 const dot = await markOf();
 check('closing the chat doesn\'t stop the answer: the coach button shows a ring, then a dot', ring.busy && dot.unseen && !dot.busy, { ring, dot });
@@ -181,7 +186,7 @@ section('The chat\'s options, a menu out of its button');
     const menu = document.querySelector('.rf-menu:popover-open'), d = document.querySelector('dialog.chat-sheet[open]');
     return menu && { inSheet: d.contains(menu), items: [...menu.querySelectorAll('[role="menuitem"]')].map((b) => b.textContent.trim()), critical: !!menu.querySelector('[data-arg="askClear"][data-tone="critical"]'), glass: getComputedStyle(menu).backdropFilter, onMenu: document.activeElement === menu };
   });
-  check('More opens a menu out of its button, inside the chat: AI coach settings and Clear this chat', m && m.inSheet && m.items.includes('AI coach settings') && m.items.includes('Clear this chat') && m.critical, m);
+  check('More opens a menu out of its button, inside the chat: AI coach settings and Delete this chat', m && m.inSheet && m.items.includes('AI coach settings') && m.items.includes('Delete this chat') && m.critical, m);
   check('the menu is frosted glass (not see-through, as the sheet\'s own controls are made flat)', m && /blur/.test(m.glass), m && m.glass);
   await page.keyboard.press('ArrowDown');
   const first = await page.evaluate(() => document.activeElement && document.activeElement.textContent.trim());
@@ -232,10 +237,10 @@ check('worrying questions get the safety answer, not the model', true);
 
 section('Reporting an AI answer');
 await page.waitForSelector('.chat-sheet [data-act="askSend"]', { timeout: 20000 });
-const before = await page.evaluate(() => (window.GH.ui.S.ai.deviceChat || []).length);
+const before = await page.evaluate(() => window.__msgs().length);
 await page.fill('#askQ', 'One more question');
 await page.click('.chat-sheet [data-act="askSend"]');
-await page.waitForFunction((n) => (window.GH.ui.S.ai.deviceChat || []).length >= n + 2, before, { timeout: 60000 });
+await page.waitForFunction((n) => window.__msgs().length >= n + 2, before, { timeout: 60000 });
 await wait(300);
 check('AI answers get a Report button', await page.evaluate(() => { const m = [...document.querySelectorAll('.chat-sheet .msg')].pop(); return !!(m && m.querySelector('[data-act="flagAnswer"]')); }));
 const nFlags = await page.evaluate(() => (window.GH.ui.S.ai.flags || []).length);
@@ -259,9 +264,9 @@ check('a question stopped before it starts comes back as stopped', early.aborted
 check('and the last answer\'s speed isn\'t counted again', early.speedKept, early);
 
 section('A suggested question');
-await page.evaluate(() => { window.GH.ui.closeSheets(); window.GH.deviceCoach.clear(window.GH.ui.S); });
+await page.evaluate(() => window.GH.ui.closeSheets());
 await wait(700);
-const asked = await page.evaluate(() => (window.GH.ui.S.ai.deviceChat || []).length);
+const chatsBefore = await page.evaluate(() => window.GH.chats.all(window.GH.ui.S).length);
 // The first open after starting the app, when the check for the model takes a while.
 await page.evaluate(() => {
   const U = window.GH.ui, real = U.checkDevice;
@@ -269,9 +274,146 @@ await page.evaluate(() => {
   U.checkDevice = () => new Promise((r) => setTimeout(r, 1200)).then(real);
   try { U.act.askCoach(null, null, 'Why is today lighter?'); } finally { U.checkDevice = real; }
 });
-await page.waitForFunction((n) => (window.GH.ui.S.ai.deviceChat || []).length >= n + 2, asked, { timeout: 60000 }).catch(() => {});
-check('is sent once the coach is ready', await page.evaluate((n) => { const c = window.GH.ui.S.ai.deviceChat || []; return c.length >= n + 2 && c[n].text === 'Why is today lighter?'; }, asked));
+await page.waitForFunction(() => window.__msgs().length >= 2, null, { timeout: 60000 }).catch(() => {});
+check('is sent once the coach is ready, in a chat of its own', await page.evaluate((n) => { const c = window.__msgs(); return c.length >= 2 && c[0].text === 'Why is today lighter?' && window.GH.chats.all(window.GH.ui.S).length === n + 1; }, chatsBefore));
 await page.waitForSelector('.chat-sheet [data-act="askSend"]', { timeout: 20000 });
+
+section('An answer as a card');
+// The tiny model's words are nonsense, so here the model writes out what a good answer looks like,
+// a few characters at a time as it would; everything around it (the facts, the number check, the
+// embeds, the chat) is the app's own.
+await page.evaluate(async () => {
+  const l = await window.GH.lazy('llm');
+  window.__realChat = l.chat;
+  window.__canned = 'Your sleep is **steady** this week.\n\n- Bedtime held on most nights.\n- Weekends ran a little short.\n- Keep the same wake time.\n\n[[sleep]]';
+  l.chat = async (msgs, o) => {
+    window.__sent = msgs;
+    const t = (o.lead || '') + window.__canned;
+    let so = '';
+    for (const piece of t.match(/[\s\S]{1,5}/g)) {
+      if (o.signal && o.signal.aborted) break;
+      so += piece;
+      if (o.onToken) o.onToken(piece, so);
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    return so;
+  };
+});
+await page.waitForSelector('.chat-sheet [data-act="askSend"]', { timeout: 20000 });
+await page.click('dialog.chat-sheet [data-act="chatNew"]');
+await wait(400);
+check('New chat starts an empty one, with questions worth asking', await page.evaluate(() => window.GH.ui.S.ai.chatId === null && !!document.querySelector('.chat-sheet .chat-hello') && !document.querySelector('.chat-sheet .bubble')));
+await page.fill('#askQ', 'How did I sleep this week?');
+await page.click('.chat-sheet [data-act="askSend"]');
+// While it streams in, no mark of its own shows.
+let marks = '';
+for (let i = 0; i < 40; i++) {
+  const t = await page.evaluate(() => { const b = document.querySelector('.chat-sheet #chatLive .bubble'); return b ? b.textContent : null; });
+  if (t && /\*\*|\[\[|\]\]|^- /m.test(t)) marks = t;
+  if (await page.evaluate(() => window.__msgs().length >= 2)) break;
+  await wait(40);
+}
+await page.waitForFunction(() => window.__msgs().length >= 2 && !document.querySelector('.chat-sheet #chatLive'), null, { timeout: 30000 });
+await wait(500);
+const card = await page.evaluate(() => {
+  const b = [...document.querySelectorAll('.chat-sheet .bubble.coach.answer')].pop();
+  return b && { strong: (b.querySelector('strong') || {}).textContent, items: b.querySelectorAll('ul > li').length, emb: [...b.querySelectorAll('.emb')].map((e) => e.dataset.kind), embText: (b.querySelector('.emb') || {}).textContent || '', raw: /\*\*|\[\[|\]\]/.test(b.textContent), width: Math.round(b.getBoundingClientRect().width), main: Math.round(b.closest('.msg-main').getBoundingClientRect().width), chart: !!b.querySelector('.emb .sp-svg .sp-bar') };
+});
+check('the answer is a card across the chat: the number in bold, its points a list', card && card.strong === 'steady' && card.items === 3 && card.width === card.main, card);
+check('with the embed for what was asked, its chart drawn from the app\'s own numbers', card && card.emb.join() === 'sleep' && /Sleep/.test(card.embText) && /Last 7 nights/.test(card.embText) && card.chart, card);
+check('no mark of its own shows, while it streams in or after', card && !card.raw && !marks, { card, marks });
+const kept = await page.evaluate(() => window.__msgs().slice(-1)[0]);
+check('the [[…]] the model wrote is gone from what\'s kept; the embed is the app\'s', !/\[\[/.test(kept.text) && JSON.stringify(kept.embeds) === '["sleep:7d"]' && kept.engine === 'device', kept);
+await page.click('.chat-sheet .emb[data-kind="sleep"]');
+await page.waitForSelector('dialog.ms-sheet[open]', { timeout: 5000 });
+await wait(500);
+check('tapping the embed opens the number\'s sheet over the chat', await page.evaluate(() => window.GH.ui.topSheet().el.querySelector('.rf-sheet-title').textContent === 'Sleep' && !!document.querySelector('dialog.chat-sheet[open]')));
+await page.evaluate(() => window.GH.ui.topSheet().close('ok'));
+await wait(600);
+const copied = await page.evaluate(() => { let got = null; const real = window.GH.platform.copy; window.GH.platform.copy = (t) => { got = t; return true; }; [...document.querySelectorAll('.chat-sheet [data-act="copyAnswer"]')].pop().click(); window.GH.platform.copy = real; return got; });
+check('Copy gives its words without the marks', copied === 'Your sleep is steady this week.\n\n- Bedtime held on most nights.\n- Weekends ran a little short.\n- Keep the same wake time.', copied);
+const unknown = await page.evaluate(async () => {
+  const S = window.GH.ui.S, c = window.GH.chats.current(S);
+  c.msgs.push({ role: 'user', text: 'Show me', engine: 'api' }, { role: 'assistant', text: 'Here it is.\n\n[[nonsense]]\n\n[[hrv:30d]]', engine: 'api' });
+  window.GH.ui.refreshChat();
+  await new Promise((r) => setTimeout(r, 300));
+  const b = [...document.querySelectorAll('.chat-sheet .bubble.coach.answer')].pop();
+  c.msgs.splice(-2, 2);
+  window.GH.ui.refreshChat();
+  return { text: b.textContent, embs: [...b.querySelectorAll('.emb')].map((e) => e.dataset.kind) };
+});
+check('an embed the app can\'t draw is dropped quietly, never shown as [[…]]', !/\[|\]|nonsense/.test(unknown.text) && unknown.embs.join() === 'hrv', unknown);
+
+section('Chats');
+await page.fill('#askQ', 'And at weekends?');
+await page.click('.chat-sheet [data-act="askSend"]');
+await page.waitForFunction(() => window.__msgs().length >= 4, null, { timeout: 30000 });
+const follow = await page.evaluate(() => window.__sent.map((m) => [m.role, m.content]));
+check('a follow-up goes to the model with this chat\'s last exchange', follow.length === 4 && follow[1][1] === 'How did I sleep this week?' && /steady/.test(follow[2][1]) && /QUESTION\nAnd at weekends\?$/.test(follow[3][1]), follow.map((x) => [x[0], x[1].slice(0, 40)]));
+await page.click('dialog.chat-sheet [data-act="chatList"]');
+await page.waitForSelector('dialog.chat-list-sheet[open] .chat-row', { timeout: 5000 });
+await wait(600);
+const listed = await page.evaluate(() => {
+  const el = document.querySelector('dialog.chat-list-sheet[open]');
+  return { groups: [...el.querySelectorAll('.rf-list-header')].map((h) => h.textContent), titles: [...el.querySelectorAll('.chat-row .rf-list-title')].map((t) => t.textContent), icons: [...el.querySelectorAll('.chat-row .rf-list-icon')].map((i) => i.getAttribute('aria-label')), open: (el.querySelector('.chat-row.is-open .rf-list-title') || {}).textContent, subs: [...el.querySelectorAll('.chat-row .rf-list-sub')].map((x) => x.textContent), n: window.GH.chats.all(window.GH.ui.S).length };
+});
+check('Chats lists every conversation, newest first, under Today, the open one marked', listed.groups.join() === 'Today' && listed.titles.length === listed.n && listed.n >= 3 && listed.titles[0] === 'How did I sleep this week?' && listed.titles[1] === 'Why is today lighter?' && listed.open === 'How did I sleep this week?', listed);
+check('each with when, how many questions and who answered', /^\d{1,2}:\d{2} [ap]m · 2 questions$/.test(listed.subs[0]) && listed.icons.every((x) => x === 'On this phone'), listed);
+await page.evaluate(() => [...document.querySelectorAll('dialog.chat-list-sheet[open] .chat-row-main')].find((x) => /Why is today lighter/.test(x.textContent)).click());
+await wait(800);
+check('tapping one opens it in the chat', await page.evaluate(() => !document.querySelector('dialog.chat-list-sheet[open]') && window.GH.chats.current(window.GH.ui.S).title === 'Why is today lighter?' && document.querySelector('.chat-sheet .bubble.me').textContent === 'Why is today lighter?'));
+await page.fill('#askQ', 'And tomorrow?');
+await page.click('.chat-sheet [data-act="askSend"]');
+await page.waitForFunction(() => window.__msgs().length >= 4, null, { timeout: 30000 });
+const carry = await page.evaluate(() => window.__sent.map((m) => m.content.slice(0, 24)));
+check('carrying on with it sends its own earlier turns', carry.length === 4 && carry[1] === 'Why is today lighter?', carry);
+await page.click('dialog.chat-sheet [data-act="chatList"]');
+await page.waitForSelector('dialog.chat-list-sheet[open] .chat-row');
+await wait(500);
+await page.click('dialog.chat-list-sheet[open] [data-act="chatListEdit"]');
+await wait(400);
+const n0 = await page.evaluate(() => window.GH.chats.all(window.GH.ui.S).length);
+check('Edit puts a delete button on each, and Delete all chats', await page.evaluate((n) => document.querySelectorAll('dialog.chat-list-sheet[open] [data-act="chatDelete"]').length === n && !!document.querySelector('dialog.chat-list-sheet[open] [data-act="chatDeleteAll"]') && document.querySelector('dialog.chat-list-sheet[open] [data-act="chatListEdit"]').textContent === 'Done', n0));
+await page.evaluate(() => [...document.querySelectorAll('dialog.chat-list-sheet[open] .chat-row')].find((x) => /Why is today lighter/.test(x.textContent)).querySelector('[data-act="chatDelete"]').click());
+await wait(600);
+check('a deleted chat goes, and the open one becomes a new chat', await page.evaluate((n) => { const S = window.GH.ui.S; return window.GH.chats.all(S).length === n - 1 && S.ai.chatId === null && !window.GH.chats.all(S).some((c) => c.title === 'Why is today lighter?') && document.querySelectorAll('dialog.chat-list-sheet[open] .chat-row').length === n - 1; }, n0));
+await page.evaluate(() => { const t = [...document.querySelectorAll('.rf-toast')].pop(); [...t.querySelectorAll('button')].find((x) => /Undo/.test(x.textContent)).click(); });
+await wait(600);
+check('Undo brings it back, open again', await page.evaluate((n) => { const S = window.GH.ui.S; return window.GH.chats.all(S).length === n && window.GH.chats.current(S).title === 'Why is today lighter?' && window.GH.chats.current(S).msgs.length === 4; }, n0));
+await page.click('dialog.chat-list-sheet[open] [data-act="chatDeleteAll"]');
+await page.waitForSelector('dialog.rf-dialog[open]', { timeout: 5000 });
+const confirm = await page.evaluate(() => document.querySelector('dialog.rf-dialog[open]').textContent.replace(/\s+/g, ' '));
+check('Delete all chats asks first', /Delete all chats\?/.test(confirm) && /can't be undone/.test(confirm), confirm);
+await page.evaluate(() => { const d = document.querySelector('dialog.rf-dialog[open]'); [...d.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Delete all').click(); });
+await wait(800);
+check('then every chat goes, and the chat starts afresh', await page.evaluate(() => window.GH.chats.all(window.GH.ui.S).length === 0 && window.GH.ui.S.ai.chatId === null && !!document.querySelector('.chat-sheet .chat-hello') && !!document.querySelector('dialog.chat-list-sheet[open] .chat-list-none')));
+await page.evaluate(async () => { const l = await window.GH.lazy('llm'); l.chat = window.__realChat; window.GH.ui.closeSheets(); });
+await wait(700);
+
+section('Chats from before 1.11');
+await page.evaluate(() => {
+  const S = window.GH.ui.S;
+  S.ai.mode = 'device';
+  delete S.ai.chats; delete S.ai.chatId;
+  S.ai.chat = [{ role: 'user', text: 'How are my steps?', day: window.GH.ui.today() - 3 }, { role: 'assistant', text: 'About 7,000 a day.', day: window.GH.ui.today() - 3, cost: 900, model: 'claude-opus-5-5' }];
+  S.ai.deviceChat = [{ role: 'user', text: 'Am I getting stronger?' }, { role: 'assistant', text: 'Yes, two level-ups.', model: 'q35-2', facts: ['Level-ups'] }];
+  window.GH.store.save(S);
+  window.GH.store.flush();
+});
+await page.reload();
+await page.waitForSelector('#screen[data-view="today"]');
+await page.evaluate(async (tiny) => { const l = await window.GH.lazy('llm'); l.configure({ baseUrl: 'models/', models: [tiny] }); }, TINY);
+const moved = await page.evaluate(() => { const ai = window.GH.ui.S.ai; return { n: ai.chats.length, titles: ai.chats.map((c) => c.title), engines: ai.chats.map((c) => c.msgs.map((m) => m.engine).join()), open: (window.GH.chats.current(window.GH.ui.S) || {}).title, old: 'chat' in ai || 'deviceChat' in ai }; });
+check('the two logs from before became two conversations, nothing lost, the one for the coach in use open', moved.n === 2 && moved.titles.join() === 'How are my steps?,Am I getting stronger?' && moved.engines.join(';') === 'api,api;device,device' && moved.open === 'Am I getting stronger?' && !moved.old, moved);
+await page.click('#topbar .coach-btn');
+await page.waitForSelector('dialog.chat-sheet[open] .chat-pill');
+await wait(900);
+check('and the chat opens on it, as it did', await page.evaluate(() => [...document.querySelectorAll('.chat-sheet .bubble')].map((b) => b.textContent.trim()).join('|') === 'Am I getting stronger?|Yes, two level-ups.'));
+await page.evaluate(() => window.GH.ui.closeSheets());
+await wait(600);
+await page.click('#topbar .coach-btn');
+await page.waitForSelector('dialog.chat-sheet[open] .chat-pill');
+await wait(500);
 
 section('Claude asks first');
 const anthropic = [];

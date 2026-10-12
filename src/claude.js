@@ -174,34 +174,38 @@ async function report(S, day) {
 }
 
 /* ------------------------------------------------------------------ questions */
-// The last few exchanges, as context for the next question: whole exchanges only, leaving out safety
-// answers (the app's own, never sent) and answers the person reported.
-function pastTurns(S) {
-  const log = S.ai.chat || [];
-  const out = [];
-  for (let i = 0; i + 1 < log.length; i++) {
-    const u = log[i], a = log[i + 1];
-    if (u.role !== 'user' || a.role !== 'assistant') continue;
-    i++;
-    if (u.safety || a.safety || a.flagged) continue;
-    out.push({ role: 'user', content: u.text }, { role: 'assistant', content: a.text });
-  }
-  return out.slice(-6);
+// The earlier exchanges of this chat (src/chats.js), as messages for a follow-up: whole exchanges
+// only, the last 10 at most, leaving out safety answers (the app's own, never sent) and answers the
+// person reported.
+function pastTurns(S, chat) {
+  const turns = GH.chats ? GH.chats.turns(S, chat) : [];
+  return turns.slice(-10).map(([u, a]) => [{ role: 'user', content: u.text }, { role: 'assistant', content: a.text }]);
 }
 
-// Ask the coach: streamed. onText(delta, snapshot) as it arrives. Keeps the last few turns. Once it's
-// in, the answer is held to the person's numbers like the on-device coach's (GH.coach.grounded): a
-// sentence with a number that wasn't sent goes, with a note, and if next to nothing is left the app's
-// own answer stands in. An answer cut short by the output limit keeps what came, with a note.
-// Resolves { text, raw, note, cut, replaced, cost }.
-async function ask(S, day, question, onText) {
+// Ask the coach: streamed. onText(delta, snapshot) as it arrives. o.chat: the conversation it goes
+// in (the open one when it's left out), whose earlier exchanges go with it, the oldest left out
+// while the spending limits wouldn't let it go with them. Once it's in, the answer is held to the
+// person's numbers like the on-device coach's (GH.coach.grounded): a sentence with a number that
+// wasn't sent goes, with a note, and if next to nothing is left the app's own answer stands in. An
+// answer cut short by the output limit keeps what came, with a note. When Claude placed no embed and
+// the question is about something the app has data for, the app adds them (src/ui/embeds.js).
+// Resolves { text, raw, note, cut, replaced, cost, embeds, chat }.
+async function ask(S, day, question, onText, o) {
   const q = String(question || '').trim().slice(0, 1000);
   if (!q) throw coachError('other', 'Type a question first.');
   AI().needConsent(S);
-  const past = pastTurns(S);
+  const chat = GH.chats ? GH.chats.target(S, o && o.chat) : null;
   const system = AI().systemBlocks(S, day, 'chat');
   // The question ends the part that's cached, so the next one reads this whole conversation back.
-  const messages = past.concat([{ role: 'user', content: [{ type: 'text', text: q, cache_control: { type: 'ephemeral' } }] }]);
+  const ask1 = [{ role: 'user', content: [{ type: 'text', text: q, cache_control: { type: 'ephemeral' } }] }];
+  let turns = pastTurns(S, chat);
+  while (turns.length) {
+    const r = SP().allow(S, day, 'chat', sizeOf({ system, messages: turns.flat().concat(ask1) }));
+    if (r.ok) { SP().release(r.hold); break; }
+    turns = turns.slice(1);
+  }
+  const past = turns.flat();
+  const messages = past.concat(ask1);
   try {
     const { msg, shape } = await send(S, day, 'chat', { system, messages }, onText);
     if (msg.stop_reason === 'refusal') throw coachError('refusal');
@@ -213,8 +217,11 @@ async function ask(S, day, question, onText) {
     const note = short ? [out.note, shape.cut ? 'Cut short to stay within your spending limit.' : 'Cut short: it ran out of room.'].filter(Boolean).join(' ') : out.note;
     const log = SP().data(S).log;
     const cost = log.length ? log[log.length - 1].c : 0;
-    S.ai.chat = (S.ai.chat || []).concat([{ role: 'user', text: q, day }, Object.assign({ role: 'assistant', text: out.text, day, cost, model: shape.model }, note ? { note } : {})]).slice(-20);
-    return { text: out.text, raw, note, cut: out.cut, replaced: out.replaced, cost };
+    if (!GH.embeds && GH.lazy) await GH.lazy('cards').catch(() => null);
+    const E = GH.embeds;
+    const embeds = E && !E.tokens(out.text).length ? E.forQuestion(S, day, q) : [];
+    if (GH.chats) GH.chats.add(S, chat, [{ role: 'user', text: q, engine: 'api', day }, Object.assign({ role: 'assistant', text: out.text, engine: 'api', day, cost, model: shape.model }, note ? { note } : {}, embeds.length ? { embeds } : {})]);
+    return { text: out.text, raw, note, cut: out.cut, replaced: out.replaced, cost, embeds, chat };
   } catch (err) {
     throw explain(err);
   }

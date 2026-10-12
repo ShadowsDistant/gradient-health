@@ -7,7 +7,7 @@ import { load, root, check, section, done } from './lib.mjs';
 
 const ls = new Map();
 globalThis.localStorage = { getItem: (k) => (ls.has(k) ? ls.get(k) : null), setItem: (k, v) => ls.set(k, String(v)), removeItem: (k) => ls.delete(k) };
-const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/store.js', 'src/coach.js', 'src/tailor.js', 'src/devicecoach.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/store.js', 'src/coach.js', 'src/chats.js', 'src/tailor.js', 'src/devicecoach.js', 'src/ui/embeds.js');
 const bundle = await build({ entryPoints: [join(root, 'src/ai.js')], bundle: true, write: false, format: 'iife', platform: 'browser', target: ['es2022'], logLevel: 'silent' });
 new Function(bundle.outputFiles[0].text)();
 const B = GH.brain, C = GH.coach, H = GH.health, SC = GH.science;
@@ -368,8 +368,30 @@ section('The on-device coach keeps to the app\'s numbers');
   const res = await DC.ask(S2, D0, 'Am I doing enough steps?');
   check('ask() sends the app\'s yes or no as the lead, at a low temperature', sent.o.lead === 'Yes,' && sent.o.temperature <= 0.3);
   check('a made-up number never reaches the chat: the app\'s own answer does, with the note', res.replaced && res.text === C.ask(S2, D0, 'Am I doing enough steps?').text && res.raw.startsWith('Yes, you walk 1,234,567'));
-  const last = S2.ai.deviceChat[S2.ai.deviceChat.length - 1];
-  check('the chat keeps the checked answer and its note', last.text === res.text && /didn't match/.test(last.note) && last.facts && last.facts.length > 0);
+  const conv = GH.chats.current(S2);
+  const last = conv.msgs[conv.msgs.length - 1];
+  check('the chat keeps the checked answer and its note, in a conversation of its own', last.text === res.text && /didn't match/.test(last.note) && last.facts && last.facts.length > 0 && last.engine === 'device' && conv.title === 'Am I doing enough steps?' && res.chat === conv.id);
+  check('with the embed for what was asked, worked out from its data', JSON.stringify(last.embeds) === '["steps:7d"]' && JSON.stringify(res.embeds) === '["steps:7d"]', last.embeds);
+
+  // The format it's asked for: short and scannable; the safety lines are as they were.
+  check('the small model is asked for one sentence with the number in bold, at most 3 points and a next step', /one sentence first, with the key number in \*\*bold\*\*/.test(DC.RULES) && /at most 3 short points/.test(DC.RULES) && /one short next step if there is one/.test(DC.RULES) && /Under 80 words/.test(DC.RULES) && !/\[\[/.test(DC.RULES));
+  check('and still never to diagnose, and to see a doctor for the red flags', /never diagnose/.test(DC.RULES) && /tell them to see a doctor/.test(DC.RULES) && /Never make up a number/.test(DC.RULES));
+  // A small model that copies marks it doesn't need: they go (the app adds the embeds itself).
+  GH.lazy = async () => reply(' you walk plenty. [[steps]] Keep it up [[sle');
+  const marks = await DC.ask(S2, D0, 'Am I doing enough steps?');
+  check('stray [[ marks from the model go', !/\[|\]/.test(marks.text) && /you walk plenty\. Keep it up/.test(marks.text) && JSON.stringify(marks.embeds) === '["steps:7d"]', marks.text);
+  // A follow-up goes with the last exchanges of its chat, as many as fit the model's memory.
+  const prev = DC.messages(S2, D0, 'And my sleep?', 4);
+  check('a follow-up goes with the chat\'s last two exchanges, without their embeds\' marks', prev.length === 6 && prev[1].role === 'user' && prev[2].role === 'assistant' && prev[3].content === 'Am I doing enough steps?' && !/\[\[/.test(prev.map((m) => m.content).join()));
+  // Counted as the engine counts: 3 characters a token, a few for each message, and room to answer.
+  const m2 = DC.messages(S2, D0, 'And my sleep?', 2, conv.id);
+  const ctx2 = Math.ceil(m2.reduce((a, m) => a + m.content.length, 0) / 3) + m2.length * 6 + 64 + 320;
+  check('fewer when they wouldn\'t fit its memory, none when nothing would', DC.fits(S2, D0, 'And my sleep?', conv.id, 1e6) === 4 && DC.fits(S2, D0, 'And my sleep?', conv.id, ctx2) === 2 && DC.fits(S2, D0, 'And my sleep?', conv.id, 100) === 0);
+  check('a new chat goes with none', DC.messages(S2, D0, 'Hi', 4, null).length === 2 && DC.messages(S2, D0, 'Hi', 4, 'cNew').length === 2);
+  sent = null;
+  GH.lazy = async () => reply(' yes.');
+  await DC.ask(S2, D0, 'And my sleep?');
+  check('ask() sends them', sent.msgs.length === 6 && sent.msgs[3].content === 'Am I doing enough steps?');
 }
 
 done();

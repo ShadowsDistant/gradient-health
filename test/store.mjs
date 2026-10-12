@@ -119,7 +119,10 @@ function lived() {
   const pts = Array.from({ length: 900 }, (_, i) => [t0 + i * 1000, 40.78 + i * 2e-5, -73.96 + Math.sin(i / 40) * 1e-4, 12, 5, 2.9, 0]);
   GH.activity.add(R, GH.activity.build(R, { id: 'run1', type: 'run', title: 'Park run', start: t0, end: t0 + 900000, points: pts, pauses: [], pausedMs: 0, movingMs: 900000, steps: 2400 }));
   R.health.days[D0 - 1] = { steps: 8123, sleepMin: 415, rhr: 57, hrv: 52, exercise: [{ start: t0, end: t0 + 1800000, minutes: 30, typeName: 'walking' }] };
-  R.ai.chat.push({ role: 'user', content: 'How is my sleep?' }, { role: 'assistant', content: 'About 6 h 55 a night.' });
+  // Chat history (src/chats.js): a conversation, open in the chat.
+  delete R.ai.chat;
+  R.ai.chats = [{ id: 'c1x', title: 'How is my sleep?', started: D0 * B.DAY_MS, used: D0 * B.DAY_MS + 60000, msgs: [{ role: 'user', text: 'How is my sleep?', engine: 'device' }, { role: 'assistant', text: 'About **6 h 55** a night.\n\n- Steady.', engine: 'device', model: 'q35-08', facts: ['What the app worked out: 6 h 55'], embeds: ['sleep:7d'] }] }];
+  R.ai.chatId = 'c1x';
   R.feel[D0] = { energy: 'good', sore: 'some' };
   R.achievements = { earned: { firstWorkout: { at: D0 } } };
   R.profile.planTweaks = [{ kind: 'more_sets', group: 'back' }];
