@@ -1241,11 +1241,11 @@
   // whole new page out inside the tap) held that first frame back 250 to 450 ms at 4x CPU, so nothing
   // answered the tap until the new page was there. The route is the new tab's from the tap on: a
   // render before then (a sync ending) is this change, with its motion; a second tap before the
-  // frame only changes where it goes.
-  let switching = null; // { tab, kind } while a tab change waits for its frame
+  // frame only changes where it goes (back to the tab it left, and the page stays as it is).
+  let switching = null; // { tab, kind, from } while a tab change waits for its frame
   function switchLater(tab, kind) {
     const first = !switching;
-    switching = { tab, kind };
+    switching = { tab, kind, from: first ? lastKey : switching.from };
     nextMotion = kind;
     if (!first) return;
     if (U.motion && U.motion.leave) safe(() => U.motion.leave(screen, kind));
@@ -1253,7 +1253,7 @@
       const s = switching;
       switching = null;
       if (!s || U.route.view || U.route.tab !== s.tab) return;
-      if (lastKey !== s.tab) { drawFirst = true; render(s.kind); drawFirst = false; } else if (U.motion && U.motion.stay) U.motion.stay(screen);
+      if (lastKey !== s.tab) { drawFirst = true; render(s.kind); drawFirst = false; } else if (s.tab === s.from) { nextMotion = null; if (U.motion && U.motion.stay) U.motion.stay(screen); return; }
       // What a tab does once it shows (a badge to celebrate, a report to write) waits for its page's
       // frame too.
       const scr = U.screens[s.tab];
