@@ -310,7 +310,7 @@ The [privacy policy](docs/PRIVACY.md) lists every piece of data and where it goe
 
 1. Download `gradient-health.apk` from the [latest release](../../releases/latest).
 2. Open it on your phone. You may need to allow installs from your browser or file manager.
-3. Updates install over the old version and keep your data. The APKPure version is the same app with the same key, so you can switch between them.
+3. After that, the app updates itself: say yes when it asks, or tap Check for updates in Settings, About. Each update is checked against the release, installs over the old version and keeps your data. The APKPure version is the same app with the same key, so you can switch between them.
 
 | Needs | |
 |---|---|

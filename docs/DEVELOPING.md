@@ -1158,10 +1158,12 @@ doesn't wait for a store. Play's bundle doesn't: Play updates it.
 - **The check** (`Updater.java`, `src/update.js`) reads
   `https://github.com/ShadowsDistant/gradient-health/releases/download/latest/version.json` over
   HTTPS, following redirects only to github.com and *.githubusercontent.com (64 KB at most, with
-  timeouts), and compares its versionCode with the installed one. It runs by itself once a day (an
-  hour after one that failed), a few seconds after the app opens or comes back, never before set-up,
-  during a workout or while an activity records, unless Settings, About, Check automatically is off;
-  or from the Check for updates row there. A new version puts a card on Today, and Not now waits for
+  timeouts), and compares its versionCode with the installed one. It runs by itself only once the
+  person has said yes: the privacy policy promises nothing goes anywhere new without asking, so Today
+  asks once (Check daily or Not now; from the day after set-up, after the reminders' question), and
+  Settings, About, Check automatically changes the answer. Then it runs once a day (an hour after one
+  that failed), a few seconds after the app opens or comes back, never before set-up, during a
+  workout or while an activity records. The Check for updates row there checks by hand any time. A new version puts a card on Today, and Not now waits for
   the next one; a newer build of the same version is offered in Settings only. What the phone chose
   is kept in localStorage (`gh.v1.update`).
 - **Download and install.** Update reads version.json again, then downloads the APK to the cache

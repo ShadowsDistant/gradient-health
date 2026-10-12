@@ -31,10 +31,11 @@ import { APP_SCRIPTS, APP_CHUNKS, LAZY, asciiRegexps, figureId } from '../script
 // slots; the medals themselves are in the 3D chunk), toasts at the bottom and the quicker motion
 // (about 6 KB) and its What's new, and ships at 2,060,195 bytes; the budget was that plus 1%
 // (2,081,000), from 1.10.1's 2,053,038. 1.11 adds the saved chats and the chat's list of them (about
-// 17 KB with their styles; the answers' Markdown and data cards are a chunk of their own) and updates
-// in the app (src/update.js and its CSS, about 17 KB: the check, Settings' rows, Today's cards and the
-// update sheet), and comes to 2,087,240 bytes; the budget is that plus 1%.
-const BUDGET = 2108000;
+// 17 KB with their styles; the answers' Markdown and data cards are a chunk of their own), updates in
+// the app (src/update.js and its CSS, about 17 KB: the check, Settings' rows, Today's cards and the
+// update sheet), and the fades under sheets' headers and in the chat, the brand gradients and its
+// What's new (about 9 KB), and ships at 2,096,798 bytes; the budget is that plus 1%.
+const BUDGET = 2118000;
 
 const file = join(root, 'dist/gradient-health.html');
 if (!existsSync(file)) { console.error('No dist/gradient-health.html: run npm run build first.'); process.exit(1); }
