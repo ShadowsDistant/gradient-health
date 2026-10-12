@@ -1257,7 +1257,7 @@
         ${proteinG ? cell('check-circle', 'green', `${proteinG} g`, '', 'protein a day') : ''}
         ${cell('navigate', 'sky', U.num(steps), '', 'steps a day')}
       </div>
-      <p class="rv-week-foot">Workouts are off. Turn them on any time in Settings.</p>
+      <p class="rv-week-foot">Add food from Today, or from Health, where your meals are. Workouts are off: turn them on any time in Settings.</p>
     </div>`;
   };
   ACT.ftargets = () => (visible().some((s) => s.id === 'fhealth') ? { primary: ['obNext', 'Continue'] } : withReminders({ primary: ['obLook', 'Start tracking', 'play'] }));

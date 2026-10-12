@@ -1,16 +1,16 @@
 /* Food tracking (optional): what you ate, your calorie and macro targets, and a burn estimate that
  * learns from your own intake and weight trend. Pure logic on the saved state; Health's food section,
- * the Food page and the Today card draw it (src/ui/food.js). Modes: 'off', 'protein' (the quick
- * protein counter) or 'full'.
+ * the Food page and the Today card draw it (src/ui/food.js, src/ui/foodpage.js). Modes: 'off',
+ * 'protein' (the quick protein counter) or 'full'.
  *
  * Meals by the clock. Breakfast, lunch and dinner each have a window (minutes after midnight, set in
  * Settings), and snacks are any other time: a new entry goes in the meal its time falls in, unless
  * one was picked by hand (mh). With "Learn from my logs" on (the default), each window follows when
  * that meal is actually logged: the 10th to 90th percentile of the last 4 weeks' times, an hour
- * either side, never more than 2 hours from the window set, once a meal has 5 days of them. Only
- * times that say when food was eaten count: logged as it happened or set by hand, not an earlier
- * day's usual time (at: 'usual') or a copy (at: 'copy'), and not meals logged within half an hour
- * of each other (logged together afterwards).
+ * either side (3 hours at least), never more than 2 hours from the window set, once a meal has 5
+ * days of them. Only times that say when food was eaten count: logged as it happened or set by hand,
+ * not an earlier day's usual time (at: 'usual') or a copy (at: 'copy'), and not meals logged within
+ * half an hour of each other (logged together afterwards).
  *
  * Targets. Resting burn from Mifflin-St Jeor (Mifflin et al. 1990; the most accurate common
  * equation, Frankenfield et al. 2005) times an activity factor from your steps and workouts, in the
@@ -171,7 +171,7 @@
         if (v.length < 5) continue;
         const q = (p) => v[Math.round(p * (v.length - 1))];
         let s = q(0.1) - 60, e = q(0.9) + 60;
-        if (e - s < 120) { s = q(0.5) - 60; e = q(0.5) + 60; }
+        if (e - s < 180) { s = q(0.5) - 90; e = q(0.5) + 90; }
         const b = base[k];
         w[k] = [Math.min(b[0] + 120, Math.max(b[0] - 120, q15(s))), Math.min(b[1] + 120, Math.max(b[1] - 120, q15(e)))];
         out.learned.push(k);

@@ -1,6 +1,7 @@
-/* Health: this week at a glance (the coach's report, in full in a sheet), today's numbers, insights,
- * trends, recent activity and where the data comes from. Every number opens its metric sheet
- * (metric.js) with its history and a way to add or change it; the + button in the top bar logs
+/* Health: this week at a glance (the coach's report, in full in a sheet), food (U.healthFood in
+ * food.js: today's calories and meals, or an invite to start), today's numbers, insights, trends,
+ * recent activity and where the data comes from. Every number opens its metric sheet (metric.js)
+ * with its history and a way to add or change it; the + button in the top bar adds food or logs
  * weight, sleep, a feel check, an activity or measurements.
  */
 (function (G) {
@@ -329,7 +330,7 @@
     const item = (act, icon, label) => `<button type="button" class="rf-menu-item" role="menuitem" data-act="${act}">${U.icon(icon)}<span>${label}</span></button>`;
     return `<button type="button" class="rf-btn rf-glass" data-shape="circle" data-lens aria-label="Log something" aria-haspopup="menu" popovertarget="hlLog">${U.icon('plus')}</button>
       <div class="rf-menu rf-glass hl-log" data-variant="thick" id="hlLog" popover="auto" aria-label="Log" data-placement="below">
-        ${item('logWeight', 'scale', 'Weight')}${item('logSleep', 'moon', 'Sleep')}${item('logFeel', 'sparkle', 'Feel check')}${item('logActivity', 'bolt', 'Other exercise')}${item('logMeasure', 'pin', 'Measurements')}
+        ${item('logFood', 'food', 'Food')}${item('logWeight', 'scale', 'Weight')}${item('logSleep', 'moon', 'Sleep')}${item('logFeel', 'sparkle', 'Feel check')}${item('logActivity', 'bolt', 'Other exercise')}${item('logMeasure', 'pin', 'Measurements')}
       </div>`;
   }
   const unitLen = () => (U.S.profile.units === 'kg' ? 'cm' : 'in');
@@ -396,6 +397,7 @@
         <h1 class="rf-large-title">Health</h1>
         ${connected ? `<p class="lt-sub t-footnote rf-muted">${busy ? 'Syncing with Health Connect…' : `Synced <span data-ago="${S.health.lastSync || 0}">${U.esc(U.ago(S.health.lastSync))}</span>. Pull down to sync.`}</p>` : ''}
         ${top ? `<div class="section">${top}</div>` : ''}
+        ${U.healthFood ? U.healthFood(S, day) : ''}
         <h2 class="sec-title t-title-3">Today</h2>
         <div class="section hl-today">${todaySection(S, day)}</div>
         <h2 class="sec-title t-title-3">Insights</h2>

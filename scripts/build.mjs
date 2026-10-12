@@ -344,6 +344,10 @@ export const APP_CHUNKS = [
   // The coach's answers as cards: their Markdown and the data embeds drawn from the app's numbers,
   // loaded as the chat is about to open (src/ui/chat.js).
   { name: 'cards', scripts: ['src/ui/md.js', 'src/ui/embeds.js'] },
+  // The Food page and food's sheets (adding, portions, starting, meal times): Today's card and
+  // Health's food section are in the page (src/ui/food.js), which loads this ahead of time for
+  // someone tracking calories.
+  { name: 'foodUi', scripts: ['src/ui/foodpage.js'] },
 ];
 
 // Heavy parts that load only when they're used (the 3D figure, the on-device model runtime, the
