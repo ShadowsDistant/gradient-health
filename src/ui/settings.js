@@ -476,7 +476,7 @@
     const eq = U.S.profile.equipment;
     const curls = (eq.db && eq.db.length) || eq.band;
     U.sheet({
-      title: 'Level check', size: 'full',
+      title: 'Level check', size: 'auto',
       body: `<div class="sheet-pad ob-fields">
         <div class="rf-field"><label class="rf-field-label" for="bPush">Push-ups in a row</label><div class="rf-field-control"><input class="rf-input" id="bPush" type="number" inputmode="numeric" placeholder="Leave blank to skip"></div></div>
         <ul class="rf-list">${U.sw('On my knees', false, 'id="bKnees"')}</ul>
@@ -531,7 +531,7 @@
     };
     const food = GH.food && GH.food.full(S);
     const ctl = U.sheet({
-      title: 'Share your data with Claude?', size: 'full',
+      title: 'Share your data with Claude?', size: 'full', cls: 'consent-sheet',
       body: `<div class="sheet-prose">
         <p class="t-body">Claude is Anthropic's AI. Gradient Health sends Anthropic a summary of your data with each question, suggestion or plan check, and weekly for your report.</p>
         <p class="t-headline">The summary holds</p>
@@ -803,7 +803,7 @@
     else U.sheet({ title: 'Your data', size: 'full', body: `<div class="sheet-pad"><p class="t-callout rf-muted">Copying didn't work. Select all of this and copy it.</p></div><textarea class="rf-input preview" readonly>${U.esc(txt)}</textarea>` });
   };
   U.act.restoreSheet = () => U.sheet({
-    title: 'Restore', size: 'full',
+    title: 'Restore', size: 'auto',
     body: `<div class="sheet-pad"><p class="t-callout rf-muted">Paste the text from Copy my data. It replaces everything in the app now.</p></div>
       <div class="sheet-pad"><textarea class="rf-input preview" id="restoreTxt" rows="8" aria-label="Backup text" placeholder="{&quot;app&quot;:&quot;gradient-health&quot;, …}"></textarea><p class="rf-field-error" id="restoreErr" hidden></p></div>`,
     action: { label: 'Check', act: 'restoreCheck' },

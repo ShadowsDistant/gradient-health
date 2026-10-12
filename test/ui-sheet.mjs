@@ -1,5 +1,6 @@
 // Bottom sheets in Chromium at phone size, with someone five weeks in: where a sheet sits (anchored
-// to the bottom edge, full width, square bottom corners, fit sheets as tall as their content), real
+// to the bottom edge, full width, square bottom corners, fit sheets as tall as their content, auto
+// ones whole at medium when they fit in 86% of the screen, else down to their main button), real
 // touch drags on a CPU slowed 4x (a flick up, a slow drag, a flick down, and a scroll that hands over
 // to the sheet), what a drag costs (no layout, no style work past the one transform a frame, frame
 // times with the settle), how long opening, settling and closing take, sideways gestures, Back, Esc
@@ -78,10 +79,18 @@ const open = async (expr) => {
   await wait(900);
   return sheet();
 };
-// An auto sheet taller than medium (so it has a large detent) and shorter than the screen: What's
-// new as 1.8.9's notes made it. The newest notes can be short enough to fit in medium whole, and a
-// sheet that fits there has no large detent (src/ui/sheet.js).
-const NEWS = `(() => { const U = window.GH.ui, e = window.GH.CHANGELOG.find((x) => x.version === '1.8.9'); return U.sheet({ title: "What's new in " + e.version, size: 'auto', body: '<div class="sheet-pad"><p class="t-title-3">' + U.esc(e.title) + '</p></div>' + U.changesHtml(e) }); })()`;
+// An auto sheet too tall to show whole at medium (taller than 86% of the screen, so it has a large
+// detent, src/ui/sheet.js): What's new as 1.8.9's notes made it, kept here as they were, since a
+// sheet that shows whole has no large detent and the notes in the app get shorter.
+const NEWS_ENTRY = {
+  version: '1.8.9', title: 'Switches that let go, and a speed test with a finger',
+  items: [
+    ['wave', 'Every scroll that started on a switch\'s row in Settings took that switch\'s liquid glass on (its own little engine and lens) and never let it go, and the switch counted as still moving. So while Settings was open the app never saw a calm moment: the work it holds back while you touch and scroll (a page redrawn in the background, the 3D figure) waited, then ran all at once after you left. Now a switch takes its glass on only when its knob lifts or moves, and lets it go once it lands.'],
+    ['bolt', 'The glass speed test (Settings, About, Scroll diagnostics) has a second half: the phone flicks the page itself with Android\'s own touch events, up and back down Settings in each look of the glass, so each scroll goes the way yours do, through the touch and the fling. The page scrolling by itself, the first half, was smooth in every look on a phone where Liquid stuttered under a finger. It times each flick, notes any moment the page held still and then jumped, and records one more pass for the whole picture. It takes about a minute; leave the screen alone.'],
+    ['activity', 'Each gesture in the report now says which glass effects it ran under, so flicks in different looks can be compared in one report.'],
+  ],
+};
+const NEWS = `(() => { const U = window.GH.ui, e = ${JSON.stringify(NEWS_ENTRY)}; return U.sheet({ title: "What's new in " + e.version, size: 'auto', body: '<div class="sheet-pad"><p class="t-title-3">' + U.esc(e.title) + '</p></div>' + U.changesHtml(e) }); })()`;
 const act = (name, arg) => `window.GH.ui.act.${name}({ dataset: { arg: ${JSON.stringify(arg == null ? '' : arg)} }, setAttribute() {}, removeAttribute() {}, closest: () => null })`;
 
 // Touches, with their own timeline (8 ms apart), so a flick's speed doesn't depend on how fast the
@@ -160,6 +169,28 @@ await page.dispatchEvent('dialog.gh-sheet[open] .rf-sheet-header', 'pointerdown'
 check('Refract\'s own drag doesn\'t run on it', await page.evaluate(() => !document.querySelector('dialog.gh-sheet[open]').hasAttribute('data-dragging')));
 await page.dispatchEvent('dialog.gh-sheet[open] .rf-sheet-header', 'pointerup', { pointerType: 'mouse', button: 0 });
 await closeAll();
+{
+  // Sizes: content that fits in 86% of the screen shows whole at medium, with no large detent to drag
+  // up to (cut at 62% it lost its last rows or its button to a sliver of a second detent); longer
+  // content's medium reaches down to its main button when that's within those 86%.
+  const tall = (h, after) => `window.GH.ui.sheet({ title: 'Sizes', size: 'auto', body: '<div class="sheet-pad"><p class="t-body">Most of the screen.</p><div style="height: ${h}px"></div><button class="rf-btn" data-variant="filled" data-size="lg">Save</button><div style="height: ${after}px"></div></div>' })`;
+  // How far the main button's bottom is above the system bar.
+  const at = () => page.evaluate(() => { const b = document.querySelector('dialog.gh-sheet[open] .rf-btn[data-variant="filled"]').getBoundingClientRect(); const sab = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sab')) || 0; return Math.round(innerHeight - sab - b.bottom); });
+  let z = await open(tall(480, 0));
+  const fits = z && z.content > Math.round(z.vh * 0.62) + 48 && z.content <= Math.round(z.vh * 0.86);
+  await page.evaluate(() => window.GH.ui.topSheet().detent('large'));
+  await wait(600);
+  const up = await sheet();
+  check('content that fits in 86% of the screen shows whole at medium, with nothing to drag up to', fits && z.detent === 'medium' && Math.abs((z.vh - z.top) - z.content) <= 2 && up.top === z.top, { z, up });
+  await closeAll();
+  z = await open(tall(480, 600));
+  const btn = await at();
+  await page.evaluate(() => window.GH.ui.topSheet().detent('large'));
+  await wait(600);
+  const big = await sheet();
+  check('a longer one opens at medium down to its main button, and goes on up to large', z && z.detent === 'medium' && z.content > Math.round(z.vh * 0.86) && z.vh - z.top > Math.round(z.vh * 0.62) && btn >= 0 && big.detent === 'large' && big.top < z.top, { z, btn, big });
+  await closeAll();
+}
 {
   // In motion: in every frame of a slide up, a drag down and the slide out, the rim and the sheen are
   // there (1.7.0 brought them in only once the sheet had stopped, and took them away for a drag).
@@ -359,7 +390,8 @@ check('the food Create sheet opens at medium', s && s.detent === 'medium', s);
 await page.focus('#cName');
 await wait(900);
 s = await sheet();
-check('focusing a text field expands it to large', s && s.detent === 'large', s);
+// (It fits in 86% of the screen, so it shows whole from the start: that's as far up as it goes.)
+check('focusing a text field expands it to large, or it already shows all of it', s && (s.detent === 'large' || Math.abs((s.vh - s.top) - s.content) <= 2), s);
 // The Android app's WebView shrinks above the keyboard.
 await page.focus('#cFib');
 await page.setViewportSize({ width, height: 844 - 330 });
@@ -368,6 +400,12 @@ const kb = await page.evaluate(() => { const r = document.activeElement.getBound
 check('with the keyboard up, the sheet sits above it', Math.abs(kb.panelBottom - kb.vh) <= 1, kb);
 check('and the field being typed in stays in sight', kb.field <= kb.vh && kb.fieldTop >= 0, kb);
 await page.setViewportSize({ width, height: 844 });
+await closeAll();
+s = await open(`window.GH.ui.sheet({ title: 'Notes', size: 'auto', body: '<div class="sheet-pad"><input class="rf-input" id="tNote" aria-label="Note"><div style="height: 900px"></div></div>' })`);
+await page.focus('#tNote');
+await wait(900);
+const typed = await sheet();
+check('a sheet too tall to show whole expands to large as a text field in it is focused', s && s.detent === 'medium' && typed && typed.detent === 'large', { s, typed });
 await closeAll();
 
 section('The food Edit sheet');

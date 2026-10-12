@@ -153,6 +153,19 @@ dialog.gh-sheet[data-closing] { pointer-events: none; }
 .gh-sheet .fd-results > .rf-list { margin-inline: var(--space-4); }
 .gh-sheet .fd-results > .rf-list-header { padding-inline: calc(var(--space-4) * 2); }
 .tour-sheet .rf-sheet-body { padding-bottom: 0; }
+/* A sheet whose answer is two buttons at the end of a long read (Claude's consent): the buttons stay
+   in reach at the bottom of the sheet while it scrolls, on the material, with the words above
+   fading into it on the same curve as under the header. The sheet is solid there (full height). */
+.consent-sheet .rf-sheet-body .fd-actions {
+  position: sticky; bottom: calc(-1 * (var(--space-4) + var(--sab))); z-index: 6;
+  margin-inline: calc(-1 * var(--space-4)); padding: var(--space-3) var(--space-4) calc(var(--space-4) + var(--sab));
+  margin-bottom: calc(-1 * (var(--space-4) + var(--sab)));
+  background: var(--sheet-bg);
+}
+.consent-sheet .rf-sheet-body .fd-actions::before {
+  content: ""; position: absolute; inset-inline: 0; bottom: 100%; height: var(--edge-fade, 48px); pointer-events: none;
+  background: linear-gradient(to top, var(--sheet-bg), color-mix(in srgb, var(--sheet-bg) 95.7%, transparent) 12.5%, color-mix(in srgb, var(--sheet-bg) 84.4%, transparent) 25%, color-mix(in srgb, var(--sheet-bg) 68.4%, transparent) 37.5%, color-mix(in srgb, var(--sheet-bg) 50%, transparent) 50%, color-mix(in srgb, var(--sheet-bg) 31.6%, transparent) 62.5%, color-mix(in srgb, var(--sheet-bg) 15.6%, transparent) 75%, color-mix(in srgb, var(--sheet-bg) 4.3%, transparent) 87.5%, transparent);
+}
 /* A form's fields share the width they're given instead of growing to fit their inputs (a number
    input is 20 characters wide on its own, which pushed the second of two fields off the edge). */
 .sheet-pad { grid-template-columns: minmax(0, 1fr); }
