@@ -171,7 +171,7 @@ await page.dispatchEvent('dialog.gh-sheet[open] .rf-sheet-header', 'pointerup', 
 await closeAll();
 {
   // Sizes: content that fits in 86% of the screen shows whole at medium, with no large detent to drag
-  // up to (cut at 62% it lost its last rows or its button to a sliver of a second detent); longer
+  // up to (cut at 62%, its last rows or its button sat below the fold, behind a second detent); longer
   // content's medium reaches down to its main button when that's within those 86%.
   const tall = (h, after) => `window.GH.ui.sheet({ title: 'Sizes', size: 'auto', body: '<div class="sheet-pad"><p class="t-body">Most of the screen.</p><div style="height: ${h}px"></div><button class="rf-btn" data-variant="filled" data-size="lg">Save</button><div style="height: ${after}px"></div></div>' })`;
   // How far the main button's bottom is above the system bar.
