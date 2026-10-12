@@ -374,7 +374,7 @@ section('The on-device coach keeps to the app\'s numbers');
   check('with the embed for what was asked, worked out from its data', JSON.stringify(last.embeds) === '["steps:7d"]' && JSON.stringify(res.embeds) === '["steps:7d"]', last.embeds);
 
   // The format it's asked for: short and scannable; the safety lines are as they were.
-  check('the small model is asked for one sentence with the number in bold, then at most 3 points', /one sentence first, with the key number in \*\*bold\*\*/.test(DC.RULES) && /at most 3 short points/.test(DC.RULES) && /Under 80 words/.test(DC.RULES) && !/\[\[/.test(DC.RULES));
+  check('the small model is asked for one sentence with the number in bold, at most 3 points and a next step', /one sentence first, with the key number in \*\*bold\*\*/.test(DC.RULES) && /at most 3 short points/.test(DC.RULES) && /one short next step if there is one/.test(DC.RULES) && /Under 80 words/.test(DC.RULES) && !/\[\[/.test(DC.RULES));
   check('and still never to diagnose, and to see a doctor for the red flags', /never diagnose/.test(DC.RULES) && /tell them to see a doctor/.test(DC.RULES) && /Never make up a number/.test(DC.RULES));
   // A small model that copies marks it doesn't need: they go (the app adds the embeds itself).
   GH.lazy = async () => reply(' you walk plenty. [[steps]] Keep it up [[sle');
