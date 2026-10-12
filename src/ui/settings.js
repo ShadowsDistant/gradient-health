@@ -721,6 +721,7 @@
         ${r.reply ? `<p class="t-footnote rf-muted">Its answer: "${U.esc(r.reply)}"</p>` : ''}
         <details class="selftest-log"><summary class="t-footnote">The log</summary><pre class="preview">${U.esc((r.log || []).join('\n'))}</pre></details>
         <div class="btn-row"><button type="button" class="rf-btn" data-variant="soft" data-act="selfTestCopy">${U.icon('copy')}Copy</button><button type="button" class="rf-btn" data-variant="soft" data-act="selfTestReport">${U.icon('flag')}Report a problem</button></div>
+        <p class="t-footnote rf-muted">Report a problem opens a GitHub issue with this check, for you to read and edit. Once you post it, the issue is public on GitHub.</p>
       </div>`;
     };
     const ctl = U.sheet({ title: 'On-device AI check', size: 'auto', body: body() });

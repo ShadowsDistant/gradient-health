@@ -65,7 +65,13 @@ src/ui/badges.js         the badge medals and sealed capsules, the shelf, the ga
 src/ui/badges3d.js       the medals' 3D side, in the 3D chunk: drawing their stills and keeping them,
                          the live medal on a stage
 src/ui/sharecard.js      a badge's share image (a 1080×1350 canvas, the 3D medal on it) and sharing it
-src/ui/chat.js           the coach chat and the coach button on every tab
+src/ui/chat.js           the coach chat, its list of chats, and the coach button on every tab
+src/chats.js             the saved conversations (GH.chats): at most 50, 60 messages each, and the
+                         move from 1.10's one log per engine
+src/ui/md.js             the answers' Markdown, drawn safely: escaped first, a few tags, never links or
+                         images (GH.md, in the 'cards' chunk)
+src/ui/embeds.js         the data cards an answer can hold ([[sleep]], [[lift:<move>]] …), drawn from
+                         the app's own numbers, never the model's (GH.embeds)
 src/ui/tailor.js         the Tailor my plan sheet
 src/ui/customplan.js     Your plans: the list, the editor and exercise picker, sharing, a shared plan's
                          preview, Build me a plan
@@ -95,7 +101,10 @@ scripts/make-icons.mjs   the launcher icons, the Play icon and the in-app logo f
 scripts/screenshots.mjs  renders docs/screenshots/ from the built page (the activity is a walk along
                          Venice Beach, on OpenFreeMap's map when it can be reached from where it runs)
 scripts/frame-shots.mjs  puts the README's screenshots in a phone, in docs/screenshots/framed/
-scripts/store-assets.mjs   the store images in docs/store/ from docs/screenshots/
+scripts/store-assets.mjs   the store images in docs/store/ from docs/screenshots/: the feature graphic,
+                           the icon and five captioned screenshots, in scripts/store-style.mjs's look
+scripts/store-3d.mjs     the 3D figure and medal renders the store images and the video use
+scripts/promo-video.mjs  the store's promo video (docs/store/promo-1080p.mp4) and its thumbnail
 scripts/release-notes.mjs  What's new for a version, for its GitHub release and the stores
 scripts/make-tiny-gguf.py  a tiny random-weight model for test/llm.mjs
 ```
