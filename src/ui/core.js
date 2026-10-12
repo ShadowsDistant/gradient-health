@@ -210,12 +210,21 @@
     }
     return out;
   }
+  // (A page's elements have a few dozen kinds of attribute lists between them, so each list's record
+  // is made once and shared: a new page records hundreds of elements in the render a route change
+  // waits for. Records are never changed, only replaced.)
+  const RECORDS = new Map(); // attribute names → { attrs, style: NO_STYLE }
   function record(el) {
-    const names = new Set();
-    const list = el.attributes;
-    for (let i = 0; i < list.length; i++) names.add(list[i].name);
-    const text = el.getAttribute('style');
-    owned.set(el, { attrs: names, style: text ? new Set(styleProps(text).keys()) : NO_STYLE });
+    const names = el.getAttributeNames();
+    const text = names.includes('style') ? el.getAttribute('style') : '';
+    if (text) {
+      owned.set(el, { attrs: new Set(names), style: new Set(styleProps(text).keys()) });
+    } else {
+      const sig = names.join(' ');
+      let rec = RECORDS.get(sig);
+      if (!rec) { rec = { attrs: new Set(names), style: NO_STYLE }; if (RECORDS.size < 4000) RECORDS.set(sig, rec); }
+      owned.set(el, rec);
+    }
     for (let c = el.firstElementChild; c; c = c.nextElementSibling) record(c);
   }
   const NO_STYLE = new Set(); // (shared, never changed)
@@ -960,6 +969,10 @@
     for (const n of screen.querySelectorAll(`:scope > [${LATER}]`)) n.removeAttribute(LATER);
   }
   let floatEnter = false; // the floating buttons rise in at the next read pass
+  // From a tap, they form a frame after the page comes in: their glass forming (Refract's
+  // materialize, 20 to 45 ms of script at 4x CPU) ran in that frame. Meanwhile the row is out of sight
+  // ([data-forming], src/styles/perf.css), so it never shows before it forms.
+  let floatLater = false;
   // A switch's change re-renders the page it's on (a setting that shows or hides rows, a sub-line that
   // changes) while its knob is still gliding to the other end. The glide is drawn from the main
   // thread, so a 30 to 60 ms render (a phone's) held up its frames and the knob jumped the rest of the
@@ -1049,7 +1062,7 @@
     floatEl.hidden = !fl;
     screen.toggleAttribute('data-float', !!fl);
     // Whether they fit is read at the next frame, and then they form (measured before they move).
-    if (fl && (wasHidden || changed)) floatEnter = true;
+    if (fl && (wasHidden || changed)) { floatEnter = true; floatLater = first; floatEl.toggleAttribute('data-forming', first); }
     readSoon('float', floatPass);
     if (scr.after) safe(() => scr.after(screen, U.S, day, r.arg, changed));
     if (changed) {
@@ -1082,6 +1095,11 @@
   U.render = render;
   function floatPass() {
     fitFloat();
+    if (floatEnter && floatLater) {
+      floatEnter = floatLater = false;
+      rightAfterFrame(() => { if (!floatEl.hasAttribute('data-forming')) return; floatEl.removeAttribute('data-forming'); if (!floatEl.hidden) floatIn(); });
+      return;
+    }
     if (floatEnter && !floatEl.hidden) floatIn();
     floatEnter = false;
   }
@@ -1233,8 +1251,10 @@
       switching = null;
       if (!s || U.route.view || U.route.tab !== s.tab) return;
       if (lastKey !== s.tab) { drawFirst = true; render(s.kind); drawFirst = false; }
+      // What a tab does once it shows (a badge to celebrate, a report to write) waits for its page's
+      // frame too.
       const scr = U.screens[s.tab];
-      if (scr && scr.shown) safe(() => scr.shown(U.S, U.today()));
+      if (scr && scr.shown) rightAfterFrame(() => { if (U.route.tab === s.tab && !U.route.view) safe(() => scr.shown(U.S, U.today())); });
     });
   }
   U.open = (view, arg) => {
