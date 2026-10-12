@@ -272,7 +272,7 @@
   }
 
   /* ---------------------------------------------------------------- what you track */
-  const FOOD_SUB = { off: 'Nothing about food', protein: 'A protein goal with one-tap logging', full: 'Calories, macros and meals, with a protein goal' };
+  const FOOD_SUB = { off: 'Nothing about food', protein: 'A protein goal with one-tap logging', full: 'Calories, macros and meals, at the top of Health' };
   const TYPE_NAMES = { heartRate: 'heart rate', activeKcal: 'active calories', distance: 'distance', nutrition: 'nutrition', writeNutrition: 'saving meals' };
   function missingText(list) {
     const names = list.map((t) => TYPE_NAMES[t] || t);
@@ -288,6 +288,8 @@
         <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Weight goal</span></span>${U.seg('setWGoal', [['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']], p.weightGoal || 'maintain', 'Weight goal', ' data-on="setWeightGoal"')}</div></li>
         ${p.weightGoal === 'lose' ? `<li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Pace</span><span class="rf-list-sub">Of your body weight a week. Slower keeps more muscle.</span></span>${U.seg('setPace', [['0.25', '0.25%'], ['0.5', '0.5%'], ['0.75', '0.75%'], ['1', '1%']], String(fp.pace), 'Pace', ' data-on="setFoodPace"')}</div></li>` : ''}
         <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Sex</span><span class="rf-list-sub">For the calorie estimate. Skip it to use an average.</span></span>${U.seg('setSex', [['female', 'Female'], ['male', 'Male'], ['', 'Skip']], p.sex || '', 'Sex', ' data-on="setSex"')}</div></li>
+        ${stack('Activity', 'How much you move in a day, workouts aside', U.choice('setFoodAct', [['auto', 'From steps'], ['light', 'Light'], ['moderate', 'Moderate'], ['active', 'Active']], fp.activity || 'auto', 'Activity', ' data-on="setFoodAct"'), 'steps active moving calories burn', 'foodact')}
+        ${kw(U.row({ key: 'meal-times', icon: 'clock', tone: 'teal', title: 'Meal times', sub: U.esc(U.mealTimesLine ? U.mealTimesLine(S) : ''), act: 'foodMealTimes', chevron: true }), 'meals breakfast lunch dinner snacks clock time')}
         ${U.sw('Online search and barcodes', !!fp.online, 'data-on="setFoodPref" data-k="online"', 'From Open Food Facts. Only barcodes and search words are sent.')}
         ${hcOn ? U.sw('Save meals to Health Connect', fp.hcWrite !== false && canWriteFood, 'data-on="setFoodPref" data-k="hcWrite"', canWriteFood ? 'Other apps see what you log here' : 'Needs the Nutrition permission') : ''}
         ${hcOn ? U.sw('Count food from other apps', fp.hcRead !== false, 'data-on="setFoodPref" data-k="hcRead"', 'Meals logged in other apps add to your day') : ''}
@@ -309,7 +311,7 @@
     U.save();
     U.render();
     if (v === 'full' && before !== 'full') {
-      U.toast('Food is on', 'positive', 'It has its own tab. Progress now opens from You and Today\'s streak.');
+      U.toast('Calorie tracking is on', 'positive', 'Your food is at the top of Health, and on Today.');
       // Saving meals to Health Connect needs the nutrition permissions.
       if (H().connected(H().status()) && H().missingTypes && H().missingTypes(S).some((t) => t === 'nutrition' || t === 'writeNutrition')) {
         const ok = await U.confirm('Share food with Health Connect?', 'Meals you log go to Health Connect, and meals from other apps count toward your day.', 'Allow');
@@ -319,6 +321,7 @@
   };
   U.on.setWeightGoal = (el, ev, v) => { U.S.profile.weightGoal = v; U.save(); U.render(); };
   U.on.setFoodPace = (el, ev, v) => { GH.food.prefs(U.S).pace = Number(v) || 0.5; U.save(); U.render(); };
+  U.on.setFoodAct = (el, ev, v) => { if (v !== 'auto' && !GH.food.ACTIVITY[v]) return; GH.food.prefs(U.S).activity = v; U.save(); U.render(); };
   U.on.setSex = (el, ev, v) => { U.S.profile.sex = v || null; U.save(); U.render(); };
   U.on.setFoodPref = async (el, ev, v) => {
     const S = U.S;
@@ -409,7 +412,7 @@
     ['Anthropic TypeScript SDK', 'The Claude coach', 'MIT'],
     ['wllama and llama.cpp', 'On-device AI runtime', 'MIT'],
     ['Qwen3.5 (and Qwen2.5, if one is still on the phone)', 'On-device AI models, downloaded on request', 'Apache 2.0'],
-    ['barcode-detector and zxing-wasm', 'Barcode reading', 'MIT'],
+    ['zxing-wasm', 'Barcode reading', 'MIT'],
     ['ZXing C++', 'Barcode reading', 'Apache 2.0'],
     ['USDA SR28', 'Built-in food list', 'Public domain'],
     ['Open Food Facts', 'Online food search, when it\'s on', 'Open Database License'],
@@ -476,7 +479,7 @@
     const eq = U.S.profile.equipment;
     const curls = (eq.db && eq.db.length) || eq.band;
     U.sheet({
-      title: 'Level check', size: 'full',
+      title: 'Level check', size: 'auto',
       body: `<div class="sheet-pad ob-fields">
         <div class="rf-field"><label class="rf-field-label" for="bPush">Push-ups in a row</label><div class="rf-field-control"><input class="rf-input" id="bPush" type="number" inputmode="numeric" placeholder="Leave blank to skip"></div></div>
         <ul class="rf-list">${U.sw('On my knees', false, 'id="bKnees"')}</ul>
@@ -531,7 +534,7 @@
     };
     const food = GH.food && GH.food.full(S);
     const ctl = U.sheet({
-      title: 'Share your data with Claude?', size: 'full',
+      title: 'Share your data with Claude?', size: 'full', cls: 'consent-sheet',
       body: `<div class="sheet-prose">
         <p class="t-body">Claude is Anthropic's AI. Gradient Health sends Anthropic a summary of your data with each question, suggestion or plan check, and weekly for your report.</p>
         <p class="t-headline">The summary holds</p>
@@ -803,7 +806,7 @@
     else U.sheet({ title: 'Your data', size: 'full', body: `<div class="sheet-pad"><p class="t-callout rf-muted">Copying didn't work. Select all of this and copy it.</p></div><textarea class="rf-input preview" readonly>${U.esc(txt)}</textarea>` });
   };
   U.act.restoreSheet = () => U.sheet({
-    title: 'Restore', size: 'full',
+    title: 'Restore', size: 'auto',
     body: `<div class="sheet-pad"><p class="t-callout rf-muted">Paste the text from Copy my data. It replaces everything in the app now.</p></div>
       <div class="sheet-pad"><textarea class="rf-input preview" id="restoreTxt" rows="8" aria-label="Backup text" placeholder="{&quot;app&quot;:&quot;gradient-health&quot;, …}"></textarea><p class="rf-field-error" id="restoreErr" hidden></p></div>`,
     action: { label: 'Check', act: 'restoreCheck' },

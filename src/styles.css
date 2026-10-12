@@ -187,6 +187,39 @@ button:not([class*="rf-"]) { font: inherit; }
 .topbar { position: absolute; inset: 0 0 auto 0; z-index: var(--z-float); min-block-size: calc(var(--sat) + var(--navbar-height)); padding: calc(var(--sat) + var(--space-2)) calc(var(--sar) + var(--space-4)) var(--space-2) calc(var(--sal) + var(--space-4)); pointer-events: none; }
 .topbar > .rf-navbar-leading, .topbar > .rf-navbar-trailing { pointer-events: auto; min-block-size: 44px; }
 .topbar > .rf-scroll-edge { pointer-events: none; }
+/* The bar's edge, once the page is scrolled under it (#topbar[data-scrolled]): the page's own colour
+   over everything under the bar, nearly solid there, which fades out below it on an eased curve
+   (--edge-fade). The tint alone hides the page under the title, so it looks the same at rest and
+   while the page moves, in every Glass effects setting. With Liquid and Frosted the same layer
+   frosts what's under it too (when it's drawn: src/styles/perf.css), and the frost fades out below
+   the bar with the tint, so what scrolls up comes out of it softly; Auto and Flat have none, so Auto
+   has nothing to change when the page starts or stops moving (1.11's Auto swapped a lighter tint
+   over the frost for a heavier one without it while the page moved, and the page under the title
+   snapped from soft to sharp and back with every scroll). Tint and frost are one layer, faded out
+   by its mask: as two, the tint over the frost was a layer more to draw in every frame of a scroll.
+   A sheet's content fades under its header on the same curve (src/styles/sheet.css). The curve is
+   smoothstep, sampled every eighth of the way: it starts and ends flat, so neither end of the fade
+   reads as a line. */
+:root { --edge-fade: 48px; }
+.topbar > .rf-scroll-edge { block-size: calc(100% + var(--edge-fade)); }
+.topbar > .rf-scroll-edge::after {
+  --_e: var(--rf-edge-color, var(--bg));
+  background: linear-gradient(to bottom,
+    color-mix(in oklab, var(--_e) 96%, transparent),
+    color-mix(in oklab, var(--_e) 94%, transparent) calc(100% - var(--edge-fade) - 4px));
+  -webkit-mask-image: linear-gradient(to bottom,
+    #000 calc(100% - var(--edge-fade) - 4px),
+    rgb(0 0 0 / .957) calc(100% - (var(--edge-fade) + 4px) * .875), rgb(0 0 0 / .844) calc(100% - (var(--edge-fade) + 4px) * .75),
+    rgb(0 0 0 / .684) calc(100% - (var(--edge-fade) + 4px) * .625), rgb(0 0 0 / .5) calc(100% - (var(--edge-fade) + 4px) * .5),
+    rgb(0 0 0 / .316) calc(100% - (var(--edge-fade) + 4px) * .375), rgb(0 0 0 / .156) calc(100% - (var(--edge-fade) + 4px) * .25),
+    rgb(0 0 0 / .043) calc(100% - (var(--edge-fade) + 4px) * .125), transparent);
+  mask-image: linear-gradient(to bottom,
+    #000 calc(100% - var(--edge-fade) - 4px),
+    rgb(0 0 0 / .957) calc(100% - (var(--edge-fade) + 4px) * .875), rgb(0 0 0 / .844) calc(100% - (var(--edge-fade) + 4px) * .75),
+    rgb(0 0 0 / .684) calc(100% - (var(--edge-fade) + 4px) * .625), rgb(0 0 0 / .5) calc(100% - (var(--edge-fade) + 4px) * .5),
+    rgb(0 0 0 / .316) calc(100% - (var(--edge-fade) + 4px) * .375), rgb(0 0 0 / .156) calc(100% - (var(--edge-fade) + 4px) * .25),
+    rgb(0 0 0 / .043) calc(100% - (var(--edge-fade) + 4px) * .125), transparent);
+}
 .rf-btn[data-spinning] > svg { animation: gh-spin 900ms linear infinite; }
 @keyframes gh-spin { to { rotate: 360deg; } }
 
@@ -524,8 +557,11 @@ textarea.preview { border: 0; resize: vertical; }
 .celebrate.is-ach .ach-badge { width: 36px; height: 36px; border-radius: 50%; }
 .celebrate-text { display: grid; }
 .news-title { margin: 0 0 var(--space-1); }
-.news-list .rf-list-row { align-items: flex-start; }
-.news-list .rf-list-icon { margin-top: 2px; }
+/* What's new is quick notes, a line each: a small glyph in the accent colour instead of a tile, and
+   tight rows. */
+.news-list .rf-list-row { align-items: flex-start; gap: var(--space-3); min-height: 0; padding-block: 9px; }
+.news-list .rf-list-icon { width: 20px; height: 20px; margin-top: 1px; background: none; box-shadow: none; color: var(--accent); }
+.news-list .rf-list-icon svg { width: 18px; height: 18px; }
 
 /* ---------------------------------------------------------------- how it works */
 /* How it works: group chips and an evidence key at the top, then one inset list per group. */
@@ -702,13 +738,26 @@ textarea.preview { border: 0; resize: vertical; }
 
 /* ---------------------------------------------------------------- barcode scanner */
 .sc-wrap { display: grid; gap: var(--space-3); padding: var(--space-2) var(--space-4) var(--space-4); }
-.sc-view { position: relative; border-radius: var(--radius-lg); overflow: hidden; background: #000; aspect-ratio: 3 / 4; max-height: 58vh; width: 100%; }
-.sc-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.sc-frame { position: absolute; inset: 30% 10%; border-radius: var(--radius-md); box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.38); }
-.sc-frame::before { content: ""; position: absolute; inset: 0; border: 3px solid rgb(255 255 255 / 0.9); border-radius: inherit; }
+.sc-view { position: relative; border-radius: var(--radius-lg); overflow: hidden; background: #000; aspect-ratio: 3 / 4; max-height: 58vh; width: 100%; touch-action: manipulation; }
+/* The picture, magnified as src/barcode.js asks (--sc-zoom) when the camera can't zoom itself. */
+.sc-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(var(--sc-zoom, 1)); }
+/* The box: wide, for a barcode (a plan's code gets a square one, customplan.css). */
+.sc-frame { position: absolute; left: 9%; right: 9%; top: 50%; aspect-ratio: 2 / 1; translate: 0 -50%; border-radius: var(--radius-md); box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.38); }
+.sc-frame::before { content: ""; position: absolute; inset: 0; border: 3px solid rgb(255 255 255 / 0.9); border-radius: inherit; transition: border-color 160ms var(--ease-standard), box-shadow 160ms var(--ease-standard); }
 .sc-frame i { position: absolute; left: 6%; right: 6%; top: 50%; height: 2px; background: var(--accent); box-shadow: 0 0 12px var(--accent); animation: sc-sweep 1.6s var(--ease-standard) infinite alternate; }
 @keyframes sc-sweep { from { transform: translateY(-38px); } to { transform: translateY(38px); } }
-@media (prefers-reduced-motion: reduce) { .sc-frame i { animation: none; } }
+/* A code caught: the box takes the accent and the code lights up where it is. */
+.sc-frame[data-locked]::before { border-color: var(--accent); box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 70%, transparent); }
+.sc-frame[data-locked] i { opacity: 0; }
+.sc-lock { position: absolute; border: 3px solid var(--accent); border-radius: 10px; background: color-mix(in srgb, var(--accent) 24%, transparent); box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 60%, transparent); animation: sc-lock 220ms var(--ease-standard) both; }
+@keyframes sc-lock { from { opacity: 0; transform: scale(1.18); } to { opacity: 1; transform: none; } }
+/* Where a tap focused. */
+.sc-focus { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; border: 2px solid rgb(255 255 255 / 0.92); border-radius: 50%; pointer-events: none; animation: sc-focus 800ms var(--ease-standard) both; }
+@keyframes sc-focus { 0% { opacity: 0; transform: scale(1.5); } 30% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
+.sc-lock[hidden], .sc-focus[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { .sc-frame i, .sc-lock, .sc-focus { animation: none; } }
+/* The light, when the hint asks for it. */
+.sc-tools [data-act="scanTorch"][data-hint] { background: var(--accent-soft); color: var(--accent); }
 .sc-msg { position: absolute; left: 0; right: 0; bottom: 0; margin: 0; padding: var(--space-3) var(--space-4); color: #fff; text-align: center; background: linear-gradient(transparent, rgb(0 0 0 / 0.6)); }
 .sc-tools { justify-content: center; }
 .sc-type { display: grid; gap: var(--space-3); }

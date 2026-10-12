@@ -5,8 +5,10 @@
  * ever moves with a transform, so nothing is laid out while it moves:
  *  - Detents are translateY offsets. An 'auto' sheet's panel is as tall as the screen: 'medium'
  *    shows its content up to 62% of the screen and 'large' all of it (up to full height). Content
- *    that fits in medium gets no large detent, so a swipe up never shows empty sheet. 'fit' sheets
- *    are as tall as their content and 'full' ones open at large; both only open and dismiss.
+ *    that fits in 86% of the screen shows whole at medium and gets no large detent, so a swipe up
+ *    never shows empty sheet; longer content's medium reaches down to its main buttons that are in
+ *    those 86%. 'fit' sheets are as tall as their content and 'full' ones open at large; both only
+ *    open and dismiss. 'full' is for long lists and search.
  *  - A drag writes one transform a frame (plus the scrim's opacity). It starts from the grabber and
  *    header, and from the content while the sheet is below its top detent. At the top the content
  *    scrolls, and pulling down at its top edge hands over to the sheet.
@@ -32,6 +34,13 @@
   const LOCK = 8; // px a finger moves before the gesture picks a direction
   const MEDIUM = 0.62; // medium shows at most this much of the screen
   const MIN_STEP = 48; // content this close to medium's height just shows whole (no sliver of a detent)
+  // Content up to this much of the screen (as tall as a fit sheet gets) shows whole at medium too,
+  // with no large detent: cut at 62%, its last rows or its button sat below the fold, behind a
+  // second detent to drag up for (a report's buttons, Your answers' last rows, Built around you's
+  // button).
+  const WHOLE = 0.86;
+  // A sheet's main buttons (filled, tinted, large), as core.js's toasts know them.
+  const MAIN_BTN = '.rf-btn:is([data-variant="filled"], [data-variant="tinted"], [data-size="lg"], [data-size="xl"])';
   const OUT = 24; // closed: this far below the panel's own height (clears its shadow)
   const BAND = 72; // the most a sheet stretches past its top detent
   const PROJECT = 200; // a release carries on at its speed for this long (ms) before picking a detent
@@ -200,8 +209,20 @@
     sheenAt(s, H);
     if (s.size !== 'auto') return;
     const content = s.body.offsetTop + s.body.scrollHeight;
-    const cap = Math.round(vis * MEDIUM);
-    const whole = content <= cap + MIN_STEP;
+    const most = Math.round(vis * WHOLE);
+    let cap = Math.round(vis * MEDIUM);
+    const whole = content <= Math.max(cap + MIN_STEP, most);
+    // Too long to show whole: medium still reaches down to the main buttons that end within those
+    // 86% (and the gap the content ends with, clear of the system bar), so what the sheet is for is
+    // in sight as it opens.
+    if (!whole) {
+      const top = s.body.getBoundingClientRect().top, pad = parseFloat(G.getComputedStyle(s.body).paddingBottom) || 0;
+      for (const b of s.body.querySelectorAll(MAIN_BTN)) {
+        if (!b.getClientRects().length) continue;
+        const end = Math.round(s.body.offsetTop + s.body.scrollTop + b.getBoundingClientRect().bottom - top + pad);
+        if (end > cap && end <= most) cap = end;
+      }
+    }
     s.lowY = Math.max(0, H - (whole ? content : cap));
     s.topY = whole ? s.lowY : Math.max(0, H - content);
     if (s.lowY - s.topY < MIN_STEP) s.topY = s.lowY;

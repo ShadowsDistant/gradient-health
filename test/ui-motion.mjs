@@ -463,6 +463,57 @@ section('Route changes in quick succession');
   check('no id appears twice', r.dups.every((d) => baseDups.has(d)), r.dups);
 }
 
+section('A tab tapped');
+{
+  // A tap on the tab bar (Refract's rf-select, as its tabs send it): the page starts to leave where it
+  // is at once, the new one is drawn after the frame that shows that (src/ui/core.js, switchLater)
+  // with what's well out of sight a frame later still ([data-gh-later]), and the old page just goes.
+  const r = await page.evaluate(async () => {
+    const U = window.GH.ui, m = window.__m;
+    const screen = document.getElementById('screen'), bar = document.getElementById('tabbar');
+    const frame = () => new Promise((res) => requestAnimationFrame(() => res()));
+    const pause = (ms) => new Promise((res) => setTimeout(res, ms));
+    const tap = (t) => bar.dispatchEvent(new CustomEvent('rf-select', { detail: { tab: bar.querySelector(`.rf-tab[data-tab="${t}"]`) } }));
+    const rest = () => { const cs = getComputedStyle(screen); return cs.opacity === '1' && cs.transform === 'none' && m.anims(screen).length === 0; };
+    U.go('today');
+    await U.motion.settled();
+    await pause(150);
+    const old = screen.firstElementChild;
+    tap('health');
+    const out = { at: { route: U.route.tab, view: screen.dataset.view, oldIn: old.isConnected, props: Array.from(new Set(m.anims(screen).flatMap(m.props))).sort().join() } };
+    // The first frame with Health's page in it.
+    for (let i = 0; i < 60 && !out.first; i++) {
+      await frame();
+      if (screen.dataset.view === 'health') out.first = { layer: document.querySelectorAll('.screen-exit').length, oldIn: old.isConnected, later: screen.querySelectorAll(':scope > [data-gh-later]').length, kids: screen.childElementCount };
+    }
+    await U.motion.settled();
+    await pause(150);
+    out.done = { view: screen.dataset.view, later: screen.querySelectorAll(':scope > [data-gh-later]').length, left: m.leftovers(), rest: rest(), title: document.querySelector('#topbar .rf-navbar-title').textContent };
+    // Two taps before a frame: the second one says where it goes.
+    tap('plan'); tap('you');
+    await pause(50);
+    await U.motion.settled();
+    await pause(150);
+    out.twice = { view: screen.dataset.view, route: U.route.tab, rest: rest(), left: m.leftovers() };
+    // And a second tap back on the tab it left: the page stays, as it was.
+    const kept = screen.firstElementChild;
+    tap('today'); tap('you');
+    await pause(50);
+    await U.motion.settled();
+    await pause(150);
+    out.back = { view: screen.dataset.view, same: screen.firstElementChild === kept, rest: rest(), left: m.leftovers() };
+    U.go('today');
+    await U.motion.settled();
+    return out;
+  });
+  check('the tap starts the old page leaving where it is, by transform and opacity, before the new one is drawn', r.at.route === 'health' && r.at.view === 'today' && r.at.oldIn && r.at.props === 'opacity,transform', r.at);
+  check('the new page comes in the frame after, and the old one has gone with no layer of its own', r.first && r.first.layer === 0 && !r.first.oldIn && r.first.kids > 0, r.first);
+  check('what\'s well out of sight comes a frame later', r.first && r.first.later > 0 && r.done.later === 0, { first: r.first && r.first.later, after: r.done.later });
+  check('then it rests in place with the new title, nothing left over', r.done.view === 'health' && r.done.rest && r.done.title === 'Health' && Object.values(r.done.left).every((n) => n === 0), r.done);
+  check('two taps before a frame: the second one wins', r.twice.view === 'you' && r.twice.route === 'you' && r.twice.rest && Object.values(r.twice.left).every((n) => n === 0), r.twice);
+  check('a second tap back on the tab it left keeps the page, at rest', r.back.view === 'you' && r.back.same && r.back.rest && Object.values(r.back.left).every((n) => n === 0), r.back);
+}
+
 /* ---------------------------------------------------------------- lists */
 section('Lists glide (FLIP)');
 {

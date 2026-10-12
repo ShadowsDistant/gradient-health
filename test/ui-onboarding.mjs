@@ -413,8 +413,8 @@ section('Just tracking food?');
   await page.click('.ob-actions [data-variant="tinted"]');
   await page.waitForSelector('#screen[data-view="today"]', { timeout: 5000 });
   await page.waitForTimeout(700);
-  const t = await page.evaluate(() => ({ tabs: [...document.querySelectorAll('#tabbar .rf-tab')].map((x) => x.dataset.tab).join(','), session: !!document.querySelector('#screen .session'), mode: window.GH.food.mode(window.GH.ui.S), goal: window.GH.ui.S.profile.weightGoal, notify: window.GH.ui.S.profile.prefs.notify.on, asked: window.__notify.asked }));
-  check('the app opens with Today, Food, Health and You, no workout', t.tabs === 'today,food,health,you' && !t.session && t.mode === 'full' && t.goal === 'lose', t);
+  const t = await page.evaluate(() => ({ tabs: [...document.querySelectorAll('#tabbar .rf-tab')].map((x) => x.dataset.tab).join(','), session: !!document.querySelector('#screen .session'), card: !!document.querySelector('#screen .fd-card'), mode: window.GH.food.mode(window.GH.ui.S), goal: window.GH.ui.S.profile.weightGoal, notify: window.GH.ui.S.profile.prefs.notify.on, asked: window.__notify.asked }));
+  check('the app opens on Today with Today, Health and You (food is in Health), no workout, the food card', t.tabs === 'today,health,you' && !t.session && t.card && t.mode === 'full' && t.goal === 'lose', t);
   check('with notifications on, Android asked once', t.notify === true && t.asked === 1, t);
   await ctx.close();
 }

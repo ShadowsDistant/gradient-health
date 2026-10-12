@@ -22,6 +22,13 @@ const v = version();
 check('the newest entry is the version in package.json', list[0] && list[0].version === v, { newest: list[0] && list[0].version, package: v });
 check('versions go newest first, each once', list.every((e, i) => i === 0 || cmp(list[i - 1].version, e.version) > 0), list.map((e) => e.version));
 check('every entry has a date, a title and items', list.every((e) => /^\d{4}-\d{2}-\d{2}$/.test(e.date) && e.title && e.items.length && e.items.every(([icon, text]) => icon && text)));
+// What's new is quick notes, not essays (the owner asked for that in 1.12): a line each, a handful a
+// version. Longer explanations belong in the PR or README.
+const ITEM_MAX = 70, ITEMS_MAX = 8;
+const long = list.flatMap((x) => x.items.filter(([, text]) => text.length > ITEM_MAX).map(([, text]) => `${x.version}: ${text}`));
+check(`every What's new note is a line of ${ITEM_MAX} characters at most`, long.length === 0, long);
+check(`each version has ${ITEMS_MAX} notes at most`, list.every((x) => x.items.length <= ITEMS_MAX), list.filter((x) => x.items.length > ITEMS_MAX).map((x) => x.version));
+check('notes have no dashes for punctuation', list.every((x) => x.items.every(([, text]) => !/[\u2013\u2014]| - /.test(text))));
 const e = entry();
 check(`this version's store text fits ${STORE_MAX} characters`, typeof e.store === 'string' && e.store.length > 0 && e.store.length <= STORE_MAX, e.store ? e.store.length : 'none');
 check('the store text is plain (no Markdown)', e.store && !/[*_`#[\]<>]/.test(e.store), e.store);

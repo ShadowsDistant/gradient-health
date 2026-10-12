@@ -1,8 +1,9 @@
 // The Health tab in Chromium at phone size with someone five weeks in: every number opens its
 // metric sheet (resting heart rate's history, ranges, the chart inside its plot), Add or change for
 // today's weight updates the tile and removing it brings Health Connect's back, the This week card
-// has no paragraphs and opens the whole report, insights open in place, the + menu logs weight and
-// sleep, and nothing in the sheets spills sideways at 360 px with 130% text.
+// has no paragraphs and opens the whole report, insights open in place, the + menu (food first) logs
+// weight and sleep, food's place after the week (an invite, then the Food section and its numbers),
+// and nothing in the sheets or the food section spills sideways at 360 px with 130% text.
 // Usage: node test/ui-health.mjs [--dark] [--width=390]
 import { createRequire } from 'node:module';
 import { check, section, done, serveDist } from './lib.mjs';
@@ -214,7 +215,7 @@ await page.click('#topbar [popovertarget="hlLog"]');
 await page.waitForSelector('#hlLog [data-act="logWeight"]', { state: 'visible', timeout: 5000 });
 await settle(400);
 const items = await page.evaluate(() => [...document.querySelectorAll('#hlLog .rf-menu-item')].map((b) => b.textContent.trim()));
-check('the menu offers weight, sleep, a feel check, other exercise and measurements', items.join() === 'Weight,Sleep,Feel check,Other exercise,Measurements', items);
+check('the menu offers food first, then weight, sleep, a feel check, other exercise and measurements', items.join() === 'Food,Weight,Sleep,Feel check,Other exercise,Measurements', items);
 await page.click('#hlLog [data-act="logWeight"]');
 check('Weight opens the same form', await sheetOpen('.ms-edit'));
 await settle(500);
@@ -241,6 +242,16 @@ await page.click('dialog.ms-edit [data-act="metricSave"]');
 await settle(500);
 check('an impossible value is turned away with a reason', bad && await sheetOpen('.ms-edit') && /Enter resting heart rate between 25 and 150 bpm/.test(await toasts()), await toasts());
 await closeSheets();
+
+section('Food in Health');
+const order = () => page.evaluate(() => { const s = document.getElementById('screen'); const f = s.querySelector('.hf, .hf-invite'), week = s.querySelector('.hl-week'), today = [...s.querySelectorAll('.sec-title')].find((h) => h.textContent.trim() === 'Today'); return !!f && !!week && !!today && !!(week.compareDocumentPosition(f) & 4) && !!(f.compareDocumentPosition(today) & 4); });
+check('tracking protein: a Track calories invite, after the week and before Today', await page.evaluate(() => !!document.querySelector('#screen .hf-invite [data-act="foodStart"]')) && await order());
+// Calorie tracking on, and breakfast.
+await page.evaluate(() => { const GH = window.GH, S = GH.ui.S; GH.food.setMode(S, 'full'); GH.food.add(S, GH.ui.today(), { name: 'Oatmeal with milk', src: 'quick', kcal: 320, p: 14, c: 48, f: 8 }, Date.now() - 600000); GH.ui.render(); });
+await settle(900);
+check('tracking calories: the Food section in its place', !(await page.evaluate(() => !!document.querySelector('#screen .hf-invite'))) && await order());
+const hf = await page.evaluate(() => { const GH = window.GH, S = GH.ui.S, d = GH.ui.today(); const s = document.querySelector('#screen .hf'); return { left: s.querySelector('.hf-n [data-roll]').dataset.roll, want: GH.ui.num(GH.food.targets(S, d).kcal - GH.food.totals(S, d).kcal), meals: [...s.querySelectorAll('.hf-meal')].map((m) => [...m.children].map((c) => c.textContent.trim()).join('|')), macros: s.querySelectorAll('.hf-macro .rf-progress').length }; });
+check('with today\'s calories left, three macros and the four meals', hf.left === hf.want && hf.macros === 3 && hf.meals.length === 4 && hf.meals[0] === 'Breakfast|Oatmeal with milk|320' && hf.meals[1] === 'Lunch|11 am to 3 pm|', JSON.stringify(hf));
 
 section('Narrow screen, large text');
 await page.setViewportSize({ width: 360, height: 780 });
@@ -287,7 +298,7 @@ await page.waitForTimeout(150);
 // A label narrower than its longest word has to break inside that word.
 const wordBreaks = await page.evaluate(() => {
   const c = document.createElement('canvas').getContext('2d');
-  return [...document.querySelectorAll('#screen .hl-tr-label, #screen .hl-tile-label, #screen .hl-pill-k, #screen .hl-mini-label, #screen .hl-ins-title')].filter((e) => {
+  return [...document.querySelectorAll('#screen .hl-tr-label, #screen .hl-tile-label, #screen .hl-pill-k, #screen .hl-mini-label, #screen .hl-ins-title, #screen .hf-meal-k, #screen .hf-macro-k')].filter((e) => {
     const cs = getComputedStyle(e);
     c.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
     const words = [...e.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(' ').trim().split(/\s+/).filter(Boolean);
@@ -296,6 +307,8 @@ const wordBreaks = await page.evaluate(() => {
   }).map((e) => e.textContent.trim());
 });
 check('labels on the page wrap between words, never inside one', wordBreaks.length === 0, wordBreaks.join(' | '));
+const hfSpill = await page.evaluate(() => { const c = document.querySelector('#screen .hf'); const box = c.getBoundingClientRect(); return [...c.querySelectorAll('*')].filter((e) => { const r = e.getBoundingClientRect(); return r.width && !e.closest('svg') && (r.right > box.right + 1 || r.left < box.left - 1); }).map((e) => e.className.baseVal != null ? e.tagName : e.className).slice(0, 5); });
+check('and nothing in the food section spills out of its card', hfSpill.length === 0, hfSpill.join(' | '));
 
 section('Console');
 check('no console errors', errors.length === 0, errors.join(' | '));

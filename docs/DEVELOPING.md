@@ -27,7 +27,8 @@ src/body.js              weighted sets per muscle, how training splits, what imp
 src/health.js            Health Connect client (read and write), hand logs, per-day records
 src/food.js              food tracking: targets, logging, meals, the learned burn, Health Connect writes
 src/foodnet.js           Open Food Facts search and barcodes (through the Android shell)
-src/scanner.js           the barcode camera sheet; src/barcode.js is its lazy ZXing reader
+src/scanner.js           the barcode camera sheet; src/barcode.js (lazy) focuses, zooms and reads, with
+                         ZXing in a worker (src/barcode-worker.js)
 src/activity.js          outdoor activities: the recorder (the Android shell's, or the browser's), and
                          the track's maths: distance, pace, splits, auto-pause, records (GH.activity)
 src/actmap.js            the map behind a route: MapLibre on OpenFreeMap's tiles, a lazy chunk
@@ -118,11 +119,12 @@ npm run build     # dist/gradient-health.html, dist/lazy/, docs/PRIVACY.md and d
 npm run smoke     # end-to-end run in Chromium (needs Playwright); add --dark for dark mode
 npm run test:ui   # layout regressions, food flows, the coach chat, the 3D figure, your plans, controls
                   # (real touches), haptics, motion, the You tab, badges, the plan review, speed,
-                  # scrolling and Plan's cold 3D stills budgets (Chromium)
+                  # scrolling and Plan's cold 3D stills budgets, barcodes on a filmed camera (Chromium)
 node test/ui-scroll.mjs --measure [--vs=<dir>] [--ablate=<part>]   # scrolling every main screen: frames
                   # dropped, the GPU's draw time; A/B against another build, or with one part switched off
 npm run test:llm  # on-device AI runtime in Chromium with a tiny model (see On-device AI)
 node test/sweep.mjs [--quick]   # every screen at 360-600 px, light/dark, 100%/130% text, overflow checks
+node test/ui-sheetsize.mjs [--all] [--shots]   # every sheet: sized to its content, nothing cut off
 npm run apk       # build/gradient-health.apk (see below)
 node scripts/screenshots.mjs          # docs/screenshots/, light and dark
 node scripts/frame-shots.mjs [name …] # the README's copies of them, in a phone
@@ -145,13 +147,18 @@ left alone. A few conventions:
 - A route change gets fresh content: the old page leaves in a layer of its own while the new one
   comes in (`U.motion.routeSwap` in `src/ui/motion.js`, on Refract 1.4's page motion: pushes and
   pops slide on the snappy spring in 280 ms, tabs morph in place in 200; the bar's title cross-fades
-  with them, and its buttons and the tab bar land with the page). A re-render of the same route
-  patches in place and glides what moved (FLIP, 340 ms): new blocks rise in, and removed ones fade
-  from where they were for 180 ms before they go, so a test that checks one is gone waits for
-  `U.motion.settled()`. Animate transform and opacity only; `test/ui-motion.mjs` checks for layout
-  properties. Nothing that moves makes anyone wait: Refract's own motion the app asks for by name
-  (glass forming, shape-shifting) plays quicker where it would run long (`U.motion.within`), on the
-  same curves.
+  with them, and its buttons and the tab bar land with the page). A tap on the tab bar is answered
+  in the very next frame: the bar's glass sets off for the tab and the page starts to leave where it
+  is (`U.motion.leave`); the new page is drawn in a task posted from that frame (`switchLater` in
+  `core.js`), its blocks well out of sight a frame after the rest (`data-gh-later`, from where each
+  block ended when the tab was last left), and the old page just goes once it's in. Drawn inside the
+  tap, a tab's page held up the first frame 250 to 450 ms at 4x CPU; `ui-perf` times taps. A
+  re-render of the same route patches in place and glides what moved (FLIP, 340 ms): new blocks rise
+  in, and removed ones fade from where they were for 180 ms before they go, so a test that checks
+  one is gone waits for `U.motion.settled()`. Animate transform and opacity only;
+  `test/ui-motion.mjs` checks for layout properties. Nothing that moves makes anyone wait: Refract's
+  own motion the app asks for by name (glass forming, shape-shifting) plays quicker where it would
+  run long (`U.motion.within`), on the same curves.
 - Glass above the page moves as Refract's material does. The bar's buttons are keyed by what they
   are (`data-rf-key`; the top-left one by its place, the coach on a tab and Back on a page), so a
   push or Back shape-shifts them (`U.motion.shift`, `Refract.shapeshift`): one on both routes keeps
@@ -176,8 +183,9 @@ left alone. A few conventions:
 
 **Parts that load when they're needed.** Set-up (`src/ui/onboarding.js`), the plan review with
 Why this plan (`src/planreview.js`, `src/ui/review.js`), How it works (`src/data/science.js`,
-`src/ui/science.js`), a badge's share card (`src/ui/sharecard.js`) and notifications' planner
-(`src/notify.js`, loaded by `src/ui/notify.js` for someone who has them on) aren't in the page: they're
+`src/ui/science.js`), a badge's share card (`src/ui/sharecard.js`), notifications' planner
+(`src/notify.js`, loaded by `src/ui/notify.js` for someone who has them on) and the Food page with
+its sheets (`src/ui/foodpage.js`, whose stand-ins are in `src/ui/food.js`) aren't in the page: they're
 `APP_CHUNKS` in `scripts/build.mjs`, built into `dist/lazy/` and loaded with `GH.lazy(name)`.
 `src/ui/lazy.js` puts small stand-ins in their place: an action loads its part and then runs the
 real one, a screen draws its bar and title until its part is in, and `GH.planReview.available`
@@ -288,12 +296,17 @@ once the page stops it goes back on at no strength and eases up over 280 ms (`be
 Its frost stays, and the bar's buttons keep their lens: 1.7.0 dropped every lens at once and the
 title went sharp under them. The glow also stops drifting 20 s after the last touch, key or scroll
 (`#app[data-idle]`), and fades out in its gradients' own stops rather than through a mask. The
-bar's frosted edge is a single 12 px blur (Refract's is 8: the wider one looks the same under its
-tint and is cheaper, as the renderer works a wide blur out at a lower resolution), drawn only while
-it shows, and whether it shows comes from an IntersectionObserver on the large title, so a scroll
-reads nothing from the layout. Refract's light no longer hears each scroll (it read where every
-glass was, a frame at a time, to find the same angles): it's refreshed once a scroll ends. What
-makes a fling miss frames is the glass: each piece over the page is filtered again every frame it
+bar's edge is the page's colour, nearly solid under the bar, fading out below it over 48 px on an
+eased curve (smoothstep, the curve a sheet's content fades on under its header too); its tint alone
+hides the page under the title, so it looks the same at rest and while the page moves. Liquid and
+Frosted frost it too, on the same layer, fading out with the tint, a single 12 px blur (Refract's is
+8: the wider one looks the same under the tint and is cheaper, as the renderer works a wide blur out
+at a lower resolution); Auto and Flat have none, so Auto has nothing to change as the page starts or
+stops moving. It's drawn only while it shows, and whether it shows comes from an
+IntersectionObserver on the large title, so a scroll reads nothing from the layout. Refract's light
+no longer hears each scroll (it read where every glass was, a frame at a time, to find the same
+angles): it's refreshed once a scroll ends. What makes a fling miss frames is the glass: each piece
+over the page is filtered again every frame it
 moves (1.8.1 dropped about 30% of a touch fling's frames on Today at 4× CPU in software; 1.8.2
 about 16%). Under the workout player and set-up the page's bars and glass are hidden. Set-up's cards are
 near-opaque rather than frosted, and its glow holds still while it scrolls. The badges
@@ -414,14 +427,18 @@ Where the app uses Refract 1.4's newer parts:
   blur under anything that moves is redrawn every frame; the rim and sheen move with their layer).
   A sheet opened over another is solid at every height (`data-stacked`): frost over a sheet's words
   lets them through. A sheet's body has no inset of its own, so each block in it brings its 16 px.
-  Content scrolled off its top fades into the material over 28 px under the header, as a page does
-  under the top bar (`data-scrolled`, toggled only as the scroll position crosses 0): on solid glass
-  a gradient in the material's own colour (`--sheet-bg` and what's left of the sheen there, which
-  `sheet.js` works out from the panel's height), on frosted glass at rest a mask on the content, which
-  shows the frost as it is; a scroll hands over to the gradient, so nothing is masked while the
-  content moves, and neither follows a drag. A faint glow of the icon's colours sits at the top of
-  the material, gone before the content starts. `test/ui-sheet.mjs` reads the pixels where the
-  content meets the header and times scrolling a long sheet (`ui-scroll` only scrolls pages).
+  Content scrolled off its top fades into the material over 48 px under the header, on the curve a
+  page fades on under the top bar (`data-scrolled`, toggled only as the scroll position crosses 0):
+  on solid glass a gradient in the material's own colour (`--sheet-bg` and what's left of the sheen
+  there, which `sheet.js` works out from the panel's height), on frosted glass at rest a mask on the
+  content, which shows the frost as it is; a scroll hands over to the gradient, so nothing is masked
+  while the content moves, and neither follows a drag. A faint glow of the icon's colours sits at
+  the top of the material, gone before the content starts. `test/ui-sheet.mjs` reads the pixels
+  where the content meets the header and times scrolling a long sheet (`ui-scroll` only scrolls
+  pages). Sizes: an auto sheet shows its content whole at medium when it fits in 86% of the screen
+  (as tall as a fit sheet gets), and a longer one's medium reaches down to its main buttons that are
+  in those 86%; full is for long lists, long reads and search. `test/ui-sheetsize.mjs` opens every
+  sheet it can reach at 390 px and at 360 px with 130% text and checks that.
 - **Dropdowns** (`<details class="gh-drop">`, `src/styles/dropdown.css`): what's inside grows open
   and folds shut (`::details-content`'s height, with `interpolate-size`), fading as it goes, and the
   chevron turns with it. It's the one motion here that lays the page out every frame, for 240 ms
@@ -919,20 +936,59 @@ Both are the same llama.cpp release (b10663). Details:
 
 ## Food
 
-Food tracking is off until someone turns it on (Settings, What you track). `src/food.js` is pure logic
+Food tracking is off until someone turns it on (Settings, What you track, or Health's Track calories:
+one sheet with the target the app suggests, each part of it changeable). `src/food.js` is pure logic
 on the saved state and is unit-tested (`test/food.mjs`): Mifflin-St Jeor times an activity factor from
-the person's steps and workouts, a pace from the goal, floors, macros, and a burn estimate that learns
-from logged intake and the weight trend (a regression on raw weigh-ins, blended in slowly).
+the person's steps and workouts (or the activity they set), a pace from the goal, floors, macros, and a
+burn estimate that learns from logged intake and the weight trend (a regression on raw weigh-ins,
+blended in slowly).
+
+Food never takes a tab. Health has it after the week (`U.healthFood`: today's calories and macros, the
+four meals, Add food and Scan), which opens the Food page; Health's + menu has Food first, and Today
+has its card. The Food page and every food sheet are a part of their own (`src/ui/foodpage.js`, the
+`foodUi` chunk, loaded ahead of time for someone tracking calories); `src/ui/food.js` keeps the card,
+the section and the stand-ins in the page.
+
+- **Meal times**: breakfast, lunch and dinner each have a window (`profile.food.meals`, minutes after
+  midnight) and snacks are any other time. A new entry goes in the meal its time falls in unless one
+  was picked by hand (`mh`), and a new time moves it the same way. With Learn from my logs
+  (`profile.food.learn`, on by default) each window follows the last 4 weeks' times for that meal
+  (10th to 90th percentile, an hour either side, 3 hours at least, never more than 2 hours from the
+  window set, once it has 5 days), counting only times that say when food was eaten: not copies, an
+  earlier day's usual time (an entry's `at`), or meals logged within half an hour of each other.
 
 - **Built-in foods** load on demand from `dist/lazy/foods.js` (`GH.foods`), built from USDA data.
 - **Open Food Facts** (only with Online search and barcodes on): `FoodLookup.java` makes the request with
   the User-Agent Open Food Facts asks for, so the page's CSP keeps every other host out. `src/foodnet.js`
   keeps to their rate limits (10 searches and 15 products a minute) and sanity-checks every product.
-- **Barcodes**: `src/scanner.js` opens the back camera with `getUserMedia` (MainActivity grants the
-  WebView's video request after the runtime CAMERA permission) and reads frames with the MIT
-  `barcode-detector` ponyfill over ZXing in WebAssembly (`dist/lazy/barcode.js` and
-  `zxing_reader.wasm`), so no Play services are needed. A code counts once it's read twice in a row with
-  a valid check digit; typing the number always works too.
+- **Barcodes**: `src/scanner.js` opens the back camera with `getUserMedia` at 1920 x 1080 (MainActivity
+  grants the WebView's video request after the runtime CAMERA permission) while the reader loads
+  alongside: `src/barcode.js` (`dist/lazy/barcode.js`) and its worker, `src/barcode-worker.js`, with
+  ZXing in WebAssembly (`zxing-wasm`, MIT, `zxing_reader.wasm` next to it), so no Play services are
+  needed.
+  - The camera focuses continuously where it can, and a tap on the picture focuses there (a point of
+    interest, single shot). The picture is magnified 2.5 times so a phone 15 to 20 cm away fills the
+    box, since many phones can't focus closer: the camera's own zoom where a page may use it, but
+    Android's WebView always denies the camera pan-tilt-zoom permission that `zoom` needs, so there
+    the page magnifies the video and the reader crops to match.
+  - Each new frame goes to the worker as a `VideoFrame`, which copies out only the part it reads, and
+    only its brightness (cutting an `ImageBitmap` from the video drew the whole frame on the page's
+    thread first, 45 to 100 ms a frame at 1080 x 1920). In turn: the box with a margin; the whole
+    picture (a code outside the box, on its side, or closer than the box); and the box evened out
+    (rows averaged along the bars and sharpened across, which reads a code blurred by half a module).
+    Where the phone has its own `BarcodeDetector` for these formats, it reads the frames too, and the
+    first read wins.
+  - An EAN-13 or UPC-A counts on its first read with a right check digit, an EAN-8 or UPC-E once it's
+    read twice within 1.2 s in two frames (the pass that read it once goes again until then). An
+    evened-out read counts only when a second setting reads the same in that frame: alone it misread
+    a moving code, with a right check digit. UPC-A and UPC-E come back as 13 digits, as ZXing reads
+    them. The code locks in the box with the scan haptic, then the sheet closes; after 3 s without a
+    read, the box says what would help (closer, further, the light, steady). Typing the number
+    always works too.
+  - `test/ui-scan.mjs` films real codes drawn from their digits (`test/scanfixture.mjs`) under hard
+    conditions for Chromium's fake camera and scans them; `--measure` gives the read rates and times
+    (`--vs=<dir> --vs-res=720` with another build alongside, trial by trial, so both meet the same
+    load). `test/scan.mjs` checks the rules.
 - **Health Connect**: meals are written as `NutritionRecord`s with the entry id as the client record id
   and a version that grows with each edit, so edits replace the record; deletes delete it. Food other
   apps logged comes back as per-day totals. The nutrition permissions are only requested when calorie

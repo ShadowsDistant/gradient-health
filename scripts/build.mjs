@@ -344,6 +344,10 @@ export const APP_CHUNKS = [
   // The coach's answers as cards: their Markdown and the data embeds drawn from the app's numbers,
   // loaded as the chat is about to open (src/ui/chat.js).
   { name: 'cards', scripts: ['src/ui/md.js', 'src/ui/embeds.js'] },
+  // The Food page and food's sheets (adding, portions, starting, meal times): Today's card and
+  // Health's food section are in the page (src/ui/food.js), which loads this ahead of time for
+  // someone tracking calories.
+  { name: 'foodUi', scripts: ['src/ui/foodpage.js'] },
 ];
 
 // Heavy parts that load only when they're used (the 3D figure, the on-device model runtime, the
@@ -353,7 +357,11 @@ export const LAZY = [
   // The Claude coach's requests and the Anthropic SDK (src/claude.js), loaded the first time someone
   // who allowed Claude asks it something. Its small inline part is src/ai.js.
   { name: 'claude', entry: 'src/claude.js' },
-  { name: 'barcode', entry: 'src/barcode.js', assets: [['node_modules/zxing-wasm/dist/reader/zxing_reader.wasm', 'zxing_reader.wasm']] },
+  // The barcode reader: a scan's focus, zoom, reading and hints (src/barcode.js), and ZXing in
+  // WebAssembly in a worker of its own (src/barcode-worker.js, started from the app's origin), with
+  // its .wasm next to it.
+  { name: 'barcode', entry: 'src/barcode.js' },
+  { name: 'barcode-worker', entry: 'src/barcode-worker.js', assets: [['node_modules/zxing-wasm/dist/reader/zxing_reader.wasm', 'zxing_reader.wasm']] },
   // On-device AI: llama.cpp compiled to WebAssembly (@wllama/wllama). v3 ships one wasm for every mode.
   { name: 'llm', entry: 'src/llm.js', assets: [['node_modules/@wllama/wllama/esm/wasm/wllama.wasm', 'wllama/wllama.wasm']] },
   // The built-in food list (USDA SR28), loaded the first time someone searches for a food.

@@ -34,7 +34,10 @@ import { APP_SCRIPTS, APP_CHUNKS, LAZY, asciiRegexps, figureId } from '../script
 // 17 KB with their styles; the answers' Markdown and data cards are a chunk of their own), updates in
 // the app (src/update.js and its CSS, about 17 KB: the check, Settings' rows, Today's cards and the
 // update sheet), and the fades under sheets' headers and in the chat, the brand gradients and its
-// What's new (about 9 KB), and ships at 2,096,798 bytes; the budget is that plus 1%.
+// What's new (about 9 KB), and ships at 2,096,798 bytes; the budget is that plus 1%. 1.12 moves the
+// Food page and its sheets into a part of their own (the foodUi chunk, 33 KB), and adds Health's food
+// section, meals by the clock, quicker tab taps and the sheets' sizes; it ships at 2,074,780 bytes,
+// and the budget stays at 1.11's.
 const BUDGET = 2118000;
 
 const file = join(root, 'dist/gradient-health.html');

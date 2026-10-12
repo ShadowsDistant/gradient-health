@@ -28,7 +28,7 @@ SEE EVERY MOVE IN 3D
 MORE THAN WORKOUTS
 • Sleep, steps, heart rate, weight and more from Health Connect
 • Runs, walks, hikes and rides with GPS, auto-pause and spoken splits
-• Calories and macros, just protein, or no food tracking at all
+• Calories and macros by meal, with a barcode scanner, or just protein
 • 64 badges as 3D medals to earn, open and share
 
 A PRIVATE AI COACH
@@ -44,17 +44,19 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 ## What's new (500 characters at most)
 
-Paste this into the What's new field with each update. This is 1.11.0's. Each GitHub release carries
+Paste this into the What's new field with each update. This is 1.12.0's. Each GitHub release carries
 its own version's text at the end of its What's new, under "Short version, for a store's What's new
 field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
 (`node scripts/release-notes.mjs --store` prints it).
 
 ```text
-• Coach answers you can scan, with cards of your own data
-• Your chats are kept: start a new one or go back to an old one
-• Updates in the app: download and install the next version in a tap
-• Sheets fade softly under their header as you scroll
-• Subtle gradients in the icon's colours
+• Food lives in Health now, so tracking calories never costs a tab
+• Start in one short sheet, then add food from Health's + menu
+• Food goes in the right meal by the clock: set your meal times or let the app learn them
+• Your usual foods and yesterday's meals in a tap
+• Barcode scanning that reads: quicker, with zoom, tap to focus and tips
+• Tabs respond the moment you tap
+• Sheets open at the right size, with softer fades at the top
 ```
 
 ## Images
