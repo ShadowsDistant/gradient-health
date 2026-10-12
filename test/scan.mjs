@@ -86,7 +86,7 @@ section('Hints');
   check('dark: the light, when there is one', h([{ light: 20 }, { light: 30 }], { torch: true }) === 'dark' && h([{ light: 20 }], {}) === 'darkNoTorch');
   check('bars from edge to edge: further away', h([{ bars: { full: true } }, { bars: { full: true } }]) === 'further');
   check('a small run of bars: closer', h([{ bars: { span: 0.2 } }, { bars: { span: 0.25 } }]) === 'closer');
-  check('moving: hold steady', h([{ change: 30 }, { change: 25 }]) === 'steady' && h([{ change: 30, bars: { span: 0.2 } }, { change: 28, bars: { span: 0.2 } }]) === 'steady');
+  check('moving: hold steady, even with bars edge to edge', h([{ change: 30 }, { change: 25 }]) === 'steady' && h([{ change: 30, bars: { span: 0.2 } }, { change: 28, bars: { span: 0.2 } }]) === 'steady' && h([{ change: 30, bars: { full: true } }, { change: 28, bars: { full: true } }]) === 'steady');
   check('no bars at all: hold the barcode in the box', h([{}, {}]) === 'aim');
   check('a plan\'s code: point at it, or hold steady', h([{}], { qr: true }) === 'aimQr' && h([{ change: 40 }], { qr: true }) === 'steady');
   check('every hint has words', ['aim', 'aimQr', 'closer', 'further', 'dark', 'darkNoTorch', 'steady'].every((k) => B.HINTS[k] && !/[–—]/.test(B.HINTS[k])));

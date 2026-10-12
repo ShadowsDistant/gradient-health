@@ -235,8 +235,9 @@ for (const sc of SCENES) {
 }
 
 /* ---------------------------------------------------------------- smoothness */
-// A code too far away to read: the reader works all the time. How long the page's thread is held,
-// and how evenly the page's frames come, over 4 seconds once the camera and the reader are going.
+// Bars all over the picture, too close to read: the reader works its hardest all the time. How
+// long the page's thread is held, and how evenly the page's frames come, over 4 seconds once the
+// camera and the reader are going.
 const scanFor = (page, ms, o = {}) => page.evaluate(async ({ ms, qr }) => {
   window.__p = window.GH.scanner.scan(qr ? { qr: true, accept: () => false } : undefined);
   await new Promise((r) => setTimeout(r, ms));
@@ -245,7 +246,7 @@ const stopScan = (page) => page.evaluate(async () => { window.GH.ui.closeSheets(
 const ALL_ONLY = !ONLY || ONLY.includes('extras');
 if (ALL_ONLY) {
   section('The screen stays smooth while it reads');
-  const sc = HINT_SCENES.find((s) => s.name === 'far');
+  const sc = HINT_SCENES.find((s) => s.name === 'huge');
   const { browser, page } = await open(sc);
   await scanFor(page, 1500);
   const m = await page.evaluate(async () => {

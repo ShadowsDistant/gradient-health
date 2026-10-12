@@ -95,8 +95,9 @@
     if (opts.qr) return moving ? 'steady' : 'aimQr';
     const withBars = looks.filter((l) => l.bars);
     if (withBars.length * 2 >= looks.length) {
-      if (withBars.filter((l) => l.bars.full).length * 2 >= withBars.length) return 'further';
+      // A picture that moves can't say how far the code is: steady first.
       if (moving) return 'steady';
+      if (withBars.filter((l) => l.bars.full).length * 2 >= withBars.length) return 'further';
       const spans = withBars.filter((l) => l.bars.span != null);
       if (spans.length && median(spans.map((l) => l.bars.span)) < 0.4) return 'closer';
       return 'steady';
