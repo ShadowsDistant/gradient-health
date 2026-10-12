@@ -297,9 +297,9 @@ title went sharp under them. The glow also stops drifting 20 s after the last to
 bar's edge is the page's colour, nearly solid under the bar, fading out below it over 48 px on an
 eased curve (smoothstep, the curve a sheet's content fades on under its header too); its tint alone
 hides the page under the title, so it looks the same at rest and while the page moves. Liquid and
-Frosted add a frost under the bar that dies away just below it, a single 12 px blur (Refract's is 8:
-the wider one looks the same under the tint and is cheaper, as the renderer works a wide blur out at
-a lower resolution); Auto and Flat have none, so Auto has nothing to change as the page starts or
+Frosted frost it too, on the same layer, fading out with the tint, a single 12 px blur (Refract's is
+8: the wider one looks the same under the tint and is cheaper, as the renderer works a wide blur out
+at a lower resolution); Auto and Flat have none, so Auto has nothing to change as the page starts or
 stops moving. It's drawn only while it shows, and whether it shows comes from an
 IntersectionObserver on the large title, so a scroll reads nothing from the layout. Refract's light
 no longer hears each scroll (it read where every glass was, a frame at a time, to find the same

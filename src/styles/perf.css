@@ -12,16 +12,17 @@
 
 /* The bar's frosted edge (#topbar > .rf-scroll-edge; how it looks: src/styles.css): Refract draws it
    with two full-width blurs, a light one (3 px) under a stronger one (8 px), each with the tint, and
-   draws them even while the edge is faded out. Here it's one blur (::before), under the bar and dying
-   away just below it, with the tint on a layer of its own above it (::after, no filter), and the blur
-   is drawn only while the edge shows (#topbar[data-scrolled], once the large title is under the bar):
-   it comes on at once (the edge fades in from nothing), and goes when the edge has faded out.
+   draws them even while the edge is faded out. Here it's one blur, on the layer with the tint
+   (::after) and faded out below the bar with it by its mask, and drawn only while the edge shows
+   (#topbar[data-scrolled], once the large title is under the bar): it comes on at once (the edge
+   fades in from nothing), and goes when the edge has faded out.
    The blur is 12 px rather than Refract's 8: under the tint the two can't be told apart, and the
    wider blur is the cheaper one, as the renderer works a wide blur out at a lower resolution:
    touch-scrolling Today and Health dropped about 20% of frames rather than 30% (test/ui-scroll.mjs,
    at 4x CPU in software, where the edge was the largest single cost). */
-.topbar > .rf-scroll-edge::before { -webkit-backdrop-filter: blur(12px) saturate(130%); backdrop-filter: blur(12px) saturate(130%); }
-.topbar:not([data-scrolled]) > .rf-scroll-edge::before {
+.topbar > .rf-scroll-edge::before { display: none; }
+.topbar > .rf-scroll-edge::after { -webkit-backdrop-filter: blur(12px) saturate(130%); backdrop-filter: blur(12px) saturate(130%); }
+.topbar:not([data-scrolled]) > .rf-scroll-edge::after {
   -webkit-backdrop-filter: none; backdrop-filter: none;
   transition: opacity var(--duration-slow) var(--ease-standard), -webkit-backdrop-filter 0s linear var(--duration-slow), backdrop-filter 0s linear var(--duration-slow);
 }
@@ -101,7 +102,7 @@
 /* The bar's edge has no frost in Auto or Flat (src/styles.css): its tint alone hides the page under
    the title, so nothing about it changes when Auto's page starts or stops moving. (The glass speed
    test's looks set data-glass-lite as well.) */
-:root:is([data-glass="auto"], [data-glass-lite]) .topbar > .rf-scroll-edge::before { display: none; }
+:root:is([data-glass="auto"], [data-glass-lite]) .topbar > .rf-scroll-edge::after { -webkit-backdrop-filter: none; backdrop-filter: none; }
 :root[data-glass-lite] .app::before, :root[data-glass-lite] .app::after, :root[data-glass-lite] .onboard::before, :root[data-glass-lite] .onboard::after { visibility: hidden; }
 
 /* Frosted (:root[data-glass="frosted"]) is the blur without the lenses: the lens layers go and the glass
