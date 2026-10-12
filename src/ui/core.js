@@ -721,6 +721,9 @@
   U.glassHold = (on, as) => {
     glassHeld = !!on;
     heldAs = on && as ? as : null;
+    // (The root says which look it's held as: the bar's edge has its frost only in Liquid's and
+    // Frosted's, src/styles/perf.css.)
+    if (heldAs) doc.documentElement.setAttribute('data-glass', heldAs);
     if (!on) { glassMoving = false; clearTimeout(glassTimer); glassTimer = 0; glassApply(); bend(1); }
   };
   U.glassState = () => ({ mode: glassMode, moving: glassMoving, lite: !!doc.documentElement.hasAttribute('data-glass-lite') });
