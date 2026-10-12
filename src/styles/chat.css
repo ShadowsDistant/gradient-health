@@ -128,6 +128,8 @@
 @keyframes caret-pulse { 50% { opacity: .3; scale: .7; } }
 html[data-sheet-moving] .bubble.coach.is-typing, html[data-sheet-moving] .caret { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) { .bubble.coach.is-typing, .caret { animation: none; background-image: none; } .chat-prog > i { transition: none; } }
+:root[data-rf-motion="reduced"] :is(.bubble.coach.is-typing, .caret, .emb .sp-svg) { animation: none; background-image: none; }
+:root[data-rf-motion="reduced"] .chat-prog > i { transition: none; }
 /* Under each answer: Copy, What it used, Report. */
 .msg-tools { display: flex; flex-wrap: wrap; gap: 2px; margin-inline-start: -4px; }
 .msg-tool { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 9px; border: 0; border-radius: var(--radius-full); background: none; color: var(--label-secondary); font: inherit; font-size: 13px; cursor: pointer; }
