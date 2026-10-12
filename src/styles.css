@@ -524,8 +524,11 @@ textarea.preview { border: 0; resize: vertical; }
 .celebrate.is-ach .ach-badge { width: 36px; height: 36px; border-radius: 50%; }
 .celebrate-text { display: grid; }
 .news-title { margin: 0 0 var(--space-1); }
-.news-list .rf-list-row { align-items: flex-start; }
-.news-list .rf-list-icon { margin-top: 2px; }
+/* What's new is quick notes, a line each: a small glyph in the accent colour instead of a tile, and
+   tight rows. */
+.news-list .rf-list-row { align-items: flex-start; gap: var(--space-3); min-height: 0; padding-block: 9px; }
+.news-list .rf-list-icon { width: 20px; height: 20px; margin-top: 1px; background: none; box-shadow: none; color: var(--accent); }
+.news-list .rf-list-icon svg { width: 18px; height: 18px; }
 
 /* ---------------------------------------------------------------- how it works */
 /* How it works: group chips and an evidence key at the top, then one inset list per group. */
