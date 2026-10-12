@@ -303,7 +303,7 @@
       <div class="sheet-pad up-act" data-key="up-act">${actionHtml(s, L)}</div>`;
   }
   const bigBtn = (act, label, icon) => `<button type="button" class="rf-btn ob-wide" data-variant="filled" data-size="lg" data-act="${act}" data-key="up-main">${icon ? U.icon(icon) : ''}${esc(label)}</button>`;
-  const note = (text, cls) => `<p class="t-footnote ${cls || 'rf-muted'}">${esc(text)}</p>`;
+  const note = (text, cls) => `<p class="${cls || 't-footnote rf-muted'}">${esc(text)}</p>`;
   const spin = (text) => `<div class="up-wait"><span class="rf-spinner" data-size="sm"><i></i></span><span class="t-callout">${esc(text)}</span></div>`;
   function actionHtml(s, L) {
     switch (s.phase) {
@@ -313,8 +313,8 @@
         const what = s.phase === 'verifying' ? 'Checking the download…' : `${mb(s.loaded)} of ${mb(s.total || L.size)}`;
         return `<div class="up-prog">${U.progress(frac, 'Download')}<div class="up-prog-row"><span class="t-footnote rf-muted rf-num">${esc(what)}</span><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="updateCancel">Cancel</button></div></div>`;
       }
-      case 'ready': return `${s.error ? note(WHY[s.error] || WHY.failed, 'up-err') : ''}${bigBtn('updateInstall', 'Install', 'download')}
-        ${note('Android asks you to confirm. The app closes while it updates, then open it again. Your data stays as it is.')}`;
+      case 'ready': return `${s.error ? note(WHY[s.error] || WHY.failed, 't-callout up-err') : ''}${bigBtn('updateInstall', 'Install', 'download')}
+        ${note('Android asks you to confirm. The app closes while it updates: open it again when it\'s done. Your data stays as it is.')}`;
       case 'permission': return `<p class="t-headline">Allow updates from Gradient Health</p>
         ${note('Android asks once. In the screen that opens, turn on Allow from this source, then come back here.', 't-callout rf-muted')}
         ${bigBtn('updateInstall', 'Open settings')}`;

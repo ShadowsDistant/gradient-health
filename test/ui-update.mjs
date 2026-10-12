@@ -321,7 +321,7 @@ section('Settings, About: Check for updates and Check automatically');
   await ev(() => window.__up.finish());
   await settle(400);
   s = await sheetOf(ev);
-  check('downloaded and checked: Install, and what happens then', s && s.main && s.main.act === 'updateInstall' && s.main.label === 'Install' && /The app closes while it updates, then open it again\. Your data stays as it is\./.test(s.act), s);
+  check('downloaded and checked: Install, and what happens then', s && s.main && s.main.act === 'updateInstall' && s.main.label === 'Install' && /The app closes while it updates: open it again when it.s done\. Your data stays as it is\./.test(s.act), s);
   check('with the success feel', (await haptics(ev)).slice(h0).includes('success'), (await haptics(ev)).slice(h0));
   await shot(page, 'update-sheet-ready');
 
