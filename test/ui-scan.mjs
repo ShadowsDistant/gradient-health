@@ -8,10 +8,12 @@
 // The videos are made once and kept in build/scan-videos/ (about 250 MB; a change to a scene
 // films that one again).
 // Usage: node test/ui-scan.mjs [--measure] [--trials=N] [--only=clear,small] [--json=<file>]
-//        [--shots=<dir>] [--dist=<dir> --res=720]
+//        [--shots=<dir>] [--dist=<dir> --res=720] [--vs=<dir> --vs-res=720]
 //   --measure  6 trials a scene and numbers only: no pass or fail on how often each reads
 //   --dist     measure another build the same way (read rates only), e.g. 1.11's; --res=720 films it
 //              720 pixels wide, which 1.11's camera request (1280 x 720) gets from a phone held upright
+//   --vs       and another build alongside this one, trial by trial, so both meet the same load
+//              (other suites running at the same time slow every read); --vs-res as --res
 //   --shots    the scanner's screen, light and dark, as PNGs in that folder
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
@@ -31,6 +33,8 @@ const VERBOSE = process.argv.includes('--verbose');
 const DIST = arg('dist', null);
 const BASELINE = !!DIST;
 const RES = Number(arg('res', 1080));
+const VS = arg('vs', null);
+const VS_RES = Number(arg('vs-res', 720));
 const TRIALS = Number(arg('trials', MEASURE ? 6 : 2));
 const ONLY = arg('only', null) ? arg('only').split(',') : null;
 const SHOTS = arg('shots', null);
@@ -112,6 +116,7 @@ function filesOf(dir) {
   return out;
 }
 const server = await serveDist(DIST ? filesOf(DIST) : {});
+const vsServer = VS ? await serveDist(filesOf(VS)) : null;
 
 // Before the page loads: keep every camera stream the page opens, and the main thread's long tasks.
 function instrument() {
@@ -131,12 +136,14 @@ function instrument() {
   try { new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__scan.long.push({ t: e.startTime, d: e.duration }); }).observe({ type: 'longtask', buffered: true }); } catch (e) { /* no long task timing */ }
 }
 
-// A browser whose camera plays this scene's video, with the app open and set up.
+// A browser whose camera plays this scene's video, with the app open and set up (opts.server and
+// opts.res: another build's, filmed at its size).
 async function open(sc, opts = {}) {
-  const file = videoFile(sc.name, RES);
+  const srv = opts.server || server;
+  const file = videoFile(sc.name, opts.res || RES);
   const browser = await chromium.launch({ args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', `--use-file-for-fake-video-capture=${file}`] });
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: opts.dark ? 'dark' : 'light' });
-  await ctx.grantPermissions(['camera'], { origin: new URL(server.url).origin });
+  await ctx.grantPermissions(['camera'], { origin: new URL(srv.url).origin });
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -144,7 +151,7 @@ async function open(sc, opts = {}) {
   await page.addInitScript(seedBridge);
   await page.addInitScript(instrument);
   for (const s of opts.init || []) await page.addInitScript(s);
-  await page.goto(server.url);
+  await page.goto(srv.url);
   await page.waitForSelector('.onboard:not([hidden])');
   await page.evaluate(seedState);
   await page.reload();
@@ -198,28 +205,44 @@ async function trial(page, sc, o = {}) {
 }
 
 const median = (xs) => { const s = xs.slice().sort((a, b) => a - b); return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : null; };
-const results = [];
-
-await makeVideos();
-
-section(`Reading the videos (${BASELINE ? `the build in ${DIST}` : 'this build'}, ${RES} wide, ${TRIALS} ${TRIALS === 1 ? 'trial' : 'trials'} a scene)`);
-for (const sc of SCENES) {
-  if (ONLY && !ONLY.includes(sc.name)) continue;
-  const { browser, page, errors } = await open(sc);
-  const runs = [];
-  for (let i = 0; i < TRIALS; i++) runs.push(await trial(page, sc));
-  await browser.close();
+const results = [], vsResults = [];
+const summarise = (sc, runs, errors) => {
   const reads = runs.filter((r) => r.read), times = reads.map((r) => r.readMs);
-  const row = {
+  return {
     scene: sc.name, format: sc.format, note: sc.note, trials: runs.length, reads: reads.length, misreads: runs.filter((r) => r.misread).map((r) => r.code),
     first: runs[0].read ? runs[0].readMs : null, median: median(times), times, size: `${runs[0].width}x${runs[0].height}`,
     longest: Math.max(...runs.map((r) => r.longest)), longPerSec: Math.round(runs.reduce((a, r) => a + r.longTotal, 0) / Math.max(1, runs.reduce((a, r) => a + r.ms, 0) / 1000)),
     stopped: runs.every((r) => r.stopped), errors: errors.slice(0, 3), stats: runs.map((r) => r.stats).filter(Boolean),
     locked: runs.filter((r) => r.read).every((r) => r.locked > 0 && r.locked <= r.ms), haptic: runs.filter((r) => r.read).every((r) => r.haptics.includes('scan')),
   };
+};
+const line = (name, format, row) => `  ${name.padEnd(12)} ${String(format || '').padEnd(8)} read ${row.reads}/${row.trials}  median ${row.median == null ? '   -' : `${String(Math.round(row.median)).padStart(5)} ms`}  first ${row.first == null ? '   -' : `${String(row.first).padStart(5)} ms`}  ${row.size}  longest task ${row.longest} ms${row.misreads.length ? `  MISREAD ${row.misreads.join(',')}` : ''}${row.errors.length ? `  errors: ${row.errors.join(' | ')}` : ''}`;
+
+await makeVideos();
+
+section(`Reading the videos (${BASELINE ? `the build in ${DIST}` : 'this build'}, ${RES} wide${VS ? `, and alongside it the build in ${VS}, ${VS_RES} wide` : ''}, ${TRIALS} ${TRIALS === 1 ? 'trial' : 'trials'} a scene)`);
+for (const sc of SCENES) {
+  if (ONLY && !ONLY.includes(sc.name)) continue;
+  const { browser, page, errors } = await open(sc);
+  const other = vsServer ? await open(sc, { server: vsServer, res: VS_RES }) : null;
+  const runs = [], vsRuns = [];
+  for (let i = 0; i < TRIALS; i++) {
+    // With another build alongside, the two take turns, each going first every other time.
+    if (other && i % 2) vsRuns.push(await trial(other.page, sc));
+    runs.push(await trial(page, sc));
+    if (other && !(i % 2)) vsRuns.push(await trial(other.page, sc));
+  }
+  await browser.close();
+  if (other) await other.browser.close();
+  const row = summarise(sc, runs, errors);
   results.push(row);
   if (VERBOSE) for (const r of runs) console.log(`      ${r.code || (r.timedOut ? 'timed out' : 'closed')} in ${r.readMs} ms: ${JSON.stringify(r.stats)}`);
-  console.log(`  ${sc.name.padEnd(12)} ${String(sc.format || '').padEnd(8)} read ${row.reads}/${row.trials}  median ${row.median == null ? '   -' : `${String(Math.round(row.median)).padStart(5)} ms`}  first ${row.first == null ? '   -' : `${String(row.first).padStart(5)} ms`}  ${row.size}  longest task ${row.longest} ms${row.misreads.length ? `  MISREAD ${row.misreads.join(',')}` : ''}${row.errors.length ? `  errors: ${row.errors.join(' | ')}` : ''}`);
+  console.log(line(sc.name, sc.format, row));
+  if (other) {
+    const vsRow = summarise(sc, vsRuns, other.errors);
+    vsResults.push(vsRow);
+    console.log(line('  vs', '', vsRow));
+  }
   if (!MEASURE && !BASELINE) {
     check(`${sc.name}: ${sc.note}, read every time (${row.reads}/${row.trials})`, row.reads === row.trials, runs.map((r) => r.code || (r.timedOut ? 'timed out' : 'closed')));
   }
@@ -244,10 +267,9 @@ const scanFor = (page, ms, o = {}) => page.evaluate(async ({ ms, qr }) => {
 }, { ms, qr: !!o.qr });
 const stopScan = (page) => page.evaluate(async () => { window.GH.ui.closeSheets(); const code = await window.__p; await new Promise((r) => setTimeout(r, 700)); return { code, stopped: window.__scan.streams.every((s) => s.getTracks().every((t) => t.readyState === 'ended')) }; });
 const ALL_ONLY = !ONLY || ONLY.includes('extras');
-if (ALL_ONLY) {
-  section('The screen stays smooth while it reads');
+async function smoothness(opts) {
   const sc = HINT_SCENES.find((s) => s.name === 'huge');
-  const { browser, page } = await open(sc);
+  const { browser, page } = await open(sc, opts);
   await scanFor(page, 1500);
   const m = await page.evaluate(async () => {
     // Long animation frames, with the scripts that ran in them: the reader's own (the barcode chunk,
@@ -271,9 +293,22 @@ if (ALL_ONLY) {
   });
   await stopScan(page);
   await browser.close();
-  const reads = m.stats && m.stats.zxing ? `; the worker read ${m.stats.zxing} pictures in 5.5 s, ${m.stats.ms} ms each` : '';
-  console.log(`  the reader's own work: at most ${m.reader} ms in a frame, ${m.readerTotal} ms a second in long frames; all told: longest task ${m.longest} ms, blocking ${m.blocking} ms a second, ${m.fps} frames a second, longest gap between frames ${m.worstGap} ms${reads}`);
+  return m;
+}
+if (ALL_ONLY) {
+  section('The screen stays smooth while it reads');
+  const say = (who, m) => {
+    const reads = m.stats && m.stats.zxing ? `; the worker read ${m.stats.zxing} pictures in 5.5 s, ${m.stats.ms} ms each` : '';
+    console.log(`  ${who}the reader's own work: at most ${m.reader} ms in a frame, ${m.readerTotal} ms a second in long frames; all told: longest task ${m.longest} ms, blocking ${m.blocking} ms a second, ${m.fps} frames a second, longest gap between frames ${m.worstGap} ms${reads}`);
+  };
+  const m = await smoothness();
+  say('', m);
   results.push(Object.assign({ scene: 'smoothness' }, m));
+  if (vsServer) {
+    const v = await smoothness({ server: vsServer, res: VS_RES });
+    say('vs: ', v);
+    vsResults.push(Object.assign({ scene: 'smoothness' }, v));
+  }
   if (!BASELINE) check('the reader never holds the page\'s thread for 50 ms (it reads in a worker)', m.reader !== null && m.reader < 50, m);
 }
 
@@ -453,7 +488,8 @@ if (!BASELINE && ALL_ONLY) {
   }
 }
 
-if (JSON_OUT) writeFileSync(JSON_OUT, JSON.stringify({ build: DIST || 'this', res: RES, trials: TRIALS, results }, null, 1));
+if (JSON_OUT) writeFileSync(JSON_OUT, JSON.stringify(Object.assign({ build: DIST || 'this', res: RES, trials: TRIALS, results }, VS ? { vs: VS, vsRes: VS_RES, vsResults } : {}), null, 1));
 await server.close();
+if (vsServer) await vsServer.close();
 done();
 process.exit(0);

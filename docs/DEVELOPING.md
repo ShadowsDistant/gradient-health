@@ -953,8 +953,9 @@ from logged intake and the weight trend (a regression on raw weigh-ins, blended 
     the sheet closes; after 3 s without a read, the box says what would help (closer, further, the
     light, steady). Typing the number always works too.
   - `test/ui-scan.mjs` films real codes drawn from their digits (`test/scanfixture.mjs`) under hard
-    conditions for Chromium's fake camera and scans them; `--measure [--dist=<dir> --res=720]` gives
-    the read rates and times, for this build or another. `test/scan.mjs` checks the rules.
+    conditions for Chromium's fake camera and scans them; `--measure` gives the read rates and times
+    (`--vs=<dir> --vs-res=720` with another build alongside, trial by trial, so both meet the same
+    load). `test/scan.mjs` checks the rules.
 - **Health Connect**: meals are written as `NutritionRecord`s with the entry id as the client record id
   and a version that grows with each edit, so edits replace the record; deletes delete it. Food other
   apps logged comes back as per-day totals. The nutrition permissions are only requested when calorie
