@@ -72,6 +72,20 @@ dialog.gh-sheet[data-closing] { pointer-events: none; }
 }
 :root:is([data-theme$="contrast"], [data-rf-transparency="reduced"]) .gh-sheet-glass { background-color: var(--sheet-bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
 @media (prefers-reduced-transparency: reduce) { .gh-sheet-glass { background-color: var(--sheet-bg); -webkit-backdrop-filter: none; backdrop-filter: none; } }
+/* A faint glow of the icon's colours at the top of every sheet, as behind the top of each page (blue
+   on the left, mint on the right), very light. It's in the material's own layer, under the rim and
+   sheen, so it's painted once and moves with the sheet; and it's gone by 56 px down, above where the
+   content starts, so the fade under the header starts in the material's colour as before. Off with
+   increased contrast and reduced transparency, like the page's. */
+.gh-sheet-glass {
+  background-image:
+    radial-gradient(52% 56px at 18% 0, color-mix(in oklab, var(--brand-blue) var(--gh-sheet-glow, 9%), transparent), color-mix(in oklab, var(--brand-blue) calc(var(--gh-sheet-glow, 9%) * .4), transparent) 50%, transparent),
+    radial-gradient(52% 56px at 82% 0, color-mix(in oklab, var(--brand-mint) var(--gh-sheet-glow, 9%), transparent), color-mix(in oklab, var(--brand-mint) calc(var(--gh-sheet-glow, 9%) * .4), transparent) 50%, transparent);
+}
+:root[data-theme^="dark"] .gh-sheet-glass { --gh-sheet-glow: 13%; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) .gh-sheet-glass { --gh-sheet-glow: 13%; } }
+:root:is([data-theme$="contrast"], [data-rf-transparency="reduced"]) .gh-sheet-glass { background-image: none; }
+@media (prefers-reduced-transparency: reduce) { .gh-sheet-glass { background-image: none; } }
 
 .gh-sheet .rf-sheet-grabber { flex: none; margin: 7px auto 0; touch-action: none; cursor: grab; }
 .gh-sheet .rf-sheet-header { animation: none; touch-action: none; }
