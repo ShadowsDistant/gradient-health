@@ -278,6 +278,7 @@ export const APP_SCRIPTS = [
   'src/platform.js',
   'src/foodnet.js',
   'src/coach.js',
+  'src/chats.js', // the coach's conversations, kept on the phone (chat history)
   'src/tailor.js',
   'src/qr.js',
   'src/customplan.js',
@@ -339,6 +340,9 @@ export const APP_CHUNKS = [
   // What notifications to send and when (GH.notify): planned as the app is left or opened, only for
   // someone who turned them on (src/ui/notify.js loads it).
   { name: 'notify', scripts: ['src/notify.js'] },
+  // The coach's answers as cards: their Markdown and the data embeds drawn from the app's numbers,
+  // loaded as the chat is about to open (src/ui/chat.js).
+  { name: 'cards', scripts: ['src/ui/md.js', 'src/ui/embeds.js'] },
 ];
 
 // Heavy parts that load only when they're used (the 3D figure, the on-device model runtime, the

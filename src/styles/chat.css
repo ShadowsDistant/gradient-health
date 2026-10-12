@@ -13,6 +13,10 @@
 .chat-pill .pill-dot[data-on] { background: var(--positive); box-shadow: 0 0 0 3px color-mix(in oklab, var(--positive) 22%, transparent); }
 .chat-engine-row { width: 100%; border: 0; background: none; font: inherit; color: inherit; text-align: start; cursor: pointer; }
 .chat-engine-on { color: var(--accent); display: inline-flex; }
+/* New chat and Chats beside the pill; Chats has a dot when an answer landed in another chat. */
+.chat-bar-btn { position: relative; flex: none; color: var(--label-secondary); }
+.chat-bar-btn + .chat-bar-btn { margin-inline-start: -6px; }
+.chat-bar-btn[data-unseen]::after { content: ''; position: absolute; top: 5px; inset-inline-end: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--hue-rose); box-shadow: 0 0 0 2px var(--bg); }
 
 .chat-log { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-2) var(--space-4) var(--space-4); }
 .msg { display: flex; gap: 8px; min-width: 0; }
@@ -23,14 +27,94 @@
 .bubble { max-width: 100%; padding: 10px 14px; border-radius: 20px; font-size: 1rem; line-height: 1.45; overflow-wrap: anywhere; }
 .bubble.me { max-width: 82%; background: var(--accent-fill); color: var(--on-accent); border-end-end-radius: 6px; white-space: pre-wrap; }
 .bubble.coach { background: var(--fill-3); color: var(--label); border-start-start-radius: 6px; }
-.bubble.coach p { margin: 0 0 .6em; }
-.bubble.coach p:last-child { margin-bottom: 0; }
-.bubble.coach ul { margin: .15em 0 .6em; padding-inline-start: 1.15em; }
-.bubble.coach ul:last-child { margin-bottom: 0; }
-.bubble.coach li + li { margin-top: .25em; }
 .bubble.is-error { background: var(--critical-soft); }
 .bubble.is-flagged, .bubble.is-stopped { font-style: italic; color: var(--label-secondary); }
 .msg-note { margin: 0 0 0 4px; }
+
+/* An answer reads like a small card (src/ui/md.js): raised, full width, with a faint edge in the
+   icon's gradient (blue into mint) and a glow in its corner; increased contrast and reduced
+   transparency get a plain edge. */
+.bubble.coach.answer {
+  --a-glow: color-mix(in oklab, var(--brand-mint) 10%, transparent); --a-blue: 52%; --a-mint: 38%;
+  justify-self: stretch; padding: 12px 15px 13px; border: 1px solid transparent;
+  background: radial-gradient(130% 80% at 0 0, var(--a-glow), transparent 62%) padding-box, linear-gradient(var(--bg-raised), var(--bg-raised)) padding-box,
+    linear-gradient(140deg, color-mix(in oklab, var(--brand-blue) var(--a-blue), transparent), color-mix(in oklab, var(--brand-mint) var(--a-mint), transparent) 38%, var(--separator) 78%) border-box;
+  box-shadow: 0 8px 22px -14px color-mix(in oklab, var(--brand-blue) 50%, transparent);
+}
+[data-theme^="dark"] .bubble.coach.answer { --a-glow: color-mix(in oklab, var(--brand-mint) 13%, transparent); --a-blue: 62%; --a-mint: 44%; }
+:root:is([data-theme$="contrast"], [data-rf-transparency="reduced"]) .bubble.coach.answer { background: var(--bg-raised); border-color: var(--label-tertiary); box-shadow: none; }
+@media (prefers-reduced-transparency: reduce) { .bubble.coach.answer { background: var(--bg-raised); border-color: var(--separator); } }
+.answer p { margin: 0 0 .6em; }
+.answer strong { font-weight: 700; }
+.answer :is(ul, ol) { margin: .1em 0 .65em; padding-inline-start: 1.3em; }
+.answer li { padding-inline-start: .2em; }
+.answer li + li, .answer li > :is(ul, ol) { margin: .32em 0 0; }
+.answer ul > li::marker { color: var(--brand-mint-deep); }
+[data-theme^="dark"] .answer ul > li::marker { color: var(--brand-mint); }
+.answer ol > li::marker { color: var(--label-secondary); font-weight: 650; }
+.answer :is(.md-h, .md-h4) { margin: .85em 0 .3em; font-size: .9375rem; font-weight: 700; line-height: 1.3; }
+.answer .md-h4 { font-size: .8125rem; color: var(--label-secondary); }
+.answer > :first-child { margin-top: 0; }
+.answer > :last-child { margin-bottom: 0; }
+.answer .md-hr { height: 1px; margin: .8em 0; border: 0; background: var(--separator); }
+/* A table: compact, in a box of its own that scrolls sideways when it's wide. */
+.md-table { margin: .35em 0 .7em; overflow-x: auto; overscroll-behavior-x: contain; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--separator); }
+.md-table table { min-width: 100%; border-collapse: collapse; font-size: .875rem; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.md-table :is(th, td) { padding: 7px 12px; text-align: start; white-space: nowrap; }
+.md-table th { background: var(--fill-3); color: var(--label-secondary); font-size: .75rem; font-weight: 650; }
+.md-table td { border-top: 1px solid var(--separator); }
+.md-table .md-num { text-align: end; }
+
+/* Embeds (src/ui/embeds.js): the app's own numbers as small cards in their hue. */
+.emb {
+  --_line: var(--_hue); --e-tint: 11%; --e-rim: 20%;
+  display: grid; gap: 5px; width: 100%; margin: .55em 0 .7em; padding: 10px 12px 11px; border: 0; border-radius: 15px; color: var(--label); font: inherit; text-align: start; cursor: pointer;
+  background: linear-gradient(150deg, color-mix(in oklab, var(--_hue) var(--e-tint), var(--bg-raised)), var(--bg-raised) 80%);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--_hue) var(--e-rim), transparent); transition: scale var(--duration-fast) var(--ease-standard);
+}
+[data-theme^="dark"] .emb { --_line: color-mix(in oklab, var(--_hue) 72%, #fff); --e-tint: 22%; --e-rim: 32%; }
+:root:is([data-theme$="contrast"], [data-rf-transparency="reduced"]) .emb { background: var(--bg-raised); box-shadow: inset 0 0 0 1px var(--label-tertiary); }
+.emb + .emb { margin-top: 0; }
+.emb:active { scale: .98; }
+.emb:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.emb-top, .emb-main { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.emb-ico { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; background: var(--_hue); color: var(--on-hue); }
+.emb-title { min-width: 0; font-size: .875rem; font-weight: 650; overflow-wrap: anywhere; }
+.emb-range { flex: none; margin-inline-start: auto; color: var(--label-secondary); font-size: .75rem; }
+.emb-go { display: inline-flex; margin-inline-end: -3px; color: var(--label-tertiary); }
+.emb-main { flex-wrap: wrap; align-items: baseline; column-gap: 6px; row-gap: 2px; }
+.emb-val { font-size: 1.375rem; font-weight: 700; line-height: 1.15; }
+.emb-per, .emb-cap { color: var(--label-secondary); font-size: .8125rem; }
+.emb-cap { font-size: .75rem; line-height: 1.3; }
+.emb-main .hl-trend { align-self: center; }
+.emb .sp-svg { height: 34px; margin-top: 3px; --c: var(--_line); }
+.emb .meters { grid-template-columns: 1fr 1fr; gap: 7px var(--space-3); margin-top: 3px; }
+.emb .meter { gap: 3px; }
+.emb .meter-top > * { font-size: .75rem; }
+.emb .meter-track { height: 5px; }
+.emb .meter-fill { background: var(--_line); }
+.emb-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 3px; }
+.emb-day { display: grid; justify-items: center; gap: 3px; color: var(--label-tertiary); font-size: .625rem; }
+.emb-day .hm-cell { width: 100%; max-width: 26px; min-width: 0; border-radius: 6px; }
+.emb-days[data-n="28"] .hm-cell { max-width: none; height: 9px; aspect-ratio: auto; border-radius: 3px; }
+/* One the app has nothing for yet: a muted line. */
+.emb-none { display: flex; align-items: center; gap: 6px; margin: .4em 0 .6em; color: var(--label-secondary); font-size: .8125rem; }
+.chat-earlier { justify-self: center; }
+
+/* Chats: each conversation with who answered; Edit puts a delete button on each. */
+.chat-list { padding-bottom: var(--space-4); }
+.chat-list .rf-list-header, .chat-list-foot { margin-inline: var(--space-4); }
+.chat-list .rf-list { margin-inline: var(--space-4); }
+.chat-row { display: flex; align-items: center; }
+.chat-row-main { flex: 1; min-width: 0; border: 0; background: none; font: inherit; color: inherit; text-align: start; cursor: pointer; }
+.chat-row-main .rf-list-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.chat-row.is-open .rf-list-title { font-weight: 650; }
+.chat-row-new { color: var(--accent); }
+.chat-row-del { flex: none; margin-inline-end: 8px; color: var(--critical); }
+.chat-del-all { width: 100%; }
+.chat-list-none { display: grid; justify-items: center; gap: var(--space-2); padding-block: 32px; text-align: center; }
+.chat-list-none p { margin: 0; }
+
 /* While an answer is on its way: what the model is doing, a thin bar, and a soft light that sweeps
    across the bubble (paused while a sheet moves). */
 .bubble-status { display: block; color: var(--label-secondary); font-size: 15px; font-variant-numeric: tabular-nums; }

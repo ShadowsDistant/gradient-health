@@ -20,7 +20,7 @@
   // Written for small models: short, concrete, one idea a line.
   const RULES = [
     'You are the coach in Gradient Health, a workout and health app on this person\'s phone.',
-    'Answer their question in 2 to 4 short sentences, in plain words. Say "you". No lists, headings or emoji.',
+    'Answer in one sentence first, with the key number in **bold**. Then at most 3 short points, each a line starting with "- ". Under 80 words, plain words. Say "you". No headings or emoji.',
     'FACTS were worked out by the app for this question. Build the answer on them and copy their numbers exactly as written. Don\'t calculate anything yourself.',
     'If FACTS say none, answer from THEIR DATA below, or say you can\'t tell from their data and what they could track. Never make up a number.',
     'Say yes or no plainly when the question asks, and make sure it matches the numbers.',
@@ -145,22 +145,35 @@
   // The rules and a brief of their data: the same for every question (until the data changes), so
   // the engines keep it cached and only read each new question.
   const system = (S, day) => `${RULES}\n\nTHEIR DATA\n${brief(S, day)}`;
-  // The conversation for the model: rules and data first, then the last exchange, then the question
-  // with its facts.
-  function messages(S, day, question, keep) {
-    const n = keep == null ? 2 : keep; // the last exchange by default
-    const past = n > 0 ? (S.ai.deviceChat || []).filter((m) => !m.safety && !m.flagged).slice(-n) : [];
+  // The conversation for the model: rules and data first, then the last exchanges of this chat
+  // (src/chats.js; keep: how many messages, 2 by default), then the question with its facts.
+  function messages(S, day, question, keep, chat) {
+    const n = keep == null ? 2 : keep;
+    const cid = chat !== undefined ? chat : S.ai.chatId;
+    const past = n > 0 && GH.chats ? GH.chats.turns(S, cid).flat().slice(-n) : [];
     return [{ role: 'system', content: system(S, day) }]
-      .concat(past.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })))
+      .concat(past.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.role === 'user' ? m.text : GH.coach.noEmbeds(m.text) })))
       .concat([{ role: 'user', content: turn(S, day, question) }]);
   }
+  // How many earlier messages go with a question: the last two exchanges, fewer when they wouldn't
+  // fit the model's memory (ctx, in tokens; counted as the engine does, 3 characters a token).
+  function fits(S, day, question, chat, ctx) {
+    for (let keep = 4; keep > 0; keep -= 2) {
+      const msgs = messages(S, day, question, keep, chat);
+      if (!ctx || Math.ceil(msgs.reduce((a, m) => a + m.content.length, 0) / 3) + msgs.length * 6 + 64 + MAX_TOKENS <= ctx) return keep;
+    }
+    return 0;
+  }
+  const MAX_TOKENS = 320;
 
   function err(message, code) { const e = new Error(message); e.code = code; return e; }
-  // The exchange is kept for the next turn and the chat, with the facts the answer was given (the
-  // chat's "What it used").
-  function record(S, q, text, safety, model, facts, note) {
-    const answer = Object.assign({ role: 'assistant', text, safety: !!safety }, model ? { model } : {}, facts && facts.length ? { facts } : {}, note ? { note } : {});
-    S.ai.deviceChat = (S.ai.deviceChat || []).concat([{ role: 'user', text: q, safety: !!safety }, answer]).slice(-16);
+  // The exchange is kept in its conversation (chat: its id; a new one when it has none yet) for the
+  // next turn and the chat, with the facts the answer was given (the chat's "What it used") and the
+  // embeds drawn under it.
+  function record(S, chat, q, text, safety, model, facts, note, embeds) {
+    if (!GH.chats) return;
+    const answer = Object.assign({ role: 'assistant', text, engine: 'device', safety: !!safety }, model ? { model } : {}, facts && facts.length ? { facts } : {}, note ? { note } : {}, embeds && embeds.length ? { embeds } : {});
+    GH.chats.add(S, chat, [{ role: 'user', text: q, engine: 'device', safety: !!safety }, answer]);
   }
   // A yes-or-no question the numbers settle starts with the app's own yes or no (GH.coach.verdict),
   // and one built on something that isn't so with the app's correction (GH.coach.correction), both
@@ -211,9 +224,11 @@
     const status = (st, f) => { if (opt.onStatus) { try { opt.onStatus(st, f); } catch (e) { /* a UI bug mustn't stop the answer */ } } };
     const q = String(question || '').trim().slice(0, 600);
     if (!q) throw err('Type a question first.', 'empty');
+    // The conversation it goes in (o.chat), else the open one, else a new one that's now open.
+    const chat = GH.chats ? GH.chats.target(S, opt.chat) : null;
     if (GH.coach && GH.coach.topicOf(q) === 'redflag') {
       const text = GH.coach.ask(S, day, q).text;
-      record(S, q, text, true);
+      record(S, chat, q, text, true);
       return { text, safety: true, aborted: false };
     }
     const llm = await GH.lazy('llm');
@@ -235,12 +250,15 @@
     const start = lead(S, day, q);
     let wrote = false;
     let given = '';
+    // The last exchanges of this chat that fit the model's memory.
+    const model = (llm.MODELS || []).find((x) => x.id === id);
+    const keep = fits(S, day, q, chat, model && model.ctx);
     // A low temperature: the answer rewords facts, and small models slip on numbers when it's higher.
-    const run = (keep) => {
-      const msgs = messages(S, day, q, keep);
+    const run = (n) => {
+      const msgs = messages(S, day, q, n, chat);
       given = msgs.map((m) => m.content).join('\n');
       return llm.chat(msgs, {
-        signal: opt.signal, maxTokens: 320, temperature: 0.3, lead: start, onLoadProgress: loading,
+        signal: opt.signal, maxTokens: MAX_TOKENS, temperature: 0.3, lead: start, onLoadProgress: loading,
         onPrompt: (done, total) => { if (!wrote) status('reading', total ? done / total : 0); },
         onToken: (piece, soFar) => {
           if (!wrote) { wrote = true; status('writing'); }
@@ -249,22 +267,26 @@
       });
     };
     let raw;
-    // A long conversation that no longer fits the model's memory: answer this one on its own.
-    try { raw = await run(); } catch (e) { if (e && e.code === 'too-long') raw = await run(0); else throw e; }
+    // Should the conversation still not fit the model's memory: answer this one on its own.
+    try { raw = await run(keep); } catch (e) { if (e && e.code === 'too-long' && keep) raw = await run(0); else throw e; }
     // Stopped before it started (waiting behind the warm-up, say) leaves the last chat's stats.
     const st = llm.stats;
     const aborted = !!(opt.signal && opt.signal.aborted) || !!(st && st.aborted);
-    // Stopped part way: what it wrote so far, as it is.
+    // Stopped part way: what it wrote so far, as it is. A small model can copy [[…]] marks it
+    // never needs (the app adds the embeds itself, src/ui/embeds.js, from what the question is
+    // about): they go.
     const out = aborted ? { text: String(raw || '').trim(), note: null, cut: 0, replaced: false } : finish(S, day, q, raw, `${given}\n${start}`, start);
-    const text = out.text;
-    if (text) record(S, q, text, false, id, f, out.note);
+    const text = GH.coach.noEmbeds(out.text);
+    if (text && !aborted && !GH.embeds && GH.lazy) await GH.lazy('cards').catch(() => null);
+    const embeds = text && !aborted && GH.embeds ? GH.embeds.forQuestion(S, day, q) : [];
+    if (text) record(S, chat, q, text, false, id, f, out.note, embeds);
     // How fast this model answers on this phone (for the model picker), smoothed over real answers.
     const tps = st && st.id === id && st.tokens >= 8 && text ? st.tokensPerSec : 0;
     if (tps > 0 && !aborted) {
       const sp = S.ai.speed || (S.ai.speed = {});
       sp[id] = sp[id] ? Math.round((sp[id] * 0.7 + tps * 0.3) * 10) / 10 : Math.round(tps * 10) / 10;
     }
-    return { text, aborted, stats: st, raw: String(raw || '').trim(), lead: start, note: out.note, cut: out.cut, replaced: out.replaced };
+    return { text, aborted, stats: st, raw: String(raw || '').trim(), lead: start, note: out.note, cut: out.cut, replaced: out.replaced, embeds, chat };
   }
   // A grammar-held answer (the plan review, src/planreview.js): the model the chat would use, loaded
   // if it isn't, then one reply the grammar keeps to the shape the app reads. o: { grammar,
@@ -311,7 +333,8 @@
       return true;
     } catch (e) { return false; }
   }
-  function clear(S) { S.ai.deviceChat = []; }
+  // A new chat: the next question starts a conversation of its own.
+  function clear(S) { S.ai.chatId = null; }
 
-  GH.deviceCoach = { RULES, brief, facts, system, messages, lead, keepToGiven, finish, ask, structured, room, prime, pick, clear };
+  GH.deviceCoach = { RULES, brief, facts, system, messages, fits, lead, keepToGiven, finish, ask, structured, room, prime, pick, clear };
 })(typeof window !== 'undefined' ? window : globalThis);

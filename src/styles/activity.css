@@ -159,8 +159,8 @@
 .sp-tbl th[scope="row"] { color: var(--label-secondary); width: 3.4em; padding-inline-end: var(--space-2); }
 .sp-tbl td:nth-child(2) { width: 5.2em; font-weight: 600; }
 .sp-tbl td:last-child:not(.sp-bar), .sp-tbl thead th:last-child:not(.sp-bar-h) { text-align: end; color: var(--label-secondary); padding-inline-start: var(--space-2); }
-.sp-bar { width: 99%; padding-inline: var(--space-2) !important; }
-.sp-bar span { display: block; height: 10px; border-radius: 0 5px 5px 0; background: color-mix(in oklab, var(--act-hue, var(--accent)) 70%, var(--bg-raised)); }
+.sp-tbl .sp-bar { width: 99%; padding-inline: var(--space-2) !important; }
+.sp-tbl .sp-bar span { display: block; height: 10px; border-radius: 0 5px 5px 0; background: color-mix(in oklab, var(--act-hue, var(--accent)) 70%, var(--bg-raised)); }
 .sp-tbl tr.is-best .sp-bar span { background: var(--act-hue, var(--accent)); }
 .sp-best { display: inline-flex; vertical-align: -2px; color: var(--hue-amber); --rf-icon-size: 14px; }
 .sp-best svg { width: 14px; height: 14px; }
