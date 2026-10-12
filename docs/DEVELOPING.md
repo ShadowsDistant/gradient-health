@@ -414,6 +414,14 @@ Where the app uses Refract 1.4's newer parts:
   blur under anything that moves is redrawn every frame; the rim and sheen move with their layer).
   A sheet opened over another is solid at every height (`data-stacked`): frost over a sheet's words
   lets them through. A sheet's body has no inset of its own, so each block in it brings its 16 px.
+  Content scrolled off its top fades into the material over 28 px under the header, as a page does
+  under the top bar (`data-scrolled`, toggled only as the scroll position crosses 0): on solid glass
+  a gradient in the material's own colour (`--sheet-bg` and what's left of the sheen there, which
+  `sheet.js` works out from the panel's height), on frosted glass at rest a mask on the content, which
+  shows the frost as it is; a scroll hands over to the gradient, so nothing is masked while the
+  content moves, and neither follows a drag. A faint glow of the icon's colours sits at the top of
+  the material, gone before the content starts. `test/ui-sheet.mjs` reads the pixels where the
+  content meets the header and times scrolling a long sheet (`ui-scroll` only scrolls pages).
 - **Dropdowns** (`<details class="gh-drop">`, `src/styles/dropdown.css`): what's inside grows open
   and folds shut (`::details-content`'s height, with `interpolate-size`), fading as it goes, and the
   chevron turns with it. It's the one motion here that lays the page out every frame, for 240 ms
@@ -425,6 +433,13 @@ Where the app uses Refract 1.4's newer parts:
 - **Bursts** are 8 to 14 beads, Refract 1.4's range (`test/ui-motion.mjs` checks every count).
 - **Glass in the content** is for controls that float: a search field in a page is a `fill-3` well,
   and a page's own buttons are filled, not glass.
+- **Brand gradients** (`src/styles.css`, "Brand gradients", and its `--gh-*` tokens): blue into mint
+  for the main call to action on a screen (Today's, the player's and set-up's last button: tinted
+  glass with the gradient for its fill, its words at 5:1 or more all the way across) and for
+  progress whose colour says nothing by itself; green progress goes from mint into green. Rings are
+  painted with two SVG gradients in `src/shell.html` (`#gh-paint-prog`, `#gh-paint-pos`). A colour
+  that means something keeps it (a health number's hue, rest's sky, amber over a target), and with
+  increased contrast each is flat. `test/ui-gradients.mjs` checks them.
 
 The credit: Settings > About has "Built with Refract" with its mark (`U.refractMark`, drawn by
 Refract's `.rf-mark`), and the open-source licenses sheet opens with it.
