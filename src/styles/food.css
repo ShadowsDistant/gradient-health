@@ -47,6 +47,20 @@
 .hf-inv-text { display: grid; gap: 2px; min-width: 0; }
 .hf-inv-btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
 
+/* ---------------------------------------------------------------- the rings on the Food page and Today */
+/* Big enough for a four-digit number, and growing with the text so it stays inside. */
+.fd-sum .rf-ring { --_s: 5em; --_w: 7px; font-size: 1rem; }
+.fd-sum.is-compact .rf-ring { --_s: 4.25em; --_w: 6px; }
+.fd-sum .rf-ring-label { padding-inline: 6px; }
+/* Where the macros' column is narrow (a small phone, bigger text), each one's grams go beside its
+   name and its bar under them, as on Health, rather than squeezing the bar between. */
+.fd-macros { container-type: inline-size; }
+@container (max-width: 210px) {
+  .fd-macro { grid-template-columns: minmax(0, 1fr) auto; row-gap: 3px; }
+  .fd-macro .rf-progress { grid-column: 1 / -1; grid-row: 2; }
+  .fd-macro .t-caption { min-width: 0; }
+}
+
 /* ---------------------------------------------------------------- the Food page */
 .fd-same { justify-self: start; gap: 6px; margin-inline-start: calc(-1 * var(--space-2)); }
 .fd-same > .rf-icon { --rf-icon-size: 16px; }

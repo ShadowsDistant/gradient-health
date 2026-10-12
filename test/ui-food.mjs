@@ -465,6 +465,10 @@ await tab('health');
 check('and it stays away', await ev(() => !document.querySelector('#screen .hf-invite')));
 await menuFood();
 check('the + menu still starts it', await sheetOpen('.fd-start'));
+await settle(700);
+await page.click('dialog.rf-sheet[open] [data-act="fsGo"]');
+await settle(1500);
+check('and Start goes on to Add food, the clock\'s meal picked', await ev(() => window.GH.food.full(window.GH.ui.S)) && await sheetOpen('.fd-search') && (await sheetMeal('foodAddMeal')) === 'breakfast', await sheetMeal('foodAddMeal'));
 await closeSheets();
 
 section('The barcode reader itself');

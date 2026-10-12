@@ -424,7 +424,7 @@
     return `<div class="sheet-pad fd-form">
         ${textField('qName', 'Name (optional)', v.qName != null ? v.qName : e ? e.name : '', 'Lunch out')}
         <div class="ob-row2">${numField('qKcal', 'Calories', pickV('qKcal', e && e.kcal), 'required')}${numField('qP', 'Protein (g)', pickV('qP', e && e.p))}</div>
-        <div class="ob-row2">${numField('qC', 'Carbs (g)', pickV('qC', e && e.c))}${numField('qF', 'Fat (g)', pickV('qF', e && e.f))}</div>
+        <div class="ob-row2">${numField('qF', 'Fat (g)', pickV('qF', e && e.f))}${numField('qC', 'Carbs (g)', pickV('qC', e && e.c))}</div>
         ${mealSeg('qMeal', quick.meal, 'quickMeal')}
         ${timeField('qTime', quick.min, 'quickTime')}
         <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="foodQuickSave">${e ? 'Save' : 'Add'}</button>

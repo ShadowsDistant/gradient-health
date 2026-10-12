@@ -62,7 +62,7 @@
       if (U.seen('foodInvite')) return '';
       return `<div class="section"><div class="card hf-invite" data-key="food-invite">
         <div class="hf-inv-row"><span class="rf-list-icon" data-tone="coral">${U.icon('flame')}</span>
-          <span class="hf-inv-text"><span class="t-headline">Track calories</span><span class="t-footnote rf-muted">A daily target from your size, steps and goal, ready in one step. Your meals file themselves by the time of day.</span></span></div>
+          <span class="hf-inv-text"><span class="t-headline">Track calories</span><span class="t-footnote rf-muted">A daily target from your size, steps and goal, set up in one step.</span></span></div>
         <div class="hf-inv-btns"><button type="button" class="rf-btn" data-variant="plain" data-act="foodInviteHide">Not now</button><button type="button" class="rf-btn" data-variant="filled" data-act="foodStart">Start</button></div>
       </div></div>`;
     }
@@ -93,7 +93,7 @@
     if (card && U.motion && U.motion.collapse) U.motion.collapse(card).then(done); else done();
   };
   // Settings' Meal times row.
-  U.mealTimesLine = (S) => (F().prefs(S).learn !== false ? 'Learned from your logs' : ['breakfast', 'lunch', 'dinner'].map((k) => `${MEAL_NAME[k]} ${spanText(F().mealTimes(S, U.today()).win[k])}`).join(', '));
+  U.mealTimesLine = (S) => (F().prefs(S).learn !== false ? 'Learning from your logs' :['breakfast', 'lunch', 'dinner'].map((k) => `${MEAL_NAME[k]} ${spanText(F().mealTimes(S, U.today()).win[k])}`).join(', '));
 
   /* ---------------------------------------------------------------- the page and sheets, until they're in */
   // As src/ui/lazy.js stands in for its parts: an action loads the part, then runs the real one; the
