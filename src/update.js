@@ -203,9 +203,10 @@
       if (U.whenQuiet) U.whenQuiet(run); else run();
     }, AUTO_DELAY);
   }
+  // (With a download waiting to be installed too: a newer version replaces it.)
   function autoOk(now) {
     const ph = state().phase;
-    return support().ok && due(prefs(), now) && !busy(U.S) && (!P() || P().visible()) && ['idle', 'current', 'available', 'failed'].includes(ph);
+    return support().ok && due(prefs(), now) && !busy(U.S) && (!P() || P().visible()) && ['idle', 'current', 'available', 'ready', 'failed'].includes(ph);
   }
   GH.update.autoOk = autoOk;
   const prevBoot = U.afterBoot;

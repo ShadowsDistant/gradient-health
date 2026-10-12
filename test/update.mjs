@@ -141,6 +141,10 @@ section('The automatic check: never before set-up, during a workout or an activi
   U.S = { profile: { onboarded: true } };
   globalThis.__gh.onUpdate(JSON.stringify({ phase: 'downloading', installed: INSTALLED, loaded: 1, total: 9 }));
   check('not while a download runs', UP.autoOk(NOW) === false);
+  globalThis.__gh.onUpdate(JSON.stringify({ phase: 'confirm', installed: INSTALLED }));
+  check('nor while Android\'s install screen is up', UP.autoOk(NOW) === false);
+  globalThis.__gh.onUpdate(JSON.stringify({ phase: 'ready', installed: INSTALLED }));
+  check('but with a download waiting to be installed, yes (a newer version replaces it)', UP.autoOk(NOW) === true);
   globalThis.__gh.onUpdate(JSON.stringify({ phase: 'idle', installed: INSTALLED }));
   localStorage.setItem(UP.KEY, JSON.stringify({ auto: false }));
   check('not with Check automatically off', UP.prefs().auto === false && UP.autoOk(NOW) === false);
