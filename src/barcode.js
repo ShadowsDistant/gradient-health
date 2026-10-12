@@ -226,7 +226,6 @@
     a.looks = [];
     a.rule = rule();
     a.started = a.started || now();
-    let frames = 0;
 
     // Where the box is in the frame, read from the page at most twice a second.
     const geometry = () => {
@@ -252,10 +251,13 @@
       return geo;
     };
 
-    // A read: does it settle it?
+    // A read: does it settle it? frame is the video's number for the frame read (the same whichever
+    // engine read it), or -1 when it isn't known, which never matches another.
+    let unknown = 0;
     const take = (found, frame, engine) => {
-      if (a.stopped || a.locked) return;
-      for (const b of found || []) {
+      if (a.stopped || a.locked || !found || !found.length) return;
+      const key = frame >= 0 ? `f${frame}` : `u${++unknown}`;
+      for (const b of found) {
         if (a.qr) {
           if (b.format && b.format !== 'qr_code') continue;
           const text = String(b.rawValue || '');
@@ -265,7 +267,7 @@
         }
         if (!FORMATS.includes(b.format)) continue;
         const code = canon(b.rawValue, b.format);
-        if (a.rule.take(code, b.format, now(), `${engine === 'native' ? 'n' : 'z'}${frame}`)) { lock(b, code, engine); return; }
+        if (a.rule.take(code, b.format, now(), key)) { lock(b, code, engine); return; }
       }
     };
 
@@ -318,7 +320,6 @@
           continue;
         }
         fails = 0;
-        frames++;
         if (st.firstAt == null) st.firstAt = Math.round(now() - a.started);
         st.zxing = (st.zxing || 0) + 1;
         st[pass] = (st[pass] || 0) + 1;
@@ -335,7 +336,7 @@
           a.looks.push(Object.assign({ t: now() }, l));
           if (a.looks.length > 40) a.looks.shift();
         }
-        take(r.found, f >= 0 ? f : frames, 'zxing');
+        take(r.found, f, 'zxing');
       }
     };
 

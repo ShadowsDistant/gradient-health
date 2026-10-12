@@ -5,8 +5,8 @@
 // It counts how often each reads and how fast, checks no code is ever misread, that the camera
 // always stops, what the screen says when nothing reads, the light, focus and zoom requests, the
 // platform's own BarcodeDetector when there is one, and the lock-in as a code is caught.
-// The videos are made once and kept in build/scan-videos/ (about 300 MB; a change to the fixture
-// makes them again).
+// The videos are made once and kept in build/scan-videos/ (about 250 MB; a change to a scene
+// films that one again).
 // Usage: node test/ui-scan.mjs [--measure] [--trials=N] [--only=clear,small] [--json=<file>]
 //        [--shots=<dir>] [--dist=<dir> --res=720]
 //   --measure  6 trials a scene and numbers only: no pass or fail on how often each reads

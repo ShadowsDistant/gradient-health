@@ -50,20 +50,20 @@ check('a typed number keeps its digits (normalise, as before)', S.normalise(' 0 
 section('When a read counts');
 {
   const r = B.rule();
-  check('an EAN-13 with a right check digit: at once', r.take('3017620422003', 'ean_13', 0, 'z1'));
-  check('a UPC-A too', B.rule().take('0036000291452', 'upc_a', 0, 'z1'));
-  check('a wrong check digit: never', !B.rule().take('3017620422004', 'ean_13', 0, 'z1'));
+  check('an EAN-13 with a right check digit: at once', r.take('3017620422003', 'ean_13', 0, 'f1'));
+  check('a UPC-A too', B.rule().take('0036000291452', 'upc_a', 0, 'f1'));
+  check('a wrong check digit: never', !B.rule().take('3017620422004', 'ean_13', 0, 'f1'));
   const e8 = B.rule();
-  check('an EAN-8: not on its first read', !e8.take('96385074', 'ean_8', 0, 'z1'));
-  check('the same frame again (both engines): still not', !e8.take('96385074', 'ean_8', 30, 'z1'));
-  check('read again in another frame within a second: yes', e8.take('96385074', 'ean_8', 900, 'z5'));
+  check('an EAN-8: not on its first read', !e8.take('96385074', 'ean_8', 0, 'f1'));
+  check('the same frame again (both engines): still not', !e8.take('96385074', 'ean_8', 30, 'f1'));
+  check('read again in another frame within a second: yes', e8.take('96385074', 'ean_8', 900, 'f5'));
   const e8b = B.rule();
-  e8b.take('96385074', 'ean_8', 0, 'z1');
-  check('read again after more than a second: starts over', !e8b.take('96385074', 'ean_8', 1500, 'z9') && e8b.take('96385074', 'ean_8', 2000, 'z12'));
+  e8b.take('96385074', 'ean_8', 0, 'f1');
+  check('read again after more than a second: starts over', !e8b.take('96385074', 'ean_8', 1500, 'f9') && e8b.take('96385074', 'ean_8', 2000, 'f12'));
   const ue = B.rule();
-  ue.take('0042100005264', 'upc_e', 0, 'z1');
-  check('a UPC-E: another code in between doesn\'t confirm it, its own second read does', !ue.take('0001234000057', 'upc_e', 200, 'z2') && ue.take('0042100005264', 'upc_e', 400, 'n3'));
-  check('not two frames in a row: any two within the second', (() => { const x = B.rule(); x.take('55123457', 'ean_8', 0, 'z1'); return x.take('55123457', 'ean_8', 700, 'z14'); })());
+  ue.take('0042100005264', 'upc_e', 0, 'f1');
+  check('a UPC-E: another code in between doesn\'t confirm it, its own second read does', !ue.take('0001234000057', 'upc_e', 200, 'f2') && ue.take('0042100005264', 'upc_e', 400, 'f3'));
+  check('not two frames in a row: any two within the second', (() => { const x = B.rule(); x.take('55123457', 'ean_8', 0, 'f1'); return x.take('55123457', 'ean_8', 700, 'f14'); })());
 }
 
 section('Where the box is in the picture');
