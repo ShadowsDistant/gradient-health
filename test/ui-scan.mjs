@@ -169,9 +169,18 @@ async function trial(page, sc, o = {}) {
   const r = await page.evaluate(async ({ timeout, qr, link, hintAt }) => {
     const S = window.__scan, GH = window.GH;
     const longFrom = S.long.length, streamsFrom = S.streams.length, hapticsFrom = window.__haptics.length;
-    let locked = 0, hint = '';
+    let locked = 0, hint = '', mark = null;
     const t0 = performance.now();
-    const mo = new MutationObserver(() => { if (!locked && document.querySelector('.sc-frame[data-locked]')) locked = performance.now() - t0; });
+    // The moment the box locks: when, and where the highlight lit up (its middle as a fraction of
+    // the view, its size as a fraction of the view's width, and its turn in degrees).
+    const mo = new MutationObserver(() => {
+      if (locked || !document.querySelector('.sc-frame[data-locked]')) return;
+      locked = performance.now() - t0;
+      const m = document.querySelector('dialog.rf-sheet[open] .sc-lock'), v = m && m.closest('.sc-view');
+      if (!m || m.hidden || !v) return;
+      const W = v.clientWidth, H = v.clientHeight, s = m.style, w = parseFloat(s.width), h = parseFloat(s.height);
+      mark = { x: (parseFloat(s.left) + w / 2) / W, y: (parseFloat(s.top) + h / 2) / H, w: w / W, h: h / W, turn: (parseFloat(s.rotate) || 0) * 180 / Math.PI };
+    });
     mo.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['data-locked'] });
     const hintTimer = hintAt ? setTimeout(() => { const m = document.querySelector('dialog.rf-sheet[open] .sc-msg'); hint = m ? m.textContent.trim() : ''; }, hintAt) : 0;
     let timer;
@@ -188,7 +197,7 @@ async function trial(page, sc, o = {}) {
     await new Promise((res) => setTimeout(res, 700));
     const longs = S.long.slice(longFrom).filter((e) => e.t >= t0 && e.t <= t0 + ms).map((e) => e.d);
     return {
-      code: got === undefined ? null : got, ms: Math.round(ms), timedOut: got === undefined, locked: Math.round(locked), hint,
+      code: got === undefined ? null : got, ms: Math.round(ms), timedOut: got === undefined, locked: Math.round(locked), hint, mark,
       width: set.width, height: set.height, opened: S.streams.length - streamsFrom,
       stopped: S.streams.every((s) => s.getTracks().every((t) => t.readyState === 'ended')),
       longest: Math.round(Math.max(0, ...longs)), longTotal: Math.round(longs.reduce((a, b) => a + b, 0)),
@@ -204,6 +213,17 @@ async function trial(page, sc, o = {}) {
   return r;
 }
 
+// Where a code lit up as it locked (the highlight's middle as a fraction of the view, its size as a
+// fraction of the view's width, its turn in degrees), for a few scenes: along the code, across the
+// middle of its bars, and turned with it (ZXing reads a barcode along rows or columns, so a code
+// turned 20 degrees lights up level; a QR code gives its corners).
+const turned = (m, deg) => Math.abs(((((m.turn - deg) % 180) + 270) % 180) - 90) < 8;
+const LIT = {
+  clear: ['across the middle of its bars', (m) => Math.abs(m.x - 0.5) < 0.05 && Math.abs(m.y - 0.5) < 0.05 && m.w > 0.75 && m.w < 0.92 && m.h / m.w > 0.38 && m.h / m.w < 0.5 && turned(m, 0)],
+  vertical: ['on its side, turned with it', (m) => Math.abs(m.x - 0.5) < 0.05 && Math.abs(m.y - 0.5) < 0.05 && m.h / m.w > 0.38 && turned(m, 90)],
+  'off-box': ['above the box, where it is', (m) => m.y < 0.3],
+  qr: ['square, turned with it', (m) => Math.abs(m.h / m.w - 1) < 0.1 && turned(m, 6)],
+};
 const median = (xs) => { const s = xs.slice().sort((a, b) => a - b); return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : null; };
 const results = [], vsResults = [];
 const summarise = (sc, runs, errors) => {
@@ -236,7 +256,7 @@ for (const sc of SCENES) {
   if (other) await other.browser.close();
   const row = summarise(sc, runs, errors);
   results.push(row);
-  if (VERBOSE) for (const r of runs) console.log(`      ${r.code || (r.timedOut ? 'timed out' : 'closed')} in ${r.readMs} ms: ${JSON.stringify(r.stats)}`);
+  if (VERBOSE) for (const r of runs) console.log(`      ${r.code || (r.timedOut ? 'timed out' : 'closed')} in ${r.readMs} ms: ${JSON.stringify(r.stats)}${r.mark ? ` lit ${JSON.stringify(r.mark, (k, v) => (typeof v === 'number' ? Math.round(v * 1000) / 1000 : v))}` : ''}`);
   console.log(line(sc.name, sc.format, row));
   if (other) {
     const vsRow = summarise(sc, vsRuns, other.errors);
@@ -253,6 +273,8 @@ for (const sc of SCENES) {
     if (row.reads) {
       check(`${sc.name}: the code locked in the box, then the sheet closed`, row.locked);
       check(`${sc.name}: with the scan haptic`, row.haptic);
+      const lit = runs.filter((r) => r.read).map((r) => r.mark);
+      if (LIT[sc.name]) check(`${sc.name}: the code lit up ${LIT[sc.name][0]}`, lit.every((m) => m && LIT[sc.name][1](m)), lit);
     }
   }
 }

@@ -288,13 +288,19 @@
       try { video.pause(); } catch (e) { /* still showing */ }
       const g = geo.c ? geo : geometry();
       const mark = el.querySelector('.sc-lock');
-      if (mark && g && g.c && b.cornerPoints && b.cornerPoints.length) {
-        const pts = b.cornerPoints.map((q) => toView(g.c, q.x, q.y));
-        const xs = pts.map((q) => q.x), ys = pts.map((q) => q.y);
+      if (mark && g && g.c && b.cornerPoints && b.cornerPoints.length >= 4) {
+        // The highlight turns with the code (corners clockwise from the code's own top left).
+        // ZXing gives a barcode's place as the line it read along, so the highlight spans the
+        // middle of the bars, about two fifths as tall as it is long.
+        const [p0, p1, p2, p3] = b.cornerPoints.map((q) => toView(g.c, q.x, q.y));
+        const mid = (p, q) => ({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
+        const l = mid(p0, p3), r = mid(p1, p2), c = mid(l, r);
+        const len = Math.hypot(r.x - l.x, r.y - l.y);
+        const tall = (Math.hypot(p3.x - p0.x, p3.y - p0.y) + Math.hypot(p2.x - p1.x, p2.y - p1.y)) / 2;
         const pad = 6;
-        const x = clamp(Math.min(...xs) - pad, 0, g.W), y = clamp(Math.min(...ys) - pad, 0, g.H);
-        const w = Math.max(24, clamp(Math.max(...xs) + pad, 0, g.W) - x), h = Math.max(24, clamp(Math.max(...ys) + pad, 0, g.H) - y);
-        mark.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px`;
+        const w = Math.max(24, len + 2 * pad), h = Math.max(24, (a.qr ? tall : Math.max(tall, len * 0.4)) + 2 * pad);
+        const turn = len > 1 ? Math.atan2(r.y - l.y, r.x - l.x) : 0;
+        mark.style.cssText = `left:${c.x - w / 2}px;top:${c.y - h / 2}px;width:${w}px;height:${h}px;rotate:${turn.toFixed(4)}rad`;
         mark.hidden = false;
       }
       box.setAttribute('data-locked', '');
