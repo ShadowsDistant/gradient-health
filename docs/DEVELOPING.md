@@ -27,7 +27,8 @@ src/body.js              weighted sets per muscle, how training splits, what imp
 src/health.js            Health Connect client (read and write), hand logs, per-day records
 src/food.js              food tracking: targets, logging, meals, the learned burn, Health Connect writes
 src/foodnet.js           Open Food Facts search and barcodes (through the Android shell)
-src/scanner.js           the barcode camera sheet; src/barcode.js is its lazy ZXing reader
+src/scanner.js           the barcode camera sheet; src/barcode.js (lazy) focuses, zooms and reads, with
+                         ZXing in a worker (src/barcode-worker.js)
 src/activity.js          outdoor activities: the recorder (the Android shell's, or the browser's), and
                          the track's maths: distance, pace, splits, auto-pause, records (GH.activity)
 src/actmap.js            the map behind a route: MapLibre on OpenFreeMap's tiles, a lazy chunk
@@ -118,7 +119,7 @@ npm run build     # dist/gradient-health.html, dist/lazy/, docs/PRIVACY.md and d
 npm run smoke     # end-to-end run in Chromium (needs Playwright); add --dark for dark mode
 npm run test:ui   # layout regressions, food flows, the coach chat, the 3D figure, your plans, controls
                   # (real touches), haptics, motion, the You tab, badges, the plan review, speed,
-                  # scrolling and Plan's cold 3D stills budgets (Chromium)
+                  # scrolling and Plan's cold 3D stills budgets, barcodes on a filmed camera (Chromium)
 node test/ui-scroll.mjs --measure [--vs=<dir>] [--ablate=<part>]   # scrolling every main screen: frames
                   # dropped, the GPU's draw time; A/B against another build, or with one part switched off
 npm run test:llm  # on-device AI runtime in Chromium with a tiny model (see On-device AI)
@@ -945,11 +946,34 @@ the section and the stand-ins in the page.
 - **Open Food Facts** (only with Online search and barcodes on): `FoodLookup.java` makes the request with
   the User-Agent Open Food Facts asks for, so the page's CSP keeps every other host out. `src/foodnet.js`
   keeps to their rate limits (10 searches and 15 products a minute) and sanity-checks every product.
-- **Barcodes**: `src/scanner.js` opens the back camera with `getUserMedia` (MainActivity grants the
-  WebView's video request after the runtime CAMERA permission) and reads frames with the MIT
-  `barcode-detector` ponyfill over ZXing in WebAssembly (`dist/lazy/barcode.js` and
-  `zxing_reader.wasm`), so no Play services are needed. A code counts once it's read twice in a row with
-  a valid check digit; typing the number always works too.
+- **Barcodes**: `src/scanner.js` opens the back camera with `getUserMedia` at 1920 x 1080 (MainActivity
+  grants the WebView's video request after the runtime CAMERA permission) while the reader loads
+  alongside: `src/barcode.js` (`dist/lazy/barcode.js`) and its worker, `src/barcode-worker.js`, with
+  ZXing in WebAssembly (`zxing-wasm`, MIT, `zxing_reader.wasm` next to it), so no Play services are
+  needed.
+  - The camera focuses continuously where it can, and a tap on the picture focuses there (a point of
+    interest, single shot). The picture is magnified 2.5 times so a phone 15 to 20 cm away fills the
+    box, since many phones can't focus closer: the camera's own zoom where a page may use it, but
+    Android's WebView always denies the camera pan-tilt-zoom permission that `zoom` needs, so there
+    the page magnifies the video and the reader crops to match.
+  - Each new frame goes to the worker as a `VideoFrame`, which copies out only the part it reads, and
+    only its brightness (cutting an `ImageBitmap` from the video drew the whole frame on the page's
+    thread first, 45 to 100 ms a frame at 1080 x 1920). In turn: the box with a margin; the whole
+    picture (a code outside the box, on its side, or closer than the box); and the box evened out
+    (rows averaged along the bars and sharpened across, which reads a code blurred by half a module).
+    Where the phone has its own `BarcodeDetector` for these formats, it reads the frames too, and the
+    first read wins.
+  - An EAN-13 or UPC-A counts on its first read with a right check digit, an EAN-8 or UPC-E once it's
+    read twice within 1.2 s in two frames (the pass that read it once goes again until then). An
+    evened-out read counts only when a second setting reads the same in that frame: alone it misread
+    a moving code, with a right check digit. UPC-A and UPC-E come back as 13 digits, as ZXing reads
+    them. The code locks in the box with the scan haptic, then the sheet closes; after 3 s without a
+    read, the box says what would help (closer, further, the light, steady). Typing the number
+    always works too.
+  - `test/ui-scan.mjs` films real codes drawn from their digits (`test/scanfixture.mjs`) under hard
+    conditions for Chromium's fake camera and scans them; `--measure` gives the read rates and times
+    (`--vs=<dir> --vs-res=720` with another build alongside, trial by trial, so both meet the same
+    load). `test/scan.mjs` checks the rules.
 - **Health Connect**: meals are written as `NutritionRecord`s with the entry id as the client record id
   and a version that grows with each edit, so edits replace the record; deletes delete it. Food other
   apps logged comes back as per-day totals. The nutrition permissions are only requested when calorie

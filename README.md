@@ -337,7 +337,7 @@ Every screen is built with **Refract**, the liquid glass design system: its glas
 | Anthropic TypeScript SDK | The Claude coach | MIT |
 | wllama and llama.cpp | On-device AI runtime | MIT |
 | Qwen3.5 | On-device AI models, downloaded on request | Apache 2.0 |
-| barcode-detector and zxing-wasm | Barcode reading | MIT |
+| zxing-wasm | Barcode reading | MIT |
 | ZXing C++ | Barcode reading | Apache 2.0 |
 | USDA SR28 | Built-in food list | Public domain |
 | Open Food Facts | Online food search, when it's on | Open Database License |

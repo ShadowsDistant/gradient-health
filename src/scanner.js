@@ -1,10 +1,14 @@
-/* Barcode scanning for food: a sheet with the back camera, a framing box and a torch button. The
- * reader (lazy/barcode.js, ZXing in WebAssembly) loads on first use. A code counts once it's read
- * twice in a row and its check digit is right, so a half-seen barcode never looks up the wrong
- * food. The camera stops the moment the sheet closes. You can always type the number instead.
+/* Barcode scanning for food: a sheet with the back camera, a wide box to hold the code in, the light
+ * and "Type the number". The camera starts at once (the back one, 1920 x 1080) while the reader
+ * loads alongside (lazy/barcode.js and its worker: src/barcode.js says how it focuses, zooms and
+ * reads). A code only counts when it's surely right (an EAN-13 or UPC-A on its first read with a
+ * right check digit, an EAN-8 or UPC-E read twice within about a second), so a half-seen barcode
+ * never looks up the wrong food. The camera stops the moment the sheet closes. You can always type
+ * the number instead.
  * GH.scanner.scan() → Promise of the digits, or null if you closed it.
  * GH.scanner.scan({ qr: true, accept(text) }) reads QR codes instead (a shared plan): the first read
  * that accept() takes counts (QR codes carry their own error correction), and a link can be pasted.
+ * GH.scanner.stats() → the last scan's numbers (which engine read it, frames, zoom, focus, hints).
  */
 (function (G) {
   'use strict';
@@ -39,23 +43,24 @@
     return s;
   }
 
-  let active = null; // the scan in progress: { stream, sheet, resolve, timer, stopped }
+  let active = null; // the scan in progress (see scan)
+  let last = null; // its numbers, kept for stats()
   function stop() {
     if (!active) return;
     const a = active;
     active = null;
     a.stopped = true;
-    clearTimeout(a.timer);
+    for (const f of a.cleanup.splice(0)) { try { f(); } catch (e) { /* ignore */ } }
     if (a.stream) for (const t of a.stream.getTracks()) { try { t.stop(); } catch (e) { /* ignore */ } }
     const v = a.sheet && a.sheet.el.querySelector('video');
     if (v) { try { v.pause(); v.srcObject = null; } catch (e) { /* ignore */ } }
   }
 
   const body = (msg, qr) => `<div class="sc-wrap${qr ? ' sc-qr' : ''}">
-      <div class="sc-view"><video class="sc-video" playsinline muted autoplay></video><div class="sc-frame" aria-hidden="true"><i></i></div>
+      <div class="sc-view"><video class="sc-video" playsinline muted autoplay></video><div class="sc-frame" aria-hidden="true"><i></i></div><span class="sc-lock" aria-hidden="true" hidden></span><span class="sc-focus" aria-hidden="true" hidden></span>
         <p class="sc-msg t-callout" role="status">${msg}</p></div>
       <div class="btn-row sc-tools">
-        <button type="button" class="rf-btn" data-act="scanTorch" hidden>${U().icon('bolt')}Light</button>
+        <button type="button" class="rf-btn" data-act="scanTorch" aria-pressed="false" hidden>${U().icon('bolt')}Light</button>
         <button type="button" class="rf-btn" data-variant="plain" data-act="scanType">${qr ? 'Paste a link instead' : 'Type the number'}</button>
       </div>
       <form class="sc-type" hidden>${qr
@@ -66,14 +71,15 @@
         <div class="rf-field-control"><input class="rf-input" id="scCode" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="14" autocomplete="off"></div></div>
         <button type="submit" class="rf-btn rf-glass" data-variant="tinted">Look it up</button>`}</form>
     </div>`;
-  const say = (text) => { const el = active && active.sheet.el.querySelector('.sc-msg'); if (el) el.textContent = text; };
 
   function scan(opts) {
     const o = opts || {};
     if (active) stop();
     return new Promise((resolve) => {
-      const a = { stream: null, sheet: null, resolve, timer: 0, stopped: false, last: null, torch: false, qr: !!o.qr, accept: o.accept || null, notThis: o.notThis || '' };
+      // stopped: the sheet closed; locked: a code was caught. cleanup runs as it stops.
+      const a = { stream: null, sheet: null, stopped: false, locked: false, torch: false, cleanup: [], stats: {}, started: G.performance ? G.performance.now() : Date.now(), qr: !!o.qr, accept: o.accept || null, notThis: o.notThis || '' };
       active = a;
+      last = a.stats;
       let settled = false;
       const finish = (code) => {
         if (settled) return;
@@ -83,7 +89,10 @@
         resolve(code || null);
       };
       a.finish = finish;
-      a.sheet = U().sheet({ title: o.title || (a.qr ? 'Scan a code' : 'Scan a barcode'), size: 'full', cls: 'sc-sheet', body: body('Starting the camera…', a.qr), onClose: () => finish(null) });
+      a.say = (text) => { const m = a.sheet && a.sheet.el.querySelector('.sc-msg'); if (m && m.textContent !== text) m.textContent = text; };
+      a.showTorch = () => { const t = a.sheet.el.querySelector('[data-act="scanTorch"]'); if (t) t.hidden = false; };
+      a.fail = () => { if (a.stopped) return; a.say(`The ${a.qr ? 'code' : 'barcode'} reader didn't load. ${a.qr ? 'Paste the link' : 'Type the number'} instead.`); showType(); };
+      a.sheet = U().sheet({ title: o.title || (a.qr ? 'Scan a code' : 'Scan a barcode'), size: 'fit', cls: 'sc-sheet', body: body('Starting the camera…', a.qr), onClose: () => finish(null) });
       const el = a.sheet.el;
       el.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -103,15 +112,20 @@
 
   async function start(a) {
     const nav = G.navigator;
-    if (!nav || !nav.mediaDevices || !nav.mediaDevices.getUserMedia) { say(`The camera isn't available here. ${a.qr ? 'Paste the link' : 'Type the number'} instead.`); showType(); return; }
-    const reader = GH.lazy('barcode').then((m) => m.ready.then(() => m.detector(a.qr ? ['qr_code'] : undefined)));
+    const instead = a.qr ? 'paste the link' : 'type the number';
+    if (!nav || !nav.mediaDevices || !nav.mediaDevices.getUserMedia) { a.say(`The camera isn't available here. ${a.qr ? 'Paste the link' : 'Type the number'} instead.`); showType(); return; }
+    // The reader loads while the camera starts.
+    const reader = GH.lazy('barcode');
+    reader.catch(() => {});
     let stream;
     try {
-      stream = await nav.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+      // The back camera at 1920 x 1080 as it comes (no scaling), so a code a hand's length away
+      // still has pixels enough with the picture magnified.
+      stream = await nav.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, resizeMode: { ideal: 'none' } } });
     } catch (e) {
       if (a.stopped) return;
       const denied = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
-      say(denied ? `Camera access is off. Allow it in the app's Android settings, or ${a.qr ? 'paste the link' : 'type the number'}.` : `Couldn't start the camera. ${a.qr ? 'Paste the link' : 'Type the number'} instead.`);
+      a.say(denied ? `Camera access is off. Allow it in the app's Android settings, or ${instead}.` : `Couldn't start the camera. ${a.qr ? 'Paste the link' : 'Type the number'} instead.`);
       showType();
       return;
     }
@@ -119,47 +133,16 @@
     if (a.stopped) { for (const t of stream.getTracks()) { try { t.stop(); } catch (e) { /* ignore */ } } return; }
     a.stream = stream;
     const video = a.sheet.el.querySelector('video');
-    video.srcObject = a.stream;
+    video.srcObject = stream;
     try { await video.play(); } catch (e) { /* autoplay with muted is allowed; keep going */ }
-    const track = a.stream.getVideoTracks()[0];
-    const caps = track && track.getCapabilities ? track.getCapabilities() : {};
-    if (caps && caps.torch) { const t = a.sheet.el.querySelector('[data-act="scanTorch"]'); if (t) t.hidden = false; }
-    let detector;
-    try { detector = await reader; } catch (e) {
-      if (a.stopped) return;
-      say(`The ${a.qr ? 'code' : 'barcode'} reader didn't load. ${a.qr ? 'Paste the link' : 'Type the number'} instead.`);
-      showType();
-      return;
-    }
+    const since = () => Math.round((G.performance ? G.performance.now() : Date.now()) - a.started);
+    a.stats.cameraAt = since();
+    let m;
+    try { m = await reader; } catch (e) { a.fail(); return; }
     if (a.stopped) return;
-    say(a.qr ? 'Point the camera at the code' : 'Hold the barcode inside the box');
-    loop(a, video, detector);
-  }
-
-  function loop(a, video, detector) {
-    const tick = async () => {
-      if (a.stopped) return;
-      if (video.readyState >= 2 && video.videoWidth) {
-        try {
-          const found = await detector.detect(video);
-          if (a.stopped) return;
-          if (a.qr) {
-            const text = (found || []).map((x) => String(x.rawValue || '')).find((t) => t && (!a.accept || a.accept(t)));
-            if (text) { if (U().haptic) U().haptic('scan'); a.finish(text); return; }
-            if ((found || []).length && a.notThis) say(a.notThis);
-            a.timer = setTimeout(tick, 120);
-            return;
-          }
-          const hit = (found || []).map((b) => ({ code: normalise(b.rawValue, b.format) })).find((b) => checksumOk(b.code));
-          if (hit) {
-            if (a.last === hit.code) { if (U().haptic) U().haptic('scan'); a.finish(hit.code); return; }
-            a.last = hit.code;
-          } else a.last = null;
-        } catch (e) { /* a frame that couldn't be read; try the next */ }
-      }
-      a.timer = setTimeout(tick, 120);
-    };
-    tick();
+    a.stats.readerAt = since();
+    a.say(m.HINTS[a.qr ? 'aimQr' : 'aim']);
+    try { m.run(a); } catch (e) { a.fail(); }
   }
 
   function showType() {
@@ -170,7 +153,7 @@
     if (input) setTimeout(() => input.focus(), 50);
   }
 
-  GH.scanner = { scan, stop, checksumOk, expandUpcE, normalise };
+  GH.scanner = { scan, stop, checksumOk, expandUpcE, normalise, stats: () => (last ? Object.assign({}, last) : null) };
 
   if (doc) {
     doc.addEventListener('visibilitychange', () => { if (doc.visibilityState === 'hidden' && active) { const f = active.finish; if (f) f(null); } });
@@ -184,7 +167,7 @@
         const track = a && a.stream && a.stream.getVideoTracks()[0];
         if (!track) return;
         a.torch = !a.torch;
-        try { await track.applyConstraints({ advanced: [{ torch: a.torch }] }); el.setAttribute('aria-pressed', String(a.torch)); } catch (e) { a.torch = !a.torch; }
+        try { await track.applyConstraints({ advanced: [{ torch: a.torch }] }); el.setAttribute('aria-pressed', String(a.torch)); a.stats.torchOn = a.torch; } catch (e) { a.torch = !a.torch; }
       };
       return true;
     };

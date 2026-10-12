@@ -705,13 +705,26 @@ textarea.preview { border: 0; resize: vertical; }
 
 /* ---------------------------------------------------------------- barcode scanner */
 .sc-wrap { display: grid; gap: var(--space-3); padding: var(--space-2) var(--space-4) var(--space-4); }
-.sc-view { position: relative; border-radius: var(--radius-lg); overflow: hidden; background: #000; aspect-ratio: 3 / 4; max-height: 58vh; width: 100%; }
-.sc-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.sc-frame { position: absolute; inset: 30% 10%; border-radius: var(--radius-md); box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.38); }
-.sc-frame::before { content: ""; position: absolute; inset: 0; border: 3px solid rgb(255 255 255 / 0.9); border-radius: inherit; }
+.sc-view { position: relative; border-radius: var(--radius-lg); overflow: hidden; background: #000; aspect-ratio: 3 / 4; max-height: 58vh; width: 100%; touch-action: manipulation; }
+/* The picture, magnified as src/barcode.js asks (--sc-zoom) when the camera can't zoom itself. */
+.sc-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(var(--sc-zoom, 1)); }
+/* The box: wide, for a barcode (a plan's code gets a square one, customplan.css). */
+.sc-frame { position: absolute; left: 9%; right: 9%; top: 50%; aspect-ratio: 2 / 1; translate: 0 -50%; border-radius: var(--radius-md); box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.38); }
+.sc-frame::before { content: ""; position: absolute; inset: 0; border: 3px solid rgb(255 255 255 / 0.9); border-radius: inherit; transition: border-color 160ms var(--ease-standard), box-shadow 160ms var(--ease-standard); }
 .sc-frame i { position: absolute; left: 6%; right: 6%; top: 50%; height: 2px; background: var(--accent); box-shadow: 0 0 12px var(--accent); animation: sc-sweep 1.6s var(--ease-standard) infinite alternate; }
 @keyframes sc-sweep { from { transform: translateY(-38px); } to { transform: translateY(38px); } }
-@media (prefers-reduced-motion: reduce) { .sc-frame i { animation: none; } }
+/* A code caught: the box takes the accent and the code lights up where it is. */
+.sc-frame[data-locked]::before { border-color: var(--accent); box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 70%, transparent); }
+.sc-frame[data-locked] i { opacity: 0; }
+.sc-lock { position: absolute; border: 3px solid var(--accent); border-radius: 10px; background: color-mix(in srgb, var(--accent) 24%, transparent); box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 60%, transparent); animation: sc-lock 220ms var(--ease-standard) both; }
+@keyframes sc-lock { from { opacity: 0; transform: scale(1.18); } to { opacity: 1; transform: none; } }
+/* Where a tap focused. */
+.sc-focus { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; border: 2px solid rgb(255 255 255 / 0.92); border-radius: 50%; pointer-events: none; animation: sc-focus 800ms var(--ease-standard) both; }
+@keyframes sc-focus { 0% { opacity: 0; transform: scale(1.5); } 30% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
+.sc-lock[hidden], .sc-focus[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { .sc-frame i, .sc-lock, .sc-focus { animation: none; } }
+/* The light, when the hint asks for it. */
+.sc-tools [data-act="scanTorch"][data-hint] { background: var(--accent-soft); color: var(--accent); }
 .sc-msg { position: absolute; left: 0; right: 0; bottom: 0; margin: 0; padding: var(--space-3) var(--space-4); color: #fff; text-align: center; background: linear-gradient(transparent, rgb(0 0 0 / 0.6)); }
 .sc-tools { justify-content: center; }
 .sc-type { display: grid; gap: var(--space-3); }
