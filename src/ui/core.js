@@ -1253,7 +1253,7 @@
       const s = switching;
       switching = null;
       if (!s || U.route.view || U.route.tab !== s.tab) return;
-      if (lastKey !== s.tab) { drawFirst = true; render(s.kind); drawFirst = false; }
+      if (lastKey !== s.tab) { drawFirst = true; render(s.kind); drawFirst = false; } else if (U.motion && U.motion.stay) U.motion.stay(screen);
       // What a tab does once it shows (a badge to celebrate, a report to write) waits for its page's
       // frame too.
       const scr = U.screens[s.tab];

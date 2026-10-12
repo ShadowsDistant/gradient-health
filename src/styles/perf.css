@@ -62,8 +62,8 @@
 
 /* A tab's page coming in from a tap: the blocks well out of sight are drawn a frame after the rest
    (src/ui/core.js, holdBack): styling, laying out and drawing all of a long page held back the frame
-   that brings it in. */
-#screen > [data-gh-later] { display: none !important; }
+   that brings it in. (.screen: a page that leaves before they came leaves without them.) */
+.screen > [data-gh-later] { display: none !important; }
 /* And the floating buttons it brings form a frame later (core.js, floatLater): until then they're out
    of sight. */
 #float[data-forming] { visibility: hidden; }

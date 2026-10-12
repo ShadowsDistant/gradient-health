@@ -16,7 +16,8 @@
  *   one falls back a third of the way, Back plays that in reverse, and a tab change ('left',
  *   'right') morphs from one page to the other in place; any other kind just swaps.
  * U.motion.leave(screen, kind)  A tab tapped: the page starts to leave at once, where it is (core.js
- *   draws the new one after the frame that shows the tap); the next routeSwap lets it go.
+ *   draws the new one after the frame that shows the tap); the next routeSwap lets it go, and
+ *   U.motion.stay(screen) keeps it after all.
  * U.motion.flip(els, mutate)  Measures els (an element's children, or a list of elements), runs
  *   mutate, then glides each from where it was to where it is now. Resolves when they've landed.
  * U.motion.exit(el)  el leaves from where it is: it's out of the flow at once, so what comes after it
@@ -401,6 +402,13 @@
     const from = stopEntrance(screen);
     leavingScreen = { screen, anims: slide(screen, routeSpec(kind).out, 'forwards', from) };
     leavingScreen.anims.forEach(track);
+  };
+  // The page stays after all (a second tap went back to its tab before the new one was drawn).
+  M.stay = (screen) => {
+    const lv = leavingScreen && leavingScreen.screen === screen ? leavingScreen : null;
+    if (!lv) return;
+    leavingScreen = null;
+    for (const a of lv.anims) if (a) a.cancel();
   };
 
   M.routeSwap = (screen, frag, kind) => {
