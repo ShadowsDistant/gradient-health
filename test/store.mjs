@@ -144,8 +144,10 @@ junk.log.push(null, { type: 'workout', day: D0 - 1, items: [null, { moveId: 'pus
 junk.profile.minutes = 500;
 junk.protein[D0] = 'lots';
 junk.health.days[D0] = null;
+junk.profile.food = Object.assign({}, junk.profile.food, { meals: { breakfast: [300, 'noon'] }, learn: 'yes', activity: 'very' });
 file.state = JSON.stringify(junk);
 const L = store.load();
+check('food\'s meal times and switches that aren\'t go, and their defaults come back', L.profile.food.learn === true && L.profile.food.activity === 'auto' && String(L.profile.food.meals.breakfast) === '300,660' && L.profile.food.meals.lunch[1] === 900, L.profile.food);
 check('a state bent by a bug loads in shape', L && L.catchup.arm && L.active === null && L.events.every((e) => e && typeof e.type === 'string' && (e.type !== 'settings' || Number.isInteger(e.day))) && L.log.every((l) => l && typeof l === 'object') && L.profile.minutes === 60 && !(D0 in L.protein) && !(D0 in L.health.days));
 const lw = L.log[L.log.length - 1];
 check('and keeps everything that was fine', L.log.length === R.log.length + 1 && lw.items.length === 1 && lw.items[0].sets.length === 0 && L.customPlans.length === 1 && L.activities.length === 1);

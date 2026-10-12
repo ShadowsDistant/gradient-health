@@ -1,6 +1,16 @@
 /* Food tracking (optional): what you ate, your calorie and macro targets, and a burn estimate that
- * learns from your own intake and weight trend. Pure logic on the saved state; the Food tab and the
- * Today card draw it. Modes: 'off', 'protein' (the quick protein counter) or 'full'.
+ * learns from your own intake and weight trend. Pure logic on the saved state; Health's food section,
+ * the Food page and the Today card draw it (src/ui/food.js). Modes: 'off', 'protein' (the quick
+ * protein counter) or 'full'.
+ *
+ * Meals by the clock. Breakfast, lunch and dinner each have a window (minutes after midnight, set in
+ * Settings), and snacks are any other time: a new entry goes in the meal its time falls in, unless
+ * one was picked by hand (mh). With "Learn from my logs" on (the default), each window follows when
+ * that meal is actually logged: the 10th to 90th percentile of the last 4 weeks' times, an hour
+ * either side, never more than 2 hours from the window set, once a meal has 5 days of them. Only
+ * times that say when food was eaten count: logged as it happened or set by hand, not an earlier
+ * day's usual time (at: 'usual') or a copy (at: 'copy'), and not meals logged within half an hour
+ * of each other (logged together afterwards).
  *
  * Targets. Resting burn from Mifflin-St Jeor (Mifflin et al. 1990; the most accurate common
  * equation, Frankenfield et al. 2005) times an activity factor from your steps and workouts, in the
@@ -18,10 +28,16 @@
   const KCAL_PER_KG = 7700;
   const MEALS = [['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner'], ['snack', 'Snacks']];
   const FLOOR = { female: 1200, male: 1500, '': 1350 };
+  // The windows a new person starts with (5 to 11 am, 11 am to 3 pm, 5 to 10 pm), close to the
+  // fixed hours before 1.12; snacks are any other time.
+  const TIMED = ['breakfast', 'lunch', 'dinner'];
+  const MEAL_TIMES = { breakfast: [300, 660], lunch: [660, 900], dinner: [1020, 1320] };
+  // Activity set by hand instead of from steps: the steps bands' light, middle and top factors.
+  const ACTIVITY = { light: 1.4, moderate: 1.6, active: 1.8 };
 
   /* ---------------------------------------------------------------- state */
   function defaults() {
-    return { mode: 'protein', pace: 0.5, online: false, hcWrite: true, hcRead: true };
+    return { mode: 'protein', pace: 0.5, online: false, hcWrite: true, hcRead: true, activity: 'auto', learn: true, meals: { breakfast: MEAL_TIMES.breakfast.slice(), lunch: MEAL_TIMES.lunch.slice(), dinner: MEAL_TIMES.dinner.slice() } };
   }
   // The profile's food settings, with defaults; the food log lives in S.food.
   function prefs(S) {
@@ -62,15 +78,17 @@
     const s = p.sex === 'male' ? 5 : p.sex === 'female' ? -161 : -78;
     return 10 * w + 6.25 * h - 5 * age(S) + s;
   }
-  // Physical activity level from your own steps and planned workouts (FAO/WHO/UNU bands 1.4-1.9+).
+  // Physical activity level from your own steps and planned workouts (FAO/WHO/UNU bands 1.4-1.9+),
+  // or the level you set by hand (light, moderate, active) in place of the steps.
   function activityFactor(S, day) {
     const hd = (S.health && S.health.days) || {};
     const steps = [];
     for (let d = day - 28; d < day; d++) if (hd[d] && hd[d].steps != null) steps.push(hd[d].steps);
     const med = steps.length >= 7 ? B().median(steps) : null;
-    let pal = med == null ? 1.45 : med < 5000 ? 1.4 : med < 7500 ? 1.5 : med < 10000 ? 1.6 : med < 12500 ? 1.7 : 1.8;
+    const set = ACTIVITY[prefs(S).activity];
+    let pal = set || (med == null ? 1.45 : med < 5000 ? 1.4 : med < 7500 ? 1.5 : med < 10000 ? 1.6 : med < 12500 ? 1.7 : 1.8);
     if (S.profile.workouts !== false) pal += Math.min(0.15, (S.profile.days || 0) * 0.025);
-    return { pal: Math.min(2, Math.round(pal * 100) / 100), steps: med };
+    return { pal: Math.min(2, Math.round(pal * 100) / 100), steps: med, set: !!set };
   }
   // The daily change the goal asks for, kcal (negative = deficit).
   function goalDelta(S, day) {
@@ -116,20 +134,97 @@
   }
   let seq = 0;
   const newId = () => `${Date.now().toString(36)}${(seq++ % 1296).toString(36).padStart(2, '0')}`;
-  function mealFor(ts) {
-    const h = new Date(ts).getHours();
-    return h >= 4 && h < 11 ? 'breakfast' : h >= 11 && h < 16 ? 'lunch' : h >= 16 && h < 22 ? 'dinner' : 'snack';
+
+  /* ---------------------------------------------------------------- meal times */
+  const DAY_MIN = 1440;
+  const rollH = (S) => { const r = S && S.profile && S.profile.prefs && S.profile.prefs.rollHour; return r == null ? 4 : r; };
+  const minOf = (ts) => { const d = new Date(ts); return d.getHours() * 60 + d.getMinutes(); };
+  // Minutes into the app's day (which starts at the start-of-day hour, 4 am by default), so no
+  // meal's window wraps around midnight; and back to minutes after midnight.
+  const rel = (S, m) => (m - rollH(S) * 60 + 2 * DAY_MIN) % DAY_MIN;
+  const clock = (S, r) => ((r + rollH(S) * 60) % DAY_MIN + DAY_MIN) % DAY_MIN;
+  const inWin = (m, w) => (w[0] <= w[1] ? m >= w[0] && m < w[1] : m >= w[0] || m < w[1]);
+  const q15 = (x) => Math.round(x / 15) * 15;
+  let rev = 0; // every change to the log, so the learned windows are worked out again
+  let memo = null;
+  // The windows in use on a day: { win: { breakfast: [start, end], lunch, dinner }, learned: [meals] }.
+  function mealTimes(S, day) {
+    const fp = prefs(S), f = data(S);
+    if (memo && memo.f === f && memo.day === day && memo.rev === rev && memo.set === JSON.stringify(fp.meals) + fp.learn + rollH(S)) return memo.out;
+    const set = fp.meals;
+    const out = { win: {}, learned: [] };
+    // In the app day's minutes: each window from its start, as long as it is.
+    const base = {};
+    for (const k of TIMED) { const s = rel(S, set[k][0]); base[k] = [s, s + ((set[k][1] - set[k][0] + DAY_MIN) % DAY_MIN || DAY_MIN)]; }
+    const w = {};
+    for (const k of TIMED) w[k] = base[k].slice();
+    if (fp.learn !== false) {
+      const got = { breakfast: [], lunch: [], dinner: [] };
+      for (let d = day - 28; d < day; d++) {
+        const first = {};
+        for (const e of f.days[d] || []) if (got[e.meal] && (!e.at || e.at === 'set') && (!first[e.meal] || e.t < first[e.meal].t)) first[e.meal] = e;
+        const fs = Object.values(first);
+        for (const e of fs) if (!fs.some((o) => o !== e && Math.abs(o.t - e.t) < 1800000)) got[e.meal].push(rel(S, minOf(e.t)));
+      }
+      for (const k of TIMED) {
+        const v = got[k].sort((a, b) => a - b);
+        if (v.length < 5) continue;
+        const q = (p) => v[Math.round(p * (v.length - 1))];
+        let s = q(0.1) - 60, e = q(0.9) + 60;
+        if (e - s < 120) { s = q(0.5) - 60; e = q(0.5) + 60; }
+        const b = base[k];
+        w[k] = [Math.min(b[0] + 120, Math.max(b[0] - 120, q15(s))), Math.min(b[1] + 120, Math.max(b[1] - 120, q15(e)))];
+        out.learned.push(k);
+      }
+      // In order and apart: where two meet, the line goes halfway between them.
+      for (const [a, b] of [['breakfast', 'lunch'], ['lunch', 'dinner']]) if (w[a][1] > w[b][0]) w[a][1] = w[b][0] = q15((w[a][1] + w[b][0]) / 2);
+      if (TIMED.some((k) => w[k][1] - w[k][0] < 60)) { for (const k of TIMED) w[k] = base[k].slice(); out.learned = []; }
+    }
+    for (const k of TIMED) out.win[k] = [clock(S, w[k][0]), clock(S, w[k][1])];
+    memo = { f, day, rev, set: JSON.stringify(fp.meals) + fp.learn + rollH(S), out };
+    return out;
   }
-  // Adds an entry: { name, meal?, src, ref?, g?, kcal, p, c, f, fib? } → the entry.
+  // The meal a time falls in: the person's windows (the ones set before 1.12 without S).
+  function mealFor(ts, S) {
+    const w = S ? mealTimes(S, B().dayOf(ts, rollH(S))).win : MEAL_TIMES;
+    const m = minOf(ts);
+    return TIMED.find((k) => inWin(m, w[k])) || 'snack';
+  }
+  // A time on a day (the app's day: past midnight is still the day before until it starts), from
+  // minutes after midnight.
+  function atClock(S, day, m) {
+    const [y, mo, d] = B().dayStr(day).split('-').map(Number);
+    return new Date(y, mo - 1, d, 0, rollH(S) * 60 + rel(S, m)).getTime();
+  }
+  // When a meal usually is: the middle of its window; snacks between lunch and dinner.
+  function usualMin(S, day, meal) {
+    const w = mealTimes(S, day).win;
+    const mid = (a, b) => clock(S, (rel(S, a) + ((b - a + DAY_MIN) % DAY_MIN) / 2));
+    if (w[meal]) return q15(mid(w[meal][0], w[meal][1]));
+    return w.lunch[1] !== w.dinner[0] && rel(S, w.lunch[1]) < rel(S, w.dinner[0]) ? q15(mid(w.lunch[1], w.dinner[0])) : 930;
+  }
+  // A new entry's time: now for today, else that day at the meal's usual time ({ t, at }).
+  function timeFor(S, day, meal, now) {
+    const t = now || Date.now();
+    if (B().dayOf(t, rollH(S)) === day) return { t };
+    return { t: Math.min(t, atClock(S, day, usualMin(S, day, meal))), at: 'usual' };
+  }
+
+  // Adds an entry: { name, meal?, mh?, at?, src, ref?, g?, kcal, p, c, f, fib? } → the entry. Its
+  // meal is the one picked (mh: by hand) or the one its time falls in; at says how its time was set
+  // (none: as it was logged; 'set' by hand; 'usual' for an earlier day; 'copy').
   function add(S, day, e, now) {
     const f = data(S);
     const t = now || Date.now();
     const entry = {
-      id: newId(), t, meal: e.meal || mealFor(t), name: String(e.name || 'Food').slice(0, 80), detail: e.detail || null,
+      id: newId(), t, meal: e.meal || mealFor(t, S), name: String(e.name || 'Food').slice(0, 80), detail: e.detail || null,
       src: e.src || 'quick', ref: e.ref != null ? e.ref : null, g: e.g != null ? Math.round(e.g) : null, portion: e.portion || null,
       kcal: Math.max(0, Math.round(e.kcal || 0)), p: round1(Math.max(0, e.p || 0)), c: round1(Math.max(0, e.c || 0)), f: round1(Math.max(0, e.f || 0)), fib: round1(Math.max(0, e.fib || 0)),
     };
+    if (e.meal && e.mh) entry.mh = 1;
+    if (e.at) entry.at = e.at;
     (f.days[day] = f.days[day] || []).push(entry);
+    rev++;
     if (entry.ref != null && entry.src !== 'quick') {
       const key = `${entry.src}:${entry.ref}`;
       f.recent = [key].concat(f.recent.filter((x) => x !== key)).slice(0, 40);
@@ -141,8 +236,18 @@
     const e = list.find((x) => x.id === id);
     if (!e) return null;
     Object.assign(e, patch);
+    if (!e.mh) delete e.mh;
     e.v = (e.v || 0) + 1; // a new version: Health Connect's copy gets updated
+    rev++;
     return e;
+  }
+  // A new time for an entry, from minutes after midnight on its day: it moves to that time's meal
+  // unless its meal was picked by hand.
+  function retime(S, day, id, m) {
+    const e = (data(S).days[day] || []).find((x) => x.id === id);
+    if (!e) return null;
+    const t = atClock(S, day, m);
+    return update(S, day, id, e.mh ? { t, at: 'set' } : { t, at: 'set', meal: mealFor(t, S) });
   }
   function remove(S, day, id) {
     const f = data(S);
@@ -151,6 +256,7 @@
     if (i < 0) return null;
     const [e] = list.splice(i, 1);
     f.removed = (f.removed || []).concat({ id: e.id, day }).slice(-200); // so Health Connect copies get deleted
+    rev++;
     return e;
   }
   function entries(S, day) { return (data(S).days[day] || []).slice().sort((a, b) => a.t - b.t); }
@@ -170,10 +276,26 @@
     for (const e of entries(S, day)) (out[e.meal] || out.snack).push(e);
     return out;
   }
-  // Copies a meal (or the whole day) from another day. now: a time, or a function of the meal.
-  function copyMeal(S, fromDay, toDay, meal, now) {
+  // Copies a meal (or the whole day) from another day, each entry at the same time of day in the
+  // same meal.
+  function copyMeal(S, fromDay, toDay, meal) {
     const src = entries(S, fromDay).filter((e) => !meal || e.meal === meal);
-    return src.map((e) => add(S, toDay, Object.assign({}, e, { meal: e.meal }), typeof now === 'function' ? now(e.meal) : now));
+    return src.map((e) => add(S, toDay, Object.assign({}, e, { mh: 1, at: 'copy' }), atClock(S, toDay, minOf(e.t))));
+  }
+  // The foods logged in the last 4 weeks, most used first (then the latest), each with the entry it
+  // was last logged as (from the last 90 days), to add again as it was: [{ key, n, last }].
+  function regulars(S, day) {
+    const f = data(S);
+    const n = {}, last = {};
+    for (let d = day - 89; d <= day; d++) {
+      for (const e of f.days[d] || []) {
+        if (e.ref == null || e.src === 'quick') continue;
+        const k = `${e.src}:${e.ref}`;
+        if (d > day - 28) n[k] = (n[k] || 0) + 1;
+        if (!last[k] || e.t >= last[k].t) last[k] = e;
+      }
+    }
+    return f.recent.map((key, i) => ({ key, i, n: n[key] || 0, last: last[key] || null })).sort((a, b) => b.n - a.n || a.i - b.i);
   }
   // Saved meals: a named group of entries you can add in one tap.
   function saveMeal(S, name, list) {
@@ -182,10 +304,12 @@
     f.saved = f.saved.concat(meal).slice(-30);
     return meal;
   }
-  function addSaved(S, day, savedId, meal, now) {
+  // A saved meal into a meal on a day (o: { mh, t, at }, as timeFor gives them).
+  function addSaved(S, day, savedId, meal, o) {
     const m = data(S).saved.find((x) => x.id === savedId);
     if (!m) return [];
-    return m.items.map((it) => add(S, day, Object.assign({}, it, { meal }), now));
+    const w = o || timeFor(S, day, meal);
+    return m.items.map((it) => add(S, day, Object.assign({}, it, { meal, mh: w.mh, at: w.at }), w.t));
   }
   // Custom foods from a label: per serving → stored per 100 g when the serving size is known.
   function addCustom(S, c) {
@@ -346,8 +470,8 @@
   }
 
   GH.food = {
-    MEALS, prefs, data, mode, full, setMode, ree, activityFactor, goalDelta, burn, targets, scale, add, update, remove, entries, totals, byMeal,
-    copyMeal, saveMeal, addSaved, addCustom, toggleFav, smoothWeights, slope, learnBurn, refreshBurn, holdsVolume, watchItem, suggestions, targetLine,
-    proteinOn, pendingWrites, markWritten, markRemoved, ingestOther, mealFor, KCAL_PER_KG,
+    MEALS, MEAL_TIMES, ACTIVITY, prefs, data, mode, full, setMode, ree, activityFactor, goalDelta, burn, targets, scale, add, update, retime, remove, entries, totals, byMeal,
+    copyMeal, regulars, saveMeal, addSaved, addCustom, toggleFav, smoothWeights, slope, learnBurn, refreshBurn, holdsVolume, watchItem, suggestions, targetLine,
+    proteinOn, pendingWrites, markWritten, markRemoved, ingestOther, mealFor, mealTimes, usualMin, timeFor, atClock, minOf, KCAL_PER_KG,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
