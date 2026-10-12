@@ -6,6 +6,28 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.12.0', date: '2026-10-12', title: 'Food in Health, barcodes that read, and quicker tabs',
+      store: [
+        '• Food lives in Health now, so tracking calories never costs a tab',
+        '• Start in one short sheet, then add food from Health\'s + menu',
+        '• Food goes in the right meal by the clock: set your meal times or let the app learn them',
+        '• Your usual foods and yesterday\'s meals in a tap',
+        '• Barcode scanning that reads: quicker, with zoom, tap to focus and tips',
+        '• Tabs respond the moment you tap',
+        '• Sheets open at the right size, with softer fades at the top',
+      ].join('\n'),
+      items: [
+        ['food', 'Food lives in Health now, with Add food in its + menu'],
+        ['sparkle', 'Start tracking calories in one short sheet'],
+        ['clock', 'Food goes in the meal for the time you usually eat'],
+        ['sliders', 'Set your meal times, or let the app learn them'],
+        ['star', 'Add your usual foods, or yesterday\'s meal, in a tap'],
+        ['scan', 'Barcode scanning is quicker and reads blurry codes'],
+        ['bolt', 'Tabs respond the moment you tap them'],
+        ['layers', 'Right-sized sheets and softer fades at the top'],
+      ],
+    },
+    {
       version: '1.11.0', date: '2026-10-12', title: 'Answers you can scan, kept chats, and updates in the app',
       store: [
         '• Coach answers you can scan, with cards of your own data',
