@@ -101,9 +101,11 @@
     return embedCache.get(token);
   }
   // An answer's words and the embeds the app added after them. streaming: still coming in, with the
-  // caret at the end of its last line.
-  function answerHtml(text, embeds, streaming) {
-    let html = GH.md ? GH.md.render(text, { streaming, embed: embedHtml }) : `<p>${U.esc(GH.coach ? GH.coach.noEmbeds(text) : text).replace(/\n+/g, '<br>')}</p>`;
+  // caret at the end of its last line. noEmbed: the on-device model's, whose own [[…]] the app takes
+  // out (it adds the embeds for the question once the answer is in).
+  const none = () => '';
+  function answerHtml(text, embeds, streaming, noEmbed) {
+    let html = GH.md ? GH.md.render(text, { streaming, embed: noEmbed ? none : embedHtml }) : `<p>${U.esc(GH.coach ? GH.coach.noEmbeds(text) : text).replace(/\n+/g, '<br>')}</p>`;
     if (streaming) {
       const caret = '<span class="caret" aria-hidden="true"></span>';
       const at = /(<\/(?:p|li|h3|h4|td|th)>)((?:<\/(?:ul|ol|li|tr|tbody|thead|table|div)>)*)$/;
@@ -128,7 +130,7 @@
   const STATUS = { loading: 'Starting the model', thinking: 'Thinking', reading: 'Reading your numbers', writing: 'Writing' };
   function liveInner(l) {
     if (l.error) return `<div class="bubble coach is-error">${U.esc(l.error)}</div><div class="msg-tools">${l.budget ? tool('claudePage', 0, 'card', 'Limits') : tool('askRetry', 0, 'refresh', 'Try again')}</div>`;
-    if (l.text) return `<div class="bubble coach answer${l.done ? '' : ' is-writing'}">${answerHtml(l.text, null, !l.done)}</div>${l.done && l.note ? `<p class="t-footnote rf-muted msg-note">${U.esc(l.note)}</p>` : ''}`;
+    if (l.text) return `<div class="bubble coach answer${l.done ? '' : ' is-writing'}">${answerHtml(l.text, null, !l.done, l.engine === 'device')}</div>${l.done && l.note ? `<p class="t-footnote rf-muted msg-note">${U.esc(l.note)}</p>` : ''}`;
     if (l.done) return `<div class="bubble coach is-stopped">${U.esc(l.note || 'Stopped.')}</div>`;
     const f = l.fraction;
     const pct = f != null && f > 0 && l.status !== 'thinking' ? ` ${Math.round(f * 100)}%` : '…';
@@ -187,7 +189,7 @@
     const e = engineOf(S);
     const ready = !gate(S);
     const small = (act, icon, label, extra) => `<button type="button" class="rf-btn chat-bar-btn" data-variant="plain" data-shape="circle" data-size="sm" aria-label="${label}" data-act="${act}"${extra || ''}>${U.icon(icon)}</button>`;
-    return `<div class="chat-bar">${pill(S)}${small('chatNew', 'compose', 'New chat')}${small('chatList', 'chat', 'Chats', landed ? ' data-unseen' : '')}${small('chatMenu', 'more', 'More')}</div>
+    return `<div class="chat-bar">${pill(S)}${small('chatNew', 'compose', 'New chat')}${small('chatMenu', 'more', 'More')}</div>
       <div class="chat-log" id="chatLog">${logBody(S)}</div>
       <div class="chat-compose"${ready ? '' : ' hidden'}><textarea class="rf-input" id="askQ" rows="1" maxlength="600" placeholder="Ask a question" aria-label="Your question" enterkeyhint="send"></textarea>${composeBtn()}</div>
       <p class="t-footnote rf-muted chat-foot">${FOOT[e]} Not medical advice.</p>`;
@@ -200,6 +202,7 @@
     if (engineSheet && !engineSheet.closed) engineSheet.update(engineBody(U.S));
     refreshList();
     if (!chat || chat.closed) return;
+    markChats();
     const q = chat.el.querySelector('#askQ');
     const typed = q ? q.value : '';
     const log0 = chat.el.querySelector('#chatLog');
@@ -212,6 +215,15 @@
     else if (log && (stick || to === 'bottom')) log.scrollTop = log.scrollHeight;
   }
   U.refreshChat = refreshChat;
+  // Chats, in the sheet's header, has a dot while an answer that landed in another chat is unread.
+  // (A mark of its own, as the coach button's: the glass keeps Refract's ::before and ::after.)
+  function markChats() {
+    const b = chat && chat.el.querySelector('.rf-sheet-header [data-act="chatList"]');
+    if (!b) return;
+    if (!b.querySelector('.chats-dot')) b.insertAdjacentHTML('beforeend', '<span class="chats-dot" aria-hidden="true"></span>');
+    b.toggleAttribute('data-unseen', !!landed);
+    b.setAttribute('aria-label', landed ? 'Chats, a new answer' : 'Chats');
+  }
   // The answer in progress, patched in place at most once a frame as words arrive (U.morph keeps
   // what's already there: an embed's card, the caret).
   let paintFrame = 0;
@@ -254,11 +266,12 @@
     if (!GH.embeds) part().then((ok) => { if (ok) refreshChat(); });
     chat = U.sheet({
       title: 'Ask the coach', size: 'full', cls: 'chat-sheet',
-      body: chatBody(S),
+      body: chatBody(S), action: { label: 'Chats', act: 'chatList' },
       // Closing doesn't stop an answer: it carries on, and the coach button shows when it's there.
       onClose: () => { chat = null; syncButtons(); },
       after: (c) => { const log = c.el.querySelector('#chatLog'); if (log) log.scrollTop = log.scrollHeight; },
     });
+    markChats();
     syncButtons();
     // A suggested question goes in once the sheet is up and, for the on-device coach, once it's
     // known whether the model is there (the box to type in waits for that).
@@ -349,7 +362,6 @@
   // answered; tap one to carry on with it. Edit shows a delete button on each (with Undo), and
   // Delete all chats.
   let listSheet = null, editing = false;
-  const DAY = 86400000;
   function listBody(S) {
     const list = CH() ? CH().recent(S) : [];
     if (!list.length) return `<div class="sheet-pad chat-list-none"><span class="chat-setup-ico" aria-hidden="true">${U.icon('chat')}</span><p class="t-headline">No chats yet</p><p class="t-callout rf-muted">Questions you ask the coach are kept here, on this phone, to go back to and carry on.</p></div>`;
@@ -378,9 +390,11 @@
   }
   function refreshList() {
     if (!listSheet || listSheet.closed) return;
+    const any = !!(CH() && CH().all(U.S).length);
+    if (!any) editing = false;
     listSheet.update(listBody(U.S));
     const b = listSheet.el.querySelector('.rf-sheet-header [data-act="chatListEdit"]');
-    if (b) { b.textContent = editing ? 'Done' : 'Edit'; b.hidden = !(CH() && CH().all(U.S).length); }
+    if (b) { b.textContent = editing ? 'Done' : 'Edit'; b.hidden = !any; }
   }
   U.act.chatList = () => {
     editing = false;

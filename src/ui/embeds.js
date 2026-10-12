@@ -124,7 +124,7 @@
       const done = rows.reduce((a, r) => a + r.done, 0), target = rows.reduce((a, r) => a + r.target, 0);
       const left = rows.filter((r) => r.done < r.target).length;
       return {
-        kind: 'muscles', token: 'muscles', title: 'Sets per muscle group', icon: 'layers', tone: 'teal', range: 'This week',
+        kind: 'muscles', token: 'muscles', title: 'Muscle groups', icon: 'layers', tone: 'teal', range: 'This week',
         text: `${done} of ${target}`, per: 'sets', note: left ? `${left} of ${rows.length} groups to go` : 'Every group at its target',
         chart: { kind: 'meters', rows }, open: { act: 'progress' },
       };
@@ -180,7 +180,7 @@
         text: String(r(last.value)), unit, per: what === 'max' ? 'estimated max' : `best set${at}`,
         vs: points.length > 1 && delta ? { trend: `${delta > 0 ? '+' : '-'}${Math.abs(delta)} ${unit}`, dir: delta > 0 ? 'up' : 'down', tone: delta > 0 ? 'good' : 'neutral', text: `since ${b.fmtDay(first.day, false)}` } : null,
         note: lv ? `Level ${lv.level} of ${lv.of}` : '',
-        chart: { kind: 'line', points, from: Math.min(from, first.day), to: day, gap: 45 }, open: { act: 'move', arg: id },
+        chart: { kind: 'line', points, from: first.day, to: day, gap: 45 }, open: { act: 'move', arg: id },
       };
     },
   };

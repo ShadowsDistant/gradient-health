@@ -13,10 +13,11 @@
 .chat-pill .pill-dot[data-on] { background: var(--positive); box-shadow: 0 0 0 3px color-mix(in oklab, var(--positive) 22%, transparent); }
 .chat-engine-row { width: 100%; border: 0; background: none; font: inherit; color: inherit; text-align: start; cursor: pointer; }
 .chat-engine-on { color: var(--accent); display: inline-flex; }
-/* New chat and Chats beside the pill; Chats has a dot when an answer landed in another chat. */
-.chat-bar-btn { position: relative; flex: none; color: var(--label-secondary); }
+/* New chat beside the pill; Chats in the header has a dot when an answer landed in another chat. */
+.chat-bar-btn { flex: none; color: var(--label-secondary); }
 .chat-bar-btn + .chat-bar-btn { margin-inline-start: -6px; }
-.chat-bar-btn[data-unseen]::after { content: ''; position: absolute; top: 5px; inset-inline-end: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--hue-rose); box-shadow: 0 0 0 2px var(--bg); }
+.chats-dot { position: absolute; top: 3px; inset-inline-end: 3px; width: 8px; height: 8px; border-radius: 50%; background: var(--hue-rose); box-shadow: 0 0 0 2px var(--bg); opacity: 0; pointer-events: none; }
+[data-unseen] > .chats-dot { opacity: 1; }
 
 .chat-log { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-2) var(--space-4) var(--space-4); }
 .msg { display: flex; gap: 8px; min-width: 0; }
@@ -104,6 +105,7 @@
 /* Chats: each conversation with who answered; Edit puts a delete button on each. */
 .chat-list { padding-bottom: var(--space-4); }
 .chat-list .rf-list-header, .chat-list-foot { margin-inline: var(--space-4); }
+.chat-list .rf-list + .rf-list-header { margin-top: var(--space-4); }
 .chat-list .rf-list { margin-inline: var(--space-4); }
 .chat-row { display: flex; align-items: center; }
 .chat-row-main { flex: 1; min-width: 0; border: 0; background: none; font: inherit; color: inherit; text-align: start; cursor: pointer; }

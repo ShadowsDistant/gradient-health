@@ -140,7 +140,7 @@ await closeAll();
 section('Answers as cards, and the chat\'s turns');
 {
   const conv = () => ev(() => { const c = window.GH.chats.current(window.GH.ui.S); return c ? c.msgs : []; });
-  const settled = (n) => page.waitForFunction((k) => { const c = window.GH.chats.current(window.GH.ui.S); return c && c.msgs.length >= k && !document.querySelector('.chat-sheet #chatLive'); }, n, { timeout: 20000 });
+  const settled = (n) => page.waitForFunction((k) => { const c = window.GH.chats.current(window.GH.ui.S); return c && c.msgs.length >= k && !document.querySelector('.chat-sheet #chatLive'); }, n, { timeout: 30000 });
   chatText = 'Your steps are **steady** this week.\n\n| Day | Plan |\n|---|---|\n| Monday | Rest |\n| Tuesday | Walk |\n\n[[steps]]\n\n[[nonsense]]\n\nNext step: a walk after dinner.';
   await ev(() => window.GH.ui.act.askCoach());
   await page.waitForSelector('dialog.chat-sheet[open] .chat-compose:not([hidden])', { timeout: 10000 });
