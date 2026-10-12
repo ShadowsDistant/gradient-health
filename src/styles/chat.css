@@ -23,21 +23,22 @@
 /* Where the log meets the bar above it and the box below, its words fade into the sheet as they do
    under a sheet's header (sheet.css), instead of ending at a line: while the log is scrolled away from
    that end (data-log-top, data-log-end on the sheet, src/ui/chat.js), a gradient of the material's
-   colour, opaque at the edge and clear 28 px in. The chat is a full sheet, solid: that colour is
+   colour, opaque at the edge and clear --edge-fade in (48 px), on the curve every sheet's and page's
+   top fade has (src/styles.css). The chat is a full sheet, solid: that colour is
    --sheet-bg with what's left there of the glass's sheen (--chat-sheen-top and -end, chat.js). Never a
    mask, which would draw the log into a layer of its own every frame it scrolls; this is a small layer
    that never changes, and the log scrolls under it on the compositor. */
 .chat-bar, .chat-compose { position: relative; z-index: 1; }
 .chat-bar::after, .chat-compose::before {
   --_c: color-mix(in srgb, var(--sheet-bg), #fff calc(var(--sheet-sheen) * var(--_s, 0) * 100%));
-  content: ""; position: absolute; inset-inline: 0; height: 28px; pointer-events: none;
+  content: ""; position: absolute; inset-inline: 0; height: var(--edge-fade, 48px); pointer-events: none;
   /* Thinner toward the sides, so the glass's rim and the light down its left edge stay whole. */
   -webkit-mask-image: linear-gradient(to right, transparent, #000 20px, #000 calc(100% - 8px), transparent);
   mask-image: linear-gradient(to right, transparent, #000 20px, #000 calc(100% - 8px), transparent);
   opacity: 0; transition: opacity var(--duration-fast) var(--ease-standard);
 }
-.chat-bar::after { --_s: var(--chat-sheen-top, .7); top: 100%; background: linear-gradient(var(--_c), color-mix(in srgb, var(--_c) 84%, transparent) 25%, color-mix(in srgb, var(--_c) 50%, transparent) 50%, color-mix(in srgb, var(--_c) 16%, transparent) 75%, transparent); }
-.chat-compose::before { --_s: var(--chat-sheen-end, 0); bottom: 100%; background: linear-gradient(to top, var(--_c), color-mix(in srgb, var(--_c) 84%, transparent) 25%, color-mix(in srgb, var(--_c) 50%, transparent) 50%, color-mix(in srgb, var(--_c) 16%, transparent) 75%, transparent); }
+.chat-bar::after { --_s: var(--chat-sheen-top, .7); top: 100%; background: linear-gradient(var(--_c), color-mix(in srgb, var(--_c) 95.7%, transparent) 12.5%, color-mix(in srgb, var(--_c) 84.4%, transparent) 25%, color-mix(in srgb, var(--_c) 68.4%, transparent) 37.5%, color-mix(in srgb, var(--_c) 50%, transparent) 50%, color-mix(in srgb, var(--_c) 31.6%, transparent) 62.5%, color-mix(in srgb, var(--_c) 15.6%, transparent) 75%, color-mix(in srgb, var(--_c) 4.3%, transparent) 87.5%, transparent); }
+.chat-compose::before { --_s: var(--chat-sheen-end, 0); bottom: 100%; background: linear-gradient(to top, var(--_c), color-mix(in srgb, var(--_c) 95.7%, transparent) 12.5%, color-mix(in srgb, var(--_c) 84.4%, transparent) 25%, color-mix(in srgb, var(--_c) 68.4%, transparent) 37.5%, color-mix(in srgb, var(--_c) 50%, transparent) 50%, color-mix(in srgb, var(--_c) 31.6%, transparent) 62.5%, color-mix(in srgb, var(--_c) 15.6%, transparent) 75%, color-mix(in srgb, var(--_c) 4.3%, transparent) 87.5%, transparent); }
 .chat-sheet[data-log-top] .chat-bar::after, .chat-sheet[data-log-end] .chat-compose::before { opacity: 1; }
 .msg { display: flex; gap: 8px; min-width: 0; }
 .msg.me { justify-content: flex-end; }

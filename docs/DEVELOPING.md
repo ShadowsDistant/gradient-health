@@ -124,6 +124,7 @@ node test/ui-scroll.mjs --measure [--vs=<dir>] [--ablate=<part>]   # scrolling e
                   # dropped, the GPU's draw time; A/B against another build, or with one part switched off
 npm run test:llm  # on-device AI runtime in Chromium with a tiny model (see On-device AI)
 node test/sweep.mjs [--quick]   # every screen at 360-600 px, light/dark, 100%/130% text, overflow checks
+node test/ui-sheetsize.mjs [--all] [--shots]   # every sheet: sized to its content, nothing cut off
 npm run apk       # build/gradient-health.apk (see below)
 node scripts/screenshots.mjs          # docs/screenshots/, light and dark
 node scripts/frame-shots.mjs [name …] # the README's copies of them, in a phone
@@ -146,13 +147,18 @@ left alone. A few conventions:
 - A route change gets fresh content: the old page leaves in a layer of its own while the new one
   comes in (`U.motion.routeSwap` in `src/ui/motion.js`, on Refract 1.4's page motion: pushes and
   pops slide on the snappy spring in 280 ms, tabs morph in place in 200; the bar's title cross-fades
-  with them, and its buttons and the tab bar land with the page). A re-render of the same route
-  patches in place and glides what moved (FLIP, 340 ms): new blocks rise in, and removed ones fade
-  from where they were for 180 ms before they go, so a test that checks one is gone waits for
-  `U.motion.settled()`. Animate transform and opacity only; `test/ui-motion.mjs` checks for layout
-  properties. Nothing that moves makes anyone wait: Refract's own motion the app asks for by name
-  (glass forming, shape-shifting) plays quicker where it would run long (`U.motion.within`), on the
-  same curves.
+  with them, and its buttons and the tab bar land with the page). A tap on the tab bar is answered
+  in the very next frame: the bar's glass sets off for the tab and the page starts to leave where it
+  is (`U.motion.leave`); the new page is drawn in a task posted from that frame (`switchLater` in
+  `core.js`), its blocks well out of sight a frame after the rest (`data-gh-later`, from where each
+  block ended when the tab was last left), and the old page just goes once it's in. Drawn inside the
+  tap, a tab's page held up the first frame 250 to 450 ms at 4x CPU; `ui-perf` times taps. A
+  re-render of the same route patches in place and glides what moved (FLIP, 340 ms): new blocks rise
+  in, and removed ones fade from where they were for 180 ms before they go, so a test that checks
+  one is gone waits for `U.motion.settled()`. Animate transform and opacity only;
+  `test/ui-motion.mjs` checks for layout properties. Nothing that moves makes anyone wait: Refract's
+  own motion the app asks for by name (glass forming, shape-shifting) plays quicker where it would
+  run long (`U.motion.within`), on the same curves.
 - Glass above the page moves as Refract's material does. The bar's buttons are keyed by what they
   are (`data-rf-key`; the top-left one by its place, the coach on a tab and Back on a page), so a
   push or Back shape-shifts them (`U.motion.shift`, `Refract.shapeshift`): one on both routes keeps
@@ -290,12 +296,17 @@ once the page stops it goes back on at no strength and eases up over 280 ms (`be
 Its frost stays, and the bar's buttons keep their lens: 1.7.0 dropped every lens at once and the
 title went sharp under them. The glow also stops drifting 20 s after the last touch, key or scroll
 (`#app[data-idle]`), and fades out in its gradients' own stops rather than through a mask. The
-bar's frosted edge is a single 12 px blur (Refract's is 8: the wider one looks the same under its
-tint and is cheaper, as the renderer works a wide blur out at a lower resolution), drawn only while
-it shows, and whether it shows comes from an IntersectionObserver on the large title, so a scroll
-reads nothing from the layout. Refract's light no longer hears each scroll (it read where every
-glass was, a frame at a time, to find the same angles): it's refreshed once a scroll ends. What
-makes a fling miss frames is the glass: each piece over the page is filtered again every frame it
+bar's edge is the page's colour, nearly solid under the bar, fading out below it over 48 px on an
+eased curve (smoothstep, the curve a sheet's content fades on under its header too); its tint alone
+hides the page under the title, so it looks the same at rest and while the page moves. Liquid and
+Frosted frost it too, on the same layer, fading out with the tint, a single 12 px blur (Refract's is
+8: the wider one looks the same under the tint and is cheaper, as the renderer works a wide blur out
+at a lower resolution); Auto and Flat have none, so Auto has nothing to change as the page starts or
+stops moving. It's drawn only while it shows, and whether it shows comes from an
+IntersectionObserver on the large title, so a scroll reads nothing from the layout. Refract's light
+no longer hears each scroll (it read where every glass was, a frame at a time, to find the same
+angles): it's refreshed once a scroll ends. What makes a fling miss frames is the glass: each piece
+over the page is filtered again every frame it
 moves (1.8.1 dropped about 30% of a touch fling's frames on Today at 4× CPU in software; 1.8.2
 about 16%). Under the workout player and set-up the page's bars and glass are hidden. Set-up's cards are
 near-opaque rather than frosted, and its glow holds still while it scrolls. The badges
@@ -416,14 +427,18 @@ Where the app uses Refract 1.4's newer parts:
   blur under anything that moves is redrawn every frame; the rim and sheen move with their layer).
   A sheet opened over another is solid at every height (`data-stacked`): frost over a sheet's words
   lets them through. A sheet's body has no inset of its own, so each block in it brings its 16 px.
-  Content scrolled off its top fades into the material over 28 px under the header, as a page does
-  under the top bar (`data-scrolled`, toggled only as the scroll position crosses 0): on solid glass
-  a gradient in the material's own colour (`--sheet-bg` and what's left of the sheen there, which
-  `sheet.js` works out from the panel's height), on frosted glass at rest a mask on the content, which
-  shows the frost as it is; a scroll hands over to the gradient, so nothing is masked while the
-  content moves, and neither follows a drag. A faint glow of the icon's colours sits at the top of
-  the material, gone before the content starts. `test/ui-sheet.mjs` reads the pixels where the
-  content meets the header and times scrolling a long sheet (`ui-scroll` only scrolls pages).
+  Content scrolled off its top fades into the material over 48 px under the header, on the curve a
+  page fades on under the top bar (`data-scrolled`, toggled only as the scroll position crosses 0):
+  on solid glass a gradient in the material's own colour (`--sheet-bg` and what's left of the sheen
+  there, which `sheet.js` works out from the panel's height), on frosted glass at rest a mask on the
+  content, which shows the frost as it is; a scroll hands over to the gradient, so nothing is masked
+  while the content moves, and neither follows a drag. A faint glow of the icon's colours sits at
+  the top of the material, gone before the content starts. `test/ui-sheet.mjs` reads the pixels
+  where the content meets the header and times scrolling a long sheet (`ui-scroll` only scrolls
+  pages). Sizes: an auto sheet shows its content whole at medium when it fits in 86% of the screen
+  (as tall as a fit sheet gets), and a longer one's medium reaches down to its main buttons that are
+  in those 86%; full is for long lists, long reads and search. `test/ui-sheetsize.mjs` opens every
+  sheet it can reach at 390 px and at 360 px with 130% text and checks that.
 - **Dropdowns** (`<details class="gh-drop">`, `src/styles/dropdown.css`): what's inside grows open
   and folds shut (`::details-content`'s height, with `interpolate-size`), fading as it goes, and the
   chevron turns with it. It's the one motion here that lays the page out every frame, for 240 ms

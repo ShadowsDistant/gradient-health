@@ -847,7 +847,7 @@
         <div class="cp-imp-days">${dayRows}</div>
       </div>`;
     };
-    const ctl = U.sheet({ title: C().sharedTitle(plan), size: 'full', cls: 'cp-sheet cp-import-sheet', body: body(), after: (c) => drawThumbs(c.el) });
+    const ctl = U.sheet({ title: C().sharedTitle(plan), size: 'auto', detent: 'large', cls: 'cp-sheet cp-import-sheet', body: body(), after: (c) => drawThumbs(c.el) });
     U.act.cpImpSave = () => {
       const r = C().save(U.S, plan);
       st.saved = r.plan; st.existed = r.existed;

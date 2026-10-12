@@ -104,28 +104,31 @@ dialog.gh-sheet[data-closing] { pointer-events: none; }
 
 /* The fade under the header. Once the content is scrolled off its top (data-scrolled, src/ui/sheet.js,
    set when the scroll position leaves 0 and cleared when it's back), what scrolls up to the header
-   fades into the sheet's material over 28 px, as a page fades under the top bar, instead of ending
-   at a line. Matched to the material, and never a blur of its own:
+   fades into the sheet's material over --edge-fade (48 px), on the curve a page fades on under the
+   top bar (smoothstep, sampled every eighth of the way: flat at both ends, so neither end reads as a
+   line; src/styles.css), instead of ending at a line. 1.11's was 28 px, in four straight steps.
+   Matched to the material, and never a blur of its own:
    - Solid (at large, while it scrolls, over another sheet, with increased contrast or reduced
-     transparency): a gradient of the material's own colour over the top of the content,
-     from opaque to clear on an eased curve (.rf-sheet-header::after). That colour is --sheet-bg with
-     the glass's sheen where the content starts (--gh-sheen, how much of it is left there: sheet.js
-     works it out from the panel's height; in dark the sheen lifts the top of the sheet well above
-     --sheet-bg, so the plain colour would leave a dark band). It thins out toward the sheet's sides,
-     where the glass's rim and the light along its left edge stay in sight (a solid 1 px border with
-     increased contrast). A small layer that never changes over the scrolling content: the content
-     scrolls on the compositor, which only blends it in.
+     transparency): a gradient of the material's own colour over the top of the content
+     (.rf-sheet-header::after). That colour is --sheet-bg with the glass's sheen where the content
+     starts (--gh-sheen, how much of it is left there: sheet.js works it out from the panel's height;
+     in dark the sheen lifts the top of the sheet well above --sheet-bg, so the plain colour would
+     leave a dark band). It thins out toward the sheet's sides, where the glass's rim and the light
+     along its left edge stay in sight (a solid 1 px border with increased contrast). A small layer
+     that never changes over the scrolling content: the content scrolls on the compositor, which only
+     blends it in.
    - Frosted (medium): the content itself fades out (a mask on the body), showing the frost behind it
      as it is, whatever it shows, and the solid material just as well while the sheet moves. A mask
      has the content drawn into a layer of its own every frame it scrolls, so a scroll hands over to
      the gradient (the two look the same over a solid material). Neither follows a move: a drag
      restyles only what moves (test/ui-sheet.mjs).
    The gradient fades in and out with the scroll position crossing 0 (opacity, 160 ms); switching
-   between the two is instant, as the material itself is. */
+   between the two is instant, as the material itself is (frosted and solid look nearly the same under
+   a sheet's scrim). */
 .gh-sheet .rf-sheet-header { position: relative; }
 .gh-sheet .rf-sheet-header::after {
   --_c: color-mix(in srgb, var(--sheet-bg), #fff calc(var(--sheet-sheen) * var(--gh-sheen, .85) * 100%));
-  content: ""; position: absolute; inset-inline: 0; top: 100%; height: 28px; z-index: 6; pointer-events: none;
+  content: ""; position: absolute; inset-inline: 0; top: 100%; height: var(--edge-fade, 48px); z-index: 6; pointer-events: none;
   -webkit-mask-image: linear-gradient(to right, transparent, #000 20px, #000 calc(100% - 8px), transparent);
   mask-image: linear-gradient(to right, transparent, #000 20px, #000 calc(100% - 8px), transparent);
   opacity: 0; transition: opacity var(--duration-fast) var(--ease-standard);
@@ -133,16 +136,16 @@ dialog.gh-sheet[data-closing] { pointer-events: none; }
 .gh-sheet[data-scrolled] .rf-sheet-header::after { opacity: 1; }
 .gh-sheet:is([data-detent="large"], [data-scrolling], [data-stacked]) .rf-sheet-header::after,
 :root:is([data-theme$="contrast"], [data-rf-transparency="reduced"]) .gh-sheet .rf-sheet-header::after {
-  background: linear-gradient(var(--_c), color-mix(in srgb, var(--_c) 84%, transparent) 25%, color-mix(in srgb, var(--_c) 50%, transparent) 50%, color-mix(in srgb, var(--_c) 16%, transparent) 75%, transparent);
+  background: linear-gradient(var(--_c), color-mix(in srgb, var(--_c) 95.7%, transparent) 12.5%, color-mix(in srgb, var(--_c) 84.4%, transparent) 25%, color-mix(in srgb, var(--_c) 68.4%, transparent) 37.5%, color-mix(in srgb, var(--_c) 50%, transparent) 50%, color-mix(in srgb, var(--_c) 31.6%, transparent) 62.5%, color-mix(in srgb, var(--_c) 15.6%, transparent) 75%, color-mix(in srgb, var(--_c) 4.3%, transparent) 87.5%, transparent);
 }
 .gh-sheet[data-scrolled] .rf-sheet-body {
-  -webkit-mask-image: linear-gradient(transparent, rgb(0 0 0 / .16) 7px, rgb(0 0 0 / .5) 14px, rgb(0 0 0 / .84) 21px, #000 28px);
-  mask-image: linear-gradient(transparent, rgb(0 0 0 / .16) 7px, rgb(0 0 0 / .5) 14px, rgb(0 0 0 / .84) 21px, #000 28px);
+  -webkit-mask-image: linear-gradient(transparent, rgb(0 0 0 / .043) calc(var(--edge-fade, 48px) * .125), rgb(0 0 0 / .156) calc(var(--edge-fade, 48px) * .25), rgb(0 0 0 / .316) calc(var(--edge-fade, 48px) * .375), rgb(0 0 0 / .5) calc(var(--edge-fade, 48px) * .5), rgb(0 0 0 / .684) calc(var(--edge-fade, 48px) * .625), rgb(0 0 0 / .844) calc(var(--edge-fade, 48px) * .75), rgb(0 0 0 / .957) calc(var(--edge-fade, 48px) * .875), #000 var(--edge-fade, 48px));
+  mask-image: linear-gradient(transparent, rgb(0 0 0 / .043) calc(var(--edge-fade, 48px) * .125), rgb(0 0 0 / .156) calc(var(--edge-fade, 48px) * .25), rgb(0 0 0 / .316) calc(var(--edge-fade, 48px) * .375), rgb(0 0 0 / .5) calc(var(--edge-fade, 48px) * .5), rgb(0 0 0 / .684) calc(var(--edge-fade, 48px) * .625), rgb(0 0 0 / .844) calc(var(--edge-fade, 48px) * .75), rgb(0 0 0 / .957) calc(var(--edge-fade, 48px) * .875), #000 var(--edge-fade, 48px));
 }
 .gh-sheet[data-scrolled]:is([data-detent="large"], [data-scrolling], [data-stacked]) .rf-sheet-body,
 :root:is([data-theme$="contrast"], [data-rf-transparency="reduced"]) .gh-sheet[data-scrolled] .rf-sheet-body { -webkit-mask-image: none; mask-image: none; }
 @media (prefers-reduced-transparency: reduce) {
-  .gh-sheet .rf-sheet-header::after { background: linear-gradient(var(--_c), color-mix(in srgb, var(--_c) 84%, transparent) 25%, color-mix(in srgb, var(--_c) 50%, transparent) 50%, color-mix(in srgb, var(--_c) 16%, transparent) 75%, transparent); }
+  .gh-sheet .rf-sheet-header::after { background: linear-gradient(var(--_c), color-mix(in srgb, var(--_c) 95.7%, transparent) 12.5%, color-mix(in srgb, var(--_c) 84.4%, transparent) 25%, color-mix(in srgb, var(--_c) 68.4%, transparent) 37.5%, color-mix(in srgb, var(--_c) 50%, transparent) 50%, color-mix(in srgb, var(--_c) 31.6%, transparent) 62.5%, color-mix(in srgb, var(--_c) 15.6%, transparent) 75%, color-mix(in srgb, var(--_c) 4.3%, transparent) 87.5%, transparent); }
   .gh-sheet[data-scrolled] .rf-sheet-body { -webkit-mask-image: none; mask-image: none; }
 }
 .gh-sheet .rf-sheet-body > :is(.rf-list, .sheet-prose, .sheet-lead) { margin-inline: var(--space-4); }
@@ -150,6 +153,19 @@ dialog.gh-sheet[data-closing] { pointer-events: none; }
 .gh-sheet .fd-results > .rf-list { margin-inline: var(--space-4); }
 .gh-sheet .fd-results > .rf-list-header { padding-inline: calc(var(--space-4) * 2); }
 .tour-sheet .rf-sheet-body { padding-bottom: 0; }
+/* A sheet whose answer is two buttons at the end of a long read (Claude's consent): the buttons stay
+   in reach at the bottom of the sheet while it scrolls, on the material, with the words above
+   fading into it on the same curve as under the header. The sheet is solid there (full height). */
+.consent-sheet .rf-sheet-body .fd-actions {
+  position: sticky; bottom: calc(-1 * (var(--space-4) + var(--sab))); z-index: 6;
+  margin-inline: calc(-1 * var(--space-4)); padding: var(--space-3) var(--space-4) calc(var(--space-4) + var(--sab));
+  margin-bottom: calc(-1 * (var(--space-4) + var(--sab)));
+  background: var(--sheet-bg);
+}
+.consent-sheet .rf-sheet-body .fd-actions::before {
+  content: ""; position: absolute; inset-inline: 0; bottom: 100%; height: var(--edge-fade, 48px); pointer-events: none;
+  background: linear-gradient(to top, var(--sheet-bg), color-mix(in srgb, var(--sheet-bg) 95.7%, transparent) 12.5%, color-mix(in srgb, var(--sheet-bg) 84.4%, transparent) 25%, color-mix(in srgb, var(--sheet-bg) 68.4%, transparent) 37.5%, color-mix(in srgb, var(--sheet-bg) 50%, transparent) 50%, color-mix(in srgb, var(--sheet-bg) 31.6%, transparent) 62.5%, color-mix(in srgb, var(--sheet-bg) 15.6%, transparent) 75%, color-mix(in srgb, var(--sheet-bg) 4.3%, transparent) 87.5%, transparent);
+}
 /* A form's fields share the width they're given instead of growing to fit their inputs (a number
    input is 20 characters wide on its own, which pushed the second of two fields off the edge). */
 .sheet-pad { grid-template-columns: minmax(0, 1fr); }

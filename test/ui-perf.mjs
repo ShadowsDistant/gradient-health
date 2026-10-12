@@ -8,6 +8,8 @@
 // - long tasks: none over the budget in the 10 s after that first frame (with the flat figure; the
 //   3D figure's warm-up is reported on its own, see flatJson)
 // - tab render: switching tabs, the time U.go() takes (the render), p95 over every tab
+// - tab taps: a real tap on the tab bar, timed from the touch's end to the first frame after it (the
+//   tap answered) and to the first frame with the new page in it, p95 over every tab
 // - a feel tap on Today: the re-render it causes
 // - a save: U.save() itself, and the longest task any timer or idle callback runs in the 1.5 s after
 //   (where the write happens)
@@ -70,10 +72,19 @@ const BASE = {
 //   bottom and quicker motion, about 44 KB more page) took 865-929 and 737-799. Level within the
 //   noise again (first launches 2% apart on average, later ones 1.10 the quicker), so the budgets
 //   move to 980 and 900.
+// - 1.12.0 times real taps on the tab bar (Tab taps: each tab from the one before it, twice round,
+//   from the touch's end, p95, best of 3). 1.11.0 drew the new page inside the tap, so the first
+//   frame after a tap was the new page's: 305 ms here (its runs 305 to 441, interleaved with
+//   1.12.0's on the same machine). 1.12.0 answers in the next frame and draws the page after it:
+//   the first frame after the tap at 90 and 99 ms in two measurements (runs 90 to 186, the slower
+//   ones while other tests ran), the page in a frame at 241 and 266 (runs 241 to 362). The budgets
+//   are those plus a margin: a tap that draws the page inside it again fails the first.
 const BUDGET = {
   bootMs: 980, // the first launch of a day
   againMs: 900, // a launch later the same day
   tabP95Ms: 160,
+  tapAnsweredMs: 150, // a tab tapped: the first frame after the tap
+  tapPageMs: 360, // and the first frame with its page
   feelMs: 30,
   longTaskMs: 200,
   saveMs: 8,
@@ -280,6 +291,54 @@ for (let i = 0; i < RUNS; i++) {
   console.log(`  run ${i + 1}: p95 ${r1(p95(r.map((x) => x.js)))} ms (to the next frame ${r1(p95(r.map((x) => x.frame)))} ms); ${Object.entries(by).map(([t, xs]) => `${t} ${r1(Math.min(...xs))}-${r1(Math.max(...xs))}`).join(', ')}`);
 }
 const tabP95 = best(tabRuns.map((r) => p95(r.map((x) => x.js))));
+
+/* ---------------------------------------------------------------- tab taps */
+// A real tap on the tab bar (touches through CDP, as a finger's), timed from the touch's end:
+// - answered: until the page's thread has drawn the first frame after it (the bar's glass on its
+//   way, the old page starting to leave)
+// - page: until it has drawn the first frame with the new page in it
+// Each tab from the one before it, twice round, p95; best of the runs.
+section(`Tab taps (best of ${RUNS})`);
+const tapRuns = [];
+for (let i = 0; i < RUNS; i++) {
+  const out = [];
+  await page.evaluate(() => window.GH.ui.go('today'));
+  await pause(900);
+  const tabs = await page.evaluate(() => window.GH.ui.tabList().map((t) => t[0]));
+  for (let k = 0; k < 2; k++) {
+    for (const t of tabs.slice(1).concat(tabs[0])) {
+      await page.evaluate((to) => {
+        const sw = window.__tap = { to };
+        const post = (fn) => { const sc = window.scheduler; if (sc && sc.postTask) sc.postTask(fn, { priority: 'user-blocking' }); else setTimeout(fn, 0); };
+        document.addEventListener('touchend', (e) => { sw.t0 = e.timeStamp; }, { capture: true, once: true, passive: true });
+        let n = 0;
+        const loop = () => {
+          const tab = document.querySelector(`#tabbar .rf-tab[data-tab="${to}"]`);
+          if (sw.t0 != null && sw.answered == null && !sw.ans && tab && tab.getAttribute('aria-current') === 'page') { sw.ans = true; post(() => { sw.answered = performance.now() - sw.t0; }); }
+          if (sw.t0 != null && sw.page == null && !sw.pg && document.querySelector(`#screen[data-view="${to}"]`)) { sw.pg = true; post(() => { sw.page = performance.now() - sw.t0; }); }
+          if (++n < 120 && (sw.answered == null || sw.page == null)) requestAnimationFrame(loop);
+        };
+        requestAnimationFrame(loop);
+      }, t);
+      const at = await page.evaluate((to) => { const r = document.querySelector(`#tabbar .rf-tab[data-tab="${to}"]`).getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; }, t);
+      await live.cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: at.x, y: at.y, id: 1 }] });
+      await pause(50);
+      await live.cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await page.waitForFunction(() => window.__tap.answered != null && window.__tap.page != null, null, { timeout: 15000, polling: 50 }).catch(() => {});
+      const r = await page.evaluate(() => ({ to: window.__tap.to, answered: window.__tap.answered, page: window.__tap.page }));
+      out.push(r);
+      await pause(700);
+      await page.evaluate(() => window.GH.ui.motion.settled());
+      await pause(300);
+    }
+  }
+  tapRuns.push(out);
+  const by = {};
+  for (const x of out) (by[x.to] = by[x.to] || []).push(x);
+  console.log(`  run ${i + 1}: answered p95 ${r1(p95(out.map((x) => x.answered ?? Infinity)))} ms, page p95 ${r1(p95(out.map((x) => x.page ?? Infinity)))} ms; ${Object.entries(by).map(([t, xs]) => `${t} ${xs.map((x) => `${Math.round(x.answered)}/${Math.round(x.page)}`).join(' ')}`).join(', ')}`);
+}
+const tapAnswered = best(tapRuns.map((r) => p95(r.map((x) => x.answered ?? Infinity))));
+const tapPage = best(tapRuns.map((r) => p95(r.map((x) => x.page ?? Infinity))));
 
 /* ---------------------------------------------------------------- a feel tap */
 section(`Today after a feel tap (best of ${RUNS})`);
@@ -528,7 +587,7 @@ await w3d.ctx.close();
 console.log(`  it started ${warm.start == null ? 'later than 14 s' : `${Math.round(warm.start)} ms`} after the first render (longest task before it ${warm.before} ms); its longest task ${warm.longest} ms`);
 
 const distBytes = statSync(arg('dist', '') ? join(resolve(arg('dist', '')), 'gradient-health.html') : join(root, 'dist/gradient-health.html')).size;
-console.log(`\n  boot ${r1(bootMs)} ms (again the same day ${r1(againMs)} ms) · longest task after it ${longMs} ms · tab p95 ${r1(tabP95)} ms · feel re-render ${r1(feelMs)} ms · save ${r1(saveMs)} ms · dist ${distBytes} bytes · 3D warm-up from +${warm.start == null ? '-' : Math.round(warm.start)} ms, its longest task ${warm.longest} ms`);
+console.log(`\n  boot ${r1(bootMs)} ms (again the same day ${r1(againMs)} ms) · longest task after it ${longMs} ms · tab p95 ${r1(tabP95)} ms · tab tap: answered ${r1(tapAnswered)} ms, page ${r1(tapPage)} ms (p95) · feel re-render ${r1(feelMs)} ms · save ${r1(saveMs)} ms · dist ${distBytes} bytes · 3D warm-up from +${warm.start == null ? '-' : Math.round(warm.start)} ms, its longest task ${warm.longest} ms`);
 if (BASE.bootMs) console.log(`  against the baseline: boot ${r1(bootMs / BASE.bootMs * 100)}% (again ${r1(againMs / BASE.bootMs * 100)}%), tab p95 ${r1(tabP95 / BASE.tabP95Ms * 100)}%, feel ${r1(feelMs / BASE.feelMs * 100)}%, save ${r1(saveMs / BASE.saveMs * 100)}%, dist ${r1(distBytes / BASE.distBytes * 100)}%`);
 
 if (!measureOnly) {
@@ -537,6 +596,8 @@ if (!measureOnly) {
   check(`boot, again the same day, ≤ ${BUDGET.againMs} ms`, againMs <= BUDGET.againMs, `${r1(againMs)} ms`);
   check(`no long task over ${BUDGET.longTaskMs} ms after the first render`, longMs <= BUDGET.longTaskMs, `${longMs} ms`);
   check(`tab render p95 ≤ ${BUDGET.tabP95Ms} ms`, tabP95 <= BUDGET.tabP95Ms, `${r1(tabP95)} ms`);
+  check(`a tab tapped: the first frame after the tap ≤ ${BUDGET.tapAnsweredMs} ms (p95)`, tapAnswered <= BUDGET.tapAnsweredMs, `${r1(tapAnswered)} ms`);
+  check(`a tab tapped: its page in a frame ≤ ${BUDGET.tapPageMs} ms (p95)`, tapPage <= BUDGET.tapPageMs, `${r1(tapPage)} ms`);
   check(`Today's re-render after a feel tap ≤ ${BUDGET.feelMs} ms`, feelMs <= BUDGET.feelMs, `${r1(feelMs)} ms`);
   check(`a save blocks the main thread ≤ ${BUDGET.saveMs} ms`, saveMs <= BUDGET.saveMs, `${r1(saveMs)} ms`);
   check('saves go through the bridge\'s saveAsync', saveRuns.every((r) => r.asyncSaves > 0), saveRuns.map((r) => r.asyncSaves));

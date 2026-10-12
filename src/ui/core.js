@@ -210,12 +210,21 @@
     }
     return out;
   }
+  // (A page's elements have a few dozen kinds of attribute lists between them, so each list's record
+  // is made once and shared: a new page records hundreds of elements in the render a route change
+  // waits for. Records are never changed, only replaced.)
+  const RECORDS = new Map(); // attribute names → { attrs, style: NO_STYLE }
   function record(el) {
-    const names = new Set();
-    const list = el.attributes;
-    for (let i = 0; i < list.length; i++) names.add(list[i].name);
-    const text = el.getAttribute('style');
-    owned.set(el, { attrs: names, style: text ? new Set(styleProps(text).keys()) : NO_STYLE });
+    const names = el.getAttributeNames();
+    const text = names.includes('style') ? el.getAttribute('style') : '';
+    if (text) {
+      owned.set(el, { attrs: new Set(names), style: new Set(styleProps(text).keys()) });
+    } else {
+      const sig = names.join(' ');
+      let rec = RECORDS.get(sig);
+      if (!rec) { rec = { attrs: new Set(names), style: NO_STYLE }; if (RECORDS.size < 4000) RECORDS.set(sig, rec); }
+      owned.set(el, rec);
+    }
     for (let c = el.firstElementChild; c; c = c.nextElementSibling) record(c);
   }
   const NO_STYLE = new Set(); // (shared, never changed)
@@ -395,6 +404,7 @@
     return true;
   };
   function layout() {
+    viewH();
     root = doc.getElementById('app');
     root.innerHTML = `
       <main id="screen" class="screen" tabindex="-1"></main>
@@ -418,10 +428,11 @@
     tabbar = doc.getElementById('tabbar');
     accessory = doc.getElementById('accessory');
     ptrEl = doc.getElementById('ptr');
-    // Refract's tab bar emits rf-select (taps and drags); a plain click covers the rest, and a tap on
-    // the current tab scrolls it back to the top.
+    // Refract's tab bar emits rf-select (taps and drags; the new page is drawn after the frame that
+    // shows the tap, see switchLater); a plain click covers the rest, and a tap on the current tab
+    // scrolls it back to the top.
     let selected = 0;
-    tabbar.addEventListener('rf-select', (e) => { const t = e.detail && e.detail.tab; if (t && t.dataset.tab) { selected = Date.now(); go(t.dataset.tab); } });
+    tabbar.addEventListener('rf-select', (e) => { const t = e.detail && e.detail.tab; if (t && t.dataset.tab) { selected = Date.now(); go(t.dataset.tab, false, true); } });
     tabbar.addEventListener('click', (e) => {
       const t = e.target.closest('.rf-tab');
       if (!t || Date.now() - selected < 400) return;
@@ -708,6 +719,9 @@
   U.glassHold = (on, as) => {
     glassHeld = !!on;
     heldAs = on && as ? as : null;
+    // (The root says which look it's held as: the bar's edge has its frost only in Liquid's and
+    // Frosted's, src/styles/perf.css.)
+    if (heldAs) doc.documentElement.setAttribute('data-glass', heldAs);
     if (!on) { glassMoving = false; clearTimeout(glassTimer); glassTimer = 0; glassApply(); bend(1); }
   };
   U.glassState = () => ({ mode: glassMode, moving: glassMoving, lite: !!doc.documentElement.hasAttribute('data-glass-lite') });
@@ -912,7 +926,54 @@
     if (!h) return;
     Array.from(screen.querySelectorAll(CV_BLOCKS)).forEach((n, i) => { if (h[i]) n.style.setProperty('--cv-h', `${h[i]}px`); });
   }
+  // A tab tapped: the frame that brings its page in draws only what's in sight and about a screenful
+  // more. The blocks after that are on the page, but not drawn ([data-gh-later], display: none,
+  // src/styles/perf.css) until the frame after: styling, laying out and drawing a whole long page
+  // (Health, Progress) in that first frame held it back 100 to 200 ms at 4x CPU, for blocks no one
+  // sees until they scroll. Where the cut goes: from where each block of the page ended when it was
+  // last left (blockEnds, kept for each tab), a screen and a quarter below where it opens; a page
+  // not seen yet, or whose blocks have changed, opening at its top, by how much is in each block
+  // (about what a screen of this app's blocks holds). Anything that re-renders the page draws them
+  // at once (revealLater).
+  // The viewport's height, read at launch and on each resize: asked for in the middle of a render,
+  // innerHeight brings the page's style and layout up to date first. (src/ui/motion.js uses it too.)
+  let viewHeight = 0;
+  const viewH = () => viewHeight || (viewHeight = G.innerHeight || 800);
+  U.viewH = viewH;
+  if (G.addEventListener) G.addEventListener('resize', () => { viewHeight = G.innerHeight || 0; });
+  const LATER = 'data-gh-later';
+  const LATER_EVERY = 400; // elements: a page never seen keeps about this many drawn
+  const blockMemo = {};
+  let laterKey = null; // the page with blocks still to draw
+  let drawFirst = false; // the next route change draws what's in sight first (switchLater)
+  const blockEnds = () => Array.from(screen.children, (n) => n.offsetTop + n.offsetHeight);
+  function holdBack(frag, key, top) {
+    const kids = Array.from(frag.children);
+    if (kids.length < 4) return;
+    let cut = kids.length;
+    const ends = blockMemo[key];
+    if (ends && ends.length === kids.length) {
+      const limit = top + 1.25 * viewH();
+      cut = 1;
+      while (cut < kids.length && ends[cut - 1] < limit) cut++;
+    } else if (!top) {
+      let n = 0;
+      cut = 0;
+      while (cut < kids.length && (cut < 3 || n < LATER_EVERY)) n += kids[cut++].getElementsByTagName('*').length + 1;
+    }
+    for (let i = Math.max(3, cut); i < kids.length; i++) kids[i].setAttribute(LATER, '');
+    if (cut < kids.length) laterKey = key;
+  }
+  function revealLater() {
+    if (!laterKey) return;
+    laterKey = null;
+    for (const n of screen.querySelectorAll(`:scope > [${LATER}]`)) n.removeAttribute(LATER);
+  }
   let floatEnter = false; // the floating buttons rise in at the next read pass
+  // From a tap, they form a frame after the page comes in: their glass forming (Refract's
+  // materialize, 20 to 45 ms of script at 4x CPU) ran in that frame. Meanwhile the row is out of sight
+  // ([data-forming], src/styles/perf.css), so it never shows before it forms.
+  let floatLater = false;
   // A switch's change re-renders the page it's on (a setting that shows or hides rows, a sub-line that
   // changes) while its knob is still gliding to the other end. The glide is drawn from the main
   // thread, so a 30 to 60 ms render (a phone's) held up its frames and the knob jumped the rest of the
@@ -948,13 +1009,23 @@
     const r = U.route;
     const key = r.view ? `${r.view}:${r.arg || ''}` : r.tab;
     const changed = key !== lastKey;
+    const first = drawFirst;
+    drawFirst = false;
+    // A page re-rendered before its last blocks were drawn: they're drawn now, so the patch finds it
+    // whole. (A page that leaves goes as it is.)
+    const partial = !!laterKey && laterKey === lastKey;
+    if (partial && !changed) revealLater();
+    laterKey = null;
     // On a route change, whether the floating buttons show, read before anything changes (asked once
     // they go, it would bring the new page's style up to date): only then does a copy fade.
     const floatSeen = changed && !floatEl.hidden ? !floatEl.checkVisibility || floatEl.checkVisibility({ visibilityProperty: true, opacityProperty: true }) : undefined;
     // Two route changes before a frame: the first one's scroll is set now, so the page leaving
     // starts from where it is.
     if (changed) applyScroll();
-    if (changed && lastKey && !lastKey.includes(':')) { scrollMemo[lastKey] = screen.scrollTop; scrolledMemo[lastKey] = !!scrolled; cvMemo[lastKey] = scrollMemo[lastKey] ? cvHeights() : null; }
+    if (changed && lastKey && !lastKey.includes(':')) {
+      scrollMemo[lastKey] = screen.scrollTop; scrolledMemo[lastKey] = !!scrolled; cvMemo[lastKey] = scrollMemo[lastKey] ? cvHeights() : null;
+      if (!partial) blockMemo[lastKey] = blockEnds();
+    }
     const M = U.motion || {};
     const kind = changed ? motion || nextMotion : motion;
     // A re-render of the same page: where everything is, measured before the patch changes it, so
@@ -972,8 +1043,11 @@
     // The bar's title cross-fades along with the page, and its buttons shape-shift.
     const bar = changed && lastKey && kind && M.barSwap ? safe(() => M.barSwap(topbar, kind)) || null : null;
     if (bar && bar.update) bar.update(() => applyNavbar(nb)); else applyNavbar(nb);
-    // A new page: the old one leaves, with the look it had, while this one comes in.
+    // A new page: the old one leaves, with the look it had, while this one comes in. From a tap, what's
+    // well out of sight is drawn a frame later (holdBack).
+    if (changed && first && !r.view) holdBack(tpl.content, key, scrollMemo[key] || 0);
     if (changed) replace(screen, tpl.content, kind);
+    if (laterKey) rightAfterFrame(() => { if (laterKey === key && lastKey === key) revealLater(); });
     screen.dataset.view = r.view || r.tab;
     screen.toggleAttribute('data-pushed', !!r.view);
     if (!changed) { morphChildren(screen, tpl.content, fx); enhance(screen); }
@@ -989,7 +1063,7 @@
     floatEl.hidden = !fl;
     screen.toggleAttribute('data-float', !!fl);
     // Whether they fit is read at the next frame, and then they form (measured before they move).
-    if (fl && (wasHidden || changed)) floatEnter = true;
+    if (fl && (wasHidden || changed)) { floatEnter = true; floatLater = first; floatEl.toggleAttribute('data-forming', first); }
     readSoon('float', floatPass);
     if (scr.after) safe(() => scr.after(screen, U.S, day, r.arg, changed));
     if (changed) {
@@ -1022,6 +1096,11 @@
   U.render = render;
   function floatPass() {
     fitFloat();
+    if (floatEnter && floatLater) {
+      floatEnter = floatLater = false;
+      rightAfterFrame(() => { if (!floatEl.hasAttribute('data-forming')) return; floatEl.removeAttribute('data-forming'); if (!floatEl.hidden) floatIn(); });
+      return;
+    }
     if (floatEnter && !floatEl.hidden) floatIn();
     floatEnter = false;
   }
@@ -1111,8 +1190,9 @@
   const tabIndex = (t) => TABS.findIndex((x) => x[0] === t);
   const viewStack = []; // the pages opened on top of the current tab, for Back
   const toTop = () => screen.scrollTo({ top: 0, behavior: U.reduced() ? 'auto' : 'smooth' });
-  // `quiet` leaves the haptic to the caller (Android's Back plays its own).
-  function go(tab, quiet) {
+  // `quiet` leaves the haptic to the caller (Android's Back plays its own). `later`: a tap on the tab
+  // bar, drawn after the frame that answers it (switchLater).
+  function go(tab, quiet, later) {
     // Places that were tabs before 1.6: Profile is the You tab, and the moves are a section of Plan.
     if (tab === 'profile') tab = 'you';
     const moves = tab === 'moves' && U.hasTab('plan');
@@ -1135,7 +1215,7 @@
       }
       tab = tab === 'food' ? 'health' : 'today';
     }
-    if (U.route.tab === tab && !U.route.view) { toTop(); return; }
+    if (U.route.tab === tab && !U.route.view) { if (!switching) toTop(); return; }
     // Plan opens on This week (as it opens on today), unless it's the moves that were asked for.
     if (tab === 'plan' && !moves && U.planSection) U.planSection('week');
     const from = U.route.view ? null : tabIndex(U.route.tab);
@@ -1145,10 +1225,38 @@
     // Pages opened on the tab we leave are left behind, so Back on the new tab never returns to one.
     viewStack.length = 0;
     U.route = { tab, view: null, arg: null };
-    render(from == null ? 'pop' : to > from ? 'right' : to < from ? 'left' : null);
+    const kind = from == null ? 'pop' : to > from ? 'right' : to < from ? 'left' : null;
+    if (later && G.requestAnimationFrame && !doc.hidden) { switchLater(tab, kind); return; }
+    render(kind);
     if (U.screens[tab] && U.screens[tab].shown) safe(() => U.screens[tab].shown(U.S, U.today()));
   }
   U.go = go;
+  // A tap on the tab bar is answered in the very next frame: the bar's glass sets off for the tab
+  // (Refract's own, as it hears the tap) and the page starts to leave where it is (U.motion.leave);
+  // the new page is drawn after that frame, and comes in as on any tab change. Drawn inside the tap,
+  // the new page's style, layout and paint (and the bar measuring where its glass goes, which laid the
+  // whole new page out inside the tap) held that first frame back 250 to 450 ms at 4x CPU, so nothing
+  // answered the tap until the new page was there. The route is the new tab's from the tap on: a
+  // render before then (a sync ending) is this change, with its motion; a second tap before the
+  // frame only changes where it goes (back to the tab it left, and the page stays as it is).
+  let switching = null; // { tab, kind, from } while a tab change waits for its frame
+  function switchLater(tab, kind) {
+    const first = !switching;
+    switching = { tab, kind, from: first ? lastKey : switching.from };
+    nextMotion = kind;
+    if (!first) return;
+    if (U.motion && U.motion.leave) safe(() => U.motion.leave(screen, kind));
+    rightAfterFrame(() => {
+      const s = switching;
+      switching = null;
+      if (!s || U.route.view || U.route.tab !== s.tab) return;
+      if (lastKey !== s.tab) { drawFirst = true; render(s.kind); drawFirst = false; } else if (s.tab === s.from) { nextMotion = null; if (U.motion && U.motion.stay) U.motion.stay(screen); return; }
+      // What a tab does once it shows (a badge to celebrate, a report to write) waits for its page's
+      // frame too.
+      const scr = U.screens[s.tab];
+      if (scr && scr.shown) rightAfterFrame(() => { if (U.route.tab === s.tab && !U.route.view) safe(() => scr.shown(U.S, U.today())); });
+    });
+  }
   U.open = (view, arg) => {
     // Profile became the You tab: old links to it land there.
     if (view === 'profile') { go('you'); return; }
@@ -1234,6 +1342,21 @@
     let done = false;
     const run = () => { if (!done) { done = true; fn(); } };
     if (G.requestAnimationFrame) G.requestAnimationFrame(() => setTimeout(run, 0));
+    setTimeout(run, 100);
+  }
+  // The same, as soon as that frame is done: a task of the highest priority posted from the frame's
+  // animation callbacks (else a message), which runs before the timers due by then and before the
+  // next frame. A tab change waited behind both, 40 to 60 ms at 4x CPU.
+  function rightAfterFrame(fn) {
+    let done = false;
+    const run = () => { if (!done) { done = true; fn(); } };
+    const post = () => {
+      const sc = G.scheduler;
+      if (sc && sc.postTask) { sc.postTask(run, { priority: 'user-blocking' }); return; }
+      if (G.MessageChannel) { const ch = new G.MessageChannel(); ch.port1.onmessage = run; ch.port2.postMessage(0); return; }
+      setTimeout(run, 0);
+    };
+    if (G.requestAnimationFrame) G.requestAnimationFrame(post);
     setTimeout(run, 100);
   }
   // A stepper's or slider's value at (or past) its end: a firmer edge instead of a tick.

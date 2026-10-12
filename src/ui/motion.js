@@ -15,6 +15,9 @@
  *   returns, comes in, on Refract's springs: a push slides the new page in from the edge as the old
  *   one falls back a third of the way, Back plays that in reverse, and a tab change ('left',
  *   'right') morphs from one page to the other in place; any other kind just swaps.
+ * U.motion.leave(screen, kind)  A tab tapped: the page starts to leave at once, where it is (core.js
+ *   draws the new one after the frame that shows the tap); the next routeSwap lets it go, and
+ *   U.motion.stay(screen) keeps it after all.
  * U.motion.flip(els, mutate)  Measures els (an element's children, or a list of elements), runs
  *   mutate, then glides each from where it was to where it is now. Resolves when they've landed.
  * U.motion.exit(el)  el leaves from where it is: it's out of the flow at once, so what comes after it
@@ -62,6 +65,10 @@
   const aside = (fn) => { const k = kit(); return k ? k.aside(fn) : fn(); };
   const isLeaving = (n) => { const k = kit(); return !!(k && k.leaving.has(n)); };
   const passOver = (n) => { const k = kit(); return k ? k.passOver(n) : false; };
+  // The viewport's height as core.js keeps it (from launch and each resize): asked for right after a
+  // render has changed the page (a route change's layer), innerHeight brought the whole page's style
+  // up to date first.
+  const vh = () => (U.viewH ? U.viewH() : G.innerHeight || doc.documentElement.clientHeight || 800);
 
   /* ---------------------------------------------------------------- tokens */
   // The design system's curves and settle times (vendor/refract/tokens.json), read once for each
@@ -364,7 +371,7 @@
   }
   function belowSight(screen) {
     const out = [];
-    const bottom = (G.innerHeight || doc.documentElement.clientHeight) + 40;
+    const bottom = vh() + 40;
     const walk = (parent) => {
       for (let c = parent.lastElementChild; c; c = c.previousElementSibling) {
         const r = c.getBoundingClientRect();
@@ -381,17 +388,43 @@
   // changes anything); routeSwap uses that, or measures it itself.
   let below = null;
 
+  // A tab tapped (core.js draws the new page after the frame that answers the tap): the page starts
+  // to leave at once, where it is, as it would from its layer (it fades and grows a touch), on the
+  // screen itself, so nothing is moved, styled or laid out again and the compositor plays it. It
+  // carries on while the new page is drawn, and is gone, or nearly, by the time that's on screen; so
+  // it just goes then (routeSwap). Handed to a layer of its own instead, it would be styled, laid
+  // out and drawn again in the frame that draws the new page, from where it was when that frame
+  // began, which on a slow phone is long before the frame shows: it came back and faded out again.
+  let leavingScreen = null; // { screen, anims }
+  M.leave = (screen, kind) => {
+    if (reduced() || !TABS[kind] || leavingScreen || !screen.firstElementChild || !can(screen)) return;
+    hurry();
+    const from = stopEntrance(screen);
+    leavingScreen = { screen, anims: slide(screen, routeSpec(kind).out, 'forwards', from) };
+    leavingScreen.anims.forEach(track);
+  };
+  // The page stays after all (a second tap went back to its tab before the new one was drawn).
+  M.stay = (screen) => {
+    const lv = leavingScreen && leavingScreen.screen === screen ? leavingScreen : null;
+    if (!lv) return;
+    leavingScreen = null;
+    for (const a of lv.anims) if (a) a.cancel();
+  };
+
   M.routeSwap = (screen, frag, kind) => {
     const pre = below;
     below = null;
+    const lv = leavingScreen && leavingScreen.screen === screen ? leavingScreen : null;
+    leavingScreen = null;
     hurry();
-    const from = stopEntrance(screen);
+    const from = lv ? null : stopEntrance(screen);
     const moving = !!SLIDES[kind] && !!screen.firstElementChild && can(screen);
-    if (!moving || reduced()) {
+    if (!moving || reduced() || lv) {
       for (const c of Array.from(screen.childNodes)) drop(c);
       screen.appendChild(frag);
+      if (lv) for (const a of lv.anims) if (a) a.cancel();
       // Reduced motion: the new page fades in, nothing slides.
-      if (moving) entering = [run(screen, [{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: 'linear' })];
+      if (moving) entering = reduced() ? [run(screen, [{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: 'linear' })] : slide(screen, routeSpec(kind).in);
       entering.forEach(track);
       return;
     }
@@ -409,7 +442,7 @@
     const top = pre && pre.screen === screen ? pre.scroll : screen.scrollTop;
     if (top) layer.style.translate = `0 ${-top}px`;
     // A tab's morph scales about the middle of what was on screen (the layer is as tall as the page).
-    if (TABS[kind]) layer.style.transformOrigin = `50% ${Math.round(top + (G.innerHeight || 800) / 2)}px`;
+    if (TABS[kind]) layer.style.transformOrigin = `50% ${Math.round(top + vh() / 2)}px`;
     aside(() => { while (screen.firstChild) layer.appendChild(screen.firstChild); });
     shield(layer);
     screen.appendChild(frag);
@@ -468,7 +501,8 @@
     const box = shown ? bar.getBoundingClientRect() : null;
     const title = el ? { was: el.textContent.trim(), r: shown ? el.getBoundingClientRect() : null, copy: shown ? el.cloneNode(true) : null } : null;
     const screen = doc.getElementById('screen');
-    if (screen) below = { screen, list: belowSight(screen), scroll: screen.scrollTop };
+    // (Not for a page that started to leave at a tap: it goes as a whole, routeSwap.)
+    if (screen && !(leavingScreen && leavingScreen.screen === screen)) below = { screen, list: belowSight(screen), scroll: screen.scrollTop };
     const swap = (kind) => {
       if (!title || !el.isConnected || el.textContent.trim() === title.was) return;
       const t = tok();
@@ -562,7 +596,7 @@
   function pin(el, f) {
     const k = kit();
     if (!k || !el.style || !f || !f.w || !f.h || !f.op || f.op === doc.body) return false;
-    const h = G.innerHeight || doc.documentElement.clientHeight;
+    const h = vh();
     if (f.r.bottom < 0 || f.r.top > h) return false;
     k.leaving.add(el);
     shield(el);
@@ -658,7 +692,7 @@
     const s = session();
     const box = root.getBoundingClientRect();
     s.add(root, box);
-    const h = G.innerHeight || box.height;
+    const h = vh();
     for (const c of root.querySelectorAll(CONTAINER)) {
       const r = c.getBoundingClientRect();
       if (r.bottom < -h * 0.25 || r.top > h * 1.25 || (!r.width && !r.height) || c.closest('.motion-leaving')) continue;
