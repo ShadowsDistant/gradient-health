@@ -1131,6 +1131,42 @@ the categories it touched.
   tab shakes a newly earned one awake once, with Refract's wiggle). Refract's click effect is off on
   the capsule (`data-rf-effect="none"`), whose round shape it filled with a grey disc.
 
+## Updates
+
+The APK (from GitHub or APKPure) updates itself from the release CI publishes, so a new version
+doesn't wait for a store. Play's bundle doesn't: Play updates it.
+
+- **version.json.** The `release` job writes it from the APK it just built (`scripts/version-json.mjs`:
+  versionName and versionCode as aapt reads them, the APK's name, size and SHA-256, and the version's
+  store text as `notes`) and publishes it with the APK and the bundle on the release tagged `latest`.
+  The `build` job writes one for its test-key APK too, so a break shows before `main`.
+- **The check** (`Updater.java`, `src/update.js`) reads
+  `https://github.com/ShadowsDistant/gradient-health/releases/download/latest/version.json` over
+  HTTPS, following redirects only to github.com and *.githubusercontent.com (64 KB at most, with
+  timeouts), and compares its versionCode with the installed one. It runs by itself once a day (an
+  hour after one that failed), a few seconds after the app opens or comes back, never before set-up,
+  during a workout or while an activity records, unless Settings, About, Check automatically is off;
+  or from the Check for updates row there. A new version puts a card on Today, and Not now waits for
+  the next one; a newer build of the same version is offered in Settings only. What the phone chose
+  is kept in localStorage (`gh.v1.update`).
+- **Download and install.** Update reads version.json again, then downloads the APK to the cache
+  (progress through `__gh.onUpdate`, Cancel, a cut-short download resumes with a Range request; 150
+  MB at most). It's kept only at version.json's size and SHA-256, as this app at that versionCode,
+  signed with the installed app's certificate; anything else is deleted, with the reason. Install
+  writes the state, then hands the file to a `PackageInstaller` session, its bytes hashed again as
+  they're written. Android answers through a `PendingIntent` to `Updater$Receiver` (not exported),
+  which starts its confirmation screen; without "Install unknown apps", Settings opens there and the
+  page carries on when the person comes back. Android closes the app while it replaces it.
+- **Where nothing checks.** In a browser; when Google Play installed the app (installer
+  `com.android.vending`); in the bundle, which `build-aab.sh` builds without
+  `REQUEST_INSTALL_PACKAGES` (the app reads that as "updates come from the store"); and in a build
+  signed with any key but the release key (`android/release-cert.sha256`), such as a test build.
+  Settings says where updates come from instead.
+- **Tests.** `test/update.mjs` (the page's rules, and version.json held to the Java's limits),
+  `test/ui-update.mjs` (the rows, card, sheet and automatic check against a stand-in for
+  `Updater.java`) and `test/security.mjs` (what's fetched and installed, the bundle's manifest, CI);
+  compile the Java as `build-apk.sh` does.
+
 ## Publishing (Google Play and APKPure)
 
 The app targets API 36 (what Play requires for new apps and updates from Aug 31, 2026) and handles

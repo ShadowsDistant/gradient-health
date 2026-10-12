@@ -318,6 +318,7 @@ export const APP_SCRIPTS = [
   'src/ui/coachpage.js',
   'src/ui/settings.js',
   'src/ui/notify.js', // notifications: the hand-off to Android, Settings' rows and Today's card
+  'src/update.js', // updates from the GitHub release: the check, Settings' rows, Today's card, the sheet
 ];
 
 // Parts of the app itself that the first screen doesn't need, each a chunk of its own in dist/lazy/:
