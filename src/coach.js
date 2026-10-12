@@ -331,12 +331,33 @@
   const numbers = (s) => (String(s || '').match(NUM) || []).map((x) => Number(x.replace(/,/g, '')));
   const percents = (s) => [...String(s || '').matchAll(PCT)].map((m) => Number(m[1]));
   const near = (known) => (n) => known.some((g) => g === n || (Number.isInteger(n) && (Math.round(g) === n || Math.trunc(g) === n)));
+  // Answers are Markdown (src/ui/md.js), so the check goes line by line: a list's or heading's marks
+  // (a "2." is no number of the answer's) are set aside, a table row stays or goes whole, an embed
+  // ([[sleep:30d]]) has no number of its own (the app draws it from its data), and what's kept keeps
+  // its lines.
+  const EMBED = /\[\[[^[\]\n]*\]\]/g;
+  const MARKS = /^(?:\s*(?:[-*+•]|\d{1,3}[.)])\s+|\s{0,3}#{1,6}\s+)/;
   function keepToGiven(text, given) {
     const known = near(numbers(given)), givenPct = percents(given), knownPct = (n) => givenPct.includes(n);
-    const all = String(text || '').trim().split(/(?<=[.!?])\s+/).filter(Boolean);
-    const kept = all.filter((x) => numbers(x).every(known) && percents(x).every(knownPct));
-    return { text: kept.length === all.length ? String(text || '').trim() : kept.join(' '), cut: all.length - kept.length };
+    const ok = (x) => { const s = x.replace(EMBED, ''); return numbers(s).every(known) && percents(s).every(knownPct); };
+    const src = String(text || '').trim();
+    let cut = 0;
+    const lines = src.split('\n').map((line) => {
+      if (!line.trim()) return line;
+      if (/^\s*\|/.test(line)) { if (ok(line)) return line; cut++; return null; }
+      const lead = (MARKS.exec(line) || [''])[0];
+      const all = line.slice(lead.length).split(/(?<=[.!?])\s+/).filter(Boolean);
+      const kept = all.filter(ok);
+      cut += all.length - kept.length;
+      return !kept.length ? null : kept.length === all.length ? line : lead + kept.join(' ');
+    });
+    if (!cut) return { text: src, cut: 0 };
+    // A table left with no rows goes, and so do the gaps left behind.
+    const out = lines.filter((l) => l !== null).join('\n').replace(/^(\s*\|.*\n)(\s*\|[\s|:-]+\|?\s*)$(?!\n\s*\|)/gm, '');
+    return { text: out.replace(/\n{3,}/g, '\n\n').trim(), cut };
   }
+  // An answer's words without its marks or embeds, to tell how much of it there is.
+  const bare = (x) => String(x || '').replace(EMBED, '').replace(/^\s*(?:[-+•]|\d{1,3}[.)])\s+/gm, '').replace(/[*_#|`>]+/g, '').replace(/\s+/g, ' ').trim();
   // An AI's answer as shown: its own words, less any sentence with a number it wasn't given. If that
   // leaves next to nothing (or it only got as far as the yes or no it was started with), the app's
   // own answer stands in, and a note says so. who names the AI in that note ('The model', 'Claude').
@@ -345,7 +366,7 @@
   function grounded(S, day, question, raw, given, start, who) {
     const text = String(raw || '').trim();
     const k = keepToGiven(text, given);
-    const after = (x) => { const lead0 = String(start || '').trim(); return (lead0 && x.startsWith(lead0) ? x.slice(lead0.length) : x).trim(); };
+    const after = (x) => { const lead0 = String(start || '').trim(); return bare(lead0 && x.startsWith(lead0) ? x.slice(lead0.length) : x); };
     const words = after(k.text);
     if (words.length >= (k.cut ? 30 : 8)) return { text: k.text, note: k.cut ? 'Left out a line with a number that isn\'t in your data.' : null, cut: k.cut, replaced: false };
     const own = ask(S, day, question).text;
@@ -353,6 +374,10 @@
     const why = after(text) ? `${name}'s answer didn't match your numbers` : `${name} didn't answer`;
     return { text: own || text, note: own ? `${why}, so this is the app's own.` : null, cut: k.cut, replaced: !!own };
   }
+
+  // An answer without any [[…]] embeds (a small model that copies the marks, half-written or not;
+  // the app adds the embeds itself, src/ui/embeds.js).
+  const noEmbeds = (text) => String(text || '').replace(/[ \t]*(?:\[\[[^\]\n]*\]?\]?|\]\])/g, '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
 
   /* ---------------------------------------------------------------- Claude app hand-off */
   // The text sent to the Claude app: a short brief, the question, then the data summary.
@@ -561,5 +586,5 @@
   }
   function dismiss(S, id, day) { S.coachDismissed = S.coachDismissed || {}; S.coachDismissed[id] = day; }
 
-  GH.coach = { report, glance, ask, verdict, correction, topicOf, facts, keepToGiven, grounded, claudePrompt, decisions, timeline, watching, suggestions, validAction, apply, dismiss };
+  GH.coach = { report, glance, ask, verdict, correction, topicOf, facts, keepToGiven, grounded, noEmbeds, claudePrompt, decisions, timeline, watching, suggestions, validAction, apply, dismiss };
 })(typeof window !== 'undefined' ? window : globalThis);

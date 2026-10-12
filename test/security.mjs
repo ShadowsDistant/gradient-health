@@ -1,6 +1,7 @@
 // Security checks: crafted share codes and plans (moves named after Object.prototype's keys), a plan
 // that can't be built, malicious and huge backups, the model pins, CI release gating, the manifest
-// and backup rules, and the WebView's navigation and bridge guards in the Java source.
+// and backup rules, the WebView's navigation and bridge guards in the Java source, and updates (what
+// Updater.java downloads, checks and installs, and version.json in CI).
 // Usage: node test/security.mjs
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -167,7 +168,7 @@ section('Malicious backups');
   check('levels only on ladders and rungs this version has', Object.keys(T.prog).every((f) => GH.moves.LADDERS[f] && GH.moves.LADDERS[f].rungs.includes(T.prog[f].rung) && Number.isFinite(T.prog[f].reps)) && !T.prog.nonsense && !T.prog.squat && T.prog.push.rung === GH.moves.LADDERS.push.rungs[0] && T.prog.row.rung === GH.moves.LADDERS.row.rungs[0], T.prog);
   check('unknown moves and groups are dropped', T.excluded.join() === 'push_std' && !('wings' in T.vol) && T.vol.legs <= 100 && Object.keys(T.pain).length === 0);
   check('a broken workout in progress is dropped, and left vs right tests start again', T.active === null && T.catchup.arm && typeof T.catchup.arm.active === 'boolean');
-  check('health, protein, food and chats come back in the shapes the screens read', !(TODAY in T.health.days) && T.health.days[TODAY - 1].exercise.length === 1 && T.health.lastSync === null && !(TODAY in T.protein) && T.protein[TODAY - 1].join() === '30' && T.food.days[TODAY - 1].length === 1 && Array.isArray(T.ai.chat) && T.ai.reports.length === 0 && T.ai.mode === 'device' && T.ai.enabled === false && !(TODAY in T.place) && T.complexity === 2 && Array.isArray(T.customPlans));
+  check('health, protein, food and chats come back in the shapes the screens read', !(TODAY in T.health.days) && T.health.days[TODAY - 1].exercise.length === 1 && T.health.lastSync === null && !(TODAY in T.protein) && T.protein[TODAY - 1].join() === '30' && T.food.days[TODAY - 1].length === 1 && Array.isArray(T.ai.chats) && T.ai.chatId === null && T.ai.reports.length === 0 && T.ai.mode === 'device' && T.ai.enabled === false && !(TODAY in T.place) && T.complexity === 2 && Array.isArray(T.customPlans));
   const w = works(T);
   check('and Today, Plan and the week\'s sets work it all out', w.ok, w.error);
   check('with whole numbers of sets (a muscle group whose volume went starts again)', B.GROUPS.every((g) => typeof T.vol[g] === 'number') && w.ok && (!w.value.s || w.value.s.items.every((it) => Number.isInteger(it.sets) && it.sets > 0)), { vol: T.vol, items: w.ok && w.value.s && w.value.s.items.map((it) => it.sets) });
@@ -269,14 +270,15 @@ section('The bridge answers only the app\'s page');
 {
   const BR = read(`${JAVA}Bridge.java`);
   // Everything that reads or changes data, reaches the network or another app, or runs a model.
-  const GATED = /^(save\w*|load\w*|deleteSecret|hc\w+|model\w+|share\w+|openUrl|act\w+|llm\w+|foodLookup|copy|pendingLink|diag\w+|trace\w+|notify\w+)$/;
+  const GATED = /^(save\w*|load\w*|deleteSecret|hc\w+|model\w+|share\w+|openUrl|act\w+|llm\w+|foodLookup|copy|pendingLink|diag\w+|trace\w+|notify\w+|update\w+)$/;
   // The rest: the screen, haptics and harmless facts about the phone.
   const OPEN = /^(keepAwake|vibrate\w*|haptic\w*|isDark|setSystemBars|insets|claudeInstalled|appVersion|deviceMemory|rendererGone)$/;
   const methods = [...BR.matchAll(/@JavascriptInterface\n(?:\s*@\w+(?:\([^)]*\))?\n)?\s*public [\w<>[\]]+ (\w+)\(([^)]*)\) \{\n([^\n]*)/g)].map((m) => ({ name: m[1], first: m[3].trim() }));
   const ungated = methods.filter((m) => GATED.test(m.name) && m.first !== 'if (!trusted()) {');
   const unknown = methods.filter((m) => !GATED.test(m.name) && !OPEN.test(m.name)).map((m) => m.name);
-  check(`all ${methods.filter((m) => GATED.test(m.name)).length} bridge methods with side effects check trusted() first (secrets, save and load, hc*, model*, share*, openUrl, act*, llm*, diag*, trace* and notify*)`, methods.length > 40 && ungated.length === 0, ungated.map((m) => m.name));
+  check(`all ${methods.filter((m) => GATED.test(m.name)).length} bridge methods with side effects check trusted() first (secrets, save and load, hc*, model*, share*, openUrl, act*, llm*, diag*, trace*, notify* and update*)`, methods.length > 40 && ungated.length === 0, ungated.map((m) => m.name));
   check('the notification methods are among them', ['notifySchedule', 'notifyState', 'notifyRequest', 'notifyOpenSettings', 'notifyTap'].every((n) => methods.some((m) => m.name === n && GATED.test(n))), methods.filter((m) => /^notify/.test(m.name)).map((m) => m.name));
+  check('and the update methods', ['updateSupport', 'updateState', 'updateCheck', 'updateDownload', 'updateCancel', 'updateInstall'].every((n) => methods.some((m) => m.name === n && GATED.test(n))), methods.filter((m) => /^update/.test(m.name)).map((m) => m.name));
   check('every other bridge method is one of the harmless kinds (a new one has to be sorted into a list here)', unknown.length === 0, unknown);
   check('trusted() asks MainActivity whether the page is the app\'s', /private boolean trusted\(\) \{\s*return activity\.pageTrusted\(\);/.test(BR));
 }
@@ -342,6 +344,39 @@ section('The manifest');
   const tags = [...M.matchAll(/<(activity|activity-alias|service|receiver|provider)\b[^>]*>/g)].map((m) => ({ kind: m[1], tag: m[0], name: (/android:name="([^"]+)"/.exec(m[0]) || [])[1] }));
   const open = tags.filter((t) => /android:exported="true"/.test(t.tag) && !/android:permission="/.test(t.tag) && t.name !== '.MainActivity');
   check('every exported component but the launcher activity needs a permission (and no provider is exported)', open.length === 0 && tags.filter((t) => t.kind === 'provider').every((t) => /android:exported="false"/.test(t.tag)), open.map((t) => t.name));
+  const updates = tags.find((t) => t.name === '.Updater$Receiver');
+  check('the APK may install its own updates (REQUEST_INSTALL_PACKAGES), and their status receiver isn\'t exported', /<uses-permission android:name="android\.permission\.REQUEST_INSTALL_PACKAGES" \/>/.test(M) && !!updates && updates.kind === 'receiver' && /android:exported="false"/.test(updates.tag), updates);
+}
+
+section('Updates: only from the app\'s GitHub release, checked before Android installs them');
+{
+  const UP = read(`${JAVA}Updater.java`);
+  check('version.json and the APK come from the release tagged latest on GitHub, over HTTPS', /RELEASE = "https:\/\/github\.com\/ShadowsDistant\/gradient-health\/releases\/download\/latest\/";/.test(UP) && /VERSION_URL = RELEASE \+ "version\.json";/.test(UP) && /open\(RELEASE \+ r\.apk, /.test(UP));
+  const opener = body(UP, 'private HttpURLConnection open('), allowed = body(UP, 'static boolean allowed(URL url)');
+  check('redirects are followed by hand, each one only to HTTPS at github.com or a host under githubusercontent.com', /setInstanceFollowRedirects\(false\)/.test(opener) && /if \(!allowed\(url\)\) \{\s*throw/.test(opener) && /"https"\.equalsIgnoreCase\(url\.getProtocol\(\)\)/.test(allowed) && /"github\.com"\.equals\(host\) \|\| host\.endsWith\("\.githubusercontent\.com"\)/.test(allowed), allowed);
+  check('version.json: 64 KB at most, timeouts and a deadline; the APK: 150 MB at most', /MAX_JSON_BYTES = 64 \* 1024;/.test(UP) && /MAX_APK_BYTES = 150L \* 1024 \* 1024;/.test(UP) && /setConnectTimeout\(/.test(opener) && /setReadTimeout\(/.test(opener) && /body\.size\(\) > MAX_JSON_BYTES/.test(UP) && /CHECK_DEADLINE_MS = \d+;/.test(UP) && /size > MAX_APK_BYTES/.test(UP));
+  check('nothing about the phone goes with the requests (the app\'s version is the user agent)', /setRequestProperty\("User-Agent", "GradientHealth\/" \+ installedName\)/.test(opener));
+  const cert = read('android/release-cert.sha256').split('\n').filter((l) => !l.startsWith('#')).join('').trim();
+  check('Updater.java knows the release key by android/release-cert.sha256\'s certificate', /^[0-9a-f]{64}$/.test(cert) && UP.includes(`RELEASE_CERT_SHA256 = "${cert}";`), cert);
+  const why = body(UP, 'String whyNot(');
+  check('only where it makes sense: with the install permission (not the Play bundle), not installed by Google Play, signed with the release key', /if \(!declares\(INSTALL_PERMISSION\)\) \{\s*return "store";/.test(why) && /if \(PLAY_STORE\.equals\(installer\(\)\)\) \{\s*return "play";/.test(why) && /RELEASE_CERT_SHA256[\s\S]*return "key";/.test(why) && /PLAY_STORE = "com\.android\.vending";/.test(UP));
+  const verify = body(UP, 'private void verify('), pkg = body(UP, 'private void checkPackage(');
+  check('a download is kept only at version.json\'s size and SHA-256, as this app at its versionCode, signed like the app installed', /file\.length\(\) != r\.size/.test(verify) && /!r\.sha256\.equals\(sha256Of\(file\)\)/.test(verify) && /checkPackage\(r, file\)/.test(verify) && /context\.getPackageName\(\)\.equals\(info\.packageName\)/.test(pkg) && /versionCode\(info\) != r\.versionCode/.test(pkg) && /theirs\.isEmpty\(\) \|\| !theirs\.equals\(installedSigners\(\)\)/.test(pkg));
+  check('anything else is deleted, never installed or carried on from', /if \(part != null && \(stopped \|\| badBytes\(f\.code\)\)\) \{\s*deleteFile\(part\);/.test(UP) && ['size', 'checksum', 'format', 'package', 'version', 'signature'].every((c) => body(UP, 'static boolean badBytes(').includes(`"${c}"`)));
+  const install = body(UP, 'private void runInstall('), write = body(UP, 'private void write(');
+  check('installing checks it again: Android\'s reading, then the hash of the very bytes the installer gets', /checkPackage\(r, apk\)/.test(install) && /out\.write\(buf, 0, n\);\s*digest\.update\(buf, 0, n\);/.test(write) && /written != r\.size \|\| !r\.sha256\.equals\(hex\(digest\.digest\(\)\)\)/.test(write) && install.indexOf('write(session, apk, r)') < install.indexOf('session.commit('));
+  check('a PackageInstaller session; its answer comes to the app\'s own receiver (explicit, so mutable, from Android 12)', /new PackageInstaller\.SessionParams\(\s*PackageInstaller\.SessionParams\.MODE_FULL_INSTALL\)/.test(install) && /new Intent\(ACTION_STATUS\)\.setClass\(context, Receiver\.class\)\.setPackage\(context\.getPackageName\(\)\)/.test(install) && /if \(Build\.VERSION\.SDK_INT >= 31\) \{\s*flags \|= PendingIntent\.FLAG_MUTABLE;/.test(install) && !/USER_ACTION_NOT_REQUIRED|setRequireUserAction/.test(UP));
+  check('Android\'s own screen asks the person, with no URI grants from the app; an older session\'s answer is ignored', /screen\.removeFlags\(Intent\.FLAG_GRANT_READ_URI_PERMISSION \| Intent\.FLAG_GRANT_WRITE_URI_PERMISSION/.test(UP) && /getIntExtra\(PackageInstaller\.EXTRA_SESSION_ID, -1\) != sessionId/.test(UP));
+  check('without the permission to install apps, Settings opens at it for the app', /if \(!canInstall\(\)\) \{\s*setPhase\("permission", null, null\);\s*openInstallSettings\(\);/.test(UP) && /Settings\.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri\.parse\("package:" \+ context\.getPackageName\(\)\)/.test(UP));
+  check('downloads go to the cache (never a backup), and nothing about updates is logged', /new File\(context\.getCacheDir\(\), DIR\)/.test(UP) && !/\bLog\.[a-z]+\(|System\.(out|err)|printStackTrace/.test(UP));
+  // build-aab.sh's own line, run on the manifest: the bundle Play gets has no install permission.
+  const { execFileSync } = await import('node:child_process');
+  const aab = read('scripts/build-aab.sh');
+  const sedExpr = (/sed -E '([^']+)' \\\n\s*"\$ROOT\/android\/AndroidManifest\.xml" > "\$MANIFEST"/.exec(aab) || [])[1];
+  let stripped = '';
+  try { stripped = sedExpr ? execFileSync('sed', ['-E', sedExpr, join(root, 'android/AndroidManifest.xml')], { encoding: 'utf8' }) : ''; } catch (e) { stripped = ''; }
+  const full = read('android/AndroidManifest.xml').split('\n'), cut = stripped.split('\n');
+  check('the Play bundle goes without REQUEST_INSTALL_PACKAGES: build-aab.sh links a manifest without it (one line less), and checks the bundle', !!sedExpr && !/REQUEST_INSTALL_PACKAGES/.test(stripped) && cut.length === full.length - 1 && /--manifest "\$MANIFEST"/.test(aab) && /grep -q 'REQUEST_INSTALL_PACKAGES' "\$WORK\/manifest\.txt" && die/.test(aab), { sedExpr, lines: [full.length, cut.length] });
 }
 
 section('Notifications: local, checked, and inexact');
@@ -376,6 +411,12 @@ section('CI: only main is signed with the release key and published');
   const buildsFirst = (v) => { const ci = v.search(/\n\s*- run: npm ci\n/), build = v.search(/\n\s*- run: npm run build\n/); return ci >= 0 && build > ci && build < v.indexOf('scripts/build-apk.sh'); };
   check(`every job that packages the app builds the page and its parts first (${packs.map(([k]) => k).join(', ')})`, packs.length >= 2 && packs.every(([, v]) => buildsFirst(v)), packs.filter(([, v]) => !buildsFirst(v)).map(([k]) => k));
   check('no other job or workflow can write to the repository', Object.entries(jobs).every(([k, v]) => k === 'release' || !/contents: write/.test(v)) && !/contents: write/.test(read('.github/workflows/model-check.yml')));
+  // The app's own update check (Updater.java) reads version.json from the "latest" release: the
+  // release job writes it from the APK it just built, and publishes it with the APK and the bundle.
+  const rel = jobs.release || '';
+  const apkAt = rel.indexOf('bash scripts/build-apk.sh'), jsonAt = rel.indexOf('node scripts/version-json.mjs build/gradient-health.apk build/version.json'), pubAt = rel.indexOf('gh release create');
+  check('the release job writes version.json from the APK it built, then publishes', apkAt >= 0 && jsonAt > apkAt && pubAt > jsonAt, { apkAt, jsonAt, pubAt });
+  check('it publishes version.json with the APK and the bundle', /gh release create latest build\/gradient-health\.apk build\/gradient-health\.aab build\/version\.json \\\n/.test(rel));
   // A tag can be moved to other code; a commit SHA can't. Every action in every workflow runs at one.
   const uses = ['android.yml', 'model-check.yml'].flatMap((f) => [...read(`.github/workflows/${f}`).matchAll(/^\s*-?\s*uses: (\S+)/gm)].map((m) => `${f}: ${m[1]}`));
   check(`every action in the workflows is pinned to a commit SHA (${uses.length} uses)`, uses.length >= 10 && uses.every((u) => /@[0-9a-f]{40}$/.test(u)), uses.filter((u) => !/@[0-9a-f]{40}$/.test(u)));

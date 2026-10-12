@@ -90,6 +90,17 @@ button:not([class*="rf-"]) { font: inherit; }
 :root { --brand-mint-deep: #1fa08b; --brand-green-deep: #2f9e64; }
 :root { --glow-sky: rgb(62 149 249 / .5); --glow-mint: rgb(82 221 180 / .5); --glow-green: rgb(109 218 150 / .42); --glow-amber: rgb(251 183 81 / .4); }
 :root[data-theme^="dark"] { --glow-sky: rgb(55 130 245 / .5); --glow-mint: rgb(60 190 160 / .3); --glow-green: rgb(70 185 120 / .4); --glow-amber: rgb(232 150 60 / .32); }
+/* The brand's gradients (used under "Brand gradients", at the end): blue into mint, as across the top
+   of the icon, for the main call to action on a screen (--gh-go) and for progress whose colour says
+   nothing by itself (--gh-prog); green progress (a goal reached, a badge's) goes from mint into its
+   green (--gh-pos). The mint is deep in light, so white words keep 4.5:1 or more all the way across a
+   button, under the glass's sheen too (about 5 at the mint end, test/ui-gradients.mjs), and a bar
+   keeps 3:1 against its track; brighter in dark, where a bar's flat blue had less than 2:1 against
+   its track and the mint has 4.6. With increased contrast each is its first colour alone. */
+:root { --gh-go-a: var(--accent-glass); --gh-go-b: rgb(12 120 113 / .92); --gh-prog-a: var(--accent-fill); --gh-prog-b: #0f8279; --gh-pos-a: #0f7f6a; --gh-pos-b: var(--positive-fill); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) { --gh-go-b: rgb(12 116 110 / .94); --gh-prog-b: var(--brand-mint); --gh-pos-a: var(--brand-mint); --gh-pos-b: var(--brand-green); } }
+:root[data-theme="dark"] { --gh-go-b: rgb(12 116 110 / .94); --gh-prog-b: var(--brand-mint); --gh-pos-a: var(--brand-mint); --gh-pos-b: var(--brand-green); }
+:root[data-theme$="contrast"] { --gh-go-b: var(--gh-go-a); --gh-prog-b: var(--gh-prog-a); --gh-pos-a: var(--positive-fill); --gh-pos-b: var(--positive-fill); }
 /* Ambient glow: the icon's colours softly behind the top of each page, where they are in the icon
    (blue and amber on the left, mint and green on the right), so the glass bars, buttons and sheets
    have real colour to refract. Two layers (blue and green, mint and amber) drift slowly on their own
@@ -729,6 +740,34 @@ textarea.preview { border: 0; resize: vertical; }
 .mv-gym { display: inline-block; margin-inline-start: 6px; padding: 1px 7px; border-radius: var(--radius-full); background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; vertical-align: 2px; }
 .float-actions.is-tight .rf-btn:not(.btn-main) .btn-label { display: none; }
 .float-actions.is-tight .rf-btn:not(.btn-main) { aspect-ratio: 1; padding-inline: 0; min-inline-size: 48px; justify-content: center; }
+
+/* ================================================================== brand gradients */
+/* A few places in the icon's colours (the tokens are --gh-go, --gh-prog and --gh-pos, near the top).
+   The main call to action on a screen: Today's (Start workout), the player's (Done set, and whatever
+   takes its place) and set-up's last (Start my first workout, once the plan is ready). It's still
+   Refract's tinted glass, rim and sheen and all, with the gradient for its fill, and it forms and
+   dissolves with the glass (--rf-mat). */
+#float .btn-main, .pl-actions > .rf-btn[data-variant="tinted"], .ob-go[data-act="obGo"]:not(:disabled) {
+  background-image: linear-gradient(100deg, color-mix(in oklab, var(--gh-go-a) calc(var(--rf-mat, 1) * 100%), transparent) 20%, color-mix(in oklab, var(--gh-go-b) calc(var(--rf-mat, 1) * 100%), transparent));
+}
+/* Progress: bars and rings whose colour says nothing by itself, and the green ones (a goal reached,
+   a badge's progress) from mint into green. A ring's paints are the SVG gradients in src/shell.html
+   (#gh-paint-prog, #gh-paint-pos), from its start at the top down to the bottom, so the arc goes from
+   blue into mint as it fills; its stroke is the flat colour without them. A colour that means
+   something keeps it: a health number's own hue (health.css), rest's sky in the player, and amber
+   for over a target, which Refract has no colour for (a food's macro, its calories). In the
+   lowest specificity, so an area's own colour wins. */
+.gh-paints { position: absolute; width: 0; height: 0; overflow: hidden; pointer-events: none; }
+.gh-paint-prog-a { stop-color: var(--gh-prog-a); }
+.gh-paint-prog-b { stop-color: var(--gh-prog-b); }
+.gh-paint-pos-a { stop-color: var(--gh-pos-a); }
+.gh-paint-pos-b { stop-color: var(--gh-pos-b); }
+:where(.rf-progress:not([data-tone])) > .rf-progress-fill { background-image: linear-gradient(90deg, var(--gh-prog-a), var(--gh-prog-b)); }
+:where(.rf-progress[data-tone="positive"]) > .rf-progress-fill { background-image: linear-gradient(90deg, var(--gh-pos-a), var(--gh-pos-b)); }
+:where(.rf-ring:not([data-tone]), .rf-ring[data-tone="accent"]) .rf-ring-fill { stroke: url(#gh-paint-prog) var(--accent-fill); }
+:where(.rf-ring[data-tone="positive"]) .rf-ring-fill { stroke: url(#gh-paint-pos) var(--positive-fill); }
+:where(.rf-progress[data-tone="caution"]) > .rf-progress-fill { background-color: var(--caution-fill); }
+:where(.rf-ring[data-tone="caution"]) .rf-ring-fill { stroke: var(--caution-fill); }
 
 /* Reporting AI answers. */
 .flag-quote { margin: 0; padding: var(--space-2) var(--space-3); border-inline-start: 3px solid var(--separator); border-radius: 6px; background: var(--fill-3, var(--bg-sunken)); white-space: pre-wrap; color: var(--label-secondary); }

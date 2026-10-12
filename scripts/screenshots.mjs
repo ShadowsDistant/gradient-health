@@ -106,7 +106,12 @@ async function run(dark) {
   // Each tab's tip is for a first visit: the shots show the screens themselves.
   await page.evaluate(() => { const U = window.GH.ui, S = U.S; for (const id of ['today', 'plan', 'moves', 'food', 'health', 'progress', 'you']) S.seen[`tip_${id}`] = true; window.GH.store.save(S); U.render(); });
   const settle = async (ms = 900) => { await page.clock.runFor(ms); await page.waitForTimeout(ms); };
-  const shot = async (name) => { await settle(); await page.screenshot({ path: join(out, `${name}${dark ? '-dark' : ''}.png`) }); };
+  // A message that came up on its way (a new badge, say) is cleared first: the shots show the screens.
+  const shot = async (name) => {
+    await settle();
+    if (await page.evaluate(() => { const b = [...document.querySelectorAll('.rf-toast .rf-toast-close')]; b.forEach((x) => x.click()); return b.length > 0; })) await settle(700);
+    await page.screenshot({ path: join(out, `${name}${dark ? '-dark' : ''}.png`) });
+  };
   const tab = async (t) => { await page.click(`.rf-tab[data-tab="${t}"]`); await settle(700); };
   const top = () => page.evaluate(() => document.getElementById('screen').scrollTo(0, 0));
   // The badges' medals turn into stills of the 3D ones while the phone is idle (the SVG stands in, and
@@ -210,23 +215,26 @@ async function run(dark) {
     Object.assign(d, { checked: true, available: { ok: true, reason: '' }, installed: [{ id: 'q35-08', file: 'Qwen3.5-0.8B-Q4_K_M.gguf', bytes: 533e6 }] });
     U.checkDevice = () => Promise.resolve(d);
     S.ai.deviceModel = 'q35-08';
-    S.ai.deviceChat = [];
+    S.ai.chats = [];
+    S.ai.chatId = null;
   });
   await page.click('#topbar .coach-btn');
   await settle(1200);
   await shot('chat');
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const U = window.GH.ui, S = U.S;
-    S.ai.deviceChat = [
-      { role: 'user', text: 'Why is today lighter?' },
-      { role: 'assistant', model: 'q35-08', text: 'You slept 5 h 40 min last night, well under your usual 7 h 10 min, so the app took one set off each exercise today. You still train every muscle on the plan, just with a little less fatigue. A normal night\'s sleep and tomorrow is back to full.', facts: ['What the app worked out: A short night: 5 h 40 min against your usual 7 h 10 min.', 'How the app decides (An easier day after a short night): one set comes off each exercise.'] },
-      { role: 'user', text: 'Am I getting stronger?' },
-      { role: 'assistant', model: 'q35-08', text: 'Yes. Your dumbbell curl went from **10 to 15 lb** in five weeks, and push-ups moved up two levels, to the full version. Your left arm is catching up too: the gap is down to 6%.', facts: ['What the app worked out: Curl 10 → 15 lb; push-ups level 3 → 5; left vs right gap 6%.'] },
-    ];
-    U.refreshChat();
+    await window.GH.lazy('cards');
+    window.GH.chats.add(S, 'shot', [
+      { role: 'user', text: 'Why is today lighter?', engine: 'device' },
+      { role: 'assistant', engine: 'device', model: 'q35-08', text: 'You slept **5 h 40 min** last night, so the app took one set off each exercise today.\n\n- That\'s well under your usual 7 h 10 min.\n- Every muscle on the plan still gets its work, with less fatigue.\n\nA normal night, and tomorrow is back to full.', embeds: ['sleep:7d'], facts: ['What the app worked out: A short night: 5 h 40 min against your usual 7 h 10 min.', 'How the app decides (An easier day after a short night): one set comes off each exercise.'] },
+      { role: 'user', text: 'Am I getting stronger?', engine: 'device' },
+      { role: 'assistant', engine: 'device', model: 'q35-08', text: 'Yes: your dumbbell curl went from **10 to 15 lb** in five weeks.\n\n- Push-ups moved up two levels, to the full version.\n- Your left arm is catching up: the gap is down to 6%.', embeds: ['lift:Dumbbell curl:90d'], facts: ['What the app worked out: Curl 10 → 15 lb; push-ups level 3 → 5; left vs right gap 6%.'] },
+    ]);
+    S.ai.chatId = 'shot';
+    U.refreshChat('bottom');
   });
   await shot('answer');
-  await page.evaluate(() => { window.GH.ui.closeSheets(); window.GH.ui.S.ai.deviceChat = []; });
+  await page.evaluate(() => { const S = window.GH.ui.S; window.GH.ui.closeSheets(); S.ai.chats = []; S.ai.chatId = null; });
   await settle(600);
   // Tailor my plan: the changes it would make, before anything changes.
   await page.evaluate(() => window.GH.ui.act.tailorPlan());

@@ -242,9 +242,11 @@
     '- The app\'s planner sets their sets, reps, levels and lighter weeks, and checks every change to the plan before it\'s made.',
     '- If the data is thin, say so and say what to track.',
   ].join('\n');
+  // Short and scannable, drawn as a card (src/ui/md.js), with the app's own charts as embeds.
   const CHAT_RULES = [
     'In this chat you explain their plan and what to focus on. Don\'t write out a different program: the app builds one with you under Build me a plan, and checks this one under Check my plan.',
-    'No emoji, no headings. Under 150 words unless they ask for more.',
+    'Answer first in one sentence with the key number in **bold**, then at most 3 short "- " points, then a one-line next step if there is one. About 80 words unless they ask for detail. No emoji; ### headings and small tables only in a longer answer.',
+    'Embeds, alone on a line, show the app\'s chart of their data: [[sleep]] [[steps]] [[rhr]] [[hrv]] [[weight]] [[protein]] [[workouts]] [[muscles]] [[streak]] [[lift:exercise name]]; add :30d or :90d for longer. Use one or two where they help; the app fills in the numbers.',
   ].join('\n');
 
   // The system text for a feature: the rules, then the data summary. A question's is cached (the next
@@ -328,7 +330,8 @@
   // report on and room under the spending limits for it (when there isn't, the card says so rather
   // than an error every time Health opens).
   function needsReport(S, day) { return !!(S.ai.enabled && S.ai.consentAt && hasKey() && !reportFor(S, day) && S.log.some((l) => l.type === 'workout') && fits(S, day, 'report')); }
-  function clearChat(S) { S.ai.chat = []; }
+  // A new chat: the next question starts a conversation of its own (src/chats.js).
+  function clearChat(S) { S.ai.chatId = null; }
 
   /* ------------------------------------------------------------------ spending */
   // Whether a feature's usual request fits under the limits now (nothing is held for it).
@@ -367,15 +370,16 @@
   // A question that sounds like an emergency gets the app's own safety answer, as the on-device
   // coach does: nothing is sent, and the exchange is kept marked safety (it isn't sent with later
   // questions either).
-  async function ask(S, day, question, onText) {
+  // o.chat: the conversation it goes in (src/chats.js; the open one when it's left out).
+  async function ask(S, day, question, onText, o) {
     const q = String(question || '').trim().slice(0, 1000);
     if (!q) throw coachError('other', 'Type a question first.');
     if (GH.coach && GH.coach.topicOf(q) === 'redflag') {
       const text = GH.coach.ask(S, day, q).text;
-      S.ai.chat = (S.ai.chat || []).concat([{ role: 'user', text: q, day, safety: true }, { role: 'assistant', text, day, safety: true }]).slice(-20);
+      if (GH.chats) GH.chats.add(S, GH.chats.target(S, o && o.chat), [{ role: 'user', text: q, engine: 'api', day, safety: true }, { role: 'assistant', text, engine: 'api', day, safety: true }]);
       return { text, safety: true };
     }
-    return (await claude(S)).ask(S, day, question, onText);
+    return (await claude(S)).ask(S, day, question, onText, o);
   }
   async function suggest(S, day) { return (await claude(S)).suggest(S, day); }
   async function tailor(S, day, text) { return (await claude(S)).tailor(S, day, text); }

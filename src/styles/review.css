@@ -13,7 +13,8 @@
 [data-theme^="dark"] .wy-hero { box-shadow: var(--rim-light), var(--shadow-card); }
 .wy-hero-top { display: flex; align-items: center; gap: var(--space-4); min-width: 0; }
 .wy-hero .rf-ring { --_s: 76px; --_w: 8px; }
-.wy-hero .rf-ring-fill { stroke: color-mix(in oklab, var(--accent-fill), var(--hue-violet) 25%); }
+/* The plan's score: progress in the brand's gradient (styles.css), its old indigo without it. */
+.wy-hero .rf-ring-fill { stroke: url(#gh-paint-prog) color-mix(in oklab, var(--accent-fill), var(--hue-violet) 25%); }
 .wy-ring-n { font-size: 1.5rem; font-weight: 750; letter-spacing: -.02em; }
 .wy-hero-text { display: grid; gap: 4px; min-width: 0; flex: 1; }
 .wy-headline { margin: 0; font-size: 1.0625rem; font-weight: 650; line-height: 1.3; letter-spacing: -.008em; text-wrap: pretty; overflow-wrap: anywhere; }

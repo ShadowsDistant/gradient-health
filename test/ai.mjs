@@ -11,7 +11,7 @@ import { load, root, check, section, done } from './lib.mjs';
 // Browser-ish globals the modules expect.
 const ls = new Map();
 globalThis.localStorage = { getItem: (k) => (ls.has(k) ? ls.get(k) : null), setItem: (k, v) => ls.set(k, String(v)), removeItem: (k) => ls.delete(k) };
-const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/health.js', 'src/store.js', 'src/spend.js', 'src/ai.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/health.js', 'src/store.js', 'src/chats.js', 'src/spend.js', 'src/ai.js');
 const bundle = await build({ entryPoints: [join(root, 'src/claude.js')], bundle: true, write: false, format: 'iife', platform: 'browser', target: ['es2022'], logLevel: 'silent' });
 let chunkLoads = 0;
 GH.lazy = async (name) => {
@@ -21,6 +21,8 @@ GH.lazy = async (name) => {
 };
 const AI = GH.ai;
 const B = GH.brain;
+// The open conversation's messages (src/chats.js).
+const chatOf = (X) => (GH.chats.current(X) || { msgs: [] }).msgs;
 
 /* ---------------------------------------------------------------- the fake API */
 // Claude's suggestions: one fine, one out of range, one plain tip, one kind the app doesn't know.
@@ -125,9 +127,11 @@ const ans = await AI.ask(S, D0, 'How do I sleep more?', (d, snap) => deltas.push
 const q = calls.filter((c) => c.url.includes('/v1/messages')).pop();
 check('medium effort, no JSON format, streamed as it arrives', q.body.output_config.effort === 'medium' && !q.body.output_config.format && deltas.length > 1 && deltas[deltas.length - 1] === ans.text);
 const last = q.body.messages[q.body.messages.length - 1];
-check('the question is the last message, the end of what\'s cached; the chat is kept', last.content[0].text === 'How do I sleep more?' && last.content[0].cache_control.type === 'ephemeral' && S.ai.chat.length === 2);
-check('a question\'s summary is cached too, with the chat\'s own rules', q.body.system[1].cache_control && /Under 150 words/.test(q.body.system[0].text) && !/Under 150 words/.test(msg.body.system[0].text));
-check('the answer keeps what it cost and which model wrote it', S.ai.chat[1].cost === 14000 && S.ai.chat[1].model === 'claude-opus-5-5' && ans.cost === 14000);
+check('the question is the last message, the end of what\'s cached; it\'s kept in a conversation of its own', last.content[0].text === 'How do I sleep more?' && last.content[0].cache_control.type === 'ephemeral' && chatOf(S).length === 2 && GH.chats.current(S).title === 'How do I sleep more?');
+const rules = q.body.system[0].text;
+check('a question\'s summary is cached too, with the chat\'s own rules: short and scannable, and the embeds', q.body.system[1].cache_control && /key number in \*\*bold\*\*/.test(rules) && /at most 3 short/.test(rules) && /About 80 words/.test(rules) && /\[\[sleep\]\] \[\[steps\]\]/.test(rules) && /\[\[lift:exercise name\]\]/.test(rules) && !/80 words|\[\[sleep/.test(msg.body.system[0].text));
+check('the safety rules are all still there', /never diagnose/.test(rules) && /worth seeing a doctor/.test(rules) && /No promises or timelines/.test(rules));
+check('the answer keeps what it cost, which model wrote it and who answered', chatOf(S)[1].cost === 14000 && chatOf(S)[1].model === 'claude-opus-5-5' && chatOf(S).every((m) => m.engine === 'api') && ans.cost === 14000);
 
 section('Errors');
 const fail = async (m) => { mode = m; try { await AI.ask(S, D0, 'Hi', null); return null; } catch (e) { return e; } finally { mode = 'ok'; } };
@@ -139,11 +143,11 @@ e = await fail('offline');
 check('offline → one line, on-device insights still work', e && e.code === 'offline' && /offline/i.test(e.message), e && e.message);
 e = await fail('404');
 check('a model the key can\'t use → says which, and where to pick another', e && e.code === 'nomodel' && /Claude Opus 5\.5/.test(e.message) && /Settings/.test(e.message), e && e.message);
-check('failed questions are not added to the chat', S.ai.chat.length === 2);
+check('failed questions are not added to the chat', chatOf(S).length === 2);
 mode = 'cut';
 const cut = await AI.ask(S, D0, 'Tell me more', null);
 mode = 'ok';
-check('an answer cut short keeps what came, with a note', /bedtime/.test(cut.text) && /Cut short/.test(cut.note) && S.ai.chat.length === 4);
+check('an answer cut short keeps what came, with a note', /bedtime/.test(cut.text) && /Cut short/.test(cut.note) && chatOf(S).length === 4);
 AI.deleteKey(S);
 check('delete key removes it', !AI.hasKey());
 e = null;
@@ -383,17 +387,53 @@ section('Claude chat: red flags and the number check');
   const before = calls.length;
   const a = await AI.ask(P, D0, 'I get chest pain when I do push-ups');
   check('a red-flag question gets the app\'s safety answer, and nothing is sent', a.safety && /doctor/.test(a.text) && calls.length === before);
-  const log = P.ai.chat.slice(-2);
+  const log = chatOf(P).slice(-2);
   check('it\'s kept in the chat, marked safety', log.length === 2 && log.every((m) => m.safety) && log[0].role === 'user');
   ANSWER = 'You slept about 7 hours most nights. Studies say 64% of people sleep less than you. Keep your bedtime steady on weekends.';
   const b = await AI.ask(P, D0, 'How is my sleep?');
   const sent = calls.slice(before).filter((c) => c.url.includes('/v1/messages')).pop();
   check('the next question goes without the safety exchange', !JSON.stringify(sent.body.messages).includes('chest pain'));
   check('a sentence with a number that wasn\'t sent is left out, with the device path\'s note', !/64%/.test(b.text) && /bedtime/.test(b.text) && /Left out a line with a number/.test(b.note) && b.raw.includes('64%'), b);
-  check('the chat keeps the checked answer and its note', P.ai.chat[P.ai.chat.length - 1].text === b.text && /Left out a line/.test(P.ai.chat[P.ai.chat.length - 1].note));
+  check('the chat keeps the checked answer and its note', chatOf(P)[chatOf(P).length - 1].text === b.text && /Left out a line/.test(chatOf(P)[chatOf(P).length - 1].note));
   ANSWER = 'You need 12,345 steps.';
   const c = await AI.ask(P, D0, 'How are my steps?');
   check('if almost nothing is left, the app\'s own answer, saying so', c.replaced && c.text === C.ask(P, D0, 'How are my steps?').text && /Claude's answer didn't match your numbers, so this is the app's own\./.test(c.note), c);
+  ANSWER = 'Aim for the same bedtime on weekends.';
+}
+
+section('Claude chat: embeds, and the earlier turns of a chat');
+{
+  load('src/ui/embeds.js'); // the chat's part with the embeds (a lazy chunk in the app)
+  S.ai.chatId = null;
+  ANSWER = 'Your sleep is **steady** this week, close to your usual.\n\n- Keep the same bedtime on weekends.';
+  const a = await AI.ask(S, D0, 'How is my sleep?');
+  const c = GH.chats.current(S);
+  check('a new chat is a conversation of its own', c && c.msgs.length === 2 && c.title === 'How is my sleep?' && GH.chats.all(S).length === 2);
+  check('Claude placed no embed, so the app adds the one for what was asked, from its own data', JSON.stringify(a.embeds) === '["sleep:7d"]' && JSON.stringify(c.msgs[1].embeds) === '["sleep:7d"]', a.embeds);
+  ANSWER = 'Steps are steady.\n\n[[steps:30d]]\n\n- Walk after dinner.';
+  let n0 = calls.length;
+  const b = await AI.ask(S, D0, 'And my steps?');
+  let sent = calls.slice(n0).filter((x) => x.url.includes('/v1/messages')).pop();
+  check('one it placed stays where it put it, and none is added', !b.embeds.length && /\[\[steps:30d\]\]/.test(b.text) && !c.msgs[3].embeds);
+  check('a follow-up goes with the chat\'s earlier turns, as messages', sent.body.messages.length === 3 && sent.body.messages[0].content === 'How is my sleep?' && /steady/.test(sent.body.messages[1].content) && c.msgs.length === 4, sent.body.messages);
+  const first = GH.chats.all(S)[0];
+  n0 = calls.length;
+  await AI.ask(S, D0, 'One for the first chat', null, { chat: first.id });
+  sent = calls.slice(n0).filter((x) => x.url.includes('/v1/messages')).pop();
+  check('an answer lands in the chat it was asked in, with that chat\'s turns, whichever is open', first.msgs.length === 6 && c.msgs.length === 4 && GH.chats.current(S) === c && sent.body.messages.length === 5 && sent.body.messages[0].content === 'How do I sleep more?');
+  // A long chat that the spending limits wouldn't let go whole: its oldest exchanges stay behind.
+  for (let i = 0; i < 8; i++) GH.chats.add(S, 'cLong', [{ role: 'user', text: `Question ${i}?`, engine: 'api' }, { role: 'assistant', text: `${i} `.repeat(2000), engine: 'api' }]);
+  const sys = AI.systemBlocks(S, D0, 'chat').reduce((x, y) => x + y.text.length, 0);
+  const size = (k) => sys + GH.chats.turns(S, 'cLong').slice(-k).flat().reduce((x, m) => x + m.text.length + 8, 0) + 30;
+  const budget = S.ai.budget;
+  S.ai.budget = Object.assign({ monthly: 10, daily: null }, budget, { request: 1e-6 });
+  const need = (k) => GH.spend.allow(S, D0, 'chat', size(k)).need;
+  S.ai.budget.request = (need(2) + need(3)) / 2 / 1e6;
+  n0 = calls.length;
+  await AI.ask(S, D0, 'Last one?', null, { chat: 'cLong' });
+  sent = calls.slice(n0).filter((x) => x.url.includes('/v1/messages')).pop();
+  check('a long chat goes with as many of its last exchanges as the spending limits allow', sent && sent.body.messages.length === 5 && sent.body.messages[0].content === 'Question 6?', sent && sent.body.messages.map((m) => String(m.content).slice(0, 12)));
+  S.ai.budget = budget;
   ANSWER = 'Aim for the same bedtime on weekends.';
 }
 

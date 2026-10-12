@@ -6,6 +6,25 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.11.0', date: '2026-10-12', title: 'Answers you can scan, kept chats, and updates in the app',
+      store: [
+        '• Coach answers you can scan, with cards of your own data',
+        '• Your chats are kept: start a new one or go back to an old one',
+        '• Updates in the app: download and install the next version in a tap',
+        '• Sheets fade softly under their header as you scroll',
+        '• Subtle gradients in the icon\'s colours',
+      ].join('\n'),
+      items: [
+        ['chat', 'Answers you can scan. Both coaches answer in a line with the number that matters in bold, then a few short points and a next step, in about 80 words unless you ask for more. Lists, small headings and tables read like a card.'],
+        ['chart', 'Cards of your own data in answers: sleep, steps, resting heart rate, HRV, weight, protein, this week\'s workouts and sets per muscle, your streak, and how a lift has gone. The app draws them from its own numbers, never the model\'s, and a tap opens the matching page.'],
+        ['clock', 'Your chats are kept. Start a new one any time, or open Chats to go back to an old one and carry on where you left off. Delete one (with Undo) or all of them. They stay on your phone.'],
+        ['download', 'Updates in the app. Say yes once and the app checks GitHub each day; when a new version is out, a card on Today offers it. Update downloads it, checks it against the release and the app\'s own key, and hands it to Android to install, keeping your data. Or tap Check for updates in Settings, About. A copy from Google Play updates through Play.'],
+        ['layers', 'Sheets fade softly under their header once you scroll, like pages do, instead of stopping at a hard line. The chat\'s answers fade the same way under its bar and above the box you type in.'],
+        ['sparkle', 'Subtle gradients in the icon\'s colours on the main buttons, progress rings and bars, and the top of sheets.'],
+        ['check-circle', 'Fixed: food bars over their target, and the calorie ring when you\'re over, showed plain blue. They\'re amber now. Reporting an answer, or the on-device AI check, says the GitHub issue is public once you post it.'],
+      ],
+    },
+    {
       version: '1.10.1', date: '2026-10-11', title: 'Shorter, plainer words',
       // The store text covers 1.10.0 too, for a store that skipped it.
       store: [

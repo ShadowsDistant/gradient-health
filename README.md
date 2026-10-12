@@ -16,7 +16,7 @@ A training plan, a food log, your health data and a coach that runs on your phon
 <p align="center">
   <img src="docs/screenshots/framed/today.png" width="200" alt="Today: a 35-day streak and today's workout">
   <img src="docs/screenshots/framed/workout.png" width="200" alt="The workout player: the 3D figure doing a dumbbell curl, with the tempo strip lit">
-  <img src="docs/screenshots/framed/answer-dark.png" width="200" alt="The coach chat, in dark mode: answers from the model on the phone">
+  <img src="docs/screenshots/framed/answer-dark.png" width="200" alt="The coach chat, in dark mode: a short answer with a card of how your curl has gone">
   <img src="docs/screenshots/framed/progress.png" width="200" alt="Progress: the body map, showing which muscles were trained most">
 </p>
 
@@ -243,6 +243,8 @@ Your profile, badges, plans, set-up answers and Settings. Settings has a search.
 
 - An AI model runs on your phone (Qwen3.5, in three sizes), so it works offline and nothing you ask leaves the phone.
 - Each question goes in with what the app has already worked out from your data and the research, and "What it used" under each answer shows exactly that.
+- **Answers are short and easy to scan:** the answer in a line with the number that matters in bold, a few points, a next step. Cards of your own data sit inside, like your sleep this week or how a lift has gone, drawn from the app's numbers, never the model's. Tap one to open it.
+- **Your chats are kept.** Start a new one any time, or go back to an old one and carry on where you left off. They stay on your phone.
 - Suggested questions come from your data. Answers keep coming if you close the chat.
 
 **Change your plan by saying what you want:** "More legs, my knees hurt, 20 minutes." The coach shows the changes first, and nothing changes until you apply them. Undo is always there.
@@ -300,6 +302,7 @@ No account, no ads, no analytics. Everything stays on your phone, except what yo
 - the one-time download of the on-device model
 - a plan you share with someone
 - map tiles for the area around an activity, from OpenFreeMap, when maps are on (tiles you've seen are kept, and fetched again only after OpenFreeMap updates its map)
+- a daily check with GitHub for a new version, if you allow it: GitHub sees your IP address and which version you have, nothing about you (the Google Play version doesn't check)
 
 The [privacy policy](docs/PRIVACY.md) lists every piece of data and where it goes.
 
@@ -307,7 +310,7 @@ The [privacy policy](docs/PRIVACY.md) lists every piece of data and where it goe
 
 1. Download `gradient-health.apk` from the [latest release](../../releases/latest).
 2. Open it on your phone. You may need to allow installs from your browser or file manager.
-3. Updates install over the old version and keep your data. The APKPure version is the same app with the same key, so you can switch between them.
+3. After that, the app updates itself: say yes when it asks, or tap Check for updates in Settings, About. Each update is checked against the release, installs over the old version and keeps your data. The APKPure version is the same app with the same key, so you can switch between them.
 
 | Needs | |
 |---|---|

@@ -93,7 +93,7 @@ button.hl-pill:active { scale: .97; transition-duration: var(--duration-instant)
 .hl-tile-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 6px; margin-top: auto; }
 .hl-tile-sub { min-width: 0; font-size: .75rem; font-weight: 500; color: var(--label-secondary); line-height: 1.3; overflow-wrap: break-word; }
 .hl-hero .rf-progress { block-size: 5px; background-color: color-mix(in oklab, var(--_hue) 16%, var(--fill-3)); }
-.hl-hero .rf-progress-fill { background-color: var(--_line); }
+.hl-hero .rf-progress-fill { background-color: var(--_line); background-image: none; } /* its number's own hue, not the brand's gradient */
 .hl-hero .rf-progress-fill::after { display: none; }
 
 /* The rest, smaller: as many columns as fit, three at most. */

@@ -1495,4 +1495,94 @@ public final class Bridge {
         }
         activity.diagnostics().traceDone();
     }
+
+    // ---------------------------------------------------------------- updates (Updater)
+
+    /**
+     * Whether this install updates itself from the app's GitHub release: {"ok", "why"?,
+     * "canInstall"}. why: "store" (the Play bundle, without the install permission), "play"
+     * (installed by Google Play) or "key" (not signed with the release key).
+     */
+    @JavascriptInterface
+    public String updateSupport() {
+        if (!trusted()) {
+            return "{\"ok\":false}";
+        }
+        try {
+            return updater().supportJson();
+        } catch (Throwable t) {
+            return "{\"ok\":false}";
+        }
+    }
+
+    /** Where an update stands (Updater.snapshot): after that, each change comes to window.__gh.onUpdate. */
+    @JavascriptInterface
+    public String updateState() {
+        if (!trusted()) {
+            return "{}";
+        }
+        try {
+            return updater().stateJson();
+        } catch (Throwable t) {
+            return "{}";
+        }
+    }
+
+    /** Asks GitHub which version is the latest (version.json). False while another step runs. */
+    @JavascriptInterface
+    public boolean updateCheck() {
+        if (!trusted()) {
+            return false;
+        }
+        try {
+            return updater().check();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** Downloads the latest version to the cache and checks it. False while another step runs. */
+    @JavascriptInterface
+    public boolean updateDownload() {
+        if (!trusted()) {
+            return false;
+        }
+        try {
+            return updater().download();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** Stops the download and deletes what it had. */
+    @JavascriptInterface
+    public void updateCancel() {
+        if (!trusted()) {
+            return;
+        }
+        try {
+            updater().cancel();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * Hands the downloaded update to Android's installer, which asks the person first. Without the
+     * permission to install apps, opens Settings at it instead. False if nothing is ready.
+     */
+    @JavascriptInterface
+    public boolean updateInstall() {
+        if (!trusted()) {
+            return false;
+        }
+        try {
+            return updater().install();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private Updater updater() {
+        return Updater.get(activity);
+    }
 }

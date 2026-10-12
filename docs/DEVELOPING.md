@@ -65,7 +65,13 @@ src/ui/badges.js         the badge medals and sealed capsules, the shelf, the ga
 src/ui/badges3d.js       the medals' 3D side, in the 3D chunk: drawing their stills and keeping them,
                          the live medal on a stage
 src/ui/sharecard.js      a badge's share image (a 1080×1350 canvas, the 3D medal on it) and sharing it
-src/ui/chat.js           the coach chat and the coach button on every tab
+src/ui/chat.js           the coach chat, its list of chats, and the coach button on every tab
+src/chats.js             the saved conversations (GH.chats): at most 50, 60 messages each, and the
+                         move from 1.10's one log per engine
+src/ui/md.js             the answers' Markdown, drawn safely: escaped first, a few tags, never links or
+                         images (GH.md, in the 'cards' chunk)
+src/ui/embeds.js         the data cards an answer can hold ([[sleep]], [[lift:<move>]] …), drawn from
+                         the app's own numbers, never the model's (GH.embeds)
 src/ui/tailor.js         the Tailor my plan sheet
 src/ui/customplan.js     Your plans: the list, the editor and exercise picker, sharing, a shared plan's
                          preview, Build me a plan
@@ -95,7 +101,10 @@ scripts/make-icons.mjs   the launcher icons, the Play icon and the in-app logo f
 scripts/screenshots.mjs  renders docs/screenshots/ from the built page (the activity is a walk along
                          Venice Beach, on OpenFreeMap's map when it can be reached from where it runs)
 scripts/frame-shots.mjs  puts the README's screenshots in a phone, in docs/screenshots/framed/
-scripts/store-assets.mjs   the store images in docs/store/ from docs/screenshots/
+scripts/store-assets.mjs   the store images in docs/store/ from docs/screenshots/: the feature graphic,
+                           the icon and five captioned screenshots, in scripts/store-style.mjs's look
+scripts/store-3d.mjs     the 3D figure and medal renders the store images and the video use
+scripts/promo-video.mjs  the store's promo video (docs/store/promo-1080p.mp4) and its thumbnail
 scripts/release-notes.mjs  What's new for a version, for its GitHub release and the stores
 scripts/make-tiny-gguf.py  a tiny random-weight model for test/llm.mjs
 ```
@@ -405,6 +414,14 @@ Where the app uses Refract 1.4's newer parts:
   blur under anything that moves is redrawn every frame; the rim and sheen move with their layer).
   A sheet opened over another is solid at every height (`data-stacked`): frost over a sheet's words
   lets them through. A sheet's body has no inset of its own, so each block in it brings its 16 px.
+  Content scrolled off its top fades into the material over 28 px under the header, as a page does
+  under the top bar (`data-scrolled`, toggled only as the scroll position crosses 0): on solid glass
+  a gradient in the material's own colour (`--sheet-bg` and what's left of the sheen there, which
+  `sheet.js` works out from the panel's height), on frosted glass at rest a mask on the content, which
+  shows the frost as it is; a scroll hands over to the gradient, so nothing is masked while the
+  content moves, and neither follows a drag. A faint glow of the icon's colours sits at the top of
+  the material, gone before the content starts. `test/ui-sheet.mjs` reads the pixels where the
+  content meets the header and times scrolling a long sheet (`ui-scroll` only scrolls pages).
 - **Dropdowns** (`<details class="gh-drop">`, `src/styles/dropdown.css`): what's inside grows open
   and folds shut (`::details-content`'s height, with `interpolate-size`), fading as it goes, and the
   chevron turns with it. It's the one motion here that lays the page out every frame, for 240 ms
@@ -416,6 +433,13 @@ Where the app uses Refract 1.4's newer parts:
 - **Bursts** are 8 to 14 beads, Refract 1.4's range (`test/ui-motion.mjs` checks every count).
 - **Glass in the content** is for controls that float: a search field in a page is a `fill-3` well,
   and a page's own buttons are filled, not glass.
+- **Brand gradients** (`src/styles.css`, "Brand gradients", and its `--gh-*` tokens): blue into mint
+  for the main call to action on a screen (Today's, the player's and set-up's last button: tinted
+  glass with the gradient for its fill, its words at 5:1 or more all the way across) and for
+  progress whose colour says nothing by itself; green progress goes from mint into green. Rings are
+  painted with two SVG gradients in `src/shell.html` (`#gh-paint-prog`, `#gh-paint-pos`). A colour
+  that means something keeps it (a health number's hue, rest's sky, amber over a target), and with
+  increased contrast each is flat. `test/ui-gradients.mjs` checks them.
 
 The credit: Settings > About has "Built with Refract" with its mark (`U.refractMark`, drawn by
 Refract's `.rf-mark`), and the open-source licenses sheet opens with it.
@@ -1121,6 +1145,44 @@ the categories it touched.
   closes; on a page nothing moves forever (a sealed tile nudges twice as it first shows, and the You
   tab shakes a newly earned one awake once, with Refract's wiggle). Refract's click effect is off on
   the capsule (`data-rf-effect="none"`), whose round shape it filled with a grey disc.
+
+## Updates
+
+The APK (from GitHub or APKPure) updates itself from the release CI publishes, so a new version
+doesn't wait for a store. Play's bundle doesn't: Play updates it.
+
+- **version.json.** The `release` job writes it from the APK it just built (`scripts/version-json.mjs`:
+  versionName and versionCode as aapt reads them, the APK's name, size and SHA-256, and the version's
+  store text as `notes`) and publishes it with the APK and the bundle on the release tagged `latest`.
+  The `build` job writes one for its test-key APK too, so a break shows before `main`.
+- **The check** (`Updater.java`, `src/update.js`) reads
+  `https://github.com/ShadowsDistant/gradient-health/releases/download/latest/version.json` over
+  HTTPS, following redirects only to github.com and *.githubusercontent.com (64 KB at most, with
+  timeouts), and compares its versionCode with the installed one. It runs by itself only once the
+  person has said yes: the privacy policy promises nothing goes anywhere new without asking, so Today
+  asks once (Check daily or Not now; from the day after set-up, after the reminders' question), and
+  Settings, About, Check automatically changes the answer. Then it runs once a day (an hour after one
+  that failed), a few seconds after the app opens or comes back, never before set-up, during a
+  workout or while an activity records. The Check for updates row there checks by hand any time. A new version puts a card on Today, and Not now waits for
+  the next one; a newer build of the same version is offered in Settings only. What the phone chose
+  is kept in localStorage (`gh.v1.update`).
+- **Download and install.** Update reads version.json again, then downloads the APK to the cache
+  (progress through `__gh.onUpdate`, Cancel, a cut-short download resumes with a Range request; 150
+  MB at most). It's kept only at version.json's size and SHA-256, as this app at that versionCode,
+  signed with the installed app's certificate; anything else is deleted, with the reason. Install
+  writes the state, then hands the file to a `PackageInstaller` session, its bytes hashed again as
+  they're written. Android answers through a `PendingIntent` to `Updater$Receiver` (not exported),
+  which starts its confirmation screen; without "Install unknown apps", Settings opens there and the
+  page carries on when the person comes back. Android closes the app while it replaces it.
+- **Where nothing checks.** In a browser; when Google Play installed the app (installer
+  `com.android.vending`); in the bundle, which `build-aab.sh` builds without
+  `REQUEST_INSTALL_PACKAGES` (the app reads that as "updates come from the store"); and in a build
+  signed with any key but the release key (`android/release-cert.sha256`), such as a test build.
+  Settings says where updates come from instead.
+- **Tests.** `test/update.mjs` (the page's rules, and version.json held to the Java's limits),
+  `test/ui-update.mjs` (the rows, card, sheet and automatic check against a stand-in for
+  `Updater.java`) and `test/security.mjs` (what's fetched and installed, the bundle's manifest, CI);
+  compile the Java as `build-apk.sh` does.
 
 ## Publishing (Google Play and APKPure)
 

@@ -6,7 +6,10 @@
 // and the scrim, the keyboard, reduced motion, Refract staying out of it, the material (Refract's
 // thick glass at medium; solid at large, while it moves, and with reduced transparency or increased
 // contrast; its silver rim and sheen always, from the first frame of the slide up to the last of the
-// slide out), and the food Edit sheet's width.
+// slide out), the food Edit sheet's width, the fade under the header once the content is scrolled (on
+// solid and frosted glass, over another sheet, with reduced transparency and increased contrast: no
+// line where the content meets the header, read from the pixels), and scrolling a long sheet (frames
+// dropped and the GPU's draw time, traced at 4x CPU).
 // Usage: node test/ui-sheet.mjs [--dark] [--width=390] [--cpu=4]
 import { createRequire } from 'node:module';
 import { check, section, done, serveDist } from './lib.mjs';
@@ -384,6 +387,173 @@ check('nothing in it runs past the edge', edit && edit.over.length === 0 && edit
 check('the Carbs field ends at the content edge', edit && Math.abs(edit.carbsRight - edit.padRight) <= 1, edit);
 check('the meal control is full width', edit && Math.abs(edit.seg - edit.name) <= 1, edit);
 await closeAll();
+
+section('The fade under the header');
+// A long sheet that's solid at full height (Privacy), and the same words in a fit sheet: frosted at
+// rest, and too tall for the screen, so it scrolls.
+const PRIVACY = 'window.GH.ui.showPrivacySheet()';
+const LONG_FIT = 'window.GH.ui.sheet({ title: "Privacy", size: "fit", body: `<div class="sheet-pad">${window.GH.ui.privacyHtml()}</div>` })';
+// The top sheet's fade: whether it's on (data-scrolled), the gradient over the top of the content (its
+// opacity, whether it's drawn, and its sides), the mask on the content, the glass, and the sheen left
+// where the content starts (sheet.js).
+const fade = () => page.evaluate(() => {
+  const d = [...document.querySelectorAll('dialog.gh-sheet[open]')].pop();
+  if (!d) return null;
+  const h = d.querySelector('.rf-sheet-header'), b = d.querySelector('.rf-sheet-body'), a = getComputedStyle(h, '::after');
+  const mask = (cs) => cs.maskImage || cs.webkitMaskImage || 'none';
+  return {
+    scrolled: d.hasAttribute('data-scrolled'), scrolling: d.hasAttribute('data-scrolling'), stacked: d.hasAttribute('data-stacked'), detent: d.dataset.detent, top: Math.round(b.scrollTop),
+    opacity: Number(a.opacity), gradient: /gradient/.test(a.backgroundImage), sides: /to right/.test(mask(a)), mask: /gradient/.test(mask(getComputedStyle(b))),
+    solid: getComputedStyle(d.querySelector('.gh-sheet-glass')).backdropFilter === 'none', sheen: parseFloat(h.style.getPropertyValue('--gh-sheen')),
+  };
+});
+const scrollTo = async (y, settle = 500) => { await page.evaluate((v) => { [...document.querySelectorAll('dialog.gh-sheet[open]')].pop().querySelector('.rf-sheet-body').scrollTop = v; }, y); await wait(settle); };
+// Across the header's bottom edge, in a screenshot read in a page of its own: the material 1 to 3 px
+// above the edge against the top of the fade, 0.5 to 2 px below it, averaged across the middle half of
+// the sheet. Without the fade the content starts right there (a card, a line of text).
+const reader = await ctx.newPage();
+const seam = async () => {
+  const r = await page.evaluate(() => { const d = [...document.querySelectorAll('dialog.gh-sheet[open]')].pop(); const p = d.querySelector('.gh-sheet-panel').getBoundingClientRect(), h = d.querySelector('.rf-sheet-header').getBoundingClientRect(); return { x: p.left + p.width / 4, w: p.width / 2, y: h.bottom }; });
+  const png = await page.screenshot({ clip: { x: r.x, y: r.y - 4, width: r.w, height: 8 } });
+  const rows = await reader.evaluate(async (b64) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${b64}`;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d');
+    g.drawImage(img, 0, 0);
+    const px = g.getImageData(0, 0, c.width, c.height).data, out = [];
+    for (let y = 0; y < c.height; y++) { const sum = [0, 0, 0]; for (let x = 0; x < c.width; x++) for (let k = 0; k < 3; k++) sum[k] += px[(y * c.width + x) * 4 + k]; out.push(sum.map((v) => v / c.width)); }
+    return out;
+  }, png.toString('base64'));
+  const avg = (a, b) => [0, 1, 2].map((k) => rows.slice(a, b).reduce((t, x) => t + x[k], 0) / (b - a));
+  const above = avg(2, 6), below = avg(9, 12); // 2 rows a CSS px
+  return { above: above.map(Math.round), below: below.map(Math.round), step: Math.max(...[0, 1, 2].map((k) => Math.abs(above[k] - below[k]))) };
+};
+const theme0 = await page.evaluate(() => document.documentElement.getAttribute('data-theme'));
+await open(PRIVACY);
+let f = await fade();
+check('at the top of the content there\'s no fade', f && !f.scrolled && f.opacity === 0 && !f.mask, f);
+check('the sheen left where the content starts is worked out, for the fade\'s colour', f && f.sheen > 0 && f.sheen <= 1, f);
+// The fade comes and goes with the scroll position crossing 0, never with each frame of a scroll.
+await page.evaluate(() => { const d = [...document.querySelectorAll('dialog.gh-sheet[open]')].pop(); window.__flips = []; new MutationObserver((l) => { for (const m of l) window.__flips.push(d.hasAttribute('data-scrolled')); }).observe(d, { attributes: true, attributeFilter: ['data-scrolled'] }); });
+for (const dy of [-700, -700, -700]) { await cdp.send('Input.synthesizeScrollGesture', { x: 195, y: 560, xDistance: 0, yDistance: dy, speed: 2400, gestureSourceType: 'mouse' }); await wait(300); }
+await wait(300);
+const down = await page.evaluate(() => window.__flips.slice());
+f = await fade();
+check('scrolled, it\'s on: over solid glass a gradient of the glass\'s colour lies over the top of the content', f && f.scrolled && f.top > 1000 && f.solid && f.opacity === 1 && f.gradient && !f.mask, f);
+check('it thins out toward the sides, where the glass\'s rim shows', f && f.sides, f);
+check('three flings down turned it on once', down.length === 1 && down[0] === true, down);
+let sm = await seam();
+check(`no line where the content meets the header: the fade starts in the glass's own colour (${sm.step.toFixed(1)} levels)`, sm.step <= 3, sm);
+for (const dy of [1200, 1200, 1200]) { await cdp.send('Input.synthesizeScrollGesture', { x: 195, y: 560, xDistance: 0, yDistance: dy, speed: 2400, gestureSourceType: 'mouse' }); await wait(300); }
+await wait(300);
+f = await fade();
+check('back at the top it goes, once', f && f.top === 0 && !f.scrolled && await page.evaluate(() => window.__flips.join() === 'true,false'), { f, flips: await page.evaluate(() => window.__flips) });
+await closeAll();
+await open(LONG_FIT);
+f = await fade();
+check('a fit sheet too tall for the screen is frosted at rest', f && !f.solid && f.detent === 'medium', f);
+await scrollTo(120, 600);
+f = await fade();
+check('scrolled and still, over frosted glass the content itself fades (a mask), with no gradient over it', f && f.scrolled && !f.solid && f.mask && !f.gradient, f);
+sm = await seam();
+check(`no line there either (${sm.step.toFixed(1)} levels)`, sm.step <= 3, sm);
+// While it scrolls the glass is solid and the gradient takes over, rather than a mask drawn again
+// with every frame of the scroll.
+const during = await page.evaluate(async () => {
+  const d = [...document.querySelectorAll('dialog.gh-sheet[open]')].pop(), b = d.querySelector('.rf-sheet-body');
+  b.scrollTop += 40;
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const a = getComputedStyle(d.querySelector('.rf-sheet-header'), '::after');
+  return { scrolling: d.hasAttribute('data-scrolling'), mask: /gradient/.test(getComputedStyle(b).maskImage || ''), gradient: /gradient/.test(a.backgroundImage), opacity: Number(a.opacity) };
+});
+check('while it scrolls: solid glass, the gradient, no mask', during.scrolling && !during.mask && during.gradient && during.opacity === 1, during);
+await wait(500);
+await page.evaluate(() => [...document.querySelectorAll('dialog.gh-sheet[open]')].pop().setAttribute('data-moving', ''));
+f = await fade();
+await page.evaluate(() => [...document.querySelectorAll('dialog.gh-sheet[open]')].pop().removeAttribute('data-moving'));
+check('while it moves the glass is solid and the content keeps its mask (the same look there, and a drag restyles nothing more)', f && f.solid && f.mask && !f.gradient, f);
+// Over another sheet the glass is solid at every height.
+await page.evaluate((x) => (0, eval)(x), LONG_FIT); // eslint-disable-line no-eval
+await wait(900);
+await scrollTo(120, 600);
+f = await fade();
+check('over another sheet: solid glass, and the gradient', f && f.stacked && f.solid && f.scrolled && f.gradient && !f.mask, f);
+sm = await seam();
+check(`no line (${sm.step.toFixed(1)} levels)`, sm.step <= 3, sm);
+await closeAll();
+for (const [name, on, off] of [
+  ['reduced transparency', () => document.documentElement.setAttribute('data-rf-transparency', 'reduced'), () => document.documentElement.removeAttribute('data-rf-transparency')],
+  ['increased contrast', ({ dk }) => document.documentElement.setAttribute('data-theme', dk ? 'dark-contrast' : 'light-contrast'), ({ t }) => { if (t == null) document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t); }],
+]) {
+  await page.evaluate(on, { dk: dark });
+  await open(LONG_FIT);
+  await scrollTo(120, 600);
+  f = await fade();
+  sm = await seam();
+  await closeAll();
+  await page.evaluate(off, { t: theme0 });
+  check(`with ${name}: solid glass, the gradient, no mask, and no line (${sm.step.toFixed(1)} levels)`, f && f.solid && f.scrolled && f.gradient && !f.mask && sm.step <= 3, { f, sm });
+}
+await open('window.GH.ui.sheet({ title: "Inner", size: "full", body: `<div id="ghInner" style="height:120px;overflow:auto"><div style="height:900px"></div></div>` })');
+await page.evaluate(() => { document.getElementById('ghInner').scrollTop = 200; });
+await wait(400);
+f = await fade();
+check('a box that scrolls inside the content leaves it alone', f && !f.scrolled && f.opacity === 0, f);
+await closeAll();
+await reader.close();
+
+section('Scrolling a long sheet (4x slower CPU)');
+// Wheel scrolls at a fling's speed inside the content (down, up and down), traced, as
+// test/ui-scroll.mjs measures pages: the frames dropped while it scrolls and the GPU's draw time a
+// frame (p95), best of two. Each starts scrolled a little and at rest, so the fade is on. Budgets
+// (measured here, on a quiet machine, plus about 60%, as ui-scroll's are, and a little more): Privacy
+// at full height, solid, drew a frame in 6.8 to 7.2 ms (p95) before the fade (1.10.1) and 7.1 to 7.4
+// ms with it, with none dropped; with other suites running alongside, 10.8 to 15 ms. So 14 ms, which
+// a blur drawn again under the moving content would still overrun (the fit sheet below, whose glass
+// is frosted between scrolls, is at 17 and more); 10% of frames dropped at most. The fit sheet is
+// printed, not held to a draw time: its frosted glass is drawn again each time it comes to rest
+// between scrolls, which makes its p95 swing from run to run (4 to 15 ms before the fade, 17 to 18
+// with it, as the content's mask comes and goes with the glass).
+async function sheetScroll(expr) {
+  await open(expr);
+  await scrollTo(60, 600);
+  await throttle(4);
+  await browser.startTracing(page, { categories: ['cc', 'benchmark', 'disabled-by-default-devtools.timeline.frame'] });
+  for (const dy of [-1600, 1500, -1600]) {
+    await cdp.send('Input.synthesizeScrollGesture', { x: 195, y: 560, xDistance: 0, yDistance: dy, speed: 2400, gestureSourceType: 'mouse' });
+    await wait(300);
+  }
+  const evs = JSON.parse((await browser.stopTracing()).toString()).traceEvents || [];
+  await throttle(1);
+  await closeAll();
+  let presented = 0, dropped = 0;
+  for (const e of evs) {
+    const fr = e.name === 'PipelineReporter' && e.ph === 'b' && e.args && e.args.frame_reporter;
+    if (!fr || !fr.scroll_state || fr.scroll_state === 'SCROLL_NONE') continue;
+    if (fr.state === 'STATE_DROPPED') dropped++; else if (/^STATE_PRESENTED/.test(fr.state)) presented++;
+  }
+  const started = new Map(), draws = [];
+  for (const e of evs) {
+    if (e.name !== 'StartDrawToSwapStart') continue;
+    const key = `${e.pid}:${(e.id2 && (e.id2.local || e.id2.global)) || e.id}`;
+    if (e.ph === 'b') started.set(key, e.ts);
+    else if (e.ph === 'e' && started.has(key)) { draws.push((e.ts - started.get(key)) / 1000); started.delete(key); }
+  }
+  const sorted = draws.slice().sort((a, b) => a - b);
+  return { frames: presented + dropped, droppedPct: (100 * dropped) / Math.max(1, presented + dropped), p95: sorted.length ? sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1)] : 0 };
+}
+for (const [name, expr, budget] of [['Privacy, full height', PRIVACY, 14], ['the fit sheet, frosted at rest', LONG_FIT, null]]) {
+  // (Like the drags: a machine busy with other work makes a slow pair, so it gets one more try.)
+  const tries = [await sheetScroll(expr), await sheetScroll(expr)];
+  if (budget && Math.min(...tries.map((x) => x.p95)) > budget) tries.push(await sheetScroll(expr));
+  const b = tries.reduce((m, x) => (x.p95 < m.p95 ? x : m));
+  console.log(`      ${name}: dropped ${b.droppedPct.toFixed(1)}% of ${b.frames} frames, draw p95 ${b.p95.toFixed(1)} ms (runs: ${tries.map((x) => `${x.p95.toFixed(1)} ms, ${x.droppedPct.toFixed(1)}%`).join('; ')})`);
+  check(`${name}: 10% of frames or fewer dropped while it scrolls`, b.frames > 40 && b.droppedPct <= 10, b);
+  if (budget) check(`${name}: a frame draws in ${budget} ms or less (p95)`, b.p95 <= budget, b);
+}
 
 section('Reduced motion');
 await page.evaluate(() => window.Refract.setMotion('reduced'));

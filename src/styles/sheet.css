@@ -3,11 +3,14 @@
    drag or a settle never lays anything out, and nothing about a sheet transitions its size, inset or
    corners. Refract's .rf-sheet rules are all overridden here (these rules are unlayered, so they win
    whatever Refract's specificity). */
-:root { --sheet-bg: #f7f8fb; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme]) { --sheet-bg: #1b1c22; } }
-:root[data-theme="dark"] { --sheet-bg: #1b1c22; }
-:root[data-theme="light-contrast"] { --sheet-bg: #ffffff; }
-:root[data-theme="dark-contrast"] { --sheet-bg: #0e0f13; }
+/* --sheet-bg is the solid material's colour; --sheet-sheen how much white the glass's sheen lays over
+   it at its top edge (Refract's: --glass-specular at 18%, whose alpha is 1 in light, 0.82 in dark and
+   0 with increased contrast), for the fade under the header (below). */
+:root { --sheet-bg: #f7f8fb; --sheet-sheen: .18; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) { --sheet-bg: #1b1c22; --sheet-sheen: .1475; } }
+:root[data-theme="dark"] { --sheet-bg: #1b1c22; --sheet-sheen: .1475; }
+:root[data-theme="light-contrast"] { --sheet-bg: #ffffff; --sheet-sheen: 0; }
+:root[data-theme="dark-contrast"] { --sheet-bg: #0e0f13; --sheet-sheen: 0; }
 
 dialog.gh-sheet {
   position: fixed; inset: 0; box-sizing: border-box;
@@ -69,6 +72,20 @@ dialog.gh-sheet[data-closing] { pointer-events: none; }
 }
 :root:is([data-theme$="contrast"], [data-rf-transparency="reduced"]) .gh-sheet-glass { background-color: var(--sheet-bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
 @media (prefers-reduced-transparency: reduce) { .gh-sheet-glass { background-color: var(--sheet-bg); -webkit-backdrop-filter: none; backdrop-filter: none; } }
+/* A faint glow of the icon's colours at the top of every sheet, as behind the top of each page (blue
+   on the left, mint on the right), very light. It's in the material's own layer, under the rim and
+   sheen, so it's painted once and moves with the sheet; and it's gone by 56 px down, above where the
+   content starts, so the fade under the header starts in the material's colour as before. Off with
+   increased contrast and reduced transparency, like the page's. */
+.gh-sheet-glass {
+  background-image:
+    radial-gradient(52% 56px at 18% 0, color-mix(in oklab, var(--brand-blue) var(--gh-sheet-glow, 9%), transparent), color-mix(in oklab, var(--brand-blue) calc(var(--gh-sheet-glow, 9%) * .4), transparent) 50%, transparent),
+    radial-gradient(52% 56px at 82% 0, color-mix(in oklab, var(--brand-mint) var(--gh-sheet-glow, 9%), transparent), color-mix(in oklab, var(--brand-mint) calc(var(--gh-sheet-glow, 9%) * .4), transparent) 50%, transparent);
+}
+:root[data-theme^="dark"] .gh-sheet-glass { --gh-sheet-glow: 13%; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) .gh-sheet-glass { --gh-sheet-glow: 13%; } }
+:root:is([data-theme$="contrast"], [data-rf-transparency="reduced"]) .gh-sheet-glass { background-image: none; }
+@media (prefers-reduced-transparency: reduce) { .gh-sheet-glass { background-image: none; } }
 
 .gh-sheet .rf-sheet-grabber { flex: none; margin: 7px auto 0; touch-action: none; cursor: grab; }
 .gh-sheet .rf-sheet-header { animation: none; touch-action: none; }
@@ -84,6 +101,50 @@ dialog.gh-sheet[data-closing] { pointer-events: none; }
 .gh-sheet[data-size="full"] .rf-sheet-body { flex: 1 1 auto; }
 /* Below its top detent the content doesn't scroll: a swipe anywhere moves the sheet. */
 .gh-sheet:not([data-at-top]) .rf-sheet-body { overflow: hidden; touch-action: none; }
+
+/* The fade under the header. Once the content is scrolled off its top (data-scrolled, src/ui/sheet.js,
+   set when the scroll position leaves 0 and cleared when it's back), what scrolls up to the header
+   fades into the sheet's material over 28 px, as a page fades under the top bar, instead of ending
+   at a line. Matched to the material, and never a blur of its own:
+   - Solid (at large, while it scrolls, over another sheet, with increased contrast or reduced
+     transparency): a gradient of the material's own colour over the top of the content,
+     from opaque to clear on an eased curve (.rf-sheet-header::after). That colour is --sheet-bg with
+     the glass's sheen where the content starts (--gh-sheen, how much of it is left there: sheet.js
+     works it out from the panel's height; in dark the sheen lifts the top of the sheet well above
+     --sheet-bg, so the plain colour would leave a dark band). It thins out toward the sheet's sides,
+     where the glass's rim and the light along its left edge stay in sight (a solid 1 px border with
+     increased contrast). A small layer that never changes over the scrolling content: the content
+     scrolls on the compositor, which only blends it in.
+   - Frosted (medium): the content itself fades out (a mask on the body), showing the frost behind it
+     as it is, whatever it shows, and the solid material just as well while the sheet moves. A mask
+     has the content drawn into a layer of its own every frame it scrolls, so a scroll hands over to
+     the gradient (the two look the same over a solid material). Neither follows a move: a drag
+     restyles only what moves (test/ui-sheet.mjs).
+   The gradient fades in and out with the scroll position crossing 0 (opacity, 160 ms); switching
+   between the two is instant, as the material itself is. */
+.gh-sheet .rf-sheet-header { position: relative; }
+.gh-sheet .rf-sheet-header::after {
+  --_c: color-mix(in srgb, var(--sheet-bg), #fff calc(var(--sheet-sheen) * var(--gh-sheen, .85) * 100%));
+  content: ""; position: absolute; inset-inline: 0; top: 100%; height: 28px; z-index: 6; pointer-events: none;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 20px, #000 calc(100% - 8px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 20px, #000 calc(100% - 8px), transparent);
+  opacity: 0; transition: opacity var(--duration-fast) var(--ease-standard);
+}
+.gh-sheet[data-scrolled] .rf-sheet-header::after { opacity: 1; }
+.gh-sheet:is([data-detent="large"], [data-scrolling], [data-stacked]) .rf-sheet-header::after,
+:root:is([data-theme$="contrast"], [data-rf-transparency="reduced"]) .gh-sheet .rf-sheet-header::after {
+  background: linear-gradient(var(--_c), color-mix(in srgb, var(--_c) 84%, transparent) 25%, color-mix(in srgb, var(--_c) 50%, transparent) 50%, color-mix(in srgb, var(--_c) 16%, transparent) 75%, transparent);
+}
+.gh-sheet[data-scrolled] .rf-sheet-body {
+  -webkit-mask-image: linear-gradient(transparent, rgb(0 0 0 / .16) 7px, rgb(0 0 0 / .5) 14px, rgb(0 0 0 / .84) 21px, #000 28px);
+  mask-image: linear-gradient(transparent, rgb(0 0 0 / .16) 7px, rgb(0 0 0 / .5) 14px, rgb(0 0 0 / .84) 21px, #000 28px);
+}
+.gh-sheet[data-scrolled]:is([data-detent="large"], [data-scrolling], [data-stacked]) .rf-sheet-body,
+:root:is([data-theme$="contrast"], [data-rf-transparency="reduced"]) .gh-sheet[data-scrolled] .rf-sheet-body { -webkit-mask-image: none; mask-image: none; }
+@media (prefers-reduced-transparency: reduce) {
+  .gh-sheet .rf-sheet-header::after { background: linear-gradient(var(--_c), color-mix(in srgb, var(--_c) 84%, transparent) 25%, color-mix(in srgb, var(--_c) 50%, transparent) 50%, color-mix(in srgb, var(--_c) 16%, transparent) 75%, transparent); }
+  .gh-sheet[data-scrolled] .rf-sheet-body { -webkit-mask-image: none; mask-image: none; }
+}
 .gh-sheet .rf-sheet-body > :is(.rf-list, .sheet-prose, .sheet-lead) { margin-inline: var(--space-4); }
 .gh-sheet .rf-sheet-body > :is(.rf-list-header, .rf-list-footer) { padding-inline: calc(var(--space-4) * 2); }
 .gh-sheet .fd-results > .rf-list { margin-inline: var(--space-4); }

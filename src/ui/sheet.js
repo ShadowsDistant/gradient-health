@@ -18,7 +18,8 @@
  * 'fit', detents 'large' → 'full', anything else → 'auto' (detent: 'large' opens it at large).
  * While any sheet moves, <html> has data-sheet-moving and the document hears 'gh-sheet-moving'
  * ({ detail: { moving } }), so other animations can wait; U.sheetMoving() says so too. While any is
- * open, <html> has data-sheet-open.
+ * open, <html> has data-sheet-open. A sheet whose content is scrolled off its top has data-scrolled,
+ * for the fade under its header (sheet.css).
  */
 (function (G) {
   'use strict';
@@ -196,6 +197,7 @@
     s.H = H;
     s.closedY = H + OUT;
     s.lowY = s.topY = 0;
+    sheenAt(s, H);
     if (s.size !== 'auto') return;
     const content = s.body.offsetTop + s.body.scrollHeight;
     const cap = Math.round(vis * MEDIUM);
@@ -203,6 +205,17 @@
     s.lowY = Math.max(0, H - (whole ? content : cap));
     s.topY = whole ? s.lowY : Math.max(0, H - content);
     if (s.lowY - s.topY < MIN_STEP) s.topY = s.lowY;
+  }
+  // The fade under the header starts from the material's colour where the content starts (sheet.css):
+  // --sheet-bg, with what's left there of the glass's sheen, Refract's light down from its top edge,
+  // which fades out over the first 45% of the glass (the glass reaches GLASS_BELOW px below the panel).
+  // Written to the header (its fade is the header's), and only when it changes: on opening, and when
+  // the panel or the header changes size.
+  const GLASS_BELOW = 200;
+  const sheenFrom = (y, H) => Math.round(clamp(1 - y / (0.45 * (H + GLASS_BELOW)), 0, 1) * 100) / 100;
+  function sheenAt(s, H) {
+    const f = sheenFrom(s.body.offsetTop, H);
+    if (f !== s.sheen) { s.sheen = f; s.header.style.setProperty('--gh-sheen', String(f)); }
   }
   const hasLarge = (s) => s.size === 'full' || (s.size === 'auto' && s.topY < s.lowY);
   const yOf = (s, name) => (name === 'large' ? s.topY : s.lowY);
@@ -302,7 +315,7 @@
       el, size, scrim: el.querySelector('.gh-sheet-scrim'), panel: el.querySelector('.gh-sheet-panel'),
       grab: el.querySelector('.rf-sheet-grabber'), header: el.querySelector('.rf-sheet-header'), body: el.querySelector('.rf-sheet-body'),
       H: 0, lowY: 0, topY: 0, closedY: 0, y: 0, restY: 0, detent: null, vvh: 0, coverY: null,
-      run: null, moving: false, closing: false, dirty: false, wantTop: false, dragEnd: -1e9,
+      run: null, moving: false, closing: false, dirty: false, wantTop: false, dragEnd: -1e9, sheen: -1, scrolled: false,
     };
     const ctl = { el, body: s.body, closed: false };
     s.ctl = ctl;
@@ -622,6 +635,9 @@
     s.scrim.addEventListener('click', () => ctl.close('cancel'));
     el.querySelector('[data-sheet-close]').addEventListener('click', () => ctl.close('cancel'));
     ctl.update = (html) => { U.morph(s.body, html); };
+    // What's left of the sheen y px down the panel, for a fade of the material's colour that starts
+    // there inside the content (the chat's log, src/styles/chat.css).
+    ctl.sheenAt = (y) => sheenFrom(y, s.H);
 
     /* ---------- focus, the keyboard, and content below the fold */
     // Typing wants the whole sheet: a text field expands it to large and keeps it there.
@@ -632,10 +648,18 @@
     el.addEventListener('focusout', (e) => { if (!texty(e.relatedTarget)) s.wantTop = false; });
     // Something scrolled the dialog to show content below the fold (focus moving there, a find, a
     // scrollIntoView): it scrolls straight back, and an auto sheet expands to show it instead.
-    // Content scrolling makes the material solid until it stops, like a move (see sheet.css).
+    // Content scrolling makes the material solid until it stops, like a move (see sheet.css). The
+    // content scrolled off its top shows the fade under the header (data-scrolled, sheet.css): only
+    // the crossing of 0 changes anything, and the position is read before this changes the sheet's
+    // style, so the read finds the layout as the frame left it. (A box that scrolls inside the
+    // content, a chat's log, leaves it alone.)
     let scrollIdle = 0;
     el.addEventListener('scroll', (e) => {
       if (e.target !== el) {
+        if (e.target === s.body) {
+          const off = s.body.scrollTop > 0;
+          if (off !== s.scrolled) { s.scrolled = off; el.toggleAttribute('data-scrolled', off); }
+        }
         if (!el.hasAttribute('data-scrolling')) el.setAttribute('data-scrolling', '');
         G.clearTimeout(scrollIdle);
         scrollIdle = G.setTimeout(() => el.removeAttribute('data-scrolling'), 160);

@@ -122,7 +122,7 @@
             ${kw(U.row({ key: 'licenses', icon: 'doc', tone: 'indigo', title: 'Open-source licenses', act: 'licensesSheet', chevron: true }), 'credits open source')}
             ${kw(U.row({ key: 'refract', lead: U.refractMark('sm'), title: 'Built with Refract', sub: 'The liquid glass design system behind every screen', act: 'licensesSheet', chevron: true }), 'refract design system glass credits')}
             ${kw(U.row({ key: 'diag', icon: 'bolt', tone: 'amber', title: 'Scroll diagnostics', sub: 'For the developer, if a scroll freezes or jumps', act: 'scrollDiag', chevron: true }), 'scroll freeze jump stutter lag debug diagnostics report')}
-            ${U.row({ key: 'version', icon: 'info', tone: 'sky', title: 'Version', detail: U.esc(ver) })}`)}
+            ${U.updateRows ? U.updateRows(S) : U.row({ key: 'version', icon: 'info', tone: 'sky', title: 'Version', detail: U.esc(ver) })}`)}
           ${foot('about', 'Built-in foods from the USDA\'s nutrient database. Not medical advice. Check with a doctor first if you have a condition or injury.')}
           <p class="set-none t-callout rf-muted" data-key="none" hidden>No settings match. Try dark, kg, vibration or backup.</p>
         </div>`;
@@ -721,6 +721,7 @@
         ${r.reply ? `<p class="t-footnote rf-muted">Its answer: "${U.esc(r.reply)}"</p>` : ''}
         <details class="selftest-log"><summary class="t-footnote">The log</summary><pre class="preview">${U.esc((r.log || []).join('\n'))}</pre></details>
         <div class="btn-row"><button type="button" class="rf-btn" data-variant="soft" data-act="selfTestCopy">${U.icon('copy')}Copy</button><button type="button" class="rf-btn" data-variant="soft" data-act="selfTestReport">${U.icon('flag')}Report a problem</button></div>
+        <p class="t-footnote rf-muted">Report a problem opens a GitHub issue with this check, for you to read and edit. Once you post it, the issue is public on GitHub.</p>
       </div>`;
     };
     const ctl = U.sheet({ title: 'On-device AI check', size: 'auto', body: body() });

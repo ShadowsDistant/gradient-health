@@ -8,6 +8,8 @@
 .bdg-svg.is-locked { color: var(--label-tertiary); }
 .bdg-svg.is-locked .bdg-ring { color: var(--positive-fill); }
 :root[data-theme^="dark"] .bdg-svg.is-locked .bdg-ring { color: #3fc178; }
+/* A locked badge's progress ring: green progress, from mint into green (styles.css, brand gradients). */
+.bdg-svg.is-locked .bdg-ring { stroke: url(#gh-paint-pos) currentColor; }
 /* The tier's colour, for the glow and rays round a medal and the tier dots. */
 /* --bdg-glow: how strongly a medal glows in the gallery and on the shelf, more the rarer it is (a
    bronze one doesn't). */
