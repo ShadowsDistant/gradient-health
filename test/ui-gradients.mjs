@@ -161,7 +161,7 @@ await contrast(true);
 await wait(400);
 t = await button('#float .btn-main');
 check('Start workout is one colour', t && flat(t), t);
-check(`its words at ${t && t.least}:1`, t && t.least >= 7, t);
+check(`its words keep the 7:1 increased contrast promises (${t && t.least})`, t && t.least >= 7, t);
 ends = await ringEnds();
 check('a ring is one colour', [0, 1, 2].every((k) => Math.abs(ends.top[k] - ends.bottom[k]) <= 6), ends);
 const bar = await page.evaluate(() => { const f = document.querySelector('#ghTest .rf-progress-fill'); return getComputedStyle(f).backgroundImage; });
