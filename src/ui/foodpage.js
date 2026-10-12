@@ -543,7 +543,8 @@
   function startDraft() {
     const S = U.S, p = S.profile, fp = F().prefs(S), day = U.today();
     const kg = B().weightStats(S, day).current || p.weightKg || null;
-    return { goal: p.weightGoal || 'maintain', pace: fp.pace || 0.5, activity: fp.activity || 'auto', kg, kg0: kg, cm: p.heightCm || null, age: p.age || null, sex: p.sex || '', more: false };
+    // (askW: there was no weight, so its field stays at the top while the sheet is open.)
+    return { goal: p.weightGoal || 'maintain', pace: fp.pace || 0.5, activity: fp.activity || 'auto', kg, kg0: kg, askW: !kg, cm: p.heightCm || null, age: p.age || null, sex: p.sex || '', more: false };
   }
   // The target for the draft, worked out on a copy of the state.
   function draftTargets(S, d) {
@@ -563,7 +564,7 @@
     const height = d.cm ? (lb ? `${ftIn(d.cm)[0]} ft ${ftIn(d.cm)[1]} in` : `${Math.round(d.cm)} cm`) : null;
     const moves = d.activity !== 'auto' ? `${d.activity} activity` : af.steps ? `about ${U.num(Math.round(af.steps / 100) * 100)} steps a day` : 'light activity until your steps sync';
     const basis = [d.kg ? U.fmtW(d.kg) : null, height, d.age ? `age ${d.age}` : null, d.sex || null].filter(Boolean).join(', ');
-    const missing = !d.kg;
+    const missing = d.askW;
     const kgField = numField('fsW', `Your weight (${U.wUnit()})`, wNum(d.kg), 'data-on="fsField" data-k="w" enterkeyhint="done"');
     const ageField = numField('fsAge', 'Age', d.age || '', 'data-on="fsField" data-k="age"');
     const more = d.more ? `<div class="fd-start-more">
@@ -587,7 +588,13 @@
     st.then = !!thenAdd;
     sctl = U.sheet({ title: 'Track calories', size: 'auto', detent: 'large', body: startBody(), onClose: () => { sctl = null; } });
   }
-  const startRepaint = () => { if (sctl && !sctl.closed) sctl.update(startBody()); };
+  // (Never inside another redraw: a field it takes away can fire its change as it goes.)
+  let painting = false;
+  const startRepaint = () => {
+    if (!sctl || sctl.closed || painting) return;
+    painting = true;
+    try { sctl.update(startBody()); } finally { painting = false; }
+  };
   U.act.foodStart = () => startSheet(false);
   U.on.fsGoal = (el, ev, v) => { if (st) { st.goal = v; startRepaint(); } };
   U.on.fsPace = (el, ev, v) => { if (st) { st.pace = Number(v) || 0.5; startRepaint(); } };
