@@ -8,14 +8,15 @@
  *    always denies the camera's pan-tilt-zoom permission), so there the picture is magnified and
  *    the reader crops to match, which the 1920 x 1080 picture leaves room for.
  *  - Reading: each new frame goes to the worker (as a VideoFrame, so this thread copies nothing), in
- *    turn: the box with a margin; the box evened out, for a blurred, dim or noisy code (the worker
- *    only lets such a read through when a second setting agrees, see src/barcode-worker.js); and
- *    the whole picture, so a code outside the box still reads. Where the phone has its own
+ *    turn: the box with a margin; the whole picture, so a code outside the box still reads; and the
+ *    box evened out, for a blurred, dim or noisy code (the worker only lets such a read through
+ *    when a second setting agrees, see src/barcode-worker.js). Where the phone has its own
  *    BarcodeDetector for these formats (Android's comes with Play services), it reads the frames
  *    too: whichever reads first wins.
  *  - When a read counts (rule): an EAN-13 or UPC-A on its first read with a right check digit (that
  *    and ZXing's own checks make a misread very unlikely); an EAN-8 or UPC-E, shorter, once the same
- *    code is read twice within about a second, in any two frames.
+ *    code is read twice within about a second, in any two frames (the pass that read it once goes
+ *    again until then).
  *  - The lock-in: the picture holds, the code lights up where it is, the scan haptic plays, and the
  *    sheet closes.
  *  - Hints: after a few seconds without a read, what would help: closer, further, the light, steady.
@@ -73,12 +74,14 @@
   }
   const toFrame = (c, x, y) => ({ x: (x - c.ox) / c.s, y: (y - c.oy) / c.s });
   const toView = (c, x, y) => ({ x: x * c.s + c.ox, y: y * c.s + c.oy });
-  // How much to magnify: food codes are small, so 2.2 (a phone 15 to 20 cm away fills the box); a
-  // plan's code on a screen 1.4. Never so much that fewer than 480 frame pixels span the view.
-  const ZOOM = { food: 2.2, qr: 1.4 };
+  // How much to magnify. Food: 2.5, so a full-size EAN-13 fills the box with the phone about 14 cm
+  // away, and four fifths of it at 18 (a phone's main camera sees about 45 degrees across, upright);
+  // unmagnified, it filled 1.11's box at 6 cm. A plan's code on a screen: 1.4. Never so much that
+  // fewer than 420 frame pixels span the view (a code filling the box keeps 3 pixels a module).
+  const ZOOM = { food: 2.5, qr: 1.4 };
   const zoomFor = (qr, vw, vh, W, H) => {
     const across = W ? Math.min(vw, vh * (W / H)) : Math.min(vw, vh);
-    return clamp(Math.min(qr ? ZOOM.qr : ZOOM.food, across / 480), 1, 4);
+    return clamp(Math.min(qr ? ZOOM.qr : ZOOM.food, across / 420), 1, 4);
   };
 
   /* ---------------------------------------------------------------- hints */
@@ -168,10 +171,10 @@
     return { image, transfer: [image.data.buffer], w, h };
   }
   // Reads rect of source (a video, canvas or bitmap): { found: [{ format, rawValue, cornerPoints in
-  // source pixels }], look, ms }. o: { formats, scale, look, qr, enhance }.
+  // source pixels }], look, ms }. o: { formats, scale, look, qr, enhance, scan (whose looks these are) }.
   async function read(source, rect, o) {
     const p = await picture(source, rect, o.scale || 1);
-    const m = await ask({ type: 'read', image: p.image, rect: p.whole ? rect : null, scale: p.whole ? o.scale || 1 : 1, formats: o.formats || FORMATS, qr: !!o.qr, look: !!o.look, enhance: !!o.enhance }, p.transfer);
+    const m = await ask({ type: 'read', image: p.image, rect: p.whole ? rect : null, scale: p.whole ? o.scale || 1 : 1, formats: o.formats || FORMATS, qr: !!o.qr, look: !!o.look, enhance: !!o.enhance, scan: o.scan }, p.transfer);
     // The worker's corners are in the picture it got: the whole frame, or the part cut here.
     const kx = p.whole ? 1 : rect.w / p.w, ky = p.whole ? 1 : rect.h / p.h, dx = p.whole ? 0 : rect.x, dy = p.whole ? 0 : rect.y;
     const found = (m.found || []).map((b) => Object.assign({}, b, { cornerPoints: (b.cornerPoints || []).map((q) => ({ x: dx + q.x * kx, y: dy + q.y * ky })) }));
@@ -244,8 +247,10 @@
       geo.c = cover(vw, vh, vr.width, vr.height, geo.zoom / geo.hw);
       const p0 = toFrame(geo.c, br.left - vr.left, br.top - vr.top), p1 = toFrame(geo.c, br.right - vr.left, br.bottom - vr.top);
       geo.box = { x: p0.x, y: p0.y, w: p1.x - p0.x, h: p1.y - p0.y };
-      // The box with a margin, inside the frame: an eighth of its width each side, two fifths of its height.
-      const mx = geo.box.w * 0.125, my = geo.box.h * 0.4;
+      // The box with a margin, inside the frame: a quarter of its width each side and half its height
+      // above and below, so a code that fills the box (or a little more) keeps its quiet zones,
+      // which ZXing needs (an eighth each side lost the dim and noisy test codes).
+      const mx = geo.box.w * 0.25, my = geo.box.h * 0.5;
       const x0 = clamp(geo.box.x - mx, 0, vw), y0 = clamp(geo.box.y - my, 0, vh), x1 = clamp(geo.box.x + geo.box.w + mx, 0, vw), y1 = clamp(geo.box.y + geo.box.h + my, 0, vh);
       geo.crop = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
       st.size = `${vw}x${vh}`;
@@ -253,9 +258,10 @@
     };
 
     // A read: does it settle it? frame is the video's number for the frame read (the same whichever
-    // engine read it), or -1 when it isn't known, which never matches another.
+    // engine read it), or -1 when it isn't known, which never matches another. pass: the reader's
+    // pass that read it, which goes again while an EAN-8 or UPC-E waits for its second read.
     let unknown = 0;
-    const take = (found, frame, engine) => {
+    const take = (found, frame, engine, pass) => {
       if (a.stopped || a.locked || !found || !found.length) return;
       const key = frame >= 0 ? `f${frame}` : `u${++unknown}`;
       for (const b of found) {
@@ -269,8 +275,10 @@
         if (!FORMATS.includes(b.format)) continue;
         const code = canon(b.rawValue, b.format);
         if (a.rule.take(code, b.format, now(), key)) { lock(b, code, engine); return; }
+        if (pass && TWICE[b.format] && checks(code)) again = { pass, until: now() + WITHIN };
       }
     };
+    let again = null;
 
     // The lock-in: the picture holds, the code lights up where it is, the haptic, then the sheet closes.
     const lock = (b, code, engine) => {
@@ -295,10 +303,10 @@
       setTimeout(() => a.finish(code), U().reduced && U().reduced() ? 160 : 420);
     };
 
-    // ZXing in the worker, each new frame, in turn: the box, the box evened out (for a blurred, dim
-    // or noisy code; it averages along the bars, so not for a plan's QR code), and the whole picture
-    // (a code outside the box, on its side, or closer than it).
-    const PASSES = a.qr ? ['box', 'frame'] : ['box', 'even', 'frame'];
+    // ZXing in the worker, each new frame, in turn: the box, the whole picture (a code outside the
+    // box, on its side, or closer than it), and the box evened out (for a blurred, dim or noisy
+    // code; it averages along the bars, so not for a plan's QR code).
+    const PASSES = a.qr ? ['box', 'frame'] : ['box', 'frame', 'even'];
     const zxing = async () => {
       let n = 0, fails = 0;
       while (!a.stopped && !a.locked) {
@@ -306,14 +314,15 @@
         if (a.stopped || a.locked) return;
         const g = video.readyState >= 2 ? geometry() : null;
         if (!g) { await sleep(60); continue; }
-        const pass = PASSES[n++ % PASSES.length], whole = pass === 'frame';
+        // The pass that read an EAN-8 or UPC-E once reads the next frames too, for its second read.
+        const pass = again && now() < again.until ? again.pass : PASSES[n++ % PASSES.length], whole = pass === 'frame';
         const rect = whole ? { x: 0, y: 0, w: g.vw, h: g.vh } : g.crop;
         // Big pictures are made smaller (ZXing reads 1D codes along rows; more pixels than about
         // 1280 across only slow it down), small ones are left as they are.
         const scale = Math.min(1, 1280 / Math.max(rect.w, whole ? rect.h : 0));
         let r;
         try {
-          r = await read(video, rect, { formats, scale, look: pass === 'box', enhance: pass === 'even', qr: a.qr });
+          r = await read(video, rect, { formats, scale, look: pass === 'box', enhance: pass === 'even', qr: a.qr, scan: a.started });
         } catch (e) {
           if (a.stopped) return;
           if (++fails >= 8 && !st.native) { a.fail(); return; }
@@ -337,7 +346,7 @@
           a.looks.push(Object.assign({ t: now() }, l));
           if (a.looks.length > 40) a.looks.shift();
         }
-        take(r.found, f, 'zxing');
+        take(r.found, f, 'zxing', pass);
       }
     };
 

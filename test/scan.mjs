@@ -68,14 +68,14 @@ section('When a read counts');
 
 section('Where the box is in the picture');
 {
-  // A 1080 x 1920 frame in a 358 x 477 view (3:4), magnified 2.2 times about the centre.
-  const c = B.cover(1080, 1920, 358, 477, 2.2);
+  // A 1080 x 1920 frame in a 358 x 477 view (3:4), magnified 2.5 times about the centre.
+  const c = B.cover(1080, 1920, 358, 477, 2.5);
   const mid = B.toFrame(c, 179, 238.5), back = B.toView(c, mid.x, mid.y);
   check('the view\'s centre is the frame\'s', Math.abs(mid.x - 540) < 0.01 && Math.abs(mid.y - 960) < 0.01);
   check('and back again', Math.abs(back.x - 179) < 1e-6 && Math.abs(back.y - 238.5) < 1e-6);
   const l = B.toFrame(c, 0, 0), r = B.toFrame(c, 358, 0);
-  check(`the view shows the frame's middle ${Math.round(((r.x - l.x) / 1080) * 100)}% across (1/2.2)`, Math.abs((r.x - l.x) / 1080 - 1 / 2.2) < 0.001);
-  check('zoom: 2.2 for food at 1080 wide, less for a smaller picture, none at 480', B.zoomFor(false, 1080, 1920, 358, 477) === 2.2 && Math.abs(B.zoomFor(false, 720, 1280, 358, 477) - 1.5) < 0.01 && B.zoomFor(false, 480, 640, 358, 477) === 1);
+  check(`the view shows the frame's middle ${Math.round(((r.x - l.x) / 1080) * 100)}% across (1/2.5)`, Math.abs((r.x - l.x) / 1080 - 1 / 2.5) < 0.001);
+  check('zoom: 2.5 for food at 1080 wide, less for a smaller picture (420 pixels across at least), none at 400', B.zoomFor(false, 1080, 1920, 358, 477) === 2.5 && Math.abs(B.zoomFor(false, 720, 1280, 358, 477) - 720 / 420) < 0.01 && B.zoomFor(false, 400, 712, 358, 477) === 1);
   check('a plan\'s code on a screen: 1.4', B.zoomFor(true, 1080, 1920, 358, 477) === 1.4);
 }
 

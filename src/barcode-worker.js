@@ -151,38 +151,53 @@ function enhance(p, o) {
 }
 
 /* ---------------------------------------------------------------- how it looks */
+// The light (the mean brightness), and the change since the last look: its brightness down every
+// column and along every row, lined up with the last look's at the best shift (up to an eighth of
+// the picture either way), and what still differs. A hand's tremor moves the picture a few pixels,
+// which lines back up; a picture smeared by moving, or swept further, doesn't. (A grid of averages
+// took the tremor across sharp bars for movement.)
 let previous = null;
-function look(p) {
-  const { Y, w, h } = p;
-  // A 16 x 8 grid of averages: the light, and the change since the last look (noise averages out).
-  const GX = 16, GY = 8, grid = new Float32Array(GX * GY);
+function profiles(Y, w, h) {
+  const cols = new Float32Array(w), rows = new Float32Array(h), nr = Math.ceil(h / 3), nc = Math.ceil(w / 3);
   let light = 0;
-  for (let j = 0; j < GY; j++) {
-    for (let i = 0; i < GX; i++) {
-      let s = 0;
-      for (let k = 0; k < 16; k++) {
-        const x = Math.min(w - 1, Math.floor(((i + ((k & 3) + 0.5) / 4) * w) / GX));
-        const y = Math.min(h - 1, Math.floor(((j + ((k >> 2) + 0.5) / 4) * h) / GY));
-        s += Y[y * w + x];
-      }
-      grid[j * GX + i] = s / 16;
-      light += s / 16;
-    }
+  for (let y = 0; y < h; y += 3) {
+    for (let x = 0; x < w; x++) cols[x] += Y[y * w + x];
   }
-  light /= GX * GY;
-  let change = 0;
-  if (previous && previous.length === grid.length) {
-    for (let k = 0; k < grid.length; k++) change += Math.abs(grid[k] - previous[k]);
-    change /= grid.length;
+  for (let y = 0; y < h; y++) {
+    let s = 0;
+    for (let x = 0; x < w; x += 3) s += Y[y * w + x];
+    rows[y] = s / nc;
+    light += rows[y];
   }
-  previous = grid;
-  return { light: Math.round(light), change: Math.round(change * 10) / 10, bars: bars(Y, w, h) };
+  for (let x = 0; x < w; x++) cols[x] /= nr;
+  return { cols, rows, light: light / Math.max(1, h) };
+}
+function apart(a, b) {
+  if (a.length !== b.length) return 255;
+  const S = Math.max(2, Math.round(a.length / 8));
+  let best = Infinity;
+  for (let s = -S; s <= S; s++) {
+    let sum = 0, n = 0;
+    for (let i = Math.max(0, -s); i < Math.min(a.length, a.length - s); i++) { sum += Math.abs(a[i] - b[i + s]); n++; }
+    if (n) best = Math.min(best, sum / n);
+  }
+  return best;
+}
+let lastScan = null;
+function look(p, scan) {
+  const { Y, w, h } = p;
+  if (scan !== lastScan) { previous = null; lastScan = scan; }
+  const now = profiles(Y, w, h);
+  const change = previous ? Math.max(apart(now.cols, previous.cols), apart(now.rows, previous.rows)) : 0;
+  previous = now;
+  return { light: Math.round(now.light), change: Math.round(change * 10) / 10, bars: bars(Y, w, h) };
 }
 
 // Bars along four rows through the middle: the edges (where the brightness steps by a quarter of the
-// row's range or more), then the longest stretch of them close together (a barcode's are at most a
-// few modules apart, and its quiet zones end it). full: edges from one side of the picture to the
-// other with no long gap, as when the code is closer than the box.
+// row's range or more), then the longest run of them close together (a barcode's are at most a few
+// modules apart, and its quiet zones end it): where it is, how many edges, the median step between
+// them and how sharp they are. full: in two rows or more, modules bigger than the box allows, as
+// when the code is closer than the box.
 function bars(Y, w, h) {
   if (w < 40 || h < 8) return null;
   let best = null, full = 0;
@@ -207,27 +222,35 @@ function bars(Y, w, h) {
       const g = Math.abs(row[x + 1] - row[x - 1]);
       if (g >= T && g >= Math.abs(row[x + 2] - row[x]) && g > Math.abs(row[x] - row[x - 2])) { xs.push(x); gs.push(g); }
     }
-    if (xs.length >= 8 && xs[0] < w * 0.15 && xs[xs.length - 1] > w * 0.85) {
-      let widest = 0;
-      for (let k = 1; k < xs.length; k++) widest = Math.max(widest, xs[k] - xs[k - 1]);
-      if (widest < w * 0.2) full++;
-    }
-    const gap = Math.max(10, w * 0.05);
-    let s = 0;
+    // Runs of edges no further apart than four and a half of the row's usual steps (its median gap,
+    // about a module; a code's widest bar or space is four): a code's bars, which its quiet zones
+    // end, at any size. The longest run's own median step says how big its modules are: a code that
+    // fills the box steps about 0.8% of the picture between edges, so over 1.4% it's well over the
+    // box, or blurred into wider bars, as a code too close to focus on is (full).
+    const steps = [];
+    for (let k = 1; k < xs.length; k++) steps.push(xs[k] - xs[k - 1]);
+    steps.sort((a, b) => a - b);
+    const gap = Math.max(10, 4.5 * (steps.length ? steps[steps.length >> 1] : 0));
+    let s = 0, rowBest = null;
     for (let k = 1; k <= xs.length; k++) {
       if (k < xs.length && xs[k] - xs[k - 1] <= gap) continue;
       const n = k - s;
-      if (n >= 14 && (!best || n > best.edges)) {
+      if (n >= 10 && (!rowBest || n > rowBest.edges)) {
+        const own = [];
+        for (let q = s + 1; q < k; q++) own.push(xs[q] - xs[q - 1]);
+        own.sort((a, b) => a - b);
         // Sharpness: the strongest quarter of its edges against the row's range (a crisp edge
         // steps the whole range within two pixels; a blurred one doesn't).
         const strong = gs.slice(s, k).sort((a, b) => b - a).slice(0, Math.max(1, n >> 2));
-        best = { from: xs[s] / w, to: xs[k - 1] / w, edges: n, sharp: Math.min(1, strong.reduce((a, b) => a + b, 0) / strong.length / range) };
+        rowBest = { from: xs[s] / w, to: xs[k - 1] / w, edges: n, step: own[own.length >> 1] / w, sharp: Math.min(1, strong.reduce((a, b) => a + b, 0) / strong.length / range) };
       }
       s = k;
     }
+    if (rowBest && rowBest.step > 0.014) full++;
+    if (rowBest && (!best || rowBest.edges > best.edges)) best = rowBest;
   }
   if (!best && !full) return null;
-  return Object.assign({ full: full >= 2 }, best ? { from: Math.round(best.from * 1000) / 1000, to: Math.round(best.to * 1000) / 1000, edges: best.edges, sharp: Math.round(best.sharp * 100) / 100 } : {});
+  return Object.assign({ full: full >= 2 }, best ? { from: Math.round(best.from * 1000) / 1000, to: Math.round(best.to * 1000) / 1000, edges: best.edges, step: Math.round(best.step * 1000) / 1000, sharp: Math.round(best.sharp * 100) / 100 } : {});
 }
 
 /* ---------------------------------------------------------------- reading */
@@ -264,7 +287,7 @@ self.onmessage = async (e) => {
       const q = r.position;
       return { format: NAME[r.format] || String(r.format), rawValue: r.text, cornerPoints: [q.topLeft, q.topRight, q.bottomRight, q.bottomLeft].map((c) => ({ x: p.x0 + c.x * kx, y: p.y0 + c.y * ky })) };
     });
-    self.postMessage({ id: m.id, ok: true, found: out, w: p.w, h: p.h, how: p.how, ms: Math.round(performance.now() - t0), look: m.look ? look(p) : null });
+    self.postMessage({ id: m.id, ok: true, found: out, w: p.w, h: p.h, how: p.how, ms: Math.round(performance.now() - t0), look: m.look ? look(p, m.scan) : null });
   } catch (err) {
     if (m.image && typeof m.image.close === 'function') { try { m.image.close(); } catch (x) { /* gone already */ } }
     self.postMessage({ id: m.id, ok: false, error: String((err && err.message) || err) });

@@ -87,7 +87,7 @@ export const CODES = {
 
 // The conditions. Sizes are the symbol's width (its bars, without the quiet zones) as a fraction of
 // the frame's width: on a phone held upright that's the camera view's width. The scanner's food box
-// covers about 0.36 of it (80% of a view zoomed 2.2 times), so a code that fills the box is about
+// covers about 0.33 of it (82% of a view magnified 2.5 times), so a code that fills the box is about
 // 0.32 wide (3.6 pixels a module at 1080). blur is a fraction of a module; light and contrast scale
 // the picture; noise is the sensor's, in 8-bit levels; shake moves the picture a little each frame.
 // Each runs `frames` frames at 30 a second, looping.

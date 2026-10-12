@@ -935,23 +935,24 @@ from logged intake and the weight trend (a regression on raw weigh-ins, blended 
   ZXing in WebAssembly (`zxing-wasm`, MIT, `zxing_reader.wasm` next to it), so no Play services are
   needed.
   - The camera focuses continuously where it can, and a tap on the picture focuses there (a point of
-    interest, single shot). The picture is magnified 2.2 times so a phone 15 to 20 cm away fills the
+    interest, single shot). The picture is magnified 2.5 times so a phone 15 to 20 cm away fills the
     box, since many phones can't focus closer: the camera's own zoom where a page may use it, but
     Android's WebView always denies the camera pan-tilt-zoom permission that `zoom` needs, so there
     the page magnifies the video and the reader crops to match.
   - Each new frame goes to the worker as a `VideoFrame`, which copies out only the part it reads, and
     only its brightness (cutting an `ImageBitmap` from the video drew the whole frame on the page's
-    thread first, 45 to 100 ms a frame at 1080 x 1920). In turn: the box with a margin; the box evened
-    out (rows averaged along the bars and sharpened across, which reads a code blurred by half a
-    module); and the whole picture (a code outside the box, on its side, or closer than the box).
+    thread first, 45 to 100 ms a frame at 1080 x 1920). In turn: the box with a margin; the whole
+    picture (a code outside the box, on its side, or closer than the box); and the box evened out
+    (rows averaged along the bars and sharpened across, which reads a code blurred by half a module).
     Where the phone has its own `BarcodeDetector` for these formats, it reads the frames too, and the
     first read wins.
   - An EAN-13 or UPC-A counts on its first read with a right check digit, an EAN-8 or UPC-E once it's
-    read twice within 1.2 s in two frames. An evened-out read counts only when a second setting reads
-    the same in that frame: alone it misread a moving code, with a right check digit. UPC-A and UPC-E
-    come back as 13 digits, as ZXing reads them. The code locks in the box with the scan haptic, then
-    the sheet closes; after 3 s without a read, the box says what would help (closer, further, the
-    light, steady). Typing the number always works too.
+    read twice within 1.2 s in two frames (the pass that read it once goes again until then). An
+    evened-out read counts only when a second setting reads the same in that frame: alone it misread
+    a moving code, with a right check digit. UPC-A and UPC-E come back as 13 digits, as ZXing reads
+    them. The code locks in the box with the scan haptic, then the sheet closes; after 3 s without a
+    read, the box says what would help (closer, further, the light, steady). Typing the number
+    always works too.
   - `test/ui-scan.mjs` films real codes drawn from their digits (`test/scanfixture.mjs`) under hard
     conditions for Chromium's fake camera and scans them; `--measure` gives the read rates and times
     (`--vs=<dir> --vs-res=720` with another build alongside, trial by trial, so both meet the same

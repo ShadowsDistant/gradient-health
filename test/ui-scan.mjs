@@ -381,7 +381,7 @@ if (!BASELINE && ALL_ONLY) {
     const before = await page.evaluate(() => ({ applied: window.__applied.slice(), light: !document.querySelector('dialog.rf-sheet[open] [data-act="scanTorch"]').hidden, zoom: getComputedStyle(document.querySelector('dialog.rf-sheet[open] .sc-view')).getPropertyValue('--sc-zoom').trim(), stats: window.GH.scanner.stats() }));
     check('it asks for continuous focus', before.applied.some((s) => s.focusMode === 'continuous'), before.applied);
     const z = before.applied.find((s) => 'zoom' in s);
-    check(`it zooms the camera itself (${z ? z.zoom : 'no'} times), so the picture isn't magnified as well`, z && z.zoom >= 1.8 && z.zoom <= 2.5 && Math.abs(Number(before.zoom) - 1) < 0.01, before);
+    check(`it zooms the camera itself (${z ? z.zoom : 'no'} times), so the picture isn't magnified as well`, z && Math.abs(z.zoom - 2.5) < 0.01 && Math.abs(Number(before.zoom) - 1) < 0.01, before);
     check('the light button shows', before.light);
     await page.click('dialog.rf-sheet[open] [data-act="scanTorch"]');
     await page.waitForTimeout(300);
