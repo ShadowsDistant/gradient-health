@@ -499,7 +499,7 @@ if (!measureOnly) {
   // to pick the newest; since 1.10 the person picks).
   check('every request went to the API, and only there', sent.length >= 4 && sent.every((u) => u.startsWith('https://api.anthropic.com/v1/messages')), sent);
   // The chat on screen, end to end.
-  await page.evaluate(() => { window.GH.ui.S.ai.chat = []; window.GH.ui.go('today'); });
+  await page.evaluate(() => { window.GH.ui.S.ai.chatId = null; window.GH.ui.go('today'); });
   await pause(500);
   await page.click('#topbar .coach-btn');
   await page.waitForSelector('dialog.chat-sheet[open] #askQ', { timeout: 15000 });

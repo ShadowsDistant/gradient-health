@@ -1,8 +1,10 @@
 // Claude's settings in Chromium, against a mocked API: adding a key leads to picking a model and a
 // monthly budget; Settings shows the model, thinking level and today's spending; the model and
-// thinking sheet changes what each request asks for; Claude's page shows the limits and the usage;
-// a limit's sheet saves an amount; and a request that could go over a limit isn't sent, with the
-// chat pointing to the limits.
+// thinking sheet changes what each request asks for; an answer drawn as a card (a table, the embed
+// Claude placed, one it can't draw dropped, one the app adds when it placed none) and a chat's
+// earlier turns going with a follow-up; Claude's page shows the limits and the usage; a limit's
+// sheet saves an amount; and a request that could go over a limit isn't sent, with the chat
+// pointing to the limits.
 // Usage: node test/ui-claude.mjs [--dark] [--width=360]
 import { createRequire } from 'node:module';
 import { check, section, done, serveDist } from './lib.mjs';
@@ -25,6 +27,7 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 // A request for a plan (Build me a plan, Improve) gets its own draft back with one set fewer on the
 // first move of the first day that has more than one (so it still fits the time and the checks).
 const anthropic = [];
+let chatText = 'Keep your bedtime steady on weekends.'; // what a question gets back
 const sse = (events) => events.map(([e, d]) => `event: ${e}\ndata: ${JSON.stringify(d)}\n\n`).join('');
 function stream(text, model) {
   const chunks = text.match(/[\s\S]{1,12}/g) || [];
@@ -42,7 +45,7 @@ await ctx.route('https://api.anthropic.com/**', async (route) => {
   const body = req.postData() ? JSON.parse(req.postData()) : null;
   anthropic.push({ url: req.url(), body });
   const fmt = body && body.output_config && body.output_config.format;
-  let text = 'Keep your bedtime steady on weekends.';
+  let text = chatText;
   if (fmt && fmt.schema.properties.days) {
     const draft = JSON.parse(/Draft: (\{.*\})/.exec(body.messages[0].content)[1]);
     const it = draft.days[0].items.find((x) => x.sets > 1);
@@ -126,13 +129,54 @@ await page.waitForSelector('dialog.chat-sheet[open] .chat-compose:not([hidden])'
 check('the chat\'s pill says which model and level answer', /Haiku 5\.5 · Off/.test(await ev(() => document.querySelector('.chat-sheet .chat-pill').textContent)));
 await page.fill('#askQ', 'How is my sleep?');
 await page.click('dialog.chat-sheet [data-act="askSend"]');
-await page.waitForFunction(() => { const c = window.GH.ui.S.ai.chat; return c.length && c[c.length - 1].role === 'assistant'; }, null, { timeout: 20000 });
+await page.waitForFunction(() => { const c = (window.GH.chats.current(window.GH.ui.S) || { msgs: [] }).msgs; return c.length && c[c.length - 1].role === 'assistant'; }, null, { timeout: 20000 });
 await wait(500);
 const q = messages().pop().body;
 check('it went to Haiku 5.5 with thinking off and no backup model', q.model === 'claude-haiku-5-5' && q.thinking.type === 'disabled' && ['low', 'medium', 'high'].includes(q.output_config.effort) && !q.fallbacks, { model: q.model, thinking: q.thinking, effort: q.output_config.effort });
 const meta = await ev(() => ([...document.querySelectorAll('.chat-sheet .msg.coach')].pop().querySelector('.msg-meta') || {}).textContent);
 check('the answer says which model wrote it and what it cost', meta === 'Haiku 5.5 · under 1¢', meta);
 await closeAll();
+
+section('Answers as cards, and the chat\'s turns');
+{
+  const conv = () => ev(() => { const c = window.GH.chats.current(window.GH.ui.S); return c ? c.msgs : []; });
+  const settled = (n) => page.waitForFunction((k) => { const c = window.GH.chats.current(window.GH.ui.S); return c && c.msgs.length >= k && !document.querySelector('.chat-sheet #chatLive'); }, n, { timeout: 20000 });
+  chatText = 'Your steps are **steady** this week.\n\n| Day | Plan |\n|---|---|\n| Monday | Rest |\n| Tuesday | Walk |\n\n[[steps]]\n\n[[nonsense]]\n\nNext step: a walk after dinner.';
+  await ev(() => window.GH.ui.act.askCoach());
+  await page.waitForSelector('dialog.chat-sheet[open] .chat-compose:not([hidden])', { timeout: 10000 });
+  let n0 = messages().length;
+  await page.fill('#askQ', 'Am I walking enough?');
+  await page.click('dialog.chat-sheet [data-act="askSend"]');
+  await settled(4);
+  await wait(500);
+  const card = await ev(() => { const b = [...document.querySelectorAll('.chat-sheet .bubble.coach.answer')].pop(); return { rows: b.querySelectorAll('.md-table tbody tr').length, head: [...b.querySelectorAll('.md-table th')].map((x) => x.textContent).join(), scrolls: getComputedStyle(b.querySelector('.md-table')).overflowX, embs: [...b.querySelectorAll('.emb')].map((e) => e.dataset.kind), text: b.textContent, strong: (b.querySelector('strong') || {}).textContent }; });
+  check('Claude\'s answer is a card: the number in bold, a small table in a box that scrolls sideways', card.rows === 2 && card.head === 'Day,Plan' && card.scrolls === 'auto' && card.strong === 'steady', card);
+  check('with the embed it placed, drawn from the app\'s numbers, and one the app can\'t draw dropped', card.embs.join() === 'steps' && !/\[|\]|nonsense/.test(card.text), card);
+  let q = messages().slice(n0).pop().body;
+  check('a follow-up goes with the chat\'s earlier turns, as messages', q.messages.length === 3 && q.messages[0].content === 'How is my sleep?' && q.messages[2].content[0].text === 'Am I walking enough?', q.messages.map((m) => (typeof m.content === 'string' ? m.content : m.content[0].text).slice(0, 30)));
+  const last = (await conv()).pop();
+  check('what it placed stays where it put it, and the app adds none', /\[\[steps\]\]/.test(last.text) && !last.embeds && last.engine === 'api');
+  await page.click('dialog.chat-sheet [data-act="chatNew"]');
+  await wait(300);
+  chatText = 'Your sleep is **steady**, close to your usual.\n\n- Keep the same bedtime on weekends.';
+  n0 = messages().length;
+  await page.fill('#askQ', 'How is my sleep?');
+  await page.click('dialog.chat-sheet [data-act="askSend"]');
+  await settled(2);
+  await wait(500);
+  q = messages().slice(n0).pop().body;
+  check('a new chat goes on its own', q.messages.length === 1 && q.messages[0].content[0].text === 'How is my sleep?');
+  const placed = await ev(() => { const b = [...document.querySelectorAll('.chat-sheet .bubble.coach.answer')].pop(); return { embs: [...b.querySelectorAll('.emb')].map((e) => e.dataset.kind), kept: window.GH.chats.current(window.GH.ui.S).msgs[1].embeds }; });
+  check('Claude placed no embed, so the app adds the one for the question, from its data', placed.embs.join() === 'sleep' && JSON.stringify(placed.kept) === '["sleep:7d"]', placed);
+  await page.click('dialog.chat-sheet [data-act="chatList"]');
+  await page.waitForSelector('dialog.chat-list-sheet[open] .chat-row', { timeout: 5000 });
+  await wait(500);
+  const rows = await ev(() => [...document.querySelectorAll('dialog.chat-list-sheet[open] .chat-row')].map((r) => `${r.querySelector('.rf-list-title').textContent}|${r.querySelector('.rf-list-icon').getAttribute('aria-label')}`));
+  check('Chats has both, newest first, each answered by Claude', rows.join() === 'How is my sleep?|Claude,How is my sleep?|Claude', rows);
+  chatText = 'Keep your bedtime steady on weekends.';
+  await closeAll();
+  check('nothing runs off the side', !(await sideways()), await sideways());
+}
 
 section('Claude\'s page');
 await ev(() => window.GH.ui.open('claude'));

@@ -559,7 +559,7 @@
         ${U.choice('flagReason', REASONS, reason, 'What\'s wrong with it', ' class="ob-chips" data-on="flagReason"')}
         <div class="rf-field"><label class="rf-field-label" for="flagNote">Anything to add (optional)</label><div class="rf-field-control"><textarea class="rf-input" id="flagNote" rows="2" maxlength="500"></textarea></div></div>
         <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="flagSend">Report</button><button type="button" class="rf-btn" data-size="lg" data-act="flagHide">Just hide it</button></div>
-        <p class="t-footnote rf-muted">Report also opens a GitHub issue with the answer and your reason. Issues are posted publicly on GitHub, so read it and take out anything personal before you post it. Nothing is sent until you do.</p>
+        <p class="t-footnote rf-muted">Report also opens a GitHub issue with the answer and your reason, for you to read and edit. Once you post it, the issue is public on GitHub, so take out anything personal first. Nothing is sent until you do.</p>
       </div>`,
     });
     const record = (send) => {
