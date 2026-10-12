@@ -302,7 +302,7 @@ No account, no ads, no analytics. Everything stays on your phone, except what yo
 - the one-time download of the on-device model
 - a plan you share with someone
 - map tiles for the area around an activity, from OpenFreeMap, when maps are on (tiles you've seen are kept, and fetched again only after OpenFreeMap updates its map)
-- a daily check with GitHub for a new version: GitHub sees your IP address and which version you have, nothing about you (turn it off in Settings; the Google Play version doesn't check)
+- a daily check with GitHub for a new version, if you allow it: GitHub sees your IP address and which version you have, nothing about you (the Google Play version doesn't check)
 
 The [privacy policy](docs/PRIVACY.md) lists every piece of data and where it goes.
 

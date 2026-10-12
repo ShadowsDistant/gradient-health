@@ -1,7 +1,8 @@
 // Updates in the app, in Chromium at phone size with someone five weeks in, against a stand-in for
 // Updater.java (the update* methods on a fake AndroidBridge, playing its phases on the page's clock):
-// the automatic check (a few seconds after the app opens, once a day, not during a workout, not with
-// the switch off), Today's card and Not now, Settings' About rows (Check for updates with the version
+// Today's question before anything checks by itself (asked once: Check daily or Not now, not on the
+// day of set-up), the automatic check (a few seconds after the app opens, once a day, not during a
+// workout, not with the switch off), Today's card and Not now, Settings' About rows (Check for updates with the version
 // and what a check found, Check automatically) and a check by hand, the update sheet (what's new, the
 // size, Update with its progress and Cancel, a download that stops, Install, the permission to
 // install apps and coming back from Settings, Android's screen, an install said no to, not during a
@@ -81,7 +82,8 @@ function fakeUpdater() {
 }
 
 // A page with someone five weeks in, on Monday Oct 19 at 8:10 am. o.up: the stand-in's start
-// (null: no updater at all, as a plain browser's bridge); o.kept: what this phone chose before.
+// (null: no updater at all, as a plain browser's bridge); o.kept: what this phone chose before (by
+// default, yes to the automatic check; null: nothing yet, so Today asks).
 async function open(o = {}) {
   const ctx = await browser.newContext({ viewport: { width: o.width || 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: dark ? 'dark' : 'light' });
   const page = await ctx.newPage();
@@ -96,7 +98,8 @@ async function open(o = {}) {
   await page.goto(server.url);
   await page.waitForSelector('.onboard:not([hidden])');
   await page.evaluate(seedState);
-  if (o.kept) await page.evaluate((k) => localStorage.setItem('gh.v1.update', JSON.stringify(k)), o.kept);
+  const was = o.kept === undefined ? { auto: true } : o.kept;
+  if (was) await page.evaluate((k) => localStorage.setItem('gh.v1.update', JSON.stringify(k)), was);
   await page.reload();
   await page.waitForSelector('#screen[data-view="today"] .session');
   const settle = async (ms = 700) => { await page.clock.runFor(ms); await page.waitForTimeout(Math.min(ms, 400)); };
@@ -107,6 +110,7 @@ const calls = (ev) => ev(() => (window.__up ? window.__up.calls.filter((c) => ![
 const kept = (ev) => ev(() => JSON.parse(localStorage.getItem('gh.v1.update') || '{}'));
 const haptics = (ev) => ev(() => window.__haptics.slice());
 const text = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : null);
+const askOf = (ev) => ev(() => { const c = document.querySelector('#screen [data-key="update-ask"]'); return c && { text: c.textContent.replace(/\s+/g, ' ').trim(), yes: (c.querySelector('[data-act="updateAskYes"]') || {}).textContent, no: (c.querySelector('[data-act="updateAskNo"]') || {}).textContent }; });
 const cardOf = (ev) => ev(() => { const c = document.querySelector('#screen [data-key="update-card"]'); return c && { text: c.textContent.replace(/\s+/g, ' ').trim(), update: !!c.querySelector('[data-act="updateOpen"]'), no: !!c.querySelector('[data-act="updateDismiss"]') }; });
 // Settings, at About: the update row and the switch.
 const settings = async (ev, settle) => {
@@ -139,6 +143,69 @@ const sheetOf = (ev) => ev(() => {
   };
 });
 const shot = async (page, name) => { if (shots) await page.screenshot({ path: join(shots, `${name}${dark ? '-dark' : ''}.png`) }); };
+
+/* ------------------------------------------------------------------ asked first */
+section('Today asks once, and nothing checks by itself before a yes');
+{
+  const { ctx, page, settle, ev } = await open({ kept: null });
+  await settle(12000);
+  check('not asked yet: nothing is asked of GitHub, even seconds after launch', (await calls(ev)).length === 0, await calls(ev));
+  const first = await ev(() => ({ nf: !!document.querySelector('#screen [data-key="notify-ask"]'), up: !!document.querySelector('#screen [data-key="update-ask"]') }));
+  if (first.nf) check('the reminders\' question comes first', !first.up, first);
+  await ev(() => { const U = window.GH.ui; U.markSeen('notifyAsk'); U.render(); });
+  await settle(800);
+  const a = await askOf(ev);
+  check('Today asks "Keep the app up to date?", saying what GitHub sees, with Check daily and Not now', a && /^Keep the app up to date\?/.test(a.text) && /GitHub sees your IP address, like any website\. Nothing about you is sent\./.test(a.text) && a.yes === 'Check daily' && a.no === 'Not now', a);
+  if (shots) {
+    await ev(() => { const c = document.querySelector('#screen [data-key="update-ask"]'); if (c) c.scrollIntoView({ block: 'center' }); });
+    await settle(600);
+    await shot(page, 'update-ask');
+  }
+  await settings(ev, settle);
+  const r0 = await rows(ev);
+  check('meanwhile Settings shows Check automatically off', r0 && r0.sw && r0.sw.on === false, r0);
+  await ev(() => { const U = window.GH.ui; U.closeSheets(); U.go('today'); });
+  await settle(900);
+  const h0 = (await haptics(ev)).length;
+  await page.click('#screen [data-key="update-ask"] [data-act="updateAskYes"]');
+  await settle(1200);
+  check('Check daily: the card folds away, with the switch-on feel', !(await askOf(ev)) && (await haptics(ev)).slice(h0).includes('toggleOn'), (await haptics(ev)).slice(h0));
+  check('and the yes is kept', (await kept(ev)).auto === true, await kept(ev));
+  await settle(9000);
+  check('a few seconds on, the first check', (await calls(ev)).join() === 'check', await calls(ev));
+  await settle(1000);
+  check('it found 1.11.1: the update card takes the question\'s place', !!(await cardOf(ev)) && !(await askOf(ev)));
+  await ctx.close();
+}
+{
+  const { ctx, page, settle, ev } = await open({ kept: null });
+  await ev(() => { const U = window.GH.ui; U.markSeen('notifyAsk'); U.render(); });
+  await settle(900);
+  await page.click('#screen [data-key="update-ask"] [data-act="updateAskNo"]');
+  await settle(1200);
+  check('Not now: the card folds away, and the no is kept', !(await askOf(ev)) && (await kept(ev)).auto === false, await kept(ev));
+  await ev(() => window.__gh.onResume());
+  await settle(12000);
+  check('then nothing checks by itself', (await calls(ev)).length === 0, await calls(ev));
+  await page.reload();
+  await page.waitForSelector('#screen[data-view="today"] .session');
+  await settle(1500);
+  check('and it isn\'t asked again', !(await askOf(ev)));
+  await settings(ev, settle);
+  const r = await rows(ev);
+  check('Settings: Check automatically is off; Check for updates still checks when tapped', r && r.sw && r.sw.on === false && r.act === 'updateCheck', r);
+  await ev(() => document.querySelector('#screen [data-on="updateAuto"]').click());
+  await settle(600);
+  check('switching it on there is kept as a yes', (await kept(ev)).auto === true, await kept(ev));
+  await ctx.close();
+}
+{
+  const { ctx, settle, ev } = await open({ kept: null });
+  await ev(() => { const U = window.GH.ui; U.markSeen('notifyAsk'); U.S.profile.startDay = U.today(); U.save(true); U.render(); });
+  await settle(900);
+  check('on the day of set-up, it isn\'t asked yet', !(await askOf(ev)));
+  await ctx.close();
+}
 
 /* ------------------------------------------------------------------ the automatic check */
 section('The automatic check: a few seconds after the app opens, once a day');

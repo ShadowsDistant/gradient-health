@@ -3,7 +3,8 @@
  * - Settings, About: Check for updates, with the version and what the last check found, and Check
  *   automatically (U.updateRows);
  * - the automatic check: once a day at most, a few seconds after the app opens or comes back, only in
- *   the Android app, never during a workout or an activity;
+ *   the Android app, never during a workout or an activity, and only once the person has said yes
+ *   (Today asks once: the app sends nothing anywhere new without asking);
  * - Today's card when a new version is ready (U.updateCard): Not now waits for the next version;
  * - the update sheet: what's new, the size, Update (a progress bar and Cancel), then Install, which
  *   hands it to Android's own install screen.
@@ -41,10 +42,10 @@
     if (!installed || !latest || !(Number(latest.versionCode) > Number(installed.versionCode))) return 'none';
     return compare(latest.versionName, installed.versionName) > 0 ? 'version' : 'build';
   }
-  // Whether the automatic check is due: switched on, a day after the last one and an hour after one
-  // that failed. A time ahead of now (the clock was put back) doesn't count.
+  // Whether the automatic check is due: switched on (not just not asked yet), a day after the last one
+  // and an hour after one that failed. A time ahead of now (the clock was put back) doesn't count.
   function due(p, now) {
-    if (!p || !p.auto) return false;
+    if (!p || p.auto !== true) return false;
     const recent = (t, gap) => t > 0 && t <= now + HOUR && now - t < gap;
     return !recent(p.at, DAY) && !recent(p.failedAt, HOUR);
   }
@@ -131,14 +132,15 @@
   GH.update = { compare, kind, due, card, notesList, mb, rowView, WHY, SHORT, WHERE, AUTO_DELAY, KEY };
 
   /* ---------------------------------------------------------------- this phone's choices */
-  // { auto: check once a day, at: the last check that worked, failedAt: the last that didn't,
-  // dismissed: the version whose card was put away }.
+  // { auto: check once a day (true or false once the person has answered, null until then), at: the
+  // last check that worked, failedAt: the last that didn't, dismissed: the version whose card was put
+  // away }.
   function prefs() {
     let o = null;
     try { o = JSON.parse(G.localStorage.getItem(KEY) || 'null'); } catch (e) { o = null; }
     o = o && typeof o === 'object' ? o : {};
     const num = (v) => (typeof v === 'number' && v > 0 && v < 1e14 ? v : 0);
-    return { auto: o.auto !== false, at: num(o.at), failedAt: num(o.failedAt), dismissed: typeof o.dismissed === 'string' ? o.dismissed.slice(0, 32) : '' };
+    return { auto: o.auto === true || o.auto === false ? o.auto : null, at: num(o.at), failedAt: num(o.failedAt), dismissed: typeof o.dismissed === 'string' ? o.dismissed.slice(0, 32) : '' };
   }
   function setPrefs(p) { try { G.localStorage.setItem(KEY, JSON.stringify(p)); } catch (e) { /* private mode: this launch only */ } }
   GH.update.prefs = prefs;
@@ -260,9 +262,9 @@
       ? `<li data-key="update"><div class="rf-list-row"><span class="rf-list-icon" data-tone="green">${U.icon('download')}</span><span class="rf-list-text"><span class="rf-list-title">Check for updates</span><span class="rf-list-sub">${esc(v.line)}</span></span>${right}</div></li>`
       : `<li data-key="update"><button type="button" class="rf-list-row" data-act="${v.act}"><span class="rf-list-icon" data-tone="green">${U.icon('download')}</span><span class="rf-list-text"><span class="rf-list-title">Check for updates</span><span class="rf-list-sub">${esc(v.line)}</span></span>${right || (v.act === 'updateOpen' ? `<span class="rf-list-chevron">${U.icon('chevron-right')}</span>` : '')}</button></li>`;
     return `${kw(row, 'update updates upgrade new version download install github')}
-      ${kw(U.sw('Check automatically', prefs().auto, 'data-on="updateAuto"', 'Once a day. GitHub sees your IP address and app version, nothing about you.'), 'update automatic daily github')}`;
+      ${kw(U.sw('Check automatically', prefs().auto === true, 'data-on="updateAuto"', 'Once a day. GitHub sees your IP address and app version, nothing about you.'), 'update automatic daily github')}`;
   };
-  U.on.updateAuto = (el, ev, v) => { const p = prefs(); p.auto = !!v; setPrefs(p); };
+  U.on.updateAuto = (el, ev, v) => { const p = prefs(); p.auto = !!v; setPrefs(p); if (v) later(); };
   U.act.updateCheck = () => {
     if (!can()) return;
     manual = true;
@@ -270,11 +272,12 @@
     else haptic('tap');
   };
 
-  // Today: a new version, until it's installed or put away.
-  U.updateCard = (S) => {
+  // Today: a new version, until it's installed or put away. Before that, once, whether to check by
+  // itself (askCard).
+  U.updateCard = (S, day) => {
     if (!can() || busy(S) || !support().ok) return '';
     const s = state();
-    if (!card(prefs(), s) || s.phase === 'current') return '';
+    if (!card(prefs(), s) || s.phase === 'current') return askCard(S, day);
     const L = s.latest, first = notesList(L.notes)[0];
     return `<div class="card up-card" data-key="update-card">
       <div class="hc-invite-row"><span class="rf-list-icon" data-tone="green">${U.icon('download')}</span>
@@ -282,14 +285,45 @@
       <div class="hc-invite-btns"><button type="button" class="rf-btn" data-variant="filled" data-act="updateOpen">Update</button><button type="button" class="rf-btn" data-variant="plain" data-act="updateDismiss">Not now</button></div>
     </div>`;
   };
+  // The question, asked once: for people updating, and for new people from their second day (not one
+  // more thing on the first), after the reminders' question if that's up. Either answer is kept, and
+  // Settings' Check automatically changes it.
+  function askCard(S, day) {
+    const start = S.profile.startDay;
+    if (prefs().auto !== null || day == null || (start != null && !(day > start))) return '';
+    if (U.notifyCard && U.notifyCard(S, day)) return '';
+    return `<div class="card up-card" data-key="update-ask">
+      <div class="hc-invite-row"><span class="rf-list-icon" data-tone="green">${U.icon('download')}</span>
+        <span class="hc-invite-text"><span class="t-headline">Keep the app up to date?</span><span class="t-footnote rf-muted">Once a day it asks GitHub if there's a new version. GitHub sees your IP address, like any website. Nothing about you is sent.</span></span></div>
+      <div class="hc-invite-btns"><button type="button" class="rf-btn" data-variant="filled" data-act="updateAskYes">Check daily</button><button type="button" class="rf-btn" data-variant="plain" data-act="updateAskNo">Not now</button></div>
+    </div>`;
+  }
+  const fold = (el) => {
+    const c = el && el.closest ? el.closest('.up-card') : null;
+    const go = c && U.motion && U.motion.collapse ? U.motion.collapse(c) : Promise.resolve();
+    return go.then(() => { if (U.render) U.render(); });
+  };
+  U.act.updateAskYes = (el) => {
+    const p = prefs();
+    p.auto = true;
+    setPrefs(p);
+    haptic('toggleOn');
+    fold(el);
+    later();
+  };
+  U.act.updateAskNo = (el) => {
+    const p = prefs();
+    p.auto = false;
+    setPrefs(p);
+    haptic('dismiss');
+    fold(el);
+  };
   // Not now: the card folds away and waits for the next version.
   U.act.updateDismiss = (el) => {
     const s = state(), p = prefs();
     if (s.latest) { p.dismissed = s.latest.versionName; setPrefs(p); }
     haptic('dismiss');
-    const c = el && el.closest ? el.closest('.up-card') : null;
-    const go = c && U.motion && U.motion.collapse ? U.motion.collapse(c) : Promise.resolve();
-    go.then(() => { if (U.render) U.render(); });
+    fold(el);
   };
 
   /* ---------------------------------------------------------------- the update sheet */

@@ -41,6 +41,7 @@ section('The automatic check: once a day at most');
   const due = (p) => UP.due(Object.assign({ auto: true, at: 0, failedAt: 0 }, p), NOW);
   check('on and never checked: due', due({}) === true);
   check('switched off: never', due({ auto: false }) === false);
+  check('not asked yet: never (the app sends nothing anywhere new without asking)', due({ auto: null }) === false && due({ auto: undefined }) === false);
   check('23 hours after the last check: not yet; 24 hours: due', due({ at: NOW - 23 * HOUR }) === false && due({ at: NOW - DAY }) === true);
   check('half an hour after one that failed: not yet; an hour: due', due({ failedAt: NOW - HOUR / 2 }) === false && due({ failedAt: NOW - HOUR }) === true);
   check('a check stamped two days ahead (the clock was put back) doesn\'t hold it off', due({ at: NOW + 2 * DAY }) === true);
@@ -131,7 +132,9 @@ section('The automatic check: never before set-up, during a workout or an activi
   let state = { phase: 'idle', installed: INSTALLED };
   globalThis.AndroidBridge = { updateSupport: () => '{"ok":true,"canInstall":true}', updateState: () => JSON.stringify(state), updateCheck: () => true };
   kept.clear();
-  check('the phone, set up, nothing going on: it checks', UP.support().ok === true && UP.autoOk(NOW) === true);
+  check('the phone, set up, nothing going on, not asked yet: no check', UP.support().ok === true && UP.prefs().auto === null && UP.autoOk(NOW) === false);
+  localStorage.setItem(UP.KEY, JSON.stringify({ auto: true }));
+  check('once the person said yes: it checks', UP.support().ok === true && UP.autoOk(NOW) === true);
   U.S = { profile: { onboarded: true }, active: { day: 1 } };
   check('not during a workout', UP.autoOk(NOW) === false);
   U.S = { profile: { onboarded: true }, actLive: { id: 'a1' } };
@@ -149,26 +152,27 @@ section('The automatic check: never before set-up, during a workout or an activi
   localStorage.setItem(UP.KEY, JSON.stringify({ auto: false }));
   check('not with Check automatically off', UP.prefs().auto === false && UP.autoOk(NOW) === false);
   kept.clear();
-  check('on by default', UP.prefs().auto === true);
+  check('off until the person is asked', UP.prefs().auto === null);
 }
 
 section('A step\'s end is kept for the next automatic check');
 {
-  kept.clear();
+  const on = () => localStorage.setItem(UP.KEY, JSON.stringify({ auto: true }));
+  on();
   const t0 = Date.now();
   globalThis.__gh.onUpdate(JSON.stringify({ phase: 'current', done: 'check', installed: INSTALLED, checkedAt: t0 }));
   const a = UP.prefs();
-  check('a check that worked: the next one is a day away', a.at >= t0 && a.failedAt === 0 && UP.due(a, Date.now()) === false, a);
-  kept.clear();
+  check('a check that worked: the next one is a day away', a.auto === true && a.at >= t0 && a.failedAt === 0 && UP.due(a, Date.now()) === false && UP.due(a, Date.now() + DAY) === true, a);
+  on();
   globalThis.__gh.onUpdate(JSON.stringify({ phase: 'failed', step: 'check', error: 'offline', done: 'check', installed: INSTALLED }));
   const b = UP.prefs();
   check('one that failed: an hour away', b.failedAt >= t0 && !b.at && UP.due(b, Date.now()) === false && UP.due(b, Date.now() + HOUR) === true, b);
-  kept.clear();
+  on();
   globalThis.__gh.onUpdate(JSON.stringify({ phase: 'ready', done: 'download', installed: INSTALLED, latest: { versionName: '1.11.1', versionCode: INSTALLED.versionCode + 9, size: 9, notes: '' } }));
   check('a download read version.json first: that counts as a check', UP.prefs().at >= t0);
   localStorage.setItem(UP.KEY, '{"auto":"yes","at":"soon","failedAt":-5,"dismissed":{"x":1}}');
   const junk = UP.prefs();
-  check('what\'s kept is read safely (junk becomes the defaults)', junk.auto === true && junk.at === 0 && junk.failedAt === 0 && junk.dismissed === '', junk);
+  check('what\'s kept is read safely (junk becomes the defaults)', junk.auto === null && junk.at === 0 && junk.failedAt === 0 && junk.dismissed === '', junk);
 }
 
 section('version.json, as CI writes it');
