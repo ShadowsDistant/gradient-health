@@ -1,0 +1,10 @@
+/* The update sheet (src/update.js): what's new as a short list, the download's progress with Cancel,
+   and what went wrong. Today's card is an invite card (onboarding.css), Settings' rows are rows. */
+.up-head .t-title-3 { margin: 0; }
+.up-notes { margin: 0; padding: 0 0 0 1.25em; display: grid; gap: var(--space-1); }
+.up-notes li { margin: 0; }
+.up-act { padding-top: var(--space-3); padding-bottom: var(--space-4); }
+.up-prog { display: grid; gap: var(--space-2); }
+.up-prog-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 32px; }
+.up-wait { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; }
+.up-err { color: var(--critical); }
