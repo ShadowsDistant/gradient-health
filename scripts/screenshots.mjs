@@ -326,12 +326,17 @@ async function run(dark) {
   // The rule's sheet that "rir" opened closes before the next shots.
   await page.evaluate(() => window.GH.ui.closeSheets());
   await settle(700);
-  // Food: calorie tracking on, a week of meals.
+  // Food: calorie tracking on, a week of meals. Health has it right under the week; its section opens
+  // the day's meals.
   await page.evaluate(seedFood);
-  await page.evaluate(() => { while (window.GH.ui.back()) { /* to the tab */ } window.GH.ui.go('food'); });
+  await page.evaluate(() => { while (window.GH.ui.back()) { /* to the tab */ } window.GH.ui.go('health'); });
+  await settle(900);
+  await page.evaluate(() => { const el = document.querySelector('#screen .card.hf'); const title = el && el.closest('.section').previousElementSibling; if (title) document.getElementById('screen').scrollTo(0, title.offsetTop - 110); });
+  await shot('food');
+  await page.click('#screen .hf-main');
   await settle(900);
   await top();
-  await shot('food');
+  await shot('meals');
   // A gym day: the same person training at a gym.
   await page.evaluate(() => { const S = window.GH.ui.S; S.profile.where = 'gym'; S.profile.gym = window.GH.brain.gymPreset('full', S.profile.units); window.GH.store.save(S); window.GH.ui.go('today'); });
   await settle(900);

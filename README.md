@@ -32,7 +32,7 @@ Gradient Health plans each day's workout around your goals, your equipment and y
 | **[Workouts](#workouts)** | A 3D figure for every move, one question per exercise, a plan that fits your body |
 | **[Moves](#moves)** | 282 exercises for home or the gym, each with a how-to |
 | **[Activities](#activities)** | Runs, walks, hikes and rides with GPS, auto-pause and spoken splits |
-| **[Food](#food)** | Calories and macros, just protein, or nothing |
+| **[Food](#food)** | Calories and macros by meal, in Health, with a barcode scanner |
 | **[Health](#health)** | Sleep, steps, heart rate, weight and more, with each number's history |
 | **[Progress](#progress)** | A body map of what you've trained and what's improved |
 | **[Badges](#badges)** | 64 3D medals to earn, open, spin and share |
@@ -166,11 +166,16 @@ Start a run, walk, hike or ride from Today or Health.
 
 ## Food
 
-Turn on calorie tracking for a daily target from your size, steps and goal. It tunes itself once you've logged and weighed in for a couple of weeks.
+Food lives in Health, near the top, so tracking calories never takes a tab. Start in one short sheet: a daily target from your size, how active you are and your goal. It tunes itself once you've logged and weighed in for a couple of weeks.
 
-- **Log your way:** common foods, your own foods from a label, saved meals or a quick number.
-- **Online search and barcode scanning** (Open Food Facts), if you switch them on.
+- **Meals by the clock.** Food goes into breakfast, lunch, dinner or snacks by the time you usually eat, and you can pick another. Set your meal times, or let the app learn them from your logs. Each food keeps the time you had it.
+- **Quick to log:** Add food from Health's + menu, your usual foods first, yesterday's meal again in a tap, your own foods from a label, saved meals or a quick number.
+- **Online search and barcodes that read** (Open Food Facts, which it asks before turning on). The camera zooms in so you can hold the pack at a comfortable distance, you can tap to focus, and a tip shows if a code won't read.
 - **Just a protein goal?** One setting. Food and health with no workouts works too.
+
+<p align="center">
+  <img src="docs/screenshots/framed/meals-dark.png" width="200" alt="The day's meals in dark mode, each food with the time it was eaten">
+</p>
 
 ## Health
 
@@ -184,7 +189,7 @@ Connect Health Connect and your sleep, steps, weight, heart rate, HRV, active ca
 <p align="center">
   <img src="docs/screenshots/framed/health.png" width="200" alt="Health: the week at a glance and trends">
   <img src="docs/screenshots/framed/metric-dark.png" width="200" alt="Resting heart rate, in dark mode: its history and where each value came from">
-  <img src="docs/screenshots/framed/food.png" width="200" alt="Food: calories left today, macros and meals">
+  <img src="docs/screenshots/framed/food.png" width="200" alt="Food in Health, under the week: calories left today, macros and the four meals">
 </p>
 
 ## Progress
