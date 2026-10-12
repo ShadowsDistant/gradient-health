@@ -7,7 +7,8 @@
 // answers stream in, stop, and are kept. Then an answer written out as a model would: drawn as a
 // card with a list and the embed the app adds for its question, an embed it can't draw dropped; and
 // chat history: New chat, Chats, opening one and carrying on with its turns, deleting with Undo,
-// Delete all, and the logs from before 1.11 moved into conversations. Needs build/tiny-qwen35.gguf
+// Delete all, and the logs from before 1.11 moved into conversations; and the log fading where it
+// meets the bars above and below. Needs build/tiny-qwen35.gguf
 // (made here by scripts/make-tiny-gguf.py; see test/llm.mjs).
 // Usage: node test/ui-chat.mjs [--dark] [--width=360]
 import { createRequire } from 'node:module';
@@ -414,6 +415,46 @@ await wait(600);
 await page.click('#topbar .coach-btn');
 await page.waitForSelector('dialog.chat-sheet[open] .chat-pill');
 await wait(500);
+
+section('The log fades where it meets the bars');
+// A long conversation: the log's words fade into the sheet under the bar above while it's scrolled
+// off its top, and above the box below while it's scrolled up from its end (src/styles/chat.css).
+await page.evaluate(() => {
+  const U = window.GH.ui, S = U.S, now = Date.now(), msgs = [];
+  U.closeSheets();
+  for (let i = 0; i < 6; i++) {
+    msgs.push({ role: 'user', text: `How did I sleep this week? (${i + 1})`, engine: 'device' });
+    msgs.push({ role: 'assistant', engine: 'device', model: 'q35-2', text: 'You slept **7 h 12 m** a night, about your usual.\n\n- Best night: Tuesday, 8 h 5 m\n- Shortest: Friday, 6 h 20 m\n- Bedtime moved about 20 minutes later\n\nKeep the late nights to one or two a week.' });
+  }
+  S.ai.chats.push({ id: 'clong', title: 'How did I sleep this week? (1)', started: now - 3600e3, used: now - 60e3, msgs });
+  S.ai.chatId = 'clong';
+  U.save(true);
+});
+await wait(600);
+await page.click('#topbar .coach-btn');
+await page.waitForSelector('dialog.chat-sheet[open] .chat-pill');
+await wait(900);
+const fades = () => page.evaluate(() => {
+  const d = document.querySelector('dialog.chat-sheet[open]');
+  const top = getComputedStyle(d.querySelector('.chat-bar'), '::after'), end = getComputedStyle(d.querySelector('.chat-compose'), '::before');
+  return { top: d.hasAttribute('data-log-top'), end: d.hasAttribute('data-log-end'), topOp: top.opacity, endOp: end.opacity, topBg: /gradient/.test(top.backgroundImage), endBg: /gradient/.test(end.backgroundImage), topMask: /gradient/.test(top.maskImage || top.webkitMaskImage), sheen: d.style.getPropertyValue('--chat-sheen-top') };
+});
+const scrollLog = (where) => page.evaluate((w) => { const l = document.querySelector('.chat-sheet #chatLog'); l.scrollTop = w === 'top' ? 0 : w === 'end' ? l.scrollHeight : Math.round((l.scrollHeight - l.clientHeight) / 2); }, where);
+let f = await fades();
+check('at the newest answer: the words fade under the bar above, not above the box (nothing below)', f.top && !f.end && f.topOp === '1' && f.endOp === '0' && f.topBg && f.endBg, f);
+check('the fade is the material\'s colour with the sheen there, thinner toward the rim', f.topMask && Number(f.sheen) > 0 && Number(f.sheen) <= 1, f);
+await scrollLog('middle');
+await wait(500);
+f = await fades();
+check('scrolled up to the middle: both ends fade', f.top && f.end && f.topOp === '1' && f.endOp === '1', f);
+await scrollLog('top');
+await wait(500);
+f = await fades();
+check('at the first question: only the end fades', !f.top && f.end && f.topOp === '0' && f.endOp === '1', f);
+await scrollLog('end');
+await wait(500);
+f = await fades();
+check('and back down: as it was', f.top && !f.end, f);
 
 section('Claude asks first');
 const anthropic = [];

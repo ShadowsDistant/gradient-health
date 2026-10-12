@@ -20,6 +20,25 @@
 [data-unseen] > .chats-dot { opacity: 1; }
 
 .chat-log { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-2) var(--space-4) var(--space-4); }
+/* Where the log meets the bar above it and the box below, its words fade into the sheet as they do
+   under a sheet's header (sheet.css), instead of ending at a line: while the log is scrolled away from
+   that end (data-log-top, data-log-end on the sheet, src/ui/chat.js), a gradient of the material's
+   colour, opaque at the edge and clear 28 px in. The chat is a full sheet, solid: that colour is
+   --sheet-bg with what's left there of the glass's sheen (--chat-sheen-top and -end, chat.js). Never a
+   mask, which would draw the log into a layer of its own every frame it scrolls; this is a small layer
+   that never changes, and the log scrolls under it on the compositor. */
+.chat-bar, .chat-compose { position: relative; z-index: 1; }
+.chat-bar::after, .chat-compose::before {
+  --_c: color-mix(in srgb, var(--sheet-bg), #fff calc(var(--sheet-sheen) * var(--_s, 0) * 100%));
+  content: ""; position: absolute; inset-inline: 0; height: 28px; pointer-events: none;
+  /* Thinner toward the sides, so the glass's rim and the light down its left edge stay whole. */
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 20px, #000 calc(100% - 8px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 20px, #000 calc(100% - 8px), transparent);
+  opacity: 0; transition: opacity var(--duration-fast) var(--ease-standard);
+}
+.chat-bar::after { --_s: var(--chat-sheen-top, .7); top: 100%; background: linear-gradient(var(--_c), color-mix(in srgb, var(--_c) 84%, transparent) 25%, color-mix(in srgb, var(--_c) 50%, transparent) 50%, color-mix(in srgb, var(--_c) 16%, transparent) 75%, transparent); }
+.chat-compose::before { --_s: var(--chat-sheen-end, 0); bottom: 100%; background: linear-gradient(to top, var(--_c), color-mix(in srgb, var(--_c) 84%, transparent) 25%, color-mix(in srgb, var(--_c) 50%, transparent) 50%, color-mix(in srgb, var(--_c) 16%, transparent) 75%, transparent); }
+.chat-sheet[data-log-top] .chat-bar::after, .chat-sheet[data-log-end] .chat-compose::before { opacity: 1; }
 .msg { display: flex; gap: 8px; min-width: 0; }
 .msg.me { justify-content: flex-end; }
 .msg-av { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-top: 2px; border-radius: 50%; color: #fff; background: linear-gradient(140deg, var(--brand-blue), var(--brand-mint)); box-shadow: inset 0 1px 0 rgb(255 255 255 / .3), 0 2px 8px color-mix(in oklab, var(--brand-mint) 30%, transparent); }
@@ -121,7 +140,7 @@
    across the bubble (paused while a sheet moves). */
 .bubble-status { display: block; color: var(--label-secondary); font-size: 15px; font-variant-numeric: tabular-nums; }
 .chat-prog { display: block; width: 168px; max-width: 100%; height: 3px; margin-top: 8px; border-radius: 2px; background: var(--fill-2); overflow: hidden; }
-.chat-prog > i { display: block; height: 100%; transform-origin: 0 50%; transform: scaleX(var(--p, 0)); border-radius: inherit; background: linear-gradient(90deg, var(--brand-mint), var(--accent-fill)); transition: transform 280ms var(--ease-standard); }
+.chat-prog > i { display: block; height: 100%; transform-origin: 0 50%; transform: scaleX(var(--p, 0)); border-radius: inherit; background: linear-gradient(90deg, var(--gh-prog-a), var(--gh-prog-b)); transition: transform 280ms var(--ease-standard); }
 .bubble.coach.is-typing { background-image: linear-gradient(100deg, transparent 20%, color-mix(in oklab, var(--brand-mint) 14%, transparent) 50%, transparent 80%); background-size: 220% 100%; background-repeat: no-repeat; animation: typing-sheen 1.6s ease-in-out infinite; }
 @keyframes typing-sheen { from { background-position: 120% 0; } to { background-position: -120% 0; } }
 .caret { display: inline-block; width: .5em; height: .5em; margin-inline-start: 4px; border-radius: 50%; background: var(--hue-violet); vertical-align: 1px; animation: caret-pulse 900ms ease-in-out infinite; }
@@ -157,7 +176,9 @@ html[data-sheet-moving] .bubble.coach.is-typing, html[data-sheet-moving] .caret 
 .facts-list { display: grid; gap: var(--space-2); margin: var(--space-3) 0 0; padding-inline-start: 1.1em; }
 
 /* Typing a question. */
-.chat-compose { display: flex; gap: var(--space-2); align-items: flex-end; padding: var(--space-2) var(--space-4); border-top: .5px solid var(--separator); }
+.chat-compose { display: flex; gap: var(--space-2); align-items: flex-end; padding: var(--space-2) var(--space-4); }
+/* With increased contrast, a line above the box as well as the fade. */
+:root[data-theme$="contrast"] .chat-compose { border-top: 1px solid var(--separator); }
 .chat-compose[hidden] { display: none; }
 .chat-compose textarea { flex: 1 1 auto; min-height: 44px; max-height: 132px; padding: 11px 16px; border: 0; border-radius: 22px; background: var(--fill-3); color: var(--label); resize: none; line-height: 1.35; box-shadow: inset 0 0 0 .5px var(--separator); }
 .chat-compose textarea:focus-visible { outline: none; box-shadow: inset 0 0 0 1.5px var(--accent); }

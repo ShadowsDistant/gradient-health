@@ -212,8 +212,9 @@
   // Written to the header (its fade is the header's), and only when it changes: on opening, and when
   // the panel or the header changes size.
   const GLASS_BELOW = 200;
+  const sheenFrom = (y, H) => Math.round(clamp(1 - y / (0.45 * (H + GLASS_BELOW)), 0, 1) * 100) / 100;
   function sheenAt(s, H) {
-    const f = Math.round(clamp(1 - s.body.offsetTop / (0.45 * (H + GLASS_BELOW)), 0, 1) * 100) / 100;
+    const f = sheenFrom(s.body.offsetTop, H);
     if (f !== s.sheen) { s.sheen = f; s.header.style.setProperty('--gh-sheen', String(f)); }
   }
   const hasLarge = (s) => s.size === 'full' || (s.size === 'auto' && s.topY < s.lowY);
@@ -634,6 +635,9 @@
     s.scrim.addEventListener('click', () => ctl.close('cancel'));
     el.querySelector('[data-sheet-close]').addEventListener('click', () => ctl.close('cancel'));
     ctl.update = (html) => { U.morph(s.body, html); };
+    // What's left of the sheen y px down the panel, for a fade of the material's colour that starts
+    // there inside the content (the chat's log, src/styles/chat.css).
+    ctl.sheenAt = (y) => sheenFrom(y, s.H);
 
     /* ---------- focus, the keyboard, and content below the fold */
     // Typing wants the whole sheet: a text field expands it to large and keeps it there.

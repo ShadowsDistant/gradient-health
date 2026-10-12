@@ -195,6 +195,25 @@
       <p class="t-footnote rf-muted chat-foot">${FOOT[e]} Not medical advice.</p>`;
   }
   const nearBottom = (log) => log.scrollHeight - log.scrollTop - log.clientHeight < 96;
+  // The log's words fade into the sheet where they meet the bar above and the box below (chat.css)
+  // while it's scrolled away from that end: data-log-top and data-log-end on the sheet, changed only
+  // when that flips. Read in a scroll event, or right after the log was scrolled to its end, so the
+  // read finds a fresh layout. The fade's colour follows the glass's sheen down the sheet (sheet.js):
+  // where the log starts and ends, worked out as the sheet opens.
+  let fadeTop = false, fadeEnd = false;
+  function fadeEnds(log) {
+    if (!chat || chat.closed || !log) return;
+    const top = log.scrollTop > 0, end = log.scrollHeight - log.scrollTop - log.clientHeight > 1;
+    if (top !== fadeTop) { fadeTop = top; chat.el.toggleAttribute('data-log-top', top); }
+    if (end !== fadeEnd) { fadeEnd = end; chat.el.toggleAttribute('data-log-end', end); }
+  }
+  function fadeSheen(c) {
+    const log = c.el.querySelector('#chatLog'), panel = c.el.querySelector('.gh-sheet-panel');
+    if (!log || !panel || !c.sheenAt) return;
+    const p = panel.getBoundingClientRect(), r = log.getBoundingClientRect();
+    c.el.style.setProperty('--chat-sheen-top', String(c.sheenAt(r.top - p.top)));
+    c.el.style.setProperty('--chat-sheen-end', String(c.sheenAt(r.bottom - p.top)));
+  }
   // Redraws the chat (keeps what's typed, and the newest answer in view if it was). to: 'bottom' or
   // 'top' to scroll there (another conversation opened).
   function refreshChat(to) {
@@ -213,6 +232,7 @@
     const log = chat.el.querySelector('#chatLog');
     if (log && (to === 'top')) log.scrollTop = 0;
     else if (log && (stick || to === 'bottom')) log.scrollTop = log.scrollHeight;
+    fadeEnds(log);
   }
   U.refreshChat = refreshChat;
   // Chats, in the sheet's header, has a dot while an answer that landed in another chat is unread.
@@ -239,6 +259,7 @@
       const stick = log && nearBottom(log);
       U.morph(box, liveInner(live));
       if (log && stick) log.scrollTop = log.scrollHeight;
+      if (log) fadeEnds(log);
     });
   }
   // The question box grows with what's typed (up to about five lines).
@@ -269,8 +290,11 @@
       body: chatBody(S), action: { label: 'Chats', act: 'chatList' },
       // Closing doesn't stop an answer: it carries on, and the coach button shows when it's there.
       onClose: () => { chat = null; syncButtons(); },
-      after: (c) => { const log = c.el.querySelector('#chatLog'); if (log) log.scrollTop = log.scrollHeight; },
+      after: (c) => { const log = c.el.querySelector('#chatLog'); if (log) log.scrollTop = log.scrollHeight; fadeSheen(c); },
     });
+    fadeTop = fadeEnd = false;
+    chat.el.addEventListener('scroll', (e) => { if (e.target && e.target.id === 'chatLog') fadeEnds(e.target); }, true);
+    fadeEnds(chat.el.querySelector('#chatLog'));
     markChats();
     syncButtons();
     // A suggested question goes in once the sheet is up and, for the on-device coach, once it's
