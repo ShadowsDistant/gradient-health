@@ -102,16 +102,16 @@ section('Scenario A: your answers, 3 weeks from Mon Sep 28');
     return seen.every((x, i) => x.first !== false || !seen[i - 1] || x.val <= seen[i - 1].val);
   };
   check('Mon: second side never did more than the first', uniOk(r.seen));
-  // Tue: push-ups 3+ left (18 → 20).
+  // Tue: push-ups 3 left (18 → 20: in the on-ramp week the aim is 2-3, and under 30 an easy set adds a rep).
   r = doWorkout(S, D0 + 1, { rir: { squat: '12', push: '3' }, reps: { triceps: 4 } });
   extraSeen.push(r.seen.some((x) => x.extra && x.side === 'L'));
-  check('Tue (first chest day): push-ups → 20 reps (3+ left)', S.prog.push.reps === 20, lineTexts(r));
+  check('Tue (first chest day): push-ups → 20 reps (3 left)', S.prog.push.reps === 20, lineTexts(r));
   check('Tue: triceps below range twice → down a rung with a cooldown', S.prog.triceps.rung === 'tri_oh' && S.prog.triceps.cooldown === 2, S.prog.triceps);
   check('Tue: goblet squat +2 (15 → 17, 1-2 left at 12+ reps)', S.prog.squat.reps === 17, S.prog.squat);
   lightDay(S, D0 + 2);
   r = doWorkout(S, D0 + 3, { rir: { push: '3' } });
   extraSeen.push(r.seen.some((x) => x.extra && x.side === 'L'));
-  check('Thu (second chest day): push-ups at 20 with 3+ left → Push-up, 3-sec lowering', S.prog.push.rung === 'push_slow', lineTexts(r));
+  check('Thu (second chest day): push-ups at 20 with 3 left → Push-up, 3-sec lowering', S.prog.push.rung === 'push_slow', lineTexts(r));
   check('Thu: the rung-up is celebrated', r.celebrate.some((c) => c.kind === 'level'), r.celebrate);
   r = doWorkout(S, D0 + 4, {});
   health(S, D0 + 5, { steps: 6200 });

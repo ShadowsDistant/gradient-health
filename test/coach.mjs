@@ -129,6 +129,14 @@ check('every rule has what it does, why, a level and research', SC.RULES.every((
 // Papers link to their DOI (or PubMed); the one official report links to its publisher (FAO).
 check('every reference links to its DOI, PubMed or the publishing agency', Object.values(SC.REFS).every((x) => /^https:\/\/(doi\.org\/10\.|pubmed\.ncbi\.nlm\.nih\.gov\/|www\.fao\.org\/)/.test(SC.refUrl(x))));
 check('no dashes used as punctuation in the copy', SC.RULES.every((r) => !/[—]| – /.test(r.does + r.why + (r.caveat || ''))));
+{
+  // 1.13: reps left by goal, rests, and a healthy weekly dose, each with its research.
+  const rule = (id) => SC.RULES.find((r) => r.id === id) || {};
+  check('reps left: the aims by goal and person, from Robinson 2024 and Halperin 2022, with the 2-3 marked as the app\'s choice', /1-2 for your top goal muscles/.test(rule('rir').does) && /2-3 on the main gym lifts/.test(rule('rir').does) && ['robinson2024', 'halperin2022'].every((x) => rule('rir').refs.includes(x)) && /our reading/.test(rule('rir').caveat));
+  check('rests: 90 s on its own when there\'s time, sets first (Singer 2024)', /rests 90 seconds too/.test(rule('rest').does) && /sets come first/.test(rule('rest').does) && rule('rest').refs.includes('singer2024'));
+  check('a healthy weekly dose: 30 to 60 minutes a week (Momma 2022) and the AHA\'s dose, linked to their DOIs', rule('dose').cat && /30 to 60 minutes a week/.test(rule('dose').why) && ['momma2022', 'paluch2024'].every((x) => rule('dose').refs.includes(x)) && SC.refUrl(SC.REFS.momma2022) === 'https://doi.org/10.1136/bjsports-2021-105061' && SC.refUrl(SC.REFS.paluch2024) === 'https://doi.org/10.1161/CIR.0000000000001189');
+  check('no "3+" left in the cards: the answers are 0, 1-2, 3 and 4+', SC.RULES.every((r) => !/\b3\+/.test(r.does + r.why + (r.caveat || ''))));
+}
 const restCheck = (supersets) => {
   const S2 = person();
   S2.profile.prefs.supersets = supersets;
