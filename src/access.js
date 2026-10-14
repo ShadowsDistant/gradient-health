@@ -368,9 +368,10 @@
         if (pw && M().allowed(pw, B().eqFor(S, day)) && moveOk(p, pw.id, day)) { it.moveId = pw.id; it.name = pw.name; it.power = true; it.load = B().loadInfo(S, pw, day, it.fam); }
       }
     }
-    // A little more rest from 50 (auto rest only).
+    // A little more rest from 50 (auto rest only), marked on each move (agePlus): when a session is
+    // short of time its sets come first, and this is the first thing to go (src/optimizer.js fit).
     const plus = restPlus(p);
-    if (plus && !c.custom && (B().autoRest ? B().autoRest(S) : p.prefs && (p.prefs.rest === 'auto' || p.prefs.rest == null))) for (const it of s.items.concat(s.extras || [])) if (!it.skill) it.rest += plus;
+    if (plus && !c.custom && (B().autoRest ? B().autoRest(S) : p.prefs && (p.prefs.rest === 'auto' || p.prefs.rest == null))) for (const it of s.items.concat(s.extras || [])) if (!it.skill) { it.rest += plus; it.agePlus = plus; }
     // Cool-down: every session from 65, seated, and with rheumatoid arthritis. It's stretches for the
     // muscles the day worked when at least two suit this body; seated plans and rheumatoid arthritis
     // (range of motion, wrists included) have one of their own.
@@ -477,14 +478,24 @@
     else if (band(p) !== 'mid' && band(p) !== 'young' && s.warmup && s.warmup.length >= 3) out.push({ icon: 'sun', tone: 'amber', text: 'A longer, gentler warm-up', why: `From ${band(p) === 'senior' ? '65' : '50'}, with a little more rest between sets too.`, rule: 'age' });
     return out;
   }
-  // The line under a set in the workout player, when age or health changes how to do it.
+  // The line under a set in the workout player: how many reps to leave in the tank (the set's aim,
+  // it.effort from src/brain.js effortFor), and what age or health changes about doing it. null: the
+  // player's usual line.
+  const TOP_GOAL = { biceps: 'arms are', triceps: 'arms are', abs: 'abs are', chest: 'chest is', legs: 'legs are', back: 'back is', shoulders: 'shoulders are' };
   function setHint(p, it, timed) {
     const c = rulesOf(p).c;
     if (it && it.power) return 'Up as fast as you can, then lower slowly.';
     if (timed) return c.has('bp') || c.has('heart') ? 'Hold with good form, and keep breathing the whole time.' : null;
-    if (c.has('heart')) return 'Stop with 2 or 3 reps left. Breathe out as you push.';
-    if (c.has('bp')) return 'Breathe out as you push, and never hold your breath. Stop with 1-3 reps left.';
-    return null;
+    const e = it && it.effort;
+    const left = e ? `${e.lo}-${e.hi}` : c.has('heart') ? '2-3' : '1-3';
+    if (c.has('heart')) return `Stop with ${left} reps left. Breathe out as you push.`;
+    if (c.has('bp')) return `Breathe out as you push, and never hold your breath. Stop with ${left} reps left.`;
+    if (!e) return null;
+    if (e.why === 'strength') return `Stop with ${left} reps left. Heavy sets don't need to go near failure.`;
+    if (e.why === 'onramp') return `Stop with ${left} reps left while you settle in.`;
+    if (e.why === 'bone') return `Stop with ${left} reps left, with good form. Harder sets help your bones.`;
+    if (e.why === 'size') return `Stop with ${left} reps left: ${TOP_GOAL[it.group] || 'this is'} a top goal.`;
+    return `Stop with ${left} reps left in the tank.`;
   }
   // The on-device coach's answer to "is this OK with my arthritis?" and the like.
   function answer(p, q) {

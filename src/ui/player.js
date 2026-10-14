@@ -783,7 +783,7 @@
     const left = P.restEnd ? Math.max(0, (P.restEnd - Date.now()) / 1000) : 0;
     const rirQ = P.askRir ? `<div class="pl-rir">
         <p class="t-headline">How many more could you have done?</p>
-        ${U.seg('plRir', [['0', '0'], ['12', '1-2'], ['3', '3+']], P.rirAnswered || '', 'Reps left in the tank', ' data-on="plRir" data-sync')}
+        ${U.seg('plRir', [['0', '0'], ['12', '1-2'], ['3', '3'], ['4', '4+']], P.rirAnswered || '', 'Reps left in the tank', ' data-on="plRir" data-sync')}
         <p class="t-footnote rf-muted">${P.askRir.kind === 'finisher' ? 'For the whole finisher.' : `For ${U.esc(P.askRir.name.toLowerCase())}. This sets next time.`}${((U.S.seen || {}).rirCount || 0) < 3 ? ' Only count reps with good form. A rough guess is fine.' : ''}</p>
       </div>` : '';
     const logged = done && done.kind === 'set' ? loggedLine(done) : '';

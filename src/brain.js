@@ -1312,7 +1312,9 @@
   // pairSupersets). Resting over a minute gives a small extra benefit for muscle size, with nothing
   // clear past about 90 s (Singer et al. 2024).
   // A rest a plan tweak asks for comes first, then the one picked in Settings. When both are auto,
-  // the optimizer lengthens rests in sessions with time to spare (src/optimizer.js fit).
+  // the optimizer lengthens rests in sessions with time to spare, once the sets are in: 90 s for
+  // what's done on its own at 60, about 2.5 minutes for the main lifts with a strength goal, and
+  // takes the extra rest from 50 off first when a session is short of time (src/optimizer.js fit).
   const COMPOUND = ['push', 'chestDb', 'press', 'squat', 'hinge', 'row', 'pull'];
   function restFor(S, fam) {
     const tw = tweaksOf(S).rest;
@@ -1560,9 +1562,10 @@
     const letters = 'ABCDEFGHIJ'.split('').filter((k) => !used.has(k));
     let tag = 0;
     // In a superset each muscle already rests through its partner's set, so auto rest stays at 60 s
-    // there: that still gives every muscle about 90 s or more between its own sets.
+    // there: that still gives every muscle about 90 s or more between its own sets. (Plus what age
+    // adds, while a move still has it: src/access.js, item.agePlus.)
     const auto = autoRest(S);
-    const pairUp = (a, b) => { const k = letters[tag++]; if (!k) return; a.superset = k + '1'; b.superset = k + '2'; free.delete(a); free.delete(b); if (auto) { a.rest = 60; b.rest = 60; } };
+    const pairUp = (a, b) => { const k = letters[tag++]; if (!k) return; a.superset = k + '1'; b.superset = k + '2'; free.delete(a); free.delete(b); if (auto) { a.rest = 60 + (a.agePlus || 0); b.rest = 60 + (b.agePlus || 0); } };
     for (const [x, y] of PREFER) {
       const a = [...free].find((it) => it.fam === x);
       const b = [...free].find((it) => it.fam === y && it !== a);
@@ -1815,10 +1818,13 @@
       tplIdx = next.tpl;
     }
     const session = buildSession(S, day, tplIdx, { short: o.short, cal: calendar(S, day) });
+    // Each exercise's reps-left aim (effortFor), for the player's hint and, kept in the log, for the
+    // progression and the coach. (A log with an aim is on 1.13's answers: 0, 1-2, 3, 4 or more.)
+    for (const it of session.items.concat(session.extras)) if (it.kind === 'move' || it.kind === 'extra') it.effort = effortFor(S, it, session.phase);
     const st = steps(S, session);
     S.active = {
       day, tpl: tplIdx, startedAt: o.now || Date.now(), short: !!o.short, session, steps: st, idx: 0,
-      logs: session.items.concat(session.extras).map((it) => ({ fam: it.fam, moveId: it.moveId, kind: it.kind, target: it.target, sets: [], rir: null, timed: it.timed, group: it.group, uni: it.uni })),
+      logs: session.items.concat(session.extras).map((it) => ({ fam: it.fam, moveId: it.moveId, kind: it.kind, target: it.target, sets: [], rir: null, aim: it.effort ? it.effort.key : null, timed: it.timed, group: it.group, uni: it.uni })),
       finisher: session.finisher ? { moveId: session.finisher.moveId, rounds: 0, rir: null } : null,
       tests: {}, warmupDone: 0,
     };
@@ -1955,8 +1961,10 @@
     item.timed = !!m.timed; item.uni = !!m.uni; item.load = loadInfo(S, m, A ? A.day : null, fam); item.swapped = true;
     if (A) {
       const i = itemIndex(A, item);
-      if (i >= 0) Object.assign(A.logs[i], { moveId: newMoveId, target: item.target, timed: item.timed, uni: item.uni, swapped: true, fam });
       item.fam = fam;
+      // The new move has its own aim (a strength lift's, say, where the old one had the usual).
+      if (item.kind === 'move' || item.kind === 'extra') item.effort = effortFor(S, item, A.session.phase);
+      if (i >= 0) Object.assign(A.logs[i], { moveId: newMoveId, target: item.target, timed: item.timed, uni: item.uni, swapped: true, fam }, item.effort ? { aim: item.effort.key } : {});
       // Re-expand the remaining steps so a unilateral swap gets its side steps.
       const doneSteps = A.steps.slice(0, A.idx);
       const fresh = steps(S, A.session);
@@ -2030,8 +2038,10 @@
     if (A.finisher && A.finisher.rir) {
       const ff = (A.session.finisher && A.session.finisher.fam) || 'finisher';
       const st = S.prog[ff] || (S.prog[ff] = { rung: A.finisher.moveId, reps: 0, best: {} });
-      if (A.finisher.rir === '3' && !deload) {
-        st.fmt = Math.min(4, (st.fmt || 0) + 1);
+      // 3 left (or, before 1.13, 3 or more) moves the intervals on a step; 4 or more, two.
+      const up = A.finisher.rir === '4' ? 2 : A.finisher.rir === '3' ? 1 : 0;
+      if (up && !deload && (st.fmt || 0) < 4) {
+        st.fmt = Math.min(4, (st.fmt || 0) + up);
         lines.push({ text: 'Finisher: longer work intervals', why: 'you had plenty left' });
       }
     }
@@ -2165,18 +2175,17 @@
     const avg = firstSide.reduce((a, x) => a + x.amount, 0) / Math.max(1, firstSide.length);
     const unit = log.timed ? ' s' : ' reps';
     const name = m.name;
-    if (log.rir === '3') {
-      if (st.reps >= hi && allHit) {
-        const up = levelUp(S, fam, day);
+    // The answer against the set's aim (effortStep): at the top of the range with 3 or more left, a
+    // harder version; below it, more reps, more of them the further past the aim the answer was.
+    const go = effortStep(log);
+    if (allHit && go.pace) {
+      if (st.reps >= hi) {
+        const up = go.harder ? levelUp(S, fam, day) : null;
         if (up) { res.line = up.line; if (up.celebrate) res.celebrate.push(up.celebrate); }
-      } else if (allHit) {
-        const next = Math.min(hi, st.reps + stepFor(S, log.timed ? 10 : 2, log.timed, '3'));
-        if (next !== st.reps) { st.reps = next; res.line = { text: `${name} → ${next}${unit}`, why: 'you had 3+ left' }; }
-      }
-    } else if (log.rir === '12') {
-      if (allHit) {
-        const next = Math.min(hi, st.reps + stepFor(S, log.timed ? 5 : st.reps < 12 ? 1 : 2, log.timed, '12'));
-        if (next !== st.reps) { st.reps = next; res.line = { text: `${name} → ${next}${unit}`, why: 'you had 1-2 left' }; }
+      } else {
+        const base = go.pace === 1 ? (log.timed ? 5 : st.reps < 12 ? 1 : 2) : (log.timed ? 5 : 1) * go.pace;
+        const next = Math.min(hi, st.reps + stepFor(S, base, log.timed, log.rir));
+        if (next !== st.reps) { st.reps = next; res.line = { text: `${name} → ${next}${unit}`, why: effortWords(log) }; }
       }
     }
     if (!allHit) {
@@ -2215,8 +2224,8 @@
   }
 
   // How many reps (or seconds) a good set adds: src/access.js makes the steps a little bigger under
-  // 30 and smaller from 50.
-  function stepFor(S, base, timed, rir) { return GH.access ? GH.access.repStep(S.profile, base, timed, rir) : base; }
+  // 30 (an easy set, 3 or more left: '3', or '4' for 4 or more) and smaller from 50.
+  function stepFor(S, base, timed, rir) { return GH.access ? GH.access.repStep(S.profile, base, timed, rir === '4' ? '3' : rir) : base; }
 
   // Rep range for a move, by goal. Heavier sets build more maximal strength while muscle grows
   // about as well across a wide range of loads (Schoenfeld et al. 2017), so a strength goal moves
@@ -2224,21 +2233,85 @@
   // instead of ever more reps. An endurance goal moves smaller exercises up a little.
   const MAIN_LIFTS = ['pressG', 'squatG', 'hingeG', 'pullG', 'rowG', 'ohpG'];
   const HOME_COMPOUND = ['push', 'chestDb', 'squat', 'hinge', 'row', 'pull', 'press'];
+  // A main gym lift in its 4-8 range: strength is one of the top two goals.
+  const strengthLift = (S, m, fam) => !m.timed && !!m.load && MAIN_LIFTS.includes(fam) && (S.profile.goals || []).slice(0, 2).includes('strength');
   function rangeFor(S, m, fam) {
     const [lo, hi] = m.range;
     if (m.timed) return [lo, hi];
     const top = (S.profile.goals || []).slice(0, 2);
-    if (top.includes('strength') && MAIN_LIFTS.includes(fam) && m.load) return [Math.min(lo, 4), Math.max(Math.min(hi, 8), Math.min(lo, 4) + 3)];
+    if (strengthLift(S, m, fam)) return [Math.min(lo, 4), Math.max(Math.min(hi, 8), Math.min(lo, 4) + 3)];
     if (top.includes('strength') && HOME_COMPOUND.includes(fam)) return [5, 10];
     if (top.includes('endurance') && (M().LADDERS[fam] || {}).iso) return [lo + 3, hi + 5];
     return [lo, hi];
   }
 
+  /* ---------------------------------------------------------------- effort: reps left in the tank */
+  // How many reps a set leaves in the tank (reps in reserve), by goal and person. This one rule names
+  // it for the player's hint, the progression and the coach. An aim is a band of reps left (lo to hi)
+  // and the most that's still fine (ok), filed under a short key in each workout's log (log.aim):
+  //   strength  the 4-8 rep gym lifts with strength in the top two goals: 2-3, and 4 is fine too.
+  //             Strength gains barely depend on how near failure a set ends (Robinson et al. 2024);
+  //             the load drives them, so these never ask for 0 and move on by weight.
+  //   bone      osteoporosis (GH.access.boneLoad, when access.js has it), after the on-ramp: main sets
+  //             1-2, working toward the heaviest load lifted 8 to 12 times (Brooke-Wavell et al. 2022).
+  //   size      the top goal muscles (tier 1): 1-2. Muscle grows more as sets end nearer failure.
+  //   gentle    the on-ramp weeks, from 60, high blood pressure or a heart condition: 2-3. People
+  //             misjudge what's left by about a rep (Halperin et al. 2022) and the last reps add
+  //             little, so these stop a little further off (the app's choice, not a tested rule).
+  //   usual     everyone else: 1-3.
+  const AIMS = {
+    13: { lo: 1, hi: 3, ok: 3 }, 12: { lo: 1, hi: 2, ok: 2 }, 23: { lo: 2, hi: 3, ok: 3 }, 24: { lo: 2, hi: 3, ok: 4 },
+  };
+  const aimOf = (key, why) => Object.assign({ key, why }, AIMS[key]);
+  // The aim for a set of `it` (a session item: fam, moveId, group, skill) in a week of `phase`.
+  // { key, why ('heart', 'bp', 'onramp', 'strength', 'bone', 'age', 'size' or 'usual'), lo, hi, ok }.
+  function effortFor(S, it, phase) {
+    const p = S.profile;
+    const A = GH.access;
+    const cond = A ? A.conditions(p) : [];
+    if (cond.includes('heart')) return aimOf('23', 'heart');
+    if (cond.includes('bp')) return aimOf('23', 'bp');
+    if (phase && phase.onramp) return aimOf('23', 'onramp');
+    const m = it && M().MOVES[it.moveId];
+    const main = !!m && !m.timed && !(it && it.skill);
+    if (main && strengthLift(S, m, it.fam)) return aimOf('24', 'strength');
+    if (main && A && typeof A.boneLoad === 'function' && A.boneLoad(p)) return aimOf('12', 'bone');
+    const age = Number(p.age);
+    if (age >= 60 && age <= 110) return aimOf('23', 'age');
+    if (it && !it.skill && programFor(p).tiers[it.group] === 1) return aimOf('12', 'size');
+    return aimOf('13', 'usual');
+  }
+  // How an exercise moves on from its reps-left answer ('0', '12' for 1-2, '3', '4' for 4 or more),
+  // read against the aim it had: { pace, harder }. pace 0 holds (none left, or no answer); 1 is the
+  // usual step (on the aim, or nearer failure); 2 and 3 are bigger steps for each rep beyond what the
+  // aim allows. harder: at the top of the range, time for a harder version (3 or more left). A log
+  // from before 1.13 has no aim, and its '3' meant 3 or more: it moves on as it did then.
+  const RIR_EDGE = { 0: 0, 12: 1, 3: 3, 4: 4 };
+  function effortStep(log) {
+    const a = log ? log.rir : null;
+    let aim = log && typeof log.aim === 'string' && Object.prototype.hasOwnProperty.call(AIMS, log.aim) ? AIMS[log.aim] : null;
+    if (!aim && a === '3') return { pace: 2, harder: true };
+    aim = aim || AIMS[13];
+    const edge = Object.prototype.hasOwnProperty.call(RIR_EDGE, a) ? RIR_EDGE[a] : 0;
+    if (!edge) return { pace: 0, harder: false };
+    return { pace: edge <= aim.ok ? 1 : 1 + Math.min(2, edge - aim.ok), harder: edge >= aim.hi };
+  }
+  // The answer in words, for a "Next time" line's reason.
+  function effortWords(log) {
+    const a = log && log.rir;
+    if (a === '12') return 'you had 1-2 left';
+    if (a === '4') return 'you had 4 or more left';
+    if (a === '3') return log.aim ? 'you had 3 left' : 'you had 3+ left';
+    return '';
+  }
+
   // Gym moves: double progression. Reps climb to the top of the range, then the weight goes up one
   // step and reps start again at the bottom (Plotkin et al. 2022: adding reps or load both work).
   // Short of the range twice in a row means about 10% lighter. The best estimated one-rep max
-  // (Epley, counting the reps left in the tank) is kept per exercise for the strength charts.
-  const RIR_NUM = { 0: 0, 12: 1.5, 3: 3 };
+  // (Epley, counting the reps left in the tank) is kept per exercise for the strength charts. ('3'
+  // counts as 3 whether it's 1.13's 3 or an older log's "3 or more", as it always did; 4 or more is
+  // about 4.5.)
+  const RIR_NUM = { 0: 0, 12: 1.5, 3: 3, 4: 4.5 };
   function progressGym(S, fam, log, deload, day) {
     const m = M().MOVES[log.moveId];
     const res = { celebrate: [] };
@@ -2297,7 +2370,11 @@
     const target = log.target;
     const allHit = firstSide.every((x) => x.amount >= target);
     const avg = firstSide.reduce((a, x) => a + x.amount, 0) / firstSide.length;
-    if (allHit && (log.rir === '3' || log.rir === '12')) {
+    // The answer against the set's aim (effortStep): at the top of the range with reps to spare the
+    // weight goes up (on the strength lifts, whose aim is 2-3 with 4 fine, that's how they progress);
+    // below it, more reps, more of them the further past the aim the answer was.
+    const go = effortStep(log);
+    if (allHit && go.pace) {
       st.short = 0;
       if (st.reps >= hi) {
         const next = work != null && key ? snapLoad(S, key, work, +1, day) : null;
@@ -2313,8 +2390,8 @@
             : { text: `${m.name}: top of the rep range. Hold a dumbbell to keep progressing.`, why: 'you had reps to spare' };
         }
       } else {
-        const next = Math.min(hi, st.reps + stepFor(S, log.rir === '3' ? 2 : 1, false, log.rir));
-        if (next !== st.reps) { st.reps = next; res.line = { text: `${m.name} → ${next}${unit}`, why: log.rir === '3' ? 'you had 3+ left' : 'you had 1-2 left' }; }
+        const next = Math.min(hi, st.reps + stepFor(S, go.pace, false, log.rir));
+        if (next !== st.reps) { st.reps = next; res.line = { text: `${m.name} → ${next}${unit}`, why: effortWords(log) }; }
       }
     } else if (!allHit) {
       if (avg < lo) {
@@ -2339,7 +2416,7 @@
     return res;
   }
 
-  // Top of the range with 3+ left: heavier weight, then the next rung, then a buy suggestion.
+  // Top of the range with 3 or more left: heavier weight, then the next rung, then a buy suggestion.
   function levelUp(S, fam, day) {
     const st = S.prog[fam];
     const m = M().MOVES[st.rung];
@@ -2350,7 +2427,7 @@
     if (weights.length > 1 && (st.w || 0) < weights.length - 1) {
       st.w = (st.w || 0) + 1;
       st.reps = clampInt(m.range[0] + 2, m.range[0], m.range[1]);
-      return { line: { text: `${m.name} → ${fmtNum(weights[st.w])} ${unit}`, why: 'you had 3+ left every set' }, celebrate: { kind: 'weight', text: `Heavier: ${fmtNum(weights[st.w])} ${unit} ${m.name.toLowerCase()}` } };
+      return { line: { text: `${m.name} → ${fmtNum(weights[st.w])} ${unit}`, why: 'top of the range with 3 or more left' }, celebrate: { kind: 'weight', text: `Heavier: ${fmtNum(weights[st.w])} ${unit} ${m.name.toLowerCase()}` } };
     }
     const list = rungs(S, fam, day);
     const at = list.indexOf(st.rung);
@@ -2362,12 +2439,12 @@
       st.reps = clampInt(nm.start, nm.range[0], nm.range[1]);
       if (weights.length > 1) st.w = Math.max(0, (st.w || 0) - 1);
       const all = M().LADDERS[fam].rungs.filter((x) => list.includes(x));
-      return { line: { text: `${m.name} → ${nm.name}`, why: 'you had 3+ left every set' }, celebrate: { kind: 'level', text: `${M().LADDERS[fam].name}: level ${all.indexOf(nextId) + 1} of ${all.length}` } };
+      return { line: { text: `${m.name} → ${nm.name}`, why: 'top of the range with 3 or more left' }, celebrate: { kind: 'level', text: `${M().LADDERS[fam].name}: level ${all.indexOf(nextId) + 1} of ${all.length}` } };
     }
     if (!st.maxed && key && (key === 'db' || key === 'kb')) {
       st.maxed = true;
       const next = nextWeight(key, weights[weights.length - 1], unit);
-      return { line: { text: `You maxed ${M().LADDERS[fam].name.toLowerCase()} with ${fmtNum(weights[weights.length - 1])} ${unit}. Next buy: ${next} ${unit} ${key === 'db' ? 'dumbbells' : 'kettlebell'}`, why: 'top rung, top reps, 3+ left', buy: true } };
+      return { line: { text: `You maxed ${M().LADDERS[fam].name.toLowerCase()} with ${fmtNum(weights[weights.length - 1])} ${unit}. Next buy: ${next} ${unit} ${key === 'db' ? 'dumbbells' : 'kettlebell'}`, why: 'top rung, top reps, 3 or more left', buy: true } };
     }
     return null;
   }
@@ -2651,6 +2728,9 @@
   };
   // For src/access.js, which builds balance and floor-practice slots like any other.
   Object.assign(GH.brain, { itemFor, famFor, restFor, tierOf, cooldownItems });
+  // Reps left in the tank: each set's aim, and how an answer moves an exercise on (src/customplan.js,
+  // src/coach.js and src/ai.js read answers with them too).
+  Object.assign(GH.brain, { AIMS, effortFor, effortStep, effortWords, RIR_NUM });
   // For src/optimizer.js, which plans the weeks and fits sessions to their time.
   Object.assign(GH.brain, {
     UNIT_GROUPS, UNIT_OF, COMPOUND, MAIN_LIFTS, HOME_COMPOUND, FAM_FOCUS, MERGE_MAX, SET_MAX,
