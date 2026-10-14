@@ -67,7 +67,7 @@
       plan: 'Breathe out on every effort, never hold your breath, and no head-down positions.',
       doctor: 'If it isn\'t under control yet, check with your doctor before you start.' },
     { id: 'diabetes', name: 'Type 2 diabetes', short: 'type 2 diabetes',
-      plan: 'Strength on 2 or 3 days a week, not back to back, building to heavier sets, with walks between. Breathe out on every effort.',
+      plan: 'Strength on 2 or 3 days a week, not back to back, with walks between. Breathe out on every effort.',
       doctor: 'If you take insulin or a medicine that can cause low blood sugar, ask your doctor about timing, and keep some fast-acting sugar with you.' },
     { id: 'balance', name: 'Balance problems or falls', short: 'balance',
       plan: 'Balance practice every session with a hand on the wall, seated and supported moves, and no quick footwork.' },
@@ -372,12 +372,16 @@
     const id = (B().placeOf(S, day) === 'gym' ? ['leg_press_power'] : []).concat(near, ['sq_goblet_power', 'sq_stepup_power', 'sq_bw_power', 'sq_sts_power', SAFEST]).find(usable);
     return id ? powerItem(S, s, id, day) : null;
   }
-  // A fast move of its own: 2 sets of 6 (or the move's fewest), 1 on a short day, after the warm-up
-  // practice. Its group is power, so it adds nothing to a muscle group's weekly sets.
+  // A fast move of its own: 2 sets (1 on a short day) after the warm-up practice, of the move's
+  // fewest reps, or your usual reps when it's the fast version of the level you're on (it counts as
+  // that level, src/brain.js progress, so a short set mustn't move it on). Its group is power, so
+  // it adds nothing to a muscle group's weekly sets.
   function powerItem(S, s, id, day) {
     const m = M().MOVES[id];
+    const st = S.prog && S.prog[m.family];
+    const usual = st && st.rung === m.powerOf ? st.reps : null;
     return {
-      kind: 'move', fam: m.family, moveId: id, name: m.name, group: 'power', sets: s.short ? 1 : 2, target: Math.max(m.range[0], Math.min(m.range[1], 6)),
+      kind: 'move', fam: m.family, moveId: id, name: m.name, group: 'power', sets: s.short ? 1 : 2, target: Math.max(m.range[0], Math.min(m.range[1], usual || 6)),
       timed: false, uni: !!m.uni, rest: 60, load: B().loadInfo(S, m, day, m.family), swappedFrom: null, superset: null, power: true, skill: true,
     };
   }
@@ -706,8 +710,9 @@
       const c = BY_ID[id];
       let text = c.plan;
       if (id === 'oa' && r.oa.size) text = `${text} Joints: ${joinList(OA_JOINTS.filter(([j]) => r.oa.has(j)).map(([, t]) => t.toLowerCase()))}.`;
-      if (id === 'osteo') text = `${text}${impactOn(p) ? ' A short impact block on most days: heel drops, stamps or jogging on the spot.' : r.fragile ? ' Impact stays at brisk walking.' : ''}`;
-      if (id === 'diabetes' && r.retino) text = `${text} Sets stay at 10 to 15 reps, with no heavy lifting, jumping or head-down moves.`;
+      // (Diabetic eye disease keeps sets light, so osteoporosis's heavier sets don't apply.)
+      if (id === 'osteo') text = `${r.retino ? 'Back extensions for posture, balance work, and no bending or twisting your spine under load.' : text}${impactOn(p) ? ' A short impact block on most days: heel drops, stamps or jogging on the spot.' : r.fragile ? ' Impact stays at brisk walking.' : ''}`;
+      if (id === 'diabetes') text = `${text}${r.retino ? ' Sets stay at 10 to 15 reps, with no heavy lifting, jumping or head-down moves.' : ' After the first easier weeks, your main moves build to heavier sets of about 8 to 10 reps.'}`;
       out.push({ kind: 'condition', id, text: `${c.name}: ${text}` });
     }
     if (p.floorOk === false && !r.seated) out.push({ kind: 'floor', text: 'Nothing on the floor: standing and seated versions instead.' });
@@ -760,7 +765,7 @@
     }
     const stand = items.filter((it) => { const m = M().MOVES[it.moveId]; return m && M().LADDERS[m.family] && M().LADDERS[m.family].alt && m.family !== 'balance' && m.family !== 'getup' && m.family !== 'impact'; });
     if (stand.length) out.push({ icon: 'shuffle', tone: 'coral', text: stand.length === 1 ? `${stand[0].name} in place of the usual move` : `${stand.length} moves swapped for versions that suit you`, why: plannedAround(p) ? `${plannedAround(p)}.` : 'Your answers rule the usual moves out.', rule: rulesOf(p).seated ? 'seated' : 'arthritis' });
-    if ((s.notes || []).some((n) => n.kind === 'breathe')) out.push({ icon: 'heart', tone: 'rose', text: 'Breathe out on every effort', why: 'Holding your breath while you strain makes blood pressure spike.', rule: 'pressure' });
+    if ((s.notes || []).some((n) => n.kind === 'breathe')) out.push({ icon: 'heart', tone: 'rose', text: 'Breathe out on every effort', why: 'Holding your breath while you strain makes blood pressure spike.', rule: ['bp', 'heart'].some((x) => rulesOf(p).c.has(x)) || !rulesOf(p).c.has('diabetes') ? 'pressure' : 'diabetes' });
     else if (band(p) !== 'mid' && band(p) !== 'young' && s.warmup && s.warmup.length >= 3) out.push({ icon: 'sun', tone: 'amber', text: 'A longer, gentler warm-up', why: `From ${band(p) === 'senior' ? '65' : '50'}, with a little more rest between sets too.`, rule: 'age' });
     return out;
   }

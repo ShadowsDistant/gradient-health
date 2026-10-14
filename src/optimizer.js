@@ -175,7 +175,7 @@
   // condition or an empty room opens), at home and at the gym as the person trains.
   const feasMemo = lru(32);
   function feasibleUnits(p) {
-    const key = JSON.stringify([p.equipment, p.gym, p.where, p.conditions, p.oaJoints, p.floorOk, p.careful, p.impactOk, p.jumpsOk, p.gentle, p.age, p.conditionsSince, p.startDay, (p.planTweaks || {}).avoid]);
+    const key = JSON.stringify([p.equipment, p.gym, p.where, p.conditions, p.oaJoints, p.floorOk, p.careful, p.impactOk, p.jumpsOk, p.gentle, p.age, p.conditionsSince, p.startDay, (p.planTweaks || {}).avoid, p.fractures, p.retinopathy]);
     const hit = feasMemo.get(key);
     if (hit !== undefined) return hit;
     const b = B();
