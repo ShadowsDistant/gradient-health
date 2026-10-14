@@ -200,6 +200,78 @@ section('Fitting sessions to their time');
   check('after a bad night the session has fewer sets and no finisher is added', sets(tired) < sets(plain) && !tired.finisher, { plain: sets(plain), tired: sets(tired) });
 }
 
+/* ------------------------------------------------------------------ rests */
+// 1.13: sets come before rest. A session short of time loses the extra rest from 50 first; one with
+// time to spare gives what's done on its own at 60 s 90 s (right after the sets with a muscle goal,
+// after the finisher and cool-down otherwise), and supersets keep 60.
+section('Rests: sets first, then 90 s on its own when there\'s time');
+{
+  const main = (it) => !it.skill && it.kind === 'move';
+  // A day's session as realized (before it's fitted), and fitted to a budget of our choosing.
+  const day0 = (p) => {
+    const S = person(p);
+    const cal = B.calendar(S, D0);
+    const x = cal.weeks[D0].sessions[0];
+    const phase = cal.weeks[D0].phase;
+    const dp = O.dayPlan(S, D0, x.tpl, { phase, stamp: B.stateStamp(S) });
+    const raw = () => B.realize(S, x.day, dp, { phase, finisher: !!dp.finisher });
+    const fitTo = (budget) => { const r = raw(); O.fit(S, r.session, { dp, ready: r.ready, phase, budget }); return r.session; };
+    return { S, raw, fitTo };
+  };
+  const setsOf = (s) => s.items.filter(main).map((it) => `${it.moveId}×${it.sets}`).join(' ');
+  // A 70-year-old: 30 s more rest after every set, from src/access.js.
+  const old = day0({ age: 70, goals: ['legs', 'back'], days: 3, minutes: 30 });
+  const r0 = old.raw().session;
+  const est0 = B.estimate(old.S, r0);
+  const bare = JSON.parse(JSON.stringify(r0));
+  for (const it of bare.items.concat(bare.extras)) if (it.agePlus) { it.rest -= it.agePlus; it.agePlus = 0; }
+  const plusMin = est0 - B.estimate(old.S, bare);
+  check('from 65 each exercise carries 30 s of extra rest, marked as such', plusMin > 2 && r0.items.filter(main).every((it) => it.agePlus === 30), { plusMin, rests: r0.items.map((it) => `${it.moveId}@${it.rest}+${it.agePlus}`) });
+  // Short of time by less than the extra rest takes: it goes, the sets stay.
+  const a = old.fitTo(est0 - plusMin / 2 - 0.5);
+  check('short of time, the extra rest goes first and every set stays', setsOf(a) === setsOf(r0) && a.items.filter(main).some((it) => !it.agePlus) && B.estimate(old.S, a) <= est0 - plusMin / 2 + 1e-6, { before: setsOf(r0), after: setsOf(a), est: B.estimate(old.S, a) });
+  // Shorter still: sets go too, and no longer rest comes back in their place.
+  const b2 = old.fitTo(est0 - plusMin - 3);
+  check('shorter still: sets go too, and the extra rest stays off', b2.items.filter(main).every((it) => !it.agePlus) && b2.items.filter(main).reduce((n, it) => n + it.sets, 0) < r0.items.filter(main).reduce((n, it) => n + it.sets, 0) && B.estimate(old.S, b2) <= est0 - plusMin - 2.5 + 1e-6, setsOf(b2));
+  // Time to spare: the extra rest is back, and what's done on its own rests 90 s plus it.
+  const c2 = old.fitTo(est0 + 12);
+  const solo = c2.items.filter((it) => main(it) && !it.superset);
+  check('with time to spare it\'s back, and what\'s on its own at 60 rests 90 s (plus the 30)', c2.items.filter(main).every((it) => it.agePlus === 30) && solo.length > 0 && solo.every((it) => it.rest >= 120) && c2.items.filter((it) => it.superset).every((it) => it.rest === 90) && B.estimate(old.S, c2) <= est0 + 12 + 1e-6, c2.items.map((it) => `${it.moveId}@${it.rest}${it.superset ? '/' + it.superset : ''}`));
+
+  // Which comes first as the time grows: 90 s on its own, or a cool-down. (Room for more sets is
+  // filled before either, so the budgets run past it.)
+  const order = (p) => {
+    const d = day0(p);
+    const e = B.estimate(d.S, d.raw().session);
+    const at60 = new Set(d.raw().session.items.filter((it) => main(it) && it.rest === 60).map((it) => it.moveId));
+    const seen = { restFirst: false, coolFirst: false, over: 0 };
+    for (let k = 0; k <= 40; k++) {
+      const s = d.fitTo(e + k / 2);
+      const rested = s.items.some((it) => main(it) && !it.superset && it.rest === 90 && at60.has(it.moveId));
+      const cool = s.mobility.some((mb) => !mb.cardio);
+      if (rested && !cool) seen.restFirst = true;
+      if (cool && !rested) seen.coolFirst = true;
+      if (B.estimate(d.S, s) > e + k / 2 + 1e-6) seen.over++;
+    }
+    return seen;
+  };
+  const sz = order({ age: 35, goals: ['arms', 'chest'], days: 3, minutes: 45, prefs: { supersets: false } });
+  check('a muscle goal: 90 s on its own comes before a cool-down, never past the time', sz.restFirst && !sz.coolFirst && !sz.over, sz);
+  const ot = order({ age: 35, goals: ['consistency'], days: 3, minutes: 45, prefs: { supersets: false } });
+  check('another goal: the cool-down comes first, then 90 s on its own', ot.coolFirst && !ot.restFirst && !ot.over, ot);
+  const other = day0({ age: 35, goals: ['consistency'], days: 3, minutes: 45, prefs: { supersets: false } });
+  const o2 = other.fitTo(B.estimate(other.S, other.raw().session) + 15);
+  check('and with time to spare, everything done on its own rests 90 s or more', o2.items.filter((it) => main(it) && !it.superset).every((it) => it.rest >= 90), o2.items.map((it) => `${it.moveId}@${it.rest}`));
+  // Supersets keep 60 s whatever the time.
+  const pairs = day0({ age: 35, goals: ['arms', 'chest'], days: 3, minutes: 45 });
+  const p1 = pairs.fitTo(B.estimate(pairs.S, pairs.raw().session) + 10);
+  check('inside supersets it stays 60 s', p1.items.some((it) => it.superset) && p1.items.filter((it) => it.superset).every((it) => it.rest === 60), p1.items.map((it) => `${it.moveId}@${it.rest}${it.superset ? '/' + it.superset : ''}`));
+  // A rest picked in Settings or a plan tweak is left as it is.
+  const fixed = day0({ age: 70, goals: ['legs', 'back'], days: 3, minutes: 30, prefs: { rest: 60 } });
+  const f1 = fixed.fitTo(B.estimate(fixed.S, fixed.raw().session) + 12);
+  check('a rest you picked stays as you picked it', f1.items.filter((it) => main(it)).every((it) => it.rest === 60), f1.items.map((it) => `${it.moveId}@${it.rest}`));
+}
+
 /* ------------------------------------------------------------------ the score */
 section('The score');
 {

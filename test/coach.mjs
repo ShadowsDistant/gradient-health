@@ -137,10 +137,11 @@ const restCheck = (supersets) => {
   const BIG = ['push', 'press', 'row', 'squat', 'hinge', 'pull', 'chestDb'];
   const big = solo.filter((it) => BIG.includes(it.fam));
   const small = solo.filter((it) => !BIG.includes(it.fam));
-  return { ok: big.every((it) => it.rest === 90) && small.every((it) => it.rest === 60) && items.filter((it) => it.superset).every((it) => it.rest === 60), big: big.length, paired: items.filter((it) => it.superset).length };
+  // (1.13: a session with time to spare gives what's done on its own at 60 s 90 s instead.)
+  return { ok: big.every((it) => it.rest === 90) && small.every((it) => it.rest === 60 || it.rest === 90) && items.filter((it) => it.superset).every((it) => it.rest === 60), big: big.length, small: small.map((it) => `${it.fam}@${it.rest}`), paired: items.filter((it) => it.superset).length };
 };
 const rc1 = restCheck(false), rc2 = restCheck(true);
-check('the rest rule matches the brain: 90 s after big moves on their own, 60 s after small ones', rc1.ok && rc1.big > 0, rc1);
+check('the rest rule matches the brain: 90 s after big moves on their own, 60 s after small ones (90 with time to spare)', rc1.ok && rc1.big > 0 && ['push', 'press', 'row', 'squat', 'hinge', 'pull', 'chestDb'].every((f) => B.restFor(person(), f) === 90) && ['curl', 'raise', 'calf'].every((f) => B.restFor(person(), f) === 60), rc1);
 check('and 60 s inside supersets, where each muscle rests through its partner\'s set', rc2.ok && rc2.paired > 0, rc2);
 
 section('Sync window');
