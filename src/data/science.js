@@ -143,7 +143,7 @@
       refs: ['bell2023', 'coleman2024'] },
     { id: 'maintenance', cat: 'training', icon: 'check-circle', tone: 'teal', title: 'Keeping up what isn\'t a priority', level: 'moderate',
       does: 'Muscles you didn\'t rank as goals still get a few sets each week. From 60, with two or more workouts a week, they\'re trained twice a week, with about the same sets split between the two.',
-      why: 'Young adults kept their muscle size on a third, even a ninth, of their earlier training volume. In trained men, one set two or three times a week still raised strength. Adults aged 60 to 75 kept their strength on one session a week, but not their muscle size.',
+      why: 'Young adults kept their muscle size on a third, even a ninth, of their earlier training volume. In trained men, one set two or three times a week still raised strength. Adults aged 60 to 75 kept their strength on one session a week, while their muscle size slipped back.',
       caveat: 'That study didn\'t test two sessions a week in older adults. Twice a week from 60 is our choice: we start there and keep the weekly sets the same.',
       refs: ['bickel2011', 'androulakis2020'] },
     { id: 'sleep', cat: 'recovery', icon: 'moon', tone: 'indigo', title: 'An easier day after a short night', level: 'moderate',
