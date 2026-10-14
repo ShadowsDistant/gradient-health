@@ -27,7 +27,9 @@
 
   /* ================================================================== constants */
   const GROUPS = ['biceps', 'triceps', 'abs', 'chest', 'legs', 'back', 'shoulders'];
-  const GROUP_NAME = { biceps: 'Biceps', triceps: 'Triceps', abs: 'Abs', chest: 'Chest', legs: 'Legs', back: 'Back', shoulders: 'Shoulders', conditioning: 'Conditioning', mobility: 'Mobility', balance: 'Balance' };
+  // (impact, posture and power: practice for older bodies and bones, src/access.js, outside the
+  // muscle groups' weekly sets like balance.)
+  const GROUP_NAME = { biceps: 'Biceps', triceps: 'Triceps', abs: 'Abs', chest: 'Chest', legs: 'Legs', back: 'Back', shoulders: 'Shoulders', conditioning: 'Conditioning', mobility: 'Mobility', balance: 'Balance', impact: 'Impact', posture: 'Posture', power: 'Power' };
   const GOAL_GROUPS = { abs: ['abs'], arms: ['biceps', 'triceps'], chest: ['chest'], legs: ['legs'], back: ['back'], shoulders: ['shoulders'] };
   const UNIT_OF = { biceps: 'arms', triceps: 'arms', abs: 'abs', chest: 'chest', legs: 'legs', back: 'back', shoulders: 'shoulders' };
   const UNIT_GROUPS = { arms: ['biceps', 'triceps'], abs: ['abs'], chest: ['chest'], legs: ['legs'], back: ['back'], shoulders: ['shoulders'] };
@@ -127,7 +129,7 @@
     const om = opMap(PROGRAMS);
     const kept = om && om.get(p);
     if (kept) return kept;
-    const key = JSON.stringify([p.goals, p.focus, p.experience, p.recentActivity, p.days, p.gentle, p.impactOk, p.age, p.conditions, p.oaJoints, p.floorOk, p.jumpsOk]);
+    const key = JSON.stringify([p.goals, p.focus, p.experience, p.recentActivity, p.days, p.gentle, p.impactOk, p.age, p.conditions, p.oaJoints, p.floorOk, p.jumpsOk, p.fractures, p.retinopathy, !!p.legacyRules]);
     let out = programMemo.get(key);
     if (!out) {
       if (programMemo.size > 64) programMemo.clear();
@@ -156,11 +158,16 @@
     for (const grp of new Set(focus.map((m) => MUSCLE_GROUP[m]))) if (tiers[grp] > 1) tiers[grp]--;
     const D = clampInt(p.days, 2, 6);
     const freq = {};
+    // From 60, muscles that aren't goals train twice a week, their weekly sets shared over both days:
+    // one session a week kept strength but not muscle size at 60 to 75 (Bickel et al. 2011). Weeks
+    // planned before 1.13's rules started keep once a week (legacyRules, see src/access.js).
+    const twice = p.age >= 60 && p.age <= 110 && !p.legacyRules;
     for (const [unit, groups] of Object.entries(UNIT_GROUPS)) {
       const t = Math.min(...groups.map((g) => tiers[g]));
       let f = t === 1 ? 3 : t === 2 ? 2 : 1;
       if (unit === 'back' && t === 3 && tiers.chest <= 2) f = 2; // balance all the pushing
       if (unit === 'shoulders' && t === 3) f = 1;
+      if (t === 3 && twice) f = 2;
       freq[unit] = Math.min(f, D);
     }
     const start = {}, cap = {}, floor = {};
@@ -289,6 +296,8 @@
       // Every week is planned by the 1.6 engine (src/optimizer.js); a state saved before 1.6 gets
       // the week after it first loads (the migration there), so earlier weeks replay as they were.
       engineFrom: weekStart(day),
+      // And with 1.13's rules for older bodies, osteoporosis and type 2 diabetes (src/access.js).
+      rulesFrom: weekStart(day),
     };
     if (p.weightKg) S.weights.push({ day, kg: p.weightKg, src: 'profile' });
     initProgress(S, baseline, day);
@@ -600,7 +609,7 @@
     // (A workout's sets count too: the next week's plan reads what the last one trained.)
     for (const l of S.log || []) if (l && (l.type === 'workout' || l.type === 'light')) lg += `${l.type[0]}${l.day}.${l.checkedIn ? 1 : 0}${(l.pct || 0) >= 0.5 ? 1 : 0}${l.walk ? 1 : 0}${l.mobility ? 1 : 0}${l.doneSets || 0};`;
     const ev = (S.events || []).filter((e) => e && (e.type === 'settings' || e.type === 'move' || e.type === 'deloadNext' || e.type === 'plan'));
-    return JSON.stringify([planProfile(S.profile), S.vol, S.complexity, S.pain, S.excluded, S.catchup, S.place, S.lastPlace, S.engineFrom, ev, S.customPlans, S.activePlan]) + progStamp(S) + lg;
+    return JSON.stringify([planProfile(S.profile), S.vol, S.complexity, S.pain, S.excluded, S.catchup, S.place, S.lastPlace, S.engineFrom, S.rulesFrom, ev, S.customPlans, S.activePlan]) + progStamp(S) + lg;
   }
   // The workouts a week's plan reads, in short (the week's own and the week before's, what they
   // trained), and the changes to the schedule made in those weeks. A week that's over keeps its plan
@@ -932,11 +941,17 @@
   // what's left of that week keep their meaning; later weeks come from the optimizer.
   const legacyWeek = (S, ws) => S.engineFrom != null && ws < S.engineFrom;
   // The profile and program a week's split is made from: the person as they are, with that week's
-  // days, weekdays and minutes, and how simple sessions are (fewer exercises a day).
+  // days, weekdays and minutes, and how simple sessions are (fewer exercises a day). A week before
+  // 1.13's rules started is marked legacyRules, so its split is the one it had; from then, type 2
+  // diabetes trains strength on 3 of the days at most (src/access.js oldRules, strengthDays).
   function weekInputs(S, ws, set) {
     const st = set || weekSettings(S, ws);
     const p = S.profile;
-    return { set: st, p: Object.assign({}, p, { days: st.days, weekdays: st.weekdays, minutes: st.minutes, complexity: S.complexity || 0 }), prog: programFor(Object.assign({}, p, { days: st.days })) };
+    const A = GH.access;
+    const old = A && A.oldRules ? A.oldRules(S, ws) : false;
+    const mark = old ? { legacyRules: true } : null;
+    const wk = !old && A && A.strengthDays ? A.strengthDays(p, { days: st.days, weekdays: st.weekdays }) : { days: st.days, weekdays: st.weekdays };
+    return { set: st, p: Object.assign({}, p, { days: wk.days, weekdays: wk.weekdays, minutes: st.minutes, complexity: S.complexity || 0 }, mark), prog: programFor(Object.assign({}, p, { days: wk.days }, mark)) };
   }
   function templateOf(S, ws, set) {
     const w = weekInputs(S, ws, set);
@@ -946,7 +961,8 @@
   // 1.5's sets for each group of a template day: the week's sets (scaled for the phase) shared out
   // over the days that train the group. Legacy weeks keep these, before the optimizer's fit.
   function legacyGroupSets(S, tpl, t, mult) {
-    const prog = programFor(S.profile);
+    // (Those weeks came before 1.13's rules too.)
+    const prog = programFor(Object.assign({}, S.profile, { legacyRules: true }));
     const occurrence = (unit) => tpl.slice(0, t.idx).filter((x) => x.units.includes(unit)).length;
     const out = {};
     for (const unit of t.units) for (const g of UNIT_GROUPS[unit]) out[g] = perSession(Math.round((S.vol[g] != null ? S.vol[g] : prog.start[g]) * mult), prog.freq[unit] || 1, occurrence(unit));
@@ -1389,7 +1405,7 @@
     const fam = pick.family || slot.fam;
     const st = S.prog[fam] || { reps: m.start };
     let target = st.rung === pick.id ? st.reps : m.start;
-    const [lo, hi] = rangeFor(S, m, fam);
+    const [lo, hi] = rangeFor(S, m, fam, day);
     target = clampInt(target, lo, hi);
     const it = {
       kind: 'move', fam, moveId: m.id, name: m.name, group: slot.group, sets: slot.sets, target,
@@ -2224,7 +2240,9 @@
   // instead of ever more reps. An endurance goal moves smaller exercises up a little.
   const MAIN_LIFTS = ['pressG', 'squatG', 'hingeG', 'pullG', 'rowG', 'ohpG'];
   const HOME_COMPOUND = ['push', 'chestDb', 'squat', 'hinge', 'row', 'pull', 'press'];
-  function rangeFor(S, m, fam) {
+  function rangeFor(S, m, fam, day) {
+    const own = GH.access && GH.access.repRange ? GH.access.repRange(S, m, fam, day) : null; // a health condition's (src/access.js)
+    if (own) return own;
     const [lo, hi] = m.range;
     if (m.timed) return [lo, hi];
     const top = (S.profile.goals || []).slice(0, 2);

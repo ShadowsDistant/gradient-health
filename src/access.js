@@ -9,11 +9,18 @@
  *                 painful wrists: seated band presses), or when a gentler one suits better
  *   startRung     where a ladder starts (sit to stand from 65, a hand on the wall for balance)
  *   repStep       how fast reps climb (a little faster under 30, smaller steps from 50)
+ *   repRange      the rep range a condition sets (osteoporosis, type 2 diabetes, diabetic eye disease)
  *   testsOk       whether the all-out left vs right tests run
- *   mobilityIds   a light day's mobility flow
- *   adjustSession one pass over each built session: warm-up, balance and floor practice, power,
- *                 rest, cool-down, and flare days (a gentle range-of-motion session instead)
- * The UI reads the words from here too (plannedAround, planLines, CONDITIONS).
+ *   mobilityIds   a light day's mobility flow (and the impact block for bones on light days)
+ *   strengthDays  which of the week's days train strength (type 2 diabetes: 3 at most, spread out)
+ *   adjustSession one pass over each built session: warm-up, balance and floor practice, impact for
+ *                 bones, back extensions, power, rest, cool-down, and flare days (a gentle
+ *                 range-of-motion session instead)
+ * The rules that change which days train what (power on every leg day and muscles that aren't goals
+ * twice a week from 60, impact and back extensions with osteoporosis, type 2 diabetes's days) start
+ * with S.rulesFrom (newRules): a state from before 1.13 keeps the earlier ones to the end of the week
+ * it's first loaded in, so no week reshuffles under someone halfway through.
+ * The UI reads the words from here too (plannedAround, planLines, CONDITIONS, FOLLOW_UPS).
  *
  * Nothing here is medical advice. The rules follow published exercise guidance for each group (see
  * src/data/science.js, 'Age and health'), lean to the safe side, and say when to check with a
@@ -39,6 +46,9 @@
     return a < 30 ? 'young' : a < 50 ? 'mid' : a < 65 ? 'older' : 'senior';
   }
   const from50 = (p) => { const b = band(p); return b === 'older' || b === 'senior'; };
+  // The age itself, for the rules that start at 60 and 75 (null when it isn't one).
+  const ageOf = (p) => { const a = Number(p && p.age); return a >= 13 && a <= 110 ? a : null; };
+  const from60 = (p) => ageOf(p) >= 60;
 
   /* ================================================================== conditions */
   // Offered in set-up ("Anything to plan around?") and Settings. `plan` says what changes,
@@ -50,13 +60,15 @@
     { id: 'oa', name: 'Osteoarthritis', short: 'osteoarthritis', joints: true, flare: true,
       plan: 'Low impact, strength around the joints, and no deep loaded bending for sore knees or hips.' },
     { id: 'osteo', name: 'Osteoporosis or low bone density', short: 'osteoporosis',
-      plan: 'No bending or twisting your spine under load, balance work, and strength that keeps progressing.',
-      doctor: 'If you\'ve broken a bone in a minor fall, check with your doctor or physio before you start.' },
+      plan: 'Strength that builds to heavier sets, back extensions for posture, balance work, and no bending or twisting your spine under load.' },
     { id: 'back', name: 'Ongoing low back pain', short: 'low back pain',
       plan: 'Bird dogs, side planks and walking, and no heavy loads on your back for the first 8 weeks.' },
     { id: 'bp', name: 'High blood pressure', short: 'high blood pressure',
       plan: 'Breathe out on every effort, never hold your breath, and no head-down positions.',
       doctor: 'If it isn\'t under control yet, check with your doctor before you start.' },
+    { id: 'diabetes', name: 'Type 2 diabetes', short: 'type 2 diabetes',
+      plan: 'Strength on 2 or 3 days a week, not back to back, building to heavier sets, with walks between. Breathe out on every effort.',
+      doctor: 'If you take insulin or a medicine that can cause low blood sugar, ask your doctor about timing, and keep some fast-acting sugar with you.' },
     { id: 'balance', name: 'Balance problems or falls', short: 'balance',
       plan: 'Balance practice every session with a hand on the wall, seated and supported moves, and no quick footwork.' },
     { id: 'seated', name: 'Wheelchair, or can\'t stand for long', short: 'a seated plan',
@@ -70,6 +82,16 @@
   const BY_ID = Object.fromEntries(CONDITIONS.map((c) => [c.id, c]));
   // Joints osteoarthritis can affect, as asked in set-up.
   const OA_JOINTS = [['knee', 'Knees'], ['hip', 'Hips'], ['hand', 'Hands'], ['back', 'Lower back'], ['shoulder', 'Shoulders']];
+  // The question a condition brings in set-up and Settings, its answer kept in the profile under
+  // `key` ('yes', 'no' or 'unsure'). No answer yet counts as not sure, and not sure as yes: the
+  // safer plan until someone knows.
+  const ANSWERS = [['yes', 'Yes'], ['no', 'No'], ['unsure', 'Not sure']];
+  const FOLLOW_UPS = {
+    osteo: { key: 'fractures', q: 'Have you broken a bone in your spine, or more than one bone in a minor fall?', label: 'Broken bones',
+      foot: 'If not, a short impact block on most days helps your bones. If so, or if you\'re not sure, impact stays at brisk walking.' },
+    diabetes: { key: 'retinopathy', q: 'Do you have diabetic eye disease (retinopathy)?', label: 'Diabetic eye disease',
+      foot: 'If so, or if you\'re not sure, sets stay at 10 to 15 reps, with no heavy lifting, jumping or head-down moves.' },
+  };
   const conditions = (p) => (p && Array.isArray(p.conditions) ? p.conditions.filter((id) => BY_ID[id]) : []);
 
   // The rules a profile brings, worked out once per distinct set of answers.
@@ -79,17 +101,23 @@
     const op = GH.brain && GH.brain.opToken ? GH.brain.opToken() : null;
     if (op && p === memo.p && memo.op === op) return memo.r;
     const list = conditions(p);
-    const key = [list.join(), (p && p.oaJoints || []).join(), p && p.floorOk, p && p.age, p && p.jumpsOk].join('|');
+    const key = [list.join(), (p && p.oaJoints || []).join(), p && p.floorOk, p && p.age, p && p.jumpsOk, p && p.fractures, p && p.retinopathy].join('|');
     if (memo.key === key) { memo.p = p; memo.op = op; return memo.r; }
     const c = new Set(list);
     const oa = new Set(c.has('oa') ? (p.oaJoints && p.oaJoints.length ? p.oaJoints : ['knee', 'hip']) : []);
+    // Diabetic eye disease, or not sure (or not asked yet): no heavy sets, jumping, jarring or
+    // head-down moves (Kanaley et al. 2022).
+    const retino = c.has('diabetes') && p.retinopathy !== 'no';
     const r = {
-      c, oa, band: band(p),
+      c, oa, band: band(p), retino,
       any: list.length > 0 || p.floorOk === false,
       seated: c.has('seated'),
       noFloor: c.has('seated') || p.floorOk === false,
+      // Osteoporosis with a broken bone in the spine or several in minor falls, or not sure: impact
+      // stays at brisk walking (Brooke-Wavell et al. 2022).
+      fragile: c.has('osteo') && p.fractures !== 'no',
       // Jumping and slamming: never with these; from 50 only if you turn it on.
-      noImpact: ['ra', 'oa', 'osteo', 'balance', 'seated', 'heart'].some((x) => c.has(x)),
+      noImpact: ['ra', 'oa', 'osteo', 'balance', 'seated', 'heart'].some((x) => c.has(x)) || retino,
     };
     memo = { key, r, p, op };
     return r;
@@ -118,11 +146,11 @@
     if (c.has('osteo') && spine.some((s) => s === 'flex' || s === 'flexLoad' || s === 'twist' || s === 'twistLoad')) return 'Bends or twists your spine';
     if (spineBack && spine.some((s) => s === 'flexLoad' || s === 'twistLoad')) return 'Bends or twists your spine under load';
     if (spineBack && spine.includes('load') && (r.oa.has('back') || backEarly(p, day))) return 'Heavy load on your back, for now';
-    if (m.ballistic && (c.has('osteo') || c.has('heart') || spineBack)) return 'Fast, jerky loading';
+    if (m.ballistic && (c.has('osteo') || c.has('heart') || spineBack || r.retino)) return 'Fast, jerky loading';
     if (m.deep && (r.oa.has('knee') || r.oa.has('hip'))) return 'Deep knee and hip bend';
     if (m.pos === 'kneel' && r.oa.has('knee')) return 'Kneeling on your knees';
     if (m.overhead && m.load && r.oa.has('shoulder')) return 'Weight overhead';
-    if (m.headDown && (c.has('bp') || c.has('heart'))) return 'Head below your heart';
+    if (m.headDown && (c.has('bp') || c.has('heart') || r.retino)) return 'Head below your heart';
     return null;
   }
   const moveOk = (p, id, day) => !why(p, M().MOVES[id], day);
@@ -169,6 +197,7 @@
     const p = S.profile;
     if (fam === 'balance') return balancePerWeek(p) > 0;
     if (fam === 'getup') return getupOn(p);
+    if (fam === 'impact') return impactOn(p) && newRules(S, day);
     const pref = prefer(p);
     if (Object.values(pref).includes(fam)) return true;
     const gym = B().placeOf(S, day) === 'gym';
@@ -195,6 +224,8 @@
     const lad = M().LADDERS[fam];
     if (lad && lad.alt && !altOpen(S, fam, day)) return [];
     const p = S.profile;
+    // Impact for bones never lands on a joint an old injury made careful.
+    if (fam === 'impact') list = list.filter((id) => spares(M().MOVES[id], p.careful || []));
     if (!rulesOf(p).any) return list;
     return list.filter((id) => !why(p, M().MOVES[id], day));
   }
@@ -232,15 +263,16 @@
     if (b === 'older' || b === 'senior' || rulesOf(p).c.has('heart')) return Math.max(unit, base - unit);
     return base;
   }
-  // The left vs right tests are all-out sets: not with a heart condition or high blood pressure,
-  // and the leg test (split squats) not seated, with balance problems, sore knees or from 65.
+  // The left vs right tests are all-out sets: not with a heart condition, high blood pressure or
+  // diabetic eye disease, and the leg test (split squats) not seated, with balance problems, sore
+  // knees or from 65.
   // Neither runs while a joint it loads is on a break (S.pain, on `day`) or marked careful: the leg
   // test loads knees, hips and ankles, the arm test elbows, wrists and shoulders.
   const TEST_JOINTS = { leg: ['knee', 'hip', 'ankle'], arm: ['elbow', 'wrist', 'shoulder'] };
   function testsOk(S, kind, day) {
     const p = S.profile;
     const r = rulesOf(p);
-    if (r.c.has('heart') || r.c.has('bp') || r.seated) return false;
+    if (r.c.has('heart') || r.c.has('bp') || r.seated || r.retino) return false;
     const joints = TEST_JOINTS[kind] || [];
     if ((p.careful || []).some((j) => joints.includes(j))) return false;
     if (day != null && Object.entries(S.pain || {}).some(([j, until]) => until >= day && joints.includes(j))) return false;
@@ -272,6 +304,198 @@
   function mobilityEvery(p) { const r = rulesOf(p); return r.band === 'senior' || r.c.has('ra') || r.seated; }
   const flareOk = (p) => conditions(p).some((id) => BY_ID[id].flare);
   const flareOn = (S, day) => flareOk(S.profile) && !!(S.feel && S.feel[day] && S.feel[day].flare);
+
+  /* ================================================================== when 1.13's rules start */
+  // Weeks before S.rulesFrom keep the rules from before 1.13 (see the top of this file): a state
+  // saved before 1.13 gets the week after it's first loaded (the migration in src/optimizer.js), a
+  // new state its first week. A week planned under the earlier rules hands its split a copy of the
+  // profile marked legacyRules (src/brain.js weekInputs), and the trial weeks a split is scored on
+  // carry the mark too. Safety rules (diabetic eye disease) never wait for it.
+  const oldRules = (S, ws) => !!S && (!!(S.profile && S.profile.legacyRules) || (S.rulesFrom != null && ws != null && ws < S.rulesFrom));
+  // (No day: from now on.)
+  const newRules = (S, day) => !oldRules(S, day == null ? null : B().weekStart(day));
+  // Whether 1.13's rules change anything for these answers: src/optimizer.js files a split under it,
+  // so one worked out under either set of rules never stands in for the other.
+  const rulesKey = (p) => (from60(p) || ['osteo', 'diabetes'].some((x) => conditions(p).includes(x)) ? (p.legacyRules ? 'old' : 'new') : null);
+
+  /* ================================================================== power */
+  // Fast on the way up (Balachandran et al. 2022): from 50 the squat on the week's first leg day, as
+  // before 1.13; from 60 one or two lower-body moves (sit to stand, squats, step-ups, the leg press)
+  // in every session that trains legs. From 75, with balance problems or when a doctor said to take
+  // it easy, one move a session and the safest one: sit to stand, pushing up with the hands. Never
+  // with a heart condition or in a seated plan (powerOn). Loads stay moderate and each set stops
+  // while the reps are still quick, which the fast moves' first cue says.
+  function powerPlan(p) {
+    if (!powerOn(p)) return null;
+    if (!from60(p) || p.legacyRules) return { every: false, max: 1, safest: false };
+    const safest = ageOf(p) >= 75 || rulesOf(p).c.has('balance') || !!p.gentle;
+    return { every: true, max: safest ? 1 : 2, safest };
+  }
+  const SAFEST = 'sq_sts_hands_power';
+  // The moves that had a fast version before 1.13: the weeks planned then, and 50 to 59, keep to them.
+  const FAST_BEFORE = ['sq_sts', 'sq_bw', 'sq_goblet'];
+  // A move's fast-up version (src/data/moves-access.js powerOf), by the move.
+  let FAST = null;
+  function fastOf(id) {
+    if (!FAST) { FAST = {}; for (const m of Object.values(M().MOVES)) if (m.powerOf) FAST[m.powerOf] = m.id; }
+    return FAST[id] || null;
+  }
+  // From 60, a session's power work: its own leg moves done fast where they have a fast version (the
+  // squat first, up to plan.max), else a fast move of its own when `extra`: the fast version of the
+  // squat level you're on or the nearest below it, or a fast leg press at the gym. From 75 (with
+  // balance problems, or taking it easy) it's always the safest: the day's sit to stand with the
+  // hands done fast, else that as a move of its own. Returns a move of its own to add, if any.
+  function addPower(S, s, day, plan, extra) {
+    const p = S.profile;
+    const legs = s.items.filter((it) => !it.skill && it.kind === 'move' && it.group === 'legs');
+    if (!legs.length) return null;
+    const eq = B().eqFor(S, day);
+    const avoid = sore(S, day);
+    const usable = (id) => !!id && !!M().MOVES[id] && M().allowed(M().MOVES[id], eq) && moveOk(p, id, day) && spares(M().MOVES[id], avoid) && !s.items.some((x) => x.moveId === id);
+    const fast = (it, id) => { const m = M().MOVES[id]; Object.assign(it, { moveId: id, name: m.name, power: true, load: B().loadInfo(S, m, day, it.fam) }); };
+    if (plan.safest) {
+      const it = legs.find((x) => x.moveId === M().MOVES[SAFEST].powerOf);
+      if (it && usable(SAFEST)) { fast(it, SAFEST); return null; }
+      return extra && usable(SAFEST) ? powerItem(S, s, SAFEST, day) : null;
+    }
+    let n = 0;
+    const squat = (it) => (it.fam === 'squat' || it.fam === 'squatG' ? 1 : 0);
+    for (const it of legs.slice().sort((a, b) => squat(b) - squat(a))) {
+      if (n >= plan.max) break;
+      const id = fastOf(it.moveId);
+      if (usable(id)) { fast(it, id); n++; }
+    }
+    if (n || !extra) return null;
+    const lad = M().LADDERS.squat.rungs;
+    const at = S.prog.squat ? lad.indexOf(S.prog.squat.rung) : -1;
+    const near = lad.slice(0, at + 1).reverse().map(fastOf).filter(Boolean);
+    const id = (B().placeOf(S, day) === 'gym' ? ['leg_press_power'] : []).concat(near, ['sq_goblet_power', 'sq_stepup_power', 'sq_bw_power', 'sq_sts_power', SAFEST]).find(usable);
+    return id ? powerItem(S, s, id, day) : null;
+  }
+  // A fast move of its own: 2 sets of 6 (or the move's fewest), 1 on a short day, after the warm-up
+  // practice. Its group is power, so it adds nothing to a muscle group's weekly sets.
+  function powerItem(S, s, id, day) {
+    const m = M().MOVES[id];
+    return {
+      kind: 'move', fam: m.family, moveId: id, name: m.name, group: 'power', sets: s.short ? 1 : 2, target: Math.max(m.range[0], Math.min(m.range[1], 6)),
+      timed: false, uni: !!m.uni, rest: 60, load: B().loadInfo(S, m, day, m.family), swappedFrom: null, superset: null, power: true, skill: true,
+    };
+  }
+
+  /* ================================================================== bones */
+  // With osteoporosis and no break in the spine or several in minor falls (profile.fractures 'no'),
+  // an impact block on most days, light days included: 10 heel drops, stamps or jogging steps on
+  // the spot at a time with a short walk between, for about 2.5 minutes, 50 or more in all
+  // (Brooke-Wavell et al. 2022; the 'impact' ladder in src/data/moves.js, on the calf raise and march
+  // figures). Not with a break or when not sure (brisk walking is their impact), nor wherever another
+  // rule keeps impact out: another condition that does, a seated plan, a doctor's "take it easy", or
+  // jumping switched off. Low hops aren't offered: they'd need a figure of their own.
+  function impactOn(p) {
+    const r = rulesOf(p);
+    if (!r.c.has('osteo') || r.fragile || p.legacyRules) return false;
+    if (['ra', 'oa', 'balance', 'seated', 'heart'].some((x) => r.c.has(x)) || r.retino) return false;
+    return !p.gentle && p.impactOk !== false;
+  }
+  // The landings an impact block of `secs` holds: rounds of the move's landings at its tempo, each
+  // followed by 15 seconds' walk (m.impacts: landings a round, landings a rep of the figure).
+  function impactCount(m, secs) {
+    if (!m || !m.impacts) return 0;
+    const [n, perRep] = m.impacts;
+    const one = M().secPerRep(m) / perRep;
+    const round = n * one + 15;
+    return Math.floor(secs / round) * n + Math.min(n, Math.floor((secs % round) / one));
+  }
+  // Back extensions for posture twice a week with osteoporosis (the backExt ladder: bird dog,
+  // superman hold, floor back extension), on the days balance practice comes twice a week.
+  const postureOn = (p) => rulesOf(p).c.has('osteo') && !p.legacyRules;
+  // Osteoporosis, after the on-ramp: a muscle group's main move takes up to 3 sets before its other
+  // moves that day keep more than one, building to 3 sets an exercise; the group's sets for the
+  // day stay as planned.
+  function boneSets(s) {
+    const MAIN = B().HOME_COMPOUND.concat(B().MAIN_LIFTS);
+    const by = {};
+    for (const it of s.items) if (!it.skill && it.kind === 'move' && B().GROUPS.includes(it.group)) (by[it.group] = by[it.group] || []).push(it);
+    for (const list of Object.values(by)) {
+      const main = list.find((it) => MAIN.includes(it.fam));
+      if (!main) continue;
+      for (const it of list.slice().reverse()) while (it !== main && main.sets < 3 && it.sets > 1) { it.sets--; main.sets++; }
+    }
+  }
+  // Whether the on-ramp is over by `day`'s week, counted as the calendar counts it (src/brain.js
+  // replay): as many weeks with a workout done as the on-ramp has, and no week off since. No day:
+  // as of now.
+  function rampedUp(S, day) {
+    const need = ((B().programFor(S.profile) || {}).onramp || {}).weeks || 0;
+    const ws = day != null ? B().weekStart(day) : Infinity;
+    const weeks = new Set();
+    let last = -Infinity;
+    for (const l of S.log || []) if (l && l.type === 'workout' && l.day < ws && B().isDone(l)) { weeks.add(B().weekStart(l.day)); last = Math.max(last, l.day); }
+    if (weeks.size < need) return false;
+    return !(Number.isFinite(ws) && Number.isFinite(last) && ws - last >= 8);
+  }
+  // [a, b] fitted to a move's own range: within the move's counts where they overlap, at least two
+  // reps wide where the move allows.
+  function within(m, a, b) {
+    const [lo, hi] = m.range;
+    const L = Math.max(a, Math.min(b, lo));
+    let H = Math.max(a, Math.min(b, hi));
+    if (H < L + 2) H = Math.max(L, Math.min(hi, L + 2));
+    return [L, H];
+  }
+  // The rep range a condition sets for a move, or null for the usual (src/brain.js rangeFor asks
+  // first). Diabetic eye disease, or not sure: 10 to 15 reps, never heavy, from the day it's picked
+  // (a safety rule). Once the on-ramp is done (from these rules' start): with osteoporosis, main
+  // moves toward the heaviest load you can lift 8 to 12 times (Brooke-Wavell et al. 2022); with type
+  // 2 diabetes, main moves in heavier sets of about 8 to 10 (Kanaley et al. 2022), where a strength
+  // goal's heavier range stays. `day` is the session's (a workout in progress's when not given).
+  function repRange(S, m, fam, day) {
+    if (!S || !S.profile || !m || m.timed || !Array.isArray(m.range) || !B().GROUPS.includes(m.group)) return null;
+    const p = S.profile;
+    const r = rulesOf(p);
+    const osteo = r.c.has('osteo'), diabetes = r.c.has('diabetes');
+    if (!osteo && !diabetes) return null;
+    if (r.retino) return within(m, 10, 15);
+    if (!B().HOME_COMPOUND.includes(fam) && !B().MAIN_LIFTS.includes(fam)) return null;
+    const d = day != null ? day : S.active && S.active.day != null ? S.active.day : null;
+    if (!newRules(S, d) || !rampedUp(S, d)) return null;
+    if (osteo) return within(m, 8, 12);
+    const top = (p.goals || []).slice(0, 2);
+    if (top.includes('strength') && ((B().MAIN_LIFTS.includes(fam) && m.load) || B().HOME_COMPOUND.includes(fam))) return null;
+    return within(m, 8, 10);
+  }
+  // Strength that builds toward heavier sets for bones: osteoporosis, whatever the answer about
+  // breaks. The reps-left target (src/brain.js) asks for 1 or 2 left on main sets once the on-ramp
+  // is done.
+  const boneLoad = (p) => conditions(p).includes('osteo');
+
+  /* ================================================================== strength days */
+  // Type 2 diabetes: strength on 2 or 3 days a week, not back to back where it can be helped
+  // (Kanaley et al. 2022). With more days set, the 3 of them most spread out (Monday, Wednesday and
+  // Friday when no days are picked); the others are light days, a walk and a short mobility flow.
+  // wk: { days, weekdays } as the schedule has them; returns the same shape.
+  function strengthDays(p, wk) {
+    if (!p || p.legacyRules || !rulesOf(p).c.has('diabetes')) return wk;
+    const D = Math.max(2, Math.min(6, Math.round(Number(wk.days)) || 2));
+    if (D <= 3) return wk;
+    if (!(Array.isArray(wk.weekdays) && wk.weekdays.length >= 2)) return { days: 3, weekdays: null };
+    return { days: 3, weekdays: spreadOut(B().weekdaysFor({ days: D, weekdays: wk.weekdays }), 3) };
+  }
+  // The k of these weekdays (0-6, in order) with the fewest back-to-back pairs (Sunday to Monday
+  // counts), then the widest smallest gap, then the earliest.
+  function spreadOut(days, k) {
+    let best = null;
+    const rec = (i, acc) => {
+      if (acc.length === k) {
+        const gaps = acc.map((d, j) => (j ? d - acc[j - 1] : d + 7 - acc[acc.length - 1]));
+        const c = [gaps.filter((g) => g <= 1).length, -Math.min(...gaps)];
+        if (!best || c[0] < best.c[0] || (c[0] === best.c[0] && c[1] < best.c[1])) best = { c, acc: acc.slice() };
+        return;
+      }
+      for (let j = i; j < days.length; j++) { acc.push(days[j]); rec(j + 1, acc); acc.pop(); }
+    };
+    rec(0, []);
+    return best ? best.acc : days.slice(0, k);
+  }
 
   const FLOW = (k) => ((M().FLOWS || {})[k] || []);
   function warmupIds(p) {
@@ -308,6 +532,14 @@
       const st = S.prog && S.prog.balance;
       const id = st && bal.includes(st.rung) && M().MOVES[st.rung].timed ? st.rung : bal.find((x) => M().MOVES[x].timed);
       if (id && !ids.includes(id)) ids = ids.concat(id);
+    }
+    // The impact block for bones comes first (osteoporosis with no break, impactOn): most days means
+    // light days too.
+    if (impactOn(p) && newRules(S, day)) {
+      const list = B().rungs(S, 'impact', day).filter((x) => spares(M().MOVES[x], avoid));
+      const st = S.prog && S.prog.impact;
+      const id = st && list.includes(st.rung) ? st.rung : list[0];
+      if (id && !ids.includes(id)) ids = [id].concat(ids);
     }
     return ids;
   }
@@ -357,13 +589,42 @@
       const it = B().itemFor(S, { fam: 'getup', sets: 1, group: 'balance' }, day);
       if (it) first.push(it);
     }
+    // From these rules' start, with osteoporosis: the impact block for bones (impactOn), and back
+    // extensions for posture on the days balance comes twice a week (not when the day has one).
+    const fresh = !c.custom && newRules(S, day);
+    if (fresh && impactOn(p)) {
+      const it = B().itemFor(S, { fam: 'impact', sets: 1, group: 'impact' }, day);
+      if (it) { it.bone = true; first.push(it); }
+    }
+    if (fresh && postureOn(p) && [0, Math.floor(D / 2)].includes(c.tplIdx) && !s.items.some((x) => x.fam === 'backExt') && B().rungs(S, 'backExt', day).length) {
+      const it = B().itemFor(S, { fam: 'backExt', sets: s.short ? 1 : 2, group: 'posture' }, day);
+      if (it && M().MOVES[it.moveId].family === 'backExt') first.push(it);
+    }
+    // Simpler sessions (fewer exercises) keep room for two main moves: balance first, then impact.
+    if (fresh && S.complexity > 0) {
+      const rank = (it) => (it.fam === 'balance' ? 0 : it.bone ? 1 : it.fam === 'getup' ? 2 : 3);
+      const keep = first.slice().sort((a, x) => rank(a) - rank(x)).slice(0, (S.complexity === 1 ? 5 : 4) - 2);
+      for (let i = first.length - 1; i >= 0; i--) if (!keep.includes(first[i])) first.splice(i, 1);
+    }
     for (const it of first) { it.skill = true; it.rest = 45; }
+    for (const it of first) if (it.bone) it.rest = 30; // a short walk between rounds
     // (A sore joint can swap the floor practice into the balance ladder: one of a move is enough.)
     s.items = first.filter((it, i) => !first.slice(0, i).some((x) => x.moveId === it.moveId) && !s.items.some((x) => x.moveId === it.moveId)).concat(s.items);
-    // Power: on the first leg day of the week, the squat is fast on the way up.
-    if (!c.custom && powerOn(p) && c.tplIdx === c.legIdx) {
+    // Osteoporosis, after the on-ramp: main moves build to 3 sets.
+    if (fresh && r.c.has('osteo') && !(s.phase && s.phase.onramp)) boneSets(s);
+    // Power from 60: every session that trains legs (addPower), its own fast move after the warm-up
+    // practice when none of the day's leg moves has a fast version (not in simpler sessions).
+    const pp = c.custom ? null : powerPlan(p);
+    const every = !!(pp && pp.every && fresh);
+    if (every) {
+      const own = addPower(S, s, day, pp, !(S.complexity > 0));
+      if (own) { const at = s.items.findIndex((x) => !x.skill); s.items.splice(at < 0 ? s.items.length : at, 0, own); }
+    }
+    // Power from 50 (and in weeks planned before 1.13): on the first leg day of the week, the squat
+    // is fast on the way up.
+    if (pp && !every && c.tplIdx === c.legIdx) {
       for (const it of s.items) {
-        if (it.fam !== 'squat') continue;
+        if (it.fam !== 'squat' || !FAST_BEFORE.includes(it.moveId)) continue;
         const pw = Object.values(M().MOVES).find((m) => m.powerOf === it.moveId);
         if (pw && M().allowed(pw, B().eqFor(S, day)) && moveOk(p, pw.id, day)) { it.moveId = pw.id; it.name = pw.name; it.power = true; it.load = B().loadInfo(S, pw, day, it.fam); }
       }
@@ -385,13 +646,13 @@
     return s;
   }
   // A finisher's limits, wherever it's added (here, or when src/optimizer.js finds time for one):
-  // no all-out intervals with a heart condition or high blood pressure (30 s on, 30 s off at most),
-  // and under 30 a different one of the rungs you've reached, so it changes more often. Run once
-  // per finisher (it marks it).
+  // no all-out intervals with a heart condition, high blood pressure or diabetic eye disease (30 s
+  // on, 30 s off at most), and under 30 a different one of the rungs you've reached, so it changes
+  // more often. Run once per finisher (it marks it).
   function adjustFinisher(S, f, day, tplIdx) {
     if (!f || f.adjusted) return f;
     const r = rulesOf(S.profile);
-    if (r.c.has('heart') || r.c.has('bp')) { f.work = Math.min(f.work, 30); f.rest = Math.max(f.rest, 30); }
+    if (r.c.has('heart') || r.c.has('bp') || r.retino) { f.work = Math.min(f.work, 30); f.rest = Math.max(f.rest, 30); }
     if (r.band === 'young' && f.fam === 'finisher') {
       const avoid = sore(S, day);
       const list = B().rungs(S, 'finisher', day).filter((x) => spares(M().MOVES[x], avoid));
@@ -414,7 +675,7 @@
   function sessionNotes(p) {
     const r = rulesOf(p);
     const out = [];
-    if (r.c.has('bp') || r.c.has('heart')) out.push({ kind: 'breathe', text: 'Breathe out as you push or lift. Never hold your breath.' });
+    if (r.c.has('bp') || r.c.has('heart') || r.c.has('diabetes')) out.push({ kind: 'breathe', text: 'Breathe out as you push or lift. Never hold your breath.' });
     if (r.c.has('heart')) out.push({ kind: 'effort', text: 'Stop every set with 2 or 3 reps still in you.' });
     return out;
   }
@@ -435,20 +696,40 @@
     const out = [];
     const b = band(p);
     const r = rulesOf(p);
+    const pp = powerPlan(p);
+    const jumps = r.noImpact || p.gentle ? '' : p.jumpsOk ? '' : ' Jumping stays off unless you turn it on.';
     if (b === 'young') out.push({ kind: 'age', text: 'Under 30: reps climb a little faster and finishers change more often.' });
-    if (b === 'older') out.push({ kind: 'age', text: `From 50: longer warm-ups, a little more rest, balance twice a week and fast sit-to-stands or squats once a week.${r.noImpact || p.gentle ? '' : p.jumpsOk ? '' : ' Jumping stays off unless you turn it on.'}` });
-    if (b === 'senior') out.push({ kind: 'age', text: `From 65: balance practice every session, chair-supported moves first, low impact and a cool-down every time. Strength keeps progressing.${getupOn(p) ? ' Once a week you practise getting down to the floor and up, with a chair.' : ''}` });
+    if (b === 'older' && !from60(p)) out.push({ kind: 'age', text: `From 50: longer warm-ups, a little more rest, balance twice a week and fast sit-to-stands or squats once a week.${jumps}` });
+    if (b === 'older' && from60(p)) out.push({ kind: 'age', text: `From 60: longer warm-ups, a little more rest, balance twice a week${pp ? ', fast reps on every leg day' : ''} and muscles that aren't goals trained twice a week.${jumps}` });
+    if (b === 'senior') out.push({ kind: 'age', text: `From 65: balance practice every session, chair-supported moves first, low impact and a cool-down every time. ${!pp ? '' : pp.safest ? 'Every leg day has fast sit-to-stands, hands on the seat. ' : 'Every leg day has fast reps. '}Muscles that aren't goals train twice a week, and strength keeps progressing.${getupOn(p) ? ' Once a week you practise getting down to the floor and up, with a chair.' : ''}` });
     for (const id of conditions(p)) {
       const c = BY_ID[id];
       let text = c.plan;
       if (id === 'oa' && r.oa.size) text = `${text} Joints: ${joinList(OA_JOINTS.filter(([j]) => r.oa.has(j)).map(([, t]) => t.toLowerCase()))}.`;
+      if (id === 'osteo') text = `${text}${impactOn(p) ? ' A short impact block on most days: heel drops, stamps or jogging on the spot.' : r.fragile ? ' Impact stays at brisk walking.' : ''}`;
+      if (id === 'diabetes' && r.retino) text = `${text} Sets stay at 10 to 15 reps, with no heavy lifting, jumping or head-down moves.`;
       out.push({ kind: 'condition', id, text: `${c.name}: ${text}` });
     }
     if (p.floorOk === false && !r.seated) out.push({ kind: 'floor', text: 'Nothing on the floor: standing and seated versions instead.' });
     return out;
   }
+  // When to check with a doctor first. Osteoporosis's depends on the answer about breaks, and
+  // diabetic eye disease (or not being sure) adds its own.
+  const DOCTOR = {
+    fracture: 'With a broken bone in your spine or from a minor fall, check with your doctor or physio before you start.',
+    fractureUnsure: 'Not sure about past breaks? Ask your doctor. Until you know, impact stays at brisk walking.',
+    eyes: 'With diabetic eye disease, check with your eye doctor before you start.',
+    eyesUnsure: 'Not sure about your eyes? Ask at your next eye check. Until then, sets stay light.',
+  };
   function doctorLines(p) {
-    return conditions(p).map((id) => BY_ID[id].doctor).filter(Boolean);
+    const r = rulesOf(p);
+    const out = [];
+    for (const id of conditions(p)) {
+      if (id === 'osteo') out.push(p.fractures === 'yes' ? DOCTOR.fracture : p.fractures === 'no' ? null : DOCTOR.fractureUnsure);
+      else out.push(BY_ID[id].doctor);
+      if (id === 'diabetes' && r.retino) out.push(p.retinopathy === 'yes' ? DOCTOR.eyes : DOCTOR.eyesUnsure);
+    }
+    return out.filter(Boolean);
   }
   // For the on-device coach's brief: one plain line (never sent to Claude).
   function briefLine(p) {
@@ -470,8 +751,14 @@
     const items = s.items || [];
     if (items.some((it) => it.fam === 'balance')) out.push({ icon: 'compass', tone: 'teal', text: 'Balance practice first', why: rulesOf(p).c.has('balance') ? 'You said balance is a problem, so it starts every session, with a hand on the wall.' : band(p) === 'senior' ? 'From 65 it starts every session.' : 'From 50 it comes twice a week.', rule: 'balance' });
     if (items.some((it) => it.fam === 'getup')) out.push({ icon: 'arrow-up-right', tone: 'green', text: 'Down to the floor and up, with a chair', why: 'Once a week, to practise getting up after a fall.', rule: 'floor' });
-    if (items.some((it) => it.power)) out.push({ icon: 'bolt', tone: 'amber', text: 'Squats fast on the way up today', why: 'Power fades faster than strength from 50. Up fast, down slow.', rule: 'power' });
-    const stand = items.filter((it) => { const m = M().MOVES[it.moveId]; return m && M().LADDERS[m.family] && M().LADDERS[m.family].alt && m.family !== 'balance' && m.family !== 'getup'; });
+    if (items.some((it) => it.bone)) out.push({ icon: 'bolt', tone: 'violet', text: 'An impact block for your bones', why: 'Heel drops, stamps or jogging on the spot on most days help keep bones strong.', rule: 'bones' });
+    if (items.some((it) => it.group === 'posture')) out.push({ icon: 'person', tone: 'violet', text: 'Back extensions for posture', why: 'Twice a week, for the muscles that hold your back straight.', rule: 'bones' });
+    if (items.some((it) => it.power)) {
+      out.push(from60(p) && newRules(S, s.day)
+        ? { icon: 'bolt', tone: 'amber', text: 'Fast on the way up today', why: 'From 60, every leg day has fast reps: up quick, down slow, stopping while they\'re still quick.', rule: 'power' }
+        : { icon: 'bolt', tone: 'amber', text: 'Squats fast on the way up today', why: 'Power fades faster than strength from 50. Up fast, down slow.', rule: 'power' });
+    }
+    const stand = items.filter((it) => { const m = M().MOVES[it.moveId]; return m && M().LADDERS[m.family] && M().LADDERS[m.family].alt && m.family !== 'balance' && m.family !== 'getup' && m.family !== 'impact'; });
     if (stand.length) out.push({ icon: 'shuffle', tone: 'coral', text: stand.length === 1 ? `${stand[0].name} in place of the usual move` : `${stand.length} moves swapped for versions that suit you`, why: plannedAround(p) ? `${plannedAround(p)}.` : 'Your answers rule the usual moves out.', rule: rulesOf(p).seated ? 'seated' : 'arthritis' });
     if ((s.notes || []).some((n) => n.kind === 'breathe')) out.push({ icon: 'heart', tone: 'rose', text: 'Breathe out on every effort', why: 'Holding your breath while you strain makes blood pressure spike.', rule: 'pressure' });
     else if (band(p) !== 'mid' && band(p) !== 'young' && s.warmup && s.warmup.length >= 3) out.push({ icon: 'sun', tone: 'amber', text: 'A longer, gentler warm-up', why: `From ${band(p) === 'senior' ? '65' : '50'}, with a little more rest between sets too.`, rule: 'age' });
@@ -503,4 +790,9 @@
     balancePerWeek, getupOn, powerOn, restPlus, mobilityEvery, flareOk, flareOn, mobilityIds, warmupIds, adjustSession, adjustFinisher, cooldownIds, flowItems,
     plannedAround, planLines, doctorLines, briefLine, decisions, setHint, answer,
   };
+  // 1.13: the questions a condition brings, when the new rules start, power, bones, rep ranges and
+  // strength days (boneLoad is what the reps-left target asks).
+  Object.assign(GH.access, {
+    FOLLOW_UPS, ANSWERS, ageOf, oldRules, newRules, rulesKey, powerPlan, impactOn, impactCount, postureOn, rampedUp, repRange, strengthDays, boneLoad,
+  });
 })(typeof window !== 'undefined' ? window : globalThis);

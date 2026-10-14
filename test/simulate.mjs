@@ -537,7 +537,7 @@ section('Different bodies: age bands');
   // fast-up version (goblet squats) within the 12 weeks (how soon depends on the week's plan): power
   // runs once a week while it has one.
   const powerWeeks = Object.keys(perWeek(older.sessions, (s) => s.items.some((it) => it.fam === 'squat' && M.MOVES[it.moveId].powerOf)));
-  const canPower = Object.keys(perWeek(older.sessions, (s) => s.items.some((it) => it.fam === 'squat' && Object.values(M.MOVES).some((m) => m.powerOf === it.moveId || m.id === it.moveId && m.powerOf))));
+  const canPower = Object.keys(perWeek(older.sessions, (s) => s.items.some((it) => it.fam === 'squat' && ['sq_sts', 'sq_bw', 'sq_goblet'].includes(M.MOVES[it.moveId].powerOf || it.moveId)))); // (50 to 59 keep the fast versions there were before 1.13)
   check('55: once a week the squat is fast on the way up (power), every week it has a fast-up version', Object.values(power55).length >= 2 && Object.values(power55).every((n) => n === 1) && canPower.every((w) => powerWeeks.includes(w)), { power55, canPower });
   // 1.6: with a strength goal and time to spare the main lifts rest longer (about 2.5 minutes, or
   // 2), the 15 s from 50 on top.
@@ -556,7 +556,8 @@ section('Different bodies: 72 with balance problems');
   bodyChecks('72, balance problems', run);
   check('balance practice starts every session, always with a hand on the wall', sessions.every((s) => s.items[0].group === 'balance' && s.items[0].fam === 'balance' && M.MOVES[s.items[0].moveId].support), sessions.map((s) => s.items[0].moveId).slice(0, 4));
   check('no one-leg balance with nothing to hold, no quick footwork, no jumping', !used(sessions, (it) => { const m = M.MOVES[it.moveId]; return (m.oneLeg && !m.support) || m.quick || m.impact; }).length);
-  check('squats start from the chair: sit to stand with the hands', S.log.find((l) => l.type === 'workout' && l.items.some((it) => it.fam === 'squat')).items.find((it) => it.fam === 'squat').moveId === 'sq_sts_hands');
+  const sts = S.log.find((l) => l.type === 'workout' && l.items.some((it) => it.fam === 'squat')).items.find((it) => it.fam === 'squat').moveId;
+  check('squats start from the chair: sit to stand with the hands (from 60 done fast)', sts === 'sq_sts_hands_power', sts);
   const getup = perWeek(sessions, (s) => s.items.some((it) => it.fam === 'getup'));
   check('once a week: down to the floor and up, holding a chair', Object.values(getup).length >= 11 && Object.values(getup).every((n) => n === 1), getup);
   check('a cool-down every session, kept even when time is short', sessions.every((s) => s.mobility.length >= 2) && B.buildSession(S, D0 + 91, 0, { short: true }).mobility.length >= 1);
