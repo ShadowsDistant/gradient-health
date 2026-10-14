@@ -114,7 +114,7 @@
       why: 'With the same weekly sets, how often you train a muscle barely changes its size. Splitting keeps sessions short, and strength seems to gain a little from training more often.',
       refs: ['schoenfeld2019freq', 'schoenfeld2016freq', 'pelland2026'] },
     { id: 'rir', cat: 'training', icon: 'timer', tone: 'amber', title: 'How many reps to leave in the tank', level: 'moderate',
-      does: 'Each set aims to stop a few reps short of failure: 1-2 for your top goal muscles, 2-3 on the main gym lifts when strength is a top goal (4 is fine too), and 1-3 for the rest. In your first weeks, from 60, and with high blood pressure or a heart condition, sets aim for 2-3. What you say you had left sets the next session: more than the aim moves you on faster, and 0 holds.',
+      does: 'Each set aims to stop a few reps short of failure: 1-2 for your top goal muscles, 2-3 on the main gym lifts when strength is a top goal (4 is fine too), and 1-3 for the rest. In your first weeks, from 60, and with high blood pressure or a heart condition, sets aim for 2-3. What you say you had left sets the next session: more than the aim moves you on faster, and none left keeps you where you are.',
       why: 'Muscle grows more as sets end nearer failure, probably levelling off close to it, while strength gains barely depend on it: heavier weights drive them. People misjudge what\'s left by about a rep, so aiming a little short still lands near failure without grinding every set.',
       caveat: 'We aim for 2-3 in your first weeks, from 60 and with high blood pressure or a heart condition. That\'s our reading of these findings; no trial has tested it.',
       refs: ['robinson2024', 'halperin2022', 'zourdos2016'] },
