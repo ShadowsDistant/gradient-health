@@ -155,6 +155,24 @@ let threw = null;
 try { const cal = B.calendar(L, D0); const tp = B.todayPlan(L, D0, cal); if (tp.type === 'workout') B.buildSession(L, D0, tp.tpl, { cal }); } catch (e) { threw = e.message; }
 check('and the plan works it out', threw === null, threw);
 
+section('1.13: the answers about breaks and eye disease, and when its rules start');
+{
+  const T = copyR();
+  Object.assign(T.profile, { conditions: ['osteo', 'diabetes'], fractures: 'no', retinopathy: 'unsure' });
+  T.rulesFrom = D0 + 7;
+  const t = store.sanitize(JSON.parse(JSON.stringify(T)));
+  check('kept as they are', t.profile.fractures === 'no' && t.profile.retinopathy === 'unsure' && t.rulesFrom === D0 + 7 && same(t, T));
+  Object.assign(T.profile, { fractures: 'maybe', retinopathy: 3 });
+  T.rulesFrom = 'next week';
+  const u = store.sanitize(JSON.parse(JSON.stringify(T)));
+  check('an answer that isn\'t Yes, No or Not sure goes (not asked yet), and so does a start that isn\'t a day', !('fractures' in u.profile) && !('retinopathy' in u.profile) && !('rulesFrom' in u) && u.profile.conditions.join() === 'osteo,diabetes');
+  const real = Date.now;
+  Date.now = () => (D0 + 3) * B.DAY_MS + 12 * 3600000;
+  const m = store.migrate(u);
+  Date.now = real;
+  check('a load then starts the rules the week after', m.rulesFrom === B.weekStart(D0 + 3) + 7, m.rulesFrom);
+}
+
 section('Resuming a workout after a reload');
 const W = B.newState(P, null, D0);
 B.startWorkout(W, D0, { now: D0 * B.DAY_MS });
