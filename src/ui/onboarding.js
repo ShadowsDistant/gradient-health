@@ -139,6 +139,8 @@
     if (!p.goals.length) p.goals = ['consistency'];
     if (p.age != null) p.age = Math.round(p.age);
     if (!p.conditions.includes('oa')) p.oaJoints = [];
+    // A condition's follow-up answer (A().FOLLOW_UPS) goes with it; undefined so a save clears it.
+    for (const [id, f] of Object.entries((A() && A().FOLLOW_UPS) || {})) if (!p.conditions.includes(id)) p[f.key] = undefined;
     if (p.food && p.food.mode) p.protein = Object.assign({}, p.protein, { track: p.food.mode !== 'off' });
     for (const k of Object.keys(p)) if (k[0] === '_') delete p[k];
     return p;
@@ -919,6 +921,11 @@
     return {
       pick: group('Health', `<div class="ob-chips">${ac.CONDITIONS.map((c) => listChip('conditions', c.id, c.name, has(c.id), '', true)).join('')}</div>`, foot)
         + (has('oa') ? group('Which joints?', `<div class="ob-chips">${ac.OA_JOINTS.map(([id, t]) => listChip('oaJoints', id, t, Q.oaJoints.includes(id), '', true)).join('')}</div>`, 'Knees and hips if you don\'t pick any.') : '')
+        // Osteoporosis asks about broken bones, type 2 diabetes about the eyes: Yes, No or Not sure.
+        + ac.CONDITIONS.filter((c) => has(c.id) && ac.FOLLOW_UPS && ac.FOLLOW_UPS[c.id]).map((c) => {
+          const f = ac.FOLLOW_UPS[c.id];
+          return group(f.q, `<div class="ob-pad">${U.seg(f.key, ac.ANSWERS, Q[f.key] || '', f.label, ` data-follow="${c.id}" ${bind(f.key, '', true)}`)}</div>`, f.foot);
+        }).join('')
         + (floorQ ? group('Getting down to the floor and back up', `<div class="ob-pad">${U.seg('floorOk', [['true', 'Easy enough'], ['false', 'Hard']], Q.floorOk === false ? 'false' : 'true', 'Getting down to the floor', ` ${bind('floorOk', 'bool', true)}`)}</div>`, 'If it\'s hard, nothing in your plan is on the floor.') : ''),
       after: (lines.length ? `<div class="card ob-card ob-around" data-key="around"><p class="t-headline">${U.esc(ac.plannedAround(p) || 'Your plan')}</p><ul class="ob-bullets">${lines.map((l) => `<li>${U.esc(l.text)}</li>`).join('')}</ul></div>` : '')
         + ac.doctorLines(p).map((t) => status('caution', t)).join('')
@@ -1538,8 +1545,10 @@
 
   // Your answers' last screen: the week, what gets the most work, and everything built around you.
   VIEW.plan = () => {
-    const p = draftProfile();
-    if (p.workouts === false) return summaryNoWorkouts(p);
+    const p0 = draftProfile();
+    if (p0.workouts === false) return summaryNoWorkouts(p0);
+    // The strength days the plan keeps (type 2 diabetes keeps 3 of them, spread out).
+    const p = A() && A().strengthDays ? Object.assign({}, p0, A().strengthDays(p0, { days: p0.days, weekdays: p0.weekdays })) : p0;
     const prog = B().programFor(p);
     const tpl = B().templateFor(p, prog);
     const byFreq = {};

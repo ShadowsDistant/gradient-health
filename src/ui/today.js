@@ -110,13 +110,16 @@
     const l = plan.light || {};
     const next = plan.next;
     const walkSub = l.walk ? (l.walkSrc === 'health-steps' ? 'Ticked from your steps' : l.walkSrc === 'health-walk' ? 'Ticked from Health Connect' : l.walkSrc === 'activity' ? 'Ticked from the activity you tracked' : 'Logged') : h.steps != null ? `${U.num(h.steps)} steps so far today` : 'Any pace. Outside if you can.';
+    // The flow as the player gives it (a balance hold from 65, an impact block for bones), timed as Plan times it.
+    const flow = B().mobilityFlow ? B().mobilityFlow(S, day) : [];
+    const mins = flow.length ? Math.max(1, Math.round(flow.reduce((a, m) => a + (m.target || 30) * (m.uni ? 2 : 1), 0) / 60)) : 5;
     return `<div class="card light" data-key="main">
       <span class="rf-card-eyebrow">Light day</span>
       <h2 class="t-title-2">Walk and mobility</h2>
       <p class="t-callout rf-muted">Do both and today counts for your streak.</p>
       <ul class="rf-list check-list">
         <li><div class="rf-list-row"><span class="rf-list-icon" data-tone="green">${U.icon('navigate')}</span><span class="rf-list-text"><span class="rf-list-title">Walk ${prog.walkMin}+ min</span><span class="rf-list-sub">${U.esc(walkSub)}</span></span>${l.walk ? `<span class="check-done" aria-label="Done">${U.icon('check-circle')}</span>` : '<button type="button" class="rf-btn" data-size="sm" data-act="logWalk">Log walk</button>'}</div></li>
-        <li><div class="rf-list-row"><span class="rf-list-icon" data-tone="teal">${U.icon('leaf')}</span><span class="rf-list-text"><span class="rf-list-title">Mobility flow</span><span class="rf-list-sub">5 moves, about 5 min</span></span>${l.mobility ? `<span class="check-done" aria-label="Done">${U.icon('check-circle')}</span>` : '<button type="button" class="rf-btn" data-size="sm" data-act="startMobility">Start</button>'}</div></li>
+        <li><div class="rf-list-row"><span class="rf-list-icon" data-tone="teal">${U.icon('leaf')}</span><span class="rf-list-text"><span class="rf-list-title">Mobility flow</span><span class="rf-list-sub">${U.plural(flow.length || 5, 'move')}, about ${mins} min</span></span>${l.mobility ? `<span class="check-done" aria-label="Done">${U.icon('check-circle')}</span>` : '<button type="button" class="rf-btn" data-size="sm" data-act="startMobility">Start</button>'}</div></li>
       </ul>
       ${next ? `<button type="button" class="rf-btn light-train" data-variant="plain" data-act="trainToday">Train today instead: ${U.esc((next.title || B().templateTitle(next.units)).toLowerCase())}</button>` : ''}
     </div>`;
