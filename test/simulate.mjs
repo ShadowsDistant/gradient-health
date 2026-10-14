@@ -692,10 +692,10 @@ section('Osteoporosis: the question about broken bones');
   check('Yes: check with your doctor or physio first', AC.doctorLines(p('yes')).some((t) => /doctor or physio before you start/.test(t)));
   check('Not sure, or not asked yet: ask your doctor; impact stays at brisk walking until you know', [p('unsure'), p(null)].every((x) => AC.doctorLines(x).some((t) => /Not sure about past breaks\? Ask your doctor/.test(t)) && /Impact stays at brisk walking/.test(AC.planLines(x).find((l) => l.id === 'osteo').text)));
   check('No: no doctor line for breaks, and the plan says impact on most days', !AC.doctorLines(p('no')).length && /A short impact block on most days/.test(AC.planLines(p('no')).find((l) => l.id === 'osteo').text));
-  check('the impact block stays out with another condition that keeps impact out, taking it easy, jumping off where you train, or eye disease',
-    ['ra', 'oa', 'balance', 'seated', 'heart'].every((c) => !AC.impactOn(p('no', { conditions: ['osteo', c] }))) && !AC.impactOn(p('no', { gentle: true })) && !AC.impactOn(p('no', { impactOk: false }))
+  check('the impact block stays out with another condition that keeps impact out, taking it easy, or eye disease',
+    ['ra', 'oa', 'balance', 'seated', 'heart'].every((c) => !AC.impactOn(p('no', { conditions: ['osteo', c] }))) && !AC.impactOn(p('no', { gentle: true }))
     && !AC.impactOn(p('no', { conditions: ['osteo', 'diabetes'] })) && AC.impactOn(p('no', { conditions: ['osteo', 'diabetes'], retinopathy: 'no' })));
-  check('from 50 it doesn\'t need jumping turned on (it isn\'t jumping), and jumping stays off', AC.impactOn(p('no', { age: 55 })) && !B.programFor(Object.assign(B.defaultProfile(), p('no', { age: 55, jumpsOk: true }))).impactOk);
+  check('it isn\'t jumping: the jumping switches don\'t touch it, and jumping stays out', AC.impactOn(p('no', { age: 55 })) && AC.impactOn(p('no', { age: 40, impactOk: false })) && !B.programFor(Object.assign(B.defaultProfile(), p('no', { age: 55, jumpsOk: true }))).impactOk);
   check('boneLoad: osteoporosis, whatever the answer', AC.boneLoad(p('no')) && AC.boneLoad(p('yes')) && AC.boneLoad(p('unsure')) && AC.boneLoad(p(null)) && !AC.boneLoad({ age: 66 }) && !AC.boneLoad({ conditions: ['oa'] }));
 }
 

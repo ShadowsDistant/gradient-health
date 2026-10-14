@@ -394,13 +394,15 @@
   // the spot at a time with a short walk between, for about 2.5 minutes, 50 or more in all
   // (Brooke-Wavell et al. 2022; the 'impact' ladder in src/data/moves.js, on the calf raise and march
   // figures). Not with a break or when not sure (brisk walking is their impact), nor wherever another
-  // rule keeps impact out: another condition that does, a seated plan, a doctor's "take it easy", or
-  // jumping switched off. Low hops aren't offered: they'd need a figure of their own.
+  // rule keeps impact out: another condition that does, a seated plan or a doctor's "take it easy".
+  // None of it is jumping, so the jumping switches don't touch it (osteoporosis keeps jumping out,
+  // and hides them); a move of it can be hidden like any other. Low hops aren't offered: they're
+  // jumping, and they'd need a figure of their own.
   function impactOn(p) {
     const r = rulesOf(p);
     if (!r.c.has('osteo') || r.fragile || p.legacyRules) return false;
     if (['ra', 'oa', 'balance', 'seated', 'heart'].some((x) => r.c.has(x)) || r.retino) return false;
-    return !p.gentle && p.impactOk !== false;
+    return !p.gentle;
   }
   // The landings an impact block of `secs` holds: rounds of the move's landings at its tempo, each
   // followed by 15 seconds' walk (m.impacts: landings a round, landings a rep of the figure).

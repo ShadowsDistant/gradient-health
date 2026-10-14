@@ -1076,8 +1076,10 @@
   function planWeek(S, ws, phase, forced) {
     const b = B();
     const p = S.profile;
-    // (A week before 1.13's rules started keeps the program it had: src/access.js oldRules.)
-    const prog = b.programFor(A() && A().oldRules && A().oldRules(S, ws) ? Object.assign({}, p, { legacyRules: true }) : p);
+    // (A week before 1.13's rules started keeps the program and the plan it had: src/access.js
+    // oldRules.)
+    const before113 = !!(A() && A().oldRules && A().oldRules(S, ws));
+    const prog = b.programFor(before113 ? Object.assign({}, p, { legacyRules: true }) : p);
     const tw = tweaksOf(p);
     const legacy = b.legacyWeek(S, ws);
     const wi = b.weekInputs(S, ws);
@@ -1269,13 +1271,13 @@
       roomOf[g] = room;
       spareOf[g] = days.map(() => 0);
       // (Short of 2 sets: that many, on the days with the most time left it can join, for the fit
-      // to add when a session has time after all; days without the group yet first, since that's
-      // where the fit adds one, addShort.)
+      // to add when a session has time after all; from 1.13's rules, days without the group yet
+      // first, since that's where the fit adds one, addShort.)
       const two = Math.min(2, G[g].floor);
       const lacking = trainable.includes(g) ? Math.ceil(Math.max(0, two - e[g]) - 1e-9) : 0;
       const joins = days.map((d, k) => (!d.done && d.per[g] != null ? Math.max(0.01, d.budget - d.fixed - Object.entries(x[k]).reduce((a, [q, n]) => a + n * (d.per[q] || 0), 0)) : 0));
       const fresh = joins.map((w, k) => (x[k][g] > 0 ? 0 : w));
-      shortRoomOf[g] = lacking ? shareOut(lacking, fresh.some((w) => w > 0) ? fresh : joins, days.map(() => 1)) : days.map(() => 0);
+      shortRoomOf[g] = lacking ? shareOut(lacking, !before113 && fresh.some((w) => w > 0) ? fresh : joins, days.map(() => 1)) : days.map(() => 0);
     }
     // Each such day (or one with no sets at all, whatever its length) a set of another group, then
     // of a second (the fit takes the first it has a move for), then a second set of each while there
