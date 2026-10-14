@@ -1008,6 +1008,25 @@ history doesn't shift. Plans are cached, and kept in `S.planCache` for the next 
 (`--full`: 3-wise, with 12-week runs, before a release) and checks that every session fits its time,
 every group gets its week, only allowed moves appear and the same answers give the same plan.
 
+**Reps left and rests.** Each set has an aim for the reps left in the tank (`effortFor` in
+`src/brain.js`, one rule for the hint, the progression and the coach): 2-3 on the 4-8 rep strength
+lifts (4 is fine too), 1-2 for the top goal muscles (tier 1) and, with osteoporosis
+(`GH.access.boneLoad`, when access.js has it), main sets after the on-ramp; 2-3 in the on-ramp weeks,
+from 60 and with high blood pressure or a heart condition; 1-3 otherwise. `startWorkout` puts it on
+each item (`it.effort`, which the line under a set names through `GH.access.setHint`) and in each log
+(`log.aim`). The player asks 0, 1-2, 3 or 4+ (`'0'`, `'12'`, `'3'`, `'4'`), and `effortStep` reads the
+answer against the aim: 0 holds, on the aim is the usual step, each rep past what it allows a bigger
+one, and 3 or more left at the top of the range brings the harder version (at the gym any answer but
+0 moves the weight up there). A log without an aim is from before 1.13: its `'3'` meant 3 or more,
+and it moves on as it did. The coach's effort summary, Claude's summary and custom plans read
+answers the same way; `RIR_NUM` counts 4+ as 4.5 in the one-rep max estimate. Rests: `restFor` gives
+90 s after big moves and 60 after others, and access.js adds 15 s from 50 (30 from 65), marked on each
+item (`it.agePlus`). The fit takes that off first when a session runs over its time, and gives no
+longer rests to a session that had to lose sets; once the sets are in, it puts it back, then the
+strength lifts' longer rests, then 90 s for what's done on its own at 60 (right after the sets with a
+muscle goal, after the finisher and cool-down otherwise). Supersets stay at 60. `explain` says so
+when the plan's strength work comes to under 30 minutes a week (days times minutes), with the fix.
+
 `src/planreview.js` (`GH.planReview`) is the AI check. It sends next week's plan as built (each day's
 groups and moves, weekly sets against targets, minutes against the time set, the score and the
 planner's reasons, and up to 60 moves to swap in) to Claude, held to a JSON schema, or to the

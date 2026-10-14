@@ -173,6 +173,9 @@ await shot(page, '06-player');
 const hadUni = await page.evaluate(() => window.GH.ui.S.active.steps.some((x) => x.kind === 'set' && x.first === false));
 let sawRest = false, sawSwitch = false, sawTimer = false, swapped = false, rirAsked = false, guard = 0;
 let lastSide = null;
+// 1.13: the question's answers, how many times it was asked, and the lines under the sets.
+let rirOpts = null, rirN = 0;
+const hints = new Set();
 // One snapshot of the player per iteration (locators would wait for missing elements).
 const state = () => page.evaluate(() => {
   const p = document.querySelector('.player');
@@ -184,6 +187,8 @@ const state = () => page.evaluate(() => {
     side: q('.pl-side') ? q('.pl-side').textContent : null,
     eyebrow: q('.pl-eyebrow') ? q('.pl-eyebrow').textContent : '',
     rir: !!q('.pl-rir'), rirChosen: !!(q('.pl-rir input:checked')),
+    rirOpts: [...p.querySelectorAll('.pl-rir .rf-segment')].map((l) => `${l.querySelector('input').value}:${l.textContent.trim()}`).join(' '),
+    hint: q('.pl-hint') ? q('.pl-hint').textContent : '',
     skipRest: !!q('[data-act="plSkipRest"]'),
   };
 });
@@ -192,9 +197,12 @@ while (guard++ < 300) {
   if (st.checkin) break;
   if (st.side && lastSide && st.side !== lastSide && /Right|Left/.test(st.side)) sawSwitch = true;
   if (st.side) lastSide = st.side;
+  if (st.hint) hints.add(st.hint);
   if (st.rir && !st.rirChosen) {
     rirAsked = true;
-    await page.click('.player .pl-rir input[value="12"]', { force: true });
+    if (!rirN) { rirOpts = st.rirOpts; await shot(page, '07a-reps-left'); }
+    // 1-2 left, and on the second exercise 4 or more.
+    await page.click(`.player .pl-rir input[value="${rirN++ === 1 ? '4' : '12'}"]`, { force: true });
     await page.waitForTimeout(80);
     continue;
   }
@@ -227,6 +235,8 @@ while (guard++ < 300) {
 }
 check('rest screens ran between sets', sawRest);
 check('the reps-in-reserve tap was asked', rirAsked);
+check('it offers 0, 1-2, 3 and 4+', rirOpts === '0:0 12:1-2 3:3 4:4+', rirOpts);
+check('the line under a set says how many reps to leave', [...hints].some((h) => /^Stop with [1-3]-[2-4] reps left/.test(h)), [...hints]);
 check('unilateral sets switch sides (when the session has one)', sawSwitch || !hadUni);
 check('a timed set ran its countdown', sawTimer);
 check('a swap was made from the menu', swapped);
@@ -237,6 +247,8 @@ await page.click('.player [data-act="plSaveCheckin"]');
 await page.waitForSelector('.player .rf-large-title:has-text("Next time")', { timeout: 5000 }).catch(async (e) => { console.log('errors so far:', errors); await shot(page, 'fail-next'); throw e; });
 const nextText = await page.locator('.player').innerText();
 check('Next time shows the streak', /Streak\s+1\s+day/.test(nextText), nextText.slice(0, 200));
+const saved = await page.evaluate(() => { const l = window.GH.ui.S.log.find((x) => x.type === 'workout'); return l ? l.items.filter((it) => it.rir).map((it) => `${it.rir}/${it.aim}`) : null; });
+check('the answers are saved with each exercise\'s aim, 4+ among them', !!saved && saved.some((x) => /^4\//.test(x)) && saved.every((x) => /\/(12|13|23|24)$/.test(x)), saved);
 check('and offers Health Connect, now the first workout is done', await page.locator('.player .hc-invite [data-act="hcInviteGo"]').count() === 1);
 await shot(page, '09-next');
 await page.click('.player .hc-invite [data-act="hcInviteGo"]');
