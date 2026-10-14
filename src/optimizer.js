@@ -15,7 +15,9 @@
  * It reads GH.brain, GH.moves and GH.access only when called: it loads right after brain.js in
  * tests and after access.js in the app. Weeks before S.engineFrom keep 1.5's split (brain.js
  * templateV1), so history and the week in progress stay as they were; the session fixes (fill and
- * cap) apply to every week. Results are cached and must be treated as read-only; in the app they're
+ * cap) apply to every week. Weeks before S.rulesFrom are planned under the rules before 1.13's for
+ * older bodies, bones and diabetes (a profile copy marked legacyRules, src/access.js), likewise.
+ * Results are cached and must be treated as read-only; in the app they're
  * also kept in the state for the next launch (see keptOf).
  */
 (function (G) {
@@ -1419,6 +1421,8 @@
     ensureMain(S, s, c);
     if (!o.capOnly) fill(S, s, c);
     capTo(S, s, c);
+    // A health condition's last word on how a group's sets are shared out (src/access.js afterFit).
+    if (A() && A().afterFit) A().afterFit(S, s);
     return s;
   }
   function fitCtx(S, s, o) {

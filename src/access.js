@@ -16,6 +16,8 @@
  *   adjustSession one pass over each built session: warm-up, balance and floor practice, impact for
  *                 bones, back extensions, power, rest, cool-down, and flare days (a gentle
  *                 range-of-motion session instead)
+ *   afterFit      once a session is fitted to its time (src/optimizer.js fit): with osteoporosis, a
+ *                 muscle's main move takes up to 3 of the day's sets first
  * The rules that change which days train what (power on every leg day and muscles that aren't goals
  * twice a week from 60, impact and back extensions with osteoporosis, type 2 diabetes's days) start
  * with S.rulesFrom (newRules): a state from before 1.13 keeps the earlier ones to the end of the week
@@ -414,15 +416,29 @@
   const postureOn = (p) => rulesOf(p).c.has('osteo') && !p.legacyRules;
   // Osteoporosis, after the on-ramp: a muscle group's main move takes up to 3 sets before its other
   // moves that day keep more than one, building to 3 sets an exercise; the group's sets for the
-  // day stay as planned.
-  function boneSets(s) {
+  // day stay as planned. Done once the session is fitted to its time (afterFit), as the fit's trims
+  // and fills move sets about.
+  function afterFit(S, s) {
+    if (!S || !S.profile || !s || s.custom || s.flare || (s.phase && s.phase.onramp)) return;
+    if (!rulesOf(S.profile).c.has('osteo') || !newRules(S, s.day)) return;
+    // A set moves only while the session keeps within its time (half a minute over at most, as
+    // the fit allows), or no longer than it was.
+    const limit = Math.max(B().estimate(S, s), (s.budget || Infinity) + 0.5);
+    boneSets(s, () => B().estimate(S, s) <= limit + 1e-9);
+  }
+  function boneSets(s, fits) {
     const MAIN = B().HOME_COMPOUND.concat(B().MAIN_LIFTS);
     const by = {};
     for (const it of s.items) if (!it.skill && it.kind === 'move' && B().GROUPS.includes(it.group)) (by[it.group] = by[it.group] || []).push(it);
     for (const list of Object.values(by)) {
       const main = list.find((it) => MAIN.includes(it.fam));
       if (!main) continue;
-      for (const it of list.slice().reverse()) while (it !== main && main.sets < 3 && it.sets > 1) { it.sets--; main.sets++; }
+      for (const it of list.slice().reverse()) {
+        while (it !== main && main.sets < 3 && it.sets > 1) {
+          it.sets--; main.sets++;
+          if (fits && !fits()) { it.sets++; main.sets--; break; }
+        }
+      }
     }
   }
   // Whether the on-ramp is over by `day`'s week, counted as the calendar counts it (src/brain.js
@@ -614,8 +630,6 @@
     for (const it of first) if (it.bone) it.rest = 30; // a short walk between rounds
     // (A sore joint can swap the floor practice into the balance ladder: one of a move is enough.)
     s.items = first.filter((it, i) => !first.slice(0, i).some((x) => x.moveId === it.moveId) && !s.items.some((x) => x.moveId === it.moveId)).concat(s.items);
-    // Osteoporosis, after the on-ramp: main moves build to 3 sets.
-    if (fresh && r.c.has('osteo') && !(s.phase && s.phase.onramp)) boneSets(s);
     // Power from 60: every session that trains legs (addPower), its own fast move after the warm-up
     // practice when none of the day's leg moves has a fast version (not in simpler sessions).
     const pp = c.custom ? null : powerPlan(p);
@@ -798,6 +812,6 @@
   // 1.13: the questions a condition brings, when the new rules start, power, bones, rep ranges and
   // strength days (boneLoad is what the reps-left target asks).
   Object.assign(GH.access, {
-    FOLLOW_UPS, ANSWERS, ageOf, oldRules, newRules, rulesKey, powerPlan, impactOn, impactCount, postureOn, rampedUp, repRange, strengthDays, boneLoad,
+    FOLLOW_UPS, ANSWERS, ageOf, oldRules, newRules, rulesKey, powerPlan, impactOn, impactCount, postureOn, rampedUp, repRange, strengthDays, boneLoad, afterFit,
   });
 })(typeof window !== 'undefined' ? window : globalThis);
