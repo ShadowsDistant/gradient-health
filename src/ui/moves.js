@@ -9,9 +9,9 @@
   const B = () => GH.brain;
   const M = () => GH.moves;
 
-  const GROUP_TONE = { biceps: 'amber', triceps: 'rose', chest: 'indigo', legs: 'green', back: 'teal', shoulders: 'sky', abs: 'violet', conditioning: 'amber', balance: 'teal' };
-  const GROUP_ICON = { biceps: 'bolt', triceps: 'bolt', chest: 'layers', legs: 'mountain', back: 'arrow-left', shoulders: 'sun', abs: 'grid', conditioning: 'wave', balance: 'compass' };
-  const ORDER = ['balance', 'biceps', 'triceps', 'chest', 'legs', 'back', 'shoulders', 'abs', 'conditioning'];
+  const GROUP_TONE = { biceps: 'amber', triceps: 'rose', chest: 'indigo', legs: 'green', back: 'teal', shoulders: 'sky', abs: 'violet', conditioning: 'amber', balance: 'teal', impact: 'violet' };
+  const GROUP_ICON = { biceps: 'bolt', triceps: 'bolt', chest: 'layers', legs: 'mountain', back: 'arrow-left', shoulders: 'sun', abs: 'grid', conditioning: 'wave', balance: 'compass', impact: 'bolt' };
+  const ORDER = ['balance', 'impact', 'biceps', 'triceps', 'chest', 'legs', 'back', 'shoulders', 'abs', 'conditioning'];
   const EQ_NAME = { db: 'dumbbells', kb: 'a kettlebell', ball: 'a ball', slam: 'a ball you can slam', band: 'a band', bar: 'a pull-up bar', chair: 'a chair', wall: 'a wall', towel: 'a towel', table: 'a sturdy table', door: 'a door anchor', bb: 'a barbell', ez: 'an EZ bar', rack: 'a squat rack', bench: 'a bench', incline: 'an adjustable bench', smith: 'a Smith machine', cable: 'a cable machine', pulldown: 'a lat pulldown', legPress: 'a leg press', legCurl: 'a leg curl machine', legExt: 'a leg extension machine', chestPress: 'a chest press machine', shoulderPress: 'a shoulder press machine', pecDeck: 'a pec deck', dip: 'dip bars', rower: 'a rower', bike: 'an exercise bike', treadmill: 'a treadmill' };
   const MUSCLE_NAME = (m) => String(m).replace(/([A-Z])/g, ' $1').toLowerCase();
 
