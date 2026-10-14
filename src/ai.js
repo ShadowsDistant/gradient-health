@@ -172,14 +172,27 @@
       for (let d = day - 28; d < day; d++) { const i = cal.days[d]; if (i && (i.planned === 'workout' || i.missed)) { planned++; if (i.done) doneN++; } }
       const ratings = { easy: 0, right: 0, hard: 0 };
       for (const l of logs) if (l.checkin && ratings[l.checkin.rating] != null) ratings[l.checkin.rating]++;
-      const rir = { '0': 0, '12': 0, '3': 0 };
-      for (const l of logs) for (const it of l.items || []) if (it.rir && rir[it.rir] != null) rir[it.rir]++;
+      // The reps-left answers, and how they sat against each exercise's aim (brain.effortStep). A
+      // log from before 1.13 has no aim, and its 3 meant "3 or more" (old3).
+      const rir = { '0': 0, '12': 0, '3': 0, '4': 0, old3: 0 };
+      const vs = { zero: 0, on: 0, over: 0 }, aims = new Set();
+      for (const l of logs) {
+        for (const it of l.items || []) {
+          if (!['0', '12', '3', '4'].includes(it.rir)) continue;
+          const w = b.aimWords(it.aim);
+          rir[it.rir === '3' && !w ? 'old3' : it.rir]++;
+          if (!w) continue;
+          aims.add(w);
+          if (it.rir === '0') vs.zero++; else if (b.effortStep(it).pace >= 2) vs.over++; else vs.on++;
+        }
+      }
       lines.push('');
       if (p.workouts === false) lines.push('TRAINING: workouts are turned off; they use the app for health and food.');
       lines.push('TRAINING (last 4 weeks)');
       lines.push(`- Workouts: ${doneN} of ${planned} planned done; streak ${cal.streak.current} days; full weeks in a row ${cal.streak.weekly}`);
       if (ratings.easy + ratings.right + ratings.hard) lines.push(`- Ratings: ${ratings.easy} too easy, ${ratings.right} about right, ${ratings.hard} too hard`);
-      if (rir['0'] + rir['12'] + rir['3']) lines.push(`- Reps left in the tank (per exercise): 0 → ${rir['0']}, 1-2 → ${rir['12']}, 3+ → ${rir['3']}`);
+      if (rir['0'] + rir['12'] + rir['3'] + rir['4'] + rir.old3) lines.push(`- Reps left in the tank (per exercise): 0 → ${rir['0']}, 1-2 → ${rir['12']}, 3 → ${rir['3']}, 4 or more → ${rir['4']}${rir.old3 ? `, 3 or more (older answers) → ${rir.old3}` : ''}`);
+      if (aims.size) lines.push(`- Against each exercise's aim (${[...aims].sort().join(' or ')} reps left): ${vs.zero} to failure, ${vs.on} on it, ${vs.over} with more left`);
       const week = cal.weeks[cur];
       if (week) lines.push(`- This week's phase: ${week.phase.deload ? 'deload (about 40% less volume)' : week.phase.onramp ? 'on-ramp (lighter start)' : 'normal'}`);
       const lastWs = cur - 7;

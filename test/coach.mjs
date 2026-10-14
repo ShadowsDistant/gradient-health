@@ -39,7 +39,23 @@ S = person({ sleep: 340 });
 rep = C.report(S, D0);
 check('short sleep all week → a sleep focus', rep.focus.some((f) => /sleep/i.test(f)), rep.focus);
 S = person({ rir: '0' });
-check('mostly 0 reps left → stop a rep or two short', C.report(S, D0).focus.some((f) => /1-2 reps left/.test(f)), C.report(S, D0).focus);
+// (Their first weeks' sets aim for 2-3 left, so that's what it asks for: brain.effortFor.)
+check('mostly 0 reps left → stop with the reps left the sets aim for', C.report(S, D0).focus.some((f) => /^Stop most sets with 2-3 reps left\./.test(f)), C.report(S, D0).focus);
+{
+  // 1.13: the answers against each exercise's aim. 3 left is on a 2-3 aim; 4 or more is past it.
+  const effort = (P) => C.watching(P, D0).find((w) => w.label === 'Effort');
+  const on = person({ rir: '3' });
+  check('3 left on a 2-3 aim is right where it should be, and the coach names the aim', effort(on).value === '2-3 reps left' && effort(on).status === 'good', effort(on));
+  const lots = person({ rir: '4' });
+  check('4 or more left, past the aim: lots left in the tank, and a word on honest answers', effort(lots).value === 'Lots left in the tank' && C.report(lots, D0).focus.some((f) => /Honest answers/.test(f)), [effort(lots), C.report(lots, D0).focus]);
+  // A log from before 1.13 has no aim: its 3 meant "3 or more", plenty left, as it always counted.
+  const old = person({ rir: '3' });
+  for (const l of old.log) for (const it of l.items || []) delete it.aim;
+  check('older logs: a 3 still counts as 3 or more', effort(old).value === 'Lots left in the tank', effort(old));
+  const sum = (P) => GH.ai.summary(P, D0).split('\n').filter((l) => /Reps left|aim/.test(l)).join(' | ');
+  check('Claude\'s summary has 0, 1-2, 3 and 4 or more, and how they sat against the aims', /0 → 0, 1-2 → 0, 3 → \d+, 4 or more → 0/.test(sum(on)) && /Against each exercise's aim \(2-3 reps left\): 0 to failure, \d+ on it, 0 with more left/.test(sum(on)), sum(on));
+  check('and older answers of 3 as "3 or more", with no aim line for them', /3 → 0, 4 or more → 0, 3 or more \(older answers\) → \d+/.test(sum(old)) && !/Against each/.test(sum(old)), sum(old));
+}
 const fresh = B.newState({ goals: ['abs'] }, null, D0);
 check('before any workout → a first-workout headline', /first workout/i.test(C.report(fresh, D0).headline));
 check('no exclamation marks or emoji', !/[!\u{1F300}-\u{1FAFF}]/u.test(JSON.stringify(C.report(person(), D0))));

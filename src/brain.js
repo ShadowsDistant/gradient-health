@@ -2296,6 +2296,8 @@
     if (!edge) return { pace: 0, harder: false };
     return { pace: edge <= aim.ok ? 1 : 1 + Math.min(2, edge - aim.ok), harder: edge >= aim.hi };
   }
+  // An aim in words ('1-2'), from its key (a log's aim), or null for none.
+  const aimWords = (key) => (typeof key === 'string' && Object.prototype.hasOwnProperty.call(AIMS, key) ? `${AIMS[key].lo}-${AIMS[key].hi}` : null);
   // The answer in words, for a "Next time" line's reason.
   function effortWords(log) {
     const a = log && log.rir;
@@ -2730,7 +2732,7 @@
   Object.assign(GH.brain, { itemFor, famFor, restFor, tierOf, cooldownItems });
   // Reps left in the tank: each set's aim, and how an answer moves an exercise on (src/customplan.js,
   // src/coach.js and src/ai.js read answers with them too).
-  Object.assign(GH.brain, { AIMS, effortFor, effortStep, effortWords, RIR_NUM });
+  Object.assign(GH.brain, { AIMS, effortFor, effortStep, effortWords, aimWords, RIR_NUM });
   // For src/optimizer.js, which plans the weeks and fits sessions to their time.
   Object.assign(GH.brain, {
     UNIT_GROUPS, UNIT_OF, COMPOUND, MAIN_LIFTS, HOME_COMPOUND, FAM_FOCUS, MERGE_MAX, SET_MAX,

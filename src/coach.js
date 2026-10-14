@@ -40,9 +40,26 @@
     }
     const logs = S.log.filter((l) => l.type === 'workout' && l.checkedIn);
     const recent = logs.filter((l) => l.day > day - 28);
-    const rir = { '0': 0, '12': 0, '3': 0 };
-    for (const l of recent) for (const it of l.items || []) if (it.rir && rir[it.rir] != null) rir[it.rir]++;
-    const rirN = rir['0'] + rir['12'] + rir['3'];
+    // The reps-left answers (one an exercise: 0, 1-2, 3 or 4 or more), and how they sat against each
+    // exercise's aim (brain.effortStep): to failure, on it, or past it, plenty left. A log from
+    // before 1.13 has no aim, and its 3 meant "3 or more": plenty left, as it always counted. aim:
+    // the aim most of them had, in words ('1-2'), and whether they all had it.
+    const rir = { '0': 0, '12': 0, '3': 0, '4': 0 };
+    const effort = { zero: 0, on: 0, over: 0, aim: null, one: true };
+    const aims = {};
+    for (const l of recent) {
+      for (const it of l.items || []) {
+        if (!it.rir || !Object.prototype.hasOwnProperty.call(rir, it.rir)) continue;
+        rir[it.rir]++;
+        if (it.rir === '0') effort.zero++; else if (b.effortStep(it).pace >= 2) effort.over++; else effort.on++;
+        const w = b.aimWords(it.aim);
+        if (w) aims[w] = (aims[w] || 0) + 1;
+      }
+    }
+    const byUse = Object.keys(aims).sort((x, y) => aims[y] - aims[x] || x.localeCompare(y));
+    effort.aim = byUse[0] || null;
+    effort.one = byUse.length <= 1;
+    const rirN = rir['0'] + rir['12'] + rir['3'] + rir['4'];
     const ratings = { easy: 0, right: 0, hard: 0 };
     for (const l of recent) if (l.checkin && ratings[l.checkin.rating] != null) ratings[l.checkin.rating]++;
     const ups = [];
@@ -56,7 +73,7 @@
     for (let d = day - 7; d < day; d++) if (S.protein[d] && S.protein[d].length) { proteinDays++; if (goal && b.proteinToday(S, d) >= goal * 0.95) proteinHit++; }
     const tests = (S.catchup.arm.tests || []).slice();
     return {
-      cal, week, ws, planned, done, missed, streak: cal.streak, logs, recent, rir, rirN, ratings, ups,
+      cal, week, ws, planned, done, missed, streak: cal.streak, logs, recent, rir, rirN, effort, ratings, ups,
       sleep7, sleepBase, steps7, stepsBase, rhr7, rhrBase, hrv7, hrvBase,
       weight: b.weightStats(S, day), goal, proteinDays, proteinHit, tests, readiness: b.readiness(S, day),
       insights: I() ? I().top(S, day, 6) : [],
@@ -140,8 +157,10 @@
     // What to focus on, most useful first.
     if (f.sleep7.n >= 4 && f.sleep7.avg < 420) addFocus('Keep a steady bedtime', 'Protect your sleep: a steady bedtime helps more than catching up on weekends.');
     if (f.goal && f.proteinDays >= 3 && f.proteinHit < f.proteinDays / 2) addFocus(`Get to ${f.goal} g of protein a day`, `Get to ${f.goal} g of protein. One ${S.profile.protein.quickName || 'shake'} on training days goes a long way.`);
-    if (workouts && f.rirN >= 6 && f.rir['0'] / f.rirN > 0.4) addFocus('Stop sets with 1-2 reps left', 'Stop most sets with 1-2 reps left. Going to failure every time makes recovery harder without much extra growth.');
-    else if (workouts && f.rirN >= 6 && f.rir['3'] / f.rirN > 0.5) addFocus('Rate the reps you have left honestly', 'You had lots left in the tank. Honest answers keep the plan moving you up.');
+    // (The reps left to stop with: what most of their sets aim for, 1-2 when no log says.)
+    const aim = f.effort.aim || '1-2';
+    if (workouts && f.rirN >= 6 && f.effort.zero / f.rirN > 0.4) addFocus(`Stop sets with ${aim} reps left`, `Stop most sets with ${aim} reps left. Going to failure every time makes recovery harder without much extra growth.`);
+    else if (workouts && f.rirN >= 6 && f.effort.over / f.rirN > 0.5) addFocus('Rate the reps you have left honestly', 'You had lots left in the tank. Honest answers keep the plan moving you up.');
     if (f.steps7.n >= 4 && f.stepsBase.n >= 7 && f.steps7.avg < f.stepsBase.avg * 0.8) addFocus('A 10-minute walk after a meal', 'Steps are down on your usual. A 10-minute walk after a meal adds up.');
     if (workouts && S.catchup.arm.active) addFocus(`Lead with your ${S.catchup.arm.side === 'R' ? 'right' : 'left'} arm`, `Keep leading with your ${S.catchup.arm.side === 'R' ? 'right' : 'left'} arm and never let the other side do more reps.`);
     if (F && foodDays < 4) addFocus('Log what you eat most days', 'Log what you eat most days. After two weeks and a few weigh-ins, your calorie target tunes itself to you.');
@@ -471,10 +490,11 @@
     const out = [];
     if (f.planned || f.done) out.push({ icon: 'calendar', label: 'Workouts this week', value: `${f.done} of ${Math.max(f.planned, f.done)}`, status: f.missed ? 'watch' : 'good', note: f.missed ? 'The plan moved forward, so nothing doubles up.' : 'On plan.' });
     if (f.rirN >= 6) {
-      const zero = f.rir['0'] / f.rirN, lots = f.rir['3'] / f.rirN;
-      out.push(zero > 0.4 ? { icon: 'timer', label: 'Effort', value: 'Often to failure', status: 'watch', note: 'Stopping 1-2 reps short grows muscle about as well with less fatigue.' }
+      // Against each exercise's aim (facts: effort), which the value names when they all share one.
+      const zero = f.effort.zero / f.rirN, lots = f.effort.over / f.rirN;
+      out.push(zero > 0.4 ? { icon: 'timer', label: 'Effort', value: 'Often to failure', status: 'watch', note: `Stopping ${f.effort.aim || '1-2'} reps short grows muscle about as well with less fatigue.` }
         : lots > 0.5 ? { icon: 'timer', label: 'Effort', value: 'Lots left in the tank', status: 'info', note: 'Honest answers move you up faster.' }
-          : { icon: 'timer', label: 'Effort', value: '1-3 reps left', status: 'good', note: 'Right where it should be.' });
+          : { icon: 'timer', label: 'Effort', value: !f.effort.aim ? '1-3 reps left' : f.effort.one ? `${f.effort.aim} reps left` : 'On target', status: 'good', note: 'Right where it should be.' });
     }
     if (f.sleep7.n >= 3) out.push({ icon: 'moon', label: 'Sleep', value: `${hrs(f.sleep7.avg)} a night`, status: f.sleep7.avg < 360 ? 'watch' : f.sleep7.avg < 420 ? 'info' : 'good', note: f.sleep7.avg < 420 ? 'Under 7 hours. A night under 5 takes a set off the next day.' : 'Enough for good recovery.' });
     if (f.rhr7.n >= 3 && f.rhrBase.n >= 7) { const d = f.rhr7.avg - f.rhrBase.avg; out.push({ icon: 'heart', label: 'Resting heart rate', value: `${Math.round(f.rhr7.avg)} bpm`, status: d >= 5 ? 'watch' : 'good', note: d >= 5 ? `${Math.round(d)} above your usual ${Math.round(f.rhrBase.avg)}.` : `Around your usual ${Math.round(f.rhrBase.avg)}.` }); }
