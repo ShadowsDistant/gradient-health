@@ -351,6 +351,17 @@ section('Why this plan');
   check('the reasons are plain sentences', ex.reasons.every((l) => /^[A-Z].*[.]$/.test(l) && noDash(l) && l.length < 220), ex.reasons);
   const fresh = O.explainProfile({ goals: ['legs'], days: 3, minutes: 30, equipment: HOUSE }, D0);
   check('explainProfile works from set-up\'s answers alone', fresh.week.length === 3 && fresh.today && fresh.reasons.length >= 2 && fresh.considered >= 1, fresh);
+  // 1.13: a healthy weekly dose. Under about 30 minutes of strength work a week, the plan says so
+  // once, with the fix, and stays as it is (Momma et al. 2022).
+  const dose = (r) => r.filter((l) => /minutes of strength work a week/.test(l));
+  const twoTen = O.explainProfile({ goals: ['abs', 'arms'], days: 2, minutes: 10, equipment: HOUSE }, D0);
+  check('two sessions of 10 minutes: one line says it\'s 20 minutes a week, with the fix', dose(twoTen.reasons).length === 1 && /^Your plan has 20 minutes of strength work a week\. .*30 to 60 minutes a week, so a third short session or longer ones would help\.$/.test(dose(twoTen.reasons)[0]), twoTen.reasons);
+  check('it comes right after the split, so set-up shows it too (its first three reasons)', twoTen.reasons.indexOf(dose(twoTen.reasons)[0]) === 1, twoTen.reasons);
+  check('and it\'s a plain sentence like the rest', dose(twoTen.reasons).every((l) => /^[A-Z].*[.]$/.test(l) && noDash(l) && l.length < 220));
+  check('30 minutes a week or more (2 of 15, 3 of 10, 4 of 45): no line', [[2, 15], [3, 10], [4, 45]].every(([days, minutes]) => !dose(O.explainProfile({ goals: ['abs', 'arms'], days, minutes, equipment: HOUSE }, D0).reasons).length));
+  const T2 = person({ goals: ['strength', 'chest'], days: 2, minutes: 10 });
+  const plain2 = O.weekPlan(T2, D0 + 7);
+  check('the plan isn\'t shrunk or blocked for it: the week is planned as before', O.explain(T2, D0 + 7).reasons.some((l) => /20 minutes of strength work/.test(l)) && plain2.days.length === 2 && plain2.days.every((d) => d.budget === 10), plain2.days.map((d) => [d.budget, d.planned]));
   const alt = O.alternatives(S, D0 + 7);
   check('alternatives: the best fit and the three classic splits, best first, the one in use marked', alt.length === 4 && alt.every((a, i) => i === 0 || a.score <= alt[i - 1].score) && alt.filter((a) => a.current).length === 1 && alt.some((a) => a.split === 'ppl'), alt.map((a) => `${a.split} ${a.score}`));
   check('the best fit scores at least as well as every classic split', alt.find((a) => a.split === 'auto').score >= Math.max(...alt.map((a) => a.score)) - 0.01, alt.map((a) => `${a.split} ${a.score}`));
