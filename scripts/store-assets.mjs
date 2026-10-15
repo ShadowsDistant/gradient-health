@@ -84,9 +84,10 @@ const SHOTS = [
       + `<div class="glass dark ask">
           <div class="q">How many more could you have done?</div>
           <div class="opts">
-            <div><b>0</b><span>Holds you steady</span></div>
+            <div><b>0</b><span>Holds steady</span></div>
             <div><b>1-2</b><span>Adds a little</span></div>
-            <div class="on"><b>3+</b><span>Moves you up</span></div>
+            <div><b>3</b><span>Moves you up</span></div>
+            <div class="on"><b>4+</b><span>Up faster</span></div>
           </div>
         </div>`,
   },
@@ -119,12 +120,13 @@ p { margin: 28px auto 0; max-width: 880px; font-size: 38px; font-weight: 500; li
 .row { display: flex; justify-content: center; gap: 16px; margin-top: 30px; }
 .row .chip { position: static; font-size: 32px; }
 .ask { position: absolute; left: 60px; right: 60px; top: 1080px; border-radius: 48px; padding: 40px 40px 44px; text-align: center; }
+.glass.dark.ask { background: linear-gradient(160deg, rgb(28 32 46 / .94), rgb(10 12 20 / .96)); }
 .ask .q { font-size: 42px; font-weight: 700; letter-spacing: -0.015em; }
-.ask .opts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 30px; }
+.ask .opts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 30px; }
 .ask .opts div { display: grid; gap: 14px; justify-items: center; }
 .ask b { width: 100%; height: 96px; border-radius: 48px; display: grid; place-items: center; font-size: 46px; font-weight: 760; background: rgb(255 255 255 / .1); box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / .18); }
 .ask .on b { background: linear-gradient(100deg, #3e95f9, #34c7ae 60%, #4bc985); box-shadow: inset 0 2px 0 rgb(255 255 255 / .35), 0 14px 40px -12px rgb(52 199 174 / .8); }
-.ask span { font-size: 31px; font-weight: 600; color: rgb(232 238 255 / .8); }
+.ask span { font-size: 28px; font-weight: 600; line-height: 1.25; color: rgb(232 238 255 / .8); }
 .ask .on span { color: #fff; }
 </style></head><body>
   <div class="copy"><h1>${s.title}</h1><p>${s.sub}</p>${chips}</div>

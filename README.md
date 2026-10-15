@@ -300,7 +300,7 @@ Small models can slip, so the app checks every answer against your own numbers a
 Every rule the app follows, from your sets to your rest, is listed in the app under training, recovery, food and habits. Each has a one-line summary, the studies behind it and how strong the evidence is. Where the research is thin, it says so.
 
 <p align="center">
-  <img src="docs/screenshots/framed/science.png" width="200" alt="How it works: stopping 1 to 3 reps short of failure, with its research">
+  <img src="docs/screenshots/framed/science.png" width="200" alt="How it works: how many reps to leave in the tank, with its research">
   <img src="docs/screenshots/framed/trends.png" width="200" alt="Trends: sleep and resting heart rate over four weeks">
 </p>
 
