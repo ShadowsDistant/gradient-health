@@ -419,6 +419,9 @@ check('the day before is a tap away, with the day haptic', (await lastHaptic()) 
 await page.click('#screen .fd-days [data-act="foodDayNext"]');
 await settle(700);
 check('and back', await ev(() => document.querySelector('#screen .fd-day').textContent === 'Today'));
+await page.click('#screen .fd-days [data-act="foodDayNext"]', { force: true });
+await settle(400);
+check('no day after today: its arrow answers with an edge, and the day stays', (await lastHaptic()) === 'edge' && await ev(() => document.querySelector('#screen .fd-day').textContent === 'Today'));
 
 section('Copy yesterday and Delete: one tap each, with Undo');
 const k0 = await kcalToday(), yk = await ev(() => window.GH.food.totals(window.GH.ui.S, window.GH.ui.today() - 1, false).kcal);
@@ -438,6 +441,20 @@ check('Delete takes it out at once, with the remove haptic', (await kcalToday())
 check('with Undo', await undo());
 await settle(800);
 check('which puts it back as it was, in the meal it was in', (await kcalToday()) === k0 && await ev(() => window.GH.food.byMeal(window.GH.ui.S, window.GH.ui.today()).snack.some((e) => e.kcal === 120 && e.mh === 1)) && (await recentHaptics(2)).includes('undo'), await kcalToday());
+// Moving it to another meal: open it, pick the meal, Save (and back again).
+const moveTo = async (from, to) => {
+  const arg = await ev(([f]) => { const d = window.GH.ui.today(), e = window.GH.food.byMeal(window.GH.ui.S, d)[f].find((x) => x.kcal === 120); return e ? `${d}:${e.id}` : null; }, [from]);
+  await page.click(`#screen [data-act="foodEdit"][data-arg="${arg}"]`);
+  await sheetOpen('[data-on="quickMeal"]');
+  await settle(700);
+  await page.click(`dialog.rf-sheet[open] [data-on="quickMeal"] input[value="${to}"]`, { force: true });
+  await settle(400);
+  await page.click('dialog.rf-sheet[open] [data-act="foodQuickSave"]');
+  await settle(900);
+  return ev(([t]) => { const m = window.GH.food.byMeal(window.GH.ui.S, window.GH.ui.today()); return m[t].some((e) => e.kcal === 120) && /120/.test(document.querySelector(`#screen .fd-meal[data-key="meal-${t}"]`).textContent); }, [to]);
+};
+check('an entry moves to another meal: open it, pick the meal, Save', await moveTo('snack', 'lunch') && (await recentHaptics(3)).includes('save'));
+check('and back', await moveTo('lunch', 'snack'));
 await page.click('#screen .fd-meal[data-key="meal-dinner"] [data-act="foodAdd"]');
 await sheetOpen('.fd-search');
 await settle(700);

@@ -93,6 +93,8 @@
   };
   U.act.foodDayPrev = () => { foodDay = Math.max(U.today() - 30, dayShown() - 1); U.haptic('day'); U.render(); };
   U.act.foodDayNext = () => { foodDay = Math.min(U.today(), dayShown() + 1); U.haptic('day'); U.render(); };
+  // An arrow with no day past it (today, or 30 days back) answers with an edge.
+  doc.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('.fd-days [aria-disabled="true"]')) U.haptic('edge'); });
 
   /* ---------------------------------------------------------------- adding food */
   // What a new entry is for: the day (the Food page's, else today) and the meal (the one tapped, or
