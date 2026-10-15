@@ -215,7 +215,7 @@
   const insights = (list) => (list.length ? `<div class="hl-ins-list" data-key="ins">${list.map(insightRow).join('')}</div>`
     : '<div class="card hl-note" data-key="noins"><p class="t-callout rf-muted">Insights start after a few days of sleep, steps, weight, workouts and check-ins.</p></div>');
   U.act.dismissInsight = (el) => { GH.insights.dismiss(U.S, el.dataset.arg, U.today()); U.commit(); U.haptic('dismiss'); U.toast('Hidden for 30 days', 'neutral'); };
-  U.act.insightGo = (el) => U.go(el.dataset.arg);
+  U.act.insightGo = (el) => U.go(el.dataset.arg, false, true); // answered in the next frame, as the tab bar is
 
   /* ---------------------------------------------------------------- trends */
   // A sparkline row per metric over the last 28 days (measurements over a year), with the newest

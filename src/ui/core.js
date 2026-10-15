@@ -1106,11 +1106,15 @@
   }
   // The floating buttons share one row. When they don't fit (a narrow phone, large text), the
   // secondary ones drop their words and keep their icon (their aria-label still says what they do).
+  // Their laid-out boxes, not what's drawn: a button still swollen from the finger that pressed it
+  // (Refract's glass grows a little while held) reached past the row on screen, and a tap on Short on
+  // time read as a row that didn't fit, so the button lost its words. Parts on their way out don't
+  // count.
   function fitFloat() {
     if (floatEl.hidden) return;
     floatEl.classList.remove('is-tight');
-    const box = floatEl.getBoundingClientRect();
-    const over = [...floatEl.children].some((c) => { const b = c.getBoundingClientRect(); return b.left < box.left - 1 || b.right > box.right + 1; });
+    const w = floatEl.clientWidth;
+    const over = [...floatEl.children].some((c) => !c.hasAttribute('data-rf-leaving') && (c.offsetLeft < -1 || c.offsetLeft + c.offsetWidth > w + 1));
     if (over) floatEl.classList.add('is-tight');
   }
   if (G.addEventListener) G.addEventListener('resize', () => { if (floatEl) fitFloat(); });

@@ -298,7 +298,7 @@
   }
 
   /* ---------------------------------------------------------------- actions */
-  U.act.goHealth = () => U.go('health');
+  U.act.goHealth = () => U.go('health', false, true); // answered in the next frame, as the tab bar is
   U.act.toggleShort = () => { const d = U.today(); shortDay = isShort(d) ? null : d; U.haptic(shortDay != null ? 'toggleOn' : 'toggleOff'); U.render(); };
   U.act.startWorkout = () => {
     const S = U.S;
