@@ -625,7 +625,10 @@
       const it = B().itemFor(S, { fam: 'impact', sets: 1, group: 'impact' }, day);
       if (it) { it.bone = true; first.push(it); }
     }
-    if (fresh && postureOn(p) && [0, Math.floor(D / 2)].includes(c.tplIdx) && !s.items.some((x) => x.fam === 'backExt') && B().rungs(S, 'backExt', day).length) {
+    // (In simpler sessions, only where there's an exercise to spare: the week's plan gives each of
+    // the day's muscle groups one, src/optimizer.js maxUnits.)
+    const spare = S.complexity > 0 ? (S.complexity === 1 ? 5 : 4) - first.length - s.items.filter((x) => !x.skill).length : 1;
+    if (fresh && postureOn(p) && spare > 0 && [0, Math.floor(D / 2)].includes(c.tplIdx) && !s.items.some((x) => x.fam === 'backExt') && B().rungs(S, 'backExt', day).length) {
       const it = B().itemFor(S, { fam: 'backExt', sets: s.short ? 1 : 2, group: 'posture' }, day);
       if (it && M().MOVES[it.moveId].family === 'backExt') first.push(it);
     }
