@@ -289,7 +289,8 @@ check('to the check-in', (await pstate()).checkin);
 await page.click('.player [data-act="plSaveCheckin"]');
 await page.waitForSelector('.player .rf-large-title:has-text("Next time")', { timeout: 5000 });
 const next = await page.locator('.player').innerText();
-check('Next time: its targets move on', /Push-up → \d+ reps/.test(next) && /Goblet squat → \d+ reps/.test(next), next.slice(0, 300));
+// (A number keeps to its unit and the arrow to its number: no-break spaces, which \s takes.)
+check('Next time: its targets move on', /Push-up →\s\d+\sreps/.test(next) && /Goblet squat →\s\d+\sreps/.test(next), next.slice(0, 300));
 await shot('13-next');
 await page.click('.player [data-act="plClose"]');
 await settle(900);
