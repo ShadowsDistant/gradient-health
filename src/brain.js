@@ -2639,6 +2639,27 @@
     }
     return out;
   }
+  // weeklySets(S, day) a piece at a time, for idle moments (src/insights.js): each next() does one
+  // piece (the calendar, the week's plan, a session) and keeps it as weeklySets would, so the sums
+  // at the end cost next to nothing. Worked out at once, a week's sets (last week's, the first time
+  // they're asked for) held the page's thread 40 to 60 ms at 4x CPU. Nothing to do when they're kept.
+  function* weeklySetsWork(S, day) {
+    const ws = weekStart(day);
+    const K = GH.optimizer && GH.optimizer.kept;
+    if (K && ws < K.thisWeek(S) && K.get(S, 'sets', `sets|${ws}|${weekLog(S, ws)}`) !== undefined) return;
+    const cal = calendar(S, day);
+    yield;
+    const week = cal.weeks[ws];
+    if (!week) return;
+    const custom = GH.customPlan && week.sessions.some((s) => GH.customPlan.owns(s.tpl));
+    if (!custom && GH.optimizer && GH.optimizer.weekPlan) { GH.optimizer.weekPlan(S, ws, { phase: week.phase }); yield; }
+    for (const s of week.sessions) {
+      if (s.dropped || s.day == null) continue;
+      buildSession(S, s.day, s.tpl, { cal, noReadiness: true });
+      yield;
+    }
+    weeklySets(S, day);
+  }
 
   // Setting changes take effect from today; the replay uses the settings in force each week.
   // Workouts a week and the days they're on stay in step. Picking days sets the count (2 to 6: a
@@ -2759,7 +2780,7 @@
     defaultProfile, programFor, templateFor, templateTitle, newState, applyBaseline, rungs, filtersFor,
     calendar, weekOf, todayPlan, readiness, buildSession, estimate, steps, startWorkout, cancelWorkout, restoreWorkout, completeStep, currentTarget,
     setRir, amendLast, swapItem, swapOptions, finishWorkout, progress, levelUp, nextWeight, weeklyVolumeUpdate, recordTest, testDue,
-    logLight, autoWalk, addWeight, weightStats, proteinGoal, proteinToday, addProtein, undoProtein, weeklySets,
+    logLight, autoWalk, addWeight, weightStats, proteinGoal, proteinToday, addProtein, undoProtein, weeklySets, weeklySetsWork,
     updateSettings, scheduleSettings, settingsAt, moveSession, setEquipment, reprogram, ladderLevel, mobilityFlow, loadInfo, isDone, relink, median,
     defaultGym, GYM_PRESETS, DB_MAX_OPTIONS, convertDbMax, rangeFor, stepsGoal, outcomeOf, weekdaysFor, gymPreset, placeOf, setPlace, eqAt, eqFor, dbRack, snapLoad, suggestLoad, fmtLoad, loadChoices, setItemLoad, ensureProg, isGymFam, toUnit, fromUnit,
   };

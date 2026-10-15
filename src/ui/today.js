@@ -275,14 +275,15 @@
       return '';
     },
   };
-  // (Until it's done, Today's renders leave the line out too, rather than working it all out at once.)
+  // (Until it's done, Today's renders leave the line out too, rather than working it all out at once.
+  // A step stops once it's used a frame's worth of time: each piece of work in it is small.)
   let insightJob = 0;
   const idle = (fn) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: 400 }) : setTimeout(fn, 30));
   function insightLater() {
     if (insightJob) return;
     const step = () => {
       const t0 = Date.now();
-      if (U.S && GH.insights && !GH.insights.warm(U.S, U.today(), () => Date.now() - t0 < 40)) { insightJob = idle(step); return; }
+      if (U.S && GH.insights && !GH.insights.warm(U.S, U.today(), () => Date.now() - t0 < 16)) { insightJob = idle(step); return; }
       insightJob = 0;
       if (U.S && U.route.tab === 'today' && !U.route.view) U.renderSoon();
     };
