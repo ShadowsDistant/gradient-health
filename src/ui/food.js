@@ -21,7 +21,7 @@
   // Minutes after midnight as the clock reads them ("8:14 am"; short: "8 am"), and a meal's window in
   // words ("5 to 11 am", "11 am to 3 pm").
   // (A time keeps its am or pm on its line.)
-  const clockText = (m, short) => { const h = Math.floor(m / 60) % 24, mm = m % 60; return `${((h + 11) % 12) + 1}${short && !mm ? '' : `:${String(mm).padStart(2, '0')}`} ${h < 12 ? 'am' : 'pm'}`; };
+  const clockText = (m, short) => { const h = Math.floor(m / 60) % 24, mm = m % 60; return `${((h + 11) % 12) + 1}${short && !mm ? '' : `:${String(mm).padStart(2, '0')}`}\u00a0${h < 12 ? 'am' : 'pm'}`; };
   const spanText = (w) => { const a = clockText(w[0], true), b = clockText(w[1], true); return a.slice(-2) === b.slice(-2) ? `${a.slice(0, -3)} to ${b}` : `${a} to ${b}`; };
 
   /* ---------------------------------------------------------------- the day at a glance */
@@ -30,17 +30,17 @@
   // spans only, so it can sit in a button (Health's and Today's open the Food page). A macro's grams
   // so far and its target are columns the three rows share (src/styles/food.css), so the slashes
   // line up one under another. go: the chevron of a block that opens the Food page.
-  const nb = (s) => String(s).replace(/ /g, ' ');
+  const nb = (s) => String(s).replace(/ /g, '\u00a0');
   function macroRow(label, have, want, tone) {
     const v = want ? Math.min(1, have / want) : 0;
-    return `<span class="fd-macro"><span class="fd-mk">${label}</span><span class="fd-mhave rf-num">${g1(have)}<span class="fd-msl"> /</span></span><span class="fd-mwant rf-num">${want} g</span><span class="rf-progress" role="progressbar" aria-label="${label}" aria-valuenow="${Math.round(v * 100)}" aria-valuemin="0" aria-valuemax="100" style="--rf-value:${v.toFixed(3)}" data-tone="${have > want * 1.1 ? 'caution' : tone}"><span class="rf-progress-fill"></span></span></span>`;
+    return `<span class="fd-macro"><span class="fd-mk">${label}</span><span class="fd-mhave rf-num">${g1(have)}<span class="fd-msl"> /</span></span><span class="fd-mwant rf-num">${want}\u00a0g</span><span class="rf-progress" role="progressbar" aria-label="${label}" aria-valuenow="${Math.round(v * 100)}" aria-valuemin="0" aria-valuemax="100" style="--rf-value:${v.toFixed(3)}" data-tone="${have > want * 1.1 ? 'caution' : tone}"><span class="rf-progress-fill"></span></span></span>`;
   }
   function glance(S, day, o) {
     const t = F().targets(S, day), tot = F().totals(S, day);
     const go = o && o.go ? `<span class="fd-go">${U.icon('chevron-right', 'sm')}</span>` : '';
     if (!t) return `<span class="fd-sum is-bare"><span class="fd-side"><span class="fd-kcal rf-num"><span><b>${U.roll(kcal(tot.kcal))}</b> kcal ${day === U.today() ? 'today' : 'eaten'}</span>${go}</span><span class="t-footnote rf-muted">Add your weight for a calorie target.</span></span></span>`;
     const left = t.kcal - tot.kcal;
-    return `<span class="fd-sum${o && o.compact ? ' is-compact' : ''}">${U.ring(Math.min(1, tot.kcal / t.kcal), 'Calories', `<span class="fd-ring-n rf-num">${U.roll(kcal(Math.abs(left)))}</span><span class="fd-ring-l">${left >= 0 ? 'left' : 'over'}</span>`, 'lg', left < -t.kcal * 0.1 ? 'caution' : 'accent')}<span class="fd-side"><span class="fd-kcal rf-num"><span><b>${U.roll(kcal(tot.kcal))}</b> of ${kcal(t.kcal)} kcal</span>${go}</span><span class="fd-macros">${macroRow('Protein', tot.p, t.protein, 'positive')}${macroRow('Carbs', tot.c, t.carbs, 'accent')}${macroRow('Fat', tot.f, t.fat, 'accent')}</span></span></span>`;
+    return `<span class="fd-sum${o && o.compact ? ' is-compact' : ''}">${U.ring(Math.min(1, tot.kcal / t.kcal), 'Calories', `<span class="fd-ring-n rf-num">${U.roll(kcal(Math.abs(left)))}</span><span class="fd-ring-l">${left >= 0 ? 'left' : 'over'}</span>`, 'lg', left < -t.kcal * 0.1 ? 'caution' : 'accent')}<span class="fd-side"><span class="fd-kcal rf-num"><span><b>${U.roll(kcal(tot.kcal))}</b> of ${kcal(t.kcal)}\u00a0kcal</span>${go}</span><span class="fd-macros">${macroRow('Protein', tot.p, t.protein, 'positive')}${macroRow('Carbs', tot.c, t.carbs, 'accent')}${macroRow('Fat', tot.f, t.fat, 'accent')}</span></span></span>`;
   }
   // The Food page's (with a way to add what the target needs when there's none yet).
   function summary(S, day) {

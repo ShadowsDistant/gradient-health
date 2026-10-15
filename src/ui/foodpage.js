@@ -35,7 +35,7 @@
   // breaks does so after a dot, never before one).
   function entryRow(e, day) {
     const amount = e.portion ? e.portion : e.g ? `${e.g} g` : '';
-    return U.row({ title: U.esc(e.name), sub: U.esc([nb(U.fmtClock(e.t)), amount, nb(`P ${g1(e.p)}`), nb(`C ${g1(e.c)}`), nb(`F ${g1(e.f)}`)].filter(Boolean).join(' · ')), detail: `${kcal(e.kcal)}`, act: 'foodEdit', arg: `${day}:${e.id}`, key: `fe-${e.id}` });
+    return U.row({ title: U.esc(e.name), sub: U.esc([nb(U.fmtClock(e.t)), amount, nb(`P ${g1(e.p)}`), nb(`C ${g1(e.c)}`), nb(`F ${g1(e.f)}`)].filter(Boolean).join('\u00a0· ')), detail: `${kcal(e.kcal)}`, act: 'foodEdit', arg: `${day}:${e.id}`, key: `fe-${e.id}` });
   }
   // The same meal the day before, to add again: its entries (none if this day has that meal already).
   const sameAs = (S, day, meal) => (F().byMeal(S, day)[meal].length ? [] : F().byMeal(S, day - 1)[meal]);
@@ -56,7 +56,7 @@
         const sum = list.reduce((a, e) => a + e.kcal, 0);
         const again = list.length ? [] : sameAs(S, day, id);
         return `<div class="card fd-meal${list.length ? '' : ' is-empty'}" data-key="meal-${id}">
-          <div class="fd-meal-head"><span class="t-headline">${name}</span><span class="t-footnote rf-muted rf-num">${list.length ? `${kcal(sum)} kcal` : ''}</span>
+          <div class="fd-meal-head"><span class="t-headline">${name}</span><span class="t-footnote rf-muted rf-num">${list.length ? `${kcal(sum)}\u00a0kcal` : ''}</span>
             <button type="button" class="rf-btn" data-shape="circle" data-size="sm" aria-label="Add to ${name.toLowerCase()}" data-act="foodAdd" data-arg="${id}">${U.icon('plus')}</button></div>
           ${list.length ? `<ul class="rf-list fd-list">${list.map((e) => entryRow(e, day)).join('')}</ul>` : ''}
           ${again.length ? link('foodSame', id, `${sameWords(day)}, ${kcal(again.reduce((a, e) => a + e.kcal, 0))} kcal`, 'repeat', 'fd-same') : ''}
@@ -323,7 +323,7 @@
     return Object.assign(F().scale({ kcal: item.kcal || 0, p: item.p || 0, c: item.c || 0, f: item.f || 0, fib: item.fib || 0 }, grams), { g: grams });
   }
   // "Protein 2.5 g · Carbs 51 g · Fat 0.7 g", each kept whole on its line.
-  const macroLine = (m) => [`Protein ${g1(m.p)} g`, `Carbs ${g1(m.c)} g`, `Fat ${g1(m.f)} g`, m.fib ? `Fibre ${g1(m.fib)} g` : ''].filter(Boolean).map(nb).join(' · ');
+  const macroLine = (m) => [`Protein ${g1(m.p)} g`, `Carbs ${g1(m.c)} g`, `Fat ${g1(m.f)} g`, m.fib ? `Fibre ${g1(m.fib)} g` : ''].filter(Boolean).map(nb).join('\u00a0· ');
   // When a new entry would be: now (today), or the meal's usual time on an earlier day.
   const newMin = (day, meal) => (day === U.today() ? F().minOf(Date.now()) : F().usualMin(U.S, day, meal));
   function portionBody() {

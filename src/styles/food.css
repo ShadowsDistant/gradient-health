@@ -12,14 +12,13 @@
 .fd-sum .rf-ring { --_s: 5.5em; --_w: 8px; font-size: 1rem; }
 .fd-sum.is-compact .rf-ring { --_s: 4.25em; --_w: 6px; }
 .fd-sum .rf-ring-label { display: grid; justify-items: center; padding-inline: var(--space-2); line-height: 1.1; text-align: center; }
-/* (Trimmed to the figures' tops and the word's baseline, so what's centred is the ink, not the line
-   gaps above and below it.) */
-.fd-sum .fd-ring-n { text-box: trim-start cap alphabetic; }
-.fd-sum .fd-ring-l { text-box: trim-end cap alphabetic; }
 .fd-ring-n { font-size: 19px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; }
-.fd-sum .fd-ring-n { font-size: 1.3125rem; font-weight: 720; }
-.fd-sum.is-compact .fd-ring-n { font-size: .9375rem; }
 .fd-ring-l { font-size: .75rem; font-weight: 550; color: var(--label-secondary); }
+/* (The number and its word are trimmed to the figures' tops and the word's baseline, so what's centred
+   is the ink, not the line gaps above and below it.) */
+.fd-sum .fd-ring-n { font-size: 1.3125rem; font-weight: 720; text-box: trim-start cap alphabetic; }
+.fd-sum.is-compact .fd-ring-n { font-size: .9375rem; }
+.fd-sum .fd-ring-l { text-box: trim-end cap alphabetic; }
 .fd-side { display: grid; gap: var(--space-2); min-width: 0; container-type: inline-size; }
 .fd-kcal { display: flex; align-items: center; gap: var(--space-2); font-size: .9375rem; line-height: 1.3; color: var(--label-secondary); }
 .fd-kcal > span:first-child { min-width: 0; overflow-wrap: anywhere; }
