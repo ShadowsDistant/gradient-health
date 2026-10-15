@@ -102,16 +102,16 @@ section('Scenario A: your answers, 3 weeks from Mon Sep 28');
     return seen.every((x, i) => x.first !== false || !seen[i - 1] || x.val <= seen[i - 1].val);
   };
   check('Mon: second side never did more than the first', uniOk(r.seen));
-  // Tue: push-ups 3+ left (18 → 20).
+  // Tue: push-ups 3 left (18 → 20: in the on-ramp week the aim is 2-3, and under 30 an easy set adds a rep).
   r = doWorkout(S, D0 + 1, { rir: { squat: '12', push: '3' }, reps: { triceps: 4 } });
   extraSeen.push(r.seen.some((x) => x.extra && x.side === 'L'));
-  check('Tue (first chest day): push-ups → 20 reps (3+ left)', S.prog.push.reps === 20, lineTexts(r));
+  check('Tue (first chest day): push-ups → 20 reps (3 left)', S.prog.push.reps === 20, lineTexts(r));
   check('Tue: triceps below range twice → down a rung with a cooldown', S.prog.triceps.rung === 'tri_oh' && S.prog.triceps.cooldown === 2, S.prog.triceps);
   check('Tue: goblet squat +2 (15 → 17, 1-2 left at 12+ reps)', S.prog.squat.reps === 17, S.prog.squat);
   lightDay(S, D0 + 2);
   r = doWorkout(S, D0 + 3, { rir: { push: '3' } });
   extraSeen.push(r.seen.some((x) => x.extra && x.side === 'L'));
-  check('Thu (second chest day): push-ups at 20 with 3+ left → Push-up, 3-sec lowering', S.prog.push.rung === 'push_slow', lineTexts(r));
+  check('Thu (second chest day): push-ups at 20 with 3 left → Push-up, 3-sec lowering', S.prog.push.rung === 'push_slow', lineTexts(r));
   check('Thu: the rung-up is celebrated', r.celebrate.some((c) => c.kind === 'level'), r.celebrate);
   r = doWorkout(S, D0 + 4, {});
   health(S, D0 + 5, { steps: 6200 });
@@ -280,6 +280,127 @@ section('Scenario E: advanced, dumbbells 10-50 lb, bar, band, 5 days, chest + ba
   S2.prog.curl.rung = 'curl_conc'; S2.prog.curl.reps = 16;
   const up3 = B.levelUp(S2, 'curl', D0);
   check('maxed top rung at the only weight → next dumbbell to buy (12 lb)', up3 && /Next buy: 12 lb dumbbells/.test(up3.line.text), up3 && up3.line);
+}
+
+/* ------------------------------------------------------------------ reps left in the tank */
+// 1.13: each set aims for a number of reps left by goal and person (brain.effortFor), the player
+// asks 0, 1-2, 3 or 4+, and the answer moves the exercise on against that aim (brain.effortStep).
+section('Reps left: each set\'s aim, by goal and person');
+{
+  const AC = GH.access;
+  const BASE = { goals: ['consistency'], age: 35, experience: '3plus', recentActivity: 'regular', days: 3, minutes: 30, equipment: { db: [10, 15, 20] } };
+  const GYM = { where: 'gym', gym: B.gymPreset('full', 'kg'), units: 'kg' };
+  const aim = (p, id, o = {}) => {
+    const S = B.newState(Object.assign({}, BASE, p), null, D0);
+    const m = M.MOVES[id];
+    const a = B.effortFor(S, Object.assign({ kind: 'move', moveId: id, fam: o.fam || m.family, group: m.group }, o.it), o.phase || { onramp: false });
+    return `${a.key}:${a.why}`;
+  };
+  check('everyone else\'s sets aim for 1-3 left', aim({}, 'push_std') === '13:usual' && aim({ goals: ['fat'] }, 'curl_std') === '13:usual');
+  check('your top goal muscles (tier 1) aim for 1-2', aim({ goals: ['arms', 'legs', 'chest'] }, 'curl_std') === '12:size' && aim({ goals: ['arms', 'legs', 'chest'] }, 'sq_goblet') === '12:size' && aim({ goals: ['arms', 'legs', 'chest'] }, 'push_std') === '13:usual');
+  check('with strength in the top two goals, the 4-8 rep gym lifts aim for 2-3 (4 still fine)',
+    aim(Object.assign({ goals: ['strength', 'chest'] }, GYM), 'bench_bb') === '24:strength' && aim(Object.assign({ goals: ['legs', 'strength'] }, GYM), 'squat_bb') === '24:strength' && B.AIMS[24].ok === 4,
+    [aim(Object.assign({ goals: ['strength', 'chest'] }, GYM), 'bench_bb'), aim(Object.assign({ goals: ['legs', 'strength'] }, GYM), 'squat_bb')]);
+  check('but not a smaller gym move, nor a main lift when strength is third', aim(Object.assign({ goals: ['strength'] }, GYM), 'raise_cable') === '13:usual' && aim(Object.assign({ goals: ['chest', 'arms', 'strength'] }, GYM), 'bench_bb') === '12:size');
+  check('gentler, 2-3: the on-ramp weeks, even for a top goal or a strength lift', aim({ goals: ['arms'] }, 'curl_std', { phase: { onramp: true } }) === '23:onramp' && aim(Object.assign({ goals: ['strength'] }, GYM), 'bench_bb', { phase: { onramp: true } }) === '23:onramp');
+  check('gentler from 60 (the age itself: 50 to 59 is as usual), top goals included', aim({ age: 60, goals: ['arms'] }, 'curl_std') === '23:age' && aim({ age: 59, goals: ['arms'] }, 'curl_std') === '12:size' && aim({ age: 59 }, 'push_std') === '13:usual' && aim({ age: 72 }, 'push_std') === '23:age');
+  check('gentler with high blood pressure or a heart condition, at any age', aim({ conditions: ['bp'], goals: ['arms'] }, 'curl_std') === '23:bp' && aim({ conditions: ['heart'], age: 30 }, 'push_std') === '23:heart' && aim(Object.assign({ conditions: ['heart'], goals: ['strength'] }, GYM), 'bench_bb') === '23:heart');
+  check('a strength lift keeps its 2-3, 4 fine, from 60', aim(Object.assign({ age: 66, goals: ['strength'] }, GYM), 'bench_bb') === '24:strength');
+  // Osteoporosis: GH.access.boneLoad (from the age and health rules, when they have it) asks for 1-2
+  // on main sets after the on-ramp; without it the plan works as before.
+  const had = AC.boneLoad;
+  AC.boneLoad = (p) => (p.conditions || []).includes('osteo');
+  const bone = [aim({ conditions: ['osteo'], age: 67 }, 'push_std'), aim({ conditions: ['osteo'], age: 67 }, 'push_std', { phase: { onramp: true } }), aim({ conditions: ['osteo'], age: 67 }, 'side_plank'), aim({ conditions: ['osteo'], age: 67 }, 'bal_tandem', { it: { skill: true } }), aim({ conditions: ['osteo', 'bp'], age: 67 }, 'push_std')];
+  if (had) AC.boneLoad = had; else delete AC.boneLoad;
+  check('osteoporosis (boneLoad): main sets aim for 1-2 after the on-ramp; not holds, balance practice or with blood pressure', bone.join() === '12:bone,23:onramp,23:age,23:age,23:bp', bone);
+  AC.boneLoad = undefined;
+  const without = aim({ conditions: ['osteo'], age: 67 }, 'push_std');
+  if (had) AC.boneLoad = had; else delete AC.boneLoad;
+  check('without boneLoad an osteoporosis plan aims as anyone else of that age', without === '23:age', without);
+  check('no aim ever asks for 0 left', Object.values(B.AIMS).every((x) => x.lo >= 1 && x.hi >= x.lo && x.ok >= x.hi));
+
+  // The player's line under a set names the aim.
+  const hint = (p, id, o) => {
+    const S = B.newState(Object.assign({}, BASE, p), null, D0);
+    const m = M.MOVES[id];
+    const it = { kind: 'move', moveId: id, fam: m.family, group: m.group };
+    it.effort = B.effortFor(S, it, (o && o.phase) || {});
+    return AC.setHint(S.profile, it, false);
+  };
+  check('the set\'s line names its aim, in plain words', hint({}, 'push_std') === 'Stop with 1-3 reps left in the tank.' && hint({ goals: ['arms'] }, 'curl_std') === 'Stop with 1-2 reps left: arms are a top goal.' && hint({ goals: ['arms'] }, 'curl_std', { phase: { onramp: true } }) === 'Stop with 2-3 reps left while you settle in.'
+    && hint({ age: 64 }, 'push_std') === 'Stop with 2-3 reps left in the tank.' && hint(Object.assign({ goals: ['strength'] }, GYM), 'bench_bb') === 'Stop with 2-3 reps left. Heavy sets don\'t need to go near failure.',
+  [hint({}, 'push_std'), hint({ goals: ['arms'] }, 'curl_std'), hint({ age: 64 }, 'push_std'), hint(Object.assign({ goals: ['strength'] }, GYM), 'bench_bb')]);
+  check('with a heart condition or high blood pressure it says how to breathe, with the 2-3', hint({ conditions: ['heart'] }, 'push_std') === 'Stop with 2-3 reps left. Breathe out as you push.' && hint({ conditions: ['bp'] }, 'push_std') === 'Breathe out as you push, and never hold your breath. Stop with 2-3 reps left.');
+  check('no dashes as punctuation, straight quotes, short', ['push_std', 'curl_std', 'bench_bb'].every((id) => { const h = hint(Object.assign({ goals: ['strength', 'arms'] }, GYM), id) || ''; return !/[—–‘’“”]/.test(h) && h.length <= 80; }));
+}
+
+section('Reps left: the answer against the aim');
+{
+  // effortStep: pace 0 holds, 1 is the usual step, 2 and 3 bigger ones; harder (3 or more left) is
+  // what the top of the range needs for a harder version.
+  const row = (key) => ['0', '12', '3', '4'].map((rir) => { const g = B.effortStep({ rir, aim: key }); return `${g.pace}${g.harder ? 'h' : ''}`; }).join(' ');
+  check('1-3: 0 holds, 1-2 and 3 are on the aim, 4+ moves faster', row('13') === '0 1 1h 2h', row('13'));
+  check('1-2: 3 is past it and moves faster, 4+ faster still (a bigger step than 3)', row('12') === '0 1 2h 3h', row('12'));
+  check('2-3: 1-2 and 3 on it, 4+ faster', row('23') === '0 1 1h 2h', row('23'));
+  check('the strength lifts\' 2-3: 4+ is still fine', row('24') === '0 1 1h 1h', row('24'));
+  const old = ['0', '12', '3'].map((rir) => { const g = B.effortStep({ rir }); return `${g.pace}${g.harder ? 'h' : ''}`; }).join(' ');
+  check('a log from before 1.13 (no aim): its 3 meant "3 or more" and moves on as it did then', old === '0 1 2h', old);
+  check('no answer, or one it doesn\'t know, holds', B.effortStep({ rir: null, aim: '13' }).pace === 0 && B.effortStep({ rir: '7', aim: '13' }).pace === 0 && B.effortStep({ rir: '3', aim: 'zz' }).pace === 2);
+
+  // End to end on a home ladder: push-ups at 10 of 5-20 (35, so no age steps), three sets hit.
+  const BASE = { goals: ['consistency'], age: 35, experience: '3plus', recentActivity: 'regular', days: 3, minutes: 30, equipment: { db: [10, 15, 20] } };
+  const home = (rir, aimKey, o = {}) => {
+    const S = B.newState(Object.assign({}, BASE, o.p), null, D0);
+    const id = o.id || 'push_std', m = M.MOVES[id], fam = m.family;
+    S.prog[fam] = Object.assign({ rung: id, reps: o.reps || (m.timed ? 20 : 10), w: 0, best: {}, short: 0, cooldown: 0, maxed: false }, o.st);
+    const t = S.prog[fam].reps;
+    const log = { fam, moveId: id, kind: 'move', target: t, sets: [0, 1, 2].map((set) => ({ set, amount: t, target: t })), rir, timed: !!m.timed, group: m.group };
+    if (aimKey) log.aim = aimKey;
+    const res = B.progress(S, log, false, D0 + 7);
+    return { reps: S.prog[fam].reps, rung: S.prog[fam].rung, why: res.line && res.line.why };
+  };
+  const reps = (key) => ['0', '12', '3', '4'].map((rir) => home(rir, key).reps).join();
+  check('push-ups at 10, aiming for 1-3: 10, 11, 11, 12', reps('13') === '10,11,11,12', reps('13'));
+  check('aiming for 1-2: 10, 11, 12, 13 (4+ a bigger step than 3)', reps('12') === '10,11,12,13', reps('12'));
+  check('aiming for 2-3: 10, 11, 11, 12', reps('23') === '10,11,11,12', reps('23'));
+  check('an older log: 3 or more adds 2, as it always did', home('3').reps === 12 && home('3').why === 'you had 3+ left' && home('12').reps === 11, [home('3'), home('12')]);
+  check('the reason says what was left', home('3', '13').why === 'you had 3 left' && home('4', '12').why === 'you had 4 or more left' && home('12', '12').why === 'you had 1-2 left');
+  const top = (rir, key) => home(rir, key, { reps: 20 }).rung;
+  check('at the top of the range: 3 or 4+ left brings the harder version, 1-2 holds', top('3', '13') === 'push_slow' && top('4', '13') === 'push_slow' && top('3', '12') === 'push_slow' && top('12', '12') === 'push_std' && top('0', '13') === 'push_std' && top('3') === 'push_slow');
+  const plank = ['12', '3', '4'].map((rir) => home(rir, '12', { id: 'side_plank' }).reps).join();
+  check('holds step in seconds: 1-2 adds 5, 3 past a 1-2 aim 10, 4+ 15', plank === '25,30,35', plank);
+  check('from 50 the steps are a little smaller, 4+ still a step more than 3', home('4', '12', { p: { age: 55 } }).reps === 12 && home('3', '12', { p: { age: 55 } }).reps === 11);
+  check('under 30, 3 or more left adds a little more', home('3', '13', { p: { age: 22 } }).reps === 12 && home('4', '13', { p: { age: 22 } }).reps === 13 && home('12', '13', { p: { age: 22 } }).reps === 11);
+
+  // At the gym: double progression on the strength lifts.
+  const GYM = { where: 'gym', gym: B.gymPreset('full', 'kg'), units: 'kg', goals: ['strength', 'chest'] };
+  const gym = (rir, aimKey, reps) => {
+    const S = B.newState(Object.assign({}, BASE, GYM), null, D0);
+    S.prog.pressG = { rung: 'bench_bb', reps, best: {}, loads: { bench_bb: 60 }, e1rm: {}, short: 0, cooldown: 0, flat: 0, gym: true };
+    const log = { fam: 'pressG', moveId: 'bench_bb', kind: 'move', target: reps, sets: [0, 1, 2].map((set) => ({ set, amount: reps, target: reps, load: 60 })), rir, timed: false, group: 'chest' };
+    if (aimKey) log.aim = aimKey;
+    B.progress(S, log, false, D0 + 7);
+    const st = S.prog.pressG;
+    return { reps: st.reps, kg: st.loads.bench_bb, e1rm: st.e1rm.bench_bb && st.e1rm.bench_bb.last };
+  };
+  check('bench press 4-8, aiming for 2-3 (4 fine): one rep more for 1-2, 3 or 4+', ['12', '3', '4'].every((rir) => gym(rir, '24', 6).reps === 7) && gym('0', '24', 6).reps === 6);
+  check('at the top of the range with reps to spare the weight goes up a step and reps start again at 4', ['12', '3', '4'].every((rir) => { const g = gym(rir, '24', 8); return g.kg === 62.5 && g.reps === 4; }) && gym('0', '24', 8).kg === 60);
+  check('the estimated one-rep max counts 4+ as about 4.5 left, and an older 3 as 3', Math.abs(gym('4', '24', 6).e1rm - 60 * (1 + 10.5 / 30)) < 1e-6 && Math.abs(gym('3', null, 6).e1rm - 60 * (1 + 9 / 30)) < 1e-6 && B.RIR_NUM[4] === 4.5);
+
+  // A workout's logs carry each exercise's aim; the finisher moves on a step for 3, two for 4+.
+  const S = B.newState({ goals: ['fat', 'arms'], age: 35, experience: '3plus', recentActivity: 'regular', days: 3, minutes: 30, equipment: { db: [10, 15, 20] } }, null, D0);
+  const day = [D0, D0 + 1, D0 + 2].find((d) => B.todayPlan(S, d).type === 'workout');
+  B.startWorkout(S, day, { now: day * B.DAY_MS + 18 * 3600000 });
+  const A = S.active;
+  const aims = A.logs.map((l) => `${l.group}:${l.aim}`);
+  check('each exercise\'s log keeps its aim (arms are a top goal here)', A.logs.every((l) => B.AIMS[l.aim]) && A.logs.filter((l) => l.group === 'biceps' || l.group === 'triceps').every((l) => l.aim === '12') && A.session.items.every((it) => it.effort && it.effort.key === A.logs[A.session.items.indexOf(it)].aim), aims);
+  let g = 0;
+  while (S.active && A.idx < A.steps.length && g++ < 600) { const st = A.steps[A.idx]; B.completeStep(S, st.kind === 'test' ? { value: 10 } : {}); if (st.askRir) B.setRir(S, st.item, '4'); }
+  const fin = A.session.finisher;
+  const before = 0;
+  const done = B.finishWorkout(S, { rating: 'right', now: day * B.DAY_MS + 19 * 3600000 });
+  check('a finisher with 4 or more left moves on two steps', !!fin && S.prog[fin.fam].fmt === before + 2 && done.lines.some((l) => /Finisher/.test(l.text)), fin && S.prog[fin.fam]);
+  check('the saved log keeps the answers and their aims', S.log.find((l) => l.type === 'workout').items.every((it) => it.rir === '4' && B.AIMS[it.aim]));
 }
 
 /* ------------------------------------------------------------------ cancelling */

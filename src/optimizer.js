@@ -8,7 +8,7 @@
  *     make; with too little time for every group, the groups last week left short come first;
  *   - fits each session to the time set (fit): filled to about 92% of it with the most useful extra
  *     (more sets, a second exercise, the small muscles, longer rests, a finisher, a cool-down, a
- *     longer warm-up), and never more than 30 seconds over it;
+ *     longer warm-up), and never more than 30 seconds over it, sets before rest;
  *   - scores a week (score), says why the plan is as it is (explain, explainProfile), compares the
  *     classic splits (alternatives) and checks plan tweaks before they're made (applyTweaks).
  *
@@ -1393,11 +1393,13 @@
 
   /* ================================================================== fitting a session */
   // fit(S, s, o): a built session (brain.realize) brought within its time, then filled. It never
-  // runs more than OVER minutes over the time set, and it fills toward FILL of it with, in order:
-  // the sets the week has room for (not on a lighter day), longer rests (auto rest only), a finisher,
-  // a cool-down, a longer warm-up, more finisher rounds, an easy cardio block and longer stretches,
-  // never past the time itself. o: { dp (the day's plan), ready, phase, budget, short, maxItems
-  // (simpler sessions), capOnly }.
+  // runs more than OVER minutes over the time set (the extra rest from 50 is the first thing to go),
+  // and it fills toward FILL of it with, in order: the sets the week has room for (not on a lighter
+  // day), longer rests (auto rest only: the extra rest from 50, the main lifts' with a strength goal,
+  // 90 s for what's done on its own, here with a muscle goal), a finisher, a cool-down, a longer
+  // warm-up, more finisher rounds, the 90 s rests for other goals, an easy cardio block and longer
+  // stretches, never past the time itself. o: { dp (the day's plan), ready, phase, budget, short,
+  // maxItems (simpler sessions), capOnly }.
   function fit(S, s, o) {
     const c = fitCtx(S, s, o);
     if (s.flare) { capTo(S, s, c); return s; }
@@ -1429,6 +1431,10 @@
       finisherOk: tw.finisher !== 'off' && !ready.noFinisher && !ready.minus && !phase.deload && S.complexity < 2 && !o.short,
       coolOk: tw.mobility !== 'off' && !o.short,
       autoRest: b.autoRest(S),
+      // The extra rest from 50 (src/access.js restPlus), and whether muscle size is a goal (the 90 s
+      // rests come right after the sets then, otherwise once the rest of the session is in).
+      plus: A() ? A().restPlus(p) : 0,
+      sizeGoal: (p.goals || []).some((g) => UNIT_GROUPS[g]),
       need: budget >= 15 && !o.short ? 2 : 1,
       w: (g) => (dp.weights && dp.weights[g]) || tierW(prog.tiers[g] || 3) + (focusGroups.has(g) ? 0.5 : 0),
       est: () => b.estimate(S, s),
@@ -1489,6 +1495,11 @@
     }
     const over = () => c.est() > c.H + 1e-9;
     if (!over()) return;
+    // 0. The extra rest from 50 goes first: short of time, sets come before rest. Past that, what's
+    // cut is the session's own, so no longer rests are added back in its place (c.tight).
+    dropPlus(s);
+    if (!over()) return;
+    c.tight = true;
     if (c.budget < COMPACT || c.dp.compact) compact(s, c.budget, c);
     const mains = () => s.items.filter(isMain).length;
     const dp = c.dp;
@@ -1564,6 +1575,17 @@
     s.items = s.items.filter((it) => keep.has(it));
     c.wanted = new Map(s.items.map((it) => [it, it.sets]));
     for (const it of s.items) if (isMain(it)) it.sets = Math.min(it.sets, 2);
+    // Sets before rest: the extra rest from 50 comes back once they're in, if there's time.
+    dropPlus(s);
+  }
+  // The extra rest from 50 (src/access.js, item.agePlus) off every exercise; the fill puts it back
+  // where there's time (plusBack).
+  function dropPlus(s) {
+    for (const it of s.items.concat(s.extras || [])) {
+      if (!(it.agePlus > 0)) continue;
+      it.rest -= it.agePlus;
+      it.agePlus = 0;
+    }
   }
 
   // At least two main exercises from 15 minutes (one below), so balance practice or a single move is
@@ -1628,7 +1650,14 @@
     // Short on time, the priority sets come back first; otherwise what shrank to make room does.
     if (c.short) { addBack(S, s, c, under, fits); restore(S, s, c, under, fits); }
     else { restore(S, s, c, under, fits); if (!c.reduced) { addShort(S, s, c, under, fits); addRoomSets(S, s, c, under, fits); } }
-    if (under() && c.autoRest && !c.short) longerRest(S, s, c, under, fits);
+    // Rests, once the sets are in (auto rest only, and not in a session that had to lose sets to
+    // fit): the extra rest from 50 first, then the main lifts' longer rests with a strength goal,
+    // then 90 s for what's done on its own at 60 (here with a muscle goal; for other goals once the
+    // finisher and cool-down are in).
+    const rests = c.autoRest && !c.tight;
+    if (under() && rests) plusBack(S, s, c, under, fits);
+    if (under() && rests && !c.short) longerRest(S, s, c, under, fits);
+    if (under() && rests && !c.short && c.sizeGoal) soloRest(S, s, c, under, fits);
     if (under() && !s.finisher && c.finisherOk && (c.cond || c.budget - c.est() >= 8)) {
       const f = c.b.finisherFor(S, s.day, s.tpl);
       if (f && !s.items.some((it) => it.moveId === f.moveId)) {
@@ -1653,6 +1682,7 @@
     if (s.finisher && c.finisherOk && c.cond) {
       while (under() && s.finisher.rounds < 8) { s.finisher.rounds++; if (!fits()) { s.finisher.rounds--; break; } }
     }
+    if (under() && rests && !c.short && !c.sizeGoal) soloRest(S, s, c, under, fits);
     if (under() && !c.short) addCardio(S, s, c, fits);
     if (under()) for (const mb of s.mobility) {
       if (!under()) break;
@@ -1746,18 +1776,51 @@
   function longerRest(S, s, c, under, fits) {
     const b = c.b;
     if (!(S.profile.goals || []).slice(0, 2).includes('strength')) return;
-    const plus = A() ? A().restPlus(S.profile) : 0;
+    const plus = c.plus;
     const order = s.items.filter((it) => isMain(it) && !it.superset && (b.MAIN_LIFTS.includes(it.fam) || b.HOME_COMPOUND.includes(it.fam)))
       .sort((a, x) => b.tierOf(S, a.group) - b.tierOf(S, x.group));
     for (const it of order) {
       if (!under()) return;
-      const was = it.rest;
       for (const step of [150 + plus, 120 + plus]) {
-        if (step <= was) break;
-        it.rest = step;
-        if (fits()) break;
-        it.rest = was;
+        if (step <= it.rest) break;
+        if (setRest(it, step, plus, fits)) break;
       }
+    }
+  }
+  // A rest that includes what age adds (plus, kept in item.agePlus), or none if it doesn't fit.
+  function setRest(it, rest, plus, fits) {
+    const was = it.rest, had = it.agePlus;
+    it.rest = rest;
+    if (plus) it.agePlus = plus;
+    if (fits()) return true;
+    it.rest = was;
+    if (had == null) delete it.agePlus; else it.agePlus = had;
+    return false;
+  }
+  // The extra rest from 50 back on the exercises that don't have it (it came off for time, or the
+  // fit added them), top goals first, while there's time.
+  function plusBack(S, s, c, under, fits) {
+    const b = c.b, plus = c.plus;
+    if (!plus) return;
+    const order = s.items.filter((it) => isMain(it) && !(it.agePlus > 0)).sort((a, x) => b.tierOf(S, a.group) - b.tierOf(S, x.group))
+      .concat((s.extras || []).filter((it) => !(it.agePlus > 0)));
+    for (const it of order) {
+      if (!under()) return;
+      setRest(it, it.rest + plus, plus, fits);
+    }
+  }
+  // 90 s for what's done on its own at the usual 60 (smaller moves, and the gym's lifts outside a
+  // superset) when the session has time: resting over a minute adds a little muscle, with nothing
+  // measurable past about 90 s (Singer et al. 2024), most likely because each set lifts a little
+  // more, so it only ever takes time the sets don't need. Inside supersets and circuits it stays at
+  // 60, as each muscle rests through its partner's set. Top goals first, then the session's order.
+  function soloRest(S, s, c, under, fits) {
+    const b = c.b, plus = c.plus;
+    const order = s.items.map((it, i) => [it, i]).filter(([it]) => isMain(it) && !it.superset && it.rest - (it.agePlus || 0) <= 60)
+      .sort((x, y) => b.tierOf(S, x[0].group) - b.tierOf(S, y[0].group) || x[1] - y[1]).map(([it]) => it);
+    for (const it of order) {
+      if (!under()) return;
+      setRest(it, 90 + plus, plus, fits);
     }
   }
   // A cool-down for the day's muscles, as access.adjustSession would give it.
@@ -1941,6 +2004,11 @@
     if (wp.legacy) out.push('This week keeps the plan it started with. The new planner takes over next week.');
     else if (wp.split.kind !== 'auto') out.push(`You picked ${lower(LABEL[wp.split.kind])}. Of ${fmtN(wp.considered)} ways to lay it over your ${D} days, this one rests each muscle best.`);
     else out.push(`Of ${fmtN(wp.considered)} ways to share your muscle groups over ${D} days, this one spreads the work most evenly, with rest between sessions.`);
+    // A healthy weekly dose: in large studies most of the health benefit of strength work came at
+    // about 30 to 60 minutes a week (Momma et al. 2022). A plan with less (two sessions of 10
+    // minutes) says so once, with the fix; the plan itself stays as it is.
+    const weekly = D * minutes;
+    if (D > 0 && weekly < 30) out.push(`Your plan has ${weekly} minutes of strength work a week. In large studies, most of the health benefit came at 30 to 60 minutes a week, so ${D < 3 ? 'a third short session or longer ones' : 'longer sessions'} would help.`);
     // The goals.
     const top = GROUPS.filter((g) => prog.tiers[g] === 1 && pg[g].trainable && pg[g].aim > 0);
     if (top.length) {

@@ -356,7 +356,9 @@ await closeSheets();
 
 /* ------------------------------------------------------------------ the coach builds one */
 section('Ask the coach');
-// A stand-in on-device model: it answers with a plan made from the moves its grammar allows.
+// A stand-in on-device model: it answers with the draft's days (moves its grammar allows, and the
+// draft's own sets, so it keeps to the plan's checks whatever the draft holds), named and noted
+// its own way.
 await page.evaluate(() => {
   const GH = window.GH;
   window.__grammar = null;
@@ -364,10 +366,8 @@ await page.evaluate(() => {
     MODELS: [], available: () => ({ ok: true, reason: '' }), installed: async () => [{ id: 'stand-in' }], load: async () => ({}),
     chat: async (messages, opts) => {
       window.__grammar = opts.grammar;
-      const ids = [...opts.grammar.split('\n').find((l) => l.startsWith('move ::=')).matchAll(/\\"([a-z0-9_]+)\\"/g)].map((m) => m[1]);
-      const days = (opts.grammar.match(/ day /g) || []).length;
-      const pick = (k) => ids.filter((_, i) => i % days === k).slice(0, 5);
-      return JSON.stringify({ name: 'Arms first, knees easy', note: 'Arms twice a week and nothing hard on your knees.', days: Array.from({ length: days }, (_, k) => ({ title: `Day ${String.fromCharCode(65 + k)}`, items: pick(k).map((move) => ({ move, sets: 3, reps: 12 })) })) });
+      const draft = JSON.parse(messages[messages.length - 1].content.split('\nDraft: ')[1]);
+      return JSON.stringify({ name: 'Arms first, knees easy', note: 'Arms twice a week and nothing hard on your knees.', days: draft.days.map((d, k) => ({ title: `Day ${String.fromCharCode(65 + k)}`, items: d.items })) });
     },
   };
   GH.deviceCoach.pick = () => 'stand-in';

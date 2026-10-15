@@ -512,11 +512,11 @@ textarea.preview { border: 0; resize: vertical; }
 .pl-rest { justify-content: flex-start; }
 .pl-rest-btns { display: flex; gap: var(--space-2); justify-content: center; }
 .pl-rest-over { margin: var(--space-4) 0; }
-.pl-rir { width: 100%; max-width: 420px; display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); }
+.pl-rir { width: 100%; max-width: 420px; box-sizing: border-box; display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); }
 .pl-rir p { margin: 0; }
 .pl-rir .rf-segmented { width: 100%; }
 .pl-logged { margin: 0; display: flex; align-items: center; gap: var(--space-2); }
-.pl-next-row { width: 100%; max-width: 420px; display: flex; gap: var(--space-3); align-items: center; text-align: start; padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); margin-top: auto; margin-bottom: var(--space-2); }
+.pl-next-row { width: 100%; max-width: 420px; box-sizing: border-box; display: flex; gap: var(--space-3); align-items: center; text-align: start; padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); margin-top: auto; margin-bottom: var(--space-2); }
 .pl-fig-sm { width: 84px; height: 84px; flex: none; }
 .pl-fig-sm > svg { display: block; width: 100%; height: 100%; }
 .pl-next { display: grid; gap: 2px; min-width: 0; }

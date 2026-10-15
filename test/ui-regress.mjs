@@ -560,16 +560,24 @@ const asked = await page.evaluate(() => {
   U.act.plDone();
   U.act.plSkipRest();
   const p = document.querySelector('.player');
-  return { rir: !!p.querySelector('.pl-rir'), cont: !!p.querySelector('.pl-actions [data-act="plContinue"]'), idx: a.idx };
+  // 1.13: four answers, each label whole inside its segment, the control inside its card.
+  const segs = [...p.querySelectorAll('.pl-rir .rf-segment')];
+  const box = p.querySelector('.pl-rir').getBoundingClientRect(), ctl = p.querySelector('.pl-rir .rf-segmented').getBoundingClientRect();
+  const fits = segs.every((s) => s.scrollWidth <= s.clientWidth + 1) && ctl.left >= box.left - 0.5 && ctl.right <= box.right + 0.5;
+  return { rir: !!p.querySelector('.pl-rir'), cont: !!p.querySelector('.pl-actions [data-act="plContinue"]'), idx: a.idx, k, opts: segs.map((s) => `${s.querySelector('input').value}:${s.textContent.trim()}`).join(' '), fits };
 });
 check('the rest over with the question open: the question and Continue', asked.rir && asked.cont, JSON.stringify(asked));
+check('it offers 0, 1-2, 3 and 4+, each fitting its segment', asked.opts === '0:0 12:1-2 3:3 4:4+' && asked.fits, JSON.stringify(asked));
 await page.click('.player .pl-rir input[value="12"]', { force: true });
 await settle(900);
-const stayed = await page.evaluate(() => {
+const stayed = await page.evaluate((k) => {
   const p = document.querySelector('.player');
-  return { picked: !!p.querySelector('.pl-rir input[value="12"]:checked'), cont: !!p.querySelector('.pl-actions [data-act="plContinue"]'), idx: window.GH.ui.S.active.idx };
-});
+  const a = window.GH.ui.S.active;
+  const log = a.logs[a.session.items.concat(a.session.extras).indexOf(a.steps[k].item)];
+  return { picked: !!p.querySelector('.pl-rir input[value="12"]:checked'), cont: !!p.querySelector('.pl-actions [data-act="plContinue"]'), idx: a.idx, rir: log && log.rir, aim: log && log.aim };
+}, asked.k);
 check('an answer stays on screen with Continue (it doesn\'t move on by itself)', stayed.picked && stayed.cont && stayed.idx === asked.idx, JSON.stringify(stayed));
+check('and it\'s kept with the exercise\'s aim', stayed.rir === '12' && ['12', '13', '23', '24'].includes(stayed.aim), JSON.stringify(stayed));
 await page.click('.player [data-act="plContinue"]');
 await settle(700);
 const moved = await page.evaluate(() => { const p = document.querySelector('.player'); return { rir: !!p.querySelector('.pl-rir'), done: !!p.querySelector('.pl-actions [data-act="plDone"], .pl-actions [data-act="plStartTimer"]') }; });

@@ -610,10 +610,13 @@
       }
       return null;
     };
-    if (allHit && (log.rir === '3' || log.rir === '12')) {
+    // The reps-left answer against the set's aim, as for the coach's plan (brain.effortStep): pace 0
+    // holds, 1 is the usual step, 2 and 3 bigger ones; harder: 3 or more left.
+    const go = b.effortStep(log);
+    if (allHit && go.pace) {
       st.short = 0;
       if (st.reps >= top) {
-        const label = gym || log.rir === '3' ? heavier() : null;
+        const label = gym || go.harder ? heavier() : null;
         if (label) {
           st.reps = base;
           out.line = { text: `${m.name} → ${label}`, why: 'top of your range with reps to spare' };
@@ -627,11 +630,11 @@
             : { text: `${m.name}: top of your range`, why: 'you had reps to spare' };
         }
       } else {
-        const step = log.rir === '3' ? (m.timed ? 10 : 2) : m.timed ? 5 : st.reps < 12 ? 1 : 2;
+        const step = go.pace === 1 ? (m.timed ? 5 : st.reps < 12 ? 1 : 2) : (m.timed ? 5 : 1) * go.pace;
         const next = Math.min(top, st.reps + step);
         if (next > st.reps) {
           st.reps = next;
-          out.line = { text: `${m.name} → ${next}${u}`, why: log.rir === '3' ? 'you had 3+ left' : 'you had 1-2 left' };
+          out.line = { text: `${m.name} → ${next}${u}`, why: b.effortWords(log) };
           out.outcome = 'up';
         }
       }

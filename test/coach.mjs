@@ -39,7 +39,23 @@ S = person({ sleep: 340 });
 rep = C.report(S, D0);
 check('short sleep all week → a sleep focus', rep.focus.some((f) => /sleep/i.test(f)), rep.focus);
 S = person({ rir: '0' });
-check('mostly 0 reps left → stop a rep or two short', C.report(S, D0).focus.some((f) => /1-2 reps left/.test(f)), C.report(S, D0).focus);
+// (Their first weeks' sets aim for 2-3 left, so that's what it asks for: brain.effortFor.)
+check('mostly 0 reps left → stop with the reps left the sets aim for', C.report(S, D0).focus.some((f) => /^Stop most sets with 2-3 reps left\./.test(f)), C.report(S, D0).focus);
+{
+  // 1.13: the answers against each exercise's aim. 3 left is on a 2-3 aim; 4 or more is past it.
+  const effort = (P) => C.watching(P, D0).find((w) => w.label === 'Effort');
+  const on = person({ rir: '3' });
+  check('3 left on a 2-3 aim is right where it should be, and the coach names the aim', effort(on).value === '2-3 reps left' && effort(on).status === 'good', effort(on));
+  const lots = person({ rir: '4' });
+  check('4 or more left, past the aim: lots left in the tank, and a word on honest answers', effort(lots).value === 'Lots left in the tank' && C.report(lots, D0).focus.some((f) => /Honest answers/.test(f)), [effort(lots), C.report(lots, D0).focus]);
+  // A log from before 1.13 has no aim: its 3 meant "3 or more", plenty left, as it always counted.
+  const old = person({ rir: '3' });
+  for (const l of old.log) for (const it of l.items || []) delete it.aim;
+  check('older logs: a 3 still counts as 3 or more', effort(old).value === 'Lots left in the tank', effort(old));
+  const sum = (P) => GH.ai.summary(P, D0).split('\n').filter((l) => /Reps left|aim/.test(l)).join(' | ');
+  check('Claude\'s summary has 0, 1-2, 3 and 4 or more, and how they sat against the aims', /0 → 0, 1-2 → 0, 3 → \d+, 4 or more → 0/.test(sum(on)) && /Against each exercise's aim \(2-3 reps left\): 0 to failure, \d+ on it, 0 with more left/.test(sum(on)), sum(on));
+  check('and older answers of 3 as "3 or more", with no aim line for them', /3 → 0, 4 or more → 0, 3 or more \(older answers\) → \d+/.test(sum(old)) && !/Against each/.test(sum(old)), sum(old));
+}
 const fresh = B.newState({ goals: ['abs'] }, null, D0);
 check('before any workout → a first-workout headline', /first workout/i.test(C.report(fresh, D0).headline));
 check('no exclamation marks or emoji', !/[!\u{1F300}-\u{1FAFF}]/u.test(JSON.stringify(C.report(person(), D0))));
@@ -113,6 +129,14 @@ check('every rule has what it does, why, a level and research', SC.RULES.every((
 // Papers link to their DOI (or PubMed); the one official report links to its publisher (FAO).
 check('every reference links to its DOI, PubMed or the publishing agency', Object.values(SC.REFS).every((x) => /^https:\/\/(doi\.org\/10\.|pubmed\.ncbi\.nlm\.nih\.gov\/|www\.fao\.org\/)/.test(SC.refUrl(x))));
 check('no dashes used as punctuation in the copy', SC.RULES.every((r) => !/[—]| – /.test(r.does + r.why + (r.caveat || ''))));
+{
+  // 1.13: reps left by goal, rests, and a healthy weekly dose, each with its research.
+  const rule = (id) => SC.RULES.find((r) => r.id === id) || {};
+  check('reps left: the aims by goal and person, from Robinson 2024 and Halperin 2022, with the 2-3 marked as the app\'s choice', /1-2 for your top goal muscles/.test(rule('rir').does) && /2-3 on the main gym lifts/.test(rule('rir').does) && ['robinson2024', 'halperin2022'].every((x) => rule('rir').refs.includes(x)) && /our reading/.test(rule('rir').caveat));
+  check('rests: 90 s on its own when there\'s time, sets first (Singer 2024)', /rests 90 seconds too/.test(rule('rest').does) && /sets come first/.test(rule('rest').does) && rule('rest').refs.includes('singer2024'));
+  check('a healthy weekly dose: 30 to 60 minutes a week (Momma 2022) and the AHA\'s dose, linked to their DOIs', rule('dose').cat && /30 to 60 minutes a week/.test(rule('dose').why) && ['momma2022', 'paluch2024'].every((x) => rule('dose').refs.includes(x)) && SC.refUrl(SC.REFS.momma2022) === 'https://doi.org/10.1136/bjsports-2021-105061' && SC.refUrl(SC.REFS.paluch2024) === 'https://doi.org/10.1161/CIR.0000000000001189');
+  check('no "3+" left in the cards: the answers are 0, 1-2, 3 and 4+', SC.RULES.every((r) => !/\b3\+/.test(r.does + r.why + (r.caveat || ''))));
+}
 const restCheck = (supersets) => {
   const S2 = person();
   S2.profile.prefs.supersets = supersets;
@@ -121,10 +145,11 @@ const restCheck = (supersets) => {
   const BIG = ['push', 'press', 'row', 'squat', 'hinge', 'pull', 'chestDb'];
   const big = solo.filter((it) => BIG.includes(it.fam));
   const small = solo.filter((it) => !BIG.includes(it.fam));
-  return { ok: big.every((it) => it.rest === 90) && small.every((it) => it.rest === 60) && items.filter((it) => it.superset).every((it) => it.rest === 60), big: big.length, paired: items.filter((it) => it.superset).length };
+  // (1.13: a session with time to spare gives what's done on its own at 60 s 90 s instead.)
+  return { ok: big.every((it) => it.rest === 90) && small.every((it) => it.rest === 60 || it.rest === 90) && items.filter((it) => it.superset).every((it) => it.rest === 60), big: big.length, small: small.map((it) => `${it.fam}@${it.rest}`), paired: items.filter((it) => it.superset).length };
 };
 const rc1 = restCheck(false), rc2 = restCheck(true);
-check('the rest rule matches the brain: 90 s after big moves on their own, 60 s after small ones', rc1.ok && rc1.big > 0, rc1);
+check('the rest rule matches the brain: 90 s after big moves on their own, 60 s after small ones (90 with time to spare)', rc1.ok && rc1.big > 0 && ['push', 'press', 'row', 'squat', 'hinge', 'pull', 'chestDb'].every((f) => B.restFor(person(), f) === 90) && ['curl', 'raise', 'calf'].every((f) => B.restFor(person(), f) === 60), rc1);
 check('and 60 s inside supersets, where each muscle rests through its partner\'s set', rc2.ok && rc2.paired > 0, rc2);
 
 section('Sync window');

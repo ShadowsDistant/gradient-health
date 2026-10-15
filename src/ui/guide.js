@@ -36,7 +36,7 @@
   const TIPS = {
     today: ['home', 'accent', 'Tap the streak for your progress, or the sparkle at the top left to ask the coach.'],
     plan: ['calendar', 'sky', 'Tap a day to see or move it, and swipe for next week. Miss one and the week shifts forward instead of doubling up. Moves, at the top, has every exercise.'],
-    moves: ['library', 'violet', 'Every exercise, in ladders from easiest to hardest. You move up once you have 3+ reps left at the top of the range. Tap one to see how it\'s done.'],
+    moves: ['library', 'violet', 'Every exercise, in ladders from easiest to hardest. You move up once you have 3 or more reps left at the top of the range. Tap one to see how it\'s done.'],
     health: ['heart', 'rose', 'Numbers from Health Connect and your own logs. Tap one for its history, or to add or fix it. Pull down to sync.'],
     progress: ['chart', 'green', 'The body map shows what you\'ve trained and where you\'ve got stronger. Tap a muscle for its story.'],
     you: ['person', 'indigo', 'Settings is at the top right. Help and What\'s new are at the bottom.'],

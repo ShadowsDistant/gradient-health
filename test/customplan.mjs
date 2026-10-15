@@ -216,7 +216,7 @@ section('A plan in use');
   check('a changed shape is a new switch from today', S.events.filter((e) => e.type === 'plan').length === 1 && S.events.find((e) => e.type === 'plan').wd.join() === '1,3,5');
   // The player runs it and the log says so.
   C.update(S, plan.id, (p) => { p.weekdays = null; }, MON);
-  const res = doWorkout(S, MON, '3');
+  const res = doWorkout(S, MON, '4');
   const log = S.log.find((l) => l.type === 'workout' && l.day === MON);
   check('a workout from the plan saves like any other', res.done && log.title === 'Push' && log.items.length === 4 && log.items.every((it, i) => new Set(it.sets.map((x) => x.set)).size === setsFor(i)), log.items.map((it) => it.sets.length));
   check('and counts for the streak', B.calendar(S, MON).streak.current >= 1);
@@ -298,10 +298,13 @@ section('Progress over the weeks');
   for (let d = MON; d < MON + 28; d++) {
     const p = B.todayPlan(S, d);
     if (p.type !== 'workout') { light(S, d); continue; }
-    const res = doWorkout(S, d, '3');
+    const res = doWorkout(S, d, '4');
     if (p.tpl === `c:${plan.id}:0`) reps.push(S.planProg[plan.id]['push_std:10'].reps);
   }
-  check('3+ left every time: push-ups climb 2 reps a session (not in the deload week)', reps.slice(0, 3).join() === '12,14,16' && reps[reps.length - 1] >= 16, reps.join());
+  check('4 or more left every time: push-ups climb 2 reps a session (not in the deload week)', reps.slice(0, 3).join() === '12,14,16' && reps[reps.length - 1] >= 16, reps.join());
+  // 1.13: 3 left is on a 1-3 (or 2-3) aim, so it's the usual one rep; 0 holds.
+  const one = (rir) => { const S2 = fresh(MON); const p2 = C.add(S2, PPL).plan; C.use(S2, p2.id, MON); doWorkout(S2, MON, rir); return S2.planProg[p2.id]['push_std:10'].reps; };
+  check('3 left (on the aim) adds a rep, 1-2 too, and 0 holds', one('3') === 11 && one('12') === 11 && one('0') === 10, [one('3'), one('12'), one('0')]);
   const book = S.planProg[plan.id];
   check('the dumbbell moves go up a weight at the top of the range', book['chest_press:12'].w === 1 && book['chest_press:12'].reps <= 16, book['chest_press:12']);
   check('held moves add seconds', book['side_plank:30'].reps > 30, book['side_plank:30']);
