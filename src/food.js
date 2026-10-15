@@ -259,6 +259,16 @@
     rev++;
     return e;
   }
+  // An entry taken out, put back as it was (Undo): Health Connect's copy stays, or comes back if it
+  // was already deleted there.
+  function restore(S, day, e) {
+    const f = data(S);
+    if (!e || (f.days[day] || []).some((x) => x.id === e.id)) return null;
+    (f.days[day] = f.days[day] || []).push(e);
+    f.removed = (f.removed || []).filter((x) => x.id !== e.id);
+    rev++;
+    return e;
+  }
   function entries(S, day) { return (data(S).days[day] || []).slice().sort((a, b) => a.t - b.t); }
   // Totals for a day. includeOther adds food logged in other apps (from Health Connect).
   function totals(S, day, includeOther) {
@@ -470,7 +480,7 @@
   }
 
   GH.food = {
-    MEALS, MEAL_TIMES, ACTIVITY, prefs, data, mode, full, setMode, ree, activityFactor, goalDelta, burn, targets, scale, add, update, retime, remove, entries, totals, byMeal,
+    MEALS, MEAL_TIMES, ACTIVITY, prefs, data, mode, full, setMode, ree, activityFactor, goalDelta, burn, targets, scale, add, update, retime, remove, restore, entries, totals, byMeal,
     copyMeal, regulars, saveMeal, addSaved, addCustom, toggleFav, smoothWeights, slope, learnBurn, refreshBurn, holdsVolume, watchItem, suggestions, targetLine,
     proteinOn, pendingWrites, markWritten, markRemoved, ingestOther, mealFor, mealTimes, usualMin, timeFor, atClock, minOf, KCAL_PER_KG,
   };

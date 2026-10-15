@@ -250,7 +250,7 @@ check('tracking protein: a Track calories invite, after the week and before Toda
 await page.evaluate(() => { const GH = window.GH, S = GH.ui.S; GH.food.setMode(S, 'full'); GH.food.add(S, GH.ui.today(), { name: 'Oatmeal with milk', src: 'quick', kcal: 320, p: 14, c: 48, f: 8 }, Date.now() - 600000); GH.ui.render(); });
 await settle(900);
 check('tracking calories: the Food section in its place', !(await page.evaluate(() => !!document.querySelector('#screen .hf-invite'))) && await order());
-const hf = await page.evaluate(() => { const GH = window.GH, S = GH.ui.S, d = GH.ui.today(); const s = document.querySelector('#screen .hf'); return { left: s.querySelector('.hf-n [data-roll]').dataset.roll, want: GH.ui.num(GH.food.targets(S, d).kcal - GH.food.totals(S, d).kcal), meals: [...s.querySelectorAll('.hf-meal')].map((m) => [...m.children].map((c) => c.textContent.trim()).join('|')), macros: s.querySelectorAll('.hf-macro .rf-progress').length }; });
+const hf = await page.evaluate(() => { const GH = window.GH, S = GH.ui.S, d = GH.ui.today(); const s = document.querySelector('#screen .hf'); return { left: s.querySelector('.fd-ring-n [data-roll]').dataset.roll, want: GH.ui.num(GH.food.targets(S, d).kcal - GH.food.totals(S, d).kcal), meals: [...s.querySelectorAll('.hf-meal')].map((m) => [...m.children].map((c) => c.textContent.replace(/\s+/g, ' ').trim()).join('|')), macros: s.querySelectorAll('.fd-macro .rf-progress').length }; });
 check('with today\'s calories left, three macros and the four meals', hf.left === hf.want && hf.macros === 3 && hf.meals.length === 4 && hf.meals[0] === 'Breakfast|Oatmeal with milk|320' && hf.meals[1] === 'Lunch|11 am to 3 pm|', JSON.stringify(hf));
 
 section('Narrow screen, large text');
@@ -298,7 +298,7 @@ await page.waitForTimeout(150);
 // A label narrower than its longest word has to break inside that word.
 const wordBreaks = await page.evaluate(() => {
   const c = document.createElement('canvas').getContext('2d');
-  return [...document.querySelectorAll('#screen .hl-tr-label, #screen .hl-tile-label, #screen .hl-pill-k, #screen .hl-mini-label, #screen .hl-ins-title, #screen .hf-meal-k, #screen .hf-macro-k')].filter((e) => {
+  return [...document.querySelectorAll('#screen .hl-tr-label, #screen .hl-tile-label, #screen .hl-pill-k, #screen .hl-mini-label, #screen .hl-ins-title, #screen .hf-meal-k, #screen .fd-mk')].filter((e) => {
     const cs = getComputedStyle(e);
     c.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
     const words = [...e.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(' ').trim().split(/\s+/).filter(Boolean);
