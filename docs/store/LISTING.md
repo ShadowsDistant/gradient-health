@@ -55,8 +55,8 @@ field". It comes from the `store` text of the version's entry in `src/data/chang
 • Strength lifts stop short of failure and climb by weight
 • Short on time, your sets stay and extra rest goes first
 • From 60: fast reps on every leg day, and every muscle twice a week
-• Osteoporosis: heavier sets, back extensions, impact work when safe
-• Type 2 diabetes: plans built around it, eye disease included
+• Plans built around osteoporosis and type 2 diabetes
+• Quicker taps, bigger touch targets, tidier food screens and a more polished look
 ```
 
 ## Images

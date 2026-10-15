@@ -405,6 +405,15 @@ What the app turns off, and why:
   that hovers, every rim gets the light's resting angle, which is what an unregistered rim shows,
   so only such a screen registers its glass.
 
+Touch and type: every tap target answers a finger 44 px across. A small control (a text button, a
+chip, a segment, a stepper's button) reaches past its box with an empty `::before` centred on it
+(`src/styles/controls.css`); nothing is drawn, and a toast's close and a colour swatch, whose
+`::before` is drawn, take theirs on `::after`. Small glass buttons are drawn 44 px high instead.
+Titles balance their lines and paragraphs avoid a lone last word (`text-wrap` in `src/styles.css`), and
+`U.nb` keeps a number on the line of its unit ("25 lb", "20% → 7%"). `test/ui-controls.mjs` checks the
+reach; `test/sweep.mjs` and `test/ui-sheetsize.mjs` measure a label's text with a Range, so the hit
+areas don't read as overflow.
+
 The controls (`src/ui/controls.js`): Refract 1.4's own switch and segmented control take any
 movement past 3 px as a drag, so a tap that wobbles would be lost. The app replaces those two
 behaviours (and adds the chip choice) with its own gesture rules (`U.switchGesture`: 12 px to drag,
@@ -971,7 +980,11 @@ Food never takes a tab. Health has it after the week (`U.healthFood`: today's ca
 four meals, Add food and Scan), which opens the Food page; Health's + menu has Food first, and Today
 has its card. The Food page and every food sheet are a part of their own (`src/ui/foodpage.js`, the
 `foodUi` chunk, loaded ahead of time for someone tracking calories); `src/ui/food.js` keeps the card,
-the section and the stand-ins in the page.
+the section and the stand-ins in the page. Health's section, Today's card and the Food page show the
+same glance (`U.foodKit`: the ring, "N of T kcal" and the macro rows, in one grid so the values line up
+on the slash), and text links in food cards use `U.foodKit.link()`, which sits flush with the text.
+Every food and scanner style is in `src/styles/food.css`; `test/ui-food.mjs` checks their alignment
+(the ring's label, the slashes, links, dividers, the day control) at 390 and 360 px.
 
 - **Meal times**: breakfast, lunch and dinner each have a window (`profile.food.meals`, minutes after
   midnight) and snacks are any other time. A new entry goes in the meal its time falls in unless one
