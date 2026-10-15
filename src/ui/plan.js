@@ -373,8 +373,29 @@
       if (st && U.readSoon) U.readSoon(() => beadTo(screen)); else if (st) beadTo(screen);
       drawThumbs(screen, S, view.day != null ? view.day : day);
       if (U.drawPlanThumbs) U.drawPlanThumbs(screen);
+      warmNext(S);
     },
   };
+  // Next week's sessions are worked out in quiet idle moments once Plan shows, one at a time, so
+  // Next week answers at once: worked out in its tap, next week's plan held the tap's frame back 20
+  // to 40 ms at 4x CPU. (Each is kept by the week as it's read, src/planweek.js, and by the plan.)
+  let warming = false;
+  function warmNext(S) {
+    if (warming || !U.whenQuiet) return;
+    const left = () => {
+      const w = U.S === S ? week(S, U.today()) : null;
+      return w ? w.next.days.find((e) => e.kind === 'workout' && (Object.getOwnPropertyDescriptor(e, 'session') || {}).get) : null;
+    };
+    if (!left()) return;
+    warming = true;
+    const step = () => U.whenQuiet(() => (G.requestIdleCallback || setTimeout)(() => {
+      const e = left();
+      if (!e) { warming = false; return; }
+      try { void e.session; } catch (err) { warming = false; return; }
+      step();
+    }));
+    step();
+  }
   // Which section Plan shows ('week' or 'moves'), for links into the moves (go('moves')). Returns
   // whether it changed.
   U.planSection = (sec) => {
