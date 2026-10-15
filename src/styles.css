@@ -269,9 +269,16 @@ button.ex-name::before { content: ''; position: absolute; inset: 0; }
 .section > .rf-list-footer { padding-block-start: 0; margin-block-start: calc(var(--space-2) - var(--space-3)); }
 /* Long titles and descriptions wrap instead of being cut off. */
 .rf-list-title, .rf-list-sub { white-space: normal; overflow-wrap: anywhere; }
+/* And they wrap kindly: a title's lines balanced ("Record a walk, / run or ride", not a word on its
+   own), a paragraph's last line never one short word. Only where lines break; nothing gets wider. */
+:is(h1, h2, h3, .rf-large-title, .t-title-1, .t-title-2, .t-title-3, .t-headline, .rf-list-title) { text-wrap: balance; }
+:is(p, .t-body, .t-callout, .t-subhead, .t-footnote, .t-caption, .rf-list-sub) { text-wrap: pretty; }
 .rf-list-sub { display: block; }
 .card { background: var(--bg-raised); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: var(--space-4); display: grid; gap: var(--space-2); min-width: 0; }
 .card > p, .card p { margin: 0; }
+/* A card's title sits in the card's own rhythm (its gap), not the browser's heading margins (18 px
+   above and below, which floated Today's workout title away from its eyebrow). */
+.card > h2 { margin: 0; }
 .row-between { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
 .btn-row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .notice { display: flex; gap: var(--space-2); align-items: flex-start; padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--accent-soft); color: var(--label); font-size: .9375rem; line-height: 1.35; }
@@ -381,7 +388,7 @@ button.stat { cursor: pointer; }
 .ch-mark { stroke: var(--label-secondary); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-dasharray: 3 3; }
 .ch-x { display: flex; justify-content: space-between; color: var(--label-secondary); padding-inline-start: calc(3.2em + var(--space-2)); }
 .ch-tip { color: var(--label-secondary); min-height: 1.3em; }
-.ch-toggle { justify-self: start; }
+.ch-toggle { justify-self: start; margin-inline-start: calc(-1 * var(--space-3)); } /* its words on the card's inset */
 .ch-table { max-height: 260px; overflow: auto; border-radius: var(--radius-md); background: var(--bg-sunken); }
 .ch-tbl { width: 100%; border-collapse: collapse; }
 .ch-tbl th, .ch-tbl td { padding: 6px var(--space-3); text-align: end; border-bottom: 1px solid var(--separator); font-weight: 400; }
@@ -553,7 +560,9 @@ textarea.preview { border: 0; resize: vertical; }
 .tip { gap: var(--space-1); padding-block: var(--space-3); background: color-mix(in oklab, var(--accent-soft) 70%, var(--bg-raised)); overflow: hidden; }
 .tip-row { display: flex; gap: var(--space-3); align-items: flex-start; }
 .tip-row .rf-list-icon { margin-top: 2px; }
-.tip .rf-btn { justify-self: end; }
+.tip .rf-btn { justify-self: end; margin-inline-end: calc(-1 * var(--space-3)); } /* "Got it" ends on the card's inset */
+/* A row of buttons in a card that starts with a plain one: its words start on the card's inset. */
+.card .btn-row > .rf-btn[data-variant="plain"]:first-child { margin-inline-start: calc(-1 * var(--space-3)); }
 
 /* ---------------------------------------------------------------- profile */
 .me-card { appearance: none; border: 0; font: inherit; color: inherit; text-align: start; display: flex; align-items: center; gap: var(--space-3); cursor: pointer; }

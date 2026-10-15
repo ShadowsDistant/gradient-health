@@ -611,7 +611,8 @@ if (solid) {
   const movingWhileTravel = samples.filter((x) => x.off > 2).every((x) => x.traveling);
   check('the thumb is glass for the whole move: data-traveling until it has landed', movingWhileTravel && samples.some((x) => x.traveling), samples);
   check('then it settles: at rest, its lens off', !after.traveling && !after.lifted && (solid || after.lens.filter === 'none'), after);
-  if (!contrast) check('the picked label is the accent colour', after.label === (await page.evaluate(() => { const d = document.createElement('i'); d.style.color = 'var(--accent)'; document.body.appendChild(d); const c = getComputedStyle(d).color; d.remove(); return c; })), after.label);
+  // (Accent; in dark the label's white touched with it, since accent on the grey bead read under 2:1.)
+  if (!contrast) check(`the picked label is the picked colour (${dark ? 'white with a touch of accent' : 'accent'})`, after.label === (await page.evaluate(() => { const d = document.createElement('i'); d.style.color = 'var(--gh-picked)'; document.body.appendChild(d); const c = getComputedStyle(d).color; d.remove(); return c; })), after.label);
 }
 // Reduced motion: no rise, no squash, and a short move.
 if (reducedMotion) {

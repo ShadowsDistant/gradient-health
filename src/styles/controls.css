@@ -20,14 +20,15 @@
   .rf-segmented { touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
   .rf-segmented[data-choice] > .rf-segment { padding-inline: var(--space-2); }
   /* The picked label turns accent, timed to land with the thumb; a press sinks the one under the
-     finger a little. */
+     finger a little. In dark, accent on the grey bead read at under 2:1 (the picked option the
+     hardest to read), so there it's the label's white with a touch of accent (over 4.5:1). */
   .rf-segment {
     transition:
       color var(--duration-fast) var(--ease-standard),
       scale var(--duration-spring-bouncy) var(--spring-bouncy);
   }
   .rf-segment:has(> input:checked) {
-    color: var(--accent);
+    color: var(--gh-picked);
     transition:
       color var(--duration-base) var(--ease-standard) 120ms,
       scale var(--duration-spring-bouncy) var(--spring-bouncy);
@@ -35,7 +36,7 @@
   .rf-segment[data-pressed] { scale: calc(1 - 0.04 * var(--rf-elastic)); transition-duration: var(--duration-fast), var(--duration-instant); }
   /* dragging: the label under the lens is the one a release picks */
   .rf-segmented[data-dragging] .rf-segment:has(> input:checked):not([data-over]) { color: var(--label); transition-delay: 0s; }
-  .rf-segmented[data-dragging] .rf-segment[data-over] { color: var(--accent); transition-delay: 0s; }
+  .rf-segmented[data-dragging] .rf-segment[data-over] { color: var(--gh-picked); transition-delay: 0s; }
   /* Nothing picked yet (Today's feel questions): no bead. The first pick grows one out of the option,
      fading in as it goes. */
   .rf-segmented > :is(.rf-segmented-thumb, .rf-segmented-lens) { transition: opacity var(--duration-fast) var(--ease-standard); }
@@ -52,7 +53,7 @@
     z-index: 1;
     transition: color var(--duration-fast) var(--ease-standard), scale var(--duration-spring-bouncy) var(--spring-bouncy);
   }
-  .gh-chipseg > .gh-chip[aria-checked="true"] > .rf-chip-text { color: var(--accent); transition: color var(--duration-base) var(--ease-standard) 120ms, scale var(--duration-spring-bouncy) var(--spring-bouncy); }
+  .gh-chipseg > .gh-chip[aria-checked="true"] > .rf-chip-text { color: var(--gh-picked); transition: color var(--duration-base) var(--ease-standard) 120ms, scale var(--duration-spring-bouncy) var(--spring-bouncy); }
   .gh-chipseg > .gh-chip[data-pressed] > .rf-chip-text { scale: calc(1 - 0.06 * var(--rf-elastic)); transition-duration: var(--duration-fast), var(--duration-instant); }
   .gh-chipseg > .gh-chip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
   /* The indicator: a frosted bead like a segmented thumb's (Refract's --thumb at 80%, its soft shadow),
@@ -78,7 +79,8 @@
   .gh-chipseg[data-traveling] > .gh-chipseg-thumb { scale: calc(1 + 0.06 * var(--rf-elastic)) calc(1 + 0.1 * var(--rf-elastic)); }
   .gh-chipseg:not([data-ready]) > .gh-chipseg-thumb { transition: none; }
   .gh-chipseg[data-empty] > .gh-chipseg-thumb { opacity: 0; }
-  :root { --gh-land: linear(0, 0.36, 0.74, 1.02, 1.12, 1.07, 0.99, 0.97, 0.99, 1); }
+  :root { --gh-land: linear(0, 0.36, 0.74, 1.02, 1.12, 1.07, 0.99, 0.97, 0.99, 1); --gh-picked: var(--accent); }
+  :root[data-theme="dark"] { --gh-picked: color-mix(in oklab, var(--accent) 22%, var(--label)); }
 
   /* ---------------------------------------------------------------- toggle chips */
   /* The check is always laid out; it fades and scales in, so pressing a chip never changes its width
