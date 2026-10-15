@@ -418,12 +418,12 @@ const edit = await page.evaluate(() => {
   const p = d.querySelector('.gh-sheet-panel').getBoundingClientRect();
   const over = [...d.querySelectorAll('.gh-sheet-panel *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width && (r.right > p.right + 0.5 || r.left < p.left - 0.5); }).map((e) => `${e.tagName}.${e.className}#${e.id}`);
   const seg = d.querySelector('.rf-segmented').getBoundingClientRect(), name = d.querySelector('#qName').closest('.rf-field').getBoundingClientRect();
-  const carbs = d.querySelector('#qC').closest('.rf-field-control').getBoundingClientRect();
-  return { title: d.querySelector('.rf-sheet-title').textContent, over, seg: Math.round(seg.width), name: Math.round(name.width), carbsRight: Math.round(carbs.right), padRight: Math.round(d.querySelector('.sheet-pad').getBoundingClientRect().right - 16), scrollW: d.querySelector('.rf-sheet-body').scrollWidth - d.querySelector('.rf-sheet-body').clientWidth };
+  const fat = d.querySelector('#qF').closest('.rf-field-control').getBoundingClientRect();
+  return { title: d.querySelector('.rf-sheet-title').textContent, over, seg: Math.round(seg.width), name: Math.round(name.width), fatRight: Math.round(fat.right), padRight: Math.round(d.querySelector('.sheet-pad').getBoundingClientRect().right - 16), scrollW: d.querySelector('.rf-sheet-body').scrollWidth - d.querySelector('.rf-sheet-body').clientWidth };
 });
 check('it opens', edit && edit.title === 'Edit', edit);
 check('nothing in it runs past the edge', edit && edit.over.length === 0 && edit.scrollW <= 0, edit);
-check('the Carbs field ends at the content edge', edit && Math.abs(edit.carbsRight - edit.padRight) <= 1, edit);
+check('the Fat field ends at the content edge', edit && Math.abs(edit.fatRight - edit.padRight) <= 1, edit);
 check('the meal control is full width', edit && Math.abs(edit.seg - edit.name) <= 1, edit);
 await closeAll();
 
