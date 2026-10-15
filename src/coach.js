@@ -421,7 +421,11 @@
     const out = [];
     const s = session;
     if (!s) {
-      out.push({ icon: 'leaf', tone: 'teal', text: 'Light day: a walk and 5 minutes of mobility', why: 'Recovery between workouts. Doing both keeps your streak going.', rule: 'steps' });
+      // (The flow as the player gives it, timed as Today times it: a balance hold from 65 or an
+      // impact block for bones makes it longer.)
+      const flow = b.mobilityFlow ? b.mobilityFlow(S, day) : [];
+      const mins = flow.length ? Math.max(1, Math.round(flow.reduce((a, m) => a + (m.target || 30) * (m.uni ? 2 : 1), 0) / 60)) : 5;
+      out.push({ icon: 'leaf', tone: 'teal', text: `Light day: a walk and ${mins} minutes of mobility`, why: 'Recovery between workouts. Doing both keeps your streak going.', rule: 'steps' });
       return out;
     }
     // A flare day (src/access.js) is gentle range of motion only: that's the one thing to say.

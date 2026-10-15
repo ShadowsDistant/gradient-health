@@ -583,7 +583,7 @@ section('Focus muscles, warm-ups and cool-downs');
 }
 
 /* ------------------------------------------------------------------ different bodies */
-// Twelve weeks for each of eight people, every workout done as planned (reps hit, 1-2 left, 3+ left
+// Twelve weeks for each of eight people, every workout done as planned (reps hit, 1-2 left, 3 left
 // every third day) and every light day done. For each: every muscle group trained, sets within
 // their limits, and not one move their age and health rules leave out (src/access.js).
 const AC = GH.access;

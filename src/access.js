@@ -258,9 +258,9 @@
   }
 
   /* ================================================================== progression */
-  // How many reps (or seconds) a good set adds (rir: the reps-in-reserve answer, '3' or '12'). Under
-  // 30 an easy set (3+ left) adds a little more; from 50, and with a heart condition, steps are
-  // smaller, so loads climb more slowly.
+  // How many reps (or seconds) a good set adds (rir: the reps-in-reserve answer, '3' or '12'; src/
+  // brain.js passes 4 or more as '3'). Under 30 an easy set (3 or more left) adds a little more; from
+  // 50, and with a heart condition, steps are smaller, so loads climb more slowly.
   function repStep(p, base, timed, rir) {
     const b = band(p);
     const unit = timed ? 5 : 1;
