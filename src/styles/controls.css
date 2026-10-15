@@ -110,14 +110,15 @@
    buttons, a text button) reaches past its box with an empty ::before centred on it. Nothing is
    drawn, and a control 44 px or more across keeps exactly its own box. Glass keeps its ::before (its
    rim), so a small glass button is drawn 44 px high instead (a sheet's Save, the chat's Chats). */
-:is(.rf-btn:not(.rf-glass), .rf-chip, .rf-segment, .rf-stepper-btn, .rf-search-clear, .around-line, .pw-info, .bdg-note, .bdg-strip-head, .sci-key, .pl-load)::before {
+:is(.rf-btn:not(.rf-glass):not(.rf-toast-close), .rf-chip, .rf-segment, .rf-stepper-btn, .rf-search-clear, .around-line, .pw-info, .bdg-note, .bdg-strip-head, .sci-key, .pl-load)::before {
   content: '';
   position: absolute;
   inset: min(0px, calc(50% - 22px));
 }
 :is(.bdg-note, .bdg-strip-head, .sci-key, .pl-load) { position: relative; }
-/* (A colour swatch's ::before is its ring, so its hit area is its ::after.) */
-.swatch::after { content: ''; position: absolute; inset: min(0px, calc(50% - 22px)); }
+/* (A colour swatch's ::before is its ring, and a toast's close draws its countdown ring with its
+   ::before (Refract's), so their hit areas are their ::after.) */
+:is(.swatch, .rf-toast-close)::after { content: ''; position: absolute; inset: min(0px, calc(50% - 22px)); }
 /* Plan's week strip starts right under Next week: the strip's header sits above it, so the button's
    hit area isn't under the strip. */
 .pw-head { position: relative; z-index: 1; }

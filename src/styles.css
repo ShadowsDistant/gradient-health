@@ -646,7 +646,9 @@ button.pl-next-row:active { scale: .98; transition-duration: var(--duration-inst
 /* A small "Why" chip at the end of a row, into How it works. */
 .why-chip { appearance: none; border: 0; font: inherit; flex: none; align-self: center; display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: var(--radius-full); background: var(--fill-3); color: var(--accent); font-size: .75rem; font-weight: 600; cursor: pointer; transition: scale var(--duration-spring-snappy) var(--spring-snappy), background-color var(--duration-fast); }
 .why-chip:active { scale: .94; background: var(--fill-selected); transition-duration: 0ms; }
-.why-link { vertical-align: baseline; padding-inline: 4px; min-block-size: 0; height: auto; }
+/* A text link in a sentence or on a line of its own: its words sit where a word would (on the
+   column's edge when it starts a line), its padding reaching out past them rather than pushing in. */
+.why-link { vertical-align: baseline; padding-inline: 4px; margin-inline: -4px; min-block-size: 0; height: auto; }
 
 /* ---------------------------------------------------------------- misc */
 /* Settings: the exercise figure's look. */

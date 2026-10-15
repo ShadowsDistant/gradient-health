@@ -808,6 +808,34 @@ await bigText(false);
 await page.setViewportSize({ width: 390, height: 844 });
 await settle(400);
 
+section('A text link on its own line, and a toast\'s close');
+// A "why" link (a plain button) on a line of its own starts its words on the column's edge: it sat
+// 4 px in, at its padding (the player's Next screen, Built around you).
+await page.evaluate(() => { const U = window.GH.ui; U.closeSheets(); while (U.back()) { /* back to the tab */ } U.go('today'); U.act.planAround(); });
+await settle(900);
+const why = await page.evaluate(() => {
+  const b = document.querySelector('dialog[open] .why-link');
+  if (!b) return null;
+  const r = document.createRange(); r.selectNodeContents(b);
+  const box = b.parentElement, cs = getComputedStyle(box);
+  return Math.round((r.getBoundingClientRect().left - (box.getBoundingClientRect().left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft))) * 10) / 10;
+});
+check('a "why" link on a line of its own starts on the column\'s edge', why != null && Math.abs(why) <= 0.5, JSON.stringify(why));
+await page.evaluate(() => window.GH.ui.closeSheets());
+await settle(600);
+// A toast's close: Refract draws its countdown ring with the button's ::before, so the ring stays the
+// button's own size (the 44 px hit area grew it 3 px all round) and the hit area is its ::after.
+await page.evaluate(() => window.GH.ui.toast('Plan deleted', 'neutral', undefined, { label: 'Undo', onClick: () => {} }));
+await settle(700);
+const ring = await page.evaluate(() => {
+  const c = document.querySelector('.rf-toast .rf-toast-close');
+  if (!c) return null;
+  const b = getComputedStyle(c, '::before'), a = getComputedStyle(c, '::after');
+  return { countdown: c.hasAttribute('data-countdown'), ring: b.top, hit: a.content !== 'none' ? parseFloat(a.top) : null, want: Math.min(0, c.offsetHeight / 2 - 22) };
+});
+check('a toast\'s close keeps its countdown ring at its own size, and reaches 44 px with its ::after', ring && ring.countdown && ring.ring === '0px' && ring.hit != null && ring.hit <= ring.want + 0.5, JSON.stringify(ring));
+await page.evaluate(() => { for (const t of document.querySelectorAll('.rf-toast')) t.remove(); });
+
 section('Console');
 check('no console errors', errors.length === 0, errors.join(' | '));
 await browser.close();

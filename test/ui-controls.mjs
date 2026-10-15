@@ -9,7 +9,9 @@
 //   a vertical swipe and the arrow keys;
 // - then the glass: thumbs glass at rest, the lens only while held or moving and off at rest, the
 //   glass lasting until the move ends, toggle chips that keep their width, the tab bar's lens, and a
-//   Settings change that no longer redraws every lens map.
+//   Settings change that no longer redraws every lens map;
+// - and touch targets: every control on Today, Plan, Progress, Settings, Health, a sheet, a toast,
+//   and the player answers a finger 44 px across (a smaller one through its hit area).
 // Desktop Chromium allows a tap to wobble about 15 px before it drops the click; a phone, about 8 dp.
 // The wobbly cases run three ways: with the native click, with the phone's slop (the click is dropped
 // before the page sees it, so the tap must be rescued), and with the click arriving 200 ms late (a
@@ -698,10 +700,10 @@ if (reducedMotion) {
 // bigger) hits the control, unless another control is there (two side by side can't both have it),
 // it's off the screen, or something else covers it there (the bars, a floating button).
 section('Touch targets: 44 px across');
-const reach = () => page.evaluate(() => {
+const reach = (only) => page.evaluate((rs) => {
   const open = [...document.querySelectorAll('dialog[open]')].pop();
   const pl = document.getElementById('player');
-  const roots = open ? [open] : pl && !pl.hidden ? [pl] : [document.getElementById('screen'), document.getElementById('topbar')];
+  const roots = rs ? [...document.querySelectorAll(rs)] : open ? [open] : pl && !pl.hidden ? [pl] : [document.getElementById('screen'), document.getElementById('topbar')];
   const SEL = 'button, a[href], [data-act], label.rf-segment, .rf-chip, summary, label.rf-switch';
   const bad = [];
   let n = 0;
@@ -728,11 +730,11 @@ const reach = () => page.evaluate(() => {
     }
   }
   return { n, bad };
-});
-const targets = async (label, prep) => {
+}, only);
+const targets = async (label, prep, only) => {
   await prep();
   await wait(900);
-  const r = await reach();
+  const r = await reach(only);
   check(`${label}: every control (${r.n}) answers 44 px across`, r.n > 0 && !r.bad.length, r.bad.slice(0, 8));
 };
 const scrollTo = (sel) => page.evaluate((s) => { const e = document.querySelector(s); if (e) e.scrollIntoView({ block: 'center' }); }, sel);
@@ -743,6 +745,11 @@ await targets('Plan (the sections, the phase\'s info, Next week)', async () => {
 await targets('Progress (its ranges)', async () => { await page.evaluate(() => window.GH.ui.go('progress')); await wait(500); await page.evaluate(() => { document.getElementById('screen').scrollTop = 0; }); });
 await targets('Settings (its search, segments and chips)', async () => { await settings(); await page.evaluate(() => { document.getElementById('screen').scrollTop = 0; }); });
 await targets('Settings, further down', () => page.evaluate(() => { const s = document.getElementById('screen'); s.scrollTop = s.scrollHeight * 0.45; }));
+await targets('Settings, walks, runs and rides (auto-pause for each, 36 px chips)', () => scrollTo('#screen .at-auto'));
+await targets('Health (the coach\'s question chips, 30 px)', async () => { await page.evaluate(() => { const U = window.GH.ui; while (U.back()) { /* back to the tab */ } U.go('health'); }); await wait(500); await scrollTo('#screen .hl-asks'); });
+// A toast with Undo: Undo and its close (whose ::before is Refract's countdown ring).
+await targets('a toast (Undo, and its close)', async () => { await page.evaluate(() => window.GH.ui.toast('Plan deleted', 'neutral', undefined, { label: 'Undo', onClick: () => {} })); }, '.rf-toaster');
+await page.evaluate(() => { for (const t of document.querySelectorAll('.rf-toast')) t.remove(); });
 await targets('a sheet (Close and Save, a stepper, the day chips)', async () => { await page.evaluate(() => { const U = window.GH.ui; while (U.back()) { /* */ } U.go('today'); U.act.daysSheet(); }); await wait(600); });
 await page.evaluate(() => window.GH.ui.closeSheets());
 await wait(500);
