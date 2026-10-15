@@ -55,6 +55,82 @@ const menuFood = async () => { await page.click('#topbar [popovertarget="hlLog"]
 const undo = () => ev(() => { const b = [...document.querySelectorAll('.rf-toast button')].reverse().find((x) => /Undo/.test(x.textContent)); if (b) b.click(); return !!b; });
 // The day's meals at a time on the test's day (it's Oct 19 for the page's clock).
 const at = (hm) => page.clock.setSystemTime(new Date(`2026-10-19T${hm}:00`));
+const lastHaptic = () => ev(() => window.__haptics[window.__haptics.length - 1]);
+const recentHaptics = (n) => ev((k) => window.__haptics.slice(-k), n);
+// What's out of line in a food card (or a page of them): the glance's ring label off its middle, the
+// macros' slashes, targets and bars not in their columns, links and dividers off the card's text
+// edges, a card with more room under its last line than the others, something to tap under 44 px.
+// Returns what's wrong, one line each.
+const lineUp = (root) => ev((rootSel) => {
+  const out = [];
+  const R = (e) => e.getBoundingClientRect();
+  const ink = (e) => { const rg = document.createRange(); rg.selectNodeContents(e); const rs = [...rg.getClientRects()].filter((x) => x.width); return rs.length ? { l: Math.min(...rs.map((x) => x.left)), r: Math.max(...rs.map((x) => x.right)), t: Math.min(...rs.map((x) => x.top)), b: Math.max(...rs.map((x) => x.bottom)), first: rs[0] } : null; };
+  const off = (what, a, b, tol) => { if (!(Math.abs(a - b) <= tol)) out.push(`${what}: ${a.toFixed(1)} vs ${b.toFixed(1)}`); };
+  const content = (card) => { const r = R(card), s = getComputedStyle(card); return { l: r.left + parseFloat(s.paddingLeft), r: r.right - parseFloat(s.paddingRight) }; };
+  // How tall a thing is to a finger: its box, or a hit area its ::before reaches to.
+  const hit = (e) => { const r = R(e), b = getComputedStyle(e, '::before'); if (b.content === 'none' || b.position !== 'absolute') return r.height; return Math.max(r.height, r.height - parseFloat(b.top) - parseFloat(b.bottom)); };
+  const root = document.querySelector(rootSel);
+  if (!root) return [`no ${rootSel}`];
+  const scope = root.matches('.card') ? [root] : [...root.querySelectorAll('.card')];
+  for (const sum of root.querySelectorAll('.fd-sum')) {
+    const card = sum.closest('.card'), c = content(card);
+    const ring = sum.querySelector('.rf-ring svg');
+    if (ring) {
+      const rr = R(ring), lab = R(sum.querySelector('.rf-ring-label'));
+      off('the ring label across', (lab.left + lab.right) / 2, (rr.left + rr.right) / 2, 1);
+      off('the ring label down', (lab.top + lab.bottom) / 2, (rr.top + rr.bottom) / 2, 1);
+      for (const k of sum.querySelectorAll('.rf-ring-label > *')) { const t = ink(k); off(`"${k.textContent}" across the ring`, (t.l + t.r) / 2, (rr.left + rr.right) / 2, 1); }
+    }
+    const rows = [...sum.querySelectorAll('.fd-macro')];
+    if (rows.length) {
+      const have = rows.map((m) => ink(m.querySelector('.fd-mhave')).r), want = rows.map((m) => ink(m.querySelector('.fd-mwant')).l), bars = rows.map((m) => R(m.querySelector('.rf-progress')));
+      have.forEach((x, i) => off(`the slash of ${rows[i].querySelector('.fd-mk').textContent}`, x, have[0], 0.5));
+      want.forEach((x, i) => off(`the target of ${rows[i].querySelector('.fd-mk').textContent}`, x, want[0], 0.5));
+      bars.forEach((b, i) => { off(`bar ${i} starts`, b.left, bars[0].left, 0.5); off(`bar ${i} ends at the card's text edge`, b.right, c.r, 1); });
+      for (const m of rows) for (const s of ['.fd-mhave', '.fd-mwant']) if (!/tabular-nums/.test(getComputedStyle(m.querySelector(s)).fontVariantNumeric)) out.push(`${s} without tabular figures`);
+    }
+    const go = sum.querySelector('.fd-go');
+    if (go) off('the chevron at the card\'s text edge', R(go).right, c.r, 1);
+  }
+  for (const card of scope) {
+    const c = content(card);
+    // A link that starts a line starts at the card's text edge.
+    for (const a of card.querySelectorAll('.fd-link')) {
+      const p = a.parentElement, line = p.tagName === 'P' ? ink(p).first : null;
+      if (!line || R(a).top > line.top + 2) off(`"${a.textContent.trim()}" at the text edge`, R(a).left, line ? ink(p).l : c.l, 1);
+    }
+    // Dividers between foods: inset like the text, both sides.
+    for (const li of card.querySelectorAll('.fd-list > li:not(:last-child)')) {
+      const s = getComputedStyle(li, '::after'), r = R(li);
+      off('a divider\'s start', r.left + parseFloat(s.left), c.l, 1);
+      off('a divider\'s end', r.right - parseFloat(s.right), c.r, 1);
+    }
+    for (const m of card.querySelectorAll('.hf-meal')) { off('a meal row\'s start', R(m).left, c.l, 1); off('a meal row\'s end', R(m).right, c.r, 1); }
+    // Things to tap.
+    for (const b of card.querySelectorAll('button, .rf-segment')) if (R(b).height && hit(b) < 43.5) out.push(`"${(b.textContent || b.getAttribute('aria-label') || '').trim().slice(0, 30)}" is ${hit(b).toFixed(1)} px to a finger`);
+  }
+  // A meal card ends 16 px or so under its last line, whatever's in it.
+  // (A meal with only its title is centred on it, so it isn't counted.)
+  const room = [...root.querySelectorAll('.card.fd-meal')].filter((card) => card.querySelector('.fd-list, .fd-same')).map((card) => {
+    const w = document.createTreeWalker(card, NodeFilter.SHOW_TEXT); let b = 0;
+    for (let n = w.nextNode(); n; n = w.nextNode()) { if (!n.textContent.trim()) continue; const rg = document.createRange(); rg.selectNodeContents(n); for (const x of rg.getClientRects()) b = Math.max(b, x.bottom); }
+    return { key: card.dataset.key, room: R(card).bottom - b };
+  });
+  if (room.length) {
+    const lo = Math.min(...room.map((x) => x.room)), hi = Math.max(...room.map((x) => x.room));
+    if (hi - lo > 4 || hi > 22) out.push(`room under a meal's last line: ${room.map((x) => `${x.key} ${x.room.toFixed(1)}`).join(', ')}`);
+  }
+  // The day: as wide as the cards, the day in its middle, its arrows 44 px.
+  const days = root.querySelector('.fd-days');
+  if (days) {
+    const card = root.querySelector('.card'), d = R(days), t = ink(days.querySelector('.fd-day'));
+    off('the day control\'s start', d.left, R(card).left, 1);
+    off('the day control\'s end', d.right, R(card).right, 1);
+    off('the day across its control', (t.l + t.r) / 2, (d.left + d.right) / 2, 1);
+    for (const b of days.querySelectorAll('button')) if (R(b).height < 43.5 || R(b).width < 43.5) out.push(`a day arrow is ${R(b).width.toFixed(0)} x ${R(b).height.toFixed(0)}`);
+  }
+  return out;
+}, root);
 
 section('The tabs, with calorie tracking off and on');
 check('protein tracking: Today, Plan, Health, Progress and You', (await tabs()) === 'today,plan,health,progress,you', await tabs());
@@ -66,6 +142,8 @@ check('the food settings show up, with Meal times and Activity', await ev(() => 
 const cut = await ev(() => [...document.querySelectorAll('#screen .rf-list-title')].filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent.trim()));
 check('no setting title is cut off', cut.length === 0, cut.join(' | '));
 check('no sideways scroll in Settings', await noSideScroll());
+const foot = await ev(() => { const p = document.querySelector('#screen .rf-list-footer[data-group="track"]'); const a = p && p.querySelector('.fd-link'); if (!a) return null; const rg = document.createRange(); rg.selectNodeContents(p); const rs = [...rg.getClientRects()].filter((x) => x.width); const r = a.getBoundingClientRect(); return { ownLine: r.top > rs[0].top + 2, link: r.left, text: Math.min(...rs.map((x) => x.left)) }; });
+check('the food rows\' How it\'s worked out starts at the footer\'s text edge when it starts a line', !!foot && (!foot.ownLine || Math.abs(foot.link - foot.text) <= 1), JSON.stringify(foot));
 await page.fill('#setQ', 'breakfast');
 await page.locator('#setQ').dispatchEvent('input');
 await settle(300);
@@ -226,6 +304,7 @@ check('and online search and barcodes are on', await ev(() => window.GH.food.pre
 await settle(1500);
 await ev(() => { const a = window.GH.ui.act.scanType; if (a) a(); });
 await settle(400);
+check('Type the number plays a tap, and its field takes the button\'s place', (await lastHaptic()) === 'tap' && await ev(() => { const d = document.querySelector('dialog.rf-sheet[open]'); return d.querySelector('[data-act="scanType"]').hidden && !d.querySelector('.sc-type').hidden && !!d.querySelector('#scCode').getBoundingClientRect().height; }));
 await page.fill('#scCode', '3017620422004');
 await page.press('#scCode', 'Enter');
 await settle(600);
@@ -322,6 +401,43 @@ section('The same meal as yesterday');
 await ev(() => { const GH = window.GH, S = GH.ui.S, F = GH.food, d = GH.ui.today(); const y = new Date(); y.setDate(y.getDate() - 1); y.setHours(19, 15, 0, 0); F.add(S, d - 1, { name: 'Salmon and potatoes', src: 'quick', kcal: 710, p: 40, c: 55, f: 30, meal: 'dinner' }, y.getTime()); F.add(S, d - 1, { name: 'Salad', src: 'quick', kcal: 90, p: 2, c: 8, f: 6, meal: 'dinner' }, y.getTime() + 60000); GH.store.save(S); GH.ui.render(); });
 await settle(700);
 check('an empty meal on the Food page offers yesterday\'s', await ev(() => /Same as yesterday, 800 kcal/.test(document.querySelector('#screen .fd-meal[data-key="meal-dinner"] .fd-same').textContent)));
+
+section('Lined up: the Food page');
+// Full meals and an empty one with yesterday's to add: the day, the glance, the links, the dividers
+// and the room under each meal's last line, at this width and at 360.
+for (const w of [...new Set([width, 360])]) {
+  await page.setViewportSize({ width: w, height: 844 });
+  await settle(700);
+  const bad = await lineUp('#screen');
+  check(`at ${w} px: everything in line, centred where it should be, and 44 px to a finger`, bad.length === 0, bad.join('\n      '));
+}
+await page.setViewportSize({ width, height: 844 });
+await settle(600);
+await page.click('#screen .fd-days [data-act="foodDayPrev"]');
+await settle(700);
+check('the day before is a tap away, with the day haptic', (await lastHaptic()) === 'day' && await ev(() => document.querySelector('#screen .fd-day').textContent === 'Yesterday'));
+await page.click('#screen .fd-days [data-act="foodDayNext"]');
+await settle(700);
+check('and back', await ev(() => document.querySelector('#screen .fd-day').textContent === 'Today'));
+
+section('Copy yesterday and Delete: one tap each, with Undo');
+const k0 = await kcalToday(), yk = await ev(() => window.GH.food.totals(window.GH.ui.S, window.GH.ui.today() - 1, false).kcal);
+await page.click('#screen .fd-tools [data-act="foodCopyYesterday"]');
+await settle(800);
+check('Copy yesterday adds the whole day before in one tap, with nothing to confirm', (await kcalToday()) - k0 === yk && !(await ev(() => !!document.querySelector('dialog[open]:not(.rf-sheet)'))) && (await recentHaptics(3)).includes('copy'), `${k0} + ${yk} → ${await kcalToday()}`);
+check('with Undo', await undo());
+await settle(800);
+check('which takes it all back out', (await kcalToday()) === k0 && (await recentHaptics(2)).includes('undo'), await kcalToday());
+await page.click('#screen .fd-meal[data-key="meal-snack"] [data-act="foodEdit"]');
+await sheetOpen('[data-act="foodQuickDelete"]');
+await settle(700);
+check('Delete is red, beside Save', await ev(() => { const b = document.querySelector('dialog.rf-sheet[open] [data-act="foodQuickDelete"]'); const c = getComputedStyle(b).color, red = getComputedStyle(document.documentElement).getPropertyValue('--critical').trim(); const probe = document.createElement('span'); probe.style.color = red; document.body.appendChild(probe); const want = getComputedStyle(probe).color; probe.remove(); return c === want; }));
+await page.click('dialog.rf-sheet[open] [data-act="foodQuickDelete"]');
+await settle(900);
+check('Delete takes it out at once, with the remove haptic', (await kcalToday()) === k0 - 120 && (await recentHaptics(3)).includes('remove'), await kcalToday());
+check('with Undo', await undo());
+await settle(800);
+check('which puts it back as it was, in the meal it was in', (await kcalToday()) === k0 && await ev(() => window.GH.food.byMeal(window.GH.ui.S, window.GH.ui.today()).snack.some((e) => e.kcal === 120 && e.mh === 1)) && (await recentHaptics(2)).includes('undo'), await kcalToday());
 await page.click('#screen .fd-meal[data-key="meal-dinner"] [data-act="foodAdd"]');
 await sheetOpen('.fd-search');
 await settle(700);
@@ -409,6 +525,37 @@ await sheetCheck('track calories', () => ev(() => window.GH.ui.act.foodStart()),
 await sheetCheck('track calories, with each part open', async () => { await ev(() => window.GH.ui.act.foodStart()); await sheetOpen('.fd-start'); await settle(600); await page.click('dialog.rf-sheet[open] [data-act="fsMore"]'); }, '#fsAge');
 await sheetCheck('save as a meal', () => ev(() => window.GH.ui.act.foodSaveDay()), '#mName');
 check('the forms open showing all of themselves', ['a portion', 'quick add', 'create a food', 'meal times', 'track calories'].every((n) => sizes[n].size === 'auto'), JSON.stringify(sizes));
+
+section('The keyboard never covers the field or the main button');
+// On a phone the app's page gets shorter by the keyboard's height, and the shell says it's up. With
+// the last field of each form typed in (the scanner's camera doesn't start here, so its number field
+// opens by itself), the field and the button that sends it are both in sight, and nothing is on them.
+const keyboard = async (on) => { await page.setViewportSize({ width: 360, height: on ? 844 - 320 : 780 }); await ev((o) => window.__gh.setInsets({ top: 30, bottom: o ? 0 : 20, left: 0, right: 0, keyboard: o }), on); await settle(900); };
+const inSight = (f, m) => ev(([field, main]) => {
+  const d = [...document.querySelectorAll('dialog.rf-sheet[open]')].pop();
+  const body = d.querySelector('.rf-sheet-body').getBoundingClientRect();
+  const why = [];
+  const seen = (sel) => { const e = d.querySelector(sel), r = e.getBoundingClientRect(); const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); const ok = r.top >= body.top - 1 && r.bottom <= Math.min(body.bottom, innerHeight) + 1 && !!top && (top === e || e.contains(top) || top.contains(e)); if (!ok) why.push(`${sel} at ${Math.round(r.top)}..${Math.round(r.bottom)} in ${Math.round(body.top)}..${Math.round(Math.min(body.bottom, innerHeight))}, under ${top ? `${top.tagName}.${String(top.className).slice(0, 40)}` : 'nothing'}`); return ok; };
+  return { field: seen(field), main: seen(main), focused: document.activeElement === d.querySelector(field), why, detent: d.dataset.detent, sheets: document.querySelectorAll('dialog.rf-sheet[open]').length };
+}, [f, m]);
+for (const [name, open, field, main] of [
+  ['quick add', () => ev(() => window.GH.ui.act.foodQuick()), '#qC', '[data-act="foodQuickSave"]'],
+  ['create a food', () => ev(() => window.GH.ui.act.foodCreate()), '#cFib', '[data-act="foodCreateSave"]'],
+  ['a barcode\'s number', () => ev(() => { window.GH.ui.act.foodScan(); }), '#scCode', '.sc-type [type="submit"]'],
+]) {
+  await open();
+  await sheetOpen(field);
+  await settle(1500);
+  await page.focus(`dialog.rf-sheet[open] ${field}`);
+  await keyboard(true);
+  // (The sheet slides to fit what's left of the screen: under load that can take a moment.)
+  let r = await inSight(field, main);
+  for (let i = 0; i < 6 && !(r.field && r.main); i++) { await settle(500); r = await inSight(field, main); }
+  check(`${name}: the field and its button above the keyboard`, r.field && r.main && r.focused, JSON.stringify(r));
+  await ev(() => document.activeElement && document.activeElement.blur());
+  await keyboard(false);
+  await closeSheets();
+}
 await page.setViewportSize({ width, height: 844 });
 await settle(600);
 await home();
@@ -419,10 +566,14 @@ check('an Eaten tile', await ev(() => [...document.querySelectorAll('#screen .st
 check('active calories and distance tiles', await ev(() => { const t = [...document.querySelectorAll('#screen .stat')].map((s) => s.textContent).join(' '); return /Active calories/.test(t) && /Distance/.test(t); }));
 check('a calories eaten chart', await ev(() => [...document.querySelectorAll('#screen .card')].some((c) => /Calories eaten/.test(c.textContent))));
 check('the section lists what was eaten in each meal', await ev(() => /Oatmeal|Banana|Protein bar/.test(document.querySelector('#screen .hf-meal[data-key="hm-breakfast"]').textContent) && /Salmon and potatoes, Salad/.test(document.querySelector('#screen .hf-meal[data-key="hm-dinner"]').textContent)));
+const hfBad = await lineUp('#screen .card.hf');
+check('the section lines up: its glance\'s columns, the chevron and the meals at the text edges, 44 px to a finger', hfBad.length === 0, hfBad.join('\n      '));
 
 section('Today\'s card and the food route');
 await tab('today');
 check('Today has the food card', await ev(() => !!document.querySelector('#screen .fd-card')));
+const cardBad = await lineUp('#screen .fd-card');
+check('and its glance lines up as Health\'s does', cardBad.length === 0, cardBad.join('\n      '));
 await page.click('#screen .fd-card [data-act="goFood"]');
 await settle(1200);
 check('Open on it opens the Food page, over Today', (await where()).tab === 'today' && (await where()).view === 'food', JSON.stringify(await where()));
