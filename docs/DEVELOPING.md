@@ -202,8 +202,9 @@ its sheets (`src/ui/foodpage.js`, whose stand-ins are in `src/ui/food.js`) aren'
 real one, a screen draws its bar and title until its part is in, and `GH.planReview.available`
 answers at once. A couple of seconds after launch the likely parts load while the phone is idle,
 so a tap rarely waits. A new module that the first frame of Today doesn't need belongs in a chunk.
-`test/ui-perf.mjs` holds the launch, tab and save budgets (4× CPU), and `test/buildcheck.mjs` the
-page's size.
+`test/ui-perf.mjs` holds the launch, tab, tap and save budgets (4× CPU): the taps people make most
+and the first tap after launch are each timed to the frame with their first response and to the
+one with their result. `test/buildcheck.mjs` holds the page's size.
 
 **The first frame.** At launch Refract sets up what the first render inserts at the start of the
 first frame's read pass rather than before it (`enhance()` in `src/ui/core.js`), so the lens maps it
