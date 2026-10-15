@@ -146,11 +146,11 @@ left alone. A few conventions:
 - `data-morph="keep"` on a container whose children are drawn by code (the exercise figures). Its
   HTML can bring children (Plan's kept 3D stills) for a new node; a patch leaves the ones it has.
 - A patch passes over a block (a page's blocks and what's in them, two levels down) whose markup is
-  what it was last patched to (`patchedTo` in `core.js`): a re-render walks only what changed, so a
-  day picked on Plan no longer walks its whole page. What code drew into a block since stays, so it
-  belongs in a `data-morph="keep"` container anyway; a block with a form control in it is always
-  patched, so a control goes back to what the markup says, and so is one that `U.morph` patched
-  something inside since.
+  what it was last patched to and whose nodes nothing has changed since (`patchedTo` and `touched`,
+  a MutationObserver, in `core.js`): a re-render walks only what changed, so a day picked on Plan no
+  longer walks its whole page. A block that code, a tap or `U.morph` changed in between is walked as
+  before, and so is one with a form control in it (what's typed or picked isn't in its nodes), so a
+  patch still puts back what it always did.
 - `U.roll(value)` for numbers that should roll when they change.
 - The navigation bar is shared: a screen's `<header class="rf-navbar">` is lifted into it.
 - A route change gets fresh content: the old page leaves in a layer of its own while the new one

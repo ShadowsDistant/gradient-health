@@ -300,14 +300,22 @@
     morphChildren(from, to, fx, lvl);
   }
   // The markup each block was last patched to, for a page's blocks and what's in them (the first two
-  // levels down): a re-render passes a block whose markup is the same again without walking it. Plan
-  // re-renders all of its long page for a day picked, and walking every node of it took most of that
-  // render (25 to 50 ms at 4x CPU). What code drew in a block since (a still, a tile) stays, as a patch
-  // leaves it; a block with a form control in it is always patched, so a control the person changed
-  // goes back to what the markup says, as before, and so is one U.morph patched something in since.
+  // levels down): a re-render passes over a block whose markup is the same again, and whose nodes
+  // nothing has touched since, without walking it. Plan re-renders all of its long page for a day
+  // picked, and walking every node of it took most of that render (25 to 50 ms at 4x CPU). Anything
+  // that changes a block's nodes in between (a toggle a tap pressed, a still drawn in, a thumb placed,
+  // U.morph patching a part of it) takes it off the list (`touched`, a MutationObserver on what's
+  // patched; a patch's own changes are let go), and a block with a form control in it is always
+  // walked (what's typed or picked in one isn't in its nodes): a patch puts back all it did before.
   const patchedTo = new WeakMap();
   const SAME_LEVELS = 2;
   const FORMS = /<(input|textarea|select)\b/;
+  const WATCH = { subtree: true, childList: true, attributes: true, characterData: true };
+  function untouch(recs) {
+    const seen = new Set();
+    for (const r of recs) for (let n = r.target; n && !seen.has(n); n = n.parentNode) { seen.add(n); patchedTo.delete(n); }
+  }
+  const touched = G.MutationObserver ? new G.MutationObserver(untouch) : null;
   function discard(n) {
     if (n.nodeType === 1) {
       const r = R();
@@ -325,6 +333,9 @@
   // the rest glide to where they land (src/ui/motion.js). Without it, changes are instant.
   function morphChildren(parent, source, fx, lvl) {
     const level = lvl || 0;
+    const top = !level && touched;
+    // (What changed since the last patch first; then this patch's own changes are let go.)
+    if (top) { untouch(touched.takeRecords()); touched.observe(parent, WATCH); }
     const want = Array.from(source.childNodes);
     const keyed = new Map();
     for (let n = parent.firstChild; n; n = n.nextSibling) { if (passOver(n)) continue; const k = keyOf(n); if (k) keyed.set(k, n); }
@@ -343,12 +354,16 @@
       if (match) {
         if (match === cur) cur = cur.nextSibling;
         else { parent.insertBefore(match, cur); moved++; }
-        if (level < SAME_LEVELS && t.nodeType === 1) {
+        if (level < SAME_LEVELS && t.nodeType === 1 && touched) {
           const markup = t.outerHTML;
           if (patchedTo.get(match) === markup) continue;
           morphNode(match, t, fx, level + 1);
           if (FORMS.test(markup)) patchedTo.delete(match); else patchedTo.set(match, markup);
-        } else morphNode(match, t, fx, level + 1);
+        } else {
+          // (Deeper down: a block U.morph patched on its own, inside a part of the page, is walked.)
+          patchedTo.delete(match);
+          morphNode(match, t, fx, level + 1);
+        }
       } else {
         if (t.nodeType === 1) record(t);
         parent.insertBefore(t, cur);
@@ -359,6 +374,7 @@
     while (cur) { const next = cur.nextSibling; if (!passOver(cur)) gone.push(cur); cur = next; }
     if (fx) fx.patched(parent, added, gone, moved);
     else for (const n of gone) discard(n);
+    if (top) touched.takeRecords();
   }
   // U.morph(el, html | node, animate): patch el's children in place; `animate` moves what changes
   // (as a re-render of the page does).
