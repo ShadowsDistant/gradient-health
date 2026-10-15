@@ -64,7 +64,7 @@
     const ctl = U.sheet({
       title: m.name, size: 'auto', detent: 'large',
       body: moveBody(m, opts),
-      after: (c) => mountSheetFig(c, moveId, opts && opts.side),
+      later: (c) => mountSheetFig(c, moveId, opts && opts.side),
       onClose: () => { dropSheetFig(ctl); if (opts && opts.onClose) opts.onClose(); if (first && U.els().playerEl.hidden) { U.render(); if (U.checklistCheck) U.checklistCheck(); } },
     });
     return ctl;
@@ -106,7 +106,7 @@
       return `${moveBody(m)}<h3 class="rf-list-header">${lad.gym ? 'Exercises, favourite first' : 'All levels, easiest first'}</h3><ul class="rf-list">${rows}</ul>
         ${hidden ? `<div class="sheet-pad"><button type="button" class="rf-btn" data-act="unhide" data-arg="${showing}">Show this move again</button></div>` : ''}`;
     };
-    const ctl = U.sheet({ title: lad.name, size: 'auto', body: body(), after: (c) => mountSheetFig(c, showing), onClose: () => dropSheetFig(ctl) });
+    const ctl = U.sheet({ title: lad.name, size: 'auto', body: body(), later: (c) => mountSheetFig(c, showing), onClose: () => dropSheetFig(ctl) });
     U.act.ladderShow = (b) => {
       showing = b.dataset.arg;
       U.haptic('select');

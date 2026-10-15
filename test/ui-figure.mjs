@@ -348,10 +348,12 @@ await ctx.close();
 section('Load times');
 // From opening a move sheet (the call) to its figure box holding a 3D picture: the live figure, or a
 // still of its first frame standing in; and to the live figure itself. Frames with nothing in the
-// box are counted too.
+// box, once its first figure is in, are counted too. (The figure goes in right after the sheet's
+// first frame, src/ui/sheet.js `later`: the box fades in from nothing then anyway.)
 const sheetTimes = (page, id) => page.evaluate((mid) => new Promise((res) => {
   const t0 = performance.now();
   const out = { look3d: null, live: null, blank: 0, frames: 0 };
+  let seen = false;
   window.GH.ui.moveSheet(mid);
   const tick = () => {
     const h = document.querySelector('dialog[open] .sheet-fig');
@@ -359,8 +361,10 @@ const sheetTimes = (page, id) => page.evaluate((mid) => new Promise((res) => {
     if (h) {
       const live = h.querySelector(':scope > .fig3d[data-ready]:not(.fig-pending)');
       const still = h.querySelector(':scope > .fig-still');
-      out.frames++;
-      if (!live && !still && !h.querySelector(':scope > svg')) out.blank++;
+      const any = !!(live || still || h.querySelector(':scope > svg'));
+      seen = seen || any;
+      if (seen) out.frames++;
+      if (seen && !any) out.blank++;
       if (out.look3d == null && (live || still)) out.look3d = t;
       if (out.live == null && live) out.live = t;
     }
@@ -492,11 +496,18 @@ const fb = await page.evaluate(() => Object.assign({}, window.__fig, window.GH.f
 check('then the 3D one takes over', true);
 check('and the box was never empty on the way', fb.frames > 10 && fb.blank === 0, fb);
 check('one 3D figure is left running', fb.live === 1, fb);
+// (The figure goes in right after the sheet's first frame: the first frame with one in the box.)
 const warmFirst = await page.evaluate(() => new Promise((res) => {
   window.GH.ui.moveSheet('sq_bw');
-  requestAnimationFrame(() => { const h = document.querySelector('dialog[open] .sheet-fig'); res({ ready: !!(h && h.querySelector('.fig3d[data-ready]:not(.fig-pending)')), svg: !!(h && h.querySelector('svg')) }); });
+  let n = 0;
+  const look = () => {
+    const h = document.querySelector('dialog[open] .sheet-fig');
+    if ((!h || !h.firstElementChild) && ++n < 10) { requestAnimationFrame(look); return; }
+    res({ frame: n, ready: !!(h && h.querySelector('.fig3d[data-ready]:not(.fig-pending)')), svg: !!(h && h.querySelector('svg')) });
+  };
+  requestAnimationFrame(look);
 }));
-check('once warm, a new figure is 3D from its first frame', warmFirst.ready && !warmFirst.svg, warmFirst);
+check('once warm, a new figure is 3D from its first frame', warmFirst.frame <= 2 && warmFirst.ready && !warmFirst.svg, warmFirst);
 await page.waitForTimeout(900);
 await page.evaluate(() => window.GH.ui.closeSheets());
 await page.waitForTimeout(600);

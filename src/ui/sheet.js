@@ -16,7 +16,9 @@
  *    damped spring that starts at that speed: a Web Animation with a linear() easing sampled from the
  *    spring, which the compositor plays.
  * o: { title, body, action: { label, act, arg }, cls, size: 'fit' | 'auto' | 'full', onClose(value),
- * after(ctl), quiet (no sheet haptic as it opens) }. Older calls pass detents/detent/fit instead: fit →
+ * after(ctl), later(ctl), quiet (no sheet haptic as it opens) }. after runs before the sheet's first
+ * frame; later right after it, for what that frame doesn't need (a move's figure in its box of a set
+ * size), while the compositor slides the sheet up. Older calls pass detents/detent/fit instead: fit →
  * 'fit', detents 'large' → 'full', anything else → 'auto' (detent: 'large' opens it at large).
  * While any sheet moves, <html> has data-sheet-moving and the document hears 'gh-sheet-moving'
  * ({ detail: { moving } }), so other animations can wait; U.sheetMoving() says so too. While any is
@@ -721,6 +723,12 @@
     const ro = G.ResizeObserver ? new G.ResizeObserver(() => { if (s.closing) return; if (dragging()) s.dirty = true; else relayout(); }) : null;
     if (ro) for (const x of [s.panel, s.header, s.body]) ro.observe(x);
     if (o.after) safe(() => o.after(ctl));
+    // A tap is answered by the sheet on its way up in the very next frame; drawing a move's figure
+    // in it as well held that frame back 15 to 60 ms at 4x CPU.
+    if (o.later) {
+      const go = () => { if (!ctl.closed) safe(() => o.later(ctl)); };
+      if (U.rightAfterFrame) U.rightAfterFrame(go); else G.setTimeout(go, 0);
+    }
     return ctl;
   };
 
