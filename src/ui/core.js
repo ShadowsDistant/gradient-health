@@ -1043,9 +1043,15 @@
     // The bar's title cross-fades along with the page, and its buttons shape-shift.
     const bar = changed && lastKey && kind && M.barSwap ? safe(() => M.barSwap(topbar, kind)) || null : null;
     if (bar && bar.update) bar.update(() => applyNavbar(nb)); else applyNavbar(nb);
-    // A new page: the old one leaves, with the look it had, while this one comes in. From a tap, what's
-    // well out of sight is drawn a frame later (holdBack).
+    // A new page: the old one leaves, with the look it had, while this one comes in. From a tap on the
+    // tab bar, what's well out of sight is drawn a frame later (holdBack), and so it is on a page
+    // opened on top, which opens at its top and slides in on the compositor meanwhile: How it works,
+    // Food, Badges (styling, laying out and drawing the whole of a long one was most of the tap's
+    // frame). Not on one opened at a row it then brings into view (focus), nor where the page's after
+    // hook may measure what it drew (a map, a list to drag in), unless the screen says it can wait
+    // (later: true).
     if (changed && first && !r.view) holdBack(tpl.content, key, scrollMemo[key] || 0);
+    else if (changed && kind === 'push' && !(r.arg && scr.focus) && (!scr.after || scr.later)) holdBack(tpl.content, key, 0);
     if (changed) replace(screen, tpl.content, kind);
     if (laterKey) rightAfterFrame(() => { if (laterKey === key && lastKey === key) revealLater(); });
     screen.dataset.view = r.view || r.tab;
@@ -1528,7 +1534,10 @@
   let toastLift = 0;
   function placeToasts() {
     const H = G.innerHeight || doc.documentElement.clientHeight;
-    const sab = parseFloat(G.getComputedStyle(doc.documentElement).getPropertyValue('--sab')) || 0;
+    // (The app's shell writes the insets on the root's own style, read there at no cost; in a browser
+    // they're env(), in the computed style only.)
+    const rs = doc.documentElement.style;
+    const sab = parseFloat(rs.getPropertyValue('--sab') || G.getComputedStyle(doc.documentElement).getPropertyValue('--sab')) || 0;
     let lift = sab + TOAST_GAP;
     const obs = toastObstacles().filter((o) => o.bottom > H / 2).sort((a, b) => b.bottom - a.bottom);
     for (const o of obs) if (o.bottom > H - lift - TOAST_H && o.top < H - lift) lift = Math.max(lift, H - o.top + TOAST_GAP);
