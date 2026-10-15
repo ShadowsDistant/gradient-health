@@ -89,6 +89,21 @@ check('every insight has a title, body, evidence and a tone', list.every((x) => 
 check('sorted by score, one per metric', list.every((x, i) => i === 0 || list[i - 1].score >= x.score) && new Set(list.map((x) => x.metric)).size === list.length);
 check('no exclamation marks or emoji anywhere', list.every((x) => !/[!\u{1F300}-\u{1FAFF}]/u.test(x.title + x.body)));
 
+section('Worked out a piece at a time');
+// Idle moments after a launch work the insights out in small steps (insights.warm), last week's
+// planned sets first, a piece at a time (brain.weeklySetsWork): the same answers as all at once.
+{
+  const S1 = person({ sleep: -90 }), S2 = person({ sleep: -90 });
+  let calls = 1;
+  while (!I.warm(S1, D, () => false) && calls < 60) calls++;
+  check(`one piece of work per call gets there (${calls} calls), with the insights worked out at once`, calls > 8 && calls < 60 && JSON.stringify(I.top(S1, D, 10)) === JSON.stringify(I.all(S2, D).slice(0, 10)));
+  const S3 = person(), S4 = person();
+  const lw = B.weekStart(D) - 1;
+  let pieces = 0;
+  for (const piece of B.weeklySetsWork(S3, lw)) pieces += piece === undefined ? 1 : 0;
+  check(`last week's sets a piece at a time (${pieces} pieces) are the ones worked out at once`, pieces >= 2 && JSON.stringify(B.weeklySets(S3, lw)) === JSON.stringify(B.weeklySets(S4, lw)));
+}
+
 section('Stats helpers');
 check('spearman: perfect ranks → 1, reversed → -1', Math.abs(I.spearman([1, 2, 3, 4], [10, 20, 30, 40]) - 1) < 1e-9 && Math.abs(I.spearman([1, 2, 3, 4], [4, 3, 2, 1]) + 1) < 1e-9);
 check('slope of a line', Math.abs(I.slope([{ x: 0, y: 1 }, { x: 1, y: 3 }, { x: 2, y: 5 }]) - 2) < 1e-9);

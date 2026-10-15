@@ -248,6 +248,13 @@
           ${top ? `<button type="button" class="insight-line" data-key="insight" data-act="goHealth"><span class="rf-list-icon" data-tone="${top.tone === 'good' ? 'green' : top.tone === 'watch' ? 'amber' : top.tone === 'alert' ? 'rose' : 'sky'}">${U.icon(top.icon)}</span><span class="insight-text"><span class="t-subhead">${U.esc(top.title)}</span><span class="t-footnote rf-muted">${U.esc(top.evidence)}</span></span>${U.icon('chevron-right')}</button>` : ''}
         </div>`;
     },
+    // What render works out, ahead in an idle moment of its own before a background re-render (core.js
+    // renderSoon), so that render only draws.
+    warm(S, day) {
+      const cal = B().calendar(S, day);
+      const plan = B().todayPlan(S, day, cal);
+      if (S.profile.workouts !== false && !S.active && plan.type === 'workout') B().buildSession(S, day, plan.tpl, { short: isShort(day), cal });
+    },
     // The floating buttons: at most a secondary one (regular glass, which refracts) and the main one
     // (tinted glass, which doesn't). Each keeps its glass across a change of what it says (keyed by
     // its place, U.floatKey in core.js), so Start workout becoming Resume, or Short on time becoming
@@ -275,14 +282,15 @@
       return '';
     },
   };
-  // (Until it's done, Today's renders leave the line out too, rather than working it all out at once.)
+  // (Until it's done, Today's renders leave the line out too, rather than working it all out at once.
+  // A step stops once it's used a frame's worth of time: each piece of work in it is small.)
   let insightJob = 0;
   const idle = (fn) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: 400 }) : setTimeout(fn, 30));
   function insightLater() {
     if (insightJob) return;
     const step = () => {
       const t0 = Date.now();
-      if (U.S && GH.insights && !GH.insights.warm(U.S, U.today(), () => Date.now() - t0 < 40)) { insightJob = idle(step); return; }
+      if (U.S && GH.insights && !GH.insights.warm(U.S, U.today(), () => Date.now() - t0 < 16)) { insightJob = idle(step); return; }
       insightJob = 0;
       if (U.S && U.route.tab === 'today' && !U.route.view) U.renderSoon();
     };

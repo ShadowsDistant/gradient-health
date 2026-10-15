@@ -624,6 +624,14 @@
     if (playing) ctl.play();
     return ctl;
   };
+  // Whether U.figureFor would start this box with a kept 3D still (an <img>, as figure()'s first()
+  // picks it): quick to put in, so a sheet puts it in with its first frame (src/ui/moves.js).
+  U.figureStillFirst = (host, moveId, side) => {
+    const m0 = M().MOVES[moveId], f = GH.figure3d;
+    if (!m0 || !GH.pose || !want3d() || !GH.lazy || chunkFails >= 3 || (f && f.warm && f.warm()) || (f && !f.supported())) return false;
+    const { m, o } = figOpts({ side, item: { moveId } }, m0);
+    return !!stillFor(m, o, host.clientWidth, host.clientHeight);
+  };
 
   /* ---------------------------------------------------------------- step facts */
   function isTimed(st) { return st.kind === 'interval' || st.kind === 'cooldown' || (!!st.item.timed && st.kind !== 'test'); }

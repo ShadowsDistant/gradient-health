@@ -625,13 +625,22 @@
   // The profile as plans read it: without the preferences only the screens read (the figure, the
   // theme, sounds and haptics, the outdoor activity's, notifications), so changing one keeps every
   // plan worked out (and the plans kept across launches, see src/optimizer.js). Rest, supersets and
-  // the hour a day rolls over do change plans, and so does anything new.
+  // the hour a day rolls over do change plans, and so does anything new. Nor what only the screens,
+  // food and the coach read: the name, height and sex, the protein and calorie settings and the
+  // weight goal (src/food.js), the sleep answers. (The first sync that brought a height in had every
+  // plan worked out again, a moment after launch. Body weight stays: a gym move's first load reads it.)
   const SCREEN_PREFS = new Set(['figure', 'figSkin', 'figShirt', 'theme', 'density', 'sound', 'vibrate', 'haptics', 'hapticStrength', 'reducedMotion', 'actType', 'actStreets', 'actMaps', 'actAuto', 'actVoice', 'notify']);
+  const SCREEN_FIELDS = new Set(['name', 'heightCm', 'sex', 'food', 'protein', 'weightGoal', 'sleepTypical', 'sleepIrregular']);
   function planProfile(p) {
-    if (!p || !p.prefs || typeof p.prefs !== 'object') return p;
-    const prefs = {};
-    for (const k of Object.keys(p.prefs)) if (!SCREEN_PREFS.has(k)) prefs[k] = p.prefs[k];
-    return Object.assign({}, p, { prefs });
+    if (!p || typeof p !== 'object') return p;
+    const out = {};
+    for (const k of Object.keys(p)) if (!SCREEN_FIELDS.has(k)) out[k] = p[k];
+    if (p.prefs && typeof p.prefs === 'object') {
+      const prefs = {};
+      for (const k of Object.keys(p.prefs)) if (!SCREEN_PREFS.has(k)) prefs[k] = p.prefs[k];
+      out.prefs = prefs;
+    }
+    return out;
   }
   // What a single day's session also reads: the health days readiness looks at, how you said you
   // feel (a flare day too) and the sleep chip.
@@ -2639,6 +2648,41 @@
     }
     return out;
   }
+  // weeklySets(S, day) a piece at a time, for idle moments (src/insights.js): each next() does one
+  // piece (the calendar, the week's plan, a session) and keeps it as weeklySets would, so the sums
+  // at the end cost next to nothing. Worked out at once, a week's sets (last week's, the first time
+  // they're asked for) held the page's thread 40 to 60 ms at 4x CPU. Nothing to do when they're kept.
+  function* weeklySetsWork(S, day) {
+    const ws = weekStart(day);
+    const K = GH.optimizer && GH.optimizer.kept;
+    if (K && ws < K.thisWeek(S) && K.get(S, 'sets', `sets|${ws}|${weekLog(S, ws)}`) !== undefined) return;
+    const cal = calendar(S, day);
+    yield;
+    const week = cal.weeks[ws];
+    if (!week) return;
+    const custom = GH.customPlan && week.sessions.some((s) => GH.customPlan.owns(s.tpl));
+    if (!custom && GH.optimizer && GH.optimizer.weekPlan) { GH.optimizer.weekPlan(S, ws, { phase: week.phase }); yield; }
+    for (const s of week.sessions) {
+      if (s.dropped || s.day == null) continue;
+      buildSession(S, s.day, s.tpl, { cal, noReadiness: true });
+      yield;
+    }
+    weeklySets(S, day);
+  }
+  // What Today works out for a day (the calendar, the day's plan and, on a workout day, the week's
+  // plan and the session as Today builds it), a piece at a time, each kept as it would be. For
+  // tomorrow, once a launch has settled (src/ui/core.js): the session is kept with the plan in the
+  // state, so the next day's first launch finds it instead of working it out before its first frame.
+  function* dayWork(S, day) {
+    const cal = calendar(S, day);
+    yield;
+    const plan = todayPlan(S, day, cal);
+    if (plan.type !== 'workout' || S.active) return;
+    const ws = weekStart(day), week = cal.weeks[ws];
+    const custom = GH.customPlan && GH.customPlan.owns(plan.tpl);
+    if (week && !custom && GH.optimizer && GH.optimizer.weekPlan) { GH.optimizer.weekPlan(S, ws, { phase: week.phase }); yield; }
+    buildSession(S, day, plan.tpl, { cal });
+  }
 
   // Setting changes take effect from today; the replay uses the settings in force each week.
   // Workouts a week and the days they're on stay in step. Picking days sets the count (2 to 6: a
@@ -2759,7 +2803,7 @@
     defaultProfile, programFor, templateFor, templateTitle, newState, applyBaseline, rungs, filtersFor,
     calendar, weekOf, todayPlan, readiness, buildSession, estimate, steps, startWorkout, cancelWorkout, restoreWorkout, completeStep, currentTarget,
     setRir, amendLast, swapItem, swapOptions, finishWorkout, progress, levelUp, nextWeight, weeklyVolumeUpdate, recordTest, testDue,
-    logLight, autoWalk, addWeight, weightStats, proteinGoal, proteinToday, addProtein, undoProtein, weeklySets,
+    logLight, autoWalk, addWeight, weightStats, proteinGoal, proteinToday, addProtein, undoProtein, weeklySets, weeklySetsWork, dayWork,
     updateSettings, scheduleSettings, settingsAt, moveSession, setEquipment, reprogram, ladderLevel, mobilityFlow, loadInfo, isDone, relink, median,
     defaultGym, GYM_PRESETS, DB_MAX_OPTIONS, convertDbMax, rangeFor, stepsGoal, outcomeOf, weekdaysFor, gymPreset, placeOf, setPlace, eqAt, eqFor, dbRack, snapLoad, suggestLoad, fmtLoad, loadChoices, setItemLoad, ensureProg, isGymFam, toUnit, fromUnit,
   };

@@ -145,6 +145,12 @@ left alone. A few conventions:
 - Give top-level cards a `data-key` so adding or removing one doesn't shift the rest.
 - `data-morph="keep"` on a container whose children are drawn by code (the exercise figures). Its
   HTML can bring children (Plan's kept 3D stills) for a new node; a patch leaves the ones it has.
+- A patch passes over a block (a page's blocks and what's in them, two levels down) whose markup is
+  what it was last patched to and whose nodes nothing has changed since (`patchedTo` and `touched`,
+  a MutationObserver, in `core.js`): a re-render walks only what changed, so a day picked on Plan no
+  longer walks its whole page. A block that code, a tap or `U.morph` changed in between is walked as
+  before, and so is one with a form control in it (what's typed or picked isn't in its nodes), so a
+  patch still puts back what it always did.
 - `U.roll(value)` for numbers that should roll when they change.
 - The navigation bar is shared: a screen's `<header class="rf-navbar">` is lifted into it.
 - A route change gets fresh content: the old page leaves in a layer of its own while the new one
@@ -155,7 +161,9 @@ left alone. A few conventions:
   is (`U.motion.leave`); the new page is drawn in a task posted from that frame (`switchLater` in
   `core.js`), its blocks well out of sight a frame after the rest (`data-gh-later`, from where each
   block ended when the tab was last left), and the old page just goes once it's in. Drawn inside the
-  tap, a tab's page held up the first frame 250 to 450 ms at 4x CPU; `ui-perf` times taps. A
+  tap, a tab's page held up the first frame 250 to 450 ms at 4x CPU; `ui-perf` times taps. A page
+  opened on top draws what's in sight first too (not one opened at a row it brings into view, nor
+  one whose screen has an `after` hook, unless the screen sets `later: true`). A
   re-render of the same route patches in place and glides what moved (FLIP, 340 ms): new blocks rise
   in, and removed ones fade from where they were for 180 ms before they go, so a test that checks
   one is gone waits for `U.motion.settled()`. Animate transform and opacity only;
@@ -194,8 +202,9 @@ its sheets (`src/ui/foodpage.js`, whose stand-ins are in `src/ui/food.js`) aren'
 real one, a screen draws its bar and title until its part is in, and `GH.planReview.available`
 answers at once. A couple of seconds after launch the likely parts load while the phone is idle,
 so a tap rarely waits. A new module that the first frame of Today doesn't need belongs in a chunk.
-`test/ui-perf.mjs` holds the launch, tab and save budgets (4× CPU), and `test/buildcheck.mjs` the
-page's size.
+`test/ui-perf.mjs` holds the launch, tab, tap and save budgets (4× CPU): the taps people make most
+and the first tap after launch are each timed to the frame with their first response and to the
+one with their result. `test/buildcheck.mjs` holds the page's size.
 
 **The first frame.** At launch Refract sets up what the first render inserts at the start of the
 first frame's read pass rather than before it (`enhance()` in `src/ui/core.js`), so the lens maps it
@@ -322,7 +331,14 @@ no scroll or touch for 400 ms, no sheet moving and no control held or gliding (`
 `U.whenCalm(fn)` runs it then): saves, Plan's flat stills, a control's lens maps, the 3D chunk's
 warm-up steps and the 3D stills drawn ahead. Work that would hold the page's thread for a while (a
 background re-render such as Today's insight line, the 3D canvas shrinking once no figure shows)
-waits for `U.quiet()` instead: calm, and nothing for 1.5 s (`U.whenQuiet(fn)`). On a phone a touch's
+waits for `U.quiet()` instead: calm, and nothing for 1.5 s (`U.whenQuiet(fn)`). A background
+re-render (`U.renderSoon`: a sync that ended, the insight line worked out) then runs in an idle
+moment of its own, after one in which the screen's `warm(S, day, arg)` hook works out what it needs
+(Today's: its session), so neither shares a frame with Refract drawing its glass's lens maps (which
+right after launch made 100 to 140 ms of the page's thread at 4x CPU). The insight line itself is
+worked out a frame's worth at a time, goals' part of the plan (last week's sets) a piece at a time
+first (`brain.weeklySetsWork`), and Plan works next week's sessions out the same way once it shows,
+so Next week doesn't plan the week in its tap. On a phone a touch's
 scroll waits for the page's thread, and the likeliest moment for the next flick is right after the
 last one settles: filmed on one, three flicks in a row froze for 100 to 330 ms each and then jumped,
 with a still's encode or a re-render running under the finger, let loose by the calm moment 400 ms
@@ -441,7 +457,12 @@ Where the app uses Refract 1.4's newer parts:
   pages). Sizes: an auto sheet shows its content whole at medium when it fits in 86% of the screen
   (as tall as a fit sheet gets), and a longer one's medium reaches down to its main buttons that are
   in those 86%; full is for long lists, long reads and search. `test/ui-sheetsize.mjs` opens every
-  sheet it can reach at 390 px and at 360 px with 130% text and checks that.
+  sheet it can reach at 390 px and at 360 px with 130% text and checks that. A tap is answered by
+  the sheet on its way up in the next frame: what that frame doesn't need goes in `later(ctl)`, run
+  right after it while the compositor slides the sheet (a move's figure to draw, in its box of a set
+  size), and `after(ctl)` is for what must be there before it (a chat scrolled to its end, a kept
+  3D still, `U.figureStillFirst`: right after can wait behind a long task queued first, such as the
+  3D chunk's warm-up just after launch).
 - **Dropdowns** (`<details class="gh-drop">`, `src/styles/dropdown.css`): what's inside grows open
   and folds shut (`::details-content`'s height, with `interpolate-size`), fading as it goes, and the
   chevron turns with it. It's the one motion here that lays the page out every frame, for 240 ms
@@ -1006,7 +1027,14 @@ group's weekly floor first, then by what a minute is worth toward the goals); `f
 to about 92% of the time set and never more than 30 seconds over it. `score` weighs goal fit,
 coverage, time, recovery, balance and variety, `explain` gives the "Why this plan" lines and
 `alternatives` scores the classic splits. Weeks before `S.engineFrom` replay 1.5's templates, so
-history doesn't shift. Plans are cached, and kept in `S.planCache` for the next launch.
+history doesn't shift. Plans are cached, and kept in `S.planCache` for the next launch, under a
+stamp of what they read (`brain.stateStamp`, with the profile as `planProfile` gives it: without
+what only the screens, food and the coach read, so a height from Health Connect or a new name plans
+nothing again). Something new that plans read has to stay out of `planProfile`'s lists. Once a
+launch has settled, and a moment after each saved change, the app works tomorrow out ahead in quiet
+idle moments (`brain.dayWork`, a piece at a time: the calendar, the week's plan, the session as
+Today builds it), so the first launch of a day finds its session kept, as a launch later the same
+day does.
 
 Age and health (`src/access.js`) adjust the plan through hooks the engine calls. Age bands: under 30,
 30 to 49, from 50 and from 65, plus two lines inside them: from 60 every leg day has one or two
