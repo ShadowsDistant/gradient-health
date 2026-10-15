@@ -6,6 +6,28 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.13.0', date: '2026-10-15', title: 'Effort by goal, and plans for 60+, bones and diabetes',
+      store: [
+        '• Each set says how many reps to leave, by your goal and age',
+        '• The reps-left question goes to 4+, and more than your aim moves you up faster',
+        '• Strength lifts stop short of failure and climb by weight',
+        '• Short on time, your sets stay and extra rest goes first',
+        '• From 60: fast reps on every leg day, and every muscle twice a week',
+        '• Osteoporosis: heavier sets, back extensions, impact work when safe',
+        '• Type 2 diabetes: plans built around it, eye disease included',
+      ].join('\n'),
+      items: [
+        ['timer', 'Each set says how many reps to leave, by goal and age'],
+        ['sliders', 'More reps left than your aim moves you up faster'],
+        ['arrow-up-right', 'Strength lifts stop short of failure and climb by weight'],
+        ['clock', 'Short on time, sets stay and extra rest goes first'],
+        ['bolt', 'From 60: fast reps on every leg day'],
+        ['calendar', 'From 60: every muscle trained twice a week'],
+        ['layers', 'Osteoporosis: heavier sets, and impact work when safe'],
+        ['heart', 'Type 2 diabetes is now something to plan around'],
+      ],
+    },
+    {
       version: '1.12.0', date: '2026-10-12', title: 'Food in Health, barcodes that read, and quicker tabs',
       store: [
         '• Food lives in Health now, so tracking calories never costs a tab',

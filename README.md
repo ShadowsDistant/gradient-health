@@ -30,7 +30,7 @@ Gradient Health plans each day's workout around your goals, your equipment and y
 | **[Plan](#plan)** | Your week, why it's built that way, and an AI check you approve |
 | **[Your plans](#your-plans)** | Build your own or ask the coach for one, and share it with a QR code |
 | **[Workouts](#workouts)** | A 3D figure for every move, one question per exercise, a plan that fits your body |
-| **[Moves](#moves)** | 282 exercises for home or the gym, each with a how-to |
+| **[Moves](#moves)** | 296 exercises for home or the gym, each with a how-to |
 | **[Activities](#activities)** | Runs, walks, hikes and rides with GPS, auto-pause and spoken splits |
 | **[Food](#food)** | Calories and macros by meal, in Health, with a barcode scanner |
 | **[Health](#health)** | Sleep, steps, heart rate, weight and more, with each number's history |
@@ -63,7 +63,7 @@ Seven days in a strip: done, today, workouts to come, light days and rest.
 
 The planner weighs every way to split your muscle groups across your days, often thousands, and picks the best fit for your goals, time and recovery. Why this plan shows what it compared, how your week scores, and how full body, upper and lower, or push, pull and legs would do.
 
-Workouts fill the time you set and never run over, and every muscle gets its weekly minimum. On the shortest days, muscle groups take turns over two weeks.
+Workouts fill the time you set and never run over, and every muscle gets its weekly minimum. On the shortest days, muscle groups take turns over two weeks. If your strength work comes to under 30 minutes a week, it says so, and how to add some: in large studies, the lowest risks of disease went with about 30 to 60 minutes a week.
 
 ### Check my plan with AI
 
@@ -97,15 +97,19 @@ It runs like the coach's plan, with the same lighter weeks, and each exercise pr
 
 **A 3D figure shows every move** at the right tempo, with the working muscles lit. Drag it to turn it. A strip shows how long each half of a rep takes, and a haptic counts down the end of a timer.
 
-**One question after each exercise:** how many more reps could you have done?
+**Each set says how many reps to leave in the tank.** 1 or 2 for the muscles you want to grow most, since sets that end nearer failure grow more. 2 or 3 on heavy strength lifts, where the weight drives your progress. 1 to 3 for the rest, and 2 or 3 in your first weeks, from 60, and with some health conditions.
+
+**One question after each exercise:** how many more reps could you have done? 0, 1-2, 3 or 4+.
 
 | You answer | Next time |
 |---|---|
 | 0 | It holds you steady |
-| 1 or 2 | It adds a little |
-| 3 or more | It moves you up: more reps, then more weight, then a harder version |
+| About your aim | It adds a little |
+| More than your aim | It moves you up faster: more reps, then more weight, then a harder version |
 
 When you outgrow your heaviest dumbbell, it says what to get next.
+
+**Sets before rest.** Short on time, your sets stay and the extra rest from 50 goes first. With time to spare, moves done on their own rest 90 seconds, for a little more growth.
 
 **Easier when you need it.** Under five hours of sleep, a resting heart rate well above normal, HRV well below it, or sore and tired: a set comes off each exercise that day. A long run yesterday means a lighter day for your legs.
 
@@ -115,12 +119,14 @@ When you outgrow your heaviest dumbbell, it says what to get next.
 
 - **Under 30:** more variety and faster progress.
 - **50 and over:** a longer warm-up, balance practice and one fast-up set a week.
+- **60 and over:** fast reps on every leg day (up quick, down slow), and every muscle twice a week, which keeps muscle better than once.
 - **65 and over:** balance every session, supported moves like sit to stand, and practice getting up from the floor.
 
 Health conditions change it too:
 
 - **Rheumatoid arthritis:** no weight on painful hands, and a flare-day switch for gentle range of motion.
-- **Osteoporosis:** no spine bending.
+- **Osteoporosis:** sets that build toward heavier weights, back extensions and no spine bending. Without a broken bone in your spine or breaks from minor falls, a short impact block on most days.
+- **Type 2 diabetes:** strength on 2 or 3 days a week with walks between, building to heavier sets. With diabetic eye disease, lighter sets and no head-down moves.
 - **Back pain:** back-friendly core work.
 - **High blood pressure:** no head-down positions.
 - **Balance problems:** supported balance work.
@@ -141,7 +147,7 @@ Your conditions stay on your phone and are never sent to Claude.
 
 ## Moves
 
-282 exercises in Plan's Moves section, each with the figure, the cues that matter and the muscles it works.
+296 exercises in Plan's Moves section, each with the figure, the cues that matter and the muscles it works.
 
 - **Ladders from easy to hard,** so there's always a next step. With no equipment, a chair, a wall and a towel give you rows, overhead presses, calf raises and hamstring curls.
 - **Warm-ups match the day's muscles,** and the mobility goal adds a cool-down.

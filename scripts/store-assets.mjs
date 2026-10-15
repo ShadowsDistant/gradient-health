@@ -70,7 +70,7 @@ const SHOTS = [
     name: '02-coach3d',
     glows: [['mint', 88, 14, 60, 36, 0.48], ['blue', 4, 60, 56, 36, 0.4], ['green', 80, 98, 60, 30, 0.34]],
     title: 'A <span class="hue">3D coach</span> for every move',
-    sub: '282 moves, each at the right tempo, with the working muscles lit up.',
+    sub: '296 moves, each at the right tempo, with the working muscles lit up.',
     body: phone('workout-dark.png', 'width:640px;left:40px;top:540px', 'rgb(52 199 174 / .55)')
       + '<div style="position:absolute;left:520px;top:1560px;width:560px;height:150px;border-radius:50%;background:radial-gradient(closest-side, rgb(52 199 174 / .45), transparent)"></div>'
       + `<img src="${r3('hero-curl_std.webp')}" alt="" style="position:absolute;width:1180px;left:250px;top:560px;filter:drop-shadow(0 30px 40px rgb(0 0 0 / .5))">`,
