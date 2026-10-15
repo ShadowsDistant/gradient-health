@@ -491,6 +491,33 @@ l = await felt(() => tap('#screen [data-act="exportData"]'));
 check('Copy my data: copy, once', l.bridge.join() === 'copy', l);
 await noToasts();
 await closeAll();
+// Taps that played nothing before: a dropdown opened or folded from its summary (Health's
+// insights), the feel summary's Change on Today and a chart's Numbers (Progress), each a tap.
+const showIn = (sel) => page.evaluate((s) => { const e = document.querySelector(s); if (e) e.scrollIntoView({ block: 'center' }); return !!e; }, sel);
+await page.evaluate(() => window.GH.ui.go('health'));
+await wait(1000);
+if (await showIn('#screen details.hl-ins')) {
+  await wait(500);
+  l = await felt(() => tap('#screen details.hl-ins > summary'));
+  check('a dropdown opened from its summary (Health\'s insights): tap', l.bridge.join() === 'tap' && await page.evaluate(() => document.querySelector('#screen details.hl-ins').open), l);
+  l = await felt(() => tap('#screen details.hl-ins[open] > summary'));
+  check('and folded again: tap', l.bridge.join() === 'tap', l);
+} else check('Health has an insight to open', false);
+await page.evaluate(() => window.GH.ui.go('today'));
+await wait(1000);
+if (await showIn('#screen [data-act="feelEdit"]')) {
+  await wait(500);
+  l = await felt(() => tap('#screen [data-act="feelEdit"]'));
+  check('the feel summary\'s Change on Today: tap', l.bridge.join() === 'tap', l);
+}
+await page.evaluate(() => window.GH.ui.go('progress'));
+await wait(1000);
+if (await showIn('#screen [data-act="chartTable"]')) {
+  await wait(500);
+  l = await felt(() => tap('#screen [data-act="chartTable"]'));
+  check('a chart\'s Numbers: tap', l.bridge.join() === 'tap', l);
+}
+await closeAll();
 await page.evaluate(() => window.GH.ui.go('today'));
 await wait(700);
 await testButtons(true);

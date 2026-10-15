@@ -585,6 +585,135 @@ check('and Continue moves on to the next set', !moved.rir && moved.done, JSON.st
 await page.evaluate(() => { const U = window.GH.ui; U.act.plKeep(); window.GH.brain.cancelWorkout(U.S); window.GH.store.save(U.S); U.render(); });
 await settle(700);
 
+section('The rest running out holds the screen still');
+// When a rest runs out (or is skipped) with the question still open, nothing on the screen moves: the
+// ring stays (empty, 0:00) with "Rest over" in its buttons' row, the question and Up next stay put,
+// and Continue comes into the place held for it. (Before, the ring and buttons gave way to a line of
+// text and everything under them jumped up 100 to 300 px, a layout shift of 0.14.)
+await page.evaluate(() => window.GH.ui.act.startWorkout());
+await page.waitForSelector('.player:not([hidden]) .pl-name');
+await settle(600);
+const where = () => page.evaluate(() => {
+  const p = document.querySelector('.player');
+  const top = (s) => { const e = p.querySelector(s); return e ? Math.round(e.getBoundingClientRect().top * 2) / 2 : null; };
+  const acts = p.querySelector('.pl-actions');
+  return {
+    ring: top('.pl-timer .rf-ring'), row: top('.pl-rest-btns'), rir: top('.pl-rir'), next: top('.pl-next-row'),
+    actsTop: Math.round(acts.getBoundingClientRect().top * 2) / 2,
+    over: !!p.querySelector('.pl-timer.is-over') && /Rest over/.test(p.querySelector('.pl-rest-btns').textContent),
+    count: (p.querySelector('.pl-count') || {}).textContent, cont: !!p.querySelector('.pl-actions [data-act="plContinue"]'),
+    held: !!p.querySelector('.pl-actions .pl-actions-hold'), skip: !!p.querySelector('[data-act="plSkipRest"]'),
+  };
+});
+const restOn = async () => {
+  // A set that asks, with a rest after it: Done, from a click, answers inside it (the rest is drawn
+  // before the click returns, so the first frame after it has it) with the set's own haptic.
+  return page.evaluate(() => {
+    const U = window.GH.ui, a = U.S.active;
+    a.idx = a.steps.findIndex((st, i) => i > a.idx && st.kind === 'set' && !st.item.timed && st.askRir && st.rest);
+    U.openPlayer();
+    window.__haptics.length = 0;
+    document.querySelector('#player [data-act="plDone"]').click();
+    return { rest: !!document.querySelector('#player .pl-rest .pl-timer'), haptics: window.__haptics.slice() };
+  });
+};
+let r0 = await restOn();
+check('Done set answers inside the tap: the rest is on screen by the next frame, with setDone', r0.rest && r0.haptics.includes('setDone'), JSON.stringify(r0));
+await settle(600);
+const resting = await where();
+check('resting with the question open: ring, buttons, question and Up next, Continue\'s place held', resting.ring != null && resting.skip && resting.rir != null && resting.next != null && resting.held && !resting.cont, JSON.stringify(resting));
+// Layout shifts from now until read (the page's clock is a test clock: no timers of its own here).
+const watchShifts = () => page.evaluate(() => { const w = window.__shiftW = { all: [] }; w.o = new PerformanceObserver((l) => { for (const e of l.getEntries()) w.all.push(e.value); }); w.o.observe({ type: 'layout-shift' }); });
+const readShifts = () => page.evaluate(() => { const w = window.__shiftW; w.o.takeRecords().forEach((e) => w.all.push(e.value)); w.o.disconnect(); return w.all.reduce((a, b) => a + b, 0); });
+await watchShifts();
+await page.evaluate(() => window.GH.ui.act.plSkipRest());
+await settle(700);
+const shiftSkip = await readShifts();
+const skipped = await where();
+const same = (a, b) => ['ring', 'row', 'rir', 'next', 'actsTop'].every((k) => a[k] === b[k]);
+check('Skip rest with the question open: the ring stays, empty at 0:00, "Rest over" in its row', skipped.over && skipped.count === '0:00' && skipped.ring === resting.ring, JSON.stringify(skipped));
+check('and nothing moves: the question, Up next and the action bar are where they were', same(resting, skipped), JSON.stringify({ resting, skipped }));
+check('Continue comes into the place held for it', skipped.cont && !skipped.held);
+check('no layout shift (it was 0.14)', shiftSkip < 0.01, shiftSkip);
+await page.evaluate(() => window.GH.ui.act.plContinue());
+await settle(600);
+// The same when the timer runs out by itself.
+r0 = await restOn();
+await settle(600);
+const resting2 = await where();
+const restSecs = await page.evaluate(() => { const s = window.GH.ui.S.active; return s.steps[s.idx - 1].rest; });
+await watchShifts();
+await page.clock.runFor((restSecs + 1) * 1000);
+await settle(700);
+const shiftTimer = await readShifts();
+const ranOut = await where();
+check('the rest running out by itself: the same, nothing moves and Continue comes', ranOut.over && ranOut.cont && same(resting2, ranOut) && shiftTimer < 0.01, JSON.stringify({ resting2, ranOut, shiftTimer }));
+// Up next keeps a number with its unit ("10 reps", "25 lb"), however its line wraps.
+const nextLine = await page.evaluate(() => (document.querySelector('#player .pl-next .t-footnote') || {}).textContent || '');
+check('Up next keeps each number with its unit', /\d (reps?|lb|kg|s)\b/.test(nextLine) && !/\d (reps?|lb|kg)\b/.test(nextLine), JSON.stringify(nextLine));
+await page.evaluate(() => window.GH.ui.act.plContinue());
+await settle(600);
+// The swap sheet: a tap on a move swaps at once, so its rows promise no other page (no chevron).
+await page.evaluate(() => { const U = window.GH.ui, a = U.S.active; a.idx = a.steps.findIndex((st, i) => i >= a.idx && st.kind === 'set' && !st.leadOnly); U.openPlayer(); U.act.plSwap(); });
+await settle(900);
+const swapRows = await page.evaluate(() => { const d = [...document.querySelectorAll('dialog[open]')].pop(); return d ? { rows: d.querySelectorAll('[data-act="plSwapTo"]').length, chevrons: d.querySelectorAll('[data-act="plSwapTo"] .rf-list-chevron').length } : null; });
+check('the swap sheet\'s moves carry no chevron (a tap swaps at once)', swapRows && swapRows.rows > 0 && swapRows.chevrons === 0, JSON.stringify(swapRows));
+await page.evaluate(() => { const U = window.GH.ui; U.closeSheets(); U.act.plKeep(); window.GH.brain.cancelWorkout(U.S); window.GH.store.save(U.S); U.render(); });
+await settle(700);
+
+section('Today: titles, links and the floating row');
+await page.evaluate(() => {
+  const GH = window.GH, U = GH.ui, S = U.S, d = U.today();
+  delete S.seen.tip_today;
+  GH.health.setFeel(S, d, { energy: 'good', sore: 'none' });
+  GH.health.setSleepChip(S, d, '7-8');
+  U.go('today');
+  U.render();
+  document.getElementById('screen').scrollTop = 0;
+});
+await settle(900);
+const today = await page.evaluate(() => {
+  const s = document.querySelector('#screen'), card = s.querySelector('.card.session');
+  const ink = (el) => { const r = document.createRange(); r.selectNodeContents(el); return r.getBoundingClientRect(); };
+  const inset = (el, c) => { const cr = c.getBoundingClientRect(); return Math.round((cr.right - ink(el).right) * 10) / 10; };
+  const tip = s.querySelector('.tip'), got = tip && tip.querySelector('.rf-btn');
+  const feel = s.querySelector('.feel-done'), change = feel && feel.querySelector('[data-act="feelEdit"]');
+  const head = card && card.querySelector('.session-head'), title = card && card.querySelector('h2');
+  return {
+    gap: head && title ? Math.round(title.getBoundingClientRect().top - head.getBoundingClientRect().bottom) : null,
+    got: got ? inset(got, tip) : null, change: change ? inset(change, feel) : null,
+    pad: tip ? parseFloat(getComputedStyle(tip).paddingRight) : null,
+  };
+});
+check('the workout card\'s title sits in the card\'s gap under its eyebrow (it kept 18 px heading margins)', today.gap != null && today.gap <= 12, JSON.stringify(today));
+check('the tip\'s Got it ends on the card\'s inset', today.got != null && Math.abs(today.got - today.pad) <= 1.5, JSON.stringify(today));
+check('the feel summary\'s Change sits at the card\'s right edge, on its inset', today.change != null && Math.abs(today.change - today.pad) <= 1.5, JSON.stringify(today));
+// A tap on a move's second line (its sets and weight) opens that move, like a tap on its name.
+const rowHit = await page.evaluate(() => {
+  const m = document.querySelector('#screen .ex-list .ex button.ex-name');
+  const meta = m && m.parentElement.querySelector('.ex-meta');
+  if (!meta) return null;
+  meta.scrollIntoView({ block: 'center' });
+  const r = meta.getBoundingClientRect();
+  const h = document.elementFromPoint(r.left + 8, r.top + r.height / 2);
+  return { hit: !!(h && h.closest('[data-act="moveInfo"]')), same: h && h.closest('[data-act="moveInfo"]') === m };
+});
+check('a move\'s row opens it from its second line too (its name alone was a 24 px target)', rowHit && rowHit.hit && rowHit.same, JSON.stringify(rowHit));
+// The floating row measures its buttons as laid out: Short on time still swollen from the finger
+// that pressed it (Refract's glass grows while held) kept its words; it went to a bare icon.
+const swollen = await page.evaluate(async () => {
+  const fl = document.getElementById('float');
+  const side = fl.querySelector('[data-act="toggleShort"]');
+  side.style.scale = '1.08';
+  window.dispatchEvent(new Event('resize'));
+  const out = { tight: fl.classList.contains('is-tight') };
+  side.style.scale = '';
+  return out;
+});
+check('Short on time, swollen from a press, keeps its words', swollen && !swollen.tight, JSON.stringify(swollen));
+await page.evaluate(() => { const S = window.GH.ui.S; S.seen.tip_today = true; window.GH.ui.render(); });
+await settle(600);
+
 section('Console');
 check('no console errors', errors.length === 0, errors.join(' | '));
 await browser.close();
