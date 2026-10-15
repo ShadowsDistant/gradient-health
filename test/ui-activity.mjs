@@ -582,16 +582,17 @@ section('Options, a menu out of its button');
 }
 
 section('Deleting, with Undo');
+// At once, no question first: Undo in its toast brings it back.
 const n0 = (await S()).n;
-await page.click('#screen [data-act="actDelete"]');
-await settle(600);
 await watchFolds();
-await page.evaluate(() => { window.__haptics.length = 0; const d = document.querySelector('dialog.rf-dialog[open]'); const b = [...d.querySelectorAll('button')].find((x) => /Delete/.test(x.textContent)); b.click(); });
+await page.evaluate(() => { window.__haptics.length = 0; });
+await page.click('#screen [data-act="actDelete"]');
 await page.waitForFunction(() => window.GH.ui.route.view !== 'activity', null, { timeout: 5000 }).catch(() => {});
 await settle(900);
-check('Delete takes it away and goes back', (await S()).n === n0 - 1 && (await page.evaluate(() => window.GH.ui.route.view !== 'activity')));
-const del = await page.evaluate(() => ({ folds: window.__folds.slice(), haptics: window.__haptics.slice() }));
-check('its summary folds away first, then the discard\'s own feel after the question\'s', del.folds.length === 1 && del.folds[0].moving > 0 && del.haptics.indexOf('heavy') >= 0 && del.haptics.indexOf('actDiscard') > del.haptics.indexOf('heavy'), del);
+const del = await page.evaluate(() => ({ asked: !!document.querySelector('dialog.rf-dialog[open]'), folds: window.__folds.slice(), haptics: window.__haptics.slice(), toast: [...document.querySelectorAll('.rf-toast')].map((t) => t.textContent.replace(/\s+/g, ' ')).join(' | ') }));
+check('Delete takes it away at once, with no question first, and goes back', !del.asked && (await S()).n === n0 - 1 && (await page.evaluate(() => window.GH.ui.route.view !== 'activity')), del);
+check('its summary folds away first, the discard\'s feel on the tap, once', del.folds.length === 1 && del.folds[0].moving > 0 && del.haptics.filter((k) => k === 'actDiscard').length === 1 && !del.haptics.includes('heavy'), del);
+check('the toast says so, with Undo', /deleted/.test(del.toast) && /Undo/.test(del.toast), del);
 await page.evaluate(() => { const t = [...document.querySelectorAll('.rf-toast')].pop(); const b = t && [...t.querySelectorAll('button')].find((x) => /Undo/.test(x.textContent)); if (b) b.click(); });
 await settle(700);
 check('Undo puts it back', (await S()).n === n0);

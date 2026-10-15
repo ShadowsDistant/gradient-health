@@ -470,7 +470,8 @@
     const top = U.topSheet(); if (top) top.close('ok');
     const noun = A().typeOf(a.type).noun;
     const saved = a.saved && a.saved.ok;
-    if (!(await U.confirm(`Delete this ${noun}?`, saved ? 'It stays in Health Connect unless you delete it there.' : 'Its route and numbers go, and your records are worked out again.', 'Delete', 'critical', 'trash'))) return;
+    // At once, with Undo in its toast (no question first), and the discard's feel on the tap.
+    U.haptic('actDiscard');
     const gone = A().remove(S, a.id);
     // A light-day walk this activity ticked goes with it.
     const light = S.log.find((l) => l.type === 'light' && l.day === a.day && l.walk && l.walkSrc === 'activity');
@@ -478,17 +479,15 @@
     const unticked = light && !others;
     if (unticked) { light.walk = false; delete light.walkSrc; }
     U.save(true);
-    // Its summary folds away where it is, then the page goes back, with the discard's own feel as it
-    // goes (the question's Delete had its own).
+    // Its summary folds away where it is, then the page goes back.
     const screen = U.route.view === 'activity' && U.route.arg === a.id ? document.getElementById('screen') : null;
     if (screen) {
       const map = screen.querySelector('.am-streets');
       await U.actFoldAway(screen.children);
-      U.haptic('actDiscard');
       if (map) unmount(map);
       if (U.S === S && U.route.view === 'activity' && U.route.arg === a.id) U.back();
-    } else { U.haptic('actDiscard'); U.render(); }
-    U.toast(`${U.cap(noun)} deleted`, 'neutral', undefined, {
+    } else U.render();
+    U.toast(`${U.cap(noun)} deleted`, 'neutral', saved ? 'It stays in Health Connect unless you delete it there.' : undefined, {
       label: 'Undo',
       onClick: () => {
         if (U.S !== S || !A().restore(S, gone)) return;
