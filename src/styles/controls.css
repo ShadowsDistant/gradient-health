@@ -102,6 +102,20 @@
    for a pan (which would cancel the drag). */
 .rf-tabbar-bar { touch-action: none; }
 
+/* ---------------------------------------------------------------- touch targets */
+/* Every tap target answers a finger 44 px across, as Refract's own page dots and a chip's remove
+   button do: a control drawn smaller (a small or plain button, a chip, a segment, a stepper's
+   buttons, a text button) reaches past its box with an empty ::before centred on it. Nothing is
+   drawn, and a control 44 px or more across keeps exactly its own box. Glass keeps its ::before (its
+   rim), so a small glass button is drawn 44 px high instead (a sheet's Save, the chat's Chats). */
+:is(.rf-btn:not(.rf-glass), .rf-chip, .rf-segment, .rf-stepper-btn, .rf-search-clear, .around-line, .pw-info, .bdg-note, .bdg-strip-head, .sci-key, .pl-load)::before {
+  content: '';
+  position: absolute;
+  inset: min(0px, calc(50% - 22px));
+}
+:is(.bdg-note, .bdg-strip-head, .sci-key, .pl-load) { position: relative; }
+.rf-sheet-header .rf-btn.rf-glass { min-block-size: 44px; min-inline-size: 44px; }
+
 /* ---------------------------------------------------------------- fallbacks */
 /* Increased contrast and reduced transparency: Refract's own fallbacks make the knob, the thumb and
    the tab selection solid; the chip choice's indicator follows. Reduced motion: a short ease. */

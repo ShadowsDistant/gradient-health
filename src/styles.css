@@ -236,8 +236,13 @@ button:not([class*="rf-"]) { font: inherit; }
 /* Press feedback for the app's own tappable surfaces (Refract handles its controls). */
 button.stat, .insight-line, .pl-fig-card, .tap-card { transition: scale var(--duration-spring-snappy) var(--spring-snappy), background-color var(--duration-fast); }
 button.stat:active, .insight-line:active, .pl-fig-card:active, .tap-card:active { scale: .975; transition-duration: var(--duration-instant); }
-.ex-name { transition: opacity var(--duration-fast); }
-.ex-name:active { opacity: .55; transition-duration: 0ms; }
+/* A move's row on Today opens its sheet from anywhere on it (its name alone was a 24 px target), and
+   the whole row dims while it's pressed. */
+.ex-name, .ex-tag, .ex-meta { transition: opacity var(--duration-fast); }
+.ex-name:active, .ex:has(> button.ex-name:active) > :is(.ex-tag, .ex-meta) { opacity: .55; transition-duration: 0ms; }
+.ex:has(> button.ex-name) { position: relative; }
+.ex > button.ex-name { position: static; } /* (so its ::before is laid out on the row, not on it) */
+button.ex-name::before { content: ''; position: absolute; inset: 0; }
 
 /* Sheets (and the page receding behind them) are styled in styles/sheet.css. Toasts come up from
    the bottom (U.toast, src/ui/core.js), above the tab bar, the floating buttons, the player's or
@@ -325,12 +330,17 @@ button.stat:active, .insight-line:active, .pl-fig-card:active, .tap-card:active 
 .feel-row { display: grid; gap: var(--space-1); }
 .feel-flare { margin-top: var(--space-1); }
 .feel-done.has-flare { display: grid; gap: var(--space-2); }
-.feel-done-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+/* (The row spans the card, so Change sits at its right edge, its words on the card's inset.) */
+.feel-done-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex: 1; min-width: 0; }
+.feel-done-row > .rf-btn[data-variant="plain"] { margin-inline-end: calc(-1 * var(--space-3)); }
 /* "Planned around ..." on the workout card: taps through to what's built around you. */
 .around-line { appearance: none; border: 0; background: none; padding: 0; margin: 0; display: flex; align-items: center; gap: 6px; color: var(--label-secondary); font: inherit; text-align: start; cursor: pointer; min-height: 32px; }
 .around-line > svg:first-child { color: var(--hue-rose, var(--accent)); flex: none; }
 .around-line > span { flex: 1; min-width: 0; }
 .around-line > svg:last-child { flex: none; opacity: .6; }
+/* Text that's a button dims while it's pressed (as a move's row does). */
+.around-line, .sci-key, .rf-search-clear { transition: opacity var(--duration-fast); }
+:is(.around-line, .sci-key, .rf-search-clear):active { opacity: .55; transition-duration: 0ms; }
 .session-note { margin: 0; color: var(--label-secondary); }
 .around-list { margin: 0 0 var(--space-2); }
 .feel-row .rf-segmented { width: 100%; }
