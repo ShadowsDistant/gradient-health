@@ -437,7 +437,8 @@ await page.click('dialog[open] [data-act="cpDelete"]');
 await settle(900);
 // At once, with Undo (no question first: the toast's Undo is the way back).
 check('deleting a plan: at once, no question, with Undo', await S(() => window.GH.customPlan.list(window.GH.ui.S).length) === 2 && /Plan deleted/.test(await toasts()) && await S(() => !document.querySelector('dialog.rf-dialog[open]')), await toasts());
-await page.evaluate(() => { const b = [...document.querySelectorAll('.rf-toast button')].find((x) => /Undo/.test(x.textContent)); if (b) b.click(); });
+// (Its own toast's Undo: the one from going back to the coach's plan, just before, can still be up.)
+await page.evaluate(() => { const t = [...document.querySelectorAll('.rf-toast')].find((x) => /Plan deleted/.test(x.textContent)); const b = t && [...t.querySelectorAll('button')].find((x) => /Undo/.test(x.textContent)); if (b) b.click(); });
 await settle(900);
 check('and Undo brings it back', await S(() => window.GH.customPlan.list(window.GH.ui.S).length) === 3);
 await page.click('#screen .cp-plan:nth-child(1) [data-act="cpOpen"]');
