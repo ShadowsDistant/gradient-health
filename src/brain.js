@@ -625,13 +625,22 @@
   // The profile as plans read it: without the preferences only the screens read (the figure, the
   // theme, sounds and haptics, the outdoor activity's, notifications), so changing one keeps every
   // plan worked out (and the plans kept across launches, see src/optimizer.js). Rest, supersets and
-  // the hour a day rolls over do change plans, and so does anything new.
+  // the hour a day rolls over do change plans, and so does anything new. Nor what only the screens,
+  // food and the coach read: the name, height and sex, the protein and calorie settings and the
+  // weight goal (src/food.js), the sleep answers. (The first sync that brought a height in had every
+  // plan worked out again, a moment after launch. Body weight stays: a gym move's first load reads it.)
   const SCREEN_PREFS = new Set(['figure', 'figSkin', 'figShirt', 'theme', 'density', 'sound', 'vibrate', 'haptics', 'hapticStrength', 'reducedMotion', 'actType', 'actStreets', 'actMaps', 'actAuto', 'actVoice', 'notify']);
+  const SCREEN_FIELDS = new Set(['name', 'heightCm', 'sex', 'food', 'protein', 'weightGoal', 'sleepTypical', 'sleepIrregular']);
   function planProfile(p) {
-    if (!p || !p.prefs || typeof p.prefs !== 'object') return p;
-    const prefs = {};
-    for (const k of Object.keys(p.prefs)) if (!SCREEN_PREFS.has(k)) prefs[k] = p.prefs[k];
-    return Object.assign({}, p, { prefs });
+    if (!p || typeof p !== 'object') return p;
+    const out = {};
+    for (const k of Object.keys(p)) if (!SCREEN_FIELDS.has(k)) out[k] = p[k];
+    if (p.prefs && typeof p.prefs === 'object') {
+      const prefs = {};
+      for (const k of Object.keys(p.prefs)) if (!SCREEN_PREFS.has(k)) prefs[k] = p.prefs[k];
+      out.prefs = prefs;
+    }
+    return out;
   }
   // What a single day's session also reads: the health days readiness looks at, how you said you
   // feel (a flare day too) and the sleep chip.

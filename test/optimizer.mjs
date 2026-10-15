@@ -494,6 +494,16 @@ section('Caches');
   S.pain.shoulder = D0 + 10;
   const c3 = B.calendar(S, D0);
   check('so does a joint on a break', c3 !== c1);
+  // What only the screens, food and the coach read keeps every plan worked out: the first sync that
+  // brought a height in planned every week again, a moment after launch. Body weight doesn't (a gym
+  // move's first load reads it).
+  const w4 = O.weekPlan(S, D0);
+  Object.assign(S.profile, { heightCm: 181, name: 'Sam', sex: 'female', weightGoal: 'lose', sleepTypical: '7-8', sleepIrregular: true });
+  S.profile.protein = Object.assign({}, S.profile.protein, { quickG: 30 });
+  S.profile.food = Object.assign({}, S.profile.food || {}, { mode: 'full', pace: 0.25 });
+  check('a height, a name, food and protein settings or the sleep answers keep the week\'s plan', O.weekPlan(S, D0) === w4 && B.calendar(S, D0) === c3);
+  S.profile.weightKg = (S.profile.weightKg || 70) + 5;
+  check('a new body weight plans it again', O.weekPlan(S, D0) !== w4);
 }
 
 /* ------------------------------------------------------------------ kept across launches */
