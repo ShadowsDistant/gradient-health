@@ -125,6 +125,8 @@ button.hl-pill:active { scale: .97; transition-duration: var(--duration-instant)
 .hl-ins-body p { margin: 0; }
 .hl-ins-body .t-callout { line-height: 1.4; }
 .hl-ins-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+/* A plain button first in the row (Hide for 30 days alone) starts its words on the text's edge. */
+.hl-ins-acts > .rf-btn[data-variant="plain"]:first-child { margin-inline-start: calc(-1 * var(--space-3)); }
 .card.hl-note { padding-block: 14px; }
 
 /* ---------------------------------------------------------------- trends */
