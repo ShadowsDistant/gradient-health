@@ -494,9 +494,13 @@
   // Type 2 diabetes: strength on 2 or 3 days a week, not back to back where it can be helped
   // (Kanaley et al. 2022). With more days set, the 3 of them most spread out (Monday, Wednesday and
   // Friday when no days are picked); the others are light days, a walk and a short mobility flow.
-  // wk: { days, weekdays } as the schedule has them; returns the same shape.
+  // Sessions under 15 minutes keep every day set: a few moves a day, the muscles taking turns, is
+  // more like the regular activity the advice also asks for, and 3 of them hold too little.
+  // wk: { days, weekdays, minutes } as the schedule has them (minutes: the profile's if not given);
+  // returns { days, weekdays }.
+  const shortSessions = (p, wk) => Number(wk && wk.minutes != null ? wk.minutes : p && p.minutes) < 15;
   function strengthDays(p, wk) {
-    if (!p || p.legacyRules || !rulesOf(p).c.has('diabetes')) return wk;
+    if (!p || p.legacyRules || !rulesOf(p).c.has('diabetes') || shortSessions(p, wk)) return wk;
     const D = Math.max(2, Math.min(6, Math.round(Number(wk.days)) || 2));
     if (D <= 3) return wk;
     if (!(Array.isArray(wk.weekdays) && wk.weekdays.length >= 2)) return { days: 3, weekdays: null };
@@ -728,7 +732,8 @@
       if (id === 'oa' && r.oa.size) text = `${text} Joints: ${joinList(OA_JOINTS.filter(([j]) => r.oa.has(j)).map(([, t]) => t.toLowerCase()))}.`;
       // (Diabetic eye disease keeps sets light, so osteoporosis's heavier sets don't apply.)
       if (id === 'osteo') text = `${r.retino ? 'Back extensions for posture, balance work, and no bending or twisting your spine under load.' : text}${impactOn(p) ? ' A short impact block on most days: heel drops, stamps or jogging on the spot.' : r.fragile ? ' Impact stays at brisk walking.' : ''}`;
-      if (id === 'diabetes') text = `${text}${r.retino ? ' Sets stay at 10 to 15 reps, with no heavy lifting, jumping or head-down moves.' : ' After the first easier weeks, your main moves build to heavier sets of about 8 to 10 reps.'}`;
+      // (Sessions under 15 minutes keep every day set, strengthDays.)
+      if (id === 'diabetes') text = `${shortSessions(p) && Number(p.days) > 3 ? 'Short strength sessions on each day you set, the muscles taking turns. Breathe out on every effort.' : text}${r.retino ? ' Sets stay at 10 to 15 reps, with no heavy lifting, jumping or head-down moves.' : ' After the first easier weeks, your main moves build to heavier sets of about 8 to 10 reps.'}`;
       out.push({ kind: 'condition', id, text: `${c.name}: ${text}` });
     }
     if (p.floorOk === false && !r.seated) out.push({ kind: 'floor', text: 'Nothing on the floor: standing and seated versions instead.' });

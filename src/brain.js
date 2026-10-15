@@ -950,7 +950,7 @@
     const A = GH.access;
     const old = A && A.oldRules ? A.oldRules(S, ws) : false;
     const mark = old ? { legacyRules: true } : null;
-    const wk = !old && A && A.strengthDays ? A.strengthDays(p, { days: st.days, weekdays: st.weekdays }) : { days: st.days, weekdays: st.weekdays };
+    const wk = !old && A && A.strengthDays ? A.strengthDays(p, { days: st.days, weekdays: st.weekdays, minutes: st.minutes }) : { days: st.days, weekdays: st.weekdays };
     return { set: st, p: Object.assign({}, p, { days: wk.days, weekdays: wk.weekdays, minutes: st.minutes, complexity: S.complexity || 0 }, mark), prog: programFor(Object.assign({}, p, { days: wk.days }, mark)) };
   }
   function templateOf(S, ws, set) {

@@ -1548,7 +1548,7 @@
     const p0 = draftProfile();
     if (p0.workouts === false) return summaryNoWorkouts(p0);
     // The strength days the plan keeps (type 2 diabetes keeps 3 of them, spread out).
-    const p = A() && A().strengthDays ? Object.assign({}, p0, A().strengthDays(p0, { days: p0.days, weekdays: p0.weekdays })) : p0;
+    const p = A() && A().strengthDays ? Object.assign({}, p0, A().strengthDays(p0, { days: p0.days, weekdays: p0.weekdays, minutes: p0.minutes })) : p0;
     const prog = B().programFor(p);
     const tpl = B().templateFor(p, prog);
     const byFreq = {};

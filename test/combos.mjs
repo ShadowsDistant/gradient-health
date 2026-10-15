@@ -357,8 +357,9 @@ function checkWeek(S, ws, label, o) {
   const live = week.sessions.filter((x) => !x.dropped && x.day != null);
   const days = live.map((x) => x.day);
   if (new Set(days).size !== days.length) bad('never two workouts on one day', `${label}: ${days}`);
-  // Type 2 diabetes: strength on 3 days a week at most (src/access.js strengthDays).
-  if ((S.profile.conditions || []).includes('diabetes') && AC.newRules(S, ws) && live.length > 3) bad('type 2 diabetes: strength on 3 days a week at most', `${label}: ${days.map((d) => B.dayStr(d))}`);
+  // Type 2 diabetes: strength on 3 days a week at most, unless sessions are under 15 minutes
+  // (src/access.js strengthDays).
+  if ((S.profile.conditions || []).includes('diabetes') && AC.newRules(S, ws) && live.length > 3 && !(B.settingsAt(S, Math.max(ws, S.profile.startDay || ws)).minutes < 15)) bad('type 2 diabetes: strength on 3 days a week at most (sessions of 15 minutes or more)', `${label}: ${days.map((d) => B.dayStr(d))}`);
   const built = [];
   for (const x of live) {
     let s;
@@ -397,9 +398,11 @@ function checkWeek(S, ws, label, o) {
   // group's own time a set (a squat takes longer than a curl), with a set to spare (how the sets
   // pack into each session's time is only estimated here). Simpler sessions hold a set number of
   // exercises, one a group (balance and floor practice count among them), so a week of them may
-  // not have room for every group either.
+  // not have room for every group either. A session turned into a light day (nothing in it suits
+  // the body that day, brain.js lightInstead) has no time for sets, and isn't a session left short.
   const cond = prog.finisherPerWeek >= 7;
-  const setTimes = built.map((s) => budgetOf(S, s, {}) - B.estimate(S, Object.assign({}, s, {
+  const work = built.filter((s) => !s.light);
+  const setTimes = work.map((s) => budgetOf(S, s, {}) - B.estimate(S, Object.assign({}, s, {
     items: s.items.filter((it) => it.skill), finisher: cond ? s.finisher : null,
     mobility: s.keepMobility || prog.mobilityPlus ? (s.mobility || []).filter((m) => !m.cardio) : [],
   })));
@@ -408,7 +411,7 @@ function checkWeek(S, ws, label, o) {
   const setsMin = built.reduce((a, s) => a + B.estimate(S, s) - B.estimate(S, Object.assign({}, s, { items: s.items.filter((it) => it.skill) })), 0);
   const perSet = setsIn ? setsMin / setsIn : 2;
   // Full: every session at 85% of its time or more, or with less time left than a set takes.
-  const full = built.every((s) => { const est = B.estimate(S, s), bud = budgetOf(S, s, {}); return est >= 0.85 * bud || bud - est < perSet; });
+  const full = work.every((s) => { const est = B.estimate(S, s), bud = budgetOf(S, s, {}); return est >= 0.85 * bud || bud - est < perSet; });
   const wholeSets = setTimes.reduce((a, t) => a + Math.max(0, Math.floor(t / perSet + 1e-9)), 0);
   const gTime = {}, gSets = {};
   for (const s of built) {
@@ -664,7 +667,7 @@ const NAMED = [
   'merged exercises keep at most 5 sets', 'priority order', 'no supersets when they\'re off', 'supersets pair two exercises that don\'t clash', 'superset partners side by side', 'a superset\'s 1 comes before its 2',
   'left vs right tests only when allowed', 'a strength goal works home compounds in 5 to 10 reps', 'the same answers build the same session', 'a deload comes after four training weeks', 'every week has a plan',
   'a health condition\'s rep range holds', 'impact for bones only with osteoporosis and no break', 'an impact block holds 50 landings or more', 'osteoporosis with no break: an impact block in every session',
-  'type 2 diabetes: strength on 3 days a week at most',
+  'type 2 diabetes: strength on 3 days a week at most (sessions of 15 minutes or more)',
 ];
 const allowedNames = Object.keys(viol).filter((k) => k.startsWith('only allowed moves'));
 for (const name of NAMED.concat(allowedNames.length ? allowedNames : ['only allowed moves'])) {
