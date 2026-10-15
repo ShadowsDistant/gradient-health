@@ -1359,6 +1359,7 @@
     if (G.requestAnimationFrame) G.requestAnimationFrame(post);
     setTimeout(run, 100);
   }
+  U.rightAfterFrame = rightAfterFrame;
   // A stepper's or slider's value at (or past) its end: a firmer edge instead of a tick.
   const atEnd = (t) => {
     const v = parseFloat(t.value), lo = parseFloat(t.min), hi = parseFloat(t.max);
@@ -1376,11 +1377,21 @@
    * A segment's, switch's or chip choice's change runs its data-on handler after the next frame,
    * so the thumb or knob is already on its way (and the haptic played) before a re-render can hold
    * up the page. data-sync on the control (or its data-on element) runs it at once instead. */
+  // A tap lets the player's sounds start (a browser plays a page's audio only after one), once the
+  // tap has been answered: making the audio context, at the first tap after launch, held that tap's
+  // frame back 60 to 220 ms at 4x CPU. A tap's activation outlasts that by seconds, and the app's
+  // WebView doesn't ask for one.
+  let audioWait = 0;
+  function unlockSoon() {
+    if (audioWait || !P()) return;
+    const run = () => { audioWait = 0; safe(() => P().unlockAudio()); };
+    audioWait = G.requestIdleCallback ? G.requestIdleCallback(run, { timeout: 1000 }) : setTimeout(run, 50);
+  }
   function wire() {
     doc.addEventListener('click', (e) => {
       const el = e.target.closest && e.target.closest('[data-act]');
       if (!el || el.disabled || el.getAttribute('aria-disabled') === 'true') return;
-      if (P()) P().unlockAudio();
+      unlockSoon();
       if (el.hasAttribute('data-haptic')) U.haptic(el.getAttribute('data-haptic'));
       dispatch(U.act, el, e);
     });
