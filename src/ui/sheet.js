@@ -156,8 +156,13 @@
     app.removeAttribute('data-sheeted');
   }
   // The status bar's height, which the page clears as it recedes (read as the first sheet opens).
+  // The app's shell writes it on the root's own style, where reading it costs nothing; a computed
+  // read made the page's style catch up right before showModal restyles all of it anyway. (In a
+  // browser it's env(), and only the computed style has it.)
   function pageOpen() {
-    if (openSheets.length === 1) page.sat = parseFloat(G.getComputedStyle(doc.documentElement).getPropertyValue('--sat')) || 0;
+    if (openSheets.length !== 1) return;
+    const root = doc.documentElement;
+    page.sat = parseFloat(root.style.getPropertyValue('--sat') || G.getComputedStyle(root).getPropertyValue('--sat')) || 0;
   }
   // The page's glass at the bottom (the tab bar and the floating buttons, with their blur and lens)
   // is hidden while a sheet at rest covers it: the scrim changes every frame a sheet moves, and the
@@ -330,10 +335,6 @@
     // itself (not from a tap) Chrome would draw its focus ring round them.
     doc.body.appendChild(el);
     if (U.enhance) U.enhance(el);
-    // Its controls are placed now, in the one layout the sheet reads anyway to size itself, rather
-    // than in the next frame's read pass (core.js): placed while it slid open, a sheet with a view
-    // switch over a 3D figure drew no frames for most of a second.
-    if (U.readNow) U.readNow();
     const s = {
       el, size, scrim: el.querySelector('.gh-sheet-scrim'), panel: el.querySelector('.gh-sheet-panel'),
       grab: el.querySelector('.rf-sheet-grabber'), header: el.querySelector('.rf-sheet-header'), body: el.querySelector('.rf-sheet-body'),
@@ -714,6 +715,12 @@
     // Measured where it will rest (the panel's CSS transform is none, so focusing the content on
     // showModal never scrolled anything), then sent below the screen to slide up from.
     s.panel.style.transform = 'none';
+    // Its controls are placed now, in the one layout the sheet reads anyway to size itself, rather
+    // than in the next frame's read pass (core.js): placed while it slid open, a sheet with a view
+    // switch over a 3D figure drew no frames for most of a second. (After showModal, which restyles
+    // the whole page as it makes the rest inert: read before it, the controls found the sheet not
+    // shown yet, and the page's style was brought up to date twice.)
+    if (U.readNow) U.readNow();
     measure(s);
     const first = s.size === 'full' ? 'large' : (s.wantTop || (s.size === 'auto' && o.detent === 'large')) && hasLarge(s) ? 'large' : 'medium';
     s.y = s.closedY;
