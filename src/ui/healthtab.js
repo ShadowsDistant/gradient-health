@@ -200,7 +200,7 @@
   function insightRow(x) {
     const mk = INS_METRIC[x.metric];
     return `<details class="hl-ins gh-drop" data-state="${U.esc(x.tone)}" data-key="ins-${U.esc(x.id)}">
-      <summary class="hl-ins-sum"><span class="rf-list-icon" data-tone="${TONE_HUE[x.tone] || 'sky'}">${U.icon(x.icon)}</span><span class="hl-ins-title">${U.esc(x.title)}</span><span class="hl-ins-chev">${U.icon('chevron-down', 'sm')}</span></summary>
+      <summary class="hl-ins-sum"><span class="rf-list-icon" data-tone="${TONE_HUE[x.tone] || 'sky'}">${U.icon(x.icon)}</span><span class="hl-ins-title">${U.nb(x.title)}</span><span class="hl-ins-chev">${U.icon('chevron-down', 'sm')}</span></summary>
       <div class="hl-ins-body">
         <p class="t-callout">${U.esc(x.body)}</p>
         <p class="t-footnote rf-muted">Based on ${U.esc(x.evidence)}</p>

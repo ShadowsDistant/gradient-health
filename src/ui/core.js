@@ -37,9 +37,11 @@
   const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' };
   U.esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ESC[c]);
   // Escaped, with a number kept on the line of its unit ("25 lb", "10 reps"), "about" or "at" on
-  // the line of their number, and a " · " on the line it ends (a line never starts with one),
-  // however the line wraps.
-  U.nb = (s) => U.esc(s).replace(/(\d) (?=[a-zA-Z½])/g, '$1&nbsp;').replace(/\b(about|at) (?=\d)/g, '$1&nbsp;').replace(/ · /g, '&nbsp;· ');
+  // the line of their number, a " · " on the line it ends (a line never starts with one), a change
+  // between numbers whole ("20% → 7%") and any other "→" on the line of what it points to
+  // ("Rope pushdown / → 13 reps"), however the line wraps.
+  U.nb = (s) => U.esc(s).replace(/(\d) (?=[a-zA-Z½])/g, '$1&nbsp;').replace(/\b(about|at) (?=\d)/g, '$1&nbsp;').replace(/ · /g, '&nbsp;· ')
+    .replace(/(\d%?) → (?=\d)/g, '$1&nbsp;→&nbsp;').replace(/ → /g, ' →&nbsp;');
   // Glyphs Refract doesn't have, drawn on its grid (24 px, 1.75 stroke, round ends).
   const EXTRA_ICONS = {
     food: '<path d="M7 3.5v6a2 2 0 0 0 4 0v-6M9 3.5V21M17 21V3.5c-2 1-3.25 3.4-3.25 6.25V14H17"/>',

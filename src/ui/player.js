@@ -1144,6 +1144,10 @@
   U.on.ckPain = (el, ev, v) => { const id = el.dataset.v; P.ck.pain = P.ck.pain.filter((x) => x !== id); if (v) P.ck.pain.push(id); };
   U.on.ckWeight = (el, ev, v) => { P.ck.weight = v > 0 ? v : null; };
   U.act.plSaveCheckin = () => {
+    // The workout's own finish plays on the tap, before the saving and the Next screen's drawing
+    // (they took 400 ms on a slow phone, the buzz with them).
+    U.haptic('workoutDone');
+    const tapped = Date.now();
     const S = U.S;
     const ck = P.ck || {};
     const before = B().calendar(S, A().day).streak.current;
@@ -1161,12 +1165,11 @@
     if (res && res.entry && GH.health && GH.health.writeWorkout(S, res.entry)) setTimeout(() => U.syncHealth('manual'), 2500);
     const el = root();
     const big = res && (res.celebrate.length || fresh.length);
-    // The workout's own finish, then, once it's over, the biggest thing it brought: a personal
-    // best, or a harder move or heavier weight. New badges play their own as their card springs.
-    U.haptic('workoutDone');
+    // Once the finish is over, the biggest thing the workout brought: a personal best, or a harder
+    // move or heavier weight. New badges play their own as their card springs.
     const kinds = res && res.celebrate ? res.celebrate.map((c) => c.kind) : [];
     const then = kinds.includes('pr') ? 'pr' : kinds.includes('level') || kinds.includes('weight') ? 'levelUp' : null;
-    if (then) setTimeout(() => U.haptic(then), 700);
+    if (then) setTimeout(() => U.haptic(then), Math.max(0, 700 - (Date.now() - tapped)));
     if (big && G.Refract && G.Refract.burst && !U.reduced()) {
       // Each burst within Refract 1.4's 8 to 14 beads: one card gets 14, several get 8 each, three at
       // most.
@@ -1189,7 +1192,7 @@
         ${res.celebrate.map((c) => `<div class="card celebrate">${U.icon(c.kind === 'pr' ? 'star' : c.kind === 'weight' ? 'bolt' : 'sparkle')}<span class="t-headline">${U.esc(c.text)}</span></div>`).join('')}
         ${U.badgeCard ? U.badgeCard(P.ach) : ''}
         ${U.hcInvite ? U.hcInvite(S) : ''}
-        ${lines.length ? `<ul class="rf-list next-lines">${lines.map((l) => U.row({ title: U.esc(l.text), sub: l.why ? U.esc(U.cap(l.why)) : '', icon: l.buy ? 'bag' : /Deload|less/.test(l.text) ? 'moon' : 'arrow-up-right', tone: l.buy ? 'amber' : /Deload|less|Eat/.test(l.text) ? 'indigo' : 'green' })).join('')}</ul>` : '<p class="t-callout rf-muted pl-pad">Same targets next time. Keep it up.</p>'}
+        ${lines.length ? `<ul class="rf-list next-lines">${lines.map((l) => U.row({ title: U.nb(l.text), sub: l.why ? U.esc(U.cap(l.why)) : '', icon: l.buy ? 'bag' : /Deload|less/.test(l.text) ? 'moon' : 'arrow-up-right', tone: l.buy ? 'amber' : /Deload|less|Eat/.test(l.text) ? 'indigo' : 'green' })).join('')}</ul>` : '<p class="t-callout rf-muted pl-pad">Same targets next time. Keep it up.</p>'}
         ${lines.length && U.whyLink ? `<p class="pl-pad">${U.whyLink('overload', 'How the plan decides this')}</p>` : ''}
       </div>
       <div class="pl-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plClose">Done</button></div>`;

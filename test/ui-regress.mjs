@@ -653,7 +653,7 @@ check('the rest running out by itself: the same, nothing moves and Continue come
 // Up next keeps a number with its unit ("10 reps", "25 lb"), however its line wraps, and no line
 // starts with a "·".
 const nextLine = await page.evaluate(() => (document.querySelector('#player .pl-next .t-footnote') || {}).textContent || '');
-check('Up next keeps each number with its unit, and each "·" on the line it ends', /\d (reps?|lb|kg|s)\b/.test(nextLine) && !/\d (reps?|lb|kg)\b/.test(nextLine) && !/ · /.test(nextLine), JSON.stringify(nextLine));
+check('Up next keeps each number with its unit, and each "·" on the line it ends', /\d\u00a0(reps?|lb|kg|s)\b/.test(nextLine) && !/\d (reps?|lb|kg)\b/.test(nextLine) && !/ · /.test(nextLine), JSON.stringify(nextLine));
 // While resting, Up next opens how to do the next move.
 const howNext = await page.evaluate(async () => {
   const row = document.querySelector('#player button.pl-next-row[data-act="plHowTo"]');
@@ -749,6 +749,64 @@ const swollen = await page.evaluate(async () => {
 check('Short on time, swollen from a press, keeps its words', swollen && !swollen.tight, JSON.stringify(swollen));
 await page.evaluate(() => { const S = window.GH.ui.S; S.seen.tip_today = true; window.GH.ui.render(); });
 await settle(600);
+
+section('Large text on a small phone: words stay whole');
+// 360 px with text at 130%: You's badge titles grow their tiles with the text, so no word is split
+// between two lines ("Unstoppa / ble"), and an insight's change stays whole ("20% → / 7%").
+await page.setViewportSize({ width: 360, height: 844 });
+const bigText = (on) => page.evaluate((v) => {
+  if (!v) { for (const e of document.querySelectorAll('#screen [style*="font-size"]')) e.style.removeProperty('font-size'); return; }
+  const els = [...document.querySelectorAll('#screen *')].filter((e) => !e.closest('svg'));
+  const sizes = els.map((e) => parseFloat(getComputedStyle(e).fontSize));
+  els.forEach((e, i) => { if (sizes[i]) e.style.setProperty('font-size', `${sizes[i] * 1.3}px`, 'important'); });
+}, on);
+// The words (split at a hyphen too, a fair place to break) that run over two lines.
+const splitWords = (sel) => page.evaluate((s) => {
+  const out = [];
+  for (const el of document.querySelectorAll(s)) {
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      for (const m of n.data.matchAll(/[^\s-]+-?/g)) {
+        const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
+        const tops = new Set([...r.getClientRects()].filter((q) => q.width > 0).map((q) => Math.round(q.top)));
+        if (tops.size > 1) out.push(m[0]);
+      }
+    }
+  }
+  return out;
+}, sel);
+await page.evaluate(() => { window.GH.ui.go('you'); document.getElementById('screen').scrollTop = 0; });
+await settle(900);
+await bigText(true);
+await settle(300);
+const minis = await page.evaluate(() => [...document.querySelectorAll('#screen .bdg-mini')].map((b) => Math.round(b.getBoundingClientRect().width)));
+const bdgSplit = await splitWords('#screen .bdg-mini-title');
+check('You\'s badge titles keep their words whole, their tiles wider with the text', minis.length > 0 && minis.every((w) => w > 76) && bdgSplit.length === 0, JSON.stringify({ minis, bdgSplit }));
+await bigText(false);
+await page.evaluate(() => {
+  const U = window.GH.ui, S = U.S, d = U.today(), c = S.catchup && S.catchup.arm;
+  if (c && !(c.tests.length >= 2 && c.tests[c.tests.length - 1].gap < c.tests[0].gap - 0.03)) c.tests = [{ day: d - 28, left: 12, right: 15, gap: 0.2 }, { day: d - 1, left: 14, right: 15, gap: 0.067 }];
+  U.go('health');
+  U.render();
+});
+await settle(900);
+await bigText(true);
+await settle(300);
+const change = await page.evaluate(() => {
+  const t = [...document.querySelectorAll('#screen .hl-ins-title')].find((e) => /→/.test(e.textContent));
+  if (!t) return null;
+  const n = t.firstChild, i = n.data.search(/\d+%\s→/), j = n.data.search(/→\s\d+%/);
+  const r = document.createRange(); r.setStart(n, i); r.setEnd(n, n.data.indexOf('%', j) + 1);
+  return { text: t.textContent, lines: new Set([...r.getClientRects()].filter((q) => q.width > 0).map((q) => Math.round(q.top))).size };
+});
+check('an insight\'s change ("20% → 7%") stays on one line', change && change.lines === 1, JSON.stringify(change));
+// The Next screen's lines (and the rest of U.nb's): an arrow after a name keeps to what it points
+// to, so "Rope pushdown → 13 / reps" breaks as "Rope pushdown / → 13 reps".
+const arrows = await page.evaluate(() => [window.GH.ui.nb('Left arm gap: 20% → 7%'), window.GH.ui.nb('Rope pushdown → 13 reps')]);
+check('a change between numbers is whole, and an arrow after a name goes with its number and unit', arrows[0] === 'Left arm gap: 20%&nbsp;→&nbsp;7%' && arrows[1] === 'Rope pushdown →&nbsp;13&nbsp;reps', JSON.stringify(arrows));
+await bigText(false);
+await page.setViewportSize({ width: 390, height: 844 });
+await settle(400);
 
 section('Console');
 check('no console errors', errors.length === 0, errors.join(' | '));

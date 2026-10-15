@@ -11,8 +11,9 @@
 // - the kinds for specific actions, one per tap, with real touches: the Health tab's + menu, pull to
 //   refresh and its finish, starting a workout, a set done, more rest, skipping it, the player's menu
 //   and a pick in it, the leave sheet, keeping it for later, resuming, cancelling (from the question,
-//   once, and nothing more as its toast comes), a day picked and a long press on Plan, and Copy my
-//   data;
+//   once, and nothing more as its toast comes), a day picked and a long press on Plan, Copy my
+//   data, the taps that played nothing before (a dropdown's summary, Change, a chart's Numbers), and
+//   Save check-in's finish, on the tap and before the Next screen;
 // - deferred change dispatch: with a 60 ms handler, a segmented control's thumb (and a switch's knob)
 //   is on its way by the first frame after the tap, and the handler runs after it; data-sync runs
 //   it at once instead;
@@ -517,6 +518,34 @@ if (await showIn('#screen [data-act="chartTable"]')) {
   l = await felt(() => tap('#screen [data-act="chartTable"]'));
   check('a chart\'s Numbers: tap', l.bridge.join() === 'tap', l);
 }
+await closeAll();
+// Save check-in: the workout's finish plays on the tap, before the saving and the Next screen's
+// drawing (it came after them: 400 ms late on a slow phone).
+await page.evaluate(() => window.GH.ui.go('today'));
+await wait(700);
+await page.evaluate(() => window.GH.ui.act.startWorkout());
+await wait(1500);
+const ckOpen = await page.evaluate(() => {
+  const U = window.GH.ui, S = U.S, B = window.GH.brain;
+  if (!S.active) return false;
+  for (let g = 0; g < 2 && S.active.idx < S.active.steps.length; g++) { const st = S.active.steps[S.active.idx]; B.completeStep(S, st.kind === 'test' ? { value: 14 } : {}); }
+  U.openCheckin();
+  return true;
+});
+await wait(900);
+if (ckOpen && await page.evaluate(() => !!document.querySelector('#player [data-act="plSaveCheckin"]'))) {
+  await page.evaluate(() => {
+    const U = window.GH.ui, h = U.haptic;
+    window.__atFinish = null; window.__hxBefore = h;
+    U.haptic = (k, o) => { if (k === 'workoutDone' && window.__atFinish == null) window.__atFinish = { title: (document.querySelector('#player .rf-large-title') || {}).textContent, saved: !U.S.active }; return h(k, o); };
+  });
+  l = await felt(() => tap('#player [data-act="plSaveCheckin"]'), 1000);
+  const fin = await page.evaluate(() => { window.GH.ui.haptic = window.__hxBefore; return { at: window.__atFinish, now: (document.querySelector('#player .rf-large-title') || {}).textContent }; });
+  check('Save check-in: workoutDone first, on the tap, while the check-in is still on screen (before it saves)', l.bridge[0] === 'workoutDone' && fin.at && fin.at.title === 'Check-in' && !fin.at.saved && fin.now === 'Next time', { ...l, ...fin });
+  await page.evaluate(() => window.GH.ui.act.plClose());
+  await wait(1200);
+} else check('a workout to check in from', false, { ckOpen });
+await noToasts();
 await closeAll();
 await page.evaluate(() => window.GH.ui.go('today'));
 await wait(700);
