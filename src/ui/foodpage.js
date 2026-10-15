@@ -17,7 +17,7 @@
   const B = () => GH.brain;
   const F = () => GH.food;
   const doc = G.document;
-  const { kcal, g1, MEAL_NAME, summary, toHc } = U.foodKit;
+  const { kcal, g1, nb, MEAL_NAME, summary, toHc, link } = U.foodKit;
 
   let foodDay = null; // the day the Food page shows (today unless you step back)
   const dayShown = () => (foodDay != null && foodDay <= U.today() && foodDay >= U.today() - 30 ? foodDay : U.today());
@@ -31,9 +31,11 @@
   U.act.logFood = () => { if (F().full(U.S)) openAdd(U.today(), null); else startSheet(true); };
 
   /* ---------------------------------------------------------------- the page */
+  // A food logged: when, how much, and its macros, each number kept with its letter (and a line that
+  // breaks does so after a dot, never before one).
   function entryRow(e, day) {
     const amount = e.portion ? e.portion : e.g ? `${e.g} g` : '';
-    return U.row({ title: U.esc(e.name), sub: U.esc([U.fmtClock(e.t), amount, `P ${g1(e.p)} · C ${g1(e.c)} · F ${g1(e.f)}`].filter(Boolean).join(' · ')), detail: `${kcal(e.kcal)}`, act: 'foodEdit', arg: `${day}:${e.id}`, key: `fe-${e.id}` });
+    return U.row({ title: U.esc(e.name), sub: U.esc([nb(U.fmtClock(e.t)), amount, nb(`P ${g1(e.p)}`), nb(`C ${g1(e.c)}`), nb(`F ${g1(e.f)}`)].filter(Boolean).join(' · ')), detail: `${kcal(e.kcal)}`, act: 'foodEdit', arg: `${day}:${e.id}`, key: `fe-${e.id}` });
   }
   // The same meal the day before, to add again: its entries (none if this day has that meal already).
   const sameAs = (S, day, meal) => (F().byMeal(S, day)[meal].length ? [] : F().byMeal(S, day - 1)[meal]);
@@ -53,34 +55,38 @@
         const list = meals[id];
         const sum = list.reduce((a, e) => a + e.kcal, 0);
         const again = list.length ? [] : sameAs(S, day, id);
-        return `<div class="card fd-meal" data-key="meal-${id}">
-          <div class="fd-meal-head"><span class="t-headline">${name}</span><span class="t-footnote rf-muted rf-num">${list.length ? `${kcal(sum)} kcal` : ''}</span><span class="rf-spacer"></span>
+        return `<div class="card fd-meal${list.length ? '' : ' is-empty'}" data-key="meal-${id}">
+          <div class="fd-meal-head"><span class="t-headline">${name}</span><span class="t-footnote rf-muted rf-num">${list.length ? `${kcal(sum)} kcal` : ''}</span>
             <button type="button" class="rf-btn" data-shape="circle" data-size="sm" aria-label="Add to ${name.toLowerCase()}" data-act="foodAdd" data-arg="${id}">${U.icon('plus')}</button></div>
           ${list.length ? `<ul class="rf-list fd-list">${list.map((e) => entryRow(e, day)).join('')}</ul>` : ''}
-          ${again.length ? `<button type="button" class="rf-btn fd-same" data-variant="plain" data-size="sm" data-act="foodSame" data-arg="${id}">${U.icon('repeat')}${sameWords(day)}, ${kcal(again.reduce((a, e) => a + e.kcal, 0))} kcal</button>` : ''}
+          ${again.length ? link('foodSame', id, `${sameWords(day)}, ${kcal(again.reduce((a, e) => a + e.kcal, 0))} kcal`, 'repeat', 'fd-same') : ''}
         </div>`;
       }).join('');
       const other = tot.other && tot.other.kcal ? `<div class="card" data-key="other"><div class="row-between"><span class="t-subhead">From other apps</span><span class="t-callout rf-num">${kcal(tot.other.kcal)} kcal</span></div><p class="t-footnote rf-muted">Shared through Health Connect, and counted in the total.</p></div>` : '';
       const why = t ? `${t.learned ? `Your burn, learned from your logs and weight, is about ${kcal(t.burn)} kcal a day` : `Your estimated burn is about ${kcal(t.burn)} kcal a day`}${t.delta ? `, ${t.delta < 0 ? 'minus' : 'plus'} ${kcal(Math.abs(t.delta))} to ${t.delta < 0 ? 'lose' : 'gain'} steadily` : ''}.` : '';
       const asPage = U.route.view === 'food';
+      // What else the day can do: copy the day before (when it had food), saved meals, save this day
+      // (when it has food), and meal times.
+      const before = F().entries(S, day - 1);
+      const tools = [
+        before.length ? U.row({ key: 'copy', icon: 'copy', tone: 'teal', title: day === today ? 'Copy yesterday' : 'Copy the day before', sub: `${U.plural(before.length, 'item')}, ${kcal(before.reduce((a, e) => a + e.kcal, 0))} kcal`, act: 'foodCopyYesterday' }) : '',
+        U.row({ key: 'saved', icon: 'bookmark', tone: 'indigo', title: 'Saved meals', sub: F().data(S).saved.length ? U.plural(F().data(S).saved.length, 'meal') : 'To add again in one tap', act: 'foodSavedMeals', chevron: true }),
+        F().entries(S, day).length ? U.row({ key: 'save', icon: 'star', tone: 'amber', title: 'Save as a meal', sub: `Everything logged ${day === today ? 'today' : 'on this day'}`, act: 'foodSaveDay', chevron: true }) : '',
+        U.row({ key: 'times', icon: 'clock', tone: 'sky', title: 'Meal times', sub: U.esc(U.mealTimesLine(S)), act: 'foodMealTimes', chevron: true }),
+      ].join('');
       return `${U.navbar('Food', U.glassBtn('plus', 'Add food', 'foodAdd'), asPage ? U.glassBtn('chevron-left', 'Back', 'back') : '')}
         <h1 class="rf-large-title">Food</h1>
-        <div class="lt-sub fd-days">
-          <button type="button" class="rf-btn" data-variant="plain" data-shape="circle" data-size="sm" aria-label="Day before" data-act="foodDayPrev"${day <= today - 30 ? ' aria-disabled="true"' : ''}>${U.icon('chevron-left')}</button>
-          <span class="t-callout">${U.esc(label)}</span>
-          <button type="button" class="rf-btn" data-variant="plain" data-shape="circle" data-size="sm" aria-label="Day after" data-act="foodDayNext"${day >= today ? ' aria-disabled="true"' : ''}>${U.icon('chevron-right')}</button>
+        <div class="fd-days" role="group" aria-label="Day">
+          <button type="button" class="rf-btn" data-variant="plain" data-shape="circle" aria-label="Day before" data-act="foodDayPrev"${day <= today - 30 ? ' aria-disabled="true"' : ''}>${U.icon('chevron-left')}</button>
+          <span class="fd-day t-callout" aria-live="polite">${U.esc(label)}</span>
+          <button type="button" class="rf-btn" data-variant="plain" data-shape="circle" aria-label="Day after" data-act="foodDayNext"${day >= today ? ' aria-disabled="true"' : ''}>${U.icon('chevron-right')}</button>
         </div>
         <div class="section">
-          <div class="card" data-key="sum">${summary(S, day, false)}${why ? `<p class="t-footnote rf-muted">${U.esc(why)} ${U.whyLink ? U.whyLink('calories', 'How it\'s worked out') : ''}</p>` : ''}</div>
+          <div class="card fd-sumcard" data-key="sum">${summary(S, day)}${why ? `<p class="t-footnote rf-muted">${U.esc(why)} ${U.whyLink ? link('openScience', 'calories', 'How it\'s worked out') : ''}</p>` : ''}</div>
           ${mealCards}
           ${other}
-          <div class="btn-row fd-tools" data-key="tools">
-            <button type="button" class="rf-btn" data-variant="soft" data-size="sm" data-act="foodCopyYesterday">${U.icon('copy')}${day === today ? 'Copy yesterday' : 'Copy the day before'}</button>
-            <button type="button" class="rf-btn" data-variant="soft" data-size="sm" data-act="foodSavedMeals">${U.icon('bookmark')}Saved meals</button>
-            ${F().entries(S, day).length ? `<button type="button" class="rf-btn" data-variant="soft" data-size="sm" data-act="foodSaveDay">${U.icon('star')}Save as a meal</button>` : ''}
-            <button type="button" class="rf-btn" data-variant="soft" data-size="sm" data-act="foodMealTimes">${U.icon('clock')}Meal times</button>
-          </div>
-          <p class="t-footnote rf-muted" data-key="src">Built-in foods from the USDA's nutrient database.${F().prefs(S).online ? ' Online results and barcodes from Open Food Facts (ODbL).' : ''}</p>
+          <div class="card fd-tools" data-key="tools"><ul class="rf-list">${tools}</ul></div>
+          <p class="t-footnote rf-muted fd-src" data-key="src">Built-in foods from the USDA's nutrient database.${F().prefs(S).online ? ' Online results and barcodes from Open Food Facts (ODbL).' : ''}</p>
         </div>`;
     },
     float() { return ''; },
@@ -190,7 +196,7 @@
     if (online.busy) return '<div class="fd-online"><span class="rf-spinner" data-size="sm"><i></i></span><span class="t-footnote rf-muted">Searching Open Food Facts…</span></div>';
     if (online.q === q && online.items) return online.items.length ? `<h3 class="rf-list-header">Open Food Facts</h3><ul class="rf-list">${remember(online.items).map(foodRow).join('')}</ul>` : '<p class="t-footnote rf-muted fd-empty">Nothing found online either.</p>';
     if (online.q === q && online.error) return `<p class="t-footnote rf-muted fd-empty">${U.esc(online.error)}</p>`;
-    return `<button type="button" class="rf-btn fd-online-btn" data-variant="plain" data-size="sm" data-act="foodOnline">${U.icon('globe')}Search online for "${U.esc(q)}"</button>`;
+    return `<button type="button" class="rf-btn fd-online-btn" data-variant="soft" data-size="sm" data-act="foodOnline" data-haptic="tap">${U.icon('globe')}Search online for "${U.esc(q)}"</button>`;
   }
   function refresh() { if (sheet && !sheet.closed) sheet.update(addBody(U.S)); }
   // Add food: on Recent (the foods you have most, first), with the meal picked at the top.
@@ -294,6 +300,8 @@
     const grams = portion[1] * qty;
     return Object.assign(F().scale({ kcal: item.kcal || 0, p: item.p || 0, c: item.c || 0, f: item.f || 0, fib: item.fib || 0 }, grams), { g: grams });
   }
+  // "Protein 2.5 g · Carbs 51 g · Fat 0.7 g", each kept whole on its line.
+  const macroLine = (m) => [`Protein ${g1(m.p)} g`, `Carbs ${g1(m.c)} g`, `Fat ${g1(m.f)} g`, m.fib ? `Fibre ${g1(m.fib)} g` : ''].filter(Boolean).map(nb).join(' · ');
   // When a new entry would be: now (today), or the meal's usual time on an earlier day.
   const newMin = (day, meal) => (day === U.today() ? F().minOf(Date.now()) : F().usualMin(U.S, day, meal));
   function portionBody() {
@@ -306,7 +314,7 @@
         ${about ? `<p class="t-footnote rf-muted">${U.esc(about)}</p>` : ''}
         <div class="fd-big"><span class="t-large-title rf-num">${U.roll(kcal(n.kcal))}</span><span class="t-callout rf-muted">kcal</span><span class="rf-spacer"></span>
           ${item.src !== 'quick' ? `<button type="button" class="rf-btn" data-shape="circle" data-variant="plain" aria-label="${fav ? 'Remove from favourites' : 'Add to favourites'}" aria-pressed="${fav}" data-act="foodFav">${U.icon('star')}</button>` : ''}</div>
-        <p class="t-footnote rf-num fd-pcf">Protein ${g1(n.p)} g · Carbs ${g1(n.c)} g · Fat ${g1(n.f)} g${n.fib ? ` · Fibre ${g1(n.fib)} g` : ''}</p>
+        <p class="t-footnote rf-num fd-pcf">${macroLine({ p: n.p, c: n.c, f: n.f, fib: n.fib })}</p>
         <div class="ob-chips" role="group" aria-label="Portion">${portionsOf(item).map((p, i) => U.chip(p[1] === 1 ? 'Grams' : p[0], p[0] === portion[0], `data-act="foodPortion" data-arg="${i}"`)).join('')}</div>
         <div class="fd-qty">${U.stepper('foodQty', portion[1] === 1 ? Math.round(qty) : qty, qtyStep, portion[1] === 1 ? 5000 : 50, portion[1] === 1 ? 'Grams' : 'Amount', 'data-on="foodQty"', qtyStep)}<span class="t-callout rf-muted">${U.esc(portion[1] === 1 ? 'g' : `× ${portion[0]}`)}</span></div>
         ${mealSeg('foodMeal', meal, 'foodMeal')}
@@ -403,12 +411,18 @@
     // Quick adds and servings: edit the numbers directly.
     quickSheet({ day, edit: e });
   };
-  U.act.foodDelete = () => {
-    F().remove(U.S, pick.day, pick.edit);
+  // Taken out in one tap, with Undo, which puts it back as it was.
+  function removed(day, id) {
+    const e = F().remove(U.S, day, id);
     U.commit();
     U.haptic('remove');
-    if (psheet) psheet.close('ok');
     toHc();
+    if (e) U.toast(`${e.name} removed`, 'neutral', undefined, { label: 'Undo', onClick: () => { if (F().restore(U.S, day, e)) { U.commit(); toHc(); U.haptic('undo'); } } });
+  }
+  U.act.foodDelete = () => {
+    if (!pick || !pick.edit) return;
+    if (psheet) psheet.close('ok');
+    removed(pick.day, pick.edit);
   };
 
   /* ---------------------------------------------------------------- quick add, create, saved */
@@ -472,7 +486,7 @@
     U.closeSheets();
     toHc();
   };
-  U.act.foodQuickDelete = () => { if (!quick || !quick.edit) return; F().remove(U.S, quick.day, quick.edit.id); U.commit(); U.haptic('remove'); U.closeSheets(); toHc(); };
+  U.act.foodQuickDelete = () => { if (!quick || !quick.edit) return; U.closeSheets(); removed(quick.day, quick.edit.id); };
   // Create a food from its label (optionally for a barcode that wasn't found).
   function createSheet(prefill) {
     const p = prefill || {};
@@ -522,17 +536,13 @@
     U.haptic('save');
     U.toast('Saved to Meals', 'positive');
   };
-  // The whole day before, each entry at the same time in the same meal.
-  U.act.foodCopyYesterday = async () => {
+  // The whole day before, each entry at the same time in the same meal: one tap, with Undo.
+  U.act.foodCopyYesterday = () => {
     const day = dayShown();
-    const src = F().entries(U.S, day - 1);
-    if (!src.length) { U.toast('Nothing logged the day before', 'neutral'); return; }
-    const ok = await U.confirm('Copy the day before?', `${U.plural(src.length, 'item')}, ${kcal(src.reduce((a, e) => a + e.kcal, 0))} kcal, go into ${day === U.today() ? 'today' : 'this day'}.`, 'Copy');
-    if (!ok) return;
-    F().copyMeal(U.S, day - 1, day, null);
-    U.commit();
+    const list = F().copyMeal(U.S, day - 1, day, null);
+    if (!list.length) { U.haptic('deny'); U.toast('Nothing logged the day before', 'neutral'); return; }
     U.haptic('copy');
-    toHc();
+    added(list, day, `${U.plural(list.length, 'item')} added, ${kcal(list.reduce((a, e) => a + e.kcal, 0))} kcal`);
   };
 
   /* ---------------------------------------------------------------- starting */
@@ -574,11 +584,11 @@
         <div class="fd-start-k"><span class="t-subhead">Activity</span>${U.choice('fsAct', [['auto', 'From steps'], ['light', 'Light'], ['moderate', 'Moderate'], ['active', 'Active']], d.activity, 'Activity', ' data-on="fsAct"')}</div>
       </div>` : '';
     return `<div class="sheet-pad fd-start">
-        <div class="fd-target" data-key="target">${t ? `<span class="fd-target-n rf-num">${U.roll(kcal(t.kcal))}</span><span class="t-callout">calories a day</span><span class="t-footnote rf-muted rf-num">Protein ${t.protein} g · Carbs ${t.carbs} g · Fat ${t.fat} g</span>` : '<span class="t-callout">Your weight sets the target.</span>'}</div>
+        <div class="fd-target" data-key="target">${t ? `<span class="fd-target-n rf-num">${U.roll(kcal(t.kcal))}</span><span class="t-callout">calories a day</span><span class="t-footnote rf-muted rf-num">${macroLine({ p: t.protein, c: t.carbs, f: t.fat })}</span>` : '<span class="t-callout">Your weight sets the target.</span>'}</div>
         ${missing ? kgField : ''}
         ${U.seg('fsGoal', [['lose', 'Lose'], ['maintain', 'Keep'], ['gain', 'Gain']], d.goal, 'Goal', ' data-on="fsGoal" data-block')}
         ${d.goal === 'lose' ? `<div class="fd-start-k"><span class="t-subhead">A week</span>${U.seg('fsPace', [['0.25', '0.25%'], ['0.5', '0.5%'], ['0.75', '0.75%'], ['1', '1%']], String(d.pace), 'Pace', ' data-on="fsPace" data-size="sm" data-block')}</div>` : ''}
-        <p class="t-footnote rf-muted fd-basis">${U.esc(`From ${basis ? `${basis} and ` : ''}${moves}.`)}${d.more ? '' : ' <button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="fsMore">Change</button>'}</p>
+        <p class="t-footnote rf-muted fd-basis">${U.esc(`From ${basis ? `${basis} and ` : ''}${moves}.`)}${d.more ? '' : ` ${link('fsMore', '', 'Change')}`}</p>
         ${more}
         <button type="button" class="rf-btn rf-glass fd-start-go" data-variant="tinted" data-size="lg" data-act="fsGo">Start</button>
       </div>`;
@@ -649,7 +659,7 @@
     return `<div class="sheet-pad fd-times">
         <p class="t-footnote rf-muted">Food goes in the meal for the time you add it. You can always pick another.</p>
         ${['breakfast', 'lunch', 'dinner'].map(row).join('')}
-        <div class="fd-trow"><span class="t-subhead">Snacks</span><span class="t-footnote rf-muted fd-tany">Any other time</span></div>
+        <div class="fd-trow"><span class="t-subhead">Snacks</span><span class="t-footnote rf-muted">Any other time</span></div>
         <ul class="rf-list fd-tlearn">${U.sw('Learn from my logs', mt.learn, 'data-on="mtLearn"', 'Moves each meal to when you usually log it, over the last 4 weeks')}</ul>
         <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="mtSave">Save</button>
       </div>`;

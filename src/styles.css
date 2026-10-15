@@ -701,67 +701,7 @@ textarea.preview { border: 0; resize: vertical; }
 .co-chat { width: 100%; }
 @media (max-width: 360px) { .co-watch { grid-template-columns: minmax(0, 1fr); } }
 
-/* ---------------------------------------------------------------- food */
-.fd-sum { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-4); }
-.fd-sum .rf-ring-label { display: grid; justify-items: center; line-height: 1.1; }
-.fd-ring-n { font-size: 19px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; }
-.fd-sum.is-compact .fd-ring-n { font-size: 15px; }
-.fd-sum .rf-ring-label { padding-inline: 10px; text-align: center; }
-.fd-macros { display: grid; gap: var(--space-2); min-width: 0; }
-.fd-macros > p { margin: 0; }
-.fd-macro { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); }
-.fd-macro .t-caption { min-width: 64px; text-align: end; }
-.fd-days { display: flex; align-items: center; gap: var(--space-1); width: fit-content; margin-inline: var(--space-4); padding: 2px; border-radius: var(--radius-full); background: var(--bg-raised); box-shadow: var(--shadow-card); }
-.fd-days .t-callout { min-width: 96px; text-align: center; font-weight: 600; }
-.fd-days .rf-btn[aria-disabled="true"] { opacity: 0.35; }
-.fd-meal { gap: var(--space-1); }
-.fd-meal-head { display: flex; align-items: center; gap: var(--space-2); min-height: 32px; }
-.fd-list { margin: 0 calc(-1 * var(--space-4)) calc(-1 * var(--space-2)); background: none; box-shadow: none; }
-.fd-list .rf-list-detail { font-variant-numeric: tabular-nums; }
-.fd-tools { justify-content: center; }
-.fd-search { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-4); }
-.fd-q { flex: 1; min-width: 0; }
-.fd-sheet .rf-segmented { margin: var(--space-3) var(--space-4) 0; }
-.fd-results { padding: var(--space-3) 0 0; min-height: 120px; }
-.fd-results > .rf-list-header { padding-inline: var(--space-4); }
-.fd-empty { margin: var(--space-4); text-align: center; }
-.fd-online { display: flex; align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-4); }
-.fd-online-btn { display: flex; margin: var(--space-2) auto; }
-.fd-more { margin-top: var(--space-4); }
-.fd-portion { gap: var(--space-3); }
-.fd-big { display: flex; align-items: baseline; gap: var(--space-2); }
-.fd-pcf { margin: 0; color: var(--label-secondary); }
-.fd-qty { display: flex; align-items: center; gap: var(--space-3); }
-.fd-actions { margin-top: var(--space-2); align-items: center; }
-.fd-actions .rf-btn[data-size="lg"] { flex: 1; }
-.fd-form { gap: var(--space-3); }
-
-/* ---------------------------------------------------------------- barcode scanner */
-.sc-wrap { display: grid; gap: var(--space-3); padding: var(--space-2) var(--space-4) var(--space-4); }
-.sc-view { position: relative; border-radius: var(--radius-lg); overflow: hidden; background: #000; aspect-ratio: 3 / 4; max-height: 58vh; width: 100%; touch-action: manipulation; }
-/* The picture, magnified as src/barcode.js asks (--sc-zoom) when the camera can't zoom itself. */
-.sc-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(var(--sc-zoom, 1)); }
-/* The box: wide, for a barcode (a plan's code gets a square one, customplan.css). */
-.sc-frame { position: absolute; left: 9%; right: 9%; top: 50%; aspect-ratio: 2 / 1; translate: 0 -50%; border-radius: var(--radius-md); box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.38); }
-.sc-frame::before { content: ""; position: absolute; inset: 0; border: 3px solid rgb(255 255 255 / 0.9); border-radius: inherit; transition: border-color 160ms var(--ease-standard), box-shadow 160ms var(--ease-standard); }
-.sc-frame i { position: absolute; left: 6%; right: 6%; top: 50%; height: 2px; background: var(--accent); box-shadow: 0 0 12px var(--accent); animation: sc-sweep 1.6s var(--ease-standard) infinite alternate; }
-@keyframes sc-sweep { from { transform: translateY(-38px); } to { transform: translateY(38px); } }
-/* A code caught: the box takes the accent and the code lights up where it is. */
-.sc-frame[data-locked]::before { border-color: var(--accent); box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 70%, transparent); }
-.sc-frame[data-locked] i { opacity: 0; }
-.sc-lock { position: absolute; border: 3px solid var(--accent); border-radius: 10px; background: color-mix(in srgb, var(--accent) 24%, transparent); box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 60%, transparent); animation: sc-lock 220ms var(--ease-standard) both; }
-@keyframes sc-lock { from { opacity: 0; transform: scale(1.18); } to { opacity: 1; transform: none; } }
-/* Where a tap focused. */
-.sc-focus { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; border: 2px solid rgb(255 255 255 / 0.92); border-radius: 50%; pointer-events: none; animation: sc-focus 800ms var(--ease-standard) both; }
-@keyframes sc-focus { 0% { opacity: 0; transform: scale(1.5); } 30% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
-.sc-lock[hidden], .sc-focus[hidden] { display: none; }
-@media (prefers-reduced-motion: reduce) { .sc-frame i, .sc-lock, .sc-focus { animation: none; } }
-/* The light, when the hint asks for it. */
-.sc-tools [data-act="scanTorch"][data-hint] { background: var(--accent-soft); color: var(--accent); }
-.sc-msg { position: absolute; left: 0; right: 0; bottom: 0; margin: 0; padding: var(--space-3) var(--space-4); color: #fff; text-align: center; background: linear-gradient(transparent, rgb(0 0 0 / 0.6)); }
-.sc-tools { justify-content: center; }
-.sc-type { display: grid; gap: var(--space-3); }
-.sc-type[hidden] { display: none; }
+/* Food and the barcode scanner are in src/styles/food.css. */
 
 /* Today without workouts: steps ring and the day's lines. */
 .day-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-4); }

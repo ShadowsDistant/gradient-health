@@ -142,7 +142,7 @@ check('the tabs stay as they were', (await tabs()) === 'today,plan,health,progre
 
 section('Health\'s food section');
 check('in the invite\'s place: after the week, before Today', await ev(() => { const s = document.getElementById('screen'); const f = s.querySelector('.hf'), week = s.querySelector('.hl-week'), today = [...s.querySelectorAll('.sec-title')].find((h) => h.textContent.trim() === 'Today'); return !!f && !s.querySelector('.hf-invite') && week.compareDocumentPosition(f) & 4 && f.compareDocumentPosition(today) & 4; }));
-check('the four meals, each with its time while it\'s empty', await ev(() => { const m = [...document.querySelectorAll('#screen .hf-meal')]; return m.length === 4 && m.map((x) => x.querySelector('.hf-meal-k').textContent).join() === 'Breakfast,Lunch,Dinner,Snacks' && /5 to 11 am/.test(m[0].textContent) && /Any other time/.test(m[3].textContent); }));
+check('the four meals, each with its time while it\'s empty', await ev(() => { const m = [...document.querySelectorAll('#screen .hf-meal')]; return m.length === 4 && m.map((x) => x.querySelector('.hf-meal-k').textContent).join() === 'Breakfast,Lunch,Dinner,Snacks' && /5 to 11\sam/.test(m[0].textContent) && /Any other time/.test(m[3].textContent); }));
 check('Add food is the main button, with Scan', await ev(() => { const b = document.querySelector('#screen .hf-btns'); return !!b.querySelector('[data-act="foodAdd"][data-variant="filled"]') && !!b.querySelector('[data-act="foodScan"]'); }));
 check('no sideways scroll', await noSideScroll());
 
@@ -257,17 +257,19 @@ await settle(900);
 check('added (a serving is 15 g)', (await kcalToday()) === 450 + 134 + 220 + 81, await kcalToday());
 
 section('Health\'s section and the Food page agree');
-const sec = await ev(() => { const s = document.querySelector('#screen .hf'); const n = (sel) => Number((s.querySelector(`${sel} [data-roll]`) || s.querySelector(sel)).getAttribute('data-roll').replace(/,/g, '')); return { left: n('.hf-n'), eaten: n('.hf-kcal b'), word: s.querySelector('.hf-l').textContent, macros: [...s.querySelectorAll('.hf-macro-v')].map((x) => x.textContent.replace(/\s+/g, '')) }; });
+// (Both draw the same glance: food.js.)
+const glanceOf = (root) => ev((r) => { const s = document.querySelector(r); const n = (sel) => Number((s.querySelector(`${sel} [data-roll]`) || s.querySelector(sel)).getAttribute('data-roll').replace(/,/g, '')); return { view: window.GH.ui.route.view, back: !!document.querySelector('#topbar [data-act="back"]'), left: n('.fd-ring-n'), eaten: n('.fd-kcal b'), word: s.querySelector('.fd-ring-l').textContent, macros: [...s.querySelectorAll('.fd-macro')].map((x) => x.textContent.replace(/\s+/g, '')) }; }, root);
+const sec = await glanceOf('#screen .hf .fd-sum');
 await page.click('#screen .hf-main');
 await settle(1200);
-const pg = await ev(() => { const s = document.querySelector('#screen .fd-sum'); const n = (sel) => Number(s.querySelector(`${sel} [data-roll]`).getAttribute('data-roll').replace(/,/g, '')); return { view: window.GH.ui.route.view, back: !!document.querySelector('#topbar [data-act="back"]'), left: n('.fd-ring-n'), eaten: n('.fd-macros b'), word: s.querySelector('.fd-ring-l').textContent, macros: [...s.querySelectorAll('.fd-macro .t-caption')].map((x) => x.textContent.replace(/\s+/g, '')) }; });
+const pg = await glanceOf('#screen .fd-sumcard .fd-sum');
 check('tapping the section opens the Food page, with Back', pg.view === 'food' && pg.back, JSON.stringify(pg));
 check('the same calories left (or over) and eaten', sec.left === pg.left && sec.eaten === pg.eaten && sec.word === pg.word && sec.eaten === await kcalToday(), JSON.stringify({ sec, pg }));
 check('and the same protein, carbs and fat', sec.macros.join() === pg.macros.join(), JSON.stringify({ sec: sec.macros, pg: pg.macros }));
 
 section('Every entry shows its time');
 const rows = await ev(() => [...document.querySelectorAll('#screen .fd-meal[data-key="meal-breakfast"] .fd-list .rf-list-sub')].map((x) => x.textContent));
-check('each row starts with when it was added', rows.length === 4 && rows.every((r) => /^8:1\d am/.test(r)), rows);
+check('each row starts with when it was added', rows.length === 4 && rows.every((r) => /^8:1\d\sam/.test(r)), rows);
 check('sorted by time within the meal', await ev(() => { const l = window.GH.food.byMeal(window.GH.ui.S, window.GH.ui.today()).breakfast; return l.every((e, i) => !i || l[i - 1].t <= e.t); }));
 // The quick add from the clock's pick: a new time moves it to that time's meal.
 await page.click('#screen .fd-meal[data-key="meal-breakfast"] [data-act="foodEdit"]');
@@ -343,7 +345,7 @@ check('setting a time yourself turns learning off', await ev(() => !document.que
 await page.click('dialog.rf-sheet[open] [data-act="mtSave"]');
 await settle(900);
 check('saved: breakfast ends at 8 am', await ev(() => { const p = window.GH.food.prefs(window.GH.ui.S); return p.learn === false && p.meals.breakfast[1] === 480; }));
-check('and Settings\' Meal times row says so', await ev(() => /^Breakfast 5 to 8 am, Lunch 11 am to 3 pm, Dinner 5 to 10 pm$/.test(window.GH.ui.mealTimesLine(window.GH.ui.S))), await ev(() => window.GH.ui.mealTimesLine(window.GH.ui.S)));
+check('and Settings\' Meal times row says so', await ev(() => /^Breakfast 5 to 8\sam, Lunch 11\sam to 3\spm, Dinner 5 to 10\spm$/.test(window.GH.ui.mealTimesLine(window.GH.ui.S))), await ev(() => window.GH.ui.mealTimesLine(window.GH.ui.S)));
 await home();
 await at('08:30');
 await menuFood();

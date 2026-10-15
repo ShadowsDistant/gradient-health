@@ -20,34 +20,49 @@
   const toHc = () => { if (GH.health && GH.health.writeFood) GH.health.writeFood(U.S); };
   // Minutes after midnight as the clock reads them ("8:14 am"; short: "8 am"), and a meal's window in
   // words ("5 to 11 am", "11 am to 3 pm").
-  const clockText = (m, short) => { const h = Math.floor(m / 60) % 24, mm = m % 60; return `${((h + 11) % 12) + 1}${short && !mm ? '' : `:${String(mm).padStart(2, '0')}`} ${h < 12 ? 'am' : 'pm'}`; };
+  // (A time keeps its am or pm on its line.)
+  const clockText = (m, short) => { const h = Math.floor(m / 60) % 24, mm = m % 60; return `${((h + 11) % 12) + 1}${short && !mm ? '' : `:${String(mm).padStart(2, '0')}`} ${h < 12 ? 'am' : 'pm'}`; };
   const spanText = (w) => { const a = clockText(w[0], true), b = clockText(w[1], true); return a.slice(-2) === b.slice(-2) ? `${a.slice(0, -3)} to ${b}` : `${a} to ${b}`; };
 
-  /* ---------------------------------------------------------------- the rings */
-  // Calories as a ring, macros as bars, against today's targets (Today's card and the Food page).
-  function summary(S, day, compact) {
-    const t = F().targets(S, day);
-    const tot = F().totals(S, day);
-    if (!t) return `<p class="t-callout rf-muted">Add your weight and height for a calorie target.</p><button type="button" class="rf-btn" data-act="editStep" data-arg="about">Add them</button>`;
-    const left = t.kcal - tot.kcal;
-    const bar = (label, have, want, tone) => `<div class="fd-macro"><span class="t-footnote">${label}</span>${U.progress(want ? have / want : 0, label, have > want * 1.1 ? 'caution' : tone)}<span class="t-caption rf-muted rf-num">${g1(have)} / ${want} g</span></div>`;
-    return `<div class="fd-sum${compact ? ' is-compact' : ''}">
-        ${U.ring(Math.min(1, tot.kcal / t.kcal), 'Calories today', `<span class="fd-ring-n rf-num">${U.roll(kcal(Math.abs(left)))}</span><span class="fd-ring-l t-caption rf-muted">${left >= 0 ? 'left' : 'over'}</span>`, compact ? 'md' : 'lg', left < -t.kcal * 0.1 ? 'caution' : 'accent')}
-        <div class="fd-macros">
-          <p class="t-callout rf-num"><b>${U.roll(kcal(tot.kcal))}</b> of ${kcal(t.kcal)} kcal</p>
-          ${bar('Protein', tot.p, t.protein, 'positive')}${bar('Carbs', tot.c, t.carbs, 'accent')}${bar('Fat', tot.f, t.fat, 'accent')}
-        </div>
-      </div>`;
+  /* ---------------------------------------------------------------- the day at a glance */
+  // Calories left (or over) in a ring, what was eaten of the target, and protein, carbs and fat each
+  // against its own: Health's food section, the Food page and Today's card all draw this one. It's
+  // spans only, so it can sit in a button (Health's and Today's open the Food page). A macro's grams
+  // so far and its target are columns the three rows share (src/styles/food.css), so the slashes
+  // line up one under another. go: the chevron of a block that opens the Food page.
+  const nb = (s) => String(s).replace(/ /g, ' ');
+  function macroRow(label, have, want, tone) {
+    const v = want ? Math.min(1, have / want) : 0;
+    return `<span class="fd-macro"><span class="fd-mk">${label}</span><span class="fd-mhave rf-num">${g1(have)}<span class="fd-msl"> /</span></span><span class="fd-mwant rf-num">${want} g</span><span class="rf-progress" role="progressbar" aria-label="${label}" aria-valuenow="${Math.round(v * 100)}" aria-valuemin="0" aria-valuemax="100" style="--rf-value:${v.toFixed(3)}" data-tone="${have > want * 1.1 ? 'caution' : tone}"><span class="rf-progress-fill"></span></span></span>`;
   }
-  U.foodKit = { kcal, g1, MEAL_NAME, summary, toHc, spanText };
+  function glance(S, day, o) {
+    const t = F().targets(S, day), tot = F().totals(S, day);
+    const go = o && o.go ? `<span class="fd-go">${U.icon('chevron-right', 'sm')}</span>` : '';
+    if (!t) return `<span class="fd-sum is-bare"><span class="fd-side"><span class="fd-kcal rf-num"><span><b>${U.roll(kcal(tot.kcal))}</b> kcal ${day === U.today() ? 'today' : 'eaten'}</span>${go}</span><span class="t-footnote rf-muted">Add your weight for a calorie target.</span></span></span>`;
+    const left = t.kcal - tot.kcal;
+    return `<span class="fd-sum${o && o.compact ? ' is-compact' : ''}">${U.ring(Math.min(1, tot.kcal / t.kcal), 'Calories', `<span class="fd-ring-n rf-num">${U.roll(kcal(Math.abs(left)))}</span><span class="fd-ring-l">${left >= 0 ? 'left' : 'over'}</span>`, 'lg', left < -t.kcal * 0.1 ? 'caution' : 'accent')}<span class="fd-side"><span class="fd-kcal rf-num"><span><b>${U.roll(kcal(tot.kcal))}</b> of ${kcal(t.kcal)} kcal</span>${go}</span><span class="fd-macros">${macroRow('Protein', tot.p, t.protein, 'positive')}${macroRow('Carbs', tot.c, t.carbs, 'accent')}${macroRow('Fat', tot.f, t.fat, 'accent')}</span></span></span>`;
+  }
+  // The Food page's (with a way to add what the target needs when there's none yet).
+  function summary(S, day) {
+    if (!F().targets(S, day)) return `<p class="t-callout rf-muted">Add your weight and height for a calorie target.</p><button type="button" class="rf-btn" data-act="editStep" data-arg="about">Add them</button>`;
+    return glance(S, day);
+  }
+  // A link among words (How it's worked out, Same as yesterday, Change): its words start at the text
+  // edge, with a hit area 44 px high round them (food.css).
+  const link = (act, arg, words, icon, cls) => `<button type="button" class="rf-btn fd-link${cls ? ` ${cls}` : ''}" data-variant="plain" data-size="sm" data-act="${act}"${arg ? ` data-arg="${U.esc(arg)}"` : ''}>${icon ? U.icon(icon) : ''}${U.esc(words)}</button>`;
+  U.foodKit = { kcal, g1, nb, MEAL_NAME, summary, toHc, spanText, link };
 
-  // Today's card (calorie mode): it opens the Food page. Protein-only mode keeps the protein card.
+  // Today's card (calorie mode): the glance and its title open the Food page, with Add food and Scan
+  // under them. Protein-only mode keeps the protein card.
   U.foodCard = (S, day) => {
     if (!F() || !F().full(S)) return '';
+    const t = F().targets(S, day), left = t ? t.kcal - F().totals(S, day).kcal : 0;
     return `<div class="card fd-card" data-key="food">
-      <div class="row-between"><span class="t-headline">Food</span><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="goFood">Open</button></div>
-      ${summary(S, day, true)}
-      <div class="btn-row"><button type="button" class="rf-btn" data-variant="soft" data-act="foodAdd">${U.icon('plus')}Add food</button>${F().prefs(S).online ? `<button type="button" class="rf-btn" data-act="foodScan">${U.icon('scan')}Scan</button>` : ''}</div>
+      <button type="button" class="fd-open" data-act="goFood" aria-label="Food today${t ? `: ${kcal(Math.abs(left))} kcal ${left >= 0 ? 'left' : 'over'}` : ''}. Open the day's meals">
+        <span class="fd-card-head"><span class="t-headline">Food</span><span class="fd-go">${U.icon('chevron-right', 'sm')}</span></span>
+        ${glance(S, day, { compact: true })}
+      </button>
+      <div class="fd-btns"><button type="button" class="rf-btn" data-variant="soft" data-act="foodAdd">${U.icon('plus')}Add food</button>${F().prefs(S).online ? `<button type="button" class="rf-btn" data-act="foodScan">${U.icon('scan')}Scan</button>` : ''}</div>
     </div>`;
   };
   U.act.goFood = () => U.go('food');
@@ -68,10 +83,6 @@
     }
     const t = F().targets(S, day), tot = F().totals(S, day), meals = F().byMeal(S, day), win = F().mealTimes(S, day).win;
     const left = t ? t.kcal - tot.kcal : 0;
-    const bar = (label, have, want, tone) => { const v = want ? Math.min(1, have / want) : 0; return `<span class="hf-macro"><span class="hf-macro-k">${label}</span><span class="hf-macro-v rf-num">${g1(have)}<small> / ${want} g</small></span><span class="rf-progress" role="progressbar" aria-label="${label}" aria-valuenow="${Math.round(v * 100)}" aria-valuemin="0" aria-valuemax="100" style="--rf-value:${v.toFixed(3)}" data-tone="${have > want * 1.1 ? 'caution' : tone}"><span class="rf-progress-fill"></span></span></span>`; };
-    const top = t ? `${U.ring(Math.min(1, tot.kcal / t.kcal), 'Calories today', `<span class="hf-n rf-num">${U.roll(kcal(Math.abs(left)))}</span><span class="hf-l">${left >= 0 ? 'left' : 'over'}</span>`, 'lg', left < -t.kcal * 0.1 ? 'caution' : 'accent')}
-        <span class="hf-macros"><span class="hf-kcal rf-num"><b>${U.roll(kcal(tot.kcal))}</b> of ${kcal(t.kcal)} kcal</span>${bar('Protein', tot.p, t.protein, 'positive')}${bar('Carbs', tot.c, t.carbs, 'accent')}${bar('Fat', tot.f, t.fat, 'accent')}</span>`
-      : `<span class="hf-macros"><span class="hf-kcal rf-num"><b>${U.roll(kcal(tot.kcal))}</b> kcal today</span><span class="t-footnote rf-muted">Add your weight for a calorie target.</span></span>`;
     const rows = F().MEALS.map(([id, name]) => {
       const list = meals[id];
       const what = list.length ? list.map((e) => e.name).join(', ') : id === 'snack' ? 'Any other time' : spanText(win[id]);
@@ -79,11 +90,11 @@
     }).join('');
     return `<h2 class="sec-title t-title-3">Food</h2>
       <div class="section"><div class="card hf" data-key="food">
-        <button type="button" class="hf-main" data-act="goFood" aria-label="Food today: ${t ? `${kcal(Math.abs(left))} kcal ${left >= 0 ? 'left' : 'over'}` : `${kcal(tot.kcal)} kcal`}. Open the day's meals">
-          <span class="hf-top">${top}<span class="hf-go">${U.icon('chevron-right', 'sm')}</span></span>
+        <button type="button" class="hf-main fd-open" data-act="goFood" aria-label="Food today: ${t ? `${kcal(Math.abs(left))} kcal ${left >= 0 ? 'left' : 'over'}` : `${kcal(tot.kcal)} kcal`}. Open the day's meals">
+          ${glance(S, day, { go: true })}
           <span class="hf-meals">${rows}</span>
         </button>
-        <div class="hf-btns"><button type="button" class="rf-btn" data-variant="filled" data-act="foodAdd">${U.icon('plus')}Add food</button><button type="button" class="rf-btn" data-act="foodScan">${U.icon('scan')}Scan</button></div>
+        <div class="fd-btns hf-btns"><button type="button" class="rf-btn" data-variant="filled" data-act="foodAdd">${U.icon('plus')}Add food</button><button type="button" class="rf-btn" data-act="foodScan">${U.icon('scan')}Scan</button></div>
       </div></div>`;
   };
   U.act.foodInviteHide = (el) => {

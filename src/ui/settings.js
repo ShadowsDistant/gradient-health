@@ -294,7 +294,7 @@
         ${hcOn ? U.sw('Save meals to Health Connect', fp.hcWrite !== false && canWriteFood, 'data-on="setFoodPref" data-k="hcWrite"', canWriteFood ? 'Other apps see what you log here' : 'Needs the Nutrition permission') : ''}
         ${hcOn ? U.sw('Count food from other apps', fp.hcRead !== false, 'data-on="setFoodPref" data-k="hcRead"', 'Meals logged in other apps add to your day') : ''}
       </ul>
-      <p class="rf-list-footer" data-group="track">${t ? `Your target is about ${U.num(t.kcal)} kcal a day${t.learned ? ', tuned to your own logs and weight' : ''}.` : 'Add your weight and height to get a calorie target.'} ${U.whyLink ? U.whyLink('calories', 'How it\'s worked out') : ''}</p>`;
+      <p class="rf-list-footer" data-group="track">${t ? `Your target is about ${U.num(t.kcal)} kcal a day${t.learned ? ', tuned to your own logs and weight' : ''}.` : 'Add your weight and height to get a calorie target.'} ${U.whyLink ? U.foodKit.link('openScience', 'calories', 'How it\'s worked out') : ''}</p>`;
   }
   U.on.setWorkouts = async (el, ev, v) => {
     const S = U.S;

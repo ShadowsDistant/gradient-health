@@ -60,8 +60,8 @@
       <div class="sc-view"><video class="sc-video" playsinline muted autoplay></video><div class="sc-frame" aria-hidden="true"><i></i></div><span class="sc-lock" aria-hidden="true" hidden></span><span class="sc-focus" aria-hidden="true" hidden></span>
         <p class="sc-msg t-callout" role="status">${msg}</p></div>
       <div class="btn-row sc-tools">
-        <button type="button" class="rf-btn" data-act="scanTorch" aria-pressed="false" hidden>${U().icon('bolt')}Light</button>
-        <button type="button" class="rf-btn" data-variant="plain" data-act="scanType">${qr ? 'Paste a link instead' : 'Type the number'}</button>
+        <button type="button" class="rf-btn" data-variant="gray" data-act="scanTorch" aria-pressed="false" hidden>${U().icon('flashlight')}Light</button>
+        <button type="button" class="rf-btn" data-variant="gray" data-act="scanType">${U().icon(qr ? 'link' : 'keyboard')}${qr ? 'Paste a link instead' : 'Type the number'}</button>
       </div>
       <form class="sc-type" hidden>${qr
     ? `<div class="rf-field"><label class="rf-field-label" for="scCode">Plan link</label>
@@ -91,7 +91,9 @@
       a.finish = finish;
       a.say = (text) => { const m = a.sheet && a.sheet.el.querySelector('.sc-msg'); if (m && m.textContent !== text) m.textContent = text; };
       a.showTorch = () => { const t = a.sheet.el.querySelector('[data-act="scanTorch"]'); if (t) t.hidden = false; };
-      a.fail = () => { if (a.stopped) return; a.say(`The ${a.qr ? 'code' : 'barcode'} reader didn't load. ${a.qr ? 'Paste the link' : 'Type the number'} instead.`); showType(); };
+      // No camera, or no reader: the box goes and what to do instead is said in the middle.
+      a.off = () => { const v = a.sheet && a.sheet.el.querySelector('.sc-view'); if (v) v.setAttribute('data-off', ''); };
+      a.fail = () => { if (a.stopped) return; a.off(); a.say(`The ${a.qr ? 'code' : 'barcode'} reader didn't load. ${a.qr ? 'Paste the link' : 'Type the number'} instead.`); showType(); };
       a.sheet = U().sheet({ title: o.title || (a.qr ? 'Scan a code' : 'Scan a barcode'), size: 'fit', cls: 'sc-sheet', body: body('Starting the camera…', a.qr), onClose: () => finish(null) });
       const el = a.sheet.el;
       el.addEventListener('submit', (e) => {
@@ -113,7 +115,7 @@
   async function start(a) {
     const nav = G.navigator;
     const instead = a.qr ? 'paste the link' : 'type the number';
-    if (!nav || !nav.mediaDevices || !nav.mediaDevices.getUserMedia) { a.say(`The camera isn't available here. ${a.qr ? 'Paste the link' : 'Type the number'} instead.`); showType(); return; }
+    if (!nav || !nav.mediaDevices || !nav.mediaDevices.getUserMedia) { a.off(); a.say(`The camera isn't available here. ${a.qr ? 'Paste the link' : 'Type the number'} instead.`); showType(); return; }
     // The reader loads while the camera starts.
     const reader = GH.lazy('barcode');
     reader.catch(() => {});
@@ -125,6 +127,7 @@
     } catch (e) {
       if (a.stopped) return;
       const denied = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
+      a.off();
       a.say(denied ? `Camera access is off. Allow it in the app's Android settings, or ${instead}.` : `Couldn't start the camera. ${a.qr ? 'Paste the link' : 'Type the number'} instead.`);
       showType();
       return;
@@ -145,10 +148,13 @@
     try { m.run(a); } catch (e) { a.fail(); }
   }
 
+  // The field to type the number in (or paste a link), in place of the button that asks for it.
   function showType() {
     const f = active && active.sheet.el.querySelector('.sc-type');
     if (!f) return;
     f.hidden = false;
+    const ask = active.sheet.el.querySelector('[data-act="scanType"]');
+    if (ask) ask.hidden = true;
     const input = f.querySelector('input');
     if (input) setTimeout(() => input.focus(), 50);
   }
@@ -161,12 +167,13 @@
     const bind = () => {
       const act = A();
       if (!act) return false;
-      act.scanType = () => showType();
+      act.scanType = () => { if (U().haptic) U().haptic('tap'); showType(); };
       act.scanTorch = async (el) => {
         const a = active;
         const track = a && a.stream && a.stream.getVideoTracks()[0];
         if (!track) return;
         a.torch = !a.torch;
+        if (U().haptic) U().haptic(a.torch ? 'toggleOn' : 'toggleOff');
         try { await track.applyConstraints({ advanced: [{ torch: a.torch }] }); el.setAttribute('aria-pressed', String(a.torch)); a.stats.torchOn = a.torch; } catch (e) { a.torch = !a.torch; }
       };
       return true;
