@@ -578,6 +578,30 @@ section('Kept across launches: the plan in the state');
   const g = relaunch(json, (S) => { S.planCache = 'garbage'; });
   check('and so is a cache that isn\'t one', g.now === first.now && g.last === first.last && Array.isArray(g.S.planCache.weeks));
 
+  // The next workout day worked out ahead, a piece at a time (brain.dayWork, as the app does once a
+  // launch has settled): that day's first launch builds no session, and the one it finds is the one
+  // it would have built.
+  {
+    let dd = null;
+    for (let d = day + 1; d < day + 7 && dd == null; d++) if (B.todayPlan(JSON.parse(json), d).type === 'workout') dd = d;
+    const S1 = JSON.parse(json);
+    let pieces = 0;
+    for (const piece of B.dayWork(S1, dd)) pieces += piece === undefined ? 1 : 0;
+    const json1 = JSON.stringify(S1);
+    const that = (src) => {
+      O.clearCache();
+      const S2 = JSON.parse(src);
+      const fit = O.fit;
+      let fits = 0;
+      O.fit = function (...a) { fits++; return fit.apply(this, a); };
+      try { const cal = B.calendar(S2, dd); const plan = B.todayPlan(S2, dd, cal); const s = JSON.stringify(B.buildSession(S2, dd, plan.tpl, { cal })); return { fits, s }; } finally { O.fit = fit; }
+    };
+    Date.now = () => dd * B.DAY_MS + 12 * 3600000;
+    const ahead = that(json1), cold = that(json);
+    Date.now = () => (D0 + 3) * B.DAY_MS + 12 * 3600000;
+    check(`a day worked out ahead (${pieces} pieces) is kept: its first launch builds no session (${ahead.fits} fits, ${cold.fits} without), and the same one`, dd != null && pieces >= 1 && ahead.fits === 0 && cold.fits > 0 && ahead.s === cold.s, { dd, pieces, ahead: ahead.fits, cold: cold.fits, same: ahead.s === cold.s });
+  }
+
   // A week that's over keeps what it last had planned: a later change plans this week again, and
   // last week stays as it was.
   const more = (S) => { S.vol.chest += 2; };

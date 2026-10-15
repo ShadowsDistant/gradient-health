@@ -1012,7 +1012,14 @@ group's weekly floor first, then by what a minute is worth toward the goals); `f
 to about 92% of the time set and never more than 30 seconds over it. `score` weighs goal fit,
 coverage, time, recovery, balance and variety, `explain` gives the "Why this plan" lines and
 `alternatives` scores the classic splits. Weeks before `S.engineFrom` replay 1.5's templates, so
-history doesn't shift. Plans are cached, and kept in `S.planCache` for the next launch.
+history doesn't shift. Plans are cached, and kept in `S.planCache` for the next launch, under a
+stamp of what they read (`brain.stateStamp`, with the profile as `planProfile` gives it: without
+what only the screens, food and the coach read, so a height from Health Connect or a new name plans
+nothing again). Something new that plans read has to stay out of `planProfile`'s lists. Once a
+launch has settled, and a moment after each saved change, the app works tomorrow out ahead in quiet
+idle moments (`brain.dayWork`, a piece at a time: the calendar, the week's plan, the session as
+Today builds it), so the first launch of a day finds its session kept, as a launch later the same
+day does.
 
 Age and health (`src/access.js`) adjust the plan through hooks the engine calls. Age bands: under 30,
 30 to 49, from 50 and from 65, plus two lines inside them: from 60 every leg day has one or two

@@ -1874,6 +1874,35 @@
     });
   }
 
+  // Tomorrow, worked out ahead (brain.dayWork: the calendar, the week's plan, the session as Today
+  // builds it) a piece per quiet idle moment once launch has settled, and kept with the plan in the
+  // state: the first launch of a new day finds its session, as a launch later the same day does,
+  // where working it out held the first frame back 80 to 100 ms at 4x CPU. Again a moment after a
+  // change (a workout logged, a setting); what's kept already costs next to nothing.
+  let ahead = null, aheadTimer = 0;
+  function workAhead() {
+    const S = U.S;
+    if (!S || !S.profile.onboarded || S.profile.workouts === false || !B().dayWork) return;
+    if (ahead) { ahead.again = true; return; }
+    // (Not under the player or set-up: their figure draws every frame.)
+    if (!playerEl.hidden || !onboardEl.hidden) { workAheadSoon(); return; }
+    const sessions = () => (S.planCache && Array.isArray(S.planCache.sessions) ? S.planCache.sessions : []);
+    const job = ahead = { work: B().dayWork(S, U.today() + 1), was: sessions().slice(), again: false };
+    const step = () => U.whenQuiet(() => idle(() => {
+      if (!playerEl.hidden || !onboardEl.hidden) { setTimeout(step, 4000); return; }
+      let r;
+      try { r = U.S === S ? job.work.next() : { done: true }; } catch (e) { r = { done: true }; }
+      if (!r.done) { step(); return; }
+      ahead = null;
+      const now = sessions();
+      if (U.S === S && (now.length !== job.was.length || now.some((x, i) => x !== job.was[i]))) GH.store.saveSoon(S);
+      if (job.again) workAheadSoon();
+    }, 1000));
+    step();
+  }
+  function workAheadSoon() { clearTimeout(aheadTimer); aheadTimer = setTimeout(workAhead, 4000); }
+  if (doc) doc.addEventListener('gh-change', workAheadSoon);
+
   let lastDay = null;
   function boot() {
     layout();
@@ -1919,6 +1948,7 @@
       if (!firstRun(greet)) greet();
     }
     warmFigureLater();
+    afterFrame(() => settled(workAheadSoon, 6000));
     lastDay = U.today();
     setInterval(() => {
       const d = U.today();

@@ -2669,6 +2669,20 @@
     }
     weeklySets(S, day);
   }
+  // What Today works out for a day (the calendar, the day's plan and, on a workout day, the week's
+  // plan and the session as Today builds it), a piece at a time, each kept as it would be. For
+  // tomorrow, once a launch has settled (src/ui/core.js): the session is kept with the plan in the
+  // state, so the next day's first launch finds it instead of working it out before its first frame.
+  function* dayWork(S, day) {
+    const cal = calendar(S, day);
+    yield;
+    const plan = todayPlan(S, day, cal);
+    if (plan.type !== 'workout' || S.active) return;
+    const ws = weekStart(day), week = cal.weeks[ws];
+    const custom = GH.customPlan && GH.customPlan.owns(plan.tpl);
+    if (week && !custom && GH.optimizer && GH.optimizer.weekPlan) { GH.optimizer.weekPlan(S, ws, { phase: week.phase }); yield; }
+    buildSession(S, day, plan.tpl, { cal });
+  }
 
   // Setting changes take effect from today; the replay uses the settings in force each week.
   // Workouts a week and the days they're on stay in step. Picking days sets the count (2 to 6: a
@@ -2789,7 +2803,7 @@
     defaultProfile, programFor, templateFor, templateTitle, newState, applyBaseline, rungs, filtersFor,
     calendar, weekOf, todayPlan, readiness, buildSession, estimate, steps, startWorkout, cancelWorkout, restoreWorkout, completeStep, currentTarget,
     setRir, amendLast, swapItem, swapOptions, finishWorkout, progress, levelUp, nextWeight, weeklyVolumeUpdate, recordTest, testDue,
-    logLight, autoWalk, addWeight, weightStats, proteinGoal, proteinToday, addProtein, undoProtein, weeklySets, weeklySetsWork,
+    logLight, autoWalk, addWeight, weightStats, proteinGoal, proteinToday, addProtein, undoProtein, weeklySets, weeklySetsWork, dayWork,
     updateSettings, scheduleSettings, settingsAt, moveSession, setEquipment, reprogram, ladderLevel, mobilityFlow, loadInfo, isDone, relink, median,
     defaultGym, GYM_PRESETS, DB_MAX_OPTIONS, convertDbMax, rangeFor, stepsGoal, outcomeOf, weekdaysFor, gymPreset, placeOf, setPlace, eqAt, eqFor, dbRack, snapLoad, suggestLoad, fmtLoad, loadChoices, setItemLoad, ensureProg, isGymFam, toUnit, fromUnit,
   };
