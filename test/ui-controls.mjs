@@ -692,6 +692,68 @@ if (reducedMotion) {
   check('flipping Sound 4 times encodes no lens maps and fires no preference changes', n.maps === 0 && n.prefs === 0, n);
 }
 
+/* ---------------------------------------------------------------- touch targets */
+// Every tap target answers a finger 44 px across (src/styles/controls.css): for each control on a
+// screen, the middle of each side of a 44 px square centred on it (or of its own box, if that's
+// bigger) hits the control, unless another control is there (two side by side can't both have it),
+// it's off the screen, or something else covers it there (the bars, a floating button).
+section('Touch targets: 44 px across');
+const reach = () => page.evaluate(() => {
+  const open = [...document.querySelectorAll('dialog[open]')].pop();
+  const pl = document.getElementById('player');
+  const roots = open ? [open] : pl && !pl.hidden ? [pl] : [document.getElementById('screen'), document.getElementById('topbar')];
+  const SEL = 'button, a[href], [data-act], label.rf-segment, .rf-chip, summary, label.rf-switch';
+  const bad = [];
+  let n = 0;
+  for (const root of roots) {
+    for (const e of root.querySelectorAll(SEL)) {
+      const r = e.getBoundingClientRect();
+      const cs = getComputedStyle(e);
+      if (!r.width || !r.height || e.disabled || e.closest('[inert], [aria-hidden="true"], [hidden], .bm-sr') || cs.visibility === 'hidden' || cs.pointerEvents === 'none' || +cs.opacity === 0) continue;
+      if (r.top < 0 || r.bottom > innerHeight || r.left < 0 || r.right > innerWidth) continue; // partly off screen
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      const hw = Math.max(r.width, 44) / 2 - 1, hh = Math.max(r.height, 44) / 2 - 1;
+      let ok = true;
+      for (const [x, y] of [[cx, cy - hh], [cx, cy + hh], [cx - hw, cy], [cx + hw, cy]]) {
+        if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) continue;
+        const h = document.elementFromPoint(x, y);
+        if (!h || h === e || e.contains(h)) continue;
+        const t = h.closest(`${SEL}, input, textarea, select`);
+        if (t && t !== e && !t.contains(e)) continue; // a neighbouring control's
+        if (!root.contains(h)) continue; // covered: the bars, a floating button, a toast
+        ok = false;
+      }
+      n++;
+      if (!ok) bad.push(`${Math.round(r.width)}x${Math.round(r.height)} ${e.tagName.toLowerCase()}.${String(e.className).split(' ').slice(0, 2).join('.')} "${(e.getAttribute('aria-label') || e.textContent || '').trim().slice(0, 24)}"`);
+    }
+  }
+  return { n, bad };
+});
+const targets = async (label, prep) => {
+  await prep();
+  await wait(900);
+  const r = await reach();
+  check(`${label}: every control (${r.n}) answers 44 px across`, r.n > 0 && !r.bad.length, r.bad.slice(0, 8));
+};
+const scrollTo = (sel) => page.evaluate((s) => { const e = document.querySelector(s); if (e) e.scrollIntoView({ block: 'center' }); }, sel);
+await page.evaluate(() => { const U = window.GH.ui; U.closeSheets(); while (U.back()) { /* back to the tab */ } });
+await targets('Today, its top (the tip\'s Got it, "Planned around", a move\'s row)', async () => { await page.evaluate(() => { const U = window.GH.ui; delete U.S.seen.tip_today; U.go('today'); U.render(); }); await wait(400); await page.evaluate(() => { document.getElementById('screen').scrollTop = 0; }); });
+await targets('Today, a move\'s rows and the cards under them', () => scrollTo('#screen .ex-list'));
+await targets('Plan (the sections, the phase\'s info, Next week)', async () => { await page.evaluate(() => window.GH.ui.go('plan')); await wait(500); await page.evaluate(() => { document.getElementById('screen').scrollTop = 0; }); });
+await targets('Progress (its ranges)', async () => { await page.evaluate(() => window.GH.ui.go('progress')); await wait(500); await page.evaluate(() => { document.getElementById('screen').scrollTop = 0; }); });
+await targets('Settings (its search, segments and chips)', async () => { await settings(); await page.evaluate(() => { document.getElementById('screen').scrollTop = 0; }); });
+await targets('Settings, further down', () => page.evaluate(() => { const s = document.getElementById('screen'); s.scrollTop = s.scrollHeight * 0.45; }));
+await targets('a sheet (Close and Save, a stepper, the day chips)', async () => { await page.evaluate(() => { const U = window.GH.ui; while (U.back()) { /* */ } U.go('today'); U.act.daysSheet(); }); await wait(600); });
+await page.evaluate(() => window.GH.ui.closeSheets());
+await wait(500);
+await targets('the player, a set (its weight, Did fewer\'s stepper)', async () => {
+  await page.evaluate(() => { const GH = window.GH, U = GH.ui; GH.store.saveSoon = () => {}; U.act.startWorkout(); const a = U.S.active; a.idx = a.steps.findIndex((st) => st.kind === 'set' && !st.item.timed && !st.leadOnly); U.openPlayer(); });
+});
+await targets('the player, resting (+15 s, Skip rest, Change, the four answers)', () => page.evaluate(() => { const U = window.GH.ui, a = U.S.active; a.idx = a.steps.findIndex((st) => st.kind === 'set' && !st.item.timed && st.askRir && st.rest); U.openPlayer(); U.act.plDone(); }));
+await targets('the check-in (its answers and chips)', () => page.evaluate(() => window.GH.ui.openCheckin()));
+await page.evaluate(() => { const U = window.GH.ui; U.act.plKeep(); window.GH.brain.cancelWorkout(U.S); U.render(); });
+await wait(600);
+
 check('no errors on the page', !errors.length, errors.slice(0, 5));
 await browser.close();
 await server.close();

@@ -116,6 +116,11 @@
   inset: min(0px, calc(50% - 22px));
 }
 :is(.bdg-note, .bdg-strip-head, .sci-key, .pl-load) { position: relative; }
+/* (A colour swatch's ::before is its ring, so its hit area is its ::after.) */
+.swatch::after { content: ''; position: absolute; inset: min(0px, calc(50% - 22px)); }
+/* Plan's week strip starts right under Next week: the strip's header sits above it, so the button's
+   hit area isn't under the strip. */
+.pw-head { position: relative; z-index: 1; }
 .rf-sheet-header .rf-btn.rf-glass { min-block-size: 44px; min-inline-size: 44px; }
 
 /* ---------------------------------------------------------------- fallbacks */
