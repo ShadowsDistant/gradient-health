@@ -158,7 +158,8 @@
   let tab = 'recent';
   let query = '';
   let online = { busy: false, items: null, error: null, q: '' };
-  function addBody(S) {
+  // What's found (or the list picked): the part of Add food that changes while typing.
+  function resultsHtml(S) {
     const f = F().data(S);
     const q = query.trim();
     let results = '';
@@ -180,13 +181,18 @@
       const list = listFor(S, tab);
       results = list.length ? `<ul class="rf-list">${list.map(foodRow).join('')}</ul>` : `<p class="t-callout rf-muted fd-empty">${tab === 'favs' ? 'Tap the star on a food to keep it here.' : 'Foods you create from a label show up here.'}</p>`;
     }
+    return results;
+  }
+  function addBody(S) {
+    const q = query.trim();
+    shownQ = q;
     return `<div class="fd-pick">${mealSeg('foodAddMeal', addMeal, 'foodAddMeal')}</div>
       <div class="fd-search">
         <div class="rf-search fd-q"><input class="rf-input" type="search" id="foodQ" placeholder="Search foods" aria-label="Search foods" value="${U.esc(query)}" autocomplete="off" enterkeyhint="search"></div>
         ${F().prefs(S).online ? `<button type="button" class="rf-btn" data-shape="circle" aria-label="Scan a barcode" data-act="foodScan">${U.icon('scan')}</button>` : ''}
       </div>
       ${q ? '' : `<div class="fd-tabs" data-hscroll>${U.seg('foodTab', [['recent', 'Recent'], ['favs', 'Favourites'], ['mine', 'My foods'], ['meals', 'Meals']], tab, 'Lists', ' data-on="foodTab" data-size="sm"')}</div>`}
-      <div class="fd-results">${results}</div>
+      <div class="fd-results">${resultsHtml(S)}</div>
       <ul class="rf-list fd-more">
         ${U.row({ icon: 'flame', tone: 'coral', title: 'Quick add calories', sub: 'Just the numbers', act: 'foodQuick', chevron: true })}
         ${U.row({ icon: 'pencil', tone: 'indigo', title: 'Create a food', sub: 'From a nutrition label', act: 'foodCreate', chevron: true })}
@@ -199,6 +205,16 @@
     return `<button type="button" class="rf-btn fd-online-btn" data-variant="soft" data-size="sm" data-act="foodOnline" data-haptic="tap">${U.icon('globe')}Search online for "${U.esc(q)}"</button>`;
   }
   function refresh() { if (sheet && !sheet.closed) sheet.update(addBody(U.S)); }
+  // Only what's found (or listed) drawn again: the field, its caret and the keyboard's word in progress
+  // are never touched. The rest is drawn again when the lists' switch comes or goes with the query.
+  let shownQ = '';
+  function refreshResults() {
+    if (!sheet || sheet.closed) return;
+    const box = sheet.el.querySelector('.fd-results');
+    if (!box || !query.trim() !== !shownQ) { refresh(); return; }
+    shownQ = query.trim();
+    U.morph(box, resultsHtml(U.S));
+  }
   // Add food: on Recent (the foods you have most, first), with the meal picked at the top.
   function openAdd(day, meal) {
     const S = U.S;
@@ -209,31 +225,35 @@
     sheet = U.sheet({ title: addDay === U.today() ? 'Add food' : `Add food for ${dayWord(addDay)}`, size: 'full', cls: 'fd-sheet', body: addBody(S), onClose: () => { sheet = null; } });
     const input = sheet.el.querySelector('#foodQ');
     let timer = 0;
-    // Search as you type (built-in list only; online search waits for Enter or the button).
+    // Search as you type (built-in list only; online search waits for Enter or the button): what's
+    // found is drawn again a moment after the last key.
     sheet.el.addEventListener('input', (e) => {
       if (e.target.id !== 'foodQ') return;
       query = e.target.value;
       clearTimeout(timer);
       timer = setTimeout(() => {
         const pos = e.target.selectionStart;
-        refresh();
-        const again = sheet && sheet.el.querySelector('#foodQ');
-        if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch (err) { /* ignore */ } }
+        const whole = !query.trim() !== !shownQ;
+        refreshResults();
+        const again = whole && sheet && sheet.el.querySelector('#foodQ');
+        if (again && G.document.activeElement !== again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch (err) { /* ignore */ } }
       }, 120);
     });
     sheet.el.addEventListener('keydown', (e) => { if (e.target.id === 'foodQ' && e.key === 'Enter') { e.preventDefault(); if (F().prefs(U.S).online && query.trim()) U.act.foodOnline(); } });
-    // The built-in list loads now: recents from it show their names, and search is ready.
-    if (!dbReady()) loadDb().then(() => refresh());
+    // The built-in list loads now: recents from it show their names, and search is ready (its index
+    // built in a calm moment, so the first letters typed don't wait on it).
+    const warm = () => { if (GH.foods && GH.foods.warm) (U.whenCalm || ((fn) => setTimeout(fn, 400)))(() => GH.foods.warm()); };
+    if (!dbReady()) loadDb().then(() => { refreshResults(); warm(); }); else warm();
     if (input && !f.recent.length && !f.custom.length) setTimeout(() => input.focus(), 350);
   }
   U.act.foodAdd = (el) => openAdd(null, el && el.dataset && MEAL_NAME[el.dataset.arg] ? el.dataset.arg : null);
-  U.on.foodTab = (el, ev, v) => { tab = v; refresh(); };
-  U.on.foodAddMeal = (el, ev, v) => { if (!MEAL_NAME[v]) return; addMeal = v; addHand = true; refresh(); };
+  U.on.foodTab = (el, ev, v) => { tab = v; refreshResults(); };
+  U.on.foodAddMeal = (el, ev, v) => { if (!MEAL_NAME[v]) return; addMeal = v; addHand = true; refreshResults(); };
   U.act.foodOnline = async () => {
     const q = query.trim();
     if (!q || online.busy) return;
     online = { busy: true, items: null, error: null, q };
-    refresh();
+    refreshResults();
     try {
       const items = await GH.foodNet.search(q);
       online = { busy: false, items, error: null, q };
@@ -241,7 +261,7 @@
     } catch (e) {
       online = { busy: false, items: null, error: e.message || 'Online search didn\'t work. Try again in a minute.', q };
     }
-    refresh();
+    refreshResults();
   };
   function rememberOff(items) {
     const f = F().data(U.S);

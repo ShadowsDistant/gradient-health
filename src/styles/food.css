@@ -83,6 +83,15 @@ p > .fd-link.rf-btn { vertical-align: baseline; }
 /* A small round button (a meal's +, a recent food's +): 44 px to the finger, its circle drawn 38 px
    inside that, and laid out at 38. */
 .fd-meal-head > .rf-btn, .fd-again.rf-btn { --_h: var(--hit-min); padding: 3px; margin: -3px; background-clip: content-box; }
+/* The food sheets' small segmented controls (the meal, the lists, the pace, sex) keep their small
+   words but are 44 px tall, as the sheets' other controls are. */
+:is(.fd-sheet, .fd-portion, .fd-form, .fd-start) .rf-segmented[data-size="sm"] { --_h: var(--hit-min); }
+/* A field's text box fills its field, so all 44 px of it take a tap. */
+:is(.fd-portion, .fd-form, .fd-start, .fd-times, .sc-type) .rf-field-control > .rf-input, .fd-q > .rf-input { align-self: stretch; }
+/* The amount's minus and plus: 44 px to a finger, past the stepper's own inset. */
+.fd-qty .rf-stepper-btn { position: relative; }
+.fd-qty .rf-stepper-btn::before { content: ""; position: absolute; inset: -3px 0; }
+.fd-qty .rf-stepper-value { align-self: stretch; }
 
 /* ---------------------------------------------------------------- the Food page */
 /* The day: a control as wide as the cards under the title, the day centred between its arrows. */
@@ -142,6 +151,9 @@ p > .fd-link.rf-btn { vertical-align: baseline; }
 .fd-big { display: flex; align-items: baseline; gap: var(--space-2); }
 .fd-big .rf-spacer { flex: 1; }
 .fd-big .rf-btn { align-self: center; }
+/* A favourite's star fills in. */
+.fd-big [data-act="foodFav"][aria-pressed="true"] { color: var(--hue-amber); }
+.fd-big [data-act="foodFav"][aria-pressed="true"] svg { fill: currentColor; }
 .fd-pcf { margin: 0; color: var(--label-secondary); }
 .fd-portion .ob-chips .rf-chip { min-height: var(--hit-min); }
 .fd-qty { display: flex; align-items: center; gap: var(--space-3); }
