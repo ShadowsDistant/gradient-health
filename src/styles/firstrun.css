@@ -1,0 +1,22 @@
+/* Before you start (src/ui/firstrun.js): set-up's welcome (src/styles/onboarding.css) as a page of its
+   own, above set-up and the app and below toasts. A sheet opened from it (the privacy policy) is in
+   the top layer, above it. (This file comes before onboarding.css, so its rules name both classes.) */
+.onboard.gh-firstrun { z-index: calc(var(--z-overlay) + 2); }
+/* A smaller mark than the welcome's, so the four points fit a phone without scrolling. */
+/* The halo has room above it inside the scroller, so its top is never cut off in a line. */
+.onboard.gh-firstrun .ob-scroll { padding-bottom: var(--space-4); }
+.onboard.gh-firstrun .ob-hello { gap: var(--space-2); padding-top: 28px; }
+.onboard.gh-firstrun .ob-mark { width: 68px; height: 68px; margin-bottom: var(--space-3); }
+.onboard.gh-firstrun .ob-logo { width: 68px; height: 68px; border-radius: 16px; }
+.onboard.gh-firstrun .ob-halo { inset: -24px; }
+.onboard.gh-firstrun .ob-hero-title { font-size: clamp(2rem, 9vw, 2.75rem); text-wrap: balance; }
+/* The title takes the focus as it opens (for a screen reader); it isn't something to press. */
+.onboard.gh-firstrun .ob-hero-title:focus { outline: none; }
+.onboard.gh-firstrun .ob-tagline { max-width: 30ch; font-size: 1.0625rem; font-weight: 500; text-wrap: pretty; }
+.onboard.gh-firstrun .ob-points { gap: 8px; margin-top: var(--space-4); }
+/* Two lines or more under each title: the icon stays level with the title. */
+.onboard.gh-firstrun .ob-points li { align-items: flex-start; padding: 14px 16px 14px 14px; }
+.onboard.gh-firstrun .ob-point-text { gap: 3px; }
+.onboard.gh-firstrun .ob-point-sub { line-height: 1.38; text-wrap: pretty; }
+/* Put away: taps go through to what's under it as it fades. */
+.onboard.gh-firstrun[data-closing] { pointer-events: none; }

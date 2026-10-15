@@ -10,14 +10,15 @@
 // tapped (not before), a no leaves them off with nothing asking again (Settings shows them off), an
 // Android that allows them already asks nothing, a browser has none, and a restored backup keeps its
 // own. Then Your answers: every detailed screen as before, one screen with Save; after the first
-// workout, Health Connect offered and then the tour (once, not over a toast); and a flare day.
+// workout, Health Connect offered and then the tour (once, not over a toast); a flare day; and Before
+// you start, the health and privacy page every first launch opens on.
 // No console errors. Screenshots go to build/ui-onboarding/.
 // Usage: node test/ui-onboarding.mjs [--dark] [--width=390]
 import { createRequire } from 'node:module';
 import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { root, check, section, done, serveDist } from './lib.mjs';
-import { seedBridge } from './fixtures.mjs';
+import { seedBridge, seedState, acceptDisclaimer } from './fixtures.mjs';
 
 const require = createRequire(import.meta.url);
 let chromium;
@@ -38,14 +39,17 @@ const SUNDAY = '2026-10-04T08:00:00'; // a Sunday: in none of the usual spreads 
 // request is counted in window.__hcAsks), 'unsupported' (the app on an older Android) or 'web'.
 // notify: Android's side of notifications before the app starts (test/fixtures.mjs: Android 13
 // asks, and the answer is yes unless notify.answer says otherwise).
-async function fresh(bridge = 'app', time = SUNDAY, notify = null) {
+// o.ask: Before you start (src/ui/firstrun.js) not read yet on this phone (it is, otherwise).
+async function fresh(bridge = 'app', time = SUNDAY, notify = null, o = {}) {
   const ctx = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: dark ? 'dark' : 'light' });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await page.clock.install({ time: new Date(time) });
   if (notify) await page.addInitScript((n) => { window.__notify = n; }, notify);
+  if (o.ask) await page.addInitScript(() => { window.__disclaimer = 'ask'; });
   if (bridge !== 'web') await page.addInitScript(seedBridge);
+  else await page.addInitScript(acceptDisclaimer);
   await page.addInitScript((kind) => {
     window.__hcAsks = 0;
     const t = setInterval(() => {
@@ -628,6 +632,83 @@ section('A flare day (rheumatoid arthritis)');
     const vol = await page.evaluate(() => { const S = window.GH.ui.S; return { done: S.log.some((l) => l.type === 'workout' && window.GH.brain.isDone(l)), rating: S.log[S.log.length - 1].checkin.rating }; });
     check('and it counts, without touching training volume', vol.done && vol.rating == null, vol);
   }
+  await ctx.close();
+}
+
+section('Before you start: health and privacy, once, before anything else');
+{
+  const { ctx, page } = await fresh('app', SUNDAY, null, { ask: true });
+  await page.waitForSelector('.gh-firstrun .ob-go');
+  await settle(page, 700);
+  const first = await page.evaluate(() => {
+    const fr = document.querySelector('.gh-firstrun');
+    const r = fr.getBoundingClientRect();
+    const go = document.querySelector('#onboard .ob-actions [data-variant="tinted"]').getBoundingClientRect();
+    const s = fr.querySelector('.ob-scroll');
+    return {
+      title: document.getElementById('frTitle').textContent, focus: document.activeElement && document.activeElement.id,
+      covers: r.top <= 0 && r.left <= 0 && r.bottom >= innerHeight && r.right >= innerWidth,
+      // Set-up's Get started is under it, out of reach: what's there is this page's.
+      onTop: fr.contains(document.elementFromPoint(go.left + go.width / 2, go.top + go.height / 2)),
+      setup: !document.getElementById('onboard').hidden, inert: !!document.getElementById('onboard').closest('[inert]'),
+      role: fr.getAttribute('role'), modal: fr.getAttribute('aria-modal'), label: fr.getAttribute('aria-labelledby'),
+      points: [...fr.querySelectorAll('.ob-point-title')].map((x) => x.textContent),
+      fits: s.scrollHeight <= s.clientHeight + 1,
+      buttons: [...fr.querySelectorAll('.ob-actions .rf-btn')].map((b) => b.textContent.trim()),
+    };
+  });
+  check('a fresh install opens on Before you start, over set-up\'s welcome, which is out of reach under it', first.title === 'Before you start' && first.covers && first.onTop && first.setup && first.inert, first);
+  check('a dialog named by its title, which has the focus', first.role === 'dialog' && first.modal === 'true' && first.label === 'frTitle' && first.focus === 'frTitle', first);
+  check('four things: not medical advice, your doctor first, when to stop, your data', JSON.stringify(first.points) === JSON.stringify(['Not medical advice', 'Check with your doctor first', 'Stop if something feels wrong', 'Your data stays on this phone']), first.points);
+  check('I understand, and the privacy policy', JSON.stringify(first.buttons) === JSON.stringify(['I understand', 'Read the privacy policy']), first.buttons);
+  check('it fits the screen without scrolling', first.fits || width < 390);
+  check('plain words: no dashes', !dashes(await page.locator('.gh-firstrun').innerText()));
+  await shot(page, '00-before-you-start');
+  const back1 = await page.evaluate(() => window.__gh.back());
+  await settle(page, 200);
+  check('Android Back on it isn\'t taken (the app goes to the background), and it stays', back1 === false && await page.locator('.gh-firstrun').count() === 1 && (await title(page)) === 'Gradient Health');
+  await page.click('.gh-firstrun [data-act="firstRunPrivacy"]');
+  await page.waitForSelector('dialog.rf-sheet[open]');
+  await settle(page, 600);
+  const pv = await page.evaluate(() => {
+    const d = document.querySelector('dialog.rf-sheet[open]');
+    const p = document.elementFromPoint(innerWidth / 2, innerHeight * 0.6);
+    return { title: (d.querySelector('.rf-sheet-title') || {}).textContent, onTop: d.contains(p), text: d.innerText.length };
+  });
+  check('Read the privacy policy opens it in a sheet above the page', pv.title === 'Privacy' && pv.onTop && pv.text > 500, pv);
+  const back2 = await page.evaluate(() => window.__gh.back());
+  await settle(page, 700);
+  check('Back closes the policy, and Before you start is still there', back2 === true && await page.locator('dialog.rf-sheet[open]').count() === 0 && await page.locator('.gh-firstrun').count() === 1);
+  await page.evaluate(() => { window.__haptics.length = 0; });
+  await page.click('.gh-firstrun [data-act="firstRunOk"]');
+  await settle(page, 500);
+  const after = await page.evaluate(() => ({ gone: !document.querySelector('.gh-firstrun'), inert: !!document.getElementById('onboard').closest('[inert]'), kept: localStorage.getItem('gh.disclaimer'), hx: window.__haptics.slice(), focus: !!(document.activeElement && document.activeElement.closest('#onboard')) }));
+  check('I understand: it goes with the success haptic, and set-up is in reach, with the focus', after.gone && !after.inert && after.hx.includes('success') && after.focus, after);
+  check('and it\'s kept on this phone', after.kept === '1');
+  await page.reload();
+  await page.waitForSelector('.onboard:not([hidden]) .rf-large-title');
+  await settle(page, 600);
+  check('opened again before set-up is done: straight to set-up', await page.locator('.gh-firstrun').count() === 0 && (await title(page)) === 'Gradient Health');
+  await ctx.close();
+}
+{
+  // Someone set up before Before you start: on their next launch, over Today; it's then kept with
+  // their data too, which a backup carries.
+  const { ctx, page } = await fresh('app', SUNDAY, null, { ask: true });
+  await page.evaluate(seedState);
+  await page.evaluate(() => { const st = window.GH.store; st.flush(); const S = st.load(); delete S.seen.disclaimer; st.save(S); st.flush(); });
+  await page.reload();
+  await page.waitForSelector('.gh-firstrun .ob-go');
+  await settle(page, 700);
+  check('someone set up already sees it on their next launch, over Today', await page.evaluate(() => document.getElementById('screen').dataset.view === 'today' && !!document.getElementById('app').closest('[inert]')));
+  await page.evaluate(() => window.GH.ui.open('settings'));
+  await settle(page);
+  const b = await page.evaluate(() => window.__gh.back());
+  await settle(page, 300);
+  check('a Back that would move what\'s under it (a page a link opened) is spent on it: nothing moves', b === true && await page.evaluate(() => window.GH.ui.route.view === 'settings') && await page.locator('.gh-firstrun').count() === 1);
+  await page.click('.gh-firstrun [data-act="firstRunOk"]');
+  await settle(page, 500);
+  check('accepted, it\'s kept with their data', await page.evaluate(() => { window.GH.store.flush(); return window.GH.ui.S.seen.disclaimer === 1 && window.GH.store.load().seen.disclaimer === 1; }));
   await ctx.close();
 }
 

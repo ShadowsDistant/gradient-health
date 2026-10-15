@@ -1852,16 +1852,23 @@
     if (later.length) { const S0 = U.S; afterFrame(() => { for (const fn of later) safe(() => fn(S0)); }); }
     applyPrefs();
     observeInserts();
-    if (!U.S || !U.S.profile.onboarded) U.showOnboarding();
+    // Before you start (src/ui/firstrun.js): health and privacy, once, over set-up or the first screen.
+    const firstRun = (then) => !!(U.firstRun && safe(() => U.firstRun(then)));
+    if (!U.S || !U.S.profile.onboarded) { U.showOnboarding(); firstRun(); }
     else {
       // Until the first frame is drawn, screens leave out what can come a moment later (Today's
       // insight line, when it has to be worked out).
       U.firstFrame = true;
       afterFrame(() => { U.firstFrame = false; });
       render('stagger');
-      if (U.S.active && U.resumePrompt) U.resumePrompt();
       U.syncHealth('boot');
-      if (U.afterBoot) safe(() => U.afterBoot());
+      // What could open over the first screen (a workout to pick up, What's new, a badge, a link's
+      // page) waits until Before you start is put away.
+      const greet = () => {
+        if (U.S.active && U.resumePrompt) U.resumePrompt();
+        if (U.afterBoot) safe(() => U.afterBoot());
+      };
+      if (!firstRun(greet)) greet();
     }
     warmFigureLater();
     lastDay = U.today();

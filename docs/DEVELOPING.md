@@ -82,6 +82,7 @@ src/ui/metric.js         a health number's sheet: its history, chart, and adding
 src/ui/bodymap.js        Progress's body map (front and back, 17 muscles) and the muscle sheet
 src/ui/guide.js          tour (cards over Today after the first workout), first-week checklist, tab
                          tips, What's new
+src/ui/firstrun.js       Before you start: health and privacy, once, before set-up or Today
 src/ui/motion.js         route changes, glides, collapse and expand, glass that forms and changes
                          shape (U.motion), menus (U.menu)
 src/ui/lazy.js           stand-ins for the parts that load when they're needed (APP_CHUNKS)
@@ -1061,6 +1062,17 @@ built (`GH.optimizer.explainProfile`) with its first workout a tap away. With no
 usual pattern is turned so today is a workout day. Health Connect is offered after the first workout
 (`U.hcInvite`), never before the plan. Reminders come on as it ends (see Notifications).
 `test/ui-onboarding.mjs` covers it.
+
+Before you start (`src/ui/firstrun.js`) comes before all of it: health and privacy in four points,
+"I understand" and a link to the privacy policy. A new install sees it over set-up's welcome; someone
+set up before 1.13 sees it once, over Today. Boot holds back what would open over the first screen
+(`U.resumePrompt`, `U.afterBoot`: What's new, badges, a link's page) until it's put away. It's kept
+with the state (`S.seen.disclaimer`) and on the phone in localStorage (`gh.disclaimer`, which a reset
+keeps); raise `DISCLAIMER` to ask again after a real change in the words. What's under it is `inert`;
+a sheet opened from it is in the top layer. The test fixtures accept it (`seedBridge`, `seedState`,
+or `acceptDisclaimer` for a page without the bridge); a test that wants it sets
+`window.__disclaimer = 'ask'` in an init script before them, as `test/ui-onboarding.mjs` and
+`test/smoke.mjs` do.
 
 ## Your plans
 

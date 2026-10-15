@@ -317,6 +317,7 @@ export const APP_SCRIPTS = [
   'src/ui/badges.js',
   'src/ui/coachpage.js',
   'src/ui/settings.js',
+  'src/ui/firstrun.js', // Before you start: health and privacy, once, before anything else
   'src/ui/notify.js', // notifications: the hand-off to Android, Settings' rows and Today's card
   'src/update.js', // updates from the GitHub release: the check, Settings' rows, Today's card, the sheet
 ];

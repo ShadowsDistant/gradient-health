@@ -1,5 +1,5 @@
 // End-to-end smoke run of the built page in Chromium at phone size, with a fake Android bridge
-// and a controlled clock: set-up (welcome, four questions, the plan) → Today (the level check from
+// and a controlled clock: Before you start → set-up (welcome, four questions, the plan) → Today (the level check from
 // the first week's checklist) → a workout with rest, a side switch, a timer and a swap → check-in →
 // Next time (Health Connect offered there) → the tour → Health (coach, Claude hand-off) → Progress,
 // Plan and its Moves → You, How it works, Settings → reload (persistence, What's new). Screenshots
@@ -79,6 +79,19 @@ const settle = async (ms = 450) => { await page.clock.runFor(60); await page.wai
 const clickNext = async () => { await page.locator('.ob-actions [data-variant="tinted"]').click(); await settle(); };
 const title = () => page.locator('.onboard .rf-large-title').first().innerText();
 const hint = () => page.locator('.ob-actions .ob-hint').innerText().catch(() => '');
+
+section('Before you start');
+// The first launch opens on health and privacy, over set-up's welcome, which can't be reached until
+// it's put away. "I understand" puts it away for good (the reload at the end checks it stays away).
+await page.waitForSelector('.gh-firstrun .ob-go');
+await settle(600);
+const before = await page.evaluate(() => ({ title: document.getElementById('frTitle').innerText, under: !!document.getElementById('onboard').closest('[inert]'), setup: !document.getElementById('onboard').hidden, focus: document.activeElement && document.activeElement.id }));
+check('the first launch opens on Before you start, over set-up', before.title === 'Before you start' && before.under && before.setup && before.focus === 'frTitle', before);
+check('four things to know: not medical advice, your doctor, when to stop, your data', /Not medical advice/.test(await page.locator('.gh-firstrun').innerText()) && await page.locator('.gh-firstrun .ob-points li').count() === 4);
+await shot(page, '00-before');
+await page.locator('.gh-firstrun [data-act="firstRunOk"]').click();
+await settle(500);
+check('I understand: it goes, and set-up can be reached', await page.locator('.gh-firstrun').count() === 0 && !(await page.evaluate(() => !!document.getElementById('onboard').closest('[inert]'))));
 
 section('Set-up');
 check('starts on the welcome screen, with the logo', (await title()) === 'Gradient Health' && await page.locator('.ob-hello .ob-logo').count() === 1);
@@ -377,12 +390,16 @@ await page.waitForSelector('#screen[data-view="today"]');
 await page.waitForTimeout(300);
 check('after a reload Today still shows the finished workout', await page.locator('#screen .session.done').count() === 1);
 check('no What\'s new on a normal launch', await page.evaluate(() => !document.querySelector('dialog.rf-sheet[open]')));
-// Someone updating from 1.0.0 sees What's new once.
-await page.evaluate(() => { const S = window.GH.ui.S; S.seen.lastVersion = '1.0.0'; window.GH.store.save(S); });
+check('and no Before you start: it was read once', await page.locator('.gh-firstrun').count() === 0 && await page.evaluate(() => window.GH.ui.S.seen.disclaimer === 1));
+// Someone updating from a version before Before you start: it comes first, What's new after it.
+await page.evaluate(() => { const S = window.GH.ui.S; S.seen.lastVersion = '1.0.0'; delete S.seen.disclaimer; window.GH.store.save(S); localStorage.removeItem('gh.disclaimer'); });
 await page.reload();
 await page.waitForSelector('#screen[data-view="today"]');
 await page.waitForTimeout(1200);
-check('after an update, What\'s new shows once', await page.evaluate(() => /What's new in/.test((document.querySelector('dialog.rf-sheet[open] .rf-sheet-title') || {}).textContent || '')));
+check('after an update from before it, Before you start shows over Today, and What\'s new waits', await page.locator('.gh-firstrun').count() === 1 && await page.evaluate(() => document.getElementById('app').inert && !document.querySelector('dialog.rf-sheet[open]')));
+await page.locator('.gh-firstrun [data-act="firstRunOk"]').click();
+await page.waitForTimeout(1200);
+check('after an update, What\'s new shows once, after it', await page.evaluate(() => /What's new in/.test((document.querySelector('dialog.rf-sheet[open] .rf-sheet-title') || {}).textContent || '')));
 await shot(page, '15-whatsnew');
 
 section('Console');
