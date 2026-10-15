@@ -299,17 +299,19 @@
     if (from.nodeName === 'TEXTAREA' || to.getAttribute('data-morph') === 'keep') return;
     morphChildren(from, to, fx, lvl);
   }
-  // The markup each block was last patched to, for a page's blocks and what's in them (the first two
-  // levels down): a re-render passes over a block whose markup is the same again, and whose nodes
-  // nothing has touched since, without walking it. Plan re-renders all of its long page for a day
-  // picked, and walking every node of it took most of that render (25 to 50 ms at 4x CPU). Anything
-  // that changes a block's nodes in between (a toggle a tap pressed, a still drawn in, a thumb placed,
-  // U.morph patching a part of it) takes it off the list (`touched`, a MutationObserver on what's
-  // patched; a patch's own changes are let go), and a block with a form control in it is always
-  // walked (what's typed or picked in one isn't in its nodes): a patch puts back all it did before.
+  // What each block was last patched to (its template node), for a page's blocks and what's in them
+  // (the first two levels down): a re-render passes over a block whose new template is the same
+  // (isEqualNode, which compares a kept still's data URL without copying it), and whose nodes nothing
+  // has touched since, without walking it. Plan re-renders all of its long page for a day picked, and
+  // walking every node of it took most of that render (25 to 50 ms at 4x CPU). Anything that changes
+  // a block's nodes in between (a toggle a tap pressed, a still drawn in, a thumb placed, U.morph
+  // patching a part of it) takes it off the list (`touched`, a MutationObserver on what's patched; a
+  // patch's own changes are let go), and a block with a form control in it is always walked (what's
+  // typed or picked in one isn't in its nodes): a patch puts back all it did before. (So a template
+  // kept here stays whole, what a patch adds inside a block is a copy of the template's node.)
   const patchedTo = new WeakMap();
   const SAME_LEVELS = 2;
-  const FORMS = /<(input|textarea|select)\b/;
+  const FORMS = 'input, textarea, select';
   const WATCH = { subtree: true, childList: true, attributes: true, characterData: true };
   function untouch(recs) {
     const seen = new Set();
@@ -355,19 +357,23 @@
         if (match === cur) cur = cur.nextSibling;
         else { parent.insertBefore(match, cur); moved++; }
         if (level < SAME_LEVELS && t.nodeType === 1 && touched) {
-          const markup = t.outerHTML;
-          if (patchedTo.get(match) === markup) continue;
+          const was = patchedTo.get(match);
+          if (was && was !== t && was.isEqualNode(t)) continue;
           morphNode(match, t, fx, level + 1);
-          if (FORMS.test(markup)) patchedTo.delete(match); else patchedTo.set(match, markup);
+          if (t.matches(FORMS) || t.querySelector(FORMS)) patchedTo.delete(match); else patchedTo.set(match, t);
+          // (A block's template is kept on its own, not with the rest of the page's.)
+          if (!level && t.parentNode) t.parentNode.removeChild(t);
         } else {
           // (Deeper down: a block U.morph patched on its own, inside a part of the page, is walked.)
           patchedTo.delete(match);
           morphNode(match, t, fx, level + 1);
         }
       } else {
-        if (t.nodeType === 1) record(t);
-        parent.insertBefore(t, cur);
-        added.push(t);
+        // (Inside a block, a copy of the template's node goes in, so the block's template stays whole.)
+        const n = level && touched ? t.cloneNode(true) : t;
+        if (n.nodeType === 1) record(n);
+        parent.insertBefore(n, cur);
+        added.push(n);
       }
     }
     const gone = [];
