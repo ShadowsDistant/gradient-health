@@ -1837,7 +1837,7 @@
     const session = buildSession(S, day, tplIdx, { short: o.short, cal: calendar(S, day) });
     // Each exercise's reps-left aim (effortFor), for the player's hint and, kept in the log, for the
     // progression and the coach. (A log with an aim is on 1.13's answers: 0, 1-2, 3, 4 or more.)
-    for (const it of session.items.concat(session.extras)) if (it.kind === 'move' || it.kind === 'extra') it.effort = effortFor(S, it, session.phase);
+    for (const it of session.items.concat(session.extras)) if (it.kind === 'move' || it.kind === 'extra') it.effort = effortFor(S, it, session.phase, day);
     const st = steps(S, session);
     S.active = {
       day, tpl: tplIdx, startedAt: o.now || Date.now(), short: !!o.short, session, steps: st, idx: 0,
@@ -1980,7 +1980,7 @@
       const i = itemIndex(A, item);
       item.fam = fam;
       // The new move has its own aim (a strength lift's, say, where the old one had the usual).
-      if (item.kind === 'move' || item.kind === 'extra') item.effort = effortFor(S, item, A.session.phase);
+      if (item.kind === 'move' || item.kind === 'extra') item.effort = effortFor(S, item, A.session.phase, A.day);
       if (i >= 0) Object.assign(A.logs[i], { moveId: newMoveId, target: item.target, timed: item.timed, uni: item.uni, swapped: true, fam }, item.effort ? { aim: item.effort.key } : {});
       // Re-expand the remaining steps so a unilateral swap gets its side steps.
       const doneSteps = A.steps.slice(0, A.idx);
@@ -2276,26 +2276,35 @@
   //   bone      osteoporosis (GH.access.boneLoad, when access.js has it), after the on-ramp: main sets
   //             1-2, working toward the heaviest load lifted 8 to 12 times (Brooke-Wavell et al. 2022).
   //   size      the top goal muscles (tier 1): 1-2. Muscle grows more as sets end nearer failure.
-  //   gentle    the on-ramp weeks, from 60, high blood pressure or a heart condition: 2-3. People
-  //             misjudge what's left by about a rep (Halperin et al. 2022) and the last reps add
-  //             little, so these stop a little further off (the app's choice, not a tested rule).
+  //   gentle    the on-ramp weeks, from 60, high blood pressure, a heart condition or diabetic eye
+  //             disease: 2-3. People misjudge what's left by about a rep (Halperin et al. 2022) and
+  //             the last reps add little, so these stop a little further off (the app's choice, not
+  //             a tested rule).
+  //   power     fast reps (src/access.js powerPlan): 3 or more, stopping while every rep is still
+  //             quick. 1-2 left means they'd slowed, so it holds there.
   //   usual     everyone else: 1-3.
+  // (floor: an answer under lo holds. words: the aim in words, where lo-hi isn't it.)
   const AIMS = {
     13: { lo: 1, hi: 3, ok: 3 }, 12: { lo: 1, hi: 2, ok: 2 }, 23: { lo: 2, hi: 3, ok: 3 }, 24: { lo: 2, hi: 3, ok: 4 },
+    34: { lo: 3, hi: 4, ok: 4, floor: true, words: '3 or more' },
   };
   const aimOf = (key, why) => Object.assign({ key, why }, AIMS[key]);
-  // The aim for a set of `it` (a session item: fam, moveId, group, skill) in a week of `phase`.
-  // { key, why ('heart', 'bp', 'onramp', 'strength', 'bone', 'age', 'size' or 'usual'), lo, hi, ok }.
-  function effortFor(S, it, phase) {
+  // The aim for a set of `it` (a session item: fam, moveId, group, skill, power) in a week of
+  // `phase`, on `day` (the workout's: a health condition's rep range can stand in for a strength
+  // lift's). { key, why ('power', 'heart', 'bp', 'eyes', 'onramp', 'strength', 'bone', 'age', 'size'
+  // or 'usual'), lo, hi, ok }.
+  function effortFor(S, it, phase, day) {
     const p = S.profile;
     const A = GH.access;
     const cond = A ? A.conditions(p) : [];
+    if (it && it.power) return aimOf('34', 'power');
     if (cond.includes('heart')) return aimOf('23', 'heart');
     if (cond.includes('bp')) return aimOf('23', 'bp');
+    if (A && A.rulesOf && A.rulesOf(p).retino) return aimOf('23', 'eyes');
     if (phase && phase.onramp) return aimOf('23', 'onramp');
     const m = it && M().MOVES[it.moveId];
     const main = !!m && !m.timed && !(it && it.skill);
-    if (main && strengthLift(S, m, it.fam)) return aimOf('24', 'strength');
+    if (main && strengthLift(S, m, it.fam) && !ownRange(S, m, it.fam, day)) return aimOf('24', 'strength');
     if (main && A && typeof A.boneLoad === 'function' && A.boneLoad(p)) return aimOf('12', 'bone');
     const age = Number(p.age);
     if (age >= 60 && age <= 110) return aimOf('23', 'age');
@@ -2305,8 +2314,9 @@
   // How an exercise moves on from its reps-left answer ('0', '12' for 1-2, '3', '4' for 4 or more),
   // read against the aim it had: { pace, harder }. pace 0 holds (none left, or no answer); 1 is the
   // usual step (on the aim, or nearer failure); 2 and 3 are bigger steps for each rep beyond what the
-  // aim allows. harder: at the top of the range, time for a harder version (3 or more left). A log
-  // from before 1.13 has no aim, and its '3' meant 3 or more: it moves on as it did then.
+  // aim allows. harder: at the top of the range, time for a harder version (3 or more left; 4 or
+  // more on fast reps, whose aim is 3 or more). A log from before 1.13 has no aim, and its '3' meant
+  // 3 or more: it moves on as it did then.
   const RIR_EDGE = { 0: 0, 12: 1, 3: 3, 4: 4 };
   function effortStep(log) {
     const a = log ? log.rir : null;
@@ -2314,11 +2324,15 @@
     if (!aim && a === '3') return { pace: 2, harder: true };
     aim = aim || AIMS[13];
     const edge = Object.prototype.hasOwnProperty.call(RIR_EDGE, a) ? RIR_EDGE[a] : 0;
-    if (!edge) return { pace: 0, harder: false };
+    if (!edge || (aim.floor && edge < aim.lo)) return { pace: 0, harder: false };
     return { pace: edge <= aim.ok ? 1 : 1 + Math.min(2, edge - aim.ok), harder: edge >= aim.hi };
   }
-  // An aim in words ('1-2'), from its key (a log's aim), or null for none.
-  const aimWords = (key) => (typeof key === 'string' && Object.prototype.hasOwnProperty.call(AIMS, key) ? `${AIMS[key].lo}-${AIMS[key].hi}` : null);
+  // An aim in words ('1-2', '3 or more'), from its key (a log's aim), or null for none.
+  const aimWords = (key) => {
+    if (typeof key !== 'string' || !Object.prototype.hasOwnProperty.call(AIMS, key)) return null;
+    const a = AIMS[key];
+    return a.words || `${a.lo}-${a.hi}`;
+  };
   // The answer in words, for a "Next time" line's reason.
   function effortWords(log) {
     const a = log && log.rir;

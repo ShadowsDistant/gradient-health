@@ -317,6 +317,17 @@ section('Reps left: each set\'s aim, by goal and person');
   const without = aim({ conditions: ['osteo'], age: 67 }, 'push_std');
   if (had) AC.boneLoad = had; else delete AC.boneLoad;
   check('without boneLoad an osteoporosis plan aims as anyone else of that age', without === '23:age', without);
+  // A strength lift whose reps a health condition sets (osteoporosis's 8 to 12 once the on-ramp is
+  // done, access.repRange) is no longer a 4-8 rep lift: it takes that condition's aim.
+  const hadRange = AC.repRange;
+  AC.repRange = () => [8, 12];
+  const ranged = aim(Object.assign({ conditions: ['osteo'], age: 55, goals: ['strength'] }, GYM), 'bench_bb');
+  AC.repRange = hadRange;
+  check('a strength lift in a condition\'s rep range takes that condition\'s aim (osteoporosis: 1-2)', ranged === '12:bone' && aim(Object.assign({ age: 55, goals: ['strength'] }, GYM), 'bench_bb') === '24:strength', ranged);
+  check('fast reps (power) stop while every rep is quick: 3 or more, whatever else applies', aim({ age: 66 }, 'sq_bw_power', { it: { power: true } }) === '34:power' && aim({ age: 66, conditions: ['bp', 'osteo'] }, 'sq_bw_power', { it: { power: true } }) === '34:power' && B.aimWords('34') === '3 or more');
+  check('diabetic eye disease (or not sure, or not asked yet) aims for 2-3, top goals and bones included',
+    aim({ conditions: ['diabetes'], goals: ['arms'] }, 'curl_std') === '23:eyes' && aim({ conditions: ['diabetes'], retinopathy: 'unsure' }, 'push_std') === '23:eyes' && aim({ conditions: ['diabetes', 'osteo'], retinopathy: 'yes', age: 55 }, 'push_std') === '23:eyes'
+    && aim({ conditions: ['diabetes'], retinopathy: 'no', goals: ['arms'] }, 'curl_std') === '12:size');
   check('no aim ever asks for 0 left', Object.values(B.AIMS).every((x) => x.lo >= 1 && x.hi >= x.lo && x.ok >= x.hi));
 
   // The player's line under a set names the aim.
@@ -331,6 +342,8 @@ section('Reps left: each set\'s aim, by goal and person');
     && hint({ age: 64 }, 'push_std') === 'Stop with 2-3 reps left in the tank.' && hint(Object.assign({ goals: ['strength'] }, GYM), 'bench_bb') === 'Stop with 2-3 reps left. Heavy sets don\'t need to go near failure.',
   [hint({}, 'push_std'), hint({ goals: ['arms'] }, 'curl_std'), hint({ age: 64 }, 'push_std'), hint(Object.assign({ goals: ['strength'] }, GYM), 'bench_bb')]);
   check('with a heart condition or high blood pressure it says how to breathe, with the 2-3', hint({ conditions: ['heart'] }, 'push_std') === 'Stop with 2-3 reps left. Breathe out as you push.' && hint({ conditions: ['bp'] }, 'push_std') === 'Breathe out as you push, and never hold your breath. Stop with 2-3 reps left.');
+  check('type 2 diabetes breathes the same way, with its aim', hint({ conditions: ['diabetes'], retinopathy: 'no' }, 'push_std') === 'Breathe out as you push, and never hold your breath. Stop with 1-3 reps left.' && hint({ conditions: ['diabetes'] }, 'push_std') === 'Breathe out as you push, and never hold your breath. Stop with 2-3 reps left.');
+  check('fast reps say to stop while they\'re quick, and the impact block how to land', AC.setHint({ age: 66 }, { power: true }, false) === 'Up as fast as you can, then lower slowly. Stop while every rep is still quick.' && AC.setHint({ age: 66, conditions: ['osteo'], fractures: 'no' }, { bone: true }, true) === 'Land firmly with soft knees. Stop if anything hurts.');
   check('no dashes as punctuation, straight quotes, short', ['push_std', 'curl_std', 'bench_bb'].every((id) => { const h = hint(Object.assign({ goals: ['strength', 'arms'] }, GYM), id) || ''; return !/[—–‘’“”]/.test(h) && h.length <= 80; }));
 }
 
@@ -343,6 +356,7 @@ section('Reps left: the answer against the aim');
   check('1-2: 3 is past it and moves faster, 4+ faster still (a bigger step than 3)', row('12') === '0 1 2h 3h', row('12'));
   check('2-3: 1-2 and 3 on it, 4+ faster', row('23') === '0 1 1h 2h', row('23'));
   check('the strength lifts\' 2-3: 4+ is still fine', row('24') === '0 1 1h 1h', row('24'));
+  check('fast reps\' 3 or more: 1-2 means they slowed and holds; 3 and 4+ on the aim, 4+ at the top brings the harder version', row('34') === '0 0 1 1h', row('34'));
   const old = ['0', '12', '3'].map((rir) => { const g = B.effortStep({ rir }); return `${g.pace}${g.harder ? 'h' : ''}`; }).join(' ');
   check('a log from before 1.13 (no aim): its 3 meant "3 or more" and moves on as it did then', old === '0 1 2h', old);
   check('no answer, or one it doesn\'t know, holds', B.effortStep({ rir: null, aim: '13' }).pace === 0 && B.effortStep({ rir: '7', aim: '13' }).pace === 0 && B.effortStep({ rir: '3', aim: 'zz' }).pace === 2);
@@ -663,8 +677,16 @@ section('Different bodies: age bands');
   // 1.6: with a strength goal and time to spare the main lifts rest longer (about 2.5 minutes, or
   // 2), the 15 s from 50 on top.
   const strengthMain = (it) => B.HOME_COMPOUND.includes(it.fam) || B.MAIN_LIFTS.includes(it.fam);
-  check('55: a longer, gentler warm-up (plus one move for the day\'s muscles) and 15 s more rest', older.sessions.every((s) => s.warmup.slice(0, 4).map((w) => w.moveId).join() === M.FLOWS.warmGentle.join() && s.warmup.length <= 5) && older.sessions.every((s) => s.items.filter((it) => !it.skill && !it.superset).every((it) => it.rest === 75 || it.rest === 105 || (strengthMain(it) && (it.rest === 135 || it.rest === 165)))),
-    older.sessions.flatMap((s) => s.items.filter((it) => !it.skill && !it.superset).map((it) => `${it.fam}@${it.rest}`)).filter((x, i, a) => a.indexOf(x) === i));
+  // (1.13: sets come before rest, so in a session with no time left an exercise can go without the
+  // 15 s, marked agePlus 0: the session it's in has no room for it.)
+  const plain = older.sessions.flatMap((s) => s.items.filter((it) => !it.skill && !it.superset).map((it) => ({ s, it })));
+  const restOk = ({ s, it }) => {
+    const plus = it.agePlus || 0, base = it.rest - plus;
+    if (!([60, 90].includes(base) || (strengthMain(it) && [120, 150].includes(base)))) return false;
+    return plus === 15 || (plus === 0 && B.estimate(older.S, s) + (it.sets * 15) / 60 > s.budget + 1e-6);
+  };
+  check('55: a longer, gentler warm-up (plus one move for the day\'s muscles) and 15 s more rest (when there\'s room for it)', older.sessions.every((s) => s.warmup.slice(0, 4).map((w) => w.moveId).join() === M.FLOWS.warmGentle.join() && s.warmup.length <= 5) && plain.every(restOk) && plain.filter(({ it }) => it.agePlus === 15).length >= plain.length * 0.9,
+    plain.filter((x) => !restOk(x)).map(({ s, it }) => `${B.dayStr(s.day)} ${it.fam}@${it.rest}+${it.agePlus} est ${B.estimate(older.S, s).toFixed(1)} of ${s.budget}`));
   const powerLog = older.S.log.find((l) => l.type === 'workout' && l.items.some((it) => M.MOVES[it.moveId].powerOf));
   check('55: a fast-up set moves its base rung on like any other', !!powerLog && older.S.prog.squat && (older.S.prog.squat.reps > M.MOVES[older.S.prog.squat.rung].start || M.LADDERS.squat.rungs.indexOf(older.S.prog.squat.rung) > M.LADDERS.squat.rungs.indexOf('sq_goblet')), older.S.prog.squat);
   check('under 65, no left vs right test is skipped for age', B.testDue({ catchup: { arm: { active: true, tests: [], side: 'L' } }, profile: Object.assign(B.defaultProfile(), { age: 55, startDay: D0, lead: { arm: 'L' } }) }, D0 + 20, 'arm'));

@@ -408,7 +408,11 @@ function checkWeek(S, ws, label, o) {
   })));
   const setTime = setTimes.reduce((a, t) => a + t, 0);
   const setsIn = built.reduce((a, s) => a + s.items.filter((it) => !it.skill).reduce((n, it) => n + it.sets, 0), 0);
-  const setsMin = built.reduce((a, s) => a + B.estimate(S, s) - B.estimate(S, Object.assign({}, s, { items: s.items.filter((it) => it.skill) })), 0);
+  // (Rests as the week's plan counts them: a session short of time takes the extra rest from 50 off
+  // first, agePlus 0, which makes its sets look quicker than the plan could count on.)
+  const plus = GH.access && GH.access.restPlus ? GH.access.restPlus(S.profile) : 0;
+  const asPlanned = (s) => (plus ? Object.assign({}, s, { items: s.items.map((it) => (it.agePlus === 0 && !it.skill ? Object.assign({}, it, { rest: it.rest + plus }) : it)) }) : s);
+  const setsMin = built.reduce((a, s) => a + B.estimate(S, asPlanned(s)) - B.estimate(S, Object.assign({}, s, { items: s.items.filter((it) => it.skill) })), 0);
   const perSet = setsIn ? setsMin / setsIn : 2;
   // Full: every session at 85% of its time or more, or with less time left than a set takes.
   const full = work.every((s) => { const est = B.estimate(S, s), bud = budgetOf(S, s, {}); return est >= 0.85 * bud || bud - est < perSet; });

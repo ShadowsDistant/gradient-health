@@ -800,12 +800,16 @@
   const TOP_GOAL = { biceps: 'arms are', triceps: 'arms are', abs: 'abs are', chest: 'chest is', legs: 'legs are', back: 'back is', shoulders: 'shoulders are' };
   function setHint(p, it, timed) {
     const c = rulesOf(p).c;
-    if (it && it.power) return 'Up as fast as you can, then lower slowly.';
-    if (timed) return c.has('bp') || c.has('heart') ? 'Hold with good form, and keep breathing the whole time.' : null;
+    // (Type 2 diabetes breathes as high blood pressure does: sessionNotes.)
+    const breathe = c.has('bp') || c.has('diabetes');
+    if (it && it.power) return 'Up as fast as you can, then lower slowly. Stop while every rep is still quick.';
+    // The impact block for bones: its first cue says how many at a time, with walks between.
+    if (it && it.bone) return 'Land firmly with soft knees. Stop if anything hurts.';
+    if (timed) return breathe || c.has('heart') ? 'Hold with good form, and keep breathing the whole time.' : null;
     const e = it && it.effort;
     const left = e ? `${e.lo}-${e.hi}` : c.has('heart') ? '2-3' : '1-3';
     if (c.has('heart')) return `Stop with ${left} reps left. Breathe out as you push.`;
-    if (c.has('bp')) return `Breathe out as you push, and never hold your breath. Stop with ${left} reps left.`;
+    if (breathe) return `Breathe out as you push, and never hold your breath. Stop with ${left} reps left.`;
     if (!e) return null;
     if (e.why === 'strength') return `Stop with ${left} reps left. Heavy sets don't need to go near failure.`;
     if (e.why === 'onramp') return `Stop with ${left} reps left while you settle in.`;

@@ -1664,7 +1664,9 @@
   function fill(S, s, c) {
     const under = () => c.est() < c.F - 1e-9;
     const fits = () => c.est() <= (c.short ? c.H : c.budget) + 1e-9;
-    if (!under() || (!s.items.length && !s.flare)) return;
+    const rests = c.autoRest && !c.tight;
+    // (Already full: only the extra rest from 50, where it still fits.)
+    if (!under() || (!s.items.length && !s.flare)) { if (rests && s.items.length) plusBack(S, s, c, fits); return; }
     // Short on time, the priority sets come back first; otherwise what shrank to make room does.
     if (c.short) { addBack(S, s, c, under, fits); restore(S, s, c, under, fits); }
     else { restore(S, s, c, under, fits); if (!c.reduced) { addShort(S, s, c, under, fits); addRoomSets(S, s, c, under, fits); } }
@@ -1672,8 +1674,7 @@
     // fit): the extra rest from 50 first, then the main lifts' longer rests with a strength goal,
     // then 90 s for what's done on its own at 60 (here with a muscle goal; for other goals once the
     // finisher and cool-down are in).
-    const rests = c.autoRest && !c.tight;
-    if (under() && rests) plusBack(S, s, c, under, fits);
+    if (rests) plusBack(S, s, c, fits);
     if (under() && rests && !c.short) longerRest(S, s, c, under, fits);
     if (under() && rests && !c.short && c.sizeGoal) soloRest(S, s, c, under, fits);
     if (under() && !s.finisher && c.finisherOk && (c.cond || c.budget - c.est() >= 8)) {
@@ -1816,16 +1817,14 @@
     return false;
   }
   // The extra rest from 50 back on the exercises that don't have it (it came off for time, or the
-  // fit added them), top goals first, while there's time.
-  function plusBack(S, s, c, under, fits) {
+  // fit added them), top goals first, wherever the session still fits its time: it's the first thing
+  // to go when time is short, not something the fill target decides.
+  function plusBack(S, s, c, fits) {
     const b = c.b, plus = c.plus;
     if (!plus) return;
     const order = s.items.filter((it) => isMain(it) && !(it.agePlus > 0)).sort((a, x) => b.tierOf(S, a.group) - b.tierOf(S, x.group))
       .concat((s.extras || []).filter((it) => !(it.agePlus > 0)));
-    for (const it of order) {
-      if (!under()) return;
-      setRest(it, it.rest + plus, plus, fits);
-    }
+    for (const it of order) setRest(it, it.rest + plus, plus, fits);
   }
   // 90 s for what's done on its own at the usual 60 (smaller moves, and the gym's lifts outside a
   // superset) when the session has time: resting over a minute adds a little muscle, with nothing
