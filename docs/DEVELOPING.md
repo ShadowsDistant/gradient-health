@@ -161,7 +161,9 @@ left alone. A few conventions:
   is (`U.motion.leave`); the new page is drawn in a task posted from that frame (`switchLater` in
   `core.js`), its blocks well out of sight a frame after the rest (`data-gh-later`, from where each
   block ended when the tab was last left), and the old page just goes once it's in. Drawn inside the
-  tap, a tab's page held up the first frame 250 to 450 ms at 4x CPU; `ui-perf` times taps. A
+  tap, a tab's page held up the first frame 250 to 450 ms at 4x CPU; `ui-perf` times taps. A page
+  opened on top draws what's in sight first too (not one opened at a row it brings into view, nor
+  one whose screen has an `after` hook, unless the screen sets `later: true`). A
   re-render of the same route patches in place and glides what moved (FLIP, 340 ms): new blocks rise
   in, and removed ones fade from where they were for 180 ms before they go, so a test that checks
   one is gone waits for `U.motion.settled()`. Animate transform and opacity only;
@@ -328,7 +330,14 @@ no scroll or touch for 400 ms, no sheet moving and no control held or gliding (`
 `U.whenCalm(fn)` runs it then): saves, Plan's flat stills, a control's lens maps, the 3D chunk's
 warm-up steps and the 3D stills drawn ahead. Work that would hold the page's thread for a while (a
 background re-render such as Today's insight line, the 3D canvas shrinking once no figure shows)
-waits for `U.quiet()` instead: calm, and nothing for 1.5 s (`U.whenQuiet(fn)`). On a phone a touch's
+waits for `U.quiet()` instead: calm, and nothing for 1.5 s (`U.whenQuiet(fn)`). A background
+re-render (`U.renderSoon`: a sync that ended, the insight line worked out) then runs in an idle
+moment of its own, after one in which the screen's `warm(S, day, arg)` hook works out what it needs
+(Today's: its session), so neither shares a frame with Refract drawing its glass's lens maps (which
+right after launch made 100 to 140 ms of the page's thread at 4x CPU). The insight line itself is
+worked out a frame's worth at a time, goals' part of the plan (last week's sets) a piece at a time
+first (`brain.weeklySetsWork`), and Plan works next week's sessions out the same way once it shows,
+so Next week doesn't plan the week in its tap. On a phone a touch's
 scroll waits for the page's thread, and the likeliest moment for the next flick is right after the
 last one settles: filmed on one, three flicks in a row froze for 100 to 330 ms each and then jumped,
 with a still's encode or a re-render running under the finger, let loose by the calm moment 400 ms
@@ -447,7 +456,10 @@ Where the app uses Refract 1.4's newer parts:
   pages). Sizes: an auto sheet shows its content whole at medium when it fits in 86% of the screen
   (as tall as a fit sheet gets), and a longer one's medium reaches down to its main buttons that are
   in those 86%; full is for long lists, long reads and search. `test/ui-sheetsize.mjs` opens every
-  sheet it can reach at 390 px and at 360 px with 130% text and checks that.
+  sheet it can reach at 390 px and at 360 px with 130% text and checks that. A tap is answered by
+  the sheet on its way up in the next frame: what that frame doesn't need goes in `later(ctl)`, run
+  right after it while the compositor slides the sheet (a move's figure, in its box of a set size),
+  and `after(ctl)` is for what must be there before it (a chat scrolled to its end).
 - **Dropdowns** (`<details class="gh-drop">`, `src/styles/dropdown.css`): what's inside grows open
   and folds shut (`::details-content`'s height, with `interpolate-size`), fading as it goes, and the
   chevron turns with it. It's the one motion here that lays the page out every frame, for 240 ms
