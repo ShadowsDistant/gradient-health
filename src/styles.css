@@ -313,10 +313,13 @@ button.ex-name::before { content: ''; position: absolute; inset: 0; }
 
 /* ---------------------------------------------------------------- today */
 .streak-main { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
-.streak-n { display: grid; }
+.streak-n { display: grid; flex: none; }
 .streak-n .t-large-title { line-height: 1; }
-.streak-tally { display: flex; align-items: center; gap: var(--space-2); overflow: hidden; }
-.tally { flex: none; color: var(--label); }
+/* "day streak" stays one line; on a narrow phone with large text the tally marks scale down to make
+   room (they split it into "day / streak"). */
+.streak-n > .t-callout { white-space: nowrap; }
+.streak-tally { display: flex; align-items: center; gap: var(--space-2); overflow: hidden; min-width: 0; }
+.tally { flex: 0 1 auto; min-width: 0; max-width: 100%; height: auto; color: var(--label); }
 .tally path { fill: none; stroke: currentColor; stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; }
 .session-head { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; justify-content: space-between; }
 .session-badges { display: flex; gap: var(--space-1); flex-wrap: wrap; }
@@ -543,6 +546,9 @@ textarea.preview { border: 0; resize: vertical; }
 .pl-next { display: grid; gap: 2px; min-width: 0; }
 .pl-scroll { flex: 1; overflow-y: auto; padding-bottom: var(--space-6); }
 .pl-scroll .ob-group { padding: 0 var(--space-4); margin-bottom: var(--space-4); }
+/* The check-in's answers fit a 360 px phone with large text ("Too easy / About right / Too hard" ran
+   13 px past the edge), as set-up's do: less room around each label. */
+.pl-scroll .ob-pad .rf-segment { padding-inline: 6px; }
 .pl-scroll .ob-fields { padding: 0; }
 .pl-pad { padding: 0 var(--space-4); margin: 0 0 var(--space-4); }
 .celebrate { margin: 0 var(--space-4) var(--space-3); display: flex; align-items: center; gap: var(--space-3); color: var(--accent); }

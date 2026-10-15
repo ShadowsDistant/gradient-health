@@ -667,10 +667,8 @@
     const it = st.item;
     const w = st.kind === 'set' ? weightOf(it) : null;
     const what = st.kind === 'set' ? U.target(it, B().currentTarget(A(), st)) + (w ? ` at ${w.label}` : '') : st.kind === 'interval' ? `${st.work} s` : st.kind === 'test' ? 'max reps' : isTimed(st) ? (it.cardio ? `${Math.max(1, Math.round(durationOf(st) / 60))} min` : `${durationOf(st)} s`) : U.target(it);
-    return `<div class="pl-next"><span class="t-caption rf-muted">Up next</span><span class="t-headline">${U.esc(it.name)}</span><span class="t-footnote rf-muted">${keep(eyebrow(st))} · ${keep(what)}${st.side ? ` · ${U.side(st.side).toLowerCase()}` : ''}</span></div>`;
+    return `<div class="pl-next"><span class="t-caption rf-muted">Up next</span><span class="t-headline">${U.esc(it.name)}</span><span class="t-footnote rf-muted">${U.nb(eyebrow(st))} · ${U.nb(what)}${st.side ? ` · ${U.side(st.side).toLowerCase()}` : ''}</span></div>`;
   }
-  // A number keeps its unit on the same line ("25 lb", "10 reps"), however the line wraps.
-  const keep = (s) => U.esc(s).replace(/(\d) (?=[a-z½])/g, '$1&nbsp;');
 
   /* ---------------------------------------------------------------- drawing */
   function progressBar() {
