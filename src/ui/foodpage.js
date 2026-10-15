@@ -69,10 +69,10 @@
       // (when it has food), and meal times.
       const before = F().entries(S, day - 1);
       const tools = [
-        before.length ? U.row({ key: 'copy', icon: 'copy', tone: 'teal', title: day === today ? 'Copy yesterday' : 'Copy the day before', sub: `${U.plural(before.length, 'item')}, ${kcal(before.reduce((a, e) => a + e.kcal, 0))} kcal`, act: 'foodCopyYesterday' }) : '',
+        before.length ? U.row({ key: 'copy', icon: 'copy', tone: 'green', title: day === today ? 'Copy yesterday' : 'Copy the day before', sub: `${U.plural(before.length, 'item')}, ${kcal(before.reduce((a, e) => a + e.kcal, 0))} kcal`, act: 'foodCopyYesterday' }) : '',
         U.row({ key: 'saved', icon: 'bookmark', tone: 'indigo', title: 'Saved meals', sub: F().data(S).saved.length ? U.plural(F().data(S).saved.length, 'meal') : 'To add again in one tap', act: 'foodSavedMeals', chevron: true }),
         F().entries(S, day).length ? U.row({ key: 'save', icon: 'star', tone: 'amber', title: 'Save as a meal', sub: `Everything logged ${day === today ? 'today' : 'on this day'}`, act: 'foodSaveDay', chevron: true }) : '',
-        U.row({ key: 'times', icon: 'clock', tone: 'sky', title: 'Meal times', sub: U.esc(U.mealTimesLine(S)), act: 'foodMealTimes', chevron: true }),
+        U.row({ key: 'times', icon: 'clock', tone: 'teal', title: 'Meal times', sub: U.esc(U.mealTimesLine(S)), act: 'foodMealTimes', chevron: true }),
       ].join('');
       return `${U.navbar('Food', U.glassBtn('plus', 'Add food', 'foodAdd'), asPage ? U.glassBtn('chevron-left', 'Back', 'back') : '')}
         <h1 class="rf-large-title">Food</h1>
