@@ -286,7 +286,7 @@
     }
     el.textContent = next;
   }
-  function morphNode(from, to, fx) {
+  function morphNode(from, to, fx, lvl) {
     if (from.nodeType !== 1) { if (from.nodeValue !== to.nodeValue) from.nodeValue = to.nodeValue; return; }
     if (from.hasAttribute('data-roll') && to.hasAttribute('data-roll')) {
       const prev = from.getAttribute('data-roll');
@@ -297,8 +297,17 @@
     morphAttrs(from, to);
     morphForm(from, to);
     if (from.nodeName === 'TEXTAREA' || to.getAttribute('data-morph') === 'keep') return;
-    morphChildren(from, to, fx);
+    morphChildren(from, to, fx, lvl);
   }
+  // The markup each block was last patched to, for a page's blocks and what's in them (the first two
+  // levels down): a re-render passes a block whose markup is the same again without walking it. Plan
+  // re-renders all of its long page for a day picked, and walking every node of it took most of that
+  // render (25 to 50 ms at 4x CPU). What code drew in a block since (a still, a tile) stays, as a patch
+  // leaves it; a block with a form control in it is always patched, so a control the person changed
+  // goes back to what the markup says, as before, and so is one U.morph patched something in since.
+  const patchedTo = new WeakMap();
+  const SAME_LEVELS = 2;
+  const FORMS = /<(input|textarea|select)\b/;
   function discard(n) {
     if (n.nodeType === 1) {
       const r = R();
@@ -314,7 +323,8 @@
   // motion (U.motion.snap): it was told where everything was before the patch, and hears what the
   // patch did to each container, so new blocks rise in, removed ones leave from where they were and
   // the rest glide to where they land (src/ui/motion.js). Without it, changes are instant.
-  function morphChildren(parent, source, fx) {
+  function morphChildren(parent, source, fx, lvl) {
+    const level = lvl || 0;
     const want = Array.from(source.childNodes);
     const keyed = new Map();
     for (let n = parent.firstChild; n; n = n.nextSibling) { if (passOver(n)) continue; const k = keyOf(n); if (k) keyed.set(k, n); }
@@ -333,7 +343,12 @@
       if (match) {
         if (match === cur) cur = cur.nextSibling;
         else { parent.insertBefore(match, cur); moved++; }
-        morphNode(match, t, fx);
+        if (level < SAME_LEVELS && t.nodeType === 1) {
+          const markup = t.outerHTML;
+          if (patchedTo.get(match) === markup) continue;
+          morphNode(match, t, fx, level + 1);
+          if (FORMS.test(markup)) patchedTo.delete(match); else patchedTo.set(match, markup);
+        } else morphNode(match, t, fx, level + 1);
       } else {
         if (t.nodeType === 1) record(t);
         parent.insertBefore(t, cur);
@@ -350,6 +365,9 @@
   U.morph = (el, html, animate) => {
     let src = html;
     if (src == null || typeof src === 'string') { const tpl = doc.createElement('template'); tpl.innerHTML = src || ''; src = tpl.content; }
+    // (The blocks around el no longer hold what they were last patched to: the next re-render walks
+    // them, as before.)
+    for (let n = el; n; n = n.parentNode) patchedTo.delete(n);
     const fx = animate && U.motion && U.motion.snap ? U.motion.snap(el) : null;
     morphChildren(el, src, fx);
     enhance(el);
