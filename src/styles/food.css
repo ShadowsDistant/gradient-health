@@ -181,12 +181,13 @@ p > .fd-link.rf-btn { vertical-align: baseline; }
 .fd-start-go { inline-size: 100%; }
 
 /* ---------------------------------------------------------------- meal times */
-/* Each meal's name, and under it its from and to: two fields of one width with "to" between them, as
-   wide as the sheet's content. */
-.fd-times { gap: var(--space-3); }
-.fd-trow { display: grid; gap: var(--space-2); }
+/* Each meal's name, and under it (as a field's label sits over it) its from and to: two fields of one
+   width with "to" between them, as wide as the sheet's content. Snacks is one line. */
+.fd-times { gap: var(--space-2); }
+.fd-trow { display: grid; gap: 6px; }
+.fd-trow.is-any { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-2); }
 .fd-tspan { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--space-2); }
-.fd-tspan .rf-field-control { min-inline-size: 0; }
+.fd-tspan .rf-field-control { min-inline-size: 0; padding-inline: var(--space-2); }
 .fd-tspan .rf-input { inline-size: 100%; min-inline-size: 0; }
 .fd-tlearn { margin-block: var(--space-1); }
 .fd-times > .rf-btn { margin-top: var(--space-1); }

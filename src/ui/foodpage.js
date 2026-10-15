@@ -681,7 +681,7 @@
     return `<div class="sheet-pad fd-times">
         <p class="t-footnote rf-muted">Food goes in the meal for the time you add it. You can always pick another.</p>
         ${['breakfast', 'lunch', 'dinner'].map(row).join('')}
-        <div class="fd-trow"><span class="t-subhead">Snacks</span><span class="t-footnote rf-muted">Any other time</span></div>
+        <div class="fd-trow is-any"><span class="t-subhead">Snacks</span><span class="t-footnote rf-muted">Any other time</span></div>
         <ul class="rf-list fd-tlearn">${U.sw('Learn from my logs', mt.learn, 'data-on="mtLearn"', 'Moves each meal to when you usually log it, over the last 4 weeks')}</ul>
         <button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="mtSave">Save</button>
       </div>`;
