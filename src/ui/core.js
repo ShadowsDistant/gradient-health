@@ -1642,21 +1642,31 @@
   };
   U.commit = () => { U.save(); render(); };
   // For background triggers (a sync that ended, the day rolling over, the app coming back, Today's
-  // insight line worked out): one render at the next frame however many ask, once it's quiet (no
-  // scroll or touch for a while, U.whenQuiet: a page's render holds the page's thread for a few
-  // frames), none while the page is hidden (it runs once it's shown again), and none under the player
-  // or set-up.
+  // insight line worked out): one render however many ask, once it's quiet (no scroll or touch for a
+  // while, U.whenQuiet: a page's render holds the page's thread for a few frames), none while the page
+  // is hidden (it runs once it's shown again), and none under the player or set-up. It runs in an idle
+  // moment of its own, and what the screen works out for it (its warm hook: Today's session, which a
+  // sync's new night of sleep changes) in the one before, so neither shares a frame: drawn at the next
+  // frame, the render (sync, then the insight line, a moment after launch) landed in the frames where
+  // Refract draws its glass's lens maps, making 100 to 140 ms of the page's thread at 4x CPU.
   let renderFrame = 0, renderWait = false;
   U.renderSoon = () => {
     if (renderFrame || renderWait || !G.requestAnimationFrame) return;
     renderWait = true;
     U.whenQuiet(() => {
-      renderWait = false;
-      if (renderFrame) return;
-      renderFrame = G.requestAnimationFrame(() => {
+      const go = () => {
         renderFrame = 0;
+        if (doc.hidden) { renderFrame = G.requestAnimationFrame(go); return; } // (no frames until it's shown)
         if (U.S && U.S.profile.onboarded && playerEl.hidden && onboardEl.hidden) render();
-      });
+      };
+      const draw = () => {
+        renderWait = false;
+        if (renderFrame) return;
+        renderFrame = G.requestIdleCallback && !doc.hidden ? G.requestIdleCallback(go, { timeout: 300 }) : G.requestAnimationFrame(go);
+      };
+      const r = U.route, scr = U.screens[r.view || r.tab];
+      if (!U.S || !scr || !scr.warm || !G.requestIdleCallback) { draw(); return; }
+      G.requestIdleCallback(() => { if (U.S) safe(() => scr.warm(U.S, U.today(), r.arg)); draw(); }, { timeout: 300 });
     });
   };
 
