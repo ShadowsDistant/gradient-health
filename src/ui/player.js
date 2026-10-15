@@ -667,7 +667,7 @@
     const it = st.item;
     const w = st.kind === 'set' ? weightOf(it) : null;
     const what = st.kind === 'set' ? U.target(it, B().currentTarget(A(), st)) + (w ? ` at ${w.label}` : '') : st.kind === 'interval' ? `${st.work} s` : st.kind === 'test' ? 'max reps' : isTimed(st) ? (it.cardio ? `${Math.max(1, Math.round(durationOf(st) / 60))} min` : `${durationOf(st)} s`) : U.target(it);
-    return `<div class="pl-next"><span class="t-caption rf-muted">Up next</span><span class="t-headline">${U.esc(it.name)}</span><span class="t-footnote rf-muted">${U.nb(eyebrow(st))} · ${U.nb(what)}${st.side ? ` · ${U.side(st.side).toLowerCase()}` : ''}</span></div>`;
+    return `<div class="pl-next"><span class="t-caption rf-muted">Up next</span><span class="t-headline">${U.esc(it.name)}</span><span class="t-footnote rf-muted">${U.nb(`${eyebrow(st)} · ${what}${st.side ? ` · ${U.side(st.side).toLowerCase()}` : ''}`)}</span></div>`;
   }
 
   /* ---------------------------------------------------------------- drawing */
@@ -704,6 +704,7 @@
     // scene, updates patch in place.
     html = html.replace(/<div class="(pl-main|pl-scroll)/, (m) => m.replace('<div', `<div data-key="scene-${next}"`));
     U.morph(el, html);
+    if (phase === 'rest') fitRest(el);
     if (changed && scene != null) sceneIn(el, phase);
     scene = next;
     const host = el.querySelector('.pl-fig');
@@ -713,6 +714,17 @@
     else if (fig) fig.ctl.pause(); // no figure on this view (the check-in, say): stop drawing it
     loop();
   }
+
+  // A rest that doesn't fit (a small phone with large text: the ring, the question, Up next and the
+  // place held for Continue) draws its ring smaller, decided as the rest is drawn, so it never
+  // changes size during the rest.
+  function fitRest(el) {
+    const main = el.querySelector('.pl-main.pl-rest');
+    if (!main) return;
+    main.classList.remove('is-tight');
+    if (main.scrollHeight > main.clientHeight + 1) main.classList.add('is-tight');
+  }
+  if (G.addEventListener) G.addEventListener('resize', () => { if (P && P.phase === 'rest' && !root().hidden) fitRest(root()); });
 
   // A new step or phase slides in: the main block rises, the action row settles. It plays after
   // every set, so it's quick: in by 300 ms (1.9.0's took 380).
@@ -805,7 +817,7 @@
         ${timerBlock}
         ${logged}
         ${rirQ}
-        ${next ? `<div class="pl-next-row"><div class="pl-fig pl-fig-sm" data-morph="keep"></div>${upNext(next)}</div>` : ''}
+        ${next ? `<button type="button" class="pl-next-row" data-act="plHowTo" aria-label="Up next, ${U.esc(next.item.name)}: how to do it"><div class="pl-fig pl-fig-sm" data-morph="keep"></div>${upNext(next)}<span class="pl-next-go" aria-hidden="true">${U.icon('chevron-right', 'sm')}</span></button>` : ''}
       </div>
       <div class="pl-actions">${needCont || !next ? `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plContinue">${next ? 'Continue' : 'Finish'}</button>` : hold}</div>`;
   }

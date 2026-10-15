@@ -129,7 +129,7 @@
     for (const t of s.tests || []) rows.push(exRow({ key: `t-${t.moveId}`, move: t.moveId, name: t.name, meta: `${U.esc(U.side(t.side))} side first, max reps`, cls: 'is-lead' }));
     const extra = (x) => exRow({ key: `x-${x.uid || x.moveId}`, move: x.moveId, name: x.name, meta: `Extra set, ${U.esc(U.side(x.leadOnly || lead).toLowerCase())} side only · ${U.esc(U.target(x))}`, cls: 'is-lead' });
     for (const it of s.items) {
-      const load = it.load && it.load.label ? ` · ${U.nb(it.load.label.replace(/ (dumbbells?|kettlebell)$/, ''))}` : '';
+      const load = it.load && it.load.label ? `&nbsp;· ${U.nb(it.load.label.replace(/ (dumbbells?|kettlebell)$/, ''))}` : '';
       rows.push(exRow({ key: `${it.uid || ''}-${it.moveId}`, move: it.moveId, name: it.name, tag: it.superset || '', meta: `${it.sets} × ${U.esc(U.target(it))}${it.uni ? ' each side' : ''}${load}${it.swappedFrom ? ' · swapped' : ''}` }));
       for (const x of s.extras || []) if (x.fam === it.fam) rows.push(extra(x));
     }

@@ -536,6 +536,10 @@ textarea.preview { border: 0; resize: vertical; }
 .pl-rest-over { margin: 0; }
 .pl-timer.is-over .pl-count { color: var(--label-secondary); }
 .pl-timer.is-over .rf-ring-fill { visibility: hidden; } /* (its round end would still draw a dot) */
+/* A rest that doesn't fit (fitRest in player.js: a small phone with large text) has a smaller ring. */
+.pl-rest.is-tight .pl-timer { padding: 0; }
+.pl-rest.is-tight .pl-timer .rf-ring { --_s: 128px; --_w: 9px; }
+.pl-rest.is-tight .pl-count { font-size: 1.75rem; }
 .pl-rir { width: 100%; max-width: 420px; box-sizing: border-box; display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); }
 .pl-rir p { margin: 0; }
 .pl-rir .rf-segmented { width: 100%; }
@@ -543,7 +547,11 @@ textarea.preview { border: 0; resize: vertical; }
 .pl-next-row { width: 100%; max-width: 420px; box-sizing: border-box; display: flex; gap: var(--space-3); align-items: center; text-align: start; padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); margin-top: auto; margin-bottom: var(--space-2); }
 .pl-fig-sm { width: 84px; height: 84px; flex: none; }
 .pl-fig-sm > svg { display: block; width: 100%; height: 100%; }
-.pl-next { display: grid; gap: 2px; min-width: 0; }
+.pl-next { display: grid; gap: 2px; min-width: 0; flex: 1; }
+/* While resting, Up next opens how to do the next move (plHowTo shows the step that's next). */
+button.pl-next-row { appearance: none; border: 0; font: inherit; color: inherit; cursor: pointer; transition: scale var(--duration-spring-snappy) var(--spring-snappy); }
+button.pl-next-row:active { scale: .98; transition-duration: var(--duration-instant); }
+.pl-next-go { flex: none; display: inline-flex; color: var(--label-tertiary); }
 .pl-scroll { flex: 1; overflow-y: auto; padding-bottom: var(--space-6); }
 .pl-scroll .ob-group { padding: 0 var(--space-4); margin-bottom: var(--space-4); }
 /* The check-in's answers fit a 360 px phone with large text ("Too easy / About right / Too hard" ran

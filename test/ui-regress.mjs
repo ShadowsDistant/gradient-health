@@ -610,7 +610,9 @@ const restOn = async () => {
   // before the click returns, so the first frame after it has it) with the set's own haptic.
   return page.evaluate(() => {
     const U = window.GH.ui, a = U.S.active;
-    a.idx = a.steps.findIndex((st, i) => i > a.idx && st.kind === 'set' && !st.item.timed && st.askRir && st.rest);
+    const asks = (st) => st.kind === 'set' && !st.item.timed && st.askRir && st.rest;
+    const k = a.steps.findIndex((st, i) => i > a.idx && asks(st));
+    a.idx = k >= 0 ? k : a.steps.findIndex(asks);
     U.openPlayer();
     window.__haptics.length = 0;
     document.querySelector('#player [data-act="plDone"]').click();
@@ -648,9 +650,43 @@ await settle(700);
 const shiftTimer = await readShifts();
 const ranOut = await where();
 check('the rest running out by itself: the same, nothing moves and Continue comes', ranOut.over && ranOut.cont && same(resting2, ranOut) && shiftTimer < 0.01, JSON.stringify({ resting2, ranOut, shiftTimer }));
-// Up next keeps a number with its unit ("10 reps", "25 lb"), however its line wraps.
+// Up next keeps a number with its unit ("10 reps", "25 lb"), however its line wraps, and no line
+// starts with a "·".
 const nextLine = await page.evaluate(() => (document.querySelector('#player .pl-next .t-footnote') || {}).textContent || '');
-check('Up next keeps each number with its unit', /\d (reps?|lb|kg|s)\b/.test(nextLine) && !/\d (reps?|lb|kg)\b/.test(nextLine), JSON.stringify(nextLine));
+check('Up next keeps each number with its unit, and each "·" on the line it ends', /\d (reps?|lb|kg|s)\b/.test(nextLine) && !/\d (reps?|lb|kg)\b/.test(nextLine) && !/ · /.test(nextLine), JSON.stringify(nextLine));
+// While resting, Up next opens how to do the next move.
+const howNext = await page.evaluate(async () => {
+  const row = document.querySelector('#player button.pl-next-row[data-act="plHowTo"]');
+  const want = window.GH.ui.S.active.steps[window.GH.ui.S.active.idx].item.name;
+  if (!row) return null;
+  row.click();
+  await new Promise((r) => setTimeout(r, 50));
+  const d = [...document.querySelectorAll('dialog[open]')].pop();
+  return { want, title: d ? (d.querySelector('.rf-sheet-title') || {}).textContent : null };
+});
+check('Up next opens how to do the next move', howNext && howNext.title === howNext.want, JSON.stringify(howNext));
+await page.evaluate(() => window.GH.ui.closeSheets());
+await settle(700);
+// A small phone with large text (360 x 844, a three-button bar of 48 px, text at 130%): the rest
+// draws its ring smaller so everything fits above the actions (Up next and the place held for
+// Continue).
+await page.setViewportSize({ width: 360, height: 844 });
+await page.evaluate(() => window.__gh.setInsets({ top: 30, bottom: 48, left: 0, right: 0, keyboard: false }));
+await page.evaluate(() => window.GH.ui.act.plContinue());
+await settle(600);
+await restOn();
+await settle(300);
+const largeText = await page.evaluate(() => {
+  for (const e of document.querySelectorAll('#player *')) { const f = parseFloat(getComputedStyle(e).fontSize); if (f && !e.closest('svg')) e.style.setProperty('font-size', `${f * 1.3}px`, 'important'); }
+  window.dispatchEvent(new Event('resize'));
+  const m = document.querySelector('#player .pl-main');
+  const next = m.querySelector('.pl-next-row').getBoundingClientRect(), box = m.getBoundingClientRect();
+  return { tight: m.classList.contains('is-tight'), over: Math.round(next.bottom - box.bottom), ring: Math.round(m.querySelector('.rf-ring').getBoundingClientRect().width) };
+});
+check('large text on a small phone: the ring draws smaller and Up next fits above the actions', largeText.tight && largeText.over <= 0, JSON.stringify(largeText));
+await page.evaluate(() => { for (const e of document.querySelectorAll('#player [style*="font-size"]')) e.style.removeProperty('font-size'); window.__gh.setInsets({ top: 30, bottom: 20, left: 0, right: 0, keyboard: false }); });
+await page.setViewportSize({ width: 390, height: 844 });
+await settle(600);
 await page.evaluate(() => window.GH.ui.act.plContinue());
 await settle(600);
 // The swap sheet: a tap on a move swaps at once, so its rows promise no other page (no chevron).
