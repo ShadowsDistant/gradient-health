@@ -99,7 +99,9 @@ function measure() {
 // the sheet open.
 const SHEETS = ({ page, act, ev, settle }) => {
   // A workout at the gym, on its first set with a weight to it.
-  const workout = async () => { await ev(() => { const U = window.GH.ui; window.GH.brain.setPlace(U.S, U.today(), 'gym'); U.go('today'); }); await settle(600); await act('startWorkout'); await settle(1400); await ev(() => { const a = window.GH.ui.S.active; const i = a.steps.findIndex((x) => x.kind === 'set' && x.item && x.item.load && x.item.load.kg != null); a.idx = i >= 0 ? i : a.steps.findIndex((x) => x.kind === 'set'); }); };
+  // A gym day, at a gym lift's set: only those have the weight button (a fast home squat from 60 can
+  // carry dumbbells too).
+  const workout = async () => { await ev(() => { const U = window.GH.ui; window.GH.brain.setPlace(U.S, U.today(), 'gym'); U.go('today'); }); await settle(600); await act('startWorkout'); await settle(1400); await ev(() => { const a = window.GH.ui.S.active; const i = a.steps.findIndex((x) => x.kind === 'set' && x.item && x.item.load && x.item.load.kg != null && window.GH.brain.isGymFam(x.item.fam)); a.idx = i >= 0 ? i : a.steps.findIndex((x) => x.kind === 'set'); }); };
   const plan = (fn) => ev(fn);
   return [
     ['act-rename', 'actRename', async () => { await page.evaluate(seedActivities); await settle(600); await ev(() => window.GH.ui.open('activity', 'seed-w1')); await settle(900); await act('actRename', 'seed-w1'); }],
