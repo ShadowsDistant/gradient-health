@@ -739,6 +739,9 @@ section('Osteoporosis with no break: impact most days, back extensions, heavier 
   bodyChecks('66, osteoporosis, a break', brk);
   check('with a break: no impact block, in workouts or on light days', brk.sessions.every((s) => !s.items.some((it) => it.bone || it.group === 'impact')) && !B.mobilityFlow(brk.S, D0 + 85).some((m) => M.MOVES[m.moveId].family === 'impact'));
   check('with a break: back extensions twice a week all the same', Object.values(perWeek(brk.sessions, (s) => s.items.some((it) => M.MOVES[it.moveId].family === 'backExt'))).every((n) => n >= 2));
+  const at80 = B.newState(Object.assign({}, BODY, { age: 80, conditions: ['osteo'], fractures: 'no' }), null, D0);
+  check('from 75 it keeps a hand on the wall: heel drops only, and the plan says so', B.rungs(at80, 'impact', D0).join() === 'imp_heel' && B.rungs(run.S, 'impact', D0).length === 3
+    && /heel drops, with a hand on the wall/.test(AC.planLines(at80.profile).find((l) => l.id === 'osteo').text));
   const careful = B.newState(Object.assign({}, BODY, { age: 66, conditions: ['osteo'], fractures: 'no', careful: ['knee'] }), null, D0);
   check('careful knees or ankles: no impact moves to pick from, so no block', !B.rungs(careful, 'impact', D0).length && !B.mobilityFlow(careful, D0 + 1).some((m) => M.MOVES[m.moveId].family === 'impact'));
 }

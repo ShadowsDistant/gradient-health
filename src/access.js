@@ -227,8 +227,10 @@
     const lad = M().LADDERS[fam];
     if (lad && lad.alt && !altOpen(S, fam, day)) return [];
     const p = S.profile;
-    // Impact for bones never lands on a joint an old injury made careful.
-    if (fam === 'impact') list = list.filter((id) => spares(M().MOVES[id], p.careful || []));
+    // Impact for bones never lands on a joint an old injury made careful, and from 75 it keeps a
+    // hand on the wall (heel drops): a fall is the bigger risk then (as the fast reps keep to the
+    // supported sit to stand).
+    if (fam === 'impact') list = list.filter((id) => spares(M().MOVES[id], p.careful || []) && (!(ageOf(p) >= 75) || M().MOVES[id].support));
     if (!rulesOf(p).any) return list;
     return list.filter((id) => !why(p, M().MOVES[id], day));
   }
@@ -732,7 +734,7 @@
       let text = c.plan;
       if (id === 'oa' && r.oa.size) text = `${text} Joints: ${joinList(OA_JOINTS.filter(([j]) => r.oa.has(j)).map(([, t]) => t.toLowerCase()))}.`;
       // (Diabetic eye disease keeps sets light, so osteoporosis's heavier sets don't apply.)
-      if (id === 'osteo') text = `${r.retino ? 'Back extensions for posture, balance work, and no bending or twisting your spine under load.' : text}${impactOn(p) ? ' A short impact block on most days: heel drops, stamps or jogging on the spot.' : r.fragile ? ' Impact stays at brisk walking.' : ''}`;
+      if (id === 'osteo') text = `${r.retino ? 'Back extensions for posture, balance work, and no bending or twisting your spine under load.' : text}${impactOn(p) ? (ageOf(p) >= 75 ? ' A short impact block on most days: heel drops, with a hand on the wall.' : ' A short impact block on most days: heel drops, stamps or jogging on the spot.') : r.fragile ? ' Impact stays at brisk walking.' : ''}`;
       // (Sessions under 15 minutes keep every day set, strengthDays.)
       if (id === 'diabetes') text = `${shortSessions(p) && Number(p.days) > 3 ? 'Short strength sessions on each day you set, the muscles taking turns. Breathe out on every effort.' : text}${r.retino ? ' Sets stay at 10 to 15 reps, with no heavy lifting, jumping or head-down moves.' : ' After the first easier weeks, your main moves build to heavier sets of about 8 to 10 reps.'}`;
       out.push({ kind: 'condition', id, text: `${c.name}: ${text}` });
