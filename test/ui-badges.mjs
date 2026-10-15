@@ -75,7 +75,8 @@ check('a Health Connect sync after it earns quietly: no toast, just sealed and w
 
 section('The You tab\'s card');
 const strip = await S(() => { const U = window.GH.ui; const d = document.createElement('div'); d.innerHTML = U.badgeStrip(U.S, U.today()); return { html: d.innerHTML, text: d.textContent.replace(/\s+/g, ' '), tiles: [...d.querySelectorAll('[data-badge]')].map((t) => [t.dataset.badge, t.classList.contains('is-earned'), t.classList.contains('is-sealed')]) }; });
-check('a summary: how many of how many, and what\'s next', /Badges\s*\d+ of \d+ · Next: /.test(strip.text), strip.text.slice(0, 120));
+// (Under the tab's own "Badges" title, the card leads with the count rather than saying it again.)
+check('a summary: how many earned of how many, and what\'s next', /^\s*\d+ of \d+ earned\s*Next: /.test(strip.text) && !/^\s*Badges/.test(strip.text), strip.text.slice(0, 120));
 // The shelf: the sealed ones (waiting to be opened) first, newest first; then the best, the rarest
 // first and the newest first within a tier.
 const latest = await S(() => {
