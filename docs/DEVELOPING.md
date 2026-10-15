@@ -459,8 +459,10 @@ Where the app uses Refract 1.4's newer parts:
   in those 86%; full is for long lists, long reads and search. `test/ui-sheetsize.mjs` opens every
   sheet it can reach at 390 px and at 360 px with 130% text and checks that. A tap is answered by
   the sheet on its way up in the next frame: what that frame doesn't need goes in `later(ctl)`, run
-  right after it while the compositor slides the sheet (a move's figure, in its box of a set size),
-  and `after(ctl)` is for what must be there before it (a chat scrolled to its end).
+  right after it while the compositor slides the sheet (a move's figure to draw, in its box of a set
+  size), and `after(ctl)` is for what must be there before it (a chat scrolled to its end, a kept
+  3D still, `U.figureStillFirst`: right after can wait behind a long task queued first, such as the
+  3D chunk's warm-up just after launch).
 - **Dropdowns** (`<details class="gh-drop">`, `src/styles/dropdown.css`): what's inside grows open
   and folds shut (`::details-content`'s height, with `interpolate-size`), fading as it goes, and the
   chevron turns with it. It's the one motion here that lays the page out every frame, for 240 ms

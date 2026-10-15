@@ -348,8 +348,8 @@ await ctx.close();
 section('Load times');
 // From opening a move sheet (the call) to its figure box holding a 3D picture: the live figure, or a
 // still of its first frame standing in; and to the live figure itself. Frames with nothing in the
-// box, once its first figure is in, are counted too. (The figure goes in right after the sheet's
-// first frame, src/ui/sheet.js `later`: the box fades in from nothing then anyway.)
+// box, once its first figure is in, are counted too. (A kept still goes in with the sheet's first
+// frame; a figure to draw right after it, src/ui/sheet.js `later`: the box fades in from nothing.)
 const sheetTimes = (page, id) => page.evaluate((mid) => new Promise((res) => {
   const t0 = performance.now();
   const out = { look3d: null, live: null, blank: 0, frames: 0 };

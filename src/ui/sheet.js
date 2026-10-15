@@ -17,8 +17,10 @@
  *    spring, which the compositor plays.
  * o: { title, body, action: { label, act, arg }, cls, size: 'fit' | 'auto' | 'full', onClose(value),
  * after(ctl), later(ctl), quiet (no sheet haptic as it opens) }. after runs before the sheet's first
- * frame; later right after it, for what that frame doesn't need (a move's figure in its box of a set
- * size), while the compositor slides the sheet up. Older calls pass detents/detent/fit instead: fit →
+ * frame; later right after it, for what that frame doesn't need (a move's figure to draw, in its box
+ * of a set size), while the compositor slides the sheet up. (Right after can wait behind a long task
+ * that was queued first, so what's quick and wanted at once, a kept still, still goes in after.)
+ * Older calls pass detents/detent/fit instead: fit →
  * 'fit', detents 'large' → 'full', anything else → 'auto' (detent: 'large' opens it at large).
  * While any sheet moves, <html> has data-sheet-moving and the document hears 'gh-sheet-moving'
  * ({ detail: { moving } }), so other animations can wait; U.sheetMoving() says so too. While any is
