@@ -943,7 +943,8 @@
   // The profile and program a week's split is made from: the person as they are, with that week's
   // days, weekdays and minutes, and how simple sessions are (fewer exercises a day). A week before
   // 1.13's rules started is marked legacyRules, so its split is the one it had; from then, type 2
-  // diabetes trains strength on 3 of the days at most (src/access.js oldRules, strengthDays).
+  // diabetes trains strength on 3 of the days at most, with sessions of 15 minutes or more
+  // (src/access.js oldRules, strengthDays).
   function weekInputs(S, ws, set) {
     const st = set || weekSettings(S, ws);
     const p = S.profile;

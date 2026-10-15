@@ -12,7 +12,8 @@
  *   repRange      the rep range a condition sets (osteoporosis, type 2 diabetes, diabetic eye disease)
  *   testsOk       whether the all-out left vs right tests run
  *   mobilityIds   a light day's mobility flow (and the impact block for bones on light days)
- *   strengthDays  which of the week's days train strength (type 2 diabetes: 3 at most, spread out)
+ *   strengthDays  which of the week's days train strength (type 2 diabetes: 3 at most, spread
+ *                 out, when sessions are 15 minutes or more)
  *   adjustSession one pass over each built session: warm-up, balance and floor practice, impact for
  *                 bones, back extensions, power, rest, cool-down, and flare days (a gentle
  *                 range-of-motion session instead)
