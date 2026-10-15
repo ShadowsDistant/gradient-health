@@ -667,8 +667,10 @@
     const it = st.item;
     const w = st.kind === 'set' ? weightOf(it) : null;
     const what = st.kind === 'set' ? U.target(it, B().currentTarget(A(), st)) + (w ? ` at ${w.label}` : '') : st.kind === 'interval' ? `${st.work} s` : st.kind === 'test' ? 'max reps' : isTimed(st) ? (it.cardio ? `${Math.max(1, Math.round(durationOf(st) / 60))} min` : `${durationOf(st)} s`) : U.target(it);
-    return `<div class="pl-next"><span class="t-caption rf-muted">Up next</span><span class="t-headline">${U.esc(it.name)}</span><span class="t-footnote rf-muted">${U.esc(eyebrow(st))} · ${U.esc(what)}${st.side ? ` · ${U.side(st.side).toLowerCase()}` : ''}</span></div>`;
+    return `<div class="pl-next"><span class="t-caption rf-muted">Up next</span><span class="t-headline">${U.esc(it.name)}</span><span class="t-footnote rf-muted">${keep(eyebrow(st))} · ${keep(what)}${st.side ? ` · ${U.side(st.side).toLowerCase()}` : ''}</span></div>`;
   }
+  // A number keeps its unit on the same line ("25 lb", "10 reps"), however the line wraps.
+  const keep = (s) => U.esc(s).replace(/(\d) (?=[a-z½])/g, '$1&nbsp;');
 
   /* ---------------------------------------------------------------- drawing */
   function progressBar() {
@@ -787,11 +789,18 @@
         <p class="t-footnote rf-muted">${P.askRir.kind === 'finisher' ? 'For the whole finisher.' : `For ${U.esc(P.askRir.name.toLowerCase())}. This sets next time.`}${((U.S.seen || {}).rirCount || 0) < 3 ? ' Only count reps with good form. A rough guess is fine.' : ''}</p>
       </div>` : '';
     const logged = done && done.kind === 'set' ? loggedLine(done) : '';
-    const timerBlock = P.restEnd
-      ? `<div class="pl-timer">${U.ring(left / Math.max(1, P.restTotal), 'Rest left', `<span class="pl-count rf-num">${U.fmtDur(left)}</span>`, 'lg', 'sky')}</div>
-         <div class="pl-rest-btns"><button type="button" class="rf-btn" data-act="plMore">+15 s</button><button type="button" class="rf-btn" data-act="plSkipRest">Skip rest</button></div>`
-      : (P.restTotal ? '<p class="t-title-3 pl-rest-over">Rest over</p>' : '');
+    // The rest ran out (or was skipped) with the question still waiting: the ring stays where it was,
+    // empty, and "Rest over" takes its buttons' place in the same row, so the question and what's up
+    // next stay put under a finger that may be on its way to an answer.
+    const over = !P.restEnd && P.restTotal > 0;
+    const timerBlock = P.restEnd || over
+      ? `<div class="pl-timer${over ? ' is-over' : ''}">${U.ring(over ? 0 : left / Math.max(1, P.restTotal), over ? 'Rest over' : 'Rest left', `<span class="pl-count rf-num">${U.fmtDur(left)}</span>`, 'lg', 'sky')}</div>
+         <div class="pl-rest-btns">${over ? '<p class="t-headline pl-rest-over">Rest over</p>' : '<button type="button" class="rf-btn" data-act="plMore">+15 s</button><button type="button" class="rf-btn" data-act="plSkipRest">Skip rest</button>'}</div>`
+      : '';
     const needCont = !P.restEnd && (P.askRir || !P.restTotal);
+    // While a rest runs with the question asked, Continue's place is held (it comes once the rest is
+    // over and the question still waits), so nothing above it moves when it does.
+    const hold = !needCont && next && P.askRir ? '<span class="pl-actions-hold" aria-hidden="true"></span>' : '';
     return `${top(P.mode === 'workout' ? U.S.active.session.title : '')}
       <div class="pl-main pl-rest">
         <p class="pl-eyebrow t-footnote rf-muted">${P.restEnd || P.restTotal ? 'Rest' : 'Nice work'}</p>
@@ -800,7 +809,7 @@
         ${rirQ}
         ${next ? `<div class="pl-next-row"><div class="pl-fig pl-fig-sm" data-morph="keep"></div>${upNext(next)}</div>` : ''}
       </div>
-      <div class="pl-actions">${needCont || !next ? `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plContinue">${next ? 'Continue' : 'Finish'}</button>` : ''}</div>`;
+      <div class="pl-actions">${needCont || !next ? `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plContinue">${next ? 'Continue' : 'Finish'}</button>` : hold}</div>`;
   }
   function loggedLine(st) {
     const log = A().logs[A().session.items.concat(A().session.extras).indexOf(st.item)];
@@ -1061,7 +1070,8 @@
     const opts = B().swapOptions(U.S, st.item, U.today());
     U.sheet({
       title: 'Swap exercise', size: 'auto',
-      body: opts.length ? `<ul class="rf-list">${opts.map((o) => U.row({ title: U.esc(o.name), sub: U.esc(o.why), act: 'plSwapTo', arg: o.id, chevron: true })).join('')}</ul>
+      // A tap swaps at once, so the rows carry no chevron (that promises another page).
+      body: opts.length ? `<ul class="rf-list">${opts.map((o) => U.row({ title: U.esc(o.name), sub: U.esc(o.why), act: 'plSwapTo', arg: o.id })).join('')}</ul>
         <ul class="rf-list sheet-gap">${U.row({ icon: 'eye', tone: 'rose', title: 'Don\'t show this move again', sub: 'Swaps it out now and keeps it out of future plans', act: 'plExclude', arg: opts[0].id })}</ul>`
         : '<p class="sheet-pad t-callout rf-muted">No other move fits your equipment.</p>',
     });

@@ -503,15 +503,19 @@ textarea.preview { border: 0; resize: vertical; }
 .pl-dots i.done { background: var(--accent-fill); box-shadow: none; }
 .pl-dots i.now { background: var(--label); box-shadow: none; }
 .pl-actions { flex-direction: column; align-items: stretch; }
-.pl-actions > .rf-btn { width: 100%; min-block-size: 56px; }
+.pl-actions > .rf-btn, .pl-actions > .pl-actions-hold { width: 100%; min-block-size: 56px; }
+.pl-actions-hold { display: block; }
 .pl-adjust { display: flex; align-items: center; justify-content: center; gap: var(--space-3); }
 .pl-timer { display: grid; place-items: center; padding: var(--space-2) 0; }
 .pl-timer .rf-ring { --_s: 168px; --_w: 10px; }
 .pl-timer .rf-ring[data-tone="sky"] .rf-ring-fill { stroke: var(--hue-sky); }
 .pl-count { font-size: 2.5rem; font-weight: 700; letter-spacing: -0.02em; }
 .pl-rest { justify-content: flex-start; }
-.pl-rest-btns { display: flex; gap: var(--space-2); justify-content: center; }
-.pl-rest-over { margin: var(--space-4) 0; }
+/* The row under the ring keeps its height when "Rest over" takes the buttons' place. */
+.pl-rest-btns { display: flex; gap: var(--space-2); justify-content: center; align-items: center; min-block-size: 44px; }
+.pl-rest-over { margin: 0; }
+.pl-timer.is-over .pl-count { color: var(--label-secondary); }
+.pl-timer.is-over .rf-ring-fill { visibility: hidden; } /* (its round end would still draw a dot) */
 .pl-rir { width: 100%; max-width: 420px; box-sizing: border-box; display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); }
 .pl-rir p { margin: 0; }
 .pl-rir .rf-segmented { width: 100%; }
