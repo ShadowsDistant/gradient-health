@@ -15,7 +15,9 @@
  * It reads GH.brain, GH.moves and GH.access only when called: it loads right after brain.js in
  * tests and after access.js in the app. Weeks before S.engineFrom keep 1.5's split (brain.js
  * templateV1), so history and the week in progress stay as they were; the session fixes (fill and
- * cap) apply to every week. Results are cached and must be treated as read-only; in the app they're
+ * cap) apply to every week. Weeks before S.rulesFrom are planned under the rules before 1.13's for
+ * older bodies, bones and diabetes (a profile copy marked legacyRules, src/access.js), likewise.
+ * Results are cached and must be treated as read-only; in the app they're
  * also kept in the state for the next launch (see keptOf).
  */
 (function (G) {
@@ -145,29 +147,37 @@
     const minutes = minutesOf(p.minutes);
     const ac = A();
     // Time that isn't sets: getting started, the warm-up, balance practice and a cool-down when
-    // they come every session (all shorter under 15 minutes, see compact).
+    // they come every session (all shorter under 15 minutes, see compact), and the impact block for
+    // bones (osteoporosis, src/access.js impactOn: about 3 minutes, whatever the time).
     const every = ac && ac.balancePerWeek(p) >= 7;
-    const fixed = minutes < COMPACT ? 0.5 + 1 + (every ? 1.2 : 0) + (prog.mobilityEvery ? 0.7 : 0)
-      : 0.5 + (prog.warmupMin || 2.5) + (every ? 2.5 : 0) + (prog.mobilityEvery ? 2 : 0);
+    const impact = !!(ac && ac.impactOn && ac.impactOn(p));
+    const fixed = (minutes < COMPACT ? 0.5 + 1 + (every ? 1.2 : 0) + (prog.mobilityEvery ? 0.7 : 0)
+      : 0.5 + (prog.warmupMin || 2.5) + (every ? 2.5 : 0) + (prog.mobilityEvery ? 2 : 0)) + (impact ? 3 : 0);
     const free = Math.max(3.2, minutes - fixed);
     // Each unit's work in a week, from its groups' starting sets (about 1.7 minutes a set).
     const load = UNITS.map((u) => UNIT_GROUPS[u].reduce((a, g) => a + (prog.start[g] || 0), 0) * 1.7);
-    // Simpler sessions (complexity 1 or 2) have 5 or 4 exercises, balance practice included, one
-    // for each group: a day takes no more units than that (arms count twice, biceps and triceps).
+    // Simpler sessions (complexity 1 or 2) have 5 or 4 exercises, balance practice and the impact
+    // block included, one for each group: a day takes no more units than that (arms count twice,
+    // biceps and triceps).
     const cx = clamp(Math.round(Number(p.complexity) || 0), 0, 2);
     let maxUnits = clamp(Math.floor(free / 3.2), 1, 6);
-    if (cx) maxUnits = Math.max(1, Math.min(maxUnits, (cx === 1 ? 5 : 4) - (ac && ac.balancePerWeek(p) >= 7 ? 1 : 0)));
-    return {
+    if (cx) maxUnits = Math.max(1, Math.min(maxUnits, (cx === 1 ? 5 : 4) - (ac && ac.balancePerWeek(p) >= 7 ? 1 : 0) - (impact ? 1 : 0)));
+    const out = {
       D, offsets, minutes, free, maxUnits, w: UNITS.map((u) => (cx && u === 'arms' ? 2 : 1)),
       feasible: feasibleUnits(p), tiers: UNITS.map((u) => unitTier(prog, u)), rule: UNITS.map((u) => prog.freq[u] || 0), load,
       split: tweaksOf(p).split,
     };
+    // Which rules the week is planned under, when 1.13's change anything for these answers (the
+    // trial weeks a split is scored on differ, src/access.js rulesKey).
+    const rules = ac && ac.rulesKey ? ac.rulesKey(p) : null;
+    if (rules) out.rules = rules;
+    return out;
   }
   // Which units this body and kit can train at all (any of their ladders, or the stand-in a
   // condition or an empty room opens), at home and at the gym as the person trains.
   const feasMemo = lru(32);
   function feasibleUnits(p) {
-    const key = JSON.stringify([p.equipment, p.gym, p.where, p.conditions, p.oaJoints, p.floorOk, p.careful, p.impactOk, p.jumpsOk, p.gentle, p.age, p.conditionsSince, p.startDay, (p.planTweaks || {}).avoid]);
+    const key = JSON.stringify([p.equipment, p.gym, p.where, p.conditions, p.oaJoints, p.floorOk, p.careful, p.impactOk, p.jumpsOk, p.gentle, p.age, p.conditionsSince, p.startDay, (p.planTweaks || {}).avoid, p.fractures, p.retinopathy]);
     const hit = feasMemo.get(key);
     if (hit !== undefined) return hit;
     const b = B();
@@ -1066,7 +1076,10 @@
   function planWeek(S, ws, phase, forced) {
     const b = B();
     const p = S.profile;
-    const prog = b.programFor(p);
+    // (A week before 1.13's rules started keeps the program and the plan it had: src/access.js
+    // oldRules.)
+    const before113 = !!(A() && A().oldRules && A().oldRules(S, ws));
+    const prog = b.programFor(before113 ? Object.assign({}, p, { legacyRules: true }) : p);
     const tw = tweaksOf(p);
     const legacy = b.legacyWeek(S, ws);
     const wi = b.weekInputs(S, ws);
@@ -1258,10 +1271,13 @@
       roomOf[g] = room;
       spareOf[g] = days.map(() => 0);
       // (Short of 2 sets: that many, on the days with the most time left it can join, for the fit
-      // to add when a session has time after all.)
+      // to add when a session has time after all; from 1.13's rules, days without the group yet
+      // first, since that's where the fit adds one, addShort.)
       const two = Math.min(2, G[g].floor);
       const lacking = trainable.includes(g) ? Math.ceil(Math.max(0, two - e[g]) - 1e-9) : 0;
-      shortRoomOf[g] = lacking ? shareOut(lacking, days.map((d, k) => (!d.done && d.per[g] != null ? Math.max(0.01, d.budget - d.fixed - Object.entries(x[k]).reduce((a, [q, n]) => a + n * (d.per[q] || 0), 0)) : 0)), days.map(() => 1)) : days.map(() => 0);
+      const joins = days.map((d, k) => (!d.done && d.per[g] != null ? Math.max(0.01, d.budget - d.fixed - Object.entries(x[k]).reduce((a, [q, n]) => a + n * (d.per[q] || 0), 0)) : 0));
+      const fresh = joins.map((w, k) => (x[k][g] > 0 ? 0 : w));
+      shortRoomOf[g] = lacking ? shareOut(lacking, !before113 && fresh.some((w) => w > 0) ? fresh : joins, days.map(() => 1)) : days.map(() => 0);
     }
     // Each such day (or one with no sets at all, whatever its length) a set of another group, then
     // of a second (the fit takes the first it has a move for), then a second set of each while there
@@ -1409,6 +1425,8 @@
     ensureMain(S, s, c);
     if (!o.capOnly) fill(S, s, c);
     capTo(S, s, c);
+    // A health condition's last word on how a group's sets are shared out (src/access.js afterFit).
+    if (A() && A().afterFit) A().afterFit(S, s);
     return s;
   }
   function fitCtx(S, s, o) {
@@ -2178,6 +2196,16 @@
     if (!S || typeof S !== 'object' || S.engineFrom != null || !S.profile || !b) return;
     const prefs = S.profile.prefs || {};
     S.engineFrom = b.weekStart(b.dayOf(Date.now(), prefs.rollHour != null ? prefs.rollHour : 4)) + 7;
+  });
+  // The same for 1.13's rules for older bodies, osteoporosis and type 2 diabetes (src/access.js):
+  // a state saved before them keeps the earlier rules to the end of the week it's first loaded in,
+  // so the week under way doesn't reshuffle (power on every leg day, muscles that aren't goals twice
+  // a week, impact for bones, diabetes's days); a new state has them from its first week.
+  GH.migrations.push(function rulesEpoch(S) {
+    const b = B();
+    if (!S || typeof S !== 'object' || S.rulesFrom != null || !S.profile || !b) return;
+    const prefs = S.profile.prefs || {};
+    S.rulesFrom = b.weekStart(b.dayOf(Date.now(), prefs.rollHour != null ? prefs.rollHour : 4)) + 7;
   });
 
   const self = GH.optimizer = {

@@ -1898,6 +1898,26 @@
     cues: ['Half kneel, front foot flat.', 'Rock your knee forward over your toes.', 'Heel stays down, then rock back.'] });
   move('walk', 'walk', { ...MOB, name: 'Walk', range: [600, 900], start: 720, cues: ['Easy pace, you can talk.', 'Swing your arms.', '10 to 15 minutes.'], mistake: 'Skipping it because it feels too easy.' });
 
+  /* Impact for bones (osteoporosis with no broken bone in the spine or several in minor falls, see
+     src/access.js impactOn): about 2.5 minutes on most days of 10 landings at a time with a short
+     walk between, 50 or more in all. On the calf raise's and the march's figures, at a landing's
+     tempo: no figure of their own. Not tagged `impact` (that's jumping and slamming, which
+     osteoporosis keeps out) nor `quick`. impacts: [landings a round (as the first cue says),
+     landings a rep of the figure]. */
+  const IMPACT = { group: 'impact', load: null, req: [], pos: 'stand', timed: true, range: [150, 180], start: 150, breathe: 'Breathe steadily the whole time.', impacts: [10, 2] };
+  move('imp_heel', 'calfWall', { ...IMPACT, name: 'Heel drops', req: ['wall'], support: true, joints: ['ankle', 'knee'], muscles: ['calves'], impacts: [10, 1],
+    cues: ['10 heel drops, then walk for 15 seconds. Keep going until the time is up.', 'Fingertips on the wall, rise up onto your toes.', 'Let your heels drop to the floor with a firm thud.'],
+    mistake: 'Landing on stiff, locked knees.',
+    rep: [{ to: 'b', ms: 600, hold: 150, ph: 'con' }, { to: 'a', ms: 160, hold: 450, ph: 'ecc' }] });
+  move('imp_stamp', 'march', { ...IMPACT, name: 'Stamps', equip: [], equipBy: null, uni: false, joints: ['ankle', 'knee', 'hip'], muscles: ['quads', 'calves', 'glutes'],
+    cues: ['10 stamps, then walk for 15 seconds. Keep going until the time is up.', 'Lift one knee, then stamp that foot down firmly.', 'Swap feet each time and stand tall.'],
+    mistake: 'Stamping so hard it jars your back.',
+    rep: [{ to: 'b', ms: 380, hold: 60, ph: 'move' }, { to: 'a', ms: 160, hold: 320, ph: 'move' }, { to: 'c', ms: 380, hold: 60, ph: 'move' }, { to: 'a', ms: 160, hold: 320, ph: 'move' }] });
+  move('imp_jog', 'march', { ...IMPACT, name: 'Jogging on the spot', equip: [], equipBy: null, uni: false, joints: ['ankle', 'knee', 'hip'], muscles: ['calves', 'quads', 'glutes'], impacts: [20, 2],
+    cues: ['20 jogging steps on the spot, then walk for 15 seconds. Keep going until the time is up.', 'Light, quick steps on the balls of your feet.', 'Let each heel touch down, arms relaxed.'],
+    mistake: 'Leaning forward as you speed up.',
+    rep: cyc(['b', 'a', 'c', 'a'], 190, 30) });
+
   /* Gym. Every gym move has `gym: true`. Loaded ones carry `ratio`: a conservative novice starting
      load as a fraction of body weight, for the whole bar or machine stack, per dumbbell for
      dumbbell moves and per stack for two-handle cable moves. It only pre-fills the weight picker. */
@@ -2052,6 +2072,8 @@
     coreRot: { name: 'Rotation', group: 'abs', rungs: ['rot_russian', 'rot_chop', 'rot_russian_up', 'rot_kneel_chop', 'rot_slam', 'rot_toss'] },
     coreSide: { name: 'Side core', group: 'abs', rungs: ['side_knee', 'side_carry', 'side_plank', 'side_march', 'side_star'] },
     finisher: { name: 'Finishers', group: 'conditioning', rungs: ['fin_march', 'fin_step_jacks', 'fin_pulse', 'fin_toss', 'fin_swing', 'fin_climbers', 'fin_squat_thrust', 'fin_jacks', 'fin_slam', 'fin_burpee', 'fin_swing1'] },
+    // Impact for bones: open only when a plan needs it (alt, src/access.js), gentlest first.
+    impact: { name: 'Impact for bones', group: 'impact', alt: true, rungs: ['imp_heel', 'imp_stamp', 'imp_jog'] },
     // Gym pools (gym: true): preference-ordered, not easiest → hardest. The first allowed move is
     // used and its load progresses; a stall rotates to the next allowed one. Some reuse home moves,
     // which keep their home `family`.

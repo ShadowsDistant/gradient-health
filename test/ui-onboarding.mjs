@@ -494,6 +494,62 @@ section('Planned around: the sheet and what it changes');
   await ctx.close();
 }
 
+section('Osteoporosis and type 2 diabetes ask one more question each');
+{
+  const { ctx, page } = await fresh('web');
+  await next(page); await next(page); await next(page); await next(page);
+  await fill(page, 'age', 66);
+  await tap(page, '[data-act="obAround"]', 100); await page.clock.runFor(400); await page.waitForTimeout(600);
+  const seg = (id) => `dialog[open] .rf-segmented[data-follow="${id}"]`;
+  const around = () => page.locator('dialog[open] .ob-around').innerText().catch(() => '');
+  const caution = async () => (await page.locator('dialog[open] .ob-status[data-tone="caution"]').allInnerTexts()).join(' | ');
+  const answer = async (id, v) => { await page.locator(`${seg(id)} .rf-segment[data-arg="${v}"]`).click(); await page.clock.runFor(100); await page.waitForTimeout(300); };
+  check('no question until the condition is picked', await page.locator(seg('osteo')).count() === 0 && await page.locator(seg('diabetes')).count() === 0);
+  await tap(page, 'dialog[open] .rf-chip[data-list="conditions"][data-v="osteo"]', 300);
+  check('osteoporosis asks about broken bones: Yes, No or Not sure, none picked yet', /Have you broken a bone in your spine, or more than one bone in a minor fall\?/.test(await page.locator('dialog[open]').innerText())
+    && (await page.locator(`${seg('osteo')} .rf-segment`).allInnerTexts()).map((t) => t.trim()).join() === 'Yes,No,Not sure' && await page.locator(`${seg('osteo')} input:checked`).count() === 0);
+  check('no answer yet counts as not sure: impact stays at brisk walking, ask your doctor', /Impact stays at brisk walking/.test(await around()) && /Not sure about past breaks\? Ask your doctor/.test(await caution()), await caution());
+  await answer('osteo', 'no');
+  check('No: a short impact block on most days, and no doctor line for it', /A short impact block on most days/.test(await around()) && !/breaks|broken/.test(await caution()), await around());
+  await answer('osteo', 'yes');
+  check('Yes: impact stays at brisk walking, with a word with your doctor or physio first', /Impact stays at brisk walking/.test(await around()) && /check with your doctor or physio before you start/.test(await caution()), await caution());
+  await answer('osteo', 'no');
+  await tap(page, 'dialog[open] .rf-chip[data-list="conditions"][data-v="diabetes"]', 300);
+  check('type 2 diabetes asks about the eyes, and says to ask about low blood sugar', /Do you have diabetic eye disease \(retinopathy\)\?/.test(await page.locator('dialog[open]').innerText()) && /keep some fast-acting sugar with you/.test(await caution()), await caution());
+  check('its plan: strength on 2 or 3 days, not back to back', /Type 2 diabetes: Strength on 2 or 3 days a week, not back to back/.test(await around()), await around());
+  await answer('diabetes', 'unsure');
+  check('not sure about the eyes: sets stay light, ask at the next eye check', /Sets stay at 10 to 15 reps, with no heavy lifting, jumping or head-down moves/.test(await around()) && /Not sure about your eyes\? Ask at your next eye check/.test(await caution()));
+  check('in plain words', !dashes(await page.locator('dialog[open]').innerText()));
+  await page.locator(seg('osteo')).scrollIntoViewIfNeeded();
+  await page.waitForTimeout(200);
+  await shot(page, '16-around-follow-ups');
+  await page.click('dialog[open] [data-act="obAroundDone"]'); await page.clock.runFor(500); await page.waitForTimeout(600);
+  check('the row says what\'s planned around', /Osteoporosis or low bone density · Type 2 diabetes/.test(await page.locator('.onboard [data-act="obAround"]').innerText()));
+  await toPlan(page);
+  await page.click('.ob-actions [data-act="obLook"]');
+  await page.waitForSelector('#screen[data-view="today"]');
+  await page.waitForTimeout(800);
+  const p = await page.evaluate(() => { const q = window.GH.ui.S.profile; return { c: q.conditions.join(), f: q.fractures, r: q.retinopathy }; });
+  check('finishing saves both answers', p.c === 'osteo,diabetes' && p.f === 'no' && p.r === 'unsure', p);
+
+  await page.evaluate(() => window.GH.ui.editAnswers('conditions'));
+  await page.waitForTimeout(400);
+  const ans = (id) => page.locator(`.onboard .rf-segmented[data-follow="${id}"] input:checked`).inputValue().catch(() => null);
+  check('Your answers asks them too, with the answers kept', (await ans('osteo')) === 'no' && (await ans('diabetes')) === 'unsure');
+  await page.locator('.onboard .rf-segmented[data-follow="osteo"]').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(200);
+  await shot(page, '17-answers-follow-ups');
+  await tap(page, '.onboard .rf-chip[data-list="conditions"][data-v="osteo"]', 300);
+  check('unticking osteoporosis takes its question away', await page.locator('.onboard .rf-segmented[data-follow="osteo"]').count() === 0 && await page.locator('.onboard .rf-segmented[data-follow="diabetes"]').count() === 1);
+  await next(page);
+  await page.waitForTimeout(400);
+  const q = await page.evaluate(() => { const x = window.GH.ui.S.profile; return { c: x.conditions.join(), has: 'fractures' in x && x.fractures !== undefined, r: x.retinopathy }; });
+  check('saving clears its answer and keeps the other', q.c === 'diabetes' && !q.has && q.r === 'unsure', q);
+  const kept = await page.evaluate(() => { window.GH.ui.save(true); return JSON.parse(JSON.stringify(window.GH.store.load ? window.GH.store.load().profile : window.GH.ui.S.profile)); });
+  check('and it stays cleared after a save', kept.fractures === undefined && kept.retinopathy === 'unsure', { f: kept.fractures, r: kept.retinopathy });
+  await ctx.close();
+}
+
 section('After the first workout: Health Connect, then the tour');
 {
   const { ctx, page } = await fresh('app', '2026-09-28T08:00:00');

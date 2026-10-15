@@ -1019,17 +1019,25 @@
   /* ------------------------------------------------------------------ fast on the way up (power) */
   // From about 50, power (how quickly you can push) fades faster than strength, and it matters
   // for getting out of a chair or catching a trip. These are the same rung as their base move,
-  // done fast on the way up and slow on the way down.
+  // done fast on the way up and slow on the way down, and the first cue says what to do in a line:
+  // moderate loads, every rep quick (src/access.js powerPlan).
   function power(id, baseId, name, cues) {
     const b = MOVES[baseId];
     if (!b) return;
     const meta = {};
-    for (const k of ['group', 'joints', 'req', 'load', 'range', 'start', 'uni', 'muscles', 'prime', 'pos', 'grip', 'deep', 'oneLeg', 'support', 'spine', 'complex']) if (b[k] !== undefined) meta[k] = clone(b[k]);
+    for (const k of ['group', 'joints', 'req', 'load', 'range', 'start', 'uni', 'muscles', 'prime', 'pos', 'grip', 'deep', 'oneLeg', 'support', 'spine', 'complex', 'gym', 'ratio']) if (b[k] !== undefined) meta[k] = clone(b[k]);
     move(id, b.form, Object.assign(meta, { name, powerOf: baseId, cues, mistake: 'Rushing the way down. Only the way up is fast.', breathe: 'Breathe out as you drive up.' }), { con: 450 });
   }
-  power('sq_sts_power', 'sq_sts', 'Fast sit to stand', ['Arms forward, nose over toes.', 'Stand up as quickly as you can.', 'Sit back down slowly, in control.']);
-  power('sq_bw_power', 'sq_bw', 'Fast-up squat', ['Lower slowly, chest up.', 'Drive up as fast as you can.', 'Stay on your feet, no jumping.']);
-  power('sq_goblet_power', 'sq_goblet', 'Fast-up goblet squat', ['Hold the weight at your chest.', 'Lower slowly, then drive up fast.', 'Stay on your feet, no jumping.']);
+  const QUICK = 'Stop while every rep is still quick.';
+  power('sq_sts_power', 'sq_sts', 'Fast sit to stand', [`Stand up as fast as you can, then sit down slowly. ${QUICK}`, 'Arms forward, nose over toes.', 'Sit back down in control, no dropping.']);
+  power('sq_bw_power', 'sq_bw', 'Fast-up squat', [`Lower slowly, then drive up as fast as you can. ${QUICK}`, 'Chest up, knees over your toes.', 'Stay on your feet, no jumping.']);
+  power('sq_goblet_power', 'sq_goblet', 'Fast-up goblet squat', [`Lower slowly, then drive up as fast as you can. ${QUICK}`, 'Hold the weight at your chest.', 'Stay on your feet, no jumping.']);
+  // 1.13: from 60, every leg day (the safest, from 75, pushes up with the hands), step-ups and the
+  // leg press at the gym. A machine's fast version starts at a lighter weight of its own.
+  power('sq_sts_hands_power', 'sq_sts_hands', 'Fast sit to stand, hands on the seat', [`Push up through your hands and feet as fast as you can, then sit down slowly. ${QUICK}`, 'Sit near the front of a sturdy chair, feet under your knees.', 'Reach back for the seat and lower yourself gently.']);
+  power('sq_stepup_power', 'sq_stepup', 'Fast step-up', [`Step up as fast as you can, then step down slowly. ${QUICK}`, 'One foot flat on a sturdy low chair or stair.', 'Drive through that heel, not your back foot.']);
+  power('leg_press_power', 'leg_press', 'Fast leg press', [`Press out as fast as you can, then let it come back slowly. ${QUICK}`, 'A lighter weight than usual, feet flat on the plate.', 'Never lock your knees at the top.']);
+  if (MOVES.leg_press_power) MOVES.leg_press_power.ratio = 0.5;
 
   /* ------------------------------------------------------------------ ladders */
   // Sit to stand comes before the bodyweight squat: the first step for anyone who finds a squat

@@ -1,7 +1,8 @@
 // Every combination of a person's answers, built into weeks and sessions, against the plan's
 // invariants. Profiles come from a seeded pairwise covering array over every input (goals,
-// experience, days, weekdays, minutes, kit, gym, joints, pain, impact, age, conditions, floor,
-// focus, lead side, supersets, rest, complexity, units), plus edge profiles and seeded random ones.
+// experience, days, weekdays, minutes, kit, gym, joints, pain, impact, age, conditions and the
+// questions they bring, floor, focus, lead side, supersets, rest, complexity, units), plus edge
+// profiles and seeded random ones.
 // Each is built for its on-ramp week and a full week; some also for a deload week, a bad-sleep day
 // and short mode. It prints how full sessions are against their time, and fails on any broken rule.
 //
@@ -68,7 +69,7 @@ const GOALS = [
   ['fat', 'consistency'], ['fat', 'abs'], ['endurance'], ['mobility', 'back'], ['back', 'shoulders', 'legs'],
   ['abs', 'arms', 'chest', 'legs', 'back', 'consistency'], ['endurance', 'strength', 'mobility', 'fat'],
 ];
-const CONDS = [[], ['ra'], ['oa'], ['osteo'], ['back'], ['bp'], ['balance'], ['seated'], ['hands'], ['heart'], AC.CONDITIONS.map((c) => c.id)];
+const CONDS = [[], ['ra'], ['oa'], ['osteo'], ['back'], ['bp'], ['balance'], ['seated'], ['hands'], ['heart'], ['diabetes'], ['osteo', 'diabetes'], AC.CONDITIONS.map((c) => c.id)];
 const FACTORS = [
   ['goals', GOALS],
   ['experience', ['never', 'onoff', 'lt1', '1to3', '3plus']],
@@ -85,8 +86,11 @@ const FACTORS = [
   ['pain', [[], ['knee'], ['shoulder'], ['wrist'], ['back'], ['knee', 'hip', 'ankle']]],
   ['impact', ['on', 'off', 'jumps']],
   ['gentle', [false, true]],
-  ['age', [13, 16, 17, 25, 45, 55, 65, 75, 85, 95]],
+  ['age', [13, 16, 17, 25, 45, 55, 59, 60, 65, 74, 75, 85, 95]],
   ['conditions', CONDS],
+  // The questions osteoporosis and type 2 diabetes bring (unset: not asked yet).
+  ['fractures', ['unset', 'yes', 'no', 'unsure']],
+  ['retinopathy', ['unset', 'yes', 'no', 'unsure']],
   ['floorOk', [true, false]],
   ['focus', [[], ['calves'], ['rearDelts', 'glutes'], ['sideDelts', 'lats', 'quads', 'hamstrings'], ['obliques', 'forearms']]],
   ['lead', ['none', 'arm', 'leg', 'both']],
@@ -176,6 +180,7 @@ function person(spec, n) {
     weekdays: weekdaysFor(spec.weekdays, spec.days, n), minutes: spec.minutes, lightDays: spec.lightDays, where: spec.where,
     equipment: JSON.parse(JSON.stringify(KITS[spec.kit])), gym, careful: spec.careful.slice(), impactOk: spec.impact !== 'off',
     jumpsOk: spec.impact === 'jumps' ? true : undefined, gentle: spec.gentle, age: spec.age, conditions: spec.conditions.slice(),
+    fractures: spec.fractures === 'unset' ? undefined : spec.fractures, retinopathy: spec.retinopathy === 'unset' ? undefined : spec.retinopathy,
     floorOk: spec.floorOk ? undefined : false, focus: spec.focus.slice(), units: u, weightKg: 60 + (n % 50),
     lead: { arm: spec.lead === 'arm' || spec.lead === 'both' ? 'L' : null, leg: spec.lead === 'leg' || spec.lead === 'both' ? 'R' : null },
     prefs: { supersets: spec.supersets, rest: spec.rest },
@@ -322,14 +327,25 @@ function checkSession(S, s, label, o) {
     const sore = painAt(S, day).concat(p.careful || []).filter((j) => joints.includes(j));
     if ((AC && !AC.testsOk(S, t.test)) || sore.length) bad('left vs right tests only when allowed', `${label}: ${t.test} ${sore}`);
   }
-  // Strength rep ranges at home.
-  if ((p.goals || []).slice(0, 2).includes('strength')) {
-    for (const it of s.items) {
-      if (!['push', 'chestDb', 'squat', 'hinge', 'row', 'pull', 'press'].includes(it.fam) || it.timed) continue;
-      const r = B.rangeFor(S, M.MOVES[it.moveId], it.fam);
-      if (r[0] !== 5 || r[1] !== 10 || it.target < 5 || it.target > 10) bad('a strength goal works home compounds in 5 to 10 reps', `${label}: ${it.moveId} ${r} target ${it.target}`);
-    }
+  // Strength rep ranges at home, unless a health condition sets its own (src/access.js repRange:
+  // osteoporosis and type 2 diabetes after the on-ramp, diabetic eye disease always), which every
+  // target keeps to.
+  for (const it of s.items) {
+    if (it.timed || it.skill) continue;
+    const m = M.MOVES[it.moveId];
+    const own = AC.repRange(S, m, it.fam, day);
+    const r = B.rangeFor(S, m, it.fam, day);
+    if (own) { if (r.join() !== own.join() || it.target < own[0] || it.target > own[1]) bad('a health condition\'s rep range holds', `${label}: ${it.moveId} ${r} (${own}) target ${it.target}`); continue; }
+    if (!(p.goals || []).slice(0, 2).includes('strength') || !['push', 'chestDb', 'squat', 'hinge', 'row', 'pull', 'press'].includes(it.fam)) continue;
+    if (r[0] !== 5 || r[1] !== 10 || it.target < 5 || it.target > 10) bad('a strength goal works home compounds in 5 to 10 reps', `${label}: ${it.moveId} ${r} target ${it.target}`);
   }
+  // Impact for bones: only with osteoporosis and no break (src/access.js impactOn), 50 landings or
+  // more, and in every session of 15 minutes or more where one of its moves spares the joints.
+  const bone = s.items.filter((it) => it.bone || (M.MOVES[it.moveId] && M.MOVES[it.moveId].family === 'impact'));
+  if (bone.length && !AC.impactOn(p)) bad('impact for bones only with osteoporosis and no break', `${label}: ${bone.map((it) => it.moveId)}`);
+  for (const it of bone) if (AC.impactCount(M.MOVES[it.moveId], it.target) < 50) bad('an impact block holds 50 landings or more', `${label}: ${it.moveId} ${it.target} s`);
+  const canLand = () => B.rungs(S, 'impact', day).some((id) => !(M.MOVES[id].joints || []).some((j) => painAt(S, day).includes(j)));
+  if (!bone.length && !s.flare && !s.light && !o.short && budget >= 15 && AC.impactOn(p) && AC.newRules(S, day) && canLand()) bad('osteoporosis with no break: an impact block in every session', `${label}: ${s.items.map((it) => it.moveId)}`);
 }
 
 // A week as planned (no readiness): every session built and checked, and each group's sets
@@ -341,6 +357,9 @@ function checkWeek(S, ws, label, o) {
   const live = week.sessions.filter((x) => !x.dropped && x.day != null);
   const days = live.map((x) => x.day);
   if (new Set(days).size !== days.length) bad('never two workouts on one day', `${label}: ${days}`);
+  // Type 2 diabetes: strength on 3 days a week at most, unless sessions are under 15 minutes
+  // (src/access.js strengthDays).
+  if ((S.profile.conditions || []).includes('diabetes') && AC.newRules(S, ws) && live.length > 3 && !(B.settingsAt(S, Math.max(ws, S.profile.startDay || ws)).minutes < 15)) bad('type 2 diabetes: strength on 3 days a week at most (sessions of 15 minutes or more)', `${label}: ${days.map((d) => B.dayStr(d))}`);
   const built = [];
   for (const x of live) {
     let s;
@@ -379,9 +398,11 @@ function checkWeek(S, ws, label, o) {
   // group's own time a set (a squat takes longer than a curl), with a set to spare (how the sets
   // pack into each session's time is only estimated here). Simpler sessions hold a set number of
   // exercises, one a group (balance and floor practice count among them), so a week of them may
-  // not have room for every group either.
+  // not have room for every group either. A session turned into a light day (nothing in it suits
+  // the body that day, brain.js lightInstead) has no time for sets, and isn't a session left short.
   const cond = prog.finisherPerWeek >= 7;
-  const setTimes = built.map((s) => budgetOf(S, s, {}) - B.estimate(S, Object.assign({}, s, {
+  const work = built.filter((s) => !s.light);
+  const setTimes = work.map((s) => budgetOf(S, s, {}) - B.estimate(S, Object.assign({}, s, {
     items: s.items.filter((it) => it.skill), finisher: cond ? s.finisher : null,
     mobility: s.keepMobility || prog.mobilityPlus ? (s.mobility || []).filter((m) => !m.cardio) : [],
   })));
@@ -390,7 +411,7 @@ function checkWeek(S, ws, label, o) {
   const setsMin = built.reduce((a, s) => a + B.estimate(S, s) - B.estimate(S, Object.assign({}, s, { items: s.items.filter((it) => it.skill) })), 0);
   const perSet = setsIn ? setsMin / setsIn : 2;
   // Full: every session at 85% of its time or more, or with less time left than a set takes.
-  const full = built.every((s) => { const est = B.estimate(S, s), bud = budgetOf(S, s, {}); return est >= 0.85 * bud || bud - est < perSet; });
+  const full = work.every((s) => { const est = B.estimate(S, s), bud = budgetOf(S, s, {}); return est >= 0.85 * bud || bud - est < perSet; });
   const wholeSets = setTimes.reduce((a, t) => a + Math.max(0, Math.floor(t / perSet + 1e-9)), 0);
   const gTime = {}, gSets = {};
   for (const s of built) {
@@ -539,6 +560,13 @@ const EDGES = [
   edge({ lead: 'both', minutes: 15, days: 2 }), edge({ lead: 'both', minutes: 60, days: 6, kit: 'everything' }), edge({ impact: 'jumps', age: 55, goals: ['fat'] }), edge({ impact: 'off', goals: ['endurance', 'fat'], kit: 'ball' }),
   edge({ units: 'kg', kit: 'dbFull', where: 'both', gym: 'basic', dbMax: 'most' }), edge({ conditions: ['seated'], kit: 'band', minutes: 45, days: 4 }), edge({ conditions: ['hands'], kit: 'everything', minutes: 30 }), edge({ conditions: ['heart', 'bp'].slice(0, 1), age: 85, minutes: 25 }),
   edge({ conditions: ['balance', 'osteo'].slice(0, 1), floorOk: false, kit: 'nothing', age: 75 }), edge({ days: 6, minutes: 60, kit: 'bar', goals: ['back', 'shoulders', 'legs'] }),
+  // 1.13: impact for bones, back extensions and power from 60, type 2 diabetes's days and ranges.
+  edge({ conditions: ['osteo'], fractures: 'no', age: 65, minutes: 10, days: 2 }), edge({ conditions: ['osteo'], fractures: 'no', age: 62, complexity: 2, minutes: 45 }),
+  edge({ conditions: ['osteo'], fractures: 'no', age: 70, where: 'gym', gym: 'full', minutes: 60, days: 5, goals: ['strength'] }), edge({ conditions: ['osteo'], fractures: 'no', age: 58, kit: 'nothing', floorOk: false, minutes: 15, days: 6 }),
+  edge({ conditions: ['osteo'], fractures: 'yes', age: 80, minutes: 30 }), edge({ conditions: ['osteo', 'diabetes'], fractures: 'no', retinopathy: 'yes', age: 75, kit: 'dbFull', minutes: 40 }),
+  edge({ conditions: ['diabetes'], days: 6, minutes: 30, age: 66, where: 'gym', gym: 'basic' }), edge({ conditions: ['diabetes'], retinopathy: 'no', days: 5, weekdays: 'adjacent', minutes: 45, goals: ['strength'], kit: 'dbFull' }),
+  edge({ conditions: ['diabetes'], retinopathy: 'unsure', days: 4, weekdays: 'rotated', minutes: 20, kit: 'everything' }), edge({ age: 60, goals: ['abs', 'arms'], days: 2, minutes: 15 }),
+  edge({ age: 74, kit: 'everything', days: 6, minutes: 60, goals: ['legs'] }), edge({ age: 75, where: 'gym', gym: 'full', minutes: 45, days: 4 }), edge({ age: 64, gentle: true, where: 'both', gym: 'small', kit: 'band' }),
 ];
 const RANDOM = 2000;
 const randRows = Array.from({ length: RANDOM }, () => LEVELS.map((l) => Math.floor(rand() * l)));
@@ -638,6 +666,8 @@ const NAMED = [
   'no move twice in a session', 'never two workouts on one day', 'at most 6 sets an exercise', 'at most 10 sets a muscle group a session', 'weekly sets stay under each group\'s cap',
   'merged exercises keep at most 5 sets', 'priority order', 'no supersets when they\'re off', 'supersets pair two exercises that don\'t clash', 'superset partners side by side', 'a superset\'s 1 comes before its 2',
   'left vs right tests only when allowed', 'a strength goal works home compounds in 5 to 10 reps', 'the same answers build the same session', 'a deload comes after four training weeks', 'every week has a plan',
+  'a health condition\'s rep range holds', 'impact for bones only with osteoporosis and no break', 'an impact block holds 50 landings or more', 'osteoporosis with no break: an impact block in every session',
+  'type 2 diabetes: strength on 3 days a week at most (sessions of 15 minutes or more)',
 ];
 const allowedNames = Object.keys(viol).filter((k) => k.startsWith('only allowed moves'));
 for (const name of NAMED.concat(allowedNames.length ? allowedNames : ['only allowed moves'])) {

@@ -78,7 +78,9 @@ for (const id of ids) {
   if (m.grip != null && !GRIPS.includes(m.grip)) tagBad.push(`${id}: grip ${m.grip}`);
   if (m.spine != null && (!Array.isArray(m.spine) || m.spine.some((x) => !SPINE.includes(x)))) tagBad.push(`${id}: spine ${m.spine}`);
   // Anything held or strapped on needs a grip tag, so painful hands can skip it.
-  const holds = (m.load && /db|kb|ball|band|bb|ez|cable|machine/.test(m.load)) && !m.grip && !['leg_press', 'leg_curl', 'leg_ext', 'bike_int', 'incline_walk', 'calf_smith', 'calf_press', 'leg_curl_db'].includes(id);
+  // (Machines worked by the legs or the feet hold nothing, nor their fast-up versions.)
+  const legsOnly = ['leg_press', 'leg_curl', 'leg_ext', 'bike_int', 'incline_walk', 'calf_smith', 'calf_press', 'leg_curl_db'];
+  const holds = (m.load && /db|kb|ball|band|bb|ez|cable|machine/.test(m.load)) && !m.grip && !legsOnly.includes(id) && !legsOnly.includes(m.powerOf);
   if (holds && !/^(sq_|lg_|ls_)/.test(id)) tagBad.push(`${id}: loaded but no grip tag`);
 }
 check(`every move says where the body is and what it grips (${ids.length} moves)`, !tagBad.length, tagBad.slice(0, 8));
@@ -276,7 +278,7 @@ const pooled = new Set(pools.flatMap(([, l]) => l.rungs));
 const gymBad = [];
 for (const id of gymIds) {
   const m = M.MOVES[id];
-  if (!pooled.has(id)) gymBad.push(`${id}: in no gym pool`);
+  if (!pooled.has(id) && !pooled.has(m.powerOf)) gymBad.push(`${id}: in no gym pool`); // (a fast-up version is its base move's rung)
   if (m.load && m.load.split('|').some((k) => !LOAD_KEYS.includes(k))) gymBad.push(`${id}: load ${m.load}`);
   if (m.cues.length !== 3 || [...m.cues, m.mistake, m.breathe].some((c) => typeof c !== 'string' || !c || /[\u2013\u2014]/.test(c))) gymBad.push(`${id}: three cues, a mistake and a breathing tip, no dashes`);
   if (!m.muscles.length || m.muscles.some((x) => !MUSCLE_NAMES.includes(x))) gymBad.push(`${id}: muscles`);

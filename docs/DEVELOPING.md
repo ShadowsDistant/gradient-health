@@ -18,6 +18,8 @@ src/engine/medal3d.js    the badges' 3D medals (GH.medal3d): stills and the live
 src/brain.js             program, sessions, gym loads, adaptation, calendar replay, streaks, readiness
 src/optimizer.js         the plan engine (GH.optimizer): the best weekly split, each day's sets, sessions
                          filled to the time set, the plan's score and its "Why this plan" lines
+src/access.js            age and health (GH.access): the age bands, the health conditions and the
+                         questions they bring, what each changes in the plan, and its words
 src/achievements.js      the badges (GH.achievements): what each takes, earned for good with a date,
                          sealed until opened
 src/notify.js            notifications' planner (GH.notify, a lazy chunk): what to send and when;
@@ -1004,6 +1006,20 @@ to about 92% of the time set and never more than 30 seconds over it. `score` wei
 coverage, time, recovery, balance and variety, `explain` gives the "Why this plan" lines and
 `alternatives` scores the classic splits. Weeks before `S.engineFrom` replay 1.5's templates, so
 history doesn't shift. Plans are cached, and kept in `S.planCache` for the next launch.
+
+Age and health (`src/access.js`) adjust the plan through hooks the engine calls. Age bands: under 30,
+30 to 49, from 50 and from 65, plus two lines inside them: from 60 every leg day has one or two
+fast-up moves and muscles that aren't goals train twice a week, and from 75 (or with balance
+problems, or a doctor's "take it easy") the fast move is one sit to stand with the hands. Health
+conditions are `CONDITIONS`; two bring a question (`FOLLOW_UPS`, answered 'yes', 'no' or 'unsure',
+no answer counting as not sure): osteoporosis asks about breaks (`profile.fractures`; 'no' adds an
+impact block on most days), type 2 diabetes about eye disease (`profile.retinopathy`; not 'no'
+keeps sets at 10 to 15 reps). 1.13's rules that change which days train what start the week after
+1.13 first loads a state (`S.rulesFrom`, set by a migration; a new state has them from its first
+week). Weeks before it are planned with `legacyRules` on a copy of the profile, so they replay as
+1.12 planned them: `test/optimizer.mjs` compares them with a copy of 1.12's plans. `boneLoad(p)` tells
+the reps-left target when to build toward heavier sets for bones. `test/simulate.mjs` checks each
+rule over twelve weeks, and `test/combos.mjs` covers every condition and answer.
 `test/optimizer.mjs` checks the engine; `test/combos.mjs` plans about 2,400 combinations of answers
 (`--full`: 3-wise, with 12-week runs, before a release) and checks that every session fits its time,
 every group gets its week, only allowed moves appear and the same answers give the same plan.

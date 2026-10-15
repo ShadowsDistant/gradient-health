@@ -326,6 +326,8 @@ r = await search('backup');
 check('"backup": your data', r.groups === 'data' && r.rows.includes('Copy my data') && r.rows.includes('Restore from a copy'), JSON.stringify(r));
 r = await search('rest');
 check('"rest": rest between sets', r.rows.includes('Rest between sets'), JSON.stringify(r));
+r = await search('diabetes');
+check('"diabetes" and "osteoporosis": Your answers, where health conditions are', r.groups === 'plan' && r.rows.join() === 'Your answers' && (await search('osteoporosis')).rows.join() === 'Your answers', JSON.stringify(r));
 r = await search('zzzz');
 check('nothing found says so', r.none && !r.groups && !r.rows.length, JSON.stringify(r));
 check('typing doesn\'t re-render: the same nodes, still in the field', await ev(() => document.querySelector('#screen .set-list') === window.__setList && window.__sw.isConnected && document.activeElement === document.getElementById('setQ')));

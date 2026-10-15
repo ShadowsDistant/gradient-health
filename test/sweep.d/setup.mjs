@@ -1,6 +1,7 @@
 // Sweep screens for set-up (1.6): the first run's screens in their longest states (Build muscle with
 // its areas, days picked that skip today, every kit chip with the weights open, home and gym, an
-// answer out of range), "Anything to plan around?" with a lot picked, the plan (plain, and built
+// answer out of range), "Anything to plan around?" with a lot picked (and with the questions
+// osteoporosis and type 2 diabetes bring, answered), the plan (plain, and built
 // around someone), a friend's plan's three screens, Just tracking food?'s four, the detailed screens
 // Your answers keeps, the first week's checklist with the level check, and the tour's first and
 // last cards.
@@ -43,6 +44,15 @@ export async function screens({ page, settle, act, setup, chips }) {
     ['setup-you', async () => { await setup(4, async () => { await fill('age', 72); await page.click('.onboard .ob-opt[data-arg="3plus"]'); await settle(200); await open('size'); }); }],
     ['setup-you-error', async () => { await setup(4, async () => { await fill('age', 150); await page.locator('.ob-actions [data-variant="tinted"]').click(); }); }],
     ['setup-around', async () => { await setup(4, async () => { await fill('age', 68); await around([['_pain', 'knee'], ['careful', 'shoulder'], ['conditions', 'oa'], ['conditions', 'bp'], ['conditions', 'balance']]); }); }],
+    // 1.13: osteoporosis and type 2 diabetes, each with its question answered, scrolled to them.
+    ['setup-around-follow-ups', async () => {
+      await setup(4, async () => {
+        await fill('age', 66);
+        await around([['conditions', 'osteo'], ['conditions', 'diabetes']]);
+        await chips(['dialog[open] .rf-segmented[data-follow="osteo"] .rf-segment[data-arg="no"]', 'dialog[open] .rf-segmented[data-follow="diabetes"] .rf-segment[data-arg="unsure"]']);
+        await page.locator('dialog[open] .rf-segmented[data-follow="osteo"]').scrollIntoViewIfNeeded();
+      });
+    }],
     ['setup-plan', async () => { await setup(4, async () => { await toPlan(); }); }],
     ['setup-plan-around', async () => { await setup(4, async () => { await fill('age', 72); await around([['conditions', 'balance'], ['conditions', 'bp']]); await page.click('dialog[open] [data-act="obAroundDone"]'); await settle(600); await toPlan(); }); }],
     ['setup-friend', () => friend(0)],
