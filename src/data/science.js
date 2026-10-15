@@ -102,7 +102,7 @@
       refs: ['schoenfeld2017vol', 'pelland2026', 'bazvalle2022'] },
     { id: 'dose', cat: 'training', icon: 'heart', tone: 'green', title: 'Enough strength work for your health', level: 'moderate',
       does: 'If your plan adds up to less than 30 minutes of strength work a week, Why this plan says so, with the fix: a third short session or longer ones. It never shrinks or blocks your plan, and muscle and strength goals aren\'t held to any limit.',
-      why: 'Across 16 large studies, people who did muscle-strengthening activity had a 10-17% lower risk of dying early, heart disease, cancer and diabetes, with most of the benefit at about 30 to 60 minutes a week. For healthy adults, the American Heart Association advises 8 to 10 exercises for the major muscle groups, 1 to 3 sets of 8 to 12 reps at a moderate weight, at least twice a week.',
+      why: 'Across 16 large studies, people who did muscle-strengthening activity had a 10-17% lower risk of dying early, heart disease, cancer and diabetes, with the lowest risks at about 30 to 60 minutes a week. For healthy adults, the American Heart Association advises 8 to 10 exercises for the major muscle groups, 1 to 3 sets of 8 to 12 reps at a moderate weight, at least twice a week.',
       caveat: 'These studies show a link; they can\'t prove the strength work caused it. Every plan here already trains at least twice a week.',
       refs: ['momma2022', 'paluch2024'] },
     { id: 'order', cat: 'training', icon: 'list', tone: 'sky', title: 'Your goals go first', level: 'moderate',

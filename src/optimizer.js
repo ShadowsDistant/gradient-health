@@ -2021,11 +2021,11 @@
     if (wp.legacy) out.push('This week keeps the plan it started with. The new planner takes over next week.');
     else if (wp.split.kind !== 'auto') out.push(`You picked ${lower(LABEL[wp.split.kind])}. Of ${fmtN(wp.considered)} ways to lay it over your ${D} days, this one rests each muscle best.`);
     else out.push(`Of ${fmtN(wp.considered)} ways to share your muscle groups over ${D} days, this one spreads the work most evenly, with rest between sessions.`);
-    // A healthy weekly dose: in large studies most of the health benefit of strength work came at
-    // about 30 to 60 minutes a week (Momma et al. 2022). A plan with less (two sessions of 10
+    // A healthy weekly dose: in large studies the lowest risks of disease went with about 30 to 60
+    // minutes of strength work a week (Momma et al. 2022). A plan with less (two sessions of 10
     // minutes) says so once, with the fix; the plan itself stays as it is.
     const weekly = D * minutes;
-    if (D > 0 && weekly < 30) out.push(`Your plan has ${weekly} minutes of strength work a week. In large studies, most of the health benefit came at 30 to 60 minutes a week, so ${D < 3 ? 'a third short session or longer ones' : 'longer sessions'} would help.`);
+    if (D > 0 && weekly < 30) out.push(`Your plan has ${weekly} minutes of strength work a week. In large studies, the lowest risks of disease went with about 30 to 60 minutes a week, so ${D < 3 ? 'a third short session or longer ones' : 'longer sessions'} would help.`);
     // The goals.
     const top = GROUPS.filter((g) => prog.tiers[g] === 1 && pg[g].trainable && pg[g].aim > 0);
     if (top.length) {
