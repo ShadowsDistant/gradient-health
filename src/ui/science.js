@@ -100,7 +100,7 @@
     body: `<ul class="rf-list sci-levels">${LEVEL_ORDER.map((k) => { const l = SC().LEVELS[k]; return `<li><div class="rf-list-row">${dot(k)}<span class="rf-list-text"><span class="rf-list-title">${U.esc(l.label)}</span><span class="rf-list-sub">${U.esc(l.text)}</span></span></div></li>`; }).join('')}</ul>
       <p class="sheet-pad t-footnote rf-muted">Each rule shows its strongest evidence. Tap one for the papers.</p>`,
   });
-  U.act.openRef = (el) => { const url = el.dataset.arg; if (url && GH.platform) GH.platform.openUrl(url); };
+  U.act.openRef = (el) => { const url = el.dataset.arg; if (url && GH.platform) { U.haptic('tap'); GH.platform.openUrl(url); } };
   // (The "Why?" links elsewhere in the app, U.whyLink and U.whyChip, are drawn without this part:
   // src/ui/lazy.js.)
 })(typeof window !== 'undefined' ? window : globalThis);

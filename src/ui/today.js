@@ -344,7 +344,7 @@
     const calm = () => (M.settled ? Promise.race([M.settled(), new Promise((r) => setTimeout(r, 320))]) : null);
     return folded.then(calm);
   };
-  U.act.feelEdit = () => { feelOpen = true; U.render(); };
+  U.act.feelEdit = () => { feelOpen = true; U.haptic('tap'); U.render(); };
   U.on.feelEnergy = (el, ev, v) => { GH.health.setFeel(U.S, U.today(), { energy: v }); U.save(); maybeClose(); };
   U.on.feelSore = (el, ev, v) => { GH.health.setFeel(U.S, U.today(), { sore: v }); U.save(); maybeClose(); };
   U.on.sleepChip = (el, ev, v) => { GH.health.setSleepChip(U.S, U.today(), v); U.save(); maybeClose(); };

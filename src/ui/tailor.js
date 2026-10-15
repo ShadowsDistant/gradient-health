@@ -51,7 +51,7 @@
     q.value = v ? `${v.replace(/[,.\s]+$/, '')}, ${el.dataset.arg.toLowerCase()}` : el.dataset.arg;
     U.haptic('tick');
   };
-  U.act.tailorEdit = () => { if (!st) return; st.step = 'ask'; draw(); };
+  U.act.tailorEdit = () => { if (!st) return; st.step = 'ask'; U.haptic('tap'); draw(); };
   U.act.tailorSuggest = async () => {
     if (!st) return;
     const q = document.getElementById('tailorQ');
