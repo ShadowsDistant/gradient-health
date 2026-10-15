@@ -139,7 +139,7 @@
 
 /* ================================================================== the You tab's card */
 .bdg-strip { gap: var(--space-3); }
-.bdg-strip-head { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: var(--space-3); cursor: pointer; min-width: 0; -webkit-tap-highlight-color: transparent; }
+.bdg-strip-head { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: var(--space-3); cursor: pointer; min-width: 0; -webkit-tap-highlight-color: transparent; }
 .bdg-strip-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
 /* Pressed: the card's head and its note dim as other text buttons do, a medal sinks as a tile does. */
 .bdg-strip-head, .bdg-note, .bdg-mini { transition: opacity var(--duration-fast), scale var(--duration-spring-snappy) var(--spring-snappy); }
