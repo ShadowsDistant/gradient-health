@@ -442,18 +442,37 @@
     if (ran) keepSoon(S);
     return finish(S, day, raw).slice(0, n || 5);
   }
+  // What goals reads from the plan that may still have to be worked out (last week's planned sets,
+  // the first time they're asked for: a launch on a new day or in a new week), as pieces of work
+  // (brain.weeklySetsWork), or null. The same condition as goals' own.
+  function goalsWork(S, day) {
+    const b = B();
+    if (!b || !b.weeklySetsWork || S.profile.workouts === false) return null;
+    const lastWeek = b.weekStart(day) - 7;
+    return lastWeek >= b.weekStart(S.profile.startDay) ? b.weeklySetsWork(S, lastWeek + 6) : null;
+  }
   // Works out what top() needs, a generator at a time while more() says there's time (one at least),
   // and keeps it; true once there's nothing left to work out. For the moments after a launch, so no
-  // single task carries every generator.
+  // single task carries every generator. Goals' part of the plan goes first, a piece at a time: in one
+  // go with goals, it made a 40 to 60 ms step at 4x CPU.
   function warm(S, day, more) {
     const key = stamp(S, day), feel = feelStamp(S);
     let m = memo.get(S);
     if (!m || m.key !== key) { m = { key, feel, day, found: (!m && kept(day, key, feel)) || new Map() }; memo.set(S, m); }
     if (m.feel !== feel) { for (const gen of FEEL) m.found.delete(gen); m.feel = feel; }
-    let ran = false, done = true;
+    let ran = false, done = true, worked = false;
+    if (!m.found.has(goals)) {
+      if (m.prep === undefined) m.prep = goalsWork(S, day);
+      while (m.prep) {
+        if (worked && !more()) return false;
+        let r;
+        try { r = m.prep.next(); } catch (e) { r = { done: true }; }
+        if (r.done) m.prep = null; else worked = true;
+      }
+    }
     for (const gen of GENERATORS) {
       if (m.found.has(gen)) continue;
-      if (ran && !more()) { done = false; break; }
+      if ((ran || worked) && !more()) { done = false; break; }
       stats.misses++;
       ran = true;
       const found = [];

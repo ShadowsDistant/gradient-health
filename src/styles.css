@@ -236,8 +236,13 @@ button:not([class*="rf-"]) { font: inherit; }
 /* Press feedback for the app's own tappable surfaces (Refract handles its controls). */
 button.stat, .insight-line, .pl-fig-card, .tap-card { transition: scale var(--duration-spring-snappy) var(--spring-snappy), background-color var(--duration-fast); }
 button.stat:active, .insight-line:active, .pl-fig-card:active, .tap-card:active { scale: .975; transition-duration: var(--duration-instant); }
-.ex-name { transition: opacity var(--duration-fast); }
-.ex-name:active { opacity: .55; transition-duration: 0ms; }
+/* A move's row on Today opens its sheet from anywhere on it (its name alone was a 24 px target), and
+   the whole row dims while it's pressed. */
+.ex-name, .ex-tag, .ex-meta { transition: opacity var(--duration-fast); }
+.ex-name:active, .ex:has(> button.ex-name:active) > :is(.ex-tag, .ex-meta) { opacity: .55; transition-duration: 0ms; }
+.ex:has(> button.ex-name) { position: relative; }
+.ex > button.ex-name { position: static; } /* (so its ::before is laid out on the row, not on it) */
+button.ex-name::before { content: ''; position: absolute; inset: 0; }
 
 /* Sheets (and the page receding behind them) are styled in styles/sheet.css. Toasts come up from
    the bottom (U.toast, src/ui/core.js), above the tab bar, the floating buttons, the player's or
@@ -264,9 +269,16 @@ button.stat:active, .insight-line:active, .pl-fig-card:active, .tap-card:active 
 .section > .rf-list-footer { padding-block-start: 0; margin-block-start: calc(var(--space-2) - var(--space-3)); }
 /* Long titles and descriptions wrap instead of being cut off. */
 .rf-list-title, .rf-list-sub { white-space: normal; overflow-wrap: anywhere; }
+/* And they wrap kindly: a title's lines balanced ("Record a walk, / run or ride", not a word on its
+   own), a paragraph's last line never one short word. Only where lines break; nothing gets wider. */
+:is(h1, h2, h3, .rf-large-title, .t-title-1, .t-title-2, .t-title-3, .t-headline, .rf-list-title) { text-wrap: balance; }
+:is(p, .t-body, .t-callout, .t-subhead, .t-footnote, .t-caption, .rf-list-sub) { text-wrap: pretty; }
 .rf-list-sub { display: block; }
 .card { background: var(--bg-raised); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: var(--space-4); display: grid; gap: var(--space-2); min-width: 0; }
 .card > p, .card p { margin: 0; }
+/* A card's title sits in the card's own rhythm (its gap), not the browser's heading margins (18 px
+   above and below, which floated Today's workout title away from its eyebrow). */
+.card > h2 { margin: 0; }
 .row-between { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
 .btn-row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .notice { display: flex; gap: var(--space-2); align-items: flex-start; padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--accent-soft); color: var(--label); font-size: .9375rem; line-height: 1.35; }
@@ -301,10 +313,13 @@ button.stat:active, .insight-line:active, .pl-fig-card:active, .tap-card:active 
 
 /* ---------------------------------------------------------------- today */
 .streak-main { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
-.streak-n { display: grid; }
+.streak-n { display: grid; flex: none; }
 .streak-n .t-large-title { line-height: 1; }
-.streak-tally { display: flex; align-items: center; gap: var(--space-2); overflow: hidden; }
-.tally { flex: none; color: var(--label); }
+/* "day streak" stays one line; on a narrow phone with large text the tally marks scale down to make
+   room (they split it into "day / streak"). */
+.streak-n > .t-callout { white-space: nowrap; }
+.streak-tally { display: flex; align-items: center; gap: var(--space-2); overflow: hidden; min-width: 0; }
+.tally { flex: 0 1 auto; min-width: 0; max-width: 100%; height: auto; color: var(--label); }
 .tally path { fill: none; stroke: currentColor; stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; }
 .session-head { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; justify-content: space-between; }
 .session-badges { display: flex; gap: var(--space-1); flex-wrap: wrap; }
@@ -321,16 +336,21 @@ button.stat:active, .insight-line:active, .pl-fig-card:active, .tap-card:active 
 .ex-muted .ex-name { font-weight: 450; color: var(--label-secondary); cursor: default; }
 .check-list { background: var(--fill-3); }
 .check-done { color: var(--positive); display: inline-flex; }
-.light-train { justify-self: start; }
+.light-train { justify-self: start; text-align: start; height: auto; min-block-size: var(--hit-min); white-space: normal; }
 .feel-row { display: grid; gap: var(--space-1); }
 .feel-flare { margin-top: var(--space-1); }
 .feel-done.has-flare { display: grid; gap: var(--space-2); }
-.feel-done-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+/* (The row spans the card, so Change sits at its right edge, its words on the card's inset.) */
+.feel-done-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex: 1; min-width: 0; }
+.feel-done-row > .rf-btn[data-variant="plain"] { margin-inline-end: calc(-1 * var(--space-3)); }
 /* "Planned around ..." on the workout card: taps through to what's built around you. */
 .around-line { appearance: none; border: 0; background: none; padding: 0; margin: 0; display: flex; align-items: center; gap: 6px; color: var(--label-secondary); font: inherit; text-align: start; cursor: pointer; min-height: 32px; }
 .around-line > svg:first-child { color: var(--hue-rose, var(--accent)); flex: none; }
 .around-line > span { flex: 1; min-width: 0; }
 .around-line > svg:last-child { flex: none; opacity: .6; }
+/* Text that's a button dims while it's pressed (as a move's row does). */
+.around-line, .sci-key, .rf-search-clear { transition: opacity var(--duration-fast); }
+:is(.around-line, .sci-key, .rf-search-clear):active { opacity: .55; transition-duration: 0ms; }
 .session-note { margin: 0; color: var(--label-secondary); }
 .around-list { margin: 0 0 var(--space-2); }
 .feel-row .rf-segmented { width: 100%; }
@@ -371,7 +391,7 @@ button.stat { cursor: pointer; }
 .ch-mark { stroke: var(--label-secondary); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-dasharray: 3 3; }
 .ch-x { display: flex; justify-content: space-between; color: var(--label-secondary); padding-inline-start: calc(3.2em + var(--space-2)); }
 .ch-tip { color: var(--label-secondary); min-height: 1.3em; }
-.ch-toggle { justify-self: start; }
+.ch-toggle { justify-self: start; margin-inline-start: calc(-1 * var(--space-3)); } /* its words on the card's inset */
 .ch-table { max-height: 260px; overflow: auto; border-radius: var(--radius-md); background: var(--bg-sunken); }
 .ch-tbl { width: 100%; border-collapse: collapse; }
 .ch-tbl th, .ch-tbl td { padding: 6px var(--space-3); text-align: end; border-bottom: 1px solid var(--separator); font-weight: 400; }
@@ -503,25 +523,40 @@ textarea.preview { border: 0; resize: vertical; }
 .pl-dots i.done { background: var(--accent-fill); box-shadow: none; }
 .pl-dots i.now { background: var(--label); box-shadow: none; }
 .pl-actions { flex-direction: column; align-items: stretch; }
-.pl-actions > .rf-btn { width: 100%; min-block-size: 56px; }
+.pl-actions > .rf-btn, .pl-actions > .pl-actions-hold { width: 100%; min-block-size: 56px; }
+.pl-actions-hold { display: block; }
 .pl-adjust { display: flex; align-items: center; justify-content: center; gap: var(--space-3); }
 .pl-timer { display: grid; place-items: center; padding: var(--space-2) 0; }
 .pl-timer .rf-ring { --_s: 168px; --_w: 10px; }
 .pl-timer .rf-ring[data-tone="sky"] .rf-ring-fill { stroke: var(--hue-sky); }
 .pl-count { font-size: 2.5rem; font-weight: 700; letter-spacing: -0.02em; }
 .pl-rest { justify-content: flex-start; }
-.pl-rest-btns { display: flex; gap: var(--space-2); justify-content: center; }
-.pl-rest-over { margin: var(--space-4) 0; }
-.pl-rir { width: 100%; max-width: 420px; display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); }
+/* The row under the ring keeps its height when "Rest over" takes the buttons' place. */
+.pl-rest-btns { display: flex; gap: var(--space-2); justify-content: center; align-items: center; min-block-size: 44px; }
+.pl-rest-over { margin: 0; }
+.pl-timer.is-over .pl-count { color: var(--label-secondary); }
+.pl-timer.is-over .rf-ring-fill { visibility: hidden; } /* (its round end would still draw a dot) */
+/* A rest that doesn't fit (fitRest in player.js: a small phone with large text) has a smaller ring. */
+.pl-rest.is-tight .pl-timer { padding: 0; }
+.pl-rest.is-tight .pl-timer .rf-ring { --_s: 128px; --_w: 9px; }
+.pl-rest.is-tight .pl-count { font-size: 1.75rem; }
+.pl-rir { width: 100%; max-width: 420px; box-sizing: border-box; display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); }
 .pl-rir p { margin: 0; }
 .pl-rir .rf-segmented { width: 100%; }
 .pl-logged { margin: 0; display: flex; align-items: center; gap: var(--space-2); }
-.pl-next-row { width: 100%; max-width: 420px; display: flex; gap: var(--space-3); align-items: center; text-align: start; padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); margin-top: auto; margin-bottom: var(--space-2); }
+.pl-next-row { width: 100%; max-width: 420px; box-sizing: border-box; display: flex; gap: var(--space-3); align-items: center; text-align: start; padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); margin-top: auto; margin-bottom: var(--space-2); }
 .pl-fig-sm { width: 84px; height: 84px; flex: none; }
 .pl-fig-sm > svg { display: block; width: 100%; height: 100%; }
-.pl-next { display: grid; gap: 2px; min-width: 0; }
+.pl-next { display: grid; gap: 2px; min-width: 0; flex: 1; }
+/* While resting, Up next opens how to do the next move (plHowTo shows the step that's next). */
+button.pl-next-row { appearance: none; border: 0; font: inherit; color: inherit; cursor: pointer; transition: scale var(--duration-spring-snappy) var(--spring-snappy); }
+button.pl-next-row:active { scale: .98; transition-duration: var(--duration-instant); }
+.pl-next-go { flex: none; display: inline-flex; color: var(--label-tertiary); }
 .pl-scroll { flex: 1; overflow-y: auto; padding-bottom: var(--space-6); }
 .pl-scroll .ob-group { padding: 0 var(--space-4); margin-bottom: var(--space-4); }
+/* The check-in's answers fit a 360 px phone with large text ("Too easy / About right / Too hard" ran
+   13 px past the edge), as set-up's do: less room around each label. */
+.pl-scroll .ob-pad .rf-segment { padding-inline: 6px; }
 .pl-scroll .ob-fields { padding: 0; }
 .pl-pad { padding: 0 var(--space-4); margin: 0 0 var(--space-4); }
 .celebrate { margin: 0 var(--space-4) var(--space-3); display: flex; align-items: center; gap: var(--space-3); color: var(--accent); }
@@ -539,7 +574,9 @@ textarea.preview { border: 0; resize: vertical; }
 .tip { gap: var(--space-1); padding-block: var(--space-3); background: color-mix(in oklab, var(--accent-soft) 70%, var(--bg-raised)); overflow: hidden; }
 .tip-row { display: flex; gap: var(--space-3); align-items: flex-start; }
 .tip-row .rf-list-icon { margin-top: 2px; }
-.tip .rf-btn { justify-self: end; }
+.tip .rf-btn { justify-self: end; margin-inline-end: calc(-1 * var(--space-3)); } /* "Got it" ends on the card's inset */
+/* A row of buttons in a card that starts with a plain one: its words start on the card's inset. */
+.card .btn-row > .rf-btn[data-variant="plain"]:first-child { margin-inline-start: calc(-1 * var(--space-3)); }
 
 /* ---------------------------------------------------------------- profile */
 .me-card { appearance: none; border: 0; font: inherit; color: inherit; text-align: start; display: flex; align-items: center; gap: var(--space-3); cursor: pointer; }
@@ -609,7 +646,9 @@ textarea.preview { border: 0; resize: vertical; }
 /* A small "Why" chip at the end of a row, into How it works. */
 .why-chip { appearance: none; border: 0; font: inherit; flex: none; align-self: center; display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: var(--radius-full); background: var(--fill-3); color: var(--accent); font-size: .75rem; font-weight: 600; cursor: pointer; transition: scale var(--duration-spring-snappy) var(--spring-snappy), background-color var(--duration-fast); }
 .why-chip:active { scale: .94; background: var(--fill-selected); transition-duration: 0ms; }
-.why-link { vertical-align: baseline; padding-inline: 4px; min-block-size: 0; height: auto; }
+/* A text link in a sentence or on a line of its own: its words sit where a word would (on the
+   column's edge when it starts a line), its padding reaching out past them rather than pushing in. */
+.why-link { vertical-align: baseline; padding-inline: 4px; margin-inline: -4px; min-block-size: 0; height: auto; }
 
 /* ---------------------------------------------------------------- misc */
 /* Settings: the exercise figure's look. */
@@ -701,67 +740,7 @@ textarea.preview { border: 0; resize: vertical; }
 .co-chat { width: 100%; }
 @media (max-width: 360px) { .co-watch { grid-template-columns: minmax(0, 1fr); } }
 
-/* ---------------------------------------------------------------- food */
-.fd-sum { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-4); }
-.fd-sum .rf-ring-label { display: grid; justify-items: center; line-height: 1.1; }
-.fd-ring-n { font-size: 19px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; }
-.fd-sum.is-compact .fd-ring-n { font-size: 15px; }
-.fd-sum .rf-ring-label { padding-inline: 10px; text-align: center; }
-.fd-macros { display: grid; gap: var(--space-2); min-width: 0; }
-.fd-macros > p { margin: 0; }
-.fd-macro { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); }
-.fd-macro .t-caption { min-width: 64px; text-align: end; }
-.fd-days { display: flex; align-items: center; gap: var(--space-1); width: fit-content; margin-inline: var(--space-4); padding: 2px; border-radius: var(--radius-full); background: var(--bg-raised); box-shadow: var(--shadow-card); }
-.fd-days .t-callout { min-width: 96px; text-align: center; font-weight: 600; }
-.fd-days .rf-btn[aria-disabled="true"] { opacity: 0.35; }
-.fd-meal { gap: var(--space-1); }
-.fd-meal-head { display: flex; align-items: center; gap: var(--space-2); min-height: 32px; }
-.fd-list { margin: 0 calc(-1 * var(--space-4)) calc(-1 * var(--space-2)); background: none; box-shadow: none; }
-.fd-list .rf-list-detail { font-variant-numeric: tabular-nums; }
-.fd-tools { justify-content: center; }
-.fd-search { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-4); }
-.fd-q { flex: 1; min-width: 0; }
-.fd-sheet .rf-segmented { margin: var(--space-3) var(--space-4) 0; }
-.fd-results { padding: var(--space-3) 0 0; min-height: 120px; }
-.fd-results > .rf-list-header { padding-inline: var(--space-4); }
-.fd-empty { margin: var(--space-4); text-align: center; }
-.fd-online { display: flex; align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-4); }
-.fd-online-btn { display: flex; margin: var(--space-2) auto; }
-.fd-more { margin-top: var(--space-4); }
-.fd-portion { gap: var(--space-3); }
-.fd-big { display: flex; align-items: baseline; gap: var(--space-2); }
-.fd-pcf { margin: 0; color: var(--label-secondary); }
-.fd-qty { display: flex; align-items: center; gap: var(--space-3); }
-.fd-actions { margin-top: var(--space-2); align-items: center; }
-.fd-actions .rf-btn[data-size="lg"] { flex: 1; }
-.fd-form { gap: var(--space-3); }
-
-/* ---------------------------------------------------------------- barcode scanner */
-.sc-wrap { display: grid; gap: var(--space-3); padding: var(--space-2) var(--space-4) var(--space-4); }
-.sc-view { position: relative; border-radius: var(--radius-lg); overflow: hidden; background: #000; aspect-ratio: 3 / 4; max-height: 58vh; width: 100%; touch-action: manipulation; }
-/* The picture, magnified as src/barcode.js asks (--sc-zoom) when the camera can't zoom itself. */
-.sc-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(var(--sc-zoom, 1)); }
-/* The box: wide, for a barcode (a plan's code gets a square one, customplan.css). */
-.sc-frame { position: absolute; left: 9%; right: 9%; top: 50%; aspect-ratio: 2 / 1; translate: 0 -50%; border-radius: var(--radius-md); box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.38); }
-.sc-frame::before { content: ""; position: absolute; inset: 0; border: 3px solid rgb(255 255 255 / 0.9); border-radius: inherit; transition: border-color 160ms var(--ease-standard), box-shadow 160ms var(--ease-standard); }
-.sc-frame i { position: absolute; left: 6%; right: 6%; top: 50%; height: 2px; background: var(--accent); box-shadow: 0 0 12px var(--accent); animation: sc-sweep 1.6s var(--ease-standard) infinite alternate; }
-@keyframes sc-sweep { from { transform: translateY(-38px); } to { transform: translateY(38px); } }
-/* A code caught: the box takes the accent and the code lights up where it is. */
-.sc-frame[data-locked]::before { border-color: var(--accent); box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 70%, transparent); }
-.sc-frame[data-locked] i { opacity: 0; }
-.sc-lock { position: absolute; border: 3px solid var(--accent); border-radius: 10px; background: color-mix(in srgb, var(--accent) 24%, transparent); box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 60%, transparent); animation: sc-lock 220ms var(--ease-standard) both; }
-@keyframes sc-lock { from { opacity: 0; transform: scale(1.18); } to { opacity: 1; transform: none; } }
-/* Where a tap focused. */
-.sc-focus { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; border: 2px solid rgb(255 255 255 / 0.92); border-radius: 50%; pointer-events: none; animation: sc-focus 800ms var(--ease-standard) both; }
-@keyframes sc-focus { 0% { opacity: 0; transform: scale(1.5); } 30% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
-.sc-lock[hidden], .sc-focus[hidden] { display: none; }
-@media (prefers-reduced-motion: reduce) { .sc-frame i, .sc-lock, .sc-focus { animation: none; } }
-/* The light, when the hint asks for it. */
-.sc-tools [data-act="scanTorch"][data-hint] { background: var(--accent-soft); color: var(--accent); }
-.sc-msg { position: absolute; left: 0; right: 0; bottom: 0; margin: 0; padding: var(--space-3) var(--space-4); color: #fff; text-align: center; background: linear-gradient(transparent, rgb(0 0 0 / 0.6)); }
-.sc-tools { justify-content: center; }
-.sc-type { display: grid; gap: var(--space-3); }
-.sc-type[hidden] { display: none; }
+/* Food and the barcode scanner are in src/styles/food.css. */
 
 /* Today without workouts: steps ring and the day's lines. */
 .day-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-4); }

@@ -41,7 +41,7 @@
   // The top-level fields the app knows, by type ('?': or null). A field of the wrong type goes, and
   // migrate() puts back its default.
   const TOP = {
-    v: 'number', createdAt: 'number', updatedAt: 'number', complexity: 'number', noStreak: 'number', hardStreak: 'number',
+    v: 'number', createdAt: 'number', updatedAt: 'number', complexity: 'number', noStreak: 'number', hardStreak: 'number', rulesFrom: 'number',
     profile: 'object', vol: 'object', prog: 'object', pain: 'object', catchup: 'object', protein: 'object', health: 'object', feel: 'object',
     sleepChip: 'object', celebrated: 'object', insightsDismissed: 'object', insightsShown: 'object', ai: 'object', seen: 'object', place: 'object',
     planProg: 'object', food: 'object', coachDismissed: 'object',
@@ -120,6 +120,9 @@
     words(p, 'goals', 12);
     words(p, 'careful', 8, B && B.JOINTS);
     if (own(p, 'conditions')) p.conditions = Array.isArray(p.conditions) ? p.conditions.filter((c) => (typeof c === 'string' && c.length <= 80) || isObj(c)).slice(0, 30) : [];
+    // 1.13: the questions osteoporosis and type 2 diabetes bring (no answer: not asked yet).
+    pick(p, 'fractures', ['yes', 'no', 'unsure']);
+    pick(p, 'retinopathy', ['yes', 'no', 'unsure']);
     if (own(p, 'lead')) {
       const l = isObj(p.lead) ? p.lead : {};
       p.lead = { arm: l.arm === 'L' || l.arm === 'R' ? l.arm : null, leg: l.leg === 'L' || l.leg === 'R' ? l.leg : null };

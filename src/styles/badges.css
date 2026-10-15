@@ -139,8 +139,13 @@
 
 /* ================================================================== the You tab's card */
 .bdg-strip { gap: var(--space-3); }
-.bdg-strip-head { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: var(--space-3); cursor: pointer; min-width: 0; -webkit-tap-highlight-color: transparent; }
+.bdg-strip-head { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: var(--space-3); cursor: pointer; min-width: 0; -webkit-tap-highlight-color: transparent; }
 .bdg-strip-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
+/* Pressed: the card's head and its note dim as other text buttons do, a medal sinks as a tile does. */
+.bdg-strip-head, .bdg-note, .bdg-mini { transition: opacity var(--duration-fast), scale var(--duration-spring-snappy) var(--spring-snappy); }
+.bdg-strip-head:active { opacity: .55; transition-duration: 0ms; }
+.bdg-note:active { scale: .98; opacity: .8; transition-duration: var(--duration-instant); }
+.bdg-mini:active { scale: .94; transition-duration: var(--duration-instant); }
 .bdg-strip-text { display: grid; gap: 2px; flex: 1; min-width: 0; }
 .bdg-strip-all { display: inline-flex; align-items: center; gap: 2px; color: var(--accent); flex: none; }
 .bdg-note { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md, 12px); background: color-mix(in srgb, var(--hue-amber) 12%, transparent); color: var(--label); cursor: pointer; min-width: 0; }
@@ -151,7 +156,7 @@
 .bdg-note-go { color: var(--accent); font-weight: 600; flex: none; }
 .bdg-row { display: flex; gap: var(--space-1); overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * var(--space-4)); padding: 2px var(--space-4) 2px; scroll-snap-type: x proximity; overscroll-behavior-x: contain; }
 .bdg-row::-webkit-scrollbar { display: none; }
-.bdg-mini { all: unset; box-sizing: border-box; flex: 0 0 76px; display: grid; justify-items: center; align-content: start; gap: 4px; scroll-snap-align: start; cursor: pointer; text-align: center; color: var(--label); -webkit-tap-highlight-color: transparent; }
+.bdg-mini { all: unset; box-sizing: border-box; flex: 0 0 max(76px, 4.75em); display: grid; justify-items: center; align-content: start; gap: 4px; scroll-snap-align: start; cursor: pointer; text-align: center; color: var(--label); -webkit-tap-highlight-color: transparent; }
 .bdg-mini:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
 .bdg-mini-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.2; width: 100%; overflow-wrap: anywhere; }
 .bdg-mini:not(.is-earned) .bdg-mini-title { color: var(--label-secondary); }

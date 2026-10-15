@@ -58,7 +58,7 @@
         </div>
         <div class="section set-list">
           ${workouts ? `${head('plan', 'Your plan', 'workout training exercises sets reps')}
-          ${list('plan', `${kw(answers, 'questionnaire goals experience schedule days time minutes equipment weights joints injuries age weight height')}
+          ${list('plan', `${kw(answers, 'questionnaire goals experience schedule days time minutes equipment weights joints injuries age weight height health conditions arthritis osteoporosis bones fractures diabetes eyes retinopathy blood pressure heart balance')}
             ${kw(U.row({ key: 'level', icon: 'timer', tone: 'green', title: 'Retake the level check', sub: 'Push-ups, plank and curls set where you start', act: 'baselineSheet', chevron: true }), 'baseline test levels push-ups plank curls')}
             ${kw(U.sw('Supersets', pr.supersets !== false, 'data-on="setPref" data-k="supersets"', 'Pair exercises that don\'t share muscles'), 'pairs back to back')}
             ${stack('Rest between sets', REST_SUB, U.seg('setRest', [['auto', 'Auto'], ['60', '60 s'], ['90', '90 s']], String(pr.rest), 'Rest between sets', ' data-on="setRest"'), 'timer seconds minutes pause', 'rest')}
@@ -294,7 +294,7 @@
         ${hcOn ? U.sw('Save meals to Health Connect', fp.hcWrite !== false && canWriteFood, 'data-on="setFoodPref" data-k="hcWrite"', canWriteFood ? 'Other apps see what you log here' : 'Needs the Nutrition permission') : ''}
         ${hcOn ? U.sw('Count food from other apps', fp.hcRead !== false, 'data-on="setFoodPref" data-k="hcRead"', 'Meals logged in other apps add to your day') : ''}
       </ul>
-      <p class="rf-list-footer" data-group="track">${t ? `Your target is about ${U.num(t.kcal)} kcal a day${t.learned ? ', tuned to your own logs and weight' : ''}.` : 'Add your weight and height to get a calorie target.'} ${U.whyLink ? U.whyLink('calories', 'How it\'s worked out') : ''}</p>`;
+      <p class="rf-list-footer" data-group="track">${t ? `Your target is about ${U.num(t.kcal)} kcal a day${t.learned ? ', tuned to your own logs and weight' : ''}.` : 'Add your weight and height to get a calorie target.'} ${U.whyLink ? U.foodKit.link('openScience', 'calories', 'How it\'s worked out') : ''}</p>`;
   }
   U.on.setWorkouts = async (el, ev, v) => {
     const S = U.S;
@@ -349,7 +349,7 @@
   U.act.editStep = (el) => { U.closeSheets(); U.haptic('nav'); U.editAnswers(el.dataset.arg); };
   U.act.editEquipment = () => { U.haptic('nav'); U.editAnswers('equipment'); };
   U.act.openPrivacyView = () => U.open('privacy');
-  U.act.openLink = (el, ev) => { if (ev && ev.preventDefault) ev.preventDefault(); const url = el.dataset.arg; if (url && /^https:\/\//.test(url) && GH.platform) GH.platform.openUrl(url); };
+  U.act.openLink = (el, ev) => { if (ev && ev.preventDefault) ev.preventDefault(); const url = el.dataset.arg; if (url && /^https:\/\//.test(url) && GH.platform) { U.haptic('tap'); GH.platform.openUrl(url); } };
   U.on.setPref = (el, ev, v) => {
     const k = el.dataset.k;
     U.S.profile.prefs[k] = !!v;

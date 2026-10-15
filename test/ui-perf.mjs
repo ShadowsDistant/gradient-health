@@ -79,6 +79,17 @@ const BASE = {
 //   the first frame after the tap at 90 and 99 ms in two measurements (runs 90 to 186, the slower
 //   ones while other tests ran), the page in a frame at 241 and 266 (runs 241 to 362). The budgets
 //   are those plus a margin: a tap that draws the page inside it again fails the first.
+// - 1.13.0 also times the taps people make most (Taps people make most: from the touch's end to the
+//   first frame with the tap's first response, and to the first with its result) and the first tap
+//   after launch (Plan, 300 ms after the first frame), each the best of 3. Measured in turns with
+//   1.12's page while two other test suites ran here (load 25 to 37 on 4 CPUs), 1.13.0's best of a
+//   run, over six runs: the first tap 47 to 96 ms (9 launches in turns: median 101, 1.12's 171); a
+//   move's how-to 93 to 400 / 118 to 459; a Settings row's sheet 96 to 171; How it works 221 to
+//   318; Plan's next week 78 to 165; start a workout 156 to 359; Done set 126 to 259; reps left 47
+//   to 123; the next exercise 64 to 147; the Food page 115 to 264; a letter in Add food's search 9
+//   to 13 / 148 to 211 (its results wait out the search's 120 ms pause). The budgets are about
+//   twice the middle run's (the Food page's more, its runs vary most), so a busy machine passes and
+//   a tap that waits on a long task, or draws a page or the player inside the tap, fails.
 const BUDGET = {
   bootMs: 980, // the first launch of a day
   againMs: 900, // a launch later the same day
@@ -88,6 +99,20 @@ const BUDGET = {
   feelMs: 30,
   longTaskMs: 200,
   saveMs: 8,
+  firstTapMs: 160, // the first tap after launch: the first frame with the tab picked
+  // Each tap: [the first frame with its first response, the first with its result], in ms.
+  taps: {
+    'a move\'s how-to': [260, 320],
+    'a Settings row\'s sheet': [300, 300],
+    'How it works': [520, 520],
+    'Plan\'s next week': [260, 260],
+    'start a workout': [480, 480],
+    'Done set': [380, 380],
+    'reps left': [220, 220],
+    'the next exercise': [200, 200],
+    'the Food page': [360, 360],
+    'a letter in Add food\'s search': [40, 360],
+  },
 };
 
 /* ---------------------------------------------------------------- the page */
@@ -156,6 +181,50 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 const best = (xs) => Math.min(...xs);
 const p95 = (xs) => { const s = xs.slice().sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.ceil(s.length * 0.95) - 1)]; };
 const r1 = (x) => Math.round(x * 10) / 10;
+
+// A real tap (touches through CDP, as a finger's) on the first `target` in sight (brought to the
+// middle of the screen if it's covered or off it), timed from the touch's end (with o.type, from the
+// input event of that text typed instead) to the first frame the page's thread finishes with
+// `answered` on the page, and to the first with `shown` (selectors): the tap's first visible
+// response, and its result. { answered, shown } in ms; Infinity for one that never came.
+async function timedTap(page, cdp, target, answered, shown, o = {}) {
+  const find = () => page.evaluate((s) => {
+    const all = [...document.querySelectorAll(s)];
+    for (const el of all) {
+      const r = el.getBoundingClientRect();
+      const x = r.left + r.width / 2, y = r.top + r.height / 2;
+      const hit = r.width && y > 0 && y < innerHeight ? document.elementFromPoint(x, y) : null;
+      if (hit && (hit === el || el.contains(hit))) return { x: Math.round(x), y: Math.round(y) };
+    }
+    if (all[0]) all[0].scrollIntoView({ block: 'center' });
+    return null;
+  }, target);
+  let at = o.type ? {} : await find();
+  if (!at) { await pause(600); at = await find(); }
+  if (!at) return { answered: Infinity, shown: Infinity, missing: target };
+  await page.evaluate(({ answered, shown, input }) => {
+    const sw = window.__timed = {};
+    const post = (fn) => { const sc = window.scheduler; if (sc && sc.postTask) sc.postTask(fn, { priority: 'user-blocking' }); else setTimeout(fn, 0); };
+    document.addEventListener(input ? 'input' : 'touchend', (e) => { sw.t0 = e.timeStamp; }, { capture: true, once: true, passive: true });
+    let n = 0;
+    const loop = () => {
+      if (sw.t0 != null) {
+        if (sw.answered == null && !sw.an && document.querySelector(answered)) { sw.an = true; post(() => { sw.answered = performance.now() - sw.t0; }); }
+        if (sw.shown == null && !sw.sh && document.querySelector(shown)) { sw.sh = true; post(() => { sw.shown = performance.now() - sw.t0; }); }
+      }
+      if (++n < 600 && (sw.answered == null || sw.shown == null)) requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  }, { answered, shown, input: !!o.type });
+  if (o.type) await page.keyboard.type(o.type);
+  else {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: at.x, y: at.y, id: 1 }] });
+    await pause(50);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  }
+  await page.waitForFunction(() => window.__timed.answered != null && window.__timed.shown != null, null, { timeout: 15000, polling: 50 }).catch(() => {});
+  return page.evaluate(() => ({ answered: window.__timed.answered ?? Infinity, shown: window.__timed.shown ?? Infinity }));
+}
 
 // The state: five weeks of history, built by the app itself on a first run.
 let stateJson;
@@ -258,6 +327,23 @@ if (process.argv.includes('--boot-only')) {
   await server.close();
   process.exit(0);
 }
+
+/* ---------------------------------------------------------------- the first tap after launch */
+// A tap on the Plan tab 300 ms after the first frame, the first launch of a day: what a launch does
+// after its first frame is still going then (the health sync and its redraw, the glass's lens maps,
+// the insight line), and a tap waits behind whatever task is running. From the touch's end to the
+// first frame with the tab picked (answered) and to the first with its page. Best of the launches.
+section(`The first tap after launch, on Plan 300 ms after the first frame (best of ${RUNS})`);
+const firstTaps = [];
+for (let i = 0; i < RUNS; i++) {
+  const run = await launch();
+  await run.page.waitForFunction(() => performance.now() > window.__perf.firstRender + 300, null, { timeout: 30000, polling: 10 });
+  const r = await timedTap(run.page, run.cdp, '#tabbar .rf-tab[data-tab="plan"]', '#tabbar .rf-tab[data-tab="plan"][aria-current="page"]', '#screen[data-view="plan"]');
+  firstTaps.push(r);
+  console.log(`  run ${i + 1}: answered ${r1(r.answered)} ms, its page ${r1(r.shown)} ms`);
+  await run.ctx.close();
+}
+const firstTapMs = best(firstTaps.map((x) => x.answered));
 
 /* ---------------------------------------------------------------- tabs */
 const { page } = live;
@@ -397,6 +483,69 @@ for (let i = 0; i < RUNS; i++) {
 }
 const saveMs = best(saveRuns.map((r) => Math.max(r.call, r.longest)));
 
+/* ---------------------------------------------------------------- taps people make most */
+// Real taps (timedTap: from the touch's end to the first frame with the tap's first response, and to
+// the first with its result), each set up first and put back after. A sheet's first response is the
+// sheet on its way up, its result what's in it (a move's figure); a page's, the page coming in; the
+// player's, its next step. Best of the runs.
+section(`Taps people make most (best of ${RUNS})`);
+const ev = (fn, a) => page.evaluate(fn, a);
+const settle = async (ms = 700) => { await pause(ms); await ev(() => window.GH.ui.motion.settled()); await pause(250); };
+const closeAll = async () => { await ev(() => { const U = window.GH.ui; U.closeSheets(); if (U.S.active) window.GH.brain.cancelWorkout(U.S); if (!U.els().playerEl.hidden && U.playerBack) U.playerBack(); }); await settle(600); };
+const toSettings = async () => { await ev(() => { const U = window.GH.ui; U.go('you'); U.open('settings'); }); await settle(900); };
+const SHEET = 'dialog.gh-sheet[open]:not([data-closing])';
+const sceneKey = () => ev(() => { const m = document.querySelector('#player .pl-main'); return m ? m.getAttribute('data-key') : ''; });
+const tapRes = {};
+const tapDo = async (name, target, answered, shown, o) => { const r = await timedTap(page, live.cdp, target, answered, shown, o); (tapRes[name] = tapRes[name] || []).push(r); return r; };
+for (let i = 0; i < RUNS; i++) {
+  await closeAll();
+  await ev(() => window.GH.ui.go('today'));
+  await settle(900);
+  await tapDo('a move\'s how-to', '#screen .session [data-act="moveInfo"]', SHEET, `${SHEET} .sheet-fig > *`);
+  await closeAll();
+  await toSettings();
+  await tapDo('a Settings row\'s sheet', '#screen [data-act="baselineSheet"]', SHEET, `${SHEET} #bPush`);
+  await closeAll();
+  await toSettings();
+  await tapDo('How it works', '#screen .rf-list-row[data-act="openScience"]:not([data-arg])', '#screen[data-view="science"]', '#screen[data-view="science"] .section');
+  await settle(600);
+  await ev(() => { const U = window.GH.ui; U.go('plan'); const b = document.querySelector('#screen [data-act="planWeek"][data-arg="0"]'); if (b) b.click(); });
+  // (Someone looks at the week a moment before going on to the next: Plan works next week out then.)
+  await settle(2600);
+  await tapDo('Plan\'s next week', '#screen [data-act="planWeek"][data-arg="1"]', '#screen [data-act="planWeek"][data-arg="0"]', '#screen [data-act="planWeek"][data-arg="0"]');
+  await ev(() => window.GH.ui.go('today'));
+  await settle(1200);
+  // The player: Start, then Done on a set that asks how many more you could have done, the answer,
+  // and on to the next.
+  await tapDo('start a workout', '#float [data-act="startWorkout"]', '#player:not([hidden])', '#player:not([hidden]) .pl-name');
+  await settle(900);
+  await ev(() => { const U = window.GH.ui, B = window.GH.brain, a = U.S.active; let g = 0; while (a && a.idx < a.steps.length && !(a.steps[a.idx].kind === 'set' && a.steps[a.idx].askRir) && g++ < 200) B.completeStep(U.S, a.steps[a.idx].kind === 'test' ? { value: 10 } : {}); U.openPlayer(); });
+  await settle(900);
+  let key = await sceneKey();
+  await tapDo('Done set', '#player [data-act="plDone"]', `#player .pl-main:not([data-key="${key}"])`, `#player .pl-main:not([data-key="${key}"]) .pl-rir`);
+  await settle(600);
+  await tapDo('reps left', '#player .pl-rir .rf-segment[data-arg="12"]', '#player .pl-rir input[value="12"]:checked', '#player .pl-rir input[value="12"]:checked');
+  await settle(900);
+  key = await sceneKey();
+  await tapDo('the next exercise', '#player [data-act="plSkipRest"], #player [data-act="plContinue"]', `#player .pl-main:not([data-key="${key}"])`, `#player .pl-main:not([data-key="${key}"]) .pl-name`);
+  await closeAll();
+  // Food, for someone tracking calories (its page's part loaded, as it is for them once launched).
+  await ev(async () => { const GH = window.GH, U = GH.ui; GH.food.setMode(U.S, 'full'); await GH.lazy('foodUi'); U.go('today'); U.render(); });
+  await settle(1200);
+  await tapDo('the Food page', '#screen [data-act="goFood"]', '#screen[data-view="food"]', '#screen[data-view="food"] .section');
+  await settle(600);
+  await ev(() => { const U = window.GH.ui; U.back(); U.go('today'); U.act.foodAdd(); });
+  await page.waitForSelector(`${SHEET} #foodQ`, { timeout: 15000 }).catch(() => {});
+  await settle(2000); // the built-in food list loads as the sheet opens
+  await page.focus(`${SHEET} #foodQ`).catch(() => {});
+  await tapDo('a letter in Add food\'s search', null, `${SHEET} #foodQ`, `${SHEET} .rf-sheet-body:not(:has(.fd-tabs)) .fd-results li`, { type: 'a' });
+  await ev(() => { const GH = window.GH, U = GH.ui; U.closeSheets(); GH.food.setMode(U.S, 'protein'); U.render(); });
+  await settle(900);
+  console.log(`  run ${i + 1}: ${Object.entries(tapRes).map(([k, xs]) => { const x = xs[xs.length - 1]; return `${k} ${r1(x.answered)}/${r1(x.shown)}`; }).join(', ')}`);
+}
+const tapBest = Object.fromEntries(Object.entries(tapRes).map(([k, xs]) => [k, { answered: best(xs.map((x) => x.answered)), shown: best(xs.map((x) => x.shown)) }]));
+console.log(`  best (answered/result): ${Object.entries(tapBest).map(([k, x]) => `${k} ${r1(x.answered)}/${r1(x.shown)} ms`).join(', ')}`);
+
 /* ---------------------------------------------------------------- what the speed-ups must keep */
 // At normal speed: saves still land, caches give the same answers, and Claude works from its chunk.
 if (!measureOnly) {
@@ -433,20 +582,23 @@ if (!measureOnly) {
   const sync = await page.evaluate(async () => {
     const U = window.GH.ui, scr = U.screens.today;
     const frames = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(res, 50))));
+    // (A redraw after a sync comes in an idle moment of its own once it's quiet, U.renderSoon in
+    // src/ui/core.js: up to 2 s is waited for one, and then a little more for a second.)
+    const redrawn = async (ms) => { const t0 = performance.now(); while (performance.now() - t0 < ms && !n) await new Promise((res) => setTimeout(res, 50)); await frames(); await new Promise((res) => setTimeout(res, 400)); };
     U.go('today');
     await frames();
     let n = 0;
     const orig = scr.render;
     scr.render = function (...a) { n++; return orig.apply(this, a); };
     const r1 = await U.syncHealth('manual'); // the same data as the last read
-    await frames();
+    await redrawn(800);
     const quiet = n;
     // A day's record lost: this read brings it back. (Today's, or the day before's in the hour and
     // a half after the day rolls over at 4, when the seed's records for today aren't on today yet.)
     delete U.S.health.days[U.S.health.days[U.today()] ? U.today() : U.today() - 1];
     n = 0;
     const r2 = await U.syncHealth('manual');
-    await frames();
+    await redrawn(2000);
     const changed = n;
     scr.render = orig;
     return { quiet, changed, r1: r1 && r1.changed, r2: r2 && r2.changed };
@@ -600,6 +752,13 @@ if (!measureOnly) {
   check(`a tab tapped: its page in a frame ≤ ${BUDGET.tapPageMs} ms (p95)`, tapPage <= BUDGET.tapPageMs, `${r1(tapPage)} ms`);
   check(`Today's re-render after a feel tap ≤ ${BUDGET.feelMs} ms`, feelMs <= BUDGET.feelMs, `${r1(feelMs)} ms`);
   check(`a save blocks the main thread ≤ ${BUDGET.saveMs} ms`, saveMs <= BUDGET.saveMs, `${r1(saveMs)} ms`);
+  check(`the first tap after launch (Plan, 300 ms after the first frame) is answered within ${BUDGET.firstTapMs} ms`, firstTapMs <= BUDGET.firstTapMs, `${r1(firstTapMs)} ms`);
+  for (const [k, [a, s]] of Object.entries(BUDGET.taps)) {
+    const x = tapBest[k] || { answered: Infinity, shown: Infinity };
+    // (Infinity: what it taps, or what it waits for, wasn't found: a selector above to update.)
+    const miss = (tapRes[k] || []).map((t) => t.missing).find(Boolean);
+    check(`${k}: answered within ${a} ms, its result within ${s} ms`, x.answered <= a && x.shown <= s, miss ? `nothing to tap at ${miss}` : `${r1(x.answered)} / ${r1(x.shown)} ms`);
+  }
   check('saves go through the bridge\'s saveAsync', saveRuns.every((r) => r.asyncSaves > 0), saveRuns.map((r) => r.asyncSaves));
   check('no page errors', errors.length === 0, errors.slice(0, 5));
 }

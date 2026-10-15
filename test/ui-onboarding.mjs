@@ -10,14 +10,15 @@
 // tapped (not before), a no leaves them off with nothing asking again (Settings shows them off), an
 // Android that allows them already asks nothing, a browser has none, and a restored backup keeps its
 // own. Then Your answers: every detailed screen as before, one screen with Save; after the first
-// workout, Health Connect offered and then the tour (once, not over a toast); and a flare day.
+// workout, Health Connect offered and then the tour (once, not over a toast); a flare day; and Before
+// you start, the health and privacy page every first launch opens on.
 // No console errors. Screenshots go to build/ui-onboarding/.
 // Usage: node test/ui-onboarding.mjs [--dark] [--width=390]
 import { createRequire } from 'node:module';
 import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { root, check, section, done, serveDist } from './lib.mjs';
-import { seedBridge } from './fixtures.mjs';
+import { seedBridge, seedState, acceptDisclaimer } from './fixtures.mjs';
 
 const require = createRequire(import.meta.url);
 let chromium;
@@ -38,14 +39,17 @@ const SUNDAY = '2026-10-04T08:00:00'; // a Sunday: in none of the usual spreads 
 // request is counted in window.__hcAsks), 'unsupported' (the app on an older Android) or 'web'.
 // notify: Android's side of notifications before the app starts (test/fixtures.mjs: Android 13
 // asks, and the answer is yes unless notify.answer says otherwise).
-async function fresh(bridge = 'app', time = SUNDAY, notify = null) {
+// o.ask: Before you start (src/ui/firstrun.js) not read yet on this phone (it is, otherwise).
+async function fresh(bridge = 'app', time = SUNDAY, notify = null, o = {}) {
   const ctx = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: dark ? 'dark' : 'light' });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await page.clock.install({ time: new Date(time) });
   if (notify) await page.addInitScript((n) => { window.__notify = n; }, notify);
+  if (o.ask) await page.addInitScript(() => { window.__disclaimer = 'ask'; });
   if (bridge !== 'web') await page.addInitScript(seedBridge);
+  else await page.addInitScript(acceptDisclaimer);
   await page.addInitScript((kind) => {
     window.__hcAsks = 0;
     const t = setInterval(() => {
@@ -494,6 +498,62 @@ section('Planned around: the sheet and what it changes');
   await ctx.close();
 }
 
+section('Osteoporosis and type 2 diabetes ask one more question each');
+{
+  const { ctx, page } = await fresh('web');
+  await next(page); await next(page); await next(page); await next(page);
+  await fill(page, 'age', 66);
+  await tap(page, '[data-act="obAround"]', 100); await page.clock.runFor(400); await page.waitForTimeout(600);
+  const seg = (id) => `dialog[open] .rf-segmented[data-follow="${id}"]`;
+  const around = () => page.locator('dialog[open] .ob-around').innerText().catch(() => '');
+  const caution = async () => (await page.locator('dialog[open] .ob-status[data-tone="caution"]').allInnerTexts()).join(' | ');
+  const answer = async (id, v) => { await page.locator(`${seg(id)} .rf-segment[data-arg="${v}"]`).click(); await page.clock.runFor(100); await page.waitForTimeout(300); };
+  check('no question until the condition is picked', await page.locator(seg('osteo')).count() === 0 && await page.locator(seg('diabetes')).count() === 0);
+  await tap(page, 'dialog[open] .rf-chip[data-list="conditions"][data-v="osteo"]', 300);
+  check('osteoporosis asks about broken bones: Yes, No or Not sure, none picked yet', /Have you broken a bone in your spine, or more than one bone in a minor fall\?/.test(await page.locator('dialog[open]').innerText())
+    && (await page.locator(`${seg('osteo')} .rf-segment`).allInnerTexts()).map((t) => t.trim()).join() === 'Yes,No,Not sure' && await page.locator(`${seg('osteo')} input:checked`).count() === 0);
+  check('no answer yet counts as not sure: impact stays at brisk walking, ask your doctor', /Impact stays at brisk walking/.test(await around()) && /Not sure about past breaks\? Ask your doctor/.test(await caution()), await caution());
+  await answer('osteo', 'no');
+  check('No: a short impact block on most days, and no doctor line for it', /A short impact block on most days/.test(await around()) && !/breaks|broken/.test(await caution()), await around());
+  await answer('osteo', 'yes');
+  check('Yes: impact stays at brisk walking, with a word with your doctor or physio first', /Impact stays at brisk walking/.test(await around()) && /check with your doctor or physio before you start/.test(await caution()), await caution());
+  await answer('osteo', 'no');
+  await tap(page, 'dialog[open] .rf-chip[data-list="conditions"][data-v="diabetes"]', 300);
+  check('type 2 diabetes asks about the eyes, and says to ask about low blood sugar', /Do you have diabetic eye disease \(retinopathy\)\?/.test(await page.locator('dialog[open]').innerText()) && /keep some fast-acting sugar with you/.test(await caution()), await caution());
+  check('its plan: strength on 2 or 3 days, not back to back', /Type 2 diabetes: Strength on 2 or 3 days a week, not back to back/.test(await around()), await around());
+  await answer('diabetes', 'unsure');
+  check('not sure about the eyes: sets stay light, ask at the next eye check', /Sets stay at 10 to 15 reps, with no heavy lifting, jumping or head-down moves/.test(await around()) && /Not sure about your eyes\? Ask at your next eye check/.test(await caution()));
+  check('in plain words', !dashes(await page.locator('dialog[open]').innerText()));
+  await page.locator(seg('osteo')).scrollIntoViewIfNeeded();
+  await page.waitForTimeout(200);
+  await shot(page, '16-around-follow-ups');
+  await page.click('dialog[open] [data-act="obAroundDone"]'); await page.clock.runFor(500); await page.waitForTimeout(600);
+  check('the row says what\'s planned around', /Osteoporosis or low bone density · Type 2 diabetes/.test(await page.locator('.onboard [data-act="obAround"]').innerText()));
+  await toPlan(page);
+  await page.click('.ob-actions [data-act="obLook"]');
+  await page.waitForSelector('#screen[data-view="today"]');
+  await page.waitForTimeout(800);
+  const p = await page.evaluate(() => { const q = window.GH.ui.S.profile; return { c: q.conditions.join(), f: q.fractures, r: q.retinopathy }; });
+  check('finishing saves both answers', p.c === 'osteo,diabetes' && p.f === 'no' && p.r === 'unsure', p);
+
+  await page.evaluate(() => window.GH.ui.editAnswers('conditions'));
+  await page.waitForTimeout(400);
+  const ans = (id) => page.locator(`.onboard .rf-segmented[data-follow="${id}"] input:checked`).inputValue().catch(() => null);
+  check('Your answers asks them too, with the answers kept', (await ans('osteo')) === 'no' && (await ans('diabetes')) === 'unsure');
+  await page.locator('.onboard .rf-segmented[data-follow="osteo"]').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(200);
+  await shot(page, '17-answers-follow-ups');
+  await tap(page, '.onboard .rf-chip[data-list="conditions"][data-v="osteo"]', 300);
+  check('unticking osteoporosis takes its question away', await page.locator('.onboard .rf-segmented[data-follow="osteo"]').count() === 0 && await page.locator('.onboard .rf-segmented[data-follow="diabetes"]').count() === 1);
+  await next(page);
+  await page.waitForTimeout(400);
+  const q = await page.evaluate(() => { const x = window.GH.ui.S.profile; return { c: x.conditions.join(), has: 'fractures' in x && x.fractures !== undefined, r: x.retinopathy }; });
+  check('saving clears its answer and keeps the other', q.c === 'diabetes' && !q.has && q.r === 'unsure', q);
+  const kept = await page.evaluate(() => { window.GH.ui.save(true); return JSON.parse(JSON.stringify(window.GH.store.load ? window.GH.store.load().profile : window.GH.ui.S.profile)); });
+  check('and it stays cleared after a save', kept.fractures === undefined && kept.retinopathy === 'unsure', { f: kept.fractures, r: kept.retinopathy });
+  await ctx.close();
+}
+
 section('After the first workout: Health Connect, then the tour');
 {
   const { ctx, page } = await fresh('app', '2026-09-28T08:00:00');
@@ -572,6 +632,83 @@ section('A flare day (rheumatoid arthritis)');
     const vol = await page.evaluate(() => { const S = window.GH.ui.S; return { done: S.log.some((l) => l.type === 'workout' && window.GH.brain.isDone(l)), rating: S.log[S.log.length - 1].checkin.rating }; });
     check('and it counts, without touching training volume', vol.done && vol.rating == null, vol);
   }
+  await ctx.close();
+}
+
+section('Before you start: health and privacy, once, before anything else');
+{
+  const { ctx, page } = await fresh('app', SUNDAY, null, { ask: true });
+  await page.waitForSelector('.gh-firstrun .ob-go');
+  await settle(page, 700);
+  const first = await page.evaluate(() => {
+    const fr = document.querySelector('.gh-firstrun');
+    const r = fr.getBoundingClientRect();
+    const go = document.querySelector('#onboard .ob-actions [data-variant="tinted"]').getBoundingClientRect();
+    const s = fr.querySelector('.ob-scroll');
+    return {
+      title: document.getElementById('frTitle').textContent, focus: document.activeElement && document.activeElement.id,
+      covers: r.top <= 0 && r.left <= 0 && r.bottom >= innerHeight && r.right >= innerWidth,
+      // Set-up's Get started is under it, out of reach: what's there is this page's.
+      onTop: fr.contains(document.elementFromPoint(go.left + go.width / 2, go.top + go.height / 2)),
+      setup: !document.getElementById('onboard').hidden, inert: !!document.getElementById('onboard').closest('[inert]'),
+      role: fr.getAttribute('role'), modal: fr.getAttribute('aria-modal'), label: fr.getAttribute('aria-labelledby'),
+      points: [...fr.querySelectorAll('.ob-point-title')].map((x) => x.textContent),
+      fits: s.scrollHeight <= s.clientHeight + 1,
+      buttons: [...fr.querySelectorAll('.ob-actions .rf-btn')].map((b) => b.textContent.trim()),
+    };
+  });
+  check('a fresh install opens on Before you start, over set-up\'s welcome, which is out of reach under it', first.title === 'Before you start' && first.covers && first.onTop && first.setup && first.inert, first);
+  check('a dialog named by its title, which has the focus', first.role === 'dialog' && first.modal === 'true' && first.label === 'frTitle' && first.focus === 'frTitle', first);
+  check('four things: not medical advice, your doctor first, when to stop, your data', JSON.stringify(first.points) === JSON.stringify(['Not medical advice', 'Check with your doctor first', 'Stop if something feels wrong', 'Your data stays on this phone']), first.points);
+  check('I understand, and the privacy policy', JSON.stringify(first.buttons) === JSON.stringify(['I understand', 'Read the privacy policy']), first.buttons);
+  check('it fits the screen without scrolling', first.fits || width < 390);
+  check('plain words: no dashes', !dashes(await page.locator('.gh-firstrun').innerText()));
+  await shot(page, '00-before-you-start');
+  const back1 = await page.evaluate(() => window.__gh.back());
+  await settle(page, 200);
+  check('Android Back on it isn\'t taken (the app goes to the background), and it stays', back1 === false && await page.locator('.gh-firstrun').count() === 1 && (await title(page)) === 'Gradient Health');
+  await page.click('.gh-firstrun [data-act="firstRunPrivacy"]');
+  await page.waitForSelector('dialog.rf-sheet[open]');
+  await settle(page, 600);
+  const pv = await page.evaluate(() => {
+    const d = document.querySelector('dialog.rf-sheet[open]');
+    const p = document.elementFromPoint(innerWidth / 2, innerHeight * 0.6);
+    return { title: (d.querySelector('.rf-sheet-title') || {}).textContent, onTop: d.contains(p), text: d.innerText.length };
+  });
+  check('Read the privacy policy opens it in a sheet above the page', pv.title === 'Privacy' && pv.onTop && pv.text > 500, pv);
+  const back2 = await page.evaluate(() => window.__gh.back());
+  await settle(page, 700);
+  check('Back closes the policy, and Before you start is still there', back2 === true && await page.locator('dialog.rf-sheet[open]').count() === 0 && await page.locator('.gh-firstrun').count() === 1);
+  await page.evaluate(() => { window.__haptics.length = 0; });
+  await page.click('.gh-firstrun [data-act="firstRunOk"]');
+  await settle(page, 500);
+  const after = await page.evaluate(() => ({ gone: !document.querySelector('.gh-firstrun'), inert: !!document.getElementById('onboard').closest('[inert]'), kept: localStorage.getItem('gh.disclaimer'), hx: window.__haptics.slice(), focus: !!(document.activeElement && document.activeElement.closest('#onboard')) }));
+  check('I understand: it goes with the success haptic, and set-up is in reach, with the focus', after.gone && !after.inert && after.hx.includes('success') && after.focus, after);
+  check('and it\'s kept on this phone', after.kept === '1');
+  await page.reload();
+  await page.waitForSelector('.onboard:not([hidden]) .rf-large-title');
+  await settle(page, 600);
+  check('opened again before set-up is done: straight to set-up', await page.locator('.gh-firstrun').count() === 0 && (await title(page)) === 'Gradient Health');
+  await ctx.close();
+}
+{
+  // Someone set up before Before you start: on their next launch, over Today; it's then kept with
+  // their data too, which a backup carries.
+  const { ctx, page } = await fresh('app', SUNDAY, null, { ask: true });
+  await page.evaluate(seedState);
+  await page.evaluate(() => { const st = window.GH.store; st.flush(); const S = st.load(); delete S.seen.disclaimer; st.save(S); st.flush(); });
+  await page.reload();
+  await page.waitForSelector('.gh-firstrun .ob-go');
+  await settle(page, 700);
+  check('someone set up already sees it on their next launch, over Today', await page.evaluate(() => document.getElementById('screen').dataset.view === 'today' && !!document.getElementById('app').closest('[inert]')));
+  await page.evaluate(() => window.GH.ui.open('settings'));
+  await settle(page);
+  const b = await page.evaluate(() => window.__gh.back());
+  await settle(page, 300);
+  check('a Back that would move what\'s under it (a page a link opened) is spent on it: nothing moves', b === true && await page.evaluate(() => window.GH.ui.route.view === 'settings') && await page.locator('.gh-firstrun').count() === 1);
+  await page.click('.gh-firstrun [data-act="firstRunOk"]');
+  await settle(page, 500);
+  check('accepted, it\'s kept with their data', await page.evaluate(() => { window.GH.store.flush(); return window.GH.ui.S.seen.disclaimer === 1 && window.GH.store.load().seen.disclaimer === 1; }));
   await ctx.close();
 }
 

@@ -1654,6 +1654,8 @@
     get: (id) => byId.get(Number(id)) || null,
     all: () => items,
     search,
+    // The index built ahead of the first search (in a quiet moment), so typing never waits on it.
+    warm: () => { if (!index) buildIndex(); },
   };
   GH.foods.source = 'USDA SR28 (public domain)';
 })(typeof window !== 'undefined' ? window : globalThis);

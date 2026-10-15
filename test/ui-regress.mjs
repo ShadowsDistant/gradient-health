@@ -560,22 +560,281 @@ const asked = await page.evaluate(() => {
   U.act.plDone();
   U.act.plSkipRest();
   const p = document.querySelector('.player');
-  return { rir: !!p.querySelector('.pl-rir'), cont: !!p.querySelector('.pl-actions [data-act="plContinue"]'), idx: a.idx };
+  // 1.13: four answers, each label whole inside its segment, the control inside its card.
+  const segs = [...p.querySelectorAll('.pl-rir .rf-segment')];
+  const box = p.querySelector('.pl-rir').getBoundingClientRect(), ctl = p.querySelector('.pl-rir .rf-segmented').getBoundingClientRect();
+  const fits = segs.every((s) => s.scrollWidth <= s.clientWidth + 1) && ctl.left >= box.left - 0.5 && ctl.right <= box.right + 0.5;
+  return { rir: !!p.querySelector('.pl-rir'), cont: !!p.querySelector('.pl-actions [data-act="plContinue"]'), idx: a.idx, k, opts: segs.map((s) => `${s.querySelector('input').value}:${s.textContent.trim()}`).join(' '), fits };
 });
 check('the rest over with the question open: the question and Continue', asked.rir && asked.cont, JSON.stringify(asked));
+check('it offers 0, 1-2, 3 and 4+, each fitting its segment', asked.opts === '0:0 12:1-2 3:3 4:4+' && asked.fits, JSON.stringify(asked));
 await page.click('.player .pl-rir input[value="12"]', { force: true });
 await settle(900);
-const stayed = await page.evaluate(() => {
+const stayed = await page.evaluate((k) => {
   const p = document.querySelector('.player');
-  return { picked: !!p.querySelector('.pl-rir input[value="12"]:checked'), cont: !!p.querySelector('.pl-actions [data-act="plContinue"]'), idx: window.GH.ui.S.active.idx };
-});
+  const a = window.GH.ui.S.active;
+  const log = a.logs[a.session.items.concat(a.session.extras).indexOf(a.steps[k].item)];
+  return { picked: !!p.querySelector('.pl-rir input[value="12"]:checked'), cont: !!p.querySelector('.pl-actions [data-act="plContinue"]'), idx: a.idx, rir: log && log.rir, aim: log && log.aim };
+}, asked.k);
 check('an answer stays on screen with Continue (it doesn\'t move on by itself)', stayed.picked && stayed.cont && stayed.idx === asked.idx, JSON.stringify(stayed));
+check('and it\'s kept with the exercise\'s aim', stayed.rir === '12' && ['12', '13', '23', '24'].includes(stayed.aim), JSON.stringify(stayed));
 await page.click('.player [data-act="plContinue"]');
 await settle(700);
 const moved = await page.evaluate(() => { const p = document.querySelector('.player'); return { rir: !!p.querySelector('.pl-rir'), done: !!p.querySelector('.pl-actions [data-act="plDone"], .pl-actions [data-act="plStartTimer"]') }; });
 check('and Continue moves on to the next set', !moved.rir && moved.done, JSON.stringify(moved));
 await page.evaluate(() => { const U = window.GH.ui; U.act.plKeep(); window.GH.brain.cancelWorkout(U.S); window.GH.store.save(U.S); U.render(); });
 await settle(700);
+
+section('The rest running out holds the screen still');
+// When a rest runs out (or is skipped) with the question still open, nothing on the screen moves: the
+// ring stays (empty, 0:00) with "Rest over" in its buttons' row, the question and Up next stay put,
+// and Continue comes into the place held for it. (Before, the ring and buttons gave way to a line of
+// text and everything under them jumped up 100 to 300 px, a layout shift of 0.14.)
+await page.evaluate(() => window.GH.ui.act.startWorkout());
+await page.waitForSelector('.player:not([hidden]) .pl-name');
+await settle(600);
+const where = () => page.evaluate(() => {
+  const p = document.querySelector('.player');
+  const top = (s) => { const e = p.querySelector(s); return e ? Math.round(e.getBoundingClientRect().top * 2) / 2 : null; };
+  const acts = p.querySelector('.pl-actions');
+  return {
+    ring: top('.pl-timer .rf-ring'), row: top('.pl-rest-btns'), rir: top('.pl-rir'), next: top('.pl-next-row'),
+    actsTop: Math.round(acts.getBoundingClientRect().top * 2) / 2,
+    over: !!p.querySelector('.pl-timer.is-over') && /Rest over/.test(p.querySelector('.pl-rest-btns').textContent),
+    count: (p.querySelector('.pl-count') || {}).textContent, cont: !!p.querySelector('.pl-actions [data-act="plContinue"]'),
+    held: !!p.querySelector('.pl-actions .pl-actions-hold'), skip: !!p.querySelector('[data-act="plSkipRest"]'),
+  };
+});
+const restOn = async () => {
+  // A set that asks, with a rest after it: Done, from a click, answers inside it (the rest is drawn
+  // before the click returns, so the first frame after it has it) with the set's own haptic.
+  return page.evaluate(() => {
+    const U = window.GH.ui, a = U.S.active;
+    const asks = (st) => st.kind === 'set' && !st.item.timed && st.askRir && st.rest;
+    const k = a.steps.findIndex((st, i) => i > a.idx && asks(st));
+    a.idx = k >= 0 ? k : a.steps.findIndex(asks);
+    U.openPlayer();
+    window.__haptics.length = 0;
+    document.querySelector('#player [data-act="plDone"]').click();
+    return { rest: !!document.querySelector('#player .pl-rest .pl-timer'), haptics: window.__haptics.slice() };
+  });
+};
+let r0 = await restOn();
+check('Done set answers inside the tap: the rest is on screen by the next frame, with setDone', r0.rest && r0.haptics.includes('setDone'), JSON.stringify(r0));
+await settle(600);
+const resting = await where();
+check('resting with the question open: ring, buttons, question and Up next, Continue\'s place held', resting.ring != null && resting.skip && resting.rir != null && resting.next != null && resting.held && !resting.cont, JSON.stringify(resting));
+// Layout shifts from now until read (the page's clock is a test clock: no timers of its own here).
+const watchShifts = () => page.evaluate(() => { const w = window.__shiftW = { all: [] }; w.o = new PerformanceObserver((l) => { for (const e of l.getEntries()) w.all.push(e.value); }); w.o.observe({ type: 'layout-shift' }); });
+const readShifts = () => page.evaluate(() => { const w = window.__shiftW; w.o.takeRecords().forEach((e) => w.all.push(e.value)); w.o.disconnect(); return w.all.reduce((a, b) => a + b, 0); });
+await watchShifts();
+await page.evaluate(() => window.GH.ui.act.plSkipRest());
+await settle(700);
+const shiftSkip = await readShifts();
+const skipped = await where();
+const same = (a, b) => ['ring', 'row', 'rir', 'next', 'actsTop'].every((k) => a[k] === b[k]);
+check('Skip rest with the question open: the ring stays, empty at 0:00, "Rest over" in its row', skipped.over && skipped.count === '0:00' && skipped.ring === resting.ring, JSON.stringify(skipped));
+check('and nothing moves: the question, Up next and the action bar are where they were', same(resting, skipped), JSON.stringify({ resting, skipped }));
+check('Continue comes into the place held for it', skipped.cont && !skipped.held);
+check('no layout shift (it was 0.14)', shiftSkip < 0.01, shiftSkip);
+await page.evaluate(() => window.GH.ui.act.plContinue());
+await settle(600);
+// The same when the timer runs out by itself.
+r0 = await restOn();
+await settle(600);
+const resting2 = await where();
+const restSecs = await page.evaluate(() => { const s = window.GH.ui.S.active; return s.steps[s.idx - 1].rest; });
+await watchShifts();
+await page.clock.runFor((restSecs + 1) * 1000);
+await settle(700);
+const shiftTimer = await readShifts();
+const ranOut = await where();
+check('the rest running out by itself: the same, nothing moves and Continue comes', ranOut.over && ranOut.cont && same(resting2, ranOut) && shiftTimer < 0.01, JSON.stringify({ resting2, ranOut, shiftTimer }));
+// Up next keeps a number with its unit ("10 reps", "25 lb"), however its line wraps, and no line
+// starts with a "·".
+const nextLine = await page.evaluate(() => (document.querySelector('#player .pl-next .t-footnote') || {}).textContent || '');
+check('Up next keeps each number with its unit, and each "·" on the line it ends', /\d\u00a0(reps?|lb|kg|s)\b/.test(nextLine) && !/\d (reps?|lb|kg)\b/.test(nextLine) && !/ · /.test(nextLine), JSON.stringify(nextLine));
+// While resting, Up next opens how to do the next move.
+const howNext = await page.evaluate(async () => {
+  const row = document.querySelector('#player button.pl-next-row[data-act="plHowTo"]');
+  const want = window.GH.ui.S.active.steps[window.GH.ui.S.active.idx].item.name;
+  if (!row) return null;
+  row.click();
+  await new Promise((r) => setTimeout(r, 50));
+  const d = [...document.querySelectorAll('dialog[open]')].pop();
+  return { want, title: d ? (d.querySelector('.rf-sheet-title') || {}).textContent : null };
+});
+check('Up next opens how to do the next move', howNext && howNext.title === howNext.want, JSON.stringify(howNext));
+await page.evaluate(() => window.GH.ui.closeSheets());
+await settle(700);
+// A small phone with large text (360 x 844, a three-button bar of 48 px, text at 130%): the rest
+// draws its ring smaller so everything fits above the actions (Up next and the place held for
+// Continue).
+await page.setViewportSize({ width: 360, height: 844 });
+await page.evaluate(() => window.__gh.setInsets({ top: 30, bottom: 48, left: 0, right: 0, keyboard: false }));
+await page.evaluate(() => window.GH.ui.act.plContinue());
+await settle(600);
+await restOn();
+await settle(300);
+const largeText = await page.evaluate(() => {
+  for (const e of document.querySelectorAll('#player *')) { const f = parseFloat(getComputedStyle(e).fontSize); if (f && !e.closest('svg')) e.style.setProperty('font-size', `${f * 1.3}px`, 'important'); }
+  window.dispatchEvent(new Event('resize'));
+  const m = document.querySelector('#player .pl-main');
+  const next = m.querySelector('.pl-next-row').getBoundingClientRect(), box = m.getBoundingClientRect();
+  return { tight: m.classList.contains('is-tight'), over: Math.round(next.bottom - box.bottom), ring: Math.round(m.querySelector('.rf-ring').getBoundingClientRect().width) };
+});
+check('large text on a small phone: the ring draws smaller and Up next fits above the actions', largeText.tight && largeText.over <= 0, JSON.stringify(largeText));
+await page.evaluate(() => { for (const e of document.querySelectorAll('#player [style*="font-size"]')) e.style.removeProperty('font-size'); window.__gh.setInsets({ top: 30, bottom: 20, left: 0, right: 0, keyboard: false }); });
+await page.setViewportSize({ width: 390, height: 844 });
+await settle(600);
+await page.evaluate(() => window.GH.ui.act.plContinue());
+await settle(600);
+// The swap sheet: a tap on a move swaps at once, so its rows promise no other page (no chevron).
+await page.evaluate(() => { const U = window.GH.ui, a = U.S.active; a.idx = a.steps.findIndex((st, i) => i >= a.idx && st.kind === 'set' && !st.leadOnly); U.openPlayer(); U.act.plSwap(); });
+await settle(900);
+const swapRows = await page.evaluate(() => { const d = [...document.querySelectorAll('dialog[open]')].pop(); return d ? { rows: d.querySelectorAll('[data-act="plSwapTo"]').length, chevrons: d.querySelectorAll('[data-act="plSwapTo"] .rf-list-chevron').length } : null; });
+check('the swap sheet\'s moves carry no chevron (a tap swaps at once)', swapRows && swapRows.rows > 0 && swapRows.chevrons === 0, JSON.stringify(swapRows));
+await page.evaluate(() => { const U = window.GH.ui; U.closeSheets(); U.act.plKeep(); window.GH.brain.cancelWorkout(U.S); window.GH.store.save(U.S); U.render(); });
+await settle(700);
+
+section('Today: titles, links and the floating row');
+await page.evaluate(() => {
+  const GH = window.GH, U = GH.ui, S = U.S, d = U.today();
+  delete S.seen.tip_today;
+  GH.health.setFeel(S, d, { energy: 'good', sore: 'none' });
+  GH.health.setSleepChip(S, d, '7-8');
+  U.go('today');
+  U.render();
+  document.getElementById('screen').scrollTop = 0;
+});
+await settle(900);
+const today = await page.evaluate(() => {
+  const s = document.querySelector('#screen'), card = s.querySelector('.card.session');
+  const ink = (el) => { const r = document.createRange(); r.selectNodeContents(el); return r.getBoundingClientRect(); };
+  const inset = (el, c) => { const cr = c.getBoundingClientRect(); return Math.round((cr.right - ink(el).right) * 10) / 10; };
+  const tip = s.querySelector('.tip'), got = tip && tip.querySelector('.rf-btn');
+  const feel = s.querySelector('.feel-done'), change = feel && feel.querySelector('[data-act="feelEdit"]');
+  const head = card && card.querySelector('.session-head'), title = card && card.querySelector('h2');
+  return {
+    gap: head && title ? Math.round(title.getBoundingClientRect().top - head.getBoundingClientRect().bottom) : null,
+    got: got ? inset(got, tip) : null, change: change ? inset(change, feel) : null,
+    pad: tip ? parseFloat(getComputedStyle(tip).paddingRight) : null,
+  };
+});
+check('the workout card\'s title sits in the card\'s gap under its eyebrow (it kept 18 px heading margins)', today.gap != null && today.gap <= 12, JSON.stringify(today));
+check('the tip\'s Got it ends on the card\'s inset', today.got != null && Math.abs(today.got - today.pad) <= 1.5, JSON.stringify(today));
+check('the feel summary\'s Change sits at the card\'s right edge, on its inset', today.change != null && Math.abs(today.change - today.pad) <= 1.5, JSON.stringify(today));
+// A tap on a move's second line (its sets and weight) opens that move, like a tap on its name.
+const rowHit = await page.evaluate(() => {
+  const m = document.querySelector('#screen .ex-list .ex button.ex-name');
+  const meta = m && m.parentElement.querySelector('.ex-meta');
+  if (!meta) return null;
+  meta.scrollIntoView({ block: 'center' });
+  const r = meta.getBoundingClientRect();
+  const h = document.elementFromPoint(r.left + 8, r.top + r.height / 2);
+  return { hit: !!(h && h.closest('[data-act="moveInfo"]')), same: h && h.closest('[data-act="moveInfo"]') === m };
+});
+check('a move\'s row opens it from its second line too (its name alone was a 24 px target)', rowHit && rowHit.hit && rowHit.same, JSON.stringify(rowHit));
+// The floating row measures its buttons as laid out: Short on time still swollen from the finger
+// that pressed it (Refract's glass grows while held) kept its words; it went to a bare icon.
+const swollen = await page.evaluate(async () => {
+  const fl = document.getElementById('float');
+  const side = fl.querySelector('[data-act="toggleShort"]');
+  side.style.scale = '1.08';
+  window.dispatchEvent(new Event('resize'));
+  const out = { tight: fl.classList.contains('is-tight') };
+  side.style.scale = '';
+  return out;
+});
+check('Short on time, swollen from a press, keeps its words', swollen && !swollen.tight, JSON.stringify(swollen));
+await page.evaluate(() => { const S = window.GH.ui.S; S.seen.tip_today = true; window.GH.ui.render(); });
+await settle(600);
+
+section('Large text on a small phone: words stay whole');
+// 360 px with text at 130%: You's badge titles grow their tiles with the text, so no word is split
+// between two lines ("Unstoppa / ble"), and an insight's change stays whole ("20% → / 7%").
+await page.setViewportSize({ width: 360, height: 844 });
+const bigText = (on) => page.evaluate((v) => {
+  if (!v) { for (const e of document.querySelectorAll('#screen [style*="font-size"]')) e.style.removeProperty('font-size'); return; }
+  const els = [...document.querySelectorAll('#screen *')].filter((e) => !e.closest('svg'));
+  const sizes = els.map((e) => parseFloat(getComputedStyle(e).fontSize));
+  els.forEach((e, i) => { if (sizes[i]) e.style.setProperty('font-size', `${sizes[i] * 1.3}px`, 'important'); });
+}, on);
+// The words (split at a hyphen too, a fair place to break) that run over two lines.
+const splitWords = (sel) => page.evaluate((s) => {
+  const out = [];
+  for (const el of document.querySelectorAll(s)) {
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      for (const m of n.data.matchAll(/[^\s-]+-?/g)) {
+        const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
+        const tops = new Set([...r.getClientRects()].filter((q) => q.width > 0).map((q) => Math.round(q.top)));
+        if (tops.size > 1) out.push(m[0]);
+      }
+    }
+  }
+  return out;
+}, sel);
+await page.evaluate(() => { window.GH.ui.go('you'); document.getElementById('screen').scrollTop = 0; });
+await settle(900);
+await bigText(true);
+await settle(300);
+const minis = await page.evaluate(() => [...document.querySelectorAll('#screen .bdg-mini')].map((b) => Math.round(b.getBoundingClientRect().width)));
+const bdgSplit = await splitWords('#screen .bdg-mini-title');
+check('You\'s badge titles keep their words whole, their tiles wider with the text', minis.length > 0 && minis.every((w) => w > 76) && bdgSplit.length === 0, JSON.stringify({ minis, bdgSplit }));
+await bigText(false);
+await page.evaluate(() => {
+  const U = window.GH.ui, S = U.S, d = U.today(), c = S.catchup && S.catchup.arm;
+  if (c && !(c.tests.length >= 2 && c.tests[c.tests.length - 1].gap < c.tests[0].gap - 0.03)) c.tests = [{ day: d - 28, left: 12, right: 15, gap: 0.2 }, { day: d - 1, left: 14, right: 15, gap: 0.067 }];
+  U.go('health');
+  U.render();
+});
+await settle(900);
+await bigText(true);
+await settle(300);
+const change = await page.evaluate(() => {
+  const t = [...document.querySelectorAll('#screen .hl-ins-title')].find((e) => /→/.test(e.textContent));
+  if (!t) return null;
+  const n = t.firstChild, i = n.data.search(/\d+%\s→/), j = n.data.search(/→\s\d+%/);
+  const r = document.createRange(); r.setStart(n, i); r.setEnd(n, n.data.indexOf('%', j) + 1);
+  return { text: t.textContent, lines: new Set([...r.getClientRects()].filter((q) => q.width > 0).map((q) => Math.round(q.top))).size };
+});
+check('an insight\'s change ("20% → 7%") stays on one line', change && change.lines === 1, JSON.stringify(change));
+// The Next screen's lines (and the rest of U.nb's): an arrow after a name keeps to what it points
+// to, so "Rope pushdown → 13 / reps" breaks as "Rope pushdown / → 13 reps".
+const arrows = await page.evaluate(() => [window.GH.ui.nb('Left arm gap: 20% → 7%'), window.GH.ui.nb('Rope pushdown → 13 reps')]);
+check('a change between numbers is whole, and an arrow after a name goes with its number and unit', arrows[0] === 'Left arm gap: 20%&nbsp;→&nbsp;7%' && arrows[1] === 'Rope pushdown →&nbsp;13&nbsp;reps', JSON.stringify(arrows));
+await bigText(false);
+await page.setViewportSize({ width: 390, height: 844 });
+await settle(400);
+
+section('A text link on its own line, and a toast\'s close');
+// A "why" link (a plain button) on a line of its own starts its words on the column's edge: it sat
+// 4 px in, at its padding (the player's Next screen, Built around you).
+await page.evaluate(() => { const U = window.GH.ui; U.closeSheets(); while (U.back()) { /* back to the tab */ } U.go('today'); U.act.planAround(); });
+await settle(900);
+const why = await page.evaluate(() => {
+  const b = document.querySelector('dialog[open] .why-link');
+  if (!b) return null;
+  const r = document.createRange(); r.selectNodeContents(b);
+  const box = b.parentElement, cs = getComputedStyle(box);
+  return Math.round((r.getBoundingClientRect().left - (box.getBoundingClientRect().left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft))) * 10) / 10;
+});
+check('a "why" link on a line of its own starts on the column\'s edge', why != null && Math.abs(why) <= 0.5, JSON.stringify(why));
+await page.evaluate(() => window.GH.ui.closeSheets());
+await settle(600);
+// A toast's close: Refract draws its countdown ring with the button's ::before, so the ring stays the
+// button's own size (the 44 px hit area grew it 3 px all round) and the hit area is its ::after.
+await page.evaluate(() => window.GH.ui.toast('Plan deleted', 'neutral', undefined, { label: 'Undo', onClick: () => {} }));
+await settle(700);
+const ring = await page.evaluate(() => {
+  const c = document.querySelector('.rf-toast .rf-toast-close');
+  if (!c) return null;
+  const b = getComputedStyle(c, '::before'), a = getComputedStyle(c, '::after');
+  return { countdown: c.hasAttribute('data-countdown'), ring: b.top, hit: a.content !== 'none' ? parseFloat(a.top) : null, want: Math.min(0, c.offsetHeight / 2 - 22) };
+});
+check('a toast\'s close keeps its countdown ring at its own size, and reaches 44 px with its ::after', ring && ring.countdown && ring.ring === '0px' && ring.hit != null && ring.hit <= ring.want + 0.5, JSON.stringify(ring));
+await page.evaluate(() => { for (const t of document.querySelectorAll('.rf-toast')) t.remove(); });
 
 section('Console');
 check('no console errors', errors.length === 0, errors.join(' | '));

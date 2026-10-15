@@ -1,44 +1,68 @@
-/* ---------------------------------------------------------------- food (src/ui/food.js) */
-/* The lists' switch fills the width, and scrolls sideways when big text makes it wider than the
-   screen rather than running off it. */
-/* Edge to edge in the sheet (whose body has no side padding), its chips inset like the rest. */
-.fd-tabs { overflow-x: auto; scrollbar-width: none; margin: var(--space-2) 0 0; padding-inline: var(--space-4); }
-.fd-tabs::-webkit-scrollbar { display: none; }
-.fd-tabs .rf-segmented { min-width: 100%; width: max-content; }
+/* ---------------------------------------------------------------- food (src/ui/food.js, foodpage.js) */
+/* Every food screen and sheet, and the barcode scanner's sheet (src/scanner.js). Spacing comes from the
+   tokens; text, links, values and dividers in a card share its 16 px insets. */
 
-/* ---------------------------------------------------------------- Health's food section */
-/* One card: the ring and macros over the four meals, all one button that opens the Food page, with
-   Add food and Scan under it. */
-.card.hf { gap: var(--space-3); }
-.hf-main { appearance: none; border: 0; margin: 0; padding: 0; background: none; color: inherit; font: inherit; text-align: start; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); cursor: pointer; border-radius: var(--radius-md); transition: scale var(--duration-spring-snappy) var(--spring-snappy); }
-.hf-main:active { scale: .985; transition-duration: var(--duration-instant); }
-.hf-main:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 4px; }
-.hf-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); }
-/* The ring grows with the text, so its number stays inside it with bigger text. */
-.hf .rf-ring { --_s: 5.5em; --_w: 8px; font-size: 1rem; }
-.hf .rf-ring-label { display: grid; justify-items: center; line-height: 1.1; padding-inline: 8px; text-align: center; }
-.hf-n { font-size: 1.3125rem; font-weight: 720; letter-spacing: -.03em; }
-.hf-l { font-size: .75rem; font-weight: 550; color: var(--label-secondary); }
-.hf-macros { display: grid; gap: 6px; min-width: 0; }
-.hf-kcal { font-size: .9375rem; color: var(--label-secondary); overflow-wrap: anywhere; }
-.hf-kcal b { color: var(--label); font-weight: 700; }
-/* Each macro: its name and grams on a line (the grams go under the name when there isn't room), its
-   bar under them. */
-.hf-macro { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px var(--space-2); }
-.hf-macro-k { font-size: .75rem; font-weight: 620; color: var(--label-secondary); }
-.hf-macro-v { font-size: .75rem; font-weight: 680; margin-inline-start: auto; }
-.hf-macro-v small { font-size: inherit; font-weight: 500; color: var(--label-secondary); }
-.hf-macro .rf-progress { flex: 1 0 100%; block-size: 5px; }
-.hf-go { align-self: start; display: inline-flex; color: var(--label-tertiary); }
-/* The meals: a tight list, each meal's name, what was eaten (or when it is) and its calories. */
+/* ---------------------------------------------------------------- the day at a glance */
+/* Calories left (or over) in a ring beside what was eaten and the three macros: Health's food section,
+   the Food page and Today's card draw the same one (food.js, glance). */
+.fd-sum { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-4); }
+.fd-sum.is-bare { grid-template-columns: minmax(0, 1fr); }
+/* The ring grows with the text, so its number stays inside it with bigger text; its label is centred
+   on the ring's middle. (.fd-ring-n's own size is Today's steps ring's too, today.js.) */
+.fd-sum .rf-ring { --_s: 5.5em; --_w: 8px; font-size: 1rem; }
+.fd-sum.is-compact .rf-ring { --_s: 4.25em; --_w: 6px; }
+.fd-sum .rf-ring-label { display: grid; justify-items: center; padding-inline: var(--space-2); line-height: 1.1; text-align: center; }
+.fd-ring-n { font-size: 19px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; }
+.fd-ring-l { font-size: .75rem; font-weight: 550; color: var(--label-secondary); }
+/* (The number and its word are trimmed to the figures' tops and the word's baseline, so what's centred
+   is the ink, not the line gaps above and below it.) */
+.fd-sum .fd-ring-n { font-size: 1.3125rem; font-weight: 720; text-box: trim-start cap alphabetic; }
+.fd-sum.is-compact .fd-ring-n { font-size: .9375rem; }
+.fd-sum .fd-ring-l { text-box: trim-end cap alphabetic; }
+.fd-side { display: grid; gap: var(--space-2); min-width: 0; container-type: inline-size; }
+.fd-kcal { display: flex; align-items: center; gap: var(--space-2); font-size: .9375rem; line-height: 1.3; color: var(--label-secondary); }
+.fd-kcal > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.fd-kcal b { color: var(--label); font-weight: 700; }
+.fd-go { flex: none; margin-inline-start: auto; display: inline-flex; color: var(--label-tertiary); }
+/* Each macro: its name and grams on a line, its bar under them. The grams so far (to the right) and the
+   target (to the left) are columns the three rows share (a subgrid), so the slashes line up. */
+.fd-macros { display: grid; grid-template-columns: minmax(min-content, 1fr) max-content max-content; column-gap: .3em; row-gap: var(--space-2); font-size: .75rem; line-height: 1.3; }
+.fd-macro { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: baseline; row-gap: 3px; }
+.fd-mk { font-weight: 620; color: var(--label-secondary); }
+.fd-mhave { font-weight: 680; text-align: end; white-space: nowrap; }
+.fd-msl, .fd-mwant { font-weight: 500; color: var(--label-secondary); }
+.fd-mwant { white-space: nowrap; }
+.fd-macro > .rf-progress { grid-column: 1 / -1; block-size: 5px; }
+@supports not (grid-template-columns: subgrid) {
+  .fd-macro { grid-template-columns: minmax(min-content, 1fr) auto auto; column-gap: .3em; }
+}
+/* Too narrow for a name and its grams on one line (about 7 em with three-figure grams, so narrower than
+   a 360 px phone at 130% text): the grams go under the name, at the end. */
+@container (max-width: 7.5em) {
+  .fd-macro { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: .3em; }
+  .fd-mk { flex: 1 0 100%; }
+  .fd-mhave { margin-inline-start: auto; }
+  .fd-macro > .rf-progress { flex: 1 0 100%; }
+}
+
+/* ---------------------------------------------------------------- Health's food section, Today's card */
+/* A card whose glance (and, on Health, its meals) is one button that opens the Food page, with Add food
+   and Scan under it. It sinks a little under a finger. */
+.card.hf, .card.fd-card { gap: var(--space-3); }
+.fd-open { appearance: none; border: 0; margin: 0; padding: 0; background: none; color: inherit; font: inherit; text-align: start; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); cursor: pointer; border-radius: var(--radius-md); -webkit-tap-highlight-color: transparent; transition: scale var(--duration-spring-snappy) var(--spring-snappy); }
+.fd-open:active { scale: .985; transition-duration: var(--duration-instant); }
+.fd-open:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 4px; }
+.fd-card-head { display: flex; align-items: center; gap: var(--space-2); }
+/* Health's meals: a tight list, each meal's name, what was eaten (or when it is) and its calories. */
 .hf-meals { display: grid; font-size: .9375rem; }
-.hf-meal { display: grid; grid-template-columns: 5.4em minmax(0, 1fr) auto; align-items: baseline; gap: var(--space-3); padding: 9px 0; box-shadow: inset 0 1px 0 var(--separator); }
+.hf-meal { display: grid; grid-template-columns: 5.4em minmax(0, 1fr) auto; align-items: baseline; gap: var(--space-3); padding-block: var(--space-2); box-shadow: inset 0 1px 0 var(--separator); line-height: 1.35; }
 .hf-meal-k { font-weight: 620; }
 .hf-meal-what { min-width: 0; font-size: .8125rem; color: var(--label-secondary); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .hf-meal.is-empty .hf-meal-what { color: var(--label-tertiary); }
 .hf-meal-n { font-weight: 650; font-variant-numeric: tabular-nums; }
-.hf-btns { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.hf-btns .rf-btn[data-variant="filled"] { flex: 1 1 auto; }
+/* Add food (the main one, as wide as there's room for) and Scan. */
+.fd-btns { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.fd-btns > .rf-btn:first-child { flex: 1 1 auto; }
 
 /* Without calorie tracking: the invite to start it. */
 .card.hf-invite { gap: var(--space-3); }
@@ -47,57 +71,161 @@
 .hf-inv-text { display: grid; gap: 2px; min-width: 0; }
 .hf-inv-btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
 
-/* ---------------------------------------------------------------- the rings on the Food page and Today */
-/* Big enough for a four-digit number, and growing with the text so it stays inside. */
-.fd-sum .rf-ring { --_s: 5em; --_w: 7px; font-size: 1rem; }
-.fd-sum.is-compact .rf-ring { --_s: 4.25em; --_w: 6px; }
-.fd-sum .rf-ring-label { padding-inline: 6px; }
-/* Where the macros' column is narrow (a small phone, bigger text), each one's grams go beside its
-   name and its bar under them, as on Health, rather than squeezing the bar between. */
-.fd-macros { container-type: inline-size; }
-@container (max-width: 210px) {
-  .fd-macro { grid-template-columns: minmax(0, 1fr) auto; row-gap: 3px; }
-  .fd-macro .rf-progress { grid-column: 1 / -1; grid-row: 2; }
-  .fd-macro .t-caption { min-width: 0; }
-}
+/* ---------------------------------------------------------------- links and small round buttons */
+/* How it's worked out, Same as yesterday, Change: the words start at the text edge, with no padding of
+   their own, and a hit area 44 px high reaches above and below them. They dim at once under a finger. */
+.fd-link.rf-btn { justify-self: start; min-block-size: 0; padding: 0; gap: 6px; line-height: 1.35; white-space: normal; text-align: start; color: var(--accent); }
+.fd-link.rf-btn::before { content: ""; position: absolute; inset-inline: 0; inset-block: min(0px, calc((100% - var(--hit-min)) / 2)); }
+.fd-link.rf-btn:active { opacity: .55; scale: none; transition-duration: 0ms; }
+.fd-link > .rf-icon { --rf-icon-size: 16px; flex: none; }
+p > .fd-link.rf-btn { vertical-align: baseline; }
+/* A small round button (a meal's +, a recent food's +): 44 px to the finger, its circle drawn 38 px
+   inside that, and laid out at 38. */
+.fd-meal-head > .rf-btn, .fd-again.rf-btn { --_h: var(--hit-min); padding: 3px; margin: -3px; background-clip: content-box; }
+/* The food sheets' small segmented controls (the meal, the lists, the pace, sex) keep their small
+   words but are 44 px tall, as the sheets' other controls are. */
+:is(.fd-sheet, .fd-portion, .fd-form, .fd-start) .rf-segmented[data-size="sm"] { --_h: var(--hit-min); }
+/* A field's text box fills its field, so all 44 px of it take a tap. */
+:is(.fd-portion, .fd-form, .fd-start, .fd-times, .sc-type) .rf-field-control > .rf-input, .fd-q > .rf-input { align-self: stretch; }
+/* The amount's minus and plus: 44 px to a finger each way (44 wide, not Refract's 42, and reaching
+   past the stepper's own inset above and below). */
+.fd-qty .rf-stepper-btn { position: relative; inline-size: var(--hit-min); }
+.fd-qty .rf-stepper-btn::before { content: ""; position: absolute; inset: -3px 0; }
+.fd-qty .rf-stepper-value { align-self: stretch; }
 
 /* ---------------------------------------------------------------- the Food page */
-.fd-same { justify-self: start; gap: 6px; margin-inline-start: calc(-1 * var(--space-2)); }
-.fd-same > .rf-icon { --rf-icon-size: 16px; }
+/* The day: a control as wide as the cards under the title, the day centred between its arrows. */
+.fd-days { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; margin: calc(-1 * var(--space-2)) var(--space-4) var(--space-4); border-radius: var(--radius-full); background: var(--bg-raised); box-shadow: var(--shadow-card); }
+.fd-days .rf-btn { --_h: var(--hit-min); }
+.fd-days .rf-btn:active:not([aria-disabled="true"]) { background-color: var(--fill-3); }
+.fd-days .rf-btn[aria-disabled="true"] { opacity: .35; }
+.fd-day { min-width: 0; text-align: center; font-weight: 600; overflow-wrap: anywhere; }
+/* A meal: its name, calories and +, the foods in it (the dividers between them inset on both sides,
+   as the card's text is), and when it's empty, the same meal as the day before to add again. */
+.fd-meal { gap: var(--space-1); }
+.fd-meal-head { display: flex; align-items: center; gap: var(--space-2); min-height: 32px; }
+.fd-meal-head > .rf-btn { margin-inline-start: auto; }
+.fd-list { margin: 0 calc(-1 * var(--space-4)) calc(-1 * var(--space-2)); background: none; box-shadow: none; }
+.fd-list > li:not(:last-child)::after { inset-inline-end: var(--space-4); }
+.fd-list .rf-list-detail { font-variant-numeric: tabular-nums; }
+/* What else the day can do: a list in a card of its own. */
+.card.fd-tools { padding: 0; gap: 0; overflow: hidden; }
+.fd-tools > .rf-list { background: none; border-radius: 0; }
+.fd-tools > .rf-list > li:not(:last-child)::after { inset-inline-end: var(--space-4); }
 
-/* ---------------------------------------------------------------- the sheets */
-/* Add food: the meal at the top, recent foods with a one-tap add. Its switches sit at the content's
-   16 px inset (the lists' rail scrolls from there). */
+/* ---------------------------------------------------------------- Add food */
+/* The meal at the top, the search with Scan beside it, the lists' switch, what's found or listed, then
+   Quick add and Create a food, all at the content's 16 px inset (the sheet's body has none). */
 .fd-pick { padding: 0 var(--space-4) var(--space-3); }
 .fd-sheet :is(.fd-pick, .fd-tabs) .rf-segmented { margin: 0; }
-.fd-sheet .fd-tabs { margin-block: var(--space-3) 0; }
+.fd-search { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-4); }
+.fd-q { flex: 1; min-width: 0; }
+/* Scan: round, as tall as the search field and filled like it. */
+.fd-search > .rf-btn { --_h: var(--control-lg); background-color: var(--fill-3); }
+/* The lists' switch: each segment as wide as its name (the four fit a small phone), filling the width
+   when there's room; with big text it scrolls sideways rather than running off the screen. */
+.fd-tabs { overflow-x: auto; scrollbar-width: none; margin: var(--space-3) 0 0; padding-inline: var(--space-4); }
+.fd-tabs::-webkit-scrollbar { display: none; }
+.fd-tabs .rf-segmented { min-width: 100%; width: max-content; grid-auto-columns: auto; }
+.fd-tabs .rf-segment { padding-inline: var(--space-3); }
+/* What's found or listed, a block at a time. */
+.fd-results { display: grid; gap: var(--space-3); padding-top: var(--space-3); }
+.gh-sheet .fd-results > .rf-list-header { padding-block: var(--space-2) 0; margin-bottom: calc(-1 * var(--space-1)); }
+.fd-empty { margin: var(--space-2) var(--space-4); text-align: center; }
+.fd-online { display: flex; align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-2) var(--space-4); }
+.fd-online-btn.rf-btn { justify-self: center; }
+/* (A small pill, 44 px tall to a finger.) */
+.fd-online-btn.rf-btn::before { content: ""; position: absolute; inset-inline: 0; inset-block: min(0px, calc((100% - var(--hit-min)) / 2)); }
+.fd-more { margin-top: var(--space-4); }
+/* A recent food: the whole row opens its portion and shows the press; the + above it adds it again as
+   it was last logged. (The button reaches over the row's padding, top, bottom and start, since every
+   button is positioned for Refract's ripple and a ::before couldn't reach past it.) */
 .fd-reg { display: flex; align-items: center; gap: var(--space-2); }
-.fd-reg-main { appearance: none; border: 0; margin: 0; padding: 0; background: none; color: inherit; font: inherit; text-align: start; flex: 1 1 auto; min-width: 0; min-height: 40px; display: flex; align-items: center; cursor: pointer; }
-.fd-again { flex: none; }
-.fd-same-list { margin-bottom: var(--space-3); }
-/* A portion: the favourite star beside the calories. */
+.fd-reg-main { appearance: none; border: 0; margin: calc(-1 * var(--space-2)) 0 calc(-1 * var(--space-2)) calc(-1 * var(--space-4)); padding: var(--space-2) 0 var(--space-2) var(--space-4); align-self: stretch; background: none; color: inherit; font: inherit; text-align: start; flex: 1 1 auto; min-width: 0; min-height: calc(40px + 2 * var(--space-2)); display: flex; align-items: center; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.fd-reg:has(> .fd-reg-main:active) { background-color: var(--fill-selected); }
+.fd-reg-main:focus-visible { outline: none; }
+.fd-reg:has(> .fd-reg-main:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.fd-again.rf-btn { flex: none; z-index: 1; }
+
+/* ---------------------------------------------------------------- a portion, quick add and the forms */
+.fd-portion, .fd-form { gap: var(--space-3); }
+/* The calories big, the favourite star beside them. */
+.fd-big { display: flex; align-items: baseline; gap: var(--space-2); }
 .fd-big .rf-spacer { flex: 1; }
 .fd-big .rf-btn { align-self: center; }
+/* A favourite's star fills in. */
+.fd-big [data-act="foodFav"][aria-pressed="true"] { color: var(--hue-amber); }
+.fd-big [data-act="foodFav"][aria-pressed="true"] svg { fill: currentColor; }
+.fd-pcf { margin: 0; color: var(--label-secondary); }
+.fd-portion .ob-chips .rf-chip { min-height: var(--hit-min); }
+.fd-qty { display: flex; align-items: center; gap: var(--space-3); }
+.fd-qty .rf-stepper { block-size: var(--hit-min); }
 /* A time: the word, and the clock's field at the end. */
 .fd-time { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
-.fd-time .rf-field-control, .fd-trow .rf-field-control { flex: none; inline-size: auto; min-block-size: 40px; padding-inline: 10px; border-radius: var(--radius-md); }
+.fd-time .rf-field-control, .fd-trow .rf-field-control { flex: none; inline-size: auto; min-block-size: var(--hit-min); padding-inline: var(--space-3); border-radius: var(--radius-md); }
 .fd-time .rf-input, .fd-trow .rf-input { inline-size: 7.2em; font-size: .9375rem; text-align: center; font-variant-numeric: tabular-nums; }
-/* Track calories: the target big, what it comes from, and Start. */
+/* The main button, as wide as there's room for (Settings' consent sheet and the chat's report use
+   this row too). */
+.fd-actions { margin-top: var(--space-2); align-items: center; }
+.fd-actions .rf-btn[data-size="lg"] { flex: 1; }
+/* Delete, beside Save: red words (a sheet's plain buttons take the text's colour). */
+.fd-actions .rf-btn[data-tone="critical"] { color: var(--critical); }
+
+/* ---------------------------------------------------------------- Track calories */
+/* The target big, what it comes from, and Start. */
 .fd-start { gap: var(--space-3); }
 .fd-target { display: grid; justify-items: center; gap: 2px; text-align: center; padding-block: var(--space-1); }
 .fd-target-n { font-size: 2.75rem; font-weight: 750; letter-spacing: -.03em; line-height: 1.05; }
-.fd-start-k { display: grid; gap: 6px; }
+.fd-start-k { display: grid; gap: var(--space-2); }
+/* The activity's chips, here and in Settings, as tall as a finger. */
+.gh-chipseg:is([data-key="choice:fsAct"], [data-key="choice:setFoodAct"]) > .gh-chip { block-size: var(--hit-min); }
 .fd-basis { margin: 0; }
-.gh-sheet-panel .fd-basis .rf-btn { min-block-size: 0; padding: 0 4px; vertical-align: baseline; color: var(--accent); font-weight: 650; }
 .fd-start-more { display: grid; gap: var(--space-3); }
 .fd-start-go { inline-size: 100%; }
-/* Meal times: each meal's from and to, which drop under its name when the row is narrow. */
+
+/* ---------------------------------------------------------------- meal times */
+/* Each meal's name, and under it (as a field's label sits over it) its from and to: two fields of one
+   width with "to" between them, as wide as the sheet's content. Snacks is one line. */
 .fd-times { gap: var(--space-2); }
-.fd-trow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px var(--space-2); min-block-size: 44px; }
-.fd-trow > .t-subhead { flex: 1 0 auto; }
-.fd-tspan { display: flex; align-items: center; gap: var(--space-2); flex: 0 1 auto; min-inline-size: 0; }
-.fd-tspan .rf-field-control { flex: 0 1 auto; min-inline-size: 0; }
-.fd-tspan .rf-input { min-inline-size: 0; max-inline-size: 100%; }
-.fd-tany { padding-inline-end: var(--space-3); }
-.fd-tlearn { margin-block: var(--space-2); }
+.fd-trow { display: grid; gap: 6px; }
+.fd-trow.is-any { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-2); }
+.fd-tspan { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--space-2); }
+.fd-tspan .rf-field-control { min-inline-size: 0; padding-inline: var(--space-2); }
+.fd-tspan .rf-input { inline-size: 100%; min-inline-size: 0; }
+.fd-tlearn { margin-block: var(--space-1); }
 .fd-times > .rf-btn { margin-top: var(--space-1); }
+
+/* ---------------------------------------------------------------- the barcode scanner (scanner.js) */
+.sc-wrap { display: grid; gap: var(--space-3); padding: var(--space-2) var(--space-4) var(--space-4); }
+.sc-view { position: relative; border-radius: var(--radius-lg); overflow: hidden; background: #000; aspect-ratio: 3 / 4; max-height: 58vh; width: 100%; touch-action: manipulation; }
+/* The picture, magnified as src/barcode.js asks (--sc-zoom) when the camera can't zoom itself. */
+.sc-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(var(--sc-zoom, 1)); }
+/* The box: wide, for a barcode (a plan's code gets a square one, customplan.css). */
+.sc-frame { position: absolute; left: 9%; right: 9%; top: 50%; aspect-ratio: 2 / 1; translate: 0 -50%; border-radius: var(--radius-md); box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.38); }
+.sc-frame::before { content: ""; position: absolute; inset: 0; border: 3px solid rgb(255 255 255 / 0.9); border-radius: inherit; transition: border-color 160ms var(--ease-standard), box-shadow 160ms var(--ease-standard); }
+.sc-frame i { position: absolute; left: 6%; right: 6%; top: 50%; height: 2px; background: var(--accent); box-shadow: 0 0 12px var(--accent); animation: sc-sweep 1.6s var(--ease-standard) infinite alternate; }
+@keyframes sc-sweep { from { transform: translateY(-38px); } to { transform: translateY(38px); } }
+/* A code caught: the box takes the accent and the code lights up where it is. */
+.sc-frame[data-locked]::before { border-color: var(--accent); box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 70%, transparent); }
+.sc-frame[data-locked] i { opacity: 0; }
+.sc-lock { position: absolute; border: 3px solid var(--accent); border-radius: 10px; background: color-mix(in srgb, var(--accent) 24%, transparent); box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 60%, transparent); animation: sc-lock 220ms var(--ease-standard) both; }
+@keyframes sc-lock { from { opacity: 0; transform: scale(1.18); } to { opacity: 1; transform: none; } }
+/* Where a tap focused. */
+.sc-focus { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; border: 2px solid rgb(255 255 255 / 0.92); border-radius: 50%; pointer-events: none; animation: sc-focus 800ms var(--ease-standard) both; }
+@keyframes sc-focus { 0% { opacity: 0; transform: scale(1.5); } 30% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
+.sc-lock[hidden], .sc-focus[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { .sc-frame i, .sc-lock, .sc-focus { animation: none; } }
+/* The light: lit while it's on, and when the hint asks for it. */
+.sc-tools [data-act="scanTorch"]:is([data-hint], [aria-pressed="true"]) { background: var(--accent-soft); color: var(--accent); }
+.sc-msg { position: absolute; left: 0; right: 0; bottom: 0; margin: 0; padding: var(--space-3) var(--space-4); color: #fff; text-align: center; background: linear-gradient(transparent, rgb(0 0 0 / 0.6)); }
+/* No camera (or no reader): no box, and what to do instead in the middle of the black. */
+.sc-view[data-off] > :is(.sc-frame, .sc-lock, .sc-focus) { display: none; }
+.sc-view[data-off] > .sc-msg { top: 0; display: grid; place-content: center; background: none; }
+.sc-tools { justify-content: center; }
+/* (Typing the number in shows its field in place of the button that asked for it.) */
+.sc-tools:not(:has(> :not([hidden]))) { display: none; }
+.sc-type { display: grid; gap: var(--space-3); }
+.sc-type[hidden] { display: none; }
+/* Typing the number in: the picture gets shorter (the box still fits in it, and src/barcode.js reads
+   where it is), so the field and Look it up stay above the keyboard. */
+.sc-wrap:has(> .sc-type:not([hidden])) > .sc-view { max-height: 30vh; }

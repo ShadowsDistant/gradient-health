@@ -9,9 +9,9 @@
   const B = () => GH.brain;
   const M = () => GH.moves;
 
-  const GROUP_TONE = { biceps: 'amber', triceps: 'rose', chest: 'indigo', legs: 'green', back: 'teal', shoulders: 'sky', abs: 'violet', conditioning: 'amber', balance: 'teal' };
-  const GROUP_ICON = { biceps: 'bolt', triceps: 'bolt', chest: 'layers', legs: 'mountain', back: 'arrow-left', shoulders: 'sun', abs: 'grid', conditioning: 'wave', balance: 'compass' };
-  const ORDER = ['balance', 'biceps', 'triceps', 'chest', 'legs', 'back', 'shoulders', 'abs', 'conditioning'];
+  const GROUP_TONE = { biceps: 'amber', triceps: 'rose', chest: 'indigo', legs: 'green', back: 'teal', shoulders: 'sky', abs: 'violet', conditioning: 'amber', balance: 'teal', impact: 'violet' };
+  const GROUP_ICON = { biceps: 'bolt', triceps: 'bolt', chest: 'layers', legs: 'mountain', back: 'arrow-left', shoulders: 'sun', abs: 'grid', conditioning: 'wave', balance: 'compass', impact: 'bolt' };
+  const ORDER = ['balance', 'impact', 'biceps', 'triceps', 'chest', 'legs', 'back', 'shoulders', 'abs', 'conditioning'];
   const EQ_NAME = { db: 'dumbbells', kb: 'a kettlebell', ball: 'a ball', slam: 'a ball you can slam', band: 'a band', bar: 'a pull-up bar', chair: 'a chair', wall: 'a wall', towel: 'a towel', table: 'a sturdy table', door: 'a door anchor', bb: 'a barbell', ez: 'an EZ bar', rack: 'a squat rack', bench: 'a bench', incline: 'an adjustable bench', smith: 'a Smith machine', cable: 'a cable machine', pulldown: 'a lat pulldown', legPress: 'a leg press', legCurl: 'a leg curl machine', legExt: 'a leg extension machine', chestPress: 'a chest press machine', shoulderPress: 'a shoulder press machine', pecDeck: 'a pec deck', dip: 'dip bars', rower: 'a rower', bike: 'an exercise bike', treadmill: 'a treadmill' };
   const MUSCLE_NAME = (m) => String(m).replace(/([A-Z])/g, ' $1').toLowerCase();
 
@@ -52,11 +52,19 @@
         ${m.breathe ? `<p class="t-callout rf-muted">${U.esc(m.breathe)}</p>` : ''}
       </div>`;
   }
+  const sideOf = (moveId, side) => side || ((M().MOVES[moveId] || {}).uni ? (U.S.catchup.arm.side || 'L') : null);
   function mountSheetFig(ctl, moveId, side) {
     dropSheetFig(ctl);
     const host = ctl.el.querySelector('.sheet-fig');
-    if (host && U.figureFor) figs.set(ctl.el, U.figureFor(host, moveId, side || ((M().MOVES[moveId] || {}).uni ? (U.S.catchup.arm.side || 'L') : null), true));
+    if (host && U.figureFor) figs.set(ctl.el, U.figureFor(host, moveId, sideOf(moveId, side), true));
   }
+  // A sheet's figure: a kept 3D still goes in with the sheet's first frame (an <img>); a figure
+  // that has to be drawn (the flat one, the live 3D one) right after it (src/ui/sheet.js, later),
+  // so the tap is answered by the sheet on its way up a frame sooner.
+  const sheetFig = (moveId, side) => ({
+    after: (c) => { const host = c.el.querySelector('.sheet-fig'); if (host && U.figureStillFirst && U.figureStillFirst(host, moveId, sideOf(moveId, side))) mountSheetFig(c, moveId, side); },
+    later: (c) => { if (!figs.has(c.el)) mountSheetFig(c, moveId, side); },
+  });
   U.moveSheet = (moveId, opts) => {
     const m = M().MOVES[moveId];
     if (!m) return null;
@@ -64,7 +72,7 @@
     const ctl = U.sheet({
       title: m.name, size: 'auto', detent: 'large',
       body: moveBody(m, opts),
-      after: (c) => mountSheetFig(c, moveId, opts && opts.side),
+      ...sheetFig(moveId, opts && opts.side),
       onClose: () => { dropSheetFig(ctl); if (opts && opts.onClose) opts.onClose(); if (first && U.els().playerEl.hidden) { U.render(); if (U.checklistCheck) U.checklistCheck(); } },
     });
     return ctl;
@@ -106,7 +114,7 @@
       return `${moveBody(m)}<h3 class="rf-list-header">${lad.gym ? 'Exercises, favourite first' : 'All levels, easiest first'}</h3><ul class="rf-list">${rows}</ul>
         ${hidden ? `<div class="sheet-pad"><button type="button" class="rf-btn" data-act="unhide" data-arg="${showing}">Show this move again</button></div>` : ''}`;
     };
-    const ctl = U.sheet({ title: lad.name, size: 'auto', body: body(), after: (c) => mountSheetFig(c, showing), onClose: () => dropSheetFig(ctl) });
+    const ctl = U.sheet({ title: lad.name, size: 'auto', body: body(), ...sheetFig(showing), onClose: () => dropSheetFig(ctl) });
     U.act.ladderShow = (b) => {
       showing = b.dataset.arg;
       U.haptic('select');

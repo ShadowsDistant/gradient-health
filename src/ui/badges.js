@@ -390,7 +390,7 @@
       : mig ? `<button type="button" class="bdg-note" data-act="openBadges">${U.icon('sparkle', 'sm')}<span class="t-subhead">You've already earned ${U.plural(mig, 'badge')}</span><span class="bdg-note-go t-subhead">See them</span></button>` : '';
     return `<div class="card bdg-strip" data-key="badge-strip">
       <button type="button" class="bdg-strip-head" data-act="openBadges" aria-label="Badges: ${sum.earned} of ${sum.total}${sum.unopened ? `, ${sum.unopened} to open` : ''}. See all">
-        <span class="bdg-strip-text"><span class="t-headline">Badges</span><span class="t-footnote rf-muted">${U.roll(sum.earned)} of ${sum.total}${sum.next ? ` · ${U.esc(nextLine(sum))}` : ''}</span></span>
+        <span class="bdg-strip-text"><span class="t-headline">${U.roll(sum.earned)} of ${sum.total} earned</span>${sum.next ? `<span class="t-footnote rf-muted">${U.nb(nextLine(sum))}</span>` : ''}</span>
         <span class="bdg-strip-all t-subhead">See all${U.icon('chevron-right', 'sm')}</span>
       </button>
       ${note}

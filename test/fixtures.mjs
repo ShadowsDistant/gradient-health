@@ -1,8 +1,17 @@
 // Browser-side fixtures shared by the screenshot script and the UI tests. Both functions are
 // serialized into the page (addInitScript / evaluate), so they must not use anything from here.
 
-// The Android bridge, with Health Connect granted and 40 days of believable data.
+// Before you start (src/ui/firstrun.js) as already read on this phone, so a page opens on set-up or
+// the app itself. A test that wants the page sets window.__disclaimer = 'ask' in an earlier init
+// script. seedBridge() does the same first thing; this is for a page without the bridge.
+export function acceptDisclaimer() {
+  try { if (window.__disclaimer !== 'ask') localStorage.setItem('gh.disclaimer', '1'); } catch (e) { /* no storage */ }
+}
+
+// The Android bridge, with Health Connect granted and 40 days of believable data. (Before you start
+// is accepted, as in acceptDisclaimer() above.)
 export function seedBridge() {
+  try { if (window.__disclaimer !== 'ask') localStorage.setItem('gh.disclaimer', '1'); } catch (e) { /* no storage */ }
   const DAY = 86400000, now = Date.now(), iso = (t) => new Date(t).toISOString();
   const wave = (i, a, b) => Math.sin(i * 1.7) * a + Math.cos(i * 0.6) * b;
   const days = []; for (let i = 40; i >= 0; i--) days.push(now - i * DAY);
@@ -110,8 +119,9 @@ export function seedState(o) {
   }
   B.addProtein(S, today, 26); B.addProtein(S, today, 32);
   S.feel[today] = { energy: 'good', sore: 'some' };
-  // (notifyAsk: they've answered Today's card about notifications; test/ui-notify.mjs asks it.)
-  S.seen = { tour: true, checklistHidden: true, lastVersion: window.GH.VERSION, tip_plan: true, tip_health: true, tip_progress: true, tip_moves: true, playerHint: true, rirCount: 5, moveSheet: true, notifyAsk: true };
+  // (notifyAsk: they've answered Today's card about notifications; test/ui-notify.mjs asks it.
+  // disclaimer: they've read Before you start; test/ui-onboarding.mjs shows it.)
+  S.seen = { disclaimer: 1, tour: true, checklistHidden: true, lastVersion: window.GH.VERSION, tip_plan: true, tip_health: true, tip_progress: true, tip_moves: true, playerHint: true, rirCount: 5, moveSheet: true, notifyAsk: true };
   S.measurements = [{ day: start + 1, waist: 81.5, armL: 30.4, armR: 31.6 }, { day: today - 1, waist: 80.6, armL: 31.1, armR: 31.8 }];
   window.GH.store.save(S);
 }

@@ -289,7 +289,8 @@ check('to the check-in', (await pstate()).checkin);
 await page.click('.player [data-act="plSaveCheckin"]');
 await page.waitForSelector('.player .rf-large-title:has-text("Next time")', { timeout: 5000 });
 const next = await page.locator('.player').innerText();
-check('Next time: its targets move on', /Push-up → \d+ reps/.test(next) && /Goblet squat → \d+ reps/.test(next), next.slice(0, 300));
+// (A number keeps to its unit and the arrow to its number: no-break spaces, which \s takes.)
+check('Next time: its targets move on', /Push-up →\s\d+\sreps/.test(next) && /Goblet squat →\s\d+\sreps/.test(next), next.slice(0, 300));
 await shot('13-next');
 await page.click('.player [data-act="plClose"]');
 await settle(900);
@@ -356,7 +357,9 @@ await closeSheets();
 
 /* ------------------------------------------------------------------ the coach builds one */
 section('Ask the coach');
-// A stand-in on-device model: it answers with a plan made from the moves its grammar allows.
+// A stand-in on-device model: it answers with the draft's days (moves its grammar allows, and the
+// draft's own sets, so it keeps to the plan's checks whatever the draft holds), named and noted
+// its own way.
 await page.evaluate(() => {
   const GH = window.GH;
   window.__grammar = null;
@@ -364,10 +367,8 @@ await page.evaluate(() => {
     MODELS: [], available: () => ({ ok: true, reason: '' }), installed: async () => [{ id: 'stand-in' }], load: async () => ({}),
     chat: async (messages, opts) => {
       window.__grammar = opts.grammar;
-      const ids = [...opts.grammar.split('\n').find((l) => l.startsWith('move ::=')).matchAll(/\\"([a-z0-9_]+)\\"/g)].map((m) => m[1]);
-      const days = (opts.grammar.match(/ day /g) || []).length;
-      const pick = (k) => ids.filter((_, i) => i % days === k).slice(0, 5);
-      return JSON.stringify({ name: 'Arms first, knees easy', note: 'Arms twice a week and nothing hard on your knees.', days: Array.from({ length: days }, (_, k) => ({ title: `Day ${String.fromCharCode(65 + k)}`, items: pick(k).map((move) => ({ move, sets: 3, reps: 12 })) })) });
+      const draft = JSON.parse(messages[messages.length - 1].content.split('\nDraft: ')[1]);
+      return JSON.stringify({ name: 'Arms first, knees easy', note: 'Arms twice a week and nothing hard on your knees.', days: draft.days.map((d, k) => ({ title: `Day ${String.fromCharCode(65 + k)}`, items: d.items })) });
     },
   };
   GH.deviceCoach.pick = () => 'stand-in';
@@ -433,10 +434,19 @@ await settle(800);
 await page.click('#topbar [data-act="cpMenu"]');
 await settle(600);
 await page.click('dialog[open] [data-act="cpDelete"]');
-await settle(600);
-await page.evaluate(() => { const d = document.querySelector('dialog.rf-dialog[open]'); [...d.querySelectorAll('button')].find((x) => /^Delete$/.test(x.textContent.trim())).click(); });
 await settle(900);
-check('deleting a plan (with Undo)', await S(() => window.GH.customPlan.list(window.GH.ui.S).length) === 2 && /Plan deleted/.test(await toasts()), await toasts());
+// At once, with Undo (no question first: the toast's Undo is the way back).
+check('deleting a plan: at once, no question, with Undo', await S(() => window.GH.customPlan.list(window.GH.ui.S).length) === 2 && /Plan deleted/.test(await toasts()) && await S(() => !document.querySelector('dialog.rf-dialog[open]')), await toasts());
+// (Its own toast's Undo: the one from going back to the coach's plan, just before, can still be up.)
+await page.evaluate(() => { const t = [...document.querySelectorAll('.rf-toast')].find((x) => /Plan deleted/.test(x.textContent)); const b = t && [...t.querySelectorAll('button')].find((x) => /Undo/.test(x.textContent)); if (b) b.click(); });
+await settle(900);
+check('and Undo brings it back', await S(() => window.GH.customPlan.list(window.GH.ui.S).length) === 3);
+await page.click('#screen .cp-plan:nth-child(1) [data-act="cpOpen"]');
+await settle(800);
+await page.click('#topbar [data-act="cpMenu"]');
+await settle(600);
+await page.click('dialog[open] [data-act="cpDelete"]');
+await settle(900);
 
 /* ------------------------------------------------------------------ the share page */
 section('The share page (a link opened in a browser)');

@@ -43,7 +43,7 @@
 
   /* ---------------------------------------------------------------- your name, the app's pages */
   // Old ways in to Profile land on the You tab.
-  U.act.openProfile = () => U.go('you');
+  U.act.openProfile = () => U.go('you', false, true); // answered in the next frame, as the tab bar is
   U.act.openSettings = () => U.open('settings');
   U.act.openTracking = () => U.open('settings', 'track');
   U.act.openScience = (el) => U.open('science', el && el.dataset && el.dataset.arg ? el.dataset.arg : null);

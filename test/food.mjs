@@ -207,6 +207,17 @@ pw = F.pendingWrites(S);
 check('a removed entry is deleted from Health Connect', pw.remove.length === 1 && pw.remove[0].id === `gradient-food-${a.id}`);
 F.markRemoved(S, a.id);
 check('once', F.pendingWrites(S).remove.length === 0);
+// Undo after the delete went out: it's back, as it was, and written again.
+F.restore(S, D0, a);
+pw = F.pendingWrites(S);
+check('Undo puts an entry back as it was, and Health Connect gets it again', F.entries(S, D0).some((e) => e.id === a.id && e.kcal === 100) && pw.upsert.length === 1 && pw.upsert[0].id === `gradient-food-${a.id}` && !pw.remove.length);
+check('only once', F.restore(S, D0, a) === null && F.entries(S, D0).filter((e) => e.id === a.id).length === 1);
+F.markWritten(S, a.id, true);
+// Undo before the delete went out: nothing to delete, nothing to write.
+F.remove(S, D0, a.id);
+F.restore(S, D0, a);
+pw = F.pendingWrites(S);
+check('Undo before the delete is sent leaves Health Connect as it was', !pw.remove.length && !pw.upsert.length, pw);
 F.prefs(S).hcWrite = false;
 F.add(S, D0, { name: 'Pear', src: 'quick', kcal: 90 }, at(11));
 check('nothing is written when saving to Health Connect is off', F.pendingWrites(S).upsert.length === 0);

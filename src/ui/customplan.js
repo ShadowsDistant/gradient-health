@@ -728,15 +728,16 @@
       U.open('planEdit', copy.id);
       U.toast('Duplicated', 'positive', copy.name);
     };
-    U.act.cpDelete = async () => {
+    // Deleted at once, with Undo: the question before it said "You can undo this for a few seconds",
+    // a step the toast's Undo already covers.
+    U.act.cpDelete = () => {
       ctl.close('ok');
       const active = C().activeId(U.S) === id;
-      const ok = await U.confirm(`Delete ${plan.name}?`, active ? 'You\'re using it now, so the coach\'s plan takes over.' : 'You can undo this for a few seconds.', 'Delete', 'critical', 'trash');
-      if (!ok) return;
       const token = C().remove(U.S, id, U.today());
       U.save(true);
+      U.haptic('remove');
       if (U.route.view === 'planEdit' && U.route.arg === id) U.back(); else U.render();
-      U.toast('Plan deleted', 'neutral', undefined, { label: 'Undo', onClick: () => { C().restore(U.S, token, U.today()); U.save(true); U.render(); U.haptic('undo'); } });
+      U.toast('Plan deleted', 'neutral', active ? 'The coach\'s plan takes over.' : undefined, { label: 'Undo', onClick: () => { C().restore(U.S, token, U.today()); U.save(true); U.render(); U.haptic('undo'); } });
     };
   };
 

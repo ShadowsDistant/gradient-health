@@ -129,7 +129,7 @@
     for (const t of s.tests || []) rows.push(exRow({ key: `t-${t.moveId}`, move: t.moveId, name: t.name, meta: `${U.esc(U.side(t.side))} side first, max reps`, cls: 'is-lead' }));
     const extra = (x) => exRow({ key: `x-${x.uid || x.moveId}`, move: x.moveId, name: x.name, meta: `Extra set, ${U.esc(U.side(x.leadOnly || lead).toLowerCase())} side only · ${U.esc(U.target(x))}`, cls: 'is-lead' });
     for (const it of s.items) {
-      const load = it.load && it.load.label ? ` · ${U.esc(it.load.label.replace(/ (dumbbells?|kettlebell)$/, ''))}` : '';
+      const load = it.load && it.load.label ? `&nbsp;· ${U.nb(it.load.label.replace(/ (dumbbells?|kettlebell)$/, ''))}` : '';
       rows.push(exRow({ key: `${it.uid || ''}-${it.moveId}`, move: it.moveId, name: it.name, tag: it.superset || '', meta: `${it.sets} × ${U.esc(U.target(it))}${it.uni ? ' each side' : ''}${load}${it.swappedFrom ? ' · swapped' : ''}` }));
       for (const x of s.extras || []) if (x.fam === it.fam) rows.push(extra(x));
     }
@@ -373,8 +373,29 @@
       if (st && U.readSoon) U.readSoon(() => beadTo(screen)); else if (st) beadTo(screen);
       drawThumbs(screen, S, view.day != null ? view.day : day);
       if (U.drawPlanThumbs) U.drawPlanThumbs(screen);
+      warmNext(S);
     },
   };
+  // Next week's sessions are worked out in quiet idle moments once Plan shows, one at a time, so
+  // Next week answers at once: worked out in its tap, next week's plan held the tap's frame back 20
+  // to 40 ms at 4x CPU. (Each is kept by the week as it's read, src/planweek.js, and by the plan.)
+  let warming = false;
+  function warmNext(S) {
+    if (warming || !U.whenQuiet) return;
+    const left = () => {
+      const w = U.S === S ? week(S, U.today()) : null;
+      return w ? w.next.days.find((e) => e.kind === 'workout' && (Object.getOwnPropertyDescriptor(e, 'session') || {}).get) : null;
+    };
+    if (!left()) return;
+    warming = true;
+    const step = () => U.whenQuiet(() => (G.requestIdleCallback || setTimeout)(() => {
+      const e = left();
+      if (!e) { warming = false; return; }
+      try { void e.session; } catch (err) { warming = false; return; }
+      step();
+    }));
+    step();
+  }
   // Which section Plan shows ('week' or 'moves'), for links into the moves (go('moves')). Returns
   // whether it changed.
   U.planSection = (sec) => {

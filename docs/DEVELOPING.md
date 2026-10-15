@@ -18,6 +18,8 @@ src/engine/medal3d.js    the badges' 3D medals (GH.medal3d): stills and the live
 src/brain.js             program, sessions, gym loads, adaptation, calendar replay, streaks, readiness
 src/optimizer.js         the plan engine (GH.optimizer): the best weekly split, each day's sets, sessions
                          filled to the time set, the plan's score and its "Why this plan" lines
+src/access.js            age and health (GH.access): the age bands, the health conditions and the
+                         questions they bring, what each changes in the plan, and its words
 src/achievements.js      the badges (GH.achievements): what each takes, earned for good with a date,
                          sealed until opened
 src/notify.js            notifications' planner (GH.notify, a lazy chunk): what to send and when;
@@ -80,6 +82,7 @@ src/ui/metric.js         a health number's sheet: its history, chart, and adding
 src/ui/bodymap.js        Progress's body map (front and back, 17 muscles) and the muscle sheet
 src/ui/guide.js          tour (cards over Today after the first workout), first-week checklist, tab
                          tips, What's new
+src/ui/firstrun.js       Before you start: health and privacy, once, before set-up or Today
 src/ui/motion.js         route changes, glides, collapse and expand, glass that forms and changes
                          shape (U.motion), menus (U.menu)
 src/ui/lazy.js           stand-ins for the parts that load when they're needed (APP_CHUNKS)
@@ -142,6 +145,12 @@ left alone. A few conventions:
 - Give top-level cards a `data-key` so adding or removing one doesn't shift the rest.
 - `data-morph="keep"` on a container whose children are drawn by code (the exercise figures). Its
   HTML can bring children (Plan's kept 3D stills) for a new node; a patch leaves the ones it has.
+- A patch passes over a block (a page's blocks and what's in them, two levels down) whose markup is
+  what it was last patched to and whose nodes nothing has changed since (`patchedTo` and `touched`,
+  a MutationObserver, in `core.js`): a re-render walks only what changed, so a day picked on Plan no
+  longer walks its whole page. A block that code, a tap or `U.morph` changed in between is walked as
+  before, and so is one with a form control in it (what's typed or picked isn't in its nodes), so a
+  patch still puts back what it always did.
 - `U.roll(value)` for numbers that should roll when they change.
 - The navigation bar is shared: a screen's `<header class="rf-navbar">` is lifted into it.
 - A route change gets fresh content: the old page leaves in a layer of its own while the new one
@@ -152,7 +161,9 @@ left alone. A few conventions:
   is (`U.motion.leave`); the new page is drawn in a task posted from that frame (`switchLater` in
   `core.js`), its blocks well out of sight a frame after the rest (`data-gh-later`, from where each
   block ended when the tab was last left), and the old page just goes once it's in. Drawn inside the
-  tap, a tab's page held up the first frame 250 to 450 ms at 4x CPU; `ui-perf` times taps. A
+  tap, a tab's page held up the first frame 250 to 450 ms at 4x CPU; `ui-perf` times taps. A page
+  opened on top draws what's in sight first too (not one opened at a row it brings into view, nor
+  one whose screen has an `after` hook, unless the screen sets `later: true`). A
   re-render of the same route patches in place and glides what moved (FLIP, 340 ms): new blocks rise
   in, and removed ones fade from where they were for 180 ms before they go, so a test that checks
   one is gone waits for `U.motion.settled()`. Animate transform and opacity only;
@@ -191,8 +202,9 @@ its sheets (`src/ui/foodpage.js`, whose stand-ins are in `src/ui/food.js`) aren'
 real one, a screen draws its bar and title until its part is in, and `GH.planReview.available`
 answers at once. A couple of seconds after launch the likely parts load while the phone is idle,
 so a tap rarely waits. A new module that the first frame of Today doesn't need belongs in a chunk.
-`test/ui-perf.mjs` holds the launch, tab and save budgets (4× CPU), and `test/buildcheck.mjs` the
-page's size.
+`test/ui-perf.mjs` holds the launch, tab, tap and save budgets (4× CPU): the taps people make most
+and the first tap after launch are each timed to the frame with their first response and to the
+one with their result. `test/buildcheck.mjs` holds the page's size.
 
 **The first frame.** At launch Refract sets up what the first render inserts at the start of the
 first frame's read pass rather than before it (`enhance()` in `src/ui/core.js`), so the lens maps it
@@ -319,7 +331,14 @@ no scroll or touch for 400 ms, no sheet moving and no control held or gliding (`
 `U.whenCalm(fn)` runs it then): saves, Plan's flat stills, a control's lens maps, the 3D chunk's
 warm-up steps and the 3D stills drawn ahead. Work that would hold the page's thread for a while (a
 background re-render such as Today's insight line, the 3D canvas shrinking once no figure shows)
-waits for `U.quiet()` instead: calm, and nothing for 1.5 s (`U.whenQuiet(fn)`). On a phone a touch's
+waits for `U.quiet()` instead: calm, and nothing for 1.5 s (`U.whenQuiet(fn)`). A background
+re-render (`U.renderSoon`: a sync that ended, the insight line worked out) then runs in an idle
+moment of its own, after one in which the screen's `warm(S, day, arg)` hook works out what it needs
+(Today's: its session), so neither shares a frame with Refract drawing its glass's lens maps (which
+right after launch made 100 to 140 ms of the page's thread at 4x CPU). The insight line itself is
+worked out a frame's worth at a time, goals' part of the plan (last week's sets) a piece at a time
+first (`brain.weeklySetsWork`), and Plan works next week's sessions out the same way once it shows,
+so Next week doesn't plan the week in its tap. On a phone a touch's
 scroll waits for the page's thread, and the likeliest moment for the next flick is right after the
 last one settles: filmed on one, three flicks in a row froze for 100 to 330 ms each and then jumped,
 with a still's encode or a re-render running under the finger, let loose by the calm moment 400 ms
@@ -386,6 +405,15 @@ What the app turns off, and why:
   that hovers, every rim gets the light's resting angle, which is what an unregistered rim shows,
   so only such a screen registers its glass.
 
+Touch and type: every tap target answers a finger 44 px across. A small control (a text button, a
+chip, a segment, a stepper's button) reaches past its box with an empty `::before` centred on it
+(`src/styles/controls.css`); nothing is drawn, and a toast's close and a colour swatch, whose
+`::before` is drawn, take theirs on `::after`. Small glass buttons are drawn 44 px high instead.
+Titles balance their lines and paragraphs avoid a lone last word (`text-wrap` in `src/styles.css`), and
+`U.nb` keeps a number on the line of its unit ("25 lb", "20% → 7%"). `test/ui-controls.mjs` checks the
+reach; `test/sweep.mjs` and `test/ui-sheetsize.mjs` measure a label's text with a Range, so the hit
+areas don't read as overflow.
+
 The controls (`src/ui/controls.js`): Refract 1.4's own switch and segmented control take any
 movement past 3 px as a drag, so a tap that wobbles would be lost. The app replaces those two
 behaviours (and adds the chip choice) with its own gesture rules (`U.switchGesture`: 12 px to drag,
@@ -438,7 +466,12 @@ Where the app uses Refract 1.4's newer parts:
   pages). Sizes: an auto sheet shows its content whole at medium when it fits in 86% of the screen
   (as tall as a fit sheet gets), and a longer one's medium reaches down to its main buttons that are
   in those 86%; full is for long lists, long reads and search. `test/ui-sheetsize.mjs` opens every
-  sheet it can reach at 390 px and at 360 px with 130% text and checks that.
+  sheet it can reach at 390 px and at 360 px with 130% text and checks that. A tap is answered by
+  the sheet on its way up in the next frame: what that frame doesn't need goes in `later(ctl)`, run
+  right after it while the compositor slides the sheet (a move's figure to draw, in its box of a set
+  size), and `after(ctl)` is for what must be there before it (a chat scrolled to its end, a kept
+  3D still, `U.figureStillFirst`: right after can wait behind a long task queued first, such as the
+  3D chunk's warm-up just after launch).
 - **Dropdowns** (`<details class="gh-drop">`, `src/styles/dropdown.css`): what's inside grows open
   and folds shut (`::details-content`'s height, with `interpolate-size`), fading as it goes, and the
   chevron turns with it. It's the one motion here that lays the page out every frame, for 240 ms
@@ -947,7 +980,11 @@ Food never takes a tab. Health has it after the week (`U.healthFood`: today's ca
 four meals, Add food and Scan), which opens the Food page; Health's + menu has Food first, and Today
 has its card. The Food page and every food sheet are a part of their own (`src/ui/foodpage.js`, the
 `foodUi` chunk, loaded ahead of time for someone tracking calories); `src/ui/food.js` keeps the card,
-the section and the stand-ins in the page.
+the section and the stand-ins in the page. Health's section, Today's card and the Food page show the
+same glance (`U.foodKit`: the ring, "N of T kcal" and the macro rows, in one grid so the values line up
+on the slash), and text links in food cards use `U.foodKit.link()`, which sits flush with the text.
+Every food and scanner style is in `src/styles/food.css`; `test/ui-food.mjs` checks their alignment
+(the ring's label, the slashes, links, dividers, the day control) at 390 and 360 px.
 
 - **Meal times**: breakfast, lunch and dinner each have a window (`profile.food.meals`, minutes after
   midnight) and snacks are any other time. A new entry goes in the meal its time falls in unless one
@@ -1003,10 +1040,53 @@ group's weekly floor first, then by what a minute is worth toward the goals); `f
 to about 92% of the time set and never more than 30 seconds over it. `score` weighs goal fit,
 coverage, time, recovery, balance and variety, `explain` gives the "Why this plan" lines and
 `alternatives` scores the classic splits. Weeks before `S.engineFrom` replay 1.5's templates, so
-history doesn't shift. Plans are cached, and kept in `S.planCache` for the next launch.
+history doesn't shift. Plans are cached, and kept in `S.planCache` for the next launch, under a
+stamp of what they read (`brain.stateStamp`, with the profile as `planProfile` gives it: without
+what only the screens, food and the coach read, so a height from Health Connect or a new name plans
+nothing again). Something new that plans read has to stay out of `planProfile`'s lists. Once a
+launch has settled, and a moment after each saved change, the app works tomorrow out ahead in quiet
+idle moments (`brain.dayWork`, a piece at a time: the calendar, the week's plan, the session as
+Today builds it), so the first launch of a day finds its session kept, as a launch later the same
+day does.
+
+Age and health (`src/access.js`) adjust the plan through hooks the engine calls. Age bands: under 30,
+30 to 49, from 50 and from 65, plus two lines inside them: from 60 every leg day has one or two
+fast-up moves and muscles that aren't goals train twice a week, and from 75 (or with balance
+problems, or a doctor's "take it easy") the fast move is one sit to stand with the hands. Health
+conditions are `CONDITIONS`; two bring a question (`FOLLOW_UPS`, answered 'yes', 'no' or 'unsure',
+no answer counting as not sure): osteoporosis asks about breaks (`profile.fractures`; 'no' adds an
+impact block on most days), type 2 diabetes about eye disease (`profile.retinopathy`; not 'no'
+keeps sets at 10 to 15 reps). 1.13's rules that change which days train what start the week after
+1.13 first loads a state (`S.rulesFrom`, set by a migration; a new state has them from its first
+week). Weeks before it are planned with `legacyRules` on a copy of the profile, so their days and
+muscle groups stay as 1.12 planned them: `test/optimizer.mjs` compares them with a copy of 1.12's
+plans. (1.13's fit applies from the day it lands: short of time, the extra rest from 50 goes before a
+set does, so a session can keep an exercise 1.12 cut.) `boneLoad(p)` tells the reps-left target when
+to build toward heavier sets for bones. `test/simulate.mjs` checks each rule over twelve weeks, and
+`test/combos.mjs` covers every condition and answer.
 `test/optimizer.mjs` checks the engine; `test/combos.mjs` plans about 2,400 combinations of answers
 (`--full`: 3-wise, with 12-week runs, before a release) and checks that every session fits its time,
 every group gets its week, only allowed moves appear and the same answers give the same plan.
+
+**Reps left and rests.** Each set has an aim for the reps left in the tank (`effortFor` in
+`src/brain.js`, one rule for the hint, the progression and the coach): 2-3 on the 4-8 rep strength
+lifts (4 is fine too; not when a condition sets the lift's reps, `GH.access.repRange`), 1-2 for the
+top goal muscles (tier 1) and, with osteoporosis (`GH.access.boneLoad`), main sets after the on-ramp;
+2-3 in the on-ramp weeks, from 60 and with high blood pressure, a heart condition or diabetic eye
+disease; 3 or more on fast reps (`it.power`: 1-2 means they slowed, so it holds); 1-3 otherwise.
+`startWorkout` puts it on each item (`it.effort`, which the line under a set names through
+`GH.access.setHint`) and in each log (`log.aim`). The player asks 0, 1-2, 3 or 4+ (`'0'`, `'12'`, `'3'`, `'4'`), and `effortStep` reads the
+answer against the aim: 0 holds, on the aim is the usual step, each rep past what it allows a bigger
+one, and 3 or more left at the top of the range brings the harder version (at the gym any answer but
+0 moves the weight up there). A log without an aim is from before 1.13: its `'3'` meant 3 or more,
+and it moves on as it did. The coach's effort summary, Claude's summary and custom plans read
+answers the same way; `RIR_NUM` counts 4+ as 4.5 in the one-rep max estimate. Rests: `restFor` gives
+90 s after big moves and 60 after others, and access.js adds 15 s from 50 (30 from 65), marked on each
+item (`it.agePlus`). The fit takes that off first when a session runs over its time, and gives no
+longer rests to a session that had to lose sets; once the sets are in, it puts it back wherever the
+session still fits its time, then the strength lifts' longer rests, then 90 s for what's done on its
+own at 60 (right after the sets with a muscle goal, after the finisher and cool-down otherwise). Supersets stay at 60. `explain` says so
+when the plan's strength work comes to under 30 minutes a week (days times minutes), with the fix.
 
 `src/planreview.js` (`GH.planReview`) is the AI check. It sends next week's plan as built (each day's
 groups and moves, weekly sets against targets, minutes against the time set, the score and the
@@ -1023,6 +1103,17 @@ built (`GH.optimizer.explainProfile`) with its first workout a tap away. With no
 usual pattern is turned so today is a workout day. Health Connect is offered after the first workout
 (`U.hcInvite`), never before the plan. Reminders come on as it ends (see Notifications).
 `test/ui-onboarding.mjs` covers it.
+
+Before you start (`src/ui/firstrun.js`) comes before all of it: health and privacy in four points,
+"I understand" and a link to the privacy policy. A new install sees it over set-up's welcome; someone
+set up before 1.13 sees it once, over Today. Boot holds back what would open over the first screen
+(`U.resumePrompt`, `U.afterBoot`: What's new, badges, a link's page) until it's put away. It's kept
+with the state (`S.seen.disclaimer`) and on the phone in localStorage (`gh.disclaimer`, which a reset
+keeps); raise `DISCLAIMER` to ask again after a real change in the words. What's under it is `inert`;
+a sheet opened from it is in the top layer. The test fixtures accept it (`seedBridge`, `seedState`,
+or `acceptDisclaimer` for a page without the bridge); a test that wants it sets
+`window.__disclaimer = 'ask'` in an init script before them, as `test/ui-onboarding.mjs` and
+`test/smoke.mjs` do.
 
 ## Your plans
 

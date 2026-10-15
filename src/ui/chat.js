@@ -175,7 +175,7 @@
     // AI answers can be reported; a reported one stays hidden. Safety answers are the app's own.
     return note + more + msgs.map((m, i) => (m.role === 'user' ? userMsg(m.text) : coachMsg(m, start + i))).join('') + liveHtml(S);
   }
-  U.act.chatEarlier = () => { earlier = true; refreshChat(); };
+  U.act.chatEarlier = () => { earlier = true; U.haptic('tap'); refreshChat(); };
   const FOOT = {
     device: 'Runs on your phone and can be wrong.',
     api: 'Claude sees a summary without your name, not your raw data.',
