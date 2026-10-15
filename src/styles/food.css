@@ -87,8 +87,9 @@ p > .fd-link.rf-btn { vertical-align: baseline; }
 :is(.fd-sheet, .fd-portion, .fd-form, .fd-start) .rf-segmented[data-size="sm"] { --_h: var(--hit-min); }
 /* A field's text box fills its field, so all 44 px of it take a tap. */
 :is(.fd-portion, .fd-form, .fd-start, .fd-times, .sc-type) .rf-field-control > .rf-input, .fd-q > .rf-input { align-self: stretch; }
-/* The amount's minus and plus: 44 px to a finger, past the stepper's own inset. */
-.fd-qty .rf-stepper-btn { position: relative; }
+/* The amount's minus and plus: 44 px to a finger each way (44 wide, not Refract's 42, and reaching
+   past the stepper's own inset above and below). */
+.fd-qty .rf-stepper-btn { position: relative; inline-size: var(--hit-min); }
 .fd-qty .rf-stepper-btn::before { content: ""; position: absolute; inset: -3px 0; }
 .fd-qty .rf-stepper-value { align-self: stretch; }
 
@@ -133,12 +134,14 @@ p > .fd-link.rf-btn { vertical-align: baseline; }
 .fd-empty { margin: var(--space-2) var(--space-4); text-align: center; }
 .fd-online { display: flex; align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-2) var(--space-4); }
 .fd-online-btn.rf-btn { justify-self: center; }
+/* (A small pill, 44 px tall to a finger.) */
+.fd-online-btn.rf-btn::before { content: ""; position: absolute; inset-inline: 0; inset-block: min(0px, calc((100% - var(--hit-min)) / 2)); }
 .fd-more { margin-top: var(--space-4); }
 /* A recent food: the whole row opens its portion and shows the press; the + above it adds it again as
-   it was last logged. */
+   it was last logged. (The button reaches over the row's padding, top, bottom and start, since every
+   button is positioned for Refract's ripple and a ::before couldn't reach past it.) */
 .fd-reg { display: flex; align-items: center; gap: var(--space-2); }
-.fd-reg-main { appearance: none; border: 0; margin: 0; padding: 0; background: none; color: inherit; font: inherit; text-align: start; flex: 1 1 auto; min-width: 0; min-height: 40px; display: flex; align-items: center; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.fd-reg-main::before { content: ""; position: absolute; inset: 0; }
+.fd-reg-main { appearance: none; border: 0; margin: calc(-1 * var(--space-2)) 0 calc(-1 * var(--space-2)) calc(-1 * var(--space-4)); padding: var(--space-2) 0 var(--space-2) var(--space-4); align-self: stretch; background: none; color: inherit; font: inherit; text-align: start; flex: 1 1 auto; min-width: 0; min-height: calc(40px + 2 * var(--space-2)); display: flex; align-items: center; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .fd-reg:has(> .fd-reg-main:active) { background-color: var(--fill-selected); }
 .fd-reg-main:focus-visible { outline: none; }
 .fd-reg:has(> .fd-reg-main:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: -2px; }

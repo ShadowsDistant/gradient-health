@@ -323,6 +323,7 @@ await settle(600);
 await page.fill('#foodQ', 'hazelnut');
 await settle(900);
 check('the online search button shows', await ev(() => !!document.querySelector('dialog.rf-sheet[open] [data-act="foodOnline"]')));
+check('a small pill, 44 px tall to a finger', await ev(() => { const b = document.querySelector('dialog.rf-sheet[open] [data-act="foodOnline"]'), r = b.getBoundingClientRect(), s = getComputedStyle(b, '::before'); return r.height < 43.5 && r.height - parseFloat(s.top) - parseFloat(s.bottom) >= 43.5; }));
 await page.click('dialog.rf-sheet[open] [data-act="foodOnline"]');
 await settle(900);
 const found = await ev(() => [...document.querySelectorAll('dialog.rf-sheet[open] [data-act="foodPick"][data-arg^="off:"]')].map((b) => b.textContent));
@@ -509,8 +510,9 @@ section('Each food sheet at 360 px');
 await page.setViewportSize({ width: 360, height: 780 });
 await settle(600);
 // Every button in the sheet shows (none below the screen, none off its sides; a full sheet's list
-// scrolls, so there only the sides count), nothing scrolls sideways, and an auto sheet that fits
-// isn't padded out with empty space.
+// scrolls, so there only the sides count) and is 44 px each way to a finger (its box, or the hit
+// area its ::before reaches to), nothing scrolls sideways, and an auto sheet that fits isn't padded
+// out with empty space.
 const fits = () => ev(() => {
   const d = [...document.querySelectorAll('dialog.rf-sheet[open]')].pop();
   if (!d) return { ok: false, why: 'no sheet' };
@@ -518,10 +520,22 @@ const fits = () => ev(() => {
   const btns = [...body.querySelectorAll('button, .rf-btn')].filter((b) => b.getBoundingClientRect().height && !b.closest('[data-hscroll]'));
   const full = d.dataset.size === 'full';
   const off = btns.filter((b) => { const r = b.getBoundingClientRect(); return (!full && r.bottom > innerHeight + 1) || r.right > innerWidth + 1 || r.left < -1; }).map((b) => b.textContent.trim() || b.getAttribute('aria-label'));
+  const tap = (b) => {
+    const r = b.getBoundingClientRect(), s = getComputedStyle(b, '::before');
+    let w = r.width, h = r.height;
+    if (s.content !== 'none' && s.position === 'absolute') {
+      // (A ::before laid over a whole row: the row's size.)
+      const q = getComputedStyle(b).position === 'static' && b.offsetParent ? b.offsetParent.getBoundingClientRect() : null;
+      w = Math.max(w, q ? q.width : r.width - parseFloat(s.left) - parseFloat(s.right));
+      h = Math.max(h, q ? q.height : r.height - parseFloat(s.top) - parseFloat(s.bottom));
+    }
+    return [w, h];
+  };
+  const small = btns.map((b) => [b, tap(b)]).filter(([, [w, h]]) => w < 43.5 || h < 43.5).map(([b, [w, h]]) => `${(b.textContent.trim() || b.getAttribute('aria-label') || '').slice(0, 24)} ${Math.round(w)}x${Math.round(h)}`);
   const side = body.scrollWidth > body.clientWidth + 1;
   const content = body.offsetTop + body.scrollHeight;
   const empty = d.dataset.size === 'auto' ? Math.round((innerHeight - panel.top) - content) : 0;
-  return { ok: !off.length && !side && empty < 48, off, side, empty, size: d.dataset.size, detent: d.dataset.detent };
+  return { ok: !off.length && !small.length && !side && empty < 48, off, small, side, empty, size: d.dataset.size, detent: d.dataset.detent };
 });
 const sizes = {};
 const sheetCheck = async (name, open, sel) => {
@@ -529,7 +543,7 @@ const sheetCheck = async (name, open, sel) => {
   await sheetOpen(sel);
   await settle(1100);
   sizes[name] = await fits();
-  check(`${name}: every button shows, nothing spills, no empty space`, sizes[name].ok, JSON.stringify(sizes[name]));
+  check(`${name}: every button shows and takes a finger, nothing spills, no empty space`, sizes[name].ok, JSON.stringify(sizes[name]));
   await closeSheets();
 };
 await sheetCheck('Add food', () => ev(() => window.GH.ui.act.foodAdd()), '.fd-search');
