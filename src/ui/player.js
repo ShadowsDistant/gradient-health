@@ -675,7 +675,7 @@
     const it = st.item;
     const w = st.kind === 'set' ? weightOf(it) : null;
     const what = st.kind === 'set' ? U.target(it, B().currentTarget(A(), st)) + (w ? ` at ${w.label}` : '') : st.kind === 'interval' ? `${st.work} s` : st.kind === 'test' ? 'max reps' : isTimed(st) ? (it.cardio ? `${Math.max(1, Math.round(durationOf(st) / 60))} min` : `${durationOf(st)} s`) : U.target(it);
-    return `<div class="pl-next"><span class="t-caption rf-muted">Up next</span><span class="t-headline">${U.esc(it.name)}</span><span class="t-footnote rf-muted">${U.esc(eyebrow(st))} · ${U.esc(what)}${st.side ? ` · ${U.side(st.side).toLowerCase()}` : ''}</span></div>`;
+    return `<div class="pl-next"><span class="t-caption rf-muted">Up next</span><span class="t-headline">${U.esc(it.name)}</span><span class="t-footnote rf-muted">${U.nb(`${eyebrow(st)} · ${what}${st.side ? ` · ${U.side(st.side).toLowerCase()}` : ''}`)}</span></div>`;
   }
 
   /* ---------------------------------------------------------------- drawing */
@@ -712,6 +712,7 @@
     // scene, updates patch in place.
     html = html.replace(/<div class="(pl-main|pl-scroll)/, (m) => m.replace('<div', `<div data-key="scene-${next}"`));
     U.morph(el, html);
+    if (phase === 'rest') fitRest(el);
     if (changed && scene != null) sceneIn(el, phase);
     scene = next;
     const host = el.querySelector('.pl-fig');
@@ -721,6 +722,17 @@
     else if (fig) fig.ctl.pause(); // no figure on this view (the check-in, say): stop drawing it
     loop();
   }
+
+  // A rest that doesn't fit (a small phone with large text: the ring, the question, Up next and the
+  // place held for Continue) draws its ring smaller, decided as the rest is drawn, so it never
+  // changes size during the rest.
+  function fitRest(el) {
+    const main = el.querySelector('.pl-main.pl-rest');
+    if (!main) return;
+    main.classList.remove('is-tight');
+    if (main.scrollHeight > main.clientHeight + 1) main.classList.add('is-tight');
+  }
+  if (G.addEventListener) G.addEventListener('resize', () => { if (P && P.phase === 'rest' && !root().hidden) fitRest(root()); });
 
   // A new step or phase slides in: the main block rises, the action row settles. It plays after
   // every set, so it's quick: in by 300 ms (1.9.0's took 380).
@@ -795,20 +807,27 @@
         <p class="t-footnote rf-muted">${P.askRir.kind === 'finisher' ? 'For the whole finisher.' : `For ${U.esc(P.askRir.name.toLowerCase())}. This sets next time.`}${((U.S.seen || {}).rirCount || 0) < 3 ? ' Only count reps with good form. A rough guess is fine.' : ''}</p>
       </div>` : '';
     const logged = done && done.kind === 'set' ? loggedLine(done) : '';
-    const timerBlock = P.restEnd
-      ? `<div class="pl-timer">${U.ring(left / Math.max(1, P.restTotal), 'Rest left', `<span class="pl-count rf-num">${U.fmtDur(left)}</span>`, 'lg', 'sky')}</div>
-         <div class="pl-rest-btns"><button type="button" class="rf-btn" data-act="plMore">+15 s</button><button type="button" class="rf-btn" data-act="plSkipRest">Skip rest</button></div>`
-      : (P.restTotal ? '<p class="t-title-3 pl-rest-over">Rest over</p>' : '');
+    // The rest ran out (or was skipped) with the question still waiting: the ring stays where it was,
+    // empty, and "Rest over" takes its buttons' place in the same row, so the question and what's up
+    // next stay put under a finger that may be on its way to an answer.
+    const over = !P.restEnd && P.restTotal > 0;
+    const timerBlock = P.restEnd || over
+      ? `<div class="pl-timer${over ? ' is-over' : ''}">${U.ring(over ? 0 : left / Math.max(1, P.restTotal), over ? 'Rest over' : 'Rest left', `<span class="pl-count rf-num">${U.fmtDur(left)}</span>`, 'lg', 'sky')}</div>
+         <div class="pl-rest-btns">${over ? '<p class="t-headline pl-rest-over">Rest over</p>' : '<button type="button" class="rf-btn" data-act="plMore">+15 s</button><button type="button" class="rf-btn" data-act="plSkipRest">Skip rest</button>'}</div>`
+      : '';
     const needCont = !P.restEnd && (P.askRir || !P.restTotal);
+    // While a rest runs with the question asked, Continue's place is held (it comes once the rest is
+    // over and the question still waits), so nothing above it moves when it does.
+    const hold = !needCont && next && P.askRir ? '<span class="pl-actions-hold" aria-hidden="true"></span>' : '';
     return `${top(P.mode === 'workout' ? U.S.active.session.title : '')}
       <div class="pl-main pl-rest">
         <p class="pl-eyebrow t-footnote rf-muted">${P.restEnd || P.restTotal ? 'Rest' : 'Nice work'}</p>
         ${timerBlock}
         ${logged}
         ${rirQ}
-        ${next ? `<div class="pl-next-row"><div class="pl-fig pl-fig-sm" data-morph="keep"></div>${upNext(next)}</div>` : ''}
+        ${next ? `<button type="button" class="pl-next-row" data-act="plHowTo" aria-label="Up next, ${U.esc(next.item.name)}: how to do it"><div class="pl-fig pl-fig-sm" data-morph="keep"></div>${upNext(next)}<span class="pl-next-go" aria-hidden="true">${U.icon('chevron-right', 'sm')}</span></button>` : ''}
       </div>
-      <div class="pl-actions">${needCont || !next ? `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plContinue">${next ? 'Continue' : 'Finish'}</button>` : ''}</div>`;
+      <div class="pl-actions">${needCont || !next ? `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plContinue">${next ? 'Continue' : 'Finish'}</button>` : hold}</div>`;
   }
   function loggedLine(st) {
     const log = A().logs[A().session.items.concat(A().session.extras).indexOf(st.item)];
@@ -1069,7 +1088,8 @@
     const opts = B().swapOptions(U.S, st.item, U.today());
     U.sheet({
       title: 'Swap exercise', size: 'auto',
-      body: opts.length ? `<ul class="rf-list">${opts.map((o) => U.row({ title: U.esc(o.name), sub: U.esc(o.why), act: 'plSwapTo', arg: o.id, chevron: true })).join('')}</ul>
+      // A tap swaps at once, so the rows carry no chevron (that promises another page).
+      body: opts.length ? `<ul class="rf-list">${opts.map((o) => U.row({ title: U.esc(o.name), sub: U.esc(o.why), act: 'plSwapTo', arg: o.id })).join('')}</ul>
         <ul class="rf-list sheet-gap">${U.row({ icon: 'eye', tone: 'rose', title: 'Don\'t show this move again', sub: 'Swaps it out now and keeps it out of future plans', act: 'plExclude', arg: opts[0].id })}</ul>`
         : '<p class="sheet-pad t-callout rf-muted">No other move fits your equipment.</p>',
     });
@@ -1132,6 +1152,10 @@
   U.on.ckPain = (el, ev, v) => { const id = el.dataset.v; P.ck.pain = P.ck.pain.filter((x) => x !== id); if (v) P.ck.pain.push(id); };
   U.on.ckWeight = (el, ev, v) => { P.ck.weight = v > 0 ? v : null; };
   U.act.plSaveCheckin = () => {
+    // The workout's own finish plays on the tap, before the saving and the Next screen's drawing
+    // (they took 400 ms on a slow phone, the buzz with them).
+    U.haptic('workoutDone');
+    const tapped = Date.now();
     const S = U.S;
     const ck = P.ck || {};
     const before = B().calendar(S, A().day).streak.current;
@@ -1149,12 +1173,11 @@
     if (res && res.entry && GH.health && GH.health.writeWorkout(S, res.entry)) setTimeout(() => U.syncHealth('manual'), 2500);
     const el = root();
     const big = res && (res.celebrate.length || fresh.length);
-    // The workout's own finish, then, once it's over, the biggest thing it brought: a personal
-    // best, or a harder move or heavier weight. New badges play their own as their card springs.
-    U.haptic('workoutDone');
+    // Once the finish is over, the biggest thing the workout brought: a personal best, or a harder
+    // move or heavier weight. New badges play their own as their card springs.
     const kinds = res && res.celebrate ? res.celebrate.map((c) => c.kind) : [];
     const then = kinds.includes('pr') ? 'pr' : kinds.includes('level') || kinds.includes('weight') ? 'levelUp' : null;
-    if (then) setTimeout(() => U.haptic(then), 700);
+    if (then) setTimeout(() => U.haptic(then), Math.max(0, 700 - (Date.now() - tapped)));
     if (big && G.Refract && G.Refract.burst && !U.reduced()) {
       // Each burst within Refract 1.4's 8 to 14 beads: one card gets 14, several get 8 each, three at
       // most.
@@ -1177,7 +1200,7 @@
         ${res.celebrate.map((c) => `<div class="card celebrate">${U.icon(c.kind === 'pr' ? 'star' : c.kind === 'weight' ? 'bolt' : 'sparkle')}<span class="t-headline">${U.esc(c.text)}</span></div>`).join('')}
         ${U.badgeCard ? U.badgeCard(P.ach) : ''}
         ${U.hcInvite ? U.hcInvite(S) : ''}
-        ${lines.length ? `<ul class="rf-list next-lines">${lines.map((l) => U.row({ title: U.esc(l.text), sub: l.why ? U.esc(U.cap(l.why)) : '', icon: l.buy ? 'bag' : /Deload|less/.test(l.text) ? 'moon' : 'arrow-up-right', tone: l.buy ? 'amber' : /Deload|less|Eat/.test(l.text) ? 'indigo' : 'green' })).join('')}</ul>` : '<p class="t-callout rf-muted pl-pad">Same targets next time. Keep it up.</p>'}
+        ${lines.length ? `<ul class="rf-list next-lines">${lines.map((l) => U.row({ title: U.nb(l.text), sub: l.why ? U.esc(U.cap(l.why)) : '', icon: l.buy ? 'bag' : /Deload|less/.test(l.text) ? 'moon' : 'arrow-up-right', tone: l.buy ? 'amber' : /Deload|less|Eat/.test(l.text) ? 'indigo' : 'green' })).join('')}</ul>` : '<p class="t-callout rf-muted pl-pad">Same targets next time. Keep it up.</p>'}
         ${lines.length && U.whyLink ? `<p class="pl-pad">${U.whyLink('overload', 'How the plan decides this')}</p>` : ''}
       </div>
       <div class="pl-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plClose">Done</button></div>`;

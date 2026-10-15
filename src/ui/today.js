@@ -35,7 +35,7 @@
     if (s.warmup.length) rows.push(`<li class="ex ex-muted"><span class="ex-tag">${U.icon('sun', 'sm')}</span><span class="ex-name">Warm-up</span><span class="ex-meta">${s.warmup.map((w) => U.esc(w.name.toLowerCase())).join(', ')}</span></li>`);
     for (const t of s.tests || []) rows.push(`<li class="ex is-lead"><span class="ex-tag">${U.icon('layers', 'sm')}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${t.moveId}">${U.esc(t.name)}</button><span class="ex-meta">${U.side(t.side)} first, max reps</span></li>`);
     for (const it of s.items) {
-      rows.push(`<li class="ex"><span class="ex-tag rf-num">${it.superset ? U.esc(it.superset) : ''}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${it.moveId}">${U.esc(it.name)}${it.swappedFrom ? ` <span class="t-caption rf-muted">(swapped)</span>` : ''}</button><span class="ex-meta rf-num">${it.sets} × ${U.esc(U.target(it))}${it.uni ? ' each side' : ''}${it.power ? ' · fast up' : ''}${it.load && it.load.label ? ` · ${U.esc(it.load.label.replace(/ (dumbbells?|kettlebell)$/, ''))}` : ''}</span></li>`);
+      rows.push(`<li class="ex"><span class="ex-tag rf-num">${it.superset ? U.esc(it.superset) : ''}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${it.moveId}">${U.esc(it.name)}${it.swappedFrom ? ` <span class="t-caption rf-muted">(swapped)</span>` : ''}</button><span class="ex-meta rf-num">${it.sets} × ${U.nb(U.target(it))}${it.uni ? ' each side' : ''}${it.power ? '&nbsp;· fast up' : ''}${it.load && it.load.label ? `&nbsp;· ${U.nb(it.load.label.replace(/ (dumbbells?|kettlebell)$/, ''))}` : ''}</span></li>`);
       for (const x of s.extras || []) if (x.fam === it.fam) rows.push(`<li class="ex is-lead"><span class="ex-tag">+1</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${x.moveId}">${U.esc(x.name)}</button><span class="ex-meta rf-num">${U.side(x.leadOnly || lead).toLowerCase()} only · ${U.esc(U.target(x))}</span></li>`);
     }
     for (const x of s.extras || []) if (!s.items.some((it) => it.fam === x.fam)) rows.push(`<li class="ex is-lead"><span class="ex-tag">+1</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${x.moveId}">${U.esc(x.name)}</button><span class="ex-meta rf-num">${U.side(x.leadOnly || lead).toLowerCase()} only · ${U.esc(U.target(x))}</span></li>`);
@@ -306,7 +306,7 @@
   }
 
   /* ---------------------------------------------------------------- actions */
-  U.act.goHealth = () => U.go('health');
+  U.act.goHealth = () => U.go('health', false, true); // answered in the next frame, as the tab bar is
   U.act.toggleShort = () => { const d = U.today(); shortDay = isShort(d) ? null : d; U.haptic(shortDay != null ? 'toggleOn' : 'toggleOff'); U.render(); };
   U.act.startWorkout = () => {
     const S = U.S;
@@ -352,7 +352,7 @@
     const calm = () => (M.settled ? Promise.race([M.settled(), new Promise((r) => setTimeout(r, 320))]) : null);
     return folded.then(calm);
   };
-  U.act.feelEdit = () => { feelOpen = true; U.render(); };
+  U.act.feelEdit = () => { feelOpen = true; U.haptic('tap'); U.render(); };
   U.on.feelEnergy = (el, ev, v) => { GH.health.setFeel(U.S, U.today(), { energy: v }); U.save(); maybeClose(); };
   U.on.feelSore = (el, ev, v) => { GH.health.setFeel(U.S, U.today(), { sore: v }); U.save(); maybeClose(); };
   U.on.sleepChip = (el, ev, v) => { GH.health.setSleepChip(U.S, U.today(), v); U.save(); maybeClose(); };

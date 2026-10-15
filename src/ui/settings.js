@@ -349,7 +349,7 @@
   U.act.editStep = (el) => { U.closeSheets(); U.haptic('nav'); U.editAnswers(el.dataset.arg); };
   U.act.editEquipment = () => { U.haptic('nav'); U.editAnswers('equipment'); };
   U.act.openPrivacyView = () => U.open('privacy');
-  U.act.openLink = (el, ev) => { if (ev && ev.preventDefault) ev.preventDefault(); const url = el.dataset.arg; if (url && /^https:\/\//.test(url) && GH.platform) GH.platform.openUrl(url); };
+  U.act.openLink = (el, ev) => { if (ev && ev.preventDefault) ev.preventDefault(); const url = el.dataset.arg; if (url && /^https:\/\//.test(url) && GH.platform) { U.haptic('tap'); GH.platform.openUrl(url); } };
   U.on.setPref = (el, ev, v) => {
     const k = el.dataset.k;
     U.S.profile.prefs[k] = !!v;

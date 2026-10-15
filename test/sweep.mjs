@@ -81,6 +81,12 @@ function problems() {
   const scrolls = (p) => { const ox = getComputedStyle(p).overflowX; return ox === 'auto' || ox === 'scroll'; };
   const boxOf = (e) => { for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) { if (p.hasAttribute('data-hscroll')) return 'rail'; if (scrolls(p)) return p; } return null; };
   const name = (e) => `${e.tagName.toLowerCase()}${e.className && typeof e.className === 'string' ? '.' + e.className.trim().split(/\s+/).slice(0, 2).join('.') : ''} "${(e.textContent || '').trim().slice(0, 40)}"`;
+  const spills = (e) => {
+    const r = document.createRange();
+    r.selectNodeContents(e);
+    const c = r.getBoundingClientRect();
+    return c.width > 0 && c.right > e.getBoundingClientRect().left + e.clientLeft + e.clientWidth + 2;
+  };
   const roots = [document.getElementById('screen'), document.getElementById('float'), document.getElementById('tabbar'), document.getElementById('player'), document.getElementById('onboard'), document.getElementById('actlive'), ...document.querySelectorAll('dialog[open]')].filter((r) => r && !r.hidden);
   if (document.documentElement.scrollWidth > W + 1) out.push(`page scrolls sideways (${document.documentElement.scrollWidth} > ${W})`);
   for (const r of roots) {
@@ -100,8 +106,10 @@ function problems() {
       const text = [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
       if (text && s.textOverflow === 'ellipsis' && e.scrollWidth > e.clientWidth + 1) out.push(`cut off: ${name(e)}`);
       else if (text && (s.overflowX === 'hidden' || s.overflow === 'hidden') && e.scrollWidth > e.clientWidth + 2 && s.whiteSpace === 'nowrap') out.push(`clipped: ${name(e)}`);
-      // (Refract's page dots have no label: what reaches past one is its hit area, an ::after.)
-      if ((e.tagName === 'BUTTON' || e.classList.contains('rf-chip') || e.classList.contains('rf-segment')) && !e.classList.contains('rf-dot') && e.scrollWidth > e.clientWidth + 2) out.push(`label wider than its control: ${name(e)}`);
+      // The label is what's in the control (its nodes), measured against the control's box: not a
+      // pseudo-element that reaches past it as a 44 px hit area (Refract's page dots have one, an
+      // ::after; so does every control drawn smaller, src/styles/controls.css), which scrollWidth counts.
+      if ((e.tagName === 'BUTTON' || e.classList.contains('rf-chip') || e.classList.contains('rf-segment')) && spills(e)) out.push(`label wider than its control: ${name(e)}`);
     }
   }
   // A page (not a sheet, the player or set-up): scrolled to the end, its last content must clear

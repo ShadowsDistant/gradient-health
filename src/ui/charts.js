@@ -174,6 +174,7 @@
     const box = btn.nextElementSibling;
     if (!spec || !box) return;
     const open = box.hidden;
+    U.haptic('tap');
     if (open) openTables.add(id); else openTables.delete(id);
     box.hidden = !open;
     btn.setAttribute('aria-expanded', String(open));

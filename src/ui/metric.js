@@ -306,7 +306,7 @@
   U.refreshMetricSheet = refresh;
   U.act.metricOpen = (el) => U.metricSheet(el.dataset.arg);
   U.on.metricRange = (el, ev, v) => { st.range = Number(v) || 28; st.more = false; setTimeout(refresh, 200); };
-  U.act.metricMore = () => { st.more = true; refresh(); };
+  U.act.metricMore = () => { st.more = true; U.haptic('tap'); refresh(); };
   U.on.metricPick = (el, ev, v) => { if (!v || v === st.key) return; st.key = v; st.more = false; refresh(); };
   U.act.metricGo = (el) => { U.closeSheets(); U.go(el.dataset.arg); };
 

@@ -81,6 +81,12 @@
     const m = e.target.closest && e.target.closest(NATIVE_MENU);
     if (m && e.target.closest('.rf-menu-item')) picked.add(m);
   }, true);
+  // A dropdown (a <details>: Health's insights, How it works' studies) opened or folded by a tap on
+  // its summary: a tap, as a button's.
+  G.document.addEventListener('click', (e) => {
+    const s = e.target.closest && e.target.closest('details > summary');
+    if (s && !e.defaultPrevented && !s.closest('[inert]')) U.haptic('tap');
+  });
   G.document.addEventListener('toggle', (e) => {
     const m = e.target;
     if (!m || !m.matches || !m.matches(NATIVE_MENU)) return;

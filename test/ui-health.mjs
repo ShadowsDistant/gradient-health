@@ -186,6 +186,16 @@ await page.click('#screen details.hl-ins summary');
 await settle(500);
 const opened = await page.evaluate(() => { const d = document.querySelector('#screen details.hl-ins'); return { open: d.open, body: d.querySelector('.hl-ins-body').textContent.replace(/\s+/g, ' ').trim(), acts: [...d.querySelectorAll('.hl-ins-acts [data-act]')].map((b) => b.dataset.act) }; });
 check('tapping one opens it in place: the detail, what it\'s based on, and what to do', opened.open && /Based on/.test(opened.body) && opened.acts.includes('dismissInsight'), JSON.stringify(opened));
+// Its first action starts on the text's edge: a soft button's fill, or a plain one's words (Hide for
+// 30 days alone started 12 px in, at its padding).
+const actEdge = await page.evaluate(() => {
+  const d = document.querySelector('#screen details.hl-ins'), b = d.querySelector('.hl-ins-acts > .rf-btn');
+  const ink = (n) => { const r = document.createRange(); r.selectNodeContents(n); return r.getBoundingClientRect().left; };
+  const words = [...b.childNodes].filter((n) => n.nodeType === 3 && n.data.trim()).pop();
+  const edge = b.dataset.variant === 'plain' ? ink(words) : b.getBoundingClientRect().left;
+  return { variant: b.dataset.variant, text: Math.round(ink(d.querySelector('.hl-ins-body p')) * 10) / 10, edge: Math.round(edge * 10) / 10 };
+});
+check('its first action starts on the text\'s edge', Math.abs(actEdge.edge - actEdge.text) <= 1.5, JSON.stringify(actEdge));
 // It grows open and folds shut, rather than jumping. Read just after each tap, its content's height
 // is still where it was (all of it while folding, none while growing), not at once where it's going.
 // (Chromium leaves ::details-content transitions out of getAnimations(), so the height is what's read.)

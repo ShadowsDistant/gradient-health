@@ -289,7 +289,8 @@ check('to the check-in', (await pstate()).checkin);
 await page.click('.player [data-act="plSaveCheckin"]');
 await page.waitForSelector('.player .rf-large-title:has-text("Next time")', { timeout: 5000 });
 const next = await page.locator('.player').innerText();
-check('Next time: its targets move on', /Push-up → \d+ reps/.test(next) && /Goblet squat → \d+ reps/.test(next), next.slice(0, 300));
+// (A number keeps to its unit and the arrow to its number: no-break spaces, which \s takes.)
+check('Next time: its targets move on', /Push-up →\s\d+\sreps/.test(next) && /Goblet squat →\s\d+\sreps/.test(next), next.slice(0, 300));
 await shot('13-next');
 await page.click('.player [data-act="plClose"]');
 await settle(900);
@@ -433,10 +434,19 @@ await settle(800);
 await page.click('#topbar [data-act="cpMenu"]');
 await settle(600);
 await page.click('dialog[open] [data-act="cpDelete"]');
-await settle(600);
-await page.evaluate(() => { const d = document.querySelector('dialog.rf-dialog[open]'); [...d.querySelectorAll('button')].find((x) => /^Delete$/.test(x.textContent.trim())).click(); });
 await settle(900);
-check('deleting a plan (with Undo)', await S(() => window.GH.customPlan.list(window.GH.ui.S).length) === 2 && /Plan deleted/.test(await toasts()), await toasts());
+// At once, with Undo (no question first: the toast's Undo is the way back).
+check('deleting a plan: at once, no question, with Undo', await S(() => window.GH.customPlan.list(window.GH.ui.S).length) === 2 && /Plan deleted/.test(await toasts()) && await S(() => !document.querySelector('dialog.rf-dialog[open]')), await toasts());
+// (Its own toast's Undo: the one from going back to the coach's plan, just before, can still be up.)
+await page.evaluate(() => { const t = [...document.querySelectorAll('.rf-toast')].find((x) => /Plan deleted/.test(x.textContent)); const b = t && [...t.querySelectorAll('button')].find((x) => /Undo/.test(x.textContent)); if (b) b.click(); });
+await settle(900);
+check('and Undo brings it back', await S(() => window.GH.customPlan.list(window.GH.ui.S).length) === 3);
+await page.click('#screen .cp-plan:nth-child(1) [data-act="cpOpen"]');
+await settle(800);
+await page.click('#topbar [data-act="cpMenu"]');
+await settle(600);
+await page.click('dialog[open] [data-act="cpDelete"]');
+await settle(900);
 
 /* ------------------------------------------------------------------ the share page */
 section('The share page (a link opened in a browser)');

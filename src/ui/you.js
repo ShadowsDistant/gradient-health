@@ -111,7 +111,8 @@
   }
 
   // Progress, from Today's streak and Plan's muscles card: its tab (with workouts on, it always is one).
-  U.act.openProgress = () => U.go('progress');
+  // Like a tap on the tab bar: answered in the next frame, the page drawn after it (go() in core.js).
+  U.act.openProgress = () => U.go('progress', false, true);
 
   /* ---------------------------------------------------------------- your plans */
   function plans(S) {

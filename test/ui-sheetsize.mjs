@@ -87,7 +87,9 @@ function measure() {
     const text = [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
     if (text && s.textOverflow === 'ellipsis' && e.scrollWidth > e.clientWidth + 1) problems.push(`cut off: ${name(e)}`);
     else if (text && (s.overflowX === 'hidden' || s.overflow === 'hidden') && e.scrollWidth > e.clientWidth + 2 && s.whiteSpace === 'nowrap') problems.push(`clipped: ${name(e)}`);
-    if ((e.tagName === 'BUTTON' || e.classList.contains('rf-chip') || e.classList.contains('rf-segment')) && e.scrollWidth > e.clientWidth + 2) problems.push(`label wider than its control: ${name(e)}`);
+    // (The label: the control's own nodes against its box, not a ::before that reaches past it as a
+    // 44 px hit area, src/styles/controls.css, which scrollWidth would count.)
+    if ((e.tagName === 'BUTTON' || e.classList.contains('rf-chip') || e.classList.contains('rf-segment')) && (() => { const rg = document.createRange(); rg.selectNodeContents(e); const c = rg.getBoundingClientRect(); return c.width > 0 && c.right > r.left + e.clientLeft + e.clientWidth + 2; })()) problems.push(`label wider than its control: ${name(e)}`);
     if (scrolls(e) && e.scrollWidth > e.clientWidth + 1 && !e.hasAttribute('data-hscroll')) problems.push(`scrolls sideways: ${name(e)}`);
   }
   const title = head.querySelector('.rf-sheet-title');
