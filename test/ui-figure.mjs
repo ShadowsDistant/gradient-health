@@ -177,7 +177,8 @@ await page.waitForTimeout(500);
 await page.evaluate(() => window.GH.ui.open('settings', 'look'));
 await page.waitForSelector('#screen [data-on="setFigure"]');
 check('3D is the default', await page.evaluate(() => document.querySelector('#screen [data-on="setFigure"] input[value="3d"]').checked));
-await page.waitForSelector('#screen .set-fig img', { timeout: 15000 });
+// (Drawn in software GL here: 13 to 16 s on a busy machine, as long as the kept one's wait below.)
+await page.waitForSelector('#screen .set-fig img', { timeout: 30000 });
 check('a preview shows the figure', true);
 const before = await page.evaluate(() => document.querySelector('#screen .set-fig img').src);
 await page.click('#screen [data-act="setFigSkin"][data-arg="umber"]');
