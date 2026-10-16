@@ -249,18 +249,22 @@ async function run(dark) {
   await top();
   await medals();
   await shot('you');
-  // Reminders, turned on: Settings' Notifications group, a switch for each kind and the time.
-  await page.evaluate(() => {
+  // Reminders, turned on, and Settings: its top page (each part with what's set there, the
+  // reminders' time among them), then the Notifications page: the switch, a switch for each kind
+  // and the time.
+  await page.evaluate(async () => {
     const U = window.GH.ui, S = U.S;
     window.__notify.permission = 'granted';
     if (window.__bg) Object.assign(window.__bg, { supported: true, granted: true, on: true });
     S.profile.prefs.notify.on = true;
     window.GH.store.save(S);
+    await window.GH.lazy('notify'); // the planner's chunk, for the reminder time
     U.open('settings');
   });
   await settle(1500);
-  await page.evaluate(() => { const h = document.querySelector('#screen #notify'); if (h) document.getElementById('screen').scrollTo(0, h.offsetTop - 210); });
-  await settle(900); // the planner's chunk loads, for the reminder time
+  await shot('settings');
+  await page.evaluate(() => window.GH.ui.open('settings', 'notify'));
+  await settle(1500);
   await shot('reminders');
   await page.evaluate(() => { const U = window.GH.ui; while (U.back()) { /* to the tab */ } });
   await settle(600);

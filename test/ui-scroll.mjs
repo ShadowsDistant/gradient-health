@@ -69,7 +69,7 @@ async function show(page, id) {
     if (['today', 'plan', 'health', 'progress', 'you'].includes(id)) U.go(id);
     else if (id === 'badges' || id === 'badges-next') U.open('badges');
     else if (id === 'coach') U.open('coach');
-    else if (id === 'settings') U.open('settings');
+    else if (id === 'settings') U.open('settings', 'all'); // every page of Settings on one: its switches, segments and lists
     // Set-up's Your plan screen, one of its long ones, with its cards and lists (its first, About
     // you, fits the screen and doesn't scroll): its scroller is .ob-scroll.
     else if (id === 'setup') await U.editAnswers('plan');
@@ -93,7 +93,7 @@ const ABLATIONS = {
   shimmer: { css: '.rf-progress-fill::after{animation:none!important}' },
   edge: { css: '.topbar>.rf-scroll-edge{display:none!important}' },
   cv: { css: '*{content-visibility:visible!important}' },
-  // Settings, Look, Glass effects: the two lighter modes, set the way the setting sets them.
+  // Settings, Appearance, Glass effects: the two lighter modes, set the way the setting sets them.
   flat: { css: '', pref: { glass: 'flat' } },
   frosted: { css: '', pref: { glass: 'frosted' } },
   // Flat's light state (data-glass-lite, core.js: no backdrop, no lenses, the glow hidden), and
@@ -701,7 +701,7 @@ if (!measureOnly && (!ONLY.length || ONLY.includes('today') || ONLY.includes('se
   for (const mode of ['liquid', 'frosted', 'flat', 'auto']) {
     await ev(`(window.GH.ui.on.setGlass(null, null, ${JSON.stringify(mode)}), 1)`);
     for (const id of ['today', 'settings']) {
-      await ev(`(() => { const U = window.GH.ui; if (${JSON.stringify(id)} === 'today') U.go('today'); else U.open('settings'); return 1; })()`);
+      await ev(`(() => { const U = window.GH.ui; if (${JSON.stringify(id)} === 'today') U.go('today'); else U.open('settings', 'all'); return 1; })()`);
       await sleep(1200);
       await fling(cdp, 650, -400);
       await sleep(250);

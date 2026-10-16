@@ -518,7 +518,8 @@ section(`Taps people make most (best of ${RUNS})`);
 const ev = (fn, a) => page.evaluate(fn, a);
 const settle = async (ms = 700) => { await pause(ms); await ev(() => window.GH.ui.motion.settled()); await pause(250); };
 const closeAll = async () => { await ev(() => { const U = window.GH.ui; U.closeSheets(); if (U.S.active) window.GH.brain.cancelWorkout(U.S); if (!U.els().playerEl.hidden && U.playerBack) U.playerBack(); }); await settle(600); };
-const toSettings = async () => { await ev(() => { const U = window.GH.ui; U.go('you'); U.open('settings'); }); await settle(900); };
+// A page of Settings, opened from You (its top page in between): Workouts, About.
+const toSettings = async (id) => { await ev((p) => { const U = window.GH.ui; U.go('you'); U.open('settings'); U.open('settings', p); }, id); await settle(900); };
 const SHEET = 'dialog.gh-sheet[open]:not([data-closing])';
 const sceneKey = () => ev(() => { const m = document.querySelector('#player .pl-main'); return m ? m.getAttribute('data-key') : ''; });
 const tapRes = {};
@@ -529,10 +530,10 @@ for (let i = 0; i < RUNS; i++) {
   await settle(900);
   await tapDo('a move\'s how-to', '#screen .session [data-act="moveInfo"]', SHEET, `${SHEET} .sheet-fig > *`);
   await closeAll();
-  await toSettings();
+  await toSettings('workouts');
   await tapDo('a Settings row\'s sheet', '#screen [data-act="baselineSheet"]', SHEET, `${SHEET} #bPush`);
   await closeAll();
-  await toSettings();
+  await toSettings('about');
   await tapDo('How it works', '#screen .rf-list-row[data-act="openScience"]:not([data-arg])', '#screen[data-view="science"]', '#screen[data-view="science"] .section');
   await settle(600);
   await ev(() => { const U = window.GH.ui; U.go('plan'); const b = document.querySelector('#screen [data-act="planWeek"][data-arg="0"]'); if (b) b.click(); });

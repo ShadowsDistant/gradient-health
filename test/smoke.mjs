@@ -378,11 +378,19 @@ check('back returns to You', await page.evaluate(() => document.getElementById('
 await page.click('#topbar [data-act="openSettings"]');
 await page.waitForSelector('#screen[data-view="settings"]');
 check('the tab bar steps aside on pushed pages', await page.evaluate(() => document.getElementById('tabbar').hasAttribute('data-away')));
+await page.waitForTimeout(500);
+check('Settings opens on its parts, each with what\'s set', await page.evaluate(() => document.querySelectorAll('#screen .set-home [data-act="setPage"]').length === 10 && [...document.querySelectorAll('#screen .set-home .rf-list-sub')].every((s) => s.textContent.trim())));
+await shot(page, '14-settings');
+await page.click('#screen [data-act="setPage"][data-arg="data"]');
+await page.waitForSelector('#screen .set-page[data-page="data"]');
+await page.waitForTimeout(400);
 await page.click('#screen [data-act="exportData"]');
 await page.waitForTimeout(200);
 const copied = await page.evaluate(() => window.__copied || '');
-check('Copy my data copies a backup without any key', copied.includes('"app":"gradient-health"') && !/fakekey|TESTKEY/.test(copied));
-await shot(page, '14-settings');
+check('Copy my data (Your data) copies a backup without any key', copied.includes('"app":"gradient-health"') && !/fakekey|TESTKEY/.test(copied));
+await page.click('#topbar [data-act="back"]');
+await page.waitForTimeout(500);
+check('Back returns to Settings\' parts', await page.evaluate(() => window.GH.ui.route.view === 'settings' && !window.GH.ui.route.arg && !!document.querySelector('#screen .set-home')));
 
 section('Persistence');
 await page.reload();
