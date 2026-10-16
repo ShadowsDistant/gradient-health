@@ -37,6 +37,17 @@ const tabs = () => ev(() => [...document.querySelectorAll('#tabbar .rf-tab')].ma
 const where = () => ev(() => ({ tab: window.GH.ui.route.tab, view: window.GH.ui.route.view, screen: document.getElementById('screen').dataset.view, back: !!document.querySelector('#topbar [data-act="back"]') }));
 const go = async (t) => { await ev((x) => window.GH.ui.go(x), t); await settle(); };
 const home = async () => { await ev(() => { const U = window.GH.ui; U.closeSheets(); while (U.back()) { /* to the tab */ } }); await settle(); };
+// The badge medals on You are drawn in 3D once each, in the app's quiet moments. In software GL on a
+// busy machine each takes seconds of the page's time, and a tap on You that met one ran past its
+// timeout (in the suite before 1.14 too). They're let finish once, early (two minutes at most), so
+// the taps on You after that don't meet them.
+const medalsDrawn = async () => {
+  const t0 = Date.now();
+  while (Date.now() - t0 < 120000) {
+    if (await ev(() => { const M = window.GH.ui.medals; return !M || M.off || (M.kept.size > 0 && !M.want.size); })) return;
+    await page.waitForTimeout(1000);
+  }
+};
 // What's tracked: workouts on or off, calories on or off (protein otherwise).
 const mode = async (workouts, food) => {
   await ev(([w, f]) => { const U = window.GH.ui, S = U.S; S.profile.workouts = w; window.GH.food.setMode(S, f ? 'full' : 'protein'); U.save(); U.render(); }, [workouts, food]);
@@ -117,6 +128,7 @@ await page.click('#screen [data-act="openHelp"]');
 await settle(900);
 check('Help and tour opens help: the tour, the tips again, the coach', await ev(() => ['helpTour', 'helpTips', 'helpCoach'].every((a) => !!document.querySelector(`dialog.rf-sheet[open] [data-act="${a}"]`))));
 await home();
+await medalsDrawn();
 
 section('Plan: This week | Moves');
 await go('plan');
@@ -335,9 +347,18 @@ const pageNow = () => ev(() => {
 });
 const opened = [], backed = [];
 for (const [id, name] of Object.entries(NAMES)) {
-  await ev(() => { window.__haptics.length = 0; });
+  // A push moves the old page into a layer beside the screen for as long as it slides away
+  // (.screen-exit). It's watched for: on a busy machine it can be gone by the time the click returns.
+  await ev(() => {
+    window.__haptics.length = 0;
+    window.__exited = false;
+    const seen = (recs) => { if (recs.some((r) => [...r.addedNodes].some((n) => n.classList && n.classList.contains('screen-exit')))) window.__exited = true; };
+    const watch = new MutationObserver(seen);
+    watch.observe(document.getElementById('screen').parentNode, { childList: true });
+    window.__exitDone = () => { seen(watch.takeRecords()); watch.disconnect(); return window.__exited; };
+  });
   await page.click(`#screen [data-act="setPage"][data-arg="${id}"]`);
-  const pushed = await ev(() => !!document.querySelector('.screen-exit') && window.__haptics.includes('nav'));
+  const pushed = await ev(() => window.__exitDone() && window.__haptics.includes('nav'));
   await settle(900);
   const w = await pageNow();
   if (!(pushed && w.view === 'settings' && w.arg === id && w.page === id && w.title === name && w.bar === name && w.rows > 0 && w.back && !w.search)) opened.push({ id, pushed, w });
