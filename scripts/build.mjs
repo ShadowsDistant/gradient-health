@@ -349,6 +349,10 @@ export const APP_CHUNKS = [
   // Health's food section are in the page (src/ui/food.js), which loads this ahead of time for
   // someone tracking calories.
   { name: 'foodUi', scripts: ['src/ui/foodpage.js'] },
+  // Your plans' screens and sheets: the Plans page, a plan's page, the exercise picker, New plan,
+  // sharing and Build me a plan. The Plan tab's banner, the move pictures and links to a shared plan
+  // are in the page (src/ui/customplan.js), with the stand-ins that load this, or warm it after launch.
+  { name: 'planUi', scripts: ['src/ui/planbuilder.js'] },
 ];
 
 // Heavy parts that load only when they're used (the 3D figure, the on-device model runtime, the
