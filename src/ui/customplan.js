@@ -412,12 +412,22 @@
   stand(U.act, 'cpItem');
   stand(U.act, 'cpGap');
   stand(U, 'cpImport');
-  // It loads ahead: a finger on a way into it, and an idle moment a few seconds after launch.
+  // It loads ahead: a finger on a way into it, and a calm moment a few seconds after launch (nothing
+  // over the app, a sheet or Before you start, and nothing moving: it never holds up What's new).
   const WAYS_IN = ['openPlans', 'cpOpen', 'cpBuild', 'cpImprove', 'reviewPlans', 'reviewImprove'].map((a) => `[data-act="${a}"]`).join(',');
   if (doc) doc.addEventListener('pointerdown', (e) => { if (!GH[PART] && e.target.closest && e.target.closest(WAYS_IN)) GH.lazy(PART).catch(() => {}); }, { capture: true, passive: true });
   const before = U.afterBoot;
   U.afterBoot = () => {
     if (before) before();
-    setTimeout(() => { const go = () => { if (!GH[PART] && !doc.hidden) GH.lazy(PART).catch(() => {}); }; if (G.requestIdleCallback) G.requestIdleCallback(go, { timeout: 4000 }); else go(); }, 3500);
+    let tries = 0;
+    const go = () => {
+      if (GH[PART] || doc.hidden) return;
+      const app = doc.getElementById('app');
+      const busy = (U.calm && !U.calm()) || (U.topSheet && U.topSheet()) || (app && app.inert);
+      if (busy) { if (++tries < 12) setTimeout(soon, 2500); return; }
+      GH.lazy(PART).catch(() => {});
+    };
+    const soon = () => { if (G.requestIdleCallback) G.requestIdleCallback(go, { timeout: 4000 }); else go(); };
+    setTimeout(soon, 3500);
   };
 })(typeof window !== 'undefined' ? window : globalThis);

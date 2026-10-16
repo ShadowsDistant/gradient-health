@@ -1186,7 +1186,7 @@
   // A plan's days as Build me a plan and Improve show them: each day's moves with their sets.
   const planView = (S, plan) => plan.days.map((d, di) => `<div class="cp-imp-day"><p class="cp-day-eyebrow"><b>Day ${di + 1}</b><span class="cp-imp-title">${U.esc(C().titleOf(plan, di))}</span><span class="rf-num">${C().minutes(S, plan, di, U.today())} min</span></p>
       <ul class="cp-imp-list">${d.items.map((it) => `<li class="cp-imp-ex">${thumb(it.move)}<span class="cp-ex-text"><span class="cp-ex-name">${U.esc(M().MOVES[it.move].name)}</span><span class="cp-ex-meta rf-num">${U.esc(itemMeta(it))}</span></span></li>`).join('')}</ul></div>`).join('');
-  // About what a Claude request for a plan costs with the person's model ("about 4¢ with Opus 5.5"),
+  // About what a Claude request for a plan costs with the person's model ("about 4¢ with" its name),
   // or nothing for the on-device AI.
   function costHint(S, by) {
     const sp = GH.spend;
