@@ -49,7 +49,8 @@
     scan: '<path d="M4 8.5V6.25A2.25 2.25 0 0 1 6.25 4H8.5M15.5 4h2.25A2.25 2.25 0 0 1 20 6.25V8.5M20 15.5v2.25A2.25 2.25 0 0 1 17.75 20H15.5M8.5 20H6.25A2.25 2.25 0 0 1 4 17.75V15.5M8 8.5v7M11 8.5v7M13.5 8.5v7M16 8.5v7"/>',
     dumbbell: '<path d="M4.25 9.5v5M7.25 7v10M16.75 7v10M19.75 9.5v5M7.25 12h9.5"/>',
     chip: '<rect x="7" y="7" width="10" height="10" rx="2.25"/><path d="M9.75 4v3M14.25 4v3M9.75 17v3M14.25 17v3M4 9.75h3M4 14.25h3M17 9.75h3M17 14.25h3M10.25 12h3.5"/>',
-    scale: '<rect x="4" y="4" width="16" height="16" rx="4.5"/><path d="M8.75 10a4.6 4.6 0 0 1 6.5 0M12 10.25l1.25-1.75"/>',
+    // A bathroom scale: its dial a half disc at the top, with its needle.
+    scale: '<rect x="3.75" y="3.75" width="16.5" height="16.5" rx="4.75"/><path d="M7.75 11.25a4.25 4.25 0 0 1 8.5 0z"/><path d="M12 11.25l1.6-2.1"/>',
     stop: '<rect x="6.75" y="6.75" width="10.5" height="10.5" rx="2.25" fill="currentColor" stroke="none"/>',
     // A screen with a pulse on it: a recording of what the phone does (scroll diagnostics, What's new).
     activity: '<rect x="3.75" y="5" width="16.5" height="14" rx="3"/><path d="M6.75 12.5h2.25l1.75-3.5 2.75 7 1.75-3.5h2"/>',
