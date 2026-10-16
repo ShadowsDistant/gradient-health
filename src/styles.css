@@ -503,6 +503,9 @@ textarea.preview { border: 0; resize: vertical; }
 
 /* ---------------------------------------------------------------- player */
 .player { position: fixed; inset: 0; z-index: var(--z-overlay); background: var(--bg); display: flex; flex-direction: column; padding: var(--sat) var(--sar) 0 var(--sal); }
+/* Put away (closed, tucked away or cancelled): taps go through to the page under it as it fades, as
+   set-up's and a sheet's do. */
+.player[data-closing] { pointer-events: none; }
 .pl-main { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-4) 0; overflow-y: auto; text-align: center; }
 .pl-eyebrow { margin: 0; }
 .pl-name { margin: 0; font-size: 1.625rem; font-weight: 700; letter-spacing: -0.015em; line-height: 1.15; }

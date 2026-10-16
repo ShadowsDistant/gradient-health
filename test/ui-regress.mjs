@@ -479,6 +479,26 @@ check('and ends the same', !r.active && /^Workout/.test(r.eyebrow) && r.floats =
 await page.emulateMedia({ reducedMotion: 'no-preference' });
 await page.evaluate(() => { const U = window.GH.ui; if (U.S.active) { U.act.plKeep(); window.GH.brain.cancelWorkout(U.S); window.GH.store.save(U.S); } for (const t of document.querySelectorAll('.rf-toast')) t.remove(); U.render(); });
 await settle(700);
+// Cancelled, the player folds away for a moment: nothing on it takes a tap meanwhile, and a control
+// that changes then finds no workout and leaves it be (1.13 threw from the reps stepper).
+await page.click('#float [data-act="startWorkout"]');
+await page.waitForSelector('.player:not([hidden]) .pl-name');
+await settle(600);
+const fold = await page.evaluate(async () => {
+  const U = window.GH.ui, el = document.getElementById('player'), errs = [];
+  const onErr = (e) => errs.push(String(e.message || e));
+  window.addEventListener('error', onErr);
+  U.act.plCancel();
+  // (Read at once: this suite's clock is a test clock, so the fold's frames needn't wait for us.)
+  const out = { closing: el.hasAttribute('data-closing'), taps: getComputedStyle(el).pointerEvents };
+  try { U.on.plReps(null, null, 7); U.on.plAmendLoad(null, null, '20'); U.act.plMore(); U.act.plSkipRest(); U.act.plCancelTimer(); U.act.plFinishNow(); } catch (e) { errs.push(e.message); }
+  await new Promise((r) => setTimeout(r, 600));
+  window.removeEventListener('error', onErr);
+  return Object.assign(out, { errs, gone: el.hidden && !U.S.active });
+});
+check('cancelled, the player takes no taps as it folds away, and its controls changing then do nothing', fold.closing && fold.taps === 'none' && !fold.errs.length && fold.gone, JSON.stringify(fold));
+await page.evaluate(() => { for (const t of document.querySelectorAll('.rf-toast')) t.remove(); });
+await settle(500);
 
 section('How it works');
 await page.evaluate(() => window.GH.ui.open('science'));
