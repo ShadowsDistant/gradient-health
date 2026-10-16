@@ -45,30 +45,18 @@
   const DAY_STARTS = [['0', 'Midnight'], ['2', '2 am'], ['4', '4 am'], ['6', '6 am']];
 
   /* ---------------------------------------------------------------- the parts */
-  // Each part: its row on the top page (icon, tone, title, and line(S): what's set there now) and its
-  // page (body(S)). on(S): whether it shows (Workouts, with workouts on). words: what the search
-  // finds the part itself by. The functions are further down, with the rows they draw.
-  const PAGES = [
-    { id: 'workouts', title: 'Workouts', icon: 'dumbbell', tone: 'coral', words: 'your plan training exercises sets reps', on: (S) => S.profile.workouts !== false, line: workoutsLine, body: workoutsPage },
-    { id: 'track', title: 'Tracking', icon: 'checklist', tone: 'green', words: 'what you track tracking calories protein food workouts nutrition diet meals walks runs rides activities', on: () => true, line: trackLine, body: trackPage },
-    { id: 'hc', title: 'Health Connect', icon: 'heart', tone: 'rose', words: 'health data sync steps sleep heart rate weight permissions android google fit', on: () => true, line: hcLine, body: hcPage },
-    { id: 'notify', title: 'Notifications', icon: 'bell', tone: 'amber', words: 'notifications reminders reminder nudges alerts notify push bell quiet hours', on: () => true, line: notifyLine, body: notifyPage },
-    { id: 'coach', title: 'AI coach', icon: 'sparkle', tone: 'violet', words: 'ai chat assistant questions claude on-device model', on: () => true, line: coachLine, body: coachPage },
-    { id: 'feel', title: 'Sound and haptics', icon: 'volume', tone: 'sky', words: 'vibration vibrate buzz haptic haptics feedback feel touch beep audio', on: () => true, line: feelLine, body: feelPage },
-    { id: 'look', title: 'Appearance', icon: 'appearance', tone: 'indigo', words: 'look theme appearance dark mode light mode night colour color display glass', on: () => true, line: lookLine, body: lookPage },
-    { id: 'general', title: 'General', icon: 'settings', tone: 'teal', words: 'language region', on: () => true, line: generalLine, body: generalPage },
-    { id: 'data', title: 'Your data', icon: 'archive', tone: 'green', words: 'backup export import save transfer', on: () => true, line: () => 'Copy, restore or reset', body: dataPage },
-    { id: 'about', title: 'About', icon: 'info', tone: 'sky', words: 'version licenses research science', on: () => true, line: aboutLine, body: aboutPage },
-  ];
-  // The top page's groups: what you train and track, how the app behaves, and the app itself.
+  // The parts themselves (PAGES) are further down, each with the rows it draws. The top page's
+  // groups: what you train and track, how the app behaves, and the app itself.
   const GROUPS = [['workouts', 'track', 'hc'], ['notify', 'coach', 'feel', 'look', 'general'], ['data', 'about']];
   const page = (id) => PAGES.find((p) => p.id === id) || null;
+  const isOn = (pg, S) => !pg.on || pg.on(S);
+  const shown = (S) => PAGES.filter((pg) => isOn(pg, S));
   // Older ids, and places in a page a link opens at: 'food' is Tracking, at Food.
   const AT = { plan: ['workouts'], food: ['track', 'food'], acts: ['track', 'acts'], appearance: ['look'], figure: ['look', 'figure'] };
   function target(S, arg) {
     const a = AT[arg] || [arg];
     const pg = page(a[0]);
-    return pg && S && pg.on(S) ? { pg, at: a[1] || null } : null;
+    return pg && S && isOn(pg, S) ? { pg, at: a[1] || null } : null;
   }
 
   /* ---------------------------------------------------------------- the screens */
@@ -132,30 +120,19 @@
   function homeScreen(S) {
     const searching = !!norm(query);
     const groups = GROUPS.map((ids, i) => {
-      const rows = ids.map(page).filter((pg) => pg.on(S)).map((pg) => U.row({ key: `p-${pg.id}`, icon: pg.icon, tone: pg.tone, title: U.esc(pg.title), sub: U.esc(pg.line(S)), act: 'setPage', arg: pg.id, chevron: true }));
+      const rows = ids.map(page).filter((pg) => isOn(pg, S)).map((pg) => U.row({ key: `p-${pg.id}`, icon: pg.icon, tone: pg.tone, title: U.esc(pg.title), sub: U.esc(pg.line(S)), act: 'setPage', arg: pg.id, chevron: true }));
       if (i === 0 && S.profile.workouts === false) rows.unshift(answersRow(S, { icon: 'person', tone: 'sky' }));
       return `<ul class="rf-list set-menu" data-key="g${i}">${rows.join('')}</ul>`;
     }).join('');
-    return `${U.navbar('Settings', '', back())}
-      <h1 class="rf-large-title">Settings</h1>
-      <div class="section set-top" data-key="top">
-        <div class="rf-search set-search" role="search" data-key="search">${U.icon('search')}<input class="rf-search-input" type="search" id="setQ" placeholder="Search settings" aria-label="Search settings" value="${U.esc(query)}" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button type="button" class="rf-search-clear" aria-label="Clear search">${U.icon('x-circle')}</button></div>
-      </div>
-      <div class="section set-home" data-key="home"${searching ? ' hidden' : ''}>${groups}</div>
-      <div class="section set-results" data-key="results"${searching ? '' : ' hidden'}>${searching ? results(S) : ''}</div>`;
+    return `${U.navbar('Settings', '', back())}<h1 class="rf-large-title">Settings</h1>`
+      + `<div class="section set-top" data-key="top"><div class="rf-search set-search" role="search" data-key="search">${U.icon('search')}<input class="rf-search-input" type="search" id="setQ" placeholder="Search settings" aria-label="Search settings" value="${U.esc(query)}" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button type="button" class="rf-search-clear" aria-label="Clear search">${U.icon('x-circle')}</button></div></div>`
+      + `<div class="section set-home" data-key="home"${searching ? ' hidden' : ''}>${groups}</div>`
+      + `<div class="section set-results" data-key="results"${searching ? '' : ' hidden'}>${searching ? results(S) : ''}</div>`;
   }
-  function pageScreen(S, pg) {
-    return `${U.navbar(pg.title, '', back())}
-      <h1 class="rf-large-title">${U.esc(pg.title)}</h1>
-      <div class="section set-page" data-key="page-${pg.id}" data-page="${pg.id}">${pg.body(S)}</div>`;
-  }
+  const pageHtml = (S, pg) => `<div class="section set-page" data-key="page-${pg.id}" data-page="${pg.id}">${pg.body(S)}</div>`;
+  const pageScreen = (S, pg) => `${U.navbar(pg.title, '', back())}<h1 class="rf-large-title">${U.esc(pg.title)}</h1>${pageHtml(S, pg)}`;
   // Every page on one: long enough to flick (Scroll diagnostics' glass speed test, src/ui/diag.js).
-  function allScreen(S) {
-    return `${U.navbar('All settings', '', back())}
-      <h1 class="rf-large-title">All settings</h1>
-      ${PAGES.filter((pg) => pg.on(S)).map((pg) => `<h2 class="sec-title t-title-3" data-key="t-${pg.id}">${U.esc(pg.title)}</h2>
-      <div class="section set-page" data-key="page-${pg.id}" data-page="${pg.id}">${pg.body(S)}</div>`).join('')}`;
-  }
+  const allScreen = (S) => `${U.navbar('All settings', '', back())}<h1 class="rf-large-title">All settings</h1>${shown(S).map((pg) => `<h2 class="sec-title t-title-3" data-key="t-${pg.id}">${U.esc(pg.title)}</h2>${pageHtml(S, pg)}`).join('')}`;
   U.act.setPage = (el) => { const pg = page(el.dataset.arg); if (pg) U.open('settings', pg.id); };
   // A search result: its page, at the row ("look glass-fx"), or a row of the top page's own.
   U.act.setFind = (el) => {
@@ -186,8 +163,7 @@
     const tpl = G.document.createElement('template');
     const words = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
     if (S.profile.workouts === false) out.push({ key: 'answers', act: 'editAnswers', icon: 'person', tone: 'sky', title: 'Your answers', path: 'Age, weight, height and more', text: 'Your answers', words: ANSWERS_OFF_WORDS });
-    for (const pg of PAGES) {
-      if (!pg.on(S)) continue;
+    for (const pg of shown(S)) {
       out.push({ page: pg.id, icon: pg.icon, tone: pg.tone, title: pg.title, path: pg.line(S), text: pg.title, words: pg.words });
       indexing = true;
       try { tpl.innerHTML = pg.body(S); } catch (e) { tpl.innerHTML = ''; } finally { indexing = false; }
@@ -223,8 +199,8 @@
   function results(S) {
     const found = find(S, norm(query).split(' ').filter(Boolean));
     const rows = found.map((e) => U.row({ key: `r-${e.page || 'top'}-${e.key || ''}`, icon: e.icon, tone: e.tone, title: U.esc(e.title), sub: U.esc(e.path), act: e.act || 'setFind', arg: e.act ? null : `${e.page}${e.key ? ` ${e.key}` : ''}`, chevron: true })).join('');
-    return `<ul class="rf-list set-menu" data-key="found"${rows ? '' : ' hidden'}>${rows}</ul>
-      <p class="set-none t-callout rf-muted" data-key="none"${rows ? ' hidden' : ''}>No settings match. Try dark, kg, vibration or backup.</p>`;
+    return `<ul class="rf-list set-menu" data-key="found"${rows ? '' : ' hidden'}>${rows}</ul>`
+      + `<p class="set-none t-callout rf-muted" data-key="none"${rows ? ' hidden' : ''}>No settings match. Try dark, kg, vibration or backup.</p>`;
   }
   // What's typed, painted in place: the parts while it's empty, the results otherwise.
   function paint(root) {
@@ -235,99 +211,197 @@
     home.hidden = on;
     res.hidden = !on;
   }
-  U.filterSettings = (q) => {
-    query = q || '';
-    const root = G.document && G.document.getElementById('screen');
-    const input = root && root.querySelector('#setQ');
-    if (!input) return;
-    input.value = query;
-    paint(root);
-  };
 
-  /* ---------------------------------------------------------------- the pages, one by one */
-  // Each part's line on the top page (what's set there now, in a few words), then its page.
-
-  // Workouts: your answers and the level check, then how sets and rests run.
+  /* ---------------------------------------------------------------- the parts, one by one */
+  // Each part: its row on the top page (icon, tone, title, and line(S): what's set there now, in a
+  // few words) and its page (body(S): its lists, the settings used most first). on(S), where a part
+  // has it: whether it shows (Workouts, with workouts on). words: what the search finds it by.
   const ANSWER_WORDS = 'questionnaire goals experience schedule days time minutes equipment weights joints injuries age weight height health conditions arthritis osteoporosis bones fractures diabetes eyes retinopathy blood pressure heart balance';
   function answersRow(S, o) {
     const on = S.profile.workouts !== false;
     return kw(U.row(Object.assign({ key: 'answers', icon: 'pencil', tone: 'indigo', title: 'Your answers', sub: on ? 'Goals, days, time, equipment and more' : 'Age, weight, height and more', act: 'editAnswers', chevron: true }, o)), on ? ANSWER_WORDS : ANSWERS_OFF_WORDS);
   }
-  function workoutsLine(S) {
-    const p = S.profile, pr = p.prefs;
-    const parts = [`${p.days} days a week`, `${p.minutes} min`];
-    if (pr.rest && pr.rest !== 'auto') parts.push(`${pr.rest} s rest`);
-    if (pr.supersets === false) parts.push('no supersets');
-    return parts.join(' · ');
-  }
-  function workoutsPage(S) {
-    const pr = S.profile.prefs;
-    return `${menu('workouts', `${answersRow(S)}
-        ${kw(U.row({ key: 'level', icon: 'timer', tone: 'green', title: 'Retake the level check', sub: 'Push-ups, plank and curls set where you start', act: 'baselineSheet', chevron: true }), 'baseline test levels push-ups plank curls')}`)}
-      ${form('workouts', `${kw(U.sw('Supersets', pr.supersets !== false, 'data-on="setPref" data-k="supersets"', 'Pair exercises that don\'t share muscles'), 'pairs back to back')}
-        ${stack('Rest between sets', 'Auto picks it for each exercise', U.seg('setRest', [['auto', 'Auto'], ['60', '60 s'], ['90', '90 s']], String(pr.rest), 'Rest between sets', ' data-on="setRest"'), 'timer seconds minutes pause', 'rest')}`)}
-      ${foot('workouts', U.esc(REST_FOOT))}`;
-  }
-
-  // Tracking: what the app tracks, then food's settings (with calories on) and walks, runs and rides.
-  function trackLine(S) {
-    const w = S.profile.workouts !== false;
-    const fm = GH.food ? GH.food.mode(S) : 'protein';
-    const food = fm === 'full' ? 'calories' : fm === 'protein' ? 'protein' : '';
-    return w && food ? `Workouts and ${food}` : w ? 'Workouts' : food ? U.cap(food) : 'Health only';
-  }
-  function trackPage(S) {
-    const workouts = S.profile.workouts !== false;
-    const fm = GH.food ? GH.food.mode(S) : 'protein';
-    return `${form('track', `${U.sw('Workouts', workouts, 'data-on="setWorkouts"', workouts ? 'Your plan, the workout player and progress' : 'Off. Today shows your health and food.')}
-        ${stack('Food', FOOD_SUB[fm] || '', U.seg('setFood', [['off', 'Off'], ['protein', 'Protein'], ['full', 'Calories']], fm, 'Food tracking', ' data-on="setFoodMode"'), 'calories protein nutrition diet', 'foodmode')}`)}
-      ${fm === 'full' ? foodSettings(S) : ''}
-      ${U.actOptionRows ? actSettings(S) : ''}`;
-  }
-
-  // Health Connect: the connection and the background sync, then what goes to and comes from other
-  // apps through it (workouts, and meals with calories on).
-  function hcLine() {
-    if (!(GH.platform && GH.platform.isApp())) return 'In the Android app';
-    const st = H().status();
-    if (H().connected(st)) {
-      const bg = H().background ? H().background() : null;
-      return bg && bg.supported && bg.granted && bg.on ? 'On · syncs every 15 minutes' : 'On';
-    }
-    return st === 'unsupported' ? 'Needs Android 14' : st === 'unavailable' ? 'Unavailable on this phone' : 'Off';
-  }
-  function hcPage(S) {
-    const st = H().status();
-    const app = GH.platform && GH.platform.isApp();
-    const on = H().connected(st);
-    const can = app && !['unsupported', 'unavailable'].includes(st);
-    const detail = !app ? 'Android app only' : on ? 'On' : st === 'unsupported' ? 'Needs Android 14' : st === 'unavailable' ? 'Unavailable' : 'Off';
-    const missing = on && H().missingTypes ? H().missingTypes(S) : [];
-    const food = !!(GH.food && GH.food.full(S));
-    const fp = food ? GH.food.prefs(S) : null;
-    const canWrite = on && H().canWrite && H().canWrite();
-    const canWriteFood = on && H().canWriteFood && H().canWriteFood();
-    const others = on ? `${S.profile.workouts !== false ? U.sw('Save workouts to Health Connect', !!(S.health.write !== false && canWrite), 'data-on="hcWriteToggle"', canWrite ? 'Other apps see your Gradient Health workouts' : 'Needs the Exercise permission') : ''}
-      ${food ? U.sw('Save meals to Health Connect', fp.hcWrite !== false && canWriteFood, 'data-on="setFoodPref" data-k="hcWrite"', canWriteFood ? 'Other apps see what you log here' : 'Needs the Nutrition permission') : ''}
-      ${food ? U.sw('Count food from other apps', fp.hcRead !== false, 'data-on="setFoodPref" data-k="hcRead"', 'Meals logged in other apps add to your day') : ''}`.trim() : '';
-    return `${form('hc', `${U.row({ key: 'hc', title: 'Health Connect', sub: on ? 'Choose what it reads and writes' : can ? 'Steps, sleep, heart rate and more from your phone and watch' : '', detail, act: can ? (on ? 'hcManage' : 'hcConnect') : null, chevron: !!app })}
-        ${missing.length ? kw(more({ key: 'hc-new', title: 'Allow the new data types', sub: U.esc(missingText(missing)), act: 'hcConnect' }), 'permissions allow new types') : ''}
-        ${on && app ? kw(bgRow(), 'background closed every 15 minutes') : ''}`)}
-      ${others ? `${head('hc-others', 'With other apps')}${form('hc', others)}` : ''}`;
-  }
-
-  // Notifications: the switch, what they're for and when, from src/ui/notify.js's rows, shared out.
   const canNotify = () => !!(G.AndroidBridge && typeof G.AndroidBridge.notifySchedule === 'function');
   const clock = (min) => U.fmtClock(new Date(2000, 0, 1, 0, min).getTime());
-  function notifyLine(S) {
-    if (!canNotify()) return 'In the Android app';
-    const p = S.profile.prefs.notify;
-    if (!p || !p.on) return 'Off';
-    let min = p.time;
-    if (min == null && GH.notify && GH.notify.reminderTime) { const rt = GH.notify.reminderTime(S, Date.now()); min = rt ? rt.min : null; }
-    if (min == null) return 'On';
-    return `${S.profile.workouts !== false && p.workout !== false ? 'Workout reminders' : 'Reminders'} at ${clock(min)}`;
+  const ENGINE_SUB = { device: 'On-device: an AI model on your phone', api: 'Claude: your own API key, model, thinking and spending limits' };
+  const THEMES = { system: 'System', light: 'Light', dark: 'Dark' };
+  const GLASSES = { auto: 'Auto', liquid: 'Liquid', frosted: 'Frosted', flat: 'Flat' };
+  const version = () => (GH.platform && GH.platform.appVersion()) || GH.VERSION || 'web';
+  // Health Connect's state, as its row on the top page and on its page say it.
+  function hcState() {
+    const st = H().status(), app = !!(GH.platform && GH.platform.isApp()), on = H().connected(st);
+    return { st, app, on, can: app && !['unsupported', 'unavailable'].includes(st), word: !app ? 'Android app only' : on ? 'On' : st === 'unsupported' ? 'Needs Android 14' : st === 'unavailable' ? 'Unavailable' : 'Off' };
   }
+  const PAGES = [{
+    // Your answers and the level check, then how sets and rests run.
+    id: 'workouts', title: 'Workouts', icon: 'dumbbell', tone: 'coral', words: 'your plan training exercises sets reps',
+    on(S) { return S.profile.workouts !== false; },
+    line(S) {
+      const p = S.profile, pr = p.prefs;
+      return [`${p.days} days a week`, `${p.minutes} min`, pr.rest && pr.rest !== 'auto' ? `${pr.rest} s rest` : '', pr.supersets === false ? 'no supersets' : ''].filter(Boolean).join(' · ');
+    },
+    body(S) {
+      const pr = S.profile.prefs;
+      return menu('workouts', answersRow(S) + kw(U.row({ key: 'level', icon: 'timer', tone: 'green', title: 'Retake the level check', sub: 'Push-ups, plank and curls set where you start', act: 'baselineSheet', chevron: true }), 'baseline test levels push-ups plank curls'))
+        + form('workouts', kw(U.sw('Supersets', pr.supersets !== false, 'data-on="setPref" data-k="supersets"', 'Pair exercises that don\'t share muscles'), 'pairs back to back')
+          + stack('Rest between sets', 'Auto picks it for each exercise', U.seg('setRest', [['auto', 'Auto'], ['60', '60 s'], ['90', '90 s']], String(pr.rest), 'Rest between sets', ' data-on="setRest"'), 'timer seconds minutes pause', 'rest'))
+        + foot('workouts', U.esc(REST_FOOT));
+    },
+  }, {
+    // What the app tracks, then food's settings (with calories on) and walks, runs and rides.
+    id: 'track', title: 'Tracking', icon: 'checklist', tone: 'green', words: 'what you track food calories protein nutrition diet meals walks runs rides activities',
+    line(S) {
+      const w = S.profile.workouts !== false;
+      const fm = GH.food ? GH.food.mode(S) : 'protein';
+      const food = fm === 'full' ? 'calories' : fm === 'protein' ? 'protein' : '';
+      return w && food ? `Workouts and ${food}` : w ? 'Workouts' : food ? U.cap(food) : 'Health only';
+    },
+    body(S) {
+      const workouts = S.profile.workouts !== false;
+      const fm = GH.food ? GH.food.mode(S) : 'protein';
+      return form('track', U.sw('Workouts', workouts, 'data-on="setWorkouts"', workouts ? 'Your plan, the workout player and progress' : 'Off. Today shows your health and food.')
+        + stack('Food', FOOD_SUB[fm] || '', U.seg('setFood', [['off', 'Off'], ['protein', 'Protein'], ['full', 'Calories']], fm, 'Food tracking', ' data-on="setFoodMode"'), 'calories protein nutrition diet', 'foodmode'))
+        + (fm === 'full' ? foodSettings(S) : '') + (U.actOptionRows ? actSettings(S) : '');
+    },
+  }, {
+    // The connection and the background sync, then what goes to and comes from other apps through it
+    // (workouts, and meals with calories on).
+    id: 'hc', title: 'Health Connect', icon: 'heart', tone: 'rose', words: 'health data sync steps sleep heart rate weight permissions android google fit',
+    line() {
+      const h = hcState(), bg = h.on && h.app && H().background ? H().background() : null;
+      return !h.app ? 'In the Android app' : bg && bg.supported && bg.granted && bg.on ? 'On · syncs every 15 minutes' : h.word === 'Unavailable' ? 'Unavailable on this phone' : h.word;
+    },
+    body(S) {
+      const h = hcState();
+      const missing = h.on && H().missingTypes ? H().missingTypes(S) : [];
+      const food = !!(GH.food && GH.food.full(S));
+      const fp = food ? GH.food.prefs(S) : null;
+      const canWrite = h.on && H().canWrite && H().canWrite();
+      const canWriteFood = h.on && H().canWriteFood && H().canWriteFood();
+      const others = h.on ? (S.profile.workouts !== false ? U.sw('Save workouts to Health Connect', !!(S.health.write !== false && canWrite), 'data-on="hcWriteToggle"', canWrite ? 'Other apps see your Gradient Health workouts' : 'Needs the Exercise permission') : '')
+        + (food ? U.sw('Save meals to Health Connect', fp.hcWrite !== false && canWriteFood, 'data-on="setFoodPref" data-k="hcWrite"', canWriteFood ? 'Other apps see what you log here' : 'Needs the Nutrition permission')
+          + U.sw('Count food from other apps', fp.hcRead !== false, 'data-on="setFoodPref" data-k="hcRead"', 'Meals logged in other apps add to your day') : '') : '';
+      return form('hc', U.row({ key: 'hc', title: 'Health Connect', sub: h.on ? 'Choose what it reads and writes' : h.can ? 'Steps, sleep, heart rate and more from your phone and watch' : '', detail: h.word, act: h.can ? (h.on ? 'hcManage' : 'hcConnect') : null, chevron: h.app })
+        + (missing.length ? kw(more({ key: 'hc-new', title: 'Allow the new data types', sub: U.esc(missingText(missing)), act: 'hcConnect' }), 'permissions allow new types') : '')
+        + (h.on && h.app ? kw(bgRow(), 'background closed every 15 minutes') : ''))
+        + (others ? head('hc-others', 'With other apps') + form('hc', others) : '');
+    },
+  }, {
+    // The switch, what they're for and when: src/ui/notify.js's rows, shared out into three lists.
+    id: 'notify', title: 'Notifications', icon: 'bell', tone: 'amber', words: 'reminders nudges alerts push bell quiet hours',
+    line(S) {
+      if (!canNotify()) return 'In the Android app';
+      const p = S.profile.prefs.notify;
+      if (!p || !p.on) return 'Off';
+      let min = p.time;
+      if (min == null && GH.notify && GH.notify.reminderTime) { const rt = GH.notify.reminderTime(S, Date.now()); min = rt ? rt.min : null; }
+      if (min == null) return 'On';
+      return `${S.profile.workouts !== false && p.workout !== false ? 'Workout reminders' : 'Reminders'} at ${clock(min)}`;
+    },
+    body(S) {
+      if (!U.notifyRows) return form('notify', U.row({ key: 'nf-app', title: 'In the Android app', sub: 'Reminders and nudges come from the Gradient Health app on Android.' }));
+      const [main, kinds, when] = shareOut(U.notifyRows(S), [/^(sw:notifyOn:|nf-perm$|nf-app$)/, /^sw:notifyKind:/, /^nf-(time|at)$/]);
+      const f = U.notifyFoot ? U.notifyFoot(S) : '';
+      return form('notify', main) + (kinds ? head('notify-kinds', 'What they\'re for') + form('notify', kinds) : '') + (when ? form('notify', when, 'notify-when') : '') + (f ? foot('notify', U.esc(f)) : '');
+    },
+  }, {
+    // Who answers, then the model on this phone or Claude's key, model and spending.
+    id: 'coach', title: 'AI coach', icon: 'sparkle', tone: 'violet', words: 'ai chat assistant questions claude on-device model',
+    line(S) {
+      if (S.ai.mode === 'api') {
+        if (!(AI() && AI().hasKey())) return 'Claude · add your API key';
+        if (!S.ai.consentAt) return 'Claude · waiting for your OK';
+        return SP() ? `Claude · ${SP().model(S).short}` : 'Claude';
+      }
+      // The model in use, once Settings has looked at what's on the phone (the AI coach page does).
+      const have = dev.checked ? dev.installed : [];
+      const id = !have.length ? null : have.some((x) => x.id === S.ai.deviceModel) ? S.ai.deviceModel : GH.deviceCoach ? GH.deviceCoach.pick(S, have) : have[0].id;
+      const name = id ? modelName(id) : null;
+      return name ? `On-device · ${name}` : 'On-device';
+    },
+    body(S) {
+      const engine = S.ai.mode === 'api' ? 'api' : 'device';
+      if (engine === 'device' && !dev.checked && !indexing) checkDevice().then(() => { if (U.route.view === 'settings') U.render(); });
+      const hasKey = AI() && AI().hasKey();
+      const claude = engine === 'api', key = claude && hasKey;
+      const phone = engine === 'device' ? U.modelRows(S) + (dev.installed.length ? kw(more({ key: 'selftest', title: 'Check the on-device AI', sub: 'Starts the model and times a short answer', act: 'aiSelfTest' }), 'test speed problem report') : '') : '';
+      const rows = (claude ? kw(hasKey ? U.row({ key: 'key', icon: 'lock', tone: 'green', title: 'API key saved on this phone', sub: 'Encrypted here, never in backups', act: 'keySheet', detail: 'Change', chevron: true }) : U.row({ key: 'key', icon: 'lock', tone: 'amber', title: 'Add your API key', sub: 'From the Claude Console, starts with sk-ant-', act: 'keySheet', chevron: true }), 'api key anthropic console') : '')
+        + (key && SP() ? kw(U.row({ key: 'claude-model', icon: 'sparkle', tone: 'violet', title: 'Model and thinking', detail: U.esc(`${SP().model(S).short} · ${SP().LEVEL_NAMES[SP().level(S)]}`), act: 'claudeModel', chevron: true }), 'claude model opus sonnet haiku fable thinking effort reasoning')
+          + kw(U.row({ key: 'claude-spend', icon: 'card', tone: 'teal', title: 'Spending and usage', sub: U.esc(SP().todayLine(S, U.today())), act: 'claudePage', chevron: true }), 'budget spending limit cost usage money dollars price tokens bill monthly daily') : '')
+        + (key ? (S.ai.consentAt ? U.row({ key: 'consent', icon: 'check-circle', tone: 'green', title: 'You allowed Claude to get your summary', sub: 'Turn it off by picking another coach, or withdraw it', act: 'claudeWithdraw', chevron: true }) : U.row({ key: 'consent', icon: 'alert', tone: 'amber', title: 'Claude is waiting for your OK', sub: 'Review what it gets before it turns on', act: 'claudeReview', chevron: true }))
+          + kw(U.row({ key: 'delkey', icon: 'trash', tone: 'rose', title: 'Delete key', act: 'deleteKey' }), 'api key remove') : '')
+        + U.row({ key: 'claudeapp', icon: 'share', tone: 'violet', title: 'Ask in the Claude app', sub: 'Uses your own Claude plan, no key needed', act: 'askClaudeApp', chevron: true })
+        + kw(U.row({ key: 'sent', icon: 'eye', tone: 'sky', title: 'What gets sent', sub: 'The exact summary Claude sees', act: 'previewSheet', chevron: true }), 'privacy data summary');
+      return form('coach', stack('Who answers your questions', ENGINE_SUB[engine], U.seg('setCoach', [['device', 'On-device'], ['api', 'Claude']], engine, 'Coach', ' data-on="setCoachMode"'), 'claude anthropic api key on-device model engine', 'engine'))
+        + (phone ? head('coach-phone', 'On this phone') + form('coach', phone) : '')
+        + head('coach-claude', 'Claude') + menu('coach', rows)
+        + foot('coach', `${claude ? 'Claude uses your own Anthropic API key, and each request costs money. Set hard limits under Spending and usage.' : 'The on-device coach runs Qwen3.5 on your phone. It answers from your numbers, works offline and can be wrong. Nothing you ask leaves the phone.'} Claude gets a summary with no name, exact dates or IDs, and only after you allow it.`);
+    },
+  }, {
+    // Sound and vibration for timers, then the haptics (src/ui/hapticsui.js).
+    id: 'feel', title: 'Sound and haptics', icon: 'volume', tone: 'sky', words: 'vibration vibrate buzz feedback feel touch beep audio',
+    line(S) {
+      const pr = S.profile.prefs;
+      return `Sound ${pr.sound !== false ? 'on' : 'off'} · Haptics ${pr.haptics === false ? 'off' : ['light', 'strong'].includes(pr.hapticStrength) ? pr.hapticStrength : 'medium'}`;
+    },
+    body(S) {
+      const pr = S.profile.prefs;
+      return form('feel', U.sw('Sound', pr.sound !== false, 'data-on="setPref" data-k="sound"', 'Beeps for the 3-2-1, and when a timer or rest ends')
+        + U.sw('Vibration', pr.vibrate !== false, 'data-on="setPref" data-k="vibrate"', 'Buzzes for timers and the end of rest'))
+        + head('haptics', 'Haptics') + form('feel', U.hapticRows ? U.hapticRows(S) : '');
+    },
+  }, {
+    // The theme, the glass, and the exercise figure and its look (with workouts on).
+    id: 'look', title: 'Appearance', icon: 'appearance', tone: 'indigo', words: 'look theme dark mode light mode night colour color display glass',
+    line(S) {
+      const pr = S.profile.prefs;
+      return `${THEMES[pr.theme] || 'System'} theme · ${GLASSES[pr.glass] || 'Auto'} glass`;
+    },
+    body(S) {
+      const pr = S.profile.prefs;
+      return form('look', stack('Theme', '', U.seg('setTheme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], pr.theme || 'system', 'Theme', ' data-on="setTheme"'), 'dark mode light mode night', 'theme')
+        + kw(U.sw('Increase contrast', !!pr.contrast, 'data-on="setPref" data-k="contrast"'), 'accessibility readable')
+        + kw(U.sw('Moving background', pr.glowMove !== false, 'data-on="setPref" data-k="glowMove"', 'The colours behind each page drift slowly'), 'animation motion glow'))
+        + form('look', stack('Glass effects', 'Auto lightens it while you scroll', U.seg('setGlass', [['auto', 'Auto'], ['liquid', 'Liquid'], ['frosted', 'Frosted'], ['flat', 'Flat']], ['liquid', 'frosted', 'flat'].includes(pr.glass) ? pr.glass : 'auto', 'Glass effects', ' data-on="setGlass"'), 'blur lens transparency performance smooth stutter lag freeze jump', 'glass-fx')
+          + `<li data-key="glass" data-keywords="blur transparency frosted density"><div class="rf-list-row set-slider"><span class="rf-list-text"><span class="rf-list-title">Glass</span><span class="rf-list-sub">Clear to frosted</span></span><div class="rf-slider"><div class="rf-slider-control"><input class="rf-slider-input" type="range" min="0" max="1" step="0.05" value="${pr.density == null ? 0.5 : pr.density}" aria-label="Glass density" data-on="setDensity"></div></div></div></li>`, 'glass')
+        + foot('look', 'Liquid is the glass as designed. Frosted keeps the blur without the lens. Flat is the lightest.')
+        + (S.profile.workouts !== false ? form('look', figureRows(pr), 'figure') : '');
+    },
+  }, {
+    // Units, and when a day starts.
+    id: 'general', title: 'General', icon: 'settings', tone: 'teal', words: 'language region',
+    line(S) {
+      const h = U.rollHour();
+      const at = (DAY_STARTS.find(([v]) => Number(v) === h) || [null, `${h} am`])[1];
+      return `${S.profile.units === 'kg' ? 'kg, cm' : 'lb, ft, in'} · Day starts at ${at.toLowerCase()}`;
+    },
+    body(S) {
+      return form('general', stack('Units', '', U.seg('setUnits', [['lb', 'lb, ft, in'], ['kg', 'kg, cm']], S.profile.units, 'Units', ' data-on="setUnits"'), 'kg lb pounds kilograms metric imperial cm inches feet weight height', 'units')
+        + stack('Start of the day', 'Late nights count as the day before until then', U.choice('setRollHour', DAY_STARTS, String(U.rollHour()), 'Start of the day', ' data-on="setRollHour"'), 'midnight night owl day begins rollover', 'daystart'));
+    },
+  }, {
+    // A copy to keep, restoring one, and starting over.
+    id: 'data', title: 'Your data', icon: 'archive', tone: 'green', words: 'backup export import save transfer',
+    line() { return 'Copy, restore or reset'; },
+    body() {
+      return menu('data', kw(U.row({ key: 'export', icon: 'copy', tone: 'teal', title: 'Copy my data', sub: 'Everything but the API key, as text to keep safe', act: 'exportData' }), 'backup export')
+        + kw(U.row({ key: 'restore', icon: 'download', tone: 'indigo', title: 'Restore from a copy', act: 'restoreSheet', chevron: true }), 'backup import')
+        + kw(U.row({ key: 'reset', icon: 'trash', tone: 'rose', title: 'Reset everything', act: 'resetAll' }), 'delete erase start over'))
+        + foot('data', 'Keep the copy in a note or an email to yourself, then paste it into Restore, here or on a new phone.');
+    },
+  }, {
+    // Updates, then how it works, the credits and the scroll diagnostics.
+    id: 'about', title: 'About', icon: 'info', tone: 'sky', words: 'version licenses research science',
+    line() { return `Version ${String(version()).split(' ')[0]}`; },
+    body(S) {
+      return form('about', U.updateRows ? U.updateRows(S) : U.row({ key: 'version', title: 'Version', detail: U.esc(version()) }))
+        + menu('about', kw(U.row({ key: 'science', icon: 'library', tone: 'violet', title: 'How it works', sub: 'The research behind every rule', act: 'openScience', chevron: true }), 'science research studies rules why')
+          + kw(U.row({ key: 'licenses', icon: 'doc', tone: 'indigo', title: 'Open-source licenses', act: 'licensesSheet', chevron: true }), 'credits open source')
+          + kw(U.row({ key: 'refract', lead: U.refractMark('sm'), title: 'Built with Refract', sub: 'The liquid glass design system behind every screen', act: 'licensesSheet', chevron: true }), 'refract design system glass credits')
+          + kw(U.row({ key: 'diag', icon: 'bolt', tone: 'amber', title: 'Scroll diagnostics', sub: 'For the developer, if a scroll freezes or jumps', act: 'scrollDiag', chevron: true }), 'scroll freeze jump stutter lag debug diagnostics report'))
+        + foot('about', 'Built-in foods from the USDA\'s nutrient database. Not medical advice. Check with a doctor first if you have a condition or injury.');
+    },
+  }];
   // Rows another part draws, shared out into lists by their keys: the first pattern a row's key
   // matches takes it, and one none match goes in the first list, so nothing is ever lost.
   function shareOut(html, patterns) {
@@ -339,125 +413,6 @@
       out[Math.max(0, i)].push(el.outerHTML);
     }
     return out.map((x) => x.join(''));
-  }
-  function notifyPage(S) {
-    if (!U.notifyRows) return form('notify', U.row({ key: 'nf-app', title: 'In the Android app', sub: 'Reminders and nudges come from the Gradient Health app on Android.' }));
-    const [main, kinds, when] = shareOut(U.notifyRows(S), [/^(sw:notifyOn:|nf-perm$|nf-app$)/, /^sw:notifyKind:/, /^nf-(time|at)$/]);
-    const f = U.notifyFoot ? U.notifyFoot(S) : '';
-    return `${form('notify', main)}
-      ${kinds ? `${head('notify-kinds', 'What they\'re for')}${form('notify', kinds)}` : ''}
-      ${when ? form('notify', when, 'notify-when') : ''}
-      ${f ? foot('notify', U.esc(f)) : ''}`;
-  }
-
-  // AI coach: who answers, then the model on this phone or Claude's key, model and spending.
-  const ENGINE_SUB = { device: 'On-device: an AI model on your phone', api: 'Claude: your own API key, model, thinking and spending limits' };
-  function coachLine(S) {
-    if (S.ai.mode === 'api') {
-      if (!(AI() && AI().hasKey())) return 'Claude · add your API key';
-      if (!S.ai.consentAt) return 'Claude · waiting for your OK';
-      return SP() ? `Claude · ${SP().model(S).short}` : 'Claude';
-    }
-    // The model in use, once Settings has looked at what's on the phone (the AI coach page does).
-    const have = dev.checked ? dev.installed : [];
-    const id = !have.length ? null : have.some((x) => x.id === S.ai.deviceModel) ? S.ai.deviceModel : GH.deviceCoach ? GH.deviceCoach.pick(S, have) : have[0].id;
-    const name = id ? modelName(id) : null;
-    return name ? `On-device · ${name}` : 'On-device';
-  }
-  function coachPage(S) {
-    const engine = S.ai.mode === 'api' ? 'api' : 'device';
-    if (engine === 'device' && !dev.checked && !indexing) checkDevice().then(() => { if (U.route.view === 'settings') U.render(); });
-    const hasKey = AI() && AI().hasKey();
-    const claude = engine === 'api';
-    const phone = engine === 'device' ? `${U.modelRows(S)}${dev.installed.length ? kw(more({ key: 'selftest', title: 'Check the on-device AI', sub: 'Starts the model and times a short answer', act: 'aiSelfTest' }), 'test speed problem report') : ''}` : '';
-    const rows = [
-      claude ? kw(hasKey ? U.row({ key: 'key', icon: 'lock', tone: 'green', title: 'API key saved on this phone', sub: 'Encrypted here, never in backups', act: 'keySheet', detail: 'Change', chevron: true }) : U.row({ key: 'key', icon: 'lock', tone: 'amber', title: 'Add your API key', sub: 'From the Claude Console, starts with sk-ant-', act: 'keySheet', chevron: true }), 'api key anthropic console') : '',
-      claude && hasKey && SP() ? kw(U.row({ key: 'claude-model', icon: 'sparkle', tone: 'violet', title: 'Model and thinking', detail: U.esc(`${SP().model(S).short} · ${SP().LEVEL_NAMES[SP().level(S)]}`), act: 'claudeModel', chevron: true }), 'claude model opus sonnet haiku fable thinking effort reasoning') : '',
-      claude && hasKey && SP() ? kw(U.row({ key: 'claude-spend', icon: 'card', tone: 'teal', title: 'Spending and usage', sub: U.esc(SP().todayLine(S, U.today())), act: 'claudePage', chevron: true }), 'budget spending limit cost usage money dollars price tokens bill monthly daily') : '',
-      claude && hasKey && !S.ai.consentAt ? U.row({ key: 'consent', icon: 'alert', tone: 'amber', title: 'Claude is waiting for your OK', sub: 'Review what it gets before it turns on', act: 'claudeReview', chevron: true }) : '',
-      claude && hasKey && S.ai.consentAt ? U.row({ key: 'consent', icon: 'check-circle', tone: 'green', title: 'You allowed Claude to get your summary', sub: 'Turn it off by picking another coach, or withdraw it', act: 'claudeWithdraw', chevron: true }) : '',
-      claude && hasKey ? kw(U.row({ key: 'delkey', icon: 'trash', tone: 'rose', title: 'Delete key', act: 'deleteKey' }), 'api key remove') : '',
-      U.row({ key: 'claudeapp', icon: 'share', tone: 'violet', title: 'Ask in the Claude app', sub: 'Uses your own Claude plan, no key needed', act: 'askClaudeApp', chevron: true }),
-      kw(U.row({ key: 'sent', icon: 'eye', tone: 'sky', title: 'What gets sent', sub: 'The exact summary Claude sees', act: 'previewSheet', chevron: true }), 'privacy data summary'),
-    ].join('');
-    return `${form('coach', stack('Who answers your questions', ENGINE_SUB[engine], U.seg('setCoach', [['device', 'On-device'], ['api', 'Claude']], engine, 'Coach', ' data-on="setCoachMode"'), 'claude anthropic api key on-device model engine', 'engine'))}
-      ${phone ? `${head('coach-phone', 'On this phone')}${form('coach', phone)}` : ''}
-      ${head('coach-claude', 'Claude')}
-      ${menu('coach', rows)}
-      ${foot('coach', `${claude ? 'Claude uses your own Anthropic API key, and each request costs money. Set hard limits under Spending and usage.' : 'The on-device coach runs Qwen3.5 on your phone. It answers from your numbers, works offline and can be wrong. Nothing you ask leaves the phone.'} Claude gets a summary with no name, exact dates or IDs, and only after you allow it.`)}`;
-  }
-
-  // Sound and haptics: sound and vibration for timers, then the haptics (src/ui/hapticsui.js).
-  const STRENGTH = { light: 'light', medium: 'medium', strong: 'strong' };
-  function feelLine(S) {
-    const pr = S.profile.prefs;
-    return `Sound ${pr.sound !== false ? 'on' : 'off'} · Haptics ${pr.haptics === false ? 'off' : STRENGTH[pr.hapticStrength] || 'medium'}`;
-  }
-  function feelPage(S) {
-    const pr = S.profile.prefs;
-    return `${form('feel', `${U.sw('Sound', pr.sound !== false, 'data-on="setPref" data-k="sound"', 'Beeps for the 3-2-1, and when a timer or rest ends')}
-        ${U.sw('Vibration', pr.vibrate !== false, 'data-on="setPref" data-k="vibrate"', 'Buzzes for timers and the end of rest')}`)}
-      ${head('haptics', 'Haptics')}
-      ${form('feel', U.hapticRows ? U.hapticRows(S) : hapticRows(pr))}`;
-  }
-
-  // Appearance: the theme, the glass, and the exercise figure's look (with workouts on).
-  const THEMES = { system: 'System', light: 'Light', dark: 'Dark' };
-  const GLASSES = { auto: 'Auto', liquid: 'Liquid', frosted: 'Frosted', flat: 'Flat' };
-  function lookLine(S) {
-    const pr = S.profile.prefs;
-    return `${THEMES[pr.theme] || 'System'} theme · ${GLASSES[pr.glass] || 'Auto'} glass`;
-  }
-  function lookPage(S) {
-    const pr = S.profile.prefs;
-    return `${form('look', `${stack('Theme', '', U.seg('setTheme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], pr.theme || 'system', 'Theme', ' data-on="setTheme"'), 'dark mode light mode night', 'theme')}
-        ${kw(U.sw('Increase contrast', !!pr.contrast, 'data-on="setPref" data-k="contrast"'), 'accessibility readable')}
-        ${kw(U.sw('Moving background', pr.glowMove !== false, 'data-on="setPref" data-k="glowMove"', 'The colours behind each page drift slowly'), 'animation motion glow')}`)}
-      ${form('look', `${stack('Glass effects', 'Auto lightens it while you scroll', U.seg('setGlass', [['auto', 'Auto'], ['liquid', 'Liquid'], ['frosted', 'Frosted'], ['flat', 'Flat']], ['liquid', 'frosted', 'flat'].includes(pr.glass) ? pr.glass : 'auto', 'Glass effects', ' data-on="setGlass"'), 'blur lens transparency performance smooth stutter lag freeze jump', 'glass-fx')}
-        <li data-key="glass" data-keywords="blur transparency frosted density"><div class="rf-list-row set-slider"><span class="rf-list-text"><span class="rf-list-title">Glass</span><span class="rf-list-sub">Clear to frosted</span></span><div class="rf-slider"><div class="rf-slider-control"><input class="rf-slider-input" type="range" min="0" max="1" step="0.05" value="${pr.density == null ? 0.5 : pr.density}" aria-label="Glass density" data-on="setDensity"></div></div></div></li>`, 'glass')}
-      ${foot('look', 'Liquid is the glass as designed. Frosted keeps the blur without the lens. Flat is the lightest.')}
-      ${S.profile.workouts !== false ? form('look', figureRows(pr), 'figure') : ''}`;
-  }
-
-  // General: units and when a day starts.
-  function generalLine(S) {
-    const h = U.rollHour();
-    const at = (DAY_STARTS.find(([v]) => Number(v) === h) || [null, `${h} am`])[1];
-    return `${S.profile.units === 'kg' ? 'kg, cm' : 'lb, ft, in'} · Day starts at ${at.toLowerCase()}`;
-  }
-  function generalPage(S) {
-    return form('general', `${stack('Units', '', U.seg('setUnits', [['lb', 'lb, ft, in'], ['kg', 'kg, cm']], S.profile.units, 'Units', ' data-on="setUnits"'), 'kg lb pounds kilograms metric imperial cm inches feet weight height', 'units')}
-      ${stack('Start of the day', 'Late nights count as the day before until then', U.choice('setRollHour', DAY_STARTS, String(U.rollHour()), 'Start of the day', ' data-on="setRollHour"'), 'midnight night owl day begins rollover', 'daystart')}`);
-  }
-
-  // Your data: a copy to keep, restoring one, and starting over.
-  function dataPage() {
-    return `${menu('data', `${kw(U.row({ key: 'export', icon: 'copy', tone: 'teal', title: 'Copy my data', sub: 'Everything but the API key, as text to keep safe', act: 'exportData' }), 'backup export')}
-        ${kw(U.row({ key: 'restore', icon: 'download', tone: 'indigo', title: 'Restore from a copy', act: 'restoreSheet', chevron: true }), 'backup import')}
-        ${kw(U.row({ key: 'reset', icon: 'trash', tone: 'rose', title: 'Reset everything', act: 'resetAll' }), 'delete erase start over')}`)}
-      ${foot('data', 'Keep the copy in a note or an email to yourself, then paste it into Restore, here or on a new phone.')}`;
-  }
-
-  // About: updates, then how it works, the credits and the scroll diagnostics.
-  const version = () => (GH.platform && GH.platform.appVersion()) || GH.VERSION || 'web';
-  function aboutLine() { return `Version ${String(version()).split(' ')[0]}`; }
-  function aboutPage(S) {
-    return `${form('about', U.updateRows ? U.updateRows(S) : U.row({ key: 'version', title: 'Version', detail: U.esc(version()) }))}
-      ${menu('about', `${kw(U.row({ key: 'science', icon: 'library', tone: 'violet', title: 'How it works', sub: 'The research behind every rule', act: 'openScience', chevron: true }), 'science research studies rules why')}
-        ${kw(U.row({ key: 'licenses', icon: 'doc', tone: 'indigo', title: 'Open-source licenses', act: 'licensesSheet', chevron: true }), 'credits open source')}
-        ${kw(U.row({ key: 'refract', lead: U.refractMark('sm'), title: 'Built with Refract', sub: 'The liquid glass design system behind every screen', act: 'licensesSheet', chevron: true }), 'refract design system glass credits')}
-        ${kw(U.row({ key: 'diag', icon: 'bolt', tone: 'amber', title: 'Scroll diagnostics', sub: 'For the developer, if a scroll freezes or jumps', act: 'scrollDiag', chevron: true }), 'scroll freeze jump stutter lag debug diagnostics report')}`)}
-      ${foot('about', 'Built-in foods from the USDA\'s nutrient database. Not medical advice. Check with a doctor first if you have a condition or injury.')}`;
-  }
-
-  /* ---------------------------------------------------------------- sound and haptics */
-  // Until the haptics rows (U.hapticRows, src/ui/hapticsui.js) are there: the switch, the strength
-  // and a few to try at it.
-  function hapticRows(pr) {
-    const tries = [['tap', 'Tap'], ['success', 'Success'], ['warning', 'Warning'], ['celebrate', 'Celebrate']];
-    return `${U.sw('Haptic feedback', pr.haptics !== false, 'data-on="setPref" data-k="haptics"', GH.platform && GH.platform.hapticsSystemEnabled && !GH.platform.hapticsSystemEnabled() ? 'Touch feedback is off in your phone\'s settings, so taps won\'t buzz. Workout alerts still will.' : 'A click for buttons and switches, and a different feel for sets, timers and warnings')}
-      ${pr.haptics !== false ? `${stack('Haptic strength', '', U.seg('setHaptic', [['light', 'Light'], ['medium', 'Medium'], ['strong', 'Strong']], pr.hapticStrength || 'medium', 'Haptic strength', ' data-on="setHapticStrength"'), '', 'hstrength')}
-      ${stack('Try it', 'Each one at this strength', `<div class="ob-chips">${tries.map(([k, t]) => `<button type="button" class="rf-chip" data-act="tryHaptic" data-arg="${k}">${t}</button>`).join('')}</div>`, '', 'htry')}` : ''}`;
   }
 
   /* ---------------------------------------------------------------- exercise figure */
@@ -551,14 +506,13 @@
     const p = S.profile;
     const fp = GH.food.prefs(S);
     const t = GH.food.targets(S, U.today());
-    return `${head('food', 'Food')}
-      ${form('track', `${stack('Weight goal', '', U.seg('setWGoal', [['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']], p.weightGoal || 'maintain', 'Weight goal', ' data-on="setWeightGoal"'), 'lose maintain gain weight', 'wgoal')}
-        ${p.weightGoal === 'lose' ? stack('Pace', 'Of your body weight a week. Slower keeps more muscle.', U.seg('setPace', [['0.25', '0.25%'], ['0.5', '0.5%'], ['0.75', '0.75%'], ['1', '1%']], String(fp.pace), 'Pace', ' data-on="setFoodPace"'), 'how fast lose speed', 'pace') : ''}
-        ${stack('Activity', 'How much you move in a day, workouts aside', U.choice('setFoodAct', [['auto', 'From steps'], ['light', 'Light'], ['moderate', 'Moderate'], ['active', 'Active']], fp.activity || 'auto', 'Activity', ' data-on="setFoodAct"'), 'steps active moving calories burn', 'foodact')}
-        ${kw(more({ key: 'meal-times', title: 'Meal times', sub: U.esc(U.mealTimesLine ? U.mealTimesLine(S) : ''), act: 'foodMealTimes' }), 'meals breakfast lunch dinner snacks clock time')}
-        ${kw(U.sw('Online search and barcodes', !!fp.online, 'data-on="setFoodPref" data-k="online"', 'From Open Food Facts. Only barcodes and search words are sent.'), 'open food facts scan barcode')}
-        ${stack('Sex', 'For the calorie estimate. Skip it to use an average.', U.seg('setSex', [['female', 'Female'], ['male', 'Male'], ['', 'Skip']], p.sex || '', 'Sex', ' data-on="setSex"'), 'female male', 'sex')}`)}
-      ${foot('track', `${t ? `Your target is about ${U.num(t.kcal)} kcal a day${t.learned ? ', tuned to your own logs and weight' : ''}.` : 'Add your weight and height to get a calorie target.'} ${U.whyLink ? U.foodKit.link('openScience', 'calories', 'How it\'s worked out') : ''}`)}`;
+    return head('food', 'Food') + form('track', stack('Weight goal', '', U.seg('setWGoal', [['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']], p.weightGoal || 'maintain', 'Weight goal', ' data-on="setWeightGoal"'), 'lose maintain gain weight', 'wgoal')
+      + (p.weightGoal === 'lose' ? stack('Pace', 'Of your body weight a week. Slower keeps more muscle.', U.seg('setPace', [['0.25', '0.25%'], ['0.5', '0.5%'], ['0.75', '0.75%'], ['1', '1%']], String(fp.pace), 'Pace', ' data-on="setFoodPace"'), 'how fast lose speed', 'pace') : '')
+      + stack('Activity', 'How much you move in a day, workouts aside', U.choice('setFoodAct', [['auto', 'From steps'], ['light', 'Light'], ['moderate', 'Moderate'], ['active', 'Active']], fp.activity || 'auto', 'Activity', ' data-on="setFoodAct"'), 'steps active moving calories burn', 'foodact')
+      + kw(more({ key: 'meal-times', title: 'Meal times', sub: U.esc(U.mealTimesLine ? U.mealTimesLine(S) : ''), act: 'foodMealTimes' }), 'meals breakfast lunch dinner snacks clock time')
+      + kw(U.sw('Online search and barcodes', !!fp.online, 'data-on="setFoodPref" data-k="online"', 'From Open Food Facts. Only barcodes and search words are sent.'), 'open food facts scan barcode')
+      + stack('Sex', 'For the calorie estimate. Skip it to use an average.', U.seg('setSex', [['female', 'Female'], ['male', 'Male'], ['', 'Skip']], p.sex || '', 'Sex', ' data-on="setSex"'), 'female male', 'sex'))
+      + foot('track', `${t ? `Your target is about ${U.num(t.kcal)} kcal a day${t.learned ? ', tuned to your own logs and weight' : ''}.` : 'Add your weight and height to get a calorie target.'} ${U.whyLink ? U.foodKit.link('openScience', 'calories', 'How it\'s worked out') : ''}`);
   }
   U.on.setWorkouts = async (el, ev, v) => {
     const S = U.S;
@@ -622,9 +576,6 @@
     if (k === 'haptics') { if (v) U.haptic('toggleOn'); U.render(); }
     if (k === 'supersets') U.render();
   };
-  // A new strength plays a tap at it, the haptic felt most often. Try it has the bigger ones.
-  U.on.setHapticStrength = (el, ev, v) => { U.S.profile.prefs.hapticStrength = v; U.applyPrefs(); U.save(); U.haptic('tap'); };
-  U.act.tryHaptic = (el) => U.haptic(el.dataset.arg);
   U.on.setRest = (el, ev, v) => { U.S.profile.prefs.rest = v === 'auto' ? 'auto' : Number(v); U.save(); };
   U.on.setTheme = (el, ev, v) => { U.S.profile.prefs.theme = v; U.applyPrefs(); U.save(); };
   U.on.setGlass = (el, ev, v) => { U.S.profile.prefs.glass = ['liquid', 'frosted', 'flat'].includes(v) ? v : 'auto'; U.applyPrefs(); U.save(); };
@@ -657,11 +608,10 @@
   // The map pieces a map has downloaded are kept on the phone (src/ui/activity.js, U.mapPieces): Clear
   // saved maps deletes them.
   function actSettings(S) {
-    return `${head('acts', 'Walks, runs and rides')}
-      ${form('track', `${kw(U.actOptionRows(S), 'activity activities outdoor gps record running walking hiking cycling bike stops')}
-        ${kw(U.sw('Maps', !!(U.actMapsOn && U.actMapsOn()), 'data-on="actMapsPref"', 'Your route on a map from OpenFreeMap'), 'map openfreemap streets route')}
-        ${kw(U.row({ key: 'map-pieces', cls: 'set-do', title: 'Clear saved maps', sub: 'Maps you\'ve seen are kept here, to open fast and offline', act: 'mapPiecesClear' }), 'map cache offline storage space delete')}`)}
-      ${foot('track', 'OpenFreeMap sees the area a map shows. With maps off, only your route shows, drawn on this phone.')}`;
+    return head('acts', 'Walks, runs and rides') + form('track', kw(U.actOptionRows(S), 'activity activities outdoor gps record running walking hiking cycling bike stops')
+      + kw(U.sw('Maps', !!(U.actMapsOn && U.actMapsOn()), 'data-on="actMapsPref"', 'Your route on a map from OpenFreeMap'), 'map openfreemap streets route')
+      + kw(U.row({ key: 'map-pieces', cls: 'set-do', title: 'Clear saved maps', sub: 'Maps you\'ve seen are kept here, to open fast and offline', act: 'mapPiecesClear' }), 'map cache offline storage space delete'))
+      + foot('track', 'OpenFreeMap sees the area a map shows. With maps off, only your route shows, drawn on this phone.');
   }
   U.act.mapPiecesClear = async () => {
     const ok = U.mapPieces ? await U.mapPieces.clear() : false;

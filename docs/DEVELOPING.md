@@ -63,6 +63,8 @@ src/ui/controls.js       switches, segmented controls and single-choice chips (U
                          handling that makes every tap count, on Refract's liquid glass
 src/ui/hapticsui.js      the haptics rows for Settings (U.hapticRows) and the Feel each one gallery
 src/ui/you.js            the You tab: profile, badges, plans, your answers, Settings and help
+src/ui/settings.js       Settings: a short top page of parts, a page for each (PAGES), the search across
+                         them; the coach set-up, backups and the privacy page
 src/ui/badges.js         the badge medals and sealed capsules, the shelf, the gallery, the detail sheet
                          and the reveal, where a capsule is opened (see Badges)
 src/ui/badges3d.js       the medals' 3D side, in the 3D chunk: drawing their stills and keeping them,
@@ -226,8 +228,8 @@ first 3 s after launch; src/styles/perf.css), drifting only once it's left alone
 last input (`#app[data-idle]`). In use, at rest, the GPU then has nothing to do (about what it has with
 every backdrop filter off), and a flick starts on a GPU that's free. That wasn't enough on its own:
 1.8.6 kept the glass as designed while the page moved (Liquid), and the phone still stuttered there, so
-the glass steps aside then. Settings, Look, "Glass effects" (`prefs.glass`, set as `data-glass` on the
-root by `setGlassMode` in core.js) is Auto by default: the glass as designed at rest and Flat's
+the glass steps aside then. Settings, Appearance, "Glass effects" (`prefs.glass`, set as `data-glass` on
+the root by `setGlassMode` in core.js) is Auto by default: the glass as designed at rest and Flat's
 lightness (`:root[data-glass-lite]`, src/styles/perf.css: no backdrop anywhere, solid fills, no
 control lenses) from the first few pixels of a vertical drag on the page (or a wheel turn) until half a
 second after the page stops, flings included and for as long as a finger is down; a tap, a tab change
@@ -277,12 +279,13 @@ everything a finger brings: Android's UI thread taking each touch, the WebView's
 fling. So in the second the phone flicks the page itself (`diagFlick`, `Diagnostics.flick`: Android's
 own touch events, a finger down, a move every 8 ms, the finger up at speed, sent through the app's
 window as a finger's are; only a straight vertical move of 100 px or more, so it can scroll and never
-tap), the same looks on Settings, four flicks each, every frame of the page timed with its scroll
-position: how long after each touch the page moved, any time it held still mid-fling then jumped, and
-Android's own frames. Then once more as designed, recorded, so the report has the trace of those
-flicks too. Throughout, the glass is held as Liquid's (`U.glassHold(true, 'liquid')`, which bends the
-bottom glass while the page moves whatever the setting). `ui-scroll` runs both halves, the phone's
-flicks played by a stand-in that sends CDP touches.
+tap), the same looks on Settings (every page of it on one, `U.open('settings', 'all')`), four flicks
+each, every frame of the page timed with its scroll position: how long after each touch the page
+moved, any time it held still mid-fling then jumped, and Android's own frames. Then once more as
+designed, recorded, so the report has the trace of those flicks too. Throughout, the glass is held as
+Liquid's (`U.glassHold(true, 'liquid')`, which bends the bottom glass while the page moves whatever
+the setting). `ui-scroll` runs both halves, the phone's flicks played by a stand-in that sends CDP
+touches.
 
 **Nothing follows the scroll position.** Up to 1.8.9 the glow rose and faded with the page's
 scroll, a scroll-linked animation (`animation-timeline` on the page's scroll timeline). With an
@@ -370,6 +373,17 @@ hidden or goes away. Each save also fires `gh-change` on `document` (badges list
 `GH.migrations` holds the upgrades `store.migrate` runs on a loaded state. A restored backup goes
 through `store.sanitize` first: a size cap, no `__proto__` keys, and every field's type and range
 checked, so a crafted file can't break the app.
+
+**Settings** (`src/ui/settings.js`) is a short top page and a page for each part (`PAGES`: Workouts,
+Tracking, Health Connect, Notifications, AI coach, Sound and haptics, Appearance, General, Your data,
+About), opened as `U.open('settings', id)`; the top page's row for each says what's set there now
+(its `line`). A new setting goes on its part's page, in a list of its kind: controls (`form`: no
+icon tiles, every title on one inset) or places to go and things to do (`menu`: an icon on each
+row), with a short line under its title and anything longer in the list's footer. Give its row a
+`data-key` (a switch's comes from `U.sw`) and the other words it's found by in `data-keywords`: the
+search on the top page reads every page's rows from their own markup, and a result opens its page
+with the row in the middle, lit up a moment. Older ids still open their page (`food` opens Tracking
+at Food), Back from a page a link opened goes back to the link, and `'all'` has every page on one.
 
 ## Refract, the design system
 
@@ -704,7 +718,7 @@ the last sync (or a newer background read) is only marked done. A read that star
 sync leaves no gap, so the last sync moves up to it and the next foreground read is shorter. A type
 whose read failed (timed out, rate-limited) keeps what earlier reads found instead of being wiped.
 `hcBackground()` gives `{supported, granted, on, scheduled, lastRun, lastOk, error, pending}`;
-Settings, Health data, shows the switch and "Every 15 minutes · last at 3:15 pm", or why it's off.
+Settings, Health Connect, shows the switch and "Every 15 minutes · last at 3:15 pm", or why it's off.
 
 **Outdoor activities.** The page records runs, walks, hikes and rides through `ActivityService`, a
 foreground service of type `location` that the page starts while it's in front (so no background
@@ -723,7 +737,7 @@ ends the activity and leaves a note that opens the summary. While the page is in
 fix's speed and bearing). `actSetOptions({autoPause?, voice?})` changes the options while it records.
 
 **Auto-pause and spoken splits.** With `autoPause` (to begin with on for runs and rides, off for
-walks and hikes; the start sheet's chips, the live screen's options and Settings, What you track),
+walks and hikes; the start sheet's chips, the live screen's options and Settings, Tracking),
 `ActivityAutoPause` stops the clock after 5 s without moving (20 s when the GPS gives no speed: then
 a least-squares fit of the last 20 s decides) and starts it again after 2 s of moving, both dated
 back to where the stop or the move began, so the fixes it was unsure of are stored flagged. It is
@@ -969,7 +983,7 @@ Both are the same llama.cpp release (b10663). Details:
 
 ## Food
 
-Food tracking is off until someone turns it on (Settings, What you track, or Health's Track calories:
+Food tracking is off until someone turns it on (Settings, Tracking, or Health's Track calories:
 one sheet with the target the app suggests, each part of it changeable). `src/food.js` is pure logic
 on the saved state and is unit-tested (`test/food.mjs`): Mifflin-St Jeor times an activity factor from
 the person's steps and workouts (or the activity they set), a pace from the goal, floors, macros, and a
@@ -1370,7 +1384,7 @@ the package name to that key's certificate.
   command line. Each build prints the certificate's SHA-256.
 - **The test key** (`android/gradient-health.keystore`, password `gradient-health`) is public. Builds
   signed with it are for trying the app only. A release-signed build won't install over one: copy
-  your data first (Settings, Copy my data), uninstall, install the release build, then Restore from a
+  your data first (Settings, Your data, Copy my data), uninstall, install the release build, then Restore from a
   copy.
 
 ### Builds

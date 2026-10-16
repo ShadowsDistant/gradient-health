@@ -70,14 +70,14 @@
 .set-search .rf-search-input { min-height: 44px; min-width: 0; width: 100%; }
 .set-home { gap: var(--space-6); }
 /* (A section sets its own display, so hidden needs the help.) */
-.set-home[hidden], .set-results[hidden], .set-results > [hidden] { display: none; }
+:is(.set-home, .set-results, .set-results > *)[hidden] { display: none; }
 .set-none { margin: var(--space-2) 0 0; text-align: center; }
 /* A part's page: lists in a row are a group's gap apart, as on the top page (the section's gap and
    this); a header sits on its list and a footer hugs it (.section's rules, styles.css). */
-.set-page > .rf-list + .rf-list, .set-page > .rf-list-footer + .rf-list { margin-top: var(--space-3); }
+.set-page > :is(.rf-list, .rf-list-footer) + .rf-list { margin-top: var(--space-3); }
 /* Every row is set off from the next by a hairline at the text's inset: Refract draws one under
    each <li>, and a switch's row is a <label> of its own. */
-.set-page .rf-list > label.rf-list-row:not(:last-child)::after { content: ''; position: absolute; inset-inline: var(--space-4) 0; inset-block-end: 0; block-size: 1px; background-color: var(--separator); pointer-events: none; }
+.set-page label.rf-list-row:not(:last-child)::after { content: ''; position: absolute; inset-inline: var(--space-4) 0; inset-block-end: 0; block-size: 1px; background-color: var(--separator); pointer-events: none; }
 /* A list of controls has no icon tiles, so its titles, lines and hairlines share one inset: a row
    another part draws with one (Feel each one, a model) leaves it out here. */
 .set-form .rf-list-icon { display: none; }
@@ -85,7 +85,7 @@
 /* A row that does something at once (Clear saved maps) says so in the accent colour. */
 .set-do .rf-list-title { color: var(--accent); }
 /* A page a link opens at a part of it: the part lands clear of the bar. */
-.set-page > .rf-list-header, .set-page > .rf-list { scroll-margin-top: calc(var(--topbar-h) + var(--space-3)); }
+.set-page > :is(.rf-list-header, .rf-list) { scroll-margin-top: calc(var(--topbar-h) + var(--space-3)); }
 /* The row a search result opens its page at lights up, then fades (opacity only, on its own layer
    under the row's words). Reduced motion: it lights up and goes. */
 .set-flash { isolation: isolate; }
