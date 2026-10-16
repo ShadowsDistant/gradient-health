@@ -49,7 +49,7 @@ Training, food and health in one private Android app, with a coach that runs on 
 |---|---|
 | **Today** | Today's workout, and what the coach changed and why |
 | **Plan** | Your week, why it's built that way, and an AI check you approve |
-| **Your plans** | Build your own or ask the coach for one, and share it with a QR code |
+| **Your plans** | Build your own from pictures of every move or a ready-made split, or ask the coach, and share it with a QR code |
 | **Activities** | Runs, walks, hikes and rides with GPS, auto-pause and spoken splits |
 | **Food** | Calories and macros by meal, with a barcode scanner |
 | **Health** | Sleep, steps, heart rate and weight from Health Connect |
