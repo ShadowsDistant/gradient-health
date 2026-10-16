@@ -283,21 +283,25 @@
     if (G.addEventListener) G.addEventListener('blur', () => { fingers = 0; pressed = false; });
   }
   const scrolling = () => !!doc.querySelector('#app[data-scrolling], .onboard[data-scrolling], .gh-sheet[data-scrolling]');
-  // (A page moving in or out, or gliding: src/ui/motion.js. A still drawn in an idle moment between
-  // its frames made one of them late; it waits the slide out, 400 ms.)
-  const busy = () => fingers > 0 || pressed || scrolling() || doc.documentElement.hasAttribute('data-sheet-moving') || !!(U.controlsMoving && U.controlsMoving()) || !!(U.motion && U.motion.recent && U.motion.recent(400));
+  const busy = () => fingers > 0 || pressed || scrolling() || doc.documentElement.hasAttribute('data-sheet-moving') || !!(U.controlsMoving && U.controlsMoving());
   const calm = () => !busy() && (!U.calm || U.calm());
+  // A page moving in or out, or gliding (src/ui/motion.js): a still drawn in an idle moment between
+  // its frames made one of them late, so a still (and its fade in) waits the slide out, 400 ms. The
+  // warm-up's steps don't: they come once a launch, and held back too they finished later, in a
+  // software-GL test right where the next tap came (the GPU drawing no frame for 15 s meanwhile).
+  const sliding = () => !!(U.motion && U.motion.recent && U.motion.recent(400));
   // A figure's box showing (the player, a move's sheet), whose live figure stills would take frames
   // from: they wait. (A workout put aside keeps its figure, hidden: that one doesn't count.)
   const figureShown = () => Array.prototype.some.call(doc.querySelectorAll('.pl-fig, .sheet-fig'), (h) => !!h.offsetParent);
   // fn(deadline) in the next idle moment that's free (nothing in the person's hands; calm too if
-  // lax, for the work that can wait longer: true, or a function asked each time), the app in front;
-  // or after ms if no idle moment comes (still only when it's free).
-  function whenFree(fn, lax, ms) {
-    const again = () => setTimeout(() => whenFree(fn, lax, ms), 100);
+  // lax, for the work that can wait longer: true, or a function asked each time; not while a page
+  // moves if still, for a still's drawing), the app in front; or after ms if no idle moment comes
+  // (still only when it's free).
+  function whenFree(fn, lax, ms, still) {
+    const again = () => setTimeout(() => whenFree(fn, lax, ms, still), 100);
     if (doc.hidden) { doc.addEventListener('visibilitychange', again, { once: true }); return; }
     idle((deadline) => {
-      if (doc.hidden || ((typeof lax === 'function' ? lax() : lax) ? !calm() : busy())) { again(); return; }
+      if (doc.hidden || ((typeof lax === 'function' ? lax() : lax) ? !calm() : busy()) || (still && sliding())) { again(); return; }
       fn(deadline);
     }, ms);
   }
@@ -354,7 +358,7 @@
       // The GPU still on the last stills: the next once they're back.
       if (busy) { waiting = true; busy.then(() => { waiting = false; pump(); }); return; }
       pump();
-    }, () => !urgent());
+    }, () => !urgent(), undefined, true);
   }
   // The 3D chunk, asked for at once (it's fetched and parsed off the page's thread), and its warm-up,
   // each step in a calm moment. One that didn't get there is tried again, twice. The stills go as
@@ -498,7 +502,7 @@
       const now0 = host.lastElementChild;
       if (host.getAttribute('data-want') !== k || (now0 && now0.getAttribute('data-k') === k)) return;
       // (Not in the middle of a touch or a fling: it fades in once the page is let go.)
-      if (v && busy()) { whenFree(() => fn(v)); return; }
+      if (v && (busy() || sliding())) { whenFree(() => fn(v), false, undefined, true); return; }
       if (v) put(host, k, v, true); else { host.removeAttribute('data-want'); flat(host); }
     };
     fn.host = host;
