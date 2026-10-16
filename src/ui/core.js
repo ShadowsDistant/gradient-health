@@ -51,6 +51,20 @@
     chip: '<rect x="7" y="7" width="10" height="10" rx="2.25"/><path d="M9.75 4v3M14.25 4v3M9.75 17v3M14.25 17v3M4 9.75h3M4 14.25h3M17 9.75h3M17 14.25h3M10.25 12h3.5"/>',
     scale: '<rect x="4" y="4" width="16" height="16" rx="4.5"/><path d="M8.75 10a4.6 4.6 0 0 1 6.5 0M12 10.25l1.25-1.75"/>',
     stop: '<rect x="6.75" y="6.75" width="10.5" height="10.5" rx="2.25" fill="currentColor" stroke="none"/>',
+    // A screen with a pulse on it: a recording of what the phone does (scroll diagnostics, What's new).
+    activity: '<rect x="3.75" y="5" width="16.5" height="14" rx="3"/><path d="M6.75 12.5h2.25l1.75-3.5 2.75 7 1.75-3.5h2"/>',
+    // The muscle groups (U.groupIcon): an exercise for most, a flexed arm, a six-pack, a heartbeat.
+    'group-biceps': '<path d="M3.75 11.25c1.6-1.95 3.75-3 6.1-2.95 1.55.05 2.75.85 3.4 2.2l.1-3.1c0-.55-.3-1.05-.8-1.3l-.55-.25a1 1 0 0 1-.35-1.5l.55-.75a1.6 1.6 0 0 1 1.3-.65h1.55c.7 0 1.3.45 1.5 1.1l1.55 5.15c.6 2 .35 4.15-.7 5.95-1.15 1.95-3.25 3.1-5.5 3.1-2.6 0-5.35-.45-8.15-1.45"/><path d="M8 13.25c1.15-.75 2.6-.95 3.9-.55"/>',
+    'group-triceps': '<circle cx="12" cy="4.5" r="1.75"/><path d="M12 7v6.25M8.75 8.25 12 7.5l3.25.75M8.75 8.25 6 11.5M15.25 8.25 18 11.5M12 13.25l-1.75 3 1 3M12 13.25l1.75 3-1 3M6 11.5v8.75M18 11.5v8.75"/>',
+    'group-chest': '<circle cx="5.25" cy="11.75" r="1.75"/><path d="M7.75 13.5l12.5 5.25M7.75 13.5v6.25M3.75 20.25h16.5"/>',
+    'group-back': '<circle cx="12" cy="7" r="1.6"/><path d="M3.75 3.75h16.5M7.5 3.75l2.5 6h4l2.5-6M12 9.75v6M12 15.75l-1.75 4.5M12 15.75l1.75 4.5"/>',
+    'group-shoulders': '<circle cx="12" cy="7.25" r="1.6"/><path d="M4.75 4h14.5M6.25 2.5v3M17.75 2.5v3M8.75 4l1.25 5.75h4L15.25 4M12 9.75v6M12 15.75l-2.5 4.5M12 15.75l2.5 4.5"/>',
+    'group-legs': '<circle cx="15.5" cy="4.5" r="1.75"/><path d="M14.75 7 9.5 12.25l5.75.5-1.25 7.5h3M14.25 8.5h5.25"/>',
+    'group-abs': '<rect x="6.75" y="3.75" width="4.5" height="4.75" rx="1.75"/><rect x="12.75" y="3.75" width="4.5" height="4.75" rx="1.75"/><rect x="6.75" y="9.75" width="4.5" height="4.75" rx="1.75"/><rect x="12.75" y="9.75" width="4.5" height="4.75" rx="1.75"/><rect x="6.75" y="15.75" width="4.5" height="4.5" rx="1.75"/><rect x="12.75" y="15.75" width="4.5" height="4.5" rx="1.75"/>',
+    'group-conditioning': '<path d="M12 20.25s-7.75-4.5-7.75-10.25A4.35 4.35 0 0 1 12 7.35 4.35 4.35 0 0 1 19.75 10c0 5.75-7.75 10.25-7.75 10.25z"/><path d="M7 12.25h2.25l1.25-2.25 2 4.25 1.25-2h3.25"/>',
+    'group-mobility': '<circle cx="12.75" cy="6.25" r="1.75"/><path d="M12.25 8.75 11 14l-3.75 2.75v3.5M11 14l4.75 1.75 3.5 4.5M12.4 10.1l1.6-6.35"/>',
+    'group-balance': '<circle cx="12" cy="4.5" r="1.75"/><path d="M12 7.75v6.5M5.75 9.75 12 8.5l6.25 1.25M12 14.25v6M12 14.25l3.5.75-1.75 2.25-1.75-.5"/>',
+    'group-impact': '<circle cx="12" cy="4.25" r="1.75"/><path d="M12 6.75v5.5M7.75 4.25 12 8.25l4.25-4M12 12.25l-3.25 2.5.75 2.75M12 12.25l3.25 2.5-.75 2.75M5.5 20.75h13"/>',
   };
   U.icon = (name, size, cls) => {
     const r = R();
@@ -58,6 +72,10 @@
     if (r && r.icon) { try { const svg = r.icon(name, { size: size || undefined, className: cls || '' }); if (svg) return svg; } catch (e) { /* unknown glyph */ } }
     return `<span class="${cls || ''}" data-icon="${U.esc(name)}" aria-hidden="true"></span>`;
   };
+  // A muscle group's glyph: biceps, triceps, chest, legs, back, shoulders, abs, conditioning,
+  // mobility, balance and impact (a dumbbell for anything else).
+  U.groupIcon = (group, size, cls) => U.icon(EXTRA_ICONS[`group-${group}`] ? `group-${group}` : 'dumbbell', size, cls);
+
   // (Each formatter is made once: toLocaleString makes a new one on every call.)
   const NUMF = new Map();
   U.num = (n, d) => {
