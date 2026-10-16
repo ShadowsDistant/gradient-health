@@ -78,8 +78,11 @@ src/ui/md.js             the answers' Markdown, drawn safely: escaped first, a f
 src/ui/embeds.js         the data cards an answer can hold ([[sleep]], [[lift:<move>]] …), drawn from
                          the app's own numbers, never the model's (GH.embeds)
 src/ui/tailor.js         the Tailor my plan sheet
-src/ui/customplan.js     Your plans: the list, the editor and exercise picker, sharing, a shared plan's
-                         preview, Build me a plan
+src/ui/customplan.js     Your plans: the list of plans, the plan builder's stand-ins until its part loads,
+                         and what both share (the tiles' pictures, U.cpKit)
+src/ui/planbuilder.js    the plan builder, a part of its own (planUi, loaded on a finger-down on a way in
+                         or in a calm moment): a plan's page, the exercise picker, an exercise's sheet,
+                         New plan, sharing, a shared plan's preview, Build me a plan and Improve
 src/ui/metric.js         a health number's sheet: its history, chart, and adding or changing it
 src/ui/bodymap.js        Progress's body map (front and back, 17 muscles) and the muscle sheet
 src/ui/guide.js          tour (cards over Today after the first workout), first-week checklist, tab
@@ -313,6 +316,14 @@ on a timer once the page is scrolled down (`#app[data-page-scrolled]`, set with 
 edge in `core.js`). `ui-scroll` checks that no animation runs on a scroll's timeline, and no page
 names one, in every look; Refract's own scroll-driven effects (`data-reveal`, `data-parallax`,
 `.rf-list-swipe`) stay unused.
+
+**No `:has()` high up.** A `:has()` rule whose subject is the root, the body or `#app` has Chrome check
+it again at every element put into the page or taken out of it, anywhere, and restyle what it styles:
+1.5 ms an insertion at 1x CPU where 0.1 is usual, paid by every render, route change, sheet, toast and
+motion copy. So what's open over the page is kept as attributes on `#app` by a MutationObserver in
+`core.js` (`watchOverlays`: `data-gh-overlay` for the workout player or set-up, opaque, then
+`data-gh-player` and `data-gh-live`), and the page set back under a sheet is marked on the root
+(`data-set-back`, from `sheet.js`). `ui-perf` fails on such a rule.
 
 **Scrolling, and work that can wait.** A fling should only move what's already drawn
 (`src/styles/perf.css`). While the page scrolls (`#app[data-scrolling]`, set in `core.js` and
@@ -620,8 +631,10 @@ figure's box shows: what a screen waits for first, whenever nothing is in the pe
 finger on the screen, the page not scrolling, no sheet or control moving), then what's drawn ahead,
 once it's calm too. A still shows as soon as its picture is encoded (an object URL) and is kept as
 a data URL made in the background. Up to 300 are kept; past that the oldest that this week and next
-don't show go. The plan builder's large tiles (its picker's) are drawn as they come near the screen
-and held for the launch only. Reset everything deletes them. `ui-plan`
+don't show go. The plan builder's large tiles (a plan's exercises) are drawn as they come near the
+screen and kept apart (IndexedDB `gh-stills-big`, up to 400, read in only when one first asks); the
+picker's rows use Plan's size. No still begins while a page slides (`U.motion.recent`) or a sheet's
+content scrolls. Reset everything deletes them. `ui-plan`
 checks that no tile ever holds the flat figure while 3D is picked, the drawing ahead, Plan's first
 render after a relaunch, a new look and the flat setting; `ui-figure` Settings' preview after a
 relaunch, and that stills never go while a finger is down or the page scrolls, and then go at once,
@@ -1196,6 +1209,17 @@ state (`test/customplan.mjs`); `src/ui/customplan.js` is the screens (`test/ui-c
   shows the code to scan. **GitHub Pages must be on** for links to open in a browser (the repository's
   Settings, Pages, Deploy from a branch, `main`, `/docs`). QR codes, and links opened straight in the
   app, work without it.
+- **The builder** (`src/ui/planbuilder.js`, its logic in `src/customplan.js`). The picker is a windowed
+  list (only the rows near the screen are drawn) with Suggested at the top (`suggest()`: moves for the
+  day's muscles and for the week's gaps, at the person's level, never one the day holds under another
+  ladder), muscle chips and a Filters menu (kit, from each move's `kit` and the person's own, and "Only
+  what I can do"), a forgiving search (spaces, hyphens, plurals, one letter off; a word under 4
+  letters only matches word starts) and a tray of the day's exercises with Undo. The day changes once,
+  as the sheet closes. A new exercise gets sets from the goals' tiers and reps from the person's level
+  on its ladder (`defaults`, `itemFor`); Replace lists the closest moves first (`similar()`). A plan's
+  page shows its week by muscle (`weekSets()`: sets a week against `S.vol`), and New plan offers Full
+  body, Upper and lower, Push, pull, legs and No equipment (`templates()`), fitted to the person's
+  minutes. `test/customplan.mjs` and `test/ui-customplan.mjs` cover them.
 - **Build me a plan.** `generate()` reads the request with Tailor's rules plus the split and the time,
   has the brain plan a week for a copy of the person with those wishes, and turns it into a plan, so it
   only holds moves they can do. With Claude on (`GH.ai.json`, a JSON schema) or an on-device model (a

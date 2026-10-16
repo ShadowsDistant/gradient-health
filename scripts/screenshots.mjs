@@ -188,11 +188,21 @@ async function run(dark) {
   }
   else await top();
   await shot('activity');
-  // Your plans: one made from the coach's week, its days, and sharing it as a QR code.
+  // Your plans: one made from the coach's week, its days, the exercise picker, and sharing it as a QR
+  // code. (Their screens and sheets are a part of their own, planUi, loaded first.)
+  await page.evaluate(() => window.GH.lazy('planUi'));
   await page.evaluate(() => { const U = window.GH.ui, C = window.GH.customPlan; const p = C.list(U.S)[0] || C.add(U.S, C.fromCoach(U.S, U.today())).plan; U.open('planEdit', p.id); });
   await settle(1200);
   await top();
   await shot('plans');
+  // The picker for the first day: Suggested at the top, the filters, and the tray. Its pictures
+  // turn into stills of the 3D figure while the phone is idle.
+  await page.evaluate(() => window.GH.ui.act.cpAdd({ dataset: { arg: '0' } }));
+  await settle(1500);
+  for (let i = 0; i < 30 && await page.evaluate(() => [...document.querySelectorAll('.cp-pick .cp-row .cp-thumb[data-move]')].some((h) => h.getBoundingClientRect().top < innerHeight && !h.querySelector(':scope > img'))); i++) await settle(700);
+  await shot('picker');
+  await page.evaluate(() => window.GH.ui.closeSheets());
+  await settle(900);
   await page.evaluate(() => { const U = window.GH.ui, C = window.GH.customPlan; U.act.cpShare({ dataset: { arg: C.list(U.S)[0].id } }); });
   await settle(1500);
   await shot('share');
