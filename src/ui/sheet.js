@@ -211,6 +211,11 @@
   function measure(s) {
     s.dirty = false;
     const vis = s.vvh || s.el.clientHeight || G.innerHeight;
+    // The header's two sides as wide as each other (the close button, and the action or its spacer),
+    // so the title sits in the middle when it wraps too: Refract's 1fr auto 1fr lets a wider action
+    // pull it off centre then (sheet.css). Read here with the rest, written only when it changes.
+    const side = Math.max(s.close.offsetWidth, s.header.lastElementChild.offsetWidth);
+    if (side !== s.side) { s.side = side; s.header.style.setProperty('--gh-head-side', `${side}px`); }
     const H = s.panel.offsetHeight;
     s.H = H;
     s.closedY = H + OUT;
@@ -340,6 +345,7 @@
     const s = {
       el, size, scrim: el.querySelector('.gh-sheet-scrim'), panel: el.querySelector('.gh-sheet-panel'),
       grab: el.querySelector('.rf-sheet-grabber'), header: el.querySelector('.rf-sheet-header'), body: el.querySelector('.rf-sheet-body'),
+      close: el.querySelector('[data-sheet-close]'), side: 0,
       H: 0, lowY: 0, topY: 0, closedY: 0, y: 0, restY: 0, detent: null, vvh: 0, coverY: null,
       run: null, moving: false, closing: false, dirty: false, wantTop: false, dragEnd: -1e9, sheen: -1, scrolled: false,
     };

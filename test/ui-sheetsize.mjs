@@ -2,19 +2,22 @@
 // it, in Chromium at phone size, light, at 390 px with the text as it comes and at 360 px with it at
 // 130% (the most the app allows when the phone's font size is turned up; test/sweep.mjs does the
 // same) and a three-button navigation bar, and once it has settled:
-// - a full sheet is a long one (a list, a search, a long read): no big empty space under its content
+// - a full sheet is a long one (a list, a search, a long read): no big empty space under its content,
+//   unless it's a search (Add food with nothing found yet)
 // - an auto or fit sheet whose content fits in 86% of the screen shows all of it as it opens: nothing
 //   cut off at the bottom, no sliver of a second detent to drag up for
 // - its main buttons (filled, tinted or large) are in sight as it opens, unless it's an auto or fit
 //   sheet too long for the screen and they're further down it than 86% of the screen (then they're
 //   at the end of what scrolls)
 // - nothing runs past its sides, no text is cut off and no label is wider than its button
-// Not the food sheets (src/ui/food.js) or the scanner (src/scanner.js), and not the few that need a
-// live activity, a running AI or an update to show. A sheet whose opener isn't in the app any more
-// is listed as skipped; one whose opener is there and shows no sheet fails.
-// Usage: node test/ui-sheetsize.mjs [--all] [--only=a,b] [--shots]
+// - its header's close button, title and action share one line, and the title is centred
+// The food sheets and the scanner too, and a live activity's options; not the few that need a running
+// AI or an update to show. A sheet whose opener isn't in the app any more is listed as skipped; one
+// whose opener is there and shows no sheet fails.
+// Usage: node test/ui-sheetsize.mjs [--all] [--only=a,b] [--shots] [--dark]
 //   --all    390 and 360 px, each at 100% and 130% text
 //   --shots  screenshots of every sheet to build/sheets/
+//   --dark   in the dark theme
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -29,6 +32,7 @@ try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require(
 const arg = (name, def) => { const a = process.argv.find((x) => x.startsWith(`--${name}=`)); return a ? a.slice(name.length + 3) : def; };
 const ONLY = arg('only', '').split(',').filter(Boolean);
 const SHOTS = process.argv.includes('--shots');
+const DARK = process.argv.includes('--dark');
 const COMBOS = process.argv.includes('--all') ? [[390, 1], [390, 1.3], [360, 1], [360, 1.3]] : [[390, 1], [360, 1.3]];
 const OUT = join(root, 'build/sheets');
 if (SHOTS) mkdirSync(OUT, { recursive: true });
@@ -94,7 +98,14 @@ function measure() {
   }
   const title = head.querySelector('.rf-sheet-title');
   if (title && title.scrollWidth > title.clientWidth + 1) problems.push(`title cut off: "${title.textContent.slice(0, 40)}"`);
-  return { size: d.dataset.size, detent: d.dataset.detent, H: Math.round(pr.height), content, shown: Math.round(H - pr.top), gap: Math.round(Math.min(H, pr.bottom) - low), vh: H, hidden, problems: [...new Set(problems)].slice(0, 6) };
+  // The header: the close button, the title and the action (or its spacer) on one line, their
+  // middles within a pixel, and the title's words centred on the panel (a long one may wrap).
+  const mid = (e) => { const r = e.getBoundingClientRect(); return r.top + r.height / 2; };
+  const close = head.querySelector('[data-sheet-close]'), end = head.lastElementChild;
+  const line = [close, title, end].filter((e) => e && e.getClientRects().length).map(mid);
+  const header = { off: Math.round((Math.max(...line) - Math.min(...line)) * 10) / 10, centre: 0 };
+  if (title) { const rg = document.createRange(); rg.selectNodeContents(title); const t = rg.getBoundingClientRect(); header.centre = Math.round((t.left + t.width / 2 - (pr.left + pr.width / 2)) * 10) / 10; }
+  return { size: d.dataset.size, detent: d.dataset.detent, H: Math.round(pr.height), content, shown: Math.round(H - pr.top), gap: Math.round(Math.min(H, pr.bottom) - low), vh: H, hidden, header, search: !!body.querySelector('input[type="search"]'), problems: [...new Set(problems)].slice(0, 6) };
 }
 
 // [id, the opener it needs (null: always there), open]. open runs here with the helpers and leaves
@@ -105,6 +116,7 @@ const SHEETS = ({ page, act, ev, settle }) => {
   // carry dumbbells too).
   const workout = async () => { await ev(() => { const U = window.GH.ui; window.GH.brain.setPlace(U.S, U.today(), 'gym'); U.go('today'); }); await settle(600); await act('startWorkout'); await settle(1400); await ev(() => { const a = window.GH.ui.S.active; const i = a.steps.findIndex((x) => x.kind === 'set' && x.item && x.item.load && x.item.load.kg != null && window.GH.brain.isGymFam(x.item.fam)); a.idx = i >= 0 ? i : a.steps.findIndex((x) => x.kind === 'set'); }); };
   const plan = (fn) => ev(fn);
+  const food = async () => { await ev(() => window.GH.ui.go('food')); await settle(900); };
   return [
     ['act-rename', 'actRename', async () => { await page.evaluate(seedActivities); await settle(600); await ev(() => window.GH.ui.open('activity', 'seed-w1')); await settle(900); await act('actRename', 'seed-w1'); }],
     ['act-type', 'actStart', async () => { await act('actStart'); }],
@@ -129,6 +141,8 @@ const SHEETS = ({ page, act, ev, settle }) => {
     ['plans-share', 'cpShare', async () => { await plan(() => { const U = window.GH.ui, id = window.GH.customPlan.list(U.S)[0].id; U.open('planEdit', id); U.act.cpShare({ dataset: { arg: id } }); }); }],
     ['plans-import', null, async () => { await ev(async () => { const C = window.GH.customPlan; const p = C.normalize({ name: 'Sam\'s gym split', note: 'Heavy first, then the rest.', days: [{ title: 'Upper body', items: [{ move: 'bench_bb', sets: 4, reps: 6 }, { move: 'row_cable', sets: 3, reps: 10 }] }, { title: 'Lower', items: [{ move: 'squat_bb', sets: 4, reps: 6 }] }] }).plan; window.__gh.onLink(C.link(await C.encode(p, { from: 'Samantha' }))); }); }],
     ['plans-build', 'cpBuild', async () => { await act('cpBuild'); }],
+    // (With Claude set up for it, a key in place: put back as it was once it's measured.)
+    ['plans-improve', 'cpImprove', async () => { await ev(() => { const U = window.GH.ui; window.__aiWas = { mode: U.S.ai.mode, consentAt: U.S.ai.consentAt, loadSecret: window.AndroidBridge.loadSecret }; U.S.ai.mode = 'api'; U.S.ai.consentAt = Date.now(); window.AndroidBridge.loadSecret = () => 'sk-ant-api03-' + 'a'.repeat(60); U.act.cpImprove({ dataset: { arg: window.GH.customPlan.list(U.S)[0].id } }); }); }],
     ['diag', 'scrollDiag', async () => { await act('scrollDiag'); }],
     ['tour', 'showTour', async () => { await ev(() => window.GH.ui.showTour()); }],
     ['whatsnew', 'showWhatsNew', async () => { await ev(() => window.GH.ui.showWhatsNew()); }],
@@ -163,6 +177,19 @@ const SHEETS = ({ page, act, ev, settle }) => {
     ['tailor', 'tailorPlan', async () => { await act('tailorPlan'); }],
     ['protein', 'addProtein', async () => { await act('addProtein'); }],
     ['help', 'openHelp', async () => { await act('openHelp'); }],
+    // The food sheets (src/ui/foodpage.js), from the Food page.
+    ['food-add', 'foodAdd', async () => { await food(); await act('foodAdd', 'lunch'); }],
+    ['food-quick', 'foodQuick', async () => { await food(); await act('foodQuick'); }],
+    ['food-create', 'foodCreate', async () => { await food(); await act('foodCreate'); }],
+    ['food-edit', 'foodEdit', async () => { await food(); await ev(() => { const b = document.querySelector('#screen [data-act="foodEdit"]'); if (b) b.click(); }); }],
+    ['food-portion', 'foodPick', async () => { await food(); await act('foodAdd', 'lunch'); await settle(1200); await ev(() => { const b = document.querySelector('dialog[open] [data-act="foodPick"]'); if (b) b.click(); }); }],
+    ['food-meal', 'foodSaveDay', async () => { await food(); await act('foodSaveDay'); }],
+    ['food-track', 'foodStart', async () => { await food(); await act('foodStart'); }],
+    ['food-times', 'foodMealTimes', async () => { await food(); await act('foodMealTimes'); }],
+    // The barcode scanner (src/scanner.js): no camera here, so it says so over the number field.
+    ['scan', 'foodScan', async () => { await food(); await ev(() => { window.GH.food.prefs(window.GH.ui.S).online = true; window.GH.ui.act.foodScan(); }); }],
+    // A live activity's options (src/ui/actlive.js), recording.
+    ['act-menu', 'alMenu', async () => { await ev(() => { window.__act.perms = { location: 'granted', activity: 'granted', notifications: 'granted' }; window.__act.searchMs = 0; window.GH.ui.go('today'); }); await settle(600); await act('actStart'); await settle(900); await page.click('dialog[open] .at-tile[data-arg="run"]'); await settle(1500); await ev(() => window.GH.ui.act.alGo()); await settle(4000); await act('alMenu'); }],
   ].filter(([id]) => !ONLY.length || ONLY.includes(id));
 };
 
@@ -170,9 +197,9 @@ const server = await serveDist();
 const browser = await chromium.launch();
 const errors = [];
 for (const [width, zoom] of COMBOS) {
-  const tag = `${width} px, text at ${Math.round(zoom * 100)}%`;
+  const tag = `${width} px, text at ${Math.round(zoom * 100)}%${DARK ? ', dark' : ''}`;
   section(tag);
-  const ctx = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: 'light' });
+  const ctx = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: DARK ? 'dark' : 'light' });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`${tag}: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(`${tag}: ${m.text()}`); });
@@ -216,17 +243,20 @@ for (const [width, zoom] of COMBOS) {
       await settle(600);
       await rest();
       r = await page.evaluate(measure);
-      if (r && SHOTS) await page.screenshot({ path: join(OUT, `${width}-${Math.round(zoom * 100)}-${id}.png`) });
+      if (r && SHOTS) await page.screenshot({ path: join(OUT, `${width}-${Math.round(zoom * 100)}${DARK ? '-dark' : ''}-${id}.png`) });
     } catch (e) { err = e.message.split('\n')[0]; }
     if (!check(`${id}: it opens`, !!r, err || 'no sheet')) { await page.evaluate(() => window.GH.ui.closeSheets()); continue; }
     const fits = r.content <= Math.round(r.vh * 0.86);
     const what = `${r.size} at ${r.detent}: content ${r.content} px, ${r.shown} px of it on screen, ${r.gap} px empty under it`;
-    if (r.size === 'full') check(`${id}: full, and long enough to fill it`, r.content >= r.H - 100 && r.gap < 160, what);
+    if (r.size === 'full') check(`${id}: full, and long enough to fill it (or a search, whose list grows as you type)`, (r.content >= r.H - 100 && r.gap < 160) || r.search, what);
     else check(`${id}: ${r.size}, ${fits ? 'all of it in sight as it opens' : 'too long for the screen, so it scrolls'}`, !fits || r.shown >= r.content - 2, what);
     check(`${id}: its main buttons in sight`, r.hidden.every((b) => r.size !== 'full' && !fits && b.far), `${r.hidden.map((b) => `${b.label}${b.far ? '' : ' (within 86% of the screen)'}`).join(', ')} out of sight (${what})`);
     check(`${id}: nothing past its sides or cut off`, !r.problems.length, r.problems.join('\n      '));
-    // Back to Today with nothing open: no sheet, no player, no page on top.
+    check(`${id}: its header's close button, title and action on one line, the title centred`, r.header.off <= 1 && Math.abs(r.header.centre) <= 1.5, r.header);
+    if (id === 'plans-improve') await page.evaluate(() => { const U = window.GH.ui, w = window.__aiWas; if (w) { U.S.ai.mode = w.mode; U.S.ai.consentAt = w.consentAt; window.AndroidBridge.loadSecret = w.loadSecret; } });
+    // Back to Today with nothing open: no sheet, no player, no live activity, no page on top.
     await page.evaluate(() => { const U = window.GH.ui, S = U.S, pl = document.querySelector('.player'); U.closeSheets(); S.active = null; if (pl && !pl.hidden && U.playerBack) U.playerBack(); while (U.back()) { /* back */ } U.go('today'); });
+    if (id === 'act-menu') { await page.evaluate(() => { if (window.GH.ui.act.alDiscardNow) window.GH.ui.act.alDiscardNow(); }); await settle(900); }
     await settle(700);
   }
   if (skipped.length) console.log(`  skipped (their opener isn't in the app): ${skipped.join(', ')}`);

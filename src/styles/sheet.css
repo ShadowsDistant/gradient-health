@@ -103,6 +103,9 @@ dialog.gh-sheet[data-closing] { pointer-events: none; }
 
 .gh-sheet .rf-sheet-grabber { flex: none; margin: 7px auto 0; touch-action: none; cursor: grab; }
 .gh-sheet .rf-sheet-header { animation: none; touch-action: none; }
+/* Both sides at least as wide as the wider of the close button and the action (sheet.js), so a title
+   that wraps stays in the middle of the sheet. */
+.gh-sheet .rf-sheet-header { grid-template-columns: minmax(var(--gh-head-side, auto), 1fr) auto minmax(var(--gh-head-side, auto), 1fr); }
 .gh-sheet .rf-sheet-grabber:focus { outline: none; }
 .gh-sheet .rf-sheet-grabber:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 /* One 16 px inset: the body has none of its own; each block in it brings its own (like a page's
