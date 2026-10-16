@@ -28,6 +28,7 @@
   const PATTERNS = { 1: [0], 2: [0, 3], 3: [0, 2, 4], 4: [0, 1, 3, 4], 5: [0, 1, 2, 4, 5], 6: [0, 1, 2, 3, 4, 5] };
   const GROUP_ORDER = ['chest', 'back', 'shoulders', 'legs', 'biceps', 'triceps', 'abs', 'conditioning', 'mobility'];
   const GROUP_GOAL = { legs: 'legs', chest: 'chest', back: 'back', shoulders: 'shoulders', biceps: 'arms', triceps: 'arms', abs: 'abs' };
+  const GOAL_GROUPS_OF = { legs: ['legs'], chest: ['chest'], back: ['back'], shoulders: ['shoulders'], arms: ['biceps', 'triceps'], abs: ['abs'] };
   const JOINT_NAME = { knee: 'knees', shoulder: 'shoulders', back: 'back', wrist: 'wrists', elbow: 'elbows', hip: 'hips', ankle: 'ankles', neck: 'neck' };
   const EQ_NAME = { db: 'dumbbells', kb: 'a kettlebell', ball: 'a ball', slam: 'a ball you can slam', band: 'a band', bar: 'a pull-up bar', chair: 'a chair', wall: 'a wall', towel: 'a towel', table: 'a sturdy table', door: 'a door anchor', bb: 'a barbell', ez: 'an EZ bar', rack: 'a squat rack', bench: 'a bench', incline: 'an adjustable bench', smith: 'a Smith machine', cable: 'a cable machine', pulldown: 'a lat pulldown', legPress: 'a leg press', legCurl: 'a leg curl machine', legExt: 'a leg extension machine', chestPress: 'a chest press machine', shoulderPress: 'a shoulder press machine', pecDeck: 'a pec deck', dip: 'dip bars', rower: 'a rower', bike: 'an exercise bike', treadmill: 'a treadmill' };
   // Big moves rest longer by default (the brain's auto rest: 90 s after multi-joint moves, 60 s else).
@@ -390,8 +391,13 @@
     }));
     return out;
   }
-  // Every move someone could put in a plan, with whether they can do it at home and at the gym.
+  // Every move someone could put in a plan, with whether they can do it at home and at the gym, what
+  // it's done with (kit) and what it works (muscles), and the words it's found by (find). Kept for
+  // the day and the state it was worked out for, so the picker opens without working it out again.
+  let catalogKept = null;
   function catalog(S, day) {
+    const stamp = catalogStamp(S, day);
+    if (catalogKept && catalogKept.S === S && catalogKept.stamp === stamp) return catalogKept.list;
     const where = S.profile.where || 'home';
     const home = where !== 'gym' ? context(S, day, 'home') : null;
     const gym = where !== 'home' ? context(S, day, 'gym') : null;
@@ -399,9 +405,202 @@
     for (const [id, m] of Object.entries(M().MOVES)) {
       if (!m.name || !m.group) continue;
       const h = home ? check(home, id) : null, g = gym ? check(gym, id) : null;
-      out.push({ id, name: m.name, group: m.group, timed: !!m.timed, ok: !!((h && h.ok) || (g && g.ok)), home: !!(h && h.ok), gym: !!(g && g.ok), why: whyText((h && !h.ok ? h : null) || g) });
+      const k = known(m);
+      out.push({ id, name: m.name, group: m.group, timed: !!m.timed, ok: !!((h && h.ok) || (g && g.ok)), home: !!(h && h.ok), gym: !!(g && g.ok), why: whyText((h && !h.ok ? h : null) || g), kit: k.kit, muscles: k.muscles, fam: m.family || null, find: k.find });
     }
+    catalogKept = { S, stamp, list: out };
     return out;
+  }
+  // What the catalog reads from the state (the checks above: kit, joints, rules, levels, hidden moves).
+  function catalogStamp(S, day) {
+    const p = S.profile;
+    return `${day}|${JSON.stringify([p.equipment, p.gym, p.where, p.careful, p.impactOk, p.gentle, p.age, p.conditions, p.oaJoints, p.floorOk, p.jumpsOk, p.fractures, p.retinopathy, p.experience, p.planTweaks, S.pain, S.excluded, S.complexity, S.place, S.lastPlace])}|${B().progStamp ? B().progStamp(S) : JSON.stringify(S.prog)}`;
+  }
+
+  /* ---------------------------------------------------------------- what a move is done with */
+  // The picker's equipment filter, in the order it lists them: what moves are done with, from what
+  // each one needs (req). A chair, a wall, a towel or a table is something anyone has: a move that
+  // needs only those is body only. The filter shows the ones the catalog holds.
+  const KIT = [['body', 'Body only'], ['db', 'Dumbbells'], ['kb', 'Kettlebell'], ['band', 'Bands'], ['bar', 'Bars'], ['ball', 'Ball'], ['barbell', 'Barbell'], ['cable', 'Cables'], ['machine', 'Gym machines'], ['cardio', 'Cardio machines']];
+  const KIT_OF = { db: 'db', kb: 'kb', band: 'band', door: 'band', bar: 'bar', dip: 'bar', ball: 'ball', slam: 'ball', bb: 'barbell', ez: 'barbell', rack: 'barbell', cable: 'cable', smith: 'machine', pulldown: 'machine', legPress: 'machine', legCurl: 'machine', legExt: 'machine', chestPress: 'machine', shoulderPress: 'machine', pecDeck: 'machine', rower: 'cardio', bike: 'cardio', treadmill: 'cardio' };
+  // The words a move's kit is found by ("db" and "kb" are how people write them).
+  const KIT_WORDS = { body: 'bodyweight body weight no equipment', db: 'dumbbell db', kb: 'kettlebell kb', band: 'resistance band', bar: 'bar', ball: 'ball medicine', barbell: 'barbell', cable: 'cable', machine: 'machine', cardio: 'cardio machine' };
+  // Muscles in words (the 17 the body map shows), and the words people use for groups.
+  const MUSCLE_WORDS = { chest: 'chest', frontDelts: 'front delts', sideDelts: 'side delts', rearDelts: 'rear delts', upperBack: 'upper back', lats: 'lats', lowerBack: 'lower back', biceps: 'biceps', triceps: 'triceps', forearms: 'forearms', abs: 'abs', obliques: 'obliques', glutes: 'glutes', hipFlexors: 'hip flexors', quads: 'quads', hamstrings: 'hamstrings', calves: 'calves' };
+  const GROUP_WORDS = { chest: 'chest pecs', back: 'back', shoulders: 'shoulders delts', legs: 'legs', biceps: 'biceps arms', triceps: 'triceps arms', abs: 'abs core', conditioning: 'cardio conditioning', mobility: 'stretching stretch mobility', impact: 'impact bones', balance: 'balance' };
+  const ALSO = { glutes: 'bum butt', quads: 'thighs', abs: 'stomach' };
+  const knownMoves = new Map();
+  function known(m) {
+    let k = knownMoves.get(m.id);
+    if (k) return k;
+    const kit = [];
+    for (const alt of m.req || []) for (const key of alt.split('|')) { const x = KIT_OF[key]; if (x && !kit.includes(x)) kit.push(x); }
+    if (!kit.length) kit.push('body');
+    kit.sort((a, b) => KIT.findIndex(([x]) => x === a) - KIT.findIndex(([x]) => x === b));
+    const muscles = uniq((m.muscles || []).map((x) => MUSCLE_WORDS[x]).filter(Boolean));
+    const words = [m.name, GROUP_WORDS[m.group] || m.group, muscles.join(' '), (m.muscles || []).map((x) => ALSO[x] || '').join(' '),
+      kit.map((x) => KIT_WORDS[x]).join(' '), (m.req || []).map((alt) => alt.split('|').map((key) => String(EQ_NAME[key] || '').replace(/^an? /, '')).join(' ')).join(' ')].join(' ');
+    k = { kit, muscles, find: finding(m.name, words) };
+    knownMoves.set(m.id, k);
+    return k;
+  }
+
+  /* ---------------------------------------------------------------- search */
+  // Forgiving: case, accents, spaces and hyphens don't matter ("pushup", "push up", "push-up"), a
+  // plural finds the one ("lunges"), the British "press-up" finds push-ups, the words can come in any
+  // order, and a word one letter off finds its move ("dumbell").
+  const fold = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[’']/g, '');
+  const SAME = [[/\bpress ?-?ups?\b/g, 'push-up'], [/\bsit ?-?ups?\b/g, 'situp'], [/\bchin ?-?ups?\b/g, 'chin-up'], [/\bpull ?-?ups?\b/g, 'pull-up'], [/\bdumb ?-?bells?\b/g, 'dumbbell'], [/\bkettle ?-?bells?\b/g, 'kettlebell']];
+  const stem = (w) => (w.length > 3 && /s$/.test(w) && !/ss$/.test(w) ? w.slice(0, -1) : w);
+  function finding(name, words) {
+    const n = fold(name);
+    return { name: n.replace(/[^a-z0-9]/g, ''), words: uniq(fold(words).split(/[^a-z0-9]+/).filter(Boolean)), first: n.split(/[^a-z0-9]+/).filter(Boolean) };
+  }
+  // At most one letter off (one added, missing, changed, or two swapped).
+  function near(a, b) {
+    if (a === b) return true;
+    const la = a.length, lb = b.length;
+    if (Math.abs(la - lb) > 1) return false;
+    let i = 0;
+    while (i < la && i < lb && a[i] === b[i]) i++;
+    if (la === lb) return a.slice(i + 1) === b.slice(i + 1) || (a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2));
+    return la > lb ? a.slice(i + 1) === b.slice(i) : a.slice(i) === b.slice(i + 1);
+  }
+  // A query into a scorer for catalog entries: 0 for no match, more for a better one (the name
+  // starting with it, then the name holding it, then every word found, then words one letter off).
+  function matcher(q) {
+    let s = fold(q);
+    for (const [re, to] of SAME) s = s.replace(re, to);
+    const words = s.split(/[^a-z0-9]+/).filter(Boolean).map(stem);
+    if (!words.length) return null;
+    const whole = words.join('');
+    return (x) => {
+      const f = x.find || finding(x.name, x.name);
+      if (f.name.startsWith(whole)) return 100;
+      if (f.name.includes(whole)) return 80 + (f.first.some((w) => w.startsWith(words[0])) ? 5 : 0);
+      let score = 60, fuzzy = false;
+      for (const w of words) {
+        if ((w.length >= 4 && f.name.includes(w)) || f.first.some((x2) => x2.startsWith(w))) continue;
+        if (f.words.some((x2) => x2.startsWith(w))) { score = Math.min(score, 40); continue; }
+        if (w.length >= 4 && f.words.some((x2) => near(w, stem(x2)) || near(w, x2))) { fuzzy = true; continue; }
+        return 0;
+      }
+      return fuzzy ? 20 : score;
+    };
+  }
+  // The catalog entries a query finds, best first (the catalog's own order among equals).
+  function search(list, q) {
+    const score = matcher(q);
+    if (!score) return list.slice();
+    const out = [];
+    list.forEach((x, i) => { const s = score(x); if (s) out.push({ x, s, i }); });
+    return out.sort((a, b) => b.s - a.s || a.i - b.i).map((r) => r.x);
+  }
+
+  /* ---------------------------------------------------------------- a new exercise's numbers */
+  // Sets and reps for a move someone adds, for them: sets from how much their goals want of its
+  // muscles (the engine's tiers: a top goal gets more) and how long they've trained; reps from where
+  // they are on its ladder (their own target on the level they're at, more on an easier level, fewer
+  // on a harder one), within the range the engine gives them (a health condition can set it).
+  function defaults(S, id, day) {
+    const b = B(), m = M().MOVES[id];
+    if (!m) return null;
+    const p = S.profile;
+    const prog = b.programFor(p);
+    let sets;
+    if (m.group === 'mobility' || m.group === 'balance' || m.group === 'impact') sets = 2;
+    else if (m.group === 'conditioning') sets = 3;
+    else {
+      const tier = prog.tiers[m.group] || 3;
+      sets = tier === 1 ? (prog.level >= 1 ? 4 : 3) : tier === 2 ? 3 : prog.level >= 1 ? 3 : 2;
+      if (p.gentle) sets = Math.max(2, sets - 1);
+    }
+    const fam = m.family;
+    const lad = fam && M().LADDERS[fam];
+    const st = fam && S.prog ? S.prog[fam] : null;
+    let base = m.start || (m.timed ? 30 : 10);
+    if (st && st.rung === id && st.reps) base = st.reps;
+    else if (st && lad && !lad.gym && lad.rungs.includes(st.rung) && lad.rungs.includes(id)) {
+      const at = lad.rungs.indexOf(st.rung), i = lad.rungs.indexOf(id);
+      const [lo, hi] = m.range || [base, base];
+      if (i < at) base = Math.round(base + (hi - base) * 0.5); // easier than where they are
+      else base = Math.max(lo, Math.round(base * 0.8)); // harder
+    }
+    let range = m.range || [1, 100];
+    try { range = b.rangeFor(S, m, fam, day) || range; } catch (e) { /* the move's own */ }
+    base = Math.max(range[0], Math.min(range[1], base));
+    return m.timed
+      ? { sets, secs: clampInt(base, LIMITS.secs[0], LIMITS.secs[1], 30) }
+      : { sets, reps: clampInt(base, LIMITS.reps[0], LIMITS.reps[1], 10) };
+  }
+  // A move as an item of a plan, with this person's numbers.
+  function itemFor(S, id, day) {
+    const d = defaults(S, id, day);
+    return d ? Object.assign({ move: id }, d) : null;
+  }
+
+  /* ---------------------------------------------------------------- the week by muscle */
+  // The sets a week a plan gives each muscle group (every day runs once a week), against what the
+  // engine aims for this person (their weekly sets, S.vol: what the coach's own plan gives them, kept
+  // within the floor and cap their goals set). status: 'none', 'low' (under 70% of the aim), 'ok' or
+  // 'high' (past the cap).
+  const WEEK_GROUPS = ['chest', 'back', 'shoulders', 'legs', 'biceps', 'triceps', 'abs'];
+  function weekSets(S, plan) {
+    const prog = B().programFor(S.profile);
+    const have = {};
+    for (const d of (plan && plan.days) || []) for (const it of d.items) { const m = M().MOVES[it.move]; if (m) have[m.group] = (have[m.group] || 0) + it.sets; }
+    return WEEK_GROUPS.map((g) => {
+      const n = have[g] || 0;
+      const aim = Math.max(1, Math.round(S.vol && S.vol[g] != null ? S.vol[g] : prog.start[g]));
+      const cap = prog.cap[g] || aim * 2;
+      const status = !n ? 'none' : n < Math.max(1, Math.round(aim * 0.7)) ? 'low' : n > cap ? 'high' : 'ok';
+      return { group: g, sets: n, aim, floor: prog.floor[g], cap, tier: prog.tiers[g] || 3, status };
+    });
+  }
+
+  /* ---------------------------------------------------------------- suggestions */
+  // Moves to add to a day (items: what it holds now): for the muscles it trains, another of their
+  // exercises (a ladder it doesn't use yet), and for the muscles the plan's week leaves out or gives
+  // little, their main one; each at the level this person is at, one they can do today, not one the
+  // day has. [{ id, group, why: 'day' | 'none' | 'low' }], at most n.
+  function suggest(S, plan, di, day, items, n) {
+    const b = B();
+    const ctx = context(S, day);
+    const list = items || ((plan && plan.days[di]) || { items: [] }).items;
+    const inDay = new Set(list.map((it) => it.move));
+    const famsIn = new Set(list.map((it) => (M().MOVES[it.move] || {}).family).filter(Boolean));
+    const draft = { days: ((plan && plan.days) || []).map((d, i) => (i === di ? { items: list } : d)) };
+    if (!draft.days[di]) draft.days[di] = { items: list };
+    const week = weekSets(S, draft);
+    const dayGroups = uniq(list.map((it) => (M().MOVES[it.move] || {}).group).filter((g) => WEEK_GROUPS.includes(g)));
+    const gaps = week.filter((w) => w.status === 'none' || w.status === 'low').sort((x, y) => (x.status === y.status ? 0 : x.status === 'none' ? -1 : 1) || x.tier - y.tier || (x.sets / x.aim) - (y.sets / y.aim));
+    // A copy of the levels, so a ladder this person hasn't started gets the rung they'd start on.
+    const S2 = Object.assign({}, S, { prog: Object.assign({}, S.prog) });
+    const atGym = b.placeOf(S, day) === 'gym';
+    const pick = (g, used) => {
+      const fams = Object.entries(M().LADDERS).filter(([f, lad]) => lad.group === g && !lad.alt && !!lad.gym === atGym && !famsIn.has(f) && !used.has(f))
+        .sort((x, y) => (x[1].accessory ? 1 : 0) - (y[1].accessory ? 1 : 0));
+      for (const [f] of fams) {
+        let st = null;
+        try { st = b.ensureProg(S2, f, day); } catch (e) { st = null; }
+        const avail = b.rungs(S, f, day);
+        const id = st && avail.includes(st.rung) ? st.rung : avail[0];
+        if (id && !inDay.has(id) && check(ctx, id).ok) { used.add(f); return id; }
+      }
+      return null;
+    };
+    const max = n || 6;
+    const out = [];
+    const used = new Set();
+    const add = (g, why) => { const id = pick(g, used); if (id && !out.some((x) => x.id === id)) out.push({ id, group: g, why }); };
+    // This day's muscles and the week's gaps take turns, then a second move for each gap.
+    const dayQ = dayGroups.slice(), gapQ = gaps.slice();
+    while (out.length < max && (dayQ.length || gapQ.length)) {
+      if (dayQ.length) add(dayQ.shift(), 'day');
+      if (gapQ.length && out.length < max) { const w = gapQ.shift(); add(w.group, w.status); }
+    }
+    for (const w of gaps) if (out.length < max) add(w.group, w.status);
+    return out.slice(0, max);
   }
 
   /* ================================================================== a day's session */
@@ -887,74 +1086,147 @@
     if (lower && !upper) return 'Lower body';
     return '';
   }
-  const SPLITS = {
-    ppl: [['Push', ['chest', 'shoulders', 'triceps']], ['Pull', ['back', 'biceps']], ['Legs', ['legs', 'abs']]],
-    upperlower: [['Upper body', ['chest', 'back', 'shoulders', 'biceps', 'triceps']], ['Lower body', ['legs', 'abs']]],
-    full: [['Full body', ['chest', 'back', 'legs', 'shoulders', 'biceps', 'triceps', 'abs']]],
-  };
   // The plan the app's own generator makes from the wishes: the brain's week for a copy of this
-  // person (their levels, equipment and joints, with the wishes applied), turned into a plan. It
-  // only ever holds moves the brain picked for them, so it's always one they can do.
+  // person (their levels, equipment and joints, with the wishes applied), turned into a plan, or a
+  // classic split's days built the same way. It only ever holds moves the brain picked for them, so
+  // it's always one they can do.
   function generate(S, day, w) {
     const b = B();
     const S2 = sandbox(S, w);
     const p = S2.profile;
-    const tpl = b.templateFor(p, b.programFor(p));
-    const ws = b.weekStart(day);
-    const sessions = tpl.map((t) => b.buildSession(S2, ws + t.offset, t.idx, { cal: { weeks: {} }, noReadiness: true, forceMult: 1 }));
     const D = clampInt(w.days || p.days, 1, 6, 3);
-    let days;
-    if (w.split || D !== sessions.length) days = resplit(S2, sessions, w.split || 'full', D, p.minutes, day);
-    else days = sessions.map((s) => ({ title: niceTitle(s.groups || []) || s.title, items: itemsOf(s) }));
+    let days = null;
+    if (!w.split) {
+      const tpl = b.templateFor(p, b.programFor(p));
+      const ws = b.weekStart(day);
+      const sessions = tpl.map((t) => b.buildSession(S2, ws + t.offset, t.idx, { cal: { weeks: {} }, noReadiness: true, forceMult: 1 }));
+      if (D === sessions.length) days = sessions.map((s) => ({ title: niceTitle(s.groups || []) || s.title, items: itemsOf(s) }));
+    }
+    if (!days) days = classic(S2, w.split || 'full', D, p.minutes, day);
     const wd = !w.days && Array.isArray(S.profile.weekdays) && S.profile.weekdays.length === days.length ? S.profile.weekdays : null;
     return normalize({ name: nameFor(w, days.length), note: noteFor(S, w, days.length, p.minutes), days, weekdays: wd, source: 'coach' }).plan;
   }
-  // The same exercises regrouped into a split: each day takes its muscles' moves from the week's
-  // pool, taking turns so the days differ, until it fills the time.
-  function resplit(S2, sessions, split, D, minutes, day) {
+  // The classic splits: each day's name and the exercises it takes from each muscle group, in the
+  // order they're done (a push day's arms are its triceps, a pull day's its biceps).
+  // A day short of time keeps its main groups (the last of its third list) longest.
+  const SPLIT_DAYS = {
+    full: [['Full body', [['legs', 1], ['chest', 1], ['back', 1], ['shoulders', 1], ['biceps', 1], ['triceps', 1], ['abs', 1]], ['legs', 'chest', 'back']]],
+    upperlower: [['Upper body', [['chest', 2], ['back', 2], ['shoulders', 1], ['biceps', 1], ['triceps', 1]], ['chest', 'back']], ['Lower body', [['legs', 4], ['abs', 2]], ['legs']]],
+    ppl: [['Push', [['chest', 2], ['shoulders', 2], ['triceps', 1]], ['chest', 'shoulders']], ['Pull', [['back', 3], ['biceps', 1]], ['back']], ['Legs', [['legs', 4], ['abs', 1]], ['legs']]],
+  };
+  // Each group's ladders, the main ones first: a day with one exercise for a group takes turns over
+  // its main ladders (squats one day, hinges the next); more take the rest in order.
+  const FAMS = {
+    home: { legs: [['squat', 'hinge'], ['glute', 'hamCurl', 'calf']], chest: [['push', 'chestDb'], []], back: [['row', 'pull'], ['rear', 'backExt']], shoulders: [['press', 'raise'], []], biceps: [['curl'], []], triceps: [['triceps'], []], abs: [['abs', 'absLoad', 'coreRot', 'coreSide'], []] },
+    gym: { legs: [['squatG', 'hingeG'], ['lungeG', 'gluteG', 'legCurlG', 'legExtG', 'calfG']], chest: [['pressG', 'inclineG'], ['flyG']], back: [['rowG', 'pullG'], ['rearG']], shoulders: [['ohpG', 'raiseG'], []], biceps: [['curlG'], []], triceps: [['triG'], []], abs: [['absG', 'abs', 'coreSide'], ['coreRot']] },
+  };
+  // A classic split's days for a copy of this person (S2, see sandbox), from the engine's own picks:
+  // each exercise is the ladder's move at their level today (brain.itemFor: their rung, swapped off a
+  // sore joint; a ladder a health condition rules out gives way to its stand-in, brain.famFor), with
+  // their reps. Sets by how much their goals want of the muscle (three for the top goals, two for
+  // the rest, as the coach starts them), then the day is fitted to the time: over it, a set comes off
+  // the exercise with the most to spare (the lowest goal, then the most sets), never below two, then
+  // the lowest goal's exercise goes; under it, a set more for the top goals first (four at most,
+  // three for the rest). A day that repeats takes a letter (Full body A, Full body B) and the next
+  // of each group's ladders.
+  function classic(S2, split, D, mins, day) {
     const b = B();
-    const pool = [];
-    const add = (it) => { if (it && !pool.some((x) => x.moveId === it.moveId)) pool.push(it); };
-    for (const s of sessions) for (const it of s.items) add(Object.assign({}, it, { superset: null }));
-    // Muscles the week had little room for get this person's current level of each of their moves.
-    const ctx = context(S2, day);
-    for (const [fam, lad] of Object.entries(M().LADDERS)) {
-      if (lad.group === 'conditioning' || !UNIT_OF[lad.group]) continue;
-      const ok = lad.rungs.filter((id) => check(ctx, id).ok);
-      if (!ok.length) continue;
-      const st = S2.prog[fam];
-      const id = st && ok.includes(st.rung) ? st.rung : ok[0];
-      const m = M().MOVES[id];
-      add({ moveId: id, name: m.name, group: lad.group, fam, sets: 3, target: st && st.rung === id ? st.reps : m.start, timed: !!m.timed, uni: !!m.uni, rest: autoRest(S2, fam) });
-    }
-    for (const s of sessions) if (s.finisher) add({ moveId: s.finisher.moveId, group: 'conditioning', sets: s.finisher.rounds, target: s.finisher.work, timed: true, uni: !!s.finisher.uni, rest: s.finisher.rest, finisher: true });
-    const budget = minutes - b.programFor(S2.profile).warmupMin;
-    const kinds = SPLITS[split] || SPLITS.full;
-    const used = new Map();
-    const out = [];
-    for (let k = 0; k < D; k++) {
-      const [title, groups] = kinds[k % kinds.length];
-      const turn = Math.floor(k / kinds.length);
-      const byGroup = groups.map((g) => pool.filter((it) => it.group === g));
-      const day = { warmup: [], tests: [], extras: [], finisher: null, mobility: [], items: [] };
-      for (let round = 0; round < 6; round++) {
-        let added = false;
-        for (const list of byGroup) {
-          if (!list.length) continue;
-          const it = list[(turn + round) % list.length];
-          if (day.items.some((x) => x.moveId === it.moveId)) continue;
-          const sets = Math.max(2, Math.min(4, it.sets || 3));
-          day.items.push(Object.assign({}, it, { sets, superset: null }));
-          added = true;
-          if (b.estimate(S2, day) > budget + 1 && day.items.length > 2) { day.items.pop(); added = false; break; }
+    const kinds = SPLIT_DAYS[split] || SPLIT_DAYS.full;
+    const plan = Array.from({ length: D }, (_, k) => kinds[k % kinds.length]);
+    const prog = b.programFor(S2.profile);
+    const ws = b.weekStart(day);
+    const offs = PATTERNS[D] || PATTERNS[3];
+    const budget = clampInt(mins, 10, 90, 30);
+    const tierOf = (g) => prog.tiers[g] || 3;
+    // What comes off first when a day runs over: the lowest goals (back counts as a goal when the
+    // chest is trained hard, brain.trimTier), and a day's main groups last of all. Groups of the same
+    // goal take turns, day by day, to be the one kept (Full body A keeps the abs, B the arms).
+    const rank = (g) => (b.trimTier ? b.trimTier(S2, g) : tierOf(g));
+    const goalOrder = (g) => { const i = (S2.profile.goals || []).findIndex((x) => (GOAL_GROUPS_OF[x] || []).includes(g)); return i < 0 ? 9 : i; };
+    const tier = (it) => tierOf((M().MOVES[it.move] || {}).group);
+    const turn = {}, count = {}, seen = {};
+    for (const kd of plan) count[kd[0]] = (count[kd[0]] || 0) + 1;
+    return plan.map((kd, k) => {
+      const d = ws + offs[k];
+      const at = b.placeOf(S2, d) === 'gym' ? 'gym' : 'home';
+      let items = [];
+      for (const [g, n] of kd[1]) {
+        const [main, more] = FAMS[at][g] || [[], []];
+        const ok = (f) => { try { return b.rungs(S2, b.famFor(S2, f, d), d).length > 0; } catch (e) { return false; } };
+        const mains = main.filter(ok), rest = more.filter(ok);
+        const t = turn[g] || 0;
+        turn[g] = t + 1;
+        // Turns over the main ladders day by day, then the others.
+        const fams = mains.length ? mains.slice(t % mains.length).concat(mains.slice(0, t % mains.length)) : [];
+        const pick = (n === 1 ? fams.slice(0, 1) : fams.concat(rest)).slice(0, n);
+        for (const f0 of pick) {
+          const fam = b.famFor(S2, f0, d);
+          let it = null;
+          try { it = b.itemFor(S2, { fam, group: g, sets: tierOf(g) === 1 ? (prog.level >= 1 ? 4 : 3) : tierOf(g) === 2 ? 3 : 2 }, d); } catch (e) { it = null; }
+          if (!it || items.some((x) => x.move === it.moveId)) continue;
+          items.push(it.timed ? { move: it.moveId, sets: it.sets, secs: it.target } : { move: it.moveId, sets: it.sets, reps: it.target });
         }
-        if (!added || b.estimate(S2, day) >= budget - 2) break;
       }
-      if (!day.items.length) for (const it of pool.slice(0, 4)) day.items.push(Object.assign({}, it, { sets: 3 }));
-      for (const it of day.items) used.set(it.moveId, (used.get(it.moveId) || 0) + 1);
-      out.push({ title: kinds.length === 1 && D > 1 ? `${title} ${String.fromCharCode(65 + (k % 26))}` : title, items: day.items.map((it) => (it.timed ? { move: it.moveId, sets: it.sets, secs: it.target, rest: it.finisher ? it.rest : undefined } : { move: it.moveId, sets: it.sets, reps: it.target })) });
-    }
-    return out;
+      const one = { days: [{ items }] };
+      const time = () => minutes(S2, one, 0, d);
+      const keep = kd[2] || [];
+      const nth = (seen[kd[0]] || 0);
+      const extra = uniq(kd[1].map(([g]) => g).filter((g) => !keep.includes(g))).sort((x, y) => rank(x) - rank(y) || goalOrder(x) - goalOrder(y));
+      const order = [];
+      for (const r of uniq(extra.map(rank))) { const same = extra.filter((g) => rank(g) === r); const k2 = nth % same.length; order.push(...same.slice(k2), ...same.slice(0, k2)); }
+      const cut = (it) => { const g = (M().MOVES[it.move] || {}).group; return keep.includes(g) ? rank(g) : 100 + order.indexOf(g) * 10; };
+      for (let guard = 0; guard < 80 && time() > budget + 1; guard++) {
+        let pick = -1;
+        items.forEach((it, i) => { if (it.sets > 2 && (pick < 0 || cut(it) + it.sets > cut(items[pick]) + items[pick].sets)) pick = i; });
+        if (pick >= 0) { items[pick].sets--; continue; }
+        if (items.length > 2) { let drop = 0; items.forEach((it, i) => { if (cut(it) >= cut(items[drop])) drop = i; }); items.splice(drop, 1); continue; }
+        const last = items.find((it) => it.sets > 1);
+        if (!last) break;
+        last.sets--;
+      }
+      for (let guard = 0; guard < 20 && items.length; guard++) {
+        let pick = -1;
+        items.forEach((it, i) => { if (it.sets < (tier(it) <= 2 ? 4 : 3) && (pick < 0 || tier(it) < tier(items[pick]) || (tier(it) === tier(items[pick]) && it.sets < items[pick].sets))) pick = i; });
+        if (pick < 0) break;
+        items[pick].sets++;
+        if (time() > budget) { items[pick].sets--; break; }
+      }
+      seen[kd[0]] = (seen[kd[0]] || 0) + 1;
+      const title = count[kd[0]] > 1 ? `${kd[0]} ${String.fromCharCode(64 + seen[kd[0]])}` : kd[0];
+      return { title, items };
+    });
+  }
+
+  /* ---------------------------------------------------------------- templates */
+  // Ready-made plans, built for this person by the engine (classic above): their days and minutes,
+  // their equipment and level, moves they can do. No equipment is offered to someone who has some
+  // (for a trip, or a day away from it).
+  const TEMPLATES = [
+    { id: 'full', name: 'Full body', about: 'Every muscle, every workout' },
+    { id: 'upperlower', name: 'Upper and lower', about: 'Upper body one day, legs and core the next' },
+    { id: 'ppl', name: 'Push, pull, legs', about: 'Chest and shoulders, then back and biceps, then legs' },
+    { id: 'bodyweight', name: 'No equipment', about: 'Full body with nothing but you' },
+  ];
+  const hasKit = (p) => { const eq = p.equipment || {}; return (p.where || 'home') !== 'home' || !!((eq.db && eq.db.length) || (eq.kb && eq.kb.length) || eq.band || eq.bar || eq.ball); };
+  function templates(S) {
+    const p = S.profile;
+    const D = clampInt(p.days, 1, 6, 3);
+    return TEMPLATES.filter((t) => t.id !== 'bodyweight' || hasKit(p)).map((t) => Object.assign({}, t, { days: t.id === 'ppl' ? Math.max(3, D) : t.id === 'upperlower' ? Math.max(2, D) : D, minutes: clampInt(p.minutes, 10, 90, 30) }));
+  }
+  // One template as a plan to save (not saved yet), or null.
+  function template(S, day, id) {
+    const t = templates(S).find((x) => x.id === id);
+    if (!t) return null;
+    const w = wishes(S, '');
+    w.split = id === 'bodyweight' ? 'full' : id;
+    w.days = t.days;
+    if (id === 'bodyweight') { w.bodyweight = true; w.place = 'home'; }
+    const plan = generate(S, day, w);
+    plan.name = t.name;
+    plan.source = 'you';
+    const wd = S.profile.weekdays;
+    if (Array.isArray(wd) && wd.length === plan.days.length) plan.weekdays = wd.slice().sort((a, b) => a - b);
+    return plan;
   }
   const FOCUS_NAME = { biceps: 'bigger arms', triceps: 'bigger arms', chest: 'a bigger chest', legs: 'stronger legs', back: 'a stronger back', shoulders: 'broader shoulders', abs: 'a stronger core' };
   function nameFor(w, D) {
@@ -1201,7 +1473,8 @@
     ensure, migrate, list, get, activeId, create, add, update, duplicate, remove, restore, save,
     use, inForce, eventAt: (S, day) => eventAt(planEvents(S), day), startDay, weekSessions, owns, parseTpl, buildSession, minutes, progress, nextHarder,
     context, check, choose, whyText, swapsFor, catalog, offsetsFor,
+    KIT, known, search, matcher, defaults, itemFor, weekSets, suggest, WEEK_GROUPS,
     fromCoach, encode, decode, dataFrom, isLink, link, appLink, sharedTitle,
-    wishes, generate, knows, allowedMoves, planMessages, planGrammar, planSchema, accept, refine, modelFor, readJson, improve, diff,
+    wishes, generate, templates, template, knows, allowedMoves, planMessages, planGrammar, planSchema, accept, refine, modelFor, readJson, improve, diff,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
