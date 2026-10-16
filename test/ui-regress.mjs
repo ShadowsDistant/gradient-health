@@ -130,8 +130,13 @@ for (const t of ['today', 'plan', 'health', 'progress', 'you']) {
 section('Titles that used to be cut off');
 await tab('you');
 await page.click('#screen [data-act="openSettings"]'); await settle();
-const cut = await page.evaluate(() => [...document.querySelectorAll('#screen .rf-list-title, #screen .rf-list-sub')].filter((e) => e.scrollWidth > e.clientWidth + 1 || getComputedStyle(e).textOverflow === 'ellipsis' && e.scrollWidth > e.clientWidth).map((e) => e.textContent.trim()));
-check('no row title or description is cut off in Settings', cut.length === 0, cut.join(' | '));
+const cutOff = () => page.evaluate(() => [...document.querySelectorAll('#screen .rf-list-title, #screen .rf-list-sub')].filter((e) => e.scrollWidth > e.clientWidth + 1 || getComputedStyle(e).textOverflow === 'ellipsis' && e.scrollWidth > e.clientWidth).map((e) => e.textContent.trim()));
+let cut = await cutOff();
+check('no row title or description is cut off on Settings\' top page', cut.length === 0, cut.join(' | '));
+// Settings' pages, all of them on one.
+await page.evaluate(() => window.GH.ui.open('settings', 'all')); await settle(900);
+cut = await cutOff();
+check('nor on its pages', cut.length === 0, cut.join(' | '));
 const subs = await page.evaluate(() => { const s = document.querySelector('#screen .rf-list-sub'); return s ? getComputedStyle(s).fontSize : null; });
 check('row descriptions use the small size', subs === '13px', subs);
 
@@ -150,6 +155,7 @@ await page.evaluate(() => { const sw = document.querySelector('#screen [data-k="
 await settle();
 
 section('You → Your answers → Equipment');
+await page.click('#topbar [data-act="back"]'); await settle();
 await page.click('#topbar [data-act="back"]'); await settle();
 const equipment = '#screen [data-act="editStep"][data-arg="equipment"]';
 await page.evaluate((sel) => document.querySelector(sel).scrollIntoView({ block: 'center' }), equipment); await settle(300);
@@ -227,6 +233,11 @@ await page.evaluate(() => window.GH.ui.open('settings'));
 await settle(900);
 let g = await endGap();
 check('settings: the last row clears the system bar', g >= 8, g);
+await page.evaluate(() => window.GH.ui.open('settings', 'all'));
+await settle(900);
+g = await endGap();
+check('and on its pages, all of them on one', g >= 8, g);
+await page.click('#topbar [data-act="back"]'); await settle();
 await page.click('#topbar [data-act="back"]'); await settle();
 await tab('today');
 
@@ -492,7 +503,7 @@ section('Background sync');
 const bgBoot = await page.evaluate(() => { const d = window.GH.brain.dayFromStr(window.__pendingDate); const day = window.GH.ui.S.health.days[d]; return { steps: day && day.steps, done: window.__pendingDone.length, left: window.__pending.length }; });
 check('a read saved while the app was closed is folded in when it starts', bgBoot.steps === 4321, JSON.stringify(bgBoot));
 check('and marked done', bgBoot.done >= 1 && bgBoot.left === 0, JSON.stringify(bgBoot));
-await page.evaluate(() => window.GH.ui.open('settings'));
+await page.evaluate(() => window.GH.ui.open('settings', 'hc'));
 await settle(900);
 const bgRow = () => page.evaluate(() => {
   const title = [...document.querySelectorAll('#screen .rf-list-title')].find((e) => e.textContent === 'Sync in the background');

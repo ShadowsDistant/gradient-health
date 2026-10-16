@@ -267,7 +267,7 @@ section('Reminders: a no at the end of set-up leaves them off, and nothing asks 
   // Later, with a workout done and the tour seen: Today's card still doesn't ask.
   const card = await page.evaluate(() => { const GH = window.GH, U = GH.ui, B = GH.brain, S = U.S; B.startWorkout(S, U.today(), { now: Date.now() - 26 * 60000 }); for (let g = 0; S.active && S.active.idx < S.active.steps.length && g < 400; g++) { const st = S.active.steps[S.active.idx]; B.completeStep(S, st.kind === 'test' ? { value: 12 } : {}); } B.finishWorkout(S, { rating: 'right', now: Date.now() }); S.seen.tour = true; U.save(true); return U.notifyCard(S, U.today()); });
   check('after the first workout and the tour, Today\'s card doesn\'t ask either', card === '', card);
-  await page.evaluate(() => { window.GH.ui.open('settings'); });
+  await page.evaluate(() => { window.GH.ui.open('settings', 'notify'); });
   await page.clock.runFor(900); await page.waitForTimeout(700);
   const set = await page.evaluate(() => { const i = document.querySelector('#screen [data-on="notifyOn"]'); return { sw: i && i.checked, rows: document.querySelectorAll('#screen ul[data-group="notify"] > *').length, perm: !!document.querySelector('#screen [data-key="nf-perm"]') }; });
   check('Settings shows them off, as for anyone who has them off', set.sw === false && set.rows === 1 && !set.perm, set);

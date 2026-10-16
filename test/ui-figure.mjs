@@ -171,10 +171,10 @@ check('a slower rung updates the tempo', t.tempo.length === 1 && t.tempo[0] === 
 await page.evaluate(() => window.GH.ui.closeSheets());
 await page.waitForTimeout(600);
 
-section('Settings');
+section('Settings, Appearance');
 await page.evaluate(() => window.GH.ui.act.plKeep());
 await page.waitForTimeout(500);
-await page.evaluate(() => window.GH.ui.open('settings'));
+await page.evaluate(() => window.GH.ui.open('settings', 'look'));
 await page.waitForSelector('#screen [data-on="setFigure"]');
 check('3D is the default', await page.evaluate(() => document.querySelector('#screen [data-on="setFigure"] input[value="3d"]').checked));
 await page.waitForSelector('#screen .set-fig img', { timeout: 15000 });
@@ -208,7 +208,7 @@ section('Settings\' preview, kept');
 // The preview is one of the 3D stills kept on the phone (src/ui/stills.js): after a relaunch it's in
 // Settings' first render, with no 3D chunk loaded.
 ({ ctx, page, errors } = await open(false));
-await page.evaluate(() => window.GH.ui.open('settings'));
+await page.evaluate(() => window.GH.ui.open('settings', 'look'));
 await page.waitForSelector('#screen .set-fig img:not(.is-stale)', { timeout: 30000 });
 await page.evaluate(() => window.GH.ui.stills.flush());
 await page.reload();
@@ -217,7 +217,7 @@ await page.evaluate(() => window.GH.ui.stills.load());
 // (The week's stills aren't kept here, so the figure warms up after launch to draw them ahead.)
 const kept = await page.evaluate(() => {
   const drawn = window.GH.ui.stills._stats().drawn;
-  window.GH.ui.open('settings');
+  window.GH.ui.open('settings', 'look');
   const i = document.querySelector('#screen .set-fig img');
   return { img: !!i && !i.classList.contains('is-stale') && /^data:image\//.test(i.src), drawn };
 });
@@ -621,9 +621,9 @@ await page.waitForTimeout(1500);
 check('without WebGL 2 the workout uses the flat figure', await figKind(page, '.player .pl-fig') === 'flat');
 await page.evaluate(() => window.GH.ui.act.plKeep());
 await page.waitForTimeout(400);
-await page.evaluate(() => window.GH.ui.open('settings'));
-await page.waitForSelector('#screen [data-on="setWorkouts"]');
-check('Settings says 3D isn\'t possible here', await page.evaluate(() => /can't draw 3D/.test(document.querySelector('#screen').textContent) && !document.querySelector('#screen [data-on="setFigure"]')));
+await page.evaluate(() => window.GH.ui.open('settings', 'look'));
+await page.waitForSelector('#screen [data-key="figure"]');
+check('Settings (Appearance) says 3D isn\'t possible here', await page.evaluate(() => /can't draw 3D/.test(document.querySelector('#screen').textContent) && !document.querySelector('#screen [data-on="setFigure"]')));
 check('no console errors', errors.length === 0, errors.join('\n'));
 await ctx.close();
 
