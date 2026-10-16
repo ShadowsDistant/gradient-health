@@ -192,18 +192,17 @@ left alone. A few conventions:
   set-up's or a live activity's buttons, or an open sheet's main buttons (`--toast-lift`, read again
   whenever one of those comes or goes, and glided to; the player's, set-up's and a live activity's
   buttons change from one step to the next, so what's in those screens is watched too). Over an open
-  sheet the toaster goes in the
-  sheet's dialog, the one part of the page that takes taps then, and back as the sheet closes. A
-  swipe down dismisses the bottom one. Refract's toast motion plays 1.6 times as fast. Two at most,
-  one over the other, each as wide as the page's cards: the same words again take the old one's
-  place, and a third sends the oldest away. Each stays long enough to read (a quarter of a second a
-  word on top of the time to notice it; 4 s at least, 6 with a button, 9 at most). A field being
-  typed in is kept clear like a sheet's main buttons, and so is a browser's keyboard. A sheet
-  opening sends away the toasts already up (`U.toastsYield`, from `sheet.js`): they were about what's
-  under it, and over the sheet they'd cover what's being used; one raised by the tap that opened it
-  stays. News nobody asked for just then (a new badge) goes through `U.toastWhenFree(fn)`, which
-  waits until no sheet, dialog, menu or other toast is up, and not the player or set-up.
-  `test/ui-toast.mjs` checks all of it.
+  sheet the toaster goes in the sheet's dialog, the one part of the page that takes taps then, and
+  back as the sheet closes. A swipe down dismisses the bottom one. Refract's toast motion plays 1.6
+  times as fast. Two at most, one over the other, each as wide as the page's cards: the same words
+  again take the old one's place, and a third sends the oldest away. Each stays long enough to read
+  (a quarter of a second a word on top of the time to notice it; 4 s at least, 6 with a button, 9 at
+  most). A field being typed in is kept clear like a sheet's main buttons, and so is a browser's
+  keyboard. A sheet opening sends away the toasts already up (`U.toastsYield`, from `sheet.js`): they
+  were about what's under it, and over the sheet they'd cover what's being used; one raised by the
+  tap that opened it stays. News nobody asked for just then (a new badge) goes through
+  `U.toastWhenFree(fn)`, which waits until no sheet, dialog, menu or other toast is up, and not the
+  player or set-up. `test/ui-toast.mjs` checks all of it.
 
 **Parts that load when they're needed.** Set-up (`src/ui/onboarding.js`), the plan review with
 Why this plan (`src/planreview.js`, `src/ui/review.js`), How it works (`src/data/science.js`,
