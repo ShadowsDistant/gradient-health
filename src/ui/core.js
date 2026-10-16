@@ -76,6 +76,72 @@
   // mobility, balance and impact (a dumbbell for anything else).
   U.groupIcon = (group, size, cls) => U.icon(EXTRA_ICONS[`group-${group}`] ? `group-${group}` : 'dumbbell', size, cls);
 
+  /* Illustrated glyphs (U.art): pictures in colour on a 48 px grid, lit from the top left, where a
+   * spot shows a picture rather than a symbol: the warm-up's sun (a glowing disc, yellow into orange,
+   * in a soft corona, with long and short tapering rays and a highlight), the cool-down's moon,
+   * mobility's leaf and a walk's footprints. Their gradients are in one <defs> on the page, put there
+   * with the first one, so any number of them share its ids and a re-render's markup never changes.
+   * size: 'sm' (20 px), 'lg' (32), 'xl' (40), else 24 (or --gh-art-size). Another name is U.icon's.
+   * The first sun on screen turns its rays in once, when the page is calm (never under reduced
+   * motion); nothing on it moves after that. */
+  const r2 = (n) => Math.round(n * 100) / 100;
+  // n tapering rays round the centre, from radius r0 to r1, w either side at the base.
+  const rays = (n, from, r0, r1, w) => {
+    let d = '';
+    for (let i = 0; i < n; i++) {
+      const a = ((from + (i * 360) / n) * Math.PI) / 180, s = Math.sin(a), c = Math.cos(a);
+      const P = (x, y) => `${r2(24 + x * c - y * s)} ${r2(24 + x * s + y * c)}`;
+      d += `M${P(-w, -r0)}Q${P(-w * 0.32, -(r0 + r1) / 2)} ${P(0, -r1)}Q${P(w * 0.32, -(r0 + r1) / 2)} ${P(w, -r0)}Z`;
+    }
+    return d;
+  };
+  const glow = (id) => `<circle class="gh-art-glow" cx="24" cy="24" r="23" fill="url(#gh-art-${id}-glow)"/>`;
+  const SOLE = 'd="M0 0c2.9 0 4.5 3.3 4.4 7.1-.1 2.8-1.2 4.7-1.5 6.4l-.25 1.3h-5.6l-.3-1.5C-3.6 11.6-4.4 9.3-4.4 6.6-4.4 2.8-2.8 0 0 0zM-3.1 16.9h5.6l-.25 2.1c-.2 1.7-1.3 2.8-2.6 2.8s-2.4-1.1-2.6-2.8z" fill="url(#gh-art-walk)"';
+  const STAR = (x, y, s) => `<path d="M${x} ${y}l${r2(0.95 * s)} ${r2(2.2 * s)} ${r2(2.2 * s)} ${r2(0.95 * s)}-${r2(2.2 * s)} ${r2(0.95 * s)}-${r2(0.95 * s)} ${r2(2.2 * s)}-${r2(0.95 * s)}-${r2(2.2 * s)}-${r2(2.2 * s)}-${r2(0.95 * s)} ${r2(2.2 * s)}-${r2(0.95 * s)}z" fill="url(#gh-art-star)"/>`;
+  const HI = (cx, cy, rx, ry, deg) => `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" transform="rotate(${deg} ${cx} ${cy})" fill="url(#gh-art-hi)"/>`;
+  let ARTS = null;
+  const arts = () => ARTS || (ARTS = {
+    sun: `${glow('sun')}<g class="gh-art-rays" fill="url(#gh-art-ray)"><path d="${rays(8, 22.5, 12, 17.75, 1.9)}"/><path d="${rays(8, 0, 12, 21.5, 2.6)}"/></g><g class="gh-art-disc"><circle cx="24" cy="24" r="11" fill="url(#gh-art-disc)"/><circle cx="24" cy="24" r="10.6" fill="none" stroke="url(#gh-art-rim)" stroke-width=".8"/>${HI(20.2, 19.6, 4.6, 2.7, -36)}</g>`,
+    moon: `${glow('moon')}<path d="M33.6 30.4A13.2 13.2 0 0 1 17.6 10.9a13.2 13.2 0 1 0 16 19.5z" fill="url(#gh-art-moon)"/><path d="M16.2 14.6a11.4 11.4 0 0 0 2.6 17.2" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="1.2" stroke-linecap="round"/>${STAR(31.5, 9.5, 1)}${STAR(37.4, 18.2, 0.64)}`,
+    leaf: `${glow('leaf')}<path d="M11 37c0-13.5 8.6-23.3 26.5-25.5C36.6 29.5 26.4 37.6 11 37z" fill="url(#gh-art-leaf)"/><path d="M11.6 36.4c6.3-7.6 12.9-13.6 20.4-18.6" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="1.3" stroke-linecap="round"/><path d="M19.6 28.6l-.6-5.6M24.3 24.4l-.2-5.2M23.2 29.7l5.6-.4M28 25.4l4.6-.9" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="1" stroke-linecap="round"/>${HI(17.6, 24.2, 3.8, 1.9, -50)}`,
+    walk: `${glow('walk')}<path transform="translate(16.6 6.6) rotate(-9)" ${SOLE}/><path transform="translate(31.4 15.6) rotate(9)" ${SOLE}/>${HI(15.2, 10.6, 1.5, 2.5, -14)}${HI(30.4, 19.6, 1.5, 2.5, 4)}`,
+  });
+  const stops = (list) => list.map(([o, c, a]) => `<stop offset="${o}" stop-color="${c}"${a != null ? ` stop-opacity="${a}"` : ''}/>`).join('');
+  const glowDef = (id, c, a) => `<radialGradient id="gh-art-${id}-glow">${stops([[0.42, c, a], [0.72, c, r2(a * 0.3)], [1, c, 0]])}</radialGradient>`;
+  let artDefs = false;
+  function artDefsIn() {
+    if (artDefs || !doc || !doc.body) return;
+    artDefs = true;
+    const t = doc.createElement('template');
+    t.innerHTML = `<svg class="gh-paints gh-art-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>${glowDef('sun', '#ffc23a', 0.55)}<radialGradient id="gh-art-ray" gradientUnits="userSpaceOnUse" cx="24" cy="24" r="22">${stops([[0.52, '#ffcb3a'], [0.98, '#ff8a1c']])}</radialGradient><radialGradient id="gh-art-disc" cx=".4" cy=".36" r=".72">${stops([[0, '#fff6c2'], [0.34, '#ffd94a'], [0.78, '#ffa925'], [1, '#f5821a']])}</radialGradient><linearGradient id="gh-art-rim" x1=".2" y1=".1" x2=".8" y2=".95">${stops([[0, '#fff3b0', 0.9], [0.55, '#ffb43a', 0], [1, '#e86f0c', 0.55]])}</linearGradient><radialGradient id="gh-art-hi">${stops([[0, '#fff', 0.95], [1, '#fff', 0]])}</radialGradient>${glowDef('moon', '#9fb2ff', 0.45)}<linearGradient id="gh-art-moon" x1=".15" y1=".05" x2=".85" y2=".95">${stops([[0, '#dde4ff'], [0.5, '#93a1ff'], [1, '#5a5fe6']])}</linearGradient><linearGradient id="gh-art-star" x2="1" y2="1">${stops([[0, '#ffe9a3'], [1, '#ffb52e']])}</linearGradient>${glowDef('leaf', '#7ee0a0', 0.42)}<linearGradient id="gh-art-leaf" x1=".1" y1=".95" x2=".9" y2=".05">${stops([[0, '#1f9a62'], [0.55, '#43c47c'], [1, '#9be8a4']])}</linearGradient>${glowDef('walk', '#5fd3d0', 0.42)}<linearGradient id="gh-art-walk" x1=".2" x2=".8" y2="1">${stops([[0, '#7fe3d6'], [1, '#1b9aa8']])}</linearGradient></defs></svg>`;
+    doc.body.insertBefore(t.content.firstChild, doc.body.firstChild);
+  }
+  // The first sun on screen turns its rays in and its disc swells, once, when the page is calm.
+  let sunWait = false, sunDone = false;
+  function sunOnce() {
+    if (sunDone || sunWait || !U.whenCalm) return;
+    sunWait = true;
+    U.whenCalm(() => {
+      sunWait = false;
+      const el = doc.querySelector('#screen .gh-art[data-art="sun"]');
+      if (!el || sunDone) return;
+      const r = el.getBoundingClientRect();
+      if (!r.width || r.bottom < 0 || r.top > G.innerHeight) return; // out of sight: the next one
+      sunDone = true;
+      if (U.reduced() || !el.animate) return;
+      const ease = 'cubic-bezier(.2, .8, .2, 1)';
+      const turn = (sel, from) => { const x = el.querySelector(sel); if (x) x.animate([{ transform: from, opacity: 0.35 }, { transform: 'none', opacity: 1 }], { duration: 900, easing: ease }); };
+      turn('.gh-art-rays', 'rotate(-40deg) scale(.7)');
+      turn('.gh-art-disc', 'scale(.82)');
+    });
+  }
+  U.art = (name, size, cls) => {
+    const body = arts()[name];
+    if (!body) return U.icon(name, size, cls);
+    artDefsIn();
+    if (name === 'sun') sunOnce();
+    return `<svg class="gh-art${cls ? ` ${cls}` : ''}" data-art="${name}"${size ? ` data-size="${size}"` : ''} viewBox="0 0 48 48" aria-hidden="true" focusable="false">${body}</svg>`;
+  };
   // (Each formatter is made once: toLocaleString makes a new one on every call.)
   const NUMF = new Map();
   U.num = (n, d) => {
@@ -159,10 +225,11 @@
   U.stepper = (id, value, min, max, label, attrs, step) => `<div class="rf-stepper" role="group" aria-label="${U.esc(label)}"><button type="button" class="rf-stepper-btn" data-step="-${step || 1}" aria-label="Less ${U.esc(label.toLowerCase())}">${U.icon('minus')}</button><input class="rf-stepper-value" type="number" inputmode="numeric" id="${U.esc(id)}" value="${U.esc(value)}" min="${min}" max="${max}" step="${step || 1}" aria-label="${U.esc(label)}" ${attrs || ''}><button type="button" class="rf-stepper-btn" data-step="${step || 1}" aria-label="More ${U.esc(label.toLowerCase())}">${U.icon('plus')}</button></div>`;
   U.progress = (v, label, tone) => `<div class="rf-progress" role="progressbar" aria-label="${U.esc(label)}" aria-valuenow="${Math.round(Math.min(1, v) * 100)}" aria-valuemin="0" aria-valuemax="100" style="--rf-value:${Math.max(0, Math.min(1, v)).toFixed(3)}"${tone ? ` data-tone="${tone}"` : ''}><span class="rf-progress-fill"></span></div>`;
   U.ring = (v, label, inner, size, tone) => `<span class="rf-ring" data-size="${size || 'lg'}" style="--rf-value:${Math.max(0, Math.min(1, v)).toFixed(3)}" role="progressbar" aria-label="${U.esc(label)}" aria-valuenow="${Math.round(v * 100)}" aria-valuemin="0" aria-valuemax="100"${tone ? ` data-tone="${tone}"` : ''}><svg viewBox="0 0 72 72"><circle class="rf-ring-track" cx="36" cy="36" r="32" pathLength="100"/><circle class="rf-ring-fill" cx="36" cy="36" r="32" pathLength="100"/></svg><span class="rf-ring-label">${inner || ''}</span></span>`;
+  // o.art: an illustrated glyph (U.art) in the icon's tile, in place of o.icon.
   U.row = (o) => {
     const tag = o.act ? 'button' : o.href ? 'a' : 'div';
     const attrs = o.act ? ` type="button" data-act="${U.esc(o.act)}"${o.arg != null ? ` data-arg="${U.esc(o.arg)}"` : ''}` : '';
-    return `<li${o.key ? ` data-key="${U.esc(o.key)}"` : ''}><${tag} class="rf-list-row${o.cls ? ' ' + o.cls : ''}"${attrs}>${o.lead ? `<span class="rf-list-lead">${o.lead}</span>` : o.icon ? `<span class="rf-list-icon" data-tone="${o.tone || 'sky'}">${U.icon(o.icon)}</span>` : ''}<span class="rf-list-text"><span class="rf-list-title">${o.title}</span>${o.sub ? `<span class="rf-list-sub">${o.sub}</span>` : ''}</span>${o.detail != null ? `<span class="rf-list-detail">${o.detail}</span>` : ''}${o.chevron ? `<span class="rf-list-chevron">${U.icon('chevron-right')}</span>` : ''}</${tag}></li>`;
+    return `<li${o.key ? ` data-key="${U.esc(o.key)}"` : ''}><${tag} class="rf-list-row${o.cls ? ' ' + o.cls : ''}"${attrs}>${o.lead ? `<span class="rf-list-lead">${o.lead}</span>` : o.art ? `<span class="rf-list-icon is-art">${U.art(o.art)}</span>` : o.icon ? `<span class="rf-list-icon" data-tone="${o.tone || 'sky'}">${U.icon(o.icon)}</span>` : ''}<span class="rf-list-text"><span class="rf-list-title">${o.title}</span>${o.sub ? `<span class="rf-list-sub">${o.sub}</span>` : ''}</span>${o.detail != null ? `<span class="rf-list-detail">${o.detail}</span>` : ''}${o.chevron ? `<span class="rf-list-chevron">${U.icon('chevron-right')}</span>` : ''}</${tag}></li>`;
   };
   // The Refract mark (the design system the app is built with, credited in Settings, About): drawn by
   // Refract's style sheet, in the ink of the text around it. `once`: its halves come apart once as it

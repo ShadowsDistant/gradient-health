@@ -176,7 +176,7 @@
     const ok = (id) => M().MOVES[id] && (!M().allowed || M().allowed(M().MOVES[id], S.profile.equipment)) && (!GH.access || GH.access.moveOk(S.profile, id));
     const wu = [...new Set(((GH.access && GH.access.warmupIds(S.profile)) || []).concat(M().WARMUP.all || M().WARMUP.kb))].filter(ok);
     const mob = [...new Set(M().MOBILITY.concat(B().mobilityFlow(S).map((x) => x.moveId)))].filter(ok);
-    const extra = wu.concat(mob, ['walk']).filter((id) => M().MOVES[id]).map((id) => U.row({ icon: mob.includes(id) ? 'leaf' : id === 'walk' ? 'navigate' : 'sun', tone: 'teal', title: U.esc(M().MOVES[id].name), act: 'moveInfo', arg: id, chevron: true })).join('');
+    const extra = wu.concat(mob, ['walk']).filter((id) => M().MOVES[id]).map((id) => U.row({ art: mob.includes(id) ? 'leaf' : id === 'walk' ? 'walk' : 'sun', title: U.esc(M().MOVES[id].name), act: 'moveInfo', arg: id, chevron: true })).join('');
     return `<div class="section moves-list" data-key="moves">${lead || ''}${groups}
         <h3 class="rf-list-header">Warm-up and mobility</h3><ul class="rf-list">${extra}</ul>
       </div>`;
