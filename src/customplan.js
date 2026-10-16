@@ -406,7 +406,7 @@
       if (!m.name || !m.group) continue;
       const h = home ? check(home, id) : null, g = gym ? check(gym, id) : null;
       const k = known(m);
-      out.push({ id, name: m.name, group: m.group, timed: !!m.timed, ok: !!((h && h.ok) || (g && g.ok)), home: !!(h && h.ok), gym: !!(g && g.ok), why: whyText((h && !h.ok ? h : null) || g), kit: k.kit, muscles: k.muscles, fam: m.family || null, find: k.find });
+      out.push({ id, name: m.name, group: m.group, timed: !!m.timed, ok: !!((h && h.ok) || (g && g.ok)), home: !!(h && h.ok), gym: !!(g && g.ok), why: whyText((h && !h.ok ? h : null) || g), kit: k.kit, kitText: k.kitText, muscles: k.muscles, fam: m.family || null, find: k.find });
     }
     catalogKept = { S, stamp, list: out };
     return out;
@@ -429,6 +429,7 @@
   const MUSCLE_WORDS = { chest: 'chest', frontDelts: 'front delts', sideDelts: 'side delts', rearDelts: 'rear delts', upperBack: 'upper back', lats: 'lats', lowerBack: 'lower back', biceps: 'biceps', triceps: 'triceps', forearms: 'forearms', abs: 'abs', obliques: 'obliques', glutes: 'glutes', hipFlexors: 'hip flexors', quads: 'quads', hamstrings: 'hamstrings', calves: 'calves' };
   const GROUP_WORDS = { chest: 'chest pecs', back: 'back', shoulders: 'shoulders delts', legs: 'legs', biceps: 'biceps arms', triceps: 'triceps arms', abs: 'abs core', conditioning: 'cardio conditioning', mobility: 'stretching stretch mobility', impact: 'impact bones', balance: 'balance' };
   const ALSO = { glutes: 'bum butt', quads: 'thighs', abs: 'stomach' };
+  const KIT_SHORT = { db: 'dumbbells', kb: 'kettlebell', band: 'band', door: 'door anchor', bar: 'pull-up bar', dip: 'dip bars', ball: 'ball', slam: 'slam ball', bb: 'barbell', ez: 'EZ bar', bench: 'bench', incline: 'adjustable bench', cable: 'cable', smith: 'Smith machine', pulldown: 'lat pulldown', legPress: 'leg press', legCurl: 'leg curl machine', legExt: 'leg extension machine', chestPress: 'chest press machine', shoulderPress: 'shoulder press machine', pecDeck: 'pec deck', rower: 'rower', bike: 'exercise bike', treadmill: 'treadmill' };
   const knownMoves = new Map();
   function known(m) {
     let k = knownMoves.get(m.id);
@@ -440,7 +441,9 @@
     const muscles = uniq((m.muscles || []).map((x) => MUSCLE_WORDS[x]).filter(Boolean));
     const words = [m.name, GROUP_WORDS[m.group] || m.group, muscles.join(' '), (m.muscles || []).map((x) => ALSO[x] || '').join(' '),
       kit.map((x) => KIT_WORDS[x]).join(' '), (m.req || []).map((alt) => alt.split('|').map((key) => String(EQ_NAME[key] || '').replace(/^an? /, '')).join(' ')).join(' ')].join(' ');
-    k = { kit, muscles, find: finding(m.name, words) };
+    // What it's done with, in words ("dumbbells or kettlebell", "barbell, bench").
+    const kitText = (m.req || []).map((alt) => uniq(alt.split('|').map((key) => KIT_SHORT[key]).filter(Boolean)).join(' or ')).filter(Boolean).join(', ') || 'no equipment';
+    k = { kit, muscles, kitText, find: finding(m.name, words) };
     knownMoves.set(m.id, k);
     return k;
   }
@@ -540,10 +543,10 @@
   }
 
   /* ---------------------------------------------------------------- the week by muscle */
-  // The sets a week a plan gives each muscle group (every day runs once a week), against what the
-  // engine aims for this person (their weekly sets, S.vol: what the coach's own plan gives them, kept
-  // within the floor and cap their goals set). status: 'none', 'low' (under 70% of the aim), 'ok' or
-  // 'high' (past the cap).
+  // The sets a week a plan gives each muscle group (every day runs once a week), against what this
+  // person's goals call for: the engine's weekly sets for them (S.vol, which the coach's own plan
+  // works toward as the time allows, kept within the floor and cap their goals set). status: 'none',
+  // 'low' (under 70% of the aim), 'ok' or 'high' (past the cap).
   const WEEK_GROUPS = ['chest', 'back', 'shoulders', 'legs', 'biceps', 'triceps', 'abs'];
   function weekSets(S, plan) {
     const prog = B().programFor(S.profile);
@@ -559,6 +562,20 @@
   }
 
   /* ---------------------------------------------------------------- suggestions */
+  // The moves most like one (for Replace): the same muscle group, this person can do them today,
+  // nearest first (the same ladder's next levels, then the same muscles, done the same way).
+  function similar(S, id, day, n) {
+    const m0 = M().MOVES[id];
+    if (!m0) return [];
+    const ctx = context(S, day);
+    const out = [];
+    for (const [cid, m] of Object.entries(M().MOVES)) {
+      if (cid === id || !m.name || m.name === m0.name || m.group !== m0.group || !check(ctx, cid).ok) continue;
+      out.push({ id: cid, group: m.group, why: 'like', s: likeness(S, m0, m) });
+    }
+    return out.sort((a, b) => b.s - a.s).slice(0, n || 6).map(({ id: x, group, why }) => ({ id: x, group, why }));
+  }
+
   // Moves to add to a day (items: what it holds now): for the muscles it trains, another of their
   // exercises (a ladder it doesn't use yet), and for the muscles the plan's week leaves out or gives
   // little, their main one; each at the level this person is at, one they can do today, not one the
@@ -609,6 +626,8 @@
     if (pr === 60 || pr === 90 || pr === '60' || pr === '90') return Number(pr);
     return COMPOUND.includes(fam) ? 90 : 60;
   }
+  // The rest a plan's move gets on Auto (its session's, as above).
+  const restAuto = (S, id) => autoRest(S, (M().MOVES[id] || {}).family);
   // The prescription for the move actually done: the plan's own numbers, or for a stand-in, the same
   // numbers within its range (its own start when one is held and the other counted).
   function baseFor(it, m) {
@@ -878,7 +897,8 @@
     const tpl = b.templateOf ? b.templateOf(S, ws, set) : b.templateFor(Object.assign({}, p, { days: set.days, weekdays: set.weekdays }), b.programFor(Object.assign({}, p, { days: set.days })));
     const days = tpl.map((t) => {
       const s = b.buildSession(S, ws + t.offset, t.idx, { cal: { weeks: {} }, noReadiness: true, forceMult: 1 });
-      return { title: s.title, items: itemsOf(s) };
+      // Named for what it holds (the fit to the time can leave out a muscle the template named).
+      return { title: niceTitle(s.groups || []) || titleFrom(s.items), items: itemsOf(s) };
     });
     const wd = Array.isArray(set.weekdays) && set.weekdays.length === set.days ? set.weekdays : null;
     return normalize({ name: 'My plan', days, weekdays: wd, source: 'you' }).plan;
@@ -1100,7 +1120,7 @@
       const tpl = b.templateFor(p, b.programFor(p));
       const ws = b.weekStart(day);
       const sessions = tpl.map((t) => b.buildSession(S2, ws + t.offset, t.idx, { cal: { weeks: {} }, noReadiness: true, forceMult: 1 }));
-      if (D === sessions.length) days = sessions.map((s) => ({ title: niceTitle(s.groups || []) || s.title, items: itemsOf(s) }));
+      if (D === sessions.length) days = sessions.map((s) => ({ title: niceTitle(s.groups || []) || titleFrom(s.items), items: itemsOf(s) }));
     }
     if (!days) days = classic(S2, w.split || 'full', D, p.minutes, day);
     const wd = !w.days && Array.isArray(S.profile.weekdays) && S.profile.weekdays.length === days.length ? S.profile.weekdays : null;
@@ -1473,7 +1493,7 @@
     ensure, migrate, list, get, activeId, create, add, update, duplicate, remove, restore, save,
     use, inForce, eventAt: (S, day) => eventAt(planEvents(S), day), startDay, weekSessions, owns, parseTpl, buildSession, minutes, progress, nextHarder,
     context, check, choose, whyText, swapsFor, catalog, offsetsFor,
-    KIT, known, search, matcher, defaults, itemFor, weekSets, suggest, WEEK_GROUPS,
+    KIT, known, search, matcher, defaults, itemFor, weekSets, suggest, similar, restAuto, WEEK_GROUPS,
     fromCoach, encode, decode, dataFrom, isLink, link, appLink, sharedTitle,
     wishes, generate, templates, template, knows, allowedMoves, planMessages, planGrammar, planSchema, accept, refine, modelFor, readJson, improve, diff,
   };

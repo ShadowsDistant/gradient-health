@@ -411,6 +411,8 @@
   // A move's still in a screen's tile: straight in if it's kept; otherwise the tile shows the still
   // it had in another look, or an older figure's of the same, or its own background, until it's
   // drawn, and then it fades in. flat(host): what the tile shows instead if it can't be drawn.
+  // opt.standIn: the tile came with a stand-in of its own (the flat figure, say), which stays until
+  // the still fades in over it.
   function tile(host, m, o, flat, opt) {
     const k = key(m, o);
     const shown = host.lastElementChild;
@@ -427,7 +429,7 @@
     const u = want(m, o, fn, opt);
     if (u) { put(host, k, u, false); return; }
     if (u === false) { host.removeAttribute('data-want'); flat(host); return; }
-    for (const n of Array.from(host.children)) if (n.tagName !== 'IMG') n.remove();
+    if (!(opt && opt.standIn)) for (const n of Array.from(host.children)) if (n.tagName !== 'IMG') n.remove();
     const s = standIn(k);
     if (s && !host.querySelector(':scope > img')) put(host, s.k, s.url, false);
   }
