@@ -19,7 +19,8 @@
 // it down; the numbers are for comparing builds here, best run against run with --vs).
 //
 // Usage: node test/ui-stills.mjs [--measure] [--runs=3] [--delay=1000] [--only=fresh|update|kept] [--dist=<dir>] [--vs=<dir>] [--still-glow] [--flat]
-//   (kept: the plan builder's large tiles kept apart, and the stills for later off the page's thread)
+//   (kept: the plan builder's large tiles kept apart, the stills for later off the page's thread, and
+//   none begun while a page slides or the picker scrolls)
 //   --measure     print the numbers only, no checks
 //   --dist        a built page somewhere else (a copy of an older dist/), to compare on the same machine
 //   --vs          another build, run by run in turn with this one
@@ -468,6 +469,88 @@ if (!measureOnly && (!ONLY || ONLY === 'kept')) {
     return { warm, n: kept(), longest: Math.max(0, ...L), tasks: L, quiet: window.GH.ui.quiet(), boxes: document.querySelectorAll('.pl-fig, .sheet-fig, .fig3d[data-ready]').length };
   });
   check(`the player's stills for later are kept, the page's thread never held 250 ms for one (longest task ${later.longest} ms)`, later.n >= 3 && later.longest < 250, later);
+  // Not while a page slides or the picker scrolls: a still drawn in an idle moment between their
+  // frames made one of them late (1.13: a route change's, and a fling's in the picker, whose tiles
+  // ask for theirs as they come in). Each still begun (figure3d.stillNow) is logged with what was
+  // going on: how long since the last route change began (U.motion.leave or routeSwap), and whether
+  // a sheet's content was scrolling. What's checked is when they begin, which is stills.js's call
+  // alone: here a still takes the software GL a second or more and its frames leave the page no idle
+  // moment, so each is drawn at once instead (6 ms of the page's thread, a picture made up), and an
+  // idle moment comes at once when asked for (on a phone, between a slide's or a fling's frames).
+  const calm = await page.evaluate(async () => {
+    const GH = window.GH, U = GH.ui, M = GH.moves, f = GH.figure3d;
+    const ric = window.requestIdleCallback;
+    window.requestIdleCallback = (fn) => setTimeout(() => fn({ didTimeout: false, timeRemaining: () => 20 }), 0);
+    const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+    const frame = () => new Promise((res) => requestAnimationFrame(() => res()));
+    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+    const log = [];
+    let moved = -1e9;
+    const motion = {};
+    let asking = false;
+    for (const k of ['leave', 'routeSwap']) { const fn = motion[k] = U.motion[k]; U.motion[k] = function (...a) { moved = performance.now(); const r = fn.apply(this, a); if (asking) ask(3); return r; }; }
+    const real = f.stillNow;
+    f.stillNow = () => {
+      log.push({ since: Math.round(performance.now() - moved), scrolling: !!document.querySelector('.gh-sheet[data-scrolling]') });
+      const t = performance.now();
+      while (performance.now() - t < 6) { /* the still's own time */ }
+      return { url: Promise.resolve(PNG) };
+    };
+    // Moves not on Plan, small: three asked as each route change begins (its slide), one every 700 ms.
+    const ids = Object.keys(M.MOVES).filter((id) => !M.MOVES[id].gym).slice(6);
+    let next = 0;
+    function ask(n) { const o = U.stills.look(52); for (let i = 0; i < n && next < ids.length; i++) U.stills.want(M.MOVES[ids[next++]], o, null); }
+    const steps = [() => U.go('plan'), () => U.open('settings'), () => U.back(), () => U.go('health'), () => U.go('today'), () => U.open('badges'), () => U.back()];
+    const n0 = log.length;
+    asking = true;
+    for (let i = 0; i < 14; i++) { steps[i % steps.length](); await wait(700); }
+    asking = false;
+    const routes = log.slice(n0);
+    // The picker, its content scrolled 40 px every 50 ms for 1.5 s (by the clock: frames come slowly
+    // here), a still asked every 150 ms meanwhile (its own tiles ask as they come in too). sheet.js
+    // marks the sheet at a scroll's frame, until 160 ms after the last; frames here can be further
+    // apart than that, so once it's seen to mark it, the mark is held through the scroll.
+    const p = GH.customPlan.create(U.S, { name: 'Calm' });
+    U.go('today');
+    await wait(600);
+    U.open('planEdit', p.id);
+    await wait(900);
+    U.act.cpAdd(document.querySelector('#screen [data-act="cpAdd"][data-arg="0"]'));
+    await wait(1500);
+    const sheet = document.querySelector('dialog.gh-sheet[open]');
+    const body = sheet && sheet.querySelector('.rf-sheet-body');
+    const out = { routes: routes.length, soon: routes.filter((x) => x.since < 300).map((x) => x.since), sheet: !!body };
+    if (body) {
+      const n1 = log.length;
+      const top = body.scrollTop;
+      let marks = 0;
+      const mo = new MutationObserver(() => { if (sheet.hasAttribute('data-scrolling')) marks++; });
+      mo.observe(sheet, { attributes: true, attributeFilter: ['data-scrolling'] });
+      body.scrollTop += 40;
+      for (let i = 0; i < 40 && !marks; i++) await wait(50);
+      mo.disconnect();
+      out.marked = marks;
+      const t0 = performance.now();
+      let k = 0;
+      while (performance.now() - t0 < 1500) { body.scrollTop += 40; sheet.setAttribute('data-scrolling', ''); if (k++ % 3 === 0) ask(1); await wait(50); }
+      await frame();
+      await wait(200);
+      sheet.removeAttribute('data-scrolling');
+      out.moved = Math.round(body.scrollTop - top);
+      out.scrolled = log.slice(n1).filter((x) => x.scrolling).length;
+      for (let i = 0; i < 150 && U.stills._stats().asked; i++) await wait(100);
+      out.after = log.length - n1;
+      out.left = U.stills._stats().asked;
+    }
+    U.closeSheets();
+    f.stillNow = real;
+    Object.assign(U.motion, motion);
+    window.requestIdleCallback = ric;
+    return out;
+  });
+  console.log(`  begun while pages slid: ${calm.routes}, within 300 ms of a change ${calm.soon.length}; in the picker: scrolled ${calm.moved} px (sheet.js marked it: ${calm.marked ? 'yes' : 'no'}), begun while marked ${calm.scrolled}, after ${calm.after}`);
+  check('stills come between route changes, none begun in the first 300 ms of one (a page sliding)', calm.routes > 0 && calm.soon.length === 0, calm);
+  check('none while the picker\'s content scrolls (the sheet marked); they come once it stops', calm.sheet && calm.marked > 0 && calm.moved > 200 && calm.scrolled === 0 && calm.after > 0, calm);
   await ctx.close();
   // A later launch: nothing read in at launch; a large tile's ask reads them in, nothing drawn.
   ({ ctx, page } = await launch());

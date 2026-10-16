@@ -268,7 +268,9 @@
   /* ---------------------------------------------------------------- when */
   // Something in the person's hands: a finger on the screen (or a mouse button held), the page
   // scrolling or settling (#app[data-scrolling], set by core.js until 150 ms after the last scroll;
-  // set-up's scroller too), a sheet moving or a control held or gliding. A still is never drawn then.
+  // set-up's scroller too; a sheet's content, sheet.js, 160 ms: the picker's tiles ask for theirs as
+  // a fling brings them in, and drawn then they took its frames), a sheet moving or a control held or
+  // gliding. A still is never drawn then.
   let fingers = 0, pressed = false;
   if (doc) {
     const opt = { passive: true, capture: true };
@@ -280,8 +282,10 @@
     for (const ev of ['pointerup', 'pointercancel']) doc.addEventListener(ev, (e) => { if (e.pointerType === 'mouse') pressed = false; }, opt);
     if (G.addEventListener) G.addEventListener('blur', () => { fingers = 0; pressed = false; });
   }
-  const scrolling = () => !!doc.querySelector('#app[data-scrolling], .onboard[data-scrolling]');
-  const busy = () => fingers > 0 || pressed || scrolling() || doc.documentElement.hasAttribute('data-sheet-moving') || !!(U.controlsMoving && U.controlsMoving());
+  const scrolling = () => !!doc.querySelector('#app[data-scrolling], .onboard[data-scrolling], .gh-sheet[data-scrolling]');
+  // (A page moving in or out, or gliding: src/ui/motion.js. A still drawn in an idle moment between
+  // its frames made one of them late; it waits the slide out, 400 ms.)
+  const busy = () => fingers > 0 || pressed || scrolling() || doc.documentElement.hasAttribute('data-sheet-moving') || !!(U.controlsMoving && U.controlsMoving()) || !!(U.motion && U.motion.recent && U.motion.recent(400));
   const calm = () => !busy() && (!U.calm || U.calm());
   // A figure's box showing (the player, a move's sheet), whose live figure stills would take frames
   // from: they wait. (A workout put aside keeps its figure, hidden: that one doesn't count.)

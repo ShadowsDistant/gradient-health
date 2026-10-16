@@ -3784,19 +3784,22 @@ function stillAsync(move, opts) {
 // up, cropped and encoded in the background.
 const strip = { x: 0, h: 0, list: [], soon: false }; // the stills drawn in this task, left to right
 // Resolves true once the GPU has done all it was asked so far, false if the context went meanwhile.
+// Looked at after 4 ms, then 8 and 16 more, then every 32: a phone's GPU is done in a frame or two,
+// and a slow one (software GL here, a still taking a second or two) was asked 250 times a second, each
+// a task of the page's own, right through a route change's frames (1.13.0).
 function fence(rr) {
   return new Promise((resolve) => {
-    let gl = null, sync = null;
+    let gl = null, sync = null, wait = 4;
     try { gl = rr.r.getContext(); sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0); gl.flush(); } catch (e) { sync = null; }
     if (!sync) { resolve(false); return; }
     const look = () => {
       if (R !== rr || isLost(rr)) { resolve(false); return; }
       const s = gl.clientWaitSync(sync, 0, 0);
-      if (s === gl.TIMEOUT_EXPIRED) { setTimeout(look, 4); return; }
+      if (s === gl.TIMEOUT_EXPIRED) { wait = Math.min(32, wait * 2); setTimeout(look, wait); return; }
       gl.deleteSync(sync);
       resolve(s !== gl.WAIT_FAILED);
     };
-    setTimeout(look, 4);
+    setTimeout(look, wait);
   });
 }
 // Stills copied out and not back yet: one batch at most, so the GPU never has a queue of them (a live
