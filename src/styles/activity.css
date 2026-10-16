@@ -393,7 +393,9 @@
 .al-finish.is-holding .al-btn-disc { scale: .94; }
 /* Discarded: the screen folds away (src/ui/actlive.js, foldAway) over the page that shows through. */
 .al.is-leaving { background: transparent; pointer-events: none; }
-.app:has(> #actlive:not([hidden]))::before, .app:has(> #actlive:not([hidden]))::after { animation-play-state: paused; }
+/* (#app[data-gh-live]: the live screen is showing, set by src/ui/core.js rather than a :has() on #app,
+   which had every element put into the page restyle #app.) */
+#app[data-gh-live]::before, #app[data-gh-live]::after { animation-play-state: paused; }
 /* Increased contrast and reduced transparency: Refract makes the glass solid, and the GPS pill
    follows. */
 :root:is([data-theme$="contrast"], [data-rf-transparency="reduced"]) .al-gps { background: var(--bg-raised); }

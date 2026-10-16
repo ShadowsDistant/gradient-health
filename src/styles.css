@@ -164,9 +164,10 @@ button:not([class*="rf-"]) { font: inherit; }
 .app::before, .app::after { transition: opacity 420ms var(--ease-standard), translate 420ms var(--ease-standard); }
 #app[data-page-scrolled]::before, #app[data-page-scrolled]::after { opacity: .16; translate: 0 -80px; }
 [data-theme^="dark"] #app[data-page-scrolled]::before, [data-theme^="dark"] #app[data-page-scrolled]::after { opacity: .22; }
-/* The drift holds still. */
+/* The drift holds still. (#app[data-gh-player]: the workout player is open, set by src/ui/core.js; a
+   :has() on #app here had every element put into the page restyle #app, src/styles/perf.css.) */
 :root[data-still-glow] .app::before, :root[data-still-glow] .app::after, #app[data-receded]::before, #app[data-receded]::after,
-.app:has(> #player:not([hidden]))::before, .app:has(> #player:not([hidden]))::after { animation-play-state: paused; }
+#app[data-gh-player]::before, #app[data-gh-player]::after { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) {
   .app::before, .app::after { animation-play-state: paused; }
   #app[data-page-scrolled]::before, #app[data-page-scrolled]::after { translate: none; }

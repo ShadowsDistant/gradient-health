@@ -124,6 +124,13 @@
     for (const o of openSheets) r = Math.max(r, recedeAt(o, o.restY));
     return r;
   }
+  // data-set-back on #app (its corners) and on the root (the dark around it, sheet.css): on the root
+  // itself rather than an html:has(#app[data-set-back]) there, which had Chrome look at the root and
+  // the body again, and restyle them, for every element put into the page or taken out of it.
+  function setBack(app, on) {
+    app.toggleAttribute('data-set-back', on);
+    doc.documentElement.toggleAttribute('data-set-back', on);
+  }
   // Sets the page back to r (0 to 1), with a settle's motion. A page already heading there keeps going.
   function setPage(r, m) {
     const app = appEl();
@@ -137,13 +144,13 @@
     // until it's back at full size.
     const back = r > 0.0005;
     app.toggleAttribute('data-receded', back);
-    if (back) { app.setAttribute('data-set-back', ''); app.setAttribute('data-sheeted', ''); }
+    if (back) { setBack(app, true); app.setAttribute('data-sheeted', ''); }
     if (m && Math.abs(from - r) > 0.001 && app.animate) {
       page.from = from; page.m = m;
       const a = page.anim = app.animate({ transform: [pageTf(from), pageTf(r)] }, { duration: m.T, easing: m.easing });
-      a.finished.then(() => { if (page.anim === a) { page.anim = null; if (page.r <= 0.0005) app.removeAttribute('data-set-back'); pageDone(); } }, () => {});
+      a.finished.then(() => { if (page.anim === a) { page.anim = null; if (page.r <= 0.0005) setBack(app, false); pageDone(); } }, () => {});
     } else {
-      if (!back) app.removeAttribute('data-set-back');
+      if (!back) setBack(app, false);
       pageDone();
     }
   }
@@ -154,7 +161,7 @@
     if (openSheets.length || leaving || !app || page.anim) return;
     app.style.transform = '';
     app.removeAttribute('data-receded');
-    app.removeAttribute('data-set-back');
+    setBack(app, false);
     app.removeAttribute('data-sheeted');
   }
   // The status bar's height, which the page clears as it recedes (read as the first sheet opens).
