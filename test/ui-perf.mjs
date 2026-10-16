@@ -20,7 +20,7 @@
 //   --boot-only  just the launches (with --runs=N), to compare boot times quickly; this also times
 //              the same-day launch without the kept insights
 import { createRequire } from 'node:module';
-import { readdirSync, statSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
 import { root, check, section, done, serveDist } from './lib.mjs';
 import { seedBridge, seedState } from './fixtures.mjs';
@@ -114,6 +114,32 @@ const BUDGET = {
     'a letter in Add food\'s search': [40, 360],
   },
 };
+
+/* ---------------------------------------------------------------- the lint (source) */
+// No :has() whose subject is the root, the body or #app (.app). Chrome looks at such a rule again at
+// every element put into the page or taken out of it, anywhere under it, and restyles that element (the
+// root holds every token) and, for #app, its bars: one element in and out of a card cost 1.4 ms of
+// style at 1x CPU with the four there were, and 0.1 ms without (1.14.0; every render, route change,
+// sheet, toast and motion copy paid it). What they said is an attribute now (src/ui/core.js,
+// watchOverlays; src/ui/sheet.js, the root's data-set-back).
+if (!measureOnly) {
+  section('Lint: no :has() on the root, the body or #app');
+  const files = ['src/styles.css', ...readdirSync(join(root, 'src/styles')).filter((f) => f.endsWith('.css')).map((f) => `src/styles/${f}`)];
+  const bad = [];
+  let n = 0;
+  for (const f of files) {
+    const css = readFileSync(join(root, f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const m of css.matchAll(/:has\(/g)) {
+      n++;
+      // The compound the :has() belongs to: back to the combinator, comma or brace before it.
+      let i = m.index;
+      while (i > 0 && !/[\s>+~,{}(]/.test(css[i - 1])) i--;
+      const subject = css.slice(i, m.index);
+      if (/^(html|body|:root|#app|\.app)(?![\w-])/.test(subject)) bad.push(`${f}: ${css.slice(i, m.index + 40).replace(/\s+/g, ' ')}`);
+    }
+  }
+  check(`none of the ${n} :has() in the app's style sheets is on the root, the body or #app`, bad.length === 0, bad);
+}
 
 /* ---------------------------------------------------------------- the page */
 // --dist serves another build's page and lazy/ through lib.mjs's server (its `extra` paths).
@@ -577,6 +603,55 @@ if (!measureOnly) {
   check('it reaches the bridge\'s saveAsync once the page is idle', saves.later);
   check('inside the app, localStorage keeps no copy of the state', saves.noCopy);
   check('when the page is hidden, a waiting save is written at once, the synchronous way', saves.flushed);
+
+  // What the :has() rules said (the lint above), as attributes: under the open player the bars, the
+  // floating glass and the glow behind go once its fade in has made it opaque, and come back the moment
+  // it starts to fade out; the glow holds still while it's there; a sheet that sets the page back
+  // darkens around it, and that goes with it.
+  section('What covers the page, as attributes');
+  const cover = await page.evaluate(async () => {
+    const U = window.GH.ui, app = document.getElementById('app'), html = document.documentElement;
+    const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+    const vis = (sel) => getComputedStyle(document.querySelector(sel)).visibility;
+    const glow = () => getComputedStyle(app, '::before');
+    const state = () => ({ overlay: app.hasAttribute('data-gh-overlay'), player: app.hasAttribute('data-gh-player'), bar: vis('#topbar'), tabbar: vis('#tabbar'), ptr: vis('#ptr'), glow: glow().visibility, drift: glow().animationPlayState });
+    U.closeSheets();
+    U.go('today');
+    await wait(400);
+    const out = { rest: state() };
+    U.act.startWorkout();
+    await new Promise((res) => requestAnimationFrame(() => res()));
+    out.open = state();
+    await wait(600);
+    out.opaque = state();
+    // Kept for later (the leave sheet's first answer, without the sheet): the player fades out.
+    U.act.plKeep();
+    await new Promise((res) => requestAnimationFrame(() => res()));
+    out.closing = Object.assign(state(), { closingAttr: U.els().playerEl.hasAttribute('data-closing') });
+    await wait(800);
+    out.closed = state();
+    if (U.S.active) window.GH.brain.cancelWorkout(U.S);
+    U.render();
+    await wait(300);
+    // A sheet at large sets the page back.
+    const ctl = U.sheet({ title: 'Set back', size: 'full', body: '<div class="sheet-pad"><p>Words</p></div>' });
+    await wait(900);
+    out.sheet = { root: html.hasAttribute('data-set-back'), app: app.hasAttribute('data-set-back'), bg: getComputedStyle(html).backgroundColor, body: getComputedStyle(document.body).backgroundColor };
+    ctl.close('ok');
+    await wait(1200);
+    out.sheetGone = { root: html.hasAttribute('data-set-back'), bg: getComputedStyle(html).backgroundColor };
+    U.closeSheets();
+    await wait(300);
+    return out;
+  });
+  const shown = (s) => s.bar === 'visible' && s.tabbar === 'visible' && s.ptr === 'visible' && s.glow !== 'hidden';
+  check('at rest nothing covers the page', !cover.rest.overlay && !cover.rest.player && shown(cover.rest), cover.rest);
+  check('the player open: marked at once (the glow holds still), the bars still there while it fades in', cover.open.overlay && cover.open.player && cover.open.drift === 'paused' && cover.open.bar === 'visible', cover.open);
+  check('once it\'s opaque, the bars, the pull-to-refresh dot and the glow behind it are hidden', cover.opaque.bar === 'hidden' && cover.opaque.tabbar === 'hidden' && cover.opaque.ptr === 'hidden' && cover.opaque.glow === 'hidden', cover.opaque);
+  check('as it starts to fade out they\'re back at once', cover.closing.closingAttr && !cover.closing.overlay && shown(cover.closing), cover.closing);
+  check('and once it\'s gone nothing is marked', !cover.closed.overlay && !cover.closed.player && shown(cover.closed), cover.closed);
+  check('a sheet that sets the page back darkens the root and the body around it', cover.sheet.root && cover.sheet.app && cover.sheet.bg === 'rgb(8, 9, 12)' && cover.sheet.body === 'rgb(8, 9, 12)', cover.sheet);
+  check('and that goes with it', !cover.sheetGone.root && cover.sheetGone.bg !== 'rgb(8, 9, 12)', cover.sheetGone);
 
   section('Health sync');
   const sync = await page.evaluate(async () => {
