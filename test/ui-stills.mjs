@@ -518,7 +518,9 @@ if (!measureOnly && (!ONLY || ONLY === 'kept')) {
     U.act.cpAdd(document.querySelector('#screen [data-act="cpAdd"][data-arg="0"]'));
     await wait(1500);
     const sheet = document.querySelector('dialog.gh-sheet[open]');
-    const body = sheet && sheet.querySelector('.rf-sheet-body');
+    // (The picker's list scrolls in a box of its own under its search and filters, .cp-results; the
+    // sheet hears any scroll inside it.)
+    const body = sheet && (sheet.querySelector('.cp-results') || sheet.querySelector('.rf-sheet-body'));
     const out = { routes: routes.length, soon: routes.filter((x) => x.since < 300).map((x) => x.since), sheet: !!body };
     if (body) {
       const n1 = log.length;
