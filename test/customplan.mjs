@@ -397,6 +397,10 @@ section('The picker: what each move is done with, and search');
   check('each move: what it\'s done with, in kinds and in words, and what it works', JSON.stringify(row.kit) === '["db","kb"]' && row.kitText === 'dumbbells or kettlebell' && row.muscles.includes('lats') && row.ok, row);
   check('a chair, a wall or a towel is body only', JSON.stringify(cat.find((x) => x.id === 'tri_dip_bent').kit) === '["body"]' && JSON.stringify(cat.find((x) => x.id === 'push_std').kit) === '["body"]');
   check('the kinds the filter lists come from what moves need', C.KIT.every(([k]) => cat.some((x) => x.kit.includes(k))), C.KIT.map(([k]) => k));
+  const both = cat.filter((x) => x.ok && x.kit.includes('cable'));
+  check('and the kinds you have: a move done with a band or a cable is yours with the band', both.length > 0 && both.every((x) => !x.mine.includes('cable') && x.mine.length > 0) && cat.every((x) => x.mine.every((k) => x.kit.includes(k))) && JSON.stringify(row.mine) === '["db","kb"]', both.map((x) => `${x.id} ${x.kit} / ${x.mine}`).slice(0, 4));
+  const G = fresh(MON - 14, { where: 'gym', gym: B.gymPreset('full', 'lb') });
+  check('at the gym, its cables and barbells are yours too', C.catalog(G, day).some((x) => x.ok && x.mine.includes('cable')) && C.catalog(G, day).some((x) => x.ok && x.mine.includes('barbell')));
   const first = (q) => (C.search(cat, q)[0] || {}).id;
   check('"pushup", "push up", "push-up", "pushups" and "press-up" all find the push-up first', ['pushup', 'push up', 'push-up', 'pushups', 'press-up'].every((q) => first(q) === 'push_std'), ['pushup', 'push up', 'push-up', 'pushups', 'press-up'].map(first));
   check('a word a letter off ("dumbell row") and words in any order ("squat goblet")', first('dumbell row') === 'row_db' && first('squat goblet') === 'sq_goblet', [first('dumbell row'), first('squat goblet')]);
@@ -460,6 +464,14 @@ section('Ready-made plans');
   const full = C.template(S, day, 'full');
   check('Full body: A to D, each with legs, chest and back, every move one you can do, two sets or more', full.name === 'Full body' && full.source === 'you' && C.ready(full) && full.days.map((d) => d.title).join() === 'Full body A,Full body B,Full body C,Full body D' && full.days.every((d) => ['legs', 'chest', 'back'].every((g) => groups(d).has(g))) && okAll(full), full.days.map((d) => `${d.title}: ${d.items.map((it) => `${it.move} ${it.sets}`)}`));
   check('the days aren\'t all the same', new Set(full.days.map((d) => d.items.map((it) => it.move).join())).size >= 2);
+  // Short of time (20 minutes, and the reps of someone some weeks in): a top goal's exercise stays
+  // each day, the top goals taking turns, and a lower goal's exercise goes down to a set first.
+  const T = fresh(MON - 14, { minutes: 20 });
+  for (const f of ['row', 'squat', 'hinge', 'push', 'chestDb']) if (T.prog[f]) T.prog[f].reps = Math.round((T.prog[f].reps || 10) * 1.8);
+  const tiersT = B.programFor(T.profile).tiers;
+  const top = (d) => d.items.filter((it) => tiersT[GH.moves.MOVES[it.move].group] === 1).map((it) => GH.moves.MOVES[it.move].group);
+  const tight = C.template(T, day, 'full');
+  check('short of time: each Full body day keeps one of your top goals, taking turns, before a lower goal\'s second set', tight.days.every((d) => top(d).length >= 1 && ['legs', 'chest'].every((g) => groups(d).has(g))) && new Set(tight.days.map((d) => top(d).join())).size >= 3 && tight.days.every((d) => d.items.every((it) => it.sets >= 2 || tiersT[GH.moves.MOVES[it.move].group] > 1)), tight.days.map((d) => d.items.map((it) => `${it.move} ${it.sets}`)));
   check('each about your 25 minutes', fit(full), full.days.map((d, i) => C.minutes(S, full, i, day)));
   const ul = C.template(S, day, 'upperlower');
   check('Upper and lower: upper days hold no legs, lower days only legs and core', ul.days.map((d) => d.title).join() === 'Upper body A,Lower body A,Upper body B,Lower body B' && [0, 2].every((i) => !groups(ul.days[i]).has('legs')) && [1, 3].every((i) => [...groups(ul.days[i])].every((g) => g === 'legs' || g === 'abs')) && okAll(ul) && fit(ul), ul.days.map((d) => [...groups(d)]));

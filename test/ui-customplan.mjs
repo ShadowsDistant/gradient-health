@@ -198,7 +198,7 @@ check('Suggested first: moves you can do for the muscles your week has none of y
 await page.click('dialog[open] [data-act="cpKitMenu"]');
 await settle(600);
 const kitItems = await S(() => [...document.querySelectorAll('.rf-menu:popover-open [role="menuitem"]')].map((b) => b.textContent.trim()));
-check('Filters: any equipment, the kinds your kit covers, and Only what I can do', ['Any equipment', 'Body only', 'Dumbbells', 'Kettlebell', 'Bands', 'Only what I can do'].every((x) => kitItems.includes(x)) && !kitItems.includes('Barbell') && !kitItems.includes('Gym machines'), kitItems);
+check('Filters: any equipment, the kinds of kit you have, and Only what I can do', JSON.stringify(kitItems) === JSON.stringify(['Any equipment', 'Body only', 'Dumbbells', 'Kettlebell', 'Bands', 'Only what I can do']), kitItems);
 await shot('04-picker-filters', true);
 await page.click('.rf-menu:popover-open [data-act="cpKit"][data-arg="db"]');
 await settle(700);

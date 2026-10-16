@@ -25,7 +25,9 @@
 .cp-note.is-box { margin: 0; padding: var(--space-3); border-radius: 14px; background: var(--fill-3); }
 
 /* Stills: the 3D figure's key pose (or the flat one), faded in as each is drawn. */
-.cp-thumb { --cp-t: 48px; flex: none; width: var(--cp-t); height: var(--cp-t); border-radius: 13px; display: grid; place-items: center; overflow: hidden; background: color-mix(in oklab, var(--label) 6%, var(--bg-raised)); --fig-bg: color-mix(in oklab, var(--label) 6%, var(--bg-raised)); }
+/* (One cell the tile's own size: a cell sized to its content would grow to a tall figure's height,
+   and the figure would be cut off at the tile's foot.) */
+.cp-thumb { --cp-t: 48px; flex: none; width: var(--cp-t); height: var(--cp-t); border-radius: 13px; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; overflow: hidden; background: color-mix(in oklab, var(--label) 6%, var(--bg-raised)); --fig-bg: color-mix(in oklab, var(--label) 6%, var(--bg-raised)); }
 .cp-thumb > img, .cp-thumb > svg { grid-area: 1 / 1; display: block; width: 100%; height: 100%; object-fit: contain; }
 /* A 3D still kept on the phone is part of the page; one drawn while the tile shows fades in over
    what it showed (they share its one grid cell). */
@@ -90,7 +92,7 @@ button.cp-inuse-row { cursor: pointer; }
 .cp-todo { display: flex; align-items: flex-start; gap: 6px; color: var(--label-secondary); --rf-icon-size: 16px; }
 .cp-names { gap: var(--space-3); }
 .cp-sched { gap: var(--space-3); }
-.cp-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.cp-sched-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
 .cp-wds .rf-chip { min-width: 58px; justify-content: center; }
 .cp-days { gap: var(--space-4); }
 .cp-day { gap: var(--space-2); padding: var(--space-4) var(--space-4) var(--space-3); border-radius: var(--radius-xl); }
@@ -208,7 +210,9 @@ button.cp-wk-row:active { background: var(--fill-selected); }
 .cp-kit { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; min-width: 44px; padding: 0 12px; border-radius: var(--radius-full); background: var(--fill-3); color: var(--label); --rf-icon-size: 18px; }
 .cp-kit.is-on { background: var(--accent-soft); color: var(--accent); }
 .cp-kit-label { font-size: .875rem; font-weight: 600; white-space: nowrap; }
-.cp-filters { flex: 1 1 auto; min-width: 0; display: flex; gap: var(--space-2); overflow-x: auto; scrollbar-width: none; margin-inline-end: calc(var(--space-4) * -1); padding: 2px var(--space-4) 2px 0; }
+/* The chips scroll under a soft edge at each end (the start one over the gap by the Filters button,
+   so the first chip at rest isn't faded). */
+.cp-filters { flex: 1 1 auto; min-width: 0; display: flex; gap: var(--space-2); overflow-x: auto; scrollbar-width: none; margin-inline: calc(var(--space-2) * -1) calc(var(--space-4) * -1); padding: 2px var(--space-4) 2px var(--space-2); -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--space-2), #000 calc(100% - var(--space-4)), transparent); mask-image: linear-gradient(to right, transparent, #000 var(--space-2), #000 calc(100% - var(--space-4)), transparent); }
 .cp-filters::-webkit-scrollbar { display: none; }
 .cp-kit-menu .rf-menu-item:not([aria-current="true"]) > .rf-icon { visibility: hidden; }
 .cp-replacing { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-lg); background: var(--fill-3); }

@@ -236,7 +236,7 @@
       ? `Pick ${n} ${n === 1 ? 'day' : 'days'}, one for each workout (${picks.length} picked).`
       : when === 'set' ? `Day ${offs.map((o, i) => `${i + 1} on ${WD[o]}`).join(', day ')}.` : `${listWords(offs.map((o) => WD_LONG[o]))}, spread out like the coach's plan. Miss one and the week moves along.`;
     return `<div class="card cp-sched" data-key="sched">
-      <div class="cp-row"><span class="t-headline">Schedule</span><span class="t-callout rf-muted rf-num">${n} ${n === 1 ? 'day' : 'days'} a week</span></div>
+      <div class="cp-sched-head"><span class="t-headline">Schedule</span><span class="t-callout rf-muted rf-num">${n} ${n === 1 ? 'day' : 'days'} a week</span></div>
       ${U.seg(`cpWhen-${plan.id}`, [['spread', 'Spread out'], ['set', 'Set days']], when, 'When you train', ' data-on="cpWhen"')}
       ${when === 'set' ? `<div class="ob-chips cp-wds" data-key="wds">${chips}</div>` : ''}
       <p class="t-footnote rf-muted">${U.esc(foot)}</p>
@@ -699,6 +699,8 @@
     const nameOf = (id) => (M().MOVES[id] || { name: id }).name;
     const inDay = (id) => st.items.some((x) => twinOf(x.move) === twinOf(id));
     const added = () => st.items.filter((x) => fresh.has(x)).length;
+    // Done with this kind of kit: with Only what I can do, kit this person has.
+    const kitHas = (x, k) => (st.mine ? (x.mine || x.kit) : x.kit).includes(k);
 
     /* ---------- rows */
     // What it works (its first two muscles) and what it's done with; or why it's not for them now.
@@ -721,7 +723,7 @@
     const itemHtml = (e) => (e.head ? headHtml(e) : rowHtml(e));
     // The list as it stands: the filters, then the search (best first) or Suggested and the groups.
     const build = () => {
-      const pass = (x) => (st.group === 'all' || x.group === st.group) && (!st.mine || x.ok) && (!st.kit || x.kit.includes(st.kit));
+      const pass = (x) => (st.group === 'all' || x.group === st.group) && (!st.mine || x.ok) && (!st.kit || kitHas(x, st.kit));
       const base = sorted.filter(pass);
       const out = [];
       if (st.q.trim()) { for (const x of C().search(base, st.q)) out.push({ key: `r-${x.id}`, row: x }); return out; }
@@ -993,9 +995,10 @@
       redoFilter();
       U.haptic('tap');
     };
-    // Filters: what the moves are done with (the kinds the list holds), and Only what I can do.
+    // Filters: what the moves are done with (the kinds the list holds: with Only what I can do, the
+    // kinds this person has), and Only what I can do.
     U.act.cpKitMenu = (btn) => {
-      const have = C().KIT.filter(([k]) => cat.some((x) => x.kit.includes(k) && (!st.mine || x.ok)));
+      const have = C().KIT.filter(([k]) => cat.some((x) => kitHas(x, k) && (!st.mine || x.ok)));
       const m = U.menu(btn, [{ act: 'cpKit', arg: '', icon: 'check', label: 'Any equipment' }]
         .concat(have.map(([k, label]) => ({ act: 'cpKit', arg: k, icon: 'check', label })), [null, { act: 'cpMine', icon: 'check', label: 'Only what I can do' }]), { label: 'Filters' });
       if (!m) return;
@@ -1004,7 +1007,7 @@
       if (st.mine) m.querySelector('[data-act="cpMine"]').setAttribute('aria-current', 'true');
     };
     U.act.cpKit = (b) => { st.kit = b.dataset.arg || ''; U.haptic('select'); redoFilter(); relist(); };
-    U.act.cpMine = () => { st.mine = !st.mine; if (st.mine && st.kit && !cat.some((x) => x.ok && x.kit.includes(st.kit))) st.kit = ''; U.haptic(st.mine ? 'toggleOn' : 'toggleOff'); redoFilter(); relist(); };
+    U.act.cpMine = () => { st.mine = !st.mine; if (st.mine && st.kit && !cat.some((x) => x.ok && kitHas(x, st.kit))) st.kit = ''; U.haptic(st.mine ? 'toggleOn' : 'toggleOff'); redoFilter(); relist(); };
   }
 
   /* ================================================================== using a plan */

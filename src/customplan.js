@@ -392,8 +392,9 @@
     return out;
   }
   // Every move someone could put in a plan, with whether they can do it at home and at the gym, what
-  // it's done with (kit) and what it works (muscles), and the words it's found by (find). Kept for
-  // the day and the state it was worked out for, so the picker opens without working it out again.
+  // it's done with (kit: every kind it can be done with; mine: the kinds of those this person has,
+  // where they train), what it works (muscles), and the words it's found by (find). Kept for the day
+  // and the state it was worked out for, so the picker opens without working it out again.
   let catalogKept = null;
   function catalog(S, day) {
     const stamp = catalogStamp(S, day);
@@ -401,12 +402,14 @@
     const where = S.profile.where || 'home';
     const home = where !== 'gym' ? context(S, day, 'home') : null;
     const gym = where !== 'home' ? context(S, day, 'gym') : null;
+    const have = (key) => (home && M().has(home.f.eq, key)) || (gym && M().has(gym.f.eq, key));
     const out = [];
     for (const [id, m] of Object.entries(M().MOVES)) {
       if (!m.name || !m.group) continue;
       const h = home ? check(home, id) : null, g = gym ? check(gym, id) : null;
       const k = known(m);
-      out.push({ id, name: m.name, group: m.group, timed: !!m.timed, ok: !!((h && h.ok) || (g && g.ok)), home: !!(h && h.ok), gym: !!(g && g.ok), why: whyText((h && !h.ok ? h : null) || g), kit: k.kit, kitText: k.kitText, muscles: k.muscles, fam: m.family || null, find: k.find });
+      const mine = k.kit[0] === 'body' ? ['body'] : k.kit.filter((x) => (m.req || []).some((alt) => alt.split('|').some((key) => KIT_OF[key] === x && have(key))));
+      out.push({ id, name: m.name, group: m.group, timed: !!m.timed, ok: !!((h && h.ok) || (g && g.ok)), home: !!(h && h.ok), gym: !!(g && g.ok), why: whyText((h && !h.ok ? h : null) || g), kit: k.kit, mine, kitText: k.kitText, muscles: k.muscles, fam: m.family || null, find: k.find });
     }
     catalogKept = { S, stamp, list: out };
     return out;
@@ -1146,8 +1149,10 @@
   // sore joint; a ladder a health condition rules out gives way to its stand-in, brain.famFor), with
   // their reps. Sets by how much their goals want of the muscle (three for the top goals, two for
   // the rest, as the coach starts them), then the day is fitted to the time: over it, a set comes off
-  // the exercise with the most to spare (the lowest goal, then the most sets), never below two, then
-  // the lowest goal's exercise goes; under it, a set more for the top goals first (four at most,
+  // the exercise with the most to spare (the lowest goal, then the most sets) down to two, then the
+  // exercises of the groups the day can do without go (the lowest goal first; of the others, one a
+  // day stays, taking turns), then a lower goal's exercise goes down to one set, and only then does
+  // an exercise of the day's own go; under it, a set more for the top goals first (four at most,
   // three for the rest). A day that repeats takes a letter (Full body A, Full body B) and the next
   // of each group's ladders.
   function classic(S2, split, D, mins, day) {
@@ -1195,15 +1200,30 @@
       const extra = uniq(kd[1].map(([g]) => g).filter((g) => !keep.includes(g))).sort((x, y) => rank(x) - rank(y) || goalOrder(x) - goalOrder(y));
       const order = [];
       for (const r of uniq(extra.map(rank))) { const same = extra.filter((g) => rank(g) === r); const k2 = nth % same.length; order.push(...same.slice(k2), ...same.slice(0, k2)); }
-      const cut = (it) => { const g = (M().MOVES[it.move] || {}).group; return keep.includes(g) ? rank(g) : 100 + order.indexOf(g) * 10; };
+      // The day's own one of the other groups (they take turns) stays with its main groups.
+      const own = order[0];
+      const cut = (it) => { const g = (M().MOVES[it.move] || {}).group; return keep.includes(g) || g === own ? rank(g) : 100 + order.indexOf(g) * 10; };
+      // (The last of the worst: of a group's exercises, its last, the extra ladders after the main.)
+      const worst = (ok) => { let w = -1; items.forEach((it, i) => { if (ok(it) && (w < 0 || cut(it) >= cut(items[w]))) w = i; }); return w; };
+      const groupOf = (it) => (M().MOVES[it.move] || {}).group;
+      const twice = (it) => items.filter((x) => groupOf(x) === groupOf(it)).length > 1;
       for (let guard = 0; guard < 80 && time() > budget + 1; guard++) {
+        // Sets above two come off first, from the exercise with the most to spare.
         let pick = -1;
         items.forEach((it, i) => { if (it.sets > 2 && (pick < 0 || cut(it) + it.sets > cut(items[pick]) + items[pick].sets)) pick = i; });
         if (pick >= 0) { items[pick].sets--; continue; }
-        if (items.length > 2) { let drop = 0; items.forEach((it, i) => { if (cut(it) >= cut(items[drop])) drop = i; }); items.splice(drop, 1); continue; }
-        const last = items.find((it) => it.sets > 1);
-        if (!last) break;
-        last.sets--;
+        // Then the other groups' exercises go, the lowest goal first, then a group's second exercise.
+        const extra = worst((it) => cut(it) >= 100);
+        if (extra >= 0) { items.splice(extra, 1); continue; }
+        const more = worst(twice);
+        if (more >= 0) { items.splice(more, 1); continue; }
+        // Then a lower goal's exercise goes down to one set (a top goal isn't left out for a second
+        // set of a lower one), and only then does one of the day's own go.
+        const low = worst((it) => it.sets > 1);
+        if (low >= 0 && rank(groupOf(items[low])) > 1) { items[low].sets--; continue; }
+        if (items.length > 2) { items.splice(worst(() => true), 1); continue; }
+        if (low < 0) break;
+        items[low].sets--;
       }
       for (let guard = 0; guard < 20 && items.length; guard++) {
         let pick = -1;
