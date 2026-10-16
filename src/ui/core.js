@@ -597,8 +597,38 @@
     // (A scroll inside set-up doesn't bubble: it's heard on the way down.)
     onboardEl.addEventListener('scroll', onSetupScroll, { passive: true, capture: true });
     pullToRefresh();
+    watchOverlays();
   }
   U.els = () => ({ root, topbar, screen, floatEl, playerEl, onboardEl, tabbar, accessory });
+
+  // What's open over the page, as attributes on #app for the style sheets: the workout player or set-up
+  // there and opaque (data-gh-overlay: the bars, the floating glass and the glow behind are hidden,
+  // src/styles/perf.css), the player there at all (data-gh-player) and a live activity (data-gh-live:
+  // the glow holds still, src/styles.css and activity.css). These were :has() rules on #app, and the
+  // page set back under a sheet was one on html and body (src/ui/sheet.js now marks the root): a
+  // :has() whose subject is that high up has Chrome look at it again at every element put into the
+  // page or taken out of it, anywhere, and restyle the root, the body or #app and its bars, so each
+  // insertion's style cost 1.5 ms rather than 0.1 at 1x CPU (every render, route change, sheet, toast
+  // and motion copy paid it). The observer sets them before the next frame, as the rules applied.
+  function watchOverlays() {
+    if (!G.MutationObserver) return;
+    const open = (el) => !!el && !el.hidden;
+    const set = (a, on) => { if (root.hasAttribute(a) !== on) root.toggleAttribute(a, on); };
+    const flags = () => {
+      set('data-gh-overlay', [playerEl, onboardEl].some((el) => open(el) && !el.hasAttribute('data-closing')));
+      set('data-gh-player', open(playerEl));
+      set('data-gh-live', open(doc.getElementById('actlive')));
+    };
+    const attrs = { attributes: true, attributeFilter: ['hidden', 'data-closing'] };
+    // (The live activity's screen is put into #app when one starts: its own changes are heard from then.)
+    const mo = new G.MutationObserver((recs) => {
+      for (const r of recs) for (const n of r.addedNodes) if (n.id === 'actlive') mo.observe(n, attrs);
+      flags();
+    });
+    for (const el of [playerEl, onboardEl, doc.getElementById('actlive')]) if (el) mo.observe(el, attrs);
+    mo.observe(root, { childList: true });
+    flags();
+  }
 
   // The bar's frosted edge and small title appear once the large title slides under it (its last
   // 8 px), or, on a page without one, once the page is scrolled at all (more than 2 px). An

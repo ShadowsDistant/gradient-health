@@ -72,10 +72,11 @@
 /* Under an opaque overlay (the workout player, set-up) the page's bars, its floating glass and the
    glow behind it are hidden: covered, they'd still be drawn every frame the player's figure or clock
    moves (their blurs, their refraction, the glow's layers). They go once the overlay's fade in has
-   made it opaque (250 ms), and come back the moment it starts to fade out (data-closing). */
-#app:has(> #player:not([hidden]):not([data-closing]), > #onboard:not([hidden]):not([data-closing])) > :is(#topbar, #float, #tabbar, #ptr),
-#app:has(> #player:not([hidden]):not([data-closing]), > #onboard:not([hidden]):not([data-closing]))::before,
-#app:has(> #player:not([hidden]):not([data-closing]), > #onboard:not([hidden]):not([data-closing]))::after { visibility: hidden; transition: visibility 0s linear 250ms; }
+   made it opaque (250 ms), and come back the moment it starts to fade out (data-closing).
+   #app[data-gh-overlay] is set by src/ui/core.js (watchOverlays) rather than worked out with :has()
+   here: a :has() on #app had every element put into the page restyle #app and the bars. */
+#app[data-gh-overlay] > :is(#topbar, #float, #tabbar, #ptr),
+#app[data-gh-overlay]::before, #app[data-gh-overlay]::after { visibility: hidden; transition: visibility 0s linear 250ms; }
 
 /* The tab bar's lens (the glass over the picked tab) shows from the bar's second frame, once Refract
    marks it ready: in its first, its liquid engine finds it without a size and leaves its lens map,

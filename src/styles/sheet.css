@@ -232,7 +232,9 @@ html:is([data-sheet-open], [data-sheet-moving]) .rf-progress-fill::after { anima
 #app { transform-origin: 50% 0; }
 #app[data-sheeted] { will-change: transform; }
 #app[data-set-back] { border-radius: 22px; }
-html:has(#app[data-set-back]), body:has(#app[data-set-back]) { background: #08090c; }
+/* (The root's own data-set-back, src/ui/sheet.js: an html:has() here restyled the root and the body
+   at every element put into the page.) */
+:root[data-set-back], :root[data-set-back] > body { background: #08090c; }
 /* Under a sheet at rest, the page's bottom glass is out of sight: hidden, the compositor doesn't
    redraw its blur and lens every frame the scrim changes (the engine uncovers it before a drag or a
    close would show it). */
