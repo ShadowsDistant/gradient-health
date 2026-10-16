@@ -471,6 +471,7 @@
   }
   // A query into a scorer for catalog entries: 0 for no match, more for a better one (the name
   // starting with it, then the name holding it, then every word found, then words one letter off).
+  // A short word only matches the start of a word ("db" isn't in "dea-db-ug", "row" isn't "throw").
   function matcher(q) {
     let s = fold(q);
     for (const [re, to] of SAME) s = s.replace(re, to);
@@ -480,7 +481,7 @@
     return (x) => {
       const f = x.find || finding(x.name, x.name);
       if (f.name.startsWith(whole)) return 100;
-      if (f.name.includes(whole)) return 80 + (f.first.some((w) => w.startsWith(words[0])) ? 5 : 0);
+      if (whole.length >= 4 && f.name.includes(whole)) return 80 + (f.first.some((w) => w.startsWith(words[0])) ? 5 : 0);
       let score = 60, fuzzy = false;
       for (const w of words) {
         if ((w.length >= 4 && f.name.includes(w)) || f.first.some((x2) => x2.startsWith(w))) continue;

@@ -2,8 +2,11 @@
 // share code (a round trip, its size in a QR code, a real QR reader on the code), swaps for missing
 // equipment and sore or careful joints, a plan in use feeding the calendar, todayPlan, buildSession
 // and the Plan tab (with readiness and deload weeks, a switch part-way through a week, deleting and
-// editing the plan in use), progression over weeks, and the coach's plan builder with a model's
-// answer checked before it's used.
+// editing the plan in use), progression over weeks, the coach's plan builder with a model's answer
+// checked before it's used, and what the picker and New plan stand on: each move's kit and muscles,
+// forgiving search, a new exercise's sets and reps, this week by muscle, suggestions and the moves
+// most like one, and the ready-made plans (Full body, Upper and lower, Push, pull, legs, No
+// equipment) built for this person's days, minutes and kit.
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { load, check, section, done } from './lib.mjs';
@@ -381,6 +384,98 @@ section('Build me a plan');
   check('Start from my current plan: the coach\'s week as it stands', draft.days.length === set.days && draft.days.every((d) => d.items.length >= 3) && draft.name === 'My plan', draft.days.map((d) => d.items.length));
   const knows = C.knows(S);
   check('what the coach uses, in words', knows.some(([k]) => k === 'Goals') && knows.some(([k, v]) => k === 'Equipment' && /dumbbells/.test(v)));
+}
+
+/* ------------------------------------------------------------------ the picker's model */
+section('The picker: what each move is done with, and search');
+{
+  const S = fresh(MON - 14);
+  const day = MON;
+  const cat = C.catalog(S, day);
+  const row = cat.find((x) => x.id === 'row_db');
+  check('the catalog is kept for the day and the state it was worked out for', C.catalog(S, day) === cat && C.catalog(S, day + 1) !== cat);
+  check('each move: what it\'s done with, in kinds and in words, and what it works', JSON.stringify(row.kit) === '["db","kb"]' && row.kitText === 'dumbbells or kettlebell' && row.muscles.includes('lats') && row.ok, row);
+  check('a chair, a wall or a towel is body only', JSON.stringify(cat.find((x) => x.id === 'tri_dip_bent').kit) === '["body"]' && JSON.stringify(cat.find((x) => x.id === 'push_std').kit) === '["body"]');
+  check('the kinds the filter lists come from what moves need', C.KIT.every(([k]) => cat.some((x) => x.kit.includes(k))), C.KIT.map(([k]) => k));
+  const first = (q) => (C.search(cat, q)[0] || {}).id;
+  check('"pushup", "push up", "push-up", "pushups" and "press-up" all find the push-up first', ['pushup', 'push up', 'push-up', 'pushups', 'press-up'].every((q) => first(q) === 'push_std'), ['pushup', 'push up', 'push-up', 'pushups', 'press-up'].map(first));
+  check('a word a letter off ("dumbell row") and words in any order ("squat goblet")', first('dumbell row') === 'row_db' && first('squat goblet') === 'sq_goblet', [first('dumbell row'), first('squat goblet')]);
+  check('a muscle ("glutes") finds the moves that work it', C.search(cat, 'glutes').length > 20 && C.search(cat, 'glutes').every((x) => x.muscles.includes('glutes')));
+  check('kit by its short name: "db" finds dumbbell moves only, "kb" kettlebell ones', C.search(cat, 'db').length > 20 && C.search(cat, 'db').every((x) => x.kit.includes('db')) && C.search(cat, 'kb').every((x) => x.kit.includes('kb')));
+  check('a short word only matches the start of a word ("row" isn\'t in "throw")', C.search(cat, 'row').every((x) => x.find.first.some((w) => w.startsWith('row')) || x.find.words.some((w) => w.startsWith('row'))));
+  check('nothing for nonsense, and everything for an empty search', C.search(cat, 'zzzz').length === 0 && C.search(cat, ' ').length === cat.length);
+}
+
+section('A new exercise\'s numbers');
+{
+  const S = fresh(MON - 14);
+  const day = MON;
+  const st = S.prog.push;
+  const d = (id) => C.defaults(S, id, day);
+  check('on the level you\'re at: your own reps', st.rung === 'push_std' && d('push_std').reps === st.reps, { st, it: d('push_std') });
+  check('an easier level: more reps; a harder one: fewer', d('push_wall').reps > st.reps && d('push_archer').reps < st.reps, [d('push_wall'), d('push_archer')]);
+  const tiers = B.programFor(S.profile).tiers;
+  check('sets from your goals: more for a top goal\'s muscles than for the rest', tiers.biceps === 1 && tiers.shoulders === 3 && d('curl_std').sets > d('raise').sets, [d('curl_std'), d('raise')]);
+  check('a stretch: two sets, held for seconds', d('mob_catcow').sets === 2 && d('mob_catcow').secs > 0 && d('mob_catcow').reps == null, d('mob_catcow'));
+  check('within the range the engine gives you', ['push_std', 'push_wall', 'push_archer', 'curl_std', 'sq_goblet'].every((id) => { const m = GH.moves.MOVES[id]; const r = B.rangeFor(S, m, m.family, day) || m.range; return d(id).reps >= r[0] && d(id).reps <= r[1]; }));
+  const T = fresh(MON - 14); T.profile.gentle = true;
+  check('a gentle start: a set fewer, never under two', C.defaults(T, 'curl_std', day).sets === d('curl_std').sets - 1 && C.defaults(T, 'raise', day).sets === 2);
+  check('itemFor: the move with its numbers', JSON.stringify(C.itemFor(S, 'push_std', day)) === JSON.stringify(Object.assign({ move: 'push_std' }, d('push_std'))));
+  check('auto rest: longer after a big move', C.restAuto(S, 'sq_goblet') > C.restAuto(S, 'raise'), [C.restAuto(S, 'sq_goblet'), C.restAuto(S, 'raise')]);
+}
+
+section('This week by muscle, and suggestions');
+{
+  const S = fresh(MON - 14);
+  const day = MON;
+  const draft = (days) => C.normalize({ days }, { draft: true }).plan;
+  const empty = C.weekSets(S, draft([{ items: [] }]));
+  check('an empty plan: every group at none, against your weekly sets', empty.length === 7 && empty.every((w) => w.status === 'none' && w.sets === 0 && w.aim === (S.vol[w.group] || B.programFor(S.profile).start[w.group])), empty.map((w) => `${w.group} ${w.aim}`));
+  const legs = draft([{ items: [{ move: 'sq_goblet', sets: 3, reps: 12 }] }, { items: [{ move: 'push_std', sets: 3, reps: 10 }, { move: 'row_db', sets: 3, reps: 10 }, { move: 'curl_std', sets: 10, reps: 10 }, { move: 'curl_hammer', sets: 10, reps: 10 }] }]);
+  const wk = Object.fromEntries(C.weekSets(S, legs).map((w) => [w.group, w]));
+  check('sets count across the days: low under 70% of the aim, high past the cap', wk.legs.sets === 3 && wk.legs.status === 'low' && wk.biceps.sets === 20 && wk.biceps.status === 'high' && wk.triceps.status === 'none', Object.values(wk).map((w) => `${w.group} ${w.sets}/${w.aim} ${w.status}`));
+  const sg = C.suggest(S, legs, 0, day);
+  const cx = C.context(S, day);
+  check('suggestions for a legs day: another legs move first, then the muscles the week leaves short', sg[0].why === 'day' && GH.moves.MOVES[sg[0].id].group === 'legs' && sg.slice(1).every((x) => x.why === 'none' || x.why === 'low'), sg);
+  check('each one you can do, from a ladder the day doesn\'t use, at most six', sg.length <= 6 && sg.every((x) => C.check(cx, x.id).ok && GH.moves.MOVES[x.id].family !== GH.moves.MOVES.sq_goblet.family && x.id !== 'sq_goblet'), sg.map((x) => x.id));
+  const blank = C.suggest(S, draft([{ items: [] }]), 0, day);
+  check('for an empty plan, a move for each muscle it has none of, at your level', blank.length === 6 && new Set(blank.map((x) => x.group)).size === 6 && blank.every((x) => x.why === 'none') && blank.some((x) => x.id === 'push_std'), blank);
+  const like = C.similar(S, 'push_std', day, 6);
+  check('moves most like a push-up: chest moves you can do, the nearest levels first', like.length === 6 && like.every((x) => GH.moves.MOVES[x.id].group === 'chest' && C.check(cx, x.id).ok && x.id !== 'push_std') && like.slice(0, 2).every((x) => GH.moves.LADDERS.push.rungs.includes(x.id)), like.map((x) => x.id));
+}
+
+section('Ready-made plans');
+{
+  const S = fresh(MON - 14);
+  const day = MON;
+  const cx = C.context(S, day);
+  const list = C.templates(S);
+  check('Full body, Upper and lower, Push, pull, legs and No equipment, for your days and minutes', JSON.stringify(list.map((t) => t.id)) === '["full","upperlower","ppl","bodyweight"]' && list.every((t) => t.days === 4 && t.minutes === 25), list);
+  check('No equipment only for someone who has some', C.templates(fresh(MON - 14, { equipment: { chair: true, wall: true, towel: true } })).every((t) => t.id !== 'bodyweight'));
+  const two = Object.fromEntries(C.templates(fresh(MON - 14, { days: 2 })).map((t) => [t.id, t.days]));
+  check('two days a week: Push, pull, legs still takes three', two.full === 2 && two.upperlower === 2 && two.ppl === 3, two);
+  const groups = (d) => new Set(d.items.map((it) => GH.moves.MOVES[it.move].group));
+  const fit = (p) => p.days.every((d, i) => Math.abs(C.minutes(S, p, i, day) - 25) <= 5);
+  const okAll = (p) => p.days.every((d) => d.items.length >= 3 && d.items.every((it) => it.sets >= 2 && C.check(cx, it.move).ok));
+  const full = C.template(S, day, 'full');
+  check('Full body: A to D, each with legs, chest and back, every move one you can do, two sets or more', full.name === 'Full body' && full.source === 'you' && C.ready(full) && full.days.map((d) => d.title).join() === 'Full body A,Full body B,Full body C,Full body D' && full.days.every((d) => ['legs', 'chest', 'back'].every((g) => groups(d).has(g))) && okAll(full), full.days.map((d) => `${d.title}: ${d.items.map((it) => `${it.move} ${it.sets}`)}`));
+  check('the days aren\'t all the same', new Set(full.days.map((d) => d.items.map((it) => it.move).join())).size >= 2);
+  check('each about your 25 minutes', fit(full), full.days.map((d, i) => C.minutes(S, full, i, day)));
+  const ul = C.template(S, day, 'upperlower');
+  check('Upper and lower: upper days hold no legs, lower days only legs and core', ul.days.map((d) => d.title).join() === 'Upper body A,Lower body A,Upper body B,Lower body B' && [0, 2].every((i) => !groups(ul.days[i]).has('legs')) && [1, 3].every((i) => [...groups(ul.days[i])].every((g) => g === 'legs' || g === 'abs')) && okAll(ul) && fit(ul), ul.days.map((d) => [...groups(d)]));
+  const ppl = C.template(S, day, 'ppl');
+  const PUSH = ['chest', 'shoulders', 'triceps'], PULL = ['back', 'biceps'];
+  check('Push, pull, legs: each day its own muscles', ppl.days.map((d) => d.title).join() === 'Push A,Pull,Legs,Push B' && [0, 3].every((i) => [...groups(ppl.days[i])].every((g) => PUSH.includes(g))) && [...groups(ppl.days[1])].every((g) => PULL.includes(g)) && okAll(ppl) && fit(ppl), ppl.days.map((d) => [...groups(d)]));
+  const cat = C.catalog(S, day);
+  const bw = C.template(S, day, 'bodyweight');
+  check('No equipment: body-only moves, full body', bw.days.every((d) => d.items.every((it) => cat.find((x) => x.id === it.move).kit.join() === 'body')) && bw.days.every((d) => groups(d).has('legs')) && okAll(bw), bw.days.map((d) => d.items.map((it) => it.move)));
+  const G = fresh(MON - 14, { where: 'gym', gym: B.gymPreset('full', 'lb'), days: 3, minutes: 45 });
+  const gf = C.template(G, day, 'full');
+  const gcx = C.context(G, day);
+  const gcat = C.catalog(G, day);
+  check('at the gym: three Full body days with barbell work, every move one you can do there', gf.days.length === 3 && gf.days.every((d) => d.items.some((it) => gcat.find((x) => x.id === it.move).kit.includes('barbell'))) && gf.days.every((d) => d.items.every((it) => C.check(gcx, it.move).ok)), gf.days.map((d) => d.items.map((it) => it.move)));
+  const W = fresh(MON - 14, { days: 2, weekdays: [3, 0] });
+  check('your own weekdays when the days match (not for three days of Push, pull, legs)', JSON.stringify(C.template(W, day, 'full').weekdays) === '[0,3]' && C.template(W, day, 'ppl').days.length === 3 && C.template(W, day, 'ppl').weekdays == null, [C.template(W, day, 'full').weekdays, C.template(W, day, 'ppl').weekdays]);
 }
 
 section('Plans for different bodies (src/access.js)');
