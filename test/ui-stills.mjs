@@ -18,7 +18,8 @@
 // the 4x, so a still costs far more than on a phone, and other tests running on this machine slow
 // it down; the numbers are for comparing builds here, best run against run with --vs).
 //
-// Usage: node test/ui-stills.mjs [--measure] [--runs=3] [--delay=1000] [--only=fresh|update] [--dist=<dir>] [--vs=<dir>] [--still-glow] [--flat]
+// Usage: node test/ui-stills.mjs [--measure] [--runs=3] [--delay=1000] [--only=fresh|update|kept] [--dist=<dir>] [--vs=<dir>] [--still-glow] [--flat]
+//   (kept: the plan builder's large tiles kept apart, and the stills for later off the page's thread)
 //   --measure     print the numbers only, no checks
 //   --dist        a built page somewhere else (a copy of an older dist/), to compare on the same machine
 //   --vs          another build, run by run in turn with this one
@@ -30,8 +31,9 @@
 //                 2x), which a phone's GPU does in a few frames: this is nearer a phone, where the
 //                 GPU's time goes to the 3D figure.
 import { createRequire } from 'node:module';
-import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 import { check, section, done, serveDist } from './lib.mjs';
 import { seedBridge, seedState } from './fixtures.mjs';
 
@@ -348,7 +350,7 @@ function report(r) {
   console.log(`    in the background: encodes ${per('encode')}, data URLs ${per('dataUrl')}, IndexedDB writes ${per('idbWrite')}, ${n.idbPut || 0} puts; GPU process ${r0(r.gpu)} ms of CPU`);
 }
 
-const kinds = ONLY ? [ONLY] : ['fresh', 'update'];
+const kinds = ONLY ? [ONLY].filter((k) => k !== 'kept') : ['fresh', 'update'];
 const results = {};
 for (const kind of kinds) {
   section(`${kind === 'fresh' ? 'A fresh install' : 'After an update'}: Plan ${DELAY} ms after the first frame (CPU ${CPU}x slower, ${RUNS} runs${builds.length > 1 ? ' each, run by run' : ''}${STILL_GLOW ? ', the glow held still' : ''}${FLAT ? ', glass effects flat' : ''})`);
@@ -398,6 +400,94 @@ if (!measureOnly) {
     if (b.screenNew) check(`${kind}: this version's stills there within ${b.screenNew} ms`, top('screenNew') != null && top('screenNew') <= b.screenNew, `${r0(top('screenNew'))} ms`);
     check(`${kind}: this week's stills all drawn within ${b.week} ms`, top('week') != null && top('week') <= b.week, `${r0(top('week'))} ms`);
   }
+}
+
+/* ---------------------------------------------------------------- kept apart, and stills for later */
+// The plan builder's large tiles (src/ui/stills.js, opt.keep false: its picker's and a plan's
+// exercise) are kept on the phone apart from Plan's stills, as their pictures: drawn once, and a later
+// launch reads them in when a large tile first asks, with nothing drawn and no 3D chunk; a launch that
+// shows none reads none. (Until 1.14 they were held for the launch only: the picker drew every one of
+// them again each launch.) And the figure's stills for later (figure3d.stillAsync: the player's and the
+// how-to sheet's, kept for the next launch, drawn a few seconds after the warm-up on a workout day) go
+// out the way the page's stills do, so encoding one never waits for the GPU on the page's thread: in
+// 1.13, five in a row here held it 300 to 560 ms each (a 2D canvas the GPU kept, read back to encode
+// it), and now under 60 ms in all. At 1x CPU.
+if (!measureOnly && (!ONLY || ONLY === 'kept')) {
+  section('The large tiles\' stills kept apart, and stills for later off the page\'s thread (1x CPU)');
+  const prof = mkdtempSync(join(tmpdir(), 'gh-stills-'));
+  const launch = async () => {
+    const ctx = await chromium.launchPersistentContext(prof, { ...ctxOpts, args: GPU_ARGS });
+    await ctx.addInitScript(monday, MONDAY);
+    await ctx.addInitScript(seedBridge);
+    await ctx.addInitScript(asyncBridge);
+    await ctx.addInitScript((j) => { try { if (!sessionStorage.getItem('shot-state')) sessionStorage.setItem('shot-state', j); } catch (e) { /* ignore */ } }, stateJson);
+    const page = ctx.pages()[0] || await ctx.newPage();
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.goto(builds[0].server.url);
+    await page.waitForSelector('#screen[data-view="today"] .session', { timeout: 60000 });
+    return { ctx, page };
+  };
+  let { ctx, page } = await launch();
+  // The first launch: six large tiles' stills (only those: nothing drawn ahead), written.
+  const one = await page.evaluate(async () => {
+    const GH = window.GH, U = GH.ui, M = GH.moves;
+    U.stills.ahead = () => 0;
+    const ids = Object.keys(M.MOVES).filter((id) => !M.MOVES[id].gym).slice(0, 6);
+    const o = U.stills.look(120);
+    const all = Promise.all(ids.map((id) => new Promise((res) => { const u = U.stills.want(M.MOVES[id], o, res, { keep: false }); if (u !== null) res(u); })));
+    const urls = (await Promise.race([all, new Promise((res) => setTimeout(() => res(null), 150000))])) || [];
+    await U.stills.flush();
+    const db = await new Promise((res) => {
+      const r = indexedDB.open('gh-stills-big');
+      r.onsuccess = () => {
+        const d = r.result;
+        try {
+          const q = d.transaction('stills').objectStore('stills').getAll();
+          q.onsuccess = () => { res(q.result.map((x) => ({ k: x.k, type: x.blob ? x.blob.type : typeof x.url }))); d.close(); };
+          q.onerror = () => { d.close(); res(null); };
+        } catch (e) { d.close(); res(null); }
+      };
+      r.onerror = () => res(null);
+    });
+    return { ids, got: urls.filter(Boolean).length, db, stats: U.stills._stats() };
+  });
+  check('the first launch draws the large tiles\' stills and keeps them, as their pictures, apart from Plan\'s', one.got === 6 && one.db && one.db.length >= 6 && one.db.every((x) => /^image\//.test(x.type)) && one.stats.kept === 0, one);
+  // Stills for later, with the figure warm: the player's kept ones (player.js), long tasks meanwhile.
+  await page.waitForFunction(() => window.GH.figure3d && window.GH.figure3d.warm(), null, { timeout: 120000, polling: 250 }).catch(() => {});
+  const later = await page.evaluate(async () => {
+    const warm = !!(window.GH.figure3d && window.GH.figure3d.warm());
+    const L = [];
+    let po = null;
+    try { po = new PerformanceObserver((l) => { for (const e of l.getEntries()) L.push(Math.round(e.duration)); }); po.observe({ type: 'longtask' }); } catch (e) { /* unsupported */ }
+    localStorage.removeItem('gh.figStills');
+    window.GH.ui.figureStills(true);
+    const kept = () => { try { return (JSON.parse(localStorage.getItem('gh.figStills') || '{}').items || []).length; } catch (e) { return 0; } };
+    for (let i = 0; i < 600 && kept() < 3; i++) await new Promise((res) => setTimeout(res, 100));
+    await new Promise((res) => setTimeout(res, 500));
+    if (po) po.disconnect();
+    return { warm, n: kept(), longest: Math.max(0, ...L), tasks: L, quiet: window.GH.ui.quiet(), boxes: document.querySelectorAll('.pl-fig, .sheet-fig, .fig3d[data-ready]').length };
+  });
+  check(`the player's stills for later are kept, the page's thread never held 250 ms for one (longest task ${later.longest} ms)`, later.n >= 3 && later.longest < 250, later);
+  await ctx.close();
+  // A later launch: nothing read in at launch; a large tile's ask reads them in, nothing drawn.
+  ({ ctx, page } = await launch());
+  const two = await page.evaluate(async (ids) => {
+    const GH = window.GH, U = GH.ui, M = GH.moves;
+    U.stills.ahead = () => 0;
+    U.stills.prime = () => {};
+    U.preloadFigure = U.warmFigure = () => Promise.resolve(false);
+    await new Promise((res) => setTimeout(res, 2500));
+    const before = U.stills._stats();
+    const o = U.stills.look(120);
+    const t0 = performance.now();
+    const urls = await Promise.all(ids.map((id) => new Promise((res) => { const u = U.stills.want(M.MOVES[id], o, res, { keep: false }); if (u !== null) res(u); })));
+    return { before: before.big, ms: Math.round(performance.now() - t0), got: urls.filter(Boolean).length, stats: U.stills._stats(), chunk: !!GH.figure3d };
+  }, one.ids);
+  check('a later launch reads none of them in by itself', two.before === 0, two);
+  check('a large tile asking reads them in: there at once, nothing drawn, no 3D chunk', two.got === 6 && two.stats.drawn === 0 && !two.chunk && two.ms < 3000, two);
+  await ctx.close();
+  rmSync(prof, { recursive: true, force: true });
+  check('no page errors', errors.length === 0, errors.slice(0, 5));
 }
 
 for (const b of builds) await b.server.close();

@@ -3750,9 +3750,13 @@ function encode(pic) {
 }
 // The same still with as little as can be on the page's thread: the figure is posed now; its shaders
 // compile in the background where the GPU allows (compileAsync: the first still of a move with new
-// kit compiled them on the thread, 730 ms in a software-GL test); then one frame and its copy out
-// (a few frames' worth); then the picture is encoded in the background. Resolves with the URL, or
-// null. One request per still at a time: a second asks for the same promise.
+// kit compiled them on the thread, 730 ms in a software-GL test); then one frame, copied out the way
+// the page's stills are (stillOut: into a buffer on the GPU behind a fence, then cut on the CPU), once
+// no batch of those is on its way; then the picture is encoded in the background. Resolves with the
+// URL, or null. One request per still at a time: a second asks for the same promise. (Until 1.14 it
+// copied the frame into a 2D canvas the GPU kept, and encoding that read it back on the page's thread,
+// waiting there for everything the GPU had queued: the player's and the how-to sheet's kept stills,
+// drawn a few seconds after the warm-up on a workout day, each held the thread that long.)
 const pendingStills = new Map();
 function stillAsync(move, opts) {
   const st = stillPrep(move, opts);
@@ -3761,10 +3765,10 @@ function stillAsync(move, opts) {
   if (pendingStills.has(st.key)) { st.view.dispose(); return pendingStills.get(st.key); }
   const rr = renderer();
   const compiled = rr && rr.r.compileAsync ? Promise.resolve(rr.r.compileAsync(st.view.scene, st.view.camera)).catch(() => {}) : Promise.resolve();
-  const p = compiled.then(() => {
-    const pic = stillDraw(st);
-    return pic ? encode(pic).then((url) => (url ? keepUrl(st.key, url) : null)) : null;
-  }).then((url) => { pendingStills.delete(st.key); return url; }, () => { pendingStills.delete(st.key); return null; });
+  // (The renderer gone meanwhile: stillOut draws nothing and lets the view go.)
+  const out = () => (paused || (flying && !strip.list.length) ? (paused || busyUntil()).then(out) : stillOut(st));
+  const p = compiled.then(out).then((pic) => (pic ? encode(pic).then((url) => (url ? keepUrl(st.key, url) : null)) : null))
+    .then((url) => { pendingStills.delete(st.key); return url; }, () => { pendingStills.delete(st.key); return null; });
   pendingStills.set(st.key, p);
   return p;
 }
