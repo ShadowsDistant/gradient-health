@@ -212,7 +212,8 @@
       const name = groupName(w.group);
       const gap = w.status === 'none' || w.status === 'low';
       const v = Math.max(0, Math.min(1, w.sets / Math.max(w.aim, 1)));
-      const ico = U.groupIcon ? U.groupIcon(w.group, 20) : '';
+      // (Its muscle's icon, when the app's icons have one; .cp-wk-ico sizes it.)
+      const ico = U.groupIcon ? U.groupIcon(w.group) : '';
       const label = `${name}: ${w.sets} of ${w.aim} sets a week${gap ? '. Add exercises' : w.status === 'high' ? ', more than your goals need' : ''}`;
       const inner = `<span class="cp-wk-name">${ico ? `<span class="cp-wk-ico" aria-hidden="true">${ico}</span>` : ''}<span>${U.esc(name)}</span></span>
         <span class="cp-wk-val rf-num" aria-hidden="true">${U.roll(w.sets)}<span class="cp-wk-of"> of ${w.aim}</span></span>

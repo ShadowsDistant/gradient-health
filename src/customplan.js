@@ -589,6 +589,9 @@
     const ctx = context(S, day);
     const list = items || ((plan && plan.days[di]) || { items: [] }).items;
     const inDay = new Set(list.map((it) => it.move));
+    // (A move of another ladder under the same name, a glute bridge in the hinge ladder and the glute
+    // one, is the same exercise.)
+    const named = new Set(list.map((it) => (M().MOVES[it.move] || {}).name));
     const famsIn = new Set(list.map((it) => (M().MOVES[it.move] || {}).family).filter(Boolean));
     const draft = { days: ((plan && plan.days) || []).map((d, i) => (i === di ? { items: list } : d)) };
     if (!draft.days[di]) draft.days[di] = { items: list };
@@ -606,7 +609,7 @@
         try { st = b.ensureProg(S2, f, day); } catch (e) { st = null; }
         const avail = b.rungs(S, f, day);
         const id = st && avail.includes(st.rung) ? st.rung : avail[0];
-        if (id && !inDay.has(id) && check(ctx, id).ok) { used.add(f); return id; }
+        if (id && !inDay.has(id) && !named.has((M().MOVES[id] || {}).name) && check(ctx, id).ok) { used.add(f); return id; }
       }
       return null;
     };

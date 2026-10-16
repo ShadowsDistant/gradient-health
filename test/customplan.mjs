@@ -442,6 +442,8 @@ section('This week by muscle, and suggestions');
   const cx = C.context(S, day);
   check('suggestions for a legs day: another legs move first, then the muscles the week leaves short', sg[0].why === 'day' && GH.moves.MOVES[sg[0].id].group === 'legs' && sg.slice(1).every((x) => x.why === 'none' || x.why === 'low'), sg);
   check('each one you can do, from a ladder the day doesn\'t use, at most six', sg.length <= 6 && sg.every((x) => C.check(cx, x.id).ok && GH.moves.MOVES[x.id].family !== GH.moves.MOVES.sq_goblet.family && x.id !== 'sq_goblet'), sg.map((x) => x.id));
+  const bridge = C.suggest(S, draft([{ items: [{ move: 'hg_bridge', sets: 3, reps: 15 }] }]), 0, day, null, 12);
+  check('never the same exercise from another ladder (a glute bridge is in the hinge ladder and the glute one)', bridge.length >= 6 && bridge.every((x) => GH.moves.MOVES[x.id].name !== 'Glute bridge'), bridge.map((x) => x.id));
   const blank = C.suggest(S, draft([{ items: [] }]), 0, day);
   check('for an empty plan, a move for each muscle it has none of, at your level', blank.length === 6 && new Set(blank.map((x) => x.group)).size === 6 && blank.every((x) => x.why === 'none') && blank.some((x) => x.id === 'push_std'), blank);
   const like = C.similar(S, 'push_std', day, 6);

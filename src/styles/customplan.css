@@ -117,8 +117,8 @@ button.cp-wk-row { appearance: none; border: 0; font: inherit; color: inherit; b
 button.cp-wk-row:active { background: var(--fill-selected); }
 .cp-wk-name { grid-area: name; display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; font-size: .9375rem; font-weight: 600; line-height: 1.25; }
 .cp-wk-name > span:last-child { overflow-wrap: anywhere; }
-.cp-wk-ico { flex: none; display: grid; place-items: center; width: 20px; height: 20px; color: var(--label-secondary); }
-.cp-wk-ico > svg { width: 20px; height: 20px; }
+.cp-wk-ico { flex: none; display: grid; place-items: center; width: 20px; height: 20px; color: var(--label-secondary); --rf-icon-size: 20px; }
+.cp-wk-ico > :is(svg, img, .rf-icon) { width: 20px; height: 20px; }
 .cp-wk-val { grid-area: val; font-size: .9375rem; font-weight: 650; line-height: 1.25; white-space: nowrap; }
 .cp-wk-of { font-weight: 500; color: var(--label-secondary); }
 .cp-wk-end { grid-area: end; display: inline-flex; align-items: center; justify-content: flex-end; gap: 2px; min-width: 20px; font-size: .8125rem; font-weight: 650; line-height: 1.2; white-space: nowrap; --rf-icon-size: 15px; --rf-icon-stroke: 2.4; }
