@@ -37,8 +37,10 @@ import { APP_SCRIPTS, APP_CHUNKS, LAZY, asciiRegexps, figureId } from '../script
 // What's new (about 9 KB), and ships at 2,096,798 bytes; the budget is that plus 1%. 1.12 moves the
 // Food page and its sheets into a part of their own (the foodUi chunk, 33 KB), and adds Health's food
 // section, meals by the clock, quicker tab taps and the sheets' sizes; it ships at 2,074,780 bytes,
-// and the budget stays at 1.11's.
-const BUDGET = 2118000;
+// and the budget stays at 1.11's. 1.14 draws its own glyphs for the muscle groups, the warm-up's sun
+// and its neighbours in colour with their gradients, and paces its toasts (about 10 KB), and the
+// budget moves up by as much.
+const BUDGET = 2128000;
 
 const file = join(root, 'dist/gradient-health.html');
 if (!existsSync(file)) { console.error('No dist/gradient-health.html: run npm run build first.'); process.exit(1); }
