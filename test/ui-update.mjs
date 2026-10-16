@@ -112,12 +112,10 @@ const haptics = (ev) => ev(() => window.__haptics.slice());
 const text = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : null);
 const askOf = (ev) => ev(() => { const c = document.querySelector('#screen [data-key="update-ask"]'); return c && { text: c.textContent.replace(/\s+/g, ' ').trim(), yes: (c.querySelector('[data-act="updateAskYes"]') || {}).textContent, no: (c.querySelector('[data-act="updateAskNo"]') || {}).textContent }; });
 const cardOf = (ev) => ev(() => { const c = document.querySelector('#screen [data-key="update-card"]'); return c && { text: c.textContent.replace(/\s+/g, ' ').trim(), update: !!c.querySelector('[data-act="updateOpen"]'), no: !!c.querySelector('[data-act="updateDismiss"]') }; });
-// Settings, at About: the update row and the switch.
+// Settings' About page: the update row and the switch.
 const settings = async (ev, settle) => {
-  await ev(() => { const U = window.GH.ui; U.closeSheets(); if (U.route.view !== 'settings') U.open('settings'); });
+  await ev(() => { const U = window.GH.ui; U.closeSheets(); if (!(U.route.view === 'settings' && U.route.arg === 'about')) U.open('settings', 'about'); });
   await settle(900);
-  await ev(() => { const h = document.querySelector('#screen #about'); if (h) h.scrollIntoView({ block: 'start' }); });
-  await settle(300);
 };
 const rows = (ev) => ev(() => {
   const li = document.querySelector('#screen ul[data-group="about"] [data-key="update"]') || document.querySelector('#screen ul[data-group="about"] [data-key="version"]');
@@ -331,14 +329,17 @@ section('Settings, About: Check for updates and Check automatically');
   r = await rows(ev);
   check('a new version: "1.11.1 is ready", with an Update button', r && r.sub === '1.11.1 is ready · you have 1.10.1' && r.btn === 'Update' && r.act === 'updateOpen', r);
   await shot(page, 'update-settings');
-  // Search finds them.
+  // Settings' search (on its top page) finds them, and opens About at the row.
+  await ev(() => window.GH.ui.open('settings'));
+  await settle(900);
   await page.click('#setQ');
   await page.keyboard.type('update', { delay: 15 });
   await settle(300);
-  const found = await ev(() => [...document.querySelectorAll('#screen .set-list ul.rf-list > *')].filter((x) => !x.hidden && !x.closest('[hidden]')).map((x) => (x.querySelector('.rf-list-title') || x).textContent.trim()));
-  check('searching "update" finds both rows', found.includes('Check for updates') && found.includes('Check automatically'), found);
-  await page.click('#screen .set-search .rf-search-clear');
-  await settle(300);
+  const found = await ev(() => [...document.querySelectorAll('#screen .set-results li')].filter((x) => x.offsetParent).map((x) => `${x.querySelector('.rf-list-title').textContent.trim()} · ${x.querySelector('.rf-list-sub').textContent.trim()}`));
+  check('searching "update" finds both rows, in About', found.includes('Check for updates · About') && found.includes('Check automatically · About'), found);
+  await page.click('#screen .set-results [data-arg="about update"]');
+  await settle(900);
+  check('and the update row opens About at it', (await ev(() => window.GH.ui.route.arg)) === 'about' && !!(await rows(ev)), await ev(() => window.GH.ui.route));
 
   section('The update sheet: what\'s new, the size, Update');
   h0 = (await haptics(ev)).length;

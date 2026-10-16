@@ -483,8 +483,8 @@ if (movable) {
   check('a long press on a workout picks it up: hold (and let go where it was, nothing more)', l.bridge.join() === 'hold', l);
 } else console.log('  (no workout this week can move today: test/ui-plan.mjs has the long press)');
 await closeAll();
-// Settings: Copy my data (its toast's success merges into the copy).
-await page.evaluate(() => window.GH.ui.open('settings'));
+// Settings, Your data: Copy my data (its toast's success merges into the copy).
+await page.evaluate(() => window.GH.ui.open('settings', 'data'));
 await wait(900);
 await page.evaluate(() => document.querySelector('#screen [data-act="exportData"]').scrollIntoView({ block: 'center' }));
 await wait(500);

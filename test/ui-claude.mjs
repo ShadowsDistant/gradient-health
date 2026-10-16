@@ -71,7 +71,7 @@ const sideways = () => ev(() => { const el = document.scrollingElement; const ba
 const messages = () => anthropic.filter((x) => /\/v1\/messages/.test(x.url));
 
 section('Adding a key');
-await ev(() => { const S = window.GH.ui.S; S.ai.mode = 'api'; window.GH.store.save(S); window.GH.ui.open('settings'); });
+await ev(() => { const S = window.GH.ui.S; S.ai.mode = 'api'; window.GH.store.save(S); window.GH.ui.open('settings', 'coach'); });
 await wait(600);
 let secret = '';
 await ev(() => { window.AndroidBridge.saveSecret = (k, v) => { window.__secret = v; return true; }; window.AndroidBridge.loadSecret = () => window.__secret || ''; });
@@ -102,6 +102,12 @@ await ev(() => window.GH.ui.render());
 await wait(400);
 const rows = await ev(() => ({ model: (document.querySelector('[data-key="claude-model"] .rf-list-detail') || {}).textContent, spend: (document.querySelector('[data-key="claude-spend"] .rf-list-sub') || {}).textContent }));
 check('AI coach shows the model with its thinking level, and today\'s spending against the limit', rows.model === 'Sonnet 5.5 · High' && /^\$0\.00 of \$\d+\.\d\d today$/.test(rows.spend || ''), rows);
+await ev(() => window.GH.ui.open('settings'));
+await wait(700);
+const coachLine = await ev(() => ({ line: (document.querySelector('#screen [data-act="setPage"][data-arg="coach"] .rf-list-sub') || {}).textContent, want: `Claude · ${window.GH.spend.model(window.GH.ui.S).short}` }));
+check('and Settings\' top page says it\'s Claude, with the model', coachLine.line === coachLine.want, coachLine);
+await ev(() => window.GH.ui.back());
+await wait(700);
 check('nothing was sent to Claude for any of this', messages().length === 0, messages().length);
 
 section('Model and thinking');
