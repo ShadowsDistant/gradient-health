@@ -1,6 +1,20 @@
-/* Settings, the coach set-up, backups and the privacy page. Settings is grouped by what each part is
- * about (your plan, what you track, Health Connect, the AI coach, sound and haptics, look, general,
- * your data, about), with a search field on top that narrows the rows as you type.
+/* Settings: a short top page and a page for each part of the app, the coach set-up, backups and the
+ * privacy page.
+ *  - The top page: a search field, then the parts in three groups (Workouts, Tracking and Health
+ *    Connect; Notifications, AI coach, Sound and haptics, Appearance and General; Your data and
+ *    About), each a row with its icon, its name and a line on what's set there now. A row opens the
+ *    part's page, U.open('settings', id), which pushes in as any page does.
+ *  - A part's page: the settings used most first, in lists of one kind each. A list of controls
+ *    (switches, segmented controls, sliders, swatches, and plain rows that open more of the same)
+ *    has no icon tiles, so its titles, lines and hairlines start at one inset; a list of places to go
+ *    and things to do has an icon on each row, as the top page does. Long explanations are footers.
+ *  - The search finds rows in every page. It reads them from the pages' own markup, so a row another
+ *    part draws (notifications', the haptics') is found too, and a result opens its page with the row
+ *    brought into view and lit up a moment.
+ *  - Links in: U.open('settings', id), and the older ids still land where they did (coach, track,
+ *    food, feel, hc, notify). Back goes where the person came from: to the top page from a page it
+ *    opened, and to the screen with the link from a page a link opened, as from any page. And
+ *    U.open('settings', 'all') has every page on one, long enough for the scroll diagnostics' flicks.
  */
 (function (G) {
   'use strict';
@@ -14,175 +28,427 @@
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   /* ---------------------------------------------------------------- building blocks */
-  // Each group is a header, its lists and their footers, all tagged with the group (data-group), so
-  // the search can hide what doesn't match without a re-render. data-keywords holds the other words
-  // a row (or, on a header, its whole group) is found by.
-  const head = (id, title, words) => `<h3 class="rf-list-header" id="${id}" data-group="${id}"${words ? ` data-keywords="${U.esc(words)}"` : ''}>${U.esc(title)}</h3>`;
-  const sub = (id, group, title) => `<h3 class="rf-list-header" id="${id}" data-group="${group}" data-sub>${U.esc(title)}</h3>`;
-  const list = (group, rows) => `<ul class="rf-list" data-group="${group}">${rows}</ul>`;
-  const foot = (group, html) => `<p class="rf-list-footer" data-group="${group}">${html}</p>`;
+  // A page is lists, a header over one where it helps and a footer under one that needs explaining.
+  // Each list and footer carries its page (data-group). Every row has a data-key, which a search
+  // result brings into view, and data-keywords holds the other words it's found by. `id` names a
+  // list a link can open the page at (set-<id>), as a header's id does.
+  const head = (id, title) => `<h3 class="rf-list-header" id="set-${id}">${U.esc(title)}</h3>`;
+  const form = (page, rows, id) => `<ul class="rf-list set-form" data-group="${page}"${id ? ` id="set-${id}"` : ''}>${rows}</ul>`;
+  const menu = (page, rows) => `<ul class="rf-list set-menu" data-group="${page}">${rows}</ul>`;
+  const foot = (page, html) => `<p class="rf-list-footer" data-group="${page}">${html}</p>`;
   const kw = (html, words) => html.replace(/^(\s*<(?:li|label)\b)/, `$1 data-keywords="${U.esc(words)}"`);
   // A row with its control under the words (a segmented control or chips).
   const stack = (title, subline, control, words, key) => `<li${key ? ` data-key="${key}"` : ''}${words ? ` data-keywords="${U.esc(words)}"` : ''}><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">${U.esc(title)}</span>${subline ? `<span class="rf-list-sub">${U.esc(subline)}</span>` : ''}</span>${control}</div></li>`;
-  const REST_SUB = 'Auto: 90 s after big moves, 60 s after small ones and supersets, about 2.5 min after the main lifts on a strength plan if there\'s time';
+  // A row in a list of controls that opens more of them (a sheet, Health Connect): no icon, a chevron.
+  const more = (o) => U.row(Object.assign({}, o, { icon: null, chevron: true }));
+  const REST_FOOT = 'Auto rests 90 s after big moves and 60 s after small ones and supersets, and about 2.5 min after the main lifts on a strength plan when there\'s time.';
   const DAY_STARTS = [['0', 'Midnight'], ['2', '2 am'], ['4', '4 am'], ['6', '6 am']];
 
-  /* ---------------------------------------------------------------- screen */
-  let query = '', queryRoute = null;
+  /* ---------------------------------------------------------------- the parts */
+  // Each part: its row on the top page (icon, tone, title, and line(S): what's set there now) and its
+  // page (body(S)). on(S): whether it shows (Workouts, with workouts on). words: what the search
+  // finds the part itself by. The functions are further down, with the rows they draw.
+  const PAGES = [
+    { id: 'workouts', title: 'Workouts', icon: 'dumbbell', tone: 'coral', words: 'your plan training exercises sets reps', on: (S) => S.profile.workouts !== false, line: workoutsLine, body: workoutsPage },
+    { id: 'track', title: 'Tracking', icon: 'checklist', tone: 'green', words: 'what you track tracking calories protein food workouts nutrition diet meals walks runs rides activities', on: () => true, line: trackLine, body: trackPage },
+    { id: 'hc', title: 'Health Connect', icon: 'heart', tone: 'rose', words: 'health data sync steps sleep heart rate weight permissions android google fit', on: () => true, line: hcLine, body: hcPage },
+    { id: 'notify', title: 'Notifications', icon: 'bell', tone: 'amber', words: 'notifications reminders reminder nudges alerts notify push bell quiet hours', on: () => true, line: notifyLine, body: notifyPage },
+    { id: 'coach', title: 'AI coach', icon: 'sparkle', tone: 'violet', words: 'ai chat assistant questions claude on-device model', on: () => true, line: coachLine, body: coachPage },
+    { id: 'feel', title: 'Sound and haptics', icon: 'volume', tone: 'sky', words: 'vibration vibrate buzz haptic haptics feedback feel touch beep audio', on: () => true, line: feelLine, body: feelPage },
+    { id: 'look', title: 'Appearance', icon: 'appearance', tone: 'indigo', words: 'look theme appearance dark mode light mode night colour color display glass', on: () => true, line: lookLine, body: lookPage },
+    { id: 'general', title: 'General', icon: 'settings', tone: 'teal', words: 'language region', on: () => true, line: generalLine, body: generalPage },
+    { id: 'data', title: 'Your data', icon: 'archive', tone: 'green', words: 'backup export import save transfer', on: () => true, line: () => 'Copy, restore or reset', body: dataPage },
+    { id: 'about', title: 'About', icon: 'info', tone: 'sky', words: 'version licenses research science', on: () => true, line: aboutLine, body: aboutPage },
+  ];
+  // The top page's groups: what you train and track, how the app behaves, and the app itself.
+  const GROUPS = [['workouts', 'track', 'hc'], ['notify', 'coach', 'feel', 'look', 'general'], ['data', 'about']];
+  const page = (id) => PAGES.find((p) => p.id === id) || null;
+  // Older ids, and places in a page a link opens at: 'food' is Tracking, at Food.
+  const AT = { plan: ['workouts'], food: ['track', 'food'], acts: ['track', 'acts'], appearance: ['look'], figure: ['look', 'figure'] };
+  function target(S, arg) {
+    const a = AT[arg] || [arg];
+    const pg = page(a[0]);
+    return pg && S && pg.on(S) ? { pg, at: a[1] || null } : null;
+  }
+
+  /* ---------------------------------------------------------------- the screens */
+  let query = '', queryRoute = null; // the search, and the top page's route it was typed on
+  let lastArg = null; // the page Settings drew last (null: the top page)
+  let focusTo = null; // { page, key }: the row a search result opens its page at
   const wired = new WeakSet(); // search fields already listening
+  const back = () => U.glassBtn('chevron-left', 'Back', 'back');
   U.screens.settings = {
-    render(S) {
-      // A new visit starts with an empty search; a re-render keeps what's typed.
-      if (U.route !== queryRoute) { queryRoute = U.route; query = ''; }
-      const p = S.profile;
-      const pr = p.prefs;
-      const st = H().status();
-      const app = GH.platform && GH.platform.isApp();
-      const on = H().connected(st);
-      const hcDetail = !app ? 'Android app only' : on ? 'On' : st === 'unsupported' ? 'Needs Android 14' : st === 'unavailable' ? 'Unavailable' : 'Off';
-      const hasKey = AI() && AI().hasKey();
-      const claude = S.ai.mode === 'api';
-      const engine = S.ai.mode === 'api' ? 'api' : 'device';
-      if (engine === 'device' && !dev.checked) checkDevice().then(() => { if (U.route.view === 'settings') U.render(); });
-      const canWrite = on && H().canWrite && H().canWrite();
-      const ver = (GH.platform && GH.platform.appVersion()) || GH.VERSION || 'web';
-      const workouts = p.workouts !== false;
-      const F = GH.food;
-      const fm = F ? F.mode(S) : 'protein';
-      const missing = on && H().missingTypes ? H().missingTypes(S) : [];
-      const answers = U.row({ key: 'answers', icon: 'pencil', tone: 'indigo', title: 'Your answers', sub: workouts ? 'Goals, days, time, equipment and more' : 'Age, weight, height and more', act: 'editAnswers', chevron: true });
-      return `${U.navbar('Settings', '', U.glassBtn('chevron-left', 'Back', 'back'))}
-        <h1 class="rf-large-title">Settings</h1>
-        <div class="section set-top">
-          <div class="rf-search set-search" role="search" data-key="search">${U.icon('search')}<input class="rf-search-input" type="search" id="setQ" placeholder="Search settings" aria-label="Search settings" value="${U.esc(query)}" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button type="button" class="rf-search-clear" aria-label="Clear search">${U.icon('x-circle')}</button></div>
-        </div>
-        <div class="section set-list">
-          ${workouts ? `${head('plan', 'Your plan', 'workout training exercises sets reps')}
-          ${list('plan', `${kw(answers, 'questionnaire goals experience schedule days time minutes equipment weights joints injuries age weight height health conditions arthritis osteoporosis bones fractures diabetes eyes retinopathy blood pressure heart balance')}
-            ${kw(U.row({ key: 'level', icon: 'timer', tone: 'green', title: 'Retake the level check', sub: 'Push-ups, plank and curls set where you start', act: 'baselineSheet', chevron: true }), 'baseline test levels push-ups plank curls')}
-            ${kw(U.sw('Supersets', pr.supersets !== false, 'data-on="setPref" data-k="supersets"', 'Pair exercises that don\'t share muscles'), 'pairs back to back')}
-            ${stack('Rest between sets', REST_SUB, U.seg('setRest', [['auto', 'Auto'], ['60', '60 s'], ['90', '90 s']], String(pr.rest), 'Rest between sets', ' data-on="setRest"'), 'timer seconds minutes pause', 'rest')}
-            ${figureRows(pr)}`)}` : `${head('plan', 'About you')}
-          ${list('plan', kw(answers, 'questionnaire age weight height goals'))}`}
-
-          ${head('track', 'What you track', 'tracking calories protein food workouts nutrition diet meals')}
-          ${list('track', `${U.sw('Workouts', workouts, 'data-on="setWorkouts"', workouts ? 'Your plan, the workout player and progress' : 'Off. Today shows your health and food.')}
-            ${stack('Food', FOOD_SUB[fm] || '', U.seg('setFood', [['off', 'Off'], ['protein', 'Protein'], ['full', 'Calories']], fm, 'Food tracking', ' data-on="setFoodMode"'), 'calories protein nutrition diet', 'foodmode')}`)}
-          ${fm === 'full' ? foodSettings(S, on) : ''}
-
-          ${U.actOptionRows ? actSettings(S) : ''}
-
-          ${U.notifyRows ? `${head('notify', 'Notifications', 'notifications reminders reminder nudges alerts notify push bell quiet hours')}
-          ${list('notify', U.notifyRows(S))}
-          ${U.notifyFoot(S) ? foot('notify', U.esc(U.notifyFoot(S))) : ''}` : ''}
-
-          ${head('hc', 'Health Connect', 'health data sync steps sleep heart rate weight permissions android google fit')}
-          ${list('hc', `${U.row({ key: 'hc', icon: 'heart', tone: 'rose', title: 'Health Connect', detail: hcDetail, act: app && !['unsupported', 'unavailable'].includes(st) ? (on ? 'hcManage' : 'hcConnect') : null, chevron: app })}
-            ${missing.length ? U.row({ key: 'hc-new', icon: 'plus', tone: 'rose', title: 'Allow the new data types', sub: U.esc(missingText(missing)), act: 'hcConnect', chevron: true }) : ''}
-            ${on && app ? kw(bgRow(), 'background closed every 15 minutes') : ''}
-            ${on && workouts ? U.sw('Save workouts to Health Connect', !!(S.health.write !== false && canWrite), 'data-on="hcWriteToggle"', canWrite ? 'Other apps see your Gradient Health workouts' : 'Needs the Exercise permission') : ''}`)}
-
-          ${head('coach', 'AI coach', 'ai chat assistant questions claude on-device model')}
-          ${list('coach', `${stack('Who answers your questions', ENGINE_SUB[engine], U.seg('setCoach', [['device', 'On-device'], ['api', 'Claude']], engine, 'Coach', ' data-on="setCoachMode"'), 'claude anthropic api key on-device model engine', 'engine')}
-            ${engine === 'device' ? U.modelRows(S) : ''}
-            ${engine === 'device' && dev.installed.length ? kw(U.row({ key: 'selftest', icon: 'bolt', tone: 'teal', title: 'Check the on-device AI', sub: 'Starts the model and times a short answer', act: 'aiSelfTest', chevron: true }), 'test speed problem report') : ''}
-            ${claude ? `${kw(hasKey ? U.row({ key: 'key', icon: 'lock', tone: 'green', title: 'API key saved on this phone', sub: 'Encrypted here, never in backups', act: 'keySheet', detail: 'Change', chevron: true }) : U.row({ key: 'key', icon: 'lock', tone: 'amber', title: 'Add your API key', sub: 'From the Claude Console, starts with sk-ant-', act: 'keySheet', chevron: true }), 'api key anthropic console')}
-              ${hasKey && SP() ? kw(U.row({ key: 'claude-model', icon: 'sparkle', tone: 'violet', title: 'Model and thinking', detail: U.esc(`${SP().model(S).short} · ${SP().LEVEL_NAMES[SP().level(S)]}`), act: 'claudeModel', chevron: true }), 'claude model opus sonnet haiku fable thinking effort reasoning') : ''}
-              ${hasKey && SP() ? kw(U.row({ key: 'claude-spend', icon: 'card', tone: 'teal', title: 'Spending and usage', sub: U.esc(SP().todayLine(S, U.today())), act: 'claudePage', chevron: true }), 'budget spending limit cost usage money dollars price tokens bill monthly daily') : ''}
-              ${hasKey && !S.ai.consentAt ? U.row({ key: 'consent', icon: 'alert', tone: 'amber', title: 'Claude is waiting for your OK', sub: 'Review what it gets before it turns on', act: 'claudeReview', chevron: true }) : ''}
-              ${hasKey && S.ai.consentAt ? U.row({ key: 'consent', icon: 'check-circle', tone: 'green', title: 'You allowed Claude to get your summary', sub: 'Turn it off by picking another coach, or withdraw it', act: 'claudeWithdraw', chevron: true }) : ''}
-              ${hasKey ? kw(U.row({ key: 'delkey', icon: 'trash', tone: 'rose', title: 'Delete key', act: 'deleteKey' }), 'api key remove') : ''}` : ''}
-            ${U.row({ key: 'claudeapp', icon: 'share', tone: 'violet', title: 'Ask in the Claude app', sub: 'Uses your own Claude plan, no key needed', act: 'askClaudeApp', chevron: true })}
-            ${kw(U.row({ key: 'sent', icon: 'eye', tone: 'sky', title: 'What gets sent', sub: 'The exact summary Claude sees', act: 'previewSheet', chevron: true }), 'privacy data summary')}`)}
-          ${foot('coach', `${claude ? 'Claude uses your own Anthropic API key, and each request costs money. Set hard limits under Spending and usage.' : 'The on-device coach runs Qwen3.5 on your phone. It answers from your numbers, works offline and can be wrong. Nothing you ask leaves the phone.'} Claude gets a summary with no name, exact dates or IDs, and only after you allow it.`)}
-
-          ${head('feel', 'Sound and haptics', 'vibration vibrate buzz haptic feedback feel touch beep audio')}
-          ${list('feel', `${U.sw('Sound', pr.sound !== false, 'data-on="setPref" data-k="sound"', 'Beeps for the 3-2-1, and when a timer or rest ends')}
-            ${U.sw('Vibration', pr.vibrate !== false, 'data-on="setPref" data-k="vibrate"', 'Buzzes for timers and the end of rest')}
-            ${U.hapticRows ? U.hapticRows(S) : hapticRows(pr)}`)}
-
-          ${head('look', 'Look', 'theme appearance dark mode light mode night colour color display')}
-          ${list('look', `${stack('Theme', '', U.seg('setTheme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], pr.theme || 'system', 'Theme', ' data-on="setTheme"'), 'dark mode light mode night', 'theme')}
-            ${kw(U.sw('Increase contrast', !!pr.contrast, 'data-on="setPref" data-k="contrast"'), 'accessibility readable')}
-            ${kw(U.sw('Moving background', pr.glowMove !== false, 'data-on="setPref" data-k="glowMove"', 'The colours behind each page drift slowly'), 'animation motion glow')}
-            ${stack('Glass effects', 'Auto lightens it while you scroll. Liquid is as designed, Flat the lightest', U.seg('setGlass', [['auto', 'Auto'], ['liquid', 'Liquid'], ['frosted', 'Frosted'], ['flat', 'Flat']], ['liquid', 'frosted', 'flat'].includes(pr.glass) ? pr.glass : 'auto', 'Glass effects', ' data-on="setGlass"'), 'blur lens transparency performance smooth stutter lag freeze jump', 'glass-fx')}
-            <li data-key="glass" data-keywords="blur transparency frosted"><div class="rf-list-row set-slider"><span class="rf-list-text"><span class="rf-list-title">Glass</span><span class="rf-list-sub">Clear to frosted</span></span><div class="rf-slider"><div class="rf-slider-control"><input class="rf-slider-input" type="range" min="0" max="1" step="0.05" value="${pr.density == null ? 0.5 : pr.density}" aria-label="Glass density" data-on="setDensity"></div></div></div></li>`)}
-
-          ${head('general', 'General', 'language region')}
-          ${list('general', `${stack('Units', '', U.seg('setUnits', [['lb', 'lb, ft, in'], ['kg', 'kg, cm']], p.units, 'Units', ' data-on="setUnits"'), 'kg lb pounds kilograms metric imperial cm inches feet weight height', 'units')}
-            ${stack('Start of the day', 'Late nights count as the day before until then', U.choice('setRollHour', DAY_STARTS, String(U.rollHour()), 'Start of the day', ' data-on="setRollHour"'), 'midnight night owl day begins rollover', 'daystart')}`)}
-
-          ${head('data', 'Your data', 'backup export import save transfer')}
-          ${list('data', `${kw(U.row({ key: 'export', icon: 'copy', tone: 'teal', title: 'Copy my data', sub: 'Everything but the API key, as text to keep safe', act: 'exportData' }), 'backup export')}
-            ${kw(U.row({ key: 'restore', icon: 'download', tone: 'indigo', title: 'Restore from a copy', act: 'restoreSheet', chevron: true }), 'backup import')}
-            ${kw(U.row({ key: 'reset', icon: 'trash', tone: 'rose', title: 'Reset everything', act: 'resetAll' }), 'delete erase start over')}`)}
-
-          ${head('about', 'About', 'version licenses research science')}
-          ${list('about', `${kw(U.row({ key: 'science', icon: 'library', tone: 'violet', title: 'How it works', sub: 'The research behind every rule', act: 'openScience', chevron: true }), 'science research studies rules why')}
-            ${kw(U.row({ key: 'licenses', icon: 'doc', tone: 'indigo', title: 'Open-source licenses', act: 'licensesSheet', chevron: true }), 'credits open source')}
-            ${kw(U.row({ key: 'refract', lead: U.refractMark('sm'), title: 'Built with Refract', sub: 'The liquid glass design system behind every screen', act: 'licensesSheet', chevron: true }), 'refract design system glass credits')}
-            ${kw(U.row({ key: 'diag', icon: 'bolt', tone: 'amber', title: 'Scroll diagnostics', sub: 'For the developer, if a scroll freezes or jumps', act: 'scrollDiag', chevron: true }), 'scroll freeze jump stutter lag debug diagnostics report')}
-            ${U.updateRows ? U.updateRows(S) : U.row({ key: 'version', icon: 'info', tone: 'sky', title: 'Version', detail: U.esc(ver) })}`)}
-          ${foot('about', 'Built-in foods from the USDA\'s nutrient database. Not medical advice. Check with a doctor first if you have a condition or injury.')}
-          <p class="set-none t-callout rf-muted" data-key="none" hidden>No settings match. Try dark, kg, vibration or backup.</p>
-        </div>`;
+    render(S, day, arg) {
+      // (The screen still holds the page before this one: what it was says where this came from.)
+      const scr = G.document && G.document.getElementById('screen');
+      const from = scr ? scr.dataset.view : '';
+      if (arg === 'all') { lastArg = arg; return allScreen(S); }
+      const t = arg ? target(S, arg) : null;
+      if (t) { lastArg = arg; return pageScreen(S, t.pg); }
+      // The top page. A new visit starts with an empty search; a re-render keeps what's typed, and so
+      // does Back from a page it opened (a result, to try the next one).
+      if (U.route !== queryRoute) {
+        if (!(from === 'settings' && lastArg)) query = '';
+        queryRoute = U.route;
+      }
+      lastArg = null;
+      index = null; // read again: what's set may have changed
+      return homeScreen(S);
     },
     after(root) {
       const input = root.querySelector('#setQ');
-      if (input && !wired.has(input)) {
-        wired.add(input);
-        input.addEventListener('input', () => { query = input.value; filter(root, query); });
-        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
-      }
-      filter(root, query);
+      if (!input || wired.has(input)) return;
+      wired.add(input);
+      input.addEventListener('input', () => { query = input.value; paint(root); });
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+      // The rows are read in a quiet moment once the field is touched, so the first letter finds them.
+      input.addEventListener('focus', () => idle(() => { if (!index && U.S && U.route.view === 'settings' && !U.route.arg) index = readPages(U.S); }));
     },
+    // A page opened at a row (a search result) or at a part of it (a link: 'food').
     focus(root, arg) {
-      const el = arg && ['coach', 'track', 'food', 'feel', 'hc', 'notify'].includes(arg) ? root.querySelector(`#${arg}`) : null;
-      if (el) setTimeout(() => el.scrollIntoView({ block: 'start', behavior: U.reduced() ? 'auto' : 'smooth' }), 60);
+      const t = target(U.S, arg);
+      const want = focusTo && t && focusTo.page === t.pg.id ? focusTo.key : null;
+      focusTo = null;
+      if (!t) return;
+      if (want) {
+        const row = [...root.querySelectorAll('.set-page [data-key]')].find((n) => n.dataset.key === want);
+        if (row) light(row);
+      } else if (t.at) {
+        const el = root.querySelector(`#set-${t.at}`);
+        if (el) el.scrollIntoView({ block: 'start', behavior: 'auto' });
+      }
     },
+  };
+  const idle = (fn) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: 400 }) : setTimeout(fn, 60));
+  // The row a result opened its page at: brought to the middle, lit up a moment (src/styles/you.css).
+  function light(row) {
+    row.scrollIntoView({ block: 'center', behavior: 'auto' });
+    row.classList.add('set-flash');
+    setTimeout(() => row.classList.remove('set-flash'), 1800);
+  }
+
+  // The top page: the search, then each part with what's set there; with workouts off, Your answers
+  // (age, weight, height) takes Workouts' place.
+  function homeScreen(S) {
+    const searching = !!norm(query);
+    const groups = GROUPS.map((ids, i) => {
+      const rows = ids.map(page).filter((pg) => pg.on(S)).map((pg) => U.row({ key: `p-${pg.id}`, icon: pg.icon, tone: pg.tone, title: U.esc(pg.title), sub: U.esc(pg.line(S)), act: 'setPage', arg: pg.id, chevron: true }));
+      if (i === 0 && S.profile.workouts === false) rows.unshift(answersRow(S, { icon: 'person', tone: 'sky' }));
+      return `<ul class="rf-list set-menu" data-key="g${i}">${rows.join('')}</ul>`;
+    }).join('');
+    return `${U.navbar('Settings', '', back())}
+      <h1 class="rf-large-title">Settings</h1>
+      <div class="section set-top" data-key="top">
+        <div class="rf-search set-search" role="search" data-key="search">${U.icon('search')}<input class="rf-search-input" type="search" id="setQ" placeholder="Search settings" aria-label="Search settings" value="${U.esc(query)}" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button type="button" class="rf-search-clear" aria-label="Clear search">${U.icon('x-circle')}</button></div>
+      </div>
+      <div class="section set-home" data-key="home"${searching ? ' hidden' : ''}>${groups}</div>
+      <div class="section set-results" data-key="results"${searching ? '' : ' hidden'}>${searching ? results(S) : ''}</div>`;
+  }
+  function pageScreen(S, pg) {
+    return `${U.navbar(pg.title, '', back())}
+      <h1 class="rf-large-title">${U.esc(pg.title)}</h1>
+      <div class="section set-page" data-key="page-${pg.id}" data-page="${pg.id}">${pg.body(S)}</div>`;
+  }
+  // Every page on one: long enough to flick (Scroll diagnostics' glass speed test, src/ui/diag.js).
+  function allScreen(S) {
+    return `${U.navbar('All settings', '', back())}
+      <h1 class="rf-large-title">All settings</h1>
+      ${PAGES.filter((pg) => pg.on(S)).map((pg) => `<h2 class="sec-title t-title-3" data-key="t-${pg.id}">${U.esc(pg.title)}</h2>
+      <div class="section set-page" data-key="page-${pg.id}" data-page="${pg.id}">${pg.body(S)}</div>`).join('')}`;
+  }
+  U.act.setPage = (el) => { const pg = page(el.dataset.arg); if (pg) U.open('settings', pg.id); };
+  // A search result: its page, at the row ("look glass-fx"), or a row of the top page's own.
+  U.act.setFind = (el) => {
+    const a = String(el.dataset.arg || ''), i = a.indexOf(' ');
+    const id = i < 0 ? a : a.slice(0, i);
+    if (!page(id)) return;
+    const input = G.document && G.document.getElementById('setQ');
+    if (input) input.blur();
+    focusTo = i < 0 ? null : { page: id, key: a.slice(i + 1) };
+    U.open('settings', id);
   };
 
   /* ---------------------------------------------------------------- search */
-  // Every word typed has to be in a row's text or its keywords (or in its group's title and
-  // keywords, which shows the whole group), matched from the start of a word: "rest" finds Rest
-  // between sets, and a short word doesn't turn up in the middle of others. Rows, lists, headers and
-  // footers are hidden in place, so switches keep their state and nothing re-renders while typing.
+  // The search reads every page's rows from the page itself (drawn for it, never shown): its title,
+  // its words (title, line, the control's options), its keywords and the header it's under. Every
+  // word typed has to start a word there: "rest" finds Rest between sets, and a short word doesn't
+  // turn up in the middle of others. A part whose name or words match is a result too, before its
+  // rows; a row then has to match by its own words, not just its part's name. Typing paints the
+  // results in place (nothing re-renders, so the field keeps its keyboard).
   const norm = (s) => String(s || '').toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
-  const hits = (words, text) => { const t = ` ${norm(text)}`; return words.every((w) => t.includes(` ${w}`)); };
-  function filter(root, q) {
-    const box = root.querySelector('.set-list');
-    if (!box) return;
-    const words = norm(q).split(' ').filter(Boolean);
-    const groups = new Map();
-    for (const h of box.querySelectorAll(':scope > .rf-list-header[data-group]:not([data-sub])')) groups.set(h.dataset.group, { hit: hits(words, `${h.textContent} ${h.dataset.keywords || ''}`), any: false });
-    let shown = 0;
-    for (const ul of box.querySelectorAll(':scope > ul.rf-list[data-group]')) {
-      const g = groups.get(ul.dataset.group) || { hit: false, any: false };
-      const prev = ul.previousElementSibling;
-      const subTitle = prev && prev.hasAttribute('data-sub') ? prev.textContent : '';
-      let n = 0;
-      for (const row of ul.children) {
-        const ok = !words.length || g.hit || hits(words, `${subTitle} ${row.textContent} ${row.dataset.keywords || ''}`);
-        if (row.hidden !== !ok) row.hidden = !ok;
-        if (ok) n++;
-      }
-      ul.hidden = !n;
-      if (n) g.any = true;
-      shown += n;
-    }
-    for (const el of box.children) {
-      if (el.matches('.rf-list-header[data-group]')) el.hidden = el.hasAttribute('data-sub') ? !(el.nextElementSibling && !el.nextElementSibling.hidden) : !(groups.get(el.dataset.group) || {}).any;
-      else if (el.matches('.rf-list-footer[data-group]')) {
-        let l = el.previousElementSibling;
-        while (l && !l.matches('ul.rf-list')) l = l.previousElementSibling;
-        el.hidden = !l || l.hidden;
+  const has = (w, text) => ` ${norm(text)}`.includes(` ${w}`);
+  const hits = (words, text) => words.every((w) => has(w, text));
+  let index = null; // the rows, read once the search needs them; null after each render of the top page
+  let indexing = false; // a page drawn for the search alone: nothing slow (the figure's still waits)
+  const ANSWERS_OFF_WORDS = 'questionnaire age weight height goals';
+  function readPages(S) {
+    const out = [];
+    const tpl = G.document.createElement('template');
+    const words = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
+    if (S.profile.workouts === false) out.push({ key: 'answers', act: 'editAnswers', icon: 'person', tone: 'sky', title: 'Your answers', path: 'Age, weight, height and more', text: 'Your answers', words: ANSWERS_OFF_WORDS });
+    for (const pg of PAGES) {
+      if (!pg.on(S)) continue;
+      out.push({ page: pg.id, icon: pg.icon, tone: pg.tone, title: pg.title, path: pg.line(S), text: pg.title, words: pg.words });
+      indexing = true;
+      try { tpl.innerHTML = pg.body(S); } catch (e) { tpl.innerHTML = ''; } finally { indexing = false; }
+      let section = '';
+      for (const el of tpl.content.children) {
+        if (el.matches('.rf-list-header')) { section = words(el); continue; }
+        if (!el.matches('ul.rf-list')) continue;
+        for (const row of el.children) {
+          const key = row.getAttribute('data-key');
+          for (const b of row.querySelectorAll('.rf-badge')) b.remove();
+          const title = row.getAttribute('data-title') || words(row.querySelector('.rf-list-title'));
+          if (!key || !title) continue;
+          out.push({ page: pg.id, key, icon: pg.icon, tone: pg.tone, title, path: section ? `${pg.title} · ${section}` : pg.title, text: `${words(row)} ${section}`, words: row.getAttribute('data-keywords') || '', of: `${pg.title} ${pg.words}` });
+        }
       }
     }
-    const none = box.querySelector('.set-none');
-    if (none) none.hidden = !words.length || shown > 0;
-    box.toggleAttribute('data-searching', words.length > 0);
+    return out;
   }
-  U.filterSettings = (q) => { const root = document.getElementById('screen'); query = q || ''; const i = root && root.querySelector('#setQ'); if (i) i.value = query; if (root) filter(root, query); };
+  function find(S, words) {
+    if (!index) index = readPages(S);
+    const out = [], parts = new Set();
+    for (const e of index) {
+      const own = `${e.text} ${e.words}`;
+      if (!e.of) { if (hits(words, own)) { out.push(e); if (e.page) parts.add(e.page); } continue; }
+      // A row: by its own words, or by its part's name with at least one of its own ("haptics
+      // strength"), unless its part is a result already.
+      const ok = hits(words, own) || (!parts.has(e.page) && words.some((w) => has(w, own)) && hits(words, `${own} ${e.of}`));
+      // (A part's main switch, named as the part is, is the part's result.)
+      if (ok && !(parts.has(e.page) && norm(e.title) === norm(page(e.page).title))) out.push(e);
+    }
+    return out;
+  }
+  function results(S) {
+    const found = find(S, norm(query).split(' ').filter(Boolean));
+    const rows = found.map((e) => U.row({ key: `r-${e.page || 'top'}-${e.key || ''}`, icon: e.icon, tone: e.tone, title: U.esc(e.title), sub: U.esc(e.path), act: e.act || 'setFind', arg: e.act ? null : `${e.page}${e.key ? ` ${e.key}` : ''}`, chevron: true })).join('');
+    return `<ul class="rf-list set-menu" data-key="found"${rows ? '' : ' hidden'}>${rows}</ul>
+      <p class="set-none t-callout rf-muted" data-key="none"${rows ? ' hidden' : ''}>No settings match. Try dark, kg, vibration or backup.</p>`;
+  }
+  // What's typed, painted in place: the parts while it's empty, the results otherwise.
+  function paint(root) {
+    const home = root.querySelector('.set-home'), res = root.querySelector('.set-results');
+    if (!home || !res) return;
+    const on = !!norm(query);
+    if (on) res.innerHTML = results(U.S);
+    home.hidden = on;
+    res.hidden = !on;
+  }
+  U.filterSettings = (q) => {
+    query = q || '';
+    const root = G.document && G.document.getElementById('screen');
+    const input = root && root.querySelector('#setQ');
+    if (!input) return;
+    input.value = query;
+    paint(root);
+  };
+
+  /* ---------------------------------------------------------------- the pages, one by one */
+  // Each part's line on the top page (what's set there now, in a few words), then its page.
+
+  // Workouts: your answers and the level check, then how sets and rests run.
+  const ANSWER_WORDS = 'questionnaire goals experience schedule days time minutes equipment weights joints injuries age weight height health conditions arthritis osteoporosis bones fractures diabetes eyes retinopathy blood pressure heart balance';
+  function answersRow(S, o) {
+    const on = S.profile.workouts !== false;
+    return kw(U.row(Object.assign({ key: 'answers', icon: 'pencil', tone: 'indigo', title: 'Your answers', sub: on ? 'Goals, days, time, equipment and more' : 'Age, weight, height and more', act: 'editAnswers', chevron: true }, o)), on ? ANSWER_WORDS : ANSWERS_OFF_WORDS);
+  }
+  function workoutsLine(S) {
+    const p = S.profile, pr = p.prefs;
+    const parts = [`${p.days} days a week`, `${p.minutes} min`];
+    if (pr.rest && pr.rest !== 'auto') parts.push(`${pr.rest} s rest`);
+    if (pr.supersets === false) parts.push('no supersets');
+    return parts.join(' · ');
+  }
+  function workoutsPage(S) {
+    const pr = S.profile.prefs;
+    return `${menu('workouts', `${answersRow(S)}
+        ${kw(U.row({ key: 'level', icon: 'timer', tone: 'green', title: 'Retake the level check', sub: 'Push-ups, plank and curls set where you start', act: 'baselineSheet', chevron: true }), 'baseline test levels push-ups plank curls')}`)}
+      ${form('workouts', `${kw(U.sw('Supersets', pr.supersets !== false, 'data-on="setPref" data-k="supersets"', 'Pair exercises that don\'t share muscles'), 'pairs back to back')}
+        ${stack('Rest between sets', 'Auto picks it for each exercise', U.seg('setRest', [['auto', 'Auto'], ['60', '60 s'], ['90', '90 s']], String(pr.rest), 'Rest between sets', ' data-on="setRest"'), 'timer seconds minutes pause', 'rest')}`)}
+      ${foot('workouts', U.esc(REST_FOOT))}`;
+  }
+
+  // Tracking: what the app tracks, then food's settings (with calories on) and walks, runs and rides.
+  function trackLine(S) {
+    const w = S.profile.workouts !== false;
+    const fm = GH.food ? GH.food.mode(S) : 'protein';
+    const food = fm === 'full' ? 'calories' : fm === 'protein' ? 'protein' : '';
+    return w && food ? `Workouts and ${food}` : w ? 'Workouts' : food ? U.cap(food) : 'Health only';
+  }
+  function trackPage(S) {
+    const workouts = S.profile.workouts !== false;
+    const fm = GH.food ? GH.food.mode(S) : 'protein';
+    return `${form('track', `${U.sw('Workouts', workouts, 'data-on="setWorkouts"', workouts ? 'Your plan, the workout player and progress' : 'Off. Today shows your health and food.')}
+        ${stack('Food', FOOD_SUB[fm] || '', U.seg('setFood', [['off', 'Off'], ['protein', 'Protein'], ['full', 'Calories']], fm, 'Food tracking', ' data-on="setFoodMode"'), 'calories protein nutrition diet', 'foodmode')}`)}
+      ${fm === 'full' ? foodSettings(S) : ''}
+      ${U.actOptionRows ? actSettings(S) : ''}`;
+  }
+
+  // Health Connect: the connection and the background sync, then what goes to and comes from other
+  // apps through it (workouts, and meals with calories on).
+  function hcLine() {
+    if (!(GH.platform && GH.platform.isApp())) return 'In the Android app';
+    const st = H().status();
+    if (H().connected(st)) {
+      const bg = H().background ? H().background() : null;
+      return bg && bg.supported && bg.granted && bg.on ? 'On · syncs every 15 minutes' : 'On';
+    }
+    return st === 'unsupported' ? 'Needs Android 14' : st === 'unavailable' ? 'Unavailable on this phone' : 'Off';
+  }
+  function hcPage(S) {
+    const st = H().status();
+    const app = GH.platform && GH.platform.isApp();
+    const on = H().connected(st);
+    const can = app && !['unsupported', 'unavailable'].includes(st);
+    const detail = !app ? 'Android app only' : on ? 'On' : st === 'unsupported' ? 'Needs Android 14' : st === 'unavailable' ? 'Unavailable' : 'Off';
+    const missing = on && H().missingTypes ? H().missingTypes(S) : [];
+    const food = !!(GH.food && GH.food.full(S));
+    const fp = food ? GH.food.prefs(S) : null;
+    const canWrite = on && H().canWrite && H().canWrite();
+    const canWriteFood = on && H().canWriteFood && H().canWriteFood();
+    const others = on ? `${S.profile.workouts !== false ? U.sw('Save workouts to Health Connect', !!(S.health.write !== false && canWrite), 'data-on="hcWriteToggle"', canWrite ? 'Other apps see your Gradient Health workouts' : 'Needs the Exercise permission') : ''}
+      ${food ? U.sw('Save meals to Health Connect', fp.hcWrite !== false && canWriteFood, 'data-on="setFoodPref" data-k="hcWrite"', canWriteFood ? 'Other apps see what you log here' : 'Needs the Nutrition permission') : ''}
+      ${food ? U.sw('Count food from other apps', fp.hcRead !== false, 'data-on="setFoodPref" data-k="hcRead"', 'Meals logged in other apps add to your day') : ''}`.trim() : '';
+    return `${form('hc', `${U.row({ key: 'hc', title: 'Health Connect', sub: on ? 'Choose what it reads and writes' : can ? 'Steps, sleep, heart rate and more from your phone and watch' : '', detail, act: can ? (on ? 'hcManage' : 'hcConnect') : null, chevron: !!app })}
+        ${missing.length ? kw(more({ key: 'hc-new', title: 'Allow the new data types', sub: U.esc(missingText(missing)), act: 'hcConnect' }), 'permissions allow new types') : ''}
+        ${on && app ? kw(bgRow(), 'background closed every 15 minutes') : ''}`)}
+      ${others ? `${head('hc-others', 'With other apps')}${form('hc', others)}` : ''}`;
+  }
+
+  // Notifications: the switch, what they're for and when, from src/ui/notify.js's rows, shared out.
+  const canNotify = () => !!(G.AndroidBridge && typeof G.AndroidBridge.notifySchedule === 'function');
+  const clock = (min) => U.fmtClock(new Date(2000, 0, 1, 0, min).getTime());
+  function notifyLine(S) {
+    if (!canNotify()) return 'In the Android app';
+    const p = S.profile.prefs.notify;
+    if (!p || !p.on) return 'Off';
+    let min = p.time;
+    if (min == null && GH.notify && GH.notify.reminderTime) { const rt = GH.notify.reminderTime(S, Date.now()); min = rt ? rt.min : null; }
+    if (min == null) return 'On';
+    return `${S.profile.workouts !== false && p.workout !== false ? 'Workout reminders' : 'Reminders'} at ${clock(min)}`;
+  }
+  // Rows another part draws, shared out into lists by their keys: the first pattern a row's key
+  // matches takes it, and one none match goes in the first list, so nothing is ever lost.
+  function shareOut(html, patterns) {
+    const out = patterns.map(() => []);
+    const tpl = G.document.createElement('template');
+    tpl.innerHTML = html;
+    for (const el of tpl.content.children) {
+      const i = patterns.findIndex((re) => re.test(el.getAttribute('data-key') || ''));
+      out[Math.max(0, i)].push(el.outerHTML);
+    }
+    return out.map((x) => x.join(''));
+  }
+  function notifyPage(S) {
+    if (!U.notifyRows) return form('notify', U.row({ key: 'nf-app', title: 'In the Android app', sub: 'Reminders and nudges come from the Gradient Health app on Android.' }));
+    const [main, kinds, when] = shareOut(U.notifyRows(S), [/^(sw:notifyOn:|nf-perm$|nf-app$)/, /^sw:notifyKind:/, /^nf-(time|at)$/]);
+    const f = U.notifyFoot ? U.notifyFoot(S) : '';
+    return `${form('notify', main)}
+      ${kinds ? `${head('notify-kinds', 'What they\'re for')}${form('notify', kinds)}` : ''}
+      ${when ? form('notify', when, 'notify-when') : ''}
+      ${f ? foot('notify', U.esc(f)) : ''}`;
+  }
+
+  // AI coach: who answers, then the model on this phone or Claude's key, model and spending.
+  const ENGINE_SUB = { device: 'On-device: an AI model on your phone', api: 'Claude: your own API key, model, thinking and spending limits' };
+  function coachLine(S) {
+    if (S.ai.mode === 'api') {
+      if (!(AI() && AI().hasKey())) return 'Claude · add your API key';
+      if (!S.ai.consentAt) return 'Claude · waiting for your OK';
+      return SP() ? `Claude · ${SP().model(S).short}` : 'Claude';
+    }
+    // The model in use, once Settings has looked at what's on the phone (the AI coach page does).
+    const have = dev.checked ? dev.installed : [];
+    const id = !have.length ? null : have.some((x) => x.id === S.ai.deviceModel) ? S.ai.deviceModel : GH.deviceCoach ? GH.deviceCoach.pick(S, have) : have[0].id;
+    const name = id ? modelName(id) : null;
+    return name ? `On-device · ${name}` : 'On-device';
+  }
+  function coachPage(S) {
+    const engine = S.ai.mode === 'api' ? 'api' : 'device';
+    if (engine === 'device' && !dev.checked && !indexing) checkDevice().then(() => { if (U.route.view === 'settings') U.render(); });
+    const hasKey = AI() && AI().hasKey();
+    const claude = engine === 'api';
+    const phone = engine === 'device' ? `${U.modelRows(S)}${dev.installed.length ? kw(more({ key: 'selftest', title: 'Check the on-device AI', sub: 'Starts the model and times a short answer', act: 'aiSelfTest' }), 'test speed problem report') : ''}` : '';
+    const rows = [
+      claude ? kw(hasKey ? U.row({ key: 'key', icon: 'lock', tone: 'green', title: 'API key saved on this phone', sub: 'Encrypted here, never in backups', act: 'keySheet', detail: 'Change', chevron: true }) : U.row({ key: 'key', icon: 'lock', tone: 'amber', title: 'Add your API key', sub: 'From the Claude Console, starts with sk-ant-', act: 'keySheet', chevron: true }), 'api key anthropic console') : '',
+      claude && hasKey && SP() ? kw(U.row({ key: 'claude-model', icon: 'sparkle', tone: 'violet', title: 'Model and thinking', detail: U.esc(`${SP().model(S).short} · ${SP().LEVEL_NAMES[SP().level(S)]}`), act: 'claudeModel', chevron: true }), 'claude model opus sonnet haiku fable thinking effort reasoning') : '',
+      claude && hasKey && SP() ? kw(U.row({ key: 'claude-spend', icon: 'card', tone: 'teal', title: 'Spending and usage', sub: U.esc(SP().todayLine(S, U.today())), act: 'claudePage', chevron: true }), 'budget spending limit cost usage money dollars price tokens bill monthly daily') : '',
+      claude && hasKey && !S.ai.consentAt ? U.row({ key: 'consent', icon: 'alert', tone: 'amber', title: 'Claude is waiting for your OK', sub: 'Review what it gets before it turns on', act: 'claudeReview', chevron: true }) : '',
+      claude && hasKey && S.ai.consentAt ? U.row({ key: 'consent', icon: 'check-circle', tone: 'green', title: 'You allowed Claude to get your summary', sub: 'Turn it off by picking another coach, or withdraw it', act: 'claudeWithdraw', chevron: true }) : '',
+      claude && hasKey ? kw(U.row({ key: 'delkey', icon: 'trash', tone: 'rose', title: 'Delete key', act: 'deleteKey' }), 'api key remove') : '',
+      U.row({ key: 'claudeapp', icon: 'share', tone: 'violet', title: 'Ask in the Claude app', sub: 'Uses your own Claude plan, no key needed', act: 'askClaudeApp', chevron: true }),
+      kw(U.row({ key: 'sent', icon: 'eye', tone: 'sky', title: 'What gets sent', sub: 'The exact summary Claude sees', act: 'previewSheet', chevron: true }), 'privacy data summary'),
+    ].join('');
+    return `${form('coach', stack('Who answers your questions', ENGINE_SUB[engine], U.seg('setCoach', [['device', 'On-device'], ['api', 'Claude']], engine, 'Coach', ' data-on="setCoachMode"'), 'claude anthropic api key on-device model engine', 'engine'))}
+      ${phone ? `${head('coach-phone', 'On this phone')}${form('coach', phone)}` : ''}
+      ${head('coach-claude', 'Claude')}
+      ${menu('coach', rows)}
+      ${foot('coach', `${claude ? 'Claude uses your own Anthropic API key, and each request costs money. Set hard limits under Spending and usage.' : 'The on-device coach runs Qwen3.5 on your phone. It answers from your numbers, works offline and can be wrong. Nothing you ask leaves the phone.'} Claude gets a summary with no name, exact dates or IDs, and only after you allow it.`)}`;
+  }
+
+  // Sound and haptics: sound and vibration for timers, then the haptics (src/ui/hapticsui.js).
+  const STRENGTH = { light: 'light', medium: 'medium', strong: 'strong' };
+  function feelLine(S) {
+    const pr = S.profile.prefs;
+    return `Sound ${pr.sound !== false ? 'on' : 'off'} · Haptics ${pr.haptics === false ? 'off' : STRENGTH[pr.hapticStrength] || 'medium'}`;
+  }
+  function feelPage(S) {
+    const pr = S.profile.prefs;
+    return `${form('feel', `${U.sw('Sound', pr.sound !== false, 'data-on="setPref" data-k="sound"', 'Beeps for the 3-2-1, and when a timer or rest ends')}
+        ${U.sw('Vibration', pr.vibrate !== false, 'data-on="setPref" data-k="vibrate"', 'Buzzes for timers and the end of rest')}`)}
+      ${head('haptics', 'Haptics')}
+      ${form('feel', U.hapticRows ? U.hapticRows(S) : hapticRows(pr))}`;
+  }
+
+  // Appearance: the theme, the glass, and the exercise figure's look (with workouts on).
+  const THEMES = { system: 'System', light: 'Light', dark: 'Dark' };
+  const GLASSES = { auto: 'Auto', liquid: 'Liquid', frosted: 'Frosted', flat: 'Flat' };
+  function lookLine(S) {
+    const pr = S.profile.prefs;
+    return `${THEMES[pr.theme] || 'System'} theme · ${GLASSES[pr.glass] || 'Auto'} glass`;
+  }
+  function lookPage(S) {
+    const pr = S.profile.prefs;
+    return `${form('look', `${stack('Theme', '', U.seg('setTheme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], pr.theme || 'system', 'Theme', ' data-on="setTheme"'), 'dark mode light mode night', 'theme')}
+        ${kw(U.sw('Increase contrast', !!pr.contrast, 'data-on="setPref" data-k="contrast"'), 'accessibility readable')}
+        ${kw(U.sw('Moving background', pr.glowMove !== false, 'data-on="setPref" data-k="glowMove"', 'The colours behind each page drift slowly'), 'animation motion glow')}`)}
+      ${form('look', `${stack('Glass effects', 'Auto lightens it while you scroll', U.seg('setGlass', [['auto', 'Auto'], ['liquid', 'Liquid'], ['frosted', 'Frosted'], ['flat', 'Flat']], ['liquid', 'frosted', 'flat'].includes(pr.glass) ? pr.glass : 'auto', 'Glass effects', ' data-on="setGlass"'), 'blur lens transparency performance smooth stutter lag freeze jump', 'glass-fx')}
+        <li data-key="glass" data-keywords="blur transparency frosted density"><div class="rf-list-row set-slider"><span class="rf-list-text"><span class="rf-list-title">Glass</span><span class="rf-list-sub">Clear to frosted</span></span><div class="rf-slider"><div class="rf-slider-control"><input class="rf-slider-input" type="range" min="0" max="1" step="0.05" value="${pr.density == null ? 0.5 : pr.density}" aria-label="Glass density" data-on="setDensity"></div></div></div></li>`, 'glass')}
+      ${foot('look', 'Liquid is the glass as designed. Frosted keeps the blur without the lens. Flat is the lightest.')}
+      ${S.profile.workouts !== false ? form('look', figureRows(pr), 'figure') : ''}`;
+  }
+
+  // General: units and when a day starts.
+  function generalLine(S) {
+    const h = U.rollHour();
+    const at = (DAY_STARTS.find(([v]) => Number(v) === h) || [null, `${h} am`])[1];
+    return `${S.profile.units === 'kg' ? 'kg, cm' : 'lb, ft, in'} · Day starts at ${at.toLowerCase()}`;
+  }
+  function generalPage(S) {
+    return form('general', `${stack('Units', '', U.seg('setUnits', [['lb', 'lb, ft, in'], ['kg', 'kg, cm']], S.profile.units, 'Units', ' data-on="setUnits"'), 'kg lb pounds kilograms metric imperial cm inches feet weight height', 'units')}
+      ${stack('Start of the day', 'Late nights count as the day before until then', U.choice('setRollHour', DAY_STARTS, String(U.rollHour()), 'Start of the day', ' data-on="setRollHour"'), 'midnight night owl day begins rollover', 'daystart')}`);
+  }
+
+  // Your data: a copy to keep, restoring one, and starting over.
+  function dataPage() {
+    return `${menu('data', `${kw(U.row({ key: 'export', icon: 'copy', tone: 'teal', title: 'Copy my data', sub: 'Everything but the API key, as text to keep safe', act: 'exportData' }), 'backup export')}
+        ${kw(U.row({ key: 'restore', icon: 'download', tone: 'indigo', title: 'Restore from a copy', act: 'restoreSheet', chevron: true }), 'backup import')}
+        ${kw(U.row({ key: 'reset', icon: 'trash', tone: 'rose', title: 'Reset everything', act: 'resetAll' }), 'delete erase start over')}`)}
+      ${foot('data', 'Keep the copy in a note or an email to yourself, then paste it into Restore, here or on a new phone.')}`;
+  }
+
+  // About: updates, then how it works, the credits and the scroll diagnostics.
+  const version = () => (GH.platform && GH.platform.appVersion()) || GH.VERSION || 'web';
+  function aboutLine() { return `Version ${String(version()).split(' ')[0]}`; }
+  function aboutPage(S) {
+    return `${form('about', U.updateRows ? U.updateRows(S) : U.row({ key: 'version', title: 'Version', detail: U.esc(version()) }))}
+      ${menu('about', `${kw(U.row({ key: 'science', icon: 'library', tone: 'violet', title: 'How it works', sub: 'The research behind every rule', act: 'openScience', chevron: true }), 'science research studies rules why')}
+        ${kw(U.row({ key: 'licenses', icon: 'doc', tone: 'indigo', title: 'Open-source licenses', act: 'licensesSheet', chevron: true }), 'credits open source')}
+        ${kw(U.row({ key: 'refract', lead: U.refractMark('sm'), title: 'Built with Refract', sub: 'The liquid glass design system behind every screen', act: 'licensesSheet', chevron: true }), 'refract design system glass credits')}
+        ${kw(U.row({ key: 'diag', icon: 'bolt', tone: 'amber', title: 'Scroll diagnostics', sub: 'For the developer, if a scroll freezes or jumps', act: 'scrollDiag', chevron: true }), 'scroll freeze jump stutter lag debug diagnostics report')}`)}
+      ${foot('about', 'Built-in foods from the USDA\'s nutrient database. Not medical advice. Check with a doctor first if you have a condition or injury.')}`;
+  }
 
   /* ---------------------------------------------------------------- sound and haptics */
   // Until the haptics rows (U.hapticRows, src/ui/hapticsui.js) are there: the switch, the strength
@@ -204,7 +470,7 @@
     const sub = !can ? 'This phone can\'t draw 3D, so it uses the simple figure' : is3d ? 'A lifelike person. Drag it to turn it around.' : 'A flat outline that\'s lighter on the battery';
     const swatches = (act, list, cur, label) => `<div class="swatches" role="group" aria-label="${label}">${list.map(([v, hex, name]) => `<button type="button" class="swatch" data-act="${act}" data-arg="${v}" aria-label="${U.esc(name || hex)}" aria-pressed="${v === cur ? 'true' : 'false'}" style="--sw:${hex}"></button>`).join('')}</div>`;
     return `<li data-key="figure" data-keywords="3d figure animation person avatar"><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Exercise figure</span><span class="rf-list-sub">${sub}</span></span>${can ? U.seg('setFigure', [['3d', '3D'], ['flat', 'Simple']], is3d ? '3d' : 'flat', 'Exercise figure', ' data-on="setFigure"') : ''}</div></li>
-      ${is3d ? `<li data-key="figlook" data-keywords="exercise figure skin tone shirt colour color"><div class="rf-list-row set-fig-row"><div class="set-fig" aria-hidden="true">${figPreview(pr)}</div><div class="set-fig-pick">
+      ${is3d ? `<li data-key="figlook" data-title="Skin tone and shirt" data-keywords="exercise figure skin tone shirt colour color"><div class="rf-list-row set-fig-row"><div class="set-fig" aria-hidden="true">${figPreview(pr)}</div><div class="set-fig-pick">
         <span class="rf-list-title">Skin tone</span>${swatches('setFigSkin', SKINS, pr.figSkin || 'sand', 'Skin tone')}
         <span class="rf-list-title">Shirt</span>${swatches('setFigShirt', SHIRTS.map(([hex, n]) => [hex, hex, n]), pr.figShirt || SHIRTS[0][0], 'Shirt colour')}
       </div></div></li>` : ''}`;
@@ -215,7 +481,7 @@
   let lastPreview = '';
   function figPreview(pr) {
     const m = GH.moves.MOVES.curl_std || GH.moves.MOVES.sq_bw;
-    if (!m || !U.stills) return '<span class="set-fig-wait"></span>';
+    if (!m || !U.stills || indexing) return '<span class="set-fig-wait"></span>';
     const look = U.stills.look(96, 120), k = U.stills.key(m, look);
     const img = (url, cls) => `<img${cls ? ` class="${cls}"` : ''} src="${U.esc(url)}" alt="" width="96" height="120">`;
     const ready = U.stills.want(m, look, (url) => {
@@ -278,23 +544,21 @@
     const names = list.map((t) => TYPE_NAMES[t] || t);
     return U.cap(names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]);
   }
-  function foodSettings(S, hcOn) {
+  // Food, on Tracking with calories on: the goal and what the target is worked out from, then meal
+  // times and online search. (Saving meals to Health Connect and counting other apps' food are on the
+  // Health Connect page, with the rest of what goes through it.)
+  function foodSettings(S) {
     const p = S.profile;
     const fp = GH.food.prefs(S);
     const t = GH.food.targets(S, U.today());
-    const canWriteFood = hcOn && H().canWriteFood && H().canWriteFood();
-    return `${sub('food', 'track', 'Food')}
-      <ul class="rf-list" data-group="track">
-        <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Weight goal</span></span>${U.seg('setWGoal', [['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']], p.weightGoal || 'maintain', 'Weight goal', ' data-on="setWeightGoal"')}</div></li>
-        ${p.weightGoal === 'lose' ? `<li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Pace</span><span class="rf-list-sub">Of your body weight a week. Slower keeps more muscle.</span></span>${U.seg('setPace', [['0.25', '0.25%'], ['0.5', '0.5%'], ['0.75', '0.75%'], ['1', '1%']], String(fp.pace), 'Pace', ' data-on="setFoodPace"')}</div></li>` : ''}
-        <li><div class="rf-list-row set-stack"><span class="rf-list-text"><span class="rf-list-title">Sex</span><span class="rf-list-sub">For the calorie estimate. Skip it to use an average.</span></span>${U.seg('setSex', [['female', 'Female'], ['male', 'Male'], ['', 'Skip']], p.sex || '', 'Sex', ' data-on="setSex"')}</div></li>
+    return `${head('food', 'Food')}
+      ${form('track', `${stack('Weight goal', '', U.seg('setWGoal', [['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']], p.weightGoal || 'maintain', 'Weight goal', ' data-on="setWeightGoal"'), 'lose maintain gain weight', 'wgoal')}
+        ${p.weightGoal === 'lose' ? stack('Pace', 'Of your body weight a week. Slower keeps more muscle.', U.seg('setPace', [['0.25', '0.25%'], ['0.5', '0.5%'], ['0.75', '0.75%'], ['1', '1%']], String(fp.pace), 'Pace', ' data-on="setFoodPace"'), 'how fast lose speed', 'pace') : ''}
         ${stack('Activity', 'How much you move in a day, workouts aside', U.choice('setFoodAct', [['auto', 'From steps'], ['light', 'Light'], ['moderate', 'Moderate'], ['active', 'Active']], fp.activity || 'auto', 'Activity', ' data-on="setFoodAct"'), 'steps active moving calories burn', 'foodact')}
-        ${kw(U.row({ key: 'meal-times', icon: 'clock', tone: 'teal', title: 'Meal times', sub: U.esc(U.mealTimesLine ? U.mealTimesLine(S) : ''), act: 'foodMealTimes', chevron: true }), 'meals breakfast lunch dinner snacks clock time')}
-        ${U.sw('Online search and barcodes', !!fp.online, 'data-on="setFoodPref" data-k="online"', 'From Open Food Facts. Only barcodes and search words are sent.')}
-        ${hcOn ? U.sw('Save meals to Health Connect', fp.hcWrite !== false && canWriteFood, 'data-on="setFoodPref" data-k="hcWrite"', canWriteFood ? 'Other apps see what you log here' : 'Needs the Nutrition permission') : ''}
-        ${hcOn ? U.sw('Count food from other apps', fp.hcRead !== false, 'data-on="setFoodPref" data-k="hcRead"', 'Meals logged in other apps add to your day') : ''}
-      </ul>
-      <p class="rf-list-footer" data-group="track">${t ? `Your target is about ${U.num(t.kcal)} kcal a day${t.learned ? ', tuned to your own logs and weight' : ''}.` : 'Add your weight and height to get a calorie target.'} ${U.whyLink ? U.foodKit.link('openScience', 'calories', 'How it\'s worked out') : ''}</p>`;
+        ${kw(more({ key: 'meal-times', title: 'Meal times', sub: U.esc(U.mealTimesLine ? U.mealTimesLine(S) : ''), act: 'foodMealTimes' }), 'meals breakfast lunch dinner snacks clock time')}
+        ${kw(U.sw('Online search and barcodes', !!fp.online, 'data-on="setFoodPref" data-k="online"', 'From Open Food Facts. Only barcodes and search words are sent.'), 'open food facts scan barcode')}
+        ${stack('Sex', 'For the calorie estimate. Skip it to use an average.', U.seg('setSex', [['female', 'Female'], ['male', 'Male'], ['', 'Skip']], p.sex || '', 'Sex', ' data-on="setSex"'), 'female male', 'sex')}`)}
+      ${foot('track', `${t ? `Your target is about ${U.num(t.kcal)} kcal a day${t.learned ? ', tuned to your own logs and weight' : ''}.` : 'Add your weight and height to get a calorie target.'} ${U.whyLink ? U.foodKit.link('openScience', 'calories', 'How it\'s worked out') : ''}`)}`;
   }
   U.on.setWorkouts = async (el, ev, v) => {
     const S = U.S;
@@ -393,10 +657,11 @@
   // The map pieces a map has downloaded are kept on the phone (src/ui/activity.js, U.mapPieces): Clear
   // saved maps deletes them.
   function actSettings(S) {
-    return `${sub('acts', 'track', 'Walks, runs and rides')}
-      <ul class="rf-list" data-group="track">${kw(U.actOptionRows(S), 'activity activities outdoor gps record running walking hiking cycling bike stops')}
-        ${kw(U.sw('Maps', !!(U.actMapsOn && U.actMapsOn()), 'data-on="actMapsPref"', 'Your route on a map from OpenFreeMap, which sees the area shown. Off: only the route, drawn on this phone.'), 'map openfreemap streets route')}
-        ${kw(U.row({ key: 'map-pieces', icon: 'map', tone: 'sky', title: 'Clear saved maps', sub: 'Maps you\'ve seen stay on this phone, so they open fast and offline', act: 'mapPiecesClear' }), 'map cache offline storage space delete')}</ul>`;
+    return `${head('acts', 'Walks, runs and rides')}
+      ${form('track', `${kw(U.actOptionRows(S), 'activity activities outdoor gps record running walking hiking cycling bike stops')}
+        ${kw(U.sw('Maps', !!(U.actMapsOn && U.actMapsOn()), 'data-on="actMapsPref"', 'Your route on a map from OpenFreeMap'), 'map openfreemap streets route')}
+        ${kw(U.row({ key: 'map-pieces', cls: 'set-do', title: 'Clear saved maps', sub: 'Maps you\'ve seen are kept here, to open fast and offline', act: 'mapPiecesClear' }), 'map cache offline storage space delete')}`)}
+      ${foot('track', 'OpenFreeMap sees the area a map shows. With maps off, only your route shows, drawn on this phone.')}`;
   }
   U.act.mapPiecesClear = async () => {
     const ok = U.mapPieces ? await U.mapPieces.clear() : false;
@@ -507,7 +772,6 @@
   };
 
   /* ---------------------------------------------------------------- coach */
-  const ENGINE_SUB = { device: 'On-device: an AI model on your phone', api: 'Claude: your own API key, model, thinking and spending limits' };
   U.on.setCoachMode = async (el, ev, v) => {
     const S = U.S;
     const before = S.ai.mode;

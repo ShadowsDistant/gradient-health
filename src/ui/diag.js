@@ -439,7 +439,7 @@
       // The touch half (above), on Settings.
       const bt = bridge();
       if (flicks > 0 && !speedAbort && bt && bt.diagFlick) {
-        if (U.open && !(U.route && U.route.view === 'settings')) U.open('settings');
+        if (U.open && !(U.route && U.route.view === 'settings' && U.route.arg === 'all')) U.open('settings', 'all'); // every setting on one page
         await wait(1300);
         if (U.motion && U.motion.settled) await U.motion.settled();
         touchPage = (U.route && (U.route.view || U.route.tab)) || '?';
