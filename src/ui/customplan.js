@@ -253,10 +253,12 @@
   }
 
   /* ================================================================== words */
+  // A rest in words, the same on a row and in its sheet: seconds up to two minutes, then minutes.
+  const restWords = (v) => (v === 0 ? 'None' : v < 120 ? `${v} s` : v % 60 ? `${Math.floor(v / 60)} min ${v % 60} s` : `${v / 60} min`);
   const itemMeta = (it) => {
     const m = M().MOVES[it.move] || {};
     const bits = [`${it.sets} × ${C().amountText(it)}${m.uni ? ' each side' : ''}`];
-    if (it.rest != null) bits.push(it.rest ? `rest ${it.rest >= 120 && it.rest % 60 === 0 ? `${it.rest / 60} min` : `${it.rest} s`}` : 'no rest');
+    if (it.rest != null) bits.push(it.rest ? `rest ${restWords(it.rest)}` : 'no rest');
     return bits.join(' · ');
   };
   function sourceLine(plan) {
@@ -370,7 +372,7 @@
 
   /* ================================================================== the part that loads later */
   // What src/ui/planbuilder.js shares with this file.
-  U.cpKit = { WD, WD_LONG, GROUP_HUE, FILTERS, SMALL, LARGE, hue, groupName, listWords, firstName, thumb, art, standIn, personMove, drawThumbs, tileFor, quickFlat, flatStill, itemMeta, sourceLine, daysLine, startsLine, grow };
+  U.cpKit = { WD, WD_LONG, GROUP_HUE, FILTERS, SMALL, LARGE, hue, groupName, listWords, firstName, thumb, art, standIn, personMove, drawThumbs, tileFor, quickFlat, flatStill, itemMeta, restWords, sourceLine, daysLine, startsLine, grow };
   const PART = 'planUi';
   const part = () => GH.lazy(PART).catch((e) => { if (U.toast) U.toast('Something went wrong', 'critical'); throw e; });
   // map[name] until the part replaces it: it loads the part, then calls what the part put there.

@@ -14,7 +14,7 @@
   const M = () => GH.moves;
   const C = () => GH.customPlan;
   const doc = G.document;
-  const { WD, WD_LONG, GROUP_HUE, FILTERS, SMALL, LARGE, hue, groupName, listWords, firstName, thumb, art, standIn, personMove, drawThumbs, tileFor, quickFlat, flatStill, itemMeta, sourceLine, daysLine, startsLine, grow } = U.cpKit;
+  const { WD, WD_LONG, GROUP_HUE, FILTERS, SMALL, LARGE, hue, groupName, listWords, firstName, thumb, art, standIn, personMove, drawThumbs, tileFor, quickFlat, flatStill, itemMeta, restWords, sourceLine, daysLine, startsLine, grow } = U.cpKit;
   const GRIP = '<svg class="cp-grip-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6.5" r="1.6"/><circle cx="15" cy="6.5" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="17.5" r="1.6"/><circle cx="15" cy="17.5" r="1.6"/></svg>';
 
   const ui = { wd: {}, when: {}, fresh: null, fold: {} };
@@ -444,7 +444,6 @@
   // Rest between sets, one line: a stepper over these, starting from Auto (what the coach uses for
   // the move: 90 s after big moves, 60 after the rest, plus what age adds), with Auto to go back.
   const RESTS = [0, 15, 30, 45, 60, 75, 90, 120, 150, 180, 240, 300];
-  const restWords = (v) => (v === 0 ? 'None' : v < 120 ? `${v} s` : v % 60 ? `${Math.floor(v / 60)} min ${v % 60} s` : `${v / 60} min`);
   // Auto: what the plan's session gives the move (src/customplan.js: 90 s after big moves, 60 after
   // the rest, or the person's own pick in Settings).
   const autoRestOf = (S, m) => C().restAuto(S, m.id);
@@ -579,10 +578,13 @@
         const top = d.rects[0].top, bottom = d.rects[d.rects.length - 1].bottom;
         const clamped = Math.max(top - d.rects[d.k].top, Math.min(bottom - d.rects[d.k].bottom, dy));
         row.style.transform = `translate3d(0, ${clamped.toFixed(1)}px, 0) scale(1.02)`;
-        // Its new place: how many of the other rows now sit above its middle.
-        const mid = d.rects[d.k].top + d.h / 2 + clamped;
-        let to = 0;
-        d.rects.forEach((r, i) => { if (i !== d.k && mid > r.top + r.height / 2) to++; });
+        // Its new place: past each row whose middle its leading edge has crossed (an edge, not its
+        // middle, so a tall row still gets to the top or the bottom of a list of short ones).
+        const topEdge = d.rects[d.k].top + clamped, bottomEdge = topEdge + d.h;
+        const midOf = (i) => d.rects[i].top + d.rects[i].height / 2;
+        let to = d.k;
+        if (clamped < 0) while (to > 0 && topEdge < midOf(to - 1)) to--;
+        else while (to < d.rects.length - 1 && bottomEdge > midOf(to + 1)) to++;
         if (to !== d.to) {
           d.to = to;
           U.haptic('tick');
@@ -631,8 +633,10 @@
   U.act.cpAdd = (el) => picker(U.route.arg, Number(el.dataset.arg), null);
   // The picker's order: by muscle group as the chips go, then each ladder easiest first (a fast-up
   // version right after its move), the seated and supported stand-ins after the usual ladders, and
-  // moves of no ladder last.
+  // moves of no ladder last. A move in two ladders under one name (a glute bridge is in the hinge
+  // ladder and the glute one) shows once: the first, which stands for both (TWIN).
   const SORTED = new WeakMap(); // a catalog → its moves in the picker's order
+  const TWIN = new Map(); // a move left out → the one that shows for it
   function sortedOf(cat) {
     let s = SORTED.get(cat);
     if (s) return s;
@@ -647,10 +651,19 @@
     };
     const keyed = cat.map((x) => [key(x), x]);
     keyed.sort((a, b) => a[0][0] - b[0][0] || a[0][1] - b[0][1] || a[0][2] - b[0][2] || a[1].name.localeCompare(b[1].name));
-    s = keyed.map((k) => k[1]);
+    const first = new Map();
+    s = [];
+    for (const [, x] of keyed) {
+      const k = `${x.group}|${x.name}`;
+      const had = first.get(k);
+      if (had && had.ok === x.ok) { TWIN.set(x.id, had.id); continue; }
+      if (!had) first.set(k, x);
+      s.push(x);
+    }
     SORTED.set(cat, s);
     return s;
   }
+  const twinOf = (id) => TWIN.get(id) || id;
   // What the picker opens with is worked out in an idle moment once a plan's page shows (the
   // catalog, its order, the first rows' pictures), so a tap on Add exercises finds it ready.
   function warmPicker(S, id) {
@@ -684,7 +697,7 @@
     const sugg = replacing ? C().similar(S, replacing.move, day, 6) : C().suggest(S, plan0, di, day, st.items, 6);
     const kits = KIT_NAME();
     const nameOf = (id) => (M().MOVES[id] || { name: id }).name;
-    const inDay = (id) => st.items.some((x) => x.move === id);
+    const inDay = (id) => st.items.some((x) => twinOf(x.move) === twinOf(id));
     const added = () => st.items.filter((x) => fresh.has(x)).length;
 
     /* ---------- rows */
@@ -799,7 +812,8 @@
     // A move's rows (it can be in Suggested and in its group) after it's added or taken out.
     const mark = (id) => {
       const on = inDay(id);
-      for (const el of vl.querySelectorAll(`.cp-row[data-id="${id}"]`)) {
+      for (const el of vl.querySelectorAll('.cp-row')) {
+        if (twinOf(el.dataset.id) !== twinOf(id)) continue;
         el.classList.toggle('is-in', on);
         const b = el.querySelector('.cp-row-main');
         if (!replacing) b.setAttribute('aria-pressed', String(on));
@@ -931,7 +945,7 @@
       const x = byId.get(id);
       if (replacing) { swapTo(id); return; }
       let at = -1;
-      st.items.forEach((it, i) => { if (it.move === id) at = i; });
+      st.items.forEach((it, i) => { if (twinOf(it.move) === twinOf(id)) at = i; });
       if (at >= 0) {
         const [it] = st.items.splice(at, 1);
         U.haptic('toggleOff');
