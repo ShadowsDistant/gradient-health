@@ -86,10 +86,11 @@
 .set-do .rf-list-title { color: var(--accent); }
 /* A page a link opens at a part of it: the part lands clear of the bar. */
 .set-page > :is(.rf-list-header, .rf-list) { scroll-margin-top: calc(var(--topbar-h) + var(--space-3)); }
-/* The row a search result opens its page at lights up, then fades (opacity only, on its own layer
-   under the row's words). Reduced motion: it lights up and goes. */
+/* The row a search result opens its page at lights up in the accent's wash, as a science rule a link
+   opens at does, then fades (opacity only, on its own layer under the row's words). Reduced motion:
+   it lights up and goes. */
 .set-flash { isolation: isolate; }
-.set-flash::before { content: ''; position: absolute; inset: 0; z-index: -1; background: color-mix(in oklab, var(--accent-fill) 18%, transparent); pointer-events: none; animation: set-flash 1.6s var(--ease-out-soft) both; }
+.set-flash::before { content: ''; position: absolute; inset: 0; z-index: -1; background: color-mix(in oklab, var(--accent-fill) 16%, transparent); pointer-events: none; animation: set-flash 1.6s var(--ease-out-soft) both; }
 @keyframes set-flash { 0%, 45% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .set-flash::before { animation: none; } }
 :root[data-rf-motion="reduced"] .set-flash::before { animation: none; }
