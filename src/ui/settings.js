@@ -242,7 +242,7 @@
     },
     body(S) {
       const pr = S.profile.prefs;
-      return menu('workouts', answersRow(S) + kw(U.row({ key: 'level', icon: 'timer', tone: 'green', title: 'Retake the level check', sub: 'Push-ups, plank and curls set where you start', act: 'baselineSheet', chevron: true }), 'baseline test levels push-ups plank curls'))
+      return menu('workouts', answersRow(S) + kw(U.row({ key: 'level', icon: 'checklist', tone: 'green', title: 'Retake the level check', sub: 'Push-ups, plank and curls set where you start', act: 'baselineSheet', chevron: true }), 'baseline test levels push-ups plank curls'))
         + form('workouts', kw(U.sw('Supersets', pr.supersets !== false, 'data-on="setPref" data-k="supersets"', 'Pair exercises that don\'t share muscles'), 'pairs back to back')
           + stack('Rest between sets', 'Auto picks it for each exercise', U.seg('setRest', [['auto', 'Auto'], ['60', '60 s'], ['90', '90 s']], String(pr.rest), 'Rest between sets', ' data-on="setRest"'), 'timer seconds minutes pause', 'rest'))
         + foot('workouts', U.esc(REST_FOOT));
@@ -398,7 +398,7 @@
         + menu('about', kw(U.row({ key: 'science', icon: 'library', tone: 'violet', title: 'How it works', sub: 'The research behind every rule', act: 'openScience', chevron: true }), 'science research studies rules why')
           + kw(U.row({ key: 'licenses', icon: 'doc', tone: 'indigo', title: 'Open-source licenses', act: 'licensesSheet', chevron: true }), 'credits open source')
           + kw(U.row({ key: 'refract', lead: U.refractMark('sm'), title: 'Built with Refract', sub: 'The liquid glass design system behind every screen', act: 'licensesSheet', chevron: true }), 'refract design system glass credits')
-          + kw(U.row({ key: 'diag', icon: 'bolt', tone: 'amber', title: 'Scroll diagnostics', sub: 'For the developer, if a scroll freezes or jumps', act: 'scrollDiag', chevron: true }), 'scroll freeze jump stutter lag debug diagnostics report'))
+          + kw(U.row({ key: 'diag', icon: 'activity', tone: 'amber', title: 'Scroll diagnostics', sub: 'For the developer, if a scroll freezes or jumps', act: 'scrollDiag', chevron: true }), 'scroll freeze jump stutter lag debug diagnostics report'))
         + foot('about', 'Built-in foods from the USDA\'s nutrient database. Not medical advice. Check with a doctor first if you have a condition or injury.');
     },
   }];
