@@ -1596,6 +1596,23 @@
   }).then((v) => v === 'ok');
   // A toast's haptic is a consequence of what was just done: a success merges into that action's own
   // feel, and a warning or an error waits for it to end (platform.js).
+  // Two at most, one over the other: the same words again take the old one's place, and a third sends
+  // the oldest away. Each stays long enough to read: a quarter of a second a word on top of the time
+  // to notice it, 4 s at least (6 with a button) and 9 at most; Refract's countdown pauses while a
+  // finger or focus is on it.
+  const TOAST_MAX = 2;
+  const readTime = (title, message, action) => {
+    const words = `${title || ''} ${message || ''}`.trim().split(/\s+/).length;
+    return Math.min(9000, Math.max(action ? 6000 : 4000, 2600 + 250 * words));
+  };
+  const toastText = (el, part) => { const x = el.querySelector(`.rf-toast-${part}`); return x ? x.textContent : ''; };
+  function toastRoom(title, message) {
+    const r = R(), t = toaster();
+    if (!t || !r.toast.close) return;
+    const up = Array.from(t.querySelectorAll('.rf-toast:not([data-leaving])'));
+    const keep = up.filter((el) => { const same = toastText(el, 'title') === String(title || '') && toastText(el, 'message') === String(message || ''); if (same) r.toast.close(el); return !same; });
+    while (keep.length >= TOAST_MAX) r.toast.close(keep.shift()); // (the bottom toaster's oldest is first)
+  }
   U.toast = (title, tone, message, action) => {
     const after = { consequence: true };
     if (tone === 'positive') U.haptic('success', after);
@@ -1607,11 +1624,39 @@
       // Placed before it's put in: that reads where the buttons at the bottom are, in the layout the
       // toast's own entrance makes anyway.
       seatToaster();
+      toastRoom(title, message);
       placeToasts();
-      const t = r.toast({ title, message, tone: tone || 'neutral', action, position: 'bottom' });
-      if (t && t.el) toastIn(t.el);
+      const t = r.toast({ title, message, tone: tone || 'neutral', action, position: 'bottom', duration: readTime(title, message, action) });
+      if (t && t.el) { t.el.__ghAt = Date.now(); toastIn(t.el); }
       return t;
     } catch (e) { if (G.console) G.console.error(e); return null; }
+  };
+  // A sheet opening sends away the toasts already up: they were about what's under it, and over the
+  // sheet they'd cover what's being used. One that came with the tap that opened it stays (sheet.js).
+  U.toastsYield = () => {
+    const r = R(), t = toaster();
+    if (!r || !r.toast || !r.toast.close || !t) return;
+    const now = Date.now();
+    for (const el of t.querySelectorAll('.rf-toast:not([data-leaving])')) if (now - (el.__ghAt || 0) > 600) r.toast.close(el);
+  };
+  // News nobody asked for just then (a new badge) waits until nothing else is up: no sheet or dialog,
+  // no other toast, not the player or set-up, and the app in sight. Then it's said on its own.
+  const freeWaits = [];
+  let freeTimer = 0;
+  const menuUp = () => { try { return !!doc.querySelector('.gh-menu:popover-open'); } catch (e) { return false; } };
+  const busyNow = () => !!(doc.hidden || topModal() || toastsShowing() || (playerEl && !playerEl.hidden) || (onboardEl && !onboardEl.hidden) || menuUp());
+  function freeSoon() {
+    if (freeTimer || !freeWaits.length) return;
+    freeTimer = setTimeout(() => {
+      freeTimer = 0;
+      if (!busyNow()) safe(freeWaits.shift());
+      freeSoon();
+    }, 700);
+  }
+  U.toastWhenFree = (fn) => {
+    if (!freeWaits.length && !busyNow()) { safe(fn); return; }
+    freeWaits.push(fn);
+    freeSoon();
   };
 
   /* ---------------------------------------------------------------- toasts at the bottom */
@@ -1643,9 +1688,13 @@
     list = list.filter((d) => !d.hasAttribute('data-closing'));
     return list.length ? list[list.length - 1] : null;
   }
-  // What a toast must stay clear of, as boxes on screen ({ top, bottom }).
+  // What a toast must stay clear of, as boxes on screen ({ top, bottom }): a field being typed in,
+  // wherever it is, and the buttons at the bottom.
+  const typing = (t) => !!t && ((t.tagName === 'TEXTAREA' && !t.readOnly) || (t.tagName === 'INPUT' && /^(text|search|email|number|tel|url|password)$/.test(t.type) && !t.readOnly) || t.isContentEditable);
   function toastObstacles() {
     const out = [];
+    const a = doc.activeElement;
+    if (typing(a)) { const r = a.getBoundingClientRect(); if (r.height) out.push({ top: r.top, bottom: r.bottom }); }
     const modal = topModal();
     if (modal) {
       // A sheet at rest (read again once it settles), so these are read as drawn.
@@ -1673,7 +1722,10 @@
     // they're env(), in the computed style only.)
     const rs = doc.documentElement.style;
     const sab = parseFloat(rs.getPropertyValue('--sab') || G.getComputedStyle(doc.documentElement).getPropertyValue('--sab')) || 0;
-    let lift = sab + TOAST_GAP;
+    // A browser's keyboard covers the page rather than shrinking it (the app's WebView shrinks).
+    const vv = G.visualViewport;
+    const kb = vv && Math.abs((vv.scale || 1) - 1) < 0.01 ? Math.max(0, Math.round(H - vv.height - vv.offsetTop)) : 0;
+    let lift = Math.max(sab, kb) + TOAST_GAP;
     const obs = toastObstacles().filter((o) => o.bottom > H / 2).sort((a, b) => b.bottom - a.bottom);
     for (const o of obs) if (o.bottom > H - lift - TOAST_H && o.top < H - lift) lift = Math.max(lift, H - o.top + TOAST_GAP);
     toastLift = Math.round(Math.min(lift, H / 2));
@@ -1719,21 +1771,32 @@
     readSoon(null, () => { placeWait = false; if (toastsShowing()) { seatToaster(); placeToasts(); } });
   }
   // Watched from the first toast on: the parts at the bottom showing or hiding, a sheet opening or
-  // settling, the keyboard, a live activity's screen added to the page.
+  // settling, the keyboard, a live activity's screen added to the page. The player's, set-up's and a
+  // live activity's buttons change from one step to the next (a rest has none, the set after it has
+  // Done set), so what's in those screens is watched too: a toast that went down for a rest comes
+  // back up over the next set's buttons.
   let toastWatch = null;
   function watchToasts() {
     if (toastWatch || !G.MutationObserver) return;
     toastWatch = new G.MutationObserver(() => toastsMoved());
     const attrs = { attributes: true, attributeFilter: ['hidden', 'data-away', 'data-closing'] };
-    for (const el of [floatEl, tabbar, accessory, playerEl, onboardEl, doc.getElementById('actlive')]) if (el) toastWatch.observe(el, attrs);
+    const within = { attributes: true, attributeFilter: ['hidden', 'data-away', 'data-closing'], childList: true, subtree: true };
+    for (const el of [floatEl, tabbar, accessory]) if (el) toastWatch.observe(el, attrs);
+    for (const el of [playerEl, onboardEl, doc.getElementById('actlive')]) if (el) toastWatch.observe(el, within);
     toastWatch.observe(doc.documentElement, { attributes: true, attributeFilter: ['data-sheet-open', 'data-keyboard'] });
     if (root) {
       new G.MutationObserver((list) => {
-        for (const m of list) for (const n of m.addedNodes) if (n.id === 'actlive') { toastWatch.observe(n, attrs); toastsMoved(); }
+        for (const m of list) for (const n of m.addedNodes) if (n.id === 'actlive') { toastWatch.observe(n, within); toastsMoved(); }
       }).observe(root, { childList: true });
     }
     doc.addEventListener('gh-sheet-moving', (e) => { if (!(e.detail && e.detail.moving)) toastsMoved(); });
     G.addEventListener('resize', toastsMoved);
+    if (G.visualViewport) G.visualViewport.addEventListener('resize', toastsMoved);
+    // A field focused or left: the toast goes above it or comes back down. (Other focus moves change
+    // nothing at the bottom.)
+    const onField = (e) => { if (typing(e.target)) toastsMoved(); };
+    doc.addEventListener('focusin', onField);
+    doc.addEventListener('focusout', onField);
   }
   // A toast's motion is Refract's: it rises in on a spring with its words and buttons after it (about
   // a second), and drops away, its slot closing up after it (about 0.6 s). Both play 1.6 times as fast,

@@ -709,6 +709,8 @@
     // shows them through, close and sharp enough to read (sheet.css).
     if (openSheets.some((o) => !o.closing)) el.setAttribute('data-stacked', '');
     openSheets.push(s);
+    // Toasts already up were about what's under it: they go, rather than sit over the sheet (core.js).
+    if (U.toastsYield) U.toastsYield();
     markOpen();
     pageOpen();
     watchViewport(true);
