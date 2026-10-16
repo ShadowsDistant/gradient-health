@@ -158,7 +158,8 @@ async function repeat(name, seed, fn, n = REPS) {
 }
 
 /* ---------------------------------------------------------------- switches */
-const settings = async () => { await page.evaluate(() => { window.GH.ui.closeSheets(); if (window.GH.ui.route.view !== 'settings') window.GH.ui.open('settings'); }); await wait(700); };
+// Settings with every page on one (its switches, segments and chips together), or its top page (null).
+const settings = async (arg = 'all') => { await page.evaluate((a) => { const U = window.GH.ui; U.closeSheets(); if (!(U.route.view === 'settings' && (U.route.arg || null) === a)) U.open('settings', a); }, arg); await wait(700); };
 // Where a switch is: its track (the input covers it), the knob, and the row's title.
 const where = (sel) => page.evaluate((s) => {
   const i = document.querySelector(s);
@@ -743,8 +744,9 @@ await targets('Today, its top (the tip\'s Got it, "Planned around", a move\'s ro
 await targets('Today, a move\'s rows and the cards under them', () => scrollTo('#screen .ex-list'));
 await targets('Plan (the sections, the phase\'s info, Next week)', async () => { await page.evaluate(() => window.GH.ui.go('plan')); await wait(500); await page.evaluate(() => { document.getElementById('screen').scrollTop = 0; }); });
 await targets('Progress (its ranges)', async () => { await page.evaluate(() => window.GH.ui.go('progress')); await wait(500); await page.evaluate(() => { document.getElementById('screen').scrollTop = 0; }); });
-await targets('Settings (its search, segments and chips)', async () => { await settings(); await page.evaluate(() => { document.getElementById('screen').scrollTop = 0; }); });
-await targets('Settings, further down', () => page.evaluate(() => { const s = document.getElementById('screen'); s.scrollTop = s.scrollHeight * 0.45; }));
+await targets('Settings\' top page (its search and every part)', async () => { await settings(null); await page.evaluate(() => { document.getElementById('screen').scrollTop = 0; }); });
+await targets('Settings\' pages (their segments and chips)', async () => { await settings(); await page.evaluate(() => { document.getElementById('screen').scrollTop = 0; }); });
+await targets('Settings\' pages, further down', () => page.evaluate(() => { const s = document.getElementById('screen'); s.scrollTop = s.scrollHeight * 0.45; }));
 await targets('Settings, walks, runs and rides (auto-pause for each, 36 px chips)', () => scrollTo('#screen .at-auto'));
 await targets('Health (the coach\'s question chips, 30 px)', async () => { await page.evaluate(() => { const U = window.GH.ui; while (U.back()) { /* back to the tab */ } U.go('health'); }); await wait(500); await scrollTo('#screen .hl-asks'); });
 // A toast with Undo: Undo and its close (whose ::before is Refract's countdown ring).
