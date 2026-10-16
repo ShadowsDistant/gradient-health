@@ -60,7 +60,8 @@ dialog.gh-sheet[data-closing] { pointer-events: none; }
    inherited from it: a part that inherits a value is restyled with the panel every frame the panel
    moves. */
 .gh-sheet-glass {
-  position: absolute; inset: 0 0 -200px; z-index: -1; pointer-events: none;
+  --gh-reach: 200px;
+  position: absolute; inset: 0 0 calc(-1 * var(--gh-reach)); z-index: -1; pointer-events: none;
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   box-shadow: var(--rim-light), var(--rim-depth);
   text-shadow: none;
@@ -70,15 +71,28 @@ dialog.gh-sheet[data-closing] { pointer-events: none; }
 .gh-sheet:is([data-detent="large"], [data-moving], [data-scrolling], [data-stacked]) .gh-sheet-glass {
   background-color: var(--sheet-bg); -webkit-backdrop-filter: none; backdrop-filter: none;
 }
+/* Glass that words sit on (a sheet at medium, a dialog, a menu, a toast) is Refract's thick glass at
+   0.9 on its density scale: about 93% of the material's fill, so what's behind shows as colour and
+   light, never as words to read (at Refract's 0.5, 82%, the page's text read through a sheet's lower
+   part). A toast is thick glass too (Refract's is regular, 32% white). At the bottom of the screen a
+   blur has nothing below to draw on and fades out, letting what's under it through sharp, so a
+   sheet's glass turns solid there: the last 40 px, fading in over the 80 above (the glow's rule,
+   below; test/ui-sheet.mjs reads the pixels). */
+.gh-sheet-glass, .rf-dialog.rf-glass, .gh-menu.rf-glass, .rf-toast.rf-glass { --rf-density: .9; }
+.rf-toast.rf-glass { --_base: var(--glass-fill-thick); --_base-blur: var(--glass-blur-thick); }
+/* A menu item that wraps (large text) splits evenly, never leaving one word on a line of its own. */
+.gh-menu .rf-menu-item > span { text-wrap: balance; }
 :root:is([data-theme$="contrast"], [data-rf-transparency="reduced"]) .gh-sheet-glass { background-color: var(--sheet-bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
 @media (prefers-reduced-transparency: reduce) { .gh-sheet-glass { background-color: var(--sheet-bg); -webkit-backdrop-filter: none; backdrop-filter: none; } }
 /* A faint glow of the icon's colours at the top of every sheet, as behind the top of each page (blue
    on the left, mint on the right), very light. It's in the material's own layer, under the rim and
    sheen, so it's painted once and moves with the sheet; and it's gone by 56 px down, above where the
    content starts, so the fade under the header starts in the material's colour as before. Off with
-   increased contrast and reduced transparency, like the page's. */
+   increased contrast and reduced transparency, like the page's. (The first layer is the solid edge at
+   the bottom of the screen, above.) */
 .gh-sheet-glass {
   background-image:
+    linear-gradient(to top, var(--sheet-bg) calc(var(--gh-reach) + 40px), transparent calc(var(--gh-reach) + 120px)),
     radial-gradient(52% 56px at 18% 0, color-mix(in oklab, var(--brand-blue) var(--gh-sheet-glow, 9%), transparent), color-mix(in oklab, var(--brand-blue) calc(var(--gh-sheet-glow, 9%) * .4), transparent) 50%, transparent),
     radial-gradient(52% 56px at 82% 0, color-mix(in oklab, var(--brand-mint) var(--gh-sheet-glow, 9%), transparent), color-mix(in oklab, var(--brand-mint) calc(var(--gh-sheet-glow, 9%) * .4), transparent) 50%, transparent);
 }
@@ -89,6 +103,9 @@ dialog.gh-sheet[data-closing] { pointer-events: none; }
 
 .gh-sheet .rf-sheet-grabber { flex: none; margin: 7px auto 0; touch-action: none; cursor: grab; }
 .gh-sheet .rf-sheet-header { animation: none; touch-action: none; }
+/* Both sides at least as wide as the wider of the close button and the action (sheet.js), so a title
+   that wraps stays in the middle of the sheet. */
+.gh-sheet .rf-sheet-header { grid-template-columns: minmax(var(--gh-head-side, auto), 1fr) auto minmax(var(--gh-head-side, auto), 1fr); }
 .gh-sheet .rf-sheet-grabber:focus { outline: none; }
 .gh-sheet .rf-sheet-grabber:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 /* One 16 px inset: the body has none of its own; each block in it brings its own (like a page's

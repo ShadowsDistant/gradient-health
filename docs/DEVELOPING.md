@@ -121,13 +121,15 @@ npm test          # simulations, insights, AI (mocked API), coach, poses, persis
 npm run build     # dist/gradient-health.html, dist/lazy/, docs/PRIVACY.md and docs/p/index.html
 npm run smoke     # end-to-end run in Chromium (needs Playwright); add --dark for dark mode
 npm run test:ui   # layout regressions, food flows, the coach chat, the 3D figure, your plans, controls
-                  # (real touches), haptics, motion, the You tab, badges, the plan review, speed,
-                  # scrolling and Plan's cold 3D stills budgets, barcodes on a filmed camera (Chromium)
+                  # (real touches), haptics, motion, the You tab, badges, the plan review, icons, toasts,
+                  # speed, scrolling and Plan's cold 3D stills budgets, barcodes on a filmed camera
 node test/ui-scroll.mjs --measure [--vs=<dir>] [--ablate=<part>]   # scrolling every main screen: frames
                   # dropped, the GPU's draw time; A/B against another build, or with one part switched off
 npm run test:llm  # on-device AI runtime in Chromium with a tiny model (see On-device AI)
 node test/sweep.mjs [--quick]   # every screen at 360-600 px, light/dark, 100%/130% text, overflow checks
-node test/ui-sheetsize.mjs [--all] [--shots]   # every sheet: sized to its content, nothing cut off
+node test/ui-sheetsize.mjs [--all] [--shots] [--dark]   # every sheet: sized to its content, nothing cut
+                  # off, its header in line
+node test/ui-icons.mjs [--shots]   # every icon name draws, the warm-up's sun, the muscle groups' glyphs
 npm run apk       # build/gradient-health.apk (see below)
 node scripts/screenshots.mjs          # docs/screenshots/, light and dark
 node scripts/frame-shots.mjs [name …] # the README's copies of them, in a phone
@@ -188,9 +190,19 @@ left alone. A few conventions:
 - Toasts (`U.toast` in `core.js`, Refract's toaster) come up from the bottom of the screen, above
   whatever is there: the tab bar, Today's floating buttons and the workout capsule, the player's,
   set-up's or a live activity's buttons, or an open sheet's main buttons (`--toast-lift`, read again
-  whenever one of those comes or goes, and glided to). Over an open sheet the toaster goes in the
-  sheet's dialog, the one part of the page that takes taps then, and back as the sheet closes. A
-  swipe down dismisses the bottom one. Refract's toast motion plays 1.6 times as fast.
+  whenever one of those comes or goes, and glided to; the player's, set-up's and a live activity's
+  buttons change from one step to the next, so what's in those screens is watched too). Over an open
+  sheet the toaster goes in the sheet's dialog, the one part of the page that takes taps then, and
+  back as the sheet closes. A swipe down dismisses the bottom one. Refract's toast motion plays 1.6
+  times as fast. Two at most, one over the other, each as wide as the page's cards: the same words
+  again take the old one's place, and a third sends the oldest away. Each stays long enough to read
+  (a quarter of a second a word on top of the time to notice it; 4 s at least, 6 with a button, 9 at
+  most). A field being typed in is kept clear like a sheet's main buttons, and so is a browser's
+  keyboard. A sheet opening sends away the toasts already up (`U.toastsYield`, from `sheet.js`): they
+  were about what's under it, and over the sheet they'd cover what's being used; one raised by the
+  tap that opened it stays. News nobody asked for just then (a new badge) goes through
+  `U.toastWhenFree(fn)`, which waits until no sheet, dialog, menu or other toast is up, and not the
+  player or set-up. `test/ui-toast.mjs` checks all of it.
 
 **Parts that load when they're needed.** Set-up (`src/ui/onboarding.js`), the plan review with
 Why this plan (`src/planreview.js`, `src/ui/review.js`), How it works (`src/data/science.js`,
@@ -454,7 +466,12 @@ Where the app uses Refract 1.4's newer parts:
   solid under the rim and sheen at full height, while it moves and while its content scrolls (a
   blur under anything that moves is redrawn every frame; the rim and sheen move with their layer).
   A sheet opened over another is solid at every height (`data-stacked`): frost over a sheet's words
-  lets them through. A sheet's body has no inset of its own, so each block in it brings its 16 px.
+  lets them through. Glass that words sit on (a sheet at medium, a dialog, a menu, a toast, which is
+  thick glass too) is at 0.9 on Refract's density scale (`--rf-density`, about 93% of its fill, where
+  0.5 gives 82%). At the bottom of the screen a blur has nothing below to draw on and fades out,
+  letting the page's words through sharp, so a sheet's glass turns solid over its last 40 px, fading
+  in over the 80 above (`ui-sheet` reads the pixels). A sheet's body has no inset of its own, so each
+  block in it brings its 16 px.
   Content scrolled off its top fades into the material over 48 px under the header, on the curve a
   page fades on under the top bar (`data-scrolled`, toggled only as the scroll position crosses 0):
   on solid glass a gradient in the material's own colour (`--sheet-bg` and what's left of the sheen
@@ -483,6 +500,17 @@ Where the app uses Refract 1.4's newer parts:
 - **Bursts** are 8 to 14 beads, Refract 1.4's range (`test/ui-motion.mjs` checks every count).
 - **Glass in the content** is for controls that float: a search field in a page is a `fill-3` well,
   and a page's own buttons are filled, not glass.
+- **Icons** are Refract's (`U.icon(name)`), plus glyphs of the app's own on its grid (24 px, 1.75
+  stroke, round ends): `EXTRA_ICONS` in `core.js`, the activities' in `src/ui/activity.js` and the
+  badges' in `src/ui/badges.js`. `U.groupIcon(group, size)` is a muscle group's (an exercise for most
+  of them: a push-up for the chest, a pull-up for the back, a press, dips, a squat, a lunge, one leg,
+  a jump; a flexed arm, a six-pack and a heartbeat). A name nobody drew is an empty span, so
+  `test/ui-icons.mjs` checks that every name in `src/` and What's new draws a glyph. `U.art(name)`
+  draws the few pictures in colour (`src/styles/art.css`): the warm-up's sun (a glowing disc in a
+  soft corona, long and short rays, a highlight), the cool-down's moon, mobility's leaf and a walk's
+  footprints. Their gradients are in one `<defs>` put on the page with the first one, so any number
+  share its ids and a re-render's markup never changes; the first sun turns its rays in once, when
+  the page is calm, and nothing on them moves after that.
 - **Brand gradients** (`src/styles.css`, "Brand gradients", and its `--gh-*` tokens): blue into mint
   for the main call to action on a screen (Today's, the player's and set-up's last button: tinted
   glass with the gradient for its fill, its words at 5:1 or more all the way across) and for

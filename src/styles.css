@@ -254,6 +254,9 @@ button.ex-name::before { content: ''; position: absolute; inset: 0; }
   translate: 0 calc(-1 * max(var(--toast-lift, 0px), calc(var(--sab) + var(--space-2))));
   transition: translate 300ms var(--spring-snappy);
 }
+/* Each toast is as wide as the page's cards (16 px either side, 440 at most), so two make a tidy
+   stack, edges lined up, and a second one never sets the first one's width moving. */
+.rf-toaster[data-position="bottom"] .rf-toast { inline-size: min(440px, calc(100vw - 2 * var(--space-4))); max-inline-size: none; }
 @media (prefers-reduced-motion: reduce) { .rf-toaster[data-position="bottom"] { transition: none; } }
 :root[data-rf-motion="reduced"] .rf-toaster[data-position="bottom"] { transition: none; }
 .rf-large-title { overflow-wrap: anywhere; }
