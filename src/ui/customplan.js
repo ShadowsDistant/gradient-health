@@ -253,6 +253,10 @@
   }
 
   /* ================================================================== words */
+  // A move's name, or a day's, inside a sentence: its first word in lower case, unless that's a name
+  // (Russian twist, Smith machine) or a letter (Y-T-W, V-up); the rest as it is (Staggered-stance RDL).
+  const PROPER = /^(Russian|Romanian|Pallof|Nordic|Bulgarian|Smith|Copenhagen|Zottman|Arnold|Jefferson|Turkish|Cossack)\b/;
+  const inSentence = (n) => (n && /^[A-Z][a-z]/.test(n) && !PROPER.test(n) ? n[0].toLowerCase() + n.slice(1) : String(n || ''));
   // A rest in words, the same on a row and in its sheet: seconds up to two minutes, then minutes.
   const restWords = (v) => (v === 0 ? 'None' : v < 120 ? `${v} s` : v % 60 ? `${Math.floor(v / 60)} min ${v % 60} s` : `${v / 60} min`);
   const itemMeta = (it) => {
@@ -277,7 +281,7 @@
     const offs = C().offsetsFor(plan.days.length, plan.weekdays);
     const wd = B().weekday(day);
     const first = offs.find((o) => o >= wd);
-    if (first === wd) return `Starts today with ${C().titleOf(plan, plan.weekdays ? offs.indexOf(first) : 0).toLowerCase()}.`;
+    if (first === wd) return `Starts today with ${inSentence(C().titleOf(plan, plan.weekdays ? offs.indexOf(first) : 0))}.`;
     if (first != null) return `First workout on ${WD_LONG[first]}.`;
     return `First workout next ${WD_LONG[offs[0]]}.`;
   }
@@ -372,7 +376,7 @@
 
   /* ================================================================== the part that loads later */
   // What src/ui/planbuilder.js shares with this file.
-  U.cpKit = { WD, WD_LONG, GROUP_HUE, FILTERS, SMALL, LARGE, hue, groupName, listWords, firstName, thumb, art, standIn, personMove, drawThumbs, tileFor, quickFlat, flatStill, itemMeta, restWords, sourceLine, daysLine, startsLine, grow };
+  U.cpKit = { WD, WD_LONG, GROUP_HUE, FILTERS, SMALL, LARGE, hue, groupName, listWords, firstName, thumb, art, standIn, personMove, drawThumbs, tileFor, quickFlat, flatStill, itemMeta, restWords, inSentence, sourceLine, daysLine, startsLine, grow };
   const PART = 'planUi';
   const part = () => GH.lazy(PART).catch((e) => { if (U.toast) U.toast('Something went wrong', 'critical'); throw e; });
   // map[name] until the part replaces it: it loads the part, then calls what the part put there.

@@ -14,7 +14,7 @@
   const M = () => GH.moves;
   const C = () => GH.customPlan;
   const doc = G.document;
-  const { WD, WD_LONG, GROUP_HUE, FILTERS, SMALL, LARGE, hue, groupName, listWords, firstName, thumb, art, standIn, personMove, drawThumbs, tileFor, quickFlat, flatStill, itemMeta, restWords, sourceLine, daysLine, startsLine, grow } = U.cpKit;
+  const { WD, WD_LONG, GROUP_HUE, FILTERS, SMALL, LARGE, hue, groupName, listWords, firstName, thumb, art, standIn, personMove, drawThumbs, tileFor, quickFlat, flatStill, itemMeta, restWords, inSentence, sourceLine, daysLine, startsLine, grow } = U.cpKit;
   const GRIP = '<svg class="cp-grip-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6.5" r="1.6"/><circle cx="15" cy="6.5" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="17.5" r="1.6"/><circle cx="15" cy="17.5" r="1.6"/></svg>';
 
   const ui = { wd: {}, when: {}, fresh: null, fold: {} };
@@ -197,7 +197,7 @@
       </div>
       <input class="cp-day-title" id="cpDay${di}" type="text" maxlength="${C().LIMITS.title}" value="${U.esc(d.title)}" placeholder="${U.esc(d.items.length ? C().titleFrom(d.items) : 'Name this day')}" aria-label="${U.esc(`Day ${di + 1} name`)}" data-on="cpDayTitle" data-arg="${di}" data-limit="day" enterkeyhint="done">
       ${groups.length ? `<div class="pw-tags" aria-label="Muscles">${groups.map((g) => `<span class="pw-tag" style="--c:${hue(g)}">${U.esc(groupName(g))}</span>`).join('')}</div>` : ''}
-      ${folded ? `<button type="button" class="cp-day-sum cp-press" data-act="cpDayFold" data-arg="${di}" data-key="sum"><span class="t-footnote rf-muted">${U.esc(`${U.plural(names.length, 'exercise')}: ${names.length > 3 ? `${names.slice(0, 3).map((n, i) => (i ? n.toLowerCase() : n)).join(', ')} and ${names.length - 3} more` : listWords(names.map((n, i) => (i ? n.toLowerCase() : n)))}`)}</span></button>`
+      ${folded ? `<button type="button" class="cp-day-sum cp-press" data-act="cpDayFold" data-arg="${di}" data-key="sum"><span class="t-footnote rf-muted">${U.esc(`${U.plural(names.length, 'exercise')}: ${names.length > 3 ? `${names.slice(0, 3).map((n, i) => (i ? inSentence(n) : n)).join(', ')} and ${names.length - 3} more` : listWords(names.map((n, i) => (i ? inSentence(n) : n)))}`)}</span></button>`
     : d.items.length ? `<ul class="cp-exlist" data-day="${di}" data-key="list">${d.items.map((it, k) => exRow(plan, di, it, k, swaps.find((x) => x.day === di && x.i === k))).join('')}</ul>`
       : `<p class="t-callout rf-muted cp-day-empty" data-key="empty">No exercises yet.</p>`}
       ${folded ? '' : full ? `<p class="t-footnote rf-muted cp-limit" data-key="add">${U.icon('info')}<span>${U.esc(`That's ${C().LIMITS.items}, the most a day holds. Take one out to add another.`)}</span></p>`
@@ -468,7 +468,7 @@
         <button type="button" class="cp-item-top cp-press" data-act="cpHowTo" data-arg="${it.move}">${thumb(it.move, 'is-xl')}
           <span class="cp-item-what"><span class="t-footnote rf-muted">${U.esc(what)}</span>
           <span class="cp-link">${U.icon('info')}How to do it</span></span></button>
-        ${swap ? `<p class="cp-swap is-box">${U.icon(swap.to ? 'shuffle' : 'alert')}<span>${U.esc(swap.to ? `You'll do ${M().MOVES[swap.to].name.toLowerCase()} instead: ${swap.why}.` : `Left out for now: ${swap.why}.`)}</span></p>` : ''}
+        ${swap ? `<p class="cp-swap is-box">${U.icon(swap.to ? 'shuffle' : 'alert')}<span>${U.esc(swap.to ? `You'll do ${inSentence(M().MOVES[swap.to].name)} instead: ${swap.why}.` : `Left out for now: ${swap.why}.`)}</span></p>` : ''}
         <div class="cp-steps">
           <div class="cp-step"><span class="t-subhead">Sets</span>${U.stepper('cpSets', it.sets, 1, 10, 'Sets', 'data-on="cpSets"')}</div>
           <div class="cp-step"><span class="t-subhead">${m.timed ? 'Seconds' : m.uni ? 'Reps each side' : 'Reps'}</span>${U.stepper('cpAmt', amt, m.timed ? 5 : 1, m.timed ? 600 : 100, m.timed ? 'Seconds' : 'Reps', 'data-on="cpAmt"', m.timed ? 5 : 1)}</div>
@@ -532,7 +532,7 @@
       ctl.close('ok');
       edit((p) => { p.days[di].items.splice(at, 1); });
       U.haptic('remove');
-      U.toast(`Removed ${M().MOVES[it.move].name.toLowerCase()}`, 'neutral', undefined, { label: 'Undo', onClick: () => { if (U.route.arg === planId) { edit((p) => { if (p.days[di]) p.days[di].items.splice(at, 0, it); }); U.haptic('undo'); } } });
+      U.toast(`Removed ${inSentence(M().MOVES[it.move].name)}`, 'neutral', undefined, { label: 'Undo', onClick: () => { if (U.route.arg === planId) { edit((p) => { if (p.days[di]) p.days[di].items.splice(at, 0, it); }); U.haptic('undo'); } } });
     };
     U.act.cpReplace = () => { ctl.close('ok'); picker(planId, di, k); };
   }
@@ -937,7 +937,7 @@
 
     /* ---------- actions */
     const outToast = (it, at) => {
-      U.toast(`Took out ${nameOf(it.move).toLowerCase()}`, 'neutral', undefined, { label: 'Undo', onClick: () => {
+      U.toast(`Took out ${inSentence(nameOf(it.move))}`, 'neutral', undefined, { label: 'Undo', onClick: () => {
         if (ctl.closed) { if (U.route.view === 'planEdit' && U.route.arg === planId) edit((p) => { const l = p.days[di] && p.days[di].items; if (l) l.splice(Math.min(at, l.length), 0, it); }); }
         else { st.items.splice(Math.min(at, st.items.length), 0, it); mark(it.move); tray(); }
         U.haptic('undo');
@@ -983,7 +983,7 @@
       U.save();
       U.haptic('swap');
       ctl.close('ok');
-      U.toast(`${nameOf(id)} in`, 'positive', `In place of ${nameOf(old.move).toLowerCase()}.`, { label: 'Undo', onClick: () => { if (!C().get(U.S, planId)) return; C().update(U.S, planId, (p) => { if (p.days[di] && p.days[di].items[replaceK]) p.days[di].items[replaceK] = old; }, U.today()); U.save(); U.render(); U.haptic('undo'); } });
+      U.toast(`${nameOf(id)} in`, 'positive', `In place of ${inSentence(nameOf(old.move))}.`, { label: 'Undo', onClick: () => { if (!C().get(U.S, planId)) return; C().update(U.S, planId, (p) => { if (p.days[di] && p.days[di].items[replaceK]) p.days[di].items[replaceK] = old; }, U.today()); U.save(); U.render(); U.haptic('undo'); } });
     };
     U.on.cpGroup = (el, ev, v) => { st.group = v; relist(); };
     U.act.cpQClear = () => { const q = ctl.el.querySelector('#cpQ'); q.value = ''; st.q = ''; ctl.el.querySelector('.cp-q-clear').hidden = true; relist(); q.focus(); U.haptic('tap'); };

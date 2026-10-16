@@ -339,6 +339,9 @@ p = await plan();
 await closeSheets();
 const meta0 = await page.locator('#screen .cp-exlist[data-day="0"] .cp-ex:nth-child(1) .cp-ex-meta').innerText();
 check('the row shows it', /\d+ × \d+ reps · rest 2 min/.test(meta0), meta0);
+// A name inside a sentence ("Took out …", "In place of …", "Starts today with …").
+const said = await S(() => ['Push-up', 'Russian twist', 'Staggered-stance RDL', 'V-up', 'Full body A'].map((n) => window.GH.ui.cpKit.inSentence(n)));
+check('a name in a sentence: its first word in lower case, names and letters kept', JSON.stringify(said) === JSON.stringify(['push-up', 'Russian twist', 'staggered-stance RDL', 'V-up', 'full body A']), said);
 // Replace: from its sheet, the picker says what it replaces and suggests the moves most like it.
 await page.click('#screen .cp-exlist[data-day="0"] .cp-ex:nth-child(1) .cp-ex-row');
 await settle(800);
