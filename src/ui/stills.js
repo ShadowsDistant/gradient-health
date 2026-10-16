@@ -287,8 +287,8 @@
   const calm = () => !busy() && (!U.calm || U.calm());
   // A page moving in or out, or gliding (src/ui/motion.js): a still drawn in an idle moment between
   // its frames made one of them late, so a still (and its fade in) waits the slide out, 400 ms. The
-  // warm-up's steps don't: they come once a launch, and held back too they finished later, in a
-  // software-GL test right where the next tap came (the GPU drawing no frame for 15 s meanwhile).
+  // warm-up's steps don't: they come once a launch, and keep 1.13.0's timing (in software GL a step
+  // can keep the GPU from drawing the page for seconds, so when they run decides which tap waits).
   const sliding = () => !!(U.motion && U.motion.recent && U.motion.recent(400));
   // A figure's box showing (the player, a move's sheet), whose live figure stills would take frames
   // from: they wait. (A workout put aside keeps its figure, hidden: that one doesn't count.)
