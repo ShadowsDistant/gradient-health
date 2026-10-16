@@ -4,7 +4,8 @@
 // touch drags on a CPU slowed 4x (a flick up, a slow drag, a flick down, and a scroll that hands over
 // to the sheet), what a drag costs (no layout, no style work past the one transform a frame, frame
 // times with the settle), how long opening, settling and closing take, sideways gestures, Back, Esc
-// and the scrim, the keyboard, reduced motion, Refract staying out of it, the material (Refract's
+// and the scrim, focus going in and coming back to what opened it (the page staying where it was),
+// the keyboard, reduced motion, Refract staying out of it, the material (Refract's
 // thick glass at medium; solid at large, while it moves, and with reduced transparency or increased
 // contrast; its silver rim and sheen always, from the first frame of the slide up to the last of the
 // slide out), the food Edit sheet's width, the fade under the header once the content is scrolled (on
@@ -382,6 +383,31 @@ check('with two open, Back closes the top one only', stack.open === 1 && stack.t
 check('and a full sheet under it keeps the page set back', stack.receded, stack);
 await closeAll();
 check('closing it brings the page forward', await page.evaluate(() => !document.getElementById('app').hasAttribute('data-receded') && !document.getElementById('app').hasAttribute('data-sheeted')));
+// Focus goes into the sheet and back to what opened it, however it's closed, and the page under it
+// stays where it was.
+{
+  await page.evaluate(() => { window.GH.ui.go('today'); });
+  await wait(800);
+  await page.evaluate(() => { document.getElementById('screen').scrollTop = 260; });
+  await wait(400);
+  const opener = '#screen .ex-name[data-act="moveInfo"]';
+  const ways = [];
+  for (const how of ['close', 'back', 'escape']) {
+    await page.focus(opener);
+    const top0 = await page.evaluate(() => document.getElementById('screen').scrollTop);
+    await page.keyboard.press('Enter');
+    await wait(1100);
+    const inside = await page.evaluate(() => { const a = document.activeElement; return !!(a && a.closest('dialog.gh-sheet[open]')); });
+    if (how === 'close') await page.click('dialog.gh-sheet[open] [data-sheet-close]');
+    else if (how === 'back') await page.evaluate(() => window.__gh.back());
+    else await page.keyboard.press('Escape');
+    await wait(900);
+    ways.push(await page.evaluate(([sel, t0, how2, inside2]) => ({ how: how2, inside: inside2, back: document.activeElement === document.querySelector(sel), still: document.getElementById('screen').scrollTop === t0 }), [opener, top0, how, inside]));
+  }
+  check('focus goes into the sheet, and back to what opened it after the close button, Back and Esc', ways.every((w) => w.inside && w.back), ways);
+  check('and the page under it stays where it was', ways.every((w) => w.still), ways);
+  await page.evaluate(() => { document.getElementById('screen').scrollTop = 0; });
+}
 
 section('The keyboard');
 await page.evaluate(() => window.GH.ui.go('food'));
