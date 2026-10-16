@@ -40,7 +40,7 @@ Training, food and health in one private Android app, with a coach that runs on 
   <img src="docs/screenshots/framed/rest-dark.png" width="200" alt="Rest timer, in dark mode, asking how many more you could have done">
   <img src="docs/screenshots/framed/science.png" width="200" alt="How it works: how many reps to leave in the tank, with its research">
   <img src="docs/screenshots/framed/food.png" width="200" alt="Food in Health, under the week: calories left today, macros and the four meals">
-  <img src="docs/screenshots/framed/badges.png" width="200" alt="Badges: the ones earned so far, with their tiers, what's next and five waiting to be opened">
+  <img src="docs/screenshots/framed/picker.png" width="200" alt="Building your own plan: the exercise picker, with moves suggested for the day, filters and a tray of what's in it">
 </p>
 
 ## What's inside
