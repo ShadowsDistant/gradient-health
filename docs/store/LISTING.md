@@ -20,6 +20,7 @@ WORKOUTS MADE FOR YOU
 • More reps, then more weight, then a harder move as you get stronger
 • Easier days after a short night or a high resting heart rate
 • 296 exercises, and plans that fit your age, your joints and your health
+• Or build your own: pick from a list with a picture of every move, or start from Full body, Upper and lower, or Push, pull, legs
 
 SEE EVERY MOVE IN 3D
 • A 3D figure shows each exercise at the right tempo
@@ -44,19 +45,19 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 ## What's new (500 characters at most)
 
-Paste this into the What's new field with each update. This is 1.13.0's. Each GitHub release carries
+Paste this into the What's new field with each update. This is 1.14.0's. Each GitHub release carries
 its own version's text at the end of its What's new, under "Short version, for a store's What's new
 field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
 (`node scripts/release-notes.mjs --store` prints it).
 
 ```text
-• Each set says how many reps to leave, by your goal and age
-• The reps-left question goes to 4+, and more than your aim moves you up faster
-• Strength lifts stop short of failure and climb by weight
-• Short on time, your sets stay and extra rest goes first
-• From 60: fast reps on every leg day, and every muscle twice a week
-• Plans built around osteoporosis and type 2 diabetes
-• Quicker taps, bigger touch targets, tidier food screens and a more polished look
+• Pick exercises from a list with pictures, suggestions and filters
+• Search by name, muscle or kit, even with a typo
+• See each muscle's sets for the week, and tap a gap to fill it
+• Start a plan from Full body, Upper and lower, or Push, pull, legs
+• Settings opens on a short list, with a page for each part and search
+• A glowing sun on your warm-up, and an icon for each muscle
+• Quicker pages and sheets, and pop-ups that keep out of your way
 ```
 
 ## Images

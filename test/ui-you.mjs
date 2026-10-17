@@ -1,9 +1,11 @@
 // Where things are (1.6), in Chromium at phone size with someone five weeks in: the tabs for each
 // mode (five at most, so they fit a 360 px phone; food never takes one, since 1.12 it's in Health),
 // the You tab and its order, Plan's This week |
-// Moves switch, links to places that moved (moves, profile), the ways into Progress, Settings' groups
-// and search, the Refract credit, one place for each thing, the new names, a tip on every tab, the
-// haptics on the way around, and the easy cardio block's length.
+// Moves switch, links to places that moved (moves, profile), the ways into Progress, Settings (its
+// short top page and what each part's line says, a page for each part, the rows of a kind looking the
+// same, the search across every page and a result opening its page at the row, the links into a page
+// and where Back goes), the Refract credit, one place for each thing, the new names, a tip on every
+// tab, the haptics on the way around, and the easy cardio block's length.
 // Usage: node test/ui-you.mjs [--dark] [--width=360]
 import { createRequire } from 'node:module';
 import { check, section, done, serveDist } from './lib.mjs';
@@ -35,6 +37,17 @@ const tabs = () => ev(() => [...document.querySelectorAll('#tabbar .rf-tab')].ma
 const where = () => ev(() => ({ tab: window.GH.ui.route.tab, view: window.GH.ui.route.view, screen: document.getElementById('screen').dataset.view, back: !!document.querySelector('#topbar [data-act="back"]') }));
 const go = async (t) => { await ev((x) => window.GH.ui.go(x), t); await settle(); };
 const home = async () => { await ev(() => { const U = window.GH.ui; U.closeSheets(); while (U.back()) { /* to the tab */ } }); await settle(); };
+// The badge medals on You are drawn in 3D once each, in the app's quiet moments. In software GL on a
+// busy machine each takes seconds of the page's time, and a tap on You that met one ran past its
+// timeout (in the suite before 1.14 too). They're let finish once, early (two minutes at most), so
+// the taps on You after that don't meet them.
+const medalsDrawn = async () => {
+  const t0 = Date.now();
+  while (Date.now() - t0 < 120000) {
+    if (await ev(() => { const M = window.GH.ui.medals; return !M || M.off || (M.kept.size > 0 && !M.want.size); })) return;
+    await page.waitForTimeout(1000);
+  }
+};
 // What's tracked: workouts on or off, calories on or off (protein otherwise).
 const mode = async (workouts, food) => {
   await ev(([w, f]) => { const U = window.GH.ui, S = U.S; S.profile.workouts = w; window.GH.food.setMode(S, f ? 'full' : 'protein'); U.save(); U.render(); }, [workouts, food]);
@@ -115,6 +128,7 @@ await page.click('#screen [data-act="openHelp"]');
 await settle(900);
 check('Help and tour opens help: the tour, the tips again, the coach', await ev(() => ['helpTour', 'helpTips', 'helpCoach'].every((a) => !!document.querySelector(`dialog.rf-sheet[open] [data-act="${a}"]`))));
 await home();
+await medalsDrawn();
 
 section('Plan: This week | Moves');
 await go('plan');
@@ -166,7 +180,9 @@ check('and openProfile', (await where()).tab === 'you');
 await ev(() => window.GH.ui.act.openSettings());
 await settle();
 check('openSettings opens Settings on top', (await where()).view === 'settings' && (await where()).back);
-// Glass effects (Look): Auto (the default: Liquid at rest, light while the page moves, core.js), Liquid
+await page.click('#screen [data-act="setPage"][data-arg="look"]');
+await settle();
+// Glass effects (Appearance): Auto (the default: Liquid at rest, light while the page moves, core.js), Liquid
 // as designed, Frosted (the blur without the lenses, the glow kept), Flat (no backdrop drawn
 // anywhere, the glow hidden); and the scroll diagnostics row (About) with its report.
 const glassFx = await ev(() => Array.from(document.querySelectorAll('#screen [data-key="glass-fx"] .rf-segment'), (b) => b.textContent.trim()));
@@ -198,7 +214,7 @@ await ev(() => window.GH.ui.on.setGlass(null, null, 'auto'));
 await settle(900);
 gs = await glassState();
 check('and back to Auto', gs.pref === 'auto' && gs.mode === 'auto' && !gs.lite && gs.lensShown, gs);
-await ev(() => window.GH.ui.act.openSettings());
+await ev(() => window.GH.ui.open('settings', 'about'));
 await settle();
 check('About has a Scroll diagnostics row', await ev(() => !!document.querySelector('#screen [data-key="diag"] [data-act="scrollDiag"]')));
 await ev(() => window.GH.ui.act.scrollDiag());
@@ -278,79 +294,260 @@ check('without calories, the streak goes to the Progress tab', (await where()).t
 check('with Totals: workouts, streak, sets, time, level-ups and personal bests', await ev(() => { const t = document.querySelector('#screen [data-key="totals"]'); return !!t && ['Workouts', 'Streak', 'Sets done', 'Time trained', 'Level-ups', 'Personal bests'].every((x) => t.textContent.includes(x)); }));
 await mode(true, true);
 
-section('Settings: its groups');
+section('Settings: a short top page');
 await go('you');
 await page.click('#screen [data-act="openSettings"]');
 await settle(900);
-const groups = () => ev(() => [...document.querySelectorAll('#screen .set-list > .rf-list-header:not([data-sub])')].filter((h) => !h.hidden).map((h) => h.textContent).join(','));
-check('in order: your plan, tracking, notifications, Health Connect, AI coach, sound and haptics, look, general, your data, about', (await groups()) === 'Your plan,What you track,Notifications,Health Connect,AI coach,Sound and haptics,Look,General,Your data,About', await groups());
-const general = await ev(() => [...document.querySelectorAll('#screen ul[data-group="general"] .rf-list-title')].map((t) => t.textContent).join());
-check('General holds units and the start of the day', general === 'Units,Start of the day', general);
-check('Sound and Vibration lead Sound and haptics', await ev(() => [...document.querySelectorAll('#screen ul[data-group="feel"] .rf-list-title')].slice(0, 2).map((t) => t.textContent).join() === 'Sound,Vibration'));
-check('the rest setting says what auto does, 2.5 min on a strength plan', await ev(() => /2\.5 min after the main lifts/.test(document.querySelector('#screen [data-on="setRest"]').closest('li').textContent)));
-check('Retake the level check (the baseline test before)', await ev(() => /Retake the level check/.test(document.querySelector('#screen [data-act="baselineSheet"]').textContent)));
+// Each part's row on the top page: the page it opens, its name, its line, its icon and chevron.
+const parts = () => ev(() => [...document.querySelectorAll('#screen .set-home > ul.rf-list')].map((ul) => [...ul.children].map((li) => {
+  const b = li.querySelector('[data-act]');
+  return { id: b && b.dataset.arg, act: b && b.dataset.act, title: li.querySelector('.rf-list-title').textContent, line: (li.querySelector('.rf-list-sub') || {}).textContent || '', icon: !!li.querySelector('.rf-list-icon svg'), chevron: !!li.querySelector('.rf-list-chevron') };
+})));
+const lines = async () => Object.fromEntries((await parts()).flat().map((x) => [x.id, x.line]));
+let tops = await parts();
+check('three groups: what you train and track, how the app behaves, and the app itself', JSON.stringify(tops.map((g) => g.map((x) => x.id))) === JSON.stringify([['workouts', 'track', 'hc'], ['notify', 'coach', 'feel', 'look', 'general'], ['data', 'about']]), tops.map((g) => g.map((x) => x.id).join()).join(' | '));
+check('named Workouts, Tracking, Health Connect, Notifications, AI coach, Sound and haptics, Appearance, General, Your data, About', tops.flat().map((x) => x.title).join() === 'Workouts,Tracking,Health Connect,Notifications,AI coach,Sound and haptics,Appearance,General,Your data,About', tops.flat().map((x) => x.title).join());
+check('each a row with its icon, its name, a line on what\'s set and a chevron, that opens its page', tops.flat().every((x) => x.act === 'setPage' && x.icon && x.chevron && x.title && x.line), JSON.stringify(tops.flat().filter((x) => !(x.act === 'setPage' && x.icon && x.chevron && x.title && x.line))));
+let line = await lines();
+check('the lines: days and time, what\'s tracked, Health Connect syncing, notifications off', line.workouts === '4 days a week · 25 min' && line.track === 'Workouts and calories' && line.hc === 'On · syncs every 15 minutes' && line.notify === 'Off', line);
+check('and the coach, sound and haptics, the look, units and the day, your data and the version', line.coach === 'On-device' && line.feel === 'Sound on · Haptics medium' && line.look === 'System theme · Auto glass' && line.general === 'lb, ft, in · Day starts at 4 am' && line.data === 'Copy, restore or reset' && line.about === `Version ${await ev(() => window.GH.VERSION)}`, line);
+check('the top page is short: every part on one screen with the search', await ev(() => { const s = document.getElementById('screen'); return s.scrollHeight <= s.clientHeight + 120; }), await ev(() => [document.getElementById('screen').scrollHeight, document.getElementById('screen').clientHeight]));
+// What's set changes the lines: a new look picked on its page, and settings changed elsewhere.
+await page.click('#screen [data-act="setPage"][data-arg="look"]');
+await settle(900);
+await page.click('#screen [data-on="setTheme"] input[value="dark"]', { force: true });
+await settle(900);
+await page.click('#screen [data-on="setGlass"] input[value="liquid"]', { force: true });
+await settle(900);
+await page.click('#topbar [data-act="back"]');
+await settle(900);
+line = await lines();
+check('a look picked on its page shows on the top page: "Dark theme · Liquid glass"', line.look === 'Dark theme · Liquid glass', line.look);
+await ev(() => { const U = window.GH.ui, S = U.S, n = S.profile.prefs.notify; U.on.setTheme(null, null, 'system'); U.on.setGlass(null, null, 'auto'); n.on = true; n.time = 18 * 60; S.profile.prefs.rest = 90; S.profile.prefs.supersets = false; S.profile.prefs.sound = false; S.profile.prefs.hapticStrength = 'strong'; S.profile.units = 'kg'; S.profile.prefs.rollHour = 0; S.ai.mode = 'api'; U.render(); });
+await settle(900);
+line = await lines();
+check('rest and supersets, the reminder time, sound and haptics, units and the day, Claude without a key', line.workouts === '4 days a week · 25 min · 90 s rest · no supersets' && line.notify === 'Workout reminders at 6:00 pm' && line.feel === 'Sound off · Haptics strong' && line.general === 'kg, cm · Day starts at midnight' && line.coach === 'Claude · add your API key', line);
+await ev(() => { const U = window.GH.ui, S = U.S, n = S.profile.prefs.notify; n.on = false; n.time = null; S.profile.prefs.rest = 'auto'; S.profile.prefs.supersets = true; S.profile.prefs.sound = true; S.profile.prefs.hapticStrength = 'medium'; S.profile.units = 'lb'; S.profile.prefs.rollHour = 4; S.ai.mode = 'device'; U.render(); });
+await settle(900);
+// With workouts off, Your answers (age, weight and height) takes Workouts' place.
+await mode(false, true);
+await ev(() => window.GH.ui.render());
+await settle(600);
+tops = await parts();
+check('with workouts off: Your answers in Workouts\' place, opening its sheet', tops[0].map((x) => x.id || x.act).join() === 'editAnswers,track,hc' && tops[0][0].title === 'Your answers' && tops[0][0].line === 'Age, weight, height and more', JSON.stringify(tops[0]));
+await mode(true, true);
+await ev(() => window.GH.ui.render());
+await settle(600);
+
+section('Settings: a page for each part');
+const NAMES = { workouts: 'Workouts', track: 'Tracking', hc: 'Health Connect', notify: 'Notifications', coach: 'AI coach', feel: 'Sound and haptics', look: 'Appearance', general: 'General', data: 'Your data', about: 'About' };
+const pageNow = () => ev(() => {
+  const s = document.getElementById('screen'), p = s.querySelector('.set-page');
+  return { view: window.GH.ui.route.view, arg: window.GH.ui.route.arg, page: p ? p.dataset.page : null, title: (s.querySelector('.rf-large-title') || {}).textContent, bar: (document.querySelector('#topbar .rf-navbar-title') || {}).textContent, rows: p ? p.querySelectorAll('.rf-list > *').length : 0, back: !!document.querySelector('#topbar [data-act="back"]'), search: !!s.querySelector('#setQ') };
+});
+const opened = [], backed = [];
+for (const [id, name] of Object.entries(NAMES)) {
+  // A push moves the old page into a layer beside the screen for as long as it slides away
+  // (.screen-exit). It's watched for: on a busy machine it can be gone by the time the click returns.
+  await ev(() => {
+    window.__haptics.length = 0;
+    window.__exited = false;
+    const seen = (recs) => { if (recs.some((r) => [...r.addedNodes].some((n) => n.classList && n.classList.contains('screen-exit')))) window.__exited = true; };
+    const watch = new MutationObserver(seen);
+    watch.observe(document.getElementById('screen').parentNode, { childList: true });
+    window.__exitDone = () => { seen(watch.takeRecords()); watch.disconnect(); return window.__exited; };
+  });
+  await page.click(`#screen [data-act="setPage"][data-arg="${id}"]`);
+  const pushed = await ev(() => window.__exitDone() && window.__haptics.includes('nav'));
+  await settle(900);
+  const w = await pageNow();
+  if (!(pushed && w.view === 'settings' && w.arg === id && w.page === id && w.title === name && w.bar === name && w.rows > 0 && w.back && !w.search)) opened.push({ id, pushed, w });
+  await page.click('#topbar [data-act="back"]');
+  await settle(900);
+  const t = await pageNow();
+  if (!(t.view === 'settings' && !t.arg && t.title === 'Settings' && t.search)) backed.push({ id, t });
+}
+check('each part opens its page: it pushes in with the page haptic, its title large and in the bar, its rows, Back and no search', !opened.length, opened);
+check('Back from each returns to the top page', !backed.length, backed);
+await page.click('#screen [data-act="setPage"][data-arg="track"]');
+await settle(900);
+await ev(() => { document.getElementById('screen').scrollTop = 400; });
+await settle(600);
+check('a page\'s large title collapses into the bar as it scrolls, as on every page', await ev(() => document.getElementById('topbar').hasAttribute('data-scrolled') && document.querySelector('#topbar .rf-navbar-title').textContent === 'Tracking'));
+await ev(() => window.__gh.back());
+await settle(900);
+check('Android\'s Back returns to the top page too', (await pageNow()).title === 'Settings' && (await where()).view === 'settings');
+// Rows of a kind look the same on every page (all of them on one): a list of controls has no icon
+// tiles and its titles share an inset, a list of places to go has an icon on each row, and every
+// row but a list's last has a hairline under it.
+await ev(() => window.GH.ui.open('settings', 'all'));
+await settle(1200);
+const kinds = await ev(() => {
+  const bad = [];
+  const lists = [...document.querySelectorAll('#screen .set-page ul.rf-list')];
+  for (const ul of lists) {
+    const rows = [...ul.children].filter((r) => r.offsetParent);
+    const where = `${ul.dataset.group} ${(rows[0] && rows[0].dataset.key) || ''}`;
+    const lefts = new Set(rows.filter((r) => r.dataset.key !== 'figlook').map((r) => r.querySelector('.rf-list-title')).filter(Boolean).map((t) => Math.round(t.getBoundingClientRect().left)));
+    if (lefts.size > 1) bad.push(`titles at ${[...lefts]} in ${where}`);
+    if (ul.classList.contains('set-form')) { if (rows.some((r) => [...r.querySelectorAll('.rf-list-icon')].some((i) => i.getBoundingClientRect().width > 0))) bad.push(`an icon in a list of controls: ${where}`); } else if (ul.classList.contains('set-menu')) { if (rows.some((r) => !r.querySelector('.rf-list-icon, .rf-list-lead'))) bad.push(`a row without an icon in ${where}`); } else bad.push(`a list of neither kind: ${where}`);
+    for (const r of rows.slice(0, -1)) { const a = getComputedStyle(r, '::after'); if (a.content === 'none' || a.height !== '1px') bad.push(`no hairline under ${r.dataset.key || r.textContent.slice(0, 20)}`); }
+  }
+  return { bad, lists: lists.length, pages: document.querySelectorAll('#screen .set-page[data-page]').length };
+});
+check(`rows of a kind look the same on every page (${kinds.lists} lists): controls on one inset with no icons, an icon on each place to go, a hairline under each row`, kinds.pages === 10 && !kinds.bad.length, kinds.bad);
+await home();
+await go('you');
+await page.click('#screen [data-act="openSettings"]');
+await settle(900);
+// The rows that were there, where they went.
+const onPage = async (id, fn) => { await ev((x) => window.GH.ui.open('settings', x), id); await settle(900); return ev(fn); };
+check('Workouts: Your answers and the level check first, then supersets and rest', (await onPage('workouts', () => [...document.querySelectorAll('#screen .set-page .rf-list-title')].map((t) => t.textContent).join())) === 'Your answers,Retake the level check,Supersets,Rest between sets');
+check('the rest\'s line is short, and its footer says what Auto does, 2.5 min on a strength plan', await ev(() => { const li = document.querySelector('#screen [data-key="rest"]'); const f = document.querySelector('#screen .rf-list-footer[data-group="workouts"]'); return li.querySelector('.rf-list-sub').textContent === 'Auto picks it for each exercise' && /2\.5 min after the main lifts/.test(f.textContent); }));
+check('Sound and Vibration lead Sound and haptics', (await onPage('feel', () => [...document.querySelectorAll('#screen ul[data-group="feel"] .rf-list-title')].slice(0, 2).map((t) => t.textContent).join())) === 'Sound,Vibration');
+check('General holds units and the start of the day', (await onPage('general', () => [...document.querySelectorAll('#screen ul[data-group="general"] .rf-list-title')].map((t) => t.textContent).join())) === 'Units,Start of the day');
 await page.click('#screen [data-on="setRollHour"] input[value="2"]', { force: true });
 await settle(900);
 check('the day can start at 2 am', await ev(() => window.GH.ui.S.profile.prefs.rollHour === 2 && window.GH.ui.rollHour() === 2));
 await page.click('#screen [data-on="setRollHour"] input[value="4"]', { force: true });
+await settle(900);
+check('Appearance: the theme, the glass, then the exercise figure and its look', (await onPage('look', () => ['theme', 'glass-fx', 'glass', 'figure', 'figlook'].every((k) => document.querySelector(`#screen ul[data-group="look"] [data-key="${k}"]`)))) && await ev(() => !document.querySelector('#screen [data-on="setFigure"]').closest('[data-group="workouts"]')));
+check('Health Connect: the connection and the background sync, then saving and reading with other apps', await onPage('hc', () => !!document.querySelector('#screen [data-key="hc"]') && !!document.querySelector('#screen [data-on="hcBgToggle"]') && [...document.querySelectorAll('#screen #set-hc-others + ul .rf-list-title')].map((t) => t.textContent).join() === 'Save workouts to Health Connect,Save meals to Health Connect,Count food from other apps'));
+check('Notifications: the switch, what they\'re for, and when', await onPage('notify', () => { const uls = [...document.querySelectorAll('#screen ul[data-group="notify"]')]; return uls.length >= 1 && !!uls[0].querySelector('[data-on="notifyOn"]'); }));
+await ev(() => { window.GH.ui.S.profile.prefs.notify.on = true; window.GH.ui.render(); });
+await settle(900);
+const nf = await ev(() => [...document.querySelectorAll('#screen ul[data-group="notify"]')].map((ul) => [...ul.children].map((r) => r.dataset.key).join()));
+check('with them on: the switch (and Android\'s permission), the kinds under "What they\'re for", then the time', nf.length === 3 && /^sw:notifyOn:/.test(nf[0]) && nf[1].split(',').every((k) => /^sw:notifyKind:/.test(k)) && nf[2] === 'nf-time' && await ev(() => document.getElementById('set-notify-kinds').textContent === 'What they\'re for'), nf);
+await ev(() => { window.GH.ui.S.profile.prefs.notify.on = false; window.GH.ui.render(); });
+await settle(900);
+await onPage('workouts', () => 1);
+await ev(() => { window.__haptics.length = 0; });
+await page.click('#screen [data-key="sw:setPref:supersets"]');
+await settle(900);
+check('a switch on a page works there, with its liquid control and its haptic', await ev(() => window.GH.ui.S.profile.prefs.supersets === false && window.__haptics.includes('toggleOff') && !!document.querySelector('#screen [data-k="supersets"]').closest('.rf-switch') && window.GH.ui.route.arg === 'workouts'));
+await page.click('#screen [data-key="sw:setPref:supersets"]');
 await settle(900);
 await ev(() => window.GH.ui.act.keySheet());
 await settle(700);
 check('the API key sheet: encrypted on this phone', await ev(() => document.querySelector('dialog.rf-sheet[open] .rf-field-hint').textContent === 'Encrypted on this phone, never in backups, never shown again.'));
 await ev(() => window.GH.ui.closeSheets());
 await settle(900);
+await home();
 
-section('Settings: search');
-const shown = () => ev(() => ({
-  groups: [...document.querySelectorAll('#screen .set-list > .rf-list-header:not([data-sub])')].filter((h) => !h.hidden && h.offsetParent).map((h) => h.dataset.group).join(),
-  rows: [...document.querySelectorAll('#screen .set-list ul.rf-list > *')].filter((r) => !r.hidden && r.offsetParent && !r.closest('[hidden]')).map((r) => (r.querySelector('.rf-list-title') || r).textContent.trim()),
-  none: !document.querySelector('#screen .set-none').hidden,
+section('Settings: search across every page');
+await go('you');
+await page.click('#screen [data-act="openSettings"]');
+await settle(900);
+await ev(() => { window.__home = document.querySelector('#screen .set-home'); window.__field = document.getElementById('setQ'); });
+const found = () => ev(() => ({
+  rows: [...document.querySelectorAll('#screen .set-results ul.rf-list > li')].filter((li) => li.offsetParent).map((li) => { const b = li.querySelector('[data-act]'); return { title: li.querySelector('.rf-list-title').textContent, path: (li.querySelector('.rf-list-sub') || {}).textContent || '', arg: b.dataset.arg || '', act: b.dataset.act, icon: !!li.querySelector('.rf-list-icon svg') }; }),
+  home: !!(document.querySelector('#screen .set-home') || {}).offsetParent,
+  none: !!(document.querySelector('#screen .set-none') || {}).offsetParent,
 }));
-await ev(() => { window.__setList = document.querySelector('#screen .set-list'); window.__sw = document.querySelector('#screen [data-k="supersets"]'); });
 const search = async (q) => {
   await page.click('#setQ');
   await page.fill('#setQ', '');
   await page.keyboard.type(q, { delay: 15 });
   await settle(300);
-  return shown();
+  return found();
 };
+const titles = (x) => x.rows.map((y) => y.title).join();
+const row = (x, title) => x.rows.find((y) => y.title === title) || {};
 let r = await search('vibration');
-check('"vibration": Sound and haptics', r.groups === 'feel' && r.rows.includes('Vibration'), JSON.stringify(r));
+check('"vibration": Sound and haptics, and its Vibration, in the parts\' place', !r.home && titles(r) === 'Sound and haptics,Vibration' && row(r, 'Vibration').path === 'Sound and haptics' && row(r, 'Vibration').arg === 'feel sw:setPref:vibrate' && r.rows.every((y) => y.icon), JSON.stringify(r));
 r = await search('dark mode');
-check('"dark mode": the theme, under Look', r.groups === 'look' && r.rows.includes('Theme'), JSON.stringify(r));
+check('"dark mode": Appearance and its Theme', r.rows[0].title === 'Appearance' && row(r, 'Theme').path === 'Appearance', JSON.stringify(r));
 r = await search('kg');
-check('"kg": units, under General, and nothing else', r.groups === 'general' && r.rows.join() === 'Units', JSON.stringify(r));
+check('"kg": Units, in General, and nothing else', titles(r) === 'Units' && r.rows[0].path === 'General', JSON.stringify(r));
 r = await search('API key');
-check('"API key": the AI coach first', r.groups.split(',')[0] === 'coach' && r.rows[0] === 'Who answers your questions', JSON.stringify(r));
+check('"API key": the AI coach\'s Who answers your questions first, then Copy my data', r.rows[0].title === 'Who answers your questions' && r.rows[0].path === 'AI coach' && row(r, 'Copy my data').path === 'Your data', JSON.stringify(r));
 r = await search('backup');
-check('"backup": your data', r.groups === 'data' && r.rows.includes('Copy my data') && r.rows.includes('Restore from a copy'), JSON.stringify(r));
+check('"backup": Your data, Copy my data and Restore from a copy', titles(r) === 'Your data,Copy my data,Restore from a copy', JSON.stringify(r));
 r = await search('rest');
-check('"rest": rest between sets', r.rows.includes('Rest between sets'), JSON.stringify(r));
+check('"rest": Rest between sets, in Workouts', row(r, 'Rest between sets').path === 'Workouts', JSON.stringify(r));
 r = await search('diabetes');
-check('"diabetes" and "osteoporosis": Your answers, where health conditions are', r.groups === 'plan' && r.rows.join() === 'Your answers' && (await search('osteoporosis')).rows.join() === 'Your answers', JSON.stringify(r));
+check('"diabetes" and "osteoporosis": Your answers, in Workouts, where health conditions are', titles(r) === 'Your answers' && r.rows[0].path === 'Workouts' && titles(await search('osteoporosis')) === 'Your answers', JSON.stringify(r));
+// Rows other parts draw are found too, with the page and the header they're under.
+await ev(() => { window.GH.ui.S.profile.prefs.notify.on = true; window.GH.ui.render(); });
+r = await search('good nights');
+await ev(() => { window.GH.ui.S.profile.prefs.notify.on = false; window.GH.ui.render(); });
+check('rows other parts draw: notifications\' "Good nights" (with them on)', row(r, 'Good nights').path === 'Notifications · What they\'re for', JSON.stringify(r));
+r = await search('spoken');
+check('the activities\' "Spoken splits"', row(r, 'Spoken splits').path === 'Tracking · Walks, runs and rides', JSON.stringify(r));
+r = await search('feel each');
+check('the haptics\' "Feel each one"', row(r, 'Feel each one').path === 'Sound and haptics · Haptics', JSON.stringify(r));
+r = await search('breakfast');
+check('"breakfast": Meal times, under Food', row(r, 'Meal times').path === 'Tracking · Food', JSON.stringify(r));
+r = await search('shirt');
+check('"shirt": the figure\'s look, in Appearance', titles(r) === 'Skin tone and shirt' && r.rows[0].path === 'Appearance', JSON.stringify(r));
 r = await search('zzzz');
-check('nothing found says so', r.none && !r.groups && !r.rows.length, JSON.stringify(r));
-check('typing doesn\'t re-render: the same nodes, still in the field', await ev(() => document.querySelector('#screen .set-list') === window.__setList && window.__sw.isConnected && document.activeElement === document.getElementById('setQ')));
+check('nothing found says so', r.none && !r.rows.length && !r.home, JSON.stringify(r));
+check('typing doesn\'t re-render: the same field, still focused, and the parts kept for later', await ev(() => document.getElementById('setQ') === window.__field && document.activeElement === window.__field && document.querySelector('#screen .set-home') === window.__home));
 await page.click('#screen .set-search .rf-search-clear');
 await settle(300);
-r = await shown();
-check('clearing it brings every group back', r.groups === 'plan,track,notify,hc,coach,feel,look,general,data,about' && !r.none, JSON.stringify(r.groups));
-await search('supersets');
-await ev(() => document.querySelector('#screen [data-k="supersets"]').click());
+r = await found();
+check('clearing it brings the parts back', r.home && !r.rows.length && !r.none, JSON.stringify(r));
+// A result opens its page, at its row, lit up a moment; Back brings the results back.
+await search('spoken');
+await ev(() => { window.__haptics.length = 0; });
+await page.click('#screen .set-results [data-arg="track sw:actVoice:Spoken splits"]');
+await settle(300);
+const at = await ev(() => {
+  const s = document.getElementById('screen'), li = s.querySelector('[data-key="sw:actVoice:Spoken splits"]');
+  if (!li) return { route: window.GH.ui.route, keys: [...s.querySelectorAll('[data-key]')].map((n) => n.dataset.key).slice(0, 30) };
+  const b = li.getBoundingClientRect(), bar = document.getElementById('topbar').getBoundingClientRect();
+  return { arg: window.GH.ui.route.arg, title: s.querySelector('.rf-large-title').textContent, scrolled: s.scrollTop > 0, inView: b.top >= bar.bottom - 1 && b.bottom <= innerHeight, lit: li.classList.contains('set-flash'), glow: getComputedStyle(li, '::before').content !== 'none', field: document.activeElement === document.getElementById('setQ'), nav: window.__haptics.includes('nav') };
+});
+check('a result opens its page, scrolled to its row, lit up, with the page haptic', at.arg === 'track' && at.title === 'Tracking' && at.scrolled && at.inView && at.lit && at.glow && !at.field && at.nav, at);
+await settle(2000);
+check('and the light goes after a moment', await ev(() => !document.querySelector('#screen [data-key="sw:actVoice:Spoken splits"]').classList.contains('set-flash')));
+await page.click('#topbar [data-act="back"]');
 await settle(900);
-r = await shown();
-check('a switch flipped mid-search keeps the search', r.groups === 'plan' && r.rows[0] === 'Supersets' && await ev(() => document.getElementById('setQ').value === 'supersets' && window.GH.ui.S.profile.prefs.supersets === false), JSON.stringify(r));
-await ev(() => document.querySelector('#screen [data-k="supersets"]').click());
+r = await found();
+check('Back: the top page with the search as it was, to try the next result', (await ev(() => document.getElementById('setQ').value)) === 'spoken' && row(r, 'Spoken splits').title && !r.home, JSON.stringify(r));
+await page.click('#topbar [data-act="back"]');
 await settle(900);
-await home();
+check('Back again leaves Settings', (await where()).tab === 'you' && !(await where()).view);
 await page.click('#screen [data-act="openSettings"]');
 await settle(900);
-check('a new visit starts with an empty search', await ev(() => document.getElementById('setQ').value === '' && document.querySelectorAll('#screen .set-list > .rf-list-header:not([data-sub]):not([hidden])').length === 10));
+check('a new visit starts with an empty search and every part', await ev(() => document.getElementById('setQ').value === '' && !!document.querySelector('#screen .set-home').offsetParent && document.querySelectorAll('#screen .set-home li').length === 10));
+await home();
+
+section('Settings: links into a page');
+// From Health's coach button, the chat's menu, You's tracking link, notifications and older code:
+// each lands on its page, and Back goes back to where the link was.
+const link = async (label, run, id, title, from, more) => {
+  await run();
+  await settle(1000);
+  const w = await pageNow();
+  const extra = more ? await ev(more) : true;
+  await page.click('#topbar [data-act="back"]');
+  await settle(900);
+  const b = await where();
+  check(label, w.view === 'settings' && w.page === id && w.title === title && extra && b.tab === from && !b.view, { w, extra, b });
+};
+await go('health');
+await link('Health\'s coach settings: AI coach, and Back to Health', () => ev(() => window.GH.ui.act.openCoachSettings()), 'coach', 'AI coach', 'health');
+await link('the chat\'s AI coach settings: AI coach, and Back to the tab the chat was on', () => ev(() => window.GH.ui.act.chatSettings()), 'coach', 'AI coach', 'health');
+await go('you');
+await link('You\'s tracking link: Tracking, and Back to You', () => ev(() => window.GH.ui.act.openTracking()), 'track', 'Tracking', 'you');
+await go('today');
+for (const [arg, id, title] of [['feel', 'feel', 'Sound and haptics'], ['hc', 'hc', 'Health Connect'], ['notify', 'notify', 'Notifications']]) {
+  await link(`'${arg}': ${title}, and Back to Today`, () => ev((x) => window.GH.ui.open('settings', x), arg), id, title, 'today');
+}
+await link('\'food\': Tracking, opened at Food, clear of the bar', () => ev(() => window.GH.ui.open('settings', 'food')), 'track', 'Tracking', 'today', () => { const h = document.getElementById('set-food').getBoundingClientRect(), bar = document.getElementById('topbar').getBoundingClientRect(); return document.getElementById('screen').scrollTop > 0 && h.top >= bar.bottom && h.top < bar.bottom + 60; });
+await link('\'figure\': Appearance, at the exercise figure', () => ev(() => window.GH.ui.open('settings', 'figure')), 'look', 'Appearance', 'today', () => document.getElementById('screen').scrollTop > 0);
+await link('\'all\': every part on one page, long enough to flick (the scroll diagnostics)', () => ev(() => window.GH.ui.open('settings', 'all')), 'workouts', 'All settings', 'today', () => { const s = document.getElementById('screen'); return document.querySelectorAll('#screen .set-page[data-page]').length === 10 && s.scrollHeight > 4 * s.clientHeight; });
+await link('an id it doesn\'t know: the top page', () => ev(() => window.GH.ui.open('settings', 'nope')), null, 'Settings', 'today', () => !!document.getElementById('setQ'));
+await link('the shell\'s #settings: the top page', () => ev(() => { location.hash = '#settings'; }), null, 'Settings', 'today', () => !!document.getElementById('setQ'));
+await ev(() => { history.replaceState(null, '', location.pathname); });
 await home();
 
 section('The Refract credit');
 await go('you');
 await page.click('#screen [data-act="openSettings"]');
+await settle(900);
+await page.click('#screen [data-act="setPage"][data-arg="about"]');
 await settle(900);
 const credit = await ev(() => {
   const li = document.querySelector('#screen ul[data-group="about"] [data-key="refract"]');
@@ -367,10 +564,12 @@ const credit = await ev(() => {
 });
 check('About: "Built with Refract", after the licenses, opens them', credit.row && credit.title === 'Built with Refract' && credit.act === 'licensesSheet' && credit.after === 'licensesSheet', JSON.stringify(credit));
 check('its icon is Refract\'s mark, drawn (20 px, in the label\'s ink), named for screen readers, with no tile', credit.mark && credit.size === '20,20' && credit.drawn && credit.ink && credit.role === 'img' && credit.label === 'Refract' && !credit.tile, JSON.stringify(credit));
+await page.click('#topbar [data-act="back"]');
+await settle(900);
 r = await search('design system');
-check('search finds it: "design system"', r.groups === 'about' && r.rows.includes('Built with Refract'), JSON.stringify(r));
-await page.click('#screen .set-search .rf-search-clear');
-await settle(300);
+check('search finds it: "design system", in About', row(r, 'Built with Refract').path === 'About', JSON.stringify(r));
+await page.click('#screen .set-results [data-arg="about refract"]');
+await settle(900);
 await page.click('#screen [data-key="refract"] [data-act]');
 await settle(900);
 const sheet = await ev(() => {
@@ -394,10 +593,14 @@ await home();
 section('One place for each');
 const acts = (sel) => ev((s) => [...document.querySelectorAll(s)].map((b) => b.dataset.act), sel);
 await go('you');
-await page.click('#screen [data-act="openSettings"]');
+await ev(() => window.GH.ui.open('settings', 'all'));
 await settle(900);
 let a = await acts('#screen [data-act]');
-check('Settings has no Days and time, Equipment, Your plans, What\'s new or Privacy', !['daysSheet', 'editEquipment', 'planEquipment', 'openPlans', 'openWhatsNew', 'openPrivacyView', 'openMoves'].some((x) => a.includes(x)), a.join());
+check('Settings has no Days and time, Equipment, Your plans, What\'s new or Privacy, on any page', a.length > 20 && !['daysSheet', 'editEquipment', 'planEquipment', 'openPlans', 'openWhatsNew', 'openPrivacyView', 'openMoves'].some((x) => a.includes(x)), a.join());
+await ev(() => window.GH.ui.back());
+await settle(900);
+await ev(() => window.GH.ui.open('settings', 'about'));
+await settle(900);
 check('How it works lives in Settings, under About', await ev(() => !!document.querySelector('#screen ul[data-group="about"] [data-act="openScience"]')));
 await home();
 a = await acts('#screen [data-act]');

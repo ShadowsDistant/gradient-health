@@ -117,6 +117,13 @@
     return p;
   }
   M.settled = () => (playing.size ? Promise.all(Array.from(playing)).then(() => M.settled()) : Promise.resolve());
+  // Whether a page moved in the last ms (a route change, the page starting to leave at a tap, a
+  // re-render's glides): work that can wait a moment (a 3D still, src/ui/stills.js) waits for it, as
+  // it does for a scroll, rather than land in the middle of the slide. (By the clock rather than what's
+  // playing, so nothing that never ends can hold that work for good.)
+  let movedAt = -Infinity;
+  const moved = () => { movedAt = G.performance ? G.performance.now() : Date.now(); };
+  M.recent = (ms) => (G.performance ? G.performance.now() : Date.now()) - movedAt < ms;
   // The translation an element has from a glide that's still running (its layout box is that much
   // off from where it's drawn).
   function offsetNow(el) {
@@ -398,6 +405,7 @@
   let leavingScreen = null; // { screen, anims }
   M.leave = (screen, kind) => {
     if (reduced() || !TABS[kind] || leavingScreen || !screen.firstElementChild || !can(screen)) return;
+    moved();
     hurry();
     const from = stopEntrance(screen);
     leavingScreen = { screen, anims: slide(screen, routeSpec(kind).out, 'forwards', from) };
@@ -412,6 +420,7 @@
   };
 
   M.routeSwap = (screen, frag, kind) => {
+    moved();
     const pre = below;
     below = null;
     const lv = leavingScreen && leavingScreen.screen === screen ? leavingScreen : null;
@@ -669,6 +678,7 @@
           }
         }
         const outs = pins.map((n) => [n, glides.has(n) ? offsetNow(n).t : null]);
+        if (moves.length || outs.length || added.length) moved();
         const done = [];
         // Short moves on the snappy spring; a long one (the page's end coming up after a card folds
         // at the bottom) on the smooth one, which takes a little longer.

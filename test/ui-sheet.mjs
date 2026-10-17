@@ -4,13 +4,15 @@
 // touch drags on a CPU slowed 4x (a flick up, a slow drag, a flick down, and a scroll that hands over
 // to the sheet), what a drag costs (no layout, no style work past the one transform a frame, frame
 // times with the settle), how long opening, settling and closing take, sideways gestures, Back, Esc
-// and the scrim, the keyboard, reduced motion, Refract staying out of it, the material (Refract's
+// and the scrim, focus going in and coming back to what opened it (the page staying where it was),
+// the keyboard, reduced motion, Refract staying out of it, the material (Refract's
 // thick glass at medium; solid at large, while it moves, and with reduced transparency or increased
 // contrast; its silver rim and sheen always, from the first frame of the slide up to the last of the
 // slide out), the food Edit sheet's width, the fade under the header once the content is scrolled (on
 // solid and frosted glass, over another sheet, with reduced transparency and increased contrast: no
-// line where the content meets the header, read from the pixels), and scrolling a long sheet (frames
-// dropped and the GPU's draw time, traced at 4x CPU).
+// line where the content meets the header, read from the pixels), the glass holding back the page's
+// words (dense enough, a dialog's and a menu's too, and solid at the bottom of the screen, read from
+// the pixels), and scrolling a long sheet (frames dropped and the GPU's draw time, traced at 4x CPU).
 // Usage: node test/ui-sheet.mjs [--dark] [--width=390] [--cpu=4]
 import { createRequire } from 'node:module';
 import { check, section, done, serveDist } from './lib.mjs';
@@ -381,6 +383,31 @@ check('with two open, Back closes the top one only', stack.open === 1 && stack.t
 check('and a full sheet under it keeps the page set back', stack.receded, stack);
 await closeAll();
 check('closing it brings the page forward', await page.evaluate(() => !document.getElementById('app').hasAttribute('data-receded') && !document.getElementById('app').hasAttribute('data-sheeted')));
+// Focus goes into the sheet and back to what opened it, however it's closed, and the page under it
+// stays where it was.
+{
+  await page.evaluate(() => { window.GH.ui.go('today'); });
+  await wait(800);
+  await page.evaluate(() => { document.getElementById('screen').scrollTop = 260; });
+  await wait(400);
+  const opener = '#screen .ex-name[data-act="moveInfo"]';
+  const ways = [];
+  for (const how of ['close', 'back', 'escape']) {
+    await page.focus(opener);
+    const top0 = await page.evaluate(() => document.getElementById('screen').scrollTop);
+    await page.keyboard.press('Enter');
+    await wait(1100);
+    const inside = await page.evaluate(() => { const a = document.activeElement; return !!(a && a.closest('dialog.gh-sheet[open]')); });
+    if (how === 'close') await page.click('dialog.gh-sheet[open] [data-sheet-close]');
+    else if (how === 'back') await page.evaluate(() => window.__gh.back());
+    else await page.keyboard.press('Escape');
+    await wait(900);
+    ways.push(await page.evaluate(([sel, t0, how2, inside2]) => ({ how: how2, inside: inside2, back: document.activeElement === document.querySelector(sel), still: document.getElementById('screen').scrollTop === t0 }), [opener, top0, how, inside]));
+  }
+  check('focus goes into the sheet, and back to what opened it after the close button, Back and Esc', ways.every((w) => w.inside && w.back), ways);
+  check('and the page under it stays where it was', ways.every((w) => w.still), ways);
+  await page.evaluate(() => { document.getElementById('screen').scrollTop = 0; });
+}
 
 section('The keyboard');
 await page.evaluate(() => window.GH.ui.go('food'));
@@ -542,6 +569,71 @@ await wait(400);
 f = await fade();
 check('a box that scrolls inside the content leaves it alone', f && !f.scrolled && f.opacity === 0, f);
 await closeAll();
+section('The glass holds back the page\'s words');
+// Words on glass: a sheet at medium, a dialog, a menu and a toast are at 0.9 on Refract's density
+// scale (about 93% of the material's fill). And read from the pixels: a sheet over Today (scrolled so
+// its words run under the screen's bottom edge), its content an empty block. There, at the bottom
+// of the screen, a blur has nothing below it to draw on and fades out, and the page showed through
+// sharp. Each pixel's fine detail (against its neighbours' average) is read through the glass and
+// with the glass clear; where the page has words (the strongest 3% with the glass clear), what comes
+// through is under 1% of it (it was about 7%; the density alone made it about 3%).
+{
+  const alpha = (c) => { const m = /\/\s*([\d.]+)\)$|rgba\([^)]*,\s*([\d.]+)\)$/.exec(c); return m ? parseFloat(m[1] || m[2]) : 1; };
+  await page.evaluate(() => window.GH.ui.go('today'));
+  await wait(900);
+  await page.evaluate(() => { document.getElementById('screen').scrollTop = 400; });
+  await wait(500);
+  const detail = async (box) => {
+    const png = await page.screenshot({ clip: box });
+    return reader.evaluate(async (b64) => {
+      const img = new Image(); img.src = `data:image/png;base64,${b64}`; await img.decode();
+      const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+      const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+      const d = g.getImageData(0, 0, c.width, c.height).data, W = c.width, Hh = c.height, L = new Float32Array(W * Hh);
+      for (let i = 0; i < W * Hh; i++) L[i] = 0.2126 * d[i * 4] + 0.7152 * d[i * 4 + 1] + 0.0722 * d[i * 4 + 2];
+      const R = 3, out = [];
+      for (let y = R; y < Hh - R; y++) for (let x = R; x < W - R; x++) {
+        let s = 0;
+        for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) s += L[(y + dy) * W + x + dx];
+        out.push(L[y * W + x] - s / 49);
+      }
+      return out;
+    }, png.toString('base64'));
+  };
+  // How much of the words' detail comes through: the slope of through on clear, where the words are.
+  const bleed = (through, clear) => {
+    const top = clear.map((v, i) => [Math.abs(v), i]).sort((a, b) => b[0] - a[0]).slice(0, Math.max(50, Math.floor(clear.length * 0.03))).map(([, i]) => i);
+    let sxy = 0, sxx = 0;
+    for (const i of top) { sxy += through[i] * clear[i]; sxx += clear[i] * clear[i]; }
+    return { pct: Math.round((sxy / sxx) * 1000) / 10, words: Math.round(Math.abs(clear[top[top.length - 1]])) };
+  };
+  const edge = { x: 16, y: 844 - 44, width: width - 32, height: 42 };
+  await open('window.GH.ui.sheet({ title: "Glass", size: "fit", body: "<div style=\\"height: 560px\\"></div>" })');
+  const glass = await page.evaluate(() => { const g = document.querySelector('dialog.gh-sheet[open] .gh-sheet-glass'); return { bg: getComputedStyle(g).backgroundColor, blur: getComputedStyle(g).backdropFilter, detent: document.querySelector('dialog.gh-sheet[open]').dataset.detent }; });
+  const through = await detail(edge);
+  // The same band with the glass clear: what's under it (the page, dimmed by the scrim).
+  await page.evaluate(() => { const g = document.querySelector('dialog.gh-sheet[open] .gh-sheet-glass'); g.style.setProperty('background', 'transparent', 'important'); g.style.setProperty('backdrop-filter', 'none', 'important'); });
+  await wait(300);
+  const b = bleed(through, await detail(edge));
+  await page.evaluate(() => { const g = document.querySelector('dialog.gh-sheet[open] .gh-sheet-glass'); g.style.removeProperty('background'); g.style.removeProperty('backdrop-filter'); });
+  check(`a sheet at medium: frosted glass at about 93% of its fill (${alpha(glass.bg)})`, glass.detent === 'medium' && /blur/.test(glass.blur) && alpha(glass.bg) >= 0.9, glass);
+  check(`the page's words don't read through it at the bottom of the screen: ${b.pct}% of their detail comes through`, b.words >= 20 && b.pct < 1, b);
+  await closeAll();
+  await page.evaluate(() => { document.getElementById('screen').scrollTop = 0; });
+  await page.evaluate(() => { window.GH.ui.confirm('Train today instead?', 'The next workout moves to today.', 'Train today'); });
+  await wait(900);
+  const dlg = await page.evaluate(() => getComputedStyle(document.querySelector('dialog.rf-dialog[open]')).backgroundColor);
+  await page.keyboard.press('Escape');
+  await wait(700);
+  await page.evaluate(() => {
+    const b = document.createElement('button'); b.id = 'tMenuBtn'; b.textContent = 'Options'; b.style.cssText = 'position:fixed;top:120px;right:20px'; document.body.appendChild(b);
+    window.GH.ui.menu(b, [{ act: 'noop', label: 'One' }, { act: 'noop', label: 'Two' }]);
+  });
+  await wait(900); // (its glass forms)
+  const menu = await page.evaluate(() => { const m = document.querySelector('.gh-menu'); const bg = m ? getComputedStyle(m).backgroundColor : ''; window.GH.ui.closeMenu(); setTimeout(() => document.getElementById('tMenuBtn').remove(), 900); return bg; });
+  check(`a dialog and a menu: the same density (${alpha(dlg)}, ${alpha(menu)})`, alpha(dlg) >= 0.9 && alpha(menu) >= 0.9, { dlg, menu });
+  await wait(900);
+}
 await reader.close();
 
 section('Scrolling a long sheet (4x slower CPU)');

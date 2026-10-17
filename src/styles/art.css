@@ -1,0 +1,29 @@
+/* Illustrated glyphs (U.art, src/ui/core.js): pictures in colour on a 48 px grid, 24 px unless told
+   otherwise ('sm' 20, 'lg' 32, 'xl' 40, or --gh-art-size). Their glow is softer on a light page and
+   fuller on a dark one, and goes with increased contrast. The sun's rays and disc turn about its
+   middle, the one time they move. */
+.gh-art { inline-size: var(--gh-art-size, 24px); block-size: var(--gh-art-size, 24px); flex: none; display: inline-block; vertical-align: middle; overflow: visible; }
+.gh-art[data-size="sm"] { --gh-art-size: 20px; }
+.gh-art[data-size="lg"] { --gh-art-size: 32px; }
+.gh-art[data-size="xl"] { --gh-art-size: 40px; }
+.gh-art :is(.gh-art-rays, .gh-art-disc) { transform-box: view-box; transform-origin: 50% 50%; }
+.gh-art-glow { opacity: .75; }
+:root[data-theme="dark"] .gh-art-glow { opacity: 1; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) .gh-art-glow { opacity: 1; } }
+:root[data-theme$="contrast"] .gh-art-glow { display: none; }
+
+/* Where they show: Today's warm-up and cool-down rows (in the column of the moves' letters), Plan's
+   warm-up tile (a warm one, the sun at 40 px), and a list row's icon tile (Moves' warm-ups, mobility
+   and the walk, Today's light day): a soft wash of the picture's own colour rather than a solid tone,
+   so it shows on a white list and on a card's grey one alike. */
+.ex-tag.is-art { margin-inline-start: -2px; }
+.pw-thumb.is-art { --pw-thumb-bg: color-mix(in oklab, #ffb340 13%, var(--bg-raised)); }
+/* A muted row (Plan's warm-up) keeps its picture in full colour: its words are muted by their own
+   colour, as Today's are, rather than the whole row at 72%. */
+.pw-ex.is-muted.has-art { opacity: 1; }
+.pw-thumb.is-art > svg.gh-art { --gh-art-size: 40px; inline-size: var(--gh-art-size); block-size: var(--gh-art-size); }
+.rf-list-icon.is-art { --gh-art-wash: #ffb340; background-color: color-mix(in oklab, var(--gh-art-wash) 24%, var(--bg-raised)); --gh-art-size: 28px; }
+.rf-list-icon.is-art:has(> [data-art="moon"]) { --gh-art-wash: #93a1ff; }
+.rf-list-icon.is-art:has(> [data-art="leaf"]) { --gh-art-wash: #43c47c; }
+.rf-list-icon.is-art:has(> [data-art="walk"]) { --gh-art-wash: #3fbcc0; }
+:root[data-theme$="contrast"] :is(.pw-thumb.is-art, .rf-list-icon.is-art) { background-color: var(--fill-3); }

@@ -907,7 +907,7 @@
   // first beat as its feel: a haptic played over it would drop it.
   const counting = () => !!P && P.phase === 'countdown';
   U.act.plStartTimer = () => { plat().unlockAudio(); startTimer(); };
-  U.act.plCancelTimer = () => { U.haptic('back'); P.phase = 'step'; draw(); };
+  U.act.plCancelTimer = () => { if (!P) return; U.haptic('back'); P.phase = 'step'; draw(); };
   // Stop early logs a timed set (setDone); on a warm-up, cool-down or finisher round it's Skip.
   U.act.plStopEarly = () => {
     const st = cur();
@@ -916,8 +916,9 @@
     finishTimed(0, true);
     if (!counting()) U.haptic('skip');
   };
-  U.act.plMore = () => { if (P.restEnd) { P.restEnd += 15000; P.restTotal += 15; loop(); U.haptic('extend'); } };
+  U.act.plMore = () => { if (P && P.restEnd) { P.restEnd += 15000; P.restTotal += 15; loop(); U.haptic('extend'); } };
   U.act.plSkipRest = () => {
+    if (!P) return;
     P.restEnd = null;
     if (P.askRir && P.rirAnswered == null) draw(); else endRest();
     if (!counting()) U.haptic('skip');
@@ -971,7 +972,8 @@
       complete({ reps: isFinite(v) ? Math.max(0, v) : P.reps });
     } else complete({});
   };
-  U.on.plReps = (el, ev, v) => { P.reps = v; };
+  // (A control in the player can still change as it's put away, once the workout is gone.)
+  U.on.plReps = (el, ev, v) => { if (P) P.reps = v; };
   U.act.plSaveTest = () => {
     const input = root().querySelector('#plTest');
     const v = parseInt(input && input.value, 10);
@@ -1008,7 +1010,7 @@
       action: { label: 'Save', act: 'plAmendSave' },
     });
   };
-  U.on.plAmendLoad = (el, ev, v) => { if (isFinite(parseFloat(v))) P.amendLoad = parseFloat(v); };
+  U.on.plAmendLoad = (el, ev, v) => { if (P && isFinite(parseFloat(v))) P.amendLoad = parseFloat(v); };
   U.act.plAmendSave = () => {
     const input = document.getElementById('amendVal');
     const v = parseInt(input && input.value, 10);
@@ -1119,7 +1121,7 @@
     draw();
     U.haptic('skip');
   };
-  U.act.plFinishNow = () => { const top = U.topSheet(); if (top) top.close('ok'); U.haptic('nav'); P.phase = 'checkin'; draw(); };
+  U.act.plFinishNow = () => { const top = U.topSheet(); if (top) top.close('ok'); if (!P) return; U.haptic('nav'); P.phase = 'checkin'; draw(); };
   U.act.plDiscard = U.act.plCancel; // 1.2's name for it
 
   /* ---------------------------------------------------------------- check-in */

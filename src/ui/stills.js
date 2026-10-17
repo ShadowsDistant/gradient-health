@@ -18,6 +18,11 @@
  * GPU's work and the encoding run in the background (figure3d.stillNow), and it shows at once. The
  * phone keeps up to KEEP; past that, the ones no week of the plan shows go, oldest first. A screen's
  * tile waits on the tile's own background, and its still fades in.
+ *
+ * The plan builder's large tiles (its picker's, a plan's exercise) are kept too, apart from the rest:
+ * a database of their own, read in only when a large tile first asks (so a launch never reads them),
+ * holding the pictures as they were drawn (WebP) rather than as data URLs. Up to KEEP_BIG, oldest out
+ * first. Held for the launch only until 1.14, the picker drew every one of them again each launch.
  */
 (function (G) {
   'use strict';
@@ -25,17 +30,21 @@
   const U = GH.ui = GH.ui || {};
   const doc = G.document;
   const DB = 'gh-stills', OS = 'stills';
+  const DB_BIG = 'gh-stills-big'; // the large tiles' (the plan builder's), apart
   const KEEP = 300; // stills kept on the phone, at most, once the ones no week shows can go
-  const TEMP = 150; // stills held for this launch only (the plan builder's large tiles), at most
+  const KEEP_BIG = 400; // large tiles' stills kept, at most (the moves in one look, and some)
   const engine = () => GH.FIGURE || GH.BUILD || 'dev';
   const mem = new Map(); // key → URL: what's kept, read in, and what's been drawn since
-  const temp = new Map(); // key → URL, drawn for this launch only
+  const big = new Map(); // key → URL: the large tiles' stills, read in and drawn since
   const stale = new Map(); // key without the figure's id → { k, url, at }: kept by an older figure
-  const asked = new Map(), ahead = new Map(); // key → job { k, m, o, keep, fns }: for a screen, ahead
+  const staleBig = new Map(); // the same for the large tiles
+  const asked = new Map(), ahead = new Map(); // key → job { k, m, o, big, fns }: for a screen, ahead
   const failed = new Set(); // keys that couldn't be drawn this launch: their tiles show the flat figure
   const dirty = new Map(); // key → record, drawn and not written yet
+  const dirtyBig = new Map(); // key → { k, blob | url, at }, the large tiles' not written yet
   let need = null; // the keys of this week's and next week's stills, which stay past KEEP
   let reads = null; // what's kept, being read in (a promise)
+  let readsBig = null; // the large tiles' kept stills, being read in (a promise)
   let tries = 0; // warm-ups that failed: at 3, the flat figure for this launch
   let noChunk = false; // the 3D chunk didn't load (until a figure loads it)
   let waiting = false, warming = false, writing = 0, cost = 0, drawn = 0;
@@ -85,29 +94,29 @@
   }
   // Whether screens show 3D stills: the 3D figure picked and possible here; else the flat figure.
   const ok = () => tries < 3 && (!noChunk || !!GH.figure3d) && !!(U.figure3dOk && U.figure3dOk());
-  const url = (k) => mem.get(k) || temp.get(k) || null;
+  const url = (k) => mem.get(k) || big.get(k) || null;
   // An older figure's still standing in for k, if one is kept: { k, url }.
-  const standIn = (k) => stale.get(rest(k)) || null;
+  const standIn = (k) => stale.get(rest(k)) || staleBig.get(rest(k)) || null;
 
   /* ---------------------------------------------------------------- kept on the phone */
-  let dbp = null;
-  function db() {
-    if (!dbp) {
-      dbp = new Promise((resolve) => {
+  const dbps = new Map(); // database name → a promise of it
+  function db(name = DB) {
+    if (!dbps.has(name)) {
+      dbps.set(name, new Promise((resolve) => {
         try {
-          const req = G.indexedDB.open(DB, 1);
+          const req = G.indexedDB.open(name, 1);
           req.onupgradeneeded = () => { req.result.createObjectStore(OS, { keyPath: 'k' }).createIndex('at', 'at'); };
-          req.onsuccess = () => { const d = req.result; d.onversionchange = () => { d.close(); dbp = null; }; resolve(d); };
+          req.onsuccess = () => { const d = req.result; d.onversionchange = () => { d.close(); dbps.delete(name); }; resolve(d); };
           req.onerror = () => resolve(null);
         } catch (e) { resolve(null); } // no IndexedDB here: kept for this launch only
-      });
+      }));
     }
-    return dbp;
+    return dbps.get(name);
   }
   // One transaction: fn(store) makes its requests; resolves with the result of the one it returns
-  // once it's done (null if it failed).
-  function tx(mode, fn) {
-    return db().then((d) => new Promise((resolve) => {
+  // once it's done (null if it failed). name: the database (the large tiles' has its own).
+  function tx(mode, fn, name) {
+    return db(name).then((d) => new Promise((resolve) => {
       if (!d) { resolve(null); return; }
       try {
         const t = d.transaction(OS, mode);
@@ -138,9 +147,38 @@
     }
     return reads;
   }
+  // The large tiles' kept stills, read in the first time a large tile asks for one (once): this
+  // figure's as URLs of their pictures; an older figure's stand in, one per move, size, look and kit,
+  // until this one's is drawn, and go then.
+  let oldBig = []; // keys an older figure drew that nothing stands in for
+  const picture = (r) => (r.blob && r.blob.size ? URL.createObjectURL(r.blob) : typeof r.url === 'string' && r.url.startsWith('data:image/') ? r.url : null);
+  function loadBig() {
+    if (!readsBig) {
+      const lo = `${engine()}|`;
+      readsBig = tx('readonly', (os) => os.getAll(), DB_BIG).then((list) => {
+        for (const r of list || []) {
+          if (!r || typeof r.k !== 'string' || (r.k.startsWith(lo) && big.has(r.k))) continue;
+          const u = picture(r);
+          if (!u) continue;
+          if (r.k.startsWith(lo)) { big.set(r.k, u); continue; }
+          const s = rest(r.k), was = staleBig.get(s);
+          if (was && (was.at || 0) >= (r.at || 0)) { oldBig.push(r.k); continue; }
+          if (was) oldBig.push(was.k);
+          staleBig.set(s, { k: r.k, url: u, at: r.at || 0 });
+        }
+        return big.size;
+      });
+    }
+    return readsBig;
+  }
   function keep(k, u) {
     mem.set(k, u);
     dirty.set(k, { k, url: u, at: Date.now() });
+    if (!writing) writing = setTimeout(write, 2000);
+  }
+  // A large tile's still: its picture as it was drawn (or the URL it came as).
+  function keepBig(k, pic) {
+    dirtyBig.set(k, Object.assign({ k, at: Date.now() }, typeof pic === 'string' ? { url: pic } : { blob: pic }));
     if (!writing) writing = setTimeout(write, 2000);
   }
   // What's been drawn since the last write, written together (a transaction each would add up), then
@@ -148,12 +186,44 @@
   function write() {
     clearTimeout(writing);
     writing = 0;
-    if (!dirty.size) return Promise.resolve();
-    const recs = Array.from(dirty.values());
-    dirty.clear();
-    return tx('readwrite', (os) => { for (const r of recs) os.put(r); }).then(trim);
+    const out = [];
+    if (dirty.size) {
+      const recs = Array.from(dirty.values());
+      dirty.clear();
+      out.push(tx('readwrite', (os) => { for (const r of recs) os.put(r); }).then(trim));
+    }
+    if (dirtyBig.size) {
+      const recs = Array.from(dirtyBig.values());
+      dirtyBig.clear();
+      out.push(tx('readwrite', (os) => { for (const r of recs) os.put(r); }, DB_BIG).then(trimBig));
+    }
+    return Promise.all(out);
   }
-  if (doc) doc.addEventListener('visibilitychange', () => { if (doc.hidden && dirty.size) write(); });
+  if (doc) doc.addEventListener('visibilitychange', () => { if (doc.hidden && (dirty.size || dirtyBig.size)) write(); });
+  // The large tiles' past KEEP_BIG, oldest first; an older figure's once this one's of the same is in.
+  function trimBig() {
+    const cur = new Set(Array.from(big.keys(), rest));
+    const gone = oldBig.splice(0);
+    for (const [s, v] of staleBig) if (cur.has(s)) { gone.push(v.k); staleBig.delete(s); }
+    return tx('readwrite', (os) => {
+      for (const k of gone) os.delete(k);
+      const n = os.count();
+      n.onsuccess = () => {
+        let over = n.result - KEEP_BIG;
+        if (over <= 0) return;
+        const c0 = os.index('at').openKeyCursor();
+        c0.onsuccess = () => {
+          const c = c0.result;
+          if (!c || over <= 0) return;
+          const k = c.primaryKey;
+          os.delete(k); big.delete(k); over--;
+          const s = staleBig.get(rest(k));
+          if (s && s.k === k) staleBig.delete(rest(k));
+          c.continue();
+        };
+      };
+    }, DB_BIG);
+  }
   // Past KEEP stills, the oldest that this week and next don't show go. An older figure's go once
   // this figure's still of the same is in, or if this week and next don't show it.
   function trim() {
@@ -180,23 +250,27 @@
   }
   // Reset everything: what's kept goes with the rest (it's drawn in the person's look).
   function clear() {
-    for (const u of [...mem.values(), ...temp.values()]) if (u.startsWith('blob:')) URL.revokeObjectURL(u);
-    for (const x of [mem, temp, stale, dirty, failed, asked, ahead]) x.clear();
+    for (const u of [...mem.values(), ...big.values(), ...Array.from(staleBig.values(), (v) => v.url)]) if (u.startsWith('blob:')) URL.revokeObjectURL(u);
+    for (const x of [mem, big, stale, staleBig, dirty, dirtyBig, failed, asked, ahead]) x.clear();
     old = [];
+    oldBig = [];
     clearTimeout(writing);
     writing = 0;
-    reads = need = null;
-    return db().then((d) => new Promise((resolve) => {
+    reads = readsBig = need = null;
+    const drop = (name) => db(name).then((d) => new Promise((resolve) => {
       if (d) d.close();
-      dbp = null;
-      try { const req = G.indexedDB.deleteDatabase(DB); req.onsuccess = req.onerror = req.onblocked = () => resolve(); } catch (e) { resolve(); }
+      dbps.delete(name);
+      try { const req = G.indexedDB.deleteDatabase(name); req.onsuccess = req.onerror = req.onblocked = () => resolve(); } catch (e) { resolve(); }
     }));
+    return Promise.all([drop(DB), drop(DB_BIG)]).then(() => {});
   }
 
   /* ---------------------------------------------------------------- when */
   // Something in the person's hands: a finger on the screen (or a mouse button held), the page
   // scrolling or settling (#app[data-scrolling], set by core.js until 150 ms after the last scroll;
-  // set-up's scroller too), a sheet moving or a control held or gliding. A still is never drawn then.
+  // set-up's scroller too; a sheet's content, sheet.js, 160 ms: the picker's tiles ask for theirs as
+  // a fling brings them in, and drawn then they took its frames), a sheet moving or a control held or
+  // gliding. A still is never drawn then.
   let fingers = 0, pressed = false;
   if (doc) {
     const opt = { passive: true, capture: true };
@@ -208,20 +282,26 @@
     for (const ev of ['pointerup', 'pointercancel']) doc.addEventListener(ev, (e) => { if (e.pointerType === 'mouse') pressed = false; }, opt);
     if (G.addEventListener) G.addEventListener('blur', () => { fingers = 0; pressed = false; });
   }
-  const scrolling = () => !!doc.querySelector('#app[data-scrolling], .onboard[data-scrolling]');
+  const scrolling = () => !!doc.querySelector('#app[data-scrolling], .onboard[data-scrolling], .gh-sheet[data-scrolling]');
   const busy = () => fingers > 0 || pressed || scrolling() || doc.documentElement.hasAttribute('data-sheet-moving') || !!(U.controlsMoving && U.controlsMoving());
   const calm = () => !busy() && (!U.calm || U.calm());
+  // A page moving in or out, or gliding (src/ui/motion.js): a still drawn in an idle moment between
+  // its frames made one of them late, so a still (and its fade in) waits the slide out, 400 ms. The
+  // warm-up's steps don't: they come once a launch, and keep 1.13.0's timing (in software GL a step
+  // can keep the GPU from drawing the page for seconds, so when they run decides which tap waits).
+  const sliding = () => !!(U.motion && U.motion.recent && U.motion.recent(400));
   // A figure's box showing (the player, a move's sheet), whose live figure stills would take frames
   // from: they wait. (A workout put aside keeps its figure, hidden: that one doesn't count.)
   const figureShown = () => Array.prototype.some.call(doc.querySelectorAll('.pl-fig, .sheet-fig'), (h) => !!h.offsetParent);
   // fn(deadline) in the next idle moment that's free (nothing in the person's hands; calm too if
-  // lax, for the work that can wait longer: true, or a function asked each time), the app in front;
-  // or after ms if no idle moment comes (still only when it's free).
-  function whenFree(fn, lax, ms) {
-    const again = () => setTimeout(() => whenFree(fn, lax, ms), 100);
+  // lax, for the work that can wait longer: true, or a function asked each time; not while a page
+  // moves if still, for a still's drawing), the app in front; or after ms if no idle moment comes
+  // (still only when it's free).
+  function whenFree(fn, lax, ms, still) {
+    const again = () => setTimeout(() => whenFree(fn, lax, ms, still), 100);
     if (doc.hidden) { doc.addEventListener('visibilitychange', again, { once: true }); return; }
     idle((deadline) => {
-      if (doc.hidden || ((typeof lax === 'function' ? lax() : lax) ? !calm() : busy())) { again(); return; }
+      if (doc.hidden || ((typeof lax === 'function' ? lax() : lax) ? !calm() : busy()) || (still && sliding())) { again(); return; }
       fn(deadline);
     }, ms);
   }
@@ -234,7 +314,7 @@
   /* ---------------------------------------------------------------- drawing */
   // A still for a screen: its URL if it's kept; false if it can't be drawn (the flat figure, then);
   // otherwise null, and it's drawn: fn(url) once it's in (fn(null) if it can't be). opt.ahead: after
-  // what screens wait for; opt.keep false: for this launch only, not kept on the phone.
+  // what screens wait for; opt.keep false: a large tile's (the plan builder's), kept apart.
   function want(m, o, fn, opt) {
     const k = key(m, o);
     const u = url(k);
@@ -243,10 +323,11 @@
     const later = !!(opt && opt.ahead);
     let job = asked.get(k) || ahead.get(k);
     if (!job) {
-      job = { k, m, o, keep: !(opt && opt.keep === false), fns: [] };
+      job = { k, m, o, big: !!(opt && opt.keep === false), fns: [] };
       (later ? ahead : asked).set(k, job);
-      // Maybe kept, but not read in yet (just after launch): read in first, drawn only if it isn't.
-      load().then(() => { const kept = mem.get(k); if (kept) done(job, kept); else pump(); });
+      // Maybe kept, but not read in yet (just after launch, or the large tiles' the first time one
+      // asks): read in first, drawn only if it isn't.
+      (job.big ? loadBig() : load()).then(() => { const kept = url(k); if (kept) done(job, kept); else pump(); });
     } else if (!later && ahead.delete(k)) asked.set(k, job);
     // (A tile asking again while it waits replaces its own callback.)
     if (fn) { if (fn.host) job.fns = job.fns.filter((x) => x.host !== fn.host); job.fns.push(fn); }
@@ -277,7 +358,7 @@
       // The GPU still on the last stills: the next once they're back.
       if (busy) { waiting = true; busy.then(() => { waiting = false; pump(); }); return; }
       pump();
-    }, () => !urgent());
+    }, () => !urgent(), undefined, true);
   }
   // The 3D chunk, asked for at once (it's fetched and parsed off the page's thread), and its warm-up,
   // each step in a calm moment. One that didn't get there is tried again, twice. The stills go as
@@ -323,11 +404,12 @@
     return null;
   }
   // A drawn still into its tiles: at once, from its picture (an object URL); kept on the phone as a
-  // data URL, made in the background (the next launch shows it from its first frame).
+  // data URL, made in the background (the next launch shows it from its first frame). A large tile's
+  // is kept as its picture.
   function take(job, r) {
     const out = (u) => {
       if (!u) failed.add(job.k);
-      else if (!job.keep) { temp.set(job.k, u); if (temp.size > TEMP) temp.delete(temp.keys().next().value); }
+      else if (job.big) { big.set(job.k, u); if (u.startsWith('data:')) keepBig(job.k, u); }
       else if (u.startsWith('data:')) keep(job.k, u);
       else mem.set(job.k, u);
       done(job, u);
@@ -339,7 +421,7 @@
       if (!b && !ready(GH.figure3d)) { job.busy = false; pump(); return; }
       if (!b) { out(null); return; }
       out(URL.createObjectURL(b));
-      if (!job.keep) return;
+      if (job.big) { keepBig(job.k, b); return; }
       const fr = new FileReader();
       fr.onload = () => { if (typeof fr.result === 'string' && mem.get(job.k)) keep(job.k, fr.result); };
       fr.readAsDataURL(b);
@@ -411,6 +493,8 @@
   // A move's still in a screen's tile: straight in if it's kept; otherwise the tile shows the still
   // it had in another look, or an older figure's of the same, or its own background, until it's
   // drawn, and then it fades in. flat(host): what the tile shows instead if it can't be drawn.
+  // opt.standIn: the tile came with a stand-in of its own (the flat figure, say), which stays until
+  // the still fades in over it.
   function tile(host, m, o, flat, opt) {
     const k = key(m, o);
     const shown = host.lastElementChild;
@@ -420,16 +504,23 @@
       const now0 = host.lastElementChild;
       if (host.getAttribute('data-want') !== k || (now0 && now0.getAttribute('data-k') === k)) return;
       // (Not in the middle of a touch or a fling: it fades in once the page is let go.)
-      if (v && busy()) { whenFree(() => fn(v)); return; }
+      if (v && (busy() || sliding())) { whenFree(() => fn(v), false, undefined, true); return; }
       if (v) put(host, k, v, true); else { host.removeAttribute('data-want'); flat(host); }
     };
     fn.host = host;
     const u = want(m, o, fn, opt);
     if (u) { put(host, k, u, false); return; }
     if (u === false) { host.removeAttribute('data-want'); flat(host); return; }
-    for (const n of Array.from(host.children)) if (n.tagName !== 'IMG') n.remove();
+    if (!(opt && opt.standIn)) for (const n of Array.from(host.children)) if (n.tagName !== 'IMG') n.remove();
     const s = standIn(k);
     if (s && !host.querySelector(':scope > img')) put(host, s.k, s.url, false);
+    // (A large tile's stand-in, an older figure's, is known once their kept stills are read in.)
+    else if (!s && opt && opt.keep === false && readsBig) {
+      readsBig.then(() => {
+        const s2 = standIn(k);
+        if (s2 && !url(k) && host.getAttribute('data-want') === k && !host.querySelector(':scope > img')) put(host, s2.k, s2.url, false);
+      });
+    }
   }
   // The <img> of a kept still for a screen's HTML ('' if it isn't kept, nor an older figure's of the
   // same), so it's there from the screen's first frame; data-k says which still it is.
@@ -449,6 +540,8 @@
     ahead: aheadOf,
     // Tests: write what's waiting now, and what's going on.
     flush: write,
-    _stats: () => ({ kept: mem.size, temp: temp.size, stale: stale.size, asked: asked.size, ahead: ahead.size, failed: failed.size, drawn, need: need ? need.size : 0 }),
+    _stats: () => ({ kept: mem.size, big: big.size, stale: stale.size, staleBig: staleBig.size, asked: asked.size, ahead: ahead.size, failed: failed.size, drawn, need: need ? need.size : 0 }),
+    // Tests: read the large tiles' kept stills in now.
+    loadBig,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

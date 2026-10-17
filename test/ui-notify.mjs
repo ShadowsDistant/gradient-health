@@ -159,7 +159,7 @@ section('Today: the card that asks, once');
   await page.click('#screen [data-act="notifyAskYes"]');
   await settle(2000);
   check('Turn on, and Android says no: it says how to allow them', /Notifications are off for Gradient Health/.test(await toasts(ev)) && /Allow them in Android's settings/.test(await toasts(ev)), await toasts(ev));
-  await ev(() => window.GH.ui.open('settings'));
+  await ev(() => window.GH.ui.open('settings', 'notify'));
   await settle(900);
   const row = await ev(() => { const r = document.querySelector('#screen [data-key="nf-perm"]'); return r && { text: r.textContent, act: (r.querySelector('[data-act]') || {}).dataset.act }; });
   check('and Settings shows Android\'s permission is off, with a way there', row && /Off in Android's settings/.test(row.text) && row.act === 'notifyOpenSettings', row);
@@ -175,14 +175,21 @@ section('Settings: Notifications');
   const { ctx, page, settle, ev } = await open({ notify: { permission: 'granted' } });
   await ev(() => window.GH.ui.open('settings'));
   await settle(900);
+  // Settings' top page: Notifications is a part of its own, with what's set.
+  const part = () => ev(() => { const b = document.querySelector('#screen .set-home [data-act="setPage"][data-arg="notify"]'); return b && { line: b.querySelector('.rf-list-sub').textContent, first: !b.closest('li').previousElementSibling, group: [...document.querySelectorAll('#screen .set-home > ul')].indexOf(b.closest('ul')) }; });
+  let p0 = await part();
+  check('Settings\' top page: Notifications leads the app\'s own settings, "Off" to begin with', p0 && p0.group === 1 && p0.first && p0.line === 'Off', p0);
+  await page.click('#screen [data-act="setPage"][data-arg="notify"]');
+  await settle(900);
   const rows = () => ev(() => [...document.querySelectorAll('#screen ul[data-group="notify"] > li, #screen ul[data-group="notify"] > label')].map((li) => (li.querySelector('.rf-list-title') || li).textContent.trim()));
   const sub = (k) => ev((x) => { const i = document.querySelector(`#screen [data-on="notifyKind"][data-k="${x}"]`); return i ? i.closest('.rf-list-row').querySelector('.rf-list-sub').textContent : null; }, k);
-  const head = await ev(() => { const h = document.querySelector('#screen .set-list > .rf-list-header[data-group="notify"]'); return h && { text: h.textContent, after: h.previousElementSibling && h.previousElementSibling.dataset.group }; });
-  check('a Notifications group after What you track', head && head.text === 'Notifications' && head.after === 'track', head);
+  check('its page opens', (await ev(() => window.GH.ui.route.arg)) === 'notify' && (await ev(() => document.querySelector('#screen .rf-large-title').textContent)) === 'Notifications');
   check('off to begin with: only the switch', (await rows()).join() === 'Notifications', await rows());
   await ev(() => document.querySelector('#screen [data-on="notifyOn"]').click());
   await settle(1500);
   check('on (Android allowed it already, so nothing is asked): a switch per kind and the reminder time', (await rows()).join() === 'Notifications,Workout days,Walks and runs,New badges,Good nights,After a few days away,Reminder time' && (await ev(() => window.__notify.asked)) === 0, await rows());
+  const lists = await ev(() => [...document.querySelectorAll('#screen ul[data-group="notify"]')].map((ul) => ul.children.length));
+  check('in three lists: the switch, what they\'re for, and when', lists.join() === '1,5,1' && (await ev(() => (document.getElementById('set-notify-kinds') || {}).textContent)) === 'What they\'re for', lists);
   check('the time is worked out: 5:30 pm, 30 minutes before they usually start', /Auto: 5:30 pm, 30 minutes before you usually start/.test(await ev(() => document.querySelector('#screen [data-key="nf-time"]').textContent)));
   check('the footer says it all stays on the phone', /nothing is sent anywhere/.test(await ev(() => document.querySelector('#screen .rf-list-footer[data-group="notify"]').textContent)));
   check('Good nights says what it needs, if it does (background sync is on here)', (await sub('sleep')) === 'The morning after a good night\'s sleep', await sub('sleep'));
@@ -220,21 +227,24 @@ section('Settings: Notifications');
   await page.click('#screen [data-act="notifyAllow"]');
   await settle(1500);
   check('Allow asks Android, and once it\'s allowed the row goes', (await ev(() => window.__notify.asked)) === 1 && !(await ev(() => document.querySelector('#screen [data-key="nf-perm"]'))) && /Notifications are on/.test(await toasts(ev)));
-  // Search.
-  const shown = () => ev(() => ({
-    groups: [...document.querySelectorAll('#screen .set-list > .rf-list-header:not([data-sub])')].filter((h) => !h.hidden && h.offsetParent).map((h) => h.dataset.group).join(),
-    rows: [...document.querySelectorAll('#screen .set-list ul.rf-list > *')].filter((r) => !r.hidden && r.offsetParent && !r.closest('[hidden]')).map((r) => (r.querySelector('.rf-list-title') || r).textContent.trim()),
-  }));
+  // The top page says when they come; its search finds them.
+  await page.click('#topbar [data-act="back"]');
+  await settle(900);
+  p0 = await part();
+  check('back on the top page, its line says when: "Workout reminders at 5:30 pm"', p0 && p0.line === 'Workout reminders at 5:30 pm', p0);
+  const shown = () => ev(() => [...document.querySelectorAll('#screen .set-results li')].filter((li) => li.offsetParent).map((li) => ({ title: li.querySelector('.rf-list-title').textContent, arg: li.querySelector('[data-act]').dataset.arg })));
   for (const [q, want] of [['reminder', 'Reminder time'], ['notifications', 'Notifications'], ['quiet hours', 'Notifications'], ['badges', 'New badges']]) {
     await page.click('#setQ');
     await page.fill('#setQ', '');
     await page.keyboard.type(q, { delay: 15 });
     await settle(300);
     const r = await shown();
-    check(`search "${q}": ${want}`, r.groups.split(',').includes('notify') && r.rows.includes(want), r);
+    check(`search "${q}": ${want}, on the Notifications page`, r.some((x) => x.title === want && /^notify\b/.test(x.arg)), r);
   }
   await page.click('#screen .set-search .rf-search-clear');
   await settle(300);
+  await page.click('#screen [data-act="setPage"][data-arg="notify"]');
+  await settle(900);
   n = (await schedules(ev)).length;
   await ev(() => document.querySelector('#screen [data-on="notifyOn"]').click());
   await settle(1500);
@@ -242,7 +252,7 @@ section('Settings: Notifications');
   check('switched off: the rows go, and Android\'s schedule is emptied', (await rows()).join() === 'Notifications' && (await schedules(ev)).length === n + 1 && off.on === false && off.items.length === 0, off);
 
   section('A tapped notification');
-  await ev(() => { window.GH.ui.back(); });
+  await ev(() => { const U = window.GH.ui; while (U.back()) { /* to the tab */ } });
   await settle(900);
   await ev(() => window.__gh.onNotifyTap({ id: 'sleep:1', kind: 'sleep', route: 'health' }));
   await settle(900);
@@ -275,6 +285,9 @@ section('In a plain browser');
   const { ctx, settle, ev } = await open({ browser: true, ask: true });
   check('no card on Today', !(await ev(() => !!document.querySelector('#screen [data-key="notify-ask"]'))));
   await ev(() => window.GH.ui.open('settings'));
+  await settle(900);
+  check('Settings\' top page says they\'re in the Android app', (await ev(() => document.querySelector('#screen [data-act="setPage"][data-arg="notify"] .rf-list-sub').textContent)) === 'In the Android app');
+  await ev(() => window.GH.ui.open('settings', 'notify'));
   await settle(900);
   const row = await ev(() => { const ul = document.querySelector('#screen ul[data-group="notify"]'); return ul && ul.textContent.replace(/\s+/g, ' ').trim(); });
   check('Settings says notifications are in the Android app', /In the Android app/.test(row || '') && /Gradient Health app on Android/.test(row || '') && !(await ev(() => document.querySelector('#screen [data-on="notifyOn"]'))), row);

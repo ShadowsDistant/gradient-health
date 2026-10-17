@@ -49,14 +49,99 @@
     scan: '<path d="M4 8.5V6.25A2.25 2.25 0 0 1 6.25 4H8.5M15.5 4h2.25A2.25 2.25 0 0 1 20 6.25V8.5M20 15.5v2.25A2.25 2.25 0 0 1 17.75 20H15.5M8.5 20H6.25A2.25 2.25 0 0 1 4 17.75V15.5M8 8.5v7M11 8.5v7M13.5 8.5v7M16 8.5v7"/>',
     dumbbell: '<path d="M4.25 9.5v5M7.25 7v10M16.75 7v10M19.75 9.5v5M7.25 12h9.5"/>',
     chip: '<rect x="7" y="7" width="10" height="10" rx="2.25"/><path d="M9.75 4v3M14.25 4v3M9.75 17v3M14.25 17v3M4 9.75h3M4 14.25h3M17 9.75h3M17 14.25h3M10.25 12h3.5"/>',
-    scale: '<rect x="4" y="4" width="16" height="16" rx="4.5"/><path d="M8.75 10a4.6 4.6 0 0 1 6.5 0M12 10.25l1.25-1.75"/>',
+    // A bathroom scale: its dial a half disc at the top, with its needle.
+    scale: '<rect x="3.75" y="3.75" width="16.5" height="16.5" rx="4.75"/><path d="M7.75 11.25a4.25 4.25 0 0 1 8.5 0z"/><path d="M12 11.25l1.6-2.1"/>',
     stop: '<rect x="6.75" y="6.75" width="10.5" height="10.5" rx="2.25" fill="currentColor" stroke="none"/>',
+    // A screen with a pulse on it: a recording of what the phone does (scroll diagnostics, What's new).
+    activity: '<rect x="3.75" y="5" width="16.5" height="14" rx="3"/><path d="M6.75 12.5h2.25l1.75-3.5 2.75 7 1.75-3.5h2"/>',
+    // The muscle groups (U.groupIcon): an exercise for most, a flexed arm, a six-pack, a heartbeat.
+    'group-biceps': '<path d="M3.75 11.25c1.6-1.95 3.75-3 6.1-2.95 1.55.05 2.75.85 3.4 2.2l.1-3.1c0-.55-.3-1.05-.8-1.3l-.55-.25a1 1 0 0 1-.35-1.5l.55-.75a1.6 1.6 0 0 1 1.3-.65h1.55c.7 0 1.3.45 1.5 1.1l1.55 5.15c.6 2 .35 4.15-.7 5.95-1.15 1.95-3.25 3.1-5.5 3.1-2.6 0-5.35-.45-8.15-1.45"/><path d="M8 13.25c1.15-.75 2.6-.95 3.9-.55"/>',
+    'group-triceps': '<circle cx="12" cy="4.5" r="1.75"/><path d="M12 7v6.25M8.75 8.25 12 7.5l3.25.75M8.75 8.25 6 11.5M15.25 8.25 18 11.5M12 13.25l-1.75 3 1 3M12 13.25l1.75 3-1 3M6 11.5v8.75M18 11.5v8.75"/>',
+    'group-chest': '<circle cx="5.25" cy="11.75" r="1.75"/><path d="M7.75 13.5l12.5 5.25M7.75 13.5v6.25M3.75 20.25h16.5"/>',
+    'group-back': '<circle cx="12" cy="7" r="1.6"/><path d="M3.75 3.75h16.5M7.5 3.75l2.5 6h4l2.5-6M12 9.75v6M12 15.75l-1.75 4.5M12 15.75l1.75 4.5"/>',
+    'group-shoulders': '<circle cx="12" cy="7.25" r="1.6"/><path d="M4.75 4h14.5M6.25 2.5v3M17.75 2.5v3M8.75 4l1.25 5.75h4L15.25 4M12 9.75v6M12 15.75l-2.5 4.5M12 15.75l2.5 4.5"/>',
+    'group-legs': '<circle cx="15.5" cy="4.5" r="1.75"/><path d="M14.75 7 9.5 12.25l5.75.5-1.25 7.5h3M14.25 8.5h5.25"/>',
+    'group-abs': '<rect x="6.75" y="3.75" width="4.5" height="4.75" rx="1.75"/><rect x="12.75" y="3.75" width="4.5" height="4.75" rx="1.75"/><rect x="6.75" y="9.75" width="4.5" height="4.75" rx="1.75"/><rect x="12.75" y="9.75" width="4.5" height="4.75" rx="1.75"/><rect x="6.75" y="15.75" width="4.5" height="4.5" rx="1.75"/><rect x="12.75" y="15.75" width="4.5" height="4.5" rx="1.75"/>',
+    'group-conditioning': '<path d="M12 20.25s-7.75-4.5-7.75-10.25A4.35 4.35 0 0 1 12 7.35 4.35 4.35 0 0 1 19.75 10c0 5.75-7.75 10.25-7.75 10.25z"/><path d="M7 12.25h2.25l1.25-2.25 2 4.25 1.25-2h3.25"/>',
+    'group-mobility': '<circle cx="12.75" cy="6.25" r="1.75"/><path d="M12.25 8.75 11 14l-3.75 2.75v3.5M11 14l4.75 1.75 3.5 4.5M12.4 10.1l1.6-6.35"/>',
+    'group-balance': '<circle cx="12" cy="4.5" r="1.75"/><path d="M12 7.75v6.5M5.75 9.75 12 8.5l6.25 1.25M12 14.25v6M12 14.25l3.5.75-1.75 2.25-1.75-.5"/>',
+    'group-impact': '<circle cx="12" cy="4.25" r="1.75"/><path d="M12 6.75v5.5M7.75 4.25 12 8.25l4.25-4M12 12.25l-3.25 2.5.75 2.75M12 12.25l3.25 2.5-.75 2.75M5.5 20.75h13"/>',
   };
   U.icon = (name, size, cls) => {
     const r = R();
     if (r && r.icons && EXTRA_ICONS[name] && !r.icons[name]) r.icons[name] = EXTRA_ICONS[name];
     if (r && r.icon) { try { const svg = r.icon(name, { size: size || undefined, className: cls || '' }); if (svg) return svg; } catch (e) { /* unknown glyph */ } }
     return `<span class="${cls || ''}" data-icon="${U.esc(name)}" aria-hidden="true"></span>`;
+  };
+  // A muscle group's glyph: biceps, triceps, chest, legs, back, shoulders, abs, conditioning,
+  // mobility, balance and impact (a dumbbell for anything else).
+  U.groupIcon = (group, size, cls) => U.icon(EXTRA_ICONS[`group-${group}`] ? `group-${group}` : 'dumbbell', size, cls);
+
+  /* Illustrated glyphs (U.art): pictures in colour on a 48 px grid, lit from the top left, where a
+   * spot shows a picture rather than a symbol: the warm-up's sun (a glowing disc, yellow into orange,
+   * in a soft corona, with long and short tapering rays and a highlight), the cool-down's moon,
+   * mobility's leaf and a walk's footprints. Their gradients are in one <defs> on the page, put there
+   * with the first one, so any number of them share its ids and a re-render's markup never changes.
+   * size: 'sm' (20 px), 'lg' (32), 'xl' (40), else 24 (or --gh-art-size). Another name is U.icon's.
+   * The first sun on screen turns its rays in once, when the page is calm (never under reduced
+   * motion); nothing on it moves after that. */
+  const r2 = (n) => Math.round(n * 100) / 100;
+  // n tapering rays round the centre, from radius r0 to r1, w either side at the base.
+  const rays = (n, from, r0, r1, w) => {
+    let d = '';
+    for (let i = 0; i < n; i++) {
+      const a = ((from + (i * 360) / n) * Math.PI) / 180, s = Math.sin(a), c = Math.cos(a);
+      const P = (x, y) => `${r2(24 + x * c - y * s)} ${r2(24 + x * s + y * c)}`;
+      d += `M${P(-w, -r0)}Q${P(-w * 0.32, -(r0 + r1) / 2)} ${P(0, -r1)}Q${P(w * 0.32, -(r0 + r1) / 2)} ${P(w, -r0)}Z`;
+    }
+    return d;
+  };
+  const glow = (id) => `<circle class="gh-art-glow" cx="24" cy="24" r="23" fill="url(#gh-art-${id}-glow)"/>`;
+  const SOLE = 'd="M0 0c2.9 0 4.5 3.3 4.4 7.1-.1 2.8-1.2 4.7-1.5 6.4l-.25 1.3h-5.6l-.3-1.5C-3.6 11.6-4.4 9.3-4.4 6.6-4.4 2.8-2.8 0 0 0zM-3.1 16.9h5.6l-.25 2.1c-.2 1.7-1.3 2.8-2.6 2.8s-2.4-1.1-2.6-2.8z" fill="url(#gh-art-walk)"';
+  const STAR = (x, y, s) => `<path d="M${x} ${y}l${r2(0.95 * s)} ${r2(2.2 * s)} ${r2(2.2 * s)} ${r2(0.95 * s)}-${r2(2.2 * s)} ${r2(0.95 * s)}-${r2(0.95 * s)} ${r2(2.2 * s)}-${r2(0.95 * s)}-${r2(2.2 * s)}-${r2(2.2 * s)}-${r2(0.95 * s)} ${r2(2.2 * s)}-${r2(0.95 * s)}z" fill="url(#gh-art-star)"/>`;
+  const HI = (cx, cy, rx, ry, deg) => `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" transform="rotate(${deg} ${cx} ${cy})" fill="url(#gh-art-hi)"/>`;
+  let ARTS = null;
+  const arts = () => ARTS || (ARTS = {
+    sun: `${glow('sun')}<g class="gh-art-rays" fill="url(#gh-art-ray)"><path d="${rays(8, 22.5, 12, 17.75, 1.9)}"/><path d="${rays(8, 0, 12, 21.5, 2.6)}"/></g><g class="gh-art-disc"><circle cx="24" cy="24" r="11" fill="url(#gh-art-disc)"/><circle cx="24" cy="24" r="10.6" fill="none" stroke="url(#gh-art-rim)" stroke-width=".8"/>${HI(20.2, 19.6, 4.6, 2.7, -36)}</g>`,
+    moon: `${glow('moon')}<path d="M33.6 30.4A13.2 13.2 0 0 1 17.6 10.9a13.2 13.2 0 1 0 16 19.5z" fill="url(#gh-art-moon)"/><path d="M16.2 14.6a11.4 11.4 0 0 0 2.6 17.2" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="1.2" stroke-linecap="round"/>${STAR(31.5, 9.5, 1)}${STAR(37.4, 18.2, 0.64)}`,
+    leaf: `${glow('leaf')}<path d="M11 37c0-13.5 8.6-23.3 26.5-25.5C36.6 29.5 26.4 37.6 11 37z" fill="url(#gh-art-leaf)"/><path d="M11.6 36.4c6.3-7.6 12.9-13.6 20.4-18.6" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="1.3" stroke-linecap="round"/><path d="M19.6 28.6l-.6-5.6M24.3 24.4l-.2-5.2M23.2 29.7l5.6-.4M28 25.4l4.6-.9" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="1" stroke-linecap="round"/>${HI(17.6, 24.2, 3.8, 1.9, -50)}`,
+    walk: `${glow('walk')}<path transform="translate(16.6 6.6) rotate(-9)" ${SOLE}/><path transform="translate(31.4 15.6) rotate(9)" ${SOLE}/>${HI(15.2, 10.6, 1.5, 2.5, -14)}${HI(30.4, 19.6, 1.5, 2.5, 4)}`,
+  });
+  const stops = (list) => list.map(([o, c, a]) => `<stop offset="${o}" stop-color="${c}"${a != null ? ` stop-opacity="${a}"` : ''}/>`).join('');
+  const glowDef = (id, c, a) => `<radialGradient id="gh-art-${id}-glow">${stops([[0.42, c, a], [0.72, c, r2(a * 0.3)], [1, c, 0]])}</radialGradient>`;
+  let artDefs = false;
+  function artDefsIn() {
+    if (artDefs || !doc || !doc.body) return;
+    artDefs = true;
+    const t = doc.createElement('template');
+    t.innerHTML = `<svg class="gh-paints gh-art-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>${glowDef('sun', '#ffc23a', 0.55)}<radialGradient id="gh-art-ray" gradientUnits="userSpaceOnUse" cx="24" cy="24" r="22">${stops([[0.52, '#ffcb3a'], [0.98, '#ff8a1c']])}</radialGradient><radialGradient id="gh-art-disc" cx=".4" cy=".36" r=".72">${stops([[0, '#fff6c2'], [0.34, '#ffd94a'], [0.78, '#ffa925'], [1, '#f5821a']])}</radialGradient><linearGradient id="gh-art-rim" x1=".2" y1=".1" x2=".8" y2=".95">${stops([[0, '#fff3b0', 0.9], [0.55, '#ffb43a', 0], [1, '#e86f0c', 0.55]])}</linearGradient><radialGradient id="gh-art-hi">${stops([[0, '#fff', 0.95], [1, '#fff', 0]])}</radialGradient>${glowDef('moon', '#9fb2ff', 0.45)}<linearGradient id="gh-art-moon" x1=".15" y1=".05" x2=".85" y2=".95">${stops([[0, '#dde4ff'], [0.5, '#93a1ff'], [1, '#5a5fe6']])}</linearGradient><linearGradient id="gh-art-star" x2="1" y2="1">${stops([[0, '#ffe9a3'], [1, '#ffb52e']])}</linearGradient>${glowDef('leaf', '#7ee0a0', 0.42)}<linearGradient id="gh-art-leaf" x1=".1" y1=".95" x2=".9" y2=".05">${stops([[0, '#1f9a62'], [0.55, '#43c47c'], [1, '#9be8a4']])}</linearGradient>${glowDef('walk', '#5fd3d0', 0.42)}<linearGradient id="gh-art-walk" x1=".2" x2=".8" y2="1">${stops([[0, '#7fe3d6'], [1, '#1b9aa8']])}</linearGradient></defs></svg>`;
+    doc.body.insertBefore(t.content.firstChild, doc.body.firstChild);
+  }
+  // The first sun on screen turns its rays in and its disc swells, once, when the page is calm.
+  let sunWait = false, sunDone = false;
+  function sunOnce() {
+    if (sunDone || sunWait || !U.whenCalm) return;
+    sunWait = true;
+    U.whenCalm(() => {
+      sunWait = false;
+      const el = doc.querySelector('#screen .gh-art[data-art="sun"]');
+      if (!el || sunDone) return;
+      const r = el.getBoundingClientRect();
+      if (!r.width || r.bottom < 0 || r.top > G.innerHeight) return; // out of sight: the next one
+      sunDone = true;
+      if (U.reduced() || !el.animate) return;
+      const ease = 'cubic-bezier(.2, .8, .2, 1)';
+      const turn = (sel, from) => { const x = el.querySelector(sel); if (x) x.animate([{ transform: from, opacity: 0.35 }, { transform: 'none', opacity: 1 }], { duration: 900, easing: ease }); };
+      turn('.gh-art-rays', 'rotate(-40deg) scale(.7)');
+      turn('.gh-art-disc', 'scale(.82)');
+    });
+  }
+  U.art = (name, size, cls) => {
+    const body = arts()[name];
+    if (!body) return U.icon(name, size, cls);
+    artDefsIn();
+    if (name === 'sun') sunOnce();
+    return `<svg class="gh-art${cls ? ` ${cls}` : ''}" data-art="${name}"${size ? ` data-size="${size}"` : ''} viewBox="0 0 48 48" aria-hidden="true" focusable="false">${body}</svg>`;
   };
   // (Each formatter is made once: toLocaleString makes a new one on every call.)
   const NUMF = new Map();
@@ -141,10 +226,11 @@
   U.stepper = (id, value, min, max, label, attrs, step) => `<div class="rf-stepper" role="group" aria-label="${U.esc(label)}"><button type="button" class="rf-stepper-btn" data-step="-${step || 1}" aria-label="Less ${U.esc(label.toLowerCase())}">${U.icon('minus')}</button><input class="rf-stepper-value" type="number" inputmode="numeric" id="${U.esc(id)}" value="${U.esc(value)}" min="${min}" max="${max}" step="${step || 1}" aria-label="${U.esc(label)}" ${attrs || ''}><button type="button" class="rf-stepper-btn" data-step="${step || 1}" aria-label="More ${U.esc(label.toLowerCase())}">${U.icon('plus')}</button></div>`;
   U.progress = (v, label, tone) => `<div class="rf-progress" role="progressbar" aria-label="${U.esc(label)}" aria-valuenow="${Math.round(Math.min(1, v) * 100)}" aria-valuemin="0" aria-valuemax="100" style="--rf-value:${Math.max(0, Math.min(1, v)).toFixed(3)}"${tone ? ` data-tone="${tone}"` : ''}><span class="rf-progress-fill"></span></div>`;
   U.ring = (v, label, inner, size, tone) => `<span class="rf-ring" data-size="${size || 'lg'}" style="--rf-value:${Math.max(0, Math.min(1, v)).toFixed(3)}" role="progressbar" aria-label="${U.esc(label)}" aria-valuenow="${Math.round(v * 100)}" aria-valuemin="0" aria-valuemax="100"${tone ? ` data-tone="${tone}"` : ''}><svg viewBox="0 0 72 72"><circle class="rf-ring-track" cx="36" cy="36" r="32" pathLength="100"/><circle class="rf-ring-fill" cx="36" cy="36" r="32" pathLength="100"/></svg><span class="rf-ring-label">${inner || ''}</span></span>`;
+  // o.art: an illustrated glyph (U.art) in the icon's tile, in place of o.icon.
   U.row = (o) => {
     const tag = o.act ? 'button' : o.href ? 'a' : 'div';
     const attrs = o.act ? ` type="button" data-act="${U.esc(o.act)}"${o.arg != null ? ` data-arg="${U.esc(o.arg)}"` : ''}` : '';
-    return `<li${o.key ? ` data-key="${U.esc(o.key)}"` : ''}><${tag} class="rf-list-row${o.cls ? ' ' + o.cls : ''}"${attrs}>${o.lead ? `<span class="rf-list-lead">${o.lead}</span>` : o.icon ? `<span class="rf-list-icon" data-tone="${o.tone || 'sky'}">${U.icon(o.icon)}</span>` : ''}<span class="rf-list-text"><span class="rf-list-title">${o.title}</span>${o.sub ? `<span class="rf-list-sub">${o.sub}</span>` : ''}</span>${o.detail != null ? `<span class="rf-list-detail">${o.detail}</span>` : ''}${o.chevron ? `<span class="rf-list-chevron">${U.icon('chevron-right')}</span>` : ''}</${tag}></li>`;
+    return `<li${o.key ? ` data-key="${U.esc(o.key)}"` : ''}><${tag} class="rf-list-row${o.cls ? ' ' + o.cls : ''}"${attrs}>${o.lead ? `<span class="rf-list-lead">${o.lead}</span>` : o.art ? `<span class="rf-list-icon is-art">${U.art(o.art)}</span>` : o.icon ? `<span class="rf-list-icon" data-tone="${o.tone || 'sky'}">${U.icon(o.icon)}</span>` : ''}<span class="rf-list-text"><span class="rf-list-title">${o.title}</span>${o.sub ? `<span class="rf-list-sub">${o.sub}</span>` : ''}</span>${o.detail != null ? `<span class="rf-list-detail">${o.detail}</span>` : ''}${o.chevron ? `<span class="rf-list-chevron">${U.icon('chevron-right')}</span>` : ''}</${tag}></li>`;
   };
   // The Refract mark (the design system the app is built with, credited in Settings, About): drawn by
   // Refract's style sheet, in the ink of the text around it. `once`: its halves come apart once as it
@@ -512,8 +598,38 @@
     // (A scroll inside set-up doesn't bubble: it's heard on the way down.)
     onboardEl.addEventListener('scroll', onSetupScroll, { passive: true, capture: true });
     pullToRefresh();
+    watchOverlays();
   }
   U.els = () => ({ root, topbar, screen, floatEl, playerEl, onboardEl, tabbar, accessory });
+
+  // What's open over the page, as attributes on #app for the style sheets: the workout player or set-up
+  // there and opaque (data-gh-overlay: the bars, the floating glass and the glow behind are hidden,
+  // src/styles/perf.css), the player there at all (data-gh-player) and a live activity (data-gh-live:
+  // the glow holds still, src/styles.css and activity.css). These were :has() rules on #app, and the
+  // page set back under a sheet was one on html and body (src/ui/sheet.js now marks the root): a
+  // :has() whose subject is that high up has Chrome look at it again at every element put into the
+  // page or taken out of it, anywhere, and restyle the root, the body or #app and its bars, so each
+  // insertion's style cost 1.5 ms rather than 0.1 at 1x CPU (every render, route change, sheet, toast
+  // and motion copy paid it). The observer sets them before the next frame, as the rules applied.
+  function watchOverlays() {
+    if (!G.MutationObserver) return;
+    const open = (el) => !!el && !el.hidden;
+    const set = (a, on) => { if (root.hasAttribute(a) !== on) root.toggleAttribute(a, on); };
+    const flags = () => {
+      set('data-gh-overlay', [playerEl, onboardEl].some((el) => open(el) && !el.hasAttribute('data-closing')));
+      set('data-gh-player', open(playerEl));
+      set('data-gh-live', open(doc.getElementById('actlive')));
+    };
+    const attrs = { attributes: true, attributeFilter: ['hidden', 'data-closing'] };
+    // (The live activity's screen is put into #app when one starts: its own changes are heard from then.)
+    const mo = new G.MutationObserver((recs) => {
+      for (const r of recs) for (const n of r.addedNodes) if (n.id === 'actlive') mo.observe(n, attrs);
+      flags();
+    });
+    for (const el of [playerEl, onboardEl, doc.getElementById('actlive')]) if (el) mo.observe(el, attrs);
+    mo.observe(root, { childList: true });
+    flags();
+  }
 
   // The bar's frosted edge and small title appear once the large title slides under it (its last
   // 8 px), or, on a page without one, once the page is scrolled at all (more than 2 px). An
@@ -1511,6 +1627,23 @@
   }).then((v) => v === 'ok');
   // A toast's haptic is a consequence of what was just done: a success merges into that action's own
   // feel, and a warning or an error waits for it to end (platform.js).
+  // Two at most, one over the other: the same words again take the old one's place, and a third sends
+  // the oldest away. Each stays long enough to read: a quarter of a second a word on top of the time
+  // to notice it, 4 s at least (6 with a button) and 9 at most; Refract's countdown pauses while a
+  // finger or focus is on it.
+  const TOAST_MAX = 2;
+  const readTime = (title, message, action) => {
+    const words = `${title || ''} ${message || ''}`.trim().split(/\s+/).length;
+    return Math.min(9000, Math.max(action ? 6000 : 4000, 2600 + 250 * words));
+  };
+  const toastText = (el, part) => { const x = el.querySelector(`.rf-toast-${part}`); return x ? x.textContent : ''; };
+  function toastRoom(title, message) {
+    const r = R(), t = toaster();
+    if (!t || !r.toast.close) return;
+    const up = Array.from(t.querySelectorAll('.rf-toast:not([data-leaving])'));
+    const keep = up.filter((el) => { const same = toastText(el, 'title') === String(title || '') && toastText(el, 'message') === String(message || ''); if (same) r.toast.close(el); return !same; });
+    while (keep.length >= TOAST_MAX) r.toast.close(keep.shift()); // (the bottom toaster's oldest is first)
+  }
   U.toast = (title, tone, message, action) => {
     const after = { consequence: true };
     if (tone === 'positive') U.haptic('success', after);
@@ -1522,11 +1655,39 @@
       // Placed before it's put in: that reads where the buttons at the bottom are, in the layout the
       // toast's own entrance makes anyway.
       seatToaster();
+      toastRoom(title, message);
       placeToasts();
-      const t = r.toast({ title, message, tone: tone || 'neutral', action, position: 'bottom' });
-      if (t && t.el) toastIn(t.el);
+      const t = r.toast({ title, message, tone: tone || 'neutral', action, position: 'bottom', duration: readTime(title, message, action) });
+      if (t && t.el) { t.el.__ghAt = Date.now(); toastIn(t.el); }
       return t;
     } catch (e) { if (G.console) G.console.error(e); return null; }
+  };
+  // A sheet opening sends away the toasts already up: they were about what's under it, and over the
+  // sheet they'd cover what's being used. One that came with the tap that opened it stays (sheet.js).
+  U.toastsYield = () => {
+    const r = R(), t = toaster();
+    if (!r || !r.toast || !r.toast.close || !t) return;
+    const now = Date.now();
+    for (const el of t.querySelectorAll('.rf-toast:not([data-leaving])')) if (now - (el.__ghAt || 0) > 600) r.toast.close(el);
+  };
+  // News nobody asked for just then (a new badge) waits until nothing else is up: no sheet or dialog,
+  // no other toast, not the player or set-up, and the app in sight. Then it's said on its own.
+  const freeWaits = [];
+  let freeTimer = 0;
+  const menuUp = () => { try { return !!doc.querySelector('.gh-menu:popover-open'); } catch (e) { return false; } };
+  const busyNow = () => !!(doc.hidden || topModal() || toastsShowing() || (playerEl && !playerEl.hidden) || (onboardEl && !onboardEl.hidden) || menuUp());
+  function freeSoon() {
+    if (freeTimer || !freeWaits.length) return;
+    freeTimer = setTimeout(() => {
+      freeTimer = 0;
+      if (!busyNow()) safe(freeWaits.shift());
+      freeSoon();
+    }, 700);
+  }
+  U.toastWhenFree = (fn) => {
+    if (!freeWaits.length && !busyNow()) { safe(fn); return; }
+    freeWaits.push(fn);
+    freeSoon();
   };
 
   /* ---------------------------------------------------------------- toasts at the bottom */
@@ -1558,9 +1719,13 @@
     list = list.filter((d) => !d.hasAttribute('data-closing'));
     return list.length ? list[list.length - 1] : null;
   }
-  // What a toast must stay clear of, as boxes on screen ({ top, bottom }).
+  // What a toast must stay clear of, as boxes on screen ({ top, bottom }): a field being typed in,
+  // wherever it is, and the buttons at the bottom.
+  const typing = (t) => !!t && ((t.tagName === 'TEXTAREA' && !t.readOnly) || (t.tagName === 'INPUT' && /^(text|search|email|number|tel|url|password)$/.test(t.type) && !t.readOnly) || t.isContentEditable);
   function toastObstacles() {
     const out = [];
+    const a = doc.activeElement;
+    if (typing(a)) { const r = a.getBoundingClientRect(); if (r.height) out.push({ top: r.top, bottom: r.bottom }); }
     const modal = topModal();
     if (modal) {
       // A sheet at rest (read again once it settles), so these are read as drawn.
@@ -1588,7 +1753,10 @@
     // they're env(), in the computed style only.)
     const rs = doc.documentElement.style;
     const sab = parseFloat(rs.getPropertyValue('--sab') || G.getComputedStyle(doc.documentElement).getPropertyValue('--sab')) || 0;
-    let lift = sab + TOAST_GAP;
+    // A browser's keyboard covers the page rather than shrinking it (the app's WebView shrinks).
+    const vv = G.visualViewport;
+    const kb = vv && Math.abs((vv.scale || 1) - 1) < 0.01 ? Math.max(0, Math.round(H - vv.height - vv.offsetTop)) : 0;
+    let lift = Math.max(sab, kb) + TOAST_GAP;
     const obs = toastObstacles().filter((o) => o.bottom > H / 2).sort((a, b) => b.bottom - a.bottom);
     for (const o of obs) if (o.bottom > H - lift - TOAST_H && o.top < H - lift) lift = Math.max(lift, H - o.top + TOAST_GAP);
     toastLift = Math.round(Math.min(lift, H / 2));
@@ -1634,21 +1802,32 @@
     readSoon(null, () => { placeWait = false; if (toastsShowing()) { seatToaster(); placeToasts(); } });
   }
   // Watched from the first toast on: the parts at the bottom showing or hiding, a sheet opening or
-  // settling, the keyboard, a live activity's screen added to the page.
+  // settling, the keyboard, a live activity's screen added to the page. The player's, set-up's and a
+  // live activity's buttons change from one step to the next (a rest has none, the set after it has
+  // Done set), so what's in those screens is watched too: a toast that went down for a rest comes
+  // back up over the next set's buttons.
   let toastWatch = null;
   function watchToasts() {
     if (toastWatch || !G.MutationObserver) return;
     toastWatch = new G.MutationObserver(() => toastsMoved());
     const attrs = { attributes: true, attributeFilter: ['hidden', 'data-away', 'data-closing'] };
-    for (const el of [floatEl, tabbar, accessory, playerEl, onboardEl, doc.getElementById('actlive')]) if (el) toastWatch.observe(el, attrs);
+    const within = { attributes: true, attributeFilter: ['hidden', 'data-away', 'data-closing'], childList: true, subtree: true };
+    for (const el of [floatEl, tabbar, accessory]) if (el) toastWatch.observe(el, attrs);
+    for (const el of [playerEl, onboardEl, doc.getElementById('actlive')]) if (el) toastWatch.observe(el, within);
     toastWatch.observe(doc.documentElement, { attributes: true, attributeFilter: ['data-sheet-open', 'data-keyboard'] });
     if (root) {
       new G.MutationObserver((list) => {
-        for (const m of list) for (const n of m.addedNodes) if (n.id === 'actlive') { toastWatch.observe(n, attrs); toastsMoved(); }
+        for (const m of list) for (const n of m.addedNodes) if (n.id === 'actlive') { toastWatch.observe(n, within); toastsMoved(); }
       }).observe(root, { childList: true });
     }
     doc.addEventListener('gh-sheet-moving', (e) => { if (!(e.detail && e.detail.moving)) toastsMoved(); });
     G.addEventListener('resize', toastsMoved);
+    if (G.visualViewport) G.visualViewport.addEventListener('resize', toastsMoved);
+    // A field focused or left: the toast goes above it or comes back down. (Other focus moves change
+    // nothing at the bottom.)
+    const onField = (e) => { if (typing(e.target)) toastsMoved(); };
+    doc.addEventListener('focusin', onField);
+    doc.addEventListener('focusout', onField);
   }
   // A toast's motion is Refract's: it rises in on a spring with its words and buttons after it (about
   // a second), and drops away, its slot closing up after it (about 0.6 s). Both play 1.6 times as fast,

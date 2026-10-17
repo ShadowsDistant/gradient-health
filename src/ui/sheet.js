@@ -124,6 +124,13 @@
     for (const o of openSheets) r = Math.max(r, recedeAt(o, o.restY));
     return r;
   }
+  // data-set-back on #app (its corners) and on the root (the dark around it, sheet.css): on the root
+  // itself rather than an html:has(#app[data-set-back]) there, which had Chrome look at the root and
+  // the body again, and restyle them, for every element put into the page or taken out of it.
+  function setBack(app, on) {
+    app.toggleAttribute('data-set-back', on);
+    doc.documentElement.toggleAttribute('data-set-back', on);
+  }
   // Sets the page back to r (0 to 1), with a settle's motion. A page already heading there keeps going.
   function setPage(r, m) {
     const app = appEl();
@@ -137,13 +144,13 @@
     // until it's back at full size.
     const back = r > 0.0005;
     app.toggleAttribute('data-receded', back);
-    if (back) { app.setAttribute('data-set-back', ''); app.setAttribute('data-sheeted', ''); }
+    if (back) { setBack(app, true); app.setAttribute('data-sheeted', ''); }
     if (m && Math.abs(from - r) > 0.001 && app.animate) {
       page.from = from; page.m = m;
       const a = page.anim = app.animate({ transform: [pageTf(from), pageTf(r)] }, { duration: m.T, easing: m.easing });
-      a.finished.then(() => { if (page.anim === a) { page.anim = null; if (page.r <= 0.0005) app.removeAttribute('data-set-back'); pageDone(); } }, () => {});
+      a.finished.then(() => { if (page.anim === a) { page.anim = null; if (page.r <= 0.0005) setBack(app, false); pageDone(); } }, () => {});
     } else {
-      if (!back) app.removeAttribute('data-set-back');
+      if (!back) setBack(app, false);
       pageDone();
     }
   }
@@ -154,7 +161,7 @@
     if (openSheets.length || leaving || !app || page.anim) return;
     app.style.transform = '';
     app.removeAttribute('data-receded');
-    app.removeAttribute('data-set-back');
+    setBack(app, false);
     app.removeAttribute('data-sheeted');
   }
   // The status bar's height, which the page clears as it recedes (read as the first sheet opens).
@@ -211,6 +218,11 @@
   function measure(s) {
     s.dirty = false;
     const vis = s.vvh || s.el.clientHeight || G.innerHeight;
+    // The header's two sides as wide as each other (the close button, and the action or its spacer),
+    // so the title sits in the middle when it wraps too: Refract's 1fr auto 1fr lets a wider action
+    // pull it off centre then (sheet.css). Read here with the rest, written only when it changes.
+    const side = Math.max(s.close.offsetWidth, s.header.lastElementChild.offsetWidth);
+    if (side !== s.side) { s.side = side; s.header.style.setProperty('--gh-head-side', `${side}px`); }
     const H = s.panel.offsetHeight;
     s.H = H;
     s.closedY = H + OUT;
@@ -340,6 +352,7 @@
     const s = {
       el, size, scrim: el.querySelector('.gh-sheet-scrim'), panel: el.querySelector('.gh-sheet-panel'),
       grab: el.querySelector('.rf-sheet-grabber'), header: el.querySelector('.rf-sheet-header'), body: el.querySelector('.rf-sheet-body'),
+      close: el.querySelector('[data-sheet-close]'), side: 0,
       H: 0, lowY: 0, topY: 0, closedY: 0, y: 0, restY: 0, detent: null, vvh: 0, coverY: null,
       run: null, moving: false, closing: false, dirty: false, wantTop: false, dragEnd: -1e9, sheen: -1, scrolled: false,
     };
@@ -709,6 +722,8 @@
     // shows them through, close and sharp enough to read (sheet.css).
     if (openSheets.some((o) => !o.closing)) el.setAttribute('data-stacked', '');
     openSheets.push(s);
+    // Toasts already up were about what's under it: they go, rather than sit over the sheet (core.js).
+    if (U.toastsYield) U.toastsYield();
     markOpen();
     pageOpen();
     watchViewport(true);

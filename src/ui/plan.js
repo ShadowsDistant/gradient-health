@@ -113,10 +113,10 @@
     return `<span class="pw-thumb" data-morph="keep" data-move="${U.esc(id)}" aria-hidden="true">${m ? U.stills.img(m, tiles.o) : ''}</span>`;
   }
   function exRow(o) {
-    const inner = `${o.move ? thumb(o.move) : `<span class="pw-thumb is-icon" aria-hidden="true">${U.icon(o.icon || 'sun')}</span>`}
+    const inner = `${o.move ? thumb(o.move) : o.art ? `<span class="pw-thumb is-icon is-art" data-art="${o.art}" aria-hidden="true">${U.art(o.art)}</span>` : `<span class="pw-thumb is-icon" aria-hidden="true">${U.icon(o.icon || 'sun')}</span>`}
       <span class="pw-ex-text"><span class="pw-ex-name">${U.esc(o.name)}${o.tag ? ` <span class="pw-ss">${U.esc(o.tag)}</span>` : ''}</span>${o.meta ? `<span class="pw-ex-meta">${o.meta}</span>` : ''}</span>
       ${o.badge || ''}${o.move ? `<span class="pw-ex-go">${U.icon('chevron-right')}</span>` : ''}`;
-    return `<li class="pw-ex${o.cls ? ' ' + o.cls : ''}" data-key="x-${U.esc(o.key)}">${o.move
+    return `<li class="pw-ex${o.cls ? ' ' + o.cls : ''}${o.art ? ' has-art' : ''}" data-key="x-${U.esc(o.key)}">${o.move
       ? `<button type="button" class="pw-ex-row" data-act="planMoveInfo" data-arg="${U.esc(o.move)}">${inner}</button>`
       : `<div class="pw-ex-row">${inner}</div>`}</li>`;
   }
@@ -125,7 +125,7 @@
   function sessionList(S, s) {
     const rows = [];
     const lead = (S.catchup && S.catchup.arm && S.catchup.arm.side) || 'L';
-    if (s.warmup && s.warmup.length) rows.push(exRow({ key: 'warmup', icon: 'sun', name: 'Warm-up', meta: U.esc(U.cap(s.warmup.map((x) => x.name.toLowerCase()).join(', '))), cls: 'is-muted' }));
+    if (s.warmup && s.warmup.length) rows.push(exRow({ key: 'warmup', art: 'sun', name: 'Warm-up', meta: U.esc(U.cap(s.warmup.map((x) => x.name.toLowerCase()).join(', '))), cls: 'is-muted' }));
     for (const t of s.tests || []) rows.push(exRow({ key: `t-${t.moveId}`, move: t.moveId, name: t.name, meta: `${U.esc(U.side(t.side))} side first, max reps`, cls: 'is-lead' }));
     const extra = (x) => exRow({ key: `x-${x.uid || x.moveId}`, move: x.moveId, name: x.name, meta: `Extra set, ${U.esc(U.side(x.leadOnly || lead).toLowerCase())} side only · ${U.esc(U.target(x))}`, cls: 'is-lead' });
     for (const it of s.items) {

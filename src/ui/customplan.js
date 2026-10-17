@@ -1,8 +1,11 @@
-/* Your plans (GH.customPlan on screen): the Plans page, a plan's page where it's built like a
- * playlist (add exercises, set sets and reps, drag to reorder), the exercise picker with 3D stills,
- * sharing as a QR code or a link, getting a shared plan (a scanned code, a link, the app link the
- * Android shell hands over), and Build me a plan with the coach. Opened from Plan's "Make it yours"
- * and Settings.
+/* Your plans (GH.customPlan on screen), the part that's in the page: each move's picture (3D still,
+ * or a stand-in from the first frame), a plan's cover, the plan in use on the Plan tab and the swaps
+ * on Today, and links to a shared plan (the scanner, a link the app was opened with or that opens it).
+ * The screens and sheets themselves (the Plans page, a plan's page, the exercise picker, one
+ * exercise, New plan, sharing, a shared plan's preview, Build me a plan and Improve) are a part of
+ * their own, src/ui/planbuilder.js (scripts/build.mjs APP_CHUNKS, 'planUi'), which loads the first
+ * time one is wanted, or in an idle moment after launch; until then the stand-ins at the end of this
+ * file take its place.
  */
 (function (G) {
   'use strict';
@@ -21,70 +24,188 @@
   const groupName = (g) => (g === 'conditioning' ? 'Cardio' : g === 'mobility' ? 'Stretching' : (B().GROUP_NAME || {})[g] || U.cap(String(g)));
   const listWords = (a) => (a.length <= 1 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`);
   const firstName = () => String((U.S && U.S.profile && U.S.profile.name) || '').trim().split(/\s+/)[0].slice(0, 24);
-  const GRIP = '<svg class="cp-grip-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6.5" r="1.6"/><circle cx="15" cy="6.5" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="17.5" r="1.6"/><circle cx="15" cy="17.5" r="1.6"/></svg>';
 
-  const ui = { wd: {}, when: {}, fresh: null };
 
   /* ================================================================== stills */
-  // Each tile shows its move's key pose. With the 3D figure, its still in the person's look (kept on
-  // the phone, src/ui/stills.js): a kept one at once, else the tile's own background until it's
-  // drawn, and then it fades in. The small tiles are Plan's size and share its stills; the large ones
-  // (the picker's, a plan's exercise) are drawn when they come near the screen and kept for this
-  // launch only (there are a lot of them). Else the flat figure.
-  const T = { svg: new Map(), io: null };
-  const thumb = (id, cls) => `<span class="cp-thumb${cls ? ` ${cls}` : ''}" data-morph="keep" data-move="${U.esc(id)}" aria-hidden="true"></span>`;
+  // Each tile shows its move's key pose, with a picture from its first frame, never a blank square.
+  // With the 3D figure: its still in the person's look (kept on the phone, src/ui/stills.js) when
+  // it's kept; otherwise a kept still of the same move in another size or look, or else the flat
+  // figure, stands in, and the 3D still fades in over it once it's drawn. Rows and small tiles are
+  // Plan's size (52) and share its stills, kept across launches; the item sheet's large one is drawn
+  // for the launch only. With the flat figure picked (or no WebGL), the quick flat figure shows at
+  // once and the full one, with its chair, bench or wall, takes its place in a calm moment.
+  const T = { svg: new Map(), quick: new Map(), queue: new Set(), pending: 0 };
+  const SMALL = 52, LARGE = 120;
   const want3d = () => !!(U.stills && U.stills.ok());
-  const big = (h) => h.classList.contains('is-tile') || h.classList.contains('is-xl');
-  const lookFor = (h) => (big(h) ? U.stills.look(120) : U.stills.look(52));
+  const sizeOf = (h) => (h.classList.contains('is-xl') ? LARGE : SMALL);
+  const thumb = (id, cls) => `<span class="cp-thumb${cls ? ` ${cls}` : ''}" data-morph="keep" data-move="${U.esc(id)}" aria-hidden="true">${standIn(id, cls && /\bis-xl\b/.test(cls) ? LARGE : SMALL)}</span>`;
   function personMove(id) {
     const m = M().MOVES[id];
     if (!m) return null;
     try { return M().forPerson ? M().forPerson(m, B().eqFor(U.S, U.today())) : m; } catch (e) { return m; }
   }
-  function flatInto(h) {
-    const id = h.getAttribute('data-move');
-    const svg = flatStill(id);
-    h.textContent = '';
-    if (svg) { h.appendChild(svg.cloneNode(true)); h.setAttribute('data-drawn', id); }
+  // A tile's picture for its first frame: the kept 3D still (or an older figure's of it), a kept
+  // still of the same move in another size or look, or the quick flat figure.
+  function standIn(id, size) {
+    if (want3d() && U.S) {
+      const m = personMove(id);
+      if (m) {
+        const o = U.stills.look(size);
+        const img = U.stills.img(m, o);
+        if (img) return img;
+        const alt = otherStill(m, o, size);
+        if (alt) return alt;
+      }
+    }
+    return quickFlat(id);
   }
-  const show3d = (h, m, o) => U.stills.tile(h, m, o, flatInto, big(h) ? { keep: false } : null);
+  // A kept still of the same move in the person's look at another size, or in the other theme.
+  function otherStill(m, o, size) {
+    const tries = [];
+    for (const css of size === LARGE ? [SMALL] : [LARGE]) tries.push(U.stills.look(css));
+    tries.push(Object.assign({}, o, { dark: !o.dark }));
+    for (const css of size === LARGE ? [SMALL] : [LARGE]) tries.push(Object.assign({}, U.stills.look(css), { dark: !o.dark }));
+    for (const x of tries) {
+      const k = U.stills.key(m, x), u = U.stills.url(k);
+      if (u) return `<img alt="" draggable="false" src="${U.esc(u)}" data-k="${U.esc(k)}" data-other="">`;
+    }
+    return '';
+  }
+  // Asks for each tile's 3D still (it fades in over the stand-in), or with the flat figure, puts the
+  // full flat figure in when it's calm.
   function drawThumbs(root) {
     if (!root || !U.S) return;
     const hosts = root.querySelectorAll('.cp-thumb[data-move]');
-    if (!hosts.length) return;
+    for (const h of hosts) tileFor(h);
+  }
+  function tileFor(h) {
+    const id = h.getAttribute('data-move');
+    if (!h.firstElementChild) h.innerHTML = quickFlat(id);
     if (want3d()) {
-      for (const h of hosts) {
-        const m = personMove(h.getAttribute('data-move'));
-        if (!m) continue;
-        h.removeAttribute('data-drawn');
-        const o = lookFor(h);
-        if (U.stills.url(U.stills.key(m, o)) || !big(h) || !G.IntersectionObserver) { show3d(h, m, o); continue; }
-        if (h.firstElementChild && h.firstElementChild.tagName !== 'IMG') h.textContent = '';
-        observe(h);
-      }
+      const m = personMove(id);
+      if (!m) return;
+      const size = sizeOf(h);
+      U.stills.tile(h, m, U.stills.look(size), keepFlat, size === LARGE ? { keep: false, standIn: true } : { standIn: true });
       return;
     }
-    for (const h of hosts) {
-      const id = h.getAttribute('data-move');
-      h.removeAttribute('data-want');
-      if (h.getAttribute('data-drawn') !== id || !h.firstElementChild) flatInto(h);
+    h.removeAttribute('data-want');
+    if (h.getAttribute('data-drawn') !== id) { T.queue.add(h); fullFlatSoon(); }
+  }
+  // A still that can't be drawn: what the tile shows stays (a still in another look, or the flat
+  // figure), and the full flat figure takes the quick one's place when it's calm.
+  function keepFlat(h) {
+    if (!h.firstElementChild) h.innerHTML = quickFlat(h.getAttribute('data-move'));
+    if (h.querySelector(':scope > svg[data-quick]')) { T.queue.add(h); fullFlatSoon(); }
+  }
+  function fullFlatSoon() {
+    if (T.pending || !T.queue.size) return;
+    const run = (deadline) => {
+      T.pending = 0;
+      for (const h of T.queue) {
+        if (U.calm && !U.calm()) break;
+        T.queue.delete(h);
+        const id = h.getAttribute('data-move');
+        if (!h.isConnected || h.getAttribute('data-drawn') === id || (want3d() && h.hasAttribute('data-want'))) continue;
+        const svg = flatStill(id);
+        if (svg) { h.textContent = ''; h.appendChild(svg.cloneNode(true)); h.setAttribute('data-drawn', id); }
+        if (!deadline || deadline.timeRemaining() < 12) break;
+      }
+      if (T.queue.size) T.pending = setTimeout(() => { T.pending = 0; fullFlatSoon(); }, 250);
+    };
+    T.pending = G.requestIdleCallback ? G.requestIdleCallback(run, { timeout: 2000 }) : setTimeout(() => run(null), 60);
+  }
+  // The flat figure in the move's key pose as markup, quickly: the pose engine's own drawing
+  // (GH.pose.drawList, in the figure's classes, so it looks like the flat figure) cropped to what's
+  // drawn, without the chair, bench or wall and without working out the whole rep's bounds first,
+  // which takes 30 to 40 ms a move at 4x CPU (this takes one or two). Kept for the launch.
+  const OUTLINE = 1.9;
+  const f1 = (n) => Math.round(n * 10) / 10;
+  function quickFlat(id) {
+    if (T.quick.has(id)) return T.quick.get(id);
+    let out = '';
+    try { out = drawQuick(personMove(id)); } catch (e) { out = ''; }
+    T.quick.set(id, out);
+    return out;
+  }
+  function drawQuick(m) {
+    const P = GH.pose;
+    if (!m || !P || !P.drawList || !P.framePose) return '';
+    const tl = m.$tl || (m.$tl = P.timeline(m));
+    const dl = P.drawList(m, P.framePose(m, m.key || tl.steps[0].to), {});
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const take = (p, r) => { if (!p || !isFinite(p[0]) || !isFinite(p[1])) return; x0 = Math.min(x0, p[0] - r); x1 = Math.max(x1, p[0] + r); y0 = Math.min(y0, p[1] - r); y1 = Math.max(y1, p[1] + r); };
+    const xy = (p) => `${f1(p[0])},${f1(p[1])}`;
+    const line = (cls, a, b, w) => `<line${cls ? ` class="${cls}"` : ''} x1="${f1(a[0])}" y1="${f1(a[1])}" x2="${f1(b[0])}" y2="${f1(b[1])}"${w != null ? ` stroke-width="${f1(w)}"` : ''}/>`;
+    const circle = (cls, c, r) => `<circle class="${cls}" cx="${f1(c[0])}" cy="${f1(c[1])}" r="${f1(r)}"/>`;
+    const eq = { back: '', far: '', near: '', front: '' };
+    for (const e of dl.eq) {
+      const where = e.layer === 'back' || e.layer === 'far' || e.layer === 'near' ? e.layer : 'front';
+      eq[where] += `<g class="fig-${U.esc(e.k)}">${quickEq(e, take, line, circle, xy)}</g>`;
+    }
+    let body = '';
+    for (const ly of ['back', 'far', 'core', 'near', 'front']) {
+      let o = '', f = '', bd = '';
+      for (const it of dl.layers[ly] || []) {
+        take(it.a, it.w / 2); take(it.b, it.w / 2);
+        o += line(it.lead ? 'lead' : '', it.a, it.b, it.w);
+        f += line('', it.a, it.b, Math.max(0.5, it.w - 2 * OUTLINE));
+        for (const b of it.bands) bd += line('', b.a, b.b, b.w);
+      }
+      if (ly === 'core' && dl.head && dl.head.c) {
+        const c = dl.head.c, r = dl.head.r;
+        take(c, r + OUTLINE);
+        o += circle('fig-head', c, r + OUTLINE / 2);
+        f += circle('fig-head-fill', c, r - OUTLINE / 2);
+        if (dl.view === 'side' && P.dir) { const d = P.dir(dl.head.dir + 72); bd += circle('fig-eye', [c[0] + (dl.mirrored ? -d[0] : d[0]) * r * 0.5, c[1] + d[1] * r * 0.5], 1.3); }
+      }
+      body += `<g class="fig-layer fig-${ly}"><g class="fig-outline">${o}</g><g class="fig-fill">${f}</g><g class="fig-bands">${bd}</g>${ly === 'core' ? '' : `<g class="fig-eq">${eq[ly]}</g>`}</g>`;
+    }
+    if (!isFinite(x0)) return '';
+    const floor = dl.view !== 'top';
+    if (floor) y1 = Math.max(y1, 1.5);
+    const pad = Math.max(x1 - x0, y1 - y0) * 0.09;
+    const vb = `${f1(x0 - pad)} ${f1(y0 - pad)} ${f1(x1 - x0 + 2 * pad)} ${f1(y1 - y0 + 1.6 * pad)}`;
+    return `<svg class="fig" data-quick viewBox="${vb}" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false">${floor ? `<g class="fig-props"><line class="fig-floor" x1="${f1(x0 - pad)}" x2="${f1(x1 + pad)}" y1="0.8" y2="0.8"/></g>` : ''}<g class="fig-body">${body}</g></svg>`;
+  }
+  // One piece of equipment, as the figure draws it (src/engine/pose.js, updateFigure).
+  function quickEq(e, take, line, circle, xy) {
+    const sub = (a, b) => [a[0] - b[0], a[1] - b[1]], add = (a, b) => [a[0] + b[0], a[1] + b[1]], mul = (a, k) => [a[0] * k, a[1] * k];
+    const len = (a) => Math.hypot(a[0], a[1]);
+    for (const k of ['a', 'b', 'h']) if (e[k]) take(e[k], 4);
+    if (e.c) take(e.c, (e.r || 4) + 1);
+    for (const q of e.pts || []) take(q, 2);
+    switch (e.k) {
+      case 'db': {
+        const u = sub(e.b, e.a), n = mul(u, 1 / (len(u) || 1));
+        return line('eq-handle', e.a, e.b) + line('eq-plate', e.a, add(e.a, mul(n, 6))) + line('eq-plate', add(e.b, mul(n, -6)), e.b);
+      }
+      case 'dbEnd': {
+        const pts = [];
+        for (let k = 0; k < 6; k++) { const a = ((k * 60 + 30) * Math.PI) / 180; pts.push(xy([e.c[0] + Math.cos(a) * e.r, e.c[1] + Math.sin(a) * e.r])); }
+        return `<polygon class="eq-plate-end" points="${pts.join(' ')}"/>`;
+      }
+      case 'kb': {
+        const top = sub(e.h, e.c), tu = mul(top, 1 / (len(top) || 1)), n = [tu[1], -tu[0]];
+        const a = add(e.c, add(mul(tu, e.r * 0.55), mul(n, 5))), b = add(e.c, add(mul(tu, e.r * 0.55), mul(n, -5)));
+        const c1 = add(a, add(mul(tu, 7), mul(n, 0.5))), c2 = add(b, add(mul(tu, 7), mul(n, -0.5)));
+        return `<path class="eq-kb-handle" d="M${xy(a).replace(',', ' ')}C${xy(c1).replace(',', ' ')} ${xy(c2).replace(',', ' ')} ${xy(b).replace(',', ' ')}"/>${circle('eq-kb', e.c, e.r)}`;
+      }
+      case 'ball': return `${circle('eq-ball', e.c, e.r)}<path class="eq-ball-seam" d="M${f1(e.c[0] - e.r * 0.92)} ${f1(e.c[1] - 1)}Q${f1(e.c[0])} ${f1(e.c[1] + e.r * 0.55)} ${f1(e.c[0] + e.r * 0.92)} ${f1(e.c[1] - 1)}"/>`;
+      case 'plate': return circle('eq-plate-disc', e.c, e.r) + circle('eq-plate-hub', e.c, Math.min(4.5, e.r * 0.3));
+      case 'barEnd': return circle('eq-bar-end', e.c, e.r);
+      case 'knob': return circle('eq-knob', e.c, e.r);
+      case 'dhandle': return `<polygon class="eq-dhandle" points="${e.pts.map(xy).join(' ')}"/>`;
+      case 'band': case 'towel': case 'rope': return line(`eq-${e.k}`, e.a, e.b);
+      case 'pad': return line('fig-pad-o', e.a, e.b, e.w) + line('fig-pad-f', e.a, e.b, Math.max(0.5, e.w - 2.4));
+      case 'tube': case 'gbar': case 'cable': return line(e.cls || (e.k === 'tube' ? 'fig-frame' : e.k === 'gbar' ? 'fig-bar' : 'fig-cable'), e.a, e.b, e.w || (e.k === 'cable' ? 1.2 : e.k === 'gbar' ? 5 : 3.4));
+      case 'rect': take([e.x, e.y], 1); take([e.x + e.w, e.y + e.h], 1); return `<rect class="${e.cls || 'fig-prop'}" x="${f1(e.x)}" y="${f1(e.y)}" width="${f1(e.w)}" height="${f1(e.h)}" rx="${f1(e.rx || 0)}"/>`;
+      case 'circ': return circle(e.cls || 'fig-prop', e.c, e.r);
+      case 'poly': return `<polygon class="${e.cls || 'fig-prop'}" points="${(e.pts || []).map(xy).join(' ')}"/>`;
+      case 'pline': return `<polyline class="${e.cls || 'fig-hook'}" points="${(e.pts || []).map(xy).join(' ')}"/>`;
+      default: return e.a && e.b ? line('', e.a, e.b) : '';
     }
   }
-  // A large tile's still is asked for once the tile is near the screen.
-  function observe(h) {
-    if (!T.io) {
-      T.io = new G.IntersectionObserver((entries) => {
-        for (const e of entries) {
-          if (!e.isIntersecting) continue;
-          T.io.unobserve(e.target);
-          const m = e.target.isConnected && want3d() ? personMove(e.target.getAttribute('data-move')) : null;
-          if (m) show3d(e.target, m, lookFor(e.target));
-        }
-      }, { rootMargin: '120px' });
-    }
-    T.io.observe(h);
-  }
-  // The flat figure's key pose, cropped to the figure (the Plan tab draws its tiles the same way).
+  // The full flat figure's key pose, cropped to the figure (the Plan tab draws its tiles the same way).
   function flatStill(id) {
     if (T.svg.has(id)) return T.svg.get(id);
     const m = personMove(id);
@@ -132,11 +253,16 @@
   }
 
   /* ================================================================== words */
-  const S0 = () => U.S;
+  // A move's name, or a day's, inside a sentence: its first word in lower case, unless that's a name
+  // (Russian twist, Smith machine) or a letter (Y-T-W, V-up); the rest as it is (Staggered-stance RDL).
+  const PROPER = /^(Russian|Romanian|Pallof|Nordic|Bulgarian|Smith|Copenhagen|Zottman|Arnold|Jefferson|Turkish|Cossack)\b/;
+  const inSentence = (n) => (n && /^[A-Z][a-z]/.test(n) && !PROPER.test(n) ? n[0].toLowerCase() + n.slice(1) : String(n || ''));
+  // A rest in words, the same on a row and in its sheet: seconds up to two minutes, then minutes.
+  const restWords = (v) => (v === 0 ? 'None' : v < 120 ? `${v} s` : v % 60 ? `${Math.floor(v / 60)} min ${v % 60} s` : `${v / 60} min`);
   const itemMeta = (it) => {
     const m = M().MOVES[it.move] || {};
     const bits = [`${it.sets} × ${C().amountText(it)}${m.uni ? ' each side' : ''}`];
-    if (it.rest != null) bits.push(it.rest ? `rest ${it.rest >= 120 && it.rest % 60 === 0 ? `${it.rest / 60} min` : `${it.rest} s`}` : 'no rest');
+    if (it.rest != null) bits.push(it.rest ? `rest ${restWords(it.rest)}` : 'no rest');
     return bits.join(' · ');
   };
   function sourceLine(plan) {
@@ -155,7 +281,7 @@
     const offs = C().offsetsFor(plan.days.length, plan.weekdays);
     const wd = B().weekday(day);
     const first = offs.find((o) => o >= wd);
-    if (first === wd) return `Starts today with ${C().titleOf(plan, plan.weekdays ? offs.indexOf(first) : 0).toLowerCase()}.`;
+    if (first === wd) return `Starts today with ${inSentence(C().titleOf(plan, plan.weekdays ? offs.indexOf(first) : 0))}.`;
     if (first != null) return `First workout on ${WD_LONG[first]}.`;
     return `First workout next ${WD_LONG[offs[0]]}.`;
   }
@@ -168,632 +294,6 @@
     } catch (e) { /* stays where it is */ }
   }
 
-  /* ================================================================== the Plans page */
-  function inUse(S, day) {
-    const id = C().activeId(S);
-    const plan = id ? C().get(S, id) : null;
-    if (!plan) {
-      return `<div class="card cp-inuse" data-key="inuse">
-        <div class="cp-inuse-row"><span class="cp-coach-ico" aria-hidden="true">${U.icon('sparkle')}</span>
-          <span class="cp-inuse-text"><span class="cp-eyebrow" data-tone="positive">${U.icon('check-circle')}<span>In use</span></span><span class="t-headline">The coach's plan</span>
-          <span class="t-footnote rf-muted">Built from your goals, days and equipment. It adjusts every week.</span></span></div>
-      </div>`;
-    }
-    const pending = C().startDay(S, day) > day && !(C().inForce(S, day) && C().inForce(S, day).id === plan.id);
-    return `<div class="card cp-inuse" data-key="inuse">
-      <button type="button" class="cp-inuse-row cp-press" data-act="cpOpen" data-arg="${plan.id}">${art(plan, 'is-md')}
-        <span class="cp-inuse-text"><span class="cp-eyebrow" data-tone="positive">${U.icon('check-circle')}<span>${pending ? 'In use from tomorrow' : 'In use'}</span></span><span class="t-headline cp-name">${U.esc(plan.name)}</span>
-        <span class="t-footnote rf-muted">${U.esc(`${C().summary(plan)} · ${daysLine(plan)}`)}</span></span>
-        <span class="cp-go">${U.icon('chevron-right')}</span></button>
-      <button type="button" class="rf-btn cp-back" data-variant="plain" data-size="sm" data-act="cpCoach">${U.icon('refresh')}Back to the coach's plan</button>
-    </div>`;
-  }
-  const makeTile = (act, icon, tone, title, sub) => `<button type="button" class="cp-make-tile cp-press" data-act="${act}" data-tone="${tone}">
-      <span class="cp-make-ico" aria-hidden="true">${U.icon(icon)}</span><span class="cp-make-title">${U.esc(title)}</span><span class="cp-make-sub">${U.esc(sub)}</span></button>`;
-  function planCard(S, plan) {
-    const active = C().activeId(S) === plan.id;
-    const problems = C().problems(plan);
-    return `<li class="cp-plan" data-key="p-${plan.id}"><button type="button" class="cp-plan-row cp-press" data-act="cpOpen" data-arg="${plan.id}">
-      ${art(plan)}
-      <span class="cp-plan-text"><span class="cp-name">${U.esc(plan.name)}</span>
-        <span class="cp-plan-sub">${U.esc(problems.length ? 'Not finished yet' : C().summary(plan))}</span>
-        <span class="cp-src" data-src="${plan.source}">${U.esc(sourceLine(plan))}</span></span>
-      ${active ? `<span class="cp-badge">${U.icon('check')}In use</span>` : `<span class="cp-go">${U.icon('chevron-right')}</span>`}
-    </button></li>`;
-  }
-  U.screens.plans = {
-    render(S, day) {
-      C().ensure(S);
-      pruneFresh(S);
-      const plans = C().list(S).slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-      return `${U.navbar('Your plans', U.glassBtn('plus', 'New plan', 'cpNew'), U.glassBtn('chevron-left', 'Back', 'back'))}
-        <h1 class="rf-large-title">Your plans</h1>
-        <p class="lt-sub t-callout rf-muted">Build your own, ask the coach, or add a shared one.</p>
-        <div class="section">
-          ${inUse(S, day)}
-          <div class="cp-make" data-key="make">
-            ${makeTile('cpNew', 'plus', 'indigo', 'Build your own', 'Pick exercises like songs for a playlist')}
-            ${makeTile('cpBuild', 'sparkle', 'violet', 'Ask the coach', 'Say what you want, get a plan')}
-            ${makeTile('cpScan', 'scan', 'teal', 'Add a shared plan', 'Scan a code or paste a link')}
-          </div>
-        </div>
-        <h2 class="sec-title t-title-3">Saved plans</h2>
-        <div class="section">
-          ${plans.length ? `<ul class="cp-plans" data-key="plans">${plans.map((p) => planCard(S, p)).join('')}</ul>`
-    : `<div class="card cp-empty" data-key="empty"><span class="cp-empty-ico" aria-hidden="true">${U.icon('list')}</span><p class="t-headline">No plans yet</p><p class="t-callout rf-muted">Share one and anyone with Gradient Health can scan it.</p></div>`}
-        </div>`;
-    },
-    after(screen) { drawThumbs(screen); },
-  };
-  // A new plan left without a single exercise isn't kept.
-  function pruneFresh(S) {
-    const id = ui.fresh;
-    if (!id || (U.route && U.route.view === 'planEdit' && U.route.arg === id)) return;
-    const p = C().get(S, id);
-    ui.fresh = null;
-    if (p && !C().countItems(p) && C().activeId(S) !== id) { C().remove(S, id, U.today()); U.save(); }
-  }
-  U.act.openPlans = () => U.open('plans');
-  U.act.cpOpen = (el) => U.open('planEdit', el.dataset.arg); // the page's opening has its own haptic
-
-  /* ================================================================== new plan */
-  U.act.cpNew = () => {
-    const S = U.S;
-    const n = C().list(S).length;
-    const ctl = U.sheet({
-      title: 'New plan', size: 'fit', cls: 'cp-sheet',
-      body: `<div class="sheet-pad cp-new">
-        <button type="button" class="cp-choice cp-press" data-act="cpNewBlank"><span class="cp-choice-ico" data-tone="indigo" aria-hidden="true">${U.icon('plus')}</span><span class="cp-choice-text"><span class="t-headline">An empty plan</span><span class="t-footnote rf-muted">Name it, add days, pick the exercises</span></span>${U.icon('chevron-right')}</button>
-        <button type="button" class="cp-choice cp-press" data-act="cpNewCopy"><span class="cp-choice-ico" data-tone="sky" aria-hidden="true">${U.icon('copy')}</span><span class="cp-choice-text"><span class="t-headline">Start from my current plan</span><span class="t-footnote rf-muted">This week's days and exercises, ready to change</span></span>${U.icon('chevron-right')}</button>
-        ${n ? '' : '<p class="t-footnote rf-muted">Nothing changes until you use a plan.</p>'}
-      </div>`,
-    });
-    U.act.cpNewBlank = () => {
-      const plan = C().create(S, { name: uniqueName(S, 'My plan') });
-      ui.fresh = plan.id;
-      U.save();
-      ctl.close('ok');
-      U.haptic('success');
-      U.open('planEdit', plan.id);
-      setTimeout(() => { const el = doc.getElementById('cpName'); if (el) { el.focus(); el.select(); } }, 420);
-    };
-    U.act.cpNewCopy = () => {
-      const draft = C().fromCoach(S, U.today());
-      draft.name = uniqueName(S, 'My plan');
-      const { plan } = C().add(S, draft);
-      U.save();
-      ctl.close('ok');
-      U.haptic('copy');
-      U.open('planEdit', plan.id);
-      U.toast('Copied your current plan', 'positive', 'The coach\'s plan stays as it is.');
-    };
-  };
-  function uniqueName(S, base) {
-    const names = new Set(C().list(S).map((p) => p.name));
-    if (!names.has(base)) return base;
-    for (let i = 2; i < 99; i++) if (!names.has(`${base} ${i}`)) return `${base} ${i}`;
-    return base;
-  }
-
-  /* ================================================================== a plan's page */
-  function exRow(plan, di, it, k, swap) {
-    const m = M().MOVES[it.move] || { name: it.move };
-    const n = plan.days[di].items.slice(0, k).filter((x) => x.move === it.move).length;
-    const key = `${di}-${it.move}-${n}`;
-    const warn = swap ? `<span class="cp-swap">${U.icon(swap.to ? 'shuffle' : 'alert')}<span>${U.esc(swap.to ? `${M().MOVES[swap.to].name} instead: ${swap.why}` : `Left out: ${swap.why}`)}</span></span>` : '';
-    return `<li class="cp-ex" data-key="e-${U.esc(key)}" data-i="${k}">
-      <button type="button" class="cp-grip" data-grip="${di}:${k}" aria-label="${U.esc(`Reorder ${m.name}. Use the up and down arrow keys.`)}">${GRIP}</button>
-      <button type="button" class="cp-ex-row" data-act="cpItem" data-arg="${di}:${k}">
-        ${thumb(it.move)}
-        <span class="cp-ex-text"><span class="cp-ex-name">${U.esc(m.name)}</span><span class="cp-ex-meta rf-num">${U.esc(itemMeta(it))}</span>${warn}</span>
-        <span class="cp-go">${U.icon('chevron-right')}</span>
-      </button></li>`;
-  }
-  function dayCard(S, plan, di, swaps, day) {
-    const d = plan.days[di];
-    const offs = C().offsetsFor(plan.days.length, plan.weekdays);
-    const mins = C().minutes(S, plan, di, day);
-    const groups = C().groupsOf(plan, di);
-    return `<div class="card cp-day" data-key="day-${di}">
-      <div class="cp-day-head">
-        <span class="cp-day-eyebrow"><b>Day ${di + 1}</b><span>${U.esc(plan.weekdays ? WD_LONG[offs[di]] : WD[offs[di]])}</span></span>
-        ${mins ? `<span class="pw-min" aria-label="${U.esc(`about ${mins} minutes`)}">${U.icon('timer')}<span>${U.roll(mins)} min</span></span>` : ''}
-        <button type="button" class="rf-btn cp-day-more" data-shape="circle" data-size="sm" data-act="cpDayMenu" data-arg="${di}" aria-label="${U.esc(`Day ${di + 1} options`)}">${U.icon('more')}</button>
-      </div>
-      <input class="cp-day-title" type="text" maxlength="30" value="${U.esc(d.title)}" placeholder="${U.esc(d.items.length ? C().titleFrom(d.items) : 'Name this day')}" aria-label="${U.esc(`Day ${di + 1} name`)}" data-on="cpDayTitle" data-arg="${di}" enterkeyhint="done">
-      ${groups.length ? `<div class="pw-tags" aria-label="Muscles">${groups.map((g) => `<span class="pw-tag" style="--c:${hue(g)}">${U.esc(groupName(g))}</span>`).join('')}</div>` : ''}
-      ${d.items.length ? `<ul class="cp-exlist" data-day="${di}">${d.items.map((it, k) => exRow(plan, di, it, k, swaps.find((x) => x.day === di && x.i === k))).join('')}</ul>`
-    : `<p class="t-callout rf-muted cp-day-empty">No exercises yet.</p>`}
-      <button type="button" class="rf-btn cp-add" data-variant="soft" data-act="cpAdd" data-arg="${di}">${U.icon('plus')}Add exercises</button>
-    </div>`;
-  }
-  function schedule(plan) {
-    const n = plan.days.length;
-    const when = ui.when[plan.id] || (plan.weekdays ? 'set' : 'spread');
-    const picks = ui.wd[plan.id] || (plan.weekdays || []).slice();
-    const chips = WD.map((w, i) => `<button type="button" class="rf-chip cp-wd" aria-pressed="${picks.includes(i)}" data-on="cpWd" data-v="${i}" aria-label="${WD_LONG[i]}">${U.icon('check', null, 'rf-chip-check')}${w}</button>`).join('');
-    const offs = C().offsetsFor(n, when === 'set' && picks.length === n ? picks.slice().sort((a, b) => a - b) : null);
-    const foot = when === 'set' && picks.length !== n
-      ? `Pick ${n} ${n === 1 ? 'day' : 'days'}, one for each workout (${picks.length} picked).`
-      : when === 'set' ? `Day ${offs.map((o, i) => `${i + 1} on ${WD[o]}`).join(', day ')}.` : `${listWords(offs.map((o) => WD_LONG[o]))}, spread out like the coach's plan. Miss one and the week moves along.`;
-    return `<div class="card cp-sched" data-key="sched">
-      <div class="cp-row"><span class="t-headline">Schedule</span><span class="t-callout rf-muted rf-num">${n} ${n === 1 ? 'day' : 'days'} a week</span></div>
-      ${U.seg(`cpWhen-${plan.id}`, [['spread', 'Spread out'], ['set', 'Set days']], when, 'When you train', ' data-on="cpWhen"')}
-      ${when === 'set' ? `<div class="ob-chips cp-wds" data-key="wds">${chips}</div>` : ''}
-      <p class="t-footnote rf-muted">${U.esc(foot)}</p>
-    </div>`;
-  }
-  U.screens.planEdit = {
-    render(S, day, id) {
-      const plan = C().get(S, id);
-      const back = U.glassBtn('chevron-left', 'Back', 'back');
-      if (!plan || plan.deleted) return `${U.navbar('Plan', '', back)}<h1 class="rf-large-title">Plan</h1><div class="section"><div class="card"><p class="t-callout">This plan was deleted.</p></div></div>`;
-      const active = C().activeId(S) === plan.id;
-      const problems = C().problems(plan);
-      const swaps = C().swapsFor(S, plan, day);
-      const pending = active && C().startDay(S, day) > day && !(C().inForce(S, day) && C().inForce(S, day).id === plan.id);
-      const trailing = `${U.glassBtn('share', 'Share this plan', 'cpShare', `data-arg="${plan.id}"`)}${U.glassBtn('more', 'More', 'cpMenu', `data-arg="${plan.id}"`)}`;
-      const hero = `<div class="card cp-hero" data-key="hero">
-          ${art(plan, 'is-lg')}
-          <div class="cp-hero-text">
-            <span class="cp-src" data-src="${plan.source}">${U.esc(sourceLine(plan))}</span>
-            <p class="t-callout rf-muted rf-num">${U.esc(C().summary(plan))}</p>
-            ${plan.note ? `<p class="t-footnote cp-note">${U.esc(plan.note)}</p>` : ''}
-          </div>
-          <div class="cp-hero-act">
-            ${improveBtn(S, plan)}
-            ${active ? `<span class="cp-badge is-lg">${U.icon('check')}${pending ? 'In use from tomorrow' : 'In use'}</span><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="cpCoach">Back to the coach's plan</button>`
-    : problems.length ? `<p class="t-footnote cp-todo">${U.icon('info')}<span>${U.esc(problems[0])}</span></p>`
-      : `<button type="button" class="rf-btn cp-use" data-variant="filled" data-size="lg" data-act="cpUse" data-arg="${plan.id}">${U.icon('play')}Use this plan</button><p class="t-footnote rf-muted">${U.esc(startsLine(S, day, plan))}</p>`}
-          </div>
-        </div>`;
-      return `${U.navbar(plan.name, trailing, back)}
-        <h1 class="rf-large-title cp-title">${U.esc(plan.name)}</h1>
-        <div class="section">
-          ${hero}
-          <div class="card cp-names" data-key="names">
-            <div class="rf-field"><label class="rf-field-label" for="cpName">Name</label><div class="rf-field-control"><input class="rf-input" id="cpName" type="text" maxlength="40" value="${U.esc(plan.name)}" data-on="cpName" enterkeyhint="done" autocomplete="off"></div></div>
-            <div class="rf-field"><label class="rf-field-label" for="cpNote">Note (optional)</label><div class="rf-field-control"><textarea class="rf-input" id="cpNote" rows="2" maxlength="200" placeholder="What it's for, how to do it" data-on="cpNote">${U.esc(plan.note || '')}</textarea></div></div>
-          </div>
-          ${schedule(plan)}
-        </div>
-        <h2 class="sec-title t-title-3">Days</h2>
-        <div class="section cp-days">
-          ${plan.days.map((d, di) => dayCard(S, plan, di, swaps, day)).join('')}
-          ${plan.days.length < C().LIMITS.days ? `<button type="button" class="rf-btn cp-addday" data-size="lg" data-act="cpAddDay" data-key="addday">${U.icon('plus')}Add a day</button>` : ''}
-          <p class="t-footnote rf-muted cp-foot" data-key="foot">Each workout starts with a short warm-up. Lighter weeks and short nights trim a few sets. Reps and weights go up as you say how many more you could have done.</p>
-        </div>`;
-    },
-    after(screen, S, day, id) {
-      drawThumbs(screen);
-      wireDrag(screen, id);
-    },
-  };
-  // Improve: with Claude on (or the on-device AI there), for a plan with something to improve.
-  function improveBtn(S, plan) {
-    if (!C().countItems(plan)) return '';
-    const claude = S.ai && S.ai.mode === 'api' && S.ai.consentAt && GH.ai && GH.ai.hasKey && GH.ai.hasKey();
-    const device = !!(S.ai && S.ai.deviceModel);
-    if (!claude && !device) return '';
-    return `<button type="button" class="rf-btn cp-improve" data-variant="soft" data-size="sm" data-act="cpImprove" data-arg="${plan.id}">${U.icon('sparkle')}Improve with ${claude ? 'Claude' : 'the coach'}</button>`;
-  }
-  // Every change is saved as it's made; the plan in use picks it up from today.
-  function edit(fn) {
-    const S = U.S, id = U.route.arg;
-    if (!C().get(S, id)) return null;
-    const plan = C().update(S, id, fn, U.today());
-    if (ui.fresh === id && C().countItems(plan)) ui.fresh = null;
-    U.save();
-    U.render();
-    return plan;
-  }
-  U.on.cpName = (el, ev, v) => { const name = String(v || '').trim(); if (name) edit((p) => { p.name = name; }); else U.render(); };
-  U.on.cpNote = (el, ev, v) => edit((p) => { p.note = String(v || ''); });
-  U.on.cpDayTitle = (el, ev, v) => { const di = Number(el.dataset.arg); edit((p) => { if (p.days[di]) p.days[di].title = String(v || ''); }); };
-  U.on.cpWhen = (el, ev, v) => {
-    const id = U.route.arg;
-    const plan = C().get(U.S, id);
-    if (!plan) return;
-    ui.when[id] = v;
-    if (v === 'spread') { delete ui.wd[id]; edit((p) => { p.weekdays = null; }); return; }
-    ui.wd[id] = (plan.weekdays || C().offsetsFor(plan.days.length, null)).slice();
-    edit((p) => { p.weekdays = ui.wd[id].slice(); });
-  };
-  U.on.cpWd = (el, ev, v) => {
-    const id = U.route.arg;
-    const plan = C().get(U.S, id);
-    if (!plan) return;
-    const i = Number(el.dataset.v);
-    let picks = (ui.wd[id] || plan.weekdays || []).filter((x) => x !== i);
-    if (v) picks.push(i);
-    picks = picks.sort((a, b) => a - b);
-    ui.wd[id] = picks;
-    if (picks.length === plan.days.length) edit((p) => { p.weekdays = picks.slice(); });
-    else { if (plan.weekdays) edit((p) => { p.weekdays = null; }); else U.render(); }
-  };
-  U.act.cpAddDay = () => {
-    const plan = edit((p) => { p.days.push({ title: '', items: [] }); });
-    if (!plan) return;
-    delete ui.wd[plan.id];
-    U.haptic('select');
-    setTimeout(() => { const cards = doc.querySelectorAll('#screen .cp-day'); const last = cards[cards.length - 1]; if (last) last.scrollIntoView({ block: 'center', behavior: U.reduced() ? 'auto' : 'smooth' }); }, 60);
-  };
-  // A day's options: a menu that grows out of its button (U.menu), which closes itself as one is
-  // picked.
-  U.act.cpDayMenu = (el) => {
-    const di = Number(el.dataset.arg);
-    const plan = C().get(U.S, U.route.arg);
-    if (!plan) return;
-    const n = plan.days.length;
-    U.menu(el, [
-      di > 0 ? { act: 'cpDayMove', arg: `${di}:-1`, icon: 'chevron-up', label: 'Move day up' } : false,
-      di < n - 1 ? { act: 'cpDayMove', arg: `${di}:1`, icon: 'chevron-down', label: 'Move day down' } : false,
-      n < C().LIMITS.days ? { act: 'cpDayCopy', arg: String(di), icon: 'copy', label: 'Duplicate day' } : false,
-      n > 1 ? { act: 'cpDayDelete', arg: String(di), icon: 'trash', label: 'Delete day', tone: 'critical' } : false,
-    ], { label: `Day ${di + 1}${plan.days[di].title ? `: ${plan.days[di].title}` : ''}` });
-    U.act.cpDayMove = (b) => { const [a, dir] = b.dataset.arg.split(':').map(Number); edit((p) => { const [d] = p.days.splice(a, 1); p.days.splice(a + dir, 0, d); }); U.haptic('drop'); };
-    U.act.cpDayCopy = (b) => { const a = Number(b.dataset.arg); edit((p) => { p.days.splice(a + 1, 0, JSON.parse(JSON.stringify(p.days[a]))); }); delete ui.wd[plan.id]; U.haptic('copy'); };
-    U.act.cpDayDelete = (b) => {
-      const a = Number(b.dataset.arg);
-      const before = JSON.parse(JSON.stringify(plan.days));
-      const wdBefore = plan.weekdays ? plan.weekdays.slice() : null;
-      edit((p) => { p.days.splice(a, 1); p.weekdays = null; });
-      delete ui.wd[plan.id];
-      U.haptic('remove');
-      U.toast('Day deleted', 'neutral', undefined, { label: 'Undo', onClick: () => { if (U.route.arg === plan.id) { edit((p) => { p.days = before; p.weekdays = wdBefore; }); U.haptic('undo'); } } });
-    };
-  };
-
-  /* ---------------------------------------------------------------- one exercise */
-  U.act.cpItem = (el) => {
-    const [di, k] = String(el.dataset.arg).split(':').map(Number);
-    itemSheet(U.route.arg, di, k);
-  };
-  function itemSheet(planId, di, k) {
-    const S = U.S;
-    const get = () => { const p = C().get(S, planId); return p && p.days[di] ? p.days[di].items[k] : null; };
-    const it0 = get();
-    if (!it0) return;
-    const body = () => {
-      const plan = C().get(S, planId);
-      const it = get();
-      if (!it) return '<div class="sheet-pad"><p class="t-callout rf-muted">This exercise was removed.</p></div>';
-      const m = M().MOVES[it.move];
-      const swap = C().swapsFor(S, { days: [{ items: [it] }] }, U.today()).find(() => true);
-      const amt = m.timed ? it.secs : it.reps;
-      const rest = it.rest == null ? 'auto' : String(it.rest);
-      const restOpts = [['auto', 'Auto'], ['0', 'None'], ['30', '30 s'], ['60', '60 s'], ['90', '90 s'], ['120', '2 min'], ['180', '3 min']];
-      if (!restOpts.some(([v]) => v === rest)) restOpts.push([rest, `${rest} s`]);
-      const n = plan.days[di].items.length;
-      return `<div class="sheet-pad cp-item">
-        <button type="button" class="cp-item-top cp-press" data-act="cpHowTo" data-arg="${it.move}">${thumb(it.move, 'is-xl')}
-          <span class="cp-item-what"><span class="t-footnote rf-muted">${U.esc([groupName(m.group)].concat((m.muscles || []).map((x) => String(x).replace(/([A-Z])/g, ' $1').toLowerCase()).filter((x) => x !== String(m.group).toLowerCase()).slice(0, 3)).join(' · '))}</span>
-          <span class="cp-link">${U.icon('info')}How to do it</span></span></button>
-        ${swap ? `<p class="cp-swap is-box">${U.icon(swap.to ? 'shuffle' : 'alert')}<span>${U.esc(swap.to ? `You'll do ${M().MOVES[swap.to].name.toLowerCase()} instead: ${swap.why}.` : `Left out for now: ${swap.why}.`)}</span></p>` : ''}
-        <div class="cp-steps">
-          <div class="cp-step"><span class="t-subhead">Sets</span>${U.stepper('cpSets', it.sets, 1, 10, 'Sets', 'data-on="cpSets"')}</div>
-          <div class="cp-step"><span class="t-subhead">${m.timed ? 'Seconds' : m.uni ? 'Reps each side' : 'Reps'}</span>${U.stepper('cpAmt', amt, m.timed ? 5 : 1, m.timed ? 600 : 100, m.timed ? 'Seconds' : 'Reps', 'data-on="cpAmt"', m.timed ? 5 : 1)}</div>
-        </div>
-        <p class="t-subhead cp-rest-label">Rest between sets</p>
-        ${U.choice('cpRest', restOpts, rest, 'Rest between sets', ' class="ob-chips cp-rest" data-on="cpRestPick"')}
-        <p class="t-footnote rf-muted">${m.timed ? 'Hold for this long each set.' : 'Reps go up as it gets easier, then the weight, if it has one.'}${rest === 'auto' ? ' Auto rest is 90 s after big moves, 60 s after small ones.' : ''}</p>
-        <div class="cp-item-acts">
-          <button type="button" class="rf-btn" data-act="cpItemMove" data-arg="-1"${k === 0 ? ' disabled' : ''}>${U.icon('chevron-up')}Up</button>
-          <button type="button" class="rf-btn" data-act="cpItemMove" data-arg="1"${k >= n - 1 ? ' disabled' : ''}>${U.icon('chevron-down')}Down</button>
-          <button type="button" class="rf-btn" data-act="cpReplace">${U.icon('shuffle')}Replace</button>
-          <button type="button" class="rf-btn" data-tone="critical" data-act="cpRemove">${U.icon('trash')}Remove</button>
-        </div>
-      </div>`;
-    };
-    const ctl = U.sheet({ title: M().MOVES[it0.move].name, size: 'fit', cls: 'cp-sheet', body: body(), after: (c) => drawThumbs(c.el), onClose: () => { U.render(); } });
-    const change = (fn) => {
-      if (U.route.arg !== planId) return;
-      edit((p) => { const it = p.days[di] && p.days[di].items[k]; if (it) fn(it, p); });
-    };
-    U.on.cpSets = (el, ev, v) => change((it) => { it.sets = Math.max(1, Math.min(10, Math.round(v) || 1)); });
-    U.on.cpAmt = (el, ev, v) => change((it) => { const m = M().MOVES[it.move]; if (m.timed) it.secs = Math.max(5, Math.min(600, Math.round(v) || 5)); else it.reps = Math.max(1, Math.min(100, Math.round(v) || 1)); });
-    U.on.cpRestPick = (el, ev, v) => { change((it) => { if (v === 'auto') delete it.rest; else it.rest = Number(v); }); };
-    U.act.cpItemMove = (b) => {
-      const dir = Number(b.dataset.arg);
-      const plan = C().get(S, planId);
-      const n = plan ? plan.days[di].items.length : 0;
-      if (k + dir < 0 || k + dir >= n) return;
-      edit((p) => { const list = p.days[di].items; const [x] = list.splice(k, 1); list.splice(k + dir, 0, x); });
-      k += dir;
-      U.haptic('drop');
-      ctl.update(body());
-      drawThumbs(ctl.el);
-    };
-    U.act.cpRemove = () => {
-      const plan = C().get(S, planId);
-      const it = get();
-      if (!plan || !it) return;
-      const at = k;
-      ctl.close('ok');
-      edit((p) => { p.days[di].items.splice(at, 1); });
-      U.haptic('remove');
-      U.toast(`Removed ${M().MOVES[it.move].name.toLowerCase()}`, 'neutral', undefined, { label: 'Undo', onClick: () => { if (U.route.arg === planId) { edit((p) => { if (p.days[di]) p.days[di].items.splice(at, 0, it); }); U.haptic('undo'); } } });
-    };
-    U.act.cpReplace = () => { ctl.close('ok'); picker(planId, di, k); };
-  }
-  U.act.cpHowTo = (el) => U.moveSheet(el.dataset.arg);
-
-  /* ---------------------------------------------------------------- drag to reorder */
-  // Hold the grip and drag: the row lifts, the others make room, and it drops where you let go.
-  // Arrow keys on the grip move it one place up or down.
-  function wireDrag(screen, planId) {
-    for (const list of screen.querySelectorAll('.cp-exlist')) {
-      if (list._wired) continue;
-      list._wired = true;
-      list.addEventListener('pointerdown', (ev) => start(ev, list));
-      list.addEventListener('keydown', (ev) => {
-        const g = ev.target.closest && ev.target.closest('.cp-grip');
-        if (!g || (ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown')) return;
-        ev.preventDefault();
-        const [di, k] = g.dataset.grip.split(':').map(Number);
-        const to = k + (ev.key === 'ArrowUp' ? -1 : 1);
-        if (to < 0 || to >= list.children.length) return;
-        edit((p) => { const items = p.days[di].items; const [x] = items.splice(k, 1); items.splice(to, 0, x); });
-        U.haptic('tick');
-        const again = doc.querySelector(`#screen .cp-grip[data-grip="${di}:${to}"]`);
-        if (again) again.focus();
-      });
-    }
-    function start(ev, list) {
-      const g = ev.target.closest && ev.target.closest('.cp-grip');
-      if (!g || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
-      ev.preventDefault();
-      const [di, k] = g.dataset.grip.split(':').map(Number);
-      const rows = Array.from(list.children);
-      const row = rows[k];
-      if (!row) return;
-      const rects = rows.map((r) => r.getBoundingClientRect());
-      const d = { di, k, to: k, y0: ev.clientY, rows, rects, row, h: rects[k].height, id: ev.pointerId };
-      try { g.setPointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
-      row.setAttribute('data-lifted', '');
-      list.setAttribute('data-dragging', '');
-      U.haptic('grab');
-      const move = (e) => {
-        if (e.pointerId !== d.id) return;
-        const dy = e.clientY - d.y0;
-        const top = d.rects[0].top, bottom = d.rects[d.rects.length - 1].bottom;
-        const clamped = Math.max(top - d.rects[d.k].top, Math.min(bottom - d.rects[d.k].bottom, dy));
-        row.style.transform = `translate3d(0, ${clamped.toFixed(1)}px, 0) scale(1.02)`;
-        // Its new place: how many of the other rows now sit above its middle.
-        const mid = d.rects[d.k].top + d.h / 2 + clamped;
-        let to = 0;
-        d.rects.forEach((r, i) => { if (i !== d.k && mid > r.top + r.height / 2) to++; });
-        if (to !== d.to) {
-          d.to = to;
-          U.haptic('tick');
-          d.rows.forEach((r, i) => {
-            if (i === d.k) return;
-            const shift = d.k < to && i > d.k && i <= to ? -d.h : d.k > to && i >= to && i < d.k ? d.h : 0;
-            r.style.transform = shift ? `translate3d(0, ${shift}px, 0)` : '';
-          });
-        }
-      };
-      const end = (e) => {
-        if (e.pointerId !== d.id) return;
-        g.removeEventListener('pointermove', move);
-        g.removeEventListener('pointerup', end);
-        g.removeEventListener('pointercancel', end);
-        for (const r of d.rows) r.style.transform = '';
-        row.removeAttribute('data-lifted');
-        list.removeAttribute('data-dragging');
-        if (e.type !== 'pointercancel') {
-          if (d.to !== d.k) edit((p) => { const items = p.days[d.di].items; const [x] = items.splice(d.k, 1); items.splice(d.to, 0, x); });
-          U.haptic('drop');
-        }
-      };
-      g.addEventListener('pointermove', move);
-      g.addEventListener('pointerup', end);
-      g.addEventListener('pointercancel', end);
-    }
-  }
-
-  /* ---------------------------------------------------------------- the exercise picker */
-  U.act.cpAdd = (el) => picker(U.route.arg, Number(el.dataset.arg), null);
-  function picker(planId, di, replaceK) {
-    const S = U.S;
-    const st = { q: '', group: 'all', mine: true, added: [] };
-    const cat = C().catalog(S, U.today());
-    const order = (x) => {
-      const gi = FILTERS.findIndex(([g]) => g === x.group);
-      const m = M().MOVES[x.id];
-      const lad = m.family && M().LADDERS[m.family];
-      return [gi < 0 ? 99 : gi, lad ? Object.keys(M().LADDERS).indexOf(m.family) : 99, lad ? lad.rungs.indexOf(x.id) : 99];
-    };
-    const sorted = cat.slice().sort((a, b) => { const x = order(a), y = order(b); return x[0] - y[0] || x[1] - y[1] || x[2] - y[2] || a.name.localeCompare(b.name); });
-    const inDay = () => { const p = C().get(S, planId); return p && p.days[di] ? p.days[di].items.map((x) => x.move) : []; };
-    const tiles = () => {
-      const q = st.q.trim().toLowerCase();
-      const have = inDay();
-      const hits = sorted.filter((x) => (st.group === 'all' || x.group === st.group) && (!st.mine || x.ok) && (!q || x.name.toLowerCase().includes(q) || groupName(x.group).toLowerCase().includes(q)));
-      if (!hits.length) return `<p class="t-callout rf-muted cp-none">${st.mine && sorted.some((x) => !x.ok && x.name.toLowerCase().includes(q)) ? 'Nothing you can do matches that. Turn off "Only what I can do" to see the rest.' : 'No exercise matches that.'}</p>`;
-      return `<ul class="cp-grid">${hits.map((x) => {
-        const n = have.filter((id) => id === x.id).length;
-        const sub = x.ok ? `${groupName(x.group)}${x.timed ? ' · held' : ''}${x.gym && !x.home && (S.profile.where || 'home') === 'both' ? ' · gym' : ''}` : U.cap(x.why || 'Not for you now');
-        return `<li data-key="t-${x.id}"><button type="button" class="cp-tile cp-press${n ? ' is-added' : ''}${x.ok ? '' : ' is-off'}" data-act="cpPick" data-arg="${x.id}" aria-pressed="${n > 0}" aria-label="${U.esc(`${x.name}. ${sub}.${n ? ' In this day.' : ''}`)}">
-          ${thumb(x.id, 'is-tile')}
-          <span class="cp-tile-name">${U.esc(x.name)}</span>
-          <span class="cp-tile-sub">${U.esc(sub)}</span>
-          <span class="cp-tile-mark" aria-hidden="true">${U.icon(n ? 'check' : replaceK != null ? 'arrow-right' : 'plus')}</span>
-        </button></li>`;
-      }).join('')}</ul>`;
-    };
-    const body = () => `<div class="cp-pick">
-        <div class="cp-pick-top">
-          <div class="rf-search cp-q">${U.icon('search')}<input class="rf-input rf-search-input" type="search" id="cpQ" placeholder="Search exercises" aria-label="Search exercises" value="${U.esc(st.q)}" autocomplete="off" enterkeyhint="search"></div>
-          ${U.choice('cpGroup', FILTERS, st.group, 'Muscle group', ' class="cp-filters" data-hscroll data-on="cpGroup"')}
-          <ul class="rf-list cp-mine">${U.sw('Only what I can do', st.mine, 'data-on="cpMine"', 'With your equipment, today')}</ul>
-        </div>
-        <div class="cp-results" data-key="res">${tiles()}</div>
-      </div>`;
-    const plan = C().get(S, planId);
-    const title = replaceK != null ? 'Replace exercise' : `Add to day ${di + 1}`;
-    const ctl = U.sheet({ title, size: 'full', cls: 'cp-sheet cp-picker', body: body(), action: { label: 'Done', act: 'cpPickDone' }, after: (c) => drawThumbs(c.el), onClose: () => U.render() });
-    const refresh = () => { ctl.update(body()); drawThumbs(ctl.el); };
-    const doneBtn = () => ctl.el.querySelector('.rf-sheet-header [data-act="cpPickDone"]');
-    const count = () => { const b = doneBtn(); if (b) b.textContent = st.added.length ? `Done (${st.added.length})` : 'Done'; };
-    let timer = 0;
-    ctl.el.addEventListener('input', (e) => {
-      if (e.target.id !== 'cpQ') return;
-      st.q = e.target.value;
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        const res = ctl.el.querySelector('.cp-results');
-        if (res) { U.morph(res, tiles()); drawThumbs(res); }
-      }, 110);
-    });
-    U.on.cpGroup = (el, ev, v) => { st.group = v; refresh(); };
-    U.on.cpMine = (el, ev, v) => { st.mine = !!v; refresh(); };
-    U.act.cpPickDone = () => { U.haptic('dismiss'); ctl.close('ok'); };
-    U.act.cpPick = (b) => {
-      const id = b.dataset.arg;
-      const m = M().MOVES[id];
-      const x = cat.find((c) => c.id === id);
-      const item = m.timed ? { move: id, sets: 3, secs: Math.max(5, Math.min(600, m.start || 30)) } : { move: id, sets: 3, reps: Math.max(1, Math.min(100, m.start || 10)) };
-      if (replaceK != null) {
-        edit((p) => { const old = p.days[di].items[replaceK]; if (old) p.days[di].items[replaceK] = Object.assign(item, { sets: old.sets }, old.rest != null ? { rest: old.rest } : {}); });
-        U.haptic('swap');
-        ctl.close('ok');
-        return;
-      }
-      const p0 = C().get(S, planId);
-      const have = p0 && p0.days[di] ? p0.days[di].items : [];
-      // Tapping an exercise just added takes it back out; otherwise it's added to the end.
-      const mine = st.added.lastIndexOf(id);
-      if (mine >= 0 && have.some((h) => h.move === id)) {
-        edit((p) => { const list = p.days[di].items; const at = list.map((h) => h.move).lastIndexOf(id); if (at >= 0) list.splice(at, 1); });
-        st.added.splice(mine, 1);
-        U.haptic('toggleOff');
-      } else {
-        if (have.length >= C().LIMITS.items) { U.haptic('deny'); U.toast(`A day holds up to ${C().LIMITS.items} exercises`, 'caution'); return; }
-        edit((p) => { p.days[di].items.push(item); });
-        st.added.push(id);
-        U.haptic('toggleOn');
-        if (x && !x.ok) U.toast(`${m.name} is in`, 'neutral', `${U.cap(x.why)}, so the app swaps in something similar until you can.`);
-      }
-      const res = ctl.el.querySelector('.cp-results');
-      if (res) { U.morph(res, tiles()); drawThumbs(res); }
-      const tile = ctl.el.querySelector(`.cp-tile[data-arg="${id}"]`);
-      if (tile && !U.reduced() && tile.animate && st.added.includes(id)) tile.querySelector('.cp-tile-mark').animate([{ transform: 'scale(.4)' }, { transform: 'scale(1.18)' }, { transform: 'none' }], { duration: 360, easing: 'cubic-bezier(0.34, 1.3, 0.64, 1)' });
-      count();
-    };
-  }
-
-  /* ================================================================== using a plan */
-  U.act.cpUse = (el) => {
-    const S = U.S, day = U.today();
-    const id = el.dataset.arg || U.route.arg;
-    const plan = C().get(S, id);
-    const before = C().activeId(S);
-    const r = C().use(S, id, day);
-    if (!r) { U.haptic('deny'); U.toast('Finish the plan first', 'caution', C().problems(plan)[0]); return; }
-    U.save(true);
-    U.render();
-    U.haptic('success');
-    U.toast(`Using ${plan.name}`, 'positive', r.from > day ? 'It starts tomorrow.' : 'Today and the Plan tab follow it now.', { label: 'Undo', onClick: () => { C().use(U.S, before, U.today()); U.save(true); U.render(); U.haptic('undo'); } });
-  };
-  U.act.cpCoach = () => {
-    const S = U.S, day = U.today();
-    const before = C().activeId(S);
-    if (!before) return;
-    const r = C().use(S, null, day);
-    U.save(true);
-    U.render();
-    U.haptic('toggleOff');
-    U.toast('Back to the coach\'s plan', 'neutral', r && r.from > day ? 'From tomorrow.' : 'It picks up from today.', { label: 'Undo', onClick: () => { C().use(U.S, before, U.today()); U.save(true); U.render(); U.haptic('undo'); } });
-  };
-  U.act.cpMenu = (el) => {
-    const id = el.dataset.arg;
-    const plan = C().get(U.S, id);
-    if (!plan) return;
-    const ctl = U.sheet({
-      title: plan.name, size: 'fit',
-      body: `<ul class="rf-list">
-        ${U.row({ icon: 'share', tone: 'violet', title: 'Share', sub: 'A QR code or a link', act: 'cpShare', arg: id, chevron: true })}
-        ${C().countItems(plan) ? U.row({ icon: 'sparkle', tone: 'violet', title: 'Improve it', sub: 'Claude or the on-device AI reworks it from your data', act: 'cpImproveFromMenu', arg: id, chevron: true }) : ''}
-        ${U.row({ icon: 'copy', tone: 'indigo', title: 'Duplicate', sub: 'A copy to change', act: 'cpDup', arg: id })}
-        ${U.row({ icon: 'trash', tone: 'rose', title: 'Delete plan', act: 'cpDelete', arg: id })}
-      </ul>`,
-    });
-    U.act.cpImproveFromMenu = () => { ctl.close('ok'); setTimeout(() => U.act.cpImprove({ dataset: { arg: id } }), 320); };
-    U.act.cpDup = () => {
-      ctl.close('ok');
-      const copy = C().duplicate(U.S, id);
-      U.save();
-      U.haptic('copy');
-      U.open('planEdit', copy.id);
-      U.toast('Duplicated', 'positive', copy.name);
-    };
-    // Deleted at once, with Undo: the question before it said "You can undo this for a few seconds",
-    // a step the toast's Undo already covers.
-    U.act.cpDelete = () => {
-      ctl.close('ok');
-      const active = C().activeId(U.S) === id;
-      const token = C().remove(U.S, id, U.today());
-      U.save(true);
-      U.haptic('remove');
-      if (U.route.view === 'planEdit' && U.route.arg === id) U.back(); else U.render();
-      U.toast('Plan deleted', 'neutral', active ? 'The coach\'s plan takes over.' : undefined, { label: 'Undo', onClick: () => { C().restore(U.S, token, U.today()); U.save(true); U.render(); U.haptic('undo'); } });
-    };
-  };
-
-  /* ================================================================== sharing */
-  U.act.cpShare = async (el) => {
-    const top = U.topSheet();
-    if (top && !top.el.classList.contains('cp-share-sheet')) top.close('ok');
-    const S = U.S;
-    const plan = C().get(S, el.dataset.arg || U.route.arg);
-    if (!plan) return;
-    if (C().problems(plan).length) { U.haptic('deny'); U.toast('Finish the plan first', 'caution', C().problems(plan)[0]); return; }
-    const name = firstName();
-    const st = { withName: !!name, data: null, error: null };
-    const code = () => (st.data ? C().link(st.data) : '');
-    const body = () => `<div class="sheet-pad cp-share">
-        <div class="cp-qr" data-key="qr">${st.data ? GH.qr.svg(code(), { label: `A QR code for ${plan.name}`, cls: 'cp-qr-svg' }) : st.error ? `<p class="t-callout">${U.esc(st.error)}</p>` : '<span class="rf-spinner" data-size="sm"><i></i></span>'}</div>
-        <div class="cp-share-what"><p class="t-headline">${U.esc(plan.name)}</p><p class="t-footnote rf-muted">${U.esc(`${C().summary(plan)}${st.withName ? ` · from ${name}` : ''}`)}</p></div>
-        <div class="cp-share-btns">
-          <button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpSendLink"${st.data ? '' : ' disabled'}>${U.icon('share')}Send a link</button>
-          <button type="button" class="rf-btn" data-size="lg" data-act="cpCopyLink"${st.data ? '' : ' disabled'}>${U.icon('copy')}Copy</button>
-        </div>
-        ${name ? `<ul class="rf-list">${U.sw(`Show my name (${name})`, st.withName, 'data-on="cpShareName"')}</ul>` : ''}
-        <p class="t-footnote rf-muted">They scan it in Gradient Health, under Your plans, or tap the link. It holds only the plan's name, days and exercises${st.withName ? ', and your first name' : ''}. Nothing goes through a server.</p>
-      </div>`;
-    const ctl = U.sheet({ title: 'Share this plan', size: 'fit', cls: 'cp-sheet cp-share-sheet', body: body() });
-    const make = async () => {
-      try { st.data = await C().encode(plan, { from: st.withName ? name : '' }); st.error = null; } catch (e) { st.error = 'Couldn\'t make the code. Try again.'; }
-      if (!ctl.closed) ctl.update(body());
-      const svg = ctl.el.querySelector('.cp-qr-svg');
-      if (svg && !U.reduced() && svg.animate) svg.animate([{ opacity: 0, transform: 'scale(.92)' }, { opacity: 1, transform: 'none' }], { duration: 420, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)' });
-    };
-    U.on.cpShareName = (e2, ev, v) => { st.withName = !!v; make(); };
-    U.act.cpSendLink = () => {
-      if (!st.data) return;
-      const who = st.withName && name ? `${name} shared a workout plan with you` : 'Here\'s a workout plan for you';
-      const text = `${who}: ${plan.name} (${C().summary(plan)}). Open it in Gradient Health: ${code()}`;
-      const ok = GH.platform && GH.platform.share(text);
-      if (ok) U.haptic('send'); // (else the link is copied, with copy's)
-      if (U.badgeEvent) U.badgeEvent('sharedPlan');
-      if (!ok) U.act.cpCopyLink();
-    };
-    U.act.cpCopyLink = async () => {
-      if (!st.data) return;
-      const ok = GH.platform && await GH.platform.copy(code());
-      if (ok) U.haptic('copy');
-      U.toast(ok ? 'Link copied' : 'Couldn\'t copy the link', ok ? 'positive' : 'caution');
-    };
-    make();
-  };
-
-  /* ================================================================== getting a shared plan */
-  U.act.cpScan = async () => {
-    if (!GH.scanner) { U.toast('Scanning isn\'t available here', 'caution'); return; }
-    const text = await GH.scanner.scan({ qr: true, title: 'Scan a plan code', accept: (t) => !!C().dataFrom(t), notThis: 'That code isn\'t a Gradient Health plan', badLink: 'That link doesn\'t hold a plan' });
-    if (text) openShared(text);
-  };
   let pendingLink = null;
   // A plan code or link from anywhere: the scanner, a link the app was opened with, a paste. During
   // set-up it waits, and set-up hears of it (its welcome offers the plan, src/ui/onboarding.js).
@@ -804,7 +304,7 @@
       U.toast(e.code === 'newer' ? 'Update Gradient Health to open this plan' : 'That plan couldn\'t be opened', 'caution', e.message);
       return;
     }
-    importSheet(got);
+    U.cpImport(got);
   }
   U.openSharedPlan = openShared;
   // Set-up's invited-friend path looks at the plan a link is waiting to open, without opening it:
@@ -818,63 +318,6 @@
     try { got = await C().decode(link); } catch (e) { return null; }
     return Object.assign({}, got, { take: () => { if (pendingLink === link) pendingLink = null; } });
   };
-  function importSheet(got) {
-    const S = U.S, day = U.today();
-    const plan = got.plan;
-    const fp = C().fingerprint(plan);
-    const have = C().list(S).find((p) => C().fingerprint(p) === fp) || null;
-    const st = { saved: have, existed: !!have };
-    const swaps = C().swapsFor(S, plan, day);
-    const dayRows = plan.days.map((d, di) => {
-      const offs = C().offsetsFor(plan.days.length, plan.weekdays);
-      return `<div class="cp-imp-day"><p class="cp-day-eyebrow"><b>Day ${di + 1}</b><span>${U.esc(WD[offs[di]])}</span><span class="cp-imp-title">${U.esc(C().titleOf(plan, di))}</span></p>
-        <ul class="cp-imp-list">${d.items.map((it, i) => {
-          const sw = swaps.find((x) => x.day === di && x.i === i);
-          const m = M().MOVES[it.move];
-          return `<li class="cp-imp-ex">${thumb(it.move)}<span class="cp-ex-text"><span class="cp-ex-name">${U.esc(m.name)}</span><span class="cp-ex-meta rf-num">${U.esc(itemMeta(it))}</span>${sw ? `<span class="cp-swap">${U.icon(sw.to ? 'shuffle' : 'alert')}<span>${U.esc(sw.to ? `${M().MOVES[sw.to].name} for you: ${sw.why}` : `Left out for you: ${sw.why}`)}</span></span>` : ''}</span></li>`;
-        }).join('')}</ul></div>`;
-    }).join('');
-    const body = () => {
-      const done = st.saved;
-      const unknown = got.report.unknown.length;
-      return `<div class="sheet-pad cp-import">
-        <div class="cp-imp-head">${art(plan, 'is-lg')}<div class="cp-imp-head-text"><span class="cp-src" data-src="shared">${U.esc(plan.from ? `From ${plan.from}` : 'Shared with you')}</span><p class="t-title-3 cp-name">${U.esc(plan.name)}</p><p class="t-footnote rf-muted">${U.esc(`${C().summary(plan)} · ${daysLine(plan)}`)}</p></div></div>
-        ${plan.note ? `<p class="t-callout cp-note is-box">${U.esc(plan.note)}</p>` : ''}
-        ${swaps.length ? `<p class="cp-swap is-box">${U.icon('shuffle')}<span>${U.esc(`${swaps.length === 1 ? 'One exercise needs' : `${swaps.length} exercises need`} something you don't have. You'll get the closest one you can do, shown below.`)}</span></p>` : ''}
-        ${unknown ? `<p class="cp-swap is-box">${U.icon('alert')}<span>${U.esc(`${unknown === 1 ? 'One exercise needs' : `${unknown} exercises need`} a newer Gradient Health, so ${unknown === 1 ? 'it was' : 'they were'} left out.`)}</span></p>` : ''}
-        ${done ? `<div class="cp-saved" data-key="saved"><p class="cp-eyebrow" data-tone="positive">${U.icon('check-circle')}<span>${st.existed ? 'Already in your plans' : 'Saved to your plans'}</span></p>
-            <div class="cp-imp-btns">${C().activeId(S) === done.id ? '' : `<button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpImpUse">${U.icon('play')}${S.profile.workouts === false ? 'Turn on workouts and use it' : 'Use it now'}</button>`}<button type="button" class="rf-btn" data-size="lg" data-act="cpImpOpen">Open it</button></div></div>`
-    : `<div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpImpSave">${U.icon('download')}Save to my plans</button></div>`}
-        <div class="cp-imp-days">${dayRows}</div>
-      </div>`;
-    };
-    const ctl = U.sheet({ title: C().sharedTitle(plan), size: 'auto', detent: 'large', cls: 'cp-sheet cp-import-sheet', body: body(), after: (c) => drawThumbs(c.el) });
-    U.act.cpImpSave = () => {
-      const r = C().save(U.S, plan);
-      st.saved = r.plan; st.existed = r.existed;
-      U.save(true);
-      U.haptic('save');
-      ctl.update(body());
-      drawThumbs(ctl.el);
-      if (U.route.view === 'plans') U.render();
-    };
-    U.act.cpImpUse = () => {
-      const id = st.saved && st.saved.id;
-      const r = id ? C().use(U.S, id, U.today()) : null;
-      if (!r) return;
-      // Someone who tracks only food and health turns workouts back on by choosing to use a plan.
-      const wasOff = U.S.profile.workouts === false;
-      if (wasOff) U.S.profile.workouts = true;
-      U.save(true);
-      ctl.close('ok');
-      U.haptic('success');
-      if (wasOff) U.render();
-      U.go('plan');
-      U.toast(`Using ${st.saved.name}`, 'positive', `${wasOff ? 'Workouts are on again. ' : ''}${r.from > U.today() ? 'It starts tomorrow.' : 'Your week follows it from today.'}`);
-    };
-    U.act.cpImpOpen = () => { const id = st.saved && st.saved.id; ctl.close('ok'); if (id) U.open('planEdit', id); };
-  }
-
   // Links: the Android shell calls __gh.onLink(url) when a plan link opens the running app, and
   // AndroidBridge.pendingLink() holds the one it was started with. Other handlers stay chained.
   const hooks = G.__gh || (G.__gh = {});
@@ -911,201 +354,6 @@
   // A new install opened by a link starts with set-up; the plan waits for it.
   if (doc) doc.addEventListener('DOMContentLoaded', () => setTimeout(() => { if (!U.S || !U.S.profile.onboarded) coldLink(); }, 50));
 
-  /* ================================================================== ask the coach */
-  const ASK_CHIPS = ['3 days a week', '30 minutes', 'Full body', 'Upper and lower', 'Push, pull, legs', 'Bigger arms', 'Stronger legs', 'No equipment', 'Easy on my knees'];
-  // A plan's days as Build me a plan and Improve show them: each day's moves with their sets.
-  const planView = (S, plan) => plan.days.map((d, di) => `<div class="cp-imp-day"><p class="cp-day-eyebrow"><b>Day ${di + 1}</b><span class="cp-imp-title">${U.esc(C().titleOf(plan, di))}</span><span class="rf-num">${C().minutes(S, plan, di, U.today())} min</span></p>
-      <ul class="cp-imp-list">${d.items.map((it) => `<li class="cp-imp-ex">${thumb(it.move)}<span class="cp-ex-text"><span class="cp-ex-name">${U.esc(M().MOVES[it.move].name)}</span><span class="cp-ex-meta rf-num">${U.esc(itemMeta(it))}</span></span></li>`).join('')}</ul></div>`).join('');
-  // About what a Claude request for a plan costs with the person's model ("about 4¢ with Opus 5.5"),
-  // or nothing for the on-device AI.
-  function costHint(S, by) {
-    const sp = GH.spend;
-    if (by !== 'claude' || !sp) return '';
-    const c = sp.typical(S, 'build');
-    return `About ${c < 10000 ? 'under 1¢' : c < 1e6 ? `${Math.round(c / 10000)}¢` : sp.money(c)} with ${sp.model(S).short}.`;
-  }
-  U.act.cpBuild = () => {
-    const S = U.S;
-    const st = { step: 'ask', text: '', plan: null, by: null, ctrl: null, saved: null };
-    const body = () => {
-      if (st.step === 'propose' || st.step === 'refining' || st.step === 'saved') {
-        const p = st.plan;
-        const head = `<div class="cp-imp-head">${art(p, 'is-lg')}<div class="cp-imp-head-text"><span class="cp-src" data-src="coach">Built by the coach${st.by === 'claude' ? ' with Claude' : st.by === 'device' ? ' with the on-device AI' : ''}</span><p class="t-title-3 cp-name">${U.esc(p.name)}</p><p class="t-footnote rf-muted">${U.esc(`${C().summary(p)} · ${daysLine(p)}`)}</p></div></div>`;
-        const note = p.note ? `<p class="t-callout tailor-note">${U.icon('sparkle', 'sm')}<span>${U.esc(p.note)}</span></p>` : '';
-        const acts = st.step === 'refining'
-          ? `<div class="cp-refining" role="status"><span class="rf-spinner" data-size="sm"><i></i></span><span class="t-callout">The coach is fine-tuning it…</span><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="cpBuildSkip">Use this version</button></div>`
-          : st.step === 'saved'
-            ? `<div class="cp-saved"><p class="cp-eyebrow" data-tone="positive">${U.icon('check-circle')}<span>Saved to your plans</span></p><div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpBuildUse">${U.icon('play')}Use it now</button><button type="button" class="rf-btn" data-size="lg" data-act="cpBuildOpen">Edit it</button></div></div>`
-            : `<div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpBuildSave">Save</button><button type="button" class="rf-btn" data-size="lg" data-act="cpBuildEdit">Change it</button></div>`;
-        return `<div class="sheet-pad cp-import cp-build${st.step === 'refining' ? ' is-refining' : ''}">
-          ${st.text ? `<p class="t-callout rf-muted tailor-asked">"${U.esc(st.text)}"</p>` : ''}
-          ${head}${note}${acts}
-          <div class="cp-imp-days">${planView(S, p)}</div>
-          ${st.step === 'propose' ? '<p class="t-footnote rf-muted">Nothing changes until you save and use it. You can edit it after.</p>' : ''}
-        </div>`;
-      }
-      const knows = C().knows(S);
-      return `<div class="sheet-pad tailor cp-ask">
-        <p class="t-callout rf-muted">Say what you want. The coach builds on what it knows about you and shows you the plan first.</p>
-        <div class="rf-field"><label class="rf-field-label" for="cpAskQ">What would you like?</label><div class="rf-field-control"><textarea class="rf-input" id="cpAskQ" rows="3" maxlength="400" placeholder="3 days, 30 minutes, bigger arms, easy on my knees">${U.esc(st.text)}</textarea></div></div>
-        <div class="ob-chips tailor-chips">${ASK_CHIPS.map((x) => `<button type="button" class="rf-chip" data-act="cpAskChip" data-arg="${U.esc(x)}">${U.esc(x)}</button>`).join('')}</div>
-        <button type="button" class="rf-btn ob-wide" data-variant="filled" data-size="lg" data-act="cpBuildGo">${U.icon('sparkle')}Build my plan</button>
-        <div class="cp-knows"><p class="t-subhead">What the coach uses</p><ul class="cp-knows-list">${knows.map(([k, v]) => `<li><span class="t-footnote rf-muted">${U.esc(k)}</span><span class="t-footnote">${U.esc(v)}</span></li>`).join('')}</ul></div>
-      </div>`;
-    };
-    const ctl = U.sheet({ title: 'Build me a plan', size: 'auto', cls: 'cp-sheet cp-build-sheet', body: body(), onClose: () => { if (st.ctrl) st.ctrl.abort(); } });
-    const draw = () => { if (!ctl.closed) { ctl.update(body()); drawThumbs(ctl.el); } };
-    U.act.cpAskChip = (b) => {
-      const q = doc.getElementById('cpAskQ');
-      if (!q) return;
-      const v = q.value.trim();
-      q.value = v ? `${v.replace(/[,.\s]+$/, '')}, ${b.dataset.arg.toLowerCase()}` : b.dataset.arg;
-      U.haptic('tick');
-    };
-    U.act.cpBuildGo = async () => {
-      const q = doc.getElementById('cpAskQ');
-      st.text = (q ? q.value : st.text || '').trim();
-      const day = U.today();
-      const w = C().wishes(S, st.text);
-      let draft;
-      try { draft = C().generate(S, day, w); } catch (e) { if (G.console) G.console.error(e); U.toast('The coach couldn\'t build that one', 'caution', 'Try saying it another way.'); return; }
-      st.plan = draft; st.by = null;
-      const by = await C().modelFor(S);
-      st.step = by ? 'refining' : 'propose';
-      draw();
-      grow(ctl);
-      U.haptic('tap');
-      if (!by) return;
-      const me = st.ctrl = new AbortController();
-      const r = await C().refine(S, day, w, draft, me.signal).catch(() => ({ plan: draft, by: null }));
-      if (st.ctrl !== me || me.signal.aborted || st.step !== 'refining') return;
-      st.plan = r.plan; st.by = r.by; st.step = 'propose';
-      draw();
-      U.haptic('tap');
-      // A Claude limit that stopped its take: the coach's plan stands, and they're told why.
-      if (r.error && GH.ai && GH.ai.isBudget(r.error.code)) U.toast('Claude didn\'t refine it', 'caution', r.error.message);
-    };
-    U.act.cpBuildSkip = () => { if (st.ctrl) st.ctrl.abort(); st.ctrl = null; st.step = 'propose'; draw(); };
-    U.act.cpBuildEdit = () => { st.step = 'ask'; st.plan = null; draw(); };
-    U.act.cpBuildSave = () => {
-      const r = C().save(S, st.plan);
-      st.saved = r.plan;
-      st.step = 'saved';
-      U.save(true);
-      U.haptic('save');
-      draw();
-      if (U.route.view === 'plans') U.render();
-    };
-    U.act.cpBuildUse = () => {
-      const r = st.saved ? C().use(S, st.saved.id, U.today()) : null;
-      if (!r) return;
-      U.save(true);
-      ctl.close('ok');
-      U.haptic('success');
-      U.go('plan');
-      U.toast(`Using ${st.saved.name}`, 'positive', r.from > U.today() ? 'It starts tomorrow.' : 'Your week follows it from today.');
-    };
-    U.act.cpBuildOpen = () => { const id = st.saved && st.saved.id; ctl.close('ok'); if (id) U.open('planEdit', id); };
-  };
-
-  /* ================================================================== improve a plan of their own */
-  // Claude (or the on-device AI) reworks one of their plans from their training, their health and
-  // anything they ask, under the same checks as a plan built from scratch. What changes is listed
-  // first and the new version under it; their plan stays as it is until they replace it or save the
-  // new one as a plan of its own.
-  const IMPROVE_CHIPS = ['Shorter workouts', 'More for my arms', 'Easier on my knees', 'A bit harder', 'More variety'];
-  U.act.cpImprove = async (el) => {
-    const id = (el && el.dataset && el.dataset.arg) || U.route.arg;
-    const S = U.S;
-    const plan0 = C().get(S, id);
-    if (!plan0) return;
-    const by = await C().modelFor(S);
-    if (!by) { U.toast('Set up an AI coach first', 'neutral', 'Turn on Claude or the on-device AI in Settings, under AI coach.'); return; }
-    const who = by === 'claude' ? 'Claude' : 'The on-device AI';
-    const st = { step: 'ask', text: '', plan: null, changes: [], ctrl: null, error: null };
-    const body = () => {
-      if (st.step === 'working') return `<div class="sheet-pad cp-import cp-build"><div class="cp-refining" role="status"><span class="rf-spinner" data-size="sm"><i></i></span><span class="t-callout">${U.esc(who)} is reworking it…</span><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="cpImproveStop">Stop</button></div></div>`;
-      if (st.step === 'none') {
-        return `<div class="sheet-pad cp-import"><p class="t-headline">Your plan stays as it is</p><p class="t-callout rf-muted">${U.esc(st.error || `${who} couldn't make a version that passes the checks this time.`)}</p>
-          <div class="cp-imp-btns"><button type="button" class="rf-btn" data-size="lg" data-act="cpImproveAgain">Try again</button></div></div>`;
-      }
-      if (st.step === 'propose') {
-        const p = st.plan;
-        if (!st.changes.length) return `<div class="sheet-pad cp-import"><p class="t-headline">${U.esc(who)} kept it as it is</p><p class="t-callout rf-muted">${U.esc(p.note || 'It already fits what you asked for and what your data shows.')}</p><div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpImproveDone">Done</button></div></div>`;
-        return `<div class="sheet-pad cp-import cp-build">
-          ${st.text ? `<p class="t-callout rf-muted tailor-asked">"${U.esc(st.text)}"</p>` : ''}
-          ${p.note ? `<p class="t-callout tailor-note">${U.icon('sparkle', 'sm')}<span>${U.esc(p.note)}</span></p>` : ''}
-          <p class="t-subhead">What changes</p>
-          <ul class="cp-changes t-footnote">${st.changes.slice(0, 12).map((x) => `<li>${U.esc(x)}</li>`).join('')}${st.changes.length > 12 ? `<li>${U.esc(`and ${st.changes.length - 12} more`)}</li>` : ''}</ul>
-          <div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpImproveReplace">Use these changes</button><button type="button" class="rf-btn" data-size="lg" data-act="cpImproveNew">Save as a new plan</button></div>
-          <div class="cp-imp-days">${planView(S, p)}</div>
-          <p class="t-footnote rf-muted">Your plan stays as it is until you choose.</p>
-        </div>`;
-      }
-      return `<div class="sheet-pad tailor cp-ask">
-        <p class="t-callout rf-muted">${U.esc(who)} reworks it from your training, health and requests, then shows what it would change. ${U.esc(costHint(S, by))}</p>
-        <div class="rf-field"><label class="rf-field-label" for="cpImpQ">Anything you'd like? (optional)</label><div class="rf-field-control"><textarea class="rf-input" id="cpImpQ" rows="2" maxlength="300" placeholder="Shorter workouts, more for my arms">${U.esc(st.text)}</textarea></div></div>
-        <div class="ob-chips tailor-chips">${IMPROVE_CHIPS.map((x) => `<button type="button" class="rf-chip" data-act="cpImpChip" data-arg="${U.esc(x)}">${U.esc(x)}</button>`).join('')}</div>
-        <button type="button" class="rf-btn ob-wide" data-variant="filled" data-size="lg" data-act="cpImproveGo">${U.icon('sparkle')}Improve it</button>
-      </div>`;
-    };
-    const ctl = U.sheet({ title: `Improve ${plan0.name}`, size: 'auto', cls: 'cp-sheet cp-build-sheet', body: body(), onClose: () => { if (st.ctrl) st.ctrl.abort(); } });
-    const draw = () => { if (!ctl.closed) { ctl.update(body()); drawThumbs(ctl.el); } };
-    U.act.cpImpChip = (b) => {
-      const q = doc.getElementById('cpImpQ');
-      if (!q) return;
-      const v = q.value.trim();
-      q.value = v ? `${v.replace(/[,.\s]+$/, '')}, ${b.dataset.arg.toLowerCase()}` : b.dataset.arg;
-      U.haptic('tick');
-    };
-    U.act.cpImproveGo = async () => {
-      const q = doc.getElementById('cpImpQ');
-      st.text = (q ? q.value : st.text || '').trim();
-      const me = st.ctrl = new AbortController();
-      st.step = 'working';
-      draw();
-      U.haptic('tap');
-      const plan = C().get(S, id);
-      const r = await C().improve(S, U.today(), plan || plan0, st.text, me.signal).catch((e) => ({ plan: null, error: e }));
-      if (st.ctrl !== me || me.signal.aborted) return;
-      st.ctrl = null;
-      if (!r.plan) {
-        st.step = 'none';
-        st.error = r.error && GH.ai && GH.ai.isBudget(r.error.code) ? r.error.message : null;
-        draw();
-        U.haptic('deny');
-        return;
-      }
-      st.plan = r.plan; st.changes = r.changes; st.step = 'propose';
-      draw();
-      grow(ctl);
-      U.haptic('tap');
-    };
-    U.act.cpImproveStop = () => { if (st.ctrl) st.ctrl.abort(); st.ctrl = null; st.step = 'ask'; draw(); };
-    U.act.cpImproveAgain = () => { st.step = 'ask'; st.error = null; draw(); };
-    U.act.cpImproveDone = () => ctl.close('ok');
-    U.act.cpImproveReplace = () => {
-      const was = C().get(S, id);
-      if (!was || !st.plan) return;
-      const before = JSON.parse(JSON.stringify({ days: was.days, note: was.note }));
-      C().update(S, id, (p) => { p.days = st.plan.days; if (st.plan.note) p.note = st.plan.note; }, U.today());
-      U.save(true);
-      ctl.close('ok');
-      U.haptic('success');
-      U.render();
-      U.toast('Plan updated', 'positive', undefined, { label: 'Undo', onClick: () => { C().update(U.S, id, (p) => { p.days = before.days; p.note = before.note; }, U.today()); U.save(true); U.render(); U.haptic('undo'); } });
-    };
-    U.act.cpImproveNew = () => {
-      if (!st.plan) return;
-      const r = C().save(S, Object.assign({}, st.plan, { name: `${plan0.name} (improved)`.slice(0, 40) }));
-      U.save(true);
-      ctl.close('ok');
-      U.haptic('save');
-      if (r && r.plan) U.open('planEdit', r.plan.id);
-      U.toast('Saved to your plans', 'positive', 'Yours stays as it was.');
-    };
-  };
-
   /* ================================================================== elsewhere in the app */
   // Plan tab: the plan in use, above the week.
   U.customPlanBanner = (S, day) => {
@@ -1125,4 +373,65 @@
     return `<p class="cp-swap is-box cp-swaps">${U.icon('shuffle')}<span>${U.esc(sw.map((x) => (x.to ? `${M().MOVES[x.from].name} → ${M().MOVES[x.to].name}: ${x.why}` : `${(M().MOVES[x.from] || { name: x.from }).name} left out: ${x.why}`)).join('. '))}.</span></p>`;
   };
   U.drawPlanThumbs = drawThumbs;
+
+  /* ================================================================== the part that loads later */
+  // What src/ui/planbuilder.js shares with this file.
+  U.cpKit = { WD, WD_LONG, GROUP_HUE, FILTERS, SMALL, LARGE, hue, groupName, listWords, firstName, thumb, art, standIn, personMove, drawThumbs, tileFor, quickFlat, flatStill, itemMeta, restWords, inSentence, sourceLine, daysLine, startsLine, grow };
+  const PART = 'planUi';
+  const part = () => GH.lazy(PART).catch((e) => { if (U.toast) U.toast('Something went wrong', 'critical'); throw e; });
+  // map[name] until the part replaces it: it loads the part, then calls what the part put there.
+  function stand(map, name) {
+    const self = map[name] = function (...args) {
+      return part().then(() => {
+        const f = map[name];
+        if (!f || f === self) return undefined;
+        try { return f.apply(this, args); } catch (e) { if (G.console) G.console.error(e); if (U.toast) U.toast('Something went wrong', 'critical'); return undefined; }
+      }, () => undefined);
+    };
+  }
+  // A screen until the part is in: its bar and title (Back, as it's opened on top), then the page.
+  function screen(name, title) {
+    const self = U.screens[name] = {
+      render() {
+        part().then(() => { const r = U.route; if (U.screens[name] !== self && r.view === name) U.render(); }, () => {});
+        const t = title();
+        return `${U.navbar(t, '', U.glassBtn('chevron-left', 'Back', 'back'))}<h1 class="rf-large-title">${U.esc(t)}</h1>`;
+      },
+    };
+  }
+  screen('plans', () => 'Your plans');
+  screen('planEdit', () => { const p = U.S && C().get(U.S, U.route.arg); return p && !p.deleted ? p.name : 'Plan'; });
+  U.act.openPlans = () => U.open('plans');
+  U.act.cpOpen = (el) => U.open('planEdit', el.dataset.arg); // the page's opening has its own haptic
+  // Ways in from elsewhere (Plan, You, Claude's page, the plan review) and from a test.
+  stand(U.act, 'cpNew');
+  stand(U.act, 'cpBuild');
+  stand(U.act, 'cpImprove');
+  stand(U.act, 'cpScan');
+  stand(U.act, 'cpShare');
+  stand(U.act, 'cpMenu');
+  stand(U.act, 'cpUse');
+  stand(U.act, 'cpCoach');
+  stand(U.act, 'cpAdd');
+  stand(U.act, 'cpItem');
+  stand(U.act, 'cpGap');
+  stand(U, 'cpImport');
+  // It loads ahead: a finger on a way into it, and a calm moment a few seconds after launch (nothing
+  // over the app, a sheet or Before you start, and nothing moving: it never holds up What's new).
+  const WAYS_IN = ['openPlans', 'cpOpen', 'cpBuild', 'cpImprove', 'reviewPlans', 'reviewImprove'].map((a) => `[data-act="${a}"]`).join(',');
+  if (doc) doc.addEventListener('pointerdown', (e) => { if (!GH[PART] && e.target.closest && e.target.closest(WAYS_IN)) GH.lazy(PART).catch(() => {}); }, { capture: true, passive: true });
+  const before = U.afterBoot;
+  U.afterBoot = () => {
+    if (before) before();
+    let tries = 0;
+    const go = () => {
+      if (GH[PART] || doc.hidden) return;
+      const app = doc.getElementById('app');
+      const busy = (U.calm && !U.calm()) || (U.topSheet && U.topSheet()) || (app && app.inert);
+      if (busy) { if (++tries < 12) setTimeout(soon, 2500); return; }
+      GH.lazy(PART).catch(() => {});
+    };
+    const soon = () => { if (G.requestIdleCallback) G.requestIdleCallback(go, { timeout: 4000 }); else go(); };
+    setTimeout(soon, 3500);
+  };
 })(typeof window !== 'undefined' ? window : globalThis);

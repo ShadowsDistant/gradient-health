@@ -879,7 +879,8 @@
     const S = U.S, day = U.today();
     const defs = ids.map((id) => A().byId[id]).filter((d) => d && S.achievements.earned[d.id] && S.achievements.earned[d.id].day >= day - 1);
     if (!defs.length) return;
-    setTimeout(() => {
+    // Said on its own, once nothing else is up (U.toastWhenFree): never over a sheet or another toast.
+    const tell = () => {
       if (U.S !== S) return;
       const one = defs.length === 1;
       const last = defs[defs.length - 1];
@@ -889,7 +890,8 @@
       const ic = t && t.el && t.el.querySelector('.rf-toast-icon');
       if (ic) { ic.innerHTML = sealed ? capsuleSvg(last.tier, { size: 30 }) : badgeSvg(last, { shared: true, earned: true, size: 30 }); ic.classList.add('bdg-toast-medal'); }
       U.haptic('badge');
-    }, 450);
+    };
+    setTimeout(() => { if (U.toastWhenFree) U.toastWhenFree(tell); else tell(); }, 450);
   }
   function run(reason, cats) {
     const S = U.S;

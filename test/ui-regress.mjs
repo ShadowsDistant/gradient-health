@@ -130,8 +130,13 @@ for (const t of ['today', 'plan', 'health', 'progress', 'you']) {
 section('Titles that used to be cut off');
 await tab('you');
 await page.click('#screen [data-act="openSettings"]'); await settle();
-const cut = await page.evaluate(() => [...document.querySelectorAll('#screen .rf-list-title, #screen .rf-list-sub')].filter((e) => e.scrollWidth > e.clientWidth + 1 || getComputedStyle(e).textOverflow === 'ellipsis' && e.scrollWidth > e.clientWidth).map((e) => e.textContent.trim()));
-check('no row title or description is cut off in Settings', cut.length === 0, cut.join(' | '));
+const cutOff = () => page.evaluate(() => [...document.querySelectorAll('#screen .rf-list-title, #screen .rf-list-sub')].filter((e) => e.scrollWidth > e.clientWidth + 1 || getComputedStyle(e).textOverflow === 'ellipsis' && e.scrollWidth > e.clientWidth).map((e) => e.textContent.trim()));
+let cut = await cutOff();
+check('no row title or description is cut off on Settings\' top page', cut.length === 0, cut.join(' | '));
+// Settings' pages, all of them on one.
+await page.evaluate(() => window.GH.ui.open('settings', 'all')); await settle(900);
+cut = await cutOff();
+check('nor on its pages', cut.length === 0, cut.join(' | '));
 const subs = await page.evaluate(() => { const s = document.querySelector('#screen .rf-list-sub'); return s ? getComputedStyle(s).fontSize : null; });
 check('row descriptions use the small size', subs === '13px', subs);
 
@@ -150,6 +155,7 @@ await page.evaluate(() => { const sw = document.querySelector('#screen [data-k="
 await settle();
 
 section('You → Your answers → Equipment');
+await page.click('#topbar [data-act="back"]'); await settle();
 await page.click('#topbar [data-act="back"]'); await settle();
 const equipment = '#screen [data-act="editStep"][data-arg="equipment"]';
 await page.evaluate((sel) => document.querySelector(sel).scrollIntoView({ block: 'center' }), equipment); await settle(300);
@@ -227,6 +233,11 @@ await page.evaluate(() => window.GH.ui.open('settings'));
 await settle(900);
 let g = await endGap();
 check('settings: the last row clears the system bar', g >= 8, g);
+await page.evaluate(() => window.GH.ui.open('settings', 'all'));
+await settle(900);
+g = await endGap();
+check('and on its pages, all of them on one', g >= 8, g);
+await page.click('#topbar [data-act="back"]'); await settle();
 await page.click('#topbar [data-act="back"]'); await settle();
 await tab('today');
 
@@ -468,6 +479,26 @@ check('and ends the same', !r.active && /^Workout/.test(r.eyebrow) && r.floats =
 await page.emulateMedia({ reducedMotion: 'no-preference' });
 await page.evaluate(() => { const U = window.GH.ui; if (U.S.active) { U.act.plKeep(); window.GH.brain.cancelWorkout(U.S); window.GH.store.save(U.S); } for (const t of document.querySelectorAll('.rf-toast')) t.remove(); U.render(); });
 await settle(700);
+// Cancelled, the player folds away for a moment: nothing on it takes a tap meanwhile, and a control
+// that changes then finds no workout and leaves it be (1.13 threw from the reps stepper).
+await page.click('#float [data-act="startWorkout"]');
+await page.waitForSelector('.player:not([hidden]) .pl-name');
+await settle(600);
+const fold = await page.evaluate(async () => {
+  const U = window.GH.ui, el = document.getElementById('player'), errs = [];
+  const onErr = (e) => errs.push(String(e.message || e));
+  window.addEventListener('error', onErr);
+  U.act.plCancel();
+  // (Read at once: this suite's clock is a test clock, so the fold's frames needn't wait for us.)
+  const out = { closing: el.hasAttribute('data-closing'), taps: getComputedStyle(el).pointerEvents };
+  try { U.on.plReps(null, null, 7); U.on.plAmendLoad(null, null, '20'); U.act.plMore(); U.act.plSkipRest(); U.act.plCancelTimer(); U.act.plFinishNow(); } catch (e) { errs.push(e.message); }
+  await new Promise((r) => setTimeout(r, 600));
+  window.removeEventListener('error', onErr);
+  return Object.assign(out, { errs, gone: el.hidden && !U.S.active });
+});
+check('cancelled, the player takes no taps as it folds away, and its controls changing then do nothing', fold.closing && fold.taps === 'none' && !fold.errs.length && fold.gone, JSON.stringify(fold));
+await page.evaluate(() => { for (const t of document.querySelectorAll('.rf-toast')) t.remove(); });
+await settle(500);
 
 section('How it works');
 await page.evaluate(() => window.GH.ui.open('science'));
@@ -492,7 +523,7 @@ section('Background sync');
 const bgBoot = await page.evaluate(() => { const d = window.GH.brain.dayFromStr(window.__pendingDate); const day = window.GH.ui.S.health.days[d]; return { steps: day && day.steps, done: window.__pendingDone.length, left: window.__pending.length }; });
 check('a read saved while the app was closed is folded in when it starts', bgBoot.steps === 4321, JSON.stringify(bgBoot));
 check('and marked done', bgBoot.done >= 1 && bgBoot.left === 0, JSON.stringify(bgBoot));
-await page.evaluate(() => window.GH.ui.open('settings'));
+await page.evaluate(() => window.GH.ui.open('settings', 'hc'));
 await settle(900);
 const bgRow = () => page.evaluate(() => {
   const title = [...document.querySelectorAll('#screen .rf-list-title')].find((e) => e.textContent === 'Sync in the background');

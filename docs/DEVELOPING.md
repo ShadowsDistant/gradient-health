@@ -63,6 +63,8 @@ src/ui/controls.js       switches, segmented controls and single-choice chips (U
                          handling that makes every tap count, on Refract's liquid glass
 src/ui/hapticsui.js      the haptics rows for Settings (U.hapticRows) and the Feel each one gallery
 src/ui/you.js            the You tab: profile, badges, plans, your answers, Settings and help
+src/ui/settings.js       Settings: a short top page of parts, a page for each (PAGES), the search across
+                         them; the coach set-up, backups and the privacy page
 src/ui/badges.js         the badge medals and sealed capsules, the shelf, the gallery, the detail sheet
                          and the reveal, where a capsule is opened (see Badges)
 src/ui/badges3d.js       the medals' 3D side, in the 3D chunk: drawing their stills and keeping them,
@@ -76,8 +78,11 @@ src/ui/md.js             the answers' Markdown, drawn safely: escaped first, a f
 src/ui/embeds.js         the data cards an answer can hold ([[sleep]], [[lift:<move>]] …), drawn from
                          the app's own numbers, never the model's (GH.embeds)
 src/ui/tailor.js         the Tailor my plan sheet
-src/ui/customplan.js     Your plans: the list, the editor and exercise picker, sharing, a shared plan's
-                         preview, Build me a plan
+src/ui/customplan.js     Your plans: the list of plans, the plan builder's stand-ins until its part loads,
+                         and what both share (the tiles' pictures, U.cpKit)
+src/ui/planbuilder.js    the plan builder, a part of its own (planUi, loaded on a finger-down on a way in
+                         or in a calm moment): a plan's page, the exercise picker, an exercise's sheet,
+                         New plan, sharing, a shared plan's preview, Build me a plan and Improve
 src/ui/metric.js         a health number's sheet: its history, chart, and adding or changing it
 src/ui/bodymap.js        Progress's body map (front and back, 17 muscles) and the muscle sheet
 src/ui/guide.js          tour (cards over Today after the first workout), first-week checklist, tab
@@ -121,13 +126,15 @@ npm test          # simulations, insights, AI (mocked API), coach, poses, persis
 npm run build     # dist/gradient-health.html, dist/lazy/, docs/PRIVACY.md and docs/p/index.html
 npm run smoke     # end-to-end run in Chromium (needs Playwright); add --dark for dark mode
 npm run test:ui   # layout regressions, food flows, the coach chat, the 3D figure, your plans, controls
-                  # (real touches), haptics, motion, the You tab, badges, the plan review, speed,
-                  # scrolling and Plan's cold 3D stills budgets, barcodes on a filmed camera (Chromium)
+                  # (real touches), haptics, motion, the You tab, badges, the plan review, icons, toasts,
+                  # speed, scrolling and Plan's cold 3D stills budgets, barcodes on a filmed camera
 node test/ui-scroll.mjs --measure [--vs=<dir>] [--ablate=<part>]   # scrolling every main screen: frames
                   # dropped, the GPU's draw time; A/B against another build, or with one part switched off
 npm run test:llm  # on-device AI runtime in Chromium with a tiny model (see On-device AI)
 node test/sweep.mjs [--quick]   # every screen at 360-600 px, light/dark, 100%/130% text, overflow checks
-node test/ui-sheetsize.mjs [--all] [--shots]   # every sheet: sized to its content, nothing cut off
+node test/ui-sheetsize.mjs [--all] [--shots] [--dark]   # every sheet: sized to its content, nothing cut
+                  # off, its header in line
+node test/ui-icons.mjs [--shots]   # every icon name draws, the warm-up's sun, the muscle groups' glyphs
 npm run apk       # build/gradient-health.apk (see below)
 node scripts/screenshots.mjs          # docs/screenshots/, light and dark
 node scripts/frame-shots.mjs [name …] # the README's copies of them, in a phone
@@ -188,9 +195,19 @@ left alone. A few conventions:
 - Toasts (`U.toast` in `core.js`, Refract's toaster) come up from the bottom of the screen, above
   whatever is there: the tab bar, Today's floating buttons and the workout capsule, the player's,
   set-up's or a live activity's buttons, or an open sheet's main buttons (`--toast-lift`, read again
-  whenever one of those comes or goes, and glided to). Over an open sheet the toaster goes in the
-  sheet's dialog, the one part of the page that takes taps then, and back as the sheet closes. A
-  swipe down dismisses the bottom one. Refract's toast motion plays 1.6 times as fast.
+  whenever one of those comes or goes, and glided to; the player's, set-up's and a live activity's
+  buttons change from one step to the next, so what's in those screens is watched too). Over an open
+  sheet the toaster goes in the sheet's dialog, the one part of the page that takes taps then, and
+  back as the sheet closes. A swipe down dismisses the bottom one. Refract's toast motion plays 1.6
+  times as fast. Two at most, one over the other, each as wide as the page's cards: the same words
+  again take the old one's place, and a third sends the oldest away. Each stays long enough to read
+  (a quarter of a second a word on top of the time to notice it; 4 s at least, 6 with a button, 9 at
+  most). A field being typed in is kept clear like a sheet's main buttons, and so is a browser's
+  keyboard. A sheet opening sends away the toasts already up (`U.toastsYield`, from `sheet.js`): they
+  were about what's under it, and over the sheet they'd cover what's being used; one raised by the
+  tap that opened it stays. News nobody asked for just then (a new badge) goes through
+  `U.toastWhenFree(fn)`, which waits until no sheet, dialog, menu or other toast is up, and not the
+  player or set-up. `test/ui-toast.mjs` checks all of it.
 
 **Parts that load when they're needed.** Set-up (`src/ui/onboarding.js`), the plan review with
 Why this plan (`src/planreview.js`, `src/ui/review.js`), How it works (`src/data/science.js`,
@@ -226,8 +243,8 @@ first 3 s after launch; src/styles/perf.css), drifting only once it's left alone
 last input (`#app[data-idle]`). In use, at rest, the GPU then has nothing to do (about what it has with
 every backdrop filter off), and a flick starts on a GPU that's free. That wasn't enough on its own:
 1.8.6 kept the glass as designed while the page moved (Liquid), and the phone still stuttered there, so
-the glass steps aside then. Settings, Look, "Glass effects" (`prefs.glass`, set as `data-glass` on the
-root by `setGlassMode` in core.js) is Auto by default: the glass as designed at rest and Flat's
+the glass steps aside then. Settings, Appearance, "Glass effects" (`prefs.glass`, set as `data-glass` on
+the root by `setGlassMode` in core.js) is Auto by default: the glass as designed at rest and Flat's
 lightness (`:root[data-glass-lite]`, src/styles/perf.css: no backdrop anywhere, solid fills, no
 control lenses) from the first few pixels of a vertical drag on the page (or a wheel turn) until half a
 second after the page stops, flings included and for as long as a finger is down; a tap, a tab change
@@ -277,12 +294,13 @@ everything a finger brings: Android's UI thread taking each touch, the WebView's
 fling. So in the second the phone flicks the page itself (`diagFlick`, `Diagnostics.flick`: Android's
 own touch events, a finger down, a move every 8 ms, the finger up at speed, sent through the app's
 window as a finger's are; only a straight vertical move of 100 px or more, so it can scroll and never
-tap), the same looks on Settings, four flicks each, every frame of the page timed with its scroll
-position: how long after each touch the page moved, any time it held still mid-fling then jumped, and
-Android's own frames. Then once more as designed, recorded, so the report has the trace of those
-flicks too. Throughout, the glass is held as Liquid's (`U.glassHold(true, 'liquid')`, which bends the
-bottom glass while the page moves whatever the setting). `ui-scroll` runs both halves, the phone's
-flicks played by a stand-in that sends CDP touches.
+tap), the same looks on Settings (every page of it on one, `U.open('settings', 'all')`), four flicks
+each, every frame of the page timed with its scroll position: how long after each touch the page
+moved, any time it held still mid-fling then jumped, and Android's own frames. Then once more as
+designed, recorded, so the report has the trace of those flicks too. Throughout, the glass is held as
+Liquid's (`U.glassHold(true, 'liquid')`, which bends the bottom glass while the page moves whatever
+the setting). `ui-scroll` runs both halves, the phone's flicks played by a stand-in that sends CDP
+touches.
 
 **Nothing follows the scroll position.** Up to 1.8.9 the glow rose and faded with the page's
 scroll, a scroll-linked animation (`animation-timeline` on the page's scroll timeline). With an
@@ -298,6 +316,14 @@ on a timer once the page is scrolled down (`#app[data-page-scrolled]`, set with 
 edge in `core.js`). `ui-scroll` checks that no animation runs on a scroll's timeline, and no page
 names one, in every look; Refract's own scroll-driven effects (`data-reveal`, `data-parallax`,
 `.rf-list-swipe`) stay unused.
+
+**No `:has()` high up.** A `:has()` rule whose subject is the root, the body or `#app` has Chrome check
+it again at every element put into the page or taken out of it, anywhere, and restyle what it styles:
+1.5 ms an insertion at 1x CPU where 0.1 is usual, paid by every render, route change, sheet, toast and
+motion copy. So what's open over the page is kept as attributes on `#app` by a MutationObserver in
+`core.js` (`watchOverlays`: `data-gh-overlay` for the workout player or set-up, opaque, then
+`data-gh-player` and `data-gh-live`), and the page set back under a sheet is marked on the root
+(`data-set-back`, from `sheet.js`). `ui-perf` fails on such a rule.
 
 **Scrolling, and work that can wait.** A fling should only move what's already drawn
 (`src/styles/perf.css`). While the page scrolls (`#app[data-scrolling]`, set in `core.js` and
@@ -370,6 +396,17 @@ hidden or goes away. Each save also fires `gh-change` on `document` (badges list
 `GH.migrations` holds the upgrades `store.migrate` runs on a loaded state. A restored backup goes
 through `store.sanitize` first: a size cap, no `__proto__` keys, and every field's type and range
 checked, so a crafted file can't break the app.
+
+**Settings** (`src/ui/settings.js`) is a short top page and a page for each part (`PAGES`: Workouts,
+Tracking, Health Connect, Notifications, AI coach, Sound and haptics, Appearance, General, Your data,
+About), opened as `U.open('settings', id)`; the top page's row for each says what's set there now
+(its `line`). A new setting goes on its part's page, in a list of its kind: controls (`form`: no
+icon tiles, every title on one inset) or places to go and things to do (`menu`: an icon on each
+row), with a short line under its title and anything longer in the list's footer. Give its row a
+`data-key` (a switch's comes from `U.sw`) and the other words it's found by in `data-keywords`: the
+search on the top page reads every page's rows from their own markup, and a result opens its page
+with the row in the middle, lit up a moment. Older ids still open their page (`food` opens Tracking
+at Food), Back from a page a link opened goes back to the link, and `'all'` has every page on one.
 
 ## Refract, the design system
 
@@ -454,7 +491,12 @@ Where the app uses Refract 1.4's newer parts:
   solid under the rim and sheen at full height, while it moves and while its content scrolls (a
   blur under anything that moves is redrawn every frame; the rim and sheen move with their layer).
   A sheet opened over another is solid at every height (`data-stacked`): frost over a sheet's words
-  lets them through. A sheet's body has no inset of its own, so each block in it brings its 16 px.
+  lets them through. Glass that words sit on (a sheet at medium, a dialog, a menu, a toast, which is
+  thick glass too) is at 0.9 on Refract's density scale (`--rf-density`, about 93% of its fill, where
+  0.5 gives 82%). At the bottom of the screen a blur has nothing below to draw on and fades out,
+  letting the page's words through sharp, so a sheet's glass turns solid over its last 40 px, fading
+  in over the 80 above (`ui-sheet` reads the pixels). A sheet's body has no inset of its own, so each
+  block in it brings its 16 px.
   Content scrolled off its top fades into the material over 48 px under the header, on the curve a
   page fades on under the top bar (`data-scrolled`, toggled only as the scroll position crosses 0):
   on solid glass a gradient in the material's own colour (`--sheet-bg` and what's left of the sheen
@@ -483,6 +525,17 @@ Where the app uses Refract 1.4's newer parts:
 - **Bursts** are 8 to 14 beads, Refract 1.4's range (`test/ui-motion.mjs` checks every count).
 - **Glass in the content** is for controls that float: a search field in a page is a `fill-3` well,
   and a page's own buttons are filled, not glass.
+- **Icons** are Refract's (`U.icon(name)`), plus glyphs of the app's own on its grid (24 px, 1.75
+  stroke, round ends): `EXTRA_ICONS` in `core.js`, the activities' in `src/ui/activity.js` and the
+  badges' in `src/ui/badges.js`. `U.groupIcon(group, size)` is a muscle group's (an exercise for most
+  of them: a push-up for the chest, a pull-up for the back, a press, dips, a squat, a lunge, one leg,
+  a jump; a flexed arm, a six-pack and a heartbeat). A name nobody drew is an empty span, so
+  `test/ui-icons.mjs` checks that every name in `src/` and What's new draws a glyph. `U.art(name)`
+  draws the few pictures in colour (`src/styles/art.css`): the warm-up's sun (a glowing disc in a
+  soft corona, long and short rays, a highlight), the cool-down's moon, mobility's leaf and a walk's
+  footprints. Their gradients are in one `<defs>` put on the page with the first one, so any number
+  share its ids and a re-render's markup never changes; the first sun turns its rays in once, when
+  the page is calm, and nothing on them moves after that.
 - **Brand gradients** (`src/styles.css`, "Brand gradients", and its `--gh-*` tokens): blue into mint
   for the main call to action on a screen (Today's, the player's and set-up's last button: tinted
   glass with the gradient for its fill, its words at 5:1 or more all the way across) and for
@@ -578,8 +631,10 @@ figure's box shows: what a screen waits for first, whenever nothing is in the pe
 finger on the screen, the page not scrolling, no sheet or control moving), then what's drawn ahead,
 once it's calm too. A still shows as soon as its picture is encoded (an object URL) and is kept as
 a data URL made in the background. Up to 300 are kept; past that the oldest that this week and next
-don't show go. The plan builder's large tiles (its picker's) are drawn as they come near the screen
-and held for the launch only. Reset everything deletes them. `ui-plan`
+don't show go. The plan builder's large tiles (a plan's exercises) are drawn as they come near the
+screen and kept apart (IndexedDB `gh-stills-big`, up to 400, read in only when one first asks); the
+picker's rows use Plan's size. No still begins while a page slides (`U.motion.recent`) or a sheet's
+content scrolls. Reset everything deletes them. `ui-plan`
 checks that no tile ever holds the flat figure while 3D is picked, the drawing ahead, Plan's first
 render after a relaunch, a new look and the flat setting; `ui-figure` Settings' preview after a
 relaunch, and that stills never go while a finger is down or the page scrolls, and then go at once,
@@ -704,7 +759,7 @@ the last sync (or a newer background read) is only marked done. A read that star
 sync leaves no gap, so the last sync moves up to it and the next foreground read is shorter. A type
 whose read failed (timed out, rate-limited) keeps what earlier reads found instead of being wiped.
 `hcBackground()` gives `{supported, granted, on, scheduled, lastRun, lastOk, error, pending}`;
-Settings, Health data, shows the switch and "Every 15 minutes · last at 3:15 pm", or why it's off.
+Settings, Health Connect, shows the switch and "Every 15 minutes · last at 3:15 pm", or why it's off.
 
 **Outdoor activities.** The page records runs, walks, hikes and rides through `ActivityService`, a
 foreground service of type `location` that the page starts while it's in front (so no background
@@ -723,7 +778,7 @@ ends the activity and leaves a note that opens the summary. While the page is in
 fix's speed and bearing). `actSetOptions({autoPause?, voice?})` changes the options while it records.
 
 **Auto-pause and spoken splits.** With `autoPause` (to begin with on for runs and rides, off for
-walks and hikes; the start sheet's chips, the live screen's options and Settings, What you track),
+walks and hikes; the start sheet's chips, the live screen's options and Settings, Tracking),
 `ActivityAutoPause` stops the clock after 5 s without moving (20 s when the GPS gives no speed: then
 a least-squares fit of the last 20 s decides) and starts it again after 2 s of moving, both dated
 back to where the stop or the move began, so the fixes it was unsure of are stored flagged. It is
@@ -969,7 +1024,7 @@ Both are the same llama.cpp release (b10663). Details:
 
 ## Food
 
-Food tracking is off until someone turns it on (Settings, What you track, or Health's Track calories:
+Food tracking is off until someone turns it on (Settings, Tracking, or Health's Track calories:
 one sheet with the target the app suggests, each part of it changeable). `src/food.js` is pure logic
 on the saved state and is unit-tested (`test/food.mjs`): Mifflin-St Jeor times an activity factor from
 the person's steps and workouts (or the activity they set), a pace from the goal, floors, macros, and a
@@ -1154,6 +1209,17 @@ state (`test/customplan.mjs`); `src/ui/customplan.js` is the screens (`test/ui-c
   shows the code to scan. **GitHub Pages must be on** for links to open in a browser (the repository's
   Settings, Pages, Deploy from a branch, `main`, `/docs`). QR codes, and links opened straight in the
   app, work without it.
+- **The builder** (`src/ui/planbuilder.js`, its logic in `src/customplan.js`). The picker is a windowed
+  list (only the rows near the screen are drawn) with Suggested at the top (`suggest()`: moves for the
+  day's muscles and for the week's gaps, at the person's level, never one the day holds under another
+  ladder), muscle chips and a Filters menu (kit, from each move's `kit` and the person's own, and "Only
+  what I can do"), a forgiving search (spaces, hyphens, plurals, one letter off; a word under 4
+  letters only matches word starts) and a tray of the day's exercises with Undo. The day changes once,
+  as the sheet closes. A new exercise gets sets from the goals' tiers and reps from the person's level
+  on its ladder (`defaults`, `itemFor`); Replace lists the closest moves first (`similar()`). A plan's
+  page shows its week by muscle (`weekSets()`: sets a week against `S.vol`), and New plan offers Full
+  body, Upper and lower, Push, pull, legs and No equipment (`templates()`), fitted to the person's
+  minutes. `test/customplan.mjs` and `test/ui-customplan.mjs` cover them.
 - **Build me a plan.** `generate()` reads the request with Tailor's rules plus the split and the time,
   has the brain plan a week for a copy of the person with those wishes, and turns it into a plan, so it
   only holds moves they can do. With Claude on (`GH.ai.json`, a JSON schema) or an on-device model (a
@@ -1370,7 +1436,7 @@ the package name to that key's certificate.
   command line. Each build prints the certificate's SHA-256.
 - **The test key** (`android/gradient-health.keystore`, password `gradient-health`) is public. Builds
   signed with it are for trying the app only. A release-signed build won't install over one: copy
-  your data first (Settings, Copy my data), uninstall, install the release build, then Restore from a
+  your data first (Settings, Your data, Copy my data), uninstall, install the release build, then Restore from a
   copy.
 
 ### Builds

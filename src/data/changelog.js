@@ -6,6 +6,28 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.14.0', date: '2026-10-16', title: 'A better plan builder, simpler Settings, and quicker sheets',
+      store: [
+        '• Pick exercises from a list with pictures, suggestions and filters',
+        '• Search by name, muscle or kit, even with a typo',
+        '• See each muscle\'s sets for the week, and tap a gap to fill it',
+        '• Start a plan from Full body, Upper and lower, or Push, pull, legs',
+        '• Settings opens on a short list, with a page for each part and search',
+        '• A glowing sun on your warm-up, and an icon for each muscle',
+        '• Quicker pages and sheets, and pop-ups that keep out of your way',
+      ].join('\n'),
+      items: [
+        ['list', 'Pick exercises from a list with a picture on every row'],
+        ['sparkle', 'Suggestions for the day, and filters for muscle and equipment'],
+        ['chart', 'See each muscle\'s sets for the week, and tap a gap to fill it'],
+        ['layers', 'Start a plan from Full body, Upper and lower, or Push, pull, legs'],
+        ['settings', 'Settings opens on a short list, with a page for each part'],
+        ['search', 'Search Settings to land right on the setting you want'],
+        ['sun', 'A glowing sun on your warm-up, and an icon for each muscle'],
+        ['bolt', 'Quicker pages and sheets, and pop-ups that keep out of your way'],
+      ],
+    },
+    {
       version: '1.13.0', date: '2026-10-15', title: 'Effort by goal, and plans for 60+, bones and diabetes',
       store: [
         '• Each set says how many reps to leave, by your goal and age',

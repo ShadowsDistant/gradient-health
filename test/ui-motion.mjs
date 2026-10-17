@@ -25,10 +25,12 @@
 //   the router between light stand-in pages) at most 10% of frames late, best of 3; the real pages'
 //   reported with the motion and with the plain swap. The first frame after a change carries the new
 //   page's own render (its style, layout and paint, which ui-perf budgets) and is counted apart.
-// Usage: node test/ui-motion.mjs [--dark]
+// Usage: node test/ui-motion.mjs [--dark] [--dist=<dir>] [--frames]
+//   --dist    a built page somewhere else (a copy of an older dist/), to compare on the same machine
+//   --frames  only the frames while route changes play (and the console), not the rest
 import { createRequire } from 'node:module';
-import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { join, resolve, relative, sep } from 'node:path';
 import { root, check, section, done, serveDist } from './lib.mjs';
 import { seedBridge, seedState } from './fixtures.mjs';
 
@@ -37,6 +39,8 @@ let chromium;
 try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
 
 const dark = process.argv.includes('--dark');
+const FRAMES_ONLY = process.argv.includes('--frames');
+const distArg = (process.argv.find((x) => x.startsWith('--dist=')) || '').slice(7);
 const LAYOUT = /^(height|width|min-?(height|width)|max-?(height|width)|margin.*|padding.*|top|left|right|bottom|inset.*|inline-?size|block-?size)$/i;
 // Keyframes that may animate a size: none so far. Add 'file: why' here for an indicator whose width
 // can't be a transform.
@@ -97,7 +101,17 @@ section('Lint: keyframes in src/ui move by transform and opacity');
 }
 
 /* ---------------------------------------------------------------- the page */
-const server = await serveDist();
+// --dist serves another build's page and lazy/ through lib.mjs's server (its `extra` paths).
+async function serve(dir) {
+  if (!dir) return serveDist();
+  const base = resolve(dir);
+  const extra = {};
+  const walk = (d) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else extra['/' + relative(base, p).split(sep).join('/')] = p; } };
+  if (!existsSync(join(base, 'gradient-health.html'))) throw new Error(`no gradient-health.html in ${base}`);
+  walk(base);
+  return serveDist(extra);
+}
+const server = await serve(distArg);
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: dark ? 'dark' : 'light' });
 const page = await ctx.newPage();
@@ -184,6 +198,7 @@ await page.evaluate(() => {
 const baseDups = new Set(await page.evaluate(() => window.__m.dupIds()));
 
 /* ---------------------------------------------------------------- route changes */
+if (!FRAMES_ONLY) {
 section('A tab change');
 {
   const r = await page.evaluate(async () => {
@@ -837,6 +852,7 @@ section('Lint: every animation started here moves by transform and opacity');
   const matOther = Array.from(new Set(mat.flatMap((k) => k.props))).filter((p) => !MAT.includes(p));
   check(`Refract's material motion (${mat.length}, asked for by name) touches only what its API animates`, mat.length > 0 && matOther.length === 0, matOther);
 }
+} // (not with --frames)
 
 /* ---------------------------------------------------------------- frames */
 // The motion's own frames: route changes through the real router (tab cross-fades with the bar's
@@ -893,6 +909,11 @@ section('Frames while route changes play (CPU 4x slower, best of 3)');
     U.go('today');
     await U.motion.settled();
   });
+  // The 3D stills drawn ahead after launch (src/ui/stills.js) are done first: here each is a second or
+  // more of the software GPU's time, polled and encoded in whatever frames come, and what these frames
+  // measure is the motion alone.
+  await page.waitForFunction(() => { const s = window.GH.ui.stills && window.GH.ui.stills._stats ? window.GH.ui.stills._stats() : null; return !s || (!s.asked && !s.ahead); }, null, { timeout: 45000, polling: 250 }).catch(() => {});
+  await wait(1000);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
   await wait(500);
   // Pushes and Back (the old page sliding off, the bar's buttons swapping, the floating button going

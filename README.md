@@ -40,7 +40,7 @@ Training, food and health in one private Android app, with a coach that runs on 
   <img src="docs/screenshots/framed/rest-dark.png" width="200" alt="Rest timer, in dark mode, asking how many more you could have done">
   <img src="docs/screenshots/framed/science.png" width="200" alt="How it works: how many reps to leave in the tank, with its research">
   <img src="docs/screenshots/framed/food.png" width="200" alt="Food in Health, under the week: calories left today, macros and the four meals">
-  <img src="docs/screenshots/framed/badges.png" width="200" alt="Badges: the ones earned so far, with their tiers, what's next and five waiting to be opened">
+  <img src="docs/screenshots/framed/picker.png" width="200" alt="Building your own plan: the exercise picker, with moves suggested for the day, filters and a tray of what's in it">
 </p>
 
 ## What's inside
@@ -49,7 +49,7 @@ Training, food and health in one private Android app, with a coach that runs on 
 |---|---|
 | **Today** | Today's workout, and what the coach changed and why |
 | **Plan** | Your week, why it's built that way, and an AI check you approve |
-| **Your plans** | Build your own or ask the coach for one, and share it with a QR code |
+| **Your plans** | Build your own from pictures of every move or a ready-made split, or ask the coach, and share it with a QR code |
 | **Activities** | Runs, walks, hikes and rides with GPS, auto-pause and spoken splits |
 | **Food** | Calories and macros by meal, with a barcode scanner |
 | **Health** | Sleep, steps, heart rate and weight from Health Connect |

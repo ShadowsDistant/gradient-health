@@ -188,11 +188,21 @@ async function run(dark) {
   }
   else await top();
   await shot('activity');
-  // Your plans: one made from the coach's week, its days, and sharing it as a QR code.
+  // Your plans: one made from the coach's week, its days, the exercise picker, and sharing it as a QR
+  // code. (Their screens and sheets are a part of their own, planUi, loaded first.)
+  await page.evaluate(() => window.GH.lazy('planUi'));
   await page.evaluate(() => { const U = window.GH.ui, C = window.GH.customPlan; const p = C.list(U.S)[0] || C.add(U.S, C.fromCoach(U.S, U.today())).plan; U.open('planEdit', p.id); });
   await settle(1200);
   await top();
   await shot('plans');
+  // The picker for the first day: Suggested at the top, the filters, and the tray. Its pictures
+  // turn into stills of the 3D figure while the phone is idle.
+  await page.evaluate(() => window.GH.ui.act.cpAdd({ dataset: { arg: '0' } }));
+  await settle(1500);
+  for (let i = 0; i < 30 && await page.evaluate(() => [...document.querySelectorAll('.cp-pick .cp-row .cp-thumb[data-move]')].some((h) => h.getBoundingClientRect().top < innerHeight && !h.querySelector(':scope > img'))); i++) await settle(700);
+  await shot('picker');
+  await page.evaluate(() => window.GH.ui.closeSheets());
+  await settle(900);
   await page.evaluate(() => { const U = window.GH.ui, C = window.GH.customPlan; U.act.cpShare({ dataset: { arg: C.list(U.S)[0].id } }); });
   await settle(1500);
   await shot('share');
@@ -249,18 +259,22 @@ async function run(dark) {
   await top();
   await medals();
   await shot('you');
-  // Reminders, turned on: Settings' Notifications group, a switch for each kind and the time.
-  await page.evaluate(() => {
+  // Reminders, turned on, and Settings: its top page (each part with what's set there, the
+  // reminders' time among them), then the Notifications page: the switch, a switch for each kind
+  // and the time.
+  await page.evaluate(async () => {
     const U = window.GH.ui, S = U.S;
     window.__notify.permission = 'granted';
     if (window.__bg) Object.assign(window.__bg, { supported: true, granted: true, on: true });
     S.profile.prefs.notify.on = true;
     window.GH.store.save(S);
+    await window.GH.lazy('notify'); // the planner's chunk, for the reminder time
     U.open('settings');
   });
   await settle(1500);
-  await page.evaluate(() => { const h = document.querySelector('#screen #notify'); if (h) document.getElementById('screen').scrollTo(0, h.offsetTop - 210); });
-  await settle(900); // the planner's chunk loads, for the reminder time
+  await shot('settings');
+  await page.evaluate(() => window.GH.ui.open('settings', 'notify'));
+  await settle(1500);
   await shot('reminders');
   await page.evaluate(() => { const U = window.GH.ui; while (U.back()) { /* to the tab */ } });
   await settle(600);
