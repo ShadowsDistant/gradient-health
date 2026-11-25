@@ -2195,7 +2195,11 @@
   // 'side', 'eating' or 'abs'; fields are the profile's fields it read. Empty for a week from before
   // 1.15's personal plans. Why this plan shows them first (explain().facts), and the AI helper can
   // quote them. (Age and health conditions have their own line: src/access.js plannedAround.)
-  const KIT_MOVES = [['curl_std', 'curls'], ['tri_oh', 'extensions'], ['press_db', 'presses'], ['row_db', 'rows'], ['sq_goblet', 'squats'], ['hg_deadlift', 'deadlifts']];
+  // The bigger moves a light weight is checked on (too light: the plan uses body weight for them),
+  // and what each family's loaded exercises are called in a line.
+  const KIT_HEAVY = [['row_db', 'rows'], ['sq_goblet', 'squats'], ['hg_deadlift', 'deadlifts'], ['press_db', 'presses']];
+  const KIT_WORD = { curl: 'curls', hammer: 'curls', triceps: 'extensions', raise: 'raises', rear: 'rear raises', absLoad: 'crunches', coreRot: 'twists', coreSide: 'carries', press: 'presses', chestDb: 'floor presses', row: 'rows', squat: 'squats', hinge: 'deadlifts', glute: 'bridges', calf: 'calf raises' };
+  const AB_WORD = [[/^abl_/, 'crunches'], [/^ab_revcrunch/, 'reverse crunches'], [/^ab_legraise/, 'leg raises'], [/^ab_vup/, 'V-ups'], [/^ab_hollow/, 'hollow holds'], [/^ab_deadbug/, 'dead bugs'], [/^side_/, 'side work'], [/^rot_/, 'twists']];
   function personalFacts(S, day, ctx) {
     const b = B(), p = S.profile;
     const ws = b.weekStart(day);
@@ -2203,49 +2207,69 @@
     const c = ctx || {};
     const wp = c.wp || weekPlan(S, ws, { phase: phaseOf(S, ws) });
     if (!wp || wp.legacy) return [];
+    // The week's sessions as planned: every line says what they hold.
+    let sessions = c.sessions;
+    if (!sessions) {
+      const cal = b.calendar(S, day);
+      const live = cal.weeks[ws] ? cal.weeks[ws].sessions.filter((x) => !x.dropped && x.day != null) : [];
+      // (A week on a plan of the person's own isn't the coach's to explain.)
+      if (GH.customPlan && live.some((x) => GH.customPlan.owns(x.tpl))) return [];
+      sessions = live.map((x) => b.buildSession(S, x.day, x.tpl, { cal, noReadiness: true }));
+    }
     const prog = b.programFor(p);
-    const pg = wp.perGroup;
     const out = [];
     const add = (id, fields, text) => out.push({ id, fields, text });
     const days = (n) => `${n} day${n === 1 ? '' : 's'}`;
+    const items = sessions.flatMap((x) => x.items.filter(isMain));
+    const onDays = (gs) => sessions.filter((x) => x.items.some((it) => isMain(it) && gs.includes(it.group))).length;
+    const setsOf = (gs) => items.reduce((a, it) => a + (gs.includes(it.group) ? it.sets : 0), 0);
     // Goals: the muscles asked for, the days each trains on and its sets.
-    const top = GROUPS.filter((g) => prog.tiers[g] === 1 && pg[g] && pg[g].trainable && pg[g].aim > 0);
+    const top = GROUPS.filter((g) => prog.tiers[g] === 1 && setsOf([g]) > 0);
     if (top.length && (p.goals || []).some((g) => b.GOAL_GROUPS && b.GOAL_GROUPS[g])) {
       const both = top.includes('biceps') && top.includes('triceps');
       const parts = top.filter((g) => !(both && g === 'triceps')).map((g) => {
-        const arms = both && g === 'biceps';
-        return `${arms ? 'arms' : b.GROUP_NAME[g].toLowerCase()} on ${days(arms ? Math.max(pg.biceps.days, pg.triceps.days) : pg[g].days)} (${setsWord(arms ? pg.biceps.aim + pg.triceps.aim : pg[g].aim)})`;
+        const gs = both && g === 'biceps' ? ['biceps', 'triceps'] : [g];
+        return `${gs.length > 1 ? 'arms' : b.GROUP_NAME[g].toLowerCase()} on ${days(onDays(gs))} (${setsWord(setsOf(gs))})`;
       });
       add('goals', ['goals'], `Your goals come first: ${joinList(parts)} this week.`);
     }
     // Time: how many exercises its minutes hold.
-    const sessions = c.sessions || [];
     const counts = sessions.map((x) => x.items.filter((it) => !it.skill).length).filter((n) => n > 0);
     if (counts.length) {
       const lo = Math.min(...counts), hi = Math.max(...counts);
       const minutes = clamp(Math.round(Number(b.settingsAt(S, day).minutes) || Number(p.minutes) || 25), 10, 60);
       add('time', ['days', 'minutes'], `Your ${days(wp.days.length)} of ${minutes} minutes hold ${lo === hi ? lo : `${lo} to ${hi}`} exercises a session, so each gets enough sets to count.`);
     }
-    // Kit: what their heaviest weight is enough for, at their size (brain.js weightFit).
+    // Kit: what their heaviest weight is right for in this plan, and what it's too light for at
+    // their size (brain.js weightFit).
     const eq = b.placeOf(S, day) === 'gym' ? null : b.eqFor(S, day);
     const own = eq ? [].concat((eq.db || []).map((x) => [x, 'dumbbell']), (eq.kb || []).map((x) => [x, 'kettlebell'])).sort((a, x) => x[0] - a[0])[0] : null;
     if (own) {
-      const fits = KIT_MOVES.filter(([id]) => M().MOVES[id]).map(([id, name]) => [name, b.weightFit(S, id, day)]).filter((x) => x[1]);
-      // (Three of each at most, the bigger moves of those it's too light for: a line stays short.)
-      const light = fits.filter((x) => x[1].fit === 'light').map((x) => x[0]).slice(-3);
-      const fine = fits.filter((x) => x[1].fit !== 'light').map((x) => x[0]).slice(0, 3);
-      const size = p.weightKg > 0 ? `at ${Math.round(p.units === 'kg' ? p.weightKg : p.weightKg * 2.20462)} ${p.units === 'kg' ? 'kg' : 'lb'}` : 'for an average build';
-      const what = `Your heaviest weight is a ${own[0]} ${p.units === 'kg' ? 'kg' : 'lb'} ${own[1]}`;
-      if (light.length && fine.length) add('kit', ['equipment', 'weightKg', 'sex', 'experience'], `${what}. ${size[0].toUpperCase()}${size.slice(1)} that's enough for ${joinList(fine)}, and too light to build with for ${joinList(light)}: those use your body weight instead.`);
-      else if (light.length) add('kit', ['equipment', 'weightKg', 'sex', 'experience'], `${what}. ${size[0].toUpperCase()}${size.slice(1)} that's too light to build with on its own, so the plan leans on your body weight, one side at a time and slow lowering.`);
-      else if (fine.length) add('kit', ['equipment', 'weightKg', 'sex', 'experience'], `${what}: enough for the plan's weighted exercises ${size}.`);
+      const u = p.units === 'kg' ? 'kg' : 'lb';
+      const loaded = items.filter((it) => it.load && (it.load.key === 'db' || it.load.key === 'kb'));
+      const fine = [...new Set(loaded.map((it) => KIT_WORD[it.fam] || KIT_WORD[(M().MOVES[it.moveId] || {}).family]).filter(Boolean))].slice(0, 3);
+      const one = loaded.some((it) => it.uni && (it.group === 'biceps' || it.group === 'triceps'));
+      const light = KIT_HEAVY.filter(([id]) => M().MOVES[id] && (b.weightFit(S, id, day) || {}).fit === 'light').map((x) => x[1]).slice(0, 3);
+      const size = p.weightKg > 0 ? `At ${Math.round(p.units === 'kg' ? p.weightKg : p.weightKg * 2.20462)} ${u}` : 'For an average build';
+      const what = `Your heaviest weight is a ${own[0]} ${u} ${own[1]}`;
+      const right = fine.length ? `it's right for ${joinList(fine)}${one ? ', one arm at a time' : ''}` : '';
+      if (right && light.length) add('kit', ['equipment', 'weightKg', 'sex', 'experience'], `${what}. ${size} ${right}, and too light to build with for ${joinList(light)}: those use your body weight instead.`);
+      else if (light.length) add('kit', ['equipment', 'weightKg', 'sex', 'experience'], `${what}. ${size} it's too light to build with for ${joinList(light)}, so the plan uses your body weight, one side at a time and slow lowering.`);
+      else if (right) add('kit', ['equipment', 'weightKg', 'sex', 'experience'], `${what}. ${size} ${right}.`);
     }
-    // The weaker side.
+    // The weaker side: what it changed this week.
     const side = (x) => (x === 'L' ? 'left' : 'right');
     const lead = p.lead || {};
     const cu = S.catchup || {};
-    if (lead.arm && cu.arm && cu.arm.active) add('side', ['lead'], `Your ${side(lead.arm)} arm is the weaker one: arm exercises go one arm at a time, ${side(lead.arm)} first, and it gets one extra set on up to two days.`);
-    else if (lead.leg && cu.leg && cu.leg.active) add('side', ['lead'], `Your ${side(lead.leg)} leg is the weaker one: it goes first and gets one extra set on leg days.`);
+    const extra = (kind) => sessions.filter((x) => (x.extras || []).some((it) => it.extraKind === kind)).length;
+    if (lead.arm && cu.arm && cu.arm.active) {
+      const n = extra('arm');
+      const one = items.some((it) => it.uni && (it.group === 'biceps' || it.group === 'triceps'));
+      add('side', ['lead'], `Your ${side(lead.arm)} arm is the weaker one: it goes first${one ? ' on arm exercises done one arm at a time' : ''}, the other never does more reps${n ? `, and it gets an extra set on ${days(n)}` : ''}.`);
+    } else if (lead.leg && cu.leg && cu.leg.active) {
+      const n = extra('leg');
+      add('side', ['lead'], `Your ${side(lead.leg)} leg is the weaker one: it goes first, the other never does more reps${n ? `, and it gets an extra set on ${days(n)}` : ''}.`);
+    }
     // Eating: only when it changed the plan (little protein, an adult).
     const e = b.eatsOf(p);
     if (prog.lowProtein) {
@@ -2253,16 +2277,21 @@
       const said = e.from === 'answer' ? 'You said protein-rich food is rare for you' : lg ? `Your food log shows about ${lg.g} g of protein a day` : 'Your food log shows little protein';
       add('eating', ['eats', 'age'], `${said}. Expect strength at about the usual pace and size more slowly. The plan keeps a normal week's sets, goals first, and doesn't add more to make up for food.`);
     }
-    // Abs and size: build the muscle; no exercise takes fat off one spot (Ramirez-Campillo et al.
-    // 2022; Vispute et al. 2011). The size words are for adults who gave height and weight; under
-    // a BMI of about 21 the aim is the muscle with weight held steady, never a loss (our reading:
-    // no body-fat line for visible abs is well tested).
-    if (prog.tiers.abs === 1 && (p.goals || []).includes('abs')) {
+    // Abs: build the muscle; no exercise takes fat off one spot (Ramirez-Campillo et al. 2022;
+    // Vispute et al. 2011). For adults who gave height and weight: under a BMI of about 21 the aim
+    // is the muscle with weight held steady, never a loss (A4 of the 1.15 research); from 25, abs
+    // show as body fat comes down, which steps, a fat-loss goal's conditioning and food tracking
+    // help with. (The same lines for women and men: no study gives a body-fat level for visible
+    // abs, and BMI's bands are the same for both.)
+    const abs = [...new Set(items.filter((it) => it.group === 'abs').map((it) => (AB_WORD.find(([re]) => re.test(it.moveId)) || [])[1]).filter(Boolean))].slice(0, 3);
+    if (prog.tiers.abs === 1 && (p.goals || []).includes('abs') && abs.length) {
       const adult = !(p.age != null && p.age < 18);
       const bmi = adult && p.weightKg > 0 && p.heightCm > 0 ? p.weightKg / Math.pow(p.heightCm / 100, 2) : null;
-      const how = 'The plan trains your abs like any other muscle: crunches and reverse crunches, close to your limit.';
-      if (bmi != null && bmi < 18.5) add('abs', ['goals', 'heightCm', 'weightKg'], `Your weight is low for your height, so eating enough matters more for your abs than any exercise. ${how}`);
+      const how = `The plan trains your abs like any other muscle, with ${joinList(abs)} taken close to your limit.`;
+      const helps = ['your daily steps'].concat((p.goals || []).includes('fat') ? 'the conditioning in your sessions' : [], GH.food && GH.food.full && GH.food.full(S) ? 'your food log' : []);
+      if (bmi != null && bmi < 18.5) add('abs', ['goals', 'heightCm', 'weightKg'], `Your weight is low for your height, so eating enough comes first. ${how}`);
       else if (bmi != null && bmi < 21) add('abs', ['goals', 'heightCm', 'weightKg'], `You're lean for your height, so the aim is to build the ab muscle and keep your weight steady, not to lose any. ${how}`);
+      else if (bmi != null && bmi >= 25) add('abs', ['goals', 'heightCm', 'weightKg'], `${how} Abs show as body fat comes down, and that comes off the whole body over months, not from the belly first. ${joinList(helps)[0].toUpperCase()}${joinList(helps).slice(1)} help with that.`);
       else add('abs', ['goals'], `${how} Ab exercises build the muscle. They don't take fat off the belly: that comes off the whole body.`);
     }
     return out;

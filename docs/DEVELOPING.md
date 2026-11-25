@@ -1123,12 +1123,46 @@ to build toward heavier sets for bones. `test/simulate.mjs` checks each rule ove
 (`--full`: 3-wise, with 12-week runs, before a release) and checks that every session fits its time,
 every group gets its week, only allowed moves appear and the same answers give the same plan.
 
+**1.15's personal plans** (the rules and their sources are in `reports/Personalizing home workout
+plans.md`, Practical section A; the code cites each one). They change which days train what and what
+a session holds, so they start from `S.personalFrom`: the week after 1.15 first loads a state (a
+migration in `src/optimizer.js`), a new state's first week. `brain.personal(S, day)` tells the weeks
+apart; earlier ones are planned on a copy of the profile marked `legacyPlan`, as `legacyRules` does
+for 1.13's, and 1.15's moves and ladders (`since: 15` in `src/data/moves.js`) stay out of them.
+`test/optimizer.mjs` keeps a copy of what 1.14 planned for six people and checks those weeks replay.
+In 1.15's weeks: a session holds the exercises its minutes do (`optimizer.exCap`: 5 at 20 and 25
+minutes, 6 at 30, 8 from 45; balance practice counts one), an exercise has 2 to 4 sets (`brain.setMax`),
+and `brain.slots15` gives a group's sets for the day to one exercise up to 3 or 4, two from 5 and
+three from 9, from the group's angles (`ANGLES`: a curl and a hammer curl, an overhead extension and
+close-grip push-ups, a crunch and a reverse crunch). A top goal (tier 1) trains on two days or more
+with its sets shared out (the split's `goal2`, and a last pass in `allocate`), its weekly minimum met
+by its own sets, not other groups' half-credit; a goal's two angles take turns over the days that
+train it (`gocc`), the others turn every four weeks. Abs get 3 sets a session at most and not on
+back-to-back days. `brain.weightFit(S, move)` judges the person's heaviest weight light, right or
+heavy for a move from body weight, sex, level and an estimated one-rep max (`ONE_RM`); a light one
+gives way to the rung that's hard (`weak`, `bestRung`: a split squat, a doorframe row, one arm at a
+time with `oneArm`), sets of more than 15 reps or on a light weight aim for 0-2 reps left (`AIMS['02']`),
+reps stop at 20 and move on after two sessions at the top, and the hint to buy a heavier weight comes
+once. With a weaker arm (`profile.lead.arm`) the dumbbell arm work is one arm at a time, that side
+first, resting 30 s, with one extra set on up to two days. A beginner (level 0) has no planned lighter
+week in their first 12 training weeks. `profile.eats` (`{ protein, produce }`, each `'low'`, `'some'`,
+`'most'` or null) is asked in set-up's About you and in Your answers; `brain.eatsOf` reads it (the food
+log stands in for protein, `profile.eats.logged`; nothing under 18), and little protein keeps a normal
+week's sets, holds growth at 2 past the start and spaces a muscle's days (`programFor().lowProtein`).
+`GH.optimizer.personalFacts(S, day)` says which of the person's answers the week's plan used, each
+line read from the week's sessions (`[{ id, fields, text }]`, id 'goals', 'time', 'kit', 'side',
+'eating' or 'abs'); Why this plan leads with them, and the AI's plans can quote them. The coach
+(`src/coach.js`) offers a day fewer or shorter sessions after two weeks of missed workouts, and the
+eating steps once each.
+
 **Reps left and rests.** Each set has an aim for the reps left in the tank (`effortFor` in
 `src/brain.js`, one rule for the hint, the progression and the coach): 2-3 on the 4-8 rep strength
 lifts (4 is fine too; not when a condition sets the lift's reps, `GH.access.repRange`), 1-2 for the
 top goal muscles (tier 1) and, with osteoporosis (`GH.access.boneLoad`), main sets after the on-ramp;
 2-3 in the on-ramp weeks, from 60 and with high blood pressure, a heart condition or diabetic eye
-disease; 3 or more on fast reps (`it.power`: 1-2 means they slowed, so it holds); 1-3 otherwise.
+disease; 3 or more on fast reps (`it.power`: 1-2 means they slowed, so it holds); in 1.15's weeks,
+2 at most (0 is fine) on sets of more than 15 reps or on a weight that's light for the person; 1-3
+otherwise.
 `startWorkout` puts it on each item (`it.effort`, which the line under a set names through
 `GH.access.setHint`) and in each log (`log.aim`). The player asks 0, 1-2, 3 or 4+ (`'0'`, `'12'`, `'3'`, `'4'`), and `effortStep` reads the
 answer against the aim: 0 holds, on the aim is the usual step, each rep past what it allows a bigger
@@ -1140,7 +1174,8 @@ answers the same way; `RIR_NUM` counts 4+ as 4.5 in the one-rep max estimate. Re
 item (`it.agePlus`). The fit takes that off first when a session runs over its time, and gives no
 longer rests to a session that had to lose sets; once the sets are in, it puts it back wherever the
 session still fits its time, then the strength lifts' longer rests, then 90 s for what's done on its
-own at 60 (right after the sets with a muscle goal, after the finisher and cool-down otherwise). Supersets stay at 60. `explain` says so
+own at 60 (right after the sets with a muscle goal, after the finisher and cool-down otherwise). Supersets stay at 60, and in
+1.15's weeks an arm exercise done one arm at a time keeps 30 s (each arm rests through the other's set). `explain` says so
 when the plan's strength work comes to under 30 minutes a week (days times minutes), with the fix.
 
 `src/planreview.js` (`GH.planReview`) is the AI check. It sends next week's plan as built (each day's

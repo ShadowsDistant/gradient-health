@@ -98,6 +98,13 @@ check('and the first workout\'s badge is earned in the gallery', await ev(() => 
 await ev(() => window.GH.ui.back());
 await settle();
 check('your answers are each set-up screen, with its answer', await ev(() => { const rows = [...document.querySelectorAll('#screen ul[data-key="answers"] [data-act="editStep"]')]; return rows.length >= 6 && rows.some((r) => r.dataset.arg === 'schedule') && rows.some((r) => r.dataset.arg === 'equipment') && rows.every((r) => r.querySelector('.rf-list-sub').textContent.trim()); }));
+// 1.15: About you also says how you eat, once answered.
+await ev(() => { const U = window.GH.ui; U.S.profile.eats = { protein: 'low', produce: 'some' }; U.save(); U.render(); });
+await settle();
+const aboutSub = await ev(() => (document.querySelector('#screen ul[data-key="answers"] [data-act="editStep"][data-arg="about"] .rf-list-sub') || {}).textContent || '');
+check('About you says how you eat, once answered', /Protein rarely · fruit and vegetables some meals/.test(aboutSub), aboutSub);
+await ev(() => { const U = window.GH.ui; U.S.profile.eats = { protein: null, produce: null }; U.save(); U.render(); });
+await settle();
 const review = async () => ev(() => ({ you: !!document.querySelector('#screen [data-act="reviewPlan"]'), real: !!(window.GH.planReview && window.GH.ui.act.reviewPlan) }));
 let rv = await review();
 check('Check my plan with AI only when the AI review is in the app', rv.you === rv.real, JSON.stringify(rv));

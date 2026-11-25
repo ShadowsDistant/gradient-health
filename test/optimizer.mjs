@@ -546,6 +546,104 @@ section('Personal plans epoch: weeks before 1.15 replay as 1.14 planned them');
   }
 }
 
+/* ------------------------------------------------------------------ 1.15's acceptance test */
+section('1.15: the answers the release was built for');
+{
+  // A man of 68 kg and 183 cm who wants visible abs and bigger arms, at home with one 10 lb
+  // dumbbell, the left arm the weaker, eating little protein and fruit. On 1.14 his plan held six
+  // sets of one curl in a day, a goal muscle once a week, nine one-set exercises in 25 minutes,
+  // squats and rows with the 10 lb dumbbell and ab work that doesn't build abs. Checked in his
+  // first week (easing in) and his fourth (three weeks done as planned, his left arm still 2 reps
+  // behind at the test every two weeks), for 3 days of 20 minutes and 4 of 25, never trained and
+  // now and then.
+  const OWNER = { sex: 'male', weightKg: 68, heightCm: 183, goals: ['abs', 'arms'], units: 'lb', lead: { arm: 'L' }, eats: { protein: 'low', produce: 'low' }, equipment: Object.assign({}, HOUSE, { db: [10] }) };
+  const doWeeks = (S, from, to) => {
+    for (let d = from; d < to; d++) {
+      const plan = B.todayPlan(S, d);
+      if (plan.type === 'workout') {
+        B.startWorkout(S, d, { now: d * B.DAY_MS + 17 * 3600000 });
+        for (let g = 0; S.active && S.active.idx < S.active.steps.length && g < 800; g++) { const st = S.active.steps[S.active.idx]; B.completeStep(S, st.kind === 'test' ? { value: st.side === 'L' ? 10 : 12 } : {}); if (st.askRir) B.setRir(S, st.item, '12'); }
+        B.finishWorkout(S, { rating: 'right', now: d * B.DAY_MS + 18 * 3600000 });
+      } else if (plan.type === 'light') { B.logLight(S, d, 'walk', true); B.logLight(S, d, 'mobility', true); }
+    }
+  };
+  const weekOf = (S, ws) => { const cal = B.calendar(S, ws); return cal.weeks[ws].sessions.filter((x) => !x.dropped && x.day != null).map((x) => B.buildSession(S, x.day, x.tpl, { cal, noReadiness: true })); };
+  const fails = [];
+  const x0 = (built) => built[0].day;
+  const show = (built) => built.map((x) => x.items.map((it) => `${it.moveId}×${it.sets}`).join(' ')).join(' | ');
+  for (const [days, minutes, most] of [[3, 20, 5], [4, 25, 6]]) {
+    for (const experience of ['never', 'onoff']) {
+      const S = B.newState(Object.assign({}, OWNER, { days, minutes, experience }), null, D0);
+      for (const wk of [0, 3]) {
+        if (wk) doWeeks(S, D0, D0 + 7 * wk);
+        const ws = D0 + 7 * wk;
+        const built = weekOf(S, ws);
+        const wp = O.weekPlan(S, ws);
+        const name = `${days}×${minutes} ${experience} week ${wk + 1}`;
+        const no = (what, detail) => fails.push(`${name}: ${what} (${detail || show(built)})`);
+        const items = built.flatMap((x) => x.items.filter((it) => !it.skill));
+        // Biceps, triceps and abs each on two days or more.
+        for (const g of ['biceps', 'triceps', 'abs']) { const on = built.filter((x) => x.items.some((it) => it.group === g)).length; if (on < 2) no(`${g} on ${on} day`); }
+        // No exercise over 4 sets; no more than 5 exercises in 20 minutes, 6 in 25.
+        if (items.some((it) => it.sets > 4)) no('an exercise over 4 sets');
+        if (built.some((x) => x.items.filter((it) => !it.skill).length > most)) no(`more than ${most} exercises in a session`);
+        // The squat, the row and the deadlift aren't done with the 10 lb dumbbell (nor is anything
+        // on a weight that's too light to count for him).
+        const loaded = items.filter((it) => it.load && it.load.kg > 0);
+        if (loaded.some((it) => ['legs', 'back'].includes(it.group))) no('a leg or back exercise with the 10 lb dumbbell');
+        if (loaded.some((it) => (B.weightFit(S, it.moveId, x0(built), it.load.kg) || {}).fit === 'light')) no('a set on a weight too light to count');
+        // Two different exercises that load the abs through a range (a crunch, a reverse crunch, a
+        // leg raise), not holds or dead bugs.
+        const abs = [...new Set(items.filter((it) => it.group === 'abs' && ['abs', 'absLoad'].includes(it.fam) && !it.timed && it.moveId !== 'ab_deadbug').map((it) => it.moveId))];
+        if (abs.length < 2) no(`${abs.length} ab exercise that loads the muscle`, abs.join());
+        // The week's sets, counting half for sets that train a muscle in passing (push-ups for the
+        // triceps, rows for the biceps), inside the range for someone starting out: 4 at least
+        // (the least that still builds), 12 at most in these first weeks (Pelland et al. 2026).
+        // (Counted here from the sessions, A5 of the 1.15 research: the plan counts only a top goal's
+        // own sets toward its minimum.)
+        const frac = (g) => built.flatMap((x) => x.items.concat(x.extras || [])).reduce((a, it) => a + (it.skill ? 0 : it.group === g ? it.sets : (M.MOVES[it.moveId].muscles || []).some((mu) => B.MUSCLE_GROUP[mu] === g) ? 0.5 * it.sets : 0), 0);
+        for (const g of ['biceps', 'triceps', 'abs']) { const e = frac(g); if (e < 4 - 1e-9 || e > 12 + 1e-9) no(`${g} at ${e} sets a week`, JSON.stringify(Object.fromEntries(['biceps', 'triceps', 'abs'].map((q) => [q, frac(q)])))); }
+        // Abs: 3 sets a session at most (about 60 crunch-type reps) and never on back-to-back days
+        // (Contreras & Schoenfeld 2011).
+        if (built.some((x) => x.items.filter((it) => it.group === 'abs').reduce((a, it) => a + it.sets, 0) > 3)) no('more than 3 sets of abs in a session');
+        const absDays = built.filter((x) => x.items.some((it) => it.group === 'abs')).map((x) => x.day);
+        if (absDays.some((d, i) => i > 0 && d - absDays[i - 1] === 1)) no('abs on back-to-back days', absDays.map((d) => B.dayStr(d)).join());
+        // An overhead extension in the week (it grows the triceps' long head most, Maeo et al. 2023).
+        if (!items.some((it) => /^tri_oh/.test(it.moveId))) no('no overhead extension');
+        // The weaker left arm: still behind at its tests, so every arm exercise with the dumbbell is
+        // one arm at a time, the left first, and the plan says so.
+        const facts = O.personalFacts(S, ws);
+        if (!S.catchup.arm.active) no('the left arm caught up in the test');
+        const arm = items.filter((it) => ['biceps', 'triceps'].includes(it.group) && it.load && it.load.key === 'db');
+        if (arm.some((it) => !it.uni)) no('an arm exercise with both arms at once', arm.map((it) => it.moveId).join());
+        const first = B.steps(S, built.find((x) => x.items.some((it) => it.uni && it.group === 'biceps'))).find((st) => st.kind === 'set' && st.item.uni);
+        if (!first || first.side !== 'L') no('the right arm goes first');
+        if (!facts.some((f) => f.id === 'side' && /left arm is the weaker one/.test(f.text))) no('Why this plan doesn\'t name the left arm', facts.map((f) => f.text).join(' / '));
+        // And the plan says which of his answers it used.
+        for (const id of ['goals', 'time', 'kit', 'eating', 'abs']) if (!facts.some((f) => f.id === id)) no(`Why this plan doesn't name ${id}`, facts.map((f) => f.id).join());
+      }
+    }
+  }
+  check('biceps, triceps and abs on two days or more, 4 sets an exercise at most, few exercises, no 10 lb squats or rows, two real ab exercises, a beginner\'s weekly sets, and the facts named', fails.length === 0, fails.slice(0, 6));
+  check('and for abs 3 sets a session on days apart, an overhead extension each week, the weaker left arm first and one arm at a time, and Why this plan saying so', fails.length === 0);
+  // What the eating answer changes, and for whom.
+  const base = Object.assign({}, OWNER, { days: 4, minutes: 25, experience: 'onoff' });
+  const low = B.programFor(Object.assign(B.defaultProfile(), base)), fed = B.programFor(Object.assign(B.defaultProfile(), base, { eats: { protein: 'most', produce: 'low' } })), teen = B.programFor(Object.assign(B.defaultProfile(), base, { age: 16 }));
+  check('little protein: the same weekly sets to start from, marked for the plan; not with enough protein, and not under 18', low.lowProtein === true && !fed.lowProtein && !teen.lowProtein && JSON.stringify(low.start) === JSON.stringify(fed.start));
+  const S1 = B.newState(base, null, D0), S2 = B.newState(Object.assign({}, base, { eats: { protein: 'most', produce: 'most' } }), null, D0);
+  doWeeks(S1, D0, D0 + 21); doWeeks(S2, D0, D0 + 21);
+  const w1 = O.weekPlan(S1, D0 + 21), w2 = O.weekPlan(S2, D0 + 21);
+  check('little protein: no sets past the week\'s target (a normal week, not more)', ['biceps', 'triceps', 'abs'].every((g) => w1.perGroup[g].boosted === w1.perGroup[g].target) && ['biceps', 'triceps', 'abs'].some((g) => w2.perGroup[g].boosted > w2.perGroup[g].target), [w1.perGroup.biceps, w2.perGroup.biceps]);
+  check('the food log stands in when there\'s no answer, and the answer wins when there is one', B.eatsOf({ eats: { protein: null, produce: null, logged: 'low' } }).from === 'log' && B.eatsOf({ eats: { protein: 'most', logged: 'low' } }).protein === 'most' && B.eatsOf({ age: 15, eats: { protein: 'low' } }).minor === true && B.eatsOf({}).protein === null);
+  // The same answers, the same plan: two fresh states, weeks apart in the making.
+  const dg = (S) => weekOf(S, D0).map((x) => x.items.map((it) => `${it.moveId} ${it.sets}x${it.target} ${it.rest}`).join(',')).join('|');
+  check('the same answers give the same plan', dg(B.newState(base, null, D0)) === dg(B.newState(JSON.parse(JSON.stringify(base)), null, D0)));
+  // A weight judged for the person: light, right or heavy.
+  const fit = (p, id, kg) => B.weightFit(B.newState(Object.assign({}, base, p), null, D0), id, D0, kg).fit;
+  check('weightFit: 10 lb is light for his squat and row and right for his curl; 40 lb is heavy for a curl; for a woman of 55 kg a 5 lb curl is right and 10 lb heavy',
+    fit({}, 'sq_goblet', 4.54) === 'light' && fit({}, 'row_db', 4.54) === 'light' && fit({}, 'curl_std', 4.54) === 'right' && fit({}, 'curl_std', 18.1) === 'heavy' && fit({ sex: 'female', weightKg: 55 }, 'curl_std', 2.27) === 'right' && fit({ sex: 'female', weightKg: 55 }, 'curl_std', 4.54) === 'heavy');
+}
+
 /* ------------------------------------------------------------------ caches */
 section('Caches');
 {
