@@ -129,7 +129,7 @@
     const om = opMap(PROGRAMS);
     const kept = om && om.get(p);
     if (kept) return kept;
-    const key = JSON.stringify([p.goals, p.focus, p.experience, p.recentActivity, p.days, p.gentle, p.impactOk, p.age, p.conditions, p.oaJoints, p.floorOk, p.jumpsOk, p.fractures, p.retinopathy, !!p.legacyRules]);
+    const key = JSON.stringify([p.goals, p.focus, p.experience, p.recentActivity, p.days, p.gentle, p.impactOk, p.age, p.conditions, p.oaJoints, p.floorOk, p.jumpsOk, p.fractures, p.retinopathy, !!p.legacyRules, !!p.legacyPlan, p.eats]);
     let out = programMemo.get(key);
     if (!out) {
       if (programMemo.size > 64) programMemo.clear();
@@ -298,6 +298,8 @@
       engineFrom: weekStart(day),
       // And with 1.13's rules for older bodies, osteoporosis and type 2 diabetes (src/access.js).
       rulesFrom: weekStart(day),
+      // And with 1.15's personal plans (see `personal`).
+      personalFrom: weekStart(day),
     };
     if (p.weightKg) S.weights.push({ day, kg: p.weightKg, src: 'profile' });
     initProgress(S, baseline, day);
@@ -609,7 +611,7 @@
     // (A workout's sets count too: the next week's plan reads what the last one trained.)
     for (const l of S.log || []) if (l && (l.type === 'workout' || l.type === 'light')) lg += `${l.type[0]}${l.day}.${l.checkedIn ? 1 : 0}${(l.pct || 0) >= 0.5 ? 1 : 0}${l.walk ? 1 : 0}${l.mobility ? 1 : 0}${l.doneSets || 0};`;
     const ev = (S.events || []).filter((e) => e && (e.type === 'settings' || e.type === 'move' || e.type === 'deloadNext' || e.type === 'plan'));
-    return JSON.stringify([planProfile(S.profile), S.vol, S.complexity, S.pain, S.excluded, S.catchup, S.place, S.lastPlace, S.engineFrom, S.rulesFrom, ev, S.customPlans, S.activePlan]) + progStamp(S) + lg;
+    return JSON.stringify([planProfile(S.profile), S.vol, S.complexity, S.pain, S.excluded, S.catchup, S.place, S.lastPlace, S.engineFrom, S.rulesFrom, S.personalFrom, ev, S.customPlans, S.activePlan]) + progStamp(S) + lg;
   }
   // The workouts a week's plan reads, in short (the week's own and the week before's, what they
   // trained), and the changes to the schedule made in those weeks. A week that's over keeps its plan
@@ -949,6 +951,14 @@
   // Weeks before S.engineFrom (the week after 1.6 first ran) keep 1.5's split, so what's done and
   // what's left of that week keep their meaning; later weeks come from the optimizer.
   const legacyWeek = (S, ws) => S.engineFrom != null && ws < S.engineFrom;
+  // 1.15's personal plans: a goal muscle on two days or more with its sets shared out, at most 4 sets
+  // of an exercise, few exercises with 2 sets or more each, weights judged light, right or heavy for
+  // the person, abs and arms trained for size, and the eating answer. They change which days train
+  // what and what a session holds, so they start with S.personalFrom: a state saved before 1.15 gets
+  // the week after it's first loaded (the migration in src/optimizer.js), a new state its first
+  // week. Earlier weeks are planned as 1.14 planned them, on a copy of the profile marked legacyPlan
+  // (as legacyRules does for 1.13's rules), and the trial weeks a split is scored on carry the mark.
+  const personal = (S, day) => !!S && !(S.profile && S.profile.legacyPlan) && !(S.personalFrom != null && day != null && weekStart(day) < S.personalFrom);
   // The profile and program a week's split is made from: the person as they are, with that week's
   // days, weekdays and minutes, and how simple sessions are (fewer exercises a day). A week before
   // 1.13's rules started is marked legacyRules, so its split is the one it had; from then, type 2
@@ -959,7 +969,7 @@
     const p = S.profile;
     const A = GH.access;
     const old = A && A.oldRules ? A.oldRules(S, ws) : false;
-    const mark = old ? { legacyRules: true } : null;
+    const mark = Object.assign(old ? { legacyRules: true } : {}, personal(S, ws) ? null : { legacyPlan: true });
     const wk = !old && A && A.strengthDays ? A.strengthDays(p, { days: st.days, weekdays: st.weekdays, minutes: st.minutes }) : { days: st.days, weekdays: st.weekdays };
     return { set: st, p: Object.assign({}, p, { days: wk.days, weekdays: wk.weekdays, minutes: st.minutes, complexity: S.complexity || 0 }, mark), prog: programFor(Object.assign({}, p, { days: wk.days }, mark)) };
   }
@@ -2817,6 +2827,6 @@
     UNIT_GROUPS, UNIT_OF, COMPOUND, MAIN_LIFTS, HOME_COMPOUND, FAM_FOCUS, MERGE_MAX, SET_MAX,
     realize, slotsOfDay, slotsForUnit, warmupItems, mobilityIds, finisherItem, finisherFor, pairSupersets, unpair, secsPerSet,
     limitExercises, mergeSame, orderItems, musclesOf, trimTier, perSession, autoRest, tweaksOf, isPinned, supersetConflict: conflicts,
-    weekSettings, weekInputs, templateOf, templateV1, legacyGroupSets, occurrences, legacyWeek, stateStamp, dayStamp, progStamp, planProfile, weekLog, freeze, op, inOp, opToken,
+    weekSettings, weekInputs, templateOf, templateV1, legacyGroupSets, occurrences, legacyWeek, personal, stateStamp, dayStamp, progStamp, planProfile, weekLog, freeze, op, inOp, opToken,
   });
 })(typeof window !== 'undefined' ? window : globalThis);

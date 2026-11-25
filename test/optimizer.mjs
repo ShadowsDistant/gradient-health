@@ -442,6 +442,7 @@ section('Rules epoch: weeks before 1.13\'s rules replay as they were');
     // Wednesday: the rules start next Monday, D0 + 7.
     const S = B.newState(Object.assign({ units: 'lb', weightKg: 75 }, p), null, D0 - 14);
     S.rulesFrom = D0 + 7;
+    S.personalFrom = D0 + 7; // (and 1.15's personal plans start with them, so these weeks are 1.12's still)
     for (let d = D0 - 14; d < D0 + 2; d++) {
       const plan = B.todayPlan(S, d);
       if (plan.type === 'workout') {
@@ -469,6 +470,70 @@ section('Rules epoch: weeks before 1.13\'s rules replay as they were');
     const before = legDays(S, cal, D0), after = legDays(S, B.calendar(S, D0 + 7), D0 + 7);
     if (GH.access.powerPlan(S.profile)) check(`${name}: from next week every leg day is fast on the way up (this week, ${fastDays(before)} of ${before.length})`, after.length > 0 && fastDays(after) === after.length && fastDays(before) <= 1, { before: fastDays(before), after: `${fastDays(after)}/${after.length}` });
     else check(`${name}: seated, no fast reps before or after`, !fastDays(before) && !fastDays(after) && after.length > 0);
+  }
+}
+
+/* ------------------------------------------------------------------ 1.15's personal plans epoch */
+section('Personal plans epoch: weeks before 1.15 replay as 1.14 planned them');
+{
+  // What 1.14 planned for these people (the same history, built day by day): each session's units,
+  // moves, sets and reps, the logged ones as done and the rest as planned.
+  const HOME = { db: [], kb: [], ball: false, ballLb: null, ballSlam: false, band: false, bar: false, chair: true, wall: true, towel: true, table: false, door: false };
+  const PEOPLE = {
+    owner: { sex: 'male', weightKg: 68, heightCm: 183, goals: ['abs', 'arms'], experience: 'never', days: 3, minutes: 20, lead: { arm: 'L' }, equipment: Object.assign({}, HOME, { db: [10] }) },
+    owner4: { sex: 'male', weightKg: 68, heightCm: 183, goals: ['abs', 'arms'], experience: 'onoff', days: 4, minutes: 25, equipment: Object.assign({}, HOME, { db: [10] }) },
+    kit: { sex: 'male', weightKg: 82, goals: ['chest', 'legs'], experience: '1to3', recentActivity: 'some', days: 4, minutes: 45, equipment: Object.assign({}, HOME, { db: [10, 20, 30], kb: [35], band: true, door: true, bar: true, table: true }) },
+    nokit: { sex: 'female', weightKg: 62, goals: ['fat', 'abs'], experience: 'never', days: 3, minutes: 30, equipment: HOME },
+    show55: { age: 55, sex: 'female', weightKg: 70, goals: ['consistency'], experience: 'onoff', days: 2, minutes: 25, equipment: Object.assign({}, HOME, { db: [8] }) },
+    gym: { sex: 'male', weightKg: 80, units: 'kg', goals: ['arms', 'chest'], experience: '3plus', recentActivity: 'some', days: 5, minutes: 60, where: 'gym', gym: B.gymPreset('full', 'kg'), equipment: HOME },
+  };
+  const V114 = {
+    owner: {'2026-09-14': ['09-14 arms+back+abs: curl_hammer 1x14, rear_towel 1x20, tri_skull 1x12, row_db 1x14, abl_crunch 1x12, hammer_1arm 1x14', '09-16 arms+legs+shoulders+abs: tri_skull 1x14, hg_deadlift 1x15, sq_goblet 1x15, press_db 1x10, rot_russian 1x16, hammer_1arm 1x16', '09-18 arms+chest+abs: tri_skull 1x16, push_incline 2x10, ab_deadbug 2x8, hammer_1arm 1x16'], '2026-09-21': ['09-21 arms+back+abs: curl_hammer 1x16, rear_towel 1x25, tri_skull 2x18, row_db 1x16, rot_russian 1x18, hammer_1arm 1x16', '09-23 arms+legs+shoulders+abs: sq_goblet 1x17, press_db 1x11, gl_bridge 1x15, ab_deadbug 2x9, hammer_1arm 1x18', '09-25 arms+chest+abs: tri_skull 1x20, push_incline 2x11, side_knee 1x20, hammer_1arm 1x18'], '2026-09-28': ['09-28 arms+back+abs: row_db 1x18, rear_towel 1x30, ab_deadbug 2x10, rot_russian 2x20, hammer_1arm 0x18', '09-30 arms+legs+shoulders+abs: tri_skull 3x22, sq_goblet 1x19, ham_walkout 1x6, press_db 1x12, side_knee 2x25', '10-02 arms+chest+abs: curl_hammer 5x18, push_incline 2x12, tri_skull 1x22']},
+    owner4: {'2026-09-14': ['09-14 arms+chest+abs: curl_hammer 2x14, push_incline 3x10, tri_skull 2x12, abl_crunch 2x12', '09-15 arms+shoulders+abs: curl_hammer 2x16, tri_skull 1x14, press_db 1x10, raise 1x14, rot_russian 1x16', '09-17 arms+legs: curl_hammer 1x18, sq_goblet 2x15, tri_skull 2x16, hg_deadlift 1x15', '09-18 back+abs: row_db 2x14, rear_towel 1x20, back_birddog 1x8, ab_deadbug 2x8'], '2026-09-21': ['09-21 arms+chest+abs: curl_hammer 2x20, push_incline 3x11, tri_skull 2x18, rot_russian 2x18', '09-22 arms+shoulders+abs: curl_hammer 2x22, tri_skull 2x20, press_db 1x11, raise 1x16, ab_deadbug 2x9', '09-24 arms+legs: curl_hammer 1x24, sq_goblet 1x17, tri_skull 1x22, gl_bridge 1x15', '09-25 back+abs: row_db 2x16, rear_towel 1x25, back_birddog 1x9, side_knee 2x20'], '2026-09-28': ['09-28 arms+chest+abs: curl_hammer 4x26, push_incline 2x12, ab_deadbug 3x10, rot_russian 2x20', '09-29 arms+shoulders+abs: curl_hammer 2x28, tri_skull 4x24, press_db 1x12, side_knee 2x25', '10-01 arms+legs: curl_hammer 3x30, sq_goblet 1x19, tri_skull 4x25, ham_walkout 1x6', '10-02 back+abs: row_db 2x18, rear_towel 1x30, back_birddog 1x10, ab_deadbug 3x11, side_knee 3x30']},
+    kit: {'2026-09-14': ['09-14 arms: curl_std 5x12, tri_oh 5x12', '09-15 chest+legs+back: push_std 3x8, row_db 1x14, sq_goblet 1x15, pull_neg 1x3, hg_rdl 2x10, rear_fly 1x14, calf_wall_slow 1x12', '09-17 chest+legs+shoulders: push_std 3x9, gl_kbbridge 2x15, sq_goblet 2x17, raise 2x14, calf_wall_slow 1x14, press_db 2x10', '09-18 chest+back+abs: push_std 3x10, row_db 1x16, rear_fly 1x16, ab_revcrunch 3x10, side_carry 2x30'], '2026-09-21': ['09-21 arms: curl_std 6x14, tri_oh 6x14', '09-22 chest+legs+back: push_std 4x11, row_db 2x18, chest_press 2x14, sq_goblet 3x19, gl_kbbridge 4x17, pull_neg 2x4, calf_wall_slow 1x16, rear_fly 1x18', '09-24 chest+legs+shoulders: push_std 4x12, ham_slide 4x8, chest_press 1x16, calf_wall_slow 1x18, sq_goblet 4x21, raise 3x16, press_db 3x11', '09-25 chest+back+abs: push_std 4x14, row_db 1x20, chest_press 2x18, pull_neg 2x5, rear_fly 1x20, abl_kb 5x12, rot_russian 4x16'], '2026-09-28': ['09-28 arms: curl_std 6x16, tri_oh 6x16', '09-29 chest+legs+back: push_std 4x16, row_db 2x22, chest_press 2x20, sq_goblet 4x23, ham_slide 5x9, pull_neg 2x6, calf_wall_slow 1x20, rear_fly 1x22', '10-01 chest+legs+shoulders: push_std 4x18, hg_rdl 3x11, chest_press 2x22, calf_wall_slow 1x22, sq_goblet 4x25, raise 2x18, press_db 2x12', '10-02 chest+back+abs: push_std 4x18, row_db 1x24, chest_press 2x22, pull_neg 2x7, rear_fly 1x24, ab_revcrunch 5x11, rot_russian 4x18']},
+    nokit: {'2026-09-14': ['09-14 arms+abs: curl_towel 3x20, tri_dip_bent 3x8, abl_crunch 2x12', '09-16 back+shoulders+abs: row_door 2x10, press_pike_incline 1x8, rear_towel 1x20, raise_wall_iso 1x20, back_birddog 1x8, rot_russian 1x16', '09-18 chest+legs+abs: push_incline 3x10, sq_bw 2x15, hg_bridge 1x15, ab_deadbug 2x8'], '2026-09-21': ['09-21 arms+abs: curl_towel 3x25, tri_dip_bent 3x9, rot_russian 2x18', '09-23 back+shoulders+abs: row_door 2x11, press_pike_incline 1x9, rear_towel 1x25, raise_wall_iso 1x25, back_birddog 1x9, ab_deadbug 2x9', '09-25 chest+legs+abs: push_incline 3x11, sq_bw 2x17, gl_bridge 1x15, side_knee 2x20'], '2026-09-28': ['09-28 arms+abs: curl_towel 2x30, tri_dip_bent 5x10, ab_deadbug 3x10, rot_russian 3x20', '09-30 back+shoulders+abs: row_door 2x12, press_pike_incline 2x10, rear_towel 2x30, raise_wall_iso 1x30, back_birddog 2x10, abl_crunch 2x14, side_knee 1x25', '10-02 chest+legs+abs: push_incline 4x12, sq_bw 3x19, ham_walkout 2x6, ab_deadbug 2x11, side_knee 2x25']},
+    show55: {'2026-09-14': ['09-14 chest+back+arms+shoulders: bal_tandem 2x15, push_incline 3x10, row_db 1x14, rear_towel 1x20, press_db 1x10, curl_hammer 2x14, tri_skull 1x12', '09-17 legs+abs: bal_tandem 2x20, sq_goblet_power 1x15, row_db 1x15, hg_deadlift 2x15, rear_towel 1x25, ab_deadbug 2x8, side_knee 1x20'], '2026-09-21': ['09-21 chest+back+arms+shoulders: bal_tandem 2x25, push_incline 2x11, row_db 1x16, rear_towel 1x30, press_db 1x11, curl_hammer 3x15, tri_skull 1x13', '09-24 legs+abs: bal_tandem 2x30, sq_goblet_power 1x15, row_db 1x17, gl_bridge 2x15, abl_crunch 2x12, rot_russian 1x16'], '2026-09-28': ['09-28 chest+back+arms+shoulders: bal_tandem 2x35, push_incline 3x12, row_db 1x18, rear_towel 1x35, press_db 1x12, curl_hammer 2x16, tri_skull 1x14', '10-01 legs+abs: bal_tandem~ 2x40, sq_goblet_power! 1x15, row_db 1x19, ham_walkout 2x6, rear_towel 1x40, ab_deadbug 2x9, rot_russian 1x17']},
+    gym: {'2026-09-14': ['09-14 chest+arms: bench_bb 4x8, curl_bb 6x10, incline_db 2x8, pushdown_cable 6x12', '09-15 legs+back: squat_bb 4x8, pulldown 2x8, rdl_bb 3x8, row_cable 3x8, leg_ext 2x12, face_pull 1x12', '09-16 chest+arms: bench_bb 4x9, curl_bb 6x11, incline_db 2x9, pushdown_cable 6x13', '09-18 arms+abs: curl_bb 6x12, pushdown_cable 6x14, cable_crunch 5x12, side_plank 4x20', '09-19 chest+back+shoulders: bench_bb 4x10, pulldown 2x9, incline_db 2x10, row_cable 3x9, face_pull 1x13, ohp_db 5x8, raise_cable 4x12'], '2026-09-21': ['09-21 chest+arms: bench_bb 4x11, curl_bb 6x13, incline_db 2x11, pushdown_cable 6x15', '09-22 legs+back: squat_bb 4x9, pulldown 2x10, thrust_bb 3x10, row_cable 3x10, leg_ext 2x13, face_pull 1x14', '09-23 chest+arms: bench_bb 5x12, curl_bb 6x14, incline_db 2x12, pushdown_cable 6x16', '09-25 arms+abs: curl_bb 6x15, pushdown_cable 6x17, cable_crunch 5x13, rot_russian_up 4x14', '09-26 chest+back+shoulders: bench_bb 5x6, pulldown 2x11, incline_db 2x6, row_cable 3x11, face_pull 1x15, ohp_db 5x9, raise_cable 4x13'], '2026-09-28': ['09-28 chest+arms: bench_bb 5x7, curl_bb 6x8, incline_db 2x7, pushdown_cable 6x18', '09-29 legs+back: squat_bb 4x10, pulldown 2x12, lunge_db 3x10, row_cable 3x12, leg_ext 2x14, face_pull 1x16', '09-30 chest+arms: bench_bb 5x8, curl_bb 6x9, incline_db 2x8, pushdown_cable 6x19', '10-02 arms+abs: curl_bb 6x9, pushdown_cable 6x19, cable_crunch 5x14, rot_russian_up 4x16', '10-03 chest+back+shoulders: bench_bb 4x8, pulldown 2x6, incline_db 2x8, row_cable 3x6, face_pull 1x17, ohp_db 5x10, raise_cable 4x14']},
+  };
+  const real = Date.now;
+  {
+    // A 1.14 state: no personalFrom. The migration starts the personal plans the week after it first runs.
+    const S = person({ goals: ['abs', 'arms'], days: 3 }, D0 - 14);
+    delete S.personalFrom;
+    Date.now = () => (D0 + 2) * B.DAY_MS + 12 * 3600000;
+    for (const fn of GH.migrations || []) fn(S);
+    Date.now = real;
+    check('the migration starts personal plans the week after it first runs', S.personalFrom === D0 + 7, S.personalFrom);
+    const once = S.personalFrom;
+    for (const fn of GH.migrations || []) fn(S);
+    check('and only once', S.personalFrom === once);
+    check('a new state has them from its first week', person({}).personalFrom === B.weekStart(D0) && person({}, D0 + 3).personalFrom === D0);
+    check('the weeks before are told apart', !B.personal(S, D0 + 6) && B.personal(S, D0 + 7) && B.personal(person({}), D0));
+  }
+  const mark = (it) => `${it.moveId}${it.power ? '!' : ''}${it.skill ? '~' : ''} ${it.sets}x${it.target}`;
+  const digest = (S, cal, ws) => cal.weeks[ws].sessions.filter((x) => !x.dropped && x.day != null).map((x) => {
+    const log = S.log.find((l) => l.type === 'workout' && l.day === x.day);
+    const items = log ? log.items.map((it) => `${it.moveId} ${new Set(it.sets.map((q) => q.set)).size}x${it.target}`) : B.buildSession(S, x.day, x.tpl, { cal, noReadiness: true }).items.map(mark);
+    return `${B.dayStr(x.day).slice(5)} ${x.units.join('+')}: ${items.join(', ')}`;
+  });
+  for (const [name, p] of Object.entries(PEOPLE)) {
+    // Two weeks done under 1.14 and this week begun (Monday and Tuesday), 1.15 arriving on Wednesday:
+    // personal plans start next Monday, D0 + 7.
+    const S = B.newState(Object.assign({ units: 'lb' }, p), null, D0 - 14);
+    S.personalFrom = D0 + 7;
+    for (let d = D0 - 14; d < D0 + 2; d++) {
+      const plan = B.todayPlan(S, d);
+      if (plan.type === 'workout') {
+        B.startWorkout(S, d, { now: d * B.DAY_MS + 17 * 3600000 });
+        for (let g = 0; S.active && S.active.idx < S.active.steps.length && g < 800; g++) { const st = S.active.steps[S.active.idx]; B.completeStep(S, st.kind === 'test' ? { value: 12 } : {}); if (st.askRir) B.setRir(S, st.item, '12'); }
+        B.finishWorkout(S, { rating: 'right', now: d * B.DAY_MS + 18 * 3600000 });
+      } else if (plan.type === 'light') { B.logLight(S, d, 'walk', true); B.logLight(S, d, 'mobility', true); }
+    }
+    const cal = B.calendar(S, D0 + 2);
+    const got = {};
+    for (const ws of [D0 - 14, D0 - 7, D0]) got[B.dayStr(ws)] = digest(S, cal, ws);
+    const first = Object.keys(got).flatMap((ws) => got[ws].map((x, i) => (x === V114[name][ws][i] ? null : `${x}  (1.14: ${V114[name][ws][i]})`))).filter(Boolean)[0];
+    check(`${name}: the weeks before, and the week under way, replay exactly as 1.14 planned them`, JSON.stringify(got) === JSON.stringify(V114[name]), first);
   }
 }
 

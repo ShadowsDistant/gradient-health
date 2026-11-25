@@ -74,7 +74,7 @@
   // rest of the state. (In the state rather than in localStorage, where src/insights.js keeps its finds:
   // plans are worked out from the state alone, so they go where it goes, a backup or a copy
   // included.) Only the app keeps them (the build sets GH.BUILD); tests switch it on with keep(true).
-  const ENGINE = 1; // bump when the engine's answers change in a way GH.BUILD can't see (a dev page)
+  const ENGINE = 2; // bump when the engine's answers change in a way GH.BUILD can't see (a dev page)
   const KEEP = { splits: 4, weeks: 3, sessions: 3, sets: 2 };
   let keepOn = null; // null: as GH.BUILD says
   const keeping = () => (keepOn != null ? keepOn : !!GH.BUILD);
@@ -171,13 +171,15 @@
     // trial weeks a split is scored on differ, src/access.js rulesKey).
     const rules = ac && ac.rulesKey ? ac.rulesKey(p) : null;
     if (rules) out.rules = rules;
+    // And whether it's a week from before 1.15's personal plans (brain.js personal).
+    if (p.legacyPlan) out.plain = 1;
     return out;
   }
   // Which units this body and kit can train at all (any of their ladders, or the stand-in a
   // condition or an empty room opens), at home and at the gym as the person trains.
   const feasMemo = lru(32);
   function feasibleUnits(p) {
-    const key = JSON.stringify([p.equipment, p.gym, p.where, p.conditions, p.oaJoints, p.floorOk, p.careful, p.impactOk, p.jumpsOk, p.gentle, p.age, p.conditionsSince, p.startDay, (p.planTweaks || {}).avoid, p.fractures, p.retinopathy]);
+    const key = JSON.stringify([p.equipment, p.gym, p.where, p.conditions, p.oaJoints, p.floorOk, p.careful, p.impactOk, p.jumpsOk, p.gentle, p.age, p.conditionsSince, p.startDay, (p.planTweaks || {}).avoid, p.fractures, p.retinopathy, !!p.legacyPlan]);
     const hit = feasMemo.get(key);
     if (hit !== undefined) return hit;
     const b = B();
@@ -1079,7 +1081,9 @@
     // (A week before 1.13's rules started keeps the program and the plan it had: src/access.js
     // oldRules.)
     const before113 = !!(A() && A().oldRules && A().oldRules(S, ws));
-    const prog = b.programFor(before113 ? Object.assign({}, p, { legacyRules: true }) : p);
+    // (And a week before 1.15's personal plans: brain.js personal.)
+    const now15 = b.personal(S, ws);
+    const prog = b.programFor(before113 || !now15 ? Object.assign({}, p, before113 ? { legacyRules: true } : null, now15 ? null : { legacyPlan: true }) : p);
     const tw = tweaksOf(p);
     const legacy = b.legacyWeek(S, ws);
     const wi = b.weekInputs(S, ws);
@@ -2205,6 +2209,15 @@
     if (!S || typeof S !== 'object' || S.rulesFrom != null || !S.profile || !b) return;
     const prefs = S.profile.prefs || {};
     S.rulesFrom = b.weekStart(b.dayOf(Date.now(), prefs.rollHour != null ? prefs.rollHour : 4)) + 7;
+  });
+
+  // And for 1.15's personal plans (src/brain.js personal): a state saved before them keeps 1.14's
+  // sessions to the end of the week it's first loaded in; a new state has them from its first week.
+  GH.migrations.push(function personalEpoch(S) {
+    const b = B();
+    if (!S || typeof S !== 'object' || S.personalFrom != null || !S.profile || !b) return;
+    const prefs = S.profile.prefs || {};
+    S.personalFrom = b.weekStart(b.dayOf(Date.now(), prefs.rollHour != null ? prefs.rollHour : 4)) + 7;
   });
 
   const self = GH.optimizer = {

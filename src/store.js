@@ -41,7 +41,7 @@
   // The top-level fields the app knows, by type ('?': or null). A field of the wrong type goes, and
   // migrate() puts back its default.
   const TOP = {
-    v: 'number', createdAt: 'number', updatedAt: 'number', complexity: 'number', noStreak: 'number', hardStreak: 'number', rulesFrom: 'number',
+    v: 'number', createdAt: 'number', updatedAt: 'number', complexity: 'number', noStreak: 'number', hardStreak: 'number', rulesFrom: 'number', personalFrom: 'number',
     profile: 'object', vol: 'object', prog: 'object', pain: 'object', catchup: 'object', protein: 'object', health: 'object', feel: 'object',
     sleepChip: 'object', celebrated: 'object', insightsDismissed: 'object', insightsShown: 'object', ai: 'object', seen: 'object', place: 'object',
     planProg: 'object', food: 'object', coachDismissed: 'object',
@@ -123,6 +123,10 @@
     // 1.13: the questions osteoporosis and type 2 diabetes bring (no answer: not asked yet).
     pick(p, 'fractures', ['yes', 'no', 'unsure']);
     pick(p, 'retinopathy', ['yes', 'no', 'unsure']);
+    // 1.15: how the person eats (null: not answered), and never the mark a week's copy of the
+    // profile carries for the weeks planned before 1.15.
+    if (own(p, 'eats')) { const e = isObj(p.eats) ? p.eats : {}; const lv = (x) => (['low', 'some', 'most'].includes(x) ? x : null); p.eats = { protein: lv(e.protein), produce: lv(e.produce) }; }
+    delete p.legacyPlan;
     if (own(p, 'lead')) {
       const l = isObj(p.lead) ? p.lead : {};
       p.lead = { arm: l.arm === 'L' || l.arm === 'R' ? l.arm : null, leg: l.leg === 'L' || l.leg === 'R' ? l.leg : null };
