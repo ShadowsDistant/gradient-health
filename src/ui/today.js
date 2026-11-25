@@ -234,7 +234,7 @@
               <span class="streak-n">${U.roll(st.current, 't-large-title')}<span class="t-callout rf-muted">day streak</span></span>
               <span class="streak-tally">${tallies(st.current)}</span>
             </span>
-            <span class="streak-foot"><span class="t-footnote rf-muted">${st.weekly ? `${U.plural(st.weekly, 'full week')} in a row · ` : ''}${st.freezeThisWeek ? 'Freeze used this week' : '1 freeze left this week'}${st.best > st.current ? ` · best ${st.best}` : ''}</span><span class="streak-go t-footnote">Progress${U.icon('chevron-right', 'sm')}</span></span>
+            <span class="streak-foot"><span class="t-footnote rf-muted">${st.weekly ? `${U.plural(st.weekly, 'full week')} in a row · ` : ''}${st.freezeThisWeek ? 'Freeze used this week' : '1&nbsp;freeze left this week'}${st.best > st.current ? ` · best ${st.best}` : ''}</span><span class="streak-go t-footnote">Progress${U.icon('chevron-right', 'sm')}</span></span>
           </button>` : ''}
           ${main}
           ${workouts && plan.type !== 'done' && !S.active && U.coachCard ? U.coachCard(S, day, session) : ''}

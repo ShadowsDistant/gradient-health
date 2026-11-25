@@ -351,7 +351,7 @@ button.ex-name::before { content: ''; position: absolute; inset: 0; }
 .ex-muted .ex-name { font-weight: 450; color: var(--label-secondary); cursor: default; }
 .check-list { background: var(--fill-3); }
 .check-done { color: var(--positive); display: inline-flex; }
-.light-train { justify-self: start; text-align: start; height: auto; min-block-size: var(--hit-min); white-space: normal; }
+.light-train { justify-self: start; text-align: start; height: auto; min-block-size: var(--hit-min); white-space: normal; margin-inline-start: calc(-1 * var(--space-4)); } /* (its words on the card's inset) */
 .feel-row { display: grid; gap: var(--space-1); }
 .feel-flare { margin-top: var(--space-1); }
 .feel-done.has-flare { display: grid; gap: var(--space-2); }
@@ -376,6 +376,9 @@ button.ex-name::before { content: ''; position: absolute; inset: 0; }
 .insight-text { display: grid; flex: 1; min-width: 0; }
 
 /* ---------------------------------------------------------------- plan */
+/* Its chevron is a list row's, small and quiet (it drew at 20 px in the label's ink, heavier than
+   the Food card's just above it). */
+.insight-line > svg:last-child { flex: none; color: var(--label-tertiary); --rf-icon-size: 16px; --rf-icon-stroke: 2.25; }
 
 /* ---------------------------------------------------------------- health */
 .stat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
@@ -597,7 +600,7 @@ button.pl-next-row:active { scale: .98; transition-duration: var(--duration-inst
 .tip { gap: var(--space-1); padding-block: var(--space-3); background: color-mix(in oklab, var(--accent-soft) 70%, var(--bg-raised)); overflow: hidden; }
 .tip-row { display: flex; gap: var(--space-3); align-items: flex-start; }
 .tip-row .rf-list-icon { margin-top: 2px; }
-.tip .rf-btn { justify-self: end; margin-inline-end: calc(-1 * var(--space-3)); } /* "Got it" ends on the card's inset */
+.tip .rf-btn { justify-self: end; margin-inline-end: calc(-1 * var(--space-3)); margin-block-end: calc(-1 * var(--space-2)); } /* "Got it" ends on the card's inset, with as much room under its words as there is over the tip's */
 /* A row of buttons in a card that starts with a plain one: its words start on the card's inset. */
 .card .btn-row > .rf-btn[data-variant="plain"]:first-child { margin-inline-start: calc(-1 * var(--space-3)); }
 

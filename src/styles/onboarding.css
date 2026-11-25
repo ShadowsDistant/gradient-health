@@ -314,7 +314,7 @@ button.ck:active { background: var(--fill-selected); transition-duration: 0ms; }
 @keyframes ck-pop { from { scale: .6; } to { scale: 1; } }
 .ck-text { display: grid; gap: 1px; flex: 1; min-width: 0; }
 .ck-go { color: var(--label-tertiary); flex: none; }
-.ck-hide { justify-self: start; }
+.ck-hide { justify-self: start; margin-inline-start: calc(-1 * var(--space-3)); } /* (its words on the card's inset, under the marks) */
 /* After the first workout (the player's Next screen). */
 .hc-invite { margin: 0 var(--space-4) var(--space-3); display: grid; gap: var(--space-3); }
 .hc-invite-row { display: flex; gap: var(--space-3); align-items: flex-start; }
