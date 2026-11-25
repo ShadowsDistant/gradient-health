@@ -287,7 +287,7 @@
     if (!GH.embeds) part().then((ok) => { if (ok) refreshChat(); });
     chat = U.sheet({
       title: 'Ask the coach', size: 'full', cls: 'chat-sheet',
-      body: chatBody(S), action: { label: 'Chats', act: 'chatList' },
+      body: chatBody(S), action: { label: 'Chats', act: 'chatList', quiet: true },
       // Closing doesn't stop an answer: it carries on, and the coach button shows when it's there.
       onClose: () => { chat = null; syncButtons(); },
       after: (c) => { const log = c.el.querySelector('#chatLog'); if (log) log.scrollTop = log.scrollHeight; fadeSheen(c); },
@@ -348,7 +348,7 @@
     return `<div class="sheet-pad">
       <ul class="rf-list">${row('device', 'chip', 'violet', 'On this phone', 'Private and works offline')}${row('api', 'sparkle', 'indigo', 'Claude', 'Sharper answers, with your own API key')}</ul>
       ${e === 'api' && GH.spend && AI() && AI().hasKey() ? `<ul class="rf-list">${U.row({ key: 'claude-model', icon: 'lightbulb', tone: 'amber', title: 'Model and thinking', detail: U.esc(`${GH.spend.model(S).short} · ${GH.spend.LEVEL_NAMES[GH.spend.level(S)]}`), act: 'claudeModel', chevron: true })}${U.row({ key: 'claude-spend', icon: 'card', tone: 'teal', title: 'Spending and usage', detail: U.esc(GH.spend.todayLine(S, U.today())), act: 'claudePage', chevron: true })}</ul>` : ''}
-      ${e === 'device' && U.modelRows ? `<p class="sec-title">Model</p><ul class="rf-list">${U.modelRows(S, { compact: true })}</ul><p class="t-footnote rf-muted">Bigger sizes answer better but start slower. Settings has a self-test that times each one here.</p>` : ''}
+      ${e === 'device' && U.modelRows ? `<h3 class="rf-list-header">Model</h3><ul class="rf-list">${U.modelRows(S, { compact: true })}</ul><p class="t-footnote rf-muted">Bigger sizes answer better but start slower. Settings has a self-test that times each one here.</p>` : ''}
     </div>`;
   }
   U.act.chatEngineSheet = () => {
@@ -422,7 +422,7 @@
   }
   U.act.chatList = () => {
     editing = false;
-    listSheet = U.sheet({ title: 'Chats', size: 'auto', detent: 'large', cls: 'chat-list-sheet', body: listBody(U.S), action: { label: 'Edit', act: 'chatListEdit' }, onClose: () => { listSheet = null; editing = false; } });
+    listSheet = U.sheet({ title: 'Chats', size: 'auto', detent: 'large', cls: 'chat-list-sheet', body: listBody(U.S), action: { label: 'Edit', act: 'chatListEdit', quiet: true }, onClose: () => { listSheet = null; editing = false; } });
     refreshList();
   };
   U.act.chatListEdit = () => { editing = !editing; U.haptic('select'); refreshList(); };
