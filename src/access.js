@@ -818,6 +818,9 @@
     if (e.why === 'onramp') return `Stop with ${left} reps left while you settle in.`;
     if (e.why === 'bone') return `Stop with ${left} reps left, with good form. Harder sets help your bones.`;
     if (e.why === 'size') return `Stop with ${left} reps left: ${TOP_GOAL[it.group] || 'this is'} a top goal.`;
+    // (1.15: long or light sets only work near the end, and people guess reps left about one too
+    // low, so the hint says one more at most: brain.js effortFor.)
+    if (e.why === 'light') return 'Stop when you could do one more at most. Lighter sets only work near your limit.';
     return `Stop with ${left} reps left in the tank.`;
   }
   // The on-device coach's answer to "is this OK with my arthritis?" and the like.

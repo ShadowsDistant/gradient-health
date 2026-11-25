@@ -435,14 +435,20 @@ section('Rules epoch: weeks before 1.13\'s rules replay as they were');
     const items = log ? log.items.map((it) => it.moveId) : B.buildSession(S, x.day, x.tpl, { cal, noReadiness: true }).items.map(mark);
     return `${B.dayStr(x.day).slice(5)} ${x.units.join('+')}: ${items.join(' ')}`;
   });
-  const legDays = (S, cal, ws) => cal.weeks[ws].sessions.filter((x) => !x.dropped && x.day != null && x.units.includes('legs')).map((x) => B.buildSession(S, x.day, x.tpl, { cal, noReadiness: true }));
+  // (The days that train legs: in 1.15's weeks a day of the split's with legs in it may hold none
+  // of their sets, when the week's few leg sets go to another of their days as 2 together.)
+  const legDays = (S, cal, ws) => cal.weeks[ws].sessions.filter((x) => !x.dropped && x.day != null && x.units.includes('legs')).map((x) => B.buildSession(S, x.day, x.tpl, { cal, noReadiness: true }))
+    .filter((s) => s.items.some((it) => it.group === 'legs' || it.power));
   const fastDays = (list) => list.filter((s) => s.items.some((it) => it.power)).length;
   for (const [name, p] of Object.entries(PEOPLE)) {
     // Two weeks done under 1.12's rules and this week begun (Monday and Tuesday), 1.13 arriving on
     // Wednesday: the rules start next Monday, D0 + 7.
-    const S = B.newState(Object.assign({ units: 'lb', weightKg: 75 }, p), null, D0 - 14);
+    // (A state from before 1.15 too: its ladders started as they did then, and 1.15's personal
+    // plans start with these rules, so these weeks are 1.12's still.)
+    const S = B.newState(Object.assign({ units: 'lb', weightKg: 75, legacyPlan: true }, p), null, D0 - 14);
+    delete S.profile.legacyPlan;
     S.rulesFrom = D0 + 7;
-    S.personalFrom = D0 + 7; // (and 1.15's personal plans start with them, so these weeks are 1.12's still)
+    S.personalFrom = D0 + 7;
     for (let d = D0 - 14; d < D0 + 2; d++) {
       const plan = B.todayPlan(S, d);
       if (plan.type === 'workout') {
@@ -519,7 +525,9 @@ section('Personal plans epoch: weeks before 1.15 replay as 1.14 planned them');
   for (const [name, p] of Object.entries(PEOPLE)) {
     // Two weeks done under 1.14 and this week begun (Monday and Tuesday), 1.15 arriving on Wednesday:
     // personal plans start next Monday, D0 + 7.
-    const S = B.newState(Object.assign({ units: 'lb' }, p), null, D0 - 14);
+    // (The state as 1.14 made it: its ladders on 1.14's starting rungs.)
+    const S = B.newState(Object.assign({ units: 'lb', legacyPlan: true }, p), null, D0 - 14);
+    delete S.profile.legacyPlan;
     S.personalFrom = D0 + 7;
     for (let d = D0 - 14; d < D0 + 2; d++) {
       const plan = B.todayPlan(S, d);

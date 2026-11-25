@@ -94,7 +94,8 @@ section('Scenario A: your answers, 3 weeks from Mon Sep 28');
   let r = doWorkout(S, D0, { rir: { push: '3', curl: '12', squat: '12', row: '0' }, reps: { triceps: 4 } });
   extraSeen.push(r.seen.some((x) => x.extra && x.side === 'L'));
   check('Mon: curls +1 (11 → 12, 1-2 left)', S.prog.curl.reps === 12, S.prog.curl);
-  check('Mon: rows held at 14 (0 left)', S.prog.row.reps === 14, S.prog.row);
+  // (1.15: a doorframe row, as an 8 lb dumbbell is too light for rows to count.)
+  check('Mon: rows held where they started (0 left)', S.prog.row.rung === 'row_door' && S.prog.row.reps === M.MOVES.row_door.start, S.prog.row);
   check('Mon: triceps below range → target matches what you got (6)', S.prog.triceps.reps === 6 && S.prog.triceps.rung === 'tri_dip_bent', S.prog.triceps);
   const uniOk = (seen) => {
     const bySet = {};
@@ -103,17 +104,28 @@ section('Scenario A: your answers, 3 weeks from Mon Sep 28');
   };
   check('Mon: second side never did more than the first', uniOk(r.seen));
   // Tue: push-ups 3 left (18 → 20: in the on-ramp week the aim is 2-3, and under 30 an easy set adds a rep).
-  r = doWorkout(S, D0 + 1, { rir: { squat: '12', push: '3' }, reps: { triceps: 4 } });
+  // 1.15: the triceps' two exercises (the dips' ladder and close-grip push-ups) take turns over the
+  // week's arm days, so the dips come round again later in the week, not always on Tuesday: the
+  // second short set of them takes the ladder down a rung, whichever day that is.
+  let down = null;
+  const dips = () => (down ? {} : { triceps: 4 });
+  const fell = () => { if (!down && S.prog.triceps.rung !== 'tri_dip_bent') down = Object.assign({}, S.prog.triceps); };
+  r = doWorkout(S, D0 + 1, { rir: { squat: '12', push: '3' }, reps: dips() });
+  fell();
   extraSeen.push(r.seen.some((x) => x.extra && x.side === 'L'));
   check('Tue (first chest day): push-ups → 20 reps (3 left)', S.prog.push.reps === 20, lineTexts(r));
-  check('Tue: triceps below range twice → down a rung with a cooldown', S.prog.triceps.rung === 'tri_oh' && S.prog.triceps.cooldown === 2, S.prog.triceps);
-  check('Tue: goblet squat +2 (15 → 17, 1-2 left at 12+ reps)', S.prog.squat.reps === 17, S.prog.squat);
+  // (1.15: legs start one leg at a time for someone under 50 whose weights are too light to count:
+  // split squats, +1 a session under 12 reps.)
+  check('Tue: split squat +1 (10 → 11, 1-2 left under 12 reps)', S.prog.squat.rung === 'sq_split' && S.prog.squat.reps === 11, S.prog.squat);
   lightDay(S, D0 + 2);
-  r = doWorkout(S, D0 + 3, { rir: { push: '3' } });
+  r = doWorkout(S, D0 + 3, { rir: { push: '3' }, reps: dips() });
+  fell();
   extraSeen.push(r.seen.some((x) => x.extra && x.side === 'L'));
   check('Thu (second chest day): push-ups at 20 with 3 left → Push-up, 3-sec lowering', S.prog.push.rung === 'push_slow', lineTexts(r));
   check('Thu: the rung-up is celebrated', r.celebrate.some((c) => c.kind === 'level'), r.celebrate);
-  r = doWorkout(S, D0 + 4, {});
+  r = doWorkout(S, D0 + 4, { reps: dips() });
+  fell();
+  check('triceps below range twice → down a rung with a cooldown', !!down && down.rung === 'tri_oh' && down.cooldown === 2, down || S.prog.triceps);
   health(S, D0 + 5, { steps: 6200 });
   lightDay(S, D0 + 5, { auto: true });
   check('Sat: steps auto-logged the walk', S.log.find((l) => l.type === 'light' && l.day === D0 + 5).walk === 'health-steps' || S.log.find((l) => l.type === 'light' && l.day === D0 + 5).walkSrc === 'health-steps');
@@ -121,7 +133,9 @@ section('Scenario A: your answers, 3 weeks from Mon Sep 28');
   let cal = B.calendar(S, D0 + 7);
   check('streak is 7 after week 1 (light days count)', cal.streak.current === 7, cal.streak);
   check('weekly streak is 1 after a full week', cal.streak.weekly === 1, cal.streak);
-  check('extra left-only curl set on every arm day in week 1', extraSeen.every(Boolean), extraSeen);
+  // (1.15: beside the day's own curls, on two days a week at most: about a fifth more work for the
+  // weaker arm, not a set on every arm day.)
+  check('extra left-only curl set on two arm days in week 1', extraSeen.filter(Boolean).length === 2, extraSeen);
 
   // Week 2: Mon hard + short sleep; Tue missed; Wed (shifted) hard + short sleep → deload next week.
   health(S, D0 + 7, { sleepMin: 270 });
@@ -183,7 +197,8 @@ section('Scenario A: your answers, 3 weeks from Mon Sep 28');
   const before = progOf(S.prog.curl);
   // Before the test the extra left set is still planned (untrimmed: on this deload + test day the
   // 25-minute budget can squeeze it out).
-  const extrasBefore = B.buildSession(S, D0 + 14, 0, { noTrim: true }).extras.length;
+  // (1.15: beside a day's own curls, on up to two days: it's counted over the week's days.)
+  const extrasBefore = Math.min(1, [0, 1, 2, 3].reduce((a, i) => a + B.buildSession(S, D0 + 14 + tpl[i].offset, i, { noTrim: true }).extras.length, 0));
   r = doWorkout(S, D0 + 14, { defaultRir: '3', test: { L: 17, R: 18 } });
   check('Mon week 3: left/right test ran (L17/R18 = 5.6%)', r.seen.some((x) => x.test === 'arm') && S.catchup.arm.tests.length === 2 && Math.abs(S.catchup.arm.tests[1].gap - 0.056) < 0.01, S.catchup.arm.tests);
   check('gap under 10% → extra left set dropped, even from that session', extrasBefore === 1 && !r.seen.some((x) => x.extra) && !S.catchup.arm.active, { extrasBefore, seenExtra: r.seen.some((x) => x.extra), active: S.catchup.arm.active });
@@ -251,7 +266,9 @@ section('Scenario D: no equipment, 3 days, lose fat, careful knee, no jumping');
   check('no risky knee moves (complex or impact on a careful knee)', all.every((it) => { const m = M.MOVES[it.moveId]; return !((m.complex || m.impact) && (m.joints || []).includes('knee')); }));
   check('every session fits 20 min', sessions.every((s) => s.estimateMin <= 22), sessions.map((s) => s.estimateMin));
   check('finishers show up for the fat-loss goal', sessions.some((s) => s.finisher));
-  check('every day has real work', sessions.every((s) => s.items.length >= 3), sessions.map((s) => s.items.length));
+  // (1.15: few exercises, done properly: 2 or 3 of 2 sets or more beside the finisher in 20
+  // minutes, where 1.14 had 3 or more of a set or two each.)
+  check('every day has real work', sessions.every((s) => s.items.length >= 2 && s.items.reduce((a, it) => a + it.sets, 0) >= 4), sessions.map((s) => s.items.map((it) => it.sets).join('+')));
 }
 
 /* ------------------------------------------------------------------ Scenario E */
@@ -279,7 +296,10 @@ section('Scenario E: advanced, dumbbells 10-50 lb, bar, band, 5 days, chest + ba
   const S2 = B.newState(USER, BASELINE, D0);
   S2.prog.curl.rung = 'curl_conc'; S2.prog.curl.reps = 16;
   const up3 = B.levelUp(S2, 'curl', D0);
-  check('maxed top rung at the only weight → next dumbbell to buy (12 lb)', up3 && /Next buy: 12 lb dumbbells/.test(up3.line.text), up3 && up3.line);
+  // (1.15: offered as an option, and once in all.)
+  check('maxed top rung at the only weight → a heavier dumbbell offered (12 lb), as an option', up3 && /If you'd like more to work with, a 12 lb dumbbell would do it/.test(up3.line.text) && up3.line.buy, up3 && up3.line);
+  S2.prog.hammer.rung = 'curl_hammer_slow'; S2.prog.hammer.reps = 20;
+  check('and only once', B.levelUp(S2, 'hammer', D0) === null && B.levelUp(S2, 'curl', D0) === null);
 }
 
 /* ------------------------------------------------------------------ reps left in the tank */
@@ -297,7 +317,7 @@ section('Reps left: each set\'s aim, by goal and person');
     return `${a.key}:${a.why}`;
   };
   check('everyone else\'s sets aim for 1-3 left', aim({}, 'push_std') === '13:usual' && aim({ goals: ['fat'] }, 'curl_std') === '13:usual');
-  check('your top goal muscles (tier 1) aim for 1-2', aim({ goals: ['arms', 'legs', 'chest'] }, 'curl_std') === '12:size' && aim({ goals: ['arms', 'legs', 'chest'] }, 'sq_goblet') === '12:size' && aim({ goals: ['arms', 'legs', 'chest'] }, 'push_std') === '13:usual');
+  check('your top goal muscles (tier 1) aim for 1-2', aim({ goals: ['arms', 'legs', 'chest'] }, 'curl_std') === '12:size' && aim({ goals: ['arms', 'legs', 'chest'] }, 'sq_split') === '12:size' && aim({ goals: ['arms', 'legs', 'chest'] }, 'push_std') === '13:usual');
   check('with strength in the top two goals, the 4-8 rep gym lifts aim for 2-3 (4 still fine)',
     aim(Object.assign({ goals: ['strength', 'chest'] }, GYM), 'bench_bb') === '24:strength' && aim(Object.assign({ goals: ['legs', 'strength'] }, GYM), 'squat_bb') === '24:strength' && B.AIMS[24].ok === 4,
     [aim(Object.assign({ goals: ['strength', 'chest'] }, GYM), 'bench_bb'), aim(Object.assign({ goals: ['legs', 'strength'] }, GYM), 'squat_bb')]);
@@ -328,7 +348,24 @@ section('Reps left: each set\'s aim, by goal and person');
   check('diabetic eye disease (or not sure, or not asked yet) aims for 2-3, top goals and bones included',
     aim({ conditions: ['diabetes'], goals: ['arms'] }, 'curl_std') === '23:eyes' && aim({ conditions: ['diabetes'], retinopathy: 'unsure' }, 'push_std') === '23:eyes' && aim({ conditions: ['diabetes', 'osteo'], retinopathy: 'yes', age: 55 }, 'push_std') === '23:eyes'
     && aim({ conditions: ['diabetes'], retinopathy: 'no', goals: ['arms'] }, 'curl_std') === '12:size');
-  check('no aim ever asks for 0 left', Object.values(B.AIMS).every((x) => x.lo >= 1 && x.hi >= x.lo && x.ok >= x.hi));
+  // (1.15: but for long or light sets, which only work near the end: 2 at most, and none is fine.)
+  check('no aim asks for 0 left, though a long or light set may get there', Object.entries(B.AIMS).every(([k, x]) => (x.lo >= 1 || (k === '02' && x.zero)) && x.hi >= x.lo && x.ok >= x.hi));
+  const LIGHT = { goals: ['arms'], sex: 'male', weightKg: 68, experience: 'never', equipment: { db: [10] } };
+  check('1.15: a set of 15 reps or more, or on a weight under about half its one-rep max, aims for 2 at most', aim(LIGHT, 'curl_std') === '02:light' && aim(LIGHT, 'tri_close_incline', { it: { target: 16 } }) === '02:light' && aim(LIGHT, 'tri_close_incline', { it: { target: 10 } }) === '12:size'
+    && aim(LIGHT, 'curl_std', { phase: { onramp: true } }) === '23:onramp' && aim(Object.assign({}, LIGHT, { age: 64 }), 'curl_std') === '23:age');
+  check('and the line under it says so in plain words', /one more at most/.test(AC.setHint(B.newState(Object.assign({}, BASE, LIGHT), null, D0).profile, { group: 'biceps', effort: B.effortFor(B.newState(Object.assign({}, BASE, LIGHT), null, D0), { kind: 'move', moveId: 'curl_std', fam: 'curl', group: 'biceps' }, { onramp: false }) }, false)));
+  const el = (rir) => B.effortStep({ rir, aim: '02' });
+  check('none left on such a set is on its aim and moves on; 3 or more at the top brings the harder version', el('0').pace === 1 && !el('0').harder && el('12').pace === 1 && !el('12').harder && el('3').pace === 2 && el('3').harder && el(null).pace === 0);
+  {
+    // At the top of the range on the aim (0-2 left) two sessions running: the harder version.
+    const S3 = B.newState(Object.assign({}, BASE, LIGHT), null, D0);
+    const top = B.rangeFor(S3, M.MOVES.curl_std, 'curl', D0)[1];
+    Object.assign(S3.prog.curl, { rung: 'curl_std', reps: top });
+    const lg = () => ({ moveId: 'curl_std', fam: 'curl', target: top, aim: '02', rir: '12', sets: [{ amount: top }, { amount: top }] });
+    const r1 = B.progress(S3, lg(), false, D0), at1 = S3.prog.curl.rung;
+    const r2 = B.progress(S3, lg(), false, D0 + 2);
+    check('a light set at the top of its range with 1-2 left: held once, a harder version the second time', top === 20 && at1 === 'curl_std' && !r1.line && S3.prog.curl.rung !== 'curl_std' && !!r2.line, [top, at1, S3.prog.curl, r2.line]);
+  }
 
   // The player's line under a set names the aim.
   const hint = (p, id, o) => {
@@ -537,10 +574,12 @@ section('Twelve weeks for six people');
     if (!prog.impactOk) check(`${label}: impact off, so no jumping or slamming`, !bad.impact.length, bad.impact.slice(0, 6));
     if ((S.profile.careful || []).includes('knee')) check(`${label}: no complex or impact moves on the careful knee`, !bad.knee.length, bad.knee.slice(0, 6));
   }
-  check('with just a chair, wall and towel: overhead presses, raises, rows and the lower back', ['press', 'raise', 'row', 'backExt'].every((f) => cov['default home kit'].has(f)), [...cov['default home kit']]);
-  check('legs rotate through hinges, glute bridges and hamstring curls', ['hinge', 'glute', 'hamCurl'].every((f) => cov['default home kit'].has(f)), [...cov['default home kit']]);
+  // (1.15: a group's first two exercises take turns, and its support moves (the lower back,
+  // bridges, hamstring curls) come as a second exercise on days with sets enough for one.)
+  check('with just a chair, wall and towel: overhead presses, raises, rows and the rear shoulders', ['press', 'raise', 'row', 'rear'].every((f) => cov['default home kit'].has(f)), [...cov['default home kit']]);
+  check('legs take turns between squats and hinges', ['squat', 'hinge'].every((f) => cov['default home kit'].has(f)), [...cov['default home kit']]);
   check('a calf focus adds calf raises', cov['kettlebell only'].has('calf'), [...cov['kettlebell only']]);
-  check('the gym rotates hinges, hip thrusts and lunges', ['hingeG', 'gluteG', 'lungeG'].every((f) => cov['basic gym'].has(f)), [...cov['basic gym']]);
+  check('the gym takes turns between squats and hinges, presses and incline presses', ['squatG', 'hingeG', 'pressG', 'inclineG'].every((f) => cov['basic gym'].has(f)), [...cov['basic gym']]);
 }
 
 /* ------------------------------------------------------------------ focus, warm-ups, cool-downs */
@@ -576,9 +615,11 @@ section('Focus muscles, warm-ups and cool-downs');
   check('after leg days the mobility flow leans to leg stretches', flow.length >= 4 && legStretch.length >= 3, flow);
   // A sore joint leaves its stretches out only while it's sore.
   const later = flowOn(D0 + 12);
-  S2.pain = { ankle: D0 + 10, wrist: D0 + 10 };
+  // (Whichever joint the flow's stretches load: the flow follows what was trained.)
+  const joint = flow.map((id) => M.MOVES[id].joints || []).find((j) => j.length)[0];
+  S2.pain = { [joint]: D0 + 10 };
   const sore = flowOn(D0 + 7), healed = flowOn(D0 + 12);
-  const hurts = (id) => (M.MOVES[id].joints || []).some((j) => j === 'ankle' || j === 'wrist');
+  const hurts = (id) => (M.MOVES[id].joints || []).includes(joint);
   check('the flow skips stretches for a sore joint, and brings them back once it has healed', flow.some(hurts) && !sore.some(hurts) && sore.length >= 4 && healed.join() === later.join(), { flow, sore, healed, later });
 }
 
@@ -822,7 +863,9 @@ section('From 60: muscles that aren\'t goals twice a week');
   const t3 = (prog) => B.GROUPS.filter((g) => prog.tiers[g] === 3);
   for (const days of [2, 3, 4]) {
     const a = plan(59, { days }), b = plan(60, { days });
-    check(`${days} days: once a week at 59, twice from 60, about the same sets a week`, t3(a.prog).length >= 4 && t3(a.prog).every((g) => a.wp.perGroup[g].days === 1 && b.wp.perGroup[g].days === 2 && a.prog.start[g] === b.prog.start[g] && a.prog.cap[g] === b.prog.cap[g]),
+    // (1.15: at 59 a split may still put one of them on two days, where that scores best: the rule
+    // is from 60, and the split's usual frequencies are checked below.)
+    check(`${days} days: twice a week from 60, about the same sets a week as at 59`, t3(a.prog).length >= 4 && t3(a.prog).every((g) => a.wp.perGroup[g].days >= 1 && b.wp.perGroup[g].days === 2 && a.prog.start[g] === b.prog.start[g] && a.prog.cap[g] === b.prog.cap[g]),
       t3(a.prog).map((g) => `${g} ${a.wp.perGroup[g].days}/${b.wp.perGroup[g].days}`));
   }
   check('the rule itself: maintenance units twice a week from 60, once before', ['chest', 'back', 'shoulders', 'arms', 'abs'].every((u) => plan(59).prog.freq[u] === 1 && plan(60).prog.freq[u] === 2));
@@ -874,7 +917,8 @@ section('Osteoporosis with no break: impact most days, back extensions, heavier 
   };
   const order = after.filter((s) => !s.short).flatMap((s) => B.GROUPS.map((g) => ({ s, list: s.items.filter((it) => !it.skill && it.group === g) }))).filter(({ list }) => list.length > 1 && list.some((it) => mainFam(it.fam)));
   const shared = ({ s, list }) => { const main = list.find((it) => mainFam(it.fam)); return main.sets >= 3 || list.every((it) => it === main || it.sets <= 1 || tooLong(s, main, it)); };
-  check(`a muscle's main move takes up to 3 sets before its other moves keep more than one (${order.length} days of a muscle)`, order.length > 10 && order.every(shared),
+  // (1.15: a muscle seldom has two exercises in a day now, so there are few such days to check.)
+  check(`a muscle's main move takes up to 3 sets before its other moves keep more than one (${order.length} days of a muscle)`, order.every(shared),
     order.filter((x) => !shared(x)).slice(0, 3).map(({ list }) => list.map((it) => `${it.moveId}×${it.sets}`).join(' ')));
   check('main moves reach 3 sets', mains.some(({ it }) => it.sets >= 3));
 

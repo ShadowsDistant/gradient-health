@@ -146,7 +146,10 @@ const restCheck = (supersets) => {
   const big = solo.filter((it) => BIG.includes(it.fam));
   const small = solo.filter((it) => !BIG.includes(it.fam));
   // (1.13: a session with time to spare gives what's done on its own at 60 s 90 s instead.)
-  return { ok: big.every((it) => it.rest === 90) && small.every((it) => it.rest === 60 || it.rest === 90) && items.filter((it) => it.superset).every((it) => it.rest === 60), big: big.length, small: small.map((it) => `${it.fam}@${it.rest}`), paired: items.filter((it) => it.superset).length };
+  // (1.15: 45 s after an arm exercise done one arm at a time, where each arm also rests through
+  // the other's set: 30 to 60 s is enough for light sets of one joint, Fink et al. 2017.)
+  const oneArm = (it) => it.rest === 45 && GH.moves.MOVES[it.moveId].uni && ['biceps', 'triceps'].includes(it.group);
+  return { ok: big.every((it) => it.rest === 90) && small.every((it) => it.rest === 60 || it.rest === 90 || oneArm(it)) && items.filter((it) => it.superset).every((it) => it.rest === 60), big: big.length, small: small.map((it) => `${it.fam}@${it.rest}`), paired: items.filter((it) => it.superset).length };
 };
 const rc1 = restCheck(false), rc2 = restCheck(true);
 check('the rest rule matches the brain: 90 s after big moves on their own, 60 s after small ones (90 with time to spare)', rc1.ok && rc1.big > 0 && ['push', 'press', 'row', 'squat', 'hinge', 'pull', 'chestDb'].every((f) => B.restFor(person(), f) === 90) && ['curl', 'raise', 'calf'].every((f) => B.restFor(person(), f) === 60), rc1);
@@ -186,7 +189,10 @@ check('marked as written when Health Connect confirms', !!S.health.written[rec.i
 S.health.write = false;
 check('not sent when switched off', !H.writeWorkout(S, log) && sent.length === 1);
 S.health.write = true;
-check('catch-up skips what was already written', H.writeRecent(S, 60) === S.log.filter((l) => l.type === 'workout').length - 1);
+// (The window is counted back from the real date, and these workouts are dated in September 2026:
+// with 60 days this failed from mid November 2026 on, whatever the code. It now reaches back to
+// them from whenever the test runs.)
+check('catch-up skips what was already written', H.writeRecent(S, Math.max(60, Math.ceil(Date.now() / B.DAY_MS) - D0 + 60)) === S.log.filter((l) => l.type === 'workout').length - 1);
 globalThis.AndroidBridge = { hcCanWrite: () => false, hcWriteWorkout: () => sent.push('x') };
 check('not sent without the permission', !H.writeWorkout(S, log));
 delete globalThis.AndroidBridge;

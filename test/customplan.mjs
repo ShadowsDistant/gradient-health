@@ -309,7 +309,10 @@ section('Progress over the weeks');
   const one = (rir) => { const S2 = fresh(MON); const p2 = C.add(S2, PPL).plan; C.use(S2, p2.id, MON); doWorkout(S2, MON, rir); return S2.planProg[p2.id]['push_std:10'].reps; };
   check('3 left (on the aim) adds a rep, 1-2 too, and 0 holds', one('3') === 11 && one('12') === 11 && one('0') === 10, [one('3'), one('12'), one('0')]);
   const book = S.planProg[plan.id];
-  check('the dumbbell moves go up a weight at the top of the range', book['chest_press:12'].w === 1 && book['chest_press:12'].reps <= 16, book['chest_press:12']);
+  // (1.15: the press starts on the 15 lb pair, as 10 lb is under a third of what someone of this
+  // size presses once, too light to build with (brain.js weightFit). The lateral raise starts on
+  // the 10 lb pair and is the one that goes up.)
+  check('the dumbbell moves go up a weight at the top of the range', book['raise:15'].w === 1 && book['raise:15'].reps <= 20 && book['chest_press:12'].w === 1, [book['raise:15'], book['chest_press:12']]);
   check('held moves add seconds', book['side_plank:30'].reps > 30, book['side_plank:30']);
   check('the coach\'s own levels don\'t move', JSON.stringify(Object.fromEntries(Object.entries(S.prog).map(([f, st]) => [f, [st.rung, st.reps]]))) === rungs);
   const s = B.buildSession(S, MON + 28, `c:${plan.id}:0`, { cal: B.calendar(S, MON + 28), noReadiness: true });
@@ -370,7 +373,10 @@ section('Build me a plan');
   check('the grammar allows exactly those moves and three days', ids.every((id) => gram.includes(`"\\"${id}\\""`)) && !gram.includes('bench_bb') && /\[" day "," day "," day "\]\}"/.test(gram));
   const schema = C.planSchema(ids);
   check('Claude\'s schema holds moves to the same list', JSON.stringify(schema.properties.days.items.properties.items.items.properties.move.enum) === JSON.stringify(ids));
-  const good = { name: 'Arms first', note: 'More arm work, easy on your knees.', days: plan.days.map((d) => ({ title: d.title, items: d.items.map((it) => ({ move: it.move, sets: 4, reps: 12 })) })) };
+  // (1.15: this person's curls are one arm at a time, the left being the weaker, which takes twice
+  // as long: 4 sets of everything no longer fits the time with the rows a plan must keep. The
+  // answer adds sets to the day's first exercise, as asked.)
+  const good = { name: 'Arms first', note: 'More arm work, easy on your knees.', days: plan.days.map((d, i) => ({ title: d.title, items: d.items.map((it, k) => ({ move: it.move, sets: i === 0 && k === 0 ? 4 : it.sets, reps: 12 })) })) };
   const ok = C.accept(S, day, w, plan, good, ids);
   check('a good answer is kept', ok && ok.name === 'Arms first' && ok.days[0].items[0].sets === 4 && ok.source === 'coach');
   const bad1 = JSON.parse(JSON.stringify(good)); bad1.days[0].items[0].move = 'sq_jump';

@@ -448,7 +448,11 @@ section('Build me a plan: a model\'s plan is checked too');
   const like = (f) => ({ name: 'Plan', note: 'A plan.', days: draft.days.map((d, i) => ({ title: d.title, items: f(d, i) })) });
   const same = CP.accept(S1, D0, w, draft, like((d) => d.items.map((it) => ({ move: it.move, sets: it.sets, reps: it.reps || it.secs }))), ids);
   check('the draft\'s own moves and sets pass', !!same);
-  const long = CP.accept(S1, D0, w, draft, like((d) => d.items.map((it) => ({ move: it.move, sets: 6, reps: 12 }))), ids);
+  // (1.15: a day holds fewer exercises with more sets each, and each day here starts with a chest
+  // exercise. With 6 sets of that too, the cut (which spares the day's first exercise) leaves push
+  // well over pull, and accept turns a lopsided plan down, as it should. So the over-long answer
+  // keeps the first exercise as drafted and asks 6 sets of the rest.)
+  const long = CP.accept(S1, D0, w, draft, like((d) => d.items.map((it, k) => ({ move: it.move, sets: k === 0 ? it.sets : 6, reps: 12 }))), ids);
   const group = (id) => GH.moves.MOVES[id].group;
   const focus = (it) => ['biceps', 'triceps'].includes(group(it.move));
   check('a plan too long for the time is cut to fit (or to the draft\'s own day, when that runs longer)', long && long.days.every((d, i) => CP.minutes(S1, long, i, D0) <= Math.max(30, CP.minutes(S1, draft, i, D0)) + 2), long && long.days.map((d, i) => [CP.minutes(S1, long, i, D0), CP.minutes(S1, draft, i, D0)]));
