@@ -386,7 +386,7 @@
     body() {
       return menu('data', kw(U.row({ key: 'export', icon: 'copy', tone: 'teal', title: 'Copy my data', sub: 'Everything but the API key, as text to keep safe', act: 'exportData' }), 'backup export')
         + kw(U.row({ key: 'restore', icon: 'download', tone: 'indigo', title: 'Restore from a copy', act: 'restoreSheet', chevron: true }), 'backup import')
-        + kw(U.row({ key: 'reset', icon: 'trash', tone: 'rose', title: 'Reset everything', act: 'resetAll' }), 'delete erase start over'))
+        + kw(U.row({ key: 'reset', cls: 'is-danger', icon: 'trash', tone: 'rose', title: 'Reset everything', act: 'resetAll' }), 'delete erase start over'))
         + foot('data', 'Keep the copy in a note or an email to yourself, then paste it into Restore, here or on a new phone.');
     },
   }, {

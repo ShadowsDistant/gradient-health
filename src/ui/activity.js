@@ -413,7 +413,7 @@
           ${hcCard(a)}
           <ul class="rf-list">
             ${U.row({ icon: 'pencil', tone: 'sky', title: 'Rename', act: 'actRename', arg: a.id, chevron: true })}
-            ${U.row({ icon: 'trash', tone: 'rose', title: `Delete this ${U.esc(tp.noun)}`, act: 'actDelete', arg: a.id })}
+            ${U.row({ cls: 'is-danger', icon: 'trash', tone: 'rose', title: `Delete this ${U.esc(tp.noun)}`, act: 'actDelete', arg: a.id })}
           </ul>
         </div>`;
     },
@@ -868,7 +868,7 @@
     const tp = A().typeOf(a.type);
     const detail = a.distanceM > 0 ? fmtDist(a.distanceM) : fmtTime(a.movingMs);
     const sub = [`${U.fmtDay(a.day)} · ${U.fmtClock(a.start)}`, a.distanceM > 0 ? fmtTime(a.movingMs) : ''].filter(Boolean).join(' · ');
-    return U.row({ key: `a-${a.id}`, icon: tp.icon, tone: tp.hue, title: U.esc(a.title || A().defaultTitle(a.type, a.start)), sub: U.esc(sub), detail: U.esc(detail), act: 'actOpen', arg: a.id, chevron: true });
+    return U.row({ key: `a-${a.id}`, icon: tp.icon, tone: tp.hue, title: U.esc(a.title || A().defaultTitle(a.type, a.start)), sub: U.nb(sub), detail: U.esc(detail), act: 'actOpen', arg: a.id, chevron: true });
   }
   U.actRow = actRow;
   U.act.actHistory = () => U.open('activities');

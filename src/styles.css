@@ -284,6 +284,8 @@ button.ex-name::before { content: ''; position: absolute; inset: 0; }
 :is(h1, h2, h3, .rf-large-title, .t-title-1, .t-title-2, .t-title-3, .t-headline, .rf-list-title) { text-wrap: balance; }
 :is(p, .t-body, .t-callout, .t-subhead, .t-footnote, .t-caption, .rf-list-sub) { text-wrap: pretty; }
 .rf-list-sub { display: block; }
+/* A row that can't be taken back (Reset everything, Delete this run) says so in the critical colour. */
+.rf-list-row.is-danger .rf-list-title { color: var(--critical); }
 .card { background: var(--bg-raised); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: var(--space-4); display: grid; gap: var(--space-2); min-width: 0; }
 .card > p, .card p { margin: 0; }
 /* A card's title sits in the card's own rhythm (its gap), not the browser's heading margins (18 px
