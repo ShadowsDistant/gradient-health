@@ -83,7 +83,7 @@
       on = !!(loaded && loaded.id === id);
     }
     return `<button type="button" class="chat-pill" data-act="chatEngineSheet" aria-label="Who answers: ${U.esc(name)}${sub ? `, ${U.esc(sub)}` : ''}. Change">
-      ${U.icon(e === 'api' ? 'sparkle' : 'chip', 'sm')}<span class="pill-text">${U.esc(name)}${sub ? `<span class="pill-sub"> · ${U.esc(sub)}</span>` : ''}</span><span class="pill-dot"${on ? ' data-on' : ''} aria-hidden="true"></span>${U.icon('chevron-down', 'sm')}</button>`;
+      ${U.icon(e === 'api' ? 'sparkle' : 'chip', 'sm')}<span class="pill-text">${U.esc(name)}${sub ? `<span class="pill-sub">&nbsp;· ${U.esc(sub)}</span>` : ''}</span><span class="pill-dot"${on ? ' data-on' : ''} aria-hidden="true"></span>${U.icon('chevron-down', 'sm')}</button>`;
   }
 
   /* ---------------------------------------------------------------- answers as cards */

@@ -77,8 +77,10 @@ html, body { touch-action: pan-x pan-y; }
   :where(button, a[href][class*="rf-"], [role="button"], [role="tab"], [role="menuitem"], [role="option"], label.rf-segment) { position: relative; }
 }
 /* Plain buttons take the surrounding font. Refract's controls (.rf-*) keep their own sizes, so this
-   must not reach them: an unlayered `font` here would beat Refract's layered rules. */
-button:not([class*="rf-"]) { font: inherit; }
+   must not reach them: an unlayered `font` here would beat Refract's layered rules. In :where(), so
+   it weighs nothing: as `button:not(…)` it outweighed any one class, and a button's own size and
+   weight (.ex-name, .why-chip, .pl-load, .chat-pill, .chat-card, .msg-tool) never applied. */
+:where(button:not([class*="rf-"])) { font: inherit; }
 /* clip, not hidden: a hidden box can still be scrolled by script, and the glow below is wider than
    the screen, so scrollIntoView could shift the whole app sideways. */
 .app { position: fixed; inset: 0; overflow: hidden; overflow: clip; background: var(--bg); }
