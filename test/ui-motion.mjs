@@ -1144,6 +1144,41 @@ section('Moments: a health number\'s icon travels into its sheet');
   check('by transform and opacity; it hands over once it\'s there (within 16 px while both show), and nothing is left', ic.props === 'opacity,transform' && ic.apart && ic.apart.both > 0 && ic.apart.max <= 16 && ic.icon === '1' && Object.values(ic.left).every((n) => n === 0), ic);
 }
 
+section('Moments: a chart draws in once');
+{
+  // At the first frame a chart shows: is its wipe (styles.css) playing?
+  const wiping = (root) => page.evaluate(async (root) => {
+    await new Promise((res) => requestAnimationFrame(res));
+    return Array.from(document.querySelectorAll(`${root} .ch-svg`), (s) => s.getAnimations().some((a) => a.animationName === 'ch-wipe' && a.playState === 'running'));
+  }, root);
+  await page.evaluate(async () => { const U = window.GH.ui; U.go('progress'); await U.motion.settled(); });
+  await wait(900);
+  await page.evaluate(async () => { const U = window.GH.ui; U.go('today'); await U.motion.settled(); });
+  await wait(400);
+  await page.evaluate(() => window.GH.ui.go('progress'));
+  const back = await wiping('#screen');
+  await settle(600);
+  await page.evaluate(() => window.GH.ui.metricSheet('rhr'));
+  await wait(900);
+  // (A range picked redraws the sheet a moment later: until its chart's key changes.)
+  const range = await page.evaluate(async () => {
+    const key = () => (document.querySelector('dialog.gh-sheet[open] .ch-svg') || {}).getAttribute?.('data-key');
+    const was = key();
+    document.querySelector('dialog.gh-sheet[open] input[value="7"]').click();
+    for (let i = 0; i < 120 && key() === was; i++) await new Promise((res) => requestAnimationFrame(res));
+    return Array.from(document.querySelectorAll('dialog.gh-sheet[open] .ch-svg'), (s) => s.getAnimations().some((a) => a.animationName === 'ch-wipe' && a.playState === 'running'));
+  });
+  await wait(900);
+  await page.evaluate(() => window.GH.ui.closeSheets());
+  await wait(700);
+  await page.evaluate(() => window.GH.ui.metricSheet('rhr'));
+  const again = await wiping('dialog.gh-sheet[open]');
+  await wait(600);
+  await page.evaluate(async () => { const U = window.GH.ui; U.closeSheets(); U.go('today'); await U.motion.settled(); });
+  check('a page brought back shows its charts drawn, rather than drawing them in again', back.length > 0 && back.every((x) => !x), back);
+  check('and so does a sheet opened again; a new range draws in', again.length > 0 && again.every((x) => !x) && range.length > 0 && range.every(Boolean), { again, range });
+}
+
 section('Moments: lists that filter and shrink');
 {
   // Settings' search: the first results fade in where the parts were, and the parts fade back; a

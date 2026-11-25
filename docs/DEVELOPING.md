@@ -206,6 +206,11 @@ left alone. A few conventions:
     transition off meanwhile, so it doesn't glide there) and given its value 140 ms later, once the
     page is in. One that shows what it showed last time is left alone, so a tab opened again doesn't
     replay it, and a value changed elsewhere glides from the old one. The first eight of a page.
+  - **Charts draw in once** (`arrived`, and a sheet's opening): a chart's wipe (`.ch-svg`,
+    `src/styles.css`) plays the first time it's seen; a page or a sheet that brings it back shows it
+    drawn (its wipe turned off before the frame that would show it), so Progress doesn't draw its
+    charts again at every visit. A new range or a new day is another chart (the svg's key), which
+    draws in.
   - **A picture travels** (`travel`): a copy of it (inert, `aria-hidden`, `.motion-copy`) moves from
     where it is into another box, keeping its shape, and fades out over what's drawn there. A sheet
     carries in a part of what was tapped (`CARRY` in `moments.js`): a move's picture (`.pw-thumb`,

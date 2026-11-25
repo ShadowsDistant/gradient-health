@@ -13,7 +13,7 @@
  *   from nothing the first time `where` shows them, from what they last showed there after that,
  *   and not at all when that's what they show now.
  * U.motion.arrived(screen)  A route change put a new page in (motion.js calls it): its rings and bars
- *   fill.
+ *   fill, and its charts show drawn if they've drawn in before.
  * U.motion.enterPlayer(el)  The workout player opening: its backdrop turns solid, its content rises
  *   out of where the tap was, and its main button grows out of the button that was tapped (Start
  *   workout, Resume), so one becomes the other. True when it played.
@@ -132,7 +132,20 @@
     }), FILL_AFTER);
   };
   const routeKey = () => { const r = U.route || {}; return r.view ? `${r.view}:${r.arg || ''}` : r.tab; };
-  M.arrived = (screen) => M.fill(screen, routeKey());
+  M.arrived = (screen) => { M.fill(screen, routeKey()); drawnBefore(screen); };
+
+  /* ---------------------------------------------------------------- charts that draw in once */
+  // A chart draws in (its wipe, src/styles.css) the first time it's seen; a page or a sheet that
+  // brings it back shows it drawn, rather than drawing it again at every visit. A new range or a
+  // new day is another chart (its svg's key), which draws in. Before the frame that would show it.
+  const drawn = new Set();
+  function drawnBefore(root) {
+    if (!root || !root.querySelectorAll) return;
+    for (const s of root.querySelectorAll('.ch-svg')) {
+      const c = s.closest('[data-chart]'), k = `${c ? c.getAttribute('data-chart') : ''}|${s.getAttribute('data-key')}`;
+      if (drawn.has(k)) s.style.animation = 'none'; else drawn.add(k);
+    }
+  }
 
   /* ---------------------------------------------------------------- parts that land */
   // o: { at (ms before the first), each (ms apart), pop (they pop on the bouncy spring), ms }.
@@ -305,6 +318,7 @@
     seen.add(ctl.el);
     const title = ctl.el.querySelector('.rf-sheet-title');
     M.fill(ctl.body, `sheet:${title ? title.textContent : ''}`);
+    drawnBefore(ctl.body);
     const src = tap(700);
     if (!src || reduced() || !src.pic || !src.pic.isConnected) return;
     const pair = CARRY.find((c) => src.pic.matches(c[0]));
