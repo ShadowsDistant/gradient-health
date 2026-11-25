@@ -216,6 +216,17 @@ for (const theme of themes) {
     }), GROUPS);
     for (const x of groups) check(`${x.g}: its own glyph (group-${x.g}), on the 24 px grid with the 1.75 stroke, inside it`, x.svg && x.name === `group-${x.g}` && x.grid === '0 0 24 24' && x.stroke === '1.75' && x.shapes > 0 && x.sm && x.box[0] >= 2 && x.box[1] >= 2 && x.box[0] + x.box[2] <= 22 && x.box[1] + x.box[3] <= 22, x);
     check('a group it doesn\'t know gets the dumbbell', await ev(() => /data-icon="dumbbell"/.test(window.GH.ui.groupIcon('nothing'))));
+    // The back's pull-up and the shoulders' press sit side by side in lists, and both are someone at
+    // a bar: the back's head is over its bar, the shoulders' under it, so they don't read as one glyph.
+    const bars = await ev(() => ['back', 'shoulders'].map((g) => {
+      const box = document.createElement('div'); box.innerHTML = window.GH.ui.groupIcon(g); document.body.appendChild(box);
+      const head = box.querySelector('circle'), d = (box.querySelector('path') || { getAttribute: () => '' }).getAttribute('d');
+      const bar = /^M[\d.]+ ([\d.]+)h/.exec(d);
+      const out = { head: head ? Number(head.getAttribute('cy')) : null, bar: bar ? Number(bar[1]) : null };
+      box.remove();
+      return out;
+    }));
+    check('the back\'s head is over its bar, the shoulders\' under it', bars[0].head != null && bars[0].bar != null && bars[0].head < bars[0].bar && bars[1].head > bars[1].bar, JSON.stringify(bars));
     await ev(() => window.GH.ui.open('moves'));
     await settle(1100);
     const rows = await ev(() => {
