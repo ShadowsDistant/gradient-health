@@ -77,6 +77,9 @@
       workouts: true,
       careful: [], impactOk: true, gentle: false, lead: { arm: null, leg: null },
       weightGoal: 'maintain', protein: { track: true, perLb: 0.8, quickName: 'Shake', quickG: 26 },
+      // 1.15: how often meals hold protein-rich food, and fruit or vegetables: 'low' (rarely), 'some'
+      // (some meals), 'most' (most meals), or null when not answered. Optional (see eatsOf).
+      eats: { protein: null, produce: null },
       sleepTypical: '6-7', sleepIrregular: false,
       // notify: notifications (src/notify.js), off until the person turns them on; then every kind
       // is on, and the reminder time is worked out (time: minutes after midnight once they set one).
@@ -122,6 +125,28 @@
   const PROGRAMS = {};
   const inOp = () => !!OP;
   const opToken = () => OP; // a different object for each outermost op(), null outside
+
+  // 1.15: how the person eats, as far as the plan reads it. { protein, produce: 'low' | 'some' |
+  // 'most' | null, from: 'answer' | 'log' | null, minor }. The answer (profile.eats.protein) comes
+  // first; with none, what the food log showed (profile.eats.logged, kept by logEats once a week)
+  // stands in. Under 18 the plan reads none of it (minor): the research is on adults, and a
+  // teenager's eating isn't the app's to steer.
+  const EATS = ['low', 'some', 'most'];
+  function eatsOf(p) {
+    const e = (p && p.eats) || {};
+    const ok = (x) => (EATS.includes(x) ? x : null);
+    const minor = !!p && p.age != null && p.age < 18;
+    const protein = ok(e.protein) || ok(e.logged);
+    return { protein, produce: ok(e.produce), from: ok(e.protein) ? 'answer' : protein ? 'log' : null, minor };
+  }
+  // Eating little protein (under about 1 g per kg of body weight a day): size comes more slowly and
+  // strength about as usual (Morton et al. 2018; Tagawa et al. 2020). Nothing shows that more sets
+  // make up for it (Roth et al. 2022), so the plan keeps a normal amount of work with the goal
+  // muscles first in it: no sets past the week's target, weekly sets grow no further than 2 past
+  // where they started, and the same muscles aren't trained hard on days in a row where the week
+  // allows (protein round training helps strength come back after a hard session, Pearson et al.
+  // 2023; that reading across to a low-protein diet is ours, the cautious one).
+  const lowProtein = (p) => { const e = eatsOf(p); return !p.legacyPlan && !e.minor && e.protein === 'low'; };
 
   // Tiers, frequencies and set targets from the questionnaire. Kept for each set of answers it reads
   // (rungs() asks for it all the time); treat the answer as read-only.
@@ -192,6 +217,7 @@
       onramp, impactOk: p.impactOk !== false && !(p.age >= 60) && !p.gentle,
       warmupMin: p.age >= 40 ? 4 : 2.5,
     };
+    if (lowProtein(p)) out.lowProtein = true;
     // Age and health conditions shift these defaults (src/access.js): impact, warm-up length, a
     // gentler start with a heart condition.
     return GH.access ? GH.access.program(p, out) : out;
@@ -274,6 +300,7 @@
     p.gym = Object.assign(defaultGym(), (profile || {}).gym || {});
     p.prefs = Object.assign(defaultProfile().prefs, (profile || {}).prefs || {});
     p.protein = Object.assign(defaultProfile().protein, (profile || {}).protein || {});
+    p.eats = Object.assign(defaultProfile().eats, (profile || {}).eats || {});
     p.lead = Object.assign({ arm: null, leg: null }, (profile || {}).lead || {});
     p.startDay = day;
     p.onboarded = true;
@@ -740,7 +767,8 @@
   // weight goal (src/food.js), the sleep answers. (The first sync that brought a height in had every
   // plan worked out again, a moment after launch. Body weight stays: a gym move's first load reads it.)
   const SCREEN_PREFS = new Set(['figure', 'figSkin', 'figShirt', 'theme', 'density', 'sound', 'vibrate', 'haptics', 'hapticStrength', 'reducedMotion', 'actType', 'actStreets', 'actMaps', 'actAuto', 'actVoice', 'notify']);
-  const SCREEN_FIELDS = new Set(['name', 'heightCm', 'sex', 'food', 'protein', 'weightGoal', 'sleepTypical', 'sleepIrregular']);
+  // (1.15: sex left this list, as a weight is judged light or heavy by it too: weightFit.)
+  const SCREEN_FIELDS = new Set(['name', 'heightCm', 'food', 'protein', 'weightGoal', 'sleepTypical', 'sleepIrregular']);
   function planProfile(p) {
     if (!p || typeof p !== 'object') return p;
     const out = {};
@@ -2798,10 +2826,12 @@
     const lines = [];
     const cal = calendar(S, day);
     const prog = programFor(S.profile);
+    let fresh = false;
     for (const [wsStr, w] of Object.entries(cal.weeks)) {
       const ws = Number(wsStr);
       if (ws + 6 >= day || (S.volWeeksDone || []).includes(ws)) continue;
       S.volWeeksDone = (S.volWeeksDone || []).concat(ws);
+      fresh = true;
       if (w.phase.deload) continue;
       const logs = workoutLogs(S).filter((l) => l.day >= ws && l.day <= ws + 6 && isDone(l));
       if (!logs.length) continue;
@@ -2810,21 +2840,54 @@
       for (let d = ws; d <= ws + 6; d++) if (S.feel && S.feel[d] && S.feel[d].sore === 'very') sore++;
       const recovering = hard === 0 && sore < 2;
       const holdGrowth = !!(GH.food && GH.food.holdsVolume && GH.food.holdsVolume(S, ws));
-      const up = [], down = [];
+      const up = [], down = [], held = [];
       for (const g of GROUPS) {
         const items = [];
         for (const l of logs) for (const it of l.items || []) if (it.group === g && it.kind === 'move' && it.sets && it.sets.length) items.push(it);
         if (!items.length) continue;
         const ups = items.filter((it) => it.outcome === 'up').length;
         const downs = items.filter((it) => it.outcome === 'down').length;
+        // (1.15: eating little protein, weekly sets grow no further than 2 past where they started.)
+        if (prog.tiers[g] <= 2 && w.allDone && recovering && !holdGrowth && ups > 0 && downs === 0 && prog.lowProtein && S.vol[g] >= prog.start[g] + 2) { held.push(g); continue; }
         if (prog.tiers[g] <= 2 && w.allDone && recovering && !holdGrowth && ups > 0 && downs === 0 && S.vol[g] < prog.cap[g]) { S.vol[g]++; up.push(g); }
         else if (!recovering && downs > ups && S.vol[g] > prog.floor[g]) { S.vol[g]--; down.push(g); }
       }
       if (up.length) lines.push({ text: `${listNames(up)} +1 set a week`, why: 'progressing and recovering well' });
       if (down.length) lines.push({ text: `${listNames(down)} one set less a week`, why: 'going backwards while run down' });
       if (holdGrowth && !up.length) lines.push({ text: 'Weekly sets held where they are', why: 'a big calorie deficit this week' });
+      // (Said once: after that the sets just stay where they are.)
+      if (held.length && !up.length && !(S.seen && S.seen.eatsHold != null)) {
+        (S.seen = S.seen || {}).eatsHold = day;
+        lines.push({ text: 'Weekly sets held where they are', why: 'more sets don\'t make up for little protein' });
+      }
     }
+    if (fresh) logEats(S, day);
     return lines;
+  }
+
+  // What the food log says about protein, for someone who hasn't answered (profile.eats.logged):
+  // from the days of the last 14 logged in full (food tracking on, 1,000 kcal or more that day),
+  // when there are 5 or more. Under 1 g per kg of body weight a day is low, under 1.2 some, else
+  // most (Morton et al. 2018; Tagawa et al. 2020). Looked at once a week, with the weekly sets, so
+  // a plan doesn't change from one day's log to the next. Returns { g, perKg, days } or null.
+  function loggedProtein(S, day) {
+    const F = GH.food;
+    const kg = S.profile.weightKg;
+    if (!F || !F.full || !F.totals || !F.full(S) || !(kg > 0)) return null;
+    let n = 0, g = 0;
+    for (let d = day - 14; d < day; d++) {
+      const t = F.totals(S, d, true);
+      if (t.kcal >= 1000) { n++; g += t.p + (S.protein[d] || []).reduce((a, b) => a + b, 0); }
+    }
+    return n >= 5 ? { g: Math.round(g / n), perKg: Math.round((g / n / kg) * 100) / 100, days: n } : null;
+  }
+  function logEats(S, day) {
+    const p = S.profile;
+    if (!p.eats || typeof p.eats !== 'object') p.eats = defaultProfile().eats;
+    const l = loggedProtein(S, day);
+    const next = !l ? null : l.perKg < 1 ? 'low' : l.perKg < 1.2 ? 'some' : 'most';
+    if ((p.eats.logged || null) === next) return;
+    if (next) p.eats.logged = next; else delete p.eats.logged;
   }
 
   // A daily steps target from your own normal: 10% above your 4-week median, in 500-step
@@ -3084,11 +3147,11 @@
   }
 
   GH.brain = {
-    DAY_MS, dayOf, dayFromStr, dayStr, weekday, weekStart, fmtDay, fmtMin, GROUPS, GROUP_NAME, JOINTS, LB_PER_KG, MUSCLE_GROUP, focusOf, pickWeekday, setWorkoutDays,
+    DAY_MS, dayOf, dayFromStr, dayStr, weekday, weekStart, fmtDay, fmtMin, GROUPS, GROUP_NAME, GOAL_GROUPS, JOINTS, LB_PER_KG, MUSCLE_GROUP, focusOf, pickWeekday, setWorkoutDays,
     defaultProfile, programFor, templateFor, templateTitle, newState, applyBaseline, rungs, filtersFor,
     calendar, weekOf, todayPlan, readiness, buildSession, estimate, steps, startWorkout, cancelWorkout, restoreWorkout, completeStep, currentTarget,
     setRir, amendLast, swapItem, swapOptions, finishWorkout, progress, levelUp, nextWeight, weeklyVolumeUpdate, recordTest, testDue,
-    logLight, autoWalk, addWeight, weightStats, proteinGoal, proteinToday, addProtein, undoProtein, weeklySets, weeklySetsWork, dayWork,
+    logLight, autoWalk, addWeight, weightStats, proteinGoal, proteinToday, addProtein, undoProtein, eatsOf, lowProtein, loggedProtein, logEats, weeklySets, weeklySetsWork, dayWork,
     updateSettings, scheduleSettings, settingsAt, moveSession, setEquipment, reprogram, ladderLevel, mobilityFlow, loadInfo, isDone, relink, median,
     defaultGym, GYM_PRESETS, DB_MAX_OPTIONS, convertDbMax, rangeFor, stepsGoal, outcomeOf, weekdaysFor, gymPreset, placeOf, setPlace, eqAt, eqFor, dbRack, snapLoad, suggestLoad, fmtLoad, loadChoices, setItemLoad, ensureProg, isGymFam, toUnit, fromUnit,
   };

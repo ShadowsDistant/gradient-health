@@ -125,7 +125,7 @@
     pick(p, 'retinopathy', ['yes', 'no', 'unsure']);
     // 1.15: how the person eats (null: not answered), and never the mark a week's copy of the
     // profile carries for the weeks planned before 1.15.
-    if (own(p, 'eats')) { const e = isObj(p.eats) ? p.eats : {}; const lv = (x) => (['low', 'some', 'most'].includes(x) ? x : null); p.eats = { protein: lv(e.protein), produce: lv(e.produce) }; }
+    if (own(p, 'eats')) { const e = isObj(p.eats) ? p.eats : {}; const lv = (x) => (['low', 'some', 'most'].includes(x) ? x : null); p.eats = Object.assign({ protein: lv(e.protein), produce: lv(e.produce) }, lv(e.logged) ? { logged: lv(e.logged) } : null); }
     delete p.legacyPlan;
     if (own(p, 'lead')) {
       const l = isObj(p.lead) ? p.lead : {};

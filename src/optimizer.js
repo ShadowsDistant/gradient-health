@@ -190,7 +190,7 @@
     if (p.legacyPlan) out.plain = 1;
     // 1.15: a top goal trains on 2 days or more (goal2), and eating little protein doubles what
     // back-to-back days for the same muscles cost (adj, see planWeek).
-    else { out.goal2 = 1; if (p.lowProtein) out.adj = 2; }
+    else { out.goal2 = 1; if (prog && prog.lowProtein) out.adj = 2; }
     return out;
   }
   // Which units this body and kit can train at all (any of their ladders, or the stand-in a
@@ -1181,7 +1181,8 @@
     const sp = legacy ? null : forced || split(wi.p, wi.prog, null, S);
     const tpl = legacy ? b.templateV1(wi.p, wi.prog) : sp.days;
     const full = !phase.onramp && !phase.deload && phase.mult >= 1 && !phase.ref;
-    const boost = full ? (prog.level === 0 ? 0.25 : 0.5) : 0;
+    // (1.15: none eating little protein: a normal week's sets, not more. brain.js lowProtein.)
+    const boost = full && !prog.lowProtein ? (prog.level === 0 ? 0.25 : 0.5) : 0;
     // A lighter week (easing in, a deload, back after a break) is lighter than a normal week really
     // is: its share of the sets a normal week's time holds, not of a target that time couldn't. (How
     // much of its targets the normal week holds in all, so one group's share doesn't swing with how
@@ -2124,13 +2125,92 @@
     const top = GROUPS.filter((g) => prog.tiers[g] === 1 && wp.perGroup[g].trainable);
     const headline = custom ? 'You\'re following your own plan this week'
       : `${live.length} workout${live.length === 1 ? '' : 's'} a week, about ${minutes} minutes each${top.length ? `, built around your ${joinList(groupNames(top))}` : ''}`;
-    return { headline, week: weekOut, today, reasons: custom ? customReasons(S) : reasonLines(S, wp, built.map((x) => x.s), minutes), parts: wp.parts, score: wp.score, considered: wp.considered, split: { kind: wp.split.kind, label: wp.split.label, name: LABEL[wp.split.label] || LABEL.mixed } };
+    // (1.15: facts, the person's own answers this week's plan used. They lead the reasons.)
+    const facts = custom ? [] : personalFacts(S, day, { wp, sessions: built.map((x) => x.s) });
+    return { headline, week: weekOut, today, facts, reasons: custom ? customReasons(S) : reasonLines(S, wp, built.map((x) => x.s), minutes, facts), parts: wp.parts, score: wp.score, considered: wp.considered, split: { kind: wp.split.kind, label: wp.split.label, name: LABEL[wp.split.label] || LABEL.mixed } };
+  }
+  // personalFacts(S, day): which of the person's own answers the plan for the week of `day` used,
+  // and what each one changed, in plain words: [{ id, fields, text }]. id is 'goals', 'time', 'kit',
+  // 'side', 'eating' or 'abs'; fields are the profile's fields it read. Empty for a week from before
+  // 1.15's personal plans. Why this plan shows them first (explain().facts), and the AI helper can
+  // quote them. (Age and health conditions have their own line: src/access.js plannedAround.)
+  const KIT_MOVES = [['curl_std', 'curls'], ['tri_oh', 'extensions'], ['press_db', 'presses'], ['row_db', 'rows'], ['sq_goblet', 'squats'], ['hg_deadlift', 'deadlifts']];
+  function personalFacts(S, day, ctx) {
+    const b = B(), p = S.profile;
+    const ws = b.weekStart(day);
+    if (!b.personal(S, ws)) return [];
+    const c = ctx || {};
+    const wp = c.wp || weekPlan(S, ws, { phase: phaseOf(S, ws) });
+    if (!wp || wp.legacy) return [];
+    const prog = b.programFor(p);
+    const pg = wp.perGroup;
+    const out = [];
+    const add = (id, fields, text) => out.push({ id, fields, text });
+    const days = (n) => `${n} day${n === 1 ? '' : 's'}`;
+    // Goals: the muscles asked for, the days each trains on and its sets.
+    const top = GROUPS.filter((g) => prog.tiers[g] === 1 && pg[g] && pg[g].trainable && pg[g].aim > 0);
+    if (top.length && (p.goals || []).some((g) => b.GOAL_GROUPS && b.GOAL_GROUPS[g])) {
+      const both = top.includes('biceps') && top.includes('triceps');
+      const parts = top.filter((g) => !(both && g === 'triceps')).map((g) => {
+        const arms = both && g === 'biceps';
+        return `${arms ? 'arms' : b.GROUP_NAME[g].toLowerCase()} on ${days(arms ? Math.max(pg.biceps.days, pg.triceps.days) : pg[g].days)} (${setsWord(arms ? pg.biceps.aim + pg.triceps.aim : pg[g].aim)})`;
+      });
+      add('goals', ['goals'], `Your goals come first: ${joinList(parts)} this week.`);
+    }
+    // Time: how many exercises its minutes hold.
+    const sessions = c.sessions || [];
+    const counts = sessions.map((x) => x.items.filter((it) => !it.skill).length).filter((n) => n > 0);
+    if (counts.length) {
+      const lo = Math.min(...counts), hi = Math.max(...counts);
+      const minutes = clamp(Math.round(Number(b.settingsAt(S, day).minutes) || Number(p.minutes) || 25), 10, 60);
+      add('time', ['days', 'minutes'], `Your ${days(wp.days.length)} of ${minutes} minutes hold ${lo === hi ? lo : `${lo} to ${hi}`} exercises a session, so each gets enough sets to count.`);
+    }
+    // Kit: what their heaviest weight is enough for, at their size (brain.js weightFit).
+    const eq = b.placeOf(S, day) === 'gym' ? null : b.eqFor(S, day);
+    const own = eq ? [].concat((eq.db || []).map((x) => [x, 'dumbbell']), (eq.kb || []).map((x) => [x, 'kettlebell'])).sort((a, x) => x[0] - a[0])[0] : null;
+    if (own) {
+      const fits = KIT_MOVES.filter(([id]) => M().MOVES[id]).map(([id, name]) => [name, b.weightFit(S, id, day)]).filter((x) => x[1]);
+      // (Three of each at most, the bigger moves of those it's too light for: a line stays short.)
+      const light = fits.filter((x) => x[1].fit === 'light').map((x) => x[0]).slice(-3);
+      const fine = fits.filter((x) => x[1].fit !== 'light').map((x) => x[0]).slice(0, 3);
+      const size = p.weightKg > 0 ? `at ${Math.round(p.units === 'kg' ? p.weightKg : p.weightKg * 2.20462)} ${p.units === 'kg' ? 'kg' : 'lb'}` : 'for an average build';
+      const what = `Your heaviest weight is a ${own[0]} ${p.units === 'kg' ? 'kg' : 'lb'} ${own[1]}`;
+      if (light.length && fine.length) add('kit', ['equipment', 'weightKg', 'sex', 'experience'], `${what}. ${size[0].toUpperCase()}${size.slice(1)} that's enough for ${joinList(fine)}, and too light to build with for ${joinList(light)}: those use your body weight instead.`);
+      else if (light.length) add('kit', ['equipment', 'weightKg', 'sex', 'experience'], `${what}. ${size[0].toUpperCase()}${size.slice(1)} that's too light to build with on its own, so the plan leans on your body weight, one side at a time and slow lowering.`);
+      else if (fine.length) add('kit', ['equipment', 'weightKg', 'sex', 'experience'], `${what}: enough for the plan's weighted exercises ${size}.`);
+    }
+    // The weaker side.
+    const side = (x) => (x === 'L' ? 'left' : 'right');
+    const lead = p.lead || {};
+    const cu = S.catchup || {};
+    if (lead.arm && cu.arm && cu.arm.active) add('side', ['lead'], `Your ${side(lead.arm)} arm is the weaker one: arm exercises go one arm at a time, ${side(lead.arm)} first, and it gets one extra set on up to two days.`);
+    else if (lead.leg && cu.leg && cu.leg.active) add('side', ['lead'], `Your ${side(lead.leg)} leg is the weaker one: it goes first and gets one extra set on leg days.`);
+    // Eating: only when it changed the plan (little protein, an adult).
+    const e = b.eatsOf(p);
+    if (prog.lowProtein) {
+      const lg = e.from === 'log' ? b.loggedProtein(S, day) : null;
+      const said = e.from === 'answer' ? 'You said protein-rich food is rare for you' : lg ? `Your food log shows about ${lg.g} g of protein a day` : 'Your food log shows little protein';
+      add('eating', ['eats', 'age'], `${said}. Expect strength at about the usual pace and size more slowly. The plan keeps a normal week's sets, goals first, and doesn't add more to make up for food.`);
+    }
+    // Abs and size: build the muscle; no exercise takes fat off one spot (Ramirez-Campillo et al.
+    // 2022; Vispute et al. 2011). The size words are for adults who gave height and weight; under
+    // a BMI of about 21 the aim is the muscle with weight held steady, never a loss (our reading:
+    // no body-fat line for visible abs is well tested).
+    if (prog.tiers.abs === 1 && (p.goals || []).includes('abs')) {
+      const adult = !(p.age != null && p.age < 18);
+      const bmi = adult && p.weightKg > 0 && p.heightCm > 0 ? p.weightKg / Math.pow(p.heightCm / 100, 2) : null;
+      const how = 'The plan trains your abs like any other muscle: crunches and reverse crunches, close to your limit.';
+      if (bmi != null && bmi < 18.5) add('abs', ['goals', 'heightCm', 'weightKg'], `Your weight is low for your height, so eating enough matters more for your abs than any exercise. ${how}`);
+      else if (bmi != null && bmi < 21) add('abs', ['goals', 'heightCm', 'weightKg'], `You're lean for your height, so the aim is to build the ab muscle and keep your weight steady, not to lose any. ${how}`);
+      else add('abs', ['goals'], `${how} Ab exercises build the muscle. They don't take fat off the belly: that comes off the whole body.`);
+    }
+    return out;
   }
   function customReasons(S) {
     return ['These sessions come from your own plan, still fitted to your body\'s rules and your time.'];
   }
   // The reasons, most telling first.
-  function reasonLines(S, wp, sessions, minutes) {
+  function reasonLines(S, wp, sessions, minutes, facts) {
     const b = B(), ac = A(), p = S.profile;
     const prog = b.programFor(p);
     const tw = tweaksOf(p);
@@ -2146,9 +2226,12 @@
     // minutes) says so once, with the fix; the plan itself stays as it is.
     const weekly = D * minutes;
     if (D > 0 && weekly < 30) out.push(`Your plan has ${weekly} minutes of strength work a week. In large studies, the lowest risks of disease went with about 30 to 60 minutes a week, so ${D < 3 ? 'a third short session or longer ones' : 'longer sessions'} would help.`);
+    // 1.15: the person's own answers the plan used (personalFacts), the goals among them.
+    const mine15 = facts || [];
+    for (const f of mine15) out.push(f.text);
     // The goals.
     const top = GROUPS.filter((g) => prog.tiers[g] === 1 && pg[g].trainable && pg[g].aim > 0);
-    if (top.length) {
+    if (top.length && !mine15.some((f) => f.id === 'goals')) {
       const parts = [];
       const both = top.includes('biceps') && top.includes('triceps');
       for (const g of top) {
@@ -2337,7 +2420,7 @@
   });
 
   const self = GH.optimizer = {
-    weekPlan, score, explain, explainProfile, alternatives, applyTweaks, TWEAKS,
+    weekPlan, score, explain, explainProfile, personalFacts, alternatives, applyTweaks, TWEAKS,
     split, template, dayPlan, fit, normTweaks, mergeTweaks, LABEL, UNITS, UNIT_GROUPS, PARTS, stats,
     _internal: { bestDays, countSplits, variants, archetype, labelOf, maskCost, splitInputs, shareOut, planScore, timeFit, scoreBuilt },
   };

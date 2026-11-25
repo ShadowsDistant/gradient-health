@@ -842,8 +842,18 @@
     draw();
   };
 
+  // 1.15: how you eat, two optional answers (profile.eats). The plan reads the protein one for what
+  // to expect and how much work to plan (brain.js lowProtein); both shape one small tip from the
+  // coach. Not asked under 18, where neither is used.
+  const EATS = U.answers.EATS;
+  const eatsOn = () => !(Q.age != null && Q.age !== '' && Number(Q.age) < 18);
+  function eatsGroups() {
+    Q.eats = Q.eats && typeof Q.eats === 'object' ? Q.eats : { protein: null, produce: null };
+    return group('Protein-rich food', `<div class="ob-pad">${U.seg('eatsProtein', EATS, Q.eats.protein || '', 'How often you eat protein-rich food', ` ${bind('eats.protein')}`)}</div>`, 'Meat, fish, eggs, milk, yogurt, beans, tofu.')
+      + group('Fruit or vegetables', `<div class="ob-pad">${U.seg('eatsProduce', EATS, Q.eats.produce || '', 'How often you eat fruit or vegetables', ` ${bind('eats.produce')}`)}</div>`, 'Your plan won\'t add work to make up for food. It tells you what to expect, and the coach suggests one small step.');
+  }
   // A little about you: age, how much you've trained, anything to plan around, and (folded away)
-  // weight and height.
+  // weight and height, and how you eat.
   VIEW.you = () => {
     const sizeErr = ['_w', '_hft', '_hin', '_hcm'].some((k) => errs[k]);
     const levels = `<div class="ob-opts" role="radiogroup" aria-label="How much have you trained?" data-key="levels">${LEVELS.map((l) => opt({ act: 'obLevel', arg: l.id, icon: l.icon, tone: l.tone, title: l.title, sub: l.sub, on: levelOf() === l.id })).join('')}</div>`;
@@ -851,7 +861,8 @@
     return `<div class="ob-fields" data-key="age">${ageField('A plan that suits your age.')}</div>`
       + group('How much have you trained?', levels)
       + linkRow('obAround', 'heart', 'rose', 'Anything to plan around?', aroundSummary() || 'Sore joints, old injuries, health conditions (optional)', 'around')
-      + more('size', 'Weight and height (optional)', size, sizeErr, Q._w || Q._hcm || Q._hft ? sizeWords() : 'For your protein goal and weight trend');
+      + more('size', 'Weight and height (optional)', size, sizeErr, Q._w || Q._hcm || Q._hft ? sizeWords() : 'For your protein goal and weight trend')
+      + (eatsOn() ? more('eats', 'How you eat (optional)', eatsGroups(), false, U.answers.eatsWords(Q) || 'So the plan says what to expect') : '');
   };
   ACT.you = () => ({ primary: ['obNext', 'See my plan', 'sparkle'] });
   // The three cards cover the five answers: the two below a year count as new.
@@ -1328,7 +1339,8 @@
   VIEW.about = () => lead(`For your protein goal, weight trend${workoutsOn() ? ' and a plan that suits your age' : ''}. It stays on this phone.`)
     + group('Units', unitsSeg())
     + `<div class="ob-fields">${ageField()}${sizeFields()}</div>`
-    + sexGroup();
+    + sexGroup()
+    + (workoutsOn() && eatsOn() ? eatsGroups() : '');
   // Switching units converts what's been entered: weight, height, dumbbells, the ball, the gym rack.
   // Switching straight back (nothing changed meanwhile) restores what was there, rather than
   // rounding it twice (10, 15 and 20 lb would come back as 12 and 20).

@@ -571,7 +571,9 @@ section('Caches');
   // brought a height in planned every week again, a moment after launch. Body weight doesn't (a gym
   // move's first load reads it).
   const w4 = O.weekPlan(S, D0);
-  Object.assign(S.profile, { heightCm: 181, name: 'Sam', sex: 'female', weightGoal: 'lose', sleepTypical: '7-8', sleepIrregular: true });
+  // (1.15: not sex any more. A weight is judged light or heavy by it too, brain.js weightFit, so a
+  // new answer plans the weeks again.)
+  Object.assign(S.profile, { heightCm: 181, name: 'Sam', weightGoal: 'lose', sleepTypical: '7-8', sleepIrregular: true });
   S.profile.protein = Object.assign({}, S.profile.protein, { quickG: 30 });
   S.profile.food = Object.assign({}, S.profile.food || {}, { mode: 'full', pace: 0.25 });
   check('a height, a name, food and protein settings or the sleep answers keep the week\'s plan', O.weekPlan(S, D0) === w4 && B.calendar(S, D0) === c3);
