@@ -567,15 +567,16 @@
     // what builds the habit (2 of 3 done still counts as a kept week; next week's target comes from
     // what you did, Adams et al. 2017). One day fewer, dropping the day missed most; at two days a
     // week, shorter sessions instead. Offered, never applied by itself.
-    if (p.workouts !== false && !out.some((x) => x.action && x.action.kind === 'weekday')) {
+    if (p.workouts !== false) {
       const two = [ws - 14, ws - 7].map((w) => cal.weeks[w]).filter((w) => w && !(w.phase && w.phase.deload));
-      const count = (w) => { const live = w.sessions.filter((x) => !x.dropped); return [live.length, live.filter((x) => x.done).length]; };
+      // (A missed session is dropped from its week once the week is over: planned counts them all.)
+      const count = (w) => [w.sessions.length, w.sessions.filter((x) => x.done).length];
       const tally = two.map(count);
       const planned = tally.reduce((a, t) => a + t[0], 0), did = tally.reduce((a, t) => a + t[1], 0);
       if (two.length === 2 && tally.every((t) => t[0] >= 2 && t[1] < t[0]) && planned - did >= 3) {
         const said = `You did ${did} of ${planned} planned workouts in the last two weeks.`;
         if (p.days > 2) {
-          const n = Math.max(2, Math.min(p.days - 1, Math.round(did / 2) || 2));
+          const n = p.days - 1;
           const worst = Object.entries(misses).sort((a, x) => x[1] - a[1] || Number(x[0]) - Number(a[0]))[0];
           out.push({ id: `days-${n}`, icon: 'calendar', title: `Plan ${n} workouts a week?`, body: `${said} A week you can finish is easier to keep going, and a day can come back any time.`, action: { kind: 'days', value: n, drop: worst ? Number(worst[0]) : null, label: `Plan ${n} days` } });
         } else if (p.minutes > 10) {
