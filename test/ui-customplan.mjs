@@ -866,11 +866,28 @@ await until(() => !!document.querySelector('dialog[open] .cp-import'));
 await settle(600);
 check('and opens the plan it holds (here, one they have already)', (await page.locator('dialog[open] .rf-sheet-title').innerText()) === 'A 2-day plan' && /Already in your plans/.test(await page.locator('dialog[open] .cp-import').innerText()));
 await closeSheets();
+// The other way in: the scanner (no camera here), whose own field takes a code as well as a link.
+await page.evaluate(() => window.GH.ui.act.cpScan());
+await settle(900);
+await page.click('dialog[open] [data-act="cpScanQr"]');
+await until(() => !!document.querySelector('dialog.sc-sheet[open] .sc-wrap'));
+await settle(900);
+await S(() => { const d = document.querySelector('dialog.sc-sheet[open]'); if (d.querySelector('.sc-type').hidden) d.querySelector('[data-act="scanType"]').click(); });
+await settle(300);
+const scanner = await S(() => { const d = document.querySelector('dialog.sc-sheet[open]'); return { title: d.querySelector('.rf-sheet-title').textContent, label: d.querySelector('.sc-type label').textContent, sheets: document.querySelectorAll('dialog.gh-sheet[open]').length }; });
+await page.fill('dialog.sc-sheet[open] #scCode', friendCode.toLowerCase().replace(/-/g, ' '));
+await page.press('dialog.sc-sheet[open] #scCode', 'Enter');
+await until(() => !!document.querySelector('dialog[open] .cp-import'));
+await settle(600);
+check('Scan a QR code opens the scanner in the sheet\'s place, and its own field takes a code too', scanner.title === 'Scan a plan code' && scanner.label === 'Plan link or code' && scanner.sheets === 1 && (await page.locator('dialog[open] .rf-sheet-title').innerText()) === 'A 2-day plan', scanner);
+await closeSheets();
 }
 
 /* ------------------------------------------------------------------ the share page */
 section('The share page (a link opened in a browser)');
 const pageUrl = `${server.url.replace('/gradient-health.html', '')}/p/index.html#${link.split('#')[1]}`;
+// The code the app writes for the plan in that link: the page writes its own, and it has to match.
+const linkCode = await S(async (l) => { const C = window.GH.customPlan; return C.toCode((await C.decode(l)).plan); }, link);
 for (const [who, ua] of [['Android', 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36'], ['desktop', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36']]) {
   const c2 = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 2, colorScheme: dark ? 'dark' : 'light', userAgent: ua });
   const p2 = await c2.newPage();
@@ -881,8 +898,10 @@ for (const [who, ua] of [['Android', 'Mozilla/5.0 (Linux; Android 15; Pixel 9) A
   p2.on('request', (r) => { if (!r.url().startsWith(server.url.replace('/gradient-health.html', ''))) outside.push(r.url()); });
   await p2.goto(pageUrl);
   await p2.waitForSelector('#plan:not([hidden])', { timeout: 5000 }).catch(() => {});
-  const info = await p2.evaluate(() => ({ name: document.getElementById('name').textContent, meta: document.getElementById('meta').textContent, days: [...document.querySelectorAll('.day h2')].map((h) => h.textContent), ex: [...document.querySelectorAll('.day .ex')].map((e) => e.firstChild.textContent), open: document.getElementById('open').hidden ? null : document.getElementById('open').getAttribute('href'), qr: !!document.querySelector('#scan:not([hidden]) svg path') }));
+  await p2.waitForSelector('#code:not([hidden])', { timeout: 5000 }).catch(() => {});
+  const info = await p2.evaluate(() => ({ name: document.getElementById('name').textContent, meta: document.getElementById('meta').textContent, days: [...document.querySelectorAll('.day h2')].map((h) => h.textContent), ex: [...document.querySelectorAll('.day .ex')].map((e) => e.firstChild.textContent), open: document.getElementById('open').hidden ? null : document.getElementById('open').getAttribute('href'), qr: !!document.querySelector('#scan:not([hidden]) svg path'), code: [...document.querySelectorAll('#code:not([hidden]) #codeText span')].map((g) => g.textContent).join('-'), how: (document.querySelector('#code:not([hidden]) p:last-child') || {}).textContent, wide: document.documentElement.scrollWidth > innerWidth }));
   check(`${who}: the page shows the plan from the link`, info.name === 'Morning strength' && /2 days a week · 5 exercises/.test(info.meta) && info.days.length === 2 && /Arms/.test(info.days[1]) && info.ex.includes('Push-up'), info);
+  check(`${who}: and its plan code to type into the app, the same one the app writes`, info.code === linkCode && /^GH1/.test(info.code) && /Or type this code into the app: open Your plans, then Add a shared plan\./.test(info.how) && !info.wide, { code: info.code, linkCode, how: info.how });
   if (who === 'Android') check('Android: Open in Gradient Health goes to the app', !!info.open && info.open.startsWith(`intent://plan?d=${link.split('#')[1]}#Intent;scheme=gradienthealth;package=com.shadowsdistant.gradienthealth;`) && info.open.endsWith(';end'), info.open);
   else check('elsewhere: a code to scan with the app instead', info.qr && info.open === null);
   check(`${who}: no other requests, no errors (its policy allows only its own script)`, outside.length === 0 && errs.length === 0, { outside, errs });

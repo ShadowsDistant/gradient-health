@@ -7,7 +7,8 @@
  * the number instead.
  * GH.scanner.scan() → Promise of the digits, or null if you closed it.
  * GH.scanner.scan({ qr: true, accept(text) }) reads QR codes instead (a shared plan): the first read
- * that accept() takes counts (QR codes carry their own error correction), and a link can be pasted.
+ * that accept() takes counts (QR codes carry their own error correction), and a link or a plan code
+ * can be pasted (its field is plain text: a url field wouldn't let a code through).
  * GH.scanner.stats() → the last scan's numbers (which engine read it, frames, zoom, focus, hints).
  */
 (function (G) {
@@ -64,8 +65,8 @@
         <button type="button" class="rf-btn" data-variant="gray" data-act="scanType">${U().icon(qr ? 'link' : 'keyboard')}${qr ? 'Paste a link instead' : 'Type the number'}</button>
       </div>
       <form class="sc-type" hidden>${qr
-    ? `<div class="rf-field"><label class="rf-field-label" for="scCode">Plan link</label>
-        <div class="rf-field-control"><input class="rf-input" id="scCode" type="url" inputmode="url" maxlength="4000" autocomplete="off" placeholder="https://…"></div></div>
+    ? `<div class="rf-field"><label class="rf-field-label" for="scCode">Plan link or code</label>
+        <div class="rf-field-control"><input class="rf-input" id="scCode" type="text" inputmode="url" maxlength="4000" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://…"></div></div>
         <button type="submit" class="rf-btn rf-glass" data-variant="tinted">Open the plan</button>`
     : `<div class="rf-field"><label class="rf-field-label" for="scCode">Barcode number</label>
         <div class="rf-field-control"><input class="rf-input" id="scCode" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="14" autocomplete="off"></div></div>

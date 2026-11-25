@@ -1260,7 +1260,9 @@ state (`test/customplan.mjs`); `src/ui/customplan.js` is the screens (`test/ui-c
   move names inlined, so it makes no requests (its CSP allows only its own script, by hash). It reads the
   plan from the part after `#`, which browsers never send, and shows it. On Android it offers "Open in
   Gradient Health" (an `intent://plan?d=…` link with the releases page as the fallback); elsewhere it
-  shows the code to scan. **GitHub Pages must be on** for links to open in a browser (the repository's
+  shows the code to scan. Either way it shows the plan's code to type into the app: the page has a
+  small writer of format 1 of its own (`planCode`, between the `CODE` marks, with each move's number
+  from the build), which `test/customplan.mjs` runs against the app's for a few hundred plans. **GitHub Pages must be on** for links to open in a browser (the repository's
   Settings, Pages, Deploy from a branch, `main`, `/docs`). QR codes, and links opened straight in the
   app, work without it.
 - **The builder** (`src/ui/planbuilder.js`, its logic in `src/customplan.js`). The picker is a windowed

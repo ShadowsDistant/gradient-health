@@ -1255,8 +1255,8 @@
     }
     const others = swaps.length - forKit;
     const several = kit.length > 1 || !/^an? /.test(kit[0] || '');
-    // Their plans with room for another day, for a single workout.
-    const hosts = plan.days.length === 1 ? C().list(S).filter((p) => p.days.length < C().LIMITS.days && C().fingerprint(p) !== fp) : [];
+    // Their plans with room for another day, for a single workout (the ones changed last first).
+    const hosts = plan.days.length === 1 ? C().list(S).filter((p) => p.days.length < C().LIMITS.days && C().fingerprint(p) !== fp).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)) : [];
     const dayRows = plan.days.map((d, di) => {
       const offs = C().offsetsFor(plan.days.length, plan.weekdays);
       return `<div class="cp-imp-day"><p class="cp-day-eyebrow"><b>Day ${di + 1}</b><span>${U.esc(WD[offs[di]])}</span><span class="cp-imp-title">${U.esc(C().titleOf(plan, di))}</span></p>

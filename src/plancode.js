@@ -52,7 +52,7 @@
   const AMOUNTS = [5, 6, 8, 10, 12, 15, 20, 30];
   const SETS = [3, 2, 4], SETS_MORE = [1, 5, 6, 7, 8, 9, 10];
   const RESTS = [0, 15, 30, 45, 60, 75, 90, 120, 150, 180, 240, 300, 10, 20, 40];
-  const MARKS = '0123456789\'-,.&+/()!?:#%"@*=;_’–';
+  const MARKS = '0123456789\'-,.&+/()!?:#%"@*=;_\u2019\u2013';
   const POLY = 0x80069;
 
   const VALUE = Object.create(null);
@@ -61,7 +61,7 @@
   // What may sit between a code's symbols: white space, and hyphens and dashes of every kind
   // (keyboards turn one into another), with the characters that can't be seen.
   const WHITE = /\s/;
-  const JOINS = /[-_­‐-―−​-‍⁠]/;
+  const JOINS = /[-_\u00ad\u2010-\u2015\u2212\u200b-\u200d\u2060]/;
   const WORD = /[0-9A-Za-z]/;
   const broken = () => C().codeError('broken');
 

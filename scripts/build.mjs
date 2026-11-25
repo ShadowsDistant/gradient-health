@@ -449,12 +449,15 @@ export async function figureId(src = read) {
 
 // The page a shared plan's link opens in a browser (docs/p/index.html, served by GitHub Pages from
 // /docs): the plan from the link's #fragment, the move names and the QR encoder inline, and a
-// content security policy that allows exactly its one script. No other requests, no trackers.
+// content security policy that allows exactly its one script. No other requests, no trackers. Each
+// move also carries its plan code number (src/data/plancode-moves.js), for the page's own writer of
+// the plan's code.
 export function sharePage() {
   globalThis.GH = globalThis.GH || {};
-  for (const p of APP_SCRIPTS.filter((x) => /^src\/data\/moves/.test(x))) new Function(read(p))();
+  for (const p of APP_SCRIPTS.filter((x) => /^src\/data\/moves/.test(x)).concat('src/data/plancode-moves.js')) new Function(read(p))();
+  const numbers = globalThis.GH.PLAN_CODE_MOVES;
   const moves = {};
-  for (const [id, m] of Object.entries(globalThis.GH.moves.MOVES)) if (m && m.name) moves[id] = [m.name, m.group || '', m.timed ? 1 : 0];
+  for (const [id, m] of Object.entries(globalThis.GH.moves.MOVES)) if (m && m.name) moves[id] = [m.name, m.group || '', m.timed ? 1 : 0, numbers.indexOf(id)];
   let html = read('src/share-page.html')
     .replace('/*@QR*/', () => safeJs(read('src/qr.js')))
     .replace('/*@MOVES*/{}', () => safeJs(JSON.stringify(moves)));

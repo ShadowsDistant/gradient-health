@@ -164,6 +164,32 @@ const caught = (text) => { try { C.fromCode(text); return null; } catch (e) { re
 const SHAPE = /^GH[0-9A-HJKMNP-TV-Z]{2}(-[0-9A-HJKMNP-TV-Z]{4})+$/;
 // The same few hundred plans every run.
 const seeded = (seed) => () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+// n made-up plans, the same every run, the limits among them: 6 days, 12 exercises, 10 sets, 100
+// reps, 600 s, rests, set days, long names, and names in other alphabets.
+function madeUp(n, seed) {
+  const MOVES = GH.moves.MOVES, ids = Object.keys(MOVES);
+  const rnd = seeded(seed);
+  const int = (lo, hi) => lo + Math.floor(rnd() * (hi - lo + 1));
+  const pick = (a) => a[Math.floor(rnd() * a.length)];
+  const WORDS = ['Push', 'pull', 'Legs', 'day', 'A', '2', 'upper', 'Body', '&', 'arms', '(heavy)', 'Über', 'ноги', '背中', '💪', 'no. 3', 'core'];
+  const text = (max) => { let s = ''; for (let k = int(1, 6); k > 0; k--) { const w = pick(WORDS); if ((s ? s.length + 1 : 0) + w.length <= max) s = s ? `${s} ${w}` : w; } return s; };
+  return Array.from({ length: n }, (_, k) => {
+    const nd = k % 7 === 0 ? 6 : int(1, 6);
+    const days = Array.from({ length: nd }, () => ({
+      title: rnd() < 0.5 ? '' : text(30),
+      items: Array.from({ length: k % 5 === 0 ? 12 : int(1, 12) }, () => {
+        const id = pick(ids), m = MOVES[id];
+        const it = { move: id, sets: pick([1, 2, 3, 3, 3, 4, 4, 5, 6, 8, 10]) };
+        if (m.timed) it.secs = pick([5, 10, 20, 30, 30, 45, 60, 90, 160, 165, 600, int(5, 600)]);
+        else it.reps = pick([1, 5, 6, 8, 10, 12, 15, 20, 32, 33, 100, int(1, 100)]);
+        if (rnd() < 0.3) it.rest = pick([0, 15, 20, 45, 60, 90, 300, int(0, 300)]);
+        return it;
+      }),
+    }));
+    const weekdays = rnd() < 0.4 ? [0, 1, 2, 3, 4, 5, 6].sort(() => rnd() - 0.5).slice(0, nd) : null;
+    return { name: k % 9 === 0 ? 'N'.repeat(40) : rnd() < 0.25 ? '' : text(40), days, weekdays };
+  });
+}
 // A plan whose text was written down when format 1 shipped: if either stops matching, codes people
 // already have would read differently.
 const PINNED = {
@@ -256,29 +282,10 @@ section('The plan code: round trips');
   check('an ordinary name takes about a symbol a letter, another script about three bytes a letter', len('Morning strength') - len('My plan') <= 20 && len('Тренировка') - len('My plan') <= 36, [len('My plan'), len('Morning strength'), len('Тренировка')]);
 
   // A few hundred plans, the limits among them.
-  const rnd = seeded(20261125);
-  const int = (lo, hi) => lo + Math.floor(rnd() * (hi - lo + 1));
-  const pick = (a) => a[Math.floor(rnd() * a.length)];
-  const WORDS = ['Push', 'pull', 'Legs', 'day', 'A', '2', 'upper', 'Body', '&', 'arms', '(heavy)', 'Über', 'ноги', '背中', '💪', 'no. 3', 'core'];
-  const text = (max) => { let s = ''; for (let k = int(1, 6); k > 0; k--) { const w = pick(WORDS); if ((s ? s.length + 1 : 0) + w.length <= max) s = s ? `${s} ${w}` : w; } return s; };
   const seen = { days6: 0, items12: 0, sets10: 0, reps100: 0, secs600: 0, rest300: 0, rest0: 0, restOdd: 0, weekdays: 0, utf8: 0, name40: 0, one: 0 };
   const wrong = [];
-  for (let n = 0; n < 400; n++) {
-    const nd = n % 7 === 0 ? 6 : int(1, 6);
-    const days = Array.from({ length: nd }, () => ({
-      title: rnd() < 0.5 ? '' : text(30),
-      items: Array.from({ length: n % 5 === 0 ? 12 : int(1, 12) }, () => {
-        const id = pick(ids), m = MOVES[id];
-        const it = { move: id, sets: pick([1, 2, 3, 3, 3, 4, 4, 5, 6, 8, 10]) };
-        if (m.timed) it.secs = pick([5, 10, 20, 30, 30, 45, 60, 90, 160, 165, 600, int(5, 600)]);
-        else it.reps = pick([1, 5, 6, 8, 10, 12, 15, 20, 32, 33, 100, int(1, 100)]);
-        if (rnd() < 0.3) it.rest = pick([0, 15, 20, 45, 60, 90, 300, int(0, 300)]);
-        return it;
-      }),
-    }));
-    const wd = rnd() < 0.4 ? [0, 1, 2, 3, 4, 5, 6].sort(() => rnd() - 0.5).slice(0, nd) : null;
-    const name = n % 9 === 0 ? 'N'.repeat(40) : rnd() < 0.25 ? '' : text(40);
-    const p = C.normalize({ name, days, weekdays: wd }).plan;
+  for (const [n, raw] of madeUp(400, 20261125).entries()) {
+    const p = C.normalize(raw).plan;
     const code = C.toCode(p);
     const back = C.fromCode(code);
     if (held(back.plan) !== held(p) || !SHAPE.test(code) || symbols(code).length % 4 || back.report.unknown.length || C.toCode(back.plan) !== code) wrong.push(n);
@@ -391,6 +398,30 @@ section('A code or a link, through the same door');
   check('a link\'s bare data with GH somewhere in it is still read as that', junk === 'broken');
   const wordy = await C.decode('MYP1-AN1S-1NTH-E0TH-ERR0-0M').catch((e) => e.message);
   check('and letters that are neither say they aren\'t a plan code', wordy === 'That isn\'t a plan code. A code starts with GH.', wordy);
+}
+
+section('The share page writes the same code');
+{
+  // The page's own writer (src/share-page.html, between its CODE marks) run here, on plans packed as
+  // a link packs them, with the moves as the build hands them to the page.
+  const html = readFileSync(join(root, 'src/share-page.html'), 'utf8');
+  const pageCode = new Function(`${html.slice(html.indexOf('/*@CODE*/'), html.indexOf('/*@/CODE*/'))}\nreturn planCode;`)();
+  const T = GH.PLAN_CODE_MOVES, moves = {};
+  for (const [id, m] of Object.entries(GH.moves.MOVES)) if (m && m.name) moves[id] = [m.name, m.group || '', m.timed ? 1 : 0, T.indexOf(id)];
+  const packed = (p) => [p.name, p.note || '', 'Jo', p.weekdays || 0, p.days.map((d) => [d.title || ''].concat(d.items.map((it) => [it.move, it.sets, it.secs != null ? it.secs : it.reps].concat(it.rest != null ? [it.rest] : []))))];
+  const differs = (raw) => { const p = C.normalize(raw).plan; return pageCode(packed(p), moves) !== symbols(C.toCode(p)); };
+  const ids = Object.keys(GH.moves.MOVES);
+  const every = { name: 'Every group', days: [{ title: '', items: ['curl_std', 'tri_oh', 'push_std', 'sq_bw', 'row_db', 'raise', 'ab_deadbug', 'fin_jacks', 'mob_catcow', 'imp_heel', 'bal_one'].map((id) => ({ move: id, sets: 2, [GH.moves.MOVES[id].timed ? 'secs' : 'reps']: 10 })) }, { title: 'Chest and arms', items: [{ move: 'push_std', sets: 3, reps: 10 }, { move: 'curl_std', sets: 3, reps: 10 }] }] };
+  const fixed = [typical, PPL, PINNED, every, { days: [typical.days[0]] }, { name: 'My plan', days: [PPL.days[1]] }, C.dayPlan(typical, 2), { name: 'Тренировка 💪', days: PPL.days }];
+  check('the fixtures: a plan with every muscle group, names the app would give anyway, one workout, another alphabet', fixed.filter(differs).length === 0 && new Set(every.days[0].items.map((it) => GH.moves.MOVES[it.move].group)).size === new Set(ids.map((id) => GH.moves.MOVES[id].group)).size, fixed.filter(differs).map((p) => p.name));
+  const off = madeUp(400, 4242).filter(differs);
+  check('and 400 made-up plans, character for character', off.length === 0, off.slice(0, 2).map((p) => JSON.stringify(p).slice(0, 300)));
+  // What a link could hold that the app would have to guess at: no code is shown, and nothing breaks.
+  const odd = [null, 'x', [], ['A', '', '', 0, 'days'], ['A', '', '', 0, [['T', ['push_std', 3]]]], ['A', '', '', 0, [['T', ['push_std', 3, 'ten']]]], ['A', '', '', 0, [['T', ['no_such_move', 3, 10]]]], ['A', '', '', 0, [null, 7, ['T']]], [{}, {}, {}, {}, [[{}, [{}, {}, {}]]]]];
+  check('a link with something missing in it gets no code, quietly', odd.every((a) => { try { return pageCode(a, moves) === ''; } catch (e) { return false; } }));
+  const loose = pageCode(['  Leg‮day ', '', '', [4, 0], [['A', ['push_std', '99', 0, '', 'x'], ['no_such_move', 3, 10]], ['B', ['side_plank', null, 3, 999]]]], moves);
+  const strict = C.normalize({ name: '  Leg‮day ', weekdays: [4, 0], days: [{ title: 'A', items: [{ move: 'push_std', sets: '99', reps: 0, rest: '' }, { move: 'no_such_move', sets: 3, reps: 10 }] }, { title: 'B', items: [{ move: 'side_plank', sets: null, reps: 3, rest: 999 }] }] }).plan;
+  check('numbers out of range and a move it doesn\'t know come out as the app would keep them', loose === symbols(C.toCode(strict)) && strict.name === 'Leg day' && strict.days[0].items[0].sets === 10, `${loose} ${C.toCode(strict)}`);
 }
 
 section('scripts/plan-code.mjs');
