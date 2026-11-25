@@ -1194,7 +1194,7 @@ section('Moments: lists that filter and shrink');
   check('an insight hidden: it fades where it was, and the next one glides up from where it was (no jump)', ins && ins.flip && ins.leaving && ins.glides === 1 && Math.abs(ins.at0.top - ins.before.top) <= 1 && ins.after.top < ins.before.top - 20 && ins.gone, ins);
 
   // A filter picked: the list changes too much to glide, so what's in sight of the new one settles in,
-  // starting in the frame that first shows it (the badges' filter waits for its bead to land first).
+  // starting in the frame that first shows it. Not the badges' filter, whose tiles just change.
   // In the page: pick it, then at each frame until it changes, whether what's in sight is moving.
   const refill = (root, sel, pick) => page.evaluate(async ([root, sel, pick]) => {
     const m = window.__m, U = window.GH.ui;
@@ -1215,7 +1215,7 @@ section('Moments: lists that filter and shrink');
   await page.evaluate(async () => { const U = window.GH.ui; U.go('you'); await U.motion.settled(); U.open('badges'); await U.motion.settled(); });
   await wait(600);
   const bf = await refill('#screen', '.bdg-tile, .bdg-next', 'document.querySelector(\'#screen input[value="earned"]\').click()');
-  check('the badges\' filter: what\'s in sight of the new list settles in as it first shows, by transform and opacity, within 250 ms, and lands in place', bf.changed && bf.now < bf.was && bf.sight > 2 && bf.moving === bf.sight && bf.props === 'opacity,transform' && bf.ends <= 250 && bf.after && Object.values(bf.left).every((x) => x === 0), bf);
+  check('the badges\' filter: its tiles just change (settling them in, each with its medal a layer of its own, cost 200 to 600 ms of long tasks at 4x CPU)', bf.changed && bf.now < bf.was && bf.moving === 0 && Object.values(bf.left).every((x) => x === 0), bf);
   await page.evaluate(async () => { document.querySelector('#screen input[value="all"]').click(); await new Promise((res) => setTimeout(res, 1200)); await window.GH.ui.motion.settled(); window.GH.ui.back(); await window.GH.ui.motion.settled(); });
   // The plan builder's picker: a muscle group's chip refills it the same way; a letter typed doesn't.
   await page.evaluate(async () => {

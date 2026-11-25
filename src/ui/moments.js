@@ -26,7 +26,7 @@
  * U.motion.beat(el, big)  A beat on a number (the 3-2-1) or, big, on the ring as a rest ends.
  * U.motion.land(list, o)  Parts land one after another: each rises (or, o.pop, pops) into place.
  * U.motion.refill(root, sel)  A filter was just picked: once root's sel items change, those in sight
- *   settle in (the badges gallery's filter, the plan builder's picker).
+ *   settle in (the plan builder's picker).
  *
  * A sheet that opens from a row with a move's picture carries that picture into its figure's box
  * (Plan's rows, the plan builder's, the player's figure and Up next), one opened from a health

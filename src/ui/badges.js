@@ -483,8 +483,7 @@
       if (changed) U.save();
     },
   };
-  // (What it shows then settles in, rather than just being there: src/ui/moments.js.)
-  U.on.badgeFilter = (el, ev, v) => { filter = ['all', 'earned', 'next'].includes(v) ? v : 'all'; if (U.motion.refill) U.motion.refill(document.getElementById('screen'), '.bdg-tile, .bdg-next'); U.render(); };
+  U.on.badgeFilter = (el, ev, v) => { filter = ['all', 'earned', 'next'].includes(v) ? v : 'all'; U.render(); };
 
   /* ---------------------------------------------------------------- the detail sheet */
   function detailBody(x, day, total, items) {

@@ -239,11 +239,13 @@ left alone. A few conventions:
   letter (patched with motion, a letter took 13 to 22 ms at 4x CPU where drawing again takes 4 to 5),
   and only fades as the first results take the parts' place; Food's search patches as before and
   glides only when what's found online arrives. A filter picked changes more of a list than FLIP
-  glides (eight changes in one container), so the new list would just be there: the badges' filter
-  and the plan builder's picker (a muscle group, a kit, Only what I can do; not a letter typed) ask
+  glides (eight changes in one container), so the new list would just be there: the plan builder's
+  picker (a muscle group, a kit, Only what I can do; not a letter typed) asks
   `U.motion.refill(root, sel)` as it's picked, which waits for the list to change (a
   MutationObserver: it hears the change before the frame that shows it, however late a segment's
-  re-render comes) and has the ten in sight settle in, nearly together, in by 250 ms.
+  re-render comes) and has the ten in sight settle in, nearly together, in by 250 ms. The badges'
+  filter doesn't: each tile settling in is a layer of its own, its medal drawn again as it comes and
+  as it lands, 200 to 600 ms of long tasks at 4x CPU in half the taps, so its tiles just change.
 - Every tappable part answers a press at once: Refract's buttons, rows and chips have theirs, the
   app's cards, rows and text buttons theirs in their own style sheets, and `motion.css` has the
   rest (the body map's muscles, a dropdown's summary). `ui-motion` forces `:active` on each tappable
