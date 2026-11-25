@@ -4,7 +4,9 @@
  *
  * A plan: { v, id, name, note, days: [{ title, items: [{ move, sets, reps | secs, rest? }] }],
  * weekdays: [0-6, one per day] | null (spread like the coach's plan), source: 'you' | 'coach' |
- * 'shared', from?, createdAt, updatedAt }. They live in S.customPlans; S.activePlan is the one in use
+ * 'shared', from?, createdAt, updatedAt }. One the coach built also says why it's this person's
+ * (src/planbuild.js): why, up to three lines, and a line on each day (day.why); they go when its
+ * exercises are changed. They live in S.customPlans; S.activePlan is the one in use
  * (null: the coach's plan). Switching is an event, { type: 'plan', day, id, n, wd }, so the calendar
  * replays each week with the plan that was in force: past days keep their meaning and a switch never
  * turns an earlier day into a missed one. Progress on a plan's exercises is kept per plan in
@@ -23,7 +25,7 @@
   const M = () => GH.moves;
 
   const VERSION = 1;
-  const LIMITS = { days: 6, items: 12, sets: [1, 10], reps: [1, 100], secs: [5, 600], rest: [0, 300], name: 40, note: 200, title: 30, from: 24 };
+  const LIMITS = { days: 6, items: 12, sets: [1, 10], reps: [1, 100], secs: [5, 600], rest: [0, 300], name: 40, note: 200, title: 30, from: 24, whys: 3, why: 160, dayWhy: 100 };
   const SHARE_URL = 'https://shadowsdistant.github.io/gradient-health/p/';
   const PATTERNS = { 1: [0], 2: [0, 3], 3: [0, 2, 4], 4: [0, 1, 3, 4], 5: [0, 1, 2, 4, 5], 6: [0, 1, 2, 3, 4, 5] };
   const GROUP_ORDER = ['chest', 'back', 'shoulders', 'legs', 'biceps', 'triceps', 'abs', 'conditioning', 'mobility'];
@@ -68,7 +70,8 @@
     let days = (Array.isArray(r.days) ? r.days : []).map((d) => {
       const dd = d && typeof d === 'object' ? d : {};
       const items = (Array.isArray(dd.items) ? dd.items : []).map((x) => normItem(x, report)).filter(Boolean).slice(0, LIMITS.items);
-      return { title: clean(dd.title, LIMITS.title), items };
+      const why = clean(dd.why, LIMITS.dayWhy);
+      return Object.assign({ title: clean(dd.title, LIMITS.title), items }, why ? { why } : {});
     });
     if (!o.draft) { const n = days.length; days = days.filter((d) => d.items.length); report.droppedDays = n - days.length; }
     days = days.slice(0, LIMITS.days);
@@ -89,6 +92,8 @@
     };
     const from = clean(r.from, LIMITS.from);
     if (from) plan.from = from;
+    const why = (Array.isArray(r.why) ? r.why : []).map((x) => clean(x, LIMITS.why)).filter(Boolean).slice(0, LIMITS.whys);
+    if (why.length) plan.why = why;
     if (r.deleted) plan.deleted = true;
     return { plan, report };
   }
@@ -176,6 +181,10 @@
     if (!plan) return null;
     const draft = copy(plan);
     if (fn) fn(draft);
+    // A built plan's reasons are about its exercises: once those change they go, unless the change
+    // brought reasons of its own (Improve). Moving a day keeps them.
+    const key = (p) => JSON.stringify(p.days.map((d) => JSON.stringify(d.items)).sort());
+    if (JSON.stringify(draft.why || null) === JSON.stringify(plan.why || null) && key(draft) !== key(plan)) { delete draft.why; for (const d of draft.days) delete d.why; }
     const { plan: next } = normalize(Object.assign(draft, { id: plan.id, createdAt: plan.createdAt, updatedAt: Date.now() }), { draft: true });
     Object.keys(plan).forEach((k) => { delete plan[k]; });
     Object.assign(plan, next);

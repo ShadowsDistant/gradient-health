@@ -14,7 +14,6 @@
   const GROUP_GOAL = { legs: 'legs', chest: 'chest', back: 'back', shoulders: 'shoulders', biceps: 'arms', triceps: 'arms', abs: 'abs' };
   const GOAL_GROUPS_OF = { legs: ['legs'], chest: ['chest'], back: ['back'], shoulders: ['shoulders'], arms: ['biceps', 'triceps'], abs: ['abs'] };
   const JOINT_NAME = { knee: 'knees', shoulder: 'shoulders', back: 'back', wrist: 'wrists', elbow: 'elbows', hip: 'hips', ankle: 'ankles', neck: 'neck' };
-  const EQ_NAME = { band: 'a band', bar: 'a pull-up bar', ball: 'a ball', table: 'a sturdy table' };
   const clampInt = (x, lo, hi, def) => { const n = Math.round(Number(x)); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : def; };
   const clean = (s, max) => String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
   const uniq = (a) => a.filter((x, i) => x != null && a.indexOf(x) === i);
@@ -22,13 +21,38 @@
 
   /* ================================================================== ask the coach */
   const WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6 };
+  // The quick choices above the request's field (the things research finds matter most and the app
+  // can't know for sure: research_notes ai_made_plans 2 and 5, adherence 4): what they want most
+  // from this plan, how it should feel, and anything to leave out. One tap each at most, each
+  // already set from what the app knows. { most, feel, skip }, each { options: [[id, label]], value }
+  // (skip's value is a list).
+  const MOST = { arms: 'Bigger arms', abs: 'Abs', chest: 'Chest', legs: 'Legs', back: 'Back', shoulders: 'Shoulders', strength: 'Strength', all: 'A bit of everything' };
+  const FEEL = { easy: 'Easy to keep up', steady: 'Steady', hard: 'Push me' };
+  const SKIP = { jumping: 'Jumping', floor: 'Floor work', knee: 'Knees', shoulder: 'Shoulders', back: 'Back', wrist: 'Wrists' };
+  function choices(S, day) {
+    const p = S.profile;
+    const mine = uniq((p.goals || []).filter((g) => MOST[g])).slice(0, 3);
+    const most = (mine.length ? mine : ['arms', 'abs', 'legs']).concat('all');
+    // Easy for someone new, someone on a gentle plan, or someone missing a workout a week or more.
+    const L = GH.person && p.workouts !== false ? GH.person.lately(S, day) : null;
+    const fresh = (p.experience === 'never' || p.experience === 'onoff') && day - (p.startDay || day) < 28;
+    const easy = !!p.gentle || fresh || !!(L && L.perWeek != null && L.planned >= 4 && L.perWeek <= p.days - 1);
+    const skip = [p.impactOk === false ? 'jumping' : '', p.floorOk === false ? 'floor' : ''].concat(p.careful || []).filter((k) => SKIP[k]);
+    const opts = (map, ids) => ids.map((id) => [id, map[id]]);
+    return {
+      most: { options: opts(MOST, most), value: mine.length ? mine[0] : 'all' },
+      feel: { options: opts(FEEL, Object.keys(FEEL)), value: easy ? 'easy' : 'steady' },
+      skip: { options: opts(SKIP, Object.keys(SKIP)), value: skip },
+    };
+  }
   // What someone asked for, read with the same rules as Tailor my plan, plus the split, where and
-  // what with. form (optional) holds what they picked instead of typing: { days, minutes, focus }.
+  // what with. form (optional) holds what they picked instead of typing: { days, minutes, focus, and
+  // the quick choices: most, feel, skip }.
   function wishes(S, text, form) {
     const T = GH.tailor;
     const t = ` ${String(text || '').toLowerCase().replace(/[’']/g, '\'')} `;
     const r = T && T.parse ? T.parse(text) : {};
-    const w = { days: null, minutes: null, focus: [], goals: [], careful: [], noImpact: false, gentle: null, split: null, place: null, bodyweight: false, text: clean(text, 400) };
+    const w = { days: null, minutes: null, focus: [], goals: [], careful: [], noImpact: false, noFloor: false, gentle: null, split: null, place: null, bodyweight: false, most: null, feel: null, skip: [], text: clean(text, 400) };
     if (r.days) w.days = clampInt(r.days, 1, 6, null);
     else { const m = /\b(\d|one|two|three|four|five|six)[ -]?days?\b/.exec(t); if (m) w.days = clampInt(WORDS[m[1]] || Number(m[1]), 1, 6, null); }
     if (r.minutes) w.minutes = clampInt(r.minutes, 10, 90, null);
@@ -47,6 +71,16 @@
       if (form.days) w.days = clampInt(form.days, 1, 6, w.days);
       if (form.minutes) w.minutes = clampInt(form.minutes, 10, 90, w.minutes);
       if (Array.isArray(form.focus) && form.focus.length) w.focus = uniq(form.focus.concat(w.focus));
+      // What they want most goes first (after anything they typed); easy to keep up is a gentler
+      // start; what's left out is left out as Tailor would.
+      if (form.most && MOST[form.most]) {
+        w.most = form.most;
+        if (GOAL_GROUPS_OF[form.most]) w.focus = uniq(w.focus.concat(GOAL_GROUPS_OF[form.most]));
+        else if (form.most === 'strength' && !w.goals.includes('strength')) w.goals.push('strength');
+      }
+      if (form.feel && FEEL[form.feel]) { w.feel = form.feel; if (form.feel === 'easy' && w.gentle == null) w.gentle = true; }
+      w.skip = uniq(Array.isArray(form.skip) ? form.skip.filter((k) => SKIP[k]) : []);
+      for (const k of w.skip) { if (k === 'jumping') w.noImpact = true; else if (k === 'floor') w.noFloor = true; else if (!w.careful.includes(k)) w.careful.push(k); }
     }
     if (w.days === 1 && !w.split) w.split = 'full';
     return w;
@@ -68,6 +102,7 @@
     for (const g of w.goals) if (!(p.goals || []).includes(g)) p.goals = (p.goals || []).concat(g);
     p.careful = uniq((p.careful || []).concat(w.careful));
     if (w.noImpact) p.impactOk = false;
+    if (w.noFloor) p.floorOk = false;
     if (w.gentle != null) p.gentle = w.gentle;
     if (w.place && (w.place === 'home' || (S.profile.where || 'home') !== 'home')) p.where = w.place;
     if (w.bodyweight) p.equipment = Object.assign({}, p.equipment, { db: [], kb: [], ball: false, ballSlam: false, band: false, bar: false });
@@ -247,47 +282,201 @@
   }
   function noteFor(S, w, D, mins) {
     const bits = [`${D} ${D === 1 ? 'workout' : 'workouts'} a week, about ${mins} minutes each`];
-    if (w.focus.length) bits.push(`${uniq(w.focus.map((g) => (g === 'biceps' || g === 'triceps' ? 'arms' : g)))[0]} first`);
+    // (Abs come last in a day, so they aren't "first": they get the most.)
+    if (w.focus.length) { const f = uniq(w.focus.map((g) => (g === 'biceps' || g === 'triceps' ? 'arms' : g)))[0]; bits.push(f === 'abs' ? 'the most for your abs' : `${f} first`); }
     const joints = uniq((S.profile.careful || []).concat(w.careful));
     if (joints.length) bits.push(`easy on your ${joints.map((j) => JOINT_NAME[j] || j).join(' and ')}`);
     if (w.noImpact) bits.push('no jumping');
+    if (w.noFloor) bits.push('nothing on the floor');
     if (w.bodyweight) bits.push('no equipment');
     const s = bits.length > 1 ? `${bits.slice(0, -1).join(', ')} and ${bits[bits.length - 1]}` : bits[0];
     return `${s[0].toUpperCase()}${s.slice(1)}.`;
   }
-  // What the app already knows and uses, in plain words (shown before building, and given to a model).
-  function knows(S) {
-    const p = S.profile;
+  // What the coach uses, as the build sheet lists it: who this is, in the words a model gets
+  // (GH.person.shown, src/person.js), so the list and what's sent can't drift apart. o: { to:
+  // 'claude' | 'device' (who would read it), wide (Claude: with the newer OK) }. Each row is
+  // [label, value, 'device' when it stays on the phone].
+  function knows(S, day, o) {
+    const P = GH.person;
+    const d = day != null ? day : B().dayOf(Date.now(), (S.profile.prefs && S.profile.prefs.rollHour) || 4);
+    return P ? P.shown(S, d, Object.assign({ to: 'device' }, o)) : [];
+  }
+
+  /* ---------------------------------------------------------------- the rules for this person */
+  // What a built plan is held to, from the research the app follows, for this person and what they
+  // asked. The prompts state them and accept() checks them, so a model can't quietly return six
+  // sets of curls, a goal muscle once a week or nine exercises in twenty minutes.
+  //  - exercises a day: what the minutes hold (the app's own table: a set with its rest takes a
+  //    minute and a half to two, and few, simple sessions are the ones kept; research_notes:
+  //    adherence 1 and 2), or as many as the draft's day has once its doubles are folded together;
+  //  - sets: 1 to 4 of one exercise in a day (3 when they asked for easy to keep up); past that a
+  //    goal muscle gets a second exercise (sets in a session lose quality: individualized_dose 2);
+  //  - reps: each move's own range, as the engine progresses it (brain.rangeFor), up to 30 where
+  //    their weights are light for them: light loads grow muscle like heavy ones when sets end near
+  //    the last rep, to about 30 (light_loads_bodyweight 1 and 2);
+  //  - each goal muscle (their top goals): its weekly sets between the engine's floor and cap for
+  //    their level (brain.programFor; the cap is 12 when they eat little protein, since more sets
+  //    don't make up for food: low_protein_diet 3), on at least 2 days when the plan has 2
+  //    (abs_and_arms 2 and 4);
+  //  - order: goal muscles first, abs and core last (How it works: Your goals go first).
+  const SETS_MAX = 4, LIGHT_REPS = 30;
+  const perDayFor = (mins) => (mins <= 12 ? [2, 3] : mins <= 20 ? [3, 5] : mins <= 30 ? [4, 6] : mins <= 45 ? [5, 8] : [6, 9]);
+  function rules(S, day, w, draft) {
+    const b = B(), P = GH.person;
+    const S2 = sandbox(S, w), p = S2.profile, prog = b.programFor(p);
+    const D = draft ? draft.days.length : clampInt(w.days || p.days, 1, 6, 3);
+    const mins = clampInt(w.minutes || p.minutes, 10, 90, 30);
+    const lowEat = !!(P && P.eats(p).protein === 'low');
+    const light = (fam) => !!(P && (P.loadFeel(S2, fam) || {}).feel === 'light');
+    const reps = (id) => {
+      const m = M().MOVES[id];
+      const [lo, hi] = b.rangeFor(S2, m, m.family, day);
+      return m.timed || !/db|kb/.test(m.load || '') || !light(m.family) ? [lo, hi] : [lo, Math.max(hi, LIGHT_REPS)];
+    };
+    const goals = b.GROUPS.filter((g) => prog.tiers[g] === 1).map((g) => ({ group: g, floor: prog.floor[g], cap: lowEat ? Math.min(prog.cap[g], 12) : prog.cap[g], days: Math.min(2, D) }));
+    return { S2, D, mins, perDay: perDayFor(mins), sets: [1, w.feel === 'easy' ? SETS_MAX - 1 : SETS_MAX], reps, goals, lowEat, light, tier: (g) => (g === 'abs' ? 9 : prog.tiers[g] || (GROUP_GOAL[g] ? 3 : 10)) };
+  }
+  const groupWord = (g) => (g === 'abs' ? 'abs' : String((B().GROUP_NAME || {})[g] || g).toLowerCase());
+  const listWords = (a) => (a.length <= 1 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`);
+  // The rules in words, for a model. o: { to: 'claude' | 'device', wide } (what it may be told about
+  // the person, GH.person.advice).
+  function rulesLines(S, day, R, o) {
+    const P = GH.person;
+    const L = [
+      `Keep exactly ${R.D} ${R.D === 1 ? 'day' : 'days'}. ${R.perDay[0]} to ${R.perDay[1]} exercises a day: that's what ${R.mins} minutes holds.`,
+      `${R.sets[0]} to ${R.sets[1]} sets of an exercise, never more than ${R.sets[1]} in a day. When a muscle needs more, give it a second exercise.`,
+      'Reps (or seconds) inside each move\'s own range, given in MOVES.',
+    ];
+    if (R.goals.length) L.push(`Each week: ${R.goals.map((g) => `${groupWord(g.group)} ${g.floor} to ${g.cap} sets`).join(', ')}${R.D >= 2 ? ', each on at least 2 days' : ''}.`);
+    L.push('Order each day: the muscles they want most first, big moves before small ones, abs and core last.');
+    return L.concat(P ? P.advice(S, day, o) : [], P ? [P.guard(S, day, o)].filter(Boolean) : []);
+  }
+
+  /* ---------------------------------------------------------------- why it's theirs */
+  // Each built plan says why it's this person's: two or three lines, each naming a fact about them
+  // and what the plan does about it, and a short line for each day. A model writes them (Claude) or
+  // picks them (the on-device model, from the app's own); with no model the app's own stand. All of
+  // them go through say(): a line that isn't in the app's voice, has a number that wasn't given or
+  // isn't in the plan, crosses what a model may say (GH.coach.keepSafe) or names a fact the model
+  // wasn't given is dropped.
+  const WHY = { lines: C.LIMITS.whys, line: C.LIMITS.why, day: C.LIMITS.dayWhy };
+  // The plan's own numbers, which its reasons may use: days, each day's exercises and minutes, sets,
+  // reps and seconds, each group's weekly sets and days.
+  function planNumbers(S, day, plan) {
+    const out = [plan.days.length];
+    const sets = {}, days = {};
+    plan.days.forEach((d, i) => {
+      out.push(d.items.length, minutes(S, plan, i, day));
+      for (const g of uniq(d.items.map((it) => M().MOVES[it.move].group))) days[g] = (days[g] || 0) + 1;
+      for (const it of d.items) { out.push(it.sets, it.secs != null ? it.secs : it.reps); const g = M().MOVES[it.move].group; sets[g] = (sets[g] || 0) + it.sets; }
+    });
+    for (const g of Object.keys(sets)) out.push(sets[g], days[g]);
+    out.push((sets.biceps || 0) + (sets.triceps || 0));
+    return out.join(' ');
+  }
+  // Words that name a fact about the person, by the fact's id (GH.person.facts, plus 'asked': what
+  // they asked for here). A line that uses them when no such fact was given is one the model made up.
+  const NAMES = [
+    [['eats', 'protein'], /\b(protein|eat(s|ing)?|ate|food|diet|meals?|fruit|veg\w*|nutrition|calories?|appetite)\b/i],
+    [['sleep'], /\b(sleep\w*|slept|bedtime|tired|nights?)\b/i],
+    [['build'], /\b(lean|slim|skinny|thin|tall|height|bmi|body ?weight|your (weight|size|build)|weigh)\b/i],
+    [['joints', 'pain', 'care'], /\b(injur\w+|pain\w*|sore|hurt\w*|ache\w*|careful|easy on|gentle on)\b/i],
+    [['does', 'felt'], /\b(miss(ed|ing)?|skipp\w+|cut short|running long|lately|last (4|four) weeks|attendance|too (hard|easy))\b/i],
+    [['up', 'stuck'], /\b(stall\w*|stuck|plateau\w*|not moving|stopped moving|moving up)\b/i],
+    [['load'], /\b(too )?(light|heavy)\b/i],
+    [['likes'], /\byou (hid|pinned|picked|swapped|turned down)\b/i],
+    [['level'], /\b(beginner|new to|never trained|just start\w+|experienced|weeks? (in|with the app))\b/i],
+    [[], /\b(arthritis|osteo\w+|diabet\w+|blood pressure|heart (condition|disease)|asthma|condition|doctor|medical|medic\w+|pregnan\w+|years old|your age)\b/i],
+  ];
+  // A model's line as shown, or '' when it can't be: one line in the app's voice (no dashes for
+  // punctuation, no exclamation marks, a capital and a full stop), within its length, its numbers
+  // given or the plan's, nothing a model may not say, and no fact the model wasn't given.
+  function say(text, max, o) {
+    let s = clean(text, 400).replace(/!+/g, '.').replace(/\.{2,}/g, '.').replace(/\s+([.,;:])/g, '$1');
+    // (Plain words only: letters, numbers and everyday punctuation. Markup, or a dash used as
+    // punctuation, isn't the app's voice.)
+    if (!s || s.length > max || / - /.test(s) || /[^\w\s.,;:'"\u2019()/%+?&-]/.test(s)) return '';
+    s = `${s[0].toUpperCase()}${s.slice(1)}`;
+    if (!/[.?]$/.test(s)) s += '.';
+    const K = GH.coach;
+    if (K && K.keepToGiven && K.keepToGiven(s, o.known).cut) return '';
+    if (K && K.unsafe && K.unsafe(s, o.strict)) return '';
+    if (/\b(guarantee\w*|promise\w*|in \d+ (days|weeks|months)|six[- ]pack in)\b/i.test(s)) return '';
+    for (const [ids, re] of NAMES) if (re.test(s) && !ids.some((id) => o.facts.includes(id))) return '';
+    return s;
+  }
+  // The app's own "because you" lines for a plan, the most telling first: [{ key, fact, line }]
+  // (fact: the fact about them it names, by GH.person's id; key: which line it is). Each is true of
+  // this plan (its own numbers) and of what the app knows or was asked.
+  function ownWhy(S, day, w, plan, R) {
+    const P = GH.person, p = R.S2.profile;
     const out = [];
-    const GOAL = { abs: 'visible abs', arms: 'bigger arms', chest: 'a bigger chest', legs: 'legs and glutes', back: 'back and posture', shoulders: 'shoulders', fat: 'losing fat', strength: 'strength', endurance: 'endurance', mobility: 'mobility', consistency: 'showing up' };
-    const goals = (p.goals || []).map((g) => GOAL[g]).filter(Boolean);
-    if (goals.length) out.push(['Goals', goals.slice(0, 3).join(', ')]);
-    out.push(['Schedule', `${p.days} days a week, ${p.minutes} min`]);
-    const eq = p.equipment || {};
-    const kit = [];
-    if (eq.db && eq.db.length) kit.push(`dumbbells ${eq.db.join('/')} ${p.units || 'lb'}`);
-    if (eq.kb && eq.kb.length) kit.push(`kettlebell ${eq.kb.join('/')} ${p.units || 'lb'}`);
-    for (const k of ['band', 'bar', 'ball', 'table']) if (eq[k]) kit.push(EQ_NAME[k].replace(/^an? /, ''));
-    if ((p.where || 'home') !== 'home') kit.push('a gym');
-    out.push(['Equipment', kit.length ? kit.join(', ') : 'none, just your body']);
-    const joints = uniq((p.careful || []).concat(Object.entries(S.pain || {}).filter(([, until]) => until >= B().dayOf(Date.now(), (p.prefs && p.prefs.rollHour) || 4)).map(([j]) => j)));
-    if (joints.length) out.push(['Careful with', joints.map((j) => JOINT_NAME[j] || j).join(', ')]);
-    if (p.age > 0) out.push(['Age', String(p.age)]);
-    const cond = Array.isArray(p.conditions) ? p.conditions.map((c) => (typeof c === 'string' ? c : c && (c.name || c.id))).filter(Boolean) : [];
-    if (cond.length) out.push(['Health', cond.join(', ')]);
+    const add = (key, fact, line) => { if (line && line.length <= WHY.line) out.push({ key, fact, line }); };
+    const MV = M().MOVES;
+    const D = plan.days.length;
+    const all = plan.days.flatMap((d) => d.items);
+    const daysOf = (groups) => plan.days.filter((d) => d.items.some((it) => groups.includes(MV[it.move].group))).length;
+    const trained = uniq(R.goals.map((g) => GROUP_GOAL[g.group])).filter((u) => u && daysOf(GOAL_GROUPS_OF[u]) > 0);
+    if (trained.length) {
+      const n = Math.min(...trained.map((u) => daysOf(GOAL_GROUPS_OF[u])));
+      const even = trained.every((u) => daysOf(GOAL_GROUPS_OF[u]) === n);
+      const on = n === D ? (D === 1 ? 'your one day' : `all ${D} days`) : `${even ? '' : 'at least '}${n} of your ${D} days`;
+      const they = trained.length > 1 || !['chest', 'back'].includes(trained[0]);
+      const first = trained.filter((u) => u !== 'abs');
+      add('goal', 'goal', `You want your ${listWords(trained)} most, so ${they ? 'they\'re' : 'it\'s'} trained on ${on}${first.length && first.length < trained.length ? `, ${listWords(first)} first` : first.length ? ` and ${they ? 'come' : 'comes'} first` : ''}.`);
+    }
+    if (R.lowEat) add('eats', 'eats', 'You said you don\'t eat much protein. Training can\'t make up for that, so sets stay moderate and your goals come first.');
+    const light = all.filter((it) => it.reps && /db|kb/.test(MV[it.move].load || '') && R.light(MV[it.move].family));
+    if (P && light.length) {
+      const f = P.loadFeel(R.S2, MV[light[0].move].family);
+      add('load', 'load', `Your ${f.top} ${p.units || 'lb'} weights are light for you, so those exercises build on reps, up to ${Math.max(...light.map((it) => R.reps(it.move)[1]))}, close to the last one you can do.`);
+    }
+    if (w.feel === 'easy') add('feel', 'asked', `You asked for a plan that's easy to keep up, so no exercise has more than ${R.sets[1]} sets and it starts a little lower.`);
+    add('time', 'time', `You have ${D} ${D === 1 ? 'day' : 'days'} of ${R.mins} minutes, so each day has ${uniq([Math.min(...plan.days.map((d) => d.items.length)), Math.max(...plan.days.map((d) => d.items.length))]).join(' to ')} exercises.`);
+    const L = P && S.profile.workouts !== false ? P.lately(S, day) : null;
+    if (L && L.perWeek != null && L.planned >= 4 && L.perWeek <= S.profile.days - 1 && D <= Math.ceil(L.perWeek)) add('does', 'does', `You've been doing about ${L.perWeek} workouts a week, so this plan asks for ${D}.`);
+    if (p.experience === 'never' && day - (S.profile.startDay || day) < 84) add('level', 'level', 'You\'re new to training, so the moves are simple ones at your level and stay the same from week to week.');
+    const joints = uniq((S.profile.careful || []).concat(w.careful));
+    if (joints.length) add('care', w.careful.length ? 'asked' : 'joints', `You're careful with your ${listWords(joints.map((j) => JOINT_NAME[j] || j))}, so nothing here is hard on ${joints.length === 1 && (joints[0] === 'back' || joints[0] === 'neck') ? 'it' : 'them'}.`);
+    if (w.noImpact) add('jump', 'asked', 'You asked for no jumping, so every move keeps a foot on the floor.');
+    if (!all.some((it) => MV[it.move].load)) add('kit', 'kit', 'You train without equipment, so every move uses your body weight, with harder versions as you move up.');
     return out;
+  }
+  // What a day is for, in a line: what comes first, then the rest.
+  function dayWhy(plan, i, R) {
+    const MV = M().MOVES;
+    const unit = (g) => (g === 'biceps' || g === 'triceps' ? 'arms' : groupWord(g));
+    const names = uniq(plan.days[i].items.map((it) => MV[it.move].group).filter((g) => GROUP_GOAL[g]).map(unit));
+    if (!names.length) return '';
+    const first = plan.days[i].items.map((it) => MV[it.move].group).find((g) => GROUP_GOAL[g]);
+    const cap = (x) => `${x[0].toUpperCase()}${x.slice(1)}`;
+    if (R.goals.some((g) => g.group === first) && first !== 'abs' && names.length > 1) return `${cap(unit(first))} first while you're fresh, then ${listWords(names.slice(1))}.`;
+    return `${cap(listWords(names))}.`;
+  }
+  // A plan with the app's own reasons on it: up to three "because you" lines (plan.why) and a line
+  // for each day (day.why).
+  function withWhy(S, day, w, plan, R) {
+    plan.why = ownWhy(S, day, w, plan, R).slice(0, WHY.lines).map((x) => x.line);
+    plan.days.forEach((d, i) => { d.why = dayWhy(plan, i, R); });
+    return plan;
   }
 
   /* ---------------------------------------------------------------- a model's take */
   // The moves a model may use: for each family the person's own level and the ones either side of
-  // it, the draft's moves, and nothing they can't do (checked for the wishes too).
+  // it, the draft's moves, and nothing they can't do (checked for the wishes too). The ladders that
+  // stand in for others with a health condition, and the practice ones (balance, impact, getting
+  // up), only when the draft itself uses them: for anyone else they're not this person's moves.
+  const PRACTICE = ['impact', 'balance', 'getup', 'finGentle', 'cardioG'];
   function allowedMoves(S, day, w, draft) {
     const S2 = sandbox(S, w);
     const ctx = context(S2, day);
     const ids = [];
     const push = (id) => { if (id && !ids.includes(id) && check(ctx, id).ok) ids.push(id); };
     for (const d of draft.days) for (const it of d.items) push(it.move);
+    const used = new Set(ids.map((id) => M().MOVES[id].family));
+    const special = new Set(PRACTICE.concat(Object.values((GH.access && GH.access.STAND_IN) || {})));
     for (const [fam, lad] of Object.entries(M().LADDERS)) {
+      if (special.has(fam) && !used.has(fam)) continue;
       const list = lad.rungs.filter((id) => check(ctx, id).ok);
       if (!list.length) continue;
       const st = S2.prog[fam];
@@ -297,113 +486,339 @@
     return ids.slice(0, 90);
   }
   const plainForModel = (plan) => ({ name: plan.name, days: plan.days.map((d) => ({ title: d.title, items: d.items.map((it) => ({ move: it.move, sets: it.sets, reps: it.secs != null ? it.secs : it.reps })) })) });
-  const PLAN_RULES = [
-    'You are a strength coach. You adjust a draft workout plan so it fits what the person asked for, and answer with JSON only.',
-    'Use only move ids from MOVES. Keep the same number of days. Put 3 to 8 moves in each day, bigger moves first.',
-    'sets: 2 to 5. reps: 5 to 20; for moves marked seconds, reps is how many seconds to hold (20 to 60).',
-    'title: 1 to 3 words for each day. name: 2 to 5 words for the plan. note: one short, friendly sentence on what the plan does.',
-  ].join('\n');
-  function movesText(ids) {
-    return ids.map((id) => { const m = M().MOVES[id]; return `${id}: ${m.name} (${String((B().GROUP_NAME || {})[m.group] || m.group).toLowerCase()}${m.timed ? ', seconds' : ''})`; }).join('\n');
+  // Each move with the muscle it trains and the reps (or seconds) it may have for this person.
+  function movesText(ids, R) {
+    return ids.map((id) => {
+      const m = M().MOVES[id];
+      const r = R ? R.reps(id) : m.range;
+      return `${id}: ${m.name} (${String((B().GROUP_NAME || {})[m.group] || m.group).toLowerCase()}; ${r[0]}-${r[1]}${m.timed ? ' s' : ''})`;
+    }).join('\n');
   }
-  function planMessages(S, w, draft, ids) {
-    const about = knows(S).map(([k, v]) => `${k}: ${v}`).join('. ');
+  // What they picked on the sheet, in words (nothing when they picked nothing).
+  function pickedLine(w) {
+    const bits = [w.most ? `wants most: ${MOST[w.most].toLowerCase()}` : '', w.feel ? `how it should feel: ${FEEL[w.feel].toLowerCase()}` : '', w.skip.length ? `leave out: ${w.skip.map((k) => SKIP[k].toLowerCase()).join(', ')}` : ''].filter(Boolean);
+    return bits.join('; ');
+  }
+  // The on-device model's: short rules, the moves, then the request, who this is in the short form,
+  // the reasons it may pick from (the app's own, by id) and the draft. At most 60 moves and about
+  // 6,000 characters, so it fits a small model's memory.
+  const DEVICE_MOVES = 60;
+  const DEVICE_FACTS = ['body', 'build', 'goal', 'focus', 'level', 'time', 'kit', 'load', 'joints', 'pain', 'health', 'floor', 'gentle', 'eats', 'does', 'stuck'];
+  function planMessages(S, w, draft, ids, day) {
+    const P = GH.person;
+    const d = day != null ? day : B().dayOf(Date.now(), (S.profile.prefs && S.profile.prefs.rollHour) || 4);
+    const R = rules(S, d, w, draft);
+    const list = ids.slice(0, DEVICE_MOVES);
+    const reasons = ownWhy(S, d, w, draft, R);
+    const about = P ? P.lines(S, d, { to: 'device', ids: DEVICE_FACTS }) : [];
+    const picked = pickedLine(w);
     return [
-      { role: 'system', content: `${PLAN_RULES}\n\nMOVES\n${movesText(ids)}` },
-      { role: 'user', content: `Request: ${w.text || 'a plan that fits me'}\nAbout them: ${about}\nDraft: ${JSON.stringify(plainForModel(draft))}` },
+      { role: 'system', content: [
+        'You are a strength coach. You adjust a draft workout plan so it fits this person and what they asked for, and answer with JSON only.',
+        'Use only move ids from MOVES.', ...rulesLines(S, d, R, { to: 'device' }),
+        'because: the 2 or 3 REASONS that are most true of your plan, by id.',
+        'title: 1 to 3 words for each day. name: 2 to 5 words for the plan.',
+        '', 'MOVES (id: name (muscle; reps or seconds))', movesText(list, R),
+      ].join('\n') },
+      { role: 'user', content: [
+        `Request: ${w.text || 'a plan that fits me'}`, ...(picked ? [`They picked: ${picked}`] : []),
+        'About them:', ...about,
+        'REASONS', ...reasons.map((x, k) => `b${k + 1}: ${x.line}`),
+        `Draft: ${JSON.stringify(plainForModel(draft))}`,
+      ].join('\n') },
     ];
   }
-  // A grammar that holds the on-device model to a plan of exactly `days` days made of `ids`.
-  function planGrammar(ids, days) {
+  // A grammar that holds the on-device model to a plan of exactly `days` days made of `ids`, with
+  // the rules' counts (o: { perDay: [min, max], sets: [min, max], reasons: how many it may pick
+  // from }): reasons by id, then a name, then the days. No free text but the short names.
+  function planGrammar(ids, days, o) {
+    const opt = o || {};
+    const per = opt.perDay || [3, 8], sets = opt.sets || [1, SETS_MAX], n = opt.reasons || 0;
     const q = (s) => `"\\"${s}\\""`;
     const dayRule = Array.from({ length: days }, () => 'day').join(' "," ');
+    const because = n ? `"{\\"because\\":[" pick ("," pick){0,${Math.min(n, WHY.lines) - 1}} "],\\"name\\":"` : '"{\\"name\\":"';
     return [
-      `root ::= "{\\"name\\":" name ",\\"note\\":" note ",\\"days\\":[" ${dayRule} "]}"`,
-      'day ::= "{\\"title\\":" title ",\\"items\\":[" item ("," item){1,7} "]}"',
-      'item ::= "{\\"move\\":" move ",\\"sets\\":" [1-6] ",\\"reps\\":" reps "}"',
+      `root ::= ${because} name ",\\"days\\":[" ${dayRule} "]}"`,
+      `day ::= "{\\"title\\":" title ",\\"items\\":[" item ("," item){${Math.max(1, per[0] - 1)},${per[1] - 1}} "]}"`,
+      `item ::= "{\\"move\\":" move ",\\"sets\\":" [${sets[0]}-${sets[1]}] ",\\"reps\\":" reps "}"`,
       `move ::= ${ids.map(q).join(' | ')}`,
       'reps ::= [1-9] | [1-9] [0-9]',
+      ...(n ? [`pick ::= ${Array.from({ length: n }, (_, k) => q(`b${k + 1}`)).join(' | ')}`] : []),
       'name ::= "\\"" [A-Za-z0-9 ,&-]{2,36} "\\""',
       'title ::= "\\"" [A-Za-z0-9 ,&-]{2,24} "\\""',
-      'note ::= "\\"" [a-zA-Z0-9 ,.\'!?-]{0,150} "\\""',
     ].join('\n');
   }
-  function planSchema(ids) {
+  // Claude's: the reasons first (what it's answering shapes the plan it then writes), each naming a
+  // fact by id from the ones it was given, then the plan, each day with its line.
+  function planSchema(ids, facts) {
+    const str = { type: 'string' };
     return {
       type: 'object',
       properties: {
-        name: { type: 'string' },
-        note: { type: 'string' },
-        days: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, items: { type: 'array', items: { type: 'object', properties: { move: { type: 'string', enum: ids }, sets: { type: 'integer' }, reps: { type: 'integer' } }, required: ['move', 'sets', 'reps'], additionalProperties: false } } }, required: ['title', 'items'], additionalProperties: false } },
+        because: { type: 'array', items: { type: 'object', properties: { fact: { type: 'string', enum: facts && facts.length ? facts : ['goal'] }, line: str }, required: ['fact', 'line'], additionalProperties: false } },
+        name: str,
+        note: str,
+        days: { type: 'array', items: { type: 'object', properties: { title: str, why: str, items: { type: 'array', items: { type: 'object', properties: { move: { type: 'string', enum: ids }, sets: { type: 'integer' }, reps: { type: 'integer' } }, required: ['move', 'sets', 'reps'], additionalProperties: false } } }, required: ['title', 'why', 'items'], additionalProperties: false } },
       },
-      required: ['name', 'note', 'days'],
+      required: ['because', 'name', 'note', 'days'],
       additionalProperties: false,
     };
   }
-  function claudePrompt(S, w, draft, ids) {
-    return [
-      'Build this person a workout plan they can run in the app. Adjust the draft so it fits their request and what you know about them.',
-      `Keep exactly ${draft.days.length} days. 3 to 8 moves a day, bigger moves first. sets 2 to 5; reps 5 to 20, or seconds (20 to 60) for moves marked seconds.`,
-      'Use only these moves (id: name):', movesText(ids), '',
-      `Their request: ${w.text || 'a plan that fits me'}`,
-      `Draft: ${JSON.stringify(plainForModel(draft))}`,
-      'name: 2 to 5 words. Each day\'s title: 1 to 3 words. note: one short, friendly sentence on what the plan does.',
-    ].join('\n');
+  // The facts about the person Claude has for a plan, by id (GH.person.facts; its summary's parts
+  // hold how workouts went and sleep), plus 'asked' for what they asked here.
+  const BUILD_PARTS = ['person', 'days', 'training'];
+  const FACT_WORDS = { body: 'age range and sex', build: 'their build', goal: 'their goals', focus: 'muscles to lean toward', level: 'training history', time: 'days and minutes', kit: 'equipment', load: 'what their weights mean for them', joints: 'joints to be careful with', eats: 'how they eat', protein: 'protein logged', does: 'what they\'ve been doing', up: 'what\'s moving up', stuck: 'what isn\'t moving', likes: 'their choices', sleep: 'sleep', asked: 'what they asked for here' };
+  function claudeFacts(S, day) {
+    const P = GH.person, A = GH.ai;
+    const wide = !!(A && A.wide && A.wide(S));
+    const ids = P ? P.facts(S, day, { to: 'claude', wide, have: BUILD_PARTS }).map((f) => f.id) : ['goal'];
+    return uniq(ids.concat(S.profile.workouts !== false ? ['does'] : [])).filter((id) => FACT_WORDS[id]);
   }
-  // A model's answer, kept only if it's a plan this person can do with the days they asked for, and
-  // it passes the checks the plan review makes on the coach's plan (src/planreview.js):
+  // The request for Claude (its system text holds the summary, with who this is: src/ai.js). At
+  // most about 9,000 characters: moves leave the end of the list until it fits.
+  const CLAUDE_CHARS = 9000;
+  function claudePrompt(S, w, draft, ids, day) {
+    const A = GH.ai;
+    const d = day != null ? day : B().dayOf(Date.now(), (S.profile.prefs && S.profile.prefs.rollHour) || 4);
+    const R = rules(S, d, w, draft);
+    const facts = claudeFacts(S, d);
+    const picked = pickedLine(w);
+    const text = (list) => [
+      'Build this person a workout plan they can run in the app. Adjust the draft so it fits their request and who they are (PERSON in the summary): make it theirs, not a general plan.',
+      'RULES FOR THIS PERSON', ...rulesLines(S, d, R, { to: 'claude', wide: !!(A && A.wide && A.wide(S)) }).map((x) => `- ${x}`),
+      'MOVES (use only these; id: name (muscle; reps or seconds))', movesText(list, R), '',
+      `Their request: ${w.text || 'a plan that fits me'}`, ...(picked ? [`They picked: ${picked}`] : []),
+      `Draft: ${JSON.stringify(plainForModel(draft))}`,
+      `because: 2 or 3 lines on why this plan is theirs. Each names one fact you were given about them (fact: ${facts.concat('asked').map((id) => `${id} = ${FACT_WORDS[id]}`).join(', ')}) and says what the plan does about it, as you'd say it to them ("Your ... so ..."), under 25 words. Only numbers you were given or that are in your plan. No promises, and nothing about diet, weight or medicine.`,
+      'Each day: title of 1 to 3 words, and why: one line on what the day is for, under 15 words.',
+      'name: 2 to 5 words. note: one short sentence on what the plan does for them.',
+    ].join('\n');
+    let list = ids.slice();
+    while (list.length > draft.days.reduce((a, x) => a + x.items.length, 0) && text(list).length > CLAUDE_CHARS) list = list.slice(0, -1);
+    return text(list);
+  }
+
+  /* ---------------------------------------------------------------- the checks */
+  // A plan brought inside the rules where that's safe, day by day; fixes gets a line in plain words
+  // for each thing changed. own: the draft is a plan of the person's own (Improve), so what the
+  // model left as they had it stays as they had it.
+  function tidy(S, day, plan, R, o) {
+    const MV = M().MOVES;
+    const { ids, draft, fixes, own } = o;
+    const grp = (it) => MV[it.move].group;
+    const isGoal = (g) => R.goals.some((x) => x.group === g);
+    const amount = (it) => (it.secs != null ? it.secs : it.reps);
+    const theirs = (i, it) => !!own && !!draft.days[i] && draft.days[i].items.some((x) => x.move === it.move && x.sets === it.sets && amount(x) === amount(it));
+    const max = R.sets[1];
+    let clamped = false;
+    plan.days.forEach((d, i) => {
+      d.items = d.items.filter((it, k) => d.items.findIndex((x) => x.move === it.move) === k);
+      for (const it of d.items) {
+        if (theirs(i, it)) continue;
+        const [lo, hi] = R.reps(it.move);
+        const key = MV[it.move].timed ? 'secs' : 'reps';
+        const v = Math.max(lo, Math.min(hi, it[key]));
+        if (v !== it[key]) { it[key] = v; clamped = true; }
+      }
+      // At most `max` sets of one exercise: a goal muscle's sets past that go to a second exercise
+      // for it (one the day has, or the nearest on its ladder they can do), other muscles' just go.
+      const cap = Math.max(R.perDay[1], own && draft.days[i] ? draft.days[i].items.length : 0);
+      for (const it of d.items.slice()) {
+        if (it.sets <= max || theirs(i, it)) continue;
+        let extra = it.sets - max;
+        it.sets = max;
+        let mate = null;
+        if (isGoal(grp(it))) {
+          mate = d.items.find((x) => x !== it && grp(x) === grp(it) && x.sets < max) || null;
+          if (!mate && d.items.length < cap && !d.items.some((x) => x !== it && grp(x) === grp(it))) {
+            const lad = (M().LADDERS[MV[it.move].family] || { rungs: [] }).rungs;
+            const near = (id) => { const k = lad.indexOf(id); return k < 0 ? 99 : Math.abs(k - lad.indexOf(it.move)); };
+            const id = ids.filter((x) => MV[x].group === grp(it) && !d.items.some((y) => y.move === x)).sort((x, y) => near(x) - near(y))[0];
+            if (id) {
+              const [lo, hi] = R.reps(id);
+              mate = MV[id].timed ? { move: id, sets: 0, secs: Math.max(lo, Math.min(hi, MV[id].start || lo)) } : { move: id, sets: 0, reps: Math.max(lo, Math.min(hi, it.reps || MV[id].start || lo)) };
+              d.items.splice(d.items.indexOf(it) + 1, 0, mate);
+            }
+          }
+          if (mate) { const add = Math.min(extra, max - mate.sets); mate.sets += add; extra -= add; }
+        }
+        fixes.push(`Kept ${MV[it.move].name} to ${max} sets on day ${i + 1}${mate ? `, with ${MV[mate.move].name} for the rest` : ''}.`);
+      }
+      // No more exercises than the time holds, where that costs no muscle its sets and no time:
+      // a muscle's later exercise that day is folded into its earlier one (the day leads with the
+      // bigger move) when that has room for the sets, the lowest goal's first, then the one with the
+      // fewest sets, unless the day would run longer.
+      let folded = 0;
+      const kept = new Set();
+      for (let guard = 0; guard < 12 && d.items.length > cap && d.items.length > 2; guard++) {
+        const mateOf = (it) => d.items.slice(0, d.items.indexOf(it)).find((x) => grp(x) === grp(it) && x.sets + it.sets <= max && !theirs(i, x));
+        const pool = d.items.filter((it) => !kept.has(it) && !theirs(i, it) && mateOf(it));
+        if (!pool.length) break;
+        const rank = (it) => R.tier(grp(it)) * 10 - it.sets;
+        const out = pool.reduce((a, it) => (rank(it) >= rank(a) ? it : a), pool[0]);
+        const mate = mateOf(out), at = d.items.indexOf(out), before = minutes(S, plan, i, day);
+        mate.sets += out.sets;
+        d.items.splice(at, 1);
+        if (minutes(S, plan, i, day) > before) { mate.sets -= out.sets; d.items.splice(at, 0, out); kept.add(out); } else folded++;
+      }
+      if (folded) fixes.push(`Day ${i + 1} had more exercises than ${R.mins} minutes holds, so ${folded === 1 ? 'one was' : `${folded} were`} folded into the others.`);
+      // Goal muscles first, abs and core last (the order within each is the model's).
+      const before = d.items.map((it) => it.move).join();
+      d.items = d.items.map((it, k) => [it, k]).sort((a, b) => R.tier(grp(a[0])) - R.tier(grp(b[0])) || a[1] - b[1]).map((x) => x[0]);
+      if (!own && d.items.map((it) => it.move).join() !== before && isGoal(grp(d.items[0])) && before.split(',')[0] !== d.items[0].move) fixes.push(`Put your ${groupWord(grp(d.items[0]))} first on day ${i + 1}.`);
+    });
+    if (clamped) fixes.push('Kept reps inside each exercise\'s own range.');
+    return plan;
+  }
+  // A model's answer, kept only if it's a plan this person can do with the days they asked for that
+  // passes the rules above and the checks the plan review makes on the coach's plan
+  // (src/planreview.js). What can be put right safely is (tidy, and below), and o.fixes says so in
+  // plain words; anything else keeps the draft:
+  //  - the rules: sets of one exercise, reps, exercises a day and the order (tidy);
+  //  - goal muscles: each on as many days as the rules ask, or as the draft has when that's fewer
+  //    (the draft's own exercise goes back in where the model dropped it), and no fewer weekly sets
+  //    than the rules' floor, or the draft's;
   //  - time: each day fits the time asked for, or runs no longer than the draft's own day (a set
-  //    comes off the move with the most to spare until it fits, down to 1 as the coach's own days
-  //    have them; the move the day leads with and the groups they asked to focus on count as having
-  //    fewer, so they keep theirs longer);
+  //    comes off the move with the most to spare until it fits, down to 1; the move the day leads
+  //    with and the groups they asked to focus on count as having fewer, so they keep theirs longer);
   //  - coverage: every muscle group the draft trains keeps at least half of its weekly sets;
   //  - focus: the groups they asked to focus on keep at least two thirds of the draft's sets;
   //  - balance: pulling still balances pushing about as well as in the draft.
-  // Core work goes last in each day (a tired core shouldn't undercut the heavier lifts); otherwise
-  // the model's order stands. Anything else keeps the draft. Returns the plan, or null.
-  function accept(S, day, w, draft, raw, ids) {
+  // Its words are checked too (say): the reasons it gave or picked (plan.why), each day's line, the
+  // note and the names; one that fails gives way to the app's own. o: { given (what the model was
+  // sent, for the number check), fixes: [], facts (the fact ids it was given), reasons (the app's
+  // own lines an on-device model picks from, by b1, b2 and so on), own (Improve) }. Returns the plan, or null.
+  function accept(S, day, w, draft, raw, ids, o) {
+    const opt = o || {};
+    const fixes = opt.fixes || [];
     if (!raw || typeof raw !== 'object') return null;
     const { plan, report } = normalize(Object.assign({}, raw, { source: 'coach', weekdays: draft.weekdays }));
     if (report.unknown.length || plan.days.length !== draft.days.length) return null;
     const allowed = new Set(ids);
-    for (const d of plan.days) {
-      if (d.items.length < 2 || d.items.some((it) => !allowed.has(it.move))) return null;
-      for (const it of d.items) {
-        it.sets = Math.max(1, Math.min(6, it.sets));
-        const m = M().MOVES[it.move];
-        if (m.timed) it.secs = Math.max(10, Math.min(120, it.secs)); else it.reps = Math.max(3, Math.min(30, it.reps));
-      }
-      d.items = d.items.filter((it, i) => d.items.findIndex((x) => x.move === it.move) === i);
-      const core = (it) => M().MOVES[it.move].group === 'abs';
-      d.items = d.items.filter((it) => !core(it)).concat(d.items.filter(core));
-    }
+    const MV = M().MOVES;
+    const grp = (it) => MV[it.move].group;
+    for (const d of plan.days) if (d.items.length < 2 || d.items.some((it) => !allowed.has(it.move))) return null;
+    const R = rules(S, day, w, draft);
+    tidy(S, day, plan, R, { ids, draft, fixes, own: !!opt.own });
     const budget = clampInt((w && w.minutes) || S.profile.minutes, 10, 90, 30);
-    const focus = (it) => ((w && w.focus) || []).includes(M().MOVES[it.move].group);
-    for (let i = 0; i < plan.days.length; i++) {
-      const d = plan.days[i];
-      const limit = Math.max(budget, minutes(S, draft, i, day)) + 2;
-      // (On a tie, the later move gives a set first.)
-      const spare = (it, k) => it.sets - (focus(it) ? 1 : 0) - (k === 0 ? 2 : 0) + k / 100;
-      for (let guard = 0; guard < 200 && minutes(S, plan, i, day) > limit; guard++) {
-        let pick = -1;
-        d.items.forEach((it, k) => { if (it.sets > 1 && (pick < 0 || spare(it, k) > spare(d.items[pick], pick))) pick = k; });
-        if (pick < 0) break;
-        d.items[pick].sets--;
-      }
-      if (minutes(S, plan, i, day) > limit) return null;
-    }
+    const limit = (i) => Math.max(budget, minutes(S, draft, i, day)) + 2;
+    const daysOf = (p, g) => p.days.filter((d) => d.items.some((it) => grp(it) === g)).length;
     const setsOf = (p) => {
       const out = {};
-      for (const d of p.days) for (const it of d.items) { const m = M().MOVES[it.move]; if (m && GROUP_GOAL[m.group]) out[m.group] = (out[m.group] || 0) + it.sets; }
+      for (const d of p.days) for (const it of d.items) { const m = MV[it.move]; if (m && GROUP_GOAL[m.group]) out[m.group] = (out[m.group] || 0) + it.sets; }
       return out;
     };
-    const was = setsOf(draft), now = setsOf(plan);
-    for (const g of Object.keys(was)) if (was[g] >= 2 && (now[g] || 0) < Math.ceil(was[g] / 2)) return null;
-    for (const g of (w && w.focus) || []) if (was[g] && (now[g] || 0) < Math.ceil((was[g] * 2) / 3)) return null;
+    const was = setsOf(draft);
+    // A goal muscle on too few days: the draft's exercise for it goes back in, on the days the
+    // draft has it and the model's doesn't.
+    for (const g of R.goals) {
+      const need = Math.min(g.days, daysOf(draft, g.group));
+      plan.days.forEach((d, i) => {
+        if (daysOf(plan, g.group) >= need || d.items.some((it) => grp(it) === g.group)) return;
+        const back = draft.days[i].items.find((it) => grp(it) === g.group && allowed.has(it.move));
+        if (!back || d.items.length >= Math.max(R.perDay[1], draft.days[i].items.length)) return;
+        d.items.push(Object.assign({}, back, { sets: Math.min(R.sets[1], back.sets) }));
+        d.items = d.items.map((it, k) => [it, k]).sort((a, b) => R.tier(grp(a[0])) - R.tier(grp(b[0])) || a[1] - b[1]).map((x) => x[0]);
+        fixes.push(`Put ${MV[back.move].name} back on day ${i + 1}, so your ${groupWord(g.group)} train ${need} days a week.`);
+      });
+      if (daysOf(plan, g.group) < need) return null;
+    }
+    // Weekly sets: a goal muscle past its cap (or the draft's) gives the extra up.
+    const now = () => setsOf(plan);
+    const floorOf = (g) => Math.min(g.floor, was[g.group] || 0);
+    for (const g of R.goals) {
+      let over = (now()[g.group] || 0) - Math.max(g.cap, was[g.group] || 0);
+      if (over > 0) fixes.push(`Kept your ${groupWord(g.group)} to ${Math.max(g.cap, was[g.group] || 0)} sets a week.`);
+      for (let guard = 0; guard < 40 && over > 0; guard++) {
+        const it = plan.days.flatMap((d) => d.items).filter((x) => grp(x) === g.group && x.sets > 1).sort((a, b) => b.sets - a.sets)[0];
+        if (!it) break;
+        it.sets--;
+        over--;
+      }
+    }
+    // Time: a set comes off the move with the most to spare until the day fits, a goal muscle's
+    // only once the others have none to give (it keeps its weekly floor, or the draft's).
+    const focus = (it) => ((w && w.focus) || []).includes(grp(it));
+    for (let i = 0; i < plan.days.length; i++) {
+      const d = plan.days[i];
+      // (On a tie, the later move gives a set first.)
+      const spare = (it, k) => it.sets - (focus(it) ? 1 : 0) - (k === 0 ? 2 : 0) + k / 100;
+      const held = (it) => { const g = R.goals.find((x) => x.group === grp(it)); return !!g && (now()[g.group] || 0) <= floorOf(g); };
+      let cut = 0;
+      for (let guard = 0; guard < 200 && minutes(S, plan, i, day) > limit(i); guard++) {
+        let pick = -1;
+        for (const free of [true, false]) {
+          d.items.forEach((it, k) => { if (it.sets > 1 && (!free || !held(it)) && (pick < 0 || spare(it, k) > spare(d.items[pick], pick))) pick = k; });
+          if (pick >= 0) break;
+        }
+        if (pick < 0) break;
+        d.items[pick].sets--;
+        cut++;
+      }
+      if (minutes(S, plan, i, day) > limit(i)) return null;
+      if (cut) fixes.push(`Took ${cut === 1 ? 'a set' : `${cut} sets`} off day ${i + 1} so it fits your time.`);
+    }
+    // A goal muscle short of its weekly floor (or the draft's) gets sets back where a day has the
+    // time for them.
+    for (const g of R.goals) {
+      for (let guard = 0; guard < 24 && (now()[g.group] || 0) < floorOf(g); guard++) {
+        let done = false;
+        for (let i = 0; i < plan.days.length && !done; i++) {
+          const it = plan.days[i].items.filter((x) => grp(x) === g.group && x.sets < R.sets[1]).sort((a, b) => a.sets - b.sets)[0];
+          if (!it) continue;
+          it.sets++;
+          if (minutes(S, plan, i, day) > limit(i)) it.sets--; else done = true;
+        }
+        if (!done) return null;
+      }
+    }
+    const got = now();
+    for (const g of Object.keys(was)) if (was[g] >= 2 && (got[g] || 0) < Math.ceil(was[g] / 2)) return null;
+    for (const g of (w && w.focus) || []) if (was[g] && (got[g] || 0) < Math.ceil((was[g] * 2) / 3)) return null;
     const balance = (x) => { const push = (x.chest || 0) + (x.shoulders || 0), pull = (x.back || 0) * 1.2; return Math.max(push, pull) <= 0 ? 1 : Math.min(push, pull) / Math.max(push, pull); };
-    if (balance(now) < Math.min(0.5, balance(was) - 0.15)) return null;
-    if (!plan.note) plan.note = draft.note;
+    if (balance(got) < Math.min(0.5, balance(was) - 0.15)) return null;
+    for (let i = 0; i < plan.days.length; i++) if (plan.days[i].items.length > Math.max(R.perDay[1], draft.days[i].items.length)) return null;
+
+    // Its words. (known: what it was sent, and the plan's own numbers.)
+    // (The facts it was given, by id: the on-device model's when nothing says, plus what they asked
+    // here, and 'care' when that named a joint.)
+    const facts = (opt.facts || (GH.person ? GH.person.facts(S, day, { to: 'device' }).map((f) => f.id) : ['goal', 'time', 'kit'])).concat(w && (w.text || w.most || w.feel || w.skip.length) ? ['asked'] : [], w && w.careful.length ? ['care'] : []);
+    const told = { known: `${opt.given != null ? opt.given : planMessages(S, w, draft, ids, day).map((m) => m.content).join('\n')}\n${planNumbers(S, day, plan)}`, strict: !!(GH.person && GH.person.strict(S, day)), facts };
+    const mine = ownWhy(S, day, w, plan, R);
+    const reasons = opt.reasons || [];
+    const lines = [];
+    let dropped = 0;
+    for (const x of (Array.isArray(raw.because) ? raw.because : []).slice(0, 6)) {
+      // An id (the on-device model's pick from the app's own lines) or { fact, line } (Claude's).
+      const pick = typeof x === 'string' ? reasons[Number(x.slice(1)) - 1] : null;
+      const line = pick ? (mine.find((m) => m.key === pick.key) || {}).line || '' : x && typeof x === 'object' && typeof x.line === 'string' && facts.includes(x.fact) && /\byou/i.test(x.line) ? say(x.line, WHY.line, told) : '';
+      if (line && !lines.includes(line)) lines.push(line); else dropped++;
+    }
+    for (const m of mine) if (lines.length < 2 && !lines.includes(m.line)) lines.push(m.line);
+    plan.why = lines.slice(0, WHY.lines);
+    plan.days.forEach((d, i) => {
+      const rawDay = (Array.isArray(raw.days) ? raw.days : [])[i] || {};
+      const line = typeof rawDay.why === 'string' && rawDay.why ? say(rawDay.why, WHY.day, told) : '';
+      if (rawDay.why && !line) dropped++;
+      d.why = line || dayWhy(plan, i, R);
+      // (A day's name with a number it wasn't given goes back to the draft's.)
+      if (d.title && GH.coach && GH.coach.keepToGiven && GH.coach.keepToGiven(d.title, told.known).cut) d.title = draft.days[i].title;
+    });
+    const note = plan.note ? say(plan.note, C.LIMITS.note, told) : '';
+    if (plan.note && !note) dropped++;
+    plan.note = note || draft.note;
+    if (GH.coach && GH.coach.keepToGiven && GH.coach.keepToGiven(plan.name, told.known).cut) plan.name = draft.name;
+    if (opt.said) opt.said.dropped = dropped;
     return plan;
+  }
+  // The plan the build sheet shows first: the engine's draft, brought inside the rules (the engine's
+  // own plans can hold six sets of one exercise or more exercises than a short session holds), with
+  // the app's own reasons on it.
+  function build(S, day, w) {
+    const draft = generate(S, day, w);
+    const R = rules(S, day, w, draft);
+    tidy(S, day, draft, R, { ids: allowedMoves(S, day, w, draft), draft, fixes: [] });
+    return withWhy(S, day, w, draft, R);
   }
   // Which model can refine a plan here: Claude when it's on and allowed, else the on-device model
   // when one is on the phone. Resolves 'claude', 'device' or null.
@@ -416,42 +831,57 @@
       return GH.deviceCoach.pick(S, await llm.installed()) ? 'device' : null;
     } catch (e) { return null; }
   }
-  // The draft, refined by a model when there is one. Resolves { plan, by, error? } (by: 'claude',
-  // 'device' or null when the draft stands; error: why a model's take didn't come, such as a Claude
-  // spending limit, for the screen to say).
-  async function refine(S, day, w, draft, signal) {
+  // The draft, refined by a model when there is one. Resolves { plan, by, fixes, error? } (by:
+  // 'claude', 'device' or null when the draft stands; fixes: what the app put right in the model's
+  // take, in plain words; error: why a model's take didn't come, such as a Claude spending limit,
+  // for the screen to say). o.own: the draft is a plan of their own (Improve).
+  async function refine(S, day, w, draft, signal, o) {
     const by = await modelFor(S);
-    if (!by) return { plan: draft, by: null };
+    if (!by) return { plan: draft, by: null, fixes: [] };
+    // Who this is, for a model (src/person.js, a part of its own): in before the request is written.
+    if (!GH.person && GH.lazy) await GH.lazy('person').catch(() => null);
     const ids = allowedMoves(S, day, w, draft);
+    const R = rules(S, day, w, draft);
+    const fixes = [];
+    const opt = { fixes, own: !!(o && o.own), said: {} };
     let raw = null, error = null;
     try {
-      if (by === 'claude') raw = await GH.ai.json(S, day, claudePrompt(S, w, draft, ids), planSchema(ids), { feature: 'build' });
-      else {
+      if (by === 'claude') {
+        opt.facts = claudeFacts(S, day);
+        const prompt = claudePrompt(S, w, draft, ids, day);
+        opt.given = `${GH.ai.systemBlocks ? GH.ai.systemBlocks(S, day, 'build').map((b) => b.text).join('\n') : ''}\n${prompt}`;
+        raw = await GH.ai.json(S, day, prompt, planSchema(ids, opt.facts.concat('asked')), { feature: 'build' });
+      } else {
         const llm = await GH.lazy('llm');
         const id = GH.deviceCoach.pick(S, await llm.installed());
         await llm.load(id);
-        const text = await llm.chat(planMessages(S, w, draft, ids), { grammar: planGrammar(ids, draft.days.length), maxTokens: 200 * draft.days.length + 150, temperature: 0.3, signal });
+        const list = ids.slice(0, DEVICE_MOVES);
+        const msgs = planMessages(S, w, draft, list, day);
+        opt.reasons = ownWhy(S, day, w, draft, R);
+        opt.given = msgs.map((m) => m.content).join('\n');
+        const text = await llm.chat(msgs, { grammar: planGrammar(list, draft.days.length, { perDay: [Math.min(R.perDay[0], ...draft.days.map((d) => d.items.length)), Math.max(R.perDay[1], ...draft.days.map((d) => d.items.length))], sets: R.sets, reasons: opt.reasons.length }), maxTokens: 200 * draft.days.length + 150, temperature: 0.3, signal });
         raw = readJson(text);
       }
     } catch (e) { raw = null; error = e; }
-    if (signal && signal.aborted) return { plan: draft, by: null };
-    const plan = accept(S, day, w, draft, raw, ids);
-    return plan ? { plan, by } : Object.assign({ plan: draft, by: null }, error ? { error } : {});
+    if (signal && signal.aborted) return { plan: draft, by: null, fixes: [] };
+    const plan = accept(S, day, w, draft, raw, ids, opt);
+    return plan ? { plan, by, fixes: uniq(fixes) } : Object.assign({ plan: draft, by: null, fixes: [] }, error ? { error } : {});
   }
   // Their own plan, reworked by a model from their data and what they ask for, and held to the same
-  // checks as a plan built from scratch (accept: the same days, time, coverage, focus and balance).
-  // Resolves { plan, by, changes, error? }: plan is null when there's no model or its take didn't
-  // pass, and changes says what's different, day by day.
+  // checks as a plan built from scratch (accept: the same days, time, coverage, focus and balance;
+  // what they had and the model kept stays as they had it). Resolves { plan, by, changes, fixes,
+  // error? }: plan is null when there's no model or its take didn't pass, and changes says what's
+  // different, day by day.
   async function improve(S, day, plan, text, signal) {
     const ask = clean(text, 300);
     const w = wishes(S, ask);
     w.days = plan.days.length;
     w.text = `Improve my own plan from my data${ask ? `, and: ${ask}` : ''}. Keep what works and what I clearly chose; change what would help most.`;
     const draft = copy(plan);
-    const r = await refine(S, day, w, draft, signal);
-    if (!r.by) return Object.assign({ plan: null, by: null, changes: [] }, r.error ? { error: r.error } : {});
+    const r = await refine(S, day, w, draft, signal, { own: true });
+    if (!r.by) return Object.assign({ plan: null, by: null, changes: [], fixes: [] }, r.error ? { error: r.error } : {});
     const out = Object.assign(r.plan, { name: plan.name });
-    return { plan: out, by: r.by, changes: diff(plan, out) };
+    return { plan: out, by: r.by, changes: diff(plan, out), fixes: r.fixes };
   }
   // What changed between two versions of a plan, day by day, in plain words.
   function diff(a, b) {
@@ -475,5 +905,10 @@
     for (const tail of ['', '"}', '}', ']}', '}]}', '"}]}']) { try { return JSON.parse(s + tail); } catch (e) { /* try the next */ } }
     return null;
   }
-  Object.assign(C, { wishes, generate, templates, template, knows, allowedMoves, planMessages, planGrammar, planSchema, accept, refine, modelFor, readJson, improve, diff });
+
+  Object.assign(C, {
+    wishes, choices, generate, build, templates, template, knows, rules, rulesLines, ownWhy, withWhy, say, tidy,
+    allowedMoves, planMessages, planGrammar, planSchema, claudePrompt, claudeFacts, accept, refine, modelFor, readJson, improve, diff,
+    BUILD: { SETS_MAX, LIGHT_REPS, WHY, DEVICE_MOVES, CLAUDE_CHARS, MOST, FEEL, SKIP },
+  });
 })(typeof window !== 'undefined' ? window : globalThis);
