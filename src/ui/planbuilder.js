@@ -798,7 +798,9 @@
     };
     const soon = () => { if (!V.raf) V.raf = G.requestAnimationFrame(update); };
     // The list again (a filter, a search): from its top, rows enough for the screen at once.
-    const relist = () => {
+    // (A filter picked: the rows in sight then settle in, src/ui/moments.js. Not while typing.)
+    const relist = (typing) => {
+      if (!typing && vl && U.motion.refill) U.motion.refill(vl, '.cp-row');
       V.items = build();
       if (sc) sc.scrollTop = 0;
       if (!V.items.length) {
@@ -916,7 +918,7 @@
         st.q = q.value;
         clear.hidden = !q.value;
         clearTimeout(timer);
-        timer = setTimeout(relist, 90);
+        timer = setTimeout(() => relist(true), 90);
       });
       q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); q.blur(); } });
       // A long press on a row opens its how-to (and its click doesn't then add it).

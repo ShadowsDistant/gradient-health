@@ -238,7 +238,12 @@ left alone. A few conventions:
   takes out from where they are). Not while typing: Settings' search draws its results again at each
   letter (patched with motion, a letter took 13 to 22 ms at 4x CPU where drawing again takes 4 to 5),
   and only fades as the first results take the parts' place; Food's search patches as before and
-  glides only when what's found online arrives.
+  glides only when what's found online arrives. A filter picked changes more of a list than FLIP
+  glides (eight changes in one container), so the new list would just be there: the badges' filter
+  and the plan builder's picker (a muscle group, a kit, Only what I can do; not a letter typed) ask
+  `U.motion.refill(root, sel)` as it's picked, which waits for the list to change (a
+  MutationObserver: it hears the change before the frame that shows it, however late a segment's
+  re-render comes) and has the ten in sight settle in, nearly together, in by 250 ms.
 - Toasts (`U.toast` in `core.js`, Refract's toaster) come up from the bottom of the screen, above
   whatever is there: the tab bar, Today's floating buttons and the workout capsule, the player's,
   set-up's or a live activity's buttons, or an open sheet's main buttons (`--toast-lift`, read again

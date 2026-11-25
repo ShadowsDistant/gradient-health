@@ -25,6 +25,8 @@
  * U.motion.count(el, text, dir)  A number rolls to its new value (Refract.roll), up or down.
  * U.motion.beat(el, big)  A beat on a number (the 3-2-1) or, big, on the ring as a rest ends.
  * U.motion.land(list, o)  Parts land one after another: each rises (or, o.pop, pops) into place.
+ * U.motion.refill(root, sel)  A filter was just picked: once root's sel items change, those in sight
+ *   settle in (the badges gallery's filter, the plan builder's picker).
  *
  * A sheet that opens from a row with a move's picture carries that picture into its figure's box
  * (Plan's rows, the plan builder's, the player's figure and Up next), one opened from a health
@@ -142,6 +144,28 @@
     Array.from(list).forEach((n, i) => {
       if (n && n.nodeType === 1 && n.animate) M.show(n, [from, { opacity: 1, transform: 'none' }], { duration: opt.ms || (opt.pop ? 420 : 280), delay: (opt.at || 0) + i * (opt.each == null ? 30 : opt.each), easing: opt.pop ? bouncy() : t.enter, fill: 'backwards' });
     });
+  };
+
+  /* ---------------------------------------------------------------- a list filtered anew */
+  // A filter picked (a segment, a chip) changes so much of a list that it isn't glided (FLIP gives up
+  // past a few changes in one container): the new list would just be there. Asked as the filter is
+  // picked, this waits for the list to change (a segment's re-render waits for its bead to land,
+  // core.js), then what's in sight of it settles in, nearly together, all in by 250 ms. Not what's
+  // already moving (a block the patch has rising in), and not while typing: callers leave that out.
+  // (Watched for by a MutationObserver, which hears the change before the frame that would show it.)
+  M.refill = (root, sel) => {
+    if (reduced() || !can(root) || !G.MutationObserver) return;
+    const was = Array.from(root.querySelectorAll(sel));
+    const mo = new G.MutationObserver(() => {
+      const list = Array.from(root.querySelectorAll(sel));
+      if (list.length === was.length && list.every((n, i) => n === was[i])) return;
+      mo.disconnect();
+      const h = U.viewH ? U.viewH() : G.innerHeight;
+      const kids = list.filter((n) => { if (n.getAnimations().length) return false; const r = n.getBoundingClientRect(); return r.height > 0 && r.bottom > 0 && r.top < h; });
+      M.land(kids.slice(0, 10), { y: 8, each: 8, ms: 170 });
+    });
+    mo.observe(root, { childList: true, subtree: true });
+    setTimeout(() => mo.disconnect(), 1500);
   };
 
   /* ---------------------------------------------------------------- the workout player */
