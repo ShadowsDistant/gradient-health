@@ -168,7 +168,7 @@ section('Suggestions');
 /* ---------------------------------------------------------------- the AI plan review (1.6) */
 // The rest of the coach: the built-in answers and the number check (src/coach.js), Tailor's reading
 // (for a focus suggestion), the review itself, and the on-device coach's prompts.
-load('src/data/science.js', 'src/body.js', 'src/coach.js', 'src/tailor.js', 'src/customplan.js', 'src/planreview.js', 'src/devicecoach.js');
+load('src/data/science.js', 'src/body.js', 'src/coach.js', 'src/tailor.js', 'src/customplan.js', 'src/planbuild.js', 'src/planreview.js', 'src/devicecoach.js');
 const R = GH.planReview, C = GH.coach;
 const workout = (S1, d) => {
   B.startWorkout(S1, d, { now: d * B.DAY_MS });
