@@ -207,6 +207,10 @@ dialog.gh-sheet[data-closing] { pointer-events: none; }
 }
 @layer rf.components {
   .gh-sheet-panel .rf-btn:not(.rf-glass):not([data-variant]), .gh-sheet-panel .rf-btn:not(.rf-glass)[data-variant="plain"] { background-color: transparent; color: inherit; }
+  /* One with words is the accent, as a text button is on a page: in the label's ink "Show all 28",
+     "Change it" and "Use" read as bold labels, while "Why this plan" beside them was a link. An icon
+     alone (Close, the chat's tools) keeps the label's ink, and a tone its own colour. */
+  .gh-sheet-panel .rf-btn:not(.rf-glass, [data-shape="circle"], [data-tone], :disabled, [aria-disabled="true"]):is(:not([data-variant]), [data-variant="plain"]) { color: var(--accent); }
   .gh-sheet .rf-segmented { --thumb: var(--fill-selected); }
   .gh-sheet .rf-segmented .rf-segmented-thumb { box-shadow: none; }
   .gh-sheet .rf-segment { color: inherit; }

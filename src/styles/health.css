@@ -213,7 +213,6 @@ button.hl-pill:active { scale: .97; transition-duration: var(--duration-instant)
 .ms-row-acts .rf-btn { color: var(--label-secondary); }
 .ms-row-acts .ms-del { color: var(--critical); }
 .ms-more { justify-self: center; }
-.ms-more:not(.rf-glass) { color: var(--accent); } /* (a text button, as "See all" is: a sheet's plain buttons take the label's ink) */
 .ms-none { margin: 0 var(--space-1); }
 .ms-about { border-radius: var(--radius-lg); background: var(--fill-3); }
 .ms-about > summary { list-style: none; display: flex; align-items: center; gap: var(--space-2); min-height: 48px; padding: 0 var(--space-4); font-weight: 620; font-size: .9375rem; cursor: pointer; }

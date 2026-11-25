@@ -1028,7 +1028,7 @@
     // Picking a weight to use closes its sheet, the one it's on too (data-repick).
     const now = choices.find((c) => Math.abs(c.kg - curKg) < 1e-6);
     return `<div class="load-chips">${U.choice(act, choices.map((c) => [c.kg, c.label]), now ? now.kg : '', 'Weight', ` data-on="${act}"${act === 'plLoadPick' ? ' data-repick' : ''}`)}</div>
-      <div class="ob-add"><input class="rf-input" type="number" inputmode="decimal" id="plLoadOther" placeholder="Other weight (${U.wUnit()})" aria-label="Other weight"><button type="button" class="rf-btn" data-size="sm" data-act="plLoadOther" data-arg="${act}">Use</button></div>`;
+      <div class="ob-add"><div class="rf-field-control"><input class="rf-input" type="number" inputmode="decimal" id="plLoadOther" placeholder="Other weight (${U.wUnit()})" aria-label="Other weight"></div><button type="button" class="rf-btn" data-size="sm" data-act="plLoadOther" data-arg="${act}">Use</button></div>`;
   }
   U.act.plLoad = () => {
     const st = cur();
