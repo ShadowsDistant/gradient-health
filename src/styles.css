@@ -377,11 +377,11 @@ button.ex-name::before { content: ''; position: absolute; inset: 0; }
 .feel-done { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding-block: var(--space-2); }
 .insight-line { appearance: none; border: 0; display: flex; align-items: center; gap: var(--space-3); width: 100%; padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); color: var(--label); text-align: start; cursor: pointer; min-height: 56px; }
 .insight-text { display: grid; flex: 1; min-width: 0; }
-
-/* ---------------------------------------------------------------- plan */
 /* Its chevron is a list row's, small and quiet (it drew at 20 px in the label's ink, heavier than
    the Food card's just above it). */
 .insight-line > svg:last-child { flex: none; color: var(--label-tertiary); --rf-icon-size: 16px; --rf-icon-stroke: 2.25; }
+
+/* ---------------------------------------------------------------- plan */
 
 /* ---------------------------------------------------------------- health */
 .stat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
