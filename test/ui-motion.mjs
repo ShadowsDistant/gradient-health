@@ -927,6 +927,8 @@ section('Moments: the workout player');
   // picture into its card, and the dot of the set just done lands.
   const count = await page.evaluate(async () => {
     const c = document.querySelector('.player .pl-count');
+    // (A minute just passed rolls the count too: once that roll is over.)
+    for (let i = 0; i < 40 && (c.children.length || !/^\d+:\d\d$/.test(c.textContent)); i++) await new Promise((res) => setTimeout(res, 50));
     const before = c.textContent;
     document.querySelector('.player [data-act="plMore"]').click();
     const rolling = c.children.length > 0 || c.getAnimations({ subtree: true }).length > 0;
@@ -1083,8 +1085,8 @@ section('Moments: a move\'s picture travels into its how-to');
 
 section('Moments: lists that filter and shrink');
 {
-  // Settings' search: the first results fade in; a letter more patches the list, so a row that
-  // stays keeps its node (and glides) instead of every row being drawn again.
+  // Settings' search: the first results fade in where the parts were, and the parts fade back; a
+  // letter more only draws the results again (typing stays as quick as it was).
   await page.evaluate(async () => { const U = window.GH.ui; U.go('you'); await U.motion.settled(); U.open('settings'); await U.motion.settled(); });
   await wait(300);
   // (Typed as the keyboard does it: the field's value, then its input event.)
@@ -1101,7 +1103,7 @@ section('Moments: lists that filter and shrink');
     return out;
   });
   check('the first results fade in where the parts were', s1.shown && s1.fades && s1.rows > 0, s1);
-  check('a letter more keeps the rows that still match (their nodes), drops the rest, and leaves nothing behind', s2.rows > 0 && s2.rows < s2.was && s2.kept === s2.rows && Object.values(s2.left).every((n) => n === 0), s2);
+  check('a letter more narrows them at once, with nothing left behind', s2.rows > 0 && s2.rows < s2.was && Object.values(s2.left).every((n) => n === 0), s2);
   const s3 = await page.evaluate(() => { window.__type(''); const home = document.querySelector('#screen .set-home'); return { home: !home.hidden, fades: window.__m.anims(home).some((a) => window.__m.props(a).join() === 'opacity') }; });
   check('cleared, the parts fade back in', s3.home && s3.fades, s3);
   await page.evaluate(async () => { const U = window.GH.ui; U.back(); await U.motion.settled(); });

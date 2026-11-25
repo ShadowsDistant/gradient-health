@@ -207,11 +207,10 @@
     const home = root.querySelector('.set-home'), res = root.querySelector('.set-results');
     if (!home || !res) return;
     const on = !!norm(query), was = !res.hidden;
-    // Results already up are patched, so the rows that stay glide to their new places while the
-    // ones a letter rules out leave and new ones rise in (U.morph, animated); the first results take
-    // the parts' place, and the parts come back, with a short fade.
-    if (on && was && U.morph) U.morph(res, results(U.S), true);
-    else if (on) res.innerHTML = results(U.S);
+    // (Drawn again at each letter, which is what keeps a letter quick: patched in place with the
+    // rows gliding, a letter took three to four times as long at 4x CPU.) The first results take the
+    // parts' place, and the parts come back, with a short fade.
+    if (on) res.innerHTML = results(U.S);
     home.hidden = on;
     res.hidden = !on;
     const now = on ? res : home;

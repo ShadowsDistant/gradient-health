@@ -26,7 +26,8 @@
  * U.motion.land(list, o)  Parts land one after another: each rises (or, o.pop, pops) into place.
  *
  * A sheet that opens from a row with a move's picture carries that picture into its figure's box
- * (Plan's rows, the player's figure and Up next), and its rings and bars fill.
+ * (Plan's rows, the plan builder's, the player's figure and Up next), and a sheet's rings and bars
+ * fill.
  */
 (function (G) {
   'use strict';
@@ -46,14 +47,17 @@
 
   /* ---------------------------------------------------------------- the last tap */
   // What was tapped last, and where it was (read as the click arrives, before anything it does has
-  // changed the page): the source a moment grows out of.
+  // changed the page): the source a moment grows out of. Only what can be one is measured: a main
+  // button (the player opens out of it) and a move's picture (it travels into its sheet); any other
+  // tap reads nothing from the layout.
   const PICTURE = '.pw-thumb, .cp-thumb, .pl-fig'; // a move's picture in what was tapped
+  const MAIN = '.rf-btn[data-variant="tinted"], .rf-btn[data-variant="filled"], [data-act="resumeWorkout"]';
   let tapped = null;
   doc.addEventListener('click', (e) => {
     const t = e.target && e.target.closest ? e.target.closest('[data-act], button, a') : null;
     if (!t) { tapped = null; return; }
     const p = t.matches(PICTURE) ? t : t.querySelector(PICTURE);
-    tapped = { el: t, at: now(), box: t.getBoundingClientRect(), pic: p, picBox: p ? p.getBoundingClientRect() : null };
+    tapped = { el: t, at: now(), box: t.matches(MAIN) ? t.getBoundingClientRect() : null, pic: p, picBox: p ? p.getBoundingClientRect() : null };
   }, true);
   const tap = (ms) => (tapped && now() - tapped.at < ms ? tapped : null);
 
@@ -141,7 +145,7 @@
     el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: 'ease-out' });
     const acts = el.querySelector(':scope > .pl-actions');
     const btn = acts && acts.querySelector(':scope > .rf-btn[data-variant="tinted"]');
-    const from = btn && src && src.el.matches('.rf-btn[data-variant="tinted"], .rf-btn[data-variant="filled"], [data-act="resumeWorkout"]') && src.box.width > 8 ? src.box : null;
+    const from = btn && src && src.box && src.box.width > 8 ? src.box : null;
     Array.from(el.children).forEach((c, i) => {
       if (c === acts && from) return;
       c.animate([{ opacity: 0, transform: 'translateY(26px)' }, { opacity: 1, transform: 'none' }], { duration: 340, delay: 30 + i * 30, easing: t.enter, fill: 'backwards' });
@@ -192,12 +196,10 @@
         // Another move, or no figure to carry: the scene rises in.
         main.animate([{ opacity: 0, transform: `translateY(${phase === 'rest' ? 18 : 24}px)` }, { opacity: 1, transform: 'none' }], { duration: 300, easing: t.enter });
       } else {
-        // The same move: its figure travels between the card and Up next's picture, and the rest of
-        // the scene comes in around it. (What holds the picture only fades, so it's where it will be.)
-        const holder = f1.parentNode === main ? f1 : f1.closest('.pl-next-row');
-        const others = Array.from(main.children).filter((n) => n !== holder);
-        M.land(others, { y: 14, each: 22 });
-        if (holder && holder !== f1) M.show(holder, [{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'linear' });
+        // The same move: its figure travels between the card and Up next's picture while the rest of
+        // the scene fades in around it, quickly and as one piece (it's where it will be, so the
+        // figure's path is true; a move of its own for every line was a layer each, and frames late).
+        main.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: 'linear' });
         read(() => {
           if (!can(f1)) return;
           const b = f1.getBoundingClientRect(), a = was.box;
@@ -271,22 +273,24 @@
     seen.add(ctl.el);
     const title = ctl.el.querySelector('.rf-sheet-title');
     M.fill(ctl.body, `sheet:${title ? title.textContent : ''}`);
-    const to = ctl.el.querySelector('.sheet-fig'), src = tap(700);
-    if (!to || !src || reduced()) return;
-    const pic = src.pic && src.pic.isConnected && !src.pic.querySelector('canvas') ? src.pic.querySelector('img, svg') : null;
+    const src = tap(700);
+    if (!src || reduced()) return;
+    // A move's picture, into the sheet's figure box.
+    const fig = ctl.el.querySelector('.sheet-fig');
+    const pic = fig && src.pic && src.pic.isConnected && !src.pic.querySelector('canvas') ? src.pic.querySelector('img, svg') : null;
     if (!pic) return;
-    // Where the figure's box will rest (the panel has no motion on it yet), then, once the panel's
-    // slide exists, the copy moves on the same curve over the same time: it rides up with the sheet.
-    // What the sheet draws in the box stays out of sight until the copy is nearly there, then takes
-    // over from it.
-    const box = to.getBoundingClientRect();
+    const wait = fig.closest('.sheet-fig-card') || fig;
+    // Where it will rest (the panel has no motion on it yet), then, once the panel's slide exists,
+    // the copy moves on the same curve over the same time: it rides up with the sheet. What the
+    // sheet draws there stays out of sight until the copy is nearly there, then takes over from it.
+    const box = fig.getBoundingClientRect();
     Promise.resolve().then(() => {
       const panel = ctl.el.querySelector('.gh-sheet-panel');
-      const slide = panel && panel.getAnimations().find((a) => a.effect && a.effect.getKeyframes().some((k) => 'transform' in k));
+      const slide = panel && panel.getAnimations().find((x) => x.effect && x.effect.getKeyframes().some((k) => 'transform' in k));
       const time = slide ? slide.effect.getTiming() : null;
       const ms = time && Number(time.duration) > 0 ? Number(time.duration) : 240;
       if (!M.travel(pic, box, { from: src.picBox, layer: ctl.el, ms, easing: time ? time.easing : null })) return;
-      M.show(to.closest('.sheet-fig-card') || to, [{ opacity: 0 }, { opacity: 0, offset: 0.4 }, { opacity: 1, offset: 0.8 }, { opacity: 1 }], { duration: ms, easing: 'linear' });
+      M.show(wait, [{ opacity: 0 }, { opacity: 0, offset: 0.4 }, { opacity: 1, offset: 0.8 }, { opacity: 1 }], { duration: ms, easing: 'linear' });
     });
   });
 })(typeof window !== 'undefined' ? window : globalThis);
