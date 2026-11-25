@@ -220,9 +220,11 @@ section('Scenario A: your answers, 3 weeks from Mon Sep 28');
 }
 
 /* ------------------------------------------------------------------ Scenario B */
-section('Scenario B: five clean weeks → scheduled deload in week 5');
+section('Scenario B: five clean weeks → scheduled deload in week 5, after a year of training');
 {
-  const S = B.newState(USER, BASELINE, D0);
+  // (1.15: someone who has trained a year or more. A beginner has none planned in their first 12
+  // weeks, D7 of the 1.15 research: checked below.)
+  const S = B.newState(Object.assign({}, USER, { experience: '1to3' }), BASELINE, D0);
   const tpl = B.templateFor(S.profile, B.programFor(S.profile));
   for (let w = 0; w < 4; w++) for (const t of tpl) doWorkout(S, D0 + w * 7 + t.offset, {});
   const cal = B.calendar(S, D0 + 28);
@@ -230,6 +232,12 @@ section('Scenario B: five clean weeks → scheduled deload in week 5');
   check('week 5 is the scheduled deload', cal.weeks[D0 + 28].phase.deload, cal.weeks[D0 + 28].phase);
   check('weeks 3-4 run at full volume', cal.weeks[D0 + 14].phase.mult === 1 && cal.weeks[D0 + 21].phase.mult === 1);
   check('arms and abs grew +1 set per full week without "too hard"', S.vol.biceps > 8 && S.vol.abs > 8, S.vol);
+  // A beginner trains on through weeks 5 and 10; the first planned lighter week comes in week 13.
+  const N = B.newState(USER, BASELINE, D0);
+  for (let w = 0; w < 13; w++) for (const t of tpl) doWorkout(N, D0 + w * 7 + t.offset, {});
+  const cn = B.calendar(N, D0 + 12 * 7);
+  const light = Object.values(cn.weeks).filter((w) => w.phase.deload).map((w) => (w.ws - D0) / 7 + 1);
+  check(`a beginner: no lighter week planned in the first 12 weeks, then one (${light.join(', ')})`, light.join(',') === '13', light);
 }
 
 /* ------------------------------------------------------------------ Scenario C */
@@ -246,7 +254,9 @@ section('Scenario C: early deload in week 3 → next one in week 8');
   }
   const cal = B.calendar(S, D0 + 49);
   const deloads = Object.values(cal.weeks).filter((w) => w.phase.deload).map((w) => (w.ws - D0) / 7 + 1);
-  check(`deload weeks are 3 and 8 (${deloads.join(', ')})`, deloads.join(',') === '3,8');
+  // (1.15: only week 3, the one asked for by two hard sessions on poor sleep. A beginner has no
+  // planned lighter week in the first 12 weeks, so week 8's isn't there.)
+  check(`deload weeks are 3 only (${deloads.join(', ')})`, deloads.join(',') === '3');
 }
 
 /* ------------------------------------------------------------------ Scenario D */

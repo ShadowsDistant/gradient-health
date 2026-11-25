@@ -507,7 +507,10 @@ function runProfile(spec, n, extra) {
       // Weeks 3 and 4 trained too: week 5 is the scheduled deload.
       for (let w = 2; w < 4; w++) S.log.push({ type: 'workout', day: D0 + w * 7 + 6, tpl: 0, title: 'Workout', items: [], checkedIn: true, pct: 1, planned: 1, doneSets: 1 });
       const ph = B.calendar(S, D0 + 28).weeks[D0 + 28].phase;
-      if (!ph.deload) bad('a deload comes after four training weeks', label);
+      // (From 1.15 not for a beginner, in their first 12 weeks: D7 of the 1.15 research.)
+      const novice = B.personal(S, D0 + 28) && B.programFor(S.profile).level === 0;
+      if (!ph.deload && !novice) bad('a deload comes after four training weeks', label);
+      if (ph.deload && novice) bad('a deload comes after four training weeks', `${label}: a beginner's week 5`);
       checkWeek(S, D0 + 28, `${label} w5`, { phase: 'deload' });
     }
   } catch (e) {

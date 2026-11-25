@@ -824,7 +824,11 @@
       const idle = lastWorkoutDay != null && ws - lastWorkoutDay >= 7 + 1;
       let deload = false;
       if (deloadReq.has(ws)) deload = true;
-      else if (sinceDeload >= 4 && trainingWeeks >= 4) deload = true;
+      // (1.15: none planned in a beginner's first 12 weeks of training. The one trial found a week
+      // off gave no more growth and a little less strength, Coleman et al. 2024, and a planned
+      // lighter week is coaching practice for higher volumes, Bell et al. 2023: D7 of the 1.15
+      // research. Too hard on poor sleep twice in two weeks still brings one, deloadReq.)
+      else if (sinceDeload >= 4 && trainingWeeks >= 4 && !(prog.level === 0 && trainingWeeks < 12 && personal(S, ws))) deload = true;
       const onramp = !deload && (trainingWeeks < prog.onramp.weeks || idle);
       const mult = deload ? 0.6 : onramp ? (idle && trainingWeeks >= prog.onramp.weeks ? 0.7 : prog.onramp.mult) : 1;
       // Sessions for the week.

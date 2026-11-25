@@ -276,7 +276,9 @@ section('Switching part-way through a week');
 
 section('Lighter weeks');
 {
-  const S = fresh(MON - 35);
+  // (Someone who has trained a year or more: from 1.15 a beginner has no planned lighter week in
+  // their first 12 weeks, brain.js replay.)
+  const S = fresh(MON - 35, { experience: '1to3' });
   const plan = C.add(S, PPL).plan;
   C.use(S, plan.id, MON - 35);
   for (let d = MON - 35; d < MON; d++) { const p = B.todayPlan(S, d); if (p.type === 'workout') doWorkout(S, d); else light(S, d); }
