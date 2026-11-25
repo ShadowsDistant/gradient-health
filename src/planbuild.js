@@ -318,11 +318,21 @@
   //    their level (brain.programFor; the cap is 12 when they eat little protein, since more sets
   //    don't make up for food: low_protein_diet 3), on at least 2 days when the plan has 2
   //    (abs_and_arms 2 and 4);
-  //  - order: goal muscles first, abs and core last (How it works: Your goals go first).
+  //  - order: goal muscles first, abs and core last (How it works: Your goals go first);
+  //  - and the research's other limits: every muscle the draft trains keeps at least 4 sets a week
+  //    and none goes past 30 (individualized_dose 1), abs past about 18 and arms past about 20 add
+  //    little (abs_and_arms 2 and 4), about 10 sets of one muscle in a session at most (legs, which
+  //    is several muscles here, aside: individualized_dose 2), at most about 60 crunch-type reps in
+  //    a session (abs_and_arms 3), and 2 to 3 sets of an exercise from 60 (individualized_dose 5).
+  // Each limit is read against the draft too: a model isn't held to more than the engine's own plan.
   const SETS_MAX = 4, LIGHT_REPS = 30;
+  const WEEK = [4, 30], GOAL_CAP = { abs: 18, biceps: 20, triceps: 20 }, DAY_SETS = 10, FLEX_REPS = 60;
   const perDayFor = (mins) => (mins <= 12 ? [2, 3] : mins <= 20 ? [3, 5] : mins <= 30 ? [4, 6] : mins <= 45 ? [5, 8] : [6, 9]);
+  // Crunch-type work (dynamic trunk flexion): the crunch ladder, reverse crunches, leg raises and V-ups.
+  const FLEX = ['ab_revcrunch', 'ab_legraise', 'ab_vup', 'cable_crunch', 'hang_knee'];
+  const flexion = (id) => FLEX.includes(id) || (M().MOVES[id] || {}).family === 'absLoad';
   function rules(S, day, w, draft) {
-    const b = B(), P = GH.person;
+    const b = B(), P = GH.person, A = GH.access;
     const S2 = sandbox(S, w), p = S2.profile, prog = b.programFor(p);
     const D = draft ? draft.days.length : clampInt(w.days || p.days, 1, 6, 3);
     const mins = clampInt(w.minutes || p.minutes, 10, 90, 30);
@@ -333,9 +343,13 @@
       const [lo, hi] = b.rangeFor(S2, m, m.family, day);
       return m.timed || !/db|kb/.test(m.load || '') || !light(m.family) ? [lo, hi] : [lo, Math.max(hi, LIGHT_REPS)];
     };
-    const goals = b.GROUPS.filter((g) => prog.tiers[g] === 1).map((g) => ({ group: g, floor: prog.floor[g], cap: lowEat ? Math.min(prog.cap[g], 12) : prog.cap[g], days: Math.min(2, D) }));
-    return { S2, D, mins, perDay: perDayFor(mins), sets: [1, w.feel === 'easy' ? SETS_MAX - 1 : SETS_MAX], reps, goals, lowEat, light, tier: (g) => (g === 'abs' ? 9 : prog.tiers[g] || (GROUP_GOAL[g] ? 3 : 10)) };
+    const goals = b.GROUPS.filter((g) => prog.tiers[g] === 1).map((g) => ({ group: g, floor: prog.floor[g], cap: Math.min(lowEat ? 12 : prog.cap[g], GOAL_CAP[g] || WEEK[1]), days: Math.min(2, D) }));
+    const older = !!(A && A.ageOf && A.ageOf(p) >= 60);
+    return { S2, D, mins, perDay: perDayFor(mins), sets: [1, w.feel === 'easy' || older ? SETS_MAX - 1 : SETS_MAX], reps, goals, lowEat, light, older, week: WEEK, daySets: DAY_SETS, flexReps: FLEX_REPS, tier: (g) => (g === 'abs' ? 9 : prog.tiers[g] || (GROUP_GOAL[g] ? 3 : 10)) };
   }
+  // A day's crunch-type reps, and a muscle's sets in it (the limits above).
+  const flexOf = (d) => d.items.filter((it) => flexion(it.move) && it.reps).reduce((a, it) => a + it.sets * it.reps, 0);
+  const daySetsOf = (d, g) => d.items.filter((it) => M().MOVES[it.move].group === g).reduce((a, it) => a + it.sets, 0);
   const groupWord = (g) => (g === 'abs' ? 'abs' : String((B().GROUP_NAME || {})[g] || g).toLowerCase());
   const listWords = (a) => (a.length <= 1 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`);
   // The rules in words, for a model. o: { to: 'claude' | 'device', wide } (what it may be told about
@@ -344,10 +358,11 @@
     const P = GH.person;
     const L = [
       `Keep exactly ${R.D} ${R.D === 1 ? 'day' : 'days'}. ${R.perDay[0]} to ${R.perDay[1]} exercises a day: that's what ${R.mins} minutes holds.`,
-      `${R.sets[0]} to ${R.sets[1]} sets of an exercise, never more than ${R.sets[1]} in a day. When a muscle needs more, give it a second exercise.`,
-      'Reps (or seconds) inside each move\'s own range, given in MOVES.',
+      `${R.sets[0]} to ${R.sets[1]} sets of an exercise, never more than ${R.sets[1]} in a day. When a muscle needs more, give it a second exercise, up to ${R.daySets} sets of one muscle in a day.`,
+      `Reps (or seconds) inside each move's own range, given in MOVES. Crunch-type moves (crunches, reverse crunches, leg raises, sit-ups): ${R.flexReps} reps a day at most, all sets together.`,
     ];
     if (R.goals.length) L.push(`Each week: ${R.goals.map((g) => `${groupWord(g.group)} ${g.floor} to ${g.cap} sets`).join(', ')}${R.D >= 2 ? ', each on at least 2 days' : ''}.`);
+    L.push(`Every ${R.goals.length ? 'other ' : ''}muscle the draft trains: ${R.week[0]} to ${R.week[1]} sets a week (fewer only where the draft has fewer).`);
     L.push('Order each day: the muscles they want most first, big moves before small ones, abs and core last.');
     return L.concat(P ? P.advice(S, day, o) : [], P ? [P.guard(S, day, o)].filter(Boolean) : []);
   }
@@ -434,7 +449,8 @@
     const light = all.filter((it) => it.reps && /db|kb/.test(MV[it.move].load || '') && R.light(MV[it.move].family));
     if (P && light.length) {
       const f = P.loadFeel(R.S2, MV[light[0].move].family);
-      add('load', 'load', `Your ${f.top} ${p.units || 'lb'} weights are light for you, so those exercises build on reps, up to ${Math.max(...light.map((it) => R.reps(it.move)[1]))}, close to the last one you can do.`);
+      // (How close to the last rep, as the engine sets it: 2 or 3 short from 60.)
+      add('load', 'load', `Your ${f.top} ${p.units || 'lb'} weights are light for you, so those exercises build on reps, up to ${Math.max(...light.map((it) => R.reps(it.move)[1]))}, ${P.effort(R.S2, day)[0] >= 2 ? 'stopping 2 or 3 short of' : 'close to'} the last one you can do.`);
     }
     if (w.feel === 'easy') add('feel', 'asked', `You asked for a plan that's easy to keep up, so no exercise has more than ${R.sets[1]} sets and it starts a little lower.`);
     add('time', 'time', `You have ${D} ${D === 1 ? 'day' : 'days'} of ${R.mins} minutes, so each day has ${uniq([Math.min(...plan.days.map((d) => d.items.length)), Math.max(...plan.days.map((d) => d.items.length))]).join(' to ')} exercises.`);
@@ -671,6 +687,31 @@
         if (minutes(S, plan, i, day) > before) { mate.sets -= out.sets; d.items.splice(at, 0, out); kept.add(out); } else folded++;
       }
       if (folded) fixes.push(`Day ${i + 1} had more exercises than ${R.mins} minutes holds, so ${folded === 1 ? 'one was' : `${folded} were`} folded into the others.`);
+      // No muscle past its sets for a day (legs aside), and crunch-type work within its reps: sets
+      // come off the exercise with the most, down to one, and then reps, down to the move's lowest.
+      for (const g of uniq(d.items.map(grp)).filter((x) => GROUP_GOAL[x] && x !== 'legs')) {
+        const most = Math.max(R.daySets, own && draft.days[i] ? daySetsOf(draft.days[i], g) : 0);
+        let cut = 0;
+        for (let guard = 0; guard < 40 && daySetsOf(d, g) > most; guard++) {
+          const it = d.items.filter((x) => grp(x) === g && x.sets > 1 && !theirs(i, x)).sort((a, b) => b.sets - a.sets)[0];
+          if (!it) break;
+          it.sets--;
+          cut++;
+        }
+        if (cut) fixes.push(`Kept your ${groupWord(g)} to ${most} sets on day ${i + 1}.`);
+      }
+      const flexMost = Math.max(R.flexReps, own && draft.days[i] ? flexOf(draft.days[i]) : 0);
+      if (flexOf(d) > flexMost) {
+        for (let guard = 0; guard < 40 && flexOf(d) > flexMost; guard++) {
+          const pool = d.items.filter((x) => flexion(x.move) && x.reps && !theirs(i, x));
+          const it = pool.filter((x) => x.sets > 1).sort((a, b) => b.sets * b.reps - a.sets * a.reps)[0];
+          if (it) { it.sets--; continue; }
+          const big = pool.filter((x) => x.reps > R.reps(x.move)[0]).sort((a, b) => b.reps - a.reps)[0];
+          if (!big) break;
+          big.reps = Math.max(R.reps(big.move)[0], big.reps - Math.ceil((flexOf(d) - flexMost) / big.sets));
+        }
+        fixes.push(`Kept day ${i + 1}'s crunch-type work to ${flexMost} reps.`);
+      }
       // Goal muscles first, abs and core last (the order within each is the model's).
       const before = d.items.map((it) => it.move).join();
       d.items = d.items.map((it, k) => [it, k]).sort((a, b) => R.tier(grp(a[0])) - R.tier(grp(b[0])) || a[1] - b[1]).map((x) => x[0]);
@@ -683,10 +724,13 @@
   // passes the rules above and the checks the plan review makes on the coach's plan
   // (src/planreview.js). What can be put right safely is (tidy, and below), and o.fixes says so in
   // plain words; anything else keeps the draft:
-  //  - the rules: sets of one exercise, reps, exercises a day and the order (tidy);
+  //  - the rules: sets of one exercise, reps, exercises a day, a muscle's sets in a day, crunch-type
+  //    reps and the order (tidy);
   //  - goal muscles: each on as many days as the rules ask, or as the draft has when that's fewer
-  //    (the draft's own exercise goes back in where the model dropped it), and no fewer weekly sets
-  //    than the rules' floor, or the draft's;
+  //    (the draft's own exercise goes back in where the model dropped it);
+  //  - weekly sets: each muscle inside its floor and ceiling (a goal muscle's from the rules, any
+  //    other's 4 to 30), or the draft's where that's wider: past it, sets come off; short of it,
+  //    sets go back where a day has the time and the room;
   //  - time: each day fits the time asked for, or runs no longer than the draft's own day (a set
   //    comes off the move with the most to spare until it fits, down to 1; the move the day leads
   //    with and the groups they asked to focus on count as having fewer, so they keep theirs longer);
@@ -732,27 +776,37 @@
       });
       if (daysOf(plan, g.group) < need) return null;
     }
-    // Weekly sets: a goal muscle past its cap (or the draft's) gives the extra up.
+    // Each muscle's weekly floor and ceiling: a goal muscle's from the rules, any other's the
+    // research's (4 to 30), and never more than the draft itself asks or less than it allows. (A
+    // muscle the draft gives a single set may go, as the coverage check below allows.)
     const now = () => setsOf(plan);
-    const floorOf = (g) => Math.min(g.floor, was[g.group] || 0);
-    for (const g of R.goals) {
-      let over = (now()[g.group] || 0) - Math.max(g.cap, was[g.group] || 0);
-      if (over > 0) fixes.push(`Kept your ${groupWord(g.group)} to ${Math.max(g.cap, was[g.group] || 0)} sets a week.`);
-      for (let guard = 0; guard < 40 && over > 0; guard++) {
-        const it = plan.days.flatMap((d) => d.items).filter((x) => grp(x) === g.group && x.sets > 1).sort((a, b) => b.sets - a.sets)[0];
+    const goalOf = (g) => R.goals.find((x) => x.group === g);
+    const floorOf = (g) => (goalOf(g) ? Math.min(goalOf(g).floor, was[g] || 0) : (was[g] || 0) >= 2 ? Math.min(R.week[0], was[g]) : 0);
+    const capOf = (g) => Math.max(goalOf(g) ? goalOf(g).cap : R.week[1], was[g] || 0);
+    // Weekly sets: a muscle past its ceiling gives the extra up.
+    for (const g of Object.keys(now())) {
+      let over = (now()[g] || 0) - capOf(g);
+      if (over > 0) fixes.push(`Kept your ${groupWord(g)} to ${capOf(g)} sets a week.`);
+      for (let guard = 0; guard < 60 && over > 0; guard++) {
+        const it = plan.days.flatMap((d) => d.items).filter((x) => grp(x) === g && x.sets > 1).sort((a, b) => b.sets - a.sets)[0];
         if (!it) break;
         it.sets--;
         over--;
       }
     }
-    // Time: a set comes off the move with the most to spare until the day fits, a goal muscle's
-    // only once the others have none to give (it keeps its weekly floor, or the draft's).
+    // A day's own limits (a muscle's sets in a day, crunch-type reps), read against the draft's day.
+    const dayOk = (i) => {
+      const d = plan.days[i], o = draft.days[i];
+      return flexOf(d) <= Math.max(R.flexReps, flexOf(o)) && uniq(d.items.map(grp)).every((g) => !GROUP_GOAL[g] || g === 'legs' || daySetsOf(d, g) <= Math.max(R.daySets, daySetsOf(o, g)));
+    };
+    // Time: a set comes off the move with the most to spare until the day fits, a muscle's at its
+    // weekly floor (or the draft's) only once the others have none to give.
     const focus = (it) => ((w && w.focus) || []).includes(grp(it));
     for (let i = 0; i < plan.days.length; i++) {
       const d = plan.days[i];
       // (On a tie, the later move gives a set first.)
       const spare = (it, k) => it.sets - (focus(it) ? 1 : 0) - (k === 0 ? 2 : 0) + k / 100;
-      const held = (it) => { const g = R.goals.find((x) => x.group === grp(it)); return !!g && (now()[g.group] || 0) <= floorOf(g); };
+      const held = (it) => (now()[grp(it)] || 0) <= floorOf(grp(it));
       let cut = 0;
       for (let guard = 0; guard < 200 && minutes(S, plan, i, day) > limit(i); guard++) {
         let pick = -1;
@@ -767,26 +821,28 @@
       if (minutes(S, plan, i, day) > limit(i)) return null;
       if (cut) fixes.push(`Took ${cut === 1 ? 'a set' : `${cut} sets`} off day ${i + 1} so it fits your time.`);
     }
-    // A goal muscle short of its weekly floor (or the draft's) gets sets back where a day has the
-    // time for them.
-    for (const g of R.goals) {
-      for (let guard = 0; guard < 24 && (now()[g.group] || 0) < floorOf(g); guard++) {
+    // A muscle short of its weekly floor (or the draft's) gets sets back where a day has the time
+    // and the room for them, the goal muscles first.
+    for (const g of R.goals.map((x) => x.group).concat(Object.keys(was).filter((x) => !goalOf(x)))) {
+      let added = 0;
+      for (let guard = 0; guard < 24 && (now()[g] || 0) < floorOf(g); guard++) {
         let done = false;
         for (let i = 0; i < plan.days.length && !done; i++) {
-          const it = plan.days[i].items.filter((x) => grp(x) === g.group && x.sets < R.sets[1]).sort((a, b) => a.sets - b.sets)[0];
+          const it = plan.days[i].items.filter((x) => grp(x) === g && x.sets < R.sets[1]).sort((a, b) => a.sets - b.sets)[0];
           if (!it) continue;
           it.sets++;
-          if (minutes(S, plan, i, day) > limit(i)) it.sets--; else done = true;
+          if (minutes(S, plan, i, day) > limit(i) || !dayOk(i)) it.sets--; else { done = true; added++; }
         }
         if (!done) return null;
       }
+      if (added) fixes.push(`Gave your ${groupWord(g)} ${added === 1 ? 'a set' : `${added} sets`} back, so ${g === 'chest' || g === 'back' ? 'it gets' : 'they get'} ${floorOf(g)} a week.`);
     }
     const got = now();
     for (const g of Object.keys(was)) if (was[g] >= 2 && (got[g] || 0) < Math.ceil(was[g] / 2)) return null;
     for (const g of (w && w.focus) || []) if (was[g] && (got[g] || 0) < Math.ceil((was[g] * 2) / 3)) return null;
     const balance = (x) => { const push = (x.chest || 0) + (x.shoulders || 0), pull = (x.back || 0) * 1.2; return Math.max(push, pull) <= 0 ? 1 : Math.min(push, pull) / Math.max(push, pull); };
     if (balance(got) < Math.min(0.5, balance(was) - 0.15)) return null;
-    for (let i = 0; i < plan.days.length; i++) if (plan.days[i].items.length > Math.max(R.perDay[1], draft.days[i].items.length)) return null;
+    for (let i = 0; i < plan.days.length; i++) if (plan.days[i].items.length > Math.max(R.perDay[1], draft.days[i].items.length) || !dayOk(i)) return null;
 
     // Its words. (known: what it was sent, and the plan's own numbers.)
     // (The facts it was given, by id: the on-device model's when nothing says, plus what they asked
@@ -918,6 +974,6 @@
   Object.assign(C, {
     wishes, choices, generate, build, templates, template, knows, rules, rulesLines, ownWhy, withWhy, say, tidy,
     allowedMoves, planMessages, planGrammar, planSchema, claudePrompt, claudeFacts, accept, refine, modelFor, readJson, improve, diff,
-    BUILD: { SETS_MAX, LIGHT_REPS, WHY, DEVICE_MOVES, CLAUDE_CHARS, MOST, FEEL, SKIP },
+    BUILD: { SETS_MAX, LIGHT_REPS, WEEK, GOAL_CAP, DAY_SETS, FLEX_REPS, WHY, DEVICE_MOVES, CLAUDE_CHARS, MOST, FEEL, SKIP, flexion },
   });
 })(typeof window !== 'undefined' ? window : globalThis);

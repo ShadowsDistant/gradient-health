@@ -228,7 +228,9 @@ section('Build me a plan: a model\'s plan is held to the rules');
   const sixOf = (roomy) => run(answer((d, i) => same(d).filter((it) => !(roomy && i === curlDay && draft.days[curlDay].items.length >= 5 && it.move === loose.move)).map((it) => (i === curlDay && MV[it.move].group === 'biceps' ? Object.assign(it, { sets: 6 }) : it))));
   const six = sixOf(true);
   const day6 = six.plan && six.plan.days[curlDay].items.filter((it) => MV[it.move].group === 'biceps');
-  check('six sets of curls: kept to 4, with a second biceps exercise for the rest, and the sheet is told', six.plan && day6.length === 2 && day6[0].sets === 4 && day6.every((it) => it.sets <= 4) && six.o.fixes.some((x) => /^Kept .+ to 4 sets on day \d, with .+ for the rest\.$/.test(x)), [day6, six.o.fixes]);
+  // (If the day then runs long, the sets that come off are the biceps', which have plenty a week:
+  // a muscle at its weekly floor gives sets last.)
+  check('six sets of curls: kept to 4, with a second biceps exercise for the rest, and the sheet is told', six.plan && day6.length === 2 && day6.every((it) => it.sets <= 4) && six.o.fixes.some((x) => /^Kept .+ to 4 sets on day \d, with .+ for the rest\.$/.test(x)) && ['legs', 'triceps', 'abs'].every((g) => sets(six.plan, g) >= Math.min(sets(draft, g), g === 'legs' ? 4 : 6)), [day6, six.o.fixes]);
   const full = sixOf(false);
   check('on a day that\'s already full, just kept to 4', full.plan && full.plan.days.every((d, i) => d.items.every((it) => it.sets <= 4) && d.items.length <= Math.max(5, draft.days[i].items.length)) && full.o.fixes.some((x) => /^Kept .+ to 4 sets on day \d/.test(x)), full.o.fixes);
 
@@ -253,6 +255,63 @@ section('Build me a plan: a model\'s plan is held to the rules');
   const flipped = run(answer((d) => same(d).reverse()));
   check('abs and core go last, goal muscles first', flipped.plan && flipped.plan.days.every((d) => { const k = d.items.findIndex((it) => MV[it.move].group === 'abs'); return k < 0 || d.items.slice(k).every((it) => MV[it.move].group === 'abs'); }) && flipped.plan.days.every((d) => { const g = MV[d.items[0].move].group; return ['biceps', 'triceps'].includes(g) || !d.items.some((it) => ['biceps', 'triceps'].includes(MV[it.move].group)); }), flipped.plan && flipped.plan.days.map((d) => d.items.map((it) => it.move)));
   check('a move they can\'t do, the wrong number of days or no answer: the draft stands', run(answer((d, i) => (i ? same(d) : same(d).concat([{ move: 'bench_bb', sets: 3, reps: 10 }])))).plan === null && run(Object.assign(answer(same), { days: answer(same).days.slice(1) })).plan === null && run(null).plan === null);
+
+  // A muscle that isn't a goal keeps its weekly floor too (4, or the draft's when it has fewer).
+  const chest = run(answer((d) => same(d).map((it) => (MV[it.move].group === 'chest' ? Object.assign(it, { sets: 1 }) : it))));
+  check('a muscle cut below its weekly floor gets its sets back where the day has room, and the sheet is told', chest.plan && sets(chest.plan, 'chest') === Math.min(4, sets(draft, 'chest')) && chest.o.fixes.some((x) => /^Gave your chest \d sets back, so it gets \d a week\.$/.test(x)), [chest.plan && sets(chest.plan, 'chest'), chest.o.fixes]);
+  // Crunch-type work: at most about 60 reps a session (abs_and_arms 3).
+  const flexDay = draft.days.findIndex((d) => d.items.some((it) => C.BUILD.flexion(it.move)));
+  const flex = run(answer((d, i) => same(d).map((it) => (i === flexDay && C.BUILD.flexion(it.move) ? Object.assign(it, { sets: 3, reps: 25 }) : it))));
+  const flexReps = (p, i) => p.days[i].items.filter((it) => C.BUILD.flexion(it.move)).reduce((a, it) => a + it.sets * it.reps, 0);
+  check('three sets of 25 crunches: kept to 60 crunch-type reps that day, and said so', flexDay >= 0 && flex.plan && flexReps(flex.plan, flexDay) <= 60 && flex.o.fixes.includes(`Kept day ${flexDay + 1}'s crunch-type work to 60 reps.`), [flex.plan && flex.plan.days[flexDay].items, flex.o.fixes]);
+}
+
+section('Build me a plan: the research\'s other limits');
+{
+  // From 60: 2 to 3 sets of an exercise, sets that stop 2 to 3 short and never at failure
+  // (individualized_dose 5), as the engine aims them.
+  const at = (age) => person({ goals: ['arms', 'legs'], experience: 'lt1', days: 3, minutes: 30, age, sex: 'male', heightCm: 175, weightKg: 75, units: 'lb', equipment: { db: [10], chair: true } });
+  const o64 = at(64), o59 = at(59);
+  const w64 = C.wishes(o64, ''), d64 = C.build(o64, D0, w64), R64 = C.rules(o64, D0, w64, d64);
+  check('from 60, at most 3 sets of an exercise, in the draft too; at 59, 4', JSON.stringify(R64.sets) === '[1,3]' && d64.days.every((d) => d.items.every((it) => it.sets <= 3)) && JSON.stringify(C.rules(o59, D0, C.wishes(o59, '')).sets) === '[1,4]');
+  const adv64 = text(P.advice(o64, D0, { to: 'device' }));
+  check('and the effort the engine sets: 2 to 3 reps short, never to failure, in what the model is told and in the plan\'s reasons', JSON.stringify(P.effort(o64, D0)) === '[2,3]' && /end 2 to 3 reps short of the last one they could do, never to failure/.test(adv64) && /stopping 2 or 3 short of the last one you can do/.test(C.ownWhy(o64, D0, w64, d64, R64).find((x) => x.key === 'load').line) && /within 2 reps of the last one/.test(text(P.advice(o59, D0, { to: 'device' }))), adv64);
+  check('the rule says nothing of their age to Claude', !/\b64\b|\bage\b|older|from 60|over 60/i.test(text(C.rulesLines(o64, D0, R64, { to: 'claude', wide: true }))));
+  // A goal muscle's weekly ceiling: past about 18 for abs and about 20 for arms adds little
+  // (abs_and_arms 2 and 4), whatever the engine's level allows.
+  const pro = person({ goals: ['abs', 'arms'], experience: '3plus', days: 4, minutes: 45, age: 30, weightKg: 80, heightCm: 180, equipment: { db: [20, 30] } });
+  const Rp = C.rules(pro, D0, C.wishes(pro, ''));
+  check('weekly ceilings: abs 18, arms 20, for someone the engine would let go to 20', B.programFor(Rp.S2.profile).cap.abs === 20 && Rp.goals.find((g) => g.group === 'abs').cap === 18 && Rp.goals.find((g) => g.group === 'biceps').cap === 20);
+  // Someone with time for long days: no muscle past about 10 sets in a session, or 30 a week.
+  const L = person({ goals: ['arms'], experience: '1to3', days: 3, minutes: 75, age: 30, weightKg: 80, heightCm: 180, units: 'lb', equipment: { db: [10, 20, 30], kb: [35], band: true, bar: true, chair: true } });
+  const wl = C.wishes(L, ''), dl = C.build(L, D0, wl), il = C.allowedMoves(L, D0, wl, dl);
+  const same = (d) => d.items.map((it) => ({ move: it.move, sets: it.sets, reps: it.secs != null ? it.secs : it.reps }));
+  const swapIn = il.filter((id) => MV[id].group === 'biceps' && !MV[id].timed && !dl.days[0].items.some((it) => it.move === id))[0];
+  const swapOut = dl.days[0].items.filter((it) => !['biceps', 'triceps'].includes(MV[it.move].group)).pop();
+  const o1 = { fixes: [], said: {} };
+  const e1 = C.accept(L, D0, wl, dl, { because: [], name: 'Arms', note: 'Arms.', days: dl.days.map((d, i) => ({ title: d.title, why: '', items: i ? same(d) : same(d).map((it) => (MV[it.move].group === 'biceps' ? Object.assign(it, { sets: 4 }) : it.move === swapOut.move ? { move: swapIn, sets: 4, reps: 12 } : it)) })) }, il, o1);
+  const biceps0 = e1 && e1.days[0].items.filter((it) => MV[it.move].group === 'biceps').reduce((a, it) => a + it.sets, 0);
+  check('twelve sets of biceps in one session: kept to 10, and said so', !!swapIn && e1 && biceps0 <= 10 && o1.fixes.includes('Kept your biceps to 10 sets on day 1.'), [biceps0, o1.fixes]);
+  const W = person({ goals: ['arms'], experience: '3plus', days: 6, minutes: 90, age: 30, weightKg: 80, heightCm: 180, units: 'lb', equipment: { db: [10, 20, 30, 40], kb: [35], band: true, bar: true, chair: true, wall: true, towel: true, table: true } });
+  const ww = C.wishes(W, '6 days, 90 minutes'), dw = C.build(W, D0, ww), iw = C.allowedMoves(W, D0, ww, dw);
+  const legMoves = iw.filter((id) => MV[id].group === 'legs' && !MV[id].timed);
+  // (Each day's legs at 4 sets, with up to three leg moves in place of others that aren't goals.)
+  const legDays = dw.days.map((d) => {
+    const its = same(d).map((it) => (MV[it.move].group === 'legs' ? Object.assign(it, { sets: 4 }) : it));
+    for (let k = 0; k < 4 && its.filter((it) => MV[it.move].group === 'legs').length < 3; k++) {
+      const j = its.map((it) => MV[it.move].group).lastIndexOf('conditioning');
+      const id = legMoves.find((x) => !its.some((it) => it.move === x));
+      if (j < 0 || !id) break;
+      its[j] = { move: id, sets: 4, reps: 10 };
+    }
+    return { title: d.title, why: '', items: its };
+  });
+  const legs = (days) => days.reduce((a, d) => a + d.items.filter((it) => MV[it.move].group === 'legs').reduce((x, it) => x + it.sets, 0), 0);
+  const o2 = { fixes: [], said: {} };
+  const e2 = C.accept(W, D0, ww, dw, { because: [], name: 'Six days', note: 'Six days.', days: legDays }, iw, o2);
+  check('a muscle that isn\'t a goal past 30 sets a week: kept to 30', legs(legDays) > 30 && e2 && legs(e2.days) === 30 && o2.fixes.includes('Kept your legs to 30 sets a week.'), [legs(legDays), e2 && legs(e2.days), o2.fixes]);
+  const prompt = C.claudePrompt(allow(L, 2), wl, dl, il, D0);
+  check('the prompt says them all', /up to 10 sets of one muscle in a day/.test(prompt) && /Crunch-type moves \(crunches, reverse crunches, leg raises, sit-ups\): 60 reps a day at most/.test(prompt) && /Every other muscle the draft trains: 4 to 30 sets a week \(fewer only where the draft has fewer\)/.test(prompt) && /biceps 6 to 18 sets/.test(prompt), prompt.split('\n').filter((l) => /sets|Crunch/.test(l)));
 }
 
 section('Build me a plan: a model\'s reasons are checked');

@@ -1291,24 +1291,31 @@ the screens (`test/ui-customplan.mjs`).
 - **The rules for this person** (`rules()`; the prompts state them, `accept()` checks them). From the
   research in `research_notes/Personalizing home workout plans/`: the exercises a day their minutes
   hold (2 to 3 in up to 12 minutes, 3 to 5 in 20, 4 to 6 in 30, 5 to 8 in 45, 6 to 9 beyond: the
-  app's own table); 1 to 4 sets of one exercise in a day (3 when they asked for easy to keep up),
-  and past that a second exercise for a goal muscle; each move's own rep range (`brain.rangeFor`),
-  up to 30 where their weights are light for them; each goal muscle's weekly sets between the
-  engine's floor and cap (`brain.programFor`; the cap is 12 when they eat little protein, since more
-  sets don't make up for food) on at least 2 days; goal muscles first, abs and core last. The
-  numbers that come from the engine follow it when it changes.
+  app's own table); 1 to 4 sets of one exercise in a day (3 when they asked for easy to keep up,
+  and from 60, which also stops sets 2 to 3 reps short), and past that a second exercise for a goal
+  muscle, up to 10 sets of one muscle in a session (legs, several muscles here, aside); each move's
+  own rep range (`brain.rangeFor`), up to 30 where their weights are light for them; at most 60
+  crunch-type reps in a session (`BUILD.flexion`: the crunch ladder, reverse crunches, leg raises,
+  V-ups); each goal muscle's weekly sets between the engine's floor and cap (`brain.programFor`),
+  at most 18 for abs and 20 for arms, where more adds little, and 12 when they eat little protein,
+  since more sets don't make up for food, on at least 2 days; every other muscle the draft trains 4
+  to 30 sets a week; goal muscles first, abs and core last. The numbers that come from the engine
+  follow it when it changes, and so do the words for effort (`GH.person.effort`, from
+  `brain.effortFor`).
 - **The checks.** `accept()` keeps a model's answer only if it's a valid plan of moves this person
   can do. `tidy()` puts right what it safely can: sets past the most go to a second exercise for a
   goal muscle or just go, reps come back inside each move's range, a muscle's second exercise is
   folded into its first when the day has more exercises than the time holds (and wouldn't run
-  longer for it), goal muscles go first. Then a goal muscle on too few days gets the draft's
-  exercise back; each day is fitted to the time asked for (sets come off the move with the most to
-  spare, a goal muscle's last); a goal muscle keeps its weekly floor and gives up what's past its
-  cap; and the plan review's checks still hold: every muscle group keeps at least half its weekly
-  sets, the focus groups two thirds, and pulling still balances pushing. Each rule is read against
-  the draft too (a model isn't asked for more than the engine's own draft manages), and anything
-  else keeps the draft. `refine()` returns what was put right as `fixes`, in plain words, and the
-  sheet lists them.
+  longer for it), a muscle's sets in a day and the crunch-type reps come down to their limits,
+  goal muscles go first. Then a goal muscle on too few days gets the draft's exercise back; every
+  muscle gives up what's past its weekly ceiling; each day is fitted to the time asked for (sets
+  come off the move with the most to spare, a muscle's at its weekly floor last); a muscle below its
+  floor gets sets back where a day has the time and the room; and the plan review's checks still
+  hold: every muscle group keeps at least half its weekly sets, the focus groups two thirds, and
+  pulling still balances pushing. Each limit is read against the draft too (a model isn't asked for
+  more than the engine's own draft manages, and the draft is brought inside a day's limits before
+  it's shown), and anything else keeps the draft. `refine()` returns what was put right as
+  `fixes`, in plain words, and the sheet lists them.
 - **Why it's yours.** A built plan says why it's this person's: `plan.why` and `day.why`. Claude
   writes them (the schema asks for the reasons first, each `{ fact, line }` naming a fact it was
   given by `GH.person`'s id); the on-device model picks from the app's own (`ownWhy()`, by `b1`,

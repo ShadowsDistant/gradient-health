@@ -235,20 +235,31 @@
     }
     return out;
   }
+  // How far short of the last rep their sets stop, as the plan engine sets it for a goal muscle
+  // (brain.effortFor): [lo, hi] reps left. 2 to 3 from 60, and for a condition that asks for it,
+  // never to failure (research_notes: individualized_dose 5); otherwise 1 to 2.
+  function effort(S, day) {
+    const f = B().effortFor;
+    const a = f ? f(S, { group: (B().GROUPS || []).find((g) => B().programFor(S.profile).tiers[g] === 1) || 'chest' }, null, day) : null;
+    return a ? [a.lo, a.hi] : [1, 2];
+  }
   // What the research says a plan should do about some of these facts, as lines for a model's
-  // rules: light weights (research_notes: light_loads_bodyweight 2 to 4), little protein
-  // (low_protein_diet 3), workouts missed or running long (adherence 2), a beginner (adherence 4
-  // and 7). Only the ones that apply, and for Claude only with the newer OK (they name the facts).
+  // rules: light weights (research_notes: light_loads_bodyweight 2 to 4: up to about 30 reps near
+  // the last one, then a harder version, a slower tempo, one side at a time), little protein
+  // (low_protein_diet 3: a normal dose with the goal muscles first, not more sets), workouts missed
+  // or running long (adherence 2), a beginner (adherence 4 and 7). Only the ones that apply, and for
+  // Claude only with the newer OK (they name the facts). Effort follows the engine (effort above).
   function advice(S, day, o) {
     const p = S.profile, out = [];
     if (o && o.to === 'claude' && !o.wide) return out;
-    if (Object.keys(RATIO).some((f) => (loadFeel(S, f) || {}).feel === 'light')) out.push('Their weights are light for them. Light weights build muscle as well as heavy ones when a set ends within 2 reps of the last one they could do, up to about 30 reps. Past that, a slower tempo, one side at a time or a harder version, not more sets.');
-    if (eats(p).protein === 'low') out.push('They eat little protein. Training can\'t make up for food, so don\'t add sets to compensate: keep the sets moderate, put their goal muscles first, and don\'t work the same muscle hard two days running. Strength comes at the usual pace, size more slowly.');
+    const far = effort(S, day)[0] >= 2;
+    if (Object.keys(RATIO).some((f) => (loadFeel(S, f) || {}).feel === 'light')) out.push(`Their weights are light for them. Light weights build muscle about as well as heavy ones in sets of up to about 30 reps that end ${far ? '2 to 3 reps short of the last one they could do, never to failure' : 'within 2 reps of the last one they could do'}. Past 30, a harder version, then a slower tempo (3 s down, 3 s up), then one side at a time, not more sets.`);
+    if (eats(p).protein === 'low') out.push('They eat little protein. Training can\'t make up for food, so don\'t add sets to compensate: keep a normal dose for their level and give their goal muscles priority within it. Strength comes at about the usual pace, size more slowly.');
     if (p.workouts === false) return out;
     const L = lately(S, day);
     if (L.perWeek != null && L.planned >= 4 && L.perWeek <= p.days - 1) out.push(`They do about ${L.perWeek} of the ${p.days} workouts planned each week. Fewer or shorter workouts they keep are worth more than a bigger plan.`);
     if (L.mins != null && L.mins > p.minutes + 5) out.push(`Their sessions run about ${L.mins} minutes against ${p.minutes} set. Trim before adding.`);
-    if ((p.experience === 'never' || p.experience === 'onoff') && day - (p.startDay || day) < 84) out.push('They are new to training: few exercises, the same ones from week to week, and most sets stopped 1 to 3 reps short.');
+    if ((p.experience === 'never' || p.experience === 'onoff') && day - (p.startDay || day) < 84) out.push(`They are new to training: few exercises, the same ones from week to week, and most sets stopped ${far ? '2 to 3' : '1 to 3'} reps short.`);
     return out;
   }
   // The same, as lines for a model.
@@ -256,5 +267,5 @@
   // And as the sheet shows it: [label, value, 'device' when it stays on the phone].
   const shown = (S, day, o) => facts(S, day, o).map((f) => [f.tag || f.label, f.value, f.only || null]);
 
-  GH.person = { facts, lines, shown, advice, ageRange, build, eats, strict, guard, loadFeel, loadLine, lately, minor, GOAL, EXP };
+  GH.person = { facts, lines, shown, advice, effort, ageRange, build, eats, strict, guard, loadFeel, loadLine, lately, minor, GOAL, EXP };
 })(typeof window !== 'undefined' ? window : globalThis);
