@@ -242,13 +242,16 @@
     return out;
   }
   // How far short of the last rep their sets stop, as the plan engine sets it for a goal muscle
-  // (brain.effortFor): [lo, hi] reps left. 2 to 3 from 60, and for a condition that asks for it,
-  // never to failure (research_notes: individualized_dose 5); otherwise 1 to 2.
+  // (brain.effortFor): { lo, hi } reps left, and why ('age', a condition's id, ...). 2 to 3 from
+  // 60, and for a condition that asks for it, never to failure (research_notes: individualized_dose
+  // 5); otherwise 1 to 2.
   function effort(S, day) {
     const f = B().effortFor;
     const a = f ? f(S, { group: (B().GROUPS || []).find((g) => B().programFor(S.profile).tiers[g] === 1) || 'chest' }, null, day) : null;
-    return a ? [a.lo, a.hi] : [1, 2];
+    return a ? { lo: a.lo, hi: a.hi, why: a.why } : { lo: 1, hi: 2, why: 'usual' };
   }
+  // (The aims a health condition sets, which Claude isn't told even as an effort.)
+  const CONDITION_AIM = ['heart', 'bp', 'eyes'];
   // What the research says a plan should do about some of these facts, as lines for a model's
   // rules: light weights (research_notes: light_loads_bodyweight 2 to 4: up to about 30 reps near
   // the last one, then a harder version, a slower tempo, one side at a time), little protein
@@ -258,14 +261,15 @@
   function advice(S, day, o) {
     const p = S.profile, out = [];
     if (o && o.to === 'claude' && !o.wide) return out;
-    const far = effort(S, day)[0] >= 2;
-    if (Object.keys(RATIO).some((f) => (loadFeel(S, f) || {}).feel === 'light')) out.push(`Their weights are light for them. Light weights build muscle about as well as heavy ones in sets of up to about 30 reps that end ${far ? '2 to 3 reps short of the last one they could do, never to failure' : 'within 2 reps of the last one they could do'}. Past 30, a harder version, then a slower tempo (3 s down, 3 s up), then one side at a time, not more sets.`);
+    const e = effort(S, day), far = e.lo >= 2;
+    const end = far && o && o.to === 'claude' && CONDITION_AIM.includes(e.why) ? 'close to the last one they could do, as the app sets it' : far ? '2 to 3 reps short of the last one they could do, never to failure' : 'within 2 reps of the last one they could do';
+    if (Object.keys(RATIO).some((f) => (loadFeel(S, f) || {}).feel === 'light')) out.push(`Their weights are light for them. Light weights build muscle about as well as heavy ones in sets of up to about 30 reps that end ${end}. Past 30, a harder version, then a slower tempo (3 s down, 3 s up), then one side at a time, not more sets.`);
     if (eats(p).protein === 'low') out.push('They eat little protein. Training can\'t make up for food, so don\'t add sets to compensate: keep a normal dose for their level and give their goal muscles priority within it. Strength comes at about the usual pace, size more slowly.');
     if (p.workouts === false) return out;
     const L = lately(S, day);
     if (L.perWeek != null && L.planned >= 4 && L.perWeek <= p.days - 1) out.push(`They do about ${L.perWeek} of the ${p.days} workouts planned each week. Fewer or shorter workouts they keep are worth more than a bigger plan.`);
     if (L.mins != null && L.mins > p.minutes + 5) out.push(`Their sessions run about ${L.mins} minutes against ${p.minutes} set. Trim before adding.`);
-    if ((p.experience === 'never' || p.experience === 'onoff') && day - (p.startDay || day) < 84) out.push(`They are new to training: few exercises, the same ones from week to week, and most sets stopped ${far ? '2 to 3' : '1 to 3'} reps short.`);
+    if ((p.experience === 'never' || p.experience === 'onoff') && day - (p.startDay || day) < 84) out.push(`They are new to training: few exercises, the same ones from week to week, and most sets stopped ${far && !(o && o.to === 'claude' && CONDITION_AIM.includes(e.why)) ? '2 to 3' : '1 to 3'} reps short.`);
     return out;
   }
   // The same, as lines for a model.

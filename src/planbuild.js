@@ -450,7 +450,7 @@
     if (P && light.length) {
       const f = P.loadFeel(R.S2, MV[light[0].move].family);
       // (How close to the last rep, as the engine sets it: 2 or 3 short from 60.)
-      add('load', 'load', `Your ${f.top} ${p.units || 'lb'} weights are light for you, so those exercises build on reps, up to ${Math.max(...light.map((it) => R.reps(it.move)[1]))}, ${P.effort(R.S2, day)[0] >= 2 ? 'stopping 2 or 3 short of' : 'close to'} the last one you can do.`);
+      add('load', 'load', `Your ${f.top} ${p.units || 'lb'} weights are light for you, so those exercises build on reps, up to ${Math.max(...light.map((it) => R.reps(it.move)[1]))}, ${P.effort(R.S2, day).lo >= 2 ? 'stopping 2 or 3 short of' : 'close to'} the last one you can do.`);
     }
     if (w.feel === 'easy') add('feel', 'asked', `You asked for a plan that's easy to keep up, so no exercise has more than ${R.sets[1]} sets and it starts a little lower.`);
     add('time', 'time', `You have ${D} ${D === 1 ? 'day' : 'days'} of ${R.mins} minutes, so each day has ${uniq([Math.min(...plan.days.map((d) => d.items.length)), Math.max(...plan.days.map((d) => d.items.length))]).join(' to ')} exercises.`);
@@ -528,7 +528,7 @@
   // the reasons it may pick from (the app's own, by id) and the draft. At most 60 moves and about
   // 6,500 characters (about 2,200 tokens, with up to 1,350 for the answer: a 4,096-token model's
   // memory). o.short, for a model with less (the older 2,048-token ones): the moves of compactMoves
-  // and fewer facts, about 3,500 characters.
+  // and fewer facts, about 4,400 characters.
   const DEVICE_MOVES = 60, COMPACT_MOVES = 24;
   const DEVICE_FACTS = ['body', 'build', 'goal', 'focus', 'level', 'time', 'kit', 'load', 'joints', 'pain', 'health', 'floor', 'gentle', 'eats', 'does', 'felt', 'effort', 'stuck'];
   const DEVICE_SHORT = ['body', 'goal', 'time', 'kit', 'load', 'joints', 'pain', 'health', 'floor', 'eats', 'does'];

@@ -290,7 +290,11 @@ section('Build me a plan: the research\'s other limits');
   const w64 = C.wishes(o64, ''), d64 = C.build(o64, D0, w64), R64 = C.rules(o64, D0, w64, d64);
   check('from 60, at most 3 sets of an exercise, in the draft too; at 59, 4', JSON.stringify(R64.sets) === '[1,3]' && d64.days.every((d) => d.items.every((it) => it.sets <= 3)) && JSON.stringify(C.rules(o59, D0, C.wishes(o59, '')).sets) === '[1,4]');
   const adv64 = text(P.advice(o64, D0, { to: 'device' }));
-  check('and the effort the engine sets: 2 to 3 reps short, never to failure, in what the model is told and in the plan\'s reasons', JSON.stringify(P.effort(o64, D0)) === '[2,3]' && /end 2 to 3 reps short of the last one they could do, never to failure/.test(adv64) && /stopping 2 or 3 short of the last one you can do/.test(C.ownWhy(o64, D0, w64, d64, R64).find((x) => x.key === 'load').line) && /within 2 reps of the last one/.test(text(P.advice(o59, D0, { to: 'device' }))), adv64);
+  check('and the effort the engine sets: 2 to 3 reps short, never to failure, in what the model is told and in the plan\'s reasons', P.effort(o64, D0).lo === 2 && P.effort(o64, D0).hi === 3 && /end 2 to 3 reps short of the last one they could do, never to failure/.test(adv64) && /stopping 2 or 3 short of the last one you can do/.test(C.ownWhy(o64, D0, w64, d64, R64).find((x) => x.key === 'load').line) && /within 2 reps of the last one/.test(text(P.advice(o59, D0, { to: 'device' }))), adv64);
+  // A heart condition asks for the same effort, but Claude isn't told even that much about it.
+  const heart = allow(person(Object.assign({}, OWNER, { conditions: ['heart'] })), 2);
+  const hd = text(P.advice(heart, D0, { to: 'device' })), hc = text(P.advice(heart, D0, { to: 'claude', wide: true }));
+  check('a condition\'s effort reaches the on-device model; Claude gets neutral words', P.effort(heart, D0).why === 'heart' && /2 to 3 reps short of the last one they could do, never to failure/.test(hd) && /most sets stopped 2 to 3 reps short/.test(hd) && !/2 to 3|never to failure/.test(hc) && /close to the last one they could do, as the app sets it/.test(hc), hc);
   check('the rule says nothing of their age to Claude', !/\b64\b|\bage\b|older|from 60|over 60/i.test(text(C.rulesLines(o64, D0, R64, { to: 'claude', wide: true }))));
   // A goal muscle's weekly ceiling: past about 18 for abs and about 20 for arms adds little
   // (abs_and_arms 2 and 4), whatever the engine's level allows.
