@@ -289,6 +289,11 @@ button.ex-name::before { content: ''; position: absolute; inset: 0; }
 /* A card's title sits in the card's own rhythm (its gap), not the browser's heading margins (18 px
    above and below, which floated Today's workout title away from its eyebrow). */
 .card > h2 { margin: 0; }
+/* An empty list: a small picture, what will show here and the way to start, centred (as a number's
+   sheet, Chats and Your plans have it). */
+.gh-empty { justify-items: center; text-align: center; padding: var(--space-6) var(--space-4); }
+.gh-empty > p { max-width: 34ch; }
+.gh-empty > .btn-row { margin-top: var(--space-1); }
 .row-between { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
 .btn-row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .notice { display: flex; gap: var(--space-2); align-items: flex-start; padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--accent-soft); color: var(--label); font-size: .9375rem; line-height: 1.35; }
