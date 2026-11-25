@@ -11,7 +11,7 @@ import { load, root, check, section, done } from './lib.mjs';
 // Browser-ish globals the modules expect.
 const ls = new Map();
 globalThis.localStorage = { getItem: (k) => (ls.has(k) ? ls.get(k) : null), setItem: (k, v) => ls.set(k, String(v)), removeItem: (k) => ls.delete(k) };
-const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/health.js', 'src/store.js', 'src/chats.js', 'src/spend.js', 'src/ai.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/health.js', 'src/store.js', 'src/chats.js', 'src/spend.js', 'src/person.js', 'src/ai.js');
 const bundle = await build({ entryPoints: [join(root, 'src/claude.js')], bundle: true, write: false, format: 'iife', platform: 'browser', target: ['es2022'], logLevel: 'silent' });
 let chunkLoads = 0;
 GH.lazy = async (name) => {
@@ -192,7 +192,7 @@ section('The plan review: what is sent');
   check('just the age range, with goals, schedule and careful joints in the summary', /65\+/.test(toClaude) && /legs and glutes/.test(toClaude) && /Careful with: shoulder/.test(toClaude));
   const dev = R.deviceMessages(Q, D0, R.context(Q, D0, 'device')).map((m) => m.content).join('\n');
   check('the on-device model gets them, on the phone', /osteoarthritis/.test(dev) && /low back pain/.test(dev) && /Joints with arthritis: knee, hip/.test(dev) && /Nothing on the floor/.test(dev) && /A gentle plan/.test(dev) && /Planned around/.test(dev));
-  check('and the same plan and readiness', /PLAN \(next week/.test(dev) && /Weekly sets per group/.test(dev) && /Workouts in the last 4 weeks/.test(dev));
+  check('and the same plan, with what they\'ve done and how it felt', /PLAN \(next week/.test(dev) && /Weekly sets per group/.test(dev) && /Last 4 weeks: about \d(\.5)? workouts? a week against 3 planned/.test(dev) && /How workouts felt: \d+ too easy/.test(dev), dev.split('\n').filter((l) => /Last 4|felt/.test(l)));
   const p = Q.profile;
   const ok = ctx.allowed.every((id) => { const m = GH.moves.MOVES[id]; return m && GH.moves.allowed(m, B.eqAt(Q, 'home')) && !GH.access.why(p, m, D0) && !((m.impact || m.complex) && (m.joints || []).includes('shoulder')); });
   const ctxP = R.context(P, D0, 'claude');

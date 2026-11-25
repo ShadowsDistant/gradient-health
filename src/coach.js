@@ -358,7 +358,10 @@
   const MARKS = /^(?:\s*(?:[-*+•]|\d{1,3}[.)])\s+|\s{0,3}#{1,6}\s+)/;
   function keepToGiven(text, given) {
     const known = near(numbers(given)), givenPct = percents(given), knownPct = (n) => givenPct.includes(n);
-    const ok = (x) => { const s = x.replace(EMBED, ''); return numbers(s).every(known) && percents(s).every(knownPct); };
+    return keepLines(text, (x) => { const s = x.replace(EMBED, ''); return numbers(s).every(known) && percents(s).every(knownPct); });
+  }
+  // The text less every sentence (or table row) that ok() turns down. { text, cut }.
+  function keepLines(text, ok) {
     const src = String(text || '').trim();
     let cut = 0;
     const lines = src.split('\n').map((line) => {
@@ -375,6 +378,23 @@
     const out = lines.filter((l) => l !== null).join('\n').replace(/^(\s*\|.*\n)(\s*\|[\s|:-]+\|?\s*)$(?!\n\s*\|)/gm, '');
     return { text: out.replace(/\n{3,}/g, '\n\n').trim(), cut };
   }
+  // What a model may not say, whoever asks (research_notes: ai_made_plans, section 6): a diet, a
+  // calorie deficit or surplus, a weight or body-fat target, a diagnosis, medicine or supplements.
+  // A sentence that does goes, like one with a made-up number. And with strict (someone under 18,
+  // or lean: GH.person.strict), anything about losing weight or eating less.
+  const UNSAFE = [
+    /\b(meal plans?|diet plans?|keto\w*|(intermittent )?fasting|juice cleanse|detox|cheat (day|meal)s?|low[- ]carb|(cut|no|zero) (out )?carbs)\b/i,
+    /\b(calorie|caloric|energy) (deficit|surplus)\b|\b(in|into|at) a (deficit|surplus)\b|\bbulking\b|\bon a (bulk|cut)\b|\bcutting (phase|diet)\b/i,
+    /\b(lose|drop|shed|gain|put on)\s+(about |around |up to |at least |another )?\d+(\.\d+)?\s*(lb|lbs|pounds?|kg|kilos?|kilograms?|stone)\b/i,
+    /\b(target|goal|ideal) (body ?)?weight\b|\b(get|be|come) (down|up) to \d+(\.\d+)?\s*(lb|lbs|pounds?|kg|kilos?)\b|\b\d+(\.\d+)?\s*(%|percent)\s*body ?fat\b|\bbody ?fat (percentage|target|goal)\b/i,
+    /\byou (probably |likely |may |might |could )?(have|are suffering from)\b[^.]*\b(tendin\w+|arthritis|hernia\w*|sciatica|impingement|tear|torn|sprain|fracture|deficien\w+|disorder|syndrome|disease|infection)\b/i,
+    /\b(ibuprofen|paracetamol|acetaminophen|aspirin|naproxen|painkillers?|anti-inflammator\w+|steroids?|testosterone|sarms?|dosage|\d+\s*mg|supplements|creatine|pre-workout|fat burners?|bcaas?|multivitamins?|vitamin [a-e]\d*)\b/i,
+  ];
+  const NO_LOSS = /\b(los(e|ing) (the |some |any |that |your |more |body )?(weight|fat|inches|pounds|kilos|a few (pounds|kilos|lb|kg))|weight loss|fat loss|burn(ing|s)? (off )?(fat|calories)|slim(ming)? down|lean(ing)? out|shred\w*|trim(ming)? (down|fat)|cut(ting)? (weight|fat|calories)|cut(ting)? back on (food|eating|calories|carbs|sugar|snacks|portions)|eat(ing)? (less|fewer)|fewer calories|skip(ping)? (a )?meals?|(?<!sleep )deficit|belly fat)\b/i;
+  const unsafe = (x, strict) => UNSAFE.some((re) => re.test(x)) || (!!strict && NO_LOSS.test(x));
+  const keepSafe = (text, strict) => keepLines(text, (x) => !unsafe(x, strict));
+  const SAFE_NOTE = 'Left out advice on diet or medicine. That\'s for a doctor or dietitian.';
+
   // An answer's words without its marks or embeds, to tell how much of it there is.
   const bare = (x) => String(x || '').replace(EMBED, '').replace(/^\s*(?:[-+•]|\d{1,3}[.)])\s+/gm, '').replace(/[*_#|`>]+/g, '').replace(/\s+/g, ' ').trim();
   // An AI's answer as shown: its own words, less any sentence with a number it wasn't given. If that
@@ -384,10 +404,14 @@
   // { text, note, cut, replaced }.
   function grounded(S, day, question, raw, given, start, who) {
     const text = String(raw || '').trim();
-    const k = keepToGiven(text, given);
+    const n = keepToGiven(text, given);
+    // (Diet, medicine and, for someone under 18 or lean, weight loss: keepSafe.)
+    const safe = keepSafe(n.text, !!(GH.person && GH.person.strict(S, day)));
+    const k = { text: safe.text, cut: n.cut + safe.cut };
     const after = (x) => { const lead0 = String(start || '').trim(); return bare(lead0 && x.startsWith(lead0) ? x.slice(lead0.length) : x); };
     const words = after(k.text);
-    if (words.length >= (k.cut ? 30 : 8)) return { text: k.text, note: k.cut ? 'Left out a line with a number that isn\'t in your data.' : null, cut: k.cut, replaced: false };
+    const note = [n.cut ? 'Left out a line with a number that isn\'t in your data.' : '', safe.cut ? SAFE_NOTE : ''].filter(Boolean).join(' ') || null;
+    if (words.length >= (k.cut ? 30 : 8)) return { text: k.text, note, cut: k.cut, replaced: false };
     const own = ask(S, day, question).text;
     const name = who || 'The model';
     const why = after(text) ? `${name}'s answer didn't match your numbers` : `${name} didn't answer`;
@@ -610,5 +634,5 @@
   }
   function dismiss(S, id, day) { S.coachDismissed = S.coachDismissed || {}; S.coachDismissed[id] = day; }
 
-  GH.coach = { report, glance, ask, verdict, correction, topicOf, facts, keepToGiven, grounded, noEmbeds, claudePrompt, decisions, timeline, watching, suggestions, validAction, apply, dismiss };
+  GH.coach = { report, glance, ask, verdict, correction, topicOf, facts, keepToGiven, keepSafe, unsafe, grounded, noEmbeds, claudePrompt, decisions, timeline, watching, suggestions, validAction, apply, dismiss };
 })(typeof window !== 'undefined' ? window : globalThis);

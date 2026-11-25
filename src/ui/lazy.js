@@ -102,9 +102,10 @@
 
   /* ---------------------------------------------------------------- warming */
   // A couple of seconds after launch, the parts a tap is likely to want next load one at a time
-  // while the phone is idle: the plan review (Plan and You), How it works (the Why links) and the
-  // share card (badges). Set-up only loads for someone who needs it.
-  const WARM = ['review', 'science', 'shareCard'];
+  // while the phone is idle: who this is for a model (the coach, the plan features and What gets
+  // sent all read it), the plan review (Plan and You), How it works (the Why links) and the share
+  // card (badges). Set-up only loads for someone who needs it.
+  const WARM = ['person', 'review', 'science', 'shareCard'];
   const idle = (fn) => (G.requestIdleCallback ? G.requestIdleCallback(fn, { timeout: 3000 }) : setTimeout(fn, 200));
   function warm(list) {
     const next = list.find((n) => !GH[n]);

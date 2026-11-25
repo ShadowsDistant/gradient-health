@@ -58,6 +58,12 @@
   const isBudget = (code) => /^budget-/.test(String(code || ''));
   // Nothing goes to Anthropic until the person has seen what gets sent and allowed it.
   function needConsent(S) { if (!S || !S.ai || !S.ai.consentAt) throw coachError('consent'); }
+  // The list they allowed has a version (S.ai.consentV, 1 when it isn't there). 2 (1.15) adds what
+  // makes a plan personal: how they eat, their build, what their weights mean for them, how long
+  // they've used the app, what they actually do and what they've chosen. Someone who allowed the
+  // list before that keeps sending only what it named until they allow the new one (wide).
+  const CONSENT = 2;
+  const wide = (S) => !!(S && S.ai && S.ai.consentAt && (S.ai.consentV || 1) >= CONSENT);
   function coachError(code, detail) {
     const e = new Error(detail || MESSAGES[code] || MESSAGES.other);
     e.code = code;
@@ -71,16 +77,8 @@
   }
 
   /* ------------------------------------------------------------------ the summary */
-  function ageRange(age) {
-    if (!(age > 0)) return null;
-    const bands = [[13, 17], [18, 24], [25, 34], [35, 44], [45, 54], [55, 64]];
-    for (const [a, b] of bands) if (age >= a && age <= b) return `${a}-${b}`;
-    return age >= 65 ? '65+' : 'under 13';
-  }
   const r0 = (x) => (x == null ? '–' : String(Math.round(x)));
   const r1 = (x) => (x == null ? '–' : (Math.round(x * 10) / 10).toFixed(1));
-  const GOAL_NAMES = { abs: 'visible abs', arms: 'bigger arms', chest: 'bigger chest', legs: 'legs and glutes', back: 'back and posture', fat: 'lose fat', strength: 'overall strength', endurance: 'endurance', mobility: 'mobility', consistency: 'consistency' };
-  const EXP_NAMES = { never: 'never trained', onoff: 'on and off', lt1: 'under 1 year', '1to3': '1-3 years', '3plus': '3+ years' };
 
   // Calendar dates that slip in through insight text ("Since Aug 26") become relative.
   const noDates = (t) => String(t).replace(/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), (?=(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d)/g, '').replace(/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}(?:, \d{4})?\b/g, 'an earlier date');
@@ -107,19 +105,11 @@
     const lb = p.units !== 'kg';
     const w = (kg) => (kg == null ? '–' : lb ? `${r1(kg * b.LB_PER_KG)} lb` : `${r1(kg)} kg`);
     const lines = [];
-    if (has('person')) {
-      const eq = p.equipment || {};
-      const kit = [];
-      if (eq.db && eq.db.length) kit.push(`dumbbells ${eq.db.join('/')} ${p.units}`);
-      if (eq.kb && eq.kb.length) kit.push(`kettlebell ${eq.kb.join('/')} ${p.units}`);
-      for (const k of ['ball', 'band', 'bar', 'chair', 'wall', 'towel', 'table']) if (eq[k]) kit.push(k === 'bar' ? 'pull-up bar' : k);
+    // Who this is (src/person.js, a part that's in before any request or preview: who()): the same
+    // statement every model job gets, less what never goes to Claude, and what they haven't allowed.
+    if (has('person') && GH.person) {
       lines.push('PERSON');
-      lines.push(`- Age range: ${ageRange(p.age) || 'not given'}${p.sex ? `; sex: ${p.sex}` : ''}`);
-      lines.push(`- Goals, most important first: ${(p.goals || []).map((g) => GOAL_NAMES[g] || g).join(', ') || 'not set'}`);
-      lines.push(`- Training history: ${EXP_NAMES[p.experience] || p.experience}; plan: ${p.days} days a week, about ${p.minutes} min`);
-      lines.push(`- Equipment: ${kit.join(', ') || 'bodyweight only'}`);
-      if ((p.careful || []).length) lines.push(`- Careful with: ${p.careful.join(', ')}`);
-      lines.push(`- Weight goal: ${p.weightGoal || 'maintain'}${S.catchup.arm.active ? `; weaker ${S.catchup.arm.side === 'R' ? 'right' : 'left'} arm gets an extra set` : ''}`);
+      lines.push(...GH.person.lines(S, day, { to: 'claude', wide: wide(S), have: parts }));
     }
 
     // 28-day aggregates.
@@ -249,9 +239,9 @@
   const SYSTEM = [
     'You coach one person in Gradient Health, a workout and health tracking app. The app gives you a summary of their recent data from their phone; use their numbers.',
     '- Plain, specific and warm. Talk to them as "you".',
-    '- You are not a doctor: never diagnose or name conditions. If something looks concerning (resting heart rate over 100 or far above their usual, weight loss they didn\'t plan, pain that lingers, chest pain, dizziness, fainting), say it\'s worth seeing a doctor.',
+    '- You are not a doctor: never diagnose, name conditions or suggest medicine. If something looks concerning (resting heart rate over 100 or far above their usual, weight loss they didn\'t plan, pain that lingers, chest pain, dizziness, fainting), say it\'s worth seeing a doctor.',
     '- No promises or timelines about results (never "abs in 8 weeks").',
-    '- No meal plans or diets. The app sets any calorie target from their size, activity and goal: explain it, don\'t replace it. Keep food advice simple: protein, easy additions, habits. They may be a picky eater.',
+    '- No meal plans, diets or supplements, and never a calorie, weight or body-fat target of your own. The app sets any calorie target from their size, activity and goal: explain it, don\'t replace it. Food ideas stay small and optional (one more serving of protein a day, a piece of fruit). They may be a picky eater.',
     '- The app\'s planner sets their sets, reps, levels and lighter weeks, and checks every change to the plan before it\'s made.',
     '- If the data is thin, say so and say what to track.',
   ].join('\n');
@@ -268,7 +258,10 @@
   const CACHED = new Set(['chat', 'build']);
   function systemBlocks(S, day, feature) {
     const f = feature || 'chat';
-    const rules = f === 'chat' ? `${SYSTEM}\n${CHAT_RULES}` : SYSTEM;
+    // (Under 18, or lean once they've allowed Claude to know it: no talk of losing weight.)
+    const guard = GH.person ? GH.person.guard(S, day, { to: 'claude', wide: wide(S) }) : '';
+    const own = guard ? `${SYSTEM}\n- ${guard}` : SYSTEM;
+    const rules = f === 'chat' ? `${own}\n${CHAT_RULES}` : own;
     const data = { type: 'text', text: `DATA SUMMARY (from the app; no names, dates or ids)\n\n${summary(S, day, f)}` };
     if (CACHED.has(f)) data.cache_control = { type: 'ephemeral' };
     return [{ type: 'text', text: rules }, data];
@@ -377,8 +370,12 @@
   async function claude(S) {
     needConsent(S);
     if (!hasKey()) throw coachError('nokey');
+    await who();
     try { return await GH.lazy('claude'); } catch (e) { throw coachError('other'); }
   }
+  // Who this is, for a model (src/person.js, a part of its own): in before a request is written, or
+  // the summary is shown. Without it the summary goes without its PERSON lines.
+  async function who() { if (!GH.person && GH.lazy) await GH.lazy('person').catch(() => null); }
   async function report(S, day) { return (await claude(S)).report(S, day); }
   // A question that sounds like an emergency gets the app's own safety answer, as the on-device
   // coach does: nothing is sent, and the exchange is kept marked safety (it isn't sent with later
@@ -403,7 +400,7 @@
 
   GH.ai = {
     KEY_URL, hasKey, checkKey, setKey, deleteKey, summary, preview, report, reportFor, readReport, reportParts, needsReport, ask, suggest, tailor, json, stop, clearChat, explain, MESSAGES, SYSTEM, REPORT_SCHEMA,
-    fits, budgetError, isBudget, modelName,
+    fits, budgetError, isBudget, modelName, CONSENT, wide, who,
     // For src/claude.js.
     getKey, needConsent, coachError, systemBlocks,
   };
