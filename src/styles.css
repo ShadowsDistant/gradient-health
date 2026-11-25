@@ -245,7 +245,9 @@ button.stat:active, .insight-line:active, .pl-fig-card:active, .tap-card:active 
 .ex-name:active, .ex:has(> button.ex-name:active) > :is(.ex-tag, .ex-meta) { opacity: .55; transition-duration: 0ms; }
 .ex:has(> button.ex-name) { position: relative; }
 .ex > button.ex-name { position: static; } /* (so its ::before is laid out on the row, not on it) */
-button.ex-name::before { content: ''; position: absolute; inset: 0; }
+/* (2 px past the row's top: a finger 44 px across, centred on the name, reaches that far now the
+   name's line is its own 1.3 tall, not the page's 1.5.) */
+button.ex-name::before { content: ''; position: absolute; inset: -2px 0 0; }
 
 /* Sheets (and the page receding behind them) are styled in styles/sheet.css. Toasts come up from
    the bottom (U.toast, src/ui/core.js), above the tab bar, the floating buttons, the player's or

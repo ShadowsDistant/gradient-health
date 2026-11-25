@@ -346,7 +346,7 @@ section('What the week means');
 await page.click('#screen .pw-info');
 await settle(900);
 const sheet = await page.evaluate(() => { const d = document.querySelector('dialog.rf-sheet[open]'); return d ? { title: d.querySelector('.rf-sheet-title').textContent, marks: d.querySelectorAll('.pw-key li').length, text: d.textContent } : null; });
-check('the info button explains the phase and the marks', sheet && sheet.title === 'Full volume' && sheet.marks === 5 && /deload/.test(sheet.text), JSON.stringify(sheet && { title: sheet.title, marks: sheet.marks }));
+check('the info button explains the phase and the marks', sheet && sheet.title === 'Full volume' && sheet.marks === 5 && /one week in five is lighter/.test(sheet.text), JSON.stringify(sheet && { title: sheet.title, marks: sheet.marks }));
 await shot(page, '07-info');
 await page.evaluate(() => window.GH.ui.closeSheets());
 await settle(900);
