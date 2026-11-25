@@ -202,7 +202,9 @@ button.cp-wk-row:active { background: var(--fill-selected); }
 /* The picker: search and filters stay at the top, the list scrolls, the tray stays at the bottom. */
 .gh-sheet.cp-picker .rf-sheet-body { display: flex; flex-direction: column; min-height: 0; padding: 0; overflow: hidden; }
 .cp-pick { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.cp-pick-top { flex: none; display: grid; gap: var(--space-2); padding: var(--space-1) var(--space-4) var(--space-2); border-bottom: 1px solid var(--separator); }
+/* (One column as wide as the sheet, not as wide as the search field asks to be: with large text on a
+   360 px phone the field, 20 characters wide on its own, ran off the right edge.) */
+.cp-pick-top { flex: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); padding: var(--space-1) var(--space-4) var(--space-2); border-bottom: 1px solid var(--separator); }
 .cp-q { position: relative; display: flex; align-items: center; gap: var(--space-2); padding-inline: var(--space-3) var(--space-1); border-radius: var(--radius-full); min-height: 44px; }
 .cp-q > .rf-icon { flex: none; --rf-icon-size: 18px; }
 .cp-q .rf-input { flex: 1; min-width: 0; border: 0; background: none; box-shadow: none; padding-inline: 0; }
