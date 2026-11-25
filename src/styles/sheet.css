@@ -186,7 +186,6 @@ dialog.gh-sheet[data-closing] { pointer-events: none; }
 /* A form's fields share the width they're given instead of growing to fit their inputs (a number
    input is 20 characters wide on its own, which pushed the second of two fields off the edge). */
 .sheet-pad { grid-template-columns: minmax(0, 1fr); }
-.gh-sheet .rf-field { grid-template-columns: minmax(0, 1fr); }
 /* A full-width segmented control (like the four meals) keeps equal segments while they fit; on a small
    phone with large text the labels keep a smaller margin instead of pushing the last one off the edge. */
 .gh-sheet .rf-segmented[data-block] > .rf-segment { padding-inline: var(--space-2); }

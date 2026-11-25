@@ -461,7 +461,9 @@ headline for what's missing, a line for what will show there and the one way to 
 (`.card.gh-empty`, Activities'; a number's sheet, Chats and Your plans have the same shape in
 classes of their own); and a list row that can't be taken back
 (`is-danger`: Reset everything, Delete this run) is in the critical colour, as one that acts at once (`set-do`) is in
-the accent.
+the accent. A field (`.rf-field`) and set-up's groups (`.ob-group`) take the width they're given, in
+a `minmax(0, 1fr)` column: an input is 20 characters wide on its own, and with large text that
+pushed a plan's Name and the equipment's weights past the edge.
 
 The controls (`src/ui/controls.js`): Refract 1.4's own switch and segmented control take any
 movement past 3 px as a drag, so a tap that wobbles would be lost. The app replaces those two

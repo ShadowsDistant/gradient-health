@@ -288,6 +288,9 @@ button.ex-name::before { content: ''; position: absolute; inset: -2px 0 0; }
 .rf-list-sub { display: block; }
 /* A row that can't be taken back (Reset everything, Delete this run) says so in the critical colour. */
 .rf-list-row.is-danger .rf-list-title { color: var(--critical); }
+/* A field takes the width it's given, on a page as in a sheet. Its input is 20 characters wide on its
+   own, and with large text that pushed the field past the card's edge (a plan's Name at 130%). */
+.rf-field { grid-template-columns: minmax(0, 1fr); }
 .card { background: var(--bg-raised); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: var(--space-4); display: grid; gap: var(--space-2); min-width: 0; }
 .card > p, .card p { margin: 0; }
 /* A card's title sits in the card's own rhythm (its gap), not the browser's heading margins (18 px
@@ -494,7 +497,7 @@ textarea.preview { border: 0; resize: vertical; }
 .ob-progress .rf-progress, .pl-prog .rf-progress { width: 100%; }
 .pl-prog .t-caption { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ob-spacer { width: 44px; flex: none; }
-.ob-group { display: grid; gap: var(--space-2); }
+.ob-group { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); } /* (as wide as the page: the row to add a weight, a field and a button, pushed the weights past its edge at large text) */
 .ob-group > .rf-list-header, .ob-group > .rf-list-footer { margin: 0; }
 .ob-pad { padding: 0; }
 .ob-pad .rf-segmented { width: 100%; }

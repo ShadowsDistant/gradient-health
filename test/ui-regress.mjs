@@ -970,6 +970,28 @@ const ringFit = await page.evaluate(() => {
 check('Today\'s steps ring holds its number', ringFit && ringFit.shown === '12,345' && ringFit.inside, JSON.stringify(ringFit));
 await page.evaluate(() => { const U = window.GH.ui, d = U.S.health.days[U.today()]; if (U.__steps == null) delete d.steps; else d.steps = U.__steps; delete U.__steps; U.S.profile.workouts = true; U.render(); });
 await settle(700);
+// With large text a field takes the width it's given. An input is 20 characters wide on its own, and
+// at 130% that pushed a plan's Name, and set-up's row to add a weight (with the weights above it),
+// past the edge. (Last: the text stays large until the page starts again.)
+const textAt130 = () => {
+  const els = [...document.querySelectorAll('body *')].filter((e) => !e.closest('svg'));
+  const sizes = els.map((e) => parseFloat(getComputedStyle(e).fontSize));
+  els.forEach((e, i) => { if (sizes[i]) e.style.setProperty('font-size', `${sizes[i] * 1.3}px`, 'important'); });
+};
+const past = (sel) => { const el = document.querySelector(sel); return el ? [...el.querySelectorAll('.rf-field-control, .ob-add, .rf-chip')].filter((e) => e.getBoundingClientRect().right > innerWidth + 1).map((e) => e.textContent.trim().slice(0, 16) || e.className) : null; };
+await page.evaluate(() => window.GH.ui.editAnswers('equipment'));
+await settle(900);
+await page.evaluate(textAt130);
+const eqPast = await page.evaluate(past, '.onboard:not([hidden]):has(.ob-add)');
+check('at 130% text, the equipment\'s weights and the row to add one stay on the page', eqPast && eqPast.length === 0, JSON.stringify(eqPast));
+await page.reload();
+await page.waitForSelector('#screen[data-view]');
+await page.evaluate(() => window.GH.lazy('planUi'));
+await page.evaluate(() => { const U = window.GH.ui; U.open('plans'); U.act.cpNew(); U.act.cpNewCopy(); });
+await settle(1500);
+await page.evaluate(textAt130);
+const nameFit = await page.evaluate(() => { const c = document.querySelector('#screen .cp-names .rf-field-control'), card = c && c.closest('.card'); return c ? { right: Math.round(c.getBoundingClientRect().right), inset: Math.round(card.getBoundingClientRect().right - parseFloat(getComputedStyle(card).paddingRight)) } : null; });
+check('at 130% text, a plan\'s Name field ends on its card\'s inset', nameFit && nameFit.right <= nameFit.inset, JSON.stringify(nameFit));
 
 section('Console');
 check('no console errors', errors.length === 0, errors.join(' | '));
