@@ -880,6 +880,9 @@ const exType = await page.evaluate(() => {
   return b && w ? { move: getComputedStyle(b).fontWeight, warm: getComputedStyle(w).fontWeight } : null;
 });
 check('a move\'s name on Today keeps its weight, heavier than the warm-up row', exType && Number(exType.move) >= 550 && Number(exType.move) > Number(exType.warm), JSON.stringify(exType));
+// The workout's muscles: a dot stays with the name before it (a new person's line wrapped to "· Abs").
+const groupsLine = await page.evaluate(() => { const p = document.querySelector('#screen .session-groups'); return p ? p.textContent : null; });
+check('Today\'s muscles keep each dot with the name before it', groupsLine && groupsLine.includes('·') && !/ ·/.test(groupsLine), groupsLine);
 await page.evaluate(() => window.GH.ui.open('coach'));
 await settle(900);
 const whyChip = await page.evaluate(() => { const c = document.querySelector('#screen .why-chip'); return c ? getComputedStyle(c).fontSize : null; });
@@ -972,6 +975,9 @@ const ringFit = await page.evaluate(() => {
   return { ring: Math.round(a.width), text: Math.round(b.width), shown: n.textContent, inside: b.left >= a.left + 6 && b.right <= a.right - 6 };
 });
 check('Today\'s steps ring holds its number', ringFit && ringFit.shown === '12,345' && ringFit.inside, JSON.stringify(ringFit));
+// Its lines keep a hyphenated word whole (at 360 px "(7-" ended one line and "day average)" began the next).
+const avgWhole = await page.evaluate(() => { const p = [...document.querySelectorAll('#screen .day-lines p')].find((e) => /7-day/.test(e.textContent)); const w = p && p.querySelector('.gh-nw'); return p ? !!w && /7-day/.test(w.textContent) && getComputedStyle(w).whiteSpace === 'nowrap' : null; });
+check('Today without workouts: "7-day average" keeps "7-day" whole', avgWhole === true, String(avgWhole));
 await page.evaluate(() => { const U = window.GH.ui, d = U.S.health.days[U.today()]; if (U.__steps == null) delete d.steps; else d.steps = U.__steps; delete U.__steps; U.S.profile.workouts = true; U.render(); });
 await settle(700);
 // Coach notes: an arrow in Recent changes keeps to the words on both sides (a line began "→ 20 reps").
