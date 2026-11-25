@@ -162,8 +162,7 @@ button.hl-pill:active { scale: .97; transition-duration: var(--duration-instant)
 .hl-act .hl-seeall .rf-list-title { color: var(--accent); font-weight: 600; }
 .hl-src .rf-btn[data-spinning] svg, .hl-src [data-spinning] .rf-list-icon svg { animation: gh-spin 900ms linear infinite; }
 .hl-connect { justify-self: start; }
-/* (On the list's own inset, where a list's footer sits.) */
-.hl-src-note { margin: 0; padding-inline: var(--space-4); line-height: 1.45; }
+.hl-src-note { line-height: 1.45; }
 .hl-src-note .rf-btn { vertical-align: baseline; min-block-size: 0; height: auto; padding-inline: 4px; }
 
 /* The + menu. */

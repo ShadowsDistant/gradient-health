@@ -273,6 +273,10 @@ button.ex-name::before { content: ''; position: absolute; inset: 0; }
 .section > .rf-list-header { padding-block-end: 0; margin-block: var(--space-4) calc(var(--space-2) - var(--space-3)); }
 .section > .rf-list-header:first-child { margin-block-start: 0; }
 .section > .rf-list-footer { padding-block-start: 0; margin-block-start: calc(var(--space-2) - var(--space-3)); }
+/* A note straight in a section (under a card or a list) sits as a list's footer does: on the
+   content's inset and close to what it explains. (As a bare paragraph it sat on the page's edge, a
+   line's height below.) */
+.section > p.t-footnote { margin: calc(var(--space-2) - var(--space-3)) 0 0; padding-inline: var(--space-4); }
 /* Long titles and descriptions wrap instead of being cut off. */
 .rf-list-title, .rf-list-sub { white-space: normal; overflow-wrap: anywhere; }
 /* And they wrap kindly: a title's lines balanced ("Record a walk, / run or ride", not a word on its
