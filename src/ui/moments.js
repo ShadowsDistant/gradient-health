@@ -7,7 +7,8 @@
  *
  * U.motion.travel(src, to, o)  A picture travels: a copy of src (inert, hidden from assistive tech)
  *   moves from where src is into to's box, keeping its shape, and fades out over what's drawn there.
- *   o: { from (src's box, read earlier), layer (where the copy goes), ms, easing }.
+ *   o: { from (src's box, read earlier), layer (where the copy goes), ms, easing, paint (the copy
+ *   keeps src's background and text colours) }.
  * U.motion.fill(root, where)  The rings and bars in root glide to their value (Refract's own fill):
  *   from nothing the first time `where` shows them, from what they last showed there after that,
  *   and not at all when that's what they show now.
@@ -26,8 +27,8 @@
  * U.motion.land(list, o)  Parts land one after another: each rises (or, o.pop, pops) into place.
  *
  * A sheet that opens from a row with a move's picture carries that picture into its figure's box
- * (Plan's rows, the plan builder's, the player's figure and Up next), and a sheet's rings and bars
- * fill.
+ * (Plan's rows, the plan builder's, the player's figure and Up next), one opened from a health
+ * number's tile carries the tile's icon into its own, and a sheet's rings and bars fill.
  */
 (function (G) {
   'use strict';
@@ -48,9 +49,13 @@
   /* ---------------------------------------------------------------- the last tap */
   // What was tapped last, and where it was (read as the click arrives, before anything it does has
   // changed the page): the source a moment grows out of. Only what can be one is measured: a main
-  // button (the player opens out of it) and a move's picture (it travels into its sheet); any other
-  // tap reads nothing from the layout.
-  const PICTURE = '.pw-thumb, .cp-thumb, .pl-fig'; // a move's picture in what was tapped
+  // button (the player opens out of it) and a part a sheet carries in (below); any other tap reads
+  // nothing from the layout.
+  // What a sheet carries in from what was tapped: [the part in what was tapped, its place in the
+  // sheet]. A move's picture goes into the figure's box (Plan's rows, the plan builder's, the
+  // player's figure and Up next); a health number's icon into its sheet's icon (Health's tiles).
+  const CARRY = [['.pw-thumb, .cp-thumb, .pl-fig', '.sheet-fig'], ['.hl-ico', '.ms-ico']];
+  const PICTURE = CARRY.map((c) => c[0]).join(', ');
   const MAIN = '.rf-btn[data-variant="tinted"], .rf-btn[data-variant="filled"], [data-act="resumeWorkout"]';
   let tapped = null;
   doc.addEventListener('click', (e) => {
@@ -73,13 +78,17 @@
     c.classList.add('motion-copy');
     if (M.shield) M.shield(c);
     Object.assign(c.style, { position: 'fixed', left: `${a.left}px`, top: `${a.top}px`, width: `${a.width}px`, height: `${a.height}px`, margin: '0', zIndex: '6' });
+    // (A part in its place's colours keeps them: the copy is no longer inside what gave them.)
+    if (opt.paint) { const cs = G.getComputedStyle(src); Object.assign(c.style, { backgroundColor: cs.backgroundColor, color: cs.color }); }
     aside(() => (opt.layer || doc.body).appendChild(c));
     // Its shape kept: as large as fits to's box, in the middle of it.
     const s = Math.min(b.width / a.width, b.height / a.height);
     const x = b.left + b.width / 2 - (a.left + a.width / 2), y = b.top + b.height / 2 - (a.top + a.height / 2);
     const ms = opt.ms || 300;
     c.animate([{ transform: 'none' }, { transform: `translate(${x}px, ${y}px) scale(${s})` }], { duration: ms, easing: opt.easing || M.tok().snappy, fill: 'forwards' });
-    const fade = c.animate([{ opacity: 1 }, { opacity: 1, offset: 0.6 }, { opacity: 0 }], { duration: ms, easing: 'linear', fill: 'forwards' });
+    // (It hands over at the very end: what it lands on may still be on its way there, as a sheet's
+    // part is while the sheet slides up, and over the half before that the two were a double image.)
+    const fade = c.animate([{ opacity: 1 }, { opacity: 1, offset: 0.85 }, { opacity: 0 }], { duration: ms, easing: 'linear', fill: 'forwards' });
     const gone = () => c.remove();
     M.track(fade.finished.then(gone, gone));
     return true;
@@ -263,9 +272,8 @@
 
   /* ---------------------------------------------------------------- sheets */
   // A sheet's first move is its opening (sheet.js says so before its panel starts to slide, when the
-  // panel is laid out where it will rest): the picture of the move that was tapped travels into the
-  // sheet's figure box, and the sheet's rings and bars fill. A picture is an <img> or the flat
-  // figure's drawing; a live 3D figure has no picture to copy, and its sheet just opens.
+  // panel is laid out where it will rest): what it carries in from what was tapped (CARRY) travels
+  // into its place, and the sheet's rings and bars fill.
   const seen = new WeakSet();
   doc.addEventListener('gh-sheet-moving', (e) => {
     const ctl = e.detail && e.detail.moving && U.topSheet ? U.topSheet() : null;
@@ -274,23 +282,27 @@
     const title = ctl.el.querySelector('.rf-sheet-title');
     M.fill(ctl.body, `sheet:${title ? title.textContent : ''}`);
     const src = tap(700);
-    if (!src || reduced()) return;
-    // A move's picture, into the sheet's figure box.
-    const fig = ctl.el.querySelector('.sheet-fig');
-    const pic = fig && src.pic && src.pic.isConnected && !src.pic.querySelector('canvas') ? src.pic.querySelector('img, svg') : null;
+    if (!src || reduced() || !src.pic || !src.pic.isConnected) return;
+    const pair = CARRY.find((c) => src.pic.matches(c[0]));
+    const to = pair ? ctl.el.querySelector(pair[1]) : null;
+    if (!to) return;
+    // A move's picture is the <img> or the flat figure's drawing in it (a live 3D figure, a canvas, has
+    // no picture to copy: its sheet just opens); an icon travels whole, in its own colours.
+    const fig = to.matches('.sheet-fig');
+    const pic = !fig ? src.pic : src.pic.querySelector('canvas') ? null : src.pic.querySelector('img, svg');
     if (!pic) return;
-    const wait = fig.closest('.sheet-fig-card') || fig;
+    const wait = fig ? to.closest('.sheet-fig-card') || to : to;
     // Where it will rest (the panel has no motion on it yet), then, once the panel's slide exists,
     // the copy moves on the same curve over the same time: it rides up with the sheet. What the
     // sheet draws there stays out of sight until the copy is nearly there, then takes over from it.
-    const box = fig.getBoundingClientRect();
+    const box = to.getBoundingClientRect();
     Promise.resolve().then(() => {
       const panel = ctl.el.querySelector('.gh-sheet-panel');
       const slide = panel && panel.getAnimations().find((x) => x.effect && x.effect.getKeyframes().some((k) => 'transform' in k));
       const time = slide ? slide.effect.getTiming() : null;
       const ms = time && Number(time.duration) > 0 ? Number(time.duration) : 240;
-      if (!M.travel(pic, box, { from: src.picBox, layer: ctl.el, ms, easing: time ? time.easing : null })) return;
-      M.show(wait, [{ opacity: 0 }, { opacity: 0, offset: 0.4 }, { opacity: 1, offset: 0.8 }, { opacity: 1 }], { duration: ms, easing: 'linear' });
+      if (!M.travel(pic, box, { from: src.picBox, layer: ctl.el, ms, easing: time ? time.easing : null, paint: !fig })) return;
+      M.show(wait, [{ opacity: 0 }, { opacity: 0, offset: 0.8 }, { opacity: 1, offset: 0.95 }, { opacity: 1 }], { duration: ms, easing: 'linear' });
     });
   });
 })(typeof window !== 'undefined' ? window : globalThis);

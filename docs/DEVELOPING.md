@@ -208,14 +208,18 @@ left alone. A few conventions:
     replay it, and a value changed elsewhere glides from the old one. The first eight of a page.
   - **A picture travels** (`travel`): a copy of it (inert, `aria-hidden`, `.motion-copy`) moves from
     where it is into another box, keeping its shape, and fades out over what's drawn there. A sheet
-    opened from something with a move's picture in it (`.pw-thumb`, `.cp-thumb`, `.pl-fig`: Plan's
-    rows, the plan builder's, the player's figure and Up next) carries that picture into its figure
-    box (`.sheet-fig`) over the same time and on the same curve as the panel's slide, so it rides up
-    with the sheet; what the sheet draws in the box shows once the copy is nearly there. The part
+    carries in a part of what was tapped (`CARRY` in `moments.js`): a move's picture (`.pw-thumb`,
+    `.cp-thumb`, `.pl-fig`: Plan's rows, the plan builder's, the player's figure and Up next) into its
+    figure box (`.sheet-fig`), and a health number's icon (`.hl-ico`, Health's tiles) into its
+    sheet's icon (`.ms-ico`), keeping the tile's colours. It moves over the same time and on the
+    same curve as the panel's slide, so it lands as the sheet does; what the sheet draws there shows
+    only at the very end, when the two are within a few pixels (the sheet's part is still rising
+    with the panel before that, and an earlier hand-off showed both, up to 100 px apart). The part
     hears the sheet's first move (`gh-sheet-moving`, sent before the panel's slide starts, when the
     panel is laid out where it will rest) and knows what was tapped from a click listener of its own,
     so no screen names its sheet's source. A live 3D figure (a canvas) has no picture to copy: its
-    sheet just opens.
+    sheet just opens. (A health number's value was tried too: a copy of words at another size never
+    matched the sheet's closely enough to stand in for it.)
   - **The workout player** (`enterPlayer`, `scene`, `timerIn`, `count`, `beat`; called from
     `src/ui/player.js`): it opens with its main button growing out of the button that was tapped,
     both being the same tinted glass. Between two scenes the figure travels between its card and Up

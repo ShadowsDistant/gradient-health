@@ -191,6 +191,21 @@ await page.evaluate(() => {
     glides: (el) => (el ? el.getAnimations().filter((a) => !a.transitionProperty && !a.animationName && window.__m.props(a).join() === 'transform').length : 0),
     pauseAll: () => { const list = document.getAnimations().filter((a) => !a.transitionProperty && !a.animationName && !window.__m.own(a)); for (const a of list) { a.pause(); a.currentTime = 0; } return list; },
     playAll: (list) => { for (const a of list) a.play(); },
+    // A copy handing over to what it lands on (list paused): stepped through its time, how far apart
+    // their middles are whenever both show (each over 0.1 opaque; held is what fades in for it).
+    handoff: (list, copy, to, held) => {
+      const end = Math.max(...list.map((a) => a.effect.getComputedTiming().endTime).filter(Number.isFinite));
+      const mid = (el) => { const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+      let max = 0, both = 0;
+      for (let t = 0; t <= end; t += 5) {
+        for (const a of list) a.currentTime = Math.min(t, a.effect.getComputedTiming().endTime - 0.5);
+        if (Number(getComputedStyle(copy).opacity) <= 0.1 || Number(getComputedStyle(held).opacity) <= 0.1) continue;
+        const [a, b] = [mid(copy), mid(to)];
+        both++;
+        max = Math.max(max, Math.round(Math.hypot(a[0] - b[0], a[1] - b[1])));
+      }
+      return { max, both };
+    },
     dupIds: () => { const m = new Map(); for (const el of document.querySelectorAll('[id]')) m.set(el.id, (m.get(el.id) || 0) + 1); return Array.from(m).filter(([, n]) => n > 1).map(([k]) => k); },
     leftovers: () => ({ exit: document.querySelectorAll('.screen-exit').length, copies: document.querySelectorAll('.motion-copy').length, leaving: document.querySelectorAll('.motion-leaving').length, fading: document.querySelectorAll('[data-fading]').length }),
   };
@@ -1060,6 +1075,7 @@ section('Moments: a move\'s picture travels into its how-to');
       const e = copy.getBoundingClientRect(), box = dlg.querySelector('.sheet-fig').getBoundingClientRect();
       out.end = { cx: e.left + e.width / 2, cy: e.top + e.height / 2, w: e.width, h: e.height };
       out.box = { cx: box.left + box.width / 2, cy: box.top + box.height / 2, w: box.width, h: box.height };
+      out.apart = m.handoff(list, copy, dlg.querySelector('.sheet-fig'), dlg.querySelector('.sheet-fig-card'));
       for (const x of list) x.currentTime = 0;
       m.playAll(list);
       out.inert = copy.inert && copy.getAttribute('aria-hidden') === 'true' && getComputedStyle(copy).position === 'fixed';
@@ -1081,6 +1097,51 @@ section('Moments: a move\'s picture travels into its how-to');
   check('and ends in the middle of the sheet\'s figure box, as large as fits it', tr.copy && Math.abs(tr.end.cx - tr.box.cx) <= 3 && Math.abs(tr.end.cy - tr.box.cy) <= 3 && tr.end.w <= tr.box.w + 2 && tr.end.h <= tr.box.h + 2 && (Math.abs(tr.end.h - tr.box.h) <= 3 || Math.abs(tr.end.w - tr.box.w) <= 3), { end: tr.end, box: tr.box });
   check('it rides up with the sheet: the same time and curve as the panel\'s slide, by transform and opacity', tr.same && tr.props === 'opacity,transform', tr);
   check('what the sheet draws there waits for it, then shows; the copy is gone when it ends', tr.held && tr.card === '1' && tr.fig > 0 && Object.values(tr.left).every((n) => n === 0), tr);
+  check('it hands over only once it\'s there: while both show, the copy is within 16 px of the box rising with the sheet', tr.apart && tr.apart.both > 0 && tr.apart.max <= 16, tr.apart);
+}
+
+section('Moments: a health number\'s icon travels into its sheet');
+{
+  await page.evaluate(async () => { window.GH.ui.go('health'); await window.GH.ui.motion.settled(); });
+  await wait(500);
+  const tile = '#screen .hl-tile[data-act="metricOpen"]';
+  await page.evaluate((sel) => document.querySelector(sel).scrollIntoView({ block: 'center' }), tile);
+  await wait(400);
+  const from = await page.evaluate((sel) => { const t = document.querySelector(sel).querySelector('.hl-ico'); const r = t.getBoundingClientRect(); return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, bg: getComputedStyle(t).backgroundColor }; }, tile);
+  const ic = await page.evaluate(async (sel) => {
+    const m = window.__m, U = window.GH.ui;
+    document.querySelector(sel).click();
+    await Promise.resolve();
+    const dlg = document.querySelector('dialog.gh-sheet[open]');
+    const copy = dlg && dlg.querySelector(':scope > .motion-copy');
+    const to = dlg && dlg.querySelector('.ms-ico');
+    const out = { sheet: !!dlg, copy: !!copy, to: !!to };
+    if (copy && to) {
+      out.inert = copy.inert && copy.getAttribute('aria-hidden') === 'true';
+      out.bg = getComputedStyle(copy).backgroundColor;
+      const list = m.pauseAll();
+      const r = copy.getBoundingClientRect();
+      out.at0 = { cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+      for (const x of list) x.currentTime = x.effect.getComputedTiming().endTime - 0.5;
+      const e = copy.getBoundingClientRect(), b = to.getBoundingClientRect();
+      out.end = { cx: e.left + e.width / 2, cy: e.top + e.height / 2, w: e.width };
+      out.box = { cx: b.left + b.width / 2, cy: b.top + b.height / 2, w: b.width };
+      out.apart = m.handoff(list, copy, to, to);
+      for (const x of list) x.currentTime = 0;
+      m.playAll(list);
+      out.props = m.anims(copy).flatMap(m.props).sort().join();
+    }
+    await U.motion.settled();
+    await new Promise((res) => setTimeout(res, 400));
+    out.left = m.leftovers();
+    out.icon = to ? getComputedStyle(to).opacity : null;
+    U.closeSheets();
+    await new Promise((res) => setTimeout(res, 500));
+    return out;
+  }, tile);
+  check('a tile opens its sheet with a copy of its icon over the sheet, inert, in the tile\'s colour', ic.sheet && ic.copy && ic.inert && ic.bg === from.bg, { ic, from });
+  check('the copy starts on the tile\'s icon and ends on the sheet\'s, at its size', ic.copy && Math.abs(ic.at0.cx - from.cx) <= 2 && Math.abs(ic.at0.cy - from.cy) <= 2 && Math.abs(ic.end.cx - ic.box.cx) <= 2 && Math.abs(ic.end.cy - ic.box.cy) <= 2 && Math.abs(ic.end.w - ic.box.w) <= 2, { from, ic });
+  check('by transform and opacity; it hands over once it\'s there (within 16 px while both show), and nothing is left', ic.props === 'opacity,transform' && ic.apart && ic.apart.both > 0 && ic.apart.max <= 16 && ic.icon === '1' && Object.values(ic.left).every((n) => n === 0), ic);
 }
 
 section('Moments: lists that filter and shrink');
