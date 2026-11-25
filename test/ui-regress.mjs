@@ -867,6 +867,98 @@ const ring = await page.evaluate(() => {
 check('a toast\'s close keeps its countdown ring at its own size, and reaches 44 px with its ::after', ring && ring.countdown && ring.ring === '0px' && ring.hit != null && ring.hit <= ring.want + 0.5, JSON.stringify(ring));
 await page.evaluate(() => { for (const t of document.querySelectorAll('.rf-toast')) t.remove(); });
 
+/* ------------------------------------------------------------------ 1.15's touch-up */
+section('1.15: type, text buttons, notes and empty states');
+// A plain button's own type applies. The reset that gives buttons the page's font outweighed any one
+// class, so a move's name on Today drew lighter than the warm-up row above it, and a Why chip and the
+// chat's engine pill at the page's 16 px.
+await page.evaluate(() => { const U = window.GH.ui; U.closeSheets(); while (U.back()) { /* back to the tab */ } U.go('today'); });
+await settle(900);
+const exType = await page.evaluate(() => {
+  const b = document.querySelector('#screen button.ex-name'), w = document.querySelector('#screen .ex-muted .ex-name');
+  return b && w ? { move: getComputedStyle(b).fontWeight, warm: getComputedStyle(w).fontWeight } : null;
+});
+check('a move\'s name on Today keeps its weight, heavier than the warm-up row', exType && Number(exType.move) >= 550 && Number(exType.move) > Number(exType.warm), JSON.stringify(exType));
+await page.evaluate(() => window.GH.ui.open('coach'));
+await settle(900);
+const whyChip = await page.evaluate(() => { const c = document.querySelector('#screen .why-chip'); return c ? getComputedStyle(c).fontSize : null; });
+check('a Why chip is 12 px', whyChip === null || whyChip === '12px', whyChip);
+check('Today\'s coach card keeps "See all" on one line', await page.evaluate(() => { const U = window.GH.ui; U.back(); const m = document.querySelector('#screen .co-more'); return !m || getComputedStyle(m).whiteSpace === 'nowrap'; }));
+await settle(700);
+// A sheet has one tinted button: the chat's Chats, a way to the list, is plain glass beside Send.
+await page.evaluate(() => window.GH.ui.act.askCoach());
+await settle(1500);
+const chatBtns = await page.evaluate(() => {
+  const d = document.querySelector('dialog.chat-sheet[open]');
+  if (!d) return null;
+  const pill = d.querySelector('.chat-pill');
+  return { tinted: [...d.querySelectorAll('.rf-btn[data-variant="tinted"]')].map((b) => b.getAttribute('data-act') || b.textContent.trim()), chats: !!d.querySelector('.rf-sheet-header [data-act="chatList"]'), pill: pill ? getComputedStyle(pill).fontSize : null };
+});
+check('the chat has Chats in its header, and one tinted button at most', chatBtns && chatBtns.chats && chatBtns.tinted.length <= 1 && !chatBtns.tinted.includes('chatList'), JSON.stringify(chatBtns));
+check('the chat\'s engine pill is 14 px', chatBtns && (chatBtns.pill === null || chatBtns.pill === '14px'), chatBtns && chatBtns.pill);
+await page.evaluate(() => window.GH.ui.closeSheets());
+await settle(700);
+// A text button with words in a sheet is the accent, as on a page (it drew in the label's ink and
+// read as a bold label); the sheet's close button, an icon alone, keeps the label's.
+await page.evaluate(() => { const U = window.GH.ui; U.go('health'); U.metricSheet('rhr'); });
+await settle(1400);
+const sheetLink = await page.evaluate(() => {
+  const d = document.querySelector('dialog.ms-sheet[open]');
+  if (!d) return null;
+  const probe = document.createElement('span'); probe.style.color = 'var(--accent)'; d.querySelector('.rf-sheet-body').appendChild(probe);
+  const accent = getComputedStyle(probe).color; probe.remove();
+  const more = d.querySelector('.ms-more'), close = d.querySelector('[data-sheet-close]');
+  const cell = [...d.querySelectorAll('.ms-stat')].find((c) => c.querySelector('.ms-stat-k').textContent === 'Change');
+  const v = cell && cell.querySelector('.ms-stat-v');
+  return { accent, more: more ? getComputedStyle(more).color : null, close: getComputedStyle(close).color, change: v ? v.textContent : null, unit: v ? !!v.querySelector('small') || !/[a-z]/i.test(v.textContent) : null };
+});
+check('"Show all" in a number\'s sheet is the accent; Close is not', sheetLink && sheetLink.more === sheetLink.accent && sheetLink.close !== sheetLink.accent, JSON.stringify(sheetLink));
+check('Change is drawn as its neighbours are: a small unit, and a minus sign rather than a hyphen', sheetLink && sheetLink.unit === true && !/^-/.test(sheetLink.change || ''), sheetLink && sheetLink.change);
+await page.evaluate(() => window.GH.ui.closeSheets());
+await settle(700);
+// Health's Sources: each row has its tile, so every title starts on one edge; the note under the list
+// starts on the list's inset, as a list's footer does.
+const src = await page.evaluate(() => {
+  const l = document.querySelector('#screen .hl-src'), n = document.querySelector('#screen .hl-src-note');
+  if (!l || !n) return null;
+  const rows = [...l.querySelectorAll(':scope > li > .rf-list-row')];
+  const lefts = [...new Set(rows.map((r) => Math.round(r.querySelector('.rf-list-title').getBoundingClientRect().left)))];
+  const range = document.createRange(); range.selectNodeContents(n);
+  return { rows: rows.length, tiles: rows.filter((r) => r.querySelector(':scope > .rf-list-icon')).length, lefts, note: Math.round(range.getBoundingClientRect().left - l.getBoundingClientRect().left) };
+});
+check('every row of Sources has a tile, and their titles share an edge', src && src.rows >= 2 && src.tiles === src.rows && src.lefts.length === 1, JSON.stringify(src));
+check('the note under Sources starts on the list\'s inset (16 px in)', src && Math.abs(src.note - 16) <= 1, src && src.note);
+// Progress: the heatmap's legend never leaves one item alone on a line.
+await tab('progress');
+await settle(900);
+const legend = await page.evaluate(() => {
+  const l = document.querySelector('#screen .hm-legend');
+  if (!l) return null;
+  const tops = [...l.children].map((c) => Math.round(c.getBoundingClientRect().top));
+  return [...new Set(tops)].map((t) => tops.filter((x) => x === t).length);
+});
+check('the heatmap\'s legend has no line with a single item', legend && legend.every((n) => n >= 2), JSON.stringify(legend));
+// Activities with nothing recorded: a picture, what's missing and the way to start (not saved).
+await page.evaluate(() => { const GH = window.GH, U = GH.ui; U.__acts = U.S.activities; U.S.activities = []; U.open('activities'); });
+await settle(900);
+const empty = await page.evaluate(() => { const c = document.querySelector('#screen .gh-empty'); return c ? { art: !!c.querySelector('svg'), head: (c.querySelector('.t-headline') || {}).textContent, go: !!c.querySelector('[data-act="actStart"]') } : null; });
+check('Activities, empty: a picture, "No activities yet" and the way to start', empty && empty.art && empty.head === 'No activities yet' && empty.go, JSON.stringify(empty));
+await page.evaluate(() => { const U = window.GH.ui; U.S.activities = U.__acts; delete U.__acts; while (U.back()) { /* back to the tab */ } });
+await settle(700);
+// Today without workouts: the steps ring holds its number (at 44 px "7,145" ran out over both sides).
+await page.evaluate(() => { const U = window.GH.ui; U.S.profile.workouts = false; U.go('today'); U.render(); });
+await settle(900);
+const ringFit = await page.evaluate(() => {
+  const r = document.querySelector('#screen .day-card .rf-ring'), n = r && r.querySelector('.fd-ring-n');
+  if (!n) return null;
+  const range = document.createRange(); range.selectNodeContents(n);
+  const a = r.getBoundingClientRect(), b = range.getBoundingClientRect();
+  return { ring: Math.round(a.width), text: Math.round(b.width), inside: b.left >= a.left + 6 && b.right <= a.right - 6 };
+});
+check('Today\'s steps ring holds its number', ringFit && ringFit.inside, JSON.stringify(ringFit));
+await page.evaluate(() => { const U = window.GH.ui; U.S.profile.workouts = true; U.render(); });
+await settle(700);
+
 section('Console');
 check('no console errors', errors.length === 0, errors.join(' | '));
 await browser.close();

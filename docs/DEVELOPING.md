@@ -449,7 +449,19 @@ chip, a segment, a stepper's button) reaches past its box with an empty `::befor
 Titles balance their lines and paragraphs avoid a lone last word (`text-wrap` in `src/styles.css`), and
 `U.nb` keeps a number on the line of its unit ("25 lb", "20% → 7%"). `test/ui-controls.mjs` checks the
 reach; `test/sweep.mjs` and `test/ui-sheetsize.mjs` measure a label's text with a Range, so the hit
-areas don't read as overflow.
+areas don't read as overflow. A plain `<button>` takes the font around it through a rule that weighs
+nothing (`:where(button:not([class*="rf-"]))` in `src/styles.css`), so its class's own size and weight
+apply: as `button:not(…)` it outweighed any single class, and a move's name on Today, a Why chip and
+the chat's engine pill all drew in the page's 16 px regular (`ui-regress` checks a few).
+
+A few shared pieces of a page (`src/styles.css`): a note straight in a `.section`
+(`<p class="t-footnote">` under a card or a list) sits as a list's footer does, on the content's
+inset and close to what it explains; an empty list has a small picture or icon tile, a
+headline for what's missing, a line for what will show there and the one way to start
+(`.card.gh-empty`, Activities'; a number's sheet, Chats and Your plans have the same shape in
+classes of their own); and a list row that can't be taken back
+(`is-danger`: Reset everything, Delete this run) is in the critical colour, as one that acts at once (`set-do`) is in
+the accent.
 
 The controls (`src/ui/controls.js`): Refract 1.4's own switch and segmented control take any
 movement past 3 px as a drag, so a tap that wobbles would be lost. The app replaces those two
@@ -496,7 +508,11 @@ Where the app uses Refract 1.4's newer parts:
   0.5 gives 82%). At the bottom of the screen a blur has nothing below to draw on and fades out,
   letting the page's words through sharp, so a sheet's glass turns solid over its last 40 px, fading
   in over the 80 above (`ui-sheet` reads the pixels). A sheet's body has no inset of its own, so each
-  block in it brings its 16 px.
+  block in it brings its 16 px. The header's action (`action: { label, act }`) is the sheet's one
+  tinted button; `action.quiet` makes it plain glass where it only leads somewhere else (the chat's
+  Chats, beside Send). A text button with words in a sheet (`data-variant="plain"`, or none) is the
+  accent, as on a page (Refract's on-glass rule gave it the label's ink, and "Show all 28" read as a
+  bold label); an icon alone keeps the label's ink and a tone its own colour.
   Content scrolled off its top fades into the material over 48 px under the header, on the curve a
   page fades on under the top bar (`data-scrolled`, toggled only as the scroll position crosses 0):
   on solid glass a gradient in the material's own colour (`--sheet-bg` and what's left of the sheen
