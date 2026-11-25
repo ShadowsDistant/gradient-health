@@ -754,7 +754,7 @@
     };
     const food = GH.food && GH.food.full(S);
     // (Each thing src/person.js sends Claude with the newer OK, and nothing else: keep them in step.)
-    const fresh = '<li>What makes a plan yours: how you eat (not much, some or plenty of protein, fruit and veg, if you said, and how often you reach your protein goal), whether you\'re lean for your height, what your weights mean for your size, muscles you asked the plan to lean toward, how long you\'ve used the app, the days you train and whether at home or a gym, how many workouts you really do, how long they take and how many you cut short, which exercises move up or stall, and what you\'ve picked, hidden, pinned, asked for, taken or turned down</li>';
+    const fresh = ['How you eat (not much, some or plenty of protein, fruit and veg, if you said), and how often you reach your protein goal', 'Whether you\'re lean for your height, and what your weights mean for your size', 'Muscles you asked the plan to lean toward, the days you train and whether at home or a gym, and how long you\'ve used the app', 'How many workouts you really do, how long they take and how many you cut short, and which exercises move up or stall', 'What you\'ve picked, hidden, pinned, asked for, taken or turned down'].map((x) => `<li>${x}</li>`).join('');
     const ctl = U.sheet({
       title: again ? 'Let Claude know more about you?' : 'Share your data with Claude?', size: 'full', cls: 'consent-sheet',
       body: `<div class="sheet-prose">
