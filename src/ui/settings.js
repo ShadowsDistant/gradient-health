@@ -753,7 +753,7 @@
       resolve(ok);
     };
     const food = GH.food && GH.food.full(S);
-    const fresh = '<li>What makes a plan yours: how you eat (not much, some or plenty of protein, fruit and veg, if you said), whether you\'re lean for your height, what your weights mean for your size, how long you\'ve used the app, the days you train, how many workouts you really do and how long they take, which exercises move up or stall, and what you\'ve picked, hidden or turned down</li>';
+    const fresh = '<li>What makes a plan yours: how you eat (not much, some or plenty of protein, fruit and veg, if you said, and how often you reach your protein goal), whether you\'re lean for your height, what your weights mean for your size, how long you\'ve used the app, the days you train, how many workouts you really do and how long they take, which exercises move up or stall, and what you\'ve picked, hidden or turned down</li>';
     const ctl = U.sheet({
       title: again ? 'Let Claude know more about you?' : 'Share your data with Claude?', size: 'full', cls: 'consent-sheet',
       body: `<div class="sheet-prose">

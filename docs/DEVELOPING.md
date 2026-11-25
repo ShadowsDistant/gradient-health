@@ -39,12 +39,18 @@ src/ui/activity.js       an activity's summary, the history and records, the map
                          activity leaving (U.actFoldAway); src/ui/actlive.js records one
 src/insights.js          on-device insights
 src/coach.js             the built-in coach: report, answers, today's decisions, suggestions, and the
-                         number check every AI answer goes through (keepToGiven, grounded)
+                         checks every AI answer goes through: its numbers (keepToGiven, grounded) and
+                         what a model may not say (keepSafe)
+src/person.js            who this is, for a model (GH.person, a lazy part): what the app knows about
+                         the person and what they do, in the same words for every model job
 src/planreview.js        the AI check of the plan (GH.planReview): what's sent, the schema and grammar,
                          and every suggestion tried on a copy before it's offered
 src/tailor.js            Tailor my plan: a request into a proposal, applied and undone (GH.tailor)
-src/customplan.js        your own plans: checks, running them, swaps, progression, the share code and
-                         Build me a plan (GH.customPlan)
+src/customplan.js        your own plans: checks, running them, swaps, progression and the share code
+                         (GH.customPlan)
+src/planbuild.js         Build me a plan, the ready-made plans and Improve, in the planUi part: the
+                         request, the engine's draft, the rules for this person, a model's take and
+                         its checks, and why a built plan is theirs (adds itself to GH.customPlan)
 src/qr.js                a QR code encoder that draws SVG (GH.qr), for sharing plans
 src/share-page.html      the page a shared plan's link opens in a browser (built to docs/p/index.html)
 src/devicecoach.js       the on-device model's prompt: rules, a compact data brief, safety routing
@@ -120,7 +126,8 @@ scripts/make-tiny-gguf.py  a tiny random-weight model for test/llm.mjs
 
 ```sh
 npm ci
-npm test          # simulations, insights, AI (mocked API), coach, poses, persistence, food, health, gym,
+npm test          # simulations, insights, AI (mocked API), what a model is told about the person and the
+                  # plans it builds (person), coach, poses, persistence, food, health, gym,
                   # your plans, activities, release notes, the plan engine and every combination of
                   # answers (combos; --full before a release), badges, haptics, security, the build
 npm run build     # dist/gradient-health.html, dist/lazy/, docs/PRIVACY.md and docs/p/index.html
@@ -909,10 +916,46 @@ back at a fraction of the price), and so is the plan builder's; the requests tha
 cache-write premium. `node test/ai.mjs` checks the shapes, and a short script in the PR measured the
 sizes before and after.
 
+**Who this is** (`src/person.js`, `GH.person`, the `person` part). Every model job is told who the
+person is by one function, so a plan a model builds, a check and an answer are about this person:
+`facts(S, day, o)` gives a list of `{ id, label, value }` in plain words (`lines` for a model, `shown`
+for the build sheet's list, so the two can't drift apart). Beyond goals, history, schedule and
+equipment it holds what their weights mean for them (`loadFeel`: the heaviest dumbbell or
+kettlebell against body weight times the ladder's ratio, light under 0.9 of that and heavy over 1.8;
+the app's own judgement until the engine has one), how they said they eat (`profile.eats`) and how
+often they reach a protein goal (where the summary's food part doesn't already say), their
+build when it's lean (BMI under 21: the one build the research says changes a plan), weeks with the
+app, the days they train, workouts a week against the plan and how long they take, what's moving up
+or stuck (each log item's `outcome`), and what they've picked, hidden, pinned, asked Tailor for, taken
+or turned down. Only facts with data behind them. `advice` adds what the research says to do about
+light weights, little protein, workouts missed or running long and a beginner, and `guard` the line
+that rules out weight loss for someone under 18 or lean. `o.to` says who reads it: the on-device
+model gets everything; Claude never gets the exact age, the height, health conditions, floor work or
+a gentle start. It's the summary's PERSON part, so chat, the report, suggestions, checks, plans and
+Tailor all get it. The part loads before a request is written or the summary is shown (`GH.ai.who`),
+and warms after launch.
+
+**The OK has a version** (`GH.ai.CONSENT`, `S.ai.consentV`; none means 1). The facts 1.15 added go to
+Claude only with version 2 (`GH.ai.wide`): someone who allowed the older list keeps sending exactly
+what it named, and Settings (Let Claude know more about you) and the build sheet offer the newer
+one (`U.claudeConsent(true)`); saying no there changes nothing. Something new in the summary means a
+new version, a line in the consent sheet (`src/ui/settings.js`) and the privacy policy
+(`src/data/privacy.js`), and `wide`-gating it in `person.js`. `test/person.mjs` checks both lists
+and that no request holds what never goes.
+
+**What a model may not say.** After the number check, `GH.coach.keepSafe` leaves out any sentence
+with a diet, a calorie deficit or surplus, a weight or body-fat target, a diagnosis, medicine or
+supplements, and, for someone under 18 or lean (`GH.person.strict`), anything about losing weight
+or eating less. Chat answers (Claude's and the on-device model's, through `grounded`, with a note),
+the plan review's words and a built plan's reasons all go through it. The system text says the same,
+and a red-flag question still never reaches a model.
+
 **Plans.** Build me a plan and Check my plan go through Claude with the person's model and limits
 (`GH.ai.json(..., { feature })`), and Improve (`GH.customPlan.improve`) reworks a plan of the person's
 own the same way: their plan is the draft, held to the same checks as a plan built from scratch
-(`accept`), with the changes listed in words (`diff`) before they choose to use them or save a new plan.
+(`accept`, where what they had and the model left alone stays as they had it), with the changes
+listed in words (`diff`) before they choose to use them or save a new plan. A plan request is about
+9,000 to 12,000 characters with its summary and schema, a check about 13,000 (`TYPICAL_CHARS`).
 
 ## On-device AI
 
@@ -958,13 +1001,17 @@ Both are the same llama.cpp release (b10663). Details:
   goes in with FACTS: what the built-in coach (`src/coach.js`) works out for its topic, the How it works
   rule behind it (`src/data/science.js`) and, for today, what the plan changed and why. The chat shows
   them under each answer ("What it used"). Emergencies get the built-in safety answer instead.
+- **Who this is.** The brief also holds the short form of `GH.person`'s facts (what their weights
+  mean for them, how they eat, what they do and choose), and the plan review and Build me a plan
+  give the on-device model the same facts as Claude, plus the ones that never leave the phone.
 - **Checked answers.** Small models still slip, so `GH.deviceCoach` holds them to the app's reading. A
   yes-or-no question the numbers settle (`GH.coach.verdict`: "Am I getting stronger?") and a question
   built on something that isn't so (`GH.coach.correction`: "Why is today lighter?" on a full day) start
   from the app's own words, passed to `GH.llm.chat` as `lead` (written into the prompt, so the model
   carries on from it). Afterwards `keepToGiven` leaves out any sentence with a number that wasn't in the
   prompt (a rounded one counts), and `finish` puts the app's own answer in its place if too little is
-  left, with a note under the answer saying so.
+  left, with a note under the answer saying so. `keepSafe` then leaves out diet, medicine and, for
+  someone under 18 or lean, weight loss (see Claude, What a model may not say).
 - **Nothing hangs silently.** Range reads time out after 30 s (three tries); a load with no progress
   for 45 s and an answer with nothing new for 60 s are "stalled"; a wllama worker that dies (wllama only
   logs that) or won't stop within 5 s of Stop is shut down, and everything waiting on it is rejected.
@@ -1146,12 +1193,19 @@ when the plan's strength work comes to under 30 minutes a week (days times minut
 `src/planreview.js` (`GH.planReview`) is the AI check. It sends next week's plan as built (each day's
 groups and moves, weekly sets against targets, minutes against the time set, the score and the
 planner's reasons, and up to 60 moves to swap in) to Claude, held to a JSON schema, or to the
-on-device model, held to a GBNF grammar from the same spec. Health conditions and the exact age only
+on-device model, held to a GBNF grammar from the same spec. Both get who this is in the same words
+(`GH.person`: Claude in its summary, the on-device model in the prompt, in a shorter form for a model
+with a short memory) and what the research says to do about it (`adviceLines`: light weights, little
+protein, workouts missed or running long, a beginner). Health conditions and the exact age only
 ever go to the on-device model. Each suggestion becomes a plan tweak and is tried with
 `GH.optimizer.applyTweaks` on a copy: a broken rule, or a score more than 0.03 lower, turns it down
-with the reason in plain words, and its text goes through the number check. The person picks which
-to apply (`S.profile.planTweaks`), with Undo. Claude's weekly report asks for plan ideas in the same
-request. `test/ai.mjs` and `test/ui-review.mjs` cover it.
+with the reason in plain words, and its text goes through the number check and `keepSafe`. A kind of
+suggestion is only added where `applyTweaks` can try it: `days` (workouts a week, for someone who
+does two of the three they plan) is tried as Settings would set it. The person picks which to apply
+(`S.profile.planTweaks`), with Undo; the ones they leave unticked are kept on the review's event
+(`declined`), and the next plan a model builds or checks is told. The result says what it looked at
+besides the plan (`looked`). Claude's weekly report asks for plan ideas in the same request.
+`test/ai.mjs`, `test/person.mjs` and `test/ui-review.mjs` cover it.
 
 Set-up (`src/ui/onboarding.js`) is six screens with one decision each, ending on the plan the engine
 built (`GH.optimizer.explainProfile`) with its first workout a tap away. With no weekdays picked, the
@@ -1174,13 +1228,19 @@ or `acceptDisclaimer` for a page without the bridge); a test that wants it sets
 
 People can build their own plans, ask the coach to build one, or add one someone shared, and run it
 with the app's own player, progression and readiness. `src/customplan.js` is pure logic on the saved
-state (`test/customplan.mjs`); `src/ui/customplan.js` is the screens (`test/ui-customplan.mjs`).
+state (`test/customplan.mjs`), with Build me a plan, the ready-made plans and Improve in
+`src/planbuild.js` (the planUi part, since only the plans' screens ask for them; a Node script or
+test loads it after `src/customplan.js`, and `test/person.mjs` covers it); `src/ui/customplan.js` is
+the screens (`test/ui-customplan.mjs`).
 
 - **A plan** is `{ v, id, name, note, days: [{ title, items: [{ move, sets, reps | secs, rest? }] }],
   weekdays, source: 'you' | 'coach' | 'shared', from?, createdAt, updatedAt }`, kept in `S.customPlans`;
   `S.activePlan` is the one in use (null: the coach's plan). `normalize()` brings anything plan-like (an
   older save, a shared code, a model's answer) to what this version runs: known move ids, 1 to 6 days,
-  1 to 12 exercises a day, 1 to 10 sets, 1 to 100 reps or 5 to 600 seconds.
+  1 to 12 exercises a day, 1 to 10 sets, 1 to 100 reps or 5 to 600 seconds. A plan the coach built
+  also carries why it's this person's: `why` (up to 3 lines of 160 characters) and a line on each day
+  (`day.why`, 100). `update()` takes them off when the plan's exercises change (they'd no longer be
+  true); a new name, a note or moving a day keeps them. The share code doesn't carry them.
 - **Running one.** Switching is an event (`{ type: 'plan', day, id, n, wd }` in `S.events`), so the
   calendar replays each week with the plan that was in force and past days keep their meaning. Four
   hooks in `src/brain.js`, marked `[custom plans]`: `calendar()` takes a week's sessions from
@@ -1220,15 +1280,48 @@ state (`test/customplan.mjs`); `src/ui/customplan.js` is the screens (`test/ui-c
   page shows its week by muscle (`weekSets()`: sets a week against `S.vol`), and New plan offers Full
   body, Upper and lower, Push, pull, legs and No equipment (`templates()`), fitted to the person's
   minutes. `test/customplan.mjs` and `test/ui-customplan.mjs` cover them.
-- **Build me a plan.** `generate()` reads the request with Tailor's rules plus the split and the time,
-  has the brain plan a week for a copy of the person with those wishes, and turns it into a plan, so it
-  only holds moves they can do. With Claude on (`GH.ai.json`, a JSON schema) or an on-device model (a
-  GBNF grammar of the allowed move ids and exactly the days asked for), a model then renames, regroups
-  and re-picks from `allowedMoves()`. `accept()` keeps its answer only if it's a valid plan of moves this
-  person can do that passes the plan review's checks: each day fits the time asked for (sets come off
-  the move with the most to spare until it does), every muscle group keeps at least half its weekly
-  sets, the focus groups keep two thirds, and pulling still balances pushing. Otherwise the app's own
-  plan stands.
+- **Build me a plan** (`src/planbuild.js`). `wishes()` reads the request with Tailor's rules plus the
+  split and the time, and the sheet's three quick choices (`choices()`: what you want most, how it
+  should feel, what to leave out, each already set from what the app knows). `generate()` has the
+  brain plan a week for a copy of the person with those wishes and turns it into a plan, so it only
+  holds moves they can do; `build()` brings that draft inside the rules below and puts the app's own
+  reasons on it. With Claude on (`GH.ai.json`, a JSON schema) or an on-device model (a GBNF grammar),
+  a model then renames, regroups and re-picks from `allowedMoves()` (the person's level on each
+  ladder and the rungs either side; the stand-in and practice ladders only when the draft uses them).
+- **The rules for this person** (`rules()`; the prompts state them, `accept()` checks them). From the
+  research in `research_notes/Personalizing home workout plans/`: the exercises a day their minutes
+  hold (2 to 3 in up to 12 minutes, 3 to 5 in 20, 4 to 6 in 30, 5 to 8 in 45, 6 to 9 beyond: the
+  app's own table); 1 to 4 sets of one exercise in a day (3 when they asked for easy to keep up),
+  and past that a second exercise for a goal muscle; each move's own rep range (`brain.rangeFor`),
+  up to 30 where their weights are light for them; each goal muscle's weekly sets between the
+  engine's floor and cap (`brain.programFor`; the cap is 12 when they eat little protein, since more
+  sets don't make up for food) on at least 2 days; goal muscles first, abs and core last. The
+  numbers that come from the engine follow it when it changes.
+- **The checks.** `accept()` keeps a model's answer only if it's a valid plan of moves this person
+  can do. `tidy()` puts right what it safely can: sets past the most go to a second exercise for a
+  goal muscle or just go, reps come back inside each move's range, a muscle's second exercise is
+  folded into its first when the day has more exercises than the time holds (and wouldn't run
+  longer for it), goal muscles go first. Then a goal muscle on too few days gets the draft's
+  exercise back; each day is fitted to the time asked for (sets come off the move with the most to
+  spare, a goal muscle's last); a goal muscle keeps its weekly floor and gives up what's past its
+  cap; and the plan review's checks still hold: every muscle group keeps at least half its weekly
+  sets, the focus groups two thirds, and pulling still balances pushing. Each rule is read against
+  the draft too (a model isn't asked for more than the engine's own draft manages), and anything
+  else keeps the draft. `refine()` returns what was put right as `fixes`, in plain words, and the
+  sheet lists them.
+- **Why it's yours.** A built plan says why it's this person's: `plan.why` and `day.why`. Claude
+  writes them (the schema asks for the reasons first, each `{ fact, line }` naming a fact it was
+  given by `GH.person`'s id); the on-device model picks from the app's own (`ownWhy()`, by `b1`,
+  `b2`…, so a small model writes no free text but the names); with no model the app's own stand.
+  Every line goes through `say()`: one line in the app's voice (plain characters, no dash as
+  punctuation, a capital and a full stop), within its length, every number one the model was sent or
+  the plan's own, nothing `keepSafe` leaves out, no promise, and no fact the model wasn't given
+  (`NAMES`: words for eating, sleep, build, joints, what they've done and so on, each allowed only
+  when that fact went). A line that fails is dropped and the app's own stands in. The sheet shows
+  them (Why it's yours), the plan keeps them and its page shows them (Why this plan).
+- **Sizes.** Claude's request is at most about 9,000 characters before its summary (moves leave the
+  end of the list until it fits); the on-device model gets 60 moves at most and about 6,000
+  characters.
 
 ## Notifications
 

@@ -25,8 +25,7 @@
     'If FACTS say none, answer from THEIR DATA below, or say you can\'t tell from their data and what they could track. Never make up a number.',
     'Say yes or no plainly when the question asks, and make sure it matches the numbers.',
     'You are not a doctor and never diagnose. Chest pain, fainting, a resting heart rate over 100, unplanned fast weight loss or pain that won\'t go away: tell them to see a doctor.',
-    'The app plans the workouts and targets. Explain them; don\'t write new programs, diets or meal plans.',
-    'Never set a calorie, weight or body-fat target, and never suggest medicine or supplements. A food idea is small and optional: one more serving of protein, a piece of fruit.',
+    'The app plans the workouts and targets. Explain them; don\'t write new programs, diets or meal plans, and never suggest medicine, supplements or a target weight.',
   ].join('\n');
 
   const r0 = (x) => String(Math.round(x));
@@ -35,7 +34,7 @@
 
   // What makes their plan theirs, in the short form (src/person.js): their build, what their weights
   // mean for them, how they eat, what they do and what they've chosen.
-  const WHO = ['build', 'focus', 'load', 'eats', 'does', 'up', 'stuck', 'likes'];
+  const WHO = ['build', 'focus', 'load', 'eats', 'does', 'stuck', 'likes'];
   // That part, in before the brief is written (it loads on demand).
   async function who() { if (!GH.person && GH.lazy) await GH.lazy('person').catch(() => null); }
   // The numbers the model sees, one short line each.
@@ -51,7 +50,7 @@
     const around = GH.access && GH.access.briefLine(p);
     if (around) L.push(`The plan is adapted for ${around}. Never give medical advice; suggest a doctor for anything medical.`);
     if (GH.person) {
-      for (const f of GH.person.facts(S, day, { to: 'device', ids: WHO })) L.push(`${f.label}: ${f.value}.`);
+      for (const f of GH.person.facts(S, day, { to: 'device', ids: WHO, short: true })) L.push(`${f.label}: ${f.value}.`);
       const guard = GH.person.guard(S, day, { to: 'device' });
       if (guard) L.push(guard);
     }

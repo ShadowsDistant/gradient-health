@@ -15,7 +15,7 @@
   const GOAL_GROUPS_OF = { legs: ['legs'], chest: ['chest'], back: ['back'], shoulders: ['shoulders'], arms: ['biceps', 'triceps'], abs: ['abs'] };
   const JOINT_NAME = { knee: 'knees', shoulder: 'shoulders', back: 'back', wrist: 'wrists', elbow: 'elbows', hip: 'hips', ankle: 'ankles', neck: 'neck' };
   const clampInt = (x, lo, hi, def) => { const n = Math.round(Number(x)); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : def; };
-  const clean = (s, max) => String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+  const clean = (s, max) => (typeof s === 'string' || typeof s === 'number' ? String(s) : '').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
   const uniq = (a) => a.filter((x, i) => x != null && a.indexOf(x) === i);
   const copy = (x) => JSON.parse(JSON.stringify(x));
 
@@ -417,6 +417,11 @@
     const all = plan.days.flatMap((d) => d.items);
     const daysOf = (groups) => plan.days.filter((d) => d.items.some((it) => groups.includes(MV[it.move].group))).length;
     const trained = uniq(R.goals.map((g) => GROUP_GOAL[g.group])).filter((u) => u && daysOf(GOAL_GROUPS_OF[u]) > 0);
+    // What they asked to leave out comes first: it's the surest thing the app knows about this plan.
+    const joints = uniq((S.profile.careful || []).concat(w.careful));
+    if (joints.length) add('care', w.careful.length ? 'asked' : 'joints', `You're careful with your ${listWords(joints.map((j) => JOINT_NAME[j] || j))}, so nothing here is hard on ${joints.length === 1 && (joints[0] === 'back' || joints[0] === 'neck') ? 'it' : 'them'}.`);
+    if (w.noImpact) add('jump', 'asked', 'You asked for no jumping, so every move keeps a foot on the floor.');
+    if (w.noFloor) add('floor', 'asked', 'You asked for nothing on the floor, so every move is standing or seated.');
     if (trained.length) {
       const n = Math.min(...trained.map((u) => daysOf(GOAL_GROUPS_OF[u])));
       const even = trained.every((u) => daysOf(GOAL_GROUPS_OF[u]) === n);
@@ -436,9 +441,6 @@
     const L = P && S.profile.workouts !== false ? P.lately(S, day) : null;
     if (L && L.perWeek != null && L.planned >= 4 && L.perWeek <= S.profile.days - 1 && D <= Math.ceil(L.perWeek)) add('does', 'does', `You've been doing about ${L.perWeek} workouts a week, so this plan asks for ${D}.`);
     if (p.experience === 'never' && day - (S.profile.startDay || day) < 84) add('level', 'level', 'You\'re new to training, so the moves are simple ones at your level and stay the same from week to week.');
-    const joints = uniq((S.profile.careful || []).concat(w.careful));
-    if (joints.length) add('care', w.careful.length ? 'asked' : 'joints', `You're careful with your ${listWords(joints.map((j) => JOINT_NAME[j] || j))}, so nothing here is hard on ${joints.length === 1 && (joints[0] === 'back' || joints[0] === 'neck') ? 'it' : 'them'}.`);
-    if (w.noImpact) add('jump', 'asked', 'You asked for no jumping, so every move keeps a foot on the floor.');
     if (!all.some((it) => MV[it.move].load)) add('kit', 'kit', 'You train without equipment, so every move uses your body weight, with harder versions as you move up.');
     return out;
   }
@@ -450,7 +452,14 @@
     if (!names.length) return '';
     const first = plan.days[i].items.map((it) => MV[it.move].group).find((g) => GROUP_GOAL[g]);
     const cap = (x) => `${x[0].toUpperCase()}${x.slice(1)}`;
-    if (R.goals.some((g) => g.group === first) && first !== 'abs' && names.length > 1) return `${cap(unit(first))} first while you're fresh, then ${listWords(names.slice(1))}.`;
+    const goal = (g) => R.goals.some((x) => x.group === g);
+    if (goal(first) && first !== 'abs' && names.length > 1) return `${cap(unit(first))} first while you're fresh, then ${listWords(names.slice(1))}.`;
+    // (Said another way than the day's title, which lists the same muscles.)
+    const mine = uniq(plan.days[i].items.map((it) => MV[it.move].group).filter(goal).map(unit));
+    const rest = names.filter((n) => !mine.includes(n));
+    if (mine.length && rest.length) return `${cap(listWords(rest))}, and your ${listWords(mine)} too.`;
+    if (mine.length) return `Just your ${listWords(mine)} today.`;
+    if (R.goals.length) return `${cap(listWords(rest))}, so the rest of you keeps up.`;
     return `${cap(listWords(names))}.`;
   }
   // A plan with the app's own reasons on it: up to three "because you" lines (plan.why) and a line

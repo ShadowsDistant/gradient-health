@@ -39,7 +39,8 @@
 
   const clampInt = (x, lo, hi, def) => { const n = Math.round(Number(x)); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : def; };
   // Names people type, or that come in a shared code: one line, no control or direction characters.
-  const clean = (s, max) => String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+  // (Words only: an object from a crafted code or backup, which String() can throw on, is nothing.)
+  const clean = (s, max) => (typeof s === 'string' || typeof s === 'number' ? String(s) : '').replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
   const uniq = (a) => a.filter((x, i) => x != null && a.indexOf(x) === i);
   const newId = () => `p${Date.now().toString(36).slice(-5)}${Math.random().toString(36).slice(2, 6)}`.replace(/[^a-z0-9]/g, '');
   const copy = (x) => JSON.parse(JSON.stringify(x));

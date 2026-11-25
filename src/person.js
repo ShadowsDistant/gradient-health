@@ -12,7 +12,7 @@
  * and gets the facts added in 1.15 (how they eat, their build, what their weights mean, what they
  * do and choose) only with o.wide: the person's OK to the list as it is now (GH.ai.wide).
  * o.have: the parts of Claude's summary that go with it (src/ai.js PARTS), whose lines aren't
- * repeated. o.ids: only these facts (the short form for a small model).
+ * repeated. o.ids: only these facts, and o.short: said briefly (the short form for a small model).
  */
 (function (G) {
   'use strict';
@@ -69,7 +69,7 @@
   // A first working weight for a ladder, as a share of body weight (the moves' own `ratio`, per
   // dumbbell; the ladders without one take a neighbour's).
   const RATIO = { curl: 0.08, triceps: 0.06, row: 0.12, chestDb: 0.12, press: 0.1, squat: 0.2, hinge: 0.2, glute: 0.2, raise: 0.06, rear: 0.05, calf: 0.2, absLoad: 0.1 };
-  const FAM_WORD = { curl: 'curls', triceps: 'triceps extensions', row: 'rows', chestDb: 'presses', press: 'presses', squat: 'squats', hinge: 'deadlifts', glute: 'hip thrusts', raise: 'lateral raises', rear: 'rear raises', calf: 'calf raises', absLoad: 'weighted crunches' };
+  const FAM_WORD = { curl: 'curls', triceps: 'triceps extensions', row: 'rows', chestDb: 'chest presses', press: 'overhead presses', squat: 'squats', hinge: 'deadlifts', glute: 'hip thrusts', raise: 'lateral raises', rear: 'rear raises', calf: 'calf raises', absLoad: 'weighted crunches' };
   // Whether the heaviest weight they have is 'light', 'right' or 'heavy' for them on a ladder (null
   // when it can't be told: no weights, no body weight, a ladder done without them). The app's own
   // simple judgement until the plan engine has one: the weight against body weight times the
@@ -88,7 +88,8 @@
     return { feel: r < 0.9 ? 'light' : r <= 1.8 ? 'right' : 'heavy', far: r < 0.7, top };
   }
   // All of it in a line: "10 lb is light for curls, rows and squats; about right for lateral raises".
-  function loadLine(S) {
+  // (short: only where it's light or heavy, three of each, for a small model's brief.)
+  function loadLine(S, short) {
     const by = { light: [], right: [], heavy: [] };
     let top = 0;
     for (const fam of Object.keys(RATIO)) {
@@ -97,7 +98,7 @@
       top = Math.max(top, f.top);
       if (!by[f.feel].includes(FAM_WORD[fam])) by[f.feel].push(FAM_WORD[fam]);
     }
-    const bits = [['light', 'light for'], ['right', 'about right for'], ['heavy', 'heavy for']].filter(([k]) => by[k].length).map(([k, w]) => `${w} ${list(by[k].slice(0, 5))}`);
+    const bits = [['light', 'light for'], ['right', 'about right for'], ['heavy', 'heavy for']].filter(([k]) => by[k].length && !(short && k === 'right')).map(([k, w]) => `${w} ${list(by[k].slice(0, short ? 3 : 5))}`);
     return bits.length ? `${top} ${S.profile.units || 'lb'} is ${bits.join('; ')}` : '';
   }
 
@@ -185,7 +186,7 @@
     if (eq.kb && eq.kb.length) kit.push(`kettlebell ${eq.kb.join('/')} ${p.units}`);
     for (const k of ['ball', 'band', 'bar', 'chair', 'wall', 'towel', 'table']) if (eq[k]) kit.push(k === 'bar' ? 'pull-up bar' : k);
     add('kit', 'Equipment', kit.join(', ') || 'bodyweight only');
-    if (wide) add('load', 'Their weights', loadLine(S), { tag: 'Your weights' });
+    if (wide) add('load', 'Their weights', loadLine(S, opt.short), { tag: 'Your weights' });
     if ((p.careful || []).length) add('joints', 'Careful with', p.careful.join(', '));
     const pain = Object.entries(S.pain || {}).filter(([, until]) => until >= day).map(([j]) => j);
     if (pain.length && !have('training')) add('pain', 'Joints on a break', `${pain.join(', ')} (moves that load them are swapped out)`);
@@ -207,7 +208,7 @@
       add('eats', 'Eating, in their own words', said.join(', '), { tag: 'Eating' });
     }
     const goal = p.protein && p.protein.track !== false ? b.proteinGoal(S, day) : null;
-    if (goal && !have('food')) {
+    if (goal && wide && !have('food')) {
       let hit = 0, logged = 0;
       for (let d = day - 14; d < day; d++) { const g = b.proteinToday(S, d); if (g) { logged++; if (g >= goal * 0.95) hit++; } }
       if (logged >= 3) add('protein', 'Protein logged', `goal ${goal} g a day, hit on ${hit} of ${logged} logged days (last 2 weeks)`);
@@ -218,11 +219,13 @@
       if (L.perWeek != null && L.planned) bits.push(`about ${L.perWeek} ${L.perWeek === 1 ? 'workout' : 'workouts'} a week against ${p.days} planned (${L.done} of ${L.planned} done)`);
       if (L.mins != null) bits.push(`sessions take about ${L.mins} min against ${p.minutes} set`);
       if (L.cut) bits.push(`${L.cut} of ${L.n} cut short`);
-      if (wide) add('does', 'Last 4 weeks', bits.join('; '), { tag: 'Lately' });
+      // (The short form says it only when they do less than planned, run long or cut workouts short.)
+      const off = (L.perWeek != null && L.planned >= 4 && L.perWeek <= p.days - 1) || (L.mins != null && L.mins > p.minutes + 5) || L.cut > 0;
+      if (wide && (!opt.short || off)) add('does', 'Last 4 weeks', bits.join('; '), { tag: 'Lately' });
       if (!have('training') && L.felt.easy + L.felt.right + L.felt.hard) add('felt', 'How workouts felt', `${L.felt.easy} too easy, ${L.felt.right} about right, ${L.felt.hard} too hard`);
       if (wide) add('up', 'Moving up', L.up.join(', '));
       if (wide) add('stuck', 'Not moving', L.stuck.join(', '));
-      if (wide) add('likes', 'Their choices', choices(S, day, claude).join('; '), { tag: 'Your choices' });
+      if (wide) add('likes', 'Their choices', choices(S, day, claude).slice(0, opt.short ? 2 : 9).join('; '), { tag: 'Your choices' });
     }
     if (h && !have('days') && wide) {
       const now = (k) => h.stats(S, k, day - 6, day), usual = (k) => h.stats(S, k, day - 34, day - 7);

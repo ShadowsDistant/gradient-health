@@ -1234,10 +1234,10 @@
       const claude = claudeOn(S);
       const wide = claude && GH.ai.wide(S);
       const knows = C().knows(S, U.today(), claude ? { to: 'claude', wide, have: ['person', 'days', 'training'] } : { to: 'device' });
-      const pick = (id, label, control) => `<div class="cp-pick" role="group" aria-labelledby="${id}"><p class="t-footnote rf-muted" id="${id}">${label}</p>${control}</div>`;
+      const pick = (id, label, control) => `<div class="cp-quick" role="group" aria-labelledby="${id}"><p class="t-footnote rf-muted" id="${id}">${label}</p>${control}</div>`;
       return `<div class="sheet-pad tailor cp-ask">
         <p class="t-callout rf-muted">Pick what fits and add anything else in words. The coach builds on what it knows about you and shows you the plan first.</p>
-        <div class="cp-picks">
+        <div class="cp-quicks">
           ${pick('cpPickMost', 'What you want most', U.choice('cpMost', picks.most.options, st.most, 'What you want most', ' class="ob-chips" data-on="cpPickMost"'))}
           ${pick('cpPickFeel', 'How it should feel', U.choice('cpFeel', picks.feel.options, st.feel, 'How it should feel', ' class="ob-chips" data-on="cpPickFeel"'))}
           ${pick('cpPickSkip', 'Leave out', `<div class="ob-chips">${picks.skip.options.map(([id, t]) => U.chip(t, st.skip.includes(id), `data-on="cpPickSkip" data-v="${U.esc(id)}"`)).join('')}</div>`)}
@@ -1253,6 +1253,8 @@
     };
     const ctl = U.sheet({ title: 'Build me a plan', size: 'auto', cls: 'cp-sheet cp-build-sheet', body: body(), onClose: () => { if (st.ctrl) st.ctrl.abort(); } });
     const draw = () => { if (!ctl.closed) { ctl.update(body()); drawThumbs(ctl.el); } };
+    // A new step starts at its top (the questions are long enough to have been scrolled).
+    const toTop = () => { if (!ctl.closed && ctl.body) ctl.body.scrollTop = 0; };
     const typed = () => { const q = doc.getElementById('cpAskQ'); if (q) st.text = q.value.trim(); };
     U.on.cpPickMost = (el, ev, v) => { st.most = v; };
     U.on.cpPickFeel = (el, ev, v) => { st.feel = v; };
@@ -1276,6 +1278,7 @@
       const by = await C().modelFor(S);
       st.step = by ? 'refining' : 'propose';
       draw();
+      toTop();
       grow(ctl);
       U.haptic('tap');
       if (!by) return;
@@ -1289,7 +1292,7 @@
       if (r.error && GH.ai && GH.ai.isBudget(r.error.code)) U.toast('Claude didn\'t refine it', 'caution', r.error.message);
     };
     U.act.cpBuildSkip = () => { if (st.ctrl) st.ctrl.abort(); st.ctrl = null; st.step = 'propose'; draw(); };
-    U.act.cpBuildEdit = () => { st.step = 'ask'; st.plan = null; draw(); };
+    U.act.cpBuildEdit = () => { st.step = 'ask'; st.plan = null; draw(); toTop(); };
     U.act.cpBuildSave = () => {
       const r = C().save(S, st.plan);
       st.saved = r.plan;
