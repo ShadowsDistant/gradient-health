@@ -526,16 +526,19 @@
   }
   // The on-device model's: short rules, the moves, then the request, who this is in the short form,
   // the reasons it may pick from (the app's own, by id) and the draft. At most 60 moves and about
-  // 6,000 characters, so it fits a small model's memory.
-  const DEVICE_MOVES = 60;
-  const DEVICE_FACTS = ['body', 'build', 'goal', 'focus', 'level', 'time', 'kit', 'load', 'joints', 'pain', 'health', 'floor', 'gentle', 'eats', 'does', 'stuck'];
-  function planMessages(S, w, draft, ids, day) {
+  // 6,500 characters (about 2,200 tokens, with up to 1,350 for the answer: a 4,096-token model's
+  // memory). o.short, for a model with less (the older 2,048-token ones): the moves of compactMoves
+  // and fewer facts, about 3,500 characters.
+  const DEVICE_MOVES = 60, COMPACT_MOVES = 24;
+  const DEVICE_FACTS = ['body', 'build', 'goal', 'focus', 'level', 'time', 'kit', 'load', 'joints', 'pain', 'health', 'floor', 'gentle', 'eats', 'does', 'felt', 'effort', 'stuck'];
+  const DEVICE_SHORT = ['body', 'goal', 'time', 'kit', 'load', 'joints', 'pain', 'health', 'floor', 'eats', 'does'];
+  function planMessages(S, w, draft, ids, day, o) {
     const P = GH.person;
     const d = day != null ? day : B().dayOf(Date.now(), (S.profile.prefs && S.profile.prefs.rollHour) || 4);
     const R = rules(S, d, w, draft);
     const list = ids.slice(0, DEVICE_MOVES);
     const reasons = ownWhy(S, d, w, draft, R);
-    const about = P ? P.lines(S, d, { to: 'device', ids: DEVICE_FACTS }) : [];
+    const about = P ? P.lines(S, d, { to: 'device', ids: o && o.short ? DEVICE_SHORT : DEVICE_FACTS, short: !!(o && o.short) }) : [];
     const picked = pickedLine(w);
     return [
       { role: 'system', content: [
@@ -552,6 +555,38 @@
         `Draft: ${JSON.stringify(plainForModel(draft))}`,
       ].join('\n') },
     ];
+  }
+  // The moves for a model with a short memory: the draft's own, then the rungs either side of each on
+  // its ladder, COMPACT_MOVES at most (or all of the draft's, if it has more).
+  function compactMoves(draft, ids) {
+    const keep = [];
+    const add = (id) => { if (id && ids.includes(id) && !keep.includes(id)) keep.push(id); };
+    for (const d of draft.days) for (const it of d.items) add(it.move);
+    const own = keep.length;
+    for (const d of draft.days) for (const it of d.items) {
+      const lad = (M().LADDERS[(M().MOVES[it.move] || {}).family] || { rungs: [] }).rungs, k = lad.indexOf(it.move);
+      if (k >= 0) { add(lad[k - 1]); add(lad[k + 1]); }
+    }
+    return keep.slice(0, Math.max(COMPACT_MOVES, own));
+  }
+  // What the on-device model is sent, and whether it fits: the full request, or the short one when
+  // the model's memory (room, in tokens) can't hold it, or null when neither fits. Counted at 3
+  // characters a token, as llm.js does, with the answer's tokens: 24 for each exercise a day may
+  // hold (an item is about 18 of Qwen's), 20 for its title and 60 for the reasons and the name; the
+  // full request keeps at least the 200 a day it had.
+  function deviceAsk(S, w, draft, ids, day, R, room) {
+    const per = [Math.min(R.perDay[0], ...draft.days.map((x) => x.items.length)), Math.max(R.perDay[1], ...draft.days.map((x) => x.items.length))];
+    const make = (short) => {
+      const list = short ? compactMoves(draft, ids) : ids.slice(0, DEVICE_MOVES);
+      const msgs = planMessages(S, w, draft, list, day, { short });
+      const fit = draft.days.length * (per[1] * 24 + 20) + 60;
+      const maxTokens = short ? fit : Math.max(fit, 200 * draft.days.length + 150);
+      return { list, msgs, per, maxTokens, short, needs: Math.ceil(msgs.reduce((a, m) => a + m.content.length + 18, 0) / 3) + 64 + maxTokens };
+    };
+    const full = make(false);
+    if (!room || full.needs <= room) return full;
+    const short = make(true);
+    return short.needs <= room ? short : null;
   }
   // A grammar that holds the on-device model to a plan of exactly `days` days made of `ids`, with
   // the rules' counts (o: { perDay: [min, max], sets: [min, max], reasons: how many it may pick
@@ -919,13 +954,15 @@
       } else {
         const llm = await GH.lazy('llm');
         const id = GH.deviceCoach.pick(S, await llm.installed());
-        await llm.load(id);
-        const list = ids.slice(0, DEVICE_MOVES);
-        const msgs = planMessages(S, w, draft, list, day);
-        opt.reasons = ownWhy(S, day, w, draft, R);
-        opt.given = msgs.map((m) => m.content).join('\n');
-        const text = await llm.chat(msgs, { grammar: planGrammar(list, draft.days.length, { perDay: [Math.min(R.perDay[0], ...draft.days.map((d) => d.items.length)), Math.max(R.perDay[1], ...draft.days.map((d) => d.items.length))], sets: R.sets, reasons: opt.reasons.length }), maxTokens: 200 * draft.days.length + 150, temperature: 0.3, signal });
-        raw = readJson(text);
+        // (A request its memory can't hold isn't sent: the draft stands.)
+        const q = deviceAsk(S, w, draft, ids, day, R, GH.deviceCoach.room ? await GH.deviceCoach.room(S) : null);
+        if (q) {
+          await llm.load(id);
+          opt.reasons = ownWhy(S, day, w, draft, R);
+          opt.given = q.msgs.map((m) => m.content).join('\n');
+          const text = await llm.chat(q.msgs, { grammar: planGrammar(q.list, draft.days.length, { perDay: q.per, sets: R.sets, reasons: opt.reasons.length }), maxTokens: q.maxTokens, temperature: 0.3, signal });
+          raw = readJson(text);
+        }
       }
     } catch (e) { raw = null; error = e; }
     if (signal && signal.aborted) return { plan: draft, by: null, fixes: [] };
@@ -973,7 +1010,7 @@
 
   Object.assign(C, {
     wishes, choices, generate, build, templates, template, knows, rules, rulesLines, ownWhy, withWhy, say, tidy,
-    allowedMoves, planMessages, planGrammar, planSchema, claudePrompt, claudeFacts, accept, refine, modelFor, readJson, improve, diff,
-    BUILD: { SETS_MAX, LIGHT_REPS, WEEK, GOAL_CAP, DAY_SETS, FLEX_REPS, WHY, DEVICE_MOVES, CLAUDE_CHARS, MOST, FEEL, SKIP, flexion },
+    allowedMoves, planMessages, compactMoves, deviceAsk, planGrammar, planSchema, claudePrompt, claudeFacts, accept, refine, modelFor, readJson, improve, diff,
+    BUILD: { SETS_MAX, LIGHT_REPS, WEEK, GOAL_CAP, DAY_SETS, FLEX_REPS, WHY, DEVICE_MOVES, COMPACT_MOVES, CLAUDE_CHARS, MOST, FEEL, SKIP, flexion },
   });
 })(typeof window !== 'undefined' ? window : globalThis);

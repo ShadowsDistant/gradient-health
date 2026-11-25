@@ -9,7 +9,7 @@ import { load, check, section, done } from './lib.mjs';
 
 const ls = new Map();
 globalThis.localStorage = { getItem: (k) => (ls.has(k) ? ls.get(k) : null), setItem: (k, v) => ls.set(k, String(v)), removeItem: (k) => ls.delete(k) };
-const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/planweek.js', 'src/tailor.js', 'src/store.js', 'src/coach.js', 'src/chats.js', 'src/spend.js', 'src/person.js', 'src/ai.js', 'src/customplan.js', 'src/planbuild.js', 'src/planreview.js', 'src/devicecoach.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/planweek.js', 'src/tailor.js', 'src/store.js', 'src/coach.js', 'src/chats.js', 'src/spend.js', 'src/person.js', 'src/ai.js', 'src/customplan.js', 'src/planbuild.js', 'src/planreview.js', 'src/devicecoach.js', 'src/data/privacy.js');
 const B = GH.brain, P = GH.person, C = GH.customPlan, AI = GH.ai, R = GH.planReview, K = GH.coach, MV = GH.moves.MOVES;
 
 const D0 = B.dayFromStr('2026-11-23'); // a Monday
@@ -62,6 +62,7 @@ section('Who this is: what they actually do');
   check('workouts a week against the plan, and how long sessions really take', L.perWeek != null && L.perWeek < 3 && L.mins === 31 && new RegExp(`Last 4 weeks: about ${String(L.perWeek).replace('.', '\\.')} workouts? a week against 3 planned \\(${L.done} of ${L.planned} done\\); sessions take about 31 min against 20 set`).test(dev), dev.split('\n').find((l) => /Last 4/.test(l)));
   check('how they felt, what\'s moving up and what isn\'t', /How workouts felt: 0 too easy, \d+ about right, 0 too hard/.test(dev) && (L.up.length > 0 || L.stuck.length > 0) && (!L.up.length || dev.includes(`Moving up: ${L.up.join(', ')}`)) && (!L.stuck.length || dev.includes(`Not moving: ${L.stuck.join(', ')}`)), [L.up, L.stuck]);
   check('how long they\'ve used the app', /Training history: never trained; 4 weeks with the app/.test(dev));
+  check('and the reps-left answers against each exercise\'s aim, which Claude has in its training lines already', new RegExp(`Reps left after a set: ${L.left.zero} at failure, ${L.left.on} where the plan aims, ${L.left.over} with more left`).test(dev) && L.left.zero + L.left.on + L.left.over >= 3 && !P.facts(S, D0, { to: 'claude', wide: true, have: ['person', 'days', 'training'] }).some((f) => f.id === 'effort'), dev.split('\n').find((l) => /Reps left/.test(l)));
   // What they've chosen: a move hidden, one pinned, a Tailor wish, and a coach's idea turned down.
   S.excluded = ['sq_jump'];
   S.profile.planTweaks = { swaps: { curl: 'curl_hammer' } };
@@ -97,6 +98,19 @@ section('Who this is: what Claude may be told');
   const dev = text(P.lines(Q, D0, { to: 'device' }));
   check('the on-device model gets those, on the phone', /Age: 67; sex: female; 160 cm; 115 lb/.test(dev) && /Health: the plan is adapted for osteoarthritis and low back pain/.test(dev) && /Joints with arthritis: knee, hip/.test(dev) && /Nothing on the floor/.test(dev) && /A gentle plan/.test(dev));
   check('withdrawn, nothing is wide again until they allow it', (() => { Q.ai.consentAt = null; return !AI.wide(Q); })());
+  // Everything the newer OK adds is named in the privacy policy (and the consent sheet, ui-chat):
+  // a fact added later without its words fails here.
+  const R1 = person(Object.assign({}, OWNER, { focus: ['biceps'] }), 4, { only: [0, 2], mins: 31 });
+  for (let d = D0 - 9; d < D0; d++) B.addProtein(R1, d, 40);
+  R1.excluded = ['sq_jump'];
+  R1.profile.planTweaks = { swaps: { curl: 'curl_hammer' } };
+  R1.events.push({ type: 'tailor', day: D0 - 3, lines: ['Easy on your knees'] }, { type: 'review', day: D0 - 2, lines: ['Rest 1 minute between sets'], declined: ['4 workouts a week'], before: {} });
+  for (let d = D0 - 10; d <= D0; d++) R1.health.days[d] = { sleepMin: 400 };
+  const narrow = P.facts(R1, D0, { to: 'claude', wide: false });
+  const added = P.facts(R1, D0, { to: 'claude', wide: true }).filter((f) => !narrow.some((x) => x.id === f.id && x.value === f.value)).map((f) => f.id);
+  const WORDS = { build: ['lean for your height'], focus: ['muscles you asked the plan to lean toward'], level: ['how long you\'ve used the app'], time: ['the days you train and whether at home or a gym'], load: ['what your weights mean for your size'], eats: ['how you said you eat'], protein: ['how often you reach your protein goal'], does: ['how many workouts you really do, how long they take and how many you cut short'], up: ['move up or stall'], stuck: ['move up or stall'], likes: ['picked, hidden, pinned, asked for, taken or turned down'], sleep: ['averages and trends of your health data'] };
+  const policy = GH.PRIVACY.sections.flatMap((s) => (s.list || []).map((x) => x.join(' '))).find((x) => /^Anthropic \(Claude\)/.test(x)) || '';
+  check('every fact the newer OK adds is named in the privacy policy\'s words for Claude', added.length >= 10 && added.every((id) => WORDS[id] && WORDS[id].every((w) => policy.includes(w))), added.filter((id) => !WORDS[id] || !WORDS[id].every((w) => policy.includes(w))));
   // Each feature's parts: what a part already says isn't said twice.
   const S = allow(person(OWNER, 4), 2);
   for (let d = D0 - 10; d <= D0; d++) S.health.days[d] = { sleepMin: 400, rhr: 60 };
@@ -125,6 +139,7 @@ section('What a model may not say');
   check('a diet, a calorie deficit or surplus, a weight or body-fat target', cut('Eat in a 500 calorie deficit. Sleep more.') === 'Sleep more.' && cut('Try keto for a month. Keep the curls.') === 'Keep the curls.' && cut('Aim for 10% body fat. Keep going.') === 'Keep going.' && cut('Get down to 140 lb first.') === '' && cut('You could lose 5 lb this month.') === '');
   check('a diagnosis, medicine or supplements', cut('You probably have tendinitis in that elbow. Rest it.') === 'Rest it.' && cut('Take 400 mg of ibuprofen.') === '' && cut('Creatine would help. So would sleep.') === 'So would sleep.');
   check('ordinary coaching and small food ideas stay', cut('The bulk of your sets are for your arms. Aim for a weight you can lift 12 times. One more serving of protein a day would help: milk, yogurt or eggs.').split('. ').length === 3 && cut('That is worth seeing a doctor about.') !== '' && cut('Cut back on sets if it feels too hard.', true) !== '');
+  check('food stays a small, optional idea: no cutting out a kind of food, no timing rules, no set meals', cut('Cut out sugar for a month. Keep training.') === 'Keep training.' && cut('Avoid dairy and gluten.') === '' && cut('Eat protein within 30 minutes after your workout.') === '' && cut('Hit the anabolic window.') === '' && cut('Eat 6 small meals a day.') === '' && cut('Stop eating carbs after 6 pm.') === '' && ['Add a glass of milk to breakfast.', 'A piece of fruit a day is an easy start.', 'Avoid sugary drinks if you can.', 'Avoid training through sharp pain.'].every((x) => cut(x) === x));
   check('for someone lean or under 18, nothing about losing weight or eating less', cut('Losing fat will make your abs show. Train them three times a week.', true) === 'Train them three times a week.' && cut('Burn belly fat with more crunches.', true) === '' && cut('Losing fat will make your abs show.', false) !== '');
   const S = person(OWNER);
   const given = 'You train 3 days a week.';
@@ -384,7 +399,7 @@ section('Build me a plan: asking a model');
   } finally { AI.json = keep; }
   // The on-device model, through a stand-in.
   const D = GH.deviceCoach;
-  const was = { lazy: GH.lazy, pick: D.pick };
+  const was = { lazy: GH.lazy, pick: D.pick, room: D.room };
   let seen = null;
   S.ai.mode = 'device';
   GH.lazy = async (name) => {
@@ -396,7 +411,19 @@ section('Build me a plan: asking a model');
     const r = await C.refine(S, D0, w, draft, null);
     const own = C.ownWhy(S, D0, w, draft, C.rules(S, D0, w, draft));
     check('the on-device model: a grammar from the rules, a low temperature, and its picks as the app\'s lines', r.by === 'device' && seen.o.temperature === 0.3 && /pick ::= /.test(seen.o.grammar) && /\[1-4\]/.test(seen.o.grammar) && r.plan.why[0] === own[1].line && r.plan.why[1] === own[0].line && r.plan.name === 'Arms first', [r.by, r.plan && r.plan.why]);
-  } finally { GH.lazy = was.lazy; D.pick = was.pick; S.ai.mode = 'api'; }
+    // A model with a 2,048-token memory (the older ones): the short form, sized to fit with its answer.
+    const moves = (g) => (g.split('\n').find((l) => l.startsWith('move ::=')).match(/\\"[a-z0-9_]+\\"/g) || []).length;
+    const fullMoves = moves(seen.o.grammar), fullChars = seen.msgs.reduce((a, m) => a + m.content.length + 18, 0);
+    D.room = async () => 2048;
+    seen = null;
+    const r2 = await C.refine(S, D0, w, draft, null);
+    const sent = seen ? seen.msgs.reduce((a, m) => a + m.content.length + 18, 0) : 0;
+    check('a model with a short memory gets the short form: the draft\'s moves and their neighbours, who this is in fewer lines, room for the answer', r2.by === 'device' && Math.ceil(sent / 3) + 64 + seen.o.maxTokens <= 2048 && Math.ceil(fullChars / 3) + 64 + 200 * draft.days.length + 150 > 2048 && moves(seen.o.grammar) <= C.BUILD.COMPACT_MOVES && moves(seen.o.grammar) < fullMoves && draft.days.every((d) => d.items.every((it) => seen.o.grammar.includes(`\\"${it.move}\\"`))) && !/Training history|Build:/.test(seen.msgs[1].content), [sent, seen && seen.o.maxTokens, seen && moves(seen.o.grammar)]);
+    D.room = async () => 1024;
+    seen = null;
+    const r3 = await C.refine(S, D0, w, draft, null);
+    check('and one that can\'t hold even that isn\'t asked: the app\'s own plan stands', seen === null && r3.by === null && r3.plan === draft);
+  } finally { GH.lazy = was.lazy; D.pick = was.pick; D.room = was.room; S.ai.mode = 'api'; }
 }
 
 /* ------------------------------------------------------------------ Check my plan */
@@ -430,6 +457,8 @@ section('Check my plan: the same facts, and a change for someone who misses work
     check('applied, the plan has 2 days; what was turned down is kept for the next model; undo puts it back', res.applied.length === 1 && S.profile.days === 2 && JSON.stringify(ev.declined) === '["Rest 2 minutes between sets"]' && /turned down: rest 2 minutes between sets/.test(P.facts(S, D0, { to: 'device' }).find((f) => f.id === 'likes').value) && R.undo(S, D0) && JSON.stringify([S.profile.days, S.profile.weekdays]) === before, [S.profile.days, ev.declined]);
   }
   check('the review says what it looked at besides the plan', (() => { const l = R.looked(S, D0, 'claude'); return l.includes('your goals') && l.includes('what your weights mean for you') && l.includes('how you eat') && l.includes('the workouts you\'ve done') && !l.includes('what you plan around'); })() && R.looked(person(Object.assign({}, OWNER, { conditions: ['back'] })), D0, 'device').includes('what you plan around'), R.looked(S, D0, 'claude'));
+  const lk = R.looked(S, D0, 'claude');
+  check('and only what there was data for: how hard sets were and how they felt, sleep only once there is some', lk.includes('how hard your sets were') && lk.includes('how they felt') && !lk.includes('your sleep') && (() => { for (let d = D0 - 6; d <= D0; d++) S.health.days[d] = { sleepMin: 420 }; return R.looked(S, D0, 'claude').includes('your sleep'); })(), lk);
 }
 
 done();

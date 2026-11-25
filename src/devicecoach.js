@@ -25,7 +25,7 @@
     'If FACTS say none, answer from THEIR DATA below, or say you can\'t tell from their data and what they could track. Never make up a number.',
     'Say yes or no plainly when the question asks, and make sure it matches the numbers.',
     'You are not a doctor and never diagnose. Chest pain, fainting, a resting heart rate over 100, unplanned fast weight loss or pain that won\'t go away: tell them to see a doctor.',
-    'The app plans the workouts and targets. Explain them; don\'t write new programs, diets or meal plans, and never suggest medicine, supplements or a target weight.',
+    'The app plans the workouts and targets. Explain them; don\'t write new programs, diets or meal plans, and never suggest medicine, supplements, a target weight or cutting out a food.',
   ].join('\n');
 
   const r0 = (x) => String(Math.round(x));

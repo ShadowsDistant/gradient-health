@@ -238,7 +238,7 @@ section('Plans for different bodies');
   const S4 = B.newState({ goals: ['arms'], age: 30, weightKg: 70, heightCm: 178, units: 'lb', equipment: { db: [10] }, eats: { protein: 'low', produce: 'most' } }, null, D0);
   const brief4 = GH.deviceCoach.brief(S4, D0);
   check('and what their weights mean for them and how they eat, said briefly', /Their weights: 10 lb is light for curls, rows and chest presses\./.test(brief4) && !/about right for/.test(brief4) && /Eating, in their own words: not much protein, plenty of fruit and veg\./.test(brief4) && !/Say nothing about losing weight/.test(brief4) && !/Last 4 weeks|Moving up/.test(brief4), brief4);
-  check('its rules rule out diets, medicine, supplements and a target weight', /don't write new programs, diets or meal plans, and never suggest medicine, supplements or a target weight/.test(GH.deviceCoach.RULES));
+  check('its rules rule out diets, medicine, supplements and a target weight', /don't write new programs, diets or meal plans, and never suggest medicine, supplements, a target weight or cutting out a food/.test(GH.deviceCoach.RULES));
 }
 
 section('Suggestions you apply');

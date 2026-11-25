@@ -22,7 +22,7 @@ const TAILOR = 'More legs please, my knees hurt, and I only have 20 minutes';
 globalThis.window = globalThis;
 const ls = new Map();
 globalThis.localStorage = { getItem: (k) => (ls.has(k) ? ls.get(k) : null), setItem: (k, v) => ls.set(k, String(v)), removeItem: (k) => ls.delete(k) };
-const GH = load('src/data/moves.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/store.js', 'src/coach.js', 'src/tailor.js', 'src/devicecoach.js');
+const GH = load('src/data/moves.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/store.js', 'src/coach.js', 'src/tailor.js', 'src/person.js', 'src/devicecoach.js');
 const llm = await build({ entryPoints: [join(root, 'src/llm.js')], bundle: true, write: false, format: 'iife', platform: 'browser', target: ['es2022'], logLevel: 'silent' });
 new Function(llm.outputFiles[0].text)();
 seedBridge();

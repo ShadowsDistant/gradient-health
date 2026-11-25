@@ -925,8 +925,9 @@ kettlebell against body weight times the ladder's ratio, light under 0.9 of that
 the app's own judgement until the engine has one), how they said they eat (`profile.eats`) and how
 often they reach a protein goal (where the summary's food part doesn't already say), their
 build when it's lean (BMI under 21: the one build the research says changes a plan), weeks with the
-app, the days they train, workouts a week against the plan and how long they take, what's moving up
-or stuck (each log item's `outcome`), and what they've picked, hidden, pinned, asked Tailor for, taken
+app, the days they train, workouts a week against the plan and how long they take, how workouts
+felt and the reps-left answers against each exercise's aim (where the summary's training part
+doesn't already say), what's moving up or stuck (each log item's `outcome`), and what they've picked, hidden, pinned, asked Tailor for, taken
 or turned down. Only facts with data behind them. `advice` adds what the research says to do about
 light weights, little protein, workouts missed or running long and a beginner, and `guard` the line
 that rules out weight loss for someone under 18 or lean. `o.to` says who reads it: the on-device
@@ -945,7 +946,8 @@ and that no request holds what never goes.
 
 **What a model may not say.** After the number check, `GH.coach.keepSafe` leaves out any sentence
 with a diet, a calorie deficit or surplus, a weight or body-fat target, a diagnosis, medicine or
-supplements, and, for someone under 18 or lean (`GH.person.strict`), anything about losing weight
+supplements, a food rule past a small, optional idea (cutting out a kind of food, when to eat,
+set meals), and, for someone under 18 or lean (`GH.person.strict`), anything about losing weight
 or eating less. Chat answers (Claude's and the on-device model's, through `grounded`, with a note),
 the plan review's words and a built plan's reasons all go through it. The system text says the same,
 and a red-flag question still never reaches a model.
@@ -1204,7 +1206,8 @@ suggestion is only added where `applyTweaks` can try it: `days` (workouts a week
 does two of the three they plan) is tried as Settings would set it. The person picks which to apply
 (`S.profile.planTweaks`), with Undo; the ones they leave unticked are kept on the review's event
 (`declined`), and the next plan a model builds or checks is told. The result says what it looked at
-besides the plan (`looked`). Claude's weekly report asks for plan ideas in the same request.
+besides the plan (`looked`: the facts that model was given, and for Claude how workouts felt, the
+reps left and sleep only when its summary had them). Claude's weekly report asks for plan ideas in the same request.
 `test/ai.mjs`, `test/person.mjs` and `test/ui-review.mjs` cover it.
 
 Set-up (`src/ui/onboarding.js`) is six screens with one decision each, ending on the plan the engine
@@ -1327,8 +1330,13 @@ the screens (`test/ui-customplan.mjs`).
   when that fact went). A line that fails is dropped and the app's own stands in. The sheet shows
   them (Why it's yours), the plan keeps them and its page shows them (Why this plan).
 - **Sizes.** Claude's request is at most about 9,000 characters before its summary (moves leave the
-  end of the list until it fits); the on-device model gets 60 moves at most and about 6,000
-  characters.
+  end of the list until it fits), under 12,000 with it. The on-device model gets 60 moves at most
+  and about 6,500 characters, which with its answer (24 tokens for each exercise a day may hold)
+  fits the 4,096-token models. A model with less memory (the older 2,048-token ones) gets the short
+  form (`deviceAsk`, `compactMoves`): the draft's moves and their neighbours on each ladder, 24 at
+  most, and fewer facts, about 4,400 characters; one that can't hold even that isn't asked. Both
+  are counted at 3 characters a token, as `llm.js` does. `test/person.mjs` checks the sizes, and
+  `test/llm.mjs` runs both forms and the plan check through llama.cpp under their grammars.
 
 ## Notifications
 

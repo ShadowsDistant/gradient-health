@@ -389,6 +389,10 @@
     /\b(target|goal|ideal) (body ?)?weight\b|\b(get|be|come) (down|up) to \d+(\.\d+)?\s*(lb|lbs|pounds?|kg|kilos?)\b|\b\d+(\.\d+)?\s*(%|percent)\s*body ?fat\b|\bbody ?fat (percentage|target|goal)\b/i,
     /\byou (probably |likely |may |might |could )?(have|are suffering from)\b[^.]*\b(tendin\w+|arthritis|hernia\w*|sciatica|impingement|tear|torn|sprain|fracture|deficien\w+|disorder|syndrome|disease|infection)\b/i,
     /\b(ibuprofen|paracetamol|acetaminophen|aspirin|naproxen|painkillers?|anti-inflammator\w+|steroids?|testosterone|sarms?|dosage|\d+\s*mg|supplements|creatine|pre-workout|fat burners?|bcaas?|multivitamins?|vitamin [a-e]\d*)\b/i,
+    // Food rules past a small, optional idea: cutting out a kind of food, timing rules (when you eat
+    // doesn't matter: research_notes, low_protein_diet 4) and set meals.
+    /\b(cut(ting)? out|giv(e|ing) up|eliminat\w+|avoid(ing)?|stop eating|no more)\s+(all\s+)?(sugar|carbs?|carbohydrates|fats?|dairy|gluten|bread|rice|pasta|grains|meat)\b/i,
+    /\banabolic window\b|\bwithin \d+ (minutes?|mins?|hours?) (of|after|before) (your |a |each |every )?(workout|training|session|lifting)\b|\b\d+ (small |big |smaller )?meals a day\b|\beat(ing)? every \d+ hours\b|\b(no|stop eating|don'?t eat) (\w+ )?after \d+ ?(pm|p\.m\.|o'clock)\b/i,
   ];
   const NO_LOSS = /\b(los(e|ing) (the |some |any |that |your |more |body )?(weight|fat|inches|pounds|kilos|a few (pounds|kilos|lb|kg))|weight loss|fat loss|burn(ing|s)? (off )?(fat|calories)|slim(ming)? down|lean(ing)? out|shred\w*|trim(ming)? (down|fat)|cut(ting)? (weight|fat|calories)|cut(ting)? back on (food|eating|calories|carbs|sugar|snacks|portions)|eat(ing)? (less|fewer)|fewer calories|skip(ping)? (a )?meals?|(?<!sleep )deficit|belly fat)\b/i;
   const unsafe = (x, strict) => UNSAFE.some((re) => re.test(x)) || (!!strict && NO_LOSS.test(x));

@@ -717,13 +717,16 @@
   }
   // What the review looked at besides the plan, in a few words for its summary line: the facts about
   // the person that model was given (src/person.js), by their labels on the sheet.
-  const LOOKED = { goal: 'your goals', time: 'your schedule', kit: 'your equipment', load: 'what your weights mean for you', eats: 'how you eat', does: 'the workouts you\'ve done', felt: 'how they felt', up: 'what\'s moving up', stuck: 'what isn\'t', likes: 'your choices', sleep: 'your sleep', joints: 'your joints', health: 'what you plan around' };
+  const LOOKED = { goal: 'your goals', time: 'your schedule', kit: 'your equipment', load: 'what your weights mean for you', eats: 'how you eat', does: 'the workouts you\'ve done', felt: 'how they felt', effort: 'how hard your sets were', up: 'what\'s moving up', stuck: 'what isn\'t', likes: 'your choices', sleep: 'your sleep', joints: 'your joints', health: 'what you plan around' };
   function looked(S, day, who) {
     const P = GH.person;
     if (!P) return [];
     const claude = who === 'claude';
-    // (Claude's summary holds how workouts felt and sleep in its own lines.)
-    const ids = new Set(P.facts(S, day, { to: claude ? 'claude' : 'device', wide: claude ? !!(GH.ai && GH.ai.wide && GH.ai.wide(S)) : true }).map((f) => f.id).concat(claude ? ['felt', 'sleep'] : []));
+    // (Claude's summary holds how workouts felt, the reps left and sleep in its own lines, when
+    // there are any.)
+    const own = ['felt', 'effort', 'sleep'];
+    const ids = new Set(P.facts(S, day, { to: claude ? 'claude' : 'device', wide: claude ? !!(GH.ai && GH.ai.wide && GH.ai.wide(S)) : true }).map((f) => f.id)
+      .concat(claude ? P.facts(S, day, { to: 'device', ids: own }).map((f) => f.id) : []));
     return Object.keys(LOOKED).filter((id) => ids.has(id)).map((id) => LOOKED[id]);
   }
   // The plan's shape, to tell whether a review still fits it.

@@ -105,7 +105,8 @@
   /* ---------------------------------------------------------------- what they do */
   // The last four weeks, from the calendar and the workout logs: { span (weeks counted), planned,
   // done, perWeek, mins (how long a full session really takes), cut (stopped early or done in the
-  // short mode), n (sessions), felt, up and stuck (ladders moving up, and not, by name) }.
+  // short mode), n (sessions), felt, left (the reps-left answers against each exercise's aim: zero,
+  // on, over), up and stuck (ladders moving up, and not, by name) }.
   function lately(S, day) {
     const b = B(), p = S.profile;
     const logs = (S.log || []).filter((l) => l.type === 'workout' && l.checkedIn && l.day > day - 28 && l.day <= day);
@@ -117,6 +118,9 @@
     const full = logs.filter((l) => l.startedAt && l.endedAt && !l.short && (l.pct || 0) >= 0.8).map((l) => (l.endedAt - l.startedAt) / 60000).filter((m) => m >= 3 && m <= 180);
     const felt = { easy: 0, right: 0, hard: 0 };
     for (const l of logs) if (l.checkin && felt[l.checkin.rating] != null) felt[l.checkin.rating]++;
+    // (As Claude's summary reads them: an answer with no aim, from before 1.13, isn't counted.)
+    const left = { zero: 0, on: 0, over: 0 };
+    for (const l of logs) for (const it of l.items || []) if (['0', '12', '3', '4'].includes(it.rir) && b.aimWords && b.aimWords(it.aim)) left[it.rir === '0' ? 'zero' : b.effortStep(it).pace >= 2 ? 'over' : 'on']++;
     // A ladder is moving up when one of its last three sessions moved it on; stuck when it has had
     // three or more and none did.
     const runs = {};
@@ -127,7 +131,7 @@
     return {
       span, planned, done, perWeek: span >= 1 ? Math.round((done / span) * 2) / 2 : null,
       mins: full.length >= 2 ? Math.round(full.reduce((a, x) => a + x, 0) / full.length) : null,
-      cut: logs.filter((l) => l.short || (l.pct || 0) < 0.8).length, n: logs.length, felt, up: up.slice(0, 4), stuck: stuck.slice(0, 4),
+      cut: logs.filter((l) => l.short || (l.pct || 0) < 0.8).length, n: logs.length, felt, left, up: up.slice(0, 4), stuck: stuck.slice(0, 4),
     };
   }
   // What they've told the app they like or don't, each in a few words: moves they picked
@@ -223,6 +227,8 @@
       const off = (L.perWeek != null && L.planned >= 4 && L.perWeek <= p.days - 1) || (L.mins != null && L.mins > p.minutes + 5) || L.cut > 0;
       if (wide && (!opt.short || off)) add('does', 'Last 4 weeks', bits.join('; '), { tag: 'Lately' });
       if (!have('training') && L.felt.easy + L.felt.right + L.felt.hard) add('felt', 'How workouts felt', `${L.felt.easy} too easy, ${L.felt.right} about right, ${L.felt.hard} too hard`);
+      // (Claude's summary has these in its training part, as it did before 1.15.)
+      if (!have('training') && L.left.zero + L.left.on + L.left.over >= 3) add('effort', 'Reps left after a set', `${L.left.zero} at failure, ${L.left.on} where the plan aims, ${L.left.over} with more left`, { tag: 'Effort' });
       if (wide) add('up', 'Moving up', L.up.join(', '));
       if (wide) add('stuck', 'Not moving', L.stuck.join(', '));
       if (wide) add('likes', 'Their choices', choices(S, day, claude).slice(0, opt.short ? 2 : 9).join('; '), { tag: 'Your choices' });
