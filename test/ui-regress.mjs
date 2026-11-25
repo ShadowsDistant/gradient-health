@@ -938,6 +938,13 @@ const legend = await page.evaluate(() => {
   return [...new Set(tops)].map((t) => tops.filter((x) => x === t).length);
 });
 check('the heatmap\'s legend has no line with a single item', legend && legend.every((n) => n >= 2), JSON.stringify(legend));
+// Most improved: each move and its change start a line of their own (run together with dots, a line
+// ended on "Barbell back squat" and the next began with its numbers).
+const mi = await page.evaluate(() => [...document.querySelectorAll('#screen .mi-row .rf-list-sub')].map((s) => {
+  const lines = [...s.querySelectorAll('.mi-line')], left = Math.round(s.getBoundingClientRect().left);
+  return { n: lines.length, edge: lines.every((l) => Math.round(l.getClientRects()[0].left) === left) };
+}));
+check('Most improved: each move starts a line of its own', mi.some((r) => r.n >= 2) && mi.every((r) => r.edge), JSON.stringify(mi));
 // Activities with nothing recorded: a picture, what's missing and the way to start (not saved).
 await page.evaluate(() => { const GH = window.GH, U = GH.ui; U.__acts = U.S.activities; U.S.activities = []; U.open('activities'); });
 await settle(900);
