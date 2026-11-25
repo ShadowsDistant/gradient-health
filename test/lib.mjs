@@ -11,6 +11,9 @@ export function load(...files) {
     require(join(root, f));
     // The plan engine's optimizer goes with the brain, so tests that load brain.js get both.
     if (f === 'src/brain.js') require(join(root, 'src/optimizer.js'));
+    // And the plan code (its move numbers, then its reader and writer) with the plans: in the app
+    // it's in the plan builder's part, which decode() waits for.
+    if (f === 'src/customplan.js') { require(join(root, 'src/data/plancode-moves.js')); require(join(root, 'src/plancode.js')); }
   }
   return globalThis.GH;
 }

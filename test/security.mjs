@@ -1,4 +1,5 @@
-// Security checks: crafted share codes and plans (moves named after Object.prototype's keys), a plan
+// Security checks: crafted share codes and plans (moves named after Object.prototype's keys), hostile
+// plan codes (very long, all one symbol, random, the right check over nonsense), a plan
 // that can't be built, malicious and huge backups, the model pins, CI release gating, the manifest
 // and backup rules, the WebView's navigation and bridge guards in the Java source, and updates (what
 // Updater.java downloads, checks and installs, and version.json in CI).
@@ -54,6 +55,93 @@ section('Crafted share codes');
   check('a code with the wrong types everywhere still reads as a plain plan, or as a broken code', (r.code === 'broken') || (r.plan && r.plan.days.every((d) => d.items.every((it) => Object.prototype.hasOwnProperty.call(GH.moves.MOVES, it.move)))), r);
   const pollute = await C.decode(codeFor(JSON.parse('["P", "", "", 0, [["A", ["push_std", 3, 10]]], {"__proto__": {"polluted": 1}}]'))).catch(() => null);
   check('a __proto__ key in a code doesn\'t reach Object.prototype', pollute && ({}).polluted === undefined);
+}
+
+/* ------------------------------------------------------------------ crafted plan codes */
+section('Hostile plan codes');
+{
+  const P = GH.planCode, A = P.ALPHABET;
+  // How a text ends: a plan (checked to be one the app can run), or an error by name. Anything else
+  // (a crash, an error without a name) fails.
+  const ends = (text) => {
+    try {
+      const { plan } = C.fromCode(text);
+      const fine = plan.days.length >= 1 && plan.days.length <= 6 && plan.name.length <= 40 && (!plan.weekdays || plan.weekdays.length === plan.days.length) && plan.days.every((d) => d.title.length <= 30 && d.items.length >= 1 && d.items.length <= 12 && d.items.every((it) => Object.prototype.hasOwnProperty.call(GH.moves.MOVES, it.move) && it.sets >= 1 && it.sets <= 10 && (it.reps == null ? it.secs >= 5 && it.secs <= 600 : it.reps >= 1 && it.reps <= 100) && (it.rest == null || (it.rest >= 0 && it.rest <= 300))));
+      return fine ? 'plan' : 'a plan out of range';
+    } catch (e) { return e && ['typo', 'broken', 'newer'].includes(e.code) ? e.code : `crash: ${e && e.message}`; }
+  };
+  let seed = 99;
+  const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const sym = (n) => Array.from({ length: n }, () => Math.floor(rnd() * 32));
+  // Fields into 5-bit symbols, most significant bit first, as the code packs them.
+  const bits = (...fields) => {
+    let s = '';
+    for (const [v, n] of fields) s += v.toString(2).padStart(n, '0').slice(-n);
+    s += '0'.repeat((5 - (s.length % 5)) % 5);
+    return s.match(/.{5}/g).map((b) => parseInt(b, 2));
+  };
+
+  // Very long: looked at up to a few thousand characters, and done quickly.
+  const t0 = Date.now();
+  const long = [`GH${'0'.repeat(2e6)}`, 'GH '.repeat(5e5), `${'G'.repeat(1e6)}H`, `GH1${'-'.repeat(1e6)}Z`, 'G H 1 '.repeat(3e5), `${'x'.repeat(1e6)} ${'GH19-3KX4-HZBX-2TZA '.repeat(10)}`, 'gh'.repeat(1e6), `GH1${' \n\t'.repeat(4e5)}`];
+  const longEnds = long.map(ends);
+  const took = Date.now() - t0;
+  check(`very long texts end in a plain error, quickly (${long.length} of up to 2 million characters in ${took} ms)`, longEnds.every((e) => e === 'typo' || e === 'broken') && took < 3000, longEnds);
+  check('a tidied field gives up on them the same way', P.tidy('G'.repeat(3e6)).length <= 8192 * 1.25 && P.find(`GH${'Z'.repeat(1e6)}`) === null);
+
+  // All one symbol, at every length a code can have.
+  const one = [];
+  for (const ch of A) for (let n = 0; n <= 260; n++) { const e = ends(`GH${ch.repeat(n)}`); if (e !== 'typo' && e !== 'broken') one.push(`${ch}x${n}: ${e}`); }
+  check('all one symbol (every symbol, every length to 260) is never a plan', one.length === 0, one.slice(0, 6));
+
+  // Random symbols, with and without a GH in front, grouped or not.
+  const noise = {};
+  for (let k = 0; k < 20000; k++) {
+    const body = sym(2 + Math.floor(rnd() * 120)).map((v) => A[v]).join('');
+    const text = (k % 3 ? 'GH' : '') + (k % 2 ? body : body.replace(/(.{4})/g, '$1-'));
+    const e = ends(text);
+    noise[e] = (noise[e] || 0) + 1;
+  }
+  check('20,000 runs of random symbols: each a typo or not a code', Object.keys(noise).every((e) => e === 'typo' || e === 'broken') && noise.typo > 10000, noise);
+
+  // The right check value over nonsense: what's inside is still read with care.
+  const sealed = {};
+  for (let k = 0; k < 20000; k++) {
+    const e = ends(P.seal([k % 4 === 0 ? Math.floor(rnd() * 32) : 1].concat(sym(9 + Math.floor(rnd() * (k % 5 ? 40 : 400))))));
+    sealed[e] = (sealed[e] || 0) + 1;
+  }
+  check('20,000 sealed runs of random bits: a plan the app can run, or broken, or newer', Object.keys(sealed).every((e) => ['plan', 'broken', 'newer'].includes(e)) && sealed.broken > 10000, sealed);
+  check('a sealed run shorter than any plan\'s code isn\'t looked into', ends(P.seal([1, 0, 0])) === 'typo' && ends(P.seal([2, 0, 0])) === 'typo');
+  // Each field out of range on its own (format 1: days-1 3, weekdays? 1, name? 1, rests? 1; a day: exercises-1 4, title? 1).
+  const item = [[21, 9], [0, 2], [3, 4]]; // push_std, 3 sets, 10 reps
+  const day = [[0, 4], [0, 1], ...item];
+  const crafted = {
+    'a good one': [P.seal(bits([1, 5], [0, 3], [0, 1], [0, 1], [0, 1], ...day)), 'plan'],
+    'seven days': [P.seal(bits([1, 5], [6, 3], [0, 1], [0, 1], [0, 1], ...day, ...day, ...day, ...day, ...day, ...day, ...day)), 'broken'],
+    'thirteen exercises': [P.seal(bits([1, 5], [0, 3], [0, 1], [0, 1], [0, 1], [12, 4], [0, 1], ...Array(13).fill(item).flat())), 'broken'],
+    'fewer days than it says': [P.seal(bits([1, 5], [3, 3], [0, 1], [0, 1], [0, 1], ...day)), 'broken'],
+    'a name longer than the code': [P.seal(bits([1, 5], [0, 3], [0, 1], [1, 1], [1, 1], [127, 7], [65, 8], [0, 1], ...day)), 'broken'],
+    'letters that run out': [P.seal(bits([1, 5], [0, 3], [0, 1], [1, 1], [0, 1], [63, 6], ...Array(20).fill([4, 5]))), 'broken'],
+    'a letter there isn\'t': [P.seal(bits([1, 5], [0, 3], [0, 1], [1, 1], [0, 1], [2, 6], [31, 5], [0, 5], [0, 1], ...day)), 'broken'],
+    'a mark with nothing after it': [P.seal(bits([1, 5], [0, 3], [0, 1], [1, 1], [0, 1], [1, 6], [28, 5], [0, 1], ...day)), 'broken'],
+    'weekdays for another number of days': [P.seal(bits([1, 5], [0, 3], [1, 1], [0b1010100, 7], [0, 1], [0, 1], ...day)), 'broken'],
+    'sets that don\'t exist': [P.seal(bits([1, 5], [0, 3], [0, 1], [0, 1], [0, 1], [0, 4], [0, 1], [21, 9], [3, 2], [7, 3], [3, 4])), 'broken'],
+    'something after the plan': [P.seal(bits([1, 5], [0, 3], [0, 1], [0, 1], [0, 1], ...day, [1, 1])), 'broken'],
+    'a group of padding too many': [P.seal(bits([1, 5], [0, 3], [0, 1], [0, 1], [0, 1], ...day).concat([0, 0, 0, 0, 0])), 'broken'],
+    'a move number nobody has': [P.seal(bits([1, 5], [0, 3], [0, 1], [0, 1], [0, 1], [0, 4], [0, 1], [511, 9], [511, 9], [0, 2], [3, 4])), 'newer'],
+    'reps and a rest past the limits': [P.seal(bits([1, 5], [0, 3], [0, 1], [0, 1], [1, 1], [0, 4], [0, 1], [21, 9], [0, 2], [7, 3], [1023, 10], [1, 1], [15, 4], [511, 9])), 'plan'],
+  };
+  const off = Object.keys(crafted).filter((k) => ends(crafted[k][0]) !== crafted[k][1]);
+  check(`each field out of range on its own is a broken code, not a plan (${Object.keys(crafted).length} cases)`, off.length === 0, off.map((k) => `${k}: ${ends(crafted[k][0])}`));
+  const clamped = C.fromCode(crafted['reps and a rest past the limits'][0]).plan.days[0].items[0];
+  check('numbers past the limits come back inside them', clamped.reps === 100 && clamped.rest === 300, clamped);
+  // A name is text and nothing more: direction marks and control characters go, as in any plan.
+  const evil = new TextEncoder().encode('Legs‮\u0007 <b>day</b> __proto__');
+  const named = C.fromCode(P.seal(bits([1, 5], [0, 3], [0, 1], [1, 1], [1, 1], [evil.length, 7], ...[...evil].map((b) => [b, 8]), [0, 1], ...day))).plan;
+  check('a name in a code is cleaned like any other', named.name === 'Legs <b>day</b> __proto__' && ({}).polluted === undefined, JSON.stringify(named.name));
+  const S = fresh();
+  C.use(S, C.save(S, named).plan.id, MON);
+  check('and a plan from a crafted code runs', throwsNot(() => renders(S, MON)).ok);
 }
 
 section('Plans with prototype keys through normalize');
