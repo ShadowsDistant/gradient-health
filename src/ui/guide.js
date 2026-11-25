@@ -258,7 +258,8 @@
     return 0;
   }
   U.cmpVersion = cmpVersion;
-  U.changesHtml = (entry) => `<ul class="rf-list news-list">${entry.items.map(([ic, text]) => `<li><div class="rf-list-row"><span class="rf-list-icon" data-tone="sky">${U.icon(ic)}</span><span class="rf-list-text"><span class="t-callout">${U.esc(text)}</span></span></div></li>`).join('')}</ul>`;
+  // (A hyphenated word stays whole: "pop-ups", not "pop-" at the end of one line and "ups" on the next.)
+  U.changesHtml = (entry) => `<ul class="rf-list news-list">${entry.items.map(([ic, text]) => `<li><div class="rf-list-row"><span class="rf-list-icon" data-tone="sky">${U.icon(ic)}</span><span class="rf-list-text"><span class="t-callout">${U.esc(text).replace(/[A-Za-z]+(?:-[A-Za-z]+)+/g, '<span class="gh-nw">$&</span>')}</span></span></div></li>`).join('')}</ul>`;
   U.showWhatsNew = () => {
     const entry = (GH.CHANGELOG || [])[0];
     if (!entry) return null;
