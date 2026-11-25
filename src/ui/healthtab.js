@@ -283,7 +283,8 @@
     if (app && on) {
       rows.push(`<li><button type="button" class="rf-list-row" data-act="hcSync" data-sync-spin${sync.busy ? ' data-spinning' : ''}><span class="rf-list-icon" data-tone="sky">${U.icon('refresh')}</span><span class="rf-list-text"><span class="rf-list-title">Sync now</span></span></button></li>`);
       rows.push(U.row({ icon: 'lock', tone: 'indigo', title: 'Permissions', sub: 'What Gradient Health can read and write', act: 'hcManage', chevron: true }));
-      rows.push(`<li>${U.sw('Save workouts to Health Connect', !!(S.health.write !== false && canWrite), 'data-on="hcWriteToggle"', canWrite ? 'Other apps can see them' : 'Needs the Exercise permission in Health Connect')}</li>`);
+      // (Its own tile, as the rows above have: every title in the list on one inset.)
+      rows.push(`<li>${U.sw('Save workouts to Health Connect', !!(S.health.write !== false && canWrite), 'data-on="hcWriteToggle"', canWrite ? 'Other apps can see them' : 'Needs the Exercise permission in Health Connect').replace('<span class="rf-list-text">', `<span class="rf-list-icon" data-tone="teal">${U.icon('upload')}</span><span class="rf-list-text">`)}</li>`);
     }
     const errs = (S.health.errors || []).length ? `<p class="t-footnote rf-muted">Couldn't read: ${U.esc(S.health.errors.map((k) => TYPE_LABEL[k] || k).join(', '))}. It tries again next sync.</p>` : '';
     const failed = sync.error && !sync.busy ? `<div class="notice" data-tone="caution">${U.icon('alert')}<span>The last sync didn't finish${sync.error === 'timeout' ? ' (it took too long)' : ''}. Pull down to try again.</span></div>` : '';
