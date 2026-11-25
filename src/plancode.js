@@ -339,7 +339,8 @@
     return f ? pretty(f) : null;
   }
   // What's typed so far the way a code is written: capitals, 0 for O, 1 for I and L, groups of four.
-  // null when it holds anything a code doesn't (a field then leaves it as it was typed).
+  // null when it isn't the start of one: it holds something a code doesn't, or doesn't begin GH
+  // (plenty of words are made of a code's letters). A field then leaves it as it was typed.
   function tidy(text) {
     const sym = [];
     for (const ch of String(text == null ? '' : text).slice(0, MAX_TEXT)) {
@@ -347,7 +348,7 @@
       if (v != null) sym.push(v);
       else if (!WHITE.test(ch) && !JOINS.test(ch)) return null;
     }
-    return pretty(sym);
+    return (sym.length > 0 && sym[0] !== SYM_G) || (sym.length > 1 && sym[1] !== SYM_H) ? null : pretty(sym);
   }
   // One day of a plan as a plan of its own, named for the day, to share a single workout.
   function dayPlan(plan, di) {

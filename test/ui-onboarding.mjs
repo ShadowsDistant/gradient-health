@@ -361,6 +361,38 @@ section('Restore from a backup, on the welcome');
   await ctx.close();
 }
 
+section('A plan code on the welcome');
+{
+  const { ctx, page } = await fresh('app');
+  check('the welcome asks, quietly: Have a plan code?', (await page.locator('.ob-actions .ob-links [data-act="cpScan"]').innerText()).trim() === 'Have a plan code?' && await page.locator('.ob-actions .ob-links .rf-btn').count() === 3);
+  await page.click('.ob-actions [data-act="cpScan"]');
+  await page.waitForSelector('dialog[open] #cpCodeIn', { timeout: 6000 });
+  await settle(page, 700);
+  const code = await page.evaluate(() => window.GH.customPlan.toCode({ name: 'Upper and lower', days: [{ title: 'Upper', items: [{ move: 'push_std', sets: 3, reps: 10 }, { move: 'row_db', sets: 3, reps: 12 }, { move: 'curl_std', sets: 2, reps: 12 }] }, { title: 'Lower', items: [{ move: 'sq_goblet', sets: 3, reps: 12 }, { move: 'hg_rdl', sets: 3, reps: 10 }] }] }));
+  await page.locator('#cpCodeIn').fill(code.toLowerCase().replace(/-/g, ' '));
+  await page.locator('#cpCodeIn').press('Enter');
+  await settle(page, 300);
+  check('it opens the sheet for one over set-up, which reads the code', (await page.locator('dialog[open] .rf-sheet-title').innerText()) === 'Add a shared plan' && (await page.locator('#cpCodeSay').innerText()).trim() === 'Upper and lower · 2 days · 5 exercises' && await page.locator('#cpCodeIn').inputValue() === code);
+  await shot(page, '10a-code-sheet');
+  await page.click('dialog[open] [data-act="cpCodeSee"]');
+  await page.waitForSelector('.onboard .ob-shared', { timeout: 4000 });
+  await page.clock.runFor(600); await page.waitForTimeout(700);
+  const w = await page.evaluate(() => ({ card: document.querySelector('.onboard .ob-shared').innerText, primary: document.querySelector('.ob-actions [data-variant="tinted"]').textContent.trim(), own: !!document.querySelector('.ob-actions [data-act="obStart"]'), ask: !!document.querySelector('.ob-actions [data-act="cpScan"]'), sheets: document.querySelectorAll('dialog[open]').length }));
+  check('See the plan brings it to the welcome, as a link does', /Someone sent you a plan/.test(w.card) && /Upper and lower/.test(w.card) && /2 days a week · 5 exercises/.test(w.card) && w.primary === 'Start with this plan' && w.own && w.sheets === 0, w);
+  check('and with a plan waiting, the welcome stops asking for a code', !w.ask);
+  await shot(page, '10b-code-welcome');
+  await next(page); await next(page); await next(page);
+  await page.waitForTimeout(300);
+  const f = await page.evaluate(() => ({ title: document.querySelector('.onboard .rf-large-title').textContent, moves: document.querySelectorAll('.onboard .rv-first .rv-move').length, btn: document.querySelector('.ob-actions [data-variant="tinted"]').textContent.trim() }));
+  check('three screens on, the plan as they\'d do it', f.title === 'Upper and lower' && f.moves === 3 && f.btn === 'Start with this plan', f);
+  await page.click('.ob-actions [data-act="obLook"]');
+  await page.waitForSelector('#screen[data-view="today"]', { timeout: 5000 });
+  await page.clock.runFor(2500); await page.waitForTimeout(900);
+  const u = await page.evaluate(() => { const GH = window.GH, U = GH.ui, C = GH.customPlan, S = U.S; const id = C.activeId(S); return { plan: id && C.get(S, id).name, source: id && C.get(S, id).source, days: id && C.get(S, id).days.map((d) => d.items.length).join(), sheets: [...document.querySelectorAll('dialog[open] .rf-sheet-title')].map((e) => e.textContent) }; });
+  check('then it\'s saved and in use, and doesn\'t open again', u.plan === 'Upper and lower' && u.source === 'shared' && u.days === '3,2' && !u.sheets.length, u);
+  await ctx.close();
+}
+
 section('A friend\'s plan: three screens into it');
 {
   const { ctx, page } = await fresh('app');

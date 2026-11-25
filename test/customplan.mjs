@@ -364,7 +364,8 @@ section('The plan code: reading one is forgiving');
   const fails = Object.keys(ways).filter((k) => !reads(ways[k]));
   check(`a code reads however it's typed (${Object.keys(ways).length} ways: small letters, spaces, line breaks, O for 0, I and L for 1, words around it)`, fails.length === 0, fails);
   check('and comes back the way the app writes it', C.fromCode(ways['a signature under it']).code === code && GH.planCode.find(`ok ${code.toLowerCase()} ok`) === code && GH.planCode.find('no code here') === null);
-  check('a field tidies what\'s typed: capitals, 0 and 1, groups of four', GH.planCode.tidy('gh1o il') === 'GH10-11' && GH.planCode.tidy('GH19-3KX4-') === 'GH19-3KX4' && GH.planCode.tidy('') === '' && GH.planCode.tidy('GH19 3kx4 hz') === 'GH19-3KX4-HZ' && GH.planCode.tidy('my plan: GH19') === null && GH.planCode.tidy('GHU') === null);
+  check('a field tidies what\'s typed: capitals, 0 and 1, groups of four', GH.planCode.tidy('gh1o il') === 'GH10-11' && GH.planCode.tidy('GH19-3KX4-') === 'GH19-3KX4' && GH.planCode.tidy('') === '' && GH.planCode.tidy('g') === 'G' && GH.planCode.tidy('GH19 3kx4 hz') === 'GH19-3KX4-HZ');
+  check('and leaves alone what isn\'t the start of a code, words made of its letters among it', GH.planCode.tidy('my plan: GH19') === null && GH.planCode.tidy('GHU') === null && GH.planCode.tidy('my plan is in the other room') === null && GH.planCode.tidy('19-3KX4') === null && GH.planCode.tidy('go') === null);
 }
 
 section('A code or a link, through the same door');
@@ -388,6 +389,8 @@ section('A code or a link, through the same door');
   // Data that only looks like a code from afar is still a link's data.
   const junk = await C.decode('AQnotaplanatall_x-GHzz').catch((e) => e.code);
   check('a link\'s bare data with GH somewhere in it is still read as that', junk === 'broken');
+  const wordy = await C.decode('MYP1-AN1S-1NTH-E0TH-ERR0-0M').catch((e) => e.message);
+  check('and letters that are neither say they aren\'t a plan code', wordy === 'That isn\'t a plan code. A code starts with GH.', wordy);
 }
 
 section('scripts/plan-code.mjs');

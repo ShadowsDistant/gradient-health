@@ -405,14 +405,14 @@ await settle(500);
 check('and a tap on that line opens it again', await page.locator('#screen .cp-exlist[data-day="0"] .cp-ex').count() === 3 && await S(() => document.querySelector('#screen .cp-day[data-key="day-0"] .cp-day-fold').getAttribute('aria-expanded')) === 'true');
 {
   const dm0 = await dayMenu('day-0');
-  check('a day\'s options open as a menu out of its button: Rename day, Move day down, Duplicate day, Delete day', dm0 && !dm0.sheet && JSON.stringify(dm0.items) === JSON.stringify(['Rename day', 'Move day down', 'Duplicate day', 'Delete day']), dm0);
+  check('a day\'s options open as a menu out of its button: Rename day, Move day down, Duplicate day, Share this workout, Delete day', dm0 && !dm0.sheet && JSON.stringify(dm0.items) === JSON.stringify(['Rename day', 'Move day down', 'Duplicate day', 'Share this workout', 'Delete day']), dm0);
   await shot('08b-daymenu', true);
   await pickMenu('cpDayRename');
   check('Rename day puts the cursor in its name', await S(() => document.activeElement && document.activeElement.id) === 'cpDay0');
   await S(() => document.activeElement.blur());
   await settle(300);
   const dm1 = await dayMenu('day-1');
-  check('the last day\'s menu: Move day up', dm1 && JSON.stringify(dm1.items) === JSON.stringify(['Rename day', 'Move day up', 'Duplicate day', 'Delete day']), dm1);
+  check('the last day\'s menu: Move day up', dm1 && JSON.stringify(dm1.items) === JSON.stringify(['Rename day', 'Move day up', 'Duplicate day', 'Share this workout', 'Delete day']), dm1);
   await pickMenu('cpDayCopy');
   const dup = await plan();
   const dupT = await toasts();
@@ -522,13 +522,33 @@ const link = shared && (/https:\/\/shadowsdistant\.github\.io\/gradient-health\/
 check('Send a link opens the share sheet with a short message and the link', !!link && /^Alex shared a workout plan with you: Morning strength \(2 days · 5 exercises\)\. Open it in Gradient Health: /.test(shared.text), shared);
 const sharedBack = link && await S(async (l) => (await window.GH.customPlan.decode(l)).plan, link);
 check('the link holds the plan', sharedBack && sharedBack.name === 'Morning strength' && sharedBack.days[1].title === 'Arms' && sharedBack.from === 'Alex' && JSON.stringify(sharedBack.weekdays) === '[0,4]', sharedBack);
+// The plan code: the same plan as text to copy into a message, read out or type.
+const shareCode = await S(() => { const U = window.GH.ui, C = window.GH.customPlan; return C.toCode(C.get(U.S, U.route.arg)); });
+const codeBox = await S(() => {
+  const box = document.querySelector('dialog[open] .cp-code-box'), code = box.querySelector('.cp-code'), groups = [...code.children];
+  const cs = getComputedStyle(code);
+  return { text: groups.map((g) => g.textContent).join('-'), whole: groups.every((g) => g.getClientRects().length === 1 && g.textContent.length === 4), lines: new Set(groups.map((g) => Math.round(g.getBoundingClientRect().top))).size, how: box.innerText, font: cs.fontFamily, nums: cs.fontVariantNumeric, fits: box.getBoundingClientRect().right <= innerWidth && code.scrollWidth <= code.clientWidth + 1 };
+});
+check(`the share sheet shows the plan code (${shareCode.replace(/-/g, '').length} characters), in whole groups of four and even-width characters`, /^GH1/.test(shareCode) && codeBox.text === shareCode && codeBox.whole && /mono/i.test(codeBox.font) && /tabular-nums/.test(codeBox.nums) && codeBox.fits, codeBox);
+check('and says where it goes', /They enter it in Gradient Health, under Your plans\./.test(codeBox.how));
+check('Send a link\'s message carries the code too', shared.text.endsWith(`\nOr enter this code there, under Your plans: ${shareCode}`), shared.text);
+const foot = () => page.locator('dialog[open] .cp-share > p.t-footnote').innerText();
+check('what each of them holds is said, the first name among it', /The plan code holds the days, the exercises and the names you gave them\. The QR code and the link hold your first name too\. Nothing goes through a server\./.test(await foot()), await foot());
+await S(() => { window.__copied = null; window.__haptics.length = 0; });
+await page.click('dialog[open] [data-act="cpCopyCode"]');
+await settle(300);
+const copiedCode = await S(() => ({ text: window.__copied, haptics: window.__haptics.slice(), toast: [...document.querySelectorAll('.rf-toast')].map((t) => t.textContent).join(' | ') }));
+check('Copy code puts it on the clipboard, with a toast and copy\'s haptic', copiedCode.text === shareCode && copiedCode.haptics.includes('copy') && /Code copied/.test(copiedCode.toast), copiedCode);
+const codeBack = await S(async (c) => { const C = window.GH.customPlan, p = (await C.decode(c)).plan; return { name: p.name, titles: p.days.map((d, i) => C.titleOf(p, i)), items: JSON.stringify(p.days.map((d) => d.items)), from: p.from, source: p.source, wd: p.weekdays }; }, shareCode);
+check('the code holds the plan, and not who it\'s from', codeBack.name === 'Morning strength' && codeBack.titles.length === 2 && codeBack.titles[1] === 'Arms' && codeBack.items === JSON.stringify((await plan()).days.map((d) => d.items)) && !codeBack.from && codeBack.source === 'shared' && JSON.stringify(codeBack.wd) === '[0,4]', codeBack);
 await page.evaluate(() => { const i = document.querySelector('dialog[open] .rf-list input[role="switch"]'); i.click(); });
 await settle(500);
 check('Show my name off: the code leaves it out', !/from Alex/.test(await page.locator('dialog[open] .cp-share-what').innerText()));
+check('and the line under it no longer names it', /the names you gave them\. Nothing goes through a server\./.test(await foot()), await foot());
 await page.click('dialog[open] [data-act="cpCopyLink"]');
 await settle(300);
 const copied = await S(() => window.__copied);
-check('Copy puts the link on the clipboard', /\/p\/#/.test(copied) && !(await S(async (l) => (await window.GH.customPlan.decode(l)).plan.from, copied)));
+check('Copy link puts the link on the clipboard', (await page.locator('dialog[open] [data-act="cpCopyLink"]').innerText()).trim() === 'Copy link' && /\/p\/#/.test(copied) && !(await S(async (l) => (await window.GH.customPlan.decode(l)).plan.from, copied)));
 await closeSheets();
 
 /* ------------------------------------------------------------------ getting one */
@@ -702,6 +722,152 @@ await page.evaluate(() => { const s = document.getElementById('screen'); s.scrol
 await settle(300);
 await shot('21c-six-days', true);
 
+/* ------------------------------------------------------------------ a plan code, typed or pasted */
+section('Adding a plan by its code');
+{
+const CODE = /^GH[0-9A-HJKMNP-TV-Z]{2}(-[0-9A-HJKMNP-TV-Z]{4})+$/;
+// A friend's plan as a code: a day at the pull-up bar (this person has none) and a dumbbell day.
+const friendCode = await S(() => window.GH.customPlan.toCode({ name: 'Garage days', weekdays: [1, 4], days: [
+  { title: 'Bar', items: [{ move: 'pull_up', sets: 3, reps: 5 }, { move: 'push_std', sets: 3, reps: 12 }, { move: 'pull_hang', sets: 2, secs: 20 }] },
+  { title: '', items: [{ move: 'sq_goblet', sets: 3, reps: 12 }, { move: 'curl_std', sets: 3, reps: 10, rest: 45 }] },
+] }));
+const field = () => S(() => { const d = document.querySelector('dialog[open]'), say = d.querySelector('#cpCodeSay'); return { v: d.querySelector('#cpCodeIn').value, say: say.textContent, tone: say.dataset.tone || '', see: !d.querySelector('[data-act="cpCodeSee"]').disabled }; });
+await page.evaluate(() => window.GH.ui.open('plans'));
+await settle(800);
+check('the tile names both ways in', /Add a shared plan\s*Enter a code or scan one/.test(await page.locator('#screen .cp-make [data-act="cpScan"]').innerText()));
+await page.click('#screen .cp-make [data-act="cpScan"]');
+await settle(900);
+const enter = await S(() => { const d = document.querySelector('dialog[open]'), f = d.querySelector('#cpCodeIn'); return { title: d.querySelector('.rf-sheet-title').textContent, see: d.querySelector('[data-act="cpCodeSee"]').disabled, scan: d.querySelector('[data-act="cpScanQr"]').textContent.trim(), say: d.querySelector('#cpCodeSay').textContent, caps: f.getAttribute('autocapitalize'), correct: f.getAttribute('autocorrect'), spell: f.getAttribute('spellcheck'), complete: f.getAttribute('autocomplete'), camera: !!d.querySelector('video'), size: parseFloat(getComputedStyle(f).fontSize), font: getComputedStyle(f).fontFamily }; });
+check('a small sheet first: a field for the code, See the plan waiting, and Scan a QR code as the other way in', enter.title === 'Add a shared plan' && enter.see && enter.scan === 'Scan a QR code instead' && !enter.camera && /^It starts with GH\./.test(enter.say), enter);
+check('the field is big, in even-width characters, and nothing corrects, completes or spell-checks it', enter.size >= 17 && /mono/i.test(enter.font) && enter.caps === 'characters' && enter.correct === 'off' && enter.spell === 'false' && enter.complete === 'off', enter);
+await shotSheet('23-code-enter');
+// Typed as someone would: small letters, no hyphens.
+const typed = friendCode.replace(/-/g, '').toLowerCase();
+await page.locator('#cpCodeIn').pressSequentially(typed.slice(0, 10));
+await settle(200);
+const part = await field();
+check('it groups itself as it\'s typed, in capitals, and a code on its way isn\'t called a typo', part.v === friendCode.slice(0, 12) && part.say === 'Keep going to the end of the code.' && !part.tone && !part.see, part);
+await page.locator('#cpCodeIn').pressSequentially(typed.slice(10, 16));
+await settle(200);
+const group = await field();
+check('at the end of a group it says what to check if that was all of it', group.v === friendCode.slice(0, 19) && group.say === 'Not a whole code yet. If that\'s all of it, check it for a typo.' && !group.tone && !group.see, group);
+await page.locator('#cpCodeIn').pressSequentially(typed.slice(16));
+await settle(300);
+const whole = await field();
+check('the moment it\'s whole it says what it holds, and See the plan is ready', whole.v === friendCode && whole.say === 'Garage days · 2 days · 5 exercises' && whole.tone === 'positive' && whole.see, whole);
+await shotSheet('24-code-whole');
+// One wrong character.
+await page.fill('#cpCodeIn', friendCode.replace(/.$/, (c) => (c === 'Z' ? 'Y' : 'Z')));
+await settle(200);
+await S(() => { window.__haptics.length = 0; });
+await page.press('#cpCodeIn', 'Enter');
+await settle(300);
+const typo = Object.assign(await field(), { toast: await toasts(), haptics: await S(() => window.__haptics.slice()) });
+check('a wrong character says so next to the field, not in a toast, and See the plan waits', typo.say === 'That code has a typo. Check it and try again.' && typo.tone === 'caution' && !typo.see && !/typo/.test(typo.toast) && typo.haptics.includes('deny'), typo);
+await shotSheet('25-code-typo');
+await page.fill('#cpCodeIn', 'my plan is in the other room');
+await settle(200);
+const words = await field();
+check('words that aren\'t a code say so', words.say === 'That isn\'t a plan code. A code starts with GH.' && words.tone === 'caution' && !words.see, words);
+await page.fill('#cpCodeIn', await S(() => window.GH.planCode.seal([2, 7, 31, 0, 12, 5, 9, 30, 1])));
+await settle(200);
+const newer = await field();
+check('a code from a newer version says to update', newer.say === 'It was shared from a newer version of the app. Update Gradient Health to open it.' && newer.tone === 'caution' && !newer.see, newer);
+// A link works in the field too (the one shared earlier), alone or in the message it came in.
+await page.fill('#cpCodeIn', shared.text.split('\n')[0]);
+await settle(400);
+const viaLink = await field();
+check('a link is read there too, in the message it came in', viaLink.say === 'Morning strength · 2 days · 5 exercises' && viaLink.see, viaLink);
+// Paste, where the clipboard may be read: here it holds a whole message with the code in it.
+const pasteShown = await until(() => !document.querySelector('dialog[open] [data-act="cpCodePaste"]').hidden);
+await S((c) => { navigator.clipboard.readText = async () => `Here's my plan: ${c.toLowerCase()}. Try it!`; }, friendCode);
+await page.click('dialog[open] [data-act="cpCodePaste"]');
+await settle(300);
+const pasted = await field();
+check('Paste reads the clipboard: a message with the code in it', pasteShown && /^Here's my plan: gh1/.test(pasted.v) && pasted.say === 'Garage days · 2 days · 5 exercises' && pasted.see, pasted);
+await page.click('dialog[open] [data-act="cpCodeSee"]');
+await until(() => !!document.querySelector('dialog[open] .cp-import'));
+await settle(900);
+const prev = await S(() => { const d = document.querySelector('dialog[open]'), kit = d.querySelector('.cp-kit'); return { title: d.querySelector('.rf-sheet-title').textContent, text: d.querySelector('.cp-import').innerText, kit: kit && kit.innerText.replace(/\s+/g, ' ').trim(), btn: kit && kit.querySelector('[data-act="cpImpKit"]').textContent.trim(), swaps: d.querySelectorAll('.cp-imp-list .cp-swap').length, sheets: document.querySelectorAll('dialog.gh-sheet[open]').length }; });
+check('See the plan opens the preview in its place', prev.title === 'A 2-day plan' && prev.sheets === 1 && /Garage days/.test(prev.text) && /Pull-up/.test(prev.text) && /Tue and Fri/.test(prev.text), prev);
+check('the equipment it uses that isn\'t theirs is named, with "I have this"', prev.kit && /^Uses a pull-up bar, which isn't in your equipment\. Those exercises are swapped for the closest you can do, shown below\./.test(prev.kit) && prev.btn === 'I have this' && prev.swaps === 2, prev);
+await settle(1200);
+await shotSheet('26-code-preview');
+await page.click('dialog[open] [data-act="cpImpKit"]');
+await page.waitForSelector('.onboard:not([hidden]) .rf-large-title', { timeout: 5000 });
+await settle(700);
+const editor = await S(() => ({ text: document.querySelector('.onboard').innerText, sheets: document.querySelectorAll('dialog[open]').length, save: document.querySelector('.ob-actions [data-variant="tinted"]').textContent.trim() }));
+check('"I have this" opens the equipment editor, Where you train', /Where do you train\?/.test(editor.text) && /Pull-up bar/.test(editor.text) && editor.sheets === 0 && editor.save === 'Save', editor.text.slice(0, 200));
+await S(() => { [...document.querySelectorAll('.onboard .rf-switch')].find((r) => /Pull-up bar/.test(r.textContent)).querySelector('input').click(); });
+await settle(500);
+await page.click('.ob-actions [data-variant="tinted"]');
+await until(() => !!document.querySelector('dialog[open] .cp-import'));
+await settle(900);
+const again = await S(() => { const d = document.querySelector('dialog[open]'); return { title: d.querySelector('.rf-sheet-title').textContent, bar: window.GH.ui.S.profile.equipment.bar, kit: !!d.querySelector('.cp-kit'), swaps: d.querySelectorAll('.cp-imp-list .cp-swap').length, setup: document.getElementById('onboard').hidden }; });
+check('and saving there comes back to the preview, checked again: nothing is swapped now', again.title === 'A 2-day plan' && again.bar === true && !again.kit && again.swaps === 0 && again.setup, again);
+await page.click('dialog[open] [data-act="cpImpSave"]');
+await settle(600);
+const kept = await S(() => { const U = window.GH.ui, p = window.GH.customPlan.list(U.S).find((x) => x.name === 'Garage days'); return p && { source: p.source, wd: p.weekdays, rest: p.days[1].items[1].rest, titles: p.days.map((d) => d.title), saved: document.querySelector('dialog[open] .cp-saved').innerText }; });
+check('Save to my plans keeps it as it was written', kept && kept.source === 'shared' && JSON.stringify(kept.wd) === '[1,4]' && kept.rest === 45 && kept.titles.join('|') === 'Bar|' && /Saved to your plans/.test(kept.saved), kept);
+await closeSheets();
+// (No bar again, as before, for what follows.)
+await S(() => { const U = window.GH.ui; U.S.profile.equipment.bar = false; U.save(true); U.render(); });
+await settle(400);
+
+section('One workout: shared on its own, and added to a plan');
+const garage = await S(() => { const U = window.GH.ui; return window.GH.customPlan.list(U.S).find((x) => x.name === 'Garage days').id; });
+await page.evaluate((id) => window.GH.ui.open('planEdit', id), garage);
+await settle(900);
+await dayMenu('day-0');
+await pickMenu('cpDayShare');
+await until(() => !!document.querySelector('dialog[open] .cp-share .cp-qr svg'));
+await settle(600);
+const oneDay = await S(() => { const d = document.querySelector('dialog[open]'); return { title: d.querySelector('.rf-sheet-title').textContent, what: d.querySelector('.cp-share-what').innerText.replace(/\s+/g, ' '), code: [...d.querySelectorAll('.cp-code > span')].map((g) => g.textContent).join('-'), qr: d.querySelector('.cp-qr svg').getAttribute('aria-label') }; });
+check(`a day's menu has Share this workout: the share sheet for that day alone (its code: ${oneDay.code.replace(/-/g, '').length} characters)`, oneDay.title === 'Share this workout' && /^Bar 1 day · 3 exercises/.test(oneDay.what) && CODE.test(oneDay.code) && oneDay.code.replace(/-/g, '').length <= 32 && /A QR code for Bar/.test(oneDay.qr), oneDay);
+await shotSheet('27-share-workout');
+await page.click('dialog[open] [data-act="cpSendLink"]');
+await settle(300);
+const sentDay = await S(() => window.__shared.slice(-1)[0].text);
+check('its message calls it a workout', /^(Alex shared a workout|Here's a workout) (with|for) you: Bar \(1 day · 3 exercises\)\./.test(sentDay) && sentDay.endsWith(oneDay.code), sentDay);
+const dayBack = await S(async (c) => (await window.GH.customPlan.decode(c)).plan, oneDay.code);
+check('and the code holds just that day, named for it', dayBack.days.length === 1 && dayBack.name === 'Bar' && dayBack.days[0].title === 'Bar' && dayBack.days[0].items.map((it) => it.move).join() === 'pull_up,push_std,pull_hang' && (await plan()).days.length === 2, dayBack);
+await closeSheets();
+// Entered like any code: it can be saved as a plan, or go into one of theirs.
+await page.evaluate(() => window.GH.ui.act.cpScan());
+await settle(900);
+await page.fill('#cpCodeIn', oneDay.code.toLowerCase().replace(/-/g, ' '));
+await page.press('#cpCodeIn', 'Enter');
+await settle(300);
+await page.click('dialog[open] [data-act="cpCodeSee"]');
+await until(() => !!document.querySelector('dialog[open] .cp-import'));
+await settle(900);
+const offer = await S(() => { const d = document.querySelector('dialog[open]'); return { title: d.querySelector('.rf-sheet-title').textContent, name: d.querySelector('.cp-imp-head .cp-name').textContent, btns: [...d.querySelectorAll('.cp-imp-btns .rf-btn')].map((b) => b.textContent.trim()) }; });
+check('a one-day code previews like any plan: Save to my plans, or Add it to a plan', offer.title === 'A 1-day plan' && offer.name === 'Bar' && offer.btns.join('|') === 'Save to my plans|Add it to a plan', offer);
+await shotSheet('28-workout-preview');
+await page.click('dialog[open] [data-act="cpImpAdd"]');
+await settle(600);
+const hosts = await S(() => { const m = document.querySelector('.rf-menu:popover-open'); return m && [...m.querySelectorAll('[role="menuitem"]')].map((b) => b.textContent.trim()); });
+check('Add it to a plan lists their plans with room for a day (not the one with six)', hosts && hosts.includes('Garage days') && !hosts.includes('Full body') && hosts.length === await S(() => { const U = window.GH.ui; return window.GH.customPlan.list(U.S).filter((p) => p.days.length < 6).length; }), hosts);
+await shot('28b-workout-hosts', true);
+await page.click(`.rf-menu:popover-open [data-act="cpImpAddTo"][data-arg="${garage}"]`);
+await settle(1000);
+const added = await S(() => { const U = window.GH.ui, p = window.GH.customPlan.get(U.S, U.route.arg); return { view: U.route.view, name: p.name, titles: p.days.map((d) => d.title), last: p.days[p.days.length - 1].items.map((it) => it.move).join(), wd: p.weekdays, sheets: document.querySelectorAll('dialog.gh-sheet[open]').length, cards: document.querySelectorAll('#screen .cp-day').length, toast: [...document.querySelectorAll('.rf-toast')].map((t) => t.textContent).join(' | ') }; });
+check('the workout goes in as that plan\'s last day, which opens, and a toast says where', added.view === 'planEdit' && added.name === 'Garage days' && added.titles.join('|') === 'Bar||Bar' && added.last === 'pull_up,push_std,pull_hang' && added.wd === null && added.sheets === 0 && added.cards === 3 && /Added to Garage days/.test(added.toast) && /It's day 3 now/.test(added.toast), added);
+await page.evaluate(() => { const s = document.getElementById('screen'); s.scrollTop = s.scrollHeight; });
+await settle(300);
+await shot('29-workout-added', true);
+await undo(/Added to Garage days/);
+const undone = await plan();
+check('and Undo takes it out again, weekdays and all', undone.days.length === 2 && JSON.stringify(undone.weekdays) === '[1,4]', undone);
+// The app's own link can carry a code where it carried a link's data.
+const codeLink = `gradienthealth://plan?c=${friendCode}`;
+check('a link with a code in it is taken like any plan link', await S((l) => window.__gh.onLink(l), codeLink) === true && await S(() => window.__gh.onLink('gradienthealth://plan?c=nothing')) === false);
+await until(() => !!document.querySelector('dialog[open] .cp-import'));
+await settle(600);
+check('and opens the plan it holds (here, one they have already)', (await page.locator('dialog[open] .rf-sheet-title').innerText()) === 'A 2-day plan' && /Already in your plans/.test(await page.locator('dialog[open] .cp-import').innerText()));
+await closeSheets();
+}
+
 /* ------------------------------------------------------------------ the share page */
 section('The share page (a link opened in a browser)');
 const pageUrl = `${server.url.replace('/gradient-health.html', '')}/p/index.html#${link.split('#')[1]}`;
@@ -806,6 +972,7 @@ const sheetsUntil = async (p, ok) => {
   check('a new install starts with set-up, not the plan', (await titles(p5)).length === 0);
   await p5.waitForSelector('.onboard .ob-shared', { timeout: 5000 }).catch(() => null);
   check('its welcome offers the plan, from Jo', /Jo sent you a plan/.test(await p5.locator('.onboard').innerText()) && (await p5.locator('.ob-actions [data-variant="tinted"]').innerText()).trim() === 'Start with Jo\'s plan');
+  check('with a plan waiting already, the welcome doesn\'t ask for a code', await p5.locator('.ob-actions [data-act="cpScan"]').count() === 0);
   for (let i = 0; i < 3; i++) { await p5.locator('.ob-actions [data-variant="tinted"]').click(); await p5.clock.runFor(100); await p5.waitForTimeout(500); }
   check('two quick questions, then the plan as it\'ll be done', await p5.locator('.onboard .ob-friend').count() === 1 && /Lunch break/.test(await p5.locator('.onboard').innerText()));
   await p5.click('.ob-actions [data-act="obLook"]');

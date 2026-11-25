@@ -1011,16 +1011,21 @@
   // .code (broken, typo, newer, unsupported).
   async function decode(text) {
     const s = String(text || '').trim();
-    const link = LINK.test(s);
-    let data = dataFrom(s);
-    // A plan code: the one in the app's link, or anything that isn't a link. (A link's data on its
-    // own is still read as that when no code comes out of it.)
-    if (!link || /^GH/i.test(data || '')) {
-      if (!GH.planCode && GH.lazy) await GH.lazy('planUi').catch(() => {});
-      if (!GH.planCode) throw codeError('broken');
-      try { return GH.planCode.fromCode(link ? data : s); } catch (e) { if (link || !BARE.test(s) || /^GH/i.test(s)) throw e; }
-      data = s;
+    const url = LINK.test(s);
+    const data = dataFrom(s);
+    if (url && !/^GH/i.test(data || '')) return fromData(data);
+    // A plan code: the one in the app's link, or anything that isn't a link.
+    if (!GH.planCode && GH.lazy) await GH.lazy('planUi').catch(() => {});
+    if (!GH.planCode) throw codeError('broken');
+    try { return GH.planCode.fromCode(url ? data : s); } catch (e) {
+      // A link's data on its own is still read as that. When it isn't that either, what's wrong
+      // with it as a code is the thing to say, unless it starts as a link's data does.
+      if (url || !BARE.test(s) || /^GH/i.test(s)) throw e;
+      return fromData(s).catch((e2) => { throw /^[Ag]/.test(s) ? e2 : e; });
     }
+  }
+  // A link's data (a version byte, then the packed plan) back to a plan.
+  async function fromData(data) {
     if (!data || data.length > 12000) throw codeError('broken');
     let bytes;
     try { bytes = unb64url(data); } catch (e) { throw codeError('broken'); }

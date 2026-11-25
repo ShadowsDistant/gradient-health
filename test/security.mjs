@@ -87,7 +87,7 @@ section('Hostile plan codes');
   const longEnds = long.map(ends);
   const took = Date.now() - t0;
   check(`very long texts end in a plain error, quickly (${long.length} of up to 2 million characters in ${took} ms)`, longEnds.every((e) => e === 'typo' || e === 'broken') && took < 3000, longEnds);
-  check('a tidied field gives up on them the same way', P.tidy('G'.repeat(3e6)).length <= 8192 * 1.25 && P.find(`GH${'Z'.repeat(1e6)}`) === null);
+  check('a tidied field gives up on them the same way', P.tidy(`GH${'0'.repeat(3e6)}`).length <= 8192 * 1.25 && P.tidy('G'.repeat(3e6)) === null && P.find(`GH${'Z'.repeat(1e6)}`) === null);
 
   // All one symbol, at every length a code can have.
   const one = [];
