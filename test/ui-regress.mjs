@@ -946,17 +946,22 @@ check('Activities, empty: a picture, "No activities yet" and the way to start', 
 await page.evaluate(() => { const U = window.GH.ui; U.S.activities = U.__acts; delete U.__acts; while (U.back()) { /* back to the tab */ } });
 await settle(700);
 // Today without workouts: the steps ring holds its number (at 44 px "7,145" ran out over both sides).
-await page.evaluate(() => { const U = window.GH.ui; U.S.profile.workouts = false; U.go('today'); U.render(); });
+await page.evaluate(() => {
+  const U = window.GH.ui, d = U.S.health.days || (U.S.health.days = {}), day = U.today();
+  U.__steps = d[day] && d[day].steps;
+  d[day] = Object.assign({}, d[day], { steps: 12345 }); // (five figures and a comma: the widest it gets)
+  U.S.profile.workouts = false; U.go('today'); U.render();
+});
 await settle(900);
 const ringFit = await page.evaluate(() => {
   const r = document.querySelector('#screen .day-card .rf-ring'), n = r && r.querySelector('.fd-ring-n');
   if (!n) return null;
   const range = document.createRange(); range.selectNodeContents(n);
   const a = r.getBoundingClientRect(), b = range.getBoundingClientRect();
-  return { ring: Math.round(a.width), text: Math.round(b.width), inside: b.left >= a.left + 6 && b.right <= a.right - 6 };
+  return { ring: Math.round(a.width), text: Math.round(b.width), shown: n.textContent, inside: b.left >= a.left + 6 && b.right <= a.right - 6 };
 });
-check('Today\'s steps ring holds its number', ringFit && ringFit.inside, JSON.stringify(ringFit));
-await page.evaluate(() => { const U = window.GH.ui; U.S.profile.workouts = true; U.render(); });
+check('Today\'s steps ring holds its number', ringFit && ringFit.shown === '12,345' && ringFit.inside, JSON.stringify(ringFit));
+await page.evaluate(() => { const U = window.GH.ui, d = U.S.health.days[U.today()]; if (U.__steps == null) delete d.steps; else d.steps = U.__steps; delete U.__steps; U.S.profile.workouts = true; U.render(); });
 await settle(700);
 
 section('Console');
