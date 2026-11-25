@@ -244,6 +244,11 @@ left alone. A few conventions:
   `U.motion.refill(root, sel)` as it's picked, which waits for the list to change (a
   MutationObserver: it hears the change before the frame that shows it, however late a segment's
   re-render comes) and has the ten in sight settle in, nearly together, in by 250 ms.
+- Every tappable part answers a press at once: Refract's buttons, rows and chips have theirs, the
+  app's cards, rows and text buttons theirs in their own style sheets, and `motion.css` has the
+  rest (the body map's muscles, a dropdown's summary). `ui-motion` forces `:active` on each tappable
+  part of the tabs and a health number's sheet and fails on one that looks the same; a segment (its
+  bead lifts under a finger), a chart's plot and a sheet's grabber answer in code instead.
 - Toasts (`U.toast` in `core.js`, Refract's toaster) come up from the bottom of the screen, above
   whatever is there: the tab bar, Today's floating buttons and the workout capsule, the player's,
   set-up's or a live activity's buttons, or an open sheet's main buttons (`--toast-lift`, read again

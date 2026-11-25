@@ -1245,6 +1245,55 @@ section('Moments: lists that filter and shrink');
   check('and a letter typed in its search just shows what matches', typed.rows > 0 && typed.moving === 0, typed);
 }
 
+/* ---------------------------------------------------------------- presses */
+// Every tappable part answers a press at once: with :active forced on it (CSS.forcePseudoState), it,
+// what's in it or a neighbour looks different. Not the parts whose answer is code's (a segment's bead
+// lifts under a finger, a chart's plot shows its values, a sheet's grabber is dragged) or that only
+// assistive tech reaches (the body map's list of muscles).
+section('Presses');
+{
+  const cdp = await ctx.newCDPSession(page);
+  await cdp.send('DOM.enable');
+  await cdp.send('CSS.enable');
+  const PROPS = ['transform', 'scale', 'translate', 'opacity', 'background-color', 'background-image', 'color', 'filter', 'box-shadow', 'border-color'];
+  const SKIP = '.rf-segment, .rf-sheet-grabber, [data-act="chartTap"], .bm-sr *';
+  const quiet = [];
+  let seen = 0;
+  const places = [['today', () => window.GH.ui.go('today')], ['plan', () => window.GH.ui.go('plan')], ['health', () => window.GH.ui.go('health')], ['progress', () => window.GH.ui.go('progress')], ['you', () => window.GH.ui.go('you')], ['a health number\'s sheet', () => window.GH.ui.metricSheet('sleepMin')]];
+  for (const [name, go] of places) {
+    await page.evaluate(go);
+    await settle(700);
+    const n = await page.evaluate(([PROPS, SKIP, sheet]) => {
+      const root = sheet ? document.querySelector('dialog.gh-sheet[open]') : document.getElementById('app');
+      const vis = (el) => { const r = el.getBoundingClientRect(); return r.width > 4 && r.height > 4 && el.checkVisibility({ visibilityProperty: true, opacityProperty: true }); };
+      const els = Array.from(root.querySelectorAll('[data-act], button, a[href], summary, [role="button"], label.rf-chip')).filter((el) => !el.closest('.motion-copy, .screen-exit, [inert]') && !el.matches(SKIP) && !el.disabled && vis(el));
+      document.querySelectorAll('[data-pp]').forEach((x) => x.removeAttribute('data-pp'));
+      els.forEach((el, i) => el.setAttribute('data-pp', String(i)));
+      window.__look = (i) => {
+        const el = document.querySelector(`[data-pp="${i}"]`);
+        const parts = [el, ...Array.from(el.querySelectorAll('*')).slice(0, 40), ...Array.from(el.parentElement.children).filter((x) => x !== el).slice(0, 12)];
+        return parts.map((p) => { const cs = getComputedStyle(p); return PROPS.map((k) => cs.getPropertyValue(k)).join('|'); }).join('#');
+      };
+      return els.length;
+    }, [PROPS, SKIP, name.includes('sheet')]);
+    seen += n;
+    const doc = await cdp.send('DOM.getDocument', { depth: 0 });
+    for (let i = 0; i < n; i++) {
+      const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: `[data-pp="${i}"]` });
+      if (!nodeId) continue;
+      const before = await page.evaluate((i) => window.__look(i), i);
+      await cdp.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['active'] });
+      const after = await page.evaluate((i) => window.__look(i), i);
+      await cdp.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: [] });
+      if (before === after) quiet.push(await page.evaluate(([i, name]) => { const el = document.querySelector(`[data-pp="${i}"]`); return `${name}: ${el.tagName.toLowerCase()}.${String(el.className).trim().split(/\s+/).join('.')} "${el.textContent.replace(/\s+/g, ' ').trim().slice(0, 30)}"`; }, [i, name]));
+    }
+    await page.evaluate(() => { document.querySelectorAll('[data-pp]').forEach((x) => x.removeAttribute('data-pp')); window.GH.ui.closeSheets(); });
+    await settle(400);
+  }
+  await cdp.detach();
+  check(`each of the ${seen} tappable parts on the tabs and a health number's sheet answers a press`, seen > 100 && quiet.length === 0, quiet.slice(0, 8));
+}
+
 /* ---------------------------------------------------------------- reduced motion */
 section('Reduced motion');
 {
