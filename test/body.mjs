@@ -195,7 +195,9 @@ for (let d = D - 35; d < D; d++) {
 }
 t = Y.trained(S, D, 4);
 imp = Y.improved(S, D, 4);
-check('trained: most of the body, calves untouched at home', t.sum > 50 && t.most.length === 3 && !(t.sets.calves > 0) && t.least[0] === 'calves', [t.sum, t.most, t.least]);
+// (1.15: abs as a goal get crunches and reverse crunches, 3 sets a session at most, so the obliques
+// can be as untouched as the calves: either may come first among the least.)
+check('trained: most of the body, calves untouched at home', t.sum > 50 && t.most.length === 3 && !(t.sets.calves > 0) && t.least.slice(0, 2).includes('calves'), [t.sum, t.most, t.least]);
 check('every logged set is accounted for (weights 1 and 0.5 only)', Y.MUSCLES.every((m) => !(t.sets[m] > 0) || Number.isInteger(t.sets[m] * 2)));
 check('improved: lines for the exercises that went up, all readable', imp.lines.length >= 5 && imp.lines.every((l) => /→/.test(l.text) && /^[+−]/.test(l.delta)), imp.lines.map((l) => `${l.text} (${l.delta})`));
 check('and the goal muscles lead', ['biceps', 'triceps', 'chest', 'abs', 'quads', 'glutes'].includes(imp.most[0]), [imp.most, imp.score]);
