@@ -772,14 +772,14 @@
       actions = '<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plSaveTest">Save</button>';
     } else if (timed) {
       const d = durationOf(st);
-      target = `<div class="pl-target"><span class="pl-big rf-num">${d}</span><span class="pl-unit">seconds</span></div>`;
+      target = `<div class="pl-target">${U.roll(d, 'pl-big')}<span class="pl-unit">seconds</span></div>`;
       if (st.kind === 'set') hint = `<p class="pl-hint t-callout rf-muted">${U.esc((GH.access && GH.access.setHint(U.S.profile, it, true)) || 'Hold with good form. Stop early if it breaks.')}</p>`;
       actions = `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plStartTimer">${U.icon('play')}Start</button>`;
     } else if (st.kind === 'set') {
       const t = B().currentTarget(A(), st);
       P.reps = t;
       const w = weightOf(it);
-      target = `<div class="pl-target"><span class="pl-big rf-num">${t}</span><span class="pl-unit">${t === 1 ? 'rep' : 'reps'}</span></div>
+      target = `<div class="pl-target">${U.roll(t, 'pl-big')}<span class="pl-unit">${t === 1 ? 'rep' : 'reps'}</span></div>
         ${w ? `<button type="button" class="pl-load" data-act="plLoad" aria-label="Weight: ${U.esc(w.label)}. Change">${U.icon('dumbbell', 'sm')}<span class="rf-num">${U.esc(w.label)}</span>${U.icon('pencil', 'sm')}</button>` : ''}`;
       hint = w && w.first
         ? `<p class="pl-hint t-callout rf-muted">New exercise: pick a weight you could lift about ${t + 2} times. It's remembered for next time.</p>`

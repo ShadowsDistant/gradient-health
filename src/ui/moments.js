@@ -86,6 +86,7 @@
   // value to glide from. So it starts from what it last showed there (nothing, the first time) and is
   // given its value once the page that brought it has come in. Only writes: nothing is measured.
   const shown = new Map(); // where|label|nth → the value it last showed
+  const filling = new WeakMap(); // a ring or bar held back → the value it's on its way to
   const FILL_AFTER = 140, FILL_MOST = 8;
   // el's fill held at `from` without gliding there (it may already have been drawn at its value);
   // the function returned lets it go, on to `to` if given.
@@ -99,19 +100,20 @@
     if (reduced() || !root || !root.querySelectorAll) return;
     const list = [], nth = {};
     for (const el of root.querySelectorAll('.rf-ring, .rf-progress[aria-valuenow]')) {
-      const v = el.style.getPropertyValue('--rf-value').trim();
+      const v = filling.has(el) ? filling.get(el) : el.style.getPropertyValue('--rf-value').trim();
       if (!v || el.hasAttribute('data-gh-fill')) continue;
       const label = el.getAttribute('aria-label') || '';
       const k = `${where}|${label}|${nth[label] = (nth[label] || 0) + 1}`;
       const was = shown.has(k) ? shown.get(k) : '0';
       shown.set(k, v);
-      if (was === v || list.length >= FILL_MOST) continue;
+      if (was === v || filling.has(el) || list.length >= FILL_MOST) continue;
+      filling.set(el, v);
       list.push([el, v, was, hold(el, was)]);
     }
     if (!list.length) return;
     // (One a re-render gave another value meanwhile keeps it.)
     setTimeout(() => G.requestAnimationFrame(() => {
-      for (const [el, v, was, go] of list) go(el.isConnected && el.style.getPropertyValue('--rf-value').trim() === was ? v : null);
+      for (const [el, v, was, go] of list) { filling.delete(el); go(el.isConnected && el.style.getPropertyValue('--rf-value').trim() === was ? v : null); }
     }), FILL_AFTER);
   };
   const routeKey = () => { const r = U.route || {}; return r.view ? `${r.view}:${r.arg || ''}` : r.tab; };
