@@ -261,7 +261,8 @@ section('Rests: sets first, then 90 s on its own when there\'s time');
   check('another goal: the cool-down comes first, then 90 s on its own', ot.coolFirst && !ot.restFirst && !ot.over, ot);
   const other = day0({ age: 35, goals: ['consistency'], days: 3, minutes: 45, prefs: { supersets: false } });
   const o2 = other.fitTo(B.estimate(other.S, other.raw().session) + 15);
-  check('and with time to spare, everything done on its own rests 90 s or more', o2.items.filter((it) => main(it) && !it.superset).every((it) => it.rest >= 90), o2.items.map((it) => `${it.moveId}@${it.rest}`));
+  // (1.15: but an arm exercise done one arm at a time keeps 30 s: each arm rests through the other's set.)
+  check('and with time to spare, everything done on its own rests 90 s or more', o2.items.filter((it) => main(it) && !it.superset && !(it.uni && ['biceps', 'triceps'].includes(it.group))).every((it) => it.rest >= 90), o2.items.map((it) => `${it.moveId}@${it.rest}`));
   // Supersets keep 60 s whatever the time.
   const pairs = day0({ age: 35, goals: ['arms', 'chest'], days: 3, minutes: 45 });
   const p1 = pairs.fitTo(B.estimate(pairs.S, pairs.raw().session) + 10);

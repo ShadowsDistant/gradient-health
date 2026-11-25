@@ -146,9 +146,9 @@ const restCheck = (supersets) => {
   const big = solo.filter((it) => BIG.includes(it.fam));
   const small = solo.filter((it) => !BIG.includes(it.fam));
   // (1.13: a session with time to spare gives what's done on its own at 60 s 90 s instead.)
-  // (1.15: 45 s after an arm exercise done one arm at a time, where each arm also rests through
+  // (1.15: 30 s after an arm exercise done one arm at a time, where each arm also rests through
   // the other's set: 30 to 60 s is enough for light sets of one joint, Fink et al. 2017.)
-  const oneArm = (it) => it.rest === 45 && GH.moves.MOVES[it.moveId].uni && ['biceps', 'triceps'].includes(it.group);
+  const oneArm = (it) => it.rest === 30 && GH.moves.MOVES[it.moveId].uni && ['biceps', 'triceps'].includes(it.group);
   return { ok: big.every((it) => it.rest === 90) && small.every((it) => it.rest === 60 || it.rest === 90 || oneArm(it)) && items.filter((it) => it.superset).every((it) => it.rest === 60), big: big.length, small: small.map((it) => `${it.fam}@${it.rest}`), paired: items.filter((it) => it.superset).length };
 };
 const rc1 = restCheck(false), rc2 = restCheck(true);

@@ -765,18 +765,25 @@
     for (const [g, a] of Object.entries(acc)) { out[g] = {}; for (const [h, v] of Object.entries(a.ind)) out[g][h] = v / Math.max(1, a.n); }
     return out;
   }
+  // 1.15: how many of the week's days before day k train each of its arm and ab groups, for which
+  // of a top goal's exercises leads that day (brain.js slots15), as the week's sets x give them out.
+  function goccOf(x, k) {
+    const out = {};
+    for (const g of ['biceps', 'triceps', 'abs']) if ((x[k] || {})[g] > 0) out[g] = x.slice(0, k).filter((xs) => xs[g] > 0).length;
+    return out;
+  }
   // A day's sets as the session they make (brain.realize, the parts round the sets shrunk as the fit
   // would under 15 minutes): each group's time a set there (its exercises' share of the session,
   // setting up included), the time outside the sets, the catch-up sets, and what a set of each
   // group does for the others (as indOf).
-  function realDay(S, d, gs, phase) {
+  function realDay(S, d, gs, phase, gocc) {
     const b = B();
     const prog = b.programFor(S.profile);
     // The day's units as its plan will give them (planWeek): a day that trains whatever it can has
     // the units of the groups it got sets for.
     const withSets = (u) => UNIT_GROUPS[u].some((g) => gs[g] > 0);
     const units = d.fallback ? d.units.filter(withSets) : d.units.concat(UNITS.filter((u) => !d.units.includes(u) && withSets(u)));
-    const dp = { idx: d.idx, units, planUnits: d.planUnits, tplLen: d.tplLen, occ: d.occ, legIdx: d.legIdx, groupSets: gs, cap: d.cap };
+    const dp = { idx: d.idx, units, planUnits: d.planUnits, tplLen: d.tplLen, occ: d.occ, legIdx: d.legIdx, groupSets: gs, cap: d.cap, ex: d.now && Number.isFinite(d.groupCap) ? d.groupCap : 0, gocc: gocc || null };
     const { session } = b.realize(S, d.day, dp, { noReadiness: true, phase, finisher: d.finisher });
     session.tests = session.tests.filter((t) => d.tests && d.tests[t.test]);
     if (d.noExtras) session.extras = [];
@@ -880,9 +887,9 @@
     for (const sl of b.slotsOfDay(S, d.day, Object.assign({}, dp, { groupSets: wide }))) (nF[sl.group] = nF[sl.group] || new Set()).add(sl.fam);
     // (1.15: 4 sets an exercise, 8 a group a session.)
     for (const g of Object.keys(d.per)) d.maxSets[g] = d.now ? Math.min(8, 4 * Math.max(1, nF[g] ? nF[g].size : 1)) : Math.min(10, 6 * Math.max(1, nF[g] ? nF[g].size : 1));
-    // (And 4 sets of abs: about 60 crunch-type reps a session is the expert limit for the spine,
-    // Contreras & Schoenfeld 2011.)
-    if (d.now && d.maxSets.abs > 4) d.maxSets.abs = 4;
+    // (And 3 sets of abs, up to 20 reps each: about 60 crunch-type reps a session is the expert
+    // limit for the spine, Contreras & Schoenfeld 2011, A3 of the 1.15 research.)
+    if (d.now && d.maxSets.abs > 3) d.maxSets.abs = 3;
   }
 
   // Gives out a week's sets (see weekPlan): returns each day's sets per group (x), the week's per
@@ -912,9 +919,13 @@
     const trainable = GROUPS.filter((g) => days.some((d) => d.per[g] != null));
     const add = (k, g, n) => { x[k][g] = (x[k][g] || 0) + n; X[g] += n; left[k] -= n * days[k].per[g]; };
     const groupsOn = (k) => Object.keys(x[k]).filter((g) => x[k][g] > 0).length;
+    // (1.15: abs not on back-to-back days, where the week has days apart: 48 hours between
+    // crunch-type sessions is the expert advice for the spine, Contreras & Schoenfeld 2011.)
+    const apart = now && days.some((d, i) => days.some((d2, j) => j > i && Math.abs(d2.day - d.day) >= 2));
+    const absNear = (k, g) => g === 'abs' && apart && !(x[k].abs > 0) && days.some((d2, j) => j !== k && x[j].abs > 0 && Math.abs(d2.day - days[k].day) === 1);
     const canAdd = (k, g, lim) => {
       const d = days[k];
-      return !d.done && d.per[g] != null && (x[k][g] || 0) < d.maxSets[g] && X[g] < lim && d.per[g] <= left[k] + 1e-9 && roomFor(k, g);
+      return !d.done && d.per[g] != null && (x[k][g] || 0) < d.maxSets[g] && X[g] < lim && d.per[g] <= left[k] + 1e-9 && roomFor(k, g) && !absNear(k, g);
     };
     // One more set of g on day k; in 1.15's weeks a group new to the day starts with 2 when they
     // fit (an exercise done properly has 2 sets or more: single sets aren't scattered over the week).
@@ -923,9 +934,14 @@
       const few = G[g].both && Math.min(G[g].T, lim) < 4; // too few for 2 on each of two days
       add(k, g, now && !few && !(x[k][g] > 0) && d.maxSets[g] >= 2 && X[g] + 2 <= lim && 2 * d.per[g] <= left[k] + 1e-9 ? 2 : 1);
     };
+    // (1.15: a top goal's minimum is met by its own sets: arms need direct work, as curls grew the
+    // elbow flexors twice as much as rows, Mannarino et al. 2021, and the triceps' long head only
+    // with an extension, Brandão et al. 2020. What other groups' exercises do for it still counts
+    // toward the week's other numbers.)
+    const direct = (g) => now && G[g].tier === 1;
     const effective = () => {
       const e = Object.fromEntries(GROUPS.map((g) => [g, X[g] + (extrasW[g] || 0)]));
-      days.forEach((d, k) => { for (const [h, n] of Object.entries(x[k])) for (const [g, v] of Object.entries(d.ind[h] || {})) e[g] += n * v; });
+      days.forEach((d, k) => { for (const [h, n] of Object.entries(x[k])) for (const [g, v] of Object.entries(d.ind[h] || {})) if (!direct(g)) e[g] += n * v; });
       return e;
     };
     // A group of the day's own units (not one joining it for its minimum, see measureSpill).
@@ -955,7 +971,7 @@
             if (!own(k, h) && days.some((d2, k2) => k2 !== k && own(k2, h) && canAdd(k2, h, capEff(h)))) continue;
             let v = 0;
             for (const [g, dl] of Object.entries(need)) {
-              const gain = g === h ? 1 : d.ind[h][g] || 0;
+              const gain = g === h ? 1 : direct(g) ? 0 : d.ind[h][g] || 0;
               if (gain > 0) v += G[g].w * Math.min(dl, gain);
             }
             if (v <= 1e-9) continue;
@@ -1045,7 +1061,9 @@
       parity = true;
       if (GROUPS.some((g) => G[g].prev > 0)) {
         days.forEach((d, k) => { if (d.done) return; for (const g of Object.keys(x[k])) { left[k] += x[k][g] * d.per[g]; X[g] -= x[k][g]; } x[k] = {}; });
-        const turn = (g) => Math.max(0, two(g) - G[g].prev);
+        // (1.15: a group only worked in passing last week, by other groups' exercises, has its turn:
+        // the half-credit doesn't stand in for its own sets two weeks running.)
+        const turn = (g) => Math.max(0, two(g) - (now ? G[g].prevOwn : G[g].prev));
         if (!floorPass(turn)) repair(turn);
         if (!floorPass(two)) repair(two);
       }
@@ -1079,7 +1097,7 @@
         const pick = () => {
           const e = effective();
           const rank = (g) => (e[g] < two(g) - 1e-9 ? 100 : 0) + G[g].w;
-          return Object.keys(d.per).filter((g) => !on.includes(g) && (x[k][g] || 0) < d.maxSets[g] && X[g] < capEff(g) && roomFor(k, g) && d.per[g] <= left[k] + 1e-9)
+          return Object.keys(d.per).filter((g) => !on.includes(g) && (x[k][g] || 0) < d.maxSets[g] && X[g] < capEff(g) && roomFor(k, g) && d.per[g] <= left[k] + 1e-9 && !absNear(k, g))
             .sort((a, c) => rank(c) - rank(a) || GROUPS.indexOf(a) - GROUPS.indexOf(c))[0];
         };
         let g = pick();
@@ -1126,7 +1144,7 @@
         if (ks.length < 2) break;
         let hi = ks[0];
         for (const k of ks) if ((x[k][g] || 0) > (x[hi][g] || 0)) hi = k;
-        const open = ks.filter((k) => k !== hi && (x[k][g] || 0) < days[k].maxSets[g] && days[k].per[g] <= left[k] + 1e-9 && roomFor(k, g));
+        const open = ks.filter((k) => k !== hi && (x[k][g] || 0) < days[k].maxSets[g] && days[k].per[g] <= left[k] + 1e-9 && roomFor(k, g) && !absNear(k, g));
         let lo = -1;
         for (const k of open) if (lo < 0 || (x[k][g] || 0) < (x[lo][g] || 0)) lo = k;
         // (1.15: 2 sets at a time onto a day without the group, never leaving either day one set,
@@ -1149,7 +1167,8 @@
         const lone = () => Object.keys(x[k]).filter((g) => x[k][g] === 1).sort((a, c) => G[c].w - G[a].w || GROUPS.indexOf(a) - GROUPS.indexOf(c));
         for (const g of lone()) {
           if (x[k][g] !== 1) continue;
-          if (canAdd(k, g, capEff(g))) { add(k, g, 1); continue; }
+          // (A second set within the week's own target: a lighter week stays lighter.)
+          if (canAdd(k, g, Math.min(G[g].B, capEff(g)))) { add(k, g, 1); continue; }
           const k2 = days.findIndex((d2, j) => j !== k && !d2.done && x[j][g] > 0 && own(j, g) && (x[j][g] || 0) < d2.maxSets[g] && d2.per[g] <= left[j] + 1e-9 && (!G[g].both || days.filter((q, i) => i !== k && x[i][g] > 0).length >= 2));
           if (k2 >= 0) { add(k, g, -1); delete x[k][g]; add(k2, g, 1); continue; }
           // (Or, for a top goal, a third set of a lesser group's here makes room for its second,
@@ -1160,6 +1179,43 @@
           if (from) { add(k, from, -1); add(k, g, 1); continue; }
           const h = lone().reverse().find((q) => q !== g && x[k][q] === 1 && !G[q].both && G[q].w <= G[g].w && days[k].per[g] <= left[k] + days[k].per[q] + 1e-9 && e2()[q] - 1 >= Math.min(2, G[q].floor) - 1e-9 && X[g] < capEff(g) && (x[k][g] || 0) < days[k].maxSets[g]);
           if (h) { add(k, h, -1); delete x[k][h]; add(k, g, 1); }
+        }
+      }
+      // 1.15: a top goal still on one day of the several it could train on gives 2 of its sets (of 4
+      // or more) to another of them. Where that day is full, a group that isn't a goal swaps its
+      // sets there for the goal's on the first day (both still trained), or else gives up a set or
+      // two it can spare (it keeps 2 there and its weekly minimum). Twice a week builds more than
+      // the same sets once (Schoenfeld et al. 2016), and a top goal is what the week is for.
+      const fits = (k) => left[k] >= -1e-9 && exOn(k) <= days[k].groupCap;
+      for (const g of trainable) {
+        if (G[g].tier !== 1) continue;
+        const on = days.filter((d, k) => x[k][g] > 0).map((d) => d.k);
+        const hi = on[0];
+        if (on.length !== 1 || days[hi].done || x[hi][g] < 4) continue;
+        let moved = false;
+        for (const lo of days.filter((d, k) => k !== hi && !d.done && d.per[g] != null && own(k, g) && d.maxSets[g] >= 2 && !absNear(k, g)).sort((a, c) => left[c.k] - left[a.k]).map((d) => d.k)) {
+          add(hi, g, -2); add(lo, g, 2);
+          if (fits(lo)) { moved = true; break; }
+          // (A group that must train twice a week itself, from 60, only while it still does.)
+          const lesser = Object.keys(x[lo]).filter((h) => h !== g && x[lo][h] > 0 && G[h].tier > 1 && (!G[h].both || days.some((d, j) => j !== lo && j !== hi && x[j][h] > 0)))
+            .sort((a, c) => G[a].w - G[c].w || x[lo][c] - x[lo][a] || GROUPS.indexOf(a) - GROUPS.indexOf(c));
+          for (const q of lesser) {
+            const n = x[lo][q];
+            if (days[hi].per[q] == null || !own(hi, q) || (x[hi][q] || 0) + n > days[hi].maxSets[q]) continue;
+            add(lo, q, -n); delete x[lo][q]; add(hi, q, n);
+            if (fits(lo) && fits(hi)) { moved = true; break; }
+            add(hi, q, -n); add(lo, q, n);
+            if (!(x[hi][q] > 0)) delete x[hi][q];
+          }
+          if (moved) break;
+          const cut = [];
+          for (const q of lesser) {
+            while (!fits(lo) && x[lo][q] > 2 && effective()[q] - 1 >= G[q].floor - 1e-9) { add(lo, q, -1); cut.push(q); }
+          }
+          if (fits(lo)) { moved = true; break; }
+          for (const q of cut) add(lo, q, 1);
+          add(lo, g, -2); add(hi, g, 2);
+          if (!(x[lo][g] > 0)) delete x[lo][g];
         }
       }
     }
@@ -1237,7 +1293,7 @@
     }
     // What last week's workouts did for each group: its sets, and half a set for each other group
     // a move works (when there isn't time for every group each week, what it left short comes first).
-    for (const g of GROUPS) G[g].prev = 0;
+    for (const g of GROUPS) { G[g].prev = 0; G[g].prevOwn = 0; }
     if (!legacy && !phase.ref) {
       for (const l of S.log || []) {
         if (!l || l.type !== 'workout' || l.day < ws - 7 || l.day >= ws || !b.isDone(l)) continue;
@@ -1246,6 +1302,7 @@
           const n = new Set((it.sets || []).map((x2) => `${x2.set}`)).size;
           if (!n) continue;
           G[it.group].prev += n;
+          G[it.group].prevOwn += n;
           const m = M().MOVES[it.moveId];
           for (const h of new Set(((m && m.muscles) || []).map((mu) => b.MUSCLE_GROUP[mu]).filter((g) => g && g !== it.group))) G[h].prev += 0.5 * n;
         }
@@ -1309,7 +1366,7 @@
             for (const [g, v] of Object.entries(indOf(S, d, al.x[k]))) if (!same(v, d.ind[g])) { d.ind[g] = v; changed = true; }
             return;
           }
-          const real = realDay(S, d, al.x[k], phase);
+          const real = realDay(S, d, al.x[k], phase, d.now ? goccOf(al.x, k) : null);
           // What a group's sets do for others only ever goes down here: it is counted as far as
           // every session measured for it so far does it (a group's exercises change with its sets,
           // and help that comes and goes isn't counted on), so the measuring settles.
@@ -1407,8 +1464,10 @@
       for (const g of GROUPS) weights[g] = G[g].w;
       const planned = d.fixed + Object.entries(groupSets).reduce((a, [g, n]) => a + n * d.per[g], 0);
       const pri = (g) => (g === 'abs' ? 9 : Math.min(...UNIT_GROUPS[UNIT_OF[g]].map((q) => prog.tiers[q] || 3)));
+      // (1.15: the exercises the day holds beside its balance practice, ex, and the arms' and abs'
+      // turns, goccOf: brain.js slots15.)
       return {
-        tpl: d.tpl, idx: d.idx, offset: d.offset, day: d.day, budget: d.budget, cap: d.cap, occ: d.occ, legIdx: d.legIdx, tplLen: d.tplLen,
+        tpl: d.tpl, idx: d.idx, offset: d.offset, day: d.day, budget: d.budget, cap: d.cap, ex: d.now ? d.groupCap : 0, gocc: d.now ? goccOf(x, k) : null, occ: d.occ, legIdx: d.legIdx, tplLen: d.tplLen,
         units: d.fallback ? d.units.filter((u) => UNIT_GROUPS[u].some((g) => groupSets[g] > 0))
           : d.units.concat(UNITS.filter((u) => !d.units.includes(u) && UNIT_GROUPS[u].some((g) => groupSets[g] > 0)).sort((a, x2) => ORDER.indexOf(a) - ORDER.indexOf(x2))),
         planUnits: d.fallback || d.units, noExtras: !!d.noExtras,
@@ -1954,7 +2013,9 @@
   // 60, as each muscle rests through its partner's set. Top goals first, then the session's order.
   function soloRest(S, s, c, under, fits) {
     const b = c.b, plus = c.plus;
-    const order = s.items.map((it, i) => [it, i]).filter(([it]) => isMain(it) && !it.superset && it.rest - (it.agePlus || 0) <= 60)
+    // (1.15: not an arm exercise done one arm at a time, whose arms each rest through the other's
+    // set: brain.js itemFor.)
+    const order = s.items.map((it, i) => [it, i]).filter(([it]) => isMain(it) && !it.superset && it.rest - (it.agePlus || 0) <= 60 && !(c.now && it.uni && (it.group === 'biceps' || it.group === 'triceps')))
       .sort((x, y) => b.tierOf(S, x[0].group) - b.tierOf(S, y[0].group) || x[1] - y[1]).map(([it]) => it);
     for (const it of order) {
       if (!under()) return;

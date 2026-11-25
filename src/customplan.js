@@ -911,7 +911,10 @@
     return normalize({ name: 'My plan', days, weekdays: wd, source: 'you' }).plan;
   }
   function itemsOf(s) {
-    const out = s.items.map((it) => (it.timed ? { move: it.moveId, sets: it.sets, secs: it.target } : { move: it.moveId, sets: it.sets, reps: it.target }));
+    // (With the coach's short rest for an arm exercise done one arm at a time, 1.15: each arm rests
+    // through the other's set, brain.js itemFor. Other rests are the plan's own, autoRest.)
+    const one = (it) => it.uni && (it.group === 'biceps' || it.group === 'triceps') && it.rest < 60 ? { rest: it.rest } : null;
+    const out = s.items.map((it) => Object.assign(it.timed ? { move: it.moveId, sets: it.sets, secs: it.target } : { move: it.moveId, sets: it.sets, reps: it.target }, one(it)));
     if (s.finisher) out.push({ move: s.finisher.moveId, sets: s.finisher.rounds, secs: s.finisher.work, rest: s.finisher.rest });
     return out;
   }

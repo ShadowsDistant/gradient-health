@@ -405,6 +405,9 @@
     return { rung: id, reps: M().MOVES[id].start, w: now ? startW(S, id, day) : 0, best: {}, short: 0, cooldown: 0, maxed: false };
   }
 
+  // 1.15: the moves a ladder keeps to as it gets harder (levelUp).
+  const KEEP15 = { triceps: /^tri_(oh|band_oh)/ };
+
   /* ---------------------------------------------------------------- light, right or heavy */
   // Whether a weight is light, right or heavy for this person on a home move, from their body
   // weight, sex, level and the move. ONE_RM is an untrained man's one-rep max as a share of body
@@ -1177,7 +1180,8 @@
     // its minutes take (the groups with the most to spare first, the lesser goals before the top).
     const want = {};
     for (const unit of dp.units) for (const g of UNIT_GROUPS[unit]) { const n = Math.min(12, gs[g] || 0); if (n > 0) want[g] = n <= ((prog.tiers[g] || 3) > 2 ? 4 : 3) ? 1 : n <= 7 ? 2 : 3; }
-    for (let over = Object.values(want).reduce((a, k) => a + k, 0) - (dp.cap || Infinity); over > 0; over--) {
+    // (dp.ex: the exercises the week's plan gave the day, balance practice at its start counted.)
+    for (let over = Object.values(want).reduce((a, k) => a + k, 0) - (dp.ex || dp.cap || Infinity); over > 0; over--) {
       const g = Object.keys(want).filter((q) => want[q] > exFor(gs[q])).sort((a, b) => want[b] - want[a] || (prog.tiers[b] || 3) - (prog.tiers[a] || 3))[0];
       if (!g) break;
       want[g]--;
@@ -1193,20 +1197,26 @@
         // The ladders that can be done today (or their stand-ins, src/access.js), each once, a
         // focus's first; the ones whose exercise isn't the right one for this person (weak) last.
         const fams = [];
+        let shared = null;
         for (const f0 of list) {
           const f = famFor(S, f0, day);
           if (fams.includes(f) || !rungs(S, f, day).length) continue;
           const pk = pinnedFor(S, f, day) || pickMove(S, f, day);
-          if (!pk || !pk.id || used.has(pk.id)) continue;
+          if (!pk || !pk.id) continue;
+          if (used.has(pk.id)) { shared = shared || [f, pk.id]; continue; }
           fams.push(f);
           (fams.ids = fams.ids || {})[f] = pk.id;
         }
+        // (A group whose only exercise another group's already uses, a stand-in both share, still
+        // has it: the two become one exercise that counts for both, mergeSame.)
+        if (!fams.length && shared) { fams.push(shared[0]); fams.ids = { [shared[0]]: shared[1] }; }
         if (!fams.length) continue;
         const ids = fams.ids;
         // (A big move on a weight in the light zone comes after one the body loads: push-ups before
-        // a light floor press. So does a move done one arm at a time because the weight is too light
-        // for both hands: it takes twice as long, so close-grip push-ups lead and it follows.)
-        const light = (f) => { const w = weightFit(S, ids[f], day); return !!w && (COMPOUND.includes(f) ? w.high : w.fit === 'light'); };
+        // a light floor press. A small one too light for both hands is done one arm at a time and
+        // keeps its place: the overhead extension leads the triceps, as it grows the long head most,
+        // Maeo et al. 2023, and every arm plan has one, A6 of the 1.15 research.)
+        const light = (f) => { const w = weightFit(S, ids[f], day); return !!w && (COMPOUND.includes(f) ? w.high : w.fit === 'light' && !oneArm(S, M().MOVES[ids[f]], day)); };
         const rank = (f) => (weak(S, ids[f], day) ? 10 : light(f) ? 1 : 0) - 2 * focusScore(f, focus);
         let order = fams.map((f, i) => [f, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map((x) => x[0]);
         // (An exercise that isn't the right one only when the group has no other.)
@@ -1220,14 +1230,18 @@
         // (From 50 every leg day leads with its squat: the week's first is done fast, src/access.js,
         // and the ladder only moves on from the sets done at the usual pace.)
         turn = g === 'legs' && S.profile.age >= 50 ? 1 : Math.max(1, turn);
-        const lead = (((dp.occ || {})[unit] || 0) + (tier === 1 ? 0 : week)) % turn;
+        // (The arms' and abs' turns as goals are counted over the week's days that train them,
+        // dp.gocc, so on two days each of their two exercises comes once: an overhead extension and
+        // close-grip push-ups, a crunch and a reverse crunch, A2 and A6 of the 1.15 research.)
+        const occ = tier === 1 && dp.gocc && dp.gocc[g] != null ? dp.gocc[g] : (dp.occ || {})[unit] || 0;
+        const lead = (occ + (tier === 1 ? 0 : week)) % turn;
         const pickN = Math.min(order.length, S.complexity > 0 && !dp.multi ? 1 : want[g]);
         const chosen = [order[lead]].concat(order.filter((f, i) => i !== lead)).slice(0, pickN);
         // Abs as a goal: the sets go to the two moves that load the front of the abs. The sides and
         // rotation (side planks train the obliques hard enough to strengthen them, Ekstrom et al.
         // 2007) come as the second exercise on every other abs day that has two, the two of them
         // four weeks each, so they aren't left out for good and take nothing from a short day.
-        if (g === 'abs' && tier === 1 && pickN === 2 && ((dp.occ || {})[unit] || 0) % 2 === 1) {
+        if (g === 'abs' && tier === 1 && pickN === 2 && occ % 2 === 1) {
           const sides = order.filter((f) => (f === 'coreSide' || f === 'coreRot') && !chosen.includes(f));
           if (sides.length) chosen[1] = sides[week % sides.length];
         }
@@ -1367,7 +1381,7 @@
       if (ready.minus) s.sets = Math.max(1, s.sets - 1);
       if (ready.legsMinus && s.group === 'legs') s.sets = Math.max(1, s.sets - 1);
     }
-    const items = mergeSame(slots.map((s) => itemFor(S, s, day)).filter(Boolean), setMax(S, day));
+    const items = mergeSame(slots.map((s) => itemFor(S, s, day)).filter(Boolean), setMax(S, day), personal(S, day));
     // Back after a break: strength and size come back quickly when training restarts (Ogasawara
     // et al. 2013), but the first session back is a little lighter so it doesn't flatten you.
     const lastDone = workoutLogs(S).filter((l) => isDone(l) && l.day < day).reduce((a, l) => Math.max(a, l.day), -Infinity);
@@ -1455,7 +1469,7 @@
   // same group they become one exercise with both slots' sets (up to 5). For another group, its
   // sets go to that group's other exercise when it has one, so each group keeps the sets the week
   // gave it; otherwise the exercise counts for both (`also`), with the larger of the two set counts.
-  function mergeSame(items, max) {
+  function mergeSame(items, max, own) {
     const SET_MAX = max || 6, MERGE_MAX = Math.min(5, SET_MAX);
     const out = [], dups = [];
     for (const it of items) {
@@ -1467,6 +1481,13 @@
       const mate = out.find((x) => x !== same && x.group === it.group && x.sets < SET_MAX);
       if (mate) { mate.sets = Math.min(SET_MAX, mate.sets + it.sets); continue; }
       same.sets = Math.max(same.sets, Math.min(SET_MAX, it.sets));
+      // (1.15: the exercise counts as its own muscle group's, where the other came to it in place of
+      // a move it couldn't do: a seated march stands in for a hinge, but it's a leg exercise.)
+      if (own && it.group !== same.group && M().MOVES[it.moveId].group === it.group && same.swappedFrom) {
+        same.also = (same.also || []).filter((g) => g !== it.group).concat(same.group);
+        same.group = it.group;
+        continue;
+      }
       if (!(same.also || []).includes(it.group)) same.also = (same.also || []).concat(it.group);
     }
     return out;
@@ -1687,10 +1708,11 @@
       swappedFrom: pick.swappedFrom, superset: null,
     };
     if (pin) it.pinned = true;
-    // 1.15: one arm at a time, each arm rests through the other's turn, so 45 s between sets is still
+    // 1.15: one arm at a time, each arm rests through the other's turn, so 30 s between sets is still
     // over a minute for each (auto rest only). Light sets taken near the end grew the triceps as much
-    // on 30 s of rest as on 150 (Fink et al. 2017).
-    if (now && m.uni && (slot.group === 'biceps' || slot.group === 'triceps') && autoRest(S)) it.rest = 45;
+    // on 30 s of rest as on 150 (Fink et al. 2017), and 30-60 s suits light single-joint sets (D5 of
+    // the 1.15 research); the time goes to more sets for the arms.
+    if (now && m.uni && (slot.group === 'biceps' || slot.group === 'triceps') && autoRest(S)) it.rest = 30;
     return it;
   }
 
@@ -2583,7 +2605,7 @@
   //             a tested rule).
   //   power     fast reps (src/access.js powerPlan): 3 or more, stopping while every rep is still
   //             quick. 1-2 left means they'd slowed, so it holds there.
-  //   light     1.15: sets of 15 reps or more, or with a weight under about half the move's one-rep
+  //   light     1.15: sets of more than 15 reps, or with a weight under about half the move's one-rep
   //             max (weightFit): 2 at most, and none is fine. A light set stopped halfway built
   //             almost nothing (2.8% against 7.8% taken to the end, Lasevicius et al. 2022), 1-2 left
   //             builds as much as none (Refalo et al. 2024), and people misjudge long sets by more
@@ -2620,7 +2642,8 @@
     if (age >= 60 && age <= 110) return aimOf('23', 'age');
     if (main && personal(S, day)) {
       const f = weightFit(S, m, day, it.load && it.load.kg != null ? it.load.kg : undefined);
-      if (it.target >= 15 || (f && f.high)) return aimOf('02', 'light');
+      // (Sets of more than 15 reps, or any light-load set, end 0-2 short: D4 of the 1.15 research.)
+      if (it.target > 15 || (f && f.high)) return aimOf('02', 'light');
     }
     if (it && !it.skill && programFor(p).tiers[it.group] === 1) return aimOf('12', 'size');
     return aimOf('13', 'usual');
@@ -2784,9 +2807,13 @@
     const list = rungs(S, fam, day);
     const at = list.indexOf(st.rung);
     // A move a plan tweak picked stays: no harder rung while it's pinned.
-    // (1.15: past the rungs whose weight is too light to count.)
+    // (1.15: past the rungs whose weight is too light to count, and from an overhead extension to
+    // its harder versions first, slow, then paused one arm at a time, before dips: the movement
+    // stays the one that grows the long head most, Maeo et al. 2023, and stays the same, H9 of the
+    // 1.15 research.)
     const now = personal(S, day);
-    const up = at < 0 ? null : now ? list.slice(at + 1).find((x) => !weak(S, x, day)) : list[at + 1];
+    const ahead = at < 0 ? [] : list.slice(at + 1).filter((x) => !now || !weak(S, x, day));
+    const up = at < 0 ? null : !now ? list[at + 1] : (KEEP15[fam] && KEEP15[fam].test(st.rung) && ahead.find((x) => KEEP15[fam].test(x))) || ahead[0];
     if (up && !(st.cooldown > 0) && !isPinned(S, st.rung)) {
       const nextId = up;
       const nm = M().MOVES[nextId];

@@ -65,8 +65,10 @@ section('Scenario A: your answers, 3 weeks from Mon Sep 28');
   const prog = B.programFor(S.profile);
   const tpl = B.templateFor(S.profile, prog);
   const count = (u) => tpl.filter((t) => t.units.includes(u)).length;
-  check('arms and abs 3× a week, chest and legs 2×, back 2×',
-    count('arms') === 3 && count('abs') === 3 && count('chest') === 2 && count('legs') === 2 && count('back') === 2,
+  // (1.15: an upper and a lower day, twice each. Abs on two days apart, not three, as crunch-type
+  // work wants 48 hours between, Contreras & Schoenfeld 2011; arms on two, their sets shared.)
+  check('arms, abs, chest, legs and back each 2× a week',
+    count('arms') === 2 && count('abs') === 2 && count('chest') === 2 && count('legs') === 2 && count('back') === 2,
     tpl.map((t) => t.units.join('+')));
   check('baseline set push-ups to 18 standard, curls to 11', S.prog.push.rung === 'push_std' && S.prog.push.reps === 18 && S.prog.curl.rung === 'curl_std' && S.prog.curl.reps === 11,
     { push: S.prog.push, curl: S.prog.curl });
@@ -85,10 +87,10 @@ section('Scenario A: your answers, 3 weeks from Mon Sep 28');
   for (let d = D0 - 10; d < D0 + 21; d++) health(S, d, { steps: 1800, rhr: 62, hrv: 55, sleepMin: 390 });
   for (let i = 0; i < 14; i++) health(S, D0 + i, { weightKg: kg0 * (1 - 0.0024 * i) });
 
-  // 1.6: the optimizer's split for these answers trains chest on Tuesday and Thursday (1.5 had it on
-  // Monday and Friday), so the push-up steps are checked on the first two chest days.
+  // 1.15: the optimizer's split for these answers trains chest on Monday and Thursday (1.6 had it on
+  // Tuesday and Thursday, 1.5 on Monday and Friday): the push-up steps are checked on those days.
   const chestDays = tpl.filter((t) => t.units.includes('chest')).map((t) => D0 + t.offset);
-  check('1.6 split: chest on Tuesday and Thursday', chestDays.join() === [D0 + 1, D0 + 3].join(), tpl.map((t) => `${t.offset}:${t.units.join('+')}`));
+  check('1.15 split: chest on Monday and Thursday', chestDays.join() === [D0, D0 + 3].join(), tpl.map((t) => `${t.offset}:${t.units.join('+')}`));
   // Mon: triceps short (rung-down path); curls +1; squats +2; rows hold.
   const extraSeen = [];
   let r = doWorkout(S, D0, { rir: { push: '3', curl: '12', squat: '12', row: '0' }, reps: { triceps: 4 } });
@@ -125,7 +127,6 @@ section('Scenario A: your answers, 3 weeks from Mon Sep 28');
   check('Thu: the rung-up is celebrated', r.celebrate.some((c) => c.kind === 'level'), r.celebrate);
   r = doWorkout(S, D0 + 4, { reps: dips() });
   fell();
-  check('triceps below range twice → down a rung with a cooldown', !!down && down.rung === 'tri_oh' && down.cooldown === 2, down || S.prog.triceps);
   health(S, D0 + 5, { steps: 6200 });
   lightDay(S, D0 + 5, { auto: true });
   check('Sat: steps auto-logged the walk', S.log.find((l) => l.type === 'light' && l.day === D0 + 5).walk === 'health-steps' || S.log.find((l) => l.type === 'light' && l.day === D0 + 5).walkSrc === 'health-steps');
@@ -143,7 +144,11 @@ section('Scenario A: your answers, 3 weeks from Mon Sep 28');
   const ready7 = B.buildSession(S, D0 + 7, 0, {});
   check('short sleep (4 h 30) → one less set per exercise',
     ready7.items.every((it, i) => it.sets === Math.max(1, planned7.items[i].sets - 1)), [planned7.items.map((x) => x.sets), ready7.items.map((x) => x.sets)]);
-  r = doWorkout(S, D0 + 7, { rating: 'hard' });
+  r = doWorkout(S, D0 + 7, { rating: 'hard', reps: dips() });
+  fell();
+  // (1.15: arms on two days a week, the dips on one of them and close-grip push-ups on the other,
+  // so the second short set of dips comes on the next week's first arm day.)
+  check('triceps below range twice → down a rung with a cooldown', !!down && down.rung === 'tri_oh' && down.cooldown === 2, down || S.prog.triceps);
   check('Mon week 2: no deload yet after one too-hard with bad sleep', !S.events.some((e) => e.type === 'deloadNext'));
   cal = B.calendar(S, D0 + 9);
   check('Tue miss uses the weekly freeze', cal.days[D0 + 8].frozen === true && cal.days[D0 + 8].missed, cal.days[D0 + 8]);
@@ -361,7 +366,7 @@ section('Reps left: each set\'s aim, by goal and person');
   // (1.15: but for long or light sets, which only work near the end: 2 at most, and none is fine.)
   check('no aim asks for 0 left, though a long or light set may get there', Object.entries(B.AIMS).every(([k, x]) => (x.lo >= 1 || (k === '02' && x.zero)) && x.hi >= x.lo && x.ok >= x.hi));
   const LIGHT = { goals: ['arms'], sex: 'male', weightKg: 68, experience: 'never', equipment: { db: [10] } };
-  check('1.15: a set of 15 reps or more, or on a weight under about half its one-rep max, aims for 2 at most', aim(LIGHT, 'curl_std') === '02:light' && aim(LIGHT, 'tri_close_incline', { it: { target: 16 } }) === '02:light' && aim(LIGHT, 'tri_close_incline', { it: { target: 10 } }) === '12:size'
+  check('1.15: a set of more than 15 reps, or on a weight under about half its one-rep max, aims for 2 at most', aim(LIGHT, 'curl_std') === '02:light' && aim(LIGHT, 'tri_close_incline', { it: { target: 16 } }) === '02:light' && aim(LIGHT, 'tri_close_incline', { it: { target: 15 } }) === '12:size' && aim(LIGHT, 'tri_close_incline', { it: { target: 10 } }) === '12:size'
     && aim(LIGHT, 'curl_std', { phase: { onramp: true } }) === '23:onramp' && aim(Object.assign({}, LIGHT, { age: 64 }), 'curl_std') === '23:age');
   check('and the line under it says so in plain words', /one more at most/.test(AC.setHint(B.newState(Object.assign({}, BASE, LIGHT), null, D0).profile, { group: 'biceps', effort: B.effortFor(B.newState(Object.assign({}, BASE, LIGHT), null, D0), { kind: 'move', moveId: 'curl_std', fam: 'curl', group: 'biceps' }, { onramp: false }) }, false)));
   const el = (rir) => B.effortStep({ rir, aim: '02' });
