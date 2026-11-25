@@ -188,7 +188,7 @@
 .ob-wd-dot { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--fill-3); color: transparent; --rf-icon-size: 15px; transition: background-color var(--duration-base), color var(--duration-base), box-shadow var(--duration-base); }
 .ob-wd-dot > svg { width: 15px; height: 15px; }
 .ob-wd.is-on .ob-wd-dot { background: linear-gradient(150deg, color-mix(in oklab, var(--accent-fill) 62%, #fff), var(--accent-fill) 75%); color: #fff; box-shadow: 0 6px 14px -6px color-mix(in oklab, var(--accent-fill) 85%, transparent); }
-.ob-wd-cap { min-height: 11px; font-size: .625rem; font-weight: 750; line-height: 1.1; letter-spacing: .01em; color: var(--accent); white-space: nowrap; }
+.ob-wd-cap { min-height: 12px; font-size: .6875rem; font-weight: 750; line-height: 1.1; letter-spacing: .01em; color: var(--accent); white-space: nowrap; }
 .ob-week-foot { margin: 0 var(--space-1); font-size: .875rem; line-height: 1.35; color: var(--label-secondary); }
 .ob-inline-btn { min-block-size: 0; height: auto; padding: 0 2px; vertical-align: baseline; }
 

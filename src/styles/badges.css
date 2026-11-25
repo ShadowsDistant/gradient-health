@@ -170,6 +170,8 @@
 .bdg-hero { gap: var(--space-3); }
 .bdg-hero small { font-weight: 400; }
 .bdg-tiers { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); }
+/* (Two and two on a narrow phone, where the four wrapped as three and Platinum alone.) */
+@media (max-width: 379px) { .bdg-tiers { display: grid; grid-template-columns: repeat(2, max-content); } }
 .bdg-tier-n { display: inline-flex; align-items: center; gap: 6px; }
 .bdg-tier-n i { width: 12px; height: 12px; border-radius: 50%; background: linear-gradient(135deg, var(--bdg-c2), var(--bdg-c) 60%, color-mix(in srgb, var(--bdg-c) 70%, #000)); box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); }
 .bdg-tier-n b { font-variant-numeric: tabular-nums; }
@@ -208,6 +210,8 @@
 /* Its series: the medals in it, this one marked under it, and the next one up. */
 .bdg-series { display: grid; justify-items: center; gap: 6px; width: min(300px, 100%); }
 .bdg-series > p:not(.bdg-tierline) { margin: 0; }
+/* "2 of 6 in this series" is a sentence: not set in capitals, as the two-word tier lines are. */
+.bdg-series > .bdg-tierline { text-transform: none; letter-spacing: 0; font-weight: 600; }
 .bdg-series-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding-bottom: 6px; }
 .bdg-series-m { position: relative; }
 .bdg-series-m.is-this::after { content: ''; position: absolute; left: calc(50% - 2.5px); bottom: -6px; width: 5px; height: 5px; border-radius: 50%; background: var(--label); }
