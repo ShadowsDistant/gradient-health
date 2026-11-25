@@ -52,7 +52,7 @@
   U.sessionRows = sessionRows;
   function phaseBadges(week, s) {
     const b = [];
-    if (week && week.phase.deload) b.push(U.badge('Deload week', 'accent'));
+    if (week && week.phase.deload) b.push(U.badge('Lighter week', 'accent'));
     else if (week && week.phase.onramp) b.push(U.badge('Easing in', 'accent'));
     if (s && s.short) b.push(U.badge('Short', 'neutral'));
     if (s && s.readiness && (s.readiness.minus || s.readiness.legsMinus)) b.push(U.badge('Lighter today', 'caution'));

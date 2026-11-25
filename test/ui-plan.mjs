@@ -473,7 +473,7 @@ section('A deload week');
 }));
 await page.click('.rf-tab[data-tab="plan"]');
 await settle(900);
-check('the summary says so in plain words', /Week 6 · Deload week/.test((await page.locator('#screen .pw-sub').innerText()).replace(/\s+/g, ' ')));
+check('the summary says so in plain words', /Week 6 · Lighter week/.test((await page.locator('#screen .pw-sub').innerText()).replace(/\s+/g, ' ')));
 await page.click('#screen .pw-info');
 await settle(900);
 const deload = await page.evaluate(() => document.querySelector('dialog.rf-sheet[open]').textContent);
