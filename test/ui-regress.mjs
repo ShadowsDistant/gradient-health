@@ -12,6 +12,7 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { root, check, section, done } from './lib.mjs';
 import { seedBridge, seedState } from './fixtures.mjs';
+import { seedActivities } from './actfixture.mjs';
 
 const require = createRequire(import.meta.url);
 let chromium;
@@ -945,6 +946,9 @@ const mi = await page.evaluate(() => [...document.querySelectorAll('#screen .mi-
   return { n: lines.length, edge: lines.every((l) => Math.round(l.getClientRects()[0].left) === left) };
 }));
 check('Most improved: each move starts a line of its own', mi.some((r) => r.n >= 2) && mi.every((r) => r.edge), JSON.stringify(mi));
+// Your answers: a list in one sentence-case line ("Visible abs, Bigger arms, Bigger chest" before).
+const goalsLine = await page.evaluate(() => window.GH.ui.answerSummary('goals', { goals: ['abs', 'arms', 'legs'] }));
+check('Your answers list goals in sentence case', goalsLine === 'Visible abs, bigger arms, legs and glutes', goalsLine);
 // Activities with nothing recorded: a picture, what's missing and the way to start (not saved).
 await page.evaluate(() => { const GH = window.GH, U = GH.ui; U.__acts = U.S.activities; U.S.activities = []; U.open('activities'); });
 await settle(900);
@@ -970,6 +974,17 @@ const ringFit = await page.evaluate(() => {
 check('Today\'s steps ring holds its number', ringFit && ringFit.shown === '12,345' && ringFit.inside, JSON.stringify(ringFit));
 await page.evaluate(() => { const U = window.GH.ui, d = U.S.health.days[U.today()]; if (U.__steps == null) delete d.steps; else d.steps = U.__steps; delete U.__steps; U.S.profile.workouts = true; U.render(); });
 await settle(700);
+// Coach notes: an arrow in Recent changes keeps to the words on both sides (a line began "→ 20 reps").
+await page.evaluate(() => window.GH.ui.open('coach'));
+await settle(900);
+const coachArrows = await page.evaluate(() => [...document.querySelectorAll('#screen .co-time li > span:first-child')].map((s) => s.textContent).filter((t) => t.includes('→')));
+check('Coach notes: an arrow in Recent changes stays with the words on both sides', coachArrows.length > 0 && coachArrows.every((t) => /\u00a0→\u00a0/.test(t)), JSON.stringify(coachArrows.slice(0, 2)));
+// Personal records: "Longest" keeps to the activity's name (at 360 px, "Longest / hike by time").
+await page.evaluate(seedActivities);
+await page.evaluate(() => { const U = window.GH.ui; while (U.back()) { /* back to the tab */ } U.open('activities'); });
+await settle(900);
+const byTime = await page.evaluate(() => [...document.querySelectorAll('#screen .rf-list-title')].map((t) => t.textContent).filter((t) => /by time$/.test(t)));
+check('Personal records: "Longest" keeps to the activity\'s name', byTime.length > 0 && byTime.every((t) => /^Longest\u00a0/.test(t)), JSON.stringify(byTime));
 // With large text a field takes the width it's given. An input is 20 characters wide on its own, and
 // at 130% that pushed a plan's Name, and set-up's row to add a weight (with the weights above it),
 // past the edge. (Last: the text stays large until the page starts again.)

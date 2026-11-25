@@ -822,7 +822,7 @@
       const add = (key, kind, label, x, value) => items.push({ key, kind, label, x, value, icon: REC_LOOK[kind][0], tone: REC_LOOK[kind][1] });
       if (type === 'run') for (const [k, , label] of A().EFFORTS) if (r.best[k]) add(k, 'time', label, r.best[k], fmtTime(r.best[k].v));
       if (r.dist) add('dist', 'dist', `Longest ${tp.noun}`, r.dist, fmtDist(r.dist.v));
-      if (r.time) add('time', 'dur', `Longest ${tp.noun} by time`, r.time, fmtTime(r.time.v));
+      if (r.time) add('time', 'dur', `Longest\u00a0${tp.noun} by time`, r.time, fmtTime(r.time.v)); // (it wrapped as "Longest / hike by time")
       groups.push({ type, label: tp.label === 'Other' ? 'Other activities' : `${tp.label}s`, items });
     }
     const steps = rec.steps ? { key: 'steps', kind: 'steps', label: 'Most steps', x: rec.steps, value: U.num(rec.steps.v), icon: REC_LOOK.steps[0], tone: REC_LOOK.steps[1] } : null;

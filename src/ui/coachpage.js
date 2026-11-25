@@ -91,7 +91,7 @@
     const byDay = new Map();
     for (const x of items.slice(0, 40)) { if (!byDay.has(x.day)) byDay.set(x.day, []); byDay.get(x.day).push(x); }
     return `<div class="card co-time">${[...byDay.entries()].map(([d, xs]) => `<div class="co-day"><p class="t-footnote rf-muted co-day-label">${U.esc(d === day ? 'Today' : d === day - 1 ? 'Yesterday' : U.fmtDay(d))}</p>
-      <ul class="plain-list">${xs.map((x) => `<li><span>${U.esc(x.text)}</span>${x.why ? `<span class="t-footnote rf-muted">${U.esc(U.cap(x.why))}</span>` : ''}</li>`).join('')}</ul></div>`).join('')}</div>`;
+      <ul class="plain-list">${xs.map((x) => `<li><span>${U.progressText(x.text)}</span>${x.why ? `<span class="t-footnote rf-muted">${U.esc(U.cap(x.why))}</span>` : ''}</li>`).join('')}</ul></div>`).join('')}</div>`;
   }
 
   U.screens.coach = {

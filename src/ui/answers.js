@@ -54,10 +54,12 @@
     const w = p.weightKg ? U.fmtW(p.weightKg, 0) : null;
     const names = Object.fromEntries(GOALS);
     const pr = p.protein || {};
+    // One sentence-case line: a list's later items in lower case ("Visible abs, bigger arms").
+    const listed = (a) => a.map((s, i) => (i ? s.toLowerCase() : s)).join(', ');
     switch (id) {
       case 'about': return [p.age ? `${p.age} years` : null, w, p.heightCm ? (U.lb() ? `${Math.floor(p.heightCm / 30.48)} ft ${Math.round(p.heightCm / 2.54 % 12)} in` : `${p.heightCm} cm`) : null].filter(Boolean).join(' · ') || 'Age, weight and height';
-      case 'conditions': { const list = (p.conditions || []).map((c) => (A().CONDITIONS.find((x) => x.id === c) || {}).name).filter(Boolean); return list.length ? list.join(', ') : 'Nothing to plan around'; }
-      case 'goals': return (p.goals || []).map((g) => names[g] || g).join(', ') || 'Consistency';
+      case 'conditions': { const list = (p.conditions || []).map((c) => (A().CONDITIONS.find((x) => x.id === c) || {}).name).filter(Boolean); return list.length ? listed(list) : 'Nothing to plan around'; }
+      case 'goals': return listed((p.goals || []).map((g) => names[g] || g)) || 'Consistency';
       case 'experience': return EXP[p.experience] || 'How long you\'ve trained';
       case 'schedule': return `${p.days} days a week · ${p.minutes} min`;
       case 'equipment': return U.equipSummary(p);
