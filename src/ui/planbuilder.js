@@ -71,7 +71,7 @@
         <h2 class="sec-title t-title-3">Saved plans</h2>
         <div class="section">
           ${plans.length ? `<ul class="cp-plans" data-key="plans">${plans.map((p) => planCard(S, p)).join('')}</ul>`
-    : `<div class="card cp-empty" data-key="empty"><span class="cp-empty-ico" aria-hidden="true">${U.icon('list')}</span><p class="t-headline">No plans yet</p><p class="t-callout rf-muted">Share one and anyone with Gradient Health can scan it.</p></div>`}
+    : `<div class="card cp-empty" data-key="empty"><span class="cp-empty-ico" aria-hidden="true">${U.icon('list')}</span><p class="t-headline">No plans yet</p><p class="t-callout rf-muted">Plans you build, or add from a friend, are kept here.</p></div>`}
         </div>`;
     },
     after(screen) { drawThumbs(screen); },

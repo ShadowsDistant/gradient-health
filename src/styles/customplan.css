@@ -66,6 +66,9 @@ button.cp-inuse-row { cursor: pointer; }
 .cp-make-tile { appearance: none; border: 0; margin: 0; font: inherit; color: var(--label); text-align: start; cursor: pointer; display: grid; align-content: start; gap: 4px; min-width: 0; padding: var(--space-4); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); }
 .cp-make-tile:first-child { grid-column: 1 / -1; grid-template-columns: auto minmax(0, 1fr); column-gap: var(--space-3); align-items: center; }
 .cp-make-tile:first-child .cp-make-ico { grid-row: 1 / 3; }
+/* The two small tiles share their rows (icon, title, words), so when one title takes two lines
+   ("Add a shared / plan" at 360 px) the words under both still start on one line. */
+.cp-make-tile:not(:first-child) { grid-row: span 3; grid-template-rows: subgrid; row-gap: 4px; }
 .cp-make-ico { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 6px; color: #fff; --rf-icon-size: 21px; --rf-icon-stroke: 2.1; background: var(--hue-indigo); box-shadow: inset 0 1px 0 rgb(255 255 255 / .28); }
 .cp-make-tile:first-child .cp-make-ico { width: 48px; height: 48px; border-radius: 14px; margin: 0; --rf-icon-size: 24px; }
 .cp-make-tile[data-tone="violet"] .cp-make-ico { background: var(--hue-violet); }
@@ -133,7 +136,7 @@ button.cp-wk-row:active { background: var(--fill-selected); }
 .cp-day-eyebrow { display: inline-flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; margin: 0; font-size: .75rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--label-secondary); }
 .cp-day-eyebrow > b, .cp-day-eyebrow > span:not(.cp-imp-title) { white-space: nowrap; }
 .cp-day-eyebrow > b { color: var(--accent); font-weight: 750; }
-.cp-day-title { appearance: none; box-sizing: border-box; width: 100%; margin: 0 0 2px calc(var(--space-2) * -1); padding: 4px var(--space-2); border: 0; border-radius: 10px; background: transparent; color: var(--label); font: inherit; font-size: 1.375rem; font-weight: 700; line-height: 1.25; letter-spacing: -.01em; }
+.cp-day-title { appearance: none; box-sizing: border-box; width: 100%; margin: 0 0 2px calc(var(--space-2) * -1); padding: 4px var(--space-2); border: 0; border-radius: 10px; background: transparent; color: var(--label); font: inherit; font-size: 1.375rem; font-weight: 700; line-height: 1.25; letter-spacing: -.01em; text-overflow: ellipsis; }
 .cp-day-title::placeholder { color: var(--label-tertiary); font-weight: 650; }
 .cp-day-title:hover { background: var(--fill-3); }
 .cp-day-title:focus { outline: none; background: var(--fill-3); box-shadow: 0 0 0 2px var(--focus-ring); }
