@@ -9,8 +9,10 @@
  *   - fits each session to the time set (fit): filled to about 92% of it with the most useful extra
  *     (more sets, a second exercise, the small muscles, longer rests, a finisher, a cool-down, a
  *     longer warm-up), and never more than 30 seconds over it, sets before rest;
- *   - scores a week (score), says why the plan is as it is (explain, explainProfile), compares the
- *     classic splits (alternatives) and checks plan tweaks before they're made (applyTweaks).
+ *   - scores a week (score), says which of the person's answers a week's plan used (personalFacts)
+ *     and checks plan tweaks before they're made (applyTweaks). Why the plan is as it is in words
+ *     (explain, explainProfile) and the classic splits compared (alternatives) are src/explain.js,
+ *     which comes with set-up and the plan review rather than with the page.
  *
  * It reads GH.brain, GH.moves and GH.access only when called: it loads right after brain.js in
  * tests and after access.js in the app. Weeks before S.engineFrom keep 1.5's split (brain.js
@@ -683,7 +685,7 @@
     if (!k && kc && ws < thisWeek(S)) k = recall(kc.weeks, past);
     if (k && Array.isArray(k.days) && k.perGroup && typeof k.score === 'number') { stats.keptWeeks++; return m.set(key, deepFreeze(k)); }
     const t0 = now();
-    const out = deepFreeze(b.op(() => planWeek(S, ws, phase)));
+    const out = deepFreeze(b.op(() => { b.opStamp(S, stamp); return planWeek(S, ws, phase); }));
     stats.weeks++; stats.weekMs += now() - t0;
     // Planning can start a ladder's progress (a gym exercise used for the first time); the plan is
     // the same either way, so it's kept for the state as it is now too.
@@ -916,6 +918,10 @@
     const extrasW = {};
     for (const d of days) if (!d.done) for (const [g, n] of Object.entries(d.extras)) extrasW[g] = (extrasW[g] || 0) + n;
     const capEff = (g) => Math.max(0, G[g].cap - (extrasW[g] || 0));
+    // (1.15: the weaker arm's catch-up set comes only beside the day's own biceps sets, brain.js
+    // armExtra: once the sets are given out, a day's measured one counts while the day has them.)
+    const extraOn = (k, g) => { const d = days[k], n = (!d.done && d.extras[g]) || 0; return n && d.now && g === 'biceps' && !(x[k].biceps > 0) ? 0 : n; };
+    const extrasNow = () => { const o = {}; days.forEach((d, k) => { for (const g of Object.keys(d.extras)) { const n = extraOn(k, g); if (n) o[g] = (o[g] || 0) + n; } }); return o; };
     const trainable = GROUPS.filter((g) => days.some((d) => d.per[g] != null));
     const add = (k, g, n) => { x[k][g] = (x[k][g] || 0) + n; X[g] += n; left[k] -= n * days[k].per[g]; };
     const groupsOn = (k) => Object.keys(x[k]).filter((g) => x[k][g] > 0).length;
@@ -939,8 +945,10 @@
     // with an extension, Brandão et al. 2020. What other groups' exercises do for it still counts
     // toward the week's other numbers.)
     const direct = (g) => now && G[g].tier === 1;
+    let live = false;
     const effective = () => {
-      const e = Object.fromEntries(GROUPS.map((g) => [g, X[g] + (extrasW[g] || 0)]));
+      const xs = live ? extrasNow() : extrasW;
+      const e = Object.fromEntries(GROUPS.map((g) => [g, X[g] + (xs[g] || 0)]));
       days.forEach((d, k) => { for (const [h, n] of Object.entries(x[k])) for (const [g, v] of Object.entries(d.ind[h] || {})) if (!direct(g)) e[g] += n * v; });
       return e;
     };
@@ -951,7 +959,7 @@
       // 1.5's sets for each day, as the week was planned then (the fit still brings the sessions
       // within their time and fills them).
       days.forEach((d, k) => { for (const [g, n] of Object.entries(legacySets(k))) if (n > 0 && d.per[g] != null) add(k, g, n); });
-      return { x, X, extrasW, capEff, trainable, effective, parity, short, own };
+      return { x, X, extrasW, extraOn, extrasNow, capEff, trainable, effective, parity, short, own };
     }
     const better = (a, c) => !a || c.sc > a.sc + 1e-9 || (Math.abs(c.sc - a.sc) <= 1e-9 && (c.tie < a.tie - 1e-9 || (Math.abs(c.tie - a.tie) <= 1e-9 && (c.k < a.k || (c.k === a.k && GROUPS.indexOf(c.g) < GROUPS.indexOf(a.g))))));
     // Pass 1: floors (see below for when there isn't time for every group's).
@@ -1162,6 +1170,11 @@
     // day gives way to it, where that group keeps its 2 sets a week without it.
     if (now) {
       const e2 = () => effective();
+      // (And every other group that had its 2 effective sets a week before a change still has them
+      // after it: a set given up takes the half-credit it gave others with it, as a chest press
+      // gives the shoulders.)
+      const keepsTwo = (was) => { const e = effective(); return trainable.every((q) => was[q] < Math.min(2, G[q].floor) - 1e-9 || e[q] >= Math.min(2, G[q].floor) - 1e-9); };
+      const tryOut = (k, q, g) => { const was = effective(); add(k, q, -1); add(k, g, 1); if (keepsTwo(was)) return true; add(k, g, -1); add(k, q, 1); return false; };
       for (let k = 0; k < D; k++) {
         if (days[k].done) continue;
         const lone = () => Object.keys(x[k]).filter((g) => x[k][g] === 1).sort((a, c) => G[c].w - G[a].w || GROUPS.indexOf(a) - GROUPS.indexOf(c));
@@ -1174,11 +1187,12 @@
           // (Or, for a top goal, a third set of a lesser group's here makes room for its second,
           // where that group keeps its minimum: one set of the curls the plan is for, beside three
           // of squats, isn't what the week meant.)
-          const from = !G[g].both ? null : Object.keys(x[k]).filter((q) => q !== g && !G[q].both && x[k][q] >= 3 && days[k].per[g] <= left[k] + days[k].per[q] + 1e-9 && e2()[q] - 1 >= G[q].floor - 1e-9 && X[g] < capEff(g) && (x[k][g] || 0) < days[k].maxSets[g])
-            .sort((a, c) => x[k][c] - x[k][a] || G[a].w - G[c].w || GROUPS.indexOf(c) - GROUPS.indexOf(a))[0];
-          if (from) { add(k, from, -1); add(k, g, 1); continue; }
-          const h = lone().reverse().find((q) => q !== g && x[k][q] === 1 && !G[q].both && G[q].w <= G[g].w && days[k].per[g] <= left[k] + days[k].per[q] + 1e-9 && e2()[q] - 1 >= Math.min(2, G[q].floor) - 1e-9 && X[g] < capEff(g) && (x[k][g] || 0) < days[k].maxSets[g]);
-          if (h) { add(k, h, -1); delete x[k][h]; add(k, g, 1); }
+          const from = !G[g].both ? [] : Object.keys(x[k]).filter((q) => q !== g && !G[q].both && x[k][q] >= 3 && days[k].per[g] <= left[k] + days[k].per[q] + 1e-9 && e2()[q] - 1 >= G[q].floor - 1e-9 && X[g] < capEff(g) && (x[k][g] || 0) < days[k].maxSets[g])
+            .sort((a, c) => x[k][c] - x[k][a] || G[a].w - G[c].w || GROUPS.indexOf(c) - GROUPS.indexOf(a));
+          if (from.some((q) => tryOut(k, q, g))) continue;
+          const hs = lone().reverse().filter((q) => q !== g && x[k][q] === 1 && !G[q].both && G[q].w <= G[g].w && days[k].per[g] <= left[k] + days[k].per[q] + 1e-9 && e2()[q] - 1 >= Math.min(2, G[q].floor) - 1e-9 && X[g] < capEff(g) && (x[k][g] || 0) < days[k].maxSets[g]);
+          const h = hs.find((q) => tryOut(k, q, g));
+          if (h) delete x[k][h];
         }
       }
       // 1.15: a top goal still on one day of the several it could train on gives 2 of its sets (of 4
@@ -1210,7 +1224,12 @@
           if (moved) break;
           const cut = [];
           for (const q of lesser) {
-            while (!fits(lo) && x[lo][q] > 2 && effective()[q] - 1 >= G[q].floor - 1e-9) { add(lo, q, -1); cut.push(q); }
+            while (!fits(lo) && x[lo][q] > 2 && effective()[q] - 1 >= G[q].floor - 1e-9) {
+              const was = effective();
+              add(lo, q, -1);
+              if (!keepsTwo(was)) { add(lo, q, 1); break; }
+              cut.push(q);
+            }
           }
           if (fits(lo)) { moved = true; break; }
           for (const q of cut) add(lo, q, 1);
@@ -1218,8 +1237,13 @@
           if (!(x[lo][g] > 0)) delete x[lo][g];
         }
       }
+      // The weaker arm's catch-up sets as the sessions will have them: one counted on a day its sets
+      // left without biceps work isn't there, and a group that falls short of its 2 sets a week for
+      // it gets sets of its own where there's time.
+      live = true;
+      if (trainable.some((g) => effective()[g] < two(g) - 1e-9)) floorPass(two) || repair(two);
     }
-    return { x, X, extrasW, capEff, trainable, effective, parity, short, own, under: !floorsMet, capped: trainable.some(capped) };
+    return { x, X, extrasW, extraOn, extrasNow, capEff, trainable, effective, parity, short, own, under: !floorsMet, capped: trainable.some(capped) };
   }
 
   function planWeek(S, ws, phase, forced) {
@@ -1406,7 +1430,7 @@
         settle();
       }
     }
-    const { x, X, extrasW, capEff, trainable, effective, parity, own } = al;
+    const { x, X, extraOn, extrasNow, capEff, trainable, effective, parity, own } = al;
     // What the fit may change: sets above the week's target go first when a session runs long, the
     // floor's share stays to the last, `room` is how many more a day may take when it runs short,
     // and `spare` what's left under the cap after that, for a day of one group's sets (from 15
@@ -1456,7 +1480,7 @@
       for (const g of Object.keys(groupSets)) if (!groupSets[g]) delete groupSets[g];
       const covered = {}, slack = {};
       for (const g of Object.keys(groupSets)) {
-        covered[g] = e[g] - groupSets[g] - (d.extras[g] || 0) >= G[g].floor - 1e-9;
+        covered[g] = e[g] - groupSets[g] - extraOn(k, g) >= G[g].floor - 1e-9;
         // How many of its sets the group can lose and still have 2 effective sets in the week.
         slack[g] = Math.max(0, Math.floor(e[g] - Math.min(2, G[g].floor) + 1e-9));
       }
@@ -1478,9 +1502,10 @@
       };
     });
     const perGroup = {};
+    const xsW = extrasNow();
     for (const g of GROUPS) {
       perGroup[g] = {
-        target: G[g].T, boosted: G[g].B, floor: G[g].floor, cap: G[g].cap, aim: X[g], extras: extrasW[g] || 0, effective: round1(e[g]), weight: G[g].w, tier: G[g].tier,
+        target: G[g].T, boosted: G[g].B, floor: G[g].floor, cap: G[g].cap, aim: X[g], extras: xsW[g] || 0, effective: round1(e[g]), weight: G[g].w, tier: G[g].tier,
         trainable: trainable.includes(g), freq: Math.min(days.length, prog.freq[UNIT_OF[g]] || 1), days: days.filter((d, k) => x[k][g] > 0).length,
       };
     }
@@ -2147,49 +2172,11 @@
   }
 
   /* ================================================================== explanations */
-  const fmtN = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   const joinList = (a) => (a.length <= 1 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
   const lower = (s) => s.charAt(0).toLowerCase() + s.slice(1);
   const setsWord = (n) => `${n} set${Math.abs(n) === 1 ? '' : 's'}`;
   // A score change in words only when it shows: 0.917 to 0.922 is "92 to 92" otherwise.
   const pct100 = (x) => Math.round(x * 100);
-  // Groups by name, with biceps and triceps together as arms when both are there.
-  function groupNames(list) {
-    const b = B();
-    const out = list.slice();
-    const both = out.includes('biceps') && out.includes('triceps');
-    return out.filter((g) => !(both && g === 'triceps')).map((g) => (both && g === 'biceps' ? 'arms' : b.GROUP_NAME[g].toLowerCase()));
-  }
-  // explain(S, day): why the plan is as it is, for the week of `day`, in plain English.
-  // { headline, week: [{ day, weekday, title, units, minutes, sets, done, today }], today (the
-  // session for `day`, or the next one this week) , reasons: [lines], parts, score, considered }.
-  function explain(S, day) {
-    const b = B();
-    const ws = b.weekStart(day);
-    const cal = b.calendar(S, day);
-    const week = cal.weeks[ws];
-    const wp = weekPlan(S, ws, { phase: week ? week.phase : undefined });
-    const live = week ? week.sessions.filter((x) => !x.dropped && x.day != null) : [];
-    const custom = GH.customPlan && live.some((x) => GH.customPlan.owns(x.tpl));
-    const built = live.map((x) => ({ x, s: b.buildSession(S, x.day, x.tpl, { cal, noReadiness: x.day !== day }) }));
-    const wd = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const weekOut = built.map(({ x, s }) => ({ day: x.day, weekday: wd[b.weekday(x.day)], title: s.title, units: s.units.slice(), minutes: s.estimateMin, sets: s.items.reduce((a, it) => a + (it.skill ? 0 : it.sets), 0), done: !!x.done, today: x.day === day }));
-    const pick = built.find(({ x }) => x.day === day) || built.find(({ x }) => x.day > day && !x.done) || null;
-    const today = pick ? {
-      day: pick.x.day, title: pick.s.title, minutes: pick.s.estimateMin, budget: pick.s.budget, light: !!pick.s.light,
-      items: pick.s.items.map((it) => ({ moveId: it.moveId, name: it.name, group: it.group, sets: it.sets, target: it.target, timed: !!it.timed, skill: !!it.skill })),
-      finisher: pick.s.finisher ? { moveId: pick.s.finisher.moveId, name: pick.s.finisher.name, rounds: pick.s.finisher.rounds } : null,
-      cooldown: (pick.s.mobility || []).map((mb) => ({ moveId: mb.moveId, name: mb.name, target: mb.target, cardio: !!mb.cardio })),
-    } : null;
-    const minutes = clamp(Math.round(Number(b.settingsAt(S, day).minutes) || Number(S.profile.minutes) || 25), 10, 60);
-    const prog = b.programFor(S.profile);
-    const top = GROUPS.filter((g) => prog.tiers[g] === 1 && wp.perGroup[g].trainable);
-    const headline = custom ? 'You\'re following your own plan this week'
-      : `${live.length} workout${live.length === 1 ? '' : 's'} a week, about ${minutes} minutes each${top.length ? `, built around your ${joinList(groupNames(top))}` : ''}`;
-    // (1.15: facts, the person's own answers this week's plan used. They lead the reasons.)
-    const facts = custom ? [] : personalFacts(S, day, { wp, sessions: built.map((x) => x.s) });
-    return { headline, week: weekOut, today, facts, reasons: custom ? customReasons(S) : reasonLines(S, wp, built.map((x) => x.s), minutes, facts), parts: wp.parts, score: wp.score, considered: wp.considered, split: { kind: wp.split.kind, label: wp.split.label, name: LABEL[wp.split.label] || LABEL.mixed } };
-  }
   // personalFacts(S, day): which of the person's own answers the plan for the week of `day` used,
   // and what each one changed, in plain words: [{ id, fields, text }]. id is 'goals', 'time', 'kit',
   // 'side', 'eating' or 'abs'; fields are the profile's fields it read. Empty for a week from before
@@ -2297,111 +2284,6 @@
       else add('abs', ['goals'], `${how} Ab exercises build the muscle. They don't take fat off the belly: that comes off the whole body.`);
     }
     return out;
-  }
-  function customReasons(S) {
-    return ['These sessions come from your own plan, still fitted to your body\'s rules and your time.'];
-  }
-  // The reasons, most telling first.
-  function reasonLines(S, wp, sessions, minutes, facts) {
-    const b = B(), ac = A(), p = S.profile;
-    const prog = b.programFor(p);
-    const tw = tweaksOf(p);
-    const out = [];
-    const pg = wp.perGroup;
-    const D = wp.days.length;
-    // The split.
-    if (wp.legacy) out.push('This week keeps the plan it started with. The new planner takes over next week.');
-    else if (wp.split.kind !== 'auto') out.push(`You picked ${lower(LABEL[wp.split.kind])}. Of ${fmtN(wp.considered)} ways to lay it over your ${D} days, this one rests each muscle best.`);
-    else out.push(`Of ${fmtN(wp.considered)} ways to share your muscle groups over ${D} days, this one spreads the work most evenly, with rest between sessions.`);
-    // A healthy weekly dose: in large studies the lowest risks of disease went with about 30 to 60
-    // minutes of strength work a week (Momma et al. 2022). A plan with less (two sessions of 10
-    // minutes) says so once, with the fix; the plan itself stays as it is.
-    const weekly = D * minutes;
-    if (D > 0 && weekly < 30) out.push(`Your plan has ${weekly} minutes of strength work a week. In large studies, the lowest risks of disease went with about 30 to 60 minutes a week, so ${D < 3 ? 'a third short session or longer ones' : 'longer sessions'} would help.`);
-    // 1.15: the person's own answers the plan used (personalFacts), the goals among them.
-    const mine15 = facts || [];
-    for (const f of mine15) out.push(f.text);
-    // The goals.
-    const top = GROUPS.filter((g) => prog.tiers[g] === 1 && pg[g].trainable && pg[g].aim > 0);
-    if (top.length && !mine15.some((f) => f.id === 'goals')) {
-      const parts = [];
-      const both = top.includes('biceps') && top.includes('triceps');
-      for (const g of top) {
-        if (both && g === 'triceps') continue;
-        const sets = both && g === 'biceps' ? pg.biceps.aim + pg.triceps.aim : pg[g].aim;
-        const name = both && g === 'biceps' ? 'arms' : b.GROUP_NAME[g].toLowerCase();
-        // "12 sets for arms and 6 for legs".
-        parts.push(parts.length ? `${sets} for ${name}` : `${setsWord(sets)} for ${name}`);
-      }
-      out.push(`Your top goals get the most work: ${joinList(parts)} this week.`);
-    }
-    // Recovery.
-    const units = wp.days.map((d) => d.units);
-    const offs = wp.days.map((d) => d.offset);
-    const backToBack = UNITS.filter((u) => {
-      const on = offs.filter((o, i) => units[i].includes(u)).sort((a, x) => a - x);
-      return on.some((o, i) => (i ? o - on[i - 1] : on[0] + 7 - on[on.length - 1]) <= 1) && on.length > 1;
-    });
-    if (D > 1 && !backToBack.length) out.push('No muscle group trains two days in a row, so each one recovers.');
-    else if (D > 1 && !backToBack.includes('legs') && units.filter((u) => u.includes('legs')).length > 1) out.push('Your legs always get a day off between sessions.');
-    // The time.
-    const setMin = wp.days.length ? Math.round(wp.days.reduce((a, d) => a + d.planned - d.fixed, 0) / wp.days.length) : 0;
-    const fin = sessions.some((s) => s.finisher), cool = sessions.some((s) => (s.mobility || []).some((mb) => !mb.cardio)), walk = sessions.some((s) => (s.mobility || []).some((mb) => mb.cardio));
-    const extras = ['a warm-up'].concat(fin ? ['a finisher'] : [], walk ? ['an easy cardio block'] : [], cool ? ['a cool-down'] : []);
-    if (setMin > 0) out.push(`Each session fits your ${minutes} minutes: about ${setMin} minutes of sets, then ${joinList(extras)}.`);
-    // Coverage, or groups taking turns.
-    if (wp.parity) out.push('Not every muscle group fits in each week, so they take turns: what misses out comes first next week.');
-    else if (GROUPS.every((g) => !pg[g].trainable || pg[g].effective >= pg[g].floor - 1e-9)) out.push('Every muscle group gets at least its weekly minimum, counting help from bigger moves.');
-    // The phase.
-    const ph = wp.phase;
-    if (ph.deload) out.push(`A lighter week to recover: about ${Math.round(ph.mult * 100)}% of your usual sets.`);
-    else if (ph.onramp && ph.idle) out.push(`Back after a break: about ${Math.round(ph.mult * 100)}% of your usual sets while you settle in again.`);
-    else if (ph.onramp) out.push(`This week eases you in: about ${Math.round(ph.mult * 100)}% of a normal week's sets.`);
-    // Changes you made.
-    const mine = tweakWords(tw);
-    if (mine.length) out.push(`Your changes: ${joinList(mine)}.`);
-    // The body.
-    const around = ac && ac.plannedAround(p);
-    if (around) out.push(`${around}.`);
-    return out;
-  }
-  // Plan tweaks in words.
-  function tweakWords(t) {
-    const b = B();
-    const out = [];
-    for (const [g, n] of Object.entries(t.sets)) out.push(`${b.GROUP_NAME[g].toLowerCase()} ${n > 0 ? '+' : ''}${setsWord(n)} a week`);
-    for (const [f, id] of Object.entries(t.swaps)) { const m = M().MOVES[id]; const lad = M().LADDERS[f]; if (m) out.push(`${m.name.toLowerCase()} for ${lad ? lad.name.toLowerCase() : 'that exercise'}`); }
-    if (t.split !== 'auto') out.push(lower(LABEL[t.split]));
-    if (t.rest !== 'auto') out.push(`${t.rest === 60 ? '1 minute' : t.rest === 90 ? '90 s' : '2 minutes'} of rest`);
-    if (t.finisher !== 'auto') out.push(t.finisher === 'on' ? 'a finisher every session' : 'no finishers');
-    if (t.mobility !== 'auto') out.push(t.mobility === 'on' ? 'a cool-down every session' : 'no optional cool-downs');
-    if (t.avoid.length) out.push(`leaving out ${joinList(t.avoid.map((id) => M().MOVES[id].name.toLowerCase()))}`);
-    return out;
-  }
-  // explainProfile(p, day): the same for set-up's answers, before there's a state.
-  function explainProfile(p, day) {
-    const b = B();
-    const S = b.newState(p || {}, null, day);
-    return explain(S, day);
-  }
-
-  /* ================================================================== the classic splits */
-  // alternatives(S, ws): the best fit and the three classic splits (full body, upper and lower,
-  // push, pull and legs), each planned for the week and scored, best first.
-  const KINDS = ['auto', 'full_body', 'upper_lower', 'ppl'];
-  function alternatives(S, ws) {
-    const phase = phaseOf(S, ws);
-    const cur = tweaksOf(S.profile).split;
-    const out = KINDS.map((kind) => {
-      const S2 = withTweaks(S, { split: kind });
-      const wp = weekPlan(S2, ws, { phase });
-      return {
-        split: kind, name: kind === 'auto' ? 'Best fit' : LABEL[kind], shape: wp.split.label, shapeName: LABEL[wp.split.label] || LABEL.mixed,
-        score: wp.score, parts: wp.parts, considered: wp.considered, current: kind === cur,
-        days: wp.days.map((d) => ({ offset: d.offset, units: d.units.slice(), minutes: Math.round(d.planned) })),
-      };
-    });
-    return out.sort((a, x) => x.score - a.score || KINDS.indexOf(a.split) - KINDS.indexOf(x.split));
   }
   // (Copies keep plans of their own: what's tried on one never takes the place of the state's.)
   const cloneState = (S) => { const c = Object.assign({}, S, { planCache: null }); return typeof structuredClone === 'function' ? structuredClone(c) : JSON.parse(JSON.stringify(c)); };
@@ -2512,11 +2394,14 @@
   });
 
   const self = GH.optimizer = {
-    weekPlan, score, explain, explainProfile, personalFacts, alternatives, applyTweaks, TWEAKS,
+    weekPlan, score, personalFacts, applyTweaks, TWEAKS,
     split, template, dayPlan, fit, normTweaks, mergeTweaks, LABEL, UNITS, UNIT_GROUPS, PARTS, stats,
     _internal: { bestDays, countSplits, variants, archetype, labelOf, maskCost, splitInputs, shareOut, planScore, timeFit, scoreBuilt },
   };
   self.exCap = exCap;
+  // For src/explain.js (the setup and review chunks), which adds explain, explainProfile and
+  // alternatives: the parts of the engine they read.
+  self._explain = { phaseOf, tweaksOf, withTweaks, clamp, joinList, lower, setsWord, GROUPS };
   self.freeze = (on) => { FREEZE = !!on; };
   self.clearCache = () => { splitMemo.clear(); feasMemo.clear(); keptMemo.clear(); };
   // Whether plans are kept in the state across launches (see keptOf): keep(true) or keep(false)

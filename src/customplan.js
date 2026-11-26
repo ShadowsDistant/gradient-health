@@ -727,9 +727,20 @@
         plan: { id: plan.id, day: ref.idx, i, move: it.move, built: m.id, base, key, w },
       });
     });
+    // 1.15: the weaker side's catch-up set, as the coach's plan has it (brain.js realize), from the
+    // weeks on 1.15's rules (brain.personal, so the sessions of a plan used before then stay as they
+    // were): one lead-side curl set beside the day's own biceps work, on the plan's first two days
+    // that hold some (two days a week at most), and one lead-side squat set on a day with a squat.
+    // None on a short night.
+    const extras = [];
+    if (plan && pd && !o.short && b.personal(S, day)) {
+      const biceps = plan.days.map((d, i) => (d.items.some((x) => (M().MOVES[x.move] || {}).group === 'biceps') ? i : -1)).filter((i) => i >= 0).slice(0, 2);
+      if (S.catchup.arm.active && biceps.includes(ref.idx) && items.some((it) => it.group === 'biceps')) { const x = b.extraItem(S, 'curl', 'arm', day); if (x) extras.push(x); }
+      if (S.catchup.leg.active && items.some((it) => it.fam === 'squat')) { const x = b.extraItem(S, 'squat', 'leg', day); if (x) extras.push(x); }
+    }
     const s = {
       day, tpl, units: pd ? unitsOf(pd.items) : [], title: plan ? titleOf(plan, ref.idx) : 'Workout', short: !!o.short,
-      phase: week.phase, readiness: ready0, warmup: warmup(S, day, !!o.short), tests: [], items, extras: [], finisher: null,
+      phase: week.phase, readiness: ready0, warmup: warmup(S, day, !!o.short), tests: [], items, extras, finisher: null,
       notes: swaps.map((x) => (x.to ? `${M().MOVES[x.from].name} → ${M().MOVES[x.to].name}: ${x.why}` : `${(M().MOVES[x.from] || { name: x.from }).name} left out: ${x.why}`)),
       mobility: [], place: b.placeOf(S, day), comeback: null, trimmed: [],
       custom: { id: plan ? plan.id : ref.id, name: plan ? plan.name : '', day: ref.idx, swaps },

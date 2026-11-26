@@ -588,6 +588,44 @@ section('Lighter weeks');
   check('short on time: two sets at most, about 15 minutes', short.items.every((it) => it.sets <= 2) && short.estimateMin <= 16 && short.short, short.estimateMin);
 }
 
+section('The weaker side\'s catch-up set (1.15)');
+{
+  // Curls on three of the plan's days, a squat on the last: the lead side's extra curl set comes
+  // beside the curls on the plan's first two days that have them (two days a week at most, as on
+  // the coach's plan), the extra squat set on the squat day.
+  const ARMS = {
+    name: 'Arms', weekdays: [0, 2, 4],
+    days: [
+      { title: 'A', items: [{ move: 'curl_std', sets: 3, reps: 10 }, { move: 'push_std', sets: 3, reps: 10 }] },
+      { title: 'B', items: [{ move: 'row_db', sets: 3, reps: 10 }, { move: 'curl_std', sets: 3, reps: 10 }] },
+      { title: 'C', items: [{ move: 'sq_goblet', sets: 3, reps: 12 }, { move: 'curl_std', sets: 3, reps: 10 }] },
+    ],
+  };
+  const setUp = (patch, from = MON) => { const S = fresh(MON, patch); if (from !== MON) S.personalFrom = from; const plan = C.add(S, ARMS).plan; C.use(S, plan.id, MON); return { S, plan }; };
+  const week = (S, plan, ws = MON, o = {}) => [0, 1, 2].map((i) => B.buildSession(S, ws + 2 * i, `c:${plan.id}:${i}`, Object.assign({ cal: B.calendar(S, ws + 2 * i), noReadiness: true }, o)));
+  const arm = (s) => s.extras.filter((x) => x.extraKind === 'arm');
+  const { S, plan } = setUp({});
+  const w = week(S, plan);
+  check('curls on three days: the lead arm\'s extra curl set on the first two', S.catchup.arm.active && w.map((s) => arm(s).length).join() === '1,1,0' && w.flatMap(arm).every((x) => x.leadOnly === 'L' && x.sets === 1 && x.fam === 'curl'), w.map((s) => s.extras.map((x) => `${x.moveId} ${x.leadOnly}`)));
+  check('and none on a short session', !week(S, plan, MON, { short: true }).some((s) => s.extras.length));
+  check('none when neither arm is behind (lead.arm null)', week(setUp({ lead: { arm: null, leg: null } }).S, setUp({ lead: { arm: null, leg: null } }).plan).every((s) => !s.extras.length));
+  // From the epoch: a plan used in the weeks before 1.15's rules keeps its sessions as they were.
+  const old = setUp({}, MON + 7);
+  check('none before the epoch (S.personalFrom), and from then on', week(old.S, old.plan).every((s) => !s.extras.length) && week(old.S, old.plan, MON + 7).map((s) => arm(s).length).join() === '1,1,0');
+  const st = B.steps(S, w[1]);
+  const curls = st.map((x, i) => (x.kind === 'set' && x.item.moveId === 'curl_std' ? i : -1)).filter((i) => i >= 0);
+  const xAt = st.findIndex((x) => x.kind === 'set' && x.item.kind === 'extra');
+  check('the steps put the extra set straight after the curls, lead side only', curls.length > 0 && xAt === curls[curls.length - 1] + 1 && st[xAt].side === 'L' && st[xAt].leadOnly && st.filter((x) => x.item && x.item.kind === 'extra').length === 1, st.map((x) => `${x.kind} ${x.item && x.item.moveId}`));
+  // The weaker leg too, on the day with a squat.
+  const legs = setUp({ lead: { arm: null, leg: 'R' } });
+  check('a weaker leg gets its extra squat set on the squat day', week(legs.S, legs.plan).map((s) => s.extras.filter((x) => x.extraKind === 'leg' && x.leadOnly === 'R').length).join() === '0,0,1');
+  // The player runs it and the finish keeps both: the extra set in the log, the plan's own numbers.
+  const res = doWorkout(S, MON, '4');
+  const log = S.log.find((l) => l.type === 'workout' && l.day === MON);
+  const xl = log.items.find((it) => it.kind === 'extra');
+  check('a workout with the extra set saves it, and the plan\'s exercises still move on', res.done && log.items.length === 3 && xl && xl.sets.length === 1 && xl.sets[0].side === 'L' && log.planned === w[0].items.reduce((a, it) => a + it.sets, 0) + 1 && S.planProg[plan.id]['curl_std:10'].reps > 10, [log.items.map((it) => `${it.kind} ${it.moveId} ${it.sets.length}`), S.planProg[plan.id]]);
+}
+
 /* ------------------------------------------------------------------ progression */
 section('Progress over the weeks');
 {

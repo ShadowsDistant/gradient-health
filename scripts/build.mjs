@@ -329,9 +329,10 @@ export const APP_SCRIPTS = [
 // the first time it's used, and warms the likely ones once the first frame is drawn.
 export const APP_CHUNKS = [
   // Set-up: only someone who isn't set up yet, or who edits their answers, needs it.
-  { name: 'setup', scripts: ['src/ui/onboarding.js'] },
+  // (Why this plan's words, src/explain.js, come with it and with the review: either loads them.)
+  { name: 'setup', scripts: ['src/explain.js', 'src/ui/onboarding.js'] },
   // The AI check of the plan, and Why this plan.
-  { name: 'review', scripts: ['src/planreview.js', 'src/ui/review.js'] },
+  { name: 'review', scripts: ['src/explain.js', 'src/planreview.js', 'src/ui/review.js'] },
   // How it works: the rules behind the plan and their research.
   { name: 'science', scripts: ['src/data/science.js', 'src/ui/science.js'] },
   // A badge's share image.
