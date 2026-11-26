@@ -10,10 +10,12 @@
   const B = () => GH.brain;
   const M = () => GH.moves;
   const plat = () => GH.platform || { cue() {}, keepAwake() {}, vibrate() {} };
+  const mo = () => U.motion || {}; // (the moments' part of it, src/ui/moments.js, comes after launch)
 
   let P = null;     // player state (not saved; the workout itself lives in S.active)
   let fig = null;   // { key, ctl }
   let timer = null;
+  const shownCount = new WeakMap(); // a timer's count → the text it shows (a roll holds two for a moment)
   const LEG_FAMS = ['squat', 'hinge', 'glute'];
   const JOINTS = [['knee', 'Knees'], ['shoulder', 'Shoulders'], ['back', 'Lower back'], ['wrist', 'Wrists'], ['elbow', 'Elbows'], ['hip', 'Hips'], ['ankle', 'Ankles'], ['neck', 'Neck']];
 
@@ -65,7 +67,9 @@
     draw();
     U.renderAccessory();
     // The backdrop turns solid fast; the content rises in a little slower, all of it in under 0.45 s.
-    if (!was && !U.reduced() && el.animate) {
+    // (With the moments' part in, src/ui/moments.js, its main button also grows out of the button
+    // that was tapped: Start workout becomes the player's own.)
+    if (!was && !U.reduced() && el.animate && !(mo().enterPlayer && mo().enterPlayer(el))) {
       el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: 'ease-out' });
       for (const [i, c] of Array.from(el.children).entries()) c.animate([{ opacity: 0, transform: 'translateY(26px)' }, { opacity: 1, transform: 'none' }], { duration: 340, delay: 30 + i * 30, easing: 'cubic-bezier(0.05, 0.7, 0.1, 1)', fill: 'backwards' });
     }
@@ -711,9 +715,11 @@
     // Each scene gets fresh content (so controls never carry over from the last one); within a
     // scene, updates patch in place.
     html = html.replace(/<div class="(pl-main|pl-scroll)/, (m) => m.replace('<div', `<div data-key="scene-${next}"`));
+    // (Where the figure is now, before the patch: it may travel into the next scene, moments.js.)
+    const fx = changed && scene != null && mo().scene ? mo().scene(el) : null;
     U.morph(el, html);
     if (phase === 'rest') fitRest(el);
-    if (changed && scene != null) sceneIn(el, phase);
+    if (changed && scene != null) { if (fx) fx(phase); else sceneIn(el, phase); }
     scene = next;
     const host = el.querySelector('.pl-fig');
     const nx = P.phase === 'rest' ? cur() : null;
@@ -735,7 +741,8 @@
   if (G.addEventListener) G.addEventListener('resize', () => { if (P && P.phase === 'rest' && !root().hidden) fitRest(root()); });
 
   // A new step or phase slides in: the main block rises, the action row settles. It plays after
-  // every set, so it's quick: in by 300 ms (1.9.0's took 380).
+  // every set, so it's quick: in by 300 ms (1.9.0's took 380). (Until the moments' part is in: with
+  // it, mo().scene plays this, and carries the figure between its card and Up next's picture.)
   function sceneIn(el, phase) {
     if (U.reduced()) return;
     const main = el.querySelector('.pl-main, .pl-scroll');
@@ -765,14 +772,14 @@
       actions = '<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plSaveTest">Save</button>';
     } else if (timed) {
       const d = durationOf(st);
-      target = `<div class="pl-target"><span class="pl-big rf-num">${d}</span><span class="pl-unit">seconds</span></div>`;
+      target = `<div class="pl-target">${U.roll(d, 'pl-big')}<span class="pl-unit">seconds</span></div>`;
       if (st.kind === 'set') hint = `<p class="pl-hint t-callout rf-muted">${U.esc((GH.access && GH.access.setHint(U.S.profile, it, true)) || 'Hold with good form. Stop early if it breaks.')}</p>`;
       actions = `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="xl" data-act="plStartTimer">${U.icon('play')}Start</button>`;
     } else if (st.kind === 'set') {
       const t = B().currentTarget(A(), st);
       P.reps = t;
       const w = weightOf(it);
-      target = `<div class="pl-target"><span class="pl-big rf-num">${t}</span><span class="pl-unit">${t === 1 ? 'rep' : 'reps'}</span></div>
+      target = `<div class="pl-target">${U.roll(t, 'pl-big')}<span class="pl-unit">${t === 1 ? 'rep' : 'reps'}</span></div>
         ${w ? `<button type="button" class="pl-load" data-act="plLoad" aria-label="Weight: ${U.esc(w.label)}. Change">${U.icon('dumbbell', 'sm')}<span class="rf-num">${U.esc(w.label)}</span>${U.icon('pencil', 'sm')}</button>` : ''}`;
       hint = w && w.first
         ? `<p class="pl-hint t-callout rf-muted">New exercise: pick a weight you could lift about ${t + 2} times. It's remembered for next time.</p>`
@@ -844,33 +851,54 @@
     if (!P || root().hidden) return;
     const now = Date.now();
     const el = root();
-    const setCount = (txt) => { const c = el.querySelector('.pl-count'); if (c && c.textContent !== txt) c.textContent = txt; };
-    const setRing = (v) => { const r = el.querySelector('.rf-ring'); if (r) { r.style.setProperty('--rf-value', Math.max(0, Math.min(1, v)).toFixed(3)); r.setAttribute('aria-valuenow', String(Math.round(v * 100))); } };
+    // The count's seconds tick. A minute passing and time added roll it (mo().count), and so does
+    // a tick that comes while that roll is still on its way (set as text, it would cut the roll off).
+    const setCount = (txt) => {
+      const c = el.querySelector('.pl-count');
+      if (!c) return;
+      const was = shownCount.has(c) ? shownCount.get(c) : c.textContent;
+      shownCount.set(c, txt);
+      if (was === txt) return;
+      const mins = (t) => (t.includes(':') ? t.split(':')[0] : null);
+      const secs = (t) => t.split(':').reduce((a, x) => a * 60 + Number(x), 0);
+      const roll = mo().count && (now - P.rolledAt < 700 || (mins(was) != null && mins(txt) != null && mins(was) !== mins(txt)));
+      if (!roll) { c.textContent = txt; return; }
+      P.rolledAt = now;
+      mo().count(c, txt, secs(txt) - secs(was));
+    };
+    // (A rest's ring that's filling as the rest begins is left to it for those two frames.)
+    const setRing = (v) => { const r = el.querySelector('.rf-ring'); if (r && !r.hasAttribute('data-gh-fill')) { r.style.setProperty('--rf-value', Math.max(0, Math.min(1, v)).toFixed(3)); r.setAttribute('aria-valuenow', String(Math.round(v * 100))); } };
+    // Each of the 3-2-1 is a beat on the count, with its cue; a rest ending is one on the ring.
+    const beat = (big) => { if (mo().beat) mo().beat(el.querySelector(big ? '.pl-timer .rf-ring' : '.pl-count'), big); };
     if (P.phase === 'countdown') {
       const s = Math.min(3, Math.ceil((P.goAt - now) / 1000)); // 3-2-1, however late a tick runs
-      if (s > 0 && s !== P.lastCue) { plat().cue('countdown'); P.lastCue = s; }
+      if (s > 0 && s !== P.lastCue) { plat().cue('countdown'); P.lastCue = s; setCount(String(Math.max(1, s))); beat(); }
       if (now >= P.goAt) { plat().cue('go'); P.phase = 'running'; P.startAt = now; P.endAt = now + P.dur * 1000; P.lastCue = null; draw(); return; }
       setCount(String(Math.max(1, s)));
       setRing(1);
     } else if (P.phase === 'running') {
       const left = (P.endAt - now) / 1000;
       const s = Math.ceil(left);
-      if (left > 0 && s <= 3 && s !== P.lastCue) { plat().cue('countdown'); P.lastCue = s; }
+      const tick = left > 0 && s <= 3 && s !== P.lastCue;
+      if (tick) { plat().cue('countdown'); P.lastCue = s; }
       if (left <= 0) { plat().cue('done'); finishTimed(P.dur, true); return; }
       setCount(U.fmtDur(left));
+      if (tick) beat();
       setRing(left / P.dur);
     } else if (P.phase === 'rest' && P.restEnd) {
       const left = (P.restEnd - now) / 1000;
       const s = Math.ceil(left);
-      if (left > 0 && s <= 3 && s !== P.lastCue) { plat().cue('countdown'); P.lastCue = s; }
+      const tick = left > 0 && s <= 3 && s !== P.lastCue;
+      if (tick) { plat().cue('countdown'); P.lastCue = s; }
       if (left <= 0) {
         plat().cue('done');
         P.restEnd = null; P.lastCue = null;
-        if (P.askRir && P.rirAnswered == null) { draw(); return; } // keep the question up
+        if (P.askRir && P.rirAnswered == null) { draw(); beat(true); return; } // keep the question up
         endRest();
         return;
       }
       setCount(U.fmtDur(left));
+      if (tick) beat();
       setRing(left / Math.max(1, P.restTotal));
     }
   }
@@ -881,7 +909,10 @@
     P.phase = 'countdown';
     P.goAt = Date.now() + 3000;
     P.lastCue = null;
+    const fresh = !root().querySelector('.pl-timer');
     draw();
+    // The ring pops in where the seconds were (on the step's own screen; a new scene brings its own).
+    if (fresh && mo().timerIn) mo().timerIn(root());
   }
   function endRest() {
     const next = cur();
@@ -916,7 +947,7 @@
     finishTimed(0, true);
     if (!counting()) U.haptic('skip');
   };
-  U.act.plMore = () => { if (P && P.restEnd) { P.restEnd += 15000; P.restTotal += 15; loop(); U.haptic('extend'); } };
+  U.act.plMore = () => { if (P && P.restEnd) { P.restEnd += 15000; P.restTotal += 15; P.rolledAt = Date.now(); loop(); U.haptic('extend'); } };
   U.act.plSkipRest = () => {
     if (!P) return;
     P.restEnd = null;
@@ -1181,9 +1212,10 @@
     const then = kinds.includes('pr') ? 'pr' : kinds.includes('level') || kinds.includes('weight') ? 'levelUp' : null;
     if (then) setTimeout(() => U.haptic(then), Math.max(0, 700 - (Date.now() - tapped)));
     if (big && G.Refract && G.Refract.burst && !U.reduced()) {
-      // Each burst within Refract 1.4's 8 to 14 beads: one card gets 14, several get 8 each, three at
-      // most.
-      setTimeout(() => { const cards = Array.from(el.querySelectorAll('.celebrate')); for (const c of cards.slice(0, 3)) { try { G.Refract.burst(c, { count: cards.length > 1 ? 8 : 14 }); } catch (e) { /* ignore */ } } }, 350);
+      // One burst (14 beads, the most Refract 1.4 sprays), from the first of the cards as it lands:
+      // the cards themselves land one after another (src/ui/moments.js), and three bursts at once
+      // were more than the moment.
+      setTimeout(() => { const c = el.querySelector('.celebrate'); if (c) { try { G.Refract.burst(c, { count: 14 }); } catch (e) { /* ignore */ } } }, 350);
     }
     const n = el.querySelector('.streak-roll');
     if (n && G.Refract && G.Refract.roll && !U.reduced()) setTimeout(() => { try { G.Refract.roll(n, n.dataset.to, { from: n.dataset.from, dir: 1 }); } catch (e) { /* ignore */ } }, 250);

@@ -93,6 +93,8 @@ src/ui/guide.js          tour (cards over Today after the first workout), first-
 src/ui/firstrun.js       Before you start: health and privacy, once, before set-up or Today
 src/ui/motion.js         route changes, glides, collapse and expand, glass that forms and changes
                          shape (U.motion), menus (U.menu)
+src/ui/moments.js        motion for particular moments, a part that loads after launch: a picture that
+                         travels into its sheet, rings and bars that fill, the workout player's own
 src/ui/lazy.js           stand-ins for the parts that load when they're needed (APP_CHUNKS)
 src/ui/stills.js         the 3D figure's stills of the moves, kept on the phone (U.stills): Plan's
                          tiles, the plan builder's, set-up's reveal, Settings' preview
@@ -196,6 +198,68 @@ left alone. A few conventions:
   and shrinks away, then the panel dissolves into Today, whose cards rise back with the workout not
   started; from Today, its buttons pinch away and its card folds and settles back
   (`U.todayCancelled`); the toast with Undo only comes after. Reduced motion: short fades.
+- Motion for particular moments is a part of its own, `src/ui/moments.js` (the `moments` chunk,
+  warmed first of the parts a moment after launch): launch pays nothing for it, nothing in it plays
+  at launch, and until it's in each of these moments happens as it did (the callers ask
+  `U.motion.scene && …`). It adds to `U.motion`, on the same curves (`U.motion.tok`), by transform and
+  opacity only; anything it starts ends within 400 ms except the finish (1.2 s), a new tap always
+  takes over, and with reduced motion none of it moves anything.
+  - **Rings and bars fill** (`fill`, `arrived`): Refract glides a ring or a bar whenever its value
+    changes, but one that's new on the page has nothing to glide from. As a route change or a sheet
+    brings one, it's held at what it last showed in that place (nothing, the first time; its
+    transition off meanwhile, so it doesn't glide there) and given its value 140 ms later, once the
+    page is in. One that shows what it showed last time is left alone, so a tab opened again doesn't
+    replay it, and a value changed elsewhere glides from the old one. The first eight of a page.
+  - **Charts draw in once** (`arrived`, and a sheet's opening): a chart's wipe (`.ch-svg`,
+    `src/styles.css`) plays the first time it's seen; a page or a sheet that brings it back shows it
+    drawn (its wipe turned off before the frame that would show it), so Progress doesn't draw its
+    charts again at every visit. A new range or a new day is another chart (the svg's key), which
+    draws in.
+  - **A picture travels** (`travel`): a copy of it (inert, `aria-hidden`, `.motion-copy`) moves from
+    where it is into another box, keeping its shape, and fades out over what's drawn there. A sheet
+    carries in a part of what was tapped (`CARRY` in `moments.js`): a move's picture (`.pw-thumb`,
+    `.cp-thumb`, `.pl-fig`: Plan's rows, the plan builder's, the player's figure and Up next) into its
+    figure box (`.sheet-fig`), and a health number's icon (`.hl-ico`, Health's tiles) into its
+    sheet's icon (`.ms-ico`), keeping the tile's colours. It moves over the same time and on the
+    same curve as the panel's slide, so it lands as the sheet does; what the sheet draws there shows
+    only at the very end, when the two are within a few pixels (the sheet's part is still rising
+    with the panel before that, and an earlier hand-off showed both, up to 100 px apart). The part
+    hears the sheet's first move (`gh-sheet-moving`, sent before the panel's slide starts, when the
+    panel is laid out where it will rest) and knows what was tapped from a click listener of its own,
+    so no screen names its sheet's source. A live 3D figure (a canvas) has no picture to copy: its
+    sheet just opens. (A health number's value was tried too: a copy of words at another size never
+    matched the sheet's closely enough to stand in for it.)
+  - **The workout player** (`enterPlayer`, `scene`, `timerIn`, `count`, `beat`; called from
+    `src/ui/player.js`): it opens with its main button growing out of the button that was tapped,
+    both being the same tinted glass. Between two scenes the figure travels between its card and Up
+    next's picture when the move is the same one (a set done; the next set coming forward) while the
+    rest of the scene fades in as one piece, the dot
+    of the set just done lands, a rest's ring fills from nothing (`data-gh-fill` keeps the player's
+    clock off it for those two frames) and what was logged settles in a beat later. A hold's ring
+    pops in where its seconds were, each of the 3-2-1 is a beat on the count with its cue, a rest
+    that ends with the question still up is one on the ring, and a minute passing or +15 s rolls the
+    count (`Refract.roll`). The finish lands a part at a time (the title and the streak, each card
+    110 ms after the last, then what's next), with one burst from the first card. `scene` is called
+    before the patch, where it reads where the figure is; what it returns plays after, and reads the
+    new box in the frame's read pass (`U.readSoon`), so a scene change still lays out once.
+- A list whose children are keyed and aren't a `.section` or an `.rf-list` glides when it opts in with
+  `data-flip` (Health's insights, Today's session rows, keyed by their move, which Short on time
+  takes out from where they are). Not while typing: Settings' search draws its results again at each
+  letter (patched with motion, a letter took 13 to 22 ms at 4x CPU where drawing again takes 4 to 5),
+  and only fades as the first results take the parts' place; Food's search patches as before and
+  glides only when what's found online arrives. A filter picked changes more of a list than FLIP
+  glides (eight changes in one container), so the new list would just be there: the plan builder's
+  picker (a muscle group, a kit, Only what I can do; not a letter typed) asks
+  `U.motion.refill(root, sel)` as it's picked, which waits for the list to change (a
+  MutationObserver: it hears the change before the frame that shows it, however late a segment's
+  re-render comes) and has the ten in sight settle in, nearly together, in by 250 ms. The badges'
+  filter doesn't: each tile settling in is a layer of its own, its medal drawn again as it comes and
+  as it lands, 200 to 600 ms of long tasks at 4x CPU in half the taps, so its tiles just change.
+- Every tappable part answers a press at once: Refract's buttons, rows and chips have theirs, the
+  app's cards, rows and text buttons theirs in their own style sheets, and `motion.css` has the
+  rest (the body map's muscles, a dropdown's summary). `ui-motion` forces `:active` on each tappable
+  part of the tabs and a health number's sheet and fails on one that looks the same; a segment (its
+  bead lifts under a finger), a chart's plot and a sheet's grabber answer in code instead.
 - Toasts (`U.toast` in `core.js`, Refract's toaster) come up from the bottom of the screen, above
   whatever is there: the tab bar, Today's floating buttons and the workout capsule, the player's,
   set-up's or a live activity's buttons, or an open sheet's main buttons (`--toast-lift`, read again
@@ -213,7 +277,7 @@ left alone. A few conventions:
   `U.toastWhenFree(fn)`, which waits until no sheet, dialog, menu or other toast is up, and not the
   player or set-up. `test/ui-toast.mjs` checks all of it.
 
-**Parts that load when they're needed.** Set-up (`src/ui/onboarding.js`), the plan review with
+**Parts that load when they're needed.** The moments' motion (`src/ui/moments.js`, above), set-up (`src/ui/onboarding.js`), the plan review with
 Why this plan (`src/planreview.js`, `src/ui/review.js`), How it works (`src/data/science.js`,
 `src/ui/science.js`), a badge's share card (`src/ui/sharecard.js`), notifications' planner
 (`src/notify.js`, loaded by `src/ui/notify.js` for someone who has them on) and the Food page with

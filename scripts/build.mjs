@@ -328,6 +328,9 @@ export const APP_SCRIPTS = [
 // page (other screens share their classes). src/ui/lazy.js has the small stand-ins that load a part
 // the first time it's used, and warms the likely ones once the first frame is drawn.
 export const APP_CHUNKS = [
+  // Motion for particular moments (a picture travelling into its sheet, rings filling, the workout
+  // player's set, rest and finish): nothing the first frame needs, and nothing of it plays at launch.
+  { name: 'moments', scripts: ['src/ui/moments.js'] },
   // Set-up: only someone who isn't set up yet, or who edits their answers, needs it.
   { name: 'setup', scripts: ['src/ui/onboarding.js'] },
   // The AI check of the plan, and Why this plan.

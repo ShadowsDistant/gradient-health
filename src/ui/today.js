@@ -35,7 +35,7 @@
     if (s.warmup.length) rows.push(`<li class="ex ex-muted"><span class="ex-tag is-art">${U.art('sun')}</span><span class="ex-name">Warm-up</span><span class="ex-meta">${s.warmup.map((w) => U.esc(w.name.toLowerCase())).join(', ')}</span></li>`);
     for (const t of s.tests || []) rows.push(`<li class="ex is-lead"><span class="ex-tag">${U.icon('layers', 'sm')}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${t.moveId}">${U.esc(t.name)}</button><span class="ex-meta">${U.side(t.side)} first, max reps</span></li>`);
     for (const it of s.items) {
-      rows.push(`<li class="ex"><span class="ex-tag rf-num">${it.superset ? U.esc(it.superset) : ''}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${it.moveId}">${U.esc(it.name)}${it.swappedFrom ? ` <span class="t-caption rf-muted">(swapped)</span>` : ''}</button><span class="ex-meta rf-num">${it.sets} × ${U.nb(U.target(it))}${it.uni ? ' each side' : ''}${it.power ? '&nbsp;· fast up' : ''}${it.load && it.load.label ? `&nbsp;· ${U.nb(it.load.label.replace(/ (dumbbells?|kettlebell)$/, ''))}` : ''}</span></li>`);
+      rows.push(`<li class="ex"><span class="ex-tag rf-num">${it.superset ? U.esc(it.superset) : ''}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${it.moveId}">${U.esc(it.name)}${it.swappedFrom ? ` <span class="t-caption rf-muted">(swapped)</span>` : ''}</button><span class="ex-meta rf-num">${U.roll(it.sets)} × ${U.nb(U.target(it))}${it.uni ? ' each side' : ''}${it.power ? '&nbsp;· fast up' : ''}${it.load && it.load.label ? `&nbsp;· ${U.nb(it.load.label.replace(/ (dumbbells?|kettlebell)$/, ''))}` : ''}</span></li>`);
       for (const x of s.extras || []) if (x.fam === it.fam) rows.push(`<li class="ex is-lead"><span class="ex-tag">+1</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${x.moveId}">${U.esc(x.name)}</button><span class="ex-meta rf-num">${U.side(x.leadOnly || lead).toLowerCase()} only · ${U.esc(U.target(x))}</span></li>`);
     }
     for (const x of s.extras || []) if (!s.items.some((it) => it.fam === x.fam)) rows.push(`<li class="ex is-lead"><span class="ex-tag">+1</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${x.moveId}">${U.esc(x.name)}</button><span class="ex-meta rf-num">${U.side(x.leadOnly || lead).toLowerCase()} only · ${U.esc(U.target(x))}</span></li>`);
@@ -47,7 +47,12 @@
         ? `<li class="ex"><span class="ex-tag">${U.icon('heart', 'sm')}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${U.esc(mb.moveId)}">${U.esc(mb.name)}</button><span class="ex-meta rf-num">Easy cardio · ${Math.max(1, Math.round(mb.target / 60))} min</span></li>`
         : `<li class="ex ex-muted"><span class="ex-tag is-art">${U.art('moon', 'sm')}</span><span class="ex-name">${U.esc(mb.name)}</span><span class="ex-meta">${mb.target} s</span></li>`);
     }
-    return `<ul class="ex-list">${rows.join('')}</ul>`;
+    // Each row keyed by its move (or its name), in a list that glides (data-flip): Short on time
+    // takes rows out from where they are and the rest move up, rather than the list being drawn again.
+    // (A move that's there twice, its extra set on one side, gets a second key.)
+    const had = {};
+    const key = (r, i) => { const m = /data-arg="([^"]+)"/.exec(r) || /class="ex-name"[^>]*>([^<]+)/.exec(r); const k = m ? m[1] : `r${i}`; had[k] = (had[k] || 0) + 1; return had[k] > 1 ? `${k}-${had[k]}` : k; };
+    return `<ul class="ex-list" data-flip>${rows.map((r, i) => r.replace('<li ', `<li data-key="x-${key(r, i)}" `)).join('')}</ul>`;
   }
   U.sessionRows = sessionRows;
   function phaseBadges(week, s) {
@@ -67,7 +72,7 @@
     // Age and health (src/access.js): what the plan works around, and any reminders for today.
     const around = GH.access ? GH.access.plannedAround(S.profile) : null;
     const notes = (s.notes || []).filter((n) => n && n.text);
-    return `<div class="card session" data-key="main">
+    return `<div class="card session" data-key="main" data-flip>
         <div class="session-head"><span class="rf-card-eyebrow">${s.flare ? 'Flare day' : 'Workout'} · about ${U.roll(s.estimateMin)} min${where === 'gym' ? ' · gym' : ''}</span><span class="session-badges">${phaseBadges(plan.week, s)}</span></div>
         <h2 class="t-title-2">${U.esc(s.title)}</h2>
         ${s.groups.length || (s.custom && s.custom.name) ? `<p class="t-footnote rf-muted session-groups">${s.custom && s.custom.name ? `${U.esc(s.custom.name)}&nbsp;· ` : ''}${s.groups.map((g) => U.esc(B().GROUP_NAME[g] || g)).join('&nbsp;· ')}</p>` : ''}
