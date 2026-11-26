@@ -46,6 +46,7 @@
     'bal_tandem bal_one_wall bal_walk bal_step bal_one bal_clock get_halfkneel get_kneel fin_march_easy fin_step',
     'wu_march wu_heel mob_quad curl_self tri_self chest_palm raise_bw press_reach bk_stand_squeeze ab_stand_crunch',
     'side_stand sq_sts_power sq_bw_power sq_goblet_power sq_sts_hands_power sq_stepup_power leg_press_power',
+    'curl_hammer_slow tri_oh_one tri_close_incline tri_close_knee sq_split_slow row_door_slow', // 1.15
     // New moves go here, each release's in a line of its own, in the order they were added.
   ].join(' ').split(' ');
 })(typeof window !== 'undefined' ? window : globalThis);
