@@ -1051,7 +1051,8 @@ section('Moments: the workout player');
   const cards = fin.info.filter((x) => /celebrate|bdg-card/.test(x.cls));
   const delays = fin.info.map((x) => x.delay);
   check('the finish: every part lands by transform and opacity', fin.info.length >= 3 && fin.info.every((x) => x.props === 'opacity,transform'), fin.info);
-  check('one after another: the title first, then what the workout brought, each card popping in its turn, then what\'s next', delays.every((d, i) => i === 0 || d >= delays[i - 1]) && cards.length >= 1 && cards.every((c) => c.pop) && cards.every((c, i) => i === 0 || c.delay > cards[i - 1].delay), fin.info);
+  // (The first four cards pop; any after them land with what's next, so it all fits in 1.2 s.)
+  check('one after another: the title first, then what the workout brought, each card popping in its turn, then what\'s next', delays.every((d, i) => i === 0 || d >= delays[i - 1]) && cards.length >= 1 && cards.every((c, i) => c.pop === i < 4) && cards.every((c, i) => i === 0 || c.delay > cards[i - 1].delay), fin.info);
   check('all of it within 1.2 s, and it rests in place', Math.max(...fin.info.map((x) => x.end)) <= 1200 && fin.rest, fin.info.map((x) => x.end));
   await page.evaluate(() => document.querySelector('.player [data-act="plClose"]').click());
   await settle(600);
