@@ -352,7 +352,9 @@ export const APP_CHUNKS = [
   // Your plans' screens and sheets: the Plans page, a plan's page, the exercise picker, New plan,
   // sharing and Build me a plan. The Plan tab's banner, the move pictures and links to a shared plan
   // are in the page (src/ui/customplan.js), with the stand-ins that load this, or warm it after launch.
-  { name: 'planUi', scripts: ['src/ui/planbuilder.js'] },
+  // The plan code comes with it (its move numbers, then its reader and writer): GH.customPlan.decode()
+  // loads this part before it reads one.
+  { name: 'planUi', scripts: ['src/data/plancode-moves.js', 'src/plancode.js', 'src/ui/planbuilder.js'] },
 ];
 
 // Heavy parts that load only when they're used (the 3D figure, the on-device model runtime, the
@@ -447,12 +449,15 @@ export async function figureId(src = read) {
 
 // The page a shared plan's link opens in a browser (docs/p/index.html, served by GitHub Pages from
 // /docs): the plan from the link's #fragment, the move names and the QR encoder inline, and a
-// content security policy that allows exactly its one script. No other requests, no trackers.
+// content security policy that allows exactly its one script. No other requests, no trackers. Each
+// move also carries its plan code number (src/data/plancode-moves.js), for the page's own writer of
+// the plan's code.
 export function sharePage() {
   globalThis.GH = globalThis.GH || {};
-  for (const p of APP_SCRIPTS.filter((x) => /^src\/data\/moves/.test(x))) new Function(read(p))();
+  for (const p of APP_SCRIPTS.filter((x) => /^src\/data\/moves/.test(x)).concat('src/data/plancode-moves.js')) new Function(read(p))();
+  const numbers = globalThis.GH.PLAN_CODE_MOVES;
   const moves = {};
-  for (const [id, m] of Object.entries(globalThis.GH.moves.MOVES)) if (m && m.name) moves[id] = [m.name, m.group || '', m.timed ? 1 : 0];
+  for (const [id, m] of Object.entries(globalThis.GH.moves.MOVES)) if (m && m.name) moves[id] = [m.name, m.group || '', m.timed ? 1 : 0, numbers.indexOf(id)];
   let html = read('src/share-page.html')
     .replace('/*@QR*/', () => safeJs(read('src/qr.js')))
     .replace('/*@MOVES*/{}', () => safeJs(JSON.stringify(moves)));

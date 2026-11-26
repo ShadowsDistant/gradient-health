@@ -558,7 +558,9 @@
   ACT.welcome = () => {
     const sh = Q._shared;
     const who = sender(sh);
-    const links = `<div class="ob-links" data-key="links"><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="obRestore">Restore from a backup</button><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="obFood">Just tracking food?</button></div>`;
+    // "Have a plan code?" opens Your plans' sheet for one (cpScan); the plan it holds comes back here
+    // as a link's does (peekShared, below), so there's nothing to enter once one is waiting.
+    const links = `<div class="ob-links" data-key="links"><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="obRestore">Restore from a backup</button><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="obFood">Just tracking food?</button>${sh ? '' : '<button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="cpScan">Have a plan code?</button>'}</div>`;
     return sh ? { primary: ['obFriend', who ? `Start with ${who}'s plan` : 'Start with this plan', 'play'], secondary: ['obStart', 'Make my own plan'], links }
       : { primary: ['obStart', 'Get started'], links };
   };

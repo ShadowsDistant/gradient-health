@@ -45,6 +45,8 @@ src/planreview.js        the AI check of the plan (GH.planReview): what's sent, 
 src/tailor.js            Tailor my plan: a request into a proposal, applied and undone (GH.tailor)
 src/customplan.js        your own plans: checks, running them, swaps, progression, the share code and
                          Build me a plan (GH.customPlan)
+src/plancode.js          the plan code (GH.planCode): a plan as a short text code, written and read; in
+                         the plan builder's part, with src/data/plancode-moves.js, each move's number
 src/qr.js                a QR code encoder that draws SVG (GH.qr), for sharing plans
 src/share-page.html      the page a shared plan's link opens in a browser (built to docs/p/index.html)
 src/devicecoach.js       the on-device model's prompt: rules, a compact data brief, safety routing
@@ -82,7 +84,8 @@ src/ui/customplan.js     Your plans: the list of plans, the plan builder's stand
                          and what both share (the tiles' pictures, U.cpKit)
 src/ui/planbuilder.js    the plan builder, a part of its own (planUi, loaded on a finger-down on a way in
                          or in a calm moment): a plan's page, the exercise picker, an exercise's sheet,
-                         New plan, sharing, a shared plan's preview, Build me a plan and Improve
+                         New plan, sharing (a plan code, a QR code, a link), adding a shared plan by
+                         its code, a shared plan's preview, Build me a plan and Improve
 src/ui/metric.js         a health number's sheet: its history, chart, and adding or changing it
 src/ui/bodymap.js        Progress's body map (front and back, 17 muscles) and the muscle sheet
 src/ui/guide.js          tour (cards over Today after the first workout), first-week checklist, tab
@@ -115,6 +118,7 @@ scripts/store-assets.mjs   the store images in docs/store/ from docs/screenshots
 scripts/store-3d.mjs     the 3D figure and medal renders the store images and the video use
 scripts/promo-video.mjs  the store's promo video (docs/store/promo-1080p.mp4) and its thumbnail
 scripts/release-notes.mjs  What's new for a version, for its GitHub release and the stores
+scripts/plan-code.mjs    a plan file's plan code and the plan a code holds, by the app's own code
 scripts/make-tiny-gguf.py  a tiny random-weight model for test/llm.mjs
 ```
 
@@ -1198,15 +1202,67 @@ state (`test/customplan.mjs`); `src/ui/customplan.js` is the screens (`test/ui-c
   `gradienthealth://plan?d=<data>`, `intent://plan?d=<data>#Intent;…` and the bare data. A typical
   3-day plan's link is about 350 characters, a version 12 QR code. `src/qr.js` draws the code as SVG;
   `test/customplan.mjs` reads it back with ZXing. Scanning is the barcode sheet with `{ qr: true }`.
+  The QR code and the link stay in this format, so an older app still reads them, and links made
+  by 1.14 open for good (`test/customplan.mjs` keeps two as they were written).
+- **The plan code.** `src/plancode.js` (`GH.planCode`, and `toCode`, `fromCode` and `dayPlan` on
+  `GH.customPlan`) writes a plan as a short text code to copy into a message, read out or type:
+  `GH19-3KX4-HZBX-…`, "GH" and then Crockford base32 (no I, L, O or U) in groups of four. It's a
+  format of its own, bit-packed, and much shorter than a link: 60 characters for a 3-day plan of 15
+  exercises under the app's own names, 28 for one workout of six, and 104 for the typical 18-exercise
+  plan with its names, where its link has 351. There is no server: the code is the plan.
+  - *The frame* is the same for every format to come: `GH`, one symbol for the format (1), the plan's
+    bits, zero bits up to a whole group, then a 20-bit CRC over all of that (x^20 + x^19 + x^6 + x^5 +
+    x^3 + 1, started from all ones and flipped at the end). So an older app can tell a newer format
+    ("It was shared from a newer version of the app.") from a typo ("That code has a typo. Check it
+    and try again."). The check catches every single wrong character and every two neighbours
+    swapped; whole groups catch one dropped or doubled.
+  - *Format 1's bits* are laid out in the file's header: the days, set weekdays, and each exercise's
+    move, sets, reps or seconds, and its rest when one is set, the usual values in fewer bits. A
+    plan's name and a day's title are in the code only when they differ from what the app would call
+    them ("My plan", a single workout by its day, a day by its muscles), in 5-bit letters, or UTF-8
+    for anything else. The note and the sharer's name are never in it. A change to any of format 1's
+    tables or fields is format 2.
+  - *A move is a number*, its place in `GH.PLAN_CODE_MOVES` (`src/data/plancode-moves.js`), and **that
+    list only grows**: a new move's id goes at the end; nothing in it is reordered, renamed or taken
+    out, and a number is never used again (a move dropped from the library keeps its place). A code
+    with a number this version doesn't have reads as a plan without that exercise, and says so.
+    `test/customplan.mjs` holds a hash of the 296 that 1.15 shipped with, and fails when a move in
+    the library has no number: add it to the end of the list.
+  - *Reading one* is forgiving: case, spaces, hyphens and line breaks don't matter, O reads as 0 and
+    I and L as 1, and a code is found among other words, with or without its GH. What it yields
+    goes through `normalize()`, and no more than 8,192 characters and 2,048 symbols are looked at
+    (`test/security.mjs`: very long, all one symbol, random, the right check over nonsense).
+  - *It loads with the plan builder* (`planUi`), not at launch. `decode()` loads that part before it
+    reads one, so `decode()` and `dataFrom()` take a link or a code from every way in: the scanner, a
+    link (`gradienthealth://plan?c=<code>` too), the field.
+  - `node scripts/plan-code.mjs plan.json` prints a plan file's code, made by the app's own code:
+    what `normalize()` changed or left out, the code's length and the plan read back from it.
+    `--decode "<code>"` prints the plan a code holds, `--moves [words]` the ids a plan can name, and
+    `--json` the plan as a plan file. The file is `{ "name", "weekdays"?, "days": [{ "title", "items":
+    [{ "move", "sets", "reps" | "secs", "rest"? }] }] }`.
+- **Sharing one, and adding one.** The share sheet (`shareSheet` in `planbuilder.js`) has the QR code,
+  the link and the plan code with Copy code; a day's menu has Share this workout, the same sheet for a
+  plan of just that day (`dayPlan`, not saved). Add a shared plan opens a sheet with a field for the
+  code: it groups itself as it's typed, says what the code holds the moment it's whole, and says
+  what's wrong under the field, not in a toast (a code still being typed isn't called a typo until
+  it's pasted, Done is pressed or the field is left). A link works in it too, Paste shows where the
+  clipboard may be read, and Scan a QR code is the other way in. The preview names the equipment a
+  plan uses that isn't in the person's, with "I have this": the equipment editor
+  (`U.editAnswers('equipment')`), then the preview again, checked against what they have now. A
+  one-day plan can be saved, or go into one of their plans with room as its last day (Add it to a
+  plan).
 - **Links into the app.** The shell calls `window.__gh.onLink(url)` when a link opens the running app
   (it returns true when it took the link; other handlers stay chained), and `AndroidBridge.pendingLink()`
   returns the link the app was started with. A link that arrives during set-up is offered on its
-  welcome (`U.peekSharedPlan`): three screens into that plan instead of six.
+  welcome (`U.peekSharedPlan`): three screens into that plan instead of six. The welcome's "Have a
+  plan code?" opens Add a shared plan's sheet, and the plan it reads goes the same way.
 - **The share page.** `src/share-page.html` is built to `docs/p/index.html` with the QR encoder and the
   move names inlined, so it makes no requests (its CSP allows only its own script, by hash). It reads the
   plan from the part after `#`, which browsers never send, and shows it. On Android it offers "Open in
   Gradient Health" (an `intent://plan?d=…` link with the releases page as the fallback); elsewhere it
-  shows the code to scan. **GitHub Pages must be on** for links to open in a browser (the repository's
+  shows the code to scan. Either way it shows the plan's code to type into the app: the page has a
+  small writer of format 1 of its own (`planCode`, between the `CODE` marks, with each move's number
+  from the build), which `test/customplan.mjs` runs against the app's for a few hundred plans. **GitHub Pages must be on** for links to open in a browser (the repository's
   Settings, Pages, Deploy from a branch, `main`, `/docs`). QR codes, and links opened straight in the
   app, work without it.
 - **The builder** (`src/ui/planbuilder.js`, its logic in `src/customplan.js`). The picker is a windowed

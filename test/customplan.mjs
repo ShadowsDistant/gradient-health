@@ -1,5 +1,7 @@
 // Custom plans (GH.customPlan): what a plan may hold and how older or foreign ones are read, the
-// share code (a round trip, its size in a QR code, a real QR reader on the code), swaps for missing
+// share code (a round trip, its size in a QR code, a real QR reader on the code), the plan code (its
+// frozen move numbers, round trips for every move and a few hundred made-up plans, every typo caught,
+// forgiving reads, a code or a link through decode(), and scripts/plan-code.mjs), swaps for missing
 // equipment and sore or careful joints, a plan in use feeding the calendar, todayPlan, buildSession
 // and the Plan tab (with readiness and deload weeks, a switch part-way through a week, deleting and
 // editing the plan in use), progression over weeks, the coach's plan builder with a model's answer
@@ -8,8 +10,12 @@
 // most like one, and the ready-made plans (Full body, Upper and lower, Push, pull, legs, No
 // equipment) built for this person's days, minutes and kit.
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
-import { load, check, section, done } from './lib.mjs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { load, root, check, section, done } from './lib.mjs';
 
 const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/planweek.js', 'src/tailor.js', 'src/store.js', 'src/coach.js', 'src/customplan.js', 'src/qr.js');
 const B = GH.brain;
@@ -148,6 +154,296 @@ const typical = C.normalize({
   const s1 = C.save(S, (await C.decode(link)).plan);
   const s2 = C.save(S, (await C.decode(link)).plan);
   check('saving the same plan twice keeps one copy', !s1.existed && s2.existed && s2.plan.id === s1.plan.id && C.list(S).length === 1 && s1.plan.from === 'Alex');
+}
+
+/* ------------------------------------------------------------------ the plan code */
+// What a code has to bring back: the name, the weekdays, each day's title as it shows, its exercises.
+const held = (p) => JSON.stringify([p.name, p.weekdays, p.days.map((d, i) => [C.titleOf(p, i), d.items])]);
+const symbols = (code) => code.replace(/-/g, '');
+const caught = (text) => { try { C.fromCode(text); return null; } catch (e) { return e.code || `threw ${e.message}`; } };
+const SHAPE = /^GH[0-9A-HJKMNP-TV-Z]{2}(-[0-9A-HJKMNP-TV-Z]{4})+$/;
+// The same few hundred plans every run.
+const seeded = (seed) => () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+// n made-up plans, the same every run, the limits among them: 6 days, 12 exercises, 10 sets, 100
+// reps, 600 s, rests, set days, long names, and names in other alphabets.
+function madeUp(n, seed) {
+  const MOVES = GH.moves.MOVES, ids = Object.keys(MOVES);
+  const rnd = seeded(seed);
+  const int = (lo, hi) => lo + Math.floor(rnd() * (hi - lo + 1));
+  const pick = (a) => a[Math.floor(rnd() * a.length)];
+  const WORDS = ['Push', 'pull', 'Legs', 'day', 'A', '2', 'upper', 'Body', '&', 'arms', '(heavy)', 'Über', 'ноги', '背中', '💪', 'no. 3', 'core'];
+  const text = (max) => { let s = ''; for (let k = int(1, 6); k > 0; k--) { const w = pick(WORDS); if ((s ? s.length + 1 : 0) + w.length <= max) s = s ? `${s} ${w}` : w; } return s; };
+  return Array.from({ length: n }, (_, k) => {
+    const nd = k % 7 === 0 ? 6 : int(1, 6);
+    const days = Array.from({ length: nd }, () => ({
+      title: rnd() < 0.5 ? '' : text(30),
+      items: Array.from({ length: k % 5 === 0 ? 12 : int(1, 12) }, () => {
+        const id = pick(ids), m = MOVES[id];
+        const it = { move: id, sets: pick([1, 2, 3, 3, 3, 4, 4, 5, 6, 8, 10]) };
+        if (m.timed) it.secs = pick([5, 10, 20, 30, 30, 45, 60, 90, 160, 165, 600, int(5, 600)]);
+        else it.reps = pick([1, 5, 6, 8, 10, 12, 15, 20, 32, 33, 100, int(1, 100)]);
+        if (rnd() < 0.3) it.rest = pick([0, 15, 20, 45, 60, 90, 300, int(0, 300)]);
+        return it;
+      }),
+    }));
+    const weekdays = rnd() < 0.4 ? [0, 1, 2, 3, 4, 5, 6].sort(() => rnd() - 0.5).slice(0, nd) : null;
+    return { name: k % 9 === 0 ? 'N'.repeat(40) : rnd() < 0.25 ? '' : text(40), days, weekdays };
+  });
+}
+// A plan whose text was written down when format 1 shipped: if either stops matching, codes people
+// already have would read differently.
+const PINNED = {
+  name: 'Café legs', weekdays: [1, 3, 6], days: [
+    { title: 'A & B', items: [{ move: 'curl_towel', sets: 1, secs: 600, rest: 0 }, { move: 'leg_press_power', sets: 10, reps: 100, rest: 300 }, { move: 'push_std', sets: 5, reps: 33 }] },
+    { title: '', items: [{ move: 'walk', sets: 2, secs: 95, rest: 25 }, { move: 'sq_bw', sets: 4, reps: 7 }] },
+    { title: 'Day 3', items: [{ move: 'side_plank', sets: 3, secs: 45 }] },
+  ],
+};
+const PINNED_CODE = 'GH1A-MWA8-DGPD-GX94-1P6A-SVKJ-GR3B-HVM4-067J-QGJF-XMYR-AWY2-02A4-X5Y3-47X3-08C6-1HNR-6G8S-0000-JD70';
+const PPL_CODE = 'GH19-3KX4-HZBX-2TZA-S1MG-W4FM-J71A-31M4-0M46-MN51-3X2T-S40R-1GSD-5988-P8D4-4085-R6G9-E000-DXVN';
+
+section('The plan code: its move numbers');
+{
+  const ids = Object.keys(GH.moves.MOVES), T = GH.PLAN_CODE_MOVES;
+  const none = ids.filter((id) => !T.includes(id)), twice = T.filter((id, i) => T.indexOf(id) !== i);
+  check(`every move has a number, and no id is there twice (${ids.length} moves, ${T.length} numbers)`, none.length === 0 && twice.length === 0, `add at the END of src/data/plancode-moves.js: ${none.join(' ')}${twice.length ? `; there twice: ${twice.join(' ')}` : ''}`);
+  const hash = createHash('sha256').update(T.slice(0, 296).join(' ')).digest('hex');
+  check('the 296 numbers 1.15 shipped with are as they were, in their order', hash === '2dcbe672a7841c375b9a026799951fc9bb389dd4fbe947b1a9fe9bf08df25f07', `${hash}: a move was reordered, renamed or taken out of src/data/plancode-moves.js. New ones go at the end; nothing else changes.`);
+  check('there\'s room for more than 500 moves', T.length < 1023 && T[0] === 'curl_towel' && T[295] === 'leg_press_power');
+  // Numbers from 511 take 9 more bits: a made-up move at 900 goes into a code and comes back.
+  GH.moves.MOVES.far_move = Object.assign({}, GH.moves.MOVES.push_std, { id: 'far_move', name: 'Far move' });
+  GH.PLAN_CODE_MOVES = T.concat(Array.from({ length: 900 - T.length }, (_, i) => `~${i}`), ['far_move']);
+  const far = C.normalize({ days: [{ items: [{ move: 'far_move', sets: 3, reps: 10 }, { move: 'push_std', sets: 3, reps: 10 }, { move: '~3', sets: 3, reps: 10 }] }] }).plan;
+  const farCode = C.toCode(far);
+  check('a move numbered 900 goes into a code and comes back', C.fromCode(farCode).plan.days[0].items.map((it) => it.move).join() === 'far_move,push_std', farCode);
+  // The same code in an app that doesn't have that move yet.
+  delete GH.moves.MOVES.far_move;
+  GH.PLAN_CODE_MOVES = T;
+  const older = C.fromCode(farCode);
+  check('a move from a newer version is left out and reported, and the rest still reads', older.plan.days[0].items.length === 1 && older.plan.days[0].items[0].move === 'push_std' && older.report.unknown.join() === '#900', older);
+  GH.moves.MOVES.far_move = Object.assign({}, GH.moves.MOVES.push_std, { id: 'far_move', name: 'Far move' });
+  GH.PLAN_CODE_MOVES = T.concat(['far_move']);
+  const only = C.toCode({ days: [{ items: [{ move: 'far_move', sets: 3, reps: 10 }] }] });
+  delete GH.moves.MOVES.far_move;
+  GH.PLAN_CODE_MOVES = T;
+  check('a plan of nothing but newer moves says it\'s from a newer version', caught(only) === 'newer');
+}
+
+section('The plan code: round trips');
+{
+  const MOVES = GH.moves.MOVES, ids = Object.keys(MOVES);
+  // Every move, twelve a day and six days a plan, with every number of sets.
+  const off = [];
+  for (let i = 0; i < ids.length; i += 72) {
+    const days = [];
+    for (let j = i; j < Math.min(i + 72, ids.length); j += 12) days.push({ items: ids.slice(j, j + 12).map((id, k) => (MOVES[id].timed ? { move: id, sets: 1 + ((j + k) % 10), secs: 5 + 5 * k } : { move: id, sets: 1 + ((j + k) % 10), reps: 1 + k })) });
+    const p = C.normalize({ name: 'All of them', days }).plan;
+    const back = C.fromCode(C.toCode(p));
+    if (held(back.plan) !== held(p) || back.report.unknown.length) off.push(i);
+  }
+  const alone = ids.filter((id) => {
+    const p = C.normalize({ days: [{ items: [Object.assign({ move: id, sets: 3 }, MOVES[id].timed ? { secs: MOVES[id].start } : { reps: MOVES[id].start })] }] }).plan;
+    return held(C.fromCode(C.toCode(p)).plan) !== held(p);
+  });
+  check(`every one of the ${ids.length} moves goes into a code and comes back, in full plans and alone`, off.length === 0 && alone.length === 0, { off, alone });
+
+  // The fixtures, and how long their codes are.
+  const tCode = C.toCode(typical), tBack = C.fromCode(tCode);
+  const tLink = C.link(await C.encode(typical));
+  check(`the typical plan (3 days, 18 exercises, its names, set days, a rest): ${symbols(tCode).length} characters, where its link has ${tLink.length}`, held(tBack.plan) === held(typical) && symbols(tCode).length === 104 && SHAPE.test(tCode), tCode);
+  check('a plan from a code is a shared one, without the note or who sent it', tBack.plan.source === 'shared' && tBack.plan.note === '' && tBack.plan.from === undefined && tBack.code === tCode && tBack.report.unknown.length === 0, tBack.plan);
+  const ppl = C.normalize(PPL).plan;
+  check(`Push Pull Legs (3 days, 10 exercises, its names): ${symbols(PPL_CODE).length} characters, the code written down when the format shipped`, C.toCode(ppl) === PPL_CODE && held(C.fromCode(PPL_CODE).plan) === held(ppl), C.toCode(ppl));
+  const pinned = C.normalize(PINNED).plan;
+  check('a plan with every kind of number and name still makes, and reads from, the code written down then', C.toCode(pinned) === PINNED_CODE && held(C.fromCode(PINNED_CODE).plan) === held(pinned), C.toCode(pinned));
+  const fifteen = C.normalize({ days: typical.days.map((d) => ({ items: d.items.slice(0, 5) })) }).plan;
+  const fCode = C.toCode(fifteen);
+  check(`3 days, 15 exercises, the app's own names: ${symbols(fCode).length} characters (the aim: about 70 or fewer)`, symbols(fCode).length <= 70 && held(C.fromCode(fCode).plan) === held(fifteen), fCode);
+  const eighteen = C.toCode({ days: typical.days.map((d) => ({ items: d.items })), weekdays: typical.weekdays });
+  check(`the typical plan with the app's own names: ${symbols(eighteen).length} characters`, symbols(eighteen).length <= 72, eighteen);
+  // One workout: a day of a plan as a plan of its own.
+  const six = C.dayPlan(C.normalize({ days: [{ items: typical.days[0].items }] }).plan, 0);
+  const sCode = C.toCode(six);
+  check(`one workout of 6 exercises: ${symbols(sCode).length} characters (the aim: about 30)`, symbols(sCode).length <= 32 && held(C.fromCode(sCode).plan) === held(six) && six.name === 'Chest, shoulders and arms', `${sCode} ${six.name}`);
+  const push = C.dayPlan(typical, 0);
+  const pCode = C.toCode(push);
+  check(`a day shared on its own is named for the day, and its title is in the code once (Push: ${symbols(pCode).length} characters)`, push.name === 'Push' && push.days.length === 1 && C.fromCode(pCode).plan.name === 'Push' && C.fromCode(pCode).plan.days[0].title === 'Push' && symbols(pCode).length <= 36 && C.dayPlan(typical, 9) === null, pCode);
+  const mine = C.normalize({ name: 'My plan', days: [{ items: [{ move: 'push_std', sets: 3, reps: 10 }] }] }).plan;
+  check('a single workout called "My plan" keeps that name', C.fromCode(C.toCode(mine)).plan.name === 'My plan' && C.fromCode(C.toCode({ days: ppl.days })).plan.name === 'My plan');
+
+  // Names: ordinary ones in 5-bit letters, anything else in UTF-8.
+  const names = ['Push Pull Legs', 'my plan', 'PPL', 'Day 1', 'Sam\'s gym split', 'Sam’s plan – week 2', 'Legs & glutes (heavy)', '3x10 @ 60%: easy!?', 'Тренировка', '筋トレ 月曜日', 'Café legs', '💪 Arms', 'تمرين', 'A'.repeat(40), 'É'.repeat(40), '💪'.repeat(20), 'x y '.repeat(10).trim(), 'Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z'];
+  const badNames = names.filter((n) => {
+    const p = C.normalize({ name: n, days: [{ title: n.slice(0, 30), items: [{ move: 'push_std', sets: 3, reps: 10 }] }, { title: '', items: [{ move: 'sq_bw', sets: 3, reps: 10 }] }] }).plan;
+    return held(C.fromCode(C.toCode(p)).plan) !== held(p) || p.name !== n;
+  });
+  check('names in any alphabet come back as written (accents, Cyrillic, Japanese, Arabic, emoji, 40 characters)', badNames.length === 0, badNames);
+  const len = (n) => symbols(C.toCode({ name: n, days: mine.days.concat(mine.days) })).length;
+  check('an ordinary name takes about a symbol a letter, another script about three bytes a letter', len('Morning strength') - len('My plan') <= 20 && len('Тренировка') - len('My plan') <= 36, [len('My plan'), len('Morning strength'), len('Тренировка')]);
+
+  // A few hundred plans, the limits among them.
+  const seen = { days6: 0, items12: 0, sets10: 0, reps100: 0, secs600: 0, rest300: 0, rest0: 0, restOdd: 0, weekdays: 0, utf8: 0, name40: 0, one: 0 };
+  const wrong = [];
+  for (const [n, raw] of madeUp(400, 20261125).entries()) {
+    const p = C.normalize(raw).plan;
+    const code = C.toCode(p);
+    const back = C.fromCode(code);
+    if (held(back.plan) !== held(p) || !SHAPE.test(code) || symbols(code).length % 4 || back.report.unknown.length || C.toCode(back.plan) !== code) wrong.push(n);
+    const all = p.days.flatMap((d) => d.items);
+    seen.days6 += p.days.length === 6; seen.one += p.days.length === 1; seen.items12 += p.days.some((d) => d.items.length === 12); seen.sets10 += all.some((it) => it.sets === 10);
+    seen.reps100 += all.some((it) => it.reps === 100); seen.secs600 += all.some((it) => it.secs === 600); seen.rest300 += all.some((it) => it.rest === 300); seen.rest0 += all.some((it) => it.rest === 0);
+    seen.restOdd += all.some((it) => it.rest != null && it.rest % 5 !== 0); seen.weekdays += !!p.weekdays; seen.utf8 += /[^\x20-\x7e]/.test(p.name + p.days.map((d) => d.title).join('')); seen.name40 += p.name.length === 40;
+  }
+  check('400 made-up plans each come back the same, and make the same code again', wrong.length === 0, wrong.slice(0, 10));
+  check('with every limit among them: 6 days, 12 exercises, 10 sets, 100 reps, 600 s, rests from 0 to 300 s, set days, long names and other alphabets', Object.values(seen).every((v) => v > 5), seen);
+  check('a plan with nothing in it has no code, and what goes in is what normalize() keeps', (() => { try { C.toCode({ days: [{ items: [] }] }); return false; } catch (e) { return /at least one exercise/.test(e.message); } })() && JSON.stringify(C.fromCode(C.toCode({ days: [{ items: [{ move: 'push_std', sets: 99, reps: 0, rest: 999 }] }] })).plan.days[0].items[0]) === '{"move":"push_std","sets":10,"reps":1,"rest":300}');
+}
+
+section('The plan code: typos');
+{
+  const code = C.toCode(typical);
+  const s = symbols(code), A = GH.planCode.ALPHABET;
+  const group = (x) => x.replace(/(.{4})(?=.)/g, '$1-');
+  // Every other symbol in every place.
+  let subs = 0;
+  const missed = [];
+  for (let i = 0; i < s.length; i++) for (const ch of A) {
+    if (ch === s[i]) continue;
+    subs++;
+    const why = caught(group(s.slice(0, i) + ch + s.slice(i + 1)));
+    if (i < 2 ? !why : why !== 'typo') missed.push(`${i}${ch}:${why}`);
+  }
+  check(`every single wrong character is caught (${subs} of them, each a typo by name)`, missed.length === 0 && subs === s.length * 31, missed.slice(0, 8));
+  const edits = { dropped: [], doubled: [], swapped: [] };
+  for (let i = 0; i < s.length; i++) {
+    if (!caught(group(s.slice(0, i) + s.slice(i + 1)))) edits.dropped.push(i);
+    if (!caught(group(s.slice(0, i + 1) + s.slice(i)))) edits.doubled.push(i);
+    if (i + 1 < s.length && s[i] !== s[i + 1] && !caught(group(s.slice(0, i) + s[i + 1] + s[i] + s.slice(i + 2)))) edits.swapped.push(i);
+  }
+  check('so is every character dropped, every one doubled and every two neighbours swapped', !edits.dropped.length && !edits.doubled.length && !edits.swapped.length, edits);
+  const rnd = seeded(7);
+  let two = 0;
+  for (let k = 0; k < 3000; k++) {
+    const i = 2 + Math.floor(rnd() * (s.length - 2)), j = 2 + Math.floor(rnd() * (s.length - 2));
+    const a = A[(A.indexOf(s[i]) + 1 + Math.floor(rnd() * 31)) % 32], b = A[(A.indexOf(s[j]) + 1 + Math.floor(rnd() * 31)) % 32];
+    if (i === j) continue;
+    const t = s.split(''); t[i] = a; t[j] = b;
+    if (caught(group(t.join(''))) !== 'typo') two++;
+  }
+  check('and two wrong characters anywhere, 3,000 times over', two === 0, two);
+  let err = null;
+  try { await C.decode(code.replace(/.$/, (c) => (c === 'Z' ? 'Y' : 'Z'))); } catch (e) { err = e; }
+  check('a typo says so, in words', err && err.code === 'typo' && err.message === 'That code has a typo. Check it and try again.' && err.symbols === s.length, err && err.message);
+  err = null;
+  try { await C.decode('my plan is in the other room'); } catch (e) { err = e; }
+  check('words with no code in them aren\'t one', err && err.code === 'broken' && /isn't a plan code/.test(err.message) && caught('') === 'broken' && caught(null) === 'broken' && caught('GH') === 'typo', err && err.message);
+  // A code from a format this version doesn't know: the frame and the check are the same for good.
+  const newer = GH.planCode.seal([2, 7, 31, 0, 12, 5, 9, 30, 1]);
+  err = null;
+  try { await C.decode(newer); } catch (e) { err = e; }
+  check('a code from a newer format says so', SHAPE.test(newer) && err && err.code === 'newer' && err.message === 'It was shared from a newer version of the app.', `${newer} ${err && err.message}`);
+  check('and a typo in one is still a typo', caught(newer.replace(/.$/, (c) => (c === 'Z' ? 'Y' : 'Z'))) === 'typo');
+  check('format 0 isn\'t a plan', caught(GH.planCode.seal([0, 1, 2, 3, 4, 5, 6])) === 'broken');
+}
+
+section('The plan code: reading one is forgiving');
+{
+  const code = PPL_CODE, want = held(C.normalize(PPL).plan);
+  const reads = (t) => { try { return held(C.fromCode(t).plan) === want; } catch (e) { return false; } };
+  const lines = code.replace(/((?:[^-]+-){3}[^-]+)-/g, '$1\n');
+  const ways = {
+    'small letters': code.toLowerCase(),
+    'spaces for hyphens': code.replace(/-/g, ' '),
+    'nothing between the groups': symbols(code),
+    'a space between every character': symbols(code).split('').join(' '),
+    'line breaks': lines,
+    'long dashes': code.replace(/-/g, '–').replace('–', '—'),
+    'O for 0': code.replace(/0/g, 'O'),
+    'o, I and l for 0 and 1': code.replace(/0/g, 'o').replace(/1/, 'I').replace(/1/g, 'l'),
+    'words before and after': `Here's my plan: ${code}. Try it!`,
+    'curly quotes around it': `“${code}”`,
+    'a signature under it': `${code}\n\nSent from my phone`,
+    'words that read as symbols on both sides': `light weights tonight: ${code.replace(/-/g, ' ')} thanks, see me at 5`,
+    'another GH before it': `GH plan for the gym: ${code.toLowerCase()}`,
+    'in the app\'s link': `gradienthealth://plan?c=${code}`,
+    'without its GH': code.slice(2),
+  };
+  const fails = Object.keys(ways).filter((k) => !reads(ways[k]));
+  check(`a code reads however it's typed (${Object.keys(ways).length} ways: small letters, spaces, line breaks, O for 0, I and L for 1, words around it)`, fails.length === 0, fails);
+  check('and comes back the way the app writes it', C.fromCode(ways['a signature under it']).code === code && GH.planCode.find(`ok ${code.toLowerCase()} ok`) === code && GH.planCode.find('no code here') === null);
+  check('a field tidies what\'s typed: capitals, 0 and 1, groups of four', GH.planCode.tidy('gh1o il') === 'GH10-11' && GH.planCode.tidy('GH19-3KX4-') === 'GH19-3KX4' && GH.planCode.tidy('') === '' && GH.planCode.tidy('g') === 'G' && GH.planCode.tidy('GH19 3kx4 hz') === 'GH19-3KX4-HZ');
+  check('and leaves alone what isn\'t the start of a code, words made of its letters among it', GH.planCode.tidy('my plan: GH19') === null && GH.planCode.tidy('GHU') === null && GH.planCode.tidy('my plan is in the other room') === null && GH.planCode.tidy('19-3KX4') === null && GH.planCode.tidy('go') === null);
+}
+
+section('A code or a link, through the same door');
+{
+  const code = PPL_CODE, want = held(C.normalize(PPL).plan);
+  const viaDecode = async (t) => { try { return held((await C.decode(t)).plan) === want; } catch (e) { return e.code; } };
+  check('decode() takes a code: alone, in a sentence, without its GH, and in the app\'s link', await viaDecode(code) === true && await viaDecode(`try this ${code.toLowerCase()} tonight`) === true && await viaDecode(code.slice(2)) === true && await viaDecode(C.appLink(symbols(code)).replace('?d=', '?c=')) === true && await viaDecode(`intent://plan?c=${code}#Intent;scheme=gradienthealth;package=com.shadowsdistant.gradienthealth;end`) === true);
+  check('dataFrom() gives the code as the app writes it, or a link\'s data', C.dataFrom(` ${code.toLowerCase().replace(/-/g, ' ')} `) === code && C.dataFrom(`gradienthealth://plan?c=${code}`) === code && C.dataFrom('nothing here') === null);
+  check('the app\'s link with a code is a link; a code alone isn\'t, nor is one in someone else\'s link', C.isLink(`gradienthealth://plan?c=${code}`) && !C.isLink(code) && !C.isLink(`https://example.com/?c=${code}`) && !C.isLink('gradienthealth://plan?c=hello'));
+  // Links made before there were codes, kept as they were written then.
+  const OLD_PLAIN = 'https://shadowsdistant.github.io/gradient-health/p/#AVsiTHVuY2ggYnJlYWsiLCJRdWljay4iLCJKbyIsWzEsNF0sW1siUXVpY2sgb25lIixbInB1c2hfc3RkIiwzLDEwXSxbInNxX2dvYmxldCIsMywxMiw0NV1dLFsiIixbInNpZGVfcGxhbmsiLDIsMzBdXV1d';
+  const OLD_PACKED = 'https://shadowsdistant.github.io/gradient-health/p/#gSXKSwqDMBQF0K3IHV_E7yakk44fjxBNUIkktjH7F9vp4QheJS5bNX-9DSDeZV9CDWJKoLQclCJ_rVL0oOAseTP5cmDPtlEK8sesaT789aOOw6gPPznvzpvzsDGAHftGVfUG';
+  const was = { name: 'Lunch break', note: 'Quick.', from: 'Jo', weekdays: [1, 4], days: [{ title: 'Quick one', items: [{ move: 'push_std', sets: 3, reps: 10 }, { move: 'sq_goblet', sets: 3, reps: 12, rest: 45 }] }, { title: '', items: [{ move: 'side_plank', sets: 2, secs: 30 }] }] };
+  const old = [];
+  for (const l of [OLD_PLAIN, OLD_PACKED, OLD_PLAIN.split('#')[1], `gradienthealth://plan?d=${OLD_PACKED.split('#')[1]}`]) {
+    const p = (await C.decode(l)).plan;
+    old.push(JSON.stringify({ name: p.name, note: p.note, from: p.from, weekdays: p.weekdays, days: p.days }) === JSON.stringify(was));
+  }
+  check('links from 1.14 still open: plain, compressed, the bare data and the app\'s link', old.every(Boolean) && C.isLink(OLD_PLAIN) && C.dataFrom(OLD_PLAIN) === OLD_PLAIN.split('#')[1], old);
+  check('the same plan as a code is a fifth of the length, without the note or the name of who sent it', (() => { const c = C.toCode(was); const p = C.fromCode(c).plan; return symbols(c).length <= 48 && p.name === 'Lunch break' && p.note === '' && !p.from && JSON.stringify(p.days) === JSON.stringify(was.days); })(), C.toCode(was));
+  // Data that only looks like a code from afar is still a link's data.
+  const junk = await C.decode('AQnotaplanatall_x-GHzz').catch((e) => e.code);
+  check('a link\'s bare data with GH somewhere in it is still read as that', junk === 'broken');
+  const wordy = await C.decode('MYP1-AN1S-1NTH-E0TH-ERR0-0M').catch((e) => e.message);
+  check('and letters that are neither say they aren\'t a plan code', wordy === 'That isn\'t a plan code. A code starts with GH.', wordy);
+}
+
+section('The share page writes the same code');
+{
+  // The page's own writer (src/share-page.html, between its CODE marks) run here, on plans packed as
+  // a link packs them, with the moves as the build hands them to the page.
+  const html = readFileSync(join(root, 'src/share-page.html'), 'utf8');
+  const pageCode = new Function(`${html.slice(html.indexOf('/*@CODE*/'), html.indexOf('/*@/CODE*/'))}\nreturn planCode;`)();
+  const T = GH.PLAN_CODE_MOVES, moves = {};
+  for (const [id, m] of Object.entries(GH.moves.MOVES)) if (m && m.name) moves[id] = [m.name, m.group || '', m.timed ? 1 : 0, T.indexOf(id)];
+  const packed = (p) => [p.name, p.note || '', 'Jo', p.weekdays || 0, p.days.map((d) => [d.title || ''].concat(d.items.map((it) => [it.move, it.sets, it.secs != null ? it.secs : it.reps].concat(it.rest != null ? [it.rest] : []))))];
+  const differs = (raw) => { const p = C.normalize(raw).plan; return pageCode(packed(p), moves) !== symbols(C.toCode(p)); };
+  const ids = Object.keys(GH.moves.MOVES);
+  const every = { name: 'Every group', days: [{ title: '', items: ['curl_std', 'tri_oh', 'push_std', 'sq_bw', 'row_db', 'raise', 'ab_deadbug', 'fin_jacks', 'mob_catcow', 'imp_heel', 'bal_one'].map((id) => ({ move: id, sets: 2, [GH.moves.MOVES[id].timed ? 'secs' : 'reps']: 10 })) }, { title: 'Chest and arms', items: [{ move: 'push_std', sets: 3, reps: 10 }, { move: 'curl_std', sets: 3, reps: 10 }] }] };
+  const fixed = [typical, PPL, PINNED, every, { days: [typical.days[0]] }, { name: 'My plan', days: [PPL.days[1]] }, C.dayPlan(typical, 2), { name: 'Тренировка 💪', days: PPL.days }];
+  check('the fixtures: a plan with every muscle group, names the app would give anyway, one workout, another alphabet', fixed.filter(differs).length === 0 && new Set(every.days[0].items.map((it) => GH.moves.MOVES[it.move].group)).size === new Set(ids.map((id) => GH.moves.MOVES[id].group)).size, fixed.filter(differs).map((p) => p.name));
+  const off = madeUp(400, 4242).filter(differs);
+  check('and 400 made-up plans, character for character', off.length === 0, off.slice(0, 2).map((p) => JSON.stringify(p).slice(0, 300)));
+  // What a link could hold that the app would have to guess at: no code is shown, and nothing breaks.
+  const odd = [null, 'x', [], ['A', '', '', 0, 'days'], ['A', '', '', 0, [['T', ['push_std', 3]]]], ['A', '', '', 0, [['T', ['push_std', 3, 'ten']]]], ['A', '', '', 0, [['T', ['no_such_move', 3, 10]]]], ['A', '', '', 0, [null, 7, ['T']]], [{}, {}, {}, {}, [[{}, [{}, {}, {}]]]]];
+  check('a link with something missing in it gets no code, quietly', odd.every((a) => { try { return pageCode(a, moves) === ''; } catch (e) { return false; } }));
+  const loose = pageCode(['  Leg‮day ', '', '', [4, 0], [['A', ['push_std', '99', 0, '', 'x'], ['no_such_move', 3, 10]], ['B', ['side_plank', null, 3, 999]]]], moves);
+  const strict = C.normalize({ name: '  Leg‮day ', weekdays: [4, 0], days: [{ title: 'A', items: [{ move: 'push_std', sets: '99', reps: 0, rest: '' }, { move: 'no_such_move', sets: 3, reps: 10 }] }, { title: 'B', items: [{ move: 'side_plank', sets: null, reps: 3, rest: 999 }] }] }).plan;
+  check('numbers out of range and a move it doesn\'t know come out as the app would keep them', loose === symbols(C.toCode(strict)) && strict.name === 'Leg day' && strict.days[0].items[0].sets === 10, `${loose} ${C.toCode(strict)}`);
+}
+
+section('scripts/plan-code.mjs');
+{
+  const dir = mkdtempSync(join(tmpdir(), 'plan-code-'));
+  const file = join(dir, 'plan.json');
+  writeFileSync(file, JSON.stringify({ name: 'Abs and arms', note: 'Mine.', weekdays: [0, 2], days: [{ title: 'Arms', items: [{ move: 'curl_std', sets: 3, reps: 12 }, { move: 'plank', sets: 3, secs: 30, rest: 45 }, { move: 'tri_oh', sets: 30, reps: 12 }] }, { items: [{ move: 'side_plank', sets: 3, reps: 30, rest: 45 }] }] }));
+  const run = (...args) => spawnSync(process.execPath, [join(root, 'scripts/plan-code.mjs'), ...args], { encoding: 'utf8' });
+  const made = run(file);
+  const code = made.stdout.split('\n')[0];
+  const got = SHAPE.test(code) ? C.fromCode(code).plan : null;
+  check('a plan in a file comes out as its code, made by the app\'s own code', made.status === 0 && got && got.name === 'Abs and arms' && JSON.stringify(got.weekdays) === '[0,2]' && JSON.stringify(got.days[0].items) === '[{"move":"curl_std","sets":3,"reps":12},{"move":"tri_oh","sets":10,"reps":12}]' && JSON.stringify(got.days[1].items) === '[{"move":"side_plank","sets":3,"secs":30,"rest":45}]', made.stdout + made.stderr);
+  check('with its length, what was changed or left out, and the plan read back', new RegExp(`${symbols(code).length} characters in ${symbols(code).length / 4} groups`).test(made.stdout) && /"plank" isn't a move the app has, so it's left out\. Close ones: [^\n]*side_plank/.test(made.stdout) && /Day 1, Overhead extension: sets 30 → 10\./.test(made.stdout) && /Side plank is held, so it takes seconds/.test(made.stdout) && /The note isn't part of a code\./.test(made.stdout) && /Read back from the code:\n\nAbs and arms\n2 days · 3 exercises · set days: Mon and Wed/.test(made.stdout) && /side_plank\s+Side plank\s+3 × 30 s each side · rest 45 s/.test(made.stdout), made.stdout);
+  const read = run('--decode', `here it is: ${code.toLowerCase()}`);
+  check('--decode prints the plan a code holds', read.status === 0 && read.stdout.startsWith(`${code}\n\nAbs and arms\n`) && /curl_std\s+Dumbbell curl\s+3 × 12 reps/.test(read.stdout), read.stdout + read.stderr);
+  const asJson = run('--decode', code, '--json');
+  check('--json gives it as a plan file', asJson.status === 0 && JSON.stringify(JSON.parse(asJson.stdout)) === JSON.stringify({ name: 'Abs and arms', weekdays: [0, 2], days: got.days }), asJson.stdout);
+  const bad = run('--decode', code.replace(/.$/, (c) => (c === 'Z' ? 'Y' : 'Z')));
+  check('a wrong code ends with the reason, not a plan', bad.status === 1 && /That code has a typo/.test(bad.stderr) && run(join(dir, 'missing.json')).status === 1, bad.stderr);
+  const list = run('--moves', 'plank');
+  check('--moves lists the ids a plan can name', list.status === 0 && /side_plank\s+Side plank \(abs, held: secs\)/.test(list.stdout), list.stdout);
+  rmSync(dir, { recursive: true, force: true });
 }
 
 /* ------------------------------------------------------------------ swaps */

@@ -1,6 +1,6 @@
 /* Custom workout plans (GH.customPlan): plans people build themselves, ask the coach to build, or get
  * from someone else, run with the app's own player, progression and readiness, and shared as a QR
- * code or a link.
+ * code, a link or a short plan code (src/plancode.js, which loads with the plan builder).
  *
  * A plan: { v, id, name, note, days: [{ title, items: [{ move, sets, reps | secs, rest? }] }],
  * weekdays: [0-6, one per day] | null (spread like the coach's plan), source: 'you' | 'coach' |
@@ -932,9 +932,10 @@
       days: a[4].map((d) => (Array.isArray(d) ? { title: d[0], items: d.slice(1).map((x) => (Array.isArray(x) ? { move: x[0], sets: x[1], reps: x[2], rest: x[3] } : null)).filter(Boolean) } : { items: [] })),
     };
   }
-  function codeError(code) {
-    const text = {
+  function codeError(code, words) {
+    const text = words || {
       broken: 'That code doesn\'t hold a plan.',
+      typo: 'That code has a typo. Check it and try again.',
       newer: 'It was shared from a newer version of the app.',
       unsupported: 'This phone can\'t unpack that plan. Update Android System WebView and try again.',
     }[code] || 'That code doesn\'t hold a plan.';
@@ -988,21 +989,43 @@
     bytes.set(body, 1);
     return b64url(bytes);
   }
-  // The plan's data out of anything someone might scan or open: the share link, the app's own link,
-  // an Android intent link, or the bare data.
+  // The plan's data out of anything someone might scan, open or type: the share link, the app's own
+  // link, an Android intent link, the bare data, or a plan code (GH1A-2B3C-…, also as …plan?c=<code>).
+  // Plan codes are read by src/plancode.js, a part that loads with the plan builder: once it's in, a
+  // code is found wherever it is in the text; before that, only in the app's own link. A link's
+  // data never starts with GH (its first byte is the version), which is how the two are told apart.
+  const LINK = /^(https?|gradienthealth|intent):/i;
+  const BARE = /^[A-Za-z0-9_-]{12,}$/;
   function dataFrom(text) {
     const s = String(text || '').trim();
     let m = /^https?:\/\/[^\s#]*\/p\/?(?:index\.html)?#(?:d=)?([A-Za-z0-9_-]+)\s*$/i.exec(s);
     if (m) return m[1];
-    m = /^(?:gradienthealth|intent):\/\/plan\/?\?(?:[^#]*&)?d=([A-Za-z0-9_-]+)/i.exec(s);
-    if (m) return m[1];
-    if (/^[A-Za-z0-9_-]{12,}$/.test(s)) return s;
-    return null;
+    m = /^(?:gradienthealth|intent):\/\/plan\/?\?(?:[^#]*&)?(?:d=([A-Za-z0-9_-]+)|c=(GH[A-Za-z0-9-]+))/i.exec(s);
+    if (m) return m[1] || m[2];
+    const code = !LINK.test(s) && GH.planCode && GH.planCode.find(s);
+    if (code) return code;
+    return BARE.test(s) ? s : null;
   }
-  const isLink = (text) => !!dataFrom(text) && /^(https?|gradienthealth|intent):/i.test(String(text || '').trim());
-  // Back to a plan (not saved yet): { plan, report } or an Error with .code (broken, newer, unsupported).
+  const isLink = (text) => !!dataFrom(text) && LINK.test(String(text || '').trim());
+  // Back to a plan (not saved yet), from a link or a plan code: { plan, report } or an Error with
+  // .code (broken, typo, newer, unsupported).
   async function decode(text) {
-    const data = dataFrom(text);
+    const s = String(text || '').trim();
+    const url = LINK.test(s);
+    const data = dataFrom(s);
+    if (url && !/^GH/i.test(data || '')) return fromData(data);
+    // A plan code: the one in the app's link, or anything that isn't a link.
+    if (!GH.planCode && GH.lazy) await GH.lazy('planUi').catch(() => {});
+    if (!GH.planCode) throw codeError('broken');
+    try { return GH.planCode.fromCode(url ? data : s); } catch (e) {
+      // A link's data on its own is still read as that. When it isn't that either, what's wrong
+      // with it as a code is the thing to say, unless it starts as a link's data does.
+      if (url || !BARE.test(s) || /^GH/i.test(s)) throw e;
+      return fromData(s).catch((e2) => { throw /^[Ag]/.test(s) ? e2 : e; });
+    }
+  }
+  // A link's data (a version byte, then the packed plan) back to a plan.
+  async function fromData(data) {
     if (!data || data.length > 12000) throw codeError('broken');
     let bytes;
     try { bytes = unb64url(data); } catch (e) { throw codeError('broken'); }
@@ -1518,7 +1541,7 @@
     use, inForce, eventAt: (S, day) => eventAt(planEvents(S), day), startDay, weekSessions, owns, parseTpl, buildSession, minutes, progress, nextHarder,
     context, check, choose, whyText, swapsFor, catalog, offsetsFor,
     KIT, known, search, matcher, defaults, itemFor, weekSets, suggest, similar, restAuto, WEEK_GROUPS,
-    fromCoach, encode, decode, dataFrom, isLink, link, appLink, sharedTitle,
+    fromCoach, encode, decode, dataFrom, isLink, link, appLink, sharedTitle, codeError,
     wishes, generate, templates, template, knows, allowedMoves, planMessages, planGrammar, planSchema, accept, refine, modelFor, readJson, improve, diff,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -268,6 +268,24 @@ button.cp-wk-row:active { background: var(--fill-selected); }
 .cp-share-btns { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: center; width: 100%; }
 .cp-share-btns .rf-btn { flex: 1 1 9em; justify-content: center; }
 .cp-share .rf-list { width: 100%; text-align: start; }
+/* The plan code: every character as wide as the next, a group never split over two lines. */
+.cp-code-box { display: grid; gap: var(--space-2); justify-items: center; width: 100%; box-sizing: border-box; padding: var(--space-3); border-radius: var(--radius-lg); background: var(--fill-3); }
+.cp-code-box > p { margin: 0; }
+.cp-code, .cp-code-in { font: 600 1.0625rem/1.5 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+.cp-code { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px .75em; max-height: 9em; overflow-y: auto; user-select: all; -webkit-user-select: all; }
+.cp-code > span { white-space: nowrap; }
+/* Adding one by its code: the field, what it holds or what's wrong under it (two lines kept for it, so
+   nothing moves as it changes), then the ways on. */
+.cp-enter { gap: var(--space-3); padding-bottom: var(--space-4); }
+.cp-code-in { min-height: 5.6em; resize: none; overflow-wrap: anywhere; }
+.cp-code-say { display: flex; align-items: flex-start; gap: 6px; margin: 0; min-height: 2.7em; color: var(--label-secondary); --rf-icon-size: 16px; }
+.cp-code-say > .rf-icon { flex: none; margin-top: 1px; opacity: 1; }
+.cp-code-say[data-tone="positive"] { color: var(--positive); font-weight: 600; }
+.cp-code-say[data-tone="caution"] { color: color-mix(in oklab, var(--hue-amber), var(--label) 30%); }
+.cp-enter-scan { justify-self: center; }
+.cp-kit { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-2) 8px; --rf-icon-size: 18px; }
+.cp-kit > .rf-icon { align-self: start; margin-top: 0; }
+.cp-kit > .rf-btn { grid-column: 2; justify-self: start; }
 
 /* A shared plan, and one the coach built: the plan's head, its days, then save. */
 .cp-import { gap: var(--space-3); padding-bottom: var(--space-6); }
