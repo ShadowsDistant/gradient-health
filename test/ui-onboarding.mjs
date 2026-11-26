@@ -172,6 +172,14 @@ section('The first run: six screens, one decision each');
   await page.clock.runFor(500); await page.waitForTimeout(600);
   check('its row says what\'s planned around', /Sore knees/.test(await page.locator('.onboard [data-act="obAround"]').innerText()) && /careful with shoulders/.test(await page.locator('.onboard [data-act="obAround"]').innerText()));
   check('no Health Connect request so far', await page.evaluate(() => window.__hcAsks) === 0);
+  // 1.15: how you eat, two quick optional choices, folded away.
+  check('How you eat is optional and folded away', /How you eat \(optional\)/.test(await text(page)) && !(await page.locator('.onboard details[data-more="eats"]').evaluate((d) => d.open)));
+  await page.evaluate(() => { document.querySelector('.onboard details[data-more="eats"]').open = true; });
+  await page.waitForTimeout(250);
+  const eats = await page.evaluate(() => [...document.querySelectorAll('.onboard details[data-more="eats"] .rf-segmented')].map((g) => `${g.getAttribute('aria-label')}: ${[...g.querySelectorAll('.rf-segment')].map((x) => x.textContent).join(', ')}`));
+  check('protein-rich food and fruit or vegetables: Rarely, Some meals, Most meals, none picked', eats.join(' | ') === 'How often you eat protein-rich food: Rarely, Some meals, Most meals | How often you eat fruit or vegetables: Rarely, Some meals, Most meals' && await page.locator('.onboard details[data-more="eats"] input:checked').count() === 0, eats);
+  await page.click('.onboard .rf-segmented[aria-label="How often you eat protein-rich food"] input[value="low"]', { force: true }); await settle(page, 250);
+  check('its summary says what was picked', /Protein rarely/.test(await page.locator('.onboard details[data-more="eats"] summary').innerText()), await page.locator('.onboard details[data-more="eats"] summary').innerText());
   await shot(page, '06-you');
 
   await page.locator('.ob-actions [data-variant="tinted"]').click();
@@ -229,8 +237,9 @@ section('The first run: six screens, one decision each');
   await page.waitForTimeout(700);
   const st = await page.evaluate(() => {
     const U = window.GH.ui, S = U.S, p = S.profile;
-    return { onboarded: p.onboarded, active: !!S.active, day: S.active && S.active.day, today: U.today(), title: S.active && S.active.session.title, goals: p.goals.join(), days: p.days, minutes: p.minutes, weekdays: p.weekdays, where: p.where, db: p.equipment.db.join(), pain: Object.keys(S.pain).join(), careful: p.careful.join(), age: p.age, exp: p.experience, recent: p.recentActivity, kg: Math.round(p.weightKg * 10) / 10, setupHidden: document.getElementById('onboard').hidden, tour: !!document.querySelector('dialog.tour-sheet[open]') };
+    return { onboarded: p.onboarded, active: !!S.active, day: S.active && S.active.day, today: U.today(), title: S.active && S.active.session.title, goals: p.goals.join(), days: p.days, minutes: p.minutes, weekdays: p.weekdays, where: p.where, db: p.equipment.db.join(), pain: Object.keys(S.pain).join(), careful: p.careful.join(), age: p.age, exp: p.experience, recent: p.recentActivity, kg: Math.round(p.weightKg * 10) / 10, eats: JSON.stringify(p.eats), setupHidden: document.getElementById('onboard').hidden, tour: !!document.querySelector('dialog.tour-sheet[open]') };
   });
+  check('how you eat saved, the one left unanswered as none', st.eats === '{"protein":"low","produce":null}', st.eats);
   check('Start my first workout opens the player on today\'s workout', st.active && st.day === st.today && st.title === firstTitle, st);
   check('with set-up done and gone', st.onboarded && st.setupHidden, st);
   check('the answers saved as the plan reads them', st.goals === 'legs,arms,fat,strength' && st.days === 3 && st.minutes === 30 && st.where === 'home' && st.db === '10,15,20' && st.pain === 'knee' && st.careful === 'shoulder' && st.age === 34 && st.exp === '1to3' && st.recent === 'some' && st.kg === 74.8, st);

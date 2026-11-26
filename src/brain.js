@@ -50,6 +50,7 @@
   // The muscles each family mainly trains, for leaning a day's sets toward a focus.
   const FAM_FOCUS = {
     push: ['chest', 'triceps'], chestDb: ['chest'], squat: ['quads', 'glutes'], hinge: ['glutes', 'hamstrings', 'lowerBack'], glute: ['glutes'],
+    hammer: ['biceps', 'forearms'], triPush: ['triceps', 'chest'],
     hamCurl: ['hamstrings'], calf: ['calves'], row: ['lats', 'upperBack'], pull: ['lats', 'biceps'], rear: ['rearDelts', 'upperBack'],
     backExt: ['lowerBack'], press: ['frontDelts', 'triceps'], raise: ['sideDelts'], abs: ['abs', 'hipFlexors'], absLoad: ['abs'],
     coreRot: ['obliques'], coreSide: ['obliques'], curl: ['biceps', 'forearms'], triceps: ['triceps'],
@@ -76,6 +77,9 @@
       workouts: true,
       careful: [], impactOk: true, gentle: false, lead: { arm: null, leg: null },
       weightGoal: 'maintain', protein: { track: true, perLb: 0.8, quickName: 'Shake', quickG: 26 },
+      // 1.15: how often meals hold protein-rich food, and fruit or vegetables: 'low' (rarely), 'some'
+      // (some meals), 'most' (most meals), or null when not answered. Optional (see eatsOf).
+      eats: { protein: null, produce: null },
       sleepTypical: '6-7', sleepIrregular: false,
       // notify: notifications (src/notify.js), off until the person turns them on; then every kind
       // is on, and the reminder time is worked out (time: minutes after midnight once they set one).
@@ -122,6 +126,28 @@
   const inOp = () => !!OP;
   const opToken = () => OP; // a different object for each outermost op(), null outside
 
+  // 1.15: how the person eats, as far as the plan reads it. { protein, produce: 'low' | 'some' |
+  // 'most' | null, from: 'answer' | 'log' | null, minor }. The answer (profile.eats.protein) comes
+  // first; with none, what the food log showed (profile.eats.logged, kept by logEats once a week)
+  // stands in. Under 18 the plan reads none of it (minor): the research is on adults, and a
+  // teenager's eating isn't the app's to steer.
+  const EATS = ['low', 'some', 'most'];
+  function eatsOf(p) {
+    const e = (p && p.eats) || {};
+    const ok = (x) => (EATS.includes(x) ? x : null);
+    const minor = !!p && p.age != null && p.age < 18;
+    const protein = ok(e.protein) || ok(e.logged);
+    return { protein, produce: ok(e.produce), from: ok(e.protein) ? 'answer' : protein ? 'log' : null, minor };
+  }
+  // Eating little protein (under about 1 g per kg of body weight a day): size comes more slowly and
+  // strength about as usual (Morton et al. 2018; Tagawa et al. 2020). Nothing shows that more sets
+  // make up for it (Roth et al. 2022), so the plan keeps a normal amount of work with the goal
+  // muscles first in it: no sets past the week's target, weekly sets grow no further than 2 past
+  // where they started, and the same muscles aren't trained hard on days in a row where the week
+  // allows (protein round training helps strength come back after a hard session, Pearson et al.
+  // 2023; that reading across to a low-protein diet is ours, the cautious one).
+  const lowProtein = (p) => { const e = eatsOf(p); return !p.legacyPlan && !e.minor && e.protein === 'low'; };
+
   // Tiers, frequencies and set targets from the questionnaire. Kept for each set of answers it reads
   // (rungs() asks for it all the time); treat the answer as read-only.
   const programMemo = new Map();
@@ -129,7 +155,7 @@
     const om = opMap(PROGRAMS);
     const kept = om && om.get(p);
     if (kept) return kept;
-    const key = JSON.stringify([p.goals, p.focus, p.experience, p.recentActivity, p.days, p.gentle, p.impactOk, p.age, p.conditions, p.oaJoints, p.floorOk, p.jumpsOk, p.fractures, p.retinopathy, !!p.legacyRules]);
+    const key = JSON.stringify([p.goals, p.focus, p.experience, p.recentActivity, p.days, p.gentle, p.impactOk, p.age, p.conditions, p.oaJoints, p.floorOk, p.jumpsOk, p.fractures, p.retinopathy, !!p.legacyRules, !!p.legacyPlan, p.eats]);
     let out = programMemo.get(key);
     if (!out) {
       if (programMemo.size > 64) programMemo.clear();
@@ -191,6 +217,7 @@
       onramp, impactOk: p.impactOk !== false && !(p.age >= 60) && !p.gentle,
       warmupMin: p.age >= 40 ? 4 : 2.5,
     };
+    if (lowProtein(p)) out.lowProtein = true;
     // Age and health conditions shift these defaults (src/access.js): impact, warm-up length, a
     // gentler start with a heart condition.
     return GH.access ? GH.access.program(p, out) : out;
@@ -273,6 +300,7 @@
     p.gym = Object.assign(defaultGym(), (profile || {}).gym || {});
     p.prefs = Object.assign(defaultProfile().prefs, (profile || {}).prefs || {});
     p.protein = Object.assign(defaultProfile().protein, (profile || {}).protein || {});
+    p.eats = Object.assign(defaultProfile().eats, (profile || {}).eats || {});
     p.lead = Object.assign({ arm: null, leg: null }, (profile || {}).lead || {});
     p.startDay = day;
     p.onboarded = true;
@@ -298,6 +326,8 @@
       engineFrom: weekStart(day),
       // And with 1.13's rules for older bodies, osteoporosis and type 2 diabetes (src/access.js).
       rulesFrom: weekStart(day),
+      // And with 1.15's personal plans (see `personal`).
+      personalFrom: weekStart(day),
     };
     if (p.weightKg) S.weights.push({ day, kg: p.weightKg, src: 'profile' });
     initProgress(S, baseline, day);
@@ -326,6 +356,118 @@
     coreSide: [['side_knee'], ['side_carry', 'side_plank'], ['side_plank']],
     finisher: [['fin_march', 'fin_pulse', 'fin_step_jacks'], ['fin_swing', 'fin_pulse', 'fin_climbers'], ['fin_swing', 'fin_climbers', 'fin_burpee']],
   };
+
+  // 1.15's starts (weeks planned with its personal plans): the plain curl first, and the overhead
+  // extension, which grows the triceps' long head most (Maeo et al. 2023). For someone under 50 who
+  // wasn't told to take it easy, legs start one leg at a time when the weight is too light to count
+  // (weightFit): two-leg bodyweight squats are a light load for a healthy adult, and single-leg
+  // versions matched barbell squats in the one trial of them (Wei et al. 2023).
+  const START15 = {
+    curl: [['curl_std', 'curl_band', 'curl_towel'], ['curl_std'], ['curl_slow']],
+    triceps: [['tri_oh', 'tri_band_oh', 'tri_dip_bent'], ['tri_oh', 'tri_band_oh', 'tri_dip_bent'], ['tri_oh_slow', 'tri_dip']],
+    hammer: [['curl_hammer'], ['curl_hammer'], ['curl_hammer_slow']],
+    triPush: [['tri_close_incline'], ['tri_close_knee', 'tri_close_incline'], ['tri_diamond', 'tri_close_knee']],
+  };
+  const STURDY15 = {
+    squat: [['sq_goblet', 'sq_split', 'sq_bw'], ['sq_goblet', 'sq_split'], ['sq_split', 'sq_lunge']],
+    hinge: [['hg_deadlift', 'hg_bridge1', 'hg_bridge'], ['hg_rdl', 'hg_deadlift', 'hg_bridge1'], ['hg_sldl', 'hg_bridge1']],
+  };
+  function startPrefs(S, fam) {
+    const p = S.profile;
+    const sturdy = !(p.age >= 50) && !p.gentle;
+    return ((sturdy && STURDY15[fam]) || START15[fam] || DEFAULT_START[fam] || [[]])[programFor(p).level] || [];
+  }
+  // A rung that isn't the right exercise for this person: its weight is too light to count (and so
+  // is its one-arm version's), or it's the dead bug when abs are a top goal (a posture drill, with
+  // no evidence that it grows the muscle).
+  function weak(S, id, day) {
+    if (id === 'ab_deadbug') return programFor(S.profile).tiers.abs === 1;
+    const f = weightFit(S, id, day);
+    if (!f || f.fit !== 'light') return false;
+    const one = M().ONE_ARM15[id];
+    return !(one && M().allowed(M().MOVES[one], eqFor(S, day)) && weightFit(S, one, day).fit !== 'light');
+  }
+  // The rung of a ladder to use in its place (or to start on): the level's first choice that suits,
+  // else the nearest harder rung that does, else the nearest easier one. null: none does.
+  function bestRung(S, fam, list, day, from) {
+    const ok = (x) => !weak(S, x, day);
+    const pref = startPrefs(S, fam).find((x) => list.includes(x) && ok(x));
+    if (pref || from == null) return pref || list.find(ok) || null;
+    const all = M().LADDERS[fam].rungs, at = all.indexOf(from);
+    return list.find((x) => all.indexOf(x) > at && ok(x)) || list.filter((x) => all.indexOf(x) < at && ok(x)).pop() || null;
+  }
+  // Where a ladder starts: this body's rung (src/access.js), then 1.15's choice in its weeks, then
+  // the usual starting rung for the level, with the weight to begin on.
+  function startOf(S, fam, list, day) {
+    const prefs = (DEFAULT_START[fam] || [[]])[programFor(S.profile).level] || [];
+    const now = personal(S, day);
+    const id = (GH.access && GH.access.startRung(S, fam, list)) || (now && bestRung(S, fam, list, day)) || prefs.find((x) => list.includes(x)) || list[0];
+    return { rung: id, reps: M().MOVES[id].start, w: now ? startW(S, id, day) : 0, best: {}, short: 0, cooldown: 0, maxed: false };
+  }
+
+  // 1.15: the moves a ladder keeps to as it gets harder (levelUp).
+  const KEEP15 = { triceps: /^tri_(oh|band_oh)/ };
+
+  /* ---------------------------------------------------------------- light, right or heavy */
+  // Whether a weight is light, right or heavy for this person on a home move, from their body
+  // weight, sex, level and the move. ONE_RM is an untrained man's one-rep max as a share of body
+  // weight: for each dumbbell, or for the one weight both hands or both legs lift. The curl's is
+  // measured (11.7 kg one-armed in 243 untrained men, Hubal et al. 2005); the others are estimates
+  // set so a 4.5 kg dumbbell at 68 kg sorts as the research on fixed light loads sorts it: enough
+  // for curls, extensions, raises and weighted crunches, too light for squats, deadlifts, rows and
+  // presses. Women's are taken as 0.6 of that for the upper body (6.2 against 11.7 kg, Hubal) and
+  // 0.75 for the legs; trained people's a little higher; from 60, or taking it easy, lower.
+  // Under about 30% of the one-rep max a set no longer builds muscle as heavier ones do (Lasevicius
+  // et al. 2018; Schoenfeld et al. 2021): that's light, and the plan picks another rung. Under about
+  // half (`high`), sets run long and only work near the limit (Lasevicius et al. 2022): effortFor
+  // aims them at 0-2 reps left. Over about 85% fewer than 6 reps go: heavy. A slow, paused or
+  // 1.5-rep version counts the weight as half as heavy again (about half the load became an 8-rep
+  // weight at 3 s up and down, Tanimoto & Ishii 2006). One leg at a time, the body is the load.
+  // weightFit(S, move or id[, day[, kg]]): { fit: 'light' | 'right' | 'heavy', pct, kg, high } for
+  // the heaviest weight they have for it where the day is trained (or for kg), null if no weight of
+  // theirs loads it.
+  const ONE_RM = { curl: 0.15, hammer: 0.15, triceps: 0.12, raise: 0.09, rear: 0.09, press: 0.24, chestDb: 0.3, row: 0.35, squat: 0.9, hinge: 1, glute: 1, calf: 1, absLoad: 0.15, coreRot: 0.15, coreSide: 0.5 };
+  function weightFit(S, id, day, kg) {
+    const m = typeof id === 'string' ? M().MOVES[id] : id;
+    const r = m && !m.gym && ONE_RM[m.family];
+    if (!r) return null;
+    const p = S.profile;
+    const eq = day == null ? eqAt(S, 'home') : eqFor(S, day);
+    const key = M().loadFor(m, eq);
+    if (key !== 'db' && key !== 'kb') return null;
+    const w = kg != null ? kg : fromUnit(Math.max(...eq[key]), unitsOf(S));
+    const legs = r >= 0.9;
+    if (legs && m.uni) return { fit: 'right', pct: 0.5, kg: w, high: false };
+    const max = (p.weightKg || 70) * r * [1, 1.15, 1.3][programFor(p).level] * (p.sex === 'female' ? (legs ? 0.75 : 0.6) : 1) * (p.age >= 60 || p.gentle ? 0.8 : 1);
+    const pct = Math.round((w * (m.two ? 0.5 : 1) * (m.tempo ? 1.5 : 1) / max) * 100) / 100;
+    return { fit: pct < 0.3 ? 'light' : pct > 0.85 ? 'heavy' : 'right', pct, kg: w, high: pct < 0.5 };
+  }
+  // Which of the person's weights a ladder starts on: the lightest that's about half the move's
+  // one-rep max or more (sets of 20 or fewer), never one that's heavy.
+  function startW(S, id, day) {
+    const m = M().MOVES[id];
+    const eq = eqAt(S, 'home');
+    const key = M().loadFor(m, eq);
+    if (key !== 'db' && key !== 'kb') return 0;
+    const list = eq[key].slice().sort((a, b) => a - b);
+    let w = 0;
+    for (let i = 0; i < list.length; i++) {
+      const f = weightFit(S, m, null, fromUnit(list[i], unitsOf(S)));
+      if (!f || f.fit === 'heavy') break;
+      w = i;
+      if (!f.high) break;
+    }
+    return w;
+  }
+  // The one-arm version of an arm move to do in its place (1.15): with a weaker arm, so that side
+  // goes first and never does less; or when the weight is too light for both hands at once.
+  function oneArm(S, m, day) {
+    const o = M().MOVES[M().ONE_ARM15[m.id]];
+    if (!o || !M().allowed(o, eqFor(S, day)) || (GH.access && !GH.access.moveOk(S.profile, o.id, day))) return null;
+    if ((o.joints || []).some((j) => filtersFor(S, day).avoidJoints.includes(j))) return null;
+    const f = weightFit(S, m, day);
+    return S.catchup.arm.active || (f && f.fit === 'light') ? o : null;
+  }
 
   /* ---------------------------------------------------------------- home and gym */
   // Where a day's workout happens. People who train in both places pick on Today; otherwise it's
@@ -374,7 +516,8 @@
     const p = S.profile;
     // A seated plan always has a seat: the wheelchair, or the chair someone who can't stand for long
     // sits on, whatever the chair box in their kit says.
-    if (place !== 'gym') return Array.isArray(p.conditions) && p.conditions.includes('seated') && p.equipment && p.equipment.chair === false ? Object.assign({}, p.equipment, { chair: true }) : p.equipment;
+    // (The kit a move's name follows: src/data/moves.js nameOf.)
+    if (place !== 'gym') { M().kit = p.equipment; return Array.isArray(p.conditions) && p.conditions.includes('seated') && p.equipment && p.equipment.chair === false ? Object.assign({}, p.equipment, { chair: true }) : p.equipment; }
     const g = Object.assign(defaultGym(), p.gym || {});
     const eq = Object.assign({}, g, { db: dbRack(g.dbMax, p.units), kb: [], ball: false, ballLb: null, ballSlam: false, band: false, chair: true, wall: true, towel: true, table: false, door: false, bar: g.bar !== false });
     delete eq.dbMax;
@@ -421,6 +564,8 @@
     const f = filtersFor(S, day, opts && opts.place);
     const o = Object.assign({ noImpact: f.noImpact, simple: f.simple }, opts || {});
     let list = M().rungsFor(family, f.eq, { noImpact: o.noImpact, simple: o.simple });
+    // 1.15's moves and ladders (since: 15) only in the weeks planned with its personal plans.
+    if (!personal(S, day)) list = M().LADDERS[family].since ? [] : list.filter((id) => !M().MOVES[id].since);
     if (f.careful.length) list = list.filter((id) => { const m = M().MOVES[id]; return !((m.impact || m.complex) && (m.joints || []).some((j) => f.careful.includes(j))); });
     list = list.filter((id) => !(S.excluded || []).includes(id));
     // Moves a plan tweak leaves out (Make it yours, or a suggestion you accepted).
@@ -457,9 +602,7 @@
     if (!isGymFam(fam)) {
       // Where this body starts (src/access.js; stand-in ladders start the first time a plan uses
       // them), else the usual starting rung for the person's level, as initProgress does.
-      const prefs = (DEFAULT_START[fam] || [[]])[programFor(S.profile).level] || [];
-      const id = (GH.access && GH.access.startRung(S, fam, list)) || prefs.find((x) => list.includes(x)) || list[0];
-      S.prog[fam] = { rung: id, reps: M().MOVES[id].start, w: 0, best: {}, short: 0, cooldown: 0, maxed: false };
+      S.prog[fam] = startOf(S, fam, list, day);
       return S.prog[fam];
     }
     const m = M().MOVES[list[0]];
@@ -468,14 +611,11 @@
   }
 
   function initProgress(S, baseline, day) {
-    const lvl = programFor(S.profile).level;
     for (const fam of Object.keys(M().LADDERS)) {
       if (isGymFam(fam)) continue;
       const list = rungs(S, fam, day, { place: 'home' });
       if (!list.length) continue;
-      const prefs = (DEFAULT_START[fam] || [[]])[lvl] || [];
-      const id = (GH.access && GH.access.startRung(S, fam, list)) || prefs.find((x) => list.includes(x)) || list[0];
-      S.prog[fam] = { rung: id, reps: M().MOVES[id].start, w: 0, best: {}, short: 0, cooldown: 0, maxed: false };
+      S.prog[fam] = startOf(S, fam, list, day);
     }
     if (baseline) applyBaseline(S, baseline, day);
   }
@@ -609,7 +749,7 @@
     // (A workout's sets count too: the next week's plan reads what the last one trained.)
     for (const l of S.log || []) if (l && (l.type === 'workout' || l.type === 'light')) lg += `${l.type[0]}${l.day}.${l.checkedIn ? 1 : 0}${(l.pct || 0) >= 0.5 ? 1 : 0}${l.walk ? 1 : 0}${l.mobility ? 1 : 0}${l.doneSets || 0};`;
     const ev = (S.events || []).filter((e) => e && (e.type === 'settings' || e.type === 'move' || e.type === 'deloadNext' || e.type === 'plan'));
-    return JSON.stringify([planProfile(S.profile), S.vol, S.complexity, S.pain, S.excluded, S.catchup, S.place, S.lastPlace, S.engineFrom, S.rulesFrom, ev, S.customPlans, S.activePlan]) + progStamp(S) + lg;
+    return JSON.stringify([planProfile(S.profile), S.vol, S.complexity, S.pain, S.excluded, S.catchup, S.place, S.lastPlace, S.engineFrom, S.rulesFrom, S.personalFrom, ev, S.customPlans, S.activePlan]) + progStamp(S) + lg;
   }
   // The workouts a week's plan reads, in short (the week's own and the week before's, what they
   // trained), and the changes to the schedule made in those weeks. A week that's over keeps its plan
@@ -630,7 +770,8 @@
   // weight goal (src/food.js), the sleep answers. (The first sync that brought a height in had every
   // plan worked out again, a moment after launch. Body weight stays: a gym move's first load reads it.)
   const SCREEN_PREFS = new Set(['figure', 'figSkin', 'figShirt', 'theme', 'density', 'sound', 'vibrate', 'haptics', 'hapticStrength', 'reducedMotion', 'actType', 'actStreets', 'actMaps', 'actAuto', 'actVoice', 'notify']);
-  const SCREEN_FIELDS = new Set(['name', 'heightCm', 'sex', 'food', 'protein', 'weightGoal', 'sleepTypical', 'sleepIrregular']);
+  // (1.15: sex left this list, as a weight is judged light or heavy by it too: weightFit.)
+  const SCREEN_FIELDS = new Set(['name', 'heightCm', 'food', 'protein', 'weightGoal', 'sleepTypical', 'sleepIrregular']);
   function planProfile(p) {
     if (!p || typeof p !== 'object') return p;
     const out = {};
@@ -686,7 +827,11 @@
       const idle = lastWorkoutDay != null && ws - lastWorkoutDay >= 7 + 1;
       let deload = false;
       if (deloadReq.has(ws)) deload = true;
-      else if (sinceDeload >= 4 && trainingWeeks >= 4) deload = true;
+      // (1.15: none planned in a beginner's first 12 weeks of training. The one trial found a week
+      // off gave no more growth and a little less strength, Coleman et al. 2024, and a planned
+      // lighter week is coaching practice for higher volumes, Bell et al. 2023: D7 of the 1.15
+      // research. Too hard on poor sleep twice in two weeks still brings one, deloadReq.)
+      else if (sinceDeload >= 4 && trainingWeeks >= 4 && !(prog.level === 0 && trainingWeeks < 12 && personal(S, ws))) deload = true;
       const onramp = !deload && (trainingWeeks < prog.onramp.weeks || idle);
       const mult = deload ? 0.6 : onramp ? (idle && trainingWeeks >= prog.onramp.weeks ? 0.7 : prog.onramp.mult) : 1;
       // Sessions for the week.
@@ -949,6 +1094,14 @@
   // Weeks before S.engineFrom (the week after 1.6 first ran) keep 1.5's split, so what's done and
   // what's left of that week keep their meaning; later weeks come from the optimizer.
   const legacyWeek = (S, ws) => S.engineFrom != null && ws < S.engineFrom;
+  // 1.15's personal plans: a goal muscle on two days or more with its sets shared out, at most 4 sets
+  // of an exercise, few exercises with 2 sets or more each, weights judged light, right or heavy for
+  // the person, abs and arms trained for size, and the eating answer. They change which days train
+  // what and what a session holds, so they start with S.personalFrom: a state saved before 1.15 gets
+  // the week after it's first loaded (the migration in src/optimizer.js), a new state its first
+  // week. Earlier weeks are planned as 1.14 planned them, on a copy of the profile marked legacyPlan
+  // (as legacyRules does for 1.13's rules), and the trial weeks a split is scored on carry the mark.
+  const personal = (S, day) => !!S && !(S.profile && S.profile.legacyPlan) && !(S.personalFrom != null && day != null && weekStart(day) < S.personalFrom);
   // The profile and program a week's split is made from: the person as they are, with that week's
   // days, weekdays and minutes, and how simple sessions are (fewer exercises a day). A week before
   // 1.13's rules started is marked legacyRules, so its split is the one it had; from then, type 2
@@ -959,7 +1112,7 @@
     const p = S.profile;
     const A = GH.access;
     const old = A && A.oldRules ? A.oldRules(S, ws) : false;
-    const mark = old ? { legacyRules: true } : null;
+    const mark = Object.assign(old ? { legacyRules: true } : {}, personal(S, ws) ? null : { legacyPlan: true });
     const wk = !old && A && A.strengthDays ? A.strengthDays(p, { days: st.days, weekdays: st.weekdays, minutes: st.minutes }) : { days: st.days, weekdays: st.weekdays };
     return { set: st, p: Object.assign({}, p, { days: wk.days, weekdays: wk.weekdays, minutes: st.minutes, complexity: S.complexity || 0 }, mark), prog: programFor(Object.assign({}, p, { days: wk.days }, mark)) };
   }
@@ -992,7 +1145,117 @@
   }
   // A day's slots: each of its groups' sets shared out over that group's exercises (the ladders
   // for the unit, with their rotations, stand-ins and focus leaning).
+  // 1.15 (personal): few exercises, done properly. A group's sets for the day go to one exercise up
+  // to 3 sets, two from 4 and three from 8 while the session has exercises to spare for its minutes
+  // (dp.cap, src/optimizer.js exCap), and never fewer than keep each at 4 sets or under (past about
+  // that many sets of one move in a session each adds little: the dose-response flattens, Pelland
+  // et al. 2026, and long runs of one exercise get dull and sloppy). Which exercise comes from the group's angles, the
+  // ladders that train it differently: a curl and a hammer curl, an overhead extension (the long
+  // head at long length, Maeo et al. 2023) and a close-grip push-up (the other heads, Brandão et al.
+  // 2020), a crunch and a reverse crunch or leg raise (both grow the abs, Lessa 2024). A goal's
+  // first two angles take turns over the week's days and stay put week to week, so each is done
+  // long enough to get good at (low complexity predicts the habit, Kaushal & Rhodes 2015; no
+  // random rotation, Baz-Valle et al. 2019); a group that isn't a goal also turns every four weeks,
+  // so each angle comes round on its one day.
+  const ANGLES = {
+    biceps: ['curl', 'hammer'], triceps: ['triceps', 'triPush'], chest: ['push', 'chestDb'], shoulders: ['press', 'raise'],
+    legs: ['squat', 'hinge', 'glute', 'hamCurl'], back: ['pull', 'row', 'rear', 'backExt'], abs: ['absLoad', 'abs', 'coreSide', 'coreRot'],
+  };
+  const GYM_ANGLES = {
+    biceps: ['curlG'], triceps: ['triG'], chest: ['pressG', 'inclineG', 'flyG'], shoulders: ['ohpG', 'raiseG'],
+    legs: ['squatG', 'hingeG', 'gluteG', 'lungeG', 'legCurlG', 'legExtG'], back: ['pullG', 'rowG', 'rearG'], abs: ['absG'],
+  };
+  const SUPPORT = ['rear', 'backExt', 'glute', 'hamCurl', 'calf', 'coreSide', 'coreRot', 'flyG', 'gluteG', 'lungeG', 'legCurlG', 'legExtG', 'calfG', 'rearG'];
+  const exFor = (n) => (n <= 0 ? 0 : n <= 4 ? 1 : n <= 8 ? 2 : 3);
+  function slots15(S, day, dp) {
+    const prog = programFor(S.profile);
+    const gs = dp.groupSets || {};
+    const focus = focusOf(S.profile);
+    // (Four weeks at a time, from the plan's first week: exercises held long enough to learn.)
+    const week = Math.max(0, Math.floor((weekStart(day) - weekStart(S.profile.startDay || 0)) / 28));
+    const atGym = placeOf(S, day) === 'gym';
+    const slots = [];
+    const used = new Set();
+    // How many exercises each group gets: what suits its sets, fewer while the day holds more than
+    // its minutes take (the groups with the most to spare first, the lesser goals before the top).
+    const want = {};
+    for (const unit of dp.units) for (const g of UNIT_GROUPS[unit]) { const n = Math.min(12, gs[g] || 0); if (n > 0) want[g] = n <= ((prog.tiers[g] || 3) > 2 ? 4 : 3) ? 1 : n <= 7 ? 2 : 3; }
+    // (dp.ex: the exercises the week's plan gave the day, balance practice at its start counted.)
+    for (let over = Object.values(want).reduce((a, k) => a + k, 0) - (dp.ex || dp.cap || Infinity); over > 0; over--) {
+      const g = Object.keys(want).filter((q) => want[q] > exFor(gs[q])).sort((a, b) => want[b] - want[a] || (prog.tiers[b] || 3) - (prog.tiers[a] || 3))[0];
+      if (!g) break;
+      want[g]--;
+    }
+    for (const unit of dp.units) {
+      for (const g of UNIT_GROUPS[unit]) {
+        const n = Math.min(12, gs[g] || 0);
+        if (n <= 0) continue;
+        const tier = prog.tiers[g] || 3;
+        let list = (atGym ? GYM_ANGLES[g] : []).concat(ANGLES[g]);
+        // Calves get sets of their own when they're a focus or legs are a top goal.
+        if (g === 'legs' && (focus.includes('calves') || tier === 1)) list = list.slice(0, 2).concat(atGym ? 'calfG' : [], 'calf', list.slice(2));
+        // The ladders that can be done today (or their stand-ins, src/access.js), each once, a
+        // focus's first; the ones whose exercise isn't the right one for this person (weak) last.
+        const fams = [];
+        let shared = null;
+        for (const f0 of list) {
+          const f = famFor(S, f0, day);
+          if (fams.includes(f) || !rungs(S, f, day).length) continue;
+          const pk = pinnedFor(S, f, day) || pickMove(S, f, day);
+          if (!pk || !pk.id) continue;
+          if (used.has(pk.id)) { shared = shared || [f, pk.id]; continue; }
+          fams.push(f);
+          (fams.ids = fams.ids || {})[f] = pk.id;
+        }
+        // (A group whose only exercise another group's already uses, a stand-in both share, still
+        // has it: the two become one exercise that counts for both, mergeSame.)
+        if (!fams.length && shared) { fams.push(shared[0]); fams.ids = { [shared[0]]: shared[1] }; }
+        if (!fams.length) continue;
+        const ids = fams.ids;
+        // (A big move on a weight in the light zone comes after one the body loads: push-ups before
+        // a light floor press. A small one too light for both hands is done one arm at a time and
+        // keeps its place: the overhead extension leads the triceps, as it grows the long head most,
+        // Maeo et al. 2023, and every arm plan has one, A6 of the 1.15 research.)
+        const light = (f) => { const w = weightFit(S, ids[f], day); return !!w && (COMPOUND.includes(f) ? w.high : w.fit === 'light' && !oneArm(S, M().MOVES[ids[f]], day)); };
+        const rank = (f) => (weak(S, ids[f], day) ? 10 : light(f) ? 1 : 0) - 2 * focusScore(f, focus);
+        let order = fams.map((f, i) => [f, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map((x) => x[0]);
+        // (An exercise that isn't the right one only when the group has no other.)
+        if (order.some((f) => rank(f) < 5)) order = order.filter((f) => rank(f) < 5);
+        // The angles that take turns leading: a goal's first two; the support moves (rear shoulders,
+        // the lower back, bridges, calves, side and rotation work) only lead for a focus, or for abs
+        // that aren't a goal, which go round them all (trunk control, the sides, rotation).
+        const main = (f) => !SUPPORT.includes(f) || focusScore(f, focus) > 0 || (g === 'abs' && tier > 1);
+        let turn = 0;
+        while (turn < order.length && turn < (g === 'abs' && tier > 1 ? 4 : 2) && main(order[turn])) turn++;
+        // (From 50 every leg day leads with its squat: the week's first is done fast, src/access.js,
+        // and the ladder only moves on from the sets done at the usual pace.)
+        turn = g === 'legs' && S.profile.age >= 50 ? 1 : Math.max(1, turn);
+        // (The arms' and abs' turns as goals are counted over the week's days that train them,
+        // dp.gocc, so on two days each of their two exercises comes once: an overhead extension and
+        // close-grip push-ups, a crunch and a reverse crunch, A2 and A6 of the 1.15 research.)
+        const occ = tier === 1 && dp.gocc && dp.gocc[g] != null ? dp.gocc[g] : (dp.occ || {})[unit] || 0;
+        const lead = (occ + (tier === 1 ? 0 : week)) % turn;
+        const pickN = Math.min(order.length, S.complexity > 0 && !dp.multi ? 1 : want[g]);
+        const chosen = [order[lead]].concat(order.filter((f, i) => i !== lead)).slice(0, pickN);
+        // Abs as a goal: the sets go to the two moves that load the front of the abs. The sides and
+        // rotation (side planks train the obliques hard enough to strengthen them, Ekstrom et al.
+        // 2007) come as the second exercise on every other abs day that has two, the two of them
+        // four weeks each, so they aren't left out for good and take nothing from a short day.
+        if (g === 'abs' && tier === 1 && pickN === 2 && occ % 2 === 1) {
+          const sides = order.filter((f) => (f === 'coreSide' || f === 'coreRot') && !chosen.includes(f));
+          if (sides.length) chosen[1] = sides[week % sides.length];
+        }
+        chosen.forEach((fam, i) => {
+          const sets = Math.floor(n / pickN) + (i < n % pickN ? 1 : 0);
+          used.add(ids[fam]);
+          slots.push({ fam, sets, group: g });
+        });
+      }
+    }
+    return slots;
+  }
   function slotsOfDay(S, day, dp) {
+    if (personal(S, day)) return slots15(S, day, dp);
     const prog = programFor(S.profile);
     const slots = [];
     const atGym = placeOf(S, day) === 'gym';
@@ -1114,11 +1377,11 @@
     // Readiness: one less set per exercise (never below 1); leg trim after another hard session. No
     // exercise has more than 6 sets (a stand-in can take two slots' sets).
     for (const s of slots) {
-      s.sets = Math.min(SET_MAX, s.sets);
+      s.sets = Math.min(setMax(S, day), s.sets);
       if (ready.minus) s.sets = Math.max(1, s.sets - 1);
       if (ready.legsMinus && s.group === 'legs') s.sets = Math.max(1, s.sets - 1);
     }
-    const items = mergeSame(slots.map((s) => itemFor(S, s, day)).filter(Boolean));
+    const items = mergeSame(slots.map((s) => itemFor(S, s, day)).filter(Boolean), setMax(S, day), personal(S, day));
     // Back after a break: strength and size come back quickly when training restarts (Ogasawara
     // et al. 2013), but the first session back is a little lighter so it doesn't flatten you.
     const lastDone = workoutLogs(S).filter((l) => isDone(l) && l.day < day).reduce((a, l) => Math.max(a, l.day), -Infinity);
@@ -1136,11 +1399,16 @@
     const armDay = (dp.planUnits || dp.units).includes('arms');
     const legDay = (dp.planUnits || dp.units).includes('legs');
     const extras = [];
-    if (armDay && S.catchup.arm.active && !dp.noExtras) { const x = extraItem(S, 'curl', 'arm', day); if (x) extras.push(x); }
+    // (1.15: beside the day's own curls, on two days a week at most. About a fifth more work for the
+    // weaker side is the one size of step with any trial behind it, Scarpelli et al. 2022; nothing
+    // tests evening out two arms, so it stays small.)
+    const armExtra = !personal(S, day) || (((dp.occ || {}).arms || 0) < 2 && items.some((it) => it.group === 'biceps'));
+    if (armDay && S.catchup.arm.active && !dp.noExtras && armExtra) { const x = extraItem(S, 'curl', 'arm', day); if (x) extras.push(x); }
     if (legDay && S.catchup.leg.active && !dp.noExtras) { const x = extraItem(S, 'squat', 'leg', day); if (x) extras.push(x); }
-    // Tests (every 14 days, at the start of the first matching day).
+    // Tests (every 14 days, at the start of the first matching day; not in a session built to copy
+    // into a plan of your own, o.forceMult, which would keep the set a one-off test stood in for).
     const tests = [];
-    for (const [kind, on] of [['arm', armDay], ['leg', legDay]]) {
+    for (const [kind, on] of o.forceMult != null ? [] : [['arm', armDay], ['leg', legDay]]) {
       const t = on && testDue(S, day, kind) ? testItem(S, kind, day) : null;
       if (t) tests.push(t);
     }
@@ -1201,7 +1469,8 @@
   // same group they become one exercise with both slots' sets (up to 5). For another group, its
   // sets go to that group's other exercise when it has one, so each group keeps the sets the week
   // gave it; otherwise the exercise counts for both (`also`), with the larger of the two set counts.
-  function mergeSame(items) {
+  function mergeSame(items, max, own) {
+    const SET_MAX = max || 6, MERGE_MAX = Math.min(5, SET_MAX);
     const out = [], dups = [];
     for (const it of items) {
       const same = out.find((x) => x.moveId === it.moveId || x.fam === it.fam);
@@ -1212,6 +1481,13 @@
       const mate = out.find((x) => x !== same && x.group === it.group && x.sets < SET_MAX);
       if (mate) { mate.sets = Math.min(SET_MAX, mate.sets + it.sets); continue; }
       same.sets = Math.max(same.sets, Math.min(SET_MAX, it.sets));
+      // (1.15: the exercise counts as its own muscle group's, where the other came to it in place of
+      // a move it couldn't do: a seated march stands in for a hinge, but it's a leg exercise.)
+      if (own && it.group !== same.group && M().MOVES[it.moveId].group === it.group && same.swappedFrom) {
+        same.also = (same.also || []).filter((g) => g !== it.group).concat(same.group);
+        same.group = it.group;
+        continue;
+      }
       if (!(same.also || []).includes(it.group)) same.also = (same.also || []).concat(it.group);
     }
     return out;
@@ -1309,7 +1585,9 @@
     }
     if (key === 'db' || key === 'kb') {
       const list = (eq[key] || []).slice().sort((a, b) => a - b);
-      const w = S.prog[m.family] ? Math.min(S.prog[m.family].w || 0, list.length - 1) : 0;
+      // (1.15's second-exercise ladders keep a weight of their own, even on a rung they share.)
+      const st = S.prog[M().LADDERS[f] && M().LADDERS[f].since ? f : m.family];
+      const w = st ? Math.min(st.w || 0, list.length - 1) : 0;
       const value = list[Math.max(0, w)];
       return { key, value, kg: fromUnit(value, unit), unit, label: `${fmtNum(value)} ${unit} ${key === 'db' ? (m.uni || /^(curl_conc|tri_oh1|row_chair|chest_press1|raise_lean)/.test(m.id) ? 'dumbbell' : 'dumbbells') : 'kettlebell'}` };
     }
@@ -1364,6 +1642,9 @@
       id = list.filter((x) => all.indexOf(x) <= at).pop() || list[0];
     }
     id = id || list[0];
+    // 1.15: a rung that isn't the right exercise for this person (weak: a weight too light to count)
+    // gives way to the one that is. The ladder moves onto it the first time it's done (reseat).
+    if (personal(S, day) && weak(S, id, day)) id = bestRung(S, fam, list, day, id) || id;
     const avoid = filtersFor(S, day).avoidJoints;
     const loads = (x) => (M().MOVES[x].joints || []).some((j) => avoid.includes(j));
     if (!avoid.length || !loads(id)) return { id, swappedFrom: null };
@@ -1413,18 +1694,25 @@
     ensureProg(S, pin ? pin.family : slot.fam, day);
     const pick = pin ? { id: pin.id, swappedFrom: null, family: pin.family } : pickMove(S, slot.fam, day);
     if (!pick || !pick.id) return null;
-    const m = M().MOVES[pick.id];
     const fam = pick.family || slot.fam;
+    const now = personal(S, day);
+    // (1.15: one arm at a time where that's the better version, the ladder's reps with it.)
+    const m = (now && !pin && oneArm(S, M().MOVES[pick.id], day)) || M().MOVES[pick.id];
     const st = S.prog[fam] || { reps: m.start };
     let target = st.rung === pick.id ? st.reps : m.start;
     const [lo, hi] = rangeFor(S, m, fam, day);
     target = clampInt(target, lo, hi);
     const it = {
-      kind: 'move', fam, moveId: m.id, name: m.name, group: slot.group, sets: slot.sets, target,
+      kind: 'move', fam, moveId: m.id, name: now ? M().nameOf(m, eqFor(S, day)) : m.name, group: slot.group, sets: slot.sets, target,
       timed: !!m.timed, uni: !!m.uni, rest: restFor(S, fam), load: loadInfo(S, m, day, fam),
       swappedFrom: pick.swappedFrom, superset: null,
     };
     if (pin) it.pinned = true;
+    // 1.15: one arm at a time, each arm rests through the other's turn, so 30 s between sets is still
+    // over a minute for each (auto rest only). Light sets taken near the end grew the triceps as much
+    // on 30 s of rest as on 150 (Fink et al. 2017), and 30-60 s suits light single-joint sets (D5 of
+    // the 1.15 research); the time goes to more sets for the arms.
+    if (now && m.uni && (slot.group === 'biceps' || slot.group === 'triceps') && autoRest(S)) it.rest = 30;
     return it;
   }
 
@@ -1573,7 +1861,7 @@
   }
 
   /* ---------------- supersets */
-  const CONFLICT = [['push', 'triceps'], ['row', 'curl'], ['pull', 'curl'], ['push', 'raise'], ['chestDb', 'triceps'], ['pull', 'row'], ['row', 'rear'], ['pull', 'rear'], ['chestDb', 'push'], ['squat', 'hinge'], ['squat', 'glute'], ['hinge', 'glute'],
+  const CONFLICT = [['push', 'triPush'], ['chestDb', 'triPush'], ['press', 'triPush'], ['row', 'hammer'], ['pull', 'hammer'], ['push', 'triceps'], ['row', 'curl'], ['pull', 'curl'], ['push', 'raise'], ['chestDb', 'triceps'], ['pull', 'row'], ['row', 'rear'], ['pull', 'rear'], ['chestDb', 'push'], ['squat', 'hinge'], ['squat', 'glute'], ['hinge', 'glute'],
     ['press', 'push'], ['press', 'chestDb'], ['press', 'triceps'], ['press', 'raise'], ['backExt', 'hinge'], ['backExt', 'row'], ['hamCurl', 'hinge'], ['hamCurl', 'glute'], ['calf', 'squat']];
   const PREFER = [['squat', 'curl'], ['push', 'row'], ['hinge', 'triceps'], ['push', 'curl'], ['squat', 'row'], ['hinge', 'curl'], ['row', 'triceps'], ['squat', 'triceps'], ['curl', 'triceps'], ['pull', 'push'], ['rear', 'push'], ['raise', 'squat'], ['raise', 'hinge'], ['chestDb', 'row'], ['push', 'squat'], ['push', 'hinge'],
     ['press', 'row'], ['press', 'squat'], ['press', 'hinge'], ['hamCurl', 'push'], ['hamCurl', 'curl'], ['calf', 'row'], ['calf', 'curl'], ['backExt', 'push'], ['raise', 'hamCurl']];
@@ -1755,7 +2043,10 @@
   // sloppy), otherwise they're cut; what doesn't fit is listed in `trimmed`.
   const MERGE_MAX = 5;
   const SET_MAX = 6; // sets of one exercise in a session
-  function limitExercises(s, max) {
+  // (1.15's weeks: 4, see slots15.)
+  const setMax = (S, day) => (personal(S, day) ? 4 : SET_MAX);
+  function limitExercises(s, max, most) {
+    const MERGE_MAX = most || 5;
     if (s.items.length <= max) return;
     s.trimmed = s.trimmed || [];
     while (s.items.length > max) {
@@ -2177,6 +2468,9 @@
     const m = M().MOVES[log.moveId];
     const fam = log.fam && M().LADDERS[log.fam] ? log.fam : m.family;
     repin(S, fam, log);
+    // (Not in a lighter week, nor from a plan of your own, which passes deload: the coach's levels
+    // stay where they are then.)
+    if (!deload) reseat(S, fam, log, day);
     if (isGymFam(fam)) return progressGym(S, fam, log, deload, day);
     const st = S.prog[fam];
     if (!st) return {};
@@ -2192,10 +2486,11 @@
       if (prevBest > 0 && !S.celebrated[key]) { S.celebrated[key] = day; res.celebrate.push({ kind: 'pr', text: `New best: ${best}${log.timed ? ' s' : ''} ${m.name.toLowerCase()}` }); }
     }
     if (st.cooldown > 0) st.cooldown--;
-    // A swap doesn't move its own ladder; a fast-up version (src/access.js) counts as its base rung.
-    if (log.moveId !== st.rung && m.powerOf !== st.rung) return res;
+    // A swap doesn't move its own ladder; a fast-up version (src/access.js) counts as its base rung,
+    // and so does its one-arm version (1.15, oneArm).
+    if (log.moveId !== st.rung && m.powerOf !== st.rung && M().ONE_ARM15[st.rung] !== log.moveId) return res;
     if (deload) return res;
-    const [lo, hi] = rangeFor(S, m, fam);
+    const [lo, hi] = rangeFor(S, m, fam, day);
     const target = log.target;
     const allHit = firstSide.every((x) => x.amount >= target) && firstSide.length > 0;
     const avg = firstSide.reduce((a, x) => a + x.amount, 0) / Math.max(1, firstSide.length);
@@ -2206,15 +2501,20 @@
     const go = effortStep(log);
     if (allHit && go.pace) {
       if (st.reps >= hi) {
-        const up = go.harder ? levelUp(S, fam, day) : null;
-        if (up) { res.line = up.line; if (up.celebrate) res.celebrate.push(up.celebrate); }
+        // (1.15: a long or light set, aim 0-2, moves on from the top of its range the second
+        // session running that every set got there, whatever was left: see AIMS.)
+        const twice = log.aim === '02' && (st.top = (st.top || 0) + 1) >= 2;
+        const up = go.harder || twice ? levelUp(S, fam, day) : null;
+        if (up) { st.top = 0; res.line = up.line; if (up.celebrate) res.celebrate.push(up.celebrate); }
       } else {
+        st.top = 0;
         const base = go.pace === 1 ? (log.timed ? 5 : st.reps < 12 ? 1 : 2) : (log.timed ? 5 : 1) * go.pace;
         const next = Math.min(hi, st.reps + stepFor(S, base, log.timed, log.rir));
         if (next !== st.reps) { st.reps = next; res.line = { text: `${name} → ${next}${unit}`, why: effortWords(log) }; }
       }
     }
     if (!allHit) {
+      st.top = 0;
       if (avg < lo) {
         st.short = (st.short || 0) + 1;
         if (st.short >= 2) {
@@ -2249,6 +2549,16 @@
     Object.assign(st, { rung: log.moveId, reps: clampInt(log.target || m.start, lo, hi), short: 0, cooldown: 0 });
   }
 
+  // 1.15: a ladder standing on a rung that isn't the right exercise (weak) moves onto the one the
+  // plan gave in its place the first time that's done, and progresses from there.
+  function reseat(S, fam, log, day) {
+    const st = S.prog[fam];
+    const m = M().MOVES[log.moveId];
+    if (!st || !m || st.rung === log.moveId || !personal(S, day) || !M().LADDERS[fam] || !M().LADDERS[fam].rungs.includes(log.moveId) || !weak(S, st.rung, day)) return;
+    const [lo, hi] = rangeFor(S, m, fam);
+    Object.assign(st, { rung: log.moveId, reps: clampInt(log.target || m.start, lo, hi), short: 0, cooldown: 0 });
+  }
+
   // How many reps (or seconds) a good set adds: src/access.js makes the steps a little bigger under
   // 30 (an easy set, 3 or more left: '3', or '4' for 4 or more) and smaller from 50.
   function stepFor(S, base, timed, rir) { return GH.access ? GH.access.repStep(S.profile, base, timed, rir === '4' ? '3' : rir) : base; }
@@ -2266,8 +2576,12 @@
   function rangeFor(S, m, fam, day) {
     const own = ownRange(S, m, fam, day);
     if (own) return own;
-    const [lo, hi] = m.range;
+    let [lo, hi] = m.range;
     if (m.timed) return [lo, hi];
+    // 1.15: sets stop at 20 reps, and past that a harder version comes instead. Longer sets build
+    // no more (anything to the end within about 35 reps counts, Schoenfeld et al. 2021), take longer
+    // and feel worse (25-30 rep sets were rated clearly less pleasant than 8-12, Ribeiro et al. 2019).
+    if (hi > 20 && lo <= 12 && personal(S, day)) hi = 20;
     const top = (S.profile.goals || []).slice(0, 2);
     if (strengthLift(S, m, fam)) return [Math.min(lo, 4), Math.max(Math.min(hi, 8), Math.min(lo, 4) + 3)];
     if (top.includes('strength') && HOME_COMPOUND.includes(fam)) return [5, 10];
@@ -2291,10 +2605,19 @@
   //             a tested rule).
   //   power     fast reps (src/access.js powerPlan): 3 or more, stopping while every rep is still
   //             quick. 1-2 left means they'd slowed, so it holds there.
+  //   light     1.15: sets of more than 15 reps, or with a weight under about half the move's one-rep
+  //             max (weightFit): 2 at most, and none is fine. A light set stopped halfway built
+  //             almost nothing (2.8% against 7.8% taken to the end, Lasevicius et al. 2022), 1-2 left
+  //             builds as much as none (Refalo et al. 2024), and people misjudge long sets by more
+  //             (Halperin et al. 2022), so these go nearer the end than heavier sets need to.
+  //             At the top of the range on this aim twice running, the harder version comes
+  //             (progress): reps first, then a harder exercise, not an ever longer set (Chaves et
+  //             al. 2024; Plotkin et al. 2022; the two-session gate is the cautious reading).
   //   usual     everyone else: 1-3.
   // (floor: an answer under lo holds. words: the aim in words, where lo-hi isn't it.)
   const AIMS = {
     13: { lo: 1, hi: 3, ok: 3 }, 12: { lo: 1, hi: 2, ok: 2 }, 23: { lo: 2, hi: 3, ok: 3 }, 24: { lo: 2, hi: 3, ok: 4 },
+    '02': { lo: 0, hi: 2, ok: 2, zero: true, words: '2 at most' },
     34: { lo: 3, hi: 4, ok: 4, floor: true, words: '3 or more' },
   };
   const aimOf = (key, why) => Object.assign({ key, why }, AIMS[key]);
@@ -2317,6 +2640,11 @@
     if (main && A && typeof A.boneLoad === 'function' && A.boneLoad(p)) return aimOf('12', 'bone');
     const age = Number(p.age);
     if (age >= 60 && age <= 110) return aimOf('23', 'age');
+    if (main && personal(S, day)) {
+      const f = weightFit(S, m, day, it.load && it.load.kg != null ? it.load.kg : undefined);
+      // (Sets of more than 15 reps, or any light-load set, end 0-2 short: D4 of the 1.15 research.)
+      if (it.target > 15 || (f && f.high)) return aimOf('02', 'light');
+    }
     if (it && !it.skill && programFor(p).tiers[it.group] === 1) return aimOf('12', 'size');
     return aimOf('13', 'usual');
   }
@@ -2333,7 +2661,8 @@
     if (!aim && a === '3') return { pace: 2, harder: true };
     aim = aim || AIMS[13];
     const edge = Object.prototype.hasOwnProperty.call(RIR_EDGE, a) ? RIR_EDGE[a] : 0;
-    if (!edge || (aim.floor && edge < aim.lo)) return { pace: 0, harder: false };
+    if ((!edge && !(aim.zero && a === '0')) || (aim.floor && edge < aim.lo)) return { pace: 0, harder: false };
+    if (!edge) return { pace: 1, harder: false }; // none left on a light set: on the aim
     return { pace: edge <= aim.ok ? 1 : 1 + Math.min(2, edge - aim.ok), harder: edge >= aim.hi };
   }
   // An aim in words ('1-2', '3 or more'), from its key (a log's aim), or null for none.
@@ -2478,8 +2807,15 @@
     const list = rungs(S, fam, day);
     const at = list.indexOf(st.rung);
     // A move a plan tweak picked stays: no harder rung while it's pinned.
-    if (at >= 0 && at < list.length - 1 && !(st.cooldown > 0) && !isPinned(S, st.rung)) {
-      const nextId = list[at + 1];
+    // (1.15: past the rungs whose weight is too light to count, and from an overhead extension to
+    // its harder versions first, slow, then paused one arm at a time, before dips: the movement
+    // stays the one that grows the long head most, Maeo et al. 2023, and stays the same, H9 of the
+    // 1.15 research.)
+    const now = personal(S, day);
+    const ahead = at < 0 ? [] : list.slice(at + 1).filter((x) => !now || !weak(S, x, day));
+    const up = at < 0 ? null : !now ? list[at + 1] : (KEEP15[fam] && KEEP15[fam].test(st.rung) && ahead.find((x) => KEEP15[fam].test(x))) || ahead[0];
+    if (up && !(st.cooldown > 0) && !isPinned(S, st.rung)) {
+      const nextId = up;
       const nm = M().MOVES[nextId];
       st.rung = nextId;
       st.reps = clampInt(nm.start, nm.range[0], nm.range[1]);
@@ -2490,6 +2826,14 @@
     if (!st.maxed && key && (key === 'db' || key === 'kb')) {
       st.maxed = true;
       const next = nextWeight(key, weights[weights.length - 1], unit);
+      // 1.15: the hint to buy a heavier weight comes once in all, as an option. (It only ever comes
+      // here: the ladder's last rung, its top reps, reps to spare and no heavier weight to move to,
+      // which is when the weight is what holds it back.)
+      if (now) {
+        if (S.seen && S.seen.heavier != null) return null;
+        (S.seen = S.seen || {}).heavier = day;
+        return { line: { text: `${M().LADDERS[fam].name}: you're at the top with ${fmtNum(weights[weights.length - 1])} ${unit}. If you'd like more to work with, a ${next} ${unit} ${key === 'db' ? 'dumbbell' : 'kettlebell'} would do it`, why: 'top level, top reps, with reps to spare', buy: true } };
+      }
       return { line: { text: `You maxed ${M().LADDERS[fam].name.toLowerCase()} with ${fmtNum(weights[weights.length - 1])} ${unit}. Next buy: ${next} ${unit} ${key === 'db' ? 'dumbbells' : 'kettlebell'}`, why: 'top rung, top reps, 3 or more left', buy: true } };
     }
     return null;
@@ -2513,10 +2857,12 @@
     const lines = [];
     const cal = calendar(S, day);
     const prog = programFor(S.profile);
+    let fresh = false;
     for (const [wsStr, w] of Object.entries(cal.weeks)) {
       const ws = Number(wsStr);
       if (ws + 6 >= day || (S.volWeeksDone || []).includes(ws)) continue;
       S.volWeeksDone = (S.volWeeksDone || []).concat(ws);
+      fresh = true;
       if (w.phase.deload) continue;
       const logs = workoutLogs(S).filter((l) => l.day >= ws && l.day <= ws + 6 && isDone(l));
       if (!logs.length) continue;
@@ -2525,21 +2871,54 @@
       for (let d = ws; d <= ws + 6; d++) if (S.feel && S.feel[d] && S.feel[d].sore === 'very') sore++;
       const recovering = hard === 0 && sore < 2;
       const holdGrowth = !!(GH.food && GH.food.holdsVolume && GH.food.holdsVolume(S, ws));
-      const up = [], down = [];
+      const up = [], down = [], held = [];
       for (const g of GROUPS) {
         const items = [];
         for (const l of logs) for (const it of l.items || []) if (it.group === g && it.kind === 'move' && it.sets && it.sets.length) items.push(it);
         if (!items.length) continue;
         const ups = items.filter((it) => it.outcome === 'up').length;
         const downs = items.filter((it) => it.outcome === 'down').length;
+        // (1.15: eating little protein, weekly sets grow no further than 2 past where they started.)
+        if (prog.tiers[g] <= 2 && w.allDone && recovering && !holdGrowth && ups > 0 && downs === 0 && prog.lowProtein && S.vol[g] >= prog.start[g] + 2) { held.push(g); continue; }
         if (prog.tiers[g] <= 2 && w.allDone && recovering && !holdGrowth && ups > 0 && downs === 0 && S.vol[g] < prog.cap[g]) { S.vol[g]++; up.push(g); }
         else if (!recovering && downs > ups && S.vol[g] > prog.floor[g]) { S.vol[g]--; down.push(g); }
       }
       if (up.length) lines.push({ text: `${listNames(up)} +1 set a week`, why: 'progressing and recovering well' });
       if (down.length) lines.push({ text: `${listNames(down)} one set less a week`, why: 'going backwards while run down' });
       if (holdGrowth && !up.length) lines.push({ text: 'Weekly sets held where they are', why: 'a big calorie deficit this week' });
+      // (Said once: after that the sets just stay where they are.)
+      if (held.length && !up.length && !(S.seen && S.seen.eatsHold != null)) {
+        (S.seen = S.seen || {}).eatsHold = day;
+        lines.push({ text: 'Weekly sets held where they are', why: 'more sets don\'t make up for little protein' });
+      }
     }
+    if (fresh) logEats(S, day);
     return lines;
+  }
+
+  // What the food log says about protein, for someone who hasn't answered (profile.eats.logged):
+  // from the days of the last 14 logged in full (food tracking on, 1,000 kcal or more that day),
+  // when there are 5 or more. Under 1 g per kg of body weight a day is low, under 1.2 some, else
+  // most (Morton et al. 2018; Tagawa et al. 2020). Looked at once a week, with the weekly sets, so
+  // a plan doesn't change from one day's log to the next. Returns { g, perKg, days } or null.
+  function loggedProtein(S, day) {
+    const F = GH.food;
+    const kg = S.profile.weightKg;
+    if (!F || !F.full || !F.totals || !F.full(S) || !(kg > 0)) return null;
+    let n = 0, g = 0;
+    for (let d = day - 14; d < day; d++) {
+      const t = F.totals(S, d, true);
+      if (t.kcal >= 1000) { n++; g += t.p + (S.protein[d] || []).reduce((a, b) => a + b, 0); }
+    }
+    return n >= 5 ? { g: Math.round(g / n), perKg: Math.round((g / n / kg) * 100) / 100, days: n } : null;
+  }
+  function logEats(S, day) {
+    const p = S.profile;
+    if (!p.eats || typeof p.eats !== 'object') p.eats = defaultProfile().eats;
+    const l = loggedProtein(S, day);
+    const next = !l ? null : l.perKg < 1 ? 'low' : l.perKg < 1.2 ? 'some' : 'most';
+    if ((p.eats.logged || null) === next) return;
+    if (next) p.eats.logged = next; else delete p.eats.logged;
   }
 
   // A daily steps target from your own normal: 10% above your 4-week median, in 500-step
@@ -2799,11 +3178,11 @@
   }
 
   GH.brain = {
-    DAY_MS, dayOf, dayFromStr, dayStr, weekday, weekStart, fmtDay, fmtMin, GROUPS, GROUP_NAME, JOINTS, LB_PER_KG, MUSCLE_GROUP, focusOf, pickWeekday, setWorkoutDays,
+    DAY_MS, dayOf, dayFromStr, dayStr, weekday, weekStart, fmtDay, fmtMin, GROUPS, GROUP_NAME, GOAL_GROUPS, JOINTS, LB_PER_KG, MUSCLE_GROUP, focusOf, pickWeekday, setWorkoutDays,
     defaultProfile, programFor, templateFor, templateTitle, newState, applyBaseline, rungs, filtersFor,
     calendar, weekOf, todayPlan, readiness, buildSession, estimate, steps, startWorkout, cancelWorkout, restoreWorkout, completeStep, currentTarget,
     setRir, amendLast, swapItem, swapOptions, finishWorkout, progress, levelUp, nextWeight, weeklyVolumeUpdate, recordTest, testDue,
-    logLight, autoWalk, addWeight, weightStats, proteinGoal, proteinToday, addProtein, undoProtein, weeklySets, weeklySetsWork, dayWork,
+    logLight, autoWalk, addWeight, weightStats, proteinGoal, proteinToday, addProtein, undoProtein, eatsOf, lowProtein, loggedProtein, logEats, weeklySets, weeklySetsWork, dayWork,
     updateSettings, scheduleSettings, settingsAt, moveSession, setEquipment, reprogram, ladderLevel, mobilityFlow, loadInfo, isDone, relink, median,
     defaultGym, GYM_PRESETS, DB_MAX_OPTIONS, convertDbMax, rangeFor, stepsGoal, outcomeOf, weekdaysFor, gymPreset, placeOf, setPlace, eqAt, eqFor, dbRack, snapLoad, suggestLoad, fmtLoad, loadChoices, setItemLoad, ensureProg, isGymFam, toUnit, fromUnit,
   };
@@ -2812,11 +3191,14 @@
   // Reps left in the tank: each set's aim, and how an answer moves an exercise on (src/customplan.js,
   // src/coach.js and src/ai.js read answers with them too).
   Object.assign(GH.brain, { AIMS, effortFor, effortStep, effortWords, aimWords, RIR_NUM });
+  // 1.15: whether a weight is light, right or heavy for the person on a move (for the plan, Why this
+  // plan and the AI's plans).
+  Object.assign(GH.brain, { weightFit, weak, oneArm });
   // For src/optimizer.js, which plans the weeks and fits sessions to their time.
   Object.assign(GH.brain, {
     UNIT_GROUPS, UNIT_OF, COMPOUND, MAIN_LIFTS, HOME_COMPOUND, FAM_FOCUS, MERGE_MAX, SET_MAX,
     realize, slotsOfDay, slotsForUnit, warmupItems, mobilityIds, finisherItem, finisherFor, pairSupersets, unpair, secsPerSet,
-    limitExercises, mergeSame, orderItems, musclesOf, trimTier, perSession, autoRest, tweaksOf, isPinned, supersetConflict: conflicts,
-    weekSettings, weekInputs, templateOf, templateV1, legacyGroupSets, occurrences, legacyWeek, stateStamp, dayStamp, progStamp, planProfile, weekLog, freeze, op, inOp, opToken,
+    limitExercises, mergeSame, orderItems, musclesOf, trimTier, perSession, autoRest, tweaksOf, isPinned, supersetConflict: conflicts, setMax, exFor,
+    weekSettings, weekInputs, templateOf, templateV1, legacyGroupSets, occurrences, legacyWeek, personal, stateStamp, dayStamp, progStamp, planProfile, weekLog, freeze, op, inOp, opToken,
   });
 })(typeof window !== 'undefined' ? window : globalThis);

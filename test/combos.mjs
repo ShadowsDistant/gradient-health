@@ -298,6 +298,22 @@ function checkSession(S, s, label, o) {
     perGroup[it.group] = (perGroup[it.group] || 0) + it.sets;
   }
   for (const [g, n] of Object.entries(perGroup)) if (n > 10) bad('at most 10 sets a muscle group a session', `${label}: ${g} ${n}`);
+  // 1.15's personal plans (brain.js personal), in the weeks they plan:
+  if (B.personal(S, s.day) && !o.malformed) {
+    // at most 4 sets of an exercise (past that a second exercise does more than a fifth set);
+    for (const it of s.items) if (it.sets > 4) bad('1.15: at most 4 sets an exercise', `${label}: ${it.moveId}×${it.sets}`);
+    // no more exercises than the minutes hold (optimizer.js exCap), balance practice aside;
+    if (!s.flare && !s.light && main.length > GH.optimizer.exCap(budget, p)) bad('1.15: no more exercises than the minutes hold', `${label}: ${main.length} > ${GH.optimizer.exCap(budget, p)} at ${budget} min (${main.map((x) => `${x.moveId}×${x.sets}`)})`);
+    // and no set on a weight too light to count (under about 30% of the move's one-rep max for
+    // this person, brain.js weightFit) while the group has an exercise that isn't.
+    for (const it of main) {
+      if (!GROUPS.includes(it.group) || !B.weak(S, it.moveId, s.day)) continue;
+      const f = B.weightFit(S, it.moveId, s.day);
+      if (!f || f.fit !== 'light') continue;
+      const other = Object.entries(M.LADDERS).some(([fam, lad]) => !lad.gym && lad.group === it.group && B.rungs(S, fam, s.day).some((id) => !B.weak(S, id, s.day) && !notAllowed(S, M.MOVES[id], s.day, s.place, 'work') && !ids.includes(id)));
+      if (other) bad('1.15: no set on a weight too light to count while another exercise would do', `${label}: ${it.moveId} (${Math.round(f.pct * 100)}% of a one-rep max)`);
+    }
+  }
   if (S.complexity > 0) for (const it of s.items) if (it.sets > 6) bad('merged exercises keep at most 5 sets', `${label}: ${it.moveId}×${it.sets}`);
   // Tier order: priority work first (balance practice before it), abs last; a superset's second
   // exercise rides with its first.
@@ -348,6 +364,7 @@ function checkSession(S, s, label, o) {
   if (!bone.length && !s.flare && !s.light && !o.short && budget >= 15 && AC.impactOn(p) && AC.newRules(S, day) && canLand()) bad('osteoporosis with no break: an impact block in every session', `${label}: ${s.items.map((it) => it.moveId)}`);
 }
 
+const work1 = (built) => built.filter((x) => !x.light && !x.flare);
 // A week as planned (no readiness): every session built and checked, and each group's sets
 // checked over the week.
 function checkWeek(S, ws, label, o) {
@@ -386,6 +403,20 @@ function checkWeek(S, ws, label, o) {
   if (TRACE) console.log(`  ${label} effective: ${GROUPS.map((g) => `${g} ${eff[g]}${can.has(g) ? '' : '(-)'}`).join(', ')}${below.length ? `; below: ${below}` : ''}`);
   if (below.length) weeks.belowFloor++;
   for (const g of GROUPS) if (direct[g] > prog.cap[g]) bad('weekly sets stay under each group\'s cap', `${label}: ${g} ${direct[g]} > ${prog.cap[g]}`);
+  // 1.15: a top goal's muscle trains on 2 days or more when the week has them and its plan gives it
+  // 4 sets or more (2 on each): twice a week builds more than the same sets once (Schoenfeld et al.
+  // 2016). (The plan's sets: where it could only fit 2 or 3, on one day, and the session then had
+  // time for another, that one joins the day's exercise rather than standing alone on another day.
+  // Not in a week whose groups take turns, short of time for 2 sets of each; nor from 60, where every
+  // group trains on two days and a full week can leave a goal's sets no second day of their own.)
+  if (B.personal(S, ws) && work1(built).length >= 2 && !(S.complexity > 0) && !(S.profile.age >= 60)) {
+    const wp = GH.optimizer.weekPlan(S, ws, { phase: week.phase });
+    if (!wp.parity) for (const g of GROUPS) {
+      if (prog.tiers[g] !== 1 || !can.has(g)) continue;
+      const on = built.filter((x) => x.items.some((it) => it.group === g && !it.skill)).length;
+      if ((direct[g] || 0) >= 4 && wp.perGroup[g].aim >= 4 && on < 2) bad('1.15: a top goal trains on 2 days or more', `${label}: ${g} ${direct[g]} sets on ${on} of ${built.length} days (${S.profile.days}×${S.profile.minutes} min, ${S.profile.goals})`);
+    }
+  }
   // Coverage: every group it can train reaches its floor (scaled for a lighter week), or, when
   // the time is used up, at least 2 effective sets; when the week's sessions can't hold 2 sets of
   // each group, groups may take turns week by week (checked over two weeks by the caller). The
@@ -429,9 +460,13 @@ function checkWeek(S, ws, label, o) {
   const need2 = GROUPS.filter((g) => can.has(g)).reduce((a, g) => a + 2 * (gSets[g] ? gTime[g] / gSets[g] : perSet), 0);
   const holds = wholeSets * perSet;
   const maxItems = S.complexity > 0 ? (S.complexity === 1 ? 5 : 4) : 0;
-  const slots = maxItems ? built.reduce((a, s) => a + Math.max(0, maxItems - s.items.filter((it) => it.skill).length), 0) : Infinity;
+  // (And in 1.15's weeks the exercises a session's minutes hold, balance practice counting one.)
+  const slotsOf = (s) => { const sk = s.items.filter((it) => it.skill).length; return Math.min(maxItems ? maxItems - sk : Infinity, B.personal(S, s.day) ? GH.optimizer.exCap(budgetOf(S, s, {}), S.profile) - Math.min(1, sk) : Infinity); };
+  const slots = built.some((s) => Number.isFinite(slotsOf(s))) ? built.reduce((a, s) => a + Math.max(0, slotsOf(s)), 0) : Infinity;
   const nCan = GROUPS.filter((g) => can.has(g)).length;
-  const turns = holds < need2 + perSet - 1e-9 || slots < nCan;
+  // (1.15's weeks also take turns where the plan finds no room for 2 sets of each group at 2 sets an
+  // exercise or more, which these sums can't see: the two-week check below still applies to them.)
+  const turns = holds < need2 + perSet - 1e-9 || slots < nCan || (B.personal(S, ws) && GH.optimizer.weekPlan(S, ws, { phase: week.phase }).parity);
   for (const g of below) {
     if (turns && o.pairWith) continue;
     if (!full) { bad('every group reaches its weekly floor while there is time left', `${label}: ${g} ${eff[g]} < ${Math.max(2, Math.round(prog.floor[g] * mult))} (${built.map((s) => `${B.estimate(S, s).toFixed(0)}/${budgetOf(S, s, {})}`).join(' ')})`); break; }
@@ -507,7 +542,10 @@ function runProfile(spec, n, extra) {
       // Weeks 3 and 4 trained too: week 5 is the scheduled deload.
       for (let w = 2; w < 4; w++) S.log.push({ type: 'workout', day: D0 + w * 7 + 6, tpl: 0, title: 'Workout', items: [], checkedIn: true, pct: 1, planned: 1, doneSets: 1 });
       const ph = B.calendar(S, D0 + 28).weeks[D0 + 28].phase;
-      if (!ph.deload) bad('a deload comes after four training weeks', label);
+      // (From 1.15 not for a beginner, in their first 12 weeks: D7 of the 1.15 research.)
+      const novice = B.personal(S, D0 + 28) && B.programFor(S.profile).level === 0;
+      if (!ph.deload && !novice) bad('a deload comes after four training weeks', label);
+      if (ph.deload && novice) bad('a deload comes after four training weeks', `${label}: a beginner's week 5`);
       checkWeek(S, D0 + 28, `${label} w5`, { phase: 'deload' });
     }
   } catch (e) {
@@ -665,6 +703,7 @@ if (OS) console.log(`  week plans: ${OS.weeks}, mean ${(OS.weekMs / Math.max(1, 
 
 section('Invariants');
 const NAMED = [
+  '1.15: at most 4 sets an exercise', '1.15: no more exercises than the minutes hold', '1.15: no set on a weight too light to count while another exercise would do', '1.15: a top goal trains on 2 days or more',
   'no crash', 'every session has work (or is turned into a light day)', 'at least 2 main exercises from 15 min (1 at 10 min)', 'no session runs over its time by more than 30 s',
   'every group reaches its weekly floor while there is time left', 'every group gets at least 2 sets a week', 'with too little time for 2 sets of each group a week, every group is trained over two weeks',
   'no move twice in a session', 'never two workouts on one day', 'at most 6 sets an exercise', 'at most 10 sets a muscle group a session', 'weekly sets stay under each group\'s cap',

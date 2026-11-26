@@ -284,7 +284,9 @@ const smart = await S(() => {
   const p = C.get(U.S, U.route.arg);
   return p.days[0].items.map((it) => { const m = M.MOVES[it.move]; const st = U.S.prog[m.family]; const r = B.rangeFor(U.S, m, m.family, U.today()) || m.range || [1, 100]; return { it, want: C.defaults(U.S, it.move, U.today()), own: !!st && st.rung === it.move, ownReps: st ? Math.max(r[0], Math.min(r[1], st.reps)) : null }; });
 });
-check('new ones come with sets and reps for you: your goals\' sets, and your own reps on a move you\'re doing', smart.every((x) => x.it.sets === x.want.sets && x.it.reps === x.want.reps) && smart.some((x) => x.own) && smart.filter((x) => x.own).every((x) => x.it.reps === x.ownReps), smart);
+// (1.15: the coach may have this person on other rungs of these ladders, a split squat for a goblet
+// squat that's too light with 15 lb, say, so none of the three need be one they're doing.)
+check('new ones come with sets and reps for you: your goals\' sets, and your own reps on a move you\'re doing', smart.every((x) => x.it.sets === x.want.sets && x.it.reps === x.want.reps) && smart.filter((x) => x.own).every((x) => x.it.reps === x.ownReps), smart);
 const week1 = await S(() => Object.fromEntries([...document.querySelectorAll('#screen .cp-wk > li')].map((li) => [li.dataset.key.slice(3), li.dataset.status])));
 check('This week by muscle follows: chest, back and legs have sets now', week1.chest !== 'none' && week1.back !== 'none' && week1.legs !== 'none' && week1.biceps === 'none', week1);
 // A muscle that's short in the week: a tap opens the picker at it.

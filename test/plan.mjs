@@ -207,10 +207,15 @@ section('Workouts a week follow the days picked');
 
 section('Phases');
 {
-  const S = fresh();
+  // (Someone who has trained a year or more: from 1.15 a beginner has no planned lighter week in
+  // their first 12 weeks, brain.js replay.)
+  const S = fresh(MON, { experience: '1to3' });
   for (let d = MON; d < MON + 28; d++) if (B.todayPlan(S, d).type === 'workout') doWorkout(S, d);
   const w5 = PW(S, MON + 28);
   check('after four weeks of training, a deload week at 60%', w5.phase.key === 'deload' && w5.phase.pct === 60 && w5.trainingWeek === 5, JSON.stringify(w5.phase));
+  const N = fresh();
+  for (let d = MON; d < MON + 28; d++) if (B.todayPlan(N, d).type === 'workout') doWorkout(N, d);
+  check('a beginner trains on in week 5', PW(N, MON + 28).phase.key === 'full', JSON.stringify(PW(N, MON + 28).phase));
   const w6 = PW(S, MON + 35);
   check('after more than a week off, easing back in', w6.phase.key === 'comeback' && w6.phase.idle && w6.phase.pct < 100, JSON.stringify(w6.phase));
   check('matching the calendar', w6.phase.mult === B.calendar(S, MON + 35).weeks[MON + 35].phase.mult);

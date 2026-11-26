@@ -146,7 +146,10 @@ const restCheck = (supersets) => {
   const big = solo.filter((it) => BIG.includes(it.fam));
   const small = solo.filter((it) => !BIG.includes(it.fam));
   // (1.13: a session with time to spare gives what's done on its own at 60 s 90 s instead.)
-  return { ok: big.every((it) => it.rest === 90) && small.every((it) => it.rest === 60 || it.rest === 90) && items.filter((it) => it.superset).every((it) => it.rest === 60), big: big.length, small: small.map((it) => `${it.fam}@${it.rest}`), paired: items.filter((it) => it.superset).length };
+  // (1.15: 30 s after an arm exercise done one arm at a time, where each arm also rests through
+  // the other's set: 30 to 60 s is enough for light sets of one joint, Fink et al. 2017.)
+  const oneArm = (it) => it.rest === 30 && GH.moves.MOVES[it.moveId].uni && ['biceps', 'triceps'].includes(it.group);
+  return { ok: big.every((it) => it.rest === 90) && small.every((it) => it.rest === 60 || it.rest === 90 || oneArm(it)) && items.filter((it) => it.superset).every((it) => it.rest === 60), big: big.length, small: small.map((it) => `${it.fam}@${it.rest}`), paired: items.filter((it) => it.superset).length };
 };
 const rc1 = restCheck(false), rc2 = restCheck(true);
 check('the rest rule matches the brain: 90 s after big moves on their own, 60 s after small ones (90 with time to spare)', rc1.ok && rc1.big > 0 && ['push', 'press', 'row', 'squat', 'hinge', 'pull', 'chestDb'].every((f) => B.restFor(person(), f) === 90) && ['curl', 'raise', 'calf'].every((f) => B.restFor(person(), f) === 60), rc1);
@@ -250,6 +253,40 @@ check('actions are checked before they apply', !C.validAction(S, { kind: 'minute
 const nd = C.apply(S, { id: 'x', action: { kind: 'deload', label: 'x' } }, D0);
 check('a lighter week can be planned once', nd && !C.validAction(S, { kind: 'deload' }, D0));
 check('a dismissed suggestion stays hidden for two weeks', (() => { const all = C.suggestions(S, D0); if (!all.length) return true; C.dismiss(S, all[0].id, D0); return !C.suggestions(S, D0 + 13).some((x) => x.id === all[0].id) && (C.suggestions(S, D0 + 15).some((x) => x.id === all[0].id) || true); })());
+
+section('1.15: a smaller plan on offer, and eating');
+{
+  // Week 1 done in full, then one workout of four in each of the next two weeks.
+  const S5 = person({ workouts: [D0 - 21, D0 - 20, D0 - 18, D0 - 17, D0 - 14, D0 - 7] });
+  const sg = C.suggestions(S5, D0);
+  const fewer = sg.find((x) => x.action && x.action.kind === 'days');
+  check('workouts missed two weeks running: the coach offers one day fewer, in plain words', fewer && fewer.action.value === 3 && /You did 2 of 8 planned workouts in the last two weeks/.test(fewer.body) && !/[—–!]/.test(fewer.title + fewer.body), sg.map((x) => x.title));
+  const was = B.weekdaysFor(S5.profile);
+  const line = fewer && C.apply(S5, fewer, D0);
+  const now = B.weekdaysFor(S5.profile);
+  check('applying it plans three days: the ones trained before, without the day missed most', line && S5.profile.days === 3 && now.length === 3 && now.every((d) => was.includes(d)) && !now.includes(fewer.action.drop), { was, now, line });
+  check('this action only ever makes the week smaller, and never under two days', !C.validAction(S5, { kind: 'days', value: 5 }, D0) && !C.validAction(S5, { kind: 'days', value: 1 }, D0) && C.validAction(S5, { kind: 'days', value: 2 }, D0));
+  const S6 = person({ workouts: [D0 - 21, D0 - 20, D0 - 18, D0 - 17, D0 - 14, D0 - 13, D0 - 11, D0 - 10, D0 - 7, D0 - 6, D0 - 4, D0 - 3] });
+  check('with every workout done, no smaller plan is offered', !C.suggestions(S6, D0).some((x) => x.action && x.action.kind === 'days'));
+  // At two days a week, shorter sessions are offered instead.
+  const S7 = B.newState({ goals: ['abs', 'arms'], age: 30, days: 2, minutes: 30, equipment: { db: [8] } }, null, D0 - 21);
+  for (const ws of [D0 - 14, D0 - 7]) B.calendar(S7, ws);
+  const s7 = C.suggestions(S7, D0).find((x) => /^short-/.test(x.id));
+  check('at two days a week: shorter sessions instead', s7 && s7.action.kind === 'minutes' && s7.action.value === 20 && C.validAction(S7, s7.action, D0), C.suggestions(S7, D0).map((x) => x.id));
+  // Eating: the answer brings one small step each, offered until dismissed, then never again.
+  const eat = (p) => { const S8 = person(); Object.assign(S8.profile, { age: 24, heightCm: 183 }, p); return S8; };
+  const S8 = eat({ eats: { protein: 'low', produce: 'low' } });
+  const ids = (S, d = D0) => C.suggestions(S, d).filter((x) => /^eat-/.test(x.id)).map((x) => x.id);
+  const texts = C.suggestions(S8, D0).filter((x) => /^eat-/.test(x.id));
+  check('little protein and fruit: one more protein serving, eating enough (lean, wants size) and a piece of fruit', ids(S8).join() === 'eat-protein,eat-enough,eat-fruit', ids(S8));
+  check('in plain, honest words: 20 to 30 g, no promise, fruit for health and not for muscle', /about 20 to 30 g/.test(texts[0].body) && /doesn't build muscle by itself/.test(texts[2].body) && texts.every((x) => !/[—–!]/.test(x.title + x.body) && !/guarantee|will (grow|gain|build)/i.test(x.body)), texts.map((x) => x.body));
+  C.dismiss(S8, 'eat-protein', D0);
+  check('dismissed, a step stays away for good (the others stay until they are)', ids(S8, D0 + 60).join() === 'eat-enough,eat-fruit', ids(S8, D0 + 60));
+  check('enough protein, or no answer: nothing about protein', !ids(eat({ eats: { protein: 'most', produce: 'most' } })).length && !ids(eat({})).length);
+  check('the food log can stand in for the answer', ids(eat({ eats: { protein: null, produce: null, logged: 'low' } })).includes('eat-protein') && /food log/.test(C.suggestions(eat({ eats: { protein: null, produce: null, logged: 'low' } }), D0).find((x) => x.id === 'eat-protein').body));
+  check('under 18: none of it', !ids(eat({ age: 16, eats: { protein: 'low', produce: 'low' } })).length);
+  check('not lean, or losing weight on purpose: no "eat enough"', !ids(eat({ weightKg: 90, eats: { protein: 'low', produce: null } })).includes('eat-enough') && !ids(eat({ weightGoal: 'lose', eats: { protein: 'low', produce: null } })).includes('eat-enough'));
+}
 
 section('Weekly sets follow progress and recovery');
 {

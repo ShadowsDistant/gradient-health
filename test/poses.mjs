@@ -44,13 +44,17 @@ for (const id of ids) {
 check(`every move (${ids.length}) has a name, a rep, a sensible range and cues without exclamation marks`, !bad.length, bad.slice(0, 5));
 const ladderBad = [];
 for (const [fam, lad] of Object.entries(M.LADDERS)) {
-  // Stand-in ladders for particular bodies (alt) only need room for one step up.
-  if (!lad.gym && lad.rungs.length < (lad.alt ? 2 : 4)) ladderBad.push(`${fam}: fewer than ${lad.alt ? 2 : 4} rungs`);
+  // Stand-in ladders for particular bodies (alt) only need room for one step up. So do 1.15's second
+  // exercises for the arms (since: hammer curls, close-grip push-ups), which a session has beside the
+  // group's first ladder.
+  const few = lad.alt || lad.since;
+  if (!lad.gym && lad.rungs.length < (few ? 2 : 4)) ladderBad.push(`${fam}: fewer than ${few ? 2 : 4} rungs`);
   if (lad.gym && !lad.rungs.length) ladderBad.push(`${fam}: empty pool`);
   for (const id of lad.rungs) {
     const m = M.MOVES[id];
-    // Gym pools may reuse home moves, which keep their home family.
-    const reused = lad.gym && m && !m.gym && M.LADDERS[m.family] && !M.LADDERS[m.family].gym;
+    // Gym pools may reuse home moves, which keep their home family; a second exercise's ladder may
+    // start or end on a rung of its group's first ladder (the hammer curl, the diamond push-up).
+    const reused = (lad.gym && m && !m.gym && M.LADDERS[m.family] && !M.LADDERS[m.family].gym) || (lad.since && m && M.LADDERS[m.family] && M.LADDERS[m.family].group === lad.group);
     if (!m || (m.family !== fam && !reused)) ladderBad.push(`${fam}: ${id}`);
   }
 }

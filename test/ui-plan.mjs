@@ -481,6 +481,28 @@ check('and the info sheet explains it', /40% fewer sets/.test(deload) && /back t
 await shot(page, '14-deload');
 await ctx.close();
 
+section('Why this plan says what\'s personal');
+// 1.15: the planner's own reasons lead with the person's answers it used (GH.optimizer.personalFacts):
+// the goals and their days, the time, the dumbbells at their size, eating. (By week 6 this person's
+// left arm has caught up at its tests, so there's no line for it: test/optimizer.mjs has one.)
+({ ctx, page, settle } = await openApp('2026-10-19T08:10:00', () => {
+  const S = window.GH.store.load();
+  S.profile.eats = { protein: 'low', produce: null };
+  window.GH.store.save(S);
+}));
+await page.click('.rf-tab[data-tab="plan"]');
+await settle(900);
+await page.evaluate(() => window.GH.ui.act.whyPlan());
+await page.waitForSelector('dialog.why-sheet[open] .wy-reasons', { timeout: 8000 });
+await settle(900);
+const whyLines = await page.evaluate(() => [...document.querySelectorAll('dialog.why-sheet[open] .wy-reasons > li')].map((li) => li.textContent.trim()));
+const facts = await page.evaluate(() => window.GH.optimizer.personalFacts(window.GH.ui.S, window.GH.ui.today()).map((f) => f.text));
+check('its reasons lead with the answers the plan used, each one shown', facts.length >= 4 && facts.every((f) => whyLines.includes(f)), { facts, whyLines });
+check('the goals and their days, the time, the dumbbells at your size and eating', ['Your goals come first: ', 'exercises a session', /Your heaviest weight is a 15 lb dumbbell\. At 151 lb it's right for curls/, 'You said protein-rich food is rare for you'].every((x) => whyLines.some((l) => (typeof x === 'string' ? l.includes(x) : x.test(l)))), whyLines);
+check('in plain words: no dashes or exclamation marks', whyLines.every((l) => !/[—–!]/.test(l)), whyLines);
+await shot(page, '15-why');
+await ctx.close();
+
 section('Days picked set the workouts a week');
 ({ ctx, page, settle } = await openApp('2026-10-21T08:10:00'));
 await page.click('.rf-tab[data-tab="plan"]');
