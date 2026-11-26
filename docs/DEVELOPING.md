@@ -1006,9 +1006,10 @@ sizes before and after.
 person is by one function, so a plan a model builds, a check and an answer are about this person:
 `facts(S, day, o)` gives a list of `{ id, label, value }` in plain words (`lines` for a model, `shown`
 for the build sheet's list, so the two can't drift apart). Beyond goals, history, schedule and
-equipment it holds what their weights mean for them (`loadFeel`: the heaviest dumbbell or
-kettlebell against body weight times the ladder's ratio, light under 0.9 of that and heavy over 1.8;
-the app's own judgement until the engine has one), how they said they eat (`profile.eats`) and how
+equipment it holds what their weights mean for them (`loadFeel`: the plan engine's judgement,
+`brain.weightFit`, of each ladder's plain loaded move: light, right with long sets, right or
+heavy), how they eat (`brain.eatsOf`: their answer, or what their food log shows, which goes only
+to the on-device model, since Claude is told how they said they eat) and how
 often they reach a protein goal (where the summary's food part doesn't already say), their
 build when it's lean (BMI under 21: the one build the research says changes a plan), weeks with the
 app, the days they train, workouts a week against the plan and how long they take, how workouts
@@ -1328,7 +1329,10 @@ does two of the three they plan) is tried as Settings would set it. The person p
 (`S.profile.planTweaks`), with Undo; the ones they leave unticked are kept on the review's event
 (`declined`), and the next plan a model builds or checks is told. The result says what it looked at
 besides the plan (`looked`: the facts that model was given, and for Claude how workouts felt, the
-reps left and sleep only when its summary had them). Claude's weekly report asks for plan ideas in the same request.
+reps left and sleep only when its summary had them). The planner's reasons hold the engine's own
+lines from the person's answers (`GH.optimizer.personalFacts`); Claude gets each only as
+`GH.person.engineFactOk` allows, by the profile fields it read: weight or eating with the newer
+OK, height only when the line says no more than that they're lean. Claude's weekly report asks for plan ideas in the same request.
 `test/ai.mjs`, `test/person.mjs` and `test/ui-review.mjs` cover it.
 
 Set-up (`src/ui/onboarding.js`) is six screens with one decision each, ending on the plan the engine
@@ -1483,12 +1487,16 @@ the screens (`test/ui-customplan.mjs`).
   goal muscle or just go, reps come back inside each move's range, a muscle's second exercise is
   folded into its first when the day has more exercises than the time holds (and wouldn't run
   longer for it), a muscle's sets in a day and the crunch-type reps come down to their limits,
-  goal muscles go first. Then a goal muscle on too few days gets the draft's exercise back; every
-  muscle gives up what's past its weekly ceiling; each day is fitted to the time asked for (sets
-  come off the move with the most to spare, a muscle's at its weekly floor last); a muscle below its
-  floor gets sets back where a day has the time and the room; and the plan review's checks still
-  hold: every muscle group keeps at least half its weekly sets, the focus groups two thirds, and
-  pulling still balances pushing. Each limit is read against the draft too (a model isn't asked for
+  goal muscles go first. A take that cuts what they asked to focus on below two thirds of the
+  draft's sets is turned down there and then, before any repair. Then a goal muscle on too few days
+  gets the draft's exercise back; every muscle gives up what's past its weekly ceiling; each day is
+  fitted to the time asked for (sets come off the move with the most to spare, a muscle's at its
+  weekly floor last, and the lighter side of pushing and pulling last while the plan is no better
+  balanced than the draft); a muscle below its floor gets sets back where a day has the time and
+  the room, or, for one the model's answer trains, the draft's exercise back on a day it was left
+  off; and the plan review's checks still hold: every muscle group keeps at least half its weekly
+  sets, the focus groups two thirds, and pulling still balances pushing. In Improve, sets come off
+  what the model changed before what the person had. Each limit is read against the draft too (a model isn't asked for
   more than the engine's own draft manages, and the draft is brought inside a day's limits before
   it's shown), and anything else keeps the draft. `refine()` returns what was put right as
   `fixes`, in plain words, and the sheet lists them.

@@ -44,13 +44,15 @@
     const bmi = kg / (h * h);
     return bmi < 21 ? 'lean' : bmi < 27 ? 'mid' : 'higher';
   }
-  // How they say they eat (profile.eats, set-up's optional answer): { protein, produce }, each
-  // 'low', 'some' or 'most', or null when it wasn't answered.
+  // How they eat, as the plan engine reads it (brain.eatsOf: profile.eats, set-up's optional answer,
+  // or what their food log shows): { protein, produce }, each 'low', 'some' or 'most' or null, and
+  // from: 'answer', 'log' or null.
   const LEVELS = ['low', 'some', 'most'];
   function eats(p) {
+    if (B() && B().eatsOf) { const e = B().eatsOf(p || {}); return { protein: e.protein, produce: e.produce, from: e.from }; }
     const e = p && p.eats && typeof p.eats === 'object' ? p.eats : {};
     const v = (x) => (LEVELS.includes(x) ? x : null);
-    return { protein: v(e.protein), produce: v(e.produce) };
+    return { protein: v(e.protein), produce: v(e.produce), from: v(e.protein) ? 'answer' : null };
   }
   const EAT_WORD = { low: 'not much', some: 'some', most: 'plenty of' };
 
@@ -66,26 +68,24 @@
   }
 
   /* ---------------------------------------------------------------- what their weights mean */
-  // A first working weight for a ladder, as a share of body weight (the moves' own `ratio`, per
-  // dumbbell; the ladders without one take a neighbour's).
-  const RATIO = { curl: 0.08, triceps: 0.06, row: 0.12, chestDb: 0.12, press: 0.1, squat: 0.2, hinge: 0.2, glute: 0.2, raise: 0.06, rear: 0.05, calf: 0.2, absLoad: 0.1 };
+  // The ladders a weight is judged on, and what each one's loaded moves are called in a line.
   const FAM_WORD = { curl: 'curls', triceps: 'triceps extensions', row: 'rows', chestDb: 'chest presses', press: 'overhead presses', squat: 'squats', hinge: 'deadlifts', glute: 'hip thrusts', raise: 'lateral raises', rear: 'rear raises', calf: 'calf raises', absLoad: 'weighted crunches' };
-  // Whether the heaviest weight they have is 'light', 'right' or 'heavy' for them on a ladder (null
-  // when it can't be told: no weights, no body weight, a ladder done without them). The app's own
-  // simple judgement until the plan engine has one: the weight against body weight times the
-  // ladder's ratio. Under 0.9 of that is light (far: under 0.7, where the body-weight version is
-  // the harder one), over 1.8 heavy.
+  const RATIO = FAM_WORD; // (the ladders, by key)
+  // Whether the heaviest weight they have is 'light', 'right' or 'heavy' for them on a ladder, as the
+  // plan engine judges it (brain.weightFit: the weight against an estimate of their one-rep max from
+  // body weight, sex, level and age; light under about 30% of it, high under about half, where sets
+  // run long and only work near the limit, heavy over 85%), on the ladder's plain loaded move. null
+  // when it can't be told: no weight of theirs loads it, or no body weight given. { feel, high, far
+  // (under 20%), pct, top (their heaviest for it, in their units) }.
   function loadFeel(S, fam) {
-    const p = S.profile, eq = p.equipment || {};
-    const bw = Number(p.weightKg);
-    const lad = M().LADDERS[fam];
-    if (!(bw > 0) || !RATIO[fam] || !lad) return null;
-    const kinds = new Set();
-    for (const id of lad.rungs) for (const k of String((M().MOVES[id] || {}).load || '').split('|')) if ((k === 'db' || k === 'kb') && (eq[k] || []).length) kinds.add(k);
-    if (!kinds.size) return null;
-    const top = Math.max(...[...kinds].map((k) => Math.max(...eq[k])));
-    const r = (p.units === 'kg' ? top : top / B().LB_PER_KG) / (bw * RATIO[fam]);
-    return { feel: r < 0.9 ? 'light' : r <= 1.8 ? 'right' : 'heavy', far: r < 0.7, top };
+    const b = B(), lad = M().LADDERS[fam];
+    if (!lad || !b.weightFit || !(Number(S.profile.weightKg) > 0)) return null;
+    const moves = lad.rungs.map((id) => M().MOVES[id]).filter(Boolean);
+    const m = moves.find((x) => !x.tempo && !x.two && b.weightFit(S, x)) || moves.find((x) => b.weightFit(S, x));
+    const f = m ? b.weightFit(S, m) : null;
+    if (!f) return null;
+    const eq = b.eqAt(S, 'home'), key = M().loadFor(m, eq);
+    return { feel: f.fit, high: !!f.high, far: f.pct < 0.2, pct: f.pct, top: Math.max(...eq[key]) };
   }
   // All of it in a line: "10 lb is light for curls, rows and squats; about right for lateral raises".
   // (short: only where it's light or heavy, three of each, for a small model's brief.)
@@ -207,9 +207,11 @@
       if (p.gentle) add('gentle', 'A gentle plan', 'fewer sets to start', { only: 'device' });
     }
     if (wide) {
-      const e = eats(p);
-      const said = [e.protein ? `${EAT_WORD[e.protein]} protein` : '', e.produce ? `${EAT_WORD[e.produce]} fruit and veg` : ''].filter(Boolean);
-      add('eats', 'Eating, in their own words', said.join(', '), { tag: 'Eating' });
+      // (A reading of their food log rather than their answer goes only to the on-device model: what
+      // Claude is told is how they said they eat.)
+      const e = eats(p), logged = e.from === 'log';
+      const said = [e.protein && (!logged || !claude) ? `${EAT_WORD[e.protein]} protein${logged ? ' (from their food log)' : ''}` : '', e.produce ? `${EAT_WORD[e.produce]} fruit and veg` : ''].filter(Boolean);
+      add('eats', logged ? 'Eating' : 'Eating, in their own words', said.join(', '), { tag: 'Eating' });
     }
     const goal = p.protein && p.protein.track !== false ? b.proteinGoal(S, day) : null;
     if (goal && wide && !have('food')) {
@@ -263,8 +265,10 @@
     if (o && o.to === 'claude' && !o.wide) return out;
     const e = effort(S, day), far = e.lo >= 2;
     const end = far && o && o.to === 'claude' && CONDITION_AIM.includes(e.why) ? 'close to the last one they could do, as the app sets it' : far ? '2 to 3 reps short of the last one they could do, never to failure' : 'within 2 reps of the last one they could do';
-    if (Object.keys(RATIO).some((f) => (loadFeel(S, f) || {}).feel === 'light')) out.push(`Their weights are light for them. Light weights build muscle about as well as heavy ones in sets of up to about 30 reps that end ${end}. Past 30, a harder version, then a slower tempo (3 s down, 3 s up), then one side at a time, not more sets.`);
-    if (eats(p).protein === 'low') out.push('They eat little protein. Training can\'t make up for food, so don\'t add sets to compensate: keep a normal dose for their level and give their goal muscles priority within it. Strength comes at about the usual pace, size more slowly.');
+    const fits = Object.keys(RATIO).map((f) => loadFeel(S, f)).filter(Boolean);
+    const light = fits.some((f) => f.feel === 'light'), long = fits.some((f) => f.feel === 'right' && f.high);
+    if (light || long) out.push(`Their weights are ${light ? 'light' : 'on the light side'} for them. Light weights build muscle about as well as heavy ones in sets of up to about 30 reps that end ${end}. Past 30, a harder version, then a slower tempo (3 s down, 3 s up), then one side at a time, not more sets.`);
+    if (eats(p).protein === 'low' && !(o && o.to === 'claude' && eats(p).from === 'log')) out.push('They eat little protein. Training can\'t make up for food, so don\'t add sets to compensate: keep a normal dose for their level and give their goal muscles priority within it. Strength comes at about the usual pace, size more slowly.');
     if (p.workouts === false) return out;
     const L = lately(S, day);
     if (L.perWeek != null && L.planned >= 4 && L.perWeek <= p.days - 1) out.push(`They do about ${L.perWeek} of the ${p.days} workouts planned each week. Fewer or shorter workouts they keep are worth more than a bigger plan.`);
@@ -272,10 +276,21 @@
     if ((p.experience === 'never' || p.experience === 'onoff') && day - (p.startDay || day) < 84) out.push(`They are new to training: few exercises, the same ones from week to week, and most sets stopped ${far && !(o && o.to === 'claude' && CONDITION_AIM.includes(e.why)) ? '2 to 3' : '1 to 3'} reps short.`);
     return out;
   }
+  // Whether one of the plan engine's own facts (GH.optimizer.personalFacts: { id, fields, text },
+  // in its reasons) may go to this reader, by the profile fields it read: anything to the on-device
+  // model; to Claude, a line that reads their weight or how they eat only with the newer OK, and one
+  // that reads their height only when it says no more than that they're lean (with the newer OK).
+  function engineFactOk(S, day, f, o) {
+    if (!o || o.to !== 'claude') return true;
+    const fl = (f && Array.isArray(f.fields)) ? f.fields : [];
+    if (fl.includes('heightCm')) return !!o.wide && build(S, day) === 'lean';
+    if (fl.includes('weightKg') || fl.includes('eats')) return !!o.wide;
+    return true;
+  }
   // The same, as lines for a model.
   const lines = (S, day, o) => facts(S, day, o).map((f) => `- ${f.label}: ${f.value}`);
   // And as the sheet shows it: [label, value, 'device' when it stays on the phone].
   const shown = (S, day, o) => facts(S, day, o).map((f) => [f.tag || f.label, f.value, f.only || null]);
 
-  GH.person = { facts, lines, shown, advice, effort, ageRange, build, eats, strict, guard, loadFeel, loadLine, lately, minor, GOAL, EXP };
+  GH.person = { facts, lines, shown, advice, effort, engineFactOk, ageRange, build, eats, strict, guard, loadFeel, loadLine, lately, minor, GOAL, EXP };
 })(typeof window !== 'undefined' ? window : globalThis);

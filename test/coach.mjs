@@ -237,10 +237,11 @@ section('Plans for different bodies');
   check('and explains a flare day', flare.flare && C.decisions(S3, D0, flare)[0].rule === 'arthritis');
   const brief = GH.deviceCoach.brief(S3, D0);
   check('the on-device coach knows what the plan works around; Claude\'s summary doesn\'t', (/adapted for age band 65 and over; planned around balance and rheumatoid arthritis/.test(brief)) && !/arthritis|balance/i.test(GH.ai.summary ? GH.ai.summary(S3, D0) : ''), brief);
-  // The short form of who this is (src/person.js) is in the brief too.
+  // The short form of who this is (src/person.js) is in the brief too. (Light, as the plan engine
+  // judges a weight: 10 lb is about right for a 70 kg man's curls, and light for rows and presses.)
   const S4 = B.newState({ goals: ['arms'], age: 30, weightKg: 70, heightCm: 178, units: 'lb', equipment: { db: [10] }, eats: { protein: 'low', produce: 'most' } }, null, D0);
   const brief4 = GH.deviceCoach.brief(S4, D0);
-  check('and what their weights mean for them and how they eat, said briefly', /Their weights: 10 lb is light for curls, rows and chest presses\./.test(brief4) && !/about right for/.test(brief4) && /Eating, in their own words: not much protein, plenty of fruit and veg\./.test(brief4) && !/Say nothing about losing weight/.test(brief4) && !/Last 4 weeks|Moving up/.test(brief4), brief4);
+  check('and what their weights mean for them and how they eat, said briefly', /Their weights: 10 lb is light for rows, chest presses and overhead presses\./.test(brief4) && !/about right for/.test(brief4) && /Eating, in their own words: not much protein, plenty of fruit and veg\./.test(brief4) && !/Say nothing about losing weight/.test(brief4) && !/Last 4 weeks|Moving up/.test(brief4), brief4);
   check('its rules rule out diets, medicine, supplements and a target weight', /don't write new programs, diets or meal plans, and never suggest medicine, supplements, a target weight or cutting out a food/.test(GH.deviceCoach.RULES));
 }
 
