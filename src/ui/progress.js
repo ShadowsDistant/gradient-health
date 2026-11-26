@@ -84,7 +84,7 @@
       const own = {};
       for (const m of Y().MUSCLES) if (Y().GROUP_OF[m] === g) own[m] = vals[m];
       return `<li data-key="mi-${g}"><div class="rf-list-row mi-row">${U.bodyThumb(g, own, 'improved')}
-        <span class="rf-list-text"><span class="rf-list-title">${U.esc(B().GROUP_NAME[g])}</span><span class="rf-list-sub">${ups.slice(0, 2).map((l) => U.progressText(l.text)).join(' · ') || U.esc(`Went up ${U.plural(x.ups, 'time')}`)}</span></span>
+        <span class="rf-list-text"><span class="rf-list-title">${U.esc(B().GROUP_NAME[g])}</span><span class="rf-list-sub">${ups.slice(0, 2).map((l) => `<span class="mi-line">${U.progressText(l.text)}</span>`).join(' ') ||U.esc(`Went up ${U.plural(x.ups, 'time')}`)}</span></span>
         ${top ? `<span class="rf-list-detail">${U.badge(top.delta, 'positive')}</span>` : ''}</div></li>`;
     }).join('')}</ul>
     <p class="rf-list-footer">${U.esc(U.cap(rangeText(weeks)))}. Tap a muscle above for more.</p>`;

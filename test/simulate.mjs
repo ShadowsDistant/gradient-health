@@ -157,7 +157,7 @@ section('Scenario A: your answers, 3 weeks from Mon Sep 28');
   health(S, D0 + 9, { sleepMin: 276 });
   r = doWorkout(S, D0 + 9, { rating: 'hard', weightKg: kg0 * (1 - 0.0024 * 9) });
   check('Wed: too hard twice in a row → one less set per muscle', lineTexts(r).some((t) => t.startsWith('One less set per muscle')), lineTexts(r));
-  check('Wed: too hard + short sleep twice in two weeks → deload next week', lineTexts(r).some((t) => t.startsWith('Deload next week')), lineTexts(r));
+  check('Wed: too hard + short sleep twice in two weeks → deload next week', lineTexts(r).some((t) => t.startsWith('A lighter week next week')), lineTexts(r));
   check('losing >1% a week → eat-more line', lineTexts(r).some((t) => t.startsWith('Eat more')), lineTexts(r));
   // Thu is now a light day (Thursday's session moved to Fri); Fri missed → streak breaks.
   cal = B.calendar(S, D0 + 10);

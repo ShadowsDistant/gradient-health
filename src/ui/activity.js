@@ -413,7 +413,7 @@
           ${hcCard(a)}
           <ul class="rf-list">
             ${U.row({ icon: 'pencil', tone: 'sky', title: 'Rename', act: 'actRename', arg: a.id, chevron: true })}
-            ${U.row({ icon: 'trash', tone: 'rose', title: `Delete this ${U.esc(tp.noun)}`, act: 'actDelete', arg: a.id })}
+            ${U.row({ cls: 'is-danger', icon: 'trash', tone: 'rose', title: `Delete this ${U.esc(tp.noun)}`, act: 'actDelete', arg: a.id })}
           </ul>
         </div>`;
     },
@@ -822,7 +822,7 @@
       const add = (key, kind, label, x, value) => items.push({ key, kind, label, x, value, icon: REC_LOOK[kind][0], tone: REC_LOOK[kind][1] });
       if (type === 'run') for (const [k, , label] of A().EFFORTS) if (r.best[k]) add(k, 'time', label, r.best[k], fmtTime(r.best[k].v));
       if (r.dist) add('dist', 'dist', `Longest ${tp.noun}`, r.dist, fmtDist(r.dist.v));
-      if (r.time) add('time', 'dur', `Longest ${tp.noun} by time`, r.time, fmtTime(r.time.v));
+      if (r.time) add('time', 'dur', `Longest\u00a0${tp.noun} by time`, r.time, fmtTime(r.time.v)); // (it wrapped as "Longest / hike by time")
       groups.push({ type, label: tp.label === 'Other' ? 'Other activities' : `${tp.label}s`, items });
     }
     const steps = rec.steps ? { key: 'steps', kind: 'steps', label: 'Most steps', x: rec.steps, value: U.num(rec.steps.v), icon: REC_LOOK.steps[0], tone: REC_LOOK.steps[1] } : null;
@@ -868,7 +868,7 @@
     const tp = A().typeOf(a.type);
     const detail = a.distanceM > 0 ? fmtDist(a.distanceM) : fmtTime(a.movingMs);
     const sub = [`${U.fmtDay(a.day)} · ${U.fmtClock(a.start)}`, a.distanceM > 0 ? fmtTime(a.movingMs) : ''].filter(Boolean).join(' · ');
-    return U.row({ key: `a-${a.id}`, icon: tp.icon, tone: tp.hue, title: U.esc(a.title || A().defaultTitle(a.type, a.start)), sub: U.esc(sub), detail: U.esc(detail), act: 'actOpen', arg: a.id, chevron: true });
+    return U.row({ key: `a-${a.id}`, icon: tp.icon, tone: tp.hue, title: U.esc(a.title || A().defaultTitle(a.type, a.start)), sub: U.nb(sub), detail: U.esc(detail), act: 'actOpen', arg: a.id, chevron: true });
   }
   U.actRow = actRow;
   U.act.actHistory = () => U.open('activities');
@@ -902,7 +902,7 @@
             <div class="stat"><span class="t-footnote rf-muted">All time</span><span class="t-title-3 rf-num">${U.num(list.length)}</span><span class="t-caption rf-muted">${U.esc(fmtDist(list.reduce((s, a) => s + (a.distanceM || 0), 0)))}</span></div>
           </div>
           ${types.length > 1 ? U.choice('actFilter', [['all', 'All']].concat(types.map((t) => [t, A().typeOf(t).label])), filter, 'Show', ' class="ah-filter" data-hscroll data-on="actFilter"') : ''}
-          ${groups.length ? groups.map((g) => `<h3 class="rf-list-header">${U.esc(g.m)}</h3><ul class="rf-list">${g.rows.join('')}</ul>`).join('') : `<div class="card" data-key="none"><p class="t-callout rf-muted">No activities yet.</p><div class="btn-row"><button type="button" class="rf-btn" data-variant="filled" data-size="sm" data-act="actStart">${U.icon('navigate')}Record a walk, run or ride</button></div></div>`}
+          ${groups.length ? groups.map((g) => `<h3 class="rf-list-header">${U.esc(g.m)}</h3><ul class="rf-list">${g.rows.join('')}</ul>`).join('') : `<div class="card gh-empty" data-key="none">${U.art('walk')}<p class="t-headline">No activities yet</p><p class="t-callout rf-muted">Walks, runs, hikes and rides you record show up here, with your bests.</p><div class="btn-row"><button type="button" class="rf-btn" data-variant="filled" data-size="sm" data-act="actStart">${U.icon('navigate')}Record a walk, run or ride</button></div></div>`}
         </div>
         ${all.length ? U.actRecordsSection(S, false) : ''}`;
     },

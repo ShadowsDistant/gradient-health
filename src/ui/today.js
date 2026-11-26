@@ -52,7 +52,7 @@
   U.sessionRows = sessionRows;
   function phaseBadges(week, s) {
     const b = [];
-    if (week && week.phase.deload) b.push(U.badge('Deload week', 'accent'));
+    if (week && week.phase.deload) b.push(U.badge('Lighter week', 'accent'));
     else if (week && week.phase.onramp) b.push(U.badge('Easing in', 'accent'));
     if (s && s.short) b.push(U.badge('Short', 'neutral'));
     if (s && s.readiness && (s.readiness.minus || s.readiness.legsMinus)) b.push(U.badge('Lighter today', 'caution'));
@@ -70,7 +70,7 @@
     return `<div class="card session" data-key="main">
         <div class="session-head"><span class="rf-card-eyebrow">${s.flare ? 'Flare day' : 'Workout'} · about ${U.roll(s.estimateMin)} min${where === 'gym' ? ' · gym' : ''}</span><span class="session-badges">${phaseBadges(plan.week, s)}</span></div>
         <h2 class="t-title-2">${U.esc(s.title)}</h2>
-        ${s.groups.length || (s.custom && s.custom.name) ? `<p class="t-footnote rf-muted session-groups">${s.custom && s.custom.name ? `${U.esc(s.custom.name)} · ` : ''}${s.groups.map((g) => U.esc(B().GROUP_NAME[g] || g)).join(' · ')}</p>` : ''}
+        ${s.groups.length || (s.custom && s.custom.name) ? `<p class="t-footnote rf-muted session-groups">${s.custom && s.custom.name ? `${U.esc(s.custom.name)}&nbsp;· ` : ''}${s.groups.map((g) => U.esc(B().GROUP_NAME[g] || g)).join('&nbsp;· ')}</p>` : ''}
         ${around ? `<button type="button" class="around-line t-footnote" data-act="planAround">${U.icon('heart', 'sm')}<span>${U.esc(around)}</span>${U.icon('chevron-right', 'sm')}</button>` : ''}
         ${notes.map((n) => `<p class="t-footnote session-note">${U.esc(n.text)}</p>`).join('')}
         ${where === 'both' ? `<div class="place-row">${U.seg('place', [['home', 'At home'], ['gym', 'At the gym']], s.place, 'Where you train today', ' data-on="setPlace"')}</div>` : ''}
@@ -165,14 +165,14 @@
     const lines = [];
     lines.push(sl ? `Slept ${U.fmtMin(sl.value)}${sl.day !== day ? ' the night before' : ''}` : 'No sleep logged yet');
     if (t.activeMin) lines.push(`${t.activeMin} active min`);
-    if (t.weightAvg7 != null) lines.push(`Weight ${U.fmtW(t.weightAvg7)} (7-day average)`);
+    if (t.weightAvg7 != null) lines.push(`Weight ${U.fmtW(t.weightAvg7)} (7-day average)`); // (its "7-day" kept whole below)
     return `<div class="card day-card" data-key="main">
       <span class="rf-card-eyebrow">Today</span>
       <div class="day-row">
         ${U.ring(steps != null ? steps / goal : 0, 'Steps today', `<span class="fd-ring-n rf-num">${steps != null ? U.roll(U.num(steps)) : '–'}</span><span class="t-caption rf-muted">steps</span>`, 'md', steps != null && steps >= goal ? 'positive' : 'accent')}
         <div class="day-lines">
           <p class="t-headline">Goal ${U.num(goal)} steps</p>
-          ${lines.map((l) => `<p class="t-footnote rf-muted">${U.esc(l)}</p>`).join('')}
+          ${lines.map((l) => `<p class="t-footnote rf-muted">${U.esc(l).replace(/[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+/g, '<span class="gh-nw">$&</span>')}</p>`).join('')}
         </div>
       </div>
       ${sl ? '' : '<div class="btn-row"><button type="button" class="rf-btn" data-size="sm" data-act="logSleep">Log sleep</button></div>'}
@@ -234,7 +234,7 @@
               <span class="streak-n">${U.roll(st.current, 't-large-title')}<span class="t-callout rf-muted">day streak</span></span>
               <span class="streak-tally">${tallies(st.current)}</span>
             </span>
-            <span class="streak-foot"><span class="t-footnote rf-muted">${st.weekly ? `${U.plural(st.weekly, 'full week')} in a row · ` : ''}${st.freezeThisWeek ? 'Freeze used this week' : '1 freeze left this week'}${st.best > st.current ? ` · best ${st.best}` : ''}</span><span class="streak-go t-footnote">Progress${U.icon('chevron-right', 'sm')}</span></span>
+            <span class="streak-foot"><span class="t-footnote rf-muted">${st.weekly ? `${U.plural(st.weekly, 'full week')} in a row · ` : ''}${st.freezeThisWeek ? 'Freeze used this week' : '1&nbsp;freeze left this week'}${st.best > st.current ? ` · best ${st.best}` : ''}</span><span class="streak-go t-footnote">Progress${U.icon('chevron-right', 'sm')}</span></span>
           </button>` : ''}
           ${main}
           ${workouts && plan.type !== 'done' && !S.active && U.coachCard ? U.coachCard(S, day, session) : ''}

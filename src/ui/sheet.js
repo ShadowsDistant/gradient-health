@@ -15,8 +15,10 @@
  *  - A release projects the finger's speed forward, picks a detent (or dismisses) and settles with a
  *    damped spring that starts at that speed: a Web Animation with a linear() easing sampled from the
  *    spring, which the compositor plays.
- * o: { title, body, action: { label, act, arg }, cls, size: 'fit' | 'auto' | 'full', onClose(value),
- * after(ctl), later(ctl), quiet (no sheet haptic as it opens) }. after runs before the sheet's first
+ * o: { title, body, action: { label, act, arg, quiet }, cls, size: 'fit' | 'auto' | 'full', onClose(value),
+ * after(ctl), later(ctl), quiet (no sheet haptic as it opens) }. The header's action is the sheet's
+ * one tinted button, unless it's a way somewhere else rather than what the sheet is for (action.quiet:
+ * the chat's Chats, beside Send). after runs before the sheet's first
  * frame; later right after it, for what that frame doesn't need (a move's figure to draw, in its box
  * of a set size), while the compositor slides the sheet up. (Right after can wait behind a long task
  * that was queued first, so what's quick and wanted at once, a kept still, still goes in after.)
@@ -341,7 +343,7 @@
         <div class="rf-sheet-header">
           <button type="button" class="rf-btn" data-shape="circle" data-size="sm" aria-label="Close" data-sheet-close>${U.icon('close')}</button>
           <h2 class="rf-sheet-title" id="${tid}">${U.esc(o.title || '')}</h2>
-          ${o.action ? `<button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="sm" data-act="${U.esc(o.action.act)}"${o.action.arg != null ? ` data-arg="${U.esc(o.action.arg)}"` : ''}>${U.esc(o.action.label)}</button>` : '<span class="sheet-spacer"></span>'}
+          ${o.action ? `<button type="button" class="rf-btn rf-glass"${o.action.quiet ? '' : ' data-variant="tinted"'} data-size="sm" data-act="${U.esc(o.action.act)}"${o.action.arg != null ? ` data-arg="${U.esc(o.action.arg)}"` : ''}>${U.esc(o.action.label)}</button>` : '<span class="sheet-spacer"></span>'}
         </div>
         <div class="rf-sheet-body" tabindex="-1"${/\sautofocus\b/.test(o.body || '') ? '' : ' autofocus'}>${o.body || ''}</div>
       </div>`;

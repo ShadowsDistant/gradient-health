@@ -130,7 +130,7 @@
       else if (f.steps7.n >= 3) headline = `About ${int(Math.round(f.steps7.avg))} steps a day this week.`;
       else { headline = 'A quiet week so far.'; addFocus('Log your weight and sleep', 'Log your weight and sleep, or connect Health Connect, and this fills in.'); }
     } else if (!f.logs.length) { headline = 'Your first workout counts most.'; addFocus('Do your first workout', 'Do your first workout. The plan starts easy on purpose.'); }
-    else if (f.week && f.week.phase.deload) headline = 'Deload week: lighter on purpose.';
+    else if (f.week && f.week.phase.deload) headline = 'A lighter week, on purpose.';
     else if (f.planned && f.done === f.planned) headline = f.done === 1 ? 'One workout in, right on plan.' : `Every workout so far: ${f.done} of ${f.done}.`;
     else if (f.missed) headline = `${f.missed === 1 ? 'One workout' : `${f.missed} workouts`} missed this week.`;
     else if (f.streak.current >= 7) headline = `${f.streak.current} days in a row. That's a habit forming.`;
@@ -291,8 +291,8 @@
     },
     deload: (S, day, f) => {
       const w = f.week;
-      const a = w && w.phase.deload ? 'This is a deload week: about 40% less volume.' : 'A deload is a lighter week, about 40% less volume. It comes every 5th week, or sooner if you rate two workouts in a row too hard while sleeping badly.';
-      return `${a} Coaches use deloads to shed built-up fatigue before the next block. A lighter week doesn't cost you muscle.`;
+      const a = w && w.phase.deload ? 'This is a lighter week: about 40% less volume.' : 'A lighter week (a deload) has about 40% less volume. It comes every 5th week, or sooner if you rate two workouts in a row too hard while sleeping badly.';
+      return `${a} It's there to shed built-up fatigue before the next block. A lighter week doesn't cost you muscle.`;
     },
     abs: (S, day, f) => 'Ab training builds the muscle but doesn\'t burn the fat over it: in a 6-week study of ab work alone, belly fat didn\'t change. Visible abs take the muscle plus lower body fat over months, which is mostly food and daily movement. Track your waist and ab levels in Progress rather than a date.',
     focus: (S, day, f) => report(S, day).focus.join(' '),
@@ -440,7 +440,7 @@
     }
     const ex = why('exercise');
     if (ex) out.push({ icon: 'bolt', tone: 'amber', text: 'Easier on your legs, no finisher', why: `${ex.text.split(':')[0]}.`, rule: 'sleep' });
-    if (s.phase && s.phase.deload) out.push({ icon: 'moon', tone: 'indigo', text: 'Deload week: about 40% less volume', why: 'Every 5th week, or sooner when workouts feel too hard on poor recovery.', rule: 'deload' });
+    if (s.phase && s.phase.deload) out.push({ icon: 'moon', tone: 'indigo', text: 'Lighter week: about 40% less volume', why: 'Every 5th week, or sooner when workouts feel too hard on poor recovery.', rule: 'deload' });
     else if (s.phase && s.phase.onramp) out.push({ icon: 'sun', tone: 'amber', text: 'Easing in with fewer sets this week', why: s.phase.idle ? 'Coming back after time off.' : 'Your first weeks build up gradually.', rule: 'volume' });
     if (s.comeback) out.push({ icon: 'refresh', tone: 'teal', text: `About ${Math.round((1 - s.comeback.mult) * 100)}% lighter weights today`, why: `${s.comeback.days} days since your last workout.`, rule: 'comeback' });
     for (const it of s.items || []) if (it.swappedFrom && M && M.MOVES[it.swappedFrom]) out.push({ icon: 'shuffle', tone: 'coral', text: `${M.MOVES[it.swappedFrom].name} swapped for ${it.name}`, why: 'A joint you flagged is having a break.', rule: null });

@@ -2362,7 +2362,7 @@
         lines.push({ text: 'Finisher: longer work intervals', why: 'you had plenty left' });
       }
     }
-    if (deload) lines.push({ text: 'Progress held this week', why: 'deload week' });
+    if (deload) lines.push({ text: 'Progress held this week', why: 'lighter week' });
     // 2. Overall rating → volume.
     const prog = programFor(S.profile);
     const tier1 = GROUPS.filter((g) => prog.tiers[g] === 1);
@@ -2386,7 +2386,7 @@
         const already = S.events.some((e) => e.type === 'deloadNext' && weekStart(e.day) + 7 === nextWs);
         if (recent.length + 1 >= 2 && !already && !deload) {
           S.events.push({ type: 'deloadNext', day: A.day });
-          lines.push({ text: 'Deload next week: about 40% less volume', why: 'too hard with poor recovery, twice in two weeks' });
+          lines.push({ text: 'A lighter week next week: about 40% less volume', why: 'too hard with poor recovery, twice in two weeks' });
         }
       }
     } else if (c.rating === 'right') S.hardStreak = 0;

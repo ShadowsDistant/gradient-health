@@ -155,7 +155,7 @@
           <ul class="rf-list" data-key="app">
             ${U.row({ key: 'settings', icon: 'sliders', tone: 'indigo', title: 'Settings', sub: `${workouts ? 'Workouts' : 'Tracking'}, notifications, the AI coach, appearance and more`, act: 'openSettings', chevron: true })}
             ${U.row({ key: 'help', icon: 'compass', tone: 'teal', title: 'Help and tour', sub: 'The tour and each tab\'s tips', act: 'openHelp', chevron: true })}
-            ${U.row({ key: 'news', icon: 'sparkle', tone: 'amber', title: 'What\'s new', detail: U.esc(verShort ? `Version ${verShort}` : ''), act: 'openWhatsNew', chevron: true })}
+            ${U.row({ key: 'news', icon: 'sparkle', tone: 'amber', title: 'What\'s new', sub: U.esc(verShort ? `Version ${verShort}` : ''), act: 'openWhatsNew', chevron: true })}
             ${U.row({ key: 'privacy', icon: 'lock', tone: 'green', title: 'Privacy', sub: 'What stays on this phone and what can leave', act: 'openPrivacyView', chevron: true })}
           </ul>
           <p class="rf-list-footer">Gradient Health ${U.esc(ver || 'web')}. Not medical advice. Check with a doctor first if you have a condition or injury.</p>

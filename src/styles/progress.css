@@ -84,6 +84,9 @@
 /* ---------------------------------------------------------------- most improved */
 .mi-row { cursor: default; }
 .mi-row .rf-list-detail .rf-badge { white-space: nowrap; }
+/* A move and its change on a line of their own (run together with dots, a line could end on a
+   move's name and start the next with its numbers). */
+.mi-line { display: block; }
 .bm-thumb { display: block; flex: none; width: 36px; height: 36px; border-radius: 10px; overflow: hidden; background: var(--fill-3); }
 .mi-list > li:not(:last-child)::after { inset-inline-start: calc(var(--space-4) + 36px + var(--space-3)); }
 .bm-thumb svg { display: block; width: 100%; height: 100%; }
