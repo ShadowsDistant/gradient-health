@@ -903,7 +903,11 @@ section('Moments: the workout player');
   // next's picture, the rest's ring fills from nothing, and what was logged settles in.
   const at = await page.evaluate(() => {
     const U = window.GH.ui, a = U.S.active;
-    const i = a.steps.findIndex((s, k) => s.kind === 'set' && !s.item.timed && s.set === 0 && s.rest > 0 && a.steps[k + 1] && a.steps[k + 1].item === s.item && a.steps[k + 1].kind === 'set');
+    // (A move with a third straight set if there is one: the interrupted tap below does the second
+    // set and needs another of the same move after it, and 1.15's moves often have only two.)
+    const same = (s, k, n) => [...Array(n)].every((_, j) => a.steps[k + j + 1] && a.steps[k + j + 1].item === s.item && a.steps[k + j + 1].kind === 'set');
+    const first = (n) => a.steps.findIndex((s, k) => s.kind === 'set' && !s.item.timed && s.set === 0 && s.rest > 0 && same(s, k, n));
+    const i = first(2) >= 0 ? first(2) : first(1);
     if (i < 0) return null;
     a.idx = i;
     U.openPlayer();
@@ -986,6 +990,9 @@ section('Moments: the workout player');
     await new Promise((res) => requestAnimationFrame(res));
     const mid = Array.from(pl.querySelectorAll('.pl-main, .pl-main *'), (n) => window.__m.anims(n)).flat().filter((a) => a.playState === 'running').length;
     document.querySelector('.player [data-act="plSkipRest"]').click();
+    // (A set that asks how many reps were left holds the rest until the answer or Continue.)
+    const cont = pl.querySelector('[data-act="plContinue"]');
+    if (cont) cont.click();
     await new Promise((res) => requestAnimationFrame(res));
     const out = { mid, step: !!pl.querySelector('.pl-main:not(.pl-rest) .pl-fig-card') };
     await window.GH.ui.motion.settled();
