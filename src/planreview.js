@@ -4,14 +4,16 @@
  * - What is sent (context): next week's plan as the planner made it (each day's muscle groups and
  *   moves, minutes against the time set), the weekly sets against their targets, the score's six
  *   parts and the planner's reasons, and the moves a swap may name: at most 60, each one this
- *   person can do (their kit, joints and the body's rules). Claude gets it with the usual summary
- *   (goals, experience, schedule, equipment, an age range, careful joints and the readiness trends);
- *   the on-device model gets the same in a short brief, plus what only it may know: health
+ *   person can do (their kit, joints and the body's rules). Both models get who this is in the same
+ *   words (GH.person, src/person.js): goals, history, schedule, equipment and what their weights
+ *   mean for them, how they eat, what they actually do and what they've chosen, with what the
+ *   research says to do about it (GH.person.advice). Claude gets it in the usual summary, with an
+ *   age range; the on-device model gets it here, plus what only it may know: the exact age, health
  *   conditions, the joints arthritis affects, floor work and a gentle start. None of those ever goes
  *   to Claude (privacy.js), and neither does the planner's "Planned around ..." line. An on-device
  *   model with a short memory gets a shorter plan (compact: fewer moves, no reasons).
  * - What comes back: { suggestions: [{ kind, group?, delta?, family?, move?, from?, to?, split?,
- *   rest?, minutes?, focus?, title, why }], note }, at most 3. SPEC lists each kind's fields and
+ *   rest?, minutes?, days?, focus?, title, why }], note }, at most 3. SPEC lists each kind's fields and
  *   VALUES what each field may hold; together they make Claude's JSON schema and the on-device
  *   model's GBNF grammar, so the two can only write the same shapes.
  * - Checking (validate): each suggestion is normalized, turned into a plan tweak (or a change of the
@@ -32,11 +34,12 @@
   const M = () => GH.moves;
   const O = () => GH.optimizer;
 
-  const KINDS = ['more_sets', 'fewer_sets', 'swap_move', 'move_day', 'split', 'rest', 'minutes', 'finisher', 'mobility', 'focus', 'tip'];
+  const KINDS = ['more_sets', 'fewer_sets', 'swap_move', 'move_day', 'split', 'rest', 'minutes', 'days', 'finisher', 'mobility', 'focus', 'tip'];
   const GROUPS = ['biceps', 'triceps', 'abs', 'chest', 'legs', 'back', 'shoulders'];
   const SPLITS = ['auto', 'full_body', 'upper_lower', 'ppl'];
   const RESTS = [60, 90, 120];
   const MINUTES = [10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
+  const DAYS = [2, 3, 4, 5, 6]; // workouts a week (someone who does two of the three they plan)
   const MAX = 3; // suggestions kept
   const MAX_MOVES = 60; // move ids a swap may name
   const DROP = 0.03; // the most the score may drop (applyTweaks' own rule, for the changes it can't try)
@@ -46,7 +49,7 @@
   // Each kind's fields, in the order the models write them (title and why come after).
   const SPEC = {
     more_sets: ['group', 'delta'], fewer_sets: ['group', 'delta'], swap_move: ['family', 'move'], move_day: ['from', 'to'],
-    split: ['split'], rest: ['rest'], minutes: ['minutes'], finisher: ['delta'], mobility: ['delta'], focus: ['focus'], tip: [],
+    split: ['split'], rest: ['rest'], minutes: ['minutes'], days: ['days'], finisher: ['delta'], mobility: ['delta'], focus: ['focus'], tip: [],
   };
   // The muscles a plan can lean toward: the groups, then the single muscles (src/brain.js).
   const focusList = () => GROUPS.concat(Object.keys(B().MUSCLE_GROUP || {}).filter((m) => !GROUPS.includes(m)));
@@ -63,16 +66,17 @@
     split: () => SPLITS,
     rest: () => RESTS,
     minutes: () => MINUTES,
+    days: () => DAYS,
     focus: () => focusList(),
   };
-  const NUMERIC = new Set(['delta', 'from', 'to', 'rest', 'minutes']);
+  const NUMERIC = new Set(['delta', 'from', 'to', 'rest', 'minutes', 'days']);
   // The kinds this plan can take: a swap needs moves to swap in, a day move a free day.
   const kindsOf = (ctx) => KINDS.filter((k) => SPEC[k].every((f) => VALUES[f](k, ctx).length));
 
   // How each kind looks on its card: [icon, hue].
   const LOOK = {
     more_sets: ['plus-circle', 'green'], fewer_sets: ['minus', 'amber'], swap_move: ['shuffle', 'coral'], move_day: ['calendar', 'sky'],
-    split: ['layers', 'indigo'], rest: ['timer', 'teal'], minutes: ['clock', 'sky'], finisher: ['bolt', 'amber'],
+    split: ['layers', 'indigo'], rest: ['timer', 'teal'], minutes: ['clock', 'sky'], days: ['calendar', 'green'], finisher: ['bolt', 'amber'],
     mobility: ['leaf', 'teal'], focus: ['flag', 'violet'], tip: ['sparkle', 'violet'],
   };
   // The score's parts in plain words: a name, what it measures, and how a change reads.
@@ -235,41 +239,23 @@
     return ['MOVES (family: its move now, then the moves it can swap to as id name; only these)']
       .concat(ctx.swaps.map((x) => `- ${x.family} (${x.name}, now ${moveName(x.current)}): ${x.options.map((id) => `${id} ${moveName(id)}`).join(', ')}`));
   }
-  // The person, for the on-device model only (Claude has the usual summary instead): what the review
-  // weighs, plus the body's details that never leave the phone.
-  function personLines(S, day) {
-    const b = B(), h = GH.health, p = S.profile, A = GH.access;
-    const GOAL = { abs: 'visible abs', arms: 'bigger arms', chest: 'bigger chest', legs: 'legs and glutes', back: 'back and posture', fat: 'lose fat', strength: 'strength', endurance: 'endurance', mobility: 'mobility', consistency: 'consistency' };
-    const EXP = { never: 'never trained', onoff: 'on and off', lt1: 'under 1 year', '1to3': '1 to 3 years', '3plus': '3 years or more' };
-    const L = ['PERSON'];
-    L.push(`- Goals in order: ${(p.goals || []).map((g) => GOAL[g] || g).join(', ') || 'not set'}`);
-    L.push(`- Training history: ${EXP[p.experience] || p.experience || 'not given'}`);
-    const eq = p.equipment || {};
-    const kit = [];
-    if (eq.db && eq.db.length) kit.push(`dumbbells ${eq.db.join('/')} ${p.units || 'lb'}`);
-    if (eq.kb && eq.kb.length) kit.push(`kettlebell ${eq.kb.join('/')} ${p.units || 'lb'}`);
-    for (const k of ['band', 'bar', 'ball', 'chair', 'table', 'door']) if (eq[k]) kit.push(k === 'bar' ? 'pull-up bar' : k);
-    L.push(`- Equipment at home: ${kit.join(', ') || 'none, just their body'}`);
-    if (A && A.band) L.push(`- Age: ${A.BANDS[A.band(p)].short}`);
-    if ((p.careful || []).length) L.push(`- Careful with: ${p.careful.join(', ')}`);
-    const pain = Object.entries(S.pain || {}).filter(([, until]) => until >= day).map(([j]) => j);
-    if (pain.length) L.push(`- Joints on a break (moves that load them are swapped out): ${pain.join(', ')}`);
-    // Only this model, on the phone, sees these (never Claude).
-    const conds = A && A.conditions ? A.conditions(p).map((id) => (A.CONDITIONS.find((c) => c.id === id) || {}).short).filter(Boolean) : [];
-    if (conds.length) L.push(`- Health: the plan is adapted for ${joinList(conds)}`);
-    if (Array.isArray(p.oaJoints) && p.oaJoints.length && conds.length) L.push(`- Joints with arthritis: ${p.oaJoints.join(', ')}`);
-    if (p.floorOk === false) L.push('- Nothing on the floor: standing and seated moves only');
-    if (p.gentle) L.push('- A gentle plan: fewer sets to start');
-    // Readiness: this week against the usual, and how the last four weeks' workouts felt.
-    const now = (k) => h.stats(S, k, day - 6, day), usual = (k) => h.stats(S, k, day - 34, day - 7);
-    const pair = (k, fmt, unit) => { const a = now(k), u = usual(k); return a.n ? `${fmt(a.avg)}${unit}${u.n >= 7 ? ` (usually ${fmt(u.avg)}${unit})` : ''}` : null; };
-    const bits = [['Sleep', pair('sleepMin', (m) => b.fmtMin(Math.round(m)), ' a night')], ['Resting heart rate', pair('rhr', (x) => String(Math.round(x)), ' bpm')], ['HRV', pair('hrv', (x) => String(Math.round(x)), ' ms')]].filter(([, v]) => v);
-    if (bits.length) L.push(`- This week: ${bits.map(([k, v]) => `${k} ${v}`).join('; ')}`);
-    const r = { easy: 0, right: 0, hard: 0 };
-    let done = 0;
-    for (const l of S.log || []) if (l.type === 'workout' && l.checkedIn && l.day > day - 28) { done++; if (l.checkin && r[l.checkin.rating] != null) r[l.checkin.rating]++; }
-    if (done) L.push(`- Workouts in the last 4 weeks: ${done} done; ${r.easy} felt too easy, ${r.right} about right, ${r.hard} too hard`);
-    return L;
+  // The person, for the on-device model only (Claude has the same in its summary, less what never
+  // leaves the phone): who this is, as every model job gets it (src/person.js).
+  // (compact: the short form for a model with a short memory. The plan's own lines say where and
+  // how often they train.)
+  const SHORT = ['body', 'goal', 'kit', 'joints', 'pain', 'health', 'oa', 'floor', 'gentle', 'eats', 'does', 'felt'];
+  function personLines(S, day, compact) {
+    return ['PERSON'].concat(GH.person ? GH.person.lines(S, day, Object.assign({ to: 'device' }, compact ? { ids: SHORT } : {})) : []);
+  }
+  // What the research says to do about their facts (light weights, little protein, workouts missed
+  // or running long, a beginner), and no talk of losing weight for someone under 18 or lean.
+  function adviceLines(S, ctx) {
+    const P = GH.person;
+    if (!P) return [];
+    const o = { to: ctx.target, wide: ctx.target === 'claude' ? !!(GH.ai && GH.ai.wide && GH.ai.wide(S)) : true };
+    // (Claude's guard is in its system text.)
+    const list = P.advice(S, ctx.day, o).concat(ctx.target === 'claude' ? [] : [P.guard(S, ctx.day, o)]).filter(Boolean);
+    return list.length ? ['FOR THIS PERSON (from the research the app follows)'].concat(list.map((x) => `- ${x}`), ['']) : [];
   }
 
   const KIND_HELP = [
@@ -279,6 +265,7 @@
     '- split: full_body, upper_lower or ppl (push, pull and legs); auto lets the planner pick again.',
     '- rest: seconds between sets (60, 90 or 120).',
     '- minutes: minutes per workout (10 to 60, in steps of 5).',
+    '- days: workouts a week (2 to 6), for someone who keeps missing them.',
     '- finisher or mobility: delta 1 adds a finisher (or a cool-down) to every workout, -1 drops it.',
     '- focus: a muscle or muscle group to lean the plan toward.',
     '- tip: advice that doesn\'t change the plan.',
@@ -287,23 +274,23 @@
   function claudeAsk(S, ctx) {
     return [
       'Check this person\'s workout plan, below. The app\'s planner made it after comparing every way to lay out their week, and scores a plan on how well it fits their goals, covers every muscle group, fits their time, rests muscles between sessions, balances pushing and pulling, and varies the moves.',
-      'Suggest up to 3 changes that would clearly help them, based on what their data shows (goals, how workouts felt, sleep and recovery, schedule). Fewer is better, and an empty list is right when the plan already fits. The app checks each suggestion against its rules (equipment, joints, time, every muscle\'s weekly minimum, recovery) before they see it, and nothing changes until they approve it.',
+      'Suggest up to 3 changes that would clearly help this person, based on what their data shows: their goals, what they actually do (workouts a week against the plan, how long sessions take), what their weights mean for them, how they eat, how workouts felt, sleep and recovery. Fewer is better, and an empty list is right when the plan already fits. The app checks each suggestion against its rules (equipment, joints, time, every muscle\'s weekly minimum, recovery) before they see it, and nothing changes until they approve it.',
       'Kinds of change:', ...KIND_HELP,
-      'title: under 8 words, plain. why: one sentence under 25 words, with their numbers. note: one sentence about the plan as a whole.',
-      '', ...planLines(S, ctx), '', ...movesLines(ctx),
+      'title: under 8 words, plain. why: one sentence under 25 words that names the fact about them it answers, with their numbers. note: one sentence about the plan as a whole. No diet, calorie or weight advice.',
+      '', ...adviceLines(S, ctx), ...planLines(S, ctx), '', ...movesLines(ctx),
     ].join('\n');
   }
   // The on-device model's: short rules for a small model, the person and the plan, then the ask.
   const DEVICE_RULES = [
     'You check a workout plan the app made and suggest at most 3 small changes, as JSON.',
-    'The app already compared every way to lay out the week. Suggest a change only for a clear reason in PERSON or PLAN: a goal below its target, workouts that felt too hard or too easy, short sleep, a muscle trained two days in a row. An empty list is fine.',
+    'The app already compared every way to lay out the week. Suggest a change only for a clear reason in PERSON or PLAN: a goal below its target, workouts missed or running long, weights that are light for them, workouts that felt too hard or too easy, short sleep, a muscle trained two days in a row. An empty list is fine.',
     'Kinds:', ...KIND_HELP,
     'title: under 8 words. why: one short sentence that copies their numbers exactly as written. Don\'t calculate anything.',
-    'note: one short sentence about the plan.',
+    'note: one short sentence about the plan. Never give diet, calorie, weight or medical advice.',
   ].join('\n');
   function deviceMessages(S, day, ctx) {
     return [
-      { role: 'system', content: [DEVICE_RULES, '', ...personLines(S, day), '', ...planLines(S, ctx), '', ...movesLines(ctx)].join('\n') },
+      { role: 'system', content: [DEVICE_RULES, '', ...personLines(S, day, ctx.compact), '', ...(ctx.compact ? [] : adviceLines(S, ctx)), ...planLines(S, ctx), '', ...movesLines(ctx)].join('\n') },
       { role: 'user', content: 'Check my plan. Suggest up to 3 changes, or none if it already fits me.' },
     ];
   }
@@ -402,6 +389,10 @@
         const v = int(x.minutes);
         s.minutes = v != null && v > 0 ? clamp(Math.round(v / 5) * 5, 10, 60) : null;
         if (!s.minutes) bad = 'It didn\'t say how many minutes.';
+      } else if (kind === 'days') {
+        const v = int(x.days);
+        s.days = v != null && v >= 2 && v <= 6 ? v : null;
+        if (!s.days) bad = 'A plan has 2 to 6 workouts a week.';
       } else if (kind === 'finisher' || kind === 'mobility') s.delta = int(x.delta) < 0 ? -1 : 1;
       else if (kind === 'focus') {
         s.focus = pick(focusList(), x.focus);
@@ -424,6 +415,7 @@
       case 'split': return s.split === 'auto' ? 'Let the planner pick the split' : `Switch to ${SPLIT_WORDS[s.split]}`;
       case 'rest': return `Rest ${s.rest === 60 ? '1 minute' : s.rest === 90 ? '90 seconds' : '2 minutes'} between sets`;
       case 'minutes': return `${s.minutes}-minute workouts`;
+      case 'days': return `${s.days} workouts a week`;
       case 'finisher': return s.delta < 0 ? 'No finishers' : 'A finisher every workout';
       case 'mobility': return s.delta < 0 ? 'No extra cool-downs' : 'A cool-down every workout';
       case 'focus': return `Lean the plan toward your ${muscleName(s.focus)}`;
@@ -432,13 +424,16 @@
   }
   // The title and why as shown: held to the numbers that were sent (and the suggestion's own), the
   // app's own title standing in for one that isn't. given null: already checked (a report's ideas).
-  function wordsOf(s, given) {
+  function wordsOf(s, given, strict) {
     const title0 = s.title || ownTitle(s);
     if (given == null || !GH.coach || !GH.coach.keepToGiven) return { title: title0, why: s.why || '', cut: 0 };
-    const own = [s.delta, s.minutes, s.rest, s.rest ? s.rest / 60 : null].filter((x) => x != null).map((x) => Math.abs(x)).join(' ');
+    const own = [s.delta, s.minutes, s.days, s.rest, s.rest ? s.rest / 60 : null].filter((x) => x != null).map((x) => Math.abs(x)).join(' ');
     const g = `${given}\n${own}`;
-    const t = GH.coach.keepToGiven(title0, g);
-    const w = GH.coach.keepToGiven(s.why || '', g);
+    // Held to the numbers that were sent, and to what a model may say (no diet, medicine or, for
+    // someone under 18 or lean, weight loss: GH.coach.keepSafe).
+    const held = (x) => { const a = GH.coach.keepToGiven(x, g), z = GH.coach.keepSafe ? GH.coach.keepSafe(a.text, strict) : a; return { text: z.text, cut: a.cut + (z === a ? 0 : z.cut) }; };
+    const t = held(title0);
+    const w = held(s.why || '');
     return { title: t.cut ? ownTitle(s) : title0, why: w.text, cut: (t.cut ? 1 : 0) + w.cut };
   }
 
@@ -478,6 +473,9 @@
       case 'minutes':
         if (s.minutes === ctx.minutes) return { reason: `Your workouts are already about ${s.minutes} minutes.` };
         return { change: { minutes: s.minutes }, key: 'minutes' };
+      case 'days':
+        if (s.days === ctx.sessions.length) return { reason: `Your plan already has ${s.days} workouts a week.` };
+        return { change: { days: s.days }, key: 'days' };
       case 'finisher': case 'mobility': {
         const v = s.delta < 0 ? 'off' : 'on';
         if (cur[s.kind] === v) return { reason: `Your plan already has ${v === 'on' ? 'that' : 'none'}.` };
@@ -509,7 +507,7 @@
   function trial(S, change, day) {
     const opt = O();
     let res;
-    if (!change.weekdays && !change.profile) res = opt.applyTweaks(S, Object.assign({}, change.tweaks || {}, change.minutes != null ? { minutes: change.minutes } : {}), day);
+    if (!change.weekdays && !change.profile) res = opt.applyTweaks(S, Object.assign({}, change.tweaks || {}, change.minutes != null ? { minutes: change.minutes } : {}, change.days != null ? { days: change.days } : {}), day);
     else res = tryOnCopy(S, change, day);
     const fresh = res.after.violations.filter((v) => !res.before.violations.some((w) => w.text === v.text));
     const diff = diffOf(res, change);
@@ -555,6 +553,12 @@
     if (change.profile) b.reprogram(S, copy(change.profile), day);
     const patch = {};
     if (change.minutes != null) patch.minutes = change.minutes;
+    // (A new count keeps the days picked, adding or dropping one, as Settings does.)
+    if (change.days != null) {
+      const d = b.setWorkoutDays(S.profile.weekdays, change.days);
+      patch.days = d.days;
+      patch.weekdays = d.weekdays.length ? d.weekdays.slice().sort((x, y) => x - y) : null;
+    }
     if (change.weekdays) patch.weekdays = change.weekdays.slice();
     if (Object.keys(patch).length) b.updateSettings(S, day, patch);
   }
@@ -567,6 +571,7 @@
       out.tweaks = t;
     }
     if (c.minutes != null) out.minutes = c.minutes;
+    if (c.days != null) out.days = c.days;
     if (c.weekdays) out.weekdays = c.weekdays.slice();
     if (c.profile) out.profile = Object.assign({}, a.profile || {}, c.profile);
     return out;
@@ -585,6 +590,7 @@
       }
       if (change.lines) lines.push(...change.lines);
       if (change.minutes != null) lines.push(`Sessions of ${change.minutes} minutes.`);
+      if (change.days != null) lines.push(`${change.days} workouts a week.`);
       for (const g of GROUPS) {
         const a = res.before.perGroup[g].sets, z = res.after.perGroup[g].sets;
         if (a !== z) lines.push(`${b.GROUP_NAME[g]}: ${z} sets a week (was ${a}).`);
@@ -638,9 +644,10 @@
     const n = normalize(raw, ctx);
     const out = { items: [], tips: [], rejected: n.dropped.map((x) => ({ kind: x.kind, title: x.title, reason: x.reason, at: x.at })), note: '', cut: 0 };
     const keys = new Set();
+    const strict = !!(GH.person && GH.person.strict(S, day));
     let id = 0;
     for (const s of n.items) {
-      const w = wordsOf(s, given);
+      const w = wordsOf(s, given, strict);
       out.cut += w.cut;
       const no = (reason) => out.rejected.push({ kind: s.kind, title: w.title, reason, at: s.at });
       if (s.kind === 'tip') { if (w.why || s.title) out.tips.push({ title: w.title, why: w.why }); continue; }
@@ -657,8 +664,9 @@
     out.rejected.sort((a, b) => a.at - b.at);
     if (n.note) {
       const k = given != null && GH.coach && GH.coach.keepToGiven ? GH.coach.keepToGiven(n.note, given) : { text: n.note, cut: 0 };
-      out.note = k.text;
-      out.cut += k.cut;
+      const safe = given != null && GH.coach && GH.coach.keepSafe ? GH.coach.keepSafe(k.text, strict) : { text: k.text, cut: 0 };
+      out.note = safe.text;
+      out.cut += k.cut + safe.cut;
     }
     return out;
   }
@@ -674,6 +682,8 @@
     const opt = o || {};
     const who = opt.engine || engine(S);
     if (!who) throw err('Set up the on-device coach or Claude first.', 'none');
+    // Who this is, for a model (src/person.js, a part of its own): in before the plan is written out.
+    if (!GH.person && GH.lazy) await GH.lazy('person').catch(() => null);
     const ctx = context(S, day, who === 'claude' ? 'claude' : 'device');
     if (ctx.custom) throw err('You\'re following your own plan. The review checks the coach\'s plan.', 'custom');
     if (!ctx.sessions.length) throw err('There\'s no plan to check next week.', 'empty');
@@ -705,6 +715,20 @@
     if (out.res.aborted) return { aborted: true, ctx: out.c, engine: 'device' };
     return { raw: readJson(out.res.raw), text: out.res.raw, given: out.msgs.map((m) => m.content).join('\n'), ctx: out.c, engine: 'device', model: out.res.model };
   }
+  // What the review looked at besides the plan, in a few words for its summary line: the facts about
+  // the person that model was given (src/person.js), by their labels on the sheet.
+  const LOOKED = { goal: 'your goals', time: 'your schedule', kit: 'your equipment', load: 'what your weights mean for you', eats: 'how you eat', does: 'the workouts you\'ve done', felt: 'how they felt', effort: 'how hard your sets were', up: 'what\'s moving up', stuck: 'what isn\'t', likes: 'your choices', sleep: 'your sleep', joints: 'your joints', health: 'what you plan around' };
+  function looked(S, day, who) {
+    const P = GH.person;
+    if (!P) return [];
+    const claude = who === 'claude';
+    // (Claude's summary holds how workouts felt, the reps left and sleep in its own lines, when
+    // there are any.)
+    const own = ['felt', 'effort', 'sleep'];
+    const ids = new Set(P.facts(S, day, { to: claude ? 'claude' : 'device', wide: claude ? !!(GH.ai && GH.ai.wide && GH.ai.wide(S)) : true }).map((f) => f.id)
+      .concat(claude ? P.facts(S, day, { to: 'device', ids: own }).map((f) => f.id) : []));
+    return Object.keys(LOOKED).filter((id) => ids.has(id)).map((id) => LOOKED[id]);
+  }
   // The plan's shape, to tell whether a review still fits it.
   function stamp(S, day) {
     const b = B();
@@ -721,7 +745,7 @@
     if (res.aborted) return { aborted: true };
     if (!res.raw || typeof res.raw !== 'object') throw err('Couldn\'t read the coach\'s answer. Try again.', 'unread');
     const out = validate(S, res.raw, day, { ctx: res.ctx, given: res.given });
-    const review = Object.assign(out, { v: 1, at: Date.now(), day, engine: res.engine, model: res.model || null, source: opt.source || null, stamp: stamp(S, day) });
+    const review = Object.assign(out, { v: 1, at: Date.now(), day, engine: res.engine, model: res.model || null, source: opt.source || null, stamp: stamp(S, day), looked: looked(S, day, res.engine) });
     S.ai = S.ai || {};
     S.ai.review = review;
     return review;
@@ -754,7 +778,8 @@
     write(S, all, day);
     const lines = applied.map((it) => it.title);
     S.events = S.events || [];
-    S.events.push({ type: 'review', day, at: Date.now(), engine: m.engine || null, source: m.source || null, lines, before });
+    // (declined: the ones offered and left out, which the next plan a model writes is told.)
+    S.events.push(Object.assign({ type: 'review', day, at: Date.now(), engine: m.engine || null, source: m.source || null, lines, before }, Array.isArray(m.declined) && m.declined.length ? { declined: m.declined.slice(0, 3).map((x) => clean(x, 80)) } : {}));
     return { applied, skipped, lines };
   }
   // The last review's changes that can still be undone.
@@ -783,7 +808,7 @@
       'Also check their workout plan, below, for plan_suggestions and plan_note. The app\'s planner made it after comparing every way to lay out their week. Suggest up to 3 changes that would clearly help, based on their data; an empty list is right when the plan already fits. The app checks each one against its rules, and nothing changes until they approve it.',
       'Kinds of change:', ...KIND_HELP,
       'title: under 8 words. why: one sentence under 25 words, with their numbers. plan_note: one sentence about the plan, or empty with no suggestions.',
-      '', ...planLines(S, ctx), '', ...movesLines(ctx),
+      '', ...adviceLines(S, ctx), ...planLines(S, ctx), '', ...movesLines(ctx),
     ].join('\n');
     return { ctx, schema: listSchema(ctx), ask: ask0 };
   }
@@ -792,7 +817,8 @@
   function fromReport(S, day, data, part, given) {
     const d = data && typeof data === 'object' ? data : {};
     const n = normalize({ suggestions: d.plan_suggestions, note: d.plan_note }, part.ctx);
-    const items = n.items.map((s) => { const w = wordsOf(s, given || ''); return Object.assign({}, s, { title: w.title, why: w.why }); });
+    const strict = !!(GH.person && GH.person.strict(S, day));
+    const items = n.items.map((s) => { const w = wordsOf(s, given || '', strict); return Object.assign({}, s, { title: w.title, why: w.why }); });
     const note = n.note && GH.coach && GH.coach.keepToGiven ? GH.coach.keepToGiven(n.note, given || '').text : n.note;
     return { day, at: Date.now(), items, note };
   }
@@ -861,7 +887,7 @@
   function open(source, o) { const U = GH.ui; if (U && U.openReview) return U.openReview(source, o); return null; }
 
   GH.planReview = {
-    KINDS, SPEC, VALUES, GROUPS, SPLITS, RESTS, MINUTES, MAX, MAX_MOVES, LOOK, PART_INFO, WD,
+    KINDS, SPEC, VALUES, GROUPS, SPLITS, RESTS, MINUTES, DAYS, MAX, MAX_MOVES, LOOK, PART_INFO, WD, looked,
     available, engine, open, context, compact, planLines, personLines, claudeAsk, deviceMessages, listSchema, schema, grammar, readJson,
     normalize, prepare, trial, validate, ownTitle, ask, run, current, stamp, apply, last, undo, forReport, fromReport, why, dayLabel,
   };

@@ -7,7 +7,7 @@ import { load, root, check, section, done } from './lib.mjs';
 
 const ls = new Map();
 globalThis.localStorage = { getItem: (k) => (ls.has(k) ? ls.get(k) : null), setItem: (k, v) => ls.set(k, String(v)), removeItem: (k) => ls.delete(k) };
-const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/store.js', 'src/coach.js', 'src/chats.js', 'src/tailor.js', 'src/devicecoach.js', 'src/ui/embeds.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/store.js', 'src/coach.js', 'src/chats.js', 'src/tailor.js', 'src/person.js', 'src/devicecoach.js', 'src/ui/embeds.js');
 const bundle = await build({ entryPoints: [join(root, 'src/ai.js')], bundle: true, write: false, format: 'iife', platform: 'browser', target: ['es2022'], logLevel: 'silent' });
 new Function(bundle.outputFiles[0].text)();
 const B = GH.brain, C = GH.coach, H = GH.health, SC = GH.science;
@@ -123,6 +123,8 @@ section('Claude app hand-off');
 const prompt = C.claudePrompt(S, D0, 'What should I focus on?');
 check('the question and the data summary are both there', /My question: What should I focus on\?/.test(prompt) && /LAST 28 DAYS/.test(prompt));
 check('no name, dates or day numbers', !/Sam/.test(prompt) && !/\d{4}-\d{2}-\d{2}/.test(prompt) && !prompt.includes(String(D0)) && !/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/.test(prompt));
+// (Who this is, src/person.js: the facts 1.15 added go to Claude only once the newer list is allowed.)
+check('who this is, as Claude\'s summary has it, and nothing they haven\'t allowed', /PERSON\n- Age range: /.test(prompt) && /- Goals, most important first: /.test(prompt) && /- Equipment: /.test(prompt) && !/Their weights|Eating, in their own words|Last 4 weeks:|Their choices|weeks with the app/.test(prompt));
 
 section('How it works');
 check('every rule has what it does, why, a level and research', SC.RULES.every((r) => r.does && r.why && SC.LEVELS[r.level] && r.refs.length && r.refs.every((id) => SC.REFS[id])));
@@ -235,6 +237,11 @@ section('Plans for different bodies');
   check('and explains a flare day', flare.flare && C.decisions(S3, D0, flare)[0].rule === 'arthritis');
   const brief = GH.deviceCoach.brief(S3, D0);
   check('the on-device coach knows what the plan works around; Claude\'s summary doesn\'t', (/adapted for age band 65 and over; planned around balance and rheumatoid arthritis/.test(brief)) && !/arthritis|balance/i.test(GH.ai.summary ? GH.ai.summary(S3, D0) : ''), brief);
+  // The short form of who this is (src/person.js) is in the brief too.
+  const S4 = B.newState({ goals: ['arms'], age: 30, weightKg: 70, heightCm: 178, units: 'lb', equipment: { db: [10] }, eats: { protein: 'low', produce: 'most' } }, null, D0);
+  const brief4 = GH.deviceCoach.brief(S4, D0);
+  check('and what their weights mean for them and how they eat, said briefly', /Their weights: 10 lb is light for curls, rows and chest presses\./.test(brief4) && !/about right for/.test(brief4) && /Eating, in their own words: not much protein, plenty of fruit and veg\./.test(brief4) && !/Say nothing about losing weight/.test(brief4) && !/Last 4 weeks|Moving up/.test(brief4), brief4);
+  check('its rules rule out diets, medicine, supplements and a target weight', /don't write new programs, diets or meal plans, and never suggest medicine, supplements, a target weight or cutting out a food/.test(GH.deviceCoach.RULES));
 }
 
 section('Suggestions you apply');
@@ -398,6 +405,8 @@ section('The on-device coach keeps to the app\'s numbers');
   const q = 'Am I doing enough steps?';
   const cut = DC.finish(walker, D0, q, 'Yes, you walk 7675 steps a day, which is great for your health. That puts you in the top 12% of people.', given, 'Yes,');
   check('a made-up line goes and a note says so', cut.cut === 1 && !/12%/.test(cut.text) && /7675/.test(cut.text) && /Left out a line/.test(cut.note), cut);
+  const diet = DC.finish(walker, D0, q, 'Yes, you walk 7675 steps a day, above what most studies link to better health. Eat in a calorie deficit and take a fat burner too.', given, 'Yes,');
+  check('a line of diet or supplement advice goes too, and the note says why', diet.cut === 1 && !/deficit|burner/.test(diet.text) && /7675/.test(diet.text) && /Left out advice on diet or medicine\. That's for a doctor or dietitian\./.test(diet.note), diet);
   const bad = DC.finish(walker, D0, q, 'Yes, 12,000 steps.', given, 'Yes,');
   check('if too little is left, the app\'s own answer stands in', bad.replaced && bad.text === C.ask(walker, D0, q).text && /didn't match your numbers/.test(bad.note), bad);
   const none = DC.finish(walker, D0, q, 'Yes,', given, 'Yes,');

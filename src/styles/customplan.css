@@ -316,6 +316,22 @@ button.cp-wk-row:active { background: var(--fill-selected); }
 .cp-knows-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px var(--space-3); }
 .cp-knows-list > li { display: contents; }
 .cp-knows-list .t-footnote:last-child { overflow-wrap: anywhere; }
+.cp-knows > .rf-btn { justify-self: start; }
+/* Build me a plan: the quick choices above the field, why a built plan is this person's (in the
+   sheet and on the plan's page), and what the app put right in a model's take. */
+.cp-quicks { display: grid; gap: var(--space-3); }
+.cp-quick { display: grid; gap: 6px; min-width: 0; }
+.cp-quick > p { margin: 0; }
+.cp-why-box, .cp-fixes { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-lg); background: color-mix(in oklab, var(--hue-violet) 8%, var(--fill-3)); }
+.cp-fixes { background: var(--fill-3); }
+.cp-why-box > p, .cp-fixes > p, .cp-why-card > p { margin: 0; }
+.cp-fixes > ul { margin: 0; padding-inline-start: 1.25em; display: grid; gap: 4px; overflow-wrap: anywhere; }
+.cp-why { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.cp-why > li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: start; }
+.cp-why > li > svg { color: var(--hue-violet); margin-top: 3px; }
+.cp-why > li > span { overflow-wrap: anywhere; }
+.cp-why-card { display: grid; gap: var(--space-2); }
+.cp-day-why { margin: 0; overflow-wrap: anywhere; }
 
 /* Plan tab: the plan in use, above the week. */
 .cp-banner { padding: var(--space-2); border-radius: var(--radius-xl); }

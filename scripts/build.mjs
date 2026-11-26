@@ -357,8 +357,12 @@ export const APP_CHUNKS = [
   // sharing and Build me a plan. The Plan tab's banner, the move pictures and links to a shared plan
   // are in the page (src/ui/customplan.js), with the stand-ins that load this, or warm it after launch.
   // The plan code comes with it (its move numbers, then its reader and writer): GH.customPlan.decode()
-  // loads this part before it reads one.
-  { name: 'planUi', scripts: ['src/data/plancode-moves.js', 'src/plancode.js', 'src/ui/planbuilder.js'] },
+  // loads this part before it reads one. Build me a plan's logic (src/planbuild.js) too.
+  { name: 'planUi', scripts: ['src/data/plancode-moves.js', 'src/plancode.js', 'src/planbuild.js', 'src/ui/planbuilder.js'] },
+  // Who this is, for a model (GH.person): what the app knows about the person and what they do, in
+  // words, for Claude's summary, the on-device coach's brief, the plan review and Build me a plan.
+  // Each loads it before it writes a request (GH.ai.who), and it warms after launch.
+  { name: 'person', scripts: ['src/person.js'] },
 ];
 
 // Heavy parts that load only when they're used (the 3D figure, the on-device model runtime, the

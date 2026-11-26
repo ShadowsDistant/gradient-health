@@ -121,8 +121,11 @@ await page.waitForSelector('dialog[open] .facts-list');
 check('"What it used" lists the facts the app worked out', await page.evaluate(() => /What the app worked out/.test(document.querySelector('dialog[open] .facts-list').textContent)));
 await page.evaluate(() => window.GH.ui.topSheet().close('ok'));
 await wait(500);
-const brief = await page.evaluate(() => window.GH.deviceCoach.messages(window.GH.ui.S, window.GH.ui.today(), 'x')[0].content);
-check('the model gets a short brief with real numbers', brief.length < 2200 && /Sleep: /.test(brief) && /Steps: /.test(brief) && /Workouts: /.test(brief), brief.length);
+// (With who this is in its short form, src/person.js: a line on what their weights mean for them and
+// one on what isn't moving, about 170 characters on this person. The bar was 2,200 before them.)
+const brief = await page.evaluate(async () => { await window.GH.deviceCoach.who(); return window.GH.deviceCoach.messages(window.GH.ui.S, window.GH.ui.today(), 'x')[0].content; });
+check('the model gets a short brief with real numbers', brief.length < 2400 && /Sleep: /.test(brief) && /Steps: /.test(brief) && /Workouts: /.test(brief), brief.length);
+check('and who this is, said briefly', /Their weights: 15 lb is light for /.test(brief) && !/about right for/.test(brief) && !/Last 4 weeks:/.test(brief), brief.split('\n').filter((l) => /weights|Last 4/.test(l)));
 check('without a name', !/Alex/.test(brief));
 const prompt = await page.evaluate(() => {
   const D = window.GH.deviceCoach, S = window.GH.ui.S, day = window.GH.ui.today();
@@ -469,6 +472,7 @@ const pickClaude = async () => {
 await pickClaude();
 await page.waitForSelector('dialog[open] [data-act="claudeAllow"]', { timeout: 5000 });
 check('turning Claude on shows what it would get', await page.evaluate(() => { const t = document.querySelector('dialog[open] .sheet-prose').textContent; return /age range/.test(t) && /sleep, steps, heart rate/.test(t) && /Never your name/.test(t); }));
+check('with what 1.15 added to make a plan theirs, and what never goes', await page.evaluate(() => { const t = document.querySelector('dialog[open] .sheet-prose').textContent; return /How you eat \(not much, some or plenty of protein, fruit and veg, if you said\), and how often you reach your protein goal/.test(t) && /what your weights mean for your size/.test(t) && /Muscles you asked the plan to lean toward/.test(t) && /the days you train and whether at home or a gym/.test(t) && /How many workouts you really do, how long they take and how many you cut short/.test(t) && /picked, hidden, pinned, asked for, taken or turned down/.test(t) && /your exact age or height, or the health conditions/.test(t); }));
 await page.click('dialog[open] [data-act="privacySheet"]');
 await wait(900);
 const policy = await page.evaluate(() => { const top = window.GH.ui.topSheet(); return { title: top && top.el.querySelector('.rf-sheet-title').textContent, asking: !!document.querySelector('dialog[open] [data-act="claudeAllow"]'), mode: window.GH.ui.S.ai.mode, consent: !!window.GH.ui.S.ai.consentAt }; });
@@ -487,7 +491,30 @@ await page.click('dialog[open] [data-act="claudeAllow"]');
 await wait(900);
 check('allowing it turns Claude on and remembers the answer', await page.evaluate(() => window.GH.ui.S.ai.mode === 'api' && window.GH.ui.S.ai.consentAt > 0));
 check('and the pill says so', await page.evaluate(() => /Claude/.test(document.querySelector('.chat-sheet .chat-pill').textContent)));
-await page.evaluate(() => { const S = window.GH.ui.S; S.ai.mode = 'device'; S.ai.consentAt = null; window.GH.store.save(S); });
+check('the answer is for the list as it is now', await page.evaluate(() => window.GH.ui.S.ai.consentV === window.GH.ai.CONSENT && window.GH.ai.wide(window.GH.ui.S)));
+// Someone who allowed the list before it grew: Claude keeps getting what they allowed, and Settings
+// offers the newer list.
+await page.evaluate(() => { const U = window.GH.ui; delete U.S.ai.consentV; window.GH.store.save(U.S); U.closeSheets(); });
+await wait(600);
+await page.evaluate(() => window.GH.ui.open('settings', 'coach'));
+await page.waitForSelector('#screen [data-act="claudeMore"]', { timeout: 5000 });
+const older = await page.evaluate(async () => { const G = window.GH, U = G.ui; await G.ai.who(); return { wide: G.ai.wide(U.S), sent: G.ai.preview(U.S, U.today()), row: document.querySelector('#screen [data-act="claudeMore"]').textContent }; });
+check('an older OK sends what it named, and none of the newer facts', !older.wide && /Age range: /.test(older.sent) && /Equipment: /.test(older.sent) && !/Their weights|Eating, in their own words|Last 4 weeks:|Moving up|Their choices|weeks with the app/.test(older.sent), older.sent.match(/Their weights|Eating, in their own words|Last 4 weeks:|Moving up|Their choices|weeks with the app/));
+check('Settings offers the newer list', /Let Claude know more about you/.test(older.row));
+await page.click('#screen [data-act="claudeMore"]');
+await page.waitForSelector('dialog[open] [data-act="claudeAllow"]', { timeout: 5000 });
+const more = await page.evaluate(() => { const top = window.GH.ui.topSheet(); const t = top.el.querySelector('.sheet-prose').textContent; return { title: top.el.querySelector('.rf-sheet-title').textContent, fresh: /This is new, and it only goes if you allow it/.test(t) && /How you eat/.test(t), before: /As before, the summary also holds/.test(t) && /Say no and Claude keeps getting what you allowed before/.test(t) }; });
+check('its sheet says what\'s new and what stays as it was', more.title === 'Let Claude know more about you?' && more.fresh && more.before, more);
+await page.click('dialog[open] [data-act="claudeDeny"]');
+await wait(800);
+check('saying no changes nothing: Claude stays on with the older list', await page.evaluate(() => { const S = window.GH.ui.S; return S.ai.consentAt > 0 && !S.ai.consentV && S.ai.mode === 'api' && !!document.querySelector('#screen [data-act="claudeMore"]'); }));
+await page.click('#screen [data-act="claudeMore"]');
+await page.waitForSelector('dialog[open] [data-act="claudeAllow"]', { timeout: 5000 });
+await page.click('dialog[open] [data-act="claudeAllow"]');
+await wait(900);
+const newer = await page.evaluate(() => { const G = window.GH, U = G.ui; return { wide: G.ai.wide(U.S), row: !!document.querySelector('#screen [data-act="claudeMore"]'), sent: G.ai.preview(U.S, U.today()) }; });
+check('allowing it sends the newer facts from then on, and the offer goes', newer.wide && !newer.row && /Schedule: \d days a week, about \d+ min; on /.test(newer.sent), newer.sent.split('\n').filter((l) => /Schedule|weights/.test(l)));
+await page.evaluate(() => { const S = window.GH.ui.S; S.ai.mode = 'device'; S.ai.consentAt = null; delete S.ai.consentV; window.GH.store.save(S); });
 
 section('Settings');
 await page.evaluate(() => window.GH.ui.closeSheets());

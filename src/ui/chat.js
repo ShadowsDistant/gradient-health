@@ -656,7 +656,12 @@
         </div>
         <pre class="preview" id="handPrev" hidden></pre>`,
     });
-    U.act.handPreview = (b) => {
+    // (Who this is, for a model, loads on demand: in before the summary is shown or shared, so both
+    // are the same text.)
+    const who = () => (GH.ai && GH.ai.who ? GH.ai.who() : Promise.resolve());
+    who();
+    U.act.handPreview = async (b) => {
+      await who();
       const pre = ctl.el.querySelector('#handPrev');
       const open = pre.hidden;
       pre.hidden = !open;
@@ -664,7 +669,8 @@
       b.textContent = open ? 'Hide it' : 'Show what gets sent';
       if (open) pre.textContent = GH.coach.claudePrompt(U.S, U.today(), (ctl.el.querySelector('#handQ') || {}).value);
     };
-    U.act.handOff = () => {
+    U.act.handOff = async () => {
+      await who();
       const q = (ctl.el.querySelector('#handQ') || {}).value || '';
       const ok = GH.platform.share(GH.coach.claudePrompt(U.S, U.today(), q), 'claude');
       if (!ok) { U.toast('Couldn\'t open another app', 'caution'); return; }

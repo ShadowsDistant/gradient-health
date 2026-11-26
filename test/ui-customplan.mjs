@@ -589,17 +589,19 @@ await closeSheets();
 /* ------------------------------------------------------------------ the coach builds one */
 section('Ask the coach');
 // A stand-in on-device model: it answers with the draft's days (moves its grammar allows, and the
-// draft's own sets, so it keeps to the plan's checks whatever the draft holds), named and noted
-// its own way.
+// draft's own sets, so it keeps to the plan's checks whatever the draft holds), named its own way,
+// and picks two of the reasons the app offered it.
 await page.evaluate(() => {
   const GH = window.GH;
   window.__grammar = null;
+  window.__asked = null;
   GH.llm = {
     MODELS: [], available: () => ({ ok: true, reason: '' }), installed: async () => [{ id: 'stand-in' }], load: async () => ({}),
     chat: async (messages, opts) => {
       window.__grammar = opts.grammar;
+      window.__asked = messages.map((m) => m.content).join('\n');
       const draft = JSON.parse(messages[messages.length - 1].content.split('\nDraft: ')[1]);
-      return JSON.stringify({ name: 'Arms first, knees easy', note: 'Arms twice a week and nothing hard on your knees.', days: draft.days.map((d, k) => ({ title: `Day ${String.fromCharCode(65 + k)}`, items: d.items })) });
+      return JSON.stringify({ because: ['b2', 'b1'], name: 'Arms first, knees easy', days: draft.days.map((d, k) => ({ title: `Day ${String.fromCharCode(65 + k)}`, items: d.items })) });
     },
   };
   GH.deviceCoach.pick = () => 'stand-in';
@@ -608,41 +610,95 @@ await page.evaluate(() => {
 await page.evaluate(() => window.GH.ui.open('plans'));
 await settle(800);
 await page.click('#screen .cp-make [data-act="cpBuild"]');
+await page.waitForSelector('dialog[open] .cp-ask', { timeout: 10000 });
 await settle(800);
 check('the coach shows what it already knows', /Equipment/.test(await page.locator('dialog[open] .cp-knows').innerText()) && /dumbbells 10\/15 lb/.test(await page.locator('dialog[open] .cp-knows').innerText()));
+const asks = await S(() => {
+  const d = document.querySelector('dialog[open]');
+  const picked = (g) => [...g.querySelectorAll('[aria-checked="true"], [aria-pressed="true"], input:checked')].map((x) => (x.closest('label') || x).textContent.trim());
+  return {
+    rows: [...d.querySelectorAll('.cp-quick')].map((g) => ({ label: g.querySelector('p').textContent, options: [...g.querySelectorAll('.rf-chip, .rf-segment')].map((x) => x.textContent.trim()), picked: picked(g), named: g.getAttribute('aria-labelledby') === g.querySelector('p').id })),
+    above: d.querySelector('.cp-quicks').compareDocumentPosition(d.querySelector('#cpAskQ')) & 4,
+    knows: [...d.querySelectorAll('.cp-knows-list > li')].map((li) => li.firstElementChild.textContent),
+    foot: d.querySelector('.cp-knows > p:last-of-type').textContent,
+  };
+});
+check('three quick choices above the field: what you want most, how it should feel, what to leave out', asks.rows.length === 3 && asks.rows.map((r) => r.label).join() === 'What you want most,How it should feel,Leave out' && asks.rows.every((r) => r.named) && !!asks.above, asks.rows.map((r) => r.label));
+check('each already set from what the app knows: their first goal, steady, nothing left out', asks.rows[0].options[0] === 'Abs' && asks.rows[0].options.includes('A bit of everything') && JSON.stringify(asks.rows[0].picked) === '["Abs"]' && JSON.stringify(asks.rows[1].options) === '["Easy to keep up","Steady","Push me"]' && asks.rows[1].picked.length === 1 && asks.rows[2].options.includes('Knees') && asks.rows[2].picked.length === 0, asks.rows);
+check('what the coach uses is who this is, as a model is told: their weights, the days they train, what they do', asks.knows.includes('Goals') && asks.knows.includes('Your weights') && asks.knows.includes('Schedule') && asks.knows.includes('Age') && /stays on your phone/.test(asks.foot), asks.knows);
 await shotSheet('17-build');
-await page.fill('#cpAskQ', '3 days, 30 minutes, I want bigger arms, bad knees');
+// Three taps: arms, easy to keep up, knees left out. Then a few words.
+await page.click('dialog[open] .cp-quick:nth-child(1) [data-arg="arms"]');
+await page.click('dialog[open] .cp-quick:nth-child(2) [data-arg="easy"]');
+await page.click('dialog[open] .cp-quick:nth-child(3) [data-v="knee"]');
+await settle(300);
+await page.fill('#cpAskQ', '3 days, 30 minutes');
 await page.click('dialog[open] [data-act="cpBuildGo"]');
 await settle(1500);
 const built = await page.locator('dialog[open] .cp-import').innerText();
-check('it builds a plan and a model refines it', /Arms first, knees easy/.test(built) && /with the on-device AI/.test(built) && /Arms twice a week/.test(built), built.slice(0, 300));
+check('it builds a plan and a model refines it', /Arms first, knees easy/.test(built) && /with the on-device AI/.test(built), built.slice(0, 300));
+const told = await S(() => window.__asked);
+check('the model was told what they picked, who they are and the rules for them', /They picked: wants most: bigger arms; how it should feel: easy to keep up; leave out: knees/.test(told) && /About them:\n- Age: /.test(told) && /1 to 3 sets of an exercise, never more than 3 in a day/.test(told) && /REASONS\nb1: /.test(told), told.slice(0, 400));
+const why = await S(() => {
+  const d = document.querySelector('dialog[open]');
+  return { title: (d.querySelector('.cp-why-box .t-subhead') || {}).textContent, lines: [...d.querySelectorAll('.cp-why-box .cp-why > li')].map((li) => li.textContent.trim()), days: [...d.querySelectorAll('.cp-imp-day .cp-day-why')].map((x) => x.textContent), sets: Math.max(...window.GH.customPlan.BUILD ? [...d.querySelectorAll('.cp-imp-ex .cp-ex-meta')].map((x) => Number((/^(\d+)/.exec(x.textContent) || [0, 0])[1])) : [0]), fixes: !!d.querySelector('.cp-fixes') };
+});
+check('the plan says why it\'s theirs: the lines the model picked, in the app\'s own words', why.title === 'Why it\'s yours' && why.lines.length === 2 && why.lines.every((l) => /^You/.test(l)) && why.lines.some((l) => /You want your arms/.test(l)), why.lines);
+check('and what each day is for', why.days.length === 3 && why.days.every((l) => l.length > 5 && /\.$/.test(l)), why.days);
+check('easy to keep up: no exercise has more than 3 sets, and nothing was put right', why.sets <= 3 && why.sets >= 1 && !why.fixes, why);
 const gramOk = await S(() => {
   const C = window.GH.customPlan, U = window.GH.ui;
   const ids = [...window.__grammar.split('\n').find((l) => l.startsWith('move ::=')).matchAll(/\\"([a-z0-9_]+)\\"/g)].map((m) => m[1]);
   const S2 = JSON.parse(JSON.stringify(U.S)); S2.profile.careful = ['knee'];
   const cx = C.context(S2, U.today());
-  return { n: ids.length, ok: ids.every((id) => C.check(cx, id).ok), jump: ids.includes('sq_jump'), days: (window.__grammar.match(/ day /g) || []).length };
+  return { n: ids.length, ok: ids.every((id) => C.check(cx, id).ok), jump: ids.includes('sq_jump'), days: (window.__grammar.match(/ day /g) || []).length, sets: /\[1-3\]/.test(window.__grammar), picks: /^pick ::= /m.test(window.__grammar) };
 });
-check('the model could only use moves this person can do, for three days', gramOk.n > 10 && gramOk.ok && !gramOk.jump && gramOk.days === 3, gramOk);
+check('the model could only use moves this person can do, for three days, with the rules\' sets and reasons by id', gramOk.n > 10 && gramOk.n <= 60 && gramOk.ok && !gramOk.jump && gramOk.days === 3 && gramOk.sets && gramOk.picks, gramOk);
 await shotSheet('18-build-plan');
 await page.click('dialog[open] [data-act="cpBuildSave"]');
 await settle(600);
-check('Save keeps it, built by the coach', /Saved to your plans/.test(await page.locator('dialog[open] .cp-saved').innerText()) && await S(() => window.GH.customPlan.list(window.GH.ui.S).some((x) => x.source === 'coach' && x.name === 'Arms first, knees easy')));
+check('Save keeps it, built by the coach, with its reasons', /Saved to your plans/.test(await page.locator('dialog[open] .cp-saved').innerText()) && await S(() => window.GH.customPlan.list(window.GH.ui.S).some((x) => x.source === 'coach' && x.name === 'Arms first, knees easy' && x.why && x.why.length === 2 && x.days.every((d) => d.why))));
 await page.click('dialog[open] [data-act="cpBuildOpen"]');
 await settle(900);
 check('Edit it opens it like any plan', await S(() => window.GH.ui.route.view) === 'planEdit' && /Arms first, knees easy/.test(await page.locator('#screen .cp-title').innerText()));
+const page1 = await S(() => ({ card: (document.querySelector('#screen .cp-why-card') || {}).innerText || '', days: [...document.querySelectorAll('#screen .cp-day .cp-day-why')].map((x) => x.textContent) }));
+check('its page says Why this plan, and what each day is for', /Why this plan/.test(page1.card) && /You want your arms/.test(page1.card) && page1.days.length === 3, page1);
 await shot('19-coach-plan');
-// A model's answer that breaks the rules is dropped, and the app's own plan stands.
-await page.evaluate(() => { window.GH.llm.chat = async () => JSON.stringify({ name: 'Bad', note: '', days: [{ title: 'X', items: [{ move: 'sq_jump', sets: 3, reps: 10 }, { move: 'bench_bb', sets: 3, reps: 10 }] }] }); });
+// Changing an exercise takes the reasons off: they were about the plan as built.
+await S(() => { const U = window.GH.ui, C = window.GH.customPlan; C.update(U.S, U.route.arg, (p) => { p.days[0].items[0].sets = p.days[0].items[0].sets === 1 ? 2 : 1; }, U.today()); U.render(); });
+await settle(500);
+check('change an exercise and the reasons go', await page.locator('#screen .cp-why-card').count() === 0 && await page.locator('#screen .cp-day .cp-day-why').count() === 0);
+// A model that asks for six sets of an arm exercise: the app keeps it to the rules and says so.
+await page.evaluate(() => {
+  window.GH.llm.chat = async (messages) => {
+    const draft = JSON.parse(messages[messages.length - 1].content.split('\nDraft: ')[1]);
+    return JSON.stringify({ because: ['b1'], name: 'Six of everything', days: draft.days.map((d, k) => ({ title: d.title, items: d.items.map((it, n) => (k === 0 && n === 0 ? Object.assign({}, it, { sets: 6 }) : it)) })) });
+  };
+});
 await page.evaluate(() => window.GH.ui.back());
 await settle(700);
 await page.click('#screen .cp-make [data-act="cpBuild"]');
+await page.waitForSelector('dialog[open] .cp-ask', { timeout: 10000 });
 await settle(700);
-await page.fill('#cpAskQ', '3 days, bigger arms, bad knees');
+await page.fill('#cpAskQ', '3 days, 30 minutes');
+await page.click('dialog[open] [data-act="cpBuildGo"]');
+await settle(1500);
+const fixed = await S(() => { const d = document.querySelector('dialog[open]'); return { title: (d.querySelector('.cp-fixes .t-subhead') || {}).textContent, lines: [...d.querySelectorAll('.cp-fixes li')].map((x) => x.textContent), name: d.querySelector('.cp-name').textContent, most: Math.max(...[...d.querySelectorAll('.cp-imp-ex .cp-ex-meta')].map((x) => Number((/^(\d+)/.exec(x.textContent) || [0, 0])[1]))) }; });
+check('a model\'s six sets: kept to 4, and the sheet says in plain words what the app adjusted', fixed.name === 'Six of everything' && fixed.title === 'The app checked the on-device AI\'s plan and adjusted it' && fixed.lines.some((l) => /^Kept .+ to 4 sets on day 1/.test(l)) && fixed.most <= 4, fixed);
+await shotSheet('18b-build-adjusted');
+await closeSheets();
+// A model's answer that breaks the rules is dropped, and the app's own plan stands.
+await page.evaluate(() => { window.GH.llm.chat = async () => JSON.stringify({ name: 'Bad', note: '', days: [{ title: 'X', items: [{ move: 'sq_jump', sets: 3, reps: 10 }, { move: 'bench_bb', sets: 3, reps: 10 }] }] }); });
+await page.click('#screen .cp-make [data-act="cpBuild"]');
+await page.waitForSelector('dialog[open] .cp-ask', { timeout: 10000 });
+await settle(700);
+await page.click('dialog[open] .cp-quick:nth-child(1) [data-arg="arms"]');
+await page.click('dialog[open] .cp-quick:nth-child(3) [data-v="knee"]');
+await page.fill('#cpAskQ', '3 days');
 await page.click('dialog[open] [data-act="cpBuildGo"]');
 await settle(1500);
 const kept = await page.locator('dialog[open] .cp-import').innerText();
-check('a model answer with moves they can\'t do is dropped: the coach\'s own plan stands', /3-day plan for bigger arms/.test(kept) && !/Bad/.test(kept) && /Built by the coach\n/.test(kept + '\n'), kept.slice(0, 200));
+check('a model answer with moves they can\'t do is dropped: the coach\'s own plan stands, with its own reasons', /3-day plan for bigger arms/.test(kept) && !/Bad/.test(kept) && /Built by the coach\n/.test(kept + '\n') && /Why it's yours/.test(kept) && /You're careful with your knees/.test(kept) && !/adjusted it/.test(kept), kept.slice(0, 400));
 await closeSheets();
 
 /* ------------------------------------------------------------------ back to the coach */

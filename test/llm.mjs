@@ -275,6 +275,49 @@ const tailored = await page.evaluate(async (bytes) => {
 const parsed = tailored.map((x) => { try { return JSON.parse(x); } catch (e) { return null; } });
 check('random weights still write Tailor\'s JSON, field for field, under its grammar', parsed.every((o) => o && Array.isArray(o.focus) && Array.isArray(o.goals) && 'minutes' in o && Array.isArray(o.avoid_joints) && typeof o.note === 'string'), tailored);
 
+section('Held to a grammar (Build me a plan, Check my plan)');
+// The requests as the app makes them for the person the release was asked for (src/planbuild.js,
+// src/planreview.js), each under its own grammar. The tiny model's tokenizer is nearly a token a
+// byte, so it gets a bigger memory than a real model needs for the same text.
+const planned = await page.evaluate(async (bytes) => {
+  GH.llm.configure({ models: [{ id: 'tiny35', name: 'Tiny Qwen3.5', file: 'tiny-qwen35.gguf', url: 'https://huggingface.co/test/tiny/resolve/main/tiny-qwen35.gguf', bytes, minRamGB: 0, ctx: 8192, batch: 64, think: true, gen: { temperature: 0.8, top_p: 0.95, top_k: 40 } }] });
+  await GH.lazy('planUi'); await GH.lazy('person'); await GH.lazy('review');
+  const B = GH.brain, C = GH.customPlan, R = GH.planReview;
+  const day = B.dayFromStr('2026-11-23');
+  const S = B.newState({ goals: ['abs', 'arms'], experience: 'never', days: 3, minutes: 20, age: 19, sex: 'male', heightCm: 183, weightKg: 68, units: 'lb', equipment: { db: [10], chair: true, wall: true, towel: true }, eats: { protein: 'low', produce: 'low' } }, null, day);
+  C.ensure(S);
+  const w = C.wishes(S, '', { most: 'arms', feel: 'steady' });
+  const draft = C.build(S, day, w);
+  const ids = C.allowedMoves(S, day, w, draft);
+  const RU = C.rules(S, day, w, draft);
+  const reasons = C.ownWhy(S, day, w, draft, RU);
+  await GH.llm.load('tiny35');
+  const out = { plans: [], review: null };
+  for (const room of [4096, 2048]) {
+    const q = C.deviceAsk(S, w, draft, ids, day, RU, room);
+    // (Three times the answer's tokens: this tokenizer spends about one a character, Qwen's one for 3.)
+    const text = await GH.llm.chat(q.msgs, { grammar: C.planGrammar(q.list, draft.days.length, { perDay: q.per, sets: RU.sets, reasons: reasons.length }), maxTokens: q.maxTokens * 3, temperature: 0.3 });
+    const raw = C.readJson(text);
+    let kept = 'threw';
+    try { kept = C.accept(S, day, w, draft, raw, ids, { fixes: [], said: {}, reasons, given: q.msgs.map((m) => m.content).join('\n') }); } catch (e) { kept = `threw ${e.message}`; }
+    out.plans.push({ room, short: q.short, chars: q.msgs.reduce((a, m) => a + m.content.length, 0), raw, days: raw && Array.isArray(raw.days) ? raw.days.length : 0, kept: kept && typeof kept === 'object' ? { why: kept.why.length, days: kept.days.length } : kept, n: q.list.length, text: text.slice(0, 160) });
+  }
+  const ctx = R.context(S, day, 'device');
+  const msgs = R.deviceMessages(S, day, ctx);
+  const text = await GH.llm.chat(msgs, { grammar: R.grammar(ctx), maxTokens: 400, temperature: 0.3 });
+  const raw = R.readJson(text);
+  let v = 'threw';
+  try { v = R.validate(S, raw, day, { ctx, given: msgs.map((m) => m.content).join('\n') }); } catch (e) { v = `threw ${e.message}`; }
+  out.review = { chars: msgs.reduce((a, m) => a + m.content.length, 0), ok: !!raw && Array.isArray(raw.suggestions), checked: v && typeof v === 'object' ? { items: v.items.length, rejected: v.rejected.length } : v, text: text.slice(0, 160) };
+  await GH.llm.unload();
+  return out;
+}, statSync(MODEL35).size);
+const [full, short] = planned.plans;
+check('random weights write a plan that parses, with exactly the days asked, under its grammar, full and short', planned.plans.every((p) => p.raw && p.days === 3 && Array.isArray(p.raw.because)) && !full.short && short.short && short.n < full.n, planned.plans.map((p) => [p.short, p.days, p.text]));
+check('and the checks read it without a fault: a plan that passes, or the draft (null)', planned.plans.every((p) => p.kept === null || (typeof p.kept === 'object' && p.kept.days === 3 && p.kept.why >= 2)), planned.plans.map((p) => p.kept));
+check('Check my plan\'s grammar holds them to its JSON too, and validate reads it', planned.review.ok && typeof planned.review.checked === 'object', planned.review);
+console.log(`  plan request: ${full.chars} characters with ${full.n} moves, ${short.chars} in the short form with ${short.n}; plan check: ${planned.review.chars}`);
+
 /* ------------------------------------------------------------------ in the app (fake bridge) */
 section('Android bridge (fake)');
 const page2 = await ctx.newPage();
