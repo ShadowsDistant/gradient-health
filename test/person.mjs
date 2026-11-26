@@ -41,11 +41,17 @@ section('Who this is, for a model');
   const S = person(OWNER);
   const dev = text(P.lines(S, D0, { to: 'device' }));
   check('the on-device model gets all of it: age, height and weight, goals, history, schedule, equipment', /Age: 19; sex: male; 183 cm; 150 lb/.test(dev) && /Goals, most important first: visible abs, bigger arms/.test(dev) && /Training history: never trained/.test(dev) && /Schedule: 3 days a week, about 20 min; on Mon, Wed and Fri, at home/.test(dev) && /Equipment: dumbbells 10 lb/.test(dev), dev);
-  check('what their weights mean for them: 10 lb is light for curls and rows, about right for lateral raises', /Their weights: 10 lb is light for curls, rows, chest presses, overhead presses and squats; about right for triceps extensions, lateral raises and rear raises/.test(dev), dev.split('\n').find((l) => /weights/.test(l)));
-  check('from body weight and each ladder\'s share of it', P.loadFeel(S, 'curl').feel === 'light' && P.loadFeel(S, 'row').far && P.loadFeel(S, 'raise').feel === 'right' && P.loadFeel(S, 'push') === null);
+  // (As the plan engine judges a weight, brain.weightFit: against an estimate of their one-rep max,
+  // 10 lb is under 30% of it for rows, presses and squats, and about right, if under half, for curls.)
+  check('what their weights mean for them: 10 lb is light for rows and presses, about right for curls and lateral raises', /Their weights: 10 lb is light for rows, chest presses, overhead presses, squats and deadlifts; about right for curls, triceps extensions, lateral raises, rear raises and weighted crunches/.test(dev), dev.split('\n').find((l) => /weights/.test(l)));
+  check('from the engine\'s judgement of each ladder\'s plain loaded move', P.loadFeel(S, 'curl').feel === 'right' && P.loadFeel(S, 'curl').high && P.loadFeel(S, 'curl').pct === B.weightFit(S, 'curl_std').pct && P.loadFeel(S, 'row').feel === 'light' && P.loadFeel(S, 'row').far && P.loadFeel(S, 'raise').feel === 'right' && P.loadFeel(S, 'push') === null);
   const strong = person(Object.assign({}, OWNER, { equipment: { db: [40], chair: true } }));
   check('a heavy dumbbell reads as heavy, and no weights or no body weight as nothing to say', P.loadFeel(strong, 'curl').feel === 'heavy' && P.loadFeel(person(Object.assign({}, OWNER, { equipment: { chair: true } })), 'curl') === null && P.loadFeel(person(Object.assign({}, OWNER, { weightKg: null })), 'curl') === null);
   check('how they eat, in the answer they gave, and their build only when it\'s lean', /Eating, in their own words: not much protein, not much fruit and veg/.test(dev) && /Build: lean, from height and weight/.test(dev) && P.build(S, D0) === 'lean' && P.build(person(Object.assign({}, OWNER, { weightKg: 80 })), D0) === 'mid' && !/Build:/.test(text(P.lines(person(Object.assign({}, OWNER, { weightKg: 80 })), D0, { to: 'device' }))));
+  // How they eat, as the engine reads it (brain.eatsOf): from their answer, or from their food log.
+  const logged = person(Object.assign({}, OWNER, { eats: { logged: 'low' } }));
+  const logDev = text(P.lines(logged, D0, { to: 'device' })), logClaude = text(P.lines(logged, D0, { to: 'claude', wide: true }));
+  check('a food log\'s reading reaches the on-device model; Claude, told how they said they eat, doesn\'t get it', P.eats(logged.profile).from === 'log' && /Eating: not much protein \(from their food log\)/.test(logDev) && !/protein/.test(logClaude.split('\n').filter((l) => /Eating/.test(l)).join('')) && !/They eat little protein/.test(text(P.advice(logged, D0, { to: 'claude', wide: true }))) && /They eat little protein/.test(text(P.advice(logged, D0, { to: 'device' }))), [logDev.split('\n').find((l) => /Eating/.test(l)), logClaude.split('\n').find((l) => /Eating/.test(l))]);
   const bare = person({ goals: ['legs'], experience: 'lt1', days: 3, minutes: 30, equipment: { chair: true } });
   const bareLines = text(P.lines(bare, D0, { to: 'device' }));
   check('only facts with data behind them: nothing about eating, build, weights or the last weeks when there\'s none', !/Eating|Build|Their weights|Last 4 weeks|Moving up|Not moving|Their choices|Sleep/.test(bareLines) && /Equipment: chair/.test(bareLines), bareLines);
@@ -91,11 +97,30 @@ section('Who this is: what Claude may be told');
   Q.ai.consentV = 2;
   const now = AI.systemBlocks(Q, D0, 'chat').map((b) => b.text).join('\n');
   check('once they allow the newer list, the same facts every model job gets', AI.wide(Q) && /Eating, in their own words: not much protein, some fruit and veg/.test(now) && /Build: lean/.test(now) && /Their weights: 10 lb is/.test(now) && /Schedule: 3 days a week, about 30 min; on \w+, \w+ and \w+, at home/.test(now) && /3 weeks with the app/.test(now) && /Last 4 weeks: about/.test(now));
-  const never = /arthritis|back pain|Planned around|Nothing on the floor|gentle|\b67\b|\b160\b|160 cm|\b52 kg|115 lb/i;
+  // (Body weight itself goes to Claude, as the 7-day average and, with the newer OK, in what their
+  // weights mean at their size; what mustn't is the on-device model's body line, "160 cm; 115 lb".)
+  const never = /arthritis|back pain|Planned around|Nothing on the floor|gentle|\b67\b|\b160\b|160 cm|\d+ cm; \d+ (lb|kg)/i;
   const C2 = C.claudePrompt(Q, C.wishes(Q, ''), C.build(Q, D0, C.wishes(Q, '')), C.allowedMoves(Q, D0, C.wishes(Q, ''), C.build(Q, D0, C.wishes(Q, ''))), D0);
   const all = ['chat', 'report', 'suggest', 'review', 'build', 'tailor'].map((f) => AI.systemBlocks(Q, D0, f).map((b) => b.text).join('\n')).join('\n') + R.claudeAsk(Q, R.context(Q, D0, 'claude')) + C2;
   check('never the exact age, the height, a health condition, floor work or a gentle start, in any request', !never.test(all), all.match(never));
   const dev = text(P.lines(Q, D0, { to: 'device' }));
+  // The plan engine's own lines from their answers (GH.optimizer.personalFacts, in the planner's
+  // reasons) go to Claude by the same rules: what their weights mean and how they eat only with the
+  // newer OK, their build only when it's lean, and never a line read from height that says more.
+  {
+    const factText = (S, id) => ((R.context(S, D0, 'claude').explain.facts || []).find((f) => f.id === id) || {}).text || '';
+    const asks = (S) => R.claudeAsk(S, R.context(S, D0, 'claude'));
+    const O = allow(person(OWNER));
+    const older = asks(O);
+    const goal = factText(O, 'goals'), kit = factText(O, 'kit'), eat = factText(O, 'eating'), abs = factText(O, 'abs');
+    check('the engine\'s lines from their answers: under the older OK only the goals and the time go, not the weights, the eating or the build', !!goal && !!kit && !!eat && !!abs && older.includes(goal) && !older.includes(kit) && !older.includes(eat) && !older.includes(abs) && !/At 150 lb|protein-rich|lean for your height/.test(older), [kit, eat, abs]);
+    O.ai.consentV = 2;
+    const newer = asks(O);
+    check('with the newer OK, what their weights mean, how they eat and that they\'re lean go too', newer.includes(kit) && newer.includes(eat) && newer.includes(abs));
+    const H = allow(person(Object.assign({}, OWNER, { weightKg: 95 })), 2);
+    const habs = factText(H, 'abs');
+    check('a line read from height that says more than lean stays on the phone, even with the newer OK', !!habs && !asks(H).includes(habs) && R.deviceMessages(H, D0, R.context(H, D0, 'device')).map((m) => m.content).join('\n').includes(habs), habs);
+  }
   check('the on-device model gets those, on the phone', /Age: 67; sex: female; 160 cm; 115 lb/.test(dev) && /Health: the plan is adapted for osteoarthritis and low back pain/.test(dev) && /Joints with arthritis: knee, hip/.test(dev) && /Nothing on the floor/.test(dev) && /A gentle plan/.test(dev));
   check('withdrawn, nothing is wide again until they allow it', (() => { Q.ai.consentAt = null; return !AI.wide(Q); })());
   // Everything the newer OK adds is named in the privacy policy (and the consent sheet, ui-chat):
@@ -191,7 +216,9 @@ section('Build me a plan: the rules for this person');
   check('and for someone with everything, six long days', C.claudePrompt(big, wb, db, C.allowedMoves(big, D0, wb, db), D0).length <= C.BUILD.CLAUDE_CHARS + 200, C.claudePrompt(big, wb, db, C.allowedMoves(big, D0, wb, db), D0).length);
   const msgs = C.planMessages(S, w, draft, ids, D0);
   const devText = msgs.map((m) => m.content).join('\n');
-  check('the on-device model gets the short form: the same rules, 60 moves at most, who this is in a few lines, reasons to pick from', devText.length < 6500 && /1 to 4 sets of an exercise/.test(devText) && /About them:\n- Age: 19; sex: male; 183 cm; 150 lb/.test(devText) && /Their weights: 10 lb is light/.test(devText) && /REASONS\nb1: You want your arms and abs most/.test(devText) && (msgs[0].content.match(/^[a-z0-9_]+: /gm) || []).length <= C.BUILD.DEVICE_MOVES && /\nDraft: \{/.test(msgs[1].content), devText.length);
+  // (Moves counted in MOVES itself: rule lines such as "because: ..." start the same way. With the
+  // engine's 1.15 draft the list reaches its 60.)
+  check('the on-device model gets the short form: the same rules, 60 moves at most, who this is in a few lines, reasons to pick from', devText.length < 6500 && /1 to 4 sets of an exercise/.test(devText) && /About them:\n- Age: 19; sex: male; 183 cm; 150 lb/.test(devText) && /Their weights: 10 lb is light/.test(devText) && /REASONS\nb1: You want your arms and abs most/.test(devText) && (msgs[0].content.split('\nMOVES (id')[1].match(/^[a-z0-9_]+: /gm) || []).length <= C.BUILD.DEVICE_MOVES && /\nDraft: \{/.test(msgs[1].content), devText.length);
   const gram = C.planGrammar(ids.slice(0, 60), 3, { perDay: RU.perDay, sets: RU.sets, reasons: 5 });
   check('its grammar holds it to them: 3 to 5 exercises, 1 to 4 sets, reasons by id, no free text but the names', /item \("," item\)\{2,4\}/.test(gram) && /\\"sets\\":" \[1-4\]/.test(gram) && /pick ::= "\\"b1\\"" \| "\\"b2\\"" \| "\\"b3\\"" \| "\\"b4\\"" \| "\\"b5\\""/.test(gram) && /root ::= "\{\\"because\\":\[" pick \("," pick\)\{0,2\}/.test(gram) && !/note/.test(gram) && gram.split('\n').every((l) => /^[a-z]+ ::= /.test(l)));
   const sc = C.planSchema(ids, ['goal', 'load', 'asked']);
@@ -203,7 +230,12 @@ section('Build me a plan: the app\'s own plan says why it\'s theirs');
   const S = person(OWNER);
   const w = C.wishes(S, '', { most: 'arms', feel: 'easy' });
   const plan = C.build(S, D0, w);
-  check('three lines, each from a fact about them and what the plan does about it', plan.why.length === 3 && /^You want your arms and abs most, so they're trained on (all 3 days|at least 2 of your 3 days|2 of your 3 days), arms first\.$/.test(plan.why[0]) && /^You said you don't eat much protein\. Training can't make up for that, so sets stay moderate and your goals come first\.$/.test(plan.why[1]) && /^Your 10 lb weights are light for you, so those exercises build on reps, up to 30, close to the last one you can do\.$/.test(plan.why[2]), plan.why);
+  // (Easy to keep up is a gentler start, for which the engine reckons 10 lb right for their curls,
+  // not long sets: so the third line is the ask itself. Steady, below, has the weights' line.)
+  check('three lines, each from a fact about them and what the plan does about it', plan.why.length === 3 && /^You want your arms and abs most, so they're trained on (all 3 days|at least 2 of your 3 days|2 of your 3 days), arms first\.$/.test(plan.why[0]) && /^You said you don't eat much protein\. Training can't make up for that, so sets stay moderate and your goals come first\.$/.test(plan.why[1]) && /^You asked for a plan that's easy to keep up, so no exercise has more than 3 sets/.test(plan.why[2]), plan.why);
+  const ws = C.wishes(S, '', { most: 'arms', feel: 'steady' }), ps = C.build(S, D0, ws);
+  const loadWhy = (C.ownWhy(S, D0, ws, ps, C.rules(S, D0, ws, ps)).find((x) => x.key === 'load') || {}).line;
+  check('steady: their weights mean long sets, so the exercises with them build on reps up to 30', /^Your 10 lb weights mean long sets for you, so those exercises build on reps, up to 30, close to the last one you can do\.$/.test(loadWhy || ''), loadWhy);
   check('and a line for each day', plan.days.every((d) => d.why && d.why.length <= C.LIMITS.dayWhy && /\.$/.test(d.why)) && /^Arms first while you're fresh, then /.test(plan.days.find((d) => MV[d.items[0].move].group === 'biceps' || MV[d.items[0].move].group === 'triceps').why), plan.days.map((d) => d.why));
   check('the engine\'s draft is brought inside the rules: no exercise over 3 sets when they asked for easy, goal muscles first, core last', plan.days.every((d) => d.items.every((it) => it.sets <= 3)) && plan.days.every((d) => { const k = d.items.findIndex((it) => MV[it.move].group === 'abs'); return k < 0 || d.items.slice(k).every((it) => MV[it.move].group === 'abs'); }), plan.days.map((d) => d.items.map((it) => `${it.move} ${it.sets}`)));
   const every = C.ownWhy(S, D0, w, plan, C.rules(S, D0, w, plan));
@@ -249,9 +281,20 @@ section('Build me a plan: a model\'s plan is held to the rules');
   const full = sixOf(false);
   check('on a day that\'s already full, just kept to 4', full.plan && full.plan.days.every((d, i) => d.items.every((it) => it.sets <= 4) && d.items.length <= Math.max(5, draft.days[i].items.length)) && full.o.fixes.some((x) => /^Kept .+ to 4 sets on day \d/.test(x)), full.o.fixes);
 
-  // A goal muscle once a week.
-  const once = run(answer((d, i) => same(d).filter((it) => i === 0 || MV[it.move].group !== 'triceps')));
-  check('a goal muscle left on one day: the draft\'s exercise goes back, so it trains twice', once.plan && daysOf(once.plan, 'triceps') >= 2 && once.o.fixes.some((x) => /^Put .+ back on day \d, so your triceps train 2 days a week\.$/.test(x)), once.o.fixes);
+  // A goal muscle once a week: their abs, a goal they didn't pick as what they want most. (The same
+  // for their triceps, which they did pick with arms, cuts what they asked for: turned down.)
+  const once = run(answer((d, i) => same(d).filter((it) => i === 0 || MV[it.move].group !== 'abs')));
+  check('a goal muscle left on one day: the draft\'s exercise goes back, so it trains twice', once.plan && daysOf(once.plan, 'abs') >= 2 && sets(once.plan, 'abs') >= Math.min(6, sets(draft, 'abs')) && once.o.fixes.some((x) => /^Put .+ back on day \d, so your abs train 2 days a week\.$/.test(x)), once.o.fixes);
+  // Picking abs instead, their triceps (still a goal) left on one day: the first day back takes the
+  // draft's exercise, and with no time on the days that train them for the rest of the week's
+  // floor, the draft's exercise goes back on another day the model left it off.
+  {
+    const wa = C.wishes(S, '', { most: 'abs', feel: 'steady' }), da = C.build(S, D0, wa), ia = C.allowedMoves(S, D0, wa, da);
+    const oa = { fixes: [], said: {} };
+    const pa = C.accept(S, D0, wa, da, { because: [], name: 'Abs first', note: 'Abs first.', days: da.days.map((d, i) => ({ title: d.title, why: '', items: same(d).filter((it) => i === 0 || MV[it.move].group !== 'triceps') })) }, ia, oa);
+    check('a goal muscle short of its week with no room where it trains: the draft\'s exercise goes back on another day', pa && sets(pa, 'triceps') >= Math.min(6, sets(da, 'triceps')) && daysOf(pa, 'triceps') === daysOf(da, 'triceps') && oa.fixes.some((x) => /^Put .+ back on day \d for your triceps\.$/.test(x)), oa.fixes);
+  }
+  check('what they picked, cut back to one day, is turned down: the draft stands', run(answer((d, i) => same(d).filter((it) => i === 0 || MV[it.move].group !== 'triceps'))).plan === null);
   const gone = run(answer((d) => same(d).filter((it) => MV[it.move].group !== 'triceps')));
   check('left out altogether, it\'s put back too (or the draft stands)', !gone.plan || daysOf(gone.plan, 'triceps') >= 2);
 
@@ -271,14 +314,19 @@ section('Build me a plan: a model\'s plan is held to the rules');
   check('abs and core go last, goal muscles first', flipped.plan && flipped.plan.days.every((d) => { const k = d.items.findIndex((it) => MV[it.move].group === 'abs'); return k < 0 || d.items.slice(k).every((it) => MV[it.move].group === 'abs'); }) && flipped.plan.days.every((d) => { const g = MV[d.items[0].move].group; return ['biceps', 'triceps'].includes(g) || !d.items.some((it) => ['biceps', 'triceps'].includes(MV[it.move].group)); }), flipped.plan && flipped.plan.days.map((d) => d.items.map((it) => it.move)));
   check('a move they can\'t do, the wrong number of days or no answer: the draft stands', run(answer((d, i) => (i ? same(d) : same(d).concat([{ move: 'bench_bb', sets: 3, reps: 10 }])))).plan === null && run(Object.assign(answer(same), { days: answer(same).days.slice(1) })).plan === null && run(null).plan === null);
 
-  // A muscle that isn't a goal keeps its weekly floor too (4, or the draft's when it has fewer).
+  // A muscle that isn't a goal keeps its weekly floor too (4, or the draft's when it has fewer). (The
+  // engine's 1.15 draft gives the chest 2, so one set comes back.)
   const chest = run(answer((d) => same(d).map((it) => (MV[it.move].group === 'chest' ? Object.assign(it, { sets: 1 }) : it))));
-  check('a muscle cut below its weekly floor gets its sets back where the day has room, and the sheet is told', chest.plan && sets(chest.plan, 'chest') === Math.min(4, sets(draft, 'chest')) && chest.o.fixes.some((x) => /^Gave your chest \d sets back, so it gets \d a week\.$/.test(x)), [chest.plan && sets(chest.plan, 'chest'), chest.o.fixes]);
+  check('a muscle cut below its weekly floor gets its sets back where the day has room, and the sheet is told', chest.plan && sets(chest.plan, 'chest') === Math.min(4, sets(draft, 'chest')) && chest.o.fixes.some((x) => /^Gave your chest (a set|\d sets) back, so it gets \d a week\.$/.test(x)), [chest.plan && sets(chest.plan, 'chest'), chest.o.fixes]);
   // Crunch-type work: at most about 60 reps a session (abs_and_arms 3).
   const flexDay = draft.days.findIndex((d) => d.items.some((it) => C.BUILD.flexion(it.move)));
-  const flex = run(answer((d, i) => same(d).map((it) => (i === flexDay && C.BUILD.flexion(it.move) ? Object.assign(it, { sets: 3, reps: 25 }) : it))));
+  // (Each crunch-type move at 4 sets of the top of its range, so the reps aren't brought back by its
+  // range first: with the engine's 1.15 ranges, 3 sets of 25 crunches came down to 3 of 20, 60.)
+  const top = (id) => C.rules(S, D0, w, draft).reps(id)[1];
+  const flex = run(answer((d, i) => same(d).map((it) => (i === flexDay && C.BUILD.flexion(it.move) ? Object.assign(it, { sets: 4, reps: top(it.move) }) : it))));
+  const asked = draft.days[flexDay].items.filter((it) => C.BUILD.flexion(it.move)).reduce((a, it) => a + 4 * top(it.move), 0);
   const flexReps = (p, i) => p.days[i].items.filter((it) => C.BUILD.flexion(it.move)).reduce((a, it) => a + it.sets * it.reps, 0);
-  check('three sets of 25 crunches: kept to 60 crunch-type reps that day, and said so', flexDay >= 0 && flex.plan && flexReps(flex.plan, flexDay) <= 60 && flex.o.fixes.includes(`Kept day ${flexDay + 1}'s crunch-type work to 60 reps.`), [flex.plan && flex.plan.days[flexDay].items, flex.o.fixes]);
+  check('four sets of crunches at the top of their range: kept to 60 crunch-type reps that day, and said so', flexDay >= 0 && asked > 60 && flex.plan && flexReps(flex.plan, flexDay) <= 60 && flex.o.fixes.includes(`Kept day ${flexDay + 1}'s crunch-type work to 60 reps.`), [flex.plan && flex.plan.days[flexDay].items, flex.o.fixes]);
 }
 
 section('Build me a plan: the research\'s other limits');
@@ -397,9 +445,15 @@ section('Build me a plan: asking a model');
     const mine = C.save(S, Object.assign(JSON.parse(JSON.stringify(draft)), { name: 'Mine', source: 'you' })).plan;
     C.update(S, mine.id, (p) => { p.days[0].items[0].sets = 6; });
     const plan6 = C.get(S, mine.id);
-    AI.json = async () => ({ because: [{ fact: 'goal', line: 'You want bigger arms, so one more set goes to your curls.' }], name: 'x', note: 'A little more for your arms.', days: plan6.days.map((d, i) => ({ title: d.title, why: '', items: d.items.map((it, k) => ({ move: it.move, sets: i === 1 && k === 0 ? it.sets + 1 : it.sets, reps: it.secs != null ? it.secs : it.reps })) })) });
+    // (A set more for their triceps: with the engine's 1.15 draft their biceps already have the 12
+    // sets a week that little protein allows, which the next check is about.)
+    const oneMore = (g) => async () => ({ because: [{ fact: 'goal', line: 'You want bigger arms, so one more set goes to your arms.' }], name: 'x', note: 'A little more for your arms.', days: plan6.days.map((d, i) => { const k1 = d.items.findIndex((it) => MV[it.move].group === g); return { title: d.title, why: '', items: d.items.map((it, k) => ({ move: it.move, sets: i === 1 && k === k1 ? it.sets + 1 : it.sets, reps: it.secs != null ? it.secs : it.reps })) }; }) });
+    AI.json = oneMore('triceps');
     const imp = await C.improve(S, D0, plan6, 'more for my arms');
     check('Improve keeps a choice of theirs the model left alone (six sets), and still checks what it changed', imp.by === 'claude' && imp.plan.days[0].items[0].sets === 6 && imp.plan.name === 'Mine' && Array.isArray(imp.fixes) && imp.changes.length >= 1, [imp.plan && imp.plan.days[0].items[0], imp.changes, imp.fixes]);
+    AI.json = oneMore('biceps');
+    const over = await C.improve(S, D0, plan6, 'more for my arms');
+    check('a set the model adds past a weekly cap is the one taken back, never one of theirs', over.plan && over.plan.days[0].items[0].sets === 6 && over.fixes.some((x) => /^Kept your biceps to \d+ sets a week\.$/.test(x)) && over.changes.length === 0, [over.plan && over.plan.days[0].items[0], over.changes, over.fixes]);
   } finally { AI.json = keep; }
   // The on-device model, through a stand-in.
   const D = GH.deviceCoach;

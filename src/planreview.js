@@ -228,9 +228,14 @@
     if (tw.split !== 'auto') mine.push(`the ${SPLIT_WORDS[tw.split]} split`);
     if (mine.length) L.push(`- Changes they already made: ${mine.join('; ')}`);
     // The planner's reasons; its "Planned around ..." line names health conditions and the exact
-    // age, so it stays on the phone.
+    // age, so it stays on the phone. Its lines from the person's own answers (ex.facts) go to Claude
+    // only as src/person.js allows (what their weights mean or how they eat with the newer OK, their
+    // build only when it's lean), and none of those without that part.
     const around = GH.access && GH.access.plannedAround ? GH.access.plannedAround(p) : null;
-    const reasons = (ex.reasons || []).filter((r) => !(ctx.target === 'claude' && around && String(r).startsWith(around)));
+    const wide = ctx.target !== 'claude' || !!(GH.ai && GH.ai.wide && GH.ai.wide(S));
+    const ok = (f) => (GH.person ? GH.person.engineFactOk(S, ctx.day, f, { to: ctx.target, wide }) : ctx.target !== 'claude' || !(f.fields || []).some((x) => ['weightKg', 'eats', 'heightCm'].includes(x)));
+    const hidden = new Set((ex.facts || []).filter((f) => f && !ok(f)).map((f) => f.text));
+    const reasons = (ex.reasons || []).filter((r) => !(ctx.target === 'claude' && around && String(r).startsWith(around)) && !hidden.has(r));
     if (reasons.length && !ctx.compact) L.push(`- Why the planner picked it: ${reasons.join(' ')}`);
     return L;
   }

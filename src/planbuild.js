@@ -337,7 +337,8 @@
     const D = draft ? draft.days.length : clampInt(w.days || p.days, 1, 6, 3);
     const mins = clampInt(w.minutes || p.minutes, 10, 90, 30);
     const lowEat = !!(P && P.eats(p).protein === 'low');
-    const light = (fam) => !!(P && (P.loadFeel(S2, fam) || {}).feel === 'light');
+    // (Light, or right but under about half their one-rep max: sets run long either way.)
+    const light = (fam) => { const f = P ? P.loadFeel(S2, fam) : null; return !!f && (f.feel === 'light' || f.high); };
     const reps = (id) => {
       const m = M().MOVES[id];
       const [lo, hi] = b.rangeFor(S2, m, m.family, day);
@@ -450,7 +451,8 @@
     if (P && light.length) {
       const f = P.loadFeel(R.S2, MV[light[0].move].family);
       // (How close to the last rep, as the engine sets it: 2 or 3 short from 60.)
-      add('load', 'load', `Your ${f.top} ${p.units || 'lb'} weights are light for you, so those exercises build on reps, up to ${Math.max(...light.map((it) => R.reps(it.move)[1]))}, ${P.effort(R.S2, day).lo >= 2 ? 'stopping 2 or 3 short of' : 'close to'} the last one you can do.`);
+      const any = light.some((it) => (P.loadFeel(R.S2, MV[it.move].family) || {}).feel === 'light');
+      add('load', 'load', `Your ${f.top} ${p.units || 'lb'} weights ${any ? 'are light for you' : 'mean long sets for you'}, so those exercises build on reps, up to ${Math.max(...light.map((it) => R.reps(it.move)[1]))}, ${P.effort(R.S2, day).lo >= 2 ? 'stopping 2 or 3 short of' : 'close to'} the last one you can do.`);
     }
     if (w.feel === 'easy') add('feel', 'asked', `You asked for a plan that's easy to keep up, so no exercise has more than ${R.sets[1]} sets and it starts a little lower.`);
     add('time', 'time', `You have ${D} ${D === 1 ? 'day' : 'days'} of ${R.mins} minutes, so each day has ${uniq([Math.min(...plan.days.map((d) => d.items.length)), Math.max(...plan.days.map((d) => d.items.length))]).join(' to ')} exercises.`);
@@ -788,6 +790,9 @@
     for (const d of plan.days) if (d.items.length < 2 || d.items.some((it) => !allowed.has(it.move))) return null;
     const R = rules(S, day, w, draft);
     tidy(S, day, plan, R, { ids, draft, fixes, own: !!opt.own });
+    // (The muscles the model's own answer trains: one it left out altogether is turned down below,
+    // not put back.)
+    const kept = new Set(plan.days.flatMap((d) => d.items.map((it) => MV[it.move].group)));
     const budget = clampInt((w && w.minutes) || S.profile.minutes, 10, 90, 30);
     const limit = (i) => Math.max(budget, minutes(S, draft, i, day)) + 2;
     const daysOf = (p, g) => p.days.filter((d) => d.items.some((it) => grp(it) === g)).length;
@@ -797,6 +802,13 @@
       return out;
     };
     const was = setsOf(draft);
+    // What they asked to focus on, as the model's own answer has it: one that cuts those groups well
+    // back is turned down, whatever the repairs below would make of it.
+    const asked = setsOf(plan);
+    for (const g of (w && w.focus) || []) if (was[g] && (asked[g] || 0) < Math.ceil((was[g] * 2) / 3)) return null;
+    // Pushing against pulling (rows count a little more, as the plan review weighs them).
+    const pushOf = (x) => (x.chest || 0) + (x.shoulders || 0), pullOf = (x) => (x.back || 0) * 1.2;
+    const balance = (x) => { const push = pushOf(x), pull = pullOf(x); return Math.max(push, pull) <= 0 ? 1 : Math.min(push, pull) / Math.max(push, pull); };
     // A goal muscle on too few days: the draft's exercise for it goes back in, on the days the
     // draft has it and the model's doesn't.
     for (const g of R.goals) {
@@ -818,14 +830,17 @@
     const goalOf = (g) => R.goals.find((x) => x.group === g);
     const floorOf = (g) => (goalOf(g) ? Math.min(goalOf(g).floor, was[g] || 0) : (was[g] || 0) >= 2 ? Math.min(R.week[0], was[g]) : 0);
     const capOf = (g) => Math.max(goalOf(g) ? goalOf(g).cap : R.week[1], was[g] || 0);
-    // Weekly sets: a muscle past its ceiling gives the extra up.
+    // (Improve: an exercise as they had it, which sets come off last.)
+    const amount = (it) => (it.secs != null ? it.secs : it.reps);
+    const theirs = (i, it) => !!opt.own && !!draft.days[i] && draft.days[i].items.some((x) => x.move === it.move && x.sets === it.sets && amount(x) === amount(it));
+    // Weekly sets: a muscle past its ceiling gives the extra up, from what the model changed first.
     for (const g of Object.keys(now())) {
       let over = (now()[g] || 0) - capOf(g);
       if (over > 0) fixes.push(`Kept your ${groupWord(g)} to ${capOf(g)} sets a week.`);
       for (let guard = 0; guard < 60 && over > 0; guard++) {
-        const it = plan.days.flatMap((d) => d.items).filter((x) => grp(x) === g && x.sets > 1).sort((a, b) => b.sets - a.sets)[0];
-        if (!it) break;
-        it.sets--;
+        const pick = plan.days.flatMap((d, i) => d.items.map((x) => [x, theirs(i, x) ? 1 : 0])).filter(([x]) => grp(x) === g && x.sets > 1).sort((a, b) => a[1] - b[1] || b[0].sets - a[0].sets)[0];
+        if (!pick) break;
+        pick[0].sets--;
         over--;
       }
     }
@@ -841,12 +856,16 @@
       const d = plan.days[i];
       // (On a tie, the later move gives a set first.)
       const spare = (it, k) => it.sets - (focus(it) ? 1 : 0) - (k === 0 ? 2 : 0) + k / 100;
-      const held = (it) => (now()[grp(it)] || 0) <= floorOf(grp(it));
+      // (Held: a muscle at its weekly floor, and the lighter side of pushing and pulling while the
+      // plan is no better balanced than the draft, so trimming doesn't tip it over.)
+      const behind = (g) => { const x = now(); return balance(x) <= balance(was) && ((g === 'back' && pushOf(x) > pullOf(x)) || ((g === 'chest' || g === 'shoulders') && pullOf(x) > pushOf(x))); };
+      const held = (it) => (now()[grp(it)] || 0) <= floorOf(grp(it)) || behind(grp(it));
       let cut = 0;
       for (let guard = 0; guard < 200 && minutes(S, plan, i, day) > limit(i); guard++) {
         let pick = -1;
-        for (const free of [true, false]) {
-          d.items.forEach((it, k) => { if (it.sets > 1 && (!free || !held(it)) && (pick < 0 || spare(it, k) > spare(d.items[pick], pick))) pick = k; });
+        // (Held muscles last, and, in Improve, what they had after what the model changed.)
+        for (const [free, fresh] of [[true, true], [true, false], [false, true], [false, false]]) {
+          d.items.forEach((it, k) => { if (it.sets > 1 && (!free || !held(it)) && (!fresh || !theirs(i, it)) && (pick < 0 || spare(it, k) > spare(d.items[pick], pick))) pick = k; });
           if (pick >= 0) break;
         }
         if (pick < 0) break;
@@ -868,6 +887,20 @@
           it.sets++;
           if (minutes(S, plan, i, day) > limit(i) || !dayOk(i)) it.sets--; else { done = true; added++; }
         }
+        // No day with the muscle has room: the draft's exercise for it goes back on a day the model
+        // left it off, where that day has the time and the room (for a muscle the model trains).
+        for (let i = 0; i < plan.days.length && !done && kept.has(g); i++) {
+          const d = plan.days[i];
+          const back = d.items.some((x) => grp(x) === g) ? null : (draft.days[i] || { items: [] }).items.find((x) => grp(x) === g && allowed.has(x.move));
+          if (!back || d.items.length >= Math.max(R.perDay[1], draft.days[i].items.length)) continue;
+          const put = Object.assign({}, back, { sets: Math.max(1, Math.min(R.sets[1], back.sets, floorOf(g) - (now()[g] || 0))) });
+          const was0 = d.items;
+          d.items = d.items.concat(put).map((it, k) => [it, k]).sort((a, b) => R.tier(grp(a[0])) - R.tier(grp(b[0])) || a[1] - b[1]).map((x) => x[0]);
+          if (minutes(S, plan, i, day) > limit(i) || !dayOk(i)) { d.items = was0; continue; }
+          done = true;
+          added += put.sets;
+          fixes.push(`Put ${MV[put.move].name} back on day ${i + 1} for your ${groupWord(g)}.`);
+        }
         if (!done) return null;
       }
       if (added) fixes.push(`Gave your ${groupWord(g)} ${added === 1 ? 'a set' : `${added} sets`} back, so ${g === 'chest' || g === 'back' ? 'it gets' : 'they get'} ${floorOf(g)} a week.`);
@@ -875,7 +908,6 @@
     const got = now();
     for (const g of Object.keys(was)) if (was[g] >= 2 && (got[g] || 0) < Math.ceil(was[g] / 2)) return null;
     for (const g of (w && w.focus) || []) if (was[g] && (got[g] || 0) < Math.ceil((was[g] * 2) / 3)) return null;
-    const balance = (x) => { const push = (x.chest || 0) + (x.shoulders || 0), pull = (x.back || 0) * 1.2; return Math.max(push, pull) <= 0 ? 1 : Math.min(push, pull) / Math.max(push, pull); };
     if (balance(got) < Math.min(0.5, balance(was) - 0.15)) return null;
     for (let i = 0; i < plan.days.length; i++) if (plan.days[i].items.length > Math.max(R.perDay[1], draft.days[i].items.length) || !dayOk(i)) return null;
 
