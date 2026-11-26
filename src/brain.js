@@ -599,6 +599,7 @@
     if (!M().LADDERS[fam]) return null;
     const list = rungs(S, fam, day);
     if (!list.length) return null;
+    progGen++;
     if (!isGymFam(fam)) {
       // Where this body starts (src/access.js; stand-in ladders start the first time a plan uses
       // them), else the usual starting rung for the person's level, as initProgress does.
@@ -1167,6 +1168,55 @@
   };
   const SUPPORT = ['rear', 'backExt', 'glute', 'hamCurl', 'calf', 'coreSide', 'coreRot', 'flyG', 'gluteG', 'lungeG', 'legCurlG', 'legExtG', 'calfG', 'rearG'];
   const exFor = (n) => (n <= 0 ? 0 : n <= 4 ? 1 : n <= 8 ? 2 : 3);
+  // A group's ladders on a day as slots15 reads them, in the order it tries them: each { f, id, r },
+  // the ladder (or its stand-in), the move it would use, and how it ranks there (weak: the move isn't
+  // the right one for this person; light: a weight in the light zone). Kept for one op(): a week's
+  // plan measures its days many times over, and only a ladder starting (ensureProg, progGen) changes
+  // what these read. And from one op() to the next while the state is as its stamp says (opStamp):
+  // the sessions built from a week's plan ask what planning it found.
+  let progGen = 0;
+  const candsMemo = new WeakMap();
+  function opStamp(S, stamp) {
+    const om = opMap(S);
+    if (!om) return;
+    let keep = candsMemo.get(S);
+    if (!keep || keep.stamp !== stamp) candsMemo.set(S, (keep = { stamp, m: new Map() }));
+    om.set('keep', { keep, gen: progGen });
+  }
+  function cands15(S, day, g, atGym, focus, tier) {
+    const om = opMap(S);
+    const k = om && `s15|${g}|${day}|${atGym ? 1 : 0}|${progGen}`;
+    const hit = om && om.get(k);
+    if (hit) return hit;
+    const kp = om && om.get('keep');
+    const keep = kp && kp.gen === progGen ? kp.keep.m : null;
+    const k2 = `${g}|${day}|${atGym ? 1 : 0}`;
+    const kept = keep && keep.get(k2);
+    if (kept) { om.set(k, kept); return kept; }
+    let list = (atGym ? GYM_ANGLES[g] : []).concat(ANGLES[g]);
+    // Calves get sets of their own when they're a focus or legs are a top goal.
+    if (g === 'legs' && (focus.includes('calves') || tier === 1)) list = list.slice(0, 2).concat(atGym ? 'calfG' : [], 'calf', list.slice(2));
+    const out = [];
+    const seen = new Set();
+    for (const f0 of list) {
+      const f = famFor(S, f0, day);
+      if (seen.has(f)) continue;
+      seen.add(f);
+      if (!rungs(S, f, day).length) continue;
+      const pk = pinnedFor(S, f, day) || pickMove(S, f, day);
+      if (!pk || !pk.id) continue;
+      // (A big move on a weight in the light zone comes after one the body loads: push-ups before
+      // a light floor press. A small one too light for both hands is done one arm at a time and
+      // keeps its place: the overhead extension leads the triceps, as it grows the long head most,
+      // Maeo et al. 2023, and every arm plan has one, A6 of the 1.15 research.)
+      const w = weightFit(S, pk.id, day);
+      const light = !!w && (COMPOUND.includes(f) ? w.high : w.fit === 'light' && !oneArm(S, M().MOVES[pk.id], day));
+      out.push({ f, id: pk.id, r: (weak(S, pk.id, day) ? 10 : light ? 1 : 0) - 2 * focusScore(f, focus) });
+    }
+    if (om) om.set(k, out);
+    if (keep && kp.gen === progGen) keep.set(k2, out);
+    return out;
+  }
   function slots15(S, day, dp) {
     const prog = programFor(S.profile);
     const gs = dp.groupSets || {};
@@ -1191,33 +1241,20 @@
         const n = Math.min(12, gs[g] || 0);
         if (n <= 0) continue;
         const tier = prog.tiers[g] || 3;
-        let list = (atGym ? GYM_ANGLES[g] : []).concat(ANGLES[g]);
-        // Calves get sets of their own when they're a focus or legs are a top goal.
-        if (g === 'legs' && (focus.includes('calves') || tier === 1)) list = list.slice(0, 2).concat(atGym ? 'calfG' : [], 'calf', list.slice(2));
         // The ladders that can be done today (or their stand-ins, src/access.js), each once, a
         // focus's first; the ones whose exercise isn't the right one for this person (weak) last.
         const fams = [];
+        const ids = {}, R = {};
         let shared = null;
-        for (const f0 of list) {
-          const f = famFor(S, f0, day);
-          if (fams.includes(f) || !rungs(S, f, day).length) continue;
-          const pk = pinnedFor(S, f, day) || pickMove(S, f, day);
-          if (!pk || !pk.id) continue;
-          if (used.has(pk.id)) { shared = shared || [f, pk.id]; continue; }
-          fams.push(f);
-          (fams.ids = fams.ids || {})[f] = pk.id;
+        for (const c of cands15(S, day, g, atGym, focus, tier)) {
+          if (used.has(c.id)) { shared = shared || c; continue; }
+          fams.push(c.f); ids[c.f] = c.id; R[c.f] = c.r;
         }
         // (A group whose only exercise another group's already uses, a stand-in both share, still
         // has it: the two become one exercise that counts for both, mergeSame.)
-        if (!fams.length && shared) { fams.push(shared[0]); fams.ids = { [shared[0]]: shared[1] }; }
+        if (!fams.length && shared) { fams.push(shared.f); ids[shared.f] = shared.id; R[shared.f] = shared.r; }
         if (!fams.length) continue;
-        const ids = fams.ids;
-        // (A big move on a weight in the light zone comes after one the body loads: push-ups before
-        // a light floor press. A small one too light for both hands is done one arm at a time and
-        // keeps its place: the overhead extension leads the triceps, as it grows the long head most,
-        // Maeo et al. 2023, and every arm plan has one, A6 of the 1.15 research.)
-        const light = (f) => { const w = weightFit(S, ids[f], day); return !!w && (COMPOUND.includes(f) ? w.high : w.fit === 'light' && !oneArm(S, M().MOVES[ids[f]], day)); };
-        const rank = (f) => (weak(S, ids[f], day) ? 10 : light(f) ? 1 : 0) - 2 * focusScore(f, focus);
+        const rank = (f) => R[f];
         let order = fams.map((f, i) => [f, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map((x) => x[0]);
         // (An exercise that isn't the right one only when the group has no other.)
         if (order.some((f) => rank(f) < 5)) order = order.filter((f) => rank(f) < 5);
@@ -1318,6 +1355,7 @@
     const week = (cal.weeks && cal.weeks[ws]) || { phase: { mult: 1, onramp: false, deload: false } };
     const phase = o.forceMult != null ? Object.assign({}, week.phase, { mult: o.forceMult }) : week.phase;
     const stamp = stateStamp(S);
+    opStamp(S, stamp);
     const slot = JSON.stringify([day, tplIdx, !!o.short, !!o.noReadiness, !!o.noTrim, o.forceMult == null ? null : o.forceMult, phase]);
     const key = slot.slice(0, -1) + ',' + JSON.stringify(dayStamp(S, day)) + ']' + stamp;
     const memo = sessionMemo.get(S);
@@ -3188,6 +3226,8 @@
   };
   // For src/access.js, which builds balance and floor-practice slots like any other.
   Object.assign(GH.brain, { itemFor, famFor, restFor, tierOf, cooldownItems });
+  // For src/customplan.js: the weaker side's catch-up set in a plan of your own (1.15).
+  Object.assign(GH.brain, { extraItem });
   // Reps left in the tank: each set's aim, and how an answer moves an exercise on (src/customplan.js,
   // src/coach.js and src/ai.js read answers with them too).
   Object.assign(GH.brain, { AIMS, effortFor, effortStep, effortWords, aimWords, RIR_NUM });
@@ -3199,6 +3239,6 @@
     UNIT_GROUPS, UNIT_OF, COMPOUND, MAIN_LIFTS, HOME_COMPOUND, FAM_FOCUS, MERGE_MAX, SET_MAX,
     realize, slotsOfDay, slotsForUnit, warmupItems, mobilityIds, finisherItem, finisherFor, pairSupersets, unpair, secsPerSet,
     limitExercises, mergeSame, orderItems, musclesOf, trimTier, perSession, autoRest, tweaksOf, isPinned, supersetConflict: conflicts, setMax, exFor,
-    weekSettings, weekInputs, templateOf, templateV1, legacyGroupSets, occurrences, legacyWeek, personal, stateStamp, dayStamp, progStamp, planProfile, weekLog, freeze, op, inOp, opToken,
+    weekSettings, weekInputs, templateOf, templateV1, legacyGroupSets, occurrences, legacyWeek, personal, stateStamp, opStamp, dayStamp, progStamp, planProfile, weekLog, freeze, op, inOp, opToken,
   });
 })(typeof window !== 'undefined' ? window : globalThis);
