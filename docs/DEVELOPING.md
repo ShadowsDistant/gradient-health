@@ -1406,7 +1406,7 @@ the screens (`test/ui-customplan.mjs`).
     list only grows**: a new move's id goes at the end; nothing in it is reordered, renamed or taken
     out, and a number is never used again (a move dropped from the library keeps its place). A code
     with a number this version doesn't have reads as a plan without that exercise, and says so.
-    `test/customplan.mjs` holds a hash of the 296 that 1.15 shipped with, and fails when a move in
+    `test/customplan.mjs` holds a hash of the first 296 (the moves before 1.15 added its own), and fails when a move in
     the library has no number: add it to the end of the list.
   - *Reading one* is forgiving: case, spaces, hyphens and line breaks don't matter, O reads as 0 and
     I and L as 1, and a code is found among other words, with or without its GH. What it yields

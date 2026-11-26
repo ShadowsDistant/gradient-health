@@ -6,6 +6,27 @@
   const GH = G.GH || (G.GH = {});
   GH.CHANGELOG = [
     {
+      version: '1.15.0', date: '2026-11-26', title: 'Plan codes, plans made for you, and a smoother app',
+      store: [
+        '• Share a plan as a short code, and add one by typing or pasting it',
+        '• Plans built around your goals and your weights, your weaker arm first',
+        '• An optional question about how you eat, with one small step to try',
+        '• Plans the AI builds follow rules for you and say why they\'re yours',
+        '• Smoother motion in the workout player, with numbers that roll',
+        '• A touch-up of every screen, and text that fits at large sizes',
+      ].join('\n'),
+      items: [
+        ['share', 'Share a plan as a short code, and add one by typing or pasting it'],
+        ['dumbbell', 'Plans built around your goals, each goal muscle on 2 days or more'],
+        ['person', 'Your weights judged for your size, and your weaker arm goes first'],
+        ['food', 'An optional question about how you eat, with one small step to try'],
+        ['sparkle', 'Plans the AI builds follow rules for you and say why they\'re yours'],
+        ['layers', 'Why this plan says which of your answers shaped your week'],
+        ['wave', 'Smoother motion: the player, numbers that roll, charts that draw in'],
+        ['check-circle', 'A touch-up of every screen, and text that fits at large sizes'],
+      ],
+    },
+    {
       version: '1.14.0', date: '2026-10-16', title: 'A better plan builder, simpler Settings, and quicker sheets',
       store: [
         '• Pick exercises from a list with pictures, suggestions and filters',

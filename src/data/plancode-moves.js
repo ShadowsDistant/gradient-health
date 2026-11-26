@@ -7,7 +7,7 @@
  * - A move taken out of the library keeps its place here (its number stays taken; a code that holds
  *   it reads as a plan without that exercise, and says so).
  *
- * test/customplan.mjs holds a hash of the 296 that 1.15 shipped with, and fails when a move in the
+ * test/customplan.mjs holds a hash of the first 296 (the moves before 1.15 added its own), and fails when a move in the
  * library has no number. There is room for 1,023.
  */
 (function (G) {
