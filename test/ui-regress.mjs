@@ -642,8 +642,9 @@ const restOn = async () => {
   // before the click returns, so the first frame after it has it) with the set's own haptic.
   return page.evaluate(() => {
     const U = window.GH.ui, a = U.S.active;
-    const asks = (st) => st.kind === 'set' && !st.item.timed && st.askRir && st.rest;
-    const k = a.steps.findIndex((st, i) => i > a.idx && asks(st));
+    // (Not the workout's last set: Up next needs a set after it, and 1.15's sessions are shorter.)
+    const asks = (st, i) => st.kind === 'set' && !st.item.timed && st.askRir && st.rest && a.steps.some((x, j) => j > i && x.kind === 'set');
+    const k = a.steps.findIndex((st, i) => i > a.idx && asks(st, i));
     a.idx = k >= 0 ? k : a.steps.findIndex(asks);
     U.openPlayer();
     window.__haptics.length = 0;

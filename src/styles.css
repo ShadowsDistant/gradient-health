@@ -572,8 +572,13 @@ textarea.preview { border: 0; resize: vertical; }
 .pl-timer.is-over .rf-ring-fill { visibility: hidden; } /* (its round end would still draw a dot) */
 /* A rest that doesn't fit (fitRest in player.js: a small phone with large text) has a smaller ring. */
 .pl-rest.is-tight .pl-timer { padding: 0; }
-.pl-rest.is-tight .pl-timer .rf-ring { --_s: 128px; --_w: 9px; }
+.pl-rest.is-tight .pl-timer .rf-ring { --_s: 112px; --_w: 8px; }
 .pl-rest.is-tight .pl-count { font-size: 1.75rem; }
+/* and a compact Up next: a smaller picture and at most two lines of name (a long one, "Overhead
+   extension, 3-sec lowering", took three and pushed the row under the actions). */
+.pl-rest.is-tight .pl-fig-sm { width: 56px; height: 56px; }
+.pl-rest.is-tight .pl-rir, .pl-rest.is-tight .pl-next-row { padding: var(--space-2) var(--space-3); }
+.pl-rest.is-tight .pl-next .t-headline { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .pl-rir { width: 100%; max-width: 420px; box-sizing: border-box; display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); }
 .pl-rir p { margin: 0; }
 .pl-rir .rf-segmented { width: 100%; }
