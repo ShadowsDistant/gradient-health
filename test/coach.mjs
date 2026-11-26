@@ -186,7 +186,9 @@ check('marked as written when Health Connect confirms', !!S.health.written[rec.i
 S.health.write = false;
 check('not sent when switched off', !H.writeWorkout(S, log) && sent.length === 1);
 S.health.write = true;
-check('catch-up skips what was already written', H.writeRecent(S, 60) === S.log.filter((l) => l.type === 'workout').length - 1);
+// The window counts back from today, and the fixture's workouts sit at a fixed date, so it must reach them.
+const since = Math.ceil((Date.now() - D0 * B.DAY_MS) / B.DAY_MS) + 60;
+check('catch-up skips what was already written', H.writeRecent(S, since) === S.log.filter((l) => l.type === 'workout').length - 1);
 globalThis.AndroidBridge = { hcCanWrite: () => false, hcWriteWorkout: () => sent.push('x') };
 check('not sent without the permission', !H.writeWorkout(S, log));
 delete globalThis.AndroidBridge;
