@@ -2265,10 +2265,12 @@
     if (lead.arm && cu.arm && cu.arm.active) {
       const n = extra('arm');
       const one = items.some((it) => it.uni && (it.group === 'biceps' || it.group === 'triceps'));
-      add('side', ['lead'], `Your ${side(lead.arm)} arm is the weaker one: it goes first${one ? ' on arm exercises done one arm at a time' : ''}, the other never does more reps${n ? `, and it gets an extra set on ${days(n)}` : ''}.`);
+      const w = side(lead.arm), o = side(lead.arm === 'L' ? 'R' : 'L');
+      add('side', ['lead'], `Your ${w} arm is the weaker one, so ${one ? `arm exercises with a weight go one arm at a time, ${w} first, and` : `it goes first and`} the ${o} never does more reps.${n ? ` The ${w} gets an extra set on ${days(n)}.` : ''}`);
     } else if (lead.leg && cu.leg && cu.leg.active) {
       const n = extra('leg');
-      add('side', ['lead'], `Your ${side(lead.leg)} leg is the weaker one: it goes first, the other never does more reps${n ? `, and it gets an extra set on ${days(n)}` : ''}.`);
+      const w = side(lead.leg), o = side(lead.leg === 'L' ? 'R' : 'L');
+      add('side', ['lead'], `Your ${w} leg is the weaker one, so it goes first and the ${o} never does more reps.${n ? ` The ${w} gets an extra set on ${days(n)}.` : ''}`);
     }
     // Eating: only when it changed the plan (little protein, an adult).
     const e = b.eatsOf(p);

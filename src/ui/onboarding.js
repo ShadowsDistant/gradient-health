@@ -849,8 +849,8 @@
   const eatsOn = () => !(Q.age != null && Q.age !== '' && Number(Q.age) < 18);
   function eatsGroups() {
     Q.eats = Q.eats && typeof Q.eats === 'object' ? Q.eats : { protein: null, produce: null };
-    return group('Protein-rich food', `<div class="ob-pad">${U.seg('eatsProtein', EATS, Q.eats.protein || '', 'How often you eat protein-rich food', ` ${bind('eats.protein')}`)}</div>`, 'Meat, fish, eggs, milk, yogurt, beans, tofu.')
-      + group('Fruit or vegetables', `<div class="ob-pad">${U.seg('eatsProduce', EATS, Q.eats.produce || '', 'How often you eat fruit or vegetables', ` ${bind('eats.produce')}`)}</div>`, 'Your plan won\'t add work to make up for food. It tells you what to expect, and the coach suggests one small step.');
+    return group('Protein-rich food', `<div class="ob-pad">${U.seg('eatsProtein', EATS, Q.eats.protein || '', 'How often you eat protein-rich food', ` ${bind('eats.protein', '', true)}`)}</div>`, 'Meat, fish, eggs, milk, yogurt, beans, tofu.')
+      + group('Fruit or vegetables', `<div class="ob-pad">${U.seg('eatsProduce', EATS, Q.eats.produce || '', 'How often you eat fruit or vegetables', ` ${bind('eats.produce', '', true)}`)}</div>`, 'Your plan won\'t add work to make up for food. It tells you what to expect, and the coach suggests one small step.');
   }
   // A little about you: age, how much you've trained, anything to plan around, and (folded away)
   // weight and height, and how you eat.
